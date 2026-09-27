@@ -14,7 +14,7 @@ afterEach(() => {
 it.each([0.75, 1, 1.5, 2].flatMap(scale => ['horizontal', 'vertical'].map(orientation => ({ scale, orientation: orientation as 'horizontal' | 'vertical' }))))(
   'retains nested canvas pixels and coalesces $orientation resizing at interface scale $scale', ({ scale, orientation }) => {
     const container = document.createElement('div')
-    container.innerHTML = '<div class="document-pane-resizer"></div><div class="document-pane-split"><div class="document-pane-canvas-content"><div class="stage-surface" style="width: 500px; height: 400px"><canvas></canvas></div></div></div>'
+    container.innerHTML = '<div class="document-pane-resizer"></div><div class="document-pane-split"><div class="document-pane-canvas-content"><div class="stage-viewport"><div class="stage-surface" style="width: 500px; height: 400px"><canvas></canvas></div><div class="stage-view-scrollbar stage-view-scrollbar-horizontal"></div><div class="stage-view-scrollbar stage-view-scrollbar-vertical"></div></div></div></div>'
     document.body.append(container)
     const surface = container.querySelector<HTMLElement>('.stage-surface')!
     const parent = surface.parentElement!
@@ -37,6 +37,11 @@ it.each([0.75, 1, 1.5, 2].flatMap(scale => ['horizontal', 'vertical'].map(orient
     expect(surface.style.transform).toBe(horizontal ? 'translate(-100px, 0px)' : 'translate(0px, -100px)')
     expect(surface.style.width).toBe('500px')
     expect(surface.style.height).toBe('400px')
+    // View controls remain in the unfrozen, untransformed viewport.
+    expect(parent.className).toBe('stage-viewport')
+    expect(parent.style.cssText).toBe('')
+    expect(parent.querySelectorAll(':scope > .stage-view-scrollbar')).toHaveLength(2)
+    expect(surface.querySelector('.stage-view-scrollbar')).toBeNull()
     expect([canvas.width, canvas.height]).toEqual([1000, 800])
     const commit = vi.fn()
     gesture.move({ clientX: 200 * scale, clientY: 200 * scale })

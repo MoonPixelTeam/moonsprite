@@ -1,3 +1,4 @@
+import { GradientMapLayerDialog } from '@/components/GradientMapLayerDialog'
 import type { Tileset } from '@shared/types-tiles'
 import type { RgbaColor } from '@shared/types-color'
 import { LayerPropertyEditor } from './LayerPropertyEditor'
@@ -12,13 +13,14 @@ import { useEffect, useRef, useState, type ReactNode } from 'react'
 import type { LayerGroup, RasterLayer } from '@shared/types-layer'
 import { Tooltip } from '@/components/Tooltip'
 import { openTextToolDialog } from '@/components/text-tool-events'
-import { animationMaskAt, animationMaskSlotAt } from '@/core/document-model'
-import { animationCelHasContent, animationGroupMaskAt } from '@/core/animation'
+import { animationMaskAt } from '@/core/document-model'
+import { animationGroupMaskAt } from '@/core/animation'
 import { type ShortcutId } from '@/core/shortcuts'
 import { useWorkspace, type DocumentSession } from '@/store/workspace'
 import { useI18n } from '@/components/I18nProvider'
 import { PixelUtilityIcon } from '@/components/PixelUtilityIcon'
 import { hasConfiguredLayerStyles, hasEnabledLayerStyles } from '@/core/layer-styles'
+import { createGradientMapLayerAndEdit, OPEN_GRADIENT_MAP_LAYER, type GradientMapLayerDialogTarget } from '@/components/gradient-map-layer-dialog'
 import type {
   LayerFormTarget,
   LayerContextMenu,
@@ -28,6 +30,7 @@ import type {
   LayerTreeNode
 } from './layer-panel-contracts'
 import { LayerContextMenuItem } from './LayerContextMenuItem'
+import { layerContextMaskStatus } from './layer-context-mask-status'
 
 interface Options {
   session: DocumentSession
@@ -77,7 +80,19 @@ export function useLayerContextActions({
 
   const [freeTileLayerDialogOpen, setFreeTileLayerDialogOpen] = useState(false)
 
+  const [adjustmentLayerId, setAdjustmentLayerId] = useState<string | null>(null)
+  const adjustmentOwner = session.document.layers.find(layer => layer.id === adjustmentLayerId && layer.kind === 'adjustment')
   const [layerStyleDialog, setLayerStyleDialog] = useState<LayerStyleDialogState | null>(null)
+  useEffect(() => {
+    const open = (event: Event) => {
+      const detail = (event as CustomEvent<GradientMapLayerDialogTarget>).detail
+      if (detail.documentId !== session.document.id) return
+      setAdjustmentLayerId(detail.layerId)
+    }
+    window.addEventListener(OPEN_GRADIENT_MAP_LAYER, open)
+    return () => window.removeEventListener(OPEN_GRADIENT_MAP_LAYER, open)
+  }, [session.document.id])
+
 
   const layerStyleDragRef = useRef<LayerStyleDragState | null>(null)
 
@@ -97,22 +112,22 @@ export function useLayerContextActions({
 
   const editLayerRow = (layer: RasterLayer): void => {
     const selectedTargets = selectedRowsForProperties(session)
-    if (selectedTargets.length > 1 && selectedTargets.some((target) => target.kind === 'layer' && target.id === layer.id)) {
-      editSelectedRows()
-      return
-    }
+    if (selectedTargets.length > 1 && selectedTargets.some((target) => target.kind === 'layer' && target.id === layer.id)) editSelectedRows()
+    else editLayer(layer)
+  }
+
+  const openLayerContent = (layer: RasterLayer): void => {
+    if (layer.kind === 'adjustment') { setAdjustmentLayerId(layer.id); return }
     if (layer.kind === 'text') {
       const cel = celLookup.resolve(celLookup.at(layer.id, timeline.activeFrameId))
-      openTextToolDialog({
-        documentId: session.document.id,
-        layerId: layer.id,
-        frameId: timeline.activeFrameId,
-        x: cel?.surface?.offsetX ?? layer.offsetX,
-        y: cel?.surface?.offsetY ?? layer.offsetY
-      })
+      openTextToolDialog({ documentId: session.document.id, layerId: layer.id, frameId: timeline.activeFrameId,
+        x: cel?.surface?.offsetX ?? layer.offsetX, y: cel?.surface?.offsetY ?? layer.offsetY })
       return
     }
-    editLayer(layer)
+    store.activateLayerForCanvas(layer.id)
+    if (layer.kind === 'tilemap') {
+      if (layer.tilemapTilesetId) store.setSelectedTileset(layer.tilemapTilesetId)
+    }
   }
 
   const editGroupRowForGroup = (group: LayerGroup): void => {
@@ -240,6 +255,14 @@ export function useLayerContextActions({
         }}
       />
       <LayerContextMenuItem
+        icon="gradientMap"
+        label={t('gradientMap.adjustmentLayer')}
+        onClick={() => {
+          void createGradientMapLayerAndEdit()
+          closeContextMenu()
+        }}
+      />
+      <LayerContextMenuItem
         icon="newFolder"
         label={t('layers.newGroup')}
         shortcut={shortcutHint('createLayerGroup')}
@@ -360,6 +383,7 @@ export function useLayerContextActions({
         ? (session.document.groups.find((group) => group.id === contextMenu.id) ?? null)
         : null
 
+  const contextIsAdjustment = contextMenu?.kind === 'layer' && session.document.layers.find(layer => layer.id === contextMenu.id)?.kind === 'adjustment'
   const contextMenuOwnerHasStyles = hasConfiguredLayerStyles(contextMenuStyleOwner?.layerStyles)
 
   const contextMenuOwnerStylesEnabled = contextMenuOwnerHasStyles && hasEnabledLayerStyles(contextMenuStyleOwner?.layerStyles)
@@ -397,19 +421,7 @@ export function useLayerContextActions({
 
   const contextMenuLayerMask = contextMenu?.kind === 'layer' ? animationMaskAt(timeline, contextMenu.id, timeline.activeFrameId) : null
 
-  const contextMenuLayerMaskStatus = (() => {
-    if (contextMenu?.kind !== 'layer') return { hasContent: false, canCreate: false }
-    let hasContent = false
-    let canCreate = false
-    for (const cel of timeline.cels) {
-      if (cel.layerId !== contextMenu.id) continue
-      const source = celLookup.resolve(cel) ?? cel
-      if (!animationCelHasContent(source, session.document.palette)) continue
-      hasContent = true
-      if (!animationMaskSlotAt(timeline, cel.layerId, cel.frameId)) canCreate = true
-    }
-    return { hasContent, canCreate }
-  })()
+  const contextMenuLayerMaskStatus = layerContextMaskStatus(session, timeline, celLookup, contextMenu?.kind === 'layer' ? contextMenu.id : null)
 
   const layerStyleOwner =
     layerStyleDialog?.source.kind === 'layer'
@@ -594,7 +606,7 @@ export function useLayerContextActions({
                       icon="image"
                       label={t('layers.convertToRaster')}
                       shortcut={shortcutHint('convertLayerToRaster')}
-                      disabled={!contextMenuCanConvertToRaster}
+                      disabled={contextIsAdjustment || !contextMenuCanConvertToRaster}
                       onClick={() => {
                         store.rasterizeLayer(contextMenu.id)
                         closeContextMenu()
@@ -712,12 +724,12 @@ export function useLayerContextActions({
               />
             )}
             <span className="context-menu-divider" role="separator" />
-            <LayerContextMenuItem icon="layerStyle" label={t('layers.layerStyle')} shortcut={shortcutHint('openLayerStyles')} onClick={openLayerStyles} />
+            <LayerContextMenuItem icon="layerStyle" label={t('layers.layerStyle')} shortcut={shortcutHint('openLayerStyles')} disabled={contextIsAdjustment} onClick={openLayerStyles} />
             {contextMenu.kind === 'layer' && (
               <LayerContextMenuItem
                 icon="layerStyle"
                 label={t('layers.splitLayerStyles')}
-                disabled={!contextMenuOwnerStylesEnabled || contextMenuStyleOwner?.locked === true}
+                disabled={contextIsAdjustment || !contextMenuOwnerStylesEnabled || contextMenuStyleOwner?.locked === true}
                 onClick={() => {
                   store.splitLayerStyles(contextMenu.id)
                   closeContextMenu()
@@ -729,28 +741,28 @@ export function useLayerContextActions({
                 icon={contextMenuOwnerStylesEnabled ? 'eyeOff' : 'eye'}
                 label={t(contextMenuOwnerStylesEnabled ? 'layers.disableLayerStyles' : 'layers.enableLayerStyles')}
                 shortcut={shortcutHint('toggleLayerStyles')}
-                onClick={toggleContextLayerStyles}
+                disabled={contextIsAdjustment} onClick={toggleContextLayerStyles}
               />
             )}
             <LayerContextMenuItem
               icon="copy"
               label={t('layers.copyLayerStyle')}
               shortcut={shortcutHint('copyLayerStyles')}
-              disabled={!contextMenuOwnerHasStyles}
+              disabled={contextIsAdjustment || !contextMenuOwnerHasStyles}
               onClick={copyContextLayerStyles}
             />
             <LayerContextMenuItem
               icon="paste"
               label={t('layers.pasteLayerStyle')}
               shortcut={shortcutHint('pasteLayerStyles')}
-              disabled={!layerStyleClipboard}
+              disabled={contextIsAdjustment || !layerStyleClipboard}
               onClick={pasteContextLayerStyles}
             />
             <LayerContextMenuItem
               icon="clearRecords"
               label={t('layers.clearLayerStyle')}
               shortcut={shortcutHint('clearLayerStyles')}
-              disabled={!contextMenuSelectionHasStyles}
+              disabled={contextIsAdjustment || !contextMenuSelectionHasStyles}
               onClick={clearContextLayerStyles}
             />
             <span className="context-menu-divider" role="separator" />
@@ -797,7 +809,8 @@ export function useLayerContextActions({
         documentId={session.document.id}
         layerDisplayColorPresets={layerDisplayColorPresets}
       />
-      {layerStyleDialog && layerStyleOwner && (
+      {adjustmentOwner && <GradientMapLayerDialog key={adjustmentOwner.id} owner={adjustmentOwner} onClose={() => setAdjustmentLayerId(null)} />}
+      {layerStyleDialog && layerStyleOwner && !('kind' in layerStyleOwner && layerStyleOwner.kind === 'adjustment') && (
         <LayerStyleDialog
           key={`${layerStyleDialog.source.kind}:${layerStyleDialog.source.id}:${layerStyleDialog.targets.map((target) => `${target.kind}:${target.id}`).join('|')}`}
           ownerKind={layerStyleDialog.source.kind}
@@ -823,6 +836,7 @@ export function useLayerContextActions({
     editGroup,
     editSelectedRows,
     editLayerRow,
+    openLayerContent,
     editGroupRow,
     openLayerContextMenu,
     openLayerCreateContextMenu,

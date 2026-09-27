@@ -16,7 +16,7 @@ import {
 import type { AnimationPlaybackMode } from './workspace-types'
 import type { WorkspaceAnimationCommands } from './workspace-state'
 import type { WorkspaceCommandContext } from './workspace-command-context'
-import { clearAnimationLoopPlayback } from './workspace-animation-selection'
+import { clearAnimationItemSelection, clearAnimationLoopPlayback } from './workspace-animation-selection'
 import { tr } from './workspace-translation'
 import { activeSession } from './workspace-access'
 import {
@@ -43,7 +43,14 @@ export function createAnimationPlaybackCommands({ get }: WorkspaceCommandContext
         const timeline = ensureAnimationDocument(session.document)
         const playbackMode = session.animationPlaybackMode ?? (timeline.loop ? 'all' : 'once')
         if (playing) {
-          const preserveMaskContext = (session.selectedAnimationMaskRowKeys?.length ?? 0) > 0 || (session.selectedAnimationMaskCellKeys?.length ?? 0) > 0 || session.activeLayerMaskId !== null
+          // Playback owns the visible timeline focus. Clear every explicit
+          // layer/frame/cel selection at the moment Play is pressed so stale
+          // highlights cannot remain over the moving playhead.
+          clearAnimationItemSelection(session)
+          session.selectedLayerIds = []
+          session.selectedGroupId = null
+          session.selectedGroupIds = []
+          session.layerSelectionExplicit = false
           const pausedLoopSection = session.animationPlaybackLoopSectionId
             ? (timeline.loopSections ?? []).find((section) => section.id === session.animationPlaybackLoopSectionId)
             : null
@@ -74,10 +81,6 @@ export function createAnimationPlaybackCommands({ get }: WorkspaceCommandContext
           }
           if (targetFrameId && targetFrameId !== timeline.activeFrameId) {
             activateAnimationFrame(session.document, targetFrameId)
-            if (!preserveMaskContext) {
-              session.activeLayerMaskId = null
-              session.layerMaskIsolatedView = false
-            }
             session.lastPencilPoint = null
             session.lastEraserPoint = null
             session.revision += 1
@@ -100,9 +103,9 @@ export function createAnimationPlaybackCommands({ get }: WorkspaceCommandContext
           session.lastEraserPoint = null
           session.revision += 1
         }
-        // Playback only moves the playhead. Keep the user's layer/frame/cel
-        // selection intact so stopping playback cannot rewrite the timeline
-        // focus or discard a selection made while the animation was running.
+        // Playback only moves the playhead after the start transition has
+        // cleared explicit selection highlights. Stopping playback therefore
+        // does not recreate a stale frame or cel selection.
       }, false)
     },
     pauseAnimationAtCurrentFrame() {

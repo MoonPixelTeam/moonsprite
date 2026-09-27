@@ -16,6 +16,18 @@ export const celContentCache = new WeakMap<object, Map<string, { revision: numbe
 
 export const celThumbnailCache = new WeakMap<object, Map<string, { revision: number; storageRevision: number; pixels: Uint8ClampedArray }>>()
 
+// A live cel can keep the same storage across arbitrarily many palette,
+// position and opacity edits; WeakMap alone does not bound those variants.
+const setCachedVariant = <T,>(entries: Map<string, T>, key: string, value: T): void => {
+  entries.delete(key)
+  entries.set(key, value)
+  while (entries.size > 8) {
+    const oldest = entries.keys().next()
+    if (oldest.done) break
+    entries.delete(oldest.value)
+  }
+}
+
 export const scheduleThumbnailRender = (render: () => void): (() => void) => {
   let timeoutId: number | null = null
   if (typeof window.requestAnimationFrame !== 'function') {
@@ -46,7 +58,7 @@ export const cachedCelHasContent = (cel: AnimationCel | null, palette: readonly 
   const cached = entries.get(key)
   if (cached && cached.storageRevision === storageRevision && (revision === 0 || cached.revision === revision)) return cached.value
   const value = animationCelHasContent(cel, palette)
-  entries.set(key, { revision, storageRevision, value })
+  setCachedVariant(entries, key, { revision, storageRevision, value })
   celContentCache.set(storage, entries)
   return value
 }
@@ -79,7 +91,7 @@ export function CelThumbnail({ documentId, layerId, celSource, palette, revision
             ? cached.pixels
             : renderAnimationCelThumbnailPixels(documentWidth, documentHeight, canvas.width, surface, livePalette, opacity, sharedCheckerboard, framing)
           if (!bypassCache && (!cached || pixels !== cached.pixels)) {
-            entries.set(key, { revision, storageRevision, pixels })
+            setCachedVariant(entries, key, { revision, storageRevision, pixels })
             celThumbnailCache.set(storage, entries)
           }
           const image = context.createImageData(canvas.width, canvas.height)
@@ -173,6 +185,9 @@ export const useTimelineThumbnailContentSync = (documentId: string): void => {
       const current = state.sessions.find((item) => item.document.id === documentId)
       if (!current || current.contentRevision === lastContentRevision) return
       lastContentRevision = current.contentRevision
+      // Opacity/blend previews change the composite, not the cel raster. A
+      // live notification bypasses the thumbnail cache and resamples it.
+      if (current.contentInvalidation?.kind === 'region' && current.contentInvalidation.compositeOnly && current.contentInvalidation.revision === current.contentRevision) return
       if (current.activeLayerMaskId) {
         notifyLayerMaskThumbnailPreview(documentId, current.activeLayerMaskId)
         return
@@ -212,8 +227,12 @@ function AnimationCelContentView({ active, documentId, layerId, celSource, palet
   // Observe each cel's storage/version so only changed previews redraw.
   const [liveRevision] = useWorkspace(useShallow((state) => {
     const storage = cel.surface ? rasterStorageIdentity(cel.surface) : null
+    const session = active ? state.sessions.find((item) => item.document.id === documentId) : undefined
+    const invalidation = session?.contentInvalidation
+    const sourceRevision = invalidation?.kind === 'region' && invalidation.compositeOnly && invalidation.revision === session?.contentRevision
+      ? invalidation.fromRevision : session?.contentRevision
     return [
-      active ? state.sessions.find((item) => item.document.id === documentId)?.contentRevision ?? revision : revision,
+      sourceRevision ?? revision,
       storage,
       storage ? getRasterContentRevision(storage) : 0
     ] as const

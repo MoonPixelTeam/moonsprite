@@ -5,6 +5,7 @@ export const COLOR_REPLACEMENT_PREFERENCE_KEY = 'moonsprite.color-replacement.v1
 export interface ColorReplacementPreferences {
   sourceColor: RgbaColor
   replacementColor: RgbaColor
+  rememberLastSelectedColor: boolean
   target: 'document' | 'selection' | 'layers' | 'frames' | 'cells' | 'palette' | `loop-section:${string}`
   previewEnabled: boolean
 }
@@ -21,6 +22,7 @@ export function loadColorReplacementPreferences(fallback: ColorReplacementPrefer
     return {
       sourceColor: validColor(saved.sourceColor) ? saved.sourceColor : fallback.sourceColor,
       replacementColor: validColor(saved.replacementColor) ? saved.replacementColor : fallback.replacementColor,
+      rememberLastSelectedColor: typeof saved.rememberLastSelectedColor === 'boolean' ? saved.rememberLastSelectedColor : fallback.rememberLastSelectedColor,
       target: typeof saved.target === 'string' && (['document', 'selection', 'layers', 'frames', 'cells', 'palette'].includes(saved.target) || saved.target.startsWith('loop-section:')) ? saved.target : fallback.target,
       previewEnabled: typeof saved.previewEnabled === 'boolean' ? saved.previewEnabled : fallback.previewEnabled
     }

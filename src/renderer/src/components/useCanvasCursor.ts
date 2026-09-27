@@ -1,6 +1,5 @@
 import { selectionBrushOwnsPointer } from './canvas-selection-brush-gesture'
 import { tabletBoxMove, tabletContentMove } from '@/core/tablet-interaction'
-import { tabletSelectionHandleHit } from '@/core/tablet-selection-hit'
 import { useLayoutEffect } from 'react'
 import type { RasterLayer } from '@shared/types-layer'
 import type { RgbaColor } from '@shared/types-color'
@@ -150,13 +149,6 @@ export function useCanvasCursor(ports: Ports) {
     const hitAt = (candidate: Point): SelectionHit => {
       if (tabletBoxMove(currentSession.document.id) && selectionContains(selection, Math.floor(candidate.x), Math.floor(candidate.y))) return 'edge'
       if (!currentSession.freeTransformActive && tabletContentMove(currentSession.document.id) && selectionContains(selection, Math.floor(candidate.x), Math.floor(candidate.y))) return 'inside'
-      if (document.documentElement.dataset.tabletUi === 'true') {
-        const target = ports.freeTransformQuadForSession(currentSession) ?? floating?.transformTarget ?? selection
-        const quad = 'nw' in target ? target : selectionQuadFromRect(target, floating?.transformAngle ?? 0, floating?.transformShear)
-        const handles = (['nw', 'ne', 'sw', 'se'] as const).map(handle => ({ handle, point: quad[handle] }))
-        const hit = tabletSelectionHandleHit(candidate, handles, ports.liveViewRef.current.zoom)
-        if (hit) return hit
-      }
       if (currentSession.freeTransformActive) {
         const target = ports.freeTransformQuadForSession(currentSession) ?? floating?.transformTarget ?? selection
         const corner = selectionFreeTransformHit(
@@ -355,7 +347,7 @@ export function useCanvasCursor(ports: Ports) {
       const resizeEdge = drag?.kind === 'canvas-resize' ? drag.canvasEdge : ports.canvasResizeHitAt(clientX, clientY)
       if (resizeEdge) canvas.style.cursor = displayedResizeCursorForHandle(resizeEdge as SelectionHandle)
       else if (drag?.kind === 'canvas-move') canvas.style.cursor = canvasCursors.move
-      else canvas.style.cursor = ports.canvasResizeContainsAt(clientX, clientY) ? canvasCursors.move : canvasCursors.unavailable
+      else canvas.style.cursor = ports.canvasResizeContainsAt(clientX, clientY) ? canvasCursors.move : canvasCursors.default
       return
     }
     const cursorSession = useWorkspace.getState().sessions.find((item) => item.document.id === ports.session.document.id) ?? ports.session
@@ -368,13 +360,13 @@ export function useCanvasCursor(ports: Ports) {
       canvas.style.cursor = canvasToolCursor(cursorSession.tool, cursorSession.primaryColor)
       return
     }
-    // Free transform exposes corner handles for reshaping and keeps the
-    // regular move gesture available over the selected content.
     if (freeTransformActive && activeDrag?.freeTransform !== true) {
       const hit = selectionHitAt(clientX, clientY)
+      const point = ports.localPointAt(clientX, clientY)
+      const insideDocument = Boolean(point && point.x >= 0 && point.y >= 0 && point.x < ports.session.document.width && point.y < ports.session.document.height)
       ports.inputRef.current.sampling = false
       canvas.style.cursor =
-        hit in resizeCursors ? resizeCursorForHit(hit as SelectionHandle) : hit === 'inside' ? canvasCursors.move : canvasCursors.unavailable
+        hit in resizeCursors ? resizeCursorForHit(hit as SelectionHandle) : hit === 'inside' ? canvasCursors.move : insideDocument ? canvasCursors.unavailable : canvasCursors.default
       return
     }
     const brushSizeAdjustmentPreviewActive = Boolean(ports.inputRef.current.modifierBrushSize)
@@ -562,19 +554,19 @@ export function useCanvasCursor(ports: Ports) {
     else if (copyAvailable || textCopyAvailable) canvas.style.cursor = canvasCursors.copy
     // Ctrl temporarily switches the eyedropper to the move tool. Keep this
     // cursor ahead of sampling so the visual feedback matches the gesture.
-    else if (temporaryMove) canvas.style.cursor = available ? canvasCursors.move : canvasCursors.unavailable
+    else if (temporaryMove) canvas.style.cursor = available || !insideDocument ? canvasCursors.move : canvasCursors.unavailable
     else if (sampling) canvas.style.cursor = canvasCursors.eyedropper
     else if (ports.session.tool === 'text' && selectedTextBox && rawSelectionHit in resizeCursors)
       canvas.style.cursor = displayedResizeCursorForHandle(rawSelectionHit as SelectionHandle)
     else if (ports.session.tool === 'text' && selectedTextBox && rawSelectionHit === 'inside') canvas.style.cursor = canvasCursors.move
     else if (ports.session.tool === 'selection' && ports.session.selectionKind === 'brush' && selectionBrushOwnsPointer(freeTransformActive, selectionHit))
-      canvas.style.cursor = canvasToolCursor('pencil', contrastColor, available)
+      canvas.style.cursor = canvasToolCursor('pencil', contrastColor, available || !insideDocument)
     else if (ports.session.tool === 'selection') {
       const hit = selectionHit
       canvas.style.cursor = freeTransformActive
         ? hit in resizeCursors
           ? resizeCursorForHit(hit as SelectionHandle)
-          : canvasCursors.unavailable
+          : insideDocument ? canvasCursors.unavailable : canvasCursors.default
         : selectionPivotHovered
           ? canvasCursors.default
           : hit in resizeCursors
@@ -587,7 +579,7 @@ export function useCanvasCursor(ports: Ports) {
                   ? canvasCursors.move
                   : hit === 'edge'
                     ? canvasCursors.selectionMove
-                    : selectionCreationCursor(ports.selectionCrosshair, ports.selectionInteractionEditable || selectionModifierActive, false, ports.useLocalCursors)
+                    : selectionCreationCursor(ports.selectionCrosshair, !insideDocument || ports.selectionInteractionEditable || selectionModifierActive, false, ports.useLocalCursors)
     } else if (ports.sliceTool) {
       const selectedIds = ports.session.selectedSliceIds?.length
         ? ports.session.selectedSliceIds
@@ -601,8 +593,8 @@ export function useCanvasCursor(ports: Ports) {
         ? displayedResizeCursorForHandle(handle)
         : hit
           ? canvasCursors.move
-          : selectionCreationCursor(ports.selectionCrosshair, insideDocument, false, ports.useLocalCursors)
-    } else canvas.style.cursor = canvasToolCursor(ports.session.tool, contrastColor, available)
+          : selectionCreationCursor(ports.selectionCrosshair, true, false, ports.useLocalCursors)
+    } else canvas.style.cursor = canvasToolCursor(ports.session.tool, contrastColor, available || !insideDocument)
   }
 
   const updateCursorAt = (clientX: number, clientY: number, ctrlKey: boolean, altKey: boolean, shiftKey = false): void => {

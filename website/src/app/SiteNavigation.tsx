@@ -64,6 +64,7 @@ export function SiteNavigation({ preferences, route, t }: { preferences: ReturnT
   }
 
   const navLinks = <>
+    <a href="/try/" onClick={closeMenu} target="_blank" rel="noopener noreferrer">{language === 'zh' ? '在线体验' : 'Try online'}</a>
     <a href="#/" onClick={(event) => { event.preventDefault(); goSection('features') }}>{t.nav.features}</a>
     <a href="#/competitions" onClick={closeMenu} aria-current={route.page === 'competitions' ? 'page' : undefined}>{language === 'zh' ? '比赛' : 'Competitions'}</a>
     <a href="#/market" onClick={closeMenu} aria-current={route.page === 'market' ? 'page' : undefined}>{t.nav.market}</a>

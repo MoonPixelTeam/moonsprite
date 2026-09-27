@@ -10,10 +10,11 @@ const dither = [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5]
 export function crossfadeTweenSurface(
   start: AnimationCelSurface | undefined, end: AnimationCelSurface | undefined,
   bounds: SelectionRect, format: 'rgba' | 'indexed', progress: number,
-  startOpacity: number, endOpacity: number, maxPixels: number
+  startOpacity: number, endOpacity: number, maxPixels: number, reserve?: (bytes: number) => void
 ): { surface: AnimationCelSurface; opacity: number } {
   const { x: offsetX, y: offsetY, width, height } = bounds
   if (width > 16384 || height > 16384 || width * height > Math.min(maxPixels, 16 * 1024 * 1024)) throw new Error(tr('timeline.tween.tooLarge'))
+  reserve?.(width * height * 4)
   const pixels = new Uint32Array(width * height)
   const opacity = startOpacity * (1 - progress) + endOpacity * progress
   const amount = opacity > 0 ? endOpacity * progress / opacity : progress

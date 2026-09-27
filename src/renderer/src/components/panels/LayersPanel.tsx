@@ -254,6 +254,7 @@ export function LayersPanel({
     editGroup,
     editSelectedRows,
     editLayerRow,
+    openLayerContent,
     editGroupRow,
     openLayerContextMenu,
     openLayerCreateContextMenu,
@@ -288,7 +289,6 @@ export function LayersPanel({
     openFramePropertiesFor,
     openLoopSectionCreator,
     openLoopSectionPropertiesFor,
-    selectLoopSection,
     openLoopSectionMenu,
     openCelProperties,
     openCelMenu,
@@ -558,8 +558,6 @@ export function LayersPanel({
   const hiddenDragGhostCount = dragGhost ? Math.max(0, dragGhost.count - Math.min(4, dragGhostItems.length)) : 0
   const animationColumnResizer = <LayerTimelineColumnResizer layerLabelWidth={layerLabelWidth} beginLayerLabelResize={beginLayerLabelResize} setStoredLayerLabelWidth={setStoredLayerLabelWidth} />
   const animationLoopSectionBars = loopSectionLayout.items.map(({ section, startIndex, span, lane, laneSpan }) => {
-    const rangeFrameIds = timeline.frames.slice(startIndex, startIndex + span).map((frame) => frame.id)
-    const selected = rangeFrameIds.length > 0 && rangeFrameIds.every((frameId) => session.selectedAnimationFrameIds.includes(frameId))
     const playing = session.animationPlaybackLoopSectionId === section.id && session.animationPlaying
     const endIndex = startIndex + span - 1
     return (
@@ -567,7 +565,7 @@ export function LayersPanel({
         type="button"
         key={section.id}
         data-animation-loop-section-id={section.id}
-        className={`animation-loop-section ${selected ? 'selected' : ''} ${playing ? 'playing' : ''}`}
+        className={`animation-loop-section ${playing ? 'playing' : ''}`}
         style={{ gridColumn: `${startIndex + 1} / span ${span}`, gridRow: `${lane + 1} / span ${laneSpan}`, zIndex: lane + 1 }}
         aria-label={t('timeline.loopSectionRange', { name: section.name, start: startIndex + 1, end: endIndex + 1 })}
         title={t('timeline.loopSectionSummary', {
@@ -584,7 +582,7 @@ export function LayersPanel({
             return
           }
           event.stopPropagation()
-          selectLoopSection(section)
+          openLoopSectionPropertiesFor(section.id)
         }}
         onDoubleClick={(event) => {
           event.stopPropagation()
@@ -997,6 +995,7 @@ export function LayersPanel({
                 draggingIds={draggingIds}
                 beginLayerDrag={beginLayerDrag}
                 editLayerRow={editLayerRow}
+                openLayerContent={openLayerContent}
                 liveAutoLinkById={liveAutoLinkById}
                 handleLayerAutoLinkPointerDown={handleLayerAutoLinkPointerDown}
                 continueLayerAutoLinkToggle={continueLayerAutoLinkToggle}

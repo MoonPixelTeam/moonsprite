@@ -1,3 +1,6 @@
+import { useCoalescedGradientPreview } from '../useCoalescedGradientPreview'
+import { GradientMapControls } from '../GradientMapControls'
+import { normalizeGradientMap } from '@/core/gradient-map'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   createColorizeAdjustment,
@@ -10,6 +13,10 @@ import {
   type CurveHistogram,
   type CurvePoint
 } from '@/core/adjustments'
+import { CurvePlot, curvePlotPoint } from '@/components/CurvePlot'
+import { NumberInput } from '@/components/NumberInput'
+import { FormField } from '@/components/FormField'
+import { Button } from '@/components/Button'
 import { RangeField } from '@/components/RangeField'
 import { DialogHeader } from '@/components/DialogHeader'
 import { PixelUtilityIcon } from '@/components/PixelUtilityIcon'
@@ -66,7 +73,7 @@ const adjustmentPreviewBaseline = (documentId: string | null, snapshot: Adjustme
     documentHeight: session.document.height,
     colorMode: session.document.colorMode,
     palette: snapshot.palette,
-    paletteOrder: session.document.paletteOrder,
+    paletteOrder: snapshot.paletteOrder ?? session.document.paletteOrder,
     nextColorId: snapshot.nextColorId,
     selection: session.selection,
     locale: currentAppLocale(),
@@ -156,25 +163,30 @@ const yieldHistogramControl = (): Promise<void> => new Promise((resolve) => {
   channel.port2.postMessage(null)
 })
 
-function CurveEditor({ points, channel = 'rgb', histogram, onChange, onReset }: { points: CurvePoint[]; channel?: CurveChannel; histogram?: Uint32Array; onChange: (points: CurvePoint[]) => void; onReset: () => void }) {
+export function CurveEditor({ points, channel = 'rgb', histogram, onChange, onReset }: { points: CurvePoint[]; channel?: CurveChannel; histogram?: Uint32Array; onChange: (points: CurvePoint[]) => void; onReset: () => void }) {
   const { t } = useI18n()
   const activePointRef = useRef<number | null>(null)
   const [selectedPoint, setSelectedPoint] = useState<number | null>(null)
   const pointsRef = useRef(points)
   pointsRef.current = points
+  const validSelectedPoint = selectedPoint !== null && selectedPoint < points.length ? selectedPoint : null
+  useEffect(() => {
+    activePointRef.current = null
+    setSelectedPoint(null)
+  }, [channel])
   useEffect(() => {
     if (selectedPoint !== null && selectedPoint >= points.length) setSelectedPoint(null)
+    if (activePointRef.current !== null && activePointRef.current >= points.length) activePointRef.current = null
   }, [points.length, selectedPoint])
   const eventPoint = (event: React.PointerEvent<SVGSVGElement>): CurvePoint => {
     const bounds = event.currentTarget.getBoundingClientRect()
-    return {
-      x: Math.max(0, Math.min(255, Math.round((event.clientX - bounds.left) / Math.max(1, bounds.width) * 255))),
-      y: Math.max(0, Math.min(255, Math.round((bounds.bottom - event.clientY) / Math.max(1, bounds.height) * 255)))
-    }
+    const point = curvePlotPoint(event.clientX, event.clientY, bounds)
+    return { x: Math.round(point.x * 255), y: Math.round(point.y * 255) }
   }
+
   const nearestPoint = (event: React.PointerEvent<SVGSVGElement>): number => {
     const bounds = event.currentTarget.getBoundingClientRect()
-    return pointsRef.current.findIndex((point) => Math.hypot(point.x / 255 * bounds.width - (event.clientX - bounds.left), (255 - point.y) / 255 * bounds.height - (event.clientY - bounds.top)) <= 12)
+    return pointsRef.current.findIndex((point) => Math.hypot((12 + point.x / 255 * 100) / 124 * bounds.width - (event.clientX - bounds.left), (10 + (255 - point.y) / 255 * 100) / 124 * bounds.height - (event.clientY - bounds.top)) <= 12)
   }
   const begin = (event: React.PointerEvent<SVGSVGElement>): void => {
     if (event.button !== 0) return
@@ -197,6 +209,10 @@ function CurveEditor({ points, channel = 'rgb', histogram, onChange, onReset }: 
     const index = activePointRef.current
     if (index === null) return
     const source = pointsRef.current
+    if (index < 0 || index >= source.length) {
+      activePointRef.current = null
+      return
+    }
     const point = eventPoint(event)
     const next = source.map((item) => ({ ...item }))
     point.x = index === 0 ? 0 : index === next.length - 1 ? 255 : Math.max(next[index - 1].x + 1, Math.min(next[index + 1].x - 1, point.x))
@@ -209,9 +225,10 @@ function CurveEditor({ points, channel = 'rgb', histogram, onChange, onReset }: 
     if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId)
   }
   const removeAt = (clientX: number, clientY: number, bounds: DOMRect): void => {
-    const index = pointsRef.current.findIndex((point) => Math.hypot(point.x / 255 * bounds.width - (clientX - bounds.left), (255 - point.y) / 255 * bounds.height - (clientY - bounds.top)) <= 12)
+    const index = pointsRef.current.findIndex((point) => Math.hypot((12 + point.x / 255 * 100) / 124 * bounds.width - (clientX - bounds.left), (10 + (255 - point.y) / 255 * 100) / 124 * bounds.height - (clientY - bounds.top)) <= 12)
     if (index <= 0 || index >= pointsRef.current.length - 1) return
     const next = pointsRef.current.filter((_, pointIndex) => pointIndex !== index)
+    activePointRef.current = null
     pointsRef.current = next
     setSelectedPoint(null)
     onChange(next)
@@ -227,6 +244,7 @@ function CurveEditor({ points, channel = 'rgb', histogram, onChange, onReset }: 
   const removeSelected = (): void => {
     if (selectedPoint === null || selectedPoint <= 0 || selectedPoint >= pointsRef.current.length - 1) return
     const next = pointsRef.current.filter((_, index) => index !== selectedPoint)
+    activePointRef.current = null
     pointsRef.current = next
     setSelectedPoint(null)
     onChange(next)
@@ -245,15 +263,28 @@ function CurveEditor({ points, channel = 'rgb', histogram, onChange, onReset }: 
   return <div className={`curve-editor curve-editor-${channel}`}>
     <div className="curve-editor-toolbar">
       <span>{tendency}</span>
-      <div className="curve-editor-actions"><button type="button" className="icon-button" title={t('adjustment.curve.resetChannel')} aria-label={t('adjustment.curve.resetChannel')} onClick={onReset}><PixelUtilityIcon kind="restore" /></button><button type="button" className="icon-button" title={t('adjustment.curve.deletePoint')} aria-label={t('adjustment.curve.deletePoint')} disabled={selectedPoint === null || selectedPoint === 0 || selectedPoint === points.length - 1} onClick={removeSelected}><PixelUtilityIcon kind="delete" /></button></div>
+      <div className="curve-editor-actions"><Button className="icon-button" title={t('adjustment.curve.resetChannel')} aria-label={t('adjustment.curve.resetChannel')} onClick={() => { activePointRef.current = null; setSelectedPoint(null); onReset() }}><PixelUtilityIcon kind="restore" /></Button><Button className="icon-button" title={t('adjustment.curve.deletePoint')} aria-label={t('adjustment.curve.deletePoint')} disabled={validSelectedPoint === null || validSelectedPoint === 0 || validSelectedPoint === points.length - 1} onClick={removeSelected}><PixelUtilityIcon kind="delete" /></Button></div>
     </div>
-    <svg className="curve-editor-plot" viewBox="0 0 255 255" preserveAspectRatio="none" role="application" tabIndex={0} aria-label={t('adjustment.curve.editorAria')} onKeyDown={(event) => { if (event.key === 'Delete' || event.key === 'Backspace') { event.preventDefault(); removeSelected() } }} onPointerDown={begin} onPointerMove={move} onPointerUp={end} onPointerCancel={end} onDoubleClick={remove} onContextMenu={removeContext}>
-      {histogramBars && <g className={`curve-histogram curve-histogram-${channel}`}>{histogramBars}</g>}
-      <path className="curve-grid" d="M 63.75 0 V 255 M 127.5 0 V 255 M 191.25 0 V 255 M 0 63.75 H 255 M 0 127.5 H 255 M 0 191.25 H 255" />
-      {points.length > 1 && <path className={`curve-line curve-line-${channel}`} d={path} />}
-      {points.map((point, index) => <rect key={index} className={`curve-point curve-point-${channel} ${selectedPoint === index ? 'selected' : ''}`} x={point.x - 4} y={251 - point.y} width="8" height="8" />)}
-    </svg>
-    <div className="curve-editor-axis"><span>{t('adjustment.curve.shadows')}</span><span>{t('adjustment.curve.highlights')}</span></div>
+    <CurvePlot xStartLabel={t('adjustment.curve.shadows')} xEndLabel={t('adjustment.curve.highlights')} label={t('adjustment.curve.editorAria')} role="application" tabIndex={0} onKeyDown={(event) => { if (event.key === 'Delete' || event.key === 'Backspace') { event.preventDefault(); removeSelected() } }} onPointerDown={begin} onPointerMove={move} onPointerUp={end} onPointerCancel={end} onDoubleClick={remove} onContextMenu={removeContext}>
+      <g transform="scale(0.39215686274509803)">
+        {histogramBars && <g className={`curve-histogram curve-histogram-${channel}`}>{histogramBars}</g>}
+        {points.length > 1 && <path className="tween-easing-line" style={{ strokeWidth: 3.06 }} d={path} />}
+        {points.map((point, index) => <rect key={index} className="tween-easing-handle" x={point.x - 6.375} y={255 - point.y - 6.375} width="12.75" height="12.75" style={{ strokeWidth: selectedPoint === index ? 2.5 : 1.8 }} />)}
+      </g>
+    </CurvePlot>
+
+    <div className="curve-point-values">{(['x', 'y'] as const).map(axis => {
+      const index = validSelectedPoint ?? 0
+      const point = points[index] ?? points[0]
+      const endpoint = index === 0 || index === points.length - 1
+      const label = axis.toUpperCase()
+      return <FormField key={axis} label={label}><NumberInput aria-label={label} value={point[axis]} min={axis === 'x' && !endpoint ? points[index - 1].x + 1 : 0} max={axis === 'x' && !endpoint ? points[index + 1].x - 1 : 255} disabled={axis === 'x' && endpoint} step={1} onValueChange={value => {
+        setSelectedPoint(index)
+        const next = points.map((item, i) => i === index ? { ...item, [axis]: Math.round(value) } : item)
+        pointsRef.current = next
+        onChange(next)
+      }} /></FormField>
+    })}</div>
   </div>
 }
 
@@ -278,6 +309,7 @@ export function AdjustmentDialog({ kind, onClose }: { kind: AdjustmentKind; onCl
   const suspendedRef = useRef(false)
   const closedRef = useRef(false)
   const [previewEnabled, setPreviewEnabled] = useState(true)
+  const [gradientMap, setGradientMap] = useState(() => normalizeGradientMap(undefined))
   const [brightness, setBrightness] = useState(0)
   const [contrast, setContrast] = useState(0)
   const [hue, setHue] = useState(0)
@@ -333,13 +365,13 @@ export function AdjustmentDialog({ kind, onClose }: { kind: AdjustmentKind; onCl
     midtonesCyanRed: 0, midtonesMagentaGreen: 0, midtonesYellowBlue: 0,
     highlightsCyanRed: 0, highlightsMagentaGreen: 0, highlightsYellowBlue: 0
   })
-  const adjustment = useMemo<ColorAdjustment>(() => kind === 'brightness-contrast'
+  const adjustment = useMemo<ColorAdjustment>(() => kind === 'gradient-map' ? { kind, gradientMap } : kind === 'brightness-contrast'
     ? { kind, brightness, contrast }
     : kind === 'hue-saturation'
       ? { kind, hue, saturation, lightness, colorize }
       : kind === 'curves'
         ? { kind, curvePoints: curvePoints.rgb, curveRedPoints: curvePoints.red, curveGreenPoints: curvePoints.green, curveBluePoints: curvePoints.blue }
-        : { kind, ...balance, preserveLuminosity }, [kind, brightness, contrast, hue, saturation, lightness, colorize, curvePoints, balance, preserveLuminosity])
+        : { kind, ...balance, preserveLuminosity }, [kind, gradientMap, brightness, contrast, hue, saturation, lightness, colorize, curvePoints, balance, preserveLuminosity])
   const adjustmentKey = useMemo(() => JSON.stringify(adjustment), [adjustment])
   const previewFrameRef = useRef<number | null>(null)
   const viewPreviewTimerRef = useRef<number | null>(null)
@@ -552,11 +584,15 @@ export function AdjustmentDialog({ kind, onClose }: { kind: AdjustmentKind; onCl
     endAdjustmentPreviewEdit(activeDocumentId)
   }, [activeDocumentId, activeSelection, selectedLayerKey])
 
+  const gradientPreview = useCoalescedGradientPreview()
   useEffect(() => {
     previewCoverageRef.current = null
     pendingPreviewCoverageRef.current = null
-    schedulePreviewRef.current(undefined, 'adjustment')
-  }, [adjustmentKey, previewEnabled])
+    const preview = () => schedulePreviewRef.current(undefined, 'adjustment')
+    if (kind === 'gradient-map' && previewEnabled) gradientPreview.schedule(preview)
+    else preview()
+    return gradientPreview.cancel
+  }, [adjustmentKey, previewEnabled, gradientPreview.schedule, gradientPreview.cancel])
 
   useEffect(() => schedulePreviewRef.current(undefined, 'view'), [previewGeometryKey])
 
@@ -603,7 +639,7 @@ export function AdjustmentDialog({ kind, onClose }: { kind: AdjustmentKind; onCl
     cancelScheduledPreview()
     workerClientRef.current?.dispose()
   }, [])
-  const title = kind === 'color-balance' ? t('adjustment.title.colorBalance') : kind === 'brightness-contrast' ? t('adjustment.title.brightnessContrast') : kind === 'hue-saturation' ? t('adjustment.title.hueSaturation') : t('adjustment.title.curves')
+  const title = kind === 'gradient-map' ? t('gradientMap.title') : kind === 'color-balance' ? t('adjustment.title.colorBalance') : kind === 'brightness-contrast' ? t('adjustment.title.brightnessContrast') : kind === 'hue-saturation' ? t('adjustment.title.hueSaturation') : t('adjustment.title.curves')
   const tonePrefix = balanceTone === 'shadows' ? 'shadows' : balanceTone === 'midtones' ? 'midtones' : 'highlights'
   const updateBalance = (channel: 'CyanRed' | 'MagentaGreen' | 'YellowBlue', value: number): void => setBalance((current) => ({ ...current, [`${tonePrefix}${channel}`]: value }))
   const balanceValue = (channel: 'CyanRed' | 'MagentaGreen' | 'YellowBlue'): number => balance[`${tonePrefix}${channel}` as keyof typeof balance]
@@ -612,9 +648,10 @@ export function AdjustmentDialog({ kind, onClose }: { kind: AdjustmentKind; onCl
     label: <span className={`curve-channel-label curve-channel-${channel}`}><i aria-hidden="true" />{channel === 'rgb' ? 'RGB' : channel === 'red' ? t('adjustment.channel.red') : channel === 'green' ? t('adjustment.channel.green') : t('adjustment.channel.blue')}</span>
   }))
 
-  return <div className="modal-backdrop" role="presentation"><ModalShell storageKey={`adjustment-${kind}-v4`} placement="right" defaultWidth={kind === 'curves' ? 450 : 400} defaultHeight={kind === 'curves' ? 500 : 380} minWidth={kind === 'curves' ? 420 : 350} minHeight={kind === 'curves' ? 440 : 300} maxWidth={620} maxHeight={720} className="adjustment-modal" role="dialog" aria-label={title}><DialogHeader eyebrow="ADJUST" title={title} closeLabel={t('common.close')} onClose={cancel} /><div className="modal-body adjustment-modal-body">
+  return <div className="modal-backdrop" role="presentation"><ModalShell storageKey={`adjustment-${kind}-v4`} fitContent={kind !== 'gradient-map'} placement="right" defaultWidth={kind === 'curves' ? 450 : 400} defaultHeight={kind === 'gradient-map' ? 600 : kind === 'curves' ? 500 : 380} minWidth={kind === 'curves' ? 420 : 350} minHeight={kind === 'curves' ? 440 : 300} maxWidth={620} maxHeight={720} className="adjustment-modal" role="dialog" aria-label={title}><DialogHeader eyebrow="ADJUST" title={title} closeLabel={t('common.close')} onClose={cancel} /><div className="modal-body adjustment-modal-body component-scrollbar">
     {kind === 'brightness-contrast' && <section className="adjustment-controls"><RangeField className="adjustment-slider-row" label={t('adjustment.brightness')} min={-100} max={100} value={brightness} onChange={setBrightness} /><RangeField className="adjustment-slider-row" label={t('adjustment.contrast')} min={-100} max={100} value={contrast} onChange={setContrast} /></section>}
     {kind === 'hue-saturation' && <section className="adjustment-controls"><RangeField className="adjustment-slider-row" label={t('adjustment.hue')} min={colorize ? 0 : -180} max={colorize ? 360 : 180} value={hue} onChange={setHue} /><RangeField className="adjustment-slider-row" label={t('adjustment.saturation')} min={colorize ? 0 : -100} max={100} value={saturation} onChange={setSaturation} /><RangeField className="adjustment-slider-row" label={t('adjustment.lightness')} min={-100} max={100} value={lightness} onChange={setLightness} /><CheckboxField className="tool-checkbox" checked={colorize} label={t('adjustment.title.colorize')} onChange={toggleColorize} /></section>}
+    {kind === 'gradient-map' && <GradientMapControls value={gradientMap} onChange={setGradientMap} />}
     {kind === 'curves' && <section className="adjustment-controls curve-controls"><SegmentedControl className="curve-channel-tabs" label={t('adjustment.curve.channels')} options={curveChannelOptions} value={curveChannel} onChange={setCurveChannel} /><CurveEditor channel={curveChannel} histogram={histogram?.[curveChannel]} points={curvePoints[curveChannel]} onChange={(next) => setCurvePoints((current) => ({ ...current, [curveChannel]: next }))} onReset={() => setCurvePoints((current) => ({ ...current, [curveChannel]: [{ x: 0, y: 0 }, { x: 255, y: 255 }] }))} /></section>}
     {kind === 'color-balance' && <section className="balance-panel"><SegmentedControl className="balance-tone-tabs" label={t('adjustment.title.colorBalance')} options={[{ value: 'shadows', label: t('adjustment.balance.shadows') }, { value: 'midtones', label: t('adjustment.balance.midtones') }, { value: 'highlights', label: t('adjustment.balance.highlights') }]} value={balanceTone} onChange={setBalanceTone} /><div className="adjustment-controls balance-controls"><RangeField className="adjustment-slider-row" label={t('adjustment.balance.cyanRed')} min={-100} max={100} value={balanceValue('CyanRed')} onChange={(value) => updateBalance('CyanRed', value)} /><RangeField className="adjustment-slider-row" label={t('adjustment.balance.magentaGreen')} min={-100} max={100} value={balanceValue('MagentaGreen')} onChange={(value) => updateBalance('MagentaGreen', value)} /><RangeField className="adjustment-slider-row" label={t('adjustment.balance.yellowBlue')} min={-100} max={100} value={balanceValue('YellowBlue')} onChange={(value) => updateBalance('YellowBlue', value)} /></div><CheckboxField className="tool-checkbox preserve-luminosity" checked={preserveLuminosity} label={t('adjustment.balance.preserveLuminosity')} onChange={setPreserveLuminosity} /></section>}
     <LivePreviewToggle className="adjustment-preview-toggle" checked={previewEnabled} onChange={setPreviewEnabled} />

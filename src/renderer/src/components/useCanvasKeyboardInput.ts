@@ -5,7 +5,9 @@ import type { RasterLayer } from '@shared/types-layer'
 import type { RgbaColor } from '@shared/types-color'
 import { temporaryLiquifyModeForShift } from '@/core/liquify'
 import { useWorkspace, type DocumentSession } from '@/store/workspace'
-import { SHORTCUT_GROUPS, shortcutBindingBlocked, shortcutBindingsFor, shortcutMatchesEvent, shortcutReleasedByBindings } from '@/core/shortcuts'
+import { keyboardEventKey, SHORTCUT_GROUPS, shortcutBindingBlocked, shortcutBindingsFor, shortcutMatchesEvent, shortcutReleasedByBindings, type ShortcutId } from '@/core/shortcuts'
+import { shortcutLabels } from '@/locales/shortcut-labels'
+import type { AppLocale } from '@/core/localization'
 import {
   CanvasInputState,
   beginTemporaryCenteredMarqueeResize,
@@ -23,9 +25,11 @@ import { canvasCursors, canvasToolCursor, selectionCreationCursor } from '@/core
 import { OnionSkinCompositeCache } from '@/components/onion-skin-composite-cache'
 import { publishCanvasColorSample } from '@/components/color-sampling-events'
 import { shouldQuickSelectEyedropper } from '@/core/eyedropper-quick-select'
-import { keyDisplayKeydownAccepted, keyDisplayLabel } from '@/core/key-display'
+import { keyDisplayKeydownAccepted, keyDisplayLabel, keyDisplayShortcut } from '@/core/key-display'
 interface Ports {
   readonly keyDisplayEnabled: boolean
+  readonly keyDisplayFunction: boolean
+  readonly locale: AppLocale
   readonly inputRef: import('react').RefObject<CanvasInputState>
   readonly modifierActive: (event: Pick<KeyboardEvent, 'ctrlKey' | 'metaKey' | 'altKey' | 'shiftKey'>, id: import('@/core/shortcuts').ShortcutId) => boolean
   readonly wheelBrushSizePreviewRef: import('react').RefObject<boolean>
@@ -131,7 +135,7 @@ interface Ports {
 }
 
 export function useCanvasKeyboardInput(ports: Ports) {
-  const [keyDisplayEntries, setKeyDisplayEntries] = useState<Array<{ id: number; label: string }>>([])
+  const [keyDisplayEntries, setKeyDisplayEntries] = useState<Array<{ id: number; label: string; functionLabel?: string }>>([])
 
   const keyDisplayIdRef = useRef(0)
 
@@ -262,10 +266,15 @@ export function useCanvasKeyboardInput(ports: Ports) {
         blockedTarget: keyDisplayBlocked
       })
       if (keyDisplayAccepted) {
-        const keyId = event.key
+        const keyId = keyboardEventKey(event)
         if (keyDisplayGestureRef.current.size === 0) keyDisplayWheelRef.current = false
-        keyDisplayHeldRef.current.add(keyId)
+        keyDisplayHeldRef.current.add(event.code || event.key)
         keyDisplayGestureRef.current.add(keyId)
+        // Modifiers may already be held when this canvas begins receiving keys.
+        if (event.ctrlKey) keyDisplayGestureRef.current.add('Control')
+        if (event.metaKey) keyDisplayGestureRef.current.add('Meta')
+        if (event.altKey) keyDisplayGestureRef.current.add('Alt')
+        if (event.shiftKey) keyDisplayGestureRef.current.add('Shift')
       }
       const controlWasHeld = ports.inputRef.current.ctrlHeld
       if (event.key === 'Alt') {
@@ -515,7 +524,7 @@ export function useCanvasKeyboardInput(ports: Ports) {
     }
     const keyUp = (event: KeyboardEvent): void => {
       ports.inputRef.current.syncModifierKeys(event)
-      keyDisplayHeldRef.current.delete(event.key)
+      keyDisplayHeldRef.current.delete(event.code || event.key)
       const wheelOnlyModifiers =
         keyDisplayWheelRef.current &&
         Array.from(keyDisplayGestureRef.current).every((key) => key === 'Control' || key === 'Meta' || key === 'Shift' || key === 'Alt')
@@ -529,7 +538,10 @@ export function useCanvasKeyboardInput(ports: Ports) {
           })
           .map((heldKey) => keyDisplayLabel(heldKey))
         const id = ++keyDisplayIdRef.current
-        setKeyDisplayEntries((current) => [...current, { id, label: combo.join(' + ') }].slice(-10))
+        const functionLabel = ports.keyDisplayFunction
+          ? keyDisplayShortcut(pendingKeys, ports.shortcuts, ports.shortcutConflictState)
+          : undefined
+        setKeyDisplayEntries((current) => [...current, { id, label: combo.join('+'), functionLabel: functionLabel ? shortcutLabels(ports.locale)[functionLabel] : undefined }].slice(-10))
         globalThis.setTimeout(() => setKeyDisplayEntries((current) => current.filter((entry) => entry.id !== id)), ports.keyDisplayDuration)
         keyDisplayGestureRef.current.clear()
         keyDisplayActiveEntryRef.current = null
@@ -694,6 +706,8 @@ export function useCanvasKeyboardInput(ports: Ports) {
     ports.eyedropperQuickSelect,
     ports.keyDisplayEnabled,
     ports.keyDisplayDuration,
+    ports.keyDisplayFunction,
+    ports.locale,
     ports.activeDocumentId,
     ports.shortcuts.brushSizeAdjust,
     ports.shortcuts.resetViewRotation,

@@ -32,19 +32,20 @@ export function canvasAdaptiveContrast(context: RasterContext2D, bounds?: Contra
   const target = buffer.getContext('2d')!
   target.clearRect(0, 0, width, height)
   target.filter = AUTO_CONTRAST_FILTER
-  if (backdrop) {
-    let composite = backdrops.get(context)
-    if (!composite) { composite = new OffscreenCanvas(width, height); backdrops.set(context, composite) }
-    if (composite.width !== width) composite.width = width
-    if (composite.height !== height) composite.height = height
-    const source = composite.getContext('2d')!
-    source.clearRect(0, 0, width, height)
-    source.drawImage(backdrop, left, top, width, height, 0, 0, width, height)
-    source.drawImage(context.canvas, left, top, width, height, 0, 0, width, height)
-    // Composite translucent preview paint over the document before deciding
-    // contrast; filtering a transparent overlay alone has no background.
-    target.drawImage(composite, 0, 0)
-  } else target.drawImage(context.canvas, left, top, width, height, 0, 0, width, height)
+  // Materialize the crop before filtering. A source rectangle on a filtered
+  // drawImage still hands the backend a viewport-sized texture; keeping the
+  // filter input small avoids that dependency as the window grows.
+  let composite = backdrops.get(context)
+  if (!composite) { composite = new OffscreenCanvas(width, height); backdrops.set(context, composite) }
+  if (composite.width !== width) composite.width = width
+  if (composite.height !== height) composite.height = height
+  const source = composite.getContext('2d')!
+  source.clearRect(0, 0, width, height)
+  if (backdrop) source.drawImage(backdrop, left, top, width, height, 0, 0, width, height)
+  source.drawImage(context.canvas, left, top, width, height, 0, 0, width, height)
+  // Composite translucent preview paint over the document before deciding
+  // contrast; filtering a transparent overlay alone has no background.
+  target.drawImage(composite, 0, 0)
   const pattern = context.createPattern(buffer, 'no-repeat')!
   pattern.setTransform(transform.inverse().translate(left, top))
   return pattern

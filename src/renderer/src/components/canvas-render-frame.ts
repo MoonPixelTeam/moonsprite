@@ -1,3 +1,5 @@
+import { rememberPaintedDrag } from './canvas-recent-colors'
+import { drawBrushCaptureSurround } from './canvas-brush-capture-overlay'
 import { createCanvasBackground } from './canvas-render-background'
 import { renderCanvasContent } from './canvas-render-content'
 import { createCanvasPreviewPixels } from './canvas-render-preview-pixels'
@@ -233,6 +235,8 @@ export function renderCanvasFrame(frame: CanvasRenderContext): void {
       zoom: frame.resources.liveViewRef.current.zoom, gesture: frame.resources.inputRef.current.drag?.kind ?? 'none',
       viewPreview: frame.resources.zoomPreviewStartRef.current !== null, timingScope: 'cpu-submit',
       width: session.document.width, height: session.document.height,
+      backingWidth: frame.resources.canvasRef.current?.width ?? 0,
+      backingHeight: frame.resources.canvasRef.current?.height ?? 0,
       active: frame.settings.activeDocumentId === session.document.id }
   })
 }
@@ -385,6 +389,7 @@ function renderFrame(frame: CanvasRenderContext, checkpoint: (stage: string) => 
     (currentSession.tool === 'selection'
       ? currentSelectionLayersEditable
       : currentHasRasterSelection &&
+        (Boolean(currentLayerMask) || currentActiveLayer.kind !== 'adjustment') &&
         isLayerEffectivelyVisible(currentSession.document, currentActiveLayer) &&
         !isLayerEffectivelyLocked(currentSession.document, currentActiveLayer))
   checkpoint('session-prepare')
@@ -409,6 +414,7 @@ function renderFrame(frame: CanvasRenderContext, checkpoint: (stage: string) => 
   const document = currentSession.document
   const view = liveViewRef.current
   const activeDrag = inputRef.current.drag
+  rememberPaintedDrag(activeDrag, currentSession.tool)
   const selectionPreviewOwner = deferredSelectionPreviewOwner(activeDrag, Boolean(currentSession.pendingPaste?.previewDeferred))
   const smoothPixelSampling = pixelSamplingMode(view.zoom) === 'smooth'
   // View gestures reuse cached pixels and use a low-cost rotation filter.
@@ -503,8 +509,10 @@ function renderFrame(frame: CanvasRenderContext, checkpoint: (stage: string) => 
     isoGuideTileRef
   })
   checkpoint('background')
-  const displayDocument = !isolatedLayerMask && !timelineHidden &&
+  const showOnionSkin = !isolatedLayerMask && !timelineHidden &&
     (!currentSession.animationPlaying || onionSkin.showDuringPlayback)
+  if (!showOnionSkin) onionSkinCacheRef.current.invalidateAll()
+  const displayDocument = showOnionSkin
     ? onionSkinCacheRef.current.displayDocument(document, currentActiveLayer.id, currentSession.contentRevision, onionSkin)
     : document
   const { paintedMoveLayerFlash } = renderCanvasContent({
@@ -717,6 +725,7 @@ function renderFrame(frame: CanvasRenderContext, checkpoint: (stage: string) => 
     canvasWidth,
     canvasHeight
   })
+  checkpoint('overlays-before-selection')
   renderCanvasSelectionPreview({
     inputRef,
     magicPreviewFlash,
@@ -746,6 +755,7 @@ function renderFrame(frame: CanvasRenderContext, checkpoint: (stage: string) => 
     selectionHitAt,
     drawSelectionCursorCorners
   })
+  checkpoint('overlays-selection-preview')
   renderCanvasToolCursor({
     inputRef,
     sliceTool,
@@ -931,6 +941,10 @@ function renderFrame(frame: CanvasRenderContext, checkpoint: (stage: string) => 
     displayContext.drawImage(scene, 0, 0, scene.width, scene.height, sceneLeft, sceneTop, scene.width / deviceScale.x, scene.height / deviceScale.y)
     displayContext.restore()
   }
+  if (currentSession.temporaryBrushCapture) {
+    drawBrushCaptureSurround(displayContext, rect, baseCanvasBoundary, () => applyViewRotation(displayContext, rect.width, rect.height, view))
+  }
+  checkpoint('overlays-tools-and-guides')
   renderCanvasStatus({
     rect,
     document,

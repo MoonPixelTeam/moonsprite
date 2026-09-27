@@ -1,6 +1,7 @@
-import { act, cleanup, fireEvent, render } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, within } from '@testing-library/react'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
-import { createDocument, writeLayerColor } from '@/core/document-model'
+import { createDocument, createLayer, writeLayerColor } from '@/core/document-model'
+import { assignRasterStorage, installRuntimeRaster, surfacePixelsMaterialized } from '@/core/runtime-raster'
 import { addBlankAnimationFrame, syncActiveAnimationFrame } from '@/core/animation'
 import { translateCurrent } from '@/core/localization'
 import { useWorkspace } from '@/store/workspace'
@@ -15,6 +16,24 @@ beforeEach(() => {
   vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(null)
 })
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); vi.restoreAllMocks(); vi.useRealTimers() })
+
+it('keeps sparse layers lazy when enabling a multi-layer endpoint preview', () => {
+  const document = createDocument('sparse endpoint', 4, 4, 'rgba', false)
+  document.layers.push(createLayer('second', 4, 4, 'rgba'))
+  syncActiveAnimationFrame(document)
+  for (const layer of document.layers) {
+    const surface = document.animation!.cels.find(cel => cel.layerId === layer.id)!.surface!
+    const data = new Uint8Array(4 * 4 * 4)
+    data.set([10, 20, 30, 255])
+    installRuntimeRaster(surface, { kind: 'sparse-tiles-v1', format: 'rgba', width: 4, height: 4, tileSize: 64, data, tileOffsets: new Int32Array([1]) })
+    assignRasterStorage(layer, surface)
+  }
+  useWorkspace.getState().addSession(document)
+  const view = render(<AnimationTweenDialog document={document} frameId={document.animation!.activeFrameId} layerId={document.activeLayerId} onClose={() => {}} />)
+  fireEvent.click(view.getByRole('checkbox', { name: 'timeline.tween.previewEndpoint' }))
+  expect(view.getByRole('checkbox', { name: 'timeline.tween.previewEndpoint' })).toBeChecked()
+  expect(document.layers.map(surfacePixelsMaterialized)).toEqual([false, false])
+})
 
 function fixture(withLoop = false, initialLoopSectionId?: string) {
   const document = createDocument('dialog tween', 4, 4, 'rgba', false)
@@ -36,6 +55,15 @@ it('cancels without writing frames or history', () => {
   expect(close).toHaveBeenCalledOnce()
   expect(document.animation!.frames).toHaveLength(1)
   expect(useWorkspace.getState().sessions[0].history.position).toBe(0)
+})
+it('passes the optional auto-fit canvas toggle to generation', () => {
+  const { view } = fixture()
+  const generate = vi.spyOn(useWorkspace.getState(), 'generateAnimationTween').mockReturnValue(true)
+  const toggle = view.getByRole('checkbox', { name: 'timeline.tween.autoCropCanvas' })
+  expect(toggle).not.toBeChecked()
+  fireEvent.click(toggle)
+  fireEvent.click(view.getByText('timeline.tween.generate'))
+  expect(generate).toHaveBeenCalledWith(expect.any(String), expect.any(String), expect.any(String), expect.objectContaining({ autoCropCanvas: true }))
 })
 it('defaults to between-frame generation when a next frame exists and previews both endpoints', () => {
   const document = createDocument('between', 4, 4, 'rgba', false)
@@ -259,4 +287,44 @@ it('opens directly on the loop requested by the context menu', () => {
   const { view } = fixture(true, 'walk')
   expect(view.getByRole('button', { name: 'timeline.tween.scope' })).toHaveTextContent('timeline.tween.scopeLoop')
   expect(view.getByRole('button', { name: 'timeline.tween.loopSection' })).toHaveTextContent('Walk')
+})
+
+it('edits curves in a separate draft dialog and applies or cancels without generating frames', () => {
+  const { view, document } = fixture()
+  expect(view.queryByRole('img', { name: 'timeline.tween.curve' })).toBeNull()
+  const open = () => {
+    fireEvent.click(view.getByText('timeline.tween.curveEdit'))
+    return within(view.getByRole('dialog', { name: 'timeline.tween.curveEdit' }))
+  }
+  let dialog = open()
+  fireEvent.click(dialog.getByRole('button', { name: 'timeline.tween.easing' }))
+  fireEvent.click(view.getByRole('option', { name: 'timeline.tween.custom' }))
+  expect(dialog.getByLabelText('X1')).toBeInTheDocument()
+  fireEvent.click(dialog.getByText('common.cancel'))
+  expect(view.queryByRole('dialog', { name: 'timeline.tween.curveEdit' })).toBeNull()
+  dialog = open()
+  expect(dialog.getByRole('button', { name: 'timeline.tween.easing' })).toHaveTextContent('timeline.tween.linear')
+  fireEvent.click(dialog.getByRole('button', { name: 'timeline.tween.easing' }))
+  fireEvent.click(view.getByRole('option', { name: 'timeline.tween.custom' }))
+  fireEvent.click(dialog.getByText('common.apply'))
+  expect(view.queryByRole('dialog', { name: 'timeline.tween.curveEdit' })).toBeNull()
+  dialog = open()
+  expect(dialog.getByLabelText('X1')).toBeInTheDocument()
+  fireEvent.keyDown(dialog.getByLabelText('X1'), { key: 'Escape' })
+  expect(view.queryByRole('dialog', { name: 'timeline.tween.curveEdit' })).toBeNull()
+  expect(document.animation!.frames).toHaveLength(1)
+})
+
+it.each(['linear', 'ease-in', 'ease-out', 'ease-in-out'])('editing %s preset controls switches the draft to custom', (easing) => {
+  const { view } = fixture()
+  fireEvent.click(view.getByText('timeline.tween.curveEdit'))
+  const dialog = within(view.getByRole('dialog', { name: 'timeline.tween.curveEdit' }))
+  fireEvent.click(dialog.getByRole('button', { name: 'timeline.tween.easing' }))
+  fireEvent.click(view.getByRole('option', { name: 'timeline.tween.' + easing }))
+  expect(dialog.getByLabelText('X1')).toBeInTheDocument()
+  const input = dialog.getByLabelText('X1')
+  fireEvent.change(input, { target: { value: '0.25' } })
+  fireEvent.blur(input)
+  expect(dialog.getByRole('button', { name: 'timeline.tween.easing' })).toHaveTextContent('timeline.tween.custom')
+  expect(dialog.getByLabelText('X1')).toHaveValue('0.25')
 })

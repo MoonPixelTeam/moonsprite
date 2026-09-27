@@ -58,7 +58,7 @@ export function useFloatingWindowStack(ref: RefObject<HTMLElement | null>, activ
   }, [active, ref])
   const bringToFront = useCallback((): void => {
     const entry = entryRef.current
-    if (!entry) return
+    if (!entry || floatingWindowStack[floatingWindowStack.length - 1] === entry) return
     floatingWindowStack = floatingWindowStack.filter((candidate) => candidate !== entry)
     floatingWindowStack.push(entry)
     refreshFloatingWindowStack()
@@ -376,7 +376,11 @@ export function PortalResizeHandles({ onResize, position, targetRef, className =
   if (!bounds) return null
   const zIndex = typeof position?.zIndex === 'number' ? position.zIndex + 1 : 220
   return createPortal(
-    <div className={`floating-resize-portal ${className}`.trim()} style={{ left: bounds.left, top: bounds.top, width: bounds.width, height: bounds.height, zIndex }} aria-hidden="true">
+    <div className={`floating-resize-portal ${className}`.trim()} style={{
+      '--resize-left': `${bounds.left}px`, '--resize-top': `${bounds.top}px`,
+      '--resize-width': `${bounds.width}px`, '--resize-height': `${bounds.height}px`,
+      '--resize-z-index': zIndex
+    } as CSSProperties} aria-hidden="true">
       <PanelResizeHandles onResize={onResize} />
     </div>,
     document.body

@@ -4,9 +4,10 @@ import { resetTabletInteraction, setTabletModifier, tabletModifier, setTabletTem
 import { tabletSelectionHandleHit } from './tablet-selection-hit'
 afterEach(resetTabletInteraction)
 it('normalizes old and invalid tablet settings without changing desktop layout', () => {
-  expect(parseTabletPreferences('{}')).toMatchObject({ touchUi: 'auto', touchBarSide: 'left', gestureUndoEnabled: true, rotationSnapEnabled: true, longPressEyedropper: false })
-  expect(parseTabletPreferences('{"touchUi":"broken","touchBarSide":"middle"}')).toMatchObject({ touchUi: 'auto', touchBarSide: 'left' })
-  expect(parseTabletPreferences('{"touchUi":"off","touchBarSide":"right","gestureUndoEnabled":false}')).toMatchObject({ touchUi: 'off', touchBarSide: 'right', gestureUndoEnabled: false })
+  expect(parseTabletPreferences('{"assistPanel":"on","touchUi":"off"}').assistPanel).toBe('on')
+  expect(parseTabletPreferences('{}')).toMatchObject({ assistPanel: 'auto', gestureUndoEnabled: true, rotationSnapEnabled: true, longPressEyedropper: false })
+  expect(parseTabletPreferences('{"touchUi":"broken","touchBarSide":"middle"}')).toMatchObject({ assistPanel: 'auto' })
+  expect(parseTabletPreferences('{"touchUi":"off","touchBarSide":"right","gestureUndoEnabled":false}')).toMatchObject({ assistPanel: 'off', gestureUndoEnabled: false })
 })
 it('scopes modifiers to one document and clears held tools on owner change and reset', () => {
   setTabletModifier('a', 'constrain', true); setTabletTemporaryTool('a', 'eyedropper'); setTabletBoxMove('a', true)

@@ -17,13 +17,13 @@ beforeEach(() => {
 afterEach(cleanup)
 
 describe('tool memories', () => {
-  it('shows the first tool with no arrow and opens its group by holding the primary button', () => {
+  it('shows the active tool with no arrow and opens its group by holding the primary button', () => {
     vi.useFakeTimers()
     try {
       const view = render(<EditorToolRail side="right" onGripPointerDown={() => {}} />)
-      const pencil = toolDefinitions('zh-CN').find(tool => tool.id === 'pencil')!.label
+      const smooth = toolDefinitions('zh-CN').find(tool => tool.id === 'smooth')!.label
       act(() => useWorkspace.getState().setTool('smooth'))
-      const button = view.getByRole('button', { name: pencil })
+      const button = view.getByRole('button', { name: smooth })
       expect(view.container.querySelector('.tool-group-expand')).toBeNull()
       fireEvent.pointerDown(button, { button: 0 })
       act(() => vi.advanceTimersByTime(400))

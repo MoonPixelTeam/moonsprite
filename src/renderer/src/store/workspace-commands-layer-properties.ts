@@ -5,7 +5,7 @@ import type { RgbaColor } from '@shared/types-color'
 import type { SelectionRect } from '@shared/types-selection'
 import type { SpriteDocument } from '@shared/types-document'
 import { type ContentInvalidationHint, type HistoryEntry } from '@/core/history'
-import { cachedLayerContentBounds, createId, duplicateLayer, getGroup, getGroupLockingAncestor, getLayerIdsInGroup, getLayer, getLayerLockingGroup, isGroupEffectivelyLocked, isLayerEffectivelyLocked, layerContentBounds } from '@/core/document-model'
+import { cachedLayerContentBounds, createId, duplicateLayer, getDescendantGroupIds, getGroup, getGroupLockingAncestor, getLayerIdsInGroup, getLayer, getLayerLockingGroup, isGroupEffectivelyLocked, isLayerEffectivelyLocked, layerContentBounds } from '@/core/document-model'
 import { expandLayerStyleInvalidationRect, normalCompositeLayers } from '@/core/document-composite'
 import { cloneAnimationCel, cloneAnimationCelsForLayer, detachLinkedLayerContent, ensureAnimationDocument, refreshActiveAnimationFrame, removeAnimationCelsForLayers, restoreAnimationCels, syncActiveAnimationFrame, syncActiveAnimationLayer, synchronizeLinkedLayerGroupContents } from '@/core/animation'
 import { colorEquals } from '@/core/raster'
@@ -38,7 +38,7 @@ const applyLayerName = (document: SpriteDocument, layer: RasterLayer, name: stri
 
 const layerStyleOwnerForTarget = (document: SpriteDocument, target: LayerPropertyTarget): RasterLayer | LayerGroup | null =>
   target.kind === 'layer'
-    ? document.layers.find((layer) => layer.id === target.id) ?? null
+    ? document.layers.find((layer) => layer.id === target.id && layer.kind !== 'adjustment') ?? null
     : document.groups.find((group) => group.id === target.id) ?? null
 
 const uniqueLayerStyleTargets = (document: SpriteDocument, targets: readonly LayerPropertyTarget[]): LayerPropertyTarget[] => {
@@ -59,7 +59,7 @@ const layerStylePreviewInvalidationRect = (
   for (const target of targets) {
     if (target.kind !== 'layer') return null
     const layer = document.layers.find((candidate) => candidate.id === target.id)
-    if (!layer) return null
+    if (!layer || layer.kind === 'adjustment') return null
     const bounds = layerContentBounds(document, layer)
     if (!bounds) continue
     const expanded = expandLayerStyleInvalidationRect(document, bounds, [layer.id])
@@ -68,8 +68,13 @@ const layerStylePreviewInvalidationRect = (
   return rect
 }
 
-const layerVisibilityInvalidation = (document: SpriteDocument, layer: RasterLayer): ContentInvalidationHint => {
+const layerVisibilityInvalidation = (document: SpriteDocument, layer: RasterLayer): ContentInvalidationHint | null => {
   const bounds = cachedLayerContentBounds(document, layer)
+  // null is known-empty; undefined means not measured. A transparent clipping
+  // base can still affect other layers, so keep that path fully invalidated.
+  if (bounds === null && !layer.kind && !layer.background && !hasConfiguredLayerStyles(layer.layerStyles)
+    && !document.layers.some(candidate => candidate.clippingMask === true)
+    && !document.groups.some(group => group.clippingMask === true || hasConfiguredLayerStyles(group.layerStyles))) return null
   return bounds
     ? { kind: 'region', rect: expandLayerStyleInvalidationRect(document, bounds, [layer.id]) }
     : { kind: 'full' }
@@ -78,16 +83,28 @@ const layerVisibilityInvalidation = (document: SpriteDocument, layer: RasterLaye
 const groupVisibilityInvalidation = (document: SpriteDocument, groupId: string): ContentInvalidationHint => {
   if (!normalCompositeLayers(document)) return { kind: 'full' }
   const layerIds = new Set(getLayerIdsInGroup(document, groupId))
+  const groupIds = new Set([groupId, ...getDescendantGroupIds(document, groupId)])
+  // A hidden group is skipped by normalCompositeLayers, so inspect its own
+  // members before using separate rectangles. Complex effects keep the
+  // existing conservative bounding region.
+  const simpleComposition = document.groups.filter((group) => groupIds.has(group.id)).every((group) =>
+    group.opacity === 1 && group.blendMode === 'normal' && group.cumulativeBlend !== true
+    && group.clippingMask !== true && !hasConfiguredLayerStyles(group.layerStyles))
+    && document.layers.filter((layer) => layerIds.has(layer.id)).every((layer) =>
+      !layer.kind && !layer.background && layer.clippingMask !== true && layer.blendMode === 'normal'
+      && !hasConfiguredLayerStyles(layer.layerStyles))
   let rect: SelectionRect | null = null
+  const rects: SelectionRect[] = []
   for (const layer of document.layers) {
     if (!layerIds.has(layer.id)) continue
     const bounds = cachedLayerContentBounds(document, layer)
     if (bounds === undefined) return { kind: 'full' }
     if (!bounds) continue
     const expanded = expandLayerStyleInvalidationRect(document, bounds, [layer.id])
+    if (simpleComposition) rects.push(expanded)
     rect = rect ? unionRects(rect, expanded) : expanded
   }
-  return rect ? { kind: 'region', rect } : { kind: 'full' }
+  return rect ? { kind: 'region', rect, ...(simpleComposition ? { rects, compositeOnly: true as const } : {}) } : { kind: 'full' }
 }
 
 const layerBlendModeInvalidation = (document: SpriteDocument, layer: RasterLayer): ContentInvalidationHint => {
@@ -117,7 +134,7 @@ const commitVisibilityChange = (recordDocumentOperation: WorkspaceRecording['rec
   session: DocumentSession,
   target: { visible: boolean },
   label: string,
-  invalidationForCurrentFrame: () => ContentInvalidationHint,
+  invalidationForCurrentFrame: () => ContentInvalidationHint | null,
   affectedLayerIds?: readonly string[],
   refreshPanelForRegion = false
 ): void => {
@@ -127,21 +144,24 @@ const commitVisibilityChange = (recordDocumentOperation: WorkspaceRecording['rec
   let entry: HistoryEntry
   const apply = (visible: boolean): void => {
     target.visible = visible
-    entry.invalidation = invalidationForCurrentFrame()
-    if (refreshPanelForRegion && entry.invalidation.kind === 'region') session.layersPanelRevision += 1
+    const nextInvalidation = invalidationForCurrentFrame()
+    entry.invalidation = nextInvalidation ?? undefined
+    entry.contentChanged = nextInvalidation !== null
+    if (refreshPanelForRegion && nextInvalidation?.kind === 'region') session.layersPanelRevision += 1
   }
   entry = {
     label,
     bytes: 8,
     undo: () => { apply(before) },
     redo: () => { apply(!before) },
-    invalidation,
+    invalidation: invalidation ?? undefined,
+    contentChanged: invalidation !== null,
     affectedLayerIds: affectedLayerIds ? [...affectedLayerIds] : undefined,
     requiresAnimationSync: false
   }
-  if (refreshPanelForRegion && invalidation.kind === 'region') session.layersPanelRevision += 1
+  if (refreshPanelForRegion && invalidation?.kind === 'region') session.layersPanelRevision += 1
   session.history.push(entry)
-  completeDocumentChange(session, 'content', recordDocumentOperation, invalidation)
+  completeDocumentChange(session, invalidation === null ? 'metadata' : 'content', recordDocumentOperation, invalidation ?? undefined)
 }
 
 const hiddenAncestorGroupsForLayer = (document: SpriteDocument, layer: RasterLayer): LayerGroup[] => {
@@ -629,7 +649,7 @@ export function createLayerPropertiesCommands({ get, set, recording, services: {
       get().mutateActive((session) => {
         const result = commitLayerPropertiesTransactionCommand(documentTransactions, session, id, values, changedFields)
         if (result.kind === 'content') {
-          syncActiveAnimationFrame(session.document)
+          for (const layerId of session.history.latestUndoEntry?.affectedLayerIds ?? []) syncActiveAnimationLayer(session.document, layerId)
           // Layer properties are a panel operation, not a canvas edit. Keep
           // the explicit layer/frame/cel selection visible after committing a
           // content-affecting property such as opacity or blend mode.
@@ -658,7 +678,10 @@ export function createLayerPropertiesCommands({ get, set, recording, services: {
         if (seen.has(key)) return []
         seen.add(key)
         const owner = layerStyleOwnerForTarget(current.document, entry.target)
-        return owner && !layerStylesEqual(owner.layerStyles, entry.styles) ? [{ target: entry.target, styles: entry.styles }] : []
+        if (!owner) return []
+        const styles = cloneLayerStyles(entry.styles)
+        if (styles?.gradientMap) styles.gradientMap.scope = 'layer'
+        return !layerStylesEqual(owner.layerStyles, styles) ? [{ target: entry.target, styles }] : []
       })
       if (changes.length === 0) return
       const operationProbe = window.__moonSpriteCanvasProbe
@@ -701,7 +724,9 @@ export function createLayerPropertiesCommands({ get, set, recording, services: {
         const changes = uniqueTargets.flatMap((target) => {
           const owner = layerStyleOwnerForTarget(session.document, target)
           if (!owner || layerStylesEqual(owner.layerStyles, styles)) return []
-          return [{ owner, before: cloneLayerStyles(owner.layerStyles), after: cloneLayerStyles(styles) }]
+          const after = cloneLayerStyles(styles)
+          if (after?.gradientMap) after.gradientMap.scope = 'layer'
+          return [{ owner, before: cloneLayerStyles(owner.layerStyles), after }]
         })
         if (changes.length === 0) return
         for (const change of changes) assignLayerStyles(change.owner, change.after)
@@ -773,6 +798,7 @@ export function createLayerPropertiesCommands({ get, set, recording, services: {
       return get().setLayerStylesForTargets(targets, undefined, 'clear')
     },
     splitLayerStyles(layerId) {
+      if (activeSession(get())?.document.layers.find(layer => layer.id === layerId)?.kind === 'adjustment') return
       get().commitFloatingPaste()
       get().mutateActive((session) => {
         const beforeSelection = captureAnimationSelectionHistory(session)

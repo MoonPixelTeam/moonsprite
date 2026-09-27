@@ -12,6 +12,38 @@ import { deviceAlignedPixelRect } from '@/core/canvas-render-plan'
 vi.mock('./canvas-adaptive-contrast', () => ({ canvasAdaptiveContrast: vi.fn(() => '#fff') }))
 afterEach(() => vi.clearAllMocks())
 
+it.each(['normal', 'multiply'] as const)('keeps the full brush outline outside the canvas with %s blending', blendMode => {
+  const document = createDocument('edge', 4, 4, 'rgba')
+  const layer = getActiveLayer(document)
+  layer.blendMode = blendMode
+  const session = sessionFromDocument(document)
+  Object.assign(session, { tool: 'pencil', brushSize: 5, brushTexture: 'solid', inkMode: 'simple' })
+  const input = new CanvasInputState()
+  Object.assign(input.pointer, { visible: true, point: { x: 1, y: 3 } })
+  const context = { save: vi.fn(), restore: vi.fn(), translate: vi.fn(), beginPath: vi.fn(), moveTo: vi.fn(), lineTo: vi.fn(), stroke: vi.fn(), rect: vi.fn(), fill: vi.fn() }
+  const fills = vi.fn()
+  renderCanvasBrush({
+    currentActiveLayer: layer, currentSession: session, document, brushPreviewMode: 'full-edge', brushEdgeThickness: 1,
+    canRenderToolPreview: true, inputRef: { current: input }, activeDrag: null, drag: null,
+    pointerOverCanvas: () => true, drawingBrushPreviewEnabled: true, brushPreviewOverlaySupported: () => false,
+    repeatedDocumentPointsAt: () => null, tilemapEditSelectionAtPoint: () => undefined, paintSelectionForDrag: () => null,
+    snapBrushPointToGrid: (point: unknown) => point, brushPatternOrigin: () => ({ x: 0, y: 0 }), context,
+    view: session.view, optimizedRotationEnabled: false, previewPixelRect: (x: number, y: number) => ({ x, y, width: 1, height: 1 }),
+    repeatCopies: [{ x: 0, y: 0, originX: 0, originY: 0, fromX: 0, fromY: 0, toX: 4, toY: 4 }],
+    fromX: 0, fromY: 0, toX: 4, toY: 4, brushPreviewStackCacheRef: { current: null }, brushPreviewCompositeCacheRef: { current: null },
+    previewColorAt: () => session.primaryColor, fillPreviewPixelRects: fills
+  } as unknown as Parameters<typeof renderCanvasBrush>[0])
+  expect(context.lineTo.mock.calls.some(([, y]) => y > document.height)).toBe(true)
+  for (const [x, y, width, height] of context.rect.mock.calls as number[][]) {
+    expect(x).toBeGreaterThanOrEqual(0); expect(y).toBeGreaterThanOrEqual(0)
+    expect(x + width).toBeLessThanOrEqual(4); expect(y + height).toBeLessThanOrEqual(4)
+  }
+  for (const [entries] of fills.mock.calls) for (const entry of entries) {
+    expect(entry.sampleX).toBeGreaterThanOrEqual(0); expect(entry.sampleX).toBeLessThan(4)
+    expect(entry.sampleY).toBeGreaterThanOrEqual(0); expect(entry.sampleY).toBeLessThan(4)
+  }
+})
+
 it.each(['full', 'full-edge'] as const)('composites %s brush below upper layers on the document pixel grid', mode => {
  for (const alpha of [255, 128]) for (const scale of [1, 1.25, 1.5, 2]) for (const thickness of [1, 2, 3]) {
   const document = createDocument('outline', 512, 512, 'rgba', false)

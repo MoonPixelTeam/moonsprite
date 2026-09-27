@@ -19,6 +19,73 @@ beforeEach(() => {
 afterEach(() => vi.restoreAllMocks())
 const view: PreviewRasterView = { width: 256, height: 256, scale: 1 / 16, originX: 0, originY: 0, luminance: false }
 
+it('copies translated translucent pixels and samples only newly exposed edges', () => {
+  const doc = createDocument('pan cache', 16, 16, 'rgba', false)
+  for (let p = 0; p < 256; p++) writeLayerColor(doc, doc.layers[0], p, { r: p, g: 22, b: 33, a: 128 })
+  const pixels = new Uint8ClampedArray(8 * 8 * 4)
+  const context = {
+    globalCompositeOperation: 'source-over',
+    createImageData: (width: number, height: number) => ({ width, height, data: new Uint8ClampedArray(width * height * 4) }),
+    putImageData: (image: ImageData, x: number, y: number) => {
+      for (let row = 0; row < image.height; row++) pixels.set(image.data.subarray(row * image.width * 4, (row + 1) * image.width * 4), ((y + row) * 8 + x) * 4)
+    },
+    drawImage: vi.fn((_source: CanvasImageSource, sx: number, sy: number, width: number, height: number, dx: number, dy: number) => {
+      expect(context.globalCompositeOperation).toBe('copy')
+      const previous = pixels.slice()
+      pixels.fill(0)
+      for (let row = 0; row < height; row++) pixels.set(previous.subarray(((sy + row) * 8 + sx) * 4, ((sy + row) * 8 + sx + width) * 4), ((dy + row) * 8 + dx) * 4)
+    })
+  }
+  vi.mocked(HTMLCanvasElement.prototype.getContext).mockReturnValue(context as unknown as CanvasRenderingContext2D)
+  const cache = new PreviewRasterCache()
+  const initial = { width: 8, height: 8, originX: 0, originY: 0, scale: 1.25, luminance: false }
+  cache.configure(doc, 'frame-1', 0, initial)
+  expect(cache.render().pixels).toBe(64)
+  let previousX = 0, previousY = 0
+  for (const [originX, originY] of [[1, 0], [2, 1], [-1, 2], [0, -1], [0, 0]]) {
+    cache.configure(doc, 'frame-1', 0, { ...initial, originX, originY })
+    expect(cache.requiresSeed).toBe(false)
+    expect(cache.render().pixels).toBe(64 - (8 - Math.abs(originX - previousX)) * (8 - Math.abs(originY - previousY)))
+    const expected = new Uint8ClampedArray(64 * 4)
+    createPreviewProjectedRenderer(doc)(Int32Array.from({ length: 8 }, (_, x) => Math.floor((x + 0.5 - originX) / initial.scale)),
+      Int32Array.from({ length: 8 }, (_, y) => Math.floor((y + 0.5 - originY) / initial.scale)), expected)
+    expect(pixels).toEqual(expected)
+    expect(context.globalCompositeOperation).toBe('source-over')
+    previousX = originX; previousY = originY
+  }
+  const copies = context.drawImage.mock.calls.length
+  cache.configure(doc, 'frame-1', 1, { ...initial, originX: 1 })
+  expect(context.drawImage).toHaveBeenCalledTimes(copies)
+  expect(cache.render().pixels).toBe(64)
+})
+
+it('limits a two-pixel pan of a 1024 by 768 preview to 1536 sampled pixels', () => {
+  const doc = createDocument('pan work budget', 16, 16, 'rgba', false)
+  const cache = new PreviewRasterCache()
+  const large = { ...view, width: 1024, height: 768, scale: 48 }
+  cache.configure(doc, 'frame-1', 0, large)
+  cache.seedFromShared(document.createElement('canvas'), [])
+  cache.configure(doc, 'frame-1', 0, { ...large, originX: 2 })
+  expect(cache.requiresSeed).toBe(false)
+  expect(cache.render().pixels).toBe(1536)
+})
+
+it('restores the whole raster when a full live preview ends without a revision change', () => {
+  const doc = createDocument('full live preview', 2, 2, 'rgba', false)
+  const cache = new PreviewRasterCache()
+  cache.configure(doc, 'frame-1', 0, { width: 2, height: 2, scale: 1, originX: 0, originY: 0, luminance: false })
+  cache.render()
+  writeLayerColor(doc, doc.layers[0], 0, { r: 255, g: 0, b: 0, a: 255 })
+  cache.invalidate(undefined, true)
+  expect(cache.render().pixels).toBe(4)
+  expect(Array.from(writes.at(-1)!.data.slice(0, 4))).toEqual([255, 0, 0, 255])
+  writeLayerColor(doc, doc.layers[0], 0, { r: 0, g: 0, b: 0, a: 0 })
+  cache.finishLive()
+  expect(cache.render().pixels).toBe(4)
+  expect(Array.from(writes.at(-1)!.data.slice(0, 4))).toEqual([0, 0, 0, 0])
+  expect(cache.render().pixels).toBe(0)
+})
+
 it.each(BLEND_MODES)('projected scanlines preserve %s with groups, clipping, masks and cumulative blending', mode => {
   const doc = createDocument('projected stack', 8, 8, 'rgba', false)
   for (let n = 0; n < 4; n++) {

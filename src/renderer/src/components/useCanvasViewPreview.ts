@@ -11,9 +11,10 @@ interface CanvasViewPreviewOptions {
   canvasRef: React.RefObject<HTMLCanvasElement | null>
   selectionCanvasRef: React.RefObject<HTMLCanvasElement | null>
   requestDrawRef: React.RefObject<() => void>
+  onZoomChange?: () => void
 }
 
-export function useCanvasViewPreview({ documentId, sessionView, activeViewDrag, canvasRef, selectionCanvasRef, requestDrawRef }: CanvasViewPreviewOptions) {
+export function useCanvasViewPreview({ documentId, sessionView, activeViewDrag, canvasRef, selectionCanvasRef, requestDrawRef, onZoomChange }: CanvasViewPreviewOptions) {
   const pendingViewRef = useRef<Partial<ViewState> | null>(null)
   const liveViewRef = useRef(sessionView)
   const viewFrameRef = useRef<number | null>(null)
@@ -58,8 +59,10 @@ export function useCanvasViewPreview({ documentId, sessionView, activeViewDrag, 
 
   const scheduleZoomPreview = (next: ViewState): void => {
     if (!zoomPreviewStartRef.current) zoomPreviewStartRef.current = { ...liveViewRef.current }
+    const zoomChanged = liveViewRef.current.zoom !== next.zoom
     liveViewRef.current = next
     pendingViewRef.current = next
+    if (zoomChanged) onZoomChange?.()
     // Navigation and content updates must use the same canvas RAF. This RAF
     // below only publishes the view to auxiliary consumers, never paints.
     requestDrawRef.current()

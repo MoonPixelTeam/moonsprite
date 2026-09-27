@@ -101,7 +101,7 @@ export function handleSelectionShortcuts(context: Pick<AppShortcutContext, 'poin
     return true
   if (!keyboardSurfaceBlocked && !isTextEntry && runCommand('createBrushFromSelection', () => {
     if (session?.selection) workspace.createBrushFromSelection()
-    else workspace.setMessage(t('app.brushSelection.required'))
+    else if (session) workspace.beginTemporaryBrushCapture()
   }))
     return true
   if (session?.selection && runCommand('deselect', () => {

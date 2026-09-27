@@ -139,7 +139,7 @@ const adjustmentSnapshotInvalidationRect = (session: DocumentSession, baseline: 
   return invalidation
 }
 
-export function createLayerAdjustmentCommands({ get, set, recording }: WorkspaceCommandContext<'commitFloatingPaste' | 'mutateActive'>): Pick<WorkspaceLayerCommands, 'applyFilterPreset' | 'applyLcdScreenFilter' | 'applyActiveLayerAdjustment' | 'captureActiveLayerAdjustmentSnapshot' | 'previewActiveLayerAdjustment' | 'applyActiveLayerAdjustmentPreviewResult' | 'restoreActiveDocumentSnapshot' | 'applyActiveLayerAdjustmentFromSnapshot'> {
+export function createLayerAdjustmentCommands({ get, set, recording }: WorkspaceCommandContext<'commitFloatingPaste' | 'mutateActive' | 'applyActiveLayerAdjustmentFromSnapshot'>): Pick<WorkspaceLayerCommands, 'applyFilterPreset' | 'applyLcdScreenFilter' | 'applyActiveLayerAdjustment' | 'captureActiveLayerAdjustmentSnapshot' | 'previewActiveLayerAdjustment' | 'applyActiveLayerAdjustmentPreviewResult' | 'restoreActiveDocumentSnapshot' | 'applyActiveLayerAdjustmentFromSnapshot'> {
   const { recordDocumentOperation } = recording
   return {
     async applyFilterPreset(presetId) {
@@ -335,9 +335,14 @@ export function createLayerAdjustmentCommands({ get, set, recording }: Workspace
       }
     },
     applyActiveLayerAdjustment(adjustment) {
+      if (adjustment.kind === 'gradient-map') {
+        const current = activeSession(get())
+        if (current) get().applyActiveLayerAdjustmentFromSnapshot(adjustment, captureAdjustmentSnapshot(current))
+        return
+      }
       get().mutateActive((session) => {
         const labels: Record<ColorAdjustment['kind'], string> = {
-          'color-balance': tr('adjustment.title.colorBalance'), 'brightness-contrast': tr('adjustment.title.brightnessContrast'), 'hue-saturation': tr(adjustment.colorize ? 'adjustment.title.colorize' : 'adjustment.title.hueSaturation'), curves: tr('adjustment.title.curves')
+          'color-balance': tr('adjustment.title.colorBalance'), 'brightness-contrast': tr('adjustment.title.brightnessContrast'), 'hue-saturation': tr(adjustment.colorize ? 'adjustment.title.colorize' : 'adjustment.title.hueSaturation'), curves: tr('adjustment.title.curves'), 'gradient-map': tr('gradientMap.title')
         }
         const targetIds = distinctLinkedLayerTargets(session.document, activeLayerMask(session) ? [activeLayerMask(session)!.id] : session.selection
           ? [getActiveLayer(session.document).id]
@@ -380,6 +385,7 @@ export function createLayerAdjustmentCommands({ get, set, recording }: Workspace
     applyActiveLayerAdjustmentPreviewResult(baseline, result) {
       get().mutateActive((session) => {
         prepareAdjustmentSnapshotTargets(session, baseline, true)
+        if (result.paletteOrder) session.document.paletteOrder = [...result.paletteOrder]
         session.document.palette = result.palette.map((entry) => ({ ...entry, color: { ...entry.color } }))
         session.document.nextColorId = result.nextColorId
         let invalidation: SelectionRect | null = null
@@ -449,6 +455,7 @@ export function createLayerAdjustmentCommands({ get, set, recording }: Workspace
             else restorePreparedAdjustmentSnapshotLayer(session, layerSnapshot)
           }
         } else if (previewResult) {
+          if (previewResult.paletteOrder) session.document.paletteOrder = [...previewResult.paletteOrder]
           session.document.palette = previewResult.palette.map((entry) => ({ ...entry, color: { ...entry.color } }))
           session.document.nextColorId = previewResult.nextColorId
         }
@@ -457,7 +464,7 @@ export function createLayerAdjustmentCommands({ get, set, recording }: Workspace
         const affectedLayerIds = before.layers.map((layer) => layer.layerId)
         commitLinkedLayerAdjustmentContents(session.document, affectedLayerIds)
         const labels: Record<ColorAdjustment['kind'], string> = {
-          'color-balance': tr('adjustment.title.colorBalance'), 'brightness-contrast': tr('adjustment.title.brightnessContrast'), 'hue-saturation': tr(adjustment.colorize ? 'adjustment.title.colorize' : 'adjustment.title.hueSaturation'), curves: tr('adjustment.title.curves')
+          'color-balance': tr('adjustment.title.colorBalance'), 'brightness-contrast': tr('adjustment.title.brightnessContrast'), 'hue-saturation': tr(adjustment.colorize ? 'adjustment.title.colorize' : 'adjustment.title.hueSaturation'), curves: tr('adjustment.title.curves'), 'gradient-map': tr('gradientMap.title')
         }
         session.history.push({
           label: labels[adjustment.kind],

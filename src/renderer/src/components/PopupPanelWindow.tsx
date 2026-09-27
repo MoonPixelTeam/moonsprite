@@ -18,7 +18,8 @@ const POPUP_PANEL_DEFAULT_SIZES: Record<WorkspacePanelId, { width: number; heigh
   preview: { width: 360, height: 380 },
   reference: { width: 360, height: 380 },
   tileset: { width: 420, height: 520 },
-  brushes: { width: 380, height: 480 }
+  brushes: { width: 380, height: 480 },
+  tabletAssist: { width: 260, height: 560 }
 }
 
 export function popupPanelInitialPosition(id: WorkspacePanelId, anchor: PopupPanelAnchor, viewport: ViewportSize): FloatingPosition {

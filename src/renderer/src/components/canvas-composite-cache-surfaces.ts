@@ -133,6 +133,12 @@ export interface DrawCompositeOptions {
     revision: number
     frameId?: string
     rect?: SelectionRect
+    rects?: readonly SelectionRect[]
+    /** Only compositing properties changed; raster pixels and masks did not. */
+    compositeOnly?: true
+    propertyOwnerIds?: readonly string[]
+    /** Transient property editor preview; committed renders use full precision. */
+    propertyPreview?: true
   } | null
   frameId?: string
   isolatedLayerMask?: LayerMask
@@ -145,7 +151,7 @@ export interface DrawCompositeOptions {
   liveRasterEdit?: boolean
   /** Prefer browser compositing for animation frames that use a supported stack. */
   animationPlayback?: boolean
-  /** Reuse the editor's latest frame instead of competing to build one. */
+  /** Reuse the editor's completed composite only when it is for the exact frame. */
   animationConsumerOnly?: boolean
   /** Effective device pixels per logical canvas unit used by the caller's context. */
   devicePixelRatio?: CanvasDeviceScaleInput
@@ -156,12 +162,18 @@ export interface DrawCompositeOptions {
 }
 
 export const invalidationRegion = (invalidation: DrawCompositeOptions['contentInvalidation']): SelectionRect | undefined => (invalidation?.kind === 'region' ? invalidation.rect : undefined)
+export const invalidationRects = (invalidation: DrawCompositeOptions['contentInvalidation']): readonly SelectionRect[] =>
+  invalidation?.kind === 'region' ? (invalidation.rects ?? (invalidation.rect ? [invalidation.rect] : [])) : []
 
 export const MAX_SURFACE_DIMENSION = 8192
 
-export const MAX_CACHED_FRAMES = 32
+// Keep derived animation surfaces bounded even when a document has many frames.
+// A large surface is expensive in both the renderer heap and the browser's
+// canvas backing store, so retaining dozens of them makes long sessions grow
+// noticeably before the browser gets a chance to reclaim memory.
+export const MAX_CACHED_FRAMES = 12
 
-export const DEFAULT_MAX_CACHE_BYTES = 128 * 1024 * 1024
+export const DEFAULT_MAX_CACHE_BYTES = 64 * 1024 * 1024
 
 export const CACHE_VERSION = 10
 
@@ -213,16 +225,6 @@ export const sharedAnimationCompositeSurface = (document: SpriteDocument, frameI
   state.entries.delete(frameId)
   state.entries.set(frameId, entry)
   return entry.canvas
-}
-
-export const latestSharedAnimationCompositeSurface = (document: SpriteDocument, contentRevision: number): OffscreenCanvas | null => {
-  const entries = sharedAnimationComposites.get(document)?.entries
-  if (!entries) return null
-  const values = [...entries.values()]
-  for (let index = values.length - 1; index >= 0; index -= 1) {
-    if (values[index].contentRevision === contentRevision) return values[index].canvas
-  }
-  return null
 }
 
 export const rememberSharedAnimationComposite = (document: SpriteDocument, frameId: string, contentRevision: number, canvas: OffscreenCanvas): void => {

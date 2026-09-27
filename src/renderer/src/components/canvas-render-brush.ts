@@ -258,7 +258,7 @@ export function renderCanvasBrush({
       }
 
       if (drawPreviewOutline) {
-        const clippedRows = rowBounds.map((row) =>
+        const clippedRows = brushPreviewMode === 'full-edge' ? rowBounds : rowBounds.map((row) =>
           row.y < 0 || row.y >= document.height ? null : { ...row, left: Math.max(0, row.left), right: Math.min(document.width - 1, row.right) }
         )
         const horizontalSegment = (left: number, right: number, y: number, bottom: boolean): void => {
@@ -330,13 +330,15 @@ export function renderCanvasBrush({
       }
       const renderedPreviewPoints = new Map<string, { x: number; y: number; sampleX: number; sampleY: number; coverage: number; color: RgbaColor }>()
       for (const previewPoint of previewPoints.values()) {
-        for (const placement of tileRepeatContinuousPreviewPlacements(
+        for (const placement of ((view.tileRepeatMode ?? 'off') === 'off' && brushPreviewMode === 'full-edge'
+          ? [{ point: previewPoint, samplePoint: previewPoint }]
+          : tileRepeatContinuousPreviewPlacements(
           previewPoint,
           document.width,
           document.height,
           view.tileRepeatMode ?? 'off',
           repeatCopies
-        )) {
+        ))) {
           const key = `${placement.point.x}:${placement.point.y}`
           const previous = renderedPreviewPoints.get(key)
           if (previous && previous.coverage > previewPoint.coverage) continue
@@ -444,7 +446,7 @@ export function renderCanvasBrush({
       for (const previewPoint of renderedPreviewPoints.values()) {
         if (!previewAllowed || (previewSelection && !selectionContains(previewSelection, previewPoint.sampleX, previewPoint.sampleY))) continue
         const pixelRect = previewPixelRect(previewPoint.x, previewPoint.y)
-        if (!drawing && (brushPreviewMode === 'full' || brushPreviewMode === 'full-edge')) {
+        if (!drawing && previewPoint.sampleX >= 0 && previewPoint.sampleY >= 0 && previewPoint.sampleX < document.width && previewPoint.sampleY < document.height && (brushPreviewMode === 'full' || brushPreviewMode === 'full-edge')) {
           previewFillRects.push({
             pixelRect,
             sampleX: previewPoint.sampleX,

@@ -253,6 +253,8 @@ Overlays are sandboxed iframes in the main window, with no native window or acce
 
 Pages retain `window.getBounds/setBounds/getHostBounds/getPointerPosition/setHitRegion/startDrag/postMessage/close`, storage, resources, themes, and command state APIs. Coordinates are CSS pixels in the main client viewport, whose origin is `(0,0)`. Do not mix native-window coordinates. Pointer positions use the same coordinates and return null outside the app. Persist relative positions across presentation changes.
 
+For overlays, `getHostBounds()` also returns `screenScale` (desktop logical pixels per CSS pixel). Custom dragging based on `screenX/screenY` must divide screen deltas by this factor before updating overlay coordinates. Read it at each drag start and cancel the old gesture when host geometry changes.
+
 `setBounds({x,y,width,height})` accepts dimensions from 1 to 8192 and positions with absolute values up to 32768. The host clips overflow; extensions constrain their visible content. Call `startDrag()` after a pointer press, or implement custom dragging with pointer capture and `setBounds`. Host resizing emits `moonsprite:window-host-geometry`; position updates emit `moonsprite:window-moved`.
 
 The initial hit region is empty. `setHitRegion(sourceWidth, sourceHeight, spans)` declares visible and interactive areas using one-pixel-high `{x,y,width}` scanlines, up to 65536 spans and source dimensions of 8192. Regions scale with bounds and clip both painting and hit testing; outside input reaches the underlying app without synthetic forwarding. Include bubbles and controls in the region. Overlays sit above editor content and below host menus and dialogs; they cannot raise their stacking priority or override global cursor preferences.

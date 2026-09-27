@@ -54,3 +54,32 @@ it('does not allocate a backdrop for a mark entirely outside the canvas', () => 
   canvasAdaptiveContrast(context, { x: -10, y: 0, width: 5, height: 5 })
   expect(allocate).not.toHaveBeenCalled()
 })
+
+it.each([800, 3840])('filters only a materialized cursor crop on a %s-pixel viewport', viewportWidth => {
+  const draws: Array<{ source: unknown; args: number[]; filter: string }> = []
+  const surfaces: object[] = []
+  vi.stubGlobal('OffscreenCanvas', class {
+    private context = {
+      filter: 'none', clearRect: vi.fn(),
+      drawImage(source: unknown, ...args: number[]) { draws.push({ source, args, filter: this.filter }) }
+    }
+    constructor(public width: number, public height: number) { surfaces.push(this) }
+    getContext() { return this.context }
+  })
+  const context = {
+    canvas: { width: viewportWidth, height: 2160 },
+    getTransform: () => ({ a: 2, b: 0, c: 0, d: 2, e: 0, f: 0, inverse: () => ({ translate: vi.fn() }) }),
+    createPattern: () => ({ setTransform: vi.fn() })
+  } as unknown as RasterContext2D
+  for (let x = 10; x < 20; x++) canvasAdaptiveContrast(context, { x, y: 30, width: 8, height: 6 })
+  // Repeated pointer motion reuses two small surfaces, regardless of viewport size.
+  expect(surfaces).toHaveLength(2)
+  expect(surfaces).toEqual([expect.objectContaining({ width: 16, height: 12 }), expect.objectContaining({ width: 16, height: 12 })])
+  const copies = draws.filter(draw => draw.source === context.canvas)
+  expect(copies).toHaveLength(10)
+  expect(copies.every(draw => draw.filter === 'none')).toBe(true)
+  expect(copies[0].args).toEqual([20, 60, 16, 12, 0, 0, 16, 12])
+  const filtered = draws.filter(draw => draw.filter.includes('invert(1)'))
+  expect(filtered).toHaveLength(10)
+  expect(filtered.every(draw => draw.source === surfaces[1])).toBe(true)
+})

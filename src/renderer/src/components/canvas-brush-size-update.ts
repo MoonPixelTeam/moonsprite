@@ -34,7 +34,7 @@ export const flushCanvasBrushSize = (input: CanvasInputState): void => pendingSi
 /** Overlay sizing stays local to the gesture; commit before the next command/stroke. */
 export function queueCanvasBrushSize(input: CanvasInputState, session: DocumentSession, size: number, canvas: HTMLCanvasElement, previewOnly = false): void {
   if (!Number.isFinite(size)) return
-  size = Math.max(1, Math.min(session.tool === 'airbrush' ? 64 : 128, Math.round(size)))
+  size = Math.max(1, Math.min(64, Math.round(size)))
   const pending = pendingSizes.get(input)
   if (pending) {
     if (pending.previewOnly !== previewOnly || !pending.valid()) pending.flush()

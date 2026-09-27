@@ -10,6 +10,21 @@ import { flushCanvasBrushSize, queueCanvasBrushSize } from '../canvas-brush-size
 vi.mock('@/components/useQuickToolShortcut', () => ({ currentHeldShortcutKeyParts: () => new Set(), useQuickToolShortcut: () => null }))
 afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.useRealTimers(); useWorkspace.setState({ sessions: [], activeId: null }); document.querySelectorAll('canvas').forEach(canvas => canvas.remove()) })
 
+it('shows and clears the capture hint even when already using rectangular selection', () => {
+  useWorkspace.setState({ sessions: [], activeId: null })
+  const store = useWorkspace.getState()
+  store.addSession(createDocument('capture hint', 2, 2, 'rgba'))
+  store.setTool('selection')
+  store.setSelectionKind('rectangle')
+  const view = render(<EditorToolOptions onOpenColorReplacement={() => {}} />)
+  expect(view.container.querySelector('.temporary-brush-capture-hint')).toBeNull()
+  act(() => store.beginTemporaryBrushCapture())
+  expect(view.container.querySelector('.temporary-brush-capture-hint')).toHaveTextContent('Esc')
+  act(() => store.exitPatternBrush())
+  expect(view.container.querySelector('.temporary-brush-capture-hint')).toBeNull()
+  expect(useWorkspace.getState().sessions[0].tool).toBe('pencil')
+})
+
 it('shows the live size without publishing workspace changes or rerendering the toolbar', () => {
   vi.useFakeTimers()
   useWorkspace.setState({ sessions: [], activeId: null })
@@ -39,7 +54,7 @@ it('reuses procedural textures while size changes but rebuilds them when their s
   expect(generate).toHaveBeenCalledOnce()
   for (const size of [12, 32, 64, 128]) act(() => store.setBrushSize(size))
   expect(generate).toHaveBeenCalledOnce()
-  expect(view.container.querySelector('.brush-size-control input')).toHaveValue('128')
+  expect(view.container.querySelector('.brush-size-control input')).toHaveValue('64')
   act(() => store.setBrushImage(brushes.createProceduralBrush('procedural:noise')))
   expect(generate).toHaveBeenCalledOnce()
   act(() => store.setProceduralBrushSettings({ scale: 12 }))

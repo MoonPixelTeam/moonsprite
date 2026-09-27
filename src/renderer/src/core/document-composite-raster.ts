@@ -310,7 +310,7 @@ export const compositeMovePreviewLayersInto = (
   flushNormalLayers()
 }
 
-const compositeBufferWithModeInto = (
+export const compositeBufferWithModeInto = (
   output: Uint8ClampedArray<ArrayBufferLike>,
   source: Uint8ClampedArray<ArrayBufferLike>,
   opacity: number,

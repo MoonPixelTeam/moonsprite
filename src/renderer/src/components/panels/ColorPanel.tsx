@@ -1,3 +1,4 @@
+import { RecentColors } from './RecentColors'
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { ColorPicker, type ColorPickerConfig, type ColorPickerScheme } from '@/components/ColorPicker'
@@ -150,7 +151,7 @@ export function ColorPanel({ session, docked = false, onDockDragStart, onPanelCo
 
   return <><section ref={floating.ref} className={`panel color-panel ${panelColorSampling.active ? 'panel-color-sampling' : ''} ${floating.style ? 'floating-panel' : ''}`} style={floating.style} onPointerDown={floating.bringToFront} onPointerUp={completeColorSampling} onContextMenu={onPanelContextMenu}>
 <header aria-label={t('panel.color')} onPointerDown={(event) => floating.style ? floating.startDrag(event) : onDockDragStart?.(event, floating.startDetachedDrag)}><strong>{t('panel.color')}</strong><PanelActions className="color-scheme-control"><button type="button" title={t('color.restoreSquare')} aria-label={t('color.restoreSquare')} onClick={restoreSquare}><PixelUtilityIcon kind="paletteCenter" /></button><button ref={schemeButtonRef} type="button" className={schemeMenuOpen ? 'active' : ''} title={t('color.changeScheme')} aria-label={t('color.changeScheme')} aria-expanded={schemeMenuOpen} onClick={() => setSchemeMenuOpen((open) => !open)}><PixelUtilityIcon kind="moreLines" /></button></PanelActions></header>
-    <ColorPicker wheelHue color={session.primaryColor} secondaryColor={session.secondaryColor} onChange={setPrimary} onSecondaryChange={setSecondary} paletteColors={paletteColors} onAddPaletteColor={addPaletteColor} addToPaletteShortcut={shortcuts.addForegroundToPalette} roleControls={tileRoleControls} config={pickerConfig} />
+    <ColorPicker footer={<RecentColors onPrimary={setPrimary} onSecondary={setSecondary} />} wheelHue color={session.primaryColor} secondaryColor={session.secondaryColor} onChange={setPrimary} onSecondaryChange={setSecondary} paletteColors={paletteColors} onAddPaletteColor={addPaletteColor} addToPaletteShortcut={shortcuts.addForegroundToPalette} roleControls={tileRoleControls} config={pickerConfig} />
     {floating.style && <PanelResizeHandles onResize={floating.startResize} />}
   </section><FloatingDockPreview style={floating.dockPreview} />
   {schemeMenuOpen && createPortal(<span ref={schemeMenuRef} className="color-scheme-popover" role="menu" aria-label={t('color.schemeAria')} style={schemeMenuPosition}>

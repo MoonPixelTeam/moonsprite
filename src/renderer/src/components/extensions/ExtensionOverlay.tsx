@@ -25,10 +25,14 @@ export function ExtensionOverlay({ extensionId, definition, onClose }: { extensi
     request: async (method: string, raw: unknown) => {
       const params = (raw ?? {}) as Record<string, unknown>
       if (method === 'window.getBounds') return { ...bounds.current }
-      if (method === 'window.getHostBounds') return { x: 0, y: 0, width: window.innerWidth, height: window.innerHeight }
+      if (method === 'window.getHostBounds') {
+        const host = await extensionHostBounds()
+        // Screen coordinates are desktop logical pixels; overlay bounds use CSS pixels.
+        return { x: 0, y: 0, width: window.innerWidth, height: window.innerHeight, screenScale: host.width / window.innerWidth }
+      }
       if (method === 'window.getPointerPosition') {
         const [point, host] = await Promise.all([extensionPointerPosition(), extensionHostBounds()])
-        return point ? { x: point.x - host.x, y: point.y - host.y } : null
+        return point ? { x: (point.x - host.x) * window.innerWidth / host.width, y: (point.y - host.y) * window.innerHeight / host.height } : null
       }
       if (method === 'window.setBounds') { applyBounds(overlayBounds(params.bounds)); send.current({ kind: 'moved', position: { x: bounds.current.x, y: bounds.current.y } }); return null }
       if (method === 'window.setHitRegion') { region.current = overlayRegion(params); applyBounds(bounds.current, true); return null }

@@ -1,5 +1,4 @@
 import { clampDocumentPaneRatio, type DocumentPaneNode } from '@/core/document-pane-layout'
-import { freezeDocumentPaneCanvases } from './document-pane-resize'
 
 /** Keep internal dividers stationary: only leaves touching the resized outer
  * edge absorb its movement. Fixed tracks also work through nested splits. */
@@ -7,15 +6,9 @@ export function beginDocumentPaneDockResize(workArea: HTMLElement | null, layout
   if (!workArea) return null
   const root = workArea.querySelector<HTMLElement>('.split-workspace')
   if (!root || !layout || layout.kind !== 'split') {
-    const canvases = freezeDocumentPaneCanvases(workArea)
-    let finished = false
-    return {
-      update(): void { if (!finished) canvases.update() },
-      finish(_cancelled = false): DocumentPaneNode | null {
-        if (!finished) { finished = true; canvases.restore() }
-        return layout
-      }
-    }
+    // Canvas geometry observes the live surface and redraws before paint.
+    // Freezing here would prevent newly exposed strips from being rendered.
+    return { update(): void {}, finish(_cancelled = false): DocumentPaneNode | null { return layout } }
   }
   const horizontal = edge !== 'bottom'
   const dimension = horizontal ? 'width' : 'height'
@@ -27,7 +20,6 @@ export function beginDocumentPaneDockResize(workArea: HTMLElement | null, layout
     const size = Number.parseFloat(getComputedStyle(fixed)[dimension])
     return { element, first, second, size, original: element.style[property], originalFixed: element.style.getPropertyValue('--document-pane-fixed-track') }
   }).filter(({ size }) => Number.isFinite(size) && size > 0)
-  const canvases = freezeDocumentPaneCanvases(root)
   for (const { element, size } of splits) {
     // Retain usable panes when the outer edge reaches a divider's minimum.
     const fixed = `clamp(10%, ${size}px, calc(90% - 6px))`
@@ -38,7 +30,7 @@ export function beginDocumentPaneDockResize(workArea: HTMLElement | null, layout
   }
   let finished = false
   return {
-    update(): void { if (!finished) canvases.update() },
+    update(): void {},
     finish(cancelled = false): DocumentPaneNode {
       if (finished) return layout
       finished = true
@@ -56,7 +48,6 @@ export function beginDocumentPaneDockResize(workArea: HTMLElement | null, layout
         if (originalFixed) element.style.setProperty('--document-pane-fixed-track', originalFixed)
         else element.style.removeProperty('--document-pane-fixed-track')
       }
-      canvases.restore()
       const apply = (node: DocumentPaneNode): DocumentPaneNode => {
         if (node.kind === 'leaf') return node
         const first = apply(node.first), second = apply(node.second)

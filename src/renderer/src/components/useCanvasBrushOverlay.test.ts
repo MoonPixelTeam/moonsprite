@@ -44,10 +44,12 @@ it.each(['pencil', 'eraser'] as const)('keeps solid %s hover and drawing on the 
     liveViewRef: { current: session.view }, pressureAdapterRef: { current: new PointerPressureAdapter() },
     moveSymmetry: () => false, autoPanSelection: vi.fn(), updateCursor: vi.fn(),
     lineConnectionPreviewActive: (event: { shiftKey: boolean }) => event.shiftKey,
-    localPoint: (event: { clientX: number; clientY: number }) => ({ x: event.clientX, y: event.clientY }),
+    localPoint: (event: { clientX: number; clientY: number }) => event.clientX < 0 ? null : { x: event.clientX, y: event.clientY },
+    localContinuousPointAt: (clientX: number, clientY: number) => ({ x: clientX, y: clientY }),
     activeLayer: session.document.layers[0], interfaceScale: 1, modifierActive: () => false,
     brushPreviewOverlaySupported: result.current.brushPreviewOverlaySupported,
-    scheduleBrushPreviewOverlay: scheduleOverlay, scheduleDraw, moveQuickSampling: () => false
+    scheduleBrushPreviewOverlay: scheduleOverlay, scheduleDraw, moveQuickSampling: () => false,
+    strokeInput: { moveRaster: vi.fn(() => true) }
   } as unknown as Parameters<typeof createCanvasPointerMove>[0])
   // A → B → C must each schedule the line canvas, not just the cursor.
   for (const clientX of [100, 120, 140]) {
@@ -58,6 +60,13 @@ it.each(['pencil', 'eraser'] as const)('keeps solid %s hover and drawing on the 
   expect(scheduleDraw).toHaveBeenCalledTimes(3)
   expect(scheduleOverlay).not.toHaveBeenCalled()
   input.shiftLinePreview = false
+  const outside = { clientX: -5, clientY: 128, ctrlKey: false, altKey: false, metaKey: false, shiftKey: false, buttons: 1, pointerId: 1, pointerType: 'mouse', pressure: 0 }
+  move({ ...outside, nativeEvent: outside, currentTarget: canvas } as unknown as Parameters<typeof move>[0])
+  expect(input.pointer.point.x).toBe(-5)
+  expect(scheduleOverlay).toHaveBeenCalledOnce()
+  expect(scheduleDraw).toHaveBeenCalledTimes(3)
+  scheduleOverlay.mockClear()
+  input.pointer.point = { x: 128, y: 128 }
   if (tool === 'pencil') {
     const upper = createLayer('upper', 256, 256, 'rgba')
     session.document.layers.push(upper)
@@ -74,6 +83,24 @@ it.each(['pencil', 'eraser'] as const)('keeps solid %s hover and drawing on the 
   act(() => result.current.brushPreviewDrawRef.current())
   expect(context.stroke).toHaveBeenCalledOnce()
   expect(context.fill).toHaveBeenCalledTimes(tool === 'eraser' ? 0 : 1)
+  context.rect.mockClear()
+  context.moveTo.mockClear()
+  context.lineTo.mockClear()
+  input.pointer.point = { x: 258, y: 128 }
+  act(() => result.current.brushPreviewDrawRef.current())
+  const fillRight = Math.max(...context.rect.mock.calls.map(([x, , width]) => x + width))
+  const outlineRight = Math.max(...[...context.moveTo.mock.calls, ...context.lineTo.mock.calls].map(([x]) => x))
+  expect(outlineRight).toBeGreaterThan(fillRight)
+  context.rect.mockClear()
+  context.stroke.mockClear()
+  input.pointer.point = { x: 260, y: 128 }
+  act(() => result.current.brushPreviewDrawRef.current())
+  expect(context.rect).not.toHaveBeenCalled()
+  expect(context.stroke).toHaveBeenCalledOnce()
+  input.pointer.point = { x: 128, y: 128 }
+  context.moveTo.mockClear()
+  context.lineTo.mockClear()
+  act(() => result.current.brushPreviewDrawRef.current())
   const oldOutline = [...context.moveTo.mock.calls, ...context.lineTo.mock.calls]
   context.clearRect.mockClear()
   input.pointer.point = { x: 140, y: 140 }
@@ -90,8 +117,31 @@ it.each(['pencil', 'eraser'] as const)('keeps solid %s hover and drawing on the 
   expect(session.brushSize).toBe(8)
   act(() => flushCanvasBrushSize(input))
   input.modifierBrushSize = null
-  input.drag = { kind: 'draw', start: { x: 140, y: 140 }, last: { x: 140, y: 140 }, lastBrushSize: 4 }
+  input.drag = { kind: 'draw', start: { x: 140, y: 140 }, last: { x: 140, y: 140 }, lastBrushSize: 4, edit: {} } as CanvasInputState['drag']
   expect(result.current.brushPreviewOverlaySupported(session)).toBe(true)
+  input.pointer.point = { x: 140, y: 128 }
+  context.moveTo.mockClear()
+  act(() => result.current.brushPreviewDrawRef.current())
+  const initialOutlineX = Math.max(...context.moveTo.mock.calls.map(([x]) => x))
+  context.moveTo.mockClear()
+  const heldMove = { clientX: 258, clientY: 128, ctrlKey: false, altKey: false, metaKey: false, shiftKey: false, buttons: 1, pointerId: 1, pointerType: 'mouse', pressure: 0 }
+  move({ ...heldMove, nativeEvent: heldMove, currentTarget: canvas } as unknown as Parameters<typeof move>[0])
+  expect(scheduleOverlay).toHaveBeenCalledOnce()
+  act(() => result.current.brushPreviewDrawRef.current())
+  expect(Math.max(...context.moveTo.mock.calls.map(([x]) => x))).toBeGreaterThan(initialOutlineX)
+  scheduleOverlay.mockClear()
+  input.pointer.point = { x: 128, y: 128 }
+  if (tool === 'pencil') {
+    session.document.layers[0].blendMode = 'multiply'
+    expect(result.current.brushPreviewOverlaySupported(session)).toBe(false)
+    scheduleDraw.mockClear()
+    const outsideDraw = { clientX: -12, clientY: 128, ctrlKey: false, altKey: false, metaKey: false, shiftKey: false, buttons: 1, pointerId: 1, pointerType: 'mouse', pressure: 0 }
+    move({ ...outsideDraw, nativeEvent: outsideDraw, currentTarget: canvas } as unknown as Parameters<typeof move>[0])
+    expect(input.pointer.point.x).toBe(-12)
+    expect(scheduleDraw).toHaveBeenCalledOnce()
+    session.document.layers[0].blendMode = 'normal'
+    input.pointer.point = { x: 128, y: 128 }
+  }
   context.fill.mockClear()
   act(() => result.current.brushPreviewDrawRef.current())
   expect(context.fill).not.toHaveBeenCalled()

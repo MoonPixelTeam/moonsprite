@@ -1,3 +1,4 @@
+import { CANVAS_VIEWPORT_EVENT } from './canvas-viewport-events'
 import { useState } from 'react'
 import { act, cleanup, fireEvent, render } from '@testing-library/react'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
@@ -54,4 +55,14 @@ it('reports visibility changes and drops its subscription on unmount', () => {
   changed.mockClear()
   act(() => notifyViewPreview('large', view))
   expect(changed).not.toHaveBeenCalled()
+})
+
+
+it('uses live viewport geometry before dock resizing publishes to the store', () => {
+  let current: ReturnType<typeof useCanvasViewScrollbars>
+  function Host() { current = useCanvasViewScrollbars(options); return null }
+  render(<Host />)
+  const ratio = current!.horizontal.thumbRatio
+  act(() => { window.dispatchEvent(new CustomEvent(CANVAS_VIEWPORT_EVENT, { detail: { documentId: options.documentId, width: options.viewportWidth / 2, height: options.viewportHeight, view: options.view } })) })
+  expect(current!.horizontal.thumbRatio).toBeLessThan(ratio)
 })

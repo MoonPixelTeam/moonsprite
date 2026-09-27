@@ -24,6 +24,7 @@ import { ProjectTimelapseDialog } from '@/components/TimelapseDialog'
 import { SAVE_FORMAT_PREFERENCE_KEY, loadEditorPreferences, outputDirectoryForOperation, saveDirectoryForNewDocument } from '@/core/file-preferences'
 import { readStoredString } from '@/core/storage'
 import { documentSaveTarget } from '@/core/document-save-policy'
+import { parentDirectoryFromPath } from '@/core/export-settings'
 import { type ExportOptions, type SaveAsOptions, useWorkspace } from '@/store/workspace'
 import { useI18n } from '@/components/I18nProvider'
 import type { DocumentSession } from '@/store/workspace'
@@ -110,6 +111,8 @@ export function useAppDocumentDialogs({
           initialName={session.document.name.replace(/\.(moonsprite|aseprite|ase|png|jpe?g|webp|ico|psd)$/i, '') || 'MoonSprite-project'}
           initialFormat={runtimePreferences.saveOriginalFormat ? documentSaveTarget(session.document)?.format ?? saveAsFormatForPreference(readStoredString(SAVE_FORMAT_PREFERENCE_KEY)) : 'moonsprite'}
           initialDirectory={saveDirectoryForNewDocument(runtimePreferences) || defaultFileDirectories.saveDirectory}
+          localGalleryDirectory={defaultFileDirectories.saveDirectory}
+          projectRootDirectory={parentDirectoryFromPath(session.document.filePath ?? session.document.sourceFilePath ?? '')}
           exportScalePresets={exportScalePresets}
           onClose={() => setSaveAsOpen(false)}
           onSave={(options) => runSaveActive(true, options)}
@@ -124,6 +127,8 @@ export function useAppDocumentDialogs({
           key={spriteSheetExportSession.document.id}
           session={spriteSheetExportSession}
           defaultDirectory={outputDirectoryForOperation(runtimePreferences) || defaultFileDirectories.exportDirectory}
+          localGalleryDirectory={defaultFileDirectories.saveDirectory}
+          projectRootDirectory={parentDirectoryFromPath(spriteSheetExportSession.document.filePath ?? spriteSheetExportSession.document.sourceFilePath ?? '')}
           onClose={() => setSpriteSheetExportSourceId(null)}
           onClosePreview={workspace.closeSpriteSheetPreview}
           onExport={(options) => workspace.exportSpriteSheet(options, spriteSheetExportSession.document.id)}

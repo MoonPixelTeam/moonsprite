@@ -1,3 +1,4 @@
+import { useTabletWorkspace } from '@/components/tablet/useTabletWorkspace'
 import { loadEditorPreferences, saveEditorPreferences } from '@/core/file-preferences'
 import { persistMainWindowState } from './app-window-state'
 import { beginDocumentPaneDockResize } from './document-pane-dock-resize'
@@ -85,7 +86,7 @@ const createBuiltInDefaultWorkspace = (name: string): StoredWorkspace => ({
     inspectorLayout: defaultInspectorLayout,
     colorSquareDock: null,
     colorSquareAnchor: null,
-    floatingPanels: { color: null, palette: null, layers: null, freeTileInstances: null, history: null, preview: null, reference: null, tileset: null, brushes: null },
+    floatingPanels: { color: null, palette: null, layers: null, freeTileInstances: null, history: null, preview: null, reference: null, tileset: null, brushes: null, tabletAssist: null },
     mainWindow: null
   },
   initialLayout: {
@@ -103,7 +104,7 @@ const createBuiltInDefaultWorkspace = (name: string): StoredWorkspace => ({
     inspectorLayout: defaultInspectorLayout,
     colorSquareDock: null,
     colorSquareAnchor: null,
-    floatingPanels: { color: null, palette: null, layers: null, freeTileInstances: null, history: null, preview: null, reference: null, tileset: null, brushes: null },
+    floatingPanels: { color: null, palette: null, layers: null, freeTileInstances: null, history: null, preview: null, reference: null, tileset: null, brushes: null, tabletAssist: null },
     mainWindow: null
   }
 })
@@ -222,6 +223,8 @@ export function useAppWorkspaceLayout({ homeOpen, documentId, documentPaneLayout
       return next
     })
   }, [])
+
+  useTabletWorkspace(updatePanelVisibility)
 
   const publishShortcutCommand = useCallback(
     (id: ShortcutId, panelId?: WorkspacePanelId): void => {

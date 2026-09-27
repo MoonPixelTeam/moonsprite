@@ -1,10 +1,58 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { createDocument, createLayerMask, getActiveLayer, writeLayerColor } from './document'
 import { ensureAnimationDocument } from './animation'
 import { compositeRegion } from './document-composite'
 import { createTimelapseCaptureCache, prepareTimelapseSnapshot } from './timelapse'
+import * as layerStyles from './layer-styles'
 
 describe('immutable timelapse capture', () => {
+  it('recomputes only the local style pixels when recording a small stroke on a 256px canvas', () => {
+    const document = createDocument('styled recording', 256, 256, 'rgba', true)
+    const layer = getActiveLayer(document)
+    layer.layerStyles = layerStyles.createDefaultLayerStyles()
+    layer.layerStyles.stroke.enabled = true
+    for (const [x, y] of [[8, 8], [240, 240], [30, 30]]) {
+      writeLayerColor(document, layer, y * 256 + x, { r: 200, g: 70, b: 20, a: 255 })
+    }
+    const cache = createTimelapseCaptureCache()
+    const first = prepareTimelapseSnapshot(document, 1, { cache, contentRevision: 1 })!
+    writeLayerColor(document, layer, 30 * 256 + 30, { r: 20, g: 70, b: 200, a: 128 })
+    const sample = vi.spyOn(layerStyles, 'applyLayerStylesAt')
+    let work: number
+    let next: ReturnType<typeof prepareTimelapseSnapshot>
+    try {
+      next = prepareTimelapseSnapshot(document, 2, { cache, contentRevision: 2,
+        contentInvalidation: { kind: 'region', fromRevision: 1, revision: 2, rect: { x: 29, y: 29, width: 3, height: 3 } } })
+      work = sample.mock.calls.length
+    } finally { sample.mockRestore() }
+    expect(next!.pixels).toEqual(prepareTimelapseSnapshot(document)!.pixels)
+    expect(first.pixels[(30 * 256 + 30) * 4]).toBe(200)
+    expect(work).toBeGreaterThan(0)
+    expect(work).toBeLessThanOrEqual(25)
+  })
+
+  it.each([256, 1301])('keeps styled groups correct across partial erases and revision gaps (width=%s)', (width) => {
+    const document = createDocument('group recording', width, 16, 'rgba', true)
+    document.timelapse!.quality = 'low'
+    const layer = getActiveLayer(document)
+    layer.groupId = 'styled'
+    const styles = layerStyles.createDefaultLayerStyles()
+    styles.stroke.enabled = true
+    styles.stroke.size = 2
+    styles.stroke.followOpacity = true
+    document.groups.push({ id: 'styled', name: 'Styled', visible: true, locked: false, opacity: 0.7, blendMode: 'normal', layerStyles: styles })
+    for (const x of [60, 64, 68, 190]) writeLayerColor(document, layer, 8 * width + x, { r: 200, g: 70, b: 20, a: 128 })
+    const cache = createTimelapseCaptureCache()
+    prepareTimelapseSnapshot(document, 1, { cache, contentRevision: 1 })
+    for (const revision of [2, 4]) {
+      const x = revision === 2 ? 64 : 190
+      writeLayerColor(document, layer, 8 * width + x, { r: 0, g: 0, b: 0, a: 0 })
+      const partial = prepareTimelapseSnapshot(document, revision, { cache, contentRevision: revision,
+        contentInvalidation: { kind: 'region', fromRevision: revision - 1, revision, rect: { x: 62, y: 6, width: 5, height: 5 } } })!
+      expect(partial.pixels).toEqual(prepareTimelapseSnapshot(document)!.pixels)
+    }
+  })
+
   it.each([false, true])('matches nearest-neighbor compositing when downscaled (masked group=%s)', (masked) => {
     const document = createDocument('scaled recording', 1301, 7, 'rgba', true)
     document.timelapse!.quality = 'low'

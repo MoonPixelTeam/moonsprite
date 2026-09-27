@@ -1,6 +1,6 @@
 import { completeDocumentChange } from './workspace-document-change'
 import type { SelectionMask } from '@shared/types-selection'
-import { commitPixelEdit, revertPixelEdit } from '@/core/history'
+import { commitPixelEdit, revertPixelEdit, type ContentInvalidationHint } from '@/core/history'
 import { invalidateRasterContentBounds } from '@/core/document-model'
 import { isLayerEffectivelyLocked, isLayerEffectivelyVisible } from '@/core/document-model'
 import { ensureAnimationDocument } from '@/core/animation'
@@ -368,12 +368,23 @@ export function createSelectionFlipCommands({ get, recording }: WorkspaceCommand
           })
         }
       }
+      const invalidation: ContentInvalidationHint = { kind: 'full' }
       get().mutateActive((session) => {
+        const previousEntry = session.history.latestUndoEntry
+        const previousRevision = session.contentRevision
         applyFlip(session)
+        const entry = session.history.latestUndoEntry
+        // Pixel history already knows the affected region. Do not turn every
+        // small flip into a full-canvas composite at the mutation boundary.
+        // Paths that explicitly invalidate content (styled/structural edits)
+        // and multi-frame/link changes retain their full invalidation.
+        if (session.contentRevision === previousRevision && entry !== previousEntry && entry?.invalidation?.kind === 'region') {
+          Object.assign(invalidation, entry.invalidation, { rect: { ...entry.invalidation.rect } })
+        }
         // All flip paths retain selection guides, including batches and source
         // edits that advance the revision before mutateActive finalizes it.
         session.selectionGuidesPreservedAtContentRevision = session.contentRevision + 1
-      })
+      }, true, false, false, invalidation)
     }
   }
 }

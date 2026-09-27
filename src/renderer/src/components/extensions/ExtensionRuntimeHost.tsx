@@ -1,4 +1,5 @@
 import { loadEditorPreferences } from '@/core/file-preferences'
+import { clearExtensionFileDrop, setExtensionFileDrop } from '@/core/extension-file-drop'
 import { EXTENSION_EDITOR_EVENTS } from '@/core/extension-editor-events'
 import { editorEventSnapshot, changedEditorEvents } from '@/store/workspace-extension-events'
 import { CANVAS_COLOR_SAMPLING_COMPLETED_EVENT } from '@/components/color-sampling-events'
@@ -42,7 +43,7 @@ const runtimeBootstrap = `(() => {
   const domain = (name, methods) => Object.freeze(Object.fromEntries(methods.map(method => [method, (params) => call(name + '.' + method, params)])));
   const api = Object.freeze({
     apiVersion: '1.0.0', call, on,
-    runtime: domain('runtime', ['getCapabilities', 'getLocale']), commands: domain('commands', ['execute']), menus: domain('menus', ['setItems']),
+    runtime: domain('runtime', ['getCapabilities', 'getLocale', 'setFileDropTypes']), commands: domain('commands', ['execute']), menus: domain('menus', ['setItems']),
     ui: domain('ui', ['notify', 'openSettings']), windows: domain('windows', ['open', 'close', 'postMessage', 'setVisible']), workspace: domain('workspace', ['listProjects', 'getActiveProject', 'activateProject']),
     document: domain('document', ['getSummary', 'getLayers', 'getFrames', 'undo', 'redo']),
     tools: domain('tools', ['getActive', 'setActive']), colors: domain('colors', ['get', 'setPrimary', 'setSecondary']),
@@ -146,6 +147,7 @@ function ExtensionRuntimeFrame({ extension, session, homeOpen, onRunLuaScript, o
       || (event.type === 'command' && permissions.includes('commands'))
       || (event.type === 'settings-changed' && permissions.includes('storage'))
       || (event.type === 'window-message' && permissions.includes('windows'))
+      || (event.type === 'files-dropped' && permissions.includes('io'))
       || (['editor-event', 'interaction', 'clock', 'document-saved', 'export-complete'].includes(event.type) && permissions.includes('events'))
     if (allowed) send(event)
   }
@@ -174,6 +176,7 @@ function ExtensionRuntimeFrame({ extension, session, homeOpen, onRunLuaScript, o
   }, [extension.id, permissions])
 
   useEffect(() => registerExtensionRuntime(extension.id, sendAuthorized), [extension.id, permissions])
+  useEffect(() => () => clearExtensionFileDrop(extension.id), [extension.id, permissions])
 
   useEffect(() => {
     let previous = loadEditorPreferences().language
@@ -362,6 +365,7 @@ async function handleRequest(
   if (!extensionRuntimeAllows(permissions, method)) throw new Error(`扩展未获准调用 ${method}。`)
   const params = objectParams(rawParams)
   if (method === 'runtime.getLocale') return { locale: loadEditorPreferences().language }
+  if (method === 'runtime.setFileDropTypes') { setExtensionFileDrop(extension.id, params.extensions); return null }
   const workspace = useWorkspace.getState()
   const active = workspace.sessions.find((candidate) => candidate.document.id === workspace.activeId) ?? null
   if (method === 'runtime.getCapabilities') return { apiVersion: EXTENSION_RUNTIME_API_VERSION, permissions, editorEvents: permissions.includes('events') ? EXTENSION_EDITOR_EVENTS : [], windowPresentations: permissions.includes('windows') ? ['native', 'dialog', 'overlay'] : [], methods: Object.keys(extension.runtime ? permissions.reduce<Record<string, true>>((result, permission) => {

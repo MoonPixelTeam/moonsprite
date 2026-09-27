@@ -67,14 +67,14 @@ function Harness() {
 const session = () => useWorkspace.getState().sessions[0]
 
 describe('palette selection gestures and clipboard', () => {
-  it('moves manual colors into unused rows and restores their slots on undo', () => {
+  it.each([0, 2])('moves manual colors with button %s and restores their slots on undo', button => {
     localStorage.setItem('moonsprite.palette-layout-mode', 'manual')
     useWorkspace.getState().selectPaletteColors([1, 2], 1)
     const before = [...session().document.paletteSlots!]
     const { container } = render(<Harness />)
     const grid = container.querySelector('.swatch-grid')!
-    fireEvent.pointerDown(container.querySelector('[data-palette-slot="0"]')!, { button: 0, clientX: 25, clientY: 10 })
-    fireEvent.pointerMove(grid, { clientX: 273, clientY: 149, buttons: 1 })
+    fireEvent.pointerDown(container.querySelector('[data-palette-slot="0"]')!, { button, clientX: 25, clientY: 10 })
+    fireEvent.pointerMove(grid, { clientX: 273, clientY: 149, buttons: button === 2 ? 2 : 1 })
     expect(container.querySelector('[data-palette-slot="48"]')).toHaveAttribute('data-palette-id', '1')
     expect(container.querySelector('[data-palette-slot="49"]')).toHaveAttribute('data-palette-id', '2')
     fireEvent.pointerUp(grid, { clientX: 273, clientY: 149 })

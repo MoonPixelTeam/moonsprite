@@ -1,7 +1,7 @@
 import { useRef } from 'react'
 import { flushSync } from 'react-dom'
 
-/** Immediate marquee feedback; frame-coalesced content-move feedback. */
+/** Process the latest pointer once per display frame, before painting. */
 export function useAnimationPointerQueue(move: (event: PointerEvent) => void) {
   const latestMove = useRef(move)
   latestMove.current = move
@@ -14,21 +14,15 @@ export function useAnimationPointerQueue(move: (event: PointerEvent) => void) {
     pending.event = null
     return event
   }
-  const schedule = (event: PointerEvent, immediate: boolean): void => {
-    if (immediate) {
-      // Range selection skips unchanged cells; crossing a boundary should
-      // update React during input without adding another display tick.
-      take()
-      flushSync(() => latestMove.current(event))
-      return
-    }
+  const schedule = (event: PointerEvent): void => {
     const pending = pendingRef.current
     pending.event = event
     if (pending.frame !== null) return
     pending.frame = window.requestAnimationFrame(() => {
       pending.frame = null
       const next = take()
-      // Commit the coalesced drop feedback before returning to paint.
+      // Range selection can derive the entire timeline. Skip intermediate
+      // pointer positions that cannot be painted, then commit before paint.
       if (next) flushSync(() => latestMove.current(next))
     })
   }

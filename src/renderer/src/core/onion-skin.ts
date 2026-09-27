@@ -5,6 +5,7 @@ import { resolveAnimationLoopSectionRange } from './animation-loop-sections'
 import { animationCelAt, layerFromAnimationCel, animationLayersAtFrame, ensureAnimationDocument, resolveAnimationCel } from './animation'
 import { compositeDocument, compositeRegion, createCompositePointSampler, createNormalCompositePointSampler } from './document-composite'
 import { isLayerEffectivelyVisible, layerContentBounds } from './document-model'
+import { shareRasterLayer } from './layer-preview'
 import { layerStyleOutputBounds } from './layer-styles'
 import type { RasterLayer } from '@shared/types-layer'
 import { blendOver, TRANSPARENT } from './raster'
@@ -22,7 +23,11 @@ const documentForAnimationLayerComposite = (document: SpriteDocument, layers: Sp
   return {
     ...document,
     animation,
-    layers: layers.map((layer) => ({ ...layer, visible: layer.id === layerId && layer.visible })),
+    layers: layers.map((layer) => {
+      const shared = shareRasterLayer(layer)
+      shared.visible = layer.id === layerId && layer.visible
+      return shared
+    }),
     groups: document.groups.map((group) => ({ ...group, visible: visibleGroups.has(group.id) && group.visible }))
   }
 }
@@ -155,9 +160,14 @@ export const createOnionSkinDisplayDocument = (
     for (const ref of refs) {
       const source = layerFromAnimationCel(active, resolveAnimationCel(timeline, animationCelAt(timeline, active.id, ref.frameId)))
       if (!source) continue
+      // This is a fresh display layer. Spreading it reads the lazy pixels
+      // accessor and expands the neighboring cel's entire sparse raster.
+      source.groupId = null
+      source.clippingMask = false
+      source.blendMode = 'normal'
       const isolated: SpriteDocument = {
         ...document,
-        layers: [{ ...source, groupId: null, clippingMask: false, blendMode: 'normal' }],
+        layers: [source],
         groups: [],
         animation: { ...timeline, activeFrameId: ref.frameId }
       }

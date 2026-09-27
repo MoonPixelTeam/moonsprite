@@ -1,3 +1,5 @@
+import type { GradientMapSettings } from '@shared/types-gradient-map'
+import { createGradientMapSampler, normalizeGradientMap } from './gradient-map'
 import type { RasterLayer } from '@shared/types-layer'
 import type { RgbaColor } from '@shared/types-color'
 import type { SelectionMask, SelectionRect } from '@shared/types-selection'
@@ -8,7 +10,7 @@ import { translateCurrent as tr } from './localization'
 import { packColor, rgbToHsv } from './raster'
 import { selectionContains } from './selection'
 
-export type AdjustmentKind = 'color-balance' | 'brightness-contrast' | 'hue-saturation' | 'curves'
+export type AdjustmentKind = 'color-balance' | 'brightness-contrast' | 'hue-saturation' | 'curves' | 'gradient-map'
 export type CurveChannel = 'rgb' | 'red' | 'green' | 'blue'
 export interface CurvePoint { x: number; y: number }
 
@@ -21,6 +23,7 @@ export interface CurveHistogram {
 
 export interface ColorAdjustment {
   kind: AdjustmentKind
+  gradientMap?: GradientMapSettings
   shadows?: number
   midtones?: number
   highlights?: number
@@ -53,6 +56,7 @@ const identityCurvePoints = (points: CurvePoint[] | undefined): boolean => !poin
   || (points.length === 2 && points[0].x === 0 && points[0].y === 0 && points[1].x === 255 && points[1].y === 255)
 
 export const isColorAdjustmentIdentity = (adjustment: ColorAdjustment): boolean => {
+  if (adjustment.kind === 'gradient-map') return false
   if (adjustment.kind === 'hue-saturation' && adjustment.colorize) return false
   if (adjustment.kind === 'brightness-contrast') return (adjustment.brightness ?? 0) === 0 && (adjustment.contrast ?? 0) === 0
   if (adjustment.kind === 'hue-saturation') return (adjustment.hue ?? 0) === 0 && (adjustment.saturation ?? 0) === 0 && (adjustment.lightness ?? 0) === 0
@@ -280,8 +284,9 @@ const colorBalancePackedRgb = (red: number, green: number, blue: number, adjustm
   return clamp(nextRed) | (clamp(nextGreen) << 8) | (clamp(nextBlue) << 16)
 }
 
-export function adjustColor(color: RgbaColor, adjustment: ColorAdjustment, preparedCurve?: Uint8Array | PreparedCurveLuts): RgbaColor {
+export function adjustColor(color: RgbaColor, adjustment: ColorAdjustment, preparedCurve?: Uint8Array | PreparedCurveLuts, x = 0, y = 0, gradientMap?: ReturnType<typeof createGradientMapSampler>): RgbaColor {
   if (color.a === 0) return color
+  if (adjustment.kind === 'gradient-map') return (gradientMap ?? createGradientMapSampler(normalizeGradientMap(adjustment.gradientMap)))(color, x, y)
   if (adjustment.kind === 'brightness-contrast') {
     const brightness = (adjustment.brightness ?? 0) * 2.55
     const contrast = (adjustment.contrast ?? 0) / 100
@@ -595,13 +600,14 @@ export function applyColorAdjustmentDirect(
       return
     }
     const preparedCurve = adjustment.kind === 'curves' ? prepareCurveLuts(adjustment) : undefined
+    const gradientMap = adjustment.kind === 'gradient-map' ? createGradientMapSampler(normalizeGradientMap(adjustment.gradientMap)) : undefined
     const visit = region
       ? (callback: (index: number) => void): void => visitAdjustmentRegionIndices(layer, selection, region, callback)
       : (callback: (index: number) => void): void => visitAdjustmentIndices(layer, selection, callback)
     visit((index) => {
       const offset = index * 4
       const alpha = source[offset + 3]
-      const next = adjustColor({ r: source[offset], g: source[offset + 1], b: source[offset + 2], a: alpha }, adjustment, preparedCurve)
+      const next = adjustColor({ r: source[offset], g: source[offset + 1], b: source[offset + 2], a: alpha }, adjustment, preparedCurve, layer.offsetX + index % layer.width, layer.offsetY + Math.floor(index / layer.width), gradientMap)
       const packed = normalizeLayerPackedValue(document, layer, packColor(next))
       target[offset] = packed & 0xff
       target[offset + 1] = (packed >>> 8) & 0xff
@@ -622,14 +628,16 @@ export function applyColorAdjustmentDirect(
     if (!paletteIdByColor.has(key)) paletteIdByColor.set(key, entry.id)
   }
   const preparedCurve = adjustment.kind === 'curves' ? prepareCurveLuts(adjustment) : undefined
-  const adjustedIdBySourceId = new Map<number, number>()
-  const adjustedId = (sourceId: number): number => {
-    const cached = adjustedIdBySourceId.get(sourceId)
+  const gradientMap = adjustment.kind === 'gradient-map' ? createGradientMapSampler(normalizeGradientMap(adjustment.gradientMap)) : undefined
+  const adjustedIdBySourceId = new Map<string, number>()
+  const adjustedId = (sourceId: number, index: number): number => {
+    const keyId = gradientMap && adjustment.gradientMap?.dither !== 'none' ? `${sourceId}:${index % layer.width % 8}:${Math.floor(index / layer.width) % 8}` : String(sourceId)
+    const cached = adjustedIdBySourceId.get(keyId)
     if (cached !== undefined) return cached
     const current = paletteById.get(sourceId) ?? { r: 0, g: 0, b: 0, a: 0 }
-    const next = adjustColor(current, adjustment, preparedCurve)
+    const next = adjustColor(current, adjustment, preparedCurve, layer.offsetX + index % layer.width, layer.offsetY + Math.floor(index / layer.width), gradientMap)
     if (next.a === 0) {
-      adjustedIdBySourceId.set(sourceId, 0)
+      adjustedIdBySourceId.set(keyId, 0)
       return 0
     }
     const key = packColor(next)
@@ -640,18 +648,22 @@ export function applyColorAdjustmentDirect(
       paletteById.set(id, next)
       paletteIdByColor.set(key, id)
     }
+    // Applying an indexed gradient map keeps indices and adds the mapped colors
+    // to the visible palette, retaining the source alpha exactly.
+    if (gradientMap && !document.paletteOrder.includes(id)) document.paletteOrder.push(id)
     const normalized = normalizeLayerPackedValue(document, layer, id)
-    adjustedIdBySourceId.set(sourceId, normalized)
+    adjustedIdBySourceId.set(keyId, normalized)
     return normalized
   }
-  if (region) visitAdjustmentRegionIndices(layer, selection, region, (index) => { target[index] = adjustedId(source[index]) })
-  else visitAdjustmentIndices(layer, selection, (index) => { target[index] = adjustedId(source[index]) })
+  if (region) visitAdjustmentRegionIndices(layer, selection, region, (index) => { target[index] = adjustedId(source[index], index) })
+  else visitAdjustmentIndices(layer, selection, (index) => { target[index] = adjustedId(source[index], index) })
   preserveContentBounds()
 }
 
 export function applyColorAdjustment(document: SpriteDocument, layer: RasterLayer, adjustment: ColorAdjustment, selection: SelectionMask | null = null): PixelEdit {
   const edit = beginPixelEdit(layer.id)
   const preparedCurve = adjustment.kind === 'curves' ? prepareCurveLuts(adjustment) : undefined
+  const gradientMap = adjustment.kind === 'gradient-map' ? createGradientMapSampler(normalizeGradientMap(adjustment.gradientMap)) : undefined
   const total = layer.width * layer.height
   for (let index = 0; index < total; index += 1) {
     if (selection) {
@@ -660,7 +672,7 @@ export function applyColorAdjustment(document: SpriteDocument, layer: RasterLaye
       if (!selectionContains(selection, x, y)) continue
     }
     const current = readLayerColor(document, layer, index)
-    const next = adjustColor(current, adjustment, preparedCurve)
+    const next = adjustColor(current, adjustment, preparedCurve, layer.offsetX + index % layer.width, layer.offsetY + Math.floor(index / layer.width), gradientMap)
     const packed = layer.format === 'rgba' ? packColor(next) : next.a === 0 ? 0 : (() => {
       const existing = document.palette.find((entry) => entry.color.r === next.r && entry.color.g === next.g && entry.color.b === next.b && entry.color.a === next.a)
       if (existing) return existing.id
@@ -668,6 +680,7 @@ export function applyColorAdjustment(document: SpriteDocument, layer: RasterLaye
       document.palette.push({ id, name: tr('core.document.colorName', { id }), color: next })
       return id
     })()
+    if (gradientMap && layer.format === 'indexed' && packed !== 0 && !document.paletteOrder.includes(packed)) document.paletteOrder.push(packed)
     recordPixel(document, layer, edit, index, packed)
   }
   return edit

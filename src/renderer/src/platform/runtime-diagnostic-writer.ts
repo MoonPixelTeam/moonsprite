@@ -8,6 +8,8 @@ const importantEvent = (event: RuntimeDiagnosticEvent): boolean => event.kind ==
   || event.kind === 'operation-slow'
   || event.kind === 'main-thread-stall'
   || event.kind === 'long-task'
+  || event.name === 'lag.incident'
+  || event.name === 'lag.attribution'
   || (event.kind === 'operation-end' && event.detail.outcome === 'error')
 
 export const createDiagnosticWriter = (

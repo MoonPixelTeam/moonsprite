@@ -16,12 +16,14 @@ interface SaveAsDialogProps {
   initialName: string
   initialFormat: SaveAsOptions['format']
   initialDirectory: string
+  localGalleryDirectory?: string
+  projectRootDirectory?: string
   exportScalePresets: readonly number[]
   onSave: (options: SaveAsOptions) => Promise<boolean>
   onClose: () => void
 }
 
-export function SaveAsDialog({ initialName, initialFormat, initialDirectory, exportScalePresets, onSave, onClose }: SaveAsDialogProps) {
+export function SaveAsDialog({ initialName, initialFormat, initialDirectory, localGalleryDirectory = initialDirectory, projectRootDirectory = '', exportScalePresets, onSave, onClose }: SaveAsDialogProps) {
   const { t } = useI18n()
   const saveAsFormatOptions: Array<{ value: SaveAsOptions['format']; label: string }> = [
     { value: 'moonsprite', label: t('saveAs.format.moonsprite') },
@@ -62,7 +64,7 @@ export function SaveAsDialog({ initialName, initialFormat, initialDirectory, exp
         <FormField className="export-file-field" label={t('saveAs.fileName')} hint={<span className="export-selected-directory" title={selectedDirectory}>{t('saveAs.selectedDirectory', { path: selectedDirectory })}</span>}>
           <div className="export-file-control">
             <TextInput autoFocus aria-label={t('saveAs.fileName')} value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} />
-            <FileLocationPicker directory={selectedDirectory} defaultDirectory={initialDirectory} localGalleryDirectory={initialDirectory} recentPathKind="save" open={pathMenuOpen} onOpenChange={setPathMenuOpen} onChooseDirectory={chooseDirectory} onSelectDirectory={(directory) => setForm((current) => ({ ...current, directory }))} disabled={saving} />
+            <FileLocationPicker directory={selectedDirectory} defaultDirectory={initialDirectory} localGalleryDirectory={localGalleryDirectory} projectRootDirectory={projectRootDirectory} recentPathKind="save" open={pathMenuOpen} onOpenChange={setPathMenuOpen} onChooseDirectory={chooseDirectory} onSelectDirectory={(directory) => setForm((current) => ({ ...current, directory }))} disabled={saving} />
           </div>
         </FormField>
         <div className="export-primary-fields">

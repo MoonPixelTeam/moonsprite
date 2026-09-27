@@ -183,7 +183,7 @@ export const normalCompositeLayers = (document: SpriteDocument, allowLayerBlendM
       if (item.kind === 'layer') {
         if (!item.layer.visible || item.layer.opacity <= 0) continue
         if (activeMasks.has(item.layer.id)) return null
-        if (item.layer.clippingMask === true || hasEnabledLayerStyles(item.layer.layerStyles)) return null
+        if (item.layer.clippingMask === true || (item.layer.kind === 'adjustment' || hasEnabledLayerStyles(item.layer.layerStyles))) return null
         if (item.layer.blendMode !== 'normal') {
           // An empty non-normal layer has no effect and must not force the
           // whole document onto the opacity-group compositor.
@@ -219,7 +219,7 @@ export const opacityGroupCompositeStack = (document: SpriteDocument): CompositeS
       if (item.kind === 'layer') {
         if (!item.layer.visible || item.layer.opacity <= 0) continue
         if (activeMasks.has(item.layer.id)) return null
-        if (item.layer.clippingMask === true || hasEnabledLayerStyles(item.layer.layerStyles)) return null
+        if (item.layer.clippingMask === true || (item.layer.kind === 'adjustment' || hasEnabledLayerStyles(item.layer.layerStyles))) return null
         if (item.layer.blendMode !== 'normal') {
           if (layerContentBounds(document, item.layer)) prepared.push(item)
           continue

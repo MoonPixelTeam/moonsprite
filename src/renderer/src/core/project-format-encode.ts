@@ -1,3 +1,4 @@
+import { cloneLayerAdjustment } from './layer-adjustment'
 import { strToU8, zipSync, type Zippable } from 'fflate'
 import { type AnimationCelSurface } from '@shared/types-animation'
 import { type LayerGroup, type LayerMask, type RasterLayer } from '@shared/types-layer'
@@ -211,7 +212,7 @@ export const createProjectArchiveFiles = (document: SpriteDocument, options: Pro
       ...(layer.autoLinkAnimationCels === true ? { autoLinkAnimationCels: true } : {}),
       ...(layer.displayColor ? { displayColor: layer.displayColor } : {}),
       ...(layer.description ? { description: layer.description } : {}),
-      ...(layer.kind === 'text' || layer.kind === 'tilemap' || layer.kind === 'free-tile' ? { kind: layer.kind } : {}),
+      ...(layer.kind === 'text' || layer.kind === 'tilemap' || layer.kind === 'free-tile' || layer.kind === 'adjustment' ? { kind: layer.kind } : {}),
       ...(layer.kind === 'tilemap' && layer.tilemapTilesetId ? { tilemapTilesetId: layer.tilemapTilesetId } : {}),
       ...(layer.kind === 'free-tile' && layer.freeTileSetId ? { freeTileSetId: layer.freeTileSetId } : {}),
       ...(layer.kind === 'free-tile' && layer.freeTileSources
@@ -227,7 +228,7 @@ export const createProjectArchiveFiles = (document: SpriteDocument, options: Pro
       opacity: layer.opacity,
       blendMode: layer.blendMode,
       ...(layer.clippingMask === true ? { clippingMask: true } : {}),
-      ...(layer.layerStyles ? { layerStyles: cloneLayerStyles(layer.layerStyles) } : {}),
+      ...(layer.kind === 'adjustment' ? { adjustment: cloneLayerAdjustment(layer.adjustment) } : layer.layerStyles ? { layerStyles: cloneLayerStyles(layer.layerStyles) } : {}),
       ...(layer.background ? { background: { ...layer.background } } : {}),
       groupId: layer.groupId ?? null,
       width: encoded.width,

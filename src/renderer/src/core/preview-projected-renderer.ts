@@ -16,7 +16,7 @@ export function createPreviewProjectedRenderer(document: SpriteDocument, isolate
   const layers = isolatedLayer ? [isolatedLayer] : plain ? normalCompositeLayers(document) : null
   const palette = sharedPalette ?? new Map(document.palette.map(entry => [entry.id, entry.color]))
   if (!layers && supportsIncrementalPreview(document)) return createProjectedStackRenderer(document, layer =>
-    createPreviewProjectedRenderer(document, { ...layer, opacity: 1 }, palette))
+    createPreviewProjectedRenderer(document, layer, palette))
   const fallback = layers ? null : createPreviewPointSampler(document)
   return (xs: Int32Array, ys: Int32Array, output: Uint8ClampedArray): void => {
     output.fill(0)
@@ -30,6 +30,9 @@ export function createPreviewProjectedRenderer(document: SpriteDocument, isolate
       return
     }
     for (const layer of layers) {
+      // The stack applies owner opacity after isolation. Keep the source object:
+      // spreading a lazy raster invokes its pixels getter and expands every layer.
+      const opacity = isolatedLayer ? 1 : layer.opacity
       let left = 0, right = xs.length, top = 0, bottom = ys.length
       while (left < right && xs[left] < Math.max(0, layer.offsetX)) left++
       while (right > left && xs[right - 1] >= Math.min(document.width, layer.offsetX + layer.width)) right--
@@ -52,10 +55,10 @@ export function createPreviewProjectedRenderer(document: SpriteDocument, isolate
           if (!a) continue
           const r = c?.r ?? packed & 255, g = c?.g ?? packed >>> 8 & 255, b = c?.b ?? packed >>> 16 & 255
           const i = (y * xs.length + x) * 4
-          if (layer.opacity === 1 && (!output[i + 3] || a === 255)) {
+          if (opacity === 1 && (!output[i + 3] || a === 255)) {
             output[i] = r; output[i + 1] = g; output[i + 2] = b; output[i + 3] = a
           } else {
-            const sa = a / 255 * layer.opacity, da = output[i + 3] / 255, alpha = sa + da * (1 - sa)
+            const sa = a / 255 * opacity, da = output[i + 3] / 255, alpha = sa + da * (1 - sa)
             output[i] = Math.round((r * sa + output[i] * da * (1 - sa)) / alpha)
             output[i + 1] = Math.round((g * sa + output[i + 1] * da * (1 - sa)) / alpha)
             output[i + 2] = Math.round((b * sa + output[i + 2] * da * (1 - sa)) / alpha)

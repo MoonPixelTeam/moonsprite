@@ -1,13 +1,11 @@
-import { act, cleanup, fireEvent, render, renderHook } from '@testing-library/react'
+import { act, cleanup, fireEvent, render } from '@testing-library/react'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { createDocument } from '@/core/document'
-import { DEFAULT_TABLET_PREFERENCES } from '@/core/file-preferences'
 import { beginCanvasToolGesture, clearCanvasToolGestures } from '@/core/canvas-tool-gesture-lock'
-import { resetTabletInteraction, setTabletPanelMode, tabletTemporaryTool } from '@/core/tablet-interaction'
+import { resetTabletInteraction, tabletTemporaryTool } from '@/core/tablet-interaction'
 import { useWorkspace } from '@/store/workspace'
 import { TabletPressButton } from './TabletPressButton'
 import { TabletAssistBar } from './TabletAssistBar'
-import { useTabletPanelGestures } from './useTabletPanelGestures'
 
 beforeEach(() => {
   vi.useFakeTimers(); localStorage.clear(); resetTabletInteraction(); clearCanvasToolGestures()
@@ -40,41 +38,6 @@ it('latches only on click and releases keyboard holds on unmount', () => {
   expect(change).toHaveBeenLastCalledWith(false)
 })
 
-function panel() {
-  const element = document.createElement('section'); element.className = 'panel tablet-test-panel'
-  const row = document.createElement('button'); row.dataset.layerId = 'layer'
-  element.append(row); document.body.append(element)
-  const downstream = vi.fn(); row.addEventListener('pointerdown', downstream)
-  const select = vi.spyOn(useWorkspace.getState(), 'selectLayer').mockImplementation(() => {})
-  renderHook(() => useTabletPanelGestures(true))
-  const packet = (id = 1, x = 10) => ({ pointerId: id, pointerType: 'touch', button: 0, clientX: x, clientY: 10 })
-  return { row, downstream, select, packet }
-}
-it('selects on release, suppresses drag initiation, and lets scrolling cancel selection', () => {
-  const { row, downstream, select, packet } = panel()
-  fireEvent.pointerDown(row, packet()); expect(select).not.toHaveBeenCalled(); expect(downstream).not.toHaveBeenCalled()
-  fireEvent.pointerUp(row, packet()); expect(select).toHaveBeenCalledExactlyOnceWith('layer', 'replace')
-  select.mockClear()
-  fireEvent.pointerDown(row, packet()); fireEvent.pointerMove(row, packet(1, 50)); fireEvent.pointerUp(row, packet(1, 50))
-  expect(select).not.toHaveBeenCalled()
-})
-it('supports multi-select, explicit drag mode and the dedicated drag grip', () => {
-  const { row, downstream, select, packet } = panel()
-  setTabletPanelMode('select'); fireEvent.pointerDown(row, packet()); fireEvent.pointerUp(row, packet())
-  expect(select).toHaveBeenLastCalledWith('layer', 'toggle')
-  setTabletPanelMode('move'); fireEvent.pointerDown(row, packet()); expect(downstream).toHaveBeenCalledOnce()
-  setTabletPanelMode('browse')
-  const grip = document.createElement('span'); grip.dataset.tabletDragHandle = ''; row.append(grip)
-  fireEvent.pointerDown(grip, packet()); expect(downstream).toHaveBeenCalledTimes(2)
-})
-it('opens a stationary long press menu without selecting and ignores extra contacts', () => {
-  const { row, select, downstream, packet } = panel(), menu = vi.fn()
-  row.addEventListener('contextmenu', menu)
-  fireEvent.pointerDown(row, packet()); act(() => vi.advanceTimersByTime(450)); fireEvent.pointerUp(row, packet())
-  expect(menu).toHaveBeenCalledOnce(); expect(select).not.toHaveBeenCalled()
-  fireEvent.pointerDown(row, packet()); fireEvent.pointerDown(row, packet(2)); fireEvent.pointerUp(row, packet()); fireEvent.pointerUp(row, packet(2))
-  expect(select).not.toHaveBeenCalled(); expect(downstream).not.toHaveBeenCalled()
-})
 it('uses shared fields, nudges once per tap, stops repeat on cancel, and guards history during a stroke', async () => {
   const doc = createDocument('tablet', 32, 32, 'rgba')
   useWorkspace.getState().addSession(doc)
@@ -82,7 +45,7 @@ it('uses shared fields, nudges once per tap, stops repeat on cancel, and guards 
   useWorkspace.getState().setSelection({ x: 2, y: 2, width: 4, height: 4 })
   const nudge = vi.spyOn(useWorkspace.getState(), 'moveActiveSelection').mockImplementation(() => {})
   const undo = vi.spyOn(useWorkspace.getState(), 'undo').mockImplementation(() => {})
-  const view = render(<TabletAssistBar preferences={DEFAULT_TABLET_PREFERENCES} />)
+  const view = render(<TabletAssistBar docked onClose={vi.fn()} />)
   view.getAllByRole('button').forEach(button => { button.setPointerCapture = vi.fn() })
   expect(view.container.querySelector('.number-input-touch')).not.toBeNull()
   expect(view.container.querySelector('.range-field')).not.toBeNull()

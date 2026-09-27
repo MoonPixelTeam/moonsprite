@@ -181,6 +181,8 @@ export const localBinaryStyleFields = (
     : null
   const alphaAt = (x: number, y: number): number => {
     if (x < 0 || y < 0 || x >= layer.width || y >= layer.height) return 0
+    if (x + layer.offsetX < 0 || y + layer.offsetY < 0
+      || x + layer.offsetX >= document.width || y + layer.offsetY >= document.height) return 0
     const sourceIndex = y * layer.width + x
     if (rgbaPixels) return rgbaPixels[sourceIndex * 4 + 3]
     const packed = readSurfacePackedLocal(layer, x, y)

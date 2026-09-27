@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest'
 it('uses named editing defaults and preserves custom quick command bars', () => {
   const bars = parseQuickCommandBars(null)
   expect(bars.map(bar => bar.name)).toEqual(['默认快捷指令栏', '编辑快捷指令栏', '快捷指令栏1', '快捷指令栏2'])
-  expect(bars.map(bar => bar.edge)).toEqual(['top', 'bottom', 'none', 'none'])
+  expect(bars.map(bar => bar.edge)).toEqual(['top', 'none', 'none', 'none'])
   expect(bars[1].commands.filter(item => item.enabled).slice(0, 6).map(item => item.id)).toEqual(['undo', 'redo', 'cut', 'copy', 'copyMerged', 'paste'])
   const custom = structuredClone(DEFAULT_QUICK_COMMAND_BARS)
   custom[1].name = '我的编辑'
@@ -68,7 +68,42 @@ const memoryStorage = (): Storage => {
   }
 }
 
+it('defaults new save and export locations to the most recently chosen folders', () => {
+  const preferences = loadEditorPreferences(memoryStorage())
+  expect(preferences.saveLocationMode).toBe('recent')
+  expect(preferences.exportLocationMode).toBe('recent')
+})
+
+it('uses the requested cursor and magnifier defaults while preserving saved choices', () => {
+  const storage = memoryStorage()
+  const defaults = loadEditorPreferences(storage)
+  expect(defaults.paintingCursorShape).toBe('cross')
+  expect(defaults.rotationIndicatorPosition).toBe('pointer-left')
+  expect(defaults.eyedropperMagnifierDistortionEnabled).toBe(false)
+  expect(defaults.quickCommandBars[1].edge).toBe('none')
+  saveEditorPreferences({ ...defaults, paintingCursorShape: 'cross', rotationIndicatorPosition: 'view', eyedropperMagnifierDistortionEnabled: true }, storage)
+  expect(loadEditorPreferences(storage)).toMatchObject({ paintingCursorShape: 'cross', rotationIndicatorPosition: 'view', eyedropperMagnifierDistortionEnabled: true })
+})
+
 describe('editor preferences boundary', () => {
+  it('hides the selection pointer by default and preserves saved choices', () => {
+    const storage = memoryStorage()
+    expect(DEFAULT_EDITOR_PREFERENCES.selectionCrosshair).toBe(false)
+    expect(loadEditorPreferences(storage).selectionCrosshair).toBe(false)
+    for (const selectionCrosshair of [false, true]) {
+      saveEditorPreferences({ ...DEFAULT_EDITOR_PREFERENCES, selectionCrosshair }, storage)
+      expect(loadEditorPreferences(storage).selectionCrosshair).toBe(selectionCrosshair)
+    }
+  })
+
+  it('remembers each brush preview mode', () => {
+    const storage = memoryStorage()
+    for (const brushPreviewMode of ['edge', 'full', 'full-edge'] as const) {
+      saveEditorPreferences({ ...DEFAULT_EDITOR_PREFERENCES, brushPreviewMode }, storage)
+      expect(loadEditorPreferences(storage).brushPreviewMode).toBe(brushPreviewMode)
+    }
+  })
+
   it('shows canvas view scrollbars by default and persists an opt-out', () => {
     const storage = memoryStorage()
     expect(loadEditorPreferences(storage).canvasViewScrollbarsEnabled).toBe(true)
@@ -309,4 +344,14 @@ it('defaults reference scaling to smooth and persists hard edges with invalid-va
   expect(loadEditorPreferences(storage).referenceScaling).toBe('pixelated')
   storage.setItem(REFERENCE_SCALING_KEY, 'invalid')
   expect(loadEditorPreferences(storage).referenceScaling).toBe('smooth')
+})
+
+it('persists the pixel cross and migrates old alignment into the pixel toggle', () => {
+  const storage = memoryStorage()
+  storage.setItem('moonsprite.preference.painting-cursor-type', 'sprite')
+  expect(loadEditorPreferences(storage).paintingCursorAlignToPixel).toBe(true)
+  saveEditorPreferences({ ...loadEditorPreferences(storage), paintingCursorShape: 'pixel-cross', paintingCursorAlignToPixel: false }, storage)
+  expect(loadEditorPreferences(storage)).toMatchObject({ paintingCursorShape: 'pixel-cross', paintingCursorAlignToPixel: false })
+  storage.setItem('moonsprite.preference.painting-cursor-shape', 'dot')
+  expect(loadEditorPreferences(storage).paintingCursorShape).toBe('dot')
 })

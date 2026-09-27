@@ -1,10 +1,40 @@
 import type { AnimationCel } from '@shared/types-animation'
 import type { SpriteDocument } from '@shared/types-document'
-import { cloneAnimationCel } from '@/core/animation'
+import { cloneAnimationCel, animationCelHasContent } from '@/core/animation'
 import type { SelectionMask } from '@shared/types-selection'
 import { selectionContains } from '@/core/selection'
 import { readSurfacePackedLocal } from '@/core/runtime-raster'
+import { blendOver, packColor, unpackColor } from '@/core/raster'
+import { animationCelForTarget } from './workspace-animation-cel-target'
 export { animationCelForTarget } from './workspace-animation-cel-target'
+
+/** Selection payloads overlay pixels; destination cel properties remain intact. */
+export function overlayAnimationCelSelection(document: SpriteDocument, destination: AnimationCel, source: AnimationCel, base = destination): void {
+  if (!source.surface) return
+  const bottom = animationCelHasContent(base, document.palette) ? animationCelClipboardSnapshot(document, base).surface : undefined
+  const top = animationCelClipboardSnapshot(document, source).surface!
+  const left = Math.min(bottom?.offsetX ?? top.offsetX, top.offsetX)
+  const upper = Math.min(bottom?.offsetY ?? top.offsetY, top.offsetY)
+  const right = Math.max(bottom ? bottom.offsetX + bottom.width : top.offsetX, top.offsetX + top.width)
+  const lower = Math.max(bottom ? bottom.offsetY + bottom.height : top.offsetY, top.offsetY + top.height)
+  const width = right - left, height = lower - upper
+  const pixels = new Uint8ClampedArray(width * height * 4)
+  const values = new Uint32Array(pixels.buffer)
+  if (bottom) for (let y = 0; y < bottom.height; y++) for (let x = 0; x < bottom.width; x++) {
+    values[(y + bottom.offsetY - upper) * width + x + bottom.offsetX - left] = readSurfacePackedLocal(bottom, x, y)
+  }
+  for (let y = 0; y < top.height; y++) for (let x = 0; x < top.width; x++) {
+    const color = unpackColor(readSurfacePackedLocal(top, x, y))
+    if (!color.a) continue
+    const index = (y + top.offsetY - upper) * width + x + top.offsetX - left
+    values[index] = packColor(blendOver(unpackColor(values[index]), color))
+  }
+  const layer = document.layers.find(item => item.id === destination.layerId)
+  if (!layer) throw new Error('Paste destination layer not found')
+  const merged = { ...destination, surface: { format: 'rgba' as const, width, height, offsetX: left, offsetY: upper, pixels } }
+  destination.surface = animationCelForTarget(document, layer, merged).surface
+  destination.linkedCelId = null
+}
 
 /** Clip portable cel pixels in document coordinates without editing the source. */
 export function clipAnimationCelToSelection(cel: AnimationCel, selection: SelectionMask): AnimationCel {

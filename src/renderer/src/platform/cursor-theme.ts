@@ -1,7 +1,9 @@
+import pixelCrossCursor from '@/assets/pixel-cross-cursor.svg'
 import type { CursorScale } from '@/core/file-preferences'
 import { translateCurrent as tr } from '@/core/localization'
 import { invoke } from '@tauri-apps/api/core'
 import { getCurrentWindow } from '@tauri-apps/api/window'
+import { createCursorVisibilitySync } from './cursor-visibility-sync'
 import cursorDefault from '@/assets/pixel-icons/01-Slice-1.png'
 import cursorBlack from '@/assets/pixel-icons/02-Slice-2.png'
 import cursorWhite from '@/assets/pixel-icons/03-Slice-3.png'
@@ -46,6 +48,7 @@ export interface CursorDefinition {
 }
 
 export const CURSOR_ICON_LIBRARY: readonly CursorDefinition[] = [
+  { variable: '--cursor-pixel-cross', source: pixelCrossCursor, hotspot: [15, 15], fallback: 'crosshair' },
   { variable: '--cursor-default', source: cursorDefault, hotspot: [9, 5], fallback: 'default' },
   { variable: '--cursor-help', source: cursorDefault, hotspot: [9, 5], fallback: 'help' },
   { variable: '--cursor-progress', source: cursorProgress, hotspot: [11, 5], fallback: 'progress' },
@@ -127,21 +130,11 @@ export function cursorOverlayDescriptor(cursorValue: string, useLocalCursors: bo
   }
 }
 
-let requestedNativeCursorVisibility = true
-let appliedNativeCursorVisibility: boolean | null = null
-let nativeCursorVisibilityQueue = Promise.resolve()
+const syncNativeCursorVisibility = createCursorVisibilitySync(visible => getCurrentWindow().setCursorVisible(visible))
+const cursorVisibilityUnchanged = Promise.resolve()
 
 export function setNativeCursorVisible(visible: boolean): Promise<void> {
-  requestedNativeCursorVisibility = visible
-  if (!isTauriRuntime()) return Promise.resolve()
-  const requested = visible
-  const operation = nativeCursorVisibilityQueue.catch(() => undefined).then(async () => {
-    if (requestedNativeCursorVisibility !== requested || appliedNativeCursorVisibility === requested) return
-    await getCurrentWindow().setCursorVisible(requested)
-    appliedNativeCursorVisibility = requested
-  })
-  nativeCursorVisibilityQueue = operation
-  return operation
+  return isTauriRuntime() ? syncNativeCursorVisibility(visible) : cursorVisibilityUnchanged
 }
 
 const scaledCursorCache = new Map<string, Promise<string>>()

@@ -1,3 +1,6 @@
+import { useCoalescedGradientPreview } from './useCoalescedGradientPreview'
+import { GradientMapControls } from './GradientMapControls'
+import { normalizeGradientMap } from '@/core/gradient-map'
 import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import type { LayerGroup, RasterLayer } from '@shared/types-layer'
@@ -21,12 +24,13 @@ import { useI18n } from './I18nProvider'
 
 type LayerStyleEffect = Exclude<keyof LayerStyles, 'enabled'>
 
-const effectKeys: LayerStyleEffect[] = ['stroke', 'shadow', 'innerGlow', 'colorOverlay', 'gradientOverlay']
+const effectKeys: LayerStyleEffect[] = ['stroke', 'shadow', 'innerGlow', 'colorOverlay', 'gradientOverlay', 'gradientMap']
 const effectLabelKeys = {
   stroke: 'layers.layerStyleStroke',
   shadow: 'layers.layerStyleShadow',
   innerGlow: 'layers.layerStyleInnerGlow',
   colorOverlay: 'layers.layerStyleColorOverlay',
+  gradientMap: 'gradientMap.title',
   gradientOverlay: 'layers.layerStyleGradientOverlay'
 } as const
 export function LayerStyleDialog({ ownerKind, owner, targets, onClose }: { ownerKind: 'layer' | 'group'; owner: RasterLayer | LayerGroup; targets?: readonly LayerPropertyTarget[]; onClose: () => void }) {
@@ -45,6 +49,7 @@ export function LayerStyleDialog({ ownerKind, owner, targets, onClose }: { owner
   const [draft, setDraft] = useState(() => resolveLayerStyles(owner.layerStyles))
   const [activeEffect, setActiveEffect] = useState<LayerStyleEffect>('stroke')
   const [previewEnabled, setPreviewEnabled] = useState(true)
+  const gradientPreview = useCoalescedGradientPreview()
 
   useEffect(() => () => {
     if (!finalizedRef.current) useWorkspace.getState().previewLayerStyleEntries(originalsRef.current)
@@ -52,31 +57,40 @@ export function LayerStyleDialog({ ownerKind, owner, targets, onClose }: { owner
 
   const previewDraft = (next: LayerStyles): void => {
     setDraft(next)
-    if (previewEnabled) previewLayerStyleEntries(targetsRef.current.map((target) => ({ target, styles: next })))
+    if (previewEnabled) {
+      const preview = () => previewLayerStyleEntries(targetsRef.current.map((target) => ({ target, styles: next })))
+      if (activeEffect === 'gradientMap') gradientPreview.schedule(preview)
+      else preview()
+    }
   }
   const updateEffect = <K extends LayerStyleEffect>(effect: K, patch: Partial<LayerStyles[K]>): void => {
     previewDraft({ ...draft, [effect]: { ...draft[effect], ...patch } })
   }
   const updateColor = (effect: 'stroke' | 'shadow' | 'innerGlow' | 'colorOverlay', color: RgbaColor): void => updateEffect(effect, { color })
   const cancel = (): void => {
+    gradientPreview.cancel()
     previewLayerStyleEntries(originalsRef.current)
     finalizedRef.current = true
     onClose()
   }
   const apply = (): void => {
+    gradientPreview.cancel()
     previewLayerStyleEntries(originalsRef.current)
     setLayerStylesForTargets(targetsRef.current, draft)
     finalizedRef.current = true
     onClose()
   }
   const togglePreview = (enabled: boolean): void => {
+    gradientPreview.cancel()
     setPreviewEnabled(enabled)
     previewLayerStyleEntries(enabled
       ? targetsRef.current.map((target) => ({ target, styles: draft }))
       : originalsRef.current)
   }
 
-  const editor = activeEffect === 'stroke'
+  const editor = activeEffect === 'gradientMap'
+    ? <><GradientMapControls value={normalizeGradientMap(draft.gradientMap)} onChange={value => updateEffect('gradientMap', { ...value, enabled: true, scope: 'layer' })} /></>
+    : activeEffect === 'stroke'
     ? <>
         <PreferenceToggle className="layer-style-smart-toggle" label={t('layers.layerStyleSmartHue')} tooltip={t('layers.layerStyleSmartHueDescription')} checked={draft.stroke.smartHue} onChange={(smartHue) => updateEffect('stroke', { smartHue })} />
         <PreferenceToggle label={t('outline.followOpacity')} tooltip={t('outline.followOpacityHint')} checked={draft.stroke.followOpacity === true} onChange={(followOpacity) => updateEffect('stroke', { followOpacity })} />
@@ -117,7 +131,7 @@ export function LayerStyleDialog({ ownerKind, owner, targets, onClose }: { owner
       <div className="modal-body layer-style-dialog-body">
         <nav className="layer-style-effect-list component-scrollbar" aria-label={t('layers.layerStyleEffects')}>
           {effectKeys.map((effect) => <div key={effect} className={`layer-style-effect-row ${activeEffect === effect ? 'selected' : ''}`}>
-            <PixelCheckbox checked={draft[effect].enabled} aria-label={t('layers.layerStyleToggleEffect', { effect: t(effectLabelKeys[effect]) })} onChange={(event) => { setActiveEffect(effect); updateEffect(effect, { enabled: event.target.checked }) }} />
+            <PixelCheckbox checked={draft[effect]?.enabled ?? false} aria-label={t('layers.layerStyleToggleEffect', { effect: t(effectLabelKeys[effect]) })} onChange={(event) => { setActiveEffect(effect); updateEffect(effect, { enabled: event.target.checked, ...(effect === 'gradientMap' ? { ...normalizeGradientMap(draft.gradientMap), scope: 'layer' } : {}) }) }} />
             <button type="button" onClick={() => setActiveEffect(effect)}>{t(effectLabelKeys[effect])}</button>
           </div>)}
         </nav>

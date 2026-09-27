@@ -441,7 +441,7 @@ export function createCanvasPointerDown(ports: Ports) {
       event.button === 2 ? 'subtract' : modifierActive(event.nativeEvent, 'addToSelection') ? 'add' : session.selectionMode
     const editableLayer = activePaintLayer(session)
     const canEditLayer =
-      hasRasterFocus && isLayerEffectivelyVisible(session.document, editableLayer) && !isLayerEffectivelyLocked(session.document, editableLayer)
+      hasRasterFocus && editableLayer.kind !== 'adjustment' && isLayerEffectivelyVisible(session.document, editableLayer) && !isLayerEffectivelyLocked(session.document, editableLayer)
     const canEditSelectionLayers = selectionTool && (selectionLayersEditable || tilemapSelectionCreationAllowed)
     const tilemapPixelEditSelection = tilemapEditSelectionAtPoint(point, session, true)
     const pixelEditSelection = tilemapPixelEditSelection === undefined ? session.selection : tilemapPixelEditSelection

@@ -1,7 +1,7 @@
-import { PAINTING_CURSOR_TYPE_KEY, USE_LOCAL_CURSORS_PREFERENCE_KEY } from '@/core/file-preferences'
+import { PAINTING_CURSOR_TYPE_KEY, SELECTION_CROSSHAIR_PREFERENCE_KEY, USE_LOCAL_CURSORS_PREFERENCE_KEY } from '@/core/file-preferences'
 import { act, cleanup, fireEvent, render } from '@testing-library/react'
 import { useRef } from 'react'
-import { afterEach, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { PointerPressureAdapter } from '@/core/canvas-input'
 import { useCanvasPenCursor } from './useCanvasPenCursor'
 import { canvasCursors } from '@/core/canvas-visuals'
@@ -10,6 +10,7 @@ vi.mock('@/platform/cursor-theme', () => ({
   setNativeCursorVisible: vi.fn(async () => {}),
   cursorOverlayDescriptor: (_cursor: string, _native: boolean, scale: number, ui: number) => ({ source: '/cursor.png', size: 32 * scale / ui, hotspotX: 15 * scale / ui, hotspotY: 15 * scale / ui })
 }))
+beforeEach(() => { localStorage.setItem('moonsprite.preference.painting-cursor-shape', 'cross') })
 afterEach(() => { cleanup(); vi.restoreAllMocks(); localStorage.clear() })
 
 function Harness({ cursorValue = canvasCursors.pencilBlack }: { cursorValue?: string } = {}) {
@@ -80,7 +81,8 @@ it.each(['mouse', 'pen'])('uses a system crosshair for simple native %s input an
   expect(sprite.container.querySelector('canvas')!.dataset.paintingCursor).toBeUndefined()
 })
 
-it.each([canvasCursors.crosshair, canvasCursors.selectionBlack, canvasCursors.selectionWhite])('uses the native selection cursor %s regardless of painting crosshair type', (cursorValue) => {
+it.each([canvasCursors.crosshair, canvasCursors.selectionBlack, canvasCursors.selectionWhite])('uses the native selection cursor %s when the painting overlay is disabled', (cursorValue) => {
+  localStorage.setItem(SELECTION_CROSSHAIR_PREFERENCE_KEY, 'false')
   localStorage.setItem(USE_LOCAL_CURSORS_PREFERENCE_KEY, 'true')
   localStorage.setItem(PAINTING_CURSOR_TYPE_KEY, 'sprite')
   const view = render(<Harness cursorValue={cursorValue} />)

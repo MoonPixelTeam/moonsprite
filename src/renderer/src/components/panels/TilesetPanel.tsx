@@ -254,7 +254,7 @@ function TilemapTilesetPanel({ session, docked = false, onDockDragStart, onPanel
     return nearest?.tileId ?? displayedSelectedTileIds[0] ?? null
   }
   const beginTileOutlineDrag = (event: ReactPointerEvent<HTMLDivElement>): void => {
-    if (event.button !== 0 || event.shiftKey || event.ctrlKey || event.metaKey || !selectedTileset || !pointerHitsTileSelectionOutline(event.clientX, event.clientY)) return
+    if ((event.button !== 0 && event.button !== 2) || event.shiftKey || event.ctrlKey || event.metaKey || !selectedTileset || !(event.button === 2 ? displayedSelectedTileIds.includes((event.target as Element).closest('[data-tile-id]')?.getAttribute('data-tile-id') ?? '') : pointerHitsTileSelectionOutline(event.clientX, event.clientY))) return
     const anchorTileId = nearestSelectedTileId(event.clientX, event.clientY)
     const grid = tileGridRef.current
     if (!anchorTileId || !grid || displayedSelectedTileIds.length === 0) return
@@ -496,6 +496,9 @@ function FreeTileSourcesPanel({ session, docked = false, onDockDragStart, onPane
   const [ctrlHeld, setCtrlHeld] = useState(false)
   const [sourceContextMenu, setSourceContextMenu] = useState<{ sourceId: string; x: number; y: number } | null>(null)
   const gridMetrics = usePixelGridMetrics(PALETTE_SWATCH_PIXELS[swatchSize], PALETTE_SWATCH_GAP)
+  const [sourceDropId, setSourceDropId] = useState<string | null>(null)
+  const sourceDrag = useRef<{ id: string; pointerId: number; x: number; y: number; targetId: string } | null>(null)
+  const suppressSourceMenu = useRef(false)
   const [sourcePropertiesId, setSourcePropertiesId] = useState<string | null>(null)
   const shortcutCommandHandlerRef = useRef<(id: ShortcutId) => void>(() => {})
   const panelTitle = t('panel.tileset')
@@ -625,11 +628,36 @@ function FreeTileSourcesPanel({ session, docked = false, onDockDragStart, onPane
           description: <><strong>{option.label}</strong><span>{option.description}</span></>
         }))} onChange={store.setFreeTileMode} />
       </div>
-      <div className="swatch-grid tileset-tile-grid free-tile-source-grid component-scrollbar" role="listbox" aria-label={t('freeTiles.sources')} style={gridMetrics.style} onWheel={handleWheel}>
+      <div className="swatch-grid tileset-tile-grid free-tile-source-grid component-scrollbar" role="listbox" aria-label={t('freeTiles.sources')} style={gridMetrics.style} onWheel={handleWheel}
+        onPointerDownCapture={event => {
+          const id = (event.target as Element).closest<HTMLElement>('[data-free-source-id]')?.dataset.freeSourceId
+          if (event.button !== 2 || !id || id !== selectedEntry?.source.id) return
+          sourceDrag.current = { id, targetId: id, pointerId: event.pointerId, x: event.clientX, y: event.clientY }
+          suppressSourceMenu.current = false
+          event.currentTarget.setPointerCapture?.(event.pointerId)
+          event.preventDefault(); event.stopPropagation()
+        }}
+        onPointerMove={event => {
+          const drag = sourceDrag.current
+          if (!drag || drag.pointerId !== event.pointerId || Math.hypot(event.clientX - drag.x, event.clientY - drag.y) < 3) return
+          suppressSourceMenu.current = true
+          const target = document.elementFromPoint(event.clientX, event.clientY)?.closest<HTMLElement>('[data-free-source-id]')
+          if (target && event.currentTarget.contains(target)) { drag.targetId = target.dataset.freeSourceId!; setSourceDropId(drag.targetId) }
+        }}
+        onPointerUp={event => {
+          const drag = sourceDrag.current
+          if (!drag || drag.pointerId !== event.pointerId) return
+          sourceDrag.current = null
+          setSourceDropId(null)
+          if (suppressSourceMenu.current) store.reorderFreeTileSource(drag.id, drag.targetId)
+          event.currentTarget.releasePointerCapture?.(event.pointerId)
+        }}
+        onPointerCancel={() => { sourceDrag.current = null; setSourceDropId(null) }}>
+
         {sourceEntries.map(({ source, tileset }, index) => {
           const tileId = tileset.tileIds[0]
           const selected = selectedEntry.source.id === source.id
-          return <span key={source.id} className="palette-swatch-wrap tileset-tile-wrap"><button type="button" role="option" aria-selected={selected} className={`swatch palette-slot occupied tileset-tile free-tile-source-swatch ${selected ? 'selected primary' : ''}`} title={`${source.name} · ${tileset.tileWidth} x ${tileset.tileHeight}px`} onClick={() => selectSource(tileset.id, true)} onDoubleClick={() => openSourceProperties(source.id)} onContextMenu={(event) => { event.preventDefault(); event.stopPropagation(); selectSource(tileset.id); setSourceContextMenu({ sourceId: source.id, x: event.clientX, y: event.clientY }) }}>{tileId && <><TilesetTileThumbnail tileset={tileset} tileId={tileId} renderRevision={session.contentRevision} />{ctrlHeld && <span className="tileset-tile-id">{index}</span>}</>}</button>{selected && <span data-free-tile-source-selection-outline className="palette-selection-box free-tile-source-selection-box" aria-hidden="true" />}</span>
+          return <span key={source.id} className="palette-swatch-wrap tileset-tile-wrap"><button type="button" role="option" data-free-source-id={source.id} aria-selected={selected} className={`swatch palette-slot occupied tileset-tile free-tile-source-swatch ${sourceDropId === source.id ? 'drop-target' : ''} ${selected ? 'selected primary' : ''}`} title={`${source.name} · ${tileset.tileWidth} x ${tileset.tileHeight}px`} onClick={() => selectSource(tileset.id, true)} onDoubleClick={() => openSourceProperties(source.id)} onContextMenu={(event) => { event.preventDefault(); event.stopPropagation(); if (suppressSourceMenu.current) { suppressSourceMenu.current = false; return }; selectSource(tileset.id); setSourceContextMenu({ sourceId: source.id, x: event.clientX, y: event.clientY }) }}>{tileId && <><TilesetTileThumbnail tileset={tileset} tileId={tileId} renderRevision={session.contentRevision} />{ctrlHeld && <span className="tileset-tile-id">{index}</span>}</>}</button>{selected && <span data-free-tile-source-selection-outline className="palette-selection-box free-tile-source-selection-box" aria-hidden="true" />}</span>
         })}
       </div>
     </div> : <div className="tileset-empty-state">{t('freeTiles.empty')}</div>}

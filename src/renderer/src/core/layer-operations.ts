@@ -163,6 +163,18 @@ const applyLayerPanelTree = (document: SpriteDocument, root: LayerPanelTreeItem[
   assignGroupOrders(root)
 }
 
+/** Replace a group row in the complete visible tree, preserving sibling order
+ * and rebasing anchors after its descendant layers disappear. */
+export const replaceLayerPanelGroupWithLayer = (document: SpriteDocument, groupId: string, layer: SpriteDocument['layers'][number]): boolean => {
+  const root = buildMutableLayerPanelTree(document)
+  const location = findLayerPanelContainer(root, 'group', groupId)
+  if (!location) return false
+  location.items.splice(location.index, 1, { kind: 'layer', id: layer.id, children: [] })
+  document.layers.push(layer)
+  applyLayerPanelTree(document, root)
+  return true
+}
+
 /** 一次移动混合选择中的图层与图层组，保持它们在图层栏中的相对顺序。 */
 export const moveLayerPanelRows = (state: LayerOperationState, layerIds: readonly string[], groupIds: readonly string[], target: LayerPanelRowMoveTarget): HistoryEntry | null => {
   const selectedLayers = new Set(uniqueLayerIds(layerIds))

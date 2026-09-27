@@ -20,7 +20,7 @@ describe('selection resize cursors', () => {
 describe('selection creation cursor', () => {
   it('uses the native crosshair both before and during selection creation', () => {
     expect(selectionCreationCursor(false, true, false, true)).toBe('crosshair')
-    expect(selectionCreationCursor(true, true, true, true)).toBe('crosshair')
+    expect(selectionCreationCursor(true, true, true, true)).toBe(canvasCursors.crosshair)
     expect(selectionCreationCursor(false, true, true, true)).toBe('none')
     expect(selectionCreationCursor(true, false, true, true)).toBe(canvasCursors.unavailable)
   })

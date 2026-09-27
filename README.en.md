@@ -4,16 +4,16 @@
 
 MoonSprite is an original, source-available pixel art workstation for Windows, built with Tauri 2, React, TypeScript, Zustand, and Canvas. It is not affiliated with Aseprite and does not use Aseprite source code, branding, or visual assets.
 
-The current source version is `1.0.0-beta4` on the Beta channel, and the latest packaged version is [`1.0.0-beta4`](docs/changelog/1.0.0-beta4.md). The capabilities below describe the current source implementation; see the corresponding release record for changes included in the packaged version.
+The current source version is `1.0.0-beta7` on the Beta channel, and the latest packaged version is [`1.0.0-beta7`](docs/changelog/1.0.0-beta7.md). The capabilities below describe the current source implementation; see the corresponding release record for changes included in the packaged version.
 
 ## Current Capabilities
 
 ### Drawing and Image Processing
 
 - Drawing tools: pencil, airbrush, eraser, smoothing brush, straight lines and curves, shapes, gradients, paint bucket, magic wand, and color picker; pixel-perfect drawing, smart closure, symmetry, and texture fills.
-- Brushes and colors: an image brush library, brushes created from selections, dithering templates, pressure and speed dynamics; RGBA, indexed, and grayscale modes, custom palettes, synchronized colors, and color replacement.
+- Brushes and colors: an image brush library, brushes created from selections, dithering templates, pressure and speed dynamics; RGBA, indexed, and grayscale modes, custom palettes, recently used colors, synchronized colors, and color replacement.
 - Selections and transforms: rectangle, ellipse, lasso, polygon, and combined selections; move, copy, flip, scale, and rotate across multiple layers, frames, and cels. Rectangle and ellipse selections and shapes also support drawing from the center and an adjustable drawing anchor.
-- Contours and color adjustments: liquify push, expand, shrink, and twist; outlines, automatic anti-aliasing, color balance, brightness/contrast, hue/saturation, and curves; CRT, VHS, vignette, glow, and LCD-style filters.
+- Contours and color adjustments: liquify push, expand, shrink, and twist; outlines, automatic anti-aliasing, color balance, brightness/contrast, hue/saturation, curves, and gradient map adjustments; CRT, VHS, vignette, glow, and LCD-style filters.
 - Size tools: canvas margins and anchors, image resizing, pixel-scale detection, selection cropping, and transparent-edge trimming for the current frame or all frames.
 
 ### Layers and Animation
@@ -42,7 +42,7 @@ The current source version is `1.0.0-beta4` on the Beta channel, and the latest 
 
 - Workspace: split project views and floating windows, docked and floating panels, saved layouts, canvas-following previews, custom shortcuts, and a configurable quick-command bar.
 - Interface: theme editing, UI scaling, and body font sizing; Simplified Chinese, English, Japanese, Korean, Spanish, French, German, Brazilian Portuguese, and Russian, with menus and dropdown options adapting to long labels.
-- Automation and extensions: sandboxed Lua 5.4, an implemented subset of the Aseprite API, MoonSprite `mse.*` APIs, and `.msext` menus, settings, persistent runtimes, and auxiliary windows. The bundled Pet Companion extension can be disabled or uninstalled.
+- Automation and extensions: sandboxed Lua 5.4, an implemented subset of the Aseprite API, MoonSprite `mse.*` APIs, and `.msext` menus, settings, persistent runtimes, and auxiliary windows. The bundled Pet Companion extension defaults to Mooncat and can be disabled or uninstalled.
 - Usage information: project information, usage statistics, and diagnostics.
 
 For instructions, see the [MoonSprite user guide](docs/user-guide.md) (Chinese). See the [product behavior contract](docs/product/behavior.en.md) and [interaction contracts](docs/README.en.md#interaction-contracts) for the detailed rules.

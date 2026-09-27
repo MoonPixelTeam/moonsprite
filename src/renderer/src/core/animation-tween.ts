@@ -5,6 +5,7 @@ import type { LayerMask } from '@shared/types-layer'
 import type { PaletteEntry } from '@shared/types-color'
 import { animationCelAt, layerFromAnimationCel, cloneAnimationCel, cloneAnimationGroupMask, cloneAnimationLayerMask, resolveAnimationCel } from './animation'
 import { createId, getLayerIdsInGroup, isLayerEffectivelyLocked, isLayerEffectivelyVisible, paletteColorIdForCanvas, rasterContentBounds, resolveAnimationMask } from './document-model'
+import { shareRasterLayer } from './layer-preview'
 import { inverseTransformedSelectionPoint, remapTransformedSelectionPoint } from './selection'
 import { readSurfacePackedLocal } from './runtime-raster'
 import { translateCurrent as tr } from './localization'
@@ -15,9 +16,12 @@ import { betweenTweenMask } from './animation-tween-masks'
 import { compositeRegion } from './document-composite'
 import { layerStyleOutputBounds } from './layer-styles'
 
-export type TweenEasing = 'linear' | 'ease-in' | 'ease-out' | 'ease-in-out'
+import { tweenProgress, validTweenCurve, type TweenEasing, type TweenCurve } from './tween-easing'
+export { tweenProgress } from './tween-easing'
+export type { TweenEasing, TweenCurve } from './tween-easing'
 export interface TweenPathPoint { x: number; y: number }
 export interface AnimationTweenOptions {
+  autoCropCanvas?: boolean
   /** Displacements from the chosen source anchor, sampled by arc length. */
   path?: readonly TweenPathPoint[]
   pathAnchor?: TweenPathPoint
@@ -35,17 +39,12 @@ export interface AnimationTweenOptions {
   scale: number
   opacity: number
   easing: TweenEasing
+  easingCurve?: TweenCurve
 }
 export const DEFAULT_ANIMATION_TWEEN: AnimationTweenOptions = {
+  autoCropCanvas: false,
   betweenMode: 'morph',
   frameCount: 8, duration: 100, offsetX: 16, offsetY: 0, rotation: 0, scale: 100, opacity: 100, easing: 'linear'
-}
-export const tweenProgress = (progress: number, easing: TweenEasing): number => {
-  const t = Math.max(0, Math.min(1, progress))
-  if (easing === 'ease-in') return t * t
-  if (easing === 'ease-out') return 1 - (1 - t) ** 2
-  if (easing === 'ease-in-out') return t * t * (3 - 2 * t)
-  return t
 }
 /** Easing controls distance along the polyline, independent of drawing speed. */
 export function tweenTranslation(options: Pick<AnimationTweenOptions, 'path' | 'offsetX' | 'offsetY'>, progress: number): TweenPathPoint {
@@ -86,12 +85,13 @@ export function validateAnimationTween(options: AnimationTweenOptions): void {
     || !Number.isInteger(options.duration) || options.duration < 1 || options.duration > 60000
     || Math.abs(options.offsetX) > 16384 || Math.abs(options.offsetY) > 16384 || Math.abs(options.rotation) > 3600
     || options.scale < 1 || options.scale > 1000 || options.opacity < 0 || options.opacity > 100
-    || !['linear', 'ease-in', 'ease-out', 'ease-in-out'].includes(options.easing)) throw new Error(tr('timeline.tween.invalid'))
+    || !['linear', 'ease-in', 'ease-out', 'ease-in-out', 'custom'].includes(options.easing)
+    || (options.easing === 'custom' && options.easingCurve !== undefined && !validTweenCurve(options.easingCurve))) throw new Error(tr('timeline.tween.invalid'))
 }
 
 /** Geometry shared by preview framing and nearest-neighbour rasterization. */
 export function tweenSurfaceGeometry(source: Pick<AnimationCelSurface, 'width' | 'height' | 'offsetX' | 'offsetY'>, pivot: SelectionRect, options: AnimationTweenOptions, progress: number) {
-  const t = tweenProgress(progress, options.easing)
+  const t = tweenProgress(progress, options.easing, options.easingCurve)
   const translation = tweenTranslation(options, t)
   const scale = 1 + (options.scale / 100 - 1) * t
   const target = {
@@ -109,9 +109,10 @@ export function tweenSurfaceGeometry(source: Pick<AnimationCelSurface, 'width' |
   return { left, top, width, height, target, angle, scale }
 }
 
-export function tweenSurface(source: AnimationCelSurface, pivot: SelectionRect, options: AnimationTweenOptions, progress: number, maxPixels = 16 * 1024 * 1024): AnimationCelSurface {
+export function tweenSurface(source: AnimationCelSurface, pivot: SelectionRect, options: AnimationTweenOptions, progress: number, maxPixels = 16 * 1024 * 1024, reserve?: (bytes: number) => void): AnimationCelSurface {
   const { left, top, width, height, target, angle, scale } = tweenSurfaceGeometry(source, pivot, options, progress)
   if (width > 16384 || height > 16384 || width * height > maxPixels) throw new Error(tr('timeline.tween.tooLarge'))
+  reserve?.(width * height * 4)
   const packed = new Uint32Array(width * height)
   for (let y = 0; y < height; y++) for (let x = 0; x < width; x++) {
     const point = inverseTransformedSelectionPoint(target, { x: left + x + 0.5, y: top + y + 0.5 }, angle)
@@ -265,18 +266,18 @@ export function animationTweenPreviewBounds(document: SpriteDocument, _layerId: 
 }
 
 /** The preview and insertion use the same endpoint pixels, easing and alpha math. */
-export function animationBetweenFrame(document: SpriteDocument, layerId: string, source: ReturnType<typeof animationTweenSource>, options: AnimationTweenOptions, progress: number, maxPixels = 16 * 1024 * 1024) {
+export function animationBetweenFrame(document: SpriteDocument, layerId: string, source: ReturnType<typeof animationTweenSource>, options: AnimationTweenOptions, progress: number, maxPixels = 16 * 1024 * 1024, reserve?: (bytes: number) => void) {
   const layer = document.layers.find((item) => item.id === layerId)!
   const [start, end] = source.frames
   const opacity = (id: string): number => resolveAnimationCel(document.animation!, animationCelAt(document.animation!, layerId, id))?.opacity ?? layer.opacity
   const part = source.layers.get(layerId)!
   if (part.morph) {
-    const t = tweenProgress(progress, options.easing)
-    return { surface: morphTweenSurface(part.morph, t, maxPixels, (color) => paletteColorIdForCanvas(document, color)),
+    const t = tweenProgress(progress, options.easing, options.easingCurve)
+    return { surface: morphTweenSurface(part.morph, t, maxPixels, (color) => paletteColorIdForCanvas(document, color), reserve),
       opacity: opacity(start.id) * (1 - t) + opacity(end.id) * t }
   }
   return crossfadeTweenSurface(animationTweenSourceSurface(document, layerId, start.id), animationTweenSourceSurface(document, layerId, end.id),
-    part.pivot, layer.format, tweenProgress(progress, options.easing), opacity(start.id), opacity(end.id), maxPixels)
+    part.pivot, layer.format, tweenProgress(progress, options.easing, options.easingCurve), opacity(start.id), opacity(end.id), maxPixels, reserve)
 }
 
 /** Build one frame for both preview and insertion; never modifies the source document. */
@@ -293,13 +294,11 @@ export function prepareAnimationTweenFrame(document: SpriteDocument, source: Ret
     const selected = source.layers.has(layer.id)
     let copy: AnimationCel
     if (selected && options.scope === 'between') {
-      copy = { id: '', layerId: layer.id, frameId: frame.id, zIndex: slot?.zIndex, ...animationBetweenFrame(document, layer.id, source, options, progress, maxPixels) }
-      consume(copy.surface!.width * copy.surface!.height * 4)
+      copy = { id: '', layerId: layer.id, frameId: frame.id, zIndex: slot?.zIndex, ...animationBetweenFrame(document, layer.id, source, options, progress, maxPixels, consume) }
     } else if (selected && surface && rasterContentBounds(surface, document.palette)) {
-      const output = tweenSurface(cropTweenSource(surface, document.palette), source.pivot, options, progress, maxPixels)
-      consume(output.width * output.height * 4)
+      const output = tweenSurface(cropTweenSource(surface, document.palette), source.pivot, options, progress, maxPixels, consume)
       copy = { ...resolved, id: '', layerId: layer.id, frameId: frame.id, surface: output,
-        opacity: (resolved?.opacity ?? layer.opacity) * (1 + (options.opacity / 100 - 1) * tweenProgress(progress, options.easing)) }
+        opacity: (resolved?.opacity ?? layer.opacity) * (1 + (options.opacity / 100 - 1) * tweenProgress(progress, options.easing, options.easingCurve)) }
     } else {
       if (!resolved && !surface) continue
       const original = { ...resolved, id: slot?.id ?? '', layerId: layer.id, frameId: sourceFrameId, surface }
@@ -320,13 +319,11 @@ export function prepareAnimationTweenFrame(document: SpriteDocument, source: Ret
       const from = ownerBounds(ids, source.frames[0].id), to = ownerBounds(ids, source.frames[1].id)
       // A crossfade has fixed geometry; morph masks follow the interpolated content bounds.
       const stationary = options.betweenMode === 'crossfade' || ids.every((id) => !source.layers.get(id)?.morph)
-      const result = betweenTweenMask(start, end, from, stationary ? from : to, tweenProgress(progress, options.easing), maxPixels)
-      consume(result.width * result.height * 4)
+      const result = betweenTweenMask(start, end, from, stationary ? from : to, tweenProgress(progress, options.easing, options.easingCurve), maxPixels, consume)
       return { ...original, ...result, id: createId('mask'), linkedMaskId: undefined, runtimeRaster: undefined }
     }
     if (selected && !original.locked && original.moveWithOwner !== false && options.scope !== 'between') {
-      const result = tweenSurface(original, source.pivot, options, progress, maxPixels)
-      consume(result.width * result.height * 4)
+      const result = tweenSurface(original, source.pivot, options, progress, maxPixels, consume)
       return { ...original, ...result, id: createId('mask'), linkedMaskId: null, format: 'rgba', pixels: result.pixels as Uint8ClampedArray, runtimeRaster: undefined }
     }
     if (independent) consume(original.width * original.height * 4)
@@ -356,6 +353,11 @@ export function prepareAnimationTweenFrame(document: SpriteDocument, source: Ret
 
 /** Composite a single ephemeral frame with the production layer/group/mask/style renderer. */
 export function animationTweenCompositePreview(document: SpriteDocument, source: ReturnType<typeof animationTweenSource>, options: AnimationTweenOptions, step: number, bounds: SelectionRect): AnimationCelSurface {
+  const hiddenLayer = (layer: SpriteDocument['layers'][number]) => {
+    const shared = shareRasterLayer(layer)
+    shared.visible = false
+    return shared
+  }
   const maxPixels = 1024 * 1024
   if (bounds.width * bounds.height > maxPixels) throw new Error(tr('timeline.tween.tooLarge'))
   let remaining = 64 * 1024 * 1024
@@ -365,13 +367,13 @@ export function animationTweenCompositePreview(document: SpriteDocument, source:
   if (endpointId) {
     const layers = document.layers.map((layer) => {
       const cel = resolveAnimationCel(document.animation!, animationCelAt(document.animation!, layer.id, endpointId))
-      return layerFromAnimationCel(layer, { ...cel, id: '', frameId: endpointId, layerId: layer.id, surface: animationTweenSourceSurface(document, layer.id, endpointId) }) ?? { ...layer, visible: false }
+      return layerFromAnimationCel(layer, { ...cel, id: '', frameId: endpointId, layerId: layer.id, surface: animationTweenSourceSurface(document, layer.id, endpointId) }) ?? hiddenLayer(layer)
     })
     preview = { ...document, layers, animation: { ...document.animation!, activeFrameId: endpointId } }
   } else {
     const generated = prepareAnimationTweenFrame(document, source, options, step, consume, maxPixels, false)
     const byLayer = new Map(generated.cels.map((cel) => [cel.layerId, cel]))
-    const layers = document.layers.map((layer) => layerFromAnimationCel(layer, byLayer.get(layer.id) ?? null) ?? { ...layer, visible: false })
+    const layers = document.layers.map((layer) => layerFromAnimationCel(layer, byLayer.get(layer.id) ?? null) ?? hiddenLayer(layer))
     preview = { ...document, layers, animation: { ...document.animation!, activeFrameId: generated.frame.id,
       frames: [generated.frame], cels: generated.cels, layerMasks: generated.layerMasks, groupMasks: generated.groupMasks } }
   }
@@ -391,5 +393,29 @@ export function prepareAnimationTween(document: SpriteDocument, frameId: string,
     const generated = prepareAnimationTweenFrame(document, source, options, step, consume, Math.min(16 * 1024 * 1024, Math.floor(remaining / 4)))
     frames.push(generated.frame); cels.push(...generated.cels); layerMasks.push(...generated.layerMasks); groupMasks.push(...generated.groupMasks)
   }
-  return { frames, cels, layerMasks, groupMasks, insertionFrameId: source.insertionFrameId }
+  let canvasBounds: SelectionRect | undefined
+  if (options.autoCropCanvas) {
+    const rects: SelectionRect[] = [{ x: 0, y: 0, width: document.width, height: document.height }]
+    const layers = new Map(document.layers.map(layer => [layer.id, layer]))
+    for (const cel of [...(document.animation?.cels ?? []), ...cels]) {
+      const surface = cel.surface
+      if (!surface) continue
+      const content = rasterContentBounds(surface, document.palette)
+      if (!content) continue
+      let bounds = { ...content, x: surface.offsetX + content.x, y: surface.offsetY + content.y }
+      const layer = layers.get(cel.layerId)
+      bounds = layerStyleOutputBounds(bounds, layer?.layerStyles) ?? bounds
+      let group = document.groups.find(group => group.id === layer?.groupId)
+      const visited = new Set<string>()
+      while (group && !visited.has(group.id)) {
+        visited.add(group.id)
+        bounds = layerStyleOutputBounds(bounds, group.layerStyles) ?? bounds
+        group = document.groups.find(candidate => candidate.id === group!.parentGroupId)
+      }
+      rects.push(bounds)
+    }
+    canvasBounds = unionTweenRects(rects)
+    if (canvasBounds.width > 16384 || canvasBounds.height > 16384 || canvasBounds.width * canvasBounds.height > 16 * 1024 * 1024) throw new Error(tr('timeline.tween.tooLarge'))
+  }
+  return { frames, cels, layerMasks, groupMasks, insertionFrameId: source.insertionFrameId, canvasBounds }
 }

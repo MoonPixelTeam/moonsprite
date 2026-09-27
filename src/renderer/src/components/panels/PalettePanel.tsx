@@ -442,14 +442,13 @@ export function PalettePanel({ session, docked = false, onDockDragStart, onPanel
     event.preventDefault()
   }
   const beginPaletteOutlineDrag = (event: React.PointerEvent<HTMLDivElement>): void => {
-    if (panelColorSampling.activeForEvent(event.nativeEvent) || event.button !== 0 || event.shiftKey || event.ctrlKey || event.metaKey || !pointerHitsPaletteSelectionOutline(event.clientX, event.clientY)) return
+    if (panelColorSampling.activeForEvent(event.nativeEvent) || (event.button !== 0 && event.button !== 2) || event.shiftKey || event.ctrlKey || event.metaKey || !(event.button === 2 ? displayedSelectedIds.includes(Number((event.target as Element).closest('[data-palette-id]')?.getAttribute('data-palette-id'))) : pointerHitsPaletteSelectionOutline(event.clientX, event.clientY))) return
     const clickedId = nearestSelectedPaletteId(event.clientX, event.clientY)
     if (clickedId === null) return
     startPaletteMove(event, clickedId)
     event.stopPropagation()
   }
   const beginPaletteDrag = (event: React.PointerEvent<HTMLElement>, slotIndex: number, id: number | null): void => {
-    if (event.pointerType === 'touch' && tabletPanelMode() === 'move' && id !== null && !paletteEditLocked) { startPaletteMove(event, id); return }
     event.currentTarget.focus({ preventScroll: true })
     setFocusedSlot(slotIndex)
     const sampledEntry = id === null ? null : session.document.palette.find((entry) => entry.id === id) ?? null
@@ -983,4 +982,3 @@ export function PalettePanel({ session, docked = false, onDockDragStart, onPanel
   </>
 }
 import { PanelActions } from './PanelActions'
-import { tabletPanelMode } from '@/core/tablet-interaction'

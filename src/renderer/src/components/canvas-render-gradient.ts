@@ -1,4 +1,5 @@
 import { createLinearDitherPreviewSampler } from '../core/gradient-dither-preview'
+import { createGradientReplacementSampler } from '@/core/gradient-preview-sampling'
 import { createGradientCompositePreview, compositeGradientPreviewAt, fillGradientPreviewBlock, gradientReplacementColor } from '@/core/gradient-preview'
 import type { RgbaColor } from '@shared/types-color'
 import { layerMaskDisplayColor, readLayerColorAt, resolveLayerCanvasColor } from '@/core/document-model'
@@ -151,6 +152,7 @@ export function renderCanvasGradient({
           activeLayer.clippingMask !== true &&
           !activeLayer.layerStyles
         let staticComposite = gradientCompositePreviewCacheRef.current
+        let sampleCompositeReplacement = compositePointReplacementSampler
         const opaqueReplacement =
           document.colorMode === 'rgba' &&
           activeLayer.format === 'rgba' &&
@@ -176,6 +178,17 @@ export function renderCanvasGradient({
             }
             gradientCompositePreviewCacheRef.current = staticComposite
           }
+        } else if (!isolatedLayerMask) {
+          const key = `replacement:${document.id}:${currentSession.revision}:${activeLayer.id}:${document.width}x${document.height}:${previewFromX},${previewFromY},${previewToX},${previewToY}`
+          let cached = gradientCompositePreviewCacheRef.current
+          if (!cached || cached.key !== key) {
+            const bounds = { x: previewFromX, y: previewFromY, width: previewToX - previewFromX, height: previewToY - previewFromY }
+            cached = { key, ...bounds, lower: null, upper: null,
+              replacementSampler: createGradientReplacementSampler(document, activeLayer.id, bounds) }
+            gradientCompositePreviewCacheRef.current = cached
+          }
+          sampleCompositeReplacement = cached.replacementSampler ?? compositePointReplacementSampler
+          staticComposite = null
         } else {
           staticComposite = null
           gradientCompositePreviewCacheRef.current = null
@@ -190,7 +203,6 @@ export function renderCanvasGradient({
           gradientGeometryOptionsForDrag(drag),
           activeGradientStops
         )
-        const sampleCompositeReplacement = compositePointReplacementSampler
         const firstPixelRect = previewPixelRect(previewFromX, previewFromY)
         const lastPixelRect = previewPixelRect(previewToX - 1, previewToY - 1)
         const targetX = firstPixelRect.x

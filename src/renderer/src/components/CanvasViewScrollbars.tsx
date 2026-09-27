@@ -1,6 +1,7 @@
-import { useEffect } from 'react'
+import { useEffect, type ReactNode } from 'react'
 import { Scrollbar } from './Scrollbar'
 import { useCanvasViewScrollbars } from './useCanvasViewScrollbars'
+export { CANVAS_VIEW_SCROLLBAR_THICKNESS } from './useCanvasViewScrollbars'
 
 type Props = Parameters<typeof useCanvasViewScrollbars>[0] & {
   ariaLabel: string
@@ -26,4 +27,12 @@ export function CanvasViewScrollbars({ ariaLabel, onHorizontalVisibilityChange, 
     />}
 
   </>
+}
+
+/** Viewport controls must remain outside the surface frozen during dock drags. */
+export function CanvasViewport({ children, enabled, ...options }: Props & { children: ReactNode; enabled: boolean }) {
+  return <div className="stage-viewport">
+    {children}
+    {enabled && <CanvasViewScrollbars {...options} />}
+  </div>
 }

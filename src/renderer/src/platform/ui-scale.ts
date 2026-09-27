@@ -117,7 +117,7 @@ export async function applyUiScale(scale: UiScale): Promise<void> {
 
 export function applyToolIconScale(scale: ToolIconScale): void {
   if (typeof document === 'undefined') return
-  const compact = scale === 1 && document.documentElement.dataset.tabletUi !== 'true'
+  const compact = scale === 1
   const sizes = {
     '--tool-rail-icon-size': compact ? '22px' : '32px',
     '--tool-rail-utility-icon-size': '22px',

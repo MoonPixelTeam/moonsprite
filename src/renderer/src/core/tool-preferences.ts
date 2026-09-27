@@ -201,7 +201,7 @@ export function normalizePersistedBrushProfile(stored: Partial<PersistedBrushPro
       : normalizeBrushDynamicsSettings(fallback.brushDynamics)
   return {
     inkMode: stored?.inkMode === 'copy-alpha-color' || stored?.inkMode === 'lock-alpha' ? stored.inkMode : fallback.inkMode,
-    brushSize: Number.isFinite(stored?.brushSize) ? Math.max(1, Math.min(128, Math.round(stored!.brushSize!))) : fallback.brushSize,
+    brushSize: Number.isFinite(stored?.brushSize) ? Math.max(1, Math.min(64, Math.round(stored!.brushSize!))) : fallback.brushSize,
     brushOpacity: Number.isFinite(stored?.brushOpacity) ? Math.max(0, Math.min(100, Math.round(stored!.brushOpacity!))) : fallback.brushOpacity,
     brushShape: stored?.brushShape === 'square' || stored?.brushShape === 'round' || stored?.brushShape === 'line' ? stored.brushShape : fallback.brushShape,
     brushAngle: Number.isFinite(stored?.brushAngle) ? Math.max(-180, Math.min(180, Math.round(stored!.brushAngle!))) : fallback.brushAngle,
@@ -292,7 +292,7 @@ export function loadToolSettings(storage?: Storage): PersistedToolSettings {
       airbrushDensity: Number.isFinite(stored.airbrushDensity) ? Math.max(1, Math.min(128, Math.round(stored.airbrushDensity!))) : defaultToolSettings.airbrushDensity,
       airbrushIntervalMs: Number.isFinite(stored.airbrushIntervalMs) ? Math.max(16, Math.min(1000, Math.round(stored.airbrushIntervalMs!))) : defaultToolSettings.airbrushIntervalMs,
       liquifyMode: stored.liquifyMode === 'inflate' || stored.liquifyMode === 'deflate' || stored.liquifyMode === 'twist-clockwise' || stored.liquifyMode === 'twist-counter-clockwise' || stored.liquifyMode === 'push' ? stored.liquifyMode : defaultToolSettings.liquifyMode,
-      liquifyRadius: Number.isFinite(stored.liquifyRadius) ? Math.max(1, Math.min(128, Math.round(stored.liquifyRadius!))) : defaultToolSettings.liquifyRadius,
+      liquifyRadius: Number.isFinite(stored.liquifyRadius) ? Math.max(1, Math.min(64, Math.round(stored.liquifyRadius!))) : defaultToolSettings.liquifyRadius,
       liquifyStrength: Number.isFinite(stored.liquifyStrength) ? Math.max(1, Math.min(100, Math.round(stored.liquifyStrength!))) : defaultToolSettings.liquifyStrength,
       liquifySmoothing: stored.liquifySmoothing === true,
       liquifySmoothingStrength: Number.isFinite(stored.liquifySmoothingStrength) ? Math.max(0, Math.min(100, Math.round(stored.liquifySmoothingStrength!))) : defaultToolSettings.liquifySmoothingStrength,

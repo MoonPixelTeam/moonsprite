@@ -34,6 +34,7 @@ export function captureAdjustmentSnapshot(session: DocumentSession, targetLayerI
         pixels: layer.format === 'rgba' ? new Uint8ClampedArray(layer.pixels) : new Uint32Array(layer.pixels)
       }]
     }),
+    paletteOrder: [...session.document.paletteOrder],
     palette: session.document.palette.map((entry) => ({ ...entry, color: { ...entry.color } })),
     nextColorId: session.document.nextColorId
   }
@@ -67,6 +68,7 @@ const bindAdjustmentSnapshotPixels = (
 }
 
 const restoreAdjustmentPalette = (session: DocumentSession, snapshot: AdjustmentSnapshot): void => {
+  if (snapshot.paletteOrder) session.document.paletteOrder = [...snapshot.paletteOrder]
   session.document.palette = snapshot.palette.map((entry) => ({ ...entry, color: { ...entry.color } }))
   session.document.nextColorId = snapshot.nextColorId
 }

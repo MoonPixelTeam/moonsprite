@@ -330,6 +330,7 @@ export default function App() {
         const active = useWorkspace.getState().sessions.find((item) => item.document.id === session.document.id)
         if (active?.selection) workspace.commitSelectionChange(active.selection, null, t('app.selection.completeHistory'))
       } else if (session?.textBoxTransform) workspace.cancelTextBoxTransform()
+      else if (session?.temporaryBrushCapture || (session?.tool === 'pencil' && session.brushImage)) workspace.exitPatternBrush()
       else workspace.setSelection(null)
       event.preventDefault()
       event.stopPropagation()

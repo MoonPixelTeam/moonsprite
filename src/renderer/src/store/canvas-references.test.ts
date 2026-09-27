@@ -12,6 +12,23 @@ beforeEach(() => {
 })
 const image = { id: 'ref', name: 'ref.png', src: 'data:image/png;base64,pixels', x: -20, y: 10, width: 30, height: 20, angle: 0, flipX: false, flipY: false, locked: false }
 
+it('releases references and a pending gesture only when their owning session closes', () => {
+  const refs = useCanvasReferences.getState()
+  refs.add(image)
+  refs.begin(image.id)
+  useWorkspace.getState().addSession(createDocument('Other', 2, 2, 'rgba'))
+  const other = useWorkspace.getState().sessions[1]
+  refs.add({ ...image, id: 'other-ref', documentId: other.document.id })
+  expect(useCanvasReferences.getState().images).toHaveLength(2)
+  useWorkspace.setState({ sessions: [other], activeId: other.document.id })
+  expect(useCanvasReferences.getState().images.map(item => item.id)).toEqual(['other-ref'])
+  expect(useCanvasReferences.getState().pending).toBeNull()
+  refs.finish(true)
+  expect(useCanvasReferences.getState().images.map(item => item.id)).toEqual(['other-ref'])
+  useWorkspace.setState({ sessions: [], activeId: null })
+  expect(useCanvasReferences.getState().images).toEqual([])
+})
+
 it('records add, a complete gesture, mirror, lock, reset and delete in the normal timeline', () => {
   const refs = useCanvasReferences.getState()
   const workspace = useWorkspace.getState()

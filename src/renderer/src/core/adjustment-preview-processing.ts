@@ -131,6 +131,7 @@ export async function processAdjustmentPreview(
   return {
     id,
     region: clippedRegion,
+    paletteOrder: [...document.paletteOrder],
     palette: document.palette.map((entry) => ({ ...entry, color: { ...entry.color } })),
     nextColorId: document.nextColorId,
     layers

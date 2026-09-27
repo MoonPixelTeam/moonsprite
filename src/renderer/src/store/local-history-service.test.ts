@@ -26,6 +26,33 @@ const sessionWithLocalHistory = (): DocumentSession => {
 }
 
 describe('local history snapshots', () => {
+  it.each(['null clone', 'allocation failure'])('keeps editing history usable after %s', async failure => {
+    saveEditorPreferences({ ...DEFAULT_EDITOR_PREFERENCES, localHistoryEnabled: true })
+    const source = sessionWithLocalHistory()
+    const api = { writeLocalHistory: vi.fn() } as unknown as MoonSpriteApi
+    configureLocalHistory(source, api)
+    const report = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const cloning = vi.spyOn(globalThis, 'structuredClone').mockImplementationOnce(() => {
+      if (failure === 'allocation failure') throw new RangeError('Array buffer allocation failed')
+      return null
+    })
+    const layer = source.document.layers[0]
+    const edit = beginPixelEdit(layer.id)
+    recordPixel(source.document, layer, edit, 0, 0xff112233)
+    const entry = commitPixelEdit(source.document, edit, 'paint')!
+    expect(() => source.history.push(entry)).not.toThrow()
+    expect(readLayerPacked(source.document, layer, 0)).toBe(0xff112233)
+    expect(source.localHistory).toBeNull()
+    expect(report).toHaveBeenCalled()
+    cloning.mockRestore()
+    source.history.undo()
+    expect(readLayerPacked(source.document, layer, 0)).toBe(0)
+    source.history.redo()
+    expect(readLayerPacked(source.document, layer, 0)).toBe(0xff112233)
+    await flushLocalHistoryPersist(api, source)
+    expect(api.writeLocalHistory).not.toHaveBeenCalled()
+  })
+
   it('applies the optional step limit to an open session independently of disk history', () => {
     const source = sessionWithLocalHistory()
     const api = {} as MoonSpriteApi

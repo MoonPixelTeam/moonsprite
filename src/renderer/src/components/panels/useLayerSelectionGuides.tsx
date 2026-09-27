@@ -249,11 +249,13 @@ export function useLayerSelectionGuides({
   }, [layerRevealRequest, revealMountedLayer])
 
   useEffect(() => {
-    const clearOutsideSelection = (event: PointerEvent): void => {
+    const clearPanelBlankSelection = (event: PointerEvent): void => {
       const target = event.target instanceof Element ? event.target : null
       const active = useWorkspace.getState().sessions.find((item) => item.document.id === session.document.id)
       const list = layerListRef.current
-      if (!target || isScrollbarPointer(event)) return
+      // Only blank space inside this list dismisses a panel selection.
+      // Other panels and their controls keep the current batch selected.
+      if (!target || !list?.contains(target) || isScrollbarPointer(event)) return
       // This listener runs before control handlers (including portalled ones).
       // Parameter editing must retain the batch it is about to operate on.
       if (target.closest('input[type="range"], [role="slider"], .range-field, .pressure-range-stack, .color-editor-field')) return
@@ -287,6 +289,8 @@ export function useLayerSelectionGuides({
         (active.selectedAnimationFrameIds.length > 0 ||
           active.selectedAnimationCellKeys.length > 0 ||
           active.selectedAnimationMaskCellKeys.length > 0 ||
+          active.selectedAnimationMaskRowKeys.length > 0 ||
+          (active.selectedAnimationGroupCellKeys?.length ?? 0) > 0 ||
           active.selectedLayerIds.length > 0 ||
           active.selectedGroupIds.length > 0 ||
           active.selectedGroupId !== null)
@@ -298,8 +302,8 @@ export function useLayerSelectionGuides({
         clearSelectionFromBlankRef.current()
       }
     }
-    window.addEventListener('pointerdown', clearOutsideSelection, true)
-    return () => window.removeEventListener('pointerdown', clearOutsideSelection, true)
+    window.addEventListener('pointerdown', clearPanelBlankSelection, true)
+    return () => window.removeEventListener('pointerdown', clearPanelBlankSelection, true)
   }, [session.document.id, shortcuts, store])
 
   const clearSelectionFromBlank = useCallback((): void => {

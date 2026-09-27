@@ -24,6 +24,9 @@ export class PreviewRasterCache {
   private view: PreviewRasterView | null = null
   private sampler: ReturnType<typeof createPreviewProjectedRenderer> | null = null
   private dirty = new Set<number>()
+  private fullDirty = false
+  private fullLiveDirty = false
+  private exposed: SelectionRect[] = []
   private liveDirty = new Set<number>()
   private revision = -1
   private columns = 0
@@ -37,6 +40,33 @@ export class PreviewRasterCache {
     const key = [document.id, frameId, revision, document.width, document.height,
       view.width, view.height, view.originX, view.originY, view.scale, view.luminance].join(':')
     if (this.key === key && this.document === document) return
+    const previous = this.view
+    const rawDx = previous ? view.originX - previous.originX : 0
+    const rawDy = previous ? view.originY - previous.originY : 0
+    const dx = Math.round(rawDx), dy = Math.round(rawDy)
+    const canTranslate = previous && this.canvas && this.context && this.document === document
+      && revision === this.revision && this.key.startsWith(`${document.id}:${frameId}:`)
+      && previous.width === view.width && previous.height === view.height
+      && previous.scale === view.scale && previous.luminance === view.luminance
+      && !this.fullDirty && !this.fullLiveDirty && !this.dirty.size && !this.liveDirty.size && !this.exposed.length
+      && Math.abs(rawDx - dx) < 1e-6 && Math.abs(rawDy - dy) < 1e-6 && Math.abs(dx) < view.width && Math.abs(dy) < view.height
+    if (canTranslate) {
+      this.key = key
+      this.view = view
+      if (dx || dy) {
+        const left = Math.max(0, dx), top = Math.max(0, dy)
+        const width = view.width - Math.abs(dx), height = view.height - Math.abs(dy)
+        const context = this.context!
+        const composite = context.globalCompositeOperation
+        // Copy, rather than blend, so translucent pixels retain their alpha.
+        context.globalCompositeOperation = 'copy'
+        context.drawImage(this.canvas!, Math.max(0, -dx), Math.max(0, -dy), width, height, left, top, width, height)
+        context.globalCompositeOperation = composite
+        if (dy) this.exposed.push({ x: 0, y: dy > 0 ? 0 : view.height + dy, width: view.width, height: Math.abs(dy) })
+        if (dx) this.exposed.push({ x: dx > 0 ? 0 : view.width + dx, y: top, width: Math.abs(dx), height })
+      }
+      return
+    }
     const geometryChanged = !this.view || this.view.width !== view.width || this.view.height !== view.height
       || this.view.originX !== view.originX || this.view.originY !== view.originY || this.view.scale !== view.scale
       || this.document?.id !== document.id || !this.key.startsWith(`${document.id}:${frameId}:`)
@@ -56,8 +86,10 @@ export class PreviewRasterCache {
     if (geometryChanged) {
       this.dirty.clear()
       this.liveDirty.clear()
-      this.canvas.width = view.width
-      this.canvas.height = view.height
+      this.fullLiveDirty = false
+      this.exposed = []
+      if (this.canvas.width !== view.width) this.canvas.width = view.width
+      if (this.canvas.height !== view.height) this.canvas.height = view.height
     }
     this.needsSeed = !regionalCommit
     this.invalidate(regionalCommit ? invalidation?.rect : undefined)
@@ -70,6 +102,8 @@ export class PreviewRasterCache {
     context.imageSmoothingEnabled = false
     context.drawImage(source, view.originX, view.originY, document.width * view.scale, document.height * view.scale)
     this.dirty.clear()
+    this.fullDirty = false
+    this.exposed = []
     for (const rect of dirtyRects) this.invalidate(rect)
     this.needsSeed = false
   }
@@ -81,19 +115,29 @@ export class PreviewRasterCache {
     if (!rect) this.needsSeed = true
     const view = this.view
     if (!view) return
+    if (!rect) {
+      // A full redraw is one rectangle, not one Set entry per output pixel.
+      // Shared seeding can satisfy it without ever allocating those entries.
+      this.fullDirty = true
+      if (live) this.fullLiveDirty = true
+      this.dirty.clear()
+      return
+    }
     const left = rect ? Math.max(0, Math.floor((rect.x * view.scale + view.originX) / TILE)) : 0
     const top = rect ? Math.max(0, Math.floor((rect.y * view.scale + view.originY) / TILE)) : 0
     const right = rect ? Math.min(this.columns, Math.ceil(((rect.x + rect.width) * view.scale + view.originX) / TILE)) : this.columns
     const bottom = rect ? Math.min(Math.ceil(view.height / TILE), Math.ceil(((rect.y + rect.height) * view.scale + view.originY) / TILE)) : Math.ceil(view.height / TILE)
     for (let y = top; y < bottom; y++) for (let x = left; x < right; x++) {
       const id = y * this.columns + x
-      this.dirty.add(id)
+      if (!this.fullDirty) this.dirty.add(id)
       if (live) this.liveDirty.add(id)
     }
   }
 
   finishLive(): void {
     this.sampler = null
+    if (this.fullLiveDirty) this.invalidate()
+    this.fullLiveDirty = false
     for (const id of this.liveDirty) this.dirty.add(id)
     this.liveDirty.clear()
   }
@@ -101,7 +145,7 @@ export class PreviewRasterCache {
   render(): { pixels: number; pending: boolean } {
     const { document, view, context } = this
     let pixels = 0
-    if (!document || !view || !context || !this.dirty.size) return { pixels, pending: false }
+    if (!document || !view || !context || (!this.fullDirty && !this.dirty.size && !this.exposed.length)) return { pixels, pending: false }
     this.sampler ??= createPreviewProjectedRenderer(document)
     const sample = this.sampler
     if (!sample) return { pixels, pending: false }
@@ -111,8 +155,8 @@ export class PreviewRasterCache {
         panX: view.originX - (view.width - document.width * view.scale) / 2,
         panY: view.originY - (view.height - document.height * view.scale) / 2 }, 'canvas')
     // Merge exact adjacent pixels into scanline runs; never pad to 8x8 tiles.
-    const ids = [...this.dirty].sort((a, b) => a - b)
-    const rects: SelectionRect[] = []
+    const ids = this.fullDirty ? [] : [...this.dirty].sort((a, b) => a - b)
+    const rects: SelectionRect[] = this.fullDirty ? [{ x: 0, y: 0, width: view.width, height: view.height }] : [...this.exposed]
     const open = new Map<string, SelectionRect>()
     for (let cursor = 0; cursor < ids.length;) {
       const id = ids[cursor++], y = Math.floor(id / this.columns), left = id % this.columns
@@ -132,12 +176,19 @@ export class PreviewRasterCache {
       pixels += rect.width * rect.height
     }
     this.dirty.clear()
+    this.fullDirty = false
+    this.exposed = []
     this.needsSeed = false
     return { pixels, pending: this.dirty.size > 0 }
   }
 
   draw(context: CanvasRenderingContext2D, width: number, height: number): void {
-    if (this.canvas) context.drawImage(this.canvas, 0, 0, width, height)
+    if (this.canvas) {
+      const smoothing = context.imageSmoothingEnabled
+      context.imageSmoothingEnabled = false
+      context.drawImage(this.canvas, 0, 0, width, height)
+      context.imageSmoothingEnabled = smoothing
+    }
   }
 
   dispose(): void {
@@ -146,6 +197,9 @@ export class PreviewRasterCache {
     this.key = ''
     this.needsSeed = true
     this.dirty.clear()
+    this.fullDirty = false
     this.liveDirty.clear()
+    this.fullLiveDirty = false
+    this.exposed = []
   }
 }

@@ -66,7 +66,7 @@ it.each(['rectangle', 'rectangle-outline', 'ellipse', 'ellipse-outline'] as cons
   const inputRef = { current: new CanvasInputState() }
   const commit = vi.fn()
   const shapes = createShapeCanvasInput({
-    inputRef, gridSnapActive: false, draw: vi.fn(),
+    inputRef, gridSnapActive: false, draw: vi.fn(), updateShapePreview: vi.fn(), currentSelectionMarqueeModifierState: () => modifiers,
     freeTileSourceEditForDrag: () => null, paintSelectionForDrag: () => null,
     symmetryCenter: session.symmetryCenter, shapeCornerRadius: 0, t: (key: string) => key
   } as unknown as Parameters<typeof createShapeCanvasInput>[0])

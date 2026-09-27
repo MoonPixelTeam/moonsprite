@@ -20,7 +20,7 @@ export function usePaletteGridColumns(gridRef: RefObject<HTMLElement | null>, sw
     let previous = -1
     const update = (width: number): void => {
       if (width <= 0) return
-      const next = Math.max(minimumColumns, normalizePaletteColumns(paletteGridCapacity(width, 0, swatchSize, gap).columns))
+      const next = Math.max(minimumColumns, normalizePaletteColumns(paletteGridCapacity(width, 0, swatchSize, gap, (Number.parseFloat(getComputedStyle(grid).paddingLeft) || 8)).columns))
       if (next === previous && (isWorkspaceResizing() || (next === committed.current && !preview.current))) return
       previous = next
       if (isWorkspaceResizing()) {

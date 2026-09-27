@@ -1,3 +1,4 @@
+import { normalizeDocumentColor } from '@/core/document-model'
 import type { AnimationCel, AnimationCelSurface } from '@shared/types-animation'
 import type { AnimationGroupMask, LayerGroup, RasterLayer } from '@shared/types-layer'
 import type { SpriteDocument } from '@shared/types-document'
@@ -17,6 +18,7 @@ const partName = (part: LayerStylePart, both: boolean): string => {
     case 'innerStroke': return tr('layers.splitStyleInnerStroke')
     case 'innerGlow': return tr('layers.layerStyleInnerGlow')
     case 'colorOverlay': return tr('layers.layerStyleColorOverlay')
+    case 'gradientMap': return tr('gradientMap.title')
     case 'gradientOverlay': return tr('layers.layerStyleGradientOverlay')
   }
 }
@@ -26,7 +28,7 @@ const partName = (part: LayerStylePart, both: boolean): string => {
  * clipped interior layers preserve source alpha without duplicating its pixels. */
 export function splitLayerStyles(document: SpriteDocument, layerId: string): HistoryEntry | null {
   const source = document.layers.find((layer) => layer.id === layerId)
-  if (!source || isLayerEffectivelyLocked(document, source) || !hasEnabledLayerStyles(source.layerStyles)) return null
+  if (!source || source.kind === 'adjustment' || isLayerEffectivelyLocked(document, source) || !hasEnabledLayerStyles(source.layerStyles)) return null
   syncActiveAnimationFrame(document)
   const timeline = ensureAnimationDocument(document)
   const styles = resolveLayerStyles(source.layerStyles)
@@ -56,7 +58,7 @@ export function splitLayerStyles(document: SpriteDocument, layerId: string): His
     const base = preview.layers.find((layer) => layer.id === source.id)!
     const opacity = base.opacity
     const resolveColor = (color: Parameters<typeof resolveLayerCanvasColor>[2]) => resolveLayerCanvasColor(preview, base, color)
-    const resolved = mapLayerStyleColors(styles, resolveColor)
+    const resolved = mapLayerStyleColors(styles, resolveColor, color => normalizeDocumentColor(document, color))
     const bounds = layerStyleOutputBounds(layerContentBounds(preview, base), resolved)
       ?? { x: base.offsetX, y: base.offsetY, width: 1, height: 1 }
     const x = Math.floor(bounds.x)
@@ -79,6 +81,7 @@ export function splitLayerStyles(document: SpriteDocument, layerId: string): His
       ? { format: 'rgba', width, height, offsetX: x, offsetY: y, pixels: new Uint8ClampedArray(width * height * 4) }
       : { format: 'indexed', width, height, offsetX: x, offsetY: y, pixels: new Uint32Array(width * height) })
     for (let localY = 0; localY < height; localY += 1) for (let localX = 0; localX < width; localX += 1) {
+      if (x + localX < 0 || x + localX >= document.width || y + localY < 0 || y + localY >= document.height) continue
       const colors = sampleLayerStyleParts(geometry, resolved, x + localX, y + localY, read(x + localX, y + localY), read, resolveColor)
       const index = localY * width + localX
       for (let partIndex = 0; partIndex < parts.length; partIndex += 1) {

@@ -496,7 +496,7 @@ export function rotatedShapePixelPoints(
   strokeWidth = 1
 ): BrushMaskPoint[] {
   if (kind === 'freeform' || kind === 'polygon') return []
-  const thickness = Number.isFinite(strokeWidth) ? Math.max(1, Math.min(128, Math.round(strokeWidth))) : 1
+  const thickness = Number.isFinite(strokeWidth) ? Math.max(1, Math.min(64, Math.round(strokeWidth))) : 1
   if (thickness > 1 && (kind === 'rectangle-outline' || kind === 'ellipse-outline')) {
     const filledKind = kind === 'ellipse-outline' ? 'ellipse' : 'rectangle'
     const outer = rotatedShapePixelPoints(bounds, filledKind, canvasWidth, canvasHeight, angle, cornerRadius)

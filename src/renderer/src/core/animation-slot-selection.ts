@@ -1,5 +1,27 @@
 import { animationCelKey, parseAnimationCelKey } from './animation'
 
+/** Selected slots reverse in timeline order independently within each row. */
+export function animationReversedSlotTargets(keys: readonly string[], frameIds: readonly string[]): Map<string, string> {
+  const indexes = new Map(frameIds.map((id, index) => [id, index]))
+  const rows = new Map<string, string[]>()
+  for (const key of new Set(keys)) {
+    const slot = parseAnimationCelKey(key)
+    if (!slot || !indexes.has(slot.frameId)) continue
+    const row = rows.get(slot.layerId) ?? []
+    row.push(slot.frameId)
+    rows.set(slot.layerId, row)
+  }
+  const targets = new Map<string, string>()
+  for (const [layerId, frames] of rows) {
+    frames.sort((a, b) => indexes.get(a)! - indexes.get(b)!)
+    frames.forEach((frameId, index) => {
+      const target = frames[frames.length - 1 - index]
+      if (target !== frameId) targets.set(animationCelKey(layerId, frameId), target)
+    })
+  }
+  return targets
+}
+
 /** Selection is a rectangle of slots, regardless of whether they hold content. */
 export function animationSlotRange(ownerIds: readonly string[], frameIds: readonly string[], anchorKey: string, targetKey: string): string[] {
   const anchor = parseAnimationCelKey(anchorKey)

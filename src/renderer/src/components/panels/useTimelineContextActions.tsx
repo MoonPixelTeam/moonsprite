@@ -1,4 +1,4 @@
-import { animationSlotsCanLink } from '@/core/animation-slot-selection'
+import { animationSlotsCanLink, animationReversedSlotTargets } from '@/core/animation-slot-selection'
 import type { ShortcutId } from '@/core/shortcuts'
 import { createPortal } from 'react-dom'
 import { AnimationLoopSectionDialog } from '@/components/AnimationLoopSectionDialog'
@@ -12,7 +12,6 @@ import { Tooltip } from '@/components/Tooltip'
 import { AnimationPlaybackMenu } from '@/components/AnimationPlaybackMenu'
 import { PixelUtilityIcon } from '@/components/PixelUtilityIcon'
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
-import type { AnimationLoopSection } from '@shared/types-animation'
 import { type AnimationLoopSectionDraft } from '@/components/AnimationLoopSectionDialog'
 import { animationMaskAt, animationMaskSlotAt, resolveAnimationMask } from '@/core/document-model'
 import { animationCelKey, animationGroupMaskAt, ensureAnimationDocument, parseAnimationCelKey } from '@/core/animation'
@@ -238,13 +237,6 @@ export function useTimelineContextActions({
     setLoopSectionEditor(null)
   }
 
-  const selectLoopSection = (section: AnimationLoopSection): void => {
-    const range = resolveAnimationLoopSectionRange(ensureAnimationDocument(session.document), section)
-    if (!range) return
-    store.selectAnimationFrame(range.startFrameId)
-    if (range.endFrameId !== range.startFrameId) store.selectAnimationFrame(range.endFrameId, 'range')
-  }
-
   const openLoopSectionMenu = (event: React.MouseEvent<HTMLElement>, sectionId: string): void => {
     openAnimationMenu(event, { kind: 'loop-section', sectionId, x: event.clientX, y: event.clientY })
   }
@@ -449,6 +441,11 @@ export function useTimelineContextActions({
                   <PixelUtilityIcon kind="paste" />
                   <span>{t('timeline.pasteFrame')}</span>
                   {shortcutHint('pasteAnimationFrames', 'paste')}
+                </button>
+                <button className="context-menu-item" type="button" role="menuitem"
+                  disabled={animationMenuFrameIds.length < 2}
+                  onClick={() => { store.reverseSelectedAnimationFrames(); setAnimationMenu(null) }}>
+                  <PixelUtilityIcon kind="swap" /><span>{t('timeline.reverseFrames')}</span>
                 </button>
                 <span className="context-menu-divider" />
                 <button className="context-menu-item" type="button" role="menuitem" onClick={() => useFrameMenuTarget(() => store.duplicateAnimationFrame())}>
@@ -708,6 +705,11 @@ export function useTimelineContextActions({
                   <span>{t('timeline.pasteCel')}</span>
                   {shortcutHint('pasteAnimationCels', 'paste')}
                 </button>
+                <button className="context-menu-item" type="button" role="menuitem"
+                  disabled={!animationReversedSlotTargets(session.selectedAnimationCellKeys, timeline.frames.map(frame => frame.id)).size}
+                  onClick={() => { store.reverseSelectedAnimationCels(); setAnimationMenu(null) }}>
+                  <PixelUtilityIcon kind="swap" /><span>{t('timeline.reverseCels')}</span>
+                </button>
                 <button
                   className="context-menu-item"
                   type="button"
@@ -898,7 +900,6 @@ export function useTimelineContextActions({
     openFramePropertiesFor,
     openLoopSectionCreator,
     openLoopSectionPropertiesFor,
-    selectLoopSection,
     openLoopSectionMenu,
     openCelProperties,
     openCelMenu,

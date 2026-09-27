@@ -100,10 +100,10 @@ export const selectionRotationCursorForPosition = (
 export const selectionTransformDragCursor = (kind: string): string | null =>
   kind === 'transform-content' || kind === 'rotate-content' || kind === 'shear-content' ? canvasCursors.move : null
 
-export const selectionCreationCursor = (showCrosshair: boolean, available = true, creating = false, useLocalCursors = false): string =>
+export const selectionCreationCursor = (showPointer: boolean, available = true, creating = false, useLocalCursors = false): string =>
   !available ? canvasCursors.unavailable
-    : creating && !showCrosshair ? 'none'
-      : useLocalCursors ? 'crosshair' : showCrosshair ? canvasCursors.crosshair : 'none'
+    : showPointer ? canvasCursors.crosshair
+      : creating ? 'none' : useLocalCursors ? 'crosshair' : 'none'
 
 export const colorLuminance = (color: RgbaColor): number => color.r * 0.2126 + color.g * 0.7152 + color.b * 0.0722
 

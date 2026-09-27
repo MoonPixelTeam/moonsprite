@@ -61,8 +61,10 @@ export const extensionPointerPosition = async (): Promise<{ x: number; y: number
   const main = await Window.getByLabel('main')
   if (!main) return null
   const [point, outer, inner, size, scale] = await Promise.all([
-    cursorPosition(), main.outerPosition(), main.innerPosition(), main.innerSize(), main.scaleFactor()
+    // Cursor access can be unavailable while Windows is locked or switching desktops.
+    cursorPosition().catch(() => null), main.outerPosition(), main.innerPosition(), main.innerSize(), main.scaleFactor()
   ])
+  if (!point) return null
   // Do not expose pointer activity outside the application's client area.
   if (point.x < inner.x || point.y < inner.y || point.x >= inner.x + size.width || point.y >= inner.y + size.height) return null
   return { x: (point.x - outer.x) / scale, y: (point.y - outer.y) / scale }

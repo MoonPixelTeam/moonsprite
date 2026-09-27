@@ -1,3 +1,4 @@
+import { compositeGradientMapRegion } from './document-composite-gradient-map'
 import type { AnimationCelSurface } from '@shared/types-animation'
 import type { RgbaColor } from '@shared/types-color'
 import type { SelectionRect } from '@shared/types-selection'
@@ -8,6 +9,8 @@ import { hasEnabledLayerStyles } from './layer-styles'
 import { rasterContentBounds, layerIndexAt } from './document-model'
 import { type DocumentCompositeCache } from './document-composite-cache'
 import { activeCelMasksByLayer, normalCompositeLayers, opacityGroupCompositeStack } from './document-composite-plan'
+import { simpleClippingLayers, compositeClippingLayers } from './document-composite-clipping'
+import { simpleLayerMaskLayers, compositeLayerMaskLayers } from './document-composite-mask'
 import { compositeNormalLayers, compositeOpacityGroupStack } from './document-composite-raster'
 import { compileCompositePointSampler, createCompositePointSampler, createCompositeSampler } from './document-composite-sampling'
 
@@ -17,7 +20,7 @@ export function compositeRegion(document: SpriteDocument, startX: number, startY
     const layer = document.layers[0]
     const activeMasks = activeCelMasksByLayer(document)
     if (!layer.visible || layer.opacity <= 0) return output
-    if (!hasEnabledLayerStyles(layer.layerStyles) && !activeMasks.has(layer.id) && layer.opacity === 1 && layer.format === 'rgba') {
+    if (layer.kind !== 'adjustment' && !hasEnabledLayerStyles(layer.layerStyles) && !activeMasks.has(layer.id) && layer.opacity === 1 && layer.format === 'rgba') {
       if (lazyRuntimeRasterForSurface(layer)) {
         return readSurfaceRgbaRegion(layer, startX - layer.offsetX, startY - layer.offsetY, width, height)
       }
@@ -33,7 +36,7 @@ export function compositeRegion(document: SpriteDocument, startX: number, startY
       }
       return output
     }
-    if (!hasEnabledLayerStyles(layer.layerStyles) && !activeMasks.has(layer.id) && layer.opacity === 1 && layer.format === 'indexed') {
+    if (layer.kind !== 'adjustment' && !hasEnabledLayerStyles(layer.layerStyles) && !activeMasks.has(layer.id) && layer.opacity === 1 && layer.format === 'indexed') {
       const palette = new Map(document.palette.map((entry) => [entry.id, entry.color]))
       for (let y = 0; y < height; y += 1) for (let x = 0; x < width; x += 1) {
         const index = layerIndexAt(layer, startX + x, startY + y)
@@ -43,10 +46,16 @@ export function compositeRegion(document: SpriteDocument, startX: number, startY
       return output
     }
   }
+  const clippingLayers = simpleClippingLayers(document)
+  if (clippingLayers) return compositeClippingLayers(document, clippingLayers, startX, startY, width, height, cache, revision, output, dirtyRect)
+  const layerMaskStack = simpleLayerMaskLayers(document)
+  if (layerMaskStack) return compositeLayerMaskLayers(document, layerMaskStack, startX, startY, width, height, cache, revision, output, dirtyRect)
   const normalLayers = cache ? cache.renderLayersFor(document, revision, sourceDirtyRect) : normalCompositeLayers(document)
   if (normalLayers) return compositeNormalLayers(document, normalLayers, startX, startY, width, height, cache, revision, undefined, dirtyRect)
   const opacityGroupStack = cache ? cache.opacityGroupStackFor(document, revision) : opacityGroupCompositeStack(document)
   if (opacityGroupStack) return compositeOpacityGroupStack(document, opacityGroupStack, startX, startY, width, height, cache, revision, undefined, dirtyRect)
+  const gradientMapped = compositeGradientMapRegion(document, startX, startY, width, height, cache, revision, sourceDirtyRect ?? dirtyRect, output)
+  if (gradientMapped) return gradientMapped
   const sample = compileCompositePointSampler(document, undefined, cache, revision, sourceDirtyRect)
   for (let y = 0; y < height; y += 1) for (let x = 0; x < width; x += 1) {
     writeRgbaPixel(output, y * width + x, sample(startX + x, startY + y, undefined))

@@ -1,4 +1,5 @@
 import { registerAppShortcutListeners } from './app-shortcut-listeners'
+import { createMouseShortcutHandlers } from './app-mouse-shortcuts'
 import { hasExclusiveShortcutScope } from '../exclusive-shortcut-scope'
 import { CANVAS_REFERENCE_DELETE_EVENT, CANVAS_REFERENCE_PASTE_EVENT } from '../canvas-reference-input'
 import { REFERENCE_PASTE_EVENT } from '@/components/panels/reference-image-state'
@@ -12,7 +13,7 @@ import { handleCompletionShortcuts } from './app-completion-shortcuts'
 import { useEffect, useRef } from 'react'
 import { shouldTriggerDeleteCommand, animationFrameStepDirection, type EditorCommandScope } from '@/core/command-context'
 import { adjacentFormInput } from '@/core/form-focus'
-import { QUICK_TOOL_SHORTCUT_IDS, deriveShortcutConflicts, dispatchMouseDoubleClickShortcutInput, dispatchMouseShortcutInput, dispatchWheelShortcutInput, findShortcutBindingOwners, keyboardEventKey, loadShortcutBindings, mouseDoubleClickShortcutText, mouseShortcutText, shortcutBindingBlocked, shortcutBindingsFor, shortcutKeyPart, shortcutMatchesEvent, shortcutReleasedByBindings, shortcutText, wheelShortcutText, type ShortcutId } from '@/core/shortcuts'
+import { QUICK_TOOL_SHORTCUT_IDS, deriveShortcutConflicts, findShortcutBindingOwners, keyboardEventKey, loadShortcutBindings, shortcutBindingBlocked, shortcutBindingsFor, shortcutKeyPart, shortcutMatchesEvent, shortcutReleasedByBindings, shortcutText, type ShortcutId } from '@/core/shortcuts'
 import { beginPaletteSamplingShortcut, endPaletteSamplingShortcut } from '@/core/palette-sampling-shortcut'
 import { deferCanvasShortcut, isCanvasToolGestureLocked } from '@/core/canvas-tool-gesture-lock'
 import { useWorkspace } from '@/store/workspace'
@@ -32,10 +33,37 @@ export function useAppShortcutRouter(options: Options) {
   const toolHandler = useRef(createToolShortcutHandler())
   const activeMouseShortcutPointersRef = useRef(new Set<number>())
   const pendingDoubleClickShortcutPointersRef = useRef(new Set<number>())
+  const navigationRepeatRef = useRef<number | null>(null)
   useEffect(() => {
     const { shortcuts } = options
     const shortcutConflictState = deriveShortcutConflicts(shortcuts)
     const heldShortcutParts = new Set<string>()
+    type NavigationKey = 'arrowup' | 'arrowdown' | 'arrowleft' | 'arrowright'
+    const heldNavigationKeys = new Map<NavigationKey, { nextAt: number }>()
+    const navigateHeldKey = (key: 'arrowup' | 'arrowdown' | 'arrowleft' | 'arrowright'): void => {
+      const state = useWorkspace.getState()
+      const current = state.sessions.find(item => item.document.id === state.activeId)
+      if (!current || current.selection || hasExclusiveShortcutScope()) return
+      if (current.animationPlaying) {
+        state.pauseAnimationAtCurrentFrame()
+        return
+      }
+      if (key === 'arrowup') state.stepAnimationCell('layer', -1)
+      else if (key === 'arrowdown') state.stepAnimationCell('layer', 1)
+      else if (current.document.animation && current.document.animation.frames.length > 1) state.stepAnimationCell('frame', key === 'arrowleft' ? -1 : 1)
+    }
+    if (navigationRepeatRef.current === null) {
+      navigationRepeatRef.current = window.setInterval(() => {
+        const now = performance.now()
+        for (const [key, state] of heldNavigationKeys) {
+          if (now < state.nextAt) continue
+          navigateHeldKey(key)
+          // Frame navigation follows a fast repeat cadence, while layer
+          // navigation stays slower so a held key remains controllable.
+          state.nextAt = now + (key === 'arrowleft' || key === 'arrowright' ? 50 : 120)
+        }
+      }, 40)
+    }
     const keydown = (event: KeyboardEvent): void => {
       if (hasExclusiveShortcutScope()) { heldShortcutParts.clear(); return }
       const {pointerPosition, commandSurface, rotationIndicatorPosition, homeOpen, outlineOpen, openMenu, timelineHidden, commandScope, selectionOverride, commands: uiCommands, openAdjustment, publishShortcutCommand} = optionsRef.current
@@ -212,12 +240,24 @@ export function useAppShortcutRouter(options: Options) {
         return
       }
 
+      const canNavigateCells = !keyboardSurfaceBlocked && session && !session.selection
+        && !event.ctrlKey && !event.metaKey && !event.shiftKey && !event.altKey
+      if (canNavigateCells && (key === 'arrowup' || key === 'arrowdown' || key === 'arrowleft' || key === 'arrowright')) {
+        if (!heldNavigationKeys.has(key)) {
+          heldNavigationKeys.set(key, { nextAt: performance.now() + 280 })
+          navigateHeldKey(key)
+        }
+        event.preventDefault()
+        event.stopPropagation()
+        return
+      }
+
       if (!keyboardSurfaceBlocked && session && !session.selection
       && !event.ctrlKey && !event.metaKey && !event.shiftKey && !event.altKey
       && (key === 'arrowup' || key === 'arrowdown')) {
         event.preventDefault()
         event.stopPropagation()
-        workspace.stepLayerSelection(key === 'arrowup' ? -1 : 1)
+        workspace.stepAnimationCell('layer', key === 'arrowup' ? -1 : 1)
         return
       }
 
@@ -227,7 +267,7 @@ export function useAppShortcutRouter(options: Options) {
         event.preventDefault()
         event.stopPropagation()
         if (session.animationPlaying) workspace.pauseAnimationAtCurrentFrame()
-        else workspace.stepAnimationFrame(frameStep)
+        else workspace.stepAnimationCell('frame', frameStep)
         return
       }
 
@@ -254,77 +294,30 @@ export function useAppShortcutRouter(options: Options) {
       if (handleCompletionShortcuts(context)) return
     }
     const keyup = (event: KeyboardEvent): void => {
+      const key = keyboardEventKey(event).toLowerCase()
+      if (key === 'arrowup' || key === 'arrowdown' || key === 'arrowleft' || key === 'arrowright') heldNavigationKeys.delete(key)
       if (hasExclusiveShortcutScope()) { heldShortcutParts.clear(); return }
       if (event.key === 'Alt') event.preventDefault()
       if (shortcutReleasedByBindings(event, shortcutBindingsFor(shortcuts, 'addForegroundToPalette'))) endPaletteSamplingShortcut()
       heldShortcutParts.delete(shortcutKeyPart(event))
     }
-    const targetsShortcutRecorder = (target: EventTarget | null): boolean => target instanceof Element
-    && Boolean(target.closest('[data-shortcut-recorder="true"]'))
-    const targetsStageCanvas = (target: EventTarget | null): boolean => target instanceof Element
-    && Boolean(target.closest('canvas.stage-canvas'))
-    const hasMouseShortcutBinding = (shortcut: string): boolean => findShortcutBindingOwners(shortcuts, shortcut).some((id) => (
-    !shortcutBindingBlocked(shortcutConflictState, id, shortcut)
-    ))
-    const pointerdown = (event: PointerEvent): void => {
-      if (targetsShortcutRecorder(event.target) || !targetsStageCanvas(event.target)) return
-      const shortcut = mouseShortcutText(event, heldShortcutParts)
-      const assigned = hasMouseShortcutBinding(shortcut)
-      const doubleClickAssigned = event.button === 0 && hasMouseShortcutBinding(mouseDoubleClickShortcutText(event, heldShortcutParts))
-      if (!assigned && !doubleClickAssigned) return
-      if (assigned) {
-        dispatchMouseShortcutInput(event.target ?? window, event, 'keydown')
-        activeMouseShortcutPointersRef.current.add(event.pointerId)
-      } else {
-        pendingDoubleClickShortcutPointersRef.current.add(event.pointerId)
-      }
-      event.preventDefault()
-      event.stopPropagation()
-    }
-    const releasePointerShortcut = (event: PointerEvent): void => {
-      const active = activeMouseShortcutPointersRef.current.delete(event.pointerId)
-      const pendingDoubleClick = pendingDoubleClickShortcutPointersRef.current.delete(event.pointerId)
-      if (!active && !pendingDoubleClick) return
-      if (active) dispatchMouseShortcutInput(window, event, 'keyup')
-      event.preventDefault()
-      event.stopPropagation()
-    }
-    const auxclick = (event: PointerEvent): void => {
-      if (targetsShortcutRecorder(event.target) || !targetsStageCanvas(event.target)) return
-      const shortcut = mouseShortcutText(event, heldShortcutParts)
-      if (!shortcut || !hasMouseShortcutBinding(shortcut)) return
-      event.preventDefault()
-      event.stopPropagation()
-    }
-    const dblclick = (event: MouseEvent): void => {
-      if (targetsShortcutRecorder(event.target) || !targetsStageCanvas(event.target)) return
-      const shortcut = mouseDoubleClickShortcutText(event, heldShortcutParts)
-      if (!hasMouseShortcutBinding(shortcut)) return
-      dispatchMouseDoubleClickShortcutInput(event.target ?? window, event)
-      event.preventDefault()
-      event.stopPropagation()
-    }
-    const contextmenu = (event: MouseEvent): void => {
-      if (targetsShortcutRecorder(event.target) || !targetsStageCanvas(event.target)) return
-      const shortcut = mouseShortcutText(event, heldShortcutParts)
-      if (!shortcut || !hasMouseShortcutBinding(shortcut)) return
-      event.preventDefault()
-      event.stopPropagation()
-    }
-    const wheel = (event: WheelEvent): void => {
-      if (targetsShortcutRecorder(event.target) || !targetsStageCanvas(event.target)) return
-      const shortcut = wheelShortcutText(event, event.deltaY, heldShortcutParts)
-      if (!shortcut || !hasMouseShortcutBinding(shortcut)) return
-      dispatchWheelShortcutInput(event.target ?? window, event, event.deltaY)
-      event.preventDefault()
-      event.stopPropagation()
-    }
+    const { pointerdown, releasePointerShortcut, auxclick, dblclick, contextmenu, wheel } = createMouseShortcutHandlers(
+      shortcuts, shortcutConflictState, heldShortcutParts,
+      activeMouseShortcutPointersRef.current, pendingDoubleClickShortcutPointersRef.current
+    )
     const blur = (): void => {
       heldShortcutParts.clear()
+      heldNavigationKeys.clear()
       activeMouseShortcutPointersRef.current.clear()
       pendingDoubleClickShortcutPointersRef.current.clear()
       endPaletteSamplingShortcut()
     }
-    return registerAppShortcutListeners({ keydown, keyup, pointerdown, releasePointerShortcut, auxclick, dblclick, contextmenu, wheel, blur })
+    const unregister = registerAppShortcutListeners({ keydown, keyup, pointerdown, releasePointerShortcut, auxclick, dblclick, contextmenu, wheel, blur })
+    return () => {
+      unregister()
+      heldNavigationKeys.clear()
+      if (navigationRepeatRef.current !== null) window.clearInterval(navigationRepeatRef.current)
+      navigationRepeatRef.current = null
+    }
   }, [options.shortcuts])
 }

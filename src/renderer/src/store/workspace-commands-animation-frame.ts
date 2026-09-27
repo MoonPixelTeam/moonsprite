@@ -216,12 +216,14 @@ export function createAnimationFrameCommands({ get, set }: WorkspaceCommandConte
           const beforeDocument = captureDocumentStructureSnapshot(document)
           const beforeSelection = captureAnimationSelectionHistory(session)
           const start = Math.max(0, Math.min(timeline.frames.length, Math.trunc(startFrameIndex)))
-          const insertedFrames = sourceTimeline.frames.map((sourceFrame) => ({
+          const existingSlots = timeline.frames.length - start
+          const appendedFrames = sourceTimeline.frames.slice(existingSlots).map((sourceFrame) => ({
             id: createId('frame'),
             duration: sourceFrame.duration,
             ...(sourceFrame.disabled ? { disabled: true } : {})
           }))
-          timeline.frames.splice(start, 0, ...insertedFrames)
+          timeline.frames.push(...appendedFrames)
+          const targetFrames = timeline.frames.slice(start, start + sourceTimeline.frames.length)
 
           const layer = createLayer(source.name || 'GIF', sourceLayer.width, sourceLayer.height, document.colorMode)
           layer.offsetX = sourceLayer.offsetX
@@ -239,7 +241,7 @@ export function createAnimationFrameCommands({ get, set }: WorkspaceCommandConte
             const sourceFrame = sourceTimeline.frames[index]
             const sourceCel = sourceCels.get(sourceFrame.id)
             const sourceSurface = sourceCel?.surface
-            const targetFrame = insertedFrames[index]
+            const targetFrame = targetFrames[index]
             if (!sourceSurface || !targetFrame) continue
             const rgbaPixels = sourceSurface.format === 'rgba' ? new Uint8ClampedArray(sourceSurface.pixels) : new Uint8ClampedArray(sourceSurface.width * sourceSurface.height * 4)
             if (sourceSurface.format === 'indexed') {
@@ -291,15 +293,16 @@ export function createAnimationFrameCommands({ get, set }: WorkspaceCommandConte
           }
 
           if (importedKeys.length === 0) return
-          // Keep the new layer blank until frame activation. Activation saves
-          // the displayed layer into the old active cel before switching frames.
+          // The before snapshot already synced the displayed frame. Do not
+          // sync again: the new layer's blank display would erase an imported
+          // cel when the old active frame overlaps the destination range.
           const firstFrameId = timeline.frames[start]?.id
           if (!firstFrameId) return
           applyLayerRowSelection(session, [layer.id], [], {
             kind: 'layer',
             id: layer.id
           })
-          activateAnimationFrame(document, firstFrameId)
+          timeline.activeFrameId = firstFrameId
           session.activeLayerMaskId = null
           session.layerMaskIsolatedView = false
           session.selectedAnimationFrameIds = []

@@ -9,6 +9,7 @@ const MAX_STORAGE_TOTAL_BYTES = 1024 * 1024
 export const EXTENSION_RUNTIME_METHOD_PERMISSIONS: Readonly<Record<string, ExtensionPermission>> = {
   'runtime.getCapabilities': 'runtime',
   'runtime.getLocale': 'runtime',
+  'runtime.setFileDropTypes': 'io',
   'commands.execute': 'commands',
   'menus.setItems': 'menus',
   'ui.notify': 'ui',

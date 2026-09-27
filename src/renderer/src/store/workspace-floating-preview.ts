@@ -3,6 +3,7 @@ import type { SpriteDocument } from '@shared/types-document'
 import { revertPixelEdit } from '@/core/history'
 import { restoreSelectionTranslationPreview, type SelectionTransformLayerState } from '@/core/tools-selection-transform'
 import { hasEnabledLayerStyles } from '@/core/layer-styles'
+import { expandLayerStyleInvalidationRect } from '@/core/document-composite-plan'
 import type { DocumentSession, FloatingPaste } from './workspace-types'
 import { mergeSelectionRects, rectangularSelection } from './workspace-selection-geometry'
 import { invalidateSessionContent } from './workspace-session'
@@ -27,7 +28,7 @@ export const markFloatingPreviewChanged = (session: DocumentSession, before: Sel
     : {
         kind: 'region',
         frameId: session.document.animation?.activeFrameId,
-        rect: mergeSelectionRects(before, after),
+        rect: expandLayerStyleInvalidationRect(session.document, mergeSelectionRects(before, after), pendingLayerIds.length ? pendingLayerIds : undefined),
         fromRevision,
         revision: session.contentRevision
       }

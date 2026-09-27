@@ -1,13 +1,12 @@
 import type { AnimationCelSurface } from '@shared/types-animation'
+import { layerCanvasContentBounds } from '@/core/layer-canvas-content-bounds'
 import type { SelectionRect } from '@shared/types-selection'
 import type { TextCelData } from '@shared/types-text'
 import { commitPixelEdit } from '@/core/history'
-import { isLayerEffectivelyLocked, isLayerEffectivelyVisible, layerContentBounds, paletteColorIdForCanvas } from '@/core/document-model'
+import { isLayerEffectivelyLocked, isLayerEffectivelyVisible, paletteColorIdForCanvas } from '@/core/document-model'
 import { cloneAnimationCelSurface, ensureAnimationDocument, refreshActiveAnimationFrame, resolveAnimationCel, setAnimationCelOffsets } from '@/core/animation'
 import { isCanvasToolGestureLocked } from '@/core/canvas-tool-gesture-lock'
-import {
-  transformSelectionCopy
-} from '@/core/tools-selection-transform-apply'
+import { transformSelectionCopy } from '@/core/tools-selection-transform-apply'
 import { clampSelection } from '@/core/tools-pixel-edit'
 import { selectionQuadFromRect } from '@/core/selection'
 import { cloneTextCelData, convertTextSurface, normalizeTextBoxBounds } from '@/core/text-raster'
@@ -73,7 +72,7 @@ export function createSelectionTransformCommands({ get, set }: WorkspaceCommandC
       const contentBounds =
         selectedFreeTileInstanceBounds ??
         layers.reduce<SelectionRect | null>((bounds, candidate) => {
-          const candidateBounds = layerContentBounds(session.document, candidate)
+          const candidateBounds = layerCanvasContentBounds(session.document, candidate)
           return candidateBounds ? (bounds ? unionRects(bounds, candidateBounds) : candidateBounds) : bounds
         }, null)
       if (!contentBounds) {

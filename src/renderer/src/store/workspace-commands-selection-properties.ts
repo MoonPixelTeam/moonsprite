@@ -1,3 +1,4 @@
+import { resizeSelectionPropertyTarget } from '@/core/selection-property-size'
 import type { SelectionMask } from '@shared/types-selection'
 import { type ContentInvalidationHint, type HistoryEntry } from '@/core/history'
 import { isLayerEffectivelyLocked, isLayerEffectivelyVisible } from '@/core/document-model'
@@ -122,15 +123,10 @@ export function createSelectionPropertiesCommands({ get, set }: WorkspaceCommand
         width: current.selection.width,
         height: current.selection.height
       }
-      let target = {
-        x: Number.isFinite(patch.x) ? Math.round(patch.x!) : currentTarget.x,
-        y: Number.isFinite(patch.y) ? Math.round(patch.y!) : currentTarget.y,
-        width: Number.isFinite(patch.width) ? Math.max(1, Math.round(patch.width!)) : currentTarget.width,
-        height: Number.isFinite(patch.height) ? Math.max(1, Math.round(patch.height!)) : currentTarget.height
-      }
       const currentAngle = pending?.transformAngle ?? current.selectionAngle ?? 0
       const currentShear = pending?.transformShear
       const pivot = current.selectionPivot ?? transformedSelectionPivotPreset(currentTarget, 'center', currentAngle, currentShear)
+      let target = resizeSelectionPropertyTarget(currentTarget, patch, currentAngle, pivot)
       const hasAnglePatch = Number.isFinite(patch.angle)
       const angle = hasAnglePatch ? Math.round(patch.angle! * 10) / 10 : currentAngle
       if (hasAnglePatch) target = rotateSelectionTargetAroundPivot(target, pivot, angle - currentAngle)
@@ -176,12 +172,16 @@ export function createSelectionPropertiesCommands({ get, set }: WorkspaceCommand
           : current.selection.x === target.x && current.selection.y === target.y && current.selection.width === target.width && current.selection.height === target.height) &&
         (pending?.transformAngle ?? 0) === angle &&
         selectionShearAngle(currentTarget, pending?.transformShear) === nextShearAngle
-      if (same) return
+      if (same && Boolean(currentTarget.flipHorizontal) === Boolean(target.flipHorizontal)
+        && Boolean(currentTarget.flipVertical) === Boolean(target.flipVertical)
+        && currentTarget.flipOriginX === target.flipOriginX && currentTarget.flipOriginY === target.flipOriginY) return
 
       if (pending) restoreFloatingPreview(current)
       if (states.length > 0) {
         const edits = states.flatMap((state) => {
           const edit = applySelectionTransformLayerState(current.document, state, target, angle, pending?.copy ?? false, shear, undefined, undefined, undefined, undefined, current.selectionRotationAlgorithm === 'rotsprite')
+          state.previewEdit = edit
+          state.translationPreview = null
           return edit ? [edit] : []
         })
         const primaryEdit = edits[0] ?? null
@@ -192,10 +192,11 @@ export function createSelectionPropertiesCommands({ get, set }: WorkspaceCommand
         }
         get().mutateActive((session) => {
           session.selectionPropertiesActive = true
+          session.selectionPivot = { ...pivot }
         }, false)
         return
       }
-      const edit = applySelectionTransform(current.document, source, target, angle, pending?.copy ?? false, shear, undefined, undefined, layer, undefined, undefined, true, current.selectionRotationAlgorithm === 'rotsprite')
+      const edit = applySelectionTransform(current.document, source, target, angle, pending?.copy ?? false, shear, undefined, undefined, layer, undefined, undefined, false, current.selectionRotationAlgorithm === 'rotsprite')
       if (pending) {
         get().updateFloatingPastePreview(edit, after, null, target, angle, shear, false)
       } else {
@@ -203,6 +204,7 @@ export function createSelectionPropertiesCommands({ get, set }: WorkspaceCommand
       }
       get().mutateActive((session) => {
         session.selectionPropertiesActive = true
+        session.selectionPivot = { ...pivot }
       }, false)
     },
     shrinkSelectionToContent() {

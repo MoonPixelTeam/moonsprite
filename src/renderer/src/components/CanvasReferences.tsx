@@ -1,5 +1,6 @@
 import { CANVAS_REFERENCE_DELETE_EVENT, CANVAS_REFERENCE_PASTE_EVENT } from './canvas-reference-input'
 import { useCanvasPreferences } from './useCanvasPreferences'
+import { CANVAS_HOVER_DISMISS } from './useCanvasHoverDismiss'
 import { useEffect, useLayoutEffect, useRef, useState, type RefObject } from 'react'
 import { createPortal } from 'react-dom'
 import { useI18n } from './I18nProvider'
@@ -50,7 +51,7 @@ export function CanvasReferences({ stageRef, isOutside, viewport, documentId, sn
   const { referenceScaling } = useCanvasPreferences()
   const images = allImages.filter((image) => image.documentId === documentId).sort((a, b) => Number(Boolean(a.floating)) - Number(Boolean(b.floating)))
   const [pasting, setPasting] = useState(false)
-  const [clipboardHasImage, setClipboardHasImage] = useState(true)
+  const [clipboardHasImage, setClipboardHasImage] = useState(false)
   const clipboardImage = useRef<Awaited<ReturnType<typeof window.moonSprite.readClipboardImage>> | null>(null)
   const pasteBusy = useRef(false)
   const numericPointer = useRef<number | null>(null)
@@ -196,9 +197,8 @@ export function CanvasReferences({ stageRef, isOutside, viewport, documentId, sn
       // The later contextmenu event alone is too late to prevent a document edit.
       if (event.button === 2 && openLockedReference(event)) return
       if (event.button === 0 && event.target instanceof HTMLCanvasElement && event.target.classList.contains('stage-canvas')) setSelected(null)
-      if (event.button === 2 && outside(event)) { event.preventDefault(); event.stopPropagation() }
     }
-    const context = (event: MouseEvent) => {
+    const openOutsideMenu = (event: MouseEvent) => {
       if (openLockedReference(event)) return
       if (!outside(event)) return
       event.preventDefault(); event.stopPropagation()
@@ -208,11 +208,12 @@ export function CanvasReferences({ stageRef, isOutside, viewport, documentId, sn
       if (window.moonSprite?.readClipboardImage) void window.moonSprite.readClipboardImage().then((image) => { clipboardImage.current = image; setClipboardHasImage(Boolean(image && image.width > 0 && image.height > 0)) }).catch(() => setClipboardHasImage(false))
     }
     stage.addEventListener('pointerdown', down, true)
-    stage.addEventListener('contextmenu', context, true)
-    return () => { stage.removeEventListener('pointerdown', down, true); stage.removeEventListener('contextmenu', context, true) }
+    stage.addEventListener('dblclick', openOutsideMenu, true)
+    return () => { stage.removeEventListener('pointerdown', down, true); stage.removeEventListener('dblclick', openOutsideMenu, true) }
   }, [stageRef])
   useEffect(() => {
     if (!menu) return
+    window.dispatchEvent(new CustomEvent(CANVAS_HOVER_DISMISS, { detail: documentId }))
     const dismiss = (event: Event) => {
       if (!menuRef.current?.contains(event.target as Node)) setMenu(null)
     }
@@ -234,7 +235,7 @@ export function CanvasReferences({ stageRef, isOutside, viewport, documentId, sn
       window.removeEventListener('keydown', keyboard, true)
       window.removeEventListener('blur', blur)
     }
-  }, [menu])
+  }, [menu, documentId])
   useEffect(() => {
     const move = (event: PointerEvent) => { const drag = menuDrag.current; if (!drag) return; setMenu((value) => value ? { ...value, x: drag.left + event.clientX - drag.x, y: drag.top + event.clientY - drag.y } : value) }
     const up = () => { menuDrag.current = null }
@@ -453,7 +454,7 @@ export function CanvasReferences({ stageRef, isOutside, viewport, documentId, sn
           </div>
           <Button className="icon-button" title={t('common.delete')} aria-label={t('common.delete')} disabled={current.locked} onClick={() => { remove(current.id); setMenu(null); setSelected(null) }}><PixelUtilityIcon kind="delete" /></Button>
         </footer>
-      </> : <div className="menu-popover canvas-reference-actions" role="menu"><MenuItemButton role="menuitem" onClick={() => { fileRef.current?.click(); setMenu(null) }}>{t('reference.addCanvas')}</MenuItemButton>{clipboardHasImage && <MenuItemButton role="menuitem" disabled={pasting} onClick={() => { void paste() }}>{t('reference.pasteCanvas')}</MenuItemButton>}</div>}
+      </> : <div className="menu-popover canvas-reference-actions" role="menu"><MenuItemButton role="menuitem" onClick={() => { fileRef.current?.click(); setMenu(null) }}>{t('reference.addCanvas')}</MenuItemButton><MenuItemButton role="menuitem" disabled={!clipboardHasImage || pasting} onClick={() => { if (clipboardHasImage) void paste() }}>{t('reference.pasteCanvas')}</MenuItemButton></div>}
     </div>, document.body)}
   </>
 }

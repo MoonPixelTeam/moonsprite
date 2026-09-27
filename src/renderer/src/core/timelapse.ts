@@ -267,6 +267,7 @@ const compositeTimelapsePixels = (document: SpriteDocument, maximumDimension: nu
     || !Number.isFinite(revision)) {
     const pixels = new Uint8ClampedArray(width * height * 4)
     const composite = cache?.composite ?? new DocumentCompositeCache()
+    composite.invalidateAll()
     renderScaledRows(document, pixels, width, height, 0, height, 0, width, composite, revision)
     if (cache) {
       cache.sourceWidth = document.width
@@ -289,8 +290,14 @@ const compositeTimelapsePixels = (document: SpriteDocument, maximumDimension: nu
     ? invalidation.rect
     : undefined
   if (!patchRect) {
+    // A revision gap can include edits outside the latest region.
+    cache.composite.invalidateAll()
     renderScaledRows(document, cachedPixels, width, height, 0, height, 0, width, cache.composite, revision)
   } else {
+    // The output invalidation conservatively contains the changed source.
+    // Keep it unclipped and pending per owner, including off-canvas edits,
+    // so styled tiles can refresh locally when they are next sampled.
+    cache.composite.invalidateStyleSources(document, patchRect)
     const left = Math.max(0, Math.floor(patchRect.x))
     const top = Math.max(0, Math.floor(patchRect.y))
     const right = Math.min(document.width, Math.ceil(patchRect.x + patchRect.width))
@@ -307,6 +314,9 @@ const compositeTimelapsePixels = (document: SpriteDocument, maximumDimension: nu
 
 const compositeTimelapsePixelsAsync = async (document: SpriteDocument, maximumDimension: number, options: TimelapseCaptureOptions): Promise<{ pixels: Uint8ClampedArray; width: number; height: number } | null> => {
   const cache = options.cache
+  // This path samples independently of the synchronous composite cache.
+  // Do not leave its old styled tiles behind for a subsequent live capture.
+  cache?.composite.invalidateAll()
   const revision = options.contentRevision ?? Number.NaN
   const frameId = document.animation?.activeFrameId ?? null
   const { width, height } = captureDimensions(document.width, document.height, maximumDimension)

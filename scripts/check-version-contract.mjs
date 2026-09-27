@@ -9,7 +9,7 @@ const devLabelForVersion = (version) => {
   return match ? `DEV.${match[1]}` : version
 }
 
-export const validateVersionContract = ({ packageVersion, cargoVersion, tauriVersion, appLabel, latestLabel, changelog, archiveIndex }, { release = false } = {}) => {
+export const validateVersionContract = ({ packageVersion, cargoVersion, tauriVersion, appLabel, latestLabel, changelog, archiveIndex, readme, readmeEn }, { release = false } = {}) => {
   const errors = []
   if (packageVersion !== cargoVersion || packageVersion !== tauriVersion) {
     errors.push(`package/Cargo/Tauri 版本不一致：${packageVersion} / ${cargoVersion} / ${tauriVersion}`)
@@ -27,6 +27,13 @@ export const validateVersionContract = ({ packageVersion, cargoVersion, tauriVer
   if (release && latestLabel !== appLabel) {
     errors.push(`发布检查要求最近打包版本 ${latestLabel} 与当前发布标识 ${appLabel} 一致。`)
   }
+  if (release) {
+    for (const [path, content] of [['README.md', readme], ['README.en.md', readmeEn]]) {
+      if (!content?.includes(`\`${packageVersion}\``) || !content.includes(`[\`${latestLabel}\`](${archivePath})`)) {
+        errors.push(`${path} 未标注当前源码版本 ${packageVersion} 和最近打包版本归档 ${archivePath}。`)
+      }
+    }
+  }
   return errors
 }
 
@@ -40,6 +47,10 @@ const run = async () => {
   const appMeta = await readFile(join(root, 'src', 'renderer', 'src', 'core', 'app-meta.ts'), 'utf8')
   const changelog = await readFile(join(root, 'CHANGELOG.md'), 'utf8')
   const archiveIndex = await readFile(join(root, 'docs', 'changelog', 'README.md'), 'utf8')
+  const release = process.argv.includes('--release')
+  const [readme, readmeEn] = release
+    ? await Promise.all([readFile(join(root, 'README.md'), 'utf8'), readFile(join(root, 'README.en.md'), 'utf8')])
+    : [undefined, undefined]
   const latestLabel = appMetaValue(appMeta, 'LATEST_PACKAGED_RELEASE_LABEL')
   const errors = validateVersionContract({
     packageVersion: packageJson.version,
@@ -49,7 +60,9 @@ const run = async () => {
     latestLabel,
     changelog,
     archiveIndex,
-  }, { release: process.argv.includes('--release') })
+    readme,
+    readmeEn,
+  }, { release })
   try {
     await access(join(root, 'docs', 'changelog', `${latestLabel}.md`))
   } catch {

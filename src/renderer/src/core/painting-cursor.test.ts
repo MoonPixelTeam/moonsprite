@@ -14,12 +14,17 @@ it('anchors to the same pixel center through zoom, mirror, rotation and UI scale
     expect(actual.y).toBeCloseTo(expected.y / scale)
   }
 })
-it('persists independent painting cursor settings and defaults unknown settings to sprite', () => {
+it('persists independent painting cursor settings and defaults to a mouse-following cross', () => {
   localStorage.clear()
-  expect(loadEditorPreferences().paintingCursorType).toBe('sprite')
+  expect(loadEditorPreferences().paintingCursorType).toBe('simple')
   saveEditorPreferences({ ...DEFAULT_EDITOR_PREFERENCES, useLocalCursors: true, paintingCursorType: 'sprite-unscaled', cursorScale: 3 })
   expect(loadEditorPreferences()).toMatchObject({ useLocalCursors: true, paintingCursorType: 'sprite-unscaled', cursorScale: 3 })
+  saveEditorPreferences({ ...DEFAULT_EDITOR_PREFERENCES, paintingCursorShape: 'dot' })
+  expect(loadEditorPreferences().paintingCursorType).toBe('simple')
+  expect(loadEditorPreferences().paintingCursorShape).toBe('dot')
+  localStorage.setItem(PAINTING_CURSOR_TYPE_KEY, 'simple')
+  expect(loadEditorPreferences().paintingCursorType).toBe('simple')
   localStorage.setItem(PAINTING_CURSOR_TYPE_KEY, 'invalid')
-  expect(loadEditorPreferences().paintingCursorType).toBe('sprite')
+  expect(loadEditorPreferences().paintingCursorType).toBe('simple')
   localStorage.clear()
 })

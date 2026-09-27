@@ -215,6 +215,8 @@ export interface CanvasDragState extends LayerMoveState {
   drawingAnchorMove?: boolean
   canvasCenterSize?: { width: number; height: number }
   marqueeBounds?: SelectionRect
+  /** View orientation captured at creation, independent of explicit Alt rotation. */
+  marqueeViewAngle?: number
   marqueeAngle?: number
   marqueeModifierMode?: MarqueeModifierMode
   marqueeRotationStart?: {

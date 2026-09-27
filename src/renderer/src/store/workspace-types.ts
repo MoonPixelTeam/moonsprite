@@ -60,6 +60,7 @@ export interface CanvasResizePreview {
 }
 
 export interface AdjustmentSnapshot {
+  paletteOrder?: number[]
   layers: Array<{
     layerId: string
     frameId?: string
@@ -114,6 +115,7 @@ export interface FloatingSelectionBoxHistoryEntry {
 }
 
 export interface FloatingPaste {
+  structureHistory?: import('@/core/history').HistoryEntry
   /** An unchanged clipboard payload restored by undoing deselect; pixels are already committed. */
   restoredFromDeselect?: boolean
   layerId: string
@@ -222,6 +224,8 @@ export interface DocumentSession {
   brushImage: ImageBrush | null
   brushImageTemporary: boolean
   brushImageSettings: ImageBrushSettings
+  patternBrushReturnProfile?: BrushProfile
+  temporaryBrushCapture?: { selectionKind: DocumentSession['selectionKind']; selectionMode: DocumentSession['selectionMode']; selectionRounded: boolean; selectionAspectRatio: number | null }
   brushProfiles: Record<BrushTool, BrushProfile>
   proceduralBrushSettings: Record<ProceduralBrushId, ProceduralBrushSettings>
   proceduralAntialias: boolean

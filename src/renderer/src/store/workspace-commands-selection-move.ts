@@ -1,6 +1,7 @@
 import { commitPixelEdit } from '@/core/history'
 import { isLayerEffectivelyLocked, isLayerEffectivelyVisible, layerContentBounds } from '@/core/document-model'
 import { resolveAnimationCel } from '@/core/animation'
+import { normalCompositeLayers } from '@/core/document-composite-plan'
 import {
   applySelectionTransform,
   moveSelection
@@ -40,14 +41,12 @@ import {
 } from './workspace-view-selection-helpers'
 import { translateSelectionQuad } from './workspace-selection-transform-geometry'
 
-
-
 export function createSelectionMoveCommands({ get }: WorkspaceCommandContext<'commitPixelEdit' | 'moveActiveSelectionWithSelectionHistory' | 'moveLayerBy' | 'mutateActive' | 'redo' | 'undo'>): Pick<WorkspaceViewSelectionCommands, 'moveActiveSelectionWithSelectionHistory' | 'moveActiveSelection' | 'centerActiveContent'> {
   return {
     moveActiveSelectionWithSelectionHistory(deltaX, deltaY, allowOutsideCanvas = false) {
       get().mutateActive((session) => {
         if (!session.selection) return
-        const currentSelection = cloneSelectionMask(session.selection)!
+        const currentSelection = session.selection
         const requestedX = currentSelection.x + Math.trunc(deltaX)
         const requestedY = currentSelection.y + Math.trunc(deltaY)
         const nextX = allowOutsideCanvas ? requestedX : Math.max(0, Math.min(session.document.width - currentSelection.width, requestedX))
@@ -94,7 +93,7 @@ export function createSelectionMoveCommands({ get }: WorkspaceCommandContext<'co
             clearFloatingSelectionBoxHistory(pending)
           }
           clearFloatingSelectionBoxHistory(pending)
-          const previousTarget = cloneSelectionMask(pending.target)!
+          const previousTarget = pending.target
           const angle = pending.transformAngle ?? 0
           const shear = pending.transformShear
           const transformTarget = pending.transformTarget ?? {
@@ -110,18 +109,13 @@ export function createSelectionMoveCommands({ get }: WorkspaceCommandContext<'co
           }
           const nextTransformQuad = pending.transformQuad ? translateSelectionQuad(pending.transformQuad, actualX, actualY) : undefined
           if (pending.previewDeferred) {
-            // Deferred previews are rendered by CanvasCompositeCache and must
-            // never materialize pixels in the document. Centering a selection
-            // while such a preview is active only advances its geometry; the
-            // source canvas remains untouched until apply/commit.
-            const nextSelection = nextTransformQuad
-              ? transformSelectionMaskQuad(floatingSelectionGeometrySource(pending), nextTransformQuad, session.document.width, session.document.height, false, pending.source.sourceQuad)
-              : transformSelectionMask(floatingSelectionGeometrySource(pending), nextTransformTarget, session.document.width, session.document.height, angle, shear, false)
-            if (!nextSelection) return
-            pending.target = cloneSelectionMask(nextSelection)!
+            // The compositor owns deferred pixels until commit. Integer movement
+            // preserves even rotated/sheared masks; reuse the immutable shape.
+            const nextSelection = { ...pending.target, x: pending.target.x + actualX, y: pending.target.y + actualY }
+            pending.target = nextSelection
             pending.transformTarget = nextTransformTarget
             pending.transformQuad = nextTransformQuad ?? undefined
-            session.selection = cloneSelectionMask(nextSelection)
+            session.selection = { ...nextSelection }
             if (session.selectionPivot)
               session.selectionPivot = {
                 x: session.selectionPivot.x + actualX,
@@ -347,14 +341,21 @@ export function createSelectionMoveCommands({ get }: WorkspaceCommandContext<'co
         if (selectedLayers.some((candidate) => !isLayerEffectivelyVisible(session.document, candidate) || isLayerEffectivelyLocked(session.document, candidate))) return
         const layer = multipleLayers ? selectedLayers[0] : activePaintLayer(session)
         if (isLayerEffectivelyLocked(session.document, layer)) return
+        // Materialized translation allocates a canvas-sized marks buffer even
+        // for a small marquee. Keep large canvases on the cached overlay path
+        // only when the compositor can actually display that overlay.
+        const previewDeferred = !multipleLayers && !layer.kind && !session.activeLayerMaskId
+          && !session.view.relativeLuminance && session.view.tileRepeatMode === 'off'
+          && Math.max(session.document.width * session.document.height, currentSelection.width * currentSelection.height) > 256 * 256
+          && Boolean(normalCompositeLayers(session.document)?.some(candidate => candidate.id === layer.id))
         // Keep source and target dimensions identical when the marquee extends
         // outside the canvas; clipping the source turns later nudges into scaling.
-        const source = captureSelectionTransform(session.document, currentSelection, layer, { preserveOutsideCanvas: true })
+        const source = captureSelectionTransform(session.document, currentSelection, layer, { preserveOutsideCanvas: true, cacheOpaqueOffsets: !previewDeferred })
         if (!source) return
         const nextSelection = { ...currentSelection, x: nextX, y: nextY }
         const tilemapEditCellIndex = tilemapEditCellIndexForSelection(session, currentSelection)
         if (layer.kind === 'tilemap' && session.tilemapMode === 'edit' && tilemapEditCellIndex === undefined) return
-        const translationPreview = applySelectionTranslationPreview(session.document, source, nextSelection, false, null, layer, tilemapEditClipForCell(session, tilemapEditCellIndex), session.view.tileRepeatMode)
+        const translationPreview = previewDeferred ? null : applySelectionTranslationPreview(session.document, source, nextSelection, false, null, layer, tilemapEditClipForCell(session, tilemapEditCellIndex), session.view.tileRepeatMode)
         const layers = multipleLayers
           ? selectedLayers.map((candidate) => {
               const candidateSource = candidate.id === layer.id ? source : captureSelectionTransform(session.document, currentSelection, candidate, { preserveOutsideCanvas: true })!
@@ -383,6 +384,7 @@ export function createSelectionMoveCommands({ get }: WorkspaceCommandContext<'co
           transformAngle: 0,
           previewEdit: null,
           translationPreview,
+          previewDeferred,
           tilemapEditCellIndex,
           copy: false,
           label: tr('workspace.history.moveSelectionContent')
@@ -393,7 +395,8 @@ export function createSelectionMoveCommands({ get }: WorkspaceCommandContext<'co
             x: session.selectionPivot.x + actualX,
             y: session.selectionPivot.y + actualY
           }
-        markFloatingPreviewChanged(session, currentSelection, nextSelection)
+        if (previewDeferred) markFloatingOverlayChanged(session)
+        else markFloatingPreviewChanged(session, currentSelection, nextSelection)
       }, false)
     },
     moveActiveSelection(deltaX, deltaY) {

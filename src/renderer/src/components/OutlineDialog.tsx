@@ -11,6 +11,7 @@ import { PreferenceToggle } from '@/components/PreferenceToggle'
 import { RangeField } from '@/components/RangeField'
 import { defaultOutlineSettings, normalizeOutlineSettings } from '@/core/outline-settings'
 import { loadEditorPreferences } from '@/core/file-preferences'
+import { loadOutlineColorPreferences, saveOutlineColorPreferences } from '@/core/outline-color-preferences'
 import { useWorkspace, type DocumentSession } from '@/store/workspace'
 import { OutlineStrokeControls } from '@/components/OutlineStrokeControls'
 
@@ -19,6 +20,7 @@ export function OutlineDialog({ open, session, onClose }: { open: boolean; sessi
   const setOutlinePreview = useWorkspace((state) => state.setOutlinePreview)
   const outlineActiveSelection = useWorkspace((state) => state.outlineActiveSelection)
   const [color, setColor] = useState<RgbaColor>(() => ({ ...session.primaryColor }))
+  const [rememberLastSelectedColor, setRememberLastSelectedColor] = useState(false)
   const [backgroundColor, setBackgroundColor] = useState<RgbaColor>(() => ({ r: 0, g: 0, b: 0, a: 0 }))
   const [thickness, setThickness] = useState(1)
   const [position, setPosition] = useState<OutlinePosition>('outside')
@@ -37,7 +39,9 @@ export function OutlineDialog({ open, session, onClose }: { open: boolean; sessi
     const settings = (session.document.outlineSettings ? normalizeOutlineSettings(session.document.outlineSettings, session.primaryColor) : null)
       ?? (loadEditorPreferences().outlineSettings ? normalizeOutlineSettings(loadEditorPreferences().outlineSettings, session.primaryColor) : null)
       ?? defaultOutlineSettings(session.primaryColor)
-    setColor({ ...settings.color })
+    const colorPreferences = loadOutlineColorPreferences(session.primaryColor)
+    setRememberLastSelectedColor(colorPreferences.rememberLastSelectedColor)
+    setColor(colorPreferences.color)
     setBackgroundColor({ ...settings.backgroundColor })
     setThickness(settings.thickness)
     setPosition(settings.position)
@@ -54,6 +58,16 @@ export function OutlineDialog({ open, session, onClose }: { open: boolean; sessi
     else setOutlinePreview(null)
   }, [open, previewEnabled, color, backgroundColor, thickness, position, edgeDirections, kernel, smartHue, smartHueDarkness, followOpacity, setOutlinePreview])
 
+  const changeColor = (next: RgbaColor): void => {
+    setColor(next)
+    saveOutlineColorPreferences(rememberLastSelectedColor, next)
+  }
+  const toggleRememberLastSelectedColor = (enabled: boolean): void => {
+    const next = enabled ? color : { ...session.primaryColor }
+    setRememberLastSelectedColor(enabled)
+    setColor(next)
+    saveOutlineColorPreferences(enabled, next)
+  }
   const close = (): void => { setOutlinePreview(null); onClose() }
   const submit = (): void => {
     if (outlineActiveSelection({ color, backgroundColor, thickness, position, directions: edgeDirections, kernel, smartHue, smartHueDarkness, followOpacity, previewEnabled })) close()
@@ -87,7 +101,8 @@ export function OutlineDialog({ open, session, onClose }: { open: boolean; sessi
         <div className="outline-tone-settings">
           <PreferenceToggle label={t('outline.smartHue')} tooltip={t('outline.smartHueDescription')} checked={smartHue} onChange={setSmartHue} />
           <PreferenceToggle label={t('outline.followOpacity')} tooltip={t('outline.followOpacityHint')} checked={followOpacity} onChange={setFollowOpacity} />
-          {!smartHue && <FormField className="outline-color-field" layout="inline" label={t('outline.color')}><ColorValueControl color={color} density="regular" onChange={setColor} label={t('outline.color')} storageKey="selection-outline" fillWithColor inPalette={false} /></FormField>}
+          {!smartHue && <FormField className="outline-color-field" layout="inline" label={t('outline.color')}><ColorValueControl color={color} density="regular" onChange={changeColor} label={t('outline.color')} storageKey="selection-outline" fillWithColor inPalette={false} /></FormField>}
+          <LivePreviewToggle checked={rememberLastSelectedColor} onChange={toggleRememberLastSelectedColor} label={t('colorReplacement.rememberLastSelectedColor')} />
           <FormField className="outline-color-field" layout="inline" label={t('outline.backgroundColor')}><ColorValueControl color={backgroundColor} density="regular" onChange={setBackgroundColor} label={t('outline.backgroundColor')} storageKey="selection-outline-background" fillWithColor inPalette={false} /></FormField>
           {smartHue && <RangeField className="outline-smart-darkness" label={t('outline.smartHueDarkness')} min={0} max={100} suffix="%" value={smartHueDarkness} onChange={setSmartHueDarkness} />}
         </div>

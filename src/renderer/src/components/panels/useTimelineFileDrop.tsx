@@ -11,11 +11,11 @@ export function timelineGifDropIndex(target: Element | null, x: number, frameCou
   const grid = target?.closest<HTMLElement>('.layer-animation-grid')
   if (!grid) return null
   const frameTarget = target?.closest<HTMLElement>('[data-frame-index]')
-  let index = frameTarget ? Number(frameTarget.dataset.frameIndex) + 1 : NaN
+  let index = frameTarget ? Number(frameTarget.dataset.frameIndex) : NaN
   if (!Number.isInteger(index)) {
     const firstFrame = grid.querySelector<HTMLElement>('[data-frame-index]')
     const width = firstFrame?.getBoundingClientRect().width ?? grid.getBoundingClientRect().width / Math.max(1, frameCount)
-    index = Math.ceil((x - grid.getBoundingClientRect().left) / Math.max(1, width))
+    index = Math.floor((x - grid.getBoundingClientRect().left) / Math.max(1, width))
   }
   return Math.max(0, Math.min(frameCount, index))
 }

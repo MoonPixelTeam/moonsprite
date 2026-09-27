@@ -31,15 +31,16 @@ export function ColorReplacementDialog({ onClose }: { onClose: () => void }) {
   const documentId = useRef(session?.document.id ?? null)
   const [remembered] = useState(() => loadColorReplacementPreferences({
     sourceColor: copyColor(session?.primaryColor ?? WHITE), replacementColor: copyColor(session?.secondaryColor ?? WHITE),
-    target: 'layers', previewEnabled: false
+    target: 'layers', previewEnabled: false, rememberLastSelectedColor: true
   }))
-  const [sourceColor, setSourceColor] = useState<RgbaColor>(remembered.sourceColor)
-  const [replacementColor, setReplacementColor] = useState<RgbaColor>(remembered.replacementColor)
+  const [sourceColor, setSourceColor] = useState<RgbaColor>(remembered.rememberLastSelectedColor ? remembered.sourceColor : copyColor(session?.primaryColor ?? WHITE))
+  const [replacementColor, setReplacementColor] = useState<RgbaColor>(remembered.rememberLastSelectedColor ? remembered.replacementColor : copyColor(session?.secondaryColor ?? WHITE))
+  const [rememberLastSelectedColor, setRememberLastSelectedColor] = useState(remembered.rememberLastSelectedColor)
   const [target, setTarget] = useState<DialogTarget>(remembered.target)
   const [previewEnabled, setPreviewEnabled] = useState(remembered.previewEnabled)
   useEffect(() => {
-    saveColorReplacementPreferences({ sourceColor, replacementColor, target, previewEnabled })
-  }, [sourceColor, replacementColor, target, previewEnabled])
+    saveColorReplacementPreferences({ sourceColor, replacementColor, target, previewEnabled, rememberLastSelectedColor })
+  }, [sourceColor, replacementColor, target, previewEnabled, rememberLastSelectedColor])
   const [samplingTarget, setSamplingTarget] = useState<SamplingTarget | null>(null)
   const samplingTargetRef = useRef<SamplingTarget | null>(null)
   const samplingReturnToolRef = useRef<ToolId | null>(null)
@@ -140,6 +141,13 @@ export function ColorReplacementDialog({ onClose }: { onClose: () => void }) {
   const changeReplacementColor = (color: RgbaColor): void => {
     cancelScheduledPreview()
     setReplacementColor(copyColor(color))
+  }
+  const toggleRememberLastSelectedColor = (enabled: boolean): void => {
+    setRememberLastSelectedColor(enabled)
+    if (!enabled && session) {
+      setSourceColor(copyColor(session.primaryColor))
+      setReplacementColor(copyColor(session.secondaryColor))
+    }
   }
   const beginSampling = (nextTarget: SamplingTarget): void => {
     if (samplingTargetRef.current === nextTarget) {
@@ -249,6 +257,7 @@ export function ColorReplacementDialog({ onClose }: { onClose: () => void }) {
           <small className={targetAvailable ? '' : 'is-unavailable'}>{targetAvailable ? t('colorReplacement.targetCount', { count: targetCount }) : t('colorReplacement.targetUnavailable')}</small>
         </section>
         <LivePreviewToggle className="color-replacement-preview" checked={previewEnabled} onChange={setPreviewEnabled} label={t('colorReplacement.preview')} />
+        <LivePreviewToggle className="color-replacement-remember" checked={rememberLastSelectedColor} onChange={toggleRememberLastSelectedColor} label={t('colorReplacement.rememberLastSelectedColor')} />
       </div>
       <footer><button type="button" className="quiet-button" onClick={cancel}>{t('common.cancel')}</button><button type="submit" className="primary-button" disabled={replacementDisabled}><PixelUtilityIcon kind="refresh" />{t('colorReplacement.apply')}</button></footer>
     </ModalShell>

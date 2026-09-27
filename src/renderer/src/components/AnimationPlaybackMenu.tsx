@@ -20,7 +20,7 @@ export interface AnimationPlaybackState {
   setReturnToStart: (enabled: boolean) => void
 }
 
-export function AnimationPlaybackMenu({ session, x, y, onClose, playback: controlledPlayback }: { session: DocumentSession; x: number; y: number; onClose: () => void; playback?: AnimationPlaybackState }) {
+export function AnimationPlaybackMenu({ session, x, y, zIndex, onClose, playback: controlledPlayback }: { session: DocumentSession; x: number; y: number; zIndex?: number; onClose: () => void; playback?: AnimationPlaybackState }) {
   const { locale, t } = useI18n()
   const store = useWorkspace.getState()
   const [shortcuts, setShortcuts] = useState(() => loadShortcutBindings())
@@ -65,7 +65,7 @@ export function AnimationPlaybackMenu({ session, x, y, onClose, playback: contro
     }
   }, [onClose])
 
-  return createPortal(<div className="context-menu animation-context-menu" role="menu" aria-label={t('timeline.playbackSettings')} style={{ left: Math.min(x, Math.max(8, window.innerWidth - 244)), top: Math.max(8, Math.min(y, window.innerHeight - 420)) }} onPointerDown={(event) => event.stopPropagation()} onContextMenu={(event) => event.preventDefault()}>
+  return createPortal(<div className="context-menu animation-context-menu" role="menu" aria-label={t('timeline.playbackSettings')} style={{ zIndex, left: Math.min(x, Math.max(8, window.innerWidth - 244)), top: Math.max(8, Math.min(y, window.innerHeight - 420)) }} onPointerDown={(event) => event.stopPropagation()} onContextMenu={(event) => event.preventDefault()}>
     <button className="context-menu-item" type="button" role="menuitem" onClick={() => { playback.setPlaying(!playback.playing); onClose() }}>{playback.playing ? <Pause size={15} /> : <Play size={15} />}<span>{t(playback.playing ? 'timeline.pause' : 'timeline.play')}</span>{shortcutHint('toggleAnimationPlayback')}</button>
     <span className="context-menu-divider" />
     {playbackRates.map((rate) => { const shortcutId: ShortcutId = rate === 0.25 ? 'animationPlaybackSpeed025' : rate === 0.5 ? 'animationPlaybackSpeed050' : rate === 1 ? 'animationPlaybackSpeed100' : rate === 1.5 ? 'animationPlaybackSpeed150' : rate === 2 ? 'animationPlaybackSpeed200' : 'animationPlaybackSpeed300'; return <button key={rate} className="context-menu-item" type="button" role="menuitemradio" aria-checked={playback.rate === rate} onClick={() => { playback.setRate(rate); onClose() }}>{playback.rate === rate ? <PixelUtilityIcon kind="check" /> : <span />}<span>{t('timeline.playbackSpeedValue', { rate })}</span>{shortcutHint(shortcutId)}</button> })}

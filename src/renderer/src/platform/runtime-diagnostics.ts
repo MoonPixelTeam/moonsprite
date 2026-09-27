@@ -1,3 +1,4 @@
+import { installRuntimeLagCapture, type LagResourceSample } from '@/core/runtime-lag-capture'
 import { invoke } from '@tauri-apps/api/core'
 import { version as appVersion } from '../../../../package.json'
 import { createDiagnosticWriter } from './runtime-diagnostic-writer'
@@ -15,6 +16,16 @@ import {
 
 const BROWSER_DIAGNOSTIC_STORAGE_KEY = 'moonsprite.runtime-diagnostics.v1'
 const MAX_BROWSER_EVENTS = 100
+let nativeCaptureTransition = Promise.resolve()
+const setNativeLagCapture = (enabled: boolean): void => {
+  if (!('__TAURI_INTERNALS__' in window)) return
+  nativeCaptureTransition = nativeCaptureTransition.then(async () => {
+    await invoke<void>('set_lag_capture', { enabled })
+    recordRuntimeDiagnostic('operation-stage', 'lag.native-control', { enabled })
+  }).catch(error => {
+    recordRuntimeDiagnostic('error', 'lag.native-control-error', { message: String(error), enabled })
+  })
+}
 let installed = false
 let mode: DiagnosticMode | null = null
 let browserEvents: RuntimeDiagnosticEvent[] | undefined
@@ -56,21 +67,32 @@ const writer = createDiagnosticWriter(persistEvents, persistBrowserFallback)
 export const installRuntimeDiagnostics = (contextProvider: () => RuntimeDiagnosticDetail): (() => void) => {
   if (installed) return () => {}
   installed = true
+  let stopLagCapture: (() => void) | null = null
   let stopWatchdog: (() => void) | null = null
   const refresh = (): void => {
     const next = loadDiagnosticMode()
     if (next === mode) return
-    writer.discardPending()
+    if (mode === 'lag') setNativeLagCapture(false)
+    stopLagCapture?.(); stopLagCapture = null
+    if (mode === 'lag') void writer.flush()
+    else writer.discardPending()
     mode = next
     if (next === 'off') { stopWatchdog?.(); stopWatchdog = null }
     setRuntimeDiagnosticCollection(next !== 'off')
-    configureRuntimeDiagnostics(next === 'full' ? writer.enqueue : next === 'memory' ? () => {} : null, contextProvider)
+    configureRuntimeDiagnostics(next === 'full' || next === 'lag' ? writer.enqueue : next === 'memory' ? () => {} : null, contextProvider)
     if (next !== 'off') {
       stopWatchdog ??= installRuntimeDiagnosticWatchdog()
       recordRuntimeDiagnostic('session', 'diagnostic.mode', { mode: next, appVersion })
+      if (next === 'lag') {
+        setNativeLagCapture(true)
+        stopLagCapture = installRuntimeLagCapture({
+          record: (name, detail) => recordRuntimeDiagnostic('operation-stage', name, detail, name === 'lag.workspace'),
+          resources: '__TAURI_INTERNALS__' in window ? () => invoke<LagResourceSample>('sample_lag_resources', { rendererVisible: !document.hidden }) : undefined
+        })
+      }
     }
   }
-  const checkpoint = (): void => { if (mode === 'full') { writer.checkpoint(); void writer.flush() } }
+  const checkpoint = (): void => { if (mode === 'full' || mode === 'lag') { writer.checkpoint(); void writer.flush() } }
   const visibilityChange = (): void => { if (document.visibilityState === 'hidden') checkpoint() }
   window.addEventListener(DIAGNOSTIC_MODE_CHANGED, refresh)
   window.addEventListener('moonsprite:preferences-changed', refresh)
@@ -82,8 +104,11 @@ export const installRuntimeDiagnostics = (contextProvider: () => RuntimeDiagnost
     window.removeEventListener('moonsprite:preferences-changed', refresh)
     window.removeEventListener('pagehide', checkpoint)
     document.removeEventListener('visibilitychange', visibilityChange)
+    if (mode === 'lag') setNativeLagCapture(false)
+    stopLagCapture?.()
     stopWatchdog?.()
-    writer.discardPending()
+    if (mode === 'lag') void writer.flush()
+    else writer.discardPending()
     setRuntimeDiagnosticCollection(false)
     configureRuntimeDiagnostics(null)
     installed = false
@@ -92,8 +117,8 @@ export const installRuntimeDiagnostics = (contextProvider: () => RuntimeDiagnost
 }
 
 export const openRuntimeDiagnosticLogs = async (): Promise<void> => {
-  if (mode === 'full') await writer.flush()
-  const saved = mode === 'full' ? readBrowserEvents() : []
+  if (mode === 'full' || mode === 'lag') await writer.flush()
+  const saved = mode === 'full' || mode === 'lag' ? readBrowserEvents() : []
   if ('__TAURI_INTERNALS__' in window && mode !== 'memory') {
     try { await invoke('open_diagnostic_logs') } catch (error) {
       if (!saved.length) throw error

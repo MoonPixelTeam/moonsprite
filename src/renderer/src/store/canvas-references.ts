@@ -119,3 +119,16 @@ export const useCanvasReferences = create<{
     }
   }
 })
+
+// References are session-owned even when their panel is unmounted. Release
+// image data on close, including an unfinished drag that could restore it.
+const unsubscribeClosedSessions = useWorkspace.subscribe((state, previous) => {
+  if (state.sessions === previous.sessions) return
+  const current = useCanvasReferences.getState()
+  if (!current.images.length && !current.pending) return
+  const openIds = new Set(state.sessions.map(session => session.document.id))
+  const images = current.images.filter(image => image.documentId && openIds.has(image.documentId))
+  const pending = current.pending?.documentId && openIds.has(current.pending.documentId) ? current.pending : null
+  if (images.length !== current.images.length || pending !== current.pending) useCanvasReferences.setState({ images, pending })
+})
+if (import.meta.hot) import.meta.hot.dispose(unsubscribeClosedSessions)

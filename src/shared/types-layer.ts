@@ -1,3 +1,5 @@
+import type { GradientMapSettings } from './types-gradient-map'
+export interface LayerAdjustment { kind: 'gradient-map'; enabled: boolean; gradientMap: GradientMapSettings }
 import type { RgbaColor, BlendMode } from './types-color'
 import type { FreeTileSourceLayer } from './types-tiles'
 import type { LayerStyles } from './types-layer-style'
@@ -25,7 +27,7 @@ export interface RgbaLayer {
   /** Optional user-facing note shown when hovering the layer row. */
   description?: string
   /** Editable text layers retain raster surfaces for the existing compositor. */
-  kind?: 'text' | 'tilemap' | 'free-tile'
+  kind?: 'text' | 'tilemap' | 'free-tile' | 'adjustment'
   /** Project Tileset owned by this Tilemap layer. */
   tilemapTilesetId?: string
   /** Legacy v14 Free Tile ownership, retained only while decoding and migrating older projects. */
@@ -42,6 +44,7 @@ export interface RgbaLayer {
   clippingMask?: boolean
   /** Non-destructive effects evaluated from the active cel surface during compositing. */
   layerStyles?: LayerStyles
+  adjustment?: LayerAdjustment
   /** Treats this layer as editable canvas wallpaper with resize-time tiling. */
   background?: BackgroundLayerSettings
   groupId?: string | null
@@ -68,7 +71,7 @@ export interface IndexedLayer {
   /** Optional user-facing note shown when hovering the layer row. */
   description?: string
   /** Editable text layers retain raster surfaces for the existing compositor. */
-  kind?: 'text' | 'tilemap' | 'free-tile'
+  kind?: 'text' | 'tilemap' | 'free-tile' | 'adjustment'
   /** Project Tileset owned by this Tilemap layer. */
   tilemapTilesetId?: string
   /** Legacy v14 Free Tile ownership, retained only while decoding and migrating older projects. */
@@ -85,6 +88,7 @@ export interface IndexedLayer {
   clippingMask?: boolean
   /** Non-destructive effects evaluated from the active cel surface during compositing. */
   layerStyles?: LayerStyles
+  adjustment?: LayerAdjustment
   /** Treats this layer as editable canvas wallpaper with resize-time tiling. */
   background?: BackgroundLayerSettings
   groupId?: string | null
@@ -139,6 +143,7 @@ export interface LayerGroup {
   clippingMask?: boolean
   /** Non-destructive effects evaluated from the composited group contents. */
   layerStyles?: LayerStyles
+  adjustment?: LayerAdjustment
   /** Re-applies the group blend mode after its children have composited against the external backdrop. */
   cumulativeBlend?: boolean
 }

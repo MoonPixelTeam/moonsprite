@@ -10,6 +10,7 @@ type RustDropSubscriber = (onDrop: (paths: string[]) => void) => Promise<Unliste
 export interface DocumentDropPosition { x: number; y: number }
 
 export interface DocumentDropServiceOptions {
+  acceptsAdditionalPath?(path: string): boolean
   openPath(path: string): boolean | Promise<boolean>
   pathForFile(file: File): string
   claimPaths?(paths: string[], position?: DocumentDropPosition): boolean | Promise<boolean>
@@ -49,7 +50,7 @@ export function startDocumentDropService(options: DocumentDropServiceOptions): (
       if (timestamp - openedAt >= dedupeMs) recentlyOpened.delete(key)
     }
     const freshPaths: string[] = []
-    for (const path of normalizeDroppedDocumentPaths(paths)) {
+    for (const path of normalizeDroppedDocumentPaths(paths, options.acceptsAdditionalPath)) {
       const key = path.toLowerCase()
       if (recentlyOpened.has(key)) continue
       recentlyOpened.set(key, timestamp)

@@ -1,3 +1,4 @@
+import { cloneLayerAdjustment } from '@/core/layer-adjustment'
 import type { AnimationCel, AnimationCelSurface, AnimationTimeline } from '@shared/types-animation'
 import type { CanvasAnchor, SelectionRect } from '@shared/types-selection'
 import type { ColorMode, ImageResizeInterpolation, RuntimeRasterTiles } from '@shared/types-raster'
@@ -1180,8 +1181,8 @@ export function duplicateLayer(document: SpriteDocument, layerId: string): Raste
   const layerStyles = cloneLayerStyles(source.layerStyles)
   const background = source.background ? { ...source.background } : undefined
   const copy = source.format === 'rgba'
-    ? { ...source, id: copyId, name: `${source.name} ${tr('core.document.copySuffix')}`, ...(layerStyles ? { layerStyles } : {}), ...(background ? { background } : {}), pixels: new Uint8ClampedArray(source.pixels) } as RgbaLayer
-    : { ...source, id: copyId, name: `${source.name} ${tr('core.document.copySuffix')}`, ...(layerStyles ? { layerStyles } : {}), ...(background ? { background } : {}), pixels: new Uint32Array(source.pixels) } as IndexedLayer
+    ? { ...source, adjustment: cloneLayerAdjustment(source.adjustment), id: copyId, name: `${source.name} ${tr('core.document.copySuffix')}`, ...(layerStyles ? { layerStyles } : {}), ...(background ? { background } : {}), pixels: new Uint8ClampedArray(source.pixels) } as RgbaLayer
+    : { ...source, adjustment: cloneLayerAdjustment(source.adjustment), id: copyId, name: `${source.name} ${tr('core.document.copySuffix')}`, ...(layerStyles ? { layerStyles } : {}), ...(background ? { background } : {}), pixels: new Uint32Array(source.pixels) } as IndexedLayer
   document.layers.splice(document.layers.findIndex((layer) => layer.id === layerId) + 1, 0, copy)
   document.activeLayerId = copy.id
   return copy

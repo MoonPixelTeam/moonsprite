@@ -600,6 +600,7 @@ describe('layer, frame, and cel selection modes', () => {
     const secondLayer = createLayer('Second', 2, 2, 'rgba')
     document.layers.push(secondLayer)
     const timeline = ensureAnimationDocument(document)
+    addBlankAnimationFrame(document)
     const firstFrame = timeline.activeFrameId
     const secondFrame = addBlankAnimationFrame(document)
     const thirdFrame = addBlankAnimationFrame(document)
@@ -699,7 +700,7 @@ describe('layer, frame, and cel selection modes', () => {
 
     const next = useWorkspace.getState().sessions[0]
     expect(next.document.activeLayerId).toBe(second.id)
-    expect(next.selectedLayerIds).toEqual([])
+    expect(next.selectedLayerIds).toEqual([second.id])
     expect(next.selectedGroupIds).toEqual([])
     expect(next.selectedGroupId).toBeNull()
   })
@@ -787,5 +788,47 @@ describe('layer, frame, and cel selection modes', () => {
     const next = useWorkspace.getState().sessions[0]
     expect(next.document.animation?.activeFrameId).toBe(second)
     expect(next.selectedAnimationFrameIds).toEqual([])
+  })
+
+  it('limits arrow stepping to a loop section only in tag playback mode', () => {
+    const document = createDocument('loop-aware arrow navigation', 2, 2, 'rgba')
+    const timeline = ensureAnimationDocument(document)
+    const first = timeline.activeFrameId
+    const second = addBlankAnimationFrame(document)
+    const third = addBlankAnimationFrame(document)
+    const fourth = addBlankAnimationFrame(document)
+    timeline.loopSections = [{ id: 'tag', name: 'Tag', startFrameId: first, endFrameId: second, direction: 'forward', repeatCount: null }]
+    useWorkspace.getState().addSession(document)
+    const session = useWorkspace.getState().sessions[0]
+    session.selectedAnimationFrameIds = []
+    session.animationPlaybackMode = 'all'
+    timeline.activeFrameId = second
+    useWorkspace.getState().stepAnimationFrame(1)
+    expect(timeline.activeFrameId).toBe(third)
+
+    session.animationPlaybackMode = 'tag'
+    timeline.activeFrameId = second
+    useWorkspace.getState().stepAnimationFrame(1)
+    expect(timeline.activeFrameId).toBe(first)
+    expect(fourth).not.toBe(third)
+  })
+
+  it('moves the active animation cell across layers and frames', () => {
+    const document = createDocument('cell arrow navigation', 2, 2, 'rgba')
+    const firstLayer = getActiveLayer(document)
+    const secondLayer = createLayer('Second', 2, 2, 'rgba')
+    document.layers.push(secondLayer)
+    const timeline = ensureAnimationDocument(document)
+    addBlankAnimationFrame(document)
+    const firstFrame = timeline.activeFrameId
+    const secondFrame = addBlankAnimationFrame(document)
+    timeline.activeFrameId = firstFrame
+    useWorkspace.getState().addSession(document)
+
+    useWorkspace.getState().stepAnimationCell('layer', -1)
+    expect(useWorkspace.getState().sessions[0].selectedAnimationCellKeys).toEqual([animationCelKey(secondLayer.id, firstFrame)])
+    useWorkspace.getState().stepAnimationCell('frame', 1)
+    expect(useWorkspace.getState().sessions[0].selectedAnimationCellKeys).toEqual([animationCelKey(secondLayer.id, secondFrame)])
+    expect(firstLayer.id).not.toBe(secondLayer.id)
   })
 })

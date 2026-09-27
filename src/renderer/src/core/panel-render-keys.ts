@@ -98,8 +98,10 @@ export const layersPanelRenderKey = (session: PanelSessionState): string => [
   session.document.animation?.cels.map((cel) => `${cel.id}:${cel.layerId}:${cel.frameId}:${cel.linkedCelId ?? ''}:${cel.zIndex ?? 0}`).join('|') ?? '',
   session.document.animation?.layerMasks?.map((entry) => `${entry.layerId}:${entry.frameId}:${entry.mask.id}:${entry.mask.linkedMaskId ?? ''}`).join('|') ?? '',
   session.document.animation?.groupMasks?.map((entry) => `${entry.groupId}:${entry.frameId}:${entry.mask.id}:${entry.mask.linkedMaskId ?? ''}`).join('|') ?? '',
-  session.document.layers.map((layer) => `${layer.id}:${layer.name}:${layer.groupId ?? ''}:${layer.visible ? 1 : 0}:${layer.locked ? 1 : 0}:${layer.autoLinkAnimationCels ? 1 : 0}:${layer.opacity}:${layer.blendMode}:${layer.freeTileSetId ?? ''}`).join('|'),
-  session.document.groups.map((group) => `${group.id}:${group.name}:${group.parentGroupId ?? ''}:${group.visible ? 1 : 0}:${group.locked ? 1 : 0}:${group.opacity}:${group.blendMode}:${group.cumulativeBlend === true ? 1 : 0}`).join('|'),
+  // Each row subscribes to its own opacity/blend properties. Those high-rate
+  // values must not rebuild every row and timeline control on each preview.
+  session.document.layers.map((layer) => `${layer.id}:${layer.name}:${layer.groupId ?? ''}:${layer.visible ? 1 : 0}:${layer.locked ? 1 : 0}:${layer.autoLinkAnimationCels ? 1 : 0}:${layer.freeTileSetId ?? ''}`).join('|'),
+  session.document.groups.map((group) => `${group.id}:${group.name}:${group.parentGroupId ?? ''}:${group.visible ? 1 : 0}:${group.locked ? 1 : 0}`).join('|'),
   session.selectedLayerIds.join(','),
   session.selectedGroupId ?? '',
   session.selectedGroupIds.join(','),
