@@ -112,7 +112,7 @@ test('runtime broadcasts the selected language and translates menus after prefer
 });
 
 test('host locale changes follow by default, localize the built-in name, and never enable pets', async () => {
-  const stored=new Map([['preferences',{language:'auto',enabled:false}],['shownPets',['builtin']],['pet-sprites',[{id:'builtin',localizedName:'奶龙',name:'奶龙',frameCount:1}]]]);
+  const stored=new Map([['preferences',{language:'auto',enabled:false}],['shownPets',['builtin']],['pet-sprites',[{id:'builtin',localizedName:'月猫',name:'月猫',frameCount:1}]]]);
   const handlers={},opened=[],sent=[],menus=[];
   const sandbox=nodeVm.createContext({moonsprite:{on:(name,fn)=>handlers[name]=fn,storage:{get:async({key})=>stored.get(key),set:async({key,value})=>stored.set(key,value)},menus:{setItems:async value=>menus.push(value)},windows:{open:async value=>opened.push(value),close:async()=>{},postMessage:async value=>sent.push(value)},diagnostics:{log:error=>{throw Error(error.message)}}}});
   nodeVm.runInContext(generated.runtimePage.match(/<script\b[^>]*>([\s\S]*?)<\/script\b[^>]*>/i)[1],sandbox);
@@ -123,24 +123,24 @@ test('host locale changes follow by default, localize the built-in name, and nev
   assert.equal(menus.at(-1).items.find(item=>item.id==='manager').name,catalogs['de-DE']['宠物管理…']);
   await handlers.command({event:'toggle-pet',commandId:'builtin'});
   await handlers['window-message']({windowId:'pet-builtin',message:{type:'ready'}});
-  assert.equal(sent.at(-1).message.pet.name,'Nailong');
+  assert.equal(sent.at(-1).message.pet.name,'Mondkatze');
   await handlers['locale-changed']({locale:'ja-JP'});
-  assert.equal(sent.at(-1).message.pet.name,'ナイロン');
+  assert.equal(sent.at(-1).message.pet.name,'ムーンキャット');
   assert.equal(sent.at(-1).message.preferences.hostLocale,'ja-JP');
   stored.set('preferences',{...stored.get('preferences'),language:'zh-CN'});
   await handlers['locale-changed']({locale:'fr-FR'});
-  assert.equal(sent.at(-1).message.pet.name,'Nailong');
+  assert.equal(sent.at(-1).message.pet.name,'Chat lunaire');
   assert.equal(opened.length,1);
 });
 
 test('new built-in assets replace old animation overrides while preserving scale and mirror', () => {
   const sandbox=nodeVm.createContext({});
   nodeVm.runInContext(createLocalizationSource()+vm.runInContext('builtinSource',context),sandbox);
-  const builtin={id:'builtin',name:'奶龙',localizedName:'奶龙',assetVersion:'new',source:'builtin',animations:{SHOW:[0],IDLE:[1],TRIGGER_TOUCH:[2],TRIGGER_UNDO:[3]},triggerSlots:[{id:'TRIGGER_TOUCH',event:'pet.enter',cooldownMs:0},{id:'TRIGGER_UNDO',event:'history.undo',cooldownMs:0}]};
+  const builtin={id:'builtin',name:'月猫',localizedName:'月猫',assetVersion:'new',source:'builtin',animations:{SHOW:[0],IDLE:[1],TRIGGER_TOUCH:[2],TRIGGER_UNDO:[3]},triggerSlots:[{id:'TRIGGER_TOUCH',event:'pet.enter',cooldownMs:0},{id:'TRIGGER_UNDO',event:'history.undo',cooldownMs:0}]};
   sandbox.builtin=builtin;
   sandbox.saved={id:'builtin',name:'Old',source:'custom',spriteKey:'old',scale:4,mirrored:true,animations:{IDLE:[77]}};
   const migrated=nodeVm.runInContext('resolveBuiltin(saved,builtin)',sandbox);
-  assert.equal(migrated.name,'Nailong');
+  assert.equal(migrated.name,'Mooncat');
   assert.equal(migrated.source,'builtin');
   assert.equal(migrated.spriteKey,undefined);
   assert.equal(migrated.scale,4);assert.equal(migrated.mirrored,true);
