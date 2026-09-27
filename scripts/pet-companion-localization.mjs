@@ -23,7 +23,7 @@ const rows = `
 
 上移|Move up|上へ|위로|Nach oben|Monter|Subir|Mover para cima|Вверх
 下移|Move down|下へ|아래로|Nach unten|Descendre|Bajar|Mover para baixo|Вниз
-奶龙|Nailong|ナイロン|나이롱|Nailong|Nailong|Nailong|Nailong|Найлон
+月猫|Mooncat|ムーンキャット|문캣|Mondkatze|Chat lunaire|Gato lunar|Gato lunar|Лунный кот
 语言|Language|言語|언어|Sprache|Langue|Idioma|Idioma|Язык
 跟随软件|App language|アプリの言語|앱 언어|App-Sprache|Langue de l’application|Idioma de la aplicación|Idioma do aplicativo|Язык приложения
 应用语言|Apply language|言語を適用|언어 적용|Sprache anwenden|Appliquer la langue|Aplicar idioma|Aplicar idioma|Применить язык

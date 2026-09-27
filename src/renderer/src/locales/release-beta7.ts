@@ -10,7 +10,7 @@ export const beta7Zh = {
   'release.beta7.fixes': '修复动画播放残留选中高亮、文字层栅格化结果被覆盖，以及选区、图层和时间轴的部分预览与撤销问题。',
   'release.beta7.files': '工程保存改用可转移数据的工作线程通道；完善工程解码错误提示及扩展资源、文件拖放处理。',
   'release.beta7.diagnostics': '新增卡顿记录模式；偏好设置增加绘画光标形状、像素对齐和笔刷边缘粗细等选项。',
-  'release.beta7.website': '官网首页更新功能介绍和动图，宠物扩展包与网站资源组装流程同步整理。'
+  'release.beta7.website': '官网首页更新功能介绍和动图；宠物伴侣的内置宠物更新为月猫，保留用户创建的宠物。'
 } as const
 
 export const beta7En = {
@@ -25,5 +25,5 @@ export const beta7En = {
   'release.beta7.fixes': 'Fix stale playback selections, overwritten rasterized text, and preview or undo issues in selections, layers, and the timeline.',
   'release.beta7.files': 'Move project saving to a transferable-data worker path; improve decode errors and extension asset and file-drop handling.',
   'release.beta7.diagnostics': 'Add lag capture mode and preferences for pointer shape, pixel alignment, and brush edge thickness.',
-  'release.beta7.website': 'Refresh the website feature showcase and animations, and organize pet package and website asset assembly.'
+  'release.beta7.website': 'Refresh the website feature showcase and animations; replace the bundled pet with Mooncat while preserving user-created pets.'
 } as const

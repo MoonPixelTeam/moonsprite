@@ -153,7 +153,7 @@ const builtInPet = {
   showFrames: showFrames.map((_, index) => index),
   idleFrames: idleFrames.map((_, index) => showFrames.length + index),
   assetVersion: 'loops-v2-undo-once:' + createHash('sha256').update(sourceBytes).digest('hex'),
-  localizedName: petName === '奶龙' ? '奶龙' : undefined,
+  localizedName: petName === '月猫' ? '月猫' : undefined,
   animations: animationFrames,
   triggerSlots: [{id:'TRIGGER_TOUCH',event:'pet.enter',cooldownMs:0,idleSeconds:60,tool:''},{id:'TRIGGER_UNDO',event:'history.undo',cooldownMs:0,idleSeconds:60,tool:''}],
   durations: allFrames.map(frame => Math.max(1, Number(frame.duration) || 125)),
