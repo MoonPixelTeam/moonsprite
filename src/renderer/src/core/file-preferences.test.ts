@@ -86,13 +86,21 @@ it('uses the requested cursor and magnifier defaults while preserving saved choi
 })
 
 describe('editor preferences boundary', () => {
-  it('shows the selection pointer by default and preserves saved choices', () => {
+  it('hides the selection pointer by default and preserves saved choices', () => {
     const storage = memoryStorage()
-    expect(DEFAULT_EDITOR_PREFERENCES.selectionCrosshair).toBe(true)
-    expect(loadEditorPreferences(storage).selectionCrosshair).toBe(true)
+    expect(DEFAULT_EDITOR_PREFERENCES.selectionCrosshair).toBe(false)
+    expect(loadEditorPreferences(storage).selectionCrosshair).toBe(false)
     for (const selectionCrosshair of [false, true]) {
       saveEditorPreferences({ ...DEFAULT_EDITOR_PREFERENCES, selectionCrosshair }, storage)
       expect(loadEditorPreferences(storage).selectionCrosshair).toBe(selectionCrosshair)
+    }
+  })
+
+  it('remembers each brush preview mode', () => {
+    const storage = memoryStorage()
+    for (const brushPreviewMode of ['edge', 'full', 'full-edge'] as const) {
+      saveEditorPreferences({ ...DEFAULT_EDITOR_PREFERENCES, brushPreviewMode }, storage)
+      expect(loadEditorPreferences(storage).brushPreviewMode).toBe(brushPreviewMode)
     }
   })
 

@@ -15,6 +15,8 @@ import { createDefaultLayerStyles } from '@/core/layer-styles'
 import { FREE_TILE_INSTANCE_PANEL_LAYOUT_STORAGE_KEY } from '@/core/layer-panel-preferences'
 
 beforeEach(() => {
+  vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => window.setTimeout(() => callback(performance.now()), 16))
+  vi.stubGlobal('cancelAnimationFrame', (id: number) => window.clearTimeout(id))
   localStorage.clear()
   localStorage.setItem(FREE_TILE_INSTANCE_PANEL_LAYOUT_STORAGE_KEY, 'integrated')
   Object.defineProperty(window, 'moonSprite', {
@@ -27,6 +29,7 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.useRealTimers()
+  vi.unstubAllGlobals()
   cleanup()
 })
 
@@ -50,7 +53,7 @@ describe('LayersPanel Free Tile instances', () => {
     useWorkspace.getState().setAnimationPlaying(true)
     const { container } = render(<ConnectedLayersPanel />)
     expect(container.querySelector('.cel-content-marker.selection-marker')).toBeNull()
-    expect(useWorkspace.getState().sessions[0].selectedGroupId).toBe(group.id)
+    expect(useWorkspace.getState().sessions[0].selectedGroupId).toBeNull()
   })
   it('keeps the instance layout control out of the general layer settings', () => {
     const document = createDocument('layer settings without instance layout', 8, 8, 'rgba')
@@ -548,8 +551,10 @@ describe('LayersPanel animation', () => {
 
     const firstCell = container.querySelector<HTMLElement>(`[data-animation-cel-key="${animationCelKey(layerId, firstFrame.id)}"]`)!
     fireEvent.pointerDown(firstCell, { button: 0, altKey: true })
+    fireEvent.pointerUp(firstCell, { button: 0, altKey: true })
     const secondCell = container.querySelector<HTMLElement>(`[data-animation-cel-key="${animationCelKey(layerId, secondFrame.id)}"]`)!
     fireEvent.pointerDown(secondCell, { button: 0, altKey: true, shiftKey: true })
+    fireEvent.pointerUp(secondCell, { button: 0, altKey: true, shiftKey: true })
 
     expect(Array.from(useWorkspace.getState().sessions[0].selection?.mask ?? [])).toEqual([1, 0, 1])
   })
@@ -1038,8 +1043,10 @@ describe('LayersPanel animation', () => {
 
     fireEvent.pointerDown(frames[0], { button: 0, pointerId: 1, clientX: 10, clientY: 10 })
     fireEvent.pointerMove(frames[1], { pointerId: 1, clientX: 50, clientY: 10 })
+    act(() => vi.advanceTimersByTime(17))
     expect(container.querySelector<HTMLElement>('[data-animation-frame-selection]')?.style.getPropertyValue('--animation-frame-span')).toBe('2')
     fireEvent.pointerMove(frames[2], { pointerId: 1, clientX: 90, clientY: 10 })
+    act(() => vi.advanceTimersByTime(17))
     expect(container.querySelector<HTMLElement>('[data-animation-frame-selection]')?.style.getPropertyValue('--animation-frame-span')).toBe('3')
     fireEvent.pointerUp(frames[2], { pointerId: 1, clientX: 90, clientY: 10 })
     expect(session.selectedAnimationFrameIds).toHaveLength(3)
@@ -1047,6 +1054,7 @@ describe('LayersPanel animation', () => {
   })
 
   it('updates the cel range outline continuously while dragging across cells', () => {
+    vi.useFakeTimers()
     const document = createDocument('animation live cel range preview', 1, 1, 'rgba')
     const secondLayer = createLayer('second', 1, 1, 'rgba')
     document.layers.push(secondLayer)
@@ -1065,6 +1073,7 @@ describe('LayersPanel animation', () => {
 
     fireEvent.pointerDown(firstCell, { button: 0, pointerId: 1, clientX: 10, clientY: 50 })
     fireEvent.pointerMove(lastCell, { pointerId: 1, clientX: 50, clientY: 90 })
+    act(() => vi.advanceTimersByTime(17))
 
     const outline = container.querySelector<HTMLElement>('[data-animation-cel-selection]')
     expect(outline?.style.getPropertyValue('--animation-frame-span')).toBe('2')
@@ -1092,6 +1101,7 @@ describe('LayersPanel animation', () => {
     fireEvent.pointerDown(firstHeader, { button: 0, pointerId: 1, clientX: 10, clientY: 10 })
     act(() => vi.advanceTimersByTime(360))
     fireEvent.pointerMove(fourthCell, { pointerId: 1, clientX: 130, clientY: 60 })
+    act(() => vi.advanceTimersByTime(17))
 
     expect(container.querySelector<HTMLElement>('[data-animation-frame-selection]')?.style.getPropertyValue('--animation-frame-span')).toBe('4')
     fireEvent.pointerUp(fourthCell, { pointerId: 1, clientX: 130, clientY: 60 })
@@ -1312,6 +1322,7 @@ describe('LayersPanel properties', () => {
     fireEvent.pointerDown(cells[0], { button: 0, pointerId: 1, clientX: 10, clientY: 40 })
     act(() => vi.advanceTimersByTime(360))
     fireEvent.pointerMove(cells[1], { pointerId: 1, clientX: 50, clientY: 40 })
+    act(() => vi.advanceTimersByTime(17))
     expect(container.querySelector<HTMLElement>('[data-animation-cel-selection]')?.style.getPropertyValue('--animation-frame-span')).toBe('2')
     expect([...container.querySelectorAll<HTMLElement>('.animation-active-cell-column')].some((column) =>
       column.style.getPropertyValue('--animation-frame-index') === '0'
@@ -2432,9 +2443,11 @@ describe('LayersPanel properties', () => {
     fireEvent.contextMenu(screen.getByRole('button', { name: new RegExp(layer.name) }), { clientX: 20, clientY: 20 })
     fireEvent.click(screen.getByRole('menuitem', { name: '属性' }))
     const slider = screen.getByRole('slider', { name: '不透明度' })
+    fireEvent.pointerDown(slider, { button: 0 })
     for (let value = 90; value >= 20; value -= 10) fireEvent.change(slider, { target: { value: String(value) } })
 
     expect(layer.opacity).toBe(1)
+    fireEvent.pointerUp(slider, { button: 0 })
     await waitFor(() => expect(layer.opacity).toBe(0.2))
     expect(mutate.mock.calls.length).toBeLessThan(4)
   })

@@ -1,10 +1,12 @@
 import { gradientMapEn } from './gradient-map'
+import { beta7En } from './release-beta7'
 import { spriteSheetImportjaJP } from './sprite-sheet-import'
 import type { TranslationCatalog } from './contracts'
 
 import { tabletEn } from './tablet'
 
 export const jaJPMessages = {
+  ...beta7En,
   ...gradientMapEn,
   "toolOptions.temporaryBrushCaptureHint": "一時ブラシ：ドラッグで範囲を選択、離して使用。Esc でキャンセル",
   "preferences.paintingCursor.cross": "シンプルな十字",
@@ -1321,6 +1323,7 @@ export const jaJPMessages = {
   'colorReplacement.colors': 'カラー',
   'colorReplacement.source': '初期色',
   'colorReplacement.replacement': '代わりに',
+  'colorReplacement.rememberLastSelectedColor': '最後に選択した色を記憶',
   'colorReplacement.pickSource': 'カンボジアの最初の色を示す',
   'colorReplacement.pickReplacement': 'キャンバスの代替色を示す',
   'colorReplacement.range': '範囲',

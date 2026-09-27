@@ -1232,7 +1232,7 @@ body .pressure-trigger[aria-expanded='true']:not(.selected) { color: var(--theme
 .roadmap-body { min-height: 0; overflow: auto; padding: var(--ui-space-5); }
 .roadmap-body > p { margin: 0 0 var(--ui-space-5); color: var(--theme-text-muted); font-size: var(--ui-font-regular); }
 .latest-release-modal { overflow: hidden; }
-.latest-release-body { display: grid; min-height: 0; align-content: start; gap: var(--ui-space-4); overflow: auto; padding: var(--ui-space-5); background: var(--theme-dialog-content); }
+.latest-release-body { display: grid; flex: 1 1 auto; min-height: 0; align-content: start; gap: var(--ui-space-4); overflow: auto; padding: var(--ui-space-5); background: var(--theme-dialog-content); }
 .latest-release-overview { display: grid; gap: var(--ui-space-3); min-width: 0; padding: var(--ui-space-4); background: var(--theme-raised-surface); border: 1px solid var(--theme-border-strong); border-left: 2px solid var(--theme-accent); }
 .latest-release-overview-heading { display: flex; min-width: 0; align-items: center; justify-content: space-between; gap: var(--ui-space-4); }
 .latest-release-overview-heading strong { color: var(--theme-text-primary); font-size: var(--ui-font-regular); }
@@ -1260,7 +1260,9 @@ body .pressure-trigger[aria-expanded='true']:not(.selected) { color: var(--theme
 .pixel-shape-icon i { display: block; width: 2px; height: 2px; background: transparent; }
 .pixel-shape-icon i.filled { background: currentColor; }
 .stage-wrap { position: relative; min-width: 0; min-height: 0; overflow: hidden; background: var(--theme-canvas-surround); }
-.stage-surface { --stage-view-scrollbar-thickness: 10px; position: relative; width: 100%; height: 100%; min-width: 0; min-height: 0; overflow: hidden; background: var(--theme-canvas-surround); }
+/* View controls follow the live viewport while canvas surfaces can be frozen during dock resizing. */
+.stage-viewport { --stage-view-scrollbar-thickness: 10px; position: relative; width: 100%; height: 100%; min-width: 0; min-height: 0; overflow: hidden; }
+.stage-surface { position: relative; width: 100%; height: 100%; min-width: 0; min-height: 0; overflow: hidden; background: var(--theme-canvas-surround); }
 .stage-canvas { position: absolute; left: 0; top: 0; display: block; width: 100%; height: 100%; touch-action: none; cursor: var(--cursor-crosshair); image-rendering: pixelated; }
 .stage-canvas.zoom-tool-canvas { cursor: var(--cursor-zoom); }
 .stage-canvas:focus, .stage-canvas:focus-visible { outline: 0; box-shadow: none; }
@@ -1434,8 +1436,7 @@ html.floating-panel-dragging, html.floating-panel-dragging * { cursor: var(--cur
 .palette-panel { display: grid; grid-template-rows: var(--ui-panel-header-height) minmax(0, 1fr); min-height: 0; }
 body :is(.palette-panel, .color-panel) > header > .panel-actions {
   margin-left: auto;
-  padding-top: var(--ui-space-4);
-  padding-bottom: var(--ui-space-4);
+  padding-block: 0;
 }
 .palette-panel > header > small {
   order: -1;
@@ -4121,7 +4122,7 @@ body input[type='checkbox'] {
   :is([data-panel-dock-content='left'], [data-panel-dock-content='right']) .layers-panel:not(.floating-panel) {
     --animation-loop-section-track-height: 0px;
   }
-  :is([data-panel-dock-content='left'], [data-panel-dock-content='right']) .panel:not(.floating-panel) > header {
+  :is([data-panel-dock-content='left'], [data-panel-dock-content='right']) .panel:not(.floating-panel, .palette-panel, .color-panel) > header {
     gap: var(--ui-space-1);
     padding-inline: var(--ui-space-2);
   }
@@ -4156,13 +4157,13 @@ body input[type='checkbox'] {
 
 /* Compact content must keep navigation reachable instead of clipping it. */
 @container side-panel-dock (max-width: 128px) {
-  :is([data-panel-dock-content='left'], [data-panel-dock-content='right']) .panel:not(.floating-panel) > header {
+  :is([data-panel-dock-content='left'], [data-panel-dock-content='right']) .panel:not(.floating-panel, .palette-panel, .color-panel) > header {
     padding-inline: var(--ui-space-1);
   }
-  :is([data-panel-dock-content='left'], [data-panel-dock-content='right']) .panel:not(.floating-panel) > header > .panel-actions {
+  :is([data-panel-dock-content='left'], [data-panel-dock-content='right']) .panel:not(.floating-panel, .palette-panel, .color-panel) > header > .panel-actions {
     gap: 0;
   }
-  :is([data-panel-dock-content='left'], [data-panel-dock-content='right']) .panel:not(.floating-panel) > header > .panel-actions > button {
+  :is([data-panel-dock-content='left'], [data-panel-dock-content='right']) .panel:not(.floating-panel, .palette-panel, .color-panel) > header > .panel-actions > button {
     width: var(--ui-icon-button-size);
     min-width: var(--ui-icon-button-size);
     height: var(--ui-icon-button-size);
@@ -4202,10 +4203,10 @@ body input[type='checkbox'] {
     display: grid;
     grid-template-rows: var(--ui-panel-header-height) minmax(0, 1fr);
   }
-  :is([data-panel-dock-content='left'], [data-panel-dock-content='right']) .panel:not(.floating-panel) > header > :not(.panel-actions) {
+  :is([data-panel-dock-content='left'], [data-panel-dock-content='right']) .panel:not(.floating-panel, .palette-panel, .color-panel) > header > :not(.panel-actions) {
     display: none;
   }
-  :is([data-panel-dock-content='left'], [data-panel-dock-content='right']) .panel:not(.floating-panel) > header {
+  :is([data-panel-dock-content='left'], [data-panel-dock-content='right']) .panel:not(.floating-panel, .palette-panel, .color-panel) > header {
     height: var(--ui-panel-header-height);
     min-height: var(--ui-panel-header-height);
     justify-content: center;
@@ -4213,7 +4214,7 @@ body input[type='checkbox'] {
     padding-inline: var(--ui-space-1);
     border-bottom: 1px solid var(--theme-border-strong);
   }
-  :is([data-panel-dock-content='left'], [data-panel-dock-content='right']) .panel:not(.floating-panel) > header > .panel-actions {
+  :is([data-panel-dock-content='left'], [data-panel-dock-content='right']) .panel:not(.floating-panel, .palette-panel, .color-panel) > header > .panel-actions {
     display: flex;
     flex: 1 1 auto;
     align-items: center;
@@ -4225,7 +4226,7 @@ body input[type='checkbox'] {
     overflow-x: auto;
     scrollbar-width: none;
   }
-  :is([data-panel-dock-content='left'], [data-panel-dock-content='right']) .panel:not(.floating-panel) > header > .panel-actions > button {
+  :is([data-panel-dock-content='left'], [data-panel-dock-content='right']) .panel:not(.floating-panel, .palette-panel, .color-panel) > header > .panel-actions > button {
     width: var(--ui-icon-button-size);
     min-width: var(--ui-icon-button-size);
     height: var(--ui-icon-button-size);
@@ -4330,6 +4331,7 @@ html body .panel > header > .panel-actions:has(> :only-child) { flex-shrink: 0; 
   }
   .tileset-panel-toolbar { grid-template-columns: minmax(0, 1fr); gap: var(--ui-space-2); max-height: 64px; overflow: auto; }
   .brush-swatch-grid { padding: var(--ui-space-2); }
+  .history-entry > :is(strong, span), .brush-folder-item > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
   .brush-folder-item, .brush-folder-navigation > button { gap: var(--ui-space-1); padding-inline: var(--ui-space-2); }
   .history-entry { column-gap: var(--ui-space-2); padding-inline: var(--ui-space-2); }
   .reference-image-navigation { max-width: calc(100% - 4px); overflow-x: auto; justify-content: safe center; scrollbar-width: none; }
@@ -4346,9 +4348,42 @@ html body .panel > header > .panel-actions:has(> :only-child) { flex-shrink: 0; 
   .reference-image-panel > header .panel-actions > button { display: grid; }
   .reference-image-navigation { bottom: var(--ui-space-1); }
   .brush-swatch-grid.is-empty { padding: var(--ui-space-2); }
+  .brush-folder-navigation > button { grid-template-columns: minmax(0, 1fr); }
+  .brush-folder-navigation > button > span { display: none; }
+  .free-tile-instance-header .layer-panel-title { display: none; }
+  .layers-panel.timeline-hidden .layer-row { padding-inline: 2px; gap: 2px; }
   .color-panel .color-current-button { grid-template-columns: 22px minmax(0, 1fr); gap: var(--ui-space-1); padding-inline: var(--ui-space-1); }
   .color-panel .color-current-button small { display: none; }
   .color-panel .tile-role-controls { grid-template-columns: minmax(0, 1fr); }
+}
+
+/* One inset controls the color cells and their selection coordinates. Header
+   controls use the same inset and keep their intrinsic button dimensions. */
+@container workspace-panel (max-width: 220px) {
+  .palette-panel > .swatch-grid { --palette-grid-padding: 4px; }
+}
+@container workspace-panel (max-width: 128px) {
+  html body .panel:is(.palette-panel, .color-panel) > header {
+    padding-inline: 4px;
+    justify-content: flex-start;
+  }
+  html body .panel:is(.palette-panel, .color-panel) > header > .responsive-panel-actions {
+    flex: 0 0 auto;
+    width: auto;
+    height: var(--ui-icon-button-size);
+    margin: 0;
+    padding: 0;
+    justify-content: flex-start;
+    gap: 2px;
+  }
+  html body .panel:is(.palette-panel, .color-panel) > header > .responsive-panel-actions > * {
+    flex: 0 0 var(--ui-icon-button-size);
+    width: var(--ui-icon-button-size);
+    height: var(--ui-icon-button-size);
+    align-items: center;
+    justify-content: center;
+  }
+  .palette-panel > .swatch-grid { overflow: auto; scrollbar-width: none; }
 }
 
 @container workspace-panel (max-height: 160px) {
@@ -4628,7 +4663,6 @@ html body .panel-actions-popup {
 
 /* Retain the picker and color-role controls when the panel is very narrow. */
 @container (max-width: 128px) {
-  .color-panel .color-scheme-control > button:first-child,
   .color-panel .color-value-add-button { display: none; }
   .color-panel .color-value-action-row.has-add-action { grid-template-columns: minmax(0, 1fr); }
   .color-panel .color-value-trigger { grid-template-columns: minmax(0, 1fr); gap: 0; padding-inline: var(--ui-space-1); }
@@ -4640,11 +4674,13 @@ html body .panel-actions-popup {
   .color-panel .color-value-trigger { min-height: 22px; }
 }
 
-/* Compact color panels retain the picker instead of forcing a scrolling body. */
+/* Compact controls retain both color roles and the scheme menu. Palette
+   geometry remains owned by usePaletteGridColumns, including manual slots. */
 @container workspace-panel (max-width: 180px) {
-  .color-panel > .moon-color-picker.compact { overflow: hidden; }
-  .color-panel .moon-color-picker.compact .integrated-color-picker { min-height: 0; grid-template-rows: minmax(0, 1fr) auto auto; gap: 4px; }
-  .color-panel .color-value-add-button, .color-panel .color-scheme-control > button:first-child { display: none; }
+  .color-panel > .moon-color-picker { overflow: hidden; }
+  .color-panel .integrated-color-picker { min-height: 0; grid-template-rows: minmax(0, 1fr) auto auto; padding: 4px; gap: 4px; }
+  .color-panel :is(.color-value-add-button, .recent-colors) { display: none; }
+  .color-panel .color-value-action-row { --color-value-control-height: 24px; }
   .color-panel .color-value-action-row.has-add-action { grid-template-columns: minmax(0, 1fr); }
   .color-panel .color-value-trigger { min-width: 0; grid-template-columns: minmax(0, 1fr); }
   .color-panel .color-value-trigger small { display: none; }
@@ -4653,11 +4689,19 @@ html body .panel-actions-popup {
   .palette-panel > .swatch-grid::-webkit-scrollbar { display: none; }
 }
 @container workspace-panel (max-height: 180px) {
-  .color-panel > .moon-color-picker.compact { overflow: hidden; }
-  .color-panel .moon-color-picker.compact .integrated-color-picker { min-height: 0; grid-template-rows: minmax(0, 1fr) auto; }
-  .color-panel .integrated-color-picker > .color-value-action-row, .color-panel .color-value-add-button { display: none; }
-  .palette-panel > .swatch-grid { scrollbar-width: none; }
-  .palette-panel > .swatch-grid::-webkit-scrollbar { display: none; }
+  .color-panel > .moon-color-picker { overflow: hidden; }
+  .color-panel .integrated-color-picker { min-height: 0; grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-rows: minmax(0, 1fr) 24px; padding: 4px; gap: 2px; }
+  .color-panel .color-spectrum-stack { grid-column: 1 / -1; grid-template-rows: minmax(0, 1fr) 18px 18px; }
+  .color-panel .color-value-action-row { --color-value-control-height: 24px; min-height: 0; }
+  .color-panel .color-value-action-row.has-add-action { grid-template-columns: minmax(0, 1fr); }
+  .color-panel :is(.recent-colors, .color-value-add-button) { display: none; }
+  .color-panel .tile-role-controls { grid-column: 1 / -1; }
 }
-/* Cell hit areas never grow beyond the grid pitch at narrow dock widths. */
+@container workspace-panel (max-height: 105px) {
+  .color-panel .integrated-color-picker { grid-template-columns: minmax(0, 1fr) 28px; grid-template-rows: repeat(2, minmax(0, 1fr)); }
+  .color-panel .color-spectrum-stack { grid-column: 1; grid-row: 1 / 3; grid-template-rows: minmax(0, 1fr) 12px 12px; }
+  .color-panel .color-spectrum-stack input { height: 12px; }
+  .color-panel .color-value-trigger { height: 100%; min-height: 0; padding: 0; }
+  .color-panel .color-value-trigger :is(strong, small) { display: none; }
+}
 .palette-panel .palette-slot { width: var(--swatch-size); height: var(--swatch-size); min-width: 0; min-height: 0; max-width: 100%; padding: 0; }

@@ -73,8 +73,7 @@ import { canvasStageIsVisible } from './canvas-stage-visibility'
 import { subscribeAnimationTweenPreview } from './animation-tween-preview'
 import { useAnimationTweenPreviewDrag } from './useAnimationTweenPreviewDrag'
 import { LineAnchorHistory } from './canvas-stage-helpers'
-import { CANVAS_VIEW_SCROLLBAR_THICKNESS } from './useCanvasViewScrollbars'
-import { CanvasViewScrollbars } from './CanvasViewScrollbars'
+import { CanvasViewport, CANVAS_VIEW_SCROLLBAR_THICKNESS } from './CanvasViewScrollbars'
 import { CanvasReferences, isOutsideReferenceCanvas } from './CanvasReferences'
 
 export function CanvasStage({ session: storedSession }: { session: DocumentSession }) {
@@ -1481,6 +1480,11 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
   const rotationStyle = { transform: 'none', transformOrigin: '50% 50%' }
   return (
     <PerformanceProfiler id="CanvasStage">
+      <CanvasViewport enabled={canvasPreferences.canvasViewScrollbarsEnabled} documentId={session.document.id}
+        documentWidth={session.document.width} documentHeight={session.document.height}
+        viewportWidth={session.viewportSize.width} viewportHeight={session.viewportSize.height}
+        view={session.view} rotationIndicatorPosition={rotationIndicatorPosition}
+        ariaLabel={t('canvas.aria')} onHorizontalVisibilityChange={setHorizontalScrollbarVisible}>
       <div ref={stageRef} className="stage-surface">
         <canvas
           ref={canvasRef}
@@ -1515,14 +1519,6 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
           samplingActive={() => liveInputSession().tool === 'eyedropper' || quickToolActive('eyedropper') || paletteSamplingShortcutActive()}
           transformModifiers={(event) => ({ ...selectionTransformModifierState(event), constrainAxis: modifierActive(event, 'constrainAxis') })}
           snapRotation={(event) => modifierActive(event.nativeEvent, 'snapSelectionRotation')} isOutside={(x, y) => isOutsideReferenceCanvas(localPointAt(x, y), session.document.width, session.document.height)} />
-        {canvasPreferences.canvasViewScrollbarsEnabled && <CanvasViewScrollbars
-          documentId={session.document.id}
-          documentWidth={session.document.width} documentHeight={session.document.height}
-          viewportWidth={session.viewportSize.width} viewportHeight={session.viewportSize.height}
-          view={session.view} rotationIndicatorPosition={rotationIndicatorPosition}
-          ariaLabel={t('canvas.aria')}
-          onHorizontalVisibilityChange={setHorizontalScrollbarVisible}
-        />}
         {keyDisplayEnabled && keyDisplayEntries.length > 0 && (
           <div
             className="canvas-key-display"
@@ -1548,6 +1544,7 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
           </span>
         </div>
       </div>
+      </CanvasViewport>
     </PerformanceProfiler>
   )
 }

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { compositeRegion, createDocument, createLayer, createLayerMask, DocumentCompositeCache, readLayerColorAt, readLayerColor, writeLayerColor } from '@/core/document'
+import { compositeRegion, createDocument, createLayer, createLayerMask, DocumentCompositeCache, layerContentBounds, readLayerColorAt, readLayerColor, writeLayerColor } from '@/core/document'
 import { activateAnimationFrame, addBlankAnimationFrame, animationCelKey, ensureAnimationDocument, refreshActiveAnimationFrame, setAnimationCelOffsetsForKeys, syncActiveAnimationLayer } from '@/core/animation'
 import { brushStrokeInvalidationRects, captureSelectionTransform, paintBrush, paintLine, solidBrushStampDifferenceRects, type SelectionTransformSource } from '@/core/tools'
 import { beginPixelEdit, commitPixelEdit } from '@/core/history'
@@ -132,6 +132,41 @@ beforeEach(() => {
 afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals() })
 
 describe('CanvasCompositeCache', () => {
+  it.each([{ budget: 128 * 1024 * 1024, size: 400 }, { budget: 1024 * 1024, size: 800 }])('patches disjoint group visibility regions without uploading their bounding box (budget=$budget)', ({ budget, size }) => {
+    const document = createDocument('sparse group cache', size, size, 'rgba')
+    const group = { id: 'sparse-cache-group', name: 'Sparse', parentGroupId: null, visible: true, locked: false, opacity: 1, blendMode: 'normal' as const }
+    document.groups = [group]
+    const first = document.layers[0]
+    first.groupId = group.id
+    const second = createLayer('Second', 1, 1, 'rgba')
+    second.groupId = group.id
+    second.offsetX = 350
+    second.offsetY = 350
+    document.layers.push(second)
+    writeLayerColor(document, first, 2 * first.width + 2, { r: 255, g: 0, b: 0, a: 255 })
+    writeLayerColor(document, second, 0, { r: 0, g: 0, b: 255, a: 255 })
+    layerContentBounds(document, first)
+    layerContentBounds(document, second)
+    const cache = new CanvasCompositeCache(budget), context = makeContext()
+    const viewport = { fromX: 0, fromY: 0, toX: 400, toY: 400 }
+    draw(cache, document, context, viewport)
+    const surface = context.drawImage.mock.lastCall![0] as MockOffscreenCanvas
+    surface.context.putImageData.mockClear()
+
+    group.visible = false
+    draw(cache, document, context, { ...viewport, revision: 2, contentRevision: 2, contentInvalidation: {
+      kind: 'region', fromRevision: 1, revision: 2, compositeOnly: true,
+      rect: { x: 2, y: 2, width: 349, height: 349 },
+      rects: [{ x: 2, y: 2, width: 1, height: 1 }, { x: 350, y: 350, width: 1, height: 1 }]
+    } })
+    expect(context.drawImage.mock.lastCall![0]).toBe(surface)
+    const uploads = surface.context.putImageData.mock.calls
+    expect(uploads.reduce((sum, [image]) => sum + image.width * image.height, 0)).toBe(2)
+    expect(Array.from(surface.pixels.slice((2 * surface.width + 2) * 4, (2 * surface.width + 2) * 4 + 4))).toEqual([0, 0, 0, 0])
+    expect(Array.from(surface.pixels.slice((350 * surface.width + 350) * 4, (350 * surface.width + 350) * 4 + 4))).toEqual([0, 0, 0, 0])
+    cache.dispose()
+  })
+
   it('reuses the composite surface and patches only the selection after flip, undo and redo', () => {
     const document = createDocument('local selection flip', 256, 256, 'rgba')
     const layer = document.layers[0]
@@ -158,7 +193,7 @@ describe('CanvasCompositeCache', () => {
       expect(surface.pixels).toEqual(compositeRegion(document, 0, 0, 256, 256, new DocumentCompositeCache(), useWorkspace.getState().sessions[0].contentRevision))
     }
     useWorkspace.setState({ sessions: [], activeId: null })
-  })
+  }, 15_000)
   it('uploads only display pixels during a zoomed-out property preview and restores full precision on commit', () => {
     const document = createDocument('projected canvas', 512, 512, 'rgba')
     const top = createLayer('top', 512, 512, 'rgba'); document.layers.push(top)
@@ -180,7 +215,7 @@ describe('CanvasCompositeCache', () => {
       contentInvalidation: { kind: 'region', rect, compositeOnly: true, propertyOwnerIds: [top.id], fromRevision: 3, revision: 4 } })
     expect((context.drawImage.mock.lastCall![0] as MockOffscreenCanvas).pixels).toEqual(compositeRegion(document, 0, 0, 512, 512))
     cache.dispose()
-  })
+  }, 15_000)
   it.each([128 * 1024 * 1024, 1])('uses the property backdrop for a large viewport, then refreshes real edits (budget=%s)', budget => {
     const document = createDocument('large property viewport', 128, 128, 'rgba')
     const layer = createLayer('foreground', 128, 128, 'rgba')

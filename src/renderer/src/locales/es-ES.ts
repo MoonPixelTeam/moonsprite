@@ -1,10 +1,12 @@
 import { gradientMapEn } from './gradient-map'
+import { beta7En } from './release-beta7'
 import { spriteSheetImportesES } from './sprite-sheet-import'
 import type { TranslationCatalog } from './contracts'
 
 import { tabletEn } from './tablet'
 
 export const esESMessages = {
+  ...beta7En,
   ...gradientMapEn,
   "toolOptions.temporaryBrushCaptureHint": "Pincel temporal: arrastra un área y suelta para usar; Esc para cancelar",
   "preferences.paintingCursor.cross": "Cruz simple",
@@ -1321,6 +1323,7 @@ export const esESMessages = {
   'colorReplacement.colors': 'Colores',
   'colorReplacement.source': 'El color inicial',
   'colorReplacement.replacement': 'Replace con',
+  'colorReplacement.rememberLastSelectedColor': 'Recordar el último color seleccionado',
   'colorReplacement.pickSource': 'Mostrar el color inicial de la lienzo',
   'colorReplacement.pickReplacement': 'Mostrar el color de reemplazo de la lienzo',
   'colorReplacement.range': 'Rango',

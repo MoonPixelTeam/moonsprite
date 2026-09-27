@@ -46,45 +46,15 @@ import { restoreFloatingPreview, markFloatingOverlayChanged, markFloatingPreview
 import { applyTextSurface } from './workspace-text-surface'
 import { captureAnimationSelectionHistory, historyEntryWithAnimationSelection } from './workspace-animation-selection-history'
 import {
-  syncFloatingPrimaryLayerState,
-  clearFloatingSelectionBoxHistory,
   floatingPasteSelectionForCommit,
   combinedPixelHistoryEntry
 } from './workspace-view-selection-helpers'
 import { cloneSelectionQuad } from './workspace-selection-transform-geometry'
+import { createFloatingPreviewCommand } from './workspace-floating-preview-command'
 export function createSelectionFloatingCommands({ get, recording }: WorkspaceCommandContext<'beginFloatingSelectionTransform' | 'cancelFloatingPaste' | 'commitFloatingPaste' | 'commitPixelEdit' | 'mutateActive' | 'redo' | 'undo' | 'updateFloatingPastePreview'>): Pick<WorkspaceViewSelectionCommands, 'updateFloatingPastePreview' | 'beginFloatingSelectionTransform' | 'beginFreeTileFloatingSelectionTransform' | 'commitFloatingPaste' | 'cancelFloatingPaste'> {
   const { recordDocumentOperation } = recording
   return {
-    updateFloatingPastePreview(edit, target, translationPreview = null, transformTarget, transformAngle, transformShear, previewDeferred = false, layers, transformQuad) {
-      get().mutateActive((session) => {
-        if (!session.pendingPaste) return
-        session.pendingPaste.restoredFromDeselect = false
-        const previousTarget = session.pendingPaste.target
-        clearFloatingSelectionBoxHistory(session.pendingPaste)
-        if (layers) session.pendingPaste.layers = layers
-        session.pendingPaste.previewEdit = edit
-        session.pendingPaste.translationPreview = translationPreview
-        session.pendingPaste.previewDeferred = session.pendingPaste.layers?.length ? false : previewDeferred
-        session.pendingPaste.target = cloneSelectionMask(target)!
-        if (transformTarget) session.pendingPaste.transformTarget = { ...transformTarget }
-        else if ((session.pendingPaste.transformAngle ?? 0) % 360 === 0 && !session.pendingPaste.transformShear) {
-          session.pendingPaste.transformTarget = {
-            x: target.x,
-            y: target.y,
-            width: target.width,
-            height: target.height
-          }
-        }
-        if (transformAngle !== undefined) session.pendingPaste.transformAngle = transformAngle
-        if (transformShear !== undefined) session.pendingPaste.transformShear = { ...transformShear }
-        else if (transformAngle !== undefined) session.pendingPaste.transformShear = undefined
-        if (transformQuad !== undefined) session.pendingPaste.transformQuad = cloneSelectionQuad(transformQuad) ?? undefined
-        syncFloatingPrimaryLayerState(session.pendingPaste)
-        session.selection = cloneSelectionMask(target)
-        if (session.pendingPaste.previewDeferred) markFloatingOverlayChanged(session)
-        else markFloatingPreviewChanged(session, previousTarget, target)
-      }, false)
-    },
+    updateFloatingPastePreview: createFloatingPreviewCommand(get),
     beginFloatingSelectionTransform(source, edit, before, target, copy, label, translationPreview = null, transformTarget, transformAngle = 0, transformShear, previewDeferred = false, tilemapEditCellIndex, layers, transformQuad) {
       get().mutateActive((session) => {
         const layer = layers?.[0] ?? null

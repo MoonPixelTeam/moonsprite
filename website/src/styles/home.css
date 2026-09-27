@@ -8,9 +8,9 @@
 .hero-shade { position: absolute; inset: 0; z-index: 1; pointer-events: none; background: rgb(9 10 13 / 52%); }
 
 .hero-nav { position: absolute; top: 50%; right: 16px; left: 16px; z-index: 3; display: flex; justify-content: space-between; transform: translateY(-50%); pointer-events: none; }
-.hero-nav .hero-arrow { display: grid; place-items: center; width: 36px; height: 36px; color: rgb(255 255 255 / 76%); background: rgb(9 10 13 / 38%); border: 1px solid rgb(255 255 255 / 16%); cursor: pointer; pointer-events: auto; transition: color 120ms ease, background 120ms ease, border-color 120ms ease; }
-.hero-nav .hero-arrow:hover { color: #fff; background: rgb(9 10 13 / 64%); border-color: rgb(255 255 255 / 34%); }
-.hero-nav .hero-arrow svg { width: 15px; height: 15px; }
+.hero-nav .hero-arrow, .media-preview-controls .hero-arrow { display: grid; place-items: center; width: 36px; height: 36px; color: rgb(255 255 255 / 76%); background: rgb(9 10 13 / 38%); border: 1px solid rgb(255 255 255 / 16%); cursor: pointer; pointer-events: auto; transition: color 120ms ease, background 120ms ease, border-color 120ms ease; }
+.hero-nav .hero-arrow:hover, .media-preview-controls .hero-arrow:hover { color: #fff; background: rgb(9 10 13 / 64%); border-color: rgb(255 255 255 / 34%); }
+.hero-nav .hero-arrow svg, .media-preview-controls .hero-arrow svg { width: 15px; height: 15px; }
 .hero-inner { position: absolute; inset: 0; z-index: 2; display: flex; height: 100%; flex-direction: column; justify-content: flex-end; align-items: flex-start; padding: var(--space-6) var(--space-28) var(--space-9); }
 .hero-copy { max-width: 610px; }
 /*

@@ -1,10 +1,12 @@
 import { gradientMapEn } from './gradient-map'
+import { beta7En } from './release-beta7'
 import { spriteSheetImportptBR } from './sprite-sheet-import'
 import type { TranslationCatalog } from './contracts'
 
 import { tabletEn } from './tablet'
 
 export const ptBRMessages = {
+  ...beta7En,
   ...gradientMapEn,
   "toolOptions.temporaryBrushCaptureHint": "Pincel temporário: arraste uma área e solte para usar; Esc para cancelar",
   "preferences.paintingCursor.cross": "Cruz simples",
@@ -1315,6 +1317,7 @@ export const ptBRMessages = {
   "colorReplacement.colors": "Cores",
   "colorReplacement.source": "Initial Cor",
   "colorReplacement.replacement": "Substituir com",
+  "colorReplacement.rememberLastSelectedColor": "Lembrar a última cor selecionada",
   "colorReplacement.pickSource": 'Mostre a cor inicial do canvas',
   "colorReplacement.pickReplacement": "Sample O Substituirment Cor de O Tela",
   "colorReplacement.range": "Intervalo",

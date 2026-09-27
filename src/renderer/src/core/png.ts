@@ -1,14 +1,12 @@
 import { protectExportPixels, type ExportProtection } from './export-protection'
 import { decode, toRGBA8 } from 'upng-js'
 import type { DocumentSlice, SpriteDocument } from '@shared/types-document'
-import type { PaletteEntry } from '@shared/types-color'
 import type { SelectionMask } from '@shared/types-selection'
 import { encodeAseprite } from './aseprite'
 import { createDocument } from './document-model'
 import { compositeDocument } from './document-composite'
-import { TRANSPARENT } from './raster'
 import { translateCurrent as tr } from './localization'
-import { applyImportedRgbaPalette, normalizeImportedIndexedPalette } from './imported-palette'
+import { applyImportedRgbaPalette } from './imported-palette'
 import { encodePng, type PngExport } from './png-encode'
 import { encodeIco } from './ico'
 import { encodeBmp } from './bmp'
@@ -27,18 +25,6 @@ export interface ImageExport {
   height: number
 }
 
-const unpackIndexedSamples = (bytes: Uint8Array, depth: number, count: number): Uint8Array => {
-  if (depth === 8) return bytes.slice(0, count)
-  const output = new Uint8Array(count)
-  const mask = (1 << depth) - 1
-  for (let index = 0; index < count; index += 1) {
-    const byte = bytes[Math.floor((index * depth) / 8)]
-    const shift = 8 - depth - ((index * depth) % 8)
-    output[index] = (byte >>> shift) & mask
-  }
-  return output
-}
-
 export function decodePng(input: Uint8Array, fallbackName = tr('core.document.importedImage')): SpriteDocument {
   let image
   try {
@@ -47,31 +33,8 @@ export function decodePng(input: Uint8Array, fallbackName = tr('core.document.im
     throw new Error(tr('core.png.readFailed'))
   }
   if (!image.width || !image.height) throw new Error(tr('core.png.invalidSize'))
-  if (image.ctype === 3 && image.tabs.PLTE) {
-    const document = createDocument(fallbackName, image.width, image.height, 'indexed')
-    const layer = document.layers[0]
-    if (layer.format !== 'indexed') throw new Error(tr('core.png.createIndexed'))
-    const paletteValues = image.tabs.PLTE
-    const transparencyValues = image.tabs.tRNS
-    const transparency = Array.isArray(transparencyValues) ? new Uint8Array(transparencyValues) : new Uint8Array()
-    const palette: PaletteEntry[] = [{ id: 0, name: tr('core.document.transparentColor'), color: TRANSPARENT }]
-    const paletteLookup: number[] = []
-    for (let offset = 0, colorIndex = 0; offset < paletteValues.length; offset += 3, colorIndex += 1) {
-      const alpha = Number(transparency[colorIndex] ?? 255)
-      if (alpha === 0) {
-        paletteLookup[colorIndex] = 0
-      } else {
-        const id = palette.length
-        paletteLookup[colorIndex] = id
-        palette.push({ id, name: tr('core.document.colorName', { id }), color: { r: paletteValues[offset], g: paletteValues[offset + 1], b: paletteValues[offset + 2], a: alpha } })
-      }
-    }
-    const samples = unpackIndexedSamples(new Uint8Array(image.data), image.depth, image.width * image.height)
-    for (let index = 0; index < layer.pixels.length; index += 1) layer.pixels[index] = paletteLookup[samples[index]] ?? 0
-    document.palette = palette
-    normalizeImportedIndexedPalette(document)
-    return document
-  }
+  // PNG storage depth does not determine the editing mode. The decoder
+  // expands indexed/grayscale inputs, including scanline padding and alpha.
   const rgba = new Uint8ClampedArray(toRGBA8(image)[0])
   const document = createDocument(fallbackName, image.width, image.height, 'rgba')
   const layer = document.layers[0]

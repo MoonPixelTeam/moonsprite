@@ -25,6 +25,8 @@ export function createWorkspaceAnimationCommands(context: WorkspaceCommandContex
   | 'setActiveAnimationFrame'
   | 'setAnimationLoop'
   | 'setAnimationPlaying'
+  | 'stepAnimationFrame'
+  | 'stepLayerSelection'
 >): WorkspaceAnimationCommands {
   return {
     ...createAnimationSelectionCommands(context),

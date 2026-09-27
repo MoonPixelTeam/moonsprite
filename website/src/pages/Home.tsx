@@ -57,8 +57,8 @@ export function Home({ t, language }: { t: Copy; language: Language }) {
         <div className="masonry">
           {t.features.items.map((item) => <article className="masonry-card" key={item.icon}>
             <div className="panel-header"><strong>{item.title}</strong></div>
-            <ActionButton type="button" className="gif-placeholder" aria-label={`${language === 'zh' ? '放大预览：' : 'Enlarge preview: '}${item.title}`} onClick={() => setPreview({ src: item.gif, title: item.title, description: item.gif ? item.body : (language === 'zh' ? '功能演示 GIF 待补充。' : 'The feature GIF will be added later.') })}>
-              {item.gif && <img src={item.gif} alt={item.title} loading="lazy" decoding="async" />}
+            <ActionButton type="button" className="gif-placeholder" aria-label={`${language === 'zh' ? '放大预览：' : 'Enlarge preview: '}${item.title}`} onClick={() => setPreview({ slides: item.gifs, title: item.title, description: item.gifs?.length ? item.body : (language === 'zh' ? '功能演示 GIF 待补充。' : 'The feature GIF will be added later.') })}>
+              {item.gifs?.[0] && <img src={item.gifs[0].src} alt={item.gifs[0].title} loading="lazy" decoding="async" />}
               <span className="gif-tag">GIF</span>
             </ActionButton>
             <p className="masonry-copy">{item.body}</p>
@@ -93,6 +93,6 @@ export function Home({ t, language }: { t: Copy; language: Language }) {
         <div className="final-actions"><SteamButton label={t.common.steam} soon={t.common.steamSoon} /><a href={SITE_CONFIG.githubUrl} target="_blank" rel="noopener noreferrer">{t.common.github}<ArrowRight aria-hidden="true" /></a></div>
       </div>
     </section>
-    <MediaPreview media={preview} closeLabel={language === 'zh' ? '关闭' : 'Close'} onClose={() => setPreview(null)} />
+    <MediaPreview media={preview} closeLabel={language === 'zh' ? '关闭' : 'Close'} previousLabel={language === 'zh' ? '上一段 GIF' : 'Previous GIF'} nextLabel={language === 'zh' ? '下一段 GIF' : 'Next GIF'} onClose={() => setPreview(null)} />
   </main>
 }

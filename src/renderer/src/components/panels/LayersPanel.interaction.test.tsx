@@ -41,8 +41,6 @@ describe('LayersPanel timeline focus interactions', () => {
     useWorkspace.getState().addSession(document)
     if (kind === 'cell') useWorkspace.getState().selectAnimationCell(animationCelKey(layer.id, firstFrameId))
     else useWorkspace.getState().selectAnimationFrame(firstFrameId)
-    const selectedFrames = [...useWorkspace.getState().sessions[0]!.selectedAnimationFrameIds]
-    const selectedCells = [...useWorkspace.getState().sessions[0]!.selectedAnimationCellKeys]
     useWorkspace.getState().setAnimationPlaying(true)
     const view = render(<I18nProvider><LayersPanel session={useWorkspace.getState().sessions[0]!} /></I18nProvider>)
     for (let step = 0; step < 3; step++) {
@@ -62,8 +60,8 @@ describe('LayersPanel timeline focus interactions', () => {
           expect(maskCell).not.toHaveClass('active-frame')
         }
       }
-      expect(session.selectedAnimationFrameIds).toEqual(selectedFrames)
-      expect(session.selectedAnimationCellKeys).toEqual(selectedCells)
+      expect(session.selectedAnimationFrameIds).toEqual([])
+      expect(session.selectedAnimationCellKeys).toEqual([])
     }
   })
 
@@ -468,7 +466,7 @@ describe('LayersPanel timeline focus interactions', () => {
     expect(maskCell).toHaveClass('active-frame')
   })
 
-  it('keeps the focused mask activity visible while playback advances', async () => {
+  it('clears focused mask editing while playback advances', async () => {
     const document = createDocument('focused playback mask activity', 2, 2, 'rgba')
     const layer = getActiveLayer(document)
     layer.pixels[3] = 255
@@ -485,9 +483,8 @@ describe('LayersPanel timeline focus interactions', () => {
     const view = render(<I18nProvider><LayersPanel session={useWorkspace.getState().sessions[0]!} /></I18nProvider>)
     const maskCell = view.container.querySelector<HTMLElement>(`[data-animation-mask-cel-key="${animationCelKey(layer.id, timeline.activeFrameId)}"]`)
     if (!maskCell) throw new Error('focused playback mask cell was not rendered')
-    expect(useWorkspace.getState().sessions[0]!.activeLayerMaskId).not.toBeNull()
+    expect(useWorkspace.getState().sessions[0]!.activeLayerMaskId).toBeNull()
     expect(maskCell).toHaveClass('active-frame')
-    expect(maskCell).toHaveClass('active-mask')
 
     await act(async () => { useWorkspace.getState().advanceAnimationFrame() })
     view.rerender(<I18nProvider><LayersPanel session={useWorkspace.getState().sessions[0]!} /></I18nProvider>)
@@ -516,11 +513,11 @@ describe('LayersPanel timeline focus interactions', () => {
     const activeFrameId = ensureAnimationDocument(useWorkspace.getState().sessions[0]!.document).activeFrameId
     const maskCell = view.container.querySelector<HTMLElement>(`[data-animation-mask-cel-key="${animationCelKey(layer.id, activeFrameId)}"]`)
     if (!maskCell) throw new Error('frame-focused playback mask cell was not rendered')
-    expect(useWorkspace.getState().sessions[0]!.selectedAnimationMaskRowKeys).toEqual([`layer:${layer.id}`])
+    expect(useWorkspace.getState().sessions[0]!.selectedAnimationMaskRowKeys).toEqual([])
     expect(maskCell).toHaveClass('active-frame')
   })
 
-  it('does not leave a mask-cell marker when disabling a selected frame during playback', async () => {
+  it('does not leave a mask-cell marker after playback clears selection', async () => {
     const document = createDocument('disabled playback mask marker', 2, 2, 'rgba')
     const layer = getActiveLayer(document)
     layer.pixels[3] = 255
@@ -533,22 +530,17 @@ describe('LayersPanel timeline focus interactions', () => {
     useWorkspace.getState().selectAnimationMaskCell(animationCelKey(layer.id, firstFrameId))
     useWorkspace.getState().setAnimationLoop(true)
     useWorkspace.getState().setAnimationPlaying(true)
-    useWorkspace.getState().setSelectedAnimationFramesDisabled(true)
-    expect(useWorkspace.getState().sessions[0]!.activeLayerMaskId).not.toBeNull()
-    expect(useWorkspace.getState().sessions[0]!.selectedAnimationMaskCellKeys).toEqual([animationCelKey(layer.id, firstFrameId)])
-    expect(useWorkspace.getState().sessions[0]!.document.animation?.activeFrameId).toBe(secondFrameId)
+    expect(useWorkspace.getState().sessions[0]!.activeLayerMaskId).toBeNull()
+    expect(useWorkspace.getState().sessions[0]!.selectedAnimationMaskCellKeys).toEqual([])
 
     const view = render(<I18nProvider><LayersPanel session={useWorkspace.getState().sessions[0]!} /></I18nProvider>)
-    const disabledMaskCell = view.container.querySelector<HTMLElement>(`[data-animation-mask-cel-key="${animationCelKey(layer.id, firstFrameId)}"]`)
-    const activeMaskCell = view.container.querySelector<HTMLElement>(`[data-animation-mask-cel-key="${animationCelKey(layer.id, secondFrameId)}"]`)
-    if (!disabledMaskCell || !activeMaskCell) throw new Error('mask cells were not rendered')
-    expect(disabledMaskCell).not.toHaveClass('active-frame', 'selected-animation-frame', 'active-mask', 'selected-cel')
+    const activeMaskCell = view.container.querySelector<HTMLElement>(`[data-animation-mask-cel-key="${animationCelKey(layer.id, firstFrameId)}"]`)
+    const otherMaskCell = view.container.querySelector<HTMLElement>(`[data-animation-mask-cel-key="${animationCelKey(layer.id, secondFrameId)}"]`)
+    if (!activeMaskCell || !otherMaskCell) throw new Error('mask cells were not rendered')
     expect(activeMaskCell).toHaveClass('active-frame')
+    expect(otherMaskCell).not.toHaveClass('active-frame', 'selected-animation-frame', 'active-mask', 'selected-cel')
 
-    act(() => { useWorkspace.getState().setSelectedAnimationFramesDisabled(false) })
-    view.rerender(<I18nProvider><LayersPanel session={useWorkspace.getState().sessions[0]!} /></I18nProvider>)
-    expect(useWorkspace.getState().sessions[0]!.activeLayerMaskId).not.toBeNull()
-    expect(activeMaskCell).toHaveClass('active-frame')
+    expect(useWorkspace.getState().sessions[0]!.document.animation?.activeFrameId).toBe(firstFrameId)
   })
 
   it('keeps the paused current mask frame active after disabling it', () => {

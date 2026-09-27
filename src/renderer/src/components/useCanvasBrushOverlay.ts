@@ -289,7 +289,10 @@ export function useCanvasBrushOverlay(ports: Ports) {
     }
     if (!drawing && !erasing && ports.brushPreviewMode !== 'edge') context.fill()
     if (!showOutline) return
-    const borderRows = ports.brushPreviewMode === 'full-edge' ? outlineRows : rows
+    // Any preview that draws an outline must use the complete brush geometry,
+    // including the part outside the document. This keeps edge-mode pencils
+    // and every eraser mode readable when the cursor reaches the canvas edge.
+    const borderRows = showOutline ? outlineRows : rows
     context.lineWidth = ports.brushEdgeThickness ?? 1
     alignCanvasStrokePath(context)
     context.beginPath()

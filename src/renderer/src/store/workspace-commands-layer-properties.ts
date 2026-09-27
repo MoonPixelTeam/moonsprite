@@ -5,7 +5,7 @@ import type { RgbaColor } from '@shared/types-color'
 import type { SelectionRect } from '@shared/types-selection'
 import type { SpriteDocument } from '@shared/types-document'
 import { type ContentInvalidationHint, type HistoryEntry } from '@/core/history'
-import { cachedLayerContentBounds, createId, duplicateLayer, getGroup, getGroupLockingAncestor, getLayerIdsInGroup, getLayer, getLayerLockingGroup, isGroupEffectivelyLocked, isLayerEffectivelyLocked, layerContentBounds } from '@/core/document-model'
+import { cachedLayerContentBounds, createId, duplicateLayer, getDescendantGroupIds, getGroup, getGroupLockingAncestor, getLayerIdsInGroup, getLayer, getLayerLockingGroup, isGroupEffectivelyLocked, isLayerEffectivelyLocked, layerContentBounds } from '@/core/document-model'
 import { expandLayerStyleInvalidationRect, normalCompositeLayers } from '@/core/document-composite'
 import { cloneAnimationCel, cloneAnimationCelsForLayer, detachLinkedLayerContent, ensureAnimationDocument, refreshActiveAnimationFrame, removeAnimationCelsForLayers, restoreAnimationCels, syncActiveAnimationFrame, syncActiveAnimationLayer, synchronizeLinkedLayerGroupContents } from '@/core/animation'
 import { colorEquals } from '@/core/raster'
@@ -83,16 +83,28 @@ const layerVisibilityInvalidation = (document: SpriteDocument, layer: RasterLaye
 const groupVisibilityInvalidation = (document: SpriteDocument, groupId: string): ContentInvalidationHint => {
   if (!normalCompositeLayers(document)) return { kind: 'full' }
   const layerIds = new Set(getLayerIdsInGroup(document, groupId))
+  const groupIds = new Set([groupId, ...getDescendantGroupIds(document, groupId)])
+  // A hidden group is skipped by normalCompositeLayers, so inspect its own
+  // members before using separate rectangles. Complex effects keep the
+  // existing conservative bounding region.
+  const simpleComposition = document.groups.filter((group) => groupIds.has(group.id)).every((group) =>
+    group.opacity === 1 && group.blendMode === 'normal' && group.cumulativeBlend !== true
+    && group.clippingMask !== true && !hasConfiguredLayerStyles(group.layerStyles))
+    && document.layers.filter((layer) => layerIds.has(layer.id)).every((layer) =>
+      !layer.kind && !layer.background && layer.clippingMask !== true && layer.blendMode === 'normal'
+      && !hasConfiguredLayerStyles(layer.layerStyles))
   let rect: SelectionRect | null = null
+  const rects: SelectionRect[] = []
   for (const layer of document.layers) {
     if (!layerIds.has(layer.id)) continue
     const bounds = cachedLayerContentBounds(document, layer)
     if (bounds === undefined) return { kind: 'full' }
     if (!bounds) continue
     const expanded = expandLayerStyleInvalidationRect(document, bounds, [layer.id])
+    if (simpleComposition) rects.push(expanded)
     rect = rect ? unionRects(rect, expanded) : expanded
   }
-  return rect ? { kind: 'region', rect } : { kind: 'full' }
+  return rect ? { kind: 'region', rect, ...(simpleComposition ? { rects, compositeOnly: true as const } : {}) } : { kind: 'full' }
 }
 
 const layerBlendModeInvalidation = (document: SpriteDocument, layer: RasterLayer): ContentInvalidationHint => {

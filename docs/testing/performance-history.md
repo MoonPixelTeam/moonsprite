@@ -11,6 +11,38 @@
 5. 没有自动基准覆盖的交互必须明确写“未覆盖”，禁止用主观流畅度代替数据。
 6. 性能优化不能改变像素结果、快捷键、撤销语义或文件兼容性。
 
+## 2026-09-27 1.0.0-beta7 自动性能审计
+
+审计编号：`2026-09-27_12-04-32-396_455e417d`。性能等级为 P3，结果为“用户批准不改代码”。用户已明确要求记录4000×4000图层阴影大小调整风险并继续Beta7发布；源码仅做Rust格式化，候选仍为同一高风险场景，复测收益未超过噪声门槛，本次不修改性能代码。
+
+候选热点：4000x4000 large-layer-style-shadow-size 主绘制 p95；初始值 134.100，测量噪声 2.46%。
+定向复测收益 -14.91%，接受门槛 8.44%；目标收益没有超过测量噪声门槛。
+执行套件：canvas-standard、canvas-profile、canvas-large-800、canvas-large-2048、canvas-large-4000、canvas-large-sentinel、canvas-complex、document-composite、project-format、bundle。
+
+## 2026-09-27 1.0.0-beta7 自动性能审计
+
+审计编号：`2026-09-27_11-41-43-722_65bfbced`。性能等级为 P3，结果为“用户批准不改代码”。用户已明确要求记录本轮4000×4000图层阴影大小调整风险并继续Beta7发布；复测收益未超过噪声门槛，主绘制p95约177.3ms，较已接受基线高约29%，本次不修改性能代码。
+
+候选热点：4000x4000 large-layer-style-shadow-size 主绘制 p95；初始值 177.300，测量噪声 1.24%。
+定向复测收益 11.22%，接受门槛 13.09%；目标收益没有超过测量噪声门槛。
+执行套件：canvas-standard、canvas-profile、canvas-large-800、canvas-large-2048、canvas-large-4000、canvas-large-sentinel、canvas-complex、document-composite、project-format、bundle。
+
+## 2026-09-27 1.0.0-beta7 自动性能审计
+
+审计编号：`2026-09-27_10-59-07-028_07f8d771`。性能等级为 P3，结果为“用户批准不改代码”。用户已批准记录4000×4000图层阴影大小调整高风险候选；旧基线样本不足且本轮复测收益未超过噪声门槛，本次不修改性能代码并继续Beta7发布。
+
+候选热点：4000x4000 large-layer-style-shadow-size 主绘制 p95；初始值 137.200，测量噪声 0.36%。
+定向复测收益 5.25%，接受门槛 8.31%；目标收益没有超过测量噪声门槛。
+执行套件：canvas-standard、canvas-profile、canvas-large-800、canvas-large-2048、canvas-large-4000、canvas-large-sentinel、canvas-complex、document-composite、project-format、bundle。
+
+## 2026-09-27 1.0.0-beta7 自动性能审计
+
+审计编号：`2026-09-27_10-30-48-526_26b996ba`。性能等级为 P3，结果为“用户批准不改代码”。用户已确认本次不修改图层阴影大小调整的性能代码；三次样本主绘制中位数144.2ms，旧审计仅一次138.7ms不可可靠比较。图层重排和图层组显隐优化及D3检查已完成。
+
+候选热点：4000x4000 large-layer-style-shadow-size 主绘制 p95；初始值 144.200，测量噪声 1.25%。
+本次没有执行代码复测。
+执行套件：canvas-standard、canvas-profile、canvas-large-800、canvas-large-2048、canvas-large-4000、canvas-large-sentinel、canvas-complex、document-composite、project-format、bundle。
+
 ## 2026-09-23 1.0.0-beta6 自动性能审计
 
 审计编号：`2026-09-22_15-28-50-452_5c3b9ea6`。性能等级为 P4，结果为“用户批准不改代码”。用户在获知4000x4000、66图层带样式移动绘制p95约227ms且无可比历史基线后，于2026-09-23明确要求继续发布；接受此已知性能限制，本次不修改高风险绘制算法。

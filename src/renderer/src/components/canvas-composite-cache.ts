@@ -40,6 +40,7 @@ import {
   type SelectionTransformCompositePreview,
   type DrawCompositeOptions,
   invalidationRegion,
+  invalidationRects,
   MAX_CACHED_FRAMES,
   DEFAULT_MAX_CACHE_BYTES,
   sharedAnimationLayerSources,
@@ -612,8 +613,10 @@ export class CanvasCompositeCache {
     if (surface && surface.revision !== contentRevision) {
       if (canApplyInvalidation && invalidation?.kind === 'region') {
         if (!livePreviewAlreadyPainted && (isolatedLayerMask || (invalidation.frameId ?? frameId) === frameId) && invalidation.rect) {
-          if (isolatedLayerMask || invalidation.compositeOnly) this.invalidateRect(invalidation.rect, document.width, document.height, frameId)
-          else this.invalidateDocumentRect(invalidation.rect, document, frameId)
+          for (const rect of invalidationRects(invalidation)) {
+            if (isolatedLayerMask || invalidation.compositeOnly) this.invalidateRect(rect, document.width, document.height, frameId)
+            else this.invalidateDocumentRect(rect, document, frameId)
+          }
         }
       } else {
         surface.pendingDirtyRects = [{ x: 0, y: 0, width: document.width, height: document.height }]
@@ -783,7 +786,8 @@ export class CanvasCompositeCache {
         if (canApplyInvalidation && invalidationRect) {
           if (!livePreviewAlreadyPainted) {
             const pending = this.dirtyRects.get(frameId) ?? []
-            pending.push(isolatedLayerMask || invalidation?.compositeOnly ? invalidationRect : expandLayerStyleInvalidationRect(document, invalidationRect))
+            pending.push(...invalidationRects(invalidation).map((rect) =>
+              isolatedLayerMask || invalidation?.compositeOnly ? rect : expandLayerStyleInvalidationRect(document, rect)))
             this.dirtyRects.set(frameId, pending.length > 32 ? boundedDirtyRects(pending, 32, patchMergeLimit) : pending)
           }
         } else {

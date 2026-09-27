@@ -306,10 +306,17 @@ export function createWorkspaceToolCommands({ get, set }: WorkspaceCommandContex
       get().mutateActive((session) => {
         if (!session.temporaryBrushCapture && !session.brushImage) return
         if (session.temporaryBrushCapture) Object.assign(session, session.temporaryBrushCapture)
+        const rememberedBrushPaintMode = session.brushPaintMode
         session.temporaryBrushCapture = undefined
         session.tool = 'pencil'
         applyBrushProfile(session, session.patternBrushReturnProfile ?? { ...session.brushProfiles.pencil, brushImage: null, brushImageId: null, brushImageTemporary: false })
+        session.brushPaintMode = rememberedBrushPaintMode
         session.patternBrushReturnProfile = undefined
+        // A restored return profile may itself contain a saved pattern. Clear
+        // the live state before remembering it or the profile restores it again.
+        session.brushImage = null
+        session.brushImageId = null
+        session.brushImageTemporary = false
         rememberBrushProfile(session)
         persistToolSettings(session)
       }, false)

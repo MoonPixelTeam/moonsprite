@@ -81,6 +81,7 @@ export function splitLayerStyles(document: SpriteDocument, layerId: string): His
       ? { format: 'rgba', width, height, offsetX: x, offsetY: y, pixels: new Uint8ClampedArray(width * height * 4) }
       : { format: 'indexed', width, height, offsetX: x, offsetY: y, pixels: new Uint32Array(width * height) })
     for (let localY = 0; localY < height; localY += 1) for (let localX = 0; localX < width; localX += 1) {
+      if (x + localX < 0 || x + localX >= document.width || y + localY < 0 || y + localY >= document.height) continue
       const colors = sampleLayerStyleParts(geometry, resolved, x + localX, y + localY, read(x + localX, y + localY), read, resolveColor)
       const index = localY * width + localX
       for (let partIndex = 0; partIndex < parts.length; partIndex += 1) {

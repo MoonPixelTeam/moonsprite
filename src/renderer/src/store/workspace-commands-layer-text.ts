@@ -8,7 +8,7 @@ import type { TextCelPreview, TextLayerDraftTarget } from './workspace-state'
 import type { DocumentSession } from './workspace-types'
 import type { WorkspaceLayerCommands } from './workspace-state'
 import type { WorkspaceCommandContext } from './workspace-command-context'
-import { selectedRowInsertionTarget, insertionTargetParent } from './workspace-animation-selection'
+import { selectedRowInsertionTarget, insertionTargetParent, setTimelineActiveContext } from './workspace-animation-selection'
 import { activeSession } from './workspace-access'
 import { tr } from './workspace-translation'
 import { renderTextAtCurrentSurface, applyTextSurface } from './workspace-text-surface'
@@ -75,7 +75,11 @@ export function createLayerTextCommands({ get, set }: WorkspaceCommandContext<'c
         session.selectedGroupIds = []
         session.selectedLayerIds = [layer.id]
         session.selectedAnimationCellKeys = [animationCelKey(layer.id, timeline.activeFrameId)]
+        session.animationCellSelectionAnchorKey = animationCelKey(layer.id, timeline.activeFrameId)
         session.animationCellSelectionExplicit = false
+        session.layerSelectionExplicit = true
+        session.layerSelectionAnchorId = layer.id
+        setTimelineActiveContext(session, { kind: 'layer', ownerKind: 'layer', ownerId: layer.id }, timeline.activeFrameId, null)
         syncActiveAnimationLayer(document, layer.id)
         moveLayerPanelRowsOperation(session, [layer.id], [], placement)
         const after = captureDocumentStructureSnapshot(document)
@@ -137,6 +141,9 @@ export function createLayerTextCommands({ get, set }: WorkspaceCommandContext<'c
         session.selectedAnimationCellKeys = [animationCelKey(layer.id, timeline.activeFrameId)]
         session.animationCellSelectionAnchorKey = animationCelKey(layer.id, timeline.activeFrameId)
         session.animationCellSelectionExplicit = false
+        session.layerSelectionExplicit = true
+        session.layerSelectionAnchorId = layer.id
+        setTimelineActiveContext(session, { kind: 'layer', ownerKind: 'layer', ownerId: layer.id }, timeline.activeFrameId, null)
         syncActiveAnimationLayer(document, layer.id)
         moveLayerPanelRowsOperation(session, [layer.id], [], placement)
         textLayerDrafts(session).set(layer.id, draftState)
@@ -273,6 +280,7 @@ export function createLayerTextCommands({ get, set }: WorkspaceCommandContext<'c
     },
     restoreTextCelPreview(layerId, frameId, preview) {
       get().mutateActive((session) => {
+        if (!session.document.layers.some(layer => layer.id === layerId && layer.kind === 'text')) return
         const timeline = ensureAnimationDocument(session.document)
         const cel = timeline.cels.find((candidate) => candidate.layerId === layerId && candidate.frameId === frameId)
         const source = resolveAnimationCel(timeline, cel ?? null) ?? cel

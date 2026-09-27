@@ -30,7 +30,7 @@ import { setTimelineActiveFrame, retargetAnimationLoopPlaybackAtFrame } from './
 
 
 
-export function createAnimationSelectionCommands({ get, set }: WorkspaceCommandContext<'commitFloatingPaste' | 'commitSelectionChange' | 'mutateActive' | 'selectAnimationCell' | 'selectAnimationFrame' | 'selectLayer' | 'setActiveAnimationFrame'>): Pick<WorkspaceAnimationCommands, 'setActiveAnimationFrame' | 'stepAnimationFrame' | 'stepLayerSelection' | 'stepAnimationCell' | 'selectAnimationFrame' | 'selectAnimationCell' | 'selectAnimationMaskCell' | 'selectAnimationMaskRow' | 'selectAnimationCelContent' | 'clearAnimationSelection'> {
+export function createAnimationSelectionCommands({ get, set }: WorkspaceCommandContext<'commitFloatingPaste' | 'commitSelectionChange' | 'mutateActive' | 'selectAnimationCell' | 'selectAnimationFrame' | 'selectLayer' | 'setActiveAnimationFrame' | 'stepAnimationFrame' | 'stepLayerSelection'>): Pick<WorkspaceAnimationCommands, 'setActiveAnimationFrame' | 'stepAnimationFrame' | 'stepLayerSelection' | 'stepAnimationCell' | 'selectAnimationFrame' | 'selectAnimationCell' | 'selectAnimationMaskCell' | 'selectAnimationMaskRow' | 'selectAnimationCelContent' | 'clearAnimationSelection'> {
   return {
     setActiveAnimationFrame(frameId) {
       get().commitFloatingPaste()

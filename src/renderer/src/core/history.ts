@@ -72,7 +72,7 @@ export interface HistoryStackChange {
 export type ContentInvalidationHint =
   | { kind: 'full' }
   // compositeOnly changes output properties, never source pixels or masks.
-  | { kind: 'region'; frameId?: string; rect: SelectionRect; compositeOnly?: true; propertyOwnerIds?: readonly string[]; propertyPreview?: true }
+  | { kind: 'region'; frameId?: string; rect: SelectionRect; rects?: readonly SelectionRect[]; compositeOnly?: true; propertyOwnerIds?: readonly string[]; propertyPreview?: true }
 
 const combineInvalidations = (entries: readonly HistoryEntry[]): ContentInvalidationHint | undefined => {
   const invalidations = entries.map((entry) => entry.invalidation)

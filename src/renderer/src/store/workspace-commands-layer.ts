@@ -10,7 +10,7 @@ import { createLayerSelectionCommands } from './workspace-commands-layer-selecti
 import { createLayerMaskCommands } from './workspace-commands-layer-mask'
 
 /** Composition only. Each workflow owns its helpers and temporary state. */
-export function createWorkspaceLayerCommands(context: WorkspaceCommandContext<'applyActiveLayerAdjustmentFromSnapshot' | 'activateLayerForCanvas' | 'assignLayersToGroup' | 'cancelTextBoxTransform' | 'commitFloatingPaste' | 'deleteSelectedLayers' | 'mutateActive' | 'previewLayerStyleEntries' | 'pushHistory' | 'redo' | 'reorderLayers' | 'selectAnimationMaskCell' | 'selectGroupMask' | 'setClippingMask' | 'setLayerStylesForTargets' | 'undo', 'documentTransactions'>): WorkspaceLayerCommands {
+export function createWorkspaceLayerCommands(context: WorkspaceCommandContext<'applyActiveLayerAdjustmentFromSnapshot' | 'activateLayerForCanvas' | 'assignLayersToGroup' | 'cancelTextBoxTransform' | 'commitFloatingPaste' | 'commitTextLayerDraft' | 'deleteSelectedLayers' | 'mutateActive' | 'previewLayerStyleEntries' | 'pushHistory' | 'redo' | 'reorderLayers' | 'selectAnimationMaskCell' | 'selectGroupMask' | 'setClippingMask' | 'setLayerStylesForTargets' | 'undo', 'documentTransactions'>): WorkspaceLayerCommands {
   return {
     ...createLayerCreationCommands(context),
     ...createAdjustmentLayerCommands(context),

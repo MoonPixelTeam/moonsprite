@@ -1,10 +1,12 @@
 import { gradientMapEn } from './gradient-map'
+import { beta7En } from './release-beta7'
 import { spriteSheetImportdeDE } from './sprite-sheet-import'
 import type { TranslationCatalog } from './contracts'
 
 import { tabletEn } from './tablet'
 
 export const deDEMessages = {
+  ...beta7En,
   ...gradientMapEn,
   "toolOptions.temporaryBrushCaptureHint": "Temporärer Pinsel: Bereich aufziehen, loslassen zum Verwenden; Esc zum Abbrechen",
   "preferences.paintingCursor.cross": "Einfaches Kreuz",
@@ -1315,6 +1317,7 @@ export const deDEMessages = {
   "colorReplacement.colors": "Farben",
   "colorReplacement.source": "Initial Farbe",
   "colorReplacement.replacement": "Ersetzen mit",
+  "colorReplacement.rememberLastSelectedColor": "Letzte ausgewählte Farbe merken",
   "colorReplacement.pickSource": 'Zeigen Sie die ursprüngliche Farbe aus dem Kanvas an',
   "colorReplacement.pickReplacement": "Sample Die Ersetzenment Farbe von Die Leinwand",
   "colorReplacement.range": "Bereich",

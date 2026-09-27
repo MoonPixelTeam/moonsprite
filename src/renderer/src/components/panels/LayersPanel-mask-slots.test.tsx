@@ -6,11 +6,14 @@ import { useWorkspace } from '@/store/workspace'
 import { LayersPanel } from './LayersPanel'
 
 beforeEach(() => {
+  vi.useFakeTimers()
+  vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => window.setTimeout(() => callback(performance.now()), 16))
+  vi.stubGlobal('cancelAnimationFrame', (id: number) => window.clearTimeout(id))
   localStorage.clear()
   vi.stubGlobal('moonSprite', { getResourceInfo: vi.fn().mockResolvedValue({ totalBytes: 8e9, freeBytes: 4e9 }) })
   useWorkspace.setState({ sessions: [], activeId: null, message: null, dialog: null })
 })
-afterEach(() => { cleanup(); vi.unstubAllGlobals() })
+afterEach(() => { cleanup(); vi.useRealTimers(); vi.unstubAllGlobals() })
 
 function setup(group: boolean, maskIndexes = [0, 2], frameCount = 5) {
   const document = createDocument('mask slots', 1, 1, 'rgba')
@@ -41,7 +44,10 @@ function setup(group: boolean, maskIndexes = [0, 2], frameCount = 5) {
   const cell = (index: number) => view.container.querySelector(`[data-animation-mask-cel-key="${keys[index]}"]`)!
   const mask = (index: number) => animationMaskAt(timeline, ownerId, timeline.frames[index].id)
   const down = (index: number, modifiers = {}) => fireEvent.pointerDown(cell(index), { button: 0, pointerId: 1, clientX: 14 + index * 28, clientY: 70, ...modifiers })
-  const move = (index: number) => fireEvent.pointerMove(cell(index), { buttons: 1, pointerId: 1, clientX: 14 + index * 28, clientY: 70 })
+  const move = (index: number) => {
+    fireEvent.pointerMove(cell(index), { buttons: 1, pointerId: 1, clientX: 14 + index * 28, clientY: 70 })
+    act(() => { vi.advanceTimersByTime(17) })
+  }
   const up = (index: number) => fireEvent.pointerUp(cell(index), { button: 0, pointerId: 1, clientX: 14 + index * 28, clientY: 70 })
   return { ...view, keys, cell, mask, down, move, up, document }
 }

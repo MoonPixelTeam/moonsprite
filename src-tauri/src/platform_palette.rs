@@ -1066,7 +1066,8 @@ mod tests {
     use super::*;
 
     #[test]
-    fn bounds_imported_file_reads_and_preserves_small_files() -> Result<(), Box<dyn std::error::Error>> {
+    fn bounds_imported_file_reads_and_preserves_small_files(
+    ) -> Result<(), Box<dyn std::error::Error>> {
         use std::io::Write;
         let nonce = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)?
