@@ -53,9 +53,10 @@ import { useCanvasDeviceRouter } from './useCanvasDeviceRouter'
 import { useCanvasPreferences } from './useCanvasPreferences'
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import { useWorkspace, type DocumentSession } from '@/store/workspace'
+import { activePaintLayer } from '@/store/workspace-session'
 import { loadEditorPreferences } from '@/core/file-preferences'
 import { CanvasInputState } from '@/core/canvas-input'
-import { crosshairCursorForColor } from '@/core/canvas-visuals'
+import { canvasCursors, crosshairCursorForColor } from '@/core/canvas-visuals'
 import { useCanvasViewPreview } from '@/components/useCanvasViewPreview'
 import { PerformanceProfiler } from '@/components/PerformanceProfiler'
 import { useI18n } from '@/components/I18nProvider'
@@ -71,6 +72,9 @@ import rotationPointer from '@/assets/rotation-indicator/pointer.png'
 import { renderCanvasFrame } from './canvas-render-frame'
 import { canvasStageIsVisible } from './canvas-stage-visibility'
 import { subscribeAnimationTweenPreview } from './animation-tween-preview'
+import { type GradientEditHandle } from '@/core/canvas-gradient-confirmation'
+import { useCanvasGradientConfirmation } from './useCanvasGradientConfirmation'
+import { GradientConfirmationBar } from './GradientConfirmationBar'
 import { useAnimationTweenPreviewDrag } from './useAnimationTweenPreviewDrag'
 import { LineAnchorHistory } from './canvas-stage-helpers'
 import { CanvasViewport, CANVAS_VIEW_SCROLLBAR_THICKNESS } from './CanvasViewScrollbars'
@@ -174,6 +178,7 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
   })
 
   const inputRef = useRef(new CanvasInputState())
+  const gradientEditRef = useRef<{ handle: GradientEditHandle; pointerId: number; origin: { x: number; y: number }; start: { x: number; y: number }; end: { x: number; y: number }; center?: { x: number; y: number }; bounds?: { x: number; y: number; width: number; height: number } } | null>(null)
   // Keyboard listeners intentionally live across brush changes. Deferred draws
   // must therefore resolve the current render function instead of the brush
   // configuration that was active when the listener was registered.
@@ -614,6 +619,7 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
     get freeTransformQuadForSession() { return freeTransformQuadForSession },
     get displayedSelectionPoint() { return displayedSelectionPoint },
     get inputRef() { return inputRef },
+    get gradientEditActive() { return () => Boolean(gradientEditRef.current) },
     get selectionCrosshair() { return selectionCrosshair },
     get selectionInteractionEditable() { return selectionInteractionEditable },
     get quickToolActive() { return quickToolActive },
@@ -1441,6 +1447,9 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
     get sliceInput() { return sliceInput },
     get transformInput() { return transformInput }
   })
+  const gradientConfirmation = useCanvasGradientConfirmation({ session, canvasRef, inputRef, gradientEditRef,
+    fillInput, mode: canvasPreferences.gradientApplicationMode, scheduleDraw, localPoint, localContinuousPointAt,
+    updateCursor, syncPenCursor, updateGradientDragGeometry, gradientStopsForButton, paintSelectionForDrag })
   const handlePointerUp = createCanvasPointerUp({
     get liveInputSession() { return liveInputSession },
     get stopAirbrushTimer() { return stopAirbrushTimer },
@@ -1462,6 +1471,7 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
     get selectionInput() { return selectionInput },
     get samplingInput() { return samplingInput },
     get fillInput() { return fillInput },
+    deferGradient: gradientConfirmation.defer,
     get tileInput() { return tileInput },
     get freeTileInput() { return freeTileInput },
     get strokeInput() { return strokeInput },
@@ -1478,6 +1488,8 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
     pointAt: (x, y) => repeatedDocumentPointsAt(x, y, true, true)
   })
   const rotationStyle = { transform: 'none', transformOrigin: '50% 50%' }
+  const { gradientPending, beginPendingGradientEdit, movePendingGradientEdit, endPendingGradientEdit, cancelPendingGradientEdit } = gradientConfirmation
+
   return (
     <PerformanceProfiler id="CanvasStage">
       <CanvasViewport enabled={canvasPreferences.canvasViewScrollbarsEnabled} documentId={session.document.id}
@@ -1486,17 +1498,26 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
         view={session.view} rotationIndicatorPosition={rotationIndicatorPosition}
         ariaLabel={t('canvas.aria')} onHorizontalVisibilityChange={setHorizontalScrollbarVisible}>
       <div ref={stageRef} className="stage-surface">
+        <GradientConfirmationBar documentId={session.document.id} />
         <canvas
           ref={canvasRef}
           data-document-id={session.document.id}
           style={{ ...rotationStyle, ...canvasCursorStyle }}
           className={`stage-canvas ${session.tool === 'zoom' ? 'zoom-tool-canvas' : ''}`}
           aria-label={t('canvas.aria')}
-          onPointerDown={(event) => { if (event.pointerType === 'touch' || event.ctrlKey || event.metaKey || (event.pointerType === 'pen' && tabletPreferences.api === 'disabled') || !tweenPreviewDrag.pointerDown(event)) pointerDown(event); rememberPaintedDrag(inputRef.current.drag, session.tool) }}
-          onPointerMove={(event) => { if (!tweenPreviewDrag.pointerMove(event)) pointerMove(event); rememberPaintedDrag(inputRef.current.drag, session.tool) }}
-          onPointerUp={(event) => { rememberPaintedDrag(inputRef.current.drag, session.tool); if (!tweenPreviewDrag.pointerUp(event)) pointerUp(event) }}
-          onPointerCancel={(event) => { if (!tweenPreviewDrag.pointerCancel(event)) pointerCancel(event) }}
-          onLostPointerCapture={(event) => tweenPreviewDrag.pointerCancel(event)}
+          onPointerDown={(event) => {
+            if (beginPendingGradientEdit(event)) return
+            if (gradientPending() && session.tool === 'fill' && session.fillKind === 'gradient' && event.pointerType !== 'touch' && event.button !== 1 && !event.ctrlKey && !event.metaKey && !inputRef.current.spaceHeld) {
+              event.preventDefault()
+              return
+            }
+            if (event.pointerType === 'touch' || event.ctrlKey || event.metaKey || (event.pointerType === 'pen' && tabletPreferences.api === 'disabled') || !tweenPreviewDrag.pointerDown(event)) pointerDown(event)
+            rememberPaintedDrag(inputRef.current.drag, session.tool)
+          }}
+          onPointerMove={(event) => { if (movePendingGradientEdit(event)) return; if (!tweenPreviewDrag.pointerMove(event)) pointerMove(event); rememberPaintedDrag(inputRef.current.drag, session.tool) }}
+          onPointerUp={(event) => { if (endPendingGradientEdit(event)) return; rememberPaintedDrag(inputRef.current.drag, session.tool); if (!tweenPreviewDrag.pointerUp(event)) pointerUp(event) }}
+          onPointerCancel={(event) => { if (cancelPendingGradientEdit(event)) return; if (!tweenPreviewDrag.pointerCancel(event)) pointerCancel(event) }}
+          onLostPointerCapture={(event) => { if (!cancelPendingGradientEdit(event)) tweenPreviewDrag.pointerCancel(event) }}
           onDoubleClick={quickSelectCell}
           onPointerLeave={pointerLeave}
           onPointerEnter={pointerEnter}

@@ -1,3 +1,4 @@
+import type { FilterChoice } from '@/store/workspace-filter-preview'
 import { ExportDialogHost, type ExportDialogHandle } from '@/components/app/ExportDialogHost'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { ImageResizeInterpolation } from '@shared/types-raster'
@@ -12,7 +13,7 @@ import { ImageResizeDialog } from '@/components/ImageResizeDialog'
 import { OutlineDialog } from '@/components/OutlineDialog'
 import { AntiAliasDialog } from '@/components/AntiAliasDialog'
 import { AdjustmentDialog } from '@/components/dialogs/AdjustmentDialog'
-import { LcdScreenDialog } from '@/components/dialogs/LcdScreenDialog'
+import { FilterDialog } from '@/components/dialogs/FilterDialog'
 import { SaveAsDialog } from '@/components/dialogs/SaveAsDialog'
 import { SpriteSheetImportDialog } from '@/components/dialogs/SpriteSheetImportDialog'
 import { SpriteSheetExportDialog } from '@/components/dialogs/SpriteSheetExportDialog'
@@ -67,7 +68,7 @@ export function useAppDocumentDialogs({
   const [imageResizeOpen, setImageResizeOpen] = useState(false)
   const [outlineOpen, setOutlineOpen] = useState(false)
   const [antiAliasOpen, setAntiAliasOpen] = useState(false)
-  const [lcdScreenOpen, setLcdScreenOpen] = useState(false)
+  const [lcdScreenOpen, setLcdScreenOpen] = useState<FilterChoice | false>(false)
   const [colorReplacementOpen, setColorReplacementOpen] = useState(false)
   const [adjustmentOpen, setAdjustmentOpen] = useState(false)
   const [adjustmentKind, setAdjustmentKind] = useState<AdjustmentKind>('brightness-contrast')
@@ -138,12 +139,7 @@ export function useAppDocumentDialogs({
       <ExportDialogHost ref={exportDialogRef} defaultFileDirectories={defaultFileDirectories} exportScalePresets={exportScalePresets} />
       {adjustmentOpen && <AdjustmentDialog kind={adjustmentKind} onClose={() => setAdjustmentOpen(false)} />}
       {lcdScreenOpen && session && (
-        <LcdScreenDialog
-          onClose={() => setLcdScreenOpen(false)}
-          onApply={(options) => {
-            void workspace.applyLcdScreenFilter(options)
-          }}
-        />
+        <FilterDialog key={session.document.id} initialFilter={lcdScreenOpen} onClose={() => setLcdScreenOpen(false)} />
       )}
       {colorReplacementOpen && session && <ColorReplacementDialog key={session.document.id} onClose={() => setColorReplacementOpen(false)} />}
       {session && gridSettingsOpen && (

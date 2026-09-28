@@ -6,7 +6,7 @@ import { brushStampAnchor } from '@/core/tools-brush'
 import { type DocumentSession } from '@/store/workspace'
 import { constrainLineEndpoint } from '@/core/pixel-line'
 import { isoGridLineSegment, isoLineEndpoint, snapIsoPointToGridVertex } from '@/core/isometric'
-import { createMarqueeResizeStart, resizeRotatedMarqueeBounds, temporaryTransformOffset, selectionRotationAngle, type CanvasDragState as DragState, type CanvasPoint as Point } from '@/core/canvas-input'
+import { centerMarqueeBoundsAtCreationPoint, createMarqueeResizeStart, resizeRotatedMarqueeBounds, temporaryTransformOffset, selectionRotationAngle, type CanvasDragState as DragState, type CanvasPoint as Point } from '@/core/canvas-input'
 import { defaultSymmetryCenter } from '@/core/symmetry'
 import { activeBrushInputsForTool } from '@/core/brushes'
 interface Ports {
@@ -128,14 +128,20 @@ export function createCanvasBrushConfig(ports: Ports) {
       const rotation = drag.gradientRotationStart
       drag.gradientAngle = rotation.angle + selectionRotationAngle(toBounds(rotation.geometry), rotation.pointer, adjusted)
       drag.marqueeBounds = toBounds(rotation.geometry)
-      drag.marqueeResizeStart = createMarqueeResizeStart(drag.marqueeBounds, adjusted)
     } else {
       if (drag.gradientRotationStart && drag.marqueeBounds) {
-        // Releasing Alt is a mode transition, not another resize sample.
-        // Anchor at the release pointer and preserve the last rendered ellipse.
-        drag.marqueeResizeStart = createMarqueeResizeStart(drag.marqueeBounds, adjusted)
+        // The release sample may differ from the last rendered pointer.
+        // Preserve the ellipse and use this sample as the next resize anchor.
+        const bounds = drag.gradientFromCenter
+          ? centerMarqueeBoundsAtCreationPoint(drag.marqueeBounds, drag.start)
+          : drag.marqueeBounds
+        drag.marqueeBounds = bounds
+        drag.marqueeResizeStart = createMarqueeResizeStart(bounds, adjusted)
         drag.gradientRotationStart = undefined
-        drag.last = snappedPoint
+        drag.gradientRadialGeometry = {
+          center: { x: bounds.x + bounds.width / 2 + offset.x, y: bounds.y + bounds.height / 2 + offset.y },
+          radiusX: bounds.width / 2, radiusY: bounds.height / 2
+        }
         return
       }
       if (drag.marqueeResizeStart) {
@@ -143,7 +149,7 @@ export function createCanvasBrushConfig(ports: Ports) {
         drag.marqueeBounds = resizeRotatedMarqueeBounds(anchor.bounds,
           { x: adjusted.x - anchor.pointer.x, y: adjusted.y - anchor.pointer.y },
           drag.gradientAngle ?? 0, drag.marqueeDirection ?? { x: 1, y: 1 },
-          Boolean(drag.gradientFromCenter), Boolean(drag.constrain), null)
+          drag.marqueeResizeStart.fromCenter || Boolean(drag.gradientFromCenter), Boolean(drag.constrain), null)
       } else {
         const geometry = resolveRadialGradientGeometry(drag.start, adjusted, { fromCenter: drag.gradientFromCenter, proportional: drag.constrain })
         drag.marqueeBounds = toBounds(geometry)

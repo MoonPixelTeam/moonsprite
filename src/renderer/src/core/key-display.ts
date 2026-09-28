@@ -14,15 +14,24 @@ export function keyDisplayShortcut(keys: readonly string[], shortcuts: ShortcutB
 }
 
 /** Return a compact, user-facing label for a keyboard event. */
-export function keyDisplayLabel(key: string): string {
+export function keyDisplayLabel(key: string, locale = 'zh-CN'): string {
+  const mouseLabels = locale === 'zh-CN'
+    ? { MouseLeft: '鼠标左键', MouseRight: '鼠标右键', MouseMiddle: '鼠标中键', MouseBack: '鼠标侧键 1', MouseForward: '鼠标侧键 2' }
+    : { MouseLeft: 'Left Mouse', MouseRight: 'Right Mouse', MouseMiddle: 'Middle Mouse', MouseBack: 'Mouse Button 4', MouseForward: 'Mouse Button 5' }
   const labels: Record<string, string> = {
     Control: 'Ctrl', Meta: 'Win', Alt: 'Alt', Shift: 'Shift',
     Enter: 'Enter', Escape: 'Esc', Tab: 'Tab', ' ': 'Space', Space: 'Space',
     Backspace: 'Backspace', Delete: 'Del', Insert: 'Ins',
     ArrowUp: '↑', ArrowDown: '↓', ArrowLeft: '←', ArrowRight: '→',
-    PageUp: 'PageUp', PageDown: 'PageDown', Home: 'Home', End: 'End'
+    PageUp: 'PageUp', PageDown: 'PageDown', Home: 'Home', End: 'End',
+    ...mouseLabels
   }
   return labels[key] ?? (key.length === 1 ? key.toUpperCase() : key)
+}
+
+/** A released ordinary key completes one chord, even while modifiers remain held. */
+export function keyDisplayCompletesGesture(key: string, heldCount: number): boolean {
+  return !['Control', 'Meta', 'Alt', 'Shift'].includes(key) || heldCount === 0
 }
 
 export interface KeyDisplayKeydownState {

@@ -72,7 +72,7 @@ const logoSpinClickWindowMs = 850
 const logoSpinDurationMs = 2_000
 const homeExternalLinks = {
   qq: 'https://qm.qq.com/q/3OUXtFg4lW',
-  community: 'https://moonpx.art/',
+  community: 'https://moonsprite.art',
   steam: 'https://store.steampowered.com/search/?term=MoonSprite',
   github: 'https://github.com/MoonPixelTeam/moonsprite'
 } as const

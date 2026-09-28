@@ -117,6 +117,7 @@ export function createFillCanvasInput(ports: Ports) {
           constrain: event.shiftKey,
           gradientFromCenter: gradientType === 'radial' && Boolean(event.ctrlKey || event.metaKey),
           color: activeColor(event.button),
+          gradientSourceButton: event.button === 2 ? 2 : 0,
           gradientEndColor: event.button === 2 ? session.primaryColor : session.secondaryColor,
           gradientStops: gradientStopsForButton(event.button),
           gradientPaintRegion: gradientRegionSelection(session.document, editableLayer, fillPoint, session.gradientTolerance, session.gradientContiguous, {
@@ -208,7 +209,7 @@ export function createFillCanvasInput(ports: Ports) {
     return false
   }
 
-  function endGradient({ drag, session, state }: { drag: DragState; session: DocumentSession; state: ReturnType<typeof useWorkspace.getState> }): boolean {
+  function endGradient({ drag, session, state, targetLayer, selection }: { drag: DragState; session: DocumentSession; state: ReturnType<typeof useWorkspace.getState>; targetLayer?: RasterLayer; selection?: SelectionMask | null }): boolean {
     const {
       gradientPreviewCoverageCacheRef,
       freeTileSourceEditForDrag,
@@ -249,7 +250,7 @@ export function createFillCanvasInput(ports: Ports) {
           else if (drag.freeTilePlacementEdit) state.cancelFreeTilePlacement(drag.freeTilePlacementEdit)
         } else if (drag.freeTilePlacementEdit) state.cancelFreeTilePlacement(drag.freeTilePlacementEdit)
       } else if (moved) {
-        const layer = activePaintLayer(session)
+        const layer = targetLayer ?? activePaintLayer(session)
         if (!isLayerEffectivelyLocked(session.document, layer)) {
           const rasterStartedAt = performance.now()
           const edit = applyGradient(
@@ -259,7 +260,7 @@ export function createFillCanvasInput(ports: Ports) {
             drag.last,
             drag.color ?? session.primaryColor,
             drag.gradientEndColor ?? session.secondaryColor,
-            paintSelectionForDrag(drag),
+            selection === undefined ? paintSelectionForDrag(drag) : selection,
             gradientDither,
             drag.gradientPaintRegion,
             gradientType,

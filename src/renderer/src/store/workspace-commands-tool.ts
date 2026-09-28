@@ -1,6 +1,7 @@
 import type { BrushDitherSettings, GradientStop, ImageBrush, InkMode, LiquifyMode } from '@shared/types-brush'
 import { createId } from '@/core/document-model'
 import { isCanvasToolGestureLocked } from '@/core/canvas-tool-gesture-lock'
+import { pendingGradientFor } from '@/core/canvas-gradient-confirmation'
 import { createSelectionBrush, encodeBrushPng } from '@/core/brushes'
 import { createProceduralBrush, isProceduralBrushId, normalizeProceduralBrushSettings } from '@/core/brushes'
 import { publishBrushLibraryChanged } from '@/core/brush-library-events'
@@ -103,8 +104,9 @@ export function createWorkspaceToolCommands({ get, set }: WorkspaceCommandContex
 
     setTool(tool) {
       if (isCanvasToolGestureLocked()) return
-      get().commitFloatingPaste()
       const current = activeSession(get())
+      if (current && pendingGradientFor(current.document.id) && tool !== current.tool) { set({ message: tr('gradient.pending.hint') }); return }
+      get().commitFloatingPaste()
       if (current && !isToolAvailableForSession(current, tool)) {
         const groupSelected = current.selectedGroupIds.length > 0 || Boolean(current.selectedGroupId)
         set({ message: tr(groupSelected && tool === 'fill' ? 'workspace.group.fillUnavailable' : 'workspace.text.convertToEditPixels') })
@@ -461,7 +463,11 @@ export function createWorkspaceToolCommands({ get, set }: WorkspaceCommandContex
       }, false)
     },
 
-    setFillKind(kind) { get().mutateActive((session) => { session.fillKind = kind; persistToolSettings(session) }, false) },
+    setFillKind(kind) {
+      const current = activeSession(get())
+      if (current && pendingGradientFor(current.document.id) && kind !== 'gradient') { set({ message: tr('gradient.pending.hint') }); return }
+      get().mutateActive((session) => { session.fillKind = kind; persistToolSettings(session) }, false)
+    },
 
     setFillTolerance(tolerance) { get().mutateActive((session) => { session.fillTolerance = Math.max(0, Math.min(255, Math.round(tolerance) || 0)); persistToolSettings(session) }, false) },
 

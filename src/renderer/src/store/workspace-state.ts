@@ -1,3 +1,4 @@
+import type { FilterPreviewHandle } from './workspace-filter-preview'
 import type { AnimationLoopDirection, AnimationCelSurface } from '@shared/types-animation'
 import type { AntiAliasColorSource, BrushDitherSettings, BrushPaintMode, BrushShape, BrushTexture, FillKind, FillConnectivity, FillMode, FillReference, GradientDither, GradientStop, GradientType, ImageBrush, InkMode, ImageBrushSettings, LineKind, LiquifyMode, MoveKind, ProceduralBrushSettings, ShapeKind, ShapeRatio, ToolId } from '@shared/types-brush'
 import type { BackgroundPatternId } from '@shared/types-layer'
@@ -448,7 +449,8 @@ export interface WorkspaceLayerCommands {
   previewLayerAdjustment(layerId: string, value: import('@shared/types-layer').LayerAdjustment | undefined): void
   setLayerAdjustment(layerId: string, value: import('@shared/types-layer').LayerAdjustment | undefined): void
   addLayer(gradientMap?: import('@shared/types-gradient-map').GradientMapSettings): Promise<void>
-  applyFilterPreset(presetId: FilterPresetId): Promise<void>
+  beginFilterPreview(): FilterPreviewHandle
+  applyFilterPreset(presetId: FilterPresetId, opacity?: number): Promise<void>
   applyLcdScreenFilter(options?: Partial<LcdScreenFilterOptions>): Promise<void>
   createTilemapLayer(options: TilemapLayerOptions): Promise<void>
   createFreeTileLayer(options: FreeTileLayerOptions): Promise<void>
@@ -540,7 +542,7 @@ export interface WorkspaceLayerCommands {
   previewLayerStyles(ownerKind: 'layer' | 'group', ownerId: string, styles?: LayerStyles): void
   setLayerStyles(ownerKind: 'layer' | 'group', ownerId: string, styles?: LayerStyles): void
   previewLayerStyleEntries(entries: readonly { target: LayerPropertyTarget; styles?: LayerStyles }[]): void
-  setLayerStylesForTargets(targets: readonly LayerPropertyTarget[], styles?: LayerStyles, action?: 'edit' | 'paste' | 'clear'): boolean
+  setLayerStylesForTargets(targets: readonly LayerPropertyTarget[], styles?: LayerStyles, action?: 'edit' | 'paste' | 'clear', originals?: readonly { target: LayerPropertyTarget; styles?: LayerStyles }[]): boolean
   setLayerStylesEnabled(targets: readonly LayerPropertyTarget[], enabled: boolean): boolean
   copyLayerStyles(ownerKind: 'layer' | 'group', ownerId: string): boolean
   pasteLayerStyles(targets: readonly LayerPropertyTarget[]): boolean

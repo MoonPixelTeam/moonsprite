@@ -1,4 +1,5 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useLayoutEffect, useRef } from 'react'
+import { CANVAS_VIEWPORT_EVENT } from './canvas-viewport-events'
 import { loadEditorPreferences } from '@/core/file-preferences'
 import { PointerPressureAdapter } from '@/core/canvas-input'
 import { isPressurePointerType } from '@/core/pressure'
@@ -20,29 +21,47 @@ export function useCanvasPenCursor(ports: Ports) {
   }
 
   const refs: CanvasPenCursorRefs = { penCursorRef, adaptiveCursorRef, penCursorStateRef, cursorPreferencesRef }
-  const hideCursor = (): void => hidePenCursor(ports, refs)
-  const refreshCursor = (): void => refreshPenCursor(ports, refs)
+  const livePortsRef = useRef(ports)
+  livePortsRef.current = ports
+  const clientPointRef = useRef<{ x: number; y: number } | null>(null)
+  const hideCursor = (): void => hidePenCursor(livePortsRef.current, refs)
+  const refreshCursor = (): void => {
+    const current = livePortsRef.current
+    const client = clientPointRef.current
+    if (client && penCursorStateRef.current.active) {
+      const bounds = current.stageBounds()
+      penCursorStateRef.current.x = client.x - bounds.left
+      penCursorStateRef.current.y = client.y - bounds.top
+    }
+    refreshPenCursor(current, refs)
+  }
 
   const syncPenCursor = (event: React.PointerEvent<HTMLCanvasElement>): void => {
     const pressurePointer = isPressurePointerType(event.pointerType) || ports.pressureAdapterRef.current.isPressureCapable(event.pointerId)
-    const bounds = ports.stageBounds()
+    clientPointRef.current = { x: event.clientX, y: event.clientY }
     penCursorStateRef.current = {
       active: true,
       pressure: pressurePointer,
-      x: event.clientX - bounds.left,
-      y: event.clientY - bounds.top
+      x: 0,
+      y: 0
     }
     refreshCursor()
   }
+
+  // Transform toolbars can move the stage without a pointer event. Keep the
+  // screen hotspot fixed and use the latest pixel-alignment geometry.
+  useLayoutEffect(refreshCursor)
 
   useEffect(() => {
     const leave = (event: PointerEvent) => { if (!event.relatedTarget) hideCursor() }
     window.addEventListener('blur', hideCursor)
     window.addEventListener('moonsprite:extension-pointer-enter', hideCursor)
+    window.addEventListener(CANVAS_VIEWPORT_EVENT, refreshCursor)
     document.documentElement.addEventListener('pointerleave', leave)
     return () => {
       window.removeEventListener('blur', hideCursor)
       window.removeEventListener('moonsprite:extension-pointer-enter', hideCursor)
+      window.removeEventListener(CANVAS_VIEWPORT_EVENT, refreshCursor)
       document.documentElement.removeEventListener('pointerleave', leave)
     }
   }, [])

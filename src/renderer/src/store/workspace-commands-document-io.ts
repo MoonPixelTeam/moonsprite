@@ -1,3 +1,4 @@
+import { resolvePendingGradientForIo } from './pending-gradient-io'
 import { publishEditorEvent } from '@/core/extension-editor-events'
 import { openImageSequencePaths } from './image-sequence-import'
 import { resolveDocumentClose } from './workspace-close-coordinator'
@@ -290,6 +291,8 @@ export function createWorkspaceDocumentIoCommands({ get, set, recording, service
     async saveActive(saveAs = false, options?: SaveAsOptions) {
       const documentId = activeSession(get())?.document.id
       if (!documentId) return false
+      if (!await resolvePendingGradientForIo(documentId, get().requestDialog, () => get().setActive(documentId))) return false
+      if (get().activeId !== documentId) return false
       return runDocumentSave(documentId, async () => {
         let session = get().sessions.find((item) => item.document.id === documentId) ?? null
         if (!session) return false
@@ -411,6 +414,9 @@ export function createWorkspaceDocumentIoCommands({ get, set, recording, service
     },
 
     async exportActive(options) {
+      const documentId = get().activeId
+      if (!documentId || !await resolvePendingGradientForIo(documentId, get().requestDialog, () => get().setActive(documentId))) return false
+      if (get().activeId !== documentId) return false
       get().commitFloatingPaste()
       const session = activeSession(get())
       if (!session) return false
@@ -539,6 +545,7 @@ export function createWorkspaceDocumentIoCommands({ get, set, recording, service
 
     async closeDocument(id) {
       if (!await waitForDocumentSaves(id)) return
+      if (!await resolvePendingGradientForIo(id, get().requestDialog, () => get().setActive(id))) return
       const session = get().sessions.find((item) => item.document.id === id)
       if (!session) return
       const preserveOpenedRecovery = session.recoveryOriginId !== null

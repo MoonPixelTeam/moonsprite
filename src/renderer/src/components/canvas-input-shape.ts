@@ -7,7 +7,7 @@ import { DEFAULT_GRID_SETTINGS, snapPointToGrid } from '@/core/grid'
 import { filledShapePathPixelPoints, paintShape } from '@/core/tools-shapes'
 import { useWorkspace, type DocumentSession } from '@/store/workspace'
 import { activePaintLayer } from '@/store/workspace-session'
-import { CanvasInputState } from '@/core/canvas-input-controller'
+import { CanvasInputState, undoActiveCanvasPathGesture } from '@/core/canvas-input-controller'
 import { appendCanvasPathStep, shouldClosePolygonLasso } from '@/core/canvas-input-path'
 import { shapeBounds } from '@/core/canvas-input-resize'
 import { type CanvasDragState as DragState, type CanvasPoint as Point } from '@/core/canvas-input-contracts'
@@ -71,8 +71,14 @@ export function createShapeCanvasInput(ports: Ports) {
   }): boolean {
     const { commitPolygonShape, scheduleDraw } = ports
     if (session.tool === 'shape' && activePolygon?.kind === 'polygon-shape' && (event.button === 0 || event.button === 2)) {
+      if (event.button === 2) {
+        event.preventDefault()
+        undoActiveCanvasPathGesture(ports.inputRef.current)
+        scheduleDraw()
+        return true
+      }
       const path = activePolygon.path ?? []
-      if (shouldClosePolygonLasso(path, point, event.detail)) {
+      if (shouldClosePolygonLasso(path, event.button, event.detail)) {
         commitPolygonShape()
         return true
       }

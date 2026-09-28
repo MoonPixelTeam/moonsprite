@@ -17,6 +17,38 @@ afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.unstubAllGlobals(); vi.cle
 const view: ViewState = { zoom: 4, panX: 0, panY: 0, rotation: 0, mirrored: false, mirroredVertical: false, showGrid: false, relativeLuminance: false }
 const options = { documentId: 'large', documentWidth: 4596, documentHeight: 1767, viewportWidth: 1200, viewportHeight: 800, view, rotationIndicatorPosition: 'canvas' as const }
 
+it('never renders the stale layout zoom during a committed zoom change', () => {
+  const visibility: boolean[] = []
+  function Host({ currentView }: { currentView: ViewState }) {
+    const metrics = useCanvasViewScrollbars({ ...options, view: currentView })
+    visibility.push(metrics.horizontal.visible)
+    return null
+  }
+  const mounted = render(<Host currentView={view} />)
+  act(() => window.dispatchEvent(new CustomEvent(CANVAS_VIEWPORT_EVENT, { detail: {
+    documentId: options.documentId, width: options.viewportWidth, height: options.viewportHeight, view
+  } })))
+  visibility.length = 0
+  mounted.rerender(<Host currentView={{ ...view, zoom: 0.1 }} />)
+  expect(visibility.length).toBeGreaterThan(0)
+  expect(visibility.every(visible => !visible)).toBe(true)
+})
+
+it('retains live dock geometry when the same view is republished', () => {
+  let ratio = 0
+  function Host({ currentView }: { currentView: ViewState }) {
+    ratio = useCanvasViewScrollbars({ ...options, view: currentView }).horizontal.thumbRatio
+    return null
+  }
+  const mounted = render(<Host currentView={view} />)
+  act(() => window.dispatchEvent(new CustomEvent(CANVAS_VIEWPORT_EVENT, { detail: {
+    documentId: options.documentId, width: 600, height: 800, view
+  } })))
+  const liveRatio = ratio
+  mounted.rerender(<Host currentView={{ ...view }} />)
+  expect(ratio).toBe(liveRatio)
+})
+
 it('updates the scrollbar for 60 pan frames without rerendering its canvas parent', () => {
   let renders = 0
   function CanvasHost() {

@@ -245,7 +245,8 @@ export function createCanvasPointerMove(ports: Ports) {
       else {
         const delta = canvasClientDeltaForInterfaceScale(event.clientX - inputRef.current.modifierBrushSize.x, interfaceScale)
         const nextSize = inputRef.current.modifierBrushSize.size + Math.round(delta / 4)
-        queueCanvasBrushSize(inputRef.current, session, nextSize, event.currentTarget, brushPreviewOverlaySupported(session))
+        queueCanvasBrushSize(inputRef.current, session, nextSize, event.currentTarget,
+          ['pencil', 'eraser', 'line'].includes(session.tool) || brushPreviewOverlaySupported(session))
       }
       // The first move can initialize the modifier state after the cursor
       // update above. The brush overlay is enough while sizing; a full canvas

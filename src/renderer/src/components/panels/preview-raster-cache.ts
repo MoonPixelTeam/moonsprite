@@ -71,7 +71,7 @@ export class PreviewRasterCache {
       || this.view.originX !== view.originX || this.view.originY !== view.originY || this.view.scale !== view.scale
       || this.document?.id !== document.id || !this.key.startsWith(`${document.id}:${frameId}:`)
     const regionalCommit = !geometryChanged && this.view?.luminance === view.luminance
-      && invalidation?.kind === 'region' && invalidation.fromRevision === this.revision && invalidation.revision === revision
+      && invalidation?.kind === 'region' && invalidation.fromRevision <= this.revision && this.revision < revision && invalidation.revision === revision
       && (!invalidation.frameId || invalidation.frameId === frameId)
     this.document = document
     this.revision = revision

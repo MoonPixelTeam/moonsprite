@@ -1,8 +1,10 @@
+import { DocumentCompositeCache } from '@/core/document-composite-cache'
 import { beforeEach, describe, expect, it } from 'vitest'
 import type { LayerGroup } from '@shared/types-layer'
-import { animationMaskAt, compositeRegion, createDocument, createLayer, getActiveLayer, writeLayerColor } from '@/core/document'
-import { ensureAnimationDocument } from '@/core/animation'
+import { animationMaskAt, createDocument, createLayer, getActiveLayer, writeLayerColor } from '@/core/document'
+import { addBlankAnimationFrame, syncActiveAnimationFrame, ensureAnimationDocument } from '@/core/animation'
 import { createDefaultLayerStyles } from '@/core/layer-styles'
+import { compositeRegion } from '@/core/document-composite'
 import { useWorkspace } from './workspace'
 
 beforeEach(() => {
@@ -11,6 +13,22 @@ beforeEach(() => {
 })
 
 describe('layer style workspace history', () => {
+  it.each(['normal', 'text', 'tilemap', 'free-tile', 'background'] as const)('commits and composites styles for %s layers', (kind) => {
+    const document = createDocument(`style composite ${kind}`, 4, 4, 'rgba')
+    const layer = getActiveLayer(document)
+    if (kind === 'background') layer.background = { mode: 'canvas' }
+    else if (kind !== 'normal') layer.kind = kind
+    layer.pixels[5 * 4 + 3] = 255
+    useWorkspace.getState().addSession(document)
+    expect(useWorkspace.getState().sessions[0].document.layers.some((candidate) => candidate.id === layer.id)).toBe(true)
+    const styles = createDefaultLayerStyles()
+    styles.stroke.enabled = true
+    styles.stroke.size = 1
+    useWorkspace.getState().setLayerStyles('layer', layer.id, styles)
+    expect(useWorkspace.getState().sessions[0].document.layers[0].layerStyles?.stroke.enabled).toBe(true)
+    expect(compositeRegion(document, 0, 0, 4, 4).some((value) => value !== 0)).toBe(true)
+  })
+
   it('commits one undoable content change and restores it through history', () => {
     const document = createDocument('layer styles', 4, 4, 'rgba')
     const layer = getActiveLayer(document)
@@ -164,4 +182,80 @@ describe('layer style workspace history', () => {
   })
 
 
+})
+
+
+it('keeps 4K / 100-layer style previews and commits local and preserves warm style caches', () => {
+  const document = createDocument('large sparse styles', 4096, 4096, 'rgba')
+  const layers = Array.from({ length: 100 }, (_, i) => {
+    const layer = createLayer(`layer ${i}`, i === 99 ? 300 : 8, i === 99 ? 300 : 8, 'rgba')
+    layer.offsetX = 1000; layer.offsetY = 1000
+    layer.pixels.fill(255)
+    return layer
+  })
+  document.layers = layers
+  document.activeLayerId = layers[99].id
+  document.animation = undefined
+  useWorkspace.getState().addSession(document)
+  const session = useWorkspace.getState().sessions[0], layer = layers[99]
+  document.dirty = false
+  const target = { kind: 'layer' as const, id: layer.id }
+  const originals = [{ target, styles: undefined }]
+  const styles = createDefaultLayerStyles()
+  styles.stroke.enabled = true; styles.stroke.size = 2
+  styles.shadow.enabled = true; styles.shadow.blur = 3
+  const start = performance.now()
+  useWorkspace.getState().previewLayerStyleEntries([{ target, styles }])
+  const previewMs = performance.now() - start
+  const hint = session.contentInvalidation
+  expect(hint).toMatchObject({ kind: 'region', compositeOnly: true, propertyOwnerIds: [layer.id] })
+  if (hint?.kind !== 'region') throw Error('expected local invalidation')
+  expect(hint.rect.width).toBeLessThan(340)
+  expect(hint.rect.height).toBeLessThan(340)
+  expect(session.history.canUndo).toBe(false)
+  expect(document.dirty).toBe(false)
+  const cache = new DocumentCompositeCache()
+  const proxy = cache.renderLayersFor(document, session.contentRevision)?.find(candidate => candidate.id === layer.id)
+  expect(proxy).toBeDefined()
+  const beforeRevision = session.contentRevision
+  const commitStart = performance.now()
+  useWorkspace.getState().setLayerStylesForTargets([target], styles, 'edit', originals)
+  const commitMs = performance.now() - commitStart
+  expect(session.contentRevision).toBe(beforeRevision + 1)
+  expect(session.contentInvalidation).toMatchObject({ kind: 'region', compositeOnly: true, fromRevision: hint.fromRevision })
+  expect(cache.renderLayersFor(document, session.contentRevision)?.find(candidate => candidate.id === layer.id)).toBe(proxy)
+  expect(document.dirty).toBe(true)
+  useWorkspace.getState().undo()
+  expect(layer.layerStyles).toBeUndefined()
+  expect(session.history.canUndo).toBe(false)
+  expect(session.contentInvalidation).toMatchObject({ kind: 'region', compositeOnly: true })
+  useWorkspace.getState().redo()
+  expect(layer.layerStyles?.shadow.enabled).toBe(true)
+  console.info(`4K/100 layers style mutation: preview=${previewMs.toFixed(2)}ms, commit=${commitMs.toFixed(2)}ms; region=${hint.rect.width}x${hint.rect.height}`)
+})
+
+
+it('recomputes style undo damage for the frame currently being displayed', () => {
+  const document = createDocument('animated style undo', 128, 128, 'rgba')
+  const layer = getActiveLayer(document)
+  writeLayerColor(document, layer, 5 * 128 + 5, { r: 255, g: 0, b: 0, a: 255 })
+  const timeline = ensureAnimationDocument(document)
+  const first = timeline.activeFrameId
+  syncActiveAnimationFrame(document)
+  addBlankAnimationFrame(document)
+  const second = timeline.frames.at(-1)!.id
+  useWorkspace.getState().addSession(document)
+  useWorkspace.getState().setActiveAnimationFrame(second)
+  writeLayerColor(document, layer, 100 * 128 + 100, { r: 255, g: 0, b: 0, a: 255 })
+  syncActiveAnimationFrame(document)
+  useWorkspace.getState().setActiveAnimationFrame(first)
+  const styles = createDefaultLayerStyles(); styles.stroke.enabled = true
+  useWorkspace.getState().setLayerStyles('layer', layer.id, styles)
+  useWorkspace.getState().setActiveAnimationFrame(second)
+  useWorkspace.getState().undo()
+  const hint = useWorkspace.getState().sessions[0].contentInvalidation
+  expect(hint?.kind).toBe('region')
+  if (hint?.kind !== 'region') throw Error('missing damage')
+  expect(hint.rect.x + hint.rect.width).toBeGreaterThan(100)
+  expect(hint.rect.y + hint.rect.height).toBeGreaterThan(100)
 })

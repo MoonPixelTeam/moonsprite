@@ -1,3 +1,4 @@
+import { canvasBrushSizePreviewSession } from './canvas-brush-size-update'
 import { rememberPaintedDrag } from './canvas-recent-colors'
 import { drawBrushCaptureSurround } from './canvas-brush-capture-overlay'
 import { createCanvasBackground } from './canvas-render-background'
@@ -8,6 +9,7 @@ import { createCanvasSelectionPaths } from './canvas-render-selection-paths'
 import { createCanvasBrushPath } from './canvas-render-brush-path'
 import { renderCanvasOutline, renderCanvasShapePreview, renderCanvasConnectedLine } from './canvas-render-shape-preview'
 import { renderCanvasGradient } from './canvas-render-gradient'
+import { pendingGradientFor } from '@/core/canvas-gradient-confirmation'
 import { renderCanvasTransformGuides, renderCanvasEditorGuides } from './canvas-render-guides'
 import { renderCanvasSelectionPreview } from './canvas-render-selection-preview'
 import { renderCanvasToolCursor } from './canvas-render-tool-cursor'
@@ -363,7 +365,7 @@ function renderFrame(frame: CanvasRenderContext, checkpoint: (stage: string) => 
   const brushSizeAdjustmentActive = Boolean(inputRef.current.modifierBrushSize)
   const baseSession = frame.readSession()
   const sharedSession = sharedCanvasSession(baseSession)
-  const currentSession = brushSizeAdjustmentActive ? sharedSession : sessionWithActiveQuickTool(sharedSession)
+  const currentSession = brushSizeAdjustmentActive ? canvasBrushSizePreviewSession(inputRef.current, sharedSession) : sessionWithActiveQuickTool(sharedSession)
   const currentActiveLayer = activePaintLayer(currentSession)
   const currentLayerMask = activeLayerMask(currentSession)
   const isolatedLayerMask = currentSession.layerMaskIsolatedView ? currentLayerMask : null
@@ -641,6 +643,8 @@ function renderFrame(frame: CanvasRenderContext, checkpoint: (stage: string) => 
   renderCanvasOutline({ session, currentSession, outlinePreviewCacheRef, document, drawPreviewPixel, isolatedLayerMask })
 
   const drag = inputRef.current.drag
+  const pendingGradient = pendingGradientFor(document.id)
+  const deferredGradient = drag?.kind === 'gradient' || pendingGradient?.committing ? null : pendingGradient
   renderCanvasShapePreview({
     canRenderToolPreview,
     drag,
@@ -655,15 +659,15 @@ function renderFrame(frame: CanvasRenderContext, checkpoint: (stage: string) => 
     drawBrushPathPreview
   })
   renderCanvasGradient({
-    canRenderToolPreview,
-    drag,
+    canRenderToolPreview: canRenderToolPreview || Boolean(deferredGradient),
+    drag: deferredGradient?.drag ?? drag,
     session,
     gradientStops,
-    paintSelectionForDrag,
+    paintSelectionForDrag: deferredGradient?.selection !== undefined ? () => deferredGradient.selection! : paintSelectionForDrag,
     repeatCopies,
     gradientPreviewDiagnosticsRef,
     document,
-    activeLayer,
+    activeLayer: deferredGradient?.targetLayer ?? activeLayer,
     isolatedLayerMask,
     gradientCompositePreviewCacheRef,
     currentSession,

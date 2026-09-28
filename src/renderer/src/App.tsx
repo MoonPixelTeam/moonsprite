@@ -500,7 +500,7 @@ export default function App() {
           setAdjustmentKind(kind)
           setAdjustmentOpen(true)
         }}
-        onOpenLcdScreenFilter={() => setLcdScreenOpen(true)}
+        onOpenLcdScreenFilter={(filter = 'lcd') => setLcdScreenOpen(filter)}
         onOpenShortcuts={() => setShortcutOpen(true)}
         onOpenPreferences={() => openPreferences()}
         onOpenExtensionSettings={openExtensionSettings}

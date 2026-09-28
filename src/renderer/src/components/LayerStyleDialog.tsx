@@ -1,3 +1,4 @@
+import { measureRuntimeDiagnostic, recordRuntimeDiagnostic } from '@/core/runtime-diagnostics'
 import { useCoalescedGradientPreview } from './useCoalescedGradientPreview'
 import { GradientMapControls } from './GradientMapControls'
 import { normalizeGradientMap } from '@/core/gradient-map'
@@ -51,14 +52,15 @@ export function LayerStyleDialog({ ownerKind, owner, targets, onClose }: { owner
   const [previewEnabled, setPreviewEnabled] = useState(true)
   const gradientPreview = useCoalescedGradientPreview()
 
-  useEffect(() => () => {
-    if (!finalizedRef.current) useWorkspace.getState().previewLayerStyleEntries(originalsRef.current)
+  useEffect(() => {
+    recordRuntimeDiagnostic('session', 'layer-style.timing.ready', { version: 1, ownerId: owner.id })
+    return () => { if (!finalizedRef.current) useWorkspace.getState().previewLayerStyleEntries(originalsRef.current) }
   }, [])
 
   const previewDraft = (next: LayerStyles): void => {
     setDraft(next)
     if (previewEnabled) {
-      const preview = () => previewLayerStyleEntries(targetsRef.current.map((target) => ({ target, styles: next })))
+      const preview = () => measureRuntimeDiagnostic('layer-style.preview.dispatch', () => previewLayerStyleEntries(targetsRef.current.map((target) => ({ target, styles: next }))), () => ({ layerId: owner.id, effect: activeEffect }))
       if (activeEffect === 'gradientMap') gradientPreview.schedule(preview)
       else preview()
     }
@@ -75,8 +77,7 @@ export function LayerStyleDialog({ ownerKind, owner, targets, onClose }: { owner
   }
   const apply = (): void => {
     gradientPreview.cancel()
-    previewLayerStyleEntries(originalsRef.current)
-    setLayerStylesForTargets(targetsRef.current, draft)
+    measureRuntimeDiagnostic('layer-style.apply.dispatch', () => setLayerStylesForTargets(targetsRef.current, draft, 'edit', originalsRef.current), () => ({ layerId: owner.id }))
     finalizedRef.current = true
     onClose()
   }

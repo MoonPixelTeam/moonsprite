@@ -80,6 +80,9 @@ export function createLayerMoveCanvasInput(ports: Ports) {
   }): boolean {
     const { topEditableLayerAt, showMoveLayerContentPreview, flashMoveLayer, hideMoveLayerContentPreview, inputRef, alignmentDragFields } = ports
     if (!freeTransformActive && (session.tool === 'move' || temporaryMove || textCopyTarget) && event.button === 0) {
+      // Temporary movement can bypass setTool/activateLayerForCanvas. Resolve
+      // floating pixels before hit testing and capturing cel/layer offsets.
+      state.commitFloatingPaste()
       const additiveSelection = event.shiftKey
       const hitTarget = textCopyTarget ?? (session.moveAutoSelect || additiveSelection ? topEditableLayerAt(point) : null)
       if (inputRef.current.temporaryRightClickAction === 'select-layer-move' && !hitTarget) return true

@@ -80,7 +80,7 @@ export function captureSelectionTransform(document: SpriteDocument, selection: S
     ? new Set(document.palette.filter((entry) => entry.id !== 0 && entry.color.a !== 0).map((entry) => entry.id))
     : null
   const isOpaque = (value: number): boolean => layer.format === 'rgba' ? (value >>> 24) !== 0 : opaquePaletteIds!.has(value)
-  if (size > SELECTION_OFFSET_CACHE_LIMIT && options?.cacheOpaqueOffsets === false) {
+  if (options?.cacheOpaqueOffsets === false) {
     return {
       selection: source,
       values,

@@ -92,7 +92,7 @@ const applySnapshot = (session: DocumentSession, snapshot: LayerPropertySnapshot
   target.description = snapshot.description
 }
 
-const notifyPreviewChange = (session: DocumentSession, panelChanged: boolean, contentChanged: boolean, invalidation: ContentInvalidationHint = { kind: 'full' }, propertyPreview = false): void => {
+export const notifyPreviewChange = (session: DocumentSession, panelChanged: boolean, contentChanged: boolean, invalidation: ContentInvalidationHint = { kind: 'full' }, propertyPreview = false): void => {
   if (panelChanged) session.layersPanelRevision += 1
   // Returning to the original value can leave no history entry. Ending the
   // editor must still replace its sampled display with a full-precision draw.

@@ -67,6 +67,7 @@ import { type SymmetryAxis } from '@/core/symmetry'
 import { sliceAtPoint } from '@/core/slices'
 import { tileRepeatMappedPointForCopies } from '@/core/tilemap'
 import { selectedTextBoxForSession } from './canvas-stage-helpers'
+import { gradientEditHandle, pendingGradientFor } from '@/core/canvas-gradient-confirmation'
 interface Ports {
   readonly session: DocumentSession
   readonly canvasRef: import('react').RefObject<HTMLCanvasElement | null>
@@ -80,6 +81,7 @@ interface Ports {
   readonly freeTransformQuadForSession: (currentSession: DocumentSession) => SelectionQuad | null
   readonly displayedSelectionPoint: (point: Point) => Point
   readonly inputRef: import('react').RefObject<CanvasInputState>
+  readonly gradientEditActive: () => boolean
   readonly selectionCrosshair: boolean
   useLocalCursors?: boolean
   readonly selectionInteractionEditable: boolean
@@ -329,6 +331,14 @@ export function useCanvasCursor(ports: Ports) {
     ) {
       ports.inputRef.current.sampling = false
       canvas.style.cursor = canvasCursors.unavailable
+      return
+    }
+    const pendingGradient = pendingGradientFor(liveCursorSession.document.id)
+    if (pendingGradient && !ports.inputRef.current.drag && !ctrlKey && ((liveCursorSession.tool === 'fill' && liveCursorSession.fillKind === 'gradient') || ports.gradientEditActive())) {
+      const point = ports.localPointAt(clientX, clientY)
+      const handle = point && gradientEditHandle(pendingGradient.drag, point, ports.liveViewRef.current.zoom, liveCursorSession.gradientType === 'radial')
+      ports.inputRef.current.sampling = false
+      canvas.style.cursor = ports.gradientEditActive() || handle ? canvasCursors.move : canvasToolCursor('fill', liveCursorSession.primaryColor)
       return
     }
     const viewNavigationDrag = ports.inputRef.current.drag

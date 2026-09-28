@@ -92,6 +92,32 @@ it('keeps each right-click action active through down/move/up and restores the o
   }
 })
 
+it.each([
+  { tool: 'selection', selectionKind: 'polygon-lasso', shapeKind: undefined, active: false },
+  { tool: 'selection', selectionKind: 'polygon-lasso', shapeKind: undefined, active: true },
+  { tool: 'shape', selectionKind: undefined, shapeKind: 'polygon', active: false },
+  { tool: 'shape', selectionKind: undefined, shapeKind: 'polygon', active: true }
+] as const)('routes right clicks to the $tool polygon with active=$active', ({ tool, selectionKind, shapeKind, active }) => {
+  const input = new CanvasInputState()
+  const session = { document: { id: 'polygon-right-click' }, tool, selectionKind, shapeKind } as DocumentSession
+  if (active) input.drag = { kind: tool === 'selection' ? 'polygon-lasso' : 'polygon-shape', start: { x: 1, y: 1 }, last: { x: 2, y: 2 }, path: [{ x: 1, y: 1 }, { x: 2, y: 2 }] }
+  const handlePointerDown = vi.fn()
+  const ports = {
+    inputRef: { current: input }, session, canvasRef: { current: document.createElement('canvas') },
+    tabletPreferences: { ...DEFAULT_TABLET_PREFERENCES, rightClickAction: 'eraser' }, liveInputSession: () => session,
+    handlePointerDown, syncPenCursor: vi.fn()
+  } as unknown as Parameters<typeof useCanvasDeviceRouter>[0]
+  const { result, unmount } = renderHook(() => useCanvasDeviceRouter(ports))
+  const nativeEvent = { pointerId: 9, pointerType: 'mouse', button: 2, buttons: 2, timeStamp: performance.now() }
+  const event = { ...nativeEvent, nativeEvent, preventDefault: vi.fn(), stopPropagation: vi.fn() } as unknown as ReactPointerEvent<HTMLCanvasElement>
+  act(() => result.current.pointerDown(event))
+  expect(handlePointerDown).toHaveBeenCalledWith(event)
+  expect(input.temporaryTool).toBeNull()
+  expect(input.temporaryRightClickAction).toBeNull()
+  expect(event.preventDefault).toHaveBeenCalled()
+  unmount()
+})
+
 it('preserves the live pen cursor when an ignored compatibility mouse move follows it', () => {
   const input = new CanvasInputState()
   const hidePenCursor = vi.fn()

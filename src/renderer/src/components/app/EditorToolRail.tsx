@@ -1,10 +1,11 @@
-import { memo, useEffect, useState, type PointerEvent as ReactPointerEvent } from 'react'
+import { memo, useEffect, useState, useSyncExternalStore, type PointerEvent as ReactPointerEvent } from 'react'
 import type { ToolRailSide } from '@shared/types-workspace'
 import { PerformanceProfiler } from '@/components/PerformanceProfiler'
 import { PixelUtilityIcon } from '@/components/PixelUtilityIcon'
 import { useI18n } from '@/components/I18nProvider'
 import { toolRailRenderKey } from '@/components/app/app-render-keys'
 import { readStoredString, writeStoredString } from '@/core/storage'
+import { pendingGradientFor, subscribePendingGradient } from '@/core/canvas-gradient-confirmation'
 import { temporaryMoveToolAllowed } from '@/core/canvas-input'
 import { loadShortcutBindings, modifierShortcutHeldByBindings, shortcutBindingsFor, shortcutDisplayText } from '@/core/shortcuts'
 import { applyQuickToolTarget } from '@/core/quick-tools'
@@ -40,6 +41,7 @@ export const EditorToolRail = memo(function EditorToolRail({ side, onGripPointer
   const state = useWorkspace.getState()
   const session = state.sessions.find(item => item.document.id === state.activeId) ?? null
   const actual = session ? activeRailTool(session) : undefined
+  const pendingGradient = useSyncExternalStore(subscribePendingGradient, () => pendingGradientFor(session?.document.id ?? ''), () => null)
   useEffect(() => {
     const refresh = () => setToolRail(loadEditorPreferences().toolRail)
     const refreshShortcuts = () => setShortcuts(loadShortcutBindings())
@@ -73,7 +75,7 @@ export const EditorToolRail = memo(function EditorToolRail({ side, onGripPointer
     && modifierShortcutHeldByBindings(heldModifiers, shortcutBindingsFor(shortcuts, 'lineConnectionMode'), heldParts)
   const sizing = ['pencil', 'line', 'airbrush', 'eraser', 'smooth', 'liquify'].includes(session.tool)
     && modifierShortcutHeldByBindings(heldModifiers, shortcutBindingsFor(shortcuts, 'brushSizeAdjust'), heldParts)
-  const quickTarget = sizing || (quickToolMatch?.id === 'tool.move.quick'
+  const quickTarget = pendingGradient || sizing || (quickToolMatch?.id === 'tool.move.quick'
     && (!temporaryMoveToolAllowed(session.tool, session.moveKind, session.selectionKind) || lineConnectionHasPriority))
     ? null
     : quickToolMatch?.target ?? null
@@ -82,7 +84,7 @@ export const EditorToolRail = memo(function EditorToolRail({ side, onGripPointer
     <span className="tool-icon-preload" aria-hidden="true">{ALL_EDITOR_TOOL_ICONS.map(source => <PixelAssetIcon key={source} src={source} />)}</span>
     <button className="tool-rail-grip" type="button" aria-label={t('tools.moveToolbar')} onPointerDown={onGripPointerDown}><PixelUtilityIcon kind="move" /></button>
     <ToolRailSlots layout={toolRail} active={activeRailTool(displaySession)} memory={memory} onActivate={activateRailTool}
-      available={id => isToolAvailableForSession(session, RAIL_TOOL_TARGETS[id].tool)}
+      available={id => (!pendingGradient || id === actual) && isToolAvailableForSession(session, RAIL_TOOL_TARGETS[id].tool)}
       shortcut={id => shortcutDisplayText(shortcutBindingsFor(shortcuts, id)[0] ?? '', locale)} />
   </aside></PerformanceProfiler>
 })

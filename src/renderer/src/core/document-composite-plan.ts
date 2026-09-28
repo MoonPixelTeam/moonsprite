@@ -210,7 +210,7 @@ export const normalCompositeLayers = (document: SpriteDocument, allowLayerBlendM
   return flatten(buildCompositeStack(document))
 }
 
-export const opacityGroupCompositeStack = (document: SpriteDocument): CompositeStackItem[] | null => {
+export const opacityGroupCompositeStack = (document: SpriteDocument, allowNormalLayerStyles = false): CompositeStackItem[] | null => {
   const activeMasks = activeCelMasksByLayer(document)
   const activeGroupMasks = activeGroupMasksByGroup(document)
   const prepare = (items: readonly CompositeStackItem[]): CompositeStackItem[] | null => {
@@ -219,7 +219,8 @@ export const opacityGroupCompositeStack = (document: SpriteDocument): CompositeS
       if (item.kind === 'layer') {
         if (!item.layer.visible || item.layer.opacity <= 0) continue
         if (activeMasks.has(item.layer.id)) return null
-        if (item.layer.clippingMask === true || (item.layer.kind === 'adjustment' || hasEnabledLayerStyles(item.layer.layerStyles))) return null
+        if (item.layer.clippingMask === true || item.layer.kind === 'adjustment') return null
+        if (hasEnabledLayerStyles(item.layer.layerStyles) && (!allowNormalLayerStyles || item.layer.blendMode !== 'normal')) return null
         if (item.layer.blendMode !== 'normal') {
           if (layerContentBounds(document, item.layer)) prepared.push(item)
           continue

@@ -271,6 +271,19 @@ export function useCanvasDeviceRouter(ports: Ports) {
     pressureAdapterRef.current.release(event.pointerId)
     if (!ports.inputRef.current.acceptPointerDeviceEvent(event.nativeEvent, event.pointerType === 'mouse')) return
     ports.inputRef.current.clearTemporaryTool()
+    const polygonDrag = ports.inputRef.current.drag
+    const polygonSession = ports.liveInputSession()
+    const polygonRightClick = event.button === 2 && (
+      polygonDrag?.kind === 'polygon-lasso' || polygonDrag?.kind === 'polygon-shape' ||
+      (polygonSession.tool === 'selection' && polygonSession.selectionKind === 'polygon-lasso') ||
+      (polygonSession.tool === 'shape' && polygonSession.shapeKind === 'polygon')
+    )
+    if (polygonRightClick) {
+      event.preventDefault()
+      measurePointerInput('pointer-down', () => ports.handlePointerDown(event))
+      ports.syncPenCursor(event)
+      return
+    }
     const deviceTool = deviceTemporaryTool(event, ports.tabletPreferences)
     if (deviceTool) ports.inputRef.current.setTemporaryTool(event.pointerId, deviceTool)
     const rightAction = deviceRightClickAction(event, ports.tabletPreferences)

@@ -147,3 +147,39 @@ it.each([
   expect(notified).toHaveBeenCalledOnce()
   unsubscribe()
 })
+
+it('keeps full-preview sizing local even when the overlay cannot composite the layer stack', async () => {
+  const { createCanvasPointerMove } = await import('./canvas-pointer-move')
+  const { PointerPressureAdapter } = await import('@/core/canvas-input')
+  const { session, input, canvas } = fixture()
+  const scheduleDraw = vi.fn(), overlay = vi.fn()
+  const move = createCanvasPointerMove({
+    inputRef: { current: input }, liveInputSession: () => session, canvasRef: { current: canvas },
+    liveViewRef: { current: session.view }, pressureAdapterRef: { current: new PointerPressureAdapter() },
+    moveSymmetry: () => false, autoPanSelection: vi.fn(), updateCursor: vi.fn(), lineConnectionPreviewActive: () => false,
+    localPoint: (event: { clientX: number; clientY: number }) => ({ x: event.clientX, y: event.clientY }),
+    activeLayer: session.document.layers[0], interfaceScale: 1, modifierActive: () => true,
+    brushPreviewOverlaySupported: () => false, scheduleBrushPreviewOverlay: overlay, scheduleDraw
+  } as unknown as Parameters<typeof createCanvasPointerMove>[0])
+  input.modifierBrushSize = { x: 0, y: 0, size: 1 }
+  const notified = vi.fn(), unsubscribe = useWorkspace.subscribe(notified)
+  try {
+    for (let size = 2; size <= 32; size++) {
+      const event = { clientX: (size - 1) * 4, clientY: 0, ctrlKey: true, altKey: true, metaKey: false,
+        shiftKey: false, buttons: 0, pointerId: 1, pointerType: 'mouse', pressure: 0 }
+      move({ ...event, nativeEvent: event, currentTarget: canvas } as unknown as Parameters<typeof move>[0])
+      vi.advanceTimersToNextFrame()
+      const preview = canvasBrushSizePreviewSession(input, session)
+      expect(preview.brushSize).toBe(size)
+      expect(preview.document).toBe(session.document)
+      expect(preview.inkMode).toBe(session.inkMode)
+      expect(session.brushSize).toBe(1)
+    }
+    expect(notified).not.toHaveBeenCalled()
+    expect(overlay).not.toHaveBeenCalled()
+    expect(scheduleDraw).toHaveBeenCalledTimes(31)
+    window.dispatchEvent(new KeyboardEvent('keyup', { key: 'Alt' }))
+    expect(session.brushSize).toBe(32)
+    expect(notified).toHaveBeenCalledOnce()
+  } finally { unsubscribe() }
+})

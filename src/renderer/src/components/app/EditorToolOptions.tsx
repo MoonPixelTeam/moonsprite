@@ -2,6 +2,7 @@ import { setMagicEraserContiguous } from '@/store/workspace-magic-eraser'
 import drawWithAnchorIcon from '@/assets/pixel-icons/draw-with-anchor.svg'
 import { Button } from '@/components/Button'
 import { useToolOptionsScroll } from './useToolOptionsScroll'
+import { pendingGradientFor, subscribePendingGradient } from '@/core/canvas-gradient-confirmation'
 import { sliderWheelValue, useSliderWheel } from '../useSliderWheel'
 import { useToolOptionsInteraction } from './useToolOptionsInteraction'
 import { drawingAnchorPoint } from '@/core/canvas-centered-drawing'
@@ -556,6 +557,7 @@ export const EditorToolOptions = memo(function EditorToolOptions({ onOpenColorRe
   }, [])
   const state = useWorkspace.getState()
   const storedSession = state.sessions.find((item) => item.document.id === state.activeId) ?? null
+  const pendingGradient = useSyncExternalStore(subscribePendingGradient, () => pendingGradientFor(storedSession?.document.id ?? ''), () => null)
   const [shortcuts, setShortcuts] = useState(loadShortcutBindings)
   const quickToolMatch = useQuickToolShortcut(shortcuts)
   const optionsInteraction = useToolOptionsInteraction(
@@ -1191,6 +1193,7 @@ export const EditorToolOptions = memo(function EditorToolOptions({ onOpenColorRe
       <GradientDitherSelect className="gradient-dither-select" value={gradientDither} density="compact" onChange={workspace.setGradientDither} />
       <div className="gradient-freeform-control"><button type="button" className="tool-text-button gradient-freeform-open" onClick={() => { if (!session.gradientFreeform) workspace.setGradientFreeform(true); setGradientStopsOpen(true) }}>{t('toolOptions.gradientFreeform')}</button></div>
       <GradientStopsEditor open={gradientStopsOpen && Boolean(session.gradientFreeform)} stops={gradientStops} disabled={false} primaryColor={session.primaryColor} secondaryColor={session.secondaryColor} onChange={workspace.setGradientStops} onClose={() => setGradientStopsOpen(false)} t={t} />
+      {pendingGradient && <span className="gradient-confirm-actions"><button type="button" className="tool-text-button" onClick={() => pendingGradientFor(session.document.id)?.cancel()}>{t('common.cancel')}</button><button type="button" className="tool-text-button primary" onClick={() => pendingGradientFor(session.document.id)?.apply()}>{t('common.apply')}</button></span>}
     </>}
     {supportsSymmetry && <SymmetryControls key={session.tool} axes={session.symmetryAxes} onAxisToggle={workspace.setSymmetryAxis} onResetCenter={workspace.resetSymmetryCenter} />}
     {session.tool === 'move' && session.moveKind === 'move' && <>

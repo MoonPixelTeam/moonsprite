@@ -317,6 +317,10 @@ export class ClipboardService {
     return this.layers ? cloneLayerCollectionClipboard(this.layers) : null
   }
 
+  hasLayers(): boolean {
+    return this.layers !== null
+  }
+
   async readSelection(readSystemImage: () => Promise<ClipboardImage | null>): Promise<SelectionClipboard | null> {
     const internal = this.selection
     try {
