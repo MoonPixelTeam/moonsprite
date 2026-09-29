@@ -1,4 +1,4 @@
-import exampleUrl from '@/assets/trial-example.moonsprite?url'
+import exampleUrl from '@/assets/trial-example.moonsprite?url&inline'
 
 export async function loadTrialExampleFile(): Promise<File> {
   const response = await fetch(exampleUrl)
