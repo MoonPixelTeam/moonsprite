@@ -39,3 +39,16 @@ it('preserves directed stroke pixels, alpha and smart colors across in-place set
   }
   expect(hash.digest('hex')).toMatchInlineSnapshot(`"49d4cf36dfbaf3fd01b65cef5f2770760284b934221750b2f1839721ebb2693a"`)
 })
+
+it('stops fixed-color outside stroke sampling at the first translucent source', () => {
+  const styles = createDefaultLayerStyles()
+  styles.stroke.enabled = true
+  styles.stroke.size = 16
+  styles.shadow.enabled = true
+  styles.shadow.blur = 0
+  let reads = 0
+  const read = () => { reads++; return { r: 50, g: 90, b: 140, a: 96 } }
+  const pixel = applyLayerStylesAt({ x: 0, y: 0, width: 4096, height: 4096 }, styles, 40, 40, TRANSPARENT, read)
+  expect(pixel).toEqual(styles.stroke.color)
+  expect(reads).toBeLessThanOrEqual(2) // One shadow sample and one occupied stroke sample.
+})

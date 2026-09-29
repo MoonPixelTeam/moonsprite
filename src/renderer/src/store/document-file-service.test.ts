@@ -1,3 +1,4 @@
+import { decodeProject } from '@/core/project-format'
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { initializeCanvas } from 'ag-psd'
 import type { MoonSpriteApi, ScaledPngWriteOptions } from '@shared/types-platform'
@@ -395,4 +396,22 @@ it('applies export protection instead of bypassing it through native PNG writing
   expect(writeBinaryAtomic).toHaveBeenCalledOnce()
   const exported = decodePng(writeBinaryAtomic.mock.calls[0][1])
   expect(exported.width).toBe(8)
+})
+
+
+it('forces imported images and explicit image Save As options to real projects in the web trial', async () => {
+  vi.stubEnv('VITE_MOONSPRITE_TARGET', 'web-trial')
+  try {
+    const document = createDocument('Imported', 2, 2, 'rgba')
+    document.sourceFilePath = 'imports/original.png'
+    const writeBinaryAtomic = vi.fn(async (_path: string, _data: Uint8Array) => {})
+    const api = { writeBinaryAtomic, saveProject: vi.fn(async () => ({ canceled: false, filePath: 'downloads/Imported.moonsprite' })) } as unknown as MoonSpriteApi
+    for (const options of [undefined, { name: 'Converted', format: 'png-rgba' as const, scalePercent: 100, directory: 'downloads' }]) {
+      const result = await saveDocumentFile({ api, documentId: document.id, getDocument: () => ({ document, revision: 1 }), saveAs: Boolean(options), options, preferredImageFormat: 'png-rgba' })
+      expect(result?.filePath).toMatch(/\.moonsprite$/)
+      const [path, bytes] = writeBinaryAtomic.mock.calls.at(-1)!
+      expect(path).not.toBe(document.sourceFilePath)
+      expect(decodeProject(bytes)).toMatchObject({ name: 'Imported', width: 2, height: 2 })
+    }
+  } finally { vi.unstubAllEnvs() }
 })

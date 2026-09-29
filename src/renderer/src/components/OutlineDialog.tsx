@@ -102,7 +102,7 @@ export function OutlineDialog({ open, session, onClose }: { open: boolean; sessi
           <PreferenceToggle label={t('outline.smartHue')} tooltip={t('outline.smartHueDescription')} checked={smartHue} onChange={setSmartHue} />
           <PreferenceToggle label={t('outline.followOpacity')} tooltip={t('outline.followOpacityHint')} checked={followOpacity} onChange={setFollowOpacity} />
           {!smartHue && <FormField className="outline-color-field" layout="inline" label={t('outline.color')}><ColorValueControl color={color} density="regular" onChange={changeColor} label={t('outline.color')} storageKey="selection-outline" fillWithColor inPalette={false} /></FormField>}
-          <LivePreviewToggle checked={rememberLastSelectedColor} onChange={toggleRememberLastSelectedColor} label={t('colorReplacement.rememberLastSelectedColor')} />
+          <PreferenceToggle checked={rememberLastSelectedColor} onChange={toggleRememberLastSelectedColor} label={t('colorReplacement.rememberLastSelectedColor')} />
           <FormField className="outline-color-field" layout="inline" label={t('outline.backgroundColor')}><ColorValueControl color={backgroundColor} density="regular" onChange={setBackgroundColor} label={t('outline.backgroundColor')} storageKey="selection-outline-background" fillWithColor inPalette={false} /></FormField>
           {smartHue && <RangeField className="outline-smart-darkness" label={t('outline.smartHueDarkness')} min={0} max={100} suffix="%" value={smartHueDarkness} onChange={setSmartHueDarkness} />}
         </div>

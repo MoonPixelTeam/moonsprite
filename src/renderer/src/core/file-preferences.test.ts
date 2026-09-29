@@ -74,6 +74,13 @@ it('defaults new save and export locations to the most recently chosen folders',
   expect(preferences.exportLocationMode).toBe('recent')
 })
 
+it('defaults gradient application to release and persists confirmation mode', () => {
+  const storage = memoryStorage()
+  expect(loadEditorPreferences(storage).gradientApplicationMode).toBe('instant')
+  saveEditorPreferences({ ...DEFAULT_EDITOR_PREFERENCES, gradientApplicationMode: 'confirm' }, storage)
+  expect(loadEditorPreferences(storage).gradientApplicationMode).toBe('confirm')
+})
+
 it('uses the requested cursor and magnifier defaults while preserving saved choices', () => {
   const storage = memoryStorage()
   const defaults = loadEditorPreferences(storage)
@@ -354,4 +361,14 @@ it('persists the pixel cross and migrates old alignment into the pixel toggle', 
   expect(loadEditorPreferences(storage)).toMatchObject({ paintingCursorShape: 'pixel-cross', paintingCursorAlignToPixel: false })
   storage.setItem('moonsprite.preference.painting-cursor-shape', 'dot')
   expect(loadEditorPreferences(storage).paintingCursorShape).toBe('dot')
+})
+
+
+it('enables export audio by default and persists disabling and re-enabling it', () => {
+  const storage = memoryStorage()
+  expect(loadEditorPreferences(storage).exportSoundEnabled).toBe(true)
+  for (const enabled of [false, true]) {
+    saveEditorPreferences({ ...DEFAULT_EDITOR_PREFERENCES, exportSoundEnabled: enabled }, storage)
+    expect(loadEditorPreferences(storage).exportSoundEnabled).toBe(enabled)
+  }
 })

@@ -72,3 +72,26 @@ it('adjusts by wheel without scrolling ancestors and respects steps and bounds',
   fireEvent.wheel(input, { deltaY: -100 })
   expect(changed).toHaveBeenCalledTimes(count)
 })
+
+it('defers live expression evaluation until Enter', () => {
+  const changed = vi.fn()
+  render(<NumberInput value={20} live onValueChange={changed} />)
+  const input = document.querySelectorAll('[role="spinbutton"]')[document.querySelectorAll('[role="spinbutton"]').length - 1] as HTMLInputElement
+  fireEvent.change(input, { target: { value: '20+30' } })
+  expect(input).toHaveValue('20+30')
+  expect(changed).not.toHaveBeenCalled()
+  fireEvent.keyDown(input, { key: 'Enter' })
+  expect(changed).toHaveBeenCalledWith(50)
+})
+
+it('does not submit the parent form when Enter only completes an expression', () => {
+  const changed = vi.fn()
+  const submitted = vi.fn()
+  render(<form onSubmit={submitted}><NumberInput value={20} live onValueChange={changed} /></form>)
+  const inputs = document.querySelectorAll('[role="spinbutton"]')
+  const input = inputs[inputs.length - 1] as HTMLInputElement
+  fireEvent.change(input, { target: { value: '20+30' } })
+  fireEvent.keyDown(input, { key: 'Enter' })
+  expect(changed).toHaveBeenCalledWith(50)
+  expect(submitted).not.toHaveBeenCalled()
+})

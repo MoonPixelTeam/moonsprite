@@ -5,6 +5,8 @@ import type { DocumentCompositeCache } from '@/core/document-composite-cache'
 import { readLayerPackedAt } from '@/core/document-model'
 import type { SelectionTransformSource } from '@/core/tools-selection-transform'
 import { compositePreviewPixel } from './canvas-composite-cache-pixel-utils'
+import { selectionBackdropKey } from './canvas-selection-backdrop-key'
+import { subtractRect, unionRect } from './canvas-composite-cache-geometry'
 
 const TILE_SIZE = 256
 const MAX_BYTES = 16 * 1024 * 1024
@@ -21,13 +23,13 @@ export class CanvasSelectionBackdropCache {
   private tiles = new Map<string, Tile>()
   private bytes = 0
 
-  constructor(private readonly composite: DocumentCompositeCache, private readonly maxBytes = MAX_BYTES, private readonly lowerOnly = false) {}
+  constructor(private readonly composite: DocumentCompositeCache, private readonly maxBytes = MAX_BYTES, private readonly lowerOnly = false, private readonly lowerBackdrop?: CanvasSelectionBackdropCache) {}
 
   get retainedBytes(): number { return this.bytes }
 
   read(document: SpriteDocument, layer: RasterLayer, lowerLayers: readonly RasterLayer[], source: SelectionTransformSource, copy: boolean, rect: SelectionRect, revision: number): Uint8ClampedArray {
-    const key = `${document.id}:${document.animation?.activeFrameId ?? 'static'}:${revision}:${layer.id}`
-    if (this.source !== source || this.copy !== copy || this.key !== key) {
+    const key = this.lowerOnly ? selectionBackdropKey(document, lowerLayers) : `${document.id}:${document.animation?.activeFrameId ?? 'static'}:${revision}:${layer.id}`
+    if ((!this.lowerOnly && (this.source !== source || this.copy !== copy)) || this.key !== key) {
       this.tiles.clear()
       this.bytes = 0
       this.source = source
@@ -35,7 +37,9 @@ export class CanvasSelectionBackdropCache {
       this.key = key
     }
     const compose = (bounds: SelectionRect): Uint8ClampedArray => {
-      const pixels = this.composite.normalLayerRegion(document, lowerLayers, bounds.x, bounds.y, bounds.width, bounds.height, revision)
+      const pixels = this.lowerBackdrop
+        ? this.lowerBackdrop.read(document, layer, lowerLayers, source, copy, bounds, revision)
+        : this.composite.normalLayerRegion(document, lowerLayers, bounds.x, bounds.y, bounds.width, bounds.height, revision)
       if (this.lowerOnly) return pixels
       const selection = source.selection
       const palette = layer.format === 'indexed' ? new Map(document.palette.map(entry => [entry.id, entry.color])) : null
@@ -49,33 +53,43 @@ export class CanvasSelectionBackdropCache {
       return pixels
     }
     // Small edits must not pay for a whole tile or retain an unused backdrop.
-    if (rect.width * rect.height < 16 * 1024) return compose(rect)
+    if (!this.lowerOnly && rect.width * rect.height < 16 * 1024) return compose(rect)
     const output = new Uint8ClampedArray(rect.width * rect.height * 4)
     for (let y = Math.floor(rect.y / TILE_SIZE) * TILE_SIZE; y < rect.y + rect.height; y += TILE_SIZE) {
       for (let x = Math.floor(rect.x / TILE_SIZE) * TILE_SIZE; x < rect.x + rect.width; x += TILE_SIZE) {
         const tileKey = `${x}:${y}`
         let tile = this.tiles.get(tileKey)
+        const left = Math.max(x, rect.x), top = Math.max(y, rect.y)
+        const right = Math.min(x + TILE_SIZE, rect.x + rect.width, document.width)
+        const bottom = Math.min(y + TILE_SIZE, rect.y + rect.height, document.height)
+        if (right <= left || bottom <= top) continue
+        const requested = { x: left, y: top, width: right - left, height: bottom - top }
         if (tile) {
           this.tiles.delete(tileKey)
-          this.tiles.set(tileKey, tile)
-        } else {
-          const bounds = { x, y, width: Math.min(TILE_SIZE, document.width - x), height: Math.min(TILE_SIZE, document.height - y) }
-          const pixels = compose(bounds)
-          tile = { rect: bounds, pixels }
-          while (this.bytes + pixels.byteLength > this.maxBytes && this.tiles.size) {
-            const oldestKey = this.tiles.keys().next().value!
-            this.bytes -= this.tiles.get(oldestKey)!.pixels.byteLength
-            this.tiles.delete(oldestKey)
-          }
-          if (pixels.byteLength <= this.maxBytes) {
-            this.tiles.set(tileKey, tile)
-            this.bytes += pixels.byteLength
-          }
+          this.bytes -= tile.pixels.byteLength
         }
-        const left = Math.max(x, rect.x), right = Math.min(x + tile.rect.width, rect.x + rect.width)
-        const top = Math.max(y, rect.y), bottom = Math.min(y + tile.rect.height, rect.y + rect.height)
+        if (!tile || left < tile.rect.x || top < tile.rect.y || right > tile.rect.x + tile.rect.width || bottom > tile.rect.y + tile.rect.height) {
+          // Seed only requested pixels; advancing the drag fills missing strips.
+          const bounds = tile ? unionRect(tile.rect, requested) : requested
+          const pixels = new Uint8ClampedArray(bounds.width * bounds.height * 4)
+          const copyInto = (region: SelectionRect, data: Uint8ClampedArray): void => {
+            for (let row = 0; row < region.height; row++) pixels.set(data.subarray(row * region.width * 4, (row + 1) * region.width * 4), ((region.y - bounds.y + row) * bounds.width + region.x - bounds.x) * 4)
+          }
+          if (tile) copyInto(tile.rect, tile.pixels)
+          for (const missing of tile ? subtractRect(bounds, tile.rect) : [bounds]) copyInto(missing, compose(missing))
+          tile = { rect: bounds, pixels }
+        }
+        while (this.bytes + tile.pixels.byteLength > this.maxBytes && this.tiles.size) {
+          const oldestKey = this.tiles.keys().next().value!
+          this.bytes -= this.tiles.get(oldestKey)!.pixels.byteLength
+          this.tiles.delete(oldestKey)
+        }
+        if (tile.pixels.byteLength <= this.maxBytes) {
+          this.tiles.set(tileKey, tile)
+          this.bytes += tile.pixels.byteLength
+        }
         for (let row = top; row < bottom; row++) {
-          const from = ((row - y) * tile.rect.width + left - x) * 4
+          const from = ((row - tile.rect.y) * tile.rect.width + left - tile.rect.x) * 4
           output.set(tile.pixels.subarray(from, from + (right - left) * 4), ((row - rect.y) * rect.width + left - rect.x) * 4)
         }
       }

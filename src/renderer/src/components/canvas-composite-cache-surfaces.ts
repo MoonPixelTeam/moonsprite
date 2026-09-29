@@ -134,6 +134,7 @@ export interface DrawCompositeOptions {
     frameId?: string
     rect?: SelectionRect
     rects?: readonly SelectionRect[]
+    sourceLayerIds?: readonly string[]
     /** Only compositing properties changed; raster pixels and masks did not. */
     compositeOnly?: true
     propertyOwnerIds?: readonly string[]
@@ -156,6 +157,8 @@ export interface DrawCompositeOptions {
   /** Effective device pixels per logical canvas unit used by the caller's context. */
   devicePixelRatio?: CanvasDeviceScaleInput
   movingLayerIds?: readonly string[]
+  /** Full, clean base for the exact document/frame/content revision; excludes overlays. */
+  selectionBase?: CanvasImageSource
   selectionPreview?: SelectionTransformCompositePreview
   /** Schedules another paint when a large invalidation was split across frames. */
   requestRedraw?: () => void

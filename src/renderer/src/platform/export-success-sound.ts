@@ -1,3 +1,5 @@
+import { EXPORT_SOUND_ENABLED_KEY } from '@/core/file-preferences'
+import { readStoredString } from '@/core/storage'
 import soundUrl from '@/assets/export-success.wav?url'
 import { recordRuntimeDiagnostic } from '@/core/runtime-diagnostics'
 
@@ -34,6 +36,7 @@ export const installExportSuccessSound = (): void => {
   const unlock = (event: Event): void => {
     // Opening an audio device can block synchronously in WebView2. Never put
     // export-sound warmup on the first canvas stroke or a drawing shortcut.
+    if (readStoredString(EXPORT_SOUND_ENABLED_KEY) === 'false') return
     const target = event.target
     if (!(target instanceof Element) || target.closest('.stage-wrap')
       || !target.closest('button, input, select, textarea, [role="menuitem"]')) return
@@ -48,11 +51,13 @@ export const installExportSuccessSound = (): void => {
 
 /** Completion feedback must never delay or turn a successful export into a failure. */
 export const playExportSuccessSound = (): void => {
+  if (readStoredString(EXPORT_SOUND_ENABLED_KEY) === 'false') return
   void (async () => {
     const audio = prepareAudio()
     if (!audio || !buffer) return
     if (audio.state === 'suspended') await audio.resume()
     const decoded = await buffer
+    if (readStoredString(EXPORT_SOUND_ENABLED_KEY) === 'false') return
     const source = audio.createBufferSource()
     source.buffer = decoded
     source.connect(audio.destination)

@@ -2,7 +2,8 @@ import type { SpriteDocument } from '@shared/types-document'
 import type { RgbaColor } from '@shared/types-color'
 import type { RasterLayer } from '@shared/types-layer'
 import { activeCelMasksByLayer, activeGroupMasksByGroup, normalCompositeLayers } from './document-composite-plan'
-import { createPreviewPointSampler, supportsIncrementalPreview } from './preview-point-sampler'
+import { supportsIncrementalPreview } from './preview-point-sampler'
+import { compileCompositePointSampler } from './document-composite-sampling'
 import { lazyRuntimeRasterForSurface, readSurfacePackedLocal } from './runtime-raster'
 import { createProjectedStackRenderer } from './preview-projected-stack'
 
@@ -17,14 +18,17 @@ export function createPreviewProjectedRenderer(document: SpriteDocument, isolate
   const palette = sharedPalette ?? new Map(document.palette.map(entry => [entry.id, entry.color]))
   if (!layers && supportsIncrementalPreview(document)) return createProjectedStackRenderer(document, layer =>
     createPreviewProjectedRenderer(document, layer, palette))
-  const fallback = layers ? null : createPreviewPointSampler(document)
+  // Styles need full-resolution source neighbours, but only at the projected
+  // output coordinates. Never composite a document-sized intermediate just
+  // because one small layer has an effect enabled.
+  const fallback = layers ? null : compileCompositePointSampler(document)
   return (xs: Int32Array, ys: Int32Array, output: Uint8ClampedArray): void => {
     output.fill(0)
     if (!layers) {
       if (!fallback) return
       for (let y = 0; y < ys.length; y++) for (let x = 0; x < xs.length; x++) {
         if (xs[x] < 0 || ys[y] < 0 || xs[x] >= document.width || ys[y] >= document.height) continue
-        const c = fallback(xs[x], ys[y]), i = (y * xs.length + x) * 4
+        const c = fallback(xs[x], ys[y], undefined), i = (y * xs.length + x) * 4
         output[i] = c.r; output[i + 1] = c.g; output[i + 2] = c.b; output[i + 3] = c.a
       }
       return

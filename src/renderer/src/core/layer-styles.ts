@@ -332,6 +332,8 @@ const outsideStrokeSample = (read: LayerStyleSourceReader, x: number, y: number,
         referenceDistance = distance
       }
     }
+    // Fixed-color strokes need occupancy only, including translucent pixels.
+    if (!style.smartHue && !style.followOpacity && maximum > 0) return { alpha: maximum, referenceColor }
     if (!style.smartHue && maximum === 255) return { alpha: maximum, referenceColor }
   }
   return { alpha: maximum, referenceColor }

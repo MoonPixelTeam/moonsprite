@@ -624,7 +624,10 @@ export function decodeProject(input: Uint8Array, options: ProjectDecodeOptions =
     filePath: null,
     dirty: false,
     createdAt: source.createdAt || new Date().toISOString(),
-    updatedAt: new Date().toISOString()
+    // Keep the persisted generation marker stable across reopen. Local history
+    // uses it to avoid replacing a freshly decoded project with an older
+    // journal snapshot that was still queued during the previous save.
+    updatedAt: typeof source.updatedAt === 'string' && source.updatedAt ? source.updatedAt : new Date().toISOString()
   }
   document.layerPanelState = normalizeProjectLayerPanelState(document, source.layerPanelState)
   ensureFreeTileTilesetOwnership(document)

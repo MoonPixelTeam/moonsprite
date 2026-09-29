@@ -3,6 +3,7 @@ import { recordRuntimeDiagnostic, runtimeDiagnosticsActive } from '../core/runti
 import { createRuntimeLatencyReporter } from '@/core/runtime-diagnostic-stages'
 import { useEffect, useLayoutEffect, useRef } from 'react'
 import { canvasStageIsVisible } from './canvas-stage-visibility'
+import { useSelectionBackdropPrewarm } from './useSelectionBackdropPrewarm'
 import type { RgbaColor } from '@shared/types-color'
 import type { SelectionMask, SelectionRect } from '@shared/types-selection'
 import {
@@ -123,6 +124,8 @@ export function useCanvasRenderEngine(ports: Ports) {
 
   const currentCompositeCache = canvasCompositeCacheFor(ports.storedSession.document)
   const compositeCacheRef = useRef(currentCompositeCache)
+
+  useSelectionBackdropPrewarm(currentCompositeCache, ports.session, ports.inputRef)
 
   const compositeCacheDocumentRef = useRef(ports.storedSession.document)
 

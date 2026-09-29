@@ -1,8 +1,9 @@
+import { EXPORT_SOUND_ENABLED_KEY } from '@/core/file-preferences'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 const diagnostic = vi.hoisted(() => vi.fn())
 vi.mock('@/core/runtime-diagnostics', () => ({ recordRuntimeDiagnostic: diagnostic }))
-afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals(); vi.resetModules(); diagnostic.mockClear() })
+afterEach(() => { localStorage.removeItem(EXPORT_SOUND_ENABLED_KEY); vi.restoreAllMocks(); vi.unstubAllGlobals(); vi.resetModules(); diagnostic.mockClear() })
 
 describe('export success audio', () => {
   it('unlocks on a gesture, caches the audio and starts once per completion', async () => {
@@ -60,4 +61,23 @@ describe('export success audio', () => {
     expect(() => playExportSuccessSound()).not.toThrow()
     await vi.waitFor(() => expect(diagnostic).toHaveBeenCalledWith('error', 'audio.export-success', { message: 'audio unavailable' }))
   })
+})
+
+
+it('does not warm up or play audio when disabled, and takes effect without restart', async () => {
+  const construct = vi.fn()
+  vi.stubGlobal('AudioContext', class { constructor() { construct(); throw new Error('test audio unavailable') } })
+  const listen = vi.spyOn(window, 'addEventListener').mockImplementation(() => {})
+  const { installExportSuccessSound, playExportSuccessSound } = await import('./export-success-sound')
+  installExportSuccessSound()
+  localStorage.setItem(EXPORT_SOUND_ENABLED_KEY, 'false')
+  const unlock = listen.mock.calls.find(([name]) => name === 'pointerdown')![1] as EventListener
+  const gesture = new Event('pointerdown')
+  Object.defineProperty(gesture, 'target', { value: document.createElement('button') })
+  unlock(gesture)
+  playExportSuccessSound()
+  expect(construct).not.toHaveBeenCalled()
+  localStorage.setItem(EXPORT_SOUND_ENABLED_KEY, 'true')
+  playExportSuccessSound()
+  expect(construct).toHaveBeenCalledOnce()
 })

@@ -61,7 +61,7 @@ export class LayerPropertyCompositeCache {
     }
     // Do not replace the vectorized normal/group compositor with per-pixel
     // callbacks. Even warm point caches are slower for these supported plans.
-    if (count * 5 > this.maxBytes || cache.renderLayersFor(document, revision) || cache.opacityGroupStackFor(document, revision)) return null
+    if (count * 5 > this.maxBytes || cache.renderLayersFor(document, revision) || cache.renderStackFor(document, revision)) return null
     const memo: PropertyCompositeMemo = { targets, read: (owner, slot, source) => {
       let slots = this.entries.get(owner)
       let entry = slots?.get(slot)

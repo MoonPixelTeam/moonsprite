@@ -1,4 +1,5 @@
 import { createLinearDitherPreviewSampler } from '../core/gradient-dither-preview'
+import { pendingGradientFor } from '@/core/canvas-gradient-confirmation'
 import { createGradientReplacementSampler } from '@/core/gradient-preview-sampling'
 import { createGradientCompositePreview, compositeGradientPreviewAt, fillGradientPreviewBlock, gradientReplacementColor } from '@/core/gradient-preview'
 import type { RgbaColor } from '@shared/types-color'
@@ -556,7 +557,7 @@ export function renderCanvasGradient({
     for (const copy of repeatCopies) {
       context.save()
       clipCanvasCopy(context, copy)
-      if (gradientLineVisible) {
+      if (gradientLineVisible || pendingGradientFor(document.id)) {
         context.strokeStyle = `rgb(${gradientLineColor.r} ${gradientLineColor.g} ${gradientLineColor.b} / ${gradientLineColor.a / 255})`
         context.fillStyle = context.strokeStyle
         context.lineWidth = 1
@@ -585,6 +586,7 @@ export function renderCanvasGradient({
           const centerX = copy.originX + (geometry.center.x + 0.5) * view.zoom
           const centerY = copy.originY + (geometry.center.y + 0.5) * view.zoom
           context.fillRect(centerX - 2, centerY - 2, 5, 5)
+          if (pendingGradientFor(document.id)) context.fillRect(endX - 2, endY - 2, 5, 5)
         } else {
           context.fillRect(startX - 2, startY - 2, 5, 5)
           context.fillRect(endX - 2, endY - 2, 5, 5)

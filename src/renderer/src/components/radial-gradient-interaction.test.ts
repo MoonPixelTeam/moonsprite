@@ -52,3 +52,41 @@ it('does not resize or reset the rotated ellipse on an Alt release with a differ
   config.updateGradientDragGeometry(drag, { x: 20, y: 10 }, modifiers)
   expect(drag.gradientRadialGeometry).toEqual(geometry)
 })
+
+it('keeps the same center while resizing a radial gradient after Alt rotation', () => {
+  const { config, drag } = setup()
+  config.updateGradientDragGeometry(drag, { x: 20, y: 10 }, { ...modifiers, altKey: true })
+  const original = structuredClone(drag.gradientRadialGeometry!)
+  config.updateGradientDragGeometry(drag, { x: 5, y: 15 }, { ...modifiers, altKey: true })
+  expect(drag.gradientRadialGeometry).toEqual(original)
+  expect(drag.gradientAngle).not.toBe(0)
+  config.updateGradientDragGeometry(drag, { x: 5, y: 15 }, modifiers)
+  config.updateGradientDragGeometry(drag, { x: 5, y: 20 }, modifiers)
+  expect(drag.gradientRadialGeometry?.center).toEqual(original.center)
+})
+
+it('centers the rotated radial gradient on its creation point when Ctrl remains held after Alt', () => {
+  const { config, drag } = setup()
+  config.updateGradientDragGeometry(drag, { x: 20, y: 10 }, { ...modifiers, altKey: true })
+  config.updateGradientDragGeometry(drag, { x: 5, y: 15 }, { ...modifiers, altKey: true })
+  config.updateGradientDragGeometry(drag, { x: 5, y: 15 }, { ...modifiers, ctrlKey: true })
+  expect(drag.gradientRadialGeometry?.center).toEqual(drag.start)
+  config.updateGradientDragGeometry(drag, { x: 7, y: 19 }, { ...modifiers, ctrlKey: true })
+  expect(drag.gradientRadialGeometry?.center).toEqual(drag.start)
+})
+
+it('starts another Alt rotation from the resized ellipse without changing its size', () => {
+  const { config, drag } = setup()
+  config.updateGradientDragGeometry(drag, { x: 20, y: 10 }, { ...modifiers, altKey: true })
+  config.updateGradientDragGeometry(drag, { x: 5, y: 15 }, { ...modifiers, altKey: true })
+  config.updateGradientDragGeometry(drag, { x: 5, y: 15 }, modifiers)
+  config.updateGradientDragGeometry(drag, { x: 5, y: 20 }, modifiers)
+  const resized = structuredClone(drag.gradientRadialGeometry)
+  const angle = drag.gradientAngle
+  config.updateGradientDragGeometry(drag, { x: 5, y: 20 }, { ...modifiers, altKey: true })
+  expect(drag.gradientRadialGeometry).toEqual(resized)
+  expect(drag.gradientAngle).toBe(angle)
+  config.updateGradientDragGeometry(drag, { x: 10, y: 20 }, { ...modifiers, altKey: true })
+  expect(drag.gradientRadialGeometry).toEqual(resized)
+  expect(drag.gradientAngle).not.toBe(angle)
+})

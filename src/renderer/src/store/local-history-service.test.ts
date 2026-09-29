@@ -380,6 +380,22 @@ describe('local history snapshots', () => {
     expect(reopened.history.position).toBe(1)
   })
 
+  it('does not replace a newly opened project with a journal from an older saved generation', async () => {
+    saveEditorPreferences({ ...DEFAULT_EDITOR_PREFERENCES, localHistoryEnabled: true })
+    const source = sessionWithLocalHistory()
+    source.document.filePath = 'D:/history/saved-generation.moonsprite'
+    let archive = new Uint8Array()
+    const api = { writeLocalHistory: async (_id: string, data: Uint8Array) => { archive = data.slice() }, readLocalHistory: async () => archive } as unknown as MoonSpriteApi
+    await persistLocalHistory(api, source, true)
+
+    const reopened = sessionWithLocalHistory()
+    reopened.document.filePath = source.document.filePath
+    reopened.document.updatedAt = '2099-01-01T00:00:00.000Z'
+    expect(await restoreLocalHistory(api, reopened)).toBe(false)
+    expect(reopened.document.updatedAt).toBe('2099-01-01T00:00:00.000Z')
+    expect(reopened.history.length).toBe(0)
+  })
+
   it('opens a cached timeline by decoding only its current snapshot and never recompiles it', async () => {
     saveEditorPreferences({ ...DEFAULT_EDITOR_PREFERENCES, localHistoryEnabled: true })
     const source = sessionWithLocalHistory()

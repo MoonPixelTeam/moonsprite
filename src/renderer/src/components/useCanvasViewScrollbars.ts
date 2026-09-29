@@ -22,21 +22,28 @@ interface CanvasViewScrollbarOptions {
 const viewKey = (view: ViewState): string => [view.zoom, view.panX, view.panY, view.rotation, view.mirrored, view.mirroredVertical].join(':')
 
 export function useCanvasViewScrollbars(options: CanvasViewScrollbarOptions) {
-  const [layout, setLayout] = useState<CanvasViewportDetail | null>(null)
+  const storedViewKey = viewKey(options.view)
+  const [layoutSnapshot, setLayout] = useState<{ detail: CanvasViewportDetail; baseKey: string; width: number; height: number } | null>(null)
+  const layout = layoutSnapshot?.detail.documentId === options.documentId
+    && layoutSnapshot.width === options.viewportWidth && layoutSnapshot.height === options.viewportHeight ? layoutSnapshot : null
   useEffect(() => {
     const update = (event: Event) => {
       const detail = (event as CustomEvent<CanvasViewportDetail>).detail
-      if (detail.documentId === options.documentId) { setLayout(detail); setPreview(null) }
+      if (detail.documentId === options.documentId) {
+        setLayout({ detail, baseKey: storedViewKey, width: options.viewportWidth, height: options.viewportHeight })
+        setPreview(null)
+      }
     }
     window.addEventListener(CANVAS_VIEWPORT_EVENT, update)
     return () => window.removeEventListener(CANVAS_VIEWPORT_EVENT, update)
-  }, [options.documentId])
-  useEffect(() => setLayout(null), [options.documentId, options.viewportWidth, options.viewportHeight, options.view])
-  const viewportWidth = layout?.width ?? options.viewportWidth
-  const viewportHeight = layout?.height ?? options.viewportHeight
-  const storedViewKey = viewKey(options.view)
+  }, [options.documentId, options.viewportWidth, options.viewportHeight, storedViewKey])
+  const viewportWidth = layout?.detail.width ?? options.viewportWidth
+  const viewportHeight = layout?.detail.height ?? options.viewportHeight
   const [preview, setPreview] = useState<{ documentId: string; baseKey: string; view: ViewState } | null>(null)
-  const activeView = preview?.documentId === options.documentId && preview.baseKey === storedViewKey ? preview.view : layout?.view ?? options.view
+  // A committed zoom supersedes the layout's view immediately, before paint.
+  // Keep live dock geometry independently instead of clearing it in an effect.
+  const activeView = preview?.documentId === options.documentId && preview.baseKey === storedViewKey ? preview.view
+    : layout?.baseKey === storedViewKey ? layout.detail.view : options.view
   const metrics = canvasViewScrollbarMetrics(
     viewportWidth,
     viewportHeight,

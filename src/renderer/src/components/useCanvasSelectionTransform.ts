@@ -1,3 +1,4 @@
+import { measureRuntimeStages } from '@/core/runtime-diagnostic-stages'
 import { drawingAnchorActive, drawingAnchorPoint } from '@/core/canvas-centered-drawing'
 import { useEffect, useRef } from 'react'
 import type { FreeTileInstance } from '@shared/types-tiles'
@@ -379,7 +380,9 @@ export function useCanvasSelectionTransform(ports: Ports) {
       // composite so a later view zoom cannot reuse pixels from the reverted
       // materialized preview as either a ghost or a missing overlay backdrop.
       ports.compositeCacheRef.current.invalidateAll()
-    } else {
+    } else if (drag.deferredSelectionWasMaterialized) {
+      // Resuming an overlay did not modify the base pixels. Invalidating it
+      // here synchronously recomposites the layer stack on the first move.
       ports.invalidateCompositeRect(drag.selectionSource.selection)
       ports.invalidateCompositeRect(transformedSelectionBounds(drag.transformStartTarget, drag.startAngle ?? 0, drag.transformStartShear))
     }
@@ -510,11 +513,12 @@ export function useCanvasSelectionTransform(ports: Ports) {
     endAdjustmentPreviewEdit(ports.session.document.id)
   }
 
-  const prepareSelectionTransformDrag = (drag: DragState): boolean => {
+  const prepareSelectionTransformDrag = (drag: DragState): boolean => measureRuntimeStages('canvas.selection.prepare', checkpoint => {
     if (!drag.selectionPreparationPending) return Boolean(drag.selectionSource)
     drag.selectionPreparationPending = false
     preserveCanvasSelection(ports.session.document.id)
     beginSelectionAdjustmentEdit()
+    checkpoint('adjustment-suspend')
     const sourceQuadForOrigin = (origin?: Point): SelectionQuad | undefined => {
       if (!drag.freeTransform || !drag.transformStartQuad) return undefined
       const offsetX = origin?.x ?? 0
@@ -626,10 +630,12 @@ export function useCanvasSelectionTransform(ports: Ports) {
       endSelectionAdjustmentEdit()
       return false
     }
+    checkpoint('capture-source')
     prepareDeferredFloatingSelectionPreview(drag)
     if (drag.selectionStart) renderAdjustmentPreviewEdit(ports.session.document.id, drag.selectionStart)
+    checkpoint('prepare-floating')
     return true
-  }
+  }, () => ({ documentId: ports.session.document.id, deferred: drag.deferredSelectionPreview === true, layers: ports.session.document.layers.length, width: drag.selectionStart?.width ?? 0, height: drag.selectionStart?.height ?? 0 }))
 
   useEffect(
     () => () => {

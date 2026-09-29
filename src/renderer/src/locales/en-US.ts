@@ -1,3 +1,4 @@
+import { convolutionEn } from './convolution'
 import { gradientMapEn } from './gradient-map'
 import { beta7En } from './release-beta7'
 import { spriteSheetImportenUS } from './sprite-sheet-import'
@@ -6,8 +7,10 @@ import type { TranslationCatalog } from './contracts'
 import { tabletEn } from './tablet'
 
 export const enUSMessages = {
+
   ...beta7En,
   ...gradientMapEn,
+  ...convolutionEn,
   "toolOptions.temporaryBrushCaptureHint": "Temporary brush: drag to select an area, release to use; Esc to cancel",
   "preferences.paintingCursor.cross": "Simple cross",
   "preferences.paintingCursor.pixelCross": "Pixel cross",
@@ -131,6 +134,7 @@ export const enUSMessages = {
   'layers.mode.default': 'Normal Mode',
   'layers.mode.animation': 'Animation Mode',
   "timeline.tween.timing": "Frames & Timing",
+  'preferences.exportSound': 'Export completion sound',
   "preferences.saveOriginalFormat": "Keep Original Save Format",
   "preferences.saveOriginalFormatHint": "When enabled, save in the opened file’s format and warn about incompatible features; new documents use the default save format. When disabled, default to .moonsprite and prompt to save other formats as a project.",
   "file.save.projectPreferredTitle": "Save as MoonSprite Project",
@@ -1018,6 +1022,16 @@ export const enUSMessages = {
   'preferences.wheelZoomMode.smooth': 'Smooth Zoom',
   'preferences.wheelZoomMode.stepped': 'Percentage Zoom',
   'preferences.shiftLinePreview': 'Show Pencil Line Preview in Real Time',
+  'preferences.gradientApplicationMode': 'Gradient application',
+  'preferences.gradientApplicationMode.instant': 'Apply on release',
+  'gradient.pending.title': 'Gradient pending confirmation',
+  'gradient.pending.hint': 'Drag handles to adjust. Enter applies; Esc cancels. Changing layers or frames cancels the preview.',
+  'gradient.pending.io': 'The canvas contains an unapplied gradient. Apply or discard it before saving, exporting, or closing.',
+  'gradient.pending.continue': 'Continue editing',
+  'gradient.pending.discard': 'Discard gradient and continue',
+  'gradient.pending.invalidated': 'The painting target or selection changed. The unapplied gradient was cancelled.',
+  'gradient.pending.failed': 'Could not apply the gradient. The preview is retained; please try again.',
+  'preferences.gradientApplicationMode.confirm': 'Apply after confirmation',
   'preferences.gradientLineVisible': 'Show Gradient Drag Line',
   'preferences.gradientLineColor': 'Gradient Drag Line Color',
   'preferences.balancedLine': 'Line Algorithm Optimization',
@@ -1670,8 +1684,8 @@ export const enUSMessages = {
   'home.linksAria': 'Community links and language',
   'home.qq': 'QQ Group',
   'home.qqDescription': 'Join the MoonPX pixel-art community QQ group for discussion and support.',
-  'home.community': 'Community',
-  'home.communityDescription': 'Open the MoonPX community website for discussion and support.',
+  'home.community': "Official website",
+  'home.communityDescription': "Visit the MoonSprite official website to explore features and the latest news.",
   'home.steam': 'Steam',
   'home.steamDescription': 'Open the MoonSprite page on Steam.',
   'home.steamWishlist': 'Add to wishlist',

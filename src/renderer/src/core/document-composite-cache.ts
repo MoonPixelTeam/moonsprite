@@ -252,7 +252,10 @@ export class DocumentCompositeCache {
     const frameId = document.animation?.activeFrameId ?? 'static'
     const cached = this.movePreviewLayerPlans.get(document)
     if (cached && cached.revision === revision && cached.frameId === frameId) return cached.layers
-    const layers = normalCompositeLayers(document, true)
+    // Property-only style previews can use the same bounded styled proxies as
+    // the regular compositor. Falling back to the generic point sampler here
+    // makes a small effect on one layer scan the whole large document.
+    const layers = this.renderLayersFor(document, revision) ?? normalCompositeLayers(document, true)
     this.movePreviewLayerPlans.set(document, { revision, frameId, layers })
     return layers
   }
@@ -269,6 +272,23 @@ export class DocumentCompositeCache {
     const items = opacityGroupCompositeStack(document)
     this.opacityGroupPlans.set(document, { revision, frameId, items })
     return items
+  }
+
+  /** CPU-only plan: isolate cached layer effects before applying the existing
+   * group opacity/blend operations. GPU plans must keep real raster surfaces. */
+  renderStackFor(document: SpriteDocument, revision: number, sourceDirtyRect?: SelectionRect): CompositeStackItem[] | null {
+    const plain = this.opacityGroupStackFor(document, revision)
+    if (plain) return plain
+    // Validate the entire tree before consuming any pending style dirtiness;
+    // an unsupported mask/group effect must leave the generic fallback intact.
+    const stack = opacityGroupCompositeStack(document, true)
+    if (!stack) return null
+    const prepare = (items: CompositeStackItem[]): CompositeStackItem[] => items.map(item => item.kind === 'group'
+      ? { ...item, children: prepare(item.children) }
+      : hasEnabledLayerStyles(item.layer.layerStyles)
+        ? { ...item, layer: this.styledLayer(document, item.layer, sourceDirtyRect) }
+        : item)
+    return prepare(stack)
   }
 
   private styledLayerBlockProxy(document: SpriteDocument, sourceLayer: RasterLayer, sourceDirtyRect?: SelectionRect): RasterLayer {

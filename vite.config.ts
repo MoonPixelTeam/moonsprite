@@ -33,6 +33,7 @@ export default defineConfig(({ mode }) => {
     root: resolve(__dirname, 'src/renderer'),
     base: webTrial ? '/try/' : '/',
     define: {
+      'import.meta.env.VITE_MOONSPRITE_TARGET': JSON.stringify(target),
       __MOONSPRITE_PERFORMANCE_BUILD__: JSON.stringify(performanceBuild),
       __MOONSPRITE_REACT_PROFILE__: JSON.stringify(reactProfile)
     },

@@ -158,6 +158,18 @@ export function GradientStopsEditor({ open, stops, disabled, primaryColor, secon
     const fallbackIndex = Math.min(selectedIndex, stops.length - 1)
     setSelectedStopKey(gradientStopIdentity(stops[fallbackIndex]))
   }, [selectedIndex, selectedStopKey, stops])
+  useEffect(() => {
+    if (!open) return
+    const escape = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape' || event.isComposing || event.defaultPrevented) return
+      if (!Array.from(document.querySelectorAll('.modal-backdrop')).at(-1)?.classList.contains('gradient-editor-backdrop')) return
+      event.preventDefault()
+      event.stopImmediatePropagation()
+      onClose()
+    }
+    window.addEventListener('keydown', escape, true)
+    return () => window.removeEventListener('keydown', escape, true)
+  }, [open, onClose])
   if (!open || !selectedStop) return null
   const orderedStops = [...stops].sort((left, right) => left.position - right.position)
   const gradient = `linear-gradient(90deg, ${orderedStops.map((stop) => `${gradientStopCssColor(stop.color)} ${stop.position * 100}%`).join(', ')})`

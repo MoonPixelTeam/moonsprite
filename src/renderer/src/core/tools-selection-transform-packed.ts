@@ -4,11 +4,37 @@ import { transformedSelectionDestinationPoint, transformedSelectionSourcePoint, 
 import { forEachSelectedSourceOffset } from './tools-selection-transform-source'
 import type { SelectionTransformSource } from './tools-selection-transform-types'
 
+/** Integer translations need row copies, not an inverse transform per pixel. */
+const copyTranslatedSelection = (source: SelectionTransformSource, target: SelectionRect, bounds: SelectionRect, output: Uint32Array, clearTransparent: boolean): boolean => {
+  const selection = source.selection
+  if (!Number.isInteger(target.x) || !Number.isInteger(target.y) || target.width !== selection.width || target.height !== selection.height
+    || target.flipHorizontal || target.flipVertical) return false
+  const left = Math.max(bounds.x, target.x), top = Math.max(bounds.y, target.y)
+  const right = Math.min(bounds.x + bounds.width, target.x + target.width)
+  const bottom = Math.min(bounds.y + bounds.height, target.y + target.height)
+  if (right <= left || bottom <= top) return true
+  for (let y = top; y < bottom; y++) {
+    const from = (y - target.y) * selection.width + left - target.x
+    const to = (y - bounds.y) * bounds.width + left - bounds.x
+    const count = right - left
+    if (!selection.mask) output.set(source.values.subarray(from, from + count), to)
+    if (!selection.mask && !clearTransparent) continue
+    for (let x = 0; x < count; x++) {
+      const value = source.values[from + x]
+      if (selection.mask) output[to + x] = selection.mask[from + x] === 1 ? value : 0
+      if (clearTransparent && (value >>> 24) === 0) output[to + x] = 0
+    }
+  }
+  return true
+}
+
 export function rasterizeSimpleSelectionTransformPacked(document: SpriteDocument, source: SelectionTransformSource, target: SelectionRect, startX: number, startY: number, width: number, height: number, output: Uint32Array): void {
   const right = Math.min(document.width, startX + width, Math.ceil(target.x + target.width))
   const bottom = Math.min(document.height, startY + height, Math.ceil(target.y + target.height))
   const left = Math.max(0, startX, Math.floor(target.x))
   const top = Math.max(0, startY, Math.floor(target.y))
+  if (left === startX && top === startY && right === startX + width && bottom === startY + height
+    && copyTranslatedSelection(source, target, { x: startX, y: startY, width, height }, output, false)) return
   for (let y = top; y < bottom; y += 1) for (let x = left; x < right; x += 1) {
     const point = transformedSelectionSourcePoint(source.selection, target, x, y)
     if (!point) continue
@@ -26,6 +52,7 @@ export function rasterizeSelectionTransformPacked(
   const { x: left, y: top, width, height } = bounds
   const right = left + width
   const bottom = top + height
+  if (angle % 360 === 0 && !shear && copyTranslatedSelection(source, target, bounds, output, true)) return
   const preservingRotation = angle % 360 !== 0 && !shear && !target.flipHorizontal && !target.flipVertical
     && target.width === selection.width && target.height === selection.height
   if (!preservingRotation) {

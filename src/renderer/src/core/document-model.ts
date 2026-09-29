@@ -164,13 +164,9 @@ export function createLayer(name: string, width: number, height: number, mode: C
     : { ...common, format: 'rgba', pixels: new Uint8ClampedArray(width * height * 4) }
 }
 
-const sparseBlankLayers = new WeakSet<RasterLayer>()
-
 /** Creates a blank layer without reserving a full-canvas bitmap before its first edit. */
 export function createSparseLayer(name: string, mode: ColorMode): RasterLayer {
-  const layer = createLayer(name, 1, 1, mode)
-  sparseBlankLayers.add(layer)
-  return layer
+  return createLayer(name, 1, 1, mode)
 }
 
 export function createDocument(name: string, width: number, height: number, colorMode: ColorMode, timelapseEnabled = DEFAULT_TIMELAPSE_SETTINGS.enabled, pixelFormat: SpriteDocument['pixelFormat'] = colorMode === 'rgba' ? 'rgba32' : undefined): SpriteDocument {
@@ -872,7 +868,9 @@ export function layerIndexAt(layer: RasterLayer, x: number, y: number): number |
 /** Expands a layer bitmap without discarding pixels that currently sit outside the canvas. */
 export function expandLayerToRect(layer: RasterLayer, left: number, top: number, right: number, bottom: number): boolean {
   const isStoredBlankPixel = layer.width === 1 && layer.height === 1 && (layer.format === 'rgba' ? layer.pixels[3] === 0 : layer.pixels[0] === 0)
-  if (sparseBlankLayers.has(layer) || isStoredBlankPixel) {
+  // Text rendering and frame changes can replace a sparse layer's storage.
+  // Only discard the actual empty placeholder, never infer blankness from its creation.
+  if (isStoredBlankPixel) {
     const nextLeft = Math.trunc(left)
     const nextTop = Math.trunc(top)
     const nextWidth = Math.trunc(right) - nextLeft
@@ -1055,7 +1053,6 @@ export const markRasterStorageContentChanged = (storage: object): void => {
 }
 
 export const markLayerContentChanged = (layer: RasterLayer): void => {
-  sparseBlankLayers.delete(layer)
   markRasterSurfaceContentChanged(layer)
 }
 

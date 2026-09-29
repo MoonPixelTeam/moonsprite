@@ -72,7 +72,15 @@ export interface HistoryStackChange {
 export type ContentInvalidationHint =
   | { kind: 'full' }
   // compositeOnly changes output properties, never source pixels or masks.
-  | { kind: 'region'; frameId?: string; rect: SelectionRect; rects?: readonly SelectionRect[]; compositeOnly?: true; propertyOwnerIds?: readonly string[]; propertyPreview?: true }
+  | { kind: 'region'; frameId?: string; rect: SelectionRect; rects?: readonly SelectionRect[]; sourceLayerIds?: readonly string[]; compositeOnly?: true; propertyOwnerIds?: readonly string[]; propertyPreview?: true }
+
+/** Preserve source ownership through commits, undo and redo. Unknown owners
+ * deliberately retain conservative invalidation of every source. */
+export const historyEntryInvalidation = (entry: HistoryEntry): ContentInvalidationHint | undefined => {
+  const hint = entry.invalidation
+  if (hint?.kind !== 'region' || hint.compositeOnly || hint.sourceLayerIds || !entry.affectedLayerIds?.length) return hint
+  return { ...hint, sourceLayerIds: [...entry.affectedLayerIds] }
+}
 
 const combineInvalidations = (entries: readonly HistoryEntry[]): ContentInvalidationHint | undefined => {
   const invalidations = entries.map((entry) => entry.invalidation)
@@ -95,7 +103,8 @@ const compoundHistoryEntry = (entries: readonly HistoryEntry[], label: string): 
   undo: () => { for (let index = entries.length - 1; index >= 0; index -= 1) entries[index].undo() },
   redo: () => { for (const entry of entries) entry.redo() },
   invalidation: combineInvalidations(entries),
-  affectedLayerIds: [...new Set(entries.flatMap((entry) => entry.affectedLayerIds ?? []))],
+  affectedLayerIds: entries.every(entry => entry.documentChanged === false || entry.contentChanged === false || entry.affectedLayerIds?.length)
+    ? [...new Set(entries.flatMap((entry) => entry.affectedLayerIds ?? []))] : undefined,
   documentChanged: entries.some((entry) => entry.documentChanged !== false),
   contentChanged: entries.some((entry) => entry.documentChanged !== false && entry.contentChanged !== false),
   requiresAnimationSync: entries.some((entry) => entry.documentChanged !== false && entry.requiresAnimationSync !== false),

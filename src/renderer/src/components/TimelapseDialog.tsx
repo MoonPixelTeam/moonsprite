@@ -1,3 +1,4 @@
+import { isWebTrial } from '@/core/product-target'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { TimelapseExportFormat, TimelapseRecordingMode, TimelapseSettings, TimelapseSnapshot } from '@shared/types-timelapse'
 import { timelapsePreviewFramePlan, type TimelapseExportOptions } from '@/core/timelapse'
@@ -210,7 +211,7 @@ export function TimelapseDialog({ documentName, defaultDirectory, settings, onCh
         <div className="timelapse-clear-actions">
           <button type="button" className="quiet-button timelapse-clear" disabled={settings.snapshots.length === 0} onClick={() => { setPreviewPlaying(false); setPreviewFrame(0); onClear() }}><PixelUtilityIcon kind="clearRecords" />{t('timelapse.clear')}</button>
         </div>
-        <div className="timelapse-footer-actions"><button className="quiet-button" onClick={onClose}>{t('common.close')}</button><button className="primary-button" disabled={settings.snapshots.length === 0} onClick={() => { setPreviewPlaying(false); setExportOpen(true) }}><PixelUtilityIcon kind="export" />{t('timelapse.exportVideo')}</button></div>
+        <div className="timelapse-footer-actions"><button className="quiet-button" onClick={onClose}>{t('common.close')}</button>{!isWebTrial() && <button className="primary-button" disabled={settings.snapshots.length === 0} onClick={() => { setPreviewPlaying(false); setExportOpen(true) }}><PixelUtilityIcon kind="export" />{t('timelapse.exportVideo')}</button>}</div>
       </footer>
     </ModalShell>
   </div>

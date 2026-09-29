@@ -155,6 +155,15 @@ export const compileCompositePointSampler = (document: SpriteDocument, layerId?:
       : applyItemMask(item, item.read(x, y, replacement), x, y, replacement)
   }
   function isolatedItemColor(item: CompiledItem, x: number, y: number, replacement: RgbaColor | undefined): RgbaColor {
+    // Bounds already include every enabled effect and styled descendant.
+    // Cull before memo/tile allocation: otherwise a tiny styled layer in a
+    // complex stack evaluates transparent tiles across the entire viewport.
+    // Replacement previews can add pixels outside the current content bounds.
+    if (!geometryBoundsOnly && replacement === undefined && !item.containsAdjustment) {
+      const bounds = item.outputBounds
+      if (!bounds || x < bounds.x || y < bounds.y
+        || x >= bounds.x + bounds.width || y >= bounds.y + bounds.height) return TRANSPARENT
+    }
     if (propertyMemo && !item.propertySourceDependent && replacement === undefined) {
       item.colorReader ??= propertyMemo.read(item.kind === 'layer' ? item.layer : item.group, 'source', (sx, sy) => uncachedItemColor(item, sx, sy, undefined))
       return item.colorReader(x, y)

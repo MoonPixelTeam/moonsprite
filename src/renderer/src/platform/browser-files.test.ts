@@ -1,3 +1,4 @@
+import { getBrowserRecoveryStatus } from './browser-recovery-status'
 import 'fake-indexeddb/auto'
 import { Blob, File } from 'node:buffer'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -31,7 +32,9 @@ describe('Web trial file boundary', () => {
     expect(click).toHaveBeenCalledTimes(2)
     expect(new Uint8Array(await blobs[0].arrayBuffer())).toEqual(new Uint8Array([1, 2, 3]))
     expect(await api.readBinary(result.filePath)).toEqual(new Uint8Array([4, 5]))
-    expect((await api.exportImage('old.moonsprite', 'png')).filePath).toBe('downloads/old.png')
+    await expect(api.exportImage('old.moonsprite', 'png')).rejects.toThrow('仅支持保存')
+    await expect(api.writeBinaryAtomic('downloads/test.png', new Uint8Array([1]))).rejects.toThrow('仅支持保存')
+    expect(click).toHaveBeenCalledTimes(2)
   })
 
   it('persists recovery and local history across adapter recreation', async () => {
@@ -63,4 +66,15 @@ describe('Web trial file boundary', () => {
     expect(await createBrowserFiles().openFiles()).toEqual({ canceled: true, filePaths: [] })
     expect(document.querySelector('input[type=file]')).toBeNull()
   })
+})
+
+
+it('reports successful recovery writes and surfaces quota failures without claiming a new backup', async () => {
+  const api = createBrowserFiles()
+  await api.writeRecovery('status-check', 'Artwork', new Uint8Array([1]))
+  const previous = getBrowserRecoveryStatus().updatedAt
+  expect(previous).toBeTruthy()
+  vi.spyOn(IDBObjectStore.prototype, 'put').mockImplementationOnce(() => { throw new DOMException('Full', 'QuotaExceededError') })
+  await expect(api.writeRecovery('status-check', 'Artwork', new Uint8Array([2]))).rejects.toThrow('Full')
+  expect(getBrowserRecoveryStatus()).toMatchObject({ updatedAt: previous, error: expect.stringContaining('写入失败') })
 })

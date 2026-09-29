@@ -1,3 +1,4 @@
+import { convolutionEn } from './convolution'
 import { gradientMapEn } from './gradient-map'
 import { beta7En } from './release-beta7'
 import { spriteSheetImportptBR } from './sprite-sheet-import'
@@ -6,6 +7,8 @@ import type { TranslationCatalog } from './contracts'
 import { tabletEn } from './tablet'
 
 export const ptBRMessages = {
+
+  ...convolutionEn,
   ...beta7En,
   ...gradientMapEn,
   "toolOptions.temporaryBrushCaptureHint": "Pincel temporário: arraste uma área e solte para usar; Esc para cancelar",
@@ -1602,8 +1605,8 @@ export const ptBRMessages = {
   "home.linksAria": 'Ligações Comunitárias e Língua',
   "home.qq": "QQ Grupo",
   "home.qqDescription": 'Junte-se ao grupo QQ da comunidade MoonPX pixel-art para discussão e suporte.',
-  "home.community": "Comunidade",
-  "home.communityDescription": "Abrir o site da comunidade MoonPX.",
+  "home.community": "Site oficial do software",
+  "home.communityDescription": "Visite o site oficial do MoonSprite para conhecer os recursos e as novidades.",
   "home.steam": 'O Steam',
   "home.steamDescription": 'Abra a página MoonSprite no Steam.',
   "home.steamWishlist": "Adicionar à lista de desejos",
@@ -2980,6 +2983,7 @@ export const ptBRMessages = {
   "toolOptions.inkLockAlphaHint": "Altera a cor dos pixels existentes preservando o alfa.",
   'timeline.tween.linear': 'Linear',
   'timeline.tween.timing': 'Quadros e duração',
+  'preferences.exportSound': 'Som de conclusão da exportação',
   'preferences.saveOriginalFormat': 'Manter o formato original',
   'preferences.saveOriginalFormatHint': 'Quando ativado, salva no formato do arquivo aberto e avisa sobre recursos incompatíveis; novos documentos usam o formato padrão. Quando desativado, usa .moonsprite como padrão e sugere salvar outros formatos como projetos.',
   'file.save.projectPreferredTitle': 'Salvar como projeto MoonSprite',
@@ -3167,4 +3171,14 @@ export const ptBRMessages = {
   'preferences.theme.followSystemHint': 'Alterna automaticamente entre DARK e LIGHT conforme o modo de aplicativos do Windows. Escolher outro tema desativa esta opção.',
   'extension.invalidExportFile': 'O arquivo de exportação é inválido ou excede 1 MiB.',
 
+  'preferences.gradientApplicationMode': 'Aplicação do gradiente',
+  'preferences.gradientApplicationMode.instant': 'Aplicar ao soltar',
+  'gradient.pending.title': 'Gradient pending confirmation',
+  'gradient.pending.hint': 'Drag handles to adjust. Enter applies; Esc cancels. Changing layers or frames cancels the preview.',
+  'gradient.pending.io': 'The canvas contains an unapplied gradient. Apply or discard it before saving, exporting, or closing.',
+  'gradient.pending.continue': 'Continue editing',
+  'gradient.pending.discard': 'Discard gradient and continue',
+  'gradient.pending.invalidated': 'The painting target or selection changed. The unapplied gradient was cancelled.',
+  'gradient.pending.failed': 'Could not apply the gradient. The preview is retained; please try again.',
+  'preferences.gradientApplicationMode.confirm': 'Aplicar após confirmação',
 } satisfies TranslationCatalog

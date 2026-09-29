@@ -1,3 +1,4 @@
+import { loadTrialExampleFile } from '@/platform/trial-example-file'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { ColorMode } from '@shared/types-raster'
 import type { ProjectBackupRecord } from '@shared/types-files'
@@ -66,6 +67,20 @@ export function useAppDocumentIO({
     const current = useWorkspace.getState()
     if (!keepHomeOpen && current.sessions.some((item) => !beforeIds.has(item.document.id))) setHomeOpen(false)
     return opened
+  }
+
+  const trialExampleOpening = useRef(false)
+  const openTrialExample = async (): Promise<void> => {
+    if (trialExampleOpening.current) return
+    trialExampleOpening.current = true
+    try {
+      const file = await loadTrialExampleFile()
+      await openGalleryProject(window.moonSprite.pathForFile(file))
+    } catch (error) {
+      workspace.setMessage(error instanceof Error ? error.message : '工程示例打开失败，请重试。')
+    } finally {
+      trialExampleOpening.current = false
+    }
   }
 
   const openHomeImage = async (imageUrl: string, name: string): Promise<boolean> => {
@@ -242,6 +257,7 @@ export function useAppDocumentIO({
     runSaveActive,
     openFilesAndShowDocument,
     openGalleryProject,
+    openTrialExample,
     openHomeImage,
     restoreRecoveryAndShowDocument,
     openProjectFolder,

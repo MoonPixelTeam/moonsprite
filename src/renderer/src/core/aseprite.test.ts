@@ -283,3 +283,11 @@ describe('Aseprite import', () => {
 
 
 })
+
+it('preserves RGBA buffer offsets and transparent RGB at original size', () => {
+  const source = createDocument('buffer offset', 2, 1, 'rgba')
+  const data = new Uint8ClampedArray([9,9,9,9, 40,50,60,0, 10,20,30,128, 8,8,8,8])
+  source.layers[0].pixels = data.subarray(4,12)
+  const restored = decodeAseprite(encodeAseprite(source))
+  expect([...restored.layers[0].pixels]).toEqual([40,50,60,0,10,20,30,128])
+})

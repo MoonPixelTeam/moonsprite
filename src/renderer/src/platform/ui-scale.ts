@@ -1,3 +1,4 @@
+import { isWebTrial } from '@/core/product-target'
 import { PhysicalSize } from '@tauri-apps/api/dpi'
 import { getCurrentWebview } from '@tauri-apps/api/webview'
 import { getCurrentWindow } from '@tauri-apps/api/window'
@@ -109,7 +110,13 @@ function handleDisplayScaleChange(scaleFactor: number): void {
 
 export async function applyUiScale(scale: UiScale): Promise<void> {
   if (typeof document !== 'undefined') document.documentElement.dataset.uiScale = String(scale)
-  if (!isTauriRuntime()) return
+  if (!isTauriRuntime()) {
+    if (typeof document !== 'undefined' && isWebTrial()) {
+      document.documentElement.style.setProperty('--browser-ui-scale', String(scale))
+      window.dispatchEvent(new Event('resize'))
+    }
+    return
+  }
   requestedScale = scale
   const displayScaleFactor = await observeDisplayScaleFactor(handleDisplayScaleChange)
   await queueNativeScale(nativeScaleTarget(requestedScale, displayScaleFactor))
@@ -126,7 +133,7 @@ export function applyToolIconScale(scale: ToolIconScale): void {
     '--tool-rail-column-size': compact ? '45px' : '57px'
   }
   document.documentElement.dataset.toolIconScale = compact ? 'normal' : 'large'
-  for (const [name, value] of Object.entries(sizes)) document.documentElement.style.setProperty(name, value)
+  for (const [name, value] of Object.entries(sizes)) document.documentElement.style.setProperty(name, isWebTrial() ? `calc(${value} * var(--browser-ui-scale, 1))` : value)
 }
 
 /** Applies shared interface-text tokens without changing canvas coordinates or icon geometry. */

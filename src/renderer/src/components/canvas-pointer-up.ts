@@ -40,6 +40,7 @@ interface Ports {
   selectionInput: ReturnType<typeof createSelectionCanvasInput>
   samplingInput: ReturnType<typeof createSamplingCanvasInput>
   fillInput: ReturnType<typeof createFillCanvasInput>
+  deferGradient: (drag: DragState, session: DocumentSession) => boolean
   tileInput: ReturnType<typeof createTileCanvasInput>
   freeTileInput: ReturnType<typeof createFreeTileCanvasInput>
   strokeInput: ReturnType<typeof createStrokeCanvasInput>
@@ -152,7 +153,7 @@ export function createCanvasPointerUp(ports: Ports) {
     if (drag.kind === 'rotate-view' && navigationInput.endRotation({ drag })) return
     if (drag.kind === 'move-selection-pivot' && selectionInput.endPivot({ drag, state, event })) return
     if (drag.kind === 'sample-color' && samplingInput.endSample({ drag, event, state, session })) return
-    if (drag.kind === 'gradient' && fillInput.endGradient({ drag, session, state })) return
+    if (drag.kind === 'gradient' && (ports.deferGradient(drag, session) || fillInput.endGradient({ drag, session, state }))) return
     if (drag.kind === 'fill' && drag.edit) {
       scheduleDraw()
       return

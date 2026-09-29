@@ -39,6 +39,7 @@ const sessionWrites = new WeakMap<DocumentSession, HistoryWrite>()
 const latestWrites = new Map<string, WeakRef<HistoryWrite>>()
 const sameHistoryWrite = (write: HistoryWrite, manifest: LocalHistoryManifest, snapshots: LocalHistorySnapshot[]): boolean =>
   write.manifest.projectKey === manifest.projectKey && write.manifest.position === manifest.position &&
+  write.manifest.documentFingerprint === manifest.documentFingerprint &&
   write.manifest.labels.length === manifest.labels.length && write.snapshots.length === snapshots.length &&
   manifest.labels.every((label, index) => write.manifest.labels[index] === label) &&
   snapshots.every((snapshot, index) => write.snapshots[index] === snapshot)
@@ -77,6 +78,21 @@ const historyId = (document: SpriteDocument): string => {
   }
   return `project-${(hash >>> 0).toString(36)}`
 }
+
+/**
+ * Saving a project does not serialize the runtime document id, but it does
+ * preserve the content timestamp. Keep the marker deliberately cheap: this is
+ * evaluated on every debounced history write and must not materialize a sparse
+ * 4K raster just to journal an edit.
+ */
+const documentFingerprint = (document: SpriteDocument): string => JSON.stringify([
+  document.updatedAt,
+  document.width,
+  document.height,
+  document.colorMode,
+  document.layers.map(layer => [layer.id, layer.width, layer.height, layer.offsetX, layer.offsetY, layer.format]),
+  document.animation?.activeFrameId
+])
 
 const clampPosition = (position: number, labels: readonly string[]): number => Math.max(0, Math.min(labels.length, Math.trunc(position)))
 
@@ -187,24 +203,25 @@ export const scheduleLocalHistoryPersist = (api: MoonSpriteApi, session: Documen
 }
 
 /** Flushes a pending debounced write before the session is removed. */
-export const flushLocalHistoryPersist = async (api: MoonSpriteApi, session: DocumentSession): Promise<void> => {
+export const flushLocalHistoryPersist = async (api: MoonSpriteApi, session: DocumentSession, includeDocumentFingerprint = false): Promise<void> => {
   const id = historyId(session.document)
   const pending = pendingWrites.get(id)
   if (pending !== undefined) {
     window.clearTimeout(pending)
     pendingWrites.delete(id)
   }
-  await persistLocalHistory(api, session)
+  await persistLocalHistory(api, session, includeDocumentFingerprint)
 }
 
-export const persistLocalHistory = async (api: MoonSpriteApi, session: DocumentSession): Promise<void> => {
+export const persistLocalHistory = async (api: MoonSpriteApi, session: DocumentSession, includeDocumentFingerprint = false): Promise<void> => {
   const state = session.localHistory
   if (!loadEditorPreferences().localHistoryEnabled || !state) return
   const manifest: LocalHistoryManifest = {
     version: HISTORY_FORMAT_VERSION,
     projectKey: historyId(session.document),
     labels: [...state.labels],
-    position: clampPosition(state.position, state.labels)
+    position: clampPosition(state.position, state.labels),
+    ...(includeDocumentFingerprint ? { documentFingerprint: documentFingerprint(session.document) } : {})
   }
   // Capture an immutable generation before any await. Edits may trim/branch the
   // live timeline while the previous write is still running.
@@ -336,6 +353,17 @@ export const restoreLocalHistory = async (api: MoonSpriteApi, session: DocumentS
   }
   // Changing the step limit must not advance the saved document's history position.
   const current = decodeSnapshot(position)
+  // A saved project can be newer than a journal write that was still queued
+  // when the application closed. In that case the journal remains available
+  // to the rollback UI, but must never overwrite the freshly decoded project.
+  if (manifest.documentFingerprint && manifest.documentFingerprint !== documentFingerprint(initialDocument)) {
+    configureLocalHistory(session, api)
+    if (runtimeDiagnosticsActive()) recordRuntimeDiagnostic('operation-stage', 'local-history.restore-skipped', {
+      documentId: session.document.id,
+      reason: 'saved-project-generation-mismatch'
+    })
+    return false
+  }
   // Project recordings are authoritative for every history format, including
   // baseline-only and legacy archives captured before recording was enabled.
   const recording = session.document.timelapse

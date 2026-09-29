@@ -9,6 +9,7 @@ import type { ShortcutId } from '@/core/shortcuts'
 import { QUICK_COMMAND_METADATA, type QuickCommandMetadata, type QuickCommandSettingsTarget } from './quick-command-registry'
 import { detectDocumentPixelScale } from '@/core/image-scale-detection'
 import { PixelAssetIcon } from './editor-tools'
+import { useQuickCommandGradientOcclusion } from './useQuickCommandGradientOcclusion'
 
 interface QuickCommandBarProps {
   documentId: string
@@ -60,6 +61,7 @@ const QuickCommandBarInstance = memo(function QuickCommandBarInstance({ document
   const [pressedControl, setPressedControl] = useState<string | null>(null)
   const [dragPreview, setDragPreview] = useState<{ edge: QuickCommandBarEdge; position: number } | null>(null)
   const barRef = useRef<HTMLDivElement>(null)
+  useQuickCommandGradientOcclusion(barRef, documentId)
   const dragRef = useRef<QuickCommandDragState | null>(null)
   const pressedReleaseTimerRef = useRef<number | null>(null)
   const activeId = useWorkspace((state) => state.activeId)

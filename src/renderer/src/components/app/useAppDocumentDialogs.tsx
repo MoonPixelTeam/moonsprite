@@ -1,3 +1,5 @@
+import { isWebTrial } from '@/core/product-target'
+import type { FilterChoice } from '@/store/workspace-filter-preview'
 import { ExportDialogHost, type ExportDialogHandle } from '@/components/app/ExportDialogHost'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { ImageResizeInterpolation } from '@shared/types-raster'
@@ -12,7 +14,8 @@ import { ImageResizeDialog } from '@/components/ImageResizeDialog'
 import { OutlineDialog } from '@/components/OutlineDialog'
 import { AntiAliasDialog } from '@/components/AntiAliasDialog'
 import { AdjustmentDialog } from '@/components/dialogs/AdjustmentDialog'
-import { LcdScreenDialog } from '@/components/dialogs/LcdScreenDialog'
+import { ConvolutionMatrixDialog } from '@/components/dialogs/ConvolutionMatrixDialog'
+import { FilterDialog } from '@/components/dialogs/FilterDialog'
 import { SaveAsDialog } from '@/components/dialogs/SaveAsDialog'
 import { SpriteSheetImportDialog } from '@/components/dialogs/SpriteSheetImportDialog'
 import { SpriteSheetExportDialog } from '@/components/dialogs/SpriteSheetExportDialog'
@@ -67,7 +70,7 @@ export function useAppDocumentDialogs({
   const [imageResizeOpen, setImageResizeOpen] = useState(false)
   const [outlineOpen, setOutlineOpen] = useState(false)
   const [antiAliasOpen, setAntiAliasOpen] = useState(false)
-  const [lcdScreenOpen, setLcdScreenOpen] = useState(false)
+  const [lcdScreenOpen, setLcdScreenOpen] = useState<FilterChoice | 'convolution' | false>(false)
   const [colorReplacementOpen, setColorReplacementOpen] = useState(false)
   const [adjustmentOpen, setAdjustmentOpen] = useState(false)
   const [adjustmentKind, setAdjustmentKind] = useState<AdjustmentKind>('brightness-contrast')
@@ -82,7 +85,7 @@ export function useAppDocumentDialogs({
   const spriteSheetImportSession = workspace.sessions.find(item => item.document.id === spriteSheetImportSourceId) ?? null
   const [spriteSheetExportSourceId, setSpriteSheetExportSourceId] = useState<string | null>(null)
   const exportDialogRef = useRef<ExportDialogHandle>(null)
-  const openExport = (target?: NonNullable<ExportOptions['target']>): void => exportDialogRef.current?.open(target)
+  const openExport = (target?: NonNullable<ExportOptions['target']>): void => { if (isWebTrial()) openSaveAs(); else exportDialogRef.current?.open(target) }
   const [saveAsOpen, setSaveAsOpen] = useState(false)
   const spriteSheetExportOpen = spriteSheetExportSourceId !== null
   const spriteSheetExportSession = spriteSheetExportSourceId
@@ -122,7 +125,7 @@ export function useAppDocumentDialogs({
         const id = await workspace.chooseSpriteSheetImportSource()
         if (id) setSpriteSheetImportSourceId(id)
       }} />}
-      {spriteSheetExportOpen && spriteSheetExportSession && (
+      {!isWebTrial() && spriteSheetExportOpen && spriteSheetExportSession && (
         <SpriteSheetExportDialog
           key={spriteSheetExportSession.document.id}
           session={spriteSheetExportSession}
@@ -138,12 +141,7 @@ export function useAppDocumentDialogs({
       <ExportDialogHost ref={exportDialogRef} defaultFileDirectories={defaultFileDirectories} exportScalePresets={exportScalePresets} />
       {adjustmentOpen && <AdjustmentDialog kind={adjustmentKind} onClose={() => setAdjustmentOpen(false)} />}
       {lcdScreenOpen && session && (
-        <LcdScreenDialog
-          onClose={() => setLcdScreenOpen(false)}
-          onApply={(options) => {
-            void workspace.applyLcdScreenFilter(options)
-          }}
-        />
+        lcdScreenOpen === 'convolution' ? <ConvolutionMatrixDialog key={session.document.id} onClose={() => setLcdScreenOpen(false)} /> : <FilterDialog key={session.document.id} initialFilter={lcdScreenOpen} onClose={() => setLcdScreenOpen(false)} />
       )}
       {colorReplacementOpen && session && <ColorReplacementDialog key={session.document.id} onClose={() => setColorReplacementOpen(false)} />}
       {session && gridSettingsOpen && (

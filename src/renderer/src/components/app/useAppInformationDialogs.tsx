@@ -1,3 +1,5 @@
+import { isWebTrial } from '@/core/product-target'
+import { TrialAnnouncementDialog } from '@/components/TrialAnnouncementDialog'
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react'
 import { ExternalLink, GitFork } from 'lucide-react'
 import { LatestReleaseDialog } from '@/components/LatestReleaseDialog'
@@ -27,7 +29,7 @@ export function useAppInformationDialogs() {
   useEffect(() => {
     if (latestReleaseNoticeHandledRef.current) return
     latestReleaseNoticeHandledRef.current = true
-    if (shouldShowLatestRelease()) openLatestRelease(latestRelease)
+    if (isWebTrial() || shouldShowLatestRelease()) openLatestRelease(latestRelease)
   }, [openLatestRelease])
   const appInformationDialogsSurface = (
     <>
@@ -104,7 +106,7 @@ export function useAppInformationDialogs() {
           <LazyComponentLibrary onClose={() => setComponentLibraryOpen(false)} />
         </Suspense>
       )}
-      {latestReleaseOpen && <LatestReleaseDialog release={latestReleaseSelection ?? undefined} onClose={() => setLatestReleaseOpen(false)} />}
+      {latestReleaseOpen && (isWebTrial() ? <TrialAnnouncementDialog onClose={() => setLatestReleaseOpen(false)} /> : <LatestReleaseDialog release={latestReleaseSelection ?? undefined} onClose={() => setLatestReleaseOpen(false)} />)}
       {usageStatisticsOpen && <UsageStatisticsDialog onClose={() => setUsageStatisticsOpen(false)} />}
     </>
   )
