@@ -111,6 +111,8 @@ export class CanvasMovePreviewRenderer {
     }
     // Preserve committed blend/alpha semantics at every zoom. Reuse the
     // stationary backdrop and only recompose the moving and upper layers.
+    preview.movingLayers = movingLayers
+    preview.upperLayers = layers.slice(lastMovingIndex + 1)
     this.gpu.clear()
     preview.outputPixels.set(preview.basePixels)
     this.compositeCache.compositeMovePreviewLayersInto(document, repeatedLayers(preview.movingLayers, document, view), x, y, width, height, contentRevision, preview.outputPixels)
