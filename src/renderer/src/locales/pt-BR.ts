@@ -1,3 +1,4 @@
+import { convolutionEn } from './convolution'
 import { gradientMapEn } from './gradient-map'
 import { beta7En } from './release-beta7'
 import { spriteSheetImportptBR } from './sprite-sheet-import'
@@ -6,6 +7,8 @@ import type { TranslationCatalog } from './contracts'
 import { tabletEn } from './tablet'
 
 export const ptBRMessages = {
+
+  ...convolutionEn,
   ...beta7En,
   ...gradientMapEn,
   "toolOptions.temporaryBrushCaptureHint": "Pincel temporário: arraste uma área e solte para usar; Esc para cancelar",

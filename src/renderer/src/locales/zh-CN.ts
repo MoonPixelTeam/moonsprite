@@ -1,11 +1,14 @@
+import { convolutionZh } from './convolution'
 import { gradientMapZh } from './gradient-map'
 import { beta7Zh } from './release-beta7'
 import { spriteSheetImportzhCN } from './sprite-sheet-import'
 import { tabletZh } from './tablet'
 
 export const zhCNMessages = {
+
   ...beta7Zh,
   ...gradientMapZh,
+  ...convolutionZh,
   "toolOptions.temporaryBrushCaptureHint": "临时笔刷取样：拖动框选区域，松开使用；Esc 取消",
   "preferences.paintingCursor.cross": "简单十字",
   "preferences.paintingCursor.pixelCross": "像素十字",

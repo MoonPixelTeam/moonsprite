@@ -18,6 +18,8 @@ export interface LocalHistoryManifest {
   projectKey: string
   labels: string[]
   position: number
+  /** Lightweight marker for the project generation that was saved with this journal. */
+  documentFingerprint?: string
   deltaVersion?: number
   deltas?: boolean[]
   snapshotChunks?: number[][]

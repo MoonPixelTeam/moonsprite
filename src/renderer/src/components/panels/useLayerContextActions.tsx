@@ -18,7 +18,7 @@ import { animationGroupMaskAt } from '@/core/animation'
 import { type ShortcutId } from '@/core/shortcuts'
 import { useWorkspace, type DocumentSession } from '@/store/workspace'
 import { useI18n } from '@/components/I18nProvider'
-import { PixelUtilityIcon } from '@/components/PixelUtilityIcon'
+import { PixelUtilityIcon, type PixelUtilityIconKind } from '@/components/PixelUtilityIcon'
 import { hasConfiguredLayerStyles, hasEnabledLayerStyles } from '@/core/layer-styles'
 import { createGradientMapLayerAndEdit, OPEN_GRADIENT_MAP_LAYER, type GradientMapLayerDialogTarget } from '@/components/gradient-map-layer-dialog'
 import type {
@@ -255,19 +255,20 @@ export function useLayerContextActions({
         }}
       />
       <LayerContextMenuItem
-        icon="gradientMap"
-        label={t('gradientMap.adjustmentLayer')}
-        onClick={() => {
-          void createGradientMapLayerAndEdit()
-          closeContextMenu()
-        }}
-      />
-      <LayerContextMenuItem
         icon="newFolder"
         label={t('layers.newGroup')}
         shortcut={shortcutHint('createLayerGroup')}
         onClick={() => {
           store.createLayerGroup()
+          closeContextMenu()
+        }}
+      />
+      <span className="context-menu-divider" role="separator" />
+      <LayerContextMenuItem
+        icon="gradientMap"
+        label={t('gradientMap.adjustmentLayer')}
+        onClick={() => {
+          void createGradientMapLayerAndEdit()
           closeContextMenu()
         }}
       />
@@ -415,6 +416,13 @@ export function useLayerContextActions({
 
   const contextMenuCanCreateLinkedLayer = Boolean(contextMenuLayer && !contextMenuLayer.kind && !contextMenuLayer.background)
 
+  const singleContextTarget = contextMenu?.propertyTargets.length === 1 && !contextMenu.propertySelectionIncludesUnsupported
+  const canMergeContextDown = Boolean(singleContextTarget && contextMenuLayer && session.document.layers
+    .filter(layer => (layer.groupId ?? null) === (contextMenuLayer.groupId ?? null))
+    .findIndex(layer => layer.id === contextMenuLayer.id) > 0)
+  const canMergeContextSelection = Boolean(contextMenu && !contextMenu.propertySelectionIncludesUnsupported
+    && contextMenu.propertyTargets.length > 1 && contextMenu.propertyTargets.every(target => target.kind === 'layer'))
+
   const tilemapConversionLayer = tilemapLayerDialog?.mode === 'convert' ? (layerById.get(tilemapLayerDialog.layerId) ?? null) : null
 
   const contextMenuGroupMask = contextMenu?.kind === 'group' ? animationGroupMaskAt(timeline, contextMenu.id, timeline.activeFrameId) : null
@@ -483,6 +491,16 @@ export function useLayerContextActions({
     store.setClippingMask(contextMenu.kind, contextMenu.id, !contextMenuClippingMaskEnabled)
     closeContextMenu()
   }
+  const contextSubmenu = (icon: PixelUtilityIconKind, label: string, children: ReactNode, disabled = false): ReactNode => (
+    <div className={`menu-submenu layer-new-submenu ${contextMenu && contextMenu.x + 440 > window.innerWidth - 8 ? 'open-left' : ''}`}>
+      <button type="button" className="menu-submenu-trigger" aria-haspopup="menu" disabled={disabled}>
+        <span className="layer-context-icon"><PixelUtilityIcon kind={icon} /></span>
+        <span className="menu-submenu-label">{label}</span>
+        <span className="menu-submenu-arrow" aria-hidden="true"><PixelUtilityIcon kind="right" /></span>
+      </button>
+      <div className="context-menu menu-popover menu-submenu-popover" role="menu" aria-label={label}>{children}</div>
+    </div>
+  )
   const layerContextSurfaces = (
     <>
       {layerCreateMenu &&
@@ -536,7 +554,7 @@ export function useLayerContextActions({
                   icon="linkedLayer"
                   label={t('layers.createLinkedLayer')}
                   shortcut={shortcutHint('createLinkedLayer')}
-                  disabled={!contextMenuCanCreateLinkedLayer}
+                  disabled={!singleContextTarget || !contextMenuCanCreateLinkedLayer}
                   onClick={() => {
                     store.createLinkedLayer(contextMenu.id)
                     closeContextMenu()
@@ -569,7 +587,7 @@ export function useLayerContextActions({
                       icon="image"
                       label={t('layers.convertToBackground')}
                       shortcut={shortcutHint('convertLayerToBackground')}
-                      disabled={!contextMenuCanConvertToBackground}
+                      disabled={!singleContextTarget || !contextMenuCanConvertToBackground}
                       onClick={() => {
                         store.setLayerBackground(contextMenu.id, true)
                         closeContextMenu()
@@ -589,7 +607,7 @@ export function useLayerContextActions({
                       icon="tilemap"
                       label={t('layers.convertToTilemap')}
                       shortcut={shortcutHint('convertLayerToTilemap')}
-                      disabled={!contextMenuCanConvertToTilemap}
+                      disabled={!singleContextTarget || !contextMenuCanConvertToTilemap}
                       onClick={openTilemapConversionDialog}
                     />
                   </Tooltip>
@@ -606,7 +624,7 @@ export function useLayerContextActions({
                       icon="image"
                       label={t('layers.convertToRaster')}
                       shortcut={shortcutHint('convertLayerToRaster')}
-                      disabled={contextIsAdjustment || !contextMenuCanConvertToRaster}
+                      disabled={!singleContextTarget || contextIsAdjustment || !contextMenuCanConvertToRaster}
                       onClick={() => {
                         store.rasterizeLayer(contextMenu.id)
                         closeContextMenu()
@@ -616,42 +634,30 @@ export function useLayerContextActions({
                 </div>
               </div>
             )}
-            {contextMenu.kind === 'layer' && (
+            <span className="context-menu-divider" role="separator" />
+            {contextMenu.kind === 'layer' && (<>
               <LayerContextMenuItem
                 icon="mergeDown"
-                label={t(session.selectedLayerIds.length > 1 ? 'app.menu.layer.mergeSelected' : 'app.menu.layer.mergeDown')}
-                shortcut={shortcutHint(session.selectedLayerIds.length > 1 ? 'mergeSelectedLayers' : 'mergeLayerDown')}
+                label={t('app.menu.layer.mergeDown')}
+                shortcut={shortcutHint('mergeLayerDown')}
+                disabled={!canMergeContextDown}
                 onClick={() => {
-                  session.selectedLayerIds.length > 1 ? store.mergeSelectedLayers() : store.mergeActiveLayerDown()
+                  store.mergeActiveLayerDown()
                   closeContextMenu()
                 }}
               />
-            )}
+              <LayerContextMenuItem icon="mergeDown" label={t('app.menu.layer.mergeSelected')} shortcut={shortcutHint('mergeSelectedLayers')}
+                disabled={!canMergeContextSelection} onClick={() => { store.mergeSelectedLayers(); closeContextMenu() }} />
+            </>)}
             {contextMenu.kind === 'group' && (
               <>
-                <LayerContextMenuItem
-                  icon="folderOpen"
-                  label={t('layers.expandCollapseGroup')}
-                  onClick={() => {
-                    store.toggleGroupCollapsed(contextMenu.id)
-                    closeContextMenu()
-                  }}
-                />
                 <LayerContextMenuItem
                   icon="mergeDown"
                   label={t('app.menu.layer.mergeGroup')}
                   shortcut={shortcutHint('mergeLayerGroup')}
+                  disabled={!singleContextTarget}
                   onClick={() => {
                     store.mergeSelectedGroup()
-                    closeContextMenu()
-                  }}
-                />
-                <LayerContextMenuItem
-                  icon="ungroupFolder"
-                  label={t('app.menu.layer.ungroup')}
-                  shortcut={shortcutHint('ungroupLayers')}
-                  onClick={() => {
-                    store.ungroupSelected()
                     closeContextMenu()
                   }}
                 />
@@ -661,11 +667,18 @@ export function useLayerContextActions({
               icon="mergeVisible"
               label={t('app.menu.layer.mergeVisible')}
               shortcut={shortcutHint('mergeVisibleLayers')}
+              disabled={session.document.layers.length < 2}
               onClick={() => {
                 store.mergeVisibleLayers()
                 closeContextMenu()
               }}
             />
+            {contextMenu.kind === 'group' && <>
+              <LayerContextMenuItem icon="ungroupFolder" label={t('app.menu.layer.ungroup')} shortcut={shortcutHint('ungroupLayers')}
+                disabled={!singleContextTarget} onClick={() => { store.ungroupSelected(); closeContextMenu() }} />
+              <LayerContextMenuItem icon="folderOpen" label={t('layers.expandCollapseGroup')} shortcut={shortcutHint('toggleSelectedGroupCollapsed')}
+                disabled={!singleContextTarget} onClick={() => { store.toggleGroupCollapsed(contextMenu.id); closeContextMenu() }} />
+            </>}
             <span className="context-menu-divider" role="separator" />
             <Tooltip className="layer-menu-tooltip" content={clippingMaskTooltip}>
               <LayerContextMenuItem
@@ -724,18 +737,8 @@ export function useLayerContextActions({
               />
             )}
             <span className="context-menu-divider" role="separator" />
+            {contextSubmenu('layerStyle', t('layers.layerStyle'), <>
             <LayerContextMenuItem icon="layerStyle" label={t('layers.layerStyle')} shortcut={shortcutHint('openLayerStyles')} disabled={contextIsAdjustment} onClick={openLayerStyles} />
-            {contextMenu.kind === 'layer' && (
-              <LayerContextMenuItem
-                icon="layerStyle"
-                label={t('layers.splitLayerStyles')}
-                disabled={contextIsAdjustment || !contextMenuOwnerStylesEnabled || contextMenuStyleOwner?.locked === true}
-                onClick={() => {
-                  store.splitLayerStyles(contextMenu.id)
-                  closeContextMenu()
-                }}
-              />
-            )}
             {contextMenuOwnerHasStyles && (
               <LayerContextMenuItem
                 icon={contextMenuOwnerStylesEnabled ? 'eyeOff' : 'eye'}
@@ -744,6 +747,18 @@ export function useLayerContextActions({
                 disabled={contextIsAdjustment} onClick={toggleContextLayerStyles}
               />
             )}
+            {contextMenu.kind === 'layer' && (
+              <LayerContextMenuItem
+                icon="layerStyle"
+                label={t('layers.splitLayerStyles')}
+                disabled={!singleContextTarget || contextIsAdjustment || !contextMenuOwnerStylesEnabled || contextMenuStyleOwner?.locked === true}
+                onClick={() => {
+                  store.splitLayerStyles(contextMenu.id)
+                  closeContextMenu()
+                }}
+              />
+            )}
+            <span className="context-menu-divider" role="separator" />
             <LayerContextMenuItem
               icon="copy"
               label={t('layers.copyLayerStyle')}
@@ -765,6 +780,7 @@ export function useLayerContextActions({
               disabled={contextIsAdjustment || !contextMenuSelectionHasStyles}
               onClick={clearContextLayerStyles}
             />
+            </>, contextIsAdjustment)}
             <span className="context-menu-divider" role="separator" />
             <LayerContextMenuItem
               icon="properties"

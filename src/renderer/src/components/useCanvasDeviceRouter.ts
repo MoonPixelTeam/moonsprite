@@ -9,7 +9,7 @@ import { documentDiagnosticDetail } from '../core/document-diagnostics'
 import { useEffect, useRef } from 'react'
 import type { RasterLayer } from '@shared/types-layer'
 import type { RgbaColor } from '@shared/types-color'
-import { endCanvasToolGesture } from '@/core/canvas-tool-gesture-lock'
+import { endCanvasToolGesture, isCanvasToolGestureLocked } from '@/core/canvas-tool-gesture-lock'
 import { useWorkspace, type DocumentSession } from '@/store/workspace'
 import { zoomViewAroundViewportPoint } from '@/core/view-geometry'
 import { dispatchWheelShortcutInput } from '@/core/shortcuts'
@@ -351,6 +351,9 @@ export function useCanvasDeviceRouter(ports: Ports) {
   }
 
   const pointerUp = (event: React.PointerEvent<HTMLCanvasElement>): void => {
+    // Even a filtered device packet ends its own lock. Deferred shortcuts run
+    // in a microtask, after any accepted stroke has finished synchronously.
+    endCanvasToolGesture(event.pointerId)
     if (event.pointerType === 'pen') touchNavigation.penUp()
     if (touchNavigation.up(event)) return
     if (event.pointerType === 'pen' && ports.tabletPreferences.api === 'disabled') return
@@ -371,6 +374,7 @@ export function useCanvasDeviceRouter(ports: Ports) {
   }
 
   const pointerCancel = (event: React.PointerEvent<HTMLCanvasElement>): void => {
+    endCanvasToolGesture(event.pointerId)
     if (event.pointerType === 'pen') touchNavigation.penUp()
     if (event.pointerType === 'pen' && ports.inputRef.current.auxiliaryMouseGestureActive()) return
     if (middlePenPointerRef.current === event.pointerId) middlePenPointerRef.current = null
@@ -398,7 +402,12 @@ export function useCanvasDeviceRouter(ports: Ports) {
       pressureAdapterRef.current.release(event.pointerId)
       if (pressurePointer) ports.hidePenCursor()
     })
-    endCanvasToolGesture(event.pointerId)
+  }
+
+  const pointerLostCapture = (event: React.PointerEvent<HTMLCanvasElement>): void => {
+    // Normal pointer-up releases the lock before capture. Only an unexpected
+    // loss cancels the gesture; polygon paths between clicks must stay alive.
+    if (isCanvasToolGestureLocked(event.pointerId)) pointerCancel(event)
   }
 
   const handlePointerLeave = (event: React.PointerEvent<HTMLCanvasElement>): void => {
@@ -487,5 +496,5 @@ export function useCanvasDeviceRouter(ports: Ports) {
     else ports.draw()
     ports.syncPenCursor(event)
   }
-  return { pressureAdapterRef, wheelBrushSizePreviewRef, pointerDown, pointerMove, pointerUp, pointerCancel, pointerLeave, pointerEnter }
+  return { pressureAdapterRef, wheelBrushSizePreviewRef, pointerDown, pointerMove, pointerUp, pointerCancel, pointerLostCapture, pointerLeave, pointerEnter }
 }

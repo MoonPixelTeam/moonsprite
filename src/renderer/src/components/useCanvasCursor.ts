@@ -1,3 +1,4 @@
+import { selectionHandleCursor } from './canvas-selection-handle-cursor'
 import { selectionBrushOwnsPointer } from './canvas-selection-brush-gesture'
 import { tabletBoxMove, tabletContentMove } from '@/core/tablet-interaction'
 import { useLayoutEffect } from 'react'
@@ -54,7 +55,6 @@ import {
   previewCursorTools,
   resizeCursors,
   rotationCursors,
-  selectionCornerResizeCursorForPoints,
   selectionResizeCursorForHandle,
   selectionRotationCursorForPosition,
   selectionShearCursorForDirection,
@@ -211,25 +211,15 @@ export function useCanvasCursor(ports: Ports) {
     return directionalResizeCursors[selectionResizeCursorForHandle(hit, contentRotation, view.rotation, Boolean(view.mirrored), Boolean(view.mirroredVertical))]
   }
 
-  const resizeCursorForTransform = (hit: SelectionHandle, target: SelectionRect, angle = 0, shear?: SelectionShearTransform): string => {
-    const displayedPoints = transformedSelectionControlPoints(target, angle, shear).map(ports.displayedSelectionPoint)
-    const cornerCursor = selectionCornerResizeCursorForPoints(hit, displayedPoints)
-    return cornerCursor ? directionalResizeCursors[cornerCursor] : displayedResizeCursorForHandle(hit, angle)
-  }
+  const resizeCursorForTransform = (hit: SelectionHandle, target: SelectionRect, angle = 0, shear?: SelectionShearTransform): string =>
+    selectionHandleCursor(hit, ports.liveViewRef.current, ports.displayedSelectionPoint, target, angle, shear)
 
   const resizeCursorForHit = (hit: SelectionHandle): string => {
-    const currentSession = useWorkspace.getState().sessions.find((item) => item.document.id === ports.session.document.id) ?? ports.session
-    const floating = currentSession.pendingPaste
-    // A regular marquee selection is axis-aligned. Keep its four corner
-    // cursors on the stable nw/se and ne/sw mapping; dynamic screen-space
-    // direction inference is only needed while a floating selection is being
-    // transformed.
-    if (!floating?.transformTarget) {
-      const view = ports.liveViewRef.current
-      if (Math.abs(view.rotation) < 0.000001 && !view.mirrored && !view.mirroredVertical) return resizeCursors[hit]
-      return displayedResizeCursorForHandle(hit)
-    }
-    return resizeCursorForTransform(hit, floating.transformTarget, floating.transformAngle ?? 0, floating.transformShear)
+    const session = useWorkspace.getState().sessions.find(item => item.document.id === ports.session.document.id) ?? ports.session
+    const floating = session.pendingPaste
+    return selectionHandleCursor(hit, ports.liveViewRef.current, ports.displayedSelectionPoint,
+      floating?.transformTarget, floating?.transformAngle, floating?.transformShear,
+      session.freeTransformActive ? ports.freeTransformQuadForSession(session) : null)
   }
 
   const shearCursorForTransform = (hit: SelectionShearHandle, target: SelectionRect, angle = 0, shear?: SelectionShearTransform): string => {
@@ -652,6 +642,13 @@ export function useCanvasCursor(ports: Ports) {
     ports.useLocalCursors,
     ports.session.selectionMode,
     ports.session.selection,
+    ports.session.pendingPaste?.transformTarget?.x,
+    ports.session.pendingPaste?.transformTarget?.y,
+    ports.session.pendingPaste?.transformTarget?.width,
+    ports.session.pendingPaste?.transformTarget?.height,
+    ports.session.pendingPaste?.transformAngle,
+    ports.session.pendingPaste?.transformShear?.axis,
+    ports.session.pendingPaste?.transformShear?.amount,
     ports.session.freeTransformActive,
     ports.session.freeTransformQuad?.nw.x,
     ports.session.freeTransformQuad?.nw.y,

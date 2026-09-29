@@ -27,7 +27,7 @@ export const clearCanvasToolGestures = (): void => {
   pendingShortcuts.length = 0
 }
 
-export const isCanvasToolGestureLocked = (): boolean => activePointers.size > 0
+export const isCanvasToolGestureLocked = (pointerId?: number): boolean => pointerId === undefined ? activePointers.size > 0 : activePointers.has(pointerId)
 
 export const deferCanvasShortcut = (shortcut: () => void): void => {
   pendingShortcuts.push(shortcut)

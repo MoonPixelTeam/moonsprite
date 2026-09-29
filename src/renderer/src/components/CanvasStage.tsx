@@ -739,7 +739,7 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
     get scheduleDraw() { return scheduleDraw }
   })
 
-  const { pressureAdapterRef, wheelBrushSizePreviewRef, pointerDown, pointerMove, pointerUp, pointerCancel, pointerLeave, pointerEnter } =
+  const { pressureAdapterRef, wheelBrushSizePreviewRef, pointerDown, pointerMove, pointerUp, pointerCancel, pointerLostCapture, pointerLeave, pointerEnter } =
     useCanvasDeviceRouter({
     get useLocalCursors() { return canvasPreferences.useLocalCursors },
       get inputRef() { return inputRef },
@@ -1517,7 +1517,7 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
           onPointerMove={(event) => { if (movePendingGradientEdit(event)) return; if (!tweenPreviewDrag.pointerMove(event)) pointerMove(event); rememberPaintedDrag(inputRef.current.drag, session.tool) }}
           onPointerUp={(event) => { if (endPendingGradientEdit(event)) return; rememberPaintedDrag(inputRef.current.drag, session.tool); if (!tweenPreviewDrag.pointerUp(event)) pointerUp(event) }}
           onPointerCancel={(event) => { if (cancelPendingGradientEdit(event)) return; if (!tweenPreviewDrag.pointerCancel(event)) pointerCancel(event) }}
-          onLostPointerCapture={(event) => { if (!cancelPendingGradientEdit(event)) tweenPreviewDrag.pointerCancel(event) }}
+          onLostPointerCapture={(event) => { if (!cancelPendingGradientEdit(event) && !tweenPreviewDrag.pointerCancel(event)) pointerLostCapture(event) }}
           onDoubleClick={quickSelectCell}
           onPointerLeave={pointerLeave}
           onPointerEnter={pointerEnter}

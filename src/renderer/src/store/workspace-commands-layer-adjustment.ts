@@ -1,3 +1,4 @@
+import { createConvolutionPreview } from './workspace-convolution-preview'
 import { createFilterPreview, invalidateFilterPreview, type FilterPreviewTransaction } from './workspace-filter-preview'
 import { completeDocumentChange } from './workspace-document-change'
 import type { AnimationCelSurface } from '@shared/types-animation'
@@ -140,10 +141,14 @@ const adjustmentSnapshotInvalidationRect = (session: DocumentSession, baseline: 
   return invalidation
 }
 
-export function createLayerAdjustmentCommands(context: WorkspaceCommandContext<'commitFloatingPaste' | 'mutateActive' | 'applyActiveLayerAdjustmentFromSnapshot'>, preview?: FilterPreviewTransaction): Pick<WorkspaceLayerCommands, 'beginFilterPreview' | 'applyFilterPreset' | 'applyLcdScreenFilter' | 'applyActiveLayerAdjustment' | 'captureActiveLayerAdjustmentSnapshot' | 'previewActiveLayerAdjustment' | 'applyActiveLayerAdjustmentPreviewResult' | 'restoreActiveDocumentSnapshot' | 'applyActiveLayerAdjustmentFromSnapshot'> {
+export function createLayerAdjustmentCommands(context: WorkspaceCommandContext<'commitFloatingPaste' | 'mutateActive' | 'applyActiveLayerAdjustmentFromSnapshot'>, preview?: FilterPreviewTransaction): Pick<WorkspaceLayerCommands, 'beginConvolutionPreview' | 'beginFilterPreview' | 'applyFilterPreset' | 'applyLcdScreenFilter' | 'applyActiveLayerAdjustment' | 'captureActiveLayerAdjustmentSnapshot' | 'previewActiveLayerAdjustment' | 'applyActiveLayerAdjustmentPreviewResult' | 'restoreActiveDocumentSnapshot' | 'applyActiveLayerAdjustmentFromSnapshot'> {
   const { get, set, recording } = context
   const { recordDocumentOperation } = recording
   return {
+    beginConvolutionPreview() {
+      get().commitFloatingPaste()
+      return createConvolutionPreview(context)
+    },
     beginFilterPreview() {
       get().commitFloatingPaste()
       return createFilterPreview(context, (transaction) => createLayerAdjustmentCommands(context, transaction))

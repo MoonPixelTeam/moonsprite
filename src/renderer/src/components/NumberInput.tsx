@@ -149,6 +149,11 @@ export function NumberInput({ value, onValueChange, live = false, min, max, dens
     const nextDraft = filterNumericExpression(source)
     setDraft(nextDraft)
     if (!live || !nextDraft.trim()) return
+    // Keep expressions editable while they are being typed. Evaluating after
+    // the first operand (for example `20+3`) replaces the draft value and
+    // makes it impossible to finish the expression. Plain numeric input and
+    // steppers remain live; expressions commit on Enter, blur, or form apply.
+    if (/[+\-*/()]/.test(nextDraft.slice(1))) return
     const evaluated = evaluateNumericExpression(nextDraft)
     if (evaluated === null) return
     const next = normalize(evaluated)
@@ -170,7 +175,7 @@ export function NumberInput({ value, onValueChange, live = false, min, max, dens
   }, [])
   const control = <span ref={wheelHostRef} className={`number-input number-input-${density} ${suffix ? 'has-suffix' : ''} ${className}`.trim()}>
     <span className="number-input-editor" style={suffix ? { '--number-input-value-chars': Math.max(1, draft.length) } as CSSProperties : undefined}>
-      <input {...inputProps} type="text" inputMode="decimal" role="spinbutton" aria-valuemin={min} aria-valuemax={max} aria-valuenow={typeof value === 'number' ? value : undefined} value={draft} style={inputProps.style} onFocus={onFocus} onChange={(event) => updateDraft(event.target.value)} onBlur={(event) => { commit(); onBlur?.(event) }} onKeyDown={(event) => { onKeyDown?.(event); if (event.defaultPrevented || event.key !== 'Enter') return; event.preventDefault(); const form = event.currentTarget.form; commit(); if (form) window.queueMicrotask(() => form.requestSubmit()); else event.currentTarget.blur() }} />
+      <input {...inputProps} type="text" inputMode="decimal" role="spinbutton" aria-valuemin={min} aria-valuemax={max} aria-valuenow={typeof value === 'number' ? value : undefined} value={draft} style={inputProps.style} onFocus={onFocus} onChange={(event) => updateDraft(event.target.value)} onBlur={(event) => { commit(); onBlur?.(event) }} onKeyDown={(event) => { onKeyDown?.(event); if (event.defaultPrevented || event.key !== 'Enter') return; event.preventDefault(); const expression = /[+\-*/()]/.test(draft.slice(1)); const form = event.currentTarget.form; commit(); if (expression) return; if (form) window.queueMicrotask(() => form.requestSubmit()); else event.currentTarget.blur() }} />
       {suffix && <span className="number-input-suffix" aria-hidden="true">{suffix}</span>}
     </span>
     <span className="number-input-stepper">

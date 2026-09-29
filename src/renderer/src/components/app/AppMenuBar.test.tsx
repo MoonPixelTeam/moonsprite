@@ -27,6 +27,7 @@ const extension: StoredExtension = {
 const noop = () => {}
 type Props = ComponentProps<typeof AppMenuBar>
 const defaults: Omit<Props, 'openMenu' | 'setOpenMenu'> = {
+  publishShortcutCommand: noop,
   shortcutFor: () => '', homeOpen: true, panelVisibility: {} as Props['panelVisibility'], timelineHidden: false,
   sliceOutlinesVisible: false, alignmentPreferences: { gridAlignmentEnabled: false, smartAlignmentEnabled: false, alignmentGuidesVisible: false },
   toolRailSide: 'left', advancedModeActive: false, luaScriptRunning: false, luaScripts: [], luaScriptsLoading: false,

@@ -1,3 +1,4 @@
+import { convolutionEn } from './convolution'
 import { gradientMapEn } from './gradient-map'
 import { beta7En } from './release-beta7'
 import { spriteSheetImportenUS } from './sprite-sheet-import'
@@ -6,8 +7,10 @@ import type { TranslationCatalog } from './contracts'
 import { tabletEn } from './tablet'
 
 export const enUSMessages = {
+
   ...beta7En,
   ...gradientMapEn,
+  ...convolutionEn,
   "toolOptions.temporaryBrushCaptureHint": "Temporary brush: drag to select an area, release to use; Esc to cancel",
   "preferences.paintingCursor.cross": "Simple cross",
   "preferences.paintingCursor.pixelCross": "Pixel cross",

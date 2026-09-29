@@ -443,6 +443,7 @@ export default function App() {
 
       <AppMenuBar
         openMenu={openMenu}
+        publishShortcutCommand={publishShortcutCommand}
         setOpenMenu={setOpenMenu}
         shortcutFor={shortcutFor}
         homeOpen={homeOpen}

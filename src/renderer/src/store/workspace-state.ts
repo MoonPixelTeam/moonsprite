@@ -449,6 +449,7 @@ export interface WorkspaceLayerCommands {
   previewLayerAdjustment(layerId: string, value: import('@shared/types-layer').LayerAdjustment | undefined): void
   setLayerAdjustment(layerId: string, value: import('@shared/types-layer').LayerAdjustment | undefined): void
   addLayer(gradientMap?: import('@shared/types-gradient-map').GradientMapSettings): Promise<void>
+  beginConvolutionPreview(): import('./workspace-convolution-preview').ConvolutionPreviewHandle
   beginFilterPreview(): FilterPreviewHandle
   applyFilterPreset(presetId: FilterPresetId, opacity?: number): Promise<void>
   applyLcdScreenFilter(options?: Partial<LcdScreenFilterOptions>): Promise<void>

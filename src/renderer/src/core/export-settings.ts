@@ -108,7 +108,7 @@ function normalizeExportPreset(value: unknown): ExportPreset | null {
   const directory = typeof value.directory === 'string' ? value.directory.trim() : ''
   const target = format === 'psd'
     ? 'document'
-    : value.target === 'slices' || value.target === 'selection' || value.target === 'layer' || (format !== 'gif' && value.target === 'frames') ? value.target : 'document'
+    : value.target === 'slices' || value.target === 'selection' || value.target === 'layer' || ((format !== 'gif' && format !== 'webp') && value.target === 'frames') ? value.target : 'document'
   const sliceId = typeof value.sliceId === 'string' ? value.sliceId.trim() : ''
   const layerId = typeof value.layerId === 'string' ? value.layerId.trim() : ''
   const gifLoopSectionId = typeof value.gifLoopSectionId === 'string' ? value.gifLoopSectionId.trim() : ''
@@ -131,7 +131,7 @@ function normalizeExportPreset(value: unknown): ExportPreset | null {
     ...(target === 'slices' && sliceId ? { sliceId } : {}),
     ...(target === 'layer' && layerId ? { layerId } : {}),
     ...(directory ? { directory } : {}),
-    ...(format === 'gif' || target === 'frames' ? {
+    ...((format === 'gif' || format === 'webp') || target === 'frames' ? {
       gifFrameRange,
       ...(gifFrameStart !== undefined ? { gifFrameStart } : {}),
       ...(gifFrameEnd !== undefined ? { gifFrameEnd } : {}),
@@ -152,7 +152,7 @@ function normalizeDocumentExportSettings(value: unknown): DocumentExportSettings
   const directory = typeof value.directory === 'string' ? value.directory.trim() : ''
   const target = format === 'psd'
     ? 'document'
-    : value.target === 'slices' || value.target === 'selection' || value.target === 'layer' || (format !== 'gif' && value.target === 'frames') ? value.target : 'document'
+    : value.target === 'slices' || value.target === 'selection' || value.target === 'layer' || ((format !== 'gif' && format !== 'webp') && value.target === 'frames') ? value.target : 'document'
   const sliceId = typeof value.sliceId === 'string' ? value.sliceId.trim() : ''
   const layerId = typeof value.layerId === 'string' ? value.layerId.trim() : ''
   const gifLoopSectionId = typeof value.gifLoopSectionId === 'string' ? value.gifLoopSectionId.trim() : ''
@@ -176,7 +176,7 @@ function normalizeDocumentExportSettings(value: unknown): DocumentExportSettings
     ...(target === 'layer' && layerId ? { layerId } : {}),
     ...(directory ? { directory } : {}),
     ...(presetName ? { presetName } : {}),
-    ...(format === 'gif' || target === 'frames' ? {
+    ...((format === 'gif' || format === 'webp') || target === 'frames' ? {
       gifFrameRange,
       ...(gifFrameStart !== undefined ? { gifFrameStart } : {}),
       ...(gifFrameEnd !== undefined ? { gifFrameEnd } : {}),

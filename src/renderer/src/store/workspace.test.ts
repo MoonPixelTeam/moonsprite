@@ -195,6 +195,32 @@ describe('filter layer commands', () => {
 })
 
 describe('outline shortcut commands', () => {
+  it('moves an S outline with an already floating selection', () => {
+    const document = createDocument('floating outline', 20, 10, 'rgba')
+    const layer = getActiveLayer(document)
+    writeLayerColor(document, layer, 2 * layer.width + 2, red)
+    const state = useWorkspace.getState()
+    state.addSession(document)
+    state.setSelection({ x: 1, y: 1, width: 3, height: 3 })
+    state.moveActiveSelectionWithSelectionHistory(4, 0)
+    expect(useWorkspace.getState().sessions[0].pendingPaste).not.toBeNull()
+    expect(state.outlineSelectionInside()).toBe(true)
+    const outlined = compositeDocument(document)
+    const outlineColor = useWorkspace.getState().sessions[0].primaryColor
+    state.moveActiveSelectionWithSelectionHistory(5, 0)
+    state.commitFloatingPaste()
+    expect(readLayerColorAt(document, layer, 5, 1)).toEqual(transparent)
+    expect(readLayerColorAt(document, layer, 10, 1)).toEqual(outlineColor)
+    expect(readLayerColorAt(document, layer, 11, 2)).toEqual(red)
+    state.undo()
+    expect(compositeDocument(document)).toEqual(outlined)
+    state.undo()
+    expect(readLayerColorAt(document, layer, 5, 1)).toEqual(transparent)
+    expect(readLayerColorAt(document, layer, 6, 2)).toEqual(red)
+    state.redo()
+    expect(compositeDocument(document)).toEqual(outlined)
+  })
+
   it('uses the saved software outline color for quick outline and keeps S inside the selection', () => {
     const document = createDocument('outline shortcuts', 5, 5, 'rgba')
     const layer = document.layers[0]
@@ -499,6 +525,35 @@ describe('pending canvas gesture history', () => {
 })
 
 describe('editable text layers', () => {
+
+  it.each(['outline', 'move'] as const)('preserves rasterized text during %s and undo/redo', operation => {
+    const document = createDocument('converted text edit', 64, 48, 'rgba')
+    const state = useWorkspace.getState()
+    state.addSession(document)
+    state.createTextLayer(textData('Moon'), 5, 7)
+    state.rasterizeLayer(document.activeLayerId)
+    const original = compositeDocument(document)
+    const index = original.findIndex((value, index) => index % 4 === 3 && value > 0) / 4
+    expect(index).toBeGreaterThanOrEqual(0)
+    const pixel = Math.floor(index)
+    const x = pixel % document.width
+    const y = Math.floor(pixel / document.width)
+    const color = readLayerColorAt(document, getActiveLayer(document), x, y)
+    if (operation === 'outline') {
+      state.outlineActiveSelection({ ...defaultOutlineSettings(red), position: 'outside' })
+    } else {
+      state.setSelection(layerContentBounds(document, getActiveLayer(document)))
+      state.moveActiveSelectionWithSelectionHistory(2, 0)
+      state.commitFloatingPaste()
+    }
+    expect(readLayerColorAt(document, getActiveLayer(document), x + (operation === 'move' ? 2 : 0), y)).toEqual(color)
+    const edited = compositeDocument(document)
+    expect(edited).not.toEqual(original)
+    state.undo()
+    expect(compositeDocument(document)).toEqual(original)
+    state.redo()
+    expect(compositeDocument(document)).toEqual(edited)
+  })
 
   it('keeps converted draft pixels after stale editor cleanup and undoes the first stroke separately', () => {
     const document = createDocument('converted draft', 32, 24, 'rgba')

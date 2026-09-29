@@ -24,7 +24,7 @@ import { readStoredString } from '@/core/storage'
 import { persistProjectLayerPanelState } from '@/core/layer-panel-state'
 import { captureFreeTileImageResizeState, resizeFreeTileDocumentImage, validateFreeTileImageResize } from '@/core/free-tile-document'
 import { exportDocumentFile, openDocumentFile, saveDocumentFile, type ExportOptions, type SaveAsOptions } from './document-file-service'
-import { flushLocalHistoryPersist, scheduleLocalHistoryPersist, restoreLocalHistory } from './local-history-service'
+import { flushLocalHistoryPersist, restoreLocalHistory } from './local-history-service'
 import { startDocumentCloseTask, waitForDocumentCloseTasks } from './document-close-tasks'
 import { runDocumentSave, waitForDocumentSaves } from './document-save-tasks'
 import { recordUsageEvent, recordUsageExport } from '@/platform/usage-statistics'
@@ -391,7 +391,12 @@ export function createWorkspaceDocumentIoCommands({ get, set, recording, service
           saved.document.dirty = !fullySaved
           set({ sessions: [...get().sessions] })
           recordRecentProject(result.filePath, saved.document.name)
-          scheduleLocalHistoryPersist(window.moonSprite, saved)
+          // Persist the journal generation immediately after a successful
+          // project write. A delayed journal from the previous save must not
+          // overwrite this freshly decoded project on the next open.
+          void flushLocalHistoryPersist(window.moonSprite, saved, true).catch((historyError) => {
+            console.error('MoonSprite local history save failed after project save', historyError)
+          })
           const latest = get().sessions.find((item) => item.document.id === documentId)
           if (latest && latest.contentRevision === result.revision && !latest.document.dirty) {
             removeSavedRecovery(latest.recoveryOriginId ?? documentId)
