@@ -1,3 +1,4 @@
+import { isWebTrial } from '@/core/product-target'
 import { resolvePendingGradientForIo } from './pending-gradient-io'
 import { publishEditorEvent } from '@/core/extension-editor-events'
 import { openImageSequencePaths } from './image-sequence-import'
@@ -321,7 +322,7 @@ export function createWorkspaceDocumentIoCommands({ get, set, recording, service
         if (!session) return false
         persistProjectLayerPanelState(session)
         const savedTarget = documentSaveTarget(session.document)
-        if (!saveAs && !session.document.dirty && savedTarget && (loadEditorPreferences().saveOriginalFormat || savedTarget.format === 'moonsprite')) {
+        if (!isWebTrial() && !saveAs && !session.document.dirty && savedTarget && (loadEditorPreferences().saveOriginalFormat || savedTarget.format === 'moonsprite')) {
           if (session.recoveryOriginId) removeSavedRecovery(session.recoveryOriginId)
           set({ message: tr('workspace.save.done') })
           return true
@@ -399,13 +400,13 @@ export function createWorkspaceDocumentIoCommands({ get, set, recording, service
           })
           const latest = get().sessions.find((item) => item.document.id === documentId)
           if (latest && latest.contentRevision === result.revision && !latest.document.dirty) {
-            removeSavedRecovery(latest.recoveryOriginId ?? documentId)
+            if (!isWebTrial()) removeSavedRecovery(latest.recoveryOriginId ?? documentId)
           } else {
             // A save that raced with newer edits should finish immediately; recovery
             // protection continues in the background instead of extending Ctrl+S.
             void get().autosaveDirty().catch(() => undefined)
           }
-          set({ message: fullySaved ? tr('workspace.save.done') : tr('workspace.save.newerChanges') })
+          set({ message: isWebTrial() ? (fullySaved ? '工程已交给浏览器下载，请确认下载完成。' : '工程已交给浏览器下载，但仍有新修改，请再次保存。') : fullySaved ? tr('workspace.save.done') : tr('workspace.save.newerChanges') })
           endSaveProgress()
           publishEditorEvent('document.saved', documentId, { fullySaved })
           recordUsageEvent('save')
@@ -569,7 +570,7 @@ export function createWorkspaceDocumentIoCommands({ get, set, recording, service
         return
       }
       let discardClosedRecovery = !session.document.dirty && !preserveOpenedRecovery
-      const choice = await resolveDocumentClose(session.document.dirty, () => get().requestDialog({ title: tr('workspace.unsaved.title'), message: tr('workspace.unsaved.message', { name: session.document.name }), detail: tr('workspace.unsaved.detail'), choices: [{ id: 'cancel', label: tr('common.cancel'), tone: 'quiet' }, { id: 'discard', label: tr('app.discard'), tone: 'danger' }, { id: 'save', label: tr('common.save'), tone: 'primary' }] }), async () => {
+      const choice = await resolveDocumentClose(session.document.dirty, () => get().requestDialog({ title: tr('workspace.unsaved.title'), message: tr('workspace.unsaved.message', { name: session.document.name }), detail: isWebTrial() ? '保存会下载 .moonsprite 工程，请确认下载完成。' : tr('workspace.unsaved.detail'), choices: [{ id: 'cancel', label: tr('common.cancel'), tone: 'quiet' }, { id: 'discard', label: tr('app.discard'), tone: 'danger' }, { id: 'save', label: tr('common.save'), tone: 'primary' }] }), async () => {
         get().setActive(id)
         return get().saveActive()
       })

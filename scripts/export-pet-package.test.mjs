@@ -763,7 +763,7 @@ test('condition slots are configurable, stay attached to the chosen pet and rend
  const id=meta[0].triggerSlots[0].id;listener({type:'ui-edit-trigger',petId:'cat',slotId:id});await vm.runInContext('operations',sandbox);assert.equal(view.nodes.at(-1).children[0].value,'tool.changed');
  listener({type:'ui-confirm-trigger',petId:'cat',values:{'trigger-cooldown':0}});await vm.runInContext('operations',sandbox);assert.equal(meta[0].triggerSlots.length,1);assert.equal(meta[0].triggerSlots[0].id,id);assert.equal(meta[0].triggerSlots[0].event,'tool.changed');assert.equal(meta[0].triggerSlots[0].cooldownMs,0);
  listener({type:'ui-edit-trigger',petId:'cat',slotId:id});await vm.runInContext('operations',sandbox);
- const repeatFields=view.nodes.at(-1).children.filter(node=>node.id.startsWith('trigger-repeat-'));assert.equal(repeatFields.length,2);assert.ok(repeatFields.every(node=>node.type==='select'&&node.visibleWhen['trigger-event'].startsWith('pet.')));
+ const repeatFields=view.nodes.at(-1).children.filter(node=>node.id.startsWith('trigger-repeat-'));assert.equal(repeatFields.length,4);assert.ok(repeatFields.every(node=>node.type==='select'&&['pet.hover','pet.dragging','animation.started','idle'].includes(node.visibleWhen['trigger-event'])));
  listener({type:'ui-confirm-trigger',petId:'cat',values:{'trigger-event':'pet.hover','trigger-repeat-pet.hover':'repeat'}});await vm.runInContext('operations',sandbox);assert.equal(meta[0].triggerSlots[0].repeat,true);
  listener({type:'ui-edit-trigger',petId:'cat',slotId:id});await vm.runInContext('operations',sandbox);
  listener({type:'ui-confirm-trigger',petId:'cat',values:{'trigger-repeat-pet.hover':'once'}});await vm.runInContext('operations',sandbox);assert.equal(meta[0].triggerSlots[0].repeat,false);
@@ -1096,4 +1096,16 @@ for(const missing of [false,true])test('restore defaults preserves custom pets a
  const meta=stored.get('pet-sprites');assert.equal(meta[1],custom);assert.deepEqual(JSON.parse(JSON.stringify(meta[0])),{id:'builtin',name:'Test',frameWidth:2,frameHeight:2,frameCount:1,idleFrames:[0],source:'builtin'});
  assert.deepEqual(Array.from(stored.get('shownPets')),['custom']);assert.deepEqual(stored.get('position:custom'),{x:700});assert.equal(stored.get('sprite.original'),'pixels');assert.equal(stored.get('position:builtin'),null);
  assert.equal(stored.get('preferences').breakMinutes,60);assert.equal(stored.get('preferences').savedText,'');assert.equal(stored.get('preferences').enabled,true);assert.equal(openedSettings,1);assert.ok(!closed.includes('pet-custom'));
+});
+
+
+test('idle and animation playback loops stop when their condition ends', () => {
+ const played=[];
+ const sandbox=vm.createContext({Date,pet:{triggerSlots:[{id:'I',event:'idle',repeat:true,cooldownMs:0},{id:'A',event:'animation.started',repeat:true,cooldownMs:0}],animations:{I:[1],A:[2]},idleFrames:[0]},play:(frames,repeat)=>played.push([Array.from(frames),repeat]),document:{hidden:false},petElement:{addEventListener:()=>{}},addEventListener:()=>{},setInterval:()=>{}});
+ const start=generated.petWindowSource.indexOf('let draggingAnimation='),end=generated.petWindowSource.indexOf('const scaleOf=',start);
+ vm.runInContext(generated.petWindowSource.slice(start,end),sandbox);
+ vm.runInContext("triggerAnimation('idle');markActivity();triggerAnimation('animation.started');markActivity()",sandbox);
+ assert.deepEqual(played,[[[1],true],[[0],true],[[2],true]]);
+ vm.runInContext("triggerAnimation('animation.stopped')",sandbox);
+ assert.deepEqual(played.at(-1),[[0],true]);
 });

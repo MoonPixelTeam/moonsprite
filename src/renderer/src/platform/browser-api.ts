@@ -1,3 +1,4 @@
+import { loadBrowserPetExtension } from './browser-builtin-extensions'
 import normalWorkspaceLayout from '@shared/workspace-normal.json'
 import type { StoredPalette } from '@shared/types-files'
 import type { ExtensionListing, ExtensionPackagePreview, StoredExtension } from '@shared/types-extensions'
@@ -209,7 +210,7 @@ export const createBrowserApi = (): MoonSpriteApi => {
   runLuaScript: async () => { throw new Error(tr('platform.browser.readUnsupported')) },
   dispatchLuaScriptDialog: async () => { throw new Error(tr('platform.browser.readUnsupported')) },
   closeLuaScriptSession: async () => {},
-  listExtensions: async (): Promise<ExtensionListing> => ({ extensions: [] }),
+  listExtensions: async (): Promise<ExtensionListing> => ({ extensions: [(await loadBrowserPetExtension()).extension] }),
   inspectExtensionPackage: async (): Promise<ExtensionPackagePreview> => { throw new Error(tr('platform.browser.readUnsupported')) },
   installExtension: async (): Promise<StoredExtension> => { throw new Error(tr('platform.browser.readUnsupported')) },
   chooseExtensionPackage: async (): Promise<string | null> => { throw new Error(tr('platform.browser.readUnsupported')) },
@@ -217,8 +218,8 @@ export const createBrowserApi = (): MoonSpriteApi => {
   uninstallExtension: async () => { throw new Error(tr('platform.browser.readUnsupported')) },
   openExtensionFolder: async () => {},
   readExtensionSettingsEntry: async () => { throw new Error(tr('platform.browser.readUnsupported')) },
-  readExtensionRuntimeEntry: async () => { throw new Error(tr('platform.browser.readUnsupported')) },
-  readExtensionRuntimeResource: async () => { throw new Error(tr('platform.browser.readUnsupported')) },
+  readExtensionRuntimeEntry: async (id) => (await loadBrowserPetExtension()).entry(id),
+  readExtensionRuntimeResource: async (id, resourceId) => (await loadBrowserPetExtension()).resource(id, resourceId),
   showExtensionWindow: async () => { throw new Error(tr('platform.browser.readUnsupported')) },
   setExtensionWindowVisible: async () => {},
   closeExtensionWindows: async () => {},

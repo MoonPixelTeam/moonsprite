@@ -1,3 +1,4 @@
+import { isWebTrial } from '@/core/product-target'
 import { exportAnimatedImage } from '@/core/webp-animation'
 import { chooseExportLocation } from '@/platform/export-location'
 import type { DocumentSlice, SpriteDocument } from '@shared/types-document'
@@ -341,8 +342,8 @@ export function saveDocumentFile(request: SaveDocumentRequest): Promise<SaveDocu
     }
     const saveOriginalFormat = loadEditorPreferences().saveOriginalFormat
     const originalTarget = documentSaveTarget(initial.document)
-    let forceProject = !request.options && !saveOriginalFormat && originalTarget?.format !== 'moonsprite'
-    if (forceProject && originalTarget && !request.saveAs) {
+    let forceProject = isWebTrial() || (!request.options && !saveOriginalFormat && originalTarget?.format !== 'moonsprite')
+    if (!isWebTrial() && forceProject && originalTarget && !request.saveAs) {
       if (!await request.lifecycle?.onProjectSaveRequested?.()) return null
       if (!request.getDocument()) return null
     }

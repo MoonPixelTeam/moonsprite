@@ -37,3 +37,4 @@
   .help-shortcuts > div { grid-template-columns: minmax(0, 1fr); gap: 4px; }
   .help-shortcuts dd { text-align: left; }
 }
+

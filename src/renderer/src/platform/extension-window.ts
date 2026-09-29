@@ -1,3 +1,4 @@
+import { isWebTrial } from '@/core/product-target'
 import { invoke } from '@tauri-apps/api/core'
 import { emitTo, listen } from '@tauri-apps/api/event'
 import { cursorPosition, getCurrentWindow, Window } from '@tauri-apps/api/window'
@@ -43,11 +44,17 @@ export const listenForExtensionHostGeometry = async (callback: () => void): Prom
   return remove
 }
 
-export const listenForExtensionRuntimeWindowMessage = async (callback: (message: ExtensionRuntimeWindowMessage) => void): Promise<() => void> =>
-  listen<ExtensionRuntimeWindowMessage>('extension:window-message', (event) => callback(event.payload), { target: 'main' })
+export const listenForExtensionRuntimeWindowMessage = async (callback: (message: ExtensionRuntimeWindowMessage) => void): Promise<() => void> => {
+  if (!isWebTrial()) return listen<ExtensionRuntimeWindowMessage>('extension:window-message', (event) => callback(event.payload), { target: 'main' })
+  const listener = (event: Event) => callback((event as CustomEvent<ExtensionRuntimeWindowMessage>).detail)
+  window.addEventListener('moonsprite:browser-extension-message', listener)
+  return () => window.removeEventListener('moonsprite:browser-extension-message', listener)
+}
 
-export const emitExtensionRuntimeWindowMessage = async (message: ExtensionRuntimeWindowMessage): Promise<void> =>
-  emitTo('main', 'extension:window-message', message)
+export const emitExtensionRuntimeWindowMessage = async (message: ExtensionRuntimeWindowMessage): Promise<void> => {
+  if (!isWebTrial()) return emitTo('main', 'extension:window-message', message)
+  window.dispatchEvent(new CustomEvent('moonsprite:browser-extension-message', { detail: message }))
+}
 
 export const startExtensionWindowDrag = async (): Promise<void> => {
   await invoke('start_extension_window_drag')
@@ -58,6 +65,7 @@ export const extensionWindowBounds = (): Promise<ExtensionWindowBounds> =>
 
 /** Logical coordinates relative to the host outer origin, like window bounds. */
 export const extensionPointerPosition = async (): Promise<{ x: number; y: number } | null> => {
+  if (isWebTrial()) return null
   const main = await Window.getByLabel('main')
   if (!main) return null
   const [point, outer, inner, size, scale] = await Promise.all([
@@ -96,6 +104,7 @@ export const closeCurrentExtensionWindow = async (): Promise<void> => {
 }
 
 export const extensionHostBounds = async (): Promise<ExtensionWindowBounds> => {
+  if (isWebTrial()) return { x: 0, y: 0, width: window.innerWidth, height: window.innerHeight }
   const main = await Window.getByLabel('main')
   if (!main) throw new Error('主窗口不存在。')
   const [inner, outer, size, scale] = await Promise.all([main.innerPosition(), main.outerPosition(), main.innerSize(), main.scaleFactor()])

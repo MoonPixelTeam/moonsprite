@@ -43,12 +43,12 @@ export function HelpDialog({ mode = 'help', onClose, onOpenShortcuts, onOpenDiag
   ] as const
   const openAction = (action: () => void) => { onClose(); action() }
 
-  return createPortal(<div className="modal-backdrop" onKeyDown={event => {
+  return createPortal(<div className="modal-backdrop modal-overlay-backdrop" role="presentation" onPointerDown={event => { if (event.target === event.currentTarget) onClose() }} onKeyDown={event => {
     if (event.key === 'Escape') { event.stopPropagation(); onClose() }
   }}>
     <ModalShell storageKey={`usage-${mode}`} className="help-modal" defaultWidth={920} defaultHeight={720}
       minWidth={360} minHeight={340} maxWidth={1100} maxHeight={900} fitContent={false}
-      role="dialog" aria-labelledby="usage-help-title">
+      role="dialog" aria-modal="true" aria-labelledby="usage-help-title">
       <DialogHeader titleId="usage-help-title" title={mode === 'tips' ? text('使用技巧', 'Tips & tricks') : text('使用帮助', 'User guide')}
         onClose={onClose} closeLabel={t('common.close')} />
       <div className="help-search">
@@ -89,5 +89,5 @@ export function HelpDialog({ mode = 'help', onClose, onOpenShortcuts, onOpenDiag
         <Button variant="primary" onClick={onClose}>{t('common.close')}</Button>
       </footer>
     </ModalShell>
-  </div>, document.body)
+  </div>, document.querySelector('.app-shell') ?? document.body)
 }

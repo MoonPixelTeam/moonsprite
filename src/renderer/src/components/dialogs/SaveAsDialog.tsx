@@ -1,3 +1,4 @@
+import { isWebTrial } from '@/core/product-target'
 import { chooseExportLocation } from '@/platform/export-location'
 import { useState } from 'react'
 import { ThemedSelect } from '@/components/ThemedSelect'
@@ -39,7 +40,7 @@ export function SaveAsDialog({ initialName, initialFormat, initialDirectory, loc
     { value: 'ase', label: t('saveAs.format.ase') },
     { value: 'aseprite', label: t('saveAs.format.aseprite') }
   ]
-  const [form, setForm] = useState<SaveAsOptions>({ name: initialName, format: initialFormat, scalePercent: 100, directory: initialDirectory })
+  const [form, setForm] = useState<SaveAsOptions>({ name: initialName, format: isWebTrial() ? 'moonsprite' : initialFormat, scalePercent: 100, directory: initialDirectory })
   const [saving, setSaving] = useState(false)
   const [pathMenuOpen, setPathMenuOpen] = useState(false)
   const chooseDirectory = async (directory: string): Promise<void> => {
@@ -59,22 +60,22 @@ export function SaveAsDialog({ initialName, initialFormat, initialDirectory, loc
   const selectedDirectory = form.directory || initialDirectory
   return <div className="modal-backdrop modal-overlay-backdrop" role="presentation" onPointerDown={(event) => { if (event.target === event.currentTarget && !saving) onClose() }}>
     <ModalShell as="form" storageKey="save-as-v2" defaultWidth={520} minWidth={420} minHeight={0} maxWidth={640} maxHeight={520} fitContent fitContentKey={`${form.format}:${form.includeTimelapse ?? false}`} resizable={false} className="save-as-modal export-modal" onSubmit={(event) => { event.preventDefault(); void submit() }}>
-      <DialogHeader eyebrow={t('saveAs.eyebrow')} title={t('saveAs.title')} closeLabel={t('common.close')} closeDisabled={saving} onClose={onClose} />
+      <DialogHeader eyebrow={t('saveAs.eyebrow')} title={isWebTrial() ? '保存工程' : t('saveAs.title')} closeLabel={t('common.close')} closeDisabled={saving} onClose={onClose} />
       <div className="modal-body component-scrollbar export-modal-body">
-        <FormField className="export-file-field" label={t('saveAs.fileName')} hint={<span className="export-selected-directory" title={selectedDirectory}>{t('saveAs.selectedDirectory', { path: selectedDirectory })}</span>}>
+        <FormField className="export-file-field" label={t('saveAs.fileName')} hint={isWebTrial() ? <span>由浏览器下载，保存位置以浏览器设置为准。</span> : <span className="export-selected-directory" title={selectedDirectory}>{t('saveAs.selectedDirectory', { path: selectedDirectory })}</span>}>
           <div className="export-file-control">
             <TextInput autoFocus aria-label={t('saveAs.fileName')} value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} />
-            <FileLocationPicker directory={selectedDirectory} defaultDirectory={initialDirectory} localGalleryDirectory={localGalleryDirectory} projectRootDirectory={projectRootDirectory} recentPathKind="save" open={pathMenuOpen} onOpenChange={setPathMenuOpen} onChooseDirectory={chooseDirectory} onSelectDirectory={(directory) => setForm((current) => ({ ...current, directory }))} disabled={saving} />
+            {!isWebTrial() && <FileLocationPicker directory={selectedDirectory} defaultDirectory={initialDirectory} localGalleryDirectory={localGalleryDirectory} projectRootDirectory={projectRootDirectory} recentPathKind="save" open={pathMenuOpen} onOpenChange={setPathMenuOpen} onChooseDirectory={chooseDirectory} onSelectDirectory={(directory) => setForm((current) => ({ ...current, directory }))} disabled={saving} />}
           </div>
         </FormField>
         <div className="export-primary-fields">
-          <FormField label={t('saveAs.format')}><ThemedSelect value={form.format} groups={[{ label: t('saveAs.formatGroup'), options: saveAsFormatOptions }]} label={t('saveAs.formatGroup')} onChange={(format) => setForm({ ...form, format })} /></FormField>
+          <FormField label={t('saveAs.format')}><ThemedSelect value={form.format} groups={[{ label: t('saveAs.formatGroup'), options: isWebTrial() ? saveAsFormatOptions.filter(option => option.value === 'moonsprite') : saveAsFormatOptions }]} label={t('saveAs.formatGroup')} onChange={(format) => setForm({ ...form, format })} /></FormField>
         </div>
         {flattened && <FormField className="export-scale-field" label={form.format === 'svg' ? t('app.export.scale') : t('app.export.scalePercent')}><div className="scale-control"><NumberInput min={1} max={form.format === 'svg' ? 64 : 6400} value={form.format === 'svg' ? form.scalePercent / 100 : form.scalePercent} suffix={form.format === 'svg' ? 'x' : '%'} onValueChange={(value) => setForm((current) => ({ ...current, scalePercent: current.format === 'svg' ? Math.max(100, Math.round(value * 100)) : value }))} /><div className="scale-presets" aria-label={form.format === 'svg' ? t('app.export.scalePresets') : t('app.export.scalePercentPresets')}>{exportScalePresets.map((scale) => <button type="button" key={scale} className={form.scalePercent === scale ? 'selected' : ''} onClick={() => setForm((current) => ({ ...current, scalePercent: scale }))}>{form.format === 'svg' ? `${scale / 100}x` : `${scale}%`}</button>)}</div></div></FormField>}
         {form.format === 'moonsprite' && <CheckboxField className="save-as-timelapse-checkbox" checked={form.includeTimelapse ?? false} label={t('saveAs.includeTimelapse')} onChange={(includeTimelapse) => setForm({ ...form, includeTimelapse })} />}
         {flattened && <p className="modal-note save-as-format-warning">{t('saveAs.flattenedWarning')}</p>}
       </div>
-      <footer><button type="button" className="quiet-button" disabled={saving} onClick={onClose}>{t('common.cancel')}</button><button type="submit" className="primary-button" disabled={saving || !form.name.trim()}><PixelUtilityIcon kind="save" />{t('common.save')}</button></footer>
+      <footer>{isWebTrial() && <a className="quiet-button" href="https://moonsprite.art/" target="_blank" rel="noopener noreferrer">桌面版：图片与动画导出 ↗</a>}<button type="button" className="quiet-button" disabled={saving} onClick={onClose}>{t('common.cancel')}</button><button type="submit" className="primary-button" disabled={saving || !form.name.trim()}><PixelUtilityIcon kind="save" />{t('common.save')}</button></footer>
     </ModalShell>
   </div>
 }

@@ -116,44 +116,44 @@
   --theme-onion-next: #2979ff;
   --theme-symmetry-axis: #0000ff;
   --ui-body-font-scale: 1;
-  --ui-font-small: calc(11px * var(--ui-body-font-scale));
-  --ui-line-small: calc(15px * var(--ui-body-font-scale));
-  --ui-font-regular: calc(13px * var(--ui-body-font-scale));
-  --ui-line-regular: calc(21px * var(--ui-body-font-scale));
-  --ui-space-1: 2px;
-  --ui-space-2: 4px;
-  --ui-space-3: 6px;
-  --ui-space-4: 8px;
-  --ui-space-5: 12px;
-  --ui-icon-button-size: 26px;
-  --ui-command-button-height: 30px;
-  --ui-field-height: 34px;
-  --ui-dialog-button-height: 34px;
-  --ui-emphasized-control-height: 38px;
-  --ui-toggle-height: 35px;
-  --ui-nav-row-height: 32px;
-  --ui-menu-row-height: 30px;
-  --ui-menu-icon-column: 22px;
+  --ui-font-small: calc(11px * var(--ui-body-font-scale) * var(--browser-ui-scale, 1));
+  --ui-line-small: calc(15px * var(--ui-body-font-scale) * var(--browser-ui-scale, 1));
+  --ui-font-regular: calc(13px * var(--ui-body-font-scale) * var(--browser-ui-scale, 1));
+  --ui-line-regular: calc(21px * var(--ui-body-font-scale) * var(--browser-ui-scale, 1));
+  --ui-space-1: calc(2px * var(--browser-ui-scale, 1));
+  --ui-space-2: calc(4px * var(--browser-ui-scale, 1));
+  --ui-space-3: calc(6px * var(--browser-ui-scale, 1));
+  --ui-space-4: calc(8px * var(--browser-ui-scale, 1));
+  --ui-space-5: calc(12px * var(--browser-ui-scale, 1));
+  --ui-icon-button-size: calc(26px * var(--browser-ui-scale, 1));
+  --ui-command-button-height: calc(30px * var(--browser-ui-scale, 1));
+  --ui-field-height: calc(34px * var(--browser-ui-scale, 1));
+  --ui-dialog-button-height: calc(34px * var(--browser-ui-scale, 1));
+  --ui-emphasized-control-height: calc(38px * var(--browser-ui-scale, 1));
+  --ui-toggle-height: calc(35px * var(--browser-ui-scale, 1));
+  --ui-nav-row-height: calc(32px * var(--browser-ui-scale, 1));
+  --ui-menu-row-height: calc(30px * var(--browser-ui-scale, 1));
+  --ui-menu-icon-column: calc(22px * var(--browser-ui-scale, 1));
   /* Keep shortcut labels from competing with command names at larger text sizes. */
   --ui-menu-popover-width: min(calc(100vw - 16px), max(230px, calc(230px * var(--ui-body-font-scale))));
-  --ui-tool-options-height: 43px;
+  --ui-tool-options-height: calc(43px * var(--browser-ui-scale, 1));
   --ui-panel-header-height: var(--ui-tool-options-height);
   --ui-dialog-header-height: var(--ui-panel-header-height);
   --ui-dialog-content-gap: var(--ui-space-4);
   --ui-dialog-padding: var(--ui-space-5);
-  --ui-dialog-label-width: 88px;
+  --ui-dialog-label-width: calc(88px * var(--browser-ui-scale, 1));
   --ui-motion-fast: 0ms;
   --ui-motion-normal: 0ms;
   --ui-motion-panel: 0ms;
   --ui-control-inline-padding: var(--ui-space-4);
-  --ui-tool-icon-normal-size: 22px;
-  --ui-tool-icon-large-size: 32px;
-  --ui-tool-button-normal-size: 38px;
-  --ui-tool-button-large-size: 44px;
+  --ui-tool-icon-normal-size: calc(22px * var(--browser-ui-scale, 1));
+  --ui-tool-icon-large-size: calc(32px * var(--browser-ui-scale, 1));
+  --ui-tool-button-normal-size: calc(38px * var(--browser-ui-scale, 1));
+  --ui-tool-button-large-size: calc(44px * var(--browser-ui-scale, 1));
   --app-window-titlebar-height: 32px;
-  --app-menu-bar-height: 38px;
-  --app-document-tabs-height: 34px;
-  --app-statusbar-height: 27px;
+  --app-menu-bar-height: calc(38px * var(--browser-ui-scale, 1));
+  --app-document-tabs-height: calc(34px * var(--browser-ui-scale, 1));
+  --app-statusbar-height: calc(27px * var(--browser-ui-scale, 1));
   --tool-rail-icon-size: var(--ui-tool-icon-large-size);
   --tool-rail-utility-icon-size: 22px;
   --tool-rail-button-size: var(--ui-tool-button-large-size);
@@ -2566,7 +2566,7 @@ body.animation-copy-drag, body.animation-copy-drag * { cursor: var(--cursor-copy
 /* Once a display color is present, restore the leading inset for every layer row together. */
 .layers-panel:has(.layer-color-stripe) .layer-row { padding-left: calc(8px + var(--layer-depth, 0) * 14px); }
 .group-thumb { display: grid; place-items: center; color: var(--theme-text-muted); background: var(--theme-raised-surface); }
-.layer-name { display: grid; align-self: stretch; align-content: center; gap: 0; min-width: 0; padding-left: var(--ui-space-3); overflow: hidden; font-size: calc(15px * var(--ui-body-font-scale)); }
+.layer-name { display: grid; align-self: stretch; align-content: center; gap: 0; min-width: 0; padding-left: var(--ui-space-3); overflow: hidden; font-size: calc(15px * var(--ui-body-font-scale) * var(--browser-ui-scale, 1)); }
 .layer-name > span { overflow: hidden; line-height: var(--ui-line-regular); text-overflow: ellipsis; white-space: nowrap; }
 .layer-row.background-layer .layer-name > span { text-decoration: underline; text-decoration-thickness: 1px; text-decoration-skip-ink: none; text-underline-offset: 0; }
 .layer-name small { color: var(--theme-icon-muted); font-size: var(--ui-font-small); line-height: var(--ui-line-small); }
@@ -4595,7 +4595,7 @@ html body .panel-actions-popup {
 /* Keep pixel-icon artwork at its 100% raster size while the surrounding UI
    uses 125%. CSS zoom participates in layout, unlike a transform that leaves
    a fractional-size visual inside its original box. Do not scale nested SVGs twice. */
-:root[data-ui-scale="1.25"] :is(.pixel-asset-icon, .pixel-utility-icon, .pixel-shape-icon, .pixel-drawing-time-icon, .pixel-layer-count-icon) { zoom: 0.8; }
+:root:not([data-product-target="web-trial"])[data-ui-scale="1.25"] :is(.pixel-asset-icon, .pixel-utility-icon, .pixel-shape-icon, .pixel-drawing-time-icon, .pixel-layer-count-icon) { zoom: 0.8; }
 
 /* Square preset panels follow side-dock width; flexible siblings fill the rest. */
 .inspector-panel-group.workspace-square-panel { flex: 0 0 auto !important; aspect-ratio: 1 / 1; width: 100%; min-height: 0 !important; }
@@ -4730,3 +4730,26 @@ html body .panel-actions-popup {
 .convolution-channels > button { min-width: 0; padding: 0; height: var(--ui-field-height); }
 .convolution-modal > footer { justify-content: flex-start; }
 
+
+:root[data-product-target="web-trial"] .app-shell { --app-window-titlebar-height: 0px; }
+:root[data-product-target="web-trial"] .app-window-titlebar { visibility: hidden; overflow: hidden; min-height: 0; border: 0; }
+
+:root[data-product-target="web-trial"] .start-screen-development-notice { max-width: 100%; white-space: nowrap; flex-basis: auto; font-weight: 500; }
+.trial-pinned-label { color: #2979FF; font-size: var(--ui-font-regular); white-space: nowrap; }
+
+/* Trial home has two actions, so the announcement must occupy the flexible third row. */
+:root[data-product-target="web-trial"] .start-actions { grid-template-rows: auto auto minmax(0, 1fr); }
+:root[data-product-target="web-trial"] .start-screen-news { container-type: inline-size; }
+:root[data-product-target="web-trial"] .trial-pinned-announcement p { display: block; }
+@media (max-width: 760px) {
+  :root[data-product-target="web-trial"] .start-actions { grid-template-rows: auto; }
+  :root[data-product-target="web-trial"] .start-screen-news { min-height: 150px; }
+}
+
+.trial-home-empty-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: var(--ui-space-3); margin-top: var(--ui-space-3); }
+.start-screen-state .trial-home-empty-actions > button { display: inline-flex; align-items: center; justify-content: center; height: var(--ui-command-button-height); margin: 0; }
+
+.trial-recovery-status { margin: 0; padding: var(--ui-space-3); color: var(--theme-text-muted); border-bottom: 1px solid var(--theme-border); font-size: var(--ui-font-small); }
+.trial-recovery-status[role="alert"] { color: var(--theme-danger); }
+
+.trial-library-note { margin: 0; padding: var(--ui-space-2); color: var(--theme-text-muted); font-size: var(--ui-font-small); }

@@ -1,3 +1,4 @@
+import { isWebTrial } from '@/core/product-target'
 import type { FilterChoice } from '@/store/workspace-filter-preview'
 import { ExportDialogHost, type ExportDialogHandle } from '@/components/app/ExportDialogHost'
 import { useCallback, useEffect, useRef, useState } from 'react'
@@ -84,7 +85,7 @@ export function useAppDocumentDialogs({
   const spriteSheetImportSession = workspace.sessions.find(item => item.document.id === spriteSheetImportSourceId) ?? null
   const [spriteSheetExportSourceId, setSpriteSheetExportSourceId] = useState<string | null>(null)
   const exportDialogRef = useRef<ExportDialogHandle>(null)
-  const openExport = (target?: NonNullable<ExportOptions['target']>): void => exportDialogRef.current?.open(target)
+  const openExport = (target?: NonNullable<ExportOptions['target']>): void => { if (isWebTrial()) openSaveAs(); else exportDialogRef.current?.open(target) }
   const [saveAsOpen, setSaveAsOpen] = useState(false)
   const spriteSheetExportOpen = spriteSheetExportSourceId !== null
   const spriteSheetExportSession = spriteSheetExportSourceId
@@ -124,7 +125,7 @@ export function useAppDocumentDialogs({
         const id = await workspace.chooseSpriteSheetImportSource()
         if (id) setSpriteSheetImportSourceId(id)
       }} />}
-      {spriteSheetExportOpen && spriteSheetExportSession && (
+      {!isWebTrial() && spriteSheetExportOpen && spriteSheetExportSession && (
         <SpriteSheetExportDialog
           key={spriteSheetExportSession.document.id}
           session={spriteSheetExportSession}

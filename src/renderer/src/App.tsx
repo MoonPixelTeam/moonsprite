@@ -1,3 +1,5 @@
+import { observeBrowserFullscreen, toggleBrowserFullscreen } from '@/platform/browser-fullscreen'
+import { isWebTrial } from '@/core/product-target'
 import { useAppInformationDialogs } from '@/components/app/useAppInformationDialogs'
 import { ImageSequenceFields } from './components/dialogs/ImageSequenceFields'
 import { Button } from './components/Button'
@@ -59,9 +61,12 @@ export default function App() {
   const [openMenu, setOpenMenu] = useState<string | null>(null)
   const [homeOpen, setHomeOpen] = useState(false)
   const [fullscreen, setFullscreen] = useState(false)
+  useEffect(() => {
+    if (isWebTrial()) return observeBrowserFullscreen(setFullscreen)
+  }, [])
   const session = workspace.sessions.find((item) => item.document.id === workspace.activeId) ?? null
   const toggleFullscreen = () => {
-    void toggleAppWindowFullscreen().then(setFullscreen).catch((error) => workspace.setMessage(error instanceof Error ? error.message : String(error)))
+    void (isWebTrial() ? toggleBrowserFullscreen() : toggleAppWindowFullscreen()).then(setFullscreen).catch((error) => workspace.setMessage(error instanceof Error ? error.message : String(error)))
   }
   const {
     paneOnlyDocumentIds,
@@ -167,6 +172,7 @@ export default function App() {
     runSaveActive,
     openFilesAndShowDocument,
     openGalleryProject,
+    openTrialExample,
     openHomeImage,
     restoreRecoveryAndShowDocument,
     openProjectFolder,
@@ -356,7 +362,7 @@ export default function App() {
       exportDocument: openExport,
       exportAllFrames: () => openExport('frames'),
       exportSpriteSheet: () => {
-        if (session) setSpriteSheetExportSourceId(session.document.id)
+        if (isWebTrial()) openSaveAs(); else if (session) setSpriteSheetExportSourceId(session.document.id)
       },
       openProjectFolder: () => {
         if (session) openProjectFolder(session.document.id)
@@ -480,7 +486,7 @@ export default function App() {
         onExportAllFrames={() => openExport('frames')}
         onImportSpriteSheet={openSpriteSheetImport}
         onExportSpriteSheet={() => {
-          if (session) setSpriteSheetExportSourceId(session.document.id)
+          if (isWebTrial()) openSaveAs(); else if (session) setSpriteSheetExportSourceId(session.document.id)
         }}
         onOpenTimelapse={() => setTimelapseOpen(true)}
         onOpenProjectInfo={() => setProjectInfoOpen(true)}
@@ -687,6 +693,8 @@ export default function App() {
             onOpen={() => void openFilesAndShowDocument()}
             onOpenProject={openGalleryProject}
             onOpenImage={openHomeImage}
+            onOpenSample={() => void openTrialExample()}
+            shortcutFor={shortcutFor} onOpenShortcuts={() => setShortcutOpen(true)} onOpenDiagnostics={() => { void openRuntimeDiagnosticLogs().catch(error => workspace.setMessage(error instanceof Error ? error.message : String(error))) }}
             onRestoreRecovery={restoreRecoveryAndShowDocument}
             onOpenLatestRelease={openLatestRelease}
           />

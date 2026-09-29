@@ -1,3 +1,4 @@
+import { isWebTrial } from '@/core/product-target'
 import { pixelSource } from '@/components/pixel-source'
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent, type WheelEvent as ReactWheelEvent } from 'react'
 import { createPortal } from 'react-dom'
@@ -437,7 +438,7 @@ export function BrushLibraryPanel({ session, controller, docked = false, onDockD
     switch (id) {
       case 'importBrushImage': void controller.importFromPicker(); setAddOpen(false); break
       case 'createBrushFolder': openFolderDialog(); break
-      case 'openBrushFolder': void window.moonSprite.openBrushFolder(); setManageOpen(false); break
+      case 'openBrushFolder': if (isWebTrial()) { useWorkspace.getState().setMessage('网页版没有本地笔刷文件夹。'); break }; void window.moonSprite.openBrushFolder(); setManageOpen(false); break
       case 'refreshBrushLibrary': void controller.refresh(); setManageOpen(false); break
       case 'brushLibraryParentFolder': if (currentFolderId !== null) navigateToFolder(currentParentFolderId); break
       case 'brushSwatchSmall': chooseSwatchSize('small'); break
@@ -490,6 +491,7 @@ export function BrushLibraryPanel({ session, controller, docked = false, onDockD
           onClick={() => navigateToFolder(currentParentFolderId)}
         ><PixelUtilityIcon kind="left" /><span>{t('brush.backToParentFolder')}</span></button>
       </div>}
+      {isWebTrial() && <p className="trial-library-note">导入的笔刷和文件夹仅保留在本次访问中，刷新后需重新导入。</p>}
       <div className="brush-library-directory component-scrollbar" data-brush-folder-id={folderKey(currentFolderId)}>
         {visibleFolders.length > 0 && <div className="brush-folder-list">{visibleFolders.map(renderFolder)}</div>}
         <div className={`brush-swatch-grid ${visibleFolders.length === 0 && displayedBrushes.length === 0 ? 'is-empty' : ''}`}>
@@ -510,7 +512,7 @@ export function BrushLibraryPanel({ session, controller, docked = false, onDockD
   {manageOpen && createPortal(<div ref={managePopoverRef} className="context-menu brush-manage-popover" role="menu" aria-label={t('brush.manage')} style={managePosition}>
     {BRUSH_SWATCH_SIZE_ORDER.map((size) => <button key={size} type="button" className="context-menu-item" role="menuitemradio" aria-checked={swatchSize === size} title={t('palette.pixels', { count: PALETTE_SWATCH_PIXELS[size] })} onClick={() => chooseSwatchSize(size)}><span className="menu-check">{swatchSize === size && <PixelUtilityIcon kind="check" />}</span><span>{t(BRUSH_SWATCH_SIZE_LABEL_KEYS[size])}</span></button>)}
     <span className="context-menu-divider" />
-    <button type="button" className="context-menu-item" role="menuitem" onClick={() => { void window.moonSprite.openBrushFolder(); setManageOpen(false) }}><PixelUtilityIcon kind="folderOpen" /><span>{t('brush.openFolder')}</span></button>
+    {!isWebTrial() && <button type="button" className="context-menu-item" role="menuitem" onClick={() => { void window.moonSprite.openBrushFolder(); setManageOpen(false) }}><PixelUtilityIcon kind="folderOpen" /><span>{t('brush.openFolder')}</span></button>}
     <button type="button" className="context-menu-item" role="menuitem" onClick={() => { void controller.refresh(); setManageOpen(false) }}><PixelUtilityIcon kind="refresh" /><span>{t('common.refresh')}</span></button>
   </div>, document.body)}
   {folderContext && createPortal(<div ref={folderContextRef} className="context-menu brush-folder-context-menu" role="menu" style={{ left: folderContext.x, top: folderContext.y }}>

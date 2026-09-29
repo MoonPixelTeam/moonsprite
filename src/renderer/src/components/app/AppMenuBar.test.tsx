@@ -90,3 +90,21 @@ it('offers sprite-sheet import from File even without an open document', () => {
   expect(onImport).toHaveBeenCalledOnce()
   expect(setOpenMenu).toHaveBeenCalledWith(null)
 })
+
+
+it('uses trial branding, a website return button and project saving instead of export menus', () => {
+  vi.stubEnv('VITE_MOONSPRITE_TARGET', 'web-trial')
+  try {
+    const view = render(<Menu />)
+    expect(view.getByText('MOONSPRITE-TRY')).toBeTruthy()
+    const back = view.getByRole('button', { name: '返回 MoonSprite 官网' })
+    expect(back.nextElementSibling?.getAttribute('aria-label')).toBe('app.menu.file.new')
+    expect(view.getByRole('button', { name: '保存工程' })).toBeTruthy()
+    fireEvent.click(view.getByRole('button', { name: 'app.menu.file' }))
+    expect(view.queryByText('app.menu.file.export')).toBeNull()
+    expect(view.queryByText('app.menu.file.exportSpriteSheet')).toBeNull()
+    expect(view.queryByText('app.menu.file.scripts')).toBeNull()
+    expect(view.queryByText('app.menu.file.openFolder')).toBeNull()
+    expect(view.queryByText('rollback.title')).toBeNull()
+  } finally { vi.unstubAllEnvs() }
+})

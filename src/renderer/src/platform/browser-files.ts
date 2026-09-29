@@ -1,3 +1,4 @@
+import { reportBrowserRecovery } from './browser-recovery-status'
 import type { MoonSpriteApi } from '@shared/types-platform'
 
 type Recovery = { id: string; name: string; data: Uint8Array; updatedAt: string }
@@ -50,6 +51,7 @@ export function createBrowserFiles() {
   const save = async (defaultPath = 'Untitled.moonsprite', extension?: string) => {
     let name = defaultPath.split(/[\\/]/).pop() || 'Untitled.moonsprite'
     if (extension && !name.toLowerCase().endsWith(`.${extension}`)) name = `${name.replace(/\.[^.]+$/, '')}.${extension}`
+    if (!name.toLowerCase().endsWith('.moonsprite')) throw new Error('试用版仅支持保存 .moonsprite 工程。 / The trial only saves .moonsprite projects.')
     return { canceled: false, filePath: `downloads/${name}` }
   }
   const readBinary = async (path: string): Promise<Uint8Array> => {
@@ -58,6 +60,7 @@ export function createBrowserFiles() {
     return new Uint8Array(await file.arrayBuffer())
   }
   const writeBinaryAtomic = async (path: string, data: Uint8Array): Promise<void> => {
+    if (!path.toLowerCase().endsWith('.moonsprite')) throw new Error('试用版仅支持保存 .moonsprite 工程。 / The trial only saves .moonsprite projects.')
     const blob = new Blob([new Uint8Array(data)], { type: 'application/octet-stream' })
     const url = URL.createObjectURL(blob)
     try {
@@ -87,7 +90,14 @@ export function createBrowserFiles() {
     fileExists: async (path: string) => files.has(path),
     readRecovery,
     writeRecovery: async (id: string, name: string, data: Uint8Array) => {
-      await browserStorage((store) => store.put({ id, name, data, updatedAt: new Date().toISOString() } satisfies Recovery, `recovery:${id}`))
+      const updatedAt = new Date().toISOString()
+      try {
+        await browserStorage((store) => store.put({ id, name, data, updatedAt } satisfies Recovery, `recovery:${id}`))
+        reportBrowserRecovery(updatedAt)
+      } catch (error) {
+        reportBrowserRecovery(null, '浏览器恢复写入失败，可能空间不足。请立即下载保存工程。')
+        throw error
+      }
     },
     deleteRecovery: async (id: string) => { await browserStorage((store) => store.delete(`recovery:${id}`)) },
     listRecoveries: async (_retentionDays: number) => {

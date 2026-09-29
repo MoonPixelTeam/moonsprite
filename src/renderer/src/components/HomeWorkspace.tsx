@@ -1,4 +1,8 @@
-import { useEffect, useLayoutEffect, useRef, useState, type PointerEvent as ReactPointerEvent, type WheelEvent as ReactWheelEvent } from 'react'
+import type { ShortcutId } from '@/core/shortcuts'
+import { BrowserRecoveryStatus } from '@/components/BrowserRecoveryStatus'
+import { Button } from '@/components/Button'
+import { isWebTrial } from '@/core/product-target'
+import { lazy, Suspense, useEffect, useLayoutEffect, useRef, useState, type PointerEvent as ReactPointerEvent, type WheelEvent as ReactWheelEvent } from 'react'
 import { createPortal } from 'react-dom'
 import { Plus, TriangleAlert } from 'lucide-react'
 import type { ColorMode } from '@shared/types-raster'
@@ -30,6 +34,7 @@ import { ModalShell } from '@/components/ModalShell'
 import { HomeSectionManagerDialog } from '@/components/HomeSectionManagerDialog'
 import { Tooltip } from '@/components/Tooltip'
 
+const LazyHomeHelpDialog = lazy(() => import('@/components/dialogs/HelpDialog').then(({ HelpDialog }) => ({ default: HelpDialog })))
 const sessionBannerDefinitions = shuffleHomeBanners(homeBannerDefinitions)
 
 interface ProjectCard extends RecentProject {
@@ -52,6 +57,10 @@ interface BannerProjectCard {
 }
 
 interface HomeWorkspaceProps {
+  shortcutFor(id: ShortcutId): string
+  onOpenShortcuts(): void
+  onOpenDiagnostics(): void
+  onOpenSample(): void
   onNew(): void
   onOpen(): void
   onOpenProject(filePath: string, keepHomeOpen?: boolean): Promise<boolean>
@@ -215,10 +224,10 @@ interface ProjectFileRowProps {
 function ProjectFileRow({ project, concealed, reorderable, dragging, removePending, onOpen, onOpenInBackground, onPin, onDelete, onRemoveFromRecent, onOpenFolder, onReorderStart }: ProjectFileRowProps) {
   const { locale, t } = useI18n()
   const invalid = Boolean(project.error)
-  return <article className={`recent-file-row ${concealed ? 'concealed' : ''} ${reorderable ? 'reorderable reorderable-list-row' : ''} ${invalid ? 'invalid' : ''} ${project.pinned ? 'pinned' : ''} ${onDelete ? 'deletable' : ''} ${onRemoveFromRecent ? 'removable' : ''} ${dragging ? 'dragging' : ''} ${removePending ? 'remove-pending' : ''}`} data-recent-path={project.filePath} onContextMenu={(event) => { event.preventDefault(); onOpenFolder() }}>
+  return <article className={`recent-file-row ${concealed ? 'concealed' : ''} ${reorderable ? 'reorderable reorderable-list-row' : ''} ${invalid ? 'invalid' : ''} ${project.pinned ? 'pinned' : ''} ${onDelete ? 'deletable' : ''} ${onRemoveFromRecent ? 'removable' : ''} ${dragging ? 'dragging' : ''} ${removePending ? 'remove-pending' : ''}`} data-recent-path={project.filePath} onContextMenu={isWebTrial() ? undefined : (event) => { event.preventDefault(); onOpenFolder() }}>
     <button type="button" className="recent-file-open" data-moon-tooltip-disabled onPointerDown={(event) => { if (event.button === 1) event.preventDefault() }} onClick={onOpen} onAuxClick={(event) => { if (event.button !== 1) return; event.preventDefault(); event.stopPropagation(); onOpenInBackground() }}>
       <span className="recent-file-preview">{concealed ? <PixelUtilityIcon kind="eyeOff" /> : project.previewUrl ? <img src={project.previewUrl} alt="" /> : invalid ? <TriangleAlert size={21} /> : <PixelUtilityIcon kind="image" />}</span>
-      <span className="recent-file-copy"><strong>{concealed ? t('home.hiddenProject') : project.name}</strong><small>{concealed ? t('home.hiddenProjectDetail') : invalid ? t('home.previewReadFailed') : project.width && project.height ? `${project.width} x ${project.height} · ${t(`colorMode.${project.colorMode ?? 'rgba'}`)}` : project.previewLoading ? t('home.readingPreview') : formatProjectType(project.filePath)}</small><span>{concealed ? '********' : project.filePath}</span></span>
+      <span className="recent-file-copy"><strong>{concealed ? t('home.hiddenProject') : project.name}</strong><small>{concealed ? t('home.hiddenProjectDetail') : invalid ? t('home.previewReadFailed') : project.width && project.height ? `${project.width} x ${project.height} · ${t(`colorMode.${project.colorMode ?? 'rgba'}`)}` : project.previewLoading ? t('home.readingPreview') : formatProjectType(project.filePath)}</small><span>{concealed ? '********' : isWebTrial() ? '本次访问可用' : project.filePath}</span></span>
       <time>{concealed ? '--/-- --:--' : formatTime(project.lastOpened, locale)}</time>
     </button>
     <button className="recent-file-pin" type="button" onClick={onPin} aria-label={t(project.pinned ? 'home.unpinProject' : 'home.pinProject', { name: project.name })} title={t(project.pinned ? 'home.unpin' : 'home.pin')}><PixelUtilityIcon kind="pin" /></button>
@@ -283,7 +292,7 @@ function RecoveryFileRow({ record, retentionDays, onRestore, onDiscard }: { reco
   return <article className="recent-file-row recovery-file-row">
     <button type="button" className="recent-file-open" onClick={onRestore} title={t('home.restoreProject', { name: record.name })}>
       <span className="recent-file-preview">{preview.previewUrl ? <img src={preview.previewUrl} alt="" /> : preview.error ? <TriangleAlert size={21} /> : <span className="save-progress-animation recovery-preview-spinner" aria-hidden="true" />}</span>
-      <span className="recent-file-copy"><strong>{t('home.recoveryTitle', { name: record.name })}</strong><small>{previewLabel}</small><span>{t('home.lastSaved', { time: formatTime(updatedAt, locale) })}</span><span className="recovery-file-expiry">{t('home.recoveryDaysRemaining', { days: remainingDays })}</span></span>
+      <span className="recent-file-copy"><strong>{t('home.recoveryTitle', { name: record.name })}</strong><small>{previewLabel}</small><span>{t('home.lastSaved', { time: formatTime(updatedAt, locale) })}</span><span className="recovery-file-expiry">{isWebTrial() ? '保存在此浏览器中，请另行下载备份' : t('home.recoveryDaysRemaining', { days: remainingDays })}</span></span>
       <time>{formatTime(updatedAt, locale)}</time>
     </button>
     <button type="button" className="recent-file-discard" onClick={onDiscard} aria-label={t('home.discardRecoveryAria', { name: record.name })} title={t('home.discardRecoveryHint')}><PixelUtilityIcon kind="delete" /></button>
@@ -455,11 +464,11 @@ function HomeSectionTabs({ entries, activeId, ariaLabel, moreLabel, onSelect }: 
   </div>
 }
 
-export function HomeWorkspace({ onNew, onOpen, onOpenProject, onOpenImage, onRestoreRecovery, onOpenLatestRelease }: HomeWorkspaceProps) {
+export function HomeWorkspace({ shortcutFor, onOpenShortcuts, onOpenDiagnostics, onOpenSample, onNew, onOpen, onOpenProject, onOpenImage, onRestoreRecovery, onOpenLatestRelease }: HomeWorkspaceProps) {
   const { locale, t } = useI18n()
-  const [homeSections, setHomeSections] = useState(getHomeSections)
+  const [homeSections, setHomeSections] = useState<HomeSectionDefinition[]>(() => isWebTrial() ? [{ id: 'recent', kind: 'recent' }, { id: 'recovery', kind: 'recovery' }] : getHomeSections())
   const [fileDisplayFormats, setFileDisplayFormats] = useState(getHomeFileDisplayFormats)
-  const [section, setSection] = useState(() => loadHomeSection(getHomeSections()))
+  const [section, setSection] = useState(() => isWebTrial() ? 'recent' : loadHomeSection(getHomeSections()))
   const [projectLayout, setProjectLayout] = useState<HomeProjectLayout>(loadHomeProjectLayout)
   const [recentProjectsHidden, setRecentProjectsHidden] = useState(loadRecentProjectsHidden)
   const [projects, setProjects] = useState<ProjectCard[]>([])
@@ -477,6 +486,7 @@ export function HomeWorkspace({ onNew, onOpen, onOpenProject, onOpenImage, onRes
   const reorderRef = useRef<{ filePath: string; pointerId: number; outsideList: boolean; captureTarget: HTMLElement | null } | null>(null)
   const [draggingProjectPath, setDraggingProjectPath] = useState('')
   const [removePendingProjectPath, setRemovePendingProjectPath] = useState('')
+  const [homeHelp, onOpenHelp] = useState<'help' | 'tips' | null>(null)
   const [languageDialogOpen, setLanguageDialogOpen] = useState(false)
   const [sectionManagerOpen, setSectionManagerOpen] = useState(false)
   const [recoveryRetentionDays, setRecoveryRetentionDays] = useState(() => loadEditorPreferences().recoveryRetentionDays)
@@ -522,9 +532,9 @@ export function HomeWorkspace({ onNew, onOpen, onOpenProject, onOpenImage, onRes
   }
 
   const sectionName = (target: HomeSectionDefinition): string => {
-    if (target.kind === 'recent') return t('home.section.recent')
+    if (target.kind === 'recent') return isWebTrial() ? '本次访问' : t('home.section.recent')
     if (target.kind === 'gallery') return t('home.section.galleryTab')
-    if (target.kind === 'recovery') return t('home.section.recovery')
+    if (target.kind === 'recovery') return isWebTrial() ? '浏览器恢复' : t('home.section.recovery')
     return target.name
   }
 
@@ -574,7 +584,7 @@ export function HomeWorkspace({ onNew, onOpen, onOpenProject, onOpenImage, onRes
       try {
         let galleryProjects: Awaited<ReturnType<typeof window.moonSprite.listGalleryProjects>>['projects'] = []
         try {
-          galleryProjects = (await window.moonSprite.listGalleryProjects()).projects
+          if (!isWebTrial()) galleryProjects = (await window.moonSprite.listGalleryProjects()).projects
         } catch {
           // Bundled image banners remain available if the optional gallery is unavailable.
         }
@@ -637,7 +647,13 @@ export function HomeWorkspace({ onNew, onOpen, onOpenProject, onOpenImage, onRes
         setSectionDirectory(listing.directoryPath)
         records = listing.projects.map((project) => ({ filePath: project.filePath, fileName: project.fileName, name: project.fileName, lastOpened: project.modifiedAt, pinned: pins.has(project.filePath) }))
           .sort((left, right) => Number(right.pinned) - Number(left.pinned) || right.lastOpened - left.lastOpened)
-      } else records = getRecentProjects()
+      } else {
+        records = getRecentProjects()
+        if (isWebTrial()) {
+          const available = await Promise.all(records.map(record => window.moonSprite.fileExists(record.filePath)))
+          records = records.filter((_, index) => available[index])
+        }
+      }
       const visibleRecords = records.filter((record) => matchesHomeFileDisplayFormats(record.filePath, fileDisplayFormats))
       if (generation !== loadGeneration.current) return
       setHasFilesHiddenByFormat(visibleRecords.length < records.length)
@@ -974,13 +990,13 @@ export function HomeWorkspace({ onNew, onOpen, onOpenProject, onOpenImage, onRes
   const emptyState = hasFilesHiddenByFormat && activeSection.kind !== 'recovery'
     ? { icon: <PixelUtilityIcon kind="image" />, title: t('home.emptyFileFilter'), detail: t('home.emptyFileFilterDetail') }
     : activeSection.kind === 'gallery'
-    ? { icon: <PixelUtilityIcon kind="image" />, title: t('home.emptyGallery'), detail: t('home.emptyGalleryDetail') }
+    ? { icon: <PixelUtilityIcon kind="image" />, title: t('home.emptyGallery'), detail: isWebTrial() ? '浏览器无法读取本地画廊，请点击“打开精灵”选择工程或图片。' : t('home.emptyGalleryDetail') }
     : activeSection.kind === 'recovery'
-      ? { icon: <PixelUtilityIcon kind="refresh" />, title: t('home.emptyRecovery'), detail: t('home.emptyRecoveryDetail') }
+      ? { icon: <PixelUtilityIcon kind="refresh" />, title: t('home.emptyRecovery'), detail: isWebTrial() ? '有可恢复的作品时会显示在这里。恢复数据不是备份，请及时下载保存工程。' : t('home.emptyRecoveryDetail') }
       : activeSection.kind === 'folder'
         ? { icon: <PixelUtilityIcon kind="folder" />, title: t('home.emptyFolder'), detail: t('home.emptyFolderDetail') }
-        : { icon: <PixelUtilityIcon kind="image" />, title: t('home.emptyRecent'), detail: t('home.emptyRecentDetail') }
-  const visibleHomeSections = homeSections.filter((candidate) => candidate.kind !== 'recovery' || recoveryRecords.length > 0)
+        : { icon: <PixelUtilityIcon kind="image" />, title: isWebTrial() ? '开始你的第一幅作品' : t('home.emptyRecent'), detail: isWebTrial() ? '新建画布，或导入工程与图片。这里只列出本次访问中可重新打开的文件；刷新后请重新导入。' : t('home.emptyRecentDetail') }
+  const visibleHomeSections = homeSections.filter((candidate) => isWebTrial() || candidate.kind !== 'recovery' || recoveryRecords.length > 0)
   const homeSectionTabEntries: HomeSectionTabEntry[] = visibleHomeSections.map((candidate) => {
     const label = sectionName(candidate)
     return {
@@ -999,7 +1015,7 @@ export function HomeWorkspace({ onNew, onOpen, onOpenProject, onOpenImage, onRes
         <button className={`start-screen-mark ${logoSpinActive ? 'logo-spin-playing' : ''}`} type="button" aria-label="MoonSprite" onClick={triggerLogoSpin}>
           <img className="start-screen-mark-logo" src={moonspriteLogo} alt="" />
         </button>
-        <div><h1>MOONSPRITE</h1><p>{t('home.tagline')}</p></div>
+        <div><h1>{isWebTrial() ? 'MOONSPRITE-TRY' : 'MOONSPRITE'}</h1><p>{isWebTrial() ? '浏览器在线试用 · 像素绘画与动画' : t('home.tagline')}</p></div>
         <div className="start-screen-meta">
           <div className="start-screen-links" aria-label={t('home.linksAria')}>
             <Tooltip content={<><strong>{t('home.qq')}</strong><span>{t('home.qqDescription')}</span></>}>
@@ -1046,9 +1062,11 @@ export function HomeWorkspace({ onNew, onOpen, onOpenProject, onOpenImage, onRes
       <div className="start-screen-layout">
         <aside className="start-actions" aria-label={t('home.actionsAria')}>
           <button className="start-action primary-button" type="button" onClick={onNew}><Plus size={20} /><span><strong>{t('home.newSprite')}</strong><small>{t('home.newSpriteDetail')}</small></span></button>
-          <button className="start-action quiet-button" type="button" onClick={onOpen}><PixelUtilityIcon kind="folderOpen" /><span><strong>{t('home.openSprite')}</strong><small>{t('home.openSpriteDetail')}</small></span></button>
-          <button className="start-action quiet-button" type="button" onClick={() => { void window.moonSprite.openProjectBackupFolder().catch((error) => setMessage(error instanceof Error ? error.message : t('home.openProjectBackupsFailed'))) }}><PixelUtilityIcon kind="save" /><span><strong>{t('home.projectBackups')}</strong><small>{t('home.openProjectBackups')}</small></span></button>
+          <button className="start-action quiet-button" type="button" onClick={onOpen}><PixelUtilityIcon kind="folderOpen" /><span><strong>{isWebTrial() ? '导入工程 / 图片' : t('home.openSprite')}</strong><small>{isWebTrial() ? '选择本机文件，在浏览器中编辑' : t('home.openSpriteDetail')}</small></span></button>
+          {!isWebTrial() && <button className="start-action quiet-button" type="button" onClick={() => { void window.moonSprite.openProjectBackupFolder().catch((error) => setMessage(error instanceof Error ? error.message : t('home.openProjectBackupsFailed'))) }}><PixelUtilityIcon kind="save" /><span><strong>{t('home.projectBackups')}</strong><small>{t('home.openProjectBackups')}</small></span></button>}
           <section className="start-screen-news" aria-label={t('home.news')}>
+            {isWebTrial() && <Button onClick={onOpenSample}>打开工程示例</Button>}
+
             <article className="home-steam-card" aria-label={`${t('home.steam')} · MoonSprite`}>
               <header className="home-steam-card-heading">
                 <div><strong>MoonSprite</strong><span>{t('home.steam')}</span></div>
@@ -1060,7 +1078,21 @@ export function HomeWorkspace({ onNew, onOpen, onOpenProject, onOpenImage, onRes
               </div>
               <button type="button" className="quiet-button home-steam-card-action" onClick={() => openExternalLink(homeExternalLinks.steam)}>{t('home.steamWishlist')}</button>
             </article>
-            {homeAnnouncementsForDisplay(latestReleases).map((release) => <button key={`${release.version}:${release.publishedAt}`} className="start-screen-news-item" type="button" onClick={() => onOpenLatestRelease?.(release)} aria-label={t('home.newsOpenAria', { version: release.version })}>
+            {isWebTrial() && <button className="start-screen-news-item trial-pinned-announcement" type="button" onClick={() => onOpenLatestRelease?.()} aria-label="在线试用说明（置顶）">
+              <span className="start-screen-news-title"><strong>在线试用说明</strong><span className="trial-pinned-label">置顶</span></span>
+              <p>仅支持保存 .moonsprite 工程；离开页面前请下载保存。点击查看完整试用说明。</p>
+            </button>}
+            {isWebTrial() && <>
+              <button className="start-screen-news-item" type="button" onClick={() => onOpenHelp('help')}>
+                <span className="start-screen-news-title"><strong>使用帮助</strong></span>
+                <p>了解绘画工具、图层、动画与工程操作。</p>
+              </button>
+              <button className="start-screen-news-item" type="button" onClick={() => onOpenHelp('tips')}>
+                <span className="start-screen-news-title"><strong>使用技巧</strong></span>
+                <p>探索快捷操作、笔刷技巧与像素创作方法。</p>
+              </button>
+            </>}
+            {!isWebTrial() && homeAnnouncementsForDisplay(latestReleases).map((release) => <button key={`${release.version}:${release.publishedAt}`} className="start-screen-news-item" type="button" onClick={() => onOpenLatestRelease?.(release)} aria-label={t('home.newsOpenAria', { version: release.version })}>
               <span className="start-screen-news-title"><strong>{t('home.newsReleaseTitle', { version: release.version })}</strong><time dateTime={release.publishedAt}>{formatReleaseDate(release.publishedAt, locale)}</time></span>
               <p>{t(release.homeSummary)}</p>
             </button>)}
@@ -1070,25 +1102,27 @@ export function HomeWorkspace({ onNew, onOpen, onOpenProject, onOpenImage, onRes
           <header className="recent-files-header">
             <HomeSectionTabs entries={homeSectionTabEntries} activeId={section} ariaLabel={t('home.sectionsAria')} moreLabel={t('home.moreSections')} onSelect={selectSection} />
             <div className="recent-file-tools">
-              {(activeSection.kind === 'gallery' || activeSection.kind === 'folder') && <button className="icon-button" type="button" onClick={openSectionFolder} aria-label={t('home.openSectionFolder')} title={sectionDirectory || (activeSection.kind === 'folder' ? activeSection.directoryPath : t('home.openGalleryFolder'))}><PixelUtilityIcon kind="folderOpen" /></button>}
+              {!isWebTrial() && (activeSection.kind === 'gallery' || activeSection.kind === 'folder') && <button className="icon-button" type="button" onClick={openSectionFolder} aria-label={t('home.openSectionFolder')} title={sectionDirectory || (activeSection.kind === 'folder' ? activeSection.directoryPath : t('home.openGalleryFolder'))}><PixelUtilityIcon kind="folderOpen" /></button>}
               {activeSection.kind === 'recent' && <button className="icon-button" type="button" aria-pressed={recentProjectsHidden} onClick={toggleRecentProjectsHidden} aria-label={t(recentProjectsHidden ? 'home.showRecentProjects' : 'home.hideRecentProjects')} title={t(recentProjectsHidden ? 'home.showRecentProjects' : 'home.hideRecentProjects')}><PixelUtilityIcon kind={recentProjectsHidden ? 'eyeOff' : 'eye'} /></button>}
               <button className="icon-button" type="button" onClick={() => void loadSection(activeSection)} disabled={loading || activeSection.kind === 'recovery'} aria-label={t('home.refreshSection')} title={t('common.refresh')}><PixelUtilityIcon kind="refresh" /></button>
               {activeSection.kind === 'recent' && <button className="icon-button" type="button" onClick={clearRecent} disabled={!projects.some((project) => !project.pinned)} aria-label={t('home.clearUnpinned')} title={t('home.clearUnpinned')}><PixelUtilityIcon kind="clearRecords" /></button>}
-              <button className="icon-button" type="button" onClick={() => setSectionManagerOpen(true)} aria-label={t('home.manageSections')} title={t('home.manageSections')}><PixelUtilityIcon kind="properties" /></button>
+              {!isWebTrial() && <button className="icon-button" type="button" onClick={() => setSectionManagerOpen(true)} aria-label={t('home.manageSections')} title={t('home.manageSections')}><PixelUtilityIcon kind="properties" /></button>}
             </div>
           </header>
+          {isWebTrial() && <BrowserRecoveryStatus />}
           <div ref={recentListRef} className={`recent-files-list component-scrollbar home-project-layout-${projectLayout}${draggingProjectPath ? ' recent-files-list-reordering' : ''}`}>
             {loading && <div className="start-screen-state"><PixelUtilityIcon kind="refresh" className="spin" /><span>{t('home.readingProjects')}</span></div>}
             {!loading && loadError && <div className="start-screen-state error"><TriangleAlert size={22} /><strong>{t('home.readSectionFailed')}</strong><span>{loadError}</span><button className="quiet-button" type="button" onClick={() => void loadSection(activeSection)}>{t('home.retry')}</button></div>}
-            {!loading && !loadError && ((activeSection.kind !== 'recovery' && projects.length === 0) || (activeSection.kind === 'recovery' && recoveryRecords.length === 0)) && <div className="start-screen-state">{emptyState.icon}<strong>{emptyState.title}</strong><span>{emptyState.detail}</span></div>}
+            {!loading && !loadError && ((activeSection.kind !== 'recovery' && projects.length === 0) || (activeSection.kind === 'recovery' && recoveryRecords.length === 0)) && <div className="start-screen-state">{emptyState.icon}<strong>{emptyState.title}</strong><span>{emptyState.detail}</span>{isWebTrial() && activeSection.kind === 'recent' && <div className="trial-home-empty-actions"><Button onClick={onOpenSample}>打开工程示例</Button><Button variant="primary" onClick={onNew}>新建画布</Button><Button onClick={onOpen}>导入工程 / 图片</Button></div>}</div>}
             {!loading && !loadError && activeSection.kind === 'recovery' && recoveryRecords.map((record) => <RecoveryFileRow key={record.id} record={record} retentionDays={recoveryRetentionDays} onRestore={() => void onRestoreRecovery(record.id)} onDiscard={() => void discardRecovery(record.id)} />)}
              {!loading && !loadError && activeSection.kind !== 'recovery' && projects.map((project) => <ProjectFileRow key={project.filePath} project={project} concealed={activeSection.kind === 'recent' && recentProjectsHidden} reorderable={activeSection.kind === 'recent'} dragging={draggingProjectPath === project.filePath} removePending={removePendingProjectPath === project.filePath} onOpen={() => void openProject(project)} onOpenInBackground={() => void openProject(project, true)} onPin={() => pinProject(project.filePath)} onDelete={activeSection.kind === 'gallery' ? () => void deleteGalleryProject(project) : undefined} onRemoveFromRecent={activeSection.kind === 'recent' && project.error ? () => removeFromRecent(project) : undefined} onOpenFolder={() => openProjectFolder(project)} onReorderStart={startRecentReorder} />)}
           </div>
         </section>
       </div>
-      <footer className="start-screen-footer"><span className="start-screen-build-status"><span>MoonSprite</span><strong>{APP_CHANNEL_LABEL}</strong></span><small className="start-screen-development-notice">{t('home.internalUseOnly')}{' '}{t('home.doNotDistribute')}</small></footer>
+      <footer className="start-screen-footer"><span className="start-screen-build-status"><span>MoonSprite</span><strong>{APP_CHANNEL_LABEL}</strong></span><small className="start-screen-development-notice">{isWebTrial() ? '试用版 · 仅保存 .moonsprite' : <>{t('home.internalUseOnly')}{' '}{t('home.doNotDistribute')}</>}</small></footer>
     </div>
+    {homeHelp && <Suspense fallback={null}><LazyHomeHelpDialog key={homeHelp} mode={homeHelp} onClose={() => onOpenHelp(null)} shortcutFor={shortcutFor} onOpenShortcuts={() => { onOpenHelp(null); onOpenShortcuts() }} onOpenDiagnostics={onOpenDiagnostics} /></Suspense>}
     {languageDialogOpen && <HomeLanguageDialog current={locale} onApply={applyLanguage} onClose={() => setLanguageDialogOpen(false)} />}
-    {sectionManagerOpen && <HomeSectionManagerDialog activeSectionId={section} fileDisplayFormats={fileDisplayFormats} sections={homeSections} onAddFolder={addHomeFolderSection} onChange={updateHomeSections} onClose={() => setSectionManagerOpen(false)} onFileDisplayFormatsChange={updateFileDisplayFormats} onRemove={removeHomeFolderSection} onSelect={selectSection} />}
+    {!isWebTrial() && sectionManagerOpen && <HomeSectionManagerDialog activeSectionId={section} fileDisplayFormats={fileDisplayFormats} sections={homeSections} onAddFolder={addHomeFolderSection} onChange={updateHomeSections} onClose={() => setSectionManagerOpen(false)} onFileDisplayFormatsChange={updateFileDisplayFormats} onRemove={removeHomeFolderSection} onSelect={selectSection} />}
   </section>
 }
