@@ -249,10 +249,7 @@ export class CanvasSelectionPreviewRenderer {
       this.selectionPreview = preview
     }
     checkpoint('base-surface'); const tileRepeatMode = view.tileRepeatMode ?? 'off'
-    // Non-repeated patches cover only the current viewport, even when the
-    // backing canvas is larger. Newly revealed pixels need a fresh patch.
     const transformKey = selectionPreviewTransformKey(selection, tileRepeatMode)
-      + (tileRepeatMode === 'off' ? `:viewport:${x}:${y}:${width}:${height}` : '')
     const previewChanged = preview.source !== selection.source || preview.transformKey !== transformKey
     const selectionTargets = repeatedSelectionTargets(selection, document, view)
     const selectionQuads = selectionTargets.map((target) => selectionQuadForTarget(selection, target))
