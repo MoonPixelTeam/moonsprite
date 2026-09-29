@@ -31,14 +31,12 @@ import type {
 } from './layer-panel-contracts'
 import { LayerContextMenuItem } from './LayerContextMenuItem'
 import { layerContextMaskStatus } from './layer-context-mask-status'
-
 interface Options {
   session: DocumentSession
   celLookup: import('@/core/animation').AnimationCelLookup
   timeline: import('@shared/types-animation').AnimationTimeline
   shortcutHint: (...ids: ShortcutId[]) => import('react').JSX.Element | null
   layerById: Map<string, RasterLayer>
-
   clippingMaskTooltip: import('react').JSX.Element
   layerMaskTooltip: import('react').JSX.Element
   emptyLayerMaskCelTooltip: import('react').JSX.Element
@@ -51,7 +49,6 @@ interface Options {
   }[]
   layerDisplayColorPresets: RgbaColor[]
 }
-
 export function useLayerContextActions({
   session,
   celLookup,
@@ -69,17 +66,11 @@ export function useLayerContextActions({
   const { t } = useI18n()
   const store = useWorkspace.getState()
   const propertyEditorRef = useRef<LayerPropertyEditorHandle>(null)
-
   const [contextMenu, setContextMenu] = useState<LayerContextMenu | null>(null)
-
   const [layerCreateMenu, setLayerCreateMenu] = useState<LayerCreateContextMenu | null>(null)
-
   const [backgroundLayerDialogOpen, setBackgroundLayerDialogOpen] = useState(false)
-
   const [tilemapLayerDialog, setTilemapLayerDialog] = useState<{ mode: 'create' } | { mode: 'convert'; layerId: string } | null>(null)
-
   const [freeTileLayerDialogOpen, setFreeTileLayerDialogOpen] = useState(false)
-
   const [adjustmentLayerId, setAdjustmentLayerId] = useState<string | null>(null)
   const adjustmentOwner = session.document.layers.find(layer => layer.id === adjustmentLayerId && layer.kind === 'adjustment')
   const [layerStyleDialog, setLayerStyleDialog] = useState<LayerStyleDialogState | null>(null)
@@ -92,30 +83,21 @@ export function useLayerContextActions({
     window.addEventListener(OPEN_GRADIENT_MAP_LAYER, open)
     return () => window.removeEventListener(OPEN_GRADIENT_MAP_LAYER, open)
   }, [session.document.id])
-
-
   const layerStyleDragRef = useRef<LayerStyleDragState | null>(null)
-
   const suppressLayerStyleClickRef = useRef(false)
-
   const [layerStyleDrag, setLayerStyleDrag] = useState<LayerStyleDragState | null>(null)
-
   const editLayer = (layer: RasterLayer): void => propertyEditorRef.current?.open([{ kind: 'layer', id: layer.id }])
-
   const editGroup = (group: LayerGroup): void => propertyEditorRef.current?.open([{ kind: 'group', id: group.id }])
-
   const editSelectedRows = (frozenTargets?: readonly LayerFormTarget[]): void => {
     const current = useWorkspace.getState().sessions.find((item) => item.document.id === session.document.id) ?? session
     const targets = frozenTargets ?? selectedRowsForProperties(current)
     if (targets.length > 1) propertyEditorRef.current?.open(targets)
   }
-
   const editLayerRow = (layer: RasterLayer): void => {
     const selectedTargets = selectedRowsForProperties(session)
     if (selectedTargets.length > 1 && selectedTargets.some((target) => target.kind === 'layer' && target.id === layer.id)) editSelectedRows()
     else editLayer(layer)
   }
-
   const openLayerContent = (layer: RasterLayer): void => {
     if (layer.kind === 'adjustment') { setAdjustmentLayerId(layer.id); return }
     if (layer.kind === 'text') {
@@ -129,15 +111,12 @@ export function useLayerContextActions({
       if (layer.tilemapTilesetId) store.setSelectedTileset(layer.tilemapTilesetId)
     }
   }
-
   const editGroupRowForGroup = (group: LayerGroup): void => {
     const selectedTargets = selectedRowsForProperties(session)
     if (selectedTargets.length > 1 && selectedTargets.some((target) => target.kind === 'group' && target.id === group.id)) editSelectedRows()
     else editGroup(group)
   }
-
   const editGroupRow = (group: LayerGroup | Extract<LayerTreeNode, { kind: 'group' }>): void => editGroupRowForGroup('group' in group ? group.group : group)
-
   useEffect(() => {
     const targetAtPointer = (x: number, y: number): LayerFormTarget | null => {
       if (typeof document.elementFromPoint !== 'function') return null
@@ -185,7 +164,6 @@ export function useLayerContextActions({
       layerStyleDragRef.current = null
     }
   }, [session.document.id])
-
   const openLayerContextMenu = (event: React.MouseEvent, kind: 'layer' | 'group', id: string): void => {
     event.preventDefault()
     event.stopPropagation()
@@ -212,7 +190,6 @@ export function useLayerContextActions({
       propertySelectionIncludesUnsupported: sourceIsSelected && hasUnsupportedPropertySelection(current)
     })
   }
-
   const openLayerCreateContextMenu = (event: React.MouseEvent): void => {
     event.preventDefault()
     event.stopPropagation()
@@ -222,27 +199,22 @@ export function useLayerContextActions({
       y: Math.max(8, Math.min(event.clientY, window.innerHeight - 190))
     })
   }
-
   const closeContextMenu = (): void => {
     setContextMenu(null)
     setLayerCreateMenu(null)
   }
-
   const openBackgroundLayerDialog = (): void => {
     setBackgroundLayerDialogOpen(true)
     closeContextMenu()
   }
-
   const openTilemapLayerDialog = (): void => {
     setTilemapLayerDialog({ mode: 'create' })
     closeContextMenu()
   }
-
   const openFreeTileLayerDialog = (): void => {
     setFreeTileLayerDialogOpen(true)
     closeContextMenu()
   }
-
   const layerCreationMenuItems = (): ReactNode => (
     <>
       <LayerContextMenuItem
@@ -287,23 +259,19 @@ export function useLayerContextActions({
       <LayerContextMenuItem icon="image" label={t('layers.newBackground')} shortcut={shortcutHint('newBackgroundLayer')} onClick={openBackgroundLayerDialog} />
     </>
   )
-
   const openTilemapConversionDialog = (): void => {
     if (contextMenu?.kind !== 'layer') return
     setTilemapLayerDialog({ mode: 'convert', layerId: contextMenu.id })
     closeContextMenu()
   }
-
   const duplicateContextSelection = (): void => {
     store.duplicateSelectedLayerRows()
     closeContextMenu()
   }
-
   const deleteContextSelection = (): void => {
     store.deleteSelectedLayers()
     closeContextMenu()
   }
-
   const contextMenuPropertySelection = (): { source: LayerFormTarget | null; targets: LayerFormTarget[]; usesSelection: boolean } => {
     if (!contextMenu) return { source: null, targets: [], usesSelection: false }
     const source = { kind: contextMenu.kind, id: contextMenu.id } as LayerFormTarget
@@ -313,7 +281,6 @@ export function useLayerContextActions({
       usesSelection: contextMenu.propertyTargets.some((target) => target.kind === source.kind && target.id === source.id)
     }
   }
-
   const openProperties = (): void => {
     const selection = contextMenuPropertySelection()
     if (!selection.source || contextMenu?.propertySelectionIncludesUnsupported) return
@@ -332,7 +299,6 @@ export function useLayerContextActions({
     }
     closeContextMenu()
   }
-
   const openLayerStyles = (): void => {
     if (!contextMenu) return
     const source = { kind: contextMenu.kind, id: contextMenu.id } as LayerFormTarget
@@ -342,7 +308,6 @@ export function useLayerContextActions({
     setLayerStyleDialog({ source, targets })
     closeContextMenu()
   }
-
   const contextMenuStyleTargets = contextMenu
     ? (() => {
         const source = { kind: contextMenu.kind, id: contextMenu.id } as LayerFormTarget
@@ -352,43 +317,34 @@ export function useLayerContextActions({
           : [source]
       })()
     : []
-
   const copyContextLayerStyles = (): void => {
     if (contextMenu) store.copyLayerStyles(contextMenu.kind, contextMenu.id)
     closeContextMenu()
   }
-
   const pasteContextLayerStyles = (): void => {
     store.pasteLayerStyles(contextMenuStyleTargets)
     closeContextMenu()
   }
-
   const clearContextLayerStyles = (): void => {
     store.clearLayerStyles(contextMenuStyleTargets)
     closeContextMenu()
   }
-
   const contextMenuClippingMaskEnabled =
     contextMenu?.kind === 'layer'
       ? session.document.layers.find((layer) => layer.id === contextMenu.id)?.clippingMask === true
       : contextMenu?.kind === 'group'
         ? session.document.groups.find((group) => group.id === contextMenu.id)?.clippingMask === true
         : false
-
   const contextMenuLayer = contextMenu?.kind === 'layer' ? (session.document.layers.find((layer) => layer.id === contextMenu.id) ?? null) : null
-
   const contextMenuStyleOwner =
     contextMenu?.kind === 'layer'
       ? contextMenuLayer
       : contextMenu?.kind === 'group'
         ? (session.document.groups.find((group) => group.id === contextMenu.id) ?? null)
         : null
-
   const contextIsAdjustment = contextMenu?.kind === 'layer' && session.document.layers.find(layer => layer.id === contextMenu.id)?.kind === 'adjustment'
   const contextMenuOwnerHasStyles = hasConfiguredLayerStyles(contextMenuStyleOwner?.layerStyles)
-
   const contextMenuOwnerStylesEnabled = contextMenuOwnerHasStyles && hasEnabledLayerStyles(contextMenuStyleOwner?.layerStyles)
-
   const contextMenuSelectionHasStyles = contextMenuStyleTargets.some((target) => {
     const owner =
       target.kind === 'layer'
@@ -396,55 +352,39 @@ export function useLayerContextActions({
         : session.document.groups.find((group) => group.id === target.id)
     return hasConfiguredLayerStyles(owner?.layerStyles)
   })
-
   const contextMenuLayerHasStyles = Boolean(contextMenuLayer && hasConfiguredLayerStyles(contextMenuLayer.layerStyles))
-
   const contextMenuPropertyTargets = contextMenuPropertySelection()
-
   const contextMenuPropertiesDisabled = !contextMenuPropertyTargets.source || Boolean(contextMenu?.propertySelectionIncludesUnsupported)
-
   const toggleContextLayerStyles = (): void => {
     store.setLayerStylesEnabled(contextMenuStyleTargets, !contextMenuOwnerStylesEnabled)
     closeContextMenu()
   }
-
   const contextMenuCanConvertToBackground = Boolean(contextMenuLayer && !contextMenuLayer.kind && !contextMenuLayer.background)
-
   const contextMenuCanConvertToTilemap = Boolean(contextMenuLayer && !contextMenuLayer.kind && !contextMenuLayerHasStyles)
-
   const contextMenuCanConvertToRaster = Boolean(contextMenuLayer && (contextMenuLayer.background || contextMenuLayer.kind || contextMenuLayerHasStyles))
-
   const contextMenuCanCreateLinkedLayer = Boolean(contextMenuLayer && !contextMenuLayer.kind && !contextMenuLayer.background)
-
   const singleContextTarget = contextMenu?.propertyTargets.length === 1 && !contextMenu.propertySelectionIncludesUnsupported
   const canMergeContextDown = Boolean(singleContextTarget && contextMenuLayer && session.document.layers
     .filter(layer => (layer.groupId ?? null) === (contextMenuLayer.groupId ?? null))
     .findIndex(layer => layer.id === contextMenuLayer.id) > 0)
   const canMergeContextSelection = Boolean(contextMenu && !contextMenu.propertySelectionIncludesUnsupported
     && contextMenu.propertyTargets.length > 1 && contextMenu.propertyTargets.every(target => target.kind === 'layer'))
-
   const tilemapConversionLayer = tilemapLayerDialog?.mode === 'convert' ? (layerById.get(tilemapLayerDialog.layerId) ?? null) : null
-
   const contextMenuGroupMask = contextMenu?.kind === 'group' ? animationGroupMaskAt(timeline, contextMenu.id, timeline.activeFrameId) : null
-
   const contextMenuLayerMask = contextMenu?.kind === 'layer' ? animationMaskAt(timeline, contextMenu.id, timeline.activeFrameId) : null
-
   const contextMenuLayerMaskStatus = layerContextMaskStatus(session, timeline, celLookup, contextMenu?.kind === 'layer' ? contextMenu.id : null)
-
   const layerStyleOwner =
     layerStyleDialog?.source.kind === 'layer'
       ? (session.document.layers.find((layer) => layer.id === layerStyleDialog.source.id) ?? null)
       : layerStyleDialog?.source.kind === 'group'
         ? (session.document.groups.find((group) => group.id === layerStyleDialog.source.id) ?? null)
         : null
-
   const layerStyleIndicatorTooltip = (
     <>
       <strong>{t('layers.layerStyle')}</strong>
       <span>{t('layers.layerStyleIndicatorDescription')}</span>
     </>
   )
-
   const beginLayerStyleDrag = (event: React.PointerEvent<HTMLElement>, target: LayerFormTarget): void => {
     event.preventDefault()
     event.stopPropagation()
@@ -453,7 +393,6 @@ export function useLayerContextActions({
     layerStyleDragRef.current = drag
     setLayerStyleDrag(drag)
   }
-
   const openLayerStyleFromIndicator = (event: React.MouseEvent<HTMLElement>, target: LayerFormTarget): void => {
     event.preventDefault()
     event.stopPropagation()
@@ -463,7 +402,6 @@ export function useLayerContextActions({
     }
     setLayerStyleDialog({ source: target, targets: [target] })
   }
-
   const layerStyleIndicator = (target: LayerFormTarget): ReactNode => (
     <Tooltip className="layer-status-icon-tooltip" content={layerStyleIndicatorTooltip}>
       <span
@@ -485,7 +423,6 @@ export function useLayerContextActions({
       </span>
     </Tooltip>
   )
-
   const toggleContextClippingMask = (): void => {
     if (!contextMenu) return
     store.setClippingMask(contextMenu.kind, contextMenu.id, !contextMenuClippingMaskEnabled)
@@ -837,7 +774,6 @@ export function useLayerContextActions({
       )}
     </>
   )
-
   return {
     layerContextSurfaces,
     propertyEditorRef,
