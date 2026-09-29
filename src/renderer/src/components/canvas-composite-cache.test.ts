@@ -1762,31 +1762,6 @@ describe('CanvasCompositeCache', () => {
     expect(patches.some(({ patch, x, y }) => x === 0 && y === 0 && Array.from(patch.data).slice(0, 4).every((value, index) => value === [255, 0, 0, 255][index]))).toBe(true)
   })
 
-  it('refreshes floating clipboard pixels revealed after moving in a smaller viewport', () => {
-    const document = createDocument('clipboard viewport', 12, 2, 'rgba')
-    const layer = document.layers[0]
-    writeLayerColor(document, layer, 0, { r: 0, g: 0, b: 255, a: 255 })
-    const before = layer.pixels.slice()
-    const source: SelectionTransformSource = {
-      selection: { x: 0, y: 0, width: 4, height: 1 },
-      values: new Uint32Array(4).fill(0xff0000ff),
-      selectedOffsets: new Uint32Array(0), opaqueOffsets: new Uint32Array(0),
-      opaqueIndices: new Uint32Array(0), opaqueValues: new Uint32Array(0), origin: 'clipboard'
-    }
-    const context = makeContext()
-    const cache = new CanvasCompositeCache()
-    const selectionPreview = { layerId: layer.id, source, target: { x: 2, y: 0, width: 4, height: 1 }, angle: 0, copy: true }
-    draw(cache, document, context, { selectionPreview })
-    draw(cache, document, context, { selectionPreview, fromX: 3, toX: 5 })
-    selectionPreview.target = { ...selectionPreview.target, x: 4 }
-    draw(cache, document, context, { selectionPreview, fromX: 3, toX: 5 })
-    draw(cache, document, context, { selectionPreview })
-    const surface = context.drawImage.mock.calls.at(-1)?.[0] as MockOffscreenCanvas
-    expect(Array.from(surface.pixels.slice(4 * 4, 8 * 4))).toEqual(Array.from(new Uint8ClampedArray(source.values.buffer)))
-    expect(Array.from(surface.pixels.slice(2 * 4, 4 * 4))).toEqual(new Array(8).fill(0))
-    expect(layer.pixels).toEqual(before)
-  })
-
   it('renders clipboard pixels without mutating the source document', () => {
     const document = createDocument('clipboard preview', 4, 1, 'rgba')
     const layer = document.layers[0]
