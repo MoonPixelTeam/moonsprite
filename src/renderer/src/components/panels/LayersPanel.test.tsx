@@ -1433,6 +1433,21 @@ describe('LayersPanel properties', () => {
     expect(within(dialog).getByRole('button', { name: '渐变抖动' })).toBeInTheDocument()
   })
 
+  it.each(['normal', 'text', 'tilemap', 'free-tile', 'background'] as const)('adds a style to a %s layer from the panel', kind => {
+    const document = createDocument(`style ${kind}`, 4, 4, 'rgba')
+    const layer = getActiveLayer(document)
+    if (kind === 'background') layer.background = { mode: 'canvas' }
+    else if (kind !== 'normal') layer.kind = kind
+    useWorkspace.getState().addSession(document)
+    const { container } = render(<LayersPanel session={useWorkspace.getState().sessions[0]} docked />)
+    fireEvent.contextMenu(container.querySelector(`[data-layer-id="${layer.id}"]`)!, { clientX: 20, clientY: 20 })
+    fireEvent.click(screen.getByRole('menuitem', { name: '图层样式' }))
+    const dialog = screen.getByRole('dialog', { name: '图层样式' })
+    fireEvent.click(within(dialog).getByRole('checkbox', { name: '启用描边' }))
+    fireEvent.click(within(dialog).getByRole('button', { name: '应用' }))
+    expect(layer.layerStyles?.stroke.enabled).toBe(true)
+  })
+
   it('opens batch properties on double-click without collapsing a multi-layer selection', () => {
     const document = createDocument('double-click batch properties', 2, 2, 'rgba')
     const bottom = getActiveLayer(document)

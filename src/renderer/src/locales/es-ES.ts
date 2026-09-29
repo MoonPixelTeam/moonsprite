@@ -1,3 +1,4 @@
+import { convolutionEn } from './convolution'
 import { gradientMapEn } from './gradient-map'
 import { beta7En } from './release-beta7'
 import { spriteSheetImportesES } from './sprite-sheet-import'
@@ -6,6 +7,8 @@ import type { TranslationCatalog } from './contracts'
 import { tabletEn } from './tablet'
 
 export const esESMessages = {
+
+  ...convolutionEn,
   ...beta7En,
   ...gradientMapEn,
   "toolOptions.temporaryBrushCaptureHint": "Pincel temporal: arrastra un área y suelta para usar; Esc para cancelar",
@@ -956,6 +959,16 @@ export const esESMessages = {
   'preferences.wheelZoomMode.smooth': 'El zoom suave',
   'preferences.wheelZoomMode.stepped': 'El porcentaje de zoom',
   'preferences.shiftLinePreview': 'Mostrar Pencil Line vista previa en tiempo real',
+  'preferences.gradientApplicationMode': 'Aplicación del degradado',
+  'preferences.gradientApplicationMode.instant': 'Aplicar al soltar',
+  'gradient.pending.title': 'Gradient pending confirmation',
+  'gradient.pending.hint': 'Drag handles to adjust. Enter applies; Esc cancels. Changing layers or frames cancels the preview.',
+  'gradient.pending.io': 'The canvas contains an unapplied gradient. Apply or discard it before saving, exporting, or closing.',
+  'gradient.pending.continue': 'Continue editing',
+  'gradient.pending.discard': 'Discard gradient and continue',
+  'gradient.pending.invalidated': 'The painting target or selection changed. The unapplied gradient was cancelled.',
+  'gradient.pending.failed': 'Could not apply the gradient. The preview is retained; please try again.',
+  'preferences.gradientApplicationMode.confirm': 'Aplicar tras confirmar',
   'preferences.gradientLineVisible': 'Mostrar línea de arrastre del degradado',
   'preferences.gradientLineColor': 'Color de la línea de arrastre del degradado',
   'preferences.balancedLine': 'El algoritmo de optimización',
@@ -1608,8 +1621,8 @@ export const esESMessages = {
   'home.linksAria': 'Enlaces comunitarias y lenguaje',
   'home.qq': 'QQ Grupo',
   'home.qqDescription': 'Únete al grupo QQ de la comunidad MoonPX pixel-art para la discusión y el apoyo.',
-  'home.community': 'Comunidad',
-  'home.communityDescription': 'Abrir el sitio web de la comunidad MoonPX.',
+  'home.community': "Sitio web oficial",
+  'home.communityDescription': "Visita el sitio oficial de MoonSprite para conocer sus funciones y novedades.",
   'home.steam': 'El Steam',
   'home.steamDescription': 'Abre la página MoonSprite en Steam.',
   'home.steamWishlist': 'Añadir a la lista de deseados',
@@ -2979,6 +2992,7 @@ export const esESMessages = {
   'layers.autoLinkAnimationCelsOn': 'Activar enlace automático de celdas',
   'layers.autoLinkAnimationCelsOff': 'Desactivar enlace automático de celdas',
   'timeline.tween.timing': 'Fotogramas y duración',
+  'preferences.exportSound': 'Sonido al completar la exportación',
   'preferences.saveOriginalFormat': 'Conservar el formato original',
   'preferences.saveOriginalFormatHint': 'Si se activa, guarda en el formato del archivo abierto y avisa de funciones incompatibles; los documentos nuevos usan el formato predeterminado. Si se desactiva, usa .moonsprite de forma predeterminada y propone guardar los otros formatos como proyectos.',
   'file.save.projectPreferredTitle': 'Guardar como proyecto MoonSprite',

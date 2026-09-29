@@ -112,3 +112,30 @@ it('bounds a long pending queue without losing any edited region', () => {
     && region.y + region.height >= rect.y + rect.height)).toBe(true)
   expect(pending.every(rect => rect.width < 4096)).toBe(true)
 })
+
+it.each([false, true])('refreshes only affected translucent style pixels with smart/follow-opacity=%s', dynamic => {
+  const cache = new LayerStyleTileCache(), owner = {}
+  const styles = createDefaultLayerStyles()
+  styles.stroke.enabled = true
+  styles.stroke.size = 3
+  styles.shadow.enabled = true
+  styles.shadow.blur = 2
+  styles.stroke.smartHue = dynamic
+  styles.stroke.followOpacity = dynamic
+  const bounds = { x: 0, y: 0, width: 4096, height: 4096 }
+  let changed = false, reads = 0
+  const source = (x: number, y: number) => {
+    reads++
+    return { r: changed && x === 30 && y === 30 ? 220 : 40, g: 80, b: 120, a: changed && x === 30 && y === 30 ? 128 : (x + y) % 3 ? 96 : 0 }
+  }
+  const resolve = (color: ReturnType<typeof source>) => color
+  cache.prepare(owner, 'stable', 0, undefined, bounds, styles, source, resolve)(30, 30)
+  const coldReads = reads
+  changed = true; reads = 0
+  const warm = cache.prepare(owner, 'stable', 1, [{ x: 30, y: 30, width: 1, height: 1 }], bounds, styles, source, resolve)
+  const actual = Array.from({ length: 64 * 64 }, (_, i) => warm(i % 64, Math.floor(i / 64)))
+  const warmReads = reads
+  const fresh = new LayerStyleTileCache().prepare({}, 'stable', 1, undefined, bounds, styles, source, resolve)
+  expect(actual).toEqual(Array.from({ length: 64 * 64 }, (_, i) => fresh(i % 64, Math.floor(i / 64))))
+  expect(warmReads).toBeLessThan(coldReads / 8)
+})

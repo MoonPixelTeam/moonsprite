@@ -13,6 +13,7 @@ import {
 } from '@/core/document-composite-plan'
 import { getLayerContentRevision, renderLayerMaskRegion } from '@/core/document-model'
 import { hasEnabledLayerStyles } from '@/core/layer-styles'
+import { scheduleSelectionBackdrop } from './canvas-selection-prewarm'
 import { applyRelativeLuminance } from '@/core/raster'
 import { rasterStorageIdentity, readSurfaceRgbaRegion } from '@/core/runtime-raster'
 import {
@@ -58,7 +59,6 @@ import { CanvasMovePreviewRenderer } from './canvas-composite-cache-move'
 import { CanvasSelectionPreviewRenderer } from './canvas-composite-cache-selection'
 import { CanvasLayerPropertyPreview } from './canvas-layer-property-preview'
 export { shouldCacheFullCompositeSurface, type SelectionTransformCompositePreview } from './canvas-composite-cache-surfaces'
-
 /** Coordinates invalidation, surface lifetime and drawing; previews own their resources. */
 export class CanvasCompositeCache {
   private readonly blitter = new CanvasCompositeBlitter()
@@ -72,24 +72,15 @@ export class CanvasCompositeCache {
       (...args) => this.drawSurface(...args), (...args) => this.drawRegion(...args))
   }
   private namespace = ''
-
   private lastDrawnFrameId = 'static'
-
   private lastDocument: SpriteDocument | null = null
-
   private invalidatedInitialDocuments = new WeakSet<SpriteDocument>()
-
   private surfaces = new Map<string, CompositeSurface>()
-
   private regions = new Map<string, CompositeRegionSurface>()
-
   private dirtyRects = new Map<string, SelectionRect[]>()
-
 /** Raw source regions changed during a live gesture, before style expansion. */
   private placementDirtyHints = new Map<string, { rect: SelectionRect; layerIds?: readonly string[] }>()
-
   private sourceDirtyHints = new Map<string, { rect: SelectionRect; used: boolean }>()
-
 /** A live stroke may already have been painted into the cached surface. */
   private livePreviewPending = new Set<string>()
 
@@ -110,6 +101,10 @@ export class CanvasCompositeCache {
   private lastConsumedFullContentRevision = -1
 
   private compositeCache = new DocumentCompositeCache()
+
+  prepareSelectionBackdrop(document: SpriteDocument, layerId: string, revision: number, selection: SelectionRect, isCurrent: () => boolean): () => void {
+    return scheduleSelectionBackdrop(this.compositeCache, document, layerId, revision, selection, isCurrent)
+  }
 
   /** Read-only bootstrap for a second viewport; never starts composition. */
   previewSource(document: SpriteDocument, frameId: string, revision: number, relativeLuminance: boolean) {
@@ -375,7 +370,18 @@ export class CanvasCompositeCache {
       return
     }
     this.selectionRenderer.clearClipboard()
-    if (!isolatedLayerMask && !view.relativeLuminance && selectionPreview && this.selectionRenderer.drawSelectionPreview(context, document, view, originX, originY, fromX, fromY, toX, toY, effectiveFrameId, contentRevision, selectionPreview)) {
+    // Auxiliary viewports can borrow a completed main-canvas base. Copy it so
+    // later local invalidation never mutates the editor's cache.
+    if (selectionPreview && options.selectionBase && shouldCacheFullCompositeSurface(document.width, document.height, this.maxCacheBytes)) {
+      const existing = this.surfaces.get(frameKey)
+      if (!existing || existing.revision !== contentRevision || this.dirtyRects.has(effectiveFrameId)) {
+        const canvas = new OffscreenCanvas(document.width, document.height)
+        canvas.getContext('2d')?.drawImage(options.selectionBase, 0, 0, document.width, document.height, 0, 0, document.width, document.height)
+        rememberCompositeSurface(this.surfaces, frameKey, { canvas, revision: contentRevision }, this.maxCacheBytes, MAX_CACHED_FRAMES)
+        this.dirtyRects.delete(effectiveFrameId)
+      }
+    }
+    if (!isolatedLayerMask && !view.relativeLuminance && selectionPreview && this.selectionRenderer.drawSelectionPreview(context, document, view, originX, originY, fromX, fromY, toX, toY, effectiveFrameId, contentRevision, selectionPreview, contentInvalidation, sourceDirtyRect)) {
       context.restore()
       return
     }
@@ -615,7 +621,7 @@ export class CanvasCompositeCache {
         if (!livePreviewAlreadyPainted && (isolatedLayerMask || (invalidation.frameId ?? frameId) === frameId) && invalidation.rect) {
           for (const rect of invalidationRects(invalidation)) {
             if (isolatedLayerMask || invalidation.compositeOnly) this.invalidateRect(rect, document.width, document.height, frameId)
-            else this.invalidateDocumentRect(rect, document, frameId)
+            else this.invalidateDocumentRect(rect, document, frameId, invalidation.sourceLayerIds)
           }
         }
       } else {
@@ -785,10 +791,10 @@ export class CanvasCompositeCache {
       if (region.revision !== contentRevision) {
         if (canApplyInvalidation && invalidationRect) {
           if (!livePreviewAlreadyPainted) {
-            const pending = this.dirtyRects.get(frameId) ?? []
-            pending.push(...invalidationRects(invalidation).map((rect) =>
-              isolatedLayerMask || invalidation?.compositeOnly ? rect : expandLayerStyleInvalidationRect(document, rect)))
-            this.dirtyRects.set(frameId, pending.length > 32 ? boundedDirtyRects(pending, 32, patchMergeLimit) : pending)
+            for (const rect of invalidationRects(invalidation)) {
+              if (isolatedLayerMask || invalidation?.compositeOnly) this.invalidateRect(rect, document.width, document.height, frameId)
+              else this.invalidateDocumentRect(rect, document, frameId, invalidation?.sourceLayerIds)
+            }
           }
         } else {
           this.dirtyRects.set(frameId, [{ x, y, width, height }])

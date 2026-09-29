@@ -6,7 +6,7 @@ import { activePaintLayer } from '@/store/workspace-session'
 import { startCanvasSelection } from '@/components/layer-panel-reveal'
 import { cloneSelection, combineSelection, selectionMaskFromVisitedPixels } from '@/core/selection'
 import { moveSelectionBrush } from './canvas-selection-brush-gesture'
-import { CanvasInputState } from '@/core/canvas-input-controller'
+import { CanvasInputState, undoActiveCanvasPathGesture } from '@/core/canvas-input-controller'
 import { appendCanvasPathStep, marqueeSelectionCommit, shouldClosePolygonLasso } from '@/core/canvas-input-path'
 import { constrainedTranslation, selectionMovePointerDelta } from '@/core/canvas-input-resize'
 import { selectionGestureMoved } from '@/core/canvas-input-preview'
@@ -100,8 +100,14 @@ export function createSelectionCanvasInput(ports: Ports) {
   }): boolean {
     const { commitPolygonLasso, scheduleDraw } = ports
     if (session.tool === 'selection' && activePolygon?.kind === 'polygon-lasso' && (event.button === 0 || event.button === 2)) {
+      if (event.button === 2) {
+        event.preventDefault()
+        undoActiveCanvasPathGesture(ports.inputRef.current)
+        scheduleDraw()
+        return true
+      }
       const path = activePolygon.path ?? []
-      if (shouldClosePolygonLasso(path, point, event.detail)) {
+      if (shouldClosePolygonLasso(path, event.button, event.detail)) {
         commitPolygonLasso()
         return true
       }

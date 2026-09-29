@@ -25,7 +25,8 @@ import { canvasCursors, canvasToolCursor, selectionCreationCursor } from '@/core
 import { OnionSkinCompositeCache } from '@/components/onion-skin-composite-cache'
 import { publishCanvasColorSample } from '@/components/color-sampling-events'
 import { shouldQuickSelectEyedropper } from '@/core/eyedropper-quick-select'
-import { keyDisplayKeydownAccepted, keyDisplayLabel, keyDisplayShortcut } from '@/core/key-display'
+import { keyDisplayCompletesGesture, keyDisplayKeydownAccepted, keyDisplayLabel, keyDisplayShortcut } from '@/core/key-display'
+import { registerCanvasKeyDisplayPointer } from './canvas-key-display-pointer'
 interface Ports {
   readonly keyDisplayEnabled: boolean
   readonly keyDisplayFunction: boolean
@@ -144,8 +145,7 @@ export function useCanvasKeyboardInput(ports: Ports) {
   const keyDisplayGestureRef = useRef<Set<string>>(new Set())
 
   const keyDisplayWheelRef = useRef(false)
-
-  const keyDisplayActiveEntryRef = useRef<number | null>(null)
+  const keyDisplayMouseChordsRef = useRef(new Map<number, { keys: string[]; target: EventTarget | null }>())
 
   useEffect(() => {
     if (!ports.keyDisplayEnabled) {
@@ -153,7 +153,7 @@ export function useCanvasKeyboardInput(ports: Ports) {
       keyDisplayHeldRef.current.clear()
       keyDisplayGestureRef.current.clear()
       keyDisplayWheelRef.current = false
-      keyDisplayActiveEntryRef.current = null
+      keyDisplayMouseChordsRef.current.clear()
     }
   }, [ports.keyDisplayEnabled])
 
@@ -199,6 +199,30 @@ export function useCanvasKeyboardInput(ports: Ports) {
   )
 
   useEffect(() => {
+    const emitKeyDisplay = (keys: string[], contextualLabel?: string): void => {
+      if (!keys.length || !ports.keyDisplayEnabled || ports.activeDocumentId !== ports.session.document.id) return
+      const combo = [...keys].sort((left, right) => {
+        const rank = (key: string): number => (key === 'Control' || key === 'Meta' ? 0 : key === 'Shift' ? 1 : key === 'Alt' ? 2 : 3)
+        return rank(left) - rank(right)
+      }).map((key) => keyDisplayLabel(key, ports.locale))
+      const id = ++keyDisplayIdRef.current
+      const action = ports.keyDisplayFunction ? keyDisplayShortcut(keys, ports.shortcuts, ports.shortcutConflictState) : undefined
+      const functionLabel = ports.keyDisplayFunction ? contextualLabel ?? (action ? shortcutLabels(ports.locale)[action] : undefined) : undefined
+      setKeyDisplayEntries((current) => [...current, { id, label: combo.join('+'), functionLabel }].slice(-10))
+      globalThis.setTimeout(() => setKeyDisplayEntries((current) => current.filter((entry) => entry.id !== id)), ports.keyDisplayDuration)
+    }
+    const unregisterPointerDisplay = registerCanvasKeyDisplayPointer({
+      enabled: ports.keyDisplayEnabled,
+      locale: ports.locale,
+      activeDocument: ports.activeDocumentId === ports.session.document.id,
+      chords: keyDisplayMouseChordsRef.current,
+      emit: emitKeyDisplay,
+      clearKeyboardGesture: () => keyDisplayGestureRef.current.clear(),
+      canvasSelectsLayer: () => {
+        const session = ports.liveInputSession()
+        return session.moveAutoSelect && (session.tool === 'move' || ports.quickToolActive('move'))
+      }
+    })
     const updateShiftPreview = (active: boolean): void => {
       if (ports.inputRef.current.shiftLinePreview === active) return
       ports.inputRef.current.shiftLinePreview = active
@@ -257,16 +281,18 @@ export function useCanvasKeyboardInput(ports: Ports) {
       // stay hidden; a modifier + wheel is an intentional shortcut and remains
       // visible (for example Ctrl + ↑).
       const syntheticWheelWithModifier = !event.isTrusted && (event.ctrlKey || event.metaKey || event.altKey || event.shiftKey)
+      const keyId = keyboardEventKey(event)
+      const chordKeys = [event.ctrlKey ? 'Control' : '', event.metaKey ? 'Meta' : '', event.shiftKey ? 'Shift' : '', event.altKey ? 'Alt' : '', keyId].filter(Boolean)
+      const repeatAction = event.repeat ? keyDisplayShortcut(chordKeys, ports.shortcuts, ports.shortcutConflictState) : undefined
       const keyDisplayAccepted = keyDisplayKeydownAccepted({
         isTrusted: event.isTrusted,
         syntheticWheelWithModifier,
         enabled: ports.keyDisplayEnabled,
         activeDocument: ports.activeDocumentId === ports.session.document.id,
-        repeat: event.repeat,
+        repeat: event.repeat && repeatAction !== 'undo' && repeatAction !== 'redo',
         blockedTarget: keyDisplayBlocked
       })
       if (keyDisplayAccepted) {
-        const keyId = keyboardEventKey(event)
         if (keyDisplayGestureRef.current.size === 0) keyDisplayWheelRef.current = false
         keyDisplayHeldRef.current.add(event.code || event.key)
         keyDisplayGestureRef.current.add(keyId)
@@ -275,6 +301,10 @@ export function useCanvasKeyboardInput(ports: Ports) {
         if (event.metaKey) keyDisplayGestureRef.current.add('Meta')
         if (event.altKey) keyDisplayGestureRef.current.add('Alt')
         if (event.shiftKey) keyDisplayGestureRef.current.add('Shift')
+        if (keyDisplayCompletesGesture(keyId, 1)) {
+          emitKeyDisplay(Array.from(keyDisplayGestureRef.current))
+          keyDisplayGestureRef.current.clear()
+        }
       }
       const controlWasHeld = ports.inputRef.current.ctrlHeld
       if (event.key === 'Alt') {
@@ -529,22 +559,10 @@ export function useCanvasKeyboardInput(ports: Ports) {
         keyDisplayWheelRef.current &&
         Array.from(keyDisplayGestureRef.current).every((key) => key === 'Control' || key === 'Meta' || key === 'Shift' || key === 'Alt')
       const pendingKeys = Array.from(keyDisplayGestureRef.current)
-      const shouldEmitKeyDisplay = keyDisplayHeldRef.current.size === 0 && pendingKeys.length > 0 && !wheelOnlyModifiers
+      const shouldEmitKeyDisplay = pendingKeys.length > 0 && !wheelOnlyModifiers && keyDisplayCompletesGesture(event.key, keyDisplayHeldRef.current.size)
       if (shouldEmitKeyDisplay) {
-        const combo = pendingKeys
-          .sort((left, right) => {
-            const rank = (key: string): number => (key === 'Control' || key === 'Meta' ? 0 : key === 'Shift' ? 1 : key === 'Alt' ? 2 : 3)
-            return rank(left) - rank(right)
-          })
-          .map((heldKey) => keyDisplayLabel(heldKey))
-        const id = ++keyDisplayIdRef.current
-        const functionLabel = ports.keyDisplayFunction
-          ? keyDisplayShortcut(pendingKeys, ports.shortcuts, ports.shortcutConflictState)
-          : undefined
-        setKeyDisplayEntries((current) => [...current, { id, label: combo.join('+'), functionLabel: functionLabel ? shortcutLabels(ports.locale)[functionLabel] : undefined }].slice(-10))
-        globalThis.setTimeout(() => setKeyDisplayEntries((current) => current.filter((entry) => entry.id !== id)), ports.keyDisplayDuration)
+        emitKeyDisplay(pendingKeys)
         keyDisplayGestureRef.current.clear()
-        keyDisplayActiveEntryRef.current = null
       }
       if (keyDisplayHeldRef.current.size === 0) keyDisplayWheelRef.current = false
       const temporaryPanReleased = shortcutReleasedByBindings(event, shortcutBindingsFor(ports.shortcuts, 'tool.hand.quick'))
@@ -662,7 +680,7 @@ export function useCanvasKeyboardInput(ports: Ports) {
       keyDisplayHeldRef.current.clear()
       keyDisplayGestureRef.current.clear()
       keyDisplayWheelRef.current = false
-      keyDisplayActiveEntryRef.current = null
+      keyDisplayMouseChordsRef.current.clear()
       updateShiftPreview(false)
       ports.cancelActiveCanvasInteraction()
       cancelSampling()
@@ -693,6 +711,7 @@ export function useCanvasKeyboardInput(ports: Ports) {
     window.addEventListener('focus', focus)
     document.addEventListener('visibilitychange', visibilityChange)
     return () => {
+      unregisterPointerDisplay()
       unregisterKeyboard()
       window.removeEventListener('blur', blur)
       window.removeEventListener('focus', focus)

@@ -431,13 +431,21 @@ const aseBlendMode = (value: BlendMode): number => {
   return modes[value] ?? 0
 }
 
-const scaledLayerPixels = (document: SpriteDocument, layer: RasterLayer, scale: number): { width: number; height: number; offsetX: number; offsetY: number; pixels: Uint8Array } => {
+const scaledLayerPixels = (document: SpriteDocument, layer: RasterLayer, scale: number, linked = false): { width: number; height: number; offsetX: number; offsetY: number; pixels: Uint8Array } => {
   const offsetX = Math.floor(layer.offsetX * scale)
   const offsetY = Math.floor(layer.offsetY * scale)
   const right = Math.ceil((layer.offsetX + layer.width) * scale)
   const bottom = Math.ceil((layer.offsetY + layer.height) * scale)
   const width = Math.max(1, right - offsetX)
   const height = Math.max(1, bottom - offsetY)
+  // Linked cels only write geometry and the referenced frame, never raster data.
+  if (linked) return { width, height, offsetX, offsetY, pixels: new Uint8Array(0) }
+  if (scale === 1 && layer.format === 'rgba' && Number.isInteger(layer.offsetX) && Number.isInteger(layer.offsetY)) {
+    const source = layer.pixels
+    if (source.byteLength === width * height * 4) {
+      return { width, height, offsetX, offsetY, pixels: new Uint8Array(source.buffer, source.byteOffset, source.byteLength) }
+    }
+  }
   const pixels = new Uint8Array(width * height * 4)
   const clamp = (value: number, maximum: number): number => Math.max(0, Math.min(maximum - 1, value))
   for (let y = 0; y < height; y += 1) for (let x = 0; x < width; x += 1) {
@@ -569,6 +577,14 @@ export function encodeAseprite(document: SpriteDocument, scalePercent = 100): Ui
   const tagHeader = new Uint8Array(10)
   new DataView(tagHeader.buffer).setUint16(0, tagEntries.length, true)
   const tagChunks = tagEntries.length ? [aseChunk(0x2018, concatBytes([tagHeader, ...tagEntries]))] : []
+  const celById = new Map(timeline.cels.map(cel => [cel.id, cel]))
+  const celByFrame = new Map<string, Map<string, AnimationCel>>()
+  for (const cel of timeline.cels) {
+    let layers = celByFrame.get(cel.frameId)
+    if (!layers) { layers = new Map(); celByFrame.set(cel.frameId, layers) }
+    layers.set(cel.layerId, cel)
+  }
+  const frameIndices = new Map(timeline.frames.map((frame, index) => [frame.id, index]))
   const framePayloads = timeline.frames.map((frame, frameIndex) => {
     const celChunks = rasterLayerIndices.map(({ index, layer }) => {
       let frameLayer = animationLayerAtFrame(document, layer.id, frame.id) ?? layer
@@ -576,11 +592,11 @@ export function encodeAseprite(document: SpriteDocument, scalePercent = 100): Ui
         const snapshot = cloneDocumentForAnimationFrame(document, frame.id)
         frameLayer = { ...layer, format: 'rgba', width: document.width, height: document.height, offsetX: 0, offsetY: 0, pixels: compositeDocument(snapshot) }
       }
-      const cel = timeline.cels.find((item) => item.layerId === layer.id && item.frameId === frame.id)
-      const source = cel?.linkedCelId ? timeline.cels.find((item) => item.id === cel.linkedCelId) : undefined
-      const sourceIndex = source ? timeline.frames.findIndex((item) => item.id === source.frameId) : -1
-      return aseCelChunk(index, scaledLayerPixels(document, frameLayer, scale), frameLayer.opacity, cel?.zIndex ?? 0,
-        sourceIndex >= 0 && sourceIndex < frameIndex ? sourceIndex : undefined)
+      const cel = celByFrame.get(frame.id)?.get(layer.id)
+      const source = cel?.linkedCelId ? celById.get(cel.linkedCelId) : undefined
+      const sourceIndex = source ? frameIndices.get(source.frameId) ?? -1 : -1
+      const linkedFrame = sourceIndex >= 0 && sourceIndex < frameIndex ? sourceIndex : undefined
+      return aseCelChunk(index, scaledLayerPixels(document, frameLayer, scale, linkedFrame !== undefined), frameLayer.opacity, cel?.zIndex ?? 0, linkedFrame)
     })
     const chunks = frameIndex === 0 ? [...layerChunks, ...tagChunks, ...celChunks] : celChunks
     return { duration: frame.duration, chunks, data: concatBytes(chunks) }

@@ -255,6 +255,9 @@ export function createSelectionEffectsCommands({ get, set, recording }: Workspac
       })
     },
     outlineSelectionInside() {
+      // Commit floating pixels before outlining so the next transform captures
+      // the outline too, instead of reusing the pre-outline transform source.
+      if (activeSession(get())?.pendingPaste) get().commitFloatingPaste()
       const session = activeSession(get())
       if (!session) return false
       if (!session.selection) {

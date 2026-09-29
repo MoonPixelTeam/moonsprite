@@ -1,11 +1,14 @@
+import { convolutionZh } from './convolution'
 import { gradientMapZh } from './gradient-map'
 import { beta7Zh } from './release-beta7'
 import { spriteSheetImportzhCN } from './sprite-sheet-import'
 import { tabletZh } from './tablet'
 
 export const zhCNMessages = {
+
   ...beta7Zh,
   ...gradientMapZh,
+  ...convolutionZh,
   "toolOptions.temporaryBrushCaptureHint": "临时笔刷取样：拖动框选区域，松开使用；Esc 取消",
   "preferences.paintingCursor.cross": "简单十字",
   "preferences.paintingCursor.pixelCross": "像素十字",
@@ -129,6 +132,7 @@ export const zhCNMessages = {
   'layers.mode.default': '普通模式',
   'layers.mode.animation': '动画模式',
   "timeline.tween.timing": "帧与时长",
+  'preferences.exportSound': '导出音效',
   "preferences.saveOriginalFormat": "沿用原格式保存",
   "preferences.saveOriginalFormatHint": "开启后，保存沿用打开文件的格式，不兼容的特性仍会提示；新建工程使用默认保存格式。关闭后，默认保存为 .moonsprite，保存其他格式的文件时会提醒另存为工程。",
   "file.save.projectPreferredTitle": "保存为 MoonSprite 工程",
@@ -1020,6 +1024,16 @@ export const zhCNMessages = {
   'preferences.wheelZoomMode.smooth': '平滑缩放',
   'preferences.wheelZoomMode.stepped': '百分比缩放',
   'preferences.shiftLinePreview': '实时显示铅笔直线预览',
+  'preferences.gradientApplicationMode': '渐变应用方式',
+  'preferences.gradientApplicationMode.instant': '即时应用',
+  'gradient.pending.title': '渐变待确认',
+  'gradient.pending.hint': '拖动端点或连线调整；Enter 应用，Esc 取消。切换图层或帧将取消预览。',
+  'gradient.pending.io': '画布中有尚未应用的渐变。请先应用或放弃渐变，再继续保存、导出或关闭。',
+  'gradient.pending.continue': '继续编辑',
+  'gradient.pending.discard': '放弃渐变并继续',
+  'gradient.pending.invalidated': '绘制目标或选区已变化，未应用的渐变已取消。',
+  'gradient.pending.failed': '渐变应用失败，预览已保留，请重试。',
+  'preferences.gradientApplicationMode.confirm': '确认后应用',
   'preferences.gradientLineVisible': '显示渐变拖动线',
   'preferences.gradientLineColor': '渐变拖动线颜色',
   'preferences.balancedLine': '直线算法优化',
@@ -1672,8 +1686,8 @@ export const zhCNMessages = {
   'home.linksAria': '社区链接和语言',
   'home.qq': 'QQ 群',
   'home.qqDescription': '加入月球像素社区（MoonPX）QQ 群，交流像素画与软件使用。',
-  'home.community': '社区网站',
-  'home.communityDescription': '打开 MoonPX 社区网站，交流像素画与软件使用。',
+  'home.community': "软件官方网站",
+  'home.communityDescription': "访问 MoonSprite 官方网站，了解软件功能与最新动态。",
   'home.steam': 'Steam',
   'home.steamDescription': '打开 MoonSprite 的 Steam 页面。',
   'home.steamWishlist': '立即加入愿望单',

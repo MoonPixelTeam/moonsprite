@@ -218,10 +218,12 @@ export function paintBrush(
   const offsets = brushMaskOffsets(size, shape, texture, textureScale, stampX, stampY, imageBrush, imageBrushSettings, proceduralAntialiasStrength, brushPaintMode, patternOrigin?.x ?? stampX, patternOrigin?.y ?? stampY, brushDither, angle, optimizedRotation)
   const symmetricSpans = hasSymmetry(symmetryAxes)
   const pivotX = symmetryCenter?.x ?? document.width / 2, pivotY = symmetryCenter?.y ?? document.height / 2
-  const solidStampKey = inkMode === 'simple' && tileRepeatMode === 'off' && Math.abs(geometryAngle % 360) < 0.0001 && !selection && !imageBrush && texture === 'solid' && !brushDither?.enabled && !colorReplacement && !gradient && !coverageKey && (color.a === 0 || color.a === 255)
+  // Uniform translucent stamps also share coverage across the stroke. Visit
+  // only newly covered spans; keep blended values on the original-pixel path.
+  const solidStampKey = inkMode === 'simple' && tileRepeatMode === 'off' && Math.abs(geometryAngle % 360) < 0.0001 && !selection && !imageBrush && texture === 'solid' && !brushDither?.enabled && !colorReplacement && !gradient && !coverageKey && (color.a === 0 || color.a === 255 || proceduralAntialiasStrength === 0)
     ? `${shape}:${stamp.width}x${stamp.height}:${color.a === 0 ? 'erase' : packColor(color)}:${normalizedOpacityScale}:${symmetricSpans ? `${symmetryAxes?.horizontal}:${symmetryAxes?.vertical}:${symmetryAxes?.diagonalDown}:${symmetryAxes?.diagonalUp}:${symmetryAxes?.rotational}:${pivotX}:${pivotY}` : ''}`
     : null
-  const solidPackedValue = solidStampKey && Math.round(255 * normalizedOpacityScale) === 255
+  const solidPackedValue = solidStampKey && (color.a === 0 || color.a === 255) && Math.round(255 * normalizedOpacityScale) === 255
     ? color.a === 0
       ? 0
       : layer.format === 'rgba'

@@ -269,6 +269,7 @@ export interface CanvasDragState extends LayerMoveState {
   preserveLineAnchorOnNoop?: boolean
   brushSpeed?: BrushSpeedState
   gradientEndColor?: RgbaColor
+  gradientSourceButton?: 0 | 2
   gradientStops?: GradientStop[]
   gradientPaintRegion?: SelectionMask | null
   gradientFromCenter?: boolean

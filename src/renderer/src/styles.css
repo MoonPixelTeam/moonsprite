@@ -116,44 +116,44 @@
   --theme-onion-next: #2979ff;
   --theme-symmetry-axis: #0000ff;
   --ui-body-font-scale: 1;
-  --ui-font-small: calc(11px * var(--ui-body-font-scale));
-  --ui-line-small: calc(15px * var(--ui-body-font-scale));
-  --ui-font-regular: calc(13px * var(--ui-body-font-scale));
-  --ui-line-regular: calc(21px * var(--ui-body-font-scale));
-  --ui-space-1: 2px;
-  --ui-space-2: 4px;
-  --ui-space-3: 6px;
-  --ui-space-4: 8px;
-  --ui-space-5: 12px;
-  --ui-icon-button-size: 26px;
-  --ui-command-button-height: 30px;
-  --ui-field-height: 34px;
-  --ui-dialog-button-height: 34px;
-  --ui-emphasized-control-height: 38px;
-  --ui-toggle-height: 35px;
-  --ui-nav-row-height: 32px;
-  --ui-menu-row-height: 30px;
-  --ui-menu-icon-column: 22px;
+  --ui-font-small: calc(11px * var(--ui-body-font-scale) * var(--browser-ui-scale, 1));
+  --ui-line-small: calc(15px * var(--ui-body-font-scale) * var(--browser-ui-scale, 1));
+  --ui-font-regular: calc(13px * var(--ui-body-font-scale) * var(--browser-ui-scale, 1));
+  --ui-line-regular: calc(21px * var(--ui-body-font-scale) * var(--browser-ui-scale, 1));
+  --ui-space-1: calc(2px * var(--browser-ui-scale, 1));
+  --ui-space-2: calc(4px * var(--browser-ui-scale, 1));
+  --ui-space-3: calc(6px * var(--browser-ui-scale, 1));
+  --ui-space-4: calc(8px * var(--browser-ui-scale, 1));
+  --ui-space-5: calc(12px * var(--browser-ui-scale, 1));
+  --ui-icon-button-size: calc(26px * var(--browser-ui-scale, 1));
+  --ui-command-button-height: calc(30px * var(--browser-ui-scale, 1));
+  --ui-field-height: calc(34px * var(--browser-ui-scale, 1));
+  --ui-dialog-button-height: calc(34px * var(--browser-ui-scale, 1));
+  --ui-emphasized-control-height: calc(38px * var(--browser-ui-scale, 1));
+  --ui-toggle-height: calc(35px * var(--browser-ui-scale, 1));
+  --ui-nav-row-height: calc(32px * var(--browser-ui-scale, 1));
+  --ui-menu-row-height: calc(30px * var(--browser-ui-scale, 1));
+  --ui-menu-icon-column: calc(22px * var(--browser-ui-scale, 1));
   /* Keep shortcut labels from competing with command names at larger text sizes. */
   --ui-menu-popover-width: min(calc(100vw - 16px), max(230px, calc(230px * var(--ui-body-font-scale))));
-  --ui-tool-options-height: 43px;
+  --ui-tool-options-height: calc(43px * var(--browser-ui-scale, 1));
   --ui-panel-header-height: var(--ui-tool-options-height);
   --ui-dialog-header-height: var(--ui-panel-header-height);
   --ui-dialog-content-gap: var(--ui-space-4);
   --ui-dialog-padding: var(--ui-space-5);
-  --ui-dialog-label-width: 88px;
+  --ui-dialog-label-width: calc(88px * var(--browser-ui-scale, 1));
   --ui-motion-fast: 0ms;
   --ui-motion-normal: 0ms;
   --ui-motion-panel: 0ms;
   --ui-control-inline-padding: var(--ui-space-4);
-  --ui-tool-icon-normal-size: 22px;
-  --ui-tool-icon-large-size: 32px;
-  --ui-tool-button-normal-size: 38px;
-  --ui-tool-button-large-size: 44px;
+  --ui-tool-icon-normal-size: calc(22px * var(--browser-ui-scale, 1));
+  --ui-tool-icon-large-size: calc(32px * var(--browser-ui-scale, 1));
+  --ui-tool-button-normal-size: calc(38px * var(--browser-ui-scale, 1));
+  --ui-tool-button-large-size: calc(44px * var(--browser-ui-scale, 1));
   --app-window-titlebar-height: 32px;
-  --app-menu-bar-height: 38px;
-  --app-document-tabs-height: 34px;
-  --app-statusbar-height: 27px;
+  --app-menu-bar-height: calc(38px * var(--browser-ui-scale, 1));
+  --app-document-tabs-height: calc(34px * var(--browser-ui-scale, 1));
+  --app-statusbar-height: calc(27px * var(--browser-ui-scale, 1));
   --tool-rail-icon-size: var(--ui-tool-icon-large-size);
   --tool-rail-utility-icon-size: 22px;
   --tool-rail-button-size: var(--ui-tool-button-large-size);
@@ -626,6 +626,7 @@ button[aria-label]:has(> .pixel-utility-icon:only-child) { display: inline-grid;
 .quick-command-bar.translucent { opacity: .2; }
 .quick-command-bar.translucent:hover, .quick-command-bar.translucent:focus-within, .quick-command-bar.moving { opacity: 1; }
 .quick-command-bar.moving { transition: none; }
+.quick-command-bar[data-gradient-occluded] { visibility: hidden; pointer-events: none; }
 .quick-command-tooltip { display: block; flex: 0 0 auto; width: var(--ui-icon-button-size); height: var(--ui-icon-button-size); }
 .quick-command-toggle-tooltip { width: calc(var(--ui-icon-button-size) + var(--ui-space-5)); }
 .quick-command-actions-clip { flex: 0 1 auto; min-width: 0; max-width: 0; overflow: hidden; opacity: 0; transform: translateX(calc(-1 * var(--ui-space-2))); pointer-events: none; transition: max-width var(--ui-motion-panel) cubic-bezier(.2, .8, .2, 1), max-height var(--ui-motion-panel) cubic-bezier(.2, .8, .2, 1), opacity var(--ui-motion-fast) linear, transform var(--ui-motion-panel) cubic-bezier(.2, .8, .2, 1); }
@@ -946,6 +947,10 @@ body .free-tile-instance-rotation-control button.selected, body .free-tile-insta
 .tool-text-button > .pixel-utility-icon { flex: 0 0 22px; width: 22px; height: 22px; }
 .tool-text-button > .pixel-utility-icon-6px { flex: 0 0 12px; width: 12px; height: 12px; }
 .tool-text-button:hover { color: var(--theme-text-primary); background: var(--theme-surface-hover); }
+.gradient-confirm-actions { display: inline-flex; align-items: center; gap: var(--ui-space-2); margin-left: var(--ui-space-2); }
+.gradient-confirm-actions .tool-text-button { border: 1px solid var(--theme-border); }
+.gradient-confirm-actions .tool-text-button.primary { color: #fff; background: #2979FF; border-color: #2979FF; }
+.gradient-confirm-actions .tool-text-button.primary:hover { background: #1768eb; }
 .slice-tool-actions { display: inline-flex; align-items: center; gap: var(--ui-space-2); }
 .slice-properties-modal .modal-body { padding-block: var(--ui-space-4); }
 .slice-properties-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--ui-space-4); }
@@ -1606,7 +1611,6 @@ body .extension-panel-command:hover:not(:disabled) { background: var(--theme-sur
 .animation-tween-body > .animation-tween-preview-note { margin-top: calc(-1 * var(--ui-space-3)); font-size: var(--ui-font-small); color: var(--theme-icon-muted); }
 .animation-tween-body > .animation-tween-error { color: var(--theme-danger); }
 .animation-tween-modal > footer { align-items: center; }
-.animation-tween-modal > footer > .live-preview-toggle { flex: 0 0 auto; width: auto; min-height: var(--ui-field-height); }
 .timelapse-toggle, .new-document-recording-toggle { width: 100%; }
 .timelapse-config-grid, .timelapse-export-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); align-items: start; gap: var(--ui-space-4); }
 .timelapse-config-grid > :is(label, .ui-field), .timelapse-export-grid > :is(label, .ui-field) { display: grid; grid-template-rows: 16px 34px; grid-auto-rows: auto; min-width: 0; gap: var(--ui-space-3); color: var(--theme-text-muted); font-size: var(--ui-font-regular); }
@@ -1731,7 +1735,6 @@ body .extension-panel-command:hover:not(:disabled) { background: var(--theme-sur
   border-color: var(--theme-text-muted);
 }
 .modal.outline-modal footer { align-items: center; gap: var(--ui-space-4); padding: var(--ui-space-5); }
-.outline-modal footer > .live-preview-toggle { flex: 0 0 158px; width: 158px; height: var(--ui-field-height); min-height: var(--ui-field-height); }
 .outline-modal footer .live-preview-label { font-weight: 400; }
 .preference-toggle.preference-toggle { position: relative; box-sizing: border-box; display: flex; width: 100%; min-width: 0; height: var(--ui-toggle-height); min-height: var(--ui-toggle-height); align-items: center; gap: var(--ui-space-4); padding: 0 var(--ui-control-inline-padding); color: var(--theme-text-soft); background: var(--theme-raised-surface); border: 1px solid var(--theme-border); font-size: var(--ui-font-regular); line-height: var(--ui-line-regular); cursor: var(--cursor-pointer); transition: color var(--ui-motion-fast) linear, background-color var(--ui-motion-fast) linear, border-color var(--ui-motion-fast) linear; }
 .preference-toggle > :is(span, .moon-tooltip-anchor):not(.toggle-track) { flex: 1 1 auto; min-width: 0; }
@@ -2007,7 +2010,6 @@ body .extension-panel-command:hover:not(:disabled) { background: var(--theme-sur
 .gradient-dither-control { display: block; min-width: 0; }
 .layer-style-number-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--ui-space-4); }
 .layer-style-number-grid > .ui-field { align-content: start; }
-.layer-style-modal footer > .live-preview-toggle { flex: 0 0 170px; width: 170px; height: var(--ui-field-height); min-height: var(--ui-field-height); }
 .layer-style-modal footer > .quiet-button { flex: 0 0 auto; }
 .modal-footer-spacer { flex: 1 1 auto; }
 .delete-icon-button { display: grid; flex: 0 0 auto; place-items: center; padding: 0; color: var(--theme-text-muted); background: var(--theme-surface); border: 1px solid var(--theme-border); }
@@ -2018,6 +2020,7 @@ body .extension-panel-command:hover:not(:disabled) { background: var(--theme-sur
 .text-input { width: 100%; min-width: 0; height: var(--ui-field-height); padding: 0 var(--ui-space-4); color: var(--theme-text-primary); background: var(--theme-control-background); border: 1px solid var(--theme-border); font-size: var(--ui-font-regular); line-height: var(--ui-line-regular); }
 .text-input.text-input-compact { height: var(--ui-icon-button-size); padding: 0 var(--ui-space-3); font-size: var(--ui-font-regular); line-height: var(--ui-line-regular); }
 .text-input:disabled { color: var(--theme-text-disabled); background: var(--theme-surface-disabled); border-color: var(--theme-border-subtle); cursor: var(--cursor-unavailable); }
+.text-input[type='search']::-webkit-search-cancel-button { -webkit-appearance: none; display: none; }
 .color-values-popover label { display: grid; gap: var(--ui-space-2); min-width: 0; color: var(--theme-text-muted); font: var(--ui-font-small)/1 ui-monospace, Consolas, monospace; }
 .color-values-popover input { width: 100%; min-width: 0; height: 30px; padding: 0 var(--ui-space-3); color: var(--theme-text-primary); background: var(--theme-control-background); border: 1px solid var(--theme-border); font: var(--ui-font-regular) ui-monospace, Consolas, monospace; }
 .rgba-value-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--ui-space-2); }
@@ -2563,7 +2566,7 @@ body.animation-copy-drag, body.animation-copy-drag * { cursor: var(--cursor-copy
 /* Once a display color is present, restore the leading inset for every layer row together. */
 .layers-panel:has(.layer-color-stripe) .layer-row { padding-left: calc(8px + var(--layer-depth, 0) * 14px); }
 .group-thumb { display: grid; place-items: center; color: var(--theme-text-muted); background: var(--theme-raised-surface); }
-.layer-name { display: grid; align-self: stretch; align-content: center; gap: 0; min-width: 0; padding-left: var(--ui-space-3); overflow: hidden; font-size: calc(15px * var(--ui-body-font-scale)); }
+.layer-name { display: grid; align-self: stretch; align-content: center; gap: 0; min-width: 0; padding-left: var(--ui-space-3); overflow: hidden; font-size: calc(15px * var(--ui-body-font-scale) * var(--browser-ui-scale, 1)); }
 .layer-name > span { overflow: hidden; line-height: var(--ui-line-regular); text-overflow: ellipsis; white-space: nowrap; }
 .layer-row.background-layer .layer-name > span { text-decoration: underline; text-decoration-thickness: 1px; text-decoration-skip-ink: none; text-underline-offset: 0; }
 .layer-name small { color: var(--theme-icon-muted); font-size: var(--ui-font-small); line-height: var(--ui-line-small); }
@@ -2574,14 +2577,15 @@ body.animation-copy-drag, body.animation-copy-drag * { cursor: var(--cursor-copy
 .layer-context-menu .layer-context-icon { display: grid; grid-column: 1; grid-row: 1; place-items: center; width: 22px; height: 22px; }
 .layer-context-menu .layer-context-label { grid-column: 2; grid-row: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .layer-context-menu button > kbd { grid-column: 3; grid-row: 1; }
-.layer-context-menu button:hover { color: var(--theme-on-accent); background: var(--theme-accent); }
+.layer-context-menu button:hover:not(:disabled) { color: var(--theme-on-accent); background: var(--theme-accent); }
+.layer-context-menu button:disabled { opacity: .45; cursor: var(--cursor-unavailable); }
 .layer-context-menu .layer-new-submenu > .menu-submenu-trigger { grid-template-columns: var(--ui-menu-icon-column) minmax(0, 1fr) var(--ui-menu-icon-column); }
 .layer-context-menu .layer-new-submenu > .menu-submenu-popover { width: 220px; }
 .layer-context-menu .layer-new-submenu.open-left > .menu-submenu-popover { right: calc(100% - 2px); left: auto; }
 .layer-context-menu button.danger { color: var(--theme-danger); }
 .layer-context-menu button kbd,
 .context-menu-item kbd { margin-left: auto; color: var(--theme-text-muted); font: var(--ui-font-small) ui-monospace, Consolas, monospace; white-space: nowrap; }
-.layer-context-menu button:hover kbd,
+.layer-context-menu button:hover:not(:disabled) kbd,
 .context-menu-item:hover:not(:disabled) kbd { color: var(--theme-on-accent); }
 .layer-menu-tooltip { display: block; width: 100%; }
 .layer-menu-tooltip > button { width: 100%; }
@@ -2750,8 +2754,11 @@ body.animation-copy-drag, body.animation-copy-drag * { cursor: var(--cursor-copy
 .modal { position: fixed; top: 50%; left: 50%; z-index: 210; width: min(420px, calc(100vw - 32px)); max-height: calc(100vh - 32px); padding: 0; overflow: auto; pointer-events: auto; background: var(--theme-dialog-content); border: 1px solid var(--theme-border-muted); box-shadow: none !important; transform: translate(-50%, -50%); isolation: isolate; contain: paint; }
 .modal.resizable-modal { top: auto; left: auto; display: flex; flex-direction: column; overflow: hidden; transform: none; isolation: isolate; contain: paint; }
 .modal.resizable-modal { box-shadow: none !important; filter: none !important; outline: 0; }
-/* Release the opacity animation layer after entrance instead of retaining it
-   while sliders and live previews repaint underneath the dialog border. */
+/* Keep a stable compositing layer while mounted: dragging and control repaints
+   should not repeatedly promote/demote the dialog above the canvas in WebView2. */
+.modal { will-change: transform; }
+/* Let entrance opacity finish without retaining an animation effect;
+   the shared modal rule keeps the compositing hint for subsequent interaction. */
 :root:is([data-ui-motion='normal'], [data-ui-motion='full']) .modal:not(.resizable-modal):not(.simulated-progress-modal):not(.component-save-progress-card):not(.settings-modal) { animation: ui-modal-enter var(--ui-motion-panel) ease-out backwards; }
 :root:is([data-ui-motion='normal'], [data-ui-motion='full']) .modal.resizable-modal:not(.settings-modal) { animation: ui-resizable-modal-enter var(--ui-motion-panel) ease-out backwards; }
 @keyframes ui-modal-enter {
@@ -2860,7 +2867,6 @@ body.animation-copy-drag, body.animation-copy-drag * { cursor: var(--cursor-copy
 .anti-alias-custom-color { padding-top: var(--ui-space-4); border-top: 1px solid var(--theme-border); }
 .anti-alias-interior-toggle { min-height: var(--ui-field-height); }
 .anti-alias-modal footer { align-items: center; gap: var(--ui-space-3); }
-.anti-alias-modal footer > .live-preview-toggle { flex: 0 0 158px; width: 158px; height: var(--ui-field-height); min-height: var(--ui-field-height); }
 .anti-alias-modal footer .live-preview-copy { display: flex; height: 100%; align-items: center; }
 .anti-alias-modal footer .live-preview-label { align-items: center; font-weight: 400; line-height: 1; white-space: nowrap; }
 .lcd-screen-modal { width: min(480px, calc(100vw - 24px)); }
@@ -3335,7 +3341,6 @@ body .modal.confirm-modal-bulk-actions > footer > button:last-child { grid-colum
 .sprite-sheet-export-modal { width: min(560px, calc(100vw - 24px)); }
 .sprite-sheet-export-modal > .sprite-sheet-export-body { align-content: start; grid-auto-rows: max-content; gap: var(--ui-space-4); padding: var(--ui-space-5); overflow-x: hidden; overflow-y: auto; }
 .sprite-sheet-export-modal footer .primary-button { display: inline-flex; align-items: center; gap: var(--ui-space-3); }
-.sprite-sheet-export-modal footer > .live-preview-toggle { flex: 0 0 136px; width: 136px; height: var(--ui-field-height); min-height: var(--ui-field-height); }
 .sprite-sheet-export-modal footer .live-preview-label { font-weight: 400; }
 .sprite-sheet-page-control { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); width: 100%; }
 .sprite-sheet-page-control > :is(button, .segmented-control-tooltip) { min-width: 0; }
@@ -4590,7 +4595,7 @@ html body .panel-actions-popup {
 /* Keep pixel-icon artwork at its 100% raster size while the surrounding UI
    uses 125%. CSS zoom participates in layout, unlike a transform that leaves
    a fractional-size visual inside its original box. Do not scale nested SVGs twice. */
-:root[data-ui-scale="1.25"] :is(.pixel-asset-icon, .pixel-utility-icon, .pixel-shape-icon, .pixel-drawing-time-icon, .pixel-layer-count-icon) { zoom: 0.8; }
+:root:not([data-product-target="web-trial"])[data-ui-scale="1.25"] :is(.pixel-asset-icon, .pixel-utility-icon, .pixel-shape-icon, .pixel-drawing-time-icon, .pixel-layer-count-icon) { zoom: 0.8; }
 
 /* Square preset panels follow side-dock width; flexible siblings fill the rest. */
 .inspector-panel-group.workspace-square-panel { flex: 0 0 auto !important; aspect-ratio: 1 / 1; width: 100%; min-height: 0 !important; }
@@ -4705,3 +4710,46 @@ html body .panel-actions-popup {
   .color-panel .color-value-trigger :is(strong, small) { display: none; }
 }
 .palette-panel .palette-slot { width: var(--swatch-size); height: var(--swatch-size); min-width: 0; min-height: 0; max-width: 100%; padding: 0; }
+
+.gradient-confirm-bar { position: absolute; z-index: 10; top: 8px; left: 8px; right: 8px; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px; padding: 6px 8px; border: 1px solid var(--theme-border); background: var(--theme-surface); color: var(--theme-text); font-size: 12px; }
+.gradient-confirm-bar > span { flex: 1 1 140px; min-width: 0; overflow-wrap: anywhere; }
+.gradient-confirm-bar .gradient-confirm-actions { margin: 0; flex-wrap: wrap; }
+
+/* Shared preview controls keep the same compact width in every dialog. */
+.preference-toggle.live-preview-toggle { flex: 0 0 158px; width: 158px; max-width: 158px; min-width: 0; min-height: var(--ui-field-height); align-self: center; }
+.live-preview-toggle .live-preview-label { white-space: nowrap; font-weight: 400; }
+/* Convolution preset browser */
+.convolution-modal .convolution-body { display: grid; grid-template-columns: minmax(0, 1fr) 128px; gap: 12px; flex: 1; min-height: 0; overflow: auto; }
+.convolution-presets { display: flex; min-height: 0; }
+.convolution-presets .convolution-preset-list { flex: 1; min-width: 0; min-height: 180px; height: 100%; align-content: start; overflow-y: auto; }
+.convolution-preset-list > button { justify-items: start; min-width: 0; text-align: left; box-shadow: none; }
+.convolution-settings { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.convolution-settings > button { width: 100%; }
+.convolution-settings > .modal-note { margin: 0; font-size: var(--ui-font-small); }
+.convolution-channels { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 3px; margin-top: 10px; }
+.convolution-channels > button { min-width: 0; padding: 0; height: var(--ui-field-height); }
+.convolution-modal > footer { justify-content: flex-start; }
+
+
+:root[data-product-target="web-trial"] .app-shell { --app-window-titlebar-height: 0px; }
+:root[data-product-target="web-trial"] .app-window-titlebar { visibility: hidden; overflow: hidden; min-height: 0; border: 0; }
+
+:root[data-product-target="web-trial"] .start-screen-development-notice { max-width: 100%; white-space: nowrap; flex-basis: auto; font-weight: 500; }
+.trial-pinned-label { color: #2979FF; font-size: var(--ui-font-regular); white-space: nowrap; }
+
+/* Trial home has two actions, so the announcement must occupy the flexible third row. */
+:root[data-product-target="web-trial"] .start-actions { grid-template-rows: auto auto minmax(0, 1fr); }
+:root[data-product-target="web-trial"] .start-screen-news { container-type: inline-size; }
+:root[data-product-target="web-trial"] .trial-pinned-announcement p { display: block; }
+@media (max-width: 760px) {
+  :root[data-product-target="web-trial"] .start-actions { grid-template-rows: auto; }
+  :root[data-product-target="web-trial"] .start-screen-news { min-height: 150px; }
+}
+
+.trial-home-empty-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: var(--ui-space-3); margin-top: var(--ui-space-3); }
+.start-screen-state .trial-home-empty-actions > button { display: inline-flex; align-items: center; justify-content: center; height: var(--ui-command-button-height); margin: 0; }
+
+.trial-recovery-status { margin: 0; padding: var(--ui-space-3); color: var(--theme-text-muted); border-bottom: 1px solid var(--theme-border); font-size: var(--ui-font-small); }
+.trial-recovery-status[role="alert"] { color: var(--theme-danger); }
+
+.trial-library-note { margin: 0; padding: var(--ui-space-2); color: var(--theme-text-muted); font-size: var(--ui-font-small); }

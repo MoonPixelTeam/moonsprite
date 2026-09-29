@@ -1,3 +1,4 @@
+import { measureRuntimeDiagnostic } from '@/core/runtime-diagnostics'
 import { isWorkspaceResizing, onWorkspaceResizeEnd, recordWorkspaceResizeStage } from '@/components/workspace-resize'
 import { useEffect, useRef, useState } from 'react'
 import { FloatingDockPreview, PanelResizeHandles, useFloatingPanel } from '@/components/floating-panel'
@@ -190,8 +191,8 @@ export function PreviewPanel({ session, onClose, docked = false, onDockDragStart
     const scheduler = createPreviewDrawScheduler(() => drawRef.current())
     previewSchedulerRef.current = scheduler
     const unregister = registerCanvasPreviewListener(session.document.id, (snapshot) => {
-      // Styled documents still use the full compositor; don't reintroduce its
-      // high-frequency source upload/composition cost during raster input.
+      // Defer styled live raster input until commit; effect neighbourhoods
+      // can still be expensive when recomputed for every pointer event.
       if ((snapshot?.liveRasterEdit || snapshot?.movingLayerIds?.length) && !supportsIncrementalPreview(snapshot.document)) return
       const previousSnapshot = liveCanvasPreviewRef.current
       // Deferred selection previews are separate surfaces; the base composite
@@ -485,7 +486,7 @@ export function PreviewPanel({ session, onClose, docked = false, onDockDragStart
   useEffect(() => {
     const canvas = canvasRef.current
     if (!canvas || !initialCompositeReady) return
-    const draw = (): void => {
+    const draw = (): void => measureRuntimeDiagnostic('preview.panel.draw', () => {
       const previewStarted = isWorkspaceResizing() ? performance.now() : 0
       const context = canvas.getContext('2d')
       const bounds = measurePreviewViewport(canvas)
@@ -582,7 +583,7 @@ export function PreviewPanel({ session, onClose, docked = false, onDockDragStart
       const toX = Math.min(sourceDocument.width, Math.ceil((displayWidth - originX) / scale))
       const toY = Math.min(sourceDocument.height, Math.ceil((displayHeight - originY) / scale))
       const useIncrementalRaster = !livePreviewForFrame?.selectionPreview && !previewPlaying
-        && !currentSession.animationPlaying && supportsIncrementalPreview(previewDocument)
+        && !currentSession.animationPlaying
       if (useIncrementalRaster) {
         const raster = rasterCacheRef.current
         raster.configure(previewDocument, renderFrameId, renderContentRevision, {
@@ -598,7 +599,10 @@ export function PreviewPanel({ session, onClose, docked = false, onDockDragStart
         const work = raster.render()
         raster.draw(context, displayWidth, displayHeight)
         window.__moonSpriteCanvasProbe?.recordOperationStage?.('preview.incremental', performance.now() - started, { pixels: work.pixels, pending: work.pending })
-      } else if (toX > fromX && toY > fromY) compositeCacheRef.current.draw({
+      } else if (toX > fromX && toY > fromY) {
+        const sharedBase = livePreviewForFrame?.selectionPreview
+          ? existingCanvasCompositeCache(previewDocument)?.previewSource(previewDocument, renderFrameId, renderContentRevision, showRelativeLuminance) : null
+        compositeCacheRef.current.draw({
         context,
         document: previewDocument,
         view: { zoom: scale, panX: 0, panY: 0, rotation: 0, mirrored: false, mirroredVertical: false, showGrid: false, relativeLuminance: showRelativeLuminance },
@@ -629,11 +633,13 @@ export function PreviewPanel({ session, onClose, docked = false, onDockDragStart
           })
         },
         movingLayerIds: livePreviewForFrame?.movingLayerIds,
+        selectionBase: sharedBase?.dirtyRects.length === 0 ? sharedBase.source : undefined,
         selectionPreview: livePreviewForFrame?.selectionPreview
       })
+      }
       context.restore()
       if (previewStarted) recordWorkspaceResizeStage('preview', performance.now() - previewStarted)
-    }
+    }, () => ({ documentId: session.document.id, layerId: session.document.activeLayerId, contentRevision: session.contentRevision }))
     drawRef.current = draw
     // Main canvas rendering is queued first. Let it populate the shared
     // composite before a large auxiliary viewport requests its initial image.

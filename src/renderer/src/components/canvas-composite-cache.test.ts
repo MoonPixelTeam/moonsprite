@@ -1,7 +1,12 @@
+import { renderHook } from '@testing-library/react'
+import { useCanvasSelectionTransform } from './useCanvasSelectionTransform'
+import { sessionFromDocument } from '@/store/workspace-session'
+import { CanvasInputState, type CanvasDragState } from '@/core/canvas-input'
+import { flipSelectionTransformSource } from '@/core/tools-selection-transform-source'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { compositeRegion, createDocument, createLayer, createLayerMask, DocumentCompositeCache, layerContentBounds, readLayerColorAt, readLayerColor, writeLayerColor } from '@/core/document'
 import { activateAnimationFrame, addBlankAnimationFrame, animationCelKey, ensureAnimationDocument, refreshActiveAnimationFrame, setAnimationCelOffsetsForKeys, syncActiveAnimationLayer } from '@/core/animation'
-import { brushStrokeInvalidationRects, captureSelectionTransform, paintBrush, paintLine, solidBrushStampDifferenceRects, type SelectionTransformSource } from '@/core/tools'
+import { applySelectionTransform, brushStrokeInvalidationRects, captureSelectionTransform, paintBrush, paintLine, solidBrushStampDifferenceRects, type SelectionTransformSource } from '@/core/tools'
 import { beginPixelEdit, commitPixelEdit } from '@/core/history'
 import { createDefaultLayerStyles } from '@/core/layer-styles'
 import { registerInitialDocumentComposite, registerPendingInitialDocumentComposite } from '@/core/initial-document-composite'
@@ -132,6 +137,227 @@ beforeEach(() => {
 afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals() })
 
 describe('CanvasCompositeCache', () => {
+  it.each([false, true])('does not recompose the base when resuming a floating drag (mirrored=%s)', mirrored => {
+    const document = createDocument('resume floating selection', 128, 128, 'rgba')
+    for (let i = 0; i < 15; i++) document.layers.push(createLayer(`Layer ${i}`, 128, 128, 'rgba'))
+    const layer = document.layers.at(-1)!
+    document.activeLayerId = layer.id
+    new Uint32Array(document.layers[0].pixels.buffer).fill(0xff332211)
+    writeLayerColor(document, layer, 20 * 128 + 20, { r: 255, g: 0, b: 0, a: 255 })
+    const session = sessionFromDocument(document)
+    const rect = { x: 20, y: 20, width: 32, height: 32 }
+    session.selection = rect
+    const cache = new CanvasCompositeCache(), context = makeContext()
+    draw(cache, document, context)
+    const base = context.drawImage.mock.lastCall![0] as MockOffscreenCanvas
+    let source = captureSelectionTransform(document, rect, layer, { cacheOpaqueOffsets: false })!
+    if (mirrored) source = flipSelectionTransformSource(source, 'horizontal')
+    const target = { ...rect, x: 30 }
+    draw(cache, document, context, { selectionPreview: { layerId: layer.id, source, target, angle: 0, copy: false } })
+    const drag = { kind: 'move-content', start: { x: 30, y: 20 }, last: { x: 30, y: 20 },
+      floatingPaste: true, deferredSelectionPreview: true, selectionPreparationPending: true,
+      selectionSource: source, selectionStart: target, transformStartTarget: target, startAngle: 0,
+      previewTarget: target, copy: false } as CanvasDragState
+    const inputRef = { current: new CanvasInputState() }
+    inputRef.current.drag = drag
+    const invalidate = vi.fn((bounds: typeof rect) => cache.invalidateDocumentRect(bounds, document, 'static'))
+    const { result, unmount } = renderHook(() => useCanvasSelectionTransform({
+      session, inputRef, compositeCacheRef: { current: cache }, invalidateCompositeRect: invalidate
+    } as unknown as Parameters<typeof useCanvasSelectionTransform>[0]))
+    base.context.putImageData.mockClear()
+    try {
+      expect(result.current.prepareSelectionTransformDrag(drag)).toBe(true)
+      // Force a new preview surface as a viewport resize would do. The base must
+      // remain usable even if the previous preview cannot cover this viewport.
+      draw(cache, document, context)
+      draw(cache, document, context, { selectionPreview: { layerId: layer.id, source, target: { ...target, x: 31 }, angle: 0, copy: false } })
+      expect(base.context.putImageData).not.toHaveBeenCalled()
+      expect(invalidate).not.toHaveBeenCalled()
+      const preview = context.drawImage.mock.lastCall![0] as MockOffscreenCanvas
+      const words = new Uint32Array(preview.pixels.buffer)
+      expect(words[20 * 128 + (mirrored ? 62 : 31)]).toBe(0xff0000ff)
+      expect(words[20 * 128 + 20]).toBe(0xff332211)
+      expect(new Uint32Array(layer.pixels.buffer)[20 * 128 + 20]).toBe(0xff0000ff)
+    } finally { unmount() }
+  })
+  it.each(['selection', 'clipboard'] as const)('still invalidates restored materialized %s previews', origin => {
+    const document = createDocument('restore materialized preview', 64, 64, 'rgba')
+    const layer = document.layers[0], rect = { x: 10, y: 10, width: 8, height: 8 }
+    writeLayerColor(document, layer, 10 * 64 + 10, { r: 255, g: 0, b: 0, a: 255 })
+    const source = captureSelectionTransform(document, rect, layer)!
+    source.origin = origin
+    const target = { ...rect, x: 30 }
+    const previewEdit = applySelectionTransform(document, source, target, 0, false)
+    expect(readLayerColorAt(document, layer, 30, 10).a).toBe(255)
+    const cache = new CanvasCompositeCache(), invalidate = vi.fn()
+    const invalidateAll = vi.spyOn(cache, 'invalidateAll')
+    const drag = { kind: 'move-content', floatingPaste: true, deferredSelectionPreview: true,
+      selectionPreparationPending: true, selectionSource: source, selectionStart: target,
+      transformStartTarget: target, startAngle: 0, previewEdit } as CanvasDragState
+    const { result, unmount } = renderHook(() => useCanvasSelectionTransform({
+      session: sessionFromDocument(document), inputRef: { current: new CanvasInputState() },
+      compositeCacheRef: { current: cache }, invalidateCompositeRect: invalidate
+    } as unknown as Parameters<typeof useCanvasSelectionTransform>[0]))
+    try {
+      expect(result.current.prepareSelectionTransformDrag(drag)).toBe(true)
+      expect(readLayerColorAt(document, layer, 30, 10).a).toBe(0)
+      expect(readLayerColorAt(document, layer, 10, 10).a).toBe(255)
+      expect(drag.deferredSelectionWasMaterialized).toBe(true)
+      expect(drag.previewEdit).toBeNull()
+      expect(invalidateAll).toHaveBeenCalledTimes(origin === 'clipboard' ? 1 : 0)
+      expect(invalidate).toHaveBeenCalledTimes(origin === 'selection' ? 2 : 0)
+    } finally { unmount() }
+  })
+  it('seeds a cold auxiliary selection preview from the editor without recompositing the whole canvas', () => {
+    const document = createDocument('editor plus preview', 512, 512, 'rgba')
+    for (let i = 0; i < 99; i++) document.layers.push(createLayer(`Layer ${i}`, 512, 512, 'rgba'))
+    const layer = document.layers.at(-1)!, rect = { x: 100, y: 100, width: 300, height: 300 }
+    new Uint32Array(document.layers[0].pixels.buffer).fill(0xff332211)
+    writeLayerColor(document, layer, 100 * 512 + 100, { r: 255, g: 0, b: 0, a: 255 })
+    const editor = new CanvasCompositeCache(), auxiliary = new CanvasCompositeCache(), context = makeContext()
+    draw(editor, document, context)
+    const compose = vi.spyOn(DocumentCompositeCache.prototype, 'normalLayerRegion')
+    for (const revision of [1, 2]) {
+      if (revision === 2) {
+        writeLayerColor(document, layer, 100 * 512 + 100, { r: 0, g: 0, b: 0, a: 0 })
+        writeLayerColor(document, layer, 100 * 512 + 399, { r: 255, g: 0, b: 0, a: 255 })
+        draw(editor, document, context, { revision, contentRevision: revision, contentInvalidation: { kind: 'region', fromRevision: 1, revision, rect, sourceLayerIds: [layer.id] } })
+      }
+      const shared = editor.previewSource(document, document.animation!.activeFrameId, revision, false)!
+      expect(shared.dirtyRects).toHaveLength(0)
+      const source = captureSelectionTransform(document, rect, layer, { cacheOpaqueOffsets: false })!
+      compose.mockClear()
+      draw(auxiliary, document, context, { revision, contentRevision: revision, selectionBase: shared.source,
+        selectionPreview: { layerId: layer.id, source, target: { ...rect, x: 101 }, angle: 0, copy: false } })
+      expect(compose.mock.calls.some(([, layers, , , w, h]) => layers.length === 100 && w * h === 512 * 512)).toBe(false)
+      const result = context.drawImage.mock.lastCall![0] as MockOffscreenCanvas
+      expect(new Uint32Array(result.pixels.buffer)[100 * 512 + (revision === 1 ? 101 : 400)]).toBe(0xff0000ff)
+      const editorSource = shared.source as unknown as MockOffscreenCanvas
+      expect(new Uint32Array(editorSource.pixels.buffer)[100 * 512 + (revision === 1 ? 100 : 399)]).toBe(0xff0000ff)
+    }
+    const shared = editor.previewSource(document, document.animation!.activeFrameId, 2, false)!
+    const before = (shared.source as unknown as MockOffscreenCanvas).pixels.slice()
+    auxiliary.invalidateDocumentRect(rect, document)
+    draw(auxiliary, document, context, { revision: 2, contentRevision: 2 })
+    expect((shared.source as unknown as MockOffscreenCanvas).pixels).toEqual(before)
+    editor.invalidateDocumentRect(rect, document)
+    expect(editor.previewSource(document, document.animation!.activeFrameId, 2, false)!.dirtyRects.length).toBeGreaterThan(0)
+    expect(editor.previewSource(document, document.animation!.activeFrameId, 3, false)).toBeNull()
+  }, 30000)
+  it.each([false, true])('reuses the lower stack on the first translucent selection drag (prewarm=%s)', prewarm => {
+    const document = createDocument('complex first drag', 768, 768, 'rgba')
+    document.width = 4096; document.height = 4096
+    for (let i = 0; i < 99; i++) document.layers.push(createLayer(`Layer ${i}`, 768, 768, 'rgba'))
+    for (const layer of document.layers) new Uint32Array(layer.pixels.buffer).fill(0x80504030)
+    const layer = document.layers.at(-1)!
+    const cache = new CanvasCompositeCache(1), context = makeContext()
+    const viewport = { toX: 1024, toY: 1024 }
+    draw(cache, document, context, viewport)
+    if (prewarm) {
+      const jobs = new Map<number, () => void>(); let jobId = 0
+      vi.stubGlobal('requestIdleCallback', (job: () => void) => { jobs.set(++jobId, job); return jobId })
+      vi.stubGlobal('cancelIdleCallback', (id: number) => jobs.delete(id))
+      cache.prepareSelectionBackdrop(document, layer.id, 1, { x: 200, y: 200, width: 500, height: 500 }, () => true)
+      while (jobs.size) { const [id, job] = jobs.entries().next().value!; jobs.delete(id); job() }
+    }
+    const lower = vi.spyOn(DocumentCompositeCache.prototype, 'normalLayerRegion')
+    const start = performance.now()
+    const source = captureSelectionTransform(document, { x: 200, y: 200, width: 500, height: 500 }, layer, { cacheOpaqueOffsets: false })!
+    draw(cache, document, context, { ...viewport, selectionPreview: { layerId: layer.id, source, target: { x: 201, y: 200, width: 500, height: 500 }, angle: 0, copy: false } })
+    const pixels = lower.mock.calls.reduce((sum, [, layers, , , width, height]) => sum + (layers.length === 99 ? width * height : 0), 0)
+    console.info(`first 4K/100-layer/500px translucent drag: ${(performance.now() - start).toFixed(1)}ms, lower pixels=${pixels}`)
+    expect(pixels).toBe(prewarm ? 0 : 501 * 500)
+  })
+  it.each([128 * 1024 * 1024, 1])('patches a just-edited base before the first selection move (budget=%s)', budget => {
+    const document = createDocument('flip then move', 256, 256, 'rgba')
+    const layer = document.layers[0]
+    writeLayerColor(document, layer, 30 * 256 + 30, { r: 220, g: 40, b: 60, a: 255 })
+    const cache = new CanvasCompositeCache(budget), context = makeContext()
+    draw(cache, document, context)
+    const base = context.drawImage.mock.lastCall![0] as MockOffscreenCanvas
+    base.context.putImageData.mockClear()
+    // A local flip/commit followed by a drag before any ordinary canvas draw.
+    writeLayerColor(document, layer, 30 * 256 + 30, { r: 0, g: 0, b: 0, a: 0 })
+    writeLayerColor(document, layer, 30 * 256 + 34, { r: 220, g: 40, b: 60, a: 255 })
+    const rect = { x: 30, y: 30, width: 5, height: 5 }
+    const source = captureSelectionTransform(document, rect, layer)!
+    draw(cache, document, context, { contentRevision: 2, revision: 2,
+      contentInvalidation: { kind: 'region', fromRevision: 1, revision: 2, rect, sourceLayerIds: [layer.id] },
+      selectionPreview: { layerId: layer.id, source, target: { ...rect, x: 40 }, angle: 0, copy: false } })
+    const uploads = base.context.putImageData.mock.calls
+    expect(uploads.reduce((sum, [image]) => sum + image.width * image.height, 0)).toBe(25)
+    const preview = context.drawImage.mock.lastCall![0] as MockOffscreenCanvas
+    expect(Array.from(preview.pixels.slice((30 * 256 + 34) * 4, (30 * 256 + 34) * 4 + 4))).toEqual([0, 0, 0, 0])
+    expect(Array.from(preview.pixels.slice((30 * 256 + 44) * 4, (30 * 256 + 44) * 4 + 4))).toEqual([220, 40, 60, 255])
+  })
+  it.each([128 * 1024 * 1024, 1])('retains unrelated styled sources through workspace undo and redo (budget=%s)', budget => {
+    useWorkspace.setState({ sessions: [], activeId: null })
+    const document = createDocument('history source ownership', 128, 128, 'rgba')
+    const edited = document.layers[0]
+    for (let i = 0; i < 3; i++) document.layers.push(createLayer(`Unchanged ${i}`, 128, 128, 'rgba'))
+    for (const layer of document.layers) {
+      layer.layerStyles = createDefaultLayerStyles()
+      layer.layerStyles.stroke.enabled = true
+      layer.layerStyles.shadow.enabled = true
+      for (let y = 20; y < 100; y++) for (let x = 20; x < 100; x++) layer.pixels.set([40, 60, 90, 128], (y * 128 + x) * 4)
+    }
+    useWorkspace.getState().addSession(document)
+    const cache = new CanvasCompositeCache(budget), context = makeContext()
+    const render = () => {
+      const session = useWorkspace.getState().sessions[0]
+      draw(cache, document, context, { revision: session.revision, contentRevision: session.contentRevision, contentInvalidation: session.contentInvalidation })
+      const surface = context.drawImage.mock.lastCall![0] as MockOffscreenCanvas
+      const expected = compositeRegion(document, 0, 0, 128, 128, new DocumentCompositeCache(), session.contentRevision)
+      expect(surface.pixels.every((value, index) => value === expected[index])).toBe(true)
+    }
+    const edit = beginPixelEdit(edited.id)
+    paintBrush(document, edited, edit, 60, 60, 5, { r: 240, g: 30, b: 60, a: 128 }, 'round')
+    useWorkspace.getState().commitPixelEdit(edit, 'paint')
+    render()
+    const blocks = vi.spyOn(styleRender, 'renderStyledLayerBlock')
+    for (const action of ['undo', 'redo'] as const) {
+      useWorkspace.getState()[action]()
+      const session = useWorkspace.getState().sessions[0]
+      expect(session.contentInvalidation).toMatchObject({ sourceLayerIds: [edited.id] })
+      blocks.mockClear()
+      draw(cache, document, context, { revision: session.revision, contentRevision: session.contentRevision, contentInvalidation: session.contentInvalidation })
+      expect(blocks.mock.calls.length).toBeGreaterThan(0)
+      expect(blocks.mock.calls.every(([, source]) => source.sourceLayer.id === edited.id)).toBe(true)
+      render()
+    }
+  })
+  it('keeps 1280px translucent stroke and shadow painting local', () => {
+    const document = createDocument('1280px styled painting', 1280, 1280, 'rgba')
+    const layer = document.layers[0]
+    layer.layerStyles = createDefaultLayerStyles()
+    layer.layerStyles.stroke.enabled = true
+    layer.layerStyles.shadow.enabled = true
+    // Spread existing artwork across the canvas, including translucent edges.
+    for (let y = 0; y < 1280; y += 1) for (let x = 0; x < 1280; x += 1) {
+      if ((x % 160) < 80 && (y % 160) < 80) layer.pixels.set([60, 100, 150, 128], (y * 1280 + x) * 4)
+    }
+    const cache = new CanvasCompositeCache(), context = makeContext()
+    draw(cache, document, context)
+    const blocks = vi.spyOn(styleRender, 'renderStyledLayerBlock')
+    const edit = beginPixelEdit(layer.id)
+    let paintMs = 0, renderMs = 0
+    for (let sample = 0; sample < 12; sample++) {
+      const from = { x: 300 + sample * 4, y: 300 }, to = { x: from.x + 4, y: 300 }
+      let start = performance.now()
+      paintLine(document, layer, edit, from.x, from.y, to.x, to.y, 45, { r: 200, g: 40, b: 80, a: 128 }, null, 'round')
+      paintMs += performance.now() - start
+      start = performance.now()
+      for (const rect of brushStrokeInvalidationRects(from, to, 45, null, 1280, 1280)) cache.invalidateDocumentRect(rect, document, undefined, [layer.id])
+      draw(cache, document, context, { liveRasterEdit: true })
+      renderMs += performance.now() - start
+    }
+    const area = blocks.mock.calls.reduce((sum, [, , rect]) => sum + rect.width * rect.height, 0)
+    console.info(`1280px translucent stroke + shadow: paint=${paintMs.toFixed(1)}ms render=${renderMs.toFixed(1)}ms styledPixels=${area}`)
+    expect(area).toBeLessThan(1280 * 1280)
+    const surface = context.drawImage.mock.lastCall![0] as MockOffscreenCanvas
+    const expected = compositeRegion(document, 0, 0, 1280, 1280, new DocumentCompositeCache(), 1)
+    expect(surface.pixels.every((value, index) => value === expected[index])).toBe(true)
+  })
   it.each([{ budget: 128 * 1024 * 1024, size: 400 }, { budget: 1024 * 1024, size: 800 }])('patches disjoint group visibility regions without uploading their bounding box (budget=$budget)', ({ budget, size }) => {
     const document = createDocument('sparse group cache', size, size, 'rgba')
     const group = { id: 'sparse-cache-group', name: 'Sparse', parentGroupId: null, visible: true, locked: false, opacity: 1, blendMode: 'normal' as const }
@@ -1534,6 +1760,31 @@ describe('CanvasCompositeCache', () => {
     const surface = context.drawImage.mock.calls.at(-1)?.[0] as MockOffscreenCanvas
     const patches = surface.context.putImageData.mock.calls.map(([patch, x, y]) => ({ patch: patch as MockImageData, x, y }))
     expect(patches.some(({ patch, x, y }) => x === 0 && y === 0 && Array.from(patch.data).slice(0, 4).every((value, index) => value === [255, 0, 0, 255][index]))).toBe(true)
+  })
+
+  it('refreshes floating clipboard pixels revealed after moving in a smaller viewport', () => {
+    const document = createDocument('clipboard viewport', 12, 2, 'rgba')
+    const layer = document.layers[0]
+    writeLayerColor(document, layer, 0, { r: 0, g: 0, b: 255, a: 255 })
+    const before = layer.pixels.slice()
+    const source: SelectionTransformSource = {
+      selection: { x: 0, y: 0, width: 4, height: 1 },
+      values: new Uint32Array(4).fill(0xff0000ff),
+      selectedOffsets: new Uint32Array(0), opaqueOffsets: new Uint32Array(0),
+      opaqueIndices: new Uint32Array(0), opaqueValues: new Uint32Array(0), origin: 'clipboard'
+    }
+    const context = makeContext()
+    const cache = new CanvasCompositeCache()
+    const selectionPreview = { layerId: layer.id, source, target: { x: 2, y: 0, width: 4, height: 1 }, angle: 0, copy: true }
+    draw(cache, document, context, { selectionPreview })
+    draw(cache, document, context, { selectionPreview, fromX: 3, toX: 5 })
+    selectionPreview.target = { ...selectionPreview.target, x: 4 }
+    draw(cache, document, context, { selectionPreview, fromX: 3, toX: 5 })
+    draw(cache, document, context, { selectionPreview })
+    const surface = context.drawImage.mock.calls.at(-1)?.[0] as MockOffscreenCanvas
+    expect(Array.from(surface.pixels.slice(4 * 4, 8 * 4))).toEqual(Array.from(new Uint8ClampedArray(source.values.buffer)))
+    expect(Array.from(surface.pixels.slice(2 * 4, 4 * 4))).toEqual(new Array(8).fill(0))
+    expect(layer.pixels).toEqual(before)
   })
 
   it('renders clipboard pixels without mutating the source document', () => {

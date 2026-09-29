@@ -1,3 +1,6 @@
+import { pendingGradientFor } from '@/core/canvas-gradient-confirmation'
+import { isWebTrial } from '@/core/product-target'
+import { resolvePendingGradientForIo } from './pending-gradient-io'
 import { publishEditorEvent } from '@/core/extension-editor-events'
 import { openImageSequencePaths } from './image-sequence-import'
 import { resolveDocumentClose } from './workspace-close-coordinator'
@@ -23,7 +26,7 @@ import { readStoredString } from '@/core/storage'
 import { persistProjectLayerPanelState } from '@/core/layer-panel-state'
 import { captureFreeTileImageResizeState, resizeFreeTileDocumentImage, validateFreeTileImageResize } from '@/core/free-tile-document'
 import { exportDocumentFile, openDocumentFile, saveDocumentFile, type ExportOptions, type SaveAsOptions } from './document-file-service'
-import { flushLocalHistoryPersist, scheduleLocalHistoryPersist, restoreLocalHistory } from './local-history-service'
+import { flushLocalHistoryPersist, restoreLocalHistory } from './local-history-service'
 import { startDocumentCloseTask, waitForDocumentCloseTasks } from './document-close-tasks'
 import { runDocumentSave, waitForDocumentSaves } from './document-save-tasks'
 import { recordUsageEvent, recordUsageExport } from '@/platform/usage-statistics'
@@ -290,6 +293,8 @@ export function createWorkspaceDocumentIoCommands({ get, set, recording, service
     async saveActive(saveAs = false, options?: SaveAsOptions) {
       const documentId = activeSession(get())?.document.id
       if (!documentId) return false
+      if (pendingGradientFor(documentId) && !await resolvePendingGradientForIo(documentId, get().requestDialog, () => get().setActive(documentId))) return false
+      if (get().activeId !== documentId) return false
       return runDocumentSave(documentId, async () => {
         let session = get().sessions.find((item) => item.document.id === documentId) ?? null
         if (!session) return false
@@ -318,7 +323,7 @@ export function createWorkspaceDocumentIoCommands({ get, set, recording, service
         if (!session) return false
         persistProjectLayerPanelState(session)
         const savedTarget = documentSaveTarget(session.document)
-        if (!saveAs && !session.document.dirty && savedTarget && (loadEditorPreferences().saveOriginalFormat || savedTarget.format === 'moonsprite')) {
+        if (!isWebTrial() && !saveAs && !session.document.dirty && savedTarget && (loadEditorPreferences().saveOriginalFormat || savedTarget.format === 'moonsprite')) {
           if (session.recoveryOriginId) removeSavedRecovery(session.recoveryOriginId)
           set({ message: tr('workspace.save.done') })
           return true
@@ -388,16 +393,21 @@ export function createWorkspaceDocumentIoCommands({ get, set, recording, service
           saved.document.dirty = !fullySaved
           set({ sessions: [...get().sessions] })
           recordRecentProject(result.filePath, saved.document.name)
-          scheduleLocalHistoryPersist(window.moonSprite, saved)
+          // Persist the journal generation immediately after a successful
+          // project write. A delayed journal from the previous save must not
+          // overwrite this freshly decoded project on the next open.
+          void flushLocalHistoryPersist(window.moonSprite, saved, true).catch((historyError) => {
+            console.error('MoonSprite local history save failed after project save', historyError)
+          })
           const latest = get().sessions.find((item) => item.document.id === documentId)
           if (latest && latest.contentRevision === result.revision && !latest.document.dirty) {
-            removeSavedRecovery(latest.recoveryOriginId ?? documentId)
+            if (!isWebTrial()) removeSavedRecovery(latest.recoveryOriginId ?? documentId)
           } else {
             // A save that raced with newer edits should finish immediately; recovery
             // protection continues in the background instead of extending Ctrl+S.
             void get().autosaveDirty().catch(() => undefined)
           }
-          set({ message: fullySaved ? tr('workspace.save.done') : tr('workspace.save.newerChanges') })
+          set({ message: isWebTrial() ? (fullySaved ? '工程已交给浏览器下载，请确认下载完成。' : '工程已交给浏览器下载，但仍有新修改，请再次保存。') : fullySaved ? tr('workspace.save.done') : tr('workspace.save.newerChanges') })
           endSaveProgress()
           publishEditorEvent('document.saved', documentId, { fullySaved })
           recordUsageEvent('save')
@@ -411,6 +421,9 @@ export function createWorkspaceDocumentIoCommands({ get, set, recording, service
     },
 
     async exportActive(options) {
+      const documentId = get().activeId
+      if (!documentId || !await resolvePendingGradientForIo(documentId, get().requestDialog, () => get().setActive(documentId))) return false
+      if (get().activeId !== documentId) return false
       get().commitFloatingPaste()
       const session = activeSession(get())
       if (!session) return false
@@ -539,6 +552,7 @@ export function createWorkspaceDocumentIoCommands({ get, set, recording, service
 
     async closeDocument(id) {
       if (!await waitForDocumentSaves(id)) return
+      if (!await resolvePendingGradientForIo(id, get().requestDialog, () => get().setActive(id))) return
       const session = get().sessions.find((item) => item.document.id === id)
       if (!session) return
       const preserveOpenedRecovery = session.recoveryOriginId !== null
@@ -557,7 +571,7 @@ export function createWorkspaceDocumentIoCommands({ get, set, recording, service
         return
       }
       let discardClosedRecovery = !session.document.dirty && !preserveOpenedRecovery
-      const choice = await resolveDocumentClose(session.document.dirty, () => get().requestDialog({ title: tr('workspace.unsaved.title'), message: tr('workspace.unsaved.message', { name: session.document.name }), detail: tr('workspace.unsaved.detail'), choices: [{ id: 'cancel', label: tr('common.cancel'), tone: 'quiet' }, { id: 'discard', label: tr('app.discard'), tone: 'danger' }, { id: 'save', label: tr('common.save'), tone: 'primary' }] }), async () => {
+      const choice = await resolveDocumentClose(session.document.dirty, () => get().requestDialog({ title: tr('workspace.unsaved.title'), message: tr('workspace.unsaved.message', { name: session.document.name }), detail: isWebTrial() ? '保存会下载 .moonsprite 工程，请确认下载完成。' : tr('workspace.unsaved.detail'), choices: [{ id: 'cancel', label: tr('common.cancel'), tone: 'quiet' }, { id: 'discard', label: tr('app.discard'), tone: 'danger' }, { id: 'save', label: tr('common.save'), tone: 'primary' }] }), async () => {
         get().setActive(id)
         return get().saveActive()
       })

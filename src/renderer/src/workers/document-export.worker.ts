@@ -1,8 +1,9 @@
 import type { DocumentSlice, SpriteDocument } from '@shared/types-document'
 import type { SelectionMask, SelectionRect } from '@shared/types-selection'
 import { cloneDocumentForAnimationFrame } from '@/core/animation'
+import { rehydrateRuntimeRasterDocument } from '@/core/runtime-raster'
 import { exportFrameIds } from '@/core/export-frame-range'
-import { exportAnimationGif } from '@/core/gif'
+import { exportAnimatedImage } from '@/core/webp-animation'
 import { decodePng, exportDocumentImage, exportDocumentSelectionImage, exportDocumentSliceImage } from '@/core/png'
 import { documentForLayerExport } from '@/core/layer-export'
 import { buildSpriteSheetExportDocument } from '@/core/sprite-sheet'
@@ -66,16 +67,16 @@ const encode = async (document: SpriteDocument, request: DocumentExportWorkerReq
   const trimActive = request.trimMode !== undefined || request.trim === true
   const visible = !trimActive ? null
     : request.trimMode === 'common' || request.trim === true && request.trimMode === undefined
-      ? request.format === 'gif' ? animationVisibleBounds(document) : documentVisibleContentBounds(document)
-    : request.format === 'gif' ? animationVisibleBounds(sourceDocument)
+      ? (request.format === 'gif' || request.format === 'webp') ? animationVisibleBounds(document) : documentVisibleContentBounds(document)
+    : (request.format === 'gif' || request.format === 'webp') ? animationVisibleBounds(sourceDocument)
     : documentVisibleContentBounds(sourceDocument)
   const crop = visible ? intersect(baseCrop, visible) : null
   const effectiveCrop: DocumentSlice = trimActive && crop ? { id: 'trim', name: 'Trim', ...crop } : baseCrop as DocumentSlice
   const selection = request.job === 'selection' && request.selection
     ? trimActive && crop ? selectionForCrop(request.selection, crop) : request.selection
     : null
-  const encoded = request.format === 'gif'
-    ? { ...exportAnimationGif(document, { ...gifOptions(request), ...(effectiveCrop ? { crop: effectiveCrop } : {}), ...(layerId ? { layerId } : {}) }), extension: 'gif' as const, indexed: false }
+  const encoded = (request.format === 'gif' || request.format === 'webp')
+    ? { ...(await exportAnimatedImage(document, { ...gifOptions(request), ...(effectiveCrop ? { crop: effectiveCrop } : {}), ...(layerId ? { layerId } : {}) }, request.format)), indexed: false }
       : selection
       ? await exportDocumentSelectionImage(document, selection, request.scalePercent, request.format as Exclude<typeof request.format, 'gif' | 'psd' | 'ase' | 'aseprite'>, request.protection)
       : trimActive || slice || layerId
@@ -87,6 +88,7 @@ const encode = async (document: SpriteDocument, request: DocumentExportWorkerReq
 scope.onmessage = async (event): Promise<void> => {
   const request = event.data
   try {
+    if (request.format === 'ase' || request.format === 'aseprite') rehydrateRuntimeRasterDocument(request.document)
     const sourceDocument = request.job === 'sprite-sheet'
       ? buildSpriteSheetExportDocument(
         request.document,

@@ -8,6 +8,7 @@ import { CanvasInputState, revertCancelledCanvasDragPixelChanges, type CanvasDra
 import { prepareAdjustmentPreviewEdit } from '@/core/adjustment-preview-lifecycle'
 import { applyTilemapDocumentEdit } from '@/core/tilemap-document'
 import { GradientCompositePreviewCache, GradientPreviewCoverageCache, SymmetryDragState } from './canvas-stage-helpers'
+import { applyPendingGradientOnEnter, cancelPendingGradientOnEscape } from './canvas-gradient-confirmation-keyboard'
 interface Ports {
   readonly magicGestureRef: import('react').RefObject<{
     cancel: (redraw?: boolean) => void
@@ -137,10 +138,13 @@ export function useCanvasInteractionCancel(ports: Ports) {
   }
 
   useEffect(() => {
-    const prepareEscapeCancellation = (event: KeyboardEvent): void => {
-      if (event.key === 'Escape' && ports.inputRef.current.drag) cancelActiveCanvasInteraction()
+    const prepareGradientConfirmation = (event: KeyboardEvent): void => {
+      if (applyPendingGradientOnEnter(event, ports.session.document.id)) return
+      if (cancelPendingGradientOnEscape(event, ports.session.document.id)) return
+      if (event.key !== 'Escape' || event.isComposing || event.defaultPrevented || document.querySelector('.modal-backdrop')) return
+      if (ports.inputRef.current.drag) cancelActiveCanvasInteraction()
     }
-    return registerCanvasKeyboard({ isActive: () => useWorkspace.getState().activeId === ports.session.document.id, keyDown: prepareEscapeCancellation })
+    return registerCanvasKeyboard({ isActive: () => useWorkspace.getState().activeId === ports.session.document.id, keyDown: prepareGradientConfirmation })
     // The capture phase updates floating preview ownership before App handles Escape.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ports.session.document.id])

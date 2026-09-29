@@ -1,5 +1,6 @@
 import type { SpriteDocument } from '@shared/types-document'
 import { decodeAseprite } from './aseprite'
+import { encodeAsepriteInWorker } from './aseprite-save-worker'
 import { decodePng, exportDocumentImage, type SaveImageKind } from './png'
 import { decodeProject, encodeProjectAsync, readProjectExpandedRasterBytes, registerProjectSaveBaseline, type ProjectDecodeReport } from './project-format'
 import { browserRasterImageExtensions, decodeBrowserRasterImage } from './raster-image'
@@ -413,6 +414,9 @@ export async function decodeDocumentFileAsync(data: Uint8Array, filePath: string
 
 export async function encodeDocumentForPath(document: SpriteDocument, filePath: string, imageFormat: SaveImageKind | null, scalePercent: number, onProgress?: (value: number) => void): Promise<Uint8Array> {
   const outputFormat = imageFormat ?? saveImageKindForPath(filePath)
+  if ((outputFormat === 'ase' || outputFormat === 'aseprite') && typeof Worker !== 'undefined') {
+    return encodeAsepriteInWorker(document, outputFormat, scalePercent, onProgress)
+  }
   return outputFormat
     ? (await exportDocumentImage(document, scalePercent, outputFormat)).bytes
     : encodeProjectAsync(document, { onProgress })

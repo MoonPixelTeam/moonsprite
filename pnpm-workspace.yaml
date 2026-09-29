@@ -79,5 +79,3 @@ allowBuilds:
   lightningcss-win32-arm64-msvc: set this to true or false
   picocolors: set this to true or false
   tslib: set this to true or false
-packages:
-  - website

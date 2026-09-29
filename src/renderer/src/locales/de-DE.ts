@@ -1,3 +1,4 @@
+import { convolutionEn } from './convolution'
 import { gradientMapEn } from './gradient-map'
 import { beta7En } from './release-beta7'
 import { spriteSheetImportdeDE } from './sprite-sheet-import'
@@ -6,6 +7,8 @@ import type { TranslationCatalog } from './contracts'
 import { tabletEn } from './tablet'
 
 export const deDEMessages = {
+
+  ...convolutionEn,
   ...beta7En,
   ...gradientMapEn,
   "toolOptions.temporaryBrushCaptureHint": "Temporärer Pinsel: Bereich aufziehen, loslassen zum Verwenden; Esc zum Abbrechen",
@@ -1602,8 +1605,8 @@ export const deDEMessages = {
   "home.linksAria": 'Gemeinschaftslinks und Sprache',
   "home.qq": "QQ Gruppe",
   "home.qqDescription": 'Machen Sie sich an die MoonPX Pixel-Art Community QQ Group für Diskussion und Unterstützung ein.',
-  "home.community": 'Gemeinschaft',
-  "home.communityDescription": 'Öffnen Sie die MoonPX Community-Website für Diskussion und Unterstützung.',
+  "home.community": "Offizielle Website",
+  "home.communityDescription": "Entdecken Sie Funktionen und Neuigkeiten auf der offiziellen MoonSprite-Website.",
   "home.steam": 'Steam',
   "home.steamDescription": 'Öffnen Sie die MoonSprite Seite auf Steam.',
   "home.steamWishlist": "Zur Wunschliste hinzufügen",
@@ -2980,6 +2983,7 @@ export const deDEMessages = {
   "toolOptions.inkLockAlphaHint": "Ändert nur die Farbe vorhandener Pixel und erhält deren Alpha.",
   'timeline.tween.linear': 'Linear',
   'timeline.tween.timing': 'Frames und Zeit',
+  'preferences.exportSound': 'Ton nach Export',
   'preferences.saveOriginalFormat': 'Originalformat beibehalten',
   'preferences.saveOriginalFormatHint': 'Wenn aktiviert, wird im Format der geöffneten Datei gespeichert und vor inkompatiblen Funktionen gewarnt. Neue Dokumente verwenden das Standardformat. Andernfalls wird .moonsprite verwendet und für andere Formate das Speichern als Projekt angeboten.',
   'file.save.projectPreferredTitle': 'Als MoonSprite-Projekt speichern',
@@ -3167,4 +3171,14 @@ export const deDEMessages = {
   'preferences.theme.followSystemHint': 'Wechselt je nach Windows-App-Modus automatisch zwischen DARK und LIGHT. Die Auswahl eines anderen Designs deaktiviert diese Option.',
   'extension.invalidExportFile': 'Die Exportdatei ist ungültig oder größer als 1 MiB.',
 
+  'preferences.gradientApplicationMode': 'Verlauf anwenden',
+  'preferences.gradientApplicationMode.instant': 'Beim Loslassen anwenden',
+  'gradient.pending.title': 'Gradient pending confirmation',
+  'gradient.pending.hint': 'Drag handles to adjust. Enter applies; Esc cancels. Changing layers or frames cancels the preview.',
+  'gradient.pending.io': 'The canvas contains an unapplied gradient. Apply or discard it before saving, exporting, or closing.',
+  'gradient.pending.continue': 'Continue editing',
+  'gradient.pending.discard': 'Discard gradient and continue',
+  'gradient.pending.invalidated': 'The painting target or selection changed. The unapplied gradient was cancelled.',
+  'gradient.pending.failed': 'Could not apply the gradient. The preview is retained; please try again.',
+  'preferences.gradientApplicationMode.confirm': 'Nach Bestätigung anwenden',
 } satisfies TranslationCatalog

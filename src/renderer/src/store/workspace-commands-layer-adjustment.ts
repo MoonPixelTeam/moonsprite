@@ -1,3 +1,5 @@
+import { createConvolutionPreview } from './workspace-convolution-preview'
+import { createFilterPreview, invalidateFilterPreview, type FilterPreviewTransaction } from './workspace-filter-preview'
 import { completeDocumentChange } from './workspace-document-change'
 import type { AnimationCelSurface } from '@shared/types-animation'
 import type { LayerGroup, RasterLayer } from '@shared/types-layer'
@@ -139,11 +141,20 @@ const adjustmentSnapshotInvalidationRect = (session: DocumentSession, baseline: 
   return invalidation
 }
 
-export function createLayerAdjustmentCommands({ get, set, recording }: WorkspaceCommandContext<'commitFloatingPaste' | 'mutateActive' | 'applyActiveLayerAdjustmentFromSnapshot'>): Pick<WorkspaceLayerCommands, 'applyFilterPreset' | 'applyLcdScreenFilter' | 'applyActiveLayerAdjustment' | 'captureActiveLayerAdjustmentSnapshot' | 'previewActiveLayerAdjustment' | 'applyActiveLayerAdjustmentPreviewResult' | 'restoreActiveDocumentSnapshot' | 'applyActiveLayerAdjustmentFromSnapshot'> {
+export function createLayerAdjustmentCommands(context: WorkspaceCommandContext<'commitFloatingPaste' | 'mutateActive' | 'applyActiveLayerAdjustmentFromSnapshot'>, preview?: FilterPreviewTransaction): Pick<WorkspaceLayerCommands, 'beginConvolutionPreview' | 'beginFilterPreview' | 'applyFilterPreset' | 'applyLcdScreenFilter' | 'applyActiveLayerAdjustment' | 'captureActiveLayerAdjustmentSnapshot' | 'previewActiveLayerAdjustment' | 'applyActiveLayerAdjustmentPreviewResult' | 'restoreActiveDocumentSnapshot' | 'applyActiveLayerAdjustmentFromSnapshot'> {
+  const { get, set, recording } = context
   const { recordDocumentOperation } = recording
   return {
-    async applyFilterPreset(presetId) {
+    beginConvolutionPreview() {
       get().commitFloatingPaste()
+      return createConvolutionPreview(context)
+    },
+    beginFilterPreview() {
+      get().commitFloatingPaste()
+      return createFilterPreview(context, (transaction) => createLayerAdjustmentCommands(context, transaction))
+    },
+    async applyFilterPreset(presetId, opacity) {
+      if (!preview) get().commitFloatingPaste()
       const current = activeSession(get())
       const preset = filterPresetById(presetId)
       if (!current || !preset) return
@@ -153,14 +164,14 @@ export function createLayerAdjustmentCommands({ get, set, recording }: Workspace
         const check = checkResourceLimit(current.document.width, current.document.height, current.document.layers.length + 1, current.document.colorMode, resource)
         if (!check.allowed) throw new Error(check.reason)
         get().mutateActive((session) => {
-          if (session.document.id !== documentId) return
+          if (session.document.id !== documentId || (preview && !preview.active())) return
           const document = session.document
           const before = captureDocumentStructureSnapshot(document)
           const beforeSelection = captureLayerUi(session)
           const rgbaPixels = renderFilterPreset(preset.id, document.width, document.height)
           const layer = createLayer(`滤镜 · ${preset.name}`, document.width, document.height, document.colorMode)
           layer.blendMode = preset.blendMode
-          layer.opacity = preset.opacity
+          layer.opacity = Math.max(0, Math.min(1, opacity ?? preset.opacity))
           layer.description = preset.description
           if (session.selectedGroupId && document.groups.some((group) => group.id === session.selectedGroupId)) layer.groupId = session.selectedGroupId
           if (layer.format === 'rgba') layer.pixels = rgbaPixels
@@ -205,6 +216,11 @@ export function createLayerAdjustmentCommands({ get, set, recording }: Workspace
             session.selectedGroupIds = [...selection.selectedGroupIds]
             session.collapsedGroupIds = [...selection.collapsedGroupIds]
           }
+          if (preview) {
+            preview.rollback = () => restore(before, beforeSelection)
+            invalidateFilterPreview(session)
+            return
+          }
           session.history.push({
             label: `滤镜：${preset.name}`,
             bytes: documentStructureDeltaBytes(before, after),
@@ -213,13 +229,13 @@ export function createLayerAdjustmentCommands({ get, set, recording }: Workspace
             invalidation: { kind: 'full' },
             requiresAnimationSync: false
           })
-        }, true, true)
+        }, !preview, !preview)
       } catch (error) {
         set({ message: error instanceof Error ? error.message : tr('workspace.canvasCreateError') })
       }
     },
     async applyLcdScreenFilter(options?: Partial<LcdScreenFilterOptions>) {
-      get().commitFloatingPaste()
+      if (!preview) get().commitFloatingPaste()
       const current = activeSession(get())
       const selectedLayerId = current?.selectedLayerIds.length === 1 ? current.selectedLayerIds[0] : null
       if (!current || !selectedLayerId) return
@@ -230,7 +246,7 @@ export function createLayerAdjustmentCommands({ get, set, recording }: Workspace
         const check = checkResourceLimit(current.document.width, current.document.height, current.document.layers.length + 4, current.document.colorMode, resource)
         if (!check.allowed) throw new Error(check.reason)
         get().mutateActive((session) => {
-          if (session.document.id !== documentId) return
+          if (session.document.id !== documentId || (preview && !preview.active())) return
           const document = session.document
           const source = document.layers.find((layer) => layer.id === selectedLayerId)
           if (!source) return
@@ -328,8 +344,13 @@ export function createLayerAdjustmentCommands({ get, set, recording }: Workspace
             session.selectedGroupIds = [...selection.selectedGroupIds]
             session.collapsedGroupIds = [...selection.collapsedGroupIds]
           }
+          if (preview) {
+            preview.rollback = () => restore(before, beforeSelection, sourceVisibleBefore)
+            invalidateFilterPreview(session)
+            return
+          }
           session.history.push({ label: `${tr('filter.lcdScreen')}`, bytes: documentStructureDeltaBytes(before, after), undo: () => restore(before, beforeSelection, sourceVisibleBefore), redo: () => restore(after, afterSelection, false), invalidation: { kind: 'full' }, requiresAnimationSync: false })
-        }, true, true)
+        }, !preview, !preview)
       } catch (error) {
         set({ message: error instanceof Error ? error.message : tr('workspace.canvasCreateError') })
       }

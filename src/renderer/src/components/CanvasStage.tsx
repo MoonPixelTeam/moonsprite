@@ -53,9 +53,10 @@ import { useCanvasDeviceRouter } from './useCanvasDeviceRouter'
 import { useCanvasPreferences } from './useCanvasPreferences'
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import { useWorkspace, type DocumentSession } from '@/store/workspace'
+import { activePaintLayer } from '@/store/workspace-session'
 import { loadEditorPreferences } from '@/core/file-preferences'
 import { CanvasInputState } from '@/core/canvas-input'
-import { crosshairCursorForColor } from '@/core/canvas-visuals'
+import { canvasCursors, crosshairCursorForColor } from '@/core/canvas-visuals'
 import { useCanvasViewPreview } from '@/components/useCanvasViewPreview'
 import { PerformanceProfiler } from '@/components/PerformanceProfiler'
 import { useI18n } from '@/components/I18nProvider'
@@ -71,11 +72,13 @@ import rotationPointer from '@/assets/rotation-indicator/pointer.png'
 import { renderCanvasFrame } from './canvas-render-frame'
 import { canvasStageIsVisible } from './canvas-stage-visibility'
 import { subscribeAnimationTweenPreview } from './animation-tween-preview'
+import { type GradientEditHandle } from '@/core/canvas-gradient-confirmation'
+import { useCanvasGradientConfirmation } from './useCanvasGradientConfirmation'
+import { GradientConfirmationBar } from './GradientConfirmationBar'
 import { useAnimationTweenPreviewDrag } from './useAnimationTweenPreviewDrag'
 import { LineAnchorHistory } from './canvas-stage-helpers'
 import { CanvasViewport, CANVAS_VIEW_SCROLLBAR_THICKNESS } from './CanvasViewScrollbars'
 import { CanvasReferences, isOutsideReferenceCanvas } from './CanvasReferences'
-
 export function CanvasStage({ session: storedSession }: { session: DocumentSession }) {
   const { t, locale } = useI18n()
   const stageRef = useRef<HTMLDivElement>(null)
@@ -172,8 +175,8 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
     get canvasResizePreviewRef() { return canvasResizePreviewRef },
     get lineAnchor() { return lineAnchor }
   })
-
   const inputRef = useRef(new CanvasInputState())
+  const gradientEditRef = useRef<{ handle: GradientEditHandle; pointerId: number; origin: { x: number; y: number }; start: { x: number; y: number }; end: { x: number; y: number }; center?: { x: number; y: number }; bounds?: { x: number; y: number; width: number; height: number } } | null>(null)
   // Keyboard listeners intentionally live across brush changes. Deferred draws
   // must therefore resolve the current render function instead of the brush
   // configuration that was active when the listener was registered.
@@ -247,7 +250,6 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
     get balancedShiftLineEnabled() { return balancedShiftLineEnabled },
     get lineDirectionStep() { return lineDirectionStep }
   })
-
   const {
     selectedFreeTileSelectionTarget,
     selectedFreeTileInstancesBounds,
@@ -283,7 +285,6 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
     get session() { return session },
     get selectedFreeTileSelectionTarget() { return selectedFreeTileSelectionTarget }
   })
-
   const {
     rotationIndicatorRef,
     rotationPointerRef,
@@ -315,7 +316,6 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
     drawNow: () => drawRef.current(),
     get scheduleDraw() { return scheduleDraw }
   })
-
   const { penCursorRef, adaptiveCursorRef, cursorPreferencesRef, hidePenCursor, refreshPenCursor, syncPenCursor } = useCanvasPenCursor({
     paintingPoint: point => paintingCursorPixelCenter(point, stageSize(), session.document, liveViewRef.current, rotationIndicatorPosition, interfaceScale),
     get zoom() { return liveViewRef.current.zoom },
@@ -326,7 +326,6 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
   })
   refreshPenCursorRef.current = refreshPenCursor
   useLayoutEffect(() => refreshPenCursor(), [session.view.zoom])
-
   const {
     cancelSelectionPreview,
     adjustmentPreviewEditRef,
@@ -363,7 +362,6 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
     get displayedSelectionPoint() { return displayedSelectionPoint },
     get stagePoint() { return stagePoint }
   })
-
   const { updateMarqueePreview, updateShapePreview } = useCanvasRotatableGeometry({
     get selectionMarqueeModifierState() { return selectionMarqueeModifierState },
     get inputRef() { return inputRef },
@@ -376,7 +374,6 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
     get selectionCornerRadius() { return selectionCornerRadius },
     get symmetryCenter() { return symmetryCenter }
   })
-
   const { selectionBoundaryCacheRef, polygonPathPreviewRenderCacheRef, drawSelectionOverlay } = useCanvasSelectionOverlay({
     get selectionOverlayDrawRef() { return selectionOverlayDrawRef },
     get canvasRef() { return canvasRef },
@@ -399,7 +396,6 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
     get applyViewRotation() { return applyViewRotation },
     get t() { return t }
   })
-
   const {
     brushPreviewCanvasRef,
     brushPreviewDrawRef,
@@ -430,7 +426,6 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
     get activeToolBrushSize() { return activeToolBrushSize },
     get temporaryMoveActive() { return temporaryMoveActive }
   })
-
   const {
     publishedTilesetPreviewRef,
     rotationSceneRef,
@@ -499,7 +494,6 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
     get isoViewPreferences() { return isoViewPreferences },
     get optimizedRotationEnabled() { return optimizedRotationEnabled }
   })
-
   const { sprayAirbrushRef, applyLiquifyHoldRef, stopAirbrushTimer, scheduleAirbrushTimer, stopLiquifyTimer, scheduleLiquifyTimer } = useCanvasStrokeClock({
     get session() { return session },
     get paintSelectionForDrag() { return paintSelectionForDrag },
@@ -511,7 +505,6 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
     get liveInputSession() { return liveInputSession },
     get requestDrawRef() { return requestDrawRef }
   })
-
   const {
     moveLayerContentPreviewRef,
     moveLayerContentPreviewTimerRef,
@@ -534,7 +527,6 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
     get liveViewRef() { return liveViewRef },
     get moveLayerContentPreviewEnabled() { return moveLayerContentPreviewEnabled }
   })
-
   const {
     canvasResizePreviewRef,
     autoSlicePreviewRef,
@@ -554,7 +546,6 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
     get liveViewRef() { return liveViewRef },
     get unrotatedStagePoint() { return unrotatedStagePoint }
   })
-
   const { textToolPreviewRef, textToolBoxRef, textLayerAt, sliceHandleAt } = useCanvasTextPreview({
     get session() { return session },
     get scheduleDraw() { return scheduleDraw },
@@ -562,7 +553,6 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
     get liveViewRef() { return liveViewRef },
     get unrotatedStagePoint() { return unrotatedStagePoint }
   })
-
   const {
     commitPolygonLasso,
     commitShapePoints,
@@ -593,7 +583,6 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
     get optimizedRotationEnabled() { return optimizedRotationEnabled },
     get balancedStraightLines() { return balancedStraightLines }
   })
-
   const {
     selectionHitAt,
     selectionHit,
@@ -614,6 +603,7 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
     get freeTransformQuadForSession() { return freeTransformQuadForSession },
     get displayedSelectionPoint() { return displayedSelectionPoint },
     get inputRef() { return inputRef },
+    get gradientEditActive() { return () => Boolean(gradientEditRef.current) },
     get selectionCrosshair() { return selectionCrosshair },
     get selectionInteractionEditable() { return selectionInteractionEditable },
     get quickToolActive() { return quickToolActive },
@@ -644,7 +634,6 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
     get symmetryAxisPreferences() { return symmetryAxisPreferences },
     get quickToolMatch() { return quickToolMatch }
   })
-
   const { keyDisplayEntries, keyDisplayWheelRef } = useCanvasKeyboardInput({
     get useLocalCursors() { return canvasPreferences.useLocalCursors },
     get keyDisplayEnabled() { return keyDisplayEnabled },
@@ -700,7 +689,6 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
     get lineAnchor() { return lineAnchor },
     get lineConnectionShortcut() { return lineConnectionShortcut }
   })
-
   const {
     quickEyedropperOriginalColorRef,
     quickEyedropperActiveRef,
@@ -723,7 +711,6 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
     get liveViewRef() { return liveViewRef },
     get checkerboard() { return checkerboard }
   })
-
   const { magicGestureRef, magicWandWorkerRef, magicPreviewFlash } = useCanvasMagicLifecycle({
     get session() { return session },
     get inputRef() { return inputRef },
@@ -732,8 +719,7 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
     get commitPolygonLasso() { return commitPolygonLasso },
     get scheduleDraw() { return scheduleDraw }
   })
-
-  const { pressureAdapterRef, wheelBrushSizePreviewRef, pointerDown, pointerMove, pointerUp, pointerCancel, pointerLeave, pointerEnter } =
+  const { pressureAdapterRef, wheelBrushSizePreviewRef, pointerDown, pointerMove, pointerUp, pointerCancel, pointerLostCapture, pointerLeave, pointerEnter } =
     useCanvasDeviceRouter({
     get useLocalCursors() { return canvasPreferences.useLocalCursors },
       get inputRef() { return inputRef },
@@ -781,7 +767,6 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
       get brushPreviewOverlaySupported() { return brushPreviewOverlaySupported },
       get lineConnectionPreviewActive() { return lineConnectionPreviewActive }
     })
-
   useEffect(() => {
     const syncPreferences = (): void => {
       const preferences = loadEditorPreferences()
@@ -838,7 +823,6 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
     get compositeCacheRef() { return compositeCacheRef },
     get scheduleDraw() { return scheduleDraw }
   })
-
   useEffect(
     () => () => {
       publishSelectionSizePreview({ documentId: session.document.id, size: null })
@@ -846,7 +830,6 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
     [session.document.id]
   )
   useEffect(() => subscribeAnimationTweenPreview(session.document.id, () => scheduleDraw()), [session.document.id])
-
   const draw = (): void => {
     if (!canvasStageIsVisible(canvasRef.current, useWorkspace.getState().activeId)) return
     renderCanvasFrame({
@@ -965,7 +948,6 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
       readSession: () => useWorkspace.getState().sessions.find((item) => item.document.id === session.document.id) ?? session
     })
   }
-
   drawRef.current = draw
   const { quickSelectionPressRef, quickSelectionHandledAtRef, quickSelectionCellAt, quickSelectCell } = useCanvasQuickSelection({
     get checkerboard() { return checkerboard },
@@ -979,7 +961,6 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
     get t() { return t },
     get scheduleDraw() { return scheduleDraw }
   })
-
   const { symmetryDragRef, symmetryAxisHitAt } = useCanvasSymmetryControls({
     get symmetryAxisPreferences() { return symmetryAxisPreferences },
     get session() { return session },
@@ -987,7 +968,6 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
     get symmetryCenter() { return symmetryCenter },
     get liveViewRef() { return liveViewRef }
   })
-
   const navigationInput = createNavigationCanvasInput({
     get inputRef() { return inputRef },
     get liveViewRef() { return liveViewRef },
@@ -1012,7 +992,6 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
     get updateCursor() { return updateCursor },
     get finishZoomPreview() { return finishZoomPreview }
   })
-
   const selectionInput = createSelectionCanvasInput({
     get useLocalCursors() { return canvasPreferences.useLocalCursors },
     get selectionHit() { return selectionHit },
@@ -1038,7 +1017,6 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
     get tilemapPaintSelectionForIncoming() { return tilemapPaintSelectionForIncoming },
     get optimizedRotationEnabled() { return optimizedRotationEnabled }
   })
-
   const selectionBeginInput = createSelectionBeginCanvasInput({
     get useLocalCursors() { return canvasPreferences.useLocalCursors },
     get selectedFreeTileSelectionTarget() { return selectedFreeTileSelectionTarget },
@@ -1079,7 +1057,6 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
     get magicPreviewFlash() { return magicPreviewFlash },
     get optimizedRotationEnabled() { return optimizedRotationEnabled }
   })
-
   const textInput = createTextCanvasInput({
     get inputRef() { return inputRef },
     get displayedResizeCursorForHandle() { return displayedResizeCursorForHandle },
@@ -1089,7 +1066,6 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
     get compositeCacheRef() { return compositeCacheRef },
     get textToolBoxRef() { return textToolBoxRef }
   })
-
   const shapeInput = createShapeCanvasInput({
     get commitPolygonShape() { return commitPolygonShape },
     get scheduleDraw() { return scheduleDraw },
@@ -1112,14 +1088,12 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
     get lineShapeBrushPoints() { return lineShapeBrushPoints },
     get curveShapePixelPoints() { return curveShapePixelPoints }
   })
-
   const boundsInput = createBoundsCanvasInput({
     get inputRef() { return inputRef },
     get canvasResizeContains() { return canvasResizeContains },
     get scheduleCanvasResizePreview() { return scheduleCanvasResizePreview },
     get modifierActive() { return modifierActive }
   })
-
   const freeTileInput = createFreeTileCanvasInput({
     get inputRef() { return inputRef },
     get scheduleDraw() { return scheduleDraw },
@@ -1141,7 +1115,6 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
     get commitFreeTileSourceDrag() { return commitFreeTileSourceDrag },
     get lineAnchorHistoryRef() { return lineAnchorHistoryRef }
   })
-
   const sliceInput = createSliceCanvasInput({
     get useLocalCursors() { return canvasPreferences.useLocalCursors },
     get sliceTool() { return sliceTool },
@@ -1151,7 +1124,6 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
     get scheduleDraw() { return scheduleDraw },
     get selectionCrosshair() { return selectionCrosshair }
   })
-
   const layerMoveInput = createLayerMoveCanvasInput({
     get topEditableLayerAt() { return topEditableLayerAt },
     get showMoveLayerContentPreview() { return showMoveLayerContentPreview },
@@ -1167,7 +1139,6 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
     get invalidateCompositeRect() { return invalidateCompositeRect },
     get scheduleDraw() { return scheduleDraw }
   })
-
   const lineConnectionInput = createLineConnectionCanvasInput({
     get lineConnectionActive() { return lineConnectionActive },
     get lineAnchor() { return lineAnchor },
@@ -1184,7 +1155,6 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
     get symmetryCenter() { return symmetryCenter },
     get inputRef() { return inputRef }
   })
-
   const strokeInput = createStrokeCanvasInput({
     get inputRef() { return inputRef },
     get optimizedRotationEnabled() { return optimizedRotationEnabled },
@@ -1205,7 +1175,6 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
     get freeTileSourceEditForDrag() { return freeTileSourceEditForDrag },
     get commitFreeTileSourceDrag() { return commitFreeTileSourceDrag }
   })
-
   const freeTileEditInput = createFreeTileEditCanvasInput({
     get gradientStopsForButton() { return gradientStopsForButton },
     get inputRef() { return inputRef },
@@ -1226,7 +1195,6 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
     get advanceIsoBrushPath() { return advanceIsoBrushPath },
     get scheduleDraw() { return scheduleDraw }
   })
-
   const fillInput = createFillCanvasInput({
     get invalidateCompositeRect() { return invalidateCompositeRect },
     get gridSnapActive() { return gridSnapActive },
@@ -1249,7 +1217,6 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
     get commitFreeTileSourceDrag() { return commitFreeTileSourceDrag },
     get paintSelectionForDrag() { return paintSelectionForDrag }
   })
-
   const tileInput = createTileCanvasInput({
     get tilemapCellAllowedBySelection() { return tilemapCellAllowedBySelection },
     get invalidateCompositeRect() { return invalidateCompositeRect },
@@ -1264,7 +1231,6 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
     get endSelectionAdjustmentEdit() { return endSelectionAdjustmentEdit },
     get draw() { return draw }
   })
-
   const samplingInput = createSamplingCanvasInput({
     get freeTileAtPoint() { return freeTileAtPoint },
     get inputRef() { return inputRef },
@@ -1279,7 +1245,6 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
     get updateCursor() { return updateCursor },
     get draw() { return draw }
   })
-
   const transformInput = createTransformCanvasInput({
     get repeatedDocumentPointsAt() { return repeatedDocumentPointsAt },
     get symmetryCenter() { return symmetryCenter },
@@ -1441,6 +1406,9 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
     get sliceInput() { return sliceInput },
     get transformInput() { return transformInput }
   })
+  const gradientConfirmation = useCanvasGradientConfirmation({ session, canvasRef, inputRef, gradientEditRef,
+    fillInput, mode: canvasPreferences.gradientApplicationMode, scheduleDraw, localPoint, localContinuousPointAt,
+    updateCursor, syncPenCursor, updateGradientDragGeometry, gradientStopsForButton, paintSelectionForDrag })
   const handlePointerUp = createCanvasPointerUp({
     get liveInputSession() { return liveInputSession },
     get stopAirbrushTimer() { return stopAirbrushTimer },
@@ -1462,6 +1430,7 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
     get selectionInput() { return selectionInput },
     get samplingInput() { return samplingInput },
     get fillInput() { return fillInput },
+    deferGradient: gradientConfirmation.defer,
     get tileInput() { return tileInput },
     get freeTileInput() { return freeTileInput },
     get strokeInput() { return strokeInput },
@@ -1471,13 +1440,13 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
     get sliceInput() { return sliceInput },
     get transformInput() { return transformInput }
   })
-
   const tweenPreviewDrag = useAnimationTweenPreviewDrag({
     documentId: () => session.document.id,
     moveToolActive: () => liveInputSession().tool === 'move' && !inputRef.current.spaceHeld && !inputRef.current.drag && !liveInputSession().animationPlaying,
     pointAt: (x, y) => repeatedDocumentPointsAt(x, y, true, true)
   })
   const rotationStyle = { transform: 'none', transformOrigin: '50% 50%' }
+  const { gradientPending, beginPendingGradientEdit, movePendingGradientEdit, endPendingGradientEdit, cancelPendingGradientEdit } = gradientConfirmation
   return (
     <PerformanceProfiler id="CanvasStage">
       <CanvasViewport enabled={canvasPreferences.canvasViewScrollbarsEnabled} documentId={session.document.id}
@@ -1486,17 +1455,26 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
         view={session.view} rotationIndicatorPosition={rotationIndicatorPosition}
         ariaLabel={t('canvas.aria')} onHorizontalVisibilityChange={setHorizontalScrollbarVisible}>
       <div ref={stageRef} className="stage-surface">
+        <GradientConfirmationBar documentId={session.document.id} />
         <canvas
           ref={canvasRef}
           data-document-id={session.document.id}
           style={{ ...rotationStyle, ...canvasCursorStyle }}
           className={`stage-canvas ${session.tool === 'zoom' ? 'zoom-tool-canvas' : ''}`}
           aria-label={t('canvas.aria')}
-          onPointerDown={(event) => { if (event.pointerType === 'touch' || event.ctrlKey || event.metaKey || (event.pointerType === 'pen' && tabletPreferences.api === 'disabled') || !tweenPreviewDrag.pointerDown(event)) pointerDown(event); rememberPaintedDrag(inputRef.current.drag, session.tool) }}
-          onPointerMove={(event) => { if (!tweenPreviewDrag.pointerMove(event)) pointerMove(event); rememberPaintedDrag(inputRef.current.drag, session.tool) }}
-          onPointerUp={(event) => { rememberPaintedDrag(inputRef.current.drag, session.tool); if (!tweenPreviewDrag.pointerUp(event)) pointerUp(event) }}
-          onPointerCancel={(event) => { if (!tweenPreviewDrag.pointerCancel(event)) pointerCancel(event) }}
-          onLostPointerCapture={(event) => tweenPreviewDrag.pointerCancel(event)}
+          onPointerDown={(event) => {
+            if (beginPendingGradientEdit(event)) return
+            if (gradientPending() && session.tool === 'fill' && session.fillKind === 'gradient' && event.pointerType !== 'touch' && event.button !== 1 && !event.ctrlKey && !event.metaKey && !inputRef.current.spaceHeld) {
+              event.preventDefault()
+              return
+            }
+            if (event.pointerType === 'touch' || event.ctrlKey || event.metaKey || (event.pointerType === 'pen' && tabletPreferences.api === 'disabled') || !tweenPreviewDrag.pointerDown(event)) pointerDown(event)
+            rememberPaintedDrag(inputRef.current.drag, session.tool)
+          }}
+          onPointerMove={(event) => { if (movePendingGradientEdit(event)) return; if (!tweenPreviewDrag.pointerMove(event)) pointerMove(event); rememberPaintedDrag(inputRef.current.drag, session.tool) }}
+          onPointerUp={(event) => { if (endPendingGradientEdit(event)) return; rememberPaintedDrag(inputRef.current.drag, session.tool); if (!tweenPreviewDrag.pointerUp(event)) pointerUp(event) }}
+          onPointerCancel={(event) => { if (cancelPendingGradientEdit(event)) return; if (!tweenPreviewDrag.pointerCancel(event)) pointerCancel(event) }}
+          onLostPointerCapture={(event) => { if (!cancelPendingGradientEdit(event) && !tweenPreviewDrag.pointerCancel(event)) pointerLostCapture(event) }}
           onDoubleClick={quickSelectCell}
           onPointerLeave={pointerLeave}
           onPointerEnter={pointerEnter}

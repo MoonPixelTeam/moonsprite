@@ -4,6 +4,24 @@ import { captureSelectionTransform } from '@/core/tools-selection-transform'
 import { CanvasSelectionBackdropCache } from './canvas-selection-backdrop-cache'
 
 describe('selection backdrop tiles', () => {
+  it('fills only newly exposed strips and shares lower pixels without aliasing them', () => {
+    const document = createDocument('partial cache', 512, 512, 'rgba')
+    const lower = document.layers[0], active = createLayer('active', 512, 512, 'rgba')
+    document.layers.push(active)
+    new Uint32Array(lower.pixels.buffer).fill(0xff503020)
+    new Uint32Array(active.pixels.buffer).fill(0x806090c0)
+    const source = captureSelectionTransform(document, { x: 100, y: 100, width: 200, height: 200 }, active)!
+    const composite = new DocumentCompositeCache(), render = vi.spyOn(composite, 'normalLayerRegion')
+    const lowerCache = new CanvasSelectionBackdropCache(composite, undefined, true)
+    const cache = new CanvasSelectionBackdropCache(composite, undefined, false, lowerCache)
+    for (const rect of [{ x: 100, y: 100, width: 200, height: 200 }, { x: 99, y: 98, width: 203, height: 205 }]) {
+      const backdrop = cache.read(document, active, [lower], source, false, rect, 1)
+      backdrop.fill(0)
+      const actual = lowerCache.read(document, active, [lower], source, false, rect, 1)
+      expect(new Uint32Array(actual.buffer).every(value => value === 0xff503020)).toBe(true)
+      expect(render.mock.calls.reduce((sum, [, , , , w, h]) => sum + w * h, 0)).toBe(rect.width * rect.height)
+    }
+  })
   it.each(['rgba', 'indexed'] as const)('matches the unchanged stack with a masked hole and copy toggle (%s)', format => {
     const document = createDocument('background', 300, 128, format)
     const lower = document.layers[0]

@@ -300,7 +300,8 @@ const layerMaskFromClipboard = (source: LayerMaskClipboard | undefined, ownerId:
 
 function layerClipboardFromDocument(document: SpriteDocument, layer: RasterLayer, groupKey: string | null = null): LayerClipboard {
   const pixels = new Uint8ClampedArray(layer.width * layer.height * 4)
-  for (let y = 0; y < layer.height; y += 1) for (let x = 0; x < layer.width; x += 1) {
+  if (layer.format === 'rgba') pixels.set(layer.pixels)
+  else for (let y = 0; y < layer.height; y += 1) for (let x = 0; x < layer.width; x += 1) {
     const color = readLayerColorAt(document, layer, layer.offsetX + x, layer.offsetY + y)
     const offset = (y * layer.width + x) * 4
     pixels[offset] = color.r
@@ -396,7 +397,7 @@ function applyLayerClipboardAnimationCel(
       }
     : undefined
   cel.surface = layer.format === 'rgba'
-    ? { format: 'rgba', width: source.width, height: source.height, offsetX: source.offsetX, offsetY: source.offsetY, storageOriginX: source.storageOriginX, storageOriginY: source.storageOriginY, pixels: document.colorMode === 'grayscale' ? applyRelativeLuminance(source.pixels.slice()) : source.pixels.slice() }
+    ? { format: 'rgba', width: source.width, height: source.height, offsetX: source.offsetX, offsetY: source.offsetY, storageOriginX: source.storageOriginX, storageOriginY: source.storageOriginY, pixels: document.colorMode === 'grayscale' ? applyRelativeLuminance(source.pixels) : source.pixels }
     : {
         format: 'indexed', width: source.width, height: source.height, offsetX: source.offsetX, offsetY: source.offsetY, storageOriginX: source.storageOriginX, storageOriginY: source.storageOriginY,
         pixels: Uint32Array.from({ length: source.width * source.height }, (_, index) => {
@@ -568,7 +569,12 @@ export function createWorkspaceClipboardCommands({ get, set, recording }: Worksp
           const name = linkedContentId
             ? allocateLinkedLayerName(linkedContentId, source.name)
             : `${source.name} ${tr('canvas.history.copySuffix')}`
-          const layer = createLayer(name, source.width, source.height, document.colorMode)
+          // getLayers() already gave this paste an independent pixel snapshot.
+          // Transfer its RGBA buffers instead of allocating and copying again.
+          const indexed = document.colorMode === 'indexed'
+          const layer = createLayer(name, indexed ? source.width : 1, indexed ? source.height : 1, document.colorMode)
+          layer.width = source.width
+          layer.height = source.height
           if (linkedContentId) layer.linkedContentId = linkedContentId
           layer.kind = source.kind
           if (source.kind === 'tilemap' && source.tilemapTilesetId) layer.tilemapTilesetId = tilesetIdMap.get(source.tilemapTilesetId)
@@ -607,7 +613,7 @@ export function createWorkspaceClipboardCommands({ get, set, recording }: Worksp
           layer.description = source.description ?? ''
           if (source.displayColor) layer.displayColor = { ...source.displayColor }
           layer.groupId = source.groupKey ? groupIdByKey.get(source.groupKey) ?? targetGroupId : targetGroupId
-          if (layer.format === 'rgba') layer.pixels.set(document.colorMode === 'grayscale' ? applyRelativeLuminance(source.pixels.slice()) : source.pixels)
+          if (layer.format === 'rgba') layer.pixels = document.colorMode === 'grayscale' ? applyRelativeLuminance(source.pixels) : source.pixels
           else for (let index = 0; index < source.width * source.height; index += 1) {
             const offset = index * 4
             layer.pixels[index] = paletteColorIdForCanvas(document, { r: source.pixels[offset], g: source.pixels[offset + 1], b: source.pixels[offset + 2], a: source.pixels[offset + 3] })
@@ -827,7 +833,7 @@ export function createWorkspaceClipboardCommands({ get, set, recording }: Worksp
         if (globalAnimationCells) { get().pasteAnimationCels(); return }
         if (globalAnimationFrames) { get().pasteAnimationFrames(); return }
       }
-      if (clipboardService.getLayers() && await clipboardService.preferInternalLayers(externalImage)) {
+      if (clipboardService.hasLayers() && await clipboardService.preferInternalLayers(externalImage)) {
         get().pasteLayersFromClipboard()
         return
       }
@@ -843,7 +849,7 @@ export function createWorkspaceClipboardCommands({ get, set, recording }: Worksp
       if (session.selectedAnimationFrameIds.length && (session.animationFrameClipboard.length || globalAnimationFrames)) { get().pasteAnimationFrames(); return }
       if (globalAnimationCells) { get().pasteAnimationCels(); return }
       if (globalAnimationFrames) { get().pasteAnimationFrames(); return }
-      if (clipboardService.getLayers()) { get().pasteLayersFromClipboard(); return }
+      if (clipboardService.hasLayers()) { get().pasteLayersFromClipboard(); return }
       await get().pasteSelection()
     },
 
@@ -860,7 +866,7 @@ export function createWorkspaceClipboardCommands({ get, set, recording }: Worksp
       // A layer copy has no selection-image payload. Preserve the unified paste
       // entry point by falling back only after the live system image has been
       // checked, so external copies win over stale internal layer data.
-      if (!clipboard && clipboardService.getLayers()) {
+      if (!clipboard && clipboardService.hasLayers()) {
         get().pasteLayersFromClipboard()
         return
       }
@@ -969,12 +975,12 @@ export function createWorkspaceClipboardCommands({ get, set, recording }: Worksp
     async pasteAsNewLayer() {
       if (isCanvasToolGestureLocked()) return false
       const systemSelection = await clipboardService.readSystemSelection(() => window.moonSprite.readClipboardImage())
-      if (clipboardService.getLayers() && await clipboardService.preferInternalLayers(systemSelection)) return get().pasteLayersFromClipboard()
+      if (clipboardService.hasLayers() && await clipboardService.preferInternalLayers(systemSelection)) return get().pasteLayersFromClipboard()
       const clipboard = await clipboardService.readSelection(() => window.moonSprite.readClipboardImage())
       const current = activeSession(get())
       if (!current) { set({ message: tr('workspace.clipboard.noContent') }); return false }
       if (!clipboard) {
-        if (clipboardService.getLayers()) return get().pasteLayersFromClipboard()
+        if (clipboardService.hasLayers()) return get().pasteLayersFromClipboard()
         set({ message: tr('workspace.clipboard.noContent') })
         return false
       }

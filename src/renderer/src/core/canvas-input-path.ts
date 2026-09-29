@@ -64,7 +64,7 @@ export const registerPendingCanvasGestureHistory = (documentId: string, controll
 
 export const consumePendingCanvasGestureHistory = (documentId: string, direction: 'undo' | 'redo'): boolean => pendingCanvasGestureHistory.get(documentId)?.[direction]() ?? false
 
-export const shouldClosePolygonLasso = (path: readonly CanvasPoint[], point: CanvasPoint, clickCount: number): boolean => path.length >= 3 && (clickCount >= 2 || (path[0].x === point.x && path[0].y === point.y))
+export const shouldClosePolygonLasso = (path: readonly CanvasPoint[], button: number, clickCount: number): boolean => path.length >= 3 && button === 0 && clickCount >= 2
 
 export interface PolygonPathRasterCache {
   balanced: boolean

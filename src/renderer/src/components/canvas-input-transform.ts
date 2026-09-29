@@ -291,7 +291,9 @@ export function createTransformCanvasInput(ports: Ports) {
             : drag.kind === 'move-content'
               ? t('workspace.history.moveSelectionContent')
               : t('workspace.history.transformSelectionContent')
-      if (selectionTransformPreviewChanged(drag)) {
+      // A resumed drag can return to its start after replacing/reverting the
+      // old preview. Hand ownership back even when its final geometry matches.
+      if (selectionTransformPreviewChanged(drag) || (drag.floatingPaste && drag.selectionPreparationPending === false)) {
         if (drag.floatingPaste)
           state.updateFloatingPastePreview(
             drag.previewEdit ?? null,

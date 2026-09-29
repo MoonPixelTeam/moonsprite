@@ -6,6 +6,7 @@ import { createPreviewPointSampler } from '@/core/preview-point-sampler'
 import { PreviewRasterCache, type PreviewRasterView } from './preview-raster-cache'
 import { createPreviewProjectedRenderer } from '@/core/preview-projected-renderer'
 import { BLEND_MODES } from '@shared/types-color'
+import { createDefaultLayerStyles } from '@/core/layer-styles'
 
 const writes: Array<{ x: number; y: number; data: Uint8ClampedArray }> = []
 beforeEach(() => {
@@ -18,6 +19,40 @@ beforeEach(() => {
 })
 afterEach(() => vi.restoreAllMocks())
 const view: PreviewRasterView = { width: 256, height: 256, scale: 1 / 16, originX: 0, originY: 0, luminance: false }
+
+it('keeps style toggles and apply bounded to a 256px preview on a 4K / 100-layer canvas', () => {
+  const doc = createDocument('4K styled preview', 4096, 4096, 'rgba', false)
+  const target = createLayer('small content', 256, 256, 'rgba')
+  target.offsetX = target.offsetY = 512
+  new Uint32Array(target.pixels.buffer).fill(0x80706050)
+  doc.layers.push(...Array.from({ length: 98 }, (_, i) => {
+    const layer = createLayer(`content ${i}`, 1, 1, 'rgba')
+    layer.offsetX = i * 32; layer.offsetY = 1024
+    layer.pixels.set([80, 100, 120, 255])
+    return layer
+  }), target)
+  const cache = new PreviewRasterCache()
+  cache.configure(doc, 'frame-1', 0, view)
+  expect(cache.render().pixels).toBe(65536)
+  target.layerStyles = createDefaultLayerStyles()
+  target.layerStyles.stroke.enabled = true
+  // Cold styled preview uses only screen pixels, even without a shared seed.
+  const cold = new PreviewRasterCache()
+  cold.configure(doc, 'frame-1', 1, view)
+  const start = performance.now()
+  expect(cold.render().pixels).toBe(65536)
+  expect(writes.at(-1)!.data.some(value => value !== 0)).toBe(true)
+  console.info(`4K/100 styled cold preview: ${(performance.now() - start).toFixed(1)}ms, 65536 output pixels`)
+  const rect = { x: 480, y: 480, width: 320, height: 320 }
+  for (const revision of [1, 2, 3]) {
+    target.layerStyles.colorOverlay.enabled = revision > 1
+    // Preview chains preserve their original fromRevision through Apply.
+    cache.configure(doc, 'frame-1', revision, view, { kind: 'region', rect, fromRevision: 0, revision })
+    expect(cache.render().pixels).toBe(400)
+    expect(writes.at(-1)!.data.some(value => value !== 0)).toBe(true)
+    expect(cache.render().pixels).toBe(0)
+  }
+})
 
 it('copies translated translucent pixels and samples only newly exposed edges', () => {
   const doc = createDocument('pan cache', 16, 16, 'rgba', false)

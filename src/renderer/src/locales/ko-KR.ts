@@ -1,3 +1,4 @@
+import { convolutionEn } from './convolution'
 import { gradientMapEn } from './gradient-map'
 import { beta7En } from './release-beta7'
 import { spriteSheetImportkoKR } from './sprite-sheet-import'
@@ -6,6 +7,8 @@ import type { TranslationCatalog } from './contracts'
 import { tabletEn } from './tablet'
 
 export const koKRMessages = {
+
+  ...convolutionEn,
   ...beta7En,
   ...gradientMapEn,
   "toolOptions.temporaryBrushCaptureHint": "임시 브러시: 드래그하여 영역 선택, 놓아서 사용; Esc로 취소",
@@ -956,6 +959,16 @@ export const koKRMessages = {
   'preferences.wheelZoomMode.smooth': '부드럽게 확대/축소',
   'preferences.wheelZoomMode.stepped': '백분율 확대/축소',
   'preferences.shiftLinePreview': '진짜 시간에 Pencil Line Preview를 표시합니다.',
+  'preferences.gradientApplicationMode': '그라데이션 적용 방식',
+  'preferences.gradientApplicationMode.instant': '놓으면 적용',
+  'gradient.pending.title': 'Gradient pending confirmation',
+  'gradient.pending.hint': 'Drag handles to adjust. Enter applies; Esc cancels. Changing layers or frames cancels the preview.',
+  'gradient.pending.io': 'The canvas contains an unapplied gradient. Apply or discard it before saving, exporting, or closing.',
+  'gradient.pending.continue': 'Continue editing',
+  'gradient.pending.discard': 'Discard gradient and continue',
+  'gradient.pending.invalidated': 'The painting target or selection changed. The unapplied gradient was cancelled.',
+  'gradient.pending.failed': 'Could not apply the gradient. The preview is retained; please try again.',
+  'preferences.gradientApplicationMode.confirm': '확인 후 적용',
   'preferences.gradientLineVisible': '그라디언트 드래그 선 표시',
   'preferences.gradientLineColor': '그라디언트 드래그 선 색상',
   'preferences.balancedLine': '라인 알고리즘 최적화',
@@ -1608,8 +1621,8 @@ export const koKRMessages = {
   'home.linksAria': '커뮤니티 링크 및 언어',
   'home.qq': 'QQ 그룹',
   'home.qqDescription': '토론 및 지원을 위해 MoonPX pixel-art 커뮤니티 QQ 그룹에 가입하십시오.',
-  'home.community': '커뮤니티',
-  'home.communityDescription': 'MoonPX 커뮤니티 웹사이트를 엽니다.',
+  'home.community': "소프트웨어 공식 웹사이트",
+  'home.communityDescription': "MoonSprite 공식 웹사이트에서 기능과 최신 소식을 확인하세요.",
   'home.steam': '스테임',
   'home.steamDescription': 'Steam에서 MoonSprite 페이지를 열어보세요.',
   'home.steamWishlist': '찜 목록에 추가',
@@ -2980,6 +2993,7 @@ export const koKRMessages = {
   'layers.autoLinkAnimationCelsOff': '셀 자동 연결 끄기',
   'timeline.tween.linear': '선형',
   'timeline.tween.timing': '프레임 및 시간',
+  'preferences.exportSound': '내보내기 완료 효과음',
   'preferences.saveOriginalFormat': '원본 형식으로 저장',
   'preferences.saveOriginalFormatHint': '활성화하면 열었던 파일 형식으로 저장하고 호환되지 않는 기능을 경고합니다. 새 문서는 기본 저장 형식을 사용합니다. 비활성화하면 .moonsprite를 기본으로 사용하며 다른 형식의 파일은 프로젝트로 저장하도록 안내합니다.',
   'file.save.projectPreferredTitle': 'MoonSprite 프로젝트로 저장',

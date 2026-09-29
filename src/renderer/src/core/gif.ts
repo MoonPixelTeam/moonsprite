@@ -189,7 +189,7 @@ const encodeGif = (frames: readonly GifFramePixels[], width: number, height: num
   return new Uint8Array(output)
 }
 
-export const exportAnimationGif = (document: SpriteDocument, options: GifExportOptions): { bytes: Uint8Array; width: number; height: number; frameCount: number } => {
+export const prepareAnimationExport = (document: SpriteDocument, options: GifExportOptions) => {
   syncActiveAnimationFrame(document)
   const timeline = ensureAnimationDocument(document)
   const crop = normalizeCrop(document, options.crop)
@@ -219,5 +219,10 @@ export const exportAnimationGif = (document: SpriteDocument, options: GifExportO
   const height = scaled[0]?.height ?? Math.max(1, crop.height)
   const frames = scaled.map(({ pixels, duration }) => ({ pixels, duration }))
   const loop = hasValidLoopSection ? loopSection?.repeatCount === null : timeline.loop
+  return { frames, width, height, loop }
+}
+
+export const exportAnimationGif = (document: SpriteDocument, options: GifExportOptions): { bytes: Uint8Array; width: number; height: number; frameCount: number } => {
+  const { frames, width, height, loop } = prepareAnimationExport(document, options)
   return { bytes: encodeGif(frames, width, height, loop), width, height, frameCount: frames.length }
 }

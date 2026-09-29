@@ -17,6 +17,7 @@ import { QUICK_TOOL_SHORTCUT_IDS, deriveShortcutConflicts, findShortcutBindingOw
 import { beginPaletteSamplingShortcut, endPaletteSamplingShortcut } from '@/core/palette-sampling-shortcut'
 import { deferCanvasShortcut, isCanvasToolGestureLocked } from '@/core/canvas-tool-gesture-lock'
 import { useWorkspace } from '@/store/workspace'
+import { applyPendingGradientOnEnter } from '@/components/canvas-gradient-confirmation-keyboard'
 import { useI18n } from '@/components/I18nProvider'
 
 import type { Options } from './app-shortcut-router-options'
@@ -79,6 +80,8 @@ export function useAppShortcutRouter(options: Options) {
       const target = event.target instanceof HTMLElement ? event.target : null
 
       if (target?.closest('[data-shortcut-recorder="true"]')) return
+
+      if (!homeOpen && !openMenu && session && applyPendingGradientOnEnter(event, session.document.id)) return
 
       const matches = (action: ShortcutId): boolean => {
         return shortcutBindingsFor(shortcuts, action).some((shortcut) => (

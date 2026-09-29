@@ -1,3 +1,4 @@
+import { resolvePendingGradientForIo } from '@/store/pending-gradient-io'
 import { recordRuntimeDiagnostic } from '@/core/runtime-diagnostics'
 import { createApplicationCloseCoordinator, resolveDocumentClose } from '@/store/workspace-close-coordinator'
 import { useEffect } from 'react'
@@ -103,6 +104,7 @@ export function useAppWindowLifecycle() {
           recordRuntimeDiagnostic('error', 'app.close.window-state', { message: error instanceof Error ? error.message : String(error) })
         }
       },
+      resolvePending: session => resolvePendingGradientForIo(session.document.id, useWorkspace.getState().requestDialog, () => useWorkspace.getState().setActive(session.document.id)),
       flushRecordings: (sessions) => useWorkspace.getState().flushRecordings(sessions),
       confirm: (session) =>
         resolveDocumentClose(

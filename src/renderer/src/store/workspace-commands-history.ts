@@ -1,7 +1,8 @@
+import { pendingGradientFor } from '@/core/canvas-gradient-confirmation'
 import { publishEditorEvent } from '@/core/extension-editor-events'
 import { workspaceCommandRuntime } from './workspace-command-runtime'
 import type { AnimationCel } from '@shared/types-animation'
-import { beginPixelEdit, commitPixelEdit, pixelEditHasChanges, revertPixelEdit, type ContentInvalidationHint, type HistoryEntry } from '@/core/history'
+import { beginPixelEdit, commitPixelEdit, historyEntryInvalidation, pixelEditHasChanges, revertPixelEdit, type ContentInvalidationHint, type HistoryEntry } from '@/core/history'
 import { notifyCanvasPreview } from '@/core/canvas-preview-lifecycle'
 import { applySmoothBrush, smoothChangedLiquifyPixels } from '@/core/smooth-brush'
 import { createId, findLayerMask, isLayerEffectivelyLocked, isLayerEffectivelyVisible } from '@/core/document-model'
@@ -293,7 +294,7 @@ export function createWorkspaceHistoryCommands({ get, set, recording }: Workspac
           const invalidationStartedAt = operationProbe?.recordOperationStage ? performance.now() : 0
           // Canvas invalidation expands this source region for strokes/shadows
           // and invalidates style blocks, retaining unaffected canvas tiles.
-          touch(session, true, entry.invalidation)
+          touch(session, true, historyEntryInvalidation(entry))
           operationProbe?.recordOperationStage?.('commit.cache-invalidation', performance.now() - invalidationStartedAt, {
             dirtyPixels: edit.dirtyRect ? edit.dirtyRect.width * edit.dirtyRect.height : 0,
             dirtyWidth: edit.dirtyRect?.width ?? 0,
@@ -467,7 +468,7 @@ export function createWorkspaceHistoryCommands({ get, set, recording }: Workspac
       persistProjectLayerPanelState(session)
       if (entry.documentChanged !== false) {
         if (entry.contentChanged === false) touchMetadata(session)
-        else touch(session, true, entry.invalidation)
+        else touch(session, true, historyEntryInvalidation(entry))
         recordDocumentOperation(session, undefined, entry.contentChanged !== false)
       }
       session.uiRevision += 1
@@ -476,6 +477,8 @@ export function createWorkspaceHistoryCommands({ get, set, recording }: Workspac
 
     undo() {
       let session = activeSession(get())
+      const gradient = session && pendingGradientFor(session.document.id)
+      if (gradient) { gradient.cancel(); return }
       if (session && isCanvasToolGestureLocked()) {
         const documentId = session.document.id
         deferCanvasShortcut(() => { if (get().activeId === documentId) get().undo() })
@@ -536,7 +539,7 @@ export function createWorkspaceHistoryCommands({ get, set, recording }: Workspac
         if (entry.requiresAnimationSelectionNormalization === true) normalizeAnimationSelection(session)
         if (entry.documentChanged !== false) {
           if (entry.contentChanged === false) touchMetadata(session)
-          else touch(session, true, entry.invalidation)
+          else touch(session, true, historyEntryInvalidation(entry))
           // A preview published before Ctrl+D can outlive the editor's next
           // frame. History owns the restored pixels; drop that stale snapshot.
           if (entry.contentChanged !== false) notifyCanvasPreview(session.document.id, null)
@@ -549,6 +552,7 @@ export function createWorkspaceHistoryCommands({ get, set, recording }: Workspac
 
     redo() {
       let session = activeSession(get())
+      if (session && pendingGradientFor(session.document.id)) { set({ message: tr('gradient.pending.hint') }); return }
       if (session && isCanvasToolGestureLocked()) {
         const documentId = session.document.id
         deferCanvasShortcut(() => { if (get().activeId === documentId) get().redo() })
@@ -590,7 +594,7 @@ export function createWorkspaceHistoryCommands({ get, set, recording }: Workspac
         if (entry.requiresAnimationSelectionNormalization === true) normalizeAnimationSelection(session)
         if (entry.documentChanged !== false) {
           if (entry.contentChanged === false) touchMetadata(session)
-          else touch(session, true, entry.invalidation)
+          else touch(session, true, historyEntryInvalidation(entry))
           if (entry.contentChanged !== false) notifyCanvasPreview(session.document.id, null)
           recordDocumentOperation(session, undefined, entry.contentChanged !== false && shouldCaptureTimelapseHistoryStep(session), 'undo-step')
         }

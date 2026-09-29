@@ -312,7 +312,7 @@ export function createCanvasBrushPath({
       for (const point of symmetryPoints(sourcePoint, document.width, document.height, session.symmetryAxes, symmetryCenter, false)) drawPoint(point)
     }
   }
-  const drawStrokePreview = (from: Point, to: Point, erase = false, baseline?: ReadonlyMap<number, number>, selection: SelectionMask | null = null): void => {
+  const drawStrokePreview = (from: Point, to: Point, erase = false, baseline?: ReadonlyMap<number, number>, selection: SelectionMask | null = session.selection): void => {
     const points = tileRepeatLinePoints(from, to, document.width, document.height, view.tileRepeatMode ?? 'off', balancedStraightLines ? 'balanced' : 'raster')
     drawBrushPathPreview(points, session.primaryColor, erase, baseline, selection)
   }

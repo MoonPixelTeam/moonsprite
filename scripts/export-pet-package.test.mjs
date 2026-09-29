@@ -19,6 +19,39 @@ vm.runInContext(source.slice(source.indexOf('const localizationSource ='), sourc
 const activatePets=async(handlers,ids=['builtin'])=>{await handlers.activate();for(const commandId of ids)await handlers.command({event:'toggle-pet',commandId})};
 const generated = vm.runInContext('({runtimePage,petWindowSource,managerSource,storeSource,triggerConditions})', context)
 
+test('pet entrance plays every SHOW frame before IDLE on first configuration and redisplay', async () => {
+ for(const playShow of [false,true]){
+  const drawn=[],timers=[];
+  const entry={id:'builtin',name:'Test',frameWidth:1,frameHeight:1,frameCount:4,animations:{SHOW:[2,3],IDLE:[0,1]},showFrames:[2,3],idleFrames:[0,1],durations:[10,20,30,40]};
+  const sandbox=vm.createContext({
+   activePets:null,activePetId:'builtin',catalog:[],slotPets:[],SLOT_COUNT:8,pet:null,
+   animationToken:0,image:null,sheetRevoke:false,sheetUrl:null,spriteBounds:null,animationBounds:null,
+   triggerLast:new Map(),clearInteraction:()=>{},loadSheetUrl:async()=>({url:'sprite',revoke:false}),decodeImage:async()=>({}),
+   findSpriteBounds:()=>({}),boundsForAnimation:()=>({}),scaleOf:()=>1,updateScale:async()=>{},
+   canvas:{style:{}},petElement:{setAttribute:()=>{}},info:{hidden:true},notice:{hidden:true},
+   context:{clearRect:()=>{},save:()=>{},restore:()=>{},drawImage:(_image,_x,y)=>drawn.push(-y)},
+   statePlayback:null,draggingAnimation:false,dragEndPlaying:false,interactionState:null,hoveringOpaque:false,pointer:null,
+   setTimeout:(fn,delay)=>{timers.push({fn,delay})},reportCatalog:()=>{},
+   moonsprite:{window:{postMessage:async()=>{}}}
+  });
+  const code=generated.petWindowSource;
+  for(const [start,end] of [['const play=','const revealBubble='],['const loadPet=','// Embedded surfaces'],['let catalogQueue=','const startDraggingAnimation=']])
+   vm.runInContext(code.slice(code.indexOf(start),code.indexOf(end)),sandbox);
+  sandbox.activePets=[entry];
+  await vm.runInContext(`refreshCatalog(${playShow})`,sandbox);
+  assert.deepEqual(drawn,[2],`initial configure playShow=${playShow}`);
+  // A routine configuration refresh must not restart an in-progress SHOW.
+  sandbox.activePets=[entry];await vm.runInContext('refreshCatalog(false)',sandbox);
+  assert.deepEqual(drawn,[2]);
+  assert.equal(timers[0].delay,30);timers.shift().fn();assert.deepEqual(drawn,[2,3]);
+  assert.equal(timers[0].delay,40);timers.shift().fn();assert.deepEqual(drawn,[2,3,0]);
+  sandbox.activePets=[entry];await vm.runInContext('refreshCatalog(true)',sandbox);
+  assert.deepEqual(drawn,[2,3,0,2]);
+  timers.shift().fn(); // The previous idle timer must no longer draw.
+  assert.deepEqual(drawn,[2,3,0,2]);
+ }
+})
+
 test('pet ordering persists across manager sessions without changing visibility or metadata', async () => {
  const meta=[{id:'cat',name:'Cat',frameCount:0},{id:'dog',name:'Dog',frameCount:0}];
  const stored=new Map([['pet-sprites',meta],['shownPets',['dog']]]);
@@ -352,7 +385,7 @@ test('supplementing SHOW preserves IDLE, drops unsupported slots, and rollback p
 test('manifest keeps a neutral settings launcher and runtime owns localized menus', () => {
  const manifest=vm.runInContext('manifest',context);
  assert.deepEqual(Array.from(manifest.topMenus[0].commands),['settings']);
- assert.deepEqual(Array.from(manifest.settingsUi.controls,c=>c.id),['remindersEnabled','clockEnabled','unsavedEnabled','breakEnabled','unsavedMinutes','breakMinutes','manager']);
+ assert.deepEqual(Array.from(manifest.settingsUi.controls,c=>c.id),['remindersEnabled','clockEnabled','unsavedEnabled','breakEnabled','unsavedMinutes','breakMinutes','savedEnabled','clockText','savedText','unsavedText','breakText','restore-defaults','manager']);
  assert.equal(manifest.settingsUi.controls.at(-1).fullWidth,true);
  assert.equal(manifest.settingsUi.controls.at(-1).closeOnRun,true);
  assert.ok(generated.runtimePage.includes("name:t('宠物管理…')"));
@@ -369,8 +402,8 @@ test('mirrored playback flips the actual drawn pixels, not only the element', ()
   assert.deepEqual(calls,[['translate',2,0],['scale',-1,1]])
 })
 
-test('reminders use actual elapsed minutes and ignore old custom wording', async () => {
- const handlers={},sent=[],base=Date.now(),storage=new Map([['preferences',{breakMinutes:1,unsavedMinutes:1,clockEnabled:false,unsavedText:'OLD',breakText:'OLD'}]])
+test('reminders interpolate actual elapsed minutes in custom wording', async () => {
+ const handlers={},sent=[],base=Date.now(),storage=new Map([['preferences',{breakMinutes:1,unsavedMinutes:1,clockEnabled:false,unsavedText:'保存 {minutes} $&',breakText:'休息 {minutes}'}]])
  const sandbox=vm.createContext({setTimeout,clearTimeout,moonsprite:{menus:{setItems:async()=>{}},on:(name,fn)=>handlers[name]=fn,storage:{set:async({key,value})=>storage.set(key,value),get:async({key})=>storage.get(key)},windows:{setVisible:async()=>{},open:async()=>{},close:async()=>{},postMessage:async payload=>{sent.push(payload);if(payload.message.type==='notice-distance')await handlers['window-message']({windowId:payload.windowId,message:{...payload.message,distance:10}})}},diagnostics:{log:async()=>{}}}})
  vm.runInContext(generated.runtimePage.match(/<script>([\s\S]*?)<\/script>/i)[1],sandbox)
  await activatePets(handlers)
@@ -380,8 +413,8 @@ test('reminders use actual elapsed minutes and ignore old custom wording', async
  handlers.clock({timestamp:base+121000})
  await vm.runInContext('noticeQueue',sandbox)
  const texts=sent.filter(item=>item.message.type==='notice').map(item=>item.message.text)
- assert.ok(texts.some(text=>text.includes('2 分钟没有保存文件')))
- assert.ok(texts.some(text=>text.includes('连续绘制了 2 分钟')))
+ assert.ok(texts.some(text=>text==='保存 2 $&'))
+ assert.ok(texts.some(text=>text==='休息 2'))
  assert.ok(texts.every(text=>!text.includes('OLD')))
 })
 
@@ -730,7 +763,7 @@ test('condition slots are configurable, stay attached to the chosen pet and rend
  const id=meta[0].triggerSlots[0].id;listener({type:'ui-edit-trigger',petId:'cat',slotId:id});await vm.runInContext('operations',sandbox);assert.equal(view.nodes.at(-1).children[0].value,'tool.changed');
  listener({type:'ui-confirm-trigger',petId:'cat',values:{'trigger-cooldown':0}});await vm.runInContext('operations',sandbox);assert.equal(meta[0].triggerSlots.length,1);assert.equal(meta[0].triggerSlots[0].id,id);assert.equal(meta[0].triggerSlots[0].event,'tool.changed');assert.equal(meta[0].triggerSlots[0].cooldownMs,0);
  listener({type:'ui-edit-trigger',petId:'cat',slotId:id});await vm.runInContext('operations',sandbox);
- const repeatFields=view.nodes.at(-1).children.filter(node=>node.id.startsWith('trigger-repeat-'));assert.equal(repeatFields.length,2);assert.ok(repeatFields.every(node=>node.type==='select'&&node.visibleWhen['trigger-event'].startsWith('pet.')));
+ const repeatFields=view.nodes.at(-1).children.filter(node=>node.id.startsWith('trigger-repeat-'));assert.equal(repeatFields.length,4);assert.ok(repeatFields.every(node=>node.type==='select'&&['pet.hover','pet.dragging','animation.started','idle'].includes(node.visibleWhen['trigger-event'])));
  listener({type:'ui-confirm-trigger',petId:'cat',values:{'trigger-event':'pet.hover','trigger-repeat-pet.hover':'repeat'}});await vm.runInContext('operations',sandbox);assert.equal(meta[0].triggerSlots[0].repeat,true);
  listener({type:'ui-edit-trigger',petId:'cat',slotId:id});await vm.runInContext('operations',sandbox);
  listener({type:'ui-confirm-trigger',petId:'cat',values:{'trigger-repeat-pet.hover':'once'}});await vm.runInContext('operations',sandbox);assert.equal(meta[0].triggerSlots[0].repeat,false);
@@ -1035,4 +1068,44 @@ test('language refresh never reopens a previously ready manager',async()=>{
  assert.equal(opened.length,count);assert.equal(sent.at(-1).message.hostLocale,'de-DE');assert.equal(sent.at(-1).message.petId,undefined);
  await handlers['window-message']({windowId:'manager',message:{type:'language'}});
  assert.equal(opened.length,count);
+});
+
+
+test('reminder controls follow switches and blank text uses localized defaults', () => {
+ const manifest=vm.runInContext('manifest',context);
+ for(const key of ['clock','saved','unsaved','break']){
+  const control=manifest.settingsUi.controls.find(c=>c.id===key+'Text');
+  assert.equal(control.visibleWhen.remindersEnabled,true);assert.equal(control.visibleWhen[key+'Enabled'],true);
+ }
+ const sandbox=vm.createContext({preferences:{savedText:'  ',clockText:'{time} $& {unknown}'}});
+ const runtime=generated.runtimePage;
+ vm.runInContext(runtime.slice(runtime.indexOf('const reminderText='),runtime.indexOf('const restoreDefaults=')),sandbox);
+ assert.equal(vm.runInContext("reminderText('savedText','保存好啦，这份进度安心收下了。')",sandbox),'保存好啦，这份进度安心收下了。');
+ assert.equal(vm.runInContext("reminderText('clockText','unused',{time:'12:30'})",sandbox),'12:30 $& {unknown}');
+});
+
+for(const missing of [false,true])test('restore defaults preserves custom pets and repairs '+(missing?'missing':'modified')+' builtin',async()=>{
+ const custom={id:'custom',source:'custom',spriteKey:'original',frameCount:1,frameWidth:2,frameHeight:2,scale:4,mirrored:true,animations:{IDLE:[0]}};
+ const stored=new Map([['preferences',{enabled:true,scale:9,breakMinutes:2,savedText:'custom'}],['pet-sprites',missing?[custom]:[{id:'builtin',source:'custom',spriteKey:'changed',animations:{}},custom]],['shownPets',['builtin','custom']],['pet-order',['custom','builtin']],['position:builtin',{x:400}],['position:custom',{x:700}],['sprite.original','pixels']]);
+ const handlers={},closed=[];let openedSettings=0,fail=false;
+ const sandbox=vm.createContext({setTimeout,clearTimeout,moonsprite:{on:(name,fn)=>handlers[name]=fn,storage:{get:async({key})=>stored.get(key),set:async({key,value})=>{if(fail&&key==='shownPets'){fail=false;throw Error('write failed')}stored.set(key,value)}},menus:{setItems:async()=>{}},windows:{open:async()=>{},close:async({windowId})=>closed.push(windowId),setVisible:async()=>{},postMessage:async()=>{}},ui:{openSettings:async()=>openedSettings++},notifications:{show:async()=>{}},diagnostics:{log:async()=>{}}}});
+ vm.runInContext(generated.runtimePage.match(/<script>([\s\S]*?)<\/script>/i)[1],sandbox);
+ await handlers.activate();
+ const before=JSON.stringify([...stored]);fail=true;await handlers.command({event:'restore-defaults'});assert.equal(JSON.stringify([...stored]),before);
+ await handlers.command({event:'restore-defaults'});
+ const meta=stored.get('pet-sprites');assert.equal(meta[1],custom);assert.deepEqual(JSON.parse(JSON.stringify(meta[0])),{id:'builtin',name:'Test',frameWidth:2,frameHeight:2,frameCount:1,idleFrames:[0],source:'builtin'});
+ assert.deepEqual(Array.from(stored.get('shownPets')),['custom']);assert.deepEqual(stored.get('position:custom'),{x:700});assert.equal(stored.get('sprite.original'),'pixels');assert.equal(stored.get('position:builtin'),null);
+ assert.equal(stored.get('preferences').breakMinutes,60);assert.equal(stored.get('preferences').savedText,'');assert.equal(stored.get('preferences').enabled,true);assert.equal(openedSettings,1);assert.ok(!closed.includes('pet-custom'));
+});
+
+
+test('idle and animation playback loops stop when their condition ends', () => {
+ const played=[];
+ const sandbox=vm.createContext({Date,pet:{triggerSlots:[{id:'I',event:'idle',repeat:true,cooldownMs:0},{id:'A',event:'animation.started',repeat:true,cooldownMs:0}],animations:{I:[1],A:[2]},idleFrames:[0]},play:(frames,repeat)=>played.push([Array.from(frames),repeat]),document:{hidden:false},petElement:{addEventListener:()=>{}},addEventListener:()=>{},setInterval:()=>{}});
+ const start=generated.petWindowSource.indexOf('let draggingAnimation='),end=generated.petWindowSource.indexOf('const scaleOf=',start);
+ vm.runInContext(generated.petWindowSource.slice(start,end),sandbox);
+ vm.runInContext("triggerAnimation('idle');markActivity();triggerAnimation('animation.started');markActivity()",sandbox);
+ assert.deepEqual(played,[[[1],true],[[0],true],[[2],true]]);
+ vm.runInContext("triggerAnimation('animation.stopped')",sandbox);
+ assert.deepEqual(played.at(-1),[[0],true]);
 });

@@ -110,3 +110,33 @@ it('fits the complete 4K backdrop for a top-layer adjustment into the default bu
     expect(pixels?.slice(0, 4)).toEqual(new Uint8ClampedArray([200, 100, 50, 255]))
   }
 })
+
+
+it('keeps property-only style toggles and parameter previews pixel-identical to uncached composition', () => {
+  const document = setup(), layer = document.layers[3]
+  const cache = new LayerPropertyCompositeCache(), styles = new DocumentCompositeCache()
+  const rect = { x: 0, y: 0, width: 9, height: 7 }
+  let revision = 0
+  for (const effect of ['stroke', 'shadow', 'innerGlow', 'colorOverlay'] as const) {
+    for (const enabled of [true, false, true]) {
+      layer.layerStyles = createDefaultLayerStyles()
+      layer.layerStyles[effect].enabled = enabled
+      const change = { compositeOnly: true as const, propertyOwnerIds: [layer.id], fromRevision: 0, revision: ++revision }
+      styles.retainLayerStyleSources(document, 0, revision)
+      expect(cache.render(document, rect, revision, change, styles) ?? compositeRegion(document, 0, 0, 9, 7, styles, revision))
+        .toEqual(compositeRegion(document, 0, 0, 9, 7))
+    }
+  }
+})
+
+
+it('uses styled proxy layers for property previews instead of the recursive sampler', () => {
+  const document = setup(), layer = document.layers[3]
+  layer.layerStyles = createDefaultLayerStyles(); layer.layerStyles.stroke.enabled = true
+  const cache = new LayerPropertyCompositeCache(), styles = new DocumentCompositeCache()
+  const rect = { x: 0, y: 0, width: 9, height: 7 }
+  const change = { compositeOnly: true as const, propertyOwnerIds: [layer.id], fromRevision: 0, revision: 1 }
+  styles.retainLayerStyleSources(document, 0, 1)
+  const output = cache.render(document, rect, 1, change, styles)
+  expect(output).toBeInstanceOf(Uint8ClampedArray)
+})

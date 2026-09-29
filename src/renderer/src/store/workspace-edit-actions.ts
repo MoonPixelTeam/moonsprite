@@ -11,8 +11,8 @@ import { tr } from './workspace-translation'
 
 export function rotateWorkspaceContent(angle: 90 | -90 | 180): void {
   if (isCanvasToolGestureLocked()) return
+  useWorkspace.getState().commitFloatingPaste()
   const state = useWorkspace.getState()
-  state.commitFloatingPaste()
   const active = state.sessions.find(item => item.document.id === state.activeId)
   if (!active) return
   const layers = selectedTransformLayersForSession(active)
@@ -29,7 +29,9 @@ export function rotateWorkspaceContent(angle: 90 | -90 | 180): void {
     const before = cloneSelectionMask(session.selection)
     const entries: HistoryEntry[] = []
     for (const layer of layers) {
-      const source = captureSelectionTransform(session.document, bounds, layer)
+      // Keep the same source rectangle as the selection mask, including the
+      // transparent area outside the canvas. Clipping it changes the mapping.
+      const source = captureSelectionTransform(session.document, bounds, layer, { preserveOutsideCanvas: true })
       if (!source) continue
       const edit = applySelectionTransform(session.document, source, bounds, angle, false, undefined, undefined, undefined, layer)
       const entry = edit && commitPixelEdit(session.document, edit, label)

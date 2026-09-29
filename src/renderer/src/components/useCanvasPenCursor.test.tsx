@@ -5,6 +5,7 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { PointerPressureAdapter } from '@/core/canvas-input'
 import { useCanvasPenCursor } from './useCanvasPenCursor'
 import { canvasCursors } from '@/core/canvas-visuals'
+import { CANVAS_VIEWPORT_EVENT } from './canvas-viewport-events'
 
 vi.mock('@/platform/cursor-theme', () => ({
   setNativeCursorVisible: vi.fn(async () => {}),
@@ -13,12 +14,54 @@ vi.mock('@/platform/cursor-theme', () => ({
 beforeEach(() => { localStorage.setItem('moonsprite.preference.painting-cursor-shape', 'cross') })
 afterEach(() => { cleanup(); vi.restoreAllMocks(); localStorage.clear() })
 
-function Harness({ cursorValue = canvasCursors.pencilBlack }: { cursorValue?: string } = {}) {
+function Harness({ cursorValue = canvasCursors.pencilBlack, stageBounds = () => ({ left: 10, top: 20 }) as DOMRect, paintingPoint }: {
+  cursorValue?: string
+  stageBounds?: () => DOMRect
+  paintingPoint?: (point: { x: number; y: number }) => { x: number; y: number }
+} = {}) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const pressureAdapterRef = useRef(new PointerPressureAdapter())
-  const cursor = useCanvasPenCursor({ canvasRef, pressureAdapterRef, interfaceScale: 1, stageBounds: () => ({ left: 10, top: 20 }) as DOMRect })
+  const cursor = useCanvasPenCursor({ canvasRef, pressureAdapterRef, interfaceScale: 1, stageBounds, paintingPoint })
   return <><canvas ref={canvasRef} style={{ cursor: cursorValue }} onPointerMove={cursor.syncPenCursor} onPointerLeave={cursor.hidePenCursor} /><img ref={cursor.penCursorRef} hidden /><span data-testid="adaptive" ref={cursor.adaptiveCursorRef} hidden /></>
 }
+
+it.each(['mouse', 'pen'])('keeps the %s screen hotspot fixed when a transform toolbar moves the stage without pointer input', async pointerType => {
+  let bounds = { left: 10, top: 20 } as DOMRect
+  const stageBounds = () => bounds
+  const view = render(<Harness stageBounds={stageBounds} />)
+  const canvas = view.container.querySelector('canvas')!
+  const move = new Event('pointermove', { bubbles: true })
+  Object.assign(move, { clientX: 140, clientY: 170, pointerType, pointerId: 1 })
+  fireEvent(canvas, move)
+  const overlay = view.getByTestId('adaptive')
+  expect(overlay.style.transform).toBe('translate3d(115px, 135px, 0)')
+  bounds = { left: 30, top: 52 } as DOMRect
+  act(() => window.dispatchEvent(new CustomEvent(CANVAS_VIEWPORT_EVENT)))
+  expect(overlay.style.transform).toBe('translate3d(95px, 103px, 0)')
+  await act(async () => { canvas.style.cursor = canvasCursors.move })
+  expect(overlay.hidden).toBe(true)
+  if (pointerType === 'pen') expect(view.container.querySelector('img')!.style.transform).toBe('translate3d(95px, 103px, 0)')
+  bounds = { left: 10, top: 20 } as DOMRect
+  view.rerender(<Harness stageBounds={stageBounds} />)
+  await act(async () => { canvas.style.cursor = canvasCursors.pencilBlack })
+  expect(overlay.style.transform).toBe('translate3d(115px, 135px, 0)')
+})
+
+it('uses current pixel alignment after rerender and on subsequent cursor-style changes', async () => {
+  localStorage.setItem('moonsprite.preference.painting-cursor-align-pixel', 'true')
+  const view = render(<Harness paintingPoint={() => ({ x: 30, y: 40 })} />)
+  const canvas = view.container.querySelector('canvas')!
+  const move = new Event('pointermove', { bubbles: true })
+  Object.assign(move, { clientX: 40, clientY: 70, pointerType: 'mouse', pointerId: 1 })
+  fireEvent(canvas, move)
+  const latestPoint = vi.fn(() => ({ x: 32, y: 42 }))
+  view.rerender(<Harness paintingPoint={latestPoint} />)
+  expect(view.getByTestId('adaptive').style.transform).toBe('translate3d(17px, 27px, 0)')
+  latestPoint.mockClear()
+  await act(async () => { canvas.style.cursor = canvasCursors.pencilWhite })
+  expect(latestPoint).toHaveBeenCalled()
+  expect(view.getByTestId('adaptive').style.transform).toBe('translate3d(17px, 27px, 0)')
+})
 
 it.each(['blur', 'moonsprite:extension-pointer-enter'])('clears the canvas overlay on %s without a canvas leave event', (type) => {
   const view = render(<Harness />)

@@ -1,3 +1,4 @@
+import { convolutionEn } from './convolution'
 import { gradientMapEn } from './gradient-map'
 import { beta7En } from './release-beta7'
 import { spriteSheetImportruRU } from './sprite-sheet-import'
@@ -6,6 +7,8 @@ import type { TranslationCatalog } from './contracts'
 import { tabletEn } from './tablet'
 
 export const ruRUMessages = {
+
+  ...convolutionEn,
   ...beta7En,
   ...gradientMapEn,
   "toolOptions.temporaryBrushCaptureHint": "Временная кисть: выделите область и отпустите для использования; Esc — отмена",
@@ -1602,8 +1605,8 @@ export const ruRUMessages = {
   "home.linksAria": 'Сообщественные связи и язык',
   "home.qq": "QQ Группа",
   "home.qqDescription": 'Присоединяйтесь к группе QQ сообщества MoonPX pixel-art для обсуждения и поддержки.',
-  "home.community": "Сообщество",
-  "home.communityDescription": "Открыть сайт сообщества MoonPX.",
+  "home.community": "Официальный сайт программы",
+  "home.communityDescription": "Узнайте о возможностях и новостях MoonSprite на официальном сайте.",
   "home.steam": 'Steam',
   "home.steamDescription": 'Откройте страницу MoonSprite на Steam.',
   "home.steamWishlist": "Добавить в список желаемого",
@@ -2980,6 +2983,7 @@ export const ruRUMessages = {
   "toolOptions.inkLockAlphaHint": "Меняет цвет существующих пикселей, сохраняя их альфа-канал.",
   'timeline.tween.linear': 'Линейное',
   'timeline.tween.timing': 'Кадры и время',
+  'preferences.exportSound': 'Звук завершения экспорта',
   'preferences.saveOriginalFormat': 'Сохранять исходный формат',
   'preferences.saveOriginalFormatHint': 'Если включено, файл сохраняется в исходном формате с предупреждением о несовместимых функциях; новые документы используют формат по умолчанию. Если выключено, используется .moonsprite, а файлы других форматов предлагается сохранять как проекты.',
   'file.save.projectPreferredTitle': 'Сохранить как проект MoonSprite',
@@ -3167,4 +3171,14 @@ export const ruRUMessages = {
   'preferences.theme.followSystemHint': 'Автоматически переключает DARK и LIGHT в зависимости от режима приложений Windows. Выбор другой темы отключает эту опцию.',
   'extension.invalidExportFile': 'Экспортируемый файл недопустим или превышает 1 MiB.',
 
+  'preferences.gradientApplicationMode': 'Применение градиента',
+  'preferences.gradientApplicationMode.instant': 'Применить при отпускании',
+  'gradient.pending.title': 'Gradient pending confirmation',
+  'gradient.pending.hint': 'Drag handles to adjust. Enter applies; Esc cancels. Changing layers or frames cancels the preview.',
+  'gradient.pending.io': 'The canvas contains an unapplied gradient. Apply or discard it before saving, exporting, or closing.',
+  'gradient.pending.continue': 'Continue editing',
+  'gradient.pending.discard': 'Discard gradient and continue',
+  'gradient.pending.invalidated': 'The painting target or selection changed. The unapplied gradient was cancelled.',
+  'gradient.pending.failed': 'Could not apply the gradient. The preview is retained; please try again.',
+  'preferences.gradientApplicationMode.confirm': 'Применить после подтверждения',
 } satisfies TranslationCatalog

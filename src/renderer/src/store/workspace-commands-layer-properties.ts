@@ -13,7 +13,7 @@ import { moveLayersToRootEdge as moveLayersToRootEdgeOperation } from '@/core/la
 import { cloneLayerStyles, hasConfiguredLayerStyles, layerStylesEqual, layerStylesHistoryBytes } from '@/core/layer-styles'
 import { isLinkableRasterLayer, linkedLayerDefaultNameSequence, linkedLayerMembers, setLinkedLayerGroupDisplayColor } from '@/core/linked-layers'
 import { touchMetadata } from './workspace-session'
-import { beginLayerPropertiesTransaction as beginLayerPropertiesTransactionCommand, cancelLayerPropertiesTransaction as cancelLayerPropertiesTransactionCommand, commitLayerPropertiesTransaction as commitLayerPropertiesTransactionCommand, previewLayerPropertiesTransaction as previewLayerPropertiesTransactionCommand, type LayerPropertyTarget } from './workspace-layer-properties'
+import { notifyPreviewChange, beginLayerPropertiesTransaction as beginLayerPropertiesTransactionCommand, cancelLayerPropertiesTransaction as cancelLayerPropertiesTransactionCommand, commitLayerPropertiesTransaction as commitLayerPropertiesTransactionCommand, previewLayerPropertiesTransaction as previewLayerPropertiesTransactionCommand, type LayerPropertyTarget } from './workspace-layer-properties'
 import { splitLayerStyles as splitLayerStylesCommand } from './workspace-layer-style-split'
 import type { DocumentSession } from './workspace-types'
 import type { WorkspaceLayerCommands } from './workspace-state'
@@ -36,10 +36,14 @@ const applyLayerName = (document: SpriteDocument, layer: RasterLayer, name: stri
   if (tileset) tileset.name = name
 }
 
-const layerStyleOwnerForTarget = (document: SpriteDocument, target: LayerPropertyTarget): RasterLayer | LayerGroup | null =>
-  target.kind === 'layer'
-    ? document.layers.find((layer) => layer.id === target.id && layer.kind !== 'adjustment') ?? null
-    : document.groups.find((group) => group.id === target.id) ?? null
+/** All raster-backed layer variants can own effects, including editable text,
+ * tilemap and free-tile layers. Adjustment layers are the sole exception
+ * because their own adjustment pipeline replaces normal layer pixels. */
+const layerStyleOwnerForTarget = (document: SpriteDocument, target: LayerPropertyTarget): RasterLayer | LayerGroup | null => {
+  if (target.kind === 'group') return document.groups.find((group) => group.id === target.id) ?? null
+  const layer = document.layers.find((candidate) => candidate.id === target.id) ?? null
+  return layer?.kind === 'adjustment' ? null : layer
+}
 
 const uniqueLayerStyleTargets = (document: SpriteDocument, targets: readonly LayerPropertyTarget[]): LayerPropertyTarget[] => {
   const seen = new Set<string>()
@@ -698,54 +702,82 @@ export function createLayerPropertiesCommands({ get, set, recording, services: {
         }
         if (!changed) return
         const afterBounds = layerStylePreviewInvalidationRect(session.document, targets)
-        const fromRevision = session.contentRevision
-        session.revision += 1
-        session.contentRevision += 1
-        session.layersPanelRevision += 1
-        session.contentInvalidation = beforeBounds && afterBounds
-          ? { kind: 'region', rect: unionRects(beforeBounds, afterBounds), fromRevision, revision: session.contentRevision }
-          : { kind: 'full', fromRevision, revision: session.contentRevision }
+        notifyPreviewChange(session, true, true, {
+          kind: 'region', compositeOnly: true, propertyOwnerIds: targets.map(target => target.id),
+          rect: beforeBounds && afterBounds ? unionRects(beforeBounds, afterBounds)
+            : { x: 0, y: 0, width: session.document.width, height: session.document.height }
+        })
       }, false)
       operationProbe?.recordOperationStage?.('layer-style.preview-mutation', performance.now() - previewStartedAt, { targets: changes.length })
     },
     setLayerStyles(ownerKind, ownerId, styles) {
       get().setLayerStylesForTargets([{ kind: ownerKind, id: ownerId }], styles)
     },
-    setLayerStylesForTargets(targets, styles, action = 'edit') {
+    setLayerStylesForTargets(targets, styles, action = 'edit', originals) {
       const current = activeSession(get())
       if (!current) return false
       const uniqueTargets = uniqueLayerStyleTargets(current.document, targets)
+      const originalFor = (target: LayerPropertyTarget, owner: RasterLayer | LayerGroup) => {
+        const original = originals?.find(entry => entry.target.kind === target.kind && entry.target.id === target.id)
+        return original ? original.styles : owner.layerStyles
+      }
       if (!uniqueTargets.some((target) => {
         const owner = layerStyleOwnerForTarget(current.document, target)
-        return Boolean(owner && !layerStylesEqual(owner.layerStyles, styles))
+        return Boolean(owner && !layerStylesEqual(originalFor(target, owner), styles))
       })) return false
       let committed = false
       get().mutateActive((session) => {
         const changes = uniqueTargets.flatMap((target) => {
           const owner = layerStyleOwnerForTarget(session.document, target)
-          if (!owner || layerStylesEqual(owner.layerStyles, styles)) return []
+          if (!owner || layerStylesEqual(originalFor(target, owner), styles)) return []
           const after = cloneLayerStyles(styles)
           if (after?.gradientMap) after.gradientMap.scope = 'layer'
-          return [{ owner, before: cloneLayerStyles(owner.layerStyles), after }]
+          return [{ owner, before: cloneLayerStyles(originalFor(target, owner)), after }]
         })
         if (changes.length === 0) return
+        // Measure both history endpoints without publishing a reverted preview.
+        for (const change of changes) assignLayerStyles(change.owner, change.before)
+        const beforeBounds = layerStylePreviewInvalidationRect(session.document, uniqueTargets)
         for (const change of changes) assignLayerStyles(change.owner, change.after)
+        const afterBounds = layerStylePreviewInvalidationRect(session.document, uniqueTargets)
+        const invalidation: ContentInvalidationHint = {
+          kind: 'region', compositeOnly: true, propertyOwnerIds: uniqueTargets.map(target => target.id),
+          rect: beforeBounds && afterBounds ? unionRects(beforeBounds, afterBounds)
+            : { x: 0, y: 0, width: session.document.width, height: session.document.height }
+        }
         const label = action === 'paste'
           ? tr('workspace.history.pasteLayerStyles')
           : action === 'clear'
             ? tr('workspace.history.clearLayerStyles')
             : tr('workspace.history.layerStyles')
-        session.history.push({
+        let entry: HistoryEntry
+        const restore = (endpoint: 'before' | 'after'): void => {
+          const from = layerStylePreviewInvalidationRect(session.document, uniqueTargets)
+          for (const change of changes) assignLayerStyles(change.owner, change[endpoint])
+          const to = layerStylePreviewInvalidationRect(session.document, uniqueTargets)
+          entry.invalidation = { ...invalidation, rect: from && to ? unionRects(from, to)
+            : { x: 0, y: 0, width: session.document.width, height: session.document.height } }
+        }
+        entry = {
           label,
           bytes: changes.reduce((bytes, change) => bytes + layerStylesHistoryBytes(change.before) + layerStylesHistoryBytes(change.after), 0),
-          undo: () => { for (const change of changes) assignLayerStyles(change.owner, change.before) },
-          redo: () => { for (const change of changes) assignLayerStyles(change.owner, change.after) },
+          undo: () => restore('before'),
+          redo: () => restore('after'),
           contentChanged: true,
           requiresAnimationSync: false,
-          invalidation: { kind: 'full' }
-        })
+          invalidation
+        }
+        session.history.push(entry)
+        const previous = session.contentInvalidation
+        completeDocumentChange(session, 'content', recordDocumentOperation, invalidation)
+        session.layersPanelRevision += 1
+        // Include previews skipped between animation frames in the final redraw.
+        if (previous?.kind === 'region' && previous.compositeOnly && previous.propertyOwnerIds?.length === uniqueTargets.length
+          && previous.propertyOwnerIds.every(id => uniqueTargets.some(target => target.id === id))) {
+          session.contentInvalidation = { ...invalidation, rect: unionRects(previous.rect, invalidation.rect), fromRevision: previous.fromRevision, revision: session.contentRevision }
+        }
         committed = true
-      }, 'content')
+      }, false)
       return committed
     },
     setLayerStylesEnabled(targets, enabled) {

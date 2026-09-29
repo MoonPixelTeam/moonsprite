@@ -1,3 +1,4 @@
+import { isWebTrial } from '@/core/product-target'
 import { useProjectScrollMemory } from '@/components/useProjectScrollMemory'
 import { PaletteSwatch, usePaletteSwatchActions } from './PaletteSwatch'
 import { PaletteSelectionOutline } from './PaletteSelectionOutline'
@@ -819,7 +820,7 @@ export function PalettePanel({ session, docked = false, onDockDragStart, onPanel
       const saved = await window.moonSprite.savePalette(target === 'current' ? activePalette!.id : null, saveName.trim() || t('palette.defaultName', { name: session.document.name }), orderedColors, storedColumns, savedSlots)
       upsertPalette(saved)
       setSaveOpen(false)
-      store.setMessage(t('palette.saved', { name: saved.name, directory: paletteDirectory }))
+      store.setMessage(isWebTrial() ? '色板已保存到本次访问的色板库，刷新后需重新创建。工程中的色板可随 .moonsprite 保存。' : t('palette.saved', { name: saved.name, directory: paletteDirectory }))
     } catch (error) {
       store.setMessage(error instanceof Error ? error.message : t('palette.saveFailed'))
     } finally {
@@ -892,7 +893,7 @@ export function PalettePanel({ session, docked = false, onDockDragStart, onPanel
       case 'paletteSwatchLarge': chooseSwatchSize('large'); break
       case 'paletteSwatchHuge': chooseSwatchSize('huge'); break
       case 'savePalette': openSaveDialog(); break
-      case 'openPaletteFolder': void window.moonSprite.openPaletteFolder(); setLibraryOpen(false); break
+      case 'openPaletteFolder': if (isWebTrial()) { store.setMessage('网页版没有本地色板文件夹。'); break }; void window.moonSprite.openPaletteFolder(); setLibraryOpen(false); break
       case 'refreshPalettes': void refreshPalettes(activePaletteId ?? undefined); break
     }
   }
@@ -960,7 +961,7 @@ export function PalettePanel({ session, docked = false, onDockDragStart, onPanel
       <span className="palette-library-list component-scrollbar">
         {paletteLoading ? <span className="palette-library-state">{t('palette.loading')}</span> : paletteFiles.length === 0 ? <span className="palette-library-state">{t('palette.empty')}</span> : paletteFiles.map((palette) => <button key={palette.id} type="button" role="menuitem" className={activePaletteId === palette.id ? 'selected' : ''} title={t(palette.builtIn ? 'palette.builtInHint' : 'palette.userDeleteHint')} onClick={() => applyStoredPalette(palette)} onContextMenu={(event) => { event.preventDefault(); if (palette.builtIn) { store.setMessage(t('palette.builtInDeleteBlocked')); setPaletteContext(null); return } setPaletteContext({ id: palette.id, x: Math.min(event.clientX, window.innerWidth - 150), y: Math.min(event.clientY, window.innerHeight - 42) }) }}><span className="palette-library-name">{paletteDisplayName(palette)}</span><span className="palette-library-swatches" aria-hidden="true" style={{ gridTemplateColumns: `repeat(${Math.max(1, palette.colors.length)}, minmax(0, 1fr))` }}>{palette.colors.map((color, index) => <i key={index} style={{ background: colorCss(color) }} />)}</span></button>)}
       </span>
-      <span className="palette-library-actions"><button type="button" className="quiet-button" onClick={() => { void window.moonSprite.openPaletteFolder(); setLibraryOpen(false) }}><PixelUtilityIcon kind="folderOpen" /><span>{t('palette.openUserFolder')}</span></button><button type="button" className="quiet-button" disabled={operationBusy} onClick={() => void importPalette()}><PixelUtilityIcon kind="import" /><span>{t('palette.import')}</span></button><button type="button" className="quiet-button" disabled={paletteLoading || operationBusy} onClick={() => void refreshPalettes(activePaletteId ?? undefined)}><PixelUtilityIcon kind="refresh" /><span>{t('palette.refresh')}</span></button></span>
+      <span className="palette-library-actions">{!isWebTrial() && <button type="button" className="quiet-button" onClick={() => { void window.moonSprite.openPaletteFolder(); setLibraryOpen(false) }}><PixelUtilityIcon kind="folderOpen" /><span>{t('palette.openUserFolder')}</span></button>}{!isWebTrial() && <button type="button" className="quiet-button" disabled={operationBusy} onClick={() => void importPalette()}><PixelUtilityIcon kind="import" /><span>{t('palette.import')}</span></button>}<button type="button" className="quiet-button" disabled={paletteLoading || operationBusy} onClick={() => void refreshPalettes(activePaletteId ?? undefined)}><PixelUtilityIcon kind="refresh" /><span>{t('palette.refresh')}</span></button></span>
     </span>,
     document.body
   )}
@@ -976,8 +977,8 @@ export function PalettePanel({ session, docked = false, onDockDragStart, onPanel
   </ModalShell>, document.body)}
   {saveOpen && createPortal(<ModalShell storageKey="palette-save" defaultWidth={400} defaultHeight={300} minWidth={360} className="palette-operation-dialog palette-save-dialog" role="dialog" aria-labelledby="palette-save-title">
     <DialogHeader eyebrow="PALETTE" title={t('palette.saveTitle')} titleId="palette-save-title" closeLabel={t('common.close')} onClose={() => setSaveOpen(false)} />
-    <div className="modal-body palette-dialog-body"><FormField className="palette-name-field" label={t('palette.name')}><TextInput autoFocus value={saveName} onChange={(event) => setSaveName(event.target.value)} /></FormField><div className="palette-save-summary"><span className="palette-library-swatches" aria-hidden="true">{orderedColors.slice(0, 24).map((color, index) => <i key={index} style={{ background: colorCss(color) }} />)}</span><strong>{t('palette.colorCount', { count: orderedColors.length })}</strong></div><p>{t('palette.directory', { directory: paletteDirectory })}</p></div>
-    <footer><button type="button" className="quiet-button" disabled={operationBusy} onClick={() => void savePaletteAsImage()}><PixelUtilityIcon kind="export" /><span className="button-press-content">{t('palette.savePng')}</span></button><button type="button" className={activePalette && !activePalette.builtIn ? 'quiet-button' : 'primary-button'} disabled={operationBusy} onClick={() => void savePaletteLocally('new')}><PixelUtilityIcon kind="plus" /><span className="button-press-content">{t('palette.saveAsNew')}</span></button>{activePalette && !activePalette.builtIn && <button type="button" className="primary-button" disabled={operationBusy} onClick={() => void savePaletteLocally('current')}><PixelUtilityIcon kind="save" /><span className="button-press-content">{t('palette.saveToCurrent', { name: paletteDisplayName(activePalette) })}</span></button>}</footer>
+    <div className="modal-body palette-dialog-body"><FormField className="palette-name-field" label={t('palette.name')}><TextInput autoFocus value={saveName} onChange={(event) => setSaveName(event.target.value)} /></FormField><div className="palette-save-summary"><span className="palette-library-swatches" aria-hidden="true">{orderedColors.slice(0, 24).map((color, index) => <i key={index} style={{ background: colorCss(color) }} />)}</span><strong>{t('palette.colorCount', { count: orderedColors.length })}</strong></div><p>{isWebTrial() ? '仅保留在本次访问中；请保存工程以保留工程色板。' : t('palette.directory', { directory: paletteDirectory })}</p></div>
+    <footer>{!isWebTrial() && <button type="button" className="quiet-button" disabled={operationBusy} onClick={() => void savePaletteAsImage()}><PixelUtilityIcon kind="export" /><span className="button-press-content">{t('palette.savePng')}</span></button>}<button type="button" className={activePalette && !activePalette.builtIn ? 'quiet-button' : 'primary-button'} disabled={operationBusy} onClick={() => void savePaletteLocally('new')}><PixelUtilityIcon kind="plus" /><span className="button-press-content">{t('palette.saveAsNew')}</span></button>{activePalette && !activePalette.builtIn && <button type="button" className="primary-button" disabled={operationBusy} onClick={() => void savePaletteLocally('current')}><PixelUtilityIcon kind="save" /><span className="button-press-content">{t('palette.saveToCurrent', { name: paletteDisplayName(activePalette) })}</span></button>}</footer>
   </ModalShell>, document.body)}
   </>
 }

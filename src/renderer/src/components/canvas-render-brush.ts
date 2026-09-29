@@ -2,7 +2,7 @@ import { brushPreviewNeedsComposite } from './canvas-brush-layer-preview'
 import { CanvasAdaptiveOutline, alignCanvasStrokePath } from './canvas-adaptive-outline'
 import type { RgbaColor } from '@shared/types-color'
 import { readLayerColorAt, resolveLayerCanvasColor } from '@/core/document-model'
-import { compositeRegion } from '@/core/document-composite'
+import { brushStackPreview } from './canvas-brush-stack-cache'
 import { blendOver } from '@/core/raster'
 import { DEFAULT_BRUSH_DITHER_SETTINGS } from '@/core/gradient-color'
 import { applyInkColor, resolveInkStampColor } from '@/core/ink'
@@ -379,34 +379,10 @@ export function renderCanvasBrush({
         !currentActiveLayer.layerStyles &&
         document.layers.every((layer) => layer.opacity >= 0 && layer.blendMode === 'normal' && layer.clippingMask !== true && !layer.layerStyles)
       const activeStackIndex = stackCacheAllowed ? document.layers.findIndex((layer) => layer.id === currentActiveLayer.id) : -1
-      const visibleStackX = Math.max(0, Math.floor(fromX))
-      const visibleStackY = Math.max(0, Math.floor(fromY))
-      const visibleStackWidth = Math.max(0, Math.min(document.width, Math.ceil(toX)) - visibleStackX)
-      const visibleStackHeight = Math.max(0, Math.min(document.height, Math.ceil(toY)) - visibleStackY)
-      let stackCache = brushPreviewStackCacheRef.current
-      if (stackCacheAllowed && activeStackIndex >= 0 && visibleStackWidth > 0 && visibleStackHeight > 0) {
-        const stackSignature = `${document.id}:${currentSession.contentRevision}:${currentActiveLayer.id}:${visibleStackX}:${visibleStackY}:${visibleStackWidth}:${visibleStackHeight}`
-        if (!stackCache || stackCache.signature !== stackSignature) {
-          const makeSubset = (layers: typeof document.layers): typeof document => ({
-            ...document,
-            layers,
-            activeLayerId: layers[0]?.id ?? document.activeLayerId
-          })
-          stackCache = {
-            signature: stackSignature,
-            x: visibleStackX,
-            y: visibleStackY,
-            width: visibleStackWidth,
-            height: visibleStackHeight,
-            lower: compositeRegion(makeSubset(document.layers.slice(0, activeStackIndex)), visibleStackX, visibleStackY, visibleStackWidth, visibleStackHeight),
-            upper: compositeRegion(makeSubset(document.layers.slice(activeStackIndex + 1)), visibleStackX, visibleStackY, visibleStackWidth, visibleStackHeight)
-          }
-          brushPreviewStackCacheRef.current = stackCache
-        }
-      } else if (!stackCacheAllowed) {
-        brushPreviewStackCacheRef.current = null
-        stackCache = null
-      }
+      const stackCache = stackCacheAllowed && activeStackIndex >= 0
+        ? brushStackPreview(document, currentSession.contentRevision, activeStackIndex, renderedPreviewPoints.values(), brushPreviewStackCacheRef.current)
+        : null
+      brushPreviewStackCacheRef.current = stackCache
       const cacheSignature = cacheableSolidHover
         ? `${document.id}:${currentSession.contentRevision}:${currentActiveLayer.id}:${currentSession.inkMode}:${currentSession.primaryColor.r},${currentSession.primaryColor.g},${currentSession.primaryColor.b},${currentSession.primaryColor.a}:${currentSession.brushShape}:${previewBrushAngle}`
         : ''
