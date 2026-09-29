@@ -197,6 +197,7 @@ export class DocumentCompositeCache {
     // their offsets are read on every composite. Styled plans, however,
     // contain derived proxy objects whose offsets must be rebuilt.
     this.styledLayerPlans = new WeakMap()
+    this.movePreviewLayerPlans = new WeakMap()
   }
 
   normalLayersFor(document: SpriteDocument, revision: number, sourceDirtyRect?: SelectionRect): RasterLayer[] | null {

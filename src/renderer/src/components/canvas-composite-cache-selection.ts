@@ -250,6 +250,7 @@ export class CanvasSelectionPreviewRenderer {
     }
     checkpoint('base-surface'); const tileRepeatMode = view.tileRepeatMode ?? 'off'
     const transformKey = selectionPreviewTransformKey(selection, tileRepeatMode)
+      + (tileRepeatMode === 'off' ? `:viewport:${x}:${y}:${width}:${height}` : '')
     const previewChanged = preview.source !== selection.source || preview.transformKey !== transformKey
     const selectionTargets = repeatedSelectionTargets(selection, document, view)
     const selectionQuads = selectionTargets.map((target) => selectionQuadForTarget(selection, target))

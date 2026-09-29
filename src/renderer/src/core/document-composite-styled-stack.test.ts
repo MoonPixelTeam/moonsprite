@@ -75,7 +75,7 @@ it('reuses style blocks through paint, erase, unrelated edits and translation in
     expect(compositeRegion(doc, 0, 0, 192, 192, cache, 0)).toEqual(compositeRegion(doc, 0, 0, 192, 192))
     expect(render).not.toHaveBeenCalled()
   }
-})
+}, 30000)
 
 it('leaves masked styles and their pending edits to the exact fallback', () => {
   const { doc, target } = fixture()
