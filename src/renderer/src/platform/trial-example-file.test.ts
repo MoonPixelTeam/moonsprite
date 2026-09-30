@@ -11,9 +11,7 @@ it('loads the supplied project intact as an importable browser file', async () =
   vi.stubGlobal('File', File)
   vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, arrayBuffer: async () => bytes })))
   const file = await loadTrialExampleFile()
-  const url = vi.mocked(fetch).mock.calls[0][0] as string
-  expect(url).toMatch(/^data:.*;base64,/)
-  expect(Buffer.from(url.slice(url.indexOf(',') + 1), 'base64')).toEqual(bytes)
+  expect(vi.mocked(fetch)).not.toHaveBeenCalled()
   expect(file.name).toBe('工程示例.moonsprite')
   const loaded = new Uint8Array(await file.arrayBuffer())
   expect(loaded).toEqual(new Uint8Array(bytes))
@@ -22,7 +20,3 @@ it('loads the supplied project intact as an importable browser file', async () =
   expect(project.width).toBeGreaterThan(0)
 })
 
-it('reports an unavailable example instead of opening an empty project', async () => {
-  vi.stubGlobal('fetch', vi.fn(async () => ({ ok: false, status: 404 })))
-  await expect(loadTrialExampleFile()).rejects.toThrow('HTTP 404')
-})
