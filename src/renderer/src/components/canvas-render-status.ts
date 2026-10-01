@@ -88,10 +88,30 @@ export function renderCanvasStatus({
     ? { width: Math.max(1, Math.round(selectionSizeTarget.width)), height: Math.max(1, Math.round(selectionSizeTarget.height)) }
     : null
   const previousSelectionSizePreview = publishedSelectionSizePreviewRef.current
-  const lineDrag = inputRef.current.drag?.kind === 'line-shape' ? inputRef.current.drag : null
-  const toolDetails = lineDrag
-    ? `起点 (${lineDrag.start.x}, ${lineDrag.start.y}) · 角度 ${(((Math.atan2(-(lineDrag.last.y - lineDrag.start.y), lineDrag.last.x - lineDrag.start.x) * 180 / Math.PI) + 360) % 360).toFixed(1)}° · 长度 ${Math.hypot(lineDrag.last.x - lineDrag.start.x, lineDrag.last.y - lineDrag.start.y).toFixed(1)}`
-    : null
+  const drag = inputRef.current.drag
+  const point = inputRef.current.pointer.point
+  const toolNames: Record<string, string> = {
+    pencil: '铅笔', brush: '画笔', eraser: '橡皮擦', line: '直线', shape: '形状', fill: '填充',
+    gradient: '渐变', picker: '取色器', move: '移动', marquee: '矩形选区', lasso: '套索',
+    magicWand: '魔棒', crop: '裁剪', text: '文字', slice: '切片', zoom: '缩放', hand: '抓手',
+    rotate: '旋转', liquify: '液化', smooth: '平滑', tile: '图块', symmetry: '对称'
+  }
+  const toolLabel = toolNames[session.tool] ?? session.tool
+  const formatPoint = (value: { x: number; y: number }): string => `(${Math.round(value.x)}, ${Math.round(value.y)})`
+  const toolDetails = (() => {
+    const cursor = `工具：${toolLabel} · 光标 ${formatPoint(point)}`
+    if (!drag) return cursor
+    const dx = drag.last.x - drag.start.x
+    const dy = drag.last.y - drag.start.y
+    const size = ` · 尺寸 ${Math.abs(Math.round(dx))} × ${Math.abs(Math.round(dy))}`
+    if (drag.kind === 'line-shape') {
+      const angle = ((Math.atan2(-dy, dx) * 180 / Math.PI) + 360) % 360
+      return `${cursor} · 起点 ${formatPoint(drag.start)} · 终点 ${formatPoint(drag.last)} · 角度 ${angle.toFixed(1)}° · 长度 ${Math.hypot(dx, dy).toFixed(1)}`
+    }
+    if (drag.kind === 'shape' || drag.kind === 'freeform-shape' || drag.kind === 'marquee' || drag.kind === 'create-text-box' || drag.kind === 'create-slice')
+      return `${cursor} · 起点 ${formatPoint(drag.start)} · 终点 ${formatPoint(drag.last)}${size}`
+    return `${cursor} · 起点 ${formatPoint(drag.start)} · 位移 (${Math.round(dx)}, ${Math.round(dy)})`
+  })()
   if (previousSelectionSizePreview?.width !== selectionSizePreview?.width || previousSelectionSizePreview?.height !== selectionSizePreview?.height) {
     publishedSelectionSizePreviewRef.current = selectionSizePreview ? { ...selectionSizePreview, toolDetails } : null
     publishSelectionSizePreview({ documentId: session.document.id, size: selectionSizePreview, toolDetails })
