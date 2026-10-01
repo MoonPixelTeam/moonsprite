@@ -773,6 +773,7 @@ function renderFrame(frame: CanvasRenderContext, checkpoint: (stage: string) => 
     canRenderToolPreview,
     session,
     fillKind,
+    brushPreviewMode,
     tilemapEditSelectionAtPoint,
     symmetryCenter,
     drawPreviewPixel,
