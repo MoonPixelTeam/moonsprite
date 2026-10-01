@@ -36,6 +36,7 @@ export const EditorStatusBar = memo(function EditorStatusBar({ homeOpen, resourc
 
   return <PerformanceProfiler id="EditorStatusBar"><footer className="statusbar">
     {session && !homeOpen ? <>
+      {selectionSizePreview?.toolDetails && <span>{selectionSizePreview.toolDetails}</span>}
       <span>{t(`colorMode.${session.document.colorMode}`)}</span>
       <span>{t('status.layers', { count: session.document.layers.length })}</span>
       <span>{Math.round(session.view.zoom * 100)}%</span>

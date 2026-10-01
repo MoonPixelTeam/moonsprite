@@ -51,6 +51,7 @@ export function renderCanvasStatus({
   publishedSelectionSizePreviewRef: React.RefObject<{
     width: number
     height: number
+    toolDetails?: string | null
   } | null>
   session: DocumentSession
   t: (key: import('@/locales/contracts').TranslationKey, params?: import('@/locales/contracts').TranslationParams) => string
@@ -87,9 +88,15 @@ export function renderCanvasStatus({
     ? { width: Math.max(1, Math.round(selectionSizeTarget.width)), height: Math.max(1, Math.round(selectionSizeTarget.height)) }
     : null
   const previousSelectionSizePreview = publishedSelectionSizePreviewRef.current
+  const lineDrag = inputRef.current.drag?.kind === 'line-shape' ? inputRef.current.drag : null
+  const toolDetails = lineDrag
+    ? `起点 (${lineDrag.start.x}, ${lineDrag.start.y}) · 角度 ${(((Math.atan2(-(lineDrag.last.y - lineDrag.start.y), lineDrag.last.x - lineDrag.start.x) * 180 / Math.PI) + 360) % 360).toFixed(1)}° · 长度 ${Math.hypot(lineDrag.last.x - lineDrag.start.x, lineDrag.last.y - lineDrag.start.y).toFixed(1)}`
+    : null
   if (previousSelectionSizePreview?.width !== selectionSizePreview?.width || previousSelectionSizePreview?.height !== selectionSizePreview?.height) {
-    publishedSelectionSizePreviewRef.current = selectionSizePreview
-    publishSelectionSizePreview({ documentId: session.document.id, size: selectionSizePreview })
+    publishedSelectionSizePreviewRef.current = selectionSizePreview ? { ...selectionSizePreview, toolDetails } : null
+    publishSelectionSizePreview({ documentId: session.document.id, size: selectionSizePreview, toolDetails })
+  } else if (previousSelectionSizePreview?.toolDetails !== toolDetails) {
+    publishSelectionSizePreview({ documentId: session.document.id, size: selectionSizePreview, toolDetails })
   }
   displayContext.fillText(`${document.width} x ${document.height}`, 12, statusBaselineY)
   if (view.mirrored || view.mirroredVertical) {
