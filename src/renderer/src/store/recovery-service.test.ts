@@ -50,6 +50,18 @@ describe('recovery service', () => {
     expect(decodeProject(saved!).name).toBe(document.name)
   })
 
+  it('skips a recovery encode when the session revisions did not change', async () => {
+    const writeRecovery = vi.fn(async () => {})
+    const document = createDocument('unchanged draft', 8, 8, 'rgba')
+    const service = new RecoveryService()
+    const target = { id: document.id, document, revision: 4, contentRevision: 2 }
+    await service.autosave(api({ writeRecovery }), [target])
+    await service.autosave(api({ writeRecovery }), [target])
+    expect(writeRecovery).toHaveBeenCalledTimes(1)
+    await service.autosave(api({ writeRecovery }), [{ ...target, contentRevision: 3 }])
+    expect(writeRecovery).toHaveBeenCalledTimes(2)
+  })
+
   it('restores a project as a dirty recovery document', async () => {
     const document = createDocument('draft', 8, 8, 'rgba')
     const record: RecoveryRecord = { id: document.id, name: 'draft', updatedAt: '1' }

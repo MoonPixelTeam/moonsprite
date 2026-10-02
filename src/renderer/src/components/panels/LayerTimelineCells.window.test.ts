@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { measureTimelineCellWindow } from './layer-timeline-cell-window'
+import { initialTimelineCellsWindow, measureTimelineCellWindow } from './layer-timeline-cell-window'
 import type { LayerTimelineCellsProps } from './layer-timeline-cell-types'
 
 const fixturePanel = (rows: number, frames: number): LayerTimelineCellsProps => ({
@@ -33,5 +33,25 @@ describe('timeline cell window', () => {
     expect(scrolled.rowStart).toBeGreaterThan(0)
     expect(scrolled.frameEnd).toBeLessThanOrEqual(297)
     expect(scrolled.rowEnd).toBeLessThanOrEqual(55)
+  })
+
+  it('keeps virtualization bounded while a panel is between layouts', () => {
+    const viewport = document.createElement('div')
+    Object.defineProperties(viewport, {
+      clientWidth: { configurable: true, value: 0 },
+      clientHeight: { configurable: true, value: 0 },
+      scrollLeft: { configurable: true, value: 0 },
+      scrollTop: { configurable: true, value: 0 }
+    })
+    const panel = fixturePanel(42, 297)
+    const window = measureTimelineCellWindow(panel, viewport)
+    expect(window.rowEnd - window.rowStart).toBeLessThan(panel.displayRows.length)
+    expect(window.frameEnd - window.frameStart).toBeLessThan(panel.timeline.frames.length)
+  })
+
+  it('provides a bounded first window without a scroll host', () => {
+    const window = initialTimelineCellsWindow(fixturePanel(42, 297))
+    expect(window.rowEnd - window.rowStart).toBeLessThan(42)
+    expect(window.frameEnd - window.frameStart).toBeLessThan(297)
   })
 })

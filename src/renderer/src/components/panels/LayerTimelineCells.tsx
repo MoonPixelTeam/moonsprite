@@ -16,7 +16,7 @@ import type { LayerTimelineCellsProps as Props } from './layer-timeline-cell-typ
 import { timelineCellRenderScope, timelineCellRenderState, timelineGridRenderState, sameTimelineCellState } from './layer-timeline-cell-cache'
 import { useTimelineCellActions } from './useTimelineCellActions'
 import { timelineCellElement, type TimelineCellElementCache } from './timeline-cell-element-cache'
-import { allTimelineCellsWindow, measureTimelineCellWindow, sameTimelineCellWindow, type TimelineCellWindow } from './layer-timeline-cell-window'
+import { initialTimelineCellsWindow, measureTimelineCellWindow, sameTimelineCellWindow, type TimelineCellWindow } from './layer-timeline-cell-window'
 interface CellProps {
   panel: Props
   displayRow: Props['displayRows'][number]
@@ -452,11 +452,11 @@ const TimelineCellGrid = memo(function TimelineGrid({panel, scope, renderState, 
 const CachedTimelineGrid = memo(function TimelineGrid({panel, scope, renderState}: {panel: Props; scope: readonly unknown[]; renderState: readonly unknown[]}) {
   // Wait for the scroll host to be measured before mounting cells. This keeps
   // the first render of a huge project cheap and avoids a full-matrix flash.
-  const [cellWindow, setCellWindow] = useState<TimelineCellWindow | null>(() => panel.timelineViewportRef ? null : allTimelineCellsWindow(panel))
+  const [cellWindow, setCellWindow] = useState<TimelineCellWindow | null>(() => panel.timelineViewportRef ? null : initialTimelineCellsWindow(panel))
   useEffect(() => {
     const viewport = panel.timelineViewportRef?.current
     if (!viewport) {
-      setCellWindow((current) => current && sameTimelineCellWindow(current, allTimelineCellsWindow(panel)) ? current : allTimelineCellsWindow(panel))
+      setCellWindow((current) => current && sameTimelineCellWindow(current, initialTimelineCellsWindow(panel)) ? current : initialTimelineCellsWindow(panel))
       return
     }
     let frame: number | null = null
