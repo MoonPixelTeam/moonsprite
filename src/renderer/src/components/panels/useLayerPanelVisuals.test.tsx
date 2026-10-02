@@ -54,6 +54,17 @@ it('reuses the grid during movement while matching uncached preview and link sem
   expect(result.current.displayRows).toBe(initial.displayRows)
 })
 
+it('reuses visual topology across pixel-only content revisions', () => {
+  const options = setup()
+  const { session } = options
+  const { result, rerender } = renderHook(useLayerPanelVisuals, { initialProps: options })
+  const visualState = result.current.timelineVisualState
+  session.contentRevision += 1
+  session.revision += 1
+  rerender({ ...options })
+  expect(result.current.timelineVisualState).toBe(visualState)
+})
+
 it('invalidates topology for in-place content/metadata edits and collapsed groups', () => {
   const options = setup()
   const {session, timeline} = options

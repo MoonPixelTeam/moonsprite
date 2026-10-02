@@ -1069,6 +1069,7 @@ export function LayersPanel({
                 <TimelineSelectionOutlines boxes={animationCelSelectionBoxes} dragging={animationCelDragPreview !== null} />}
               {animationFrameHeaders}
               <LayerTimelineCells
+                timelineViewportRef={layerListRef}
                 displayRows={displayRows}
                 timeline={timeline}
                 visualRowStateByKey={visualRowStateByKey}

@@ -669,6 +669,28 @@ export const cloneDocumentForAnimationFrame = (document: SpriteDocument, frameId
   return preview
 }
 
+/** Read-only render view: share timeline/assets and copy only layer shells.
+ * Unlike the export/editing snapshot, this view must never be mutated. */
+export const createAnimationFramePreviewDocument = (document: SpriteDocument, frameId: string): SpriteDocument => {
+  const layers = document.layers.map((layer) => shareRasterLayer(layer))
+  const timeline = document.animation
+    ? { ...document.animation, activeFrameId: frameId }
+    : undefined
+  const preview: SpriteDocument = {
+    ...document,
+    layers,
+    groups: document.groups,
+    palette: document.palette,
+    paletteOrder: document.paletteOrder,
+    paletteSlots: document.paletteSlots,
+    customBrushes: document.customBrushes,
+    tilesets: document.tilesets,
+    animation: timeline
+  }
+  if (timeline?.frames.some((frame) => frame.id === frameId)) applyFrameSurfaces(preview, timeline)
+  return preview
+}
+
 const applySurfaceToLayer = (layer: RasterLayer, surface: AnimationCelSurface, opacity?: number): void => {
   if (layer.format !== surface.format) throw new Error('动画 cel 与图层颜色模式不一致')
   layer.width = surface.width

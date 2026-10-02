@@ -4,6 +4,9 @@ import type { useAnimationGestures } from './useAnimationGestures'
 import type { DocumentSession } from '@/store/workspace'
 
 export interface LayerTimelineCellsProps {
+  /** Scroll host for the timeline. Cell buttons are windowed against this
+   * element while the grid keeps its full geometry for stable scrolling. */
+  readonly timelineViewportRef?: { readonly current: HTMLDivElement | null }
   readonly activeContentRevision?: number
   readonly displayRows: ReturnType<typeof deriveLayerPanelVisuals>['displayRows']
   readonly timeline: import('@shared/types-animation').AnimationTimeline

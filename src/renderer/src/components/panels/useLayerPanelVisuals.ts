@@ -6,23 +6,30 @@ import { createTimelineVisualCellCache } from '@/core/animation-timeline-cell-ca
 
 export function useLayerPanelVisuals(options: LayerPanelVisualOptions) {
   const {session, timeline, inlineMasks, gesture} = options
-  // Region invalidations are pixel-only edits. Full/unspecified revisions can
-  // also carry in-place timeline topology changes (for example link edits),
-  // so they retain the existing structure invalidation contract.
-  // A playback frame swap invalidates the canvas composite, but not the
-  // timeline topology. Structural commands still advance layersPanelRevision.
-  const topologyContentRevision = session.animationPlaying || session.contentInvalidation?.kind === 'region' ? 0 : session.contentRevision
-  // Document objects mutate in place: structure revisions, not object
-  // identity alone, invalidate topology after edits, undo/redo and metadata
-  // changes. Pixel content revisions are handled by the cell grid below.
-  const structure = useMemo(() => createLayerPanelStructure(session, timeline, inlineMasks), [
-    session.document, topologyContentRevision, session.layersPanelRevision, session.collapsedGroupIds,
-    timeline, timeline.cels, timeline.frames, timeline.layerMasks, timeline.groupMasks,
-    session.animationPlaying, inlineMasks
-  ])
+  // Document objects and timeline arrays are mutated in place. Rebuilding the
+  // complete row×frame topology from the content revision made every brush
+  // stroke pay for all timeline slots again. Build a small topology key from
+  // the fields that actually affect panel structure/link geometry; pixel-only
+  // edits keep the existing structure and update their thumbnails through the
+  // cell content revision instead.
+  const topologyKey = [
+    inlineMasks ? 'inline' : 'rows',
+    session.collapsedGroupIds.join('\u0000'),
+    session.document.layers.map((layer) => `${layer.id}:${layer.groupId ?? ''}:${layer.kind}:${layer.freeTileSetId ?? ''}:${layer.freeTileSources?.length ?? 0}`).join('\u0001'),
+    session.document.groups.map((group) => `${group.id}:${group.parentGroupId ?? ''}`).join('\u0001'),
+    timeline.frames.map((frame) => frame.id).join('\u0001'),
+    timeline.cels.map((cel) => `${cel.id}:${cel.layerId}:${cel.frameId}:${cel.linkedCelId ?? ''}`).join('\u0001'),
+    (timeline.layerMasks ?? []).map((entry) => `${entry.layerId}:${entry.frameId}:${entry.mask.id}:${entry.mask.linkedMaskId ?? ''}`).join('\u0001'),
+    (timeline.groupMasks ?? []).map((entry) => `${entry.groupId}:${entry.frameId}:${entry.mask.id}:${entry.mask.linkedMaskId ?? ''}`).join('\u0001')
+  ].join('\u0002')
+  const structure = useMemo(() => createLayerPanelStructure(session, timeline, inlineMasks), [session.document, timeline, topologyKey])
   const cellStateCache = useMemo(() => createTimelineVisualCellCache(structure.visualTopology), [structure])
   const visuals = useMemo(() => deriveLayerPanelVisuals({...options, structure, cellStateCache, animationCelDropTargetKey: null}), [
-    structure, session, session.revision, session.layersPanelRevision,
+    // Pixel revisions are intentionally absent here. The derived flags and
+    // link geometry are unchanged by a brush stroke; rendered cells observe
+    // their live raster revision separately. Keeping the session object or
+    // revision in this list rebuilt every row×frame state on every stroke.
+    structure,
     session.document.activeLayerId, timeline.activeFrameId, session.activeLayerMaskId,
     session.animationCellSelectionExplicit, session.animationPlaying, session.layerMaskIsolatedView,
     session.layerSelectionExplicit, session.selectedAnimationCellKeys, session.selectedAnimationFrameIds,

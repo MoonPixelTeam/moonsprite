@@ -8,7 +8,7 @@ import { PixelUtilityIcon } from '@/components/PixelUtilityIcon'
 import { CanvasCompositeCache } from '@/components/canvas-composite-cache'
 import { canvasCompositeCacheFor, existingCanvasCompositeCache } from '@/components/canvas-composite-registry'
 import type { DockDragProps } from '@/components/workspace-panel-types'
-import { cloneDocumentForAnimationFrame, ensureAnimationDocument, firstPlayableAnimationFrameId, nextAnimationFrameId } from '@/core/animation'
+import { createAnimationFramePreviewDocument, createDefaultAnimationTimeline, firstPlayableAnimationFrameId, nextAnimationFrameId } from '@/core/animation'
 import { advanceAnimationLoopSectionPlayback, animationLoopSectionAtFrame, animationLoopSectionStartFrameId, resolveAnimationLoopSectionRange } from '@/core/animation-loop-sections'
 import { anchoredPreviewPan, followPreviewPosition, pixelAlignedPreviewFitScale, previewCheckerCellSize } from '@/core/preview-geometry'
 import { normalizeCanvasWheelDelta, steppedCanvasZoom, viewDragClientDelta } from '@/core/canvas-input'
@@ -16,6 +16,7 @@ import { loadEditorPreferences, type CheckerboardPreferences } from '@/core/file
 import { registerViewPreviewListener } from '@/core/view-preview-lifecycle'
 import { registerCanvasPreviewListener, type CanvasPreviewSnapshot } from '@/core/canvas-preview-lifecycle'
 import { useWorkspace, type AnimationPlaybackMode, type DocumentSession } from '@/store/workspace'
+import type { AnimationTimeline } from '@shared/types-animation'
 import { useI18n } from '@/components/I18nProvider'
 import { resolveTheme } from '@/core/theme'
 import { initialDocumentCompositePending, subscribeInitialDocumentComposite } from '@/core/initial-document-composite'
@@ -40,7 +41,7 @@ interface PreviewViewportSize {
   height: number
 }
 
-const previewLoopSectionContainsFrame = (timeline: ReturnType<typeof ensureAnimationDocument>, section: Parameters<typeof resolveAnimationLoopSectionRange>[1], frameId: string): boolean => {
+const previewLoopSectionContainsFrame = (timeline: AnimationTimeline, section: Parameters<typeof resolveAnimationLoopSectionRange>[1], frameId: string): boolean => {
   const range = resolveAnimationLoopSectionRange(timeline, section)
   const frameIndex = timeline.frames.findIndex((frame) => frame.id === frameId)
   return Boolean(range && frameIndex >= range.startIndex && frameIndex <= range.endIndex)
@@ -90,7 +91,13 @@ export function PreviewPanel({ session, onClose, docked = false, onDockDragStart
   const [timelineHidden, setTimelineHidden] = useState(() => loadEditorPreferences().timelineHidden)
   const [playbackMenu, setPlaybackMenu] = useState<{ x: number; y: number; zIndex: number } | null>(null)
   const [initialCompositeReady, setInitialCompositeReady] = useState(() => !initialDocumentCompositePending(session.document))
-  const timeline = session.document.animation ?? ensureAnimationDocument(session.document)
+  // Preview reads the timeline while painting. Do not call ensureAnimationDocument
+  // here: it materializes every layer × frame slot for legacy/static documents.
+  // Keep a stable fallback so the playback effect does not restart on every
+  // render when a document has no animation timeline yet.
+  const fallbackTimeline = useRef<AnimationTimeline | null>(null)
+  if (!fallbackTimeline.current) fallbackTimeline.current = createDefaultAnimationTimeline()
+  const timeline = session.document.animation ?? fallbackTimeline.current
   const initialFrameId = timeline.activeFrameId
   const [previewFrameId, setPreviewFrameId] = useState(initialFrameId)
   const [previewStartFrameId, setPreviewStartFrameId] = useState<string | null>(null)
@@ -496,7 +503,7 @@ export function PreviewPanel({ session, onClose, docked = false, onDockDragStart
         storeSession.document !== session.document
         || (storeSession.revision >= session.revision && storeSession.contentRevision >= session.contentRevision)
       ) ? storeSession : session
-      const currentTimeline = currentSession.document.animation ?? ensureAnimationDocument(currentSession.document)
+      const currentTimeline = currentSession.document.animation ?? timeline
       // Store propagation can leave the panel's local frame id one React
       // commit behind the playback clock. Render the store's active frame
       // directly while playing so the editor and preview consume the same
@@ -513,7 +520,7 @@ export function PreviewPanel({ session, onClose, docked = false, onDockDragStart
       const sourceDocument = livePreviewForFrame?.document ?? currentSession.document
       const previewDocument = renderFrameId === currentTimeline.activeFrameId
         ? sourceDocument
-        : cloneDocumentForAnimationFrame(sourceDocument, renderFrameId)
+        : createAnimationFramePreviewDocument(sourceDocument, renderFrameId)
       const renderRevision = livePreviewForFrame?.revision ?? currentSession.revision
       const renderContentRevision = livePreviewForFrame?.contentRevision ?? currentSession.contentRevision
       const dpr = bounds.dpr

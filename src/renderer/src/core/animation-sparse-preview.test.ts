@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { AnimationCelSurface } from '@shared/types-animation'
-import { activateAnimationFrame, cloneDocumentForAnimationFrame, layerFromAnimationCel, syncActiveAnimationFrame } from './animation'
+import { activateAnimationFrame, cloneDocumentForAnimationFrame, createAnimationFramePreviewDocument, layerFromAnimationCel, syncActiveAnimationFrame } from './animation'
 import { createDocument, createLayer, getLayerStorageOrigin, setLayerStorageOrigin } from './document-model'
 import { shareRasterLayer } from './layer-preview'
 import { compositeAnimationFrame } from './onion-skin'
@@ -115,5 +115,20 @@ describe('animation preview raster ownership', () => {
     expect(surfacePixelsMaterialized(preview.layers[0])).toBe(false)
     expect(readSurfacePackedLocal(preview.layers[0], 0, 0)).toBe(0xff1e140a)
     expect(preview.layers[0] === layer).toBe(false)
+  })
+
+  it('creates a frame preview without copying the sparse cel matrix or project arrays', () => {
+    const document = createDocument('light frame preview', 1024, 1024, 'rgba')
+    const firstFrameId = document.animation!.activeFrameId
+    document.animation!.frames.push({ id: 'second', duration: 100 })
+    const preview = createAnimationFramePreviewDocument(document, 'second')
+    expect(preview).not.toBe(document)
+    expect(preview.layers[0]).not.toBe(document.layers[0])
+    expect(preview.animation).not.toBe(document.animation)
+    expect(preview.animation!.cels).toBe(document.animation!.cels)
+    expect(preview.palette).toBe(document.palette)
+    expect(preview.groups).toBe(document.groups)
+    expect(preview.animation!.activeFrameId).toBe('second')
+    expect(document.animation!.activeFrameId).toBe(firstFrameId)
   })
 })

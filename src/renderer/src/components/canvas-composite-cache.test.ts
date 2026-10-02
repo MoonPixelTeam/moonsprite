@@ -1220,6 +1220,22 @@ describe('CanvasCompositeCache', () => {
     expect(Array.from(surface.pixels.slice(5 * 4, 5 * 4 + 4))).toEqual([24, 96, 220, 255])
   })
 
+  it('keeps large animation playback in a viewport-sized surface', () => {
+    const document = createDocument('large sparse playback', 4096, 4096, 'rgba', false)
+    writeLayerColor(document, document.layers[0], 2000 * 4096 + 2000, { r: 24, g: 96, b: 220, a: 255 })
+    const context = makeContext()
+    draw(new CanvasCompositeCache(), document, context, {
+      animationPlayback: true,
+      fromX: 1900,
+      fromY: 1900,
+      toX: 2100,
+      toY: 2100
+    })
+    const surface = context.drawImage.mock.calls.at(-1)?.[0] as MockOffscreenCanvas
+    expect(surface.width).toBeLessThan(4096)
+    expect(surface.height).toBeLessThan(4096)
+  })
+
   it('shares a completed animation frame between canvas consumers', () => {
     const document = createDocument('shared animation frame', 4, 4, 'rgba')
     writeLayerColor(document, document.layers[0], 6, { r: 180, g: 40, b: 90, a: 255 })
