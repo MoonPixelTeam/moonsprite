@@ -40,8 +40,9 @@ export const retargetAnimationLoopPlaybackAtFrame = (session: DocumentSession, f
 }
 
 export const activateAnimationPlaybackFrame = (session: DocumentSession, frameId: string): boolean => {
-  const fromContentRevision = session.contentRevision
-  if (!activateAnimationFrame(session.document, frameId)) return false
+  // Reuse navigation's non-materializing switch: preserve the outgoing
+  // surface and resolve the incoming cel without normalizing all frames.
+  if (!activateAnimationFrame(session.document, frameId, false)) return false
   const preserveMaskContext = (session.selectedAnimationMaskRowKeys?.length ?? 0) > 0 || (session.selectedAnimationMaskCellKeys?.length ?? 0) > 0 || session.activeLayerMaskId !== null
   if (!preserveMaskContext) {
     session.activeLayerMaskId = null
@@ -50,16 +51,10 @@ export const activateAnimationPlaybackFrame = (session: DocumentSession, frameId
   session.lastPencilPoint = null
   session.lastEraserPoint = null
   session.revision += 1
-  // Playback swaps the live layer surfaces in place.  Treat that swap as a
-  // full composite change so the canvas cache cannot keep presenting the
-  // previous frame (or a blank surface) until an unrelated visibility toggle
-  // happens to invalidate it.
-  session.contentRevision += 1
-  session.contentInvalidation = {
-    kind: 'full',
-    fromRevision: fromContentRevision,
-    revision: session.contentRevision
-  }
+  // Frame navigation changes which existing cel is displayed; it does not
+  // change document content. The canvas cache is keyed by frameId, so keep
+  // contentRevision stable and let previously rendered frame surfaces survive
+  // a playback loop.
   return true
 }
 

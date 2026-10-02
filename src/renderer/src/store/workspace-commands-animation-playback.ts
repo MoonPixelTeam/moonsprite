@@ -40,7 +40,7 @@ export function createAnimationPlaybackCommands({ get }: WorkspaceCommandContext
       if (playing) get().commitFloatingPaste()
       get().mutateActive((session) => {
         if (session.animationPlaying === playing) return
-        const timeline = ensureAnimationDocument(session.document)
+        const timeline = (session.document.animation ?? ensureAnimationDocument(session.document))
         const playbackMode = session.animationPlaybackMode ?? (timeline.loop ? 'all' : 'once')
         if (playing) {
           // Playback owns the visible timeline focus. Clear every explicit
@@ -80,7 +80,7 @@ export function createAnimationPlaybackCommands({ get }: WorkspaceCommandContext
             session.animationPlaybackTagCycleSectionId = playbackMode === 'tag' && loopSection.repeatCount !== null ? loopSection.id : null
           }
           if (targetFrameId && targetFrameId !== timeline.activeFrameId) {
-            activateAnimationFrame(session.document, targetFrameId)
+            activateAnimationFrame(session.document, targetFrameId, false)
             session.lastPencilPoint = null
             session.lastEraserPoint = null
             session.revision += 1
@@ -98,7 +98,7 @@ export function createAnimationPlaybackCommands({ get }: WorkspaceCommandContext
         session.animationPlaybackStartFrameId = null
         clearAnimationLoopPlayback(session)
         const returnFrameId = session.animationReturnToStart ? startFrameId : completed && !loopSectionId && playbackMode === 'once' ? firstPlayableAnimationFrameId(timeline) : null
-        if (returnFrameId && returnFrameId !== timeline.activeFrameId && activateAnimationFrame(session.document, returnFrameId)) {
+        if (returnFrameId && returnFrameId !== timeline.activeFrameId && activateAnimationFrame(session.document, returnFrameId, false)) {
           session.lastPencilPoint = null
           session.lastEraserPoint = null
           session.revision += 1
@@ -139,7 +139,7 @@ export function createAnimationPlaybackCommands({ get }: WorkspaceCommandContext
         session.animationPlaybackMode = 'tag'
         if (!session.animationPlaying) return
         const preserveMaskContext = session.selectedAnimationMaskRowKeys.length > 0 || session.selectedAnimationMaskCellKeys.length > 0 || session.activeLayerMaskId !== null
-        const timeline = ensureAnimationDocument(session.document)
+        const timeline = (session.document.animation ?? ensureAnimationDocument(session.document))
         clearAnimationLoopPlayback(session)
         const section = animationLoopSectionAtFrame(timeline, timeline.activeFrameId)
         const firstFrameId = section ? animationLoopSectionStartFrameId(timeline, section) : null
@@ -149,7 +149,7 @@ export function createAnimationPlaybackCommands({ get }: WorkspaceCommandContext
         }
         setAnimationLoopPlaybackSection(session, section)
         session.animationPlaybackTagCycleSectionId = section.repeatCount !== null ? section.id : null
-        if (firstFrameId !== timeline.activeFrameId && activateAnimationFrame(session.document, firstFrameId)) {
+        if (firstFrameId !== timeline.activeFrameId && activateAnimationFrame(session.document, firstFrameId, false)) {
           if (!preserveMaskContext) {
             session.activeLayerMaskId = null
             session.layerMaskIsolatedView = false
@@ -172,7 +172,10 @@ export function createAnimationPlaybackCommands({ get }: WorkspaceCommandContext
     advanceAnimationFrame() {
       const session = activeSession(get())
       if (!session) return
-      const timeline = ensureAnimationDocument(session.document)
+      // Playback starts at a normalization boundary. A timer tick only reads
+      // the existing timeline; never repair every layer/frame slot here.
+      const timeline = session.document.animation
+      if (!timeline) return
       const loopSection = session.animationPlaybackLoopSectionId ? (timeline.loopSections ?? []).find((section) => section.id === session.animationPlaybackLoopSectionId) : null
       if (session.animationPlaybackLoopSectionId && !loopSection) {
         get().setAnimationPlaying(false)
@@ -303,7 +306,7 @@ export function createAnimationPlaybackCommands({ get }: WorkspaceCommandContext
       get().commitFloatingPaste()
       get().mutateActive((session) => {
         const preserveMaskContext = (session.selectedAnimationMaskRowKeys?.length ?? 0) > 0 || (session.selectedAnimationMaskCellKeys?.length ?? 0) > 0 || session.activeLayerMaskId !== null
-        const timeline = ensureAnimationDocument(session.document)
+        const timeline = (session.document.animation ?? ensureAnimationDocument(session.document))
         const section = (timeline.loopSections ?? []).find((candidate) => candidate.id === id)
         const firstFrameId = section ? animationLoopSectionStartFrameId(timeline, section) : null
         if (!section || !firstFrameId) {
@@ -320,7 +323,7 @@ export function createAnimationPlaybackCommands({ get }: WorkspaceCommandContext
         session.animationPlaybackLoopStack = []
         session.animationPlaybackTagCycleSectionId = session.animationPlaybackMode === 'tag' && section.repeatCount !== null ? id : null
         session.animationPlaying = true
-        if (firstFrameId !== timeline.activeFrameId && activateAnimationFrame(session.document, firstFrameId)) {
+        if (firstFrameId !== timeline.activeFrameId && activateAnimationFrame(session.document, firstFrameId, false)) {
           if (!preserveMaskContext) {
             session.activeLayerMaskId = null
             session.layerMaskIsolatedView = false

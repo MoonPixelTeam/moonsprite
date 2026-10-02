@@ -7,6 +7,12 @@ import type { TranslationCatalog } from './contracts'
 import { tabletEn } from './tablet'
 
 export const frFRMessages = {
+  "toolOptions.eyedropperSource": "Source de couleur",
+  "toolOptions.eyedropperSourceHint": "Prélever la composition du canevas ou les pixels d’origine du calque actif.",
+  "toolOptions.eyedropperSourceComposite": "Composition du canevas",
+  "toolOptions.eyedropperSourceCompositeHint": "Prélever tous les calques visibles après opacité, fusion et effets.",
+  "toolOptions.eyedropperSourceLayer": "Pixels du calque actif",
+  "toolOptions.eyedropperSourceLayerHint": "Lire la couleur et l’alpha d’origine, sans opacité du calque, fusion, masques ni effets.",
 
   ...convolutionEn,
   ...beta7En,

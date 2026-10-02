@@ -1,3 +1,4 @@
+import { animationLayerSourceFor } from './canvas-animation-layer-source'
 import type { LayerMask, RasterLayer } from '@shared/types-layer'
 import type { SelectionRect } from '@shared/types-selection'
 import type { SpriteDocument } from '@shared/types-document'
@@ -11,11 +12,10 @@ import {
 import {
   expandLayerStyleInvalidationRect
 } from '@/core/document-composite-plan'
-import { getLayerContentRevision, renderLayerMaskRegion } from '@/core/document-model'
+import { cachedLayerContentBounds, renderLayerMaskRegion } from '@/core/document-model'
 import { hasEnabledLayerStyles } from '@/core/layer-styles'
 import { scheduleSelectionBackdrop } from './canvas-selection-prewarm'
 import { applyRelativeLuminance } from '@/core/raster'
-import { rasterStorageIdentity, readSurfaceRgbaRegion } from '@/core/runtime-raster'
 import {
   initialDocumentComposite,
   initialDocumentCompositePending,
@@ -44,7 +44,6 @@ import {
   invalidationRects,
   MAX_CACHED_FRAMES,
   DEFAULT_MAX_CACHE_BYTES,
-  sharedAnimationLayerSources,
   sharedAnimationCompositeSurface,
   rememberSharedAnimationComposite,
   shouldCacheFullCompositeSurface,
@@ -467,72 +466,6 @@ export class CanvasCompositeCache {
     // until it settles so later frames cannot enqueue overlapping full copies.
   }
 
-  private rememberAnimationLayerSource(document: SpriteDocument, identity: object, source: CanvasImageSource, layer: RasterLayer, revision: number): void {
-    let state = sharedAnimationLayerSources.get(document)
-    if (!state) {
-      state = { entries: new Map(), bytes: 0 }
-      sharedAnimationLayerSources.set(document, state)
-    }
-    const previous = state.entries.get(identity)
-    if (previous) {
-      state.bytes -= previous.bytes
-      if (previous.source !== source && typeof ImageBitmap !== 'undefined' && previous.source instanceof ImageBitmap) previous.source.close()
-    }
-    const bytes = layer.width * layer.height * 4
-    if (bytes > this.maxCacheBytes) return
-    state.entries.delete(identity)
-    state.entries.set(identity, {
-      source,
-      revision,
-      width: layer.width,
-      height: layer.height,
-      bytes
-    })
-    state.bytes += bytes
-    while (state.entries.size > 1 && state.bytes > this.maxCacheBytes) {
-      const oldestIdentity = state.entries.keys().next().value!
-      const oldest = state.entries.get(oldestIdentity)
-      if (oldest) {
-        state.bytes -= oldest.bytes
-        if (typeof ImageBitmap !== 'undefined' && oldest.source instanceof ImageBitmap) oldest.source.close()
-      }
-      state.entries.delete(oldestIdentity)
-    }
-  }
-
-  private animationLayerSourceFor(document: SpriteDocument, layer: RasterLayer): CanvasImageSource | null {
-    if (layer.format !== 'rgba' || layer.width <= 0 || layer.height <= 0) return null
-    const identity = rasterStorageIdentity(layer)
-    const revision = getLayerContentRevision(layer)
-    const state = sharedAnimationLayerSources.get(document)
-    const cached = state?.entries.get(identity)
-    if (cached && cached.revision === revision && cached.width === layer.width && cached.height === layer.height) {
-      state!.entries.delete(identity)
-      state!.entries.set(identity, cached)
-      return cached.source
-    }
-    if (cached) {
-      state!.entries.delete(identity)
-      state!.bytes -= cached.bytes
-    }
-    try {
-      const startedAt = window.__moonSpriteCanvasProbe?.recordOperationStage ? performance.now() : 0
-      const canvas = new OffscreenCanvas(layer.width, layer.height)
-      const sourceContext = canvas.getContext('2d')
-      if (!sourceContext) return null
-      sourceContext.imageSmoothingEnabled = false
-      const expectedBytes = layer.width * layer.height * 4
-      const pixels = layer.pixels.length === expectedBytes ? (layer.pixels as Uint8ClampedArray) : readSurfaceRgbaRegion(layer, 0, 0, layer.width, layer.height)
-      sourceContext.putImageData(imageData(pixels, layer.width, layer.height), 0, 0)
-      recordCanvasStage('canvas.animation-layer-upload', startedAt, {
-        pixels: layer.width * layer.height
-      })
-      this.rememberAnimationLayerSource(document, identity, canvas, layer, revision)
-      return canvas
-    } catch {
-      return null
-    }
-  }
 
 /**
    * Animation playback is read-only, so supported frame stacks can be blended
@@ -553,13 +486,14 @@ export class CanvasCompositeCache {
       target.clearRect(0, 0, width, height)
       for (const layer of layers) {
         if (!layer.visible || layer.opacity <= 0) continue
+        if (cachedLayerContentBounds(document, layer) === null) continue
         const operation = gpuBlendModeFor(layer.blendMode)
-        const source = this.animationLayerSourceFor(document, layer)
+        const source = animationLayerSourceFor(document, layer, this.maxCacheBytes)
         if (!operation || !source) return null
         target.globalCompositeOperation = operation
         if (target.globalCompositeOperation !== operation) return null
         target.globalAlpha = layer.opacity
-        target.drawImage(source, 0, 0, layer.width, layer.height, layer.offsetX - x, layer.offsetY - y, layer.width, layer.height)
+        target.drawImage(source.source, 0, 0, source.width, source.height, layer.offsetX + source.sourceX - x, layer.offsetY + source.sourceY - y, source.width, source.height)
       }
       target.globalAlpha = 1
       target.globalCompositeOperation = 'source-over'

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { AnimationCelSurface } from '@shared/types-animation'
-import { cloneDocumentForAnimationFrame, layerFromAnimationCel } from './animation'
+import { activateAnimationFrame, cloneDocumentForAnimationFrame, layerFromAnimationCel, syncActiveAnimationFrame } from './animation'
 import { createDocument, createLayer, getLayerStorageOrigin, setLayerStorageOrigin } from './document-model'
 import { shareRasterLayer } from './layer-preview'
 import { compositeAnimationFrame } from './onion-skin'
@@ -8,6 +8,18 @@ import { animationTweenCompositePreview, animationTweenSource, DEFAULT_ANIMATION
 import { assignRasterStorage, installRuntimeRaster, rasterStorageIdentity, readSurfacePackedLocal, surfacePixelsMaterialized } from './runtime-raster'
 
 describe('animation preview raster ownership', () => {
+  it('keeps an occupied cel intact when switching through a sparse empty frame', () => {
+    const document = createDocument('sparse switch', 2, 1, 'rgba')
+    const layer = document.layers[0]
+    layer.pixels.set([21, 31, 41, 255, 0, 0, 0, 0])
+    syncActiveAnimationFrame(document)
+    const firstFrameId = document.animation!.activeFrameId
+    document.animation!.frames.push({ id: 'empty-frame', duration: 100 })
+    expect(activateAnimationFrame(document, 'empty-frame', false)).toBe(true)
+    expect(activateAnimationFrame(document, firstFrameId, false)).toBe(true)
+    expect(readSurfacePackedLocal(layer, 0, 0)).toBe(0xff291f15)
+  })
+
   it('composites the selected layer without expanding other sparse layers', () => {
     const document = createDocument('selected sparse layer', 2, 1, 'rgba')
     const layer = document.layers[0]

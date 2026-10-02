@@ -6,8 +6,7 @@ import { buildLayerPanelTree } from './layer-panel-layout'
 import { rasterStorageIdentity, readSurfacePackedLocal } from './runtime-raster'
 import { hasEnabledLayerStyles, layerStyleAffectedRect } from './layer-styles'
 import {
-  animationMaskAt,
-  resolveAnimationMask,
+  createAnimationMaskLookup,
   getRasterContentRevision,
   rasterContentBounds,
   maskCoverageFromColor,
@@ -17,10 +16,12 @@ import {
 
 export const activeCelMasksByLayer = (document: SpriteDocument, previewMaskId?: string, includeNeutral = false): Map<string, LayerMask> => {
   const timeline = document.animation
-  if (!timeline) return new Map()
-  return new Map(timeline.cels
-    .filter((cel) => cel.frameId === timeline.activeFrameId)
-    .map((cel) => [cel.layerId, animationMaskAt(timeline, cel.layerId, cel.frameId)] as const)
+  if (!timeline || !timeline.layerMasks?.length) return new Map()
+  const activeLayerIds = new Set(timeline.cels.filter((cel) => cel.frameId === timeline.activeFrameId).map((cel) => cel.layerId))
+  const masks = createAnimationMaskLookup(timeline)
+  return new Map((timeline.layerMasks ?? [])
+    .filter((entry) => entry.frameId === timeline.activeFrameId && activeLayerIds.has(entry.layerId))
+    .map((entry) => [entry.layerId, masks.get(`${entry.layerId}:${entry.frameId}`) ?? null] as const)
     .filter((entry): entry is readonly [string, LayerMask] => {
       const mask = entry[1]
       if (!mask) return false
@@ -31,9 +32,10 @@ export const activeCelMasksByLayer = (document: SpriteDocument, previewMaskId?: 
 export const activeGroupMasksByGroup = (document: SpriteDocument, previewMaskId?: string, includeNeutral = false): Map<string, LayerMask> => {
   const timeline = document.animation
   if (!timeline) return new Map()
+  const masks = createAnimationMaskLookup(timeline)
   return new Map((timeline.groupMasks ?? [])
     .filter((entry) => entry.frameId === timeline.activeFrameId)
-    .map((entry) => [entry.groupId, resolveAnimationMask(timeline, entry.mask)] as const)
+    .map((entry) => [entry.groupId, masks.get(`${entry.groupId}:${entry.frameId}`) ?? null] as const)
     .filter((entry): entry is readonly [string, LayerMask] => Boolean(entry[1] && entry[1].visible !== false && (includeNeutral || entry[1].id === previewMaskId || layerMaskAffectsComposite(entry[1])))))
 }
 

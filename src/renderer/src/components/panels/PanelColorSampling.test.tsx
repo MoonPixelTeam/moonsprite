@@ -71,6 +71,8 @@ it.each([1, 1.25, 1.5, 2])('keeps preview pixels fixed and reuses its backing wh
     const session = useWorkspace.getState().sessions[0]
     const view = render(<PreviewPanel session={session} docked onClose={() => {}} />, { wrapper: I18nProvider })
     act(() => vi.advanceTimersByTime(32))
+    // Measuring the initial viewport commits state and queues its final frame.
+    act(() => vi.advanceTimersByTime(17))
     const canvas = view.container.querySelector('canvas')!
     const context = canvas.getContext('2d')!
     const initial = vi.mocked(context.rect).mock.lastCall!
@@ -102,6 +104,7 @@ it.each([1, 1.25, 1.5, 2])('keeps preview pixels fixed and reuses its backing wh
     act(() => canvas.dispatchEvent(new CustomEvent(PREVIEW_ZOOM_SHORTCUT_EVENT, {
       bubbles: true, detail: { zoom: beforeZoom.scale / dpr * 2, pointer }
     })))
+    act(() => vi.advanceTimersByTime(17))
     const afterZoom = configure.mock.lastCall![3]
     // Snapping to the device grid can move the anchor by at most half a pixel.
     expect(Math.abs(pointer.x * dpr - afterZoom.originX - documentPoint.x * afterZoom.scale)).toBeLessThanOrEqual(0.500001)
@@ -135,10 +138,11 @@ it.each(['alt', 'eyedropper'])('samples the reference source with %s without mov
   expect(view.container.querySelector('.space-panning')).toBeNull()
 })
 
-it('Alt-samples preview document pixels including alpha without sampling its checkerboard', () => {
+it('Alt-samples preview document pixels including alpha without sampling its checkerboard', async () => {
   const session = useWorkspace.getState().sessions[0]
   const revision = session.contentRevision
   const view = render(<PreviewPanel session={session} docked onClose={() => {}} />, { wrapper: I18nProvider })
+  await act(() => new Promise<void>(resolve => window.requestAnimationFrame(() => resolve())))
   clickSample(view.container.querySelector('.preview-canvas-wrap')!, true)
   expect(useWorkspace.getState().sessions[0].primaryColor).toEqual(color)
   expect(read).not.toHaveBeenCalled()

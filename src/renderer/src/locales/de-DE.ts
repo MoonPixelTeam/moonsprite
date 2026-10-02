@@ -7,6 +7,12 @@ import type { TranslationCatalog } from './contracts'
 import { tabletEn } from './tablet'
 
 export const deDEMessages = {
+  "toolOptions.eyedropperSource": "Farbquelle",
+  "toolOptions.eyedropperSourceHint": "Die Leinwandkomposition oder die Originalpixel der aktuellen Ebene aufnehmen.",
+  "toolOptions.eyedropperSourceComposite": "Leinwandkomposition",
+  "toolOptions.eyedropperSourceCompositeHint": "Alle sichtbaren Ebenen mit Deckkraft, Mischmodi und Effekten aufnehmen.",
+  "toolOptions.eyedropperSourceLayer": "Originalpixel der Ebene",
+  "toolOptions.eyedropperSourceLayerHint": "Originalfarbe und Alpha lesen, ohne Ebenendeckkraft, Mischmodi, Masken oder Effekte.",
 
   ...convolutionEn,
   ...beta7En,

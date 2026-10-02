@@ -12,7 +12,7 @@ import { createNavigationCanvasInput } from './canvas-input-navigation'
 
 afterEach(() => { cleanup(); useWorkspace.setState({ sessions: [], activeId: null }) })
 
-it.each([false, true])('shows the move cursor with Ctrl, including inside an existing selection: %s', selected => {
+it.each([false, true])('does not activate temporary Move with Ctrl for magic selections: %s', selected => {
   const session = sessionFromDocument(createDocument('magic cursor', 64, 64, 'rgba'))
   session.tool = 'selection'
   session.selectionKind = 'magic'
@@ -27,7 +27,7 @@ it.each([false, true])('shows the move cursor with Ctrl, including inside an exi
     symmetryCenter: { x: 0, y: 0 }, symmetryAxisPreferences: { locked: false, thickness: 1 },
     canvasResizePreviewRef: { current: null }, canvasResizeHitAt: () => null,
     quickToolActive: () => false, symmetryAxisHitAt: () => null,
-    temporaryMoveActive: (event: { ctrlKey: boolean }) => event.ctrlKey && temporaryMoveToolAllowed(session.tool, session.moveKind, session.selectionKind),
+    temporaryMoveActive: () => false,
     localPointAt: () => ({ x: 32, y: 32 }), cursorCompositePointSamplerFor: () => () => ({ r: 0, g: 0, b: 0, a: 255 }),
     activeLayer: getActiveLayer(session.document), activeLayerEditable: true, selectionLayersEditable: true,
     scheduleDraw: vi.fn(),
@@ -41,9 +41,10 @@ it.each([false, true])('shows the move cursor with Ctrl, including inside an exi
   vi.mocked(ports.scheduleDraw).mockClear()
   result.current.updateCursorAt(32, 32, true, false)
   expect(ports.scheduleDraw).toHaveBeenCalledTimes(hadCorners ? 1 : 0)
-  expect(canvas.style.cursor).toBe(canvasCursors.move)
+  expect(canvas.style.cursor).not.toBe(canvasCursors.move)
   expect(input.sampling).toBe(false)
-  expect(temporaryMoveForCanvasInteractionAllowed('selection', 'move', selected ? 'inside' : 'outside', false, 'magic')).toBe(true)
+  expect(temporaryMoveToolAllowed('selection', 'move', 'magic')).toBe(false)
+  expect(temporaryMoveForCanvasInteractionAllowed('selection', 'move', selected ? 'inside' : 'outside', false, 'magic')).toBe(false)
   vi.mocked(ports.scheduleDraw).mockClear()
   result.current.updateCursorAt(32, 32, false, false)
   expect(ports.scheduleDraw).toHaveBeenCalledTimes(hadCorners ? 1 : 0)

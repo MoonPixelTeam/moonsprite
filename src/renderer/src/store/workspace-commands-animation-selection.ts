@@ -27,10 +27,11 @@ import { activeSession } from './workspace-access'
 import { clearFreeTileInstanceSelection } from './workspace-free-tile-selection'
 import { requestTilesetPanelForLayer } from './workspace-tileset-panel'
 import { setTimelineActiveFrame, retargetAnimationLoopPlaybackAtFrame } from './workspace-animation-commands-helpers'
+import { animationCellNavigationRow } from './workspace-animation-cell-navigation'
 
 
 
-export function createAnimationSelectionCommands({ get, set }: WorkspaceCommandContext<'commitFloatingPaste' | 'commitSelectionChange' | 'mutateActive' | 'selectAnimationCell' | 'selectAnimationFrame' | 'selectLayer' | 'setActiveAnimationFrame' | 'stepAnimationFrame' | 'stepLayerSelection'>): Pick<WorkspaceAnimationCommands, 'setActiveAnimationFrame' | 'stepAnimationFrame' | 'stepLayerSelection' | 'stepAnimationCell' | 'selectAnimationFrame' | 'selectAnimationCell' | 'selectAnimationMaskCell' | 'selectAnimationMaskRow' | 'selectAnimationCelContent' | 'clearAnimationSelection'> {
+export function createAnimationSelectionCommands({ get, set }: WorkspaceCommandContext<'commitFloatingPaste' | 'commitSelectionChange' | 'mutateActive' | 'selectAnimationCell' | 'selectAnimationMaskCell' | 'selectAnimationFrame' | 'selectLayer' | 'setActiveAnimationFrame' | 'stepAnimationFrame' | 'stepLayerSelection'>): Pick<WorkspaceAnimationCommands, 'setActiveAnimationFrame' | 'stepAnimationFrame' | 'stepLayerSelection' | 'stepAnimationCell' | 'selectAnimationFrame' | 'selectAnimationCell' | 'selectAnimationMaskCell' | 'selectAnimationMaskRow' | 'selectAnimationCelContent' | 'clearAnimationSelection'> {
   return {
     setActiveAnimationFrame(frameId) {
       get().commitFloatingPaste()
@@ -64,7 +65,7 @@ export function createAnimationSelectionCommands({ get, set }: WorkspaceCommandC
       get().commitFloatingPaste()
       const session = activeSession(get())
       if (!session) return
-      const timeline = ensureAnimationDocument(session.document)
+      const timeline = (session.document.animation ?? ensureAnimationDocument(session.document))
       if (timeline.frames.length < 2 || Math.sign(delta) === 0) return
       const current = timeline.frames.findIndex((frame) => frame.id === timeline.activeFrameId)
       const direction = Math.sign(delta)
@@ -139,12 +140,16 @@ export function createAnimationSelectionCommands({ get, set }: WorkspaceCommandC
       const direction = Math.sign(delta)
       const session = activeSession(get())
       if (!session || direction === 0) return
+      const row = animationCellNavigationRow(session, axis, direction)
+      if (!row) return
+      get().commitFloatingPaste()
       if (axis === 'frame') get().stepAnimationFrame(direction)
-      else get().stepLayerSelection(direction)
       const current = activeSession(get())
       const timeline = current?.document.animation
       if (!current || !timeline) return
-      get().selectAnimationCell(animationCelKey(current.document.activeLayerId, timeline.activeFrameId))
+      const key = animationCelKey(row.ownerId, timeline.activeFrameId)
+      if (row.kind === 'mask') get().selectAnimationMaskCell(key)
+      else get().selectAnimationCell(animationCelKey(row.kind === 'layer' ? row.ownerId : current.document.activeLayerId, timeline.activeFrameId))
     },
     selectAnimationFrame(frameId, mode = 'replace') {
       const playbackSession = activeSession(get())
@@ -291,7 +296,7 @@ export function createAnimationSelectionCommands({ get, set }: WorkspaceCommandC
       get().commitFloatingPaste()
       const current = activeSession(get())
       const parsed = parseAnimationCelKey(key)
-      const timeline = current ? ensureAnimationDocument(current.document) : null
+      const timeline = current ? (current.document.animation ?? ensureAnimationDocument(current.document)) : null
       const mask = timeline && parsed ? animationMaskAt(timeline, parsed.layerId, parsed.frameId) : null
       const ownerKind = current?.document.layers.some((layer) => layer.id === parsed?.layerId) ? 'layer' : current?.document.groups.some((group) => group.id === parsed?.layerId) ? 'group' : null
       const ownerHasMask = ownerKind === 'layer' ? timeline?.layerMasks?.some((entry) => entry.layerId === parsed?.layerId) : ownerKind === 'group' ? timeline?.groupMasks?.some((entry) => entry.groupId === parsed?.layerId) : false
@@ -299,7 +304,7 @@ export function createAnimationSelectionCommands({ get, set }: WorkspaceCommandC
       get().mutateActive(
         (session) => {
           const target = parseAnimationCelKey(key)
-          const timeline = ensureAnimationDocument(session.document)
+          const timeline = (session.document.animation ?? ensureAnimationDocument(session.document))
           const cel = target ? timeline.cels.find((candidate) => candidate.layerId === target.layerId && candidate.frameId === target.frameId) : null
           const ownerKind = session.document.layers.some((layer) => layer.id === target?.layerId) ? 'layer' : session.document.groups.some((group) => group.id === target?.layerId) ? 'group' : null
           if (!target || !ownerKind || !timeline.frames.some((frame) => frame.id === target.frameId)) return
@@ -335,7 +340,7 @@ export function createAnimationSelectionCommands({ get, set }: WorkspaceCommandC
           session.animationMaskCellSelectionAnchorKey = key
           // The pointer target is the active cursor. Multi-selection membership
           // must not move activity back to the first selected frame.
-          activateAnimationFrame(session.document, target.frameId)
+          activateAnimationFrame(session.document, target.frameId, false)
           retargetAnimationLoopPlaybackAtFrame(session, target.frameId)
           session.activeLayerMaskId = current.has(key) && mask ? mask.id : null
           if (current.has(key) && mask) enterLayerMaskEditing(session)
@@ -350,7 +355,7 @@ export function createAnimationSelectionCommands({ get, set }: WorkspaceCommandC
     selectAnimationMaskRow(ownerKind, ownerId, mode = 'replace') {
       get().mutateActive(
         (session) => {
-          const timeline = ensureAnimationDocument(session.document)
+          const timeline = (session.document.animation ?? ensureAnimationDocument(session.document))
           const hasMask = (timeline.layerMasks ?? []).some((entry) => entry.layerId === ownerId) || (timeline.groupMasks ?? []).some((entry) => entry.groupId === ownerId)
           if (!hasMask || (ownerKind === 'layer' ? !session.document.layers.some((layer) => layer.id === ownerId) : !session.document.groups.some((group) => group.id === ownerId))) return
           const selectionMode = mode
@@ -425,7 +430,7 @@ export function createAnimationSelectionCommands({ get, set }: WorkspaceCommandC
       const current = activeSession(get())
       const target = parseAnimationCelKey(key)
       if (!current || !target) return
-      const timeline = ensureAnimationDocument(current.document)
+      const timeline = (current.document.animation ?? ensureAnimationDocument(current.document))
       if (!timeline.frames.some((frame) => frame.id === target.frameId) || !current.document.layers.some((layer) => layer.id === target.layerId)) return
       const before = cloneSelectionMask(current.selection)
       const cel = resolveAnimationCel(timeline, timeline.cels.find((candidate) => candidate.layerId === target.layerId && candidate.frameId === target.frameId) ?? null)

@@ -16,7 +16,7 @@ export interface BrushDynamicsMapping {
 }
 
 export interface BrushDynamicsSettings {
-  version: 5
+  version: 6
   effects: Record<BrushDynamicsEffect, BrushDynamicsMapping>
   gradientDither: GradientDither
 }
@@ -37,6 +37,12 @@ export interface LegacyBrushDynamicsSettingsV4 {
   gradientDither?: GradientDither
 }
 
+export interface LegacyBrushDynamicsSettingsV5 {
+  version: 5
+  effects: Partial<Record<BrushDynamicsEffect, Partial<BrushDynamicsMapping>>>
+  gradientDither?: GradientDither
+}
+
 export type PressureCurve = BrushDynamicsCurve
 
 export interface BrushPressureSettings {
@@ -49,14 +55,19 @@ export interface BrushPressureSettings {
 }
 
 export const BRUSH_SPEED_INPUT_LIMIT = 4000
-export const DEFAULT_PRESSURE_INPUT_RANGE = { inputMin: 0, inputMax: 70, curve: 'hard' as const }
+// Match Aseprite's default pressure thresholds (0.1..0.9) while keeping the
+// sensor UI in percentage units. Values outside this range clamp to the end
+// points, and the range in between stays linear.
+export const DEFAULT_PRESSURE_INPUT_RANGE = { inputMin: 10, inputMax: 90, curve: 'linear' as const }
 export const DEFAULT_SPEED_INPUT_RANGE = { inputMin: 50, inputMax: 2400, curve: 'linear' as const }
 
 export const DEFAULT_BRUSH_PRESSURE_SETTINGS: BrushPressureSettings = {
   enabled: false,
   affectsSize: true,
   affectsOpacity: false,
-  minSizePercent: 20,
+  // Aseprite's default minimum is one pixel. The resolver's one-pixel floor
+  // gives the same result at every base brush size without a second size unit.
+  minSizePercent: 0,
   minOpacityPercent: 20,
   curve: 'linear'
 }
@@ -77,7 +88,7 @@ const defaultGradientMapping = (): BrushDynamicsMapping => ({
 })
 
 export const DEFAULT_BRUSH_DYNAMICS_SETTINGS: BrushDynamicsSettings = {
-  version: 5,
+  version: 6,
   effects: {
     size: defaultMapping(),
     strength: defaultMapping(),
@@ -151,15 +162,46 @@ const isFactoryV2Mapping = (mapping: Partial<BrushDynamicsMapping> | undefined, 
     : mapping.inputMin === 0 && mapping.inputMax === 1200 && mapping.curve === 'linear'
 }
 
-const migrateV2Mapping = (mapping: Partial<BrushDynamicsMapping> | undefined, fallback: BrushDynamicsMapping): BrushDynamicsMapping => {
-  if (isFactoryV2Mapping(mapping, 'pressure')) return normalizeBrushDynamicsMapping({ ...mapping, ...DEFAULT_PRESSURE_INPUT_RANGE }, fallback)
+const isLegacyFactoryPressureMapping = (mapping: Partial<BrushDynamicsMapping> | undefined): boolean =>
+  mapping?.sensor === 'pressure'
+  && mapping.inputMin === 0
+  && mapping.inputMax === 70
+  && mapping.curve === 'hard'
+
+const migrateV5Mapping = (
+  mapping: Partial<BrushDynamicsMapping> | undefined,
+  fallback: BrushDynamicsMapping,
+  outputLimit = 100,
+  outputMinimum = 0,
+  legacyOutputMin?: number
+): BrushDynamicsMapping =>
+  isLegacyFactoryPressureMapping(mapping)
+    ? normalizeBrushDynamicsMapping({
+      ...mapping,
+      ...DEFAULT_PRESSURE_INPUT_RANGE,
+      ...(legacyOutputMin === undefined ? {} : { outputMin: legacyOutputMin })
+    }, fallback, outputLimit, outputMinimum)
+    : normalizeBrushDynamicsMapping(mapping, fallback, outputLimit, outputMinimum)
+
+const migrateV2Mapping = (
+  mapping: Partial<BrushDynamicsMapping> | undefined,
+  fallback: BrushDynamicsMapping,
+  legacyOutputMin?: number
+): BrushDynamicsMapping => {
+  if (isFactoryV2Mapping(mapping, 'pressure')) {
+    return normalizeBrushDynamicsMapping({
+      ...mapping,
+      ...DEFAULT_PRESSURE_INPUT_RANGE,
+      ...(legacyOutputMin === undefined ? {} : { outputMin: legacyOutputMin })
+    }, fallback)
+  }
   if (isFactoryV2Mapping(mapping, 'speed')) return normalizeBrushDynamicsMapping({ ...mapping, ...DEFAULT_SPEED_INPUT_RANGE }, fallback)
   return normalizeBrushDynamicsMapping(mapping, fallback)
 }
 
 export function cloneBrushDynamicsSettings(settings: BrushDynamicsSettings): BrushDynamicsSettings {
   return {
-    version: 5,
+    version: 6,
     effects: {
       size: { ...settings.effects.size },
       strength: { ...settings.effects.strength },
@@ -171,14 +213,14 @@ export function cloneBrushDynamicsSettings(settings: BrushDynamicsSettings): Bru
 }
 
 export function normalizeBrushDynamicsSettings(
-  settings: Partial<BrushDynamicsSettings> | LegacyBrushDynamicsSettingsV2 | LegacyBrushDynamicsSettingsV3 | LegacyBrushDynamicsSettingsV4 | undefined,
+  settings: Partial<BrushDynamicsSettings> | LegacyBrushDynamicsSettingsV2 | LegacyBrushDynamicsSettingsV3 | LegacyBrushDynamicsSettingsV4 | LegacyBrushDynamicsSettingsV5 | undefined,
   fallback: BrushDynamicsSettings = DEFAULT_BRUSH_DYNAMICS_SETTINGS
 ): BrushDynamicsSettings {
   if (settings?.version === 2) {
     return {
-      version: 5,
+      version: 6,
       effects: {
-        size: migrateV2Mapping(settings.effects?.size, fallback.effects.size),
+        size: migrateV2Mapping(settings.effects?.size, fallback.effects.size, 0),
         strength: migrateV2Mapping(settings.effects?.strength, fallback.effects.strength),
         gradient: { ...fallback.effects.gradient, sensor: null },
         angle: { ...fallback.effects.angle, sensor: null }
@@ -187,18 +229,32 @@ export function normalizeBrushDynamicsSettings(
     }
   }
   const legacyV3 = settings?.version === 3
+  const legacyFactoryMapping = settings?.version === 3 || settings?.version === 4 || settings?.version === 5
   return {
-    version: 5,
+    version: 6,
     effects: {
-      size: normalizeBrushDynamicsMapping(settings?.effects?.size, fallback.effects.size),
-      strength: normalizeBrushDynamicsMapping(settings?.effects?.strength, fallback.effects.strength),
-      gradient: normalizeBrushDynamicsMapping(settings?.effects?.gradient, fallback.effects.gradient),
-      angle: normalizeBrushDynamicsMapping(
+      size: legacyFactoryMapping
+        ? migrateV5Mapping(settings?.effects?.size, fallback.effects.size, 100, 0, 0)
+        : normalizeBrushDynamicsMapping(settings?.effects?.size, fallback.effects.size),
+      strength: legacyFactoryMapping
+        ? migrateV5Mapping(settings?.effects?.strength, fallback.effects.strength)
+        : normalizeBrushDynamicsMapping(settings?.effects?.strength, fallback.effects.strength),
+      gradient: legacyFactoryMapping
+        ? migrateV5Mapping(settings?.effects?.gradient, fallback.effects.gradient)
+        : normalizeBrushDynamicsMapping(settings?.effects?.gradient, fallback.effects.gradient),
+      angle: legacyFactoryMapping
+        ? migrateV5Mapping(
+          settings?.effects && 'angle' in settings.effects ? settings.effects.angle : undefined,
+          fallback.effects.angle,
+          180,
+          -180
+        )
+        : normalizeBrushDynamicsMapping(
         settings?.effects && 'angle' in settings.effects ? settings.effects.angle : undefined,
         fallback.effects.angle,
         180,
         -180
-      )
+        )
     },
     gradientDither: legacyV3
       ? 'none'
@@ -214,13 +270,19 @@ export function patchBrushDynamicsMapping(
   const current = settings.effects[effect]
   const sensorChanged = patch.sensor !== undefined && patch.sensor !== current.sensor
   const sensorDefaults = sensorChanged ? inputDefaultsForSensor(patch.sensor ?? null) : {}
+  const factoryPressureSize = effect === 'size'
+    && patch.sensor === 'pressure'
+    && current.sensor === null
+    && current.outputMin === 20
+  const outputDefaults = factoryPressureSize ? { outputMin: 0 } : {}
   const next = normalizeBrushDynamicsMapping({
     ...current,
+    ...outputDefaults,
     ...sensorDefaults,
     ...patch
   }, current, effect === 'angle' ? 180 : 100, effect === 'angle' ? -180 : 0)
   return {
-    version: 5,
+    version: 6,
     effects: {
       size: effect === 'size' ? next : { ...settings.effects.size },
       strength: effect === 'strength' ? next : { ...settings.effects.strength },
@@ -264,13 +326,13 @@ export function migrateBrushPressureSettings(settings: Partial<BrushPressureSett
     sensor: legacy.enabled && enabled ? 'pressure' : null,
     outputMin,
     outputMax: 100,
-    inputMin: 0,
-    inputMax: 100,
+    inputMin: DEFAULT_PRESSURE_INPUT_RANGE.inputMin,
+    inputMax: DEFAULT_PRESSURE_INPUT_RANGE.inputMax,
     curve: legacy.curve,
     direction: 'direct'
   })
   return {
-    version: 5,
+    version: 6,
     effects: {
       size: mapping(legacy.affectsSize, legacy.minSizePercent),
       strength: mapping(legacy.affectsOpacity, legacy.minOpacityPercent),
@@ -388,8 +450,24 @@ export function hasReliableBrushPressure(
 
 export function calibrateBrushPressure(pressure: number | undefined): number | null {
   if (!Number.isFinite(pressure)) return null
-  const normalized = clamp((pressure! - 0.02) / 0.98, 0, 1)
-  return 100 * Math.pow(normalized, 1.7)
+  // Keep the raw force response linear. The default 10..90 sensor range is
+  // the same thresholding Aseprite applies before it evaluates dynamics.
+  return 100 * clamp(pressure!, 0, 1)
+}
+
+export function pressureDynamicsActive(
+  settings: BrushDynamicsSettings,
+  effect: BrushDynamicsEffect,
+  input: BrushDynamicsInput
+): boolean {
+  return settings.effects[effect].sensor === 'pressure'
+    && hasReliableBrushPressure(input.pointerType, input.pressure, input.previousPressure, input.pressureAvailable)
+}
+
+/** Pressure mappings must follow each sample immediately, like Aseprite.
+ * Speed mappings continue to use the stroke smoothing envelope. */
+export function usesPressureDynamics(settings: BrushDynamicsSettings, effect: BrushDynamicsEffect): boolean {
+  return settings.effects[effect].sensor === 'pressure'
 }
 
 const sensorValue = (mapping: BrushDynamicsMapping, input: BrushDynamicsInput): number | null => {

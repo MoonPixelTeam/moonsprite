@@ -11,10 +11,12 @@ export function linkCelsInRightFrame(session: DocumentSession, sourceFrameId: st
   const previousFrameId = timeline.activeFrameId
   const rightFrame = timeline.frames[timeline.frames.findIndex(frame => frame.id === sourceFrameId) + 1]
   if (!rightFrame) return false
-  const before = cloneAnimationCelsForLayerIds(session.document, layerIds)
+  // Only the right-hand frame is modified; copying every cel in the selected
+  // layer(s) needlessly scans the whole timeline.
+  const before = cloneAnimationCelsForLayerIds(session.document, layerIds, rightFrame.id)
   const selectionBefore = captureAnimationSelectionHistory(session)
   linkAnimationFrameCels(session.document, sourceFrameId, rightFrame.id, layerIds)
-  const after = cloneAnimationCelsForLayerIds(session.document, layerIds)
+  const after = cloneAnimationCelsForLayerIds(session.document, layerIds, rightFrame.id)
   activateAnimationFrame(session.document, rightFrame.id)
   clearAnimationItemSelection(session)
   session.animationPlaying = false

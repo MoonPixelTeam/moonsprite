@@ -7,6 +7,12 @@ import type { TranslationCatalog } from './contracts'
 import { tabletEn } from './tablet'
 
 export const ptBRMessages = {
+  "toolOptions.eyedropperSource": "Origem da cor",
+  "toolOptions.eyedropperSourceHint": "Amostra a composição da tela ou os pixels originais da camada atual.",
+  "toolOptions.eyedropperSourceComposite": "Composição da tela",
+  "toolOptions.eyedropperSourceCompositeHint": "Amostra todas as camadas visíveis com opacidade, mesclagem e efeitos.",
+  "toolOptions.eyedropperSourceLayer": "Pixels da camada atual",
+  "toolOptions.eyedropperSourceLayerHint": "Lê a cor e o alfa originais, sem opacidade da camada, mesclagem, máscaras ou efeitos.",
 
   ...convolutionEn,
   ...beta7En,

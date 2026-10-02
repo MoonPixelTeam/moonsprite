@@ -97,11 +97,28 @@ const combineInvalidations = (entries: readonly HistoryEntry[]): ContentInvalida
       ...(regions.every(region => region.propertyOwnerIds) ? { propertyOwnerIds: [...new Set(regions.flatMap(region => region.propertyOwnerIds!))] } : {}) } : {}) }
 }
 
+// Restore completed steps if a later step fails. Individual entries must either
+// complete or throw before mutation; arbitrary partial writes cannot be inferred.
+const replayHistoryEntries = (entries: readonly HistoryEntry[], side: 'undo' | 'redo'): void => {
+  const ordered = side === 'undo' ? [...entries].reverse() : [...entries]
+  const completed: HistoryEntry[] = []
+  try {
+    for (const entry of ordered) { entry[side](); completed.push(entry) }
+  } catch (error) {
+    const failures: unknown[] = [error]
+    for (const entry of completed.reverse()) {
+      try { entry[side === 'undo' ? 'redo' : 'undo']() } catch (failure) { failures.push(failure) }
+    }
+    if (failures.length > 1) throw new AggregateError(failures, 'History replay and rollback failed')
+    throw error
+  }
+}
+
 const compoundHistoryEntry = (entries: readonly HistoryEntry[], label: string): HistoryEntry => ({
   label,
   bytes: entries.reduce((sum, entry) => sum + entry.bytes, 0),
-  undo: () => { for (let index = entries.length - 1; index >= 0; index -= 1) entries[index].undo() },
-  redo: () => { for (const entry of entries) entry.redo() },
+  undo: () => { replayHistoryEntries(entries, 'undo') },
+  redo: () => { replayHistoryEntries(entries, 'redo') },
   invalidation: combineInvalidations(entries),
   affectedLayerIds: entries.every(entry => entry.documentChanged === false || entry.contentChanged === false || entry.affectedLayerIds?.length)
     ? [...new Set(entries.flatMap((entry) => entry.affectedLayerIds ?? []))] : undefined,
@@ -243,9 +260,9 @@ export class HistoryStack {
   abortCompound(): void {
     if (this.compoundDepth === 0) return
     const entries = this.compoundEntries ?? []
+    replayHistoryEntries(entries, 'undo')
     this.compoundEntries = null
     this.compoundDepth = 0
-    for (let index = entries.length - 1; index >= 0; index -= 1) entries[index].undo()
     this.stackRevision += 1
   }
 
@@ -286,13 +303,10 @@ export class HistoryStack {
     if (this.compoundDepth > 0 || !Number.isFinite(position)) return null
     const target = Math.max(0, Math.min(this.undoEntries.length, Math.trunc(position)))
     if (target >= this.undoEntries.length) return null
-    const discarded: HistoryEntry[] = []
-    while (this.undoEntries.length > target) {
-      const entry = this.undoEntries.pop()!
-      entry.undo()
-      this.bytes -= entry.bytes
-      discarded.push(entry)
-    }
+    const entries = this.undoEntries.slice(target)
+    replayHistoryEntries(entries, 'undo')
+    const discarded = this.undoEntries.splice(target).reverse()
+    this.bytes -= discarded.reduce((sum, entry) => sum + entry.bytes, 0)
     this.redoEntries = []
     this.stackRevision += 1
     return discarded
@@ -657,10 +671,11 @@ export function commitPixelEdit(document: SpriteDocument, edit: PixelEdit, label
       }
     }
   }
-  const applyRuns = (values: Uint32Array): void => {
+  const applyRuns = (values: Uint32Array, reverse = false): void => {
     const layer = layerForFrame()
     if (runCount > 0) markLayerContentChanged(layer)
-    for (let offset = 0; offset < runCount; offset += 1) {
+    for (let step = 0; step < runCount; step += 1) {
+      const offset = reverse ? runCount - 1 - step : step
       const start = layerIndexAtStoragePoint(layer, runXs[offset], runYs[offset])
       if (start === null) continue
       writeLayerPackedRun(document, layer, start, runLengths[offset], values[offset])
@@ -684,7 +699,7 @@ export function commitPixelEdit(document: SpriteDocument, edit: PixelEdit, label
   const entry: HistoryEntry = {
     label,
     bytes: xs.byteLength + ys.byteLength + before.byteLength + after.byteLength + runXs.byteLength + runYs.byteLength + runLengths.byteLength + runBefore.byteLength + runAfter.byteLength + regionPatchBytes + (layerOffset ? 32 : 0),
-    undo: () => { applyRuns(runBefore); applyRegionPatches('before'); apply(before); if (layerOffset) applyLayerOffset(layerOffset.beforeX, layerOffset.beforeY) },
+    undo: () => { applyRuns(runBefore, true); applyRegionPatches('before'); apply(before); if (layerOffset) applyLayerOffset(layerOffset.beforeX, layerOffset.beforeY) },
     redo: () => { applyRuns(runAfter); applyRegionPatches('after'); apply(after); if (layerOffset) applyLayerOffset(layerOffset.afterX, layerOffset.afterY) },
     invalidation: linkedLayerIds.length > 1
       ? { kind: 'full' }
@@ -712,7 +727,8 @@ export function revertPixelEdit(document: SpriteDocument, edit: PixelEdit | null
     ? animationLayerAtFrame(document, edit.layerId, edit.frameId) ?? getLayer(document, edit.layerId)
     : getLayer(document, edit.layerId)
   if (edit.before.size > 0 || edit.points?.count || edit.runs?.length || edit.denseRegion?.count) markLayerContentChanged(layer)
-  for (const run of edit.runs ?? []) {
+  for (let offset = (edit.runs?.length ?? 0) - 1; offset >= 0; offset -= 1) {
+    const run = edit.runs![offset]
     writeLayerPackedRun(document, layer, run.index, run.length, run.before)
   }
   const denseRegion = edit.denseRegion

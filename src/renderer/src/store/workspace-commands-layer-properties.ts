@@ -80,12 +80,18 @@ const layerVisibilityInvalidation = (document: SpriteDocument, layer: RasterLaye
     && !document.layers.some(candidate => candidate.clippingMask === true)
     && !document.groups.some(group => group.clippingMask === true || hasConfiguredLayerStyles(group.layerStyles))) return null
   return bounds
-    ? { kind: 'region', rect: expandLayerStyleInvalidationRect(document, bounds, [layer.id]) }
-    : { kind: 'full' }
+    ? { kind: 'region', rect: expandLayerStyleInvalidationRect(document, bounds, [layer.id]), compositeOnly: true }
+    : fullVisibilityInvalidation(document)
 }
 
+// Visibility never edits layer pixels or masks. Even unknown bounds need only
+// a full output rectangle, not destruction of every cached effect source.
+const fullVisibilityInvalidation = (document: SpriteDocument): ContentInvalidationHint => ({
+  kind: 'region', rect: { x: 0, y: 0, width: document.width, height: document.height }, compositeOnly: true
+})
+
 const groupVisibilityInvalidation = (document: SpriteDocument, groupId: string): ContentInvalidationHint => {
-  if (!normalCompositeLayers(document)) return { kind: 'full' }
+  if (!normalCompositeLayers(document)) return fullVisibilityInvalidation(document)
   const layerIds = new Set(getLayerIdsInGroup(document, groupId))
   const groupIds = new Set([groupId, ...getDescendantGroupIds(document, groupId)])
   // A hidden group is skipped by normalCompositeLayers, so inspect its own
@@ -102,13 +108,13 @@ const groupVisibilityInvalidation = (document: SpriteDocument, groupId: string):
   for (const layer of document.layers) {
     if (!layerIds.has(layer.id)) continue
     const bounds = cachedLayerContentBounds(document, layer)
-    if (bounds === undefined) return { kind: 'full' }
+    if (bounds === undefined) return fullVisibilityInvalidation(document)
     if (!bounds) continue
     const expanded = expandLayerStyleInvalidationRect(document, bounds, [layer.id])
     if (simpleComposition) rects.push(expanded)
     rect = rect ? unionRects(rect, expanded) : expanded
   }
-  return rect ? { kind: 'region', rect, ...(simpleComposition ? { rects, compositeOnly: true as const } : {}) } : { kind: 'full' }
+  return rect ? { kind: 'region', rect, compositeOnly: true, ...(simpleComposition ? { rects } : {}) } : fullVisibilityInvalidation(document)
 }
 
 const layerBlendModeInvalidation = (document: SpriteDocument, layer: RasterLayer): ContentInvalidationHint => {

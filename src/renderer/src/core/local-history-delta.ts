@@ -208,7 +208,10 @@ export function hydrateLocalHistoryDelta(target: SpriteDocument, delta: LocalHis
     return (value as Record<string, unknown>)[key]
   }, root)
   const apply = (side: 'before' | 'after'): void => {
-    for (const patch of patches) {
+    // Committed fill runs may overlap: undo must reverse their write order,
+    // including after the delta has been persisted and reopened.
+    for (let step = 0; step < patches.length; step++) {
+      const patch = patches[side === 'before' ? patches.length - 1 - step : step]
       if (!isSafePath(patch.path) || patch.aliases?.some((path) => !isSafePath(path))) continue
       if (patch.aliases) {
         const value = structuredClone(patch[side])

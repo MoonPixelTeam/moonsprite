@@ -27,14 +27,6 @@ interface CellProps {
 }
 
 const CachedTimelineCell = memo(function TimelineCell({panel, displayRow, frame, index, draggingFrameIdSet, draggingCellKeySet}: CellProps) {
-  // The panel deliberately skips pixel-only renders. The active cell still
-  // needs to update its current marker when a first stroke creates content.
-  useWorkspace(state => {
-    const session = state.sessions.find(item => item.document.id === panel.session.document.id)
-    return displayRow.kind === 'node' && displayRow.node.kind === 'layer'
-      && session?.document.activeLayerId === displayRow.node.layer.id
-      && session.document.animation?.activeFrameId === frame.id ? session.contentRevision : 0
-  })
   const {
   displayRows,
   timeline,
@@ -445,7 +437,13 @@ const CachedTimelineGrid = memo(function TimelineGrid({panel, scope}: {panel: Pr
 
 export function LayerTimelineCells(props: Props) {
   const actions = useTimelineCellActions(props)
-  const panel = {...props, ...actions}
+  // Observe the document once for the whole grid. The cell render state adds
+  // this revision only to the active/rendered targets, so a paint update does
+  // not recreate every frame cell or keep thousands of Store listeners alive.
+  const activeContentRevision = useWorkspace((state) =>
+    state.sessions.find((item) => item.document.id === props.session.document.id)?.contentRevision ?? props.session.contentRevision
+  )
+  const panel = {...props, ...actions, activeContentRevision}
   const scope = timelineCellRenderScope(panel)
   const previousScope = useRef(scope)
   if (!sameTimelineCellState(previousScope.current, scope)) previousScope.current = scope

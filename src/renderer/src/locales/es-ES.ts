@@ -7,6 +7,12 @@ import type { TranslationCatalog } from './contracts'
 import { tabletEn } from './tablet'
 
 export const esESMessages = {
+  "toolOptions.eyedropperSource": "Origen del color",
+  "toolOptions.eyedropperSourceHint": "Muestrea la composición del lienzo o los píxeles originales de la capa actual.",
+  "toolOptions.eyedropperSourceComposite": "Composición del lienzo",
+  "toolOptions.eyedropperSourceCompositeHint": "Muestrea todas las capas visibles con opacidad, fusión y efectos.",
+  "toolOptions.eyedropperSourceLayer": "Píxeles de la capa actual",
+  "toolOptions.eyedropperSourceLayerHint": "Lee el color y alfa originales, sin opacidad de capa, fusión, máscaras ni efectos.",
 
   ...convolutionEn,
   ...beta7En,

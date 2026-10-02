@@ -4,6 +4,7 @@ import type { useAnimationGestures } from './useAnimationGestures'
 import type { DocumentSession } from '@/store/workspace'
 
 export interface LayerTimelineCellsProps {
+  readonly activeContentRevision?: number
   readonly displayRows: ReturnType<typeof deriveLayerPanelVisuals>['displayRows']
   readonly timeline: import('@shared/types-animation').AnimationTimeline
   readonly visualRowStateByKey: ReturnType<typeof deriveLayerPanelVisuals>['visualRowStateByKey']

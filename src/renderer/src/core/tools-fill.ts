@@ -10,6 +10,7 @@ import { packedColorMatchesTolerance, selectionContains } from './selection'
 import { proceduralBrushCoverageAt } from './brushes'
 import { symmetryPoints, type SymmetryAxes, type SymmetryCenter } from './symmetry'
 import { readSurfacePackedRegion } from './runtime-raster'
+import { mergeFillPixelEdit } from './fill-history'
 import { contiguousMatchingRegion, contiguousMatchingRegionInBounds, type BinaryRegionBounds } from './contiguous-region'
 import { clampSelection, insideSelection, paintLayerValue, brushTextureContains, imageBrushCoverage, wrappedIndex, imageBrushCoverageAt, ensureLayerCoversEditRect, EDIT_EXPANSION_PADDING } from './tools-pixel-edit'
 
@@ -382,7 +383,7 @@ export function floodFill(document: SpriteDocument, layer: RasterLayer, startX: 
   let cachedLocalSmartClosure: LocalSmartClosure | null | undefined
   const resolveLocalSmartClosure = (): LocalSmartClosure | null => {
     if (cachedLocalSmartClosure !== undefined) return cachedLocalSmartClosure
-    if (effectiveGapClosingThreshold <= 0 || selection || !compactSolidFill) {
+    if (effectiveGapClosingThreshold <= 0 || normalizedTolerance !== 0 || selection || !compactSolidFill) {
       cachedLocalSmartClosure = null
       return cachedLocalSmartClosure
     }
@@ -490,7 +491,7 @@ export function floodFill(document: SpriteDocument, layer: RasterLayer, startX: 
   }
   const edit = beginPixelEdit(layer.id)
   preparePixelEdit(document, edit)
-  const next = paintLayerValue(document, layer, edit, startLayerIndex, color)
+  const next = paintLayerValue(document, layer, edit, layerIndexAt(layer, startX, startY)!, color)
   if (!sourceColorAt && target === next) return null
   if (compactSolidFill) {
     const layerCoversCanvas = layer.offsetX <= 0
@@ -517,12 +518,15 @@ export function floodFill(document: SpriteDocument, layer: RasterLayer, startX: 
       )
       return region ? floodFillBinaryRegionSolidRuns(document, layer, region, target, next) : null
     }
-    if (effectiveGapClosingThreshold > 0 && !selection) {
+    if (effectiveGapClosingThreshold > 0 && normalizedTolerance === 0 && !selection) {
       const localSmartClosure = resolveLocalSmartClosure()
       if (localSmartClosure) {
         if (!localSmartClosure.result) return null
         if (!regionTouchesBoundsBoundary(localSmartClosure.result.region, Math.trunc(localSmartClosure.result.bounds.width), Math.trunc(localSmartClosure.result.bounds.height))) {
-          return floodFillLocalBinaryRegionSolidRuns(document, layer, localSmartClosure.result.region, localSmartClosure.result.bounds, target, next)
+          const bounds = localSmartClosure.result.bounds
+          return floodFillLocalBinaryRegionSolidRuns(document, layer, localSmartClosure.result.region, {
+            ...bounds, x: localSmartClosure.bounds.x + bounds.x, y: localSmartClosure.bounds.y + bounds.y
+          }, target, next)
         }
       } else {
         const smartClosureBounds = smartClosureBoundsForLayer(document, layer)
@@ -642,8 +646,11 @@ export function floodFill(document: SpriteDocument, layer: RasterLayer, startX: 
 }
 
 export function floodFillSymmetric(document: SpriteDocument, layer: RasterLayer, startX: number, startY: number, color: RgbaColor, selection: SelectionMask | null | undefined, contiguous: boolean, imageBrush: ImageBrush | null, brushSize: number, imageBrushSettings: ImageBrushSettings | undefined, brushTexture: BrushTexture, brushTextureScale: number, proceduralAntialiasStrength: number, brushPaintMode: BrushPaintMode, symmetryAxes?: SymmetryAxes, symmetryCenter?: SymmetryCenter, tolerance = 0, gapClosingThreshold = 0, profiler?: PixelOperationProfiler, options?: FloodFillRegionOptions): PixelEdit | null {
-  const merged = beginPixelEdit(layer.id)
-  for (const seed of symmetryPoints({ x: startX, y: startY }, document.width, document.height, symmetryAxes, symmetryCenter)) {
+  let merged = beginPixelEdit(layer.id)
+  const seeds = symmetryPoints({ x: startX, y: startY }, document.width, document.height, symmetryAxes, symmetryCenter)
+  for (const seed of seeds) {
+    const oldWidth = layer.width
+    const oldOrigin = getLayerStorageOrigin(layer)
     const fillStartedAt = profiler ? performance.now() : 0
     const edit = floodFill(document, layer, seed.x, seed.y, color, selection, contiguous, imageBrush, brushSize, imageBrushSettings, brushTexture, brushTextureScale, proceduralAntialiasStrength, brushPaintMode, tolerance, gapClosingThreshold, profiler, options)
     profiler?.record('bucket.flood-fill', performance.now() - fillStartedAt, {
@@ -651,22 +658,8 @@ export function floodFillSymmetric(document: SpriteDocument, layer: RasterLayer,
       runs: edit?.runs?.length ?? 0,
       dirtyPixels: edit?.dirtyRect ? edit.dirtyRect.width * edit.dirtyRect.height : 0
     })
-    if (!edit) continue
     const mergeStartedAt = profiler ? performance.now() : 0
-    merged.frameId ??= edit.frameId
-    if (edit.runs?.length) (merged.runs ??= []).push(...edit.runs)
-    for (const [index, value] of edit.before) if (!merged.before.has(index)) merged.before.set(index, value)
-    for (const [index, value] of edit.after) merged.after.set(index, value)
-    if (edit.dirtyRect) {
-      if (!merged.dirtyRect) merged.dirtyRect = { ...edit.dirtyRect }
-      else {
-        const left = Math.min(merged.dirtyRect.x, edit.dirtyRect.x)
-        const top = Math.min(merged.dirtyRect.y, edit.dirtyRect.y)
-        const right = Math.max(merged.dirtyRect.x + merged.dirtyRect.width, edit.dirtyRect.x + edit.dirtyRect.width)
-        const bottom = Math.max(merged.dirtyRect.y + merged.dirtyRect.height, edit.dirtyRect.y + edit.dirtyRect.height)
-        merged.dirtyRect = { x: left, y: top, width: right - left, height: bottom - top }
-      }
-    }
+    merged = mergeFillPixelEdit(layer, merged, edit, oldWidth, oldOrigin, seeds.length > 1)
     profiler?.record('bucket.pixel-edit-merge', performance.now() - mergeStartedAt, {
       points: merged.before.size,
       runs: merged.runs?.length ?? 0

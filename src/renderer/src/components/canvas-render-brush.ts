@@ -17,6 +17,7 @@ import type * as React from 'react'
 import type { DocumentSession } from '@/store/workspace-types'
 import { BrushPreviewStackCache, BrushPreviewCompositeCache, brushBaseAngle } from './canvas-stage-helpers'
 import { brushOpacityScale } from '@/core/pressure'
+import { canvasBrushHoverSize } from './canvas-brush-hover-size'
 export function renderCanvasBrush({
   currentActiveLayer,
   currentSession,
@@ -189,11 +190,8 @@ export function renderCanvasBrush({
         ? currentSession.proceduralAntialiasStrength
         : 0
     const erasing = currentSession.tool === 'eraser'
-    // Dynamic mappings are already resolved into the active drag's last
-    // sample.  When hovering, keep the configured brush size so enabling
-    // pressure does not collapse the preview to the pointer-event hover
-    // pressure (usually zero).
-    const previewBrushSize = drawing ? (drag?.lastBrushSize ?? currentSession.brushSize) : currentSession.brushSize
+    // Drawing uses the resolved sample; hovering shows the pressure minimum.
+    const previewBrushSize = drawing ? (drag?.lastBrushSize ?? currentSession.brushSize) : canvasBrushHoverSize(currentSession)
     const previewBrushImage = currentBrushImage
     const previewBrushAngle = drawing ? (drag?.path?.at(-1)?.angle ?? brushBaseAngle(currentSession)) : brushBaseAngle(currentSession)
     const overwriteImageBrushPixels = !erasing && previewBrushImage?.intrinsicSize === true && currentBrushPreviewMode === 'paint'

@@ -137,6 +137,51 @@ beforeEach(() => {
 afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals() })
 
 describe('CanvasCompositeCache', () => {
+  it.each(['layer', 'group'] as const)('retains styled sources through %s visibility toggles and undo/redo', owner => {
+    useWorkspace.setState({ sessions: [], activeId: null })
+    const document = createDocument('visibility source reuse', 32, 32, 'rgba')
+    const layer = document.layers[0]
+    document.groups.push({ id: 'visibility-group', name: 'Group', visible: true, locked: false, opacity: 1, blendMode: 'normal' })
+    layer.groupId = 'visibility-group'
+    layer.layerStyles = createDefaultLayerStyles()
+    layer.layerStyles.stroke.enabled = true
+    layer.layerStyles.stroke.size = 2
+    for (let y = 8; y < 24; y++) for (let x = 8; x < 24; x++) writeLayerColor(document, layer, y * 32 + x, { r: 200, g: 80, b: 100, a: 180 })
+    useWorkspace.getState().addSession(document)
+    const cache = new CanvasCompositeCache(), context = makeContext()
+    const render = () => {
+      const session = useWorkspace.getState().sessions[0]
+      draw(cache, document, context, { contentRevision: session.contentRevision, contentInvalidation: session.contentInvalidation })
+      return (context.drawImage.mock.lastCall![0] as MockOffscreenCanvas).pixels.slice()
+    }
+    render()
+    const blocks = vi.spyOn(styleRender, 'renderStyledLayerBlock')
+    const tiles = vi.spyOn(styleCoverage, 'layerStyleCoverageTile')
+    const verify = () => {
+      blocks.mockClear(); tiles.mockClear()
+      const displayed = render()
+      expect(blocks).not.toHaveBeenCalled()
+      expect(tiles).not.toHaveBeenCalled()
+      expect(displayed).toEqual(compositeRegion(document, 0, 0, 32, 32))
+    }
+    const toggle = () => owner === 'layer' ? useWorkspace.getState().toggleLayerVisibility(layer.id) : useWorkspace.getState().toggleGroupVisibility('visibility-group')
+    toggle(); verify()
+    toggle(); verify()
+    useWorkspace.getState().undo(); verify()
+    useWorkspace.getState().redo(); verify()
+    // Parent effects depend on child visibility and must still be recomputed.
+    document.groups[0].layerStyles = createDefaultLayerStyles()
+    document.groups[0].layerStyles!.stroke.enabled = true
+    cache.invalidateAll()
+    render()
+    toggle()
+    expect(render()).toEqual(compositeRegion(document, 0, 0, 32, 32))
+    useWorkspace.getState().undo()
+    expect(render()).toEqual(compositeRegion(document, 0, 0, 32, 32))
+    writeLayerColor(document, layer, 10 * 32 + 10, { r: 0, g: 255, b: 0, a: 255 })
+    cache.invalidateDocumentRect({ x: 10, y: 10, width: 1, height: 1 }, document, undefined, [layer.id])
+    expect(render()).toEqual(compositeRegion(document, 0, 0, 32, 32))
+  })
   it.each([false, true])('does not recompose the base when resuming a floating drag (mirrored=%s)', mirrored => {
     const document = createDocument('resume floating selection', 128, 128, 'rgba')
     for (let i = 0; i < 15; i++) document.layers.push(createLayer(`Layer ${i}`, 128, 128, 'rgba'))

@@ -3,7 +3,11 @@ import type { SpriteDocument } from '@shared/types-document'
 import { cloneAnimationCel, ensureAnimationDocument, syncActiveAnimationFrame } from '@/core/animation'
 
 export const cloneAnimationCelsForLayerIds = (document: SpriteDocument, layerIds: readonly string[], frameId?: string): AnimationCel[] => {
-  syncActiveAnimationFrame(document)
+  // A frame-scoped snapshot reads persisted cel surfaces directly. Syncing the
+  // active frame here would walk every layer even when the requested frame is
+  // off-screen; callers that snapshot the whole timeline still retain the
+  // original synchronization behavior.
+  if (!frameId) syncActiveAnimationFrame(document)
   const ids = new Set(layerIds)
   const timeline = ensureAnimationDocument(document)
   return timeline.cels

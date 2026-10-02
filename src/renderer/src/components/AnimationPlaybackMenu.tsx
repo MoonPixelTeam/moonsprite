@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { Pause, Play, RotateCcw } from 'lucide-react'
-import { ensureAnimationDocument } from '@/core/animation'
+import { createDefaultAnimationTimeline } from '@/core/animation'
 import { useWorkspace, type AnimationPlaybackMode, type DocumentSession } from '@/store/workspace'
 import { useI18n } from './I18nProvider'
 import { PixelUtilityIcon } from './PixelUtilityIcon'
@@ -24,7 +24,7 @@ export function AnimationPlaybackMenu({ session, x, y, zIndex, onClose, playback
   const { locale, t } = useI18n()
   const store = useWorkspace.getState()
   const [shortcuts, setShortcuts] = useState(() => loadShortcutBindings())
-  const timeline = ensureAnimationDocument(session.document)
+  const timeline = session.document.animation ?? createDefaultAnimationTimeline()
   const shortcutHint = (id: ShortcutId) => {
     const shortcut = formatShortcutBindingsForLocale(shortcutBindingsFor(shortcuts, id), locale)
     return shortcut ? <kbd>{shortcut}</kbd> : null

@@ -5,6 +5,12 @@ import { spriteSheetImportzhCN } from './sprite-sheet-import'
 import { tabletZh } from './tablet'
 
 export const zhCNMessages = {
+  "toolOptions.eyedropperSource": "取色来源",
+  "toolOptions.eyedropperSourceHint": "选择读取画布合成后的颜色，或当前图层的原始像素颜色。",
+  "toolOptions.eyedropperSourceComposite": "画布合成色",
+  "toolOptions.eyedropperSourceCompositeHint": "读取所有可见图层经过透明度、混合模式和效果处理后的颜色。",
+  "toolOptions.eyedropperSourceLayer": "当前图层原色",
+  "toolOptions.eyedropperSourceLayerHint": "只读取当前图层的原始像素及其透明度，不计入图层透明度、混合模式、蒙版或效果。",
 
   ...beta7Zh,
   ...gradientMapZh,

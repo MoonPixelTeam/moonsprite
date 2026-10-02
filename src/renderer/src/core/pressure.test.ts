@@ -22,8 +22,8 @@ describe('brush dynamics', () => {
     expect(brushOpacityScale(0.6, Number.NaN)).toBe(0.6)
   })
 
-  it('uses new sensor defaults and clamps speed ranges to 4000', () => {
-    expect(patchBrushDynamicsMapping(DEFAULT_BRUSH_DYNAMICS_SETTINGS, 'size', { sensor: 'pressure' }).effects.size).toMatchObject({ inputMin: 0, inputMax: 70, curve: 'hard' })
+  it('uses Aseprite-like pressure defaults and clamps speed ranges to 4000', () => {
+    expect(patchBrushDynamicsMapping(DEFAULT_BRUSH_DYNAMICS_SETTINGS, 'size', { sensor: 'pressure' }).effects.size).toMatchObject({ outputMin: 0, inputMin: 10, inputMax: 90, curve: 'linear' })
     expect(patchBrushDynamicsMapping(DEFAULT_BRUSH_DYNAMICS_SETTINGS, 'strength', { sensor: 'speed' }).effects.strength).toMatchObject({ inputMin: 50, inputMax: 2400, curve: 'linear' })
 
     const normalized = normalizeBrushDynamicsSettings({
@@ -35,19 +35,49 @@ describe('brush dynamics', () => {
       }
     })
 
-    expect(normalized.effects.size).toEqual({ sensor: 'pressure', outputMin: 0, outputMax: 100, inputMin: 0, inputMax: 100, curve: 'hard', direction: 'direct' })
+    expect(normalized.effects.size).toEqual({ sensor: 'pressure', outputMin: 0, outputMax: 100, inputMin: 0, inputMax: 100, curve: 'linear', direction: 'direct' })
     expect(normalized.effects.strength).toEqual({ sensor: 'speed', outputMin: 20, outputMax: 80, inputMin: 0, inputMax: 4000, curve: 'soft', direction: 'inverse' })
   })
 
   it('calibrates pen pressure before applying mappings', () => {
-    expect(calibrateBrushPressure(0.02)).toBe(0)
+    expect(calibrateBrushPressure(0.02)).toBe(2)
     expect(calibrateBrushPressure(1)).toBe(100)
-    expect(calibrateBrushPressure(0.5)).toBeCloseTo(29.75, 1)
+    expect(calibrateBrushPressure(0.5)).toBe(50)
 
     const settings = patchBrushDynamicsMapping(DEFAULT_BRUSH_DYNAMICS_SETTINGS, 'size', {
       sensor: 'pressure', outputMin: 0, outputMax: 100, inputMin: 0, inputMax: 100, curve: 'linear'
     })
-    expect(resolveBrushDynamics(settings, { pointerType: 'pen', pressure: 0.5 }, 10)).toEqual({ size: 3, opacityScale: 1, gradientAmount: null, angle: 0 })
+    expect(resolveBrushDynamics(settings, { pointerType: 'pen', pressure: 0.5 }, 10)).toEqual({ size: 5, opacityScale: 1, gradientAmount: null, angle: 0 })
+  })
+
+  it('maps the default pressure range like Aseprite', () => {
+    const settings = patchBrushDynamicsMapping(DEFAULT_BRUSH_DYNAMICS_SETTINGS, 'size', { sensor: 'pressure' })
+    expect(resolveBrushDynamics(settings, { pointerType: 'pen', pressure: 0.1 }, 10).size).toBe(1)
+    expect(resolveBrushDynamics(settings, { pointerType: 'pen', pressure: 0.5 }, 10).size).toBe(5)
+    expect(resolveBrushDynamics(settings, { pointerType: 'pen', pressure: 0.9 }, 10).size).toBe(10)
+  })
+
+  it('migrates the previous factory pressure mapping without changing custom ranges', () => {
+    const migrated = normalizeBrushDynamicsSettings({
+      version: 5,
+      effects: {
+        ...DEFAULT_BRUSH_DYNAMICS_SETTINGS.effects,
+        size: { ...DEFAULT_BRUSH_DYNAMICS_SETTINGS.effects.size, sensor: 'pressure', outputMin: 20, inputMin: 0, inputMax: 70, curve: 'hard' }
+      },
+      gradientDither: 'none'
+    })
+    expect(migrated.version).toBe(6)
+    expect(migrated.effects.size).toMatchObject({ outputMin: 0, inputMin: 10, inputMax: 90, curve: 'linear' })
+
+    const custom = normalizeBrushDynamicsSettings({
+      version: 5,
+      effects: {
+        ...DEFAULT_BRUSH_DYNAMICS_SETTINGS.effects,
+        size: { ...DEFAULT_BRUSH_DYNAMICS_SETTINGS.effects.size, sensor: 'pressure', outputMin: 35, inputMin: 5, inputMax: 80, curve: 'soft' }
+      },
+      gradientDither: 'none'
+    })
+    expect(custom.effects.size).toMatchObject({ outputMin: 35, inputMin: 5, inputMax: 80, curve: 'soft' })
   })
 
 
@@ -56,8 +86,8 @@ describe('brush dynamics', () => {
     const settings = patchBrushDynamicsMapping(DEFAULT_BRUSH_DYNAMICS_SETTINGS, 'size', {
       sensor: 'pressure', outputMin: 0, outputMax: 100, inputMin: 0, inputMax: 100, curve: 'linear'
     })
-    expect(resolveBrushDynamics(settings, { pointerType: 'stylus', pressure: 0.5 }, 10).size).toBe(3)
-    expect(resolveBrushDynamics(settings, { pointerType: 'mouse', pressure: 0.5, pressureAvailable: true }, 10).size).toBe(3)
+    expect(resolveBrushDynamics(settings, { pointerType: 'stylus', pressure: 0.5 }, 10).size).toBe(5)
+    expect(resolveBrushDynamics(settings, { pointerType: 'mouse', pressure: 0.5, pressureAvailable: true }, 10).size).toBe(5)
     expect(resolveBrushDynamics(settings, { pointerType: 'pen', pressure: 0.5, pressureAvailable: false }, 10).size).toBe(10)
   })
 

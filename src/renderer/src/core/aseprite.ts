@@ -348,7 +348,9 @@ export function decodeAseprite(input: Uint8Array, fallbackName = tr('core.docume
   for (const spec of layers) {
     const layer = documentLayerBySpecIndex.get(spec.index)
     if (!layer) continue
-    for (let frameIndex = 0; frameIndex < frames.length; frameIndex += 1) celIdBySlot.set(`${frameIndex}:${spec.index}`, `cel-${++celSequence}`)
+    for (let frameIndex = 0; frameIndex < frames.length; frameIndex += 1) {
+      if (resolveCel(frameIndex, spec.index)) celIdBySlot.set(`${frameIndex}:${spec.index}`, `cel-${++celSequence}`)
+    }
   }
   const sourceSurfaces = new Map<string, AnimationCelSurface>()
   const createCelSurface = (cel: DecodedCel, copyPixels = false): AnimationCelSurface => {
@@ -360,6 +362,7 @@ export function decodeAseprite(input: Uint8Array, fallbackName = tr('core.docume
     if (!layer) continue
     for (let frameIndex = 0; frameIndex < frames.length; frameIndex += 1) {
       const cel = resolveCel(frameIndex, spec.index)
+      if (!cel) continue
       const sourceCel = cel ? resolveCel(cel.sourceFrame, spec.index) : null
       const sharesSource = Boolean(cel && sourceCel && cel.sourceFrame !== frameIndex
         && cel.x === sourceCel.x && cel.y === sourceCel.y && cel.opacity === sourceCel.opacity
@@ -537,7 +540,7 @@ const orderedAseItems = (document: SpriteDocument): AseExportItem[] => {
 
 export function encodeAseprite(document: SpriteDocument, scalePercent = 100): Uint8Array {
   syncActiveAnimationFrame(document)
-  const timeline = ensureAnimationDocument(document)
+  const timeline = document.animation ?? ensureAnimationDocument(document)
   const scale = Math.max(0.01, Math.min(64, Math.round(scalePercent) / 100))
   const width = Math.max(1, Math.round(document.width * scale))
   const height = Math.max(1, Math.round(document.height * scale))
@@ -586,17 +589,18 @@ export function encodeAseprite(document: SpriteDocument, scalePercent = 100): Ui
   }
   const frameIndices = new Map(timeline.frames.map((frame, index) => [frame.id, index]))
   const framePayloads = timeline.frames.map((frame, frameIndex) => {
-    const celChunks = rasterLayerIndices.map(({ index, layer }) => {
+    const celChunks = rasterLayerIndices.flatMap(({ index, layer }) => {
+      const cel = celByFrame.get(frame.id)?.get(layer.id)
+      if (!needsComposite && !cel) return []
       let frameLayer = animationLayerAtFrame(document, layer.id, frame.id) ?? layer
       if (needsComposite) {
         const snapshot = cloneDocumentForAnimationFrame(document, frame.id)
         frameLayer = { ...layer, format: 'rgba', width: document.width, height: document.height, offsetX: 0, offsetY: 0, pixels: compositeDocument(snapshot) }
       }
-      const cel = celByFrame.get(frame.id)?.get(layer.id)
       const source = cel?.linkedCelId ? celById.get(cel.linkedCelId) : undefined
       const sourceIndex = source ? frameIndices.get(source.frameId) ?? -1 : -1
       const linkedFrame = sourceIndex >= 0 && sourceIndex < frameIndex ? sourceIndex : undefined
-      return aseCelChunk(index, scaledLayerPixels(document, frameLayer, scale, linkedFrame !== undefined), frameLayer.opacity, cel?.zIndex ?? 0, linkedFrame)
+      return [aseCelChunk(index, scaledLayerPixels(document, frameLayer, scale, linkedFrame !== undefined), frameLayer.opacity, cel?.zIndex ?? 0, linkedFrame)]
     })
     const chunks = frameIndex === 0 ? [...layerChunks, ...tagChunks, ...celChunks] : celChunks
     return { duration: frame.duration, chunks, data: concatBytes(chunks) }

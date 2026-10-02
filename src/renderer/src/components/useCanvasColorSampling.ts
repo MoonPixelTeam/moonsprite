@@ -63,7 +63,7 @@ export function useCanvasColorSampling(ports: Ports) {
     if (!point) return null
     if (point.x < 0 || point.y < 0 || point.x >= currentSession.document.width || point.y >= currentSession.document.height) return { ...TRANSPARENT }
     const mask = activeLayerMask(currentSession)
-    return mask ? readLayerMaskDisplayColorAt(mask, point.x, point.y) : ports.cursorCompositePointSamplerFor(currentSession)(point.x, point.y)
+    return mask ? readLayerMaskDisplayColorAt(mask, point.x, point.y) : sampleEyedropperColor(currentSession.document, point.x, point.y, ports.cursorCompositePointSamplerFor(currentSession))
   }
 
   useEffect(() => {
@@ -105,3 +105,4 @@ export function useCanvasColorSampling(ports: Ports) {
     updateEyedropperMagnifier
   }
 }
+import { sampleEyedropperColor } from '@/core/eyedropper-source'

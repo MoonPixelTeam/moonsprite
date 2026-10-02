@@ -7,6 +7,12 @@ import type { TranslationCatalog } from './contracts'
 import { tabletEn } from './tablet'
 
 export const ruRUMessages = {
+  "toolOptions.eyedropperSource": "Источник цвета",
+  "toolOptions.eyedropperSourceHint": "Взять цвет композиции холста или исходных пикселей текущего слоя.",
+  "toolOptions.eyedropperSourceComposite": "Композиция холста",
+  "toolOptions.eyedropperSourceCompositeHint": "Цвет всех видимых слоёв с учётом непрозрачности, смешивания и эффектов.",
+  "toolOptions.eyedropperSourceLayer": "Исходные пиксели слоя",
+  "toolOptions.eyedropperSourceLayerHint": "Исходный цвет и альфа без учёта непрозрачности слоя, смешивания, масок и эффектов.",
 
   ...convolutionEn,
   ...beta7En,

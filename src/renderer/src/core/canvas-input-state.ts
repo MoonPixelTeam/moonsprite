@@ -46,7 +46,7 @@ export type SelectionHit = 'inside' | 'edge' | 'outside' | SelectionRotationHand
 const selectionHitBoundaryCache = new WeakMap<SelectionMask, Int32Array>()
 
 export const temporaryMoveToolAllowed = (tool: ToolId, moveKind: MoveKind = 'move', selectionKind?: import('@shared/types-selection').SelectionKind): boolean =>
-  (tool !== 'selection' || selectionKind === 'magic') && tool !== 'shape' && (tool !== 'move' || moveKind !== 'move')
+  tool !== 'selection' && tool !== 'shape' && (tool !== 'move' || moveKind !== 'move')
 
 export const shouldUseTemporaryMoveTool = (tool: ToolId, event: Pick<KeyboardEvent, 'ctrlKey' | 'metaKey' | 'altKey' | 'shiftKey'>, shortcut: string, moveKind: MoveKind = 'move'): boolean =>
   temporaryMoveToolAllowed(tool, moveKind) && modifierShortcutHeld(event, shortcut)
@@ -58,7 +58,7 @@ export const selectionInteractionOverridesTemporaryMove = (tool: ToolId, hit: Se
 
 export const temporaryMoveForCanvasInteractionAllowed = (tool: ToolId, moveKind: MoveKind, hit: SelectionHit, addingToSelection = false, selectionKind?: import('@shared/types-selection').SelectionKind): boolean =>
   temporaryMoveToolAllowed(tool, moveKind, selectionKind) &&
-  (selectionKind === 'magic' || !selectionInteractionOverridesTemporaryMove(tool, hit, addingToSelection))
+  !selectionInteractionOverridesTemporaryMove(tool, hit, addingToSelection)
 
 export const shouldUseTemporaryMoveForCanvasInteraction = (
   tool: ToolId,

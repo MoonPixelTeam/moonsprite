@@ -7,6 +7,12 @@ import type { TranslationCatalog } from './contracts'
 import { tabletEn } from './tablet'
 
 export const enUSMessages = {
+  "toolOptions.eyedropperSource": "Color source",
+  "toolOptions.eyedropperSourceHint": "Sample the canvas composite or the current layer’s original pixels.",
+  "toolOptions.eyedropperSourceComposite": "Canvas composite",
+  "toolOptions.eyedropperSourceCompositeHint": "Sample all visible layers after opacity, blending and effects.",
+  "toolOptions.eyedropperSourceLayer": "Current layer pixels",
+  "toolOptions.eyedropperSourceLayerHint": "Read original pixels and their alpha, excluding layer opacity, blending, masks and effects.",
 
   ...beta7En,
   ...gradientMapEn,

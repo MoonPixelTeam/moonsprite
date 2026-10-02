@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from 'react'
 import type { RgbaColor } from '@shared/types-color'
 import { renderLayerMaskRegion } from '@/core/document-model'
 import { compositeRegion } from '@/core/document-composite'
+import { loadEyedropperSource, renderEyedropperLayerRegion, type EyedropperSource } from '@/core/eyedropper-source'
 import { blendOver, colorEquals as sameRgbaColor } from '@/core/raster'
 import { useWorkspace, type DocumentSession } from '@/store/workspace'
 import { activeLayerMask } from '@/store/workspace-session'
@@ -28,7 +29,7 @@ export function useCanvasEyedropperMagnifier(options: Options) {
   const eyedropperMagnifierRef = useRef<HTMLDivElement>(null)
   const eyedropperMagnifierCanvasRef = useRef<HTMLCanvasElement>(null)
   const eyedropperMagnifierSourceRef = useRef<OffscreenCanvas | null>(null)
-  const eyedropperMagnifierSampleRef = useRef<{ document: DocumentSession['document']; revision: number; mask: ReturnType<typeof activeLayerMask>; startX: number; startY: number; pixels: Uint8ClampedArray } | null>(null)
+  const eyedropperMagnifierSampleRef = useRef<{ document: DocumentSession['document']; revision: number; source: EyedropperSource; layerId: string; mask: ReturnType<typeof activeLayerMask>; startX: number; startY: number; pixels: Uint8ClampedArray } | null>(null)
   const eyedropperMagnifierFrameRef = useRef<number | null>(null)
   const eyedropperMagnifierPendingRef = useRef<{ clientX: number; clientY: number; sampled: RgbaColor } | null>(null)
   const eyedropperPendingSampleColorRef = useRef<{ color: RgbaColor; secondary: boolean } | null>(null)
@@ -111,19 +112,25 @@ export function useCanvasEyedropperMagnifier(options: Options) {
     const startX = centerX - Math.floor(sourcePixelCount / 2)
     const startY = centerY - Math.floor(sourcePixelCount / 2)
     const mask = activeLayerMask(session)
+    const source = loadEyedropperSource()
+    const layerId = session.document.activeLayerId
     const cachedSample = eyedropperMagnifierSampleRef.current
     const sampleCacheMatches = cachedSample
       && cachedSample.document === session.document
       && cachedSample.revision === session.revision
       && cachedSample.mask === mask
+      && cachedSample.source === source
+      && cachedSample.layerId === layerId
       && cachedSample.startX === startX
       && cachedSample.startY === startY
     const pixels = sampleCacheMatches
       ? cachedSample.pixels
       : mask
         ? renderLayerMaskRegion(mask, startX, startY, sourcePixelCount, sourcePixelCount)
-        : compositeRegion(session.document, startX, startY, sourcePixelCount, sourcePixelCount)
-    if (!sampleCacheMatches) eyedropperMagnifierSampleRef.current = { document: session.document, revision: session.revision, mask, startX, startY, pixels }
+        : source === 'current-layer'
+          ? renderEyedropperLayerRegion(session.document, startX, startY, sourcePixelCount, sourcePixelCount)
+          : compositeRegion(session.document, startX, startY, sourcePixelCount, sourcePixelCount)
+    if (!sampleCacheMatches) eyedropperMagnifierSampleRef.current = { document: session.document, revision: session.revision, source, layerId, mask, startX, startY, pixels }
     magnifierCanvas.width = size * dpr
     magnifierCanvas.height = size * dpr
     context.setTransform(dpr, 0, 0, dpr, 0, 0)

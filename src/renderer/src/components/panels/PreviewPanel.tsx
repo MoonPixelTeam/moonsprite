@@ -641,10 +641,10 @@ export function PreviewPanel({ session, onClose, docked = false, onDockDragStart
       if (previewStarted) recordWorkspaceResizeStage('preview', performance.now() - previewStarted)
     }, () => ({ documentId: session.document.id, layerId: session.document.activeLayerId, contentRevision: session.contentRevision }))
     drawRef.current = draw
-    // Main canvas rendering is queued first. Let it populate the shared
-    // composite before a large auxiliary viewport requests its initial image.
-    if (session.document.width * session.document.height >= 1024 * 1024) previewSchedulerRef.current?.request(true)
-    else draw()
+    // Small documents can still have expensive layer stacks. Use the same
+    // frame queue for every size, so a synchronous preview does not delay the
+    // main canvas and miss the shared composite it is about to publish.
+    previewSchedulerRef.current?.request(true)
   }, [session.document, session.contentRevision, session.animationPlaying, previewFrameId, previewPlaying, timeline.activeFrameId, showRelativeLuminance, checkerboard, canvasSurround, rotationIndicatorPosition, zoom, pan, followViewport, initialCompositeReady, initialPreviewViewport?.width, initialPreviewViewport?.height])
 
   useEffect(() => {

@@ -2,7 +2,7 @@ import type { AnimationLoopSection, AnimationTimeline } from '@shared/types-anim
 import type { RgbaColor } from '@shared/types-color'
 import type { SpriteDocument } from '@shared/types-document'
 import { resolveAnimationLoopSectionRange } from './animation-loop-sections'
-import { animationCelAt, layerFromAnimationCel, animationLayersAtFrame, ensureAnimationDocument, resolveAnimationCel } from './animation'
+import { createAnimationCelLookup, layerFromAnimationCel, animationLayersAtFrame } from './animation'
 import { compositeDocument, compositeRegion, createCompositePointSampler, createNormalCompositePointSampler } from './document-composite'
 import { isLayerEffectivelyVisible, layerContentBounds } from './document-model'
 import { shareRasterLayer } from './layer-preview'
@@ -69,13 +69,11 @@ export const onionSkinFrameRefs = (timeline: AnimationTimeline, previousFrames: 
 }
 
 export const compositeAnimationFrame = (document: SpriteDocument, frameId: string, layerId?: string): Uint8ClampedArray => {
-  ensureAnimationDocument(document)
   const layers = animationLayersAtFrame(document, frameId)
   return compositeDocument(documentForAnimationLayerComposite(document, layers, frameId, layerId))
 }
 
 export const compositeAnimationFrameRegion = (document: SpriteDocument, frameId: string, x: number, y: number, width: number, height: number): Uint8ClampedArray => {
-  ensureAnimationDocument(document)
   const layers = animationLayersAtFrame(document, frameId)
   return compositeRegion(documentForAnimationLayerComposite(document, layers, frameId), x, y, width, height)
 }
@@ -142,6 +140,7 @@ export const createOnionSkinDisplayDocument = (
 ): SpriteDocument => {
   const timeline = document.animation
   if (!timeline || refs.length === 0) return document
+  const lookup = createAnimationCelLookup(timeline)
   const requested = style.scope === 'all-layers'
     ? document.layers.filter((layer) => !layer.background && isLayerEffectivelyVisible(document, layer))
     : document.layers.filter((layer) => layer.id === layerId && isLayerEffectivelyVisible(document, layer))
@@ -156,9 +155,9 @@ export const createOnionSkinDisplayDocument = (
     while (insertionIndex > 0 && document.layers[insertionIndex].clippingMask &&
       (document.layers[insertionIndex - 1].groupId ?? null) === (active.groupId ?? null)) insertionIndex -= 1
     const anchor = document.layers[insertionIndex]
-    const zIndex = resolveAnimationCel(timeline, animationCelAt(timeline, anchor.id, timeline.activeFrameId))?.zIndex ?? 0
+    const zIndex = lookup.resolve(lookup.at(anchor.id, timeline.activeFrameId))?.zIndex ?? 0
     for (const ref of refs) {
-      const source = layerFromAnimationCel(active, resolveAnimationCel(timeline, animationCelAt(timeline, active.id, ref.frameId)))
+      const source = layerFromAnimationCel(active, lookup.resolve(lookup.at(active.id, ref.frameId)))
       if (!source) continue
       // This is a fresh display layer. Spreading it reads the lazy pixels
       // accessor and expands the neighboring cel's entire sparse raster.

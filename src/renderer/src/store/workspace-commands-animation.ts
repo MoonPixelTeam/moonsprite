@@ -20,6 +20,7 @@ export function createWorkspaceAnimationCommands(context: WorkspaceCommandContex
   | 'deleteSelectedLayerMasks'
   | 'mutateActive'
   | 'selectAnimationCell'
+  | 'selectAnimationMaskCell'
   | 'selectAnimationFrame'
   | 'selectLayer'
   | 'setActiveAnimationFrame'

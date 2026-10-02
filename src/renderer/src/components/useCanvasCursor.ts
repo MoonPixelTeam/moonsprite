@@ -455,14 +455,9 @@ export function useCanvasCursor(ports: Ports) {
     const insideDocument = Boolean(point && point.x >= 0 && point.y >= 0 && point.x < ports.session.document.width && point.y < ports.session.document.height)
     const mask = activeLayerMask(ports.session)
     const cursorSampleProbe = window.__moonSpriteCanvasProbe
-    const cursorSampleStartedAt = cursorSampleProbe?.recordOperationStage ? performance.now() : 0
-    let contrastColor =
-      insideDocument && point
-        ? mask
-          ? readLayerMaskDisplayColorAt(mask, point.x, point.y)
-          : ports.cursorCompositePointSamplerFor(ports.session)(point.x, point.y)
-        : ports.session.primaryColor
-    cursorSampleProbe?.recordOperationStage?.('cursor.composite-sample', performance.now() - cursorSampleStartedAt)
+    // Paint previews replace the pointed color below. Avoid compositing the
+    // original point first: its result would be discarded on every move.
+    let contrastColor: RgbaColor | null = null
     if (
       insideDocument &&
       point &&
@@ -482,6 +477,13 @@ export function useCanvasCursor(ports: Ports) {
           : ports.cursorCompositePointReplacementSamplerFor(ports.session, layer.id)(point.x, point.y, resolvedReplacement)
         cursorSampleProbe?.recordOperationStage?.('cursor.replacement-sample', performance.now() - replacementSampleStartedAt)
       }
+    }
+    if (!contrastColor) {
+      const cursorSampleStartedAt = cursorSampleProbe?.recordOperationStage ? performance.now() : 0
+      contrastColor = insideDocument && point
+        ? mask ? readLayerMaskDisplayColorAt(mask, point.x, point.y) : ports.cursorCompositePointSamplerFor(ports.session)(point.x, point.y)
+        : ports.session.primaryColor
+      cursorSampleProbe?.recordOperationStage?.('cursor.composite-sample', performance.now() - cursorSampleStartedAt)
     }
     if (insideDocument && point && contrastColor.a < 255) contrastColor = blendOver(transparencyColorAt(point.x, point.y, ports.checkerboard), contrastColor)
     const altActive = ports.inputRef.current.altHeld || altKey
@@ -525,11 +527,10 @@ export function useCanvasCursor(ports: Ports) {
           : ports.activeLayerEditable
       )
     const selectionCopyAvailable =
-      !temporaryMove &&
       ports.session.tool === 'selection' &&
       !altActive &&
       ctrlActive &&
-      selectionHitStartsContentMove(selectionHit, true) &&
+      selectionHitStartsContentMove(rawSelectionHit, true) &&
       ports.selectionLayersEditable &&
       (!ports.session.pendingPaste || shouldRestartFloatingSelectionForCopy(ports.session.pendingPaste.copy, true))
     const copyAvailable = (altActive && moveCopyAvailable) || selectionCopyAvailable

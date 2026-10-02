@@ -259,6 +259,7 @@ export function createSelectionBeginCanvasInput(ports: Ports) {
         }
       }
       const rawHit = freeTransformActive ? freeTransformHit : selectionHit(event)
+      const copyRequested = modifierActive(event.nativeEvent, 'copySelectionContent')
       const transformInteraction = event.button === 0 && !event.shiftKey
       // Once free transform is active, the frame owns the pointer regardless
       // of the selection mode left over from marquee creation. This prevents
@@ -266,7 +267,7 @@ export function createSelectionBeginCanvasInput(ports: Ports) {
       // selection gesture.
       const hit = freeTransformActive
         ? freeTransformHit
-        : transformInteraction && (mode === 'replace' || mode === 'add' || rawHit !== 'inside')
+        : transformInteraction && (copyRequested || mode === 'replace' || mode === 'add' || rawHit !== 'inside')
           ? rawHit
           : 'outside'
       if (event.button === 0 && session.tool === 'selection' && rawHit === 'inside' && hit === 'inside' && session.selection) {
@@ -291,7 +292,6 @@ export function createSelectionBeginCanvasInput(ports: Ports) {
         }
         return true
       }
-      const copyRequested = modifierActive(event.nativeEvent, 'copySelectionContent')
       if (selectionLayersEditable && selectionHitStartsContentMove(hit, copyRequested) && session.selection && currentSelection) {
         let floating = session.pendingPaste
         const selectionMatchesFloatingTarget = !floating || selectionBoundsEqual(currentSelection, floating.target)
