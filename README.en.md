@@ -4,7 +4,7 @@
 
 MoonSprite is an original, source-available pixel art workstation for Windows, built with Tauri 2, React, TypeScript, Zustand, and Canvas. It is not affiliated with Aseprite and does not use Aseprite source code, branding, or visual assets.
 
-The current source version is `1.0.0-beta7` on the Beta channel, and the latest packaged version is [`1.0.0-beta7`](docs/changelog/1.0.0-beta7.md). The capabilities below describe the current source implementation; see the corresponding release record for changes included in the packaged version.
+The current source version is `1.0.0-beta8` on the Beta channel, and the latest packaged version is [`1.0.0-beta8`](docs/changelog/1.0.0-beta8.md). The capabilities below describe the current source implementation; see the corresponding release record for changes included in the packaged version.
 
 ## Current Capabilities
 

@@ -219,3 +219,25 @@ it('preserves the live pen cursor when an ignored compatibility mouse move follo
   expect(hidePenCursor).not.toHaveBeenCalled()
   unmount()
 })
+
+it('publishes the cursor before entering the expensive tool move path', () => {
+  const input = new CanvasInputState()
+  const canvas = document.createElement('canvas')
+  const sequence: string[] = []
+  const session = { document: { id: 'cursor-order-test' }, tool: 'pencil' } as DocumentSession
+  const ports = {
+    inputRef: { current: input }, session, canvasRef: { current: canvas },
+    tabletPreferences: DEFAULT_TABLET_PREFERENCES, liveInputSession: () => session,
+    handlePointerMove: vi.fn(() => sequence.push('tool')),
+    syncPenCursor: vi.fn(() => sequence.push('cursor')),
+    hidePenCursor: vi.fn(), hideEyedropperMagnifier: vi.fn()
+  } as unknown as Parameters<typeof useCanvasDeviceRouter>[0]
+  const { result, unmount } = renderHook(() => useCanvasDeviceRouter(ports))
+  const nativeEvent = { pointerId: 4, pointerType: 'mouse', button: -1, buttons: 0, timeStamp: performance.now() }
+  const event = { ...nativeEvent, nativeEvent, currentTarget: canvas, preventDefault: vi.fn() } as unknown as ReactPointerEvent<HTMLCanvasElement>
+
+  act(() => result.current.pointerMove(event))
+
+  expect(sequence).toEqual(['cursor', 'tool'])
+  unmount()
+})

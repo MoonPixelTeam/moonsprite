@@ -4,7 +4,7 @@
 
 MoonSprite 是面向 Windows 的原创源码可见像素画工作台，使用 Tauri 2、React、TypeScript、Zustand 和 Canvas 构建。项目与 Aseprite 无隶属关系，也不使用其源码、品牌或视觉资产。
 
-当前源码版本为 `1.0.0-beta7`（Beta 通道），最近一次已打包版本为 [`1.0.0-beta7`](docs/changelog/1.0.0-beta7.md)。下列能力以当前源码实现为准；已打包版本的变更范围见对应更新记录。
+当前源码版本为 `1.0.0-beta8`（Beta 通道），最近一次已打包版本为 [`1.0.0-beta8`](docs/changelog/1.0.0-beta8.md)。下列能力以当前源码实现为准；已打包版本的变更范围见对应更新记录。
 
 ## 当前能力
 

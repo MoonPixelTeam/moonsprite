@@ -117,12 +117,17 @@ it.each(['pencil', 'eraser'] as const)('keeps solid %s hover and drawing on the 
   expect(session.brushSize).toBe(8)
   act(() => flushCanvasBrushSize(input))
   input.modifierBrushSize = null
+  const snapSize = vi.spyOn(ports, 'snapBrushPointToGrid').mockImplementation(point => point)
+  session.brushDynamics.effects.size = { ...session.brushDynamics.effects.size, sensor: 'pressure', outputMin: 25 }
+  act(() => result.current.brushPreviewDrawRef.current())
+  expect(snapSize.mock.lastCall?.[1]).toBe(Math.max(1, Math.round(session.brushSize * 0.25)))
   input.drag = { kind: 'draw', start: { x: 140, y: 140 }, last: { x: 140, y: 140 }, lastBrushSize: 4, edit: {} } as CanvasInputState['drag']
   expect(result.current.brushPreviewOverlaySupported(session)).toBe(true)
   input.pointer.point = { x: 140, y: 128 }
   context.moveTo.mockClear()
   act(() => result.current.brushPreviewDrawRef.current())
   const initialOutlineX = Math.max(...context.moveTo.mock.calls.map(([x]) => x))
+  expect(snapSize.mock.lastCall?.[1]).toBe(4)
   context.moveTo.mockClear()
   const heldMove = { clientX: 258, clientY: 128, ctrlKey: false, altKey: false, metaKey: false, shiftKey: false, buttons: 1, pointerId: 1, pointerType: 'mouse', pressure: 0 }
   move({ ...heldMove, nativeEvent: heldMove, currentTarget: canvas } as unknown as Parameters<typeof move>[0])

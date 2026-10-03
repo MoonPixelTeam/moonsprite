@@ -12,7 +12,6 @@ import { sampledForegroundColorToAdd } from '@/core/canvas-input-preview'
 import { type CanvasDragState as DragState, type CanvasPoint as Point } from '@/core/canvas-input-contracts'
 import { canvasCursors, canvasToolCursor } from '@/core/canvas-visuals'
 import { publishCanvasColorSamplingCompleted } from '@/components/color-sampling-events'
-
 interface Ports {
   freeTileAtPoint: (
     point: Point,
@@ -94,7 +93,7 @@ export function createSamplingCanvasInput(ports: Ports) {
           return true
         }
         const mask = activeLayerMask(session)
-        const sampled = reference ?? (mask ? readLayerMaskDisplayColorAt(mask, point.x, point.y) : cursorCompositePointSamplerFor(session)(point.x, point.y))
+        const sampled = reference ?? (mask ? readLayerMaskDisplayColorAt(mask, point.x, point.y) : sampleEyedropperColor(session.document, point.x, point.y, cursorCompositePointSamplerFor(session)))
         // Batch cross-session color updates; pointer-up flushes the latest sample.
         queueEyedropperSampleColor(sampled, Boolean(drag.sampleSecondary))
         drag.sampledColor = { ...sampled }
@@ -148,3 +147,4 @@ export function createSamplingCanvasInput(ports: Ports) {
   }
   return { moveSample, endSample }
 }
+import { sampleEyedropperColor } from '@/core/eyedropper-source'

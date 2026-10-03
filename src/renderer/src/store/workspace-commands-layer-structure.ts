@@ -24,15 +24,9 @@ import { normalizeAnimationSelection, selectedGroupRows, selectedDirectLayerRows
 import { documentUsesTilesetPanel, requestTilesetPanelVisibility } from './workspace-tileset-panel'
 import { activeSession } from './workspace-access'
 import { tr } from './workspace-translation'
-import { cloneAnimationCelsForLayerIds } from './workspace-animation-clone'
 import { layerHistoryBytes, groupHistoryBytes } from './workspace-layer-style-history'
 import { type IndexedTilesetSnapshot, removeTilesetSnapshots, removableOwnedTilesets } from './workspace-layer-owned-tilesets'
 import { captureAnimationSelectionHistory, historyEntryWithAnimationSelection } from './workspace-animation-selection-history'
-
-const cloneAnimationLayerMasksForLayerIds = (document: SpriteDocument, layerIds: ReadonlySet<string>): AnimationLayerMask[] =>
-  (ensureAnimationDocument(document).layerMasks ?? [])
-    .filter((entry) => layerIds.has(entry.layerId))
-    .map((entry) => cloneAnimationLayerMask(entry))
 
 const removeAnimationLayerMasksForLayerIds = (document: SpriteDocument, layerIds: ReadonlySet<string>): void => {
   const timeline = ensureAnimationDocument(document)
@@ -172,15 +166,19 @@ export function createLayerStructureCommands({ get, set, recording }: WorkspaceC
         if (linkedCopyName) copy.name = linkedCopyName
         cloneAnimationCelsForLayer(document, priorId, copy)
         const copiedTilesets = cloneOwnedLayerTilesets(document, [{ source, target: copy }])
-        const animationCels = cloneAnimationCelsForLayerIds(document, [copy.id])
+        const timeline = ensureAnimationDocument(document)
+        // The copied layer already owns isolated cel surfaces. Reuse those
+        // objects for history and clone only when redo restores the layer.
+        const animationCels = timeline.cels.filter((cel) => cel.layerId === copy.id)
+        const animationLayerMasks = (timeline.layerMasks ?? []).filter((entry) => entry.layerId === copy.id)
         session.selectedGroupId = null
         session.selectedGroupIds = []
         session.selectedLayerIds = [copy.id]
         const index = document.layers.findIndex((item) => item.id === copy.id)
         session.history.push({
           label: tr('workspace.history.copyLayer'), bytes: layerHistoryBytes(copy) + copiedTilesets.reduce((sum, tileset) => sum + tilemapTilesetBytes(tileset), 0),
-          undo: () => { document.layers = document.layers.filter((item) => item.id !== copy.id); removeAnimationCelsForLayers(document, [copy.id]); document.tilesets = (document.tilesets ?? []).filter((tileset) => !copiedTilesets.some((copyTileset) => copyTileset.id === tileset.id)); document.activeLayerId = priorId },
-          redo: () => { for (const tileset of copiedTilesets) if (!document.tilesets?.some((candidate) => candidate.id === tileset.id)) document.tilesets = [...(document.tilesets ?? []), tileset]; document.layers.splice(index, 0, copy); restoreAnimationCels(document, animationCels); document.activeLayerId = copy.id }
+          undo: () => { document.layers = document.layers.filter((item) => item.id !== copy.id); removeAnimationCelsForLayers(document, [copy.id]); removeAnimationLayerMasksForLayerIds(document, new Set([copy.id])); document.tilesets = (document.tilesets ?? []).filter((tileset) => !copiedTilesets.some((copyTileset) => copyTileset.id === tileset.id)); document.activeLayerId = priorId },
+          redo: () => { for (const tileset of copiedTilesets) if (!document.tilesets?.some((candidate) => candidate.id === tileset.id)) document.tilesets = [...(document.tilesets ?? []), tileset]; document.layers.splice(index, 0, copy); restoreAnimationCels(document, animationCels); restoreAnimationLayerMasks(document, animationLayerMasks); document.activeLayerId = copy.id }
         })
       }, true, true)
     },
@@ -207,7 +205,9 @@ export function createLayerStructureCommands({ get, set, recording }: WorkspaceC
         const copiedTilesets = cloneOwnedLayerTilesets(document, copies.map((copy, index) => ({ source: sourceLayers[index], target: copy })))
         createdIds.push(...copies.map((copy) => copy.id))
         const placements = copies.map((copy) => ({ copy, index: document.layers.indexOf(copy) }))
-        const animationCels = cloneAnimationCelsForLayerIds(document, createdIds)
+        const timeline = ensureAnimationDocument(document)
+        const animationCels = timeline.cels.filter((cel) => createdIds.includes(cel.layerId))
+        const animationLayerMasks = (timeline.layerMasks ?? []).filter((entry) => createdIds.includes(entry.layerId))
         document.activeLayerId = copies.at(-1)!.id
         session.selectedGroupId = null
         session.selectedGroupIds = []
@@ -219,6 +219,7 @@ export function createLayerStructureCommands({ get, set, recording }: WorkspaceC
             const ids = new Set(createdIds)
             document.layers = document.layers.filter((layer) => !ids.has(layer.id))
             removeAnimationCelsForLayers(document, createdIds)
+            removeAnimationLayerMasksForLayerIds(document, new Set(createdIds))
             document.tilesets = (document.tilesets ?? []).filter((tileset) => !copiedTilesets.some((copyTileset) => copyTileset.id === tileset.id))
             document.activeLayerId = priorActiveId
             session.selectedLayerIds = priorSelection
@@ -229,6 +230,7 @@ export function createLayerStructureCommands({ get, set, recording }: WorkspaceC
             for (const tileset of copiedTilesets) if (!document.tilesets?.some((candidate) => candidate.id === tileset.id)) document.tilesets = [...(document.tilesets ?? []), tileset]
             for (const { copy, index } of placements) if (!document.layers.some((layer) => layer.id === copy.id)) document.layers.splice(Math.min(index, document.layers.length), 0, copy)
             restoreAnimationCels(document, animationCels)
+            restoreAnimationLayerMasks(document, animationLayerMasks)
             document.activeLayerId = copies.at(-1)!.id
             session.selectedLayerIds = [...createdIds]
             session.selectedGroupId = null
@@ -304,11 +306,12 @@ export function createLayerStructureCommands({ get, set, recording }: WorkspaceC
         document.layers.splice(insertionIndex, 0, ...layers)
         layers.forEach((layer, index) => cloneAnimationCelsForLayer(document, sourceLayers[index].id, layer))
         const copiedTilesets = cloneOwnedLayerTilesets(document, layers.map((layer, index) => ({ source: sourceLayers[index], target: layer })))
-        const animationCels = cloneAnimationCelsForLayerIds(document, layers.map((layer) => layer.id))
+        const createdLayerIds = new Set(layers.map((layer) => layer.id))
+        const animationCels = timeline.cels.filter((cel) => createdLayerIds.has(cel.layerId))
+        const animationLayerMasks = (timeline.layerMasks ?? []).filter((entry) => createdLayerIds.has(entry.layerId))
         document.activeLayerId = layers.at(-1)?.id ?? previousActiveId
         session.collapsedGroupIds = [...new Set([...previousCollapsedGroupIds, ...copiedCollapsedGroupIds])]
         applyLayerRowSelection(session, layers.map((layer) => layer.id), result.groupIds, layers.length > 0 ? { kind: 'layer', id: layers.at(-1)!.id } : { kind: 'group', id: result.groupIds.at(-1)! })
-        const createdLayerIds = new Set(layers.map((layer) => layer.id))
         const createdGroupIds = new Set(groups.map((group) => group.id))
         const creationHistory: HistoryEntry = {
           label: tr('workspace.history.copyLayer'),
@@ -316,6 +319,7 @@ export function createLayerStructureCommands({ get, set, recording }: WorkspaceC
           undo: () => {
             document.layers = document.layers.filter((layer) => !createdLayerIds.has(layer.id))
             removeAnimationCelsForLayers(document, layers.map((layer) => layer.id))
+            removeAnimationLayerMasksForLayerIds(document, createdLayerIds)
             document.tilesets = (document.tilesets ?? []).filter((tileset) => !copiedTilesets.some((copyTileset) => copyTileset.id === tileset.id))
             document.groups = document.groups.filter((group) => !createdGroupIds.has(group.id))
             timeline.groupMasks = (timeline.groupMasks ?? []).filter((entry) => !createdGroupIds.has(entry.groupId))
@@ -333,6 +337,7 @@ export function createLayerStructureCommands({ get, set, recording }: WorkspaceC
             const missing = layers.filter((layer) => !document.layers.includes(layer))
             if (missing.length > 0) document.layers.splice(Math.min(insertionIndex, document.layers.length), 0, ...missing)
             restoreAnimationCels(document, animationCels)
+            restoreAnimationLayerMasks(document, animationLayerMasks)
             document.activeLayerId = layers.at(-1)?.id ?? previousActiveId
             session.collapsedGroupIds = [...new Set([...previousCollapsedGroupIds, ...copiedCollapsedGroupIds])]
             applyLayerRowSelection(session, layers.map((layer) => layer.id), result.groupIds, layers.length > 0 ? { kind: 'layer', id: layers.at(-1)!.id } : { kind: 'group', id: result.groupIds.at(-1)! })
@@ -362,9 +367,12 @@ export function createLayerStructureCommands({ get, set, recording }: WorkspaceC
         const removed = document.layers[index]
         if (!removed || isLayerEffectivelyLocked(document, removed)) { set({ message: tr('workspace.layer.lockedDelete') }); return }
         const removedTilesets = removableOwnedTilesets(document, new Set([removed.id]))
-        const animationCels = cloneAnimationCelsForLayerIds(document, [removed.id])
+        syncActiveAnimationFrame(document)
+        const timeline = ensureAnimationDocument(document)
+        // Removed cels are detached immediately; defer cloning until undo.
+        const animationCels = timeline.cels.filter((cel) => cel.layerId === removed.id)
         const removedLayerIds = new Set([removed.id])
-        const animationLayerMasks = cloneAnimationLayerMasksForLayerIds(document, removedLayerIds)
+        const animationLayerMasks = (timeline.layerMasks ?? []).filter((entry) => removedLayerIds.has(entry.layerId))
         document.layers.splice(index, 1)
         removeAnimationCelsForLayers(document, [removed.id])
         removeAnimationLayerMasksForLayerIds(document, removedLayerIds)
@@ -409,10 +417,12 @@ export function createLayerStructureCommands({ get, set, recording }: WorkspaceC
         const previousGroupId = session.selectedGroupId
         const previousGroupIds = [...session.selectedGroupIds]
         const removedTilesets = removableOwnedTilesets(document, selectedIds)
-        const animationCels = cloneAnimationCelsForLayerIds(document, [...selectedIds])
+        syncActiveAnimationFrame(document)
         const timeline = ensureAnimationDocument(document)
-        const removedLayerMasks = cloneAnimationLayerMasksForLayerIds(document, selectedIds)
-        const removedGroupMasks = (timeline.groupMasks ?? []).filter((entry) => selectedGroupIdSet.has(entry.groupId)).map((entry) => cloneAnimationGroupMask(entry))
+        // Removed objects are detached below; defer deep cloning until undo.
+        const animationCels = timeline.cels.filter((cel) => selectedIds.has(cel.layerId))
+        const removedLayerMasks = (timeline.layerMasks ?? []).filter((entry) => selectedIds.has(entry.layerId))
+        const removedGroupMasks = (timeline.groupMasks ?? []).filter((entry) => selectedGroupIdSet.has(entry.groupId))
         document.layers = document.layers.filter((layer) => !selectedIds.has(layer.id))
         removeAnimationCelsForLayers(document, [...selectedIds])
         removeAnimationLayerMasksForLayerIds(document, selectedIds)

@@ -7,7 +7,7 @@ import { type DocumentSession } from '@/store/workspace'
 import { loadEditorPreferences } from '@/core/file-preferences'
 import { advanceIsoAlignedStrokeSegment, traceIsoGridPointerEdges, updateIsoAlignedStrokePath } from '@/core/isometric'
 import { type CanvasDragState as DragState, type CanvasPoint as Point } from '@/core/canvas-input'
-import { brushOpacityScale, isPressurePointerType, resolveBrushDynamics, smoothBrushSizeEnvelope } from '@/core/pressure'
+import { brushOpacityScale, isPressurePointerType, resolveBrushDynamics, smoothBrushSizeEnvelope, usesPressureDynamics } from '@/core/pressure'
 import { activeBrushInputsForTool } from '@/core/brushes'
 import { brushAngleWithDynamics } from './canvas-stage-helpers'
 
@@ -20,6 +20,7 @@ export function createCanvasStrokeBrush(session: DocumentSession, preferences: S
   const isoGridSnapActive = session.view.isoViewEnabled === true && isoViewPreferences.snapToGrid
   const brushInputs = activeBrushInputsForTool(session.tool, session.fillKind ?? 'bucket', session.brushImage, session.brushTexture)
   const activeBrushImage = brushInputs.imageBrush
+  const pressureSizeDynamics = usesPressureDynamics(session.brushDynamics, 'size')
   const snapBrushPointToGrid = (
   point: Point,
   size: number,
@@ -113,9 +114,7 @@ export function createCanvasStrokeBrush(session: DocumentSession, preferences: S
     Math.abs(advanced.endpoint.x - advanced.anchor.x),
     Math.abs(advanced.endpoint.y - advanced.anchor.y)
     )
-    const targetSize = activeBrushImage?.intrinsicSize
-    ? targetDynamics.size
-    : smoothBrushSizeEnvelope(segmentStartSample.size ?? session.brushSize, targetDynamics.size, session.brushSize, distance)
+    const targetSize = activeBrushImage?.intrinsicSize || pressureSizeDynamics ? targetDynamics.size : smoothBrushSizeEnvelope(segmentStartSample.size ?? session.brushSize, targetDynamics.size, session.brushSize, distance)
     const targetColor = drag.color ?? activeColor()
     const targetGradient = drag.colorReplacement ? undefined : brushGradientAt(targetColor, targetDynamics.gradientAmount)
     const targetSample = {
@@ -156,9 +155,7 @@ export function createCanvasStrokeBrush(session: DocumentSession, preferences: S
 
     const strokes = traced.edges.map((edge) => {
       const distance = Math.max(Math.abs(edge.to.x - edge.from.x), Math.abs(edge.to.y - edge.from.y))
-      const targetSize = activeBrushImage?.intrinsicSize
-      ? targetDynamics.size
-      : smoothBrushSizeEnvelope(drag.lastBrushSize ?? session.brushSize, targetDynamics.size, session.brushSize, distance)
+      const targetSize = activeBrushImage?.intrinsicSize || pressureSizeDynamics ? targetDynamics.size : smoothBrushSizeEnvelope(drag.lastBrushSize ?? session.brushSize, targetDynamics.size, session.brushSize, distance)
       const targetColor = drag.color ?? activeColor()
       const targetGradient = drag.colorReplacement ? undefined : brushGradientAt(targetColor, targetDynamics.gradientAmount)
       const stroke = {

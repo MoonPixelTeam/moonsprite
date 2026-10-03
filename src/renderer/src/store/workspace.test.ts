@@ -344,6 +344,31 @@ describe('automatic animation cel links', () => {
     expect(secondCel.linkedCelId).toBe(firstCel.id)
   })
 
+  it('keeps the duplicated frame history snapshot isolated through an edit undo', () => {
+    const document = createDocument('duplicate frame history snapshot', 1, 1, 'rgba')
+    const layer = getActiveLayer(document)
+    useWorkspace.getState().addSession(document)
+    const timeline = ensureAnimationDocument(document)
+    const firstFrameId = timeline.activeFrameId
+    const sourceEdit = beginPixelEdit(layer.id)
+    recordPixel(document, layer, sourceEdit, 0, packColor(red))
+    useWorkspace.getState().commitPixelEdit(sourceEdit, 'paint source')
+
+    useWorkspace.getState().duplicateAnimationFrame()
+    const duplicatedFrameId = timeline.activeFrameId
+    const edit = beginPixelEdit(layer.id)
+    recordPixel(document, layer, edit, 0, packColor(blue))
+    useWorkspace.getState().commitPixelEdit(edit, 'paint duplicate')
+
+    useWorkspace.getState().undo()
+    expect(readLayerColorAt(document, layer, 0, 0)).toEqual(red)
+    useWorkspace.getState().undo()
+    expect(timeline.frames.map((frame) => frame.id)).toEqual([firstFrameId])
+    useWorkspace.getState().redo()
+    expect(timeline.activeFrameId).toBe(duplicatedFrameId)
+    expect(readLayerColorAt(document, layer, 0, 0)).toEqual(red)
+  })
+
   it('auto-links a new frame from an independent cel and preserves the link through undo/redo', () => {
     const document = createDocument('automatic cel link history', 1, 1, 'rgba')
     const layer = getActiveLayer(document)

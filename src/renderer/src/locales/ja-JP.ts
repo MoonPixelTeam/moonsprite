@@ -1,15 +1,23 @@
 import { convolutionEn } from './convolution'
 import { gradientMapEn } from './gradient-map'
 import { beta7En } from './release-beta7'
+import { beta8En } from './release-beta8'
 import { spriteSheetImportjaJP } from './sprite-sheet-import'
 import type { TranslationCatalog } from './contracts'
 
 import { tabletEn } from './tablet'
 
 export const jaJPMessages = {
+  "toolOptions.eyedropperSource": "色の取得元",
+  "toolOptions.eyedropperSourceHint": "キャンバスの合成色、または現在のレイヤーの元の画素色を取得します。",
+  "toolOptions.eyedropperSourceComposite": "キャンバスの合成色",
+  "toolOptions.eyedropperSourceCompositeHint": "不透明度、合成モード、効果を適用した全表示レイヤーの色を取得します。",
+  "toolOptions.eyedropperSourceLayer": "現在のレイヤーの元の色",
+  "toolOptions.eyedropperSourceLayerHint": "画素の色とアルファのみを取得します。レイヤーの不透明度、合成、マスク、効果は含みません。",
 
   ...convolutionEn,
   ...beta7En,
+  ...beta8En,
   ...gradientMapEn,
   "toolOptions.temporaryBrushCaptureHint": "一時ブラシ：ドラッグで範囲を選択、離して使用。Esc でキャンセル",
   "preferences.paintingCursor.cross": "シンプルな十字",

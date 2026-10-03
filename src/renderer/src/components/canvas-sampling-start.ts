@@ -108,7 +108,7 @@ export function createCanvasSamplingStart(ports: {
       }
       const setSampledColor = secondary ? state.setSecondaryColor : state.setPrimaryColor
       const mask = activeLayerMask(session)
-      const sampled = outsideCanvas ? { ...TRANSPARENT } : mask ? readLayerMaskDisplayColorAt(mask, point.x, point.y) : cursorCompositePointSamplerFor(session)(point.x, point.y)
+      const sampled = outsideCanvas ? { ...TRANSPARENT } : mask ? readLayerMaskDisplayColorAt(mask, point.x, point.y) : sampleEyedropperColor(session.document, point.x, point.y, cursorCompositePointSamplerFor(session))
       const previous = secondary ? session.secondaryColor : session.primaryColor
       setSampledColor(sampled)
       publishCanvasColorSample(sampled, secondary)
@@ -123,3 +123,4 @@ export function createCanvasSamplingStart(ports: {
     return { sampleAtPoint }
   }
 }
+import { sampleEyedropperColor } from '@/core/eyedropper-source'

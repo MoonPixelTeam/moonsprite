@@ -5,7 +5,7 @@ import { isLayerEffectivelyLocked, isLayerEffectivelyVisible, readLayerVisibleCo
 import { type DocumentSession } from '@/store/workspace'
 import { selectionResizeHit, type CanvasPoint as Point, type SelectionHandle } from '@/core/canvas-input'
 import { layerIdsInVisualStackOrder } from '@/core/layer-panel-layout'
-import { ensureAnimationDocument, resolveAnimationCel } from '@/core/animation'
+import { createDefaultAnimationTimeline, resolveAnimationCel } from '@/core/animation'
 import { TEXT_TOOL_PREVIEW_EVENT, type TextToolPreviewDetail } from '@/components/text-tool-events'
 interface Ports {
   readonly session: DocumentSession
@@ -36,7 +36,7 @@ export function useCanvasTextPreview(ports: Ports) {
   }, [ports.session.document.id])
 
   const textLayerAt = (point: Point): RasterLayer | null => {
-    const timeline = ensureAnimationDocument(ports.session.document)
+    const timeline = ports.session.document.animation ?? createDefaultAnimationTimeline()
     const layerById = new Map(ports.session.document.layers.map((layer) => [layer.id, layer]))
     for (const layerId of layerIdsInVisualStackOrder(ports.session.document.layers, ports.session.document.groups)) {
       const layer = layerById.get(layerId)

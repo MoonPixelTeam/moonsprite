@@ -52,7 +52,18 @@ export const hidePenCursor = (ports: CanvasPenCursorPorts, refs: CanvasPenCursor
   syncNativeVisibility(true)
 }
 
-export const refreshPenCursor = (ports: CanvasPenCursorPorts, refs: CanvasPenCursorRefs): void => {
+export type CanvasCursorPositionUpdater = (point: { x: number; y: number }) => void
+export interface CanvasPenCursorClientPoint {
+  x: number
+  y: number
+  pointerId: number
+  pointerType: string
+  buttons: number
+  timeStamp: number
+  source: 'move' | 'raw'
+}
+
+export const refreshPenCursor = (ports: CanvasPenCursorPorts, refs: CanvasPenCursorRefs, syncPosition?: () => void): CanvasCursorPositionUpdater | undefined => {
   const canvas = ports.canvasRef.current
   const image = refs.penCursorRef.current
   const pointer = refs.penCursorStateRef.current
@@ -65,16 +76,19 @@ export const refreshPenCursor = (ports: CanvasPenCursorPorts, refs: CanvasPenCur
   const dot = adaptive && (!selectionCursor || selectionOverlay) && preferences?.paintingCursorShape === 'dot'
   const pixelCross = adaptive && (!selectionCursor || selectionOverlay) && preferences?.paintingCursorShape === 'pixel-cross'
   const systemCrosshair = !selectionOverlay && !dot && !pixelCross && (!alignToPixel || selectionCursor) && adaptive && preferences?.useLocalCursors
-  setCursorFlag(canvas, 'paintingCursor', systemCrosshair ? 'system' : undefined)
   const paintingScale = preferences?.cursorScale ?? 1
   const pixelCrossScale = paintingScale / (Number.isFinite(ports.interfaceScale) && ports.interfaceScale > 0 ? ports.interfaceScale : 1)
   const dotSize = 3 * paintingScale
   const descriptor = pixelCross ? { source: pixelCrossSource, size: 32 * pixelCrossScale, hotspotX: 15 * pixelCrossScale, hotspotY: 15 * pixelCrossScale } : dot ? { source: 'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%223%22 height=%223%22%3E%3Ccircle fill=%22white%22 cx=%221.5%22 cy=%221.5%22 r=%221.5%22/%3E%3C/svg%3E', size: dotSize, hotspotX: dotSize / 2, hotspotY: dotSize / 2 } : systemCrosshair ? null : cursorOverlayDescriptor(selectionOverlay ? 'var(--cursor-pencil-black)' : canvas.style.cursor, preferences?.useLocalCursors ?? false, adaptive ? paintingScale : preferences?.cursorScale ?? 1, ports.interfaceScale)
   const penDescriptor = descriptor
   const softwarePen = pointer.pressure && Boolean(descriptor)
+  const overlay = refs.adaptiveCursorRef.current
+  // Native cursors follow the OS pointer without stage coordinates. For a
+  // software cursor, read geometry before changing any cursor DOM styles.
+  if (descriptor && (softwarePen || (adaptive && overlay))) syncPosition?.()
+  setCursorFlag(canvas, 'paintingCursor', systemCrosshair ? 'system' : undefined)
   setCursorFlag(document.documentElement, 'penInput', softwarePen ? 'true' : undefined)
   syncNativeVisibility(!softwarePen)
-  const overlay = refs.adaptiveCursorRef.current
   if (overlay) setHidden(overlay, !adaptive || !descriptor)
   if (adaptive && descriptor && overlay) {
     setCursorFlag(canvas, 'adaptiveCursor', 'true')
@@ -85,10 +99,13 @@ export const refreshPenCursor = (ports: CanvasPenCursorPorts, refs: CanvasPenCur
     setCursorStyle(overlay, 'backgroundColor', !pixelCross && preferences?.cursorColorMode === 'custom' && color ? `rgba(${color.r}, ${color.g}, ${color.b}, ${color.a / 255})` : '')
     setCursorStyle(overlay, 'width', `${descriptor.size}px`)
     setCursorStyle(overlay, 'height', `${descriptor.size}px`)
-    const point = alignToPixel && ports.paintingPoint ? ports.paintingPoint(pointer) : pointer
-    setCursorStyle(overlay, 'transform', `translate3d(${point.x - descriptor.hotspotX}px, ${point.y - descriptor.hotspotY}px, 0)`)
+    const move: CanvasCursorPositionUpdater = pointer => {
+      const point = alignToPixel && ports.paintingPoint ? ports.paintingPoint(pointer) : pointer
+      setCursorStyle(overlay, 'transform', `translate3d(${point.x - descriptor.hotspotX}px, ${point.y - descriptor.hotspotY}px, 0)`)
+    }
+    move(pointer)
     setHidden(image, true)
-    return
+    return move
   }
   setCursorFlag(canvas, 'adaptiveCursor')
   if (!pointer.pressure || !penDescriptor) {
@@ -101,6 +118,10 @@ export const refreshPenCursor = (ports: CanvasPenCursorPorts, refs: CanvasPenCur
   }
   setCursorStyle(image, 'width', `${penDescriptor.size}px`)
   setCursorStyle(image, 'height', `${penDescriptor.size}px`)
-  setCursorStyle(image, 'transform', `translate3d(${pointer.x - penDescriptor.hotspotX}px, ${pointer.y - penDescriptor.hotspotY}px, 0)`)
+  const move: CanvasCursorPositionUpdater = point => {
+    setCursorStyle(image, 'transform', `translate3d(${point.x - penDescriptor.hotspotX}px, ${point.y - penDescriptor.hotspotY}px, 0)`)
+  }
+  move(pointer)
   setHidden(image, false)
+  return move
 }

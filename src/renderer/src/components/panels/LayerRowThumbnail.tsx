@@ -21,7 +21,7 @@ export function LayerRowThumbnail({ documentId, layerId, size }: { documentId: s
   const active = !session.activeLayerMaskId && document.activeLayerId === layerId
   const activate = (event: LayerCellShortcutModifiers): void => {
     const store = useWorkspace.getState()
-    if (timeline) runLayerCellShortcut(event, documentId, layerId, timeline.activeFrameId, 'cel')
+    if (timeline && runLayerCellShortcut(event, documentId, layerId, timeline.activeFrameId, 'cel')) return
     store.activateLayerForCanvas(layerId)
   }
   return <span className={`layer-row-thumbnail${active ? ' active' : ''}`} role="button" tabIndex={0}

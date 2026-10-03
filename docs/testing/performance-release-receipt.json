@@ -1,16 +1,16 @@
 {
   "schemaVersion": 1,
   "status": "complete",
-  "releaseLabel": "1.0.0-beta7",
-  "auditId": "2026-09-27_12-04-32-396_455e417d",
+  "releaseLabel": "1.0.0-beta8",
+  "auditId": "2026-10-03_07-50-17-992_a830f6f4",
   "outcome": "approved-no-change",
-  "acceptedAt": "2026-09-27T12:14:25.729Z",
+  "acceptedAt": "2026-10-03T08:00:22.498Z",
   "scopeLevel": "P3",
   "releaseAudit": true,
   "sourceFingerprint": {
     "algorithm": "sha256",
-    "value": "c7d59581b7affd1e91cf18d6c08071e7d182f7bcc880ab1013c7402c89d2337f",
-    "files": 1219,
+    "value": "9ea401b3087dceb4783a8c5f2ad5112cab2c75198792a801bc81c4355eb24888",
+    "files": 1270,
     "scope": "repository"
   }
 }

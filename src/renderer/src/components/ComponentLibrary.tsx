@@ -526,12 +526,12 @@ function PressureOptionsPreview({ locale }: { locale: AppLocale }) {
   const [perfectPixels, setPerfectPixels] = useState(true)
   const [panelOpen, setPanelOpen] = useState(true)
   const [settings, setSettings] = useState<BrushDynamicsSettings>({
-    version: 5,
+    version: 6,
     effects: {
-      size: { sensor: null, outputMin: 20, outputMax: 100, inputMin: 0, inputMax: 70, curve: 'hard', direction: 'direct' },
+      size: { sensor: null, outputMin: 20, outputMax: 100, inputMin: 0, inputMax: 100, curve: 'linear', direction: 'direct' },
       strength: { sensor: null, outputMin: 25, outputMax: 100, inputMin: 50, inputMax: 2400, curve: 'linear', direction: 'inverse' },
-      gradient: { sensor: 'pressure', outputMin: 0, outputMax: 100, inputMin: 0, inputMax: 70, curve: 'hard', direction: 'direct' },
-      angle: { sensor: null, outputMin: -180, outputMax: 180, inputMin: 0, inputMax: 70, curve: 'hard', direction: 'direct' }
+      gradient: { sensor: 'pressure', outputMin: 0, outputMax: 100, inputMin: 10, inputMax: 90, curve: 'linear', direction: 'direct' },
+      angle: { sensor: null, outputMin: -180, outputMax: 180, inputMin: 0, inputMax: 100, curve: 'linear', direction: 'direct' }
     },
     gradientDither: 'bayer-4'
   })

@@ -127,6 +127,7 @@ describe('shortcut persistence boundary', () => {
     expect(shortcutText({ key: 'k', code: 'KeyK', ctrlKey: false, metaKey: true, altKey: false, shiftKey: false } as KeyboardEvent)).toBe('Win+K')
     expect(shortcutMatchesEvent({ key: 'r', code: 'KeyR', ctrlKey: true, metaKey: false, altKey: false, shiftKey: false } as KeyboardEvent, DEFAULT_SHORTCUTS['tool.eyedropper.quick'])).toBe(false)
     expect(shortcutMatchesEvent({ key: 'r', code: 'KeyR', ctrlKey: true, metaKey: false, altKey: false, shiftKey: false } as KeyboardEvent, 'Ctrl+R')).toBe(true)
+    expect(modifierShortcutHeldByBindings({ key: 'Meta', code: 'MetaLeft', ctrlKey: false, metaKey: true, altKey: false, shiftKey: false } as KeyboardEvent, ['Ctrl'])).toBe(true)
     expect(shortcutMatchesEvent({ key: 'Alt', code: 'AltLeft', ctrlKey: false, metaKey: false, altKey: true, shiftKey: false } as KeyboardEvent, DEFAULT_SHORTCUTS['tool.eyedropper.quick'])).toBe(true)
   })
 
@@ -211,5 +212,5 @@ it('matches held ordinary keys and treats modifier event flags as authoritative'
   expect(modifierShortcutHeldByBindings(none, ['Space+K'], held)).toBe(true)
   expect(modifierShortcutHeldByBindings(none, ['Ctrl+K'], held)).toBe(false)
   expect(modifierShortcutHeldByBindings({ ...none, metaKey: true }, ['Win+K'], held)).toBe(true)
-  expect(modifierShortcutHeldByBindings({ ...none, metaKey: true }, ['Ctrl+K'], held)).toBe(false)
+  expect(modifierShortcutHeldByBindings({ ...none, metaKey: true }, ['Ctrl+K'], held)).toBe(true)
 })

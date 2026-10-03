@@ -18,12 +18,12 @@ export interface LatestReleaseDefinition {
 
 const currentRelease = {
   version: LATEST_PACKAGED_RELEASE_LABEL,
-  publishedAt: '2026-09-27',
-  homeSummary: 'release.beta7.summary',
+  publishedAt: '2026-10-03',
+  homeSummary: 'release.beta8.summary',
   sections: [
-    { title: 'latestRelease.section.interaction', items: ['release.beta7.gradient', 'release.beta7.animation', 'release.beta7.colors', 'release.beta7.home'] },
-    { title: 'latestRelease.section.canvas', items: ['release.beta7.canvas', 'release.beta7.cache', 'release.beta7.layers', 'release.beta7.fixes'] },
-    { title: 'latestRelease.section.maintenance', items: ['release.beta7.files', 'release.beta7.diagnostics', 'release.beta7.website'] }
+    { title: 'latestRelease.section.interaction', items: ['release.beta8.animation', 'release.beta8.reliability'] },
+    { title: 'latestRelease.section.canvas', items: ['release.beta8.canvas', 'release.beta8.layers'] },
+    { title: 'latestRelease.section.maintenance', items: ['release.beta8.maintenance'] }
   ]
 } as const satisfies LatestReleaseDefinition
 

@@ -48,6 +48,12 @@ it.each([
     expect(y).toBeLessThan(bounds!.y + bounds!.height)
   }
   // An empty, off-document cursor must not copy or filter any backdrop.
+  const snap = vi.fn((point: unknown, _size: number) => point)
+  args.snapBrushPointToGrid = snap as typeof args.snapBrushPointToGrid
+  session.brushDynamics.effects.size = { ...session.brushDynamics.effects.size, sensor: 'pressure', outputMin: 25 }
+  renderCanvasBrush(args)
+  expect(snap.mock.lastCall?.[1]).toBe(4)
+  expect(session.brushSize).toBe(16)
   vi.mocked(canvasAdaptiveContrast).mockClear()
   context.stroke.mockClear()
   input.pointer.point = { x: -100, y: -100 }

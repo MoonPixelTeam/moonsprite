@@ -17,6 +17,7 @@ import type * as React from 'react'
 import type { DocumentSession } from '@/store/workspace-types'
 import { BrushPreviewStackCache, BrushPreviewCompositeCache, brushBaseAngle } from './canvas-stage-helpers'
 import { brushOpacityScale } from '@/core/pressure'
+import { canvasBrushHoverSize } from './canvas-brush-hover-size'
 export function renderCanvasBrush({
   currentActiveLayer,
   currentSession,
@@ -189,11 +190,8 @@ export function renderCanvasBrush({
         ? currentSession.proceduralAntialiasStrength
         : 0
     const erasing = currentSession.tool === 'eraser'
-    // Dynamic mappings are already resolved into the active drag's last
-    // sample.  When hovering, keep the configured brush size so enabling
-    // pressure does not collapse the preview to the pointer-event hover
-    // pressure (usually zero).
-    const previewBrushSize = drawing ? (drag?.lastBrushSize ?? currentSession.brushSize) : currentSession.brushSize
+    // Drawing uses the resolved sample; hovering shows the pressure minimum.
+    const previewBrushSize = drawing ? (drag?.lastBrushSize ?? currentSession.brushSize) : canvasBrushHoverSize(currentSession)
     const previewBrushImage = currentBrushImage
     const previewBrushAngle = drawing ? (drag?.path?.at(-1)?.angle ?? brushBaseAngle(currentSession)) : brushBaseAngle(currentSession)
     const overwriteImageBrushPixels = !erasing && previewBrushImage?.intrinsicSize === true && currentBrushPreviewMode === 'paint'
@@ -301,6 +299,23 @@ export function renderCanvasBrush({
         }
         outline.stroke(context, undefined, brushEdgeColor)
       }
+    } else if (!drawing && previewBrushSize > 64 && !previewBrushImage) {
+      // Keep large idle brush previews responsive. Building the complete mask
+      // and sampling every covered pixel is much more expensive than the
+      // outline the user sees, especially when many layers are composited.
+      const left = previewPixelRect(brushPoint.x - beforeX, brushPoint.y - beforeY)
+      const right = previewPixelRect(brushPoint.x - beforeX + previewBrushSize - 1, brushPoint.y - beforeY + previewBrushSize - 1)
+      context.save()
+      context.lineWidth = brushEdgeThickness
+      const edge = brushEdgeColor ?? { r: 255, g: 255, b: 255, a: 255 }
+      context.strokeStyle = `rgb(${edge.r} ${edge.g} ${edge.b} / ${edge.a / 255})`
+      context.beginPath()
+      const boxRight = right.x + right.width
+      const boxBottom = right.y + right.height
+      context.moveTo(left.x, left.y); context.lineTo(boxRight, left.y); context.lineTo(boxRight, boxBottom)
+      context.lineTo(left.x, boxBottom); context.lineTo(left.x, left.y)
+      context.stroke()
+      context.restore()
     } else {
       const mask = brushMaskOffsets(
         previewBrushSize,

@@ -1,15 +1,23 @@
 import { convolutionEn } from './convolution'
 import { gradientMapEn } from './gradient-map'
 import { beta7En } from './release-beta7'
+import { beta8En } from './release-beta8'
 import { spriteSheetImportkoKR } from './sprite-sheet-import'
 import type { TranslationCatalog } from './contracts'
 
 import { tabletEn } from './tablet'
 
 export const koKRMessages = {
+  "toolOptions.eyedropperSource": "색상 소스",
+  "toolOptions.eyedropperSourceHint": "캔버스 합성 색상 또는 현재 레이어의 원본 픽셀을 추출합니다.",
+  "toolOptions.eyedropperSourceComposite": "캔버스 합성 색상",
+  "toolOptions.eyedropperSourceCompositeHint": "불투명도, 혼합 및 효과가 적용된 모든 표시 레이어의 색상을 추출합니다.",
+  "toolOptions.eyedropperSourceLayer": "현재 레이어 원본 색상",
+  "toolOptions.eyedropperSourceLayerHint": "픽셀 색상과 알파만 읽습니다. 레이어 불투명도, 혼합, 마스크 및 효과는 제외합니다.",
 
   ...convolutionEn,
   ...beta7En,
+  ...beta8En,
   ...gradientMapEn,
   "toolOptions.temporaryBrushCaptureHint": "임시 브러시: 드래그하여 영역 선택, 놓아서 사용; Esc로 취소",
   "preferences.paintingCursor.cross": "단순 십자",

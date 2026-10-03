@@ -13,7 +13,7 @@ import {
   remapIndexedDocumentToVisiblePalette,
   setLayerStorageOrigin
 } from './document-model'
-import { createAnimationCelLookup, ensureAnimationDocument, normalizeAnimationTimeline, refreshActiveAnimationFrame } from './animation'
+import { createAnimationCelLookup, normalizeAnimationTimeline, refreshActiveAnimationFrame } from './animation'
 import { normalizeOutlineSettings } from './outline-settings'
 import { normalizeProjectDisplaySettings, normalizeProjectStatistics } from './project-metadata'
 import { translateCurrent as tr } from './localization'
@@ -687,7 +687,6 @@ export function decodeProject(input: Uint8Array, options: ProjectDecodeOptions =
   decodedRasterByKey.clear()
   for (const name of requiredFiles) if (name !== 'manifest.json') delete files[name]
   if ((manifest.sourceSchemaVersion ?? 0) < SPARSE_RASTER_PROJECT_SCHEMA_VERSION) compactProjectRasterStorage(document)
-  ensureAnimationDocument(document)
   refreshActiveAnimationFrame(document)
   remapIndexedDocumentToVisiblePalette(document)
   const activeLayer = document.layers.find((layer) => layer.id === document.activeLayerId)

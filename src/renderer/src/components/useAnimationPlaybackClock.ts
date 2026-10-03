@@ -1,5 +1,4 @@
 import { useEffect, useRef } from 'react'
-import { ensureAnimationDocument } from '@/core/animation'
 import { useWorkspace } from '@/store/workspace'
 
 interface AnimationPlaybackClockState {
@@ -20,7 +19,8 @@ export const useAnimationPlaybackClock = (documentId: string): void => {
   const playbackKey = useWorkspace((state) => {
     const session = state.sessions.find((item) => item.document.id === documentId)
     if (!session?.animationPlaying) return `${documentId}:idle`
-    const timeline = ensureAnimationDocument(session.document)
+    const timeline = session.document.animation
+    if (!timeline) return `${documentId}:idle`
     const frame = timeline.frames.find((candidate) => candidate.id === timeline.activeFrameId)
     return `${documentId}:${frame?.id ?? ''}:${frame?.duration ?? 0}:${session.animationPlaybackRate}:${session.animationPlaybackMode}:${timeline.loop ? 1 : 0}:${session.animationPlaybackLoopSectionId ?? ''}:${session.animationPlaybackLoopSectionRepeatIndefinitely ? 1 : 0}:${session.animationPlaybackLoopIteration}`
   })
@@ -32,7 +32,11 @@ export const useAnimationPlaybackClock = (documentId: string): void => {
       clockRef.current = null
       return
     }
-    const timeline = ensureAnimationDocument(session.document)
+    const timeline = session.document.animation
+    if (!timeline) {
+      clockRef.current = null
+      return
+    }
     const activeFrame = timeline.frames.find((frame) => frame.id === timeline.activeFrameId)
     if (!activeFrame) {
       clockRef.current = null

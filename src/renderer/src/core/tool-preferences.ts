@@ -17,6 +17,7 @@ import {
   type LegacyBrushDynamicsSettingsV2,
   type LegacyBrushDynamicsSettingsV3,
   type LegacyBrushDynamicsSettingsV4,
+  type LegacyBrushDynamicsSettingsV5,
   type BrushPressureSettings
 } from './pressure'
 
@@ -193,8 +194,8 @@ export function normalizePersistedBrushProfile(stored: Partial<PersistedBrushPro
     id,
     normalizeProceduralBrushSettings(id, stored?.proceduralBrushSettings?.[id] ?? fallback.proceduralBrushSettings[id])
   ])) as Record<ProceduralBrushId, ProceduralBrushSettings>
-  const storedDynamics = stored?.brushDynamics as BrushDynamicsSettings | LegacyBrushDynamicsSettingsV2 | LegacyBrushDynamicsSettingsV3 | LegacyBrushDynamicsSettingsV4 | undefined
-  const brushDynamics = storedDynamics?.version === 2 || storedDynamics?.version === 3 || storedDynamics?.version === 4 || storedDynamics?.version === 5
+  const storedDynamics = stored?.brushDynamics as BrushDynamicsSettings | LegacyBrushDynamicsSettingsV2 | LegacyBrushDynamicsSettingsV3 | LegacyBrushDynamicsSettingsV4 | LegacyBrushDynamicsSettingsV5 | undefined
+  const brushDynamics = storedDynamics?.version === 2 || storedDynamics?.version === 3 || storedDynamics?.version === 4 || storedDynamics?.version === 5 || storedDynamics?.version === 6
     ? normalizeBrushDynamicsSettings(storedDynamics, fallback.brushDynamics)
     : stored?.brushPressure
       ? migrateBrushPressureSettings(stored.brushPressure)

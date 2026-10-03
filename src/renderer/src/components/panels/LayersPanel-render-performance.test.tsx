@@ -11,6 +11,13 @@ import { registerAnimationCelThumbnailPreviewListener } from '@/core/canvas-prev
 import { writeLayerColor } from '@/core/document'
 import { layersPanelRenderKey } from '@/core/panel-render-keys'
 
+// Exercise cell-cache reuse over the complete matrix here. Viewport bounds
+// are independently covered by LayerTimelineCells.window.test.ts.
+vi.mock('./layer-timeline-cell-window', async importOriginal => {
+  const actual = await importOriginal<typeof import('./layer-timeline-cell-window')>()
+  return { ...actual, initialTimelineCellsWindow: actual.allTimelineCellsWindow, measureTimelineCellWindow: actual.allTimelineCellsWindow }
+})
+
 afterEach(() => { cleanup(); vi.useRealTimers(); vi.restoreAllMocks(); useWorkspace.setState({sessions: [], activeId: null}) })
 
 it('updates the edited row without rebuilding the layer panel during opacity previews', () => {
@@ -55,6 +62,40 @@ it('does not request live raster thumbnails during opacity previews, but still r
     act(() => store.mutateActive(session => { writeLayerColor(session.document, layer, 0, { r: 255, g: 0, b: 0, a: 255 }) }))
     expect(notify).toHaveBeenCalled()
   } finally { unregister() }
+})
+
+it('refreshes only the active cel after a pixel edit in a large timeline', () => {
+  localStorage.clear()
+  const doc = createDocument('targeted content refresh', 1, 1, 'rgba')
+  for (let i = 1; i < 24; i++) doc.layers.push(createLayer(`L${i}`, 1, 1, 'rgba'))
+  const timeline = ensureAnimationDocument(doc)
+  timeline.frames = Array.from({ length: 48 }, (_, i) => ({ id: `f${i}`, duration: 100 }))
+  timeline.activeFrameId = timeline.frames[0].id
+  timeline.cels = doc.layers.flatMap(layer => timeline.frames.map(frame => ({
+    id: `${layer.id}-${frame.id}`,
+    layerId: layer.id,
+    frameId: frame.id,
+    surface: { format: 'rgba' as const, width: 1, height: 1, offsetX: 0, offsetY: 0, pixels: new Uint8ClampedArray([255, 0, 0, 255]) }
+  })))
+  useWorkspace.getState().addSession(doc)
+  const session = useWorkspace.getState().sessions[0]
+  const stateChecks = vi.spyOn(cellCache, 'timelineCellRenderState')
+  render(<LayersPanel session={session} docked />)
+  const initialStates = stateChecks.mock.results.map(result => result.value)
+  stateChecks.mockClear()
+
+  act(() => useWorkspace.getState().mutateActive(current => {
+    const layer = current.document.layers[0]
+    if (layer.format !== 'rgba') throw new Error('Expected an RGBA fixture')
+    writeLayerColor(current.document, layer, 0, { r: 0, g: 255, b: 0, a: 255 })
+  }, 'content', true, false, { kind: 'region', rect: { x: 0, y: 0, width: 1, height: 1 } }))
+  const updatedStates = stateChecks.mock.results.map(result => result.value)
+  const changedStates = updatedStates.reduce((count, state, index) => count + (!cellCache.sameTimelineCellState(initialStates[index] ?? [], state ?? []) ? 1 : 0), 0)
+
+  // A content revision must not invalidate every layer×frame cell. Only the
+  // active cel carries the new revision and needs a fresh element.
+  expect(updatedStates).toHaveLength(24 * 48)
+  expect(changedStates).toBe(1)
 })
 
 it.each(['frame', 'cel'] as const)('measures complete %s range/move React updates', kind => {
@@ -107,3 +148,45 @@ it.each(['frame', 'cel'] as const)('measures complete %s range/move React update
   fireEvent.pointerCancel(window)
   process.stdout.write(`Full panel ${kind}, 960 cells / 5 updates: range ${rangeMs.toFixed(1)} ms (${rangeChecks} cell checks), move ${moveMs.toFixed(1)} ms (${moveChecks} cell checks)\n`)
 })
+
+it('reuses off-column group cells while playing two frames in a 297-frame project', () => {
+  vi.useFakeTimers()
+  localStorage.clear()
+  const doc = createDocument('large grouped timeline', 1, 1, 'rgba')
+  for (let i = 1; i < 42; i++) doc.layers.push(createLayer(`L${i}`, 1, 1, 'rgba'))
+  doc.groups = Array.from({ length: 13 }, (_, i) => ({
+    id: `g${i}`, name: `G${i}`, visible: true, locked: false, opacity: 1, blendMode: 'normal' as const
+  }))
+  doc.layers.forEach((layer, i) => { layer.groupId = `g${i % 13}` })
+  const timeline = ensureAnimationDocument(doc)
+  timeline.frames = Array.from({ length: 297 }, (_, i) => ({ id: `f${i}`, duration: 100 }))
+  timeline.activeFrameId = 'f271'
+  timeline.cels = doc.layers.flatMap(layer => timeline.frames.map(frame => ({
+    id: `${layer.id}-${frame.id}`, layerId: layer.id, frameId: frame.id
+  })))
+  timeline.loopSections = [{ id: 'short', name: 'Short', startFrameId: 'f271', endFrameId: 'f272', direction: 'forward', repeatCount: null }]
+  useWorkspace.getState().addSession(doc)
+  const store = useWorkspace.getState()
+  store.playAnimationLoopSection('short')
+  function Panel() {
+    useWorkspace(state => layersPanelRenderKey(state.sessions[0]))
+    return <LayersPanel session={useWorkspace.getState().sessions[0]} docked />
+  }
+  const checks = vi.spyOn(cellCache, 'timelineCellRenderState')
+  const { container } = render(<Panel />)
+  const groupStates = () => checks.mock.calls.flatMap((args, i) =>
+    args[1].kind === 'node' && args[1].node.kind === 'group' ? [checks.mock.results[i].value] : []).slice(-13 * 297)
+  const before = groupStates()
+  expect(before).toHaveLength(13 * 297)
+  expect(before.every(state => state !== null)).toBe(true)
+  checks.mockClear()
+  act(() => store.advanceAnimationFrame())
+  const after = groupStates()
+  expect(after).toHaveLength(before.length)
+  expect(after.filter((state, i) => !cellCache.sameTimelineCellState(before[i]!, state!))).toHaveLength(13 * 2)
+  expect(timeline.activeFrameId).toBe('f272')
+  expect(container.querySelectorAll('[data-animation-group-cel-key]')).toHaveLength(13 * 297)
+  checks.mockClear()
+  act(() => store.setView({ zoom: 4 }))
+  expect(checks).not.toHaveBeenCalled()
+}, 30000)

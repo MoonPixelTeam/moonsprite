@@ -21,6 +21,7 @@ import { canvasBrushSizePreviewSession } from './canvas-brush-size-update'
 import { shareCanvasToolSettings } from './canvas-stage-helpers'
 import { activeBrushInputsForTool } from '@/core/brushes'
 import { brushOpacityScale } from '@/core/pressure'
+import { canvasBrushHoverSize } from './canvas-brush-hover-size'
 import { BrushPreviewCompositeCache, BrushPreviewStackCache, brushAngleWithDynamics, brushBaseAngle } from './canvas-stage-helpers'
 interface Ports {
   readonly canvasRef: import('react').RefObject<HTMLCanvasElement | null>
@@ -261,7 +262,7 @@ export function useCanvasBrushOverlay(ports: Ports) {
     const erasing = currentSession.tool === 'eraser'
     const showOutline = ports.brushPreviewMode === 'edge' || ports.brushPreviewMode === 'full-edge' || erasing
     if (drawing && !showOutline) return
-    const size = drawing ? (drag.lastBrushSize ?? currentSession.brushSize) : currentSession.brushSize
+    const size = drawing ? (drag.lastBrushSize ?? currentSession.brushSize) : canvasBrushHoverSize(currentSession)
     const previewAngle = drawing ? (drag.path?.at(-1)?.angle ?? brushBaseAngle(currentSession)) : brushBaseAngle(currentSession)
     const before = brushStampAnchor(size, null, previewAngle, currentSession.brushShape)
     const brushPoint = ports.snapBrushPointToGrid(point, size, null, previewAngle, currentSession)

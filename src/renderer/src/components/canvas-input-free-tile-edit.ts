@@ -15,7 +15,7 @@ import { useWorkspace, type DocumentSession } from '@/store/workspace'
 import { CanvasInputState } from '@/core/canvas-input-controller'
 import { updateBrushSpeedTracking } from '@/core/canvas-input-pointer'
 import { type CanvasDragState as DragState, type CanvasPoint as Point } from '@/core/canvas-input-contracts'
-import { smoothBrushSizeEnvelope } from '@/core/pressure'
+import { smoothBrushSizeEnvelope, usesPressureDynamics } from '@/core/pressure'
 import { freeTileSourceForId } from '@/core/free-tile-document'
 import { freeTileSourceSnapshotFromEditRaster, type FreeTileSourceEditRaster } from '@/core/free-tile-edit'
 import { brushAngleWithDynamics, brushBaseAngle } from './canvas-stage-helpers'
@@ -402,6 +402,7 @@ export function createFreeTileEditCanvasInput(ports: Ports) {
       compositeCacheRef,
       scheduleDraw
     } = ports
+    const pressureSizeDynamics = usesPressureDynamics(session.brushDynamics, 'size')
     if (
       drag.kind === 'free-tile-edit' &&
       drag.edit &&
@@ -573,7 +574,9 @@ export function createFreeTileEditCanvasInput(ports: Ports) {
           previous.y += shift.y
           const local = { x: documentPoint.x - drag.freeTileEditOrigin.x, y: documentPoint.y - drag.freeTileEditOrigin.y }
           const distance = Math.max(Math.abs(local.x - previous.x), Math.abs(local.y - previous.y))
-          const size = activeBrushImage?.intrinsicSize ? dynamics.size : smoothBrushSizeEnvelope(previousSize, dynamics.size, session.brushSize, distance)
+          const size = activeBrushImage?.intrinsicSize || pressureSizeDynamics
+            ? dynamics.size
+            : smoothBrushSizeEnvelope(previousSize, dynamics.size, session.brushSize, distance)
           paintLine(
             drag.freeTileEditDocument,
             drag.freeTileEditLayer,
