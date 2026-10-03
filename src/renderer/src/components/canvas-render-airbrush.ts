@@ -12,22 +12,14 @@ import { brushPreviewAllowedDuringDrag } from '@/core/canvas-input'
 import type * as React from 'react'
 import type { DocumentSession } from '@/store/workspace-types'
 export function renderCanvasAirbrush({
-  canRenderToolPreview,
-  inputRef,
-  session,
-  drag,
-  drawingBrushPreviewEnabled,
-  repeatedDocumentPointsAt,
-  paintSelectionForDrag,
-  gridSnapActive,
-  document,
-  symmetryCenter,
-  view,
-  sampleCompositeForPreview,
-  context,
-  activeTheme,
-  previewPointKey,
-  previewPixelRects,
+  canRenderToolPreview, inputRef,
+  session, drag,
+  drawingBrushPreviewEnabled, repeatedDocumentPointsAt,
+  paintSelectionForDrag, gridSnapActive,
+  document, symmetryCenter,
+  view, sampleCompositeForPreview,
+  context, activeTheme,
+  previewPointKey, previewPixelRects,
   drawPreviewPixel,
   previewColorAt
 }: {
@@ -205,3 +197,4 @@ export function renderCanvasAirbrush({
     context.restore()
   }
 }
+
