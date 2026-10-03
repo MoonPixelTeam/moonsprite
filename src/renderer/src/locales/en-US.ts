@@ -1,6 +1,7 @@
 import { convolutionEn } from './convolution'
 import { gradientMapEn } from './gradient-map'
 import { beta7En } from './release-beta7'
+import { beta8En } from './release-beta8'
 import { spriteSheetImportenUS } from './sprite-sheet-import'
 import type { TranslationCatalog } from './contracts'
 
@@ -15,6 +16,7 @@ export const enUSMessages = {
   "toolOptions.eyedropperSourceLayerHint": "Read original pixels and their alpha, excluding layer opacity, blending, masks and effects.",
 
   ...beta7En,
+  ...beta8En,
   ...gradientMapEn,
   ...convolutionEn,
   "toolOptions.temporaryBrushCaptureHint": "Temporary brush: drag to select an area, release to use; Esc to cancel",

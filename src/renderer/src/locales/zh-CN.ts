@@ -1,6 +1,7 @@
 import { convolutionZh } from './convolution'
 import { gradientMapZh } from './gradient-map'
 import { beta7Zh } from './release-beta7'
+import { beta8Zh } from './release-beta8'
 import { spriteSheetImportzhCN } from './sprite-sheet-import'
 import { tabletZh } from './tablet'
 
@@ -13,6 +14,7 @@ export const zhCNMessages = {
   "toolOptions.eyedropperSourceLayerHint": "只读取当前图层的原始像素及其透明度，不计入图层透明度、混合模式、蒙版或效果。",
 
   ...beta7Zh,
+  ...beta8Zh,
   ...gradientMapZh,
   ...convolutionZh,
   "toolOptions.temporaryBrushCaptureHint": "临时笔刷取样：拖动框选区域，松开使用；Esc 取消",

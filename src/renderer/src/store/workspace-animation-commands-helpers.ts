@@ -41,8 +41,10 @@ export const retargetAnimationLoopPlaybackAtFrame = (session: DocumentSession, f
 
 export const activateAnimationPlaybackFrame = (session: DocumentSession, frameId: string): boolean => {
   // Reuse navigation's non-materializing switch: preserve the outgoing
-  // surface and resolve the incoming cel without normalizing all frames.
-  if (!activateAnimationFrame(session.document, frameId, false)) return false
+  // surface and resolve the incoming cel without normalizing all frames. The
+  // playback clock is read-only, so there is no need to copy every displayed
+  // layer back into its outgoing cel before applying the next frame.
+  if (!activateAnimationFrame(session.document, frameId, false, false)) return false
   const preserveMaskContext = (session.selectedAnimationMaskRowKeys?.length ?? 0) > 0 || (session.selectedAnimationMaskCellKeys?.length ?? 0) > 0 || session.activeLayerMaskId !== null
   if (!preserveMaskContext) {
     session.activeLayerMaskId = null

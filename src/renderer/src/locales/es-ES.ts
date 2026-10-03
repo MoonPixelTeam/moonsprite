@@ -1,6 +1,7 @@
 import { convolutionEn } from './convolution'
 import { gradientMapEn } from './gradient-map'
 import { beta7En } from './release-beta7'
+import { beta8En } from './release-beta8'
 import { spriteSheetImportesES } from './sprite-sheet-import'
 import type { TranslationCatalog } from './contracts'
 
@@ -16,6 +17,7 @@ export const esESMessages = {
 
   ...convolutionEn,
   ...beta7En,
+  ...beta8En,
   ...gradientMapEn,
   "toolOptions.temporaryBrushCaptureHint": "Pincel temporal: arrastra un área y suelta para usar; Esc para cancelar",
   "preferences.paintingCursor.cross": "Cruz simple",

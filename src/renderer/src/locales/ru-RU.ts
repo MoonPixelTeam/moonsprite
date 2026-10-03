@@ -1,6 +1,7 @@
 import { convolutionEn } from './convolution'
 import { gradientMapEn } from './gradient-map'
 import { beta7En } from './release-beta7'
+import { beta8En } from './release-beta8'
 import { spriteSheetImportruRU } from './sprite-sheet-import'
 import type { TranslationCatalog } from './contracts'
 
@@ -16,6 +17,7 @@ export const ruRUMessages = {
 
   ...convolutionEn,
   ...beta7En,
+  ...beta8En,
   ...gradientMapEn,
   "toolOptions.temporaryBrushCaptureHint": "Временная кисть: выделите область и отпустите для использования; Esc — отмена",
   "preferences.paintingCursor.cross": "Простой крест",

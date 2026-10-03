@@ -31,7 +31,20 @@ import {
 
 
 
-export function createAnimationPlaybackCommands({ get }: WorkspaceCommandContext<'advanceAnimationFrame' | 'commitFloatingPaste' | 'mutateActive' | 'setActiveAnimationFrame' | 'setAnimationLoop' | 'setAnimationPlaying'>): Pick<WorkspaceAnimationCommands, 'setAnimationPlaying' | 'pauseAnimationAtCurrentFrame' | 'setAnimationPlaybackRate' | 'setAnimationPlaybackMode' | 'setAnimationReturnToStart' | 'advanceAnimationFrame' | 'createAnimationLoopSection' | 'updateAnimationLoopSection' | 'deleteAnimationLoopSection' | 'playAnimationLoopSection'> {
+export function createAnimationPlaybackCommands({ get }: WorkspaceCommandContext<'advanceAnimationFrame' | 'commitFloatingPaste' | 'mutateActive' | 'mutatePlayback' | 'setActiveAnimationFrame' | 'setAnimationLoop' | 'setAnimationPlaying'>): Pick<WorkspaceAnimationCommands, 'setAnimationPlaying' | 'pauseAnimationAtCurrentFrame' | 'setAnimationPlaybackRate' | 'setAnimationPlaybackMode' | 'setAnimationReturnToStart' | 'advanceAnimationFrame' | 'createAnimationLoopSection' | 'updateAnimationLoopSection' | 'deleteAnimationLoopSection' | 'playAnimationLoopSection'> {
+  const advancePlaybackToFrame = (frameId: string): void => {
+    get().mutatePlayback((current) => {
+      if (!activateAnimationPlaybackFrame(current, frameId)) return
+      const preserveMaskContext = (current.selectedAnimationMaskRowKeys?.length ?? 0) > 0 || (current.selectedAnimationMaskCellKeys?.length ?? 0) > 0 || current.activeLayerMaskId !== null
+      if (!preserveMaskContext) {
+        current.activeLayerMaskId = null
+        current.layerMaskIsolatedView = false
+      }
+      current.lastPencilPoint = null
+      current.lastEraserPoint = null
+    })
+  }
+
   return {
     setAnimationPlaying(playing, completed = false) {
       // A floating selection belongs to the frame on which the transform was
@@ -189,7 +202,7 @@ export function createAnimationPlaybackCommands({ get }: WorkspaceCommandContext
         if (step && nestedSection) {
           const nestedStartFrameId = animationLoopSectionStartFrameId(timeline, nestedSection)
           if (!nestedStartFrameId) return
-          get().mutateActive((current) => {
+          get().mutatePlayback((current) => {
             current.animationPlaybackLoopStack.push({
               sectionId: loopSection.id,
               iteration: step.completedIterations,
@@ -197,7 +210,7 @@ export function createAnimationPlaybackCommands({ get }: WorkspaceCommandContext
             })
             setAnimationLoopPlaybackSection(current, nestedSection)
             activateAnimationPlaybackFrame(current, nestedStartFrameId)
-          }, false)
+          })
           return
         }
         if (step?.completed && session.animationPlaybackLoopStack.length > 0) {
@@ -208,13 +221,13 @@ export function createAnimationPlaybackCommands({ get }: WorkspaceCommandContext
             get().setAnimationPlaying(false)
             return
           }
-          get().mutateActive((current) => {
+          get().mutatePlayback((current) => {
             current.animationPlaybackLoopStack = current.animationPlaybackLoopStack.slice(0, -1)
             setAnimationLoopPlaybackSection(current, parentSection)
             activateAnimationPlaybackFrame(current, boundaryFrameId)
             current.animationPlaybackLoopIteration = parentContext!.iteration
             current.animationPlaybackLoopPosition = parentContext!.position
-          }, false)
+          })
           return
         }
         if (step?.completed && playbackMode === 'tag' && !session.animationPlaybackLoopSectionRepeatIndefinitely && loopSection.repeatCount !== null) {
@@ -223,13 +236,13 @@ export function createAnimationPlaybackCommands({ get }: WorkspaceCommandContext
             const cycleSectionId = session.animationPlaybackTagCycleSectionId
             const cycleSection = cycleSectionId ? ((timeline.loopSections ?? []).find((section) => section.id === cycleSectionId) ?? null) : null
             if (cycleSection && animationLoopSectionContainsFrame(timeline, cycleSection, nextFrameId)) {
-              get().mutateActive((current) => {
+              get().mutatePlayback((current) => {
                 setAnimationLoopPlaybackSection(current, cycleSection)
                 const cycleStartFrameId = animationLoopSectionStartFrameId(timeline, cycleSection)
                 if (cycleStartFrameId) activateAnimationPlaybackFrame(current, cycleStartFrameId)
-              }, false)
+              })
             } else if (cycleSectionId) {
-              get().mutateActive((current) => {
+              get().mutatePlayback((current) => {
                 const nextSection = animationLoopSectionAtFrame(timeline, nextFrameId)
                 if (nextSection && nextSection.repeatCount !== null) {
                   setAnimationLoopPlaybackSection(current, nextSection)
@@ -242,9 +255,9 @@ export function createAnimationPlaybackCommands({ get }: WorkspaceCommandContext
                   current.animationPlaybackLoopSectionRepeatIndefinitely = false
                   activateAnimationPlaybackFrame(current, nextFrameId)
                 }
-              }, false)
+              })
             } else {
-              get().setActiveAnimationFrame(nextFrameId)
+              advancePlaybackToFrame(nextFrameId)
             }
             return
           }
@@ -253,7 +266,7 @@ export function createAnimationPlaybackCommands({ get }: WorkspaceCommandContext
           get().setAnimationPlaying(false, Boolean(step?.completed))
           return
         }
-        get().mutateActive((current) => {
+        get().mutatePlayback((current) => {
           current.animationPlaybackLoopIteration = step.completedIterations
           current.animationPlaybackLoopPosition = step.position
           if (!activateAnimationPlaybackFrame(current, step.frameId)) return
@@ -264,8 +277,7 @@ export function createAnimationPlaybackCommands({ get }: WorkspaceCommandContext
           }
           current.lastPencilPoint = null
           current.lastEraserPoint = null
-          current.revision += 1
-        }, false)
+        })
         return
       }
       const playbackMode = session.animationPlaybackMode ?? (timeline.loop ? 'all' : 'once')
@@ -279,7 +291,7 @@ export function createAnimationPlaybackCommands({ get }: WorkspaceCommandContext
           get().setAnimationPlaying(false)
           return
         }
-        get().mutateActive((current) => {
+        get().mutatePlayback((current) => {
           if (animationLoopSectionContainsFrame(timeline, cycleSection, nextFrameId)) {
             setAnimationLoopPlaybackSection(current, cycleSection)
             const cycleStartFrameId = animationLoopSectionStartFrameId(timeline, cycleSection)
@@ -298,8 +310,8 @@ export function createAnimationPlaybackCommands({ get }: WorkspaceCommandContext
               activateAnimationPlaybackFrame(current, nextFrameId)
             }
           }
-        }, false)
-      } else get().setActiveAnimationFrame(nextFrameId)
+        })
+      } else advancePlaybackToFrame(nextFrameId)
     },
     ...createAnimationLoopEditingCommands({ get }),
     playAnimationLoopSection(id) {
