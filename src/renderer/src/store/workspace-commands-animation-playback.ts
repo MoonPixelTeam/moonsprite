@@ -99,6 +99,7 @@ export function createAnimationPlaybackCommands({ get }: WorkspaceCommandContext
             session.revision += 1
           }
           session.animationPlaying = true
+          session.contentInvalidation = { kind: 'full', fromRevision: session.contentRevision, revision: session.contentRevision }
           return
         }
         session.animationPlaying = false
@@ -335,6 +336,7 @@ export function createAnimationPlaybackCommands({ get }: WorkspaceCommandContext
         session.animationPlaybackLoopStack = []
         session.animationPlaybackTagCycleSectionId = session.animationPlaybackMode === 'tag' && section.repeatCount !== null ? id : null
         session.animationPlaying = true
+        session.contentInvalidation = { kind: 'full', fromRevision: session.contentRevision, revision: session.contentRevision }
         if (firstFrameId !== timeline.activeFrameId && activateAnimationFrame(session.document, firstFrameId, false)) {
           if (!preserveMaskContext) {
             session.activeLayerMaskId = null

@@ -157,6 +157,7 @@ export function mergeLayerGroup(document: SpriteDocument, groupId: string): Laye
   const removedLayerIds = layers.map((layer) => layer.id)
   if (!replaceLayerPanelGroupWithLayer(document, groupId, merged)) return { ok: false, reason: tr('core.layerMerge.groupMissing') }
   document.groups = document.groups.filter((candidate) => !groupIds.has(candidate.id))
+  if (document.animation?.groupMasks) document.animation.groupMasks = document.animation.groupMasks.filter((entry) => !groupIds.has(entry.groupId))
   document.activeLayerId = merged.id
   installMergedFrames(document, merged, mergedFrames, removedLayerIds)
   return { ok: true, layerId: merged.id, removedLayerIds, removedGroupIds }
@@ -204,6 +205,10 @@ export function mergeVisibleLayers(document: SpriteDocument): LayerMergeResult {
   document.layers = document.layers.filter((layer) => !removedLayerSet.has(layer.id))
   document.layers.push(merged)
   const removedGroupIds = removeEmptyGroups(document)
+  if (document.animation?.groupMasks) {
+    const remainingGroups = new Set(document.groups.map((group) => group.id))
+    document.animation.groupMasks = document.animation.groupMasks.filter((entry) => remainingGroups.has(entry.groupId))
+  }
   document.activeLayerId = merged.id
   installMergedFrames(document, merged, mergedFrames, removedLayerIds)
   return { ok: true, layerId: merged.id, removedLayerIds, removedGroupIds }

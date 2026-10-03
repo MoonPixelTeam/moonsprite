@@ -1197,8 +1197,9 @@ export const disconnectAnimationCels = (document: SpriteDocument, celIds: readon
 }
 
 export const syncActiveAnimationFrame = (document: SpriteDocument): void => {
-  if (!document.animation) ensureAnimationDocument(document)
-  syncActiveAnimationLayers(document)
+  const timeline = ensureAnimationDocument(document)
+  syncFrameSurfaces(document, timeline)
+  applyFrameSurfaces(document, timeline)
 }
 
 const createActiveLayerCel = (timeline: AnimationTimeline, layer: RasterLayer): AnimationCel => {

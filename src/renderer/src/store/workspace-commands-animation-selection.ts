@@ -7,6 +7,7 @@ import {
   ensureAnimationDocument,
   parseAnimationCelKey,
   resolveAnimationCel,
+  syncActiveAnimationFrame,
   stepAnimationFrameId
 } from '@/core/animation'
 import { animationLoopSectionAtFrame, stepAnimationLoopSectionFrameId } from '@/core/animation-loop-sections'
@@ -431,6 +432,7 @@ export function createAnimationSelectionCommands({ get, set }: WorkspaceCommandC
       const target = parseAnimationCelKey(key)
       if (!current || !target) return
       const timeline = (current.document.animation ?? ensureAnimationDocument(current.document))
+      syncActiveAnimationFrame(current.document)
       if (!timeline.frames.some((frame) => frame.id === target.frameId) || !current.document.layers.some((layer) => layer.id === target.layerId)) return
       const before = cloneSelectionMask(current.selection)
       const cel = resolveAnimationCel(timeline, timeline.cels.find((candidate) => candidate.layerId === target.layerId && candidate.frameId === target.frameId) ?? null)
