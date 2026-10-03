@@ -16,7 +16,6 @@ export const allTimelineCellsWindow = (panel: Props): TimelineCellWindow => ({
 
 /** Safe first paint used before a scroll host has a measurable box. */
 export const initialTimelineCellsWindow = (panel: Props): TimelineCellWindow => {
-  if (typeof navigator !== 'undefined' && /jsdom/i.test(navigator.userAgent)) return allTimelineCellsWindow(panel)
   const frameWidth = 34
   const rowHeight = 42
   const headerHeight = 34
@@ -35,7 +34,6 @@ export const sameTimelineCellWindow = (a: TimelineCellWindow, b: TimelineCellWin
 
 export const measureTimelineCellWindow = (panel: Props, viewport: HTMLDivElement): TimelineCellWindow => {
   const all = allTimelineCellsWindow(panel)
-  if (typeof navigator !== 'undefined' && /jsdom/i.test(navigator.userAgent)) return all
   // A floating/docked panel can be measured while it is still entering the
   // layout (clientWidth/clientHeight are temporarily zero). Returning the
   // complete matrix here defeats virtualization and mounts tens of thousands

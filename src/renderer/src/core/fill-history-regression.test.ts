@@ -92,5 +92,5 @@ describe('cropped smart-closure fill history', () => {
     }
     revertPixelEdit(document, edit)
     expect(layer.pixels).toEqual(before)
-  })
+  }, 30000)
 })

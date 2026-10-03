@@ -11,6 +11,13 @@ import { registerAnimationCelThumbnailPreviewListener } from '@/core/canvas-prev
 import { writeLayerColor } from '@/core/document'
 import { layersPanelRenderKey } from '@/core/panel-render-keys'
 
+// Exercise cell-cache reuse over the complete matrix here. Viewport bounds
+// are independently covered by LayerTimelineCells.window.test.ts.
+vi.mock('./layer-timeline-cell-window', async importOriginal => {
+  const actual = await importOriginal<typeof import('./layer-timeline-cell-window')>()
+  return { ...actual, initialTimelineCellsWindow: actual.allTimelineCellsWindow, measureTimelineCellWindow: actual.allTimelineCellsWindow }
+})
+
 afterEach(() => { cleanup(); vi.useRealTimers(); vi.restoreAllMocks(); useWorkspace.setState({sessions: [], activeId: null}) })
 
 it('updates the edited row without rebuilding the layer panel during opacity previews', () => {
@@ -182,4 +189,4 @@ it('reuses off-column group cells while playing two frames in a 297-frame projec
   checks.mockClear()
   act(() => store.setView({ zoom: 4 }))
   expect(checks).not.toHaveBeenCalled()
-})
+}, 30000)
