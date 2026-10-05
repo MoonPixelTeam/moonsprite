@@ -20,16 +20,21 @@ mod windows_cursor {
         Foundation::{BOOL, HWND, LPARAM, POINT, RECT, WPARAM},
         Graphics::Gdi::{
             CombineRgn, CreateBitmap, CreateDIBSection, CreateRectRgn, DeleteObject, GetDC,
-            ReleaseDC, ScreenToClient, SetWindowRgn, BITMAPINFO, BITMAPINFOHEADER, BI_RGB,
-            DIB_RGB_COLORS, HBITMAP, RGBQUAD, RGN_OR,
+            GetMonitorInfoW, MonitorFromRect, ReleaseDC, ScreenToClient, SetWindowRgn, BITMAPINFO,
+            BITMAPINFOHEADER, BI_RGB, DIB_RGB_COLORS, HBITMAP, MONITORINFO,
+            MONITOR_DEFAULTTONEAREST, RGBQUAD, RGN_OR,
         },
         UI::{
-            Shell::{DefSubclassProc, RemoveWindowSubclass, SetWindowSubclass},
+            Shell::{
+                DefSubclassProc, RemoveWindowSubclass, SHAppBarMessage, SetWindowSubclass,
+                ABE_BOTTOM, ABE_LEFT, ABE_RIGHT, ABE_TOP, ABM_GETAUTOHIDEBAR, APPBARDATA,
+            },
             WindowsAndMessaging::{
                 CreateIconIndirect, EnumChildWindows, GetClassLongPtrW, GetCursorPos,
-                GetWindowRect, IsChild, SetClassLongPtrW, SetCursor, SetWindowPos, WindowFromPoint,
-                GCLP_HCURSOR, HCURSOR, HTTRANSPARENT, ICONINFO, SWP_NOACTIVATE, SWP_NOSIZE,
-                SWP_NOZORDER, WM_NCDESTROY, WM_NCHITTEST, WM_SETCURSOR,
+                GetWindowRect, IsChild, IsZoomed, SetClassLongPtrW, SetCursor, SetWindowPos,
+                WindowFromPoint, GCLP_HCURSOR, HCURSOR, HTTRANSPARENT, ICONINFO, NCCALCSIZE_PARAMS,
+                SWP_NOACTIVATE, SWP_NOSIZE, SWP_NOZORDER, WM_NCCALCSIZE, WM_NCDESTROY,
+                WM_NCHITTEST, WM_SETCURSOR,
             },
         },
     };
@@ -329,6 +334,46 @@ mod windows_cursor {
                 }
             }
         }
+        // Tao already uses the monitor work area for borderless maximized
+        // windows. Windows reports the full monitor as the work area while an
+        // auto-hidden taskbar is active, though, so keep the shell's 1px edge
+        // trigger available. Apply this after the chained procedure so it also
+        // remains correct when Tao has already made the same adjustment.
+        if message == WM_NCCALCSIZE && wparam != 0 && IsZoomed(hwnd) != 0 {
+            let result = DefSubclassProc(hwnd, message, wparam, lparam);
+            let params = &mut *(lparam as *mut NCCALCSIZE_PARAMS);
+            let monitor = MonitorFromRect(&params.rgrc[0], MONITOR_DEFAULTTONEAREST);
+            if !monitor.is_null() {
+                let mut monitor_info = MONITORINFO {
+                    cbSize: std::mem::size_of::<MONITORINFO>() as u32,
+                    ..std::mem::zeroed()
+                };
+                if GetMonitorInfoW(monitor, &mut monitor_info) != 0 {
+                    let auto_hide = |edge: u32| {
+                        let mut app_data = APPBARDATA {
+                            cbSize: std::mem::size_of::<APPBARDATA>() as u32,
+                            uEdge: edge,
+                            ..std::mem::zeroed()
+                        };
+                        SHAppBarMessage(ABM_GETAUTOHIDEBAR, &mut app_data) != 0
+                    };
+                    let work = monitor_info.rcWork;
+                    if auto_hide(ABE_BOTTOM) && params.rgrc[0].bottom >= work.bottom {
+                        params.rgrc[0].bottom = work.bottom - 1;
+                    }
+                    if auto_hide(ABE_LEFT) && params.rgrc[0].left <= work.left {
+                        params.rgrc[0].left = work.left + 1;
+                    }
+                    if auto_hide(ABE_TOP) && params.rgrc[0].top <= work.top {
+                        params.rgrc[0].top = work.top + 1;
+                    }
+                    if auto_hide(ABE_RIGHT) && params.rgrc[0].right >= work.right {
+                        params.rgrc[0].right = work.right - 1;
+                    }
+                }
+            }
+            return result;
+        }
         // A delayed WebView cursor message must never take over the canvas cursor.
         let mut pointer = POINT { x: 0, y: 0 };
         let owns_pointer = message == WM_SETCURSOR && GetCursorPos(&mut pointer) != 0 && {
@@ -371,6 +416,10 @@ mod windows_cursor {
         if enabled {
             let _ = cursor_handle()?;
         }
+        // Install the shared window subclass even when the renderer uses the
+        // platform cursor. Besides cursor routing, it preserves the Windows
+        // auto-hide taskbar trigger for this borderless maximized window.
+        install_window_subclass(root_handle, None)?;
         install_on_window(root_handle as HWND, enabled);
         Ok(())
     }

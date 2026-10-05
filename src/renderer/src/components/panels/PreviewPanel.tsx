@@ -20,6 +20,7 @@ import { useI18n } from '@/components/I18nProvider'
 import { resolveTheme } from '@/core/theme'
 import { initialDocumentCompositePending, subscribeInitialDocumentComposite } from '@/core/initial-document-composite'
 import { createPreviewDrawScheduler } from './preview-draw-scheduler'
+import { installCanvasResumeRedraw } from '@/components/canvas-render-resume'
 import { PreviewRasterCache } from './preview-raster-cache'
 import { supportsIncrementalPreview } from '@/core/preview-point-sampler'
 import { pixelSamplingMode } from '@/core/pixel-display'
@@ -223,6 +224,16 @@ export function PreviewPanel({ session, onClose, docked = false, onDockDragStart
       colorSource.current = null
     }
   }, [session.document.id])
+
+  useEffect(() => installCanvasResumeRedraw(
+    () => {
+      // WebView2 may discard the GPU-backed preview surface while the window
+      // is minimized or occluded. Rebuild both caches before playback resumes.
+      compositeCacheRef.current.invalidateAll()
+      rasterCacheRef.current.invalidate()
+    },
+    () => previewSchedulerRef.current?.request(true)
+  ), [session.document.id])
 
   useEffect(() => {
     if (!followViewport) return
