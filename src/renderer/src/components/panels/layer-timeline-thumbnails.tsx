@@ -4,7 +4,7 @@ import type { AnimationCel, AnimationCelSurface } from '@shared/types-animation'
 import type { LayerMask } from '@shared/types-layer'
 import type { PaletteEntry } from '@shared/types-color'
 import { animationMaskAt, getRasterContentRevision } from '@/core/document-model'
-import { animationCelHasContent, createAnimationCelLookup } from '@/core/animation'
+import { animationCelAt, animationCelHasContent, resolveAnimationCel } from '@/core/animation'
 import { renderAnimationCelThumbnailPixels, renderLayerMaskThumbnailPixels } from '@/core/animation-thumbnail'
 import { useWorkspace } from '@/store/workspace'
 import { useI18n } from '@/components/I18nProvider'
@@ -251,9 +251,8 @@ export const useTimelineThumbnailContentSync = (documentId: string): void => {
       const layerIds = activeLayer.linkedContentId
         ? current.document.layers.filter((layer) => layer.linkedContentId === activeLayer.linkedContentId).map((layer) => layer.id)
         : [activeLayer.id]
-      const lookup = createAnimationCelLookup(timeline)
       for (const layerId of new Set(layerIds)) {
-        const cel = lookup.resolve(lookup.at(layerId, timeline.activeFrameId))
+        const cel = resolveAnimationCel(timeline, animationCelAt(timeline, layerId, timeline.activeFrameId))
         if (cel) notifyAnimationCelThumbnailPreview(documentId, cel.id, layerId)
       }
     })

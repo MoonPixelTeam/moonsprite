@@ -1230,7 +1230,9 @@ export const syncActiveAnimationLayer = (document: SpriteDocument, layerId: stri
   const layer = document.layers.find((candidate) => candidate.id === layerId)
   if (!timeline || !layer) return
   const cel = animationCelAt(timeline, layerId, timeline.activeFrameId) ?? createActiveLayerCel(timeline, layer)
-  const lookup = cel.linkedCelId ? createAnimationCelLookup(timeline) : { at: () => cel, resolve: () => cel }
+  // A single-layer commit needs one slot and its current link chain. Reuse
+  // the existing indexes instead of rebuilding both maps for every stroke.
+  const lookup = { at: () => cel, resolve: (candidate: AnimationCel | null) => resolveAnimationCel(timeline, candidate) }
   syncAnimationLayerSurface(timeline, lookup, layer)
   if (layer.linkedContentId) {
     synchronizeLinkedLayerGroupContentsForTimeline(document, timeline, layer.linkedContentId, layer.id, timeline.activeFrameId)
