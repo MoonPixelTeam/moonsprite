@@ -18,6 +18,7 @@ import type { DocumentSession } from '@/store/workspace-types'
 import { BrushPreviewStackCache, BrushPreviewCompositeCache, brushBaseAngle } from './canvas-stage-helpers'
 import { brushOpacityScale } from '@/core/pressure'
 import { canvasBrushHoverSize } from './canvas-brush-hover-size'
+import { solidCompositePreviewRects } from './canvas-brush-solid-composite-preview'
 export function renderCanvasBrush({
   currentActiveLayer,
   currentSession,
@@ -299,6 +300,30 @@ export function renderCanvasBrush({
         }
         outline.stroke(context, undefined, brushEdgeColor)
       }
+    } else if (!drawing && document.groups.length > 0 && previewBrushSize <= 64 && solidPreviewSpans && compositeFilledPreview && brushPreviewMode === 'full' && currentSession.tool === 'pencil') {
+      // Grouped/styled layers still use the exact replacement compositor.
+      // Solid geometry needs neither string-keyed masks nor repeat mappings.
+      const signature = `${document.id}:${currentSession.revision}:${currentActiveLayer.id}:${currentSession.inkMode}:${currentSession.primaryColor.r},${currentSession.primaryColor.g},${currentSession.primaryColor.b},${currentSession.primaryColor.a}:${currentSession.brushOpacity}`
+      let cache = brushPreviewCompositeCacheRef.current
+      if (!cache || cache.signature !== signature) {
+        cache = { signature, colors: new Map() }
+        brushPreviewCompositeCacheRef.current = cache
+      }
+      const colors = cache.colors
+      fillPreviewPixelRects(solidCompositePreviewRects(
+        solidPreviewSpans.map(span => ({ y: brushPoint.y - beforeY + span.y, left: brushPoint.x - beforeX + span.left, right: brushPoint.x - beforeX + span.right })),
+        document.width, document.height,
+        (x, y) => {
+          const key = y * document.width + x
+          let color = colors.get(key)
+          if (!color) {
+            color = previewColorAt(x, y, false, 255, currentSession.primaryColor)
+            colors.set(key, color)
+          }
+          return color
+        },
+        previewPixelRect
+      ))
     } else if (!drawing && previewBrushSize > 64 && !previewBrushImage) {
       // Keep large idle brush previews responsive. Building the complete mask
       // and sampling every covered pixel is much more expensive than the

@@ -12,7 +12,11 @@ vi.mock('@/platform/cursor-theme', () => ({
   setNativeCursorVisible: vi.fn(async () => {}),
   cursorOverlayDescriptor: (_cursor: string, _native: boolean, scale: number, ui: number) => ({ source: '/cursor.png', size: 32 * scale / ui, hotspotX: 15 * scale / ui, hotspotY: 15 * scale / ui })
 }))
-beforeEach(() => { localStorage.setItem('moonsprite.preference.painting-cursor-shape', 'cross') })
+beforeEach(() => {
+  localStorage.setItem('moonsprite.preference.painting-cursor-shape', 'cross')
+  // These tests cover the explicitly software-positioned cursor.
+  localStorage.setItem('moonsprite.preference.painting-cursor-align-pixel', 'true')
+})
 afterEach(() => { cleanup(); vi.restoreAllMocks(); localStorage.clear() })
 
 function Harness({ cursorValue = canvasCursors.pencilBlack, stageBounds = () => ({ left: 10, top: 20 }) as DOMRect, paintingPoint }: {
@@ -108,6 +112,7 @@ it('uses one backdrop mask for a pointer crossing dark and light regions, then c
 
 it.each(['mouse', 'pen'])('uses a system crosshair for simple native %s input and keeps sprite crosshairs independent', (pointerType) => {
   localStorage.setItem(PAINTING_CURSOR_TYPE_KEY, 'simple')
+  localStorage.setItem('moonsprite.preference.painting-cursor-align-pixel', 'false')
   localStorage.setItem(USE_LOCAL_CURSORS_PREFERENCE_KEY, 'true')
   const view = render(<Harness />)
   const canvas = view.container.querySelector('canvas')!
@@ -119,6 +124,7 @@ it.each(['mouse', 'pen'])('uses a system crosshair for simple native %s input an
   expect(view.getByTestId('adaptive')).not.toBeVisible()
   view.unmount()
   localStorage.setItem(PAINTING_CURSOR_TYPE_KEY, 'sprite')
+  localStorage.setItem('moonsprite.preference.painting-cursor-align-pixel', 'true')
   const sprite = render(<Harness />)
   fireEvent(sprite.container.querySelector('canvas')!, move)
   expect(sprite.getByTestId('adaptive')).toBeVisible()
@@ -186,6 +192,29 @@ const pointerPacket = (canvas: HTMLCanvasElement, type: string, x: number, timeS
   Object.defineProperty(event, 'timeStamp', { value: timeStamp })
   fireEvent(canvas, event)
 }
+
+it('keeps a screen-aligned mouse crosshair on the native image cursor without geometry or overlay updates', () => {
+  localStorage.setItem('moonsprite.preference.painting-cursor-align-pixel', 'false')
+  const stageBounds = vi.fn(() => ({ left: 10, top: 20 }) as DOMRect)
+  const view = render(<Harness stageBounds={stageBounds} />)
+  const canvas = view.container.querySelector('canvas')!
+  const overlay = view.getByTestId('adaptive')
+  for (let x = 0; x < 1000; x++) {
+    pointerPacket(canvas, 'pointermove', x, x, 'mouse')
+    pointerPacket(canvas, 'pointerrawupdate', x + 0.5, x + 0.5, 'mouse')
+  }
+  expect(stageBounds).not.toHaveBeenCalled()
+  expect(overlay.hidden).toBe(true)
+  expect(overlay.style.transform).toBe('')
+  expect(canvas.dataset.adaptiveCursor).toBeUndefined()
+  expect(canvas.style.cursor).toBe(canvasCursors.pencilBlack)
+  expect(setNativeCursorVisible).toHaveBeenLastCalledWith(true)
+  // A pressure pointer still requires its software cursor.
+  pointerPacket(canvas, 'pointermove', 40, 1100, 'pen')
+  expect(stageBounds).toHaveBeenCalledOnce()
+  expect(overlay.hidden).toBe(false)
+  expect(setNativeCursorVisible).toHaveBeenLastCalledWith(false)
+})
 
 it.each(['mouse', 'pen'])('updates the %s overlay from raw input without waiting for pointermove, layout, or native IPC', pointerType => {
   const stageBounds = vi.fn(() => ({ left: 10, top: 20 }) as DOMRect)
