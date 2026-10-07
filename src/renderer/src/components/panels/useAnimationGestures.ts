@@ -145,7 +145,7 @@ export function useAnimationGestures(options: Options) {
   const beginAnimationLoopSectionResize = (event: React.PointerEvent<HTMLElement>, sectionId: string, edge: AnimationLoopSectionResizeEdge): void => {
     if (event.button !== 0) return
     const active = useWorkspace.getState().sessions.find((item) => item.document.id === session.document.id) ?? session
-    const currentTimeline = ensureAnimationDocument(active.document)
+    const currentTimeline = active.document.animation ?? ensureAnimationDocument(active.document)
     const section = (currentTimeline.loopSections ?? []).find((candidate) => candidate.id === sectionId)
     const range = section ? resolveAnimationLoopSectionRange(currentTimeline, section) : null
     if (!section || !range) return
@@ -534,7 +534,7 @@ export function useAnimationGestures(options: Options) {
     if (drag.kind === 'loop-section') {
       if (drag.moved) {
         const active = useWorkspace.getState().sessions.find((item) => item.document.id === session.document.id) ?? session
-        const currentTimeline = ensureAnimationDocument(active.document)
+        const currentTimeline = active.document.animation ?? ensureAnimationDocument(active.document)
         const section = (currentTimeline.loopSections ?? []).find((candidate) => candidate.id === drag.sectionId)
         const startFrame = currentTimeline.frames[drag.previewStartIndex]
         const endFrame = currentTimeline.frames[drag.previewEndIndex]

@@ -1,3 +1,4 @@
+import { LayerTimelineFrameHeaders } from './LayerTimelineFrameHeaders'
 import { TimelineSelectionOutlines } from './TimelineSelectionOutlines'
 import { LayerTimelineColumnResizer } from './LayerTimelineColumnResizer'
 import { createLayerPanelTooltips } from './layer-panel-tooltips'
@@ -673,13 +674,14 @@ function LayersPanelComponent({
       )}
     </>
   )
-  const animationFrameHeaders = timeline.frames.map((frame, index) => {
+  const renderAnimationFrameHeader = (frame: (typeof timeline.frames)[number], index: number) => {
     const visualFrame = visualFrameStateById.get(frame.id)
     const frameActive = visualFrame?.active === true || (cellSelectionActive && selectedActivityFrameIds.has(frame.id))
     const frameSelected = Boolean(timelineVisualState.selectionGuidesVisible && visualFrame?.selected)
     return (
       <button
         type="button"
+        style={{ gridRow: 1, gridColumn: index + 1 }}
         data-animation-frame-id={frame.id}
         data-frame-index={index}
         key={`header-${frame.id}`}
@@ -711,7 +713,7 @@ function LayersPanelComponent({
         {layerDensity !== 'compact' && <small>{frame.duration}</small>}
       </button>
     )
-  })
+  }
   const hideSideDockActions = sideDocked && layerSettings.sideDockAutoHide && !layerSettings.timelineHidden
   const visibleLayerQuickActions = layerSettings.quickActions.filter((action) => action.enabled).slice(0, LAYER_QUICK_ACTION_LIMIT)
   const syncTimelineQuickActionVisibility = useCallback((): void => {
@@ -1069,7 +1071,7 @@ function LayersPanelComponent({
               {animationFrameGridDecorations}
               {shouldShowAnimationCellSelectionOutline && selectedCelPositions.length > 0 &&
                 <TimelineSelectionOutlines boxes={animationCelSelectionBoxes} dragging={animationCelDragPreview !== null} />}
-              {animationFrameHeaders}
+              <LayerTimelineFrameHeaders timeline={timeline} displayRows={displayRows} timelineViewportRef={layerListRef} renderHeader={renderAnimationFrameHeader} />
               <LayerTimelineCells
                 timelineViewportRef={layerListRef}
                 displayRows={displayRows}

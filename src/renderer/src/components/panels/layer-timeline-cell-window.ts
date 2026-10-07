@@ -1,4 +1,6 @@
-import type { LayerTimelineCellsProps as Props } from './layer-timeline-cell-types'
+import type { LayerTimelineCellsProps } from './layer-timeline-cell-types'
+
+type Props = Pick<LayerTimelineCellsProps, 'timeline' | 'displayRows'>
 
 export interface TimelineCellWindow {
   rowStart: number

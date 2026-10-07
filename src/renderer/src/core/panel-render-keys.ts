@@ -1,3 +1,4 @@
+import { layerPanelTopologyKey } from './layer-panel-topology-key'
 import type { RgbaColor } from '@shared/types-color'
 import type { SpriteDocument } from '@shared/types-document'
 import { getRasterContentRevision } from './document-model'
@@ -75,10 +76,7 @@ export const layersPanelRenderKey = (session: PanelSessionState): string => [
   // stable. Include the live frame in the memo key even during playback so
   // LayersPanel re-renders its playhead/cel visuals on every timer tick.
   session.document.animation?.activeFrameId ?? '',
-  session.document.animation?.frames.map((frame) => `${frame.id}:${frame.duration}`).join(',') ?? '',
   session.document.animation?.loopSections?.map((section) => `${section.id}:${section.name}:${section.startFrameId}:${section.endFrameId}:${section.direction}:${section.repeatCount ?? 'infinite'}`).join(',') ?? '',
-  session.document.animation?.layerMasks?.map((entry) => `${entry.layerId}:${entry.frameId}:${entry.mask.id}:${entry.mask.visible ? 1 : 0}`).join(',') ?? '',
-  session.document.animation?.groupMasks?.map((entry) => `${entry.groupId}:${entry.frameId}:${entry.mask.id}:${entry.mask.visible ? 1 : 0}`).join(',') ?? '',
   session.animationPlaying ? 1 : 0,
   session.animationPlaybackRate ?? 1,
   session.animationPlaybackMode ?? '',
@@ -95,9 +93,7 @@ export const layersPanelRenderKey = (session: PanelSessionState): string => [
   session.selectedFreeTileInstanceId ?? '',
   session.selectedFreeTileInstanceIds?.join(',') ?? '',
   session.layersPanelRevision ?? session.revision,
-  session.document.animation?.cels.map((cel) => `${cel.id}:${cel.layerId}:${cel.frameId}:${cel.linkedCelId ?? ''}:${cel.zIndex ?? 0}`).join('|') ?? '',
-  session.document.animation?.layerMasks?.map((entry) => `${entry.layerId}:${entry.frameId}:${entry.mask.id}:${entry.mask.linkedMaskId ?? ''}`).join('|') ?? '',
-  session.document.animation?.groupMasks?.map((entry) => `${entry.groupId}:${entry.frameId}:${entry.mask.id}:${entry.mask.linkedMaskId ?? ''}`).join('|') ?? '',
+  layerPanelTopologyKey(session.document, session.layersPanelRevision, session.contentRevision),
   // Each row subscribes to its own opacity/blend properties. Those high-rate
   // values must not rebuild every row and timeline control on each preview.
   session.document.layers.map((layer) => `${layer.id}:${layer.name}:${layer.groupId ?? ''}:${layer.visible ? 1 : 0}:${layer.locked ? 1 : 0}:${layer.autoLinkAnimationCels ? 1 : 0}:${layer.freeTileSetId ?? ''}`).join('|'),

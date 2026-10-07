@@ -1,3 +1,4 @@
+import { styledLayerBlockCacheFor } from './document-composite-style-types'
 import type { LayerGroup, LayerMask, RasterLayer } from '@shared/types-layer'
 import type { SelectionRect } from '@shared/types-selection'
 import type { SpriteDocument } from '@shared/types-document'
@@ -173,6 +174,9 @@ export const normalCompositeLayers = (document: SpriteDocument, allowLayerBlendM
           if (!layerContentBounds(document, item.layer)) continue
           if (!allowLayerBlendModes) return null
         }
+        // The displayed raster includes live strokes/previews not yet synced
+        // into the cel. Skip only proven-empty ordinary raster layers.
+        if (!item.layer.kind && !styledLayerBlockCacheFor(item.layer) && !layerContentBounds(document, item.layer)) continue
         layers.push(item.layer)
         continue
       }
@@ -204,6 +208,9 @@ export const opacityGroupCompositeStack = (document: SpriteDocument, allowNormal
         if (activeMasks.has(item.layer.id)) return null
         if (item.layer.clippingMask === true || item.layer.kind === 'adjustment') return null
         if (hasEnabledLayerStyles(item.layer.layerStyles) && (!allowNormalLayerStyles || item.layer.blendMode !== 'normal')) return null
+        // The displayed raster includes live strokes/previews not yet synced
+        // into the cel. Skip only proven-empty ordinary raster layers.
+        if (!item.layer.kind && !styledLayerBlockCacheFor(item.layer) && !layerContentBounds(document, item.layer)) continue
         if (item.layer.blendMode !== 'normal') {
           if (layerContentBounds(document, item.layer)) prepared.push(item)
           continue

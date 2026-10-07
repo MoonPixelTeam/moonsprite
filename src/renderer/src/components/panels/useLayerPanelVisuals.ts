@@ -1,3 +1,4 @@
+import { layerPanelTopologyKey } from '@/core/layer-panel-topology-key'
 import { useMemo } from 'react'
 import { deriveLayerPanelVisuals, type LayerPanelVisualOptions } from './deriveLayerPanelVisuals'
 import { createLayerPanelStructure } from './layer-panel-structure'
@@ -12,16 +13,7 @@ export function useLayerPanelVisuals(options: LayerPanelVisualOptions) {
   // the fields that actually affect panel structure/link geometry; pixel-only
   // edits keep the existing structure and update their thumbnails through the
   // cell content revision instead.
-  const topologyKey = [
-    inlineMasks ? 'inline' : 'rows',
-    session.collapsedGroupIds.join('\u0000'),
-    session.document.layers.map((layer) => `${layer.id}:${layer.groupId ?? ''}:${layer.kind}:${layer.freeTileSetId ?? ''}:${layer.freeTileSources?.length ?? 0}`).join('\u0001'),
-    session.document.groups.map((group) => `${group.id}:${group.parentGroupId ?? ''}`).join('\u0001'),
-    timeline.frames.map((frame) => frame.id).join('\u0001'),
-    timeline.cels.map((cel) => `${cel.id}:${cel.layerId}:${cel.frameId}:${cel.linkedCelId ?? ''}`).join('\u0001'),
-    (timeline.layerMasks ?? []).map((entry) => `${entry.layerId}:${entry.frameId}:${entry.mask.id}:${entry.mask.linkedMaskId ?? ''}`).join('\u0001'),
-    (timeline.groupMasks ?? []).map((entry) => `${entry.groupId}:${entry.frameId}:${entry.mask.id}:${entry.mask.linkedMaskId ?? ''}`).join('\u0001')
-  ].join('\u0002')
+  const topologyKey = `${inlineMasks ? 'inline' : 'rows'}:${session.collapsedGroupIds.join('\u0000')}:${layerPanelTopologyKey(session.document, session.layersPanelRevision, session.contentRevision)}`
   const structure = useMemo(() => createLayerPanelStructure(session, timeline, inlineMasks), [session.document, timeline, topologyKey])
   const cellStateCache = useMemo(() => createTimelineVisualCellCache(structure.visualTopology), [structure])
   const visuals = useMemo(() => deriveLayerPanelVisuals({...options, structure, cellStateCache, animationCelDropTargetKey: null}), [

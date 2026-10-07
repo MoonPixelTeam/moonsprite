@@ -731,10 +731,8 @@ const syncFrameSurfaces = (document: SpriteDocument, timeline: AnimationTimeline
 }
 
 const applyFrameSurfaces = (document: SpriteDocument, timeline: AnimationTimeline): void => {
-  const activeCels = celsByLayerForFrame(timeline, timeline.activeFrameId)
-  const lookup = createAnimationCelLookup(timeline)
   for (const layer of document.layers) {
-    const cel = lookup.resolve(activeCels.get(layer.id) ?? null)
+    const cel = resolveAnimationCel(timeline, animationCelAt(timeline, layer.id, timeline.activeFrameId))
     if (cel?.surface) {
       const surface = cel.surface
       const sameStorage = rasterStorageIdentity(layer) === rasterStorageIdentity(surface)
@@ -1301,7 +1299,10 @@ export const activateAnimationFrame = (document: SpriteDocument, frameId: string
   if (timeline.activeFrameId === frameId) return true
   if (!timeline.frames.some((frame) => frame.id === frameId)) return false
   if (!materialize) {
-    const lookup = createAnimationCelLookup(timeline)
+    const lookup: AnimationCelLookup = {
+      at: (layerId, targetFrameId) => animationCelAt(timeline, layerId, targetFrameId),
+      resolve: cel => resolveAnimationCel(timeline, cel)
+    }
     // Persist the currently displayed layer pixels only into cels that
     // already exist and already own a surface. Sparse empty slots remain
     // untouched; selection must not allocate their raster storage.

@@ -415,6 +415,9 @@ export const freeTileCelTargetAt = (document: SpriteDocument, layerId: string, f
 }
 
 export const activeFreeTileCelTarget = (document: SpriteDocument): FreeTileCelTarget | null => {
+  // This probe runs in ordinary raster UI too. Reject unrelated layers before
+  // normalizing the entire animation or materializing sparse cel slots.
+  if (!document.layers.some((layer) => layer.id === document.activeLayerId && layer.kind === 'free-tile')) return null
   const timeline = ensureAnimationDocument(document)
   return freeTileCelTargetAt(document, document.activeLayerId, timeline.activeFrameId)
 }
