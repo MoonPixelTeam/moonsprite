@@ -16,12 +16,12 @@ export function useLayerPanelVisuals(options: LayerPanelVisualOptions) {
   const topologyKey = `${inlineMasks ? 'inline' : 'rows'}:${session.collapsedGroupIds.join('\u0000')}:${layerPanelTopologyKey(session.document, session.layersPanelRevision, session.contentRevision)}`
   const structure = useMemo(() => createLayerPanelStructure(session, timeline, inlineMasks), [session.document, timeline, topologyKey])
   const cellStateCache = useMemo(() => createTimelineVisualCellCache(structure.visualTopology), [structure])
-  const visuals = useMemo(() => deriveLayerPanelVisuals({...options, structure, cellStateCache, animationCelDropTargetKey: null}), [
+  const visuals = useMemo(() => deriveLayerPanelVisuals({...options, deferCellStates: options.deferCellStates ?? true, structure, cellStateCache, animationCelDropTargetKey: null}), [
     // Pixel revisions are intentionally absent here. The derived flags and
     // link geometry are unchanged by a brush stroke; rendered cells observe
     // their live raster revision separately. Keeping the session object or
     // revision in this list rebuilt every row×frame state on every stroke.
-    structure,
+    structure, options.deferCellStates,
     session.document.activeLayerId, timeline.activeFrameId, session.activeLayerMaskId,
     session.animationCellSelectionExplicit, session.animationPlaying, session.layerMaskIsolatedView,
     session.layerSelectionExplicit, session.selectedAnimationCellKeys, session.selectedAnimationFrameIds,

@@ -75,6 +75,8 @@ export interface TimelineVisualStateInput {
   cells: readonly TimelineVisualCell[]
   topology?: AnimationTimelineVisualTopology
   cellStateCache?: TimelineVisualCellCache
+  /** Keep row/frame/link semantics complete, but derive slot flags on demand. */
+  deferCellStates?: boolean
   canonicalIndex?: CanonicalTimelineIndex
   selection: TimelineSelectionSnapshot
   active?: {
@@ -220,6 +222,8 @@ export interface AnimationTimelineVisualState {
   frames: readonly TimelineVisualFrameState[]
   columns: readonly TimelineVisualColumnState[]
   cells: readonly TimelineVisualCellState[]
+  /** Deferred mode leaves cells empty; use this reader for individual slots. */
+  cellStateAt?: (slotIndex: number) => TimelineVisualCellState | undefined
   connectors: readonly TimelineVisualConnectorState[]
   normalizedSelection: TimelineNormalizedSelection
   selectionGuidesVisible: boolean
@@ -594,7 +598,13 @@ export const deriveAnimationTimelineVisualState = (
 
   const cellStates: TimelineVisualCellState[] = []
   const cellCache = input.cellStateCache?.topology === topology ? input.cellStateCache : undefined
-  for (let slotIndex = 0; slotIndex < topology.slots.length; slotIndex++) {
+  // This cache belongs to this immutable selection snapshot. Old readers stay
+  // correct even if the shared allocation cache is used by a newer snapshot.
+  const requestedStates = new Map<number, TimelineVisualCellState>()
+  const cellStateAt = (slotIndex: number): TimelineVisualCellState | undefined => {
+    if (!Number.isInteger(slotIndex) || slotIndex < 0 || slotIndex >= topology.slots.length) return undefined
+    const requested = requestedStates.get(slotIndex)
+    if (requested) return requested
     const {row, frame, key, kind, cell, valid, groupId, groupKey, linked, role} = topology.slots[slotIndex]
     const activeLayer = row.ownerKind === 'layer' && row.ownerId === normalizedActiveLayerId
     const activeFrame = frame.id === normalizedActiveFrameId
@@ -619,7 +629,10 @@ export const deriveAnimationTimelineVisualState = (
       | Number(cellSelectedByFrame) << 4 | Number(selectedByLayer) << 5 | Number(directSelected) << 6
       | Number(linkedSelectedByFrame) << 7 | Number(linkedSelectedByFrameAndLayer) << 8 | Number(selectionGuidesVisible) << 9
     const cached = cellCache?.states[slotIndex]
-    if (cached && cellCache!.signatures[slotIndex] === signature) { cellStates.push(cached); continue }
+    if (cached && cellCache!.signatures[slotIndex] === signature) {
+      if (input.deferCellStates) requestedStates.set(slotIndex, cached)
+      return cached
+    }
     const link: TimelineVisualLinkState = {
       linked,
       role,
@@ -664,8 +677,12 @@ export const deriveAnimationTimelineVisualState = (
       link,
       priority,
     }
-    cellStates.push(state)
     if (cellCache) { cellCache.signatures[slotIndex] = signature; cellCache.states[slotIndex] = state }
+    if (input.deferCellStates) requestedStates.set(slotIndex, state)
+    return state
+  }
+  if (!input.deferCellStates) {
+    for (let slotIndex = 0; slotIndex < topology.slots.length; slotIndex++) cellStates.push(cellStateAt(slotIndex)!)
   }
 
   const connectors: TimelineVisualConnectorState[] = []
@@ -691,5 +708,6 @@ export const deriveAnimationTimelineVisualState = (
     })
   }
 
-  return { rows: rowStates, frames: frameStates, columns, cells: cellStates, connectors, normalizedSelection, selectionGuidesVisible }
+  const result = { rows: rowStates, frames: frameStates, columns, cells: cellStates, connectors, normalizedSelection, selectionGuidesVisible }
+  return input.deferCellStates ? {...result, cellStateAt} : result
 }

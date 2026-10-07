@@ -49,7 +49,7 @@ const CachedTimelineCell = memo(function TimelineCell({read}: {read: () => CellP
   celLookup,
   maskVisualByOwnerFrame,
   maskOwnerFrameKey,
-  visualCellStateBySlot,
+  visualCellStateAtSlot,
   showLinkedCelVisuals,
   linkedCelMemberKeys,
   selectedLinkedCelMemberKeys,
@@ -115,7 +115,7 @@ const CachedTimelineCell = memo(function TimelineCell({read}: {read: () => CellP
     const mask = maskVisualByOwnerFrame.get(maskOwnerFrameKey(displayRow.ownerKind, displayRow.owner.id, frame.id)) ?? null
     const resolvedMask = resolveAnimationMask(timeline, mask)
     const key = animationCelKey(displayRow.owner.id, frame.id)
-    const maskVisualCell = visualCellStateBySlot.get(
+    const maskVisualCell = visualCellStateAtSlot(
       timelineCellSlotKey({ kind: 'mask', ownerKind: displayRow.ownerKind, ownerId: displayRow.owner.id, frameId: frame.id })
     )
     const linkedMaskMember = showLinkedCelVisuals && linkedCelMemberKeys.has(`mask|${key}`)
@@ -246,7 +246,7 @@ const CachedTimelineCell = memo(function TimelineCell({read}: {read: () => CellP
   const node = displayRow.node
   const visualCell =
     node.kind === 'layer'
-      ? visualCellStateBySlot.get(timelineCellSlotKey({ kind: 'cel', ownerKind: 'layer', ownerId: node.layer.id, frameId: frame.id }))
+      ? visualCellStateAtSlot(timelineCellSlotKey({ kind: 'cel', ownerKind: 'layer', ownerId: node.layer.id, frameId: frame.id }))
       : undefined
   if (node.kind === 'group') {
     const groupCellKey = animationCelKey(node.group.id, frame.id)

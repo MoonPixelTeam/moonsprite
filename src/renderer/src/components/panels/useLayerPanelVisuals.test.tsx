@@ -28,7 +28,7 @@ function setup(layerCount = 4, frameCount = 12): LayerPanelVisualOptions {
   const keys = doc.layers.slice(0, 2).flatMap(layer => timeline.frames.slice(0, 3).map(frame => animationCelKey(layer.id, frame.id)))
   session.selectedAnimationCellKeys = keys
   session.animationCellSelectionExplicit = true
-  return { session, timeline, timelineActiveContext: session.timelineActiveContext,
+  return { deferCellStates: true, session, timeline, timelineActiveContext: session.timelineActiveContext,
     animationGestureActiveTarget: null, animationGestureSelection: null, selectionOutlineVisible: true,
     selectedAnimationGroupCellKeys: [], animationCellSelectionOutlineVisible: true,
     animationCelDragAnchorKey: keys[0], animationCelDropTargetKey: keys[0],
@@ -131,7 +131,7 @@ it.each(['frame', 'cel'] as const)('reuses link geometry while extending a %s ma
 })
 
 it('measures repeated movement and range selection on a 24 by 120 timeline', () => {
-  const options = setup(24, 120)
+  const options = {...setup(24, 120), deferCellStates: false}
   const targets = options.timeline.frames.slice(10, 30).map(frame => ({...options,
     animationCelDropTargetKey: animationCelKey(options.session.document.layers[2].id, frame.id)}))
   const {result, rerender} = renderHook(useLayerPanelVisuals, {initialProps: options})

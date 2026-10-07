@@ -67,6 +67,7 @@ export function createAnimationTimelineVisualTopology(rows: readonly TimelineVis
     return ordered.slice(1).map((to, i) => ({groupKey, groupId, from: ordered[i], to,
       bridged: (index.frameIndexById.get(to.frameId) ?? 0) - (index.frameIndexById.get(ordered[i].frameId) ?? 0) > 1}))
   })
-  return {frameIds, layerIds, groupIds, validNormalSlots, validMaskSlots, slots, connectors}
+  const slotIndexByKey = new Map(slots.map((slot, index) => [slot.slotKey, index]))
+  return {frameIds, layerIds, groupIds, validNormalSlots, validMaskSlots, slots, slotIndexByKey, connectors}
 }
 export type AnimationTimelineVisualTopology = ReturnType<typeof createAnimationTimelineVisualTopology>

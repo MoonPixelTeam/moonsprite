@@ -188,7 +188,7 @@ function LayersPanelComponent({
     playbackActiveLayerId,
     timelineVisualState,
     visualRowStateByKey,
-    visualCellStateBySlot,
+    visualCellStateAtSlot,
     visualFrameStateById,
     displayRowGridTemplate,
     displayRowTop,
@@ -1085,7 +1085,7 @@ function LayersPanelComponent({
                 celLookup={celLookup}
                 maskVisualByOwnerFrame={maskVisualByOwnerFrame}
                 maskOwnerFrameKey={maskOwnerFrameKey}
-                visualCellStateBySlot={visualCellStateBySlot}
+                visualCellStateAtSlot={visualCellStateAtSlot}
                 showLinkedCelVisuals={showLinkedCelVisuals}
                 linkedCelMemberKeys={linkedCelMemberKeys}
                 selectedLinkedCelMemberKeys={selectedLinkedCelMemberKeys}
