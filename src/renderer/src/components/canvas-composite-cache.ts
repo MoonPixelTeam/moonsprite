@@ -1,3 +1,4 @@
+import { animationLayerSourceFor } from './canvas-animation-layer-source'
 import type { LayerMask, RasterLayer } from '@shared/types-layer'
 import type { SelectionRect } from '@shared/types-selection'
 import type { SpriteDocument } from '@shared/types-document'
@@ -11,11 +12,10 @@ import {
 import {
   expandLayerStyleInvalidationRect
 } from '@/core/document-composite-plan'
-import { getLayerContentRevision, renderLayerMaskRegion } from '@/core/document-model'
+import { cachedLayerContentBounds, renderLayerMaskRegion } from '@/core/document-model'
 import { hasEnabledLayerStyles } from '@/core/layer-styles'
 import { scheduleSelectionBackdrop } from './canvas-selection-prewarm'
 import { applyRelativeLuminance } from '@/core/raster'
-import { rasterStorageIdentity, readSurfaceRgbaRegion } from '@/core/runtime-raster'
 import {
   initialDocumentComposite,
   initialDocumentCompositePending,
@@ -51,14 +51,13 @@ import {
   surfaceNamespace
 } from './canvas-composite-cache-surfaces'
 import { imageData, gpuBlendModeFor } from './canvas-composite-cache-pixel-utils'
-import { createCompositeSurfaceBudget, rememberCompositeSurface, resetCompositeSurfaceBudget } from './canvas-composite-cache-utils'
+import { rememberCompositeSurface } from './canvas-composite-cache-utils'
 import { CanvasCompositeBlitter } from './canvas-composite-cache-blitter'
 import { CanvasAlignedViewCache } from './canvas-aligned-view-cache'
 import { compositeRegionWindow } from './canvas-composite-region-window'
 import { CanvasMovePreviewRenderer } from './canvas-composite-cache-move'
 import { CanvasSelectionPreviewRenderer } from './canvas-composite-cache-selection'
 import { CanvasLayerPropertyPreview } from './canvas-layer-property-preview'
-import { animationLayerSourceCacheBudget, trimAnimationLayerSourceCache } from './canvas-composite-cache-animation'
 export { shouldCacheFullCompositeSurface, type SelectionTransformCompositePreview } from './canvas-composite-cache-surfaces'
 /** Coordinates invalidation, surface lifetime and drawing; previews own their resources. */
 export class CanvasCompositeCache {
@@ -78,7 +77,6 @@ export class CanvasCompositeCache {
   private invalidatedInitialDocuments = new WeakSet<SpriteDocument>()
   private surfaces = new Map<string, CompositeSurface>()
   private regions = new Map<string, CompositeRegionSurface>()
-  private readonly surfaceBudget = createCompositeSurfaceBudget()
   private dirtyRects = new Map<string, SelectionRect[]>()
 /** Raw source regions changed during a live gesture, before style expansion. */
   private placementDirtyHints = new Map<string, { rect: SelectionRect; layerIds?: readonly string[] }>()
@@ -100,10 +98,6 @@ export class CanvasCompositeCache {
 
   private compositeCache = new DocumentCompositeCache()
 
-  private pendingBitmapRequests = new Map<string, AbortController>()
-  private activeBitmapCreations = 0
-  private readonly MAX_CONCURRENT_BITMAPS = 3
-
   prepareSelectionBackdrop(document: SpriteDocument, layerId: string, revision: number, selection: SelectionRect, isCurrent: () => boolean): () => void {
     return scheduleSelectionBackdrop(this.compositeCache, document, layerId, revision, selection, isCurrent)
   }
@@ -123,7 +117,6 @@ export class CanvasCompositeCache {
   }
 
   dispose(): void {
-    this.compositeCache.dispose()
     for (const surface of [...this.surfaces.values(), ...this.regions.values()]) {
       surface.canvas.width = 1
       surface.canvas.height = 1
@@ -148,7 +141,6 @@ export class CanvasCompositeCache {
     for (const surface of [...this.surfaces.values(), ...this.regions.values()]) this.invalidateSurfaceBitmap(surface)
     this.surfaces.clear()
     this.regions.clear()
-    resetCompositeSurfaceBudget(this.surfaceBudget)
     this.dirtyRects.clear()
     this.sourceDirtyHints.clear()
     this.placementDirtyHints.clear()
@@ -381,7 +373,7 @@ export class CanvasCompositeCache {
       if (!existing || existing.revision !== contentRevision || this.dirtyRects.has(effectiveFrameId)) {
         const canvas = new OffscreenCanvas(document.width, document.height)
         canvas.getContext('2d')?.drawImage(options.selectionBase, 0, 0, document.width, document.height, 0, 0, document.width, document.height)
-        rememberCompositeSurface(this.surfaces, frameKey, { canvas, revision: contentRevision }, this.maxCacheBytes, MAX_CACHED_FRAMES, this.surfaceBudget)
+        rememberCompositeSurface(this.surfaces, frameKey, { canvas, revision: contentRevision }, this.maxCacheBytes, MAX_CACHED_FRAMES)
         this.dirtyRects.delete(effectiveFrameId)
       }
     }
@@ -447,50 +439,17 @@ export class CanvasCompositeCache {
     if (surface.transient || this.liveRasterEdit || this.livePropertyEdit) return
     if (surface.canvas.width * surface.canvas.height < 256 * 256) return
     if (surface.bitmap || surface.bitmapPending || typeof createImageBitmap !== 'function') return
-    const key = `${surface.canvas.width}:${surface.canvas.height}:${surface.revision}`
-    this.scheduleSurfaceBitmapThrottled(surface, key)
-  }
-
-  private async scheduleSurfaceBitmapThrottled(surface: CompositeSurface, key: string): Promise<void> {
-    // Cancel any previous pending request for this surface
-    const existingController = this.pendingBitmapRequests.get(key)
-    if (existingController) {
-      existingController.abort()
-      this.pendingBitmapRequests.delete(key)
-    }
-
-    // Wait until we have capacity
-    while (this.activeBitmapCreations >= this.MAX_CONCURRENT_BITMAPS) {
-      await new Promise(resolve => setTimeout(resolve, 16))
-      // Check if surface was invalidated while waiting
-      if (surface.bitmap || surface.bitmapPending) return
-    }
-
-    const controller = new AbortController()
-    this.pendingBitmapRequests.set(key, controller)
-
     const revision = surface.revision
     const generation = surface.bitmapGeneration ?? 0
-
-    this.activeBitmapCreations++
     surface.bitmapPending = createImageBitmap(surface.canvas)
       .then((bitmap) => {
-        if (controller.signal.aborted) {
-          bitmap.close()
-          return
-        }
-        if (surface.revision === revision && (surface.bitmapGeneration ?? 0) === generation) {
-          surface.bitmap = bitmap
-        } else {
-          bitmap.close()
-        }
+        if (surface.revision === revision && (surface.bitmapGeneration ?? 0) === generation) surface.bitmap = bitmap
+        else bitmap.close()
       })
       .catch(() => {
         // Browsers without enough GPU memory fall back to the OffscreenCanvas.
       })
       .finally(() => {
-        this.activeBitmapCreations--
-        this.pendingBitmapRequests.delete(key)
         surface.bitmapPending = undefined
       })
   }
@@ -504,112 +463,7 @@ export class CanvasCompositeCache {
     // until it settles so later frames cannot enqueue overlapping full copies.
   }
 
-  private uploadPixelsChunked(context: OffscreenCanvasRenderingContext2D, pixels: Uint8ClampedArray, x: number, y: number, width: number, height: number): void {
-    const CHUNK_SIZE = 1024
-    const totalPixels = width * height
-
-    // For small regions, upload directly without chunking
-    if (totalPixels <= CHUNK_SIZE * CHUNK_SIZE) {
-      context.putImageData(imageData(pixels, width, height), x, y)
-      return
-    }
-
-    // Always use synchronous chunking to ensure rendering completeness
-    // Async upload caused content to disappear when opening old projects
-    // or enabling layer styles on large canvases
-    const tilesX = Math.ceil(width / CHUNK_SIZE)
-    const tilesY = Math.ceil(height / CHUNK_SIZE)
-
-    for (let tileY = 0; tileY < tilesY; tileY++) {
-      for (let tileX = 0; tileX < tilesX; tileX++) {
-        const tileLeft = tileX * CHUNK_SIZE
-        const tileTop = tileY * CHUNK_SIZE
-        const tileWidth = Math.min(CHUNK_SIZE, width - tileLeft)
-        const tileHeight = Math.min(CHUNK_SIZE, height - tileTop)
-
-        // Extract tile pixels
-        const tilePixels = new Uint8ClampedArray(tileWidth * tileHeight * 4)
-        for (let row = 0; row < tileHeight; row++) {
-          const sourceOffset = ((tileTop + row) * width + tileLeft) * 4
-          const destOffset = row * tileWidth * 4
-          tilePixels.set(pixels.subarray(sourceOffset, sourceOffset + tileWidth * 4), destOffset)
-        }
-
-        context.putImageData(imageData(tilePixels, tileWidth, tileHeight), x + tileLeft, y + tileTop)
-      }
-    }
-  }
-
-  private rememberAnimationLayerSource(document: SpriteDocument, identity: object, source: CanvasImageSource, layer: RasterLayer, revision: number): void {
-    let state = sharedAnimationLayerSources.get(document)
-    if (!state) {
-      state = { entries: new Map(), bytes: 0 }
-      sharedAnimationLayerSources.set(document, state)
-    }
-    const previous = state.entries.get(identity)
-    if (previous) {
-      state.bytes -= previous.bytes
-      if (previous.source !== source && typeof ImageBitmap !== 'undefined' && previous.source instanceof ImageBitmap) previous.source.close()
-    }
-    const bytes = layer.width * layer.height * 4
-    const cacheBudget = animationLayerSourceCacheBudget(document, Math.max(this.maxCacheBytes, document.width * document.height * 8), this.surfaceBudget.bytes)
-    if (bytes > cacheBudget) return
-    state.entries.delete(identity)
-    state.entries.set(identity, {
-      source,
-      revision,
-      width: layer.width,
-      height: layer.height,
-      bytes
-    })
-    state.bytes += bytes
-    while (state.entries.size > 0 && state.bytes > cacheBudget) {
-      const oldestIdentity = state.entries.keys().next().value!
-      const oldest = state.entries.get(oldestIdentity)
-      if (oldest) {
-        state.bytes -= oldest.bytes
-        if (oldestIdentity !== identity && typeof ImageBitmap !== 'undefined' && oldest.source instanceof ImageBitmap) oldest.source.close()
-      }
-      state.entries.delete(oldestIdentity)
-    }
-  }
-
-  private animationLayerSourceFor(document: SpriteDocument, layer: RasterLayer): CanvasImageSource | null {
-    if (layer.format !== 'rgba' || layer.width <= 0 || layer.height <= 0) return null
-    const identity = rasterStorageIdentity(layer)
-    const revision = getLayerContentRevision(layer)
-    const state = sharedAnimationLayerSources.get(document)
-    trimAnimationLayerSourceCache(state, animationLayerSourceCacheBudget(document, Math.max(this.maxCacheBytes, document.width * document.height * 8), this.surfaceBudget.bytes))
-    const cached = state?.entries.get(identity)
-    if (cached && cached.revision === revision && cached.width === layer.width && cached.height === layer.height) {
-      state!.entries.delete(identity)
-      state!.entries.set(identity, cached)
-      return cached.source
-    }
-    if (cached) {
-      state!.entries.delete(identity)
-      state!.bytes -= cached.bytes
-    }
-    try {
-      const startedAt = window.__moonSpriteCanvasProbe?.recordOperationStage ? performance.now() : 0
-      const canvas = new OffscreenCanvas(layer.width, layer.height)
-      const sourceContext = canvas.getContext('2d')
-      if (!sourceContext) return null
-      sourceContext.imageSmoothingEnabled = false
-      const expectedBytes = layer.width * layer.height * 4
-      const pixels = layer.pixels.length === expectedBytes ? (layer.pixels as Uint8ClampedArray) : readSurfaceRgbaRegion(layer, 0, 0, layer.width, layer.height)
-      sourceContext.putImageData(imageData(pixels, layer.width, layer.height), 0, 0)
-      recordCanvasStage('canvas.animation-layer-upload', startedAt, {
-        pixels: layer.width * layer.height
-      })
-      this.rememberAnimationLayerSource(document, identity, canvas, layer, revision)
-      return canvas
-    } catch {
-      return null
-    }
-  }
-
-/**
+  /**
    * Animation playback is read-only, so supported frame stacks can be blended
    * by Canvas2D after each cel storage has been uploaded once. This removes the
    * O(visible pixels × layers) JavaScript composite from the playback clock.
@@ -629,12 +483,12 @@ export class CanvasCompositeCache {
       for (const layer of layers) {
         if (!layer.visible || layer.opacity <= 0) continue
         const operation = gpuBlendModeFor(layer.blendMode)
-        const source = this.animationLayerSourceFor(document, layer)
-        if (!operation || !source) return null
+        const result = animationLayerSourceFor(document, layer, this.maxCacheBytes)
+        if (!operation || !result) return null
         target.globalCompositeOperation = operation
         if (target.globalCompositeOperation !== operation) return null
         target.globalAlpha = layer.opacity
-        target.drawImage(source, 0, 0, layer.width, layer.height, layer.offsetX - x, layer.offsetY - y, layer.width, layer.height)
+        target.drawImage(result.source, result.sourceX, result.sourceY, result.width, result.height, layer.offsetX - x, layer.offsetY - y, result.width, result.height)
       }
       target.globalAlpha = 1
       target.globalCompositeOperation = 'source-over'
@@ -733,7 +587,7 @@ export class CanvasCompositeCache {
         revision: contentRevision,
         transient: transientFallback
       }
-      if (!transientFallback) rememberCompositeSurface(this.surfaces, key, surface, this.maxCacheBytes, MAX_CACHED_FRAMES, this.surfaceBudget)
+      if (!transientFallback) rememberCompositeSurface(this.surfaces, key, surface, this.maxCacheBytes, MAX_CACHED_FRAMES)
       this.dirtyRects.delete(frameId)
       this.clearLivePreview(document, frameId)
     } else {
@@ -778,8 +632,7 @@ export class CanvasCompositeCache {
             pixels: rect.width * rect.height
           })
           const uploadStartedAt = window.__moonSpriteCanvasProbe?.recordOperationStage ? performance.now() : 0
-          // Split large putImageData calls into tiles to avoid blocking the main thread
-          this.uploadPixelsChunked(surfaceContext, pixels, rect.x, rect.y, rect.width, rect.height)
+          surfaceContext.putImageData(imageData(pixels, rect.width, rect.height), rect.x, rect.y)
           recordCanvasStage('canvas.pixel-upload', uploadStartedAt, {
             pixels: rect.width * rect.height
           })
@@ -851,7 +704,7 @@ export class CanvasCompositeCache {
         canvas.getContext('2d')?.putImageData(imageData(pixels, width, height), 0, 0)
       }
       region = { canvas, revision: contentRevision, x, y, width, height }
-      rememberCompositeSurface(this.regions, key, region, this.maxCacheBytes, MAX_CACHED_FRAMES, this.surfaceBudget)
+      rememberCompositeSurface(this.regions, key, region, this.maxCacheBytes, MAX_CACHED_FRAMES)
       this.dirtyRects.delete(frameId)
       this.clearLivePreview(document, frameId)
     } else if (region) {
@@ -900,7 +753,7 @@ export class CanvasCompositeCache {
             pixels: rect.width * rect.height
           })
           const uploadStartedAt = window.__moonSpriteCanvasProbe?.recordOperationStage ? performance.now() : 0
-          this.uploadPixelsChunked(regionContext, pixels, rect.x - x, rect.y - y, rect.width, rect.height)
+          regionContext.putImageData(imageData(pixels, rect.width, rect.height), rect.x - x, rect.y - y)
           recordCanvasStage('canvas.pixel-upload', uploadStartedAt, {
             pixels: rect.width * rect.height
           })
