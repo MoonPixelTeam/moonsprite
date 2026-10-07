@@ -22,7 +22,8 @@ function LayerContentIcon({ icon, label, className, onOpen }: { icon: PixelUtili
     }}><PixelUtilityIcon kind={icon} /></span>
 }
 
-export function LayerTreeRow({ panel, displayRow, rowIndex }: { panel: LayerTreeRowsProps; displayRow: LayerDisplayRow; rowIndex: number }) {
+export function LayerTreeRow({read}: {read: () => {panel: LayerTreeRowsProps; displayRow: LayerDisplayRow; rowIndex: number}}) {
+  const {panel, displayRow, rowIndex} = read()
   const owner = displayRow.kind === 'mask' ? null : displayRow.node.kind === 'group' ? displayRow.node.group : displayRow.node.layer
   useWorkspace(() => owner ? `${owner.opacity}:${owner.blendMode}` : '')
   const {

@@ -21,8 +21,10 @@ it('updates only the old and new raster rows on canvas auto-selection and keeps 
   const previous = document.layers[0], next = document.layers[1], untouched = document.layers[20]
   rowRender.mockClear()
   act(() => useWorkspace.getState().activateLayerForCanvas(next.id))
-  const renderedIds = rowRender.mock.calls.flatMap(([{ displayRow }]) =>
-    displayRow.kind !== 'mask' && displayRow.node.kind === 'layer' ? [displayRow.node.layer.id] : [])
+  const renderedIds = rowRender.mock.calls.flatMap(([{read}]) => {
+    const {displayRow} = read()
+    return displayRow.kind !== 'mask' && displayRow.node.kind === 'layer' ? [displayRow.node.layer.id] : []
+  })
   expect(new Set(renderedIds)).toEqual(new Set([previous.id, next.id]))
   expect(container.querySelector(`[data-layer-id="${next.id}"]`)).toHaveClass('active-layer')
   expect(container.querySelector(`[data-layer-id="${previous.id}"]`)).not.toHaveClass('active-layer')

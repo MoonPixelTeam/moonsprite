@@ -970,44 +970,45 @@ function LayersPanelComponent({
                 />
               </div>}
               {!layerSettings.timelineHidden && animationColumnResizer}
-              <LayerTreeRows
-                thumbnailSize={layerSettings.timelineHidden ? 30 : undefined} onMaskContextMenu={openCelMenuFromTimeline}
-                displayRows={displayRows}
-                timelineVisualState={timelineVisualState}
-                renderAnimationMaskRow={renderAnimationMaskRow}
-                session={session}
-                dropTarget={dropTarget}
-                displayColorStripeSegments={displayColorStripeSegments}
-                effectiveSelectedGroupIds={effectiveSelectedGroupIds}
-                hasNonRowAnimationItemSelection={hasNonRowAnimationItemSelection}
-                activeMaskOwnerKey={activeMaskOwnerKey}
-                layerSelectionActive={layerSelectionActive}
-                draggingGroupId={draggingGroupId}
-                layerStyleDrag={layerStyleDrag}
-                beginGroupDrag={beginGroupDrag}
-                editGroupRow={editGroupRow}
-                t={t}
-                beginLayerPanelToggle={beginLayerPanelToggle}
-                continueLayerPanelToggle={continueLayerPanelToggle}
-                endLayerPanelToggle={endLayerPanelToggle}
-                finishLayerPanelToggleClick={finishLayerPanelToggleClick}
-                blendOptions={blendOptions}
-                clippingMaskTooltip={clippingMaskTooltip}
-                layerStyleIndicator={layerStyleIndicator}
-                maskVisualSelectionActive={maskVisualSelectionActive}
-                ordinaryCelSelectionVisible={ordinaryCelSelectionVisible}
-                draggingIds={draggingIds}
-                beginLayerDrag={beginLayerDrag}
-                editLayerRow={editLayerRow}
-                openLayerContent={openLayerContent}
-                liveAutoLinkById={liveAutoLinkById}
-                handleLayerAutoLinkPointerDown={handleLayerAutoLinkPointerDown}
-                continueLayerAutoLinkToggle={continueLayerAutoLinkToggle}
-                endLayerAutoLinkToggle={endLayerAutoLinkToggle}
-                finishLayerAutoLinkClick={finishLayerAutoLinkClick}
-                handleLayerAutoLinkKeyDown={handleLayerAutoLinkKeyDown}
-                openFreeTileInstanceLayers={openFreeTileInstanceLayers}
-              />
+              <LayerTreeRows read={() => ({
+                thumbnailSize: layerSettings.timelineHidden ? 30 : undefined,
+                onMaskContextMenu: openCelMenuFromTimeline,
+                displayRows,
+                timelineVisualState,
+                renderAnimationMaskRow,
+                session,
+                dropTarget,
+                displayColorStripeSegments,
+                effectiveSelectedGroupIds,
+                hasNonRowAnimationItemSelection,
+                activeMaskOwnerKey,
+                layerSelectionActive,
+                draggingGroupId,
+                layerStyleDrag,
+                beginGroupDrag,
+                editGroupRow,
+                t,
+                beginLayerPanelToggle,
+                continueLayerPanelToggle,
+                endLayerPanelToggle,
+                finishLayerPanelToggleClick,
+                blendOptions,
+                clippingMaskTooltip,
+                layerStyleIndicator,
+                maskVisualSelectionActive,
+                ordinaryCelSelectionVisible,
+                draggingIds,
+                beginLayerDrag,
+                editLayerRow,
+                openLayerContent,
+                liveAutoLinkById,
+                handleLayerAutoLinkPointerDown,
+                continueLayerAutoLinkToggle,
+                endLayerAutoLinkToggle,
+                finishLayerAutoLinkClick,
+                handleLayerAutoLinkKeyDown,
+                openFreeTileInstanceLayers,
+              })} />
             </div>
             {!layerSettings.timelineHidden && <div
               className="layer-animation-grid"

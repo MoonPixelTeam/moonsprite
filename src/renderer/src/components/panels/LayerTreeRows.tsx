@@ -5,14 +5,16 @@ import type { LayerTreeRowsProps } from './layer-tree-row-types'
 import { useLayerTreeRowActions } from './useLayerTreeRowActions'
 
 interface RowProps {
-  panel: LayerTreeRowsProps
-  rowIndex: number
+  read: () => {panel: LayerTreeRowsProps; rowIndex: number}
   renderKey: string | null
 }
 
-const CachedRow = memo(function CachedRow({ panel, rowIndex }: RowProps) {
-  return <LayerTreeRow panel={panel} displayRow={panel.displayRows[rowIndex]} rowIndex={rowIndex} />
-}, (previous, next) => next.renderKey !== null && previous.renderKey === next.renderKey && previous.panel.t === next.panel.t)
+// Keep each render's snapshot behind a reader: passing the entire panel to
+// every row makes React dev diagnostics compare the full timeline per row.
+const CachedRow = memo(function CachedRow({read}: RowProps) {
+  const {panel, rowIndex} = read()
+  return <LayerTreeRow read={() => ({panel, displayRow: panel.displayRows[rowIndex], rowIndex})} />
+}, (previous, next) => next.renderKey !== null && previous.renderKey === next.renderKey && previous.read().panel.t === next.read().panel.t)
 
 /** Cache ordinary raster row controls; pixels and another row's focus are not row UI. */
 function rasterRowRenderKey(panel: LayerTreeRowsProps, rowIndex: number): string | null {
@@ -38,11 +40,12 @@ function rasterRowRenderKey(panel: LayerTreeRowsProps, rowIndex: number): string
   ])
 }
 
-export function LayerTreeRows(props: LayerTreeRowsProps) {
+export function LayerTreeRows({read}: {read: () => LayerTreeRowsProps}) {
+  const props = read()
   const actions = useLayerTreeRowActions(props)
   const panel = { ...props, ...actions }
   return <>{' '}{panel.displayRows.map((row, rowIndex) => <CachedRow
     key={row.kind === 'mask' ? `mask:${row.ownerKind}:${row.owner.id}` : row.node.kind === 'group' ? `group:${row.node.group.id}` : `layer:${row.node.layer.id}`}
-    panel={panel} rowIndex={rowIndex} renderKey={rasterRowRenderKey(panel, rowIndex)}
+    read={() => ({panel, rowIndex})} renderKey={rasterRowRenderKey(panel, rowIndex)}
   />)}</>
 }
