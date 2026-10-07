@@ -11,6 +11,7 @@ import { animationLayerZIndexes } from './document-composite-z-index'
 import {
   getRasterContentRevision,
   rasterContentBounds,
+  cachedRasterContentBounds,
   maskCoverageFromColor,
   layerContentBounds
 } from './document-model'
@@ -158,6 +159,16 @@ export const buildCompositeStack = (document: SpriteDocument, hierarchyCacheOwne
   return root
 }
 
+/** Keep cold empty-layer pruning, without scanning a live-edited dense bitmap.
+ * An unknown changed source is conservatively rendered until exact bounds are
+ * established elsewhere; only a proven empty source can be omitted. */
+const emptyCompositeRaster = (document: SpriteDocument, layer: RasterLayer): boolean => {
+  const known = cachedRasterContentBounds(layer, document.palette)
+  if (known !== undefined) return known === null
+  if (getRasterContentRevision(rasterStorageIdentity(layer)) !== 0) return false
+  return layerContentBounds(document, layer) === null
+}
+
 export const normalCompositeLayers = (document: SpriteDocument, allowLayerBlendModes = false, hierarchyCacheOwner = document): RasterLayer[] | null => {
   const activeMasks = activeCelMasksByLayer(document)
   const activeGroupMasks = activeGroupMasksByGroup(document)
@@ -171,12 +182,12 @@ export const normalCompositeLayers = (document: SpriteDocument, allowLayerBlendM
         if (item.layer.blendMode !== 'normal') {
           // An empty non-normal layer has no effect and must not force the
           // whole document onto the opacity-group compositor.
-          if (!layerContentBounds(document, item.layer)) continue
+          if (emptyCompositeRaster(document, item.layer)) continue
           if (!allowLayerBlendModes) return null
         }
         // The displayed raster includes live strokes/previews not yet synced
         // into the cel. Skip only proven-empty ordinary raster layers.
-        if (!item.layer.kind && !styledLayerBlockCacheFor(item.layer) && !layerContentBounds(document, item.layer)) continue
+        if (!item.layer.kind && !styledLayerBlockCacheFor(item.layer) && emptyCompositeRaster(document, item.layer)) continue
         layers.push(item.layer)
         continue
       }
@@ -210,9 +221,9 @@ export const opacityGroupCompositeStack = (document: SpriteDocument, allowNormal
         if (hasEnabledLayerStyles(item.layer.layerStyles) && (!allowNormalLayerStyles || item.layer.blendMode !== 'normal')) return null
         // The displayed raster includes live strokes/previews not yet synced
         // into the cel. Skip only proven-empty ordinary raster layers.
-        if (!item.layer.kind && !styledLayerBlockCacheFor(item.layer) && !layerContentBounds(document, item.layer)) continue
+        if (!item.layer.kind && !styledLayerBlockCacheFor(item.layer) && emptyCompositeRaster(document, item.layer)) continue
         if (item.layer.blendMode !== 'normal') {
-          if (layerContentBounds(document, item.layer)) prepared.push(item)
+          if (!emptyCompositeRaster(document, item.layer)) prepared.push(item)
           continue
         }
         prepared.push(item)
