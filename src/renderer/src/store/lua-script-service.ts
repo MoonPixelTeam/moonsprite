@@ -114,21 +114,31 @@ const buildInvocation = (session: DocumentSession, storedBrushes: Awaited<Return
   const timeline = document.animation
   const frameId = timeline?.activeFrameId ?? null
   const frameNumber = Math.max(1, (timeline?.frames.findIndex((frame) => frame.id === frameId) ?? 0) + 1)
-  const expected = snapshotFromLayer(document, layer)
-  const activeLayerCels = timeline ? timeline.frames.flatMap((frame, index) => {
+  // Plan the existing per-frame wire payload before reading or copying pixels.
+  // Linked cels still count once per frame: the Lua context contains each frame.
+  let celPixelCount = 0
+  const plannedCels = timeline ? timeline.frames.flatMap((frame, index) => {
     const cel = timeline.cels.find((candidate) => candidate.layerId === layer.id && candidate.frameId === frame.id)
     const frameLayer = cel ? animationLayerAtFrame(document, layer.id, frame.id) : null
+    if (cel && frameLayer) {
+      const count = frameLayer.width * frameLayer.height
+      if (!Number.isSafeInteger(count) || count < 1 || count > MAX_SCRIPT_IMAGE_PIXELS * 3 - celPixelCount) {
+        throw new Error(tr('script.imageTooLarge', { count: MAX_SCRIPT_IMAGE_PIXELS * 3 }))
+      }
+      celPixelCount += count
+    }
     return cel && frameLayer ? [{
       id: cel.id,
       frameId: frame.id,
       frameNumber: index + 1,
-      surface: snapshotFromLayer(document, frameLayer)
+      layer: frameLayer
     }] : []
   }) : []
-  const celPixelCount = activeLayerCels.reduce((count, cel) => count + cel.surface.pixels.length, 0)
-  if (celPixelCount > MAX_SCRIPT_IMAGE_PIXELS * 3) {
-    throw new Error(tr('script.imageTooLarge', { count: MAX_SCRIPT_IMAGE_PIXELS * 3 }))
-  }
+  const expected = snapshotFromLayer(document, layer)
+  const activeLayerCels = plannedCels.map(({ layer: frameLayer, ...cel }) => ({
+    ...cel,
+    surface: snapshotFromLayer(document, frameLayer)
+  }))
   return {
     context: {
       documentId: document.id,

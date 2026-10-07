@@ -172,7 +172,9 @@ export function createAnimationPlaybackCommands({ get }: WorkspaceCommandContext
     advanceAnimationFrame() {
       const session = activeSession(get())
       if (!session) return
-      const timeline = ensureAnimationDocument(session.document)
+      // Playback start and editing commands normalize the timeline. A tick
+      // only reads it; rebuilding all cel slots here also discards indexes.
+      const timeline = session.document.animation ?? ensureAnimationDocument(session.document)
       const loopSection = session.animationPlaybackLoopSectionId ? (timeline.loopSections ?? []).find((section) => section.id === session.animationPlaybackLoopSectionId) : null
       if (session.animationPlaybackLoopSectionId && !loopSection) {
         get().setAnimationPlaying(false)

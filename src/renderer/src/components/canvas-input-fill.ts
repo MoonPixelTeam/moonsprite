@@ -173,7 +173,7 @@ export function createFillCanvasInput(ports: Ports) {
         inputRef.current.drag = { kind: 'fill', color: activeColor(event.button), start: fillPoint, last: fillPoint, edit, fillHistoryLabel: historyLabel, fillHistoryCommitted: Boolean(committed), startedAt: Date.now() }
         draw()
         operationProbe?.recordOperationStage?.('bucket.prepare-total', performance.now() - commitStartedAt, {
-          points: edit.before.size,
+          points: edit.before.size + (edit.points?.count ?? 0),
           runs: edit.runs?.length ?? 0
         })
       }

@@ -57,7 +57,8 @@ export class CanvasMovePreviewRenderer {
       // applied to the backdrop. The recursive GPU stack preserves that
       // boundary while keeping unsupported group features on the exact path.
       const stack = this.compositeCache.opacityGroupStackFor(document, contentRevision)
-      if (!stack || width * height * 8 > this.maxCacheBytes) return false
+      // The GPU planner reserves output, source, group and run surfaces together.
+      if (!stack || width * height * 4 > this.maxCacheBytes) return false
       const stackKey = `group:${document.id}:${frameId}:${contentRevision}:${x}:${y}:${width}:${height}:${view.tileRepeatMode ?? 'off'}:${movingLayerIds.join(',')}:${this.gpu.gpuStackSignature(stack)}`
       const gpuCanvas = this.gpu.drawGpuStackMovePreview(document, view, x, y, width, height, stackKey, stack, movingLayerIds)
       if (gpuCanvas) {

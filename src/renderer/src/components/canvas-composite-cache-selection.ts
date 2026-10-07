@@ -1,5 +1,4 @@
 import { measureRuntimeStages } from '@/core/runtime-diagnostic-stages'
-import type { RasterLayer } from '@shared/types-layer'
 import type { SelectionRect } from '@shared/types-selection'
 import type { SpriteDocument } from '@shared/types-document'
 import type { ViewState } from '@shared/types-view'
@@ -8,8 +7,7 @@ import { rasterContentBounds } from '@/core/document-model'
 import { hasEnabledLayerStyles } from '@/core/layer-styles'
 import { selectionPreviewPixelWriter } from './canvas-selection-preview-pixels'
 import {
-  selectionTransformPreviewPacked,
-  selectionTransformPreviewRasterPacked
+  selectionTransformPreviewPacked
 } from '@/core/tools-selection-transform-raster'
 import { selectionQuadBounds, transformedSelectionBounds } from '@/core/selection'
 import { initialDocumentCompositePending } from '@/core/initial-document-composite'
@@ -26,7 +24,6 @@ import {
   selectionOptimizedRotationEnabled,
   type SelectionPreviewSurface,
   type ClipboardPreviewSurface,
-  type SelectionTransformRasterSurface,
   type DrawCompositeOptions,
   imageData,
   selectionPreviewTransformKey,
@@ -39,11 +36,12 @@ import {
 import { CanvasCompositeBlitter } from './canvas-composite-cache-blitter'
 import { CanvasSelectionBackdropCache } from './canvas-selection-backdrop-cache'
 import { preparedSelectionBackdrop } from './canvas-selection-prewarm'
-const sharedTransformRasters = new WeakMap<SelectionTransformRasterSurface['source'], SelectionTransformRasterSurface>()
+import { opaqueScaleCanvasFor, selectionTransformRasterFor, type OpaqueSelectionCanvas } from './canvas-selection-transform-cache'
 export class CanvasSelectionPreviewRenderer {
   private selectionPreview: SelectionPreviewSurface | null = null
   private clipboardPreview: ClipboardPreviewSurface | null = null
-  private selectionTransformRaster: SelectionTransformRasterSurface | null = null
+  private selectionTransformRaster: import('./canvas-composite-cache-surfaces').SelectionTransformRasterSurface | null = null
+  private opaqueSelectionCanvas: OpaqueSelectionCanvas | null = null
   constructor(
     private readonly compositeCache: DocumentCompositeCache,
     private readonly maxCacheBytes: number,
@@ -52,23 +50,8 @@ export class CanvasSelectionPreviewRenderer {
     private readonly drawRegion: DrawCompositeRegion
   ) {}
   clearClipboard(): void { this.clipboardPreview = null }
-  clearSelection(): void { this.selectionPreview = null }
+  clearSelection(): void { this.selectionPreview = null; this.opaqueSelectionCanvas = null }
   clear(): void { this.clearClipboard(); this.clearSelection(); this.selectionTransformRaster = null }
-  private selectionTransformRasterFor(document: SpriteDocument, contentRevision: number, selection: SelectionTransformCompositePreview, activeLayer: RasterLayer): SelectionTransformRasterSurface {
-    const key = `${document.id}:${document.animation?.activeFrameId ?? 'static'}:${contentRevision}:${selection.layerId}:${selectionPreviewRasterKey(selection, activeLayer.format)}`
-    const cached = this.selectionTransformRaster
-    if (cached && cached.source === selection.source && cached.key === key) return cached
-    const shared = sharedTransformRasters.get(selection.source)
-    if (shared?.key === key) {
-      this.selectionTransformRaster = shared
-      return shared
-    }
-    const raster = selectionTransformPreviewRasterPacked(document, selection.source, selection.target, selection.angle, selection.shear, activeLayer, selection.quad, selectionOptimizedRotationEnabled(selection))
-    const next = { source: selection.source, key, ...raster }
-    this.selectionTransformRaster = next
-    sharedTransformRasters.set(selection.source, next)
-    return next
-  }
   drawClipboardPreview(
     context: RasterContext2D,
     document: SpriteDocument,
@@ -98,7 +81,6 @@ export class CanvasSelectionPreviewRenderer {
     if (layerIndex < 0 || layerIndex !== layers.length - 1) return false
     const activeLayer = this.compositeCache.sourceLayerFor(layers[layerIndex])
     if (activeLayer.kind === 'text' || activeLayer.format !== 'rgba' || activeLayer.opacity !== 1 || activeLayer.blendMode !== 'normal' || rasterContentBounds(activeLayer, document.palette) !== null) return false
-
     const directSource = selection.angle % 360 === 0 && !selection.shear && !selection.quad && !target.flipHorizontal && !target.flipVertical && target.width === source.selection.width && target.height === source.selection.height
     const previewKey = directSource ? `direct:${source.selection.width}:${source.selection.height}` : selectionPreviewRasterKey(selection, activeLayer.format)
     let preview = this.clipboardPreview
@@ -119,7 +101,8 @@ export class CanvasSelectionPreviewRenderer {
           }
         }
       } else {
-        const raster = this.selectionTransformRasterFor(document, contentRevision, selection, activeLayer)
+        const raster = selectionTransformRasterFor(document, contentRevision, selection, activeLayer, this.selectionTransformRaster)
+        this.selectionTransformRaster = raster
         width = raster.width
         height = raster.height
         pixels = new Uint8ClampedArray(raster.pixels.buffer as ArrayBuffer, raster.pixels.byteOffset, raster.pixels.byteLength)
@@ -129,7 +112,6 @@ export class CanvasSelectionPreviewRenderer {
       preview = { source, key: previewKey, canvas }
       this.clipboardPreview = preview
     }
-
     const initialCompositeIsPending = contentRevision === 0 && initialDocumentCompositePending(document, frameId)
     if (shouldCacheFullCompositeSurface(document.width, document.height, this.maxCacheBytes) && !initialCompositeIsPending) {
       this.drawSurface(context, document, view, originX, originY, canvasWidth, canvasHeight, fromX, fromY, toX, toY, frameKey, frameId, contentRevision, contentInvalidation, undefined, imageSmoothingEnabled)
@@ -279,8 +261,24 @@ export class CanvasSelectionPreviewRenderer {
         previewContext.clearRect(localX, localY, previousRect.width, previousRect.height)
         previewContext.drawImage(preview.baseCanvas, previousRect.x - preview.baseDocumentX, previousRect.y - preview.baseDocumentY, previousRect.width, previousRect.height, localX, localY, previousRect.width, previousRect.height)
       }
+      const scaleEntry = tileRepeatMode === 'off' && preview.upperLayers.length === 0
+        ? opaqueScaleCanvasFor(selection, activeLayer, this.opaqueSelectionCanvas)
+        : null
+      if (scaleEntry) this.opaqueSelectionCanvas = scaleEntry.entry
+      const scaleCanvas = scaleEntry?.canvas ?? null
+      if (scaleCanvas) {
+        if (!selection.copy) {
+          const sourceRect = intersectRect(sourceSelection, { x: preview.x, y: preview.y, width: preview.width, height: preview.height })
+          if (sourceRect) {
+            const sourcePixels = preview.backdrop.read(document, activeLayer, preview.lowerLayers, selection.source, false, sourceRect, contentRevision)
+            previewContext.putImageData(imageData(sourcePixels, sourceRect.width, sourceRect.height), sourceRect.x - preview.x, sourceRect.y - preview.y)
+          }
+        }
+        previewContext.drawImage(scaleCanvas, 0, 0, scaleCanvas.width, scaleCanvas.height, selection.target.x - preview.x, selection.target.y - preview.y, selection.target.width, selection.target.height)
+      } else {
       const palette = activeLayer.format === 'indexed' ? new Map(document.palette.map((entry) => [entry.id, entry.color])) : null
-      const transformedRaster = this.selectionTransformRasterFor(document, contentRevision, selection, activeLayer)
+      const transformedRaster = selectionTransformRasterFor(document, contentRevision, selection, activeLayer, this.selectionTransformRaster)
+      this.selectionTransformRaster = transformedRaster
       checkpoint('raster'); for (const patchRect of visiblePatchRects) {
         const patchPixels = preview.backdrop.read(document, activeLayer, preview.lowerLayers, selection.source, selection.copy, patchRect, contentRevision)
         checkpoint('backdrop'); const writePreviewPixel = selectionPreviewPixelWriter(document, activeLayer, preview.lowerLayers, selection, patchRect, contentRevision, patchPixels, palette, preview.lowerBackdrop)
@@ -320,6 +318,7 @@ export class CanvasSelectionPreviewRenderer {
         }
         checkpoint('selection-pixels'); if (preview.upperLayers.length > 0) this.compositeCache.compositeNormalLayersInto(document, preview.upperLayers, patchRect.x, patchRect.y, patchRect.width, patchRect.height, contentRevision, patchPixels)
         checkpoint('upper-layers'); previewContext.putImageData(imageData(patchPixels, patchRect.width, patchRect.height), patchRect.x - preview.x, patchRect.y - preview.y)
+      }
       }
       preview.previousPatchRects = visiblePatchRects.map((rect) => ({
         ...rect

@@ -4,9 +4,12 @@ import type { SpriteDocument } from '@shared/types-document'
 import { encodeProjectAsync } from '@/core/project-format'
 import { HistoryStack, type HistoryEntry, type HistoryStackChange } from '@/core/history'
 import { captureCommittedHistoryDelta, cloneHistoryDocument, historyDocumentTransferView, hydrateLocalHistoryDelta, historyDocumentBytes } from '@/core/local-history-delta'
+import { localHistoryDocumentShape } from '@/core/local-history-committed-delta'
+import { enforceLocalHistoryBudget, localHistoryRetainedBytes, LOCAL_HISTORY_SNAPSHOT_BUDGET } from '@/core/local-history-budget'
 import { decodeHistoryDelta, materializeLocalHistorySnapshot, unpackLocalHistorySnapshots, type LocalHistoryManifest, type LocalHistorySnapshot } from '@/core/local-history-archive'
 import { packLocalHistoryAsync } from '@/core/local-history-worker'
 import { getLayerStorageOrigin, setLayerStorageOrigin } from '@/core/document-model'
+import { projectHistoryAnimationFrame } from '@/core/animation'
 import { historyEntryLimit, loadEditorPreferences } from '@/core/file-preferences'
 import { recordRuntimeDiagnostic, runtimeDiagnosticsActive } from '@/core/runtime-diagnostics'
 import type { DocumentSession } from './workspace-types'
@@ -17,17 +20,14 @@ const HISTORY_FORMAT_VERSION = 4
 const cloneDocument = cloneHistoryDocument
 const encodedSnapshots = new WeakMap<LocalHistorySnapshot, Promise<Uint8Array>>()
 const snapshotShapes = new WeakMap<LocalHistorySnapshot, string>()
-const documentShape = (document: SpriteDocument): string => JSON.stringify([
-  document.width, document.height, document.colorMode, document.palette,
-  document.layers.map(layer => [layer.id, layer.kind, layer.format, layer.width, layer.height, layer.offsetX, layer.offsetY, getLayerStorageOrigin(layer)]),
-  document.animation?.frames.map(frame => frame.id), document.animation?.cels.map(cel => [cel.id, cel.layerId, cel.frameId])
-])
+const documentShape = localHistoryDocumentShape
 const captureSnapshot = (document: SpriteDocument): LocalHistorySnapshot => {
   const snapshot = cloneDocument(document)
   snapshotShapes.set(snapshot, documentShape(document))
   return snapshot
 }
 const writeQueues = new Map<string, Promise<void>>()
+const pressuredStates = new WeakSet<object>()
 interface HistoryWrite {
   manifest: LocalHistoryManifest
   snapshots: LocalHistorySnapshot[]
@@ -105,6 +105,18 @@ const trimSnapshots = (session: DocumentSession): void => {
     state.snapshots.shift()
     state.position = Math.max(0, state.position - 1)
   }
+  for (const [before, after] of enforceLocalHistoryBudget(state)) {
+    const shape = snapshotShapes.get(before)
+    if (shape) snapshotShapes.set(after, shape)
+  }
+  const retainedBytes = localHistoryRetainedBytes(state.snapshots)
+  if (retainedBytes > LOCAL_HISTORY_SNAPSHOT_BUDGET) {
+    if (!pressuredStates.has(state)) recordRuntimeDiagnostic('operation-slow', 'local-history.memory-pressure', {
+      retainedBytes, thresholdBytes: LOCAL_HISTORY_SNAPSHOT_BUDGET, visibleSteps: state.labels.length,
+      action: 'compress-checkpoints-on-persist', documentId: session.document.id
+    }, true)
+    pressuredStates.add(state)
+  } else pressuredStates.delete(state)
 }
 
 const suspendLocalHistory = (session: DocumentSession, error: unknown): void => {
@@ -195,11 +207,14 @@ const pendingWrites = new Map<string, number>()
 export const scheduleLocalHistoryPersist = (api: MoonSpriteApi, session: DocumentSession): void => {
   const id = historyId(session.document)
   const prior = pendingWrites.get(id)
+  const pressured = session.localHistory && pressuredStates.has(session.localHistory)
+  // Do not let continuous drawing postpone a pressure-triggered write forever.
+  if (pressured && prior !== undefined) return
   if (prior !== undefined) window.clearTimeout(prior)
   pendingWrites.set(id, window.setTimeout(() => {
     pendingWrites.delete(id)
     void persistLocalHistory(api, session).catch((error) => console.error('MoonSprite local history save failed', error))
-  }, 750))
+  }, pressured ? 0 : 750))
 }
 
 /** Flushes a pending debounced write before the session is removed. */
@@ -245,8 +260,11 @@ export const persistLocalHistory = async (api: MoonSpriteApi, session: DocumentS
     // Once trimming advances into a journal, its first state is encoded as a
     // checkpoint. Rebase the live chain so discarded strokes can be collected.
     const live = session.localHistory
-    if ('base' in snapshots[0] && live?.snapshots[0] === snapshots[0]) {
-      const replacements = new Map<LocalHistorySnapshot, LocalHistorySnapshot>([[snapshots[0], { archive: archives[0] }]])
+    if (live && (('base' in snapshots[0] && live.snapshots[0] === snapshots[0]) || pressuredStates.has(live))) {
+      const replacements = new Map<LocalHistorySnapshot, LocalHistorySnapshot>()
+      snapshots.forEach((snapshot, index) => {
+        if (archives[index].byteLength && live.snapshots.includes(snapshot)) replacements.set(snapshot, { archive: archives[index] })
+      })
       const old = live.snapshots
       const rebased = old.map(snapshot => {
         const next = replacements.get(snapshot) ?? ('base' in snapshot && replacements.has(snapshot.base)
@@ -262,6 +280,7 @@ export const persistLocalHistory = async (api: MoonSpriteApi, session: DocumentS
       }
       live.snapshots = rebased
       record.snapshots = record.snapshots.map(snapshot => replacements.get(snapshot) ?? snapshot)
+      if (localHistoryRetainedBytes(live.snapshots) <= LOCAL_HISTORY_SNAPSHOT_BUDGET) pressuredStates.delete(live)
     }
   })
   const record: HistoryWrite = { manifest, snapshots, completion: write }
@@ -326,6 +345,7 @@ export const restoreLocalHistory = async (api: MoonSpriteApi, session: DocumentS
   }
   deltas.forEach((delta, index) => cacheDelta(snapshots[index], snapshots[index + 1], delta))
   const position = clampPosition(manifest.position, manifest.labels)
+  const totalEntries = manifest.labels.length
   const structuralSnapshots = new Map<number, SpriteDocument>()
   const decodeSnapshot = (index: number): SpriteDocument => {
     const existing = structuralSnapshots.get(index)
@@ -336,8 +356,17 @@ export const restoreLocalHistory = async (api: MoonSpriteApi, session: DocumentS
     return snapshot
   }
   const restoredStack = new HistoryStack(undefined, historyEntryLimit(loadEditorPreferences()))
+  // Decode only the timeline window that can survive the configured entry
+  // limit. Older structural snapshots cannot be reached after restore and
+  // would otherwise materialize every large multi-frame document eagerly.
+  const retainedHistoryOffset = Number.isFinite(restoredStack.entryLimit)
+    ? Math.min(position, Math.max(0, totalEntries - restoredStack.entryLimit))
+    : 0
+  const retainedHistoryEnd = Number.isFinite(restoredStack.entryLimit)
+    ? Math.min(totalEntries, retainedHistoryOffset + restoredStack.entryLimit)
+    : totalEntries
   const entries: HistoryEntry[] = []
-  for (let index = 0; index < manifest.labels.length; index++) {
+  for (let index = retainedHistoryOffset; index < retainedHistoryEnd; index++) {
     const cached = deltas[index]
     if (cached) {
       const delta = decodeHistoryDelta(cached)
@@ -371,15 +400,21 @@ export const restoreLocalHistory = async (api: MoonSpriteApi, session: DocumentS
   // The session is already visible while history loads. Never overwrite an edit
   // or a new history stack that arrived during asynchronous preparation.
   if (session.document !== initialDocument || session.revision !== initialRevision || session.history !== initialHistory || session.history?.revision !== initialHistoryRevision) return false
+  const viewedFrameId = session.document.animation?.activeFrameId
   replaceDocument(session.document, { ...current, timelapse: undefined })
+  // Restored pixel undo belongs to its cel; the frame viewed in the newly
+  // opened project remains a view choice, even if the last edit was elsewhere.
+  if (snapshots.some(snapshot => 'base' in snapshot && snapshot.delta.celTarget) && viewedFrameId && session.document.animation?.frames.some(frame => frame.id === viewedFrameId)) {
+    session.document.animation.activeFrameId = viewedFrameId
+    projectHistoryAnimationFrame(session.document)
+  }
   session.document.timelapse = recording
   // The session can already have render plans and point samplers referring to
   // the pre-restore layers. Replace their generation before the first live edit,
   // without marking the saved document dirty or adding an undo entry.
   invalidateSessionContent(session)
-  restoredStack.restoreTimeline(entries, position)
+  restoredStack.restoreTimeline(entries, Math.max(0, position - retainedHistoryOffset))
   session.history = restoredStack
-  const retainedHistoryOffset = Math.min(position, Math.max(0, entries.length - restoredStack.entryLimit))
   const retainedSnapshots = snapshots.slice(retainedHistoryOffset, retainedHistoryOffset + restoredStack.length + 1)
   const retainedLabels = manifest.labels.slice(retainedHistoryOffset, retainedHistoryOffset + restoredStack.length)
   const retainedPosition = Math.max(0, position - retainedHistoryOffset)

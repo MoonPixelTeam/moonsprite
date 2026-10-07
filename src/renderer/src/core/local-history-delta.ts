@@ -1,9 +1,10 @@
 import type { AnimationCelSurface } from '@shared/types-animation'
 import type { RasterLayer } from '@shared/types-layer'
 import type { SpriteDocument } from '@shared/types-document'
-import { getCommittedPixelChanges, type HistoryEntry, type ContentInvalidationHint } from './history'
-import { getLayerStorageOrigin, markLayerContentChanged, setLayerStorageOrigin } from './document-model'
+import { type HistoryEntry, type ContentInvalidationHint } from './history'
+import { getLayerStorageOrigin, markLayerContentChanged, markRasterSurfaceContentChanged, setLayerStorageOrigin } from './document-model'
 import { detachRuntimeRaster, lazyRuntimeRasterForSurface, rehydrateRuntimeRasterDocument } from './runtime-raster'
+import { projectHistoryAnimationFrame } from './animation'
 
 export function prepareHistoryDocument(source: SpriteDocument): SpriteDocument {
   for (const layer of source.layers) if (layer.runtimeRaster) detachRuntimeRaster(layer)
@@ -55,7 +56,7 @@ export function historyDocumentBytes(source: SpriteDocument): number {
     if (seen.has(value)) return 0
     seen.add(value)
     if (ArrayBuffer.isView(value)) return size(value.buffer)
-    if (value instanceof ArrayBuffer) return value.byteLength
+    if (Object.prototype.toString.call(value) === '[object ArrayBuffer]') return (value as ArrayBuffer).byteLength
     if (value instanceof Map) return [...value].reduce((total, [key, item]) => total + size(key) + size(item), 32)
     return Object.values(value).reduce<number>((total, item) => total + size(item), 32)
   }
@@ -65,6 +66,8 @@ export function historyDocumentBytes(source: SpriteDocument): number {
 type Path = string[]
 type Patch = { path: Path; before: unknown; after: unknown; offset?: number; aliases?: Path[] }
 export interface LocalHistoryDelta {
+  snapshotFrameId?: string
+  celTarget?: { index: number; id: string; layerId: string; frameId: string }
   patches: Patch[]
   origins: { before: Array<{ x: number; y: number }>; after: Array<{ x: number; y: number }> }
   label: string
@@ -80,46 +83,7 @@ function isSafePath(path: Path): boolean {
   return path.length > 0 && path.every((key) => !unsafePathKeys.has(key))
 }
 
-/** Capture already committed pixel buffers, without scanning or cloning the document. */
-export function captureCommittedHistoryDelta(document: SpriteDocument, entry: HistoryEntry): LocalHistoryDelta | null {
-  const edit = getCommittedPixelChanges(entry)
-  if (!edit || edit.layerOffset || (document.animation?.frames.length ?? 1) !== 1) return null
-  const index = document.layers.findIndex(layer => layer.id === edit.layerId)
-  const layer = document.layers[index]
-  if (!layer || layer.kind || layer.linkedContentId || layer.width !== document.width || layer.height !== document.height) return null
-  const origin = getLayerStorageOrigin(layer)
-  if (origin.x || origin.y) return null
-  // A separate cel buffer would require a structural snapshot, not a pixel patch.
-  if (document.animation?.cels.some(cel => cel.layerId === layer.id && cel.surface && cel.surface.pixels !== layer.pixels)) return null
-  const patches: Patch[] = []
-  const path = ['layers', String(index), 'pixels']
-  const add = (x: number, y: number, width: number, before: Uint8Array, after: Uint8Array): boolean => {
-    if (x < 0 || y < 0 || x + width > layer.width || y >= layer.height) return false
-    patches.push({ path, offset: (y * layer.width + x) * 4, before, after })
-    return true
-  }
-  for (const patch of edit.regionPatches) {
-    const before = new Uint8Array(patch.before.buffer, patch.before.byteOffset, patch.before.byteLength)
-    const after = new Uint8Array(patch.after.buffer, patch.after.byteOffset, patch.after.byteLength)
-    for (let row = 0; row < patch.height; row++) {
-      const start = row * patch.width * 4, end = start + patch.width * 4
-      if (!add(patch.x, patch.y + row, patch.width, before.subarray(start, end), after.subarray(start, end))) return null
-    }
-  }
-  const packed = (value: number, length: number): Uint8Array => {
-    const result = new Uint8Array(length * 4), view = new DataView(result.buffer)
-    for (let index = 0; index < length; index++) view.setUint32(index * 4, value, true)
-    return result
-  }
-  for (let i = 0; i < edit.runXs.length; i++) {
-    if (!add(edit.runXs[i], edit.runYs[i], edit.runLengths[i], packed(edit.runBefore[i], edit.runLengths[i]), packed(edit.runAfter[i], edit.runLengths[i]))) return null
-  }
-  for (let i = 0; i < edit.xs.length; i++) if (!add(edit.xs[i], edit.ys[i], 1, packed(edit.before[i], 1), packed(edit.after[i], 1))) return null
-  const origins = document.layers.map(getLayerStorageOrigin)
-  return { patches, origins: { before: origins, after: origins }, label: entry.label,
-    bytes: patches.reduce((sum, patch) => sum + (patch.before as Uint8Array).byteLength + (patch.after as Uint8Array).byteLength, 0),
-    invalidation: entry.invalidation ?? { kind: 'full' }, affectedLayerIds: [layer.id], requiresAnimationSelectionNormalization: false }
-}
+export { captureCommittedHistoryDelta } from './local-history-committed-delta'
 
 /** Compile once on reopening. Navigation then touches only changed byte runs.
  * Structural/alias changes return null and retain the complete snapshot path.
@@ -208,25 +172,35 @@ export function hydrateLocalHistoryDelta(target: SpriteDocument, delta: LocalHis
     return (value as Record<string, unknown>)[key]
   }, root)
   const apply = (side: 'before' | 'after'): void => {
+    if (delta.celTarget) {
+      const cel = target.animation?.cels[delta.celTarget.index]
+      if (!cel || cel.id !== delta.celTarget.id || cel.layerId !== delta.celTarget.layerId || cel.frameId !== delta.celTarget.frameId) throw new Error('本地历史 cel 与工程不一致。')
+    }
+    const changedBuffers = new Set<ArrayBufferLike>()
     for (const patch of patches) {
       if (!isSafePath(patch.path) || patch.aliases?.some((path) => !isSafePath(path))) continue
-      if (patch.aliases) {
+      if (patch.offset !== undefined) {
+        for (const path of patch.aliases ?? [patch.path]) {
+          const view = resolve(target, path) as ArrayBufferView
+          new Uint8Array(view.buffer, view.byteOffset, view.byteLength).set(patch[side] as Uint8Array, patch.offset)
+          changedBuffers.add(view.buffer)
+        }
+      } else if (patch.aliases) {
         const value = structuredClone(patch[side])
         for (const path of patch.aliases) {
           const parent = resolve(target, path.slice(0, -1)) as Record<string, unknown>
           parent[path.at(-1)!] = value
         }
-      } else if (patch.offset !== undefined) {
-        const view = resolve(target, patch.path) as ArrayBufferView
-        new Uint8Array(view.buffer, view.byteOffset, view.byteLength).set(patch[side] as Uint8Array, patch.offset)
       } else {
         const parent = resolve(target, patch.path.slice(0, -1)) as Record<string, unknown>
         parent[patch.path.at(-1)!] = patch[side]
       }
     }
     // Byte writes bypass the normal brush writer, so explicitly invalidate its caches.
-    for (const layer of target.layers) if (affected.has(layer.id)) markLayerContentChanged(layer)
-    target.layers.forEach((layer, index) => setLayerStorageOrigin(layer, origins[side][index]))
+    for (const cel of target.animation?.cels ?? []) if (cel.surface && !lazyRuntimeRasterForSurface(cel.surface) && changedBuffers.has(cel.surface.pixels.buffer)) markRasterSurfaceContentChanged(cel.surface)
+    for (const layer of target.layers) if (affected.has(layer.id) || (!lazyRuntimeRasterForSurface(layer) && changedBuffers.has(layer.pixels.buffer))) markLayerContentChanged(layer)
+    if (delta.celTarget) projectHistoryAnimationFrame(target)
+    else target.layers.forEach((layer, index) => setLayerStorageOrigin(layer, origins[side][index]))
   }
   return { ...metadata, undo: () => apply('before'), redo: () => apply('after'), requiresAnimationSync: false }
 }

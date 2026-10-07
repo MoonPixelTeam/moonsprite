@@ -2,12 +2,12 @@ import type { LayerGroup, LayerMask, RasterLayer } from '@shared/types-layer'
 import type { SelectionRect } from '@shared/types-selection'
 import type { SpriteDocument } from '@shared/types-document'
 import { unpackColor } from './raster'
-import { buildLayerPanelTree } from './layer-panel-layout'
+import { compositeHierarchyNodes } from './document-composite-hierarchy'
 import { rasterStorageIdentity, readSurfacePackedLocal } from './runtime-raster'
 import { hasEnabledLayerStyles, layerStyleAffectedRect } from './layer-styles'
+import { createCompositeMaskLookup } from './document-composite-mask-lookup'
+import { animationLayerZIndexes } from './document-composite-z-index'
 import {
-  animationMaskAt,
-  resolveAnimationMask,
   getRasterContentRevision,
   rasterContentBounds,
   maskCoverageFromColor,
@@ -18,9 +18,11 @@ import {
 export const activeCelMasksByLayer = (document: SpriteDocument, previewMaskId?: string, includeNeutral = false): Map<string, LayerMask> => {
   const timeline = document.animation
   if (!timeline) return new Map()
+  if (!(timeline.layerMasks?.length || timeline.groupMasks?.length)) return new Map()
+  const masks = createCompositeMaskLookup(timeline)
   return new Map(timeline.cels
     .filter((cel) => cel.frameId === timeline.activeFrameId)
-    .map((cel) => [cel.layerId, animationMaskAt(timeline, cel.layerId, cel.frameId)] as const)
+    .map((cel) => [cel.layerId, masks.at(cel.layerId, cel.frameId)] as const)
     .filter((entry): entry is readonly [string, LayerMask] => {
       const mask = entry[1]
       if (!mask) return false
@@ -31,9 +33,11 @@ export const activeCelMasksByLayer = (document: SpriteDocument, previewMaskId?: 
 export const activeGroupMasksByGroup = (document: SpriteDocument, previewMaskId?: string, includeNeutral = false): Map<string, LayerMask> => {
   const timeline = document.animation
   if (!timeline) return new Map()
+  if (!timeline.groupMasks?.length) return new Map()
+  const masks = createCompositeMaskLookup(timeline)
   return new Map((timeline.groupMasks ?? [])
     .filter((entry) => entry.frameId === timeline.activeFrameId)
-    .map((entry) => [entry.groupId, resolveAnimationMask(timeline, entry.mask)] as const)
+    .map((entry) => [entry.groupId, masks.resolve(entry.mask)] as const)
     .filter((entry): entry is readonly [string, LayerMask] => Boolean(entry[1] && entry[1].visible !== false && (includeNeutral || entry[1].id === previewMaskId || layerMaskAffectsComposite(entry[1])))))
 }
 
@@ -105,27 +109,6 @@ export type CompositeStackItem =
   | { kind: 'layer'; layer: RasterLayer }
   | { kind: 'group'; group: LayerGroup; children: CompositeStackItem[] }
 
-const animationLayerZIndexes = (document: SpriteDocument): Map<string, number> => {
-  const timeline = document.animation
-  if (!timeline) return new Map()
-  const byId = new Map(timeline.cels.map((cel) => [cel.id, cel]))
-  const result = new Map<string, number>()
-  for (const cel of timeline.cels) {
-    if (cel.frameId !== timeline.activeFrameId) continue
-    const visited = new Set<string>()
-    let source = cel
-    while (source.linkedCelId && !visited.has(source.id)) {
-      visited.add(source.id)
-      const linked = byId.get(source.linkedCelId)
-      if (!linked || linked.layerId !== cel.layerId) break
-      source = linked
-    }
-    const numeric = Number(source.zIndex)
-    result.set(cel.layerId, Number.isFinite(numeric) ? Math.max(-999, Math.min(999, Math.trunc(numeric))) : 0)
-  }
-  return result
-}
-
 /** Sort bottom-to-top composite blocks without separating clipping layers from their base. */
 const sortCompositeContainerByZ = (items: CompositeStackItem[], layerZIndexes: ReadonlyMap<string, number>): void => {
   for (const item of items) if (item.kind === 'group') sortCompositeContainerByZ(item.children, layerZIndexes)
@@ -143,13 +126,13 @@ const sortCompositeContainerByZ = (items: CompositeStackItem[], layerZIndexes: R
 }
 
 /** Uses the visible layer-panel order as the single source of truth for compositing order. */
-export const buildCompositeStack = (document: SpriteDocument): CompositeStackItem[] => {
+export const buildCompositeStack = (document: SpriteDocument, hierarchyCacheOwner = document): CompositeStackItem[] => {
   const layerById = new Map(document.layers.map((layer) => [layer.id, layer]))
   const groupById = new Map(document.groups.map((group) => [group.id, group]))
   const root: CompositeStackItem[] = []
   const containers: CompositeStackItem[][] = [root]
 
-  for (const node of buildLayerPanelTree({ layers: document.layers, groups: document.groups })) {
+  for (const node of compositeHierarchyNodes(document, hierarchyCacheOwner)) {
     const container = containers[node.depth]
     if (!container) continue
     containers.length = node.depth + 1
@@ -174,7 +157,7 @@ export const buildCompositeStack = (document: SpriteDocument): CompositeStackIte
   return root
 }
 
-export const normalCompositeLayers = (document: SpriteDocument, allowLayerBlendModes = false): RasterLayer[] | null => {
+export const normalCompositeLayers = (document: SpriteDocument, allowLayerBlendModes = false, hierarchyCacheOwner = document): RasterLayer[] | null => {
   const activeMasks = activeCelMasksByLayer(document)
   const activeGroupMasks = activeGroupMasksByGroup(document)
   const flatten = (items: readonly CompositeStackItem[]): RasterLayer[] | null => {
@@ -207,7 +190,7 @@ export const normalCompositeLayers = (document: SpriteDocument, allowLayerBlendM
     }
     return layers
   }
-  return flatten(buildCompositeStack(document))
+  return flatten(buildCompositeStack(document, hierarchyCacheOwner))
 }
 
 export const opacityGroupCompositeStack = (document: SpriteDocument, allowNormalLayerStyles = false): CompositeStackItem[] | null => {

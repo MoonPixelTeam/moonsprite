@@ -94,6 +94,8 @@ export const rehydrateRuntimeRasterSurface = (surface: RasterSurface): void => {
 export const rehydrateRuntimeRasterDocument = (document: SpriteDocument): void => {
   for (const layer of document.layers) rehydrateRuntimeRasterSurface(layer)
   for (const cel of document.animation?.cels ?? []) if (cel.surface) rehydrateRuntimeRasterSurface(cel.surface)
+  for (const entry of document.animation?.layerMasks ?? []) rehydrateRuntimeRasterSurface(entry.mask)
+  for (const entry of document.animation?.groupMasks ?? []) rehydrateRuntimeRasterSurface(entry.mask)
 }
 
 export const prepareRuntimeRasterDocumentForTransfer = (document: SpriteDocument): void => {
@@ -123,6 +125,8 @@ export const prepareRuntimeRasterDocumentForTransfer = (document: SpriteDocument
   }
   for (const layer of document.layers) prepare(layer)
   for (const cel of document.animation?.cels ?? []) if (cel.surface) prepare(cel.surface)
+  for (const entry of document.animation?.layerMasks ?? []) prepare(entry.mask)
+  for (const entry of document.animation?.groupMasks ?? []) prepare(entry.mask)
 }
 
 export const runtimeRasterForSurface = (surface: RasterSurface): RuntimeRasterTiles | null => states.get(surface)?.runtime ?? surface.runtimeRaster ?? null

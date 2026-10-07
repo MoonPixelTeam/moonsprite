@@ -34,6 +34,15 @@ class MockOffscreenCanvas {
   get height() { return this.canvasHeight }
   set height(value: number) { this.canvasHeight = value; this.pixels = new Uint8ClampedArray(this.canvasWidth * value * 4) }
   readonly context = {
+    createImageData: vi.fn((width: number, height: number) => new MockImageData(new Uint8ClampedArray(width * height * 4), width, height)),
+    getImageData: vi.fn((x: number, y: number, width: number, height: number) => {
+      const pixels = new Uint8ClampedArray(width * height * 4)
+      for (let row = 0; row < height; row++) {
+        const start = ((y + row) * this.width + x) * 4
+        pixels.set(this.pixels.subarray(start, start + width * 4), row * width * 4)
+      }
+      return new MockImageData(pixels, width, height)
+    }),
     putImageData: vi.fn((image: MockImageData, x: number, y: number) => {
       for (let row = 0; row < image.height; row += 1) {
         const sourceOffset = row * image.width * 4
@@ -52,6 +61,7 @@ class MockOffscreenCanvas {
         if (targetX < 0 || targetY < 0 || targetX >= this.width || targetY >= this.height) continue
         const sourceOffset = (sourceY * source.width + sourceX) * 4
         const targetOffset = (targetY * this.width + targetX) * 4
+        if (source.pixels[sourceOffset + 3] === 0) continue
         this.pixels.set(source.pixels.subarray(sourceOffset, sourceOffset + 4), targetOffset)
       }
     }),
@@ -78,7 +88,9 @@ class MockOffscreenCanvas {
 }
 
 class MockImageData {
-  constructor(public data: Uint8ClampedArray, public width: number, public height: number) {}
+  constructor(public data: Uint8ClampedArray, public width: number, public height: number) {
+    if (data.length !== width * height * 4) throw new DOMException('Invalid ImageData dimensions', 'IndexSizeError')
+  }
 }
 
 const view = (overrides: Record<string, unknown> = {}) => ({
@@ -137,6 +149,21 @@ beforeEach(() => {
 afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals() })
 
 describe('CanvasCompositeCache', () => {
+  it('restores the caller clip after styled rendering throws and can draw a later view', () => {
+    const document = createDocument('styled render failure', 42, 39, 'rgba')
+    const layer = document.layers[0]
+    layer.layerStyles = createDefaultLayerStyles()
+    layer.layerStyles.stroke.enabled = true
+    writeLayerColor(document, layer, 10 * 42 + 12, { r: 255, g: 0, b: 0, a: 255 })
+    const cache = new CanvasCompositeCache(), context = makeContext()
+    const render = vi.spyOn(styleRender, 'renderStyledLayerBlock').mockImplementationOnce(() => { throw new Error('style rendering failed') })
+    expect(() => draw(cache, document, context)).toThrow('style rendering failed')
+    expect(context.restore).toHaveBeenCalledTimes(context.save.mock.calls.length)
+    render.mockRestore()
+    expect(() => draw(cache, document, context, { originX: 30, originY: 20, view: { zoom: 2 } })).not.toThrow()
+    expect(context.restore).toHaveBeenCalledTimes(context.save.mock.calls.length)
+    expect(context.drawImage).toHaveBeenCalled()
+  })
   it.each([false, true])('does not recompose the base when resuming a floating drag (mirrored=%s)', mirrored => {
     const document = createDocument('resume floating selection', 128, 128, 'rgba')
     for (let i = 0; i < 15; i++) document.layers.push(createLayer(`Layer ${i}`, 128, 128, 'rgba'))
@@ -1175,6 +1202,60 @@ describe('CanvasCompositeCache', () => {
     expect(Array.from(surface.pixels.slice(5 * 4, 5 * 4 + 4))).toEqual([24, 96, 220, 255])
   })
 
+  it.each([[0, 0], [5, 3], [-4, -2]])('places cropped playback pixels identically to the paused frame at layer offset %s,%s', (offsetX, offsetY) => {
+    const document = createDocument('cropped playback placement', 64, 48, 'rgba', false)
+    const layer = document.layers[0]
+    layer.width = 32; layer.height = 24
+    layer.offsetX = offsetX; layer.offsetY = offsetY
+    layer.pixels = new Uint8ClampedArray(32 * 24 * 4)
+    for (let y = 7; y < 10; y++) for (let x = 8; x < 12; x++) {
+      writeLayerColor(document, layer, y * 32 + x, { r: 20 * x, g: 20 * y, b: 100, a: 255 })
+    }
+    // Opening/previous rendering establishes these bounds before playback.
+    expect(layerContentBounds(document, layer)).toMatchObject({ x: offsetX + 8, y: offsetY + 7, width: 4, height: 3 })
+    for (const cacheBytes of [128 * 1024 * 1024, 1]) {
+      const context = makeContext(), cache = new CanvasCompositeCache(cacheBytes)
+      for (const [frameId, dx, dy] of [['first', 0, 0], ['second', 2, -1], ['first', 0, 0]] as const) {
+        layer.offsetX = offsetX + dx; layer.offsetY = offsetY + dy
+        const expected = compositeRegion(document, 0, 0, 64, 48)
+        draw(cache, document, context, { animationPlayback: true, frameId })
+        const surface = context.drawImage.mock.lastCall![0] as MockOffscreenCanvas
+        expect(surface.pixels.byteLength).toBe(expected.byteLength)
+        expect(surface.pixels.every((value, index) => value === expected[index])).toBe(true)
+      }
+    }
+  })
+
+  it('matches paused pixels through real frame activation with different cel crops', () => {
+    const document = createDocument('frame crop playback', 64, 48, 'rgba', false)
+    const timeline = ensureAnimationDocument(document)
+    const frameIds = [timeline.activeFrameId, addBlankAnimationFrame(document), addBlankAnimationFrame(document)]
+    const expectedFrames = new Map<string, Uint8ClampedArray>()
+    for (const [index, frameId] of frameIds.entries()) {
+      activateAnimationFrame(document, frameId)
+      const layer = document.layers[0]
+      layer.width = 24; layer.height = 20
+      layer.offsetX = index * 3 - 2; layer.offsetY = index * 2 - 1
+      layer.pixels = new Uint8ClampedArray(24 * 20 * 4)
+      for (let y = 5 + index; y < 8 + index; y++) for (let x = 7 + index; x < 11 + index; x++) {
+        writeLayerColor(document, layer, y * 24 + x, { r: x * 10, g: y * 20, b: 40 + index * 50, a: 255 })
+      }
+      syncActiveAnimationLayer(document, layer.id)
+      refreshActiveAnimationFrame(document)
+      expectedFrames.set(frameId, compositeRegion(document, 0, 0, 64, 48))
+    }
+    const cache = new CanvasCompositeCache(), context = makeContext()
+    for (const frameId of [...frameIds, ...frameIds.slice().reverse(), ...frameIds]) {
+      activateAnimationFrame(document, frameId)
+      layerContentBounds(document, document.layers[0])
+      draw(cache, document, context, { animationPlayback: true, frameId })
+      const surface = context.drawImage.mock.lastCall![0] as MockOffscreenCanvas
+      const expected = expectedFrames.get(frameId)!
+      expect(surface.pixels.byteLength).toBe(expected.byteLength)
+      expect(surface.pixels.every((value, index) => value === expected[index])).toBe(true)
+    }
+  })
+
   it('shares a completed animation frame between canvas consumers', () => {
     const document = createDocument('shared animation frame', 4, 4, 'rgba')
     writeLayerColor(document, document.layers[0], 6, { r: 180, g: 40, b: 90, a: 255 })
@@ -1291,7 +1372,7 @@ describe('CanvasCompositeCache', () => {
     const rasterize = vi.spyOn(selectionRaster, 'selectionTransformPreviewRasterPacked')
     const canvases = [new CanvasCompositeCache(), new CanvasCompositeCache()]
     const contexts = [makeContext(), makeContext()]
-    const selectionPreview = { layerId: layer.id, source, target: { x: 3, y: 0, width: 3, height: 3 }, angle: 0, copy: false }
+    const selectionPreview = { layerId: layer.id, source, target: { x: 3, y: 0, width: 3, height: 3 }, angle: 17, copy: false }
     const renderBoth = (contentRevision: number) => canvases.forEach((cache, i) => draw(cache, document, contexts[i], { selectionPreview, contentRevision }))
     renderBoth(1)
     expect(rasterize).toHaveBeenCalledTimes(1)
@@ -1304,6 +1385,30 @@ describe('CanvasCompositeCache', () => {
     expect(rasterize).toHaveBeenCalledTimes(2)
     renderBoth(2)
     expect(rasterize).toHaveBeenCalledTimes(3)
+  })
+
+  it('uses a GPU scale surface for opaque top-layer content and matches the committed pixels', () => {
+    const document = createDocument('opaque scale preview', 16, 12, 'rgba')
+    const lower = document.layers[0]
+    const layer = createLayer('active', 16, 12, 'rgba')
+    document.layers.push(layer)
+    for (let y = 2; y < 4; y += 1) for (let x = 2; x < 4; x += 1) {
+      if (x === 3 && y === 3) continue // Transparent holes must preserve the lower stack.
+      writeLayerColor(document, layer, y * 16 + x, { r: 220 - x * 20, g: 40 + y * 30, b: 80, a: 255 })
+    }
+    for (let i = 0; i < lower.pixels.length; i += 4) lower.pixels[i + 3] = 255
+    const source = captureSelectionTransform(document, { x: 2, y: 2, width: 2, height: 2 }, layer)!
+    const selectionPreview = { layerId: layer.id, source, target: { x: 7, y: 4, width: 4, height: 4 }, angle: 0, copy: false }
+    const rasterize = vi.spyOn(selectionRaster, 'selectionTransformPreviewRasterPacked')
+    const previewContext = makeContext()
+    draw(new CanvasCompositeCache(), document, previewContext, { selectionPreview })
+    expect(rasterize).not.toHaveBeenCalled()
+    const previewPixels = (previewContext.drawImage.mock.lastCall![0] as MockOffscreenCanvas).pixels.slice()
+
+    applySelectionTransform(document, source, selectionPreview.target, 0, false, undefined, undefined, undefined, layer)
+    const committedContext = makeContext()
+    draw(new CanvasCompositeCache(), document, committedContext)
+    expect(previewPixels).toEqual((committedContext.drawImage.mock.lastCall![0] as MockOffscreenCanvas).pixels)
   })
 
   it('keeps cached selection pixels exact while moving, cancelling and revising content', () => {

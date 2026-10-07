@@ -4,7 +4,8 @@ import type { RgbaColor } from '@shared/types-color'
 import type { SelectionMask } from '@shared/types-selection'
 import type { SpriteDocument } from '@shared/types-document'
 import { cachedLayerContentBounds, ensureLayerCoversCanvas, getActiveLayer, getLayerStorageOrigin, getPaletteEntry, isLayerEffectivelyLocked, layerContentBounds, layerIndexAt, markLayerContentChanged, normalizeLayerPackedValue, paletteColorIdForCanvas, rasterLayerPackedValueIsUniform, readLayerPacked, writeLayerPacked, writeLayerPackedRun } from './document-model'
-import { beginPixelEdit, preparePixelEdit, recordPixel, recordPixelKnownCurrent, type PixelEdit } from './history'
+import { beginPixelEdit, pixelEditHasChanges, preparePixelEdit, recordPixel, recordPixelKnownCurrent, type PixelEdit } from './history'
+import { createFillPixelRecorder } from './fill-pixel-recorder'
 import { isInBounds, packColor, pixelIndex } from './raster'
 import { packedColorMatchesTolerance, selectionContains } from './selection'
 import { proceduralBrushCoverageAt } from './brushes'
@@ -557,12 +558,17 @@ export function floodFill(document: SpriteDocument, layer: RasterLayer, startX: 
       ? null
       : localY * layer.width + localX
   }
+  const fillBounds = selection ? clampSelection(document, selection) : { x: 0, y: 0, width: document.width, height: document.height }
+  const maxFillPoints = fillBounds ? Math.min(fillBounds.width * fillBounds.height, layer.width * layer.height) : 0
+  const recordFillPixel = maxFillPoints >= COMPACT_FILL_MIN_PIXELS
+    ? createFillPixelRecorder(document, layer, edit, maxFillPoints)
+    : (index: number, current: number, value: number): void => { recordPixelKnownCurrent(document, layer, edit, index, current, value) }
   const paintAtCoverage = (layerIndex: number, coverage: number, current: number): void => {
     if (coverage <= 0) return
     const nextValue = coverage === 255 && constantFillValue !== null
       ? constantFillValue
       : paintLayerValue(document, layer, edit, layerIndex, coverage === 255 ? color : { ...color, a: Math.round(color.a * coverage / 255) })
-    recordPixelKnownCurrent(document, layer, edit, layerIndex, current, nextValue)
+    recordFillPixel(layerIndex, current, nextValue)
   }
   if (!contiguous) {
     const bounds = selection ? clampSelection(document, selection) : { x: 0, y: 0, width: document.width, height: document.height }
@@ -577,7 +583,7 @@ export function floodFill(document: SpriteDocument, layer: RasterLayer, startX: 
         paintAtCoverage(layerIndex, textureCoverage(x, y), current)
       }
     }
-    return edit.before.size > 0 ? edit : null
+    return pixelEditHasChanges(edit) ? edit : null
   }
   const maxPixels = document.width * document.height
   if (effectiveGapClosingThreshold > 0) {
@@ -600,7 +606,7 @@ export function floodFill(document: SpriteDocument, layer: RasterLayer, startX: 
       const layerIndex = layerIndexAtCanvas(x, y)
       if (layerIndex !== null) paintAtCoverage(layerIndex, textureCoverage(x, y), readLayerPacked(document, layer, layerIndex))
     }
-    return edit.before.size > 0 ? edit : null
+    return pixelEditHasChanges(edit) ? edit : null
   }
   const visited = new Uint8Array(maxPixels)
   let stack = new Int32Array(Math.min(maxPixels, 1024))
@@ -638,25 +644,35 @@ export function floodFill(document: SpriteDocument, layer: RasterLayer, startX: 
       enqueueIfMatching(x + 1, y + 1)
     }
   }
-  return edit.before.size > 0 ? edit : null
+  return pixelEditHasChanges(edit) ? edit : null
 }
 
 export function floodFillSymmetric(document: SpriteDocument, layer: RasterLayer, startX: number, startY: number, color: RgbaColor, selection: SelectionMask | null | undefined, contiguous: boolean, imageBrush: ImageBrush | null, brushSize: number, imageBrushSettings: ImageBrushSettings | undefined, brushTexture: BrushTexture, brushTextureScale: number, proceduralAntialiasStrength: number, brushPaintMode: BrushPaintMode, symmetryAxes?: SymmetryAxes, symmetryCenter?: SymmetryCenter, tolerance = 0, gapClosingThreshold = 0, profiler?: PixelOperationProfiler, options?: FloodFillRegionOptions): PixelEdit | null {
   const merged = beginPixelEdit(layer.id)
-  for (const seed of symmetryPoints({ x: startX, y: startY }, document.width, document.height, symmetryAxes, symmetryCenter)) {
+  const seeds = symmetryPoints({ x: startX, y: startY }, document.width, document.height, symmetryAxes, symmetryCenter)
+  for (const seed of seeds) {
     const fillStartedAt = profiler ? performance.now() : 0
     const edit = floodFill(document, layer, seed.x, seed.y, color, selection, contiguous, imageBrush, brushSize, imageBrushSettings, brushTexture, brushTextureScale, proceduralAntialiasStrength, brushPaintMode, tolerance, gapClosingThreshold, profiler, options)
     profiler?.record('bucket.flood-fill', performance.now() - fillStartedAt, {
-      points: edit?.before.size ?? 0,
+      points: (edit?.before.size ?? 0) + (edit?.points?.count ?? 0),
       runs: edit?.runs?.length ?? 0,
       dirtyPixels: edit?.dirtyRect ? edit.dirtyRect.width * edit.dirtyRect.height : 0
     })
     if (!edit) continue
+    if (seeds.length === 1) {
+      profiler?.record('bucket.pixel-edit-merge', 0, { points: edit.before.size + (edit.points?.count ?? 0), runs: edit.runs?.length ?? 0 })
+      return edit
+    }
     const mergeStartedAt = profiler ? performance.now() : 0
     merged.frameId ??= edit.frameId
     if (edit.runs?.length) (merged.runs ??= []).push(...edit.runs)
     for (const [index, value] of edit.before) if (!merged.before.has(index)) merged.before.set(index, value)
     for (const [index, value] of edit.after) merged.after.set(index, value)
+    if (edit.points) for (let offset = 0; offset < edit.points.count; offset++) {
+      const index = edit.points.indices[offset]
+      if (!merged.before.has(index)) merged.before.set(index, edit.points.before[offset])
+      merged.after.set(index, edit.points.after[offset])
+    }
     if (edit.dirtyRect) {
       if (!merged.dirtyRect) merged.dirtyRect = { ...edit.dirtyRect }
       else {

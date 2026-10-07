@@ -7,6 +7,21 @@ import type { SpriteDocument } from '@shared/types-document'
 
 export const STYLED_LAYER_BLOCK_SIZE = 64
 
+/** Compute adaptive block size based on layer style properties. */
+export const dynamicStyledLayerBlockSize = (styles: LayerStyles): number => {
+  const shadowRadius = styles.shadow.enabled
+    ? styles.shadow.blur + Math.max(Math.abs(styles.shadow.offsetX), Math.abs(styles.shadow.offsetY))
+    : 0
+  const innerGlowRadius = styles.innerGlow.enabled ? styles.innerGlow.size : 0
+  const strokeRadius = styles.stroke.enabled ? styles.stroke.size : 0
+
+  const maxRadius = Math.max(shadowRadius, innerGlowRadius, strokeRadius)
+
+  if (maxRadius > 64) return 1024
+  if (maxRadius > 16) return 512
+  return 256
+}
+
 export const STYLED_LAYER_PROXY = Symbol('moonSpriteStyledLayerProxy')
 
 export const EMPTY_STYLED_LAYER_PIXELS = new Uint8ClampedArray(4)

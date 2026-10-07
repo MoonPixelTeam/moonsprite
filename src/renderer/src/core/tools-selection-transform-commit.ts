@@ -3,7 +3,7 @@ import type { RasterLayer } from '@shared/types-layer'
 import type { SelectionQuad, SelectionRect } from '@shared/types-selection'
 import { getLayerStorageOrigin, isLayerMask, markLayerContentChanged } from './document-model'
 import { beginPixelEdit, preparePixelEdit, type PixelEdit } from './history'
-import { selectionContains, selectionQuadBounds, transformedSelectionBounds, type SelectionShearTransform } from './selection'
+import { selectionQuadBounds, transformedSelectionBounds, type SelectionShearTransform } from './selection'
 import { compositeSelectionPixelOver } from './tools-pixel-edit'
 import { selectionTransformPreviewPacked } from './tools-selection-transform-raster'
 import type { SelectionTransformSource } from './tools-selection-transform-types'
@@ -45,26 +45,45 @@ export function applyPackedSelectionTransform(
   const before = new Uint32Array(area)
   const after = new Uint32Array(area)
   const changed = new Uint8Array(area)
+  const sourceMask = selection.mask
+  const sourceRightEdge = selection.x + selection.width
+  const sourceBottomEdge = selection.y + selection.height
   let count = 0
   let dirtyLeft = Infinity, dirtyTop = Infinity, dirtyRight = -Infinity, dirtyBottom = -Infinity
-  for (let row = 0; row < regionHeight; row += 1) for (let col = 0; col < regionWidth; col += 1) {
-    const canvasX = x + col, canvasY = y + row
-    const offset = row * regionWidth + col
-    const index = (canvasY - layer.offsetY) * layer.width + canvasX - layer.offsetX
-    const original = pixels[index]
-    let next = hasSource && selectionContains(selection, canvasX, canvasY) ? 0 : original
-    if (canvasX >= left && canvasY >= top && canvasX < right && canvasY < bottom) {
-      const value = raster[(canvasY - top) * width + canvasX - left]
-      // Preserve the original pre-clear backdrop for overlapping transforms.
-      if ((value >>> 24) !== 0) next = compositeSelectionPixelOver(document, layer, next, value)
+  for (let row = 0; row < regionHeight; row += 1) {
+    const canvasY = y + row, rowOffset = row * regionWidth
+    const layerRow = (canvasY - layer.offsetY) * layer.width + x - layer.offsetX
+    const sourceRow = (canvasY - selection.y) * selection.width + x - selection.x
+    const rasterRow = (canvasY - top) * width + x - left
+    const sourceInRow = hasSource && canvasY >= selection.y && canvasY < sourceBottomEdge
+    const targetInRow = canvasY >= top && canvasY < bottom
+    let firstChanged = -1, lastChanged = -1
+    for (let col = 0; col < regionWidth; col += 1) {
+      const canvasX = x + col, offset = rowOffset + col
+      const original = pixels[layerRow + col]
+      const inSource = sourceInRow && canvasX >= selection.x && canvasX < sourceRightEdge
+      let next = inSource && (!sourceMask || sourceMask[sourceRow + col] === 1) ? 0 : original
+      if (targetInRow && canvasX >= left && canvasX < right) {
+        const value = raster[rasterRow + col], alpha = value >>> 24
+        // These RGBA cases equal source-over exactly. Keep the shared blend
+        // arithmetic for a translucent source over a nontransparent backdrop.
+        if (alpha !== 0) next = alpha === 255 || (next >>> 24) === 0 ? value : compositeSelectionPixelOver(document, layer, next, value)
+      }
+      before[offset] = original
+      after[offset] = next
+      if (original === next) continue
+      changed[offset] = 1
+      count += 1
+      if (firstChanged < 0) firstChanged = col
+      lastChanged = col
     }
-    before[offset] = original
-    after[offset] = next
-    if (original === next) continue
-    changed[offset] = 1
-    count += 1
-    dirtyLeft = Math.min(dirtyLeft, canvasX); dirtyTop = Math.min(dirtyTop, canvasY)
-    dirtyRight = Math.max(dirtyRight, canvasX + 1); dirtyBottom = Math.max(dirtyBottom, canvasY + 1)
+    // Rows are visited in order; update exact dirty bounds once per changed row.
+    if (firstChanged >= 0) {
+      dirtyLeft = Math.min(dirtyLeft, x + firstChanged)
+      dirtyRight = Math.max(dirtyRight, x + lastChanged + 1)
+      if (dirtyTop === Infinity) dirtyTop = canvasY
+      dirtyBottom = canvasY + 1
+    }
   }
   if (count === 0) return null
   const edit = beginPixelEdit(layer.id)

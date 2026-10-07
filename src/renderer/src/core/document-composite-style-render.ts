@@ -1,12 +1,24 @@
 import type { SpriteDocument } from '@shared/types-document'
 import type { SelectionRect } from '@shared/types-selection'
 import type { RgbaColor } from '@shared/types-color'
-import type { StyledLayerBlockCache } from './document-composite-style-types'
+import { STYLED_LAYER_BLOCK_SIZE, type StyledLayerBlock, type StyledLayerBlockCache } from './document-composite-style-types'
+import { refreshStyledLayerBlock } from './layer-style-dirty-regions'
 import { TRANSPARENT, unpackColor, writeRgbaPixel } from './raster'
 import { readSurfacePackedLocal } from './runtime-raster'
 import { applyLayerStylesAt, applySimpleLayerStylesPacked, layerStyleBinaryStrokeMetric } from './layer-styles'
 import { layerStyleCoverageTile } from './layer-style-coverage'
 import { intersectRect, localBinaryStyleFields, hasCompleteBinaryStyleCoverage, distanceFieldAt } from './document-composite-style-geometry'
+
+/** Demand-render one fixed style tile; storage owns admission/eviction. */
+export function styledLayerBlockFor(document: SpriteDocument, cache: StyledLayerBlockCache, blockX: number, blockY: number,
+  render: (rect: SelectionRect) => Uint8ClampedArray = rect => renderStyledLayerBlock(document, cache, rect)): StyledLayerBlock {
+  const key = `${blockX}:${blockY}`, cached = cache.blocks.get(key)
+  if (cached) return refreshStyledLayerBlock(cached, render)
+  const rect = { x: blockX * STYLED_LAYER_BLOCK_SIZE, y: blockY * STYLED_LAYER_BLOCK_SIZE, width: STYLED_LAYER_BLOCK_SIZE, height: STYLED_LAYER_BLOCK_SIZE }
+  const block = { ...rect, pixels: render(rect) }
+  cache.blocks.set(key, block)
+  return block
+}
 
 /** Evaluate one dirty style block using only canvas-visible source pixels. */
 export function renderStyledLayerBlock(document: SpriteDocument, cache: StyledLayerBlockCache, block: SelectionRect): Uint8ClampedArray {

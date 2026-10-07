@@ -346,13 +346,13 @@ export class CanvasCompositeCache {
 
     const boundary = deviceAlignedCanvasRect(originX, originY, canvasWidth, canvasHeight, devicePixelRatio)
     context.save()
+    try {
     context.beginPath()
     context.rect(boundary.left, boundary.top, boundary.width, boundary.height)
     context.clip()
     context.imageSmoothingEnabled = imageSmoothingEnabled
     if (imageSmoothingEnabled) context.imageSmoothingQuality = imageSmoothingQuality
     if (!isolatedLayerMask && movingLayerIds?.length && this.moveRenderer.drawMovePreview(context, document, view, originX, originY, fromX, fromY, toX, toY, effectiveFrameId, contentRevision, movingLayerIds)) {
-      context.restore()
       return
     }
     this.moveRenderer.clearRaster()
@@ -362,7 +362,6 @@ export class CanvasCompositeCache {
       selectionPreview &&
       this.selectionRenderer.drawClipboardPreview(context, document, view, originX, originY, canvasWidth, canvasHeight, fromX, fromY, toX, toY, frameKey, effectiveFrameId, contentRevision, contentInvalidation, imageSmoothingEnabled, selectionPreview)
     ) {
-      context.restore()
       return
     }
     this.selectionRenderer.clearClipboard()
@@ -378,12 +377,11 @@ export class CanvasCompositeCache {
       }
     }
     if (!isolatedLayerMask && !view.relativeLuminance && selectionPreview && this.selectionRenderer.drawSelectionPreview(context, document, view, originX, originY, fromX, fromY, toX, toY, effectiveFrameId, contentRevision, selectionPreview, contentInvalidation, sourceDirtyRect)) {
-      context.restore()
       return
     }
     this.selectionRenderer.clearSelection()
     if (sourceDirtyRect) this.propertyPreview.clear()
-    else if (this.propertyPreview.draw({ ...options, contentRevision })) { context.restore(); return }
+    else if (this.propertyPreview.draw({ ...options, contentRevision })) return
     const initialCompositeIsPending = contentRevision === 0 && !isolatedLayerMask && !view.relativeLuminance && initialDocumentCompositePending(document, effectiveFrameId)
     if (isolatedLayerMask || (shouldCacheFullCompositeSurface(document.width, document.height, this.maxCacheBytes) && !initialCompositeIsPending))
       this.drawSurface(
@@ -430,7 +428,9 @@ export class CanvasCompositeCache {
         fastViewPreview,
         animationPlayback
       )
-    context.restore()
+    } finally {
+      context.restore()
+    }
   }
 
 /** Build a GPU-backed snapshot once; panning can then sample it without
@@ -488,7 +488,10 @@ export class CanvasCompositeCache {
         target.globalCompositeOperation = operation
         if (target.globalCompositeOperation !== operation) return null
         target.globalAlpha = layer.opacity
-        target.drawImage(result.source, result.sourceX, result.sourceY, result.width, result.height, layer.offsetX - x, layer.offsetY - y, result.width, result.height)
+        // The upload is already cropped. Read its own origin and restore the
+        // crop's layer-local offset when placing it in document coordinates.
+        target.drawImage(result.source, 0, 0, result.width, result.height,
+          layer.offsetX + result.sourceX - x, layer.offsetY + result.sourceY - y, result.width, result.height)
       }
       target.globalAlpha = 1
       target.globalCompositeOperation = 'source-over'

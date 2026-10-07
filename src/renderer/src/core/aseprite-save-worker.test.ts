@@ -11,7 +11,8 @@ class FakeWorker {
   onmessageerror?: () => void
   terminate = vi.fn()
   request?: DocumentExportWorkerRequest
-  postMessage(request: DocumentExportWorkerRequest) { this.request = request }
+  transferables?: Transferable[]
+  postMessage(request: DocumentExportWorkerRequest, transferables?: Transferable[]) { this.request = request; this.transferables = transferables }
   constructor() { workers.push(this) }
 }
 afterEach(() => { vi.unstubAllGlobals(); workers.length = 0 })
@@ -25,7 +26,9 @@ it.each(['ase', 'aseprite'] as const)('saves %s through the worker without cloni
   expect(worker.request?.format).toBe(format)
   expect(worker.request?.document).not.toBe(document)
   expect(worker.request?.document.layers[0]).not.toBe(document.layers[0])
-  expect(worker.request?.document.layers[0].pixels).toBe(pixels)
+  expect(worker.request?.document.layers[0].pixels).not.toBe(pixels)
+  expect(worker.request?.document.layers[0].pixels).toEqual(pixels)
+  expect(worker.transferables?.length).toBeGreaterThan(0)
   // postMessage's snapshot is simulated here; encoding must not mutate the live document.
   const bytes = encodeAseprite(structuredClone(worker.request!.document))
   worker.onmessage!({ data: { progress: 100, result: { bytes }, done: true } })

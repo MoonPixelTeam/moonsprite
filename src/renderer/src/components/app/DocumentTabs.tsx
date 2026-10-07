@@ -110,9 +110,20 @@ const uiMotionEnabled = (): boolean => (
   && !window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
 )
 
+// Track pending animation frame for cleanup
+let pendingTabAnimationFrame: number | null = null
+
 const animateTabPositions = (before: Map<string, number>, draggedDocumentId: string): void => {
   if (!uiMotionEnabled()) return
-  window.requestAnimationFrame(() => {
+
+  // Cancel previous animation frame if exists
+  if (pendingTabAnimationFrame !== null) {
+    window.cancelAnimationFrame(pendingTabAnimationFrame)
+    pendingTabAnimationFrame = null
+  }
+
+  pendingTabAnimationFrame = window.requestAnimationFrame(() => {
+    pendingTabAnimationFrame = null
     if (!uiMotionEnabled()) return
     for (const tab of document.querySelectorAll<HTMLButtonElement>('.document-tab')) {
       const documentId = tab.dataset.documentId
@@ -128,6 +139,14 @@ const animateTabPositions = (before: Map<string, number>, draggedDocumentId: str
       )
     }
   })
+}
+
+// Cleanup function for pending animation frame
+const cancelPendingTabAnimation = (): void => {
+  if (pendingTabAnimationFrame !== null) {
+    window.cancelAnimationFrame(pendingTabAnimationFrame)
+    pendingTabAnimationFrame = null
+  }
 }
 
 export const DocumentTabs = memo(function DocumentTabs({ homeOpen, hiddenDocumentIds, onNew, onActivate, onContextActivate, onSplit, onFloat, onDockDebug }: DocumentTabsProps) {
@@ -150,7 +169,10 @@ export const DocumentTabs = memo(function DocumentTabs({ homeOpen, hiddenDocumen
     }
     window.addEventListener('moonsprite:preferences-changed', syncMotion)
     syncMotion()
-    return () => window.removeEventListener('moonsprite:preferences-changed', syncMotion)
+    return () => {
+      window.removeEventListener('moonsprite:preferences-changed', syncMotion)
+      cancelPendingTabAnimation()
+    }
   }, [])
 
   useEffect(() => {

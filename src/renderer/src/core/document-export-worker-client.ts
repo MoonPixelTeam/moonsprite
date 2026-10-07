@@ -3,7 +3,8 @@ import type { DocumentSlice, SpriteDocument } from '@shared/types-document'
 import type { SelectionMask } from '@shared/types-selection'
 import type { SpriteSheetExportOptions, SpriteSheetExportSelection, SpriteSheetBuildNames } from './sprite-sheet'
 import type { GifDirection } from './gif'
-import { prepareRuntimeRasterDocumentForTransfer } from './runtime-raster'
+import { projectDocumentForWorkerTransfer, projectDocumentTransferables } from './project-save-transfer'
+import { documentForExportTransfer } from './document-export-transfer'
 
 export type DocumentExportWorkerFormat = 'png-auto' | 'png-rgba' | 'jpeg' | 'webp' | 'svg' | 'gif' | 'bmp' | 'ico' | 'psd' | 'ase' | 'aseprite'
 export type DocumentExportWorkerJob = 'document' | 'selection' | 'slices' | 'frames' | 'layers' | 'timelapse' | 'sprite-sheet'
@@ -28,6 +29,13 @@ export interface DocumentExportWorkerRequest {
   spriteSheetOptions?: SpriteSheetExportOptions
   spriteSheetSelection?: SpriteSheetExportSelection
   spriteSheetNames?: SpriteSheetBuildNames
+  /** The encoder waits until each result has been consumed before continuing. */
+  resultAcknowledgments?: boolean
+}
+
+export interface DocumentExportWorkerAcknowledgment {
+  id: number
+  acknowledgedIndex: number
 }
 
 export interface DocumentExportWorkerResult {
@@ -73,37 +81,61 @@ export const exportDocumentInWorker = (
     onProgress?: (value: number) => void
     onResult: (result: DocumentExportWorkerResult) => Promise<void> | void
     isCanceled?: () => boolean
+    signal?: AbortSignal
   }
 ): Promise<void> => {
   if (typeof Worker === 'undefined') return Promise.reject(new Error('Document export worker unavailable'))
   const worker = new Worker(new URL('../workers/document-export.worker.ts', import.meta.url), { type: 'module', name: 'moonsprite-document-export' })
   const id = ++sequence
-  const payload = structuredClone(document)
-  prepareRuntimeRasterDocumentForTransfer(payload)
+  // Copy only the document shell and pixel ownership before posting. A plain
+  // structuredClone would duplicate every dense raster before transfer, which
+  // blocks the renderer for large multi-layer exports.
   return new Promise((resolve, reject) => {
     let settled = false
     let resultQueue = Promise.resolve()
+    let cancelTimer: ReturnType<typeof setInterval> | undefined
+    const cancel = (): void => finish(new Error('MoonSprite export canceled.'))
     const finish = (error?: Error): void => {
       if (settled) return
       settled = true
+      if (cancelTimer !== undefined) clearInterval(cancelTimer)
+      callbacks.signal?.removeEventListener('abort', cancel)
       worker.terminate()
       if (error) reject(error)
       else resolve()
     }
     worker.onmessage = (event: MessageEvent<DocumentExportWorkerResponse>) => {
+      if (settled) return
+      if (!event.data) { finish(new Error('Document export worker message could not be decoded')); return }
       if (event.data.id !== id) return
       if (event.data.error) { finish(new Error(event.data.error)); return }
       if (callbacks.isCanceled?.()) { finish(new Error('MoonSprite export canceled.')); return }
-      callbacks.onProgress?.(event.data.progress ?? 0)
+      try { callbacks.onProgress?.(event.data.progress ?? 0) }
+      catch (error) { finish(error instanceof Error ? error : new Error(String(error))); return }
       if (event.data.result) {
-        resultQueue = resultQueue.then(() => callbacks.onResult(event.data.result!)).catch((error) => finish(error instanceof Error ? error : new Error(String(error))))
+        const result = event.data.result
+        resultQueue = resultQueue.then(async () => {
+          if (settled) return
+          await callbacks.onResult(result)
+          if (settled) return
+          if (callbacks.isCanceled?.() || callbacks.signal?.aborted) { cancel(); return }
+          worker.postMessage({ id, acknowledgedIndex: result.index } satisfies DocumentExportWorkerAcknowledgment)
+        }).catch((error) => finish(error instanceof Error ? error : new Error(String(error))))
       }
       if (event.data.done) resultQueue.then(() => finish()).catch((error) => finish(error instanceof Error ? error : new Error(String(error))))
     }
     worker.onerror = (event) => finish(new Error(event.message || 'Document export worker failed'))
+    worker.onmessageerror = () => finish(new Error('Document export worker message could not be decoded'))
+    callbacks.signal?.addEventListener('abort', cancel, { once: true })
+    if (callbacks.signal?.aborted || callbacks.isCanceled?.()) { cancel(); return }
+    // Legacy callers expose a cancellation predicate rather than an AbortSignal.
+    // Poll only for this job, including while its encoder or disk write is busy.
+    if (callbacks.isCanceled) cancelTimer = setInterval(() => { if (callbacks.isCanceled?.()) cancel() }, 50)
     try {
-      const request: DocumentExportWorkerRequest = { id, document: payload, ...options }
-      worker.postMessage(request, collectTransferables(request))
+      const payload = projectDocumentForWorkerTransfer(documentForExportTransfer(document, options))
+      const request: DocumentExportWorkerRequest = { id, document: payload, ...options, resultAcknowledgments: true }
+      const transferables = [...new Set<Transferable>([...projectDocumentTransferables(payload), ...collectTransferables(options)])]
+      worker.postMessage(request, transferables)
     } catch (error) {
       finish(error instanceof Error ? error : new Error(String(error)))
     }

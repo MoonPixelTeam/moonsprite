@@ -1,6 +1,6 @@
 import { isWebTrial } from '@/core/product-target'
 import { pixelSource } from '@/components/pixel-source'
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent, type WheelEvent as ReactWheelEvent } from 'react'
+import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent, type WheelEvent as ReactWheelEvent } from 'react'
 import { createPortal } from 'react-dom'
 import { BrushThumbnail } from '@/components/BrushThumbnail'
 import { DialogHeader } from '@/components/DialogHeader'
@@ -76,7 +76,7 @@ const moveBrushIds = (baseIds: readonly string[], movingIds: readonly string[], 
   return remaining
 }
 
-export function BrushLibraryPanel({ session, controller, docked = false, onDockDragStart, onPanelContextMenu, onFloatingDock }: {
+function BrushLibraryPanelComponent({ session, controller, docked = false, onDockDragStart, onPanelContextMenu, onFloatingDock }: {
   session: DocumentSession
   controller: BrushLibraryController
 } & DockDragProps) {
@@ -531,4 +531,7 @@ export function BrushLibraryPanel({ session, controller, docked = false, onDockD
   </div>}
   </>
 }
+
+export const BrushLibraryPanel = memo(BrushLibraryPanelComponent)
+
 import { PanelActions } from './PanelActions'

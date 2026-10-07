@@ -455,6 +455,8 @@ function renderFrame(frame: CanvasRenderContext, checkpoint: (stage: string) => 
   context.fillStyle = activeTheme.definition.seeds.canvasSurround
   context.fillRect(rotated ? sceneLeft : 0, rotated ? sceneTop : 0, rotated ? sceneWidth : rect.width, rotated ? sceneHeight : rect.height)
   context.save()
+  let frameStateSaved = true
+  try {
   // Every repeated canvas copy must use the same device-aligned period.
   // Rounding each floating-point copy origin independently can make the
   // right edge of one copy differ from the left edge of its neighbour by a
@@ -926,6 +928,7 @@ function renderFrame(frame: CanvasRenderContext, checkpoint: (stage: string) => 
   })
 
   context.restore()
+  frameStateSaved = false
   if (rotated) {
     displayContext.fillStyle = activeTheme.definition.seeds.canvasSurround
     displayContext.fillRect(0, 0, rect.width, rect.height)
@@ -995,5 +998,8 @@ function renderFrame(frame: CanvasRenderContext, checkpoint: (stage: string) => 
       moveLayerClickFlashTimerRef.current = null
       scheduleDraw()
     }, flash.duration)
+  }
+  } finally {
+    if (frameStateSaved) context.restore()
   }
 }

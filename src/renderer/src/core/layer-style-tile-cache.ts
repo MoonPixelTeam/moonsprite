@@ -5,15 +5,17 @@ import { applyLayerStylesAt, layerStyleAffectedRect, type LayerStyleGeometry, ty
 import { layerStyleCoverageAt, layerStyleCoverageTile } from './layer-style-coverage'
 import { readRgbaPixel, writeRgbaPixel } from './raster'
 
-import { STYLED_LAYER_BLOCK_SIZE as SIZE, type StyledLayerBlock } from './document-composite-style-types'
+import { STYLED_LAYER_BLOCK_SIZE as DEFAULT_SIZE, dynamicStyledLayerBlockSize, type StyledLayerBlock } from './document-composite-style-types'
 import { appendStyleDirtyRect, refreshStyledLayerBlock } from './layer-style-dirty-regions'
 import { intersectRect } from './document-composite-style-geometry'
+import { BudgetedStyleBlockMap, LayerStyleCacheBudget } from './layer-style-cache-budget'
 
-interface Entry { key: string; revision: number; tiles: Map<string, StyledLayerBlock> }
+interface Entry { key: string; revision: number; tiles: Map<string, StyledLayerBlock>; blockSize: number }
 
 /** Cache isolated post-mask effects; backdrop-dependent blending stays outside. */
 export class LayerStyleTileCache {
   private entries = new WeakMap<object, Entry>()
+  constructor(private readonly budget = new LayerStyleCacheBudget()) {}
 
   /** Property edits do not alter a layer's isolated, post-mask source pixels. */
   retainRevision(owner: object, fromRevision: number, revision: number): void {
@@ -23,9 +25,11 @@ export class LayerStyleTileCache {
 
   prepare(owner: object, key: string, revision: number, dirty: readonly SelectionRect[] | undefined, geometry: LayerStyleGeometry,
     styles: LayerStyles, readSource: LayerStyleSourceReader, resolve: LayerStyleColorResolver): LayerStyleSourceReader {
+    const SIZE = dynamicStyledLayerBlockSize(styles)
     let entry = this.entries.get(owner)
-    if (!entry || entry.key !== key || (entry.revision !== revision && !dirty)) {
-      entry = { key, revision, tiles: new Map() }
+    if (!entry || entry.key !== key || entry.blockSize !== SIZE || (entry.revision !== revision && !dirty)) {
+      entry?.tiles.clear()
+      entry = { key, revision, tiles: new BudgetedStyleBlockMap(this.budget), blockSize: SIZE }
       this.entries.set(owner, entry)
     } else if (dirty) for (const rect of dirty) {
       const affected = layerStyleAffectedRect(rect, styles)

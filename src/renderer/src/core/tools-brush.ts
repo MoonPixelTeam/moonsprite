@@ -14,7 +14,8 @@ import { hasSymmetry, symmetryPoints, symmetricSpanPainter, type SymmetryAxes, t
 import { brushDitherContains, gradientColorForAmount, interpolateRgbaColor } from './gradient-color'
 import { tileRepeatRectSegments, wrapDocumentPointForTileRepeat } from './tilemap'
 import { applyInkColor, resolveInkStampColor } from './ink'
-import { brushPaintBaselineByEdit, brushOriginalValue, brushEditParent, isSplitBrushEdit, lastBrushStampForEdit, lastBrushStampByEdit, type SolidPointRecorder, solidPointRecorderByEdit, brushCoverageByEdit, BRUSH_COVERAGE_CHUNK_BITS, BRUSH_COVERAGE_CHUNK_SIZE, BRUSH_COVERAGE_CHUNK_MASK } from './tools-pixel-edit-state'
+import { brushPaintBaselineByEdit, brushOriginalValue, brushEditParent, isSplitBrushEdit, lastBrushStampForEdit, lastBrushStampByEdit, type SolidPointRecorder, solidPointRecorderByEdit, materializeSolidBrushPoints, brushCoverageByEdit, BRUSH_COVERAGE_CHUNK_BITS, BRUSH_COVERAGE_CHUNK_SIZE, BRUSH_COVERAGE_CHUNK_MASK } from './tools-pixel-edit-state'
+import { integerEllipseRowSpans, rotatedSquareRowSpans } from './tools-brush-spans'
 import { compositeSelectionPixelOver, ensureLayerCoversEditRect, insideSelection, paintLayerValue, BrushGradientSample, brushStampDimensions, BrushMaskPoint, defaultImageBrushSettings, wrappedIndex, imageBrushCoverageAt, imageBrushCoverage, brushTextureContains, interpolateBrushAngle } from './tools-pixel-edit'
 
 const compositeSelectionPixel = (document: SpriteDocument, layer: RasterLayer, index: number, value: number): number => (
@@ -27,14 +28,15 @@ const layerColorBeforeEdit = (document: SpriteDocument, layer: RasterLayer, edit
   return layer.format === 'rgba' ? unpackColor(original) : getPaletteEntry(document, original).color
 }
 
-const solidPointRecorderFor = (document: SpriteDocument, layer: RasterLayer, edit: PixelEdit, packedValue: number, size: number): SolidPointRecorder | null => {
+const solidPointRecorderFor = (document: SpriteDocument, layer: RasterLayer, edit: PixelEdit, packedValue: number, size: number, coverageKey: string): SolidPointRecorder | null => {
   if (isSplitBrushEdit(edit) || size < 64 || layer.offsetX !== 0 || layer.offsetY !== 0 || layer.width !== document.width || layer.height !== document.height) return null
   const existing = solidPointRecorderByEdit.get(edit)
-  if (existing && existing.packedValue === packedValue) return existing
-  if (existing) return null
+  if (existing && existing.packedValue === packedValue && existing.coverageKey === coverageKey) return existing
+  if (existing) materializeSolidBrushPoints(edit, packedValue, coverageKey)
   if (edit.before.size > 0 || edit.points || edit.runs?.length || edit.denseRegion?.count) return null
   const recorder: SolidPointRecorder = {
     packedValue,
+    coverageKey,
     seen: new Uint8Array(Math.ceil(layer.width * layer.height / 8)),
     indices: new Uint32Array(Math.max(4096, Math.min(layer.width * layer.height, size * size * 2))),
     before: new Uint32Array(Math.max(4096, Math.min(layer.width * layer.height, size * size * 2))),
@@ -215,42 +217,42 @@ export function paintBrush(
   const stampY = y - beforeY
   const footprint = symmetricRect(document, { x: stampX, y: stampY, width: stamp.width, height: stamp.height }, symmetryAxes, symmetryCenter, tileRepeatMode)
   if (!ensureLayerCoversEditRect(document, layer, edit, footprint)) return
-  const offsets = brushMaskOffsets(size, shape, texture, textureScale, stampX, stampY, imageBrush, imageBrushSettings, proceduralAntialiasStrength, brushPaintMode, patternOrigin?.x ?? stampX, patternOrigin?.y ?? stampY, brushDither, angle, optimizedRotation)
   const symmetricSpans = hasSymmetry(symmetryAxes)
   const pivotX = symmetryCenter?.x ?? document.width / 2, pivotY = symmetryCenter?.y ?? document.height / 2
   // Uniform translucent stamps also share coverage across the stroke. Visit
   // only newly covered spans; keep blended values on the original-pixel path.
-  const solidStampKey = inkMode === 'simple' && tileRepeatMode === 'off' && Math.abs(geometryAngle % 360) < 0.0001 && !selection && !imageBrush && texture === 'solid' && !brushDither?.enabled && !colorReplacement && !gradient && !coverageKey && (color.a === 0 || color.a === 255 || proceduralAntialiasStrength === 0)
-    ? `${shape}:${stamp.width}x${stamp.height}:${color.a === 0 ? 'erase' : packColor(color)}:${normalizedOpacityScale}:${symmetricSpans ? `${symmetryAxes?.horizontal}:${symmetryAxes?.vertical}:${symmetryAxes?.diagonalDown}:${symmetryAxes?.diagonalUp}:${symmetryAxes?.rotational}:${pivotX}:${pivotY}` : ''}`
+  const solidStampKey = inkMode === 'simple' && tileRepeatMode === 'off' && (Math.abs(geometryAngle % 360) < 0.0001 || shape === 'square') && !imageBrush && texture === 'solid' && !brushDither?.enabled && !colorReplacement && !gradient && !coverageKey && (color.a === 0 || color.a === 255 || proceduralAntialiasStrength === 0)
+    ? `${shape}:${stamp.width}x${stamp.height}:${geometryAngle}:${color.a === 0 ? 'erase' : packColor(color)}:${normalizedOpacityScale}:${symmetricSpans ? `${symmetryAxes?.horizontal}:${symmetryAxes?.vertical}:${symmetryAxes?.diagonalDown}:${symmetryAxes?.diagonalUp}:${symmetryAxes?.rotational}:${pivotX}:${pivotY}` : ''}`
     : null
   const solidPackedValue = solidStampKey && (color.a === 0 || color.a === 255) && Math.round(255 * normalizedOpacityScale) === 255
-    ? color.a === 0
+    ? normalizeLayerPackedValue(document, layer, color.a === 0
       ? 0
       : layer.format === 'rgba'
         ? packColor(color)
-        : paletteColorIdForCanvas(document, color)
+        : paletteColorIdForCanvas(document, color))
     : null
-  const solidPointRecorder = solidPackedValue !== null ? solidPointRecorderFor(document, layer, edit, solidPackedValue, size) : null
+  const uniformCoverageKey = color.a === 0 ? 'simple:erase' : `simple:paint:${color.r},${color.g},${color.b},${color.a}`
+  if (edit.points && (solidPackedValue === null || size < 64 || isSplitBrushEdit(edit))) materializeSolidBrushPoints(edit, null)
+  const solidPointRecorder = solidPackedValue !== null ? solidPointRecorderFor(document, layer, edit, solidPackedValue, size, uniformCoverageKey) : null
   let occupancy: Uint8Array | null = null
   const previousStamp = solidStampKey ? lastBrushStampForEdit(edit) : undefined
+  const rowSpans = solidStampKey ? solidBrushPreviewRowSpans(size, shape, geometryAngle, optimizedRotation) : []
   if (solidStampKey) {
-    const occupancyKey = `${shape}:${stamp.width}x${stamp.height}`
+    const occupancyKey = `${shape}:${stamp.width}x${stamp.height}:${geometryAngle}:${optimizedRotation}`
     occupancy = solidBrushOccupancyCache.get(occupancyKey) ?? null
     if (!occupancy) {
       occupancy = new Uint8Array(stamp.width * stamp.height)
-      for (const offset of offsets) occupancy[offset.y * stamp.width + offset.x] = 1
+      for (const span of rowSpans) if (span.right >= span.left) occupancy.fill(1, span.y * stamp.width + span.left, span.y * stamp.width + span.right + 1)
       if (solidBrushOccupancyCache.size >= 16) solidBrushOccupancyCache.delete(solidBrushOccupancyCache.keys().next().value!)
       solidBrushOccupancyCache.set(occupancyKey, occupancy)
     }
   }
   if (solidStampKey) {
     preparePixelEdit(document, edit)
-    const solidValue = solidPackedValue === null ? null : normalizeLayerPackedValue(document, layer, solidPackedValue)
-    const trackCoverage = isSplitBrushEdit(edit) || solidValue === null
+    const solidValue = solidPackedValue
+    const trackCoverage = isSplitBrushEdit(edit) || solidValue === null || Boolean(selection) || Math.abs(geometryAngle % 360) >= 0.0001 || brushCoverageByEdit.has(edit)
     const uniformCoverage = Math.round(255 * normalizedOpacityScale)
-    const uniformCoverageKey = color.a === 0 ? 'simple:erase' : `simple:paint:${color.r},${color.g},${color.b},${color.a}`
     const stampedColor = resolveInkStampColor('simple', color, 255, normalizedOpacityScale)
-    const rowSpans = solidBrushPreviewRowSpans(size, shape, geometryAngle, optimizedRotation)
     const rowSpanAt = (localY: number): SolidBrushPreviewRowSpan | undefined => {
       if (shape === 'line') {
         const span = rowSpans[0]
@@ -269,13 +271,15 @@ export function paintBrush(
     let dirtyBottom = Number.NEGATIVE_INFINITY
     const paintSpan = (py: number, fromX: number, toX: number): void => {
       if (toX < fromX || py < 0 || py >= document.height) return
-      const clippedFromX = Math.max(0, fromX)
-      const clippedToX = Math.min(document.width - 1, toX)
+      if (selection && (py < selection.y || py >= selection.y + selection.height)) return
+      const clippedFromX = Math.max(0, fromX, selection ? Math.ceil(selection.x) : 0)
+      const clippedToX = Math.min(document.width - 1, toX, selection ? Math.ceil(selection.x + selection.width) - 1 : document.width - 1)
       if (clippedToX < clippedFromX) return
       let rowChanged = false
       let rowDirtyLeft = Number.POSITIVE_INFINITY
       let rowDirtyRight = Number.NEGATIVE_INFINITY
       for (let px = clippedFromX; px <= clippedToX; px += 1) {
+        if (selection?.mask && !insideSelection(selection, px, py)) continue
         const index = layerIndexAt(layer, px, py)
         if (index === null) continue
         if (trackCoverage && !claimBrushCoverage(edit, uniformCoverageKey, index, uniformCoverage)) continue
@@ -329,17 +333,19 @@ export function paintBrush(
       dirtyBottom = Math.max(dirtyBottom, py + 1)
     }
     const paintSymmetricSpan = symmetricSpanPainter(document.width, document.height, symmetryAxes, symmetryCenter, paintSpan)
+    const previousStampMatches = previousStamp?.key === solidStampKey && previousStamp.selection === selection
     for (const span of rowSpans) {
+      if (span.right < span.left) continue
       const py = stampY + span.y
       const left = stampX + span.left
       const right = stampX + span.right
-      if (previousStamp?.key !== solidStampKey) {
+      if (!previousStamp || !previousStampMatches) {
         paintSymmetricSpan(py, left, right)
         continue
       }
       const previousLocalY = py - previousStamp.stampY
       const previousSpan = previousLocalY >= 0 && previousLocalY < previousStamp.height ? rowSpanAt(previousLocalY) : undefined
-      if (!previousSpan) {
+      if (!previousSpan || previousSpan.right < previousSpan.left) {
         paintSymmetricSpan(py, left, right)
         continue
       }
@@ -366,10 +372,11 @@ export function paintBrush(
         currentDirty.height = bottom - top
       }
     }
-    if (occupancy && solidStampKey) lastBrushStampByEdit.set(edit, { key: solidStampKey, stampX, stampY, width: stamp.width, height: stamp.height, occupied: occupancy })
+    if (occupancy && solidStampKey) lastBrushStampByEdit.set(edit, { key: solidStampKey, stampX, stampY, width: stamp.width, height: stamp.height, occupied: occupancy, selection })
     if (solidPointRecorder) edit.points = { indices: solidPointRecorder.indices, before: solidPointRecorder.before, after: solidPointRecorder.after, count: solidPointRecorder.count }
     return
   }
+  const offsets = brushMaskOffsets(size, shape, texture, textureScale, stampX, stampY, imageBrush, imageBrushSettings, proceduralAntialiasStrength, brushPaintMode, patternOrigin?.x ?? stampX, patternOrigin?.y ?? stampY, brushDither, angle, optimizedRotation)
   for (const offset of offsets) {
     const scaledCoverage = Math.round(offset.coverage * normalizedOpacityScale)
     const inkCoverage = inkMode === 'copy-alpha-color' ? offset.coverage : scaledCoverage
@@ -576,60 +583,6 @@ const imageBrushCacheKey = (imageBrush: ImageBrush, size: number, settings: Imag
 
 export const imageBrushContainsAt = (imageBrush: ImageBrush, x: number, y: number, size: number, settings?: ImageBrushSettings): boolean => imageBrushCoverageAt(imageBrush, x, y, size, settings) > 0
 
-const integerEllipseRowSpans = (size: number): Array<{ left: number; right: number }> => {
-  let x0 = 0
-  let y0 = 0
-  let x1 = size - 1
-  let y1 = size - 1
-  let width = Math.abs(x1 - x0)
-  const height = Math.abs(y1 - y0)
-  let oddHeight = height & 1
-  let deltaX = 4 * (1 - width) * height * height
-  let deltaY = 4 * (oddHeight + 1) * width * width
-  let error = deltaX + deltaY + oddHeight * width * width
-  const spans = Array.from({ length: size }, () => ({ left: size, right: -1 }))
-  const record = (x: number, y: number): void => {
-    if (y < 0 || y >= size || x < 0 || x >= size) return
-    spans[y].left = Math.min(spans[y].left, x)
-    spans[y].right = Math.max(spans[y].right, x)
-  }
-
-  if (x0 > x1) { x0 = x1; x1 += width }
-  if (y0 > y1) y0 = y1
-  y0 += Math.floor((height + 1) / 2)
-  y1 = y0 - oddHeight
-  width *= 8 * width
-  oddHeight = 8 * height * height
-  do {
-    record(x1, y0)
-    record(x0, y0)
-    record(x0, y1)
-    record(x1, y1)
-    const doubledError = 2 * error
-    if (doubledError <= deltaY) {
-      y0 += 1
-      y1 -= 1
-      deltaY += width
-      error += deltaY
-    }
-    if (doubledError >= deltaX || 2 * error > deltaY) {
-      x0 += 1
-      x1 -= 1
-      deltaX += oddHeight
-      error += deltaX
-    }
-  } while (x0 <= x1)
-  while (y0 - y1 < height) {
-    record(x0 - 1, y0)
-    record(x1 + 1, y0)
-    y0 += 1
-    record(x0 - 1, y1)
-    record(x1 + 1, y1)
-    y1 -= 1
-  }
-  return spans
-}
-
 export interface SolidBrushPreviewRowSpan {
   y: number
   left: number
@@ -646,7 +599,7 @@ const solidBrushPreviewRowSpanCache = new Map<string, readonly SolidBrushPreview
 export function solidBrushPreviewRowSpans(size: number, shape: BrushShape, angle = 0, optimizedRotation = true): readonly SolidBrushPreviewRowSpan[] {
   const normalizedSize = Math.max(1, Math.round(size))
   const geometryAngle = normalizedSize <= 1 || shape === 'round' ? 0 : angle
-  const normalizedAngle = Math.round(geometryAngle * 1000) / 1000
+  const normalizedAngle = geometryAngle
   const cacheKey = `${shape}:${normalizedSize}:${normalizedAngle}:${optimizedRotation ? 1 : 0}`
   const cached = solidBrushPreviewRowSpanCache.get(cacheKey)
   if (cached) return cached
@@ -661,6 +614,8 @@ export function solidBrushPreviewRowSpans(size: number, shape: BrushShape, angle
   } else if (shape === 'line' && Math.abs(geometryAngle % 360) < 0.0001) {
     const y = Math.floor(normalizedSize / 2)
     spans = [{ y, left: 0, right: normalizedSize - 1 }]
+  } else if (shape === 'square') {
+    spans = rotatedSquareRowSpans(normalizedSize, geometryAngle)
   } else {
     const mask = brushMaskOffsets(normalizedSize, shape, 'solid', 1, 0, 0, null, undefined, 0, 'paint', 0, 0, undefined, geometryAngle, optimizedRotation)
     const rows = new Map<number, { left: number; right: number }>()
@@ -790,7 +745,7 @@ export function brushMaskOffsets(size: number, shape: BrushShape, texture: Brush
   const applyDither = (mask: BrushMaskPoint[]): BrushMaskPoint[] => brushDither?.enabled
     ? mask.filter((point) => brushDitherContains(brushDither, originX + point.x, originY + point.y))
     : mask
-  const normalizedSolidAngle = Math.round(geometryAngle * 1000) / 1000
+  const normalizedSolidAngle = geometryAngle
   const solidCacheKey = texture === 'solid' ? `${shape}:${normalizedSize}:${normalizedSolidAngle}` : null
   const cachedSolid = solidCacheKey ? solidBrushMaskCache.get(solidCacheKey) : null
   if (cachedSolid) return applyDither(cachedSolid)
@@ -827,6 +782,10 @@ export function brushMaskOffsets(size: number, shape: BrushShape, texture: Brush
       if (sourceVisible && sourceX >= 0 && sourceX < normalizedSize && sourceY >= 0 && sourceY < normalizedSize && brushTextureContains(texture, sourceX, sourceY, textureScale)) {
         points.push({ x, y, coverage: 255 })
       }
+    }
+    if (shape === 'square' && solidCacheKey) {
+      if (solidBrushMaskCache.size >= 4) solidBrushMaskCache.delete(solidBrushMaskCache.keys().next().value!)
+      solidBrushMaskCache.set(solidCacheKey, points)
     }
     return applyDither(points)
   }

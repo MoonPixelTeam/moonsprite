@@ -17,6 +17,7 @@ import {
 import { maskCoverageFromColor, layerContentBounds, resolveLayerCanvasColor, layerIndexAt, resolveDocumentCanvasColor } from './document-model'
 import { type DocumentCompositeCache } from './document-composite-cache'
 import type { PropertyCompositeMemo } from './layer-property-composite-cache'
+import { deferredCompositeValue } from './document-composite-deferred-value'
 import {
   unionSelectionRects,
   type CompositeStackItem,
@@ -49,7 +50,7 @@ export const compileCompositePointSampler = (document: SpriteDocument, layerId?:
     for (const boundsEntry of bounds) if (boundsEntry) result = result ? unionSelectionRects(result, boundsEntry) : { ...boundsEntry }
     return result
   }
-  const compileLayer = (layer: RasterLayer): CompiledItem => {
+  const compileLayer = (layer: RasterLayer, hidden: boolean): CompiledItem => {
     const readIndex = (x: number, y: number): number | null => layerIndexAt(layer, x, y)
     let readSource: CompositePointReplacementSampler
     if (layer.format === 'rgba') {
@@ -63,31 +64,46 @@ export const compileCompositePointSampler = (document: SpriteDocument, layerId?:
       ? mapLayerStyleColors(resolveLayerStyles(layer.layerStyles), resolveStyleColor, color => normalizeDocumentColor(document, color))
       : undefined
     const adjustment = layer.kind === 'adjustment' && layer.adjustment?.enabled ? createGradientMapSampler({ ...layer.adjustment.gradientMap, stops: layer.adjustment.gradientMap.stops.map(stop => ({ ...stop, color: normalizeDocumentColor(document, stop.color) })) }) : undefined
-    const outputBounds = layer.kind === 'adjustment' ? { x: 0, y: 0, width: document.width, height: document.height } : geometryBoundsOnly
+    const readBounds = () => layer.kind === 'adjustment' ? { x: 0, y: 0, width: document.width, height: document.height } : geometryBoundsOnly
       ? { x: layer.offsetX, y: layer.offsetY, width: layer.width, height: layer.height }
       : layerStyleOutputBounds(styleCache ? styleCache.compositeSourceBounds(document, layer, sourceDirtyRect) : layerContentBounds(document, layer), styles)
-    if (layer.id !== layerId) return { kind: 'layer', layer, adjustment, containsAdjustment: Boolean(adjustment), read: readSource, resolveStyleColor, ...(styles ? { styles } : {}), outputBounds }
+    const outputBounds = hidden ? deferredCompositeValue(readBounds) : null
+    const eagerBounds = outputBounds ? null : readBounds()
+    if (layer.id !== layerId) {
+      if (outputBounds) return { kind: 'layer', layer, adjustment, containsAdjustment: Boolean(adjustment), read: readSource, resolveStyleColor, ...(styles ? { styles } : {}), get outputBounds() { return outputBounds() } }
+      return { kind: 'layer', layer, adjustment, containsAdjustment: Boolean(adjustment), read: readSource, resolveStyleColor, ...(styles ? { styles } : {}), outputBounds: eagerBounds }
+    }
     return {
       kind: 'layer',
       layer, adjustment, containsAdjustment: Boolean(adjustment),
       resolveStyleColor,
       ...(styles ? { styles } : {}),
-      outputBounds,
+      get outputBounds() { return outputBounds ? outputBounds() : eagerBounds },
       read: (x, y, replacement) => replacement === undefined
         ? readSource(x, y, replacement)
         : x >= 0 && y >= 0 && x < document.width && y < document.height ? replacement : TRANSPARENT
     }
   }
-  const compileContainer = (items: readonly CompositeStackItem[]): CompiledItem[] => items.map((item) => {
-    if (item.kind === 'layer') return compileLayer(item.layer)
-    const children = compileContainer(item.children)
-    const sourceBounds = mergeBounds(children.filter((child) => itemVisibleBeforeCompile(child)).map((child) => child.outputBounds))
-    const geometry = sourceBounds ?? { x: 0, y: 0, width: document.width, height: document.height }
+  const compileContainer = (items: readonly CompositeStackItem[], hiddenAncestor = false): CompiledItem[] => items.map((item) => {
+    const owner = item.kind === 'layer' ? item.layer : item.group
+    const hidden = hiddenAncestor || !owner.visible || owner.opacity <= 0
+    if (item.kind === 'layer') return compileLayer(item.layer, hidden)
+    const children = compileContainer(item.children, hidden)
+    const readSourceBounds = () => mergeBounds(children.filter((child) => itemVisibleBeforeCompile(child)).map((child) => child.outputBounds))
     const resolveStyleColor = (styleColor: RgbaColor): RgbaColor => resolveDocumentCanvasColor(document, styleColor)
     const styles = hasEnabledLayerStyles(item.group.layerStyles)
       ? mapLayerStyleColors(resolveLayerStyles(item.group.layerStyles), resolveStyleColor, color => normalizeDocumentColor(document, color))
       : undefined
-    return { kind: 'group', group: item.group, children, containsAdjustment: children.some(child => child.containsAdjustment), resolveStyleColor, ...(styles ? { styles } : {}), geometry, outputBounds: layerStyleOutputBounds(sourceBounds, styles) }
+    if (!hidden) {
+      const sourceBounds = readSourceBounds()
+      return { kind: 'group', group: item.group, children, containsAdjustment: children.some(child => child.containsAdjustment), resolveStyleColor, ...(styles ? { styles } : {}),
+        geometry: sourceBounds ?? { x: 0, y: 0, width: document.width, height: document.height }, outputBounds: layerStyleOutputBounds(sourceBounds, styles) }
+    }
+    const sourceBounds = deferredCompositeValue(readSourceBounds)
+    const outputBounds = deferredCompositeValue(() => layerStyleOutputBounds(sourceBounds(), styles))
+    return { kind: 'group', group: item.group, children, containsAdjustment: children.some(child => child.containsAdjustment), resolveStyleColor, ...(styles ? { styles } : {}),
+      get geometry() { return sourceBounds() ?? { x: 0, y: 0, width: document.width, height: document.height } },
+      get outputBounds() { return outputBounds() } }
   })
   const itemVisibleBeforeCompile = (item: CompiledItem): boolean => item.kind === 'layer'
     ? item.layer.visible && item.layer.opacity > 0
@@ -155,6 +171,9 @@ export const compileCompositePointSampler = (document: SpriteDocument, layerId?:
       : applyItemMask(item, item.read(x, y, replacement), x, y, replacement)
   }
   function isolatedItemColor(item: CompiledItem, x: number, y: number, replacement: RgbaColor | undefined): RgbaColor {
+    // Keep hidden/zero-opacity clipping bases in the stack, but never prepare
+    // their raster bounds or consume pending source dirtiness.
+    if (!itemVisible(item) || itemOpacity(item) <= 0) return TRANSPARENT
     // Bounds already include every enabled effect and styled descendant.
     // Cull before memo/tile allocation: otherwise a tiny styled layer in a
     // complex stack evaluates transparent tiles across the entire viewport.

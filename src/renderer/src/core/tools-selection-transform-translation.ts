@@ -21,6 +21,7 @@ import { selectionContains } from './selection'
 import { wrapDocumentPointForTileRepeat } from './tilemap'
 import { compositeSelectionPixelOver } from './tools-pixel-edit'
 import { type SelectionTransformSource, type SelectionTranslationPreview } from './tools-selection-transform-types'
+import { applyOpaqueClipboardTranslationCommit } from './tools-selection-transform-opaque-clipboard'
 
 const SELECTION_TRANSLATION_POINT_HISTORY_THRESHOLD = 65_536
 
@@ -87,6 +88,9 @@ export function applySelectionTranslationCommit(
     targetRect = { x: sourceLeft + deltaX, y: sourceTop + deltaY, width: sourceRect.width, height: sourceRect.height }
   }
   if (!expandLayerToRect(layer, targetRect.x, targetRect.y, targetRect.x + targetRect.width, targetRect.y + targetRect.height)) return null
+
+  const opaqueClipboardEdit = applyOpaqueClipboardTranslationCommit(document, source, target, targetRect, layer, copy)
+  if (opaqueClipboardEdit !== undefined) return opaqueClipboardEdit
   const overlaps = sourceRect.x < targetRect.x + targetRect.width
     && targetRect.x < sourceRect.x + sourceRect.width
     && sourceRect.y < targetRect.y + targetRect.height

@@ -1,6 +1,6 @@
 import { measureRuntimeDiagnostic } from '@/core/runtime-diagnostics'
 import { isWorkspaceResizing, onWorkspaceResizeEnd, recordWorkspaceResizeStage } from '@/components/workspace-resize'
-import { useEffect, useRef, useState } from 'react'
+import { memo, useEffect, useRef, useState } from 'react'
 import { FloatingDockPreview, PanelResizeHandles, useFloatingPanel } from '@/components/floating-panel'
 import { AnimationPlaybackMenu } from '@/components/AnimationPlaybackMenu'
 import { PlaybackPixelIcon } from '@/components/PlaybackPixelIcon'
@@ -8,7 +8,8 @@ import { PixelUtilityIcon } from '@/components/PixelUtilityIcon'
 import { CanvasCompositeCache } from '@/components/canvas-composite-cache'
 import { canvasCompositeCacheFor, existingCanvasCompositeCache } from '@/components/canvas-composite-registry'
 import type { DockDragProps } from '@/components/workspace-panel-types'
-import { cloneDocumentForAnimationFrame, ensureAnimationDocument, firstPlayableAnimationFrameId, nextAnimationFrameId } from '@/core/animation'
+import { ensureAnimationDocument, firstPlayableAnimationFrameId, nextAnimationFrameId } from '@/core/animation'
+import { AnimationPreviewDocumentCache } from '@/core/animation-preview-document'
 import { advanceAnimationLoopSectionPlayback, animationLoopSectionAtFrame, animationLoopSectionStartFrameId, resolveAnimationLoopSectionRange } from '@/core/animation-loop-sections'
 import { anchoredPreviewPan, followPreviewPosition, pixelAlignedPreviewFitScale, previewCheckerCellSize } from '@/core/preview-geometry'
 import { normalizeCanvasWheelDelta, steppedCanvasZoom, viewDragClientDelta } from '@/core/canvas-input'
@@ -68,7 +69,7 @@ const sameFollowViewportSnapshot = (left: FollowViewportSnapshot, right: FollowV
   && left.view.mirrored === right.view.mirrored
   && left.view.mirroredVertical === right.view.mirroredVertical
 
-export function PreviewPanel({ session, onClose, docked = false, onDockDragStart, onPanelContextMenu, onFloatingDock, relativeLuminanceInPreview = true, relativeLuminanceOverride = null }: { session: DocumentSession; onClose: () => void; relativeLuminanceInPreview?: boolean; relativeLuminanceOverride?: boolean | null } & DockDragProps) {
+export const PreviewPanel = memo(function PreviewPanel({ session, onClose, docked = false, onDockDragStart, onPanelContextMenu, onFloatingDock, relativeLuminanceInPreview = true, relativeLuminanceOverride = null }: { session: DocumentSession; onClose: () => void; relativeLuminanceInPreview?: boolean; relativeLuminanceOverride?: boolean | null } & DockDragProps) {
   const { t } = useI18n()
   const defaultPosition = { x: Math.max(12, window.innerWidth - 310 - 250 - 16), y: Math.max(46, window.innerHeight - 27 - 260 - 16), width: 250, height: 260 }
   const floating = useFloatingPanel(docked ? null : defaultPosition, false, true, 'moonsprite.preview-panel.v1', true, onFloatingDock, docked)
@@ -106,6 +107,7 @@ export function PreviewPanel({ session, onClose, docked = false, onDockDragStart
   const panDrag = useRef<{ x: number; y: number; panX: number; panY: number } | null>(null)
   const compositeCacheRef = useRef(new CanvasCompositeCache())
   const rasterCacheRef = useRef(new PreviewRasterCache())
+  const previewDocumentCacheRef = useRef(new AnimationPreviewDocumentCache())
   const previewSchedulerRef = useRef<ReturnType<typeof createPreviewDrawScheduler> | null>(null)
   const baseFitRef = useRef<{ documentId: string; width: number; height: number; viewportWidth: number; viewportHeight: number; devicePixelRatio: number; scale: number } | null>(null)
   const followSnapshotRef = useRef<FollowViewportSnapshot>(followViewportSnapshot(session))
@@ -221,6 +223,7 @@ export function PreviewPanel({ session, onClose, docked = false, onDockDragStart
       previewSchedulerRef.current = null
       rasterCacheRef.current.dispose()
       compositeCacheRef.current.dispose()
+      previewDocumentCacheRef.current.clear()
       colorSource.current = null
     }
   }, [session.document.id])
@@ -522,10 +525,8 @@ export function PreviewPanel({ session, onClose, docked = false, onDockDragStart
         ? livePreview
         : null
       const sourceDocument = livePreviewForFrame?.document ?? currentSession.document
-      const previewDocument = renderFrameId === currentTimeline.activeFrameId
-        ? sourceDocument
-        : cloneDocumentForAnimationFrame(sourceDocument, renderFrameId)
       const renderRevision = livePreviewForFrame?.revision ?? currentSession.revision
+      const previewDocument = previewDocumentCacheRef.current.get(sourceDocument, renderFrameId, renderRevision)
       const renderContentRevision = livePreviewForFrame?.contentRevision ?? currentSession.contentRevision
       const dpr = bounds.dpr
       syncCanvasDisplaySize(canvas, bounds.width, bounds.height, dpr, bounds.width, bounds.height, true)
@@ -601,7 +602,7 @@ export function PreviewPanel({ session, onClose, docked = false, onDockDragStart
           width, height, originX: originX * dpr, originY: originY * dpr, scale: scale * dpr, luminance: showRelativeLuminance
         }, currentSession.contentInvalidation)
         const started = performance.now()
-        if (raster.requiresSeed) {
+        if (raster.requiresSeed || raster.prefersSharedSeed) {
           const cache = existingCanvasCompositeCache(previewDocument)
             ?? (previewDocument === currentSession.document ? canvasCompositeCacheFor(previewDocument) : undefined)
           const shared = cache?.previewSource(previewDocument, renderFrameId, renderContentRevision, showRelativeLuminance)
@@ -815,5 +816,5 @@ export function PreviewPanel({ session, onClose, docked = false, onDockDragStart
     <FloatingDockPreview style={floating.dockPreview} />
     {playbackMenu && <AnimationPlaybackMenu session={session} x={playbackMenu.x} y={playbackMenu.y} zIndex={playbackMenu.zIndex} playback={previewPlayback} onClose={() => setPlaybackMenu(null)} />}
   </section>
-}
+})
 import { PanelActions } from './PanelActions'

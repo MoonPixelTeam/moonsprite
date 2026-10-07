@@ -34,6 +34,7 @@ export class PreviewRasterCache {
   private context: CanvasRenderingContext2D | null = null
 
   private needsSeed = true
+  private preferSharedSeed = false
 
   configure(document: SpriteDocument, frameId: string, revision: number, view: PreviewRasterView,
     invalidation?: { kind: 'full' | 'region'; rect?: SelectionRect; frameId?: string; fromRevision: number; revision: number } | null): void {
@@ -92,12 +93,14 @@ export class PreviewRasterCache {
       if (this.canvas.height !== view.height) this.canvas.height = view.height
     }
     this.needsSeed = !regionalCommit
+    this.preferSharedSeed = Boolean(regionalCommit && invalidation?.rect
+      && invalidation.rect.width * view.scale * invalidation.rect.height * view.scale >= view.width * view.height / 4)
     this.invalidate(regionalCommit ? invalidation?.rect : undefined)
   }
 
   seedFromShared(source: CanvasImageSource, dirtyRects: readonly SelectionRect[]): void {
     const { view, document, context } = this
-    if (!this.needsSeed || !view || !document || !context) return
+    if ((!this.needsSeed && !this.preferSharedSeed) || !view || !document || !context) return
     context.clearRect(0, 0, view.width, view.height)
     context.imageSmoothingEnabled = false
     context.drawImage(source, view.originX, view.originY, document.width * view.scale, document.height * view.scale)
@@ -106,9 +109,11 @@ export class PreviewRasterCache {
     this.exposed = []
     for (const rect of dirtyRects) this.invalidate(rect)
     this.needsSeed = false
+    this.preferSharedSeed = false
   }
 
   get requiresSeed(): boolean { return this.needsSeed }
+  get prefersSharedSeed(): boolean { return this.preferSharedSeed }
 
   invalidate(rect?: SelectionRect, live = false): void {
     this.sampler = null // offsets, masks and live layer objects can change in place
@@ -196,6 +201,7 @@ export class PreviewRasterCache {
     this.canvas = this.context = this.document = this.sampler = this.view = null
     this.key = ''
     this.needsSeed = true
+    this.preferSharedSeed = false
     this.dirty.clear()
     this.fullDirty = false
     this.liveDirty.clear()

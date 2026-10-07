@@ -1,5 +1,5 @@
 import type { ProjectEncodeWorkerPayload, ProjectEncodeWorkerResponse, ProjectEncodeWorkerResult } from './project-format-manifest-types'
-import { projectDocumentForWorkerTransfer } from './project-save-transfer'
+import { projectDocumentForWorkerTransfer, projectDocumentTransferables } from './project-save-transfer'
 import { beginRuntimeDiagnosticOperation, runtimeDiagnosticsActive, type RuntimeDiagnosticOperation } from './runtime-diagnostics'
 
 let projectEncodeWorker: Worker | null = null
@@ -78,7 +78,9 @@ export const encodeProjectInWorker = (payload: ProjectEncodeWorkerPayload, encod
     pendingProjectEncodes.set(id, { resolve, reject, diagnostic })
     try {
       const postStartedAt = typeof performance !== 'undefined' ? performance.now() : Date.now()
-      ensureProjectEncodeWorker().postMessage({ id, payload: { ...payload, document: projectDocumentForWorkerTransfer(payload.document) } })
+      const document = projectDocumentForWorkerTransfer(payload.document)
+      const transferables = projectDocumentTransferables(document)
+      ensureProjectEncodeWorker().postMessage({ id, payload: { ...payload, document } }, transferables)
       diagnostic?.mark('post-message', {
         durationMs: Math.round((typeof performance !== 'undefined' ? performance.now() : Date.now()) - postStartedAt)
       })

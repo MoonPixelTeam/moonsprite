@@ -3,7 +3,7 @@ import { useProjectScrollMemory } from '@/components/useProjectScrollMemory'
 import { PaletteSwatch, usePaletteSwatchActions } from './PaletteSwatch'
 import { PaletteSelectionOutline } from './PaletteSelectionOutline'
 import { encodePaletteClipboard, parsePaletteClipboard, type PaletteClipboard } from '@/components/palette-clipboard'
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { playExportSuccessSound } from '@/platform/export-success-sound'
 import { usePaletteGridColumns } from '@/components/use-palette-grid-columns'
 import { paletteGridLines, paletteGridLineClass, paletteAutoCellClass } from '@/components/palette-grid-resize'
@@ -65,7 +65,7 @@ const PALETTE_SORT_OPTIONS: Array<{ mode: PaletteSortMode; label: 'palette.sort.
 
 let paletteClipboardFallback: PaletteClipboard | null = null
 
-export function PalettePanel({ session, docked = false, onDockDragStart, onPanelContextMenu, onFloatingDock }: { session: DocumentSession } & DockDragProps) {
+function PalettePanelComponent({ session, docked = false, onDockDragStart, onPanelContextMenu, onFloatingDock }: { session: DocumentSession } & DockDragProps) {
   const { t } = useI18n()
   const store = useWorkspace.getState()
   const panelColorSampling = usePanelColorSampling(session.tool)
@@ -982,4 +982,7 @@ export function PalettePanel({ session, docked = false, onDockDragStart, onPanel
   </ModalShell>, document.body)}
   </>
 }
+
+export const PalettePanel = memo(PalettePanelComponent)
+
 import { PanelActions } from './PanelActions'

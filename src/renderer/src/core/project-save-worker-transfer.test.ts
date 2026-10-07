@@ -2,9 +2,10 @@
 import { MessageChannel } from 'node:worker_threads'
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 import { unzipSync, zipSync } from 'fflate'
-import { createDocument, markLayerContentChanged, setLayerStorageOrigin } from './document-model'
+import { createDocument, createLayerMask, markLayerContentChanged, setLayerStorageOrigin } from './document-model'
 import { decodeProject, encodeProject, encodeProjectAsync, encodeProjectSaveAsync, registerProjectSaveBaseline } from './project-format'
 import type { ProjectEncodeWorkerPayload, ProjectEncodeWorkerResponse } from './project-format-manifest-types'
+import { projectDocumentForWorkerTransfer, projectDocumentTransferables } from './project-save-transfer'
 import { assignRasterStorage, installRuntimeRaster, readSurfacePackedLocal, surfacePixelsMaterialized } from './runtime-raster'
 import { encodePng } from './png-encode'
 
@@ -157,6 +158,25 @@ describe('project save worker transport', () => {
     expect(readSurfacePackedLocal(restored.layers[0], 127, 127)).toBe(0)
     expect(progress).toEqual([0, 0.05, 1])
     expect(layer.pixels.buffer.byteLength).toBe(128 * 128 * 4)
+  })
+
+  it('keeps sparse animation masks compact during worker transfer', () => {
+    const document = sparseDocument('rgba')
+    const mask = createLayerMask(document.layers[0].id, 128, 128)
+    const data = new Uint8Array(64 * 64 * 4)
+    data.set([11, 22, 33, 255])
+    installRuntimeRaster(mask, {
+      kind: 'sparse-tiles-v1', format: 'rgba', width: 128, height: 128, tileSize: 64,
+      data, tileOffsets: new Int32Array([1, 0, 0, 0])
+    })
+    document.animation!.layerMasks = [{ layerId: document.layers[0].id, frameId: document.animation!.activeFrameId, mask }]
+    const payload = projectDocumentForWorkerTransfer(document)
+    const transferables = projectDocumentTransferables(payload)
+    expect(surfacePixelsMaterialized(mask)).toBe(false)
+    const sentMask = payload.animation!.layerMasks![0].mask
+    expect(sentMask.runtimeRaster!.data.byteLength).toBe(64 * 64 * 4)
+    expect(sentMask.pixels.byteLength).toBe(4)
+    expect(transferables).toContain(sentMask.runtimeRaster!.data.buffer)
   })
 
   it('preserves edits to materialized shared pixels instead of restoring stale tiles', async () => {

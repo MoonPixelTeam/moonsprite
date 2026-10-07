@@ -3,6 +3,7 @@ import { measureRuntimeDiagnostic } from '../core/runtime-diagnostics'
 import { documentDiagnosticDetail } from '../core/document-diagnostics'
 import type { RgbaColor } from '@shared/types-color'
 import type { SelectionRect } from '@shared/types-selection'
+import type { FreeTileInstance } from '@shared/types-tiles'
 import { shouldRenderPixelGrid } from '@/core/grid'
 import { deviceAlignedCanvasRect } from '@/core/canvas-render-plan'
 import { layerMovePreviewActive, type CanvasDragState as DragState } from '@/core/canvas-input'
@@ -17,6 +18,27 @@ import type * as React from 'react'
 import type { DocumentSession } from '@/store/workspace-types'
 import { MoveLayerClickFlash, FreeTileInstanceFlash } from './canvas-stage-helpers'
 import { drawAnimationTweenPreview } from './animation-tween-preview'
+
+type FreeTileSourceRef = NonNullable<ReturnType<typeof freeTileSourceForInstance>>
+
+export const buildFreeTileFlashPixels = (instance: FreeTileInstance, source: FreeTileSourceRef, pixels: Uint8ClampedArray, bounds: SelectionRect, offsetX: number, offsetY: number): Uint8ClampedArray => {
+  const width = Math.max(0, bounds.width), height = Math.max(0, bounds.height)
+  const output = new Uint8ClampedArray(width * height * 4)
+  for (let y = 0; y < height; y += 1) for (let x = 0; x < width; x += 1) {
+    const sourcePoint = freeTileSourcePointForInstance(instance, source, bounds.x + x, bounds.y + y, offsetX, offsetY)
+    if (!sourcePoint) continue
+    const sourceOffset = (sourcePoint.y * source.tileset.tileWidth + sourcePoint.x) * 4
+    const alpha = pixels[sourceOffset + 3]
+    if (alpha === 0) continue
+    const value = colorLuminance({ r: pixels[sourceOffset], g: pixels[sourceOffset + 1], b: pixels[sourceOffset + 2], a: alpha }) > 145 ? 0 : 255
+    const offset = (y * width + x) * 4
+    output[offset] = value
+    output[offset + 1] = value
+    output[offset + 2] = value
+    output[offset + 3] = alpha
+  }
+  return output
+}
 export function renderCanvasContent({
   repeatCopies,
   isolatedLayerMask,
@@ -103,6 +125,41 @@ export function renderCanvasContent({
   drawIsoGuides: (copy: { x: number; y: number; originX: number; originY: number; fromX: number; fromY: number; toX: number; toY: number }) => void
   inputRef: React.RefObject<import('@/core/canvas-input').CanvasInputState>
 }) {
+  // Build repeat-invariant overlay resources once per canvas paint. Text and
+  // tilemap overlays are drawn for every repeat copy, so allocating a canvas
+  // or searching a tileset array inside that loop multiplies work with the
+  // repeat count (large tilemap views can have dozens of copies).
+  const textPreview = textToolPreviewRef.current
+  const textPreviewCanvas = textPreview?.format === 'rgba'
+    ? (() => {
+        const canvas = new OffscreenCanvas(textPreview.width, textPreview.height)
+        canvas.getContext('2d')?.putImageData(new ImageData(textPreview.pixels.slice(), textPreview.width, textPreview.height), 0, 0)
+        return canvas
+      })()
+    : null
+  let freeTileFlash = freeTileInstanceFlashRef.current
+  if (freeTileFlash && performance.now() >= freeTileFlash.expiresAt) {
+    freeTileInstanceFlashRef.current = null
+    freeTileFlash = null
+  }
+  const freeTileOverlay = (() => {
+    if (!freeTileFlash || currentActiveLayer.kind !== 'free-tile') return null
+    const target = activeFreeTileCelTarget(document)
+    const instance = target?.freeTiles.instances.find((candidate) => candidate.id === freeTileFlash!.instanceId) ?? null
+    const source = target && instance ? freeTileSourceForInstance(target.sources, instance) : null
+    const tileId = target && instance ? freeTileTileIdForInstance(target.sources, instance) : null
+    const pixels = source && tileId ? readTilesetTilePixels(source.tileset, tileId) : null
+    if (!target || !instance || !source || !pixels || !source.visible) return null
+    const bounds = freeTileInstanceBounds(instance, target.sources, target.surface.offsetX, target.surface.offsetY)
+    const left = Math.max(0, bounds.x), top = Math.max(0, bounds.y)
+    const right = Math.min(document.width, bounds.x + bounds.width), bottom = Math.min(document.height, bounds.y + bounds.height)
+    const visibleBounds = { x: left, y: top, width: Math.max(0, right - left), height: Math.max(0, bottom - top) }
+    if (!visibleBounds.width || !visibleBounds.height) return null
+    const flashPixels = buildFreeTileFlashPixels(instance, source, pixels, visibleBounds, target.surface.offsetX, target.surface.offsetY)
+    const canvas = new OffscreenCanvas(visibleBounds.width, visibleBounds.height)
+    canvas.getContext('2d')?.putImageData(new ImageData(flashPixels as Uint8ClampedArray<ArrayBuffer>, visibleBounds.width, visibleBounds.height), 0, 0)
+    return { canvas, bounds: visibleBounds }
+  })()
   let paintedMoveLayerFlash: MoveLayerClickFlash | null = null
   for (const copy of repeatCopies) {
     if (copy.toX <= copy.fromX || copy.toY <= copy.fromY) continue
@@ -171,11 +228,7 @@ export function renderCanvasContent({
     clipCanvasCopy(context, copy)
     drawAnimationTweenPreview(context, currentSession.document.id, copy.originX, copy.originY, view.zoom, deviceScale)
     context.restore()
-    const textPreview = textToolPreviewRef.current
-    if (textPreview?.format === 'rgba') {
-      const previewCanvas = new OffscreenCanvas(textPreview.width, textPreview.height)
-      const previewContext = previewCanvas.getContext('2d')
-      previewContext?.putImageData(new ImageData(textPreview.pixels.slice(), textPreview.width, textPreview.height), 0, 0)
+    if (textPreview && textPreviewCanvas) {
       context.save()
       clipCanvasCopy(context, copy)
       context.imageSmoothingEnabled = false
@@ -186,7 +239,7 @@ export function renderCanvasContent({
         textPreview.height * view.zoom,
         deviceScale
       )
-      context.drawImage(previewCanvas, textBoundary.left, textBoundary.top, textBoundary.width, textBoundary.height)
+      context.drawImage(textPreviewCanvas, textBoundary.left, textBoundary.top, textBoundary.width, textBoundary.height)
       context.restore()
     }
     let moveLayerFlash = moveLayerClickFlashEnabled ? moveLayerClickFlashRef.current : null
@@ -228,44 +281,14 @@ export function renderCanvasContent({
         }
       }
     }
-    let freeTileFlash = freeTileInstanceFlashRef.current
-    if (freeTileFlash && performance.now() >= freeTileFlash.expiresAt) {
-      freeTileInstanceFlashRef.current = null
-      freeTileFlash = null
-    }
-    if (freeTileFlash && currentActiveLayer.kind === 'free-tile') {
-      const target = activeFreeTileCelTarget(document)
-      const instance = target?.freeTiles.instances.find((candidate) => candidate.id === freeTileFlash!.instanceId) ?? null
-      const source = target && instance ? freeTileSourceForInstance(target.sources, instance) : null
-      const tileId = target && instance ? freeTileTileIdForInstance(target.sources, instance) : null
-      const pixels = source && tileId ? readTilesetTilePixels(source.tileset, tileId) : null
-      if (target && instance && source && pixels && source.visible) {
-        const bounds = freeTileInstanceBounds(instance, target.sources, target.surface.offsetX, target.surface.offsetY)
-        const visibleX = Math.max(0, Math.floor(copy.fromX), bounds.x)
-        const visibleY = Math.max(0, Math.floor(copy.fromY), bounds.y)
-        const visibleRight = Math.min(document.width, Math.ceil(copy.toX), bounds.x + bounds.width)
-        const visibleBottom = Math.min(document.height, Math.ceil(copy.toY), bounds.y + bounds.height)
+    if (freeTileOverlay) {
+        const visibleX = Math.max(Math.floor(copy.fromX), freeTileOverlay.bounds.x)
+        const visibleY = Math.max(Math.floor(copy.fromY), freeTileOverlay.bounds.y)
+        const visibleRight = Math.min(Math.ceil(copy.toX), freeTileOverlay.bounds.x + freeTileOverlay.bounds.width)
+        const visibleBottom = Math.min(Math.ceil(copy.toY), freeTileOverlay.bounds.y + freeTileOverlay.bounds.height)
         const visibleWidth = Math.max(0, visibleRight - visibleX)
         const visibleHeight = Math.max(0, visibleBottom - visibleY)
         if (visibleWidth > 0 && visibleHeight > 0) {
-          const flashPixels = new Uint8ClampedArray(visibleWidth * visibleHeight * 4)
-          for (let y = 0; y < visibleHeight; y += 1)
-            for (let x = 0; x < visibleWidth; x += 1) {
-              const sourcePoint = freeTileSourcePointForInstance(instance, source, visibleX + x, visibleY + y, target.surface.offsetX, target.surface.offsetY)
-              if (!sourcePoint) continue
-              const sourceOffset = (sourcePoint.y * source.tileset.tileWidth + sourcePoint.x) * 4
-              const alpha = pixels[sourceOffset + 3]
-              if (alpha === 0) continue
-              const sourceColor = { r: pixels[sourceOffset], g: pixels[sourceOffset + 1], b: pixels[sourceOffset + 2], a: alpha }
-              const value = colorLuminance(sourceColor) > 145 ? 0 : 255
-              const offset = (y * visibleWidth + x) * 4
-              flashPixels[offset] = value
-              flashPixels[offset + 1] = value
-              flashPixels[offset + 2] = value
-              flashPixels[offset + 3] = alpha
-            }
-          const flashCanvas = new OffscreenCanvas(visibleWidth, visibleHeight)
-          flashCanvas.getContext('2d')?.putImageData(new ImageData(flashPixels, visibleWidth, visibleHeight), 0, 0)
           context.save()
           clipCanvasCopy(context, copy)
           context.globalCompositeOperation = 'source-over'
@@ -277,10 +300,9 @@ export function renderCanvasContent({
             visibleHeight * view.zoom,
             deviceScale
           )
-          context.drawImage(flashCanvas, flashBoundary.left, flashBoundary.top, flashBoundary.width, flashBoundary.height)
+          context.drawImage(freeTileOverlay.canvas, visibleX - freeTileOverlay.bounds.x, visibleY - freeTileOverlay.bounds.y, visibleWidth, visibleHeight, flashBoundary.left, flashBoundary.top, flashBoundary.width, flashBoundary.height)
           context.restore()
         }
-      }
     }
     if (view.showPixelGrid && shouldRenderPixelGrid(view.zoom)) drawGrid(0, 0, 1, 1, gridColors.pixelGridColor, copy)
     if (view.isoViewEnabled) drawIsoGuides(copy)
@@ -288,7 +310,12 @@ export function renderCanvasContent({
   if (inputRef.current.ctrlHeld && currentActiveLayer.kind === 'tilemap') {
     const target = activeTilemapCelTarget(document)
     if (target) {
-      const tilesetsById = new Map((document.tilesets ?? []).map((tileset) => [tileset.id, tileset]))
+      const tileIndexesByTilesetId = new Map<string, Map<string, number>>()
+      for (const tileset of document.tilesets ?? []) {
+        const indexes = new Map<string, number>()
+        for (let index = 0; index < tileset.tileIds.length; index += 1) if (!indexes.has(tileset.tileIds[index])) indexes.set(tileset.tileIds[index], index)
+        tileIndexesByTilesetId.set(tileset.id, indexes)
+      }
       const cellScreenWidth = target.tilemap.tileWidth * view.zoom
       const cellScreenHeight = target.tilemap.tileHeight * view.zoom
       const badgeSize = Math.max(12, Math.min(24, Math.floor(Math.min(cellScreenWidth, cellScreenHeight) - 4)))
@@ -309,8 +336,7 @@ export function renderCanvasContent({
             const cellIndex = row * target.tilemap.columns + column
             const cell = target.tilemap.cells[cellIndex]
             if (!cell) continue
-            const tileset = tilesetsById.get(cell.tilesetId)
-            const tileIndex = tileset?.tileIds.indexOf(cell.tileId) ?? -1
+            const tileIndex = tileIndexesByTilesetId.get(cell.tilesetId)?.get(cell.tileId) ?? -1
             if (tileIndex < 0) continue
             const bounds = tilemapCellBounds(target.tilemap, target.surface.offsetX, target.surface.offsetY, cellIndex)
             const centerX = copy.originX + (bounds.x + bounds.width / 2) * view.zoom

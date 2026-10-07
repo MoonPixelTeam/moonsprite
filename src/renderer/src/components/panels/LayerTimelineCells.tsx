@@ -16,17 +16,19 @@ import type { LayerTimelineCellsProps as Props } from './layer-timeline-cell-typ
 import { timelineCellRenderScope, timelineCellRenderState, timelineGridRenderState, sameTimelineCellState } from './layer-timeline-cell-cache'
 import { useTimelineCellActions } from './useTimelineCellActions'
 import { timelineCellElement, type TimelineCellElementCache } from './timeline-cell-element-cache'
+import { useTimelineCellWindow } from './use-timeline-cell-window'
 interface CellProps {
   panel: Props
   displayRow: Props['displayRows'][number]
   frame: Props['timeline']['frames'][number]
   index: number
+  rowIndex: number
   draggingFrameIdSet: ReadonlySet<string>
   draggingCellKeySet: ReadonlySet<string>
   renderState: readonly unknown[] | null
 }
 
-const CachedTimelineCell = memo(function TimelineCell({panel, displayRow, frame, index, draggingFrameIdSet, draggingCellKeySet}: CellProps) {
+const CachedTimelineCell = memo(function TimelineCell({panel, displayRow, frame, index, rowIndex, draggingFrameIdSet, draggingCellKeySet}: CellProps) {
   // The panel deliberately skips pixel-only renders. The active cell still
   // needs to update its current marker when a first stroke creates content.
   useWorkspace(state => {
@@ -207,6 +209,7 @@ const CachedTimelineCell = memo(function TimelineCell({panel, displayRow, frame,
       (showActiveFrameColumn || maskFrameVisualSelection)
     return (
       <button
+        style={{ gridRow: rowIndex + 2, gridColumn: index + 1 }}
         type="button"
         key={`mask-${displayRow.owner.id}-${frame.id}`}
         data-animation-mask-cel-key={key}
@@ -249,6 +252,7 @@ const CachedTimelineCell = memo(function TimelineCell({panel, displayRow, frame,
     const groupRowClasses = timelineVisualClasses(visualRow, visualFrame, timelineVisualState.selectionGuidesVisible)
     return (
       <button
+        style={{ gridRow: rowIndex + 2, gridColumn: index + 1 }}
         type="button"
         key={`${node.id}-${frame.id}`}
         data-frame-index={index}
@@ -387,6 +391,7 @@ const CachedTimelineCell = memo(function TimelineCell({panel, displayRow, frame,
     ) : null
   return (
     <button
+      style={{ gridRow: rowIndex + 2, gridColumn: index + 1 }}
       type="button"
       data-animation-cel-key={key}
       data-frame-index={index}
@@ -424,23 +429,26 @@ const CachedTimelineCell = memo(function TimelineCell({panel, displayRow, frame,
       {normalCelMarker}
     </button>
   )
-}, (previous, next) => next.renderState !== null && previous.renderState !== null && sameTimelineCellState(previous.renderState, next.renderState))
+}, (previous, next) => previous.rowIndex === next.rowIndex && next.renderState !== null && previous.renderState !== null && sameTimelineCellState(previous.renderState, next.renderState))
 
 const CachedTimelineGrid = memo(function TimelineGrid({panel, scope}: {panel: Props; scope: readonly unknown[]; renderState: readonly unknown[]}) {
   const previous = useRef<TimelineCellElementCache>(new Map())
   const next: TimelineCellElementCache = new Map()
   const draggingFrameIdSet = new Set(panel.draggingAnimationFrameIds)
   const draggingCellKeySet = new Set(panel.draggingAnimationCellKeys)
-  const cells = panel.displayRows.flatMap(displayRow => panel.timeline.frames.map((frame, index) => {
+  const { ref, window } = useTimelineCellWindow(panel.displayRows.length, panel.timeline.frames.length, panel.animationCelDragActive)
+  const cells = panel.displayRows.slice(window.rowStart, window.rowEnd).flatMap((displayRow, rowOffset) => panel.timeline.frames.slice(window.frameStart, window.frameEnd).map((frame, frameOffset) => {
+    const index = window.frameStart + frameOffset, rowIndex = window.rowStart + rowOffset
     const key = `${displayRow.kind === 'mask' ? `mask-${displayRow.owner.id}` : displayRow.node.id}-${frame.id}`
-    const state = timelineCellRenderState(panel, displayRow, frame.id, index, scope, draggingFrameIdSet, draggingCellKeySet)
+    const cellState = timelineCellRenderState(panel, displayRow, frame.id, index, scope, draggingFrameIdSet, draggingCellKeySet)
+    const state = cellState ? [...cellState, rowIndex] : null
     return timelineCellElement(previous.current, next, key, state, () => <CachedTimelineCell
-      key={key} panel={panel} displayRow={displayRow} frame={frame} index={index}
+      key={key} panel={panel} displayRow={displayRow} frame={frame} index={index} rowIndex={rowIndex}
       draggingFrameIdSet={draggingFrameIdSet} draggingCellKeySet={draggingCellKeySet} renderState={state}
     />)
   }))
   previous.current = next
-  return <>{cells}</>
+  return <><span ref={ref} style={{ display: 'none' }} aria-hidden="true" />{cells}</>
 }, (previous, next) => sameTimelineCellState(previous.renderState, next.renderState))
 
 export function LayerTimelineCells(props: Props) {

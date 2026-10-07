@@ -56,6 +56,20 @@ export const compositePatchMergeLimit = (document: SpriteDocument | null): numbe
   document && (document.layers.some(layer => hasEnabledLayerStyles(layer.layerStyles))
     || document.groups.some(group => hasEnabledLayerStyles(group.layerStyles))) ? 0 : undefined
 
+/** Merge recent dirty rects using a sliding window to balance responsiveness and efficiency. */
+export const mergeRecentDirtyRects = (rects: readonly SelectionRect[], windowSize = 16, maxLocalPatchMergePixels = MAX_LOCAL_PATCH_MERGE_PIXELS): SelectionRect[] => {
+  if (rects.length <= windowSize) return mergeOverlappingRects(rects, maxLocalPatchMergePixels)
+
+  // Keep the most recent rects unmerged for fast response to live strokes
+  const recent = rects.slice(-windowSize)
+  const older = rects.slice(0, -windowSize)
+
+  // Aggressively merge the older backlog
+  const mergedOlder = mergeOverlappingRects(older, maxLocalPatchMergePixels)
+
+  return [...mergedOlder, ...recent]
+}
+
 export const mergeOverlappingRects = (rects: readonly SelectionRect[], maxLocalPatchMergePixels = MAX_LOCAL_PATCH_MERGE_PIXELS): SelectionRect[] => {
   // A long brush stroke produces a chain of slightly overlapping stamps. A
   // plain transitive merge turns that chain into one huge bounding box, which
@@ -91,7 +105,8 @@ export const mergeOverlappingRects = (rects: readonly SelectionRect[], maxLocalP
 }
 
 export const boundedDirtyRects = (rects: readonly SelectionRect[], limit = 32, maxLocalPatchMergePixels = MAX_LOCAL_PATCH_MERGE_PIXELS): SelectionRect[] => {
-  const merged = mergeOverlappingRects(rects, maxLocalPatchMergePixels)
+  // Use sliding window merge for better long-stroke handling
+  const merged = mergeRecentDirtyRects(rects, 16, maxLocalPatchMergePixels)
   if (merged.length <= limit) return merged
   // Preserve the newest local regions and collapse the oldest backlog into
   // one conservative rectangle. This is mainly for cached surfaces that are

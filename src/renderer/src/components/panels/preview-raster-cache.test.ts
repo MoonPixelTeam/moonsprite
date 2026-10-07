@@ -215,6 +215,22 @@ it('bounds dirty work on a populated 4K / 100 layer stack and preserves pending 
     fullPreviewCpuMs: fullMs, dirtyPreviewPixels: 1, dirtyCpuMedianMs: samples[25], dirtyCpuP95Ms: samples[47] }))
 }, 20000)
 
+it('prefers a shared editor surface for a large regional commit', () => {
+  const doc = createDocument('large regional seed', 4096, 4096, 'rgba', false)
+  const cache = new PreviewRasterCache()
+  cache.configure(doc, 'frame-1', 0, view)
+  cache.render()
+  cache.configure(doc, 'frame-1', 1, view, {
+    kind: 'region', rect: { x: 0, y: 0, width: 4096, height: 2048 }, fromRevision: 0, revision: 1
+  })
+  expect(cache.requiresSeed).toBe(false)
+  expect(cache.prefersSharedSeed).toBe(true)
+  expect(cache.render().pixels).toBe(32768)
+  cache.seedFromShared(document.createElement('canvas'), [])
+  expect(cache.prefersSharedSeed).toBe(false)
+  expect(cache.render().pixels).toBe(0)
+})
+
 it('seeds a complete preview from the editor and updates every dirty tile before presenting', () => {
   const doc = createDocument('budget', 4096, 4096, 'rgba', false)
   const cache = new PreviewRasterCache()

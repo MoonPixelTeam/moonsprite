@@ -39,7 +39,9 @@ import { FreeTileInstancePanelSettings } from '@/components/panels/FreeTileInsta
 import { useTimelineThumbnailContentSync, ActiveFrameSync } from './layer-timeline-thumbnails'
 import { layoutAnimationLoopSections, timelineWithLoopSectionPreview } from './layer-timeline-layout'
 import { useSpaceDragScroll } from '@/components/useSpaceDragScroll'
-export function LayersPanel({
+import { memo } from 'react'
+
+function LayersPanelComponent({
   session,
   docked = false,
   sideDocked = false,
@@ -1172,3 +1174,5 @@ export function LayersPanel({
     </>
   )
 }
+
+export const LayersPanel = memo(LayersPanelComponent)

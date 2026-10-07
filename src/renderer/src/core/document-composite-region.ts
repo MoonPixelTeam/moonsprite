@@ -37,7 +37,7 @@ export function compositeRegion(document: SpriteDocument, startX: number, startY
       return output
     }
     if (layer.kind !== 'adjustment' && !hasEnabledLayerStyles(layer.layerStyles) && !activeMasks.has(layer.id) && layer.opacity === 1 && layer.format === 'indexed') {
-      const palette = new Map(document.palette.map((entry) => [entry.id, entry.color]))
+      const palette = cache?.paletteColors(document.palette, revision) ?? new Map(document.palette.map((entry) => [entry.id, entry.color]))
       for (let y = 0; y < height; y += 1) for (let x = 0; x < width; x += 1) {
         const index = layerIndexAt(layer, startX + x, startY + y)
         const color = index === null ? TRANSPARENT : (palette.get(readSurfacePackedLocal(layer, index % layer.width, Math.floor(index / layer.width))) ?? TRANSPARENT)
@@ -46,9 +46,11 @@ export function compositeRegion(document: SpriteDocument, startX: number, startY
       return output
     }
   }
-  const clippingLayers = simpleClippingLayers(document)
+  // A mask can become non-neutral during a same-revision live stroke.
+  if (sourceDirtyRect) cache?.simpleLayerPlans.invalidate(document)
+  const clippingLayers = cache ? cache.simpleLayerPlans.clippingFor(document, revision) : simpleClippingLayers(document)
   if (clippingLayers) return compositeClippingLayers(document, clippingLayers, startX, startY, width, height, cache, revision, output, dirtyRect)
-  const layerMaskStack = simpleLayerMaskLayers(document)
+  const layerMaskStack = cache ? cache.simpleLayerPlans.masksFor(document, revision) : simpleLayerMaskLayers(document)
   if (layerMaskStack) return compositeLayerMaskLayers(document, layerMaskStack, startX, startY, width, height, cache, revision, output, dirtyRect)
   const normalLayers = cache ? cache.renderLayersFor(document, revision, sourceDirtyRect) : normalCompositeLayers(document)
   if (normalLayers) return compositeNormalLayers(document, normalLayers, startX, startY, width, height, cache, revision, undefined, dirtyRect)

@@ -8,7 +8,7 @@ import type { SpriteDocument } from '@shared/types-document'
 import type { TextCelData } from '@shared/types-text'
 import { animationMaskAt, createId, getLayerStorageOrigin, paletteColorIdForCanvas, resolveAnimationMask, setLayerStorageOrigin } from './document-model'
 import { shareRasterLayer } from './layer-preview'
-import { assignRasterStorage, installRuntimeRaster, rasterStorageIdentity, runtimeRasterVisibleBounds, readSurfacePackedLocal, shareRasterSurface } from './runtime-raster'
+import { assignRasterStorage, installRuntimeRaster, rasterStorageIdentity, readSurfacePackedLocal, shareRasterSurface } from './runtime-raster'
 import { normalizeTextCelData, translateTextCelData } from './text-cel-data'
 import { cloneLayerStyles } from './layer-styles'
 import { backgroundPatternSize, tileBackgroundSurfaceToCanvas } from './background-patterns'
@@ -16,6 +16,8 @@ import { cloneTilemapCelData, cloneTileset, normalizeTilemapCelData, renderTilem
 import { cloneFreeTileCelData, createFreeTileCelData, freeTileSourceRefs, freeTileSourceForInstance, normalizeFreeTileCelData, renderFreeTileSurface } from './free-tile'
 import { normalizeAnimationLoopSections, reconcileAnimationLoopSectionsAfterFrameDeletion, reconcileAnimationLoopSectionsAfterFrameInsertion } from './animation-loop-sections'
 import { linkedLayerGroups, linkedLayerMembers, normalizeLinkedLayerMetadata, shareLinkedRasterContent } from './linked-layers'
+import { resolveAnimationCelCached } from './animation-cel-resolver-cache'
+import { animationCelSurfaceContentSelection, animationCelSurfaceHasContent } from './animation-cel-content-cache'
 
 export const DEFAULT_FRAME_DURATION = 100
 export const MAX_ANIMATION_FRAME_DURATION = 60_000
@@ -259,10 +261,34 @@ export const normalizeAnimationTimeline = (value: unknown): AnimationTimeline =>
 }
 
 export const animationFrameAt = (timeline: AnimationTimeline, frameId: string): AnimationFrame | null =>
-  timeline.frames.find((frame) => frame.id === frameId) ?? null
+  timelineIndexFor(timeline).framesById.get(frameId) ?? null
 
 export const animationCelAt = (timeline: AnimationTimeline, layerId: string, frameId: string): AnimationCel | null =>
-  timeline.cels.find((cel) => cel.layerId === layerId && cel.frameId === frameId) ?? null
+  timelineIndexFor(timeline).celsBySlot.get(celSlotKey(layerId, frameId)) ?? null
+
+const timelineIndexes = new WeakMap<AnimationTimeline, {
+  frames: readonly AnimationFrame[]
+  cels: readonly AnimationCel[]
+  frameCount: number
+  celCount: number
+  framesById: Map<string, AnimationFrame>
+  celsBySlot: Map<string, AnimationCel>
+}>()
+
+const timelineIndexFor = (timeline: AnimationTimeline) => {
+  const cached = timelineIndexes.get(timeline)
+  if (cached && cached.frames === timeline.frames && cached.cels === timeline.cels && cached.frameCount === timeline.frames.length && cached.celCount === timeline.cels.length) return cached
+  const next = {
+    frames: timeline.frames,
+    cels: timeline.cels,
+    frameCount: timeline.frames.length,
+    celCount: timeline.cels.length,
+    framesById: new Map(timeline.frames.map((frame) => [frame.id, frame])),
+    celsBySlot: new Map(timeline.cels.map((cel) => [celSlotKey(cel.layerId, cel.frameId), cel]))
+  }
+  timelineIndexes.set(timeline, next)
+  return next
+}
 
 export const animationGroupMaskAt = (timeline: AnimationTimeline, groupId: string, frameId: string): LayerMask | null =>
   animationMaskAt(timeline, groupId, frameId)
@@ -309,23 +335,12 @@ export const createAnimationCelLookup = (timeline: AnimationTimeline): Animation
 }
 
 export const resolveAnimationCel = (timeline: AnimationTimeline, cel: AnimationCel | null): AnimationCel | null =>
-  !cel?.linkedCelId ? cel : createAnimationCelLookup(timeline).resolve(cel)
+  resolveAnimationCelCached(timeline, cel)
 
 /** 判断 cel 是否包含至少一个可见像素，而不是只判断是否存在 surface。 */
 export const animationCelHasContent = (cel: AnimationCel | null, palette: readonly PaletteEntry[] = []): boolean => {
   if (!cel?.surface) return false
-  const opaqueIds = cel.surface.format === 'indexed' && palette.length > 0
-    ? new Set(palette.filter((entry) => entry.color.a > 0).map((entry) => entry.id))
-    : undefined
-  const runtimeBounds = runtimeRasterVisibleBounds(cel.surface, opaqueIds)
-  if (runtimeBounds !== undefined) return runtimeBounds !== null
-  if (cel.surface.format === 'rgba') {
-    for (let index = 3; index < cel.surface.pixels.length; index += 4) if (cel.surface.pixels[index] > 0) return true
-    return false
-  }
-  if (palette.length === 0) return cel.surface.pixels.some((pixel) => pixel !== 0)
-  const visiblePaletteIds = new Set(palette.filter((entry) => entry.color.a > 0).map((entry) => entry.id))
-  return cel.surface.pixels.some((pixel) => visiblePaletteIds.has(pixel))
+  return animationCelSurfaceHasContent(cel.surface, palette)
 }
 
 /** Builds a canvas-clipped selection from every visible pixel in one cel. */
@@ -334,45 +349,7 @@ export const animationCelContentSelection = (cel: AnimationCel | null, palette: 
   const documentWidth = Math.max(0, Math.trunc(canvasWidth))
   const documentHeight = Math.max(0, Math.trunc(canvasHeight))
   if (!surface || documentWidth < 1 || documentHeight < 1) return null
-  const sourceLeft = Math.max(0, -surface.offsetX)
-  const sourceTop = Math.max(0, -surface.offsetY)
-  const sourceRight = Math.min(surface.width, documentWidth - surface.offsetX)
-  const sourceBottom = Math.min(surface.height, documentHeight - surface.offsetY)
-  if (sourceRight <= sourceLeft || sourceBottom <= sourceTop) return null
-
-  const opaquePaletteIds = surface.format === 'indexed'
-    ? new Set(palette.filter((entry) => entry.color.a > 0).map((entry) => entry.id))
-    : null
-  const opaqueAt = surface.format === 'rgba'
-    ? (x: number, y: number): boolean => (readSurfacePackedLocal(surface, x, y) >>> 24) > 0
-    : palette.length === 0
-      ? (x: number, y: number): boolean => readSurfacePackedLocal(surface, x, y) !== 0
-      : (x: number, y: number): boolean => opaquePaletteIds!.has(readSurfacePackedLocal(surface, x, y))
-
-  let minX = sourceRight
-  let minY = sourceBottom
-  let maxX = -1
-  let maxY = -1
-  for (let y = sourceTop; y < sourceBottom; y += 1) for (let x = sourceLeft; x < sourceRight; x += 1) {
-    if (!opaqueAt(x, y)) continue
-    if (x < minX) minX = x
-    if (x > maxX) maxX = x
-    if (y < minY) minY = y
-    if (y > maxY) maxY = y
-  }
-  if (maxX < minX || maxY < minY) return null
-
-  const width = maxX - minX + 1
-  const height = maxY - minY + 1
-  const mask = new Uint8Array(width * height)
-  let selected = 0
-  for (let y = minY; y <= maxY; y += 1) for (let x = minX; x <= maxX; x += 1) {
-    if (!opaqueAt(x, y)) continue
-    mask[(y - minY) * width + x - minX] = 1
-    selected += 1
-  }
-  const selection = { x: surface.offsetX + minX, y: surface.offsetY + minY, width, height }
-  return selected === width * height ? selection : { ...selection, mask }
+  return animationCelSurfaceContentSelection(surface, palette, documentWidth, documentHeight)
 }
 
 export const animationCelKey = (layerId: string, frameId: string): string => `${layerId}:${frameId}`
@@ -632,8 +609,8 @@ export const cloneAnimationCel = (cel: AnimationCel): AnimationCel => ({
   freeTiles: cloneAnimationFreeTiles(cel.freeTiles)
 })
 
-/** Create an isolated document snapshot for read-only animation previewing. */
-export const cloneDocumentForAnimationFrame = (document: SpriteDocument, frameId: string): SpriteDocument => {
+/** Preview-only asset sharing must never be used for editable snapshots. */
+export const cloneDocumentForAnimationFrame = (document: SpriteDocument, frameId: string, shareReadOnlyAssets = false): SpriteDocument => {
   const layers = document.layers.map((layer) => {
     const clone = shareRasterLayer(layer)
     clone.layerStyles = cloneLayerStyles(layer.layerStyles)
@@ -649,8 +626,8 @@ export const cloneDocumentForAnimationFrame = (document: SpriteDocument, frameId
     paletteOrder: [...document.paletteOrder],
     paletteSlots: document.paletteSlots ? [...document.paletteSlots] : undefined,
     paletteColumns: document.paletteColumns,
-    customBrushes: document.customBrushes?.map((brush) => ({ ...brush, coverage: brush.coverage.slice(), colors: brush.colors?.slice() })),
-    tilesets: document.tilesets?.map(cloneTileset),
+    customBrushes: shareReadOnlyAssets ? document.customBrushes : document.customBrushes?.map((brush) => ({ ...brush, coverage: brush.coverage.slice(), colors: brush.colors?.slice() })),
+    tilesets: shareReadOnlyAssets ? document.tilesets : document.tilesets?.map(cloneTileset),
     animation: document.animation
       ? {
           ...document.animation,
@@ -1214,6 +1191,12 @@ export const syncActiveAnimationLayer = (document: SpriteDocument, layerId: stri
 export const refreshActiveAnimationFrame = (document: SpriteDocument): void => {
   const timeline = ensureAnimationDocument(document)
   applyFrameSurfaces(document, timeline)
+}
+
+/** Projects an already validated immutable history timeline without syncing
+ * stale activity-layer geometry back into a newly selected cel. */
+export const projectHistoryAnimationFrame = (document: SpriteDocument): void => {
+  if (document.animation) applyFrameSurfaces(document, document.animation)
 }
 
 export const animationCelOffsetsForKeys = (document: SpriteDocument, keys: readonly string[]): Record<string, { x: number; y: number }> => {

@@ -1,7 +1,7 @@
 import type { ExportProtection } from './export-protection'
 import type { SpriteDocument } from '@shared/types-document'
 import type { GifDirection } from './gif'
-import { prepareRuntimeRasterDocumentForTransfer } from './runtime-raster'
+import { projectDocumentForWorkerTransfer, projectDocumentTransferables } from './project-save-transfer'
 
 export type LayerWorkerFormat = 'png-auto' | 'png-rgba' | 'jpeg' | 'webp' | 'svg' | 'gif' | 'bmp' | 'ico'
 
@@ -71,8 +71,9 @@ export const exportLayersInWorker = (
   if (typeof Worker === 'undefined') return Promise.reject(new Error('Layer export worker unavailable'))
   const worker = new Worker(new URL('../workers/layer-export.worker.ts', import.meta.url), { type: 'module', name: 'moonsprite-layer-export' })
   const id = ++sequence
-  const payload = structuredClone(document)
-  prepareRuntimeRasterDocumentForTransfer(payload)
+  // Keep the live document untouched while transferring copied raster buffers;
+  // structuredClone is reserved for the small metadata graph.
+  const payload = projectDocumentForWorkerTransfer(document)
   return new Promise((resolve, reject) => {
     let settled = false
     let resultQueue = Promise.resolve()
@@ -98,7 +99,8 @@ export const exportLayersInWorker = (
     worker.onerror = (event) => finish(new Error(event.message || 'Layer export worker failed'))
     try {
       const request: LayerExportWorkerRequest = { id, document: payload, layerIds: [...layerIds], ...options }
-      worker.postMessage(request, collectTransferables(request))
+      const transferables = [...new Set<Transferable>([...projectDocumentTransferables(payload), ...collectTransferables(options)])]
+      worker.postMessage(request, transferables)
     } catch (error) {
       finish(error instanceof Error ? error : new Error(String(error)))
     }
