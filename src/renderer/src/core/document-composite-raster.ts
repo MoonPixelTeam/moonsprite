@@ -3,7 +3,7 @@ import type { RasterLayer } from '@shared/types-layer'
 import type { SelectionRect } from '@shared/types-selection'
 import type { SpriteDocument } from '@shared/types-document'
 import { blendWithMode, blendWithModeInto, TRANSPARENT } from './raster'
-import { acquireCompositeBuffer, releaseCompositeBuffer } from './buffer-pool'
+import { acquireCompositeBuffer } from './buffer-pool'
 import {
   lazyRuntimeRasterForSurface,
   readSurfacePackedLocal,
@@ -20,54 +20,13 @@ const MAX_ROW_RANGE_SCAN_PIXELS = 1024 * 1024
 
 const COMPOSITE_TILE_SIZE = 64
 
-/** Copies opaque spans in one operation while preserving transparent and translucent pixels. */
-export const compositeRgbaRowWithOpaqueSpans = (
-  output: Uint8ClampedArray<ArrayBufferLike>,
-  source: Uint8Array<ArrayBufferLike> | Uint8ClampedArray<ArrayBufferLike>,
-  sourceOffset: number,
-  outputOffset: number,
-  pixelCount: number
-): void => {
-  let pixel = 0
-  while (pixel < pixelCount) {
-    const sourcePixelOffset = sourceOffset + pixel * 4
-    const sourceAlpha = source[sourcePixelOffset + 3]
-    if (sourceAlpha === 0) {
-      pixel += 1
-      continue
-    }
-    if (sourceAlpha === 255) {
-      const spanStart = pixel
-      pixel += 1
-      while (pixel < pixelCount && source[sourceOffset + pixel * 4 + 3] === 255) pixel += 1
-      output.set(
-        source.subarray(sourceOffset + spanStart * 4, sourceOffset + pixel * 4),
-        outputOffset + spanStart * 4
-      )
-      continue
-    }
-
-    const targetPixelOffset = outputOffset + pixel * 4
-    const bottomAlpha = output[targetPixelOffset + 3]
-    const topAlpha = sourceAlpha / 255
-    const bottomAlphaNormalized = bottomAlpha / 255
-    const outputAlpha = topAlpha + bottomAlphaNormalized * (1 - topAlpha)
-    if (outputAlpha > 0) {
-      output[targetPixelOffset] = Math.round((source[sourcePixelOffset] * topAlpha + output[targetPixelOffset] * bottomAlphaNormalized * (1 - topAlpha)) / outputAlpha)
-      output[targetPixelOffset + 1] = Math.round((source[sourcePixelOffset + 1] * topAlpha + output[targetPixelOffset + 1] * bottomAlphaNormalized * (1 - topAlpha)) / outputAlpha)
-      output[targetPixelOffset + 2] = Math.round((source[sourcePixelOffset + 2] * topAlpha + output[targetPixelOffset + 2] * bottomAlphaNormalized * (1 - topAlpha)) / outputAlpha)
-      output[targetPixelOffset + 3] = Math.round(outputAlpha * 255)
-    }
-    pixel += 1
-  }
-}
+import { compositeRgbaRowWithOpaqueSpans } from './document-composite-rgba-row'
+export { compositeRgbaRowWithOpaqueSpans } from './document-composite-rgba-row'
 
 export const compositeNormalLayers = (document: SpriteDocument, layers: readonly RasterLayer[], startX: number, startY: number, width: number, height: number, cache?: DocumentCompositeCache, revision = 0, output: Uint8ClampedArray<ArrayBufferLike> | null = null, dirtyRect?: SelectionRect): Uint8ClampedArray => {
   // Use buffer pool if no output buffer provided
-  const shouldReleaseBuffer = !output
   if (!output) output = acquireCompositeBuffer(width, height)
 
-  try {
   const paletteById = cache?.paletteColors(document.palette, revision) ?? new Map(document.palette.map((entry) => [entry.id, entry.color]))
   for (const layer of layers) {
     // Early boundary check: skip layers completely outside the composite region
@@ -184,13 +143,6 @@ export const compositeNormalLayers = (document: SpriteDocument, layers: readonly
     }
   }
   return output
-  } finally {
-    // Release buffer back to pool if we acquired it
-    if (shouldReleaseBuffer) {
-      // Note: We can't release here since we're returning the buffer
-      // The caller must handle release. Mark for future improvement.
-    }
-  }
 }
 
 const compositeNormalBufferInto = (output: Uint8ClampedArray<ArrayBufferLike>, source: Uint8ClampedArray<ArrayBufferLike>, opacity: number): void => {
@@ -377,10 +329,8 @@ export const compositeOpacityGroupStack = (
   dirtyRect?: SelectionRect
 ): Uint8ClampedArray => {
   // Use buffer pool if no output buffer provided
-  const shouldReleaseBuffer = !output
   if (!output) output = acquireCompositeBuffer(width, height)
 
-  try {
   let layerBatch: RasterLayer[] = []
   const flushLayers = (): void => {
     if (layerBatch.length === 0) return
@@ -438,11 +388,4 @@ export const compositeOpacityGroupStack = (
   }
   flushLayers()
   return output
-  } finally {
-    // Release buffer back to pool if we acquired it
-    if (shouldReleaseBuffer) {
-      // Note: We can't release here since we're returning the buffer
-      // The caller must handle release. Mark for future improvement.
-    }
-  }
 }

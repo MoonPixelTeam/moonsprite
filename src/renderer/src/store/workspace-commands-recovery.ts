@@ -42,7 +42,12 @@ export function createWorkspaceRecoveryCommands({ get, set , services: { recover
         set({ message: error instanceof Error ? error.message : String(error) })
       }
       try {
-        await recoveryService.autosave(window.moonSprite, dirty.map((session) => ({ id: session.recoveryOriginId ?? session.document.id, document: session.document })))
+        await recoveryService.autosave(window.moonSprite, dirty.map((session) => ({
+          id: session.recoveryOriginId ?? session.document.id,
+          document: session.document,
+          revision: session.revision,
+          contentRevision: session.contentRevision
+        })))
       } catch (error) {
         console.error('MoonSprite recovery autosave failed', error)
         set({ message: tr('workspace.recovery.autosaveError') })

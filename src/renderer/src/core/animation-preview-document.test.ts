@@ -41,7 +41,12 @@ describe('display-only animation document cache', () => {
     const preview = cache.get(source, second, 1)
     expect(preview.tilesets).toBe(source.tilesets)
     expect(preview.customBrushes).toBe(source.customBrushes)
-    expect(preview.animation!.cels).not.toBe(source.animation!.cels)
+    expect(preview.animation).not.toBe(source.animation)
+    expect(preview.layers).not.toBe(source.layers)
+    expect(preview.animation!.cels).toBe(source.animation!.cels)
+    expect(preview.animation!.frames).toBe(source.animation!.frames)
+    expect(preview.groups).toBe(source.groups)
+    expect(preview.palette).toBe(source.palette)
     expect(cache.get(source, second, 1)).toBe(preview)
     source.animation!.activeFrameId = 'different-active-frame'
     expect(cache.get(source, second, 1)).not.toBe(preview)

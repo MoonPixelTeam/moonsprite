@@ -34,26 +34,20 @@ export class DocumentTransactionRegistry<TSession> {
   cancel(id: string, session: TSession): boolean {
     const transaction = this.transactions.get(id)
     if (!transaction) return false
-    this.transactions.delete(id)
     transaction.cancel(session, transaction.data)
+    this.transactions.delete(id)
     return true
   }
 
   cancelDocument(documentId: string, session: TSession): boolean {
     const transactions = [...this.transactions.values()].filter((transaction) => transaction.documentId === documentId)
-    for (const transaction of transactions) {
-      this.transactions.delete(transaction.id)
-      transaction.cancel(session, transaction.data)
-    }
+    for (const transaction of transactions.reverse()) this.cancel(transaction.id, session)
     return transactions.length > 0
   }
 
   cancelKind(documentId: string, kind: string, session: TSession): boolean {
     const transactions = [...this.transactions.values()].filter((transaction) => transaction.documentId === documentId && transaction.kind === kind)
-    for (const transaction of transactions) {
-      this.transactions.delete(transaction.id)
-      transaction.cancel(session, transaction.data)
-    }
+    for (const transaction of transactions.reverse()) this.cancel(transaction.id, session)
     return transactions.length > 0
   }
 }

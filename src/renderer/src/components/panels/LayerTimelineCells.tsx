@@ -16,7 +16,8 @@ import type { LayerTimelineCellsProps as Props } from './layer-timeline-cell-typ
 import { timelineCellRenderScope, timelineCellRenderState, timelineGridRenderState, sameTimelineCellState } from './layer-timeline-cell-cache'
 import { useTimelineCellActions } from './useTimelineCellActions'
 import { timelineCellElement, type TimelineCellElementCache } from './timeline-cell-element-cache'
-import { useTimelineCellWindow } from './use-timeline-cell-window'
+import { sameTimelineCellWindow, type TimelineCellWindow } from './layer-timeline-cell-window'
+import { useLayerTimelineCellWindow } from './use-layer-timeline-cell-window'
 interface CellProps {
   panel: Props
   displayRow: Props['displayRows'][number]
@@ -28,12 +29,12 @@ interface CellProps {
   renderState: readonly unknown[] | null
 }
 
-const CachedTimelineCell = memo(function TimelineCell({panel, displayRow, frame, index, rowIndex, draggingFrameIdSet, draggingCellKeySet}: CellProps) {
-  // The panel deliberately skips pixel-only renders. The active cell still
-  // needs to update its current marker when a first stroke creates content.
+const CachedTimelineCell = memo(function TimelineCell({read}: {read: () => CellProps}) {
+  const {panel, displayRow, frame, index, rowIndex, draggingFrameIdSet, draggingCellKeySet} = read()
+  // Preserve the active-cel subscription from the dev viewport optimization.
   useWorkspace(state => {
     const session = state.sessions.find(item => item.document.id === panel.session.document.id)
-    return displayRow.kind === 'node' && displayRow.node.kind === 'layer'
+    return displayRow.kind === "node" && displayRow.node.kind === "layer"
       && session?.document.activeLayerId === displayRow.node.layer.id
       && session.document.animation?.activeFrameId === frame.id ? session.contentRevision : 0
   })
@@ -99,6 +100,7 @@ const CachedTimelineCell = memo(function TimelineCell({panel, displayRow, frame,
   beginAnimationCelDrag,
   openCelProperties
 } = panel
+  const cellGridStyle = { gridColumn: index + 1, gridRow: rowIndex + 2 }
   const visualRow = visualRowStateByKey.get(
     displayRow.kind === 'mask'
       ? timelineRowKey({ kind: 'mask', ownerKind: displayRow.ownerKind, ownerId: displayRow.owner.id })
@@ -209,8 +211,8 @@ const CachedTimelineCell = memo(function TimelineCell({panel, displayRow, frame,
       (showActiveFrameColumn || maskFrameVisualSelection)
     return (
       <button
-        style={{ gridRow: rowIndex + 2, gridColumn: index + 1 }}
         type="button"
+        style={cellGridStyle}
         key={`mask-${displayRow.owner.id}-${frame.id}`}
         data-animation-mask-cel-key={key}
         data-frame-index={index}
@@ -252,8 +254,8 @@ const CachedTimelineCell = memo(function TimelineCell({panel, displayRow, frame,
     const groupRowClasses = timelineVisualClasses(visualRow, visualFrame, timelineVisualState.selectionGuidesVisible)
     return (
       <button
-        style={{ gridRow: rowIndex + 2, gridColumn: index + 1 }}
         type="button"
+        style={cellGridStyle}
         key={`${node.id}-${frame.id}`}
         data-frame-index={index}
         data-animation-group-cel-key={groupCellKey}
@@ -391,8 +393,8 @@ const CachedTimelineCell = memo(function TimelineCell({panel, displayRow, frame,
     ) : null
   return (
     <button
-      style={{ gridRow: rowIndex + 2, gridColumn: index + 1 }}
       type="button"
+      style={cellGridStyle}
       data-animation-cel-key={key}
       data-frame-index={index}
       key={`${node.id}-${frame.id}`}
@@ -429,33 +431,51 @@ const CachedTimelineCell = memo(function TimelineCell({panel, displayRow, frame,
       {normalCelMarker}
     </button>
   )
-}, (previous, next) => previous.rowIndex === next.rowIndex && next.renderState !== null && previous.renderState !== null && sameTimelineCellState(previous.renderState, next.renderState))
-
-const CachedTimelineGrid = memo(function TimelineGrid({panel, scope}: {panel: Props; scope: readonly unknown[]; renderState: readonly unknown[]}) {
+}, (previous, next) => {
+  const before = previous.read().renderState, after = next.read().renderState
+  return after !== null && before !== null && sameTimelineCellState(before, after)
+})
+type GridSnapshot = { panel: Props; scope: readonly unknown[]; renderState: readonly unknown[] }
+const TimelineCellGrid = memo(function TimelineGrid({read, cellWindow}: {
+  read: () => GridSnapshot
+  cellWindow: TimelineCellWindow
+}) {
+  const {panel, scope} = read()
   const previous = useRef<TimelineCellElementCache>(new Map())
   const next: TimelineCellElementCache = new Map()
   const draggingFrameIdSet = new Set(panel.draggingAnimationFrameIds)
   const draggingCellKeySet = new Set(panel.draggingAnimationCellKeys)
-  const { ref, window } = useTimelineCellWindow(panel.displayRows.length, panel.timeline.frames.length, panel.animationCelDragActive)
-  const cells = panel.displayRows.slice(window.rowStart, window.rowEnd).flatMap((displayRow, rowOffset) => panel.timeline.frames.slice(window.frameStart, window.frameEnd).map((frame, frameOffset) => {
-    const index = window.frameStart + frameOffset, rowIndex = window.rowStart + rowOffset
+  const frames = panel.timeline.frames.slice(cellWindow.frameStart, cellWindow.frameEnd)
+  const cells = panel.displayRows.slice(cellWindow.rowStart, cellWindow.rowEnd).flatMap((displayRow, rowOffset) => frames.map((frame, frameOffset) => {
+    const rowIndex = cellWindow.rowStart + rowOffset
+    const index = cellWindow.frameStart + frameOffset
     const key = `${displayRow.kind === 'mask' ? `mask-${displayRow.owner.id}` : displayRow.node.id}-${frame.id}`
     const cellState = timelineCellRenderState(panel, displayRow, frame.id, index, scope, draggingFrameIdSet, draggingCellKeySet)
     const state = cellState ? [...cellState, rowIndex] : null
     return timelineCellElement(previous.current, next, key, state, () => <CachedTimelineCell
-      key={key} panel={panel} displayRow={displayRow} frame={frame} index={index} rowIndex={rowIndex}
-      draggingFrameIdSet={draggingFrameIdSet} draggingCellKeySet={draggingCellKeySet} renderState={state}
+      key={key} read={() => ({panel, displayRow, frame, index, rowIndex,
+        draggingFrameIdSet, draggingCellKeySet, renderState: state})}
     />)
   }))
   previous.current = next
-  return <><span ref={ref} style={{ display: 'none' }} aria-hidden="true" />{cells}</>
-}, (previous, next) => sameTimelineCellState(previous.renderState, next.renderState))
+  return <>{cells}</>
+}, (previous, next) => sameTimelineCellState(previous.read().renderState, next.read().renderState) && sameTimelineCellWindow(previous.cellWindow, next.cellWindow))
+
+const CachedTimelineGrid = memo(function TimelineGrid({read}: {read: () => GridSnapshot}) {
+  const {panel} = read()
+  const cellWindow = useLayerTimelineCellWindow(panel)
+  return cellWindow ? <TimelineCellGrid read={read} cellWindow={cellWindow} /> : null
+}, (previous, next) => sameTimelineCellState(previous.read().renderState, next.read().renderState))
 
 export function LayerTimelineCells(props: Props) {
   const actions = useTimelineCellActions(props)
-  const panel = {...props, ...actions}
+  const activeContentRevision = useWorkspace((state) =>
+    state.sessions.find((item) => item.document.id === props.session.document.id)?.contentRevision ?? props.session.contentRevision
+  )
+  const panel = {...props, ...actions, activeContentRevision}
   const scope = timelineCellRenderScope(panel)
   const previousScope = useRef(scope)
   if (!sameTimelineCellState(previousScope.current, scope)) previousScope.current = scope
-  return <CachedTimelineGrid panel={panel} scope={previousScope.current} renderState={timelineGridRenderState(panel, previousScope.current)} />
+  const snapshot = {panel, scope: previousScope.current, renderState: timelineGridRenderState(panel, previousScope.current)}
+  return <CachedTimelineGrid read={() => snapshot} />
 }

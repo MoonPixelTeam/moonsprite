@@ -42,7 +42,7 @@ const clonePalette = (palette: readonly PaletteEntry[]): PaletteEntry[] => palet
 
 export const captureDocumentStructureSnapshot = (document: SpriteDocument): DocumentStructureSnapshot => {
   syncActiveAnimationFrame(document)
-  const timeline = ensureAnimationDocument(document)
+  const timeline = document.animation ?? ensureAnimationDocument(document)
   return {
     layers: [...document.layers],
     layerParents: document.layers.map((layer) => ({ layer, groupId: layer.groupId ?? null })),
@@ -83,7 +83,7 @@ export const restoreDocumentStructureSnapshot = (document: SpriteDocument, snaps
   document.paletteSlots = snapshot.paletteSlots ? [...snapshot.paletteSlots] : undefined
   document.paletteColumns = snapshot.paletteColumns
   document.nextColorId = snapshot.nextColorId
-  const timeline = ensureAnimationDocument(document)
+  const timeline = document.animation ?? ensureAnimationDocument(document)
   timeline.frames = [...snapshot.animation.frames]
   timeline.cels = [...snapshot.animation.cels]
   timeline.layerMasks = [...snapshot.animation.layerMasks]
@@ -170,7 +170,7 @@ export const captureLayerContentSnapshot = (
   syncActiveAnimationFrame(document)
   const layer = document.layers.find((candidate) => candidate.id === layerId)
   if (!layer) throw new Error(`Layer not found: ${layerId}`)
-  const timeline = ensureAnimationDocument(document)
+  const timeline = document.animation ?? ensureAnimationDocument(document)
   return {
     layerId,
     definition: {
@@ -229,7 +229,7 @@ export const restoreLayerContentSnapshot = (document: SpriteDocument, snapshot: 
   document.nextColorId = snapshot.nextColorId
   restoreAnimationCels(document, snapshot.cels)
   if (snapshot.layerMasks) {
-    const timeline = ensureAnimationDocument(document)
+    const timeline = document.animation ?? ensureAnimationDocument(document)
     timeline.layerMasks = [
       ...(timeline.layerMasks ?? []).filter((entry) => entry.layerId !== snapshot.layerId),
       ...snapshot.layerMasks.map((entry) => ({

@@ -8,7 +8,7 @@ import type { SpriteDocument } from '@shared/types-document'
 import type { TextCelData } from '@shared/types-text'
 import { animationMaskAt, createId, getLayerStorageOrigin, paletteColorIdForCanvas, resolveAnimationMask, setLayerStorageOrigin } from './document-model'
 import { shareRasterLayer } from './layer-preview'
-import { assignRasterStorage, installRuntimeRaster, rasterStorageIdentity, readSurfacePackedLocal, shareRasterSurface } from './runtime-raster'
+import { assignRasterStorage, installRuntimeRaster, rasterStorageIdentity, readSurfacePackedLocal, runtimeRasterVisibleBounds, shareRasterSurface } from './runtime-raster'
 import { normalizeTextCelData, translateTextCelData } from './text-cel-data'
 import { cloneLayerStyles } from './layer-styles'
 import { backgroundPatternSize, tileBackgroundSurfaceToCanvas } from './background-patterns'
@@ -638,8 +638,33 @@ export const cloneDocumentForAnimationFrame = (document: SpriteDocument, frameId
         }
       : undefined
   }
-  const timeline = ensureAnimationDocument(preview)
-  if (timeline.frames.some((frame) => frame.id === frameId)) activateAnimationFrame(preview, frameId)
+  const timeline = preview.animation
+  if (timeline?.frames.some((frame) => frame.id === frameId)) {
+    timeline.activeFrameId = frameId
+    applyFrameSurfaces(preview, timeline)
+  }
+  return preview
+}
+
+/** Read-only render view: share timeline/assets and copy only layer shells.
+ * Unlike the export/editing snapshot, this view must never be mutated. */
+export const createAnimationFramePreviewDocument = (document: SpriteDocument, frameId: string): SpriteDocument => {
+  const layers = document.layers.map((layer) => shareRasterLayer(layer))
+  const timeline = document.animation
+    ? { ...document.animation, activeFrameId: frameId }
+    : undefined
+  const preview: SpriteDocument = {
+    ...document,
+    layers,
+    groups: document.groups,
+    palette: document.palette,
+    paletteOrder: document.paletteOrder,
+    paletteSlots: document.paletteSlots,
+    customBrushes: document.customBrushes,
+    tilesets: document.tilesets,
+    animation: timeline
+  }
+  if (timeline?.frames.some((frame) => frame.id === frameId)) applyFrameSurfaces(preview, timeline)
   return preview
 }
 
@@ -661,17 +686,15 @@ const applySurfaceToLayer = (layer: RasterLayer, surface: AnimationCelSurface, o
  * the slot itself stays absent from the timeline.
  */
 const clearLayerSurface = (layer: RasterLayer): void => {
-  const length = Math.max(1, layer.width * layer.height * (layer.format === 'rgba' ? 4 : 1))
-  // Reuse an already materialized buffer where possible. Assigning a fresh
-  // typed array for runtime-backed or malformed storage avoids forcing a
-  // large lazy raster to materialize just to clear it, and the runtime-raster
-  // setter drops the stale compressed backing store.
-  if (!layer.runtimeRaster && layer.pixels.length === length) {
-    layer.pixels.fill(0)
-    return
-  }
-  layer.pixels = layer.format === 'rgba' ? new Uint8ClampedArray(length) : new Uint32Array(length)
-  delete layer.runtimeRaster
+  // The displayed storage may still belong to a different frame. Never
+  // clear it in place or allocate a canvas-sized buffer for an absent cel.
+  installRuntimeRaster(layer, {
+    kind: 'sparse-tiles-v1', format: layer.format,
+    width: layer.width, height: layer.height, tileSize: 64,
+    data: new Uint8Array(0),
+    tileOffsets: new Int32Array(Math.ceil(layer.width / 64) * Math.ceil(layer.height / 64)),
+    visibleBounds: null
+  })
 }
 
 const celsByLayerForFrame = (timeline: AnimationTimeline, frameId: string): Map<string, AnimationCel> => {
@@ -712,8 +735,24 @@ const applyFrameSurfaces = (document: SpriteDocument, timeline: AnimationTimelin
   const lookup = createAnimationCelLookup(timeline)
   for (const layer of document.layers) {
     const cel = lookup.resolve(activeCels.get(layer.id) ?? null)
-    if (cel?.surface) applySurfaceToLayer(layer, cel.surface, cel.opacity)
-    else clearLayerSurface(layer)
+    if (cel?.surface) {
+      const surface = cel.surface
+      const sameStorage = rasterStorageIdentity(layer) === rasterStorageIdentity(surface)
+      const sameGeometry = layer.width === surface.width
+        && layer.height === surface.height
+        && layer.offsetX === surface.offsetX
+        && layer.offsetY === surface.offsetY
+      const layerOrigin = getLayerStorageOrigin(layer)
+      const sameStorageOrigin = layerOrigin.x === (surface.storageOriginX ?? 0)
+        && layerOrigin.y === (surface.storageOriginY ?? 0)
+      const nextOpacity = Number.isFinite(cel.opacity) ? Math.max(0, Math.min(1, cel.opacity!)) : layer.opacity
+      if (!sameStorage || !sameGeometry || !sameStorageOrigin || layer.opacity !== nextOpacity) applySurfaceToLayer(layer, surface, cel.opacity)
+    } else if (runtimeRasterVisibleBounds(layer) !== null) {
+      // Playback visits sparse empty cels frequently. Once a layer is already
+      // backed by an empty runtime raster, installing another one only adds
+      // allocations and invalidates the renderer's storage identity cache.
+      clearLayerSurface(layer)
+    }
   }
 }
 
@@ -1140,6 +1179,19 @@ export const syncActiveAnimationFrame = (document: SpriteDocument): void => {
   applyFrameSurfaces(document, timeline)
 }
 
+const createActiveLayerCel = (timeline: AnimationTimeline, layer: RasterLayer): AnimationCel => {
+  const template = timeline.cels.find((cel) => cel.layerId === layer.id && (cel.tilemap || cel.freeTiles))
+  const tilemap = layer.kind === 'tilemap' ? blankAnimationTilemap(template?.tilemap) : undefined
+  const freeTiles = layer.kind === 'free-tile' ? blankAnimationFreeTiles(template?.freeTiles) ?? createFreeTileCelData() : undefined
+  const cel: AnimationCel = {
+    id: uniqueAnimationId(timeline, 'cel'), layerId: layer.id, frameId: timeline.activeFrameId,
+    opacity: layer.opacity, surface: surfaceFromLayer(layer),
+    ...(tilemap ? { tilemap } : {}), ...(freeTiles ? { freeTiles } : {})
+  }
+  timeline.cels.push(cel)
+  return cel
+}
+
 const syncAnimationLayerSurface = (timeline: AnimationTimeline, lookup: AnimationCelLookup, layer: RasterLayer): boolean => {
   const cel = lookup.at(layer.id, timeline.activeFrameId)
   if (!cel) return false
@@ -1160,11 +1212,15 @@ export const syncActiveAnimationLayers = (document: SpriteDocument): void => {
     syncActiveAnimationFrame(document)
     return
   }
-  const lookup = createAnimationCelLookup(timeline)
-  if (document.layers.some((layer) => !lookup.at(layer.id, timeline.activeFrameId))) {
-    syncActiveAnimationFrame(document)
-    return
+  let lookup = createAnimationCelLookup(timeline)
+  let added = false
+  for (const layer of document.layers) {
+    if (!lookup.at(layer.id, timeline.activeFrameId) && animationCelHasContent({ id: '', layerId: layer.id, frameId: timeline.activeFrameId, surface: surfaceFromLayer(layer) }, document.palette)) {
+      createActiveLayerCel(timeline, layer)
+      added = true
+    }
   }
+  if (added) lookup = createAnimationCelLookup(timeline)
   for (const layer of document.layers) syncAnimationLayerSurface(timeline, lookup, layer)
   synchronizeLinkedLayerContentsForTimeline(document, timeline, document.activeLayerId, timeline.activeFrameId)
   applyFrameSurfaces(document, timeline)
@@ -1175,11 +1231,7 @@ export const syncActiveAnimationLayer = (document: SpriteDocument, layerId: stri
   const timeline = document.animation
   const layer = document.layers.find((candidate) => candidate.id === layerId)
   if (!timeline || !layer) return
-  const cel = animationCelAt(timeline, layerId, timeline.activeFrameId)
-  if (!cel) {
-    syncActiveAnimationFrame(document)
-    return
-  }
+  const cel = animationCelAt(timeline, layerId, timeline.activeFrameId) ?? createActiveLayerCel(timeline, layer)
   const lookup = cel.linkedCelId ? createAnimationCelLookup(timeline) : { at: () => cel, resolve: () => cel }
   syncAnimationLayerSurface(timeline, lookup, layer)
   if (layer.linkedContentId) {
@@ -1189,7 +1241,7 @@ export const syncActiveAnimationLayer = (document: SpriteDocument, layerId: stri
 }
 
 export const refreshActiveAnimationFrame = (document: SpriteDocument): void => {
-  const timeline = ensureAnimationDocument(document)
+  const timeline = document.animation ?? ensureAnimationDocument(document)
   applyFrameSurfaces(document, timeline)
 }
 
@@ -1243,7 +1295,7 @@ export const setAnimationCelOffsets = (document: SpriteDocument, frameId: string
   setAnimationCelOffsetsForKeys(document, Object.fromEntries(Object.entries(offsets).map(([layerId, offset]) => [animationCelKey(layerId, frameId), offset])))
 }
 
-export const activateAnimationFrame = (document: SpriteDocument, frameId: string, materialize = true): boolean => {
+export const activateAnimationFrame = (document: SpriteDocument, frameId: string, materialize = true, persistCurrent = true): boolean => {
   const timeline = materialize ? ensureAnimationDocument(document) : document.animation
   if (!timeline) return false
   if (timeline.activeFrameId === frameId) return true
@@ -1253,11 +1305,13 @@ export const activateAnimationFrame = (document: SpriteDocument, frameId: string
     // Persist the currently displayed layer pixels only into cels that
     // already exist and already own a surface. Sparse empty slots remain
     // untouched; selection must not allocate their raster storage.
-    for (const layer of document.layers) {
-      const cel = lookup.at(layer.id, timeline.activeFrameId)
-      const source = lookup.resolve(cel)
-      if (!source?.surface) continue
-      syncAnimationLayerSurface(timeline, lookup, layer)
+    if (persistCurrent) {
+      for (const layer of document.layers) {
+        const cel = lookup.at(layer.id, timeline.activeFrameId)
+        const source = lookup.resolve(cel)
+        if (!source?.surface) continue
+        syncAnimationLayerSurface(timeline, lookup, layer)
+      }
     }
     timeline.activeFrameId = frameId
     // Apply only cels that already exist. Sparse/empty slots stay absent and
@@ -1364,14 +1418,14 @@ export const deleteAnimationFrame = (document: SpriteDocument, frameId = documen
 }
 
 export const setAnimationFrameDuration = (document: SpriteDocument, frameId: string, duration: number): boolean => {
-  const frame = animationFrameAt(ensureAnimationDocument(document), frameId)
+  const frame = animationFrameAt(document.animation ?? ensureAnimationDocument(document), frameId)
   if (!frame) return false
   frame.duration = Math.max(1, Math.min(MAX_ANIMATION_FRAME_DURATION, Math.trunc(duration) || DEFAULT_FRAME_DURATION))
   return true
 }
 
 export const setAnimationLoop = (document: SpriteDocument, loop: boolean): void => {
-  ensureAnimationDocument(document).loop = loop
+  ;(document.animation ?? ensureAnimationDocument(document)).loop = loop
 }
 
 export const firstPlayableAnimationFrameId = (timeline: Pick<AnimationTimeline, 'frames'>): string | null =>
@@ -1470,15 +1524,23 @@ export const layerFromAnimationCel = (layer: RasterLayer | undefined, cel: Anima
 
 /** Resolves every layer for one frame with a single cel index build. */
 export const animationLayersAtFrame = (document: SpriteDocument, frameId: string): RasterLayer[] => {
-  const timeline = ensureAnimationDocument(document)
+  const timeline = document.animation
+  if (!timeline) return document.layers.map(shareRasterLayer)
   const lookup = createAnimationCelLookup(timeline)
-  return document.layers.map((layer) => layerFromAnimationCel(layer, lookup.resolve(lookup.at(layer.id, frameId))) ?? layer)
+  return document.layers.map((layer) => {
+    const proxy = layerFromAnimationCel(layer, lookup.resolve(lookup.at(layer.id, frameId)))
+    if (proxy) return proxy
+    const empty = shareRasterLayer(layer)
+    clearLayerSurface(empty)
+    return empty
+  })
 }
 
 /** 供撤销系统在非活动帧中原位写回像素。 */
 export const animationLayerAtFrame = (document: SpriteDocument, layerId: string, frameId: string): RasterLayer | null => {
   const layer = document.layers.find((candidate) => candidate.id === layerId)
-  const timeline = ensureAnimationDocument(document)
+  const timeline = document.animation
+  if (!timeline) return layer ? shareRasterLayer(layer) : null
   const lookup = createAnimationCelLookup(timeline)
   return layerFromAnimationCel(layer, lookup.resolve(lookup.at(layerId, frameId)))
 }

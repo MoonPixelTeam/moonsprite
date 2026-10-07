@@ -1,6 +1,5 @@
 import { type PixelSource } from '@/components/pixel-source'
-import { memo, useEffect, useRef } from 'react'
-import { useShallow } from 'zustand/react/shallow'
+import { useEffect, useRef } from 'react'
 import type { AnimationCel, AnimationCelSurface } from '@shared/types-animation'
 import type { LayerMask } from '@shared/types-layer'
 import type { PaletteEntry } from '@shared/types-color'
@@ -35,7 +34,7 @@ export const rememberCelThumbnailVariant = (entries: Map<string, CelThumbnailEnt
   entries.delete(key)
   entries.set(key, value)
   let bytes = [...entries.values()].reduce((total, entry) => total + entry.pixels.byteLength, 0)
-  while (entries.size > 1 && bytes > maxBytes) {
+  while (entries.size > 8 || (entries.size > 1 && bytes > maxBytes)) {
     const oldestKey = entries.keys().next().value
     if (oldestKey === undefined) break
     const oldest = entries.get(oldestKey)
@@ -261,7 +260,7 @@ export const useTimelineThumbnailContentSync = (documentId: string): void => {
   }, [documentId])
 }
 
-function AnimationCelContentView({ active, documentId, layerId, celSource, palette, revision, documentWidth, documentHeight, thumbnailSize, showThumbnail, selectionMarker, sharedCheckerboard = false }: {
+function AnimationCelContentView({ documentId, layerId, celSource, palette, revision, documentWidth, documentHeight, thumbnailSize, showThumbnail, selectionMarker, sharedCheckerboard = false }: {
   active: boolean
   documentId: string
   layerId: string
@@ -276,30 +275,19 @@ function AnimationCelContentView({ active, documentId, layerId, celSource, palet
   sharedCheckerboard?: boolean
 }) {
   const cel = celSource()
-  // Batch edits mutate inactive cels in place without rerendering the panel.
-  // Observe each cel's storage/version so only changed previews redraw.
-  const [liveRevision] = useWorkspace(useShallow((state) => {
-    const storage = cel.surface ? rasterStorageIdentity(cel.surface) : null
-    const session = active ? state.sessions.find((item) => item.document.id === documentId) : undefined
-    const invalidation = session?.contentInvalidation
-    const sourceRevision = invalidation?.kind === 'region' && invalidation.compositeOnly && invalidation.revision === session?.contentRevision
-      ? invalidation.fromRevision : session?.contentRevision
-    return [
-      sourceRevision ?? revision,
-      storage,
-      storage ? getRasterContentRevision(storage) : 0
-    ] as const
-  }))
-  const liveSession = active ? useWorkspace.getState().sessions.find((item) => item.document.id === documentId) : null
-  const livePalette = liveSession?.document.palette ?? palette
-  const hasContent = cachedCelHasContent(cel, livePalette, liveRevision)
+  // The timeline grid supplies a targeted revision for the active or
+  // selected/rendered cel. Keeping this subscription-free is critical when a
+  // project contains thousands of frame cells.
+  const hasContent = cachedCelHasContent(cel, palette, revision)
   if (!hasContent) return null
   return showThumbnail
-    ? <CelThumbnail documentId={documentId} layerId={layerId} celSource={celSource} palette={livePalette} revision={liveRevision} documentWidth={liveSession?.document.width ?? documentWidth} documentHeight={liveSession?.document.height ?? documentHeight} thumbnailSize={thumbnailSize} sharedCheckerboard={sharedCheckerboard} />
+    ? <CelThumbnail documentId={documentId} layerId={layerId} celSource={celSource} palette={palette} revision={revision} documentWidth={documentWidth} documentHeight={documentHeight} thumbnailSize={thumbnailSize} sharedCheckerboard={sharedCheckerboard} />
     : <span className={`cel-content-marker ${selectionMarker ? 'selection-marker' : ''}`} />
 }
 
-export const AnimationCelContent = memo(AnimationCelContentView)
+// The owning cell already compares raster identity/version. A second memo
+// here would hide in-place batch edits from the thumbnail's storage check.
+export const AnimationCelContent = AnimationCelContentView
 
 export function ActiveFrameSync({ documentId, frameIds, containerRef, suppressActiveGuide, activeFrameIdOverride }: {
   documentId: string

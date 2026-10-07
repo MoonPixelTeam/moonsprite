@@ -54,6 +54,17 @@ it('reuses the grid during movement while matching uncached preview and link sem
   expect(result.current.displayRows).toBe(initial.displayRows)
 })
 
+it('reuses visual topology across pixel-only content revisions', () => {
+  const options = setup()
+  const { session } = options
+  const { result, rerender } = renderHook(useLayerPanelVisuals, { initialProps: options })
+  const visualState = result.current.timelineVisualState
+  session.contentRevision += 1
+  session.revision += 1
+  rerender({ ...options })
+  expect(result.current.timelineVisualState).toBe(visualState)
+})
+
 it('invalidates topology for in-place content/metadata edits and collapsed groups', () => {
   const options = setup()
   const {session, timeline} = options
@@ -70,6 +81,28 @@ it('invalidates topology for in-place content/metadata edits and collapsed group
     expect(result.current.displayRows).not.toBe(oldRows)
     expect(visualData(result.current)).toEqual(visualData(deriveLayerPanelVisuals(options)))
   }
+})
+
+it('retains topology while a short section plays in a 240-frame timeline and refreshes edits', () => {
+  const options = { ...setup(12, 240), gesture: null, animationCelDropTargetKey: null }
+  const { session, timeline } = options
+  timeline.loopSections = [{ id: 'short', name: 'Short', startFrameId: 'f120', endFrameId: 'f122', direction: 'ping-pong', repeatCount: null }]
+  useWorkspace.getState().playAnimationLoopSection('short')
+  const { result, rerender } = renderHook(useLayerPanelVisuals, { initialProps: options })
+  const rows = result.current.displayRows
+  const links = result.current.linkedCelMemberKeys
+  for (const frameId of ['f121', 'f122', 'f121', 'f120']) {
+    useWorkspace.getState().advanceAnimationFrame()
+    rerender({ ...options })
+    expect(timeline.activeFrameId).toBe(frameId)
+    expect(result.current.visualActiveFrameId).toBe(frameId)
+    expect(result.current.displayRows).toBe(rows)
+    expect(result.current.linkedCelMemberKeys).toBe(links)
+  }
+  useWorkspace.getState().addAnimationFrame()
+  rerender({ ...options })
+  expect(result.current.displayRows).not.toBe(rows)
+  expect(visualData(result.current)).toEqual(visualData(deriveLayerPanelVisuals(options)))
 })
 
 it.each(['frame', 'cel'] as const)('reuses link geometry while extending a %s marquee and refreshes it after unlinking', kind => {

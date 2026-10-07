@@ -73,15 +73,15 @@ describe('layer visibility invalidation', () => {
     useWorkspace.getState().toggleLayerVisibility(layer.id)
 
     expect(layer.visible).toBe(false)
-    expect(useWorkspace.getState().sessions[0].contentInvalidation).toMatchObject({ kind: 'region', rect: expectedRect })
+    expect(useWorkspace.getState().sessions[0].contentInvalidation).toMatchObject({ kind: 'region', rect: expectedRect, compositeOnly: true })
 
     useWorkspace.getState().undo()
     expect(layer.visible).toBe(true)
-    expect(useWorkspace.getState().sessions[0].contentInvalidation).toMatchObject({ kind: 'region', rect: expectedRect })
+    expect(useWorkspace.getState().sessions[0].contentInvalidation).toMatchObject({ kind: 'region', rect: expectedRect, compositeOnly: true })
 
     useWorkspace.getState().redo()
     expect(layer.visible).toBe(false)
-    expect(useWorkspace.getState().sessions[0].contentInvalidation).toMatchObject({ kind: 'region', rect: expectedRect })
+    expect(useWorkspace.getState().sessions[0].contentInvalidation).toMatchObject({ kind: 'region', rect: expectedRect, compositeOnly: true })
   })
 
   it('refreshes only cached member bounds when toggling a simple group', () => {
@@ -141,13 +141,13 @@ describe('layer visibility invalidation', () => {
     expect(compositeDocument(document).every((channel) => channel === 0)).toBe(true)
   })
 
-  it('falls back to full invalidation instead of scanning unknown large bounds on click', () => {
+  it('invalidates the full output without discarding sources or scanning unknown bounds on click', () => {
     const document = createDocument('unknown visibility bounds', 64, 64, 'rgba')
     useWorkspace.getState().addSession(document)
 
     useWorkspace.getState().toggleLayerVisibility(document.activeLayerId)
 
-    expect(useWorkspace.getState().sessions[0].contentInvalidation).toMatchObject({ kind: 'full' })
+    expect(useWorkspace.getState().sessions[0].contentInvalidation).toMatchObject({ kind: 'region', rect: { x: 0, y: 0, width: 64, height: 64 }, compositeOnly: true })
   })
 
   it('recomputes visibility history bounds for the active animation frame', () => {

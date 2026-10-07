@@ -42,7 +42,8 @@ export function modifierShortcutMatches(event: Pick<KeyboardEvent, 'ctrlKey' | '
 export function modifierShortcutHeld(event: Pick<KeyboardEvent, 'ctrlKey' | 'metaKey' | 'altKey' | 'shiftKey'>, shortcut: string, heldParts?: ReadonlySet<string>): boolean {
   const keys = normalizeShortcut(shortcut).split('+').filter(Boolean)
   return keys.length > 0 && keys.every((key) => {
-    if (key === 'Ctrl') return Boolean(event.ctrlKey)
+    // Ctrl is the platform-neutral command modifier; macOS reports it via metaKey.
+    if (key === 'Ctrl') return Boolean(event.ctrlKey || event.metaKey)
     if (key === 'Win') return Boolean(event.metaKey)
     if (key === 'Alt') return Boolean(event.altKey)
     if (key === 'Shift') return Boolean(event.shiftKey)

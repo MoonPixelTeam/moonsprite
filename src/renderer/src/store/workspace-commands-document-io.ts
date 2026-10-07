@@ -1,3 +1,4 @@
+import { pendingGradientFor } from '@/core/canvas-gradient-confirmation'
 import { isWebTrial } from '@/core/product-target'
 import { resolvePendingGradientForIo } from './pending-gradient-io'
 import { publishEditorEvent } from '@/core/extension-editor-events'
@@ -292,7 +293,7 @@ export function createWorkspaceDocumentIoCommands({ get, set, recording, service
     async saveActive(saveAs = false, options?: SaveAsOptions) {
       const documentId = activeSession(get())?.document.id
       if (!documentId) return false
-      if (!await resolvePendingGradientForIo(documentId, get().requestDialog, () => get().setActive(documentId))) return false
+      if (pendingGradientFor(documentId) && !await resolvePendingGradientForIo(documentId, get().requestDialog, () => get().setActive(documentId))) return false
       if (get().activeId !== documentId) return false
       return runDocumentSave(documentId, async () => {
         let session = get().sessions.find((item) => item.document.id === documentId) ?? null

@@ -177,7 +177,10 @@ export const MAX_SURFACE_DIMENSION = 8192
 // A large surface is expensive in both the renderer heap and the browser's
 // canvas backing store, so retaining dozens of them makes long sessions grow
 // noticeably before the browser gets a chance to reclaim memory.
-export const MAX_CACHED_FRAMES = 12
+// Small animation cels are cheap to retain. A fixed 12-frame cap caused a
+// long sparse animation to rebuild every frame on each loop even though the
+// byte budget was nowhere near full.
+export const MAX_CACHED_FRAMES = 256
 
 export const DEFAULT_MAX_CACHE_BYTES = 64 * 1024 * 1024
 

@@ -16,7 +16,7 @@ describe('timeline cell viewport and thumbnail slices', () => {
     let time = 0
     vi.spyOn(performance, 'now').mockImplementation(() => time)
     const rendered: number[] = []
-    const cancel = Array.from({ length: 6 }, (_, i) => scheduleThumbnailRender(() => { rendered.push(i); time += 2 }))
+    const cancel = Array.from({ length: 6 }, (_, i) => scheduleThumbnailRender(() => { rendered.push(i); time += 4 }))
     frames.shift()!(time); vi.runOnlyPendingTimers()
     expect(rendered).toEqual([0, 1])
     expect(frames.length).toBe(1)

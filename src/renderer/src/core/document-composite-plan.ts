@@ -17,12 +17,12 @@ import {
 
 export const activeCelMasksByLayer = (document: SpriteDocument, previewMaskId?: string, includeNeutral = false): Map<string, LayerMask> => {
   const timeline = document.animation
-  if (!timeline) return new Map()
-  if (!(timeline.layerMasks?.length || timeline.groupMasks?.length)) return new Map()
+  if (!timeline || !timeline.layerMasks?.length) return new Map()
+  const activeLayerIds = new Set(timeline.cels.filter((cel) => cel.frameId === timeline.activeFrameId).map((cel) => cel.layerId))
   const masks = createCompositeMaskLookup(timeline)
-  return new Map(timeline.cels
-    .filter((cel) => cel.frameId === timeline.activeFrameId)
-    .map((cel) => [cel.layerId, masks.at(cel.layerId, cel.frameId)] as const)
+  return new Map((timeline.layerMasks ?? [])
+    .filter((entry) => entry.frameId === timeline.activeFrameId && activeLayerIds.has(entry.layerId))
+    .map((entry) => [entry.layerId, masks.at(entry.layerId, entry.frameId) ?? null] as const)
     .filter((entry): entry is readonly [string, LayerMask] => {
       const mask = entry[1]
       if (!mask) return false

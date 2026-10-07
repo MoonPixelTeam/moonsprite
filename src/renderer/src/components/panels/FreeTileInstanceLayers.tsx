@@ -7,7 +7,7 @@ import { FreeTileInstancePropertiesDialog } from '@/components/FreeTileInstanceP
 import { PixelUtilityIcon } from '@/components/PixelUtilityIcon'
 import { Tooltip } from '@/components/Tooltip'
 import { publishFreeTileInstanceFlash } from '@/components/free-tile-instance-events'
-import { ensureAnimationDocument } from '@/core/animation'
+import { createDefaultAnimationTimeline } from '@/core/animation'
 import { isLayerEffectivelyLocked, isLayerEffectivelyVisible } from '@/core/document-model'
 import { getLayerPanelAncestorGroupIds } from '@/core/layer-panel-layout'
 import { freeTileInstanceBounds, freeTileSourceForInstance } from '@/core/free-tile'
@@ -60,7 +60,7 @@ interface FreeTileInstanceLayersProps {
 export function FreeTileInstanceLayers({ session, layer, listRef }: FreeTileInstanceLayersProps) {
   const { t } = useI18n()
   const store = useWorkspace.getState()
-  const timeline = ensureAnimationDocument(session.document)
+  const timeline = session.document.animation ?? createDefaultAnimationTimeline()
   const activeFrameId = timeline.activeFrameId
   const target = freeTileCelTargetAt(session.document, layer.id, activeFrameId)
   const parentHidden = !isLayerEffectivelyVisible(session.document, layer)
@@ -108,7 +108,7 @@ export function FreeTileInstanceLayers({ session, layer, listRef }: FreeTileInst
   const currentToggleInstance = (instanceId: string): FreeTileInstance | null => {
     const active = useWorkspace.getState().sessions.find((candidate) => candidate.document.id === session.document.id)
     if (!active) return null
-    const activeTimeline = ensureAnimationDocument(active.document)
+    const activeTimeline = active.document.animation ?? createDefaultAnimationTimeline()
     return freeTileCelTargetAt(active.document, layer.id, activeTimeline.activeFrameId)?.freeTiles.instances.find((instance) => instance.id === instanceId) ?? null
   }
   const readToggleValue = (toggleTarget: FreeTileInstanceToggleTarget): boolean | null => {
@@ -189,7 +189,7 @@ export function FreeTileInstanceLayers({ session, layer, listRef }: FreeTileInst
     const instance = activeInstanceForId(instanceId)
     if (!instance) return
     const active = useWorkspace.getState().sessions.find((candidate) => candidate.document.id === session.document.id)
-    const activeTarget = active ? freeTileCelTargetAt(active.document, layer.id, ensureAnimationDocument(active.document).activeFrameId) : null
+    const activeTarget = active ? freeTileCelTargetAt(active.document, layer.id, (active.document.animation ?? createDefaultAnimationTimeline()).activeFrameId) : null
     const validIds = new Set(activeTarget?.freeTiles.instances.map((candidate) => candidate.id) ?? [])
     const currentIds = active?.selectedFreeTileInstanceIds.filter((id) => validIds.has(id)) ?? []
     const instanceIds = currentIds.includes(instanceId) ? currentIds : [instanceId]

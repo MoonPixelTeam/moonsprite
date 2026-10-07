@@ -16,7 +16,7 @@ const adjustmentTargetLayerIds = (session: DocumentSession): string[] => {
 }
 
 export function captureAdjustmentSnapshot(session: DocumentSession, targetLayerIds = adjustmentTargetLayerIds(session)): AdjustmentSnapshot {
-  const timeline = ensureAnimationDocument(session.document)
+  const timeline = session.document.animation ?? ensureAnimationDocument(session.document)
   return {
     layers: targetLayerIds.flatMap((layerId) => {
       const layer = (session.document.layers.find((candidate) => candidate.id === layerId) ?? findLayerMask(session.document, layerId))
@@ -45,7 +45,7 @@ const bindAdjustmentSnapshotPixels = (
   layerSnapshot: AdjustmentSnapshot['layers'][number],
   pixels: Uint8ClampedArray | Uint32Array
 ): void => {
-  const timeline = ensureAnimationDocument(session.document)
+  const timeline = session.document.animation ?? ensureAnimationDocument(session.document)
   const layer = (session.document.layers.find((candidate) => candidate.id === layerSnapshot.layerId) ?? findLayerMask(session.document, layerSnapshot.layerId))
   if (!layer) return
   if ((layer.format === 'rgba') !== (pixels instanceof Uint8ClampedArray)) throw new Error(tr('core.history.adjustmentFormatChanged'))
@@ -75,7 +75,7 @@ const restoreAdjustmentPalette = (session: DocumentSession, snapshot: Adjustment
 
 /** Rebinds snapshot geometry to writable layer storage. Partial previews initialize newly detached storage from the baseline. */
 export function prepareAdjustmentSnapshotTargets(session: DocumentSession, snapshot: AdjustmentSnapshot, initializeDetachedPixels = false): void {
-  const timeline = ensureAnimationDocument(session.document)
+  const timeline = session.document.animation ?? ensureAnimationDocument(session.document)
   for (const layerSnapshot of snapshot.layers) {
     const layer = (session.document.layers.find((candidate) => candidate.id === layerSnapshot.layerId) ?? findLayerMask(session.document, layerSnapshot.layerId))
     if (!layer) continue
@@ -135,7 +135,7 @@ export function restoreAdjustmentSnapshotRegions(
   snapshot: AdjustmentSnapshot,
   regions: readonly SelectionRect[]
 ): Array<{ layerId: string; rect: SelectionRect }> | null {
-  const timeline = ensureAnimationDocument(session.document)
+  const timeline = session.document.animation ?? ensureAnimationDocument(session.document)
   const targets = snapshot.layers.flatMap((layerSnapshot) => {
     const layer = (session.document.layers.find((candidate) => candidate.id === layerSnapshot.layerId) ?? findLayerMask(session.document, layerSnapshot.layerId))
     const frameId = layerSnapshot.frameId ?? timeline.activeFrameId

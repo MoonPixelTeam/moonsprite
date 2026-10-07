@@ -96,7 +96,7 @@ function LayersPanelComponent({
   // selecting or dragging an empty slot must not create blank AnimationCels.
   const timeline = session.document.animation ?? createDefaultAnimationTimeline()
   const loopSectionLayout = layoutAnimationLoopSections(timelineWithLoopSectionPreview(timeline, loopSectionResizePreview))
-  const celLookup = useMemo(() => createAnimationCelLookup(timeline), [timeline, timeline.cels, session.contentRevision, session.layersPanelRevision])
+  const celLookup = useMemo(() => createAnimationCelLookup(timeline), [timeline, timeline.cels, session.layersPanelRevision])
   const activeFrameIndex = Math.max(
     0,
     timeline.frames.findIndex((frame) => frame.id === timeline.activeFrameId)
@@ -1071,6 +1071,7 @@ function LayersPanelComponent({
                 <TimelineSelectionOutlines boxes={animationCelSelectionBoxes} dragging={animationCelDragPreview !== null} />}
               {animationFrameHeaders}
               <LayerTimelineCells
+                timelineViewportRef={layerListRef}
                 displayRows={displayRows}
                 timeline={timeline}
                 visualRowStateByKey={visualRowStateByKey}

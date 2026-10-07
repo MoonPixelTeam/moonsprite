@@ -46,6 +46,8 @@ export interface DocumentMutationOptions {
   normalizeSelection?: boolean
   markSelectionNormalizationHistory?: boolean
   invalidation?: ContentInvalidationHint
+  /** Playback only changes the visible frame; avoid panel-state normalization. */
+  playback?: boolean
 }
 
 /** Completes an in-place document command before the store publishes it.
@@ -72,11 +74,19 @@ export function mutateDocumentSession(
     }
     if (session.activeLayerMaskId && !findLayerMask(session.document, session.activeLayerMaskId)) session.activeLayerMaskId = null
     if (options.change === 'content-and-animation') measureRuntimeDiagnostic('workspace.animation-sync', () => syncActiveAnimationFrame(session.document))
-    ensureLayerSelection(session)
-    if (options.normalizeSelection) normalizeAnimationSelection(session, { preserveEmptyCelSlots: options.change === 'ui' })
-    ensureTimelineActiveContext(session)
+    if (options.playback) {
+      // The playhead is already validated by the playback command. Keep the
+      // timeline context current without rescanning every layer/group row.
+      if (session.timelineActiveContext && session.document.animation) {
+        session.timelineActiveContext = { ...session.timelineActiveContext, frameId: session.document.animation.activeFrameId }
+      }
+    } else {
+      ensureLayerSelection(session)
+      if (options.normalizeSelection) normalizeAnimationSelection(session, { preserveEmptyCelSlots: options.change === 'ui' })
+      ensureTimelineActiveContext(session)
+    }
     session.uiRevision += 1
-    persistProjectLayerPanelState(session)
+    if (!options.playback) persistProjectLayerPanelState(session)
     completeDocumentChange(session, options.change === 'content-and-animation' ? 'content' : options.change, recordDocumentOperation, options.invalidation)
 
 }

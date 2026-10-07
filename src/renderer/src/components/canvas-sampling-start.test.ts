@@ -1,17 +1,21 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { createDocument } from '@/core/document-model'
+import { createDocument, getActiveLayer, writeLayerColor } from '@/core/document-model'
+import { saveEyedropperSource } from '@/core/eyedropper-source'
 import { CanvasInputState } from '@/core/canvas-input'
 import { useWorkspace } from '@/store/workspace'
 import { createCanvasSamplingStart } from './canvas-sampling-start'
 
-beforeEach(() => useWorkspace.setState({ sessions: [], activeId: null }))
+beforeEach(() => { localStorage.clear(); useWorkspace.setState({ sessions: [], activeId: null }) })
 
 describe('sampling after pointer-down changes the active target', () => {
-  it.each([0, 2].flatMap((button) => [{ x: 1, y: 1 }, { x: -1, y: 1 }, { x: 1, y: -1 }, { x: 8, y: 1 }, { x: 1, y: 8 }].map((point) => ({ button, point }))))('samples the current session or transparency at $point with button $button', ({ button, point }) => {
+  it.each((['composite', 'current-layer'] as const).flatMap(source => [0, 2].flatMap((button) => [{ x: 1, y: 1 }, { x: -1, y: 1 }, { x: 1, y: -1 }, { x: 8, y: 1 }, { x: 1, y: 8 }].map((point) => ({ source, button, point })))) )('samples $source at $point with button $button', ({ source, button, point }) => {
+    saveEyedropperSource(source)
     useWorkspace.getState().addSession(createDocument('sample target', 8, 8, 'rgba'))
     let session = useWorkspace.getState().sessions[0]
     const initial = session
     const sampled = { r: 12, g: 34, b: 56, a: 255 }
+    const raw = { r: 90, g: 80, b: 70, a: 128 }
+    writeLayerColor(session.document, getActiveLayer(session.document), 9, raw)
     const begin = vi.fn()
     const sampler = vi.fn(() => () => sampled)
     const setPrimaryColor = vi.fn()
@@ -45,7 +49,7 @@ describe('sampling after pointer-down changes the active target', () => {
     else expect(sampler).toHaveBeenCalledWith(session)
     expect(sampler).not.toHaveBeenCalledWith(initial)
     expect(begin).toHaveBeenCalledWith(button === 2 ? session.secondaryColor : session.primaryColor)
-    expect(button === 2 ? setSecondaryColor : setPrimaryColor).toHaveBeenCalledWith(outside ? { r: 0, g: 0, b: 0, a: 0 } : sampled)
+    expect(button === 2 ? setSecondaryColor : setPrimaryColor).toHaveBeenCalledWith(outside ? { r: 0, g: 0, b: 0, a: 0 } : source === 'current-layer' ? raw : sampled)
     expect(inputRef.current.drag?.kind).toBe('sample-color')
   })
 })

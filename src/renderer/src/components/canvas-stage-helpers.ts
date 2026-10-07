@@ -10,7 +10,7 @@ import { type SymmetryAxes, type SymmetryAxis } from '@/core/symmetry'
 import { type CanvasClickFlashTiming } from './canvas-click-flash'
 import { type CanvasMoveLayerContentPreview } from '@/components/canvas-move-selection'
 import { type RasterContext2D } from '@/components/canvas-selection-renderer'
-import { ensureAnimationDocument, resolveAnimationCel } from '@/core/animation'
+import { createDefaultAnimationTimeline, resolveAnimationCel } from '@/core/animation'
 
 export const nonContentPreviewDragKinds = new Set([
   'pan',
@@ -169,7 +169,9 @@ export const selectedTextBoxForSession = (session: DocumentSession): SelectionRe
   if (session.selectedGroupIds.length > 0 || session.selectedLayerIds.length !== 1) return null
   const layer = session.document.layers.find((candidate) => candidate.id === session.selectedLayerIds[0] && candidate.kind === 'text')
   if (!layer) return null
-  const timeline = ensureAnimationDocument(session.document)
+  // This is a render-time query. Never materialize missing frame slots while
+  // resolving a text box in a sparse animation document.
+  const timeline = session.document.animation ?? createDefaultAnimationTimeline()
   const cel = timeline.cels.find((candidate) => candidate.layerId === layer.id && candidate.frameId === timeline.activeFrameId)
   const source = resolveAnimationCel(timeline, cel ?? null) ?? cel
   const text = source?.text

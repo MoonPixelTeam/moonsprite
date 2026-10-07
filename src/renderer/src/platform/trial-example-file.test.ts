@@ -11,15 +11,11 @@ it('loads the supplied project intact as an importable browser file', async () =
   vi.stubGlobal('File', File)
   vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, arrayBuffer: async () => bytes })))
   const file = await loadTrialExampleFile()
+  expect(vi.mocked(fetch)).not.toHaveBeenCalled()
   expect(file.name).toBe('工程示例.moonsprite')
   const loaded = new Uint8Array(await file.arrayBuffer())
   expect(loaded).toEqual(new Uint8Array(bytes))
   const project = decodeProject(loaded)
   expect(project.layers.length).toBeGreaterThan(0)
   expect(project.width).toBeGreaterThan(0)
-})
-
-it('reports an unavailable example instead of opening an empty project', async () => {
-  vi.stubGlobal('fetch', vi.fn(async () => ({ ok: false, status: 404 })))
-  await expect(loadTrialExampleFile()).rejects.toThrow('HTTP 404')
 })

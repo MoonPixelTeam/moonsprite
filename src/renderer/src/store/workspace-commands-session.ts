@@ -272,6 +272,14 @@ export function createWorkspaceSessionCommands({ get, set, recording, services: 
         normalizeSelection, markSelectionNormalizationHistory, invalidation
       }, recordDocumentOperation)
       set({ sessions: [...state.sessions] })
+    },
+
+    mutatePlayback(mutator) {
+      const state = get()
+      const session = activeSession(state)
+      if (!session) return
+      mutateDocumentSession(session, mutator, { change: 'ui', playback: true }, recordDocumentOperation)
+      set({ sessions: [...state.sessions] })
     }
   }
 }

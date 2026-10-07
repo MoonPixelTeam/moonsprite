@@ -12,22 +12,14 @@ import { brushPreviewAllowedDuringDrag } from '@/core/canvas-input'
 import type * as React from 'react'
 import type { DocumentSession } from '@/store/workspace-types'
 export function renderCanvasAirbrush({
-  canRenderToolPreview,
-  inputRef,
-  session,
-  drag,
-  drawingBrushPreviewEnabled,
-  repeatedDocumentPointsAt,
-  paintSelectionForDrag,
-  gridSnapActive,
-  document,
-  symmetryCenter,
-  view,
-  sampleCompositeForPreview,
-  context,
-  activeTheme,
-  previewPointKey,
-  previewPixelRects,
+  canRenderToolPreview, inputRef,
+  session, drag,
+  drawingBrushPreviewEnabled, repeatedDocumentPointsAt,
+  paintSelectionForDrag, gridSnapActive,
+  document, symmetryCenter,
+  view, sampleCompositeForPreview,
+  context, activeTheme,
+  previewPointKey, previewPixelRects,
   drawPreviewPixel,
   previewColorAt
 }: {
@@ -101,6 +93,28 @@ export function renderCanvasAirbrush({
     const previewSelection = airbrushDrag ? paintSelectionForDrag(airbrushDrag) : null
     const airbrushPoint = gridSnapActive ? snapPointToGrid(point, session.view.grid ?? DEFAULT_GRID_SETTINGS) : point
     const spraySize = session.airbrushScatterRadius * 2 + 1
+    // A large airbrush preview used to build a Map and four neighbour lookups
+    // for every pixel on every pointer frame. With a 1k canvas this can block
+    // the renderer for several frames even though the visible result is only
+    // an outline. Use the equivalent bounding outline for large idle previews;
+    // the actual stroke path still uses the full mask.
+    if (!airbrushDrag && spraySize > 160) {
+      const left = previewPixelRects(airbrushPoint.x - session.airbrushScatterRadius, airbrushPoint.y - session.airbrushScatterRadius)[0]
+      const right = previewPixelRects(airbrushPoint.x + session.airbrushScatterRadius, airbrushPoint.y + session.airbrushScatterRadius)[0]
+      if (left && right) {
+        context.save()
+        context.strokeStyle = activeTheme.variables['--theme-selection-outline-light']
+        context.lineWidth = Math.max(1, Math.min(2, view.zoom / 4))
+        context.beginPath()
+        const boxRight = right.x + right.width
+        const boxBottom = right.y + right.height
+        context.moveTo(left.x, left.y); context.lineTo(boxRight, left.y); context.lineTo(boxRight, boxBottom)
+        context.lineTo(left.x, boxBottom); context.lineTo(left.x, left.y)
+        context.stroke()
+        context.restore()
+      }
+      return
+    }
     const sprayAnchor = brushStampAnchor(spraySize, null)
     const sprayMask = brushMaskOffsets(spraySize, 'round')
     const sprayPoints = new Map<string, { x: number; y: number }>()

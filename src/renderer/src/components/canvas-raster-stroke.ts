@@ -12,7 +12,7 @@ import { type DocumentSession } from '@/store/workspace'
 import { activePaintLayer } from '@/store/workspace-session'
 import { updateBrushSpeedTracking, type CanvasDragState as DragState, type CanvasPoint as Point } from '@/core/canvas-input'
 import { defaultSymmetryCenter, hasSymmetry } from '@/core/symmetry'
-import { smoothBrushSizeEnvelope } from '@/core/pressure'
+import { smoothBrushSizeEnvelope, usesPressureDynamics } from '@/core/pressure'
 import { tileRepeatLineSegments, wrapDocumentPointForTileRepeat } from '@/core/tilemap'
 import { brushAngleWithDynamics } from './canvas-stage-helpers'
 
@@ -46,6 +46,8 @@ export function processRasterStrokeMove(input: StrokeMove, geometry: StrokeGeome
   const activeBrushTexture = brushInputs.texture
   const activeBrushDither = activeBrushImage ? undefined : session.brushDither ?? DEFAULT_BRUSH_DITHER_SETTINGS
   const activeBrushPaintMode = activeBrushImage?.intrinsicSize ? session.brushPaintMode : 'paint'
+  const pressureSizeDynamics = usesPressureDynamics(session.brushDynamics, 'size')
+  const pressureOpacityDynamics = usesPressureDynamics(session.brushDynamics, 'strength')
   const proceduralAntialiasStrength = brushInputs.fillTextureEnabled && session.proceduralAntialias && activeBrushImage?.id.startsWith('procedural:') ? session.proceduralAntialiasStrength : 0
   const symmetryCenter = session.symmetryCenter ?? defaultSymmetryCenter(session.document.width, session.document.height)
   const optimizedRotationEnabled = preferences.optimizedRotationEnabled
@@ -270,17 +272,26 @@ export function processRasterStrokeMove(input: StrokeMove, geometry: StrokeGeome
     const previousSize = drag.lastBrushSize ?? dynamics.size
     const previousOpacity = drag.lastOpacityScale ?? dynamics.opacityScale
     const fastMotion = speedSample.speed > 1.5
+    // The envelope rounds sizes to whole pixels. A purely relative limit
+    // traps 1px/2px strokes at their old size (1 * 1.2 rounds back to 1).
+    const sizeStep = Math.max(1, previousSize * 0.2)
     const stableDynamics = fastMotion
     ? {
       ...dynamics,
-      size: Math.max(previousSize * 0.8, Math.min(previousSize * 1.2, dynamics.size)),
-      opacityScale: Math.max(previousOpacity - 0.2, Math.min(previousOpacity + 0.2, dynamics.opacityScale))
+      size: pressureSizeDynamics
+        ? dynamics.size
+        : Math.max(previousSize - sizeStep, Math.min(previousSize + sizeStep, dynamics.size)),
+      opacityScale: pressureOpacityDynamics
+        ? dynamics.opacityScale
+        : Math.max(previousOpacity - 0.2, Math.min(previousOpacity + 0.2, dynamics.opacityScale))
     }
     : dynamics
     const rasterDistance = Math.max(Math.abs(rawRepeatedPoint.x - segmentStart.x), Math.abs(rawRepeatedPoint.y - segmentStart.y))
     const acceptedSize = activeBrushImage?.intrinsicSize
     ? stableDynamics.size
-    : smoothBrushSizeEnvelope(segmentStartSize, stableDynamics.size, session.brushSize, rasterDistance)
+    : pressureSizeDynamics
+      ? stableDynamics.size
+      : smoothBrushSizeEnvelope(segmentStartSize, stableDynamics.size, session.brushSize, rasterDistance)
     const repeatedPoint = gridSnapActive
     ? snapBrushPointToGrid(rawRepeatedPoint, acceptedSize, activeBrushImage, brushAngleWithDynamics(session, dynamics.angle))
     : rawRepeatedPoint

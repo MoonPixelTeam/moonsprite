@@ -56,10 +56,11 @@ describe('Phase 2: 图层边界裁剪', () => {
 describe('Phase 3: 帧差分缓存', () => {
   it('帧差分计算正确识别变化的图层', () => {
     const doc = createDocument('frame diff test', 256, 256, 'rgba')
-    const pixels1 = new Uint8Array(256 * 256 * 4)
-    const pixels2 = new Uint8Array(256 * 256 * 4).fill(255)
+    const pixels1 = new Uint8ClampedArray(256 * 256 * 4)
+    const pixels2 = new Uint8ClampedArray(256 * 256 * 4).fill(255)
 
     doc.animation = {
+      loop: true,
       frames: [
         { id: 'frame1', duration: 100 },
         { id: 'frame2', duration: 100 }

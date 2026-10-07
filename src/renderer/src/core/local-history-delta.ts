@@ -4,7 +4,7 @@ import type { SpriteDocument } from '@shared/types-document'
 import { type HistoryEntry, type ContentInvalidationHint } from './history'
 import { getLayerStorageOrigin, markLayerContentChanged, markRasterSurfaceContentChanged, setLayerStorageOrigin } from './document-model'
 import { detachRuntimeRaster, lazyRuntimeRasterForSurface, rehydrateRuntimeRasterDocument } from './runtime-raster'
-import { projectHistoryAnimationFrame } from './animation'
+import { projectHistoryAnimationFrame, resolveAnimationCel } from './animation'
 
 export function prepareHistoryDocument(source: SpriteDocument): SpriteDocument {
   for (const layer of source.layers) if (layer.runtimeRaster) detachRuntimeRaster(layer)
@@ -167,17 +167,31 @@ export function compileLocalHistoryDelta(before: SpriteDocument, after: SpriteDo
 export function hydrateLocalHistoryDelta(target: SpriteDocument, delta: LocalHistoryDelta): HistoryEntry {
   const { patches, origins, ...metadata } = delta
   const affected = new Set(delta.affectedLayerIds)
-  const resolve = (root: unknown, path: Path): unknown => path.reduce<unknown>((value, key) => {
-    if (!value || typeof value !== 'object' || !Object.hasOwn(value, key)) throw new Error('本地历史记录包含无效路径。')
-    return (value as Record<string, unknown>)[key]
-  }, root)
+  const resolve = (root: unknown, path: Path): unknown => {
+    // Project decoding removes redundant surfaces from linked cels. Older
+    // compact journals may still name that alias; write its canonical storage.
+    if (root === target && path.length === 5 && path[0] === 'animation' && path[1] === 'cels' && path[3] === 'surface' && path[4] === 'pixels') {
+      const timeline = target.animation, cel = timeline?.cels[Number(path[2])]
+      if (timeline && cel?.linkedCelId && !cel.surface) {
+        const surface = resolveAnimationCel(timeline, cel)?.surface
+        if (surface) return surface.pixels
+      }
+    }
+    return path.reduce<unknown>((value, key) => {
+      if (!value || typeof value !== 'object' || !Object.hasOwn(value, key)) throw new Error(`本地历史记录包含无效路径：${path.join('.')}`)
+      return (value as Record<string, unknown>)[key]
+    }, root)
+  }
   const apply = (side: 'before' | 'after'): void => {
     if (delta.celTarget) {
       const cel = target.animation?.cels[delta.celTarget.index]
       if (!cel || cel.id !== delta.celTarget.id || cel.layerId !== delta.celTarget.layerId || cel.frameId !== delta.celTarget.frameId) throw new Error('本地历史 cel 与工程不一致。')
     }
     const changedBuffers = new Set<ArrayBufferLike>()
-    for (const patch of patches) {
+    // Committed fill runs may overlap: undo must reverse their write order,
+    // including after the delta has been persisted and reopened.
+    for (let step = 0; step < patches.length; step++) {
+      const patch = patches[side === 'before' ? patches.length - 1 - step : step]
       if (!isSafePath(patch.path) || patch.aliases?.some((path) => !isSafePath(path))) continue
       if (patch.offset !== undefined) {
         for (const path of patch.aliases ?? [patch.path]) {

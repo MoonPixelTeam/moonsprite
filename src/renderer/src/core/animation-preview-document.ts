@@ -1,5 +1,5 @@
 import type { SpriteDocument } from '@shared/types-document'
-import { cloneDocumentForAnimationFrame } from './animation'
+import { createAnimationFramePreviewDocument } from './animation'
 
 /** One display-only shell. Its shared assets and raster storage must not be edited. */
 export class AnimationPreviewDocumentCache {
@@ -15,7 +15,7 @@ export class AnimationPreviewDocumentCache {
     // Drop the previous shell before constructing the next; never accumulate
     // one cloned timeline per frame or retain obsolete source documents.
     this.clear()
-    const document = cloneDocumentForAnimationFrame(source, frameId, true)
+    const document = createAnimationFramePreviewDocument(source, frameId)
     this.entry = { source, frameId, activeFrameId: source.animation?.activeFrameId, revision, document }
     return document
   }

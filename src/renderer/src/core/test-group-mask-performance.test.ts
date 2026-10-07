@@ -1,5 +1,6 @@
 import { afterEach, expect, it } from 'vitest'
 import { createDocument, DocumentCompositeCache, compositeRegion } from './document'
+import { createDefaultAnimationTimeline } from './animation'
 import { createId } from './document-model'
 import { buildCompositeStack, opacityGroupCompositeStack } from './document-composite-plan'
 import { compositeOpacityGroupStack } from './document-composite-raster'
@@ -34,14 +35,12 @@ const createNestedGroupDocument = (
       locked: false,
       opacity: 0.8, // Use opacity < 1 to trigger opacity group compositing
       blendMode: 'normal',
-      groupId: parentId,
       parentGroupId: parentId,
-      collapsed: false,
       clippingMask: false,
       cumulativeBlend: false,
       layerStyles: {
         enabled: true,
-        gradientMap: { enabled: false, scope: 'layer' as const, stops: [] },
+        gradientMap: { enabled: false, scope: 'layer' as const, stops: [], mode: 'continuous' as const, dither: 'none' as const, reverse: false },
         stroke: { enabled: false, color: { r: 0, g: 0, b: 0, a: 255 }, size: 1, position: 'outside' as const, kernel: 'round' as const, directions: { nw: true, n: true, ne: true, w: true, e: true, sw: true, s: true, se: true }, smartHue: false, smartHueDarkness: 30, followOpacity: false },
         shadow: { enabled: false, color: { r: 0, g: 0, b: 0, a: 128 }, offsetX: 2, offsetY: 2, blur: 4, smartShadow: false, smartShadowDarkness: 45 },
         innerGlow: { enabled: false, color: { r: 255, g: 255, b: 255, a: 128 }, size: 4 },
@@ -88,12 +87,11 @@ const createNestedGroupDocument = (
       offsetY: 0,
       format: 'rgba',
       pixels,
-      kind: 'raster',
       groupId,
       clippingMask: useClippingMask,
       layerStyles: {
         enabled: true,
-        gradientMap: { enabled: false, scope: 'layer' as const, stops: [] },
+        gradientMap: { enabled: false, scope: 'layer' as const, stops: [], mode: 'continuous' as const, dither: 'none' as const, reverse: false },
         stroke: { enabled: false, color: { r: 0, g: 0, b: 0, a: 255 }, size: 1, position: 'outside' as const, kernel: 'round' as const, directions: { nw: true, n: true, ne: true, w: true, e: true, sw: true, s: true, se: true }, smartHue: false, smartHueDarkness: 30, followOpacity: false },
         shadow: { enabled: false, color: { r: 0, g: 0, b: 0, a: 128 }, offsetX: 2, offsetY: 2, blur: 4, smartShadow: false, smartShadowDarkness: 45 },
         innerGlow: { enabled: false, color: { r: 255, g: 255, b: 255, a: 128 }, size: 4 },
@@ -141,15 +139,8 @@ const createDocumentWithLayerMasks = (
   document.layers = []
 
   // Create animation timeline for masks
-  document.animation = {
-    id: createId('timeline'),
-    frames: [{ id: createId('frame'), duration: 100 }],
-    activeFrameId: '',
-    cels: [],
-    layerMasks: [],
-    groupMasks: []
-  }
-  document.animation.activeFrameId = document.animation.frames[0].id
+  const timeline = createDefaultAnimationTimeline()
+  document.animation = timeline
 
   for (let i = 0; i < layerCount; i++) {
     const pixels = new Uint8ClampedArray(width * height * 4)
@@ -179,12 +170,11 @@ const createDocumentWithLayerMasks = (
       offsetY: 0,
       format: 'rgba',
       pixels,
-      kind: 'raster',
       groupId: null,
       clippingMask: false,
       layerStyles: {
         enabled: true,
-        gradientMap: { enabled: false, scope: 'layer' as const, stops: [] },
+        gradientMap: { enabled: false, scope: 'layer' as const, stops: [], mode: 'continuous' as const, dither: 'none' as const, reverse: false },
         stroke: { enabled: false, color: { r: 0, g: 0, b: 0, a: 255 }, size: 1, position: 'outside' as const, kernel: 'round' as const, directions: { nw: true, n: true, ne: true, w: true, e: true, sw: true, s: true, se: true }, smartHue: false, smartHueDarkness: 30, followOpacity: false },
         shadow: { enabled: false, color: { r: 0, g: 0, b: 0, a: 128 }, offsetX: 2, offsetY: 2, blur: 4, smartShadow: false, smartShadowDarkness: 45 },
         innerGlow: { enabled: false, color: { r: 255, g: 255, b: 255, a: 128 }, size: 4 },
@@ -230,9 +220,9 @@ const createDocumentWithLayerMasks = (
       moveWithOwner: true
     }
 
-    document.animation.layerMasks!.push({
+    timeline.layerMasks!.push({
       layerId: layer.id,
-      frameId: document.animation.activeFrameId,
+      frameId: timeline.activeFrameId,
       mask
     })
   }
@@ -425,8 +415,9 @@ it('measures memory usage for complex compositing', { timeout: 30000 }, () => {
     layersPerGroup
   )
 
-  if (typeof performance.memory !== 'undefined') {
-    const initialMemory = (performance as any).memory.usedJSHeapSize
+  const memory = (performance as Performance & { memory?: { usedJSHeapSize: number } }).memory
+  if (memory) {
+    const initialMemory = memory.usedJSHeapSize
 
     const cache = new DocumentCompositeCache()
     compositeRegion(document, 0, 0, width, height, cache, 0)
@@ -436,7 +427,7 @@ it('measures memory usage for complex compositing', { timeout: 30000 }, () => {
       global.gc()
     }
 
-    const finalMemory = (performance as any).memory.usedJSHeapSize
+    const finalMemory = memory.usedJSHeapSize
     const memoryDelta = (finalMemory - initialMemory) / (1024 * 1024)
 
     console.info(`Memory usage: ${memoryDelta.toFixed(2)} MB`)

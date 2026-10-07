@@ -3,6 +3,7 @@ import type { SelectionRect } from '@shared/types-selection'
 import { createPreviewProjectedRenderer } from '@/core/preview-projected-renderer'
 import { applyRelativeLuminance } from '@/core/raster'
 import { documentPointFromViewportPointContinuous } from '@/core/view-geometry'
+import { PreviewDirtyRows } from './preview-dirty-rows'
 
 export interface PreviewRasterView {
   width: number
@@ -23,11 +24,11 @@ export class PreviewRasterCache {
   private key = ''
   private view: PreviewRasterView | null = null
   private sampler: ReturnType<typeof createPreviewProjectedRenderer> | null = null
-  private dirty = new Set<number>()
+  private dirty = new PreviewDirtyRows()
   private fullDirty = false
   private fullLiveDirty = false
   private exposed: SelectionRect[] = []
-  private liveDirty = new Set<number>()
+  private liveDirty = new PreviewDirtyRows()
   private revision = -1
   private columns = 0
   private canvas: HTMLCanvasElement | null = null
@@ -105,7 +106,9 @@ export class PreviewRasterCache {
     context.imageSmoothingEnabled = false
     context.drawImage(source, view.originX, view.originY, document.width * view.scale, document.height * view.scale)
     this.dirty.clear()
+    this.liveDirty.clear()
     this.fullDirty = false
+    this.fullLiveDirty = false
     this.exposed = []
     for (const rect of dirtyRects) this.invalidate(rect)
     this.needsSeed = false
@@ -126,24 +129,24 @@ export class PreviewRasterCache {
       this.fullDirty = true
       if (live) this.fullLiveDirty = true
       this.dirty.clear()
+      if (live) this.liveDirty.clear()
       return
     }
     const left = rect ? Math.max(0, Math.floor((rect.x * view.scale + view.originX) / TILE)) : 0
     const top = rect ? Math.max(0, Math.floor((rect.y * view.scale + view.originY) / TILE)) : 0
     const right = rect ? Math.min(this.columns, Math.ceil(((rect.x + rect.width) * view.scale + view.originX) / TILE)) : this.columns
     const bottom = rect ? Math.min(Math.ceil(view.height / TILE), Math.ceil(((rect.y + rect.height) * view.scale + view.originY) / TILE)) : Math.ceil(view.height / TILE)
-    for (let y = top; y < bottom; y++) for (let x = left; x < right; x++) {
-      const id = y * this.columns + x
-      if (!this.fullDirty) this.dirty.add(id)
-      if (live) this.liveDirty.add(id)
-    }
+    if (right <= left || bottom <= top) return
+    const next = { x: left, y: top, width: right - left, height: bottom - top }
+    if (!this.fullDirty) this.dirty.add(next)
+    if (live && !this.fullLiveDirty) this.liveDirty.add(next)
   }
 
   finishLive(): void {
     this.sampler = null
     if (this.fullLiveDirty) this.invalidate()
     this.fullLiveDirty = false
-    for (const id of this.liveDirty) this.dirty.add(id)
+    if (!this.fullDirty) for (const rect of this.liveDirty.rectangles()) this.dirty.add(rect)
     this.liveDirty.clear()
   }
 
@@ -159,18 +162,10 @@ export class PreviewRasterCache {
       document.width, document.height, { zoom: view.scale, rotation: 0,
         panX: view.originX - (view.width - document.width * view.scale) / 2,
         panY: view.originY - (view.height - document.height * view.scale) / 2 }, 'canvas')
-    // Merge exact adjacent pixels into scanline runs; never pad to 8x8 tiles.
-    const ids = this.fullDirty ? [] : [...this.dirty].sort((a, b) => a - b)
-    const rects: SelectionRect[] = this.fullDirty ? [{ x: 0, y: 0, width: view.width, height: view.height }] : [...this.exposed]
-    const open = new Map<string, SelectionRect>()
-    for (let cursor = 0; cursor < ids.length;) {
-      const id = ids[cursor++], y = Math.floor(id / this.columns), left = id % this.columns
-      let right = left + 1
-      while (cursor < ids.length && ids[cursor] === y * this.columns + right && right < this.columns) { right++; cursor++ }
-      const key = `${left}:${right}`, previous = open.get(key)
-      if (previous && previous.y + previous.height === y) previous.height++
-      else { const rect = { x: left, y, width: right - left, height: 1 }; rects.push(rect); open.set(key, rect) }
-    }
+    // Keep exact coverage, including distant strokes and overlapping stamps.
+    const rects: SelectionRect[] = this.fullDirty
+      ? [{ x: 0, y: 0, width: view.width, height: view.height }]
+      : [...this.exposed, ...this.dirty.rectangles()]
     for (const rect of rects) {
       const xs = Int32Array.from({ length: rect.width }, (_, x) => Math.floor(first.x + (rect.x + x) / view.scale))
       const ys = Int32Array.from({ length: rect.height }, (_, y) => Math.floor(first.y + (rect.y + y) / view.scale))
@@ -184,7 +179,7 @@ export class PreviewRasterCache {
     this.fullDirty = false
     this.exposed = []
     this.needsSeed = false
-    return { pixels, pending: this.dirty.size > 0 }
+    return { pixels, pending: false }
   }
 
   draw(context: CanvasRenderingContext2D, width: number, height: number): void {

@@ -307,9 +307,9 @@ export function useCanvasDeviceRouter(ports: Ports) {
     ports.syncPenCursor(event)
     checkpoint('cursor')
   }, () => ({ documentId: ports.session.document.id, tool: ports.session.tool }))
-
   const pointerMove = (event: React.PointerEvent<HTMLCanvasElement>): void => {
-    if (!hover.acceptsHover(event) && !ports.inputRef.current.drag) return
+    const hoverAccepted = hover.acceptsHover(event)
+    if (!hoverAccepted && !ports.inputRef.current.drag) return
     if (touchNavigation.move(event)) return
     if (event.pointerType === 'pen' && ports.tabletPreferences.api === 'disabled') return
     const auxiliaryPress = event.pointerType === 'mouse' && ((event.button === 1 && Boolean(event.buttons & 4)) || (event.button === 2 && Boolean(event.buttons & 2)))
@@ -345,11 +345,10 @@ export function useCanvasDeviceRouter(ports: Ports) {
       else if (!touchNavigation.isSampling(event.pointerId)) ports.inputRef.current.clearTemporaryTool(event.pointerId)
     }
     inputWaitRef.current?.record(runtimeEventStartTime(event.timeStamp), () => ({ documentId: ports.session.document.id, input: 'pointer-move', pointerType: event.pointerType }))
+    if (hoverAccepted) ports.syncPenCursor(event)
     measurePointerInput('pointer-move', () => ports.handlePointerMove(rightClickToolEvent(penEraserToolEvent(event, ports.tabletPreferences), ports.inputRef.current.temporaryRightClickAction)))
-    if (hover.acceptsHover(event)) ports.syncPenCursor(event)
-    else hover.dismiss()
+    if (!hoverAccepted) hover.dismiss()
   }
-
   const pointerUp = (event: React.PointerEvent<HTMLCanvasElement>): void => {
     // Even a filtered device packet ends its own lock. Deferred shortcuts run
     // in a microtask, after any accepted stroke has finished synchronously.

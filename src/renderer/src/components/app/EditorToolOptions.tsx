@@ -56,6 +56,7 @@ import { useFloatingWindowStack } from '@/components/floating-panel'
 import { GRADIENT_TYPE_ICONS, LIQUIFY_MODE_ICONS, PixelAssetIcon, PixelShapeIcon, selectionModes, temporarySelectionModeForModifiers } from './editor-tools'
 import { SelectionPivotControls, selectionPivotControlTarget } from './SelectionPivotControls'
 import { SymmetryControls } from './SymmetryControls'
+import { EyedropperSourceControl } from './EyedropperSourceControl'
 import selectionShrinkIcon from '@/assets/pixel-icons/selection-shrink.svg'
 
 
@@ -985,6 +986,7 @@ export const EditorToolOptions = memo(function EditorToolOptions({ onOpenColorRe
     {session.temporaryBrushCapture && <span className="temporary-brush-capture-hint" role="status">{t('toolOptions.temporaryBrushCaptureHint')}</span>}
     {session.tool === 'shape' && (session.shapeKind === 'rectangle-outline' || session.shapeKind === 'ellipse-outline') && <FormField className="shape-stroke-width-control" layout="inline" label={t('outline.width')}><NumberInput aria-label={t('outline.width')} density="compact" min={1} max={64} suffix="px" value={session.brushSize} onValueChange={workspace.setBrushSize} /></FormField>}
     {session.tool === 'eyedropper' && <>
+      <EyedropperSourceControl />
       <div className="eyedropper-current-colors" aria-label={t('toolOptions.eyedropperColors')}>
         <ColorValueControl color={session.primaryColor} density="compact" onChange={workspace.setPrimaryColor} label={t('toolOptions.eyedropperForeground')} roleLabel={t('toolOptions.eyedropperForeground')} className="eyedropper-color-control" storageKey="eyedropper-foreground" fillWithColor />
         <ColorValueControl color={session.secondaryColor} density="compact" onChange={workspace.setSecondaryColor} label={t('toolOptions.eyedropperBackground')} roleLabel={t('toolOptions.eyedropperBackground')} className="eyedropper-color-control" storageKey="eyedropper-background" fillWithColor />
@@ -1192,9 +1194,10 @@ export const EditorToolOptions = memo(function EditorToolOptions({ onOpenColorRe
       <FillSettingsControl open={fillSettingsOpen} reference={session.fillReference} connectivity={session.fillConnectivity} onToggle={() => setFillSettingsOpen((open) => !open)} onReferenceChange={(value) => { workspace.setFillReference(value); setFillSettingsOpen(false) }} onConnectivityChange={(value) => { workspace.setFillConnectivity(value); setFillSettingsOpen(false) }} t={t} />
       <GradientDitherSelect className="gradient-dither-select" value={gradientDither} density="compact" onChange={workspace.setGradientDither} />
       <div className="gradient-freeform-control"><button type="button" className="tool-text-button gradient-freeform-open" onClick={() => { if (!session.gradientFreeform) workspace.setGradientFreeform(true); setGradientStopsOpen(true) }}>{t('toolOptions.gradientFreeform')}</button></div>
-      <GradientStopsEditor open={gradientStopsOpen && Boolean(session.gradientFreeform)} stops={gradientStops} disabled={false} primaryColor={session.primaryColor} secondaryColor={session.secondaryColor} onChange={workspace.setGradientStops} onClose={() => setGradientStopsOpen(false)} t={t} />
       {pendingGradient && <span className="gradient-confirm-actions"><button type="button" className="tool-text-button" onClick={() => pendingGradientFor(session.document.id)?.cancel()}>{t('common.cancel')}</button><button type="button" className="tool-text-button primary" onClick={() => pendingGradientFor(session.document.id)?.apply()}>{t('common.apply')}</button></span>}
     </>}
+    {/* Color editing temporarily selects the eyedropper; keep its owner mounted. */}
+    <GradientStopsEditor key={session.document.id} open={gradientStopsOpen && Boolean(session.gradientFreeform) && ((session.tool === 'fill' && session.fillKind === 'gradient') || session.tool === 'eyedropper')} stops={gradientStops} disabled={false} primaryColor={session.primaryColor} secondaryColor={session.secondaryColor} onChange={workspace.setGradientStops} onClose={() => setGradientStopsOpen(false)} t={t} />
     {supportsSymmetry && <SymmetryControls key={session.tool} axes={session.symmetryAxes} onAxisToggle={workspace.setSymmetryAxis} onResetCenter={workspace.resetSymmetryCenter} />}
     {session.tool === 'move' && session.moveKind === 'move' && <>
       <CheckboxField className="tool-checkbox" checked={session.moveAutoSelect} label={t('toolOptions.autoSelectLayer')} onChange={workspace.setMoveAutoSelect} />

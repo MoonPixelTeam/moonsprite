@@ -101,6 +101,8 @@ export interface WorkspaceSessionCommands {
   reorderSessions(documentIds: string[]): void
   setActive(id: string): void
   mutateActive(mutator: (session: DocumentSession) => void, dirty?: boolean | 'content' | 'metadata', normalizeSelection?: boolean, markSelectionNormalizationHistory?: boolean, invalidation?: ContentInvalidationHint): void
+  /** Publish a read-only animation frame change without normalizing panel state. */
+  mutatePlayback(mutator: (session: DocumentSession) => void): void
 }
 
 export interface WorkspaceSliceCommands {

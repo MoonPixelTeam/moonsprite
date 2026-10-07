@@ -21,6 +21,7 @@ export function renderCanvasToolCursor({
   canRenderToolPreview,
   session,
   fillKind,
+  brushPreviewMode,
   tilemapEditSelectionAtPoint,
   symmetryCenter,
   drawPreviewPixel,
@@ -43,6 +44,7 @@ export function renderCanvasToolCursor({
   canRenderToolPreview: boolean
   session: DocumentSession
   fillKind: import('@shared/types-brush').FillKind
+  brushPreviewMode: import('@/core/file-preferences').BrushPreviewMode
   tilemapEditSelectionAtPoint: (
     point: import('@/core/canvas-input').CanvasPoint,
     current?: import('@/store/workspace-types').DocumentSession,
@@ -124,6 +126,7 @@ export function renderCanvasToolCursor({
     inputRef.current.pointer.visible &&
     !inputRef.current.sampling &&
     (session.tool === 'shape' || session.tool === 'line') &&
+    !(session.tool === 'line' && brushPreviewMode === 'edge') &&
     !drag
   ) {
     const point = inputRef.current.pointer.point

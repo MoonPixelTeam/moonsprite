@@ -7,6 +7,7 @@ import { PreviewRasterCache, type PreviewRasterView } from './preview-raster-cac
 import { createPreviewProjectedRenderer } from '@/core/preview-projected-renderer'
 import { BLEND_MODES } from '@shared/types-color'
 import { createDefaultLayerStyles } from '@/core/layer-styles'
+import { createPreviewDrawScheduler } from './preview-draw-scheduler'
 
 const writes: Array<{ x: number; y: number; data: Uint8ClampedArray }> = []
 beforeEach(() => {
@@ -19,6 +20,38 @@ beforeEach(() => {
 })
 afterEach(() => vi.restoreAllMocks())
 const view: PreviewRasterView = { width: 256, height: 256, scale: 1 / 16, originX: 0, originY: 0, luminance: false }
+
+it('reuses the main frame after visibility changes on a 500 x 767 / 18-layer document', () => {
+  vi.useFakeTimers()
+  const doc = createDocument('small layered visibility', 500, 767, 'rgba')
+  while (doc.layers.length < 18) doc.layers.push(createLayer('content', 1, 1, 'rgba'))
+  const cache = new PreviewRasterCache()
+  const previewView = { ...view, scale: 0.5 }
+  cache.configure(doc, 'frame-1', 0, previewView)
+  cache.render()
+  doc.layers[0].visible = false
+  let shared: HTMLCanvasElement | null = null
+  const work: number[] = []
+  const scheduler = createPreviewDrawScheduler(() => {
+    cache.configure(doc, 'frame-1', 1, previewView, { kind: 'full', fromRevision: 0, revision: 1 })
+    if (shared) cache.seedFromShared(shared, [])
+    work.push(cache.render().pixels)
+  })
+  try {
+    // CanvasStage queues its frame before the panel's content effect.
+    window.requestAnimationFrame(() => { shared = document.createElement('canvas') })
+    scheduler.request(true)
+    scheduler.request(true)
+    expect(work).toEqual([])
+    vi.advanceTimersByTime(17)
+    expect(shared).not.toBeNull()
+    expect(work).toEqual([0])
+  } finally {
+    scheduler.cancel()
+    cache.dispose()
+    vi.useRealTimers()
+  }
+})
 
 it('keeps style toggles and apply bounded to a 256px preview on a 4K / 100-layer canvas', () => {
   const doc = createDocument('4K styled preview', 4096, 4096, 'rgba', false)

@@ -182,7 +182,7 @@ describe('ResourceManager', () => {
       const customDispose = vi.fn()
 
       const rafId = requestAnimationFrame(() => {})
-      const timerId = setTimeout(() => {}, 1000)
+      const timerId = window.setTimeout(() => {}, 1000)
 
       manager.trackRAF(rafId)
       manager.trackTimer(timerId)

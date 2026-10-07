@@ -17,7 +17,8 @@ import {
   refreshActiveAnimationFrame,
   restoreAnimationCels,
   setAnimationFrameDuration,
-  setAnimationLoop
+  setAnimationLoop,
+  syncActiveAnimationFrame
 } from '@/core/animation'
 import { cloneAnimationLoopSections } from '@/core/animation-loop-sections'
 import { captureDocumentStructureSnapshot, documentStructureDeltaBytes, restoreDocumentStructureSnapshot } from './workspace-document-history'
@@ -33,7 +34,6 @@ import {
 import { tr } from './workspace-translation'
 import { activeSession } from './workspace-access'
 import { captureAnimationSelectionHistory, restoreAnimationSelectionHistory } from './workspace-animation-selection-history'
-import { cloneAnimationCelsForLayerIds } from './workspace-animation-clone'
 import { updateSelectedAnimationFramesDisabled } from './workspace-animation-commands-helpers'
 
 
@@ -50,15 +50,20 @@ export function createAnimationFrameCommands({ get, set }: WorkspaceCommandConte
           const loopSectionsAfter = cloneAnimationLoopSections(timeline.loopSections)
           const frameIndex = timeline.frames.findIndex((frame) => frame.id === frameId)
           const frame = { ...timeline.frames[frameIndex] }
-          const cels = cloneAnimationCelsForLayerIds(
-            session.document,
-            session.document.layers.map((layer) => layer.id),
-            frameId
-          )
+          // addBlankAnimationFrame has already created the new cel objects.
+          // Reuse them for history; restoreAnimationCels clones them only when
+          // redo needs to materialize the frame again.
+          const cels = timeline.cels.filter((cel) => cel.frameId === frameId)
+          const layerMasks = (timeline.layerMasks ?? []).filter((entry) => entry.frameId === frameId)
+          const groupMasks = (timeline.groupMasks ?? []).filter((entry) => entry.frameId === frameId)
           const restore = (): void => {
             const current = ensureAnimationDocument(session.document)
             if (!current.frames.some((candidate) => candidate.id === frameId)) current.frames.splice(Math.min(frameIndex, current.frames.length), 0, { ...frame })
             restoreAnimationCels(session.document, cels)
+            current.layerMasks ??= []
+            current.layerMasks.push(...layerMasks.filter((entry) => !current.layerMasks!.some((candidate) => candidate.mask.id === entry.mask.id)).map((entry) => cloneAnimationLayerMask(entry)))
+            current.groupMasks ??= []
+            current.groupMasks.push(...groupMasks.filter((entry) => !current.groupMasks!.some((candidate) => candidate.mask.id === entry.mask.id)).map((entry) => cloneAnimationGroupMask(entry)))
             current.loopSections = cloneAnimationLoopSections(loopSectionsAfter)
             activateAnimationFrame(session.document, frameId)
             clearAnimationItemSelection(session)
@@ -111,15 +116,16 @@ export function createAnimationFrameCommands({ get, set }: WorkspaceCommandConte
           timeline.groupMasks ??= []
           timeline.groupMasks.push(...groupMasks)
           linkAnimationFrameCels(session.document, sourceFrameId, frameId, layerIds)
-          const cels = cloneAnimationCelsForLayerIds(
-            session.document,
-            session.document.layers.map((layer) => layer.id),
-            frameId
-          )
+          // The frame already owns these cels. Avoid cloning linked source
+          // surfaces a second time just to build the history entry.
+          const cels = timeline.cels.filter((cel) => cel.frameId === frameId)
+          const layerMasks = (timeline.layerMasks ?? []).filter((entry) => entry.frameId === frameId)
           const restore = (): void => {
             const current = ensureAnimationDocument(session.document)
             if (!current.frames.some((candidate) => candidate.id === frameId)) current.frames.splice(Math.min(frameIndex, current.frames.length), 0, { ...frame })
             restoreAnimationCels(session.document, cels)
+            current.layerMasks ??= []
+            current.layerMasks.push(...layerMasks.filter((entry) => !current.layerMasks!.some((candidate) => candidate.mask.id === entry.mask.id)).map((entry) => cloneAnimationLayerMask(entry)))
             current.groupMasks ??= []
             current.groupMasks.push(...groupMasks.filter((entry) => !current.groupMasks!.some((candidate) => candidate.mask.id === entry.mask.id)).map((entry) => cloneAnimationGroupMask(entry)))
             current.loopSections = cloneAnimationLoopSections(loopSectionsAfter)
@@ -160,16 +166,17 @@ export function createAnimationFrameCommands({ get, set }: WorkspaceCommandConte
           const loopSectionsAfter = cloneAnimationLoopSections(timeline.loopSections)
           const frameIndex = timeline.frames.findIndex((frame) => frame.id === frameId)
           const frame = { ...timeline.frames[frameIndex] }
-          const cels = cloneAnimationCelsForLayerIds(
-            session.document,
-            session.document.layers.map((layer) => layer.id),
-            frameId
-          )
-          const groupMasks = (timeline.groupMasks ?? []).filter((entry) => entry.frameId === frameId).map((entry) => cloneAnimationGroupMask(entry))
+          // duplicateAnimationFrame performs the required pixel copy. Keep the
+          // freshly created cels/masks as history objects and clone on restore.
+          const cels = timeline.cels.filter((cel) => cel.frameId === frameId)
+          const layerMasks = (timeline.layerMasks ?? []).filter((entry) => entry.frameId === frameId)
+          const groupMasks = (timeline.groupMasks ?? []).filter((entry) => entry.frameId === frameId)
           const restore = (): void => {
             const current = ensureAnimationDocument(session.document)
             if (!current.frames.some((candidate) => candidate.id === frameId)) current.frames.splice(Math.min(frameIndex, current.frames.length), 0, { ...frame })
             restoreAnimationCels(session.document, cels)
+            current.layerMasks ??= []
+            current.layerMasks.push(...layerMasks.filter((entry) => !current.layerMasks!.some((candidate) => candidate.mask.id === entry.mask.id)).map((entry) => cloneAnimationLayerMask(entry)))
             current.groupMasks ??= []
             current.groupMasks.push(...groupMasks.filter((entry) => !current.groupMasks!.some((candidate) => candidate.mask.id === entry.mask.id)).map((entry) => cloneAnimationGroupMask(entry)))
             current.loopSections = cloneAnimationLoopSections(loopSectionsAfter)
@@ -346,13 +353,16 @@ export function createAnimationFrameCommands({ get, set }: WorkspaceCommandConte
           const frameId = timeline.activeFrameId
           const frameIndex = timeline.frames.findIndex((frame) => frame.id === frameId)
           const frame = { ...timeline.frames[frameIndex] }
-          const cels = cloneAnimationCelsForLayerIds(
-            session.document,
-            session.document.layers.map((layer) => layer.id),
-            frameId
-          )
-          const layerMasks = (timeline.layerMasks ?? []).filter((entry) => entry.frameId === frameId).map((entry) => cloneAnimationLayerMask(entry))
-          const groupMasks = (timeline.groupMasks ?? []).filter((entry) => entry.frameId === frameId).map((entry) => cloneAnimationGroupMask(entry))
+          // Capture the displayed active layer before detaching the frame; the
+          // core delete operation syncs after this point, which is too late for
+          // a history snapshot.
+          syncActiveAnimationFrame(session.document)
+          // The frame is removed immediately below, so its objects are no
+          // longer editable while this history entry is pending. Defer deep
+          // cloning until undo restores them.
+          const cels = timeline.cels.filter((cel) => cel.frameId === frameId)
+          const layerMasks = (timeline.layerMasks ?? []).filter((entry) => entry.frameId === frameId)
+          const groupMasks = (timeline.groupMasks ?? []).filter((entry) => entry.frameId === frameId)
           const loopSectionsBefore = cloneAnimationLoopSections(timeline.loopSections)
           if (!deleteAnimationFrame(session.document, frameId)) {
             set({ message: tr('workspace.animation.minimumFrame') })

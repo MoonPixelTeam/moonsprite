@@ -44,7 +44,6 @@ import {
   invalidationRects,
   MAX_CACHED_FRAMES,
   DEFAULT_MAX_CACHE_BYTES,
-  sharedAnimationLayerSources,
   sharedAnimationCompositeSurface,
   rememberSharedAnimationComposite,
   shouldCacheFullCompositeSurface,
@@ -383,7 +382,13 @@ export class CanvasCompositeCache {
     if (sourceDirtyRect) this.propertyPreview.clear()
     else if (this.propertyPreview.draw({ ...options, contentRevision })) return
     const initialCompositeIsPending = contentRevision === 0 && !isolatedLayerMask && !view.relativeLuminance && initialDocumentCompositePending(document, effectiveFrameId)
-    if (isolatedLayerMask || (shouldCacheFullCompositeSurface(document.width, document.height, this.maxCacheBytes) && !initialCompositeIsPending))
+    // Playback can visit hundreds of frames. A full 4K backing is about
+    // 64 MiB even for a sparse 100×100 drawing, so keep animation frames in
+    // the bounded visible-region cache once a full surface would consume a
+    // substantial part of this cache budget.
+    const animationFullSurfaceAllowed = !animationPlayback
+      || document.width * document.height * 4 <= this.maxCacheBytes / 2
+    if (isolatedLayerMask || (animationFullSurfaceAllowed && shouldCacheFullCompositeSurface(document.width, document.height, this.maxCacheBytes) && !initialCompositeIsPending))
       this.drawSurface(
         context,
         document,
@@ -482,6 +487,7 @@ export class CanvasCompositeCache {
       target.clearRect(0, 0, width, height)
       for (const layer of layers) {
         if (!layer.visible || layer.opacity <= 0) continue
+        if (cachedLayerContentBounds(document, layer) === null) continue
         const operation = gpuBlendModeFor(layer.blendMode)
         const result = animationLayerSourceFor(document, layer, this.maxCacheBytes)
         if (!operation || !result) return null

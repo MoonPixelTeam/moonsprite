@@ -1,15 +1,23 @@
 import { convolutionEn } from './convolution'
 import { gradientMapEn } from './gradient-map'
 import { beta7En } from './release-beta7'
+import { beta8En } from './release-beta8'
 import { spriteSheetImportptBR } from './sprite-sheet-import'
 import type { TranslationCatalog } from './contracts'
 
 import { tabletEn } from './tablet'
 
 export const ptBRMessages = {
+  "toolOptions.eyedropperSource": "Origem da cor",
+  "toolOptions.eyedropperSourceHint": "Amostra a composição da tela ou os pixels originais da camada atual.",
+  "toolOptions.eyedropperSourceComposite": "Composição da tela",
+  "toolOptions.eyedropperSourceCompositeHint": "Amostra todas as camadas visíveis com opacidade, mesclagem e efeitos.",
+  "toolOptions.eyedropperSourceLayer": "Pixels da camada atual",
+  "toolOptions.eyedropperSourceLayerHint": "Lê a cor e o alfa originais, sem opacidade da camada, mesclagem, máscaras ou efeitos.",
 
   ...convolutionEn,
   ...beta7En,
+  ...beta8En,
   ...gradientMapEn,
   "toolOptions.temporaryBrushCaptureHint": "Pincel temporário: arraste uma área e solte para usar; Esc para cancelar",
   "preferences.paintingCursor.cross": "Cruz simples",

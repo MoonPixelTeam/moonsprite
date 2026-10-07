@@ -1,15 +1,23 @@
 import { convolutionEn } from './convolution'
 import { gradientMapEn } from './gradient-map'
 import { beta7En } from './release-beta7'
+import { beta8En } from './release-beta8'
 import { spriteSheetImportdeDE } from './sprite-sheet-import'
 import type { TranslationCatalog } from './contracts'
 
 import { tabletEn } from './tablet'
 
 export const deDEMessages = {
+  "toolOptions.eyedropperSource": "Farbquelle",
+  "toolOptions.eyedropperSourceHint": "Die Leinwandkomposition oder die Originalpixel der aktuellen Ebene aufnehmen.",
+  "toolOptions.eyedropperSourceComposite": "Leinwandkomposition",
+  "toolOptions.eyedropperSourceCompositeHint": "Alle sichtbaren Ebenen mit Deckkraft, Mischmodi und Effekten aufnehmen.",
+  "toolOptions.eyedropperSourceLayer": "Originalpixel der Ebene",
+  "toolOptions.eyedropperSourceLayerHint": "Originalfarbe und Alpha lesen, ohne Ebenendeckkraft, Mischmodi, Masken oder Effekte.",
 
   ...convolutionEn,
   ...beta7En,
+  ...beta8En,
   ...gradientMapEn,
   "toolOptions.temporaryBrushCaptureHint": "Temporärer Pinsel: Bereich aufziehen, loslassen zum Verwenden; Esc zum Abbrechen",
   "preferences.paintingCursor.cross": "Einfaches Kreuz",

@@ -1,15 +1,23 @@
 import { convolutionEn } from './convolution'
 import { gradientMapEn } from './gradient-map'
 import { beta7En } from './release-beta7'
+import { beta8En } from './release-beta8'
 import { spriteSheetImportfrFR } from './sprite-sheet-import'
 import type { TranslationCatalog } from './contracts'
 
 import { tabletEn } from './tablet'
 
 export const frFRMessages = {
+  "toolOptions.eyedropperSource": "Source de couleur",
+  "toolOptions.eyedropperSourceHint": "Prélever la composition du canevas ou les pixels d’origine du calque actif.",
+  "toolOptions.eyedropperSourceComposite": "Composition du canevas",
+  "toolOptions.eyedropperSourceCompositeHint": "Prélever tous les calques visibles après opacité, fusion et effets.",
+  "toolOptions.eyedropperSourceLayer": "Pixels du calque actif",
+  "toolOptions.eyedropperSourceLayerHint": "Lire la couleur et l’alpha d’origine, sans opacité du calque, fusion, masques ni effets.",
 
   ...convolutionEn,
   ...beta7En,
+  ...beta8En,
   ...gradientMapEn,
   "toolOptions.temporaryBrushCaptureHint": "Pinceau temporaire : sélectionnez une zone, relâchez pour utiliser ; Échap pour annuler",
   "preferences.paintingCursor.cross": "Croix simple",
