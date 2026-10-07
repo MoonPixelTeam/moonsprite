@@ -34,7 +34,21 @@ export const initialTimelineCellsWindow = (panel: Props): TimelineCellWindow => 
 export const sameTimelineCellWindow = (a: TimelineCellWindow, b: TimelineCellWindow): boolean =>
   a.rowStart === b.rowStart && a.rowEnd === b.rowEnd && a.frameStart === b.frameStart && a.frameEnd === b.frameEnd
 
-export const measureTimelineCellWindow = (panel: Props, viewport: HTMLDivElement): TimelineCellWindow => {
+const containsWindow = (current: TimelineCellWindow | null, next: TimelineCellWindow, panel: Props, columns: number, rows: number): boolean =>
+  Boolean(current && current.frameEnd <= panel.timeline.frames.length && current.rowEnd <= panel.displayRows.length &&
+    (next.frameStart === 0 ? current.frameStart === 0 : current.frameStart <= next.frameStart + columns) &&
+    (next.frameEnd === panel.timeline.frames.length ? current.frameEnd === next.frameEnd : current.frameEnd >= next.frameEnd - columns) &&
+    (next.rowStart === 0 ? current.rowStart === 0 : current.rowStart <= next.rowStart + rows) &&
+    (next.rowEnd === panel.displayRows.length ? current.rowEnd === next.rowEnd : current.rowEnd >= next.rowEnd - rows))
+
+/** Reuse mounted cells while six columns/two rows of reserve still cover the view. */
+export const retainTimelineCellWindow = (current: TimelineCellWindow | null, next: TimelineCellWindow, panel: Props): TimelineCellWindow =>
+  containsWindow(current, next, panel, 4, 1) ? current! : next
+
+export const timelineCellWindowCoversViewport = (current: TimelineCellWindow | null, next: TimelineCellWindow, panel: Props): boolean =>
+  containsWindow(current, next, panel, 10, 3)
+
+export const measureTimelineCellWindow = (panel: Props, viewport: HTMLDivElement, columnOverscan = 10, rowOverscan = 3): TimelineCellWindow => {
   const all = allTimelineCellsWindow(panel)
   // A floating/docked panel can be measured while it is still entering the
   // layout (clientWidth/clientHeight are temporarily zero). Returning the
@@ -52,12 +66,13 @@ export const measureTimelineCellWindow = (panel: Props, viewport: HTMLDivElement
   const rowHeight = numberVariable('--layer-row-height', 42)
   const headerHeight = numberVariable('--animation-header-height', 34)
   const labelWidth = numberVariable('--layer-effective-label-width', 190)
-  const horizontalStart = Math.max(0, viewport.scrollLeft - labelWidth)
+  // Sticky labels/header already occupy space at the viewport origin. Only
+  // the visible extent loses that space; subtracting it from the scroll offset
+  // mounts a second hidden strip behind the labels on every window update.
+  const horizontalStart = Math.max(0, viewport.scrollLeft)
   const horizontalEnd = Math.max(horizontalStart, viewport.scrollLeft + viewportWidth - labelWidth)
-  const verticalStart = Math.max(0, viewport.scrollTop - headerHeight)
+  const verticalStart = Math.max(0, viewport.scrollTop)
   const verticalEnd = Math.max(verticalStart, viewport.scrollTop + viewportHeight - headerHeight)
-  const columnOverscan = 6
-  const rowOverscan = 3
   return {
     rowStart: Math.max(0, Math.floor(verticalStart / rowHeight) - rowOverscan),
     rowEnd: Math.min(panel.displayRows.length, Math.ceil(verticalEnd / rowHeight) + rowOverscan),

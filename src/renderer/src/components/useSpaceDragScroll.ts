@@ -6,6 +6,8 @@ interface SpaceDragState {
   startClientY: number
   startScrollLeft: number
   startScrollTop: number
+  maxScrollLeft: number
+  maxScrollTop: number
 }
 
 export interface SpaceDragScrollPositionInput {
@@ -41,6 +43,19 @@ export function useSpaceDragScroll<T extends HTMLElement>(containerRef: RefObjec
   const [spaceHeld, setSpaceHeld] = useState(false)
   const [pointerInside, setPointerInside] = useState(false)
   const [dragging, setDragging] = useState(false)
+
+  useEffect(() => {
+    const element = containerRef.current
+    if (!element || typeof ResizeObserver === 'undefined') return
+    const observer = new ResizeObserver(() => {
+      const drag = dragRef.current
+      if (!drag) return
+      drag.maxScrollLeft = Math.max(0, element.scrollWidth - element.clientWidth)
+      drag.maxScrollTop = Math.max(0, element.scrollHeight - element.clientHeight)
+    })
+    observer.observe(element)
+    return () => observer.disconnect()
+  }, [containerRef])
 
   useEffect(() => {
     const keyDown = (event: KeyboardEvent): void => {
@@ -92,7 +107,9 @@ export function useSpaceDragScroll<T extends HTMLElement>(containerRef: RefObjec
         startClientX: event.clientX,
         startClientY: event.clientY,
         startScrollLeft: element.scrollLeft,
-        startScrollTop: element.scrollTop
+        startScrollTop: element.scrollTop,
+        maxScrollLeft: Math.max(0, element.scrollWidth - element.clientWidth),
+        maxScrollTop: Math.max(0, element.scrollHeight - element.clientHeight)
       }
       setDragging(true)
       event.currentTarget.setPointerCapture(event.pointerId)
@@ -111,8 +128,10 @@ export function useSpaceDragScroll<T extends HTMLElement>(containerRef: RefObjec
         clientY: event.clientY,
         startScrollLeft: drag.startScrollLeft,
         startScrollTop: drag.startScrollTop,
-        maxScrollLeft: Math.max(0, element.scrollWidth - element.clientWidth),
-        maxScrollTop: Math.max(0, element.scrollHeight - element.clientHeight)
+        // Cell mounting does not change the full scroll geometry. Re-reading
+        // these dimensions on every packet flushes pending grid layout.
+        maxScrollLeft: drag.maxScrollLeft,
+        maxScrollTop: drag.maxScrollTop
       })
       element.scrollLeft = next.left
       element.scrollTop = next.top
