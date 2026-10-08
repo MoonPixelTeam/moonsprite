@@ -27,7 +27,24 @@ export const compositeRgbaRowWithOpaqueSpans = (
 
     const targetPixelOffset = outputOffset + pixel * 4
     const bottomAlpha = output[targetPixelOffset + 3]
+    if (bottomAlpha === 0) {
+      output[targetPixelOffset] = source[sourcePixelOffset]
+      output[targetPixelOffset + 1] = source[sourcePixelOffset + 1]
+      output[targetPixelOffset + 2] = source[sourcePixelOffset + 2]
+      output[targetPixelOffset + 3] = sourceAlpha
+      pixel += 1
+      continue
+    }
     const topAlpha = sourceAlpha / 255
+    if (bottomAlpha === 255) {
+      const inverseAlpha = 1 - topAlpha
+      output[targetPixelOffset] = Math.round(source[sourcePixelOffset] * topAlpha + output[targetPixelOffset] * inverseAlpha)
+      output[targetPixelOffset + 1] = Math.round(source[sourcePixelOffset + 1] * topAlpha + output[targetPixelOffset + 1] * inverseAlpha)
+      output[targetPixelOffset + 2] = Math.round(source[sourcePixelOffset + 2] * topAlpha + output[targetPixelOffset + 2] * inverseAlpha)
+      // Source-over on an opaque destination remains opaque.
+      pixel += 1
+      continue
+    }
     const bottomAlphaNormalized = bottomAlpha / 255
     const outputAlpha = topAlpha + bottomAlphaNormalized * (1 - topAlpha)
     if (outputAlpha > 0) {

@@ -90,7 +90,7 @@ export function processRasterStrokeMove(input: StrokeMove, geometry: StrokeGeome
       invalidateStrokeSegment(from, to, size, angle)
       return
     }
-    for (const rect of brushStrokeInvalidationRects(
+    const regions = brushStrokeInvalidationRects(
     from,
     to,
     size,
@@ -101,7 +101,12 @@ export function processRasterStrokeMove(input: StrokeMove, geometry: StrokeGeome
     symmetryCenter,
     'off',
     angle
-    )) {
+    )
+    if (regions.length > 1) {
+      batchedFineInvalidations.push(...regions)
+      return
+    }
+    for (const rect of regions) {
       if (!batchedStrokeInvalidation) batchedStrokeInvalidation = { ...rect }
       else {
         const left = Math.min(batchedStrokeInvalidation.x, rect.x)
@@ -392,5 +397,4 @@ export function processRasterStrokeMove(input: StrokeMove, geometry: StrokeGeome
   // and partial opacity can modify existing entries without growing it.
   if (perfectPixelInvalidations.length === 0 && batchedFineInvalidations.length === 0 && !batchedStrokeInvalidation && batchSimpleStrokeInvalidation) return
   scheduleDraw(); return
-
 }

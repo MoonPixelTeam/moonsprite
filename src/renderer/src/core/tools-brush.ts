@@ -551,16 +551,30 @@ export function brushStrokeInvalidationRects(
     : fromPoints.flatMap((start) => toPoints.map((end) => ({ start, end })))
   const regions = new Map<string, SelectionRect>()
   for (const segment of segments) {
-    const left = Math.min(segment.start.x, segment.end.x) - beforeX
-    const top = Math.min(segment.start.y, segment.end.y) - beforeY
-    const right = Math.max(segment.start.x, segment.end.x) + trailingX + 1
-    const bottom = Math.max(segment.start.y, segment.end.y) + trailingY + 1
-    for (const rect of tileRepeatRectSegments(
-      { x: left, y: top, width: right - left, height: bottom - top },
-      documentWidth,
-      documentHeight,
-      tileRepeatMode
-    )) regions.set(`${rect.x}:${rect.y}:${rect.width}:${rect.height}`, rect)
+    const dx = segment.end.x - segment.start.x, dy = segment.end.y - segment.start.y
+    const envelopeArea = (Math.abs(dx) + beforeX + trailingX + 1) * (Math.abs(dy) + beforeY + trailingY + 1)
+    const stripLength = Math.max(16, stamp.width, stamp.height)
+    const distance = Math.max(Math.abs(dx), Math.abs(dy))
+    // Fast diagonal motion must not recompose the empty interior of its
+    // bounding box. Local envelopes include a pixel of rasterization margin
+    // and every intermediate stamp, without changing the painted path.
+    const pieces = envelopeArea > 3 * (distance + 1) * Math.max(stamp.width, stamp.height)
+      ? Math.max(1, Math.ceil(distance / stripLength)) : 1
+    for (let piece = 0; piece < pieces; piece++) {
+      const start = { x: segment.start.x + dx * piece / pieces, y: segment.start.y + dy * piece / pieces }
+      const end = { x: segment.start.x + dx * (piece + 1) / pieces, y: segment.start.y + dy * (piece + 1) / pieces }
+      const margin = pieces > 1 ? 1 : 0
+      const left = Math.floor(Math.min(start.x, end.x)) - beforeX - margin
+      const top = Math.floor(Math.min(start.y, end.y)) - beforeY - margin
+      const right = Math.ceil(Math.max(start.x, end.x)) + trailingX + 1 + margin
+      const bottom = Math.ceil(Math.max(start.y, end.y)) + trailingY + 1 + margin
+      for (const rect of tileRepeatRectSegments(
+        { x: left, y: top, width: right - left, height: bottom - top },
+        documentWidth,
+        documentHeight,
+        tileRepeatMode
+      )) regions.set(`${rect.x}:${rect.y}:${rect.width}:${rect.height}`, rect)
+    }
   }
   return [...regions.values()]
 }

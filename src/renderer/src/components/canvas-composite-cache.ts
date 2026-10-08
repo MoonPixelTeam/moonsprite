@@ -195,7 +195,9 @@ export class CanvasCompositeCache {
     })
     // Live strokes can emit hundreds of tiny regions. Keep the queue bounded
     // otherwise every subsequent frame spends more time merging old regions.
-    this.dirtyRects.set(frameId, dirtyRects.length > 32 ? boundedDirtyRects(dirtyRects, 32, compositePatchMergeLimit(this.lastDocument)) : dirtyRects)
+    const limit = this.liveRasterEdit ? 256 : 32
+    const mergeLimit = this.liveRasterEdit ? 0 : compositePatchMergeLimit(this.lastDocument)
+    this.dirtyRects.set(frameId, dirtyRects.length > limit ? boundedDirtyRects(dirtyRects, limit, mergeLimit, this.liveRasterEdit ? 1 : 3) : dirtyRects)
   }
 
   invalidateDocumentRect(selection: SelectionRect | null | undefined, document: SpriteDocument, frameId = this.lastDrawnFrameId, affectedOwnerIds?: readonly string[]): void {
@@ -538,7 +540,8 @@ export class CanvasCompositeCache {
   ): CompositeSurface {
     // Layer styles depend on the current cel surface and cannot use the
     // playback shared/GPU snapshot safely across frame swaps.
-    const patchMergeLimit = compositePatchMergeLimit(document)
+    const patchMergeLimit = this.liveRasterEdit ? 0 : compositePatchMergeLimit(document)
+    const patchWasteRatio = this.liveRasterEdit ? 1 : 3
     const animationFastPath = animationPlayback && patchMergeLimit === undefined
     let surface = this.surfaces.get(key)
     // Playback often starts after the editor already rendered the current
@@ -602,7 +605,7 @@ export class CanvasCompositeCache {
     } else {
       const invalidationStartedAt = window.__moonSpriteCanvasProbe?.recordOperationStage ? performance.now() : 0
       const visibleRect = visibleDocumentRect(document, fromX, fromY, toX, toY)
-      const invalidRects = mergeOverlappingRects([...(surface.pendingDirtyRects ?? []), ...(this.dirtyRects.get(frameId) ?? [])], patchMergeLimit)
+      const invalidRects = mergeOverlappingRects([...(surface.pendingDirtyRects ?? []), ...(this.dirtyRects.get(frameId) ?? [])], patchMergeLimit, patchWasteRatio)
       const dirtyRects: SelectionRect[] = []
       const pendingDirtyRects: SelectionRect[] = []
       for (const rect of invalidRects) {
@@ -618,11 +621,11 @@ export class CanvasCompositeCache {
       // Splitting a committed fill/undo into 64K-pixel horizontal bands exposed
       // intermediate cache contents as a top-to-bottom wipe. Offscreen areas
       // remain lazy, and unchanged pixels are still excluded from recomposition.
-      const activeRects = mergeOverlappingRects(dirtyRects, patchMergeLimit)
+      const activeRects = mergeOverlappingRects(dirtyRects, patchMergeLimit, patchWasteRatio)
       // A visible viewport can split every incoming rect into up to four
       // offscreen pieces. Keep that deferred queue bounded as well; otherwise
       // a long stroke slowly turns each frame into a larger merge/recompose.
-      surface.pendingDirtyRects = pendingDirtyRects.length > 0 ? boundedDirtyRects(pendingDirtyRects, 128, patchMergeLimit) : undefined
+      surface.pendingDirtyRects = pendingDirtyRects.length > 0 ? boundedDirtyRects(pendingDirtyRects, 128, patchMergeLimit, patchWasteRatio) : undefined
       if (activeRects.length > 0) this.invalidateSurfaceBitmap(surface)
       recordCanvasStage('canvas.cache-invalidation', invalidationStartedAt, {
         dirtyRects: activeRects.length,
@@ -695,7 +698,8 @@ export class CanvasCompositeCache {
     animationPlayback = false,
     render = true
   ): CompositeRegionSurface | null {
-    const patchMergeLimit = compositePatchMergeLimit(document)
+    const patchMergeLimit = this.liveRasterEdit ? 0 : compositePatchMergeLimit(document)
+    const patchWasteRatio = this.liveRasterEdit ? 1 : 3
     const animationFastPath = animationPlayback && patchMergeLimit === undefined
     const visible = visibleDocumentRect(document, fromX, fromY, toX, toY)
     if (!visible) return null
@@ -740,7 +744,7 @@ export class CanvasCompositeCache {
         region.revision = contentRevision
       }
       const visibleRect = { x, y, width, height }
-      const dirtyRects = mergeOverlappingRects(this.dirtyRects.get(frameId) ?? [], patchMergeLimit)
+      const dirtyRects = mergeOverlappingRects(this.dirtyRects.get(frameId) ?? [], patchMergeLimit, patchWasteRatio)
         .map((rect) => intersectRect(rect, visibleRect))
         .filter((rect): rect is SelectionRect => Boolean(rect))
       const activeRects = dirtyRects

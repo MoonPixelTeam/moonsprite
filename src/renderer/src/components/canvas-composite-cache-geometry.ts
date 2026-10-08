@@ -51,33 +51,63 @@ export const unionRect = (left: SelectionRect, right: SelectionRect): SelectionR
 
 const MAX_LOCAL_PATCH_MERGE_PIXELS = 64 * 1024
 
+/** Union stroke envelopes by coordinate bands, independent of canvas area.
+ * Avoid iterative subtraction, whose fragment count grows at sharp turns. */
+const disjointRectUnion = (rects: readonly SelectionRect[]): SelectionRect[] => {
+  if (rects.length < 2) return [...rects]
+  const edges = [...new Set(rects.flatMap(rect => [rect.y, rect.y + rect.height]))].sort((a, b) => a - b)
+  const output: SelectionRect[] = []
+  let previous = new Map<string, SelectionRect>()
+  for (let row = 1; row < edges.length; row++) {
+    const top = edges[row - 1], bottom = edges[row]
+    const spans = rects.filter(rect => rect.y <= top && rect.y + rect.height >= bottom)
+      .map(rect => [rect.x, rect.x + rect.width]).sort((a, b) => a[0] - b[0])
+    const merged: number[][] = []
+    for (const span of spans) {
+      const last = merged.at(-1)
+      if (last && span[0] <= last[1]) last[1] = Math.max(last[1], span[1])
+      else merged.push(span)
+    }
+    const next = new Map<string, SelectionRect>()
+    for (const [left, right] of merged) {
+      const key = `${left}:${right}`, existing = previous.get(key)
+      const rect = existing ?? { x: left, y: top, width: right - left, height: 0 }
+      rect.height += bottom - top
+      if (!existing) output.push(rect)
+      next.set(key, rect)
+    }
+    previous = next
+  }
+  return output
+}
+
 /** Style rendering makes unused pixels more costly than a few extra uploads. */
 export const compositePatchMergeLimit = (document: SpriteDocument | null): number | undefined =>
   document && (document.layers.some(layer => hasEnabledLayerStyles(layer.layerStyles))
     || document.groups.some(group => hasEnabledLayerStyles(group.layerStyles))) ? 0 : undefined
 
 /** Merge recent dirty rects using a sliding window to balance responsiveness and efficiency. */
-export const mergeRecentDirtyRects = (rects: readonly SelectionRect[], windowSize = 16, maxLocalPatchMergePixels = MAX_LOCAL_PATCH_MERGE_PIXELS): SelectionRect[] => {
-  if (rects.length <= windowSize) return mergeOverlappingRects(rects, maxLocalPatchMergePixels)
+export const mergeRecentDirtyRects = (rects: readonly SelectionRect[], windowSize = 16, maxLocalPatchMergePixels = MAX_LOCAL_PATCH_MERGE_PIXELS, maxUnionWasteRatio = 3): SelectionRect[] => {
+  if (rects.length <= windowSize) return mergeOverlappingRects(rects, maxLocalPatchMergePixels, maxUnionWasteRatio)
 
   // Keep the most recent rects unmerged for fast response to live strokes
   const recent = rects.slice(-windowSize)
   const older = rects.slice(0, -windowSize)
 
   // Aggressively merge the older backlog
-  const mergedOlder = mergeOverlappingRects(older, maxLocalPatchMergePixels)
+  const mergedOlder = mergeOverlappingRects(older, maxLocalPatchMergePixels, maxUnionWasteRatio)
 
   return [...mergedOlder, ...recent]
 }
 
-export const mergeOverlappingRects = (rects: readonly SelectionRect[], maxLocalPatchMergePixels = MAX_LOCAL_PATCH_MERGE_PIXELS): SelectionRect[] => {
+export const mergeOverlappingRects = (rects: readonly SelectionRect[], maxLocalPatchMergePixels = MAX_LOCAL_PATCH_MERGE_PIXELS, maxUnionWasteRatio = 3): SelectionRect[] => {
+  if (maxUnionWasteRatio === 1) return disjointRectUnion(rects)
   // A long brush stroke produces a chain of slightly overlapping stamps. A
   // plain transitive merge turns that chain into one huge bounding box, which
   // makes a large multi-layer canvas recompose thousands of times more pixels
   // than were actually touched. Keep the rectangles separate when the union
   // has a large amount of untouched area; every rectangle is still processed,
   // so this only changes the work shape, never the painted result.
-  const maxUnionWasteRatio = 3
   const merged: SelectionRect[] = []
   for (const source of rects) {
     let candidate = source
@@ -87,7 +117,8 @@ export const mergeOverlappingRects = (rects: readonly SelectionRect[], maxLocalP
       const candidateArea = Math.max(1, candidate.width * candidate.height)
       const previousArea = Math.max(1, previous.width * previous.height)
       const unionArea = Math.max(1, union.width * union.height)
-      const overlaps = Boolean(intersectRect(candidate, previous))
+      const overlap = intersectRect(candidate, previous)
+      const overlaps = Boolean(overlap)
       // Large solid brushes expose several narrow, disjoint edge strips as a
       // stamp moves. Uploading every strip separately is cheap in JavaScript
       // but creates many GPU texture updates per pointer sample. Batch any
@@ -104,9 +135,9 @@ export const mergeOverlappingRects = (rects: readonly SelectionRect[], maxLocalP
   return merged
 }
 
-export const boundedDirtyRects = (rects: readonly SelectionRect[], limit = 32, maxLocalPatchMergePixels = MAX_LOCAL_PATCH_MERGE_PIXELS): SelectionRect[] => {
+export const boundedDirtyRects = (rects: readonly SelectionRect[], limit = 32, maxLocalPatchMergePixels = MAX_LOCAL_PATCH_MERGE_PIXELS, maxUnionWasteRatio = 3): SelectionRect[] => {
   // Use sliding window merge for better long-stroke handling
-  const merged = mergeRecentDirtyRects(rects, 16, maxLocalPatchMergePixels)
+  const merged = mergeRecentDirtyRects(rects, 16, maxLocalPatchMergePixels, maxUnionWasteRatio)
   if (merged.length <= limit) return merged
   // Preserve the newest local regions and collapse the oldest backlog into
   // one conservative rectangle. This is mainly for cached surfaces that are

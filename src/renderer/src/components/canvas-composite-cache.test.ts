@@ -149,6 +149,26 @@ beforeEach(() => {
 afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals() })
 
 describe('CanvasCompositeCache', () => {
+  it.each([true, false])('presents every rapid diagonal stroke pixel before pointer-up (full surface: %s)', fullSurface => {
+    const document = createDocument('rapid diagonal live pixels', 256, 256, 'rgba', false)
+    const paint = document.layers[0], bottom = createLayer('complex backdrop', 256, 256, 'rgba')
+    for (let i = 0; i < bottom.pixels.length; i += 4) bottom.pixels.set([i % 251, 87, 193, 140], i)
+    document.layers = [bottom, paint]
+    const cache = new CanvasCompositeCache(fullSurface ? 256 * 1024 * 1024 : 1), context = makeContext()
+    draw(cache, document, context)
+    const edit = beginPixelEdit(paint.id)
+    const points = [{ x: 12, y: 14 }, { x: 240, y: 231 }, { x: 25, y: 238 }, { x: 220, y: 22 }]
+    for (let index = 1; index < points.length; index++) {
+      const from = points[index - 1], to = points[index]
+      paintLine(document, paint, edit, from.x, from.y, to.x, to.y, 4, { r: 255, g: 0, b: 0, a: 128 })
+      for (const rect of brushStrokeInvalidationRects(from, to, 4, null, 256, 256)) cache.invalidateDocumentRect(rect, document, undefined, [paint.id])
+      draw(cache, document, context, { liveRasterEdit: true })
+      const source = context.drawImage.mock.lastCall![0] as MockOffscreenCanvas
+      expect(source.pixels).toEqual(compositeRegion(document, 0, 0, 256, 256))
+    }
+  })
+
+
   it('restores the caller clip after styled rendering throws and can draw a later view', () => {
     const document = createDocument('styled render failure', 42, 39, 'rgba')
     const layer = document.layers[0]
