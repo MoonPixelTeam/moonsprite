@@ -95,11 +95,11 @@ export const refreshPenCursor = (ports: CanvasPenCursorPorts, refs: CanvasPenCur
   if (overlay) setHidden(overlay, !adaptive || !descriptor)
   if (adaptive && descriptor && overlay) {
     setCursorFlag(canvas, 'adaptiveCursor', 'true')
-    setCursorStyle(overlay, 'maskImage', `url("${descriptor.source}")`)
-    setCursorStyle(overlay, 'backgroundImage', 'none')
+    setCursorStyle(overlay, 'maskImage', pixelCross ? 'none' : `url("${descriptor.source}")`)
+    setCursorStyle(overlay, 'backgroundImage', pixelCross ? `url("${descriptor.source}")` : 'none')
     const color = preferences?.cursorColor
-    setCursorStyle(overlay, 'backdropFilter', preferences?.cursorColorMode === 'custom' ? 'none' : AUTO_CONTRAST_FILTER)
-    setCursorStyle(overlay, 'backgroundColor', preferences?.cursorColorMode === 'custom' && color ? `rgba(${color.r}, ${color.g}, ${color.b}, ${color.a / 255})` : '')
+    setCursorStyle(overlay, 'backdropFilter', pixelCross || preferences?.cursorColorMode === 'custom' ? 'none' : AUTO_CONTRAST_FILTER)
+    setCursorStyle(overlay, 'backgroundColor', !pixelCross && preferences?.cursorColorMode === 'custom' && color ? `rgba(${color.r}, ${color.g}, ${color.b}, ${color.a / 255})` : '')
     setCursorStyle(overlay, 'width', `${descriptor.size}px`)
     setCursorStyle(overlay, 'height', `${descriptor.size}px`)
     const move: CanvasCursorPositionUpdater = pointer => {
