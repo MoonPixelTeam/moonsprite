@@ -3,6 +3,11 @@ import { applyCursorPreferences, cursorOverlayDescriptor } from './cursor-theme'
 import pixelGrabCursor from '@/assets/pixel-grab-cursor.svg'
 import type { CursorScale } from '@/core/file-preferences'
 
+// Match Vite's SVG inlining: XML attributes keep literal single quotes.
+vi.mock('@/assets/pixel-grab-cursor.svg', () => ({
+  default: "data:image/svg+xml,%3csvg%20xmlns='http://www.w3.org/2000/svg'%20width='32'%20height='32'%3e%3c/svg%3e"
+}))
+
 vi.mock('./display-scale', () => ({
   isTauriRuntime: () => false,
   normalizeDisplayScaleFactor: (value: number) => value,
@@ -14,6 +19,24 @@ it.each(['grab', 'grabbing'])('uses the SVG hand with the same scaled hotspot fo
   expect(cursorOverlayDescriptor(`var(--cursor-${cursor})`, false, 2)).toEqual({
     source: pixelGrabCursor, size: 64, hotspotX: 32, hotspotY: 32
   })
+})
+
+it('quotes inlined SVG URLs safely for grab and grabbing at the default scale', async () => {
+  await applyCursorPreferences(false, 1)
+  for (const cursor of ['grab', 'grabbing']) {
+    const value = document.documentElement.style.getPropertyValue(`--cursor-${cursor}`)
+    expect(value).toBe(`url("${pixelGrabCursor}") 16 16, url("${pixelGrabCursor}") 16 16, default`)
+  }
+})
+
+it('quotes inlined SVG URLs safely inside image-set on high DPI displays', async () => {
+  const display = await import('./display-scale')
+  vi.spyOn(display, 'observeDisplayScaleFactor').mockResolvedValue(2)
+  await applyCursorPreferences(false, 1)
+  for (const cursor of ['grab', 'grabbing']) {
+    const value = document.documentElement.style.getPropertyValue(`--cursor-${cursor}`)
+    expect(value).toBe(`image-set(url("${pixelGrabCursor}") 2x) 8 8, image-set(url("${pixelGrabCursor}") 2x) 8 8, default`)
+  }
 })
 
 it('bounds scaled cursor images across every supported scale and regenerates evicted assets', async () => {

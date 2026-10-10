@@ -147,9 +147,12 @@ const formatCursorNumber = (value: number): string => String(Math.round(value * 
 
 const cursorImageValue = (source: string, resolution: number): string => {
   const normalizedResolution = normalizeDisplayScaleFactor(resolution)
+  // Vite's inline SVG URLs contain single-quoted XML attributes.
+  // Escape the URL independently so those quotes cannot terminate CSS url().
+  const url = `url("${source.replaceAll('\\', '\\\\').replaceAll('"', '\\"')}")`
   return normalizedResolution === 1
-    ? `url('${source}')`
-    : `image-set(url('${source}') ${formatCursorNumber(normalizedResolution)}x)`
+    ? url
+    : `image-set(${url} ${formatCursorNumber(normalizedResolution)}x)`
 }
 
 // A CSS image cursor must have a fallback keyword. `none` prevents WebView
