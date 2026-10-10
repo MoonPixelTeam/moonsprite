@@ -32,6 +32,8 @@ import { encodeRuntimeRasterData, encodeSparseRasterData, toU8 } from './project
 import { manifestTilemapFromData, manifestFreeTilesFromData } from './project-format-manifest'
 import { createSavedProjectPreview } from './project-save-preview'
 import { buildTimelapseManifest } from './project-format-timelapse-encode'
+import { validateProjectReferenceImage } from './project-reference-images'
+import { encodeCanvasReferences } from './project-canvas-references'
 
 const rasterGeometryMatchesSurface = (raster: ProjectArchiveResource['raster'], surface: RasterLayer | AnimationCelSurface): boolean =>
   Boolean(raster && raster.width === surface.width && raster.height === surface.height && raster.offsetX === surface.offsetX && raster.offsetY === surface.offsetY)
@@ -334,12 +336,25 @@ export const createProjectArchiveFiles = (document: SpriteDocument, options: Pro
     })
   }
   const timelapse = buildTimelapseManifest(document, files, resources)
+  const canvasReferences = encodeCanvasReferences(document.canvasReferences, files)
+  const referenceIds = new Set<string>()
+  const referenceImages = (document.referenceImages ?? []).map(image => {
+    validateProjectReferenceImage(image, image.pixels.byteLength)
+    if (referenceIds.has(image.id)) throw new Error(tr('core.project.layerCorrupt', { name: tr('panel.reference') }))
+    referenceIds.add(image.id)
+    const dataFile = `references/${image.id}.rgba`
+    files[dataFile] = new Uint8Array(image.pixels.buffer, image.pixels.byteOffset, image.pixels.byteLength)
+    resources.push({ key: `reference:${image.id}`, path: dataFile, revision: null, byteLength: image.pixels.byteLength })
+    return { id: image.id, width: image.width, height: image.height, dataFile }
+  })
   const {
     schemaVersion: _schemaVersion,
     layers: _layers,
     groups: _groups,
     palette: _palette,
     customBrushes: _customBrushes,
+    referenceImages: _referenceImages,
+    canvasReferences: _canvasReferences,
     tilesets: _tilesets,
     animation: _animation,
     timelapse: _timelapse,
@@ -368,6 +383,8 @@ export const createProjectArchiveFiles = (document: SpriteDocument, options: Pro
         normalizePaletteColumns(document.paletteColumns)
       ),
       customBrushes,
+      referenceImages,
+      canvasReferences,
       tilesets,
       animation,
       timelapse,

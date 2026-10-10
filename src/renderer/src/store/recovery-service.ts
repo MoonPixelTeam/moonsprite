@@ -20,6 +20,7 @@ export interface RecoveryAutosaveTarget {
 export class RecoveryService {
   private queue: Promise<void> = Promise.resolve()
   private readonly savedRevisions = new Map<string, { revision?: number; contentRevision?: number }>()
+  private readonly pendingAutosaves = new Map<string, { target?: RecoveryAutosaveTarget; api: MoonSpriteApi; completion: Promise<void> }>()
 
   private enqueue(task: () => Promise<void>): Promise<void> {
     const operation = this.queue.then(task, task)
@@ -53,36 +54,61 @@ export class RecoveryService {
   }
 
   autosave(api: MoonSpriteApi, targets: readonly RecoveryAutosaveTarget[]): Promise<void> {
-    return this.enqueue(async () => {
-      const diagnostic = runtimeDiagnosticsActive()
-        ? beginRuntimeDiagnosticOperation('recovery.autosave', { documents: targets.length }, 5_000)
-        : null
-      const failures: Error[] = []
-      for (const [index, { id, document, revision, contentRevision }] of targets.entries()) {
-        const previous = this.savedRevisions.get(id)
-        const canDeduplicate = revision !== undefined || contentRevision !== undefined
-        if (canDeduplicate && previous && previous.revision === revision && previous.contentRevision === contentRevision) continue
-        try {
-          diagnostic?.mark('encode-start', { index, width: document.width, height: document.height, layers: document.layers.length })
-          await prepareLocalTimelapseSave(document, api)
-          // Recovery only needs editable project data. Serial processing prevents
-          // multiple large documents from being cloned and compressed together.
-          const data = await encodeProjectAsync(document, { includePreview: false, compressionLevel: 1 })
-          diagnostic?.mark('write-start', { index, archiveBytes: data.byteLength })
-          await api.writeRecovery(id, document.name, data)
-          // Only mark the revision after the write succeeds. A failed encode
-          // or write must remain eligible for the next recovery cycle.
-          if (canDeduplicate) this.savedRevisions.set(id, { revision, contentRevision })
-        } catch (error) {
-          failures.push(new Error(`${document.name}: ${error instanceof Error ? error.message : String(error)}`))
-        }
+    const operations = targets.map(target => {
+      const id = target.id
+      const pending = this.pendingAutosaves.get(target.id)
+      if (pending) {
+        pending.target = target
+        pending.api = api
+        return pending.completion
       }
-      diagnostic?.finish(failures.length > 0 ? 'error' : 'ok', { failures: failures.length })
-      if (failures.length > 0) throw new AggregateError(failures, tr('core.recovery.autosaveFailed', { count: failures.length }))
+      const job = { target: target as RecoveryAutosaveTarget | undefined, api, completion: Promise.resolve() }
+      this.pendingAutosaves.set(target.id, job)
+      job.completion = this.enqueue(async () => {
+        if (this.pendingAutosaves.get(id) === job) this.pendingAutosaves.delete(id)
+        const current = job.target
+        job.target = undefined
+        if (current) await this.saveTarget(job.api, current)
+      })
+      return job.completion
+    })
+    return Promise.allSettled(operations).then(results => {
+      const failures = results.flatMap(result => result.status === 'rejected'
+        ? result.reason instanceof AggregateError ? result.reason.errors : [result.reason] : [])
+      if (failures.length) throw new AggregateError(failures, tr('core.recovery.autosaveFailed', { count: failures.length }))
     })
   }
 
+  private async saveTarget(api: MoonSpriteApi, target: RecoveryAutosaveTarget): Promise<void> {
+    const diagnostic = runtimeDiagnosticsActive()
+      ? beginRuntimeDiagnosticOperation('recovery.autosave', { documents: 1 }, 5_000)
+      : null
+    const { id, document, revision, contentRevision } = target
+    const previous = this.savedRevisions.get(id)
+    const canDeduplicate = revision !== undefined || contentRevision !== undefined
+    if (canDeduplicate && previous && previous.revision === revision && previous.contentRevision === contentRevision) {
+      diagnostic?.finish('ok', { skipped: true })
+      return
+    }
+    try {
+      diagnostic?.mark('encode-start', { width: document.width, height: document.height, layers: document.layers.length })
+      await prepareLocalTimelapseSave(document, api)
+      const data = await encodeProjectAsync(document, { includePreview: false, compressionLevel: 1 })
+      diagnostic?.mark('write-start', { archiveBytes: data.byteLength })
+      await api.writeRecovery(id, document.name, data)
+      // A failed encode/write must remain eligible for the next recovery cycle.
+      if (canDeduplicate) this.savedRevisions.set(id, { revision, contentRevision })
+      diagnostic?.finish('ok')
+    } catch (error) {
+      diagnostic?.finish('error', { message: String(error) })
+      throw new AggregateError([new Error(`${document.name}: ${error instanceof Error ? error.message : String(error)}`)], tr('core.recovery.autosaveFailed', { count: 1 }))
+    }
+  }
+
   delete(api: MoonSpriteApi, id: string): Promise<void> {
+    const pending = this.pendingAutosaves.get(id)
+    if (pending) pending.target = undefined
+    this.pendingAutosaves.delete(id)
     return this.enqueue(async () => {
       await api.deleteRecovery(id)
       this.savedRevisions.delete(id)
@@ -90,9 +116,6 @@ export class RecoveryService {
   }
 
   discard(api: MoonSpriteApi, id: string): Promise<void> {
-    return this.enqueue(async () => {
-      await api.deleteRecovery(id)
-      this.savedRevisions.delete(id)
-    })
+    return this.delete(api, id)
   }
 }

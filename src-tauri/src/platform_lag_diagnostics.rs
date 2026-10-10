@@ -36,6 +36,7 @@ impl Drop for Monitor {
 // a stalled renderer does not prevent collecting process evidence.
 #[tauri::command]
 pub fn set_lag_capture(app: AppHandle, enabled: bool) -> Result<(), String> {
+    crate::platform_browser_trace::set_enabled(&app, enabled)?;
     let state = app.state::<LagDiagnosticState>();
     let mut monitor = state
         .monitor
@@ -61,6 +62,8 @@ pub fn set_lag_capture(app: AppHandle, enabled: bool) -> Result<(), String> {
     let worker_app = app.clone();
     std::thread::Builder::new().name("lag-evidence".into()).spawn(move || {
         let result = (|| -> Result<(), String> {
+            let mut previous: Option<(Instant, Value)> = None;
+            let mut hot_samples = 0;
             loop {
                 if !worker_active.load(Ordering::Acquire) { break; }
                 let state = worker_app.state::<LagDiagnosticState>();
@@ -69,6 +72,21 @@ pub fn set_lag_capture(app: AppHandle, enabled: bool) -> Result<(), String> {
                 let age = heartbeat.as_ref().map(|(at, _)| at.elapsed().as_millis() as u64);
                 let visible = heartbeat.as_ref().map(|(_, visible)| *visible);
                 drop(heartbeat);
+                if let Some((at, prior)) = previous.as_ref() {
+                    let elapsed_ms = at.elapsed().as_secs_f64() * 1000.0;
+                    let hot = sample["processes"].as_array().is_some_and(|processes| processes.iter().any(|process| {
+                        prior["processes"].as_array().and_then(|p| p.iter().find(|p| p["pid"] == process["pid"] && p["startTimeUnixSeconds"] == process["startTimeUnixSeconds"]))
+                            .and_then(|p| p["cpuTimeMs"].as_u64()).zip(process["cpuTimeMs"].as_u64())
+                            .is_some_and(|(before, after)| after.saturating_sub(before) as f64 >= elapsed_ms * 0.75)
+                    }));
+                    hot_samples = if hot && visible == Some(true) { hot_samples + 1 } else { 0 };
+                }
+                if hot_samples == 2 || (visible == Some(true) && age.is_some_and(|age| age >= 30_000 && age < 40_000)) {
+                    if let Err(error) = crate::platform_browser_trace::trigger(&worker_app, "native-cpu-or-heartbeat", json!({"sample": sample, "heartbeatAgeMs": age, "sustainedHotSamples": hot_samples})) {
+                        eprintln!("Native browser trace trigger rejected: {error}");
+                    }
+                }
+                previous = Some((Instant::now(), sample.clone()));
                 let timestamp = SystemTime::now().duration_since(UNIX_EPOCH).map_err(|e| e.to_string())?.as_millis() as u64;
                 let event = json!({ "version": 1, "kind": "native-lag-sample", "name": "lag.native-sample", "timestampMs": timestamp,
                     "detail": { "rendererHeartbeatAgeMs": age, "rendererVisibleAtLastHeartbeat": visible,

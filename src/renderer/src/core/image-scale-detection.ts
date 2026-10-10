@@ -220,10 +220,12 @@ export function detectDocumentPixelScale(document: SpriteDocument): number | nul
   const state = createDetectionState(width, height)
 
   const cache = new DocumentCompositeCache()
-  for (let startY = 0; startY < height; startY += DETECTION_CHUNK_ROWS) {
-    const rowCount = Math.min(DETECTION_CHUNK_ROWS, height - startY)
-    const rgba = compositeRegion(document, 0, startY, width, rowCount, cache)
-    scanRows(rgba, width, rowCount, startY, state)
-  }
-  return dominantFactor(state, width, height)
+  try {
+    for (let startY = 0; startY < height; startY += DETECTION_CHUNK_ROWS) {
+      const rowCount = Math.min(DETECTION_CHUNK_ROWS, height - startY)
+      const rgba = compositeRegion(document, 0, startY, width, rowCount, cache)
+      scanRows(rgba, width, rowCount, startY, state)
+    }
+    return dominantFactor(state, width, height)
+  } finally { cache.dispose() }
 }

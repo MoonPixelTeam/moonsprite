@@ -11,6 +11,7 @@ import type { WorkspaceCommandContext } from './workspace-command-context'
 import { setTimelineActiveContext } from './workspace-animation-selection'
 import { clearFreeTileInstanceSelection } from './workspace-free-tile-selection'
 import { tr } from './workspace-translation'
+import { clearUnusedTiles } from './workspace-unused-tiles'
 
 const layerOwnsTileset = (layer: RasterLayer, tilesetId: string): boolean =>
   (layer.kind === 'tilemap' && layer.tilemapTilesetId === tilesetId)
@@ -32,13 +33,16 @@ export function createWorkspaceTilemapCommands({ get, recording }: WorkspaceComm
     activateTilemapLayerForDrawing(layerId) {
       get().mutateActive((session) => {
         if (session.tilemapMode !== 'paint') return
+        const activeLayer = session.document.layers.find((layer) => layer.id === session.document.activeLayerId)
+        // An explicit target from a completed tile stroke can restore its
+        // owner. Remembered tiles alone cannot override another layer kind.
+        if (!layerId && activeLayer?.kind !== 'tilemap') return
         const requestedOwner = layerId
           ? session.document.layers.find((layer) => layer.id === layerId && layer.kind === 'tilemap')
           : undefined
         const owner = requestedOwner
           ?? (session.selectedTilesetId ? ownerLayerForTileset(session, session.selectedTilesetId) : undefined)
         if (owner?.kind !== 'tilemap') return
-        const activeLayer = session.document.layers.find((layer) => layer.id === session.document.activeLayerId)
         // A shared tileset is intentionally not an implicit layer switch. For
         // a concrete edit target, however, the target layer is authoritative;
         // this prevents pointer-up from restoring the layer that was active
@@ -176,6 +180,12 @@ export function createWorkspaceTilemapCommands({ get, recording }: WorkspaceComm
 
     deleteTilesetTile(tilesetId, tileId) {
       return get().deleteTilesetTiles(tilesetId, [tileId])
+    },
+
+    clearUnusedTilesetTiles(tilesetId) {
+      let cleared = false
+      get().mutateActive(session => { cleared = clearUnusedTiles(session, tilesetId, recordDocumentOperation) }, false)
+      return cleared
     },
 
     deleteTilesetTiles(tilesetId, tileIds) {

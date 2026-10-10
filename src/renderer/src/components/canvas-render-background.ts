@@ -10,6 +10,7 @@ export function createCanvasBackground({
   repeatCopies,
   canvasBoundaryFor,
   context,
+  guideContext = context,
   clipCanvasCopy,
   checkerboardTileRef,
   renderCanvasWidth,
@@ -34,6 +35,7 @@ export function createCanvasBackground({
   }[]
   canvasBoundaryFor: (copy: { x: number; y: number }) => ReturnType<typeof deviceAlignedCanvasRect>
   context: RasterContext2D
+  guideContext?: RasterContext2D
   clipCanvasCopy: (
     targetContext: RasterContext2D,
     copy: {
@@ -109,6 +111,7 @@ export function createCanvasBackground({
   }
   for (const copy of repeatCopies) drawCheckerboard(copy)
   const drawGrid = (gridX: number, gridY: number, cellWidth: number, cellHeight: number, color: RgbaColor, copy = repeatCopies[0]): void => {
+    const context = guideContext
     if (!copy) return
     context.save()
     clipCanvasCopy(context, copy)
@@ -134,6 +137,7 @@ export function createCanvasBackground({
     context.restore()
   }
   const drawIsoGuides = (copy: (typeof repeatCopies)[number]): void => {
+    const context = guideContext
     const spacing = isoGuideSpacingForZoom(view.zoom, isoViewPreferences.guideUnitSize)
     const segments = isoGuideSegments(
       document.width,

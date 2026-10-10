@@ -2,6 +2,7 @@ import { canvasBrushSizePreviewSession } from './canvas-brush-size-update'
 import { rememberPaintedDrag } from './canvas-recent-colors'
 import { drawBrushCaptureSurround } from './canvas-brush-capture-overlay'
 import { createCanvasBackground } from './canvas-render-background'
+import { prepareCanvasGuideOverlay } from './canvas-guide-overlay'
 import { renderCanvasContent } from './canvas-render-content'
 import { createCanvasPreviewPixels } from './canvas-render-preview-pixels'
 import { createCanvasTilePreview, publishCanvasTilePreview } from './canvas-render-tile-preview'
@@ -49,6 +50,7 @@ import {
 export interface CanvasRenderContext {
   resources: {
     canvasRef: React.RefObject<HTMLCanvasElement | null>
+    guideCanvasRef: React.RefObject<HTMLCanvasElement | null>
     inputRef: React.RefObject<import('@/core/canvas-input').CanvasInputState>
     wheelBrushSizePreviewRef: React.RefObject<boolean>
     magicPreviewFlash: import('./canvas-magic-preview-flash').CanvasMagicPreviewFlash
@@ -462,6 +464,7 @@ function renderFrame(frame: CanvasRenderContext, checkpoint: (stage: string) => 
   // right edge of one copy differ from the left edge of its neighbour by a
   // physical pixel, which shows up as a transient seam during previews.
   const baseCanvasBoundary = renderPlan.canvasBoundary
+  const guideContext = prepareCanvasGuideOverlay(frame.resources.guideCanvasRef.current, rect, displaySize, dpr, isWorkspaceResizing(), view, applyViewRotation) ?? context
   const renderCanvasWidth = baseCanvasBoundary.width
   const renderCanvasHeight = baseCanvasBoundary.height
   const repeatOffsets = tileRepeatOffsetsForViewport(viewport, originX, originY, canvasWidth, canvasHeight, view.tileRepeatMode ?? 'off')
@@ -502,6 +505,7 @@ function renderFrame(frame: CanvasRenderContext, checkpoint: (stage: string) => 
     repeatCopies,
     canvasBoundaryFor,
     context,
+    guideContext,
     clipCanvasCopy,
     checkerboardTileRef,
     renderCanvasWidth,
@@ -626,6 +630,7 @@ function renderFrame(frame: CanvasRenderContext, checkpoint: (stage: string) => 
     currentSession,
     document,
     previewPixelPlacements,
+    repeatCopies,
     view,
     deviceScale,
     activeBrushTexture,
@@ -690,7 +695,8 @@ function renderFrame(frame: CanvasRenderContext, checkpoint: (stage: string) => 
     smoothPixelSampling,
     gradientPreviewInputAtRef,
     gradientLineVisible,
-    gradientLineColor
+    gradientLineColor,
+    guideContext
   })
   renderCanvasConnectedLine({
     currentActiveLayer,
@@ -713,7 +719,7 @@ function renderFrame(frame: CanvasRenderContext, checkpoint: (stage: string) => 
   })
   renderCanvasTransformGuides({
     session,
-    context,
+    context: guideContext,
     clipBaseCanvas,
     symmetryAxisPreferences,
     document,
@@ -915,7 +921,7 @@ function renderFrame(frame: CanvasRenderContext, checkpoint: (stage: string) => 
     document,
     originX,
     originY,
-    context,
+    context: guideContext,
     sliceTool,
     sliceOutlinesVisible,
     inputRef,

@@ -277,7 +277,7 @@ export function migrateProjectManifest(input: unknown): ProjectManifest {
       LOOP_SECTIONS_PROJECT_SCHEMA_VERSION,
       LINKED_LAYERS_PROJECT_SCHEMA_VERSION,
       FREE_TILE_SET_PROJECT_SCHEMA_VERSION,
-      19,
+      19, 20,
       PROJECT_SCHEMA_VERSION
     ].includes(version) ||
     candidate.document.schemaVersion !== candidate.schemaVersion
@@ -354,6 +354,8 @@ export function migrateProjectManifest(input: unknown): ProjectManifest {
       ...(layers ? { layers: layers as ManifestLayer[] } : {}),
       ...(groups ? { groups: groups as LayerGroup[] } : {}),
       tilesets,
+      referenceImages: version >= 21 ? candidate.document.referenceImages as ProjectManifest['document']['referenceImages'] : [],
+      canvasReferences: version >= 21 ? candidate.document.canvasReferences as ProjectManifest['document']['canvasReferences'] : [],
       animation: { ...animation, cels },
       slices: normalizeDocumentSlices(candidate.document.slices, Number(candidate.document.width) || 1, Number(candidate.document.height) || 1)
     }
@@ -403,21 +405,4 @@ export const directActiveCelDataFiles = (manifest: ProjectManifest): Map<string,
   return dataFiles
 }
 
-export const requiredProjectDataFiles = (manifest: ProjectManifest, activeCelFiles: ReadonlyMap<string, RasterDataSource>, storedTimelapseFiles: ReadonlyMap<string, Uint8Array> = new Map()): Set<string> => {
-  const source = manifest.document
-  const required = new Set<string>()
-  for (const layer of source.layers) required.add(activeCelFiles.get(layer.id)?.dataFile ?? layer.dataFile)
-  for (const brush of source.customBrushes ?? []) {
-    required.add(brush.dataFile)
-    if (brush.colorsFile) required.add(brush.colorsFile)
-  }
-  for (const tileset of source.tilesets ?? []) required.add(tileset.dataFile)
-  for (const cel of source.animation.cels) {
-    if (cel.dataFile) required.add(cel.dataFile)
-    if (cel.mask?.dataFile) required.add(cel.mask.dataFile)
-  }
-  for (const entry of source.animation.layerMasks ?? []) required.add(entry.mask.dataFile)
-  for (const entry of source.animation.groupMasks ?? []) required.add(entry.mask.dataFile)
-  for (const snapshot of source.timelapse?.snapshots ?? []) if (snapshot.dataFile && !storedTimelapseFiles.has(snapshot.dataFile)) required.add(snapshot.dataFile)
-  return required
-}
+export { requiredProjectDataFiles } from './project-format-resources'

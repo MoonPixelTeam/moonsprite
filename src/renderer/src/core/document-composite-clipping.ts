@@ -74,7 +74,9 @@ export const compositeClippingLayers = (
   for (let index = 0; index < layers.length; index += 1) {
     const base = layers[index]
     if (layers[index + 1]?.clippingMask !== true) {
-      normalBatch.push(base)
+      // The raster batch expects visible layers; retain hidden chain bases
+      // in the stack so their clipped layers cannot attach to a lower base.
+      if (base.visible && base.opacity > 0) normalBatch.push(base)
       continue
     }
     flushNormalBatch()

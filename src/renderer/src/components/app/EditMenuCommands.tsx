@@ -7,6 +7,7 @@ import { translateSourceText } from '@/core/localization'
 import type { ShortcutId } from '@/core/shortcuts'
 import { useWorkspace } from '@/store/workspace'
 import { cutWorkspaceItems } from '@/store/workspace-cut'
+import { deleteWorkspaceContent } from '@/store/workspace-delete'
 import { invertWorkspaceColors, rotateWorkspaceContent } from '@/store/workspace-edit-actions'
 
 export function EditMenuCommands({ shortcutFor, closeMenu, onOpenOutline, pasteSpecial }: { shortcutFor: (id: ShortcutId) => string; closeMenu: () => void; onOpenOutline: () => void; pasteSpecial: ReactNode }) {
@@ -33,7 +34,7 @@ export function EditMenuCommands({ shortcutFor, closeMenu, onOpenOutline, pasteS
     {item('copyMerged', () => state.copySelection(true))}
     {item('paste', () => { void state.pasteClipboard() })}
     {pasteSpecial}
-    {item('deleteLayer', () => { if (session?.selection) state.deleteSelection(); else state.deleteActiveLayer() }, t('common.delete'))}
+    {item('deleteLayer', deleteWorkspaceContent, t('common.delete'))}
     <span className="menu-divider" />
     {item('fillForeground', state.fillForeground, (translateSourceText(locale, '填充') || (locale === 'zh-CN' ? '填充' : 'Fill')))}
     {submenu(t('app.menu.select.outline'), <>{item('quickOutline', () => { state.quickOutlineActiveSelection() })}{item('outline', onOpenOutline)}</>)}

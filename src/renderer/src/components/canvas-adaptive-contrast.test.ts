@@ -83,3 +83,56 @@ it.each([800, 3840])('filters only a materialized cursor crop on a %s-pixel view
   expect(filtered).toHaveLength(10)
   expect(filtered.every(draw => draw.source === surfaces[1])).toBe(true)
 })
+
+it('reuses preview surfaces while the brush crosses the canvas edge and clears retained pixels', () => {
+  const surfaces: Array<{ width: number; height: number; clearRect: ReturnType<typeof vi.fn> }> = []
+  const resized = vi.fn()
+  vi.stubGlobal('OffscreenCanvas', class {
+    private storedWidth: number
+    private storedHeight: number
+    readonly clearRect = vi.fn()
+    private readonly context = { clearRect: this.clearRect, drawImage: vi.fn(), filter: 'none' }
+    constructor(width: number, height: number) { this.storedWidth = width; this.storedHeight = height; surfaces.push(this) }
+    get width() { return this.storedWidth }
+    set width(value: number) { resized(); this.storedWidth = value }
+    get height() { return this.storedHeight }
+    set height(value: number) { resized(); this.storedHeight = value }
+    getContext() { return this.context }
+  })
+  const context = {
+    canvas: { width: 4096, height: 4096 },
+    getTransform: () => ({ a: 1, b: 0, c: 0, d: 1, e: 0, f: 0, inverse: () => ({ translate: vi.fn() }) }),
+    createPattern: () => ({ setTransform: vi.fn() })
+  } as unknown as RasterContext2D
+  for (let i = 0; i < 500; i++) canvasAdaptiveContrast(context, { x: -(i % 9), y: 0, width: 64, height: 64 })
+  expect(surfaces).toHaveLength(2)
+  expect(resized).not.toHaveBeenCalled()
+  for (const surface of surfaces) {
+    expect(surface.width).toBe(64)
+    expect(surface.height).toBe(64)
+    expect(surface.clearRect).toHaveBeenLastCalledWith(0, 0, 64, 64)
+  }
+})
+
+it('releases oversized preview capacity after changing brush size or aspect ratio', () => {
+  const surfaces: Array<{ width: number; height: number }> = []
+  vi.stubGlobal('OffscreenCanvas', class {
+    private readonly context = { clearRect: vi.fn(), drawImage: vi.fn(), filter: 'none' }
+    constructor(public width: number, public height: number) { surfaces.push(this) }
+    getContext() { return this.context }
+  })
+  const context = {
+    canvas: { width: 4096, height: 4096 },
+    getTransform: () => ({ a: 1, b: 0, c: 0, d: 1, e: 0, f: 0, inverse: () => ({ translate: vi.fn() }) }),
+    createPattern: () => ({ setTransform: vi.fn() })
+  } as unknown as RasterContext2D
+  for (const [width, height] of [[1024, 1024], [16, 16], [8, 1000], [1000, 8], [800, 8]]) {
+    canvasAdaptiveContrast(context, { x: 0, y: 0, width, height })
+    expect(surfaces).toHaveLength(2)
+    for (const surface of surfaces) {
+      expect(surface.width).toBeGreaterThanOrEqual(width)
+      expect(surface.height).toBeGreaterThanOrEqual(height)
+      expect(surface.width * surface.height).toBeLessThanOrEqual(width * height * 1.25)
+    }
+  }
+})

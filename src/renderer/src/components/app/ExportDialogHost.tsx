@@ -8,7 +8,7 @@ import { PixelUtilityIcon } from '@/components/PixelUtilityIcon'
 import { TextInput } from '@/components/TextInput'
 import { ThemedSelect } from '@/components/ThemedSelect'
 import { loadDocumentExportSettings, loadExportPresets, parentDirectoryFromPath, saveExportPresets, withExportFileExtension, type ExportPreset } from '@/core/export-settings'
-import { EXPORT_FORMAT_PREFERENCE_KEY, imageExportKindForPreference, loadEditorPreferences, outputDirectoryForOperation } from '@/core/file-preferences'
+import { EXPORT_FORMAT_PREFERENCE_KEY, documentExportKindForPreference, loadEditorPreferences, outputDirectoryForOperation } from '@/core/file-preferences'
 import { readStoredString } from '@/core/storage'
 import { type ExportOptions, useWorkspace } from '@/store/workspace'
 import { useI18n } from '@/components/I18nProvider'
@@ -49,12 +49,12 @@ export const ExportDialogHost = forwardRef<ExportDialogHandle, Props>(function E
     if (!session) return
     const preferences = loadEditorPreferences()
     const remembered = loadDocumentExportSettings(session.document)
-    const preferredFormat = imageExportKindForPreference(readStoredString(EXPORT_FORMAT_PREFERENCE_KEY))
+    const preferredFormat = documentExportKindForPreference(readStoredString(EXPORT_FORMAT_PREFERENCE_KEY))
     const frameCount = session.document.animation?.frames.length ?? 1
-    const defaultFormat = requestedTarget === 'frames' ? ((preferredFormat === 'gif' || preferredFormat === 'webp') || preferredFormat === 'psd' ? 'png-auto' : preferredFormat) : frameCount > 1 ? 'gif' : preferredFormat
-    const format = requestedTarget === 'frames' && ((remembered?.format === 'gif' || remembered?.format === 'webp') || remembered?.format === 'psd') ? 'png-auto' : remembered?.format ?? defaultFormat
+    const defaultFormat = requestedTarget === 'frames' ? ((preferredFormat === 'gif' || preferredFormat === 'webp') || (preferredFormat === 'psd' || preferredFormat === 'moonsprite') ? 'png-auto' : preferredFormat) : frameCount > 1 && preferredFormat !== 'moonsprite' ? 'gif' : preferredFormat
+    const format = requestedTarget === 'frames' && ((remembered?.format === 'gif' || remembered?.format === 'webp') || remembered?.format === 'psd' || remembered?.format === 'moonsprite') ? 'png-auto' : remembered?.format ?? defaultFormat
     let target = requestedTarget ?? remembered?.target ?? 'document'
-    if (format === 'psd') target = 'document'
+    if (format === 'psd' || format === 'moonsprite') target = 'document'
     else if ((format === 'gif' || format === 'webp') && target === 'frames') target = 'document'
     else if (target === 'frames' && requestedTarget !== 'frames' && frameCount <= 1) target = 'document'
     else if (target === 'slices' && !session.document.slices?.length) target = 'document'
@@ -65,7 +65,7 @@ export const ExportDialogHost = forwardRef<ExportDialogHandle, Props>(function E
     const layerId = target === 'layer' && remembered?.layerId && session.document.layers.some((layer) => layer.id === remembered.layerId)
       ? remembered.layerId
       : undefined
-    const defaultScale = format === 'svg' ? 100 : exportScalePresets.includes(100) ? 100 : exportScalePresets[0] ?? 100
+    const defaultScale = format === 'svg' || format === 'moonsprite' ? 100 : exportScalePresets.includes(100) ? 100 : exportScalePresets[0] ?? 100
     const documentName = session.document.name.replace(/\.(moonsprite|aseprite|ase|png|jpe?g|webp|svg|gif|psd)$/i, '') || 'MoonSprite-export'
     const gifFrameLimit = Math.max(1, frameCount)
     const rememberedLoopSectionId = remembered?.gifFrameRange === 'loop-section' && remembered.gifLoopSectionId && session.document.animation?.loopSections?.some((section) => section.id === remembered.gifLoopSectionId)
@@ -75,7 +75,7 @@ export const ExportDialogHost = forwardRef<ExportDialogHandle, Props>(function E
     setExportForm({
       name: withExportFileExtension(remembered?.name ?? documentName, format),
       format,
-      scalePercent: remembered?.scalePercent ?? defaultScale,
+      scalePercent: format === 'moonsprite' ? 100 : remembered?.scalePercent ?? defaultScale,
       trimMode: remembered?.trimMode ?? (remembered?.trim ? 'individual' : undefined),
       directory: outputDirectoryForOperation(preferences) || defaultFileDirectories.exportDirectory,
       target,
@@ -120,7 +120,7 @@ export const ExportDialogHost = forwardRef<ExportDialogHandle, Props>(function E
 
   const exportSlices = session?.document.slices ?? []
 
-  const projectFormat = exportForm.format === 'psd' || exportForm.format === 'ase' || exportForm.format === 'aseprite'
+  const projectFormat = exportForm.format === 'moonsprite' || exportForm.format === 'psd' || exportForm.format === 'ase' || exportForm.format === 'aseprite'
 
   const exportTarget: NonNullable<ExportOptions['target']> = projectFormat
     ? 'document'
@@ -187,7 +187,7 @@ export const ExportDialogHost = forwardRef<ExportDialogHandle, Props>(function E
             </div>
           </FormField>
           <div className="export-primary-fields">
-            <FormField label={t('app.export.format')}><ThemedSelect<ExportOptions['format']> value={exportForm.format} groups={[{ label: t('app.export.formatGroup'), options: [{ value: 'png-auto', label: t('app.export.pngAuto') }, { value: 'png-rgba', label: t('app.export.pngRgba') }, { value: 'jpeg', label: t('app.export.jpegWhite') }, { value: 'webp', label: t('app.export.webp') }, { value: 'svg', label: t('app.export.svg') }, { value: 'gif', label: t('app.export.gif') }, { value: 'bmp', label: 'BMP (.bmp)' }, { value: 'ico', label: 'ICO (.ico)' }, { value: 'psd', label: t('app.export.psd'), description: t('app.export.psdDocumentOnly') }, { value: 'ase', label: t('app.export.ase'), description: t('app.export.projectDocumentOnly') }, { value: 'aseprite', label: t('app.export.aseprite'), description: t('app.export.projectDocumentOnly') }] }]} label={t('app.export.format')} onChange={(format) => setExportForm((current) => ({ ...current, name: withExportFileExtension(current.name, format), format, target: format === 'psd' || format === 'ase' || format === 'aseprite' || (format === 'gif' || format === 'webp') && current.target === 'frames' ? 'document' : current.target, scalePercent: format === 'svg' ? 100 : current.scalePercent }))} /></FormField>
+            <FormField label={t('app.export.format')}><ThemedSelect<ExportOptions['format']> value={exportForm.format} groups={[{ label: t('app.export.formatGroup'), options: [{ value: 'moonsprite', label: t('saveAs.format.moonsprite'), description: t('app.export.projectDocumentOnly') }, { value: 'png-auto', label: t('app.export.pngAuto') }, { value: 'png-rgba', label: t('app.export.pngRgba') }, { value: 'jpeg', label: t('app.export.jpegWhite') }, { value: 'webp', label: t('app.export.webp') }, { value: 'svg', label: t('app.export.svg') }, { value: 'gif', label: t('app.export.gif') }, { value: 'bmp', label: 'BMP (.bmp)' }, { value: 'ico', label: 'ICO (.ico)' }, { value: 'psd', label: t('app.export.psd'), description: t('app.export.psdDocumentOnly') }, { value: 'ase', label: t('app.export.ase'), description: t('app.export.projectDocumentOnly') }, { value: 'aseprite', label: t('app.export.aseprite'), description: t('app.export.projectDocumentOnly') }] }]} label={t('app.export.format')} onChange={(format) => setExportForm((current) => ({ ...current, name: withExportFileExtension(current.name, format), format, target: format === 'moonsprite' || format === 'psd' || format === 'ase' || format === 'aseprite' || (format === 'gif' || format === 'webp') && current.target === 'frames' ? 'document' : current.target, scalePercent: format === 'svg' || format === 'moonsprite' ? 100 : current.scalePercent, trim: format === 'moonsprite' ? undefined : current.trim, trimMode: format === 'moonsprite' ? undefined : current.trimMode }))} /></FormField>
             <FormField label={t('app.export.target')}><ThemedSelect<NonNullable<ExportOptions['target']>> value={exportTarget === 'frames' ? 'document' : exportTarget} groups={[{ label: t('app.export.target'), options: [{ value: 'document', label: t('app.export.targetDocument') }, ...(!projectFormat ? [{ value: 'selection' as const, label: t('app.export.targetSelection') }, { value: 'layer' as const, label: t('app.export.targetLayer') }] : []), ...(exportSlices.length && !projectFormat ? [{ value: 'slices' as const, label: t('app.export.targetSlices') }] : [])] }]} label={t('app.export.target')} onChange={(target) => setExportForm((current) => ({ ...current, target, sliceId: target === 'slices' ? selectedExportSliceId || undefined : undefined, layerId: target === 'layer' ? selectedExportLayerId || undefined : undefined }))} /></FormField>
             {exportTarget === 'slices' && <FormField className="export-slice-field" label={t('app.export.sliceSelection')}><ThemedSelect value={selectedExportSliceId} groups={[{ label: t('app.export.sliceSelection'), options: [{ value: '', label: t('app.export.allSlices') }, ...exportSlices.map((slice) => ({ value: slice.id, label: slice.name, description: `${slice.width} × ${slice.height} · ${slice.x}, ${slice.y}` }))] }]} label={t('app.export.sliceSelection')} onChange={(sliceId) => setExportForm({ ...exportForm, sliceId: sliceId || undefined })} /></FormField>}
             {exportTarget === 'layer' && <FormField className="export-layer-field" label={t('app.export.layerSelection')}><ThemedSelect value={selectedExportLayerId} groups={[{ label: t('app.export.layerSelection'), options: [{ value: '', label: t('app.export.allLayers') }, ...exportLayerOptions] }]} label={t('app.export.layerSelection')} onChange={(layerId) => setExportForm({ ...exportForm, layerId: layerId || undefined })} /></FormField>}
@@ -197,14 +197,14 @@ export const ExportDialogHost = forwardRef<ExportDialogHandle, Props>(function E
             {frameRangeValue === 'range' && <div className="gif-range-fields"><FormField label={t('app.export.gifStart')}><NumberInput min={1} max={session?.document.animation?.frames.length ?? 1} value={exportForm.gifFrameStart ?? 1} onValueChange={(gifFrameStart) => setExportForm({ ...exportForm, gifFrameStart })} /></FormField><FormField label={t('app.export.gifEnd')}><NumberInput min={1} max={session?.document.animation?.frames.length ?? 1} value={exportForm.gifFrameEnd ?? session?.document.animation?.frames.length ?? 1} onValueChange={(gifFrameEnd) => setExportForm({ ...exportForm, gifFrameEnd })} /></FormField></div>}
             <FormField label={t('app.export.gifDirection')}><ThemedSelect value={exportForm.gifDirection ?? 'forward'} groups={[{ label: t('app.export.gifDirection'), options: [{ value: 'forward', label: t('app.export.gifForward'), description: t('app.export.gifForwardHint') }, { value: 'reverse', label: t('app.export.gifReverse'), description: t('app.export.gifReverseHint') }, { value: 'forward-ping-pong', label: t('app.export.gifForwardPingPong'), description: t('app.export.gifForwardPingPongHint') }, { value: 'reverse-ping-pong', label: t('app.export.gifReversePingPong'), description: t('app.export.gifReversePingPongHint') }] }]} label={t('app.export.gifDirection')} onChange={(gifDirection) => setExportForm({ ...exportForm, gifDirection: gifDirection as NonNullable<ExportOptions['gifDirection']> })} /></FormField>
           </section>}
-          <FormField className="export-scale-field" label={exportForm.format === 'svg' ? t('app.export.scale') : t('app.export.scalePercent')}><div className="scale-control"><NumberInput min={1} max={exportForm.format === 'svg' ? 64 : 6400} value={exportForm.format === 'svg' ? exportForm.scalePercent / 100 : exportForm.scalePercent} suffix={exportForm.format === 'svg' ? 'x' : '%'} onValueChange={(value) => setExportForm({ ...exportForm, scalePercent: exportForm.format === 'svg' ? Math.max(100, Math.round(value * 100)) : value })} /><div className="scale-presets" aria-label={exportForm.format === 'svg' ? t('app.export.scalePresets') : t('app.export.scalePercentPresets')}>{exportScalePresets.map((scale) => <button type="button" key={scale} className={exportForm.scalePercent === scale ? 'selected' : ''} onClick={() => setExportForm({ ...exportForm, scalePercent: scale })}>{exportForm.format === 'svg' ? `${scale / 100}x` : `${scale}%`}</button>)}</div></div></FormField>
+          {exportForm.format !== 'moonsprite' && <><FormField className="export-scale-field" label={exportForm.format === 'svg' ? t('app.export.scale') : t('app.export.scalePercent')}><div className="scale-control"><NumberInput min={1} max={exportForm.format === 'svg' ? 64 : 6400} value={exportForm.format === 'svg' ? exportForm.scalePercent / 100 : exportForm.scalePercent} suffix={exportForm.format === 'svg' ? 'x' : '%'} onValueChange={(value) => setExportForm({ ...exportForm, scalePercent: exportForm.format === 'svg' ? Math.max(100, Math.round(value * 100)) : value })} /><div className="scale-presets" aria-label={exportForm.format === 'svg' ? t('app.export.scalePresets') : t('app.export.scalePercentPresets')}>{exportScalePresets.map((scale) => <button type="button" key={scale} className={exportForm.scalePercent === scale ? 'selected' : ''} onClick={() => setExportForm({ ...exportForm, scalePercent: scale })}>{exportForm.format === 'svg' ? `${scale / 100}x` : `${scale}%`}</button>)}</div></div></FormField>
           <FormField label={t('app.export.trim')}>
             <ThemedSelect value={exportForm.trimMode ?? ''} groups={[{ label: t('app.export.trim'), options: [
               { value: '', label: t('app.export.trimNone'), description: t('app.export.trimNoneHint') },
               { value: 'individual', label: t('app.export.trimIndividual'), description: t('app.export.trimIndividualHint') },
               { value: 'common', label: t('app.export.trimCommon'), description: t('app.export.trimCommonHint') }
             ] }]} label={t('app.export.trim')} onChange={(trimMode) => setExportForm((current) => ({ ...current, trim: undefined, trimMode: trimMode === 'individual' || trimMode === 'common' ? trimMode : undefined }))} />
-          </FormField>
+          </FormField></>}
           <FormField className="export-preset-field" label={t('app.export.preset')}>
             <div className="export-preset-control">
               <ThemedSelect value={presetName} groups={[{ label: t('app.export.savedPresets'), options: [{ value: '', label: t('app.export.choosePreset') }, ...presets.map((preset) => ({ value: preset.presetName, label: `${preset.presetName} · ${preset.scalePercent}%` }))] }]} label={t('app.export.preset')} onChange={(value) => { const preset = presets.find((item) => item.presetName === value); setPresetName(value); if (preset) { const { presetName: _presetName, ...options } = preset; const sliceId = options.target === 'slices' && options.sliceId && exportSlices.some((slice) => slice.id === options.sliceId) ? options.sliceId : undefined; const layerId = options.target === 'layer' && options.layerId && exportLayerOptions.some((layer) => layer.value === options.layerId) ? options.layerId : undefined; setExportForm({ ...options, sliceId, layerId }) } }} />

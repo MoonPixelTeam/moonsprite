@@ -31,3 +31,19 @@ it('cancel and choosing a source never run the import command', async () => {
   fireEvent.click(view.getByRole('button', { name: 'common.cancel' }))
   expect(command).not.toHaveBeenCalled(); expect(onClose).toHaveBeenCalledOnce()
 })
+
+it('imports a selection snapshot with local geometry and hides file choosing', async () => {
+  useWorkspace.getState().addSession(createDocument('sheet', 64, 32, 'rgba', false))
+  const session = useWorkspace.getState().sessions[0]
+  session.selection = { x: 10, y: 8, width: 2, height: 1, mask: new Uint8Array([1, 0]) }
+  const command = vi.spyOn(useWorkspace.getState(), 'importSpriteSheet').mockResolvedValue(true)
+  const view = render(<SpriteSheetImportDialog session={session} fromSelection onClose={vi.fn()} onChoose={vi.fn()} />)
+  expect(view.queryByRole('button', { name: 'spriteSheetImport.choose' })).toBeNull()
+  session.selection.mask![0] = 0
+  session.selection = null
+  await act(async () => fireEvent.click(view.getByRole('button', { name: 'spriteSheetImport.import' })))
+  expect(command).toHaveBeenCalledWith(session.document.id, expect.objectContaining({
+    x: 0, y: 0, width: 2, height: 1,
+    selection: { x: 10, y: 8, width: 2, height: 1, mask: new Uint8Array([1, 0]) }
+  }))
+})

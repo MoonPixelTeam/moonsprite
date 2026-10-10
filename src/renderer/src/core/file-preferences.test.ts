@@ -36,7 +36,7 @@ import {
   PASTE_TARGET_PREFERENCE_KEY,
   MOVE_LAYER_CLICK_FLASH_DURATION_PREFERENCE_KEY,
   SAVE_FORMAT_PREFERENCE_KEY,
-  imageExportKindForPreference,
+  documentExportKindForPreference,
   loadEditorPreferences,
   parseTabletPreferences,
   parseEyedropperMagnifierSize,
@@ -157,9 +157,13 @@ describe('editor preferences boundary', () => {
   it('keeps project saves separate from supported image exports', () => {
     expect(saveImageKindForPreference('moonsprite')).toBeNull()
     expect(saveImageKindForPreference('psd')).toBe('psd')
-    expect(imageExportKindForPreference('png')).toBe('png-auto')
-    expect(imageExportKindForPreference('psd')).toBe('psd')
-    expect(imageExportKindForPreference('unsupported')).toBe('png-auto')
+    expect(documentExportKindForPreference('png')).toBe('png-auto')
+    expect(documentExportKindForPreference('psd')).toBe('psd')
+    expect(documentExportKindForPreference('moonsprite')).toBe('moonsprite')
+    const storage = memoryStorage()
+    saveEditorPreferences({ ...loadEditorPreferences(storage), exportFormat: 'moonsprite' }, storage)
+    expect(loadEditorPreferences(storage).exportFormat).toBe('moonsprite')
+    expect(documentExportKindForPreference('unsupported')).toBe('png-auto')
   })
 
   it('loads stable defaults and clamps the preferences added by the editor', () => {

@@ -50,7 +50,7 @@ import {
   surfaceNamespace
 } from './canvas-composite-cache-surfaces'
 import { imageData, gpuBlendModeFor } from './canvas-composite-cache-pixel-utils'
-import { rememberCompositeSurface } from './canvas-composite-cache-utils'
+import { createCompositeSurfaceBudget, rememberCompositeSurface, resetCompositeSurfaceBudget } from './canvas-composite-cache-utils'
 import { CanvasCompositeBlitter } from './canvas-composite-cache-blitter'
 import { CanvasAlignedViewCache } from './canvas-aligned-view-cache'
 import { compositeRegionWindow } from './canvas-composite-region-window'
@@ -76,6 +76,7 @@ export class CanvasCompositeCache {
   private invalidatedInitialDocuments = new WeakSet<SpriteDocument>()
   private surfaces = new Map<string, CompositeSurface>()
   private regions = new Map<string, CompositeRegionSurface>()
+  private readonly surfaceBudget = createCompositeSurfaceBudget()
   private dirtyRects = new Map<string, SelectionRect[]>()
 /** Raw source regions changed during a live gesture, before style expansion. */
   private placementDirtyHints = new Map<string, { rect: SelectionRect; layerIds?: readonly string[] }>()
@@ -121,6 +122,7 @@ export class CanvasCompositeCache {
       surface.canvas.height = 1
     }
     this.invalidateSurface()
+    this.compositeCache.dispose()
     this.lastDocument = null
     this.namespace = ''
     this.invalidatedInitialDocuments = new WeakSet<SpriteDocument>()
@@ -140,6 +142,7 @@ export class CanvasCompositeCache {
     for (const surface of [...this.surfaces.values(), ...this.regions.values()]) this.invalidateSurfaceBitmap(surface)
     this.surfaces.clear()
     this.regions.clear()
+    resetCompositeSurfaceBudget(this.surfaceBudget)
     this.dirtyRects.clear()
     this.sourceDirtyHints.clear()
     this.placementDirtyHints.clear()
@@ -368,12 +371,12 @@ export class CanvasCompositeCache {
     this.selectionRenderer.clearClipboard()
     // Auxiliary viewports can borrow a completed main-canvas base. Copy it so
     // later local invalidation never mutates the editor's cache.
-    if (selectionPreview && options.selectionBase && shouldCacheFullCompositeSurface(document.width, document.height, this.maxCacheBytes)) {
+    if (selectionPreview && options.selectionBase && shouldCacheFullCompositeSurface(document.width, document.height, this.maxCacheBytes / 2)) {
       const existing = this.surfaces.get(frameKey)
       if (!existing || existing.revision !== contentRevision || this.dirtyRects.has(effectiveFrameId)) {
         const canvas = new OffscreenCanvas(document.width, document.height)
         canvas.getContext('2d')?.drawImage(options.selectionBase, 0, 0, document.width, document.height, 0, 0, document.width, document.height)
-        rememberCompositeSurface(this.surfaces, frameKey, { canvas, revision: contentRevision }, this.maxCacheBytes, MAX_CACHED_FRAMES)
+        rememberCompositeSurface(this.surfaces, frameKey, { canvas, revision: contentRevision, reserveBitmapBytes: true }, this.maxCacheBytes, MAX_CACHED_FRAMES, this.surfaceBudget)
         this.dirtyRects.delete(effectiveFrameId)
       }
     }
@@ -390,7 +393,15 @@ export class CanvasCompositeCache {
     // substantial part of this cache budget.
     const animationFullSurfaceAllowed = !animationPlayback
       || document.width * document.height * 4 <= this.maxCacheBytes / 2
-    if (isolatedLayerMask || (animationFullSurfaceAllowed && shouldCacheFullCompositeSurface(document.width, document.height, this.maxCacheBytes) && !initialCompositeIsPending))
+    // A first small viewport should not synchronously compose an entire large
+    // document. Existing/worker-built full surfaces remain cheap to reuse.
+    const visible = visibleDocumentRect(document, fromX, fromY, toX, toY)
+    const fullSurfaceInitializationAllowed = animationPlayback || document.width * document.height < 1024 * 1024
+      || Boolean(visible && visible.width * visible.height >= document.width * document.height / 2)
+      || this.surfaces.has(frameKey)
+      || (!this.invalidatedInitialDocuments.has(document) && contentRevision === 0
+        && Boolean(initialDocumentCompositeSurface(document, effectiveFrameId)))
+    if (isolatedLayerMask || (fullSurfaceInitializationAllowed && animationFullSurfaceAllowed && shouldCacheFullCompositeSurface(document.width, document.height, this.maxCacheBytes / 2) && !initialCompositeIsPending))
       this.drawSurface(
         context,
         document,
@@ -597,9 +608,10 @@ export class CanvasCompositeCache {
       surface = {
         canvas,
         revision: contentRevision,
+        reserveBitmapBytes: document.width * document.height >= 256 * 256,
         transient: transientFallback
       }
-      if (!transientFallback) rememberCompositeSurface(this.surfaces, key, surface, this.maxCacheBytes, MAX_CACHED_FRAMES)
+      if (!transientFallback) rememberCompositeSurface(this.surfaces, key, surface, this.maxCacheBytes, MAX_CACHED_FRAMES, this.surfaceBudget)
       this.dirtyRects.delete(frameId)
       this.clearLivePreview(document, frameId)
     } else {
@@ -717,7 +729,7 @@ export class CanvasCompositeCache {
         canvas.getContext('2d')?.putImageData(imageData(pixels, width, height), 0, 0)
       }
       region = { canvas, revision: contentRevision, x, y, width, height }
-      rememberCompositeSurface(this.regions, key, region, this.maxCacheBytes, MAX_CACHED_FRAMES)
+      rememberCompositeSurface(this.regions, key, region, this.maxCacheBytes, MAX_CACHED_FRAMES, this.surfaceBudget)
       this.dirtyRects.delete(frameId)
       this.clearLivePreview(document, frameId)
     } else if (region) {

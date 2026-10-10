@@ -15,7 +15,6 @@ export class LayerStyleCacheBudget {
 
   constructor(readonly limitBytes = DEFAULT_STYLE_CACHE_BYTES) {
     if (!Number.isFinite(limitBytes) || limitBytes < 0) throw new Error('Invalid layer style cache byte limit')
-    this.unregister = globalCacheManager.register(this.asCacheProvider())
   }
 
   private asCacheProvider(): CacheProvider {
@@ -55,6 +54,9 @@ export class LayerStyleCacheBudget {
   }
 
   add(entry: Reservation): void {
+    // Empty and abandoned render-time instances own no bytes. Register only
+    // while used; disposal can be followed by React effect reactivation.
+    this.unregister ??= globalCacheManager.register(this.asCacheProvider())
     this.bytes += entry.bytes
     this.touch(entry)
     while (this.bytes > this.limitBytes) {
@@ -78,11 +80,12 @@ export class LayerStyleCacheBudget {
       if (owner) owner.delete(entry.key)
       else this.remove(entry)
     }
+    this.unregister?.()
+    this.unregister = undefined
   }
 
   dispose(): void {
     this.clear()
-    if (this.unregister) this.unregister()
   }
 }
 

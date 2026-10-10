@@ -22,6 +22,7 @@ import { runtimeRasterResidentBytes } from './core/runtime-raster'
 import { useWorkspace } from './store/workspace'
 import { NativeTooltipBridge } from './components/Tooltip'
 import { ExtensionWindow } from './components/extensions/ExtensionWindow'
+import { installGlobalCachePressureMonitor } from './core/global-cache-manager'
 
 const rootElement = document.getElementById('root')
 
@@ -36,6 +37,8 @@ if (extensionWindow) {
 const startupPreferences = loadEditorPreferences()
 const disposeCursorSemantics = installCursorSemantics()
 import.meta.hot?.dispose(disposeCursorSemantics)
+const disposeGlobalCachePressureMonitor = installGlobalCachePressureMonitor()
+import.meta.hot?.dispose(disposeGlobalCachePressureMonitor)
 applyThemeToDocument(startupPreferences.theme)
 const disposeSystemThemeSync = installSystemThemeSync(() => loadEditorPreferences().theme)
 import.meta.hot?.dispose(disposeSystemThemeSync)
@@ -53,7 +56,7 @@ void installTauriApi()
     }
     await applyUiScale(startupPreferences.uiScale).catch(() => undefined)
     installExportSuccessSound()
-    installRuntimeDiagnostics((): RuntimeDiagnosticDetail => {
+    const disposeDiagnostics = installRuntimeDiagnostics((): RuntimeDiagnosticDetail => {
       const state = useWorkspace.getState()
       const session = state.sessions.find((item) => item.document.id === state.activeId) ?? null
       if (!session) return { activeDocument: false, sessionCount: state.sessions.length }
@@ -78,6 +81,7 @@ void installTauriApi()
         backgroundWrites: `autosave:${readStoredString(RECOVERY_PREFERENCE_KEY) !== 'false'},history:${readStoredString(LOCAL_HISTORY_ENABLED_PREFERENCE_KEY) === 'true'},backup:${readStoredString(PROJECT_BACKUP_ENABLED_PREFERENCE_KEY) !== 'false'}`
       }
     })
+    import.meta.hot?.dispose(disposeDiagnostics)
     void loadTextFontCatalog().catch(() => undefined)
     if (__MOONSPRITE_PERFORMANCE_BUILD__ && new URLSearchParams(window.location.search).has('moonsprite-perf')) {
       const { installPerformanceHarness } = await import('./performance/benchmark-harness')

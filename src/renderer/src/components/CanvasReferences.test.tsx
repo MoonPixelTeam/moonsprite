@@ -30,6 +30,36 @@ function setup(outside = true, geometry = viewport, sampling = false, navigate: 
   return { ...view, stage: view.container.firstElementChild!, canvas: view.container.querySelector('canvas')! }
 }
 
+it('positions references and their outline in the preview frame before React commits, while floating pictures stay fixed', () => {
+  const source = { id: 'anchored', name: 'anchored.png', src: '', x: -20, y: 40, width: 100, height: 80, angle: 23, flipX: false, flipY: true, locked: false }
+  const floating = { ...source, id: 'floating', name: 'floating.png', x: 12, y: 21, floating: true }
+  useCanvasReferences.getState().add(source)
+  useCanvasReferences.getState().add(floating)
+  const pictures = useCanvasReferences.getState().images
+  const project = useWorkspace.getState().sessions[0].document
+  project.dirty = false
+  const view = setup()
+  const target = view.getByAltText(source.name).parentElement!
+  const fixed = view.getByAltText(floating.name).parentElement!
+  fireEvent.contextMenu(target)
+  act(() => {
+    for (const panX of [1.25, 60, -32, 140]) {
+      const next = { ...viewport.view, panX, panY: panX / 2, zoom: 2, rotation: 37, mirrored: true } as ViewState
+      notifyViewPreview('test', next)
+      // Assertions inside the batch catch the previous one-frame React lag.
+      const screen = referenceScreenBounds(source, { ...viewport, view: next })
+      expect(parseFloat(target.style.left)).toBeCloseTo(screen.x)
+      expect(parseFloat(target.style.top)).toBeCloseTo(screen.y)
+      expect(target.style.transform).toBe(`rotate(${screen.angle}deg)`)
+      expect(view.getByAltText(source.name).style.transform).toBe(`scale(${screen.flipX ? -1 : 1}, ${screen.flipY ? -1 : 1})`)
+      view.container.querySelectorAll('.palette-selection-outline path').forEach(path => expect(path.getAttribute('d')).toBe(referenceOutlinePath(screen)))
+      expect([fixed.style.left, fixed.style.top]).toEqual(['12px', '21px'])
+    }
+  })
+  expect(useCanvasReferences.getState().images).toBe(pictures)
+  expect(project.dirty).toBe(false)
+})
+
 it('recognizes out-of-bounds coordinates even when the geometry mapper returns a point', () => {
   expect(isOutsideReferenceCanvas({ x: -1, y: 3 }, 16, 12)).toBe(true)
   expect(isOutsideReferenceCanvas({ x: 16, y: 3 }, 16, 12)).toBe(true)
@@ -84,9 +114,10 @@ it('opens the import menu on double click only outside the document', () => {
   expect(inside.queryByRole('dialog')).toBeNull()
 })
 
-it('allows later transform edits, protects locked references, and never edits the document', () => {
+it('persists transform edits, protects locked references, and leaves artwork unchanged', () => {
   const sessions = useWorkspace.getState().sessions
-  const dirty = sessions[0].document.dirty
+  sessions[0].document.dirty = false
+  const pixels = sessions[0].document.layers[0].pixels.slice()
   useCanvasReferences.getState().add({ id: 'ref', name: 'reference.png', src: 'data:image/png;base64,', x: 20, y: 40, width: 100, height: 80, angle: 0, flipX: false, flipY: false, locked: false })
   const view = setup()
   fireEvent.contextMenu(view.getByAltText('reference.png'))
@@ -105,7 +136,9 @@ it('allows later transform edits, protects locked references, and never edits th
   fireEvent.blur(view.getByLabelText('X'))
   expect(useCanvasReferences.getState().images[0].x).toBe(70)
   expect(useWorkspace.getState().sessions[0].document).toBe(sessions[0].document)
-  expect(useWorkspace.getState().sessions[0].document.dirty).toBe(dirty)
+  expect(useWorkspace.getState().sessions[0].document.dirty).toBe(true)
+  expect(sessions[0].document.layers[0].pixels).toEqual(pixels)
+  expect(sessions[0].document.canvasReferences![0]).toMatchObject({ x: 70, angle: 45 })
 })
 
 

@@ -1,5 +1,6 @@
 import pixelCrossCursor from '@/assets/pixel-cross-cursor.svg'
 import type { CursorScale } from '@/core/file-preferences'
+import { BoundedPromiseCache } from '@/core/bounded-promise-cache'
 import { translateCurrent as tr } from '@/core/localization'
 import { invoke } from '@tauri-apps/api/core'
 import { getCurrentWindow } from '@tauri-apps/api/window'
@@ -137,7 +138,8 @@ export function setNativeCursorVisible(visible: boolean): Promise<void> {
   return isTauriRuntime() ? syncNativeCursorVisibility(visible) : cursorVisibilityUnchanged
 }
 
-const scaledCursorCache = new Map<string, Promise<string>>()
+const MAX_SCALED_CURSOR_CACHE = 64
+const scaledCursorCache = new BoundedPromiseCache<string, string>(MAX_SCALED_CURSOR_CACHE)
 let applicationGeneration = 0
 let requestedCursorPreferences: { useLocalCursors: boolean; scale: CursorScale } | null = null
 
@@ -170,9 +172,7 @@ function syncNativeSoftwareCursor(useLocalCursors: boolean): void {
 
 const scaledCursorUrl = (source: string, scale: number): Promise<string> => {
   const key = `${source}:${scale.toFixed(6)}`
-  const cached = scaledCursorCache.get(key)
-  if (cached) return cached
-  const pending = new Promise<string>((resolve, reject) => {
+  return scaledCursorCache.getOrCreate(key, () => new Promise<string>((resolve, reject) => {
     const image = new Image()
     image.onload = () => {
       const canvas = document.createElement('canvas')
@@ -186,9 +186,7 @@ const scaledCursorUrl = (source: string, scale: number): Promise<string> => {
     }
     image.onerror = () => reject(new Error(tr('core.cursor.readFailed')))
     image.src = source
-  })
-  scaledCursorCache.set(key, pending)
-  return pending
+  }))
 }
 
 async function applyCursorPreferencesForDisplayScale(useLocalCursors: boolean, scale: CursorScale, displayScaleFactor: number, preserveCurrentValues: boolean): Promise<void> {

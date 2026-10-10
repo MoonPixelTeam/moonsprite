@@ -124,4 +124,19 @@ describe('recovery service', () => {
     const service = new RecoveryService()
     await expect(service.discard(api({ deleteRecovery: async () => { throw new Error('locked') } }), 'draft')).rejects.toThrow('locked')
   })
+
+  it('waits for every document after one fails before reporting the batch failure', async () => {
+    const first = createDocument('failing', 1, 1, 'rgba', false), second = createDocument('slow', 1, 1, 'rgba', false)
+    let release!: () => void, settled = false
+    const gate = new Promise<void>(resolve => { release = resolve })
+    const writeRecovery = vi.fn(async id => { if (id === first.id) throw new Error('disk full'); await gate })
+    const operation = new RecoveryService().autosave(api({ writeRecovery }), [{ id: first.id, document: first }, { id: second.id, document: second }])
+    void operation.then(() => { settled = true }, () => { settled = true })
+    const rejection = expect(operation).rejects.toThrow('自动恢复保存失败')
+    await vi.waitFor(() => expect(writeRecovery).toHaveBeenCalledTimes(2))
+    expect(settled).toBe(false)
+    release()
+    await rejection
+    expect(settled).toBe(true)
+  })
 })

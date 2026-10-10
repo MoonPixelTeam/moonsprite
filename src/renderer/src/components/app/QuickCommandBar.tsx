@@ -5,6 +5,7 @@ import { useI18n } from '@/components/I18nProvider'
 import { loadEditorPreferences, saveEditorPreferences, type QuickCommandBarEdge, type QuickCommandBarPreference, type QuickCommandId } from '@/core/file-preferences'
 import { useWorkspace } from '@/store/workspace'
 import { cutWorkspaceItems } from '@/store/workspace-cut'
+import { deleteWorkspaceContent } from '@/store/workspace-delete'
 import type { ShortcutId } from '@/core/shortcuts'
 import { QUICK_COMMAND_METADATA, type QuickCommandMetadata, type QuickCommandSettingsTarget } from './quick-command-registry'
 import { detectDocumentPixelScale } from '@/core/image-scale-detection'
@@ -219,7 +220,7 @@ const QuickCommandBarInstance = memo(function QuickCommandBarInstance({ document
       case 'pasteToCurrentCell': return { run: () => runForDocument(state => { void state.pasteSelection() }) }
       case 'pasteAsNewDocument': return { run: () => runForDocument(state => { void state.pasteAsNewDocument() }) }
       case 'pasteAsNewLayer': return { run: () => runForDocument(state => { void state.pasteAsNewLayer() }) }
-      case 'deleteContent': return { run: () => runForDocument(state => { if (session.selection) state.deleteSelection(); else state.deleteActiveLayer() }) }
+      case 'deleteContent': return { run: () => runForDocument(deleteWorkspaceContent) }
       case 'quickOutline': return { run: () => runForDocument(state => { state.quickOutlineActiveSelection() }) }
       case 'outline': return { disabled: !onOpenOutline, run: () => runForDocument(() => onOpenOutline?.()) }
       case 'selectionFlipHorizontal': return { run: () => runForDocument((state) => state.flipActiveSelection('horizontal')) }

@@ -1,4 +1,8 @@
 export const spriteSheetImportzhCN = {
+  "spriteSheetImport.from.file": "从新文件导入",
+  "spriteSheetImport.from.document": "从当前文件导入",
+  "spriteSheetImport.from.selection": "从选区导入",
+
   "spriteSheetImport.title": "导入精灵表",
   "spriteSheetImport.choose": "选择文件…",
   "spriteSheetImport.noSource": "选择一张精灵表，或使用当前工程。",
@@ -26,6 +30,10 @@ export const spriteSheetImportzhCN = {
 } as const
 
 export const spriteSheetImportenUS = {
+  "spriteSheetImport.from.file": "Import from New File",
+  "spriteSheetImport.from.document": "Import from Current File",
+  "spriteSheetImport.from.selection": "Import from Selection",
+
   "spriteSheetImport.title": "Import Sprite Sheet",
   "spriteSheetImport.choose": "Choose file…",
   "spriteSheetImport.noSource": "Choose a sprite sheet or use the current project.",
@@ -53,6 +61,10 @@ export const spriteSheetImportenUS = {
 } as const
 
 export const spriteSheetImportjaJP = {
+  "spriteSheetImport.from.file": "新しいファイルから",
+  "spriteSheetImport.from.document": "現在のファイルから",
+  "spriteSheetImport.from.selection": "選択範囲から",
+
   "spriteSheetImport.title": "スプライトシートをインポート",
   "spriteSheetImport.choose": "ファイルを選択…",
   "spriteSheetImport.noSource": "スプライトシートを選択するか、現在のプロジェクトを使用します。",
@@ -80,6 +92,10 @@ export const spriteSheetImportjaJP = {
 } as const
 
 export const spriteSheetImportkoKR = {
+  "spriteSheetImport.from.file": "새 파일에서 가져오기",
+  "spriteSheetImport.from.document": "현재 파일에서 가져오기",
+  "spriteSheetImport.from.selection": "선택 영역에서 가져오기",
+
   "spriteSheetImport.title": "스프라이트 시트 가져오기",
   "spriteSheetImport.choose": "파일 선택…",
   "spriteSheetImport.noSource": "스프라이트 시트를 선택하거나 현재 프로젝트를 사용하세요.",
@@ -107,6 +123,10 @@ export const spriteSheetImportkoKR = {
 } as const
 
 export const spriteSheetImportesES = {
+  "spriteSheetImport.from.file": "Importar desde otro archivo",
+  "spriteSheetImport.from.document": "Importar desde el archivo actual",
+  "spriteSheetImport.from.selection": "Importar desde la selección",
+
   "spriteSheetImport.title": "Importar hoja de sprites",
   "spriteSheetImport.choose": "Elegir archivo…",
   "spriteSheetImport.noSource": "Elige una hoja de sprites o usa el proyecto actual.",
@@ -134,6 +154,10 @@ export const spriteSheetImportesES = {
 } as const
 
 export const spriteSheetImportfrFR = {
+  "spriteSheetImport.from.file": "Importer depuis un nouveau fichier",
+  "spriteSheetImport.from.document": "Importer depuis le fichier actuel",
+  "spriteSheetImport.from.selection": "Importer depuis la sélection",
+
   "spriteSheetImport.title": "Importer une feuille de sprites",
   "spriteSheetImport.choose": "Choisir un fichier…",
   "spriteSheetImport.noSource": "Choisissez une feuille de sprites ou utilisez le projet actuel.",
@@ -161,6 +185,10 @@ export const spriteSheetImportfrFR = {
 } as const
 
 export const spriteSheetImportdeDE = {
+  "spriteSheetImport.from.file": "Aus neuer Datei importieren",
+  "spriteSheetImport.from.document": "Aus aktueller Datei importieren",
+  "spriteSheetImport.from.selection": "Aus Auswahl importieren",
+
   "spriteSheetImport.title": "Sprite-Sheet importieren",
   "spriteSheetImport.choose": "Datei auswählen…",
   "spriteSheetImport.noSource": "Sprite-Sheet auswählen oder aktuelles Projekt verwenden.",
@@ -188,6 +216,10 @@ export const spriteSheetImportdeDE = {
 } as const
 
 export const spriteSheetImportptBR = {
+  "spriteSheetImport.from.file": "Importar de novo arquivo",
+  "spriteSheetImport.from.document": "Importar do arquivo atual",
+  "spriteSheetImport.from.selection": "Importar da seleção",
+
   "spriteSheetImport.title": "Importar folha de sprites",
   "spriteSheetImport.choose": "Escolher arquivo…",
   "spriteSheetImport.noSource": "Escolha uma folha de sprites ou use o projeto atual.",
@@ -215,6 +247,10 @@ export const spriteSheetImportptBR = {
 } as const
 
 export const spriteSheetImportruRU = {
+  "spriteSheetImport.from.file": "Импорт из нового файла",
+  "spriteSheetImport.from.document": "Импорт из текущего файла",
+  "spriteSheetImport.from.selection": "Импорт из выделения",
+
   "spriteSheetImport.title": "Импорт таблицы спрайтов",
   "spriteSheetImport.choose": "Выбрать файл…",
   "spriteSheetImport.noSource": "Выберите таблицу спрайтов или используйте текущий проект.",

@@ -75,15 +75,14 @@ export const refreshPenCursor = (ports: CanvasPenCursorPorts, refs: CanvasPenCur
   const selectionOverlay = selectionCursor && preferences?.selectionCrosshair === true
   const dot = adaptive && (!selectionCursor || selectionOverlay) && preferences?.paintingCursorShape === 'dot'
   const pixelCross = adaptive && (!selectionCursor || selectionOverlay) && preferences?.paintingCursorShape === 'pixel-cross'
-  const systemCrosshair = !selectionOverlay && !dot && !pixelCross && (!alignToPixel || selectionCursor) && adaptive && preferences?.useLocalCursors
-  // A screen-aligned mouse crosshair can use the existing CSS image cursor.
-  // The OS tracks its position even while document/preview JS is busy. Keep
-  // software positioning for pixel alignment, pen, custom colors and shapes.
-  const nativeMouseCrosshair = !pointer.pressure && adaptive && !selectionCursor && !alignToPixel && !dot && !pixelCross && preferences?.cursorColorMode !== 'custom'
+  // A native image can only switch its whole color from the hotspot sample.
+  // Painting cursors use a backdrop mask so each covered pixel contrasts
+  // with the rendered canvas, including screen-aligned mouse crosshairs.
+  const systemCrosshair = selectionCursor && !selectionOverlay && adaptive && preferences?.useLocalCursors
   const paintingScale = preferences?.cursorScale ?? 1
   const pixelCrossScale = paintingScale / (Number.isFinite(ports.interfaceScale) && ports.interfaceScale > 0 ? ports.interfaceScale : 1)
   const dotSize = 3 * paintingScale
-  const descriptor = pixelCross ? { source: pixelCrossSource, size: 32 * pixelCrossScale, hotspotX: 15 * pixelCrossScale, hotspotY: 15 * pixelCrossScale } : dot ? { source: 'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%223%22 height=%223%22%3E%3Ccircle fill=%22white%22 cx=%221.5%22 cy=%221.5%22 r=%221.5%22/%3E%3C/svg%3E', size: dotSize, hotspotX: dotSize / 2, hotspotY: dotSize / 2 } : systemCrosshair || nativeMouseCrosshair ? null : cursorOverlayDescriptor(selectionOverlay ? 'var(--cursor-pencil-black)' : canvas.style.cursor, preferences?.useLocalCursors ?? false, adaptive ? paintingScale : preferences?.cursorScale ?? 1, ports.interfaceScale)
+  const descriptor = pixelCross ? { source: pixelCrossSource, size: 32 * pixelCrossScale, hotspotX: 15 * pixelCrossScale, hotspotY: 15 * pixelCrossScale } : dot ? { source: 'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%223%22 height=%223%22%3E%3Ccircle fill=%22white%22 cx=%221.5%22 cy=%221.5%22 r=%221.5%22/%3E%3C/svg%3E', size: dotSize, hotspotX: dotSize / 2, hotspotY: dotSize / 2 } : systemCrosshair ? null : cursorOverlayDescriptor(selectionOverlay ? 'var(--cursor-pencil-black)' : canvas.style.cursor, preferences?.useLocalCursors ?? false, adaptive ? paintingScale : preferences?.cursorScale ?? 1, ports.interfaceScale)
   const penDescriptor = descriptor
   const softwarePen = pointer.pressure && Boolean(descriptor)
   const overlay = refs.adaptiveCursorRef.current
@@ -96,11 +95,11 @@ export const refreshPenCursor = (ports: CanvasPenCursorPorts, refs: CanvasPenCur
   if (overlay) setHidden(overlay, !adaptive || !descriptor)
   if (adaptive && descriptor && overlay) {
     setCursorFlag(canvas, 'adaptiveCursor', 'true')
-    setCursorStyle(overlay, 'maskImage', pixelCross ? 'none' : `url("${descriptor.source}")`)
-    setCursorStyle(overlay, 'backgroundImage', pixelCross ? `url("${descriptor.source}")` : 'none')
+    setCursorStyle(overlay, 'maskImage', `url("${descriptor.source}")`)
+    setCursorStyle(overlay, 'backgroundImage', 'none')
     const color = preferences?.cursorColor
-    setCursorStyle(overlay, 'backdropFilter', pixelCross || preferences?.cursorColorMode === 'custom' ? 'none' : AUTO_CONTRAST_FILTER)
-    setCursorStyle(overlay, 'backgroundColor', !pixelCross && preferences?.cursorColorMode === 'custom' && color ? `rgba(${color.r}, ${color.g}, ${color.b}, ${color.a / 255})` : '')
+    setCursorStyle(overlay, 'backdropFilter', preferences?.cursorColorMode === 'custom' ? 'none' : AUTO_CONTRAST_FILTER)
+    setCursorStyle(overlay, 'backgroundColor', preferences?.cursorColorMode === 'custom' && color ? `rgba(${color.r}, ${color.g}, ${color.b}, ${color.a / 255})` : '')
     setCursorStyle(overlay, 'width', `${descriptor.size}px`)
     setCursorStyle(overlay, 'height', `${descriptor.size}px`)
     const move: CanvasCursorPositionUpdater = pointer => {

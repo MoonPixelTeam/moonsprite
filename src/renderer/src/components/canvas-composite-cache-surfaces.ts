@@ -24,6 +24,8 @@ export interface CompositeSurface {
   /** GPU-friendly snapshot used for view navigation when available. */
   bitmap?: ImageBitmap
   bitmapPending?: Promise<void>
+  /** Reserve the asynchronous bitmap copy before creating it. */
+  reserveBitmapBytes?: boolean
   /** Invalidates asynchronous bitmap captures that started before a write. */
   bitmapGeneration?: number
   revision: number

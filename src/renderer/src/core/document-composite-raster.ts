@@ -3,7 +3,7 @@ import type { RasterLayer } from '@shared/types-layer'
 import type { SelectionRect } from '@shared/types-selection'
 import type { SpriteDocument } from '@shared/types-document'
 import { blendWithMode, blendWithModeInto, TRANSPARENT } from './raster'
-import { acquireCompositeBuffer } from './buffer-pool'
+import { acquireCompositeBuffer, releaseCompositeBuffer } from './buffer-pool'
 import {
   lazyRuntimeRasterForSurface,
   readSurfacePackedLocal,
@@ -367,24 +367,30 @@ export const compositeOpacityGroupStack = (
         }
       }
 
-      // Cache miss: render and cache
-      const groupOutput = compositeOpacityGroupStack(document, item.children, startX, startY, width, height, cache, revision, undefined, dirtyRect)
-      if (typeof OffscreenCanvas !== 'undefined') {
-        const groupCanvas = new OffscreenCanvas(width, height)
-        const groupContext = groupCanvas.getContext('2d')
-        if (groupContext) {
-          const imageData = groupContext.createImageData(width, height)
-          imageData.data.set(groupOutput)
-          groupContext.putImageData(imageData, 0, 0)
-          cacheOpacityGroup(item.group, groupCanvas, revision, childLayerIds)
+      // Only the synchronous scratch result is pooled. The canvas owns a copy.
+      const groupOutput = acquireCompositeBuffer(width, height)
+      try {
+        compositeOpacityGroupStack(document, item.children, startX, startY, width, height, cache, revision, groupOutput, dirtyRect)
+        if (typeof OffscreenCanvas !== 'undefined') {
+          const groupCanvas = new OffscreenCanvas(width, height)
+          const groupContext = groupCanvas.getContext('2d')
+          if (groupContext) {
+            const imageData = groupContext.createImageData(width, height)
+            imageData.data.set(groupOutput)
+            groupContext.putImageData(imageData, 0, 0)
+            cacheOpacityGroup(item.group, groupCanvas, revision, childLayerIds)
+          }
         }
-      }
-      compositeBufferWithModeInto(output, groupOutput, item.group.opacity, item.group.blendMode)
+        compositeBufferWithModeInto(output, groupOutput, item.group.opacity, item.group.blendMode)
+      } finally { releaseCompositeBuffer(groupOutput) }
       continue
     }
 
-    const groupOutput = compositeOpacityGroupStack(document, item.children, startX, startY, width, height, cache, revision, undefined, dirtyRect)
-    compositeBufferWithModeInto(output, groupOutput, item.group.opacity, item.group.blendMode)
+    const groupOutput = acquireCompositeBuffer(width, height)
+    try {
+      compositeOpacityGroupStack(document, item.children, startX, startY, width, height, cache, revision, groupOutput, dirtyRect)
+      compositeBufferWithModeInto(output, groupOutput, item.group.opacity, item.group.blendMode)
+    } finally { releaseCompositeBuffer(groupOutput) }
   }
   flushLayers()
   return output

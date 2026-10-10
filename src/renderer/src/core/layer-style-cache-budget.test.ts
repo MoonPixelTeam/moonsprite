@@ -5,6 +5,7 @@ import { compositeRegion } from './document-composite-region'
 import { createDocument, createLayer, markLayerContentChanged, writeLayerColor } from './document-model'
 import { createDefaultLayerStyles } from './layer-styles'
 import { LayerStyleTileCache } from './layer-style-tile-cache'
+import { dynamicStyledLayerBlockSize } from './document-composite-style-types'
 
 const block = (bytes = 16) => ({ x: 0, y: 0, width: 2, height: 2, pixels: new Uint8ClampedArray(bytes) })
 describe('shared style block byte budget', () => {
@@ -20,12 +21,15 @@ describe('shared style block byte budget', () => {
     expect(() => new LayerStyleCacheBudget(NaN)).toThrow()
   })
   it('releases obsolete isolated keys and regenerates an evicted tile exactly', () => {
-    const budget = new LayerStyleCacheBudget(16384), cache = new LayerStyleTileCache(budget)
     const owner = {}, styles = createDefaultLayerStyles(); styles.colorOverlay.enabled = true
+    // The adaptive renderer no longer uses fixed 64px tiles. Keep the test's
+    // one-tile capacity and force a genuine eviction on the next tile.
+    const size = dynamicStyledLayerBlockSize(styles), tileBytes = size * size * 4
+    const budget = new LayerStyleCacheBudget(tileBytes), cache = new LayerStyleTileCache(budget)
     const read = (x: number, y: number) => ({ r: x & 255, g: y & 255, b: 80, a: 128 })
     const prepare = (key: string) => cache.prepare(owner,key,1,undefined,{x:0,y:0,width:256,height:256},styles,read,c=>c)
-    const a = prepare('one'), first = a(1,2); a(70,2)
-    expect(budget.snapshot().cachedBytes).toBe(16384); expect(a(1,2)).toEqual(first)
+    const a = prepare('one'), first = a(1,2); a(size + 1,2)
+    expect(budget.snapshot().cachedBytes).toBe(tileBytes); expect(a(1,2)).toEqual(first)
     const b = prepare('two'); expect(budget.snapshot().cachedBytes).toBe(0)
     expect(b(1,2)).toEqual(first)
   })
@@ -46,11 +50,12 @@ describe('shared style block byte budget', () => {
       doc.groups.push({id:'g',name:'g',opacity:.6,blendMode:'normal',visible:true,locked:false,parentGroupId:null,layerStyles:structuredClone(styles)})
       for(const layer of doc.layers)layer.groupId='g'
     }
-    const cache = new DocumentCompositeCache(12*16384)
+    const limitBytes = 12 * dynamicStyledLayerBlockSize(styles) ** 2 * 4
+    const cache = new DocumentCompositeCache(limitBytes)
     const check = (revision: number) => {
       for (const x of [2,70,140,2]){
         expect(compositeRegion(doc,x,17,1,1,cache,revision)).toEqual(compositeRegion(doc,x,17,1,1))
-        expect(cache.styleCacheStats().cachedBytes).toBeLessThanOrEqual(12*16384)
+        expect(cache.styleCacheStats().cachedBytes).toBeLessThanOrEqual(limitBytes)
       }
     }
     check(1)

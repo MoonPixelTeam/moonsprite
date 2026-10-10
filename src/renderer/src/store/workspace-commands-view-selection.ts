@@ -7,6 +7,7 @@ import { createSelectionTransformCommands } from './workspace-commands-selection
 import { createSelectionEffectsCommands } from './workspace-commands-selection-effects'
 import { createSelectionFloatingCommands } from './workspace-commands-selection-floating'
 import { createSelectionMoveCommands } from './workspace-commands-selection-move'
+import { withTileSelectionMove } from './workspace-tile-selection-move'
 import { createSelectionFlipCommands } from './workspace-commands-selection-flip'
 
 /** Composition only; each workflow declares its own command dependencies. */
@@ -17,6 +18,7 @@ export function createWorkspaceViewSelectionCommands(context: WorkspaceCommandCo
   | 'commitFloatingPaste'
   | 'commitPixelEdit'
   | 'commitSelectionChange'
+  | 'commitTilemapSelectionMove'
   | 'moveActiveSelectionWithSelectionHistory'
   | 'moveLayerBy'
   | 'mutateActive'
@@ -34,7 +36,7 @@ export function createWorkspaceViewSelectionCommands(context: WorkspaceCommandCo
     ...createSelectionTransformCommands(context),
     ...createSelectionEffectsCommands(context),
     ...createSelectionFloatingCommands(context),
-    ...createSelectionMoveCommands(context),
+    ...withTileSelectionMove(context, createSelectionMoveCommands(context)),
     ...createSelectionFlipCommands(context),
   }
 }

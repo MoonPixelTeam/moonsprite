@@ -5,3 +5,6 @@ mod platform_diagnostics;
 #[allow(dead_code)]
 #[path = "../src/platform_lag_diagnostics.rs"]
 mod platform_lag_diagnostics;
+#[allow(dead_code)]
+#[path = "../src/platform_browser_trace.rs"]
+mod platform_browser_trace;

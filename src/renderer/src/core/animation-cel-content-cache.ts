@@ -93,6 +93,7 @@ export const animationCelSurfaceHasContent = (surface: AnimationCelSurface, pale
 
   if (revision > 0) {
     const nextEntries = entries ?? new Map<string, ContentEntry>()
+    if (nextEntries.size >= 8 || (nextEntries.size && nextEntries.values().next().value?.revision !== revision)) nextEntries.clear()
     nextEntries.set(key, { revision, value })
     contentCache.set(storage, nextEntries)
   }

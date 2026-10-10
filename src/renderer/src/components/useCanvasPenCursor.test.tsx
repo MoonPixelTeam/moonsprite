@@ -7,6 +7,7 @@ import { useCanvasPenCursor } from './useCanvasPenCursor'
 import { canvasCursors } from '@/core/canvas-visuals'
 import { CANVAS_VIEWPORT_EVENT } from './canvas-viewport-events'
 import { setNativeCursorVisible } from '@/platform/cursor-theme'
+import { AUTO_CONTRAST_FILTER } from './canvas-adaptive-contrast'
 
 vi.mock('@/platform/cursor-theme', () => ({
   setNativeCursorVisible: vi.fn(async () => {}),
@@ -110,7 +111,7 @@ it('uses one backdrop mask for a pointer crossing dark and light regions, then c
   expect(canvas.dataset.adaptiveCursor).toBeUndefined()
 })
 
-it.each(['mouse', 'pen'])('uses a system crosshair for simple native %s input and keeps sprite crosshairs independent', (pointerType) => {
+it.each(['mouse', 'pen'])('uses per-pixel contrast for simple %s painting input with local cursors enabled', (pointerType) => {
   localStorage.setItem(PAINTING_CURSOR_TYPE_KEY, 'simple')
   localStorage.setItem('moonsprite.preference.painting-cursor-align-pixel', 'false')
   localStorage.setItem(USE_LOCAL_CURSORS_PREFERENCE_KEY, 'true')
@@ -119,9 +120,10 @@ it.each(['mouse', 'pen'])('uses a system crosshair for simple native %s input an
   const move = new Event('pointermove', { bubbles: true })
   Object.assign(move, { clientX: 40, clientY: 70, pointerType, pointerId: 1 })
   fireEvent(canvas, move)
-  expect(document.documentElement.dataset.penInput).toBeUndefined()
-  expect(canvas.dataset.paintingCursor).toBe('system')
-  expect(view.getByTestId('adaptive')).not.toBeVisible()
+  expect(document.documentElement.dataset.penInput).toBe(pointerType === 'pen' ? 'true' : undefined)
+  expect(canvas.dataset.paintingCursor).toBeUndefined()
+  expect(view.getByTestId('adaptive')).toBeVisible()
+  expect(view.getByTestId('adaptive').style.backdropFilter).toBe(AUTO_CONTRAST_FILTER)
   view.unmount()
   localStorage.setItem(PAINTING_CURSOR_TYPE_KEY, 'sprite')
   localStorage.setItem('moonsprite.preference.painting-cursor-align-pixel', 'true')
@@ -193,25 +195,26 @@ const pointerPacket = (canvas: HTMLCanvasElement, type: string, x: number, timeS
   fireEvent(canvas, event)
 }
 
-it('keeps a screen-aligned mouse crosshair on the native image cursor without geometry or overlay updates', () => {
+it('keeps a screen-aligned mouse crosshair adaptive and follows raw input without extra layout reads', () => {
   localStorage.setItem('moonsprite.preference.painting-cursor-align-pixel', 'false')
   const stageBounds = vi.fn(() => ({ left: 10, top: 20 }) as DOMRect)
   const view = render(<Harness stageBounds={stageBounds} />)
   const canvas = view.container.querySelector('canvas')!
   const overlay = view.getByTestId('adaptive')
   for (let x = 0; x < 1000; x++) {
-    pointerPacket(canvas, 'pointermove', x, x, 'mouse')
-    pointerPacket(canvas, 'pointerrawupdate', x + 0.5, x + 0.5, 'mouse')
+    pointerPacket(canvas, 'pointermove', x, x + 1, 'mouse')
+    pointerPacket(canvas, 'pointerrawupdate', x + 0.5, x + 1.5, 'mouse')
   }
-  expect(stageBounds).not.toHaveBeenCalled()
-  expect(overlay.hidden).toBe(true)
-  expect(overlay.style.transform).toBe('')
-  expect(canvas.dataset.adaptiveCursor).toBeUndefined()
+  expect(stageBounds).toHaveBeenCalledTimes(1000)
+  expect(overlay.hidden).toBe(false)
+  expect(overlay.style.transform).toBe('translate3d(974.5px, 35px, 0)')
+  expect(overlay.style.backdropFilter).toBe(AUTO_CONTRAST_FILTER)
+  expect(canvas.dataset.adaptiveCursor).toBe('true')
   expect(canvas.style.cursor).toBe(canvasCursors.pencilBlack)
   expect(setNativeCursorVisible).toHaveBeenLastCalledWith(true)
   // A pressure pointer still requires its software cursor.
   pointerPacket(canvas, 'pointermove', 40, 1100, 'pen')
-  expect(stageBounds).toHaveBeenCalledOnce()
+  expect(stageBounds).toHaveBeenCalledTimes(1001)
   expect(overlay.hidden).toBe(false)
   expect(setNativeCursorVisible).toHaveBeenLastCalledWith(false)
 })

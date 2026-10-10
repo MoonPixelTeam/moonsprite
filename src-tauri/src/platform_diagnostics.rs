@@ -21,6 +21,10 @@ pub(crate) struct DiagnosticState {
     session_file: Mutex<Option<PathBuf>>,
     write_lock: Mutex<()>,
     browser_recovery_started: AtomicBool,
+    // The visibility experiment is worth one toggle per session: a second
+    // false/true pair interlocks with the first at the compositor, and evidence
+    // from two interventions cannot be told apart afterwards.
+    visibility_intervention_consumed: AtomicBool,
 }
 
 // ProcessFailedKind, not ProcessKind: utility=4 and GPU=6 in this enum.
@@ -56,7 +60,153 @@ fn failed_process_name(kind: i32) -> &'static str {
 pub(crate) fn install_webview_failure_diagnostics(
     window: &tauri::WebviewWindow,
 ) -> tauri::Result<()> {
-    use webview2_com::{Microsoft::Web::WebView2::Win32::*, ProcessFailedEventHandler};
+    dispatch_webview_diagnostic(window, WebviewDiagnosticAction::InstallFailure)
+}
+
+/// Splits the Runtime version lookup into the payload shape the log records.
+///
+/// `webview_version` returns `Result<String, wry::Error>`; the error type is
+/// not serializable, so both outcomes are flattened to plain values here and
+/// the raw error is kept as text rather than dropped.
+pub fn runtime_version_detail(version: &Result<String, String>) -> serde_json::Value {
+    let (resolved, error) = match version {
+        Ok(value) => (Some(value.clone()), None),
+        Err(value) => (None, Some(value.clone())),
+    };
+    serde_json::json!({"runtimeVersion": resolved, "runtimeVersionError": error})
+}
+
+/// Records the WebView2 Runtime version in the diagnostic log at startup.
+///
+/// Every lag incident must carry the Runtime version it was observed on:
+/// private compositor state (trackers, frame sorter) differs between builds,
+/// so 154 and 155 evidence cannot be compared without it. Versions were only
+/// available inside trace manifests before, which meant a session without a
+/// saved trace had no version at all.
+pub(crate) fn record_runtime_version(app: &AppHandle) {
+    let version = tauri::webview_version().map_err(|error| error.to_string());
+    let event = serde_json::json!({"version": 1, "kind": "native-runtime", "name": "runtime.version",
+        "detail": runtime_version_detail(&version)});
+    if let Err(error) = append_events_to_file(app, &app.state::<DiagnosticState>(), vec![event]) {
+        eprintln!("Runtime version write failed: {error}");
+    }
+}
+
+// SDK calls stay on the controller's UI thread. No COM pointer leaves it.
+pub(crate) enum WebviewDiagnosticAction {
+    InstallFailure,
+    Call { method: &'static str, params: String, reply: std::sync::mpsc::Sender<Result<String, String>> },
+    Subscribe { event: &'static str, events: std::sync::mpsc::Sender<Result<String, String>>, reply: std::sync::mpsc::Sender<Result<String, String>> },
+    Unsubscribe { event: &'static str, token: i64, reply: std::sync::mpsc::Sender<Result<String, String>> },
+    /// Drives `ICoreWebView2Controller::SetIsVisible` on the host UI thread.
+    ///
+    /// This is the only lever the host has over the browser compositor's
+    /// visibility-gated state: hiding the controller stops frame production for
+    /// the surface, and showing it forces the tree to be rebuilt. It cannot be
+    /// reached from the renderer, because a renderer that is queued behind
+    /// compositor work cannot issue its own rescue. The reply carries the state
+    /// observed before and after the change (prior, settled).
+    SetVisible { visible: bool, reply: std::sync::mpsc::Sender<Result<(bool, bool), String>> },
+}
+
+/// Builds the payload the diagnostic log keeps for one visibility transition.
+///
+/// Both transitions are recorded, and both are tagged with the requested and the
+/// observed state, because a controller that refuses to hide (a modal child, or a
+/// browser already inside a visibility transition) would otherwise be read as a
+/// failed experiment rather than an experiment that never ran.
+pub fn visibility_probe_detail(requested: bool, observed: bool, prior: Option<bool>) -> serde_json::Value {
+    serde_json::json!({
+        "requested": requested,
+        "observed": observed,
+        "applied": requested == observed,
+        "prior": prior,
+        "role": if requested { "restore" } else { "withhold" },
+    })
+}
+
+/// Returns `Ok(())` only for the first intervention of a session.
+///
+/// The experiment compares one `false`/`true` pair against surrounding traces, so
+/// a repeat request has to be refused loudly instead of quietly overlapping the
+/// first one. A failed dispatch releases the claim, because nothing was toggled.
+pub fn claim_visibility_intervention(consumed: &AtomicBool) -> Result<(), String> {
+    consumed
+        .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+        .map(|_| ())
+        .map_err(|_| "可见性干预本会话已使用过；上一次的 before/after 证据会被覆盖".to_string())
+}
+
+#[cfg(windows)]
+fn dispatch_webview_visibility(
+    window: &tauri::WebviewWindow,
+    visible: bool,
+) -> Result<(bool, bool), String> {
+    let (reply, result) = std::sync::mpsc::channel();
+    dispatch_webview_diagnostic(
+        window,
+        WebviewDiagnosticAction::SetVisible { visible, reply },
+    )
+    .map_err(|error| error.to_string())?;
+    result
+        .recv_timeout(std::time::Duration::from_secs(5))
+        .map_err(|error| format!("可见性控制响应超时：{error}"))?
+}
+
+#[cfg(not(windows))]
+fn dispatch_webview_visibility(
+    _window: &tauri::WebviewWindow,
+    _visible: bool,
+) -> Result<(bool, bool), String> {
+    Err("原生可见性控制仅适用于 Windows WebView2".to_string())
+}
+
+/// Drives the host controller's visibility and records the transition.
+///
+/// Split from the command so the gate, the dispatch and the log write stay
+/// readable as one sequence: refuse a repeat, change visibility, record what the
+/// controller actually reported.
+fn apply_visibility_intervention(app: &AppHandle, visible: bool) -> Result<bool, String> {
+    let state = app.state::<DiagnosticState>();
+    claim_visibility_intervention(&state.visibility_intervention_consumed)?;
+    let window = app
+        .get_webview_window("main")
+        .ok_or("主窗口不可用，无法控制可见性")?;
+    let (prior, settled) = match dispatch_webview_visibility(&window, visible) {
+        Ok(states) => states,
+        Err(error) => {
+            // Release the claim: nothing was toggled, so the single allowed
+            // intervention is still unspent and must remain available.
+            state
+                .visibility_intervention_consumed
+                .store(false, Ordering::Release);
+            return Err(error);
+        }
+    };
+    // A timeout leaves the claim spent on purpose: the controller may have
+    // changed state anyway, and a retry would stack a second toggle onto it.
+    let event = serde_json::json!({"version": 1, "kind": "native-visibility-probe",
+        "name": "webview.visibility-intervention",
+        "detail": visibility_probe_detail(visible, settled, Some(prior))});
+    append_events_to_file(app, &state, vec![event])?;
+    Ok(settled)
+}
+
+/// Hides or restores the main WebView from the host, outside the renderer.
+///
+/// This is the manual half of the recovery-channel experiment: the renderer
+/// cannot ask for it while it is queued behind compositor work, so the operator
+/// issues it and the native log timestamps both transitions.
+#[tauri::command]
+pub(crate) async fn set_webview_visible(app: AppHandle, visible: bool) -> Result<bool, String> {
+    tauri::async_runtime::spawn_blocking(move || apply_visibility_intervention(&app, visible))
+        .await
+        .map_err(|error| error.to_string())?
+}
+
+#[cfg(windows)]
+pub(crate) fn dispatch_webview_diagnostic(window: &tauri::WebviewWindow, action: WebviewDiagnosticAction) -> tauri::Result<()> {
+    use webview2_com::{Microsoft::Web::WebView2::Win32::*, ProcessFailedEventHandler, CallDevToolsProtocolMethodCompletedHandler, DevToolsProtocolEventReceivedEventHandler};
     use windows_core::Interface;
 
     let target = window.clone();
@@ -65,6 +215,81 @@ pub(crate) fn install_webview_failure_diagnostics(
         let setup = unsafe {
             (|| -> windows_core::Result<()> {
                 let core = webview.controller().CoreWebView2()?;
+                match action {
+                    WebviewDiagnosticAction::Call { method, params, reply } => {
+                        let completed = reply.clone();
+                        let callback_window = target.clone();
+                        let callback = CallDevToolsProtocolMethodCompletedHandler::create(Box::new(move |error, json| {
+                            let started = error.is_ok() && method == "Tracing.start";
+                            if completed.send(error.map(|()| json).map_err(|e| e.to_string())).is_err() {
+                                eprintln!("Diagnostic protocol callback expired");
+                                // A late successful start still owns a recording. The
+                                // worker has timed out, so release it on this UI thread.
+                                if started { crate::platform_browser_trace::cleanup_late_start(callback_window.clone()); }
+                            }
+                            Ok(())
+                        }));
+                        let method = webview2_com::CoTaskMemPWSTR::from(method);
+                        let params = webview2_com::CoTaskMemPWSTR::from(params.as_str());
+                        if let Err(error) = core.CallDevToolsProtocolMethod(*method.as_ref().as_pcwstr(), *params.as_ref().as_pcwstr(), &callback) {
+                            if reply.send(Err(error.to_string())).is_err() { eprintln!("Diagnostic protocol dispatch expired"); }
+                        }
+                        return Ok(());
+                    }
+                    WebviewDiagnosticAction::Subscribe { event, events, reply } => {
+                        let result = (|| -> windows_core::Result<i64> {
+                            let name = webview2_com::CoTaskMemPWSTR::from(event);
+                            let receiver = core.GetDevToolsProtocolEventReceiver(*name.as_ref().as_pcwstr())?;
+                            let callback = DevToolsProtocolEventReceivedEventHandler::create(Box::new(move |_, args| {
+                                if let Some(args) = args {
+                                    let mut json = windows_core::PWSTR::null();
+                                    let value = args.ParameterObjectAsJson(&mut json).map(|()| webview2_com::take_pwstr(json)).map_err(|e| e.to_string());
+                                    if events.send(value).is_err() { eprintln!("Diagnostic event receiver expired"); }
+                                }
+                                Ok(())
+                            }));
+                            let mut token = 0;
+                            receiver.add_DevToolsProtocolEventReceived(&callback, &mut token)?;
+                            Ok(token)
+                        })();
+                        let token = result.as_ref().ok().copied();
+                        if reply.send(result.map(|token| token.to_string()).map_err(|e| e.to_string())).is_err() {
+                            if let Some(token) = token {
+                                let name = webview2_com::CoTaskMemPWSTR::from(event);
+                                if let Err(e) = core.GetDevToolsProtocolEventReceiver(*name.as_ref().as_pcwstr()).and_then(|r| r.remove_DevToolsProtocolEventReceived(token)) { eprintln!("Expired diagnostic subscription cleanup: {e}"); }
+                            }
+                        }
+                        return Ok(());
+                    }
+                    WebviewDiagnosticAction::Unsubscribe { event, token, reply } => {
+                        let name = webview2_com::CoTaskMemPWSTR::from(event);
+                        let result = core.GetDevToolsProtocolEventReceiver(*name.as_ref().as_pcwstr()).and_then(|r| r.remove_DevToolsProtocolEventReceived(token));
+                        if reply.send(result.map(|()| String::new()).map_err(|e| e.to_string())).is_err() { eprintln!("Diagnostic unsubscription expired"); }
+                        return Ok(());
+                    }
+                    WebviewDiagnosticAction::SetVisible { visible, reply } => {
+                        let result = (|| -> windows_core::Result<(bool, bool)> {
+                            let mut before = Default::default();
+                            let _ = webview.controller().IsVisible(&mut before);
+                            webview.controller().SetIsVisible(visible)?;
+                            // Read back from the controller rather than echoing the
+                            // request: what the compositor saw is the part worth
+                            // logging.
+                            let mut after = Default::default();
+                            let _ = webview.controller().IsVisible(&mut after);
+                            Ok((before.as_bool(), after.as_bool()))
+                        })();
+                        let result = result.map_err(|error| error.to_string());
+                        if reply.send(result).is_err() {
+                            // The controller state already changed on this thread;
+                            // a caller that gave up cannot undo it, so the failure
+                            // is only worth recording.
+                            eprintln!("Visibility control reply expired");
+                        }
+                        return Ok(());
+                    }
+                    WebviewDiagnosticAction::InstallFailure => {}
+                }
                 let callback = ProcessFailedEventHandler::create(Box::new(move |_, args| {
                     let Some(args) = args else { return Ok(()) };
                     let mut kind = COREWEBVIEW2_PROCESS_FAILED_KIND::default();
@@ -155,7 +380,7 @@ pub(crate) fn install_webview_failure_diagnostics(
     Ok(())
 }
 
-fn diagnostic_dir(app: &AppHandle) -> Result<PathBuf, String> {
+pub(crate) fn diagnostic_dir(app: &AppHandle) -> Result<PathBuf, String> {
     let directory = app
         .path()
         .app_data_dir()

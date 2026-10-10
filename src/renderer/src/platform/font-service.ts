@@ -2,6 +2,8 @@ import type { StoredFont } from '@shared/types-library'
 import { TEXT_FONT_FAMILIES } from '@/core/text-raster'
 
 const loadedFonts = new Map<string, FontFace>()
+const loadingFonts = new Map<string, Promise<void>>()
+const deletingFontFamilies = new Set<string>()
 const BUILTIN_FONT_ID_PREFIX = 'moonsprite-builtin-'
 const FONT_USAGE_STORAGE_KEY = 'moonsprite:text-font-usage:v1'
 const TEXT_FONT_SIZE_STORAGE_KEY = 'moonsprite:text-font-size:v1'
@@ -13,15 +15,23 @@ export interface TextFontOption {
   filePath?: string
 }
 
-const registerFont = async (font: StoredFont): Promise<void> => {
+const registerFont = (font: StoredFont): Promise<void> => {
   const key = `${font.family}\n${font.filePath}`
-  if (loadedFonts.has(key) || typeof FontFace === 'undefined' || !document.fonts) return
-  const bytes = await window.moonSprite.readBinary(font.filePath)
-  const source = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer
-  const face = new FontFace(font.family, source)
-  await face.load()
-  document.fonts.add(face)
-  loadedFonts.set(key, face)
+  if (loadedFonts.has(key) || deletingFontFamilies.has(font.family) || typeof FontFace === 'undefined' || !document.fonts) return Promise.resolve()
+  const pending = loadingFonts.get(key)
+  if (pending) return pending
+  let operation!: Promise<void>
+  operation = (async () => {
+    const bytes = await window.moonSprite.readBinary(font.filePath)
+    const source = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer
+    const face = new FontFace(font.family, source)
+    await face.load()
+    if (loadingFonts.get(key) !== operation || deletingFontFamilies.has(font.family)) return
+    document.fonts.add(face)
+    loadedFonts.set(key, face)
+  })().finally(() => { if (loadingFonts.get(key) === operation) loadingFonts.delete(key) })
+  loadingFonts.set(key, operation)
+  return operation
 }
 
 const asOption = (font: StoredFont): TextFontOption => ({
@@ -110,14 +120,21 @@ export async function importSystemTextFont(font: TextFontOption): Promise<TextFo
 
 export async function deleteTextFont(font: TextFontOption): Promise<void> {
   if (font.source !== 'imported' || !font.id || typeof window.moonSprite?.deleteFont !== 'function') return
-  await window.moonSprite.deleteFont(font.id)
-  for (const [key, face] of loadedFonts) {
-    if (!key.startsWith(`${font.family}\n`)) continue
-    document.fonts?.delete?.(face)
-    loadedFonts.delete(key)
-  }
+  deletingFontFamilies.add(font.family)
+  try {
+    await window.moonSprite.deleteFont(font.id)
+    for (const key of loadingFonts.keys()) if (key.startsWith(`${font.family}\n`)) loadingFonts.delete(key)
+    for (const [key, face] of loadedFonts) {
+      if (!key.startsWith(`${font.family}\n`)) continue
+      document.fonts?.delete?.(face)
+      loadedFonts.delete(key)
+    }
+  } finally { deletingFontFamilies.delete(font.family) }
 }
 
 export function resetTextFontServiceForTests(): void {
+  for (const face of loadedFonts.values()) document.fonts?.delete?.(face)
   loadedFonts.clear()
+  loadingFonts.clear()
+  deletingFontFamilies.clear()
 }

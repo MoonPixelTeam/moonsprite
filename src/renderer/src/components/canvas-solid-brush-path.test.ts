@@ -68,6 +68,7 @@ describe('solid brush path preview', () => {
       brushPatternOrigin: () => ({ x: 0, y: 0 }), optimizedRotationEnabled: true, proceduralAntialiasStrength: 0,
       view: { ...session.view, zoom: 1, tileRepeatMode: 'off' }, deviceScale: { x: 1, y: 1 },
       previewPixelPlacements: (x: number, y: number) => [{ point: { x, y }, copy: { originX: 0, originY: 0 } }],
+      repeatCopies: [{ originX: 0, originY: 0, fromX: 0, fromY: 0, toX: 80, toY: 64 }],
       previewColorAt, fillPreviewPixelRects: (entries: Array<{ pixelRect: { x: number; y: number; width: number }; sampleX: number; sampleY: number }>) => {
         for (const e of entries) for (let x = e.pixelRect.x; x < e.pixelRect.x + e.pixelRect.width; x++) rendered.add(e.sampleY * 80 + x)
       }

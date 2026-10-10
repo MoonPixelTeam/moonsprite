@@ -14,6 +14,7 @@ import { historyEntryLimit, loadEditorPreferences } from '@/core/file-preference
 import { recordRuntimeDiagnostic, runtimeDiagnosticsActive } from '@/core/runtime-diagnostics'
 import type { DocumentSession } from './workspace-types'
 import { invalidateSessionContent } from './workspace-session'
+import { LatestTaskQueue } from '@/core/latest-task-queue'
 
 const HISTORY_FORMAT_VERSION = 4
 
@@ -26,7 +27,8 @@ const captureSnapshot = (document: SpriteDocument): LocalHistorySnapshot => {
   snapshotShapes.set(snapshot, documentShape(document))
   return snapshot
 }
-const writeQueues = new Map<string, Promise<void>>()
+interface HistoryGeneration { api: MoonSpriteApi; session: DocumentSession; record: HistoryWrite; includeDocumentFingerprint: boolean }
+const writeQueues = new Map<string, LatestTaskQueue<HistoryGeneration>>()
 const pressuredStates = new WeakSet<object>()
 interface HistoryWrite {
   manifest: LocalHistoryManifest
@@ -37,6 +39,12 @@ const sessionWrites = new WeakMap<DocumentSession, HistoryWrite>()
 // Weak references avoid retaining closed projects, while another session writing
 // the same path invalidates a previously acknowledged timeline.
 const latestWrites = new Map<string, WeakRef<HistoryWrite>>()
+const rememberLatestWrite = (id: string, record: HistoryWrite): void => {
+  latestWrites.delete(id)
+  latestWrites.set(id, new WeakRef(record))
+  // Only deduplication metadata is evicted; pending writes remain in writeQueues.
+  while (latestWrites.size > 256) latestWrites.delete(latestWrites.keys().next().value!)
+}
 const sameHistoryWrite = (write: HistoryWrite, manifest: LocalHistoryManifest, snapshots: LocalHistorySnapshot[]): boolean =>
   write.manifest.projectKey === manifest.projectKey && write.manifest.position === manifest.position &&
   write.manifest.documentFingerprint === manifest.documentFingerprint &&
@@ -228,12 +236,16 @@ export const flushLocalHistoryPersist = async (api: MoonSpriteApi, session: Docu
   await persistLocalHistory(api, session, includeDocumentFingerprint)
 }
 
-export const persistLocalHistory = async (api: MoonSpriteApi, session: DocumentSession, includeDocumentFingerprint = false): Promise<void> => {
+export const persistLocalHistory = (api: MoonSpriteApi, session: DocumentSession, includeDocumentFingerprint = false): Promise<void> => {
   const state = session.localHistory
-  if (!loadEditorPreferences().localHistoryEnabled || !state) return
+  if (!loadEditorPreferences().localHistoryEnabled || !state) return Promise.resolve()
+  const projectKey = historyId(session.document)
+  let queue = writeQueues.get(projectKey)
+  const replaced = queue?.pendingValue
+  includeDocumentFingerprint ||= (replaced?.includeDocumentFingerprint || queue?.runningValue?.includeDocumentFingerprint) ?? false
   const manifest: LocalHistoryManifest = {
     version: HISTORY_FORMAT_VERSION,
-    projectKey: historyId(session.document),
+    projectKey,
     labels: [...state.labels],
     position: clampPosition(state.position, state.labels),
     ...(includeDocumentFingerprint ? { documentFingerprint: documentFingerprint(session.document) } : {})
@@ -244,11 +256,27 @@ export const persistLocalHistory = async (api: MoonSpriteApi, session: DocumentS
   const id = manifest.projectKey
   const known = sessionWrites.get(session)
   if (known && latestWrites.get(id)?.deref() === known && sameHistoryWrite(known, manifest, snapshots)) {
-    await known.completion
-    return
+    return known.completion
   }
-  const previous = writeQueues.get(id)
-  const write = (previous ? previous.catch(() => undefined) : Promise.resolve()).then(async () => {
+  if (!queue) {
+    queue = new LatestTaskQueue(writeHistoryGeneration, () => { if (writeQueues.get(id) === queue) writeQueues.delete(id) })
+    writeQueues.set(id, queue)
+  }
+  if (replaced) {
+    if (sessionWrites.get(replaced.session) === replaced.record) sessionWrites.delete(replaced.session)
+    replaced.record.snapshots = []
+  }
+  const record: HistoryWrite = { manifest, snapshots, completion: Promise.resolve() }
+  sessionWrites.set(session, record)
+  rememberLatestWrite(id, record)
+  record.completion = queue.enqueue({ api, session, record, includeDocumentFingerprint })
+  return record.completion
+}
+
+const writeHistoryGeneration = async ({ api, session, record }: HistoryGeneration): Promise<void> => {
+  const { manifest, snapshots } = record
+  const id = manifest.projectKey
+  try {
     const archives: Uint8Array[] = []
     const incrementalDeltas = snapshots.map((snapshot, index) => index > 0 && 'base' in snapshot && snapshot.base === snapshots[index - 1] ? snapshot.delta : null)
     for (let index = 0; index < snapshots.length; index++) {
@@ -282,16 +310,11 @@ export const persistLocalHistory = async (api: MoonSpriteApi, session: DocumentS
       record.snapshots = record.snapshots.map(snapshot => replacements.get(snapshot) ?? snapshot)
       if (localHistoryRetainedBytes(live.snapshots) <= LOCAL_HISTORY_SNAPSHOT_BUDGET) pressuredStates.delete(live)
     }
-  })
-  const record: HistoryWrite = { manifest, snapshots, completion: write }
-  sessionWrites.set(session, record)
-  latestWrites.set(id, new WeakRef(record))
-  writeQueues.set(id, write)
-  try { await write } catch (error) {
+  } catch (error) {
     if (sessionWrites.get(session) === record) sessionWrites.delete(session)
     if (latestWrites.get(id)?.deref() === record) latestWrites.delete(id)
     throw error
-  } finally { if (writeQueues.get(id) === write) writeQueues.delete(id) }
+  }
 }
 
 const replaceDocument = (target: SpriteDocument, source: SpriteDocument): void => {
@@ -423,7 +446,7 @@ export const restoreLocalHistory = async (api: MoonSpriteApi, session: DocumentS
   if (hasCache && !writeQueues.has(manifest.projectKey)) {
     const record: HistoryWrite = { manifest: { ...manifest, position }, snapshots: [...snapshots], completion: Promise.resolve() }
     sessionWrites.set(session, record)
-    latestWrites.set(manifest.projectKey, new WeakRef(record))
+    rememberLatestWrite(manifest.projectKey, record)
   }
   configureLocalHistory(session, api)
   if (!hasCache) scheduleLocalHistoryPersist(api, session)

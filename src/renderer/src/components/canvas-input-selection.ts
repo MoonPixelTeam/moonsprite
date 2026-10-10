@@ -150,6 +150,7 @@ export function createSelectionCanvasInput(ports: Ports) {
         startClient: { x: event.clientX, y: event.clientY },
         selectionStart: cloneSelection(session.selection),
         selectionMode: mode,
+        ...(session.tilemapMode === 'paint' && activePaintLayer(session).kind === 'tilemap' ? { moved: true } : {}),
         constrain: false,
         tileRepeatPoint: repeatedStart,
         ...canvasCenteredDragFields(session.drawFromCanvasCenter, session.document, repeatedStart, false, null, drawingAnchorPoint(session))

@@ -40,8 +40,36 @@ export interface DocumentSlice {
   height: number
 }
 
+export interface ProjectReferenceImage {
+  id: string
+  width: number
+  height: number
+  /** Immutable RGBA pixels embedded in the project, independent from artwork. */
+  pixels: Uint8ClampedArray
+}
+
+export interface ReferencePlacement {
+  x: number
+  y: number
+  width: number
+  height: number
+  angle: number
+  flipX: boolean
+  flipY: boolean
+  opacity?: number
+}
+
+export interface ProjectCanvasReference extends ReferencePlacement {
+  id: string
+  src: string
+  name: string
+  locked: boolean
+  floating?: boolean
+  initial?: ReferencePlacement
+}
+
 export interface SpriteDocument {
-  schemaVersion: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16 | 17 | 18 | 19 | 20
+  schemaVersion: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16 | 17 | 18 | 19 | 20 | 21
   id: string
   name: string
   width: number
@@ -61,6 +89,10 @@ export interface SpriteDocument {
   nextColorId: number
   /** Project-owned brushes are stored in the .moonsprite container. */
   customBrushes?: ProjectBrush[]
+  /** Project-owned reference library. Navigation stays in the workspace session. */
+  referenceImages?: ProjectReferenceImage[]
+  /** References attached to the canvas or independently floating in its viewport. */
+  canvasReferences?: ProjectCanvasReference[]
   /** Project-owned tile sheets referenced by Tilemap cells. */
   tilesets?: Tileset[]
   /** Animation metadata is independent from layer ordering and optional for v1 compatibility. */

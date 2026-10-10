@@ -1292,6 +1292,7 @@ body .pressure-trigger[aria-expanded='true']:not(.selected) { color: var(--theme
 @keyframes canvas-key-display-life { 0% { opacity: 0; transform: translateY(5px); } 10% { opacity: 1; transform: translateY(0); } 78% { opacity: 1; transform: translateY(0); } 100% { opacity: 0; transform: translateY(-3px); } }
 :root[data-ui-motion='off'] .canvas-key-display-item { opacity: 1; transform: none; }
 .stage-brush-preview-overlay { position: absolute; z-index: 2; inset: 0; display: block; width: 100%; height: 100%; pointer-events: none; image-rendering: pixelated; }
+.stage-guide-overlay { position: absolute; z-index: 4; inset: 0; display: block; width: 100%; height: 100%; pointer-events: none; image-rendering: pixelated; }
 :root[data-pen-input='true'], :root[data-pen-input='true'] * { cursor: none !important; }
 .stage-pen-cursor { position: absolute; z-index: 9; top: 0; left: 0; display: block; max-width: none; pointer-events: none; user-select: none; transform-origin: top left; image-rendering: pixelated; will-change: transform; }
 .stage-pen-cursor[hidden] { display: none; }
@@ -4388,7 +4389,7 @@ html body .panel > header > .panel-actions:has(> :only-child) { flex-shrink: 0; 
     align-items: center;
     justify-content: center;
   }
-  .palette-panel > .swatch-grid { overflow: auto; scrollbar-width: none; }
+  .palette-panel > .swatch-grid { overflow: auto; }
 }
 
 @container workspace-panel (max-height: 160px) {
@@ -4690,8 +4691,11 @@ html body .panel-actions-popup {
   .color-panel .color-value-trigger { min-width: 0; grid-template-columns: minmax(0, 1fr); }
   .color-panel .color-value-trigger small { display: none; }
   .color-panel .color-value-trigger strong { overflow: hidden; text-overflow: ellipsis; }
-  .palette-panel > .swatch-grid { scrollbar-width: none; }
-  .palette-panel > .swatch-grid::-webkit-scrollbar { display: none; }
+}
+/* Only the minimum-width sidebar rail hides the palette scrollbar. */
+@container side-panel-dock (max-width: 42px) {
+  html body :is([data-panel-dock-content='left'], [data-panel-dock-content='right']) .palette-panel:not(.floating-panel) > .swatch-grid { scrollbar-width: none !important; }
+  html body :is([data-panel-dock-content='left'], [data-panel-dock-content='right']) .palette-panel:not(.floating-panel) > .swatch-grid::-webkit-scrollbar { display: none; width: 0; height: 0; }
 }
 @container workspace-panel (max-height: 180px) {
   .color-panel > .moon-color-picker { overflow: hidden; }

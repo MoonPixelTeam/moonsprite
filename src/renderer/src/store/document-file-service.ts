@@ -467,6 +467,28 @@ export async function exportDocumentFile(api: MoonSpriteApi, document: SpriteDoc
   const fallbackName = sanitizeFileStem(document.name, 'MoonSprite-export')
   let requestedName = sanitizeFileStem(options?.name ?? fallbackName, fallbackName)
   const format = options?.format ?? 'png-auto'
+  if (format === 'moonsprite') {
+    if (options.target && options.target !== 'document') throw new Error(translate(loadEditorPreferences().language, 'file.export.projectDocumentOnly'))
+    const location = await resolveBatchExportLocation(api, requestedName, format, options.directory)
+    if (!location) return null
+    const path = await resolveExportPath(api, joinDirectoryPath(location.directory, withExportFileExtension(location.name, format)), lifecycle)
+    if (!path) return null
+    throwIfExportCanceled(lifecycle)
+    lifecycle?.onEncodeStart?.()
+    const portable = await portableTimelapseDocument(document, api)
+    throwIfExportCanceled(lifecycle)
+    const data = await encodeProjectAsync(portable, { onProgress: (value) => {
+      throwIfExportCanceled(lifecycle)
+      lifecycle?.onEncodeProgress?.(value)
+    } })
+    throwIfExportCanceled(lifecycle)
+    lifecycle?.onWriteStart?.()
+    await api.writeBinaryAtomic(path, data)
+    throwIfExportCanceled(lifecycle)
+    rememberExportPath(path)
+    rememberLastDocumentExport(document, options, { name: fileNameFromPath(path), format, scalePercent: 100, target: 'document', directory: parentDirectoryFromPath(path) })
+    return translate(loadEditorPreferences().language, 'file.export.moonsprite')
+  }
   const requestedTarget = format === 'webp' && options.target === 'frames' ? 'document' : options?.target ?? 'document'
   const selectedLayerId = requestedTarget === 'layer' && options?.layerId && document.layers.some((layer) => layer.id === options.layerId)
     ? options.layerId
@@ -957,7 +979,7 @@ export async function exportSpriteSheetFile(
 
 export async function exportTimelapseFile(api: MoonSpriteApi, document: SpriteDocument, format: TimelapseExportFormat, options: TimelapseExportOptions, lifecycle?: FileOperationLifecycle): Promise<string | null> {
   throwIfExportCanceled(lifecycle)
-  const settings = normalizeTimelapseSettings({ ...document.timelapse, ...(options.quality ? { quality: options.quality } : {}), ...(options.speed !== undefined ? { speed: options.speed } : {}) }, document.timelapse?.snapshots ?? [])
+  const settings = normalizeTimelapseSettings({ ...document.timelapse, ...(options.quality ? { quality: options.quality } : {}), ...(options.speed !== undefined ? { speed: options.speed } : {}) }, document.timelapse?.snapshots.slice() ?? [])
   if (settings.snapshots.length === 0) throw new Error(translate(loadEditorPreferences().language, 'timelapse.noFrames'))
   const fallbackName = sanitizeFileStem(document.name, 'MoonSprite-timelapse')
   const extension = format === 'jpeg' ? 'jpg' : format
@@ -991,7 +1013,7 @@ export async function exportTimelapseFile(api: MoonSpriteApi, document: SpriteDo
     if (typeof Worker !== 'undefined' && !settings.snapshots.some(frame => frame.local)) {
       lifecycle?.onEncodeStart?.()
       let lastPath = directory
-      await exportDocumentInWorker(document, {
+      await exportDocumentInWorker({ ...document, timelapse: settings }, {
         job: 'timelapse', protection,
         format: format === 'jpeg' ? 'jpeg' : 'png-rgba',
         scalePercent

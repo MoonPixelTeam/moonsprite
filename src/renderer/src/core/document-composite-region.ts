@@ -12,6 +12,7 @@ import { activeCelMasksByLayer, normalCompositeLayers, opacityGroupCompositeStac
 import { simpleClippingLayers, compositeClippingLayers } from './document-composite-clipping'
 import { simpleLayerMaskLayers, compositeLayerMaskLayers } from './document-composite-mask'
 import { compositeNormalLayers, compositeOpacityGroupStack } from './document-composite-raster'
+import { compositeGroupEffectsRegion, groupEffectsPlan } from './document-composite-group-effects'
 import { compileCompositePointSampler, createCompositePointSampler, createCompositeSampler } from './document-composite-sampling'
 
 export function compositeRegion(document: SpriteDocument, startX: number, startY: number, width: number, height: number, cache?: DocumentCompositeCache, revision = 0, dirtyRect?: SelectionRect, sourceDirtyRect?: SelectionRect): Uint8ClampedArray {
@@ -53,9 +54,11 @@ export function compositeRegion(document: SpriteDocument, startX: number, startY
   const layerMaskStack = cache ? cache.simpleLayerPlans.masksFor(document, revision) : simpleLayerMaskLayers(document)
   if (layerMaskStack) return compositeLayerMaskLayers(document, layerMaskStack, startX, startY, width, height, cache, revision, output, dirtyRect)
   const normalLayers = cache ? cache.renderLayersFor(document, revision, sourceDirtyRect) : normalCompositeLayers(document)
-  if (normalLayers) return compositeNormalLayers(document, normalLayers, startX, startY, width, height, cache, revision, undefined, dirtyRect)
+  if (normalLayers) return compositeNormalLayers(document, normalLayers, startX, startY, width, height, cache, revision, output, dirtyRect)
   const opacityGroupStack = cache ? cache.renderStackFor(document, revision, sourceDirtyRect) : opacityGroupCompositeStack(document)
-  if (opacityGroupStack) return compositeOpacityGroupStack(document, opacityGroupStack, startX, startY, width, height, cache, revision, undefined, dirtyRect)
+  if (opacityGroupStack) return compositeOpacityGroupStack(document, opacityGroupStack, startX, startY, width, height, cache, revision, output, dirtyRect)
+  const groupEffects = cache ? cache.simpleLayerPlans.groupEffectsFor(document, revision) : groupEffectsPlan(document)
+  if (groupEffects) return compositeGroupEffectsRegion(document, groupEffects, startX, startY, width, height, cache, revision, output, dirtyRect)
   const gradientMapped = compositeGradientMapRegion(document, startX, startY, width, height, cache, revision, sourceDirtyRect ?? dirtyRect, output)
   if (gradientMapped) return gradientMapped
   const sample = compileCompositePointSampler(document, undefined, cache, revision, sourceDirtyRect)

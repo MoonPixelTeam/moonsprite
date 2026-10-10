@@ -1,9 +1,7 @@
-/**
- * Buffer Pool for Uint8ClampedArray reuse
- *
- * Reduces GC pressure by reusing buffers for common canvas sizes.
- * Critical for 4K+ canvas operations that would otherwise allocate 64MB+ per composite.
- */
+import { globalCacheManager } from './global-cache-manager'
+
+/** Reuses explicitly released scratch buffers. Returned document/image pixels
+ * remain caller-owned and must never be released while readers retain them. */
 
 interface PooledBuffer {
   buffer: Uint8ClampedArray
@@ -11,29 +9,37 @@ interface PooledBuffer {
   lastUsed: number
 }
 
-class BufferPool {
+export class BufferPool {
   private pools = new Map<number, PooledBuffer[]>()
+  private allocations = new WeakSet<ArrayBufferLike>()
+  private pooled = new Set<ArrayBufferLike>()
+  private bytes = 0
+  private unregister?: () => void
   private readonly maxBuffersPerSize = 4
-  private readonly commonSizes = [
-    256 * 256 * 4,      // 256x256
-    512 * 512 * 4,      // 512x512
-    1024 * 1024 * 4,    // 1024x1024
-    2048 * 2048 * 4,    // 2048x2048
-    4096 * 4096 * 4,    // 4096x4096 (64MB)
-  ]
+  private readonly maxBuffers = 64
+  constructor(private readonly maxBytes = 64 * 1024 * 1024) {
+    if (!Number.isFinite(maxBytes) || maxBytes < 0) throw new Error('Invalid composite buffer pool byte limit')
+  }
 
   /**
    * Acquire a buffer of at least the requested size.
    * Returns a reused buffer if available, otherwise allocates new.
    */
   acquire(minBytes: number): Uint8ClampedArray {
-    // Find the smallest common size that fits
-    const poolSize = this.commonSizes.find(size => size >= minBytes) ?? minBytes
+    // Arbitrary region sizes are reusable too. Keep the logical length exact
+    // and avoid retaining a huge allocation for a tiny request.
+    let poolSize = minBytes
+    for (const size of this.pools.keys()) {
+      if (size >= minBytes && size <= minBytes * 4 && (!this.pools.has(poolSize) || size < poolSize)) poolSize = size
+    }
 
     const pool = this.pools.get(poolSize)
     if (pool && pool.length > 0) {
       const pooled = pool.pop()!
-      pooled.lastUsed = performance.now()
+      if (!pool.length) this.pools.delete(poolSize)
+      this.pooled.delete(pooled.buffer.buffer)
+      this.bytes -= pooled.size
+      if (!this.pooled.size) { this.unregister?.(); this.unregister = undefined }
 
       // Compositing starts with transparent pixels and ImageData requires an
       // exact logical length, even when the backing allocation is larger.
@@ -43,18 +49,19 @@ class BufferPool {
     }
 
     // Allocate new buffer
-    return new Uint8ClampedArray(minBytes)
+    const buffer = new Uint8ClampedArray(minBytes)
+    this.allocations.add(buffer.buffer)
+    return buffer
   }
 
   /**
    * Release a buffer back to the pool for reuse.
    */
   release(buffer: Uint8ClampedArray): void {
-    const size = buffer.byteLength
-
-    // Only pool common sizes
-    const poolSize = this.commonSizes.find(s => s === size)
-    if (!poolSize) return
+    const size = buffer.buffer.byteLength
+    if (!this.allocations.has(buffer.buffer) || this.pooled.has(buffer.buffer) || !size || size > this.maxBytes) return
+    const poolSize = size
+    while (this.bytes + size > this.maxBytes || this.pooled.size >= this.maxBuffers) this.trim(Math.max(size, this.bytes + size - this.maxBytes))
 
     let pool = this.pools.get(poolSize)
     if (!pool) {
@@ -66,14 +73,38 @@ class BufferPool {
     if (pool.length >= this.maxBuffersPerSize) {
       // Evict oldest buffer
       pool.sort((a, b) => a.lastUsed - b.lastUsed)
-      pool.shift()
+      const oldest = pool.shift()!
+      this.bytes -= oldest.size
+      this.pooled.delete(oldest.buffer.buffer)
     }
 
     pool.push({
-      buffer,
+      buffer: new Uint8ClampedArray(buffer.buffer),
       size,
       lastUsed: performance.now()
     })
+    this.bytes += size
+    this.pooled.add(buffer.buffer)
+    this.unregister ??= globalCacheManager.register({
+      name: 'CompositeBufferPool',
+      snapshot: () => ({ name: 'CompositeBufferPool', cachedBytes: this.bytes, itemCount: this.pooled.size }),
+      trim: bytes => this.trim(bytes), clear: () => this.clear()
+    })
+  }
+
+  trim(targetBytes: number): number {
+    const before = this.bytes
+    for (const [size, pool] of this.pools) {
+      while (pool.length && before - this.bytes < targetBytes) {
+        const entry = pool.shift()!
+        this.bytes -= size
+        this.pooled.delete(entry.buffer.buffer)
+      }
+      if (!pool.length) this.pools.delete(size)
+      if (before - this.bytes >= targetBytes) break
+    }
+    if (!this.pooled.size) { this.unregister?.(); this.unregister = undefined }
+    return before - this.bytes
   }
 
   /**
@@ -81,6 +112,10 @@ class BufferPool {
    */
   clear(): void {
     this.pools.clear()
+    this.pooled.clear()
+    this.bytes = 0
+    this.unregister?.()
+    this.unregister = undefined
   }
 
   /**

@@ -25,6 +25,7 @@ import * as selectionRaster from '@/core/tools-selection-transform-raster'
 import { blendOver } from '@/core/raster'
 import * as styleRender from '@/core/document-composite-style-render'
 import * as styleCoverage from '@/core/layer-style-coverage'
+import * as compositing from '@/core/document-composite-region'
 
 class MockOffscreenCanvas {
   static instances: MockOffscreenCanvas[] = []
@@ -168,6 +169,27 @@ describe('CanvasCompositeCache', () => {
     }
   })
 
+  it('initializes only a bounded window for a first small viewport on a large document', () => {
+    const document = createDocument('bounded first paint', 2048, 2048, 'rgba', false)
+    writeLayerColor(document, document.layers[0], 900 * 2048 + 900, { r: 21, g: 97, b: 173, a: 255 })
+    const cache = new CanvasCompositeCache(), context = makeContext()
+    const composite = vi.spyOn(compositing, 'compositeRegion')
+    const viewport = { fromX: 900, fromY: 900, toX: 964, toY: 964 }
+    draw(cache, document, context, viewport)
+    expect(composite.mock.calls.map(call => call.slice(1, 5))).toEqual([[868, 868, 128, 128]])
+    const window = context.drawImage.mock.lastCall![0] as MockOffscreenCanvas
+    expect(window.width).toBe(128)
+    expect(Array.from(window.pixels.subarray((32 * 128 + 32) * 4, (32 * 128 + 32) * 4 + 4))).toEqual([21, 97, 173, 255])
+    draw(cache, document, context, { fromX: 908, fromY: 908, toX: 972, toY: 972 })
+    expect(composite).toHaveBeenCalledOnce()
+    draw(cache, document, context)
+    expect(composite.mock.lastCall!.slice(1, 5)).toEqual([0, 0, 2048, 2048])
+    draw(cache, document, context, viewport)
+    expect(composite).toHaveBeenCalledTimes(2)
+    draw(cache, document, context, { ...viewport, contentRevision: 2, contentInvalidation: { kind: 'full', fromRevision: 1, revision: 2 } })
+    expect(composite.mock.lastCall!.slice(1, 5)).toEqual([868, 868, 128, 128])
+    cache.dispose()
+  })
 
   it('restores the caller clip after styled rendering throws and can draw a later view', () => {
     const document = createDocument('styled render failure', 42, 39, 'rgba')

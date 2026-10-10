@@ -1,0 +1,10 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`animation layer source cache budget > records the large multi-layer multi-frame budget envelope 1`] = `
+{
+  "budget": 134217728,
+  "perSourceBytes": 4194304,
+  "sourceCount": 800,
+  "sourcesRetained": 32,
+}
+`;

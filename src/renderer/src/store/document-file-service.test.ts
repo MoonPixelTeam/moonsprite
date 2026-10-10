@@ -6,7 +6,8 @@ import { createDocument } from '@/core/document'
 import { setRuntimeAppLocale } from '@/core/localization'
 import { decodePng } from '@/core/png'
 import { encodePng } from '@/core/png-encode'
-import { loadEditorPreferences } from '@/core/file-preferences'
+import { loadEditorPreferences, saveEditorPreferences } from '@/core/file-preferences'
+import { loadRecentExportPaths } from '@/core/export-settings'
 import { exportDocumentFile, exportSpriteSheetFile, exportTimelapseFile, saveDocumentFile } from './document-file-service'
 
 beforeAll(() => {
@@ -347,6 +348,42 @@ describe('timelapse image sequence export service', () => {
 })
 
 describe('sprite sheet file export service', () => {
+  it('shares recent directory memory with ordinary exports in both directions', async () => {
+    const exportImage = vi.fn()
+      .mockResolvedValueOnce({ canceled: false, filePath: 'D:/sheets/Sheet.png' })
+      .mockResolvedValueOnce({ canceled: false, filePath: 'D:/images/Image.psd' })
+      .mockResolvedValueOnce({ canceled: true })
+    const api = { exportImage, writeBinaryAtomic: vi.fn(async () => {}) } as unknown as MoonSpriteApi
+    const document = createDocument('Hero', 1, 1, 'rgba')
+    saveEditorPreferences({ ...loadEditorPreferences(), exportLocationMode: 'recent', exportDirectory: 'D:/configured', lastExportDirectory: 'D:/previous' })
+
+    await exportSpriteSheetFile(api, document, 'Sheet')
+    expect(exportImage).toHaveBeenNthCalledWith(1, 'D:/previous/Sheet.png', 'png')
+    expect(loadEditorPreferences().lastExportDirectory).toBe('D:/sheets')
+    await exportDocumentFile(api, document, { name: 'Image', format: 'psd', scalePercent: 100 })
+    expect(exportImage).toHaveBeenNthCalledWith(2, 'D:/sheets/Image.psd', 'psd')
+    expect(loadEditorPreferences().lastExportDirectory).toBe('D:/images')
+    await expect(exportSpriteSheetFile(api, document, 'Canceled')).resolves.toBeNull()
+    expect(exportImage).toHaveBeenNthCalledWith(3, 'D:/images/Canceled.png', 'png')
+    expect(loadEditorPreferences().lastExportDirectory).toBe('D:/images')
+    expect(loadRecentExportPaths().map(({ filePath }) => filePath)).toEqual(['D:/images/Image.psd', 'D:/sheets/Sheet.png'])
+  })
+
+  it('keeps the configured default after exports and remembers only successful writes', async () => {
+    saveEditorPreferences({ ...loadEditorPreferences(), exportLocationMode: 'fixed', exportDirectory: 'D:/configured', lastExportDirectory: 'D:/previous' })
+    const exportImage = vi.fn().mockResolvedValueOnce({ canceled: false, filePath: 'D:/sheets/Sheet.png' }).mockResolvedValueOnce({ canceled: true })
+    const writeBinaryAtomic = vi.fn(async () => {})
+    const api = { exportImage, writeBinaryAtomic } as unknown as MoonSpriteApi
+    const document = createDocument('Hero', 1, 1, 'rgba')
+    await exportSpriteSheetFile(api, document, 'Sheet')
+    await exportDocumentFile(api, document, { name: 'Image', format: 'psd', scalePercent: 100 })
+    expect(exportImage).toHaveBeenNthCalledWith(2, 'D:/configured/Image.psd', 'psd')
+    writeBinaryAtomic.mockRejectedValueOnce(new Error('write failed'))
+    await expect(exportSpriteSheetFile(api, document, 'Failed', 'D:/failed')).rejects.toThrow('write failed')
+    expect(loadEditorPreferences().lastExportDirectory).toBe('D:/sheets')
+    expect(loadRecentExportPaths().map(({ filePath }) => filePath)).toEqual(['D:/sheets/Sheet.png'])
+  })
+
   it('uses the chosen native file name for sprite sheets and cancels before writing', async () => {
     const exportImage = vi.fn().mockResolvedValueOnce({ canceled: false, filePath: 'D:/exports/Chosen.png' }).mockResolvedValueOnce({ canceled: true })
     const writeBinaryAtomic = vi.fn(async () => {})

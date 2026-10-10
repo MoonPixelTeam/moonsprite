@@ -148,6 +148,7 @@ describe('timelapse durability on close', () => {
     // waiting for PNG encoding while the document already reads as clean.
     document.dirty = false
     const snapshotsBeforeClose = document.timelapse!.snapshots
+    const frameCountBeforeClose = snapshotsBeforeClose.length
 
     const closing = useWorkspace.getState().closeDocument(document.id)
     // Closing must wait on the encoder instead of cancelling the queued capture.
@@ -158,7 +159,7 @@ describe('timelapse durability on close', () => {
     await Promise.race([closing, new Promise((resolve) => setTimeout(resolve, 300))])
 
     // The frame reached the recording before the session went away.
-    expect(document.timelapse!.snapshots).not.toBe(snapshotsBeforeClose)
+    expect(document.timelapse!.snapshots.length).toBeGreaterThan(frameCountBeforeClose)
     expect(document.timelapse!.snapshots).toHaveLength(1)
     expect(getActiveLayer(decodePng(document.timelapse!.snapshots[0].data, 'close')).pixels[0]).toBe(90)
   })
@@ -196,7 +197,7 @@ describe('timelapse history retention', () => {
     const document = createDocument('recording retention', 2, 2, 'rgba', true)
     document.timelapse = { ...document.timelapse!, mode, recordUndoSteps }
     useWorkspace.getState().addSession(document)
-    const tasks: Promise<void>[] = []
+    const tasks: Promise<Awaited<ReturnType<typeof timelapse.commitPreparedTimelapseSnapshot>>>[] = []
     const prepare = vi.spyOn(timelapse, 'prepareTimelapseSnapshot')
     const commit = timelapse.commitPreparedTimelapseSnapshot
     vi.spyOn(timelapse, 'commitPreparedTimelapseSnapshot').mockImplementation((...args) => {

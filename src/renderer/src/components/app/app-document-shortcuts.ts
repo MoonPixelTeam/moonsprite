@@ -22,6 +22,7 @@ export function handleDocumentShortcuts(context: Pick<AppShortcutContext, 'openA
     return true
   if (runCommand('openDocument', () => uiCommands['openDocument']?.()))
     return true
+  if (runCommand('importSpriteSheet', () => uiCommands['importSpriteSheet']?.())) return true
   if (runCommand('save', () => { void workspace.saveActive() }))
     return true
   if (runCommand('exportDocument', () => uiCommands['exportDocument']?.()))

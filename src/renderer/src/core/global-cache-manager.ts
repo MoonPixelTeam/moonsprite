@@ -1,4 +1,5 @@
-/** Global memory manager for coordinating all caches in the renderer. */
+/** Coordinates explicitly registered renderer caches. These byte totals do
+ * not include document pixels, browser native memory or unregistered caches. */
 
 export interface CacheSnapshot {
   name: string
@@ -30,7 +31,7 @@ const DEFAULT_SOFT_LIMIT_BYTES = 256 * 1024 * 1024  // 256MB
 const DEFAULT_HARD_LIMIT_BYTES = 512 * 1024 * 1024  // 512MB
 
 export class GlobalCacheManager {
-  private providers = new Set<CacheProvider>()
+  private providers = new Set<WeakRef<CacheProvider>>()
   private softLimitBytes = DEFAULT_SOFT_LIMIT_BYTES
   private hardLimitBytes = DEFAULT_HARD_LIMIT_BYTES
   private lastCheckBytes = 0
@@ -42,8 +43,22 @@ export class GlobalCacheManager {
   }
 
   register(provider: CacheProvider): () => void {
-    this.providers.add(provider)
-    return () => this.providers.delete(provider)
+    if (this.providers.size >= 256) this.liveProviders()
+    const reference = new WeakRef(provider)
+    this.providers.add(reference)
+    // The owner's unsubscribe keeps the provider alive, while the manager does
+    // not keep an abandoned document/cache owner alive.
+    return () => { if (reference.deref() === provider) this.providers.delete(reference) }
+  }
+
+  private liveProviders(): CacheProvider[] {
+    const live: CacheProvider[] = []
+    for (const reference of this.providers) {
+      const provider = reference.deref()
+      if (provider) live.push(provider)
+      else this.providers.delete(reference)
+    }
+    return live
   }
 
   onMemoryPressure(callback: (level: MemoryPressureLevel) => void): () => void {
@@ -52,7 +67,7 @@ export class GlobalCacheManager {
   }
 
   snapshot(): CacheSnapshot[] {
-    return Array.from(this.providers).map(provider => provider.snapshot())
+    return this.liveProviders().map(provider => provider.snapshot())
   }
 
   totalBytes(): number {
@@ -83,23 +98,19 @@ export class GlobalCacheManager {
   }
 
   trimToTarget(targetBytes: number): number {
-    const providers = Array.from(this.providers).filter(p => p.trim)
-    if (providers.length === 0) return 0
-
+    const providers = this.liveProviders().map(provider => ({ provider, bytes: provider.snapshot().cachedBytes }))
+    let remaining = providers.reduce((sum, item) => sum + item.bytes, 0) - Math.max(0, targetBytes)
     let freedBytes = 0
-    const currentTotal = this.totalBytes()
-    if (currentTotal <= targetBytes) return 0
-
-    const neededBytes = currentTotal - targetBytes
-    const perProviderTarget = Math.ceil(neededBytes / providers.length)
-
-    for (const provider of providers) {
-      if (!provider.trim) continue
-      const freed = provider.trim(perProviderTarget)
+    for (const { provider, bytes } of providers.sort((a, b) => b.bytes - a.bytes)) {
+      if (remaining <= 0) break
+      if (!provider.trim || bytes <= 0) continue
+      // Re-read only this provider after trimming. This remains linear in
+      // snapshot calls and doesn't trust a provider's estimate of freed bytes.
+      provider.trim(Math.min(bytes, remaining))
+      const freed = Math.max(0, bytes - provider.snapshot().cachedBytes)
       freedBytes += freed
-      if (this.totalBytes() <= targetBytes) break
+      remaining -= freed
     }
-
     return freedBytes
   }
 
@@ -115,7 +126,7 @@ export class GlobalCacheManager {
   }
 
   clearAll(): void {
-    for (const provider of this.providers) {
+    for (const provider of this.liveProviders()) {
       if (provider.clear) provider.clear()
     }
   }
@@ -124,6 +135,15 @@ export class GlobalCacheManager {
     this.providers.clear()
     this.pressureCallbacks.clear()
   }
+}
+
+/** Starts the low-frequency safety valve for renderer caches. The individual
+ * caches still enforce their own budgets; this catches future providers that
+ * only expose a global budget. */
+export const installGlobalCachePressureMonitor = (intervalMs = 30_000): (() => void) => {
+  if (typeof window === 'undefined' || typeof window.setInterval !== 'function') return () => {}
+  const timer = window.setInterval(() => { globalCacheManager.handleMemoryPressure() }, intervalMs)
+  return () => window.clearInterval(timer)
 }
 
 export const globalCacheManager = new GlobalCacheManager()

@@ -84,6 +84,7 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
   const stageRef = useRef<HTMLDivElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const selectionCanvasRef = useRef<HTMLCanvasElement>(null)
+  const guideCanvasRef = useRef<HTMLCanvasElement>(null)
   const canvasPreferences = useCanvasPreferences()
   const rotationIndicatorPosition = canvasPreferences.rotationIndicatorPosition
   const interfaceScale = canvasPreferences.uiScale
@@ -835,6 +836,7 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
     renderCanvasFrame({
       resources: {
         canvasRef,
+        guideCanvasRef,
         inputRef,
         wheelBrushSizePreviewRef,
         magicPreviewFlash,
@@ -1482,6 +1484,7 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
         />
         <canvas ref={selectionCanvasRef} style={rotationStyle} className="stage-selection-overlay" aria-hidden="true" />
         <canvas ref={brushPreviewCanvasRef} style={rotationStyle} className="stage-brush-preview-overlay" aria-hidden="true" />
+        <canvas ref={guideCanvasRef} style={rotationStyle} className="stage-guide-overlay" aria-hidden="true" />
         <img ref={penCursorRef} className="stage-pen-cursor" alt="" hidden aria-hidden="true" draggable={false} />
         <span ref={adaptiveCursorRef} className="stage-pen-cursor stage-adaptive-cursor" hidden aria-hidden="true" />
         {eyedropperLens.overlay}

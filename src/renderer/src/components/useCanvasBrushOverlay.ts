@@ -127,6 +127,12 @@ export function useCanvasBrushOverlay(ports: Ports) {
         !ports.inputRef.current.spaceHeld
       )
     }
+    // Tile placement previews need the selected tile's pixels and cell/source
+    // geometry. The solid raster overlay cannot render them; keep pointer
+    // movement on the document renderer that owns both tile preview paths.
+    const layer = activePaintLayer(currentSession)
+    if ((layer.kind === 'tilemap' && currentSession.tilemapMode === 'paint')
+      || (layer.kind === 'free-tile' && currentSession.freeTileMode === 'paint')) return false
     if (ports.brushPreviewMode === 'none' || !['pencil', 'eraser', 'line'].includes(currentSession.tool)
       || (currentSession.tool !== 'eraser' && currentSession.inkMode !== 'simple')) return false
     if (currentSession.tool === 'line' && ports.brushPreviewMode === 'full') return false

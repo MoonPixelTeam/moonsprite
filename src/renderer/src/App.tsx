@@ -360,6 +360,7 @@ export default function App() {
         void openFilesAndShowDocument()
       },
       exportDocument: openExport,
+      importSpriteSheet: openSpriteSheetImport,
       exportAllFrames: () => openExport('frames'),
       exportSpriteSheet: () => {
         if (isWebTrial()) openSaveAs(); else if (session) setSpriteSheetExportSourceId(session.document.id)

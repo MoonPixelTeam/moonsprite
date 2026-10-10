@@ -21,6 +21,7 @@ mod platform_files;
 mod platform_fonts;
 mod platform_gallery;
 mod platform_lag_diagnostics;
+mod platform_browser_trace;
 mod platform_local_history;
 mod platform_palette;
 mod platform_paths;
@@ -106,9 +107,10 @@ fn close_listener_ready(
 }
 
 #[tauri::command]
-fn approve_close(app: AppHandle, state: State<'_, AppState>) -> Result<(), String> {
+async fn approve_close(app: AppHandle, state: State<'_, AppState>) -> Result<(), String> {
     state.close_requests.cancel();
     platform_recovery::mark_session(&app, true)?;
+    if let Err(error) = platform_browser_trace::shutdown(app.clone()).await { eprintln!("Browser trace exit cleanup: {error}"); }
     app.exit(0);
     Ok(())
 }
@@ -164,6 +166,7 @@ pub fn run() {
         .manage(platform_recovery::RecoveryState::default())
         .manage(platform_diagnostics::DiagnosticState::default())
         .manage(platform_lag_diagnostics::LagDiagnosticState::default())
+        .manage(platform_browser_trace::BrowserTraceState::default())
         .manage(platform_files::ScaledPngCancellation::default())
         .manage(platform_scripts::LuaScriptRuntime::default())
         .setup(|app| {
@@ -172,6 +175,7 @@ pub fn run() {
                 window.set_icon(icon)?;
                 platform_diagnostics::install_webview_failure_diagnostics(&window)?;
             }
+            platform_diagnostics::record_runtime_version(app.handle());
             platform_recovery::initialize_session_marker(app.handle())?;
             let _ = platform_gallery::ensure_builtin_example(app.handle().clone());
             let _ = platform_paths::export_directory();
@@ -196,6 +200,7 @@ pub fn run() {
             platform_dialogs::choose_directory,
             platform_diagnostics::append_diagnostic_events,
             platform_diagnostics::open_diagnostic_logs,
+            platform_diagnostics::set_webview_visible,
             platform_extensions::list_extensions,
             platform_extensions::inspect_extension_package,
             platform_extensions::install_extension,
@@ -237,6 +242,8 @@ pub fn run() {
             platform_resources::get_resource_info,
             platform_lag_diagnostics::sample_lag_resources,
             platform_lag_diagnostics::set_lag_capture,
+            platform_browser_trace::capture_browser_trace,
+            platform_browser_trace::browser_trace_status,
             platform_palette::list_palettes,
             platform_palette::import_palette,
             platform_palette::save_palette,

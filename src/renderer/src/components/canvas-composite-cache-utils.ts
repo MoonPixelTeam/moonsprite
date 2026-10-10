@@ -16,7 +16,7 @@ export const resetCompositeSurfaceBudget = (budget: CompositeSurfaceBudget): voi
   budget.bytes = 0
 }
 
-const surfaceBytes = (surface: CompositeSurface): number => surface.canvas.width * surface.canvas.height * 4
+const surfaceBytes = (surface: CompositeSurface): number => surface.canvas.width * surface.canvas.height * 4 * (surface.reserveBitmapBytes ? 2 : 1)
 
 const cacheBytes = (cache: Map<string, CompositeSurface>): number => {
   const known = cacheByteTotals.get(cache)

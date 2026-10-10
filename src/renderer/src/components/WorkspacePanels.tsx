@@ -18,6 +18,7 @@ import { PixelUtilityIcon } from '@/components/PixelUtilityIcon'
 import type { DockDragProps } from '@/components/workspace-panel-types'
 import { readStoredString, removeStoredValue, saveFloatingPosition, writeStoredString } from '@/core/panel-preferences'
 import { activeFreeTileCelTarget } from '@/core/free-tile-document'
+import { activeTilemapCelTarget, tilemapLayerTilesets } from '@/core/tilemap-document'
 import { loadFreeTileInstancePanelLayout, type FreeTileInstancePanelLayout } from '@/core/layer-panel-preferences'
 import { bottomPanelFlex, COLOR_SQUARE_ANCHOR_STORAGE_KEY, COLOR_SQUARE_DOCK_STORAGE_KEY, DEFAULT_BOTTOM_WIDTHS, DEFAULT_INSPECTOR_ORDER, DEFAULT_INSPECTOR_SIZES, INSPECTOR_LAYOUT_STORAGE_KEY, MINIMUM_BOTTOM_WIDTHS, MINIMUM_INSPECTOR_SIZES, loadInspectorLayout, moveInspectorPanel, proportionalPanelFlex, type WorkspacePanelId } from '@/core/panel-layout'
 import { FLOATING_PANEL_STORAGE_KEYS } from '@/core/workspace-layout-preferences'
@@ -133,6 +134,11 @@ export function InspectorPanels({ session, panelVisibility, onClosePreview, pane
   const bottomResizeRef = useRef<{ leading: WorkspacePanelId; trailing: WorkspacePanelId; startX: number; startWidths: Record<WorkspacePanelId, number> } | null>(null)
   const previewRelativeLuminance = previewRelativeLuminanceOverride ?? (session.view.relativeLuminance && relativeLuminanceInPreview)
   const contextRelativeLuminance = panelContextMenu?.id === 'reference' ? referenceRelativeLuminance : previewRelativeLuminance
+  const contextFreeTileLayer = panelContextMenu?.id === 'tileset' ? session.document.layers.find(layer => layer.id === session.document.activeLayerId && layer.kind === 'free-tile') : undefined
+  const contextTilesets = panelContextMenu?.id === 'tileset' ? tilemapLayerTilesets(session.document).map(entry => entry.tileset) : []
+  const contextTileset = contextTilesets.find(tileset => tileset.id === session.selectedTilesetId)
+    ?? contextTilesets.find(tileset => tileset.id === activeTilemapCelTarget(session.document)?.layer.tilemapTilesetId)
+    ?? contextTilesets[0]
   const dockDragRef = useRef<{ id: WorkspacePanelId; startX: number; startY: number; detach: (clientX: number, clientY: number, continueDrag?: boolean) => void; moved: boolean } | null>(null)
   const instancePanelAutoOpenRef = useRef<{ key: string; count: number; layout: FreeTileInstancePanelLayout } | null>(null)
   const activeFreeTileTarget = freeTileInstancePanelLayout === 'separate' ? activeFreeTileCelTarget(session.document) : null
@@ -208,7 +214,7 @@ export function InspectorPanels({ session, panelVisibility, onClosePreview, pane
     setPanelContextMenu({
       id,
       x: Math.max(4, Math.min(window.innerWidth - 228, event.clientX)),
-      y: Math.max(4, Math.min(window.innerHeight - (id === 'preview' ? 266 : 226), event.clientY)),
+      y: Math.max(4, Math.min(window.innerHeight - (id === 'preview' || id === 'tileset' ? 266 : 226), event.clientY)),
       bounds: { left: bounds.left, top: bounds.top, width: bounds.width, height: bounds.height }
     })
   }
@@ -625,6 +631,7 @@ export function InspectorPanels({ session, panelVisibility, onClosePreview, pane
     />, document.body)}
     <FloatingDockPreview style={detachPreview} />
     {panelContextMenu && createPortal(<div className="context-menu workspace-panel-context-menu" role="menu" aria-label={t('panel.settings', { panel: panelLabels[panelContextMenu.id] })} style={{ left: panelContextMenu.x, top: panelContextMenu.y }} onContextMenu={(event) => event.preventDefault()}>
+      {panelContextMenu.id === 'tileset' && <><button className="context-menu-item" type="button" role="menuitem" disabled={contextFreeTileLayer ? !contextFreeTileLayer.freeTileSources?.length : !contextTileset} onClick={() => { if (contextFreeTileLayer) useWorkspace.getState().clearUnusedFreeTileSources(contextFreeTileLayer.id); else if (contextTileset) useWorkspace.getState().clearUnusedTilesetTiles(contextTileset.id); setPanelContextMenu(null) }}><PixelUtilityIcon kind="delete" /><span>{t('tileset.clearUnused')}</span></button><span className="context-menu-divider" /></>}
       <button className="context-menu-item" type="button" role="menuitem" onClick={() => { onPanelVisibilityChange(panelContextMenu.id, false); if (popupPanelId === panelContextMenu.id) onPopupPanelClose?.(); setPanelContextMenu(null) }}><PixelUtilityIcon kind="eyeOff" /><span>{t('panel.hide', { panel: panelLabels[panelContextMenu.id] })}</span></button>
       <span className="context-menu-divider" />
       {panelContextMenu.id !== 'freeTileInstances' && (['left', 'right', 'bottom', 'floating'] as PanelDock[]).map((dock) => <button key={dock} className="context-menu-item" type="button" role="menuitemradio" aria-checked={dockFor(panelContextMenu.id) === dock} onClick={() => movePanelFromMenu(panelContextMenu.id, dock)}>{dockFor(panelContextMenu.id) === dock ? <PixelUtilityIcon kind="check" /> : <PixelUtilityIcon kind="move" />}<span>{panelDockLabels[dock]}</span></button>)}

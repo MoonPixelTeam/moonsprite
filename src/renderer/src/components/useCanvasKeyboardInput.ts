@@ -1,4 +1,6 @@
 import { registerCanvasKeyboard } from './canvas-keyboard-router'
+import { activeTilemapCelTarget } from '@/core/tilemap-document'
+import { activePaintLayer } from '@/store/workspace-session'
 import { flushCanvasBrushSize } from './canvas-brush-size-update'
 import { useEffect, useRef, useState } from 'react'
 import type { RasterLayer } from '@shared/types-layer'
@@ -380,7 +382,11 @@ export function useCanvasKeyboardInput(ports: Ports) {
       ) {
         event.preventDefault()
         event.stopPropagation()
-        useWorkspace.getState().moveActiveSelectionWithSelectionHistory(selectionNudge.x, selectionNudge.y, true)
+        const tileTarget = ports.session.tilemapMode === 'paint' && !ports.session.freeTransformActive
+          && activePaintLayer(ports.session).kind === 'tilemap' ? activeTilemapCelTarget(ports.session.document) : null
+        useWorkspace.getState().moveActiveSelectionWithSelectionHistory(
+          selectionNudge.x * (tileTarget?.tilemap.tileWidth ?? 1),
+          selectionNudge.y * (tileTarget?.tilemap.tileHeight ?? 1), true)
         ports.onionSkinCacheRef.current.invalidateFrames(ports.session.selectedAnimationFrameIds)
         ports.scheduleDraw()
         return

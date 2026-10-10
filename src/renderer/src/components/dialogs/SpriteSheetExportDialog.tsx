@@ -1,4 +1,5 @@
 import { chooseExportLocation } from '@/platform/export-location'
+import { loadEditorPreferences, outputDirectoryForOperation } from '@/core/file-preferences'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { DocumentSession } from '@/store/workspace'
 import type { SpriteSheetConstraint, SpriteSheetExportOptions, SpriteSheetFrameScope, SpriteSheetLayerScope, SpriteSheetLayout } from '@/core/sprite-sheet'
@@ -71,7 +72,7 @@ export function SpriteSheetExportDialog({ defaultDirectory, localGalleryDirector
     openAfterExport: false,
     outputFile: false,
     name: t('spriteSheet.output.defaultName', { name: document.name }),
-    directory: defaultDirectory
+    directory: outputDirectoryForOperation(loadEditorPreferences()) || defaultDirectory
   }))
   const previewOptions = useMemo<SpriteSheetExportOptions>(() => ({
     layout: options.layout,

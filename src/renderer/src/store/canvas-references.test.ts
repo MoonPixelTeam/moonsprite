@@ -2,6 +2,7 @@ import { beforeEach, expect, it } from 'vitest'
 import { createDocument } from '@/core/document'
 import { useWorkspace } from './workspace'
 import { useCanvasReferences } from './canvas-references'
+import { decodeProject, encodeProject, encodeProjectAsync } from '@/core/project-format'
 
 beforeEach(() => {
   useWorkspace.setState({ sessions: [], activeId: null })
@@ -34,7 +35,7 @@ it('records add, a complete gesture, mirror, lock, reset and delete in the norma
   const workspace = useWorkspace.getState()
   const session = workspace.sessions[0]
   const revision = session.revision
-  const dirty = session.document.dirty
+  const pixels = session.document.layers[0].pixels.slice()
   refs.add(image)
   refs.begin('ref')
   refs.update('ref', { x: 12, angle: 30 })
@@ -64,8 +65,11 @@ it('records add, a complete gesture, mirror, lock, reset and delete in the norma
   expect(useCanvasReferences.getState().images).toHaveLength(1)
   workspace.setHistoryPosition(0)
   expect(useCanvasReferences.getState().images).toHaveLength(0)
-  expect(session.document.dirty).toBe(dirty)
+  expect(session.document.dirty).toBe(true)
+  expect(session.document.layers[0].pixels).toEqual(pixels)
+  expect(session.document.canvasReferences).toEqual([])
   expect(session.revision).toBe(revision)
+  expect(session.layersPanelRevision).toBeGreaterThan(0)
 })
 
 it('cancels a drag without history and assigns asynchronous additions to their originating document', () => {
@@ -82,4 +86,45 @@ it('cancels a drag without history and assigns asynchronous additions to their o
   expect(first.history.length).toBe(2)
   refs.add({ ...image, id: 'closed', documentId: 'closed-document' })
   expect(useCanvasReferences.getState().images).toHaveLength(2)
+})
+
+const embeddedSource = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScLbtAAAAABJRU5ErkJggg=='
+
+it.each([
+  { floating: false, asynchronous: false }, { floating: true, asynchronous: false },
+  { floating: false, asynchronous: true }, { floating: true, asynchronous: true }
+])('restores placement, source and controls after reopening (floating=$floating, async=$asynchronous)', async ({ floating, asynchronous }) => {
+  const refs = useCanvasReferences.getState()
+  const project = useWorkspace.getState().sessions[0].document
+  refs.add({ ...image, src: embeddedSource, floating })
+  refs.update('ref', { x: -42.5, y: 73, angle: 37, width: 60, flipY: true, opacity: 0.4 })
+  refs.update('ref', { locked: true })
+  const saved = project.canvasReferences
+  expect(saved![0]).not.toHaveProperty('documentId')
+  const archive = asynchronous ? await encodeProjectAsync(project, { includePreview: false }) : encodeProject(project, { includePreview: false })
+  useWorkspace.setState({ sessions: [], activeId: null })
+  expect(useCanvasReferences.getState().images).toEqual([])
+  const reopened = decodeProject(archive)
+  useWorkspace.getState().addSession(reopened)
+  expect(reopened.dirty).toBe(false)
+  expect(reopened.canvasReferences).toEqual(saved)
+  expect(useCanvasReferences.getState().images).toEqual(saved!.map(item => ({ ...item, documentId: reopened.id })))
+})
+
+it('persists committed gestures, undo, redo, order and deletion without saving a cancelled preview', () => {
+  const refs = useCanvasReferences.getState()
+  const project = useWorkspace.getState().sessions[0].document
+  refs.add({ ...image, src: embeddedSource })
+  refs.add({ ...image, id: 'second', src: embeddedSource })
+  const saved = project.canvasReferences
+  refs.begin('ref'); refs.update('ref', { x: 123 }); refs.finish(true)
+  expect(project.canvasReferences).toBe(saved)
+  refs.bringToFront('ref')
+  expect(decodeProject(encodeProject(project, { includePreview: false })).canvasReferences!.map(item => item.id)).toEqual(['second', 'ref'])
+  refs.remove('ref')
+  expect(project.canvasReferences!.map(item => item.id)).toEqual(['second'])
+  useWorkspace.getState().undo()
+  expect(project.canvasReferences!.map(item => item.id)).toEqual(['second', 'ref'])
+  useWorkspace.getState().redo()
+  expect(decodeProject(encodeProject(project, { includePreview: false })).canvasReferences!.map(item => item.id)).toEqual(['second'])
 })

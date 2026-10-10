@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 use std::{
-    collections::HashMap,
+    collections::VecDeque,
     fs::{self, OpenOptions},
     io::{Read, Seek, SeekFrom, Write},
     path::{Path, PathBuf},
@@ -17,7 +17,28 @@ use tauri::{
 
 const MAX_FRAME: usize = 32 * 1024 * 1024;
 const CHUNK_BYTES: u64 = 64 * 1024 * 1024;
-static CHUNKS: Mutex<Option<HashMap<PathBuf, PathBuf>>> = Mutex::new(None);
+pub const MAX_CACHED_STORES: usize = 128;
+#[derive(Default)]
+struct ChunkCache {
+    entries: VecDeque<(PathBuf, PathBuf)>,
+}
+impl ChunkCache {
+    fn get(&mut self, directory: &Path) -> Option<PathBuf> {
+        let index = self.entries.iter().position(|entry| entry.0 == directory)?;
+        let entry = self.entries.remove(index)?;
+        let path = entry.1.clone();
+        self.entries.push_back(entry);
+        Some(path)
+    }
+    fn insert(&mut self, directory: PathBuf, path: PathBuf) {
+        self.entries.retain(|entry| entry.0 != directory);
+        self.entries.push_back((directory, path));
+        while self.entries.len() > MAX_CACHED_STORES {
+            self.entries.pop_front();
+        }
+    }
+}
+static CHUNKS: Mutex<Option<ChunkCache>> = Mutex::new(None);
 static SEQUENCE: AtomicU64 = AtomicU64::new(0);
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -76,11 +97,10 @@ pub fn append_frame(root: &Path, store: &str, data: &[u8]) -> Result<FrameRefere
     fs::create_dir_all(&directory).map_err(|e| e.to_string())?;
     let directory = contained(root, &directory)?;
     let mut guard = CHUNKS.lock().map_err(|e| e.to_string())?;
-    let chunks = guard.get_or_insert_with(HashMap::new);
+    let chunks = guard.get_or_insert_with(ChunkCache::default);
     let existing = chunks
         .get(&directory)
-        .filter(|p| fs::metadata(p).is_ok_and(|m| m.len() + data.len() as u64 <= CHUNK_BYTES))
-        .cloned();
+        .filter(|p| fs::metadata(p).is_ok_and(|m| m.len() + data.len() as u64 <= CHUNK_BYTES));
     let path = match existing {
         Some(path) => path,
         None => {

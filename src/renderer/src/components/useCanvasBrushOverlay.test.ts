@@ -7,8 +7,61 @@ import { useWorkspace } from '@/store/workspace'
 import { useCanvasBrushOverlay } from './useCanvasBrushOverlay'
 import { flushCanvasBrushSize, queueCanvasBrushSize } from './canvas-brush-size-update'
 import { createCanvasPointerMove } from './canvas-pointer-move'
+import type { MoonSpriteApi } from '@shared/types-platform'
 
-afterEach(() => { cleanup(); window.dispatchEvent(new Event('blur')); vi.restoreAllMocks(); useWorkspace.setState({ sessions: [], activeId: null }); document.querySelectorAll('canvas').forEach(canvas => canvas.remove()) })
+afterEach(() => { cleanup(); window.dispatchEvent(new Event('blur')); vi.restoreAllMocks(); vi.unstubAllGlobals(); useWorkspace.setState({ sessions: [], activeId: null }); document.querySelectorAll('canvas').forEach(canvas => canvas.remove()) })
+
+it.each([
+  ['tilemap', 'pencil'], ['tilemap', 'eraser'],
+  ['free-tile', 'pencil'], ['free-tile', 'eraser']
+] as const)('refreshes the actual %s tile preview on each %s pointer move', async (kind, tool) => {
+  localStorage.clear()
+  vi.stubGlobal('moonSprite', {
+    getResourceInfo: vi.fn(async () => ({ totalBytes: 8_000_000_000, freeBytes: 4_000_000_000 }))
+  } as unknown as MoonSpriteApi)
+  useWorkspace.setState({ sessions: [], activeId: null })
+  useWorkspace.getState().addSession(createDocument('tile preview', 16, 16, 'rgba'))
+  if (kind === 'tilemap') await useWorkspace.getState().createTilemapLayer({ name: 'Terrain', tileWidth: 2, tileHeight: 2 })
+  else await useWorkspace.getState().createFreeTileLayer({ name: 'Props' })
+  const session = useWorkspace.getState().sessions[0]
+  const layer = session.document.layers.find(item => item.id === session.document.activeLayerId)!
+  expect(layer.kind).toBe(kind)
+  Object.assign(session, { tool, inkMode: 'simple', brushTexture: 'solid', tilemapMode: 'paint', freeTileMode: 'paint' })
+  const input = new CanvasInputState()
+  Object.assign(input.pointer, { visible: true, point: { x: 1, y: 1 }, clientX: 1, clientY: 1 })
+  const canvas = document.createElement('canvas')
+  const scheduleDraw = vi.fn(), scheduleOverlay = vi.fn()
+  const ports = { session, inputRef: { current: input }, liveViewRef: { current: session.view },
+    brushPreviewMode: 'full-edge', drawingBrushPreviewEnabled: true, scheduleDraw
+  } as unknown as Parameters<typeof useCanvasBrushOverlay>[0]
+  const { result } = renderHook(() => useCanvasBrushOverlay(ports))
+  scheduleDraw.mockClear()
+  const move = createCanvasPointerMove({
+    inputRef: { current: input }, liveInputSession: () => session, canvasRef: { current: canvas },
+    liveViewRef: { current: session.view }, pressureAdapterRef: { current: new PointerPressureAdapter() },
+    moveSymmetry: () => false, autoPanSelection: vi.fn(), updateCursor: vi.fn(),
+    lineConnectionPreviewActive: () => false,
+    localPoint: (event: { clientX: number; clientY: number }) => ({ x: event.clientX, y: event.clientY }),
+    localContinuousPointAt: (x: number, y: number) => ({ x, y }),
+    activeLayer: layer, interfaceScale: 1, modifierActive: () => false,
+    brushPreviewOverlaySupported: result.current.brushPreviewOverlaySupported,
+    scheduleBrushPreviewOverlay: scheduleOverlay, scheduleDraw, moveQuickSampling: () => false
+  } as unknown as Parameters<typeof createCanvasPointerMove>[0])
+  for (const brushPreviewMode of ['full', 'edge', 'full-edge'] as const) {
+    Object.assign(ports, { brushPreviewMode })
+    expect(result.current.brushPreviewOverlaySupported(session)).toBe(false)
+    for (const x of [2, 6, 10]) {
+      const event = { clientX: x, clientY: 8, ctrlKey: false, altKey: false, metaKey: false, shiftKey: false, buttons: 0, pointerId: 1, pointerType: 'mouse', pressure: 0 }
+      move({ ...event, nativeEvent: event, currentTarget: canvas } as unknown as Parameters<typeof move>[0])
+      expect(input.pointer.point).toEqual({ x, y: 8 })
+    }
+  }
+  expect(scheduleDraw).toHaveBeenCalledTimes(9)
+  expect(scheduleOverlay).not.toHaveBeenCalled()
+  if (kind === 'tilemap') session.tilemapMode = 'edit'
+  else session.freeTileMode = 'edit'
+  expect(result.current.brushPreviewOverlaySupported(session)).toBe(true)
+})
 
 it.each(['pencil', 'eraser'] as const)('keeps solid %s hover and drawing on the overlay and clears the entire old outline', tool => {
   const session = sessionFromDocument(createDocument('cursor', 256, 256, 'rgba'))

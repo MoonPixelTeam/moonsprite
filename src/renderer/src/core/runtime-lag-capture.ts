@@ -8,6 +8,7 @@ export interface LagResourceSample {
 interface Ports {
   record: (name: string, detail: RuntimeDiagnosticDetail) => void
   resources?: () => Promise<LagResourceSample>
+  incident?: (detail: RuntimeDiagnosticDetail) => void
 }
 const bucket = () => ({ count: 0, total: 0, max: 0, over100: 0, over300: 0 })
 type Bucket = ReturnType<typeof bucket>
@@ -127,6 +128,7 @@ export function installRuntimeLagCapture(ports: Ports): () => void {
       lastIncident = now; postUntil = now + 10_000; incidentId++
       record('lag.incident', { incidentId, ...evidence, precedingWindows: recent.length,
         interpretation: 'threshold-evidence-not-confirmed-cause' })
+      ports.incident?.({ incidentId, ...evidence })
       for (const previous of recent) record('lag.incident-window', { incidentId, phase: 'before', ...previous })
       summarize('automatic-incident')
     }

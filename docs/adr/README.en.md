@@ -35,5 +35,6 @@ Each ADR contains context, a decision, consequences, and alternatives. Record on
 - [0021: Linked layers use stable identities and shared raster storage (Chinese)](0021-linked-layers.md)
 - [0022: Free-tile layers share a stable source set (Chinese)](0022-shared-free-tile-sets.md)
 - [0023: Local immutable timelapse library](0023-local-timelapse-library.en.md)
+- [0024: Save reference images with projects](0024-project-reference-images.en.md)
 
 Increment the number when adding an ADR. Keep deprecated decisions in place and link them to the superseding ADR.

@@ -4,6 +4,32 @@ mod platform_paths;
 mod platform_timelapse;
 
 #[test]
+fn evicted_store_keeps_old_and_new_ranges_readable() -> Result<(), Box<dyn std::error::Error>> {
+    let root = std::env::temp_dir().join(format!(
+        "moonsprite-recording-lru-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)?
+            .as_nanos()
+    ));
+    let mut bytes = b"\x89PNG\r\n\x1a\n".to_vec();
+    bytes.extend([42; 32]);
+    let original = platform_timelapse::append_frame(&root, "evicted", &bytes)?;
+    let hot = platform_timelapse::append_frame(&root, "hot", &bytes)?;
+    for index in 0..=platform_timelapse::MAX_CACHED_STORES {
+        platform_timelapse::append_frame(&root, &format!("other-{index}"), &bytes)?;
+        let next_hot = platform_timelapse::append_frame(&root, "hot", &bytes)?;
+        assert_eq!(next_hot.chunk, hot.chunk);
+    }
+    let next = platform_timelapse::append_frame(&root, "evicted", &bytes)?;
+    assert_ne!(original.chunk, next.chunk);
+    assert_eq!(platform_timelapse::read_frame(&root, &original)?, bytes);
+    assert_eq!(platform_timelapse::read_frame(&root, &next)?, bytes);
+    std::fs::remove_dir_all(root)?;
+    Ok(())
+}
+
+#[test]
 fn library_is_next_to_executable() -> Result<(), Box<dyn std::error::Error>> {
     assert_eq!(
         platform_timelapse::root()?,

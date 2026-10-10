@@ -31,6 +31,7 @@ export function readProjectExpandedRasterBytes(input: Uint8Array): number | null
       if (cel.dataFile) add(cel.dataFile, cel.width, cel.height)
       if (cel.mask) add(cel.mask.dataFile, cel.mask.width, cel.mask.height)
     }
+    for (const image of source.referenceImages ?? []) add(image.dataFile, image.width, image.height)
     for (const entry of source.animation.layerMasks ?? []) add(entry.mask.dataFile, entry.mask.width, entry.mask.height)
     for (const entry of source.animation.groupMasks ?? []) add(entry.mask.dataFile, entry.mask.width, entry.mask.height)
     let total = 0

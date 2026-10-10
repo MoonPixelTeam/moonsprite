@@ -319,6 +319,7 @@ export interface WorkspaceTilemapCommands {
   addTilesetTile(tilesetId: string): string | null
   deleteTilesetTile(tilesetId: string, tileId: string): boolean
   deleteTilesetTiles(tilesetId: string, tileIds: string[]): boolean
+  clearUnusedTilesetTiles(tilesetId: string): boolean
   previewTilesetTilePixels(tilesetId: string, tileId: string, pixels: Uint8ClampedArray): boolean
   commitTilesetTileEdit(tilesetId: string, tileId: string, before: Uint8ClampedArray, after: Uint8ClampedArray): boolean
 }
@@ -330,6 +331,7 @@ export interface WorkspaceFreeTileCommands {
   selectFreeTileInstanceRow(instanceId: string, mode?: 'replace' | 'toggle' | 'range', orderedInstanceIds?: readonly string[]): void
   addFreeTileSource(layerId?: string): string | null
   deleteFreeTileSource(sourceId: string): boolean
+  clearUnusedFreeTileSources(layerId: string): boolean
   deleteFreeTileInstance(instanceId: string): boolean
   deleteFreeTileInstances(instanceIds: readonly string[]): boolean
   showOnlyFreeTileInstance(instanceId: string): boolean

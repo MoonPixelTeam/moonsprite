@@ -29,6 +29,7 @@ export function createCanvasBrushPath({
   currentSession,
   document,
   previewPixelPlacements,
+  repeatCopies,
   view,
   deviceScale,
   activeBrushTexture,
@@ -75,6 +76,7 @@ export function createCanvasBrushPath({
       toY: number
     }
   }[]
+  repeatCopies: { originX: number; originY: number; fromX: number; fromY: number; toX: number; toY: number }[]
   view: import('@shared/types-view').ViewState
   deviceScale: import('@/core/canvas-render-plan').CanvasDeviceScale
   activeBrushTexture: import('@shared/types-brush').BrushTexture
@@ -176,10 +178,14 @@ export function createCanvasBrushPath({
         const base = packed === undefined ? undefined : activeLayer.format === 'rgba' ? unpackColor(packed) : getPaletteEntry(document, packed).color
         return previewColorAt(x, y, erase, 255, color, base, Boolean(baseline && base && base.r === color.r && base.g === color.g && base.b === color.b && base.a === color.a))
       }, (left, right, y, color) => {
-        for (const { point, copy } of previewPixelPlacements(left, y)) {
-          const first = deviceAlignedPixelRect(copy.originX, copy.originY, view.zoom, point.x, point.y, deviceScale)
-          const last = deviceAlignedPixelRect(copy.originX, copy.originY, view.zoom, point.x + right - left, point.y, deviceScale)
-          previewFillRects.push({ pixelRect: { ...first, width: last.x + last.width - first.x }, sampleX: point.x, sampleY: point.y, color })
+        for (const copy of repeatCopies) {
+          if (y < copy.fromY || y >= copy.toY) continue
+          const visibleLeft = Math.max(left, copy.fromX)
+          const visibleRight = Math.min(right, copy.toX - 1)
+          if (visibleLeft > visibleRight) continue
+          const first = deviceAlignedPixelRect(copy.originX, copy.originY, view.zoom, visibleLeft, y, deviceScale)
+          const last = deviceAlignedPixelRect(copy.originX, copy.originY, view.zoom, visibleRight, y, deviceScale)
+          previewFillRects.push({ pixelRect: { ...first, width: last.x + last.width - first.x }, sampleX: visibleLeft, sampleY: y, color })
         }
       })
       fillPreviewPixelRects(previewFillRects, erase)

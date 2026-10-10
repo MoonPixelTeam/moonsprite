@@ -84,6 +84,10 @@ export class DocumentCompositeCache {
   }
   styleCacheStats() { return this.styleCacheBudget.snapshot() }
   dispose() {
+    // Drop every document-derived index before the cache owner becomes
+    // unreachable. This keeps disposal correct even if a caller retains the
+    // cache briefly (for example while a canvas host is unmounting).
+    this.invalidateAll()
     this.styleCacheBudget.dispose()
   }
   private trackedStyleDocuments = new WeakSet<SpriteDocument>()

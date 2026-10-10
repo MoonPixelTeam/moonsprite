@@ -388,7 +388,18 @@ const compositeTimelapsePixelsAsync = async (document: SpriteDocument, maximumDi
   return { pixels: cachedPixels, width, height }
 }
 
-const appendTimelapseSnapshot = (settings: TimelapseSettings, now: number, width: number, height: number, changeScore: number, data: Uint8Array): void => {
+// Full recordings keep every frame. Pause rather than silently trim old frames.
+export const TIMELAPSE_FULL_FRAME_LIMIT = 100_000
+export class TimelapseCapacityError extends Error {
+  constructor() { super('完整录像已达到内存容量上限，已暂停录制并保留已有帧。请保存或导出录像后开启新录制。') }
+}
+const embeddedFrameBytes = new WeakMap<TimelapseSnapshot[], { bytes: number; counted: WeakSet<TimelapseSnapshot> }>()
+export const releasePersistedTimelapseBytes = (frames: TimelapseSnapshot[], frame: TimelapseSnapshot, bytes: number): void => {
+  const total = embeddedFrameBytes.get(frames)
+  if (total?.counted.delete(frame)) total.bytes = Math.max(0, total.bytes - bytes)
+}
+
+const appendTimelapseSnapshot = (settings: TimelapseSettings, now: number, width: number, height: number, changeScore: number, data: Uint8Array): TimelapseSnapshot => {
   const previous = settings.snapshots.at(-1)
   const snapshot: TimelapseSnapshot = {
     id: createId('timelapse'),
@@ -399,7 +410,19 @@ const appendTimelapseSnapshot = (settings: TimelapseSettings, now: number, width
     changeScore: Math.max(0, Math.min(1, changeScore)),
     data
   }
-  settings.snapshots = retainTimelapseSnapshotsWithinBytes([...settings.snapshots, snapshot])
+  if (settings.mode === 'full') {
+    const frames = settings.snapshots
+    const total = embeddedFrameBytes.get(frames) ?? { bytes: frames.reduce((sum, frame) => sum + frame.data.byteLength, 0), counted: new WeakSet(frames) }
+    if (frames.length >= TIMELAPSE_FULL_FRAME_LIMIT || total.bytes + data.byteLength > TIMELAPSE_SNAPSHOT_BYTE_BUDGET) {
+      settings.enabled = false
+      throw new TimelapseCapacityError()
+    }
+    frames.push(snapshot)
+    total.bytes += data.byteLength
+    total.counted.add(snapshot)
+    embeddedFrameBytes.set(frames, total)
+  } else settings.snapshots = retainTimelapseSnapshotsWithinBytes([...settings.snapshots, snapshot])
+  return snapshot
 }
 
 export const retainTimelapseSnapshotsWithinBytes = (snapshots: TimelapseSnapshot[], budget = TIMELAPSE_SNAPSHOT_BYTE_BUDGET): TimelapseSnapshot[] => {
@@ -659,26 +682,27 @@ export async function prepareTimelapseSnapshotAsync(document: SpriteDocument, no
   return preparedSnapshotFromCapture(document, now, options, capture, tiled)
 }
 
-export async function commitPreparedTimelapseSnapshot(document: SpriteDocument, snapshot: PreparedTimelapseSnapshot, shouldCommit: () => boolean = () => true): Promise<void> {
-  if (!shouldCommit()) return
+export async function commitPreparedTimelapseSnapshot(document: SpriteDocument, snapshot: PreparedTimelapseSnapshot, shouldCommit: () => boolean = () => true): Promise<TimelapseSnapshot | null> {
+  if (!shouldCommit()) return null
   const settings = normalizeTimelapseSettings(document.timelapse, document.timelapse?.snapshots ?? [])
   document.timelapse = settings
-  if (!settings.enabled && snapshot.mode === undefined) return
+  if (!settings.enabled && snapshot.mode === undefined) return null
   const plan = planSmartTimelapseCapture({ ...settings, mode: snapshot.mode ?? settings.mode }, snapshot.cache)
   if (!plan.keep) {
     if (shouldCommit()) applySmartTimelapsePlan(settings, snapshot.cache, plan, document.id)
-    return
+    return null
   }
   const data = await encodeTimelapsePngAsync(snapshot.tiledPixels ?? snapshot.pixels, snapshot.width, snapshot.height)
-  if (!shouldCommit()) return
+  if (!shouldCommit()) return null
   const latestSettings = normalizeTimelapseSettings(document.timelapse, document.timelapse?.snapshots ?? [])
   document.timelapse = latestSettings
-  if (!latestSettings.enabled && snapshot.mode === undefined) return
+  if (!latestSettings.enabled && snapshot.mode === undefined) return null
   // Switching policy affects future edits. Preserve this already captured frame
   // without applying an old policy's compaction to the new recording settings.
   if ((latestSettings.mode ?? 'full') === plan.mode) applySmartTimelapsePlan(latestSettings, snapshot.cache, plan, document.id)
-  appendTimelapseSnapshot(latestSettings, snapshot.capturedAt, snapshot.width, snapshot.height, snapshot.changeScore, data)
+  const frame = appendTimelapseSnapshot(latestSettings, snapshot.capturedAt, snapshot.width, snapshot.height, snapshot.changeScore, data)
   markSmartTimelapseSnapshotAdded(latestSettings, snapshot.cache)
+  return frame
 }
 
 export function captureTimelapseSnapshot(document: SpriteDocument, now = Date.now(), options: TimelapseCaptureOptions = {}): void {

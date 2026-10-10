@@ -31,9 +31,12 @@ const runtimeBootstrap = `(() => {
   const listeners = new Map();
   let sequence = 0;
   const call = (method, params) => new Promise((resolve, reject) => {
+    if (pending.size >= 256) { reject(new Error('Too many pending extension requests')); return; }
     const requestId = String(++sequence);
-    pending.set(requestId, { resolve, reject });
-    parent.postMessage({ type: 'moonsprite-extension-request', requestId, method, params }, '*');
+    const timer = setTimeout(() => { pending.delete(requestId); reject(new Error('Extension request timed out')); }, 300000);
+    pending.set(requestId, { resolve, reject, timer });
+    try { parent.postMessage({ type: 'moonsprite-extension-request', requestId, method, params }, '*'); }
+    catch (error) { clearTimeout(timer); pending.delete(requestId); reject(error); }
   });
   const on = (type, listener) => {
     if (typeof listener !== 'function') throw new TypeError('listener must be a function');
@@ -55,7 +58,7 @@ const runtimeBootstrap = `(() => {
   addEventListener('message', event => {
     const message = event.data;
     if (message?.type === 'moonsprite-extension-response') {
-      const request = pending.get(message.requestId); if (!request) return; pending.delete(message.requestId);
+      const request = pending.get(message.requestId); if (!request) return; pending.delete(message.requestId); clearTimeout(request.timer);
       message.ok ? request.resolve(message.result) : request.reject(new Error(message.error || 'Extension request failed'));
       return;
     }
@@ -132,10 +135,17 @@ function ExtensionRuntimeFrame({ extension, session, homeOpen, onRunLuaScript, o
   const previousDirty = useRef(session?.document.dirty ?? false)
   const [messagesReady, setMessagesReady] = useState(false)
   const loaded = useRef(false)
+  const runtimeFailed = useRef(false)
   const pendingEvents = useRef<ExtensionRuntimeEvent[]>([])
 
   const send = (event: ExtensionRuntimeEvent): void => {
     if (!loaded.current) {
+      if (runtimeFailed.current) return
+      if (event.type === 'settings-changed') pendingEvents.current = pendingEvents.current.filter(item => item.type !== 'settings-changed')
+      if (pendingEvents.current.length >= 256) {
+        console.error(`[Extension ${extension.id}] runtime event queue is full`)
+        return
+      }
       if (event.type === 'command' || event.type === 'settings-changed') pendingEvents.current.push(event)
       return
     }
@@ -155,11 +165,13 @@ function ExtensionRuntimeFrame({ extension, session, homeOpen, onRunLuaScript, o
   useEffect(() => {
     let active = true
     loaded.current = false
+    runtimeFailed.current = false
     setDocument(null)
     setDialog(null)
     void Promise.resolve(pendingWindowClosures.get(extension.id)).then(() => active ? window.moonSprite.readExtensionRuntimeEntry(extension.id) : null).then((html) => {
       if (active && html !== null) setDocument(secureRuntimeDocument(html))
     }).catch((error) => {
+      if (active) { runtimeFailed.current = true; pendingEvents.current = [] }
       console.error(`[Extension ${extension.id}] failed to load runtime`, error)
     })
     return () => { active = false }

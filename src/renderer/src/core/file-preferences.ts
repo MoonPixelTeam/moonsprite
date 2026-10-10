@@ -1,7 +1,8 @@
 export const EXPORT_SOUND_ENABLED_KEY = 'moonsprite.export-sound-enabled'
 import type { ExportProtection } from './export-protection'
 import { DEFAULT_TOOL_RAIL, TOOL_RAIL_PREFERENCE_KEY, parseToolRail, serializeToolRail, type ToolRailPreference } from './tool-rail-preferences'
-import type { ImageExportKind, SaveImageKind } from './png'
+import type { SaveImageKind } from './png'
+import type { DocumentExportFormat } from './export-settings'
 import { DEFAULT_APP_LOCALE, LANGUAGE_PREFERENCE_KEY as APP_LANGUAGE_PREFERENCE_KEY, parseAppLocale, type AppLocale } from './localization'
 import { readStoredString, writeStoredString } from './storage'
 import { isPixelFormat } from './pixel-format'
@@ -671,7 +672,7 @@ export const DEFAULT_ISO_VIEW_PREFERENCES: IsoViewPreferences = {
 }
 
 export type SaveFormatPreference = 'moonsprite' | 'png' | 'jpeg' | 'webp' | 'svg' | 'ico' | 'psd' | 'ase' | 'aseprite'
-export type ExportFormatPreference = 'png' | 'jpeg' | 'webp' | 'svg' | 'gif' | 'bmp' | 'ico' | 'psd'
+export type ExportFormatPreference = 'png' | 'jpeg' | 'webp' | 'svg' | 'gif' | 'bmp' | 'ico' | 'psd' | 'moonsprite'
 export type SaveLocationMode = 'recent' | 'fixed'
 export type PasteTarget = 'current-cell' | 'new-layer' | 'new-project'
 
@@ -1174,7 +1175,8 @@ export function parseIsoViewPreferences(value: string | null): IsoViewPreference
   }
 }
 
-export function imageExportKindForPreference(value: string | null): ImageExportKind {
+export function documentExportKindForPreference(value: string | null): DocumentExportFormat {
+  if (value === 'moonsprite') return 'moonsprite'
   if (value === 'gif') return 'gif'
   if (value === 'jpeg') return 'jpeg'
   if (value === 'webp') return 'webp'
@@ -1203,7 +1205,7 @@ function parseSaveFormat(value: string | null): SaveFormatPreference {
 }
 
 function parseExportFormat(value: string | null): ExportFormatPreference {
-  return value === 'jpeg' || value === 'webp' || value === 'svg' || value === 'gif' || value === 'bmp' || value === 'ico' || value === 'psd' ? value : 'png'
+  return value === 'jpeg' || value === 'webp' || value === 'svg' || value === 'gif' || value === 'bmp' || value === 'ico' || value === 'psd' || value === 'moonsprite' ? value : 'png'
 }
 
 function parseDirectoryPreference(value: string | null): string {

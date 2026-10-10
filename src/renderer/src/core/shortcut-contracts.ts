@@ -4,6 +4,7 @@ export const DEFAULT_SHORTCUTS = {
   openHome: '',
   newDocument: 'Ctrl+N',
   openDocument: 'Ctrl+O',
+  importSpriteSheet: 'Ctrl+I',
   closeDocument: 'Ctrl+W',
   openProjectFolder: '',
   exportDocument: 'Ctrl+E',
@@ -332,7 +333,7 @@ export interface ShortcutSettingsFile {
 const TOOL_SHORTCUT_GROUP = CYCLING_TOOL_SHORTCUT_IDS.flatMap((id, index) => [id, QUICK_TOOL_SHORTCUT_IDS[index]]) as ShortcutId[]
 
 export const SHORTCUT_GROUPS = {
-  file: ['openHome', 'newDocument', 'openDocument', 'closeDocument', 'openProjectInfo', 'save', 'saveAs', 'exportDocument', 'exportAllFrames', 'exportSpriteSheet', 'openProjectFolder', 'openTimelapse', 'openScriptFolder'],
+  file: ['openHome', 'newDocument', 'openDocument', 'importSpriteSheet', 'closeDocument', 'openProjectInfo', 'save', 'saveAs', 'exportDocument', 'exportAllFrames', 'exportSpriteSheet', 'openProjectFolder', 'openTimelapse', 'openScriptFolder'],
   edit: ['undo', 'redo', 'cut', 'copy', 'copyMerged', 'paste', 'pasteAsNewLayer', 'pasteAsNewDocument', 'deleteLayer', 'deleteSelection', 'fillForeground', 'quickOutline', 'outline', 'outlineSelectionInside', 'transform', 'rotateContent180', 'rotateContentCounterClockwise', 'rotateContentClockwise', 'flipHorizontal', 'flipVertical', 'centerContentBoth', 'centerContentHorizontal', 'centerContentVertical', 'replaceColor', 'invertColors', 'adjustmentColorBalance', 'adjustmentBrightnessContrast', 'adjustmentHueSaturation', 'adjustmentCurves'],
   selection: ['selectAll', 'invertSelection', 'deselect', 'toggleSelectionOutline', 'createBrushFromSelection', 'selectionModeReplace', 'selectionModeAdd', 'selectionModeSubtract', 'selectionModeIntersect', 'selectAllSlices', 'openAutoSlice', 'openSliceProperties'],
   image: ['canvasResize', 'imageResize', 'convertColorMode', 'convertColorModeRgba', 'convertColorModeIndexed', 'convertColorModeGrayscale', 'cropCanvas', 'trimCanvas'],

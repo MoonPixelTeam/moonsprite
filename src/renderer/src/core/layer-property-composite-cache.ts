@@ -5,6 +5,7 @@ import type { DocumentCompositeCache } from './document-composite-cache'
 import { compileCompositePointSampler } from './document-composite-sampling'
 import { packColor, unpackColor, writeRgbaPixel } from './raster'
 import { compositeMovePreviewLayersInto } from './document-composite-raster'
+import { globalCacheManager } from './global-cache-manager'
 
 type Read = (x: number, y: number) => RgbaColor
 export interface PropertyCompositeMemo {
@@ -27,8 +28,21 @@ export class LayerPropertyCompositeCache {
   private bytes = 0
   private entries = new Map<object, Map<string, { pixels: Uint32Array; valid: Uint8Array }>>()
   private backdrop: { key: string; pixels: Uint8ClampedArray } | null = null
+  private unregister?: () => void
   constructor(private readonly maxBytes = 64 * 1024 * 1024) {}
-  clear(): void { this.document = null; this.key = ''; this.bytes = 0; this.entries.clear(); this.backdrop = null }
+  clear(): void {
+    this.document = null; this.key = ''; this.bytes = 0; this.entries.clear(); this.backdrop = null
+    this.unregister?.(); this.unregister = undefined
+  }
+  private addBytes(bytes: number): void {
+    this.bytes += bytes
+    this.unregister ??= globalCacheManager.register({
+      name: 'LayerPropertyCompositeCache',
+      snapshot: () => ({ name: 'LayerPropertyCompositeCache', cachedBytes: this.bytes, itemCount: this.entries.size + (this.backdrop ? 1 : 0) }),
+      // These entries share revision/dependency state, so evict together.
+      trim: () => { const freed = this.bytes; this.clear(); return freed }, clear: () => this.clear()
+    })
+  }
 
   render(document: SpriteDocument, rect: SelectionRect, revision: number, change: PropertyCompositeChange | null | undefined,
     cache: DocumentCompositeCache): Uint8ClampedArray | null {
@@ -53,7 +67,7 @@ export class LayerPropertyCompositeCache {
         if (this.bytes + count * 4 > this.maxBytes) return null
         const pixels = new Uint8ClampedArray(count * 4)
         compositeMovePreviewLayersInto(document, prefix, rect.x, rect.y, rect.width, rect.height, revision, cache, pixels)
-        this.backdrop = { key: prefixKey, pixels }; this.bytes += pixels.byteLength
+        this.backdrop = { key: prefixKey, pixels }; this.addBytes(pixels.byteLength)
       }
       const output = this.backdrop.pixels.slice()
       compositeMovePreviewLayersInto(document, flat.slice(first), rect.x, rect.y, rect.width, rect.height, revision, cache, output)
@@ -72,7 +86,7 @@ export class LayerPropertyCompositeCache {
           entry = { pixels: new Uint32Array(count), valid: new Uint8Array(count) }
           slots = this.entries.get(owner)
           if (!slots) { slots = new Map(); this.entries.set(owner, slots) }
-          slots.set(slot, entry); this.bytes += count * 5
+          slots.set(slot, entry); this.addBytes(count * 5)
         }
         const { pixels, valid } = entry
         const index = (y - rect.y) * rect.width + x - rect.x

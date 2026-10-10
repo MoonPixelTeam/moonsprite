@@ -16,12 +16,13 @@ const RECENT_EXPORT_PATHS_SCHEMA_VERSION = 1
 const DOCUMENT_EXPORT_SETTINGS_SCHEMA_VERSION = 1
 const MAX_RECENT_EXPORT_PATHS = 10
 const MAX_DOCUMENT_EXPORT_SETTINGS = 100
-const exportFormats: readonly ImageExportKind[] = ['png-auto', 'png-rgba', 'jpeg', 'webp', 'svg', 'gif', 'bmp', 'ico', 'psd', 'ase', 'aseprite']
+export type DocumentExportFormat = ImageExportKind | 'moonsprite'
+const exportFormats: readonly DocumentExportFormat[] = ['png-auto', 'png-rgba', 'jpeg', 'webp', 'svg', 'gif', 'bmp', 'ico', 'psd', 'ase', 'aseprite', 'moonsprite']
 
 export interface ExportPreset {
   presetName: string
   name: string
-  format: ImageExportKind
+  format: DocumentExportFormat
   scalePercent: number
   trim?: boolean
   trimMode?: 'individual' | 'common'
@@ -43,7 +44,7 @@ export interface RecentExportPath {
 
 export interface DocumentExportSettings {
   name: string
-  format: ImageExportKind
+  format: DocumentExportFormat
   scalePercent: number
   trim?: boolean
   trimMode?: 'individual' | 'common'
@@ -86,7 +87,7 @@ interface StoredDocumentExportSettings {
 }
 
 const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === 'object' && value !== null
-const isExportFormat = (value: unknown): value is ImageExportKind => typeof value === 'string' && exportFormats.includes(value as ImageExportKind)
+const isExportFormat = (value: unknown): value is DocumentExportFormat => typeof value === 'string' && exportFormats.includes(value as DocumentExportFormat)
 const finiteInteger = (value: unknown, fallback: number, min: number, max: number): number => {
   const number = typeof value === 'number' ? value : Number.NaN
   return Number.isFinite(number) ? Math.max(min, Math.min(max, Math.round(number))) : fallback
@@ -102,11 +103,11 @@ function normalizeExportPreset(value: unknown): ExportPreset | null {
   if (!presetName || !name) return null
   const format = isExportFormat(value.format) ? value.format : 'png-auto'
   const legacyScalePercent = typeof value.scale === 'number' ? value.scale * 100 : 100
-  const scalePercent = finiteInteger(value.scalePercent, finiteInteger(legacyScalePercent, 100, 1, 6400), 1, 6400)
-  const trim = value.trim === true
-  const trimMode = value.trimMode === 'common' || value.trimMode === 'individual' ? value.trimMode : trim ? 'individual' : undefined
+  const scalePercent = format === 'moonsprite' ? 100 : finiteInteger(value.scalePercent, finiteInteger(legacyScalePercent, 100, 1, 6400), 1, 6400)
+  const trim = format !== 'moonsprite' && value.trim === true
+  const trimMode = format === 'moonsprite' ? undefined : value.trimMode === 'common' || value.trimMode === 'individual' ? value.trimMode : trim ? 'individual' : undefined
   const directory = typeof value.directory === 'string' ? value.directory.trim() : ''
-  const target = format === 'psd'
+  const target = format === 'psd' || format === 'moonsprite'
     ? 'document'
     : value.target === 'slices' || value.target === 'selection' || value.target === 'layer' || ((format !== 'gif' && format !== 'webp') && value.target === 'frames') ? value.target : 'document'
   const sliceId = typeof value.sliceId === 'string' ? value.sliceId.trim() : ''
@@ -146,11 +147,11 @@ function normalizeDocumentExportSettings(value: unknown): DocumentExportSettings
   const name = typeof value.name === 'string' ? value.name.trim() : ''
   if (!name) return null
   const format = isExportFormat(value.format) ? value.format : 'png-auto'
-  const scalePercent = finiteInteger(value.scalePercent, 100, 1, 6400)
-  const trim = value.trim === true
-  const trimMode = value.trimMode === 'common' || value.trimMode === 'individual' ? value.trimMode : trim ? 'individual' : undefined
+  const scalePercent = format === 'moonsprite' ? 100 : finiteInteger(value.scalePercent, 100, 1, 6400)
+  const trim = format !== 'moonsprite' && value.trim === true
+  const trimMode = format === 'moonsprite' ? undefined : value.trimMode === 'common' || value.trimMode === 'individual' ? value.trimMode : trim ? 'individual' : undefined
   const directory = typeof value.directory === 'string' ? value.directory.trim() : ''
-  const target = format === 'psd'
+  const target = format === 'psd' || format === 'moonsprite'
     ? 'document'
     : value.target === 'slices' || value.target === 'selection' || value.target === 'layer' || ((format !== 'gif' && format !== 'webp') && value.target === 'frames') ? value.target : 'document'
   const sliceId = typeof value.sliceId === 'string' ? value.sliceId.trim() : ''
@@ -271,7 +272,8 @@ export function saveDocumentExportSettings(document: DocumentExportSettingsOwner
   } satisfies StoredDocumentExportSettings, storage)
 }
 
-export function exportFileExtension(format: ImageExportKind): 'png' | 'jpg' | 'webp' | 'svg' | 'gif' | 'bmp' | 'ico' | 'psd' | 'ase' | 'aseprite' {
+export function exportFileExtension(format: DocumentExportFormat): 'png' | 'jpg' | 'webp' | 'svg' | 'gif' | 'bmp' | 'ico' | 'psd' | 'ase' | 'aseprite' | 'moonsprite' {
+  if (format === 'moonsprite') return 'moonsprite'
   if (format === 'jpeg') return 'jpg'
   if (format === 'webp') return 'webp'
   if (format === 'svg') return 'svg'
@@ -284,7 +286,7 @@ export function exportFileExtension(format: ImageExportKind): 'png' | 'jpg' | 'w
   return 'png'
 }
 
-export function withExportFileExtension(name: string, format: ImageExportKind): string {
+export function withExportFileExtension(name: string, format: DocumentExportFormat): string {
   const fallback = 'MoonSprite-export'
   const stem = name.trim().replace(/\.(moonsprite|aseprite|ase|png|jpe?g|webp|bmp|svg|gif|ico|psd)$/i, '').trim() || fallback
   return `${stem}.${exportFileExtension(format)}`
