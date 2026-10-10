@@ -11,6 +11,7 @@ import { HistoryPanel } from '@/components/panels/HistoryPanel'
 import { LayersPanel } from '@/components/panels/LayersPanel'
 import { PalettePanel } from '@/components/panels/PalettePanel'
 import { PreviewPanel } from '@/components/panels/PreviewPanel'
+import type { PreviewPanelView } from '@/components/panels/usePreviewPanelView'
 import { TilesetPanel } from '@/components/panels/TilesetPanel'
 import { BrushLibraryPanel } from '@/components/panels/BrushLibraryPanel'
 import { useBrushLibrary } from '@/components/app/useBrushLibrary'
@@ -121,6 +122,7 @@ export function InspectorPanels({ session, panelVisibility, onClosePreview, pane
   const [draggingPanel, setDraggingPanel] = useState<WorkspacePanelId | null>(null)
   const [detachPreview, setDetachPreview] = useState<React.CSSProperties | null>(null)
   const [panelContextMenu, setPanelContextMenu] = useState<{ id: WorkspacePanelId; x: number; y: number; bounds: { left: number; top: number; width: number; height: number } } | null>(null)
+  const previewViewRef = useRef<PreviewPanelView | null>(null)
   const [previewRelativeLuminanceOverride, setPreviewRelativeLuminanceOverride] = useState<boolean | null>(null)
   const referenceRelativeLuminance = useReferenceImages((state) => state.relativeLuminance)
   const [freeTileInstancePanelLayout, setFreeTileInstancePanelLayout] = useState<FreeTileInstancePanelLayout>(loadFreeTileInstancePanelLayout)
@@ -570,7 +572,7 @@ export function InspectorPanels({ session, panelVisibility, onClosePreview, pane
             ? <BrushLibraryPanel session={session} controller={brushLibrary} {...dockProps} />
             : id === 'tileset'
               ? <MemoTilesetPanel renderKey={tilesetPanelRenderKey(session)} session={session} {...dockProps} />
-              : <MemoPreviewPanel renderKey={previewPanelRenderKey(session)} session={session} onClose={popup ? onPopupPanelClose ?? onClosePreview : onClosePreview} relativeLuminanceInPreview={relativeLuminanceInPreview} relativeLuminanceOverride={previewRelativeLuminanceOverride} {...dockProps} />
+              : <MemoPreviewPanel renderKey={previewPanelRenderKey(session)} session={session} retainedView={previewViewRef} onClose={popup ? onPopupPanelClose ?? onClosePreview : onClosePreview} relativeLuminanceInPreview={relativeLuminanceInPreview} relativeLuminanceOverride={previewRelativeLuminanceOverride} {...dockProps} />
     return <PerformanceProfiler id={`Panel:${id}`}>{panel}</PerformanceProfiler>
   }
 

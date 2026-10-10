@@ -32,6 +32,7 @@ import { measurePreviewViewport } from './preview-viewport'
 import { PREVIEW_ZOOM_SHORTCUT_EVENT, type PreviewZoomShortcutDetail } from '@/core/preview-zoom-shortcuts'
 import { createCompositePointSampler } from '@/core/document-composite'
 import { samplePanelColor, usePanelColorSampling, type PanelColorSource } from './usePanelColorSampling'
+import { usePreviewPanelView, type PreviewPanelViewRef } from './usePreviewPanelView'
 
 interface FollowViewportSnapshot {
   viewportSize: { width: number; height: number }
@@ -70,7 +71,7 @@ const sameFollowViewportSnapshot = (left: FollowViewportSnapshot, right: FollowV
   && left.view.mirrored === right.view.mirrored
   && left.view.mirroredVertical === right.view.mirroredVertical
 
-export const PreviewPanel = memo(function PreviewPanel({ session, onClose, docked = false, onDockDragStart, onPanelContextMenu, onFloatingDock, relativeLuminanceInPreview = true, relativeLuminanceOverride = null }: { session: DocumentSession; onClose: () => void; relativeLuminanceInPreview?: boolean; relativeLuminanceOverride?: boolean | null } & DockDragProps) {
+export const PreviewPanel = memo(function PreviewPanel({ session, onClose, retainedView, docked = false, onDockDragStart, onPanelContextMenu, onFloatingDock, relativeLuminanceInPreview = true, relativeLuminanceOverride = null }: { session: DocumentSession; onClose: () => void; retainedView?: PreviewPanelViewRef; relativeLuminanceInPreview?: boolean; relativeLuminanceOverride?: boolean | null } & DockDragProps) {
   const { t } = useI18n()
   const defaultPosition = { x: Math.max(12, window.innerWidth - 310 - 250 - 16), y: Math.max(46, window.innerHeight - 27 - 260 - 16), width: 250, height: 260 }
   const floating = useFloatingPanel(docked ? null : defaultPosition, false, true, 'moonsprite.preview-panel.v1', true, onFloatingDock, docked)
@@ -79,13 +80,11 @@ export const PreviewPanel = memo(function PreviewPanel({ session, onClose, docke
   const sampling = usePanelColorSampling((x, y) => canvasRef.current && colorSource.current ? samplePanelColor(canvasRef.current, colorSource.current, x, y) : null)
   // null uses the initial fitted scale until the first explicit zoom operation.
   // Once set, zoom is an absolute document-pixel scale: 1 === 100%.
-  const [zoom, setZoom] = useState<number | null>(null)
-  const [pan, setPan] = useState({ x: 0, y: 0 })
-  const [followViewport, setFollowViewport] = useState(false)
+  const { zoom, setZoom, pan, setPan, followViewport, setFollowViewport, initialPreviewViewport, setInitialPreviewViewport } = usePreviewPanelView(session.document.id, retainedView)
   const [panning, setPanning] = useState(false)
   // Capture the initial viewport once; resizing reveals more or less artwork.
-  const [initialPreviewViewport, setInitialPreviewViewport] = useState<PreviewViewportSize | null>(null)
-  const initialPreviewViewportRef = useRef<PreviewViewportSize | null>(null)
+  const initialPreviewViewportRef = useRef<PreviewViewportSize | null>(initialPreviewViewport)
+  initialPreviewViewportRef.current = initialPreviewViewport
   const [checkerboard, setCheckerboard] = useState<CheckerboardPreferences>(() => loadEditorPreferences().checkerboard)
   const [canvasSurround, setCanvasSurround] = useState(() => resolveTheme(loadEditorPreferences().theme).definition.seeds.canvasSurround)
   const [rotationIndicatorPosition, setRotationIndicatorPosition] = useState(() => loadEditorPreferences().rotationIndicatorPosition)
@@ -135,14 +134,6 @@ export const PreviewPanel = memo(function PreviewPanel({ session, onClose, docke
     setInitialCompositeReady(!initialDocumentCompositePending(session.document))
     return subscribeInitialDocumentComposite(session.document, () => setInitialCompositeReady(true))
   }, [session.document])
-
-  useEffect(() => {
-    setZoom(null)
-    setPan({ x: 0, y: 0 })
-    baseFitRef.current = null
-    initialPreviewViewportRef.current = null
-    setInitialPreviewViewport(null)
-  }, [session.document.id])
 
   useEffect(() => {
     // Preserve the initial fit when resizing or moving between docks.
