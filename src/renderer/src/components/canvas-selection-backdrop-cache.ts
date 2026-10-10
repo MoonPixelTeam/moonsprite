@@ -64,11 +64,12 @@ export class CanvasSelectionBackdropCache {
         const bottom = Math.min(y + TILE_SIZE, rect.y + rect.height, document.height)
         if (right <= left || bottom <= top) continue
         const requested = { x: left, y: top, width: right - left, height: bottom - top }
-        if (tile) {
-          this.tiles.delete(tileKey)
-          this.bytes -= tile.pixels.byteLength
-        }
-        if (!tile || left < tile.rect.x || top < tile.rect.y || right > tile.rect.x + tile.rect.width || bottom > tile.rect.y + tile.rect.height) {
+        const tileNeedsExpansion = !tile || left < tile.rect.x || top < tile.rect.y || right > tile.rect.x + tile.rect.width || bottom > tile.rect.y + tile.rect.height
+        if (tileNeedsExpansion) {
+          if (tile) {
+            this.tiles.delete(tileKey)
+            this.bytes -= tile.pixels.byteLength
+          }
           // Seed only requested pixels; advancing the drag fills missing strips.
           const bounds = tile ? unionRect(tile.rect, requested) : requested
           const pixels = new Uint8ClampedArray(bounds.width * bounds.height * 4)
@@ -79,6 +80,7 @@ export class CanvasSelectionBackdropCache {
           for (const missing of tile ? subtractRect(bounds, tile.rect) : [bounds]) copyInto(missing, compose(missing))
           tile = { rect: bounds, pixels }
         }
+        if (!tile) continue
         while (this.bytes + tile.pixels.byteLength > this.maxBytes && this.tiles.size) {
           const oldestKey = this.tiles.keys().next().value!
           this.bytes -= this.tiles.get(oldestKey)!.pixels.byteLength
