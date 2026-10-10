@@ -7,7 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { compositeRegion, createDocument, createLayer, createLayerMask, DocumentCompositeCache, layerContentBounds, readLayerColorAt, readLayerColor, writeLayerColor } from '@/core/document'
 import { activateAnimationFrame, addBlankAnimationFrame, animationCelKey, ensureAnimationDocument, refreshActiveAnimationFrame, setAnimationCelOffsetsForKeys, syncActiveAnimationLayer } from '@/core/animation'
 import { applySelectionTransform, brushStrokeInvalidationRects, captureSelectionTransform, paintBrush, paintLine, solidBrushStampDifferenceRects, type SelectionTransformSource } from '@/core/tools'
-import { beginPixelEdit, commitPixelEdit } from '@/core/history'
+import { beginPixelEdit, commitPixelEdit, revertPixelEdit } from '@/core/history'
 import { createDefaultLayerStyles } from '@/core/layer-styles'
 import { registerInitialDocumentComposite, registerPendingInitialDocumentComposite } from '@/core/initial-document-composite'
 import { deviceAlignedCanvasRect, deviceAlignedDocumentRect } from '@/core/canvas-render-plan'
@@ -382,6 +382,56 @@ describe('CanvasCompositeCache', () => {
     const pixels = lower.mock.calls.reduce((sum, [, layers, , , width, height]) => sum + (layers.length === 99 ? width * height : 0), 0)
     console.info(`first 4K/100-layer/500px translucent drag: ${(performance.now() - start).toFixed(1)}ms, lower pixels=${pixels}`)
     expect(pixels).toBe(prewarm ? 0 : 501 * 500)
+  })
+  it('reuses a large document viewport for selection previews across pan, commit, undo and redo', () => {
+    const document = createDocument('regional selection base', 512, 512, 'rgba', false)
+    document.width = document.height = 4096
+    const layer = document.layers[0], state = useWorkspace.getState()
+    layer.offsetX = layer.offsetY = 1536
+    writeLayerColor(document, layer, 0, { r: 220, g: 40, b: 60, a: 128 })
+    state.addSession(document)
+    const session = useWorkspace.getState().sessions.find(item => item.document.id === document.id)!
+    const rect = { x: 1536, y: 1536, width: 8, height: 8 }
+    state.setSelection(rect)
+    const cache = new CanvasCompositeCache(), context = makeContext()
+    const viewport = { fromX: 1500, fromY: 1500, toX: 1564, toY: 1564 }
+    draw(cache, document, context, { ...viewport, contentRevision: session.contentRevision })
+    const compose = vi.spyOn(compositing, 'compositeRegion')
+    const source = captureSelectionTransform(document, rect, layer, { cacheOpaqueOffsets: false })!
+    const selectionPreview = { layerId: layer.id, source, target: { ...rect, x: 1540 }, angle: 17, copy: false }
+    const readVisible = (surface: MockOffscreenCanvas) => surface.pixels.slice()
+    const render = (bounds: typeof viewport, preview = true) => {
+      draw(cache, document, context, { ...bounds, contentRevision: session.contentRevision,
+        contentInvalidation: session.contentInvalidation, ...(preview ? { selectionPreview } : {}) })
+      return context.drawImage.mock.lastCall![0] as MockOffscreenCanvas
+    }
+    // The initial preview must reuse the existing region, not compose 4096².
+    const first = render(viewport)
+    expect(compose).not.toHaveBeenCalled()
+    for (const bounds of [viewport, { fromX: 1520, fromY: 1510, toX: 1584, toY: 1574 },
+      { fromX: 1550, fromY: 1500, toX: 1614, toY: 1564 }, viewport]) {
+      const preview = readVisible(render(bounds))
+      const edit = applySelectionTransform(document, source, selectionPreview.target, selectionPreview.angle, false, undefined, undefined, undefined, layer)
+      const expected = compositeRegion(document, bounds.fromX, bounds.fromY, 64, 64, new DocumentCompositeCache())
+      // Revert the temporary oracle edit before continuing the cached preview.
+      revertPixelEdit(document, edit)
+      expect(preview).toEqual(expected)
+    }
+    expect(MockOffscreenCanvas.instances.some(canvas => canvas.width === 4096 && canvas.height === 4096)).toBe(false)
+    expect(first.width).toBe(64)
+    // Commit through the real store, then verify its history revisions repair the region.
+    const edit = applySelectionTransform(document, source, selectionPreview.target, selectionPreview.angle, false, undefined, undefined, undefined, layer)
+    state.beginFloatingSelectionTransform(source, edit, rect, selectionPreview.target, false, 'rotate', null, rect)
+    state.commitFloatingPaste()
+    for (const action of [() => {}, () => state.undo(), () => state.redo()]) {
+      action()
+      const displayed = render(viewport, false)
+      const [, sx, sy, sw, sh] = context.drawImage.mock.lastCall!
+      const pixels = displayed.context.getImageData(sx as number, sy as number, sw as number, sh as number).data
+      expect(pixels).toEqual(compositeRegion(document, viewport.fromX, viewport.fromY, 64, 64, new DocumentCompositeCache()))
+    }
+    useWorkspace.setState({ sessions: useWorkspace.getState().sessions.filter(item => item.document.id !== document.id), activeId: state.activeId })
+    cache.dispose()
   })
   it.each([128 * 1024 * 1024, 1])('patches a just-edited base before the first selection move (budget=%s)', budget => {
     const document = createDocument('flip then move', 256, 256, 'rgba')
@@ -1513,6 +1563,34 @@ describe('CanvasCompositeCache', () => {
     const committedContext = makeContext()
     draw(new CanvasCompositeCache(), document, committedContext)
     expect(previewPixels).toEqual((committedContext.drawImage.mock.lastCall![0] as MockOffscreenCanvas).pixels)
+  })
+
+  it.each([0, 37, 90])('blits exact opaque transformed pixels across repeated moves (angle=%s)', angle => {
+    const document = createDocument('exact raster blit', 48, 40, 'rgba', false)
+    const lower = document.layers[0], layer = createLayer('moving raster', 48, 40, 'rgba')
+    document.layers.push(layer)
+    new Uint32Array(lower.pixels.buffer).fill(0x804d3921)
+    for (let y = 4; y < 10; y++) for (let x = 3; x < 12; x++) {
+      if ((x + y) % 3) writeLayerColor(document, layer, y * 48 + x, { r: x * 20, g: y * 20, b: 90, a: 255 })
+    }
+    const rect = { x: 3, y: 4, width: 9, height: 6,
+      mask: Uint8Array.from({ length: 54 }, (_, i) => i % 5 ? 1 : 0) }
+    const source = captureSelectionTransform(document, rect, layer)!
+    const cache = new CanvasCompositeCache(), context = makeContext()
+    const rasterize = vi.spyOn(selectionRaster, 'selectionTransformPreviewRasterPacked')
+    for (const x of [18, 19, 28, 35]) {
+      const target = { x, y: 16, width: 9, height: 6 }
+      draw(cache, document, context, { selectionPreview: { layerId: layer.id, source, target, angle, copy: false } })
+      const preview = (context.drawImage.mock.lastCall![0] as MockOffscreenCanvas).pixels.slice()
+      const edit = applySelectionTransform(document, source, target, angle, false, undefined, undefined, undefined, layer)
+      expect(preview).toEqual(compositeRegion(document, 0, 0, 48, 40, new DocumentCompositeCache()))
+      revertPixelEdit(document, edit)
+    }
+    expect(rasterize).toHaveBeenCalledTimes(1)
+    const blit = MockOffscreenCanvas.instances.find(canvas => canvas !== context.drawImage.mock.lastCall![0]
+      && canvas.width < 48 && canvas.context.putImageData.mock.calls.length === 1)
+    expect(blit).toBeDefined()
+    cache.dispose()
   })
 
   it('keeps cached selection pixels exact while moving, cancelling and revising content', () => {

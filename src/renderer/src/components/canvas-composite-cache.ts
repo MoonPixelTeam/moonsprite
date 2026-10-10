@@ -380,7 +380,15 @@ export class CanvasCompositeCache {
         this.dirtyRects.delete(effectiveFrameId)
       }
     }
-    if (!isolatedLayerMask && !view.relativeLuminance && selectionPreview && this.selectionRenderer.drawSelectionPreview(context, document, view, originX, originY, fromX, fromY, toX, toY, effectiveFrameId, contentRevision, selectionPreview, contentInvalidation, sourceDirtyRect)) {
+    // Selection previews must follow the same initialization policy as the
+    // ordinary canvas, so a small viewport can reuse its rendered region.
+    const visible = visibleDocumentRect(document, fromX, fromY, toX, toY)
+    const fullSurfaceInitializationAllowed = animationPlayback || document.width * document.height < 1024 * 1024
+      || Boolean(visible && visible.width * visible.height >= document.width * document.height / 2)
+      || this.surfaces.has(frameKey)
+      || (!this.invalidatedInitialDocuments.has(document) && contentRevision === 0
+        && Boolean(initialDocumentCompositeSurface(document, effectiveFrameId)))
+    if (!isolatedLayerMask && !view.relativeLuminance && selectionPreview && this.selectionRenderer.drawSelectionPreview(context, document, view, originX, originY, fromX, fromY, toX, toY, effectiveFrameId, contentRevision, selectionPreview, contentInvalidation, fullSurfaceInitializationAllowed, sourceDirtyRect)) {
       return
     }
     this.selectionRenderer.clearSelection()
@@ -393,14 +401,6 @@ export class CanvasCompositeCache {
     // substantial part of this cache budget.
     const animationFullSurfaceAllowed = !animationPlayback
       || document.width * document.height * 4 <= this.maxCacheBytes / 2
-    // A first small viewport should not synchronously compose an entire large
-    // document. Existing/worker-built full surfaces remain cheap to reuse.
-    const visible = visibleDocumentRect(document, fromX, fromY, toX, toY)
-    const fullSurfaceInitializationAllowed = animationPlayback || document.width * document.height < 1024 * 1024
-      || Boolean(visible && visible.width * visible.height >= document.width * document.height / 2)
-      || this.surfaces.has(frameKey)
-      || (!this.invalidatedInitialDocuments.has(document) && contentRevision === 0
-        && Boolean(initialDocumentCompositeSurface(document, effectiveFrameId)))
     if (isolatedLayerMask || (fullSurfaceInitializationAllowed && animationFullSurfaceAllowed && shouldCacheFullCompositeSurface(document.width, document.height, this.maxCacheBytes / 2) && !initialCompositeIsPending))
       this.drawSurface(
         context,

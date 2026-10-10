@@ -36,12 +36,14 @@ import {
 import { CanvasCompositeBlitter } from './canvas-composite-cache-blitter'
 import { CanvasSelectionBackdropCache } from './canvas-selection-backdrop-cache'
 import { preparedSelectionBackdrop } from './canvas-selection-prewarm'
-import { opaqueScaleCanvasFor, selectionTransformRasterFor, type OpaqueSelectionCanvas } from './canvas-selection-transform-cache'
+import { opaqueScaleCanvasFor, opaqueSelectionRasterCanvasFor, selectionTransformRasterFor, type OpaqueSelectionCanvas, type OpaqueSelectionRasterCanvas } from './canvas-selection-transform-cache'
+import { drawOpaqueSelectionRasterPatch } from './canvas-selection-raster-blit'
 export class CanvasSelectionPreviewRenderer {
   private selectionPreview: SelectionPreviewSurface | null = null
   private clipboardPreview: ClipboardPreviewSurface | null = null
   private selectionTransformRaster: import('./canvas-composite-cache-surfaces').SelectionTransformRasterSurface | null = null
   private opaqueSelectionCanvas: OpaqueSelectionCanvas | null = null
+  private opaqueRasterCanvas: OpaqueSelectionRasterCanvas | null = null
   constructor(
     private readonly compositeCache: DocumentCompositeCache,
     private readonly maxCacheBytes: number,
@@ -50,7 +52,7 @@ export class CanvasSelectionPreviewRenderer {
     private readonly drawRegion: DrawCompositeRegion
   ) {}
   clearClipboard(): void { this.clipboardPreview = null }
-  clearSelection(): void { this.selectionPreview = null; this.opaqueSelectionCanvas = null }
+  clearSelection(): void { this.selectionPreview = null; this.opaqueSelectionCanvas = null; this.opaqueRasterCanvas = null }
   clear(): void { this.clearClipboard(); this.clearSelection(); this.selectionTransformRaster = null }
   drawClipboardPreview(
     context: RasterContext2D,
@@ -140,6 +142,7 @@ export class CanvasSelectionPreviewRenderer {
     contentRevision: number,
     selection: SelectionTransformCompositePreview,
     contentInvalidation: DrawCompositeOptions['contentInvalidation'],
+    fullSurfaceInitializationAllowed: boolean,
     sourceDirtyRect?: SelectionRect
   ): boolean { return measureRuntimeStages('canvas.selection.composite', checkpoint => {
     if (hasEnabledLayerStyles(document.layers.find(layer => layer.id === selection.layerId)?.layerStyles)) return false
@@ -167,7 +170,7 @@ export class CanvasSelectionPreviewRenderer {
       let baseCanvas: CanvasImageSource
       let baseDocumentX: number
       let baseDocumentY: number
-      if (shouldCacheFullCompositeSurface(document.width, document.height, this.maxCacheBytes)) {
+      if (fullSurfaceInitializationAllowed && shouldCacheFullCompositeSurface(document.width, document.height, this.maxCacheBytes)) {
         const surface = this.drawSurface(
           context,
           document,
@@ -277,8 +280,16 @@ export class CanvasSelectionPreviewRenderer {
       const palette = activeLayer.format === 'indexed' ? new Map(document.palette.map((entry) => [entry.id, entry.color])) : null
       const transformedRaster = selectionTransformRasterFor(document, contentRevision, selection, activeLayer, this.selectionTransformRaster)
       this.selectionTransformRaster = transformedRaster
+      const rasterCanvas = tileRepeatMode === 'off' && preview.upperLayers.length === 0
+        && transformedRaster.width === currentBounds[0].width && transformedRaster.height === currentBounds[0].height
+        ? opaqueSelectionRasterCanvasFor(transformedRaster, activeLayer, this.opaqueRasterCanvas)
+        : null
+      this.opaqueRasterCanvas = rasterCanvas
       checkpoint('raster'); for (const patchRect of visiblePatchRects) {
         const patchPixels = preview.backdrop.read(document, activeLayer, preview.lowerLayers, selection.source, selection.copy, patchRect, contentRevision)
+        if (rasterCanvas) {
+          drawOpaqueSelectionRasterPatch(previewContext, rasterCanvas.canvas, patchPixels, patchRect, preview, currentBounds[0], checkpoint); continue
+        }
         checkpoint('backdrop'); const writePreviewPixel = selectionPreviewPixelWriter(document, activeLayer, preview.lowerLayers, selection, patchRect, contentRevision, patchPixels, palette, preview.lowerBackdrop)
         for (let targetIndex = 0; targetIndex < selectionTargets.length; targetIndex += 1) {
           const transformedRect = currentBounds[targetIndex]
@@ -318,21 +329,11 @@ export class CanvasSelectionPreviewRenderer {
         checkpoint('upper-layers'); previewContext.putImageData(imageData(patchPixels, patchRect.width, patchRect.height), patchRect.x - preview.x, patchRect.y - preview.y)
       }
       }
-      preview.previousPatchRects = visiblePatchRects.map((rect) => ({
-        ...rect
-      }))
+      preview.previousPatchRects = visiblePatchRects.map((rect) => ({ ...rect }))
       preview.source = selection.source
       preview.transformKey = transformKey
     }
-    const drawRect = intersectRect(
-      {
-        x: preview.x,
-        y: preview.y,
-        width: preview.width,
-        height: preview.height
-      },
-      visibleRect
-    )
+    const drawRect = intersectRect({ x: preview.x, y: preview.y, width: preview.width, height: preview.height }, visibleRect)
     if (!drawRect) return true
     const axisAligned = Math.abs(view.rotation) < 0.000001 && !view.mirrored && !view.mirroredVertical
     if (axisAligned && this.blitter.requiresAlignedPixelBlit(view.zoom) && !context.imageSmoothingEnabled) {

@@ -9,6 +9,23 @@ import { selectionPreviewRasterKey } from './canvas-composite-cache-geometry'
 export type OpaqueSelectionCanvas = { source: SelectionTransformCompositePreview['source']; width: number; height: number; canvas: OffscreenCanvas }
 const sharedTransformRasters = new WeakMap<SelectionTransformRasterSurface['source'], SelectionTransformRasterSurface>()
 
+export type OpaqueSelectionRasterCanvas = { raster: SelectionTransformRasterSurface; canvas: OffscreenCanvas }
+
+/** Blit the exact software-transformed pixels; Canvas never rotates/resamples them. */
+export function opaqueSelectionRasterCanvasFor(raster: SelectionTransformRasterSurface, layer: RasterLayer,
+  cached: OpaqueSelectionRasterCanvas | null): OpaqueSelectionRasterCanvas | null {
+  if (layer.format !== 'rgba' || layer.opacity !== 1 || layer.blendMode !== 'normal' || hasEnabledLayerStyles(layer.layerStyles)
+    || raster.source.origin !== 'selection' || raster.width * raster.height * 4 > 16 * 1024 * 1024) return null
+  if (cached?.raster === raster) return cached
+  for (const value of raster.pixels) if ((value >>> 24) !== 0 && (value >>> 24) !== 255) return null
+  const canvas = new OffscreenCanvas(raster.width, raster.height)
+  const context = canvas.getContext('2d')
+  if (!context) return null
+  const pixels = new Uint8ClampedArray(raster.pixels.buffer as ArrayBuffer, raster.pixels.byteOffset, raster.pixels.byteLength)
+  context.putImageData(imageData(pixels, raster.width, raster.height), 0, 0)
+  return { raster, canvas }
+}
+
 export function selectionTransformRasterFor(document: SpriteDocument, contentRevision: number, selection: SelectionTransformCompositePreview, activeLayer: RasterLayer, cached: SelectionTransformRasterSurface | null): SelectionTransformRasterSurface {
   const key = `${document.id}:${document.animation?.activeFrameId ?? 'static'}:${contentRevision}:${selection.layerId}:${selectionPreviewRasterKey(selection, activeLayer.format)}`
   if (cached && cached.source === selection.source && cached.key === key) return cached
