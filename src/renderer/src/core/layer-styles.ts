@@ -489,7 +489,7 @@ export const applySimpleLayerStylesPacked = (
   }
 
   let backdropPacked = 0
-  if (styles.shadow.enabled) {
+  if (styles.shadow.enabled && sourceA === 0) {
     const coverage = shadowCoverageOverride ?? layerStyleShadowCoverage(readGeometry, x - styles.shadow.offsetX, y - styles.shadow.offsetY, styles.shadow.blur)
     const shadowAlphaBase = styles.shadow.smartShadow
       ? packedByte(255 * Math.max(0, Math.min(100, styles.shadow.smartShadowDarkness)) / 100)
@@ -572,7 +572,7 @@ export function sampleLayerStyleParts(
 ): Partial<Record<LayerStylePart, RgbaColor>> {
   const result: Partial<Record<LayerStylePart, RgbaColor>> = {}
   if (!styles.enabled) return result
-  if (styles.shadow.enabled) result.shadow = withCoverage(shadowColor(styles.shadow), shadowCoverage(read, x - styles.shadow.offsetX, y - styles.shadow.offsetY, styles.shadow.blur))
+  if (styles.shadow.enabled && source.a === 0) result.shadow = withCoverage(shadowColor(styles.shadow), shadowCoverage(read, x - styles.shadow.offsetX, y - styles.shadow.offsetY, styles.shadow.blur))
   if (styles.stroke.enabled && styles.stroke.position !== 'inside' && source.a === 0) {
     const sample = outsideStrokeSample(read, x, y, styles.stroke)
     result.outerStroke = withCoverage(
@@ -650,7 +650,7 @@ export function applyLayerStylesAt(
       styles.innerGlow.color,
       coverageOverrides?.innerGlow ?? innerGlowCoverage(readGeometry, x, y, styles.innerGlow.size)
     )
-    if (!hasShadow) return styledSource
+    if (!hasShadow || source.a > 0) return styledSource
     const shadowCoverageValue = coverageOverrides?.shadow ?? shadowCoverage(readGeometry, x - styles.shadow.offsetX, y - styles.shadow.offsetY, styles.shadow.blur)
     const shadow = withCoverage(shadowColor(styles.shadow), shadowCoverageValue)
     if (shadow.a === 0) return styledSource.a > 0 ? styledSource : TRANSPARENT
@@ -658,7 +658,7 @@ export function applyLayerStylesAt(
   }
 
   let backdrop = TRANSPARENT
-  if (styles.shadow.enabled) {
+  if (styles.shadow.enabled && source.a === 0) {
     const coverage = coverageOverrides?.shadow ?? shadowCoverage(readGeometry, x - styles.shadow.offsetX, y - styles.shadow.offsetY, styles.shadow.blur)
     if (coverage > 0) backdrop = blendWithMode(backdrop, withCoverage(shadowColor(styles.shadow), coverage), 1, 'normal')
   }
