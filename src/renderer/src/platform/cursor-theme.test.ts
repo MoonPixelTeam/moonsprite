@@ -1,5 +1,6 @@
 import { afterEach, expect, it, vi } from 'vitest'
-import { applyCursorPreferences } from './cursor-theme'
+import { applyCursorPreferences, cursorOverlayDescriptor } from './cursor-theme'
+import pixelGrabCursor from '@/assets/pixel-grab-cursor.svg'
 import type { CursorScale } from '@/core/file-preferences'
 
 vi.mock('./display-scale', () => ({
@@ -8,6 +9,12 @@ vi.mock('./display-scale', () => ({
   observeDisplayScaleFactor: () => Promise.resolve(1)
 }))
 afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals() })
+
+it.each(['grab', 'grabbing'])('uses the SVG hand with the same scaled hotspot for %s', cursor => {
+  expect(cursorOverlayDescriptor(`var(--cursor-${cursor})`, false, 2)).toEqual({
+    source: pixelGrabCursor, size: 64, hotspotX: 32, hotspotY: 32
+  })
+})
 
 it('bounds scaled cursor images across every supported scale and regenerates evicted assets', async () => {
   const decodes: string[] = []

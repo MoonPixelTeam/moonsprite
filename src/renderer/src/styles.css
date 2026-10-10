@@ -29,8 +29,8 @@
   --cursor-move: url('./assets/pixel-icons/14-Slice-11.png') 3 3, move;
   --cursor-n-resize: url('./assets/pixel-icons/10-Slice-7.png') 15 15, n-resize;
   --cursor-pointer: url('./assets/pixel-icons/01-Slice-1.png') 9 5, default;
-  --cursor-grab: url('./assets/pixel-icons/05-Slice-5.png') 16 16, grab;
-  --cursor-grabbing: url('./assets/pixel-icons/05-Slice-5.png') 16 16, grabbing;
+  --cursor-grab: url('./assets/pixel-grab-cursor.svg') 16 16, grab;
+  --cursor-grabbing: url('./assets/pixel-grab-cursor.svg') 16 16, grabbing;
   --cursor-swatch-edge: url('./assets/pixel-icons/14-Slice-11.png') 3 3, default;
   --cursor-eyedropper: url('./assets/pixel-icons/15-Slice-12.png') 5 28, none;
   --cursor-selection-move: url('./assets/pixel-icons/16-Icon-16.png') 3 3, move;
@@ -1271,7 +1271,7 @@ body .pressure-trigger[aria-expanded='true']:not(.selected) { color: var(--theme
 .stage-canvas { position: absolute; left: 0; top: 0; display: block; width: 100%; height: 100%; touch-action: none; cursor: var(--cursor-crosshair); image-rendering: pixelated; }
 .stage-canvas.zoom-tool-canvas { cursor: var(--cursor-zoom); }
 .stage-canvas:focus, .stage-canvas:focus-visible { outline: 0; box-shadow: none; }
-.stage-selection-overlay { position: absolute; z-index: 3; inset: 0; display: block; width: 100%; height: 100%; pointer-events: none; image-rendering: pixelated; }
+.stage-selection-overlay { position: absolute; z-index: 5; inset: 0; display: block; width: 100%; height: 100%; pointer-events: none; image-rendering: pixelated; }
 .ui-scrollbar { position: relative; display: block; min-width: 0; min-height: 0; overflow: hidden; padding: 0; background: var(--theme-scrollbar-track); border: 0; border-radius: 0; touch-action: none; user-select: none; }
 .ui-scrollbar:focus-visible { outline: 1px solid var(--theme-accent); outline-offset: -1px; }
 .ui-scrollbar-thumb { position: absolute; inset: 0; display: block; width: 100%; height: 100%; pointer-events: none; image-rendering: pixelated; }
