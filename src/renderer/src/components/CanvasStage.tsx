@@ -422,6 +422,7 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
     get optimizedRotationEnabled() { return optimizedRotationEnabled },
     get snapBrushPointToGrid() { return snapBrushPointToGrid },
     get cursorCompositePointSamplerFor() { return cursorCompositePointSamplerFor },
+    get cursorCompositePointReplacementSamplerFor() { return cursorCompositePointReplacementSamplerFor },
     get activeTheme() { return activeTheme },
     get scheduleDraw() { return scheduleDraw },
     get activeToolBrushSize() { return activeToolBrushSize },

@@ -67,6 +67,143 @@ function Harness() {
 const session = () => useWorkspace.getState().sessions[0]
 
 describe('palette selection gestures and clipboard', () => {
+  it.each([0, 2])('selects a color with button %s and preserves the other color role', button => {
+    const primary = { ...session().primaryColor }
+    const secondary = { ...session().secondaryColor }
+    const { container } = render(<Harness />)
+    const swatch = container.querySelector('[data-palette-slot="2"]')!
+    fireEvent.pointerDown(swatch, { button, clientX: 87, clientY: 25 })
+    fireEvent.pointerUp(swatch, { button, clientX: 87, clientY: 25 })
+    expect(session().selectedPaletteIds).toEqual([3])
+    expect(swatch).toHaveClass('selected')
+    const color = session().document.palette.find(entry => entry.id === 3)!.color
+    expect(session().primaryColor).toEqual(button === 0 ? color : primary)
+    expect(session().secondaryColor).toEqual(button === 2 ? color : secondary)
+    expect(container.querySelector('[data-palette-selection-outline]')).not.toBeNull()
+  })
+
+  it('right-clicks an already selected color without moving it or changing foreground', () => {
+    useWorkspace.getState().selectPaletteColors([1, 2], 1)
+    const primary = { ...session().primaryColor }
+    const order = [...session().document.paletteOrder]
+    const { container } = render(<Harness />)
+    const swatch = container.querySelector('[data-palette-slot="1"]')!
+    fireEvent.pointerDown(swatch, { button: 2, clientX: 56, clientY: 25 })
+    fireEvent.pointerUp(swatch, { button: 2, clientX: 56, clientY: 25 })
+    expect(session().selectedPaletteIds).toEqual([2])
+    expect(session().paletteSecondarySelectionId).toBe(2)
+    expect(session().primaryColor).toEqual(primary)
+    expect(session().document.paletteOrder).toEqual(order)
+  })
+
+  it('activates the shared selection hover state on the outline and clears it away from the edge', () => {
+    useWorkspace.getState().selectPaletteColors([1, 2], 1)
+    const { container } = render(<Harness />)
+    const grid = container.querySelector('.swatch-grid')!
+    fireEvent.pointerMove(grid, { clientX: 25, clientY: 10 })
+    expect(grid).toHaveClass('selection-outline-hovered')
+    fireEvent.pointerMove(grid, { clientX: 273, clientY: 149 })
+    expect(grid).not.toHaveClass('selection-outline-hovered')
+  })
+
+  it('updates the role marker while a left or right selection drag crosses cells', () => {
+    const { container } = render(<Harness />)
+    const grid = container.querySelector('.swatch-grid')!
+    const dragRole = (button: number, from: string, to: string) => {
+      fireEvent.pointerDown(container.querySelector(`[data-palette-slot="${from}"]`)!, { button, clientX: 10 + Number(from) % 10 * 31 + 15, clientY: 25 })
+      fireEvent.pointerMove(grid, { clientX: 10 + Number(to) % 10 * 31 + 15, clientY: 25, buttons: button === 2 ? 2 : 1 })
+      expect(button === 0 ? session().paletteSelectionId : session().paletteSecondarySelectionId).toBe(Number(to) + 1)
+      fireEvent.pointerUp(grid, { button, clientX: 10 + Number(to) % 10 * 31 + 15, clientY: 25 })
+    }
+    dragRole(0, '0', '3')
+    expect(container.querySelector('[data-palette-id="4"]')).toHaveClass('primary')
+    dragRole(2, '4', '6')
+    expect(container.querySelector('[data-palette-id="7"]')).toHaveClass('secondary')
+  })
+
+  it.each(['release', 'cancel', 'blur'])('retains the original handle cursor during capture and restores it on %s', finish => {
+    const { container } = render(<Harness />)
+    const handle = container.querySelector<HTMLElement>('[data-palette-grow]')!
+    const grid = container.querySelector<HTMLElement>('.swatch-grid')!
+    handle.style.cursor = 'ew-resize'
+    fireEvent.pointerDown(handle, { button: 0, clientX: 211, clientY: 56 })
+    expect(grid).toHaveClass('palette-grow-dragging')
+    expect(grid.style.getPropertyValue('--palette-grow-cursor')).toBe('ew-resize')
+    fireEvent.pointerMove(grid, { clientX: 304, clientY: 56, buttons: 1 })
+    expect(grid).toHaveClass('palette-grow-dragging')
+    if (finish === 'release') fireEvent.pointerUp(grid)
+    else if (finish === 'cancel') fireEvent.pointerCancel(grid)
+    else fireEvent.blur(window)
+    expect(grid).not.toHaveClass('palette-grow-dragging')
+  })
+
+  it('marks only the picked foreground and background slots among duplicate colors', () => {
+    const store = useWorkspace.getState()
+    const color = { r: 42, g: 128, b: 230, a: 255 }
+    const first = store.addPaletteColor(color)!
+    const second = store.addPaletteColor(color)!
+    const third = store.addPaletteColor(color)!
+    store.selectPaletteColor(second)
+    store.selectSecondaryPaletteColor(third)
+    const { container } = render(<Harness />)
+    const marker = (role: string) => Array.from(container.querySelectorAll<HTMLElement>(`[data-palette-id].${role}`)).map(element => Number(element.dataset.paletteId))
+    expect(marker('primary')).toEqual([second])
+    expect(marker('secondary')).toEqual([third])
+    act(() => store.selectSecondaryPaletteColor(first))
+    expect(marker('secondary')).toEqual([first])
+    act(() => store.selectPaletteColor(third))
+    expect(marker('primary')).toEqual([third])
+    expect(marker('secondary')).toEqual([first])
+  })
+
+  it('falls back to one visible matching slot after a marked duplicate is removed', () => {
+    const store = useWorkspace.getState()
+    const color = { r: 42, g: 128, b: 230, a: 255 }
+    const first = store.addPaletteColor(color)!
+    const second = store.addPaletteColor(color)!
+    store.selectPaletteColor(second)
+    store.selectSecondaryPaletteColor(second)
+    const { container } = render(<Harness />)
+    act(() => store.deletePaletteColors([second]))
+    expect(container.querySelectorAll('[data-palette-id].primary')).toHaveLength(1)
+    expect(container.querySelectorAll('[data-palette-id].secondary')).toHaveLength(1)
+    expect(container.querySelector('[data-palette-id].primary')).toHaveAttribute('data-palette-id', String(first))
+    expect(container.querySelector('[data-palette-id].secondary')).toHaveAttribute('data-palette-id', String(first))
+  })
+
+  it.each(['outside', 'color-panel', 'palette-blank'])('clears selection when clicking %s', region => {
+    useWorkspace.getState().selectPaletteColors([1, 2], 2)
+    const { container } = render(<><Harness /><div data-testid="outside" /><div className="color-panel" /></>)
+    expect(container.querySelectorAll('[data-palette-slot].selected')).toHaveLength(2)
+    const target = region === 'palette-blank' ? container.querySelector('.swatch-grid')!
+      : region === 'color-panel' ? container.querySelector('.color-panel')! : container.querySelector('[data-testid="outside"]')!
+    fireEvent.pointerDown(target, { button: 0, clientX: 330, clientY: 180 })
+    expect(session().selectedPaletteIds).toEqual([])
+    expect(session().paletteSelectionId).toBeNull()
+    expect(container.querySelector('[data-palette-slot].selected')).toBeNull()
+    expect(container.querySelector('[data-palette-selection-outline]')).toBeNull()
+  })
+
+  it('does not select generated slots during dragging, after release, or after redo', () => {
+    useWorkspace.getState().selectPaletteColors([1, 2], 2)
+    const { container } = render(<Harness />)
+    const grid = container.querySelector('.swatch-grid')!
+    const primary = { ...session().primaryColor }
+    fireEvent.pointerDown(container.querySelector('[data-palette-grow]')!, { button: 0, clientX: 211, clientY: 56 })
+    fireEvent.pointerMove(grid, { clientX: 304, clientY: 56, buttons: 1 })
+    expect(container.querySelector('[data-palette-slot].selected')).toBeNull()
+    fireEvent.pointerUp(grid)
+    expect(session().document.paletteOrder).toHaveLength(19)
+    expect(session().selectedPaletteIds).toEqual([])
+    expect(session().paletteSelectionId).toBeNull()
+    expect(session().primaryColor).toEqual(primary)
+    expect(container.querySelector('[data-palette-selection-outline]')).toBeNull()
+    act(() => useWorkspace.getState().undo())
+    act(() => useWorkspace.getState().redo())
+    expect(container.querySelector('[data-palette-slot].selected')).toBeNull()
+    expect(session().selectedPaletteIds).toEqual([])
+  })
+
   it.each([0, 2])('moves manual colors with button %s and restores their slots on undo', button => {
     localStorage.setItem('moonsprite.palette-layout-mode', 'manual')
     useWorkspace.getState().selectPaletteColors([1, 2], 1)
@@ -228,6 +365,107 @@ describe('palette selection gestures and clipboard', () => {
     await act(async () => { fireEvent.keyDown(grid, { key: 'v', ctrlKey: true }) })
     expect(session().document.paletteOrder).toHaveLength(order.length + 2)
     expect(new Set(session().selectedPaletteIds).size).toBe(2)
+  })
+
+  it('adds black colors by dragging the adaptive empty slot to the right', () => {
+    localStorage.setItem('moonsprite.palette-edit-locked', 'false')
+    const { container } = render(<Harness />)
+    const grid = container.querySelector('.swatch-grid')!
+    const empty = container.querySelector('[data-palette-grow]')!
+    fireEvent.pointerDown(empty, { button: 0, clientX: 211, clientY: 41 })
+    fireEvent.pointerMove(grid, { clientX: 304, clientY: 41, buttons: 1 })
+    expect(container.querySelectorAll('.palette-grow-handle').length).toBe(1)
+    expect(container.querySelector('[data-palette-grow-slot="19"]')).not.toBeNull()
+    expect(container.querySelectorAll('.palette-swatch-grid-surface .occupied').length).toBeGreaterThan(16)
+    fireEvent.pointerUp(grid, { clientX: 304, clientY: 41 })
+    const black = session().document.palette.filter(entry => entry.color.r === 0 && entry.color.g === 0 && entry.color.b === 0 && entry.color.a === 255)
+    expect(black.length).toBe(4)
+    expect(session().document.paletteOrder).toHaveLength(19)
+    expect(session().document.paletteSlots?.slice(16, 19)).toEqual(session().document.paletteOrder.slice(16, 19))
+  })
+
+  it('keeps the handle and preview aligned when growing downward', () => {
+    localStorage.setItem('moonsprite.palette-edit-locked', 'false')
+    const { container } = render(<Harness />)
+    const grid = container.querySelector('.swatch-grid')!
+    const empty = container.querySelector('[data-palette-grow]')!
+    fireEvent.pointerDown(empty, { button: 0, clientX: 211, clientY: 41 })
+    fireEvent.pointerMove(grid, { clientX: 211, clientY: 72, buttons: 1 })
+    expect(container.querySelector('[data-palette-grow-slot="26"]')).not.toBeNull()
+    expect(container.querySelector('[data-palette-slot="16"]')).toHaveClass('occupied')
+    expect(container.querySelector('[data-palette-slot="25"]')).toHaveClass('occupied')
+    expect(container.querySelector('[data-palette-slot="26"]')).toBeNull()
+    fireEvent.pointerUp(grid, { clientX: 211, clientY: 72 })
+    const slots = session().document.paletteSlots!
+    expect(slots[16]).toBe(session().document.paletteOrder[16])
+    expect(session().document.paletteOrder).toHaveLength(26)
+    expect(slots[25]).toBe(session().document.paletteOrder[25])
+  })
+
+  it('retracts pending black slots when dragging the handle back to its starting cell', () => {
+    localStorage.setItem('moonsprite.palette-edit-locked', 'false')
+    const { container } = render(<Harness />)
+    const grid = container.querySelector('.swatch-grid')!
+    const empty = container.querySelector('[data-palette-grow]')!
+    fireEvent.pointerDown(empty, { button: 0, clientX: 211, clientY: 41 })
+    fireEvent.pointerMove(grid, { clientX: 304, clientY: 41, buttons: 1 })
+    expect(container.querySelectorAll('.palette-swatch-grid-surface .occupied').length).toBeGreaterThan(16)
+    fireEvent.pointerMove(grid, { clientX: 211, clientY: 41, buttons: 1 })
+    expect(container.querySelectorAll('.palette-swatch-grid-surface .occupied').length).toBe(16)
+    fireEvent.pointerUp(grid, { clientX: 211, clientY: 41 })
+    expect(session().document.paletteOrder).toHaveLength(16)
+  })
+
+  it('shrinks committed slots in a second drag and restores them with undo and redo', () => {
+    const { container } = render(<Harness />)
+    const grid = container.querySelector('.swatch-grid')!
+    const handle = () => container.querySelector('[data-palette-grow]')!
+    const visible = () => Array.from(container.querySelectorAll<HTMLElement>('[data-palette-id]')).map(element => Number(element.dataset.paletteId))
+    const original = [...session().document.paletteOrder]
+    fireEvent.pointerDown(handle(), { button: 0, clientX: 211, clientY: 56 })
+    fireEvent.pointerMove(grid, { clientX: 304, clientY: 56, buttons: 1 })
+    fireEvent.pointerUp(grid)
+    const expanded = [...session().document.paletteOrder]
+    expect(expanded).toHaveLength(19)
+    const historyPosition = session().history.position
+    fireEvent.pointerDown(handle(), { button: 0, clientX: 304, clientY: 56 })
+    fireEvent.pointerMove(grid, { clientX: 211, clientY: 56, buttons: 1 })
+    expect(handle()).toHaveAttribute('data-palette-grow-slot', '16')
+    expect(visible()).toEqual(original)
+    // Resizing is a preview until release, even for previously committed cells.
+    expect(session().document.paletteOrder).toEqual(expanded)
+    expect(session().history.position).toBe(historyPosition)
+    fireEvent.pointerUp(grid)
+    expect(session().document.paletteOrder).toEqual(original)
+    expect(visible()).toEqual(original)
+    expect(session().history.position).toBe(historyPosition + 1)
+    act(() => useWorkspace.getState().undo())
+    expect(visible()).toEqual(expanded)
+    act(() => useWorkspace.getState().redo())
+    expect(visible()).toEqual(original)
+  })
+
+  it('restores existing colors when reversing a shrink and cancels without editing history', () => {
+    const { container } = render(<Harness />)
+    const grid = container.querySelector('.swatch-grid')!
+    const handle = container.querySelector('[data-palette-grow]')!
+    const original = [...session().document.paletteOrder]
+    const historyPosition = session().history.position
+    fireEvent.pointerDown(handle, { button: 0, clientX: 211, clientY: 56 })
+    expect(container.querySelectorAll('.occupied')).toHaveLength(16)
+    fireEvent.pointerMove(grid, { clientX: 118, clientY: 56, buttons: 1 })
+    expect(container.querySelectorAll('.occupied')).toHaveLength(13)
+    fireEvent.pointerMove(grid, { clientX: 211, clientY: 56, buttons: 1 })
+    expect(container.querySelector('[data-palette-slot="15"]')).toHaveAttribute('data-palette-id', '16')
+    fireEvent.pointerUp(grid)
+    expect(session().history.position).toBe(historyPosition)
+    fireEvent.pointerDown(handle, { button: 0, clientX: 211, clientY: 56 })
+    fireEvent.pointerMove(grid, { clientX: 25, clientY: 25, buttons: 1 })
+    expect(container.querySelectorAll('.occupied')).toHaveLength(1)
+    fireEvent.pointerCancel(grid)
+    expect(container.querySelectorAll('.occupied')).toHaveLength(16)
+    expect(session().document.paletteOrder).toEqual(original)
+    expect(session().history.position).toBe(historyPosition)
   })
 
   it('preserves the copied row and restores the destination rectangle on undo', async () => {

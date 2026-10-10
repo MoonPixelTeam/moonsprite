@@ -22,6 +22,22 @@ it('disables document commands without a project', () => {
   for (const button of view.getAllByRole('button')) expect(button).toBeDisabled()
 })
 
+it('converts a linked layer through the enabled raster conversion menu', () => {
+  const document = createDocument('Linked menu', 2, 2, 'rgba')
+  const state = useWorkspace.getState()
+  state.addSession(document)
+  const sourceId = document.activeLayerId
+  const linkedId = state.createLinkedLayer(sourceId)!
+  const view = openMenu()
+  const conversion = view.getByText('layers.convertToRaster').closest('button')!
+  expect(conversion).toBeEnabled()
+  fireEvent.click(conversion)
+  expect(document.layers.find(layer => layer.id === linkedId)?.linkedContentId).toBeUndefined()
+  expect(document.layers.find(layer => layer.id === sourceId)?.linkedContentId).toBeTruthy()
+  expect(view.closeMenu).toHaveBeenCalledOnce()
+  expect(view.getByText('layers.convertToRaster').closest('button')).toBeDisabled()
+})
+
 it('uses the existing panel dialog route and reflects selection changes while open', () => {
   useWorkspace.getState().addSession(createDocument('Layer menu', 2, 2, 'rgba'))
   const view = openMenu()

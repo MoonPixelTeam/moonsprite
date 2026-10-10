@@ -17,47 +17,51 @@ import { tr } from './workspace-translation'
 import { activeSession } from './workspace-access'
 import { createSelectionAntiAliasCommands } from './workspace-commands-selection-anti-alias'
 import { commitSelectedEffectInSession, deleteFreeTileSourceSelectionInSession, deleteSelectedTargetsInSession, selectedEffectTargets, selectionEffectUsesMultipleTargets } from './workspace-selection-effects-support'
-
 const persistOutlineSettings = (settings: OutlineSettings): void => {
   const preferences = loadEditorPreferences()
   saveEditorPreferences({ ...preferences, outlineSettings: cloneOutlineSettings(settings) })
   if (typeof window !== 'undefined') window.dispatchEvent(new Event('moonsprite:preferences-changed'))
 }
-
 const savedOutlineSettingsForSession = (session: DocumentSession): OutlineSettings => {
   const projectSettings = session.document.outlineSettings ? normalizeOutlineSettings(session.document.outlineSettings, session.primaryColor) : null
   const softwarePreference = loadEditorPreferences().outlineSettings
   const softwareSettings = softwarePreference ? normalizeOutlineSettings(softwarePreference, session.primaryColor) : null
   return projectSettings ?? softwareSettings ?? defaultOutlineSettings(session.primaryColor)
 }
-
-
-export function createSelectionEffectsCommands({ get, set, recording }: WorkspaceCommandContext<'cancelFloatingPaste' | 'commitFloatingPaste' | 'commitPixelEdit' | 'mutateActive' | 'outlineActiveSelection'>): Pick<WorkspaceViewSelectionCommands, 'deleteSelection' | 'fillForeground' | 'outlineActiveSelection' | 'quickOutlineActiveSelection' | 'outlineSelectionInside' | 'antiAliasSelection' | 'previewAntiAliasSelection' | 'restoreAntiAliasPreview'> {
+export function createSelectionEffectsCommands({ get, set, recording }: WorkspaceCommandContext<'cancelFloatingPaste' | 'commitFloatingPaste' | 'commitPixelEdit' | 'mutateActive' | 'outlineActiveSelection' | 'setSelection'>): Pick<WorkspaceViewSelectionCommands, 'deleteSelection' | 'fillForeground' | 'outlineActiveSelection' | 'quickOutlineActiveSelection' | 'outlineSelectionInside' | 'antiAliasSelection' | 'previewAntiAliasSelection' | 'restoreAntiAliasPreview'> {
   const { recordDocumentOperation } = recording
   return {
     deleteSelection() {
-      const current = activeSession(get())
-      if (current?.pendingPaste) {
-        get().cancelFloatingPaste()
-        return
+      const pending = activeSession(get())?.pendingPaste
+      if (pending) {
+        if (pending.source.origin === 'selection') get().commitFloatingPaste()
+        else {
+          get().cancelFloatingPaste()
+          return
+        }
       }
+      const current = activeSession(get())
       if (!current?.selection) return
       if (activePaintLayer(current).kind === 'free-tile' && current.freeTileMode === 'edit' && current.selectedFreeTileInstanceId) {
+        let committed = false
         get().mutateActive((session) => {
-          deleteFreeTileSourceSelectionInSession(recordDocumentOperation, session)
+          committed = Boolean(deleteFreeTileSourceSelectionInSession(recordDocumentOperation, session))
         }, false)
+        if (committed) get().setSelection(null)
         return
       }
       if (selectionEffectUsesMultipleTargets(current)) {
+        let committed = false
         get().mutateActive((session) => {
-          deleteSelectedTargetsInSession(recordDocumentOperation, session)
+          committed = Boolean(deleteSelectedTargetsInSession(recordDocumentOperation, session))
         }, false)
+        if (committed) get().setSelection(null)
         return
       }
       const mask = activeLayerMask(current)
       if (mask) {
         const edit = fillSelectionOrCanvas(current.document, mask, current.secondaryColor, current.selection)
-        if (edit) get().commitPixelEdit(edit, tr('workspace.history.deleteSelection'))
+        if (edit && get().commitPixelEdit(edit, tr('workspace.history.deleteSelection'))) get().setSelection(null)
         return
       }
       const operationProbe = window.__moonSpriteCanvasProbe
@@ -71,7 +75,7 @@ export function createSelectionEffectsCommands({ get, set, recording }: Workspac
       })
       if (!edit) return
       const commitStartedAt = operationProbe?.recordOperationStage ? performance.now() : 0
-      get().commitPixelEdit(edit, tr('workspace.history.deleteSelection'))
+      if (get().commitPixelEdit(edit, tr('workspace.history.deleteSelection'))) get().setSelection(null)
       operationProbe?.recordOperationStage?.('selection-delete.commit-total', performance.now() - commitStartedAt)
     },
     fillForeground(fillColorSource = 'foreground') {
@@ -341,6 +345,5 @@ export function createSelectionEffectsCommands({ get, set, recording }: Workspac
       }
     },
     ...createSelectionAntiAliasCommands({ get, set, recording }),
-
   }
 }

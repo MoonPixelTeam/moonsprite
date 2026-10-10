@@ -1,6 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { MoonSpriteApi } from '@shared/types-platform'
 import { createDocument, getActiveLayer, readLayerColorAt, writeLayerColor } from '@/core/document'
+import { activateAnimationFrame, addBlankAnimationFrame, animationCelAt, ensureAnimationDocument, syncActiveAnimationLayer } from '@/core/animation'
+import { packColor } from '@/core/raster'
 import { beginPixelEdit, recordPixel } from '@/core/history'
 import { rasterStorageIdentity } from '@/core/runtime-raster'
 import { LAYER_DISPLAY_COLOR_PRESETS_KEY } from '@/core/file-preferences'
@@ -20,6 +22,59 @@ beforeEach(() => {
 })
 
 describe('linked layer workspace commands', () => {
+  it.each(['source', 'copy'] as const)('converts the linked %s to independent raster content across frames and history', target => {
+    const document = createDocument('unlink animation', 4, 1, 'rgba')
+    const source = getActiveLayer(document)
+    writeLayerColor(document, source, 0, red)
+    syncActiveAnimationLayer(document, source.id)
+    const secondFrameId = addBlankAnimationFrame(document)
+    activateAnimationFrame(document, secondFrameId)
+    writeLayerColor(document, source, 0, blue)
+    syncActiveAnimationLayer(document, source.id)
+    const state = useWorkspace.getState()
+    state.addSession(document)
+    const copyId = state.createLinkedLayer(source.id)!
+    const copy = document.layers.find(layer => layer.id === copyId)!
+    copy.offsetX = 2
+    syncActiveAnimationLayer(document, copy.id)
+    const targetId = target === 'source' ? source.id : copy.id
+    const otherId = target === 'source' ? copy.id : source.id
+    const association = source.linkedContentId
+    const timeline = ensureAnimationDocument(document)
+    const assertFrames = (linked: boolean): void => {
+      for (const [index, frame] of timeline.frames.entries()) {
+        const convertedCel = animationCelAt(timeline, targetId, frame.id)!
+        const otherCel = animationCelAt(timeline, otherId, frame.id)!
+        expect(Array.from(convertedCel.surface!.pixels.slice(0, 4))).toEqual(index === 0 ? [255, 0, 0, 255] : [0, 80, 255, 255])
+        expect(rasterStorageIdentity(convertedCel.surface!) === rasterStorageIdentity(otherCel.surface!)).toBe(linked)
+      }
+    }
+
+    state.rasterizeLayer(targetId)
+    expect(document.layers.find(layer => layer.id === targetId)?.linkedContentId).toBeUndefined()
+    expect(document.layers.find(layer => layer.id === targetId)?.kind).toBeUndefined()
+    expect(document.layers.find(layer => layer.id === otherId)?.linkedContentId).toBe(association)
+    expect(document.layers.find(layer => layer.id === copyId)?.offsetX).toBe(2)
+    assertFrames(false)
+    state.undo()
+    expect(document.layers.find(layer => layer.id === targetId)?.linkedContentId).toBe(association)
+    assertFrames(true)
+    state.redo()
+    expect(document.layers.find(layer => layer.id === targetId)?.linkedContentId).toBeUndefined()
+    assertFrames(false)
+
+    state.selectLayer(targetId)
+    const converted = getActiveLayer(document)
+    const edit = beginPixelEdit(converted.id)
+    recordPixel(document, converted, edit, 0, packColor(red))
+    state.commitPixelEdit(edit, 'independent edit')
+    const other = document.layers.find(layer => layer.id === otherId)!
+    expect(readLayerColorAt(document, converted, converted.offsetX, converted.offsetY)).toEqual(red)
+    expect(readLayerColorAt(document, other, other.offsetX, other.offsetY)).toEqual(blue)
+    state.undo()
+    expect(readLayerColorAt(document, getActiveLayer(document), converted.offsetX, converted.offsetY)).toEqual(blue)
+  })
+
   it('assigns one unused display color to the entire linked group', () => {
     const colors = [
       { r: 220, g: 45, b: 70, a: 255 },

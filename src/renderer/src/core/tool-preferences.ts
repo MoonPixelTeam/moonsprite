@@ -116,7 +116,7 @@ export const defaultToolSettings: PersistedToolSettings = {
   inkMode: 'simple',
   brushPaintModePreferenceVersion: 1,
   brushImageId: null,
-  brushImageSettings: { mode: 'dither', threshold: 128, blackPoint: 0, whitePoint: 255, invert: false },
+  brushImageSettings: { mode: 'threshold', threshold: 128, blackPoint: 0, whitePoint: 255, invert: false },
   proceduralBrushSettings: createDefaultProceduralBrushSettings(),
   proceduralAntialias: false,
   proceduralAntialiasPreferenceVersion: 1,

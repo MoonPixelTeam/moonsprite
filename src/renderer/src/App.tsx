@@ -15,6 +15,7 @@ import { useAppExtensions } from '@/components/app/useAppExtensions'
 import { useAppDocumentIO } from '@/components/app/useAppDocumentIO'
 import { useAppWindowLifecycle } from '@/components/app/useAppWindowLifecycle'
 import { useAppShortcutRouter } from '@/components/app/useAppShortcutRouter'
+import { shouldExitPatternBrushOnEscape } from '@/components/app/app-active-tool-shortcut'
 import { useAppScriptRuntime } from '@/components/app/useAppScriptRuntime'
 import { TextToolHost } from '@/components/app/TextToolHost'
 import { lazy, Suspense, useEffect, useState } from 'react'
@@ -336,7 +337,7 @@ export default function App() {
         const active = useWorkspace.getState().sessions.find((item) => item.document.id === session.document.id)
         if (active?.selection) workspace.commitSelectionChange(active.selection, null, t('app.selection.completeHistory'))
       } else if (session?.textBoxTransform) workspace.cancelTextBoxTransform()
-      else if (session?.temporaryBrushCapture || (session?.tool === 'pencil' && session.brushImage)) workspace.exitPatternBrush()
+      else if (shouldExitPatternBrushOnEscape(session)) workspace.exitPatternBrush()
       else workspace.setSelection(null)
       event.preventDefault()
       event.stopPropagation()

@@ -23,6 +23,7 @@ import { activeBrushInputsForTool } from '@/core/brushes'
 import { brushOpacityScale } from '@/core/pressure'
 import { canvasBrushHoverSize } from './canvas-brush-hover-size'
 import { BrushPreviewCompositeCache, BrushPreviewStackCache, brushAngleWithDynamics, brushBaseAngle } from './canvas-stage-helpers'
+import { createCompositeBrushPreviewColorAt, drawCompositeBrushPreviewPixels } from './canvas-brush-composite-preview'
 interface Ports {
   readonly canvasRef: import('react').RefObject<HTMLCanvasElement | null>
   readonly inputRef: import('react').RefObject<CanvasInputState>
@@ -65,6 +66,10 @@ interface Ports {
     currentSession?: DocumentSession
   ) => Point
   readonly cursorCompositePointSamplerFor: (currentSession: DocumentSession) => (x: number, y: number) => RgbaColor
+  readonly cursorCompositePointReplacementSamplerFor: (
+    currentSession: DocumentSession,
+    layerId: string
+  ) => (x: number, y: number, replacement: RgbaColor) => RgbaColor
   readonly activeTheme: import('@/core/theme').ResolvedTheme
   readonly scheduleDraw: () => void
   readonly activeToolBrushSize: number | null
@@ -73,7 +78,6 @@ interface Ports {
     targetSession?: DocumentSession
   ) => boolean
 }
-
 export function useCanvasBrushOverlay(ports: Ports) {
   const previewToolAvailable = useWorkspace((state) => {
     const session = state.sessions.find((item) => item.document.id === ports.session.document.id) ?? ports.session
@@ -83,15 +87,10 @@ export function useCanvasBrushOverlay(ports: Ports) {
   // canvas means pointer movement does not force a full layer composite.
   const brushPreviewCanvasRef = useRef<HTMLCanvasElement>(null)
   const damageRef = useRef(new CanvasOverlayDamage())
-
   const brushPreviewDrawRef = useRef<() => void>(() => {})
-
   const brushPreviewRequestRef = useRef<number | null>(null)
-
   const brushPreviewCompositeCacheRef = useRef<BrushPreviewCompositeCache | null>(null)
-
   const brushPreviewStackCacheRef = useRef<BrushPreviewStackCache | null>(null)
-
   const brushPreviewOverlaySupported = (currentSession: DocumentSession): boolean => {
     if (currentSession.animationPlaying || !isToolAvailableForSession(currentSession, currentSession.tool)) return false
     // Shift-connected strokes are rendered on the document canvas. Updating
@@ -136,8 +135,6 @@ export function useCanvasBrushOverlay(ports: Ports) {
     if (ports.brushPreviewMode === 'none' || !['pencil', 'eraser', 'line'].includes(currentSession.tool)
       || (currentSession.tool !== 'eraser' && currentSession.inkMode !== 'simple')) return false
     if (currentSession.tool === 'line' && ports.brushPreviewMode === 'full') return false
-    if ((ports.brushPreviewMode === 'full' || ports.brushPreviewMode === 'full-edge') && currentSession.tool !== 'eraser'
-      && brushPreviewNeedsComposite(currentSession.document, activePaintLayer(currentSession).id)) return false
     const drag = ports.inputRef.current.drag
     if ((drag && (drag.kind !== 'draw' || !ports.drawingBrushPreviewEnabled)) || !ports.inputRef.current.pointer.visible || ports.inputRef.current.sampling || ports.inputRef.current.spaceHeld)
       return false
@@ -152,7 +149,6 @@ export function useCanvasBrushOverlay(ports: Ports) {
       Math.abs(ports.liveViewRef.current.rotation) < 0.000001
     )
   }
-
   const drawBrushPreviewOverlay = (): void => {
     const overlay = brushPreviewCanvasRef.current
     if (!overlay) return
@@ -266,15 +262,27 @@ export function useCanvasBrushOverlay(ports: Ports) {
     const drag = ports.inputRef.current.drag
     const drawing = drag?.kind === 'draw'
     const erasing = currentSession.tool === 'eraser'
-    const showOutline = ports.brushPreviewMode === 'edge' || ports.brushPreviewMode === 'full-edge' || erasing
-    if (drawing && !showOutline) return
+    if (drawing && !(ports.brushPreviewMode === 'edge' || ports.brushPreviewMode === 'full-edge' || erasing)) return
     const size = drawing ? (drag.lastBrushSize ?? currentSession.brushSize) : canvasBrushHoverSize(currentSession)
+    const complexStackPreview = !drawing && !erasing && currentSession.tool === 'pencil'
+      && (ports.brushPreviewMode === 'full' || ports.brushPreviewMode === 'full-edge')
+      && brushPreviewNeedsComposite(currentSession.document, activePaintLayer(currentSession).id)
+    const showOutline = ports.brushPreviewMode === 'edge' || ports.brushPreviewMode === 'full-edge' || erasing
+      || (complexStackPreview && size > 64)
     const previewAngle = drawing ? (drag.path?.at(-1)?.angle ?? brushBaseAngle(currentSession)) : brushBaseAngle(currentSession)
     const before = brushStampAnchor(size, null, previewAngle, currentSession.brushShape)
     const brushPoint = ports.snapBrushPointToGrid(point, size, null, previewAngle, currentSession)
     const spans = solidBrushPreviewRowSpans(size, currentSession.brushShape, previewAngle, ports.optimizedRotationEnabled)
     const color = resolveLayerCanvasColor(currentSession.document, activePaintLayer(currentSession), currentSession.primaryColor)
     const previewColor = { ...color, a: Math.round(color.a * brushOpacityScale(1, currentSession.brushOpacity)) }
+    const activeLayer = activePaintLayer(currentSession)
+    const compositedPreview = complexStackPreview && size <= 64
+    const compositeSampler = compositedPreview
+      ? ports.cursorCompositePointReplacementSamplerFor(currentSession, activeLayer.id)
+      : null
+    const compositeColorAt = compositedPreview && compositeSampler
+      ? createCompositeBrushPreviewColorAt(currentSession, activeLayer, compositeSampler, brushPreviewCompositeCacheRef)
+      : null
     const outline = new CanvasAdaptiveOutline()
     const outlineRows = spans.map((span) => ({
       y: brushPoint.y - before.y + span.y,
@@ -286,15 +294,20 @@ export function useCanvasBrushOverlay(ports: Ports) {
       const right = Math.min(currentSession.document.width - 1, row.right)
       return row.y >= 0 && row.y < currentSession.document.height && right >= left ? [{ y: row.y, left, right }] : []
     })
-    context.fillStyle = `rgb(${previewColor.r} ${previewColor.g} ${previewColor.b} / ${previewColor.a / 255})`
-    context.beginPath()
-    for (const row of rows) {
-      const first = deviceAlignedPixelRect(renderPlan.originX, renderPlan.originY, view.zoom, row.left, row.y, deviceScale)
-      const last = deviceAlignedPixelRect(renderPlan.originX, renderPlan.originY, view.zoom, row.right, row.y, deviceScale)
-      damageRef.current.include({ x: first.x, y: first.y, width: last.x + last.width - first.x, height: first.height }, deviceScale, (ports.brushEdgeThickness ?? 1) + 2)
-      context.rect(first.x, first.y, last.x + last.width - first.x, first.height)
+    if (compositedPreview) {
+      drawCompositeBrushPreviewPixels(context, rows, renderPlan, view.zoom, deviceScale, compositeColorAt!, deviceAlignedPixelRect, damageRef.current, ports.brushEdgeThickness ?? 1)
+    } else if (complexStackPreview) { /* outline below */
+    } else {
+      context.fillStyle = `rgb(${previewColor.r} ${previewColor.g} ${previewColor.b} / ${previewColor.a / 255})`
+      context.beginPath()
+      for (const row of rows) {
+        const first = deviceAlignedPixelRect(renderPlan.originX, renderPlan.originY, view.zoom, row.left, row.y, deviceScale)
+        const last = deviceAlignedPixelRect(renderPlan.originX, renderPlan.originY, view.zoom, row.right, row.y, deviceScale)
+        damageRef.current.include({ x: first.x, y: first.y, width: last.x + last.width - first.x, height: first.height }, deviceScale, (ports.brushEdgeThickness ?? 1) + 2)
+        context.rect(first.x, first.y, last.x + last.width - first.x, first.height)
+      }
+      if (!drawing && !erasing && ports.brushPreviewMode !== 'edge') context.fill()
     }
-    if (!drawing && !erasing && ports.brushPreviewMode !== 'edge') context.fill()
     if (!showOutline) return
     // Any preview that draws an outline must use the complete brush geometry,
     // including the part outside the document. This keeps edge-mode pencils
@@ -335,7 +348,6 @@ export function useCanvasBrushOverlay(ports: Ports) {
     }
     outline.stroke(context, ports.canvasRef.current ?? undefined, ports.brushEdgeColor)
   }
-
   const scheduleBrushPreviewOverlay = (): void => {
     if (brushPreviewRequestRef.current !== null) return
     brushPreviewRequestRef.current = window.requestAnimationFrame(() => {
@@ -343,9 +355,7 @@ export function useCanvasBrushOverlay(ports: Ports) {
       brushPreviewDrawRef.current()
     })
   }
-
   brushPreviewDrawRef.current = drawBrushPreviewOverlay
-
   // A non-active pane does not receive a React prop change when the active
   // session mutates its brush size in place. Redraw it while the pointer is
   // over that pane so the shared brush preview stays live without a click.
@@ -354,7 +364,6 @@ export function useCanvasBrushOverlay(ports: Ports) {
     // Clear the dedicated overlay even when the main canvas does not redraw it.
     scheduleBrushPreviewOverlay()
   }, [previewToolAvailable])
-
   useEffect(() => {
     if (ports.inputRef.current.modifierBrushSize && brushPreviewOverlaySupported(ports.session)) scheduleBrushPreviewOverlay()
     else ports.scheduleDraw()

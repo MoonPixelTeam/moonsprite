@@ -123,12 +123,12 @@ it.each(['pencil', 'eraser'] as const)('keeps solid %s hover and drawing on the 
   if (tool === 'pencil') {
     const upper = createLayer('upper', 256, 256, 'rgba')
     session.document.layers.push(upper)
-    expect(result.current.brushPreviewOverlaySupported(session)).toBe(false)
+    expect(result.current.brushPreviewOverlaySupported(session)).toBe(true)
     upper.visible = false
     expect(result.current.brushPreviewOverlaySupported(session)).toBe(true)
     session.document.layers.pop()
     session.document.layers[0].blendMode = 'multiply'
-    expect(result.current.brushPreviewOverlaySupported(session)).toBe(false)
+    expect(result.current.brushPreviewOverlaySupported(session)).toBe(true)
     session.document.layers[0].blendMode = 'normal'
     expect(result.current.brushPreviewOverlaySupported(session)).toBe(true)
   }
@@ -191,12 +191,13 @@ it.each(['pencil', 'eraser'] as const)('keeps solid %s hover and drawing on the 
   input.pointer.point = { x: 128, y: 128 }
   if (tool === 'pencil') {
     session.document.layers[0].blendMode = 'multiply'
-    expect(result.current.brushPreviewOverlaySupported(session)).toBe(false)
+    expect(result.current.brushPreviewOverlaySupported(session)).toBe(true)
     scheduleDraw.mockClear()
     const outsideDraw = { clientX: -12, clientY: 128, ctrlKey: false, altKey: false, metaKey: false, shiftKey: false, buttons: 1, pointerId: 1, pointerType: 'mouse', pressure: 0 }
     move({ ...outsideDraw, nativeEvent: outsideDraw, currentTarget: canvas } as unknown as Parameters<typeof move>[0])
     expect(input.pointer.point.x).toBe(-12)
-    expect(scheduleDraw).toHaveBeenCalledOnce()
+    expect(scheduleDraw).not.toHaveBeenCalled()
+    expect(scheduleOverlay).toHaveBeenCalledOnce()
     session.document.layers[0].blendMode = 'normal'
     input.pointer.point = { x: 128, y: 128 }
   }

@@ -138,7 +138,8 @@ export function pastePaletteColors(session: DocumentSession, colors: readonly Rg
   } else {
     ids.push(...colors.map(color => createPaletteColor(session, color, true)))
   }
-  const selected = [...new Set(ids.filter((id) => session.document.paletteOrder.includes(id)))]
+  const pasted = [...new Set(ids.filter((id) => session.document.paletteOrder.includes(id)))]
+  const selected = target?.selectResult === false ? [] : pasted
   const primaryId = selected.at(-1) ?? null
   session.selectedPaletteIds = selected
   session.paletteSelectionId = primaryId
@@ -146,7 +147,7 @@ export function pastePaletteColors(session: DocumentSession, colors: readonly Rg
   if (active) session.primaryColor = { ...active.color }
   if (target?.selection) session.paletteSelectionRestore = { ...target.selection.after }
   recordPaletteEdit(session, before, target?.selection)
-  return selected
+  return pasted
 }
 
 export function updatePaletteColor(session: DocumentSession, id: number, color: RgbaColor): void {

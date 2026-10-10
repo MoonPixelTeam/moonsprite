@@ -7,7 +7,8 @@ import { createPortal } from 'react-dom'
 import type { LayerGroup, RasterLayer } from '@shared/types-layer'
 import type { LayerStyles } from '@shared/types-layer-style'
 import type { RgbaColor } from '@shared/types-color'
-import { cloneLayerStyles, createDefaultLayerStyles, MAX_LAYER_STYLE_SHADOW_OFFSET, MAX_LAYER_STYLE_SIZE, MAX_LAYER_STYLE_STROKE_SIZE, resolveLayerStyles } from '@/core/layer-styles'
+import { cloneLayerStyles, createDefaultLayerStyles, mapLayerStyleColors, MAX_LAYER_STYLE_SHADOW_OFFSET, MAX_LAYER_STYLE_SIZE, MAX_LAYER_STYLE_STROKE_SIZE, resolveLayerStyles } from '@/core/layer-styles'
+import { resolveDocumentCanvasColor } from '@/core/document-model'
 import { useWorkspace, type LayerPropertyTarget } from '@/store/workspace'
 import { ColorValueControl } from './ColorValueControl'
 import { DialogHeader } from './DialogHeader'
@@ -47,7 +48,12 @@ export function LayerStyleDialog({ ownerKind, owner, targets, onClose }: { owner
     return { target, styles: cloneLayerStyles(targetOwner?.layerStyles) }
   }))
   const finalizedRef = useRef(false)
-  const [draft, setDraft] = useState(() => resolveLayerStyles(owner.layerStyles))
+  const resolveDraft = (styles: LayerStyles): LayerStyles => {
+    const workspace = useWorkspace.getState()
+    const document = workspace.sessions.find(item => item.document.id === workspace.activeId)?.document
+    return document ? mapLayerStyleColors(styles, color => resolveDocumentCanvasColor(document, color)) : styles
+  }
+  const [draft, setDraft] = useState(() => resolveDraft(resolveLayerStyles(owner.layerStyles)))
   const [activeEffect, setActiveEffect] = useState<LayerStyleEffect>('stroke')
   const [previewEnabled, setPreviewEnabled] = useState(true)
   const gradientPreview = useCoalescedGradientPreview()
@@ -58,6 +64,7 @@ export function LayerStyleDialog({ ownerKind, owner, targets, onClose }: { owner
   }, [])
 
   const previewDraft = (next: LayerStyles): void => {
+    next = resolveDraft(next)
     setDraft(next)
     if (previewEnabled) {
       const preview = () => measureRuntimeDiagnostic('layer-style.preview.dispatch', () => previewLayerStyleEntries(targetsRef.current.map((target) => ({ target, styles: next }))), () => ({ layerId: owner.id, effect: activeEffect }))

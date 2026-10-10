@@ -14,7 +14,7 @@ import {
   resolveLayerStyles,
   type LayerStyleGeometry
 } from './layer-styles'
-import { maskCoverageFromColor, layerContentBounds, resolveLayerCanvasColor, layerIndexAt, resolveDocumentCanvasColor } from './document-model'
+import { maskCoverageFromColor, layerContentBounds, layerIndexAt, resolveDocumentCanvasColor } from './document-model'
 import { type DocumentCompositeCache } from './document-composite-cache'
 import type { PropertyCompositeMemo } from './layer-property-composite-cache'
 import { deferredCompositeValue } from './document-composite-deferred-value'
@@ -59,7 +59,7 @@ export const compileCompositePointSampler = (document: SpriteDocument, layerId?:
       readSource = (x, y) => { const local = readIndex(x, y); return local === null ? TRANSPARENT : (paletteById.get(readSurfacePackedLocal(layer, local % layer.width, Math.floor(local / layer.width))) ?? TRANSPARENT) }
     }
     if (layer.kind === 'adjustment') readSource = () => TRANSPARENT
-    const resolveStyleColor = (styleColor: RgbaColor): RgbaColor => resolveLayerCanvasColor(document, layer, styleColor)
+    const resolveStyleColor = (styleColor: RgbaColor): RgbaColor => resolveDocumentCanvasColor(document, styleColor)
     const styles = hasEnabledLayerStyles(layer.layerStyles)
       ? mapLayerStyleColors(resolveLayerStyles(layer.layerStyles), resolveStyleColor, color => normalizeDocumentColor(document, color))
       : undefined

@@ -6,7 +6,7 @@ import type { SpriteDocument } from '@shared/types-document'
 import { cachedLayerContentBounds, ensureLayerCoversCanvas, getActiveLayer, getLayerStorageOrigin, getPaletteEntry, isLayerEffectivelyLocked, layerContentBounds, layerIndexAt, markLayerContentChanged, normalizeLayerPackedValue, paletteColorIdForCanvas, rasterLayerPackedValueIsUniform, readLayerPacked, writeLayerPacked, writeLayerPackedRun } from './document-model'
 import { beginPixelEdit, pixelEditHasChanges, preparePixelEdit, recordPixel, recordPixelKnownCurrent, type PixelEdit } from './history'
 import { createFillPixelRecorder } from './fill-pixel-recorder'
-import { isInBounds, packColor, pixelIndex } from './raster'
+import { isInBounds, packColor, pixelIndex, unpackColor } from './raster'
 import { packedColorMatchesTolerance, selectionContains } from './selection'
 import { proceduralBrushCoverageAt } from './brushes'
 import { symmetryPoints, type SymmetryAxes, type SymmetryCenter } from './symmetry'
@@ -493,7 +493,10 @@ export function floodFill(document: SpriteDocument, layer: RasterLayer, startX: 
   const edit = beginPixelEdit(layer.id)
   preparePixelEdit(document, edit)
   const next = paintLayerValue(document, layer, edit, layerIndexAt(layer, startX, startY)!, color)
-  if (!sourceColorAt && target === next) return null
+  // A pattern brush can still change the result when its source color differs
+  // from the active foreground. The uniform-color fast path is only safe when
+  // no per-pixel brush data participates in the fill.
+  if (!sourceColorAt && target === next && !imageBrush && brushTexture === 'solid') return null
   if (compactSolidFill) {
     const layerCoversCanvas = layer.offsetX <= 0
       && layer.offsetY <= 0
@@ -548,7 +551,24 @@ export function floodFill(document: SpriteDocument, layer: RasterLayer, startX: 
       ? Math.max(imageBrush.width, imageBrush.height)
       : brushSize
     if (imageBrush.id.startsWith('procedural:')) return imageBrushCoverage(proceduralBrushCoverageAt(imageBrush.id, sampleX, sampleY, sampleSize, imageBrush.proceduralSettings), sampleX, sampleY, imageBrushSettings, proceduralAntialiasStrength)
+    const sourceColors = imageBrush.paintColors ?? imageBrush.colors
+    if (sourceColors && sourceColors.length === imageBrush.width * imageBrush.height) {
+      const source = unpackColor(sourceColors[wrappedIndex(sampleY, imageBrush.height) * imageBrush.width + wrappedIndex(sampleX, imageBrush.width)] ?? 0)
+      return source.a > 0 ? 255 : 0
+    }
     return imageBrush.intrinsicSize ? imageBrush.coverage[wrappedIndex(sampleY, imageBrush.height) * imageBrush.width + wrappedIndex(sampleX, imageBrush.width)] ?? 0 : imageBrushCoverageAt(imageBrush, sampleX, sampleY, sampleSize, imageBrushSettings)
+  }
+  const textureColorAt = (x: number, y: number): RgbaColor | undefined => {
+    if (!imageBrush) return undefined
+    const sourceColors = imageBrush.paintColors ?? imageBrush.colors
+    if (!sourceColors || sourceColors.length !== imageBrush.width * imageBrush.height) return undefined
+    const originX = brushPaintMode === 'pattern-source' ? imageBrush.sourceX ?? 0 : brushPaintMode === 'pattern-target' ? startX : 0
+    const originY = brushPaintMode === 'pattern-source' ? imageBrush.sourceY ?? 0 : brushPaintMode === 'pattern-target' ? startY : 0
+    const sampleX = x - originX
+    const sampleY = y - originY
+    const index = wrappedIndex(sampleY, imageBrush.height) * imageBrush.width + wrappedIndex(sampleX, imageBrush.width)
+    const source = unpackColor(sourceColors[index] ?? 0)
+    return source.a > 0 ? source : undefined
   }
   const constantFillValue = color.a === 0
     ? layer.format === 'rgba' ? packColor(color) : 0
@@ -567,11 +587,13 @@ export function floodFill(document: SpriteDocument, layer: RasterLayer, startX: 
   const recordFillPixel = maxFillPoints >= COMPACT_FILL_MIN_PIXELS
     ? createFillPixelRecorder(document, layer, edit, maxFillPoints)
     : (index: number, current: number, value: number): void => { recordPixelKnownCurrent(document, layer, edit, index, current, value) }
-  const paintAtCoverage = (layerIndex: number, coverage: number, current: number): void => {
+  const paintAtCoverage = (layerIndex: number, coverage: number, current: number, sourceColor?: RgbaColor): void => {
     if (coverage <= 0) return
+    const paintColor = sourceColor ?? color
+    const paintValue = sourceColor ? null : constantFillValue
     const nextValue = coverage === 255 && constantFillValue !== null
-      ? constantFillValue
-      : paintLayerValue(document, layer, edit, layerIndex, coverage === 255 ? color : { ...color, a: Math.round(color.a * coverage / 255) })
+      ? (paintValue ?? paintLayerValue(document, layer, edit, layerIndex, paintColor))
+      : paintLayerValue(document, layer, edit, layerIndex, coverage === 255 ? paintColor : { ...paintColor, a: Math.round(paintColor.a * coverage / 255) })
     recordFillPixel(layerIndex, current, nextValue)
   }
   if (!contiguous) {
@@ -584,7 +606,7 @@ export function floodFill(document: SpriteDocument, layer: RasterLayer, startX: 
         if (layerIndex === null) continue
         const current = readLayerPacked(document, layer, layerIndex)
         if (!matchesCanvas(x, y, current)) continue
-        paintAtCoverage(layerIndex, textureCoverage(x, y), current)
+        paintAtCoverage(layerIndex, textureCoverage(x, y), current, textureColorAt(x, y))
       }
     }
     return pixelEditHasChanges(edit) ? edit : null
@@ -608,7 +630,7 @@ export function floodFill(document: SpriteDocument, layer: RasterLayer, startX: 
       const x = index % document.width
       const y = Math.floor(index / document.width)
       const layerIndex = layerIndexAtCanvas(x, y)
-      if (layerIndex !== null) paintAtCoverage(layerIndex, textureCoverage(x, y), readLayerPacked(document, layer, layerIndex))
+      if (layerIndex !== null) paintAtCoverage(layerIndex, textureCoverage(x, y), readLayerPacked(document, layer, layerIndex), textureColorAt(x, y))
     }
     return pixelEditHasChanges(edit) ? edit : null
   }
@@ -636,7 +658,7 @@ export function floodFill(document: SpriteDocument, layer: RasterLayer, startX: 
     const y = Math.floor(index / document.width)
     const layerIndex = layerIndexAtCanvas(x, y)
     if (layerIndex === null) continue
-    paintAtCoverage(layerIndex, textureCoverage(x, y), readLayerPacked(document, layer, layerIndex))
+    paintAtCoverage(layerIndex, textureCoverage(x, y), readLayerPacked(document, layer, layerIndex), textureColorAt(x, y))
     enqueueIfMatching(x - 1, y)
     enqueueIfMatching(x + 1, y)
     enqueueIfMatching(x, y - 1)

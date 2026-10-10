@@ -22,7 +22,7 @@ import { TextInput } from '@/components/TextInput'
 import { Tooltip } from '@/components/Tooltip'
 import type { DockDragProps } from '@/components/workspace-panel-types'
 import { encodePalettePng, extractPaletteColors, mergePaletteColors, type PaletteSortDirection, type PaletteSortMode } from '@/core/palette'
-import { fitPaletteSlotsToGrid, normalizePaletteColumns, normalizePaletteSlots, PALETTE_SWATCH_PIXELS, paletteColorRoles, paletteColorsEqual, paletteMarkerColor, paletteRangeIdsBySlots, paletteSlotRange, repositionPaletteSlots, type PaletteSwatchSize } from '@/core/palette-layout'
+import { fitPaletteSlotsToGrid, normalizePaletteColumns, normalizePaletteSlots, PALETTE_SWATCH_PIXELS, paletteColorsEqual, paletteMarkerColor, paletteRangeIdsBySlots, paletteSlotRange, repositionPaletteSlots, type PaletteSwatchSize } from '@/core/palette-layout'
 import { ACTIVE_PALETTE_ID_STORAGE_KEY, readStoredString, removeStoredValue, writeStoredString } from '@/core/panel-preferences'
 import { colorEquals } from '@/core/raster'
 import { builtInPaletteNameKeys } from '@/core/built-in-palettes'
@@ -42,6 +42,32 @@ import type { ShortcutId } from '@/core/shortcuts'
 
 const PALETTE_SWATCH_SIZE_STORAGE_KEY = 'moonsprite.palette-swatch-size'
 const PALETTE_SWATCH_SIZE_ORDER: PaletteSwatchSize[] = ['tiny', 'small', 'medium', 'large', 'huge']
+
+type PaletteGrowthPreview = {
+  slots: Array<number | null>
+  indices: number[]
+  removedIds: number[]
+  handleSlot: number
+  columns: number
+}
+
+/** Build the exact layout shown while dragging the adaptive palette handle. */
+const buildPaletteGrowthPreview = (
+  baseSlots: readonly (number | null)[],
+  columns: number,
+  startSlot: number,
+  pointerSlot: number,
+  minimumSize = 1
+): PaletteGrowthPreview => {
+  const normalizedColumns = Math.max(1, columns)
+  // Aseprite PaletteView::RESIZING_PALETTE uses the hit index as the new
+  // length; the handle is the next empty cell, excluded from that length.
+  const handleSlot = Math.max(minimumSize, Math.min(startSlot + 4096, pointerSlot))
+  const indices = Array.from({ length: Math.max(0, handleSlot - startSlot) }, (_, index) => startSlot + index)
+  const slots = [...baseSlots.slice(0, handleSlot), ...indices.map((_, index) => -(index + 1))]
+  const removedIds = baseSlots.slice(handleSlot).filter((id): id is number => id !== null)
+  return { slots, indices, removedIds, handleSlot, columns: normalizedColumns }
+}
 const PALETTE_SWATCH_SIZE_LABEL_KEYS = {
   tiny: 'palette.size.tiny',
   small: 'palette.size.small',
@@ -99,8 +125,11 @@ function PalettePanelComponent({ session, docked = false, onDockDragStart, onPan
   const shortcutCommandHandlerRef = useRef<(id: ShortcutId) => void>(() => {})
   const [paletteActionsPopoverPosition, setPaletteActionsPopoverPosition] = useState({ left: 8, top: 8 })
   const [libraryPopoverPosition, setLibraryPopoverPosition] = useState({ left: 8, top: 8 })
-  const dragRef = useRef<{ ids: number[]; baseSlots: Array<number | null>; previewSlots: Array<number | null>; columns: number; clickedId: number; pointerId: number; element: HTMLElement; startX: number; startY: number; moved: boolean; targetSlot: number | null; selectionBox: { startSlot: number; endSlot: number } | null } | null>(null)
-  const selectionGestureRef = useRef<{ pointerId: number; element: HTMLElement; slots: Array<number | null>; columns: number; startSlot: number; lastSlot: number; startX: number; startY: number; clickedId: number | null; active: boolean; longPressTimer: number | null } | null>(null)
+  const dragRef = useRef<{ ids: number[]; baseSlots: Array<number | null>; previewSlots: Array<number | null>; columns: number; clickedId: number; button: number; pointerId: number; element: HTMLElement; startX: number; startY: number; moved: boolean; targetSlot: number | null; selectionBox: { startSlot: number; endSlot: number } | null } | null>(null)
+  const selectionGestureRef = useRef<{ pointerId: number; button: number; element: HTMLElement; slots: Array<number | null>; columns: number; startSlot: number; lastSlot: number; startX: number; startY: number; clickedId: number | null; active: boolean; longPressTimer: number | null } | null>(null)
+  const growthRef = useRef<{ pointerId: number; element: HTMLElement; baseSlots: Array<number | null>; startSlot: number; minimumSize: number; preview: PaletteGrowthPreview } | null>(null)
+  const [growthPreview, setGrowthPreview] = useState<PaletteGrowthPreview | null>(null)
+  const [growthCursor, setGrowthCursor] = useState('var(--cursor-ew-resize)')
   const [draggingIds, setDraggingIds] = useState<number[]>([])
   const [focusedSlot, setFocusedSlot] = useState<number | null>(null)
   const [dropTargetSlot, setDropTargetSlot] = useState<number | null>(null)
@@ -116,7 +145,12 @@ function PalettePanelComponent({ session, docked = false, onDockDragStart, onPan
     return PALETTE_SWATCH_SIZE_ORDER.includes(stored as PaletteSwatchSize) ? stored as PaletteSwatchSize : 'small'
   })
   // Palette commands can edit arrays in place; identity alone is not a revision.
-  const paletteRenderKey = palettePanelRenderKey(session)
+  // Sessions are mutated in place, so memoized props alone cannot notify this
+  // panel when selection, colors, or slot placement changes.
+  const paletteRenderKey = useWorkspace(state => {
+    const current = state.sessions.find(item => item.document.id === session.document.id)
+    return current ? palettePanelRenderKey(current) : ''
+  })
   const paletteById = useMemo(() => new Map(session.document.palette.map(entry => [entry.id, entry])), [session.document.palette, paletteRenderKey])
   const ordered = useMemo(() => session.document.paletteOrder.map(id => paletteById.get(id)).filter((entry): entry is PaletteEntry => Boolean(entry)), [session.document.paletteOrder, paletteById])
   const storedColumns = normalizePaletteColumns(session.document.paletteColumns)
@@ -141,11 +175,14 @@ function PalettePanelComponent({ session, docked = false, onDockDragStart, onPan
     } : null)
     setGestureSelectedIds(null)
   }, [selectionRestore, paletteColumns])
-  const rawDisplayedSlots = palettePreviewSlots ?? paletteSlots
+  const growthPreviewSlots = growthPreview?.slots ?? null
+  const rawDisplayedSlots = palettePreviewSlots ?? growthPreviewSlots ?? paletteSlots
   const lastOccupiedSlot = rawDisplayedSlots.reduce<number>((last, id, index) => id !== null ? index : last, -1)
   const displayedSlotCount = rawDisplayedSlots.length === 0 ? 0 : Math.max(1, lastOccupiedSlot + 1, paletteLayoutMode === 'manual' ? paletteColumns : 0)
   const displayedSlots = rawDisplayedSlots.slice(0, displayedSlotCount)
-  const paletteSurfaceColumns = paletteLayoutMode === 'auto' ? Math.max(1, Math.min(paletteColumns, displayedSlots.length)) : paletteColumns
+  const paletteSurfaceColumns = paletteLayoutMode === 'auto'
+    ? (growthPreview?.columns ?? Math.max(1, Math.min(paletteColumns, displayedSlots.length + 1)))
+    : paletteColumns
   const displayedSelectedIds = gestureSelectedIds ?? session.selectedPaletteIds
   const boxSelectionRange = paletteBoxSelection ? paletteSlotRange(paletteColumns, paletteBoxSelection.startSlot, paletteBoxSelection.endSlot) : null
   const selectedSlotIndices = displayedSlots.flatMap((id, index) => id !== null && displayedSelectedIds.includes(id) ? [index] : [])
@@ -170,18 +207,26 @@ function PalettePanelComponent({ session, docked = false, onDockDragStart, onPan
   const displayedSelectionRange = paletteLayoutMode === 'manual'
     ? boxSelectionRange ?? selectedSlotRange ?? focusedEmptySlotRange
     : focusedEmptySlotRange
-  const swatchPresentations = useMemo(() => new Map(session.document.palette.map(entry => {
-    const roles = paletteColorRoles(entry.color, session.primaryColor, session.secondaryColor)
-    const roleLabel = [roles.primary ? t('palette.foreground') : '', roles.secondary ? t('palette.background') : ''].filter(Boolean).join(t('palette.roleSeparator'))
-    return [entry.id, {
-      roles,
-      label: `${entry.name} ${rgbaHex(entry.color)}${roleLabel ? ` · ${roleLabel}` : ''}`,
-      style: { '--swatch-color': colorCss(entry.color), '--swatch-corner-color': paletteMarkerColor(entry.color) }
-    }]
-  })), [paletteRenderKey, session.document.palette, session.primaryColor, session.secondaryColor, t])
+  const swatchPresentations = useMemo(() => {
+    // Roles identify one visible slot each, even when several slots have the
+    // same RGBA value. Prefer the explicitly picked slot before falling back.
+    const primaryId = (ordered.find(entry => entry.id === session.paletteSelectionId && colorEquals(entry.color, session.primaryColor))
+      ?? ordered.find(entry => colorEquals(entry.color, session.primaryColor)))?.id
+    const secondaryId = (ordered.find(entry => entry.id === session.paletteSecondarySelectionId && colorEquals(entry.color, session.secondaryColor))
+      ?? ordered.find(entry => colorEquals(entry.color, session.secondaryColor)))?.id
+    return new Map(session.document.palette.map(entry => {
+      const roles = { primary: entry.id === primaryId, secondary: entry.id === secondaryId }
+      const roleLabel = [roles.primary ? t('palette.foreground') : '', roles.secondary ? t('palette.background') : ''].filter(Boolean).join(t('palette.roleSeparator'))
+      return [entry.id, {
+        roles,
+        label: `${entry.name} ${rgbaHex(entry.color)}${roleLabel ? ` · ${roleLabel}` : ''}`,
+        style: { '--swatch-color': colorCss(entry.color), '--swatch-corner-color': paletteMarkerColor(entry.color) }
+      }]
+    }))
+  }, [paletteRenderKey, ordered, session.document.palette, session.primaryColor, session.secondaryColor, t])
   // Moving colors can temporarily leave holes even in auto mode. Preserve the
   // sparse boundary path for that gesture; compact auto rows use cell borders.
-  const paletteAutoBorders = paletteLayoutMode === 'auto' && displayedSlots.every(id => id !== null && paletteById.has(id))
+  const paletteAutoBorders = paletteLayoutMode === 'auto' && displayedSlots.every(id => id !== null && (id < 0 || paletteById.has(id)))
   const paletteLineSegments = paletteAutoBorders ? [] : paletteGridLines(displayedSlots.map(id => id !== null && paletteById.has(id) ? id : null), paletteSurfaceColumns)
   const orderedColors = ordered.map((entry) => ({ ...entry.color }))
   const copySelectedPaletteColors = async (): Promise<void> => {
@@ -365,11 +410,11 @@ function PalettePanelComponent({ session, docked = false, onDockDragStart, onPan
       return next
     })
   }
-  const resolvePaletteSlot = (clientX: number, clientY: number, selecting = false): number | null => {
+  const resolvePaletteSlot = (clientX: number, clientY: number, selecting = false, growing = false): number | null => {
     const grid = swatchGridRef.current
     const gridBounds = grid?.getBoundingClientRect()
     if (!grid || !gridBounds) return null
-    if (!selecting && (clientX < gridBounds.left || clientX > gridBounds.right || clientY < gridBounds.top || clientY > gridBounds.bottom)) return null
+    if (!selecting && !growing && (clientX < gridBounds.left || clientX > gridBounds.right || clientY < gridBounds.top || clientY > gridBounds.bottom)) return null
     const swatches = Array.from(grid.querySelectorAll<HTMLElement>('[data-palette-slot]'))
     for (const swatch of swatches) {
       const bounds = swatch.getBoundingClientRect()
@@ -404,6 +449,7 @@ function PalettePanelComponent({ session, docked = false, onDockDragStart, onPan
     const pointerY = paletteLayoutMode === 'manual' && selecting ? Math.min(clientY, gridBounds.bottom - 1) : clientY
     const slotY = Math.max(0, Math.floor((pointerY - originY) / stepY))
     if (paletteLayoutMode === 'manual') return slotY * paletteColumns + slotX
+    if (growing) return slotY * paletteSurfaceColumns + slotX
     const row = selecting ? Math.min(rows - 1, slotY) : slotY
     return row < rows ? row * paletteColumns + slotX : null
   }
@@ -437,7 +483,7 @@ function PalettePanelComponent({ session, docked = false, onDockDragStart, onPan
     const baseSlots = [...paletteSlots]
     const selectionBox = paletteLayoutMode === 'manual' ? paletteBoxSelection : null
     if (!selectionBox) setPaletteBoxSelection(null)
-    dragRef.current = { ids, baseSlots, previewSlots: baseSlots, columns: paletteColumns, clickedId, pointerId: event.pointerId, element: grid, startX: event.clientX, startY: event.clientY, moved: false, targetSlot: null, selectionBox }
+    dragRef.current = { ids, baseSlots, previewSlots: baseSlots, columns: paletteColumns, clickedId, button: event.button, pointerId: event.pointerId, element: grid, startX: event.clientX, startY: event.clientY, moved: false, targetSlot: null, selectionBox }
     grid.setPointerCapture?.(event.pointerId)
     setSelectionOutlineHovered(true)
     event.preventDefault()
@@ -465,14 +511,13 @@ function PalettePanelComponent({ session, docked = false, onDockDragStart, onPan
       return
     }
     if (event.button === 2) {
-      const color = sampledEntry?.color
-      if (color && id !== null) {
-        store.selectSecondaryPaletteColor(id)
-      }
-      return
+      if (!sampledEntry || id === null) return
+      setPaletteBoxSelection(null)
+      setGestureSelectedIds(null)
+      store.selectSecondaryPaletteColor(id)
     }
-    if (event.button !== 0) return
-    if (event.shiftKey) {
+    if (event.button !== 0 && event.button !== 2) return
+    if (event.button === 0 && event.shiftKey) {
       setPaletteBoxSelection(null)
       const anchorId = session.paletteSelectionId
       if (anchorId !== null) {
@@ -483,15 +528,16 @@ function PalettePanelComponent({ session, docked = false, onDockDragStart, onPan
       } else if (id !== null) store.selectPaletteColor(id)
       return
     }
-    if (event.ctrlKey || event.metaKey) {
+    if (event.button === 0 && (event.ctrlKey || event.metaKey)) {
       setPaletteBoxSelection(null)
       if (id !== null) store.selectPaletteColor(id, true)
       return
     }
     if (id === null) setGestureSelectedIds([])
+    else if (event.button === 0) store.selectPaletteColor(id)
     const captureTarget = swatchGridRef.current ?? event.currentTarget
-    const gesture = { pointerId: event.pointerId, element: captureTarget, slots: [...paletteSlots], columns: paletteColumns, startSlot: slotIndex, lastSlot: slotIndex, startX: event.clientX, startY: event.clientY, clickedId: id, active: false, longPressTimer: null as number | null }
-    gesture.longPressTimer = window.setTimeout(() => {
+    const gesture = { pointerId: event.pointerId, button: event.button, element: captureTarget, slots: [...paletteSlots], columns: paletteColumns, startSlot: slotIndex, lastSlot: slotIndex, startX: event.clientX, startY: event.clientY, clickedId: id, active: false, longPressTimer: null as number | null }
+    if (event.button === 0) gesture.longPressTimer = window.setTimeout(() => {
       if (selectionGestureRef.current !== gesture) return
       gesture.active = true
       gesture.longPressTimer = null
@@ -504,6 +550,16 @@ function PalettePanelComponent({ session, docked = false, onDockDragStart, onPan
     event.preventDefault()
   }
   const movePalettePointer = (event: React.PointerEvent<HTMLDivElement>): void => {
+    const growth = growthRef.current
+    if (growth && growth.pointerId === event.pointerId) {
+      const pointerSlot = resolvePaletteSlot(event.clientX, event.clientY, false, true)
+      if (pointerSlot === null) return
+      const preview = buildPaletteGrowthPreview(growth.baseSlots, growth.preview.columns, growth.startSlot, pointerSlot, growth.minimumSize)
+      if (preview.handleSlot === growth.preview.handleSlot) return
+      growth.preview = preview
+      setGrowthPreview(preview)
+      return
+    }
     const drag = dragRef.current
     if (drag) {
       if (!drag.moved && Math.hypot(event.clientX - drag.startX, event.clientY - drag.startY) < 1) return
@@ -539,6 +595,14 @@ function PalettePanelComponent({ session, docked = false, onDockDragStart, onPan
     const pointerSlot = resolvePaletteSlot(event.clientX, event.clientY, true)
     if (pointerSlot === null || pointerSlot === gesture.lastSlot) return
     gesture.lastSlot = pointerSlot
+    const targetId = gesture.slots[pointerSlot]
+    if (gesture.button === 2) {
+      if (targetId != null) {
+        setFocusedSlot(pointerSlot)
+        store.selectSecondaryPaletteColor(targetId)
+      }
+      return
+    }
     // A palette drag is a selection gesture as soon as the pointer moves.
     // Waiting for the long-press timer made quick diagonal drags select only
     // the button where they ended.
@@ -549,7 +613,9 @@ function PalettePanelComponent({ session, docked = false, onDockDragStart, onPan
     }
     if (!gesture.active) return
     setPaletteBoxSelection({ startSlot: gesture.startSlot, endSlot: pointerSlot })
-    setGestureSelectedIds(paletteRangeIdsBySlots(gesture.slots, gesture.columns, gesture.startSlot, pointerSlot))
+    const ids = paletteRangeIdsBySlots(gesture.slots, gesture.columns, gesture.startSlot, pointerSlot)
+    setGestureSelectedIds(ids)
+    if (targetId != null) store.selectPaletteColors(ids, targetId)
   }
   const handlePaletteWheel = (event: React.WheelEvent<HTMLDivElement>): void => {
     if (event.ctrlKey || event.metaKey) {
@@ -574,12 +640,13 @@ function PalettePanelComponent({ session, docked = false, onDockDragStart, onPan
     || libraryPopoverRef.current?.contains(target)
     || paletteContextRef.current?.contains(target)
     || (target instanceof Element && target.closest('.palette-operation-dialog'))
-    || (!paletteEditLocked && target instanceof Element && target.closest('.color-panel, .color-editor-popover'))
+    || (!paletteEditLocked && target instanceof Element && target.closest('.color-editor-popover'))
   ))
   const clearPaletteSelection = (): void => {
     setFocusedSlot(null)
     setPaletteBoxSelection(null)
     setGestureSelectedIds(null)
+    setSelectionOutlineHovered(false)
     useWorkspace.getState().selectPaletteColors([], -1)
   }
   const clearPaletteFocus = (event: React.FocusEvent<HTMLDivElement>): void => {
@@ -591,6 +658,10 @@ function PalettePanelComponent({ session, docked = false, onDockDragStart, onPan
     dragRef.current = null
     if (drag?.element.hasPointerCapture?.(drag.pointerId)) drag.element.releasePointerCapture?.(drag.pointerId)
     if (drag?.moved && drag.targetSlot !== null) useWorkspace.getState().reorderPaletteColors(drag.ids, drag.previewSlots, drag.columns)
+    if (drag && !drag.moved && drag.button === 2) {
+      setPaletteBoxSelection(null)
+      useWorkspace.getState().selectSecondaryPaletteColor(drag.clickedId)
+    }
     setDraggingIds([])
     setDropTargetSlot(null)
     setPalettePreviewSlots(null)
@@ -602,7 +673,7 @@ function PalettePanelComponent({ session, docked = false, onDockDragStart, onPan
     if (!gesture) return
     if (gesture.longPressTimer !== null) window.clearTimeout(gesture.longPressTimer)
     if (gesture.element.hasPointerCapture?.(gesture.pointerId)) gesture.element.releasePointerCapture?.(gesture.pointerId)
-    if (!canceled) {
+    if (!canceled && gesture.button === 0) {
       if (gesture.active) {
         const ids = paletteRangeIdsBySlots(gesture.slots, gesture.columns, gesture.startSlot, gesture.lastSlot)
         const targetId = gesture.slots[gesture.lastSlot]
@@ -619,6 +690,26 @@ function PalettePanelComponent({ session, docked = false, onDockDragStart, onPan
     setGestureSelectedIds(null)
   }
   const finishPalettePointer = (pointerId: number, canceled = false): void => {
+    const growth = growthRef.current
+    if (growth?.pointerId === pointerId) {
+      growthRef.current = null
+      if (growth.element.hasPointerCapture?.(pointerId)) growth.element.releasePointerCapture?.(pointerId)
+      setGrowthPreview(null)
+      if (!canceled) {
+        const workspace = useWorkspace.getState()
+        const current = workspace.sessions.find(item => item.document.id === session.document.id)
+        if (current && workspace.activeId === session.document.id) {
+          const preview = growth.preview
+          if (preview.removedIds.length > 0) workspace.deletePaletteColors(preview.removedIds)
+          else if (preview.indices.length > 0) {
+            workspace.pastePaletteColors(Array.from({ length: preview.indices.length }, () => ({ r: 0, g: 0, b: 0, a: 255 })), {
+              slots: growth.baseSlots, columns: preview.columns, indices: preview.indices, selectResult: false
+            })
+          }
+        }
+      }
+      return
+    }
     if (dragRef.current?.pointerId === pointerId) finishPaletteDrag()
     if (selectionGestureRef.current?.pointerId === pointerId) finishPaletteSelection(canceled)
   }
@@ -660,7 +751,13 @@ function PalettePanelComponent({ session, docked = false, onDockDragStart, onPan
 
   useEffect(() => {
     const clearSelectionOutside = (event: PointerEvent): void => {
-      if (isPaletteInteractionTarget(event.target as Node | null)) return
+      const target = event.target as Node | null
+      // Keep selection for swatch gestures and palette commands, but a click
+      // on unused panel space should clear the visual selection too.
+      const paletteBlank = target instanceof Element && floating.ref.current?.contains(target)
+        && !target.closest('[data-palette-slot], [data-palette-selection-outline], [data-palette-grow], .palette-actions')
+        && !pointerHitsPaletteSelectionOutline(event.clientX, event.clientY)
+      if (!paletteBlank && isPaletteInteractionTarget(target)) return
       const active = useWorkspace.getState().sessions.find((item) => item.document.id === session.document.id)
       if (!active) return
       clearPaletteSelection()
@@ -676,10 +773,12 @@ function PalettePanelComponent({ session, docked = false, onDockDragStart, onPan
     const cancelPointer = (event: PointerEvent): void => { finishPalettePointer(event.pointerId, true) }
     const finishOutside = (event: PointerEvent): void => {
       if (event.relatedTarget !== null) return
+      if (growthRef.current) finishPalettePointer(growthRef.current.pointerId, true)
       if (dragRef.current) finishPaletteDrag()
       if (selectionGestureRef.current) finishPaletteSelection(true)
     }
     const finishBlur = (): void => {
+      if (growthRef.current) finishPalettePointer(growthRef.current.pointerId, true)
       if (dragRef.current) finishPaletteDrag()
       if (selectionGestureRef.current) finishPaletteSelection(true)
     }
@@ -907,10 +1006,10 @@ function PalettePanelComponent({ session, docked = false, onDockDragStart, onPan
     </PanelActions></header>
     <div
       ref={swatchGridRef}
-      className={`swatch-grid component-scrollbar ${selectionOutlineHovered ? 'selection-outline-hovered' : ''}`}
-      style={{ ...gridMetrics.style, '--palette-columns': paletteColumns, '--palette-surface-columns': paletteSurfaceColumns } as React.CSSProperties}
+      className={`swatch-grid component-scrollbar ${selectionOutlineHovered ? 'selection-outline-hovered' : ''} ${growthPreview ? 'palette-grow-dragging' : ''}`}
+      style={{ ...gridMetrics.style, '--palette-columns': paletteColumns, '--palette-surface-columns': paletteSurfaceColumns, '--palette-grow-cursor': growthCursor } as React.CSSProperties}
       onPointerEnter={spaceDragScroll.enter}
-      onPointerDownCapture={(event) => { if (!spaceDragScroll.begin(event)) beginPaletteOutlineDrag(event) }}
+      onPointerDownCapture={(event) => { if (!(event.target as Element).closest('[data-palette-grow]') && !spaceDragScroll.begin(event)) beginPaletteOutlineDrag(event) }}
       onPointerDown={(event) => {
         if (paletteLayoutMode !== 'manual' || event.button !== 0 || (event.target as Element).closest('[data-palette-slot]')) return
         const slot = resolvePaletteSlot(event.clientX, event.clientY)
@@ -934,7 +1033,7 @@ function PalettePanelComponent({ session, docked = false, onDockDragStart, onPan
     >
       <span className={`palette-swatch-grid-surface ${paletteLayoutMode === 'manual' ? 'palette-grid-manual' : paletteAutoBorders ? 'palette-grid-auto' : ''}`} style={{ '--palette-layout-columns': paletteSurfaceColumns, '--palette-layout-rows': Math.ceil(displayedSlots.length / paletteSurfaceColumns) } as React.CSSProperties}>
       {displayedSlots.map((id, slotIndex) => {
-        const entry = id === null ? null : paletteById.get(id) ?? null
+        const entry = id === null ? null : id < 0 ? { id, name: '', color: { r: 0, g: 0, b: 0, a: 255 } } : paletteById.get(id) ?? null
         const presentation = entry ? swatchPresentations.get(entry.id) : undefined
         const roles = presentation?.roles ?? { primary: false, secondary: false }
         const selected = Boolean(entry && displayedSelectedIds.includes(entry.id))
@@ -944,10 +1043,29 @@ function PalettePanelComponent({ session, docked = false, onDockDragStart, onPan
           left={paletteLayoutMode === 'manual' ? `calc(${slotIndex % paletteColumns} * (var(--swatch-size) + var(--palette-swatch-gap)))` : undefined}
           top={paletteLayoutMode === 'manual' ? `calc(${Math.floor(slotIndex / paletteColumns)} * (var(--swatch-size) + var(--palette-swatch-gap)))` : undefined}
           className={`swatch palette-slot ${entry ? 'occupied' : 'empty'} ${focusedSlot === slotIndex ? 'focused' : ''} ${selected ? 'selected' : ''} ${roles.primary ? 'primary' : ''} ${roles.secondary ? 'secondary' : ''} ${entry?.color.a === 0 ? 'transparent' : ''} ${entry && draggingIds.includes(entry.id) ? 'dragging' : ''} ${dropTargetSlot === slotIndex ? 'drop-target' : ''}`}
-          label={label} selected={selected} color={presentation?.style['--swatch-color']}
+          label={label} selected={selected} color={id !== null && id < 0 ? '#000' : presentation?.style['--swatch-color']}
           markerColor={presentation?.style['--swatch-corner-color']} actions={swatchActions}
         />
       })}
+      {paletteLayoutMode === 'auto' && !palettePreviewSlots && <button type="button" className={`palette-grow-handle${growthPreview ? ' palette-grow-active' : ''}`} data-palette-grow="true" data-palette-grow-slot={growthPreview?.handleSlot ?? displayedSlots.length} aria-label={t('palette.addCurrentColor')} title={t('palette.addCurrentColor')} style={{
+        left: `calc(${(growthPreview?.handleSlot ?? displayedSlots.length) % paletteSurfaceColumns} * (var(--swatch-size) + var(--palette-swatch-gap)))`,
+        top: `calc(${Math.floor((growthPreview?.handleSlot ?? displayedSlots.length) / paletteSurfaceColumns)} * (var(--swatch-size) + var(--palette-swatch-gap)))`
+      }} onPointerDown={(event) => {
+        if (event.button !== 0 || panelColorSampling.activeForEvent(event.nativeEvent)) return
+        event.preventDefault(); event.stopPropagation()
+        const grid = swatchGridRef.current
+        if (!grid) return
+        setGrowthCursor(getComputedStyle(event.currentTarget).cursor || 'var(--cursor-ew-resize)')
+        grid.focus({ preventScroll: true })
+        clearPaletteSelection()
+        const baseSlots = [...paletteSlots]
+        const startSlot = baseSlots.length
+        const minimumSize = session.document.colorMode === 'indexed' ? Math.max(1, baseSlots.indexOf(0) + 1) : 1
+        const preview = buildPaletteGrowthPreview(baseSlots, paletteColumns, startSlot, startSlot, minimumSize)
+        growthRef.current = { pointerId: event.pointerId, element: grid, baseSlots, startSlot, minimumSize, preview }
+        setGrowthPreview(preview)
+        grid.setPointerCapture?.(event.pointerId)
+      }}><span aria-hidden="true">Ⅱ</span></button>}
       {paletteLineSegments.map((segment) => <span key={segment.key} data-palette-line={segment.key} className={paletteGridLineClass(segment)} hidden={segment.hidden} aria-hidden="true" style={{ '--palette-line-column': segment.column, '--palette-line-row': segment.row } as React.CSSProperties} />)}
       {paletteLayoutMode === 'auto' && <PaletteSelectionOutline slots={displayedSlots} columns={paletteSurfaceColumns} selectedIds={displayedSelectedIds} swatchSize={gridMetrics.size} gap={gridMetrics.gap} />}
       </span>

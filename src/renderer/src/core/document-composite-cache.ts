@@ -1,4 +1,4 @@
-import { normalizeDocumentColor } from './document-model'
+import { normalizeDocumentColor, resolveDocumentCanvasColor } from './document-model'
 import { appendStyleDirtyRect, invalidateStyledLayerBlocks, refreshStyledLayerBlock } from './layer-style-dirty-regions'
 import { renderStyledLayerBlock, styledLayerBlockFor } from './document-composite-style-render'
 import { LayerStyleTileCache } from './layer-style-tile-cache'
@@ -322,8 +322,8 @@ export class DocumentCompositeCache {
   private styledLayerBlockProxy(document: SpriteDocument, sourceLayer: RasterLayer, sourceDirtyRect?: SelectionRect): RasterLayer {
     const sourceDirtyRects = this.takeStyleSourceDirty(document, sourceLayer, sourceDirtyRect)
     const styleKey = layerStylesSignature(sourceLayer.layerStyles)
-    const paletteKey = sourceLayer.format === 'indexed'
-      ? document.palette.map((entry) => `${entry.id}:${entry.color.r}:${entry.color.g}:${entry.color.b}:${entry.color.a}`).join(',')
+    const paletteKey = sourceLayer.format === 'indexed' || document.colorMode === 'indexed'
+      ? `${document.paletteOrder.join(',')}|${document.palette.map((entry) => `${entry.id}:${entry.color.r}:${entry.color.g}:${entry.color.b}:${entry.color.a}`).join(',')}`
       : ''
     const storage = rasterStorageIdentity(sourceLayer)
     const contentRevision = getLayerContentRevision(sourceLayer)
@@ -364,7 +364,7 @@ export class DocumentCompositeCache {
         paletteKey,
         styles,
         resolvedStyles,
-        resolveStyleColor: (color) => resolveLayerCanvasColor(document, sourceLayer, color),
+        resolveStyleColor: (color) => resolveDocumentCanvasColor(document, color),
         palette: sourceLayer.format === 'indexed' ? new Map(document.palette.map((entry) => [entry.id, entry.color])) : null,
         palettePacked: sourceLayer.format === 'indexed' ? new Map(document.palette.map((entry) => [entry.id, packColor(entry.color)])) : null,
         contentRevision,

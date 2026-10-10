@@ -27,6 +27,7 @@ export function createWorkspaceViewSelectionCommands(context: WorkspaceCommandCo
   | 'pushHistory'
   | 'redo'
   | 'setView'
+  | 'setSelection'
   | 'undo'
   | 'updateFloatingPastePreview'
 >): WorkspaceViewSelectionCommands {

@@ -75,7 +75,7 @@ export function LayerMenuCommands({ shortcutFor, closeMenu, onPanelCommand }: {
     {submenu(t('layers.convertTo'), <>
       {item(t('layers.convertToBackground'), () => { if (layer) store.setLayerBackground(layer.id, true) }, 'convertLayerToBackground', !plainLayer || unsupported)}
       {panelItem(t('layers.convertToTilemap'), 'convertLayerToTilemap', !plainLayer || hasStyles || unsupported)}
-      {item(t('layers.convertToRaster'), () => { if (layer) store.rasterizeLayer(layer.id) }, 'convertLayerToRaster', !layer || layer.kind === 'adjustment' || !(layer.background || layer.kind || hasStyles) || unsupported)}
+      {item(t('layers.convertToRaster'), () => { if (layer) store.rasterizeLayer(layer.id) }, 'convertLayerToRaster', !layer || layer.kind === 'adjustment' || !(layer.background || layer.kind || hasStyles || layer.linkedContentId) || unsupported)}
     </>, !layer || unsupported)}
     <span className="menu-divider" />
     {item(t('app.menu.layer.mergeDown'), store.mergeActiveLayerDown, 'mergeLayerDown', !canMergeDown || unsupported)}

@@ -650,11 +650,11 @@ export function applyLayerStylesAt(
       styles.innerGlow.color,
       coverageOverrides?.innerGlow ?? innerGlowCoverage(readGeometry, x, y, styles.innerGlow.size)
     )
-    if (!hasShadow || source.a > 0) return styledSource
+    if (!hasShadow || source.a > 0) return resolveDynamicColor(styledSource)
     const shadowCoverageValue = coverageOverrides?.shadow ?? shadowCoverage(readGeometry, x - styles.shadow.offsetX, y - styles.shadow.offsetY, styles.shadow.blur)
     const shadow = withCoverage(shadowColor(styles.shadow), shadowCoverageValue)
     if (shadow.a === 0) return styledSource.a > 0 ? styledSource : TRANSPARENT
-    return styledSource.a > 0 ? blendNormalColors(shadow, styledSource) : shadow
+    return resolveDynamicColor(styledSource.a > 0 ? blendNormalColors(shadow, styledSource) : shadow)
   }
 
   let backdrop = TRANSPARENT
@@ -685,5 +685,5 @@ export function applyLayerStylesAt(
     coverageOverrides?.innerGlow ?? innerGlowCoverage(readGeometry, x, y, styles.innerGlow.size)
   )
   if (styledSource.a > 0 && styles.stroke.enabled && styles.stroke.position !== 'outside') styledSource = overlayPreservingAlpha(styledSource, resolveOutlineStrokeColor({ ...styles.stroke, followOpacity: styles.stroke.followOpacity === true }, styledSource, resolveDynamicColor), styles.stroke.followOpacity ? 1 : coverageOverrides?.insideStroke ?? innerStrokeCoverage(readGeometry, x, y, styles.stroke))
-  return styledSource.a > 0 ? blendWithMode(backdrop, styledSource, 1, 'normal') : backdrop
+  return resolveDynamicColor(styledSource.a > 0 ? blendWithMode(backdrop, styledSource, 1, 'normal') : backdrop)
 }

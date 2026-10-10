@@ -24,7 +24,8 @@ describe('tool preferences boundary', () => {
       shapeRounded: false,
       selectionRounded: false,
       selectionRotationAlgorithm: 'fast',
-      gradientType: 'linear'
+      gradientType: 'linear',
+      brushImageSettings: { mode: 'threshold' }
     })
     storage.setItem(TOOL_SETTINGS_KEY, '{bad')
     expect(loadToolSettings(storage)).toMatchObject(defaultToolSettings)

@@ -26,6 +26,8 @@ export interface PaletteColorTarget {
   slots: Array<number | null>
   columns: number
   indices: number[]
+  /** Slot resizing inserts colors without selecting them or changing the foreground. */
+  selectResult?: boolean
   selection?: { before: PaletteSelectionView; after: PaletteSelectionView }
 }
 

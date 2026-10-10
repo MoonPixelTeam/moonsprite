@@ -402,6 +402,28 @@ describe('pixel tools', () => {
     expect(readLayerColor(document, layer, 1)).toEqual({ r: 0, g: 255, b: 0, a: 255 })
   })
 
+  it('fills a contiguous region with the image brush colors and pattern alignment', () => {
+    const document = createDocument('pattern bucket', 4, 2, 'rgba')
+    const layer = getActiveLayer(document)
+    const brush = {
+      id: 'pattern-bucket-test',
+      name: 'Pattern bucket',
+      width: 2,
+      height: 1,
+      coverage: new Uint8Array([255, 255]),
+      colors: new Uint32Array([0xff0000ff, 0xff00ff00]),
+      intrinsicSize: true,
+      sourceX: 0,
+      sourceY: 0
+    }
+    const edit = floodFill(document, layer, 0, 0, { r: 255, g: 255, b: 255, a: 255 }, null, true, brush, 1, undefined, 'solid', 1, 0, 'pattern-source')
+    expect(edit).not.toBeNull()
+    expect(readLayerColorAt(document, layer, 0, 0)).toEqual({ r: 255, g: 0, b: 0, a: 255 })
+    expect(readLayerColorAt(document, layer, 1, 0)).toEqual({ r: 0, g: 255, b: 0, a: 255 })
+    expect(readLayerColorAt(document, layer, 2, 0)).toEqual({ r: 255, g: 0, b: 0, a: 255 })
+    expect(readLayerColorAt(document, layer, 3, 1)).toEqual({ r: 0, g: 255, b: 0, a: 255 })
+  })
+
 
 
   it('paints a balanced Shift line from the same stair points used by its preview', () => {

@@ -361,7 +361,7 @@ export function useLayerContextActions({
   }
   const contextMenuCanConvertToBackground = Boolean(contextMenuLayer && !contextMenuLayer.kind && !contextMenuLayer.background)
   const contextMenuCanConvertToTilemap = Boolean(contextMenuLayer && !contextMenuLayer.kind && !contextMenuLayerHasStyles)
-  const contextMenuCanConvertToRaster = Boolean(contextMenuLayer && (contextMenuLayer.background || contextMenuLayer.kind || contextMenuLayerHasStyles))
+  const contextMenuCanConvertToRaster = Boolean(contextMenuLayer && (contextMenuLayer.background || contextMenuLayer.kind || contextMenuLayerHasStyles || contextMenuLayer.linkedContentId))
   const contextMenuCanCreateLinkedLayer = Boolean(contextMenuLayer && !contextMenuLayer.kind && !contextMenuLayer.background)
   const singleContextTarget = contextMenu?.propertyTargets.length === 1 && !contextMenu.propertySelectionIncludesUnsupported
   const canMergeContextDown = Boolean(singleContextTarget && contextMenuLayer && session.document.layers

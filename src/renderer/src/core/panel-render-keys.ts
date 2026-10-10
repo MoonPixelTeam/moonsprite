@@ -10,6 +10,8 @@ interface PanelSessionState {
   primaryColor: RgbaColor
   secondaryColor: RgbaColor
   selectedPaletteIds: number[]
+  paletteSelectionId?: number | null
+  paletteSecondarySelectionId?: number | null
   selectedTilesetId?: string | null
   selectedTileId?: string | null
   secondaryTileId?: string | null
@@ -66,7 +68,10 @@ export const palettePanelRenderKey = (session: PanelSessionState): string => [
   session.document.paletteSlots?.map((id) => id ?? '').join(',') ?? '',
   session.document.palette.map((entry) => `${entry.id}:${entry.name}:${colorKey(entry.color)}`).join('|'),
   session.selectedPaletteIds.join(','),
-  colorKey(session.primaryColor)
+  session.paletteSelectionId ?? '',
+  session.paletteSecondarySelectionId ?? '',
+  colorKey(session.primaryColor),
+  colorKey(session.secondaryColor)
 ].join(';')
 
 export const layersPanelRenderKey = (session: PanelSessionState): string => [

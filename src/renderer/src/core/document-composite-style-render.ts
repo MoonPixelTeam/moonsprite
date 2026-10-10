@@ -101,7 +101,7 @@ export function renderStyledLayerBlock(document: SpriteDocument, cache: StyledLa
         insideStrokeCoverage
       )
       if (packed !== null) {
-        writeRgbaPixel(pixels, y * block.width + x, unpackColor(packed))
+        writeRgbaPixel(pixels, y * block.width + x, cache.resolveStyleColor(unpackColor(packed)))
         continue
       }
     }

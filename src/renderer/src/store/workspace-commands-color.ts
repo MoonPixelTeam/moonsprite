@@ -340,6 +340,7 @@ export function createWorkspaceColorCommands({ get, set, recording }: WorkspaceC
         if (!entry) return
         session.paletteSecondarySelectionId = id
         session.secondaryColor = { ...entry.color }
+        session.selectedPaletteIds = [id]
       }, false)
       const session = activeSession(get())
       if (session) {
