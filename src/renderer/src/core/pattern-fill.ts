@@ -62,7 +62,12 @@ export function createPatternLayout(brush: Pick<ImageBrush, 'width' | 'height'>,
       const limit = Math.max(target, target * (settings.randomOverlap && settings.randomSpacing === 0 ? 1 : 12))
       while (stamps.length < target && attempts < limit) {
         attempts++
-        const x = bounds.x + random() * bounds.width, y = bounds.y + random() * bounds.height
+        // Raster brushes are sampled at pixel centers. Quantize random stamp
+        // centers to the same half-pixel grid used by regular layout so an
+        // unrotated 4×4 stamp stays a complete 4×4 stamp instead of being
+        // truncated to a few edge pixels by a fractional center.
+        const x = Math.floor(bounds.x + random() * bounds.width) + 0.5
+        const y = Math.floor(bounds.y + random() * bounds.height) + 0.5
         const scale = min + random() * (max - min)
         const angle = settings.randomRotate ? (random() * 2 - 1) * settings.randomAngle : 0
         const tint: [number, number, number] = [(random() * 2 - 1) * settings.randomColor * 2.55, (random() * 2 - 1) * settings.randomColor * 2.55, (random() * 2 - 1) * settings.randomColor * 2.55]

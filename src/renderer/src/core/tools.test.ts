@@ -461,6 +461,56 @@ describe('pixel tools', () => {
     }
   })
 
+  it('fills complete random brush stamps and restores them through undo/redo', () => {
+    const document = createDocument('random pattern debug', 12, 12, 'rgba')
+    const layer = getActiveLayer(document)
+    const brush = { id: 'random-debug', name: 'Random', width: 3, height: 3, coverage: new Uint8Array(9).fill(255), colors: new Uint32Array(9).fill(packColor(red)), intrinsicSize: true }
+    const random = vi.spyOn(Math, 'random').mockReturnValue(0.2)
+    try {
+      const edit = floodFill(document, layer, 0, 0, red, null, true, brush, 1, undefined, 'solid', 1, 0, 'pattern-source', 0, 0, undefined, undefined, 'random', { randomDensity: 100, randomCount: 2, randomSpacing: 0, randomScaleMin: 100, randomScaleMax: 100, randomRotate: false, randomAngle: 0, randomOverlap: true, randomColor: 0, randomBrightness: 0, regularCount: 0, regularScale: 100, regularSpacingX: 0, regularSpacingY: 0, regularAngle: 0, regularOverlap: false, regularRowOffset: 0 })
+      expect(edit).not.toBeNull()
+      const painted = Array.from({ length: 144 }, (_, index) => readLayerColorAt(document, layer, index % 12, Math.floor(index / 12)).a > 0).filter(Boolean).length
+      expect(painted).toBeGreaterThanOrEqual(9)
+      expect(edit!.before.size).toBe(painted)
+      const entry = commitPixelEdit(document, edit!, 'random')
+      expect(entry).not.toBeNull()
+      const after = layer.pixels.slice()
+      entry!.undo()
+      expect(layer.pixels.every((value) => value === 0)).toBe(true)
+      entry!.redo()
+      expect(Array.from(layer.pixels)).toEqual(Array.from(after))
+    } finally {
+      random.mockRestore()
+    }
+  })
+
+  it('keeps random fills undoable when symmetry merges multiple stamp edits', () => {
+    const document = createDocument('symmetric random pattern', 16, 16, 'rgba')
+    const layer = getActiveLayer(document)
+    const brush = { id: 'random-symmetric', name: 'Random', width: 2, height: 2, coverage: new Uint8Array(4).fill(255), colors: new Uint32Array(4).fill(packColor(blue)), intrinsicSize: true }
+    const before = layer.pixels.slice()
+    const edit = floodFillSymmetric(document, layer, 2, 2, blue, null, true, brush, 1, undefined, 'solid', 1, 0, 'pattern-source', { horizontal: true, vertical: false, diagonalUp: false, diagonalDown: false }, { x: 8, y: 8 }, 0, 0, undefined, undefined, 'random', { randomDensity: 0, randomCount: 1, randomSpacing: 0, randomScaleMin: 100, randomScaleMax: 100, randomRotate: false, randomAngle: 0, randomOverlap: true, randomColor: 0, randomBrightness: 0, regularCount: 0, regularScale: 100, regularSpacingX: 0, regularSpacingY: 0, regularAngle: 0, regularOverlap: false, regularRowOffset: 0 })
+    expect(edit).not.toBeNull()
+    const painted = layer.pixels.slice()
+    const entry = commitPixelEdit(document, edit!, 'symmetric random')
+    expect(entry).not.toBeNull()
+    entry!.undo()
+    expect(Array.from(layer.pixels)).toEqual(Array.from(before))
+    entry!.redo()
+    expect(Array.from(layer.pixels)).toEqual(Array.from(painted))
+  })
+
+  it('does not collapse the default random pattern brush into isolated dots', () => {
+    const document = createDocument('default random pattern', 32, 32, 'rgba')
+    const layer = getActiveLayer(document)
+    const brush = { id: 'random-default', name: 'Random', width: 4, height: 4, coverage: new Uint8Array(16).fill(255), colors: new Uint32Array(16).fill(packColor(red)), intrinsicSize: true }
+    const edit = floodFill(document, layer, 0, 0, red, null, true, brush, 1, undefined, 'solid', 1, 0, 'pattern-source', 0, 0, undefined, undefined, 'random', { randomDensity: 100, randomCount: 0, randomSpacing: 0, randomScaleMin: 50, randomScaleMax: 150, randomRotate: true, randomAngle: 180, randomOverlap: true, randomColor: 0, randomBrightness: 0, regularCount: 0, regularScale: 100, regularSpacingX: 0, regularSpacingY: 0, regularAngle: 0, regularOverlap: false, regularRowOffset: 0 })
+    expect(edit).not.toBeNull()
+    const painted = Array.from({ length: 1024 }, (_, index) => readLayerColorAt(document, layer, index % 32, Math.floor(index / 32)).a > 0).filter(Boolean).length
+    expect(painted).toBeGreaterThan(32)
+    expect(painted / edit!.before.size).toBe(1)
+  })
+
 
 
   it('paints a balanced Shift line from the same stair points used by its preview', () => {
