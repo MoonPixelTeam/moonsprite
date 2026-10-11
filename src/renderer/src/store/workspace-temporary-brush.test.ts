@@ -54,6 +54,17 @@ it('restores the original pencil after switching between saved pattern brushes',
   expect(useWorkspace.getState().sessions[0]).toMatchObject({ brushImage: null, brushSize: 7, tool: 'pencil', brushPaintMode: 'pattern-target' })
 })
 
+it('keeps bucket fill active when Esc cancels its pattern brush', () => {
+  const state = useWorkspace.getState()
+  const doc = state.sessions[0].document
+  const brush = createSelectionBrush(doc, { x: 0, y: 0, width: 2, height: 2 }, 'bucket-pattern', 'Pattern')!
+  state.setTool('fill')
+  expect(useWorkspace.getState().sessions[0].fillKind).toBe('bucket')
+  state.setBrushImage(brush)
+  state.exitPatternBrush()
+  expect(useWorkspace.getState().sessions[0]).toMatchObject({ tool: 'fill', fillKind: 'bucket', brushImage: null, brushImageId: null })
+})
+
 it('clears a restored pattern from both the live pencil and its remembered profile', () => {
   const state = useWorkspace.getState()
   const doc = state.sessions[0].document

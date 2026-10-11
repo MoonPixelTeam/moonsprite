@@ -307,10 +307,15 @@ export function createWorkspaceToolCommands({ get, set }: WorkspaceCommandContex
       if (isCanvasToolGestureLocked()) return
       get().mutateActive((session) => {
         if (!session.temporaryBrushCapture && !session.brushImage) return
+        const hadTemporaryCapture = Boolean(session.temporaryBrushCapture)
+        const toolBeforeExit = session.tool
         if (session.temporaryBrushCapture) Object.assign(session, session.temporaryBrushCapture)
         const rememberedBrushPaintMode = session.brushPaintMode
         session.temporaryBrushCapture = undefined
-        session.tool = 'pencil'
+        // Bucket fill can use a pattern brush without changing tools. Esc
+        // cancels that brush selection and must leave the bucket active. A
+        // temporary brush captured from a selection still returns to pencil.
+        session.tool = hadTemporaryCapture ? 'pencil' : toolBeforeExit
         applyBrushProfile(session, session.patternBrushReturnProfile ?? { ...session.brushProfiles.pencil, brushImage: null, brushImageId: null, brushImageTemporary: false })
         session.brushPaintMode = rememberedBrushPaintMode
         session.patternBrushReturnProfile = undefined
