@@ -822,7 +822,6 @@ function PalettePanelComponent({ session, docked = false, onDockDragStart, onPan
     setActivePaletteId(palette.id)
     setSaveName(paletteDisplayName(palette))
     writeStoredString(ACTIVE_PALETTE_ID_STORAGE_KEY, palette.id)
-    setLibraryOpen(false)
   }
 
   const deleteStoredPalette = async (id: string): Promise<void> => {
@@ -1076,9 +1075,12 @@ function PalettePanelComponent({ session, docked = false, onDockDragStart, onPan
             // may contain intentional gaps for editing, but those empty cells
             // should not become empty preview cells or dark bands here.
             const previewColors = slots.flatMap((colorIndex) => colorIndex === null ? [] : palette.colors[colorIndex] ? [palette.colors[colorIndex]] : [])
+            const previewSize = previewColors.length > 128 ? Math.min(gridMetrics.size, 10) : previewColors.length > 64 ? Math.min(gridMetrics.size, 14) : previewColors.length > 32 ? Math.min(gridMetrics.size, 18) : gridMetrics.size
+            const previewGap = previewSize < 18 ? 1 : 2
+            const previewStyle = { ...gridMetrics.style, '--swatch-size': `${previewSize}px`, '--palette-swatch-gap': `${previewGap}px` } as React.CSSProperties
             return <button key={palette.id} type="button" aria-pressed={activePaletteId === palette.id} className={`palette-library-item ${activePaletteId === palette.id ? 'selected' : ''}`} title={t(palette.builtIn ? 'palette.builtInHint' : 'palette.userDeleteHint')} onClick={() => applyStoredPalette(palette)} onContextMenu={(event) => { event.preventDefault(); if (palette.builtIn) { store.setMessage(t('palette.builtInDeleteBlocked')); setPaletteContext(null); return } setPaletteContext({ id: palette.id, x: Math.min(event.clientX, window.innerWidth - 150), y: Math.min(event.clientY, window.innerHeight - 42) }) }}>
               <span className="palette-library-name">{paletteDisplayName(palette)}</span>
-              <span className="palette-library-swatches" aria-hidden="true" style={gridMetrics.style}>{previewColors.map((color, index) => <span key={index} className="palette-swatch-wrap palette-color-cell"><i className={`swatch palette-slot occupied ${color.a === 0 ? 'transparent' : ''}`} style={{ '--swatch-color': colorCss(color) } as React.CSSProperties} /></span>)}</span>
+              <span className="palette-library-swatches" aria-hidden="true" style={previewStyle}>{previewColors.map((color, index) => <span key={index} className="palette-swatch-wrap palette-color-cell"><i className={`swatch palette-slot occupied ${color.a === 0 ? 'transparent' : ''}`} style={{ '--swatch-color': colorCss(color) } as React.CSSProperties} /></span>)}</span>
             </button>
           })}
         </div>
