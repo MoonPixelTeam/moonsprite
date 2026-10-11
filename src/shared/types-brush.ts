@@ -78,7 +78,6 @@ export type FillMode = 'contiguous' | 'global'
 export type FillPatternMode = 'default' | 'random' | 'regular'
 
 export interface FillPatternSettings {
-  randomSeed: number
   randomDensity: number
   randomCount: number
   randomSpacing: number

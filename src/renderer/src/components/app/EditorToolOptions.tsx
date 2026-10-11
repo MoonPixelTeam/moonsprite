@@ -1,7 +1,7 @@
 import { setMagicEraserContiguous } from '@/store/workspace-magic-eraser'
 import drawWithAnchorIcon from '@/assets/pixel-icons/draw-with-anchor.svg'
 import { Button } from '@/components/Button'
-import { FillPatternControl } from './FillPatternControl'
+import { FillPatternControl, FillPatternDialog } from './FillPatternControl'
 import { useToolOptionsScroll } from './useToolOptionsScroll'
 import { pendingGradientFor, subscribePendingGradient } from '@/core/canvas-gradient-confirmation'
 import { sliderWheelValue, useSliderWheel } from '../useSliderWheel'
@@ -532,6 +532,7 @@ export const EditorToolOptions = memo(function EditorToolOptions({ onOpenColorRe
   const [gradientStopsOpen, setGradientStopsOpen] = useState(false)
   const [toleranceFlyoutOpen, setToleranceFlyoutOpen] = useState<'wand' | 'wand-gap' | 'fill' | 'fill-gap' | 'gradient' | null>(null)
   const [fillSettingsOpen, setFillSettingsOpen] = useState(false)
+  const [fillPatternDialogMode, setFillPatternDialogMode] = useState<'random' | 'regular' | null>(null)
   const [temporarySelectionMode, setTemporarySelectionMode] = useState<SelectionMode | null>(null)
   const [temporaryLiquifyMode, setTemporaryLiquifyMode] = useState<LiquifyMode | null>(null)
   const [inkFlyoutOpen, setInkFlyoutOpen] = useState(false)
@@ -1106,7 +1107,7 @@ export const EditorToolOptions = memo(function EditorToolOptions({ onOpenColorRe
       {showBrushAngle && <div className="brush-size-control brush-angle-control"><NumberInput aria-label={t('toolOptions.brushRotationValue')} density="compact" min={-180} max={180} step={1} suffix="°" value={Math.round(session.brushAngle)} onValueChange={workspace.setBrushAngle} onFocus={() => setBrushAngleFlyoutOpen(true)} />{brushAngleFlyoutOpen && <div className="brush-size-popover" role="dialog" aria-label={t('toolOptions.adjustBrushRotation')}><RangeField ariaLabel={t('toolOptions.brushRotationSlider')} density="compact" min={-180} max={180} step={1} suffix="°" value={Math.round(session.brushAngle)} onChange={workspace.setBrushAngle} /></div>}</div>}
       {(activeLibraryBrush || activeProceduralBrush) && <span className="brush-pattern-options">
         {activeLibraryBrush?.intrinsicSize && <span className="brush-paint-mode-select" title={t('toolOptions.brushModeHint')}><ThemedSelect<BrushPaintMode> density="compact" value={session.brushPaintMode} groups={brushPaintModeGroups} label={t('toolOptions.brushMode')} popoverWidth={148} onChange={workspace.setBrushPaintMode} /></span>}
-        {isBucketBrushTool && session.brushImage && <FillPatternControl key={session.document.id + session.brushImage.id} mode={session.fillPatternMode} settings={session.fillPatternSettings} brush={session.brushImage} foreground={session.primaryColor} onModeChange={workspace.setFillPatternMode} onChange={workspace.setFillPatternSettings} t={t} />}
+        {isBucketBrushTool && session.brushImage && <FillPatternControl mode={session.fillPatternMode} settings={session.fillPatternSettings} onOpen={() => { if (session.fillPatternMode !== 'default') setFillPatternDialogMode(session.fillPatternMode) }} onModeChange={workspace.setFillPatternMode} onChange={workspace.setFillPatternSettings} t={t} />}
       </span>}
       {session.tool === 'pencil' && <FormField className="line-direction-step-control" layout="inline" label={t('toolOptions.lineDirectionStep')} tooltip={t('toolOptions.lineDirectionStepHint')}><NumberInput aria-label={t('toolOptions.lineDirectionStep')} density="compact" min={1} max={16} value={lineDirectionStep} onValueChange={updateLineDirectionStep} /></FormField>}
       {(session.tool === 'pencil' || session.tool === 'smooth' || session.tool === 'eraser' || session.tool === 'line') && <CheckboxField className="tool-checkbox" checked={session.perfectPixels} label={t('toolOptions.perfectPixels')} onChange={workspace.setPerfectPixels} />}
@@ -1200,6 +1201,7 @@ export const EditorToolOptions = memo(function EditorToolOptions({ onOpenColorRe
       <div className="gradient-freeform-control"><button type="button" className="tool-text-button gradient-freeform-open" onClick={() => { if (!session.gradientFreeform) workspace.setGradientFreeform(true); setGradientStopsOpen(true) }}>{t('toolOptions.gradientFreeform')}</button></div>
       {pendingGradient && <span className="gradient-confirm-actions"><button type="button" className="tool-text-button" onClick={() => pendingGradientFor(session.document.id)?.cancel()}>{t('common.cancel')}</button><button type="button" className="tool-text-button primary" onClick={() => pendingGradientFor(session.document.id)?.apply()}>{t('common.apply')}</button></span>}
     </>}
+    {fillPatternDialogMode && <FillPatternDialog key={session.document.id} mode={fillPatternDialogMode} settings={session.fillPatternSettings} onChange={workspace.setFillPatternSettings} onClose={() => setFillPatternDialogMode(null)} t={t} />}
     {/* Color editing temporarily selects the eyedropper; keep its owner mounted. */}
     <GradientStopsEditor key={session.document.id} open={gradientStopsOpen && Boolean(session.gradientFreeform) && ((session.tool === 'fill' && session.fillKind === 'gradient') || session.tool === 'eyedropper')} stops={gradientStops} disabled={false} primaryColor={session.primaryColor} secondaryColor={session.secondaryColor} onChange={workspace.setGradientStops} onClose={() => setGradientStopsOpen(false)} t={t} />
     {supportsSymmetry && <SymmetryControls key={session.tool} axes={session.symmetryAxes} onAxisToggle={workspace.setSymmetryAxis} onResetCenter={workspace.resetSymmetryCenter} />}

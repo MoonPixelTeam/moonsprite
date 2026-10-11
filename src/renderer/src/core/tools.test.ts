@@ -1,5 +1,5 @@
 import { collectSmoothBrushArea } from './smooth-brush'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { compositeRegion, createCompositePointSampler, createDocument, createLayer, createSparseLayer, DocumentCompositeCache, findOrAddPaletteColor, getActiveLayer, readLayerColor, readLayerColorAt, resizeDocumentAt, writeLayerColor } from './document'
 import { beginPixelEdit, commitPixelEdit, HistoryStack } from './history'
 import { antiAliasSelection, appendPerfectPixelSegment, applySelectionTransform, applySelectionTranslationCommit, applySelectionTranslationPreview, bezierCurvePixelPoints, brushMaskOffsets, brushPathStampPoints, brushStampAnchor, brushStampDimensions, brushStrokeInvalidationRects, captureSelectionTransform, clearSelection, filledShapePathPixelPoints, fillSelectionOrCanvas, flipLayer, flipSelection, floodFill, floodFillSymmetric, inheritBrushPaintBaseline, lineShapePixelPoints, moveSelection, outlinePixelIndices, outlineSelection, outlineSelectionBoundary, paintBrush, paintBrushPath, paintLine, paintShape, paintShapePixelPoints, perfectPixelPathPoints, replaceLayerColor, rotatedShapePixelPoints, sampleCompositeColor, selectionTransformPreviewPacked, selectionTranslationPreviewEdit, shapeBoundaryPixelPoints, shapeContainsPixel, shapePixelPoints, solidBrushPreviewRowSpans, solidBrushStampDifferenceRects } from './tools'
@@ -431,7 +431,7 @@ describe('pixel tools', () => {
       id: 'regular-pattern-test', name: 'Regular', width: 2, height: 1,
       coverage: new Uint8Array([255, 255]), colors: new Uint32Array([packColor(red), packColor(blue)]), intrinsicSize: true
     }
-    const edit = floodFill(document, layer, 0, 0, red, null, true, brush, 1, undefined, 'solid', 1, 0, 'pattern-source', 0, 0, undefined, undefined, 'regular', { randomSeed: 1, randomDensity: 100, randomCount: 0, randomSpacing: 0, randomScaleMin: 100, randomScaleMax: 100, randomRotate: false, randomAngle: 0, randomOverlap: false, randomColor: 0, randomBrightness: 0, regularCount: 0, regularScale: 100, regularSpacingX: 1, regularSpacingY: 0, regularAngle: 0, regularOverlap: false, regularRowOffset: 0 })
+    const edit = floodFill(document, layer, 0, 0, red, null, true, brush, 1, undefined, 'solid', 1, 0, 'pattern-source', 0, 0, undefined, undefined, 'regular', { randomDensity: 100, randomCount: 0, randomSpacing: 0, randomScaleMin: 100, randomScaleMax: 100, randomRotate: false, randomAngle: 0, randomOverlap: false, randomColor: 0, randomBrightness: 0, regularCount: 0, regularScale: 100, regularSpacingX: 1, regularSpacingY: 0, regularAngle: 0, regularOverlap: false, regularRowOffset: 0 })
     expect(edit).not.toBeNull()
     expect(readLayerColorAt(document, layer, 0, 0)).toEqual(red)
     expect(readLayerColorAt(document, layer, 1, 0)).toEqual(blue)
@@ -439,17 +439,26 @@ describe('pixel tools', () => {
     expect(readLayerColorAt(document, layer, 3, 0)).toEqual(red)
   })
 
-  it('makes random pattern fill deterministic and density controllable', () => {
+  it('regenerates random pattern fill on each click and keeps density controllable', () => {
     const make = (density: number) => {
       const document = createDocument('random pattern bucket', 4, 1, 'rgba')
       const layer = getActiveLayer(document)
       const brush = { id: 'random-pattern-test', name: 'Random', width: 2, height: 1, coverage: new Uint8Array([255, 255]), colors: new Uint32Array([packColor(red), packColor(blue)]), intrinsicSize: true }
-      floodFill(document, layer, 0, 0, red, null, true, brush, 1, undefined, 'solid', 1, 0, 'pattern-source', 0, 0, undefined, undefined, 'random', { randomSeed: 9, randomDensity: density, randomCount: 0, randomSpacing: 0, randomScaleMin: 100, randomScaleMax: 100, randomRotate: false, randomAngle: 0, randomOverlap: false, randomColor: 0, randomBrightness: 0, regularCount: 1, regularScale: 100, regularSpacingX: 0, regularSpacingY: 0, regularAngle: 0, regularOverlap: false, regularRowOffset: 0 })
+      floodFill(document, layer, 0, 0, red, null, true, brush, 1, undefined, 'solid', 1, 0, 'pattern-source', 0, 0, undefined, undefined, 'random', { randomDensity: density, randomCount: 0, randomSpacing: 0, randomScaleMin: 100, randomScaleMax: 100, randomRotate: false, randomAngle: 0, randomOverlap: false, randomColor: 0, randomBrightness: 0, regularCount: 1, regularScale: 100, regularSpacingX: 0, regularSpacingY: 0, regularAngle: 0, regularOverlap: false, regularRowOffset: 0 })
       return Array.from({ length: 4 }, (_, x) => readLayerColorAt(document, layer, x, 0).a)
     }
-    expect(make(0)).toEqual([0, 0, 0, 0])
-    expect(make(100).some((alpha) => alpha > 0)).toBe(true)
-    expect(make(50)).toEqual(make(50))
+    const random = vi.spyOn(Math, 'random').mockReturnValueOnce(0).mockReturnValueOnce(0.5).mockReturnValueOnce(0.75)
+    try {
+      expect(make(0)).toEqual([0, 0, 0, 0])
+      const first = make(100)
+      const second = make(100)
+      expect(first.some((alpha) => alpha > 0)).toBe(true)
+      expect(second).not.toEqual(first)
+      // Only draw one fresh seed for each fill, never for each sampled pixel.
+      expect(random).toHaveBeenCalledTimes(3)
+    } finally {
+      random.mockRestore()
+    }
   })
 
 

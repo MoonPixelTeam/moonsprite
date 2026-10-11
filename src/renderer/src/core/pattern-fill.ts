@@ -54,7 +54,7 @@ export function createPatternLayout(brush: Pick<ImageBrush, 'width' | 'height'>,
   let requested = 0, attempts = 0
   if (bounds.width > 0 && bounds.height > 0 && brush.width > 0 && brush.height > 0) {
     if (mode === 'random') {
-      const random = randomGenerator(settings.randomSeed)
+      const random = randomGenerator(Math.floor(Math.random() * 0x100000000))
       const min = settings.randomScaleMin / 100, max = settings.randomScaleMax / 100
       const meanArea = brush.width * brush.height * (min * min + min * max + max * max) / 3
       requested = settings.randomCount || Math.round(bounds.width * bounds.height / meanArea * settings.randomDensity / 100)

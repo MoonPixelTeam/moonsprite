@@ -69,8 +69,8 @@ describe('tool preferences boundary', () => {
 
   it('round-trips pattern fill settings and defaults missing legacy fields', () => {
     const storage = memoryStorage()
-    saveToolSettings({ ...defaultToolSettings, fillPatternMode: 'random', fillPatternSettings: { ...defaultToolSettings.fillPatternSettings, randomSeed: 17, randomCount: 35, randomSpacing: 4, randomAngle: 22, randomOverlap: true } }, storage)
-    expect(loadToolSettings(storage)).toMatchObject({ fillPatternMode: 'random', fillPatternSettings: { randomSeed: 17, randomCount: 35, randomSpacing: 4, randomAngle: 22, randomOverlap: true } })
+    saveToolSettings({ ...defaultToolSettings, fillPatternMode: 'random', fillPatternSettings: { ...defaultToolSettings.fillPatternSettings, randomCount: 35, randomSpacing: 4, randomAngle: 22, randomOverlap: true } }, storage)
+    expect(loadToolSettings(storage)).toMatchObject({ fillPatternMode: 'random', fillPatternSettings: { randomCount: 35, randomSpacing: 4, randomAngle: 22, randomOverlap: true } })
     storage.setItem(TOOL_SETTINGS_KEY, JSON.stringify({ fillMode: 'contiguous' }))
     expect(loadToolSettings(storage).fillPatternMode).toBe('default')
     expect(loadToolSettings(storage).fillPatternSettings).toEqual(defaultToolSettings.fillPatternSettings)

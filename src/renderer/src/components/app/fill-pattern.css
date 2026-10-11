@@ -1,11 +1,6 @@
 .brush-pattern-options, .fill-pattern-controls { display: inline-flex; align-items: center; gap: 2px; flex: 0 0 auto; }
 .fill-pattern-controls > .themed-select { width: 112px; }
-.fill-pattern-dialog-body { display: grid; grid-template-columns: 192px minmax(0, 1fr); gap: var(--ui-space-4); overflow: auto; }
-.fill-pattern-preview { margin: 0; align-self: start; position: sticky; top: 0; }
-.fill-pattern-preview canvas { display: block; width: 192px; height: 192px; image-rendering: pixelated; background: repeating-conic-gradient(var(--theme-checker-dark) 0 25%, var(--theme-checker-light) 0 50%) 0 0 / 16px 16px; border: 1px solid var(--theme-magnifier-line); }
-.fill-pattern-preview figcaption { margin-top: var(--ui-space-2); color: var(--theme-text-muted); font-size: var(--ui-font-small); }
+.fill-pattern-dialog-body { overflow: auto; }
 .fill-pattern-parameters { display: grid; gap: var(--ui-space-3); min-width: 0; }
 .fill-pattern-parameters .ui-field { display: flex; align-items: center; justify-content: space-between; gap: var(--ui-space-3); }
 .fill-pattern-parameters .number-input { width: 116px; flex: 0 0 116px; }
-.fill-pattern-hint { color: var(--theme-text-muted); font-size: var(--ui-font-small); line-height: 1.5; margin: 0; }
-@media (max-width: 600px) { .fill-pattern-dialog-body { grid-template-columns: minmax(0, 1fr); } .fill-pattern-preview { position: static; } }

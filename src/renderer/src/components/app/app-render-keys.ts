@@ -145,7 +145,7 @@ export const toolOptionsRenderKey = (session: DocumentSession | null): string =>
     session.shapeCornerRadius,
     session.fillMode,
     session.fillPatternMode ?? 'default',
-    ...(['randomSeed', 'randomDensity', 'randomCount', 'randomSpacing', 'randomScaleMin', 'randomScaleMax', 'randomRotate', 'randomAngle', 'randomOverlap', 'randomColor', 'randomBrightness', 'regularCount', 'regularScale', 'regularSpacingX', 'regularSpacingY', 'regularAngle', 'regularOverlap', 'regularRowOffset'] as const).map((key) => session.fillPatternSettings?.[key] ?? ''),
+    ...(['randomDensity', 'randomCount', 'randomSpacing', 'randomScaleMin', 'randomScaleMax', 'randomRotate', 'randomAngle', 'randomOverlap', 'randomColor', 'randomBrightness', 'regularCount', 'regularScale', 'regularSpacingX', 'regularSpacingY', 'regularAngle', 'regularOverlap', 'regularRowOffset'] as const).map((key) => session.fillPatternSettings?.[key] ?? ''),
     session.fillKind ?? 'bucket',
     session.fillTolerance,
     session.fillGapClosing ? 1 : 0,
