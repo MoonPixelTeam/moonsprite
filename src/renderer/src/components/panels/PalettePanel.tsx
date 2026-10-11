@@ -6,7 +6,6 @@ import { encodePaletteClipboard, parsePaletteClipboard, type PaletteClipboard } 
 import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { playExportSuccessSound } from '@/platform/export-success-sound'
 import { usePaletteGridColumns } from '@/components/use-palette-grid-columns'
-import { paletteGridLines, paletteGridLineClass, paletteAutoCellClass } from '@/components/palette-grid-resize'
 import { palettePanelRenderKey } from '@/core/panel-render-keys'
 import { createPortal } from 'react-dom'
 import type { PaletteEntry } from '@shared/types-color'
@@ -154,7 +153,9 @@ function PalettePanelComponent({ session, docked = false, onDockDragStart, onPan
   const storedColumns = normalizePaletteColumns(session.document.paletteColumns)
   const storedSlots = useMemo(() => normalizePaletteSlots(session.document.palette.map((entry) => entry.id), session.document.paletteOrder, session.document.paletteSlots, storedColumns), [session.document.palette, session.document.paletteOrder, session.document.paletteSlots, storedColumns, paletteRenderKey])
   const occupiedColumns = useMemo(() => storedSlots.reduce<number>((maximum, id, index) => id === null ? maximum : Math.max(maximum, index % storedColumns + 1), 1), [storedSlots, storedColumns])
-  const gridMetrics = usePixelGridMetrics(PALETTE_SWATCH_PIXELS[swatchSize])
+  const pixelMetrics = usePixelGridMetrics(PALETTE_SWATCH_PIXELS[swatchSize])
+  // Keep borders exactly 2 CSS pixels even under fractional display scaling.
+  const gridMetrics = { ...pixelMetrics, gap: 2, style: { ...pixelMetrics.style, '--palette-swatch-gap': '2px' } as React.CSSProperties }
   const gridColumns = usePaletteGridColumns(swatchGridRef, gridMetrics.size, paletteLayoutMode === 'manual' ? occupiedColumns : 1, paletteLayoutMode, paletteRenderKey, gridMetrics.gap)
   // Keep empty rows virtual; the grid background resolves their hit targets.
   // Height changes do not need to rebuild the occupied swatches.
@@ -222,10 +223,6 @@ function PalettePanelComponent({ session, docked = false, onDockDragStart, onPan
       }]
     }))
   }, [paletteRenderKey, ordered, session.document.palette, session.primaryColor, session.secondaryColor, t])
-  // Moving colors can temporarily leave holes even in auto mode. Preserve the
-  // sparse boundary path for that gesture; compact auto rows use cell borders.
-  const paletteAutoBorders = paletteLayoutMode === 'auto' && displayedSlots.every(id => id !== null && (id < 0 || paletteById.has(id)))
-  const paletteLineSegments = paletteAutoBorders ? [] : paletteGridLines(displayedSlots.map(id => id !== null && paletteById.has(id) ? id : null), paletteSurfaceColumns)
   const orderedColors = ordered.map((entry) => ({ ...entry.color }))
   const copySelectedPaletteColors = async (): Promise<void> => {
     const selected = new Set(session.selectedPaletteIds)
@@ -1026,7 +1023,7 @@ function PalettePanelComponent({ session, docked = false, onDockDragStart, onPan
       tabIndex={0}
       onBlur={clearPaletteFocus}
     >
-      <span className={`palette-swatch-grid-surface ${paletteLayoutMode === 'manual' ? 'palette-grid-manual' : paletteAutoBorders ? 'palette-grid-auto' : ''}`} style={{ '--palette-layout-columns': paletteSurfaceColumns, '--palette-layout-rows': Math.ceil(displayedSlots.length / paletteSurfaceColumns) } as React.CSSProperties}>
+      <span className={`palette-swatch-grid-surface ${paletteLayoutMode === 'manual' ? 'palette-grid-manual' : ''}`} style={{ '--palette-layout-columns': paletteSurfaceColumns, '--palette-layout-rows': Math.ceil(displayedSlots.length / paletteSurfaceColumns) } as React.CSSProperties}>
       {displayedSlots.map((id, slotIndex) => {
         const entry = id === null ? null : id < 0 ? { id, name: '', color: { r: 0, g: 0, b: 0, a: 255 } } : paletteById.get(id) ?? null
         const presentation = entry ? swatchPresentations.get(entry.id) : undefined
@@ -1034,7 +1031,7 @@ function PalettePanelComponent({ session, docked = false, onDockDragStart, onPan
         const selected = Boolean(entry && displayedSelectedIds.includes(entry.id))
         const label = presentation?.label ?? t('palette.emptySlot', { index: slotIndex + 1 })
         return <PaletteSwatch key={slotIndex} slot={slotIndex} id={entry?.id}
-          wrapClassName={`palette-swatch-wrap ${entry ? 'palette-swatch-occupied' : ''} ${paletteAutoBorders ? paletteAutoCellClass(slotIndex, paletteSurfaceColumns, displayedSlots.length) : ''}`.trim()}
+          wrapClassName={`palette-swatch-wrap ${entry ? 'palette-swatch-occupied palette-color-cell' : ''}`.trim()}
           left={paletteLayoutMode === 'manual' ? `calc(${slotIndex % paletteColumns} * (var(--swatch-size) + var(--palette-swatch-gap)))` : undefined}
           top={paletteLayoutMode === 'manual' ? `calc(${Math.floor(slotIndex / paletteColumns)} * (var(--swatch-size) + var(--palette-swatch-gap)))` : undefined}
           className={`swatch palette-slot ${entry ? 'occupied' : 'empty'} ${focusedSlot === slotIndex ? 'focused' : ''} ${selected ? 'selected' : ''} ${roles.primary ? 'primary' : ''} ${roles.secondary ? 'secondary' : ''} ${entry?.color.a === 0 ? 'transparent' : ''} ${entry && draggingIds.includes(entry.id) ? 'dragging' : ''} ${dropTargetSlot === slotIndex ? 'drop-target' : ''}`}
@@ -1061,7 +1058,6 @@ function PalettePanelComponent({ session, docked = false, onDockDragStart, onPan
         setGrowthPreview(preview)
         grid.setPointerCapture?.(event.pointerId)
       }}><span aria-hidden="true">Ⅱ</span></button>}
-      {paletteLineSegments.map((segment) => <span key={segment.key} data-palette-line={segment.key} className={paletteGridLineClass(segment)} hidden={segment.hidden} aria-hidden="true" style={{ '--palette-line-column': segment.column, '--palette-line-row': segment.row } as React.CSSProperties} />)}
       {paletteLayoutMode === 'auto' && <PaletteSelectionOutline slots={displayedSlots} columns={paletteSurfaceColumns} selectedIds={displayedSelectedIds} swatchSize={gridMetrics.size} gap={gridMetrics.gap} />}
       </span>
       {displayedSelectionRange && <span data-palette-selection-outline className="palette-selection-box" aria-hidden="true" style={{ '--palette-selection-left': displayedSelectionRange.left, '--palette-selection-top': displayedSelectionRange.top, '--palette-selection-width': displayedSelectionRange.right - displayedSelectionRange.left + 1, '--palette-selection-height': displayedSelectionRange.bottom - displayedSelectionRange.top + 1 } as React.CSSProperties} />}
@@ -1080,12 +1076,9 @@ function PalettePanelComponent({ session, docked = false, onDockDragStart, onPan
             // may contain intentional gaps for editing, but those empty cells
             // should not become empty preview cells or dark bands here.
             const previewColors = slots.flatMap((colorIndex) => colorIndex === null ? [] : palette.colors[colorIndex] ? [palette.colors[colorIndex]] : [])
-            // Keep a few fixed preview scales so a four-color palette does not
-            // expand each swatch to fill the whole dialog.
-            const cellSize = previewColors.length <= 8 ? 24 : previewColors.length <= 32 ? 18 : previewColors.length <= 64 ? 14 : 10
             return <button key={palette.id} type="button" aria-pressed={activePaletteId === palette.id} className={`palette-library-item ${activePaletteId === palette.id ? 'selected' : ''}`} title={t(palette.builtIn ? 'palette.builtInHint' : 'palette.userDeleteHint')} onClick={() => applyStoredPalette(palette)} onContextMenu={(event) => { event.preventDefault(); if (palette.builtIn) { store.setMessage(t('palette.builtInDeleteBlocked')); setPaletteContext(null); return } setPaletteContext({ id: palette.id, x: Math.min(event.clientX, window.innerWidth - 150), y: Math.min(event.clientY, window.innerHeight - 42) }) }}>
               <span className="palette-library-name">{paletteDisplayName(palette)}</span>
-              <span className="palette-library-swatches" aria-hidden="true" style={{ '--palette-library-cell-size': `${cellSize}px` } as React.CSSProperties}>{previewColors.map((color, index) => <i key={index} className={color.a === 0 ? 'transparent' : undefined} style={{ '--swatch-color': colorCss(color) } as React.CSSProperties} />)}</span>
+              <span className="palette-library-swatches" aria-hidden="true" style={gridMetrics.style}>{previewColors.map((color, index) => <span key={index} className="palette-swatch-wrap palette-color-cell"><i className={`swatch palette-slot occupied ${color.a === 0 ? 'transparent' : ''}`} style={{ '--swatch-color': colorCss(color) } as React.CSSProperties} /></span>)}</span>
             </button>
           })}
         </div>
