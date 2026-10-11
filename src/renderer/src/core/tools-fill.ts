@@ -1,7 +1,7 @@
 import type { BrushPaintMode, BrushTexture, FillPatternMode, FillPatternSettings, ImageBrush, ImageBrushSettings } from '@shared/types-brush'
 import type { RasterLayer } from '@shared/types-layer'
 import type { RgbaColor } from '@shared/types-color'
-import type { SelectionMask } from '@shared/types-selection'
+import type { SelectionMask, SelectionRect } from '@shared/types-selection'
 import type { SpriteDocument } from '@shared/types-document'
 import { cachedLayerContentBounds, ensureLayerCoversCanvas, getActiveLayer, getLayerStorageOrigin, getPaletteEntry, isLayerEffectivelyLocked, layerContentBounds, layerIndexAt, markLayerContentChanged, normalizeLayerPackedValue, paletteColorIdForCanvas, rasterLayerPackedValueIsUniform, readLayerPacked, writeLayerPacked, writeLayerPackedRun } from './document-model'
 import { beginPixelEdit, pixelEditHasChanges, preparePixelEdit, recordPixel, recordPixelKnownCurrent, type PixelEdit } from './history'
@@ -541,7 +541,10 @@ export function floodFill(document: SpriteDocument, layer: RasterLayer, startX: 
       return floodFillSolidRuns(document, layer, startX, startY, target, next, selection, contiguous)
     }
   }
-  const imageSampler = imageBrush ? createImageFillSampler(imageBrush, brushSize, imageBrushSettings, proceduralAntialiasStrength, brushPaintMode, { x: startX, y: startY }, selection ? clampSelection(document, selection) ?? { x: 0, y: 0, width: 0, height: 0 } : { x: 0, y: 0, width: document.width, height: document.height }, fillPatternMode, fillPatternSettings, color) : null
+  let imageSampler: ReturnType<typeof createImageFillSampler> | null = null
+  const patternLayoutDeferred = Boolean(imageBrush && fillPatternMode !== 'default' && contiguous)
+  const createImageSampler = (bounds: SelectionRect): void => { imageSampler = imageBrush ? createImageFillSampler(imageBrush, brushSize, imageBrushSettings, proceduralAntialiasStrength, brushPaintMode, { x: startX, y: startY }, bounds, fillPatternMode, fillPatternSettings, color) : null }
+  if (imageBrush && !patternLayoutDeferred) createImageSampler(selection ? clampSelection(document, selection) ?? { x: 0, y: 0, width: 0, height: 0 } : { x: 0, y: 0, width: document.width, height: document.height })
   const textureCoverage = (x: number, y: number): number => imageSampler ? imageSampler.sample(x, y).coverage : brushTextureContains(brushTexture, x, y, brushTextureScale) ? 255 : 0
   const textureColorAt = (x: number, y: number): RgbaColor | undefined => imageSampler?.sample(x, y).color
   const constantFillValue = color.a === 0
@@ -573,6 +576,7 @@ export function floodFill(document: SpriteDocument, layer: RasterLayer, startX: 
   if (!contiguous) {
     const bounds = selection ? clampSelection(document, selection) : { x: 0, y: 0, width: document.width, height: document.height }
     if (!bounds) return null
+    if (imageBrush && !imageSampler) createImageSampler(bounds)
     for (let y = bounds.y; y < bounds.y + bounds.height; y += 1) {
       for (let x = bounds.x; x < bounds.x + bounds.width; x += 1) {
         if (selection && !selectionContains(selection, x, y)) continue
@@ -598,6 +602,14 @@ export function floodFill(document: SpriteDocument, layer: RasterLayer, startX: 
     if (!region) return null
     if (!sourceColorAt && connectivity === 4 && !imageBrush && brushTexture === 'solid' && normalizedTolerance === 0) {
       return floodFillLocalBinaryRegionSolidRuns(document, layer, region, { x: 0, y: 0, width: document.width, height: document.height }, target, next)
+    }
+    if (imageBrush && !imageSampler) {
+      let left = document.width, top = document.height, right = 0, bottom = 0
+      for (let index = 0; index < maxPixels; index += 1) if (region[index] === 1) {
+        const x = index % document.width, y = Math.floor(index / document.width)
+        left = Math.min(left, x); top = Math.min(top, y); right = Math.max(right, x + 1); bottom = Math.max(bottom, y + 1)
+      }
+      if (right > left && bottom > top) createImageSampler({ x: left, y: top, width: right - left, height: bottom - top })
     }
     for (let index = 0; index < maxPixels; index += 1) {
       if (region[index] !== 1) continue
@@ -626,13 +638,18 @@ export function floodFill(document: SpriteDocument, layer: RasterLayer, startX: 
     stack[stackLength++] = index
   }
   enqueueIfMatching(startX, startY)
+  let regionLeft = document.width, regionTop = document.height, regionRight = 0, regionBottom = 0
   while (stackLength > 0) {
     const index = stack[--stackLength]
     const x = index % document.width
     const y = Math.floor(index / document.width)
     const layerIndex = layerIndexAtCanvas(x, y)
     if (layerIndex === null) continue
-    paintAtCoverage(layerIndex, textureCoverage(x, y), readLayerPacked(document, layer, layerIndex), textureColorAt(x, y))
+    if (!patternLayoutDeferred) paintAtCoverage(layerIndex, textureCoverage(x, y), readLayerPacked(document, layer, layerIndex), textureColorAt(x, y))
+    else {
+      regionLeft = Math.min(regionLeft, x); regionTop = Math.min(regionTop, y)
+      regionRight = Math.max(regionRight, x + 1); regionBottom = Math.max(regionBottom, y + 1)
+    }
     enqueueIfMatching(x - 1, y)
     enqueueIfMatching(x + 1, y)
     enqueueIfMatching(x, y - 1)
@@ -642,6 +659,15 @@ export function floodFill(document: SpriteDocument, layer: RasterLayer, startX: 
       enqueueIfMatching(x + 1, y - 1)
       enqueueIfMatching(x - 1, y + 1)
       enqueueIfMatching(x + 1, y + 1)
+    }
+  }
+  if (patternLayoutDeferred && regionRight > regionLeft && regionBottom > regionTop) {
+    createImageSampler({ x: regionLeft, y: regionTop, width: regionRight - regionLeft, height: regionBottom - regionTop })
+    for (let index = 0; index < maxPixels; index += 1) {
+      if (visited[index] !== 1) continue
+      const x = index % document.width, y = Math.floor(index / document.width)
+      const layerIndex = layerIndexAtCanvas(x, y)
+      if (layerIndex !== null) paintAtCoverage(layerIndex, textureCoverage(x, y), readLayerPacked(document, layer, layerIndex), textureColorAt(x, y))
     }
   }
   return pixelEditHasChanges(edit) ? edit : null

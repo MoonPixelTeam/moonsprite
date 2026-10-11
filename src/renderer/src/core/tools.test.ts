@@ -511,6 +511,30 @@ describe('pixel tools', () => {
     expect(painted / edit!.before.size).toBe(1)
   })
 
+  it('generates random stamps from the contiguous region bounds', () => {
+    const document = createDocument('closed random region', 12, 12, 'rgba')
+    const layer = getActiveLayer(document)
+    for (let x = 2; x <= 8; x += 1) {
+      writeLayerColor(document, layer, 2 * 12 + x, blue)
+      writeLayerColor(document, layer, 8 * 12 + x, blue)
+    }
+    for (let y = 2; y <= 8; y += 1) {
+      writeLayerColor(document, layer, y * 12 + 2, blue)
+      writeLayerColor(document, layer, y * 12 + 8, blue)
+    }
+    const brush = { id: 'closed-random', name: 'Random', width: 3, height: 3, coverage: new Uint8Array(9).fill(255), colors: new Uint32Array(9).fill(packColor(red)), intrinsicSize: true }
+    const random = vi.spyOn(Math, 'random').mockReturnValue(0.5)
+    try {
+      const edit = floodFill(document, layer, 4, 4, red, null, true, brush, 1, undefined, 'solid', 1, 0, 'pattern-source', 0, 0, undefined, undefined, 'random', { randomDensity: 0, randomCount: 1, randomSpacing: 0, randomScaleMin: 100, randomScaleMax: 100, randomRotate: false, randomAngle: 0, randomOverlap: true, randomColor: 0, randomBrightness: 0, regularCount: 0, regularScale: 100, regularSpacingX: 0, regularSpacingY: 0, regularAngle: 0, regularOverlap: false, regularRowOffset: 0 })
+      expect(edit).not.toBeNull()
+      const painted = Array.from({ length: 144 }, (_, index) => readLayerColorAt(document, layer, index % 12, Math.floor(index / 12)).r === red.r).filter(Boolean).length
+      expect(painted).toBeGreaterThan(1)
+      expect(edit!.before.size).toBe(painted)
+    } finally {
+      random.mockRestore()
+    }
+  })
+
 
 
   it('paints a balanced Shift line from the same stair points used by its preview', () => {
