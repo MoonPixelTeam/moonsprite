@@ -8,6 +8,7 @@ import { symmetryPoints } from '@/core/symmetry'
 import { sliceAtPoint } from '@/core/slices'
 import type * as React from 'react'
 import type { DocumentSession } from '@/store/workspace-types'
+import { unpackColor } from '@/core/raster'
 export function renderCanvasToolCursor({
   inputRef,
   sliceTool,
@@ -116,8 +117,26 @@ export function renderCanvasToolCursor({
       point.y < document.height &&
       (!previewSelection || selectionContains(previewSelection, point.x, point.y))
     ) {
-      for (const target of symmetryPoints(point, document.width, document.height, session.symmetryAxes, symmetryCenter))
-        drawPreviewPixel(target.x, target.y, previewColorAt(target.x, target.y))
+      const brush = session.brushImage
+      const brushColors = brush?.paintColors ?? brush?.colors
+      const brushTargets = symmetryPoints(point, document.width, document.height, session.symmetryAxes, symmetryCenter)
+      if (brush && brush.width > 0 && brush.height > 0) {
+        const originX = Math.floor(brush.width / 2)
+        const originY = Math.floor(brush.height / 2)
+        for (const target of brushTargets) {
+          for (let brushY = 0; brushY < brush.height; brushY += 1) for (let brushX = 0; brushX < brush.width; brushX += 1) {
+            const coverage = brush.coverage[brushY * brush.width + brushX] ?? 0
+            if (coverage === 0) continue
+            const x = target.x + brushX - originX
+            const y = target.y + brushY - originY
+            if (x < 0 || y < 0 || x >= document.width || y >= document.height) continue
+            const sourceColor = brushColors?.length === brush.width * brush.height ? unpackColor(brushColors[brushY * brush.width + brushX] ?? 0) : session.primaryColor
+            drawPreviewPixel(x, y, { ...sourceColor, a: Math.round(sourceColor.a * coverage / 255) })
+          }
+        }
+      } else {
+        for (const target of brushTargets) drawPreviewPixel(target.x, target.y, previewColorAt(target.x, target.y))
+      }
     }
   }
   if (

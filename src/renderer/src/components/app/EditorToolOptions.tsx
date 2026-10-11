@@ -1088,7 +1088,7 @@ export const EditorToolOptions = memo(function EditorToolOptions({ onOpenColorRe
         </div>, document.body)}
       </>}
       {isBucketBrushTool && <div className="fill-texture-control">
-        <button type="button" className={`fill-texture-trigger ${fillTextureOpen ? 'selected' : ''}`} title={t('toolOptions.fillTexture')} aria-label={t('toolOptions.fillTexture')} aria-expanded={fillTextureOpen} onClick={() => setFillTextureOpen((open) => !open)}>{activeProceduralBrush ? <BrushThumbnail source={pixelSource(activeProceduralBrush)} className="fill-texture-coverage-thumbnail" /> : <BrushTextureThumbnail texture={activeLibraryBrush ? 'solid' : session.brushTexture} />}</button>
+        <button type="button" className={`fill-texture-trigger ${fillTextureOpen ? 'selected' : ''}`} title={t('toolOptions.fillTexture')} aria-label={t('toolOptions.fillTexture')} aria-expanded={fillTextureOpen} onClick={() => setFillTextureOpen((open) => !open)}>{activeProceduralBrush ? <BrushThumbnail source={pixelSource(activeProceduralBrush)} className="fill-texture-coverage-thumbnail" /> : activeLibraryBrush ? <BrushThumbnail source={pixelSource(activeLibraryBrush)} className="fill-texture-coverage-thumbnail" /> : <BrushTextureThumbnail texture={session.brushTexture} />}</button>
         {fillTextureOpen && <div className="fill-texture-popover" role="dialog" aria-label={t('toolOptions.fillTexture')}>
           <header><strong>{t('toolOptions.systemTextures')}</strong><small>{t('toolOptions.fillOnly')}</small></header>
           <div className="fill-texture-grid">
@@ -1201,7 +1201,7 @@ export const EditorToolOptions = memo(function EditorToolOptions({ onOpenColorRe
       <div className="gradient-freeform-control"><button type="button" className="tool-text-button gradient-freeform-open" onClick={() => { if (!session.gradientFreeform) workspace.setGradientFreeform(true); setGradientStopsOpen(true) }}>{t('toolOptions.gradientFreeform')}</button></div>
       {pendingGradient && <span className="gradient-confirm-actions"><button type="button" className="tool-text-button" onClick={() => pendingGradientFor(session.document.id)?.cancel()}>{t('common.cancel')}</button><button type="button" className="tool-text-button primary" onClick={() => pendingGradientFor(session.document.id)?.apply()}>{t('common.apply')}</button></span>}
     </>}
-    {fillPatternDialogMode && <FillPatternDialog key={session.document.id} mode={fillPatternDialogMode} settings={session.fillPatternSettings} onChange={workspace.setFillPatternSettings} onClose={() => setFillPatternDialogMode(null)} t={t} />}
+    {fillPatternDialogMode && <FillPatternDialog key={`fill-pattern-${session.document.id}`} mode={fillPatternDialogMode} settings={session.fillPatternSettings} onChange={workspace.setFillPatternSettings} onClose={() => setFillPatternDialogMode(null)} t={t} />}
     {/* Color editing temporarily selects the eyedropper; keep its owner mounted. */}
     <GradientStopsEditor key={session.document.id} open={gradientStopsOpen && Boolean(session.gradientFreeform) && ((session.tool === 'fill' && session.fillKind === 'gradient') || session.tool === 'eyedropper')} stops={gradientStops} disabled={false} primaryColor={session.primaryColor} secondaryColor={session.secondaryColor} onChange={workspace.setGradientStops} onClose={() => setGradientStopsOpen(false)} t={t} />
     {supportsSymmetry && <SymmetryControls key={session.tool} axes={session.symmetryAxes} onAxisToggle={workspace.setSymmetryAxis} onResetCenter={workspace.resetSymmetryCenter} />}
