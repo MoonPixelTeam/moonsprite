@@ -1076,15 +1076,14 @@ function PalettePanelComponent({ session, docked = false, onDockDragStart, onPan
         <div className="palette-library-list component-scrollbar" role="group" aria-label={t('palette.localPalettes')}>
           {paletteLoading ? <span className="palette-library-state">{t('palette.loading')}</span> : paletteFiles.length === 0 ? <span className="palette-library-state">{t('palette.empty')}</span> : paletteFiles.map((palette) => {
             const slots = palette.slots ?? palette.colors.map((_, index) => index)
-            let lastColorSlot = slots.length - 1
-            while (lastColorSlot >= 0 && slots[lastColorSlot] === null) lastColorSlot -= 1
-            const cellSize = palette.colors.length <= 16 ? 30 : palette.colors.length <= 64 ? 20 : 15
+            // The library preview is a compact overview. Palette layout slots
+            // may contain intentional gaps for editing, but those empty cells
+            // should not become empty preview cells or dark bands here.
+            const previewColors = slots.flatMap((colorIndex) => colorIndex === null ? [] : palette.colors[colorIndex] ? [palette.colors[colorIndex]] : [])
+            const cellSize = previewColors.length <= 16 ? 30 : previewColors.length <= 64 ? 20 : 15
             return <button key={palette.id} type="button" aria-pressed={activePaletteId === palette.id} className={`palette-library-item ${activePaletteId === palette.id ? 'selected' : ''}`} title={t(palette.builtIn ? 'palette.builtInHint' : 'palette.userDeleteHint')} onClick={() => applyStoredPalette(palette)} onContextMenu={(event) => { event.preventDefault(); if (palette.builtIn) { store.setMessage(t('palette.builtInDeleteBlocked')); setPaletteContext(null); return } setPaletteContext({ id: palette.id, x: Math.min(event.clientX, window.innerWidth - 150), y: Math.min(event.clientY, window.innerHeight - 42) }) }}>
               <span className="palette-library-name">{paletteDisplayName(palette)}</span>
-              <span className="palette-library-swatches" aria-hidden="true" style={{ '--palette-library-cell-size': `${cellSize}px` } as React.CSSProperties}>{slots.slice(0, lastColorSlot + 1).map((colorIndex, index) => {
-                const color = colorIndex === null ? null : palette.colors[colorIndex]
-                return <i key={index} className={colorIndex === null ? 'empty' : color?.a === 0 ? 'transparent' : undefined} style={color ? { '--swatch-color': colorCss(color) } as React.CSSProperties : undefined} />
-              })}</span>
+              <span className="palette-library-swatches" aria-hidden="true" style={{ '--palette-library-cell-size': `${cellSize}px` } as React.CSSProperties}>{previewColors.map((color, index) => <i key={index} className={color.a === 0 ? 'transparent' : undefined} style={{ '--swatch-color': colorCss(color) } as React.CSSProperties} />)}</span>
             </button>
           })}
         </div>
