@@ -1080,7 +1080,9 @@ function PalettePanelComponent({ session, docked = false, onDockDragStart, onPan
             // may contain intentional gaps for editing, but those empty cells
             // should not become empty preview cells or dark bands here.
             const previewColors = slots.flatMap((colorIndex) => colorIndex === null ? [] : palette.colors[colorIndex] ? [palette.colors[colorIndex]] : [])
-            const cellSize = previewColors.length <= 16 ? 30 : previewColors.length <= 64 ? 20 : 15
+            // Keep a few fixed preview scales so a four-color palette does not
+            // expand each swatch to fill the whole dialog.
+            const cellSize = previewColors.length <= 8 ? 24 : previewColors.length <= 32 ? 18 : previewColors.length <= 64 ? 14 : 10
             return <button key={palette.id} type="button" aria-pressed={activePaletteId === palette.id} className={`palette-library-item ${activePaletteId === palette.id ? 'selected' : ''}`} title={t(palette.builtIn ? 'palette.builtInHint' : 'palette.userDeleteHint')} onClick={() => applyStoredPalette(palette)} onContextMenu={(event) => { event.preventDefault(); if (palette.builtIn) { store.setMessage(t('palette.builtInDeleteBlocked')); setPaletteContext(null); return } setPaletteContext({ id: palette.id, x: Math.min(event.clientX, window.innerWidth - 150), y: Math.min(event.clientY, window.innerHeight - 42) }) }}>
               <span className="palette-library-name">{paletteDisplayName(palette)}</span>
               <span className="palette-library-swatches" aria-hidden="true" style={{ '--palette-library-cell-size': `${cellSize}px` } as React.CSSProperties}>{previewColors.map((color, index) => <i key={index} className={color.a === 0 ? 'transparent' : undefined} style={{ '--swatch-color': colorCss(color) } as React.CSSProperties} />)}</span>

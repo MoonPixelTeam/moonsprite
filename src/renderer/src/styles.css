@@ -2108,8 +2108,8 @@ body .extension-panel-command:hover:not(:disabled) { background: var(--theme-sur
 .palette-library-name { display: block; min-width: 0; overflow: hidden; color: var(--theme-text-primary); font: var(--ui-font-small)/1.2 ui-monospace, Consolas, monospace; text-overflow: ellipsis; white-space: nowrap; }
 .palette-library-swatches { display: grid; grid-template-columns: repeat(8, minmax(0, 1fr)); grid-template-rows: 1fr; min-width: 0; height: 28px; overflow: hidden; background: var(--theme-deep-surface); border: 1px solid var(--theme-workspace-background); }
 .palette-library-swatches i { min-width: 0; min-height: 0; }
-.palette-library-item .palette-library-swatches { display: grid; grid-template-columns: repeat(auto-fit, minmax(var(--palette-library-cell-size), 1fr)); align-content: start; width: 100%; height: auto; border: 0; background: transparent; }
-.palette-library-item .palette-library-swatches i { display: block; width: 100%; aspect-ratio: 1; box-sizing: border-box; background-color: var(--swatch-color, var(--theme-raised-surface)); border: 2px solid var(--theme-magnifier-line); image-rendering: pixelated; }
+.palette-library-item .palette-library-swatches { display: grid; grid-template-columns: repeat(auto-fill, var(--palette-library-cell-size)); grid-auto-rows: var(--palette-library-cell-size); align-content: start; justify-content: start; gap: 2px; width: max-content; min-width: 0; max-width: 100%; height: auto; padding: 2px; border: 2px solid var(--theme-magnifier-line); background: var(--theme-magnifier-line); }
+.palette-library-item .palette-library-swatches i { display: block; width: var(--palette-library-cell-size); height: var(--palette-library-cell-size); box-sizing: border-box; background-color: var(--swatch-color, var(--theme-raised-surface)); border: 0; image-rendering: pixelated; }
 .palette-library-item .palette-library-swatches i.empty { background: var(--theme-dialog-content); }
 .palette-library-item .palette-library-swatches i.transparent { background-color: transparent; background-image: repeating-conic-gradient(var(--theme-checker-dark) 0 25%, var(--theme-checker-light) 0 50%); background-size: 8px 8px; }
 .swatch-grid { --palette-grid-padding: var(--ui-space-4); display: grid; min-width: 0; min-height: 0; grid-template-columns: repeat(var(--palette-columns, 8), var(--swatch-size, 22px)); grid-auto-rows: var(--swatch-size, 22px); grid-auto-flow: row; align-content: start; justify-content: start; gap: var(--palette-swatch-gap, 0px); padding: var(--palette-grid-padding); overflow: auto; background: var(--theme-surface); }
@@ -2123,6 +2123,7 @@ body .extension-panel-command:hover:not(:disabled) { background: var(--theme-sur
 .palette-grid-manual > .palette-swatch-wrap { position: absolute; }
 .palette-grid-resizing-manual .palette-swatch-wrap:not(.palette-swatch-occupied), .palette-cell-line[hidden] { display: none; }
 .palette-panel .palette-swatch-grid-surface > .palette-swatch-wrap { background: var(--theme-palette-background); }
+.palette-panel .palette-grid-auto > .palette-swatch-wrap > .swatch.palette-slot { border-color: transparent; }
 .palette-panel .swatch-grid { --palette-cell-border-width: calc(var(--palette-line-width, 1px) + 1px); }
 .palette-panel .palette-cell-line { position: absolute; z-index: 4; background: var(--theme-magnifier-line); pointer-events: none; }
 /* Keep the existing grid spacing; the extra border pixel extends inward. */
