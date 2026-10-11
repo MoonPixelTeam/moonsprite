@@ -13,7 +13,7 @@ import { colorEquals } from '@/core/raster'
 import { readStoredString } from '@/core/storage'
 import { persistColorRolePreferences } from '@/core/color-role-preferences'
 import { activePaintLayer, remapSelectionBrushColors } from './workspace-session'
-import { addPaletteColor as addPaletteColorCommand, applyPalette as applyPaletteCommand, deletePaletteColors as deletePaletteColorsCommand, gradientPaletteColors as gradientPaletteColorsCommand, gradientPaletteSlots as gradientPaletteSlotsCommand, movePaletteColor as movePaletteColorCommand, pastePaletteColors as pastePaletteColorsCommand, reorderPaletteColors as reorderPaletteColorsCommand, reversePaletteColors as reversePaletteColorsCommand, selectPaletteColor as selectPaletteColorCommand, selectPaletteColors as selectPaletteColorsCommand, sortPaletteColors as sortPaletteColorsCommand, updatePaletteColor as updatePaletteColorCommand } from './workspace-palette'
+import { addPaletteColor as addPaletteColorCommand, applyPalette as applyPaletteCommand, deletePaletteColors as deletePaletteColorsCommand, gradientPaletteColors as gradientPaletteColorsCommand, gradientPaletteSlots as gradientPaletteSlotsCommand, movePaletteColor as movePaletteColorCommand, pastePaletteColors as pastePaletteColorsCommand, renamePaletteColor as renamePaletteColorCommand, reorderPaletteColors as reorderPaletteColorsCommand, reversePaletteColors as reversePaletteColorsCommand, selectPaletteColor as selectPaletteColorCommand, selectPaletteColors as selectPaletteColorsCommand, sortPaletteColors as sortPaletteColorsCommand, updatePaletteColor as updatePaletteColorCommand } from './workspace-palette'
 import type { ColorReplacementPreview, ColorReplacementTarget } from './workspace-state'
 import type { DocumentSession } from './workspace-types'
 import type { WorkspaceColorCommands } from './workspace-state'
@@ -397,6 +397,10 @@ export function createWorkspaceColorCommands({ get, set, recording }: WorkspaceC
 
     updatePaletteColor(id, color) {
       get().mutateActive((session) => updatePaletteColorWithSynchronization(session, id, color))
+    },
+
+    renamePaletteColor(id, name) {
+      get().mutateActive((session) => renamePaletteColorCommand(session, id, name))
     },
 
     applyPalette(colors, layout) {

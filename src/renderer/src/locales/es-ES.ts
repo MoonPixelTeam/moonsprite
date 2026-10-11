@@ -1845,6 +1845,7 @@ export const esESMessages = {
   'palette.actions': 'Paletas de acciones',
   'palette.syncColors': 'Sync Colores',
   'palette.syncColorsHint': 'Cuando se activa, la edición de un color de paleta también reemplaza los píxeles que coinciden en cada capa desbloqueada y el fotograma de animación.',
+  'palette.showColorNames': 'Show Color Names',
   'palette.sortAndGradients': 'Sorteo y gradientes',
 'palette.layoutMode': 'Disposición',
 'palette.layoutAuto': 'Distribución adaptable',

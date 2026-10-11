@@ -1845,6 +1845,7 @@ export const frFRMessages = {
   'palette.actions': 'Actions de palette',
   'palette.syncColors': 'Sync Couleurs',
   'palette.syncColorsHint': 'Lorsque c\'est activé, l\'édition d\'une couleur de palette remplace également les pixels correspondants dans chaque calque ouverte et le cadre d\'animation.',
+  'palette.showColorNames': 'Show Color Names',
   'palette.sortAndGradients': 'Gradients & Gradients',
 'palette.layoutMode': 'Disposition',
 'palette.layoutAuto': 'Disposition adaptative',

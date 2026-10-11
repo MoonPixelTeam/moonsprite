@@ -33,7 +33,7 @@ const applyStoredPaletteToNewDocument = (document: SpriteDocument, palette: Stor
   const layout = palette.columns !== undefined && palette.slots !== undefined
     ? { columns: palette.columns, slots: palette.slots }
     : undefined
-  applyPaletteCommand(paletteSession, palette.colors.map((color) => ({ ...color })), layout)
+  applyPaletteCommand(paletteSession, palette.colors.map((color) => ({ ...color })), layout, palette.names)
   // The temporary session only applies the document data; its UI state and history
   // are intentionally discarded before the new document enters the workspace.
   document.paletteColumns = normalizePaletteColumns(document.paletteColumns)

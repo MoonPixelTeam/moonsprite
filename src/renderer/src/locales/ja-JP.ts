@@ -1845,6 +1845,7 @@ export const jaJPMessages = {
   'palette.actions': 'パレットアクション',
   'palette.syncColors': 'シンク色',
   'palette.syncColorsHint': 'アクティブになった場合、パレット色の編集はまた、すべてのオープンレイヤーおよびアニメーションフレームで合致するピクセルを置き換えます。',
+  'palette.showColorNames': 'Show Color Names',
   'palette.sortAndGradients': 'グラディエンス&グラディエンス',
 'palette.layoutMode': 'レイアウト',
 'palette.layoutAuto': '自動調整レイアウト',

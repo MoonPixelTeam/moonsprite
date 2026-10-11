@@ -1828,6 +1828,7 @@ export const deDEMessages = {
   "palette.actions": "Palette Aktionen",
   "palette.syncColors": "Sync Farben",
   "palette.syncColorsHint": 'Wenn es aktiviert ist, ersetzt die Bearbeitung einer Palettefarbe auch die entsprechenden Pixel in jedem unlocked Layer und Animation Frame. Indexierte Dokumente aktualisieren direkt über die Palette.',
+  "palette.showColorNames": "Show Color Names",
   "palette.sortAndGradients": 'Größe & Gradient',
 "palette.layoutMode": 'Anordnung',
 "palette.layoutAuto": "Adaptives Layout",

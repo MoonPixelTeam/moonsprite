@@ -1828,6 +1828,7 @@ export const ptBRMessages = {
   "palette.actions": "Paleta Ações",
   "palette.syncColors": "Sync Cores",
   "palette.syncColorsHint": 'Quando ativado, a edição de uma cor de paleta também substitui os pixels correspondentes em cada camada desbloqueada e quadro de animação.',
+  "palette.showColorNames": "Show Color Names",
   "palette.sortAndGradients": 'Gradientes e Gradientes',
 "palette.layoutMode": "Layout",
 "palette.layoutAuto": "Layout adaptável",

@@ -1920,6 +1920,7 @@ export const zhCNMessages = {
   'palette.actions': '颜色板操作',
   'palette.syncColors': '同步颜色',
   'palette.syncColorsHint': '开启后，修改色板颜色时，会同时替换项目中所有未锁定图层和动画帧里使用该颜色的像素；索引模式会直接随色板更新。',
+  'palette.showColorNames': '显示颜色名称',
   'palette.sortAndGradients': '排序与渐变',
   'palette.layoutMode': '布局方式',
   'palette.layoutAuto': '自适应布局',

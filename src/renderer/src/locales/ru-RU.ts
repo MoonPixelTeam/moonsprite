@@ -1828,6 +1828,7 @@ export const ruRUMessages = {
   "palette.actions": "Палитра Действия",
   "palette.syncColors": "Sync Цвета",
   "palette.syncColorsHint": 'При включении редактирование цвета палиты также заменяет соответствующие пиксели в каждом отключенном слое и анимационной рамке. Индексированные документы обновляются непосредственно через палетку.',
+  "palette.showColorNames": "Show Color Names",
   "palette.sortAndGradients": 'Сорт & Градиент',
 "palette.layoutMode": 'Расположение',
 "palette.layoutAuto": "Адаптивная раскладка",

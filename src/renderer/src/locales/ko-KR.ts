@@ -1845,6 +1845,7 @@ export const koKRMessages = {
   'palette.actions': '팔레트 행동',
   'palette.syncColors': 'Sync 색상',
   'palette.syncColorsHint': '활성화되면, 팔레트 색상 편집은 또한 각 개방 된 레이어 및 애니메이션 프레임에서 일치하는 픽셀을 대체합니다. 인덱스 된 문서를 직접 패널을 통해 업데이트합니다.',
+  'palette.showColorNames': 'Show Color Names',
   'palette.sortAndGradients': '분류 & Gradients',
 'palette.layoutMode': '레이아웃',
 'palette.layoutAuto': '자동 조정 레이아웃',

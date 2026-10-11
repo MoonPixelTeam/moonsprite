@@ -57,6 +57,7 @@ export interface StoredPalette {
   builtIn: boolean
   columns?: number
   slots?: Array<number | null>
+  names?: string[]
 }
 
 export interface PaletteSlotLayout {

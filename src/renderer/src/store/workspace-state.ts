@@ -209,7 +209,8 @@ export interface WorkspaceColorCommands {
   addPaletteColor(color?: RgbaColor, target?: PaletteColorTarget): number | null
   pastePaletteColors(colors: RgbaColor[], target?: PaletteColorTarget): number[]
   updatePaletteColor(id: number, color: RgbaColor): void
-  applyPalette(colors: RgbaColor[], layout?: PaletteSlotLayout): void
+  renamePaletteColor(id: number, name: string): void
+  applyPalette(colors: RgbaColor[], layout?: PaletteSlotLayout, names?: string[]): void
   deletePaletteColor(id: number): void
   deletePaletteColors(ids: number[]): void
   movePaletteColor(direction: -1 | 1): void

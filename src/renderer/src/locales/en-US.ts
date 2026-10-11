@@ -1918,6 +1918,7 @@ export const enUSMessages = {
   'palette.actions': 'Palette Actions',
   'palette.syncColors': 'Sync Colors',
   'palette.syncColorsHint': 'When enabled, editing a palette color also replaces matching pixels in every unlocked layer and animation frame. Indexed documents update directly through the palette.',
+  'palette.showColorNames': 'Show Color Names',
   'palette.sortAndGradients': 'Sort & Gradients',
 'palette.layoutMode': 'Layout',
 'palette.layoutAuto': 'Adaptive layout',
