@@ -1,4 +1,4 @@
-import { act, cleanup, fireEvent, render } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createDocument } from '@/core/document-model'
 import { palettePanelRenderKey } from '@/core/panel-render-keys'
@@ -12,6 +12,10 @@ const rectangle = (x: number, y: number, width: number, height: number): DOMRect
 
 beforeEach(() => {
   localStorage.clear()
+  vi.stubGlobal('moonSprite', {
+    listPalettes: vi.fn().mockResolvedValue({ directoryPath: 'palettes', palettes: [] }),
+    deletePalette: vi.fn().mockResolvedValue(undefined)
+  })
   localStorage.setItem('moonsprite.palette-layout-mode', 'auto')
   vi.stubGlobal('PointerEvent', class extends MouseEvent {
     pointerId = 1
@@ -67,6 +71,69 @@ function Harness() {
 const session = () => useWorkspace.getState().sessions[0]
 
 describe('palette selection gestures and clipboard', () => {
+  it('switches layout modes with the selected palette and keeps the library open without item tooltips', async () => {
+    const colors = [{ r: 1, g: 2, b: 3, a: 255 }, { r: 4, g: 5, b: 6, a: 255 }]
+    vi.spyOn(window.moonSprite, 'listPalettes').mockResolvedValue({ directoryPath: 'palettes', palettes: [
+      { id: 'positioned', name: 'Positioned', builtIn: false, filePath: '', colors, columns: 4, slots: [0, null, 1, null] },
+      { id: 'compact', name: 'Compact', builtIn: false, filePath: '', colors }
+    ] })
+    const { container } = render(<Harness />)
+    fireEvent.click(container.querySelector('.palette-library-control button')!)
+    await waitFor(() => expect(document.querySelectorAll('.palette-library-item')).toHaveLength(2))
+    const [positioned, compact] = document.querySelectorAll<HTMLButtonElement>('.palette-library-item')
+    expect(positioned).not.toHaveAttribute('title')
+    expect(positioned).not.toHaveAttribute('data-moon-tooltip')
+    fireEvent.click(positioned)
+    expect(container.querySelector('.palette-grid-manual')).not.toBeNull()
+    expect(session().document.paletteSlots?.[1]).toBeNull()
+    expect(localStorage.getItem('moonsprite.palette-layout-mode')).toBe('manual')
+    expect(document.querySelector('.palette-library-dialog')).not.toBeNull()
+    fireEvent.click(compact)
+    expect(container.querySelector('.palette-grid-manual')).toBeNull()
+    expect(localStorage.getItem('moonsprite.palette-layout-mode')).toBe('auto')
+    expect(document.querySelector('.palette-library-dialog')).not.toBeNull()
+  })
+
+  it('keeps deleted built-in palettes out of the library after refresh and remount', async () => {
+    vi.spyOn(window.moonSprite, 'listPalettes').mockResolvedValue({ directoryPath: 'palettes', palettes: [
+      { id: 'builtin-test', name: 'Built-in test', builtIn: true, filePath: '', colors: [{ r: 1, g: 2, b: 3, a: 255 }] }
+    ] })
+    const deletePalette = vi.spyOn(window.moonSprite, 'deletePalette').mockResolvedValue(undefined)
+    const first = render(<Harness />)
+    fireEvent.click(first.container.querySelector('.palette-library-control button')!)
+    await waitFor(() => expect(document.querySelector('.palette-library-item')).not.toBeNull())
+    fireEvent.click(document.querySelector('.palette-library-item')!)
+    fireEvent.contextMenu(document.querySelector('.palette-library-item')!, { clientX: 80, clientY: 80 })
+    const menu = document.querySelector<HTMLElement>('.palette-library-context')!
+    const dialog = document.querySelector<HTMLElement>('.palette-library-dialog')!
+    expect(Number(menu.style.zIndex)).toBeGreaterThan(Number(dialog.style.zIndex))
+    fireEvent.click(menu.querySelector('button')!)
+    await waitFor(() => expect(document.querySelector('.palette-library-item')).toBeNull())
+    expect(deletePalette).not.toHaveBeenCalled()
+    expect(localStorage.getItem('moonsprite.hidden-built-in-palettes')).toBe('["builtin-test"]')
+    expect(localStorage.getItem('moonsprite.active-palette-id')).toBeNull()
+    first.unmount()
+    const second = render(<Harness />)
+    fireEvent.click(second.container.querySelector('.palette-library-control button')!)
+    await waitFor(() => expect(document.querySelector('.palette-library-state')?.textContent).not.toContain('读取'))
+    expect(document.querySelector('.palette-library-item')).toBeNull()
+  })
+
+  it('deletes user palettes through the existing file API and retains the open dialog', async () => {
+    vi.spyOn(window.moonSprite, 'listPalettes').mockResolvedValue({ directoryPath: 'palettes', palettes: [
+      { id: 'user-test', name: 'User test', builtIn: false, filePath: 'user.palette.json', colors: [{ r: 1, g: 2, b: 3, a: 255 }] }
+    ] })
+    const deletePalette = vi.spyOn(window.moonSprite, 'deletePalette').mockResolvedValue(undefined)
+    const { container } = render(<Harness />)
+    fireEvent.click(container.querySelector('.palette-library-control button')!)
+    await waitFor(() => expect(document.querySelector('.palette-library-item')).not.toBeNull())
+    fireEvent.contextMenu(document.querySelector('.palette-library-item')!)
+    await act(async () => { fireEvent.click(document.querySelector('.palette-library-context button')!) })
+    expect(deletePalette).toHaveBeenCalledWith('user-test')
+    expect(document.querySelector('.palette-library-item')).toBeNull()
+    expect(document.querySelector('.palette-library-dialog')).not.toBeNull()
+  })
+
   it.each([0, 2])('selects a color with button %s and preserves the other color role', button => {
     const primary = { ...session().primaryColor }
     const secondary = { ...session().secondaryColor }

@@ -23,6 +23,7 @@ import type { DockDragProps } from '@/components/workspace-panel-types'
 import { encodePalettePng, extractPaletteColors, mergePaletteColors, type PaletteSortDirection, type PaletteSortMode } from '@/core/palette'
 import { fitPaletteSlotsToGrid, normalizePaletteColumns, normalizePaletteSlots, PALETTE_SWATCH_PIXELS, paletteColorsEqual, paletteMarkerColor, paletteRangeIdsBySlots, paletteSlotRange, repositionPaletteSlots, type PaletteSwatchSize } from '@/core/palette-layout'
 import { ACTIVE_PALETTE_ID_STORAGE_KEY, readStoredString, removeStoredValue, writeStoredString } from '@/core/panel-preferences'
+import { readStoredJson } from '@/core/storage'
 import { colorEquals } from '@/core/raster'
 import { builtInPaletteNameKeys } from '@/core/built-in-palettes'
 import { joinDirectoryPath } from '@/core/document-files'
@@ -40,6 +41,7 @@ import { EDITOR_SHORTCUT_COMMAND_EVENT, type EditorShortcutCommandDetail } from 
 import type { ShortcutId } from '@/core/shortcuts'
 
 const PALETTE_SWATCH_SIZE_STORAGE_KEY = 'moonsprite.palette-swatch-size'
+const HIDDEN_BUILT_IN_PALETTES_STORAGE_KEY = 'moonsprite.hidden-built-in-palettes'
 const PALETTE_SWATCH_SIZE_ORDER: PaletteSwatchSize[] = ['tiny', 'small', 'medium', 'large', 'huge']
 
 type PaletteGrowthPreview = {
@@ -105,12 +107,16 @@ function PalettePanelComponent({ session, docked = false, onDockDragStart, onPan
   const [paletteDirectory, setPaletteDirectory] = useState('palettes')
   const [paletteLoading, setPaletteLoading] = useState(true)
   const [activePaletteId, setActivePaletteId] = useState<string | null>(() => readStoredString(ACTIVE_PALETTE_ID_STORAGE_KEY))
+  const [hiddenBuiltInPaletteIds, setHiddenBuiltInPaletteIds] = useState<string[]>(() => {
+    const value = readStoredJson<unknown>(HIDDEN_BUILT_IN_PALETTES_STORAGE_KEY, [])
+    return Array.isArray(value) ? value.filter((id): id is string => typeof id === 'string') : []
+  })
   const [extractMode, setExtractMode] = useState<'create' | 'replace' | 'append'>('create')
   const [extractLimit, setExtractLimit] = useState(32)
   const [extractName, setExtractName] = useState(() => t('palette.defaultName', { name: session.document.name }))
   const [saveName, setSaveName] = useState(() => t('palette.defaultName', { name: session.document.name }))
   const [operationBusy, setOperationBusy] = useState(false)
-  const [paletteContext, setPaletteContext] = useState<{ id: string; x: number; y: number } | null>(null)
+  const [paletteContext, setPaletteContext] = useState<{ id: string; x: number; y: number; zIndex: number } | null>(null)
   const paletteActionsControlRef = useRef<HTMLSpanElement>(null)
   const libraryControlRef = useRef<HTMLSpanElement>(null)
   const paletteActionsButtonRef = useRef<HTMLButtonElement>(null)
@@ -320,10 +326,11 @@ function PalettePanelComponent({ session, docked = false, onDockDragStart, onPan
     try {
       const listing = await window.moonSprite.listPalettes()
       setPaletteDirectory(listing.directoryPath)
-      setPaletteFiles(listing.palettes)
-      const matching = listing.palettes.find((palette) => paletteColorsEqual(palette.colors, orderedColors))
+      const visiblePalettes = listing.palettes.filter((palette) => !palette.builtIn || !hiddenBuiltInPaletteIds.includes(palette.id))
+      setPaletteFiles(visiblePalettes)
+      const matching = visiblePalettes.find((palette) => paletteColorsEqual(palette.colors, orderedColors))
       const candidate = preferredId ?? matching?.id ?? null
-      const nextId = candidate && listing.palettes.some((palette) => palette.id === candidate) ? candidate : null
+      const nextId = candidate && visiblePalettes.some((palette) => palette.id === candidate) ? candidate : null
       setActivePaletteId(nextId)
       const nextPalette = listing.palettes.find((palette) => palette.id === nextId)
       if (nextPalette) setSaveName(paletteDisplayName(nextPalette))
@@ -335,7 +342,7 @@ function PalettePanelComponent({ session, docked = false, onDockDragStart, onPan
     }
   }
 
-  useEffect(() => { void refreshPalettes() }, [session.document.id])
+  useEffect(() => { void refreshPalettes() }, [session.document.id, hiddenBuiltInPaletteIds])
 
   useEffect(() => {
     const handleShortcutCommand = (event: Event): void => {
@@ -819,6 +826,9 @@ function PalettePanelComponent({ session, docked = false, onDockDragStart, onPan
       ? { columns: palette.columns, slots: palette.slots }
       : undefined
     store.applyPalette(palette.colors, layout)
+    const nextLayoutMode = layout ? 'manual' : 'auto'
+    setPaletteLayoutMode(nextLayoutMode)
+    writeStoredString(PALETTE_LAYOUT_MODE_STORAGE_KEY, nextLayoutMode)
     setActivePaletteId(palette.id)
     setSaveName(paletteDisplayName(palette))
     writeStoredString(ACTIVE_PALETTE_ID_STORAGE_KEY, palette.id)
@@ -826,7 +836,19 @@ function PalettePanelComponent({ session, docked = false, onDockDragStart, onPan
 
   const deleteStoredPalette = async (id: string): Promise<void> => {
     const palette = paletteFiles.find((item) => item.id === id)
-    if (!palette || palette.builtIn) { store.setMessage(t('palette.builtInDeleteBlocked')); return }
+    if (!palette) return
+    if (palette.builtIn) {
+      const next = [...new Set([...hiddenBuiltInPaletteIds, id])]
+      setHiddenBuiltInPaletteIds(next)
+      writeStoredString(HIDDEN_BUILT_IN_PALETTES_STORAGE_KEY, JSON.stringify(next))
+      setPaletteFiles((current) => current.filter((item) => item.id !== id))
+      if (activePaletteId === id) {
+        setActivePaletteId(null)
+        removeStoredValue(ACTIVE_PALETTE_ID_STORAGE_KEY)
+      }
+      setPaletteContext(null)
+      return
+    }
     try {
       await window.moonSprite.deletePalette(id)
       setPaletteFiles((current) => current.filter((item) => item.id !== id))
@@ -1078,7 +1100,13 @@ function PalettePanelComponent({ session, docked = false, onDockDragStart, onPan
             const previewSize = previewColors.length > 128 ? Math.min(gridMetrics.size, 10) : previewColors.length > 64 ? Math.min(gridMetrics.size, 14) : previewColors.length > 32 ? Math.min(gridMetrics.size, 18) : gridMetrics.size
             const previewGap = previewSize < 18 ? 1 : 2
             const previewStyle = { ...gridMetrics.style, '--swatch-size': `${previewSize}px`, '--palette-swatch-gap': `${previewGap}px` } as React.CSSProperties
-            return <button key={palette.id} type="button" aria-pressed={activePaletteId === palette.id} className={`palette-library-item ${activePaletteId === palette.id ? 'selected' : ''}`} title={t(palette.builtIn ? 'palette.builtInHint' : 'palette.userDeleteHint')} onClick={() => applyStoredPalette(palette)} onContextMenu={(event) => { event.preventDefault(); if (palette.builtIn) { store.setMessage(t('palette.builtInDeleteBlocked')); setPaletteContext(null); return } setPaletteContext({ id: palette.id, x: Math.min(event.clientX, window.innerWidth - 150), y: Math.min(event.clientY, window.innerHeight - 42) }) }}>
+            return <button key={palette.id} type="button" aria-pressed={activePaletteId === palette.id} className={`palette-library-item ${activePaletteId === palette.id ? 'selected' : ''}`} onClick={() => applyStoredPalette(palette)} onContextMenu={(event) => {
+              event.preventDefault()
+              event.stopPropagation()
+              const dialog = event.currentTarget.closest<HTMLElement>('.modal')
+              const zIndex = (dialog ? Number.parseInt(getComputedStyle(dialog).zIndex, 10) || 720 : 720) + 1
+              setPaletteContext({ id: palette.id, x: Math.min(event.clientX, window.innerWidth - 150), y: Math.min(event.clientY, window.innerHeight - 42), zIndex })
+            }}>
               <span className="palette-library-name">{paletteDisplayName(palette)}</span>
               <span className="palette-library-swatches" aria-hidden="true" style={previewStyle}>{previewColors.map((color, index) => <span key={index} className="palette-swatch-wrap palette-color-cell"><i className={`swatch palette-slot occupied ${color.a === 0 ? 'transparent' : ''}`} style={{ '--swatch-color': colorCss(color) } as React.CSSProperties} /></span>)}</span>
             </button>
@@ -1090,7 +1118,7 @@ function PalettePanelComponent({ session, docked = false, onDockDragStart, onPan
     document.body
   )}
   {paletteActionsOpen && createPortal(<span ref={paletteActionsPopoverRef} className="palette-actions-popover context-menu" role="menu" aria-label={t('palette.actions')} style={paletteActionsPopoverPosition}><span className="palette-layout-mode-menu" role="group" aria-label={t('palette.layoutMode')}>{(['auto', 'manual'] as const).map((mode) => <button key={mode} type="button" className="context-menu-item" role="menuitemradio" aria-checked={paletteLayoutMode === mode} onClick={() => choosePaletteLayoutMode(mode)}><span className="menu-check">{paletteLayoutMode === mode && <PixelUtilityIcon kind="check" />}</span><span className="palette-menu-label">{t(mode === 'auto' ? 'palette.layoutAuto' : 'palette.layoutManual')}</span></button>)}</span><span className="context-menu-divider" /><button type="button" className="context-menu-item" role="menuitem" onClick={openExtractDialog}><PixelUtilityIcon kind="extractColors" /><span className="palette-menu-label">{t('palette.extractColors')}</span></button><Tooltip className="palette-menu-tooltip" content={<><strong>{t('palette.syncColors')}</strong><span>{t('palette.syncColorsHint')}</span></>}><button type="button" className="context-menu-item" role="menuitemcheckbox" aria-checked={syncPaletteColors} onClick={togglePaletteColorSynchronization}><span className="menu-check">{syncPaletteColors && <PixelUtilityIcon kind="check" />}</span><span className="palette-menu-label">{t('palette.syncColors')}</span></button></Tooltip><span className="context-menu-divider" /><div className="menu-submenu palette-sort-menu"><button type="button" className="context-menu-item menu-submenu-trigger" aria-haspopup="menu"><PixelUtilityIcon kind="moreLines" /><span className="menu-submenu-label">{t('palette.sortAndGradients')}</span><span className="menu-submenu-arrow" aria-hidden="true"><PixelUtilityIcon kind="right" /></span></button><span className="context-menu menu-popover menu-submenu-popover palette-sort-popover component-scrollbar" role="menu" aria-label={t('palette.sortAndGradients')}><button type="button" className="context-menu-item" role="menuitem" onClick={() => { store.reversePaletteColors(); setPaletteActionsOpen(false) }}><PixelUtilityIcon kind="redo" /><span>{t('palette.reverseColors')}</span></button><button type="button" className="context-menu-item" role="menuitem" disabled={gradientSelectionSlots.length < 2} title={gradientSelectionSlots.length < 2 ? t('palette.gradientSelectionRequired') : undefined} onClick={() => applyPaletteGradient(false)}><span className="palette-sort-preview" data-sort-mode="gradient" aria-hidden="true" /><span>{t('palette.gradient')}</span></button><button type="button" className="context-menu-item" role="menuitem" disabled={gradientSelectionSlots.length < 2} title={gradientSelectionSlots.length < 2 ? t('palette.gradientSelectionRequired') : undefined} onClick={() => applyPaletteGradient(true)}><span className="palette-sort-preview" data-sort-mode="hue-gradient" aria-hidden="true" /><span>{t('palette.hueGradient')}</span></button><span className="context-menu-divider" />{PALETTE_SORT_OPTIONS.map((option) => <button key={option.mode} type="button" className="context-menu-item" role="menuitem" onClick={() => sortPalette(option.mode)}><span className="palette-sort-preview" data-sort-mode={option.mode} aria-hidden="true" /><span>{t(option.label)}</span></button>)}<span className="context-menu-divider" />{(['ascending', 'descending'] as PaletteSortDirection[]).map((direction) => <button key={direction} type="button" className="context-menu-item" role="menuitemradio" aria-checked={paletteSortDirection === direction} onClick={() => choosePaletteSortDirection(direction)}><span className="menu-check">{paletteSortDirection === direction && <PixelUtilityIcon kind="check" />}</span><span>{t(direction === 'ascending' ? 'palette.sort.ascending' : 'palette.sort.descending')}</span></button>)}</span></div><span className="context-menu-divider" />{PALETTE_SWATCH_SIZE_ORDER.map((size) => <button key={size} type="button" className="context-menu-item" role="menuitemradio" aria-checked={swatchSize === size} title={t('palette.pixels', { count: PALETTE_SWATCH_PIXELS[size] })} onClick={() => chooseSwatchSize(size)}><span className="menu-check">{swatchSize === size && <PixelUtilityIcon kind="check" />}</span><span className="palette-menu-label">{t(PALETTE_SWATCH_SIZE_LABEL_KEYS[size])}</span></button>)}<span className="context-menu-divider" /><button type="button" className="context-menu-item" role="menuitem" onClick={openSaveDialog}><PixelUtilityIcon kind="save" /><span className="palette-menu-label">{t('palette.savePalette')}</span></button></span>, document.body)}
-  {paletteContext && createPortal(<span ref={paletteContextRef} className="palette-library-context" role="menu" style={{ left: paletteContext.x, top: paletteContext.y }}><button type="button" role="menuitem" onClick={() => void deleteStoredPalette(paletteContext.id)}><PixelUtilityIcon kind="delete" /><span>{t('palette.deletePalette')}</span></button></span>, document.body)}
+  {paletteContext && createPortal(<span ref={paletteContextRef} className="palette-library-context" role="menu" style={{ left: paletteContext.x, top: paletteContext.y, zIndex: paletteContext.zIndex }}><button type="button" role="menuitem" onClick={() => void deleteStoredPalette(paletteContext.id)}><PixelUtilityIcon kind="delete" /><span>{t('palette.deletePalette')}</span></button></span>, document.body)}
   {extractOpen && createPortal(<ModalShell as="form" storageKey="palette-extract" defaultWidth={480} defaultHeight={430} minWidth={480} className="palette-operation-dialog" role="dialog" aria-labelledby="palette-extract-title" onSubmit={(event) => { event.preventDefault(); void extractFromImage() }}>
     <DialogHeader eyebrow="PALETTE" title={t('palette.extractTitle')} titleId="palette-extract-title" closeLabel={t('common.close')} onClose={() => setExtractOpen(false)} />
     <div className="modal-body palette-dialog-body">
