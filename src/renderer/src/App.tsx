@@ -289,7 +289,7 @@ export default function App() {
     selectionOverride: () => selectionCommandOverrideRef.current,
     onEscape: (event) => {
       const hasPaletteSurface = Boolean(
-        document.querySelector('.palette-operation-dialog, .palette-library-popover, .palette-actions-popover, .palette-library-context')
+        document.querySelector('.palette-operation-dialog, .palette-library-dialog, .palette-actions-popover, .palette-library-context')
       )
       const hasOwnedPopover = Boolean(document.querySelector('.document-tab-context-menu, .tool-flyout, .brush-library, .brush-size-popover'))
       const dialogChoice =
