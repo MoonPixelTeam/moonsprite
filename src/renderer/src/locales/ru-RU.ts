@@ -236,7 +236,7 @@ export const ruRUMessages = {
   "core.document.transparentColor": "Прозрачный",
   "core.document.inkBlack": 'Инк Черный',
   "core.document.moonBlue": 'Луна синий',
-  "core.document.colorName": "Цвет {id}",
+  "core.document.colorName": "{id}",
   "core.document.copySuffix": "Копировать",
   "core.document.activeLayerMissing": "Этот active Слой не существует.",
   "core.document.layerMissing": "Этот Слой не существует.",

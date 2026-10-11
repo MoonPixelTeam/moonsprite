@@ -27,13 +27,15 @@ import { createExportConflictHandler } from './workspace-export-conflicts'
 import { requestTilesetPanelVisibility, documentUsesTilesetPanel } from './workspace-tileset-panel'
 import { normalizeAnimationSelection } from './workspace-animation-selection'
 import { loadEditorPreferences } from '@/core/file-preferences'
+import { builtInPalettes } from '@/core/built-in-palettes'
 
 const applyStoredPaletteToNewDocument = (document: SpriteDocument, palette: StoredPalette): void => {
   const paletteSession = sessionFromDocument(document)
   const layout = palette.columns !== undefined && palette.slots !== undefined
     ? { columns: palette.columns, slots: palette.slots }
     : undefined
-  applyPaletteCommand(paletteSession, palette.colors.map((color) => ({ ...color })), layout, palette.names)
+  const names = palette.names ?? (palette.id === 'markd-221' ? builtInPalettes.find((item) => item.id === palette.id)?.names : undefined)
+  applyPaletteCommand(paletteSession, palette.colors.map((color) => ({ ...color })), layout, names)
   // The temporary session only applies the document data; its UI state and history
   // are intentionally discarded before the new document enters the workspace.
   document.paletteColumns = normalizePaletteColumns(document.paletteColumns)

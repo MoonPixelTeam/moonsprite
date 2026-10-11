@@ -54,6 +54,7 @@ export function createPaletteGridResize(grid: HTMLElement, sourceColumns: number
   }))
   const lines = new Map([...grid.querySelectorAll<HTMLElement>('[data-palette-line]')].map(line => [line.dataset.paletteLine!, line]))
   const outline = grid.querySelector<HTMLElement>('[data-palette-selection-outline]')
+  const growHandle = grid.querySelector<HTMLElement>('[data-palette-grow]')
   const setNumber = (element: HTMLElement, name: string, value: number): void => {
     const text = String(value)
     if (element.style.getPropertyValue(name) !== text) element.style.setProperty(name, text)
@@ -65,6 +66,13 @@ export function createPaletteGridResize(grid: HTMLElement, sourceColumns: number
       // Only the grid owner needs this value. An inherited variable here would
       // invalidate every swatch and border on each column change.
       if (surface) setNumber(surface, '--palette-layout-columns', surfaceColumns)
+      if (mode === 'auto' && growHandle) {
+        const handleSlot = Number(growHandle.dataset.paletteGrowSlot ?? buttons.length)
+        setNumber(growHandle, '--palette-grow-column', handleSlot % surfaceColumns)
+        setNumber(growHandle, '--palette-grow-row', Math.floor(handleSlot / surfaceColumns))
+        growHandle.style.left = `calc(${handleSlot % surfaceColumns} * (var(--swatch-size) + var(--palette-swatch-gap)))`
+        growHandle.style.top = `calc(${Math.floor(handleSlot / surfaceColumns)} * (var(--swatch-size) + var(--palette-swatch-gap)))`
+      }
       if (mode === 'auto') for (const cell of cells) {
         if (!cell.element) continue
         for (const [name, enabled] of Object.entries(autoCellEdges(cell.index, surfaceColumns, buttons.length))) {

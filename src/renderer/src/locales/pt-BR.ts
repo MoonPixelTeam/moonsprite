@@ -236,7 +236,7 @@ export const ptBRMessages = {
   "core.document.transparentColor": "Transparente",
   "core.document.inkBlack": 'Inca Negra',
   "core.document.moonBlue": 'Lua Azul',
-  "core.document.colorName": "Cor {id}",
+  "core.document.colorName": "{id}",
   "core.document.copySuffix": "Copiar",
   "core.document.activeLayerMissing": "O active Camada não existe.",
   "core.document.layerMissing": "O Camada não existe.",

@@ -228,7 +228,7 @@ export const frFRMessages = {
   'core.document.transparentColor': 'Transparent',
   'core.document.inkBlack': 'Ink noir',
   'core.document.moonBlue': 'La Lune bleue',
-  'core.document.colorName': 'Couleur {id}',
+  'core.document.colorName': '{id}',
   'core.document.copySuffix': 'Copier',
   'core.document.activeLayerMissing': 'La calque active n’existe pas.',
   'core.document.layerMissing': 'La calque n’existe pas.',

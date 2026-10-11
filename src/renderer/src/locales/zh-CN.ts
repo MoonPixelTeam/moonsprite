@@ -251,7 +251,7 @@ export const zhCNMessages = {
   'core.document.transparentColor': '透明',
   'core.document.inkBlack': '墨黑',
   'core.document.moonBlue': '月蓝',
-  'core.document.colorName': '颜色 {id}',
+  'core.document.colorName': '{id}',
   'core.document.copySuffix': '副本',
   'core.document.activeLayerMissing': '当前图层不存在',
   'core.document.layerMissing': '图层不存在',

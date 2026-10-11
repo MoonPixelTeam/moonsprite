@@ -253,7 +253,7 @@ export const enUSMessages = {
   'core.document.transparentColor': 'Transparent',
   'core.document.inkBlack': 'Ink Black',
   'core.document.moonBlue': 'Moon Blue',
-  'core.document.colorName': 'Color {id}',
+  'core.document.colorName': '{id}',
   'core.document.copySuffix': 'Copy',
   'core.document.activeLayerMissing': 'The active layer does not exist.',
   'core.document.layerMissing': 'The layer does not exist.',

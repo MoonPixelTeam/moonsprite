@@ -228,7 +228,7 @@ export const koKRMessages = {
   'core.document.transparentColor': '투명',
   'core.document.inkBlack': '잉크 블랙',
   'core.document.moonBlue': '달 블루',
-  'core.document.colorName': '색상 {id}',
+  'core.document.colorName': '{id}',
   'core.document.copySuffix': '복사',
   'core.document.activeLayerMissing': '활성 층은 존재하지 않는다.',
   'core.document.layerMissing': '층은 존재하지 않는다.',

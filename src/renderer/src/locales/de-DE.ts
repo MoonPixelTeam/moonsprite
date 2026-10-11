@@ -236,7 +236,7 @@ export const deDEMessages = {
   "core.document.transparentColor": 'Transparent',
   "core.document.inkBlack": 'Ink Schwarz',
   "core.document.moonBlue": 'Mondblau',
-  "core.document.colorName": "Farbe {id}",
+  "core.document.colorName": "{id}",
   "core.document.copySuffix": "Kopieren",
   "core.document.activeLayerMissing": "Die aktive Ebene existiert nicht.",
   "core.document.layerMissing": "Die Ebene existiert nicht.",

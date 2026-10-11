@@ -228,7 +228,7 @@ export const jaJPMessages = {
   'core.document.transparentColor': '透明',
   'core.document.inkBlack': 'インクブラック',
   'core.document.moonBlue': '月 ブルー',
-  'core.document.colorName': 'カラー {id}',
+  'core.document.colorName': '{id}',
   'core.document.copySuffix': 'コピー',
   'core.document.activeLayerMissing': 'アクティブなレイヤーは存在しない。',
   'core.document.layerMissing': 'レイヤーは存在しない。',

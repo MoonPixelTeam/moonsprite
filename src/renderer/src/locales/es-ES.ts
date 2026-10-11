@@ -228,7 +228,7 @@ export const esESMessages = {
   'core.document.transparentColor': 'Transparente',
   'core.document.inkBlack': 'El Inca Negro',
   'core.document.moonBlue': 'Luna Azul',
-  'core.document.colorName': 'Coloración {id}',
+  'core.document.colorName': '{id}',
   'core.document.copySuffix': 'Copiar',
   'core.document.activeLayerMissing': 'La capa activa no existe.',
   'core.document.layerMissing': 'La capa no existe.',

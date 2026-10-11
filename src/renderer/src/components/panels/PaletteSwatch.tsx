@@ -45,7 +45,7 @@ export const PaletteSwatch = memo(function PaletteSwatch({ slot, id, className, 
     title={label} aria-label={label} aria-pressed={selected}
     style={{ '--swatch-color': color, '--swatch-corner-color': markerColor } as CSSProperties}
     onContextMenu={(event) => event.preventDefault()}
-    onPointerDown={(event) => actions.begin(event, slot, id ?? null)}
+    onPointerDown={(event) => { if (event.detail > 1) { event.preventDefault(); event.stopPropagation(); return } actions.begin(event, slot, id ?? null) }}
     onDoubleClick={(event) => { event.preventDefault(); event.stopPropagation(); actions.edit ? actions.edit(slot, id ?? null) : actions.add(slot) }}
   />}{displayName && !editingName && <span className="palette-color-name" style={{ color: displayNameColor }}>{displayName}</span>}</span>
 })
