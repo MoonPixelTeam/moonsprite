@@ -159,7 +159,9 @@ export function createFillCanvasInput(ports: Ports) {
         {
           sourceColorAt: session.fillReference === 'visible-layers' ? createCompositePointSampler(session.document) : undefined,
           connectivity: session.fillConnectivity
-        }
+        },
+        session.fillPatternMode,
+        session.fillPatternSettings
       )
       if (edit) {
         const commitStartedAt = operationProbe?.recordOperationStage ? performance.now() : 0

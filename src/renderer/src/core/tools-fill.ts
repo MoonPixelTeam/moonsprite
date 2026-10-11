@@ -1,4 +1,4 @@
-import type { BrushPaintMode, BrushTexture, ImageBrush, ImageBrushSettings } from '@shared/types-brush'
+import type { BrushPaintMode, BrushTexture, FillPatternMode, FillPatternSettings, ImageBrush, ImageBrushSettings } from '@shared/types-brush'
 import type { RasterLayer } from '@shared/types-layer'
 import type { RgbaColor } from '@shared/types-color'
 import type { SelectionMask } from '@shared/types-selection'
@@ -8,12 +8,12 @@ import { beginPixelEdit, pixelEditHasChanges, preparePixelEdit, recordPixel, rec
 import { createFillPixelRecorder } from './fill-pixel-recorder'
 import { isInBounds, packColor, pixelIndex, unpackColor } from './raster'
 import { packedColorMatchesTolerance, selectionContains } from './selection'
-import { proceduralBrushCoverageAt } from './brushes'
 import { symmetryPoints, type SymmetryAxes, type SymmetryCenter } from './symmetry'
 import { readSurfacePackedRegion } from './runtime-raster'
 import { mergeFillPixelEdit } from './fill-history'
 import { contiguousMatchingRegion, contiguousMatchingRegionInBounds, type BinaryRegionBounds } from './contiguous-region'
-import { clampSelection, insideSelection, paintLayerValue, brushTextureContains, imageBrushCoverage, wrappedIndex, imageBrushCoverageAt, ensureLayerCoversEditRect, EDIT_EXPANSION_PADDING } from './tools-pixel-edit'
+import { clampSelection, insideSelection, paintLayerValue, brushTextureContains, ensureLayerCoversEditRect, EDIT_EXPANSION_PADDING } from './tools-pixel-edit'
+import { createImageFillSampler } from './pattern-fill-sampler'
 
 const COMPACT_FILL_MIN_PIXELS = 512 * 512
 
@@ -358,7 +358,7 @@ export interface FloodFillRegionOptions {
   connectivity?: 4 | 8
 }
 
-export function floodFill(document: SpriteDocument, layer: RasterLayer, startX: number, startY: number, color: RgbaColor, selection?: SelectionMask | null, contiguous = true, imageBrush: ImageBrush | null = null, brushSize = 1, imageBrushSettings?: ImageBrushSettings, brushTexture: BrushTexture = 'solid', brushTextureScale = 1, proceduralAntialiasStrength = 0, brushPaintMode: BrushPaintMode = 'paint', tolerance = 0, gapClosingThreshold = 0, profiler?: PixelOperationProfiler, options?: FloodFillRegionOptions): PixelEdit | null {
+export function floodFill(document: SpriteDocument, layer: RasterLayer, startX: number, startY: number, color: RgbaColor, selection?: SelectionMask | null, contiguous = true, imageBrush: ImageBrush | null = null, brushSize = 1, imageBrushSettings?: ImageBrushSettings, brushTexture: BrushTexture = 'solid', brushTextureScale = 1, proceduralAntialiasStrength = 0, brushPaintMode: BrushPaintMode = 'paint', tolerance = 0, gapClosingThreshold = 0, profiler?: PixelOperationProfiler, options?: FloodFillRegionOptions, fillPatternMode: FillPatternMode = 'default', fillPatternSettings?: FillPatternSettings): PixelEdit | null {
   if (!isInBounds(document.width, document.height, startX, startY) || isLayerEffectivelyLocked(document, layer) || (selection && !insideSelection(selection, startX, startY))) return null
   const startWasOutsideLayer = layerIndexAt(layer, startX, startY) === null
   if (startWasOutsideLayer && !ensureLayerCoversCanvas(document, layer)) return null
@@ -541,35 +541,9 @@ export function floodFill(document: SpriteDocument, layer: RasterLayer, startX: 
       return floodFillSolidRuns(document, layer, startX, startY, target, next, selection, contiguous)
     }
   }
-  const textureCoverage = (x: number, y: number): number => {
-    if (!imageBrush) return brushTextureContains(brushTexture, x, y, brushTextureScale) ? 255 : 0
-    const originX = brushPaintMode === 'pattern-source' ? imageBrush.sourceX ?? 0 : brushPaintMode === 'pattern-target' ? startX : 0
-    const originY = brushPaintMode === 'pattern-source' ? imageBrush.sourceY ?? 0 : brushPaintMode === 'pattern-target' ? startY : 0
-    const sampleX = x - originX
-    const sampleY = y - originY
-    const sampleSize = imageBrush.id.startsWith('procedural:') || brushPaintMode !== 'paint'
-      ? Math.max(imageBrush.width, imageBrush.height)
-      : brushSize
-    if (imageBrush.id.startsWith('procedural:')) return imageBrushCoverage(proceduralBrushCoverageAt(imageBrush.id, sampleX, sampleY, sampleSize, imageBrush.proceduralSettings), sampleX, sampleY, imageBrushSettings, proceduralAntialiasStrength)
-    const sourceColors = imageBrush.paintColors ?? imageBrush.colors
-    if (sourceColors && sourceColors.length === imageBrush.width * imageBrush.height) {
-      const source = unpackColor(sourceColors[wrappedIndex(sampleY, imageBrush.height) * imageBrush.width + wrappedIndex(sampleX, imageBrush.width)] ?? 0)
-      return source.a > 0 ? 255 : 0
-    }
-    return imageBrush.intrinsicSize ? imageBrush.coverage[wrappedIndex(sampleY, imageBrush.height) * imageBrush.width + wrappedIndex(sampleX, imageBrush.width)] ?? 0 : imageBrushCoverageAt(imageBrush, sampleX, sampleY, sampleSize, imageBrushSettings)
-  }
-  const textureColorAt = (x: number, y: number): RgbaColor | undefined => {
-    if (!imageBrush) return undefined
-    const sourceColors = imageBrush.paintColors ?? imageBrush.colors
-    if (!sourceColors || sourceColors.length !== imageBrush.width * imageBrush.height) return undefined
-    const originX = brushPaintMode === 'pattern-source' ? imageBrush.sourceX ?? 0 : brushPaintMode === 'pattern-target' ? startX : 0
-    const originY = brushPaintMode === 'pattern-source' ? imageBrush.sourceY ?? 0 : brushPaintMode === 'pattern-target' ? startY : 0
-    const sampleX = x - originX
-    const sampleY = y - originY
-    const index = wrappedIndex(sampleY, imageBrush.height) * imageBrush.width + wrappedIndex(sampleX, imageBrush.width)
-    const source = unpackColor(sourceColors[index] ?? 0)
-    return source.a > 0 ? source : undefined
-  }
+  const imageSampler = imageBrush ? createImageFillSampler(imageBrush, brushSize, imageBrushSettings, proceduralAntialiasStrength, brushPaintMode, { x: startX, y: startY }, selection ? clampSelection(document, selection) ?? { x: 0, y: 0, width: 0, height: 0 } : { x: 0, y: 0, width: document.width, height: document.height }, fillPatternMode, fillPatternSettings, color) : null
+  const textureCoverage = (x: number, y: number): number => imageSampler ? imageSampler.sample(x, y).coverage : brushTextureContains(brushTexture, x, y, brushTextureScale) ? 255 : 0
+  const textureColorAt = (x: number, y: number): RgbaColor | undefined => imageSampler?.sample(x, y).color
   const constantFillValue = color.a === 0
     ? layer.format === 'rgba' ? packColor(color) : 0
     : color.a === 255
@@ -673,14 +647,14 @@ export function floodFill(document: SpriteDocument, layer: RasterLayer, startX: 
   return pixelEditHasChanges(edit) ? edit : null
 }
 
-export function floodFillSymmetric(document: SpriteDocument, layer: RasterLayer, startX: number, startY: number, color: RgbaColor, selection: SelectionMask | null | undefined, contiguous: boolean, imageBrush: ImageBrush | null, brushSize: number, imageBrushSettings: ImageBrushSettings | undefined, brushTexture: BrushTexture, brushTextureScale: number, proceduralAntialiasStrength: number, brushPaintMode: BrushPaintMode, symmetryAxes?: SymmetryAxes, symmetryCenter?: SymmetryCenter, tolerance = 0, gapClosingThreshold = 0, profiler?: PixelOperationProfiler, options?: FloodFillRegionOptions): PixelEdit | null {
+export function floodFillSymmetric(document: SpriteDocument, layer: RasterLayer, startX: number, startY: number, color: RgbaColor, selection: SelectionMask | null | undefined, contiguous: boolean, imageBrush: ImageBrush | null, brushSize: number, imageBrushSettings: ImageBrushSettings | undefined, brushTexture: BrushTexture, brushTextureScale: number, proceduralAntialiasStrength: number, brushPaintMode: BrushPaintMode, symmetryAxes?: SymmetryAxes, symmetryCenter?: SymmetryCenter, tolerance = 0, gapClosingThreshold = 0, profiler?: PixelOperationProfiler, options?: FloodFillRegionOptions, fillPatternMode: FillPatternMode = 'default', fillPatternSettings?: FillPatternSettings): PixelEdit | null {
   let merged = beginPixelEdit(layer.id)
   const seeds = symmetryPoints({ x: startX, y: startY }, document.width, document.height, symmetryAxes, symmetryCenter)
   for (const seed of seeds) {
     const oldWidth = layer.width
     const oldOrigin = getLayerStorageOrigin(layer)
     const fillStartedAt = profiler ? performance.now() : 0
-    const edit = floodFill(document, layer, seed.x, seed.y, color, selection, contiguous, imageBrush, brushSize, imageBrushSettings, brushTexture, brushTextureScale, proceduralAntialiasStrength, brushPaintMode, tolerance, gapClosingThreshold, profiler, options)
+    const edit = floodFill(document, layer, seed.x, seed.y, color, selection, contiguous, imageBrush, brushSize, imageBrushSettings, brushTexture, brushTextureScale, proceduralAntialiasStrength, brushPaintMode, tolerance, gapClosingThreshold, profiler, options, fillPatternMode, fillPatternSettings)
     profiler?.record('bucket.flood-fill', performance.now() - fillStartedAt, {
       points: (edit?.before.size ?? 0) + (edit?.points?.count ?? 0),
       runs: edit?.runs?.length ?? 0,

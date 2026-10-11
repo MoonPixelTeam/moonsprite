@@ -1,4 +1,4 @@
-import type { BrushDitherSettings, GradientStop, ImageBrush, InkMode, LiquifyMode } from '@shared/types-brush'
+import type { BrushDitherSettings, FillPatternMode, FillPatternSettings, GradientStop, ImageBrush, InkMode, LiquifyMode } from '@shared/types-brush'
 import { createId } from '@/core/document-model'
 import { isCanvasToolGestureLocked } from '@/core/canvas-tool-gesture-lock'
 import { pendingGradientFor } from '@/core/canvas-gradient-confirmation'
@@ -7,6 +7,7 @@ import { createProceduralBrush, isProceduralBrushId, normalizeProceduralBrushSet
 import { publishBrushLibraryChanged } from '@/core/brush-library-events'
 import { brushLibraryLocation } from '@/core/brush-library-location'
 import { loadEditorPreferences, saveEditorPreferences } from '@/core/file-preferences'
+import { normalizeFillPatternSettings } from '@/core/pattern-fill-settings'
 import { defaultToolSettings } from '@/core/tool-preferences'
 import { normalizeGapClosingThreshold } from '@/core/contiguous-region'
 import { normalizeBrushDitherSettings } from '@/core/gradient-color'
@@ -464,6 +465,16 @@ export function createWorkspaceToolCommands({ get, set }: WorkspaceCommandContex
     setFillMode(mode) {
       get().mutateActive((session) => {
         session.fillMode = mode === 'contiguous' && session.fillMode === 'contiguous' ? 'global' : mode
+        persistToolSettings(session)
+      }, false)
+    },
+
+    setFillPatternMode(mode: FillPatternMode) { get().mutateActive((session) => { session.fillPatternMode = mode; persistToolSettings(session) }, false) },
+
+    setFillPatternSettings(settings: Partial<FillPatternSettings>) {
+      get().mutateActive((session) => {
+        const current = session.fillPatternSettings ?? defaultToolSettings.fillPatternSettings
+        session.fillPatternSettings = normalizeFillPatternSettings(settings, current)
         persistToolSettings(session)
       }, false)
     },
