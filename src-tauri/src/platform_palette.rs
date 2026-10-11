@@ -106,6 +106,10 @@ const DEFAULT_PALETTES: &[(&str, &str)] = &[
         "paper-ink-16.palette.json",
         include_str!("../../palettes/paper-ink-16.palette.json"),
     ),
+    (
+        "markd-221.palette.json",
+        include_str!("../../palettes/markd-221.palette.json"),
+    ),
 ];
 
 const LEGACY_DEFAULT_PALETTE_FILES: &[&str] = &[
