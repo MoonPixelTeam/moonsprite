@@ -4,12 +4,16 @@ import { captureSelectionTransform } from '@/core/tools-selection-transform'
 import { flipSelection } from '@/core/tools'
 import { preparedSelectionBackdrop, scheduleSelectionBackdrop } from './canvas-selection-prewarm'
 
-afterEach(() => vi.unstubAllGlobals())
+afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks() })
 function idleQueue() {
   const jobs = new Map<number, () => void>()
   let id = 0
-  vi.stubGlobal('requestIdleCallback', (job: () => void) => { jobs.set(++id, job); return id })
-  vi.stubGlobal('cancelIdleCallback', (key: number) => jobs.delete(key))
+  const request = (job: () => void) => { jobs.set(++id, job); return id }
+  const cancel = (key: number) => jobs.delete(key)
+  vi.stubGlobal('requestIdleCallback', request)
+  vi.stubGlobal('cancelIdleCallback', cancel)
+  vi.spyOn(window, 'requestIdleCallback').mockImplementation(request as typeof window.requestIdleCallback)
+  vi.spyOn(window, 'cancelIdleCallback').mockImplementation(cancel as typeof window.cancelIdleCallback)
   return { jobs, flush() { while (jobs.size) { const [key, job] = jobs.entries().next().value!; jobs.delete(key); job() } } }
 }
 
@@ -18,6 +22,7 @@ it('prepares only during idle time and reuses lower pixels with a newly captured
   const lower = document.layers[0], active = createLayer('active', 512, 512, 'rgba')
   document.layers.push(active)
   new Uint32Array(lower.pixels.buffer).fill(0xff503020)
+  new Uint32Array(active.pixels.buffer).fill(0xff000000)
   const composite = new DocumentCompositeCache(), read = vi.spyOn(composite, 'normalLayerRegion')
   const rect = { x: 100, y: 100, width: 200, height: 200 }
   const stop = scheduleSelectionBackdrop(composite, document, active.id, 1, rect, () => true)
@@ -36,15 +41,39 @@ it('prepares only during idle time and reuses lower pixels with a newly captured
   stop()
 })
 
-it.each(['pointerdown', 'keydown', 'cleanup', 'obsolete'])('cancels prewarm before work when %s occurs', reason => {
+it.each(['keydown', 'cleanup', 'obsolete'])('cancels prewarm before work when %s occurs', reason => {
   const idle = idleQueue(), document = createDocument('cancel preparation', 512, 512, 'rgba')
   const composite = new DocumentCompositeCache(), read = vi.spyOn(composite, 'normalLayerRegion')
+  new Uint32Array(document.layers[0].pixels.buffer).fill(0xff000000)
   const stop = scheduleSelectionBackdrop(composite, document, document.activeLayerId, 1, { x: 20, y: 20, width: 200, height: 200 }, () => reason !== 'obsolete')
   if (reason === 'cleanup') stop()
   else if (reason !== 'obsolete') window.dispatchEvent(new Event(reason))
   idle.flush()
   expect(read).not.toHaveBeenCalled()
   expect(preparedSelectionBackdrop(document, document.activeLayerId, 1)).toBeUndefined()
+  stop()
+})
+
+it('keeps prewarm scheduled across pointerdown', () => {
+  const idle = idleQueue(), document = createDocument('pointerdown keeps preparation', 512, 512, 'rgba')
+  const composite = new DocumentCompositeCache(), read = vi.spyOn(composite, 'normalLayerRegion')
+  new Uint32Array(document.layers[0].pixels.buffer).fill(0xff000000)
+  const stop = scheduleSelectionBackdrop(composite, document, document.activeLayerId, 1, { x: 20, y: 20, width: 200, height: 200 }, () => true)
+  window.dispatchEvent(new Event('pointerdown'))
+  idle.flush()
+  expect(read).toHaveBeenCalled()
+  stop()
+})
+
+it('stops deferred prewarm when the current-drag guard becomes false', () => {
+  const idle = idleQueue(), document = createDocument('drag stops preparation', 512, 512, 'rgba')
+  const composite = new DocumentCompositeCache(), read = vi.spyOn(composite, 'normalLayerRegion')
+  new Uint32Array(document.layers[0].pixels.buffer).fill(0xff000000)
+  let current = true
+  const stop = scheduleSelectionBackdrop(composite, document, document.activeLayerId, 1, { x: 20, y: 20, width: 200, height: 200 }, () => current)
+  current = false
+  idle.flush()
+  expect(read).not.toHaveBeenCalled()
   stop()
 })
 

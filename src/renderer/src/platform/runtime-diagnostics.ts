@@ -29,6 +29,11 @@ const setNativeLagCapture = (enabled: boolean): void => {
 let installed = false
 let mode: DiagnosticMode | null = null
 let browserEvents: RuntimeDiagnosticEvent[] | undefined
+let activeContext: (() => RuntimeDiagnosticDetail) | undefined
+const captureBrowserTrace = async (reason: string, detail: RuntimeDiagnosticDetail = {}): Promise<void> => {
+  const capture = await invoke('capture_browser_trace', { reason, context: { ...activeContext?.(), ...detail, pageTimeOrigin: performance.timeOrigin, diagnosticSessionId: runtimeDiagnosticSnapshot().at(-1)?.sessionId ?? null } })
+  recordRuntimeDiagnostic('operation-stage', 'lag.browser-trace-saved', { capture: JSON.stringify(capture) })
+}
 
 const readBrowserEvents = (): RuntimeDiagnosticEvent[] => {
   if (browserEvents) return browserEvents
@@ -67,6 +72,7 @@ const writer = createDiagnosticWriter(persistEvents, persistBrowserFallback)
 export const installRuntimeDiagnostics = (contextProvider: () => RuntimeDiagnosticDetail): (() => void) => {
   if (installed) return () => {}
   installed = true
+  activeContext = contextProvider
   let stopLagCapture: (() => void) | null = null
   let stopWatchdog: (() => void) | null = null
   const refresh = (): void => {
@@ -87,22 +93,29 @@ export const installRuntimeDiagnostics = (contextProvider: () => RuntimeDiagnost
         setNativeLagCapture(true)
         stopLagCapture = installRuntimeLagCapture({
           record: (name, detail) => recordRuntimeDiagnostic('operation-stage', name, detail, name === 'lag.workspace'),
+          incident: '__TAURI_INTERNALS__' in window ? detail => {
+            void captureBrowserTrace('renderer-incident', detail).catch(error => recordRuntimeDiagnostic('error', 'lag.browser-trace-error', { message: String(error) }))
+          } : undefined,
           resources: '__TAURI_INTERNALS__' in window ? () => invoke<LagResourceSample>('sample_lag_resources', { rendererVisible: !document.hidden }) : undefined
         })
       }
     }
   }
   const checkpoint = (): void => { if (mode === 'full' || mode === 'lag') { writer.checkpoint(); void writer.flush() } }
+  const pageHide = (): void => { checkpoint(); if (mode === 'lag') setNativeLagCapture(false) }
+  const pageShow = (): void => { if (mode === 'lag') setNativeLagCapture(true) }
   const visibilityChange = (): void => { if (document.visibilityState === 'hidden') checkpoint() }
   window.addEventListener(DIAGNOSTIC_MODE_CHANGED, refresh)
   window.addEventListener('moonsprite:preferences-changed', refresh)
-  window.addEventListener('pagehide', checkpoint)
+  window.addEventListener('pagehide', pageHide)
+  window.addEventListener('pageshow', pageShow)
   document.addEventListener('visibilitychange', visibilityChange)
   refresh()
   return () => {
     window.removeEventListener(DIAGNOSTIC_MODE_CHANGED, refresh)
     window.removeEventListener('moonsprite:preferences-changed', refresh)
-    window.removeEventListener('pagehide', checkpoint)
+    window.removeEventListener('pagehide', pageHide)
+    window.removeEventListener('pageshow', pageShow)
     document.removeEventListener('visibilitychange', visibilityChange)
     if (mode === 'lag') setNativeLagCapture(false)
     stopLagCapture?.()
@@ -112,11 +125,18 @@ export const installRuntimeDiagnostics = (contextProvider: () => RuntimeDiagnost
     setRuntimeDiagnosticCollection(false)
     configureRuntimeDiagnostics(null)
     installed = false
+    activeContext = undefined
     mode = null
   }
 }
 
 export const openRuntimeDiagnosticLogs = async (): Promise<void> => {
+  if (mode === 'lag' && '__TAURI_INTERNALS__' in window) {
+    try { await captureBrowserTrace('manual-save') } catch (error) {
+      recordRuntimeDiagnostic('error', 'lag.browser-trace-manual-error', { message: String(error) })
+      // Existing logs remain accessible when tracing is busy or unavailable.
+    }
+  }
   if (mode === 'full' || mode === 'lag') await writer.flush()
   const saved = mode === 'full' || mode === 'lag' ? readBrowserEvents() : []
   if ('__TAURI_INTERNALS__' in window && mode !== 'memory') {

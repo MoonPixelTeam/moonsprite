@@ -6,6 +6,7 @@ import {
 } from '@/core/document-composite-plan'
 import { readSurfacePackedRegion, readSurfaceRgbaRegion } from '@/core/runtime-raster'
 import { type GpuMovePreviewSurface, imageData, gpuBlendModeFor } from './canvas-composite-cache-surfaces'
+import { gpuLayerRect, gpuRunKey, planGpuMovePreview, type GpuMovePlan } from './canvas-composite-cache-gpu-plan'
 
 /** Browser-composited movement surfaces; failures leave the CPU fallback available. */
 export class CanvasGpuMovePreview {
@@ -15,17 +16,32 @@ export class CanvasGpuMovePreview {
    * never expose a partially rendered surface.
    */
   private gpuMovePreview: GpuMovePreviewSurface | null = null
+  private plan: GpuMovePlan | null = null
   constructor(private readonly maxCacheBytes: number) {}
-  clear(): void { this.gpuMovePreview = null }
+  private release(canvas: OffscreenCanvas): void { canvas.width = 0; canvas.height = 0 }
+  clear(): void {
+    const surface = this.gpuMovePreview
+    if (surface) {
+      this.release(surface.canvas)
+      for (const source of surface.sources.values()) this.release(source)
+      for (const group of surface.groupCanvases.values()) this.release(group.canvas)
+      for (const run of surface.layerRunCanvases.values()) this.release(run.canvas)
+    }
+    this.gpuMovePreview = null
+    this.plan = null
+  }
+  textureStats() { return { estimatedBytes: this.plan?.bytes ?? 0, sources: this.gpuMovePreview?.sources.size ?? 0,
+    groups: this.gpuMovePreview?.groupCanvases.size ?? 0, runs: this.gpuMovePreview?.layerRunCanvases.size ?? 0 } }
 /** Upload a layer once so subsequent move frames can use browser compositing. */
   private gpuLayerSourceFor(surface: GpuMovePreviewSurface, document: SpriteDocument, layer: RasterLayer): OffscreenCanvas | null {
     const cached = surface.sources.get(layer.id)
     if (cached) return cached
     if (layer.width <= 0 || layer.height <= 0 || layer.width * layer.height * 4 > this.maxCacheBytes) return null
+    let canvas: OffscreenCanvas | undefined
     try {
-      const canvas = new OffscreenCanvas(layer.width, layer.height)
+      canvas = new OffscreenCanvas(layer.width, layer.height)
       const sourceContext = canvas.getContext('2d')
-      if (!sourceContext) return null
+      if (!sourceContext) { this.release(canvas); return null }
       sourceContext.imageSmoothingEnabled = false
       let pixels: Uint8ClampedArray
       if (layer.format === 'rgba') {
@@ -48,6 +64,7 @@ export class CanvasGpuMovePreview {
       surface.sources.set(layer.id, canvas)
       return canvas
     } catch {
+      if (canvas) this.release(canvas)
       return null
     }
   }
@@ -60,6 +77,7 @@ export class CanvasGpuMovePreview {
   private drawGpuLayerList(target: OffscreenCanvasRenderingContext2D, surface: GpuMovePreviewSurface, document: SpriteDocument, layers: readonly RasterLayer[], originX: number, originY: number): boolean {
     try {
       for (const layer of layers) {
+        if (!gpuLayerRect(layer, surface)) continue
         const operation = gpuBlendModeFor(layer.blendMode)
         if (!operation || !layer.visible || layer.opacity <= 0) return false
         const source = this.gpuLayerSourceFor(surface, document, layer)
@@ -85,23 +103,27 @@ export class CanvasGpuMovePreview {
    * stale pixels behind. The enclosing GPU surface key includes the document
    * revision and blend settings, which invalidates the run after a real edit.
    */
-  private gpuStaticLayerRunCanvas(surface: GpuMovePreviewSurface, document: SpriteDocument, layers: readonly RasterLayer[], originX: number, originY: number): OffscreenCanvas | null {
+  private gpuStaticLayerRunCanvas(surface: GpuMovePreviewSurface, document: SpriteDocument, layers: readonly RasterLayer[]): { canvas: OffscreenCanvas; x: number; y: number } | null {
     if (layers.length === 0) return null
-    const key = `run:${originX}:${originY}:${layers.map((layer) => `${layer.id}:${layer.opacity}`).join(',')}`
-    let canvas = surface.layerRunCanvases.get(key)
-    if (canvas) return canvas
+    const key = gpuRunKey(layers)
+    const cached = surface.layerRunCanvases.get(key)
+    if (cached) return cached
+    const rect = this.plan?.runs.get(key)
+    if (!rect) return null
+    let canvas: OffscreenCanvas | undefined
     try {
-      canvas = new OffscreenCanvas(surface.width, surface.height)
+      canvas = new OffscreenCanvas(rect.width, rect.height)
       const context = canvas.getContext('2d')
-      if (!context) return null
+      if (!context) { this.release(canvas); return null }
       context.imageSmoothingEnabled = false
       context.globalCompositeOperation = 'source-over'
       context.globalAlpha = 1
-      context.clearRect(0, 0, surface.width, surface.height)
-      if (!this.drawGpuLayerList(context, surface, document, layers, originX, originY)) return null
-      surface.layerRunCanvases.set(key, canvas)
-      return canvas
+      if (!this.drawGpuLayerList(context, surface, document, layers, rect.x, rect.y)) { this.release(canvas); return null }
+      const entry = { canvas, x: rect.x, y: rect.y }
+      surface.layerRunCanvases.set(key, entry)
+      return entry
     } catch {
+      if (canvas) this.release(canvas)
       return null
     }
   }
@@ -138,25 +160,29 @@ export class CanvasGpuMovePreview {
       const staticRun: RasterLayer[] = []
       const flushStaticRun = (): boolean => {
         if (staticRun.length === 0) return true
-        const runCanvas = this.gpuStaticLayerRunCanvas(surface, document, staticRun, originX, originY)
+        if (!this.plan?.runs.has(gpuRunKey(staticRun))) { staticRun.length = 0; return true }
+        const runCanvas = this.gpuStaticLayerRunCanvas(surface, document, staticRun)
         staticRun.length = 0
         if (!runCanvas) return false
         target.globalCompositeOperation = 'source-over'
         if (target.globalCompositeOperation !== 'source-over') return false
         target.globalAlpha = 1
-        target.drawImage(runCanvas, 0, 0, surface.width, surface.height, 0, 0, surface.width, surface.height)
+        target.drawImage(runCanvas.canvas, 0, 0, runCanvas.canvas.width, runCanvas.canvas.height,
+          runCanvas.x - originX, runCanvas.y - originY, runCanvas.canvas.width, runCanvas.canvas.height)
         return true
       }
       for (const item of items) {
         if (item.kind === 'layer') {
           if (item.layer.blendMode === 'normal' && !movingLayerIds.has(item.layer.id)) {
             if (!item.layer.visible || item.layer.opacity <= 0) continue
+            if (!gpuLayerRect(item.layer, surface)) continue
             staticRun.push(item.layer)
             continue
           }
           if (!flushStaticRun()) return false
           const operation = gpuBlendModeFor(item.layer.blendMode)
           if (!operation || !item.layer.visible || item.layer.opacity <= 0) return false
+          if (!gpuLayerRect(item.layer, surface)) continue
           const source = this.gpuLayerSourceFor(surface, document, item.layer)
           if (!source) return false
           target.globalCompositeOperation = operation
@@ -171,25 +197,31 @@ export class CanvasGpuMovePreview {
           if (!this.drawGpuStackItems(target, surface, document, item.children, originX, originY, movingLayerIds)) return false
           continue
         }
-        let groupCanvas = surface.groupCanvases.get(item.group.id)
-        if (!groupCanvas || groupCanvas.width !== surface.width || groupCanvas.height !== surface.height) {
-          groupCanvas = new OffscreenCanvas(surface.width, surface.height)
-          surface.groupCanvases.set(item.group.id, groupCanvas)
+        const rect = this.plan?.groups.get(item.group.id)
+        if (!rect) continue
+        let entry = surface.groupCanvases.get(item.group.id)
+        if (!entry || entry.canvas.width !== rect.width || entry.canvas.height !== rect.height) {
+          if (entry) this.release(entry.canvas)
+          entry = { canvas: new OffscreenCanvas(rect.width, rect.height), x: rect.x, y: rect.y }
+          surface.groupCanvases.set(item.group.id, entry)
         }
+        entry.x = rect.x; entry.y = rect.y
+        const groupCanvas = entry.canvas
         const groupContext = groupCanvas.getContext('2d')
         if (!groupContext) return false
         groupContext.imageSmoothingEnabled = false
         groupContext.globalCompositeOperation = 'source-over'
         if (groupContext.globalCompositeOperation !== 'source-over') return false
         groupContext.globalAlpha = 1
-        groupContext.clearRect(0, 0, surface.width, surface.height)
-        if (!this.drawGpuStackItems(groupContext, surface, document, item.children, originX, originY, movingLayerIds)) return false
+        groupContext.clearRect(0, 0, groupCanvas.width, groupCanvas.height)
+        if (!this.drawGpuStackItems(groupContext, surface, document, item.children, rect.x, rect.y, movingLayerIds)) return false
         const operation = gpuBlendModeFor(item.group.blendMode)
         if (!operation) return false
         target.globalCompositeOperation = operation
         if (target.globalCompositeOperation !== operation) return false
         target.globalAlpha = item.group.opacity
-        target.drawImage(groupCanvas, 0, 0, surface.width, surface.height, 0, 0, surface.width, surface.height)
+        target.drawImage(groupCanvas, 0, 0, groupCanvas.width, groupCanvas.height,
+          rect.x - originX, rect.y - originY, groupCanvas.width, groupCanvas.height)
       }
       if (!flushStaticRun()) return false
       target.globalAlpha = 1
@@ -213,12 +245,16 @@ export class CanvasGpuMovePreview {
     stack: readonly CompositeStackItem[],
     movingLayerIds: readonly string[]
   ): OffscreenCanvas | null {
-    if (view.relativeLuminance || !this.gpuStackContainsLayers(stack, movingLayerIds)) return null
+    if (view.relativeLuminance || !this.gpuStackContainsLayers(stack, movingLayerIds)) { this.clear(); return null }
+    const moving = new Set(movingLayerIds)
+    const plan = planGpuMovePreview(stack, moving, { x, y, width, height }, this.maxCacheBytes)
+    if (!plan) { this.clear(); return null }
     let surface = this.gpuMovePreview
     if (!surface || surface.key !== key) {
+      this.clear()
       try {
         const canvas = new OffscreenCanvas(width, height)
-        if (!canvas.getContext('2d')) return null
+        if (!canvas.getContext('2d')) { this.release(canvas); return null }
         surface = {
           key,
           x,
@@ -226,7 +262,6 @@ export class CanvasGpuMovePreview {
           width,
           height,
           canvas,
-          baseCanvas: new OffscreenCanvas(width, height),
           movingLayers: [],
           upperLayers: [],
           groupCanvases: new Map(),
@@ -238,21 +273,34 @@ export class CanvasGpuMovePreview {
         return null
       }
     }
+    this.plan = plan
+    // Prune surfaces that left the visible stack before creating replacements.
+    for (const [id, canvas] of surface.sources) if (!plan.sources.has(id)) { this.release(canvas); surface.sources.delete(id) }
+    for (const [id, entry] of surface.groupCanvases) {
+      const rect = plan.groups.get(id)
+      if (!rect || entry.canvas.width !== rect.width || entry.canvas.height !== rect.height) { this.release(entry.canvas); surface.groupCanvases.delete(id) }
+    }
+    for (const [id, entry] of surface.layerRunCanvases) {
+      const rect = plan.runs.get(id)
+      if (!rect || entry.canvas.width !== rect.width || entry.canvas.height !== rect.height || entry.x !== rect.x || entry.y !== rect.y) { this.release(entry.canvas); surface.layerRunCanvases.delete(id) }
+    }
     const target = surface.canvas.getContext('2d')
-    if (!target) return null
+    if (!target) { this.clear(); return null }
     try {
       target.imageSmoothingEnabled = false
       target.globalCompositeOperation = 'source-over'
-      if (target.globalCompositeOperation !== 'source-over') return null
+      if (target.globalCompositeOperation !== 'source-over') { this.clear(); return null }
       target.globalAlpha = 1
       target.clearRect(0, 0, width, height)
-      if (!this.drawGpuStackItems(target, surface, document, stack, x, y, new Set(movingLayerIds))) return null
+      if (!this.drawGpuStackItems(target, surface, document, stack, x, y, moving)) { this.clear(); return null }
       target.globalAlpha = 1
       target.globalCompositeOperation = 'source-over'
-      return target.globalCompositeOperation === 'source-over' ? surface.canvas : null
+      if (target.globalCompositeOperation !== 'source-over') { this.clear(); return null }
+      return surface.canvas
     } catch {
       target.globalAlpha = 1
       target.globalCompositeOperation = 'source-over'
+      this.clear()
       return null
     }
   }

@@ -109,6 +109,8 @@ export const tilemapCelTargetAt = (document: SpriteDocument, layerId: string, fr
 }
 
 export const activeTilemapCelTarget = (document: SpriteDocument): TilemapCelTarget | null => {
+  // Read-only raster UI probes must not normalize unrelated animation cels.
+  if (!document.layers.some((layer) => layer.id === document.activeLayerId && layer.kind === 'tilemap')) return null
   const timeline = ensureAnimationDocument(document)
   return tilemapCelTargetAt(document, document.activeLayerId, timeline.activeFrameId)
 }

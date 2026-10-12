@@ -4,7 +4,7 @@ import type { AnimationCel, AnimationCelSurface } from '@shared/types-animation'
 import type { LayerMask } from '@shared/types-layer'
 import type { PaletteEntry } from '@shared/types-color'
 import { animationMaskAt, getRasterContentRevision } from '@/core/document-model'
-import { animationCelHasContent, createAnimationCelLookup } from '@/core/animation'
+import { animationCelAt, animationCelHasContent, resolveAnimationCel } from '@/core/animation'
 import { renderAnimationCelThumbnailPixels, renderLayerMaskThumbnailPixels } from '@/core/animation-thumbnail'
 import { useWorkspace } from '@/store/workspace'
 import { useI18n } from '@/components/I18nProvider'
@@ -14,6 +14,7 @@ import { notifyAnimationCelThumbnailPreview, notifyLayerMaskThumbnailPreview, re
 export const celContentCache = new WeakMap<object, Map<string, { revision: number; storageRevision: number; value: boolean }>>()
 
 export const celThumbnailCache = new WeakMap<object, Map<string, { revision: number; storageRevision: number; pixels: Uint8ClampedArray }>>()
+export const MAX_CEL_THUMBNAIL_VARIANT_BYTES = 128 * 1024
 
 // A live cel can keep the same storage across arbitrarily many palette,
 // position and opacity edits; WeakMap alone does not bound those variants.
@@ -27,19 +28,71 @@ const setCachedVariant = <T,>(entries: Map<string, T>, key: string, value: T): v
   }
 }
 
-export const scheduleThumbnailRender = (render: () => void): (() => void) => {
-  let timeoutId: number | null = null
-  if (typeof window.requestAnimationFrame !== 'function') {
-    timeoutId = window.setTimeout(render, 0)
-    return () => { if (timeoutId !== null) window.clearTimeout(timeoutId) }
+type CelThumbnailEntry = { revision: number; storageRevision: number; pixels: Uint8ClampedArray }
+
+export const rememberCelThumbnailVariant = (entries: Map<string, CelThumbnailEntry>, key: string, value: CelThumbnailEntry, maxBytes = MAX_CEL_THUMBNAIL_VARIANT_BYTES): void => {
+  entries.delete(key)
+  entries.set(key, value)
+  let bytes = [...entries.values()].reduce((total, entry) => total + entry.pixels.byteLength, 0)
+  while (entries.size > 8 || (entries.size > 1 && bytes > maxBytes)) {
+    const oldestKey = entries.keys().next().value
+    if (oldestKey === undefined) break
+    const oldest = entries.get(oldestKey)
+    if (oldest) bytes -= oldest.pixels.byteLength
+    entries.delete(oldestKey)
   }
-  let frameId: number | null = window.requestAnimationFrame(() => {
-    frameId = null
-    timeoutId = window.setTimeout(render, 0)
+}
+
+type ThumbnailRenderTask = { render: () => void }
+const pendingThumbnailRenders = new Set<ThumbnailRenderTask>()
+let thumbnailFrameId: number | null = null
+let thumbnailFlushId: number | null = null
+
+const flushThumbnailRenders = (): void => {
+  thumbnailFlushId = null
+  const started = performance.now()
+  let rendered = 0
+  try {
+    while (pendingThumbnailRenders.size > 0) {
+      const task = pendingThumbnailRenders.values().next().value!
+      pendingThumbnailRenders.delete(task)
+      task.render()
+      rendered++
+      // A single raster render is atomic; yield before starting the next one.
+      if (rendered >= 64 || performance.now() - started >= 8) break
+    }
+  } finally {
+    if (pendingThumbnailRenders.size > 0) scheduleThumbnailBatch()
+  }
+}
+
+const scheduleThumbnailBatch = (): void => {
+  if (thumbnailFrameId !== null || thumbnailFlushId !== null) return
+  if (typeof window.requestAnimationFrame !== 'function') {
+    thumbnailFlushId = window.setTimeout(flushThumbnailRenders, 0)
+    return
+  }
+  thumbnailFrameId = window.requestAnimationFrame(() => {
+    thumbnailFrameId = null
+    if (pendingThumbnailRenders.size > 0) thumbnailFlushId = window.setTimeout(flushThumbnailRenders, 0)
   })
+}
+
+export const scheduleThumbnailRender = (render: () => void): (() => void) => {
+  const task: ThumbnailRenderTask = { render }
+  pendingThumbnailRenders.add(task)
+  scheduleThumbnailBatch()
   return () => {
-    if (frameId !== null) window.cancelAnimationFrame(frameId)
-    if (timeoutId !== null) window.clearTimeout(timeoutId)
+    pendingThumbnailRenders.delete(task)
+    if (pendingThumbnailRenders.size > 0) return
+    if (thumbnailFrameId !== null) {
+      window.cancelAnimationFrame(thumbnailFrameId)
+      thumbnailFrameId = null
+    }
+    if (thumbnailFlushId !== null) {
+      window.clearTimeout(thumbnailFlushId)
+      thumbnailFlushId = null
+    }
   }
 }
 
@@ -90,7 +143,7 @@ export function CelThumbnail({ documentId, layerId, celSource, palette, revision
             ? cached.pixels
             : renderAnimationCelThumbnailPixels(documentWidth, documentHeight, canvas.width, surface, livePalette, opacity, sharedCheckerboard, framing)
           if (!bypassCache && (!cached || pixels !== cached.pixels)) {
-            setCachedVariant(entries, key, { revision, storageRevision, pixels })
+            rememberCelThumbnailVariant(entries, key, { revision, storageRevision, pixels })
             celThumbnailCache.set(storage, entries)
           }
           const image = context.createImageData(canvas.width, canvas.height)
@@ -198,9 +251,8 @@ export const useTimelineThumbnailContentSync = (documentId: string): void => {
       const layerIds = activeLayer.linkedContentId
         ? current.document.layers.filter((layer) => layer.linkedContentId === activeLayer.linkedContentId).map((layer) => layer.id)
         : [activeLayer.id]
-      const lookup = createAnimationCelLookup(timeline)
       for (const layerId of new Set(layerIds)) {
-        const cel = lookup.resolve(lookup.at(layerId, timeline.activeFrameId))
+        const cel = resolveAnimationCel(timeline, animationCelAt(timeline, layerId, timeline.activeFrameId))
         if (cel) notifyAnimationCelThumbnailPreview(documentId, cel.id, layerId)
       }
     })

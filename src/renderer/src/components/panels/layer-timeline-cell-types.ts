@@ -18,7 +18,7 @@ export interface LayerTimelineCellsProps {
   readonly celLookup: import('@/core/animation').AnimationCelLookup
   readonly maskVisualByOwnerFrame: ReturnType<typeof deriveLayerPanelVisuals>['maskVisualByOwnerFrame']
   readonly maskOwnerFrameKey: ReturnType<typeof deriveLayerPanelVisuals>['maskOwnerFrameKey']
-  readonly visualCellStateBySlot: ReturnType<typeof deriveLayerPanelVisuals>['visualCellStateBySlot']
+  readonly visualCellStateAtSlot: ReturnType<typeof deriveLayerPanelVisuals>['visualCellStateAtSlot']
   readonly showLinkedCelVisuals: boolean
   readonly linkedCelMemberKeys: ReturnType<typeof deriveLayerPanelVisuals>['linkedCelMemberKeys']
   readonly selectedLinkedCelMemberKeys: ReadonlySet<string>

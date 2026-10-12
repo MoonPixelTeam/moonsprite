@@ -3,13 +3,13 @@ import { PixelUtilityIcon } from '@/components/PixelUtilityIcon'
 import { writeStoredString } from '@/core/storage'
 import { HistoryDisplaySettings } from './HistoryDisplaySettings'
 import { HISTORY_DISPLAY_KEY, historyDisplayType, historyDisplayOptions, readHiddenHistoryTypes } from './history-display-options'
-import { useEffect, useRef, useState } from 'react'
+import { memo, useEffect, useRef, useState } from 'react'
 import { FloatingDockPreview, PanelResizeHandles, useFloatingPanel } from '@/components/floating-panel'
 import { useI18n } from '@/components/I18nProvider'
 import type { DockDragProps } from '@/components/workspace-panel-types'
 import { useWorkspace, type DocumentSession } from '@/store/workspace'
 
-export function HistoryPanel({ session, docked = false, onDockDragStart, onPanelContextMenu, onFloatingDock }: { session: DocumentSession } & DockDragProps) {
+function HistoryPanelComponent({ session, docked = false, onDockDragStart, onPanelContextMenu, onFloatingDock }: { session: DocumentSession } & DockDragProps) {
   const { t, locale } = useI18n()
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [hidden, setHidden] = useState(readHiddenHistoryTypes)
@@ -87,3 +87,5 @@ export function HistoryPanel({ session, docked = false, onDockDragStart, onPanel
   {settingsOpen && <HistoryDisplaySettings options={historyDisplayOptions(locale, timeline.entries.map((entry) => entry.label), hidden)} hidden={hidden} onChange={changeHidden} onClose={() => setSettingsOpen(false)} />}
   </>
 }
+
+export const HistoryPanel = memo(HistoryPanelComponent)

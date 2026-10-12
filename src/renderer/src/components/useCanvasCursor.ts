@@ -1,6 +1,6 @@
 import { selectionHandleCursor } from './canvas-selection-handle-cursor'
 import { selectionBrushOwnsPointer } from './canvas-selection-brush-gesture'
-import { tabletBoxMove, tabletContentMove } from '@/core/tablet-interaction'
+import { selectionTranslationHit } from './canvas-selection-translation-hit'
 import { useLayoutEffect } from 'react'
 import type { RasterLayer } from '@shared/types-layer'
 import type { RgbaColor } from '@shared/types-color'
@@ -149,8 +149,8 @@ export function useCanvasCursor(ports: Ports) {
     const selection = currentSession.selection
     if (!selection) return 'outside'
     const hitAt = (candidate: Point): SelectionHit => {
-      if (tabletBoxMove(currentSession.document.id) && selectionContains(selection, Math.floor(candidate.x), Math.floor(candidate.y))) return 'edge'
-      if (!currentSession.freeTransformActive && tabletContentMove(currentSession.document.id) && selectionContains(selection, Math.floor(candidate.x), Math.floor(candidate.y))) return 'inside'
+      const translationHit = selectionTranslationHit(currentSession, selection, candidate)
+      if (translationHit) return translationHit
       if (currentSession.freeTransformActive) {
         const target = ports.freeTransformQuadForSession(currentSession) ?? floating?.transformTarget ?? selection
         const corner = selectionFreeTransformHit(

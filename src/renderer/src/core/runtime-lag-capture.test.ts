@@ -19,6 +19,16 @@ const input = () => {
   Object.defineProperty(event, 'timeStamp', { value: now - 400 })
   document.dispatchEvent(event)
 }
+it('triggers native evidence once per incident and never after disposal', async () => {
+  const incident = vi.fn()
+  stop = installRuntimeLagCapture({ record, incident })
+  input(); now += 1000; await vi.advanceTimersByTimeAsync(1000)
+  expect(incident).toHaveBeenCalledWith(expect.objectContaining({ incidentId: 1, inputPeakMs: 400 }))
+  for (let tick = 0; tick < 5; tick++) { input(); now += 1000; await vi.advanceTimersByTimeAsync(1000) }
+  expect(incident).toHaveBeenCalledTimes(1)
+  stop(); input(); now += 60000; await vi.advanceTimersByTimeAsync(60000)
+  expect(incident).toHaveBeenCalledTimes(1)
+})
 it('aggregates thousands of delayed inputs without per-event logging or resource work', async () => {
   const resources = vi.fn().mockResolvedValue({ summary: {}, processes: [] })
   stop = installRuntimeLagCapture({ record, resources })

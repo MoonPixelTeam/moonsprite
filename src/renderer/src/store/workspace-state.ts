@@ -1,6 +1,6 @@
 import type { FilterPreviewHandle } from './workspace-filter-preview'
 import type { AnimationLoopDirection, AnimationCelSurface } from '@shared/types-animation'
-import type { AntiAliasColorSource, BrushDitherSettings, BrushPaintMode, BrushShape, BrushTexture, FillKind, FillConnectivity, FillMode, FillReference, GradientDither, GradientStop, GradientType, ImageBrush, InkMode, ImageBrushSettings, LineKind, LiquifyMode, MoveKind, ProceduralBrushSettings, ShapeKind, ShapeRatio, ToolId } from '@shared/types-brush'
+import type { AntiAliasColorSource, BrushDitherSettings, BrushPaintMode, BrushShape, BrushTexture, FillKind, FillConnectivity, FillMode, FillPatternMode, FillPatternSettings, FillReference, GradientDither, GradientStop, GradientType, ImageBrush, InkMode, ImageBrushSettings, LineKind, LiquifyMode, MoveKind, ProceduralBrushSettings, ShapeKind, ShapeRatio, ToolId } from '@shared/types-brush'
 import type { BackgroundPatternId } from '@shared/types-layer'
 import type { BlendMode, PaletteEntry, RgbaColor } from '@shared/types-color'
 import type { CanvasAnchor, OutlineSettings, SelectionKind, SelectionMask, SelectionMode, SelectionQuad, SelectionRect } from '@shared/types-selection'
@@ -149,7 +149,7 @@ export interface WorkspaceToolCommands {
   setBrushDynamicsMapping(effect: BrushDynamicsEffect, patch: Partial<BrushDynamicsMapping>): void
   setBrushDynamicsGradientDither(dither: GradientDither): void
   setBrushPressure(settings: Partial<BrushPressureSettings>): void
-  setBrushImage(brush: ImageBrush | null): void
+  setBrushImage(brush: ImageBrush | null, fillBrushes?: readonly ImageBrush[]): void
   setTemporaryBrush(brush: ImageBrush): void
   beginTemporaryBrushCapture(): void
   finishTemporaryBrushCapture(selection: SelectionMask): void
@@ -171,6 +171,8 @@ export interface WorkspaceToolCommands {
   setShapeRounded(enabled: boolean): void
   setShapeCornerRadius(radius: number): void
   setFillMode(mode: FillMode): void
+  setFillPatternMode(mode: FillPatternMode): void
+  setFillPatternSettings(settings: Partial<FillPatternSettings>): void
   setFillKind(kind: FillKind): void
   setFillTolerance(tolerance: number): void
   setFillGapClosing(enabled: boolean): void
@@ -207,7 +209,8 @@ export interface WorkspaceColorCommands {
   addPaletteColor(color?: RgbaColor, target?: PaletteColorTarget): number | null
   pastePaletteColors(colors: RgbaColor[], target?: PaletteColorTarget): number[]
   updatePaletteColor(id: number, color: RgbaColor): void
-  applyPalette(colors: RgbaColor[], layout?: PaletteSlotLayout): void
+  renamePaletteColor(id: number, name: string): void
+  applyPalette(colors: RgbaColor[], layout?: PaletteSlotLayout, names?: string[]): void
   deletePaletteColor(id: number): void
   deletePaletteColors(ids: number[]): void
   movePaletteColor(direction: -1 | 1): void
@@ -319,6 +322,7 @@ export interface WorkspaceTilemapCommands {
   addTilesetTile(tilesetId: string): string | null
   deleteTilesetTile(tilesetId: string, tileId: string): boolean
   deleteTilesetTiles(tilesetId: string, tileIds: string[]): boolean
+  clearUnusedTilesetTiles(tilesetId: string): boolean
   previewTilesetTilePixels(tilesetId: string, tileId: string, pixels: Uint8ClampedArray): boolean
   commitTilesetTileEdit(tilesetId: string, tileId: string, before: Uint8ClampedArray, after: Uint8ClampedArray): boolean
 }
@@ -330,6 +334,7 @@ export interface WorkspaceFreeTileCommands {
   selectFreeTileInstanceRow(instanceId: string, mode?: 'replace' | 'toggle' | 'range', orderedInstanceIds?: readonly string[]): void
   addFreeTileSource(layerId?: string): string | null
   deleteFreeTileSource(sourceId: string): boolean
+  clearUnusedFreeTileSources(layerId: string): boolean
   deleteFreeTileInstance(instanceId: string): boolean
   deleteFreeTileInstances(instanceIds: readonly string[]): boolean
   showOnlyFreeTileInstance(instanceId: string): boolean

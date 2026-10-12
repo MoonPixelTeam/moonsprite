@@ -18,6 +18,17 @@ export interface LatestReleaseDefinition {
 
 const currentRelease = {
   version: LATEST_PACKAGED_RELEASE_LABEL,
+  publishedAt: '2026-10-12',
+  homeSummary: 'release.beta9.summary',
+  sections: [
+    { title: 'latestRelease.section.interaction', items: ['release.beta9.patterns', 'release.beta9.palettes', 'release.beta9.editing'] },
+    { title: 'latestRelease.section.canvas', items: ['release.beta9.animation', 'release.beta9.canvas', 'release.beta9.projects'] },
+    { title: 'latestRelease.section.maintenance', items: ['release.beta9.diagnostics'] }
+  ]
+} as const satisfies LatestReleaseDefinition
+
+const beta8Release = {
+  version: '1.0.0-beta8',
   publishedAt: '2026-10-03',
   homeSummary: 'release.beta8.summary',
   sections: [
@@ -196,7 +207,7 @@ const dev6Release = {
  * Complete release feed. Keep every published announcement here so older
  * releases remain available when a new version is published.
  */
-export const latestReleases = [currentRelease, beta6Release, beta5Release, beta4Release, beta3Release, beta2Release, beta1Release, dev6Release] as const satisfies readonly LatestReleaseDefinition[]
+export const latestReleases = [currentRelease, beta8Release, beta6Release, beta5Release, beta4Release, beta3Release, beta2Release, beta1Release, dev6Release] as const satisfies readonly LatestReleaseDefinition[]
 export const MAX_HOME_ANNOUNCEMENTS = 3
 export const homeAnnouncementsForDisplay = (releases: readonly LatestReleaseDefinition[]): readonly LatestReleaseDefinition[] => [...releases]
   .sort((left, right) => right.publishedAt.localeCompare(left.publishedAt) || right.version.localeCompare(left.version))

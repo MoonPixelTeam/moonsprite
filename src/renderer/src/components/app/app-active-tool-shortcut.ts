@@ -1,6 +1,20 @@
 import type { DocumentSession } from '@/store/workspace'
 import { TOOL_DEFINITIONS } from './editor-tools'
 import { CYCLING_TOOL_SHORTCUT_IDS } from '@/core/shortcuts'
+
+export const shouldExitPatternBrushOnEscape = (
+  currentSession: Pick<DocumentSession, 'temporaryBrushCapture' | 'brushImage' | 'tool' | 'fillKind'> | null
+): boolean => Boolean(
+  currentSession?.temporaryBrushCapture
+  || (
+    currentSession?.brushImage
+    && (
+      currentSession.tool === 'pencil'
+      || (currentSession.tool === 'fill' && currentSession.fillKind === 'bucket')
+    )
+  )
+)
+
 export const activeToolShortcutFor = (currentSession: DocumentSession | null): (typeof CYCLING_TOOL_SHORTCUT_IDS)[number] | null => !currentSession ? null
         : currentSession.tool === 'selection'
         ? currentSession.selectionKind === 'ellipse' ? 'tool.selection.ellipse'

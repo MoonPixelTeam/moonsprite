@@ -8,11 +8,25 @@ import { decodePng, exportDocumentImage, exportDocumentSelectionImage, exportDoc
 import { documentForLayerExport } from '@/core/layer-export'
 import { buildSpriteSheetExportDocument } from '@/core/sprite-sheet'
 import { documentVisibleContentBounds } from '@/core/document-composite'
-import type { DocumentExportWorkerRequest, DocumentExportWorkerResult } from '@/core/document-export-worker-client'
+import type { DocumentExportWorkerAcknowledgment, DocumentExportWorkerRequest, DocumentExportWorkerResult } from '@/core/document-export-worker-client'
 
 const scope = globalThis as unknown as {
-  onmessage: ((event: MessageEvent<DocumentExportWorkerRequest>) => void) | null
+  onmessage: ((event: MessageEvent<DocumentExportWorkerRequest | DocumentExportWorkerAcknowledgment>) => void) | null
   postMessage: (message: { id: number; progress?: number; result?: DocumentExportWorkerResult; done?: boolean; error?: string }, transfer: Transferable[]) => void
+}
+
+let waitingForResult: { id: number; index: number; resolve: () => void } | null = null
+
+const deliverResult = async (request: DocumentExportWorkerRequest, result: DocumentExportWorkerResult, progress: number): Promise<void> => {
+  if (!request.resultAcknowledgments) {
+    scope.postMessage({ id: request.id, progress, result }, [result.bytes.buffer])
+    return
+  }
+  await new Promise<void>((resolve, reject) => {
+    waitingForResult = { id: request.id, index: result.index, resolve }
+    try { scope.postMessage({ id: request.id, progress, result }, [result.bytes.buffer]) }
+    catch (error) { waitingForResult = null; reject(error) }
+  })
 }
 
 const gifOptions = (request: DocumentExportWorkerRequest) => ({
@@ -87,6 +101,18 @@ const encode = async (document: SpriteDocument, request: DocumentExportWorkerReq
 
 scope.onmessage = async (event): Promise<void> => {
   const request = event.data
+  if (!request || typeof request !== 'object') {
+    scope.postMessage({ id: -1, error: 'Document export worker message could not be decoded' }, [])
+    return
+  }
+  if ('acknowledgedIndex' in request) {
+    if (waitingForResult?.id === request.id && waitingForResult.index === request.acknowledgedIndex) {
+      const waiting = waitingForResult
+      waitingForResult = null
+      waiting.resolve()
+    }
+    return
+  }
   try {
     if (request.format === 'ase' || request.format === 'aseprite') rehydrateRuntimeRasterDocument(request.document)
     const sourceDocument = request.job === 'sprite-sheet'
@@ -108,7 +134,7 @@ scope.onmessage = async (event): Promise<void> => {
             : [{}]
     for (const [index, job] of jobs.entries()) {
       const result = await encode(job.document ?? sourceDocument, request, index, job.slice, job.layerId)
-      scope.postMessage({ id: request.id, progress: (index + 1) / Math.max(1, jobs.length) * 100, result }, [result.bytes.buffer])
+      await deliverResult(request, result, (index + 1) / Math.max(1, jobs.length) * 100)
     }
     scope.postMessage({ id: request.id, progress: 100, done: true }, [])
   } catch (error) {

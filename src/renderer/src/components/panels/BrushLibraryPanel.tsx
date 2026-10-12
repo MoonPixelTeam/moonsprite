@@ -1,6 +1,6 @@
 import { isWebTrial } from '@/core/product-target'
 import { pixelSource } from '@/components/pixel-source'
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent, type WheelEvent as ReactWheelEvent } from 'react'
+import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent, type WheelEvent as ReactWheelEvent } from 'react'
 import { createPortal } from 'react-dom'
 import { BrushThumbnail } from '@/components/BrushThumbnail'
 import { DialogHeader } from '@/components/DialogHeader'
@@ -76,7 +76,7 @@ const moveBrushIds = (baseIds: readonly string[], movingIds: readonly string[], 
   return remaining
 }
 
-export function BrushLibraryPanel({ session, controller, docked = false, onDockDragStart, onPanelContextMenu, onFloatingDock }: {
+function BrushLibraryPanelComponent({ session, controller, docked = false, onDockDragStart, onPanelContextMenu, onFloatingDock }: {
   session: DocumentSession
   controller: BrushLibraryController
 } & DockDragProps) {
@@ -94,7 +94,7 @@ export function BrushLibraryPanel({ session, controller, docked = false, onDockD
   const suppressClickRef = useRef(false)
   const shortcutCommandHandlerRef = useRef<(id: ShortcutId) => void>(() => {})
   const currentFolderId = useSyncExternalStore(brushLibraryLocation.subscribe, brushLibraryLocation.getSnapshot, brushLibraryLocation.getSnapshot)
-  const [selectedIds, setSelectedIds] = useState<string[]>(() => session.brushImageId ? [session.brushImageId] : [])
+  const [selectedIds, setSelectedIds] = useState<string[]>(() => session.fillPatternBrushes?.map(brush => brush.id) ?? (session.brushImageId ? [session.brushImageId] : []))
   const [selectionAnchorId, setSelectionAnchorId] = useState<string | null>(null)
   const [previewLocalIds, setPreviewLocalIds] = useState<string[] | null>(null)
   const [draggingIds, setDraggingIds] = useState<string[]>([])
@@ -137,11 +137,15 @@ export function BrushLibraryPanel({ session, controller, docked = false, onDockD
   useEffect(() => {
     const valid = new Set(controller.brushes.map((item) => item.brush.id))
     setSelectedIds((current) => {
-      const retained = current.filter((id) => valid.has(id))
+      const retained = (session.fillPatternBrushes?.map(brush => brush.id) ?? current).filter((id) => valid.has(id))
       if (!session.brushImageId) return []
       return retained.includes(session.brushImageId) ? retained : [session.brushImageId]
     })
-  }, [controller.brushes, session.brushImageId, session.document.id])
+    if (controller.loaded && session.fillPatternBrushes?.some(brush => !valid.has(brush.id))) {
+      const remaining = session.fillPatternBrushes.filter(brush => valid.has(brush.id))
+      workspace.setBrushImage(remaining.find(brush => brush.id === session.brushImageId) ?? remaining.at(-1) ?? null, remaining)
+    }
+  }, [controller.brushes, controller.loaded, session.brushImageId, session.fillPatternBrushes, session.document.id])
 
   useEffect(() => {
     if (currentFolderId && !controller.folders.some((folder) => folder.id === currentFolderId)) brushLibraryLocation.set(null)
@@ -289,7 +293,10 @@ export function BrushLibraryPanel({ session, controller, docked = false, onDockD
     setSelectedIds(nextSelection)
     const activeId = nextSelection.includes(item.brush.id) ? item.brush.id : nextSelection.at(-1)
     const activeBrush = activeId ? displayedBrushes.find((candidate) => candidate.brush.id === activeId)?.brush : null
-    workspace.setBrushImage(activeBrush ?? null)
+    workspace.setBrushImage(activeBrush ?? null, nextSelection.flatMap(id => {
+      const selected = controller.brushes.find(candidate => candidate.brush.id === id)
+      return selected ? [selected.brush] : []
+    }))
   }
 
   const beginBrushPointer = (event: ReactPointerEvent<HTMLButtonElement>, item: LoadedBrush): void => {
@@ -531,4 +538,7 @@ export function BrushLibraryPanel({ session, controller, docked = false, onDockD
   </div>}
   </>
 }
+
+export const BrushLibraryPanel = memo(BrushLibraryPanelComponent)
+
 import { PanelActions } from './PanelActions'

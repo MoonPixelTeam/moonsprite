@@ -13,6 +13,7 @@ import { Button } from './Button'
 import { PixelUtilityIcon } from './PixelUtilityIcon'
 import { referenceDocumentPoint, referenceScreenBounds, referenceDocumentBounds, referenceOutlinePath, resizeReferenceBounds, referenceSourcePoint, type ReferenceViewport } from './canvas-reference-geometry'
 import { registerViewPreviewListener } from '@/core/view-preview-lifecycle'
+import { synchronizeReferenceViewport } from './canvas-reference-view'
 import { unrotateViewportPoint } from '@/core/view-geometry'
 import { selectionRotationHit, selectionResizeHit, SELECTION_RESIZE_HIT_RADIUS, SELECTION_CORNER_RESIZE_HIT_RADIUS, SELECTION_CORNER_OUTWARD_RESIZE_HIT_RADIUS, ROTATION_HANDLE_HIT_RADIUS } from '@/core/canvas-input-hit-test'
 import { selectionRotationAngle, snapSelectionRotation } from '@/core/canvas-input-resize'
@@ -93,12 +94,16 @@ export function CanvasReferences({ stageRef, isOutside, viewport, documentId, sn
   const viewportRef = useRef(displayViewport)
   viewportRef.current = displayViewport
   const imageElements = useRef(new Map<string, HTMLImageElement>())
+  const referencesRef = useRef<HTMLDivElement>(null)
+  const selectedRef = useRef(selected)
+  selectedRef.current = selected
   const imagesRef = useRef(images)
   imagesRef.current = images
   const sampleCanvas = useRef<HTMLCanvasElement | null>(null)
   const samplingPointer = useRef<{ pointer: number; secondary: boolean } | null>(null)
   useEffect(() => registerViewPreviewListener(documentId, (view) => {
     viewportRef.current = { ...viewportRef.current, view }
+    synchronizeReferenceViewport(imagesRef.current, imageElements.current, viewportRef.current, selectedRef.current, referencesRef.current)
     setPreview({ base: viewport.view, view })
   }), [documentId, viewport.view])
   const pointAt = (x: number, y: number, image?: Reference) => {
@@ -347,7 +352,7 @@ export function CanvasReferences({ stageRef, isOutside, viewport, documentId, sn
       event.target.value = ''
       if (file) void importFile(file)
     }} />
-    <div className="canvas-references">
+    <div ref={referencesRef} className="canvas-references">
       <div className="canvas-reference-plane">
       {images.map((source) => {
         const image = referenceScreenBounds(source, displayViewport)

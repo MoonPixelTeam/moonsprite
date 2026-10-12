@@ -14,7 +14,7 @@ import { beginBrushSpeedTracking } from '@/core/canvas-input-pointer'
 import { constrainedTranslation, selectionMovePointerDelta } from '@/core/canvas-input-resize'
 import { type CanvasDragState as DragState, type CanvasPoint as Point } from '@/core/canvas-input-contracts'
 import { canvasCursors } from '@/core/canvas-visuals'
-import { symmetrySelectionDragDelta } from '@/core/symmetry'
+import { symmetryPoints, symmetrySelectionDragDelta } from '@/core/symmetry'
 import { shouldUseFreeTileInstanceMove } from '@/components/canvas-move-selection'
 import { freeTileInstanceAtPoint, freeTileInstanceBounds, freeTileSourceForInstance, freeTileSourceStampOrigin } from '@/core/free-tile'
 import { activeFreeTileCelTarget, freeTileInstanceAtDocumentPoint, freeTileSourceForId } from '@/core/free-tile-document'
@@ -57,6 +57,20 @@ interface Ports {
 }
 
 export function createFreeTileCanvasInput(ports: Ports) {
+  function eraseAtPoint(placement: NonNullable<DragState['freeTilePlacementEdit']>, target: NonNullable<ReturnType<typeof activeFreeTileCelTarget>>, point: Point, session: DocumentSession, state: ReturnType<typeof useWorkspace.getState>): boolean {
+    let changed = false
+    for (const destination of symmetryPoints(point, session.document.width, session.document.height, session.symmetryAxes, ports.symmetryCenter, false)) {
+      if (session.selection && !selectionContains(session.selection, destination.x, destination.y)) continue
+      const instance = freeTileInstanceAtPoint(placement.after, target.sources, destination.x, destination.y, target.surface.offsetX, target.surface.offsetY)
+      if (!instance || instance.locked === true) continue
+      placement.after.instances = placement.after.instances.filter(candidate => candidate.id !== instance.id)
+      if (session.selectedFreeTileInstanceId === instance.id) state.setSelectedFreeTileInstance(null)
+      placement.dirtyRect = ports.unionFreeTileDirtyRect(placement.dirtyRect, freeTileInstanceBounds(instance, target.sources, target.surface.offsetX, target.surface.offsetY))
+      changed = true
+    }
+    return changed
+  }
+
   function beginInstanceMove({
     freeTransformActive,
     session,
@@ -194,22 +208,17 @@ export function createFreeTileCanvasInput(ports: Ports) {
     if (freeTileTarget) {
       const selectedSource = freeTileSourceForId(session.document, freeTileTarget.layer, session.selectedTilesetId) ?? freeTileTarget.sources[0] ?? null
       if (session.freeTileMode === 'paint') {
-        if (session.selection && !selectionContains(session.selection, point.x, point.y)) return true
+        if (session.tool !== 'eraser' && session.selection && !selectionContains(session.selection, point.x, point.y)) return true
         const placementEdit = state.beginFreeTilePlacement()
         if (!placementEdit) return true
         if (session.tool === 'eraser') {
-          const instance = freeTileInstanceAtDocumentPoint(freeTileTarget, point.x, point.y)
-          if (!instance || instance.locked === true) return true
-          placementEdit.after.instances = placementEdit.after.instances.filter((candidate) => candidate.id !== instance.id)
-          if (session.selectedFreeTileInstanceId === instance.id) state.setSelectedFreeTileInstance(null)
-          placementEdit.dirtyRect = freeTileInstanceBounds(instance, freeTileTarget.sources, freeTileTarget.surface.offsetX, freeTileTarget.surface.offsetY)
-          state.previewFreeTilePlacement(placementEdit)
+          if (eraseAtPoint(placementEdit, freeTileTarget, point, session, state)) state.previewFreeTilePlacement(placementEdit)
           inputRef.current.drag = {
             kind: 'free-tile-draw',
             start: point,
             last: point,
             freeTilePlacementEdit: placementEdit,
-            freeTileInstanceId: instance.id,
+            freeTileLastLocal: point,
             startedAt: Date.now()
           }
           scheduleDraw()
@@ -227,8 +236,13 @@ export function createFreeTileCanvasInput(ports: Ports) {
           opacity: selectedSource.opacity,
           blendMode: selectedSource.blendMode
         }
-        placementEdit.after.instances.push(instance)
-        placementEdit.dirtyRect = freeTileInstanceBounds(instance, freeTileTarget.sources, freeTileTarget.surface.offsetX, freeTileTarget.surface.offsetY)
+        for (const destination of symmetryPoints(point, session.document.width, session.document.height, session.symmetryAxes, ports.symmetryCenter, false)) {
+          if (session.selection && !selectionContains(session.selection, destination.x, destination.y)) continue
+          const mirroredOrigin = freeTileSourceStampOrigin(destination.x, destination.y, selectedSource, freeTileTarget.surface.offsetX, freeTileTarget.surface.offsetY)
+          const mirrored = destination.x === point.x && destination.y === point.y ? instance : { ...instance, id: createId('free-tile-instance'), x: mirroredOrigin.x, y: mirroredOrigin.y }
+          placementEdit.after.instances.push(mirrored)
+          placementEdit.dirtyRect = ports.unionFreeTileDirtyRect(placementEdit.dirtyRect, freeTileInstanceBounds(mirrored, freeTileTarget.sources, freeTileTarget.surface.offsetX, freeTileTarget.surface.offsetY))
+        }
         state.previewFreeTilePlacement(placementEdit)
         state.setSelectedFreeTileInstance(instance.id)
         inputRef.current.drag = {
@@ -417,7 +431,7 @@ export function createFreeTileCanvasInput(ports: Ports) {
     }[]
     state: ReturnType<typeof useWorkspace.getState>
   }): boolean {
-    const { scheduleDraw, localPointAt, unionFreeTileDirtyRect, compositeCacheRef } = ports
+    const { scheduleDraw, localPointAt, compositeCacheRef } = ports
     if (drag.kind === 'free-tile-draw' && drag.freeTilePlacementEdit) {
       // Placement is a click action; only the eraser keeps a continuous drag gesture.
       if (session.tool !== 'eraser') {
@@ -434,53 +448,13 @@ export function createFreeTileCanvasInput(ports: Ports) {
         const points = rasterLinePoints(previous, samplePoint)
         for (let index = 1; index < points.length; index += 1) {
           const drawPoint = points[index]
-          if (session.selection && !selectionContains(session.selection, drawPoint.x, drawPoint.y)) continue
-          if (session.tool === 'eraser') {
-            const instance = freeTileInstanceAtPoint(
-              drag.freeTilePlacementEdit.after,
-              target.sources,
-              drawPoint.x,
-              drawPoint.y,
-              target.surface.offsetX,
-              target.surface.offsetY
-            )
-            if (!instance || instance.locked === true) continue
-            drag.freeTilePlacementEdit.after.instances = drag.freeTilePlacementEdit.after.instances.filter((candidate) => candidate.id !== instance.id)
-            if (session.selectedFreeTileInstanceId === instance.id) state.setSelectedFreeTileInstance(null)
-            drag.freeTilePlacementEdit.dirtyRect = unionFreeTileDirtyRect(
-              drag.freeTilePlacementEdit.dirtyRect,
-              freeTileInstanceBounds(instance, target.sources, target.surface.offsetX, target.surface.offsetY)
-            )
-            changed = true
-            continue
-          }
-          const source = freeTileSourceForId(session.document, target.layer, drag.freeTileSourceId)
-          if (!source) continue
-          const origin = freeTileSourceStampOrigin(drawPoint.x, drawPoint.y, source, target.surface.offsetX, target.surface.offsetY)
-          if (drag.freeTileLastStampOrigin?.x === origin.x && drag.freeTileLastStampOrigin.y === origin.y) continue
-          const instance: FreeTileInstance = {
-            id: createId('free-tile-instance'),
-            sourceId: source.id,
-            x: origin.x,
-            y: origin.y,
-            opacity: source.opacity,
-            blendMode: source.blendMode
-          }
-          drag.freeTilePlacementEdit.after.instances.push(instance)
-          drag.freeTileInstanceId = instance.id
-          drag.freeTilePlacementEdit.dirtyRect = unionFreeTileDirtyRect(
-            drag.freeTilePlacementEdit.dirtyRect,
-            freeTileInstanceBounds(instance, target.sources, target.surface.offsetX, target.surface.offsetY)
-          )
-          drag.freeTileLastStampOrigin = origin
-          changed = true
+          if (eraseAtPoint(drag.freeTilePlacementEdit, target, drawPoint, session, state)) changed = true
         }
         previous = samplePoint
       }
       drag.freeTileLastLocal = previous
       if (changed) {
         state.previewFreeTilePlacement(drag.freeTilePlacementEdit)
-        if (drag.freeTileInstanceId && session.tool !== 'eraser') state.setSelectedFreeTileInstance(drag.freeTileInstanceId)
         compositeCacheRef.current.invalidateAll()
       }
       scheduleDraw()

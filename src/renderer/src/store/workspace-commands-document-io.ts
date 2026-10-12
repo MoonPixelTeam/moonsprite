@@ -337,6 +337,8 @@ export function createWorkspaceDocumentIoCommands({ get, set, recording, service
           if (finish) finish(succeeded)
         }
         let encodedTimelapseSnapshots = session.document.timelapse?.snapshots
+        let encodedTimelapseCount = encodedTimelapseSnapshots?.length ?? 0
+        let encodedTimelapseLastId = encodedTimelapseSnapshots?.at(-1)?.id
         try {
           const result = await saveDocumentFile({
             api: window.moonSprite,
@@ -344,6 +346,8 @@ export function createWorkspaceDocumentIoCommands({ get, set, recording, service
             getDocument: () => {
               const current = get().sessions.find((item) => item.document.id === documentId)
               encodedTimelapseSnapshots = current?.document.timelapse?.snapshots
+              encodedTimelapseCount = encodedTimelapseSnapshots?.length ?? 0
+              encodedTimelapseLastId = encodedTimelapseSnapshots?.at(-1)?.id
               return current ? { document: current.document, revision: current.contentRevision } : null
             },
             saveAs,
@@ -383,8 +387,10 @@ export function createWorkspaceDocumentIoCommands({ get, set, recording, service
           persistProjectLayerPanelState(saved)
           const fullySaved = saved.contentRevision === result.revision
             && saved.document.timelapse?.snapshots === encodedTimelapseSnapshots
+            && (saved.document.timelapse?.snapshots.length ?? 0) === encodedTimelapseCount
+            && saved.document.timelapse?.snapshots.at(-1)?.id === encodedTimelapseLastId
           if (runtimeDiagnosticsActive()) recordRuntimeDiagnostic('operation-stage', 'project.save.recording', {
-            documentId, encodedFrames: encodedTimelapseSnapshots?.length ?? 0,
+            documentId, encodedFrames: encodedTimelapseCount,
             currentFrames: saved.document.timelapse?.snapshots.length ?? 0,
             pending: recording.pendingCount(saved.document),
             format: result.filePath.split('.').pop()?.toLowerCase() ?? '',

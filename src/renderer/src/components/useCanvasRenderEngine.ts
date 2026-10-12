@@ -3,6 +3,7 @@ import { recordRuntimeDiagnostic, runtimeDiagnosticsActive } from '../core/runti
 import { createRuntimeLatencyReporter } from '@/core/runtime-diagnostic-stages'
 import { useEffect, useLayoutEffect, useRef } from 'react'
 import { canvasStageIsVisible } from './canvas-stage-visibility'
+import { installCanvasResumeRedraw } from './canvas-render-resume'
 import { useSelectionBackdropPrewarm } from './useSelectionBackdropPrewarm'
 import type { RgbaColor } from '@shared/types-color'
 import type { SelectionMask, SelectionRect } from '@shared/types-selection'
@@ -236,6 +237,17 @@ export function useCanvasRenderEngine(ports: Ports) {
   }
 
   ports.requestDrawRef.current = scheduleDraw
+
+  useEffect(() => installCanvasResumeRedraw(
+    () => {
+      // Windows/WebView can discard GPU-backed canvas surfaces while a window
+      // is occluded or minimized. The document and raster storage remain
+      // valid, but cached display surfaces no longer contain pixels.
+      compositeCacheRef.current.invalidateAll()
+      onionSkinCacheRef.current.invalidateAll()
+    },
+    scheduleDraw
+  ), [ports.session.document.id])
 
   useEffect(() => useWorkspace.subscribe((state, previous) => {
     if (state.activeId !== previous.activeId && state.activeId === ports.session.document.id) scheduleDraw()

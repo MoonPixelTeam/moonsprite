@@ -1,14 +1,17 @@
+import { styledLayerBlockCacheFor } from './document-composite-style-types'
 import type { LayerGroup, LayerMask, RasterLayer } from '@shared/types-layer'
 import type { SelectionRect } from '@shared/types-selection'
 import type { SpriteDocument } from '@shared/types-document'
 import { unpackColor } from './raster'
-import { buildLayerPanelTree } from './layer-panel-layout'
+import { compositeHierarchyNodes } from './document-composite-hierarchy'
 import { rasterStorageIdentity, readSurfacePackedLocal } from './runtime-raster'
 import { hasEnabledLayerStyles, layerStyleAffectedRect } from './layer-styles'
+import { createCompositeMaskLookup } from './document-composite-mask-lookup'
+import { animationLayerZIndexes } from './document-composite-z-index'
 import {
-  createAnimationMaskLookup,
   getRasterContentRevision,
   rasterContentBounds,
+  cachedRasterContentBounds,
   maskCoverageFromColor,
   layerContentBounds
 } from './document-model'
@@ -18,10 +21,10 @@ export const activeCelMasksByLayer = (document: SpriteDocument, previewMaskId?: 
   const timeline = document.animation
   if (!timeline || !timeline.layerMasks?.length) return new Map()
   const activeLayerIds = new Set(timeline.cels.filter((cel) => cel.frameId === timeline.activeFrameId).map((cel) => cel.layerId))
-  const masks = createAnimationMaskLookup(timeline)
+  const masks = createCompositeMaskLookup(timeline)
   return new Map((timeline.layerMasks ?? [])
     .filter((entry) => entry.frameId === timeline.activeFrameId && activeLayerIds.has(entry.layerId))
-    .map((entry) => [entry.layerId, masks.get(`${entry.layerId}:${entry.frameId}`) ?? null] as const)
+    .map((entry) => [entry.layerId, masks.at(entry.layerId, entry.frameId) ?? null] as const)
     .filter((entry): entry is readonly [string, LayerMask] => {
       const mask = entry[1]
       if (!mask) return false
@@ -32,10 +35,11 @@ export const activeCelMasksByLayer = (document: SpriteDocument, previewMaskId?: 
 export const activeGroupMasksByGroup = (document: SpriteDocument, previewMaskId?: string, includeNeutral = false): Map<string, LayerMask> => {
   const timeline = document.animation
   if (!timeline) return new Map()
-  const masks = createAnimationMaskLookup(timeline)
+  if (!timeline.groupMasks?.length) return new Map()
+  const masks = createCompositeMaskLookup(timeline)
   return new Map((timeline.groupMasks ?? [])
     .filter((entry) => entry.frameId === timeline.activeFrameId)
-    .map((entry) => [entry.groupId, masks.get(`${entry.groupId}:${entry.frameId}`) ?? null] as const)
+    .map((entry) => [entry.groupId, masks.resolve(entry.mask)] as const)
     .filter((entry): entry is readonly [string, LayerMask] => Boolean(entry[1] && entry[1].visible !== false && (includeNeutral || entry[1].id === previewMaskId || layerMaskAffectsComposite(entry[1])))))
 }
 
@@ -107,27 +111,6 @@ export type CompositeStackItem =
   | { kind: 'layer'; layer: RasterLayer }
   | { kind: 'group'; group: LayerGroup; children: CompositeStackItem[] }
 
-const animationLayerZIndexes = (document: SpriteDocument): Map<string, number> => {
-  const timeline = document.animation
-  if (!timeline) return new Map()
-  const byId = new Map(timeline.cels.map((cel) => [cel.id, cel]))
-  const result = new Map<string, number>()
-  for (const cel of timeline.cels) {
-    if (cel.frameId !== timeline.activeFrameId) continue
-    const visited = new Set<string>()
-    let source = cel
-    while (source.linkedCelId && !visited.has(source.id)) {
-      visited.add(source.id)
-      const linked = byId.get(source.linkedCelId)
-      if (!linked || linked.layerId !== cel.layerId) break
-      source = linked
-    }
-    const numeric = Number(source.zIndex)
-    result.set(cel.layerId, Number.isFinite(numeric) ? Math.max(-999, Math.min(999, Math.trunc(numeric))) : 0)
-  }
-  return result
-}
-
 /** Sort bottom-to-top composite blocks without separating clipping layers from their base. */
 const sortCompositeContainerByZ = (items: CompositeStackItem[], layerZIndexes: ReadonlyMap<string, number>): void => {
   for (const item of items) if (item.kind === 'group') sortCompositeContainerByZ(item.children, layerZIndexes)
@@ -145,13 +128,13 @@ const sortCompositeContainerByZ = (items: CompositeStackItem[], layerZIndexes: R
 }
 
 /** Uses the visible layer-panel order as the single source of truth for compositing order. */
-export const buildCompositeStack = (document: SpriteDocument): CompositeStackItem[] => {
+export const buildCompositeStack = (document: SpriteDocument, hierarchyCacheOwner = document): CompositeStackItem[] => {
   const layerById = new Map(document.layers.map((layer) => [layer.id, layer]))
   const groupById = new Map(document.groups.map((group) => [group.id, group]))
   const root: CompositeStackItem[] = []
   const containers: CompositeStackItem[][] = [root]
 
-  for (const node of buildLayerPanelTree({ layers: document.layers, groups: document.groups })) {
+  for (const node of compositeHierarchyNodes(document, hierarchyCacheOwner)) {
     const container = containers[node.depth]
     if (!container) continue
     containers.length = node.depth + 1
@@ -176,7 +159,17 @@ export const buildCompositeStack = (document: SpriteDocument): CompositeStackIte
   return root
 }
 
-export const normalCompositeLayers = (document: SpriteDocument, allowLayerBlendModes = false): RasterLayer[] | null => {
+/** Keep cold empty-layer pruning, without scanning a live-edited dense bitmap.
+ * An unknown changed source is conservatively rendered until exact bounds are
+ * established elsewhere; only a proven empty source can be omitted. */
+const emptyCompositeRaster = (document: SpriteDocument, layer: RasterLayer): boolean => {
+  const known = cachedRasterContentBounds(layer, document.palette)
+  if (known !== undefined) return known === null
+  if (getRasterContentRevision(rasterStorageIdentity(layer)) !== 0) return false
+  return layerContentBounds(document, layer) === null
+}
+
+export const normalCompositeLayers = (document: SpriteDocument, allowLayerBlendModes = false, hierarchyCacheOwner = document): RasterLayer[] | null => {
   const activeMasks = activeCelMasksByLayer(document)
   const activeGroupMasks = activeGroupMasksByGroup(document)
   const flatten = (items: readonly CompositeStackItem[]): RasterLayer[] | null => {
@@ -189,9 +182,12 @@ export const normalCompositeLayers = (document: SpriteDocument, allowLayerBlendM
         if (item.layer.blendMode !== 'normal') {
           // An empty non-normal layer has no effect and must not force the
           // whole document onto the opacity-group compositor.
-          if (!layerContentBounds(document, item.layer)) continue
+          if (emptyCompositeRaster(document, item.layer)) continue
           if (!allowLayerBlendModes) return null
         }
+        // The displayed raster includes live strokes/previews not yet synced
+        // into the cel. Skip only proven-empty ordinary raster layers.
+        if (!item.layer.kind && !styledLayerBlockCacheFor(item.layer) && emptyCompositeRaster(document, item.layer)) continue
         layers.push(item.layer)
         continue
       }
@@ -209,7 +205,7 @@ export const normalCompositeLayers = (document: SpriteDocument, allowLayerBlendM
     }
     return layers
   }
-  return flatten(buildCompositeStack(document))
+  return flatten(buildCompositeStack(document, hierarchyCacheOwner))
 }
 
 export const opacityGroupCompositeStack = (document: SpriteDocument, allowNormalLayerStyles = false): CompositeStackItem[] | null => {
@@ -223,8 +219,11 @@ export const opacityGroupCompositeStack = (document: SpriteDocument, allowNormal
         if (activeMasks.has(item.layer.id)) return null
         if (item.layer.clippingMask === true || item.layer.kind === 'adjustment') return null
         if (hasEnabledLayerStyles(item.layer.layerStyles) && (!allowNormalLayerStyles || item.layer.blendMode !== 'normal')) return null
+        // The displayed raster includes live strokes/previews not yet synced
+        // into the cel. Skip only proven-empty ordinary raster layers.
+        if (!item.layer.kind && !styledLayerBlockCacheFor(item.layer) && emptyCompositeRaster(document, item.layer)) continue
         if (item.layer.blendMode !== 'normal') {
-          if (layerContentBounds(document, item.layer)) prepared.push(item)
+          if (!emptyCompositeRaster(document, item.layer)) prepared.push(item)
           continue
         }
         prepared.push(item)

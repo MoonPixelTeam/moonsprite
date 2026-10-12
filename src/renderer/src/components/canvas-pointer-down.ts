@@ -330,11 +330,11 @@ export function createCanvasPointerDown(ports: Ports) {
       quickMoveToolActive() &&
       !brushLineConnectionHasPriority(event.nativeEvent) &&
       temporaryMoveForCanvasInteractionAllowed(session.tool, session.moveKind, selectionPriorityHit, addingToSelection, session.selectionKind)
-    // Tilemap paint mode owns the canvas press regardless of the global pixel
-    // tool. Resolve the tileset owner before any paint-mode branch uses the
-    // active layer, otherwise a stale pencil/selection tool snapshot can keep
-    // drawing on the previously selected layer.
-    if (!temporaryMove && (event.button === 0 || event.button === 2) && session.tilemapMode === 'paint') {
+    // Resolve another tileset's owner only while a tilemap layer is active.
+    // The remembered tile selection must not take over a raster/text/free-tile
+    // layer that the user has since selected or created.
+    if (!temporaryMove && (event.button === 0 || event.button === 2)
+      && session.tilemapMode === 'paint' && activePaintLayer(session).kind === 'tilemap') {
       const selectedTilesetOwnerId = session.selectedTilesetId
         ? session.document.layers.find((layer) => layer.kind === 'tilemap' && layer.tilemapTilesetId === session.selectedTilesetId)?.id
         : undefined

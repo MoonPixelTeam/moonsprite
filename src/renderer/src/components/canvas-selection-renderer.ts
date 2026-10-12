@@ -25,7 +25,14 @@ export interface SelectionBoundaryCache {
   height: number
   mask?: Uint8Array
   segments: Int32Array
-  buckets?: Map<string, number[]>
+  bucketIndex?: {
+    columns: number
+    rows: number
+    offsets: Uint32Array
+    indices: Uint32Array
+    visited: Uint32Array
+    generation: number
+  }
   screenPaths: Map<string, {
     outline: Path2D
     dashGroups: Array<{ offset: number; path: Path2D }>
@@ -192,21 +199,33 @@ export function drawSelectionOutline({
   if (!nextCache || nextCache.width !== selection.width || nextCache.height !== selection.height || nextCache.mask !== selection.mask) {
     const boundaryStartedAt = performance.now()
     const segments = selectionBoundarySegments(selection)
-    const buckets = new Map<string, number[]>()
     const bucketSize = 64
+    const columns = Math.floor(selection.width / bucketSize) + 1
+    const rows = Math.floor(selection.height / bucketSize) + 1
+    const offsets = new Uint32Array(columns * rows + 1)
     for (let index = 0; index < segments.length; index += 4) {
       const left = Math.floor(Math.min(segments[index], segments[index + 2]) / bucketSize)
       const right = Math.floor(Math.max(segments[index], segments[index + 2]) / bucketSize)
       const top = Math.floor(Math.min(segments[index + 1], segments[index + 3]) / bucketSize)
       const bottom = Math.floor(Math.max(segments[index + 1], segments[index + 3]) / bucketSize)
       for (let by = top; by <= bottom; by += 1) for (let bx = left; bx <= right; bx += 1) {
-        const key = `${bx}:${by}`
-        const bucket = buckets.get(key)
-        if (bucket) bucket.push(index)
-        else buckets.set(key, [index])
+        offsets[by * columns + bx + 1] += 1
       }
     }
-    nextCache = { width: selection.width, height: selection.height, mask: selection.mask, segments, buckets, screenPaths: new Map() }
+    for (let bucket = 1; bucket < offsets.length; bucket += 1) offsets[bucket] += offsets[bucket - 1]
+    const indices = new Uint32Array(offsets[offsets.length - 1])
+    const cursors = offsets.slice(0, -1)
+    for (let index = 0; index < segments.length; index += 4) {
+      const left = Math.floor(Math.min(segments[index], segments[index + 2]) / bucketSize)
+      const right = Math.floor(Math.max(segments[index], segments[index + 2]) / bucketSize)
+      const top = Math.floor(Math.min(segments[index + 1], segments[index + 3]) / bucketSize)
+      const bottom = Math.floor(Math.max(segments[index + 1], segments[index + 3]) / bucketSize)
+      for (let by = top; by <= bottom; by += 1) for (let bx = left; bx <= right; bx += 1) {
+        indices[cursors[by * columns + bx]++] = index
+      }
+    }
+    nextCache = { width: selection.width, height: selection.height, mask: selection.mask, segments,
+      bucketIndex: { columns, rows, offsets, indices, visited: new Uint32Array(segments.length / 4), generation: 0 }, screenPaths: new Map() }
     if (typeof window !== 'undefined') window.__moonSpriteCanvasProbe?.recordOperationStage?.('selection.boundary-build', performance.now() - boundaryStartedAt, {
       width: selection.width,
       height: selection.height,
@@ -226,12 +245,37 @@ export function drawSelectionOutline({
   if (!screenPaths) {
     const outline = new Path2D()
     const dashGroups = new Map<number, Path2D>()
-    const candidateIndices = new Set<number>()
     const bucketSize = 64
-    for (let by = Math.floor(visibleTop / bucketSize); by <= Math.floor(visibleBottom / bucketSize); by += 1) for (let bx = Math.floor(visibleLeft / bucketSize); bx <= Math.floor(visibleRight / bucketSize); bx += 1) {
-      for (const index of nextCache.buckets?.get(`${bx}:${by}`) ?? []) candidateIndices.add(index)
+    // Keep bucket traversal and first-seen segment order identical to the outline.
+    // Epoch marks avoid allocating a Set for every new viewport path.
+    const bucketIndex = nextCache.bucketIndex
+    const segmentCoordinates = nextCache.segments.length
+    function* candidates(): Generator<number> {
+      if (!bucketIndex) {
+        for (let index = 0; index < segmentCoordinates; index += 4) yield index
+        return
+      }
+      bucketIndex.generation = (bucketIndex.generation + 1) >>> 0
+      if (bucketIndex.generation === 0) {
+        bucketIndex.visited.fill(0)
+        bucketIndex.generation = 1
+      }
+      const { columns, rows, offsets, indices, visited, generation } = bucketIndex
+      const left = Math.max(0, Math.floor(visibleLeft / bucketSize))
+      const right = Math.min(columns - 1, Math.floor(visibleRight / bucketSize))
+      const top = Math.max(0, Math.floor(visibleTop / bucketSize))
+      const bottom = Math.min(rows - 1, Math.floor(visibleBottom / bucketSize))
+      for (let by = top; by <= bottom; by += 1) for (let bx = left; bx <= right; bx += 1) {
+        const bucket = by * columns + bx
+        for (let cursor = offsets[bucket]; cursor < offsets[bucket + 1]; cursor += 1) {
+          const index = indices[cursor]
+          if (visited[index / 4] === generation) continue
+          visited[index / 4] = generation
+          yield index
+        }
+      }
     }
-    const indices = candidateIndices.size > 0 ? candidateIndices : Array.from({ length: nextCache.segments.length / 4 }, (_, index) => index * 4)
+    const indices = candidates()
     for (const index of indices) {
       const x1 = nextCache.segments[index]
       const y1 = nextCache.segments[index + 1]

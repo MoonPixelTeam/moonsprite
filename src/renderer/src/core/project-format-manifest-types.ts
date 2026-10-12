@@ -6,6 +6,8 @@ import { type ColorMode, type RasterFormat } from '@shared/types-raster'
 import { type FreeTileInstance, type FreeTileSourceLayer, type TilemapCell } from '@shared/types-tiles'
 import { type LayerStyles } from '@shared/types-layer-style'
 import { type SpriteDocument } from '@shared/types-document'
+import type { ManifestReferenceImage, ManifestCanvasReference } from './project-format-reference-types'
+export type { ManifestReferenceImage, ManifestCanvasReference } from './project-format-reference-types'
 import { type TextCelData } from '@shared/types-text'
 import { type TimelapseSettings } from '@shared/types-timelapse'
 
@@ -149,7 +151,7 @@ export interface ManifestTimelapse extends Omit<TimelapseSettings, 'snapshots'> 
 
 export type RasterDataEncoding = 'raw' | 'sparse-tiles-v1'
 
-export const PROJECT_SCHEMA_VERSION = 20
+export const PROJECT_SCHEMA_VERSION = 21
 
 export const FREE_TILE_SET_PROJECT_SCHEMA_VERSION = 18
 
@@ -192,12 +194,14 @@ export const SPARSE_TILE_ENTRY_BYTES = 16
 export interface ProjectManifest {
   schemaVersion: typeof PROJECT_SCHEMA_VERSION
   app: 'MoonSprite'
-  document: Omit<SpriteDocument, 'layers' | 'groups' | 'palette' | 'customBrushes' | 'tilesets' | 'animation' | 'timelapse' | 'filePath' | 'sourceFilePath' | 'dirty'> & {
+  document: Omit<SpriteDocument, 'layers' | 'groups' | 'palette' | 'customBrushes' | 'referenceImages' | 'canvasReferences' | 'tilesets' | 'animation' | 'timelapse' | 'filePath' | 'sourceFilePath' | 'dirty'> & {
     schemaVersion: typeof PROJECT_SCHEMA_VERSION
     layers: ManifestLayer[]
     groups: LayerGroup[]
     palette: PaletteEntry[]
     customBrushes: ManifestProjectBrush[]
+    referenceImages?: ManifestReferenceImage[]
+    canvasReferences?: ManifestCanvasReference[]
     tilesets: ManifestTileset[]
     animation: ManifestAnimation
     timelapse?: ManifestTimelapse

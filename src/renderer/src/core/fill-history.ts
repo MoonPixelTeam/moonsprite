@@ -20,6 +20,12 @@ export const mergeFillPixelEdit = (layer: RasterLayer, merged: PixelEdit, edit: 
   const runs = merged.runs ??= []
   for (const run of edit.runs ?? []) runs.push({ ...run })
   for (const [index, before] of edit.before) runs.push({ index, length: 1, before, after: edit.after.get(index) ?? before })
+  // Dev's compact fill recorder stores unique writes in typed points rather
+  // than Maps. Preserve them in chronological order across symmetry seeds.
+  if (edit.points) for (let offset = 0; offset < edit.points.count; offset++) {
+    runs.push({ index: edit.points.indices[offset], length: 1,
+      before: edit.points.before[offset], after: edit.points.after[offset] })
+  }
   if (edit.dirtyRect) {
     const a = merged.dirtyRect ?? edit.dirtyRect, b = edit.dirtyRect
     const x = Math.min(a.x, b.x), y = Math.min(a.y, b.y)

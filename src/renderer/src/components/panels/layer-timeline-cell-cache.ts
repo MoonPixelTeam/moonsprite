@@ -37,7 +37,7 @@ export function timelineCellRenderState(p: Props, row: Props['displayRows'][numb
   const key = animationCelKey(layerId, frameId)
   const cel = p.celLookup.resolve(p.celLookup.at(layerId, frameId))
   const storage = cel?.surface ? rasterStorageIdentity(cel.surface) : null
-  const cell = p.visualCellStateBySlot.get(timelineCellSlotKey({kind: 'cel', ownerKind: 'layer', ownerId: layerId, frameId}))
+  const cell = p.visualCellStateAtSlot(timelineCellSlotKey({kind: 'cel', ownerKind: 'layer', ownerId: layerId, frameId}))
   const visualRow = p.visualRowStateByKey.get(timelineRowKey({kind: 'layer', ownerKind: 'layer', ownerId: layerId}))
   const frame = p.visualFrameStateById.get(frameId)
   const contentRevision = p.renderedCellKeySet.has(key) ||
@@ -59,7 +59,7 @@ export function timelineCellRenderState(p: Props, row: Props['displayRows'][numb
 /** Overlay-only movement does not change the grid's cells or event dispatchers. */
 export function timelineGridRenderState(p: Props, scope: readonly unknown[]): readonly unknown[] {
   return [scope, p.timeline, p.timeline.frames, p.displayRows, p.visualRowStateByKey, p.visualFrameStateById,
-    p.timelineVisualState, p.visualCellStateBySlot, p.maskVisualByOwnerFrame, p.linkedMaskSlotVisuals,
+    p.timelineVisualState, p.visualCellStateAtSlot, p.maskVisualByOwnerFrame, p.linkedMaskSlotVisuals,
     p.linkedCelMemberKeys, p.selectedLinkedCelMemberKeys, p.linkedCelBridgeEndKeys,
     p.visualSelectedFrameIdSet, p.visualSelectedMaskCellKeySet, p.renderedCellKeySet,
     p.selectedCellFrameIds, p.selectedMaskCellFrameIds, p.selectedActivityFrameIds,

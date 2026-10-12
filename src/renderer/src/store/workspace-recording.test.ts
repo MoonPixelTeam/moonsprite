@@ -5,6 +5,7 @@ import * as timelapse from '@/core/timelapse'
 import { configureRuntimeDiagnostics, resetRuntimeDiagnosticsForTests } from '@/core/runtime-diagnostics'
 import { createWorkspaceRecording } from './workspace-recording'
 import { sessionFromDocument, touch } from './workspace-session'
+import { Buffer } from 'node:buffer'
 
 beforeEach(() => { localStorage.clear(); configureRuntimeDiagnostics(() => {}) })
 afterEach(() => { vi.restoreAllMocks(); resetRuntimeDiagnosticsForTests() })
@@ -24,6 +25,74 @@ const setup = () => {
 }
 
 describe('recording failure durability', () => {
+  it.each(['region', 'full'] as const)('repairs intervening %s invalidation before committing a provisional large capture', async kind => {
+    const document = createDocument('dirty union', 64, 64, 'rgba', true)
+    document.width = document.height = 2048
+    const session = sessionFromDocument(document), recording = createWorkspaceRecording(() => {})
+    let release!: () => void, ready!: () => void
+    const gate = new Promise<void>(resolve => { release = resolve })
+    const started = new Promise<void>(resolve => { ready = resolve })
+    const original = timelapse.prepareTimelapseSnapshotAsync
+    vi.spyOn(timelapse, 'prepareTimelapseSnapshotAsync').mockImplementationOnce(async (...args) => {
+      const result = await original(...args)
+      ready(); await gate; return result
+    })
+    writeLayerColor(document, document.layers[0], 0, { r: 10, g: 0, b: 0, a: 255 })
+    touch(session, true, { kind: 'region', rect: { x: 0, y: 0, width: 1, height: 1 } });recording.recordDocumentOperation(session)
+    await started
+    if (kind === 'full') document.layers[0].offsetX = 96
+    writeLayerColor(document, document.layers[0], 32 * 64 + 32, { r: 20, g: 90, b: 0, a: 255 })
+    touch(session, true, kind === 'full' ? { kind: 'full' } : { kind: 'region', rect: { x: 32, y: 32, width: 1, height: 1 } });recording.recordDocumentOperation(session)
+    writeLayerColor(document, document.layers[0], 0, { r: 30, g: 0, b: 0, a: 255 })
+    touch(session, true, { kind: 'region', rect: { x: 0, y: 0, width: 1, height: 1 } });recording.recordDocumentOperation(session)
+    release();await recording.flushTimelapseCapture(session)
+    expect(document.timelapse!.snapshots).toHaveLength(1)
+    const actual = getActiveLayer(decodePng(document.timelapse!.snapshots[0].data, 'union')).pixels
+    const expected = timelapse.prepareTimelapseSnapshot(document, 1, { contentRevision: session.contentRevision })!.pixels
+    expect(Buffer.from(actual.buffer, actual.byteOffset, actual.byteLength).equals(Buffer.from(expected))).toBe(true)
+  })
+
+  it('reports a preparation failure, rejects an in-flight flush and prepares the next capture cleanly', async () => {
+    const { session } = setup()
+    session.document.width = session.document.height = 2048
+    const errors = vi.fn(), recording = createWorkspaceRecording(() => {}, errors)
+    vi.spyOn(timelapse, 'prepareTimelapseSnapshotAsync').mockRejectedValueOnce(new Error('prepare unavailable'))
+    recording.recordDocumentOperation(session)
+    await expect(recording.flushTimelapseCapture(session)).rejects.toThrow('prepare unavailable')
+    expect(errors).toHaveBeenCalledWith(expect.stringContaining('prepare unavailable'))
+    recording.recordDocumentOperation(session)
+    await recording.flushTimelapseCapture(session)
+    expect(session.document.timelapse!.snapshots).toHaveLength(1)
+  })
+
+  it('cancels preparation when a newer revision arrives, and flushes only the complete latest frame', async () => {
+    const { session, recording, paint, colors } = setup()
+    session.document.width = session.document.height = 2048
+    const prepare = vi.spyOn(timelapse, 'prepareTimelapseSnapshotAsync')
+    paint(40)
+    await vi.waitFor(() => expect(prepare).toHaveBeenCalledTimes(1))
+    paint(80)
+    await recording.flushTimelapseCapture(session)
+    expect(colors()).toEqual([80])
+    expect(recording.pendingCount(session.document)).toBe(0)
+  })
+
+  it('does not resurrect a large deferred edit or undo-step after cancellation', async () => {
+    const { session, recording, paint, colors } = setup()
+    session.document.width = session.document.height = 2048
+    paint(40)
+    recording.cancelPending(session.document)
+    await recording.flushTimelapseCapture(session)
+    expect(colors()).toEqual([])
+    recording.recordDocumentOperation(session, undefined, true, 'undo-step')
+    recording.cancelPendingUndoSteps(session.document)
+    await recording.flushTimelapseCapture(session)
+    expect(colors()).toEqual([])
+    paint(90)
+    await recording.flushTimelapseCapture(session)
+    expect(colors()).toEqual([90])
+  })
+
   it('retries a failed local write without appending or encoding the frame twice', async () => {
     const { session, recording, paint, committed } = setup()
     const append = vi.fn().mockRejectedValueOnce(new Error('Disk full')).mockImplementation(async (store, data) =>

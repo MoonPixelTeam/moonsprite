@@ -7,6 +7,19 @@ const buffers = new WeakMap<object, OffscreenCanvas>()
 const masks = new WeakMap<object, OffscreenCanvas>()
 const backdrops = new WeakMap<object, OffscreenCanvas>()
 
+// Keep enough capacity for nearby cropped previews. Release an oversized
+// surface when unused capacity would exceed 25% of the requested area.
+function adaptiveSurface(cache: WeakMap<object, OffscreenCanvas>, key: object, width: number, height: number): OffscreenCanvas {
+  let canvas = cache.get(key)
+  if (!canvas) { canvas = new OffscreenCanvas(width, height); cache.set(key, canvas); return canvas }
+  let nextWidth = Math.max(canvas.width, width)
+  let nextHeight = Math.max(canvas.height, height)
+  if (nextWidth * nextHeight > width * height * 1.25) { nextWidth = width; nextHeight = height }
+  if (canvas.width !== nextWidth) canvas.width = nextWidth
+  if (canvas.height !== nextHeight) canvas.height = nextHeight
+  return canvas
+}
+
 type ContrastBounds = { x: number; y: number; width: number; height: number }
 function backingBounds(context: RasterContext2D, bounds?: ContrastBounds) {
   if (!bounds) return { left: 0, top: 0, width: context.canvas.width, height: context.canvas.height }
@@ -25,22 +38,16 @@ export function canvasAdaptiveContrast(context: RasterContext2D, bounds?: Contra
   const transform = context.getTransform()
   const { left, top, width, height } = backingBounds(context, bounds)
   if (width <= 0 || height <= 0) return '#ffffff'
-  let buffer = buffers.get(context)
-  if (!buffer) { buffer = new OffscreenCanvas(width, height); buffers.set(context, buffer) }
-  if (buffer.width !== width) buffer.width = width
-  if (buffer.height !== height) buffer.height = height
+  const buffer = adaptiveSurface(buffers, context, width, height)
   const target = buffer.getContext('2d')!
-  target.clearRect(0, 0, width, height)
+  target.clearRect(0, 0, buffer.width, buffer.height)
   target.filter = AUTO_CONTRAST_FILTER
   // Materialize the crop before filtering. A source rectangle on a filtered
   // drawImage still hands the backend a viewport-sized texture; keeping the
   // filter input small avoids that dependency as the window grows.
-  let composite = backdrops.get(context)
-  if (!composite) { composite = new OffscreenCanvas(width, height); backdrops.set(context, composite) }
-  if (composite.width !== width) composite.width = width
-  if (composite.height !== height) composite.height = height
+  const composite = adaptiveSurface(backdrops, context, width, height)
   const source = composite.getContext('2d')!
-  source.clearRect(0, 0, width, height)
+  source.clearRect(0, 0, composite.width, composite.height)
   if (backdrop) source.drawImage(backdrop, left, top, width, height, 0, 0, width, height)
   source.drawImage(context.canvas, left, top, width, height, 0, 0, width, height)
   // Composite translucent preview paint over the document before deciding

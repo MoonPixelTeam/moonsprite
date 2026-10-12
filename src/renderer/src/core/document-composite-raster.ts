@@ -3,6 +3,7 @@ import type { RasterLayer } from '@shared/types-layer'
 import type { SelectionRect } from '@shared/types-selection'
 import type { SpriteDocument } from '@shared/types-document'
 import { blendWithMode, blendWithModeInto, TRANSPARENT } from './raster'
+import { acquireCompositeBuffer, releaseCompositeBuffer } from './buffer-pool'
 import {
   lazyRuntimeRasterForSurface,
   readSurfacePackedLocal,
@@ -13,56 +14,27 @@ import {
 import { type DocumentCompositeCache } from './document-composite-cache'
 import { styledLayerBlockCacheFor } from './document-composite-style-types'
 import { type CompositeStackItem } from './document-composite-plan'
+import { getCachedOpacityGroup, cacheOpacityGroup } from './document-composite-opacity-group-cache'
 
 const MAX_ROW_RANGE_SCAN_PIXELS = 1024 * 1024
 
 const COMPOSITE_TILE_SIZE = 64
 
-/** Copies opaque spans in one operation while preserving transparent and translucent pixels. */
-export const compositeRgbaRowWithOpaqueSpans = (
-  output: Uint8ClampedArray<ArrayBufferLike>,
-  source: Uint8Array<ArrayBufferLike> | Uint8ClampedArray<ArrayBufferLike>,
-  sourceOffset: number,
-  outputOffset: number,
-  pixelCount: number
-): void => {
-  let pixel = 0
-  while (pixel < pixelCount) {
-    const sourcePixelOffset = sourceOffset + pixel * 4
-    const sourceAlpha = source[sourcePixelOffset + 3]
-    if (sourceAlpha === 0) {
-      pixel += 1
-      continue
-    }
-    if (sourceAlpha === 255) {
-      const spanStart = pixel
-      pixel += 1
-      while (pixel < pixelCount && source[sourceOffset + pixel * 4 + 3] === 255) pixel += 1
-      output.set(
-        source.subarray(sourceOffset + spanStart * 4, sourceOffset + pixel * 4),
-        outputOffset + spanStart * 4
-      )
-      continue
-    }
+import { compositeRgbaRowWithOpaqueSpans } from './document-composite-rgba-row'
+export { compositeRgbaRowWithOpaqueSpans } from './document-composite-rgba-row'
 
-    const targetPixelOffset = outputOffset + pixel * 4
-    const bottomAlpha = output[targetPixelOffset + 3]
-    const topAlpha = sourceAlpha / 255
-    const bottomAlphaNormalized = bottomAlpha / 255
-    const outputAlpha = topAlpha + bottomAlphaNormalized * (1 - topAlpha)
-    if (outputAlpha > 0) {
-      output[targetPixelOffset] = Math.round((source[sourcePixelOffset] * topAlpha + output[targetPixelOffset] * bottomAlphaNormalized * (1 - topAlpha)) / outputAlpha)
-      output[targetPixelOffset + 1] = Math.round((source[sourcePixelOffset + 1] * topAlpha + output[targetPixelOffset + 1] * bottomAlphaNormalized * (1 - topAlpha)) / outputAlpha)
-      output[targetPixelOffset + 2] = Math.round((source[sourcePixelOffset + 2] * topAlpha + output[targetPixelOffset + 2] * bottomAlphaNormalized * (1 - topAlpha)) / outputAlpha)
-      output[targetPixelOffset + 3] = Math.round(outputAlpha * 255)
-    }
-    pixel += 1
-  }
-}
+export const compositeNormalLayers = (document: SpriteDocument, layers: readonly RasterLayer[], startX: number, startY: number, width: number, height: number, cache?: DocumentCompositeCache, revision = 0, output: Uint8ClampedArray<ArrayBufferLike> | null = null, dirtyRect?: SelectionRect): Uint8ClampedArray => {
+  // Use buffer pool if no output buffer provided
+  if (!output) output = acquireCompositeBuffer(width, height)
 
-export const compositeNormalLayers = (document: SpriteDocument, layers: readonly RasterLayer[], startX: number, startY: number, width: number, height: number, cache?: DocumentCompositeCache, revision = 0, output: Uint8ClampedArray<ArrayBufferLike> = new Uint8ClampedArray(width * height * 4), dirtyRect?: SelectionRect): Uint8ClampedArray => {
-  const paletteById = new Map(document.palette.map((entry) => [entry.id, entry.color]))
+  const paletteById = cache?.paletteColors(document.palette, revision) ?? new Map(document.palette.map((entry) => [entry.id, entry.color]))
   for (const layer of layers) {
+    // Early boundary check: skip layers completely outside the composite region
+    const layerRightBound = layer.offsetX + layer.width
+    const layerBottom = layer.offsetY + layer.height
+    const compositeRight = startX + width
+    const compositeBottom = startY + height
+    if (layerRightBound <= startX || layer.offsetX >= compositeRight || layerBottom <= startY || layer.offsetY >= compositeBottom) continue
     if (cache && styledLayerBlockCacheFor(layer)) {
       cache.compositeStyledLayerInto(document, layer, startX, startY, width, height, output)
       continue
@@ -70,7 +42,7 @@ export const compositeNormalLayers = (document: SpriteDocument, layers: readonly
     const runtime = lazyRuntimeRasterForSurface(layer)
     const rgbaPixels = !runtime && layer.format === 'rgba' ? layer.pixels : null
     const indexedPixels = !runtime && layer.format === 'indexed' ? layer.pixels : null
-    const runtimeOpaqueIds = layer.format === 'indexed' ? new Set(document.palette.filter((entry) => entry.color.a > 0).map((entry) => entry.id)) : undefined
+    const runtimeOpaqueIds = layer.format === 'indexed' ? (cache?.opaquePaletteIds(document.palette, revision) ?? new Set(document.palette.filter((entry) => entry.color.a > 0).map((entry) => entry.id))) : undefined
     const layerLeft = Math.max(startX, layer.offsetX)
     const top = Math.max(startY, layer.offsetY)
     const layerRight = Math.min(startX + width, layer.offsetX + layer.width)
@@ -89,7 +61,7 @@ export const compositeNormalLayers = (document: SpriteDocument, layers: readonly
       if (largeLayerTiles) {
         const visible = runtime
           ? runtimeTileHasVisiblePixels(layer, tileX, tileY, runtimeOpaqueIds)
-          : cache!.tileHasVisiblePixels(layer, document.palette, tileX, tileY, tileSize)
+          : cache!.tileHasVisiblePixels(layer, document.palette, tileX, tileY, tileSize, revision)
         if (!visible) continue
       }
       const tileLeft = layer.offsetX + tileX * tileSize
@@ -353,9 +325,12 @@ export const compositeOpacityGroupStack = (
   height: number,
   cache?: DocumentCompositeCache,
   revision = 0,
-  output: Uint8ClampedArray<ArrayBufferLike> = new Uint8ClampedArray(width * height * 4),
+  output: Uint8ClampedArray<ArrayBufferLike> | null = null,
   dirtyRect?: SelectionRect
 ): Uint8ClampedArray => {
+  // Use buffer pool if no output buffer provided
+  if (!output) output = acquireCompositeBuffer(width, height)
+
   let layerBatch: RasterLayer[] = []
   const flushLayers = (): void => {
     if (layerBatch.length === 0) return
@@ -376,8 +351,46 @@ export const compositeOpacityGroupStack = (
       compositeOpacityGroupStack(document, item.children, startX, startY, width, height, cache, revision, output, dirtyRect)
       continue
     }
-    const groupOutput = compositeOpacityGroupStack(document, item.children, startX, startY, width, height, cache, revision, undefined, dirtyRect)
-    compositeBufferWithModeInto(output, groupOutput, item.group.opacity, item.group.blendMode)
+
+    // Try to use cached opacity group composite
+    if (cache && item.group.opacity < 1) {
+      const childLayerIds = item.children
+        .filter(child => child.kind === 'layer')
+        .map(child => (child as { layer: RasterLayer }).layer.id)
+      const cached = getCachedOpacityGroup(item.group, revision, childLayerIds)
+      if (cached && cached.width === width && cached.height === height) {
+        const context = cached.getContext('2d')
+        if (context) {
+          const cachedPixels = context.getImageData(0, 0, width, height).data
+          compositeBufferWithModeInto(output, cachedPixels, item.group.opacity, item.group.blendMode)
+          continue
+        }
+      }
+
+      // Only the synchronous scratch result is pooled. The canvas owns a copy.
+      const groupOutput = acquireCompositeBuffer(width, height)
+      try {
+        compositeOpacityGroupStack(document, item.children, startX, startY, width, height, cache, revision, groupOutput, dirtyRect)
+        if (typeof OffscreenCanvas !== 'undefined') {
+          const groupCanvas = new OffscreenCanvas(width, height)
+          const groupContext = groupCanvas.getContext('2d')
+          if (groupContext) {
+            const imageData = groupContext.createImageData(width, height)
+            imageData.data.set(groupOutput)
+            groupContext.putImageData(imageData, 0, 0)
+            cacheOpacityGroup(item.group, groupCanvas, revision, childLayerIds)
+          }
+        }
+        compositeBufferWithModeInto(output, groupOutput, item.group.opacity, item.group.blendMode)
+      } finally { releaseCompositeBuffer(groupOutput) }
+      continue
+    }
+
+    const groupOutput = acquireCompositeBuffer(width, height)
+    try {
+      compositeOpacityGroupStack(document, item.children, startX, startY, width, height, cache, revision, groupOutput, dirtyRect)
+      compositeBufferWithModeInto(output, groupOutput, item.group.opacity, item.group.blendMode)
+    } finally { releaseCompositeBuffer(groupOutput) }
   }
   flushLayers()
   return output

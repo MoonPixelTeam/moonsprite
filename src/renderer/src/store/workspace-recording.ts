@@ -3,10 +3,12 @@ import type { SpriteDocument } from '@shared/types-document'
 import { beginRuntimeDiagnosticOperation, measureRuntimeDiagnostic, recordRuntimeDiagnostic, runtimeDiagnosticsActive } from '@/core/runtime-diagnostics'
 import { documentDiagnosticDetail } from '@/core/document-diagnostics'
 import { normalizeProjectStatistics, normalizeTimelapseSettings } from '@/core/project-metadata'
-import { commitPreparedTimelapseSnapshot, createTimelapseCaptureCache, prepareTimelapseSnapshot, resetTimelapseSmartCapture, type TimelapseCaptureCache } from '@/core/timelapse'
+import { commitPreparedTimelapseSnapshot, createTimelapseCaptureCache, prepareTimelapseSnapshot, prepareTimelapseSnapshotAsync, resetTimelapseSmartCapture, type PreparedTimelapseSnapshot, type TimelapseCaptureCache } from '@/core/timelapse'
 import { recordUsageDrawingActivity } from '@/platform/usage-statistics'
 import type { DocumentSession } from './workspace-types'
 import { persistTimelapseFrames } from './timelapse-library-service'
+import { LatestTaskQueue } from '@/core/latest-task-queue'
+import { TimelapseCapacityError } from '@/core/timelapse'
 
 /** A capture is either triggered by an edit or by an undo/redo history step. */
 export type TimelapseCaptureKind = 'edit' | 'undo-step'
@@ -14,7 +16,16 @@ export type TimelapseCaptureKind = 'edit' | 'undo-step'
 export function createWorkspaceRecording(onCaptureCommitted: (document: SpriteDocument) => void, onCaptureError?: (message: string) => void) {
 const timelapseCaptureCaches = new WeakMap<SpriteDocument, TimelapseCaptureCache>()
 const timelapseCaptureTasks = new WeakMap<SpriteDocument, Promise<void>>()
+const preparationQueues = new WeakMap<SpriteDocument, LatestTaskQueue<() => Promise<void>>>()
+// Small documents finish preparation faster than a timer round trip and are
+// also common in deterministic store tests. Keep their historical immediate
+// semantics; large canvases take the deferred path below.
+const TIMELAPSE_DEFER_SOURCE_BYTES = 4 * 1024 * 1024
 const timelapseCaptureGenerations = new WeakMap<SpriteDocument, number>()
+// Changes since the current preparation began must be repainted before a
+// provisional cache can become a committed frame. Keep only their union.
+const preparingRevisions = new WeakMap<SpriteDocument, number>()
+const preparationInvalidations = new WeakMap<SpriteDocument, DocumentSession['contentInvalidation']>()
 const pendingCounts = new WeakMap<SpriteDocument, number>()
 const pendingBytes = new WeakMap<SpriteDocument, number>()
 const releaseCaptureBytes = new WeakMap<() => Promise<void>, () => void>()
@@ -35,11 +46,11 @@ const captureCacheFor = (document: SpriteDocument): TimelapseCaptureCache => {
   return created
 }
 
-const queueTimelapseCapture = (session: DocumentSession, kind: TimelapseCaptureKind = 'edit'): Promise<void> => {
+const queueTimelapseCaptureNow = (session: DocumentSession, kind: TimelapseCaptureKind = 'edit', registerTask = true, preparedSnapshot?: PreparedTimelapseSnapshot): Promise<void> => {
   const document = session.document
   const captureRevision = session.contentRevision
   const captureInvalidation = session.contentInvalidation
-  const prepared = measureRuntimeDiagnostic('timelapse.prepare', () => prepareTimelapseSnapshot(document, Date.now(), {
+  const prepared = preparedSnapshot ?? measureRuntimeDiagnostic('timelapse.prepare', () => prepareTimelapseSnapshot(document, Date.now(), {
     cache: captureCacheFor(document),
     contentRevision: captureRevision,
     contentInvalidation: captureInvalidation
@@ -76,15 +87,16 @@ const queueTimelapseCapture = (session: DocumentSession, kind: TimelapseCaptureK
   }
   const generation = timelapseCaptureGenerations.get(document) ?? 0
   const undoStepGeneration = timelapseUndoStepGenerations.get(document) ?? 0
-  const previous = timelapseCaptureTasks.get(document) ?? Promise.resolve()
-  let appended = false
+  // The delayed wrapper already serializes captures. Keep the original
+  // promise chain for direct callers and tests that invoke this helper while
+  // allowing the wrapper to reserve the queue slot before the next task runs.
+  const previous = registerTask ? (timelapseCaptureTasks.get(document) ?? Promise.resolve()) : Promise.resolve()
+  let appendedFrame: Awaited<ReturnType<typeof commitPreparedTimelapseSnapshot>> = null
   const commit = async (): Promise<void> => {
-    if (appended) { await persistTimelapseFrames(document, window.moonSprite); onCaptureCommitted(document); return }
-    const snapshots = document.timelapse?.snapshots
-    await commitPreparedTimelapseSnapshot(document, prepared, () => (timelapseCaptureGenerations.get(document) ?? 0) === generation
+    if (appendedFrame) { await persistTimelapseFrames(document, window.moonSprite, [appendedFrame]); onCaptureCommitted(document); return }
+    appendedFrame = await commitPreparedTimelapseSnapshot(document, prepared, () => (timelapseCaptureGenerations.get(document) ?? 0) === generation
       && (kind !== 'undo-step' || (timelapseUndoStepGenerations.get(document) ?? 0) === undoStepGeneration))
-    appended = document.timelapse?.snapshots !== snapshots
-    if (appended) { await persistTimelapseFrames(document, window.moonSprite); onCaptureCommitted(document) }
+    if (appendedFrame) { await persistTimelapseFrames(document, window.moonSprite, [appendedFrame]); onCaptureCommitted(document) }
   }
   releaseCaptureBytes.set(commit, releaseBytes)
   pendingCounts.set(document, (pendingCounts.get(document) ?? 0) + 1)
@@ -92,16 +104,23 @@ const queueTimelapseCapture = (session: DocumentSession, kind: TimelapseCaptureK
   tracked = previous.catch(() => undefined).then(async () => {
     const encodingAt = queuedAt !== null ? performance.now() : null
     if (diagnostics && encodingAt !== null && queuedAt !== null) diagnostics.maxQueueMs = Math.max(diagnostics.maxQueueMs, encodingAt - queuedAt)
-    const snapshots = document.timelapse?.snapshots
     if (failedCaptures.get(document)?.length) throw new Error('Timelapse capture is waiting for a failed earlier frame')
     await commit()
-    const skipped = (timelapseCaptureGenerations.get(document) ?? 0) !== generation || document.timelapse?.snapshots === snapshots
+    const skipped = (timelapseCaptureGenerations.get(document) ?? 0) !== generation || !appendedFrame
     if (diagnostics && encodingAt !== null) {
       diagnostics.maxEncodeMs = Math.max(diagnostics.maxEncodeMs, performance.now() - encodingAt)
       if (skipped) diagnostics.skipped += 1
       else diagnostics.completed += 1
     }
   }).catch((error) => {
+    // Capacity suspension is complete and observable, not a failed durable
+    // write to retry forever. Existing frames must remain saveable/closable.
+    if (error instanceof TimelapseCapacityError) {
+      onCaptureError?.(error.message)
+      onCaptureCommitted(document)
+      recordRuntimeDiagnostic('error', 'timelapse.capacity', { documentId: document.id, message: error.message })
+      return
+    }
     onCaptureError?.(`缩时录像未能保存：${error instanceof Error ? error.message : String(error)}`)
     const failures = failedCaptures.get(document) ?? []
     failures.push(commit)
@@ -132,10 +151,102 @@ const queueTimelapseCapture = (session: DocumentSession, kind: TimelapseCaptureK
         Object.assign(diagnostics, { peak: diagnostics.pending, completed: 0, skipped: 0, failed: 0, maxQueueMs: 0, maxEncodeMs: 0, lastReportAt: now })
       }
     }
-    if (timelapseCaptureTasks.get(document) === tracked) timelapseCaptureTasks.delete(document)
+    if (registerTask && timelapseCaptureTasks.get(document) === tracked) timelapseCaptureTasks.delete(document)
   })
-  timelapseCaptureTasks.set(document, tracked)
+  if (registerTask) timelapseCaptureTasks.set(document, tracked)
   return tracked
+}
+
+/**
+ * Reserve the capture queue immediately, but defer snapshot preparation until
+ * the current document-record task has yielded. Large-canvas preparation
+ * yields between sample batches and freezes tiles before encoding.
+ */
+const queueTimelapseCapture = (session: DocumentSession, kind: TimelapseCaptureKind = 'edit'): Promise<void> => {
+  const document = session.document
+  if (document.width * document.height * 4 <= TIMELAPSE_DEFER_SOURCE_BYTES) return queueTimelapseCaptureNow(session, kind)
+  const queuedRevision = session.contentRevision
+  const cache = captureCacheFor(document)
+  const previousInvalidation = preparationInvalidations.get(document)
+  const invalidation = session.contentInvalidation
+  const expectedFrom = previousInvalidation?.revision ?? preparingRevisions.get(document) ?? cache.revision
+  if (previousInvalidation?.revision !== queuedRevision) {
+    const rect = invalidation?.kind === 'region' ? invalidation.rect : undefined
+    const previousRect = previousInvalidation?.kind === 'region' ? previousInvalidation.rect : undefined
+    const continuousRegion = invalidation?.kind === 'region' && rect
+      && invalidation.fromRevision === expectedFrom && previousInvalidation?.kind !== 'full'
+    preparationInvalidations.set(document, continuousRegion ? {
+      kind: 'region', fromRevision: previousInvalidation?.fromRevision ?? invalidation.fromRevision, revision: queuedRevision,
+      rect: previousRect ? {
+        x: Math.min(previousRect.x, rect.x), y: Math.min(previousRect.y, rect.y),
+        width: Math.max(previousRect.x + previousRect.width, rect.x + rect.width) - Math.min(previousRect.x, rect.x),
+        height: Math.max(previousRect.y + previousRect.height, rect.y + rect.height) - Math.min(previousRect.y, rect.y)
+      } : { ...rect }
+    } : { kind: 'full', fromRevision: expectedFrom, revision: queuedRevision })
+  }
+  const generation = timelapseCaptureGenerations.get(document) ?? 0
+  const undoGeneration = timelapseUndoStepGenerations.get(document) ?? 0
+  const frameId = document.animation?.activeFrameId
+  const shouldContinue = () => session.document === document
+    && document.animation?.activeFrameId === frameId
+    && (timelapseCaptureGenerations.get(document) ?? 0) === generation
+    && (kind !== 'undo-step' || (timelapseUndoStepGenerations.get(document) ?? 0) === undoGeneration)
+  let queue = preparationQueues.get(document)
+  if (!queue) {
+    const priorCapture = timelapseCaptureTasks.get(document) ?? Promise.resolve()
+    queue = new LatestTaskQueue(async task => { await priorCapture.catch(() => undefined); await task() },
+      () => { if (preparationQueues.get(document) === queue) preparationQueues.delete(document) })
+    preparationQueues.set(document, queue)
+  }
+  let scheduled!: Promise<void>
+  scheduled = queue.enqueue(() => new Promise<void>((resolve, reject) => {
+    globalThis.setTimeout(() => {
+      void Promise.resolve()
+        .then(async () => {
+          // A later edit may have landed before this timer got a turn. Drop
+          // that stale intermediate frame instead of encoding the same latest
+          // document twice; the later queue entry owns the current revision.
+          if (!shouldContinue() || session.contentRevision !== queuedRevision) return
+          const pendingInvalidation = preparationInvalidations.get(document)
+          preparationInvalidations.delete(document)
+          preparingRevisions.set(document, queuedRevision)
+          const diagnostic = runtimeDiagnosticsActive() ? beginRuntimeDiagnosticOperation('timelapse.prepare', {
+            documentId: document.id, contentRevision: queuedRevision, timing: 'async-wall'
+          }) : null
+          let prepared: PreparedTimelapseSnapshot | null
+          try {
+            prepared = await prepareTimelapseSnapshotAsync(document, Date.now(), {
+              cache, contentRevision: queuedRevision,
+              contentInvalidation: pendingInvalidation ? { ...pendingInvalidation, fromRevision: cache.revision, revision: queuedRevision } : session.contentInvalidation,
+              shouldCommit: shouldContinue
+            })
+            diagnostic?.finish(prepared && session.contentRevision === queuedRevision ? 'ok' : 'canceled')
+          } catch (error) {
+            cache.pixels = null
+            cache.revision = Number.NaN
+            diagnostic?.finish('error', { message: error instanceof Error ? error.message : String(error) })
+            onCaptureError?.(`缩时录像未能准备：${error instanceof Error ? error.message : String(error)}`)
+            throw error
+          } finally {
+            preparingRevisions.delete(document)
+          }
+          // An intervening edit makes the output provisional, never a frame.
+          // Its pending union repairs all changed samples on the next task,
+          // rather than discarding it and starving continuous drawing.
+          if (!prepared || !shouldContinue() || session.contentRevision !== queuedRevision) return
+          return queueTimelapseCaptureNow(session, kind, false, prepared)
+        })
+        .then(resolve, reject)
+    }, 0)
+  }))
+  timelapseCaptureTasks.set(document, scheduled)
+  // Do not leave the promise returned by finally() unhandled when a capture
+  // fails; the caller still receives the original rejection from scheduled.
+  void scheduled.then(
+    () => { if (timelapseCaptureTasks.get(document) === scheduled) timelapseCaptureTasks.delete(document) },
+    () => { if (timelapseCaptureTasks.get(document) === scheduled) timelapseCaptureTasks.delete(document) }
+  )
+  return scheduled
 }
 
 const scheduleTimelapseCapture = (session: DocumentSession, kind: TimelapseCaptureKind = 'edit'): void => {
@@ -165,7 +276,13 @@ const flushTimelapseCapture = async (session: DocumentSession): Promise<void> =>
         const failures = failedCaptures.get(document)
         while (failures?.length) {
           const failed = failures[0]
-          await failed()
+          try { await failed() }
+          catch (error) {
+            if (!(error instanceof TimelapseCapacityError)) throw error
+            onCaptureError?.(error.message)
+            onCaptureCommitted(document)
+            recordRuntimeDiagnostic('error', 'timelapse.capacity', { documentId: document.id, message: error.message })
+          }
           releaseCaptureBytes.get(failed)?.()
           failures.shift()
         }
@@ -216,6 +333,9 @@ const recordDocumentOperation = (session: DocumentSession, activity?: { stroke?:
       if (cache) resetTimelapseSmartCapture(cache)
     },
     cancelPending(document: SpriteDocument) {
+      preparationInvalidations.delete(document)
+      const cache = timelapseCaptureCaches.get(document)
+      if (cache) { cache.pixels = null; cache.composite.dispose(); timelapseCaptureCaches.delete(document) }
       for (const failed of failedCaptures.get(document) ?? []) releaseCaptureBytes.get(failed)?.()
       failedCaptures.delete(document)
       timelapseCaptureGenerations.set(document, (timelapseCaptureGenerations.get(document) ?? 0) + 1)

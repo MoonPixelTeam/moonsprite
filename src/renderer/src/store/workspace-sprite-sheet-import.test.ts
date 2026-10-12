@@ -9,6 +9,22 @@ beforeEach(() => {
   vi.stubGlobal('moonSprite', { getResourceInfo: vi.fn().mockResolvedValue({ freeBytes: 2 ** 40 }) })
 })
 afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals() })
+it('imports only the selection and restores its mask and original pixels on undo', async () => {
+  const source = createDocument('selection sheet', 4, 1, 'rgba', false)
+  for (let i = 0; i < 4; i++) writeLayerColor(source, source.layers[0], i, { r: i + 1, g: 0, b: 0, a: 255 })
+  useWorkspace.getState().addSession(source)
+  const session = useWorkspace.getState().sessions[0]
+  session.selection = { x: 1, y: 0, width: 2, height: 1, mask: new Uint8Array([1, 0]) }
+  const selection = session.selection, original = compositeRegion(source, 0, 0, 4, 1)
+  expect(await useWorkspace.getState().importSpriteSheet(source.id, { ...defaults, width: 1, height: 1, selection })).toBe(true)
+  expect(source.animation!.cels.map(cel => Array.from(cel.surface!.pixels))).toEqual([[2, 0, 0, 255], [0, 0, 0, 0]])
+  expect(session.history.position).toBe(1)
+  useWorkspace.getState().undo()
+  expect(session.selection).toEqual(selection)
+  expect(compositeRegion(source, 0, 0, 4, 1)).toEqual(original)
+  useWorkspace.getState().redo()
+  expect(source.animation!.frames).toHaveLength(2)
+})
 it('imports in place as one undo step and restores canvas, layers, palette, selection and animation', async () => {
   const source = createDocument('sheet', 4, 2, 'rgba', false)
   writeLayerColor(source, source.layers[0], 0, { r: 255, g: 0, b: 0, a: 255 })

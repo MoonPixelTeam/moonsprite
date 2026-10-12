@@ -1037,6 +1037,7 @@ describe('layer masks', () => {
     useWorkspace.getState().setSelection({ x: 0, y: 0, width: 1, height: 1 })
     useWorkspace.getState().deleteSelection()
     expect(readLayerColor(document, mask, 0)).toEqual({ r: 0, g: 0, b: 0, a: 255 })
+    expect(useWorkspace.getState().sessions[0].selection).toBeNull()
     useWorkspace.getState().selectLayer(layer.id)
     session = useWorkspace.getState().sessions[0]
     expect(session.primaryColor).toEqual(red)

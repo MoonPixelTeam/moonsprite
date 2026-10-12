@@ -31,6 +31,8 @@ describe('shortcut persistence boundary', () => {
   it('registers every configurable command in one labeled group', () => {
     const grouped = new Set(Object.values(SHORTCUT_GROUPS).flat())
     expect(grouped).toEqual(new Set(Object.keys(DEFAULT_SHORTCUTS)))
+    expect(DEFAULT_SHORTCUTS.importSpriteSheet).toBe('Ctrl+I')
+    expect(SHORTCUT_LABELS.importSpriteSheet).toBe('导入精灵表')
     expect(SHORTCUT_LABELS['tool.selection.ellipse']).toBe('椭圆选区')
     expect(DEFAULT_SHORTCUTS.mirrorView).toBe('Ctrl+Shift+M')
     expect(DEFAULT_SHORTCUTS.mirrorViewVertical).toBe('Ctrl+Shift+Alt+M')

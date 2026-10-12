@@ -28,6 +28,7 @@ import { ensureTilemapTilesetOwnership } from '@/core/tilemap-document'
 import { ensureFreeTileTilesetOwnership } from '@/core/free-tile-document'
 import { historyEntryLimit, loadEditorPreferences } from '@/core/file-preferences'
 import { loadDocumentViewState } from '@/core/document-view-state'
+import { DEFAULT_FILL_PATTERN_SETTINGS } from '@/core/pattern-fill-settings'
 
 const defaultColor: RgbaColor = { r: 41, g: 121, b: 255, a: 255 }
 const defaultSecondary: RgbaColor = { r: 241, g: 244, b: 248, a: 255 }
@@ -71,6 +72,7 @@ export const copyCanvasToolSettings = (source: DocumentSession, target: Document
     syncInkAcrossTools: source.syncInkAcrossTools,
     brushImageId: source.brushImageId,
     brushImage: source.brushImage ? structuredClone(source.brushImage) : null,
+    fillPatternBrushes: source.fillPatternBrushes ? structuredClone(source.fillPatternBrushes) : undefined,
     brushImageTemporary: source.brushImageTemporary,
     brushImageSettings: structuredClone(source.brushImageSettings),
     brushProfiles: structuredClone(source.brushProfiles),
@@ -89,6 +91,8 @@ export const copyCanvasToolSettings = (source: DocumentSession, target: Document
     shapeRounded: source.shapeRounded,
     shapeCornerRadius: source.shapeCornerRadius,
     fillMode: source.fillMode,
+    fillPatternMode: source.fillPatternMode,
+    fillPatternSettings: { ...DEFAULT_FILL_PATTERN_SETTINGS, ...(source.fillPatternSettings ?? {}) },
     fillKind: source.fillKind,
     fillTolerance: source.fillTolerance,
     fillGapClosing: source.fillGapClosing,
@@ -308,6 +312,8 @@ export function persistToolSettings(session: DocumentSession): void {
     shapeRounded: session.shapeRounded,
     shapeCornerRadius: session.shapeCornerRadius,
     fillMode: session.fillMode,
+    fillPatternMode: session.fillPatternMode,
+    fillPatternSettings: { ...DEFAULT_FILL_PATTERN_SETTINGS, ...(session.fillPatternSettings ?? {}) },
     fillKind: session.fillKind ?? 'bucket',
     fillTolerance: session.fillTolerance,
     fillGapClosing: session.fillGapClosing,
@@ -440,6 +446,8 @@ export const sessionFromDocument = (document: SpriteDocument): DocumentSession =
     shapeRounded: settings.shapeRounded,
     shapeCornerRadius: settings.shapeCornerRadius,
     fillMode: settings.fillMode,
+    fillPatternMode: settings.fillPatternMode,
+    fillPatternSettings: { ...DEFAULT_FILL_PATTERN_SETTINGS, ...(settings.fillPatternSettings ?? {}) },
     fillKind: settings.fillKind,
     fillTolerance: settings.fillTolerance,
     fillGapClosing: settings.fillGapClosing,

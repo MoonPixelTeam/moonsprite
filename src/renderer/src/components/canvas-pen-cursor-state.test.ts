@@ -3,7 +3,59 @@ import { refreshPenCursor, type CanvasPenCursorPorts, type CanvasPenCursorRefs }
 import { DEFAULT_EDITOR_PREFERENCES } from '@/core/file-preferences'
 import { cursorOverlayDescriptor, setNativeCursorVisible } from '@/platform/cursor-theme'
 import { selectionCreationCursor } from '@/core/canvas-visuals'
+import { AUTO_CONTRAST_FILTER } from './canvas-adaptive-contrast'
 vi.mock('@/platform/cursor-theme', () => ({ cursorOverlayDescriptor: vi.fn(() => null), setNativeCursorVisible: vi.fn(async () => {}) }))
+
+it.each(['cross', 'dot', 'pixel-cross'] as const)('preserves the %s pointer color behavior regardless of the hotspot color', shape => {
+  const descriptorMock = vi.mocked(cursorOverlayDescriptor)
+  descriptorMock.mockReturnValue({ source: '/crosshair.png', size: 32, hotspotX: 15, hotspotY: 15 })
+  const canvas = document.createElement('canvas')
+  const overlay = document.createElement('span'), image = document.createElement('img')
+  const ports: CanvasPenCursorPorts = { canvasRef: { current: canvas }, interfaceScale: 1, stageBounds: () => canvas.getBoundingClientRect() }
+  const refs: CanvasPenCursorRefs = {
+    penCursorRef: { current: image }, adaptiveCursorRef: { current: overlay },
+    penCursorStateRef: { current: { active: true, pressure: false, x: 19, y: 29 } },
+    cursorPreferencesRef: { current: { ...DEFAULT_EDITOR_PREFERENCES, paintingCursorShape: shape, paintingCursorAlignToPixel: false } }
+  }
+  try {
+    for (const cursorColor of ['black', 'white']) {
+      canvas.style.cursor = `var(--cursor-pencil-${cursorColor})`
+      refreshPenCursor(ports, refs)
+      expect(overlay.hidden).toBe(false)
+      if (shape === 'pixel-cross') {
+        expect(overlay.style.maskImage).toBe('none')
+        expect(overlay.style.backgroundImage).toContain('url(')
+        expect(decodeURIComponent(overlay.style.backgroundImage)).toContain('fill="#101010"')
+        expect(overlay.style.backdropFilter).toBe('none')
+      } else {
+        expect(overlay.style.maskImage).toContain('url(')
+        expect(overlay.style.backgroundImage).toBe('none')
+        expect(overlay.style.backdropFilter).toBe(AUTO_CONTRAST_FILTER)
+      }
+      expect(overlay.style.backgroundColor).toBe('')
+      expect(canvas.dataset.adaptiveCursor).toBe('true')
+    }
+    refs.cursorPreferencesRef.current!.cursorColorMode = 'custom'
+    refs.cursorPreferencesRef.current!.cursorColor = { r: 12, g: 34, b: 56, a: 255 }
+    refreshPenCursor(ports, refs)
+    expect(overlay.style.backdropFilter).toBe('none')
+    expect(overlay.style.backgroundColor).toBe(shape === 'pixel-cross' ? '' : 'rgb(12, 34, 56)')
+    refs.cursorPreferencesRef.current!.cursorColorMode = 'auto'
+    refreshPenCursor(ports, refs)
+    expect(overlay.style.backdropFilter).toBe(shape === 'pixel-cross' ? 'none' : AUTO_CONTRAST_FILTER)
+    expect(overlay.style.backgroundColor).toBe('')
+    // Switching shapes on the same overlay must remove the previous image,
+    // filter, mask and custom fill rather than leaving stale cursor styling.
+    refs.cursorPreferencesRef.current!.paintingCursorShape = shape === 'pixel-cross' ? 'cross' : 'pixel-cross'
+    refreshPenCursor(ports, refs)
+    expect(overlay.style.maskImage).toBe(shape === 'pixel-cross' ? 'url("/crosshair.png")' : 'none')
+    expect(overlay.style.backdropFilter).toBe(shape === 'pixel-cross' ? AUTO_CONTRAST_FILTER : 'none')
+    if (shape === 'pixel-cross') expect(overlay.style.backgroundImage).toBe('none')
+    else expect(overlay.style.backgroundImage).toContain('data:image/svg+xml')
+  } finally {
+    descriptorMock.mockImplementation(() => null)
+  }
+})
 
 it('keeps stalled native notifications and stationary cursor DOM mutations bounded during sustained pointer input', () => {
   const pending = new Promise<void>(() => {})
@@ -143,9 +195,9 @@ it.each([false, true])('uses the pixel-cross SVG and honors pixel alignment=%s a
     })
     expect(overlay.hidden).toBe(false)
     expect(overlay.style.width).toBe(`${32 / interfaceScale}px`)
+    expect(overlay.style.maskImage).toBe('none')
     expect(decodeURIComponent(overlay.style.backgroundImage)).toContain('M7 2h1v3H7z')
     expect(decodeURIComponent(overlay.style.backgroundImage)).toContain('fill="#101010"')
-    expect(overlay.style.maskImage).toBe('none')
     expect(overlay.style.backdropFilter).toBe('none')
     expect(overlay.style.transform).toBe(`translate3d(${(aligned ? 20 : 19) - 15 / interfaceScale}px, ${(aligned ? 30 : 29) - 15 / interfaceScale}px, 0)`)
     expect(canvas.dataset.paintingCursor).toBeUndefined()

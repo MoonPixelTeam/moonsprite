@@ -1,7 +1,8 @@
-import type { BrushDitherSettings, BrushPaintMode, BrushShape, BrushTexture, FillConnectivity, FillKind, FillMode, FillReference, GradientDither, GradientStop, GradientType, ImageBrushSettings, InkMode, LineKind, LiquifyMode, ProceduralBrushId, ProceduralBrushSettings, ShapeKind, ShapeRatio, ToolId } from '@shared/types-brush'
+import type { BrushDitherSettings, BrushPaintMode, BrushShape, BrushTexture, FillConnectivity, FillKind, FillMode, FillPatternMode, FillPatternSettings, FillReference, GradientDither, GradientStop, GradientType, ImageBrushSettings, InkMode, LineKind, LiquifyMode, ProceduralBrushId, ProceduralBrushSettings, ShapeKind, ShapeRatio, ToolId } from '@shared/types-brush'
 import type { SelectionKind, SelectionMode } from '@shared/types-selection'
 import { normalizeProceduralBrushSettings, PROCEDURAL_BRUSH_IDS } from './brushes'
 import { DEFAULT_BRUSH_DITHER_SETTINGS, normalizeBrushDitherSettings, normalizeGradientStops } from './gradient-color'
+import { DEFAULT_FILL_PATTERN_SETTINGS, normalizeFillPatternSettings } from './pattern-fill-settings'
 import { readStoredJson, writeStoredJson } from './storage'
 import { DEFAULT_SYMMETRY_AXES, type SymmetryAxes } from './symmetry'
 import { DEFAULT_GAP_CLOSING_THRESHOLD, normalizeGapClosingThreshold } from './contiguous-region'
@@ -60,6 +61,8 @@ export interface PersistedToolSettings extends PersistedBrushProfile {
   shapeRounded: boolean
   shapeCornerRadius: number
   fillMode: FillMode
+  fillPatternMode: FillPatternMode
+  fillPatternSettings: FillPatternSettings
   fillKind: FillKind
   fillTolerance: number
   fillGapClosing: boolean
@@ -116,7 +119,7 @@ export const defaultToolSettings: PersistedToolSettings = {
   inkMode: 'simple',
   brushPaintModePreferenceVersion: 1,
   brushImageId: null,
-  brushImageSettings: { mode: 'dither', threshold: 128, blackPoint: 0, whitePoint: 255, invert: false },
+  brushImageSettings: { mode: 'threshold', threshold: 128, blackPoint: 0, whitePoint: 255, invert: false },
   proceduralBrushSettings: createDefaultProceduralBrushSettings(),
   proceduralAntialias: false,
   proceduralAntialiasPreferenceVersion: 1,
@@ -134,6 +137,8 @@ export const defaultToolSettings: PersistedToolSettings = {
   shapeRounded: false,
   shapeCornerRadius: 4,
   fillMode: 'contiguous',
+  fillPatternMode: 'default',
+  fillPatternSettings: { ...DEFAULT_FILL_PATTERN_SETTINGS },
   fillKind: 'bucket',
   fillTolerance: 0,
   fillGapClosing: false,
@@ -262,6 +267,8 @@ export function loadToolSettings(storage?: Storage): PersistedToolSettings {
       shapeRounded: typeof stored.shapeRounded === 'boolean' ? stored.shapeRounded : defaultToolSettings.shapeRounded,
       shapeCornerRadius: Number.isFinite(stored.shapeCornerRadius) ? Math.max(0, Math.min(256, Math.round(stored.shapeCornerRadius!))) : defaultToolSettings.shapeCornerRadius,
       fillMode: stored.fillMode === 'global' || stored.fillMode === 'contiguous' ? stored.fillMode : defaultToolSettings.fillMode,
+      fillPatternMode: stored.fillPatternMode === 'random' || stored.fillPatternMode === 'regular' ? stored.fillPatternMode : defaultToolSettings.fillPatternMode,
+      fillPatternSettings: normalizeFillPatternSettings(stored.fillPatternSettings),
       fillKind: stored.fillKind === 'gradient' || stored.fillKind === 'bucket' ? stored.fillKind : defaultToolSettings.fillKind,
       fillTolerance: Number.isFinite(stored.fillTolerance) ? Math.max(0, Math.min(255, Math.round(stored.fillTolerance!))) : defaultToolSettings.fillTolerance,
       fillGapClosing: typeof stored.fillGapClosing === 'boolean' ? stored.fillGapClosing : defaultToolSettings.fillGapClosing,

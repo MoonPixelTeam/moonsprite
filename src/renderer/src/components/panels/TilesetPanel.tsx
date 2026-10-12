@@ -1,5 +1,5 @@
 import { useProjectScrollMemory } from '@/components/useProjectScrollMemory'
-import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type FocusEvent as ReactFocusEvent, type PointerEvent as ReactPointerEvent, type WheelEvent as ReactWheelEvent } from 'react'
+import { memo, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type FocusEvent as ReactFocusEvent, type PointerEvent as ReactPointerEvent, type WheelEvent as ReactWheelEvent } from 'react'
 import { createPortal } from 'react-dom'
 import { usePixelGridMetrics } from '@/components/usePixelGridMetrics'
 import { PixelUtilityIcon, type PixelUtilityIconKind } from '@/components/PixelUtilityIcon'
@@ -672,8 +672,11 @@ function FreeTileSourcesPanel({ session, docked = false, onDockDragStart, onPane
   </>
 }
 
-export function TilesetPanel(props: TilesetPanelProps) {
+function TilesetPanelComponent(props: TilesetPanelProps) {
   const activeLayer = props.session.document.layers.find((layer) => layer.id === props.session.document.activeLayerId)
   return activeLayer?.kind === 'free-tile' ? <FreeTileSourcesPanel {...props} /> : <TilemapTilesetPanel {...props} />
 }
+
+export const TilesetPanel = memo(TilesetPanelComponent)
+
 import { PanelActions } from './PanelActions'

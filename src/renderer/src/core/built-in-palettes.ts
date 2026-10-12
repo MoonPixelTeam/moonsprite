@@ -1,5 +1,6 @@
 import type { RgbaColor } from '@shared/types-color'
 import type { TranslationKey } from './localization'
+import markd221 from '../../../../palettes/markd-221.palette.json'
 
 export interface BuiltInPalette {
   id: string
@@ -7,6 +8,7 @@ export interface BuiltInPalette {
   colors: RgbaColor[]
   columns: number
   slots: Array<number | null>
+  names?: string[]
 }
 
 const hexColors = (...values: string[]): RgbaColor[] => values.map((value) => {
@@ -29,8 +31,9 @@ const palette = (
   name: string,
   values: string[],
   columns: number,
-  slots = gridSlots(values.length, columns)
-): BuiltInPalette => ({ id, name, colors: hexColors(...values), columns, slots })
+  slots = gridSlots(values.length, columns),
+  names?: string[]
+): BuiltInPalette => ({ id, name, colors: hexColors(...values), columns, slots, names })
 
 // Built-in palettes are embedded in both the web fallback and the desktop
 // runtime. Keep the IDs and layouts stable so saved palette selections remain
@@ -50,5 +53,6 @@ export const builtInPalettes: BuiltInPalette[] = [
   palette("forest-trail-24", "森林 24", ["#F2F0D5FF","#D7D99DFF","#A8B66AFF","#71934DFF","#426B45FF","#254A3DFF","#16352FFF","#0B211FFF","#E7D4A5FF","#C39B5BFF","#916C3EFF","#68452FFF","#442E29FF","#2B2022FF","#B8E0B0FF","#7AB47AFF","#4B8D60FF","#2F6A51FF","#20503FFF","#17382FFF","#C2C8B6FF","#7B8975FF","#4E5D55FF","#293B38FF"], 8, [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23]),
   palette("neon-night-24", "霓虹夜 24", ["#080A18FF","#11183AFF","#1D2454FF","#30306BFF","#49377BFF","#6B3C80FF","#963C7BFF","#D13D6DFF","#FF4F68FF","#FF7A5CFF","#FFAE5BFF","#FFE66DFF","#B8F05AFF","#5BE67BFF","#29D7A0FF","#36D6D1FF","#37B9F2FF","#4C8BFFFF","#705CFFFF","#9B5CFFFF","#D25CFFFF","#F56BD8FF","#FF9BDBFF","#FFD1E8FF"], 8, [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23]),
   palette("candy-pop-24", "糖果流行 24", ["#FFF4F0FF","#FFD6E0FF","#FFAAC5FF","#FF7FAEFF","#F05287FF","#C93C78FF","#8D316BFF","#54265BFF","#FFF1B8FF","#FFDA6AFF","#FFB84DFF","#F47C48FF","#D65355FF","#A83E57FF","#733152FF","#422448FF","#C6F4E8FF","#7EDFC5FF","#42C2B0FF","#2995A5FF","#3376A8FF","#4F5AABFF","#7150A7FF","#A04A99FF"], 8, [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23]),
+  palette(markd221.id, markd221.name, markd221.colors, markd221.columns, markd221.slots, markd221.names),
   palette("paper-ink-16", "纸墨 16", ["#FFF9E8FF","#F1E4C8FF","#D8C7A5FF","#B5A184FF","#8B7658FF","#5C4935FF","#30261FFF","#171311FF","#F4D6B5FF","#D89B72FF","#AE6651FF","#7A3F3AFF","#4D2B32FF","#30243AFF","#514969FF","#7B7790FF"], 8, [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15]),
 ]

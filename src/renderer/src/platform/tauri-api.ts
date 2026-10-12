@@ -192,7 +192,7 @@ export const createTauriApi = (): MoonSpriteApi => ({
   sampleWindowColorRegion: (clientX, clientY, radius) => invoke<RgbaColor[]>('sample_window_color_region', { clientX, clientY, radius }),
   listPalettes: () => invoke('list_palettes'),
   importPalette: () => invoke('import_palette'),
-  savePalette: (id, name, colors, columns, slots) => invoke('save_palette', { id, name, colors, columns, slots }),
+  savePalette: (id, name, colors, columns, slots, names) => invoke('save_palette', { id, name, colors, columns, slots, names }),
   deletePalette: (id) => invoke('delete_palette', { id }),
   openPaletteFolder: () => invoke('open_palette_folder'),
   listWorkspaces: () => invoke('list_workspaces'),

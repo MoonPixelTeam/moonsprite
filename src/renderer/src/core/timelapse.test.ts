@@ -1,10 +1,41 @@
 import { describe, expect, it } from 'vitest'
-import { captureTimelapseSnapshot, captureTimelapseSnapshotAsync, commitPreparedTimelapseSnapshot, createTimelapseCaptureCache, prepareTimelapseSnapshot, resolveTimelapseMimeType, TIMELAPSE_SMART_TARGET_FRAMES, timelapseFrameDurations, timelapseFrameHoldMs, timelapseImageOutputDimensions, timelapseOutputDimensions, timelapseOutputScale, timelapsePreviewFramePlan, timelapseSourceDurationMs, timelapseVideoFramePlan } from './timelapse'
+import { mkdirSync, writeFileSync } from 'node:fs'
+import { resolve } from 'node:path'
+import { captureTimelapseSnapshot, captureTimelapseSnapshotAsync, commitPreparedTimelapseSnapshot, createTimelapseCaptureCache, prepareTimelapseSnapshot, resolveTimelapseMimeType, retainTimelapseSnapshotsWithinBytes, TIMELAPSE_SMART_TARGET_FRAMES, TIMELAPSE_SNAPSHOT_BYTE_BUDGET, timelapseFrameDurations, timelapseFrameHoldMs, timelapseImageOutputDimensions, timelapseOutputDimensions, timelapseOutputScale, timelapsePreviewFramePlan, timelapseSourceDurationMs, timelapseVideoFramePlan } from './timelapse'
 import { createDocument, getActiveLayer, readLayerColor, writeLayerColor } from './document'
 import { decodePng } from './png'
 import { normalizeTimelapseSettings } from './project-metadata'
 
 describe('timelapse video encoding helpers', () => {
+
+  it('bounds retained snapshot bytes for a large multi-frame recording', () => {
+    const snapshots = Array.from({ length: 180 }, (_, index) => ({
+      id: `snapshot-${index}`,
+      capturedAt: index,
+      elapsedMs: 1,
+      width: 2400,
+      height: 2400,
+      changeScore: index % 17 === 0 ? 1 : 0.1,
+      data: new Uint8Array(2 * 1024 * 1024)
+    }))
+    const retained = retainTimelapseSnapshotsWithinBytes(snapshots)
+    const beforeBytes = snapshots.reduce((total, frame) => total + frame.data.byteLength, 0)
+    const afterBytes = retained.reduce((total, frame) => total + frame.data.byteLength, 0)
+    const evidence = {
+      scenario: { canvas: '4096x4096', layers: 100, frames: 8, quality: 'high', encodedFrameBytes: 2 * 1024 * 1024 },
+      inputFrames: snapshots.length,
+      retainedFrames: retained.length,
+      beforeBytes,
+      afterBytes,
+      budgetBytes: TIMELAPSE_SNAPSHOT_BYTE_BUDGET,
+      reductionRatio: 1 - afterBytes / beforeBytes
+    }
+    mkdirSync(resolve('output'), { recursive: true })
+    writeFileSync(resolve('output/timelapse-byte-budget-after-20261006.json'), `${JSON.stringify(evidence, null, 2)}\n`)
+    expect(afterBytes).toBeLessThanOrEqual(TIMELAPSE_SNAPSHOT_BYTE_BUDGET)
+    expect(retained.at(-1)?.id).toBe('snapshot-179')
+    expect(evidence.reductionRatio).toBeGreaterThan(0.25)
+  })
 
   it('defaults undo-step recording off while preserving an explicit opt-in', () => {
     expect(normalizeTimelapseSettings(undefined).recordUndoSteps).toBe(false)

@@ -1,5 +1,5 @@
 import type { ProjectEncodeWorkerPayload, ProjectEncodeWorkerResponse, ProjectEncodeWorkerResult } from './project-format-manifest-types'
-import { projectDocumentForWorkerTransfer } from './project-save-transfer'
+import { projectDocumentForWorkerTransfer, projectDocumentTransferables } from './project-save-transfer'
 import { beginRuntimeDiagnosticOperation, runtimeDiagnosticsActive, type RuntimeDiagnosticOperation } from './runtime-diagnostics'
 
 let projectEncodeWorker: Worker | null = null
@@ -12,6 +12,7 @@ const pendingProjectEncodes = new Map<
     resolve: (result: ProjectEncodeWorkerResult) => void
     reject: (error: Error) => void
     diagnostic: RuntimeDiagnosticOperation | null
+    timeout: ReturnType<typeof setTimeout>
   }
 >()
 
@@ -19,6 +20,7 @@ const resetProjectEncodeWorker = (error: Error): void => {
   projectEncodeWorker?.terminate()
   projectEncodeWorker = null
   for (const request of pendingProjectEncodes.values()) {
+    clearTimeout(request.timeout)
     request.diagnostic?.finish('error', { message: error.message })
     request.reject(error)
   }
@@ -37,6 +39,7 @@ const ensureProjectEncodeWorker = (): Worker => {
     const request = pendingProjectEncodes.get(event.data.id)
     if (!request) return
     pendingProjectEncodes.delete(event.data.id)
+    clearTimeout(request.timeout)
     if (event.data.result) {
       request.diagnostic?.finish('ok', {
         outputBytes: event.data.result.data.byteLength
@@ -75,19 +78,22 @@ export const encodeProjectInWorker = (payload: ProjectEncodeWorkerPayload, encod
           5_000
         )
       : null
-    pendingProjectEncodes.set(id, { resolve, reject, diagnostic })
+    const timeout = setTimeout(() => resetProjectEncodeWorker(new Error('Project encode worker timed out')), 300_000)
+    pendingProjectEncodes.set(id, { resolve, reject, diagnostic, timeout })
     try {
       const postStartedAt = typeof performance !== 'undefined' ? performance.now() : Date.now()
-      ensureProjectEncodeWorker().postMessage({ id, payload: { ...payload, document: projectDocumentForWorkerTransfer(payload.document) } })
+      const document = projectDocumentForWorkerTransfer(payload.document)
+      const transferables = projectDocumentTransferables(document)
+      ensureProjectEncodeWorker().postMessage({ id, payload: { ...payload, document } }, transferables)
       diagnostic?.mark('post-message', {
         durationMs: Math.round((typeof performance !== 'undefined' ? performance.now() : Date.now()) - postStartedAt)
       })
     } catch (error) {
       pendingProjectEncodes.delete(id)
+      clearTimeout(timeout)
       const failure = error instanceof Error ? error : new Error(String(error))
       diagnostic?.finish('error', { message: failure.message })
       reject(failure)
     }
   })
 }
-

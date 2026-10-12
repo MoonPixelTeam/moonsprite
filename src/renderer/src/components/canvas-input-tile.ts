@@ -5,7 +5,7 @@ import { cloneSelection, shiftSelection } from '@/core/selection'
 import { CanvasInputState } from '@/core/canvas-input-controller'
 import { constrainedTranslation, selectionMovePointerDelta } from '@/core/canvas-input-resize'
 import { type CanvasDragState as DragState, type CanvasPoint as Point } from '@/core/canvas-input-contracts'
-import { symmetrySelectionDragDelta } from '@/core/symmetry'
+import { symmetryPoints, symmetrySelectionDragDelta } from '@/core/symmetry'
 import { activeTilemapCelTarget, applyTilemapDocumentEdit, previewTilemapSelectionMove, writeTilemapCell } from '@/core/tilemap-document'
 import { beginTilemapEdit, tilemapCellBounds, tilemapCellIndexAtPoint, tilemapCellLineIndices } from '@/core/tilemap'
 
@@ -37,6 +37,22 @@ interface Ports {
 }
 
 export function createTileCanvasInput(ports: Ports) {
+  function paintTile(target: NonNullable<ReturnType<typeof activeTilemapCelTarget>>, edit: NonNullable<DragState['tilemapEdit']>, index: number, cell: TilemapCell | null, session: DocumentSession): void {
+    const bounds = tilemapCellBounds(target.tilemap, target.surface.offsetX, target.surface.offsetY, index)
+    const center = { x: bounds.x + (bounds.width - 1) / 2, y: bounds.y + (bounds.height - 1) / 2 }
+    const indexes = new Set<number>()
+    for (const point of symmetryPoints(center, session.document.width, session.document.height, session.symmetryAxes, ports.symmetryCenter, false)) {
+      const destination = tilemapCellIndexAtPoint(target.tilemap, target.surface.offsetX, target.surface.offsetY, point.x, point.y)
+      if (destination !== null) indexes.add(destination)
+    }
+    for (const destination of indexes) {
+      if (!ports.tilemapCellAllowedBySelection(target, destination, session.selection)) continue
+      if (writeTilemapCell(session.document, target, edit, destination, cell)) {
+        ports.invalidateCompositeRect(tilemapCellBounds(target.tilemap, target.surface.offsetX, target.surface.offsetY, destination))
+      }
+    }
+  }
+
   function beginTile({
     tilemapTarget,
     session,
@@ -48,10 +64,10 @@ export function createTileCanvasInput(ports: Ports) {
     point: Point
     event: React.PointerEvent<HTMLCanvasElement>
   }): boolean {
-    const { tilemapCellAllowedBySelection, invalidateCompositeRect, inputRef, scheduleDraw } = ports
+    const { inputRef, scheduleDraw } = ports
     if (tilemapTarget && session.tilemapMode === 'paint') {
       const cellIndex = tilemapCellIndexAtPoint(tilemapTarget.tilemap, tilemapTarget.surface.offsetX, tilemapTarget.surface.offsetY, point.x, point.y)
-      if (cellIndex === null || !tilemapCellAllowedBySelection(tilemapTarget, cellIndex, session.selection)) return true
+      if (cellIndex === null) return true
       const selectedTileset = session.document.tilesets?.find(
         (tileset) =>
           tileset.id === session.selectedTilesetId &&
@@ -67,9 +83,7 @@ export function createTileCanvasInput(ports: Ports) {
             : null
       if (session.tool === 'pencil' && !tilemapCell) return true
       const tilemapEdit = beginTilemapEdit(tilemapTarget.layer.id, tilemapTarget.cel.frameId)
-      if (writeTilemapCell(session.document, tilemapTarget, tilemapEdit, cellIndex, tilemapCell)) {
-        invalidateCompositeRect(tilemapCellBounds(tilemapTarget.tilemap, tilemapTarget.surface.offsetX, tilemapTarget.surface.offsetY, cellIndex))
-      }
+      paintTile(tilemapTarget, tilemapEdit, cellIndex, tilemapCell, session)
       inputRef.current.drag = {
         kind: 'tile-draw',
         start: point,
@@ -102,7 +116,7 @@ export function createTileCanvasInput(ports: Ports) {
       previousPressure: number | undefined
     }[]
   }): boolean {
-    const { localPointAt, tilemapCellAllowedBySelection, invalidateCompositeRect, scheduleDraw } = ports
+    const { localPointAt, scheduleDraw } = ports
     if (drag.kind === 'tile-draw' && drag.tilemapEdit && drag.tilemapCellIndex !== undefined) {
       const target = activeTilemapCelTarget(session.document)
       if (!target || target.layer.id !== drag.tilemapEdit.layerId || target.cel.frameId !== drag.tilemapEdit.frameId) return true
@@ -113,9 +127,7 @@ export function createTileCanvasInput(ports: Ports) {
         const nextIndex = tilemapCellIndexAtPoint(target.tilemap, target.surface.offsetX, target.surface.offsetY, samplePoint.x, samplePoint.y)
         if (nextIndex === null) continue
         for (const index of tilemapCellLineIndices(target.tilemap, previousIndex, nextIndex, session.view.tileRepeatMode ?? 'off')) {
-          if (!tilemapCellAllowedBySelection(target, index, session.selection)) continue
-          if (!writeTilemapCell(session.document, target, drag.tilemapEdit, index, drag.tilemapCell ?? null)) continue
-          invalidateCompositeRect(tilemapCellBounds(target.tilemap, target.surface.offsetX, target.surface.offsetY, index))
+          paintTile(target, drag.tilemapEdit, index, drag.tilemapCell ?? null, session)
         }
         previousIndex = nextIndex
       }

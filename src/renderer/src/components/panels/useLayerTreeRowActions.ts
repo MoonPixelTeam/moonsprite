@@ -8,6 +8,11 @@ export function useLayerTreeRowActions(panel: LayerTreeRowsProps) {
   return useMemo(() => ({
     onMaskContextMenu: ((...args) => latest.current.onMaskContextMenu?.(...args)) as NonNullable<LayerTreeRowsProps['onMaskContextMenu']>,
     beginLayerDrag: ((event, id) => latest.current.beginLayerDrag(event, id)) as LayerTreeRowsProps['beginLayerDrag'],
+    beginGroupDrag: ((event, id) => latest.current.beginGroupDrag(event, id)) as LayerTreeRowsProps['beginGroupDrag'],
+    editGroupRow: ((group) => {
+      const current = latest.current.session.document.groups.find((item) => item.id === group.id)
+      if (current) latest.current.editGroupRow(current)
+    }) as LayerTreeRowsProps['editGroupRow'],
     editLayerRow: ((layer) => {
       const current = latest.current.session.document.layers.find((item) => item.id === layer.id)
       if (current) latest.current.editLayerRow(current)

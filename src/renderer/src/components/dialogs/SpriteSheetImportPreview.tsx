@@ -1,9 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import type { SpriteDocument } from '@shared/types-document'
 import { checkResourceLimit } from '@/core/resource-policy'
-import { compositeRegionAsync } from '@/core/document-composite'
 import { pixelAlignedPreviewFitScale, anchoredPreviewPan } from '@/core/preview-geometry'
-import { spriteSheetImportPlan, type SpriteSheetImportOptions } from '@/core/sprite-sheet-import'
+import { spriteSheetImportPlan, spriteSheetImportSourceSize, compositeSpriteSheetRegion, type SpriteSheetImportOptions } from '@/core/sprite-sheet-import'
 import { loadEditorPreferences } from '@/core/file-preferences'
 import { drawTweenCheckerboard } from '../animation-tween-preview'
 import { useI18n } from '../I18nProvider'
@@ -12,6 +11,7 @@ import { Button } from '../Button'
 interface Props { source: SpriteDocument; revision: number; options: SpriteSheetImportOptions; disabled: boolean; onChange(options: SpriteSheetImportOptions): void }
 export function SpriteSheetImportPreview({ source, revision, options, disabled, onChange }: Props) {
   const { t } = useI18n()
+  const sourceSize = spriteSheetImportSourceSize(source, options)
   const ref = useRef<HTMLCanvasElement>(null)
   const [size, setSize] = useState({ width: 720, height: 480 })
   const [view, setView] = useState<{ zoom: number; pan: { x: number; y: number } } | null>(null)
@@ -20,9 +20,9 @@ export function SpriteSheetImportPreview({ source, revision, options, disabled, 
   const [checker] = useState(() => loadEditorPreferences().checkerboard)
   const space = useRef(false)
   const drag = useRef<{ id: number; x: number; y: number; initial: SpriteSheetImportOptions; pan: { x: number; y: number }; mode: 'move' | 'draw' | 'left' | 'top' | 'right' | 'bottom' | 'paddingX' | 'paddingY' | 'pan' } | null>(null)
-  const zoom = view?.zoom ?? pixelAlignedPreviewFitScale(Math.min((size.width - 48) / source.width, (size.height - 48) / source.height))
+  const zoom = view?.zoom ?? pixelAlignedPreviewFitScale(Math.min((size.width - 48) / sourceSize.width, (size.height - 48) / sourceSize.height))
   const pan = view?.pan ?? { x: 0, y: 0 }
-  const origin = { x: (size.width - source.width * zoom) / 2 + pan.x, y: (size.height - source.height * zoom) / 2 + pan.y }
+  const origin = { x: (size.width - sourceSize.width * zoom) / 2 + pan.x, y: (size.height - sourceSize.height * zoom) / 2 + pan.y }
   useEffect(() => {
     const canvas = ref.current
     if (!canvas) return
@@ -34,19 +34,19 @@ export function SpriteSheetImportPreview({ source, revision, options, disabled, 
     let disposed = false
     setImage(null); setError('')
     void window.moonSprite.getResourceInfo().then(resource => {
-      const check = checkResourceLimit(source.width, source.height, 3, 'rgba', resource)
+      const check = checkResourceLimit(sourceSize.width, sourceSize.height, 3, 'rgba', resource)
       if (!check.allowed) throw new Error(check.reason)
       if (disposed) return null
-      return compositeRegionAsync(source, 0, 0, source.width, source.height, undefined, () => disposed, 128)
+      return compositeSpriteSheetRegion(source, options, 0, 0, sourceSize.width, sourceSize.height, () => disposed)
     }).then(pixels => {
       if (disposed || !pixels) return
-      const bitmap = document.createElement('canvas'); bitmap.width = source.width; bitmap.height = source.height
+      const bitmap = document.createElement('canvas'); bitmap.width = sourceSize.width; bitmap.height = sourceSize.height
       const context = bitmap.getContext('2d')
-      if (context) { const data = context.createImageData(source.width, source.height); data.data.set(pixels); context.putImageData(data, 0, 0) }
+      if (context) { const data = context.createImageData(sourceSize.width, sourceSize.height); data.data.set(pixels); context.putImageData(data, 0, 0) }
       setImage(bitmap)
     }).catch(cause => { if (!disposed) setError(cause instanceof Error ? cause.message : String(cause)) })
     return () => { disposed = true }
-  }, [source, revision])
+  }, [source, revision, options.selection])
   useEffect(() => {
     const canvas = ref.current, context = canvas?.getContext('2d')
     if (!canvas || !context) return
@@ -54,9 +54,9 @@ export function SpriteSheetImportPreview({ source, revision, options, disabled, 
     canvas.width = Math.round(size.width * dpr); canvas.height = Math.round(size.height * dpr); context.scale(dpr, dpr)
     drawTweenCheckerboard(context, size.width, size.height, checker, zoom, origin.x, origin.y)
     context.imageSmoothingEnabled = false
-    if (image) context.drawImage(image, origin.x, origin.y, source.width * zoom, source.height * zoom)
+    if (image) context.drawImage(image, origin.x, origin.y, sourceSize.width * zoom, sourceSize.height * zoom)
     context.strokeStyle = '#FFFFFF'; context.lineWidth = 1
-    context.strokeRect(origin.x, origin.y, source.width * zoom, source.height * zoom)
+    context.strokeRect(origin.x, origin.y, sourceSize.width * zoom, sourceSize.height * zoom)
     let tiles: ReturnType<typeof spriteSheetImportPlan>['tiles'] = []
     try { tiles = spriteSheetImportPlan(source, options).tiles } catch { /* The owning dialog displays validation errors. */ }
     for (const [index, tile] of tiles.entries()) {
@@ -78,11 +78,11 @@ export function SpriteSheetImportPreview({ source, revision, options, disabled, 
       event.preventDefault(); if (!canvas || drag.current || !event.deltaY) return
       const rect = canvas.getBoundingClientRect(), pointer = { x: event.clientX - rect.left, y: event.clientY - rect.top }
       const nextZoom = Math.max(0.01, Math.min(256, zoom * (event.deltaY < 0 ? 1.2 : 1 / 1.2)))
-      setView({ zoom: nextZoom, pan: anchoredPreviewPan({ documentSize: source, viewportSize: size, pointer, pan, zoom, nextZoom }) })
+      setView({ zoom: nextZoom, pan: anchoredPreviewPan({ documentSize: sourceSize, viewportSize: size, pointer, pan, zoom, nextZoom }) })
     }
     canvas?.addEventListener('wheel', wheel, { passive: false })
     return () => canvas?.removeEventListener('wheel', wheel)
-  }, [zoom, pan.x, pan.y, size, source])
+  }, [zoom, pan.x, pan.y, size, sourceSize.width, sourceSize.height])
   const finish = (cancel: boolean) => {
     const active = drag.current; drag.current = null
     if (cancel && active) { if (active.mode === 'pan') setView({ zoom, pan: active.pan }); else onChange(active.initial) }

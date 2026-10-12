@@ -24,7 +24,8 @@ describe('tool preferences boundary', () => {
       shapeRounded: false,
       selectionRounded: false,
       selectionRotationAlgorithm: 'fast',
-      gradientType: 'linear'
+      gradientType: 'linear',
+      brushImageSettings: { mode: 'threshold' }
     })
     storage.setItem(TOOL_SETTINGS_KEY, '{bad')
     expect(loadToolSettings(storage)).toMatchObject(defaultToolSettings)
@@ -64,6 +65,15 @@ describe('tool preferences boundary', () => {
       selectionRotationAlgorithm: 'rotsprite',
       gradientType: 'radial'
     })
+  })
+
+  it('round-trips pattern fill settings and defaults missing legacy fields', () => {
+    const storage = memoryStorage()
+    saveToolSettings({ ...defaultToolSettings, fillPatternMode: 'random', fillPatternSettings: { ...defaultToolSettings.fillPatternSettings, randomCount: 35, randomSpacing: 4, randomOverlap: true } }, storage)
+    expect(loadToolSettings(storage)).toMatchObject({ fillPatternMode: 'random', fillPatternSettings: { randomCount: 35, randomSpacing: 4, randomOverlap: true } })
+    storage.setItem(TOOL_SETTINGS_KEY, JSON.stringify({ fillMode: 'contiguous' }))
+    expect(loadToolSettings(storage).fillPatternMode).toBe('default')
+    expect(loadToolSettings(storage).fillPatternSettings).toEqual(defaultToolSettings.fillPatternSettings)
   })
 
 

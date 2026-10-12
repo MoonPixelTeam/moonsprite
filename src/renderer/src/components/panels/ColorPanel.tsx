@@ -1,5 +1,5 @@
 import { RecentColors } from './RecentColors'
-import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { memo, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { ColorPicker, type ColorPickerConfig, type ColorPickerScheme } from '@/components/ColorPicker'
 import { FloatingDockPreview, PanelResizeHandles, useFloatingPanel } from '@/components/floating-panel'
@@ -16,7 +16,7 @@ import { usePanelColorSampling } from '@/components/usePanelColorSampling'
 import { activeTilemapCelTarget } from '@/core/tilemap-document'
 import { TilesetTileThumbnail } from '@/components/TilesetTileThumbnail'
 
-export function ColorPanel({ session, docked = false, onDockDragStart, onPanelContextMenu, onFloatingDock, onRestoreSquare }: { session: DocumentSession } & DockDragProps) {
+function ColorPanelComponent({ session, docked = false, onDockDragStart, onPanelContextMenu, onFloatingDock, onRestoreSquare }: { session: DocumentSession } & DockDragProps) {
   const { t } = useI18n()
   const setPrimary = useWorkspace((state) => state.setPrimaryColor)
   const setSecondary = useWorkspace((state) => state.setSecondaryColor)
@@ -164,4 +164,7 @@ export function ColorPanel({ session, docked = false, onDockDragStart, onPanelCo
   </span>, document.body)}
   </>
 }
+
+export const ColorPanel = memo(ColorPanelComponent)
+
 import { PanelActions } from './PanelActions'

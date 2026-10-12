@@ -85,9 +85,13 @@ it('opens the installed pet menu before dynamic options arrive, then renders and
 
 it('offers sprite-sheet import from File even without an open document', () => {
   const onImport = vi.fn(), setOpenMenu = vi.fn()
-  const view = render(<AppMenuBar {...defaults} openMenu="file" setOpenMenu={setOpenMenu} onImportSpriteSheet={onImport} />)
-  fireEvent.click(view.getByRole('button', { name: 'spriteSheetImport.title' }))
-  expect(onImport).toHaveBeenCalledOnce()
+  const view = render(<AppMenuBar {...defaults} openMenu="file" setOpenMenu={setOpenMenu} onImportSpriteSheet={onImport} shortcutFor={id => id === 'importSpriteSheet' ? 'Ctrl+I' : ''} />)
+  expect(view.getByRole('button', { name: 'spriteSheetImport.title' }).querySelector('kbd')).toBeNull()
+  expect(view.getByTitle('spriteSheetImport.from.file')).toHaveTextContent('Ctrl+I')
+  expect(view.getByRole('button', { name: 'spriteSheetImport.from.document' })).toBeDisabled()
+  expect(view.getByRole('button', { name: 'spriteSheetImport.from.selection' })).toBeDisabled()
+  fireEvent.click(view.getByTitle('spriteSheetImport.from.file'))
+  expect(onImport).toHaveBeenCalledExactlyOnceWith('file')
   expect(setOpenMenu).toHaveBeenCalledWith(null)
 })
 

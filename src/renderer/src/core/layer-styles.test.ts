@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { compositeRegion, createDocument, createLayer, createLayerMask, DocumentCompositeCache, getActiveLayer, normalCompositeLayers, writeLayerColor } from './document'
 import { ensureAnimationDocument } from './animation'
-import { applyLayerStylesAt, applySimpleLayerStylesPacked, createDefaultLayerStyles, hasConfiguredLayerStyles, hasEnabledLayerStyles, normalizeLayerStyles } from './layer-styles'
+import { applyLayerStylesAt, applySimpleLayerStylesPacked, createDefaultLayerStyles, hasConfiguredLayerStyles, hasEnabledLayerStyles, normalizeLayerStyles, sampleLayerStyleParts } from './layer-styles'
 import { packColor, TRANSPARENT, unpackColor } from './raster'
 
 const red = { r: 255, g: 0, b: 0, a: 255 }
@@ -74,6 +74,37 @@ describe('non-destructive layer styles', () => {
 
     expect(pixelAt(render(false), 3, 0, 0)).toEqual([0, 0, 255, 255])
     expect(pixelAt(render(true), 3, 0, 0)).toEqual([0, 0, 255, 128])
+  })
+
+  it.each([0, 2])('keeps shadows with blur %s outside translucent content in every style path', blur => {
+    const document = createDocument('translucent shadow silhouette', 5, 1, 'rgba')
+    const layer = getActiveLayer(document)
+    writeLayerColor(document, layer, 1, { ...red, a: 128 })
+    writeLayerColor(document, layer, 2, { ...red, a: 128 })
+    const styles = createDefaultLayerStyles()
+    styles.shadow = { ...styles.shadow, enabled: true, color: { r: 0, g: 0, b: 0, a: 160 }, offsetX: 1, offsetY: 0, blur }
+    layer.layerStyles = styles
+    const source = { ...red, a: 128 }
+    const read = (x: number, y: number) => y === 0 && (x === 1 || x === 2) ? source : TRANSPARENT
+    const geometry = { x: 0, y: 0, width: 5, height: 1 }
+    // x=2 is occupied by source content AND the shadow offset from x=1.
+    expect(applyLayerStylesAt(geometry, styles, 2, 0, source, read)).toEqual(source)
+    expect(unpackColor(applySimpleLayerStylesPacked(styles, 2, 0, packColor(source), read)!)).toEqual(source)
+    expect(sampleLayerStyleParts(geometry, styles, 2, 0, source, read).shadow?.a ?? 0).toBe(0)
+    const exterior = [0, 0, 0, 80]
+    expect(applyLayerStylesAt(geometry, styles, 3, 0, TRANSPARENT, read).a).toBe(80)
+    expect(sampleLayerStyleParts(geometry, styles, 3, 0, TRANSPARENT, read).shadow?.a).toBe(80)
+    for (const overlay of [false, true]) {
+      styles.colorOverlay.enabled = overlay
+      styles.colorOverlay.color.a = 0
+      for (const opacity of [1, 0.5]) {
+        layer.opacity = opacity
+        const output = compositeRegion(document, 0, 0, 5, 1)
+        expect(pixelAt(output, 5, 2, 0)).toEqual([255, 0, 0, 128 * opacity])
+        expect(pixelAt(output, 5, 3, 0)).toEqual([0, 0, 0, exterior[3] * opacity])
+        expect(compositeRegion(document, 0, 0, 5, 1, new DocumentCompositeCache(), 1)).toEqual(output)
+      }
+    }
   })
 
 

@@ -1,5 +1,8 @@
+import { mkdirSync, writeFileSync } from 'node:fs'
+import { resolve } from 'node:path'
+import { historyDocumentBytes } from '@/core/local-history-delta'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { createDocument, getActiveLayer, readLayerPacked, DocumentCompositeCache, compositeRegion } from '@/core/document'
+import { createDocument, createLayer, createLayerMask, getActiveLayer, readLayerPacked, DocumentCompositeCache, compositeRegion } from '@/core/document'
 import { DEFAULT_EDITOR_PREFERENCES, saveEditorPreferences } from '@/core/file-preferences'
 import type { MoonSpriteApi } from '@shared/types-platform'
 import type { DocumentSession } from './workspace-types'
@@ -26,6 +29,65 @@ const sessionWithLocalHistory = (): DocumentSession => {
 }
 
 describe('local history snapshots', () => {
+  it.each([0, 2, 6])('restores only the retained structural range at position %i in a complex 4k timeline', async position => {
+    saveEditorPreferences({ ...DEFAULT_EDITOR_PREFERENCES, localHistoryEnabled: true, historyLimitEnabled: true, historyLimit: 2 })
+    const source = sessionWithLocalHistory()
+    source.document.filePath = 'D:/history/large-retained-range.moonsprite'
+    let archive = new Uint8Array()
+    const api = { writeLocalHistory: async (_id: string, bytes: Uint8Array) => { archive = Uint8Array.from(bytes) }, readLocalHistory: async () => archive } as unknown as MoonSpriteApi
+    await persistLocalHistory(api, source)
+    const manifest = JSON.parse(strFromU8(unzipSync(archive)['manifest.json']))
+    const document = createDocument('complex structural restore', 1, 1, 'rgba', false)
+    document.width = document.height = 4096
+    document.layers = Array.from({ length: 100 }, (_, index) => {
+      const layer = createLayer(`Layer ${index}`, 128, 128, 'rgba')
+      layer.opacity = 0.5 + (index % 5) / 10
+      layer.offsetX = (index * 37) % 3900; layer.offsetY = (index * 53) % 3900
+      for (let offset = 0; offset < layer.pixels.length; offset += 4) {
+        layer.pixels[offset] = (offset + index * 17) & 255
+        layer.pixels[offset + 1] = (offset / 4 + index * 13) & 255
+        layer.pixels[offset + 3] = offset % 12 === 0 ? 0 : 255
+      }
+      return layer
+    })
+    const frames = Array.from({ length: 8 }, (_, index) => ({ id: `frame-${index}`, duration: 100 }))
+    document.activeLayerId = document.layers[0].id
+    document.animation = { ...document.animation!, frames, activeFrameId: frames[0].id,
+      cels: frames.flatMap(frame => document.layers.map((layer, index) => ({ id: `${frame.id}-${index}`, layerId: layer.id, frameId: frame.id, opacity: layer.opacity,
+        surface: { format: 'rgba' as const, width: layer.width, height: layer.height, offsetX: layer.offsetX, offsetY: layer.offsetY, pixels: layer.pixels as Uint8ClampedArray } }))),
+      layerMasks: document.layers.slice(0, 20).map(layer => ({ layerId: layer.id, frameId: frames[0].id, mask: createLayerMask(layer.id, 32, 32) })) }
+    const files: Record<string, Uint8Array> = {}
+    for (let index = 0; index <= 6; index++) {
+      document.width = 4096 + index
+      files[`snapshots/${index}.moonsprite`] = projectFormat.encodeProject(document, { includePreview: false })
+    }
+    manifest.version = 2; manifest.labels = Array.from({ length: 6 }, (_, index) => `resize-${index + 1}`)
+    manifest.position = position; manifest.deltaVersion = 1; manifest.deltas = Array(6).fill(false)
+    delete manifest.documentFingerprint
+    files['manifest.json'] = strToU8(JSON.stringify(manifest)); archive = zipSync(files, { level: 0 })
+    const decode = vi.spyOn(projectFormat, 'decodeProject')
+    const reopened = sessionWithLocalHistory(); reopened.document.filePath = source.document.filePath
+    const started = performance.now()
+    expect(await restoreLocalHistory(api, reopened)).toBe(true)
+    const restoreMs = performance.now() - started
+    const decodedBytes = decode.mock.results.reduce((total, result) => total + historyDocumentBytes(result.value), 0)
+    const evidence = { phase: process.env.MOONSPRITE_HISTORY_PHASE ?? 'after', scenario: { canvas: '4096x4096', layers: 100, frames: 8, masks: 20, structuralEntries: 6, limit: 2, position }, restoreMs, decodedSnapshots: decode.mock.calls.length, decodedBytes }
+    mkdirSync(resolve('output'), { recursive: true })
+    writeFileSync(resolve(`output/local-history-retained-range-${evidence.phase}-${position}-20261006.json`), JSON.stringify(evidence, null, 2))
+    expect(decode).toHaveBeenCalledTimes(3)
+    const offset = Math.min(position, 4), localPosition = position - offset
+    expect(reopened.history.position).toBe(localPosition)
+    expect(reopened.localHistory!.position).toBe(localPosition)
+    expect(reopened.history.length).toBe(2)
+    expect(reopened.document.width).toBe(4096 + position)
+    while (reopened.history.canUndo) reopened.history.undo()
+    expect(reopened.document.width).toBe(4096 + offset)
+    while (reopened.history.canRedo) reopened.history.redo()
+    expect(reopened.document.width).toBe(4096 + offset + 2)
+    expect(reopened.localHistory!.position).toBe(2)
+    await flushLocalHistoryPersist(api, reopened)
+  }, 60000)
+
   it.each(['null clone', 'allocation failure'])('keeps editing history usable after %s', async failure => {
     saveEditorPreferences({ ...DEFAULT_EDITOR_PREFERENCES, localHistoryEnabled: true })
     const source = sessionWithLocalHistory()

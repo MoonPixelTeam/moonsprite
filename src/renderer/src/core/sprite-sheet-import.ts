@@ -1,20 +1,24 @@
 import type { SpriteDocument } from '@shared/types-document'
-import type { SelectionRect } from '@shared/types-selection'
+import type { SelectionMask, SelectionRect } from '@shared/types-selection'
+import { selectionContains } from './selection'
 import { createDocument, createId, convertDocumentColorMode } from './document-model'
 import { compositeRegionAsync } from './document-composite'
 import { checkTypedArrayLimit } from './resource-policy'
 import { translateCurrent as tr } from './localization'
 
 export type SpriteSheetImportLayout = 'horizontal' | 'vertical' | 'rows' | 'columns'
+export type SpriteSheetImportSource = 'file' | 'document' | 'selection'
 export interface SpriteSheetImportOptions {
   layout: SpriteSheetImportLayout
   x: number; y: number; width: number; height: number
   paddingX: number; paddingY: number; partialTiles: boolean
+  selection?: SelectionMask
 }
 export const DEFAULT_SPRITE_SHEET_IMPORT: SpriteSheetImportOptions = {
   layout: 'rows', x: 0, y: 0, width: 16, height: 16, paddingX: 0, paddingY: 0, partialTiles: false
 }
 export function spriteSheetImportPlan(size: { width: number; height: number }, options: SpriteSheetImportOptions) {
+  size = spriteSheetImportSourceSize(size, options)
   const { x, y, width, height, paddingX, paddingY, partialTiles, layout } = options
   if (!['horizontal', 'vertical', 'rows', 'columns'].includes(layout)
     || ![x, y, width, height, paddingX, paddingY, size.width, size.height].every(Number.isSafeInteger)
@@ -36,6 +40,20 @@ export function spriteSheetImportPlan(size: { width: number; height: number }, o
 export function spriteSheetFrameSizeFromCount(extent: number, origin: number, padding: number, count: number): number {
   return Math.max(1, Math.floor((extent - origin - padding * (Math.max(1, count) - 1)) / Math.max(1, count)))
 }
+export function spriteSheetImportSourceSize(source: { width: number; height: number }, options: SpriteSheetImportOptions) {
+  return options.selection ? { width: options.selection.width, height: options.selection.height } : { width: source.width, height: source.height }
+}
+
+/** Selection imports use local slicing coordinates and preserve mask transparency. */
+export async function compositeSpriteSheetRegion(source: SpriteDocument, options: SpriteSheetImportOptions, x: number, y: number, width: number, height: number, isCanceled?: () => boolean): Promise<Uint8ClampedArray> {
+  const selection = options.selection
+  const left = x + (selection?.x ?? 0), top = y + (selection?.y ?? 0)
+  const pixels = await compositeRegionAsync(source, left, top, width, height, undefined, isCanceled, 128)
+  if (selection) for (let row = 0; row < height; row++) for (let column = 0; column < width; column++) {
+    if (!selectionContains(selection, left + column, top + row)) pixels.fill(0, (row * width + column) * 4, (row * width + column + 1) * 4)
+  }
+  return pixels
+}
 
 /** Flatten the current visible frame; keep out-of-canvas pixels transparent, even for oversized strips. */
 export async function buildImportedSpriteSheet(source: SpriteDocument, options: SpriteSheetImportOptions): Promise<SpriteDocument> {
@@ -51,12 +69,13 @@ export async function buildImportedSpriteSheet(source: SpriteDocument, options: 
   output.paletteColumns = source.paletteColumns; output.nextColorId = source.nextColorId
   const frames = plan.tiles.map((_, index) => ({ id: createId('frame'), duration: source.animation?.frames[index]?.duration ?? source.animation?.frames.at(-1)?.duration ?? 100 }))
   const cels = []
+  const size = spriteSheetImportSourceSize(source, options)
   for (const [index, tile] of plan.tiles.entries()) {
     const pixels = new Uint8ClampedArray(tile.width * tile.height * 4)
     const left = Math.max(0, tile.x), top = Math.max(0, tile.y)
-    const right = Math.min(source.width, tile.x + tile.width), bottom = Math.min(source.height, tile.y + tile.height)
+    const right = Math.min(size.width, tile.x + tile.width), bottom = Math.min(size.height, tile.y + tile.height)
     if (right > left && bottom > top) {
-      const clipped = await compositeRegionAsync(source, left, top, right - left, bottom - top, undefined, undefined, 128)
+      const clipped = await compositeSpriteSheetRegion(source, options, left, top, right - left, bottom - top)
       for (let row = 0; row < bottom - top; row++) pixels.set(clipped.subarray(row * (right - left) * 4, (row + 1) * (right - left) * 4), ((top - tile.y + row) * tile.width + left - tile.x) * 4)
     }
     cels.push({ id: createId('cel'), layerId: layer.id, frameId: frames[index].id, opacity: 1,

@@ -1,5 +1,6 @@
 import { unionFreeTileSourceRects } from '@/core/free-tile-source-refresh'
 import { completeDocumentChange } from './workspace-document-change'
+import { clearUnusedFreeTileSources } from './workspace-unused-tiles'
 import type { FreeTileCelData, FreeTileSourceLayer } from '@shared/types-tiles'
 import { type HistoryEntry } from '@/core/history'
 import { createId } from '@/core/document-model'
@@ -224,6 +225,12 @@ export function createWorkspaceFreeTileCommands({ get, recording , services: { d
       }, false)
       if (addedSourceId) requestTilesetPanelVisibility(true)
       return addedSourceId
+    },
+
+    clearUnusedFreeTileSources(layerId) {
+      let cleared = false
+      get().mutateActive(session => { cleared = clearUnusedFreeTileSources(session, layerId, recordDocumentOperation) }, false)
+      return cleared
     },
 
     deleteFreeTileSource(sourceId) {

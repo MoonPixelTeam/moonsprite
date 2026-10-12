@@ -10,7 +10,11 @@ export function materializeLocalHistorySnapshot(snapshot: LocalHistorySnapshot):
   const changes: LocalHistoryDelta[] = []
   while ('base' in snapshot) { changes.push(snapshot.delta); snapshot = snapshot.base }
   const document = 'archive' in snapshot ? decodeProject(snapshot.archive) : cloneHistoryDocument(snapshot)
-  for (let index = changes.length - 1; index >= 0; index--) hydrateLocalHistoryDelta(document, changes[index]).redo()
+  for (let index = changes.length - 1; index >= 0; index--) {
+    const delta = changes[index]
+    if (delta.snapshotFrameId && document.animation) document.animation.activeFrameId = delta.snapshotFrameId
+    hydrateLocalHistoryDelta(document, delta).redo()
+  }
   return document
 }
 export interface LocalHistoryManifest {
@@ -171,6 +175,8 @@ export function encodeHistoryDelta(delta: LocalHistoryDelta): Uint8Array {
 export function decodeHistoryDelta(archive: Uint8Array): LocalHistoryDelta {
   const files = unzipSync(archive)
   const delta = JSON.parse(strFromU8(files['delta.json'])) as LocalHistoryDelta
+  if (delta.snapshotFrameId !== undefined && typeof delta.snapshotFrameId !== 'string') throw new Error('无效的历史帧标识')
+  if (delta.celTarget && (!Number.isSafeInteger(delta.celTarget.index) || delta.celTarget.index < 0 || !['id', 'layerId', 'frameId'].every(key => typeof (delta.celTarget as unknown as Record<string, unknown>)[key] === 'string'))) throw new Error('无效的历史 cel 标识')
   const constructors = { Uint8Array, Uint8ClampedArray, Uint16Array, Uint32Array, Int8Array, Int16Array, Int32Array, Float32Array, Float64Array }
   const decodeValue = (value: unknown): unknown => {
     if (!value || typeof value !== 'object') return value
@@ -206,7 +212,9 @@ export function packLocalHistory(request: LocalHistoryPackRequest): LocalHistory
     decodedSnapshots++
     if (increments?.[index]) {
       const document = cloneHistoryDocument(decode(index - 1))
-      hydrateLocalHistoryDelta(document, increments[index]!).redo()
+      const delta = increments[index]!
+      if (delta.snapshotFrameId && document.animation) document.animation.activeFrameId = delta.snapshotFrameId
+      hydrateLocalHistoryDelta(document, delta).redo()
       return document
     }
     return prepareHistoryDocument(decodeProject(snapshots[index]))

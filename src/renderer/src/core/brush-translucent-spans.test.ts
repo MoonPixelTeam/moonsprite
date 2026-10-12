@@ -2,6 +2,7 @@ import { afterEach, expect, it, vi } from 'vitest'
 import { createDocument } from './document'
 import { beginPixelEdit, commitPixelEdit } from './history'
 import { paintBrush, paintLine } from './tools-brush'
+import { paintBrush as paintBrushReference } from './__fixtures__/p01-brush-reference'
 import * as symmetry from './symmetry'
 
 afterEach(() => vi.restoreAllMocks())
@@ -19,8 +20,8 @@ it.each(['round', 'square', 'line'] as const)('preserves translucent %s coverage
   for (const size of [45, 128]) for (const [x, y, opacity] of [[70, 75, 0.3], [72, 76, 0.3], [74, 76, 0.8], [70, 75, 0.5], [-4, 20, 1]]) {
     const color = { r: 230, g: 30, b: 40, a: 128 }
     paintBrush(document, layer, edit, x, y, size, color, shape, null, 'solid', 1, null, undefined, 0, 'paint', undefined, axes, undefined, undefined, opacity)
-    // A full-canvas selection forces the independent per-pixel reference.
-    paintBrush(reference, referenceLayer, referenceEdit, x, y, size, color, shape, selection, 'solid', 1, null, undefined, 0, 'paint', undefined, axes, undefined, undefined, opacity)
+    // Frozen pre-P01 implementation keeps this an independent pixel reference.
+    paintBrushReference(reference, referenceLayer, referenceEdit, x, y, size, color, shape, selection, 'solid', 1, null, undefined, 0, 'paint', undefined, axes, undefined, undefined, opacity)
     expect(layer.pixels.every((value, index) => value === referenceLayer.pixels[index])).toBe(true)
   }
   const after = layer.pixels.slice()

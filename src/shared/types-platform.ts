@@ -50,7 +50,7 @@ export interface MoonSpriteApi {
   sampleWindowColorRegion(clientX: number, clientY: number, radius: number): Promise<RgbaColor[] | null>
   listPalettes(): Promise<PaletteListing>
   importPalette(): Promise<StoredPalette | null>
-  savePalette(id: string | null, name: string, colors: RgbaColor[], columns: number, slots: Array<number | null>): Promise<StoredPalette>
+  savePalette(id: string | null, name: string, colors: RgbaColor[], columns: number, slots: Array<number | null>, names?: string[]): Promise<StoredPalette>
   deletePalette(id: string): Promise<void>
   openPaletteFolder(): Promise<void>
   listWorkspaces(): Promise<WorkspaceListing>

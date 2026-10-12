@@ -54,6 +54,81 @@ it.each(['fast', 'rotsprite'] as const)('keeps rotated content inside the mouse-
   }
 })
 
+it.each(['fast', 'rotsprite'] as const)('keeps rotate → move → undo → reselect previews deferred and commits exact pixels (%s)', algorithm => {
+  const document = createDocument('continuous selection transforms', 40, 40, 'rgba', false)
+  const oracle = createDocument('committed transform oracle', 40, 40, 'rgba', false)
+  const layer = document.layers[0], oracleLayer = oracle.layers[0]
+  const selection = { x: 7, y: 8, width: 9, height: 6 }
+  for (let y = 8; y < 14; y++) for (let x = 7; x < 16; x++) {
+    if ((x + y) % 3 === 0) continue
+    const color = { r: x * 10, g: y * 10, b: 70, a: (x + y) % 2 ? 128 : 255 }
+    writeLayerColor(document, layer, y * 40 + x, color)
+    writeLayerColor(oracle, oracleLayer, y * 40 + x, color)
+  }
+  const original = layer.pixels.slice()
+  const state = useWorkspace.getState()
+  state.addSession(document); state.setSelection(selection)
+  const session = useWorkspace.getState().sessions[0]
+  session.selectionRotationAlgorithm = algorithm
+  const revision = session.contentRevision
+  const inputRef = { current: new CanvasInputState() }
+  const invalidateCompositeRect = vi.fn()
+  const ports = { session, inputRef, draw: vi.fn(), drawSelectionOverlay: vi.fn(), invalidateCompositeRect,
+    symmetryCenter: { x: 20, y: 20 } } as unknown as Parameters<typeof useCanvasSelectionTransform>[0]
+  const hook = renderHook(() => useCanvasSelectionTransform(ports))
+  const input = createTransformCanvasInput({ ...ports, t: (key: string) => key,
+    symmetryStartPointForDrag: () => undefined } as unknown as Parameters<typeof createTransformCanvasInput>[0])
+  const target = { ...selection, x: 11 }
+  const rotate: CanvasDragState = { kind: 'rotate-content', start: { x: 16, y: 8 }, last: { x: 11, y: 14 },
+    selectionStart: selection, transformStartTarget: selection, previewTarget: target, previewAngle: 37,
+    startAngle: 0, previewPending: true, deferredSelectionPreview: true, selectionPreparationPending: true, copy: false }
+  inputRef.current.drag = rotate
+  expect(hook.result.current.prepareSelectionTransformDrag(rotate)).toBe(true)
+  hook.result.current.flushSelectionPreview(rotate)
+  input.endContentTransform({ drag: rotate, session, state })
+  hook.result.current.endSelectionAdjustmentEdit()
+  expect(session.pendingPaste?.previewDeferred).toBe(true)
+  expect(session.pendingPaste?.previewEdit).toBeNull()
+  expect(layer.pixels).toEqual(original)
+  expect(session.contentRevision).toBe(revision)
+  const pending = session.pendingPaste!
+  const moved = { ...target, x: target.x + 3, y: target.y + 2 }
+  const move: CanvasDragState = { kind: 'move-content', start: rotate.start, last: rotate.last,
+    selectionStart: pending.target, selectionSource: pending.source, transformStartTarget: pending.transformTarget,
+    startAngle: pending.transformAngle, previewAngle: pending.transformAngle, previewTarget: moved,
+    previewPending: true, floatingPaste: true, deferredSelectionPreview: true, selectionPreparationPending: true, copy: false }
+  inputRef.current.drag = move
+  expect(hook.result.current.prepareSelectionTransformDrag(move)).toBe(true)
+  hook.result.current.flushSelectionPreview(move)
+  input.endContentTransform({ drag: move, session, state })
+  hook.result.current.endSelectionAdjustmentEdit()
+  expect(invalidateCompositeRect).not.toHaveBeenCalled()
+  expect(layer.pixels).toEqual(original)
+  expect(session.contentRevision).toBe(revision)
+  const finalSelection = session.selection!
+  state.commitFloatingPaste()
+  const oracleSource = captureSelectionTransform(oracle, selection, oracleLayer)!
+  applySelectionTransform(oracle, oracleSource, moved, 37, false, undefined, undefined, undefined, oracleLayer, undefined, undefined, false, algorithm === 'rotsprite')
+  expect(layer.pixels).toEqual(oracleLayer.pixels)
+  expect(session.selection).toEqual(finalSelection)
+  state.undo()
+  expect(layer.pixels).toEqual(original)
+  state.redo()
+  expect(layer.pixels).toEqual(oracleLayer.pixels)
+  state.undo(); state.setSelection(selection)
+  const fresh: CanvasDragState = { kind: 'move-content', start: rotate.start, last: rotate.last,
+    selectionStart: selection, transformStartTarget: selection, previewTarget: { ...selection, x: 9 },
+    startAngle: 0, previewAngle: 0, previewPending: true, deferredSelectionPreview: true, selectionPreparationPending: true }
+  inputRef.current.drag = fresh
+  hook.result.current.prepareSelectionTransformDrag(fresh); hook.result.current.flushSelectionPreview(fresh)
+  input.endContentTransform({ drag: fresh, session, state })
+  expect(layer.pixels).toEqual(original)
+  state.undo()
+  expect(layer.pixels).toEqual(original)
+  expect(session.pendingPaste).toBeNull()
+  hook.unmount()
+})
+
 it.each(['move-content', 'transform-content', 'rotate-content'] as const)(
   'preserves a resized floating preview after a resumed %s returns to its start', kind => {
     const document = createDocument('resumed resized selection', 40, 40, 'rgba')

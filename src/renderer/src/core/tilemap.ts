@@ -674,7 +674,22 @@ export const createBlankTileset = (
   }
 }
 
-export const tilesetTileIndex = (tileset: Tileset, tileId: string): number => tileset.tileIds.indexOf(tileId)
+const tilesetIndexCache = new WeakMap<Tileset, { tileIds: string[]; count: number; byId: Map<string, number> }>()
+
+export const tilesetTileIndex = (tileset: Tileset, tileId: string): number => {
+  const cached = tilesetIndexCache.get(tileset)
+  let byId: Map<string, number>
+  if (cached?.tileIds === tileset.tileIds && cached.count === tileset.tileIds.length) {
+    byId = cached.byId
+  } else {
+    byId = new Map<string, number>()
+    for (let index = 0; index < tileset.tileIds.length; index += 1) {
+      if (!byId.has(tileset.tileIds[index])) byId.set(tileset.tileIds[index], index)
+    }
+    tilesetIndexCache.set(tileset, { tileIds: tileset.tileIds, count: tileset.tileIds.length, byId })
+  }
+  return byId.get(tileId) ?? -1
+}
 
 const tilesetSheetWidth = (tileset: Tileset): number => tileset.columns * tileset.tileWidth
 

@@ -2,6 +2,7 @@ import { afterEach, expect, it, vi } from 'vitest'
 import { createDocument, compositeRegion, DocumentCompositeCache } from './document'
 import { beginPixelEdit, commitPixelEdit } from './history'
 import { paintBrush, paintLine, brushStrokeInvalidationRects } from './tools-brush'
+import { paintBrush as paintBrushReference } from './__fixtures__/p01-brush-reference'
 import { createDefaultLayerStyles } from './layer-styles'
 import * as symmetry from './symmetry'
 
@@ -48,8 +49,8 @@ it.each(axisCases.flatMap(axes => [1, 2, 38, 45, 63, 64, 65, 128].map(size => ({
     for (const [x, y, cx, cy] of [[70, 75, 80, 80], [72, 76, 80, 80], [74, 76, 80.5, 79.5], [74, 76, 80, 79.5], [-4, 20, 80.5, 79.5]]) {
       const center = { x: cx, y: cy }
       paintBrush(document, layer, edit, x, y, size, color, shape, null, 'solid', 1, null, undefined, 0, 'paint', undefined, axes, center)
-      // A full-canvas selection deliberately uses the general per-pixel path.
-      paintBrush(reference, referenceLayer, referenceEdit, x, y, size, color, shape, { x: 0, y: 0, width: 160, height: 160 }, 'solid', 1, null, undefined, 0, 'paint', undefined, axes, center)
+      // Frozen pre-P01 implementation deliberately uses the per-pixel path.
+      paintBrushReference(reference, referenceLayer, referenceEdit, x, y, size, color, shape, { x: 0, y: 0, width: 160, height: 160 }, 'solid', 1, null, undefined, 0, 'paint', undefined, axes, center)
       expect(equalPixels(layer.pixels, referenceLayer.pixels)).toBe(true)
     }
     const after = layer.pixels.slice()

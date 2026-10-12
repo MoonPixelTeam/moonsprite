@@ -75,6 +75,20 @@ export interface ShapeRatio { width: number; height: number }
 
 export type FillMode = 'contiguous' | 'global'
 
+export type FillPatternMode = 'default' | 'random' | 'regular'
+
+export interface FillPatternSettings {
+  randomDensity: number
+  randomCount: number
+  randomSpacing: number
+  randomOverlap: boolean
+  regularCount: number
+  regularSpacingX: number
+  regularSpacingY: number
+  regularOverlap: boolean
+  regularRowOffset: number
+}
+
 export type FillKind = 'bucket' | 'gradient'
 
 export type FillReference = 'current-layer' | 'visible-layers'

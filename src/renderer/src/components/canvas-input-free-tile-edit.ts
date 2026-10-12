@@ -258,7 +258,9 @@ export function createFreeTileEditCanvasInput(ports: Ports) {
           {
             sourceColorAt: session.fillReference === 'visible-layers' ? createCompositePointSampler(sourceEdit.document) : undefined,
             connectivity: session.fillConnectivity
-          }
+          },
+          session.fillPatternMode,
+          session.fillPatternSettings
         )
         if (edit) {
           const drag: DragState = { kind: 'free-tile-edit', start: point, last: point, edit, ...freeTileDragFields }

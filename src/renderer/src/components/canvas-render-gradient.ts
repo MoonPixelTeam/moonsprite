@@ -50,7 +50,7 @@ export function renderCanvasGradient({
   smoothPixelSampling,
   gradientPreviewInputAtRef,
   gradientLineVisible,
-  gradientLineColor
+  gradientLineColor, guideContext = context
 }: {
   canRenderToolPreview: boolean
   drag: DragState | null
@@ -114,6 +114,7 @@ export function renderCanvasGradient({
   gradientPreviewInputAtRef: React.RefObject<number>
   gradientLineVisible: boolean
   gradientLineColor: RgbaColor
+  guideContext?: RasterContext2D
 }) {
   if (canRenderToolPreview && drag?.kind === 'gradient') {
     const moved = drag.start.x !== drag.last.x || drag.start.y !== drag.last.y
@@ -555,6 +556,7 @@ export function renderCanvasGradient({
       }
     }
     for (const copy of repeatCopies) {
+      const context = guideContext
       context.save()
       clipCanvasCopy(context, copy)
       if (gradientLineVisible || pendingGradientFor(document.id)) {

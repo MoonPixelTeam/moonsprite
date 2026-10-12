@@ -1,0 +1,26 @@
+.brush-pattern-options, .fill-pattern-controls { display: inline-flex; align-items: center; gap: var(--ui-space-1); flex: 0 0 auto; }
+.fill-pattern-controls > .themed-select { width: 112px; }
+.fill-pattern-settings-modal .fill-pattern-dialog-body { display: grid; align-content: start; gap: var(--ui-space-5); overflow: auto; padding: var(--ui-space-5); }
+.fill-pattern-parameters { display: grid; min-width: 0; border-top: 1px solid var(--theme-border-muted); }
+.fill-pattern-parameters > .fill-pattern-property { align-items: start; padding-block: var(--ui-space-4); border-bottom: 1px solid var(--theme-border-muted); }
+.fill-pattern-parameters > .fill-pattern-property:last-child { border-bottom: 0; padding-bottom: 0; }
+.fill-pattern-property > .ui-field-label { line-height: var(--ui-line-regular); color: var(--theme-text-primary); }
+.fill-pattern-property-controls { display: grid; gap: var(--ui-space-4); min-width: 0; }
+.fill-pattern-linked-values { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--ui-space-4); }
+.fill-pattern-value-field.ui-field-stacked { grid-template-columns: minmax(0, 1fr); }
+.fill-pattern-value-field > .ui-field-label { line-height: var(--ui-line-regular); }
+.fill-pattern-number-control { display: block; width: 100%; min-width: 0; }
+.fill-pattern-number-control > .number-input { width: 100%; }
+.fill-pattern-parameters .checkbox-field { justify-self: start; max-width: 100%; gap: var(--ui-space-4); font-size: var(--ui-font-regular); line-height: var(--ui-line-regular); }
+.fill-pattern-auto-value { color: var(--theme-text-muted); font-size: var(--ui-font-small); line-height: var(--ui-line-small); }
+.brush-size-popover.fill-pattern-slider-popover { position: fixed; z-index: 10000; left: auto; top: auto; max-width: calc(100vw - 16px); }
+.fill-pattern-presets { display: grid; gap: var(--ui-space-4); min-width: 0; }
+.fill-pattern-presets .fill-pattern-preset-field { padding-top: 0; border-top: 0; min-width: 0; text-align: left; }
+.fill-pattern-preset-field > .ui-field-control, .fill-pattern-presets .themed-select { width: 100%; min-width: 0; }
+.fill-pattern-delete-confirm { display: flex; align-items: center; justify-content: flex-end; gap: var(--ui-space-4); }
+.fill-pattern-delete-confirm > span { margin-right: auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--theme-text-muted); }
+.fill-pattern-number-control .number-input input { text-align: left; font-variant-numeric: tabular-nums; }
+.fill-pattern-hint { margin: 0; font-size: var(--ui-font-small); line-height: var(--ui-line-small); color: var(--theme-text-muted); }
+.fill-pattern-hint[role="alert"] { font-size: var(--ui-font-regular); line-height: var(--ui-line-regular); }
+.fill-pattern-settings-modal > footer { flex: 0 0 auto; display: flex; gap: var(--ui-space-4); padding: var(--ui-space-5); background: var(--theme-dialog-footer); border-top: 1px solid var(--theme-border-muted); }
+.fill-pattern-settings-modal > footer > button:first-child { margin-right: auto; }

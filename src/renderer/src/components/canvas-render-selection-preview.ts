@@ -10,6 +10,7 @@ import { type RasterContext2D } from '@/components/canvas-selection-renderer'
 import { createPolygonPathRasterCache } from '@/core/canvas-input'
 import type * as React from 'react'
 import type { DocumentSession } from '@/store/workspace-types'
+import { activePaintLayer } from '@/store/workspace-session'
 import { PolygonPathPreviewRenderCache } from './canvas-stage-helpers'
 export function renderCanvasSelectionPreview({
   inputRef,
@@ -155,14 +156,15 @@ export function renderCanvasSelectionPreview({
   const selectionDrag = canvasGestureForPreview(inputRef.current.drag)
   if (selectionDrag?.kind === 'marquee' && (selectionDrag.moved || selectionDrag.quickSelectCell)) {
     const displaySelection = selectionDrag.marqueeDisplaySelection ?? selectionDrag.marqueePreviewSelection
-    if (!selectionDrag.quickSelectCell && (view.tileRepeatMode ?? 'off') === 'off' && selectionDrag.previewTarget) {
+    const tilemapPaint = session.tilemapMode === 'paint' && activePaintLayer(session).kind === 'tilemap'
+    if (!tilemapPaint && !selectionDrag.quickSelectCell && (view.tileRepeatMode ?? 'off') === 'off' && selectionDrag.previewTarget) {
       const points = unboundedShapePreview(selectionDrag.previewTarget, session.selectionKind === 'ellipse' ? 'ellipse' : 'rectangle', selectionDrag.previewAngle ?? 0, session.selectionRounded ? session.selectionCornerRadius : 0)
       drawSelectionPathPreviewPoints(points.flatMap(point => symmetryPoints(point, document.width, document.height, session.symmetryAxes, symmetryCenter, false)), repeatCopies, false, customSelectionPreviewColor)
     } else if (displaySelection)
       drawSelectionPathPreview(
         selectionPreviewPixels(displaySelection),
         repeatCopies,
-        Boolean(selectionDrag.marqueeDisplaySelection && (view.tileRepeatMode ?? 'off') !== 'off' && !selectionDrag.quickSelectCell),
+        Boolean(!tilemapPaint && selectionDrag.marqueeDisplaySelection && (view.tileRepeatMode ?? 'off') !== 'off' && !selectionDrag.quickSelectCell),
         customSelectionPreviewColor
       )
   }

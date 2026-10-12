@@ -1,6 +1,27 @@
 import { afterEach, expect, it, vi } from 'vitest'
 
-afterEach(() => { vi.unstubAllGlobals(); vi.resetModules() })
+afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals(); vi.resetModules() })
+
+it('terminates a silent worker and rejects pending requests after the timeout', async () => {
+  vi.useFakeTimers()
+  let instance!: FakeWorker
+  class FakeWorker {
+    onmessage = null
+    onmessageerror = null
+    onerror = null
+    terminate = vi.fn()
+    constructor() { instance = this }
+    postMessage() {}
+  }
+  vi.stubGlobal('Worker', FakeWorker)
+  const { packLocalHistoryAsync } = await import('./local-history-worker')
+  const task = packLocalHistoryAsync({ manifest: { version: 2, projectKey: 'timeout', labels: [], position: 0 }, snapshots: [new Uint8Array([1])], cachedDeltas: [] })
+  const failed = expect(task).rejects.toThrow('timed out')
+  await vi.advanceTimersByTimeAsync(300_000)
+  await failed
+  expect(instance.terminate).toHaveBeenCalledOnce()
+  expect(vi.getTimerCount()).toBe(0)
+})
 
 it('uses a real Worker request boundary with compressed input and propagates errors', async () => {
   const requests: unknown[] = [], instances: FakeWorker[] = []

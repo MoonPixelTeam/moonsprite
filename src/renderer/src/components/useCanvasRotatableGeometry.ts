@@ -3,6 +3,7 @@ import { viewAlignedShapeAngle, viewAlignedShapeBounds } from '@/core/canvas-inp
 import type { SelectionMask, SelectionRect } from '@shared/types-selection'
 import { DEFAULT_GRID_SETTINGS, snapSelectionBoundsToGrid } from '@/core/grid'
 import { type DocumentSession } from '@/store/workspace'
+import { activePaintLayer } from '@/store/workspace-session'
 import { combineSelection, rectSelection, rotatedEllipseSelection, rotatedRectSelection } from '@/core/selection'
 import {
   CanvasInputState,
@@ -132,7 +133,8 @@ export function useCanvasRotatableGeometry(ports: Ports) {
     if (!geometry) return
     const { target, angle } = geometry
     const repeatMode = ports.liveViewRef.current.tileRepeatMode ?? 'off'
-    if (!finalize && repeatMode === 'off') {
+    const tilemapPaint = ports.session.tilemapMode === 'paint' && activePaintLayer(ports.session).kind === 'tilemap'
+    if (!finalize && repeatMode === 'off' && !tilemapPaint) {
       ports.scheduleDraw()
       return
     }
@@ -151,7 +153,7 @@ export function useCanvasRotatableGeometry(ports: Ports) {
     )
     drag.marqueePreviewSelection = incoming
     drag.marqueeDisplaySelection =
-      repeatMode === 'off'
+      repeatMode === 'off' || tilemapPaint
         ? incoming
         : normalizeSelectionForTileRepeatPreview(repeatedSelection, ports.session.document.width, ports.session.document.height, repeatMode)
     drag.previewSelection = combineSelection(drag.selectionStart ?? null, incoming, drag.selectionMode ?? ports.session.selectionMode)

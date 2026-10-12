@@ -14,8 +14,9 @@
 - [架构概览](architecture/overview.md)：模块职责和依赖方向。
 - [状态与历史](architecture/state-history.md)：会话、dirty、撤销和视图状态。
 - [坐标与渲染](architecture/coordinates-rendering.md)：屏幕、视图、画布和图层坐标。
+- [未溯源性能问题清单](architecture/unresolved-performance-issues.md)：越用越卡、输入延迟和合成状态异常的证据、复现协议与验收门槛。
 - [多语言架构](architecture/localization.md)：语言资源、回退、持久化和新增语言门禁。
-- [文件格式](file-format.md)：`.moonsprite` v20 容器。
+- [文件格式](file-format.md)：`.moonsprite` v21 容器。
 
 ## 交互契约
 

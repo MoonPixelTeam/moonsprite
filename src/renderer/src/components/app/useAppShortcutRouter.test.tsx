@@ -21,6 +21,19 @@ function options(): Parameters<typeof useAppShortcutRouter>[0] {
   }
 }
 
+it('opens sprite sheet import without a document through its configurable shortcut', () => {
+  const initial = options()
+  initial.shortcuts.importSpriteSheet = ['Ctrl+I']
+  const openImport = vi.fn()
+  initial.commands.importSpriteSheet = openImport
+  const hook = renderHook(() => useAppShortcutRouter(initial), { wrapper: I18nProvider })
+  const press = (repeat = false) => act(() => window.dispatchEvent(new KeyboardEvent('keydown', { key: 'i', code: 'KeyI', ctrlKey: true, repeat, cancelable: true })))
+  press(); press(true)
+  expect(openImport).toHaveBeenCalledTimes(1)
+  hook.unmount(); press()
+  expect(openImport).toHaveBeenCalledTimes(1)
+})
+
 it('routes paste to the focused reference panel without editing the sprite', () => {
   const initial = options()
   initial.shortcuts.paste = ['Ctrl+V']

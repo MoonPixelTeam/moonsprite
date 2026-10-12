@@ -1,3 +1,5 @@
+import { BoundedPromiseCache } from '@/core/bounded-promise-cache'
+
 interface CursorAsset {
   variable: string
   source: string
@@ -5,29 +7,25 @@ interface CursorAsset {
   fallback: string
 }
 
-const images = new Map<string, Promise<string>>()
+const MAX_INLINE_CURSOR_IMAGES = 64
+const images = new BoundedPromiseCache<string, string>(MAX_INLINE_CURSOR_IMAGES)
 const inlineCursor = (source: string, scale: number): Promise<string> => {
   const key = `${source}:${scale}`
-  let pending = images.get(key)
-  if (!pending) {
-    pending = new Promise<string>((resolve, reject) => {
-      const image = new Image()
-      image.onload = () => {
-        const canvas = document.createElement('canvas')
-        canvas.width = Math.round(image.naturalWidth * scale)
-        canvas.height = Math.round(image.naturalHeight * scale)
-        const context = canvas.getContext('2d')
-        if (!context) { reject(new Error('无法生成扩展指针')); return }
-        context.imageSmoothingEnabled = false
-        context.drawImage(image, 0, 0, canvas.width, canvas.height)
-        resolve(canvas.toDataURL('image/png'))
-      }
-      image.onerror = () => reject(new Error('无法加载扩展指针'))
-      image.src = source
-    })
-    images.set(key, pending)
-  }
-  return pending
+  return images.getOrCreate(key, () => new Promise<string>((resolve, reject) => {
+    const image = new Image()
+    image.onload = () => {
+      const canvas = document.createElement('canvas')
+      canvas.width = Math.round(image.naturalWidth * scale)
+      canvas.height = Math.round(image.naturalHeight * scale)
+      const context = canvas.getContext('2d')
+      if (!context) { reject(new Error('无法生成扩展指针')); return }
+      context.imageSmoothingEnabled = false
+      context.drawImage(image, 0, 0, canvas.width, canvas.height)
+      resolve(canvas.toDataURL('image/png'))
+    }
+    image.onerror = () => reject(new Error('无法加载扩展指针'))
+    image.src = source
+  }))
 }
 
 export const extensionWindowThemeCss = (variables: string): string => `

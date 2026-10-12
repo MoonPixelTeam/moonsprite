@@ -4,6 +4,18 @@ import { addBlankAnimationFrame, syncActiveAnimationFrame } from './animation'
 import { compositeRegion } from './document-composite'
 import { DEFAULT_SPRITE_SHEET_IMPORT as defaults, spriteSheetImportPlan, spriteSheetFrameSizeFromCount, buildImportedSpriteSheet } from './sprite-sheet-import'
 
+it('slices a non-origin selection locally and leaves unselected pixels transparent', async () => {
+  const source = createDocument('selection sheet', 4, 2, 'rgba', false)
+  for (let i = 0; i < 8; i++) writeLayerColor(source, source.layers[0], i, { r: i + 1, g: 0, b: 0, a: 255 })
+  const options = { ...defaults, width: 1, height: 1, selection: { x: 1, y: 0, width: 2, height: 2, mask: new Uint8Array([1, 0, 1, 1]) } }
+  expect(spriteSheetImportPlan(source, options).count).toBe(4)
+  const result = await buildImportedSpriteSheet(source, options)
+  expect(result.animation!.cels.map(cel => Array.from(cel.surface!.pixels))).toEqual([
+    [2, 0, 0, 255], [0, 0, 0, 0], [6, 0, 0, 255], [7, 0, 0, 255]
+  ])
+  expect(compositeRegion(source, 1, 0, 1, 1)).toEqual(new Uint8ClampedArray([2, 0, 0, 255]))
+})
+
 it.each([
   ['horizontal', [[1, 2], [4, 2], [7, 2]]],
   ['vertical', [[1, 2], [1, 5]]],

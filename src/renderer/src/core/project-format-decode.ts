@@ -1,4 +1,6 @@
 import { normalizeGradientMap } from './gradient-map'
+import { decodeProjectReferenceImages } from './project-reference-images'
+import { decodeCanvasReferences } from './project-canvas-references'
 import { unzipSync } from 'fflate'
 import { isPixelFormat } from './pixel-format'
 import { type LayerMask, type RasterLayer } from '@shared/types-layer'
@@ -614,6 +616,8 @@ export function decodeProject(input: Uint8Array, options: ProjectDecodeOptions =
     ),
     nextColorId: Math.max(1, source.nextColorId ?? 1),
     customBrushes,
+    referenceImages: decodeProjectReferenceImages(source.referenceImages, files),
+    canvasReferences: decodeCanvasReferences(source.canvasReferences, files),
     tilesets,
     animation,
     ...(outlineSettings ? { outlineSettings } : {}),

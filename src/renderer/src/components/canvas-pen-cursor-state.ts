@@ -75,7 +75,10 @@ export const refreshPenCursor = (ports: CanvasPenCursorPorts, refs: CanvasPenCur
   const selectionOverlay = selectionCursor && preferences?.selectionCrosshair === true
   const dot = adaptive && (!selectionCursor || selectionOverlay) && preferences?.paintingCursorShape === 'dot'
   const pixelCross = adaptive && (!selectionCursor || selectionOverlay) && preferences?.paintingCursorShape === 'pixel-cross'
-  const systemCrosshair = !selectionOverlay && !dot && !pixelCross && (!alignToPixel || selectionCursor) && adaptive && preferences?.useLocalCursors
+  // A native image can only switch its whole color from the hotspot sample.
+  // Painting cursors use a backdrop mask so each covered pixel contrasts
+  // with the rendered canvas, including screen-aligned mouse crosshairs.
+  const systemCrosshair = selectionCursor && !selectionOverlay && adaptive && preferences?.useLocalCursors
   const paintingScale = preferences?.cursorScale ?? 1
   const pixelCrossScale = paintingScale / (Number.isFinite(ports.interfaceScale) && ports.interfaceScale > 0 ? ports.interfaceScale : 1)
   const dotSize = 3 * paintingScale

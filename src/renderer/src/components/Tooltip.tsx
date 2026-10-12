@@ -61,6 +61,23 @@ interface NativeTooltipState {
   content: string
 }
 
+function tooltipPosition(anchor: HTMLElement, tooltip: DOMRect, boundary?: DOMRect): { left: number; top: number } {
+  const leftMin = boundary ? boundary.left + 8 : 8
+  const leftMax = boundary ? boundary.right - tooltip.width - 8 : window.innerWidth - tooltip.width - 8
+  const topMin = boundary ? boundary.top + 8 : 8
+  const topMax = boundary ? boundary.bottom - tooltip.height - 8 : window.innerHeight - tooltip.height - 8
+  const left = Math.max(leftMin, Math.min(leftMax, anchor.getBoundingClientRect().left))
+  const anchorRect = anchor.getBoundingClientRect()
+  const top = anchorRect.bottom + tooltip.height + 6 <= (boundary?.bottom ?? window.innerHeight) && anchorRect.bottom + 5 >= topMin
+    ? anchorRect.bottom + 5
+    : Math.max(topMin, Math.min(topMax, anchorRect.top - tooltip.height - 5))
+  return { left, top }
+}
+
+function tooltipBoundary(anchor: HTMLElement): DOMRect | undefined {
+  return anchor.closest<HTMLElement>('.palette-library-dialog')?.getBoundingClientRect()
+}
+
 const NATIVE_TOOLTIP_DELAY_MS = 600
 
 /**
@@ -209,13 +226,8 @@ export function NativeTooltipBridge() {
 
   useLayoutEffect(() => {
     if (!active || !tooltipRef.current) return
-    const anchor = active.anchor.getBoundingClientRect()
     const tooltip = tooltipRef.current.getBoundingClientRect()
-    const left = Math.max(8, Math.min(window.innerWidth - tooltip.width - 8, anchor.left))
-    const top = anchor.bottom + tooltip.height + 6 <= window.innerHeight
-      ? anchor.bottom + 5
-      : Math.max(8, anchor.top - tooltip.height - 5)
-    setPosition({ left, top })
+    setPosition(tooltipPosition(active.anchor, tooltip, tooltipBoundary(active.anchor)))
   }, [active])
 
   useEffect(() => {
@@ -233,10 +245,15 @@ export function NativeTooltipBridge() {
       const anchor = active.anchor.getBoundingClientRect()
       const tooltip = tooltipRef.current?.getBoundingClientRect()
       if (!tooltip) return
-      setPosition({
-        left: Math.max(8, Math.min(window.innerWidth - tooltip.width - 8, anchor.left)),
-        top: anchor.bottom + tooltip.height + 6 <= window.innerHeight ? anchor.bottom + 5 : Math.max(8, anchor.top - tooltip.height - 5)
-      })
+      const list = active.anchor.closest<HTMLElement>('.palette-library-list')
+      if (list) {
+        const listBounds = list.getBoundingClientRect()
+        if (anchor.bottom < listBounds.top || anchor.top > listBounds.bottom) {
+          setActive(null)
+          return
+        }
+      }
+      setPosition(tooltipPosition(active.anchor, tooltip, tooltipBoundary(active.anchor)))
     }
     window.addEventListener('resize', reposition)
     window.addEventListener('scroll', reposition, true)

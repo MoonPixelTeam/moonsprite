@@ -30,7 +30,7 @@ export function useAppPlaybackShortcut({ homeOpen, openMenu, popupPanelId, timel
         openMenu ||
           popupPanelId ||
           document.querySelector(
-            '.modal-backdrop, .context-menu, .tool-flyout, .brush-library, .brush-size-popover, .pressure-popover, .themed-select-popover, .palette-operation-dialog, .palette-library-popover, .palette-actions-popover, .workspace-panel-popup-layer'
+            '.modal-backdrop, .context-menu, .tool-flyout, .brush-library, .brush-size-popover, .pressure-popover, .themed-select-popover, .palette-operation-dialog, .palette-library-dialog, .palette-actions-popover, .workspace-panel-popup-layer'
           )
       )
       if (

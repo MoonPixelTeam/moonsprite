@@ -52,7 +52,7 @@ export function selectPaletteColor(session: DocumentSession, id: number, additiv
 }
 
 const capturePaletteEdit = (session: DocumentSession) => ({
-  entries: session.document.palette.map(entry => ({ entry, color: { ...entry.color } })),
+  entries: session.document.palette.map(entry => ({ entry, name: entry.name, color: { ...entry.color } })),
   layout: currentPaletteLayout(session),
   nextColorId: session.document.nextColorId,
   selected: [...session.selectedPaletteIds],
@@ -62,12 +62,12 @@ const capturePaletteEdit = (session: DocumentSession) => ({
 
 const recordPaletteEdit = (session: DocumentSession, before: ReturnType<typeof capturePaletteEdit>, selection?: PaletteColorTarget['selection']): void => {
   const after = capturePaletteEdit(session)
-  if (before.entries.length === after.entries.length && before.entries.every((item, index) => item.entry.id === after.entries[index].entry.id && colorEquals(item.color, after.entries[index].color))
+  if (before.entries.length === after.entries.length && before.entries.every((item, index) => item.entry.id === after.entries[index].entry.id && item.name === after.entries[index].name && colorEquals(item.color, after.entries[index].color))
     && before.layout.columns === after.layout.columns && before.layout.slots.length === after.layout.slots.length
     && before.layout.slots.every((id, index) => id === after.layout.slots[index])) return
   const apply = (snapshot: typeof before, view?: NonNullable<typeof selection>['before']): void => {
     // Preserve entry objects used by earlier color-edit history commands.
-    session.document.palette = snapshot.entries.map(({ entry, color }) => { entry.color = { ...color }; return entry })
+    session.document.palette = snapshot.entries.map(({ entry, name, color }) => { entry.name = name; entry.color = { ...color }; return entry })
     session.document.nextColorId = snapshot.nextColorId
     applyPaletteSlots(session, snapshot.layout.slots, snapshot.layout.columns)
     session.selectedPaletteIds = [...snapshot.selected]
@@ -138,7 +138,8 @@ export function pastePaletteColors(session: DocumentSession, colors: readonly Rg
   } else {
     ids.push(...colors.map(color => createPaletteColor(session, color, true)))
   }
-  const selected = [...new Set(ids.filter((id) => session.document.paletteOrder.includes(id)))]
+  const pasted = [...new Set(ids.filter((id) => session.document.paletteOrder.includes(id)))]
+  const selected = target?.selectResult === false ? [] : pasted
   const primaryId = selected.at(-1) ?? null
   session.selectedPaletteIds = selected
   session.paletteSelectionId = primaryId
@@ -146,7 +147,7 @@ export function pastePaletteColors(session: DocumentSession, colors: readonly Rg
   if (active) session.primaryColor = { ...active.color }
   if (target?.selection) session.paletteSelectionRestore = { ...target.selection.after }
   recordPaletteEdit(session, before, target?.selection)
-  return selected
+  return pasted
 }
 
 export function updatePaletteColor(session: DocumentSession, id: number, color: RgbaColor): void {
@@ -173,7 +174,22 @@ export function updatePaletteColor(session: DocumentSession, id: number, color: 
   })
 }
 
-export function applyPalette(session: DocumentSession, colors: RgbaColor[], layout?: PaletteSlotLayout): void {
+export function renamePaletteColor(session: DocumentSession, id: number, name: string): void {
+  const entry = session.document.palette.find((candidate) => candidate.id === id)
+  if (!entry) return
+  const next = name.trim()
+  if (entry.name === next) return
+  const before = entry.name
+  entry.name = next
+  session.history.push({
+    label: tr('palette.history.updated'),
+    bytes: (before.length + next.length) * 2 + 16,
+    undo: () => { entry.name = before },
+    redo: () => { entry.name = next }
+  })
+}
+
+export function applyPalette(session: DocumentSession, colors: RgbaColor[], layout?: PaletteSlotLayout, names?: readonly string[]): void {
   const document = session.document
   const beforeOrder = [...document.paletteOrder]
   const beforeLayout = currentPaletteLayout(session)
@@ -181,8 +197,9 @@ export function applyPalette(session: DocumentSession, colors: RgbaColor[], layo
   const beforeColumns = beforeLayout.columns
   const beforeSelected = [...session.selectedPaletteIds]
   const beforePrimary = session.paletteSelectionId
+  const beforeNames = new Map(document.palette.map((entry) => [entry.id, entry.name]))
   const usedPaletteIds = new Set<number>()
-  const colorIds = colors.map((color) => {
+  const colorIds = colors.map((color, colorIndex) => {
     // Reuse duplicate entries in order, but create a new entry when the
     // imported palette contains more occurrences than the document currently
     // has. This preserves repeated colors without accumulating hidden copies
@@ -190,9 +207,12 @@ export function applyPalette(session: DocumentSession, colors: RgbaColor[], layo
     const reusable = document.palette.find((entry) => !usedPaletteIds.has(entry.id) && colorEquals(entry.color, color))
     if (reusable) {
       usedPaletteIds.add(reusable.id)
+      if (names?.[colorIndex] !== undefined) reusable.name = names[colorIndex] ?? ''
       return reusable.id
     }
     const id = findOrAddPaletteColor(document, color, false, true)
+    const created = document.palette.find((entry) => entry.id === id)
+    if (created && names?.[colorIndex] !== undefined) created.name = names[colorIndex] ?? ''
     usedPaletteIds.add(id)
     return id
   })
@@ -201,28 +221,30 @@ export function applyPalette(session: DocumentSession, colors: RgbaColor[], layo
   const requestedSlots = layout?.slots.map((colorIndex) => colorIndex === null ? null : colorIds[colorIndex] ?? null)
   const afterSlots = normalizePaletteSlots(document.palette.map((entry) => entry.id), requestedOrder, requestedSlots, afterColumns)
   const afterOrder = paletteOrderFromSlots(afterSlots)
-  if (afterColumns === beforeColumns && afterSlots.length === beforeSlots.length && afterSlots.every((id, index) => id === beforeSlots[index])) return
+  const afterNames = new Map(document.palette.map((entry) => [entry.id, entry.name]))
+  if (afterColumns === beforeColumns && afterSlots.length === beforeSlots.length && afterSlots.every((id, index) => id === beforeSlots[index]) && [...beforeNames].every(([id, name]) => afterNames.get(id) === name)) return
   const matchingCurrent = afterOrder.find((id) => {
     const entry = document.palette.find((candidate) => candidate.id === id)
     return Boolean(entry && colorEquals(entry.color, session.primaryColor))
   })
   const afterSelected = matchingCurrent === undefined ? [] : [matchingCurrent]
   const afterPrimary = matchingCurrent ?? null
-  const apply = (order: number[], slots: Array<number | null>, columns: number, selected: number[], primary: number | null): void => {
+  const apply = (order: number[], slots: Array<number | null>, columns: number, selected: number[], primary: number | null, namesSnapshot: Map<number, string>): void => {
     document.paletteOrder = [...order]
     document.paletteSlots = [...slots]
     document.paletteColumns = columns
     session.selectedPaletteIds = [...selected]
     session.paletteSelectionId = primary
+    document.palette.forEach((entry) => { const name = namesSnapshot.get(entry.id); if (name !== undefined) entry.name = name })
   }
-  apply(afterOrder, afterSlots, afterColumns, afterSelected, afterPrimary)
+  apply(afterOrder, afterSlots, afterColumns, afterSelected, afterPrimary, afterNames)
   const pixelRemap: IndexedPaletteRemap[] = remapIndexedDocumentToVisiblePalette(document)
   const pixelRemapBytes = pixelRemap.reduce((total, change) => total + change.before.byteLength + change.after.byteLength, 0)
   session.history.push({
     label: tr('palette.history.changed'),
     bytes: (beforeOrder.length + afterOrder.length + beforeSlots.length + afterSlots.length + beforeSelected.length + afterSelected.length) * 4 + pixelRemapBytes + 32,
-    undo: () => { apply(beforeOrder, beforeSlots, beforeColumns, beforeSelected, beforePrimary); applyIndexedPaletteRemap(pixelRemap, 'before') },
-    redo: () => { apply(afterOrder, afterSlots, afterColumns, afterSelected, afterPrimary); applyIndexedPaletteRemap(pixelRemap, 'after') }
+    undo: () => { apply(beforeOrder, beforeSlots, beforeColumns, beforeSelected, beforePrimary, beforeNames); applyIndexedPaletteRemap(pixelRemap, 'before') },
+    redo: () => { apply(afterOrder, afterSlots, afterColumns, afterSelected, afterPrimary, afterNames); applyIndexedPaletteRemap(pixelRemap, 'after') }
   })
 }
 

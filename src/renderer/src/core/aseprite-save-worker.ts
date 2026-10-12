@@ -1,6 +1,6 @@
 import type { SpriteDocument } from '@shared/types-document'
 import type { DocumentExportWorkerRequest, DocumentExportWorkerResult } from './document-export-worker-client'
-import { projectDocumentForWorkerTransfer } from './project-save-transfer'
+import { projectDocumentForWorkerTransfer, projectDocumentTransferables } from './project-save-transfer'
 
 /** Reuse the export worker without cloning or detaching the live project's pixels. */
 export function encodeAsepriteInWorker(document: SpriteDocument, format: 'ase' | 'aseprite', scalePercent: number, onProgress?: (value: number) => void): Promise<Uint8Array> {
@@ -22,8 +22,9 @@ export function encodeAsepriteInWorker(document: SpriteDocument, format: 'ase' |
       }
     }
     try {
-      const request: DocumentExportWorkerRequest = { id: 1, document: projectDocumentForWorkerTransfer(document), job: 'document', format, scalePercent }
-      worker.postMessage(request)
+      const payload = projectDocumentForWorkerTransfer(document)
+      const request: DocumentExportWorkerRequest = { id: 1, document: payload, job: 'document', format, scalePercent }
+      worker.postMessage(request, projectDocumentTransferables(payload))
     } catch (error) { fail(error) }
   })
 }

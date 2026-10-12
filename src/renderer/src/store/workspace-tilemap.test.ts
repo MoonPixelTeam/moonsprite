@@ -23,6 +23,115 @@ beforeEach(() => {
   useWorkspace.setState({ sessions: [], activeId: null, message: null, saveProgress: null, dialog: null })
 })
 
+it('cleans unused tiles while preserving hidden layers and other frames, with one undo step', async () => {
+  const document = createDocument('cleanup', 2, 1, 'rgba')
+  useWorkspace.getState().addSession(document)
+  await useWorkspace.getState().createTilemapLayer({ name: 'Hidden terrain', tileWidth: 1, tileHeight: 1 })
+  let tileset = document.tilesets![0]
+  const firstId = tileset.tileIds[0]
+  tileset = appendBlankTilesetTile(appendBlankTilesetTile(tileset, 'other-frame'), 'unused')
+  document.tilesets![0] = tileset
+  writeTilesetTilePixels(tileset, 'unused', new Uint8ClampedArray([99, 0, 0, 255]))
+  const paint = (tileId: string) => {
+    const target = activeTilemapCelTarget(document)!
+    const edit = beginTilemapEdit(target.layer.id, target.cel.frameId)
+    writeTilemapCell(document, target, edit, 0, { tilesetId: tileset.id, tileId })
+    useWorkspace.getState().commitTilemapEdit(edit, 'paint')
+  }
+  paint(firstId)
+  const firstFrameId = ensureAnimationDocument(document).activeFrameId
+  addBlankAnimationFrame(document)
+  paint('other-frame')
+  activateAnimationFrame(document, firstFrameId)
+  getActiveLayer(document)!.visible = false
+  useWorkspace.getState().setSelectedTile(tileset.id, 'unused')
+  const session = useWorkspace.getState().sessions[0], position = session.history.position
+  expect(useWorkspace.getState().clearUnusedTilesetTiles(tileset.id)).toBe(true)
+  expect(document.tilesets![0].tileIds).toEqual([firstId, 'other-frame'])
+  expect(session.history.position).toBe(position + 1)
+  useWorkspace.getState().undo()
+  expect(document.tilesets![0].tileIds).toEqual([firstId, 'other-frame', 'unused'])
+  expect(readTilesetTilePixels(document.tilesets![0], 'unused')).toEqual(new Uint8ClampedArray([99, 0, 0, 255]))
+  expect(session.selectedTileId).toBe('unused')
+  useWorkspace.getState().redo()
+  expect(document.tilesets![0].tileIds).toEqual([firstId, 'other-frame'])
+  expect(useWorkspace.getState().clearUnusedTilesetTiles(tileset.id)).toBe(false)
+  expect(session.history.position).toBe(position + 1)
+})
+
+it('clears an entirely unused tileset to one blank slot and can restore it', async () => {
+  const document = createDocument('empty cleanup', 1, 1, 'rgba')
+  useWorkspace.getState().addSession(document)
+  await useWorkspace.getState().createTilemapLayer({ name: 'Terrain', tileWidth: 1, tileHeight: 1 })
+  const tileset = document.tilesets![0], tileId = tileset.tileIds[0]
+  writeTilesetTilePixels(tileset, tileId, new Uint8ClampedArray([99, 0, 0, 255]))
+  expect(useWorkspace.getState().clearUnusedTilesetTiles(tileset.id)).toBe(true)
+  expect(Array.from(document.tilesets![0].pixels).every(value => value === 0)).toBe(true)
+  expect(document.tilesets![0].tileIds).toEqual([tileId])
+  useWorkspace.getState().undo()
+  expect(readTilesetTilePixels(document.tilesets![0], tileId)).toEqual(new Uint8ClampedArray([99, 0, 0, 255]))
+})
+
+it('cleans a shared free-tile source set without removing sources used in other layers or frames', async () => {
+  const document = createDocument('free cleanup', 4, 2, 'rgba')
+  useWorkspace.getState().addSession(document)
+  await useWorkspace.getState().createFreeTileLayer({ name: 'A' })
+  const first = getActiveLayer(document)!, firstSource = first.freeTileSources![0]
+  const otherFrameSourceId = useWorkspace.getState().addFreeTileSource(first.id)!
+  const unusedSourceId = useWorkspace.getState().addFreeTileSource(first.id)!
+  const unusedTilesetId = first.freeTileSources!.find(source => source.id === unusedSourceId)!.tilesetId
+  const unusedTileId = document.tilesets!.find(item => item.id === unusedTilesetId)!.tileIds[0]
+  writeTilesetTilePixels(document.tilesets!.find(item => item.id === unusedTilesetId)!, unusedTileId, new Uint8ClampedArray([99, 0, 0, 255]))
+  await useWorkspace.getState().createFreeTileLayer({ name: 'B', freeTileSetId: first.freeTileSetId })
+  const second = getActiveLayer(document)!
+  const place = (sourceId: string) => {
+    const edit = useWorkspace.getState().beginFreeTilePlacement()!
+    edit.after.instances.push({ id: sourceId, sourceId, x: 0, y: 0 })
+    useWorkspace.getState().previewFreeTilePlacement(edit)
+    useWorkspace.getState().commitFreeTilePlacement(edit, 'place')
+  }
+  place(firstSource.id)
+  const firstFrameId = ensureAnimationDocument(document).activeFrameId
+  addBlankAnimationFrame(document)
+  place(otherFrameSourceId)
+  activateAnimationFrame(document, firstFrameId)
+  second.visible = false
+  useWorkspace.getState().selectLayer(first.id)
+  useWorkspace.getState().setSelectedTile(unusedTilesetId, unusedTileId)
+  const session = useWorkspace.getState().sessions[0], position = session.history.position
+  expect(useWorkspace.getState().clearUnusedFreeTileSources(first.id)).toBe(true)
+  expect(first.freeTileSources!.map(source => source.id)).toEqual([firstSource.id, otherFrameSourceId])
+  expect(first.freeTileSources).toBe(second.freeTileSources)
+  expect(document.tilesets!.some(item => item.id === unusedTilesetId)).toBe(false)
+  expect(session.history.position).toBe(position + 1)
+  useWorkspace.getState().undo()
+  expect(first.freeTileSources!.map(source => source.id)).toEqual([firstSource.id, otherFrameSourceId, unusedSourceId])
+  expect(first.freeTileSources).toBe(second.freeTileSources)
+  expect(readTilesetTilePixels(document.tilesets!.find(item => item.id === unusedTilesetId)!, unusedTileId)).toEqual(new Uint8ClampedArray([99, 0, 0, 255]))
+  expect(session.selectedTilesetId).toBe(unusedTilesetId)
+  useWorkspace.getState().redo()
+  expect(useWorkspace.getState().clearUnusedFreeTileSources(first.id)).toBe(false)
+})
+
+it('cleans entirely unused free-tile sources to a blank source and restores them on undo', async () => {
+  const document = createDocument('empty free cleanup', 2, 2, 'rgba')
+  useWorkspace.getState().addSession(document)
+  await useWorkspace.getState().createFreeTileLayer({ name: 'A' })
+  const layer = getActiveLayer(document)!, firstSource = layer.freeTileSources![0]
+  useWorkspace.getState().addFreeTileSource(layer.id)
+  const tileset = document.tilesets!.find(item => item.id === firstSource.tilesetId)!
+  writeTilesetTilePixels(tileset, tileset.tileIds[0], new Uint8ClampedArray([99, 0, 0, 255]))
+  expect(useWorkspace.getState().clearUnusedFreeTileSources(layer.id)).toBe(true)
+  expect(layer.freeTileSources).toHaveLength(1)
+  expect(document.tilesets).toHaveLength(1)
+  expect(Array.from(document.tilesets![0].pixels).every(value => value === 0)).toBe(true)
+  expect(useWorkspace.getState().clearUnusedFreeTileSources(layer.id)).toBe(false)
+  useWorkspace.getState().undo()
+  expect(layer.freeTileSources).toHaveLength(2)
+  expect(document.tilesets).toHaveLength(2)
+  expect(readTilesetTilePixels(document.tilesets!.find(item => item.id === tileset.id)!, tileset.tileIds[0])).toEqual(new Uint8ClampedArray([99, 0, 0, 255]))
+})
+
 describe('workspace Free Tile layer ownership', () => {
   it('makes newly created raster, tilemap, and free-tile layers active without explicitly selecting them', async () => {
     const document = createDocument('new layer activity', 4, 4, 'rgba')
@@ -513,6 +622,30 @@ describe('workspace Free Tile layer ownership', () => {
 
 
 describe('workspace Tilemap layers', () => {
+  it('does not implicitly reactivate the remembered tileset owner after creating or selecting a raster layer', async () => {
+    const document = createDocument('remembered tile target', 4, 4, 'rgba')
+    useWorkspace.getState().addSession(document)
+    const originalLayerId = document.activeLayerId
+    await useWorkspace.getState().createTilemapLayer({ name: 'Terrain', tileWidth: 2, tileHeight: 2 })
+    const tileLayerId = document.activeLayerId
+    const tileset = document.tilesets![0]
+    useWorkspace.getState().setSelectedTile(tileset.id, tileset.tileIds[0])
+    useWorkspace.getState().setTilemapMode('paint')
+    await useWorkspace.getState().addLayer()
+    const newLayerId = document.activeLayerId
+    for (const layerId of [newLayerId, originalLayerId]) {
+      useWorkspace.getState().selectLayer(layerId)
+      useWorkspace.getState().activateTilemapLayerForDrawing()
+      expect(document.activeLayerId).toBe(layerId)
+      expect(useWorkspace.getState().sessions[0].selectedLayerIds).toEqual([layerId])
+      expect(useWorkspace.getState().sessions[0].timelineActiveContext.row?.ownerId).toBe(layerId)
+      expect(useWorkspace.getState().sessions[0].selectedTileId).toBe(tileset.tileIds[0])
+    }
+    // A tile stroke's explicit owner is still honored at commit.
+    useWorkspace.getState().activateTilemapLayerForDrawing(tileLayerId)
+    expect(document.activeLayerId).toBe(tileLayerId)
+  })
+
   it('keeps the active layer until drawing with another layer\'s tileset', async () => {
     const document = createDocument('tileset owner selection', 4, 4, 'rgba')
     useWorkspace.getState().addSession(document)

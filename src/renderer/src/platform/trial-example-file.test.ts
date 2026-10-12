@@ -19,4 +19,3 @@ it('loads the supplied project intact as an importable browser file', async () =
   expect(project.layers.length).toBeGreaterThan(0)
   expect(project.width).toBeGreaterThan(0)
 })
-

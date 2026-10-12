@@ -244,7 +244,10 @@ export function createTransformCanvasInput(ports: Ports) {
       drag.selectionStart &&
       drag.previewSelection
     ) {
-      if (drag.deferredSelectionPreview && drag.selectionSource && selectionTransformPreviewChanged(drag)) {
+      // Selection-origin overlays keep their immutable source until confirmation.
+      // Materializing on pointer-up only makes the next drag undo those writes
+      // and rebuild the backdrop; the store can commit the complete transform.
+      if (drag.deferredSelectionPreview && drag.selectionSource?.origin === 'clipboard' && selectionTransformPreviewChanged(drag)) {
         const target = drag.previewTarget ?? drag.previewSelection
         const simpleTranslation =
           drag.kind === 'move-content' &&

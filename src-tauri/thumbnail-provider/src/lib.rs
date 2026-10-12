@@ -2,7 +2,7 @@
 
 use std::{
     ffi::c_void,
-    io::{Cursor, Read},
+    io::{self, Cursor, Read, Seek, SeekFrom},
     ptr,
     sync::{
         atomic::{AtomicU32, Ordering},
@@ -10,7 +10,7 @@ use std::{
     },
 };
 
-use image::{imageops::FilterType, DynamicImage, ImageFormat};
+use image::{imageops::FilterType, DynamicImage, ImageFormat, ImageReader, Limits};
 use windows::{
     core::{implement, ComObject, Error, IUnknown, Interface, Ref, Result, BOOL, GUID, HRESULT},
     Win32::{
@@ -22,7 +22,10 @@ use windows::{
             CreateDIBSection, BITMAPINFO, BITMAPINFOHEADER, BI_RGB, DIB_RGB_COLORS, HBITMAP,
         },
         System::{
-            Com::{IClassFactory, IClassFactory_Impl, IStream, STREAM_SEEK_SET},
+            Com::{
+                IClassFactory, IClassFactory_Impl, IStream, STREAM_SEEK_CUR, STREAM_SEEK_END,
+                STREAM_SEEK_SET,
+            },
             LibraryLoader::DisableThreadLibraryCalls,
         },
         UI::Shell::{
@@ -46,6 +49,45 @@ fn com_error(code: HRESULT) -> Error {
     Error::from_hresult(code)
 }
 
+/// ZIP reads the central directory and preview entry directly from Shell's
+/// stream instead of copying unrelated cel/asset payloads into one Vec.
+struct ProjectStream(IStream);
+
+impl Read for ProjectStream {
+    fn read(&mut self, bytes: &mut [u8]) -> io::Result<usize> {
+        let capacity = bytes.len().min(u32::MAX as usize) as u32;
+        let mut read = 0u32;
+        let status = unsafe {
+            self.0
+                .Read(bytes.as_mut_ptr().cast(), capacity, Some(&mut read))
+        };
+        status.ok().map_err(io::Error::other)?;
+        if read > capacity {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "Invalid stream read length",
+            ));
+        }
+        Ok(read as usize)
+    }
+}
+
+impl Seek for ProjectStream {
+    fn seek(&mut self, position: SeekFrom) -> io::Result<u64> {
+        let (offset, origin) = match position {
+            SeekFrom::Start(offset) => (
+                i64::try_from(offset).map_err(io::Error::other)?,
+                STREAM_SEEK_SET,
+            ),
+            SeekFrom::Current(offset) => (offset, STREAM_SEEK_CUR),
+            SeekFrom::End(offset) => (offset, STREAM_SEEK_END),
+        };
+        let mut actual = 0u64;
+        unsafe { self.0.Seek(offset, origin, Some(&mut actual)) }.map_err(io::Error::other)?;
+        Ok(actual)
+    }
+}
+
 #[implement(IInitializeWithStream, IThumbnailProvider)]
 struct ThumbnailProvider {
     stream: Mutex<Option<IStream>>,
@@ -59,47 +101,21 @@ impl ThumbnailProvider {
         }
     }
 
-    fn read_project(&self) -> Result<Vec<u8>> {
-        let stream = self
-            .stream
-            .lock()
-            .map_err(|_| com_error(E_FAIL))?
-            .clone()
-            .ok_or_else(|| com_error(E_FAIL))?;
-
-        unsafe { stream.Seek(0, STREAM_SEEK_SET, None)? };
-
-        let mut bytes = Vec::new();
-        let mut chunk = [0u8; 64 * 1024];
-        loop {
-            let mut read = 0u32;
-            let result = unsafe {
-                stream.Read(
-                    chunk.as_mut_ptr().cast(),
-                    chunk.len() as u32,
-                    Some(&mut read),
-                )
-            };
-            if result.is_err() {
-                return Err(Error::from_hresult(result));
-            }
-            if read == 0 {
-                break;
-            }
-            let next_len = bytes
-                .len()
-                .checked_add(read as usize)
-                .filter(|length| *length <= MAX_PROJECT_BYTES)
-                .ok_or_else(|| com_error(E_FAIL))?;
-            bytes.reserve(next_len - bytes.len());
-            bytes.extend_from_slice(&chunk[..read as usize]);
-        }
-        Ok(bytes)
-    }
-
     fn decode_preview(&self) -> Result<DynamicImage> {
-        let project = self.read_project()?;
-        let mut archive = ZipArchive::new(Cursor::new(project)).map_err(|_| com_error(E_FAIL))?;
+        // Keep the mutex while reading: clones of IStream share a seek cursor.
+        let locked = self.stream.lock().map_err(|_| com_error(E_FAIL))?;
+        let stream = locked.clone().ok_or_else(|| com_error(E_FAIL))?;
+        let mut project = ProjectStream(stream);
+        let length = project
+            .seek(SeekFrom::End(0))
+            .map_err(|_| com_error(E_FAIL))?;
+        if length > MAX_PROJECT_BYTES as u64 {
+            return Err(com_error(E_FAIL));
+        }
+        project
+            .seek(SeekFrom::Start(0))
+            .map_err(|_| com_error(E_FAIL))?;
+        let mut archive = ZipArchive::new(project).map_err(|_| com_error(E_FAIL))?;
         let mut entry = archive
             .by_name("preview.png")
             .map_err(|_| com_error(E_FAIL))?;
@@ -109,7 +125,11 @@ impl ThumbnailProvider {
 
         let mut png = Vec::with_capacity(entry.size() as usize);
         entry.read_to_end(&mut png).map_err(|_| com_error(E_FAIL))?;
-        image::load_from_memory_with_format(&png, ImageFormat::Png).map_err(|_| com_error(E_FAIL))
+        let mut reader = ImageReader::with_format(Cursor::new(png), ImageFormat::Png);
+        let mut limits = Limits::default();
+        limits.max_alloc = Some(MAX_PREVIEW_BYTES);
+        reader.limits(limits);
+        reader.decode().map_err(|_| com_error(E_FAIL))
     }
 
     fn render_bitmap(&self, requested_size: u32) -> Result<HBITMAP> {
@@ -360,16 +380,17 @@ mod tests {
         archive.finish().unwrap().into_inner()
     }
 
-    fn thumbnail_hash(project: &[u8]) -> u64 {
+    fn thumbnail_hash(project: &[u8]) -> Result<u64> {
         let object = ComObject::new(ThumbnailProvider::new());
         let initialize = object.to_interface::<IInitializeWithStream>();
         let provider = object.to_interface::<IThumbnailProvider>();
-        let stream = unsafe { SHCreateMemStream(Some(project)) }.expect("memory stream");
-        unsafe { initialize.Initialize(&stream, 0).unwrap() };
+        let stream =
+            unsafe { SHCreateMemStream(Some(project)) }.ok_or_else(|| com_error(E_FAIL))?;
+        unsafe { initialize.Initialize(&stream, 0)? };
 
         let mut bitmap = HBITMAP::default();
         let mut alpha = WTS_ALPHATYPE::default();
-        unsafe { provider.GetThumbnail(64, &mut bitmap, &mut alpha).unwrap() };
+        unsafe { provider.GetThumbnail(64, &mut bitmap, &mut alpha)? };
         assert_eq!(alpha, WTSAT_ARGB);
 
         let mut details = BITMAP::default();
@@ -394,7 +415,7 @@ mod tests {
         unsafe {
             let _ = DeleteObject(HGDIOBJ(bitmap.0));
         }
-        hash
+        Ok(hash)
     }
 
     #[test]
@@ -409,6 +430,41 @@ mod tests {
     fn embedded_previews_produce_project_specific_thumbnails() {
         let red = project_with_preview([255, 32, 32, 255]);
         let green = project_with_preview([32, 220, 96, 255]);
-        assert_ne!(thumbnail_hash(&red), thumbnail_hash(&green));
+        let red_hash = thumbnail_hash(&red);
+        let green_hash = thumbnail_hash(&green);
+        assert!(red_hash.is_ok() && green_hash.is_ok());
+        assert_ne!(red_hash.ok(), green_hash.ok());
+    }
+
+    #[test]
+    fn truncated_archives_and_invalid_pngs_return_errors() {
+        let valid = project_with_preview([30, 40, 50, 180]);
+        assert!(thumbnail_hash(&valid).is_ok());
+        assert!(thumbnail_hash(&valid[..valid.len() / 2]).is_err());
+        assert!(thumbnail_hash(b"not a zip").is_err());
+        let invalid = (|| -> std::result::Result<Vec<u8>, Box<dyn std::error::Error>> {
+            let mut archive = ZipWriter::new(Cursor::new(Vec::new()));
+            archive.start_file("preview.png", SimpleFileOptions::default())?;
+            archive.write_all(b"not a png")?;
+            Ok(archive.finish()?.into_inner())
+        })();
+        assert!(invalid.is_ok());
+        if let Ok(bytes) = invalid {
+            assert!(thumbnail_hash(&bytes).is_err());
+        }
+    }
+
+    #[test]
+    fn missing_preview_returns_an_error() {
+        let bytes = (|| -> std::result::Result<Vec<u8>, Box<dyn std::error::Error>> {
+            let mut archive = ZipWriter::new(Cursor::new(Vec::new()));
+            archive.start_file("manifest.json", SimpleFileOptions::default())?;
+            archive.write_all(b"{}")?;
+            Ok(archive.finish()?.into_inner())
+        })();
+        assert!(bytes.is_ok());
+        if let Ok(bytes) = bytes {
+            assert!(thumbnail_hash(&bytes).is_err());
+        }
     }
 }

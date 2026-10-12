@@ -22,7 +22,8 @@ const browserPalettes = new Map<string, StoredPalette>(builtInPalettes.map((pale
   ...palette,
   filePath: '',
   builtIn: true,
-  colors: palette.colors.map((color) => ({ ...color }))
+  colors: palette.colors.map((color) => ({ ...color })),
+  names: palette.names ? [...palette.names] : undefined
 }]))
 const browserWorkspaces = new Map<string, StoredWorkspace>([['builtin-default', {
   id: 'builtin-default', name: tr('app.workspace.default'), filePath: '', updatedAt: '', builtIn: true,
@@ -55,7 +56,8 @@ const browserBackgroundPresetId = (name: string): string => {
 const cloneStoredPalette = (palette: StoredPalette): StoredPalette => ({
   ...palette,
   colors: palette.colors.map((color) => ({ ...color })),
-  slots: palette.slots ? [...palette.slots] : undefined
+  slots: palette.slots ? [...palette.slots] : undefined,
+  names: palette.names ? [...palette.names] : undefined
 })
 
 export const createBrowserApi = (): MoonSpriteApi => {
@@ -77,9 +79,9 @@ export const createBrowserApi = (): MoonSpriteApi => {
   sampleWindowColorRegion: async () => null,
   listPalettes: async () => ({ directoryPath: 'palettes', palettes: [...browserPalettes.values()].map(cloneStoredPalette) }),
   importPalette: async () => null,
-  savePalette: async (requestedId, name, colors, columns, slots) => {
+  savePalette: async (requestedId, name, colors, columns, slots, names) => {
     const id = requestedId ?? browserPaletteId(name)
-    const palette: StoredPalette = { id, name, filePath: `palettes/${id}.palette.json`, builtIn: false, colors: colors.map((color: RgbaColor) => ({ ...color })), columns, slots: [...slots] }
+    const palette: StoredPalette = { id, name, filePath: `palettes/${id}.palette.json`, builtIn: false, colors: colors.map((color: RgbaColor) => ({ ...color })), columns, slots: [...slots], names: names ? [...names] : undefined }
     browserPalettes.set(id, palette)
     return cloneStoredPalette(palette)
   },

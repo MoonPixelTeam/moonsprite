@@ -2,7 +2,8 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import type { DocumentSession } from '@/store/workspace'
 import { useWorkspace } from '@/store/workspace'
-import { DEFAULT_SPRITE_SHEET_IMPORT, spriteSheetImportPlan, spriteSheetFrameSizeFromCount, type SpriteSheetImportOptions, type SpriteSheetImportLayout } from '@/core/sprite-sheet-import'
+import { DEFAULT_SPRITE_SHEET_IMPORT, spriteSheetImportPlan, spriteSheetImportSourceSize, spriteSheetFrameSizeFromCount, type SpriteSheetImportOptions, type SpriteSheetImportLayout } from '@/core/sprite-sheet-import'
+import { cloneSelection } from '@/core/selection'
 import { useI18n } from '../I18nProvider'
 import { ModalShell } from '../ModalShell'
 import { DialogHeader } from '../DialogHeader'
@@ -15,20 +16,23 @@ import { SpriteSheetImportPreview } from './SpriteSheetImportPreview'
 import './sprite-sheet-import.css'
 
 const remembered = new WeakMap<object, SpriteSheetImportOptions>()
-interface Props { session: DocumentSession | null; onChoose(): Promise<void>; onClose(): void }
-export function SpriteSheetImportDialog({ session, onChoose, onClose }: Props) {
+interface Props { session: DocumentSession | null; fromSelection?: boolean; onChoose(): Promise<void>; onClose(): void }
+export function SpriteSheetImportDialog({ session, fromSelection = false, onChoose, onClose }: Props) {
   const { t } = useI18n()
   const busyRef = useRef(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
+  const [selection] = useState(() => fromSelection ? cloneSelection(session?.selection ?? null) ?? undefined : undefined)
   const [options, setOptions] = useState<SpriteSheetImportOptions>(() => {
     if (!session) return DEFAULT_SPRITE_SHEET_IMPORT
     const saved = remembered.get(session.document)
-    const rect = session.selection ?? session.view.grid
+    const rect = session.view.grid
+    if (selection) return { ...DEFAULT_SPRITE_SHEET_IMPORT, width: Math.min(selection.width, rect?.width ?? 16), height: Math.min(selection.height, rect?.height ?? 16) }
     return saved ?? { ...DEFAULT_SPRITE_SHEET_IMPORT, x: rect?.x ?? 0, y: rect?.y ?? 0, width: rect?.width ?? 16, height: rect?.height ?? 16 }
   })
   const [padding, setPadding] = useState(options.paddingX !== 0 || options.paddingY !== 0)
-  const effective = useMemo(() => ({ ...options, paddingX: padding ? options.paddingX : 0, paddingY: padding ? options.paddingY : 0 }), [options, padding])
+  const effective = useMemo(() => ({ ...options, selection, paddingX: padding ? options.paddingX : 0, paddingY: padding ? options.paddingY : 0 }), [options, padding, selection])
+  const sourceSize = session ? spriteSheetImportSourceSize(session.document, effective) : null
   const plan = useMemo(() => {
     try { return { value: session ? spriteSheetImportPlan(session.document, effective) : null, error: '' } }
     catch (cause) { return { value: null, error: cause instanceof Error ? cause.message : String(cause) } }
@@ -46,7 +50,7 @@ export function SpriteSheetImportDialog({ session, onChoose, onClose }: Props) {
     busyRef.current = true; setBusy(true); setError('')
     try {
       const ok = await useWorkspace.getState().importSpriteSheet(session.document.id, effective)
-      if (ok) { remembered.set(session.document, effective); onClose() }
+      if (ok) { if (!fromSelection) remembered.set(session.document, options); onClose() }
       else setError(useWorkspace.getState().message ?? t('spriteSheetImport.invalid'))
     } finally { busyRef.current = false; setBusy(false) }
   }
@@ -55,14 +59,14 @@ export function SpriteSheetImportDialog({ session, onChoose, onClose }: Props) {
       <DialogHeader title={t('spriteSheetImport.title')} closeLabel={t('common.close')} closeDisabled={busy} onClose={close} />
       <div className="sprite-sheet-import-body">
         <div className="sprite-sheet-import-settings component-scrollbar">
-          <Button disabled={busy} onClick={() => { if (busyRef.current) return; busyRef.current = true; setBusy(true); void onChoose().finally(() => { busyRef.current = false; setBusy(false) }) }}>{t('spriteSheetImport.choose')}</Button>
+          {!fromSelection && <Button disabled={busy} onClick={() => { if (busyRef.current) return; busyRef.current = true; setBusy(true); void onChoose().finally(() => { busyRef.current = false; setBusy(false) }) }}>{t('spriteSheetImport.choose')}</Button>}
           <p className="modal-note">{session?.document.name ?? t('spriteSheetImport.noSource')}</p>
           <FormField label={t('spriteSheetImport.layout')}><ThemedSelect<SpriteSheetImportLayout> label={t('spriteSheetImport.layout')} disabled={busy} value={options.layout} groups={[{ label: t('spriteSheetImport.layout'), options: (['horizontal', 'vertical', 'rows', 'columns'] as const).map(value => ({ value, label: t(`spriteSheet.layout.${value}`) })) }]} onChange={value => update('layout', value)} /></FormField>
           <div className="sprite-sheet-import-fields">{number('x', -262144)}{number('y', -262144)}{number('width', 1)}{number('height', 1)}
             {(['columns', 'rows'] as const).map(axis => <FormField key={axis} label={t(`spriteSheetImport.${axis}`)}><NumberInput aria-label={t(`spriteSheetImport.${axis}`)} value={plan.value?.[axis] ?? 0} min={1} max={10000} disabled={busy || !session || (axis === 'columns' ? options.layout === 'vertical' : options.layout === 'horizontal')} onValueChange={count => {
               if (!session) return
               const horizontal = axis === 'columns'
-              update(horizontal ? 'width' : 'height', spriteSheetFrameSizeFromCount(horizontal ? session.document.width : session.document.height, horizontal ? options.x : options.y, horizontal ? effective.paddingX : effective.paddingY, Math.round(count)))
+              update(horizontal ? 'width' : 'height', spriteSheetFrameSizeFromCount(horizontal ? sourceSize!.width : sourceSize!.height, horizontal ? options.x : options.y, horizontal ? effective.paddingX : effective.paddingY, Math.round(count)))
             }} /></FormField>)}
           </div>
           <CheckboxField label={t('spriteSheetImport.padding')} checked={padding} disabled={busy} onChange={setPadding} />

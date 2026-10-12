@@ -146,8 +146,12 @@ const createPreviewUrl = (bytes: Uint8Array): string => {
   const buffer = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer
   return URL.createObjectURL(new Blob([buffer], { type: 'image/png' }))
 }
-const runProjectPreviewFallback = <T,>(task: () => Promise<T>): Promise<T> => {
-  const result = projectPreviewFallbackQueue.then(task, task)
+const runProjectPreviewFallback = <T,>(task: () => Promise<T>, isCanceled: () => boolean = () => false): Promise<T> => {
+  const run = () => {
+    if (isCanceled()) throw new Error('Project preview canceled')
+    return task()
+  }
+  const result = projectPreviewFallbackQueue.then(run, run)
   projectPreviewFallbackQueue = result.then(() => undefined, () => undefined)
   return result
 }
@@ -273,7 +277,7 @@ function RecoveryFileRow({ record, retentionDays, onRestore, onDiscard }: { reco
       void runProjectPreviewFallback(async () => {
         const bytes = await window.moonSprite.readRecovery(record.id)
         return readProjectGalleryMetadataAsync(bytes)
-      }).then((metadata) => {
+      }, () => disposed).then((metadata) => {
         const cachedPreview = { bytes: metadata.preview.slice(), width: metadata.width, height: metadata.height, colorMode: metadata.colorMode }
         cacheProjectPreview(cacheKey, cachedPreview)
         applyPreview(cachedPreview)
@@ -538,7 +542,7 @@ export function HomeWorkspace({ shortcutFor, onOpenShortcuts, onOpenDiagnostics,
     return target.name
   }
 
-  const readCard = async (record: RecentProject): Promise<ProjectCard> => {
+  const readCard = async (record: RecentProject, isCanceled: () => boolean = () => false): Promise<ProjectCard> => {
     try {
       const cacheKey = previewCacheKey(record)
       const cached = projectPreviewCache.get(cacheKey)
@@ -567,7 +571,7 @@ export function HomeWorkspace({ shortcutFor, onOpenShortcuts, onOpenDiagnostics,
             // A cache write failure must not hide an otherwise valid thumbnail.
           })
           return generated
-        })
+        }, isCanceled)
       }
       const previewBytes = metadata.preview.slice()
       cacheProjectPreview(cacheKey, { bytes: previewBytes, width: metadata.width, height: metadata.height, colorMode: metadata.colorMode })
@@ -668,7 +672,8 @@ export function HomeWorkspace({ shortcutFor, onOpenShortcuts, onOpenDiagnostics,
           const index = nextIndex
           nextIndex += 1
           const record = records[index]
-          const card = await readCard(record)
+          if (generation !== loadGeneration.current) return
+          const card = await readCard(record, () => generation !== loadGeneration.current)
           if (generation !== loadGeneration.current) {
             if (card.previewUrl) URL.revokeObjectURL(card.previewUrl)
             return

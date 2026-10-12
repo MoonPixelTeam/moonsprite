@@ -3,10 +3,46 @@ import {act,cleanup,fireEvent,render} from '@testing-library/react'
 import {afterEach,expect,it,vi} from 'vitest'
 import {I18nProvider} from '@/components/I18nProvider'
 import {createDocument} from '@/core/document-model'
+import {saveDocumentExportSettings} from '@/core/export-settings'
 import {useWorkspace} from '@/store/workspace'
 import {ExportDialogHost,type ExportDialogHandle} from './ExportDialogHost'
 
 afterEach(()=>{cleanup();vi.restoreAllMocks();useWorkspace.setState({sessions:[],activeId:null})})
+it('exports a native MoonSprite project from the format selector with whole-project settings',async()=>{
+  localStorage.clear()
+  const document=createDocument('native export',2,2,'rgba')
+  document.animation!.frames.push({id:'second',duration:230})
+  useWorkspace.getState().addSession(document)
+  const exportCommand=vi.spyOn(useWorkspace.getState(),'exportActive').mockResolvedValue(true)
+  const ref=createRef<ExportDialogHandle>()
+  const view=render(<I18nProvider><ExportDialogHost ref={ref} defaultFileDirectories={{saveDirectory:'gallery',exportDirectory:'exports'}} exportScalePresets={[100,200]}/></I18nProvider>)
+  act(()=>ref.current!.open())
+  fireEvent.click(view.getByRole('button',{name:'200%'}))
+  fireEvent.click(view.getByRole('button',{name:'格式'}))
+  fireEvent.click(view.getByRole('option',{name:/MoonSprite.*moonsprite/}))
+  expect(view.getByRole('button',{name:'导出区域'})).toHaveTextContent('画布')
+  expect(view.queryByRole('button',{name:'帧范围'})).toBeNull()
+  expect(view.baseElement.querySelector('.export-scale-field')).toBeNull()
+  await act(async()=>{fireEvent.submit(view.baseElement.querySelector('form.export-modal')!)})
+  expect(exportCommand).toHaveBeenCalledWith(expect.objectContaining({name:'native export.moonsprite',format:'moonsprite',target:'document',scalePercent:100,directory:'exports',trimMode:undefined}))
+  localStorage.clear()
+})
+it('reopens a remembered native export and uses PNG for an explicit frame export',()=>{
+  localStorage.clear()
+  const document=createDocument('remembered project',2,2,'rgba')
+  document.animation!.frames.push({id:'second',duration:230})
+  useWorkspace.getState().addSession(document)
+  saveDocumentExportSettings(document,{name:'remembered',format:'moonsprite',scalePercent:100,target:'document'})
+  const ref=createRef<ExportDialogHandle>()
+  const view=render(<I18nProvider><ExportDialogHost ref={ref} defaultFileDirectories={{saveDirectory:'gallery',exportDirectory:'exports'}} exportScalePresets={[100]}/></I18nProvider>)
+  act(()=>ref.current!.open())
+  expect(view.getByRole('button',{name:'格式'})).toHaveTextContent('MoonSprite')
+  expect(view.baseElement.querySelector('.export-scale-field')).toBeNull()
+  act(()=>{ref.current!.closeIfOpen();ref.current!.open('frames')})
+  expect(view.getByRole('button',{name:'格式'})).toHaveTextContent('PNG')
+  expect(view.getByRole('button',{name:'帧范围'})).toBeTruthy()
+  localStorage.clear()
+})
 it('offers frame ranges and loop sections after switching a multi-frame export from GIF to PNG',async()=>{
   localStorage.clear()
   useWorkspace.setState({sessions:[],activeId:null})

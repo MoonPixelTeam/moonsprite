@@ -15,8 +15,9 @@ Current guides and contracts describe the checked-out source. Packaged-release s
 - [Architecture overview](architecture/overview.en.md): module responsibilities and dependency direction.
 - [State and history](architecture/state-history.en.md): sessions, dirty state, undo, and view state.
 - [Coordinates and rendering](architecture/coordinates-rendering.en.md): screen, view, canvas, and layer coordinates.
+- [Unresolved performance issues](architecture/unresolved-performance-issues.en.md): evidence, reproduction protocol, and acceptance gates for progressive slowdown, input latency, and compositor state anomalies.
 - [Localization architecture](architecture/localization.en.md): language resources, fallback, persistence, and adding-language gates.
-- [File format](file-format.en.md): the `.moonsprite` v20 container.
+- [File format](file-format.en.md): the `.moonsprite` v21 container.
 
 ## Interaction Contracts
 

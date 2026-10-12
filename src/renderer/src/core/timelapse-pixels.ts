@@ -1,4 +1,5 @@
 import type { SelectionRect } from '@shared/types-selection'
+import { yieldTimelapseTask } from './timelapse-task-yield'
 
 const TILE_SIZE = 64
 
@@ -17,18 +18,18 @@ export interface TimelapsePixels {
   tiles: readonly TimelapsePixelTile[]
 }
 
-export function freezeTimelapsePixels(
+function* frozenTiles(
   pixels: Uint8ClampedArray, width: number, height: number,
   previous?: TimelapsePixels, dirty?: SelectionRect
-): TimelapsePixels {
+): Generator<TimelapsePixelTile> {
   const reuse = previous?.width === width && previous.height === height && dirty !== undefined
-  const tiles: TimelapsePixelTile[] = []
+  let index = 0
   for (let y = 0; y < height; y += TILE_SIZE) for (let x = 0; x < width; x += TILE_SIZE) {
     const tileWidth = Math.min(TILE_SIZE, width - x)
     const tileHeight = Math.min(TILE_SIZE, height - y)
     if (reuse && (dirty.width <= 0 || dirty.height <= 0 || x >= dirty.x + dirty.width
       || y >= dirty.y + dirty.height || x + tileWidth <= dirty.x || y + tileHeight <= dirty.y)) {
-      tiles.push(previous.tiles[tiles.length])
+      yield previous.tiles[index++]
       continue
     }
     const frozen = new Uint8ClampedArray(tileWidth * tileHeight * 4)
@@ -36,9 +37,35 @@ export function freezeTimelapsePixels(
       const start = ((y + row) * width + x) * 4
       frozen.set(pixels.subarray(start, start + tileWidth * 4), row * tileWidth * 4)
     }
-    tiles.push({ x, y, width: tileWidth, height: tileHeight, pixels: frozen })
+    index += 1
+    yield { x, y, width: tileWidth, height: tileHeight, pixels: frozen }
   }
-  return { width, height, tiles }
+}
+
+export function freezeTimelapsePixels(
+  pixels: Uint8ClampedArray, width: number, height: number,
+  previous?: TimelapsePixels, dirty?: SelectionRect
+): TimelapsePixels {
+  return { width, height, tiles: [...frozenTiles(pixels, width, height, previous, dirty)] }
+}
+
+/** Copy immutable output tiles cooperatively, publishing none when cancelled. */
+export async function freezeTimelapsePixelsAsync(
+  pixels: Uint8ClampedArray, width: number, height: number,
+  previous?: TimelapsePixels, dirty?: SelectionRect, shouldContinue: () => boolean = () => true
+): Promise<TimelapsePixels | null> {
+  const tiles: TimelapsePixelTile[] = []
+  let started = performance.now()
+  for (const tile of frozenTiles(pixels, width, height, previous, dirty)) {
+    if (!shouldContinue()) return null
+    tiles.push(tile)
+    if (performance.now() - started >= 4) {
+      await yieldTimelapseTask()
+      if (!shouldContinue()) return null
+      started = performance.now()
+    }
+  }
+  return shouldContinue() ? { width, height, tiles } : null
 }
 
 /** Materialize in the encoder worker; the UI only does this for fallback/legacy callers. */

@@ -15,6 +15,7 @@ import { useAppExtensions } from '@/components/app/useAppExtensions'
 import { useAppDocumentIO } from '@/components/app/useAppDocumentIO'
 import { useAppWindowLifecycle } from '@/components/app/useAppWindowLifecycle'
 import { useAppShortcutRouter } from '@/components/app/useAppShortcutRouter'
+import { shouldExitPatternBrushOnEscape } from '@/components/app/app-active-tool-shortcut'
 import { useAppScriptRuntime } from '@/components/app/useAppScriptRuntime'
 import { TextToolHost } from '@/components/app/TextToolHost'
 import { lazy, Suspense, useEffect, useState } from 'react'
@@ -288,7 +289,7 @@ export default function App() {
     selectionOverride: () => selectionCommandOverrideRef.current,
     onEscape: (event) => {
       const hasPaletteSurface = Boolean(
-        document.querySelector('.palette-operation-dialog, .palette-library-popover, .palette-actions-popover, .palette-library-context')
+        document.querySelector('.palette-operation-dialog, .palette-library-dialog, .palette-actions-popover, .palette-library-context')
       )
       const hasOwnedPopover = Boolean(document.querySelector('.document-tab-context-menu, .tool-flyout, .brush-library, .brush-size-popover'))
       const dialogChoice =
@@ -336,7 +337,7 @@ export default function App() {
         const active = useWorkspace.getState().sessions.find((item) => item.document.id === session.document.id)
         if (active?.selection) workspace.commitSelectionChange(active.selection, null, t('app.selection.completeHistory'))
       } else if (session?.textBoxTransform) workspace.cancelTextBoxTransform()
-      else if (session?.temporaryBrushCapture || (session?.tool === 'pencil' && session.brushImage)) workspace.exitPatternBrush()
+      else if (shouldExitPatternBrushOnEscape(session)) workspace.exitPatternBrush()
       else workspace.setSelection(null)
       event.preventDefault()
       event.stopPropagation()
@@ -360,6 +361,7 @@ export default function App() {
         void openFilesAndShowDocument()
       },
       exportDocument: openExport,
+      importSpriteSheet: openSpriteSheetImport,
       exportAllFrames: () => openExport('frames'),
       exportSpriteSheet: () => {
         if (isWebTrial()) openSaveAs(); else if (session) setSpriteSheetExportSourceId(session.document.id)

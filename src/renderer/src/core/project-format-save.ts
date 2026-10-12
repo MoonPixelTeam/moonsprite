@@ -276,6 +276,8 @@ const manifestResourcePaths = (manifest: ProjectManifest): string[] => {
     add(brush.colorsFile)
   }
   for (const tileset of manifest.document.tilesets ?? []) add(tileset.dataFile)
+  for (const image of manifest.document.referenceImages ?? []) add(image.dataFile)
+  for (const image of manifest.document.canvasReferences ?? []) add(image.dataFile)
   for (const cel of manifest.document.animation.cels) add(cel.dataFile)
   for (const entry of manifest.document.animation.layerMasks ?? []) add(entry.mask.dataFile)
   for (const entry of manifest.document.animation.groupMasks ?? []) add(entry.mask.dataFile)

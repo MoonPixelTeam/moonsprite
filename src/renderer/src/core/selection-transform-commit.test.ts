@@ -8,6 +8,7 @@ import { applyPackedSelectionTransform } from './tools-selection-transform-commi
 import { selectionTransformCells, selectionTransformPreviewPacked, selectionTransformPreviewRasterPacked } from './tools-selection-transform-raster'
 import { captureSelectionTransform } from './tools-selection-transform-source'
 import { compositeSelectionPixelForEdit } from './tools-pixel-edit'
+import { applySelectionTranslationCommit } from './tools-selection-transform-translation'
 
 const cases: Array<{ name: string; target: SelectionRect; angle: number; shear?: SelectionShearTransform; quad?: SelectionQuad; optimized?: boolean }> = [
   { name: 'scale', target: { x: 20, y: 18, width: 40, height: 30 }, angle: 0 },
@@ -64,6 +65,34 @@ describe('packed selection transform commit', () => {
       expect(layer.pixels).toEqual(expected)
     })
   }
+
+  it('uses one dense pass for an opaque clipboard paste and preserves undo/redo', () => {
+    const document = createDocument('opaque clipboard paste', 6, 4, 'rgba')
+    const layer = getActiveLayer(document)
+    const pixels = new Uint32Array(layer.pixels.buffer)
+    pixels.fill(0xff332211)
+    const source: import('./tools-selection-transform-types').SelectionTransformSource = {
+      selection: { x: 0, y: 0, width: 2, height: 1 },
+      values: new Uint32Array([0xffff0000, 0xff00ff00]),
+      selectedOffsets: new Uint32Array([0, 1]),
+      opaqueOffsets: new Uint32Array([0, 1]),
+      opaqueIndices: new Uint32Array([0, 1]),
+      opaqueValues: new Uint32Array([0xffff0000, 0xff00ff00]),
+      origin: 'clipboard'
+    }
+    const original = layer.pixels.slice()
+    const edit = applySelectionTranslationCommit(document, source, { x: 2, y: 2, width: 2, height: 1 }, true, layer)
+    expect(edit?.denseRegion).toBeDefined()
+    expect(new Uint32Array(layer.pixels.buffer)[14]).toBe(0xffff0000)
+    expect(new Uint32Array(layer.pixels.buffer)[15]).toBe(0xff00ff00)
+    const entry = edit && commitPixelEdit(document, edit, 'Paste')
+    expect(entry).not.toBeNull()
+    entry!.undo()
+    expect(layer.pixels).toEqual(original)
+    entry!.redo()
+    expect(new Uint32Array(layer.pixels.buffer)[14]).toBe(0xffff0000)
+    expect(new Uint32Array(layer.pixels.buffer)[15]).toBe(0xff00ff00)
+  })
 
   it('restores storage coordinates after the layer expands beyond the canvas', () => {
     const { document, layer } = fixture()

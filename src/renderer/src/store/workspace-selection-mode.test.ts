@@ -15,6 +15,68 @@ beforeEach(() => {
 })
 
 describe('layer, frame, and cel selection modes', () => {
+  it('clears the canvas selection and transform controls after deleting pixels', () => {
+    const document = createDocument('delete pixels and deselect', 2, 1, 'rgba')
+    const layer = getActiveLayer(document)
+    writeLayerColor(document, layer, 0, red)
+    writeLayerColor(document, layer, 1, red)
+    useWorkspace.getState().addSession(document)
+    useWorkspace.getState().setSelection({ x: 0, y: 0, width: 1, height: 1 })
+    const session = useWorkspace.getState().sessions[0]
+    session.selectionPropertiesActive = true
+    session.selectionAspectRatio = 1
+    session.selectionAngle = 30
+    session.selectionPivot = { x: 0, y: 0 }
+    session.freeTransformActive = true
+
+    useWorkspace.getState().deleteSelection()
+
+    expect(readLayerColorAt(document, layer, 0, 0)).toEqual(transparent)
+    expect(readLayerColorAt(document, layer, 1, 0)).toEqual(red)
+    expect(session).toMatchObject({ selection: null, selectionPropertiesActive: false, selectionAspectRatio: null, selectionAngle: 0, selectionPivot: null, freeTransformActive: false, freeTransformQuad: null })
+    expect(session.history.position).toBe(1)
+    useWorkspace.getState().undo()
+    expect(readLayerColorAt(document, layer, 0, 0)).toEqual(red)
+    useWorkspace.getState().redo()
+    expect(readLayerColorAt(document, layer, 0, 0)).toEqual(transparent)
+    expect(session.selection).toBeNull()
+  })
+
+  it('keeps the selection when a locked layer prevents deletion', () => {
+    const document = createDocument('locked selection delete', 1, 1, 'rgba')
+    const layer = getActiveLayer(document)
+    writeLayerColor(document, layer, 0, red)
+    layer.locked = true
+    useWorkspace.getState().addSession(document)
+    const selection = { x: 0, y: 0, width: 1, height: 1 }
+    useWorkspace.getState().setSelection(selection)
+
+    useWorkspace.getState().deleteSelection()
+
+    expect(readLayerColorAt(document, layer, 0, 0)).toEqual(red)
+    expect(useWorkspace.getState().sessions[0].selection).toEqual(selection)
+    expect(useWorkspace.getState().sessions[0].history.position).toBe(0)
+  })
+
+  it('deletes moved selection content at its current position', () => {
+    const document = createDocument('delete moved selection', 4, 1, 'rgba')
+    const layer = getActiveLayer(document)
+    writeLayerColor(document, layer, 0, red)
+    useWorkspace.getState().addSession(document)
+    useWorkspace.getState().setSelection({ x: 0, y: 0, width: 1, height: 1 })
+
+    useWorkspace.getState().moveActiveSelectionWithSelectionHistory(2, 0, true)
+    expect(useWorkspace.getState().sessions[0].pendingPaste).not.toBeNull()
+    expect(useWorkspace.getState().sessions[0].selection).toMatchObject({ x: 2, y: 0, width: 1, height: 1 })
+
+    useWorkspace.getState().deleteSelection()
+
+    expect(readLayerColorAt(document, layer, 0, 0)).toEqual(transparent)
+    expect(readLayerColorAt(document, layer, 2, 0)).toEqual(transparent)
+    expect(useWorkspace.getState().sessions[0].pendingPaste).toBeNull()
+    expect(useWorkspace.getState().sessions[0].selection).toBeNull()
+  })
+
   it('deletes the selected area from every selected layer as one history step', () => {
     const document = createDocument('delete selected layers', 2, 1, 'rgba')
     const first = getActiveLayer(document)
@@ -36,6 +98,7 @@ describe('layer, frame, and cel selection modes', () => {
     expect(readLayerColorAt(document, second, 0, 0)).toEqual(transparent)
     expect(readLayerColorAt(document, first, 1, 0)).toEqual(red)
     expect(readLayerColorAt(document, second, 1, 0)).toEqual(red)
+    expect(useWorkspace.getState().sessions[0].selection).toBeNull()
     expect(useWorkspace.getState().sessions[0].history.position).toBe(1)
     useWorkspace.getState().undo()
     expect(readLayerColorAt(document, first, 0, 0)).toEqual(red)
@@ -63,6 +126,7 @@ describe('layer, frame, and cel selection modes', () => {
 
     expect(readLayerColorAt(document, animationLayerAtFrame(document, layer.id, firstFrameId)!, 0, 0)).toEqual(transparent)
     expect(readLayerColorAt(document, animationLayerAtFrame(document, layer.id, secondFrameId)!, 0, 0)).toEqual(transparent)
+    expect(useWorkspace.getState().sessions[0].selection).toBeNull()
     expect(readLayerColorAt(document, animationLayerAtFrame(document, layer.id, thirdFrameId)!, 0, 0)).toEqual(red)
     expect(readLayerColorAt(document, animationLayerAtFrame(document, layer.id, firstFrameId)!, 1, 0)).toEqual(red)
     expect(useWorkspace.getState().sessions[0].history.position).toBe(1)

@@ -11,6 +11,7 @@ import { resolveTimelineFocusState } from '@/core/animation-timeline-focus'
 import { timelineCellSlotKey, timelineRowKey, type TimelineCellRef, type TimelineRowRef } from '@/core/animation-timeline-identity'
 
 export interface LayerPanelVisualOptions {
+  deferCellStates?: boolean
   cellStateCache?: import('@/core/animation-timeline-cell-cache').TimelineVisualCellCache
   structure?: ReturnType<typeof createLayerPanelStructure>
   inlineMasks?: boolean
@@ -28,6 +29,7 @@ export interface LayerPanelVisualOptions {
 }
 
 export function deriveLayerPanelVisuals({
+  deferCellStates = false,
   cellStateCache,
   structure,
   inlineMasks = false,
@@ -205,7 +207,8 @@ export function deriveLayerPanelVisuals({
 
   const visualActiveFrameIndex = timeline.frames.findIndex((frame) => frame.id === visualActiveFrameId)
 
-  const derivedTimelineVisualState = deriveAnimationTimelineVisualState({
+  const {cellStateAt, ...derivedTimelineVisualState} = deriveAnimationTimelineVisualState({
+    deferCellStates,
     rows: visualRows,
     frames: timeline.frames.map((frame) => ({ id: frame.id })),
     cells: visualCells,
@@ -253,12 +256,10 @@ export function deriveLayerPanelVisuals({
     ])
   )
 
-  const visualCellStateBySlot = new Map(
-    timelineVisualState.cells.map((state, index) => [
-      visualTopology.slots[index].slotKey,
-      state
-    ])
-  )
+  const visualCellStateAtSlot = (slotKey: string) => {
+    const index = visualTopology.slotIndexByKey.get(slotKey)
+    return index === undefined ? undefined : cellStateAt ? cellStateAt(index) : timelineVisualState.cells[index]
+  }
 
   const visualFrameStateById = new Map(timelineVisualState.frames.map((state) => [state.frame.id, state]))
 
@@ -542,7 +543,7 @@ export function deriveLayerPanelVisuals({
     playbackActiveLayerId,
     timelineVisualState,
     visualRowStateByKey,
-    visualCellStateBySlot,
+    visualCellStateAtSlot,
     visualFrameStateById,
     displayRowGridTemplate,
     displayRowTop,

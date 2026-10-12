@@ -8,6 +8,7 @@ import { normalizeCanvasWheelDelta, steppedCanvasZoom, viewDragClientDelta } fro
 import { loadEditorPreferences } from '@/core/file-preferences'
 import { pixelSamplingMode } from '@/core/pixel-display'
 import { useWorkspace } from '@/store/workspace'
+import { activeSession } from '@/store/workspace-access'
 import { addClipboardReference, REFERENCE_PASTE_EVENT, useReferenceImages } from './reference-image-state'
 import { referenceImageDisplayCanvas } from './reference-image-display'
 import { samplePanelColor, usePanelColorSampling, type PanelColorSource } from './usePanelColorSampling'
@@ -38,8 +39,10 @@ export function ReferenceImagePanel({ onClose, docked = false, onDockDragStart, 
     if (busyRef.current) return
     busyRef.current = true
     setPasting(true)
+    const project = activeSession(useWorkspace.getState())?.document
     try {
       const image = await window.moonSprite.readClipboardImage()
+      if (activeSession(useWorkspace.getState())?.document !== project) return
       if (image) addClipboardReference(image, windowId)
       else useWorkspace.getState().setMessage(t('workspace.clipboard.emptyPixels'))
     } catch (error) {

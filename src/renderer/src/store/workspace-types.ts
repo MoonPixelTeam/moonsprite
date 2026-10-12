@@ -1,7 +1,7 @@
 import type { LocalHistorySnapshot } from '@/core/local-history-archive'
 import type { AnimationCel, AnimationCelSurface } from '@shared/types-animation'
 import type { AnimationGroupMask, AnimationLayerMask, LayerMask } from '@shared/types-layer'
-import type { BrushDitherSettings, BrushPaintMode, BrushShape, BrushTexture, FillKind, FillConnectivity, FillMode, FillReference, GradientDither, GradientStop, GradientType, ImageBrush, InkMode, LiquifyMode, ImageBrushSettings, LineKind, MoveKind, ProceduralBrushId, ProceduralBrushSettings, ShapeKind, ShapeRatio, ToolId } from '@shared/types-brush'
+import type { BrushDitherSettings, BrushPaintMode, BrushShape, BrushTexture, FillKind, FillConnectivity, FillMode, FillPatternMode, FillPatternSettings, FillReference, GradientDither, GradientStop, GradientType, ImageBrush, InkMode, LiquifyMode, ImageBrushSettings, LineKind, MoveKind, ProceduralBrushId, ProceduralBrushSettings, ShapeKind, ShapeRatio, ToolId } from '@shared/types-brush'
 import type { OutlineDirections, OutlineKernel, OutlinePosition, SelectionKind, SelectionMask, SelectionMode, SelectionQuad, SelectionRect } from '@shared/types-selection'
 import type { RecoveryRecord } from '@shared/types-files'
 import type { RgbaColor } from '@shared/types-color'
@@ -26,6 +26,8 @@ export interface PaletteColorTarget {
   slots: Array<number | null>
   columns: number
   indices: number[]
+  /** Slot resizing inserts colors without selecting them or changing the foreground. */
+  selectResult?: boolean
   selection?: { before: PaletteSelectionView; after: PaletteSelectionView }
 }
 
@@ -242,6 +244,10 @@ export interface DocumentSession {
   shapeRounded: boolean
   shapeCornerRadius: number
   fillMode: FillMode
+  /** Runtime selection from the pattern brush library; never stored in project files. */
+  fillPatternBrushes?: ImageBrush[]
+  fillPatternMode: FillPatternMode
+  fillPatternSettings: FillPatternSettings
   fillKind: FillKind
   fillTolerance: number
   fillGapClosing: boolean

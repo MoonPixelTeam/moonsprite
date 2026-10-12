@@ -158,8 +158,11 @@ export function createFillCanvasInput(ports: Ports) {
         profiler,
         {
           sourceColorAt: session.fillReference === 'visible-layers' ? createCompositePointSampler(session.document) : undefined,
-          connectivity: session.fillConnectivity
-        }
+          connectivity: session.fillConnectivity,
+          patternBrushes: activeBrushImage && session.fillPatternBrushes?.some(brush => brush.id === activeBrushImage.id) ? session.fillPatternBrushes : undefined
+        },
+        session.fillPatternMode,
+        session.fillPatternSettings
       )
       if (edit) {
         const commitStartedAt = operationProbe?.recordOperationStage ? performance.now() : 0
@@ -173,7 +176,7 @@ export function createFillCanvasInput(ports: Ports) {
         inputRef.current.drag = { kind: 'fill', color: activeColor(event.button), start: fillPoint, last: fillPoint, edit, fillHistoryLabel: historyLabel, fillHistoryCommitted: Boolean(committed), startedAt: Date.now() }
         draw()
         operationProbe?.recordOperationStage?.('bucket.prepare-total', performance.now() - commitStartedAt, {
-          points: edit.before.size,
+          points: edit.before.size + (edit.points?.count ?? 0),
           runs: edit.runs?.length ?? 0
         })
       }

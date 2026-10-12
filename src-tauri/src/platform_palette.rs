@@ -30,6 +30,8 @@ struct PaletteDiskFile {
     columns: Option<u32>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     slots: Option<Vec<Option<usize>>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    names: Option<Vec<String>>,
 }
 
 #[derive(Debug, Serialize)]
@@ -44,6 +46,8 @@ pub(crate) struct StoredPalette {
     columns: Option<u32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     slots: Option<Vec<Option<usize>>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    names: Option<Vec<String>>,
 }
 
 #[derive(Debug, Serialize)]
@@ -105,6 +109,10 @@ const DEFAULT_PALETTES: &[(&str, &str)] = &[
     (
         "paper-ink-16.palette.json",
         include_str!("../../palettes/paper-ink-16.palette.json"),
+    ),
+    (
+        "markd-221.palette.json",
+        include_str!("../../palettes/markd-221.palette.json"),
     ),
 ];
 
@@ -251,6 +259,7 @@ fn stored_palette_from_file(
         colors: encoded_colors,
         columns,
         slots,
+        names,
     } = file;
     if !valid_palette_id(&id) || name.trim().is_empty() {
         return Err(format!("色板信息无效：{source}"));
@@ -269,6 +278,7 @@ fn stored_palette_from_file(
         built_in,
         columns,
         slots,
+        names,
     })
 }
 
@@ -300,6 +310,7 @@ struct ImportedPalette {
     colors: Vec<PaletteColor>,
     columns: u32,
     slots: Vec<Option<usize>>,
+    names: Option<Vec<String>>,
 }
 
 fn imported_palette_name(path: &Path) -> String {
@@ -369,12 +380,20 @@ fn linear_imported_palette(
         ));
     }
     let columns = (colors.len() as u32).min(IMPORTED_PALETTE_COLUMNS).max(1);
-    let slots = (0..colors.len()).map(Some).collect();
+    // Layout rows must be complete so the native palette validator can preserve
+    // the imported grid. Keep the colors in file order and leave the trailing
+    // cells empty when the final row is only partially filled.
+    let column_count = columns as usize;
+    let slot_count = ((colors.len() + column_count - 1) / column_count) * column_count;
+    let slots = (0..slot_count)
+        .map(|index| (index < colors.len()).then_some(index))
+        .collect();
     Ok(ImportedPalette {
         name,
         colors,
         columns,
         slots,
+        names: None,
     })
 }
 
@@ -400,6 +419,7 @@ fn native_imported_palette(stored: StoredPalette) -> Result<ImportedPalette, Str
         colors: stored.colors,
         columns,
         slots,
+        names: stored.names,
     })
 }
 
@@ -874,6 +894,7 @@ fn stored_imported_palette_from_path(path: &Path) -> Result<StoredPalette, Strin
         colors,
         columns,
         slots,
+        names,
     } = imported_palette_from_path(path)?;
     Ok(StoredPalette {
         id: external_palette_id(path),
@@ -883,6 +904,7 @@ fn stored_imported_palette_from_path(path: &Path) -> Result<StoredPalette, Strin
         built_in: false,
         columns: Some(columns),
         slots: Some(slots),
+        names,
     })
 }
 
@@ -900,8 +922,9 @@ pub(crate) fn import_palette(window: tauri::Window) -> Result<Option<StoredPalet
         colors,
         columns,
         slots,
+        names,
     } = imported_palette_from_path(&path)?;
-    save_palette(None, name, colors, columns, slots).map(Some)
+    save_palette(None, name, colors, columns, slots, names).map(Some)
 }
 
 fn read_built_in_palette(contents: &str) -> Result<StoredPalette, String> {
@@ -978,6 +1001,7 @@ pub(crate) fn save_palette(
     colors: Vec<PaletteColor>,
     columns: u32,
     slots: Vec<Option<usize>>,
+    names: Option<Vec<String>>,
 ) -> Result<StoredPalette, String> {
     let name = name.trim();
     if name.is_empty() {
@@ -1016,6 +1040,7 @@ pub(crate) fn save_palette(
         colors: colors.iter().map(palette_color_hex).collect(),
         columns,
         slots,
+        names,
     };
     let encoded = serde_json::to_vec_pretty(&file).map_err(|error| error.to_string())?;
     atomic_write(&path, &encoded)?;
@@ -1131,6 +1156,7 @@ mod tests {
             colors: vec!["#112233FF".to_string(), "#445566FF".to_string()],
             columns: None,
             slots: None,
+            names: None,
         }
     }
 
@@ -1204,6 +1230,29 @@ mod tests {
         assert_eq!(colors.len(), 2);
         assert_eq!((colors[0].r, colors[0].g, colors[0].b), (17, 34, 51));
         assert_eq!((colors[1].r, colors[1].g, colors[1].b), (68, 85, 102));
+    }
+
+    #[test]
+    fn imported_palette_layout_pads_partial_final_row() -> Result<(), String> {
+        let source = (0..115)
+            .map(|index| format!("{} {} {} Color{index}\n", index, index, index))
+            .collect::<String>();
+        let imported =
+            linear_imported_palette("yozu".to_string(), text_imported_colors(source.as_bytes()))?;
+
+        assert_eq!(imported.columns, 16);
+        assert_eq!(imported.colors.len(), 115);
+        assert_eq!(imported.slots.len(), 128);
+        assert!(imported.slots[..115].iter().all(Option::is_some));
+        assert!(imported.slots[115..].iter().all(Option::is_none));
+        validate_palette_layout(
+            2,
+            imported.colors.len(),
+            Some(imported.columns),
+            Some(imported.slots),
+            "test",
+        )?;
+        Ok(())
     }
 
     #[test]

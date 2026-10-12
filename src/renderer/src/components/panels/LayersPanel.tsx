@@ -1,3 +1,4 @@
+import { LayerTimelineFrameHeaders } from './LayerTimelineFrameHeaders'
 import { TimelineSelectionOutlines } from './TimelineSelectionOutlines'
 import { LayerTimelineColumnResizer } from './LayerTimelineColumnResizer'
 import { createLayerPanelTooltips } from './layer-panel-tooltips'
@@ -39,7 +40,9 @@ import { FreeTileInstancePanelSettings } from '@/components/panels/FreeTileInsta
 import { useTimelineThumbnailContentSync, ActiveFrameSync } from './layer-timeline-thumbnails'
 import { layoutAnimationLoopSections, timelineWithLoopSectionPreview } from './layer-timeline-layout'
 import { useSpaceDragScroll } from '@/components/useSpaceDragScroll'
-export function LayersPanel({
+import { memo } from 'react'
+
+function LayersPanelComponent({
   session,
   docked = false,
   sideDocked = false,
@@ -185,7 +188,7 @@ export function LayersPanel({
     playbackActiveLayerId,
     timelineVisualState,
     visualRowStateByKey,
-    visualCellStateBySlot,
+    visualCellStateAtSlot,
     visualFrameStateById,
     displayRowGridTemplate,
     displayRowTop,
@@ -671,13 +674,14 @@ export function LayersPanel({
       )}
     </>
   )
-  const animationFrameHeaders = timeline.frames.map((frame, index) => {
+  const renderAnimationFrameHeader = (frame: (typeof timeline.frames)[number], index: number) => {
     const visualFrame = visualFrameStateById.get(frame.id)
     const frameActive = visualFrame?.active === true || (cellSelectionActive && selectedActivityFrameIds.has(frame.id))
     const frameSelected = Boolean(timelineVisualState.selectionGuidesVisible && visualFrame?.selected)
     return (
       <button
         type="button"
+        style={{ gridRow: 1, gridColumn: index + 1 }}
         data-animation-frame-id={frame.id}
         data-frame-index={index}
         key={`header-${frame.id}`}
@@ -709,7 +713,7 @@ export function LayersPanel({
         {layerDensity !== 'compact' && <small>{frame.duration}</small>}
       </button>
     )
-  })
+  }
   const hideSideDockActions = sideDocked && layerSettings.sideDockAutoHide && !layerSettings.timelineHidden
   const visibleLayerQuickActions = layerSettings.quickActions.filter((action) => action.enabled).slice(0, LAYER_QUICK_ACTION_LIMIT)
   const syncTimelineQuickActionVisibility = useCallback((): void => {
@@ -966,44 +970,45 @@ export function LayersPanel({
                 />
               </div>}
               {!layerSettings.timelineHidden && animationColumnResizer}
-              <LayerTreeRows
-                thumbnailSize={layerSettings.timelineHidden ? 30 : undefined} onMaskContextMenu={openCelMenuFromTimeline}
-                displayRows={displayRows}
-                timelineVisualState={timelineVisualState}
-                renderAnimationMaskRow={renderAnimationMaskRow}
-                session={session}
-                dropTarget={dropTarget}
-                displayColorStripeSegments={displayColorStripeSegments}
-                effectiveSelectedGroupIds={effectiveSelectedGroupIds}
-                hasNonRowAnimationItemSelection={hasNonRowAnimationItemSelection}
-                activeMaskOwnerKey={activeMaskOwnerKey}
-                layerSelectionActive={layerSelectionActive}
-                draggingGroupId={draggingGroupId}
-                layerStyleDrag={layerStyleDrag}
-                beginGroupDrag={beginGroupDrag}
-                editGroupRow={editGroupRow}
-                t={t}
-                beginLayerPanelToggle={beginLayerPanelToggle}
-                continueLayerPanelToggle={continueLayerPanelToggle}
-                endLayerPanelToggle={endLayerPanelToggle}
-                finishLayerPanelToggleClick={finishLayerPanelToggleClick}
-                blendOptions={blendOptions}
-                clippingMaskTooltip={clippingMaskTooltip}
-                layerStyleIndicator={layerStyleIndicator}
-                maskVisualSelectionActive={maskVisualSelectionActive}
-                ordinaryCelSelectionVisible={ordinaryCelSelectionVisible}
-                draggingIds={draggingIds}
-                beginLayerDrag={beginLayerDrag}
-                editLayerRow={editLayerRow}
-                openLayerContent={openLayerContent}
-                liveAutoLinkById={liveAutoLinkById}
-                handleLayerAutoLinkPointerDown={handleLayerAutoLinkPointerDown}
-                continueLayerAutoLinkToggle={continueLayerAutoLinkToggle}
-                endLayerAutoLinkToggle={endLayerAutoLinkToggle}
-                finishLayerAutoLinkClick={finishLayerAutoLinkClick}
-                handleLayerAutoLinkKeyDown={handleLayerAutoLinkKeyDown}
-                openFreeTileInstanceLayers={openFreeTileInstanceLayers}
-              />
+              <LayerTreeRows read={() => ({
+                thumbnailSize: layerSettings.timelineHidden ? 30 : undefined,
+                onMaskContextMenu: openCelMenuFromTimeline,
+                displayRows,
+                timelineVisualState,
+                renderAnimationMaskRow,
+                session,
+                dropTarget,
+                displayColorStripeSegments,
+                effectiveSelectedGroupIds,
+                hasNonRowAnimationItemSelection,
+                activeMaskOwnerKey,
+                layerSelectionActive,
+                draggingGroupId,
+                layerStyleDrag,
+                beginGroupDrag,
+                editGroupRow,
+                t,
+                beginLayerPanelToggle,
+                continueLayerPanelToggle,
+                endLayerPanelToggle,
+                finishLayerPanelToggleClick,
+                blendOptions,
+                clippingMaskTooltip,
+                layerStyleIndicator,
+                maskVisualSelectionActive,
+                ordinaryCelSelectionVisible,
+                draggingIds,
+                beginLayerDrag,
+                editLayerRow,
+                openLayerContent,
+                liveAutoLinkById,
+                handleLayerAutoLinkPointerDown,
+                continueLayerAutoLinkToggle,
+                endLayerAutoLinkToggle,
+                finishLayerAutoLinkClick,
+                handleLayerAutoLinkKeyDown,
+                openFreeTileInstanceLayers,
+              })} />
             </div>
             {!layerSettings.timelineHidden && <div
               className="layer-animation-grid"
@@ -1067,7 +1072,7 @@ export function LayersPanel({
               {animationFrameGridDecorations}
               {shouldShowAnimationCellSelectionOutline && selectedCelPositions.length > 0 &&
                 <TimelineSelectionOutlines boxes={animationCelSelectionBoxes} dragging={animationCelDragPreview !== null} />}
-              {animationFrameHeaders}
+              <LayerTimelineFrameHeaders timeline={timeline} displayRows={displayRows} timelineViewportRef={layerListRef} renderHeader={renderAnimationFrameHeader} />
               <LayerTimelineCells
                 timelineViewportRef={layerListRef}
                 displayRows={displayRows}
@@ -1080,7 +1085,7 @@ export function LayersPanel({
                 celLookup={celLookup}
                 maskVisualByOwnerFrame={maskVisualByOwnerFrame}
                 maskOwnerFrameKey={maskOwnerFrameKey}
-                visualCellStateBySlot={visualCellStateBySlot}
+                visualCellStateAtSlot={visualCellStateAtSlot}
                 showLinkedCelVisuals={showLinkedCelVisuals}
                 linkedCelMemberKeys={linkedCelMemberKeys}
                 selectedLinkedCelMemberKeys={selectedLinkedCelMemberKeys}
@@ -1173,3 +1178,5 @@ export function LayersPanel({
     </>
   )
 }
+
+export const LayersPanel = memo(LayersPanelComponent)

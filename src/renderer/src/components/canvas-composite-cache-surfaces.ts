@@ -24,6 +24,8 @@ export interface CompositeSurface {
   /** GPU-friendly snapshot used for view navigation when available. */
   bitmap?: ImageBitmap
   bitmapPending?: Promise<void>
+  /** Reserve the asynchronous bitmap copy before creating it. */
+  reserveBitmapBytes?: boolean
   /** Invalidates asynchronous bitmap captures that started before a write. */
   bitmapGeneration?: number
   revision: number
@@ -71,12 +73,11 @@ export interface GpuMovePreviewSurface {
   width: number
   height: number
   canvas: OffscreenCanvas
-  baseCanvas: OffscreenCanvas
   movingLayers: SpriteDocument['layers']
   upperLayers: SpriteDocument['layers']
-  groupCanvases: Map<string, OffscreenCanvas>
+  groupCanvases: Map<string, { canvas: OffscreenCanvas; x: number; y: number }>
   /** Cached source-over runs that do not change during the move gesture. */
-  layerRunCanvases: Map<string, OffscreenCanvas>
+  layerRunCanvases: Map<string, { canvas: OffscreenCanvas; x: number; y: number }>
   sources: Map<string, OffscreenCanvas>
 }
 
@@ -184,6 +185,12 @@ export const MAX_SURFACE_DIMENSION = 8192
 export const MAX_CACHED_FRAMES = 256
 
 export const DEFAULT_MAX_CACHE_BYTES = 64 * 1024 * 1024
+
+export const dynamicMaxCachedFrames = (document: SpriteDocument, budget: number = DEFAULT_MAX_CACHE_BYTES): number => {
+  const avgFrameBytes = document.width * document.height * 4
+  if (avgFrameBytes === 0) return MAX_CACHED_FRAMES
+  return Math.max(MAX_CACHED_FRAMES, Math.min(64, Math.floor(budget / avgFrameBytes)))
+}
 
 export const CACHE_VERSION = 10
 
@@ -307,7 +314,7 @@ export const repeatedLayers = (layers: readonly SpriteDocument['layers'][number]
 }
 
 export const shouldCacheFullCompositeSurface = (width: number, height: number, maxCacheBytes = DEFAULT_MAX_CACHE_BYTES): boolean =>
-  width > 0 && height > 0 && width <= MAX_SURFACE_DIMENSION && height <= MAX_SURFACE_DIMENSION && width * height * 4 <= maxCacheBytes
+  width > 0 && height > 0 && width <= 8192 && height <= 8192 && width * height * 4 <= maxCacheBytes
 
 export function surfaceNamespace(document: SpriteDocument, view: Pick<ViewState, 'relativeLuminance'>, isolatedLayerMask?: LayerMask): string {
     return `${CACHE_VERSION}:${document.id}:${isolatedLayerMask ? `mask:${isolatedLayerMask.id}` : view.relativeLuminance ? 'luminance' : 'color'}`

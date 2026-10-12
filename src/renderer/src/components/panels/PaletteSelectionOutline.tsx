@@ -81,10 +81,10 @@ export function PaletteSelectionPath({ path, width, height, padding = 4, childre
       </mask>
     </defs>
     <g mask={`url(#${id}-outside)`}>
-      <path d={path} stroke="var(--theme-selection-outline-dark)" strokeWidth={6 * line} vectorEffect="non-scaling-stroke" />
-      <path d={path} stroke="var(--theme-selection-outline-light)" strokeWidth={4 * line} vectorEffect="non-scaling-stroke" />
+      <path d={path} stroke="var(--selection-frame-dark, var(--theme-selection-outline-dark))" strokeWidth={6 * line} vectorEffect="non-scaling-stroke" />
+      <path d={path} stroke="var(--selection-frame-light, var(--theme-selection-outline-light))" strokeWidth={4 * line} vectorEffect="non-scaling-stroke" />
     </g>
-    <path d={path} stroke="var(--theme-selection-outline-dark)" strokeWidth={2 * line} vectorEffect="non-scaling-stroke" clipPath={`url(#${id}-inside)`} />
+    <path d={path} stroke="var(--selection-frame-dark, var(--theme-selection-outline-dark))" strokeWidth={2 * line} vectorEffect="non-scaling-stroke" clipPath={`url(#${id}-inside)`} />
     {children}
   </svg>
 }

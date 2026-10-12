@@ -337,22 +337,30 @@ export interface SelectionShearTransform {
   amount: number
 }
 
+interface SelectionRotationGeometry {
+  cosine: number
+  sine: number
+  centerX: number
+  centerY: number
+}
+
 const transformedSelectionPoint = (
   target: SelectionRect,
   normalizedX: number,
   normalizedY: number,
   angle = 0,
-  shear?: SelectionShearTransform
+  shear?: SelectionShearTransform,
+  geometry?: SelectionRotationGeometry
 ): { x: number; y: number } => {
   let destinationX = target.x + normalizedX * target.width
   let destinationY = target.y + normalizedY * target.height
   if (shear?.axis === 'x') destinationX += shear.amount * (shear.edge === 'n' ? 1 - normalizedY : normalizedY)
   else if (shear?.axis === 'y') destinationY += shear.amount * (shear.edge === 'w' ? 1 - normalizedX : normalizedX)
   const radians = angle * Math.PI / 180
-  const cosine = snapRotationValue(Math.cos(radians))
-  const sine = snapRotationValue(Math.sin(radians))
-  const centerX = target.x + target.width / 2
-  const centerY = target.y + target.height / 2
+  const cosine = geometry?.cosine ?? snapRotationValue(Math.cos(radians))
+  const sine = geometry?.sine ?? snapRotationValue(Math.sin(radians))
+  const centerX = geometry?.centerX ?? target.x + target.width / 2
+  const centerY = geometry?.centerY ?? target.y + target.height / 2
   const offsetX = destinationX - centerX
   const offsetY = destinationY - centerY
   return {
@@ -880,14 +888,15 @@ export const transformedSelectionSourcePoint = (
   y: number,
   angle = 0,
   shear?: SelectionShearTransform,
-  pixelCenteredSampling = false
+  pixelCenteredSampling = false,
+  geometry?: SelectionRotationGeometry
 ): { x: number; y: number } | null => {
   if (target.width < 1 || target.height < 1) return null
   const radians = angle * Math.PI / 180
-  const cosine = snapRotationValue(Math.cos(-radians))
-  const sine = snapRotationValue(Math.sin(-radians))
-  const centerX = target.x + target.width / 2
-  const centerY = target.y + target.height / 2
+  const cosine = geometry?.cosine ?? snapRotationValue(Math.cos(-radians))
+  const sine = geometry?.sine ?? snapRotationValue(Math.sin(-radians))
+  const centerX = geometry?.centerX ?? target.x + target.width / 2
+  const centerY = geometry?.centerY ?? target.y + target.height / 2
   const offsetX = x + 0.5 - centerX
   const offsetY = y + 0.5 - centerY
   const unrotatedX = centerX + offsetX * cosine - offsetY * sine
@@ -926,13 +935,30 @@ export const transformedSelectionDestinationPoint = (
   sourceX: number,
   sourceY: number,
   angle = 0,
-  shear?: SelectionShearTransform
+  shear?: SelectionShearTransform,
+  geometry?: SelectionRotationGeometry
 ): { x: number; y: number } => {
   let normalizedX = (sourceX + 0.5 - source.x) / source.width
   let normalizedY = (sourceY + 0.5 - source.y) / source.height
   if (target.flipHorizontal) normalizedX = 1 - normalizedX
   if (target.flipVertical) normalizedY = 1 - normalizedY
-  return transformedSelectionPoint(target, normalizedX, normalizedY, angle, shear)
+  return transformedSelectionPoint(target, normalizedX, normalizedY, angle, shear, geometry)
+}
+
+/** Prepare invariant rotation terms once per raster, using the same geometry
+ * and arithmetic order as individual point queries. No persistent cache. */
+export const compileSelectionTransformPoints = (
+  source: SelectionMask, target: SelectionRect, angle = 0,
+  shear?: SelectionShearTransform, pixelCenteredSampling = false
+) => {
+  const radians = angle * Math.PI / 180
+  const centerX = target.x + target.width / 2, centerY = target.y + target.height / 2
+  const forward = { centerX, centerY, cosine: snapRotationValue(Math.cos(radians)), sine: snapRotationValue(Math.sin(radians)) }
+  const inverse = { centerX, centerY, cosine: snapRotationValue(Math.cos(-radians)), sine: snapRotationValue(Math.sin(-radians)) }
+  return {
+    sourcePoint: (x: number, y: number) => transformedSelectionSourcePoint(source, target, x, y, angle, shear, pixelCenteredSampling, inverse),
+    destinationPoint: (x: number, y: number) => transformedSelectionDestinationPoint(source, target, x, y, angle, shear, forward)
+  }
 }
 
 function trimSelectionMaskBounds(

@@ -64,7 +64,12 @@ export function AntiAliasDialog({ session, onClose }: { session: DocumentSession
       }
       previewRef.current = previewAntiAliasSelection(autoColor ? null : color, autoColorOpacity, includeInteriorColors, colorSource, previewRef.current)
     })
-    return cancelScheduledPreview
+    return () => {
+      if (previewFrameRef.current !== null) {
+        window.cancelAnimationFrame(previewFrameRef.current)
+        previewFrameRef.current = null
+      }
+    }
   }, [previewEnabled, autoColor, color, autoColorOpacity, includeInteriorColors, colorSource, session.document.id, previewAntiAliasSelection])
 
   useEffect(() => () => {

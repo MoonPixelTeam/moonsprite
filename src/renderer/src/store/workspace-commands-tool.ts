@@ -1,4 +1,4 @@
-import type { BrushDitherSettings, GradientStop, ImageBrush, InkMode, LiquifyMode } from '@shared/types-brush'
+import type { BrushDitherSettings, FillPatternMode, FillPatternSettings, GradientStop, ImageBrush, InkMode, LiquifyMode } from '@shared/types-brush'
 import { createId } from '@/core/document-model'
 import { isCanvasToolGestureLocked } from '@/core/canvas-tool-gesture-lock'
 import { pendingGradientFor } from '@/core/canvas-gradient-confirmation'
@@ -7,6 +7,7 @@ import { createProceduralBrush, isProceduralBrushId, normalizeProceduralBrushSet
 import { publishBrushLibraryChanged } from '@/core/brush-library-events'
 import { brushLibraryLocation } from '@/core/brush-library-location'
 import { loadEditorPreferences, saveEditorPreferences } from '@/core/file-preferences'
+import { normalizeFillPatternSettings } from '@/core/pattern-fill-settings'
 import { defaultToolSettings } from '@/core/tool-preferences'
 import { normalizeGapClosingThreshold } from '@/core/contiguous-region'
 import { normalizeBrushDitherSettings } from '@/core/gradient-color'
@@ -251,7 +252,7 @@ export function createWorkspaceToolCommands({ get, set }: WorkspaceCommandContex
       if (shouldEnableBrushPreview) enableBrushDynamicsPreview()
     },
 
-    setBrushImage(brush) {
+    setBrushImage(brush, fillBrushes) {
       get().mutateActive((session) => {
         if (brush && !isProceduralBrushId(brush.id) && !session.patternBrushReturnProfile) {
           session.patternBrushReturnProfile = session.tool === 'pencil' ? brushProfileFromSession(session) : { ...session.brushProfiles.pencil }
@@ -259,6 +260,10 @@ export function createWorkspaceToolCommands({ get, set }: WorkspaceCommandContex
         session.brushImage = brush && isProceduralBrushId(brush.id)
           ? createProceduralBrush(brush.id, session.proceduralBrushSettings[brush.id])
           : clearSelectionBrushPaintColors(brush)
+        const selected = brush && fillBrushes?.some(item => item.id === brush.id)
+          ? [...new Map(fillBrushes.map(item => [item.id, clearSelectionBrushPaintColors(item)!])).values()]
+          : []
+        session.fillPatternBrushes = selected.length > 1 ? selected : undefined
         session.brushImageId = brush?.id ?? null
         session.brushImageTemporary = false
         rememberBrushProfile(session)
@@ -293,6 +298,7 @@ export function createWorkspaceToolCommands({ get, set }: WorkspaceCommandContex
           applyBrushProfile(session, session.patternBrushReturnProfile ?? session.brushProfiles.pencil)
           session.brushImage = brush
           session.brushImageId = brush.id
+          session.fillPatternBrushes = undefined
           session.brushImageTemporary = true
           session.brushPaintMode = 'paint'
           session.tool = 'pencil'
@@ -307,16 +313,22 @@ export function createWorkspaceToolCommands({ get, set }: WorkspaceCommandContex
       if (isCanvasToolGestureLocked()) return
       get().mutateActive((session) => {
         if (!session.temporaryBrushCapture && !session.brushImage) return
+        const hadTemporaryCapture = Boolean(session.temporaryBrushCapture)
+        const toolBeforeExit = session.tool
         if (session.temporaryBrushCapture) Object.assign(session, session.temporaryBrushCapture)
         const rememberedBrushPaintMode = session.brushPaintMode
         session.temporaryBrushCapture = undefined
-        session.tool = 'pencil'
+        // Bucket fill can use a pattern brush without changing tools. Esc
+        // cancels that brush selection and must leave the bucket active. A
+        // temporary brush captured from a selection still returns to pencil.
+        session.tool = hadTemporaryCapture ? 'pencil' : toolBeforeExit
         applyBrushProfile(session, session.patternBrushReturnProfile ?? { ...session.brushProfiles.pencil, brushImage: null, brushImageId: null, brushImageTemporary: false })
         session.brushPaintMode = rememberedBrushPaintMode
         session.patternBrushReturnProfile = undefined
         // A restored return profile may itself contain a saved pattern. Clear
         // the live state before remembering it or the profile restores it again.
         session.brushImage = null
+        session.fillPatternBrushes = undefined
         session.brushImageId = null
         session.brushImageTemporary = false
         rememberBrushProfile(session)
@@ -330,6 +342,7 @@ export function createWorkspaceToolCommands({ get, set }: WorkspaceCommandContex
         session.patternBrushReturnProfile ??= session.tool === 'pencil' ? brushProfileFromSession(session) : { ...session.brushProfiles.pencil }
         session.brushImage = { ...brush, colors: brush.colors?.slice(), paintColors: undefined }
         session.brushImageId = brush.id
+        session.fillPatternBrushes = undefined
         session.brushImageTemporary = true
         session.brushPaintMode = 'paint'
         session.selection = null
@@ -344,6 +357,7 @@ export function createWorkspaceToolCommands({ get, set }: WorkspaceCommandContex
         const before = session.document.customBrushes ?? []
         if (!before.some((brush) => brush.id === id)) return
         session.document.customBrushes = before.filter((brush) => brush.id !== id)
+        session.fillPatternBrushes = session.fillPatternBrushes?.filter(brush => brush.id !== id)
         if (session.brushImageId === id) {
           session.brushImageId = null
           session.brushImage = null
@@ -459,6 +473,16 @@ export function createWorkspaceToolCommands({ get, set }: WorkspaceCommandContex
     setFillMode(mode) {
       get().mutateActive((session) => {
         session.fillMode = mode === 'contiguous' && session.fillMode === 'contiguous' ? 'global' : mode
+        persistToolSettings(session)
+      }, false)
+    },
+
+    setFillPatternMode(mode: FillPatternMode) { get().mutateActive((session) => { session.fillPatternMode = mode; persistToolSettings(session) }, false) },
+
+    setFillPatternSettings(settings: Partial<FillPatternSettings>) {
+      get().mutateActive((session) => {
+        const current = session.fillPatternSettings ?? defaultToolSettings.fillPatternSettings
+        session.fillPatternSettings = normalizeFillPatternSettings(settings, current)
         persistToolSettings(session)
       }, false)
     },

@@ -1,3 +1,4 @@
+import type { SpriteSheetImportSource } from '@/core/sprite-sheet-import'
 import { isWebTrial } from '@/core/product-target'
 import type { FilterChoice } from '@/store/workspace-filter-preview'
 import { ExportDialogHost, type ExportDialogHandle } from '@/components/app/ExportDialogHost'
@@ -81,7 +82,13 @@ export function useAppDocumentDialogs({
   const [timelapseOpen, setTimelapseOpen] = useState(false)
   const [spriteSheetImportOpen, setSpriteSheetImportOpen] = useState(false)
   const [spriteSheetImportSourceId, setSpriteSheetImportSourceId] = useState<string | null>(null)
-  const openSpriteSheetImport = () => { setSpriteSheetImportSourceId(session?.document.id ?? null); setSpriteSheetImportOpen(true) }
+  const [spriteSheetImportMode, setSpriteSheetImportMode] = useState<SpriteSheetImportSource>('document')
+  const openSpriteSheetImport = (source: SpriteSheetImportSource = session ? 'document' : 'file') => {
+    if (source === 'selection' && !session?.selection || source === 'document' && !session) return
+    setSpriteSheetImportMode(source)
+    if (source === 'file') void workspace.chooseSpriteSheetImportSource().then(id => { if (id) { setSpriteSheetImportSourceId(id); setSpriteSheetImportOpen(true) } })
+    else { setSpriteSheetImportSourceId(session!.document.id); setSpriteSheetImportOpen(true) }
+  }
   const spriteSheetImportSession = workspace.sessions.find(item => item.document.id === spriteSheetImportSourceId) ?? null
   const [spriteSheetExportSourceId, setSpriteSheetExportSourceId] = useState<string | null>(null)
   const exportDialogRef = useRef<ExportDialogHandle>(null)
@@ -121,7 +128,7 @@ export function useAppDocumentDialogs({
           onSave={(options) => runSaveActive(true, options)}
         />
       )}
-      {spriteSheetImportOpen && <SpriteSheetImportDialog key={spriteSheetImportSourceId ?? 'empty'} session={spriteSheetImportSession} onClose={() => setSpriteSheetImportOpen(false)} onChoose={async () => {
+      {spriteSheetImportOpen && <SpriteSheetImportDialog key={`${spriteSheetImportSourceId}:${spriteSheetImportMode}`} session={spriteSheetImportSession} fromSelection={spriteSheetImportMode === 'selection'} onClose={() => setSpriteSheetImportOpen(false)} onChoose={async () => {
         const id = await workspace.chooseSpriteSheetImportSource()
         if (id) setSpriteSheetImportSourceId(id)
       }} />}
@@ -129,7 +136,7 @@ export function useAppDocumentDialogs({
         <SpriteSheetExportDialog
           key={spriteSheetExportSession.document.id}
           session={spriteSheetExportSession}
-          defaultDirectory={outputDirectoryForOperation(runtimePreferences) || defaultFileDirectories.exportDirectory}
+          defaultDirectory={defaultFileDirectories.exportDirectory}
           localGalleryDirectory={defaultFileDirectories.saveDirectory}
           projectRootDirectory={parentDirectoryFromPath(spriteSheetExportSession.document.filePath ?? spriteSheetExportSession.document.sourceFilePath ?? '')}
           onClose={() => setSpriteSheetExportSourceId(null)}

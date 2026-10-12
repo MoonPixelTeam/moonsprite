@@ -451,7 +451,8 @@ export function createLayerCreationCommands({ get, set }: WorkspaceCommandContex
       get().mutateActive((session) => {
         const document = session.document
         const layer = document.layers.find((candidate) => candidate.id === layerId)
-        if (!layer || layer.kind === 'adjustment' || (!layer.background && !layer.kind && !hasConfiguredLayerStyles(layer.layerStyles))) return
+        const canRasterize = Boolean(layer && (layer.background || layer.kind || hasConfiguredLayerStyles(layer.layerStyles) || layer.linkedContentId))
+        if (!layer || layer.kind === 'adjustment' || !canRasterize) return
         const wasFreeTileLayer = layer.kind === 'free-tile'
         syncActiveAnimationFrame(document)
         const rasterizesStyles = hasEnabledLayerStyles(layer.layerStyles)

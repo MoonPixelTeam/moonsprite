@@ -1,5 +1,6 @@
 import pixelCrossCursor from '@/assets/pixel-cross-cursor.svg'
 import type { CursorScale } from '@/core/file-preferences'
+import { BoundedPromiseCache } from '@/core/bounded-promise-cache'
 import { translateCurrent as tr } from '@/core/localization'
 import { invoke } from '@tauri-apps/api/core'
 import { getCurrentWindow } from '@tauri-apps/api/window'
@@ -8,7 +9,7 @@ import cursorDefault from '@/assets/pixel-icons/01-Slice-1.png'
 import cursorBlack from '@/assets/pixel-icons/02-Slice-2.png'
 import cursorWhite from '@/assets/pixel-icons/03-Slice-3.png'
 import cursorProgress from '@/assets/pixel-icons/04-Slice-4.png'
-import cursorGrab from '@/assets/pixel-icons/05-Slice-5.png'
+import cursorGrab from '@/assets/pixel-grab-cursor.svg'
 import cursorUnavailable from '@/assets/pixel-icons/06-Slice-6.png'
 import cursorNsResize from '@/assets/pixel-icons/10-Slice-7.png'
 import cursorEwResize from '@/assets/pixel-icons/11-Slice-8.png'
@@ -137,7 +138,8 @@ export function setNativeCursorVisible(visible: boolean): Promise<void> {
   return isTauriRuntime() ? syncNativeCursorVisibility(visible) : cursorVisibilityUnchanged
 }
 
-const scaledCursorCache = new Map<string, Promise<string>>()
+const MAX_SCALED_CURSOR_CACHE = 64
+const scaledCursorCache = new BoundedPromiseCache<string, string>(MAX_SCALED_CURSOR_CACHE)
 let applicationGeneration = 0
 let requestedCursorPreferences: { useLocalCursors: boolean; scale: CursorScale } | null = null
 
@@ -145,9 +147,12 @@ const formatCursorNumber = (value: number): string => String(Math.round(value * 
 
 const cursorImageValue = (source: string, resolution: number): string => {
   const normalizedResolution = normalizeDisplayScaleFactor(resolution)
+  // Vite's inline SVG URLs contain single-quoted XML attributes.
+  // Escape the URL independently so those quotes cannot terminate CSS url().
+  const url = `url("${source.replaceAll('\\', '\\\\').replaceAll('"', '\\"')}")`
   return normalizedResolution === 1
-    ? `url('${source}')`
-    : `image-set(url('${source}') ${formatCursorNumber(normalizedResolution)}x)`
+    ? url
+    : `image-set(${url} ${formatCursorNumber(normalizedResolution)}x)`
 }
 
 // A CSS image cursor must have a fallback keyword. `none` prevents WebView
@@ -170,9 +175,7 @@ function syncNativeSoftwareCursor(useLocalCursors: boolean): void {
 
 const scaledCursorUrl = (source: string, scale: number): Promise<string> => {
   const key = `${source}:${scale.toFixed(6)}`
-  const cached = scaledCursorCache.get(key)
-  if (cached) return cached
-  const pending = new Promise<string>((resolve, reject) => {
+  return scaledCursorCache.getOrCreate(key, () => new Promise<string>((resolve, reject) => {
     const image = new Image()
     image.onload = () => {
       const canvas = document.createElement('canvas')
@@ -186,9 +189,7 @@ const scaledCursorUrl = (source: string, scale: number): Promise<string> => {
     }
     image.onerror = () => reject(new Error(tr('core.cursor.readFailed')))
     image.src = source
-  })
-  scaledCursorCache.set(key, pending)
-  return pending
+  }))
 }
 
 async function applyCursorPreferencesForDisplayScale(useLocalCursors: boolean, scale: CursorScale, displayScaleFactor: number, preserveCurrentValues: boolean): Promise<void> {

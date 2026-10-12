@@ -50,7 +50,7 @@ import {
   surfaceNamespace
 } from './canvas-composite-cache-surfaces'
 import { imageData, gpuBlendModeFor } from './canvas-composite-cache-pixel-utils'
-import { rememberCompositeSurface } from './canvas-composite-cache-utils'
+import { createCompositeSurfaceBudget, rememberCompositeSurface, resetCompositeSurfaceBudget } from './canvas-composite-cache-utils'
 import { CanvasCompositeBlitter } from './canvas-composite-cache-blitter'
 import { CanvasAlignedViewCache } from './canvas-aligned-view-cache'
 import { compositeRegionWindow } from './canvas-composite-region-window'
@@ -76,24 +76,21 @@ export class CanvasCompositeCache {
   private invalidatedInitialDocuments = new WeakSet<SpriteDocument>()
   private surfaces = new Map<string, CompositeSurface>()
   private regions = new Map<string, CompositeRegionSurface>()
+  private readonly surfaceBudget = createCompositeSurfaceBudget()
   private dirtyRects = new Map<string, SelectionRect[]>()
 /** Raw source regions changed during a live gesture, before style expansion. */
   private placementDirtyHints = new Map<string, { rect: SelectionRect; layerIds?: readonly string[] }>()
   private sourceDirtyHints = new Map<string, { rect: SelectionRect; used: boolean }>()
 /** A live stroke may already have been painted into the cached surface. */
   private livePreviewPending = new Set<string>()
-
   private livePreviewCommitRevisions = new Map<string, number>()
-
   private fullPreviewInvalidationPending = false
-
 // Several brush segments can invalidate the same source caches before the
   // next RAF. Coalesce those resets so a long eraser drag pays the rebuild
   // cost once per frame instead of once per dirty rectangle.
   private liveSourceCachesInvalidated = false
 
   private liveSurfaceInvalidationPending = false
-
   private liveRasterEdit = false
   private livePropertyEdit = false
 
@@ -125,6 +122,7 @@ export class CanvasCompositeCache {
       surface.canvas.height = 1
     }
     this.invalidateSurface()
+    this.compositeCache.dispose()
     this.lastDocument = null
     this.namespace = ''
     this.invalidatedInitialDocuments = new WeakSet<SpriteDocument>()
@@ -144,6 +142,7 @@ export class CanvasCompositeCache {
     for (const surface of [...this.surfaces.values(), ...this.regions.values()]) this.invalidateSurfaceBitmap(surface)
     this.surfaces.clear()
     this.regions.clear()
+    resetCompositeSurfaceBudget(this.surfaceBudget)
     this.dirtyRects.clear()
     this.sourceDirtyHints.clear()
     this.placementDirtyHints.clear()
@@ -199,7 +198,9 @@ export class CanvasCompositeCache {
     })
     // Live strokes can emit hundreds of tiny regions. Keep the queue bounded
     // otherwise every subsequent frame spends more time merging old regions.
-    this.dirtyRects.set(frameId, dirtyRects.length > 32 ? boundedDirtyRects(dirtyRects, 32, compositePatchMergeLimit(this.lastDocument)) : dirtyRects)
+    const limit = this.liveRasterEdit ? 256 : 32
+    const mergeLimit = this.liveRasterEdit ? 0 : compositePatchMergeLimit(this.lastDocument)
+    this.dirtyRects.set(frameId, dirtyRects.length > limit ? boundedDirtyRects(dirtyRects, limit, mergeLimit, this.liveRasterEdit ? 1 : 3) : dirtyRects)
   }
 
   invalidateDocumentRect(selection: SelectionRect | null | undefined, document: SpriteDocument, frameId = this.lastDrawnFrameId, affectedOwnerIds?: readonly string[]): void {
@@ -349,13 +350,13 @@ export class CanvasCompositeCache {
 
     const boundary = deviceAlignedCanvasRect(originX, originY, canvasWidth, canvasHeight, devicePixelRatio)
     context.save()
+    try {
     context.beginPath()
     context.rect(boundary.left, boundary.top, boundary.width, boundary.height)
     context.clip()
     context.imageSmoothingEnabled = imageSmoothingEnabled
     if (imageSmoothingEnabled) context.imageSmoothingQuality = imageSmoothingQuality
     if (!isolatedLayerMask && movingLayerIds?.length && this.moveRenderer.drawMovePreview(context, document, view, originX, originY, fromX, fromY, toX, toY, effectiveFrameId, contentRevision, movingLayerIds)) {
-      context.restore()
       return
     }
     this.moveRenderer.clearRaster()
@@ -365,28 +366,34 @@ export class CanvasCompositeCache {
       selectionPreview &&
       this.selectionRenderer.drawClipboardPreview(context, document, view, originX, originY, canvasWidth, canvasHeight, fromX, fromY, toX, toY, frameKey, effectiveFrameId, contentRevision, contentInvalidation, imageSmoothingEnabled, selectionPreview)
     ) {
-      context.restore()
       return
     }
     this.selectionRenderer.clearClipboard()
     // Auxiliary viewports can borrow a completed main-canvas base. Copy it so
     // later local invalidation never mutates the editor's cache.
-    if (selectionPreview && options.selectionBase && shouldCacheFullCompositeSurface(document.width, document.height, this.maxCacheBytes)) {
+    if (selectionPreview && options.selectionBase && shouldCacheFullCompositeSurface(document.width, document.height, this.maxCacheBytes / 2)) {
       const existing = this.surfaces.get(frameKey)
       if (!existing || existing.revision !== contentRevision || this.dirtyRects.has(effectiveFrameId)) {
         const canvas = new OffscreenCanvas(document.width, document.height)
         canvas.getContext('2d')?.drawImage(options.selectionBase, 0, 0, document.width, document.height, 0, 0, document.width, document.height)
-        rememberCompositeSurface(this.surfaces, frameKey, { canvas, revision: contentRevision }, this.maxCacheBytes, MAX_CACHED_FRAMES)
+        rememberCompositeSurface(this.surfaces, frameKey, { canvas, revision: contentRevision, reserveBitmapBytes: true }, this.maxCacheBytes, MAX_CACHED_FRAMES, this.surfaceBudget)
         this.dirtyRects.delete(effectiveFrameId)
       }
     }
-    if (!isolatedLayerMask && !view.relativeLuminance && selectionPreview && this.selectionRenderer.drawSelectionPreview(context, document, view, originX, originY, fromX, fromY, toX, toY, effectiveFrameId, contentRevision, selectionPreview, contentInvalidation, sourceDirtyRect)) {
-      context.restore()
+    // Selection previews must follow the same initialization policy as the
+    // ordinary canvas, so a small viewport can reuse its rendered region.
+    const visible = visibleDocumentRect(document, fromX, fromY, toX, toY)
+    const fullSurfaceInitializationAllowed = animationPlayback || document.width * document.height < 1024 * 1024
+      || Boolean(visible && visible.width * visible.height >= document.width * document.height / 2)
+      || this.surfaces.has(frameKey)
+      || (!this.invalidatedInitialDocuments.has(document) && contentRevision === 0
+        && Boolean(initialDocumentCompositeSurface(document, effectiveFrameId)))
+    if (!isolatedLayerMask && !view.relativeLuminance && selectionPreview && this.selectionRenderer.drawSelectionPreview(context, document, view, originX, originY, fromX, fromY, toX, toY, effectiveFrameId, contentRevision, selectionPreview, contentInvalidation, fullSurfaceInitializationAllowed, sourceDirtyRect)) {
       return
     }
     this.selectionRenderer.clearSelection()
     if (sourceDirtyRect) this.propertyPreview.clear()
-    else if (this.propertyPreview.draw({ ...options, contentRevision })) { context.restore(); return }
+    else if (this.propertyPreview.draw({ ...options, contentRevision })) return
     const initialCompositeIsPending = contentRevision === 0 && !isolatedLayerMask && !view.relativeLuminance && initialDocumentCompositePending(document, effectiveFrameId)
     // Playback can visit hundreds of frames. A full 4K backing is about
     // 64 MiB even for a sparse 100×100 drawing, so keep animation frames in
@@ -394,7 +401,7 @@ export class CanvasCompositeCache {
     // substantial part of this cache budget.
     const animationFullSurfaceAllowed = !animationPlayback
       || document.width * document.height * 4 <= this.maxCacheBytes / 2
-    if (isolatedLayerMask || (animationFullSurfaceAllowed && shouldCacheFullCompositeSurface(document.width, document.height, this.maxCacheBytes) && !initialCompositeIsPending))
+    if (isolatedLayerMask || (fullSurfaceInitializationAllowed && animationFullSurfaceAllowed && shouldCacheFullCompositeSurface(document.width, document.height, this.maxCacheBytes / 2) && !initialCompositeIsPending))
       this.drawSurface(
         context,
         document,
@@ -439,7 +446,9 @@ export class CanvasCompositeCache {
         fastViewPreview,
         animationPlayback
       )
-    context.restore()
+    } finally {
+      context.restore()
+    }
   }
 
 /** Build a GPU-backed snapshot once; panning can then sample it without
@@ -472,8 +481,7 @@ export class CanvasCompositeCache {
     // until it settles so later frames cannot enqueue overlapping full copies.
   }
 
-
-/**
+  /**
    * Animation playback is read-only, so supported frame stacks can be blended
    * by Canvas2D after each cel storage has been uploaded once. This removes the
    * O(visible pixels × layers) JavaScript composite from the playback clock.
@@ -494,12 +502,15 @@ export class CanvasCompositeCache {
         if (!layer.visible || layer.opacity <= 0) continue
         if (cachedLayerContentBounds(document, layer) === null) continue
         const operation = gpuBlendModeFor(layer.blendMode)
-        const source = animationLayerSourceFor(document, layer, this.maxCacheBytes)
-        if (!operation || !source) return null
+        const result = animationLayerSourceFor(document, layer, this.maxCacheBytes)
+        if (!operation || !result) return null
         target.globalCompositeOperation = operation
         if (target.globalCompositeOperation !== operation) return null
         target.globalAlpha = layer.opacity
-        target.drawImage(source.source, 0, 0, source.width, source.height, layer.offsetX + source.sourceX - x, layer.offsetY + source.sourceY - y, source.width, source.height)
+        // The upload is already cropped. Read its own origin and restore the
+        // crop's layer-local offset when placing it in document coordinates.
+        target.drawImage(result.source, 0, 0, result.width, result.height,
+          layer.offsetX + result.sourceX - x, layer.offsetY + result.sourceY - y, result.width, result.height)
       }
       target.globalAlpha = 1
       target.globalCompositeOperation = 'source-over'
@@ -540,7 +551,8 @@ export class CanvasCompositeCache {
   ): CompositeSurface {
     // Layer styles depend on the current cel surface and cannot use the
     // playback shared/GPU snapshot safely across frame swaps.
-    const patchMergeLimit = compositePatchMergeLimit(document)
+    const patchMergeLimit = this.liveRasterEdit ? 0 : compositePatchMergeLimit(document)
+    const patchWasteRatio = this.liveRasterEdit ? 1 : 3
     const animationFastPath = animationPlayback && patchMergeLimit === undefined
     let surface = this.surfaces.get(key)
     // Playback often starts after the editor already rendered the current
@@ -596,15 +608,16 @@ export class CanvasCompositeCache {
       surface = {
         canvas,
         revision: contentRevision,
+        reserveBitmapBytes: document.width * document.height >= 256 * 256,
         transient: transientFallback
       }
-      if (!transientFallback) rememberCompositeSurface(this.surfaces, key, surface, this.maxCacheBytes, MAX_CACHED_FRAMES)
+      if (!transientFallback) rememberCompositeSurface(this.surfaces, key, surface, this.maxCacheBytes, MAX_CACHED_FRAMES, this.surfaceBudget)
       this.dirtyRects.delete(frameId)
       this.clearLivePreview(document, frameId)
     } else {
       const invalidationStartedAt = window.__moonSpriteCanvasProbe?.recordOperationStage ? performance.now() : 0
       const visibleRect = visibleDocumentRect(document, fromX, fromY, toX, toY)
-      const invalidRects = mergeOverlappingRects([...(surface.pendingDirtyRects ?? []), ...(this.dirtyRects.get(frameId) ?? [])], patchMergeLimit)
+      const invalidRects = mergeOverlappingRects([...(surface.pendingDirtyRects ?? []), ...(this.dirtyRects.get(frameId) ?? [])], patchMergeLimit, patchWasteRatio)
       const dirtyRects: SelectionRect[] = []
       const pendingDirtyRects: SelectionRect[] = []
       for (const rect of invalidRects) {
@@ -620,11 +633,11 @@ export class CanvasCompositeCache {
       // Splitting a committed fill/undo into 64K-pixel horizontal bands exposed
       // intermediate cache contents as a top-to-bottom wipe. Offscreen areas
       // remain lazy, and unchanged pixels are still excluded from recomposition.
-      const activeRects = mergeOverlappingRects(dirtyRects, patchMergeLimit)
+      const activeRects = mergeOverlappingRects(dirtyRects, patchMergeLimit, patchWasteRatio)
       // A visible viewport can split every incoming rect into up to four
       // offscreen pieces. Keep that deferred queue bounded as well; otherwise
       // a long stroke slowly turns each frame into a larger merge/recompose.
-      surface.pendingDirtyRects = pendingDirtyRects.length > 0 ? boundedDirtyRects(pendingDirtyRects, 32, patchMergeLimit) : undefined
+      surface.pendingDirtyRects = pendingDirtyRects.length > 0 ? boundedDirtyRects(pendingDirtyRects, 128, patchMergeLimit, patchWasteRatio) : undefined
       if (activeRects.length > 0) this.invalidateSurfaceBitmap(surface)
       recordCanvasStage('canvas.cache-invalidation', invalidationStartedAt, {
         dirtyRects: activeRects.length,
@@ -697,7 +710,8 @@ export class CanvasCompositeCache {
     animationPlayback = false,
     render = true
   ): CompositeRegionSurface | null {
-    const patchMergeLimit = compositePatchMergeLimit(document)
+    const patchMergeLimit = this.liveRasterEdit ? 0 : compositePatchMergeLimit(document)
+    const patchWasteRatio = this.liveRasterEdit ? 1 : 3
     const animationFastPath = animationPlayback && patchMergeLimit === undefined
     const visible = visibleDocumentRect(document, fromX, fromY, toX, toY)
     if (!visible) return null
@@ -715,7 +729,7 @@ export class CanvasCompositeCache {
         canvas.getContext('2d')?.putImageData(imageData(pixels, width, height), 0, 0)
       }
       region = { canvas, revision: contentRevision, x, y, width, height }
-      rememberCompositeSurface(this.regions, key, region, this.maxCacheBytes, MAX_CACHED_FRAMES)
+      rememberCompositeSurface(this.regions, key, region, this.maxCacheBytes, MAX_CACHED_FRAMES, this.surfaceBudget)
       this.dirtyRects.delete(frameId)
       this.clearLivePreview(document, frameId)
     } else if (region) {
@@ -742,7 +756,7 @@ export class CanvasCompositeCache {
         region.revision = contentRevision
       }
       const visibleRect = { x, y, width, height }
-      const dirtyRects = mergeOverlappingRects(this.dirtyRects.get(frameId) ?? [], patchMergeLimit)
+      const dirtyRects = mergeOverlappingRects(this.dirtyRects.get(frameId) ?? [], patchMergeLimit, patchWasteRatio)
         .map((rect) => intersectRect(rect, visibleRect))
         .filter((rect): rect is SelectionRect => Boolean(rect))
       const activeRects = dirtyRects

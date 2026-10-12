@@ -1,5 +1,5 @@
 import { collectSmoothBrushArea } from './smooth-brush'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { compositeRegion, createCompositePointSampler, createDocument, createLayer, createSparseLayer, DocumentCompositeCache, findOrAddPaletteColor, getActiveLayer, readLayerColor, readLayerColorAt, resizeDocumentAt, writeLayerColor } from './document'
 import { beginPixelEdit, commitPixelEdit, HistoryStack } from './history'
 import { antiAliasSelection, appendPerfectPixelSegment, applySelectionTransform, applySelectionTranslationCommit, applySelectionTranslationPreview, bezierCurvePixelPoints, brushMaskOffsets, brushPathStampPoints, brushStampAnchor, brushStampDimensions, brushStrokeInvalidationRects, captureSelectionTransform, clearSelection, filledShapePathPixelPoints, fillSelectionOrCanvas, flipLayer, flipSelection, floodFill, floodFillSymmetric, inheritBrushPaintBaseline, lineShapePixelPoints, moveSelection, outlinePixelIndices, outlineSelection, outlineSelectionBoundary, paintBrush, paintBrushPath, paintLine, paintShape, paintShapePixelPoints, perfectPixelPathPoints, replaceLayerColor, rotatedShapePixelPoints, sampleCompositeColor, selectionTransformPreviewPacked, selectionTranslationPreviewEdit, shapeBoundaryPixelPoints, shapeContainsPixel, shapePixelPoints, solidBrushPreviewRowSpans, solidBrushStampDifferenceRects } from './tools'
@@ -400,6 +400,139 @@ describe('pixel tools', () => {
 
     expect(readLayerColor(document, layer, 0)).toEqual({ r: 255, g: 0, b: 0, a: 255 })
     expect(readLayerColor(document, layer, 1)).toEqual({ r: 0, g: 255, b: 0, a: 255 })
+  })
+
+  it('fills a contiguous region with the image brush colors and pattern alignment', () => {
+    const document = createDocument('pattern bucket', 4, 2, 'rgba')
+    const layer = getActiveLayer(document)
+    const brush = {
+      id: 'pattern-bucket-test',
+      name: 'Pattern bucket',
+      width: 2,
+      height: 1,
+      coverage: new Uint8Array([255, 255]),
+      colors: new Uint32Array([0xff0000ff, 0xff00ff00]),
+      intrinsicSize: true,
+      sourceX: 0,
+      sourceY: 0
+    }
+    const edit = floodFill(document, layer, 0, 0, { r: 255, g: 255, b: 255, a: 255 }, null, true, brush, 1, undefined, 'solid', 1, 0, 'pattern-source')
+    expect(edit).not.toBeNull()
+    expect(readLayerColorAt(document, layer, 0, 0)).toEqual({ r: 255, g: 0, b: 0, a: 255 })
+    expect(readLayerColorAt(document, layer, 1, 0)).toEqual({ r: 0, g: 255, b: 0, a: 255 })
+    expect(readLayerColorAt(document, layer, 2, 0)).toEqual({ r: 255, g: 0, b: 0, a: 255 })
+    expect(readLayerColorAt(document, layer, 3, 1)).toEqual({ r: 0, g: 255, b: 0, a: 255 })
+  })
+
+  it('supports regular pattern fill gaps without changing default tiling', () => {
+    const document = createDocument('regular pattern bucket', 6, 1, 'rgba')
+    const layer = getActiveLayer(document)
+    const brush = {
+      id: 'regular-pattern-test', name: 'Regular', width: 2, height: 1,
+      coverage: new Uint8Array([255, 255]), colors: new Uint32Array([packColor(red), packColor(blue)]), intrinsicSize: true
+    }
+    const edit = floodFill(document, layer, 0, 0, red, null, true, brush, 1, undefined, 'solid', 1, 0, 'pattern-source', 0, 0, undefined, undefined, 'regular', { randomDensity: 100, randomCount: 0, randomSpacing: 0, randomOverlap: false, regularCount: 0, regularSpacingX: 1, regularSpacingY: 0, regularOverlap: false, regularRowOffset: 0 })
+    expect(edit).not.toBeNull()
+    expect(readLayerColorAt(document, layer, 0, 0)).toEqual(red)
+    expect(readLayerColorAt(document, layer, 1, 0)).toEqual(blue)
+    expect(readLayerColorAt(document, layer, 2, 0).a).toBe(0)
+    expect(readLayerColorAt(document, layer, 3, 0)).toEqual(red)
+  })
+
+  it('regenerates random pattern fill on each click and keeps density controllable', () => {
+    const make = (density: number) => {
+      const document = createDocument('random pattern bucket', 4, 1, 'rgba')
+      const layer = getActiveLayer(document)
+      const brush = { id: 'random-pattern-test', name: 'Random', width: 2, height: 1, coverage: new Uint8Array([255, 255]), colors: new Uint32Array([packColor(red), packColor(blue)]), intrinsicSize: true }
+      floodFill(document, layer, 0, 0, red, null, true, brush, 1, undefined, 'solid', 1, 0, 'pattern-source', 0, 0, undefined, undefined, 'random', { randomDensity: density, randomCount: 0, randomSpacing: 0, randomOverlap: false, regularCount: 1, regularSpacingX: 0, regularSpacingY: 0, regularOverlap: false, regularRowOffset: 0 })
+      return Array.from({ length: 4 }, (_, x) => readLayerColorAt(document, layer, x, 0).a)
+    }
+    const random = vi.spyOn(Math, 'random').mockReturnValueOnce(0).mockReturnValueOnce(0.5).mockReturnValueOnce(0.75)
+    try {
+      expect(make(0)).toEqual([0, 0, 0, 0])
+      const first = make(100)
+      const second = make(100)
+      expect(first.some((alpha) => alpha > 0)).toBe(true)
+      expect(second).not.toEqual(first)
+      // Only draw one fresh seed for each fill, never for each sampled pixel.
+      expect(random).toHaveBeenCalledTimes(3)
+    } finally {
+      random.mockRestore()
+    }
+  })
+
+  it('fills complete random brush stamps and restores them through undo/redo', () => {
+    const document = createDocument('random pattern debug', 12, 12, 'rgba')
+    const layer = getActiveLayer(document)
+    const brush = { id: 'random-debug', name: 'Random', width: 3, height: 3, coverage: new Uint8Array(9).fill(255), colors: new Uint32Array(9).fill(packColor(red)), intrinsicSize: true }
+    const random = vi.spyOn(Math, 'random').mockReturnValue(0.2)
+    try {
+      const edit = floodFill(document, layer, 0, 0, red, null, true, brush, 1, undefined, 'solid', 1, 0, 'pattern-source', 0, 0, undefined, undefined, 'random', { randomDensity: 100, randomCount: 2, randomSpacing: 0, randomOverlap: true, regularCount: 0, regularSpacingX: 0, regularSpacingY: 0, regularOverlap: false, regularRowOffset: 0 })
+      expect(edit).not.toBeNull()
+      const painted = Array.from({ length: 144 }, (_, index) => readLayerColorAt(document, layer, index % 12, Math.floor(index / 12)).a > 0).filter(Boolean).length
+      expect(painted).toBeGreaterThanOrEqual(9)
+      expect(edit!.before.size).toBe(painted)
+      const entry = commitPixelEdit(document, edit!, 'random')
+      expect(entry).not.toBeNull()
+      const after = layer.pixels.slice()
+      entry!.undo()
+      expect(layer.pixels.every((value) => value === 0)).toBe(true)
+      entry!.redo()
+      expect(Array.from(layer.pixels)).toEqual(Array.from(after))
+    } finally {
+      random.mockRestore()
+    }
+  })
+
+  it('keeps random fills undoable when symmetry merges multiple stamp edits', () => {
+    const document = createDocument('symmetric random pattern', 16, 16, 'rgba')
+    const layer = getActiveLayer(document)
+    const brush = { id: 'random-symmetric', name: 'Random', width: 2, height: 2, coverage: new Uint8Array(4).fill(255), colors: new Uint32Array(4).fill(packColor(blue)), intrinsicSize: true }
+    const before = layer.pixels.slice()
+    const edit = floodFillSymmetric(document, layer, 2, 2, blue, null, true, brush, 1, undefined, 'solid', 1, 0, 'pattern-source', { horizontal: true, vertical: false, diagonalUp: false, diagonalDown: false }, { x: 8, y: 8 }, 0, 0, undefined, undefined, 'random', { randomDensity: 0, randomCount: 1, randomSpacing: 0, randomOverlap: true, regularCount: 0, regularSpacingX: 0, regularSpacingY: 0, regularOverlap: false, regularRowOffset: 0 })
+    expect(edit).not.toBeNull()
+    const painted = layer.pixels.slice()
+    const entry = commitPixelEdit(document, edit!, 'symmetric random')
+    expect(entry).not.toBeNull()
+    entry!.undo()
+    expect(Array.from(layer.pixels)).toEqual(Array.from(before))
+    entry!.redo()
+    expect(Array.from(layer.pixels)).toEqual(Array.from(painted))
+  })
+
+  it('does not collapse the default random pattern brush into isolated dots', () => {
+    const document = createDocument('default random pattern', 32, 32, 'rgba')
+    const layer = getActiveLayer(document)
+    const brush = { id: 'random-default', name: 'Random', width: 4, height: 4, coverage: new Uint8Array(16).fill(255), colors: new Uint32Array(16).fill(packColor(red)), intrinsicSize: true }
+    const edit = floodFill(document, layer, 0, 0, red, null, true, brush, 1, undefined, 'solid', 1, 0, 'pattern-source', 0, 0, undefined, undefined, 'random', { randomDensity: 100, randomCount: 0, randomSpacing: 0, randomOverlap: true, regularCount: 0, regularSpacingX: 0, regularSpacingY: 0, regularOverlap: false, regularRowOffset: 0 })
+    expect(edit).not.toBeNull()
+    const painted = Array.from({ length: 1024 }, (_, index) => readLayerColorAt(document, layer, index % 32, Math.floor(index / 32)).a > 0).filter(Boolean).length
+    expect(painted).toBeGreaterThan(32)
+    expect(painted / edit!.before.size).toBe(1)
+  })
+
+  it('generates random stamps from the contiguous region bounds', () => {
+    const document = createDocument('closed random region', 12, 12, 'rgba')
+    const layer = getActiveLayer(document)
+    for (let x = 2; x <= 8; x += 1) {
+      writeLayerColor(document, layer, 2 * 12 + x, blue)
+      writeLayerColor(document, layer, 8 * 12 + x, blue)
+    }
+    for (let y = 2; y <= 8; y += 1) {
+      writeLayerColor(document, layer, y * 12 + 2, blue)
+      writeLayerColor(document, layer, y * 12 + 8, blue)
+    }
+    const brush = { id: 'closed-random', name: 'Random', width: 3, height: 3, coverage: new Uint8Array(9).fill(255), colors: new Uint32Array(9).fill(packColor(red)), intrinsicSize: true }
+    const random = vi.spyOn(Math, 'random').mockReturnValue(0.5)
+    try {
+      const edit = floodFill(document, layer, 4, 4, red, null, true, brush, 1, undefined, 'solid', 1, 0, 'pattern-source', 0, 0, undefined, undefined, 'random', { randomDensity: 0, randomCount: 1, randomSpacing: 0, randomOverlap: true, regularCount: 0, regularSpacingX: 0, regularSpacingY: 0, regularOverlap: false, regularRowOffset: 0 })
+      expect(edit).not.toBeNull()
+      const painted = Array.from({ length: 144 }, (_, index) => readLayerColorAt(document, layer, index % 12, Math.floor(index / 12)).r === red.r).filter(Boolean).length
+      expect(painted).toBeGreaterThan(1)
+      expect(edit!.before.size).toBe(painted)
+    } finally {
+      random.mockRestore()
+    }
   })
 
 

@@ -12,6 +12,7 @@ import { activeCelMasksByLayer, normalCompositeLayers, opacityGroupCompositeStac
 import { simpleClippingLayers, compositeClippingLayers } from './document-composite-clipping'
 import { simpleLayerMaskLayers, compositeLayerMaskLayers } from './document-composite-mask'
 import { compositeNormalLayers, compositeOpacityGroupStack } from './document-composite-raster'
+import { compositeGroupEffectsRegion, groupEffectsPlan } from './document-composite-group-effects'
 import { compileCompositePointSampler, createCompositePointSampler, createCompositeSampler } from './document-composite-sampling'
 
 export function compositeRegion(document: SpriteDocument, startX: number, startY: number, width: number, height: number, cache?: DocumentCompositeCache, revision = 0, dirtyRect?: SelectionRect, sourceDirtyRect?: SelectionRect): Uint8ClampedArray {
@@ -37,7 +38,7 @@ export function compositeRegion(document: SpriteDocument, startX: number, startY
       return output
     }
     if (layer.kind !== 'adjustment' && !hasEnabledLayerStyles(layer.layerStyles) && !activeMasks.has(layer.id) && layer.opacity === 1 && layer.format === 'indexed') {
-      const palette = new Map(document.palette.map((entry) => [entry.id, entry.color]))
+      const palette = cache?.paletteColors(document.palette, revision) ?? new Map(document.palette.map((entry) => [entry.id, entry.color]))
       for (let y = 0; y < height; y += 1) for (let x = 0; x < width; x += 1) {
         const index = layerIndexAt(layer, startX + x, startY + y)
         const color = index === null ? TRANSPARENT : (palette.get(readSurfacePackedLocal(layer, index % layer.width, Math.floor(index / layer.width))) ?? TRANSPARENT)
@@ -46,14 +47,18 @@ export function compositeRegion(document: SpriteDocument, startX: number, startY
       return output
     }
   }
-  const clippingLayers = simpleClippingLayers(document)
+  // A mask can become non-neutral during a same-revision live stroke.
+  if (sourceDirtyRect) cache?.simpleLayerPlans.invalidate(document)
+  const clippingLayers = cache ? cache.simpleLayerPlans.clippingFor(document, revision) : simpleClippingLayers(document)
   if (clippingLayers) return compositeClippingLayers(document, clippingLayers, startX, startY, width, height, cache, revision, output, dirtyRect)
-  const layerMaskStack = simpleLayerMaskLayers(document)
+  const layerMaskStack = cache ? cache.simpleLayerPlans.masksFor(document, revision) : simpleLayerMaskLayers(document)
   if (layerMaskStack) return compositeLayerMaskLayers(document, layerMaskStack, startX, startY, width, height, cache, revision, output, dirtyRect)
   const normalLayers = cache ? cache.renderLayersFor(document, revision, sourceDirtyRect) : normalCompositeLayers(document)
-  if (normalLayers) return compositeNormalLayers(document, normalLayers, startX, startY, width, height, cache, revision, undefined, dirtyRect)
+  if (normalLayers) return compositeNormalLayers(document, normalLayers, startX, startY, width, height, cache, revision, output, dirtyRect)
   const opacityGroupStack = cache ? cache.renderStackFor(document, revision, sourceDirtyRect) : opacityGroupCompositeStack(document)
-  if (opacityGroupStack) return compositeOpacityGroupStack(document, opacityGroupStack, startX, startY, width, height, cache, revision, undefined, dirtyRect)
+  if (opacityGroupStack) return compositeOpacityGroupStack(document, opacityGroupStack, startX, startY, width, height, cache, revision, output, dirtyRect)
+  const groupEffects = cache ? cache.simpleLayerPlans.groupEffectsFor(document, revision) : groupEffectsPlan(document)
+  if (groupEffects) return compositeGroupEffectsRegion(document, groupEffects, startX, startY, width, height, cache, revision, output, dirtyRect)
   const gradientMapped = compositeGradientMapRegion(document, startX, startY, width, height, cache, revision, sourceDirtyRect ?? dirtyRect, output)
   if (gradientMapped) return gradientMapped
   const sample = compileCompositePointSampler(document, undefined, cache, revision, sourceDirtyRect)

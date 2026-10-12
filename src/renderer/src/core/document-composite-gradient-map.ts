@@ -6,6 +6,7 @@ import { type DocumentCompositeCache } from './document-composite-cache'
 import { compositeNormalLayers } from './document-composite-raster'
 import { createGradientMapPackedSampler } from './gradient-map'
 import { hasEnabledLayerStyles } from './layer-styles'
+import { acquireCompositeBuffer, releaseCompositeBuffer } from './buffer-pool'
 
 /** Block path for normal-blend maps; unsupported stack features keep the reference compositor. */
 export function compositeGradientMapRegion(document: SpriteDocument, startX: number, startY: number, width: number, height: number, cache?: DocumentCompositeCache, revision = 0, dirtyRect?: SelectionRect, output?: Uint8ClampedArray): Uint8ClampedArray | null {
@@ -50,16 +51,25 @@ export function compositeGradientMapRegion(document: SpriteDocument, startX: num
       if (!owner.visible || owner.opacity <= 0) continue
       if (item.kind === 'group') {
         if (owner.opacity === 1 && !containsAdjustment(item.children)) render(item.children, output)
-        else compositeNormalLayers(document, [proxy(render(item.children), owner.opacity)], startX, startY, width, height, undefined, revision, output)
+        else {
+          const source = acquireCompositeBuffer(width, height)
+          try {
+            render(item.children, source)
+            compositeNormalLayers(document, [proxy(source, owner.opacity)], startX, startY, width, height, undefined, revision, output)
+          } finally { releaseCompositeBuffer(source) }
+        }
         continue
       }
       const layer = item.layer
       if (layer.kind === 'adjustment') {
         if (layer.adjustment?.enabled) mapInto(output, layer, layer.opacity)
       } else if (hasEnabledLayerStyles(layer.layerStyles) && layer.layerStyles?.gradientMap?.enabled) {
-          const source = compositeNormalLayers(document, [{ ...layer, opacity: 1, layerStyles: undefined }], startX, startY, width, height)
+        const source = acquireCompositeBuffer(width, height)
+        try {
+          compositeNormalLayers(document, [{ ...layer, opacity: 1, layerStyles: undefined }], startX, startY, width, height, undefined, revision, source)
           mapInto(source, layer, 1)
           compositeNormalLayers(document, [proxy(source, layer.opacity)], startX, startY, width, height, undefined, revision, output)
+        } finally { releaseCompositeBuffer(source) }
       } else compositeNormalLayers(document, [layer], startX, startY, width, height, cache, revision, output, dirtyRect)
     }
     return output
