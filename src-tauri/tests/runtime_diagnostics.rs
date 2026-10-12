@@ -1,10 +1,10 @@
 // Exercise the actual file writer without launching a desktop application.
 #[allow(dead_code)]
-#[path = "../src/platform_diagnostics.rs"]
-mod platform_diagnostics;
-#[allow(dead_code)]
 #[path = "../src/platform_browser_trace.rs"]
 mod platform_browser_trace;
+#[allow(dead_code)]
+#[path = "../src/platform_diagnostics.rs"]
+mod platform_diagnostics;
 
 use platform_diagnostics::runtime_version_detail;
 use platform_diagnostics::{claim_visibility_intervention, visibility_probe_detail};

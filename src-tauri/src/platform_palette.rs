@@ -1233,15 +1233,12 @@ mod tests {
     }
 
     #[test]
-    fn imported_palette_layout_pads_partial_final_row() {
+    fn imported_palette_layout_pads_partial_final_row() -> Result<(), String> {
         let source = (0..115)
             .map(|index| format!("{} {} {} Color{index}\n", index, index, index))
             .collect::<String>();
-        let imported = linear_imported_palette(
-            "yozu".to_string(),
-            text_imported_colors(source.as_bytes()),
-        )
-        .expect("palette should import");
+        let imported =
+            linear_imported_palette("yozu".to_string(), text_imported_colors(source.as_bytes()))?;
 
         assert_eq!(imported.columns, 16);
         assert_eq!(imported.colors.len(), 115);
@@ -1254,8 +1251,8 @@ mod tests {
             Some(imported.columns),
             Some(imported.slots),
             "test",
-        )
-        .expect("padded layout should be valid");
+        )?;
+        Ok(())
     }
 
     #[test]

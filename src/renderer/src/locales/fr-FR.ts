@@ -2,6 +2,7 @@ import { convolutionEn } from './convolution'
 import { gradientMapEn } from './gradient-map'
 import { beta7En } from './release-beta7'
 import { beta8En } from './release-beta8'
+import { beta9En } from './release-beta9'
 import { spriteSheetImportfrFR } from './sprite-sheet-import'
 import type { TranslationCatalog } from './contracts'
 
@@ -18,6 +19,7 @@ export const frFRMessages = {
   ...convolutionEn,
   ...beta7En,
   ...beta8En,
+  ...beta9En,
   ...gradientMapEn,
   "toolOptions.temporaryBrushCaptureHint": "Pinceau temporaire : sélectionnez une zone, relâchez pour utiliser ; Échap pour annuler",
   "preferences.paintingCursor.cross": "Croix simple",

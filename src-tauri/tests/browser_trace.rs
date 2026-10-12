@@ -5,8 +5,10 @@ mod platform_browser_trace;
 #[path = "../src/platform_diagnostics.rs"]
 mod platform_diagnostics;
 
+use platform_browser_trace::{capture_kind, CaptureBudget, CaptureKind};
 use platform_browser_trace::{drain_stream_with_limit, finish, start, trace_config, Protocol};
 use serde_json::{json, Value};
+use std::time::{Duration, Instant};
 use std::{
     collections::VecDeque,
     sync::{
@@ -163,4 +165,108 @@ fn circular_recording_excludes_pixels_and_high_frequency_profiler() {
         .as_array()
         .unwrap()
         .contains(&json!("devtools.timeline")));
+}
+
+#[test]
+fn cpu_bursts_cannot_exhaust_incident_and_manual_evidence() {
+    let mut budget = CaptureBudget::default();
+    let start = Instant::now();
+    budget.check(CaptureKind::Cpu, start).unwrap();
+    budget.consume(CaptureKind::Cpu, start);
+    // Reproduce the historical sequence: three CPU bursts, then a real lag.
+    for seconds in [360, 480] {
+        assert!(budget
+            .check(CaptureKind::Cpu, start + Duration::from_secs(seconds))
+            .is_err());
+    }
+    let incident = start + Duration::from_secs(960);
+    budget.check(CaptureKind::Incident, incident).unwrap();
+    budget.consume(CaptureKind::Incident, incident);
+    assert!(budget
+        .check(CaptureKind::Incident, incident + Duration::from_secs(120))
+        .is_err());
+    budget.check(CaptureKind::Manual, incident).unwrap();
+    budget.consume(CaptureKind::Manual, incident);
+    assert_eq!(budget.total(), 3);
+    for kind in [CaptureKind::Cpu, CaptureKind::Incident, CaptureKind::Manual] {
+        assert!(budget
+            .check(kind, incident + Duration::from_secs(120))
+            .is_err());
+    }
+}
+
+#[test]
+fn incident_and_manual_save_do_not_inherit_cpu_cooldown() {
+    let mut budget = CaptureBudget::default();
+    let now = Instant::now();
+    budget.consume(CaptureKind::Cpu, now);
+    budget
+        .check(CaptureKind::Incident, now + Duration::from_secs(1))
+        .unwrap();
+    budget.consume(CaptureKind::Incident, now + Duration::from_secs(1));
+    budget
+        .check(CaptureKind::Manual, now + Duration::from_secs(2))
+        .unwrap();
+}
+
+#[test]
+fn repeated_incidents_observe_cooldown_and_reserve_manual_slot() {
+    let mut budget = CaptureBudget::default();
+    let now = Instant::now();
+    budget.consume(CaptureKind::Incident, now);
+    assert!(budget
+        .check(CaptureKind::Incident, now + Duration::from_secs(119))
+        .is_err());
+    let later = now + Duration::from_secs(120);
+    budget.check(CaptureKind::Incident, later).unwrap();
+    budget.consume(CaptureKind::Incident, later);
+    assert!(budget.check(CaptureKind::Cpu, later).is_err());
+    assert!(budget
+        .check(CaptureKind::Incident, later + Duration::from_secs(120))
+        .is_err());
+    budget.check(CaptureKind::Manual, later).unwrap();
+}
+
+#[test]
+fn manual_requests_remain_bounded_and_rejected_requests_spend_nothing() {
+    let mut budget = CaptureBudget::default();
+    let now = Instant::now();
+    for index in 0..3 {
+        let at = now + Duration::from_secs(index * 120);
+        budget.check(CaptureKind::Manual, at).unwrap();
+        budget.consume(CaptureKind::Manual, at);
+        assert!(budget.check(CaptureKind::Manual, at).is_err());
+        assert_eq!(budget.total(), index as usize + 1);
+    }
+    assert!(budget
+        .check(CaptureKind::Manual, now + Duration::from_secs(360))
+        .is_err());
+}
+
+#[test]
+fn heartbeat_timeout_has_incident_priority_even_when_cpu_is_hot() {
+    assert_eq!(
+        capture_kind(
+            "native-cpu-or-heartbeat",
+            &json!({"heartbeatAgeMs": 30_000, "sustainedHotSamples": 2})
+        ),
+        CaptureKind::Incident
+    );
+    assert_eq!(
+        capture_kind(
+            "native-cpu-or-heartbeat",
+            &json!({"heartbeatAgeMs": 29_999, "sustainedHotSamples": 2})
+        ),
+        CaptureKind::Cpu
+    );
+    assert_eq!(
+        capture_kind("native-cpu-or-heartbeat", &json!({"heartbeatAgeMs": null})),
+        CaptureKind::Cpu
+    );
+    assert_eq!(
+        capture_kind("renderer-incident", &json!({})),
+        CaptureKind::Incident
+    );
+    assert_eq!(capture_kind("manual-save", &json!({})), CaptureKind::Manual);
+    assert_eq!(capture_kind("unknown", &json!({})), CaptureKind::Cpu);
 }

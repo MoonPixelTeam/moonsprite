@@ -101,7 +101,11 @@ fn acceptance(
     let version = protocol.call("Browser.getVersion", json!({}))?;
     let mut runs = vec![];
     for pair in 0..3 {
-        for enabled in if pair == 1 { [true, false] } else { [false, true] } {
+        for enabled in if pair == 1 {
+            [true, false]
+        } else {
+            [false, true]
+        } {
             let recording = if enabled {
                 Some(platform_browser_trace::start(&protocol)?)
             } else {

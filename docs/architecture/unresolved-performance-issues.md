@@ -80,7 +80,7 @@ Compositor CPU 总量和每秒峰值
 - **未知点**：最初未返回/迟到 ACK 的触发者，队列何时首次进入停滞，以及业务/HMR/诊断/Runtime 各自的责任。
 - **现场状态变更**：21:21 撤除临时 Vite 模块后整页热重载，旧 session 在 13:21:20.413 UTC 结束，3 秒后出现新 renderer.started；PID 未变。随后 tracker=0/pending=2 是**重载对照**，不是生命周期干预或修复。[重置时间线](../../output/live-lag-20261009/run39108-page-reset.json)。
 - **独立接口验收**：Runtime 155 的 [独立对照报告](../../output/live-lag-20261009/isolated-recovery-findings.md) 已确认官方 controller `SetIsVisible(false/true)` 保留页面身份/timeOrigin，正常窗口的帧统计计数重置后继续增长、输入 P95 约 10 ms。单次 12 秒 JS 阻塞未复现长期堆积；CDP frozen/active/bringToFront 在独立窗口仍留下 hidden 状态，撤回其作为通用恢复方法的建议。**没有异常现场恢复或性能改善证据**。
-- **唯一下一步**：在发生下一次现场之前准备原窗口的原生 controller 可见性控制通道；真实堆积时先保存 before，再只做一次 false/true，比较同页面的 tracker、排序推进、CPU 和输入等待。当前主程序尚未接入该通道，不得临场改 Rust、新增/删除 Vite 模块。即使成功，也先记为恢复机制，不直接记为长期根治。
+- **唯一下一步**：使用下文已接入的原生 controller 可见性控制通道；真实堆积时先保存 before，再只做一次 false/true，比较同页面的 tracker、排序推进、CPU 和输入等待。需要提前运行包含该通道的实例，不得临场改 Rust、新增/删除 Vite 模块。即使成功，也先记为恢复机制，不直接记为长期根治。
 - **通道已就绪（2026-10-09）**：主程序现在有 `platform_diagnostics::set_webview_visible(visible)` 命令，直接驱动 `ICoreWebView2Controller::SetIsVisible`（webview2-com 0.38.2，`SetIsVisible(bool)` / `IsVisible(*mut BOOL)`，`src/platform_diagnostics.rs:270`）。这次改动**在无现场时完成**，因此不触碰"不得临场改 Rust、新增/删除 Vite 模块"这条约束：它是准备物，不是现场手术。三点设计约束：① 每次布置会把请求值与 controller **实际读回**的值（`prior`/`settled`）一起写入 `webview.visibility-intervention` 事件，因为被拒绝的隐藏（模态子窗口、已在可见性切换中）必须可辨认，不能被读成"实验失败"；② 单次干预闸门 `claim_visibility_intervention` 每会话只放行一次 false/true，重复请求直接报错而不是静默叠加，两次干预的 before/after 证据无法事后区分；③ 只有 dispatch 本身失败才退回闸门，超时**故意不退回**——controller 可能已经改变状态，重试会叠加上第二次切换。命令注册在 `lib.rs`，闸门与载荷有单元测试。
 - **注意**：该通道**尚未生效于正在运行的 PID 1660 实例**，它是本次改动之前启动的二进制；验证需要在**新构建的实例**里发生，或者在下一个现场里用它。按上文约束，下一个现场仍应：先在 lag 模式下保存 before trace，再调用一次 `set_webview_visible(false)`，等 60 秒静止，再调用一次 `set_webview_visible(true)`，最后保存 after trace，比较同一页面的 tracker、排序推进、CPU 和输入等待。
 - **验收标准**：统一验收门槛；同页面连续操作不再滞留，输入恢复需与原生状态恢复同时发生。
@@ -155,8 +155,8 @@ Compositor CPU 总量和每秒峰值
 - **首次发现**：2026-10-08 调查阶段
 - **最近证据**：`getCurrentWebview().hide/show()` 因 Tauri 权限 `core:webview:allow-webview-hide` 被拒；Protocol Monitor frozen/active 对照尚未在累积现场执行。
 - **用户可见现象**：页面重载可以清零状态并恢复跟手，但代价是丢失当前现场，不能作为可交付修复。
-- **当前判断**：可能存在无需重启的生命周期恢复手段，但当前权限和实验时机不足以判断；不能修改权限或写浏览器私有内存来“清理”。
-- **唯一下一步实验**：只在 U-01 再次达到阈值后，通过已开放的 CDP Page 生命周期接口执行一次 frozen→active，并保存前后 sorter/tracker/输入数据。
+- **当前判断**：可能存在无需重启的生命周期恢复手段，但异常现场恢复效果尚未验证；官方 controller 通道已接入，见 U-01。旧 CDP frozen/active 对照在独立窗口留下 hidden 状态，已撤回通用恢复建议；不能写浏览器私有内存来“清理”。
+- **唯一下一步实验**：只在 U-01 再次达到阈值后，按 U-01 的官方 controller false/true 流程保存同页面前后 sorter/tracker/输入数据。阻塞点是缺少异常现场因果验证，不再是通道未接入。
 - **验收标准**：如果只恢复输入但 tracker 仍增长，记录为临时缓解；只有状态有界且连续长时稳定才可进入 `fixed`。
 
 ### U-06 · P2 · WebView Runtime 版本依赖未定
@@ -182,6 +182,7 @@ Compositor CPU 总量和每秒峰值
 - **测试证据缺口**：`raf-leak-verification.test.ts` 大部分测试只重复理想清理代码，没有导入相应生产组件；`memory-leak-test.test.ts` 的 RAF 计数使用自建 ID，却返回原生 ID，完成 callback 不减计数，缺少 heap API 时把内存当作 0。这些测试不得用于证明“越用越卡已解决”；该结论不影响审计报告中真正导入生产缓存的定向测试。
 - **2026-10-09 进展**：原生采集及开销验收通过；公开协议仍不提供私有 tracker/FrameSorter 数量，原始根因仍未关闭。
 - **最新确认缺口**：runId=`live-lag-20261009` 的三次自动原生保存额度在 16:35、16:41、16:43 被高 CPU 触发耗尽，16:51 后严重 incident 只能得到 `Browser trace not recording` / `captures:3`。已用独立 DevTools 补录并保存 24.577 秒现场；需要修正额度/触发策略及真实高频输入开销验收，当前未修改原生代码或重启窗口。[现场记录](../../output/live-lag-20261009/findings.md)。
+- **额度策略修正（2026-10-12）**：保留每宿主最多 3 次导出尝试（失败/部分导出也占额度），CPU 单独触发最多 1 次，自动触发合计最多 2 次，剩余额度供手动保存；输入 incident 和心跳超时使用同一类额度。120 秒冷却按触发类别计算，CPU 保存不会阻挡紧接着发生的真实 incident 或手动保存。达到 CPU/自动限额后继续保留循环录制，拒绝原因明确区分额度预留、冷却与未录制。该改动修复提前耗尽额度的缺陷，尚不代表 U-07 的全部观测缺口或 U-01～U-03 已解决；真实长时开销仍待验收。
 - **唯一下一步实验**：在干净的 155 会话中使用真实工程长期操作，保存首次输入延迟前后的 native trace，比较正常/异常 EventLatency、输入相关 Swap/Presentation 流，定位最初反馈缺口。页面重载不能代替因果验证。
 - **验收标准**：诊断开启对冷态和长测的 CPU/输入 P95 增量 ≤5%；关闭后不留 wrapper、listener、RAF 或缓存引用。
 
@@ -200,7 +201,7 @@ Compositor CPU 总量和每秒峰值
 
 1. Windows 宿主通过 WebView2 官方 `CallDevToolsProtocolMethod` 访问当前 controller，不依赖用户打开 DevTools、额外远程调试端口或重启。先确认实际 Runtime 支持 `Tracing`/`IO`，失败写入能力状态，禁止静默回退成“采集成功”。
 2. 仅在 lag 模式启动 16 MiB 循环缓冲，常驻类别最终收紧为 `input`、`latencyInfo`。真实 trace 含 Compositor、CrRendererMain、EventLatency、InputLatency、Swap、SubmitCompositorFrameToPresentationCompositorFrame、PresentedFrameInformation。它保存与输入相关的帧反馈，不连续记录所有帧的 BeginFrame/Commit；默认不采截图、heap dump 和 CPU 高频采样。
-3. `lag.incident`、原生连续两次单进程 CPU ≥75% 单核或可见页面心跳超时触发保存，保留缓冲前段和 5 秒后段。“帮助 → 打开诊断日志”也触发保存。每次宿主运行最多 3 次，间隔至少 120 秒；单文件导出上限 128 MiB、流读取上限 60 秒，部分文件和失败原因保留，不删除旧 trace。
+3. `lag.incident`、原生连续两次单进程 CPU ≥75% 单核或可见页面心跳超时触发保存，保留缓冲前段和 5 秒后段。“帮助 → 打开诊断日志”也触发保存。每次宿主运行最多 3 次导出尝试，CPU 单独触发最多 1 次、自动触发合计最多 2 次，为手动保存保留额度；同类触发间隔至少 120 秒，不同类别不共用冷却。单文件导出上限 128 MiB、流读取上限 60 秒，部分文件和失败原因保留，不删除旧 trace。
 4. 导出配套 manifest：incident/session ID、Runtime、PID、页面/HMR 状态、工程摘要、采集启停与失败原因、trace 是否截断。公开协议**不直接提供私有 tracker/FrameSorter 数量**，不得承诺必然采到这些数值；必要时依据线程和反馈事件继续定向分析。
 5. 停用、页面重建和宿主退出必须清理自身回调/定时器；不覆盖 DevTools 或其它窗口已启动的 trace。保存错误进入现有可观测通道，不自动重载、清缓存或修改工程。
 6. 独立真实 WebView2 **155.0.4283.45**，复用产品 COM 桥、循环录制和流式导出；同一窗口三组各 60 秒开启/关闭对照。工作负载为 4K 画布、2,000 个色块、持续 RAF 绘制、约 20 Hz 协议输入与滚轮。原始数据和分析见 [最终验收](../../output/native-trace-20261009-input/analysis.json)、[完整检查](../../output/native-trace-20261009/check-final.txt)。这是采集能力测试，不能代替真实工程长期复现或系统鼠标输入验收。
@@ -237,6 +238,8 @@ Compositor CPU 总量和每秒峰值
 | 2026-10-09 | U-02 真机逐条分解，runId=`run39108`，Runtime 155.0.4283.45 | [sorter-stall-155.json](../../output/live-lag-20261009/sorter-stall-155.json)：队列 0–297 条全部 `Begin==Ack`，仅末尾两条（298、299）为 `Begin=1/Ack=0`。阻塞点是**队尾两个缺 ACK 的帧**，队首自身早已完成；两份快照相隔 157.729 秒逐字段相同，队列不自愈。此结论读自在跑的 155 进程，不再依赖 154 偏移推断。仍未证明缺 ACK 的最初成因与恢复因果。 |
 | 2026-10-09 | 接入原生 controller 可见性控制通道（无现场时准备），`platform_diagnostics::set_webview_visible` + `WebviewDiagnosticAction::SetVisible` | 驱动 `ICoreWebView2Controller::SetIsVisible`，回读 `IsVisible` 并把 `requested`/`observed`/`applied`/`prior` 写入 `webview.visibility-intervention` 事件；单次干预闸门每会话只放行一次 false/true，重复请求报错，超时不退回闸门（避免叠加第二次切换）。命令已注册，闸门与载荷有测试，`cargo check --tests` 通过。**PID 1660 实例不含此改动**，通道要新构建才生效。这是 U-01 的**准备物**，不是已证实的恢复手段。 |
 
-下一次更新必须追加：新的 `runId`、Runtime 完整版本、原始数据文件链接，以及问题状态变化的理由。
+| 2026-10-12 | U-07 采集额度与冷却策略修正（代码修复，无新异常现场） | CPU 最多 1 次、自动合计最多 2 次、宿主合计最多 3 次；同类冷却 120 秒，真实 incident/手动保存不继承 CPU 冷却。`src-tauri/tests/browser_trace.rs` 新增 5 个生产策略回归测试；本次编译的测试程序 15/15 通过。`pnpm check:dev -- --risk=high src-tauri/src/platform_browser_trace.rs src-tauri/tests/browser_trace.rs docs/architecture/unresolved-performance-issues.md` 在更新被运行实例占用的 `moonsprite.exe` 时失败，随后直接执行已生成的新测试程序通过，未关闭运行实例。无新的 runId/Runtime 现场数据，U-01～U-03 与 U-07 整体状态不变，长时开销未验收。同步移除 U-01/U-05 正文中过时的通道未接入和 CDP 恢复建议。 |
+
+下一次现场更新必须追加：新的 `runId`、Runtime 完整版本、原始数据文件链接，以及问题状态变化的理由。
 
 dev/production 对照必须使用同一 Runtime、工程、操作负载和诊断配置。结果用于比较触发概率，不是 HMR 的二选一定罪/排除规则。

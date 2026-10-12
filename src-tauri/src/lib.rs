@@ -10,6 +10,7 @@ use tauri::{AppHandle, DragDropEvent, Emitter, Manager, State, WindowEvent};
 
 mod close_coordinator;
 mod platform_background_presets;
+mod platform_browser_trace;
 mod platform_brushes;
 mod platform_clipboard;
 mod platform_cursor;
@@ -21,7 +22,6 @@ mod platform_files;
 mod platform_fonts;
 mod platform_gallery;
 mod platform_lag_diagnostics;
-mod platform_browser_trace;
 mod platform_local_history;
 mod platform_palette;
 mod platform_paths;
@@ -110,7 +110,9 @@ fn close_listener_ready(
 async fn approve_close(app: AppHandle, state: State<'_, AppState>) -> Result<(), String> {
     state.close_requests.cancel();
     platform_recovery::mark_session(&app, true)?;
-    if let Err(error) = platform_browser_trace::shutdown(app.clone()).await { eprintln!("Browser trace exit cleanup: {error}"); }
+    if let Err(error) = platform_browser_trace::shutdown(app.clone()).await {
+        eprintln!("Browser trace exit cleanup: {error}");
+    }
     app.exit(0);
     Ok(())
 }

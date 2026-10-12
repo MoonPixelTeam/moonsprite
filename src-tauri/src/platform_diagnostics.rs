@@ -95,9 +95,21 @@ pub(crate) fn record_runtime_version(app: &AppHandle) {
 // SDK calls stay on the controller's UI thread. No COM pointer leaves it.
 pub(crate) enum WebviewDiagnosticAction {
     InstallFailure,
-    Call { method: &'static str, params: String, reply: std::sync::mpsc::Sender<Result<String, String>> },
-    Subscribe { event: &'static str, events: std::sync::mpsc::Sender<Result<String, String>>, reply: std::sync::mpsc::Sender<Result<String, String>> },
-    Unsubscribe { event: &'static str, token: i64, reply: std::sync::mpsc::Sender<Result<String, String>> },
+    Call {
+        method: &'static str,
+        params: String,
+        reply: std::sync::mpsc::Sender<Result<String, String>>,
+    },
+    Subscribe {
+        event: &'static str,
+        events: std::sync::mpsc::Sender<Result<String, String>>,
+        reply: std::sync::mpsc::Sender<Result<String, String>>,
+    },
+    Unsubscribe {
+        event: &'static str,
+        token: i64,
+        reply: std::sync::mpsc::Sender<Result<String, String>>,
+    },
     /// Drives `ICoreWebView2Controller::SetIsVisible` on the host UI thread.
     ///
     /// This is the only lever the host has over the browser compositor's
@@ -106,7 +118,10 @@ pub(crate) enum WebviewDiagnosticAction {
     /// reached from the renderer, because a renderer that is queued behind
     /// compositor work cannot issue its own rescue. The reply carries the state
     /// observed before and after the change (prior, settled).
-    SetVisible { visible: bool, reply: std::sync::mpsc::Sender<Result<(bool, bool), String>> },
+    SetVisible {
+        visible: bool,
+        reply: std::sync::mpsc::Sender<Result<(bool, bool), String>>,
+    },
 }
 
 /// Builds the payload the diagnostic log keeps for one visibility transition.
@@ -115,7 +130,11 @@ pub(crate) enum WebviewDiagnosticAction {
 /// observed state, because a controller that refuses to hide (a modal child, or a
 /// browser already inside a visibility transition) would otherwise be read as a
 /// failed experiment rather than an experiment that never ran.
-pub fn visibility_probe_detail(requested: bool, observed: bool, prior: Option<bool>) -> serde_json::Value {
+pub fn visibility_probe_detail(
+    requested: bool,
+    observed: bool,
+    prior: Option<bool>,
+) -> serde_json::Value {
     serde_json::json!({
         "requested": requested,
         "observed": observed,
@@ -205,8 +224,14 @@ pub(crate) async fn set_webview_visible(app: AppHandle, visible: bool) -> Result
 }
 
 #[cfg(windows)]
-pub(crate) fn dispatch_webview_diagnostic(window: &tauri::WebviewWindow, action: WebviewDiagnosticAction) -> tauri::Result<()> {
-    use webview2_com::{Microsoft::Web::WebView2::Win32::*, ProcessFailedEventHandler, CallDevToolsProtocolMethodCompletedHandler, DevToolsProtocolEventReceivedEventHandler};
+pub(crate) fn dispatch_webview_diagnostic(
+    window: &tauri::WebviewWindow,
+    action: WebviewDiagnosticAction,
+) -> tauri::Result<()> {
+    use webview2_com::{
+        CallDevToolsProtocolMethodCompletedHandler, DevToolsProtocolEventReceivedEventHandler,
+        Microsoft::Web::WebView2::Win32::*, ProcessFailedEventHandler,
+    };
     use windows_core::Interface;
 
     let target = window.clone();
@@ -270,13 +295,13 @@ pub(crate) fn dispatch_webview_diagnostic(window: &tauri::WebviewWindow, action:
                     WebviewDiagnosticAction::SetVisible { visible, reply } => {
                         let result = (|| -> windows_core::Result<(bool, bool)> {
                             let mut before = Default::default();
-                            let _ = webview.controller().IsVisible(&mut before);
+                            webview.controller().IsVisible(&mut before)?;
                             webview.controller().SetIsVisible(visible)?;
                             // Read back from the controller rather than echoing the
                             // request: what the compositor saw is the part worth
                             // logging.
                             let mut after = Default::default();
-                            let _ = webview.controller().IsVisible(&mut after);
+                            webview.controller().IsVisible(&mut after)?;
                             Ok((before.as_bool(), after.as_bool()))
                         })();
                         let result = result.map_err(|error| error.to_string());

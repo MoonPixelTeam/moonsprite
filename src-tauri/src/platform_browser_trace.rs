@@ -21,6 +21,64 @@ const MAX_CAPTURES: usize = 3;
 const POST_TRIGGER: Duration = Duration::from_secs(5);
 const COOLDOWN: Duration = Duration::from_secs(120);
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum CaptureKind {
+    Cpu = 0,
+    Incident = 1,
+    Manual = 2,
+}
+pub(crate) fn capture_kind(reason: &str, context: &Value) -> CaptureKind {
+    match reason {
+        "manual-save" => CaptureKind::Manual,
+        "renderer-incident" => CaptureKind::Incident,
+        "native-cpu-or-heartbeat"
+            if context["heartbeatAgeMs"]
+                .as_u64()
+                .is_some_and(|age| age >= 30_000) =>
+        {
+            CaptureKind::Incident
+        }
+        _ => CaptureKind::Cpu,
+    }
+}
+
+// Keep the same disk bound, but reserve evidence for real incidents and a
+// user's explicit save. CPU load alone must never spend those allowances.
+#[derive(Default)]
+pub(crate) struct CaptureBudget {
+    counts: [usize; 3],
+    last_capture: [Option<Instant>; 3],
+}
+impl CaptureBudget {
+    pub(crate) fn total(&self) -> usize {
+        self.counts.iter().sum()
+    }
+    pub(crate) fn check(&self, kind: CaptureKind, now: Instant) -> Result<(), String> {
+        if self.total() >= MAX_CAPTURES {
+            return Err("Browser trace session budget exhausted (3 captures)".into());
+        }
+        if kind != CaptureKind::Manual && self.counts[0] + self.counts[1] >= 2 {
+            return Err("Browser trace remaining budget reserved for manual save".into());
+        }
+        if kind == CaptureKind::Cpu && self.counts[0] >= 1 {
+            return Err(
+                "Browser trace CPU budget exhausted; reserved for incident/manual save".into(),
+            );
+        }
+        if self.last_capture[kind as usize]
+            .is_some_and(|at| now.saturating_duration_since(at) < COOLDOWN)
+        {
+            return Err("Browser trace cooldown for this trigger kind (120 seconds)".into());
+        }
+        Ok(())
+    }
+    pub(crate) fn consume(&mut self, kind: CaptureKind, now: Instant) {
+        // Failed/partial exports also count toward the disk bound.
+        self.counts[kind as usize] += 1;
+        self.last_capture[kind as usize] = Some(now);
+    }
+}
+
 pub(crate) trait Protocol {
     fn call(&self, method: &'static str, params: Value) -> Result<Value, String>;
     fn subscribe(&self) -> Result<(i64, Receiver<Result<String, String>>), String>;
@@ -450,6 +508,8 @@ pub(crate) fn export(
         "browserVersion": browser_version.as_ref().ok(), "browserVersionError": browser_version.as_ref().err(),
         "processes": process_inventory(),
         "config": trace_config(), "maxExportBytes": MAX_TRACE_BYTES, "maxSessionCaptures": MAX_CAPTURES,
+        "captureKind": format!("{:?}", capture_kind(reason, &context)),
+        "capturePolicy": {"maxCpuCaptures": 1, "maxAutomaticCaptures": 2, "cooldownPerKindSeconds": 120},
         "result": result.as_ref().ok(), "error": result.as_ref().err(), "privateTrackerCountsAvailable": false});
     let mut file = OpenOptions::new()
         .write(true)
@@ -468,8 +528,7 @@ fn run(
     status: Arc<Mutex<Value>>,
 ) {
     let mut recording = None;
-    let mut captures = 0usize;
-    let mut last_capture: Option<Instant> = None;
+    let mut budget = CaptureBudget::default();
     while let Ok(command) = commands.recv() {
         match command {
             Command::Shutdown(reply) => {
@@ -490,14 +549,14 @@ fn run(
                         &status,
                         json!({"state": "off", "cleanupError": result.and_then(Result::err)}),
                     );
-                } else if recording.is_none() && captures < MAX_CAPTURES {
+                } else if recording.is_none() && budget.total() < MAX_CAPTURES {
                     match start(&protocol) {
                         Ok(r) => {
                             recording = Some(r);
                             update(
                                 &app,
                                 &status,
-                                json!({"state": "recording", "captures": captures, "bufferKiB": 16384}),
+                                json!({"state": "recording", "captures": budget.total(), "bufferKiB": 16384}),
                             );
                         }
                         Err(e) => update(
@@ -506,11 +565,11 @@ fn run(
                             json!({"state": "unavailable", "error": e, "retry": "explicit-re-enable"}),
                         ),
                     }
-                } else if captures >= MAX_CAPTURES {
+                } else if budget.total() >= MAX_CAPTURES {
                     update(
                         &app,
                         &status,
-                        json!({"state": "budget-exhausted", "captures": captures, "maxSessionCaptures": MAX_CAPTURES}),
+                        json!({"state": "budget-exhausted", "captures": budget.total(), "maxSessionCaptures": MAX_CAPTURES}),
                     );
                 }
             }
@@ -519,10 +578,11 @@ fn run(
                 context,
                 reply,
             } => {
-                let result = if recording.is_none() {
+                let kind = capture_kind(&reason, &context);
+                let result = if let Err(error) = budget.check(kind, Instant::now()) {
+                    Err(error)
+                } else if recording.is_none() {
                     Err("Browser trace not recording".into())
-                } else if last_capture.is_some_and(|t| t.elapsed() < COOLDOWN) {
-                    Err("Browser trace cooldown (120 seconds)".into())
                 } else {
                     update(
                         &app,
@@ -572,9 +632,8 @@ fn run(
                             }
                             cleanup.and(Err("Capture cancelled because lag mode stopped".into()))
                         } else {
-                            captures += 1;
-                            last_capture = Some(Instant::now());
-                            export(&app, &protocol, active, &reason, context, captures)
+                            budget.consume(kind, Instant::now());
+                            export(&app, &protocol, active, &reason, context, budget.total())
                         }
                     } else {
                         Err("Trace ownership unavailable".into())
@@ -588,9 +647,9 @@ fn run(
                 update(
                     &app,
                     &status,
-                    json!({"state": if result.is_ok() { "saved" } else { "capture-rejected-or-failed" }, "capture": result.as_ref().ok(), "error": result.as_ref().err(), "captures": captures}),
+                    json!({"state": if result.is_ok() { "saved" } else { "capture-rejected-or-failed" }, "capture": result.as_ref().ok(), "error": result.as_ref().err(), "captures": budget.total(), "captureKind": format!("{kind:?}"), "recording": recording.is_some(), "remainingCaptures": MAX_CAPTURES - budget.total()}),
                 );
-                if result.is_ok() && captures < MAX_CAPTURES {
+                if result.is_ok() && budget.total() < MAX_CAPTURES {
                     match start(&protocol) {
                         Ok(r) => {
                             recording = Some(r);
