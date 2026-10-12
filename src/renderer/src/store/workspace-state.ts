@@ -149,7 +149,7 @@ export interface WorkspaceToolCommands {
   setBrushDynamicsMapping(effect: BrushDynamicsEffect, patch: Partial<BrushDynamicsMapping>): void
   setBrushDynamicsGradientDither(dither: GradientDither): void
   setBrushPressure(settings: Partial<BrushPressureSettings>): void
-  setBrushImage(brush: ImageBrush | null): void
+  setBrushImage(brush: ImageBrush | null, fillBrushes?: readonly ImageBrush[]): void
   setTemporaryBrush(brush: ImageBrush): void
   beginTemporaryBrushCapture(): void
   finishTemporaryBrushCapture(selection: SelectionMask): void

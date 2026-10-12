@@ -570,6 +570,9 @@ export const EditorToolOptions = memo(function EditorToolOptions({ onOpenColorRe
   )
   // Retain the display projection while editing, without changing the canvas tool.
   const session = storedSession ? applyQuickToolTarget(storedSession, optionsInteraction.value.quickToolMatch?.target ?? null) : null
+  useEffect(() => {
+    if (session?.brushPaintMode !== 'paint') setFillPatternDialogMode(null)
+  }, [session?.brushPaintMode])
   // Size/opacity changes do not change the four procedural brush textures.
   const proceduralSettings = session?.proceduralBrushSettings
   const proceduralBrushes = useMemo(() => proceduralSettings ? createProceduralBrushes(proceduralSettings) : [], [proceduralSettings, locale])
@@ -1107,7 +1110,7 @@ export const EditorToolOptions = memo(function EditorToolOptions({ onOpenColorRe
       {showBrushAngle && <div className="brush-size-control brush-angle-control"><NumberInput aria-label={t('toolOptions.brushRotationValue')} density="compact" min={-180} max={180} step={1} suffix="°" value={Math.round(session.brushAngle)} onValueChange={workspace.setBrushAngle} onFocus={() => setBrushAngleFlyoutOpen(true)} />{brushAngleFlyoutOpen && <div className="brush-size-popover" role="dialog" aria-label={t('toolOptions.adjustBrushRotation')}><RangeField ariaLabel={t('toolOptions.brushRotationSlider')} density="compact" min={-180} max={180} step={1} suffix="°" value={Math.round(session.brushAngle)} onChange={workspace.setBrushAngle} /></div>}</div>}
       {(activeLibraryBrush || activeProceduralBrush) && <span className="brush-pattern-options">
         {activeLibraryBrush?.intrinsicSize && <span className="brush-paint-mode-select" title={t('toolOptions.brushModeHint')}><ThemedSelect<BrushPaintMode> density="compact" value={session.brushPaintMode} groups={brushPaintModeGroups} label={t('toolOptions.brushMode')} popoverWidth={148} onChange={workspace.setBrushPaintMode} /></span>}
-        {isBucketBrushTool && session.brushImage && <FillPatternControl mode={session.fillPatternMode} settings={session.fillPatternSettings} onOpen={() => { if (session.fillPatternMode !== 'default') setFillPatternDialogMode(session.fillPatternMode) }} onModeChange={workspace.setFillPatternMode} onChange={workspace.setFillPatternSettings} t={t} />}
+        {isBucketBrushTool && session.brushImage && session.brushPaintMode === 'paint' && <FillPatternControl mode={session.fillPatternMode} settings={session.fillPatternSettings} onOpen={() => { if (session.fillPatternMode !== 'default') setFillPatternDialogMode(session.fillPatternMode) }} onModeChange={workspace.setFillPatternMode} onChange={workspace.setFillPatternSettings} t={t} />}
       </span>}
       {session.tool === 'pencil' && <FormField className="line-direction-step-control" layout="inline" label={t('toolOptions.lineDirectionStep')} tooltip={t('toolOptions.lineDirectionStepHint')}><NumberInput aria-label={t('toolOptions.lineDirectionStep')} density="compact" min={1} max={16} value={lineDirectionStep} onValueChange={updateLineDirectionStep} /></FormField>}
       {(session.tool === 'pencil' || session.tool === 'smooth' || session.tool === 'eraser' || session.tool === 'line') && <CheckboxField className="tool-checkbox" checked={session.perfectPixels} label={t('toolOptions.perfectPixels')} onChange={workspace.setPerfectPixels} />}

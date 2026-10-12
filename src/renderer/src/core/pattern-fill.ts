@@ -4,11 +4,10 @@ import { MAX_PATTERN_STAMPS, normalizeFillPatternSettings } from './pattern-fill
 export { DEFAULT_FILL_PATTERN_SETTINGS } from './pattern-fill-settings'
 
 export interface PatternStamp {
-  x: number; y: number; scale: number; angle: number; cos: number; sin: number
-  halfWidth: number; halfHeight: number; tint: [number, number, number]; brightness: number
+  x: number; y: number; halfWidth: number; halfHeight: number; brushIndex: number
 }
 
-// Integer PRNG: positions, rotation, scale and tint consume independent draws.
+// Integer PRNG for random stamp positions.
 function randomGenerator(seed: number): () => number {
   let state = seed >>> 0
   return () => {
@@ -19,18 +18,17 @@ function randomGenerator(seed: number): () => number {
   }
 }
 
-function stamp(x: number, y: number, scale: number, angle: number, width: number, height: number, tint: [number, number, number], brightness: number): PatternStamp {
-  const radians = angle * Math.PI / 180
-  const cos = Math.cos(radians), sin = Math.sin(radians)
-  return { x, y, scale, angle, cos, sin, halfWidth: (Math.abs(cos) * width + Math.abs(sin) * height) * scale / 2,
-    halfHeight: (Math.abs(sin) * width + Math.abs(cos) * height) * scale / 2, tint, brightness }
-}
-
-export function createPatternLayout(brush: Pick<ImageBrush, 'width' | 'height'>, mode: Exclude<FillPatternMode, 'default'>, raw: FillPatternSettings, bounds: SelectionRect, origin = { x: 0, y: 0 }) {
+export function createPatternLayout(brush: Pick<ImageBrush, 'width' | 'height'>, mode: Exclude<FillPatternMode, 'default'>, raw: FillPatternSettings, bounds: SelectionRect, origin = { x: 0, y: 0 }, selectedBrushes: readonly Pick<ImageBrush, 'width' | 'height'>[] = [brush]) {
   const settings = normalizeFillPatternSettings(raw)
+  const brushes = selectedBrushes.length ? selectedBrushes : [brush]
+  const maxWidth = Math.max(...brushes.map(item => item.width)), maxHeight = Math.max(...brushes.map(item => item.height))
+  const nextStamp = (x: number, y: number): PatternStamp => {
+    const brushIndex = stamps.length % brushes.length
+    const source = brushes[brushIndex]
+    return { x, y, halfWidth: source.width / 2, halfHeight: source.height / 2, brushIndex }
+  }
   const stamps: PatternStamp[] = []
-  const maxScale = (mode === 'random' ? settings.randomScaleMax : settings.regularScale) / 100
-  const cellSize = Math.max(1, Math.hypot(brush.width, brush.height) * maxScale + (mode === 'random' ? settings.randomSpacing : 0))
+  const cellSize = Math.max(1, Math.hypot(maxWidth, maxHeight) + (mode === 'random' ? settings.randomSpacing : 0))
   const bins = new Map<string, number[]>()
   const bucketRange = (s: PatternStamp, gap = 0) => ({ left: Math.floor((s.x - s.halfWidth - gap) / cellSize), right: Math.floor((s.x + s.halfWidth + gap) / cellSize), top: Math.floor((s.y - s.halfHeight - gap) / cellSize), bottom: Math.floor((s.y + s.halfHeight + gap) / cellSize) })
   const add = (s: PatternStamp) => {
@@ -55,8 +53,7 @@ export function createPatternLayout(brush: Pick<ImageBrush, 'width' | 'height'>,
   if (bounds.width > 0 && bounds.height > 0 && brush.width > 0 && brush.height > 0) {
     if (mode === 'random') {
       const random = randomGenerator(Math.floor(Math.random() * 0x100000000))
-      const min = settings.randomScaleMin / 100, max = settings.randomScaleMax / 100
-      const meanArea = brush.width * brush.height * (min * min + min * max + max * max) / 3
+      const meanArea = brushes.reduce((sum, item) => sum + item.width * item.height, 0) / brushes.length
       requested = settings.randomCount || Math.round(bounds.width * bounds.height / meanArea * settings.randomDensity / 100)
       const target = Math.min(MAX_PATTERN_STAMPS, requested)
       const limit = Math.max(target, target * (settings.randomOverlap && settings.randomSpacing === 0 ? 1 : 12))
@@ -68,17 +65,13 @@ export function createPatternLayout(brush: Pick<ImageBrush, 'width' | 'height'>,
         // truncated to a few edge pixels by a fractional center.
         const x = Math.floor(bounds.x + random() * bounds.width) + 0.5
         const y = Math.floor(bounds.y + random() * bounds.height) + 0.5
-        const scale = min + random() * (max - min)
-        const angle = settings.randomRotate ? (random() * 2 - 1) * settings.randomAngle : 0
-        const tint: [number, number, number] = [(random() * 2 - 1) * settings.randomColor * 2.55, (random() * 2 - 1) * settings.randomColor * 2.55, (random() * 2 - 1) * settings.randomColor * 2.55]
-        const s = stamp(x, y, scale, angle, brush.width, brush.height, tint, (random() * 2 - 1) * settings.randomBrightness * 2.55)
+        const s = nextStamp(x, y)
         // Spacing is edge-to-edge bounding-box distance; overlap permits intersections only at zero spacing.
         if ((!settings.randomOverlap || settings.randomSpacing > 0) && collides(s, settings.randomSpacing)) continue
         add(s)
       }
     } else {
-      const scale = settings.regularScale / 100
-      const sample = stamp(0, 0, scale, settings.regularAngle, brush.width, brush.height, [0, 0, 0], 0)
+      const sample = { halfWidth: maxWidth / 2, halfHeight: maxHeight / 2 }
       const stepX = Math.max(1, sample.halfWidth * 2 + (settings.regularOverlap ? settings.regularSpacingX : Math.max(0, settings.regularSpacingX)))
       const stepY = Math.max(1, sample.halfHeight * 2 + (settings.regularOverlap ? settings.regularSpacingY : Math.max(0, settings.regularSpacingY)))
       const firstRow = Math.floor((bounds.y - origin.y) / stepY) - 1
@@ -95,7 +88,10 @@ export function createPatternLayout(brush: Pick<ImageBrush, 'width' | 'height'>,
           if (x + sample.halfWidth <= bounds.x || x - sample.halfWidth >= bounds.x + bounds.width) continue
           requested++; attempts++
           if (stamps.length >= limit) break outer
-          add({ ...sample, x, y })
+          const candidate = nextStamp(x, y)
+          if (candidate.x + candidate.halfWidth <= bounds.x || candidate.x - candidate.halfWidth >= bounds.x + bounds.width
+            || candidate.y + candidate.halfHeight <= bounds.y || candidate.y - candidate.halfHeight >= bounds.y + bounds.height) continue
+          add(candidate)
         }
       }
     }
@@ -104,8 +100,7 @@ export function createPatternLayout(brush: Pick<ImageBrush, 'width' | 'height'>,
 }
 
 export function stampSourcePoint(s: PatternStamp, x: number, y: number, width: number, height: number) {
-  const dx = (x - s.x) / s.scale, dy = (y - s.y) / s.scale
-  const sourceX = Math.floor(dx * s.cos + dy * s.sin + width / 2)
-  const sourceY = Math.floor(-dx * s.sin + dy * s.cos + height / 2)
+  const sourceX = Math.floor(x - s.x + width / 2)
+  const sourceY = Math.floor(y - s.y + height / 2)
   return sourceX >= 0 && sourceY >= 0 && sourceX < width && sourceY < height ? { x: sourceX, y: sourceY } : null
 }

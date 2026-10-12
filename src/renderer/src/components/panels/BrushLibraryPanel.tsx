@@ -94,7 +94,7 @@ function BrushLibraryPanelComponent({ session, controller, docked = false, onDoc
   const suppressClickRef = useRef(false)
   const shortcutCommandHandlerRef = useRef<(id: ShortcutId) => void>(() => {})
   const currentFolderId = useSyncExternalStore(brushLibraryLocation.subscribe, brushLibraryLocation.getSnapshot, brushLibraryLocation.getSnapshot)
-  const [selectedIds, setSelectedIds] = useState<string[]>(() => session.brushImageId ? [session.brushImageId] : [])
+  const [selectedIds, setSelectedIds] = useState<string[]>(() => session.fillPatternBrushes?.map(brush => brush.id) ?? (session.brushImageId ? [session.brushImageId] : []))
   const [selectionAnchorId, setSelectionAnchorId] = useState<string | null>(null)
   const [previewLocalIds, setPreviewLocalIds] = useState<string[] | null>(null)
   const [draggingIds, setDraggingIds] = useState<string[]>([])
@@ -137,11 +137,15 @@ function BrushLibraryPanelComponent({ session, controller, docked = false, onDoc
   useEffect(() => {
     const valid = new Set(controller.brushes.map((item) => item.brush.id))
     setSelectedIds((current) => {
-      const retained = current.filter((id) => valid.has(id))
+      const retained = (session.fillPatternBrushes?.map(brush => brush.id) ?? current).filter((id) => valid.has(id))
       if (!session.brushImageId) return []
       return retained.includes(session.brushImageId) ? retained : [session.brushImageId]
     })
-  }, [controller.brushes, session.brushImageId, session.document.id])
+    if (controller.loaded && session.fillPatternBrushes?.some(brush => !valid.has(brush.id))) {
+      const remaining = session.fillPatternBrushes.filter(brush => valid.has(brush.id))
+      workspace.setBrushImage(remaining.find(brush => brush.id === session.brushImageId) ?? remaining.at(-1) ?? null, remaining)
+    }
+  }, [controller.brushes, controller.loaded, session.brushImageId, session.fillPatternBrushes, session.document.id])
 
   useEffect(() => {
     if (currentFolderId && !controller.folders.some((folder) => folder.id === currentFolderId)) brushLibraryLocation.set(null)
@@ -289,7 +293,10 @@ function BrushLibraryPanelComponent({ session, controller, docked = false, onDoc
     setSelectedIds(nextSelection)
     const activeId = nextSelection.includes(item.brush.id) ? item.brush.id : nextSelection.at(-1)
     const activeBrush = activeId ? displayedBrushes.find((candidate) => candidate.brush.id === activeId)?.brush : null
-    workspace.setBrushImage(activeBrush ?? null)
+    workspace.setBrushImage(activeBrush ?? null, nextSelection.flatMap(id => {
+      const selected = controller.brushes.find(candidate => candidate.brush.id === id)
+      return selected ? [selected.brush] : []
+    }))
   }
 
   const beginBrushPointer = (event: ReactPointerEvent<HTMLButtonElement>, item: LoadedBrush): void => {

@@ -244,6 +244,8 @@ export interface DocumentSession {
   shapeRounded: boolean
   shapeCornerRadius: number
   fillMode: FillMode
+  /** Runtime selection from the pattern brush library; never stored in project files. */
+  fillPatternBrushes?: ImageBrush[]
   fillPatternMode: FillPatternMode
   fillPatternSettings: FillPatternSettings
   fillKind: FillKind

@@ -72,6 +72,7 @@ export const copyCanvasToolSettings = (source: DocumentSession, target: Document
     syncInkAcrossTools: source.syncInkAcrossTools,
     brushImageId: source.brushImageId,
     brushImage: source.brushImage ? structuredClone(source.brushImage) : null,
+    fillPatternBrushes: source.fillPatternBrushes ? structuredClone(source.fillPatternBrushes) : undefined,
     brushImageTemporary: source.brushImageTemporary,
     brushImageSettings: structuredClone(source.brushImageSettings),
     brushProfiles: structuredClone(source.brushProfiles),

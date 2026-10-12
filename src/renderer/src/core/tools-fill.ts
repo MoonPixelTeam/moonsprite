@@ -354,6 +354,7 @@ const floodFillSolidRuns = (document: SpriteDocument, layer: RasterLayer, startX
 }
 
 export interface FloodFillRegionOptions {
+  patternBrushes?: readonly ImageBrush[]
   sourceColorAt?: (x: number, y: number) => RgbaColor
   connectivity?: 4 | 8
 }
@@ -542,8 +543,8 @@ export function floodFill(document: SpriteDocument, layer: RasterLayer, startX: 
     }
   }
   let imageSampler: ReturnType<typeof createImageFillSampler> | null = null
-  const patternLayoutDeferred = Boolean(imageBrush && fillPatternMode !== 'default' && contiguous)
-  const createImageSampler = (bounds: SelectionRect): void => { imageSampler = imageBrush ? createImageFillSampler(imageBrush, brushSize, imageBrushSettings, proceduralAntialiasStrength, brushPaintMode, { x: startX, y: startY }, bounds, fillPatternMode, fillPatternSettings, color) : null }
+  const patternLayoutDeferred = Boolean(imageBrush && (fillPatternMode !== 'default' || (options?.patternBrushes?.length ?? 0) > 1) && contiguous)
+  const createImageSampler = (bounds: SelectionRect): void => { imageSampler = imageBrush ? createImageFillSampler(imageBrush, brushSize, imageBrushSettings, proceduralAntialiasStrength, brushPaintMode, { x: startX, y: startY }, bounds, fillPatternMode, fillPatternSettings, color, options?.patternBrushes) : null }
   if (imageBrush && !patternLayoutDeferred) createImageSampler(selection ? clampSelection(document, selection) ?? { x: 0, y: 0, width: 0, height: 0 } : { x: 0, y: 0, width: document.width, height: document.height })
   const textureCoverage = (x: number, y: number): number => imageSampler ? imageSampler.sample(x, y).coverage : brushTextureContains(brushTexture, x, y, brushTextureScale) ? 255 : 0
   const textureColorAt = (x: number, y: number): RgbaColor | undefined => imageSampler?.sample(x, y).color

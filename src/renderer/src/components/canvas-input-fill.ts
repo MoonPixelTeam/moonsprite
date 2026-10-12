@@ -158,7 +158,8 @@ export function createFillCanvasInput(ports: Ports) {
         profiler,
         {
           sourceColorAt: session.fillReference === 'visible-layers' ? createCompositePointSampler(session.document) : undefined,
-          connectivity: session.fillConnectivity
+          connectivity: session.fillConnectivity,
+          patternBrushes: activeBrushImage && session.fillPatternBrushes?.some(brush => brush.id === activeBrushImage.id) ? session.fillPatternBrushes : undefined
         },
         session.fillPatternMode,
         session.fillPatternSettings

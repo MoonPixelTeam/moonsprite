@@ -81,18 +81,10 @@ export interface FillPatternSettings {
   randomDensity: number
   randomCount: number
   randomSpacing: number
-  randomScaleMin: number
-  randomScaleMax: number
-  randomRotate: boolean
-  randomAngle: number
   randomOverlap: boolean
-  randomColor: number
-  randomBrightness: number
   regularCount: number
-  regularScale: number
   regularSpacingX: number
   regularSpacingY: number
-  regularAngle: number
   regularOverlap: boolean
   regularRowOffset: number
 }
