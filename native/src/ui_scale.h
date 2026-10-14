@@ -10,6 +10,10 @@ constexpr int uiScale=2;
 constexpr int uiGap=2;
 inline gfx::Rect uiLogical(gfx::Rect r) {return {r.x/uiScale,r.y/uiScale,r.w/uiScale,r.h/uiScale};}
 inline gfx::Rect uiPhysical(gfx::Rect r) {return {r.x*uiScale,r.y*uiScale,r.w*uiScale,r.h*uiScale};}
+// Always subtract the physical origin before scaling input. Odd client origins
+// must not be rounded into the logical layout or applied twice.
+inline gfx::Point uiLocalPoint(gfx::Point display,gfx::Point origin){return {(display.x-origin.x)/uiScale,(display.y-origin.y)/uiScale};}
+inline gfx::Rect uiDisplayRect(gfx::Rect local,gfx::Point origin){return uiPhysical(local).offset(origin);}
 class UiPaintScale {
   ui::Graphics& graphics_;
   gfx::Rect dirty_;

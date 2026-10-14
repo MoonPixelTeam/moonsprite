@@ -26,7 +26,7 @@ void compositeOpaqueRgbaRow(Pixel* output,const Pixel* source,std::size_t count)
   ++p;
  }
 }
-std::vector<Pixel> compositeNormalRegion(const timeline::Timeline& timeline,const std::string& frameId,CompositeRegion r,const std::string& previewLayer,const std::vector<Pixel>* preview,int previewWidth) {
+std::vector<Pixel> compositeNormalRegion(const timeline::Timeline& timeline,const std::string& frameId,CompositeRegion r,const std::string& previewLayer,const std::vector<Pixel>* preview,int previewWidth,int previewX,int previewY) {
  const auto& state=timeline.state();
  if(std::none_of(state.frames.begin(),state.frames.end(),[&](const auto& f){return f.id==frameId;}))throw std::invalid_argument("Unknown composite frame");
  if(r.width<0 || r.height<0 || std::int64_t(r.x)+r.width>std::numeric_limits<int>::max() || std::int64_t(r.y)+r.height>std::numeric_limits<int>::max() || std::uint64_t(r.width)*r.height>64*1024*1024)throw std::invalid_argument("Invalid composite region");
@@ -40,7 +40,7 @@ std::vector<Pixel> compositeNormalRegion(const timeline::Timeline& timeline,cons
   const auto& layer=*it;if(!layer.visible || layer.opacity<=0)continue;
   const auto* cel=timeline.findCel(layer.id,frameId);if(!cel)continue;const auto resolved=timeline.resolveSurface(cel->id);if(resolved.issue!=timeline::LinkIssue::None)throw std::invalid_argument("Invalid composite cel link");if(!resolved.surface)continue;
   const auto& s=*resolved.surface;
-  if(preview && layer.id==previewLayer){for(int y=0;y<r.height;++y)for(int x=0;x<r.width;++x){const int px=r.x+x,py=r.y+y;if(px>=0 && py>=0 && px<previewWidth && std::size_t(py)*previewWidth+px<preview->size())out[std::size_t(y)*r.width+x]=over(out[std::size_t(y)*r.width+x],(*preview)[std::size_t(py)*previewWidth+px],layer.opacity);}continue;}
+  if(preview && layer.id==previewLayer){for(int y=0;y<r.height;++y)for(int x=0;x<r.width;++x){const int px=r.x+x-previewX,py=r.y+y-previewY;if(px>=0 && py>=0 && px<previewWidth && std::size_t(py)*previewWidth+px<preview->size())out[std::size_t(y)*r.width+x]=over(out[std::size_t(y)*r.width+x],(*preview)[std::size_t(py)*previewWidth+px],layer.opacity);}continue;}
   const auto left=std::max<std::int64_t>(r.x,s.offsetX),top=std::max<std::int64_t>(r.y,s.offsetY);
   const auto right=std::min<std::int64_t>(std::int64_t(r.x)+r.width,std::int64_t(s.offsetX)+s.width),bottom=std::min<std::int64_t>(std::int64_t(r.y)+r.height,std::int64_t(s.offsetY)+s.height);
   for(auto y=top;y<bottom;++y){

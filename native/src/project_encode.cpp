@@ -75,7 +75,7 @@ static EncodedProject encodeProject(const Document& d,Limits limits,bool recover
   if(d.width()<1||d.height()<1||d.width()>1024||d.height()>1024||d.pixels().size()!=std::size_t(d.width())*d.height())throw Error(ErrorKind::Unsupported,"Unsupported document raster dimensions");
   if(d.pixels().size()>limits.expandedBytes/4)throw Error(ErrorKind::Limit,"Document exceeds encode pixel budget");
   const auto& c=*d.timeline().resolveSurface(d.cel().id).source;const auto& l=d.layer();const auto& f=d.frame();
-  if(!c.surface||c.zIndex||c.surface->offsetX||c.surface->offsetY||c.surface->width!=d.width()||c.surface->height!=d.height()||(c.opacity&&*c.opacity!=1)||f.disabled)throw Error(ErrorKind::Unsupported,"Unsupported editable document structure");
+  if(!c.surface||c.zIndex||c.surface->offsetX||c.surface->offsetY||c.surface->width!=d.width()||c.surface->height!=d.height()||(c.opacity&&*c.opacity!=1) )throw Error(ErrorKind::Unsupported,"Unsupported editable document structure");
   std::optional<ReadManifest> source;
   if(d.sourceArchive()){source=readProjectManifest(d.sourceArchive(),limits);(void)prepareEditableImport(*source);if(source->id!=d.projectId())throw Error(ErrorKind::Unsupported,"Imported identities changed outside supported commands");}
   Apartment apartment;
@@ -94,14 +94,14 @@ static EncodedProject encodeProject(const Document& d,Limits limits,bool recover
       JsonArray sections;for(const auto& section:d.timeline().state().loopSections){JsonObject o;text(o,L"id",section.id);text(o,L"name",utf8(section.name));text(o,L"startFrameId",section.startFrameId);text(o,L"endFrameId",section.endFrameId);text(o,L"direction",section.direction);o.Insert(L"repeatCount",section.repeatCount?JsonValue::CreateNumberValue(*section.repeatCount):JsonValue::CreateNullValue());sections.Append(o);}animation.Insert(L"loopSections",sections);
     JsonArray savedLayers,savedCels,savedFrames;
     boolean(animation,L"loop",d.animationLoop());
-    for(const auto& current:d.timeline().state().frames){JsonObject out; text(out,L"id",current.id);number(out,L"duration",current.duration);savedFrames.Append(out);}
+    for(const auto& current:d.timeline().state().frames){JsonObject out; text(out,L"id",current.id);number(out,L"duration",current.duration);if(current.disabled)boolean(out,L"disabled",true);savedFrames.Append(out);}
     for(auto it=d.timeline().state().layers.rbegin();it!=d.timeline().state().layers.rend();++it) {
       const auto& item=*it;JsonObject outLayer;
       if(source)for(const auto& old:doc.GetNamedArray(L"layers")){const auto o=old.GetObject();if(winrt::to_string(o.GetNamedString(L"id"))==item.id){outLayer=o;break;}}
       text(outLayer,L"id",item.id);text(outLayer,L"name",utf8(item.name));text(outLayer,L"blendMode","normal");outLayer.Insert(L"groupId",JsonValue::CreateNullValue());boolean(outLayer,L"visible",item.visible);boolean(outLayer,L"locked",item.locked);number(outLayer,L"opacity",item.opacity);if(item.autoLinkAnimationCels)boolean(outLayer,L"autoLinkAnimationCels",true);
       for(const auto& current:d.timeline().state().frames) {
         const auto* slot=d.timeline().findCel(item.id,current.id);const auto resolution=slot?d.timeline().resolveSurface(slot->id):timeline::Resolution{};const auto* owned=resolution.source;
-        if(!owned || !owned->surface || owned->zIndex || (owned->opacity && *owned->opacity!=1) || owned->surface->offsetX || owned->surface->offsetY || owned->surface->width!=d.width() || owned->surface->height!=d.height() || current.disabled)throw Error(ErrorKind::Unsupported,"Unsupported frame raster");
+        if(!owned || !owned->surface || owned->zIndex || (owned->opacity && *owned->opacity!=1) || owned->surface->offsetX || owned->surface->offsetY || owned->surface->width!=d.width() || owned->surface->height!=d.height() )throw Error(ErrorKind::Unsupported,"Unsupported frame raster");
         JsonObject outCel;if(source)for(const auto& old:animation.GetNamedArray(L"cels")){const auto o=old.GetObject();if(winrt::to_string(o.GetNamedString(L"id"))==slot->id){outCel=o;break;}}
         text(outCel,L"id",slot->id);text(outCel,L"layerId",item.id);text(outCel,L"frameId",current.id);text(outCel,L"format","rgba");number(outCel,L"opacity",1);
         if(slot->linkedCelId)text(outCel,L"linkedCelId",*slot->linkedCelId);else outCel.Remove(L"linkedCelId");

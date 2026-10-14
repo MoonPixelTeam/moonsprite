@@ -18,6 +18,8 @@ static State fixture() {
   return state;
 }
 int main() {
+  {State state;state.frames={{"a",100},{"b",100,true},{"c",100},{"d",100}};state.loopSections={{"outer",U"","a","d","reverse",{}},{"inner",U"","b","c","reverse",{}}};require(stepFrameId(state,"a",-1,false)=="d","Manual previous wraps");require(stepFrameId(state,"a",1,false)=="c","Manual skips disabled");require(stepFrameId(state,"b",-1,false)=="a","Disabled current previous global");require(stepFrameId(state,"b",1,false)=="c","Disabled current next global");require(stepFrameId(state,"c",1,true)=="c","Innermost tag one playable");require(stepFrameId(state,"c",1,true,false)=="b","Manual tag uses time order ignoring direction");require(stepFrameId(state,"b",-1,true)=="c","Disabled current previous tag");require(stepFrameId(state,"missing",1,false)=="a" && stepFrameId(state,"missing",-1,false)=="d","Missing active boundary");for(auto& f:state.frames)f.disabled=true;require(stepFrameId(state,"a",1,false).empty(),"No playable manual candidate");require(stepFrameId(state,"a",0,false).empty(),"No direction no-op");}
+
   Timeline timeline(fixture());
   require(timeline.findCel("A","F1")->id=="A1","Stable slot identity");
   require(timeline.findCel("B","F2")->id=="B2","Second layer/frame identity");
@@ -66,6 +68,7 @@ int main() {
   require(repaired.resolveSurface("A2").source->id=="A3" && repaired.resolveSurface("A2").issue==LinkIssue::None,"New source invalidates negative cache");
   require(repaired.resolveSurface("unknown").issue==LinkIssue::UnknownCel,"Unknown source explicit");
 
+  {State state;state.frames={{"a",100},{"b",100},{"c",100},{"d",100}};state.loopSections={{"outer",U"Outer","a","d","forward",{}},{"inner",U"Inner","b","c","reverse",2}};LoopPlayback playback{{"outer",0,{}},{},true};std::string frame="a";for(const auto& expected:{"c","b","c","b","c","d","a"}){auto step=advanceLoopPlayback(state,playback,frame);require(!step.completed && step.frameId==expected,"Infinite parent honors finite nested repeat count");frame=step.frameId;}}
   Timeline ids;ids.addLayer({"a:b",U"one"});ids.addLayer({"a",U"two"});
   ids.addFrame({"c",100});ids.addFrame({"b:c",100});
   ids.addCel(cel("1|x","a:b","c"));ids.addCel(cel("2:x","a","b:c"));
@@ -84,5 +87,6 @@ int main() {
   rejects([&]{ids.addCel(malformed);});
   rejects([&]{ids.setPixel("1|x",4,0);});
   require(ids.state().cels.size()==count,"Rejected mutations preserve structure");
+  State loops;for(int n=0;n<8;++n)loops.frames.push_back({"f"+std::to_string(n),100});loops.loopSections={{"outer",U"Outer","f0","f7"},{"child",U"Child","f1","f4"},{"leaf",U"Leaf","f2","f3"},{"sibling",U"Sibling","f5","f6"}};auto layout=layoutLoopSections(loops);require(layout.laneCount==3 && layout.items[0].id=="outer" && layout.items[0].laneSpan==3,"Loop parent spans all nested lanes");require(layout.items[1].lane==1 && layout.items[2].lane==2 && layout.items[3].lane==2,"Loop leaves shift to deepest available lane");auto preview=layoutLoopSections(loops,LoopSectionPreview{"leaf",5,7});require(preview.items.size()==4 && loops.loopSections[2].startFrameId=="f2","Loop preview does not mutate source");State same; same.frames=loops.frames;same.loopSections={{"b",U"B","f1","f3"},{"a",U"A","f1","f3"},{"next",U"Next","f4","f5"}};auto tied=layoutLoopSections(same);require(tied.laneCount==2 && tied.items[0].id=="a" && tied.items[1].id=="b" && tied.items[2].lane==1,"Equal ranges retain name tie order and nonoverlap leaf placement");require(loopResizeFrameIndex(112,100,24,8,true)==1 && loopResizeFrameIndex(112,100,24,8,false)==0 && loopResizeFrameIndex(-100,100,24,8,true)==0 && loopResizeFrameIndex(999,100,24,8,false)==7,"Loop resize rounds boundaries and clamps both edges");
   std::cout<<"Timeline model: 2 layers x 2 frames, source-owned writes, linked fallback/cache, deep copies, IDs, sparse slots and validation passed.\n";
 }

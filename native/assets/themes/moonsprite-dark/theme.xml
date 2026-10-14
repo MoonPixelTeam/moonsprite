@@ -13,18 +13,13 @@
     <color id="accent" value="#2979FF" />
     <color id="checkerA" value="#202635" />
     <color id="checkerB" value="#293142" />
-    <color id="textButtonLabel" value="#919BA9" />
+    <color id="textButtonLabel" value="#D8DEEA" />
     <color id="timelineBackground" value="#202635" />
     <color id="timelineGrid" value="#000000" />
     <color id="timelineEdge" value="#424F67" />
-    <color id="timelineInk" value="#919BA9" />
+    <color id="timelineInk" value="#D8DEEA" />
   </colors>
   <parts>
-    <part id="button_normal" x="0" y="0" w1="2" w2="5" w3="2" h1="2" h2="5" h3="2" />
-    <part id="button_hot" x="12" y="0" w1="2" w2="5" w3="2" h1="2" h2="5" h3="2" />
-    <part id="button_selected" x="24" y="0" w1="2" w2="5" w3="2" h1="2" h2="5" h3="2" />
-    <part id="button_disabled" x="36" y="0" w1="2" w2="5" w3="2" h1="2" h2="5" h3="2" />
-    <part id="button_focused" x="48" y="0" w1="2" w2="5" w3="2" h1="2" h2="5" h3="2" />
     <part id="frame" x="60" y="0" w1="3" w2="3" w3="3" h1="3" h2="3" h3="3" />
     <part id="tab" x="72" y="0" w1="3" w2="3" w3="3" h1="3" h2="6" h3="0" />
     <part id="field" x="84" y="0" w1="1" w2="7" w3="1" h1="1" h2="7" h3="1" />
@@ -43,10 +38,9 @@
     <part id="text_button_hot" x="20" y="36" w1="3" w2="1" w3="3" h1="3" h2="11" h3="4" />
     <part id="icon_button_normal" x="0" y="64" w1="2" w2="7" w3="2" h1="2" h2="7" h3="3" />
     <part id="icon_button_hot" x="12" y="64" w1="2" w2="7" w3="2" h1="2" h2="7" h3="3" />
-    <part id="entry_normal" x="0" y="80" w1="2" w2="1" w3="2" h1="4" h2="11" h3="3" />
-    <part id="entry_focus" x="8" y="80" w1="2" w2="1" w3="2" h1="4" h2="11" h3="3" />
+    <part id="icon_button_selected" x="24" y="64" w1="2" w2="7" w3="2" h1="2" h2="7" h3="3" />
+    <part id="entry_normal" x="0" y="80" w1="2" w2="1" w3="2" h1="1" h2="12" h3="1" />
     <part id="slider_normal" x="16" y="80" w1="4" w2="1" w3="4" h1="4" h2="10" h3="4" />
-    <part id="slider_focus" x="28" y="80" w1="4" w2="1" w3="4" h1="4" h2="10" h3="4" />
     <part id="slider_fill" x="40" y="80" w1="1" w2="1" w3="1" h1="1" h2="10" h3="1" />
     <part id="role_button_normal" x="48" y="80" w1="2" w2="1" w3="2" h1="2" h2="16" h3="3" />
     <part id="timeline.frame" x="128" y="0" w1="3" w2="3" w3="3" h1="3" h2="3" h3="3" />
@@ -232,23 +226,39 @@
     <part id="role-marker.background.medium.black" x="144" y="560" w="4" h="4" />
     <part id="role-marker.background.large.white" x="160" y="560" w="7" h="7" />
     <part id="role-marker.background.large.black" x="176" y="560" w="7" h="7" />
-    <part id="project_tab_active" x="0" y="580" w1="1" w2="1" w3="1" h1="1" h2="13" h3="1" />
-    <part id="project_tab_inactive" x="4" y="580" w1="1" w2="1" w3="1" h1="1" h2="13" h3="1" />
+    <part id="project_tab_active" x="0" y="580" w1="1" w2="5" w3="1" h1="2" h2="13" h3="1" />
+    <part id="project_tab_inactive" x="8" y="580" w1="1" w2="5" w3="1" h1="2" h2="13" h3="1" />
+    <part id="dropdown_field" x="0" y="600" w1="2" w2="1" w3="2" h1="3" h2="10" h3="3" />
+    <part id="dropdown_arrow" x="53" y="606" w="5" h="3" />
+      <part id="icon.paletteLocal" x="480" y="620" w="11" h="11" />
+    <part id="icon.paletteLocal-disabled" x="492" y="620" w="11" h="11" />
+      <part id="icon.moreLines" x="448" y="620" w="11" h="11" />
+    <part id="icon.moreLines-disabled" x="460" y="620" w="11" h="11" />
+      <part id="scrollbar.horizontal.track" x="320" y="620" w1="1" w2="11" w3="1" h1="1" h2="5" h3="1" />
+    <part id="scrollbar.horizontal.hover" x="336" y="620" w1="0" w2="11" w3="0" h1="1" h2="5" h3="1" />
+    <part id="scrollbar.horizontal.normal" x="352" y="620" w1="0" w2="11" w3="0" h1="1" h2="5" h3="1" />
+    <part id="scrollbar.vertical.track" x="368" y="620" w1="1" w2="5" w3="1" h1="1" h2="11" h3="1" />
+    <part id="scrollbar.vertical.hover" x="380" y="620" w1="1" w2="5" w3="1" h1="0" h2="11" h3="0" />
+    <part id="scrollbar.vertical.normal" x="392" y="620" w1="1" w2="5" w3="1" h1="0" h2="11" h3="0" />
+    <part id="timeline.loop.track" x="0" y="640" w1="1" w2="1" w3="1" h1="1" h2="1" h3="1" />
+    <part id="timeline.loop.normal" x="3" y="640" w1="1" w2="1" w3="1" h1="1" h2="1" h3="1" />
+    <part id="timeline.loop.hover" x="6" y="640" w1="1" w2="1" w3="1" h1="1" h2="1" h3="1" />
+    <part id="timeline.loop.playing" x="9" y="640" w1="1" w2="1" w3="1" h1="1" h2="1" h3="1" />
   </parts>
   <styles>
     <style id="role_button.normal">
       <background-border part="role_button_normal" />
     </style>
     <style id="button">
-      <background-border part="button_normal" />
+      <background-border part="icon_button_normal" />
       <text color="text" />
-      <background-border part="button_hot" state="mouse" />
+      <background-border part="icon_button_hot" state="mouse" />
       <text color="text" state="mouse" />
-      <background-border part="button_selected" state="selected" />
+      <background-border part="icon_button_selected" state="selected" />
       <text color="text" state="selected" />
-      <background-border part="button_disabled" state="disabled" />
+      <background-border part="icon_button_normal" state="disabled" />
       <text color="muted" state="disabled" />
-      <background-border part="button_focused" state="focus" />
+      <background-border part="icon_button_hot" state="focus" />
       <text color="text" state="focus" />
     </style>
     <style id="panel">
@@ -279,7 +289,7 @@
       <background-border part="dock_frame" />
     </style>
     <style id="menu_hover">
-      <background-border part="button_hot" />
+      <background-border part="icon_button_hot" />
     </style>
     <style id="panel_outer">
       <background-border part="panel_outer" />
@@ -327,10 +337,10 @@
       <background-border part="icon_button_hot" />
     </style>
     <style id="icon_button.pressed">
-      <background-border part="icon_button_hot" />
+      <background-border part="icon_button_selected" />
     </style>
     <style id="icon_button.selected">
-      <background-border part="icon_button_hot" />
+      <background-border part="icon_button_selected" />
     </style>
     <style id="icon_button.focus">
       <background-border part="icon_button_hot" />
@@ -341,15 +351,8 @@
     <style id="entry.normal">
       <background-border part="entry_normal" />
     </style>
-    <style id="entry.focus">
-      <background-border part="entry_focus" />
-    </style>
     <style id="slider.normal">
       <background-border part="slider_normal" />
-      <text color="textButtonLabel" />
-    </style>
-    <style id="slider.focus">
-      <background-border part="slider_focus" />
       <text color="textButtonLabel" />
     </style>
     <style id="slider.fill">
@@ -868,5 +871,21 @@
     <style id="role-marker.background.large.black"><icon part="role-marker.background.large.black" /></style>
     <style id="project_tab.active"><background-border part="project_tab_active" /></style>
     <style id="project_tab.inactive"><background-border part="project_tab_inactive" /></style>
+    <style id="dropdown.field"><background-border part="dropdown_field" /></style>
+    <style id="dropdown.arrow"><icon part="dropdown_arrow" /></style>
+      <style id="icon.paletteLocal"><icon part="icon.paletteLocal" /></style>
+    <style id="icon.paletteLocal-disabled"><icon part="icon.paletteLocal-disabled" /></style>
+      <style id="icon.moreLines"><icon part="icon.moreLines" /></style>
+    <style id="icon.moreLines-disabled"><icon part="icon.moreLines-disabled" /></style>
+      <style id="scrollbar.horizontal.track"><background-border part="scrollbar.horizontal.track" /></style>
+    <style id="scrollbar.horizontal.hover"><background-border part="scrollbar.horizontal.hover" /></style>
+    <style id="scrollbar.horizontal.normal"><background-border part="scrollbar.horizontal.normal" /></style>
+    <style id="scrollbar.vertical.track"><background-border part="scrollbar.vertical.track" /></style>
+    <style id="scrollbar.vertical.hover"><background-border part="scrollbar.vertical.hover" /></style>
+    <style id="scrollbar.vertical.normal"><background-border part="scrollbar.vertical.normal" /></style>
+    <style id="timeline.loop.track"><background-border part="timeline.loop.track" /></style>
+    <style id="timeline.loop.normal"><background-border part="timeline.loop.normal" /></style>
+    <style id="timeline.loop.hover"><background-border part="timeline.loop.hover" /></style>
+    <style id="timeline.loop.playing"><background-border part="timeline.loop.playing" /></style>
   </styles>
 </theme>

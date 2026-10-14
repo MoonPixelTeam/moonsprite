@@ -6,7 +6,7 @@
 
 | 界面位置 | 素材名称 | 左上角 x,y | 尺寸 |
 | --- | --- | --- | --- |
-| 按钮：普通／悬停／选中／禁用／焦点 | button_normal / hot / selected / disabled / focused | 0,0 / 12,0 / 24,0 / 36,0 / 48,0 | 各 9×9 |
+| 通用／工具按钮 | 复用 icon_button_normal / hot / selected | 0,64 / 12,64 / 24,64 | 各 11×12 九宫格 |
 | 中央工作区外框 | frame | 60,0 | 9×9 |
 | 工程标签 | tab | 72,0 | 9×9 |
 | 字段底图（当前主界面未使用） | field | 84,0 | 9×9 |
@@ -28,7 +28,7 @@
 
 也可复制整个目录制作新皮肤，启动时通过 `--theme <theme.xml路径>` 选择其 `theme.xml`。目前重新启动默认仍加载本目录；尚未持久化另选主题的路径。原始 Aseprite 素材保存在相邻 `aseprite-default` 目录，来源及许可见 [ATTRIBUTION.md](ATTRIBUTION.md)。
 
-顶部菜单同样支持皮肤：`menu_popup` 默认复用 dock_frame，`menu_hover` 默认复用 button_hot；可在 theme.xml 中将它们绑定到另画的切片。`menu_item` 和 `menu_bar` 可另设底图，未设置时分别使用 panel 和 background 颜色。
+顶部菜单同样支持皮肤：`menu_popup` 默认复用 dock_frame，`menu_hover` 默认复用 icon_button_hot；可在 theme.xml 中将它们绑定到另画的切片。`menu_item` 和 `menu_bar` 可另设底图，未设置时分别使用 panel 和 background 颜色。
 
 栏目使用两层独立素材：panel_outer 的左／右／上／下固定边框均为 3 像素，中心为 #202635；panel_content 固定边框均为 1 像素，中心为 #171A21。选中标签的底部开放并覆盖栏目顶部边框，未选中标签保持闭合；切换只改变栏目当前内容。
 
@@ -51,7 +51,7 @@
 | 用途 | 坐标与尺寸 | 运行映射 |
 | --- | --- | --- |
 | 输入常态 / 聚焦 | (0,80,5,18) / (8,80,5,18) | entry.normal / entry.focus |
-| 滑块轨道常态 / 聚焦按下 | (16,80,9,18) / (28,80,9,18) | slider.normal / slider.focus |
+| 滑块轨道常态 / 聚焦按下 | (16,80,9,18)，聚焦复用 selection.normal/hover | slider.normal |
 | 滑块已填充区域 | (40,80,3,12) | slider.fill |
 
 常态素材外侧补透明像素，使聚焦黑边不改变控件大小。输入框示例“输入文字”和滑块“72%”没有烘焙进素材；实际字段内容、光标、选区、数值、填充比例始终动态绘制，Fusion10px/整体2×。修改PNG后重新启动软件加载。
@@ -76,3 +76,5 @@
 悬浮配色复核：普通#202635保持，timeline.hover从偏中性的#2F3136改为同色系#2C3445，提高格子悬浮辨识度。timeline.active仍#171A21，各格独立；自动链接格无论是否活动都沿用同一悬浮素材。只修改sheet的hover切片，未改选中素材、网格与图标。
 
 新sheet切片必须同时在theme.xml登记part和引用它的style：运行时只加载style引用的素材，只有part会导致draw静默返回false。timeline.active/hover已补齐style；新增状态必须通过实际状态渲染像素检查。
+
+文字与图标配色（2026-10-15）：主内容统一 #D8DEEA，次要说明/禁用统一 #7E8AA1；文字按钮、时间轴使用同一主色。普通按钮的图标/文字为 128/255 透明度，悬浮、按下或活动时恢复全不透明。图标在绘制时复用 legacy 原始像素形状和 alpha，只统一 UI 墨色；渐变色标、画布轴心、前背景角标、颜色块及指针保持自身配色。按钮背景、边框和选中素材保持现有素材。

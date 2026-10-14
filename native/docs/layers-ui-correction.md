@@ -64,3 +64,5 @@ Cel内容标记修正：仅当解析后的RGBA surface含alpha非零像素才画
 本次验证：正式Release构建成功，document-transactions、project-save、layers-render三项通过；检查timeline-auto-link渲染图，连续三个链接cel合成圆头胶囊，独立cel保留单球。测试覆盖开关撤销/重做、新建/复制继承、关闭后不拆旧链、空cel与保存/恢复。来源覆盖92文件通过，完整legacy迁移仍未完成。
 
 链接球接缝修正：原因是逐相邻两格绘制胶囊，中间圆头重叠。改为按连续canonical source整段一次绘制，仅保留首尾圆头，中段复用sheet球中心列；素材本身无需修改。layers-render覆盖球全部7行和所有设备像素的中段一致性，正式Release构建与检查通过，渲染图确认无内部接缝。
+
+选中效果丢失修复：选择状态和外轮廓计算仍正确，paintTimelineGrid的outline循环遗漏drawSelectionBorder实际调用。恢复统一素材绘制入口，保持物理像素坐标、内黑边共网格、白边外扩及自动链接右侧起点。正式Release构建及layers-render三类选择的实际合成像素、逐像素alpha命中检查通过；查看timeline-outline-0图确认图层轮廓恢复。来源覆盖138文件通过，整体迁移仍不完整。

@@ -35,12 +35,19 @@ struct Cel {
 struct LoopSection {std::string id;std::u32string name;std::string startFrameId,endFrameId,direction="forward";std::optional<int> repeatCount;};
 struct State {std::vector<Layer> layers;std::vector<Frame> frames;std::vector<Cel> cels;std::vector<LoopSection> loopSections;};
 struct LoopRange {int start=-1,end=-1;};
+struct LoopSectionLayoutItem {std::string id;int startIndex=0,span=0,lane=0,laneSpan=1;};
+struct LoopSectionLayout {std::vector<LoopSectionLayoutItem> items;int laneCount=0;};
+struct LoopSectionPreview {std::string id;int startIndex=0,endIndex=0;};
+LoopSectionLayout layoutLoopSections(const State& state,const std::optional<LoopSectionPreview>& preview={});
+int loopResizeFrameIndex(double pointer,double firstFrame,double frameWidth,int frameCount,bool startEdge);
+
 struct LoopPlaybackContext {std::string sectionId;int iteration=0;std::optional<int> position;};
 struct LoopPlayback {LoopPlaybackContext current;std::vector<LoopPlaybackContext> stack;bool repeatIndefinitely=false;};
 struct LoopStep {std::string frameId;bool completed=false;};
 LoopStep advanceLoopPlayback(const State& state,LoopPlayback& playback,const std::string& frameId);
 LoopRange loopRange(const State& state,const LoopSection& section);
 const LoopSection* loopAtFrame(const State& state,const std::string& frameId);
+std::string stepFrameId(const State& state,const std::string& frameId,int direction,bool tagMode,bool skipDisabled=true);
 std::vector<std::string> loopPlaybackFrames(const State& state,const LoopSection& section);
 std::vector<LoopSection> reconcileLoopsReorder(const State& previous,const std::vector<Frame>& remaining,const std::vector<Frame>& reordered,const std::vector<std::string>& moving,int insertion,int dropSide);
 

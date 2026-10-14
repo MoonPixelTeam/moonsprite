@@ -1,5 +1,20 @@
 #include "timeline_model.h"
 #include <cmath>
+#include <algorithm>
+#ifdef _WIN32
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <windows.h>
+#endif
+#include <cmath>
+#include <algorithm>
+#ifdef _WIN32
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <windows.h>
+#endif
 #include <limits>
 #include <stdexcept>
 #include <unordered_set>
@@ -134,8 +149,34 @@ PixelChange Timeline::setPixel(const std::string& celId,std::size_t localIndex,P
   owner.surface->pixels[localIndex]=color;
   return change;
 }
+// Native counterpart of JS localeCompare for equal-range labels.
+static bool loopNameLess(const std::u32string& left,const std::u32string& right){
+#ifdef _WIN32
+ auto wide=[](const std::u32string& text){std::wstring out;for(auto c:text){if(c<=0xffff)out.push_back(wchar_t(c));else{c-=0x10000;out.push_back(wchar_t(0xd800+(c>>10)));out.push_back(wchar_t(0xdc00+(c&1023)));}}return out;};const auto a=wide(left),b=wide(right);const int order=CompareStringEx(LOCALE_NAME_USER_DEFAULT,0,a.data(),int(a.size()),b.data(),int(b.size()),nullptr,nullptr,0);if(order)return order==CSTR_LESS_THAN;
+#endif
+ return left<right;
+}
+// legacy components/panels/layer-timeline-layout.ts: nested lanes and leaf placement.
+LoopSectionLayout layoutLoopSections(const State& state,const std::optional<LoopSectionPreview>& preview){
+ struct Candidate{const LoopSection* section;int start,end,span,parent=-1,lane=0;};std::vector<Candidate> candidates;
+ for(const auto& section:state.loopSections){auto range=loopRange(state,section);if(preview && preview->id==section.id && preview->startIndex>=0 && preview->endIndex<int(state.frames.size()))range={preview->startIndex,preview->endIndex};if(range.start>=0 && range.end>=range.start)candidates.push_back({&section,range.start,range.end,range.end-range.start+1});}
+ std::stable_sort(candidates.begin(),candidates.end(),[](const auto& a,const auto& b){return a.start!=b.start?a.start<b.start:a.span!=b.span?a.span>b.span:loopNameLess(a.section->name,b.section->name);});
+ auto overlaps=[&](int a,int b){return candidates[a].start<=candidates[b].end && candidates[b].start<=candidates[a].end;};
+ std::vector<std::vector<int>> lanes;LoopSectionLayout result;
+ for(int n=0;n<int(candidates.size());++n){auto& c=candidates[n];for(int p=0;p<n;++p){const auto& parent=candidates[p];if(parent.start<=c.start && parent.end>=c.end && (parent.start<c.start || parent.end>c.end) && (c.parent<0 || parent.span<candidates[c.parent].span))c.parent=p;}int lane=c.parent>=0?candidates[c.parent].lane+1:0;for(;;++lane){if(lane>=int(lanes.size())){lanes.resize(lane+1);break;}if(std::none_of(lanes[lane].begin(),lanes[lane].end(),[&](int other){return overlaps(other,n);}))break;}c.lane=lane;lanes[lane].push_back(n);result.items.push_back({c.section->id,c.start,c.span,lane,1});result.laneCount=std::max(result.laneCount,lane+1);}
+ std::vector<bool> parent(candidates.size(),false),placed(candidates.size(),false);for(const auto& c:candidates)if(c.parent>=0)parent[c.parent]=true;
+ for(int n=0;n<int(candidates.size());++n)if(!parent[n]){const int parentLane=candidates[n].parent>=0?result.items[candidates[n].parent].lane:-1;for(int lane=result.laneCount-1;lane>parentLane;--lane){bool blocked=false;for(int other=0;other<int(candidates.size());++other)if(other!=n && (parent[other] || placed[other]) && result.items[other].lane==lane && overlaps(other,n)){blocked=true;break;}if(!blocked){result.items[n].lane=lane;break;}}placed[n]=true;}
+ for(int n=0;n<int(candidates.size());++n){int p=candidates[n].parent;while(p>=0){result.items[p].laneSpan=std::max(result.items[p].laneSpan,result.items[n].lane-result.items[p].lane+1);p=candidates[p].parent;}}
+ for(auto& item:result.items)item.laneSpan=std::max(item.laneSpan,result.laneCount-item.lane);return result;
+}
+// legacy animation-gesture-helpers.ts: boundary Math.round; end is boundary-1.
+int loopResizeFrameIndex(double pointer,double firstFrame,double frameWidth,int frameCount,bool startEdge){if(frameCount<1 || frameWidth<=0)return -1;const double boundary=std::floor((pointer-firstFrame)/frameWidth+0.5);return int(std::clamp(boundary-(startEdge?0.0:1.0),0.0,double(frameCount-1)));}
 LoopRange loopRange(const State& state,const LoopSection& section){LoopRange r;for(int i=0;i<int(state.frames.size());++i){if(state.frames[i].id==section.startFrameId)r.start=i;if(state.frames[i].id==section.endFrameId)r.end=i;}if(r.start>=0 && r.end>=0 && r.start>r.end)std::swap(r.start,r.end);return r;}
 const LoopSection* loopAtFrame(const State& state,const std::string& frameId){int index=-1;for(int i=0;i<int(state.frames.size());++i)if(state.frames[i].id==frameId)index=i;const LoopSection* match=nullptr;int span=100000;for(const auto& s:state.loopSections){const auto r=loopRange(state,s);if(r.start>=0 && index>=r.start && index<=r.end && r.end-r.start<span){match=&s;span=r.end-r.start;}}return match;}
+// animation.ts stepAnimationFrameId / loop-sections stepAnimationLoopSectionFrameId.
+std::string stepFrameId(const State& state,const std::string& frameId,int direction,bool tagMode,bool skipDisabled){
+ if(!direction || state.frames.empty())return {};direction=direction>0?1:-1;const auto* section=tagMode?loopAtFrame(state,frameId):nullptr;if(!section){const auto& frames=state.frames;const auto found=std::find_if(frames.begin(),frames.end(),[&](const auto& f){return f.id==frameId;});const int start=found==frames.end()?(direction>0?-1:0):int(found-frames.begin());for(int offset=1;offset<=int(frames.size());++offset){const auto& f=frames[(start+direction*offset+int(frames.size())*2)%int(frames.size())];if(!skipDisabled || !f.disabled)return f.id;}return {};}const auto range=section?loopRange(state,*section):LoopRange{0,int(state.frames.size())-1};std::vector<std::string> ids;for(int n=range.start;n<=range.end;++n)if(!skipDisabled || !state.frames[n].disabled)ids.push_back(state.frames[n].id);if(ids.empty())return {};const auto found=std::find(ids.begin(),ids.end(),frameId);const int start=found==ids.end()?(direction>0?-1:0):int(found-ids.begin());return ids[(start+direction+int(ids.size()))%int(ids.size())];
+}
 std::vector<std::string> loopPlaybackFrames(const State& state,const LoopSection& section){const auto r=loopRange(state,section);std::vector<std::string> ids;if(r.start<0 || r.end<0)return ids;for(int i=r.start;i<=r.end;++i)if(!state.frames[i].disabled)ids.push_back(state.frames[i].id);if(section.direction=="reverse" || section.direction=="ping-pong-reverse")std::reverse(ids.begin(),ids.end());if(section.direction=="ping-pong" || section.direction=="ping-pong-reverse"){const auto count=ids.size();if(count>2)for(int i=int(count)-2;i>=1;--i)ids.push_back(ids[i]);}return ids;}
 std::vector<LoopSection> reconcileLoopsReorder(const State& previous,const std::vector<Frame>& remaining,const std::vector<Frame>& reordered,const std::vector<std::string>& moving,int insertion,int dropSide){
  auto has=[&](const std::string& id){return std::find(moving.begin(),moving.end(),id)!=moving.end();};bool unchanged=previous.frames.size()==reordered.size();for(std::size_t i=0;i<previous.frames.size() && unchanged;++i)unchanged=previous.frames[i].id==reordered[i].id;int movingStart=100000,movingEnd=-1;for(int i=0;i<int(previous.frames.size());++i)if(has(previous.frames[i].id)){movingStart=std::min(movingStart,i);movingEnd=i;}
@@ -149,10 +190,10 @@ LoopStep advanceLoopPlayback(const State& state,LoopPlayback& playback,const std
  int current=-1;for(int i=0;i<int(ids.size());++i)if(ids[i]==frameId && (!playback.current.position || i>=*playback.current.position)){current=i;break;}if(current<0)for(int i=0;i<int(ids.size());++i)if(ids[i]==frameId){current=i;break;}
  int next=current+1;bool completed=false;int iteration=playback.current.iteration;if(next>=int(ids.size())){++iteration;const auto repeats=playback.repeatIndefinitely?(playback.stack.empty()?std::optional<int>{}:std::optional<int>{1}):section->repeatCount;completed=repeats && iteration>=*repeats;next=completed?int(ids.size())-1:0;}
  const bool ping=section->direction=="ping-pong" || section->direction=="ping-pong-reverse";const auto nextPosition=ping?std::optional<int>{next}:std::optional<int>{};
- if(completed && !playback.stack.empty()){const auto parentContext=playback.stack.back();const auto* parent=lookup(parentContext.sectionId);if(!parent)return {frameId,true};const auto range=loopRange(state,*section),parentRange=loopRange(state,*parent);int parentLength=0;for(int i=parentRange.start;i<=parentRange.end;++i)if(!state.frames[i].disabled)++parentLength;const bool returning=parentContext.position.value_or(0)>=parentLength;const bool reverse=(parent->direction=="reverse" || parent->direction=="ping-pong-reverse")!=returning;playback.current=parentContext;playback.stack.pop_back();return {state.frames[reverse?range.start:range.end].id,false};}
+ if(completed && !playback.stack.empty()){const auto parentContext=playback.stack.back();const auto* parent=lookup(parentContext.sectionId);if(!parent)return {frameId,true};const auto range=loopRange(state,*section),parentRange=loopRange(state,*parent);int parentLength=0;for(int i=parentRange.start;i<=parentRange.end;++i)if(!state.frames[i].disabled)++parentLength;const bool returning=parentContext.position.value_or(0)>=parentLength;const bool reverse=(parent->direction=="reverse" || parent->direction=="ping-pong-reverse")!=returning;playback.current=parentContext;playback.repeatIndefinitely=!parent->repeatCount;playback.stack.pop_back();return {state.frames[reverse?range.start:range.end].id,false};}
  if(completed)return {ids[next],true};
  const auto parentRange=loopRange(state,*section);const LoopSection* nested=nullptr;int span=parentRange.end-parentRange.start;for(const auto& candidate:state.loopSections){const auto range=loopRange(state,candidate);const auto at=std::find_if(state.frames.begin(),state.frames.end(),[&](const auto& f){return f.id==ids[next];})-state.frames.begin();if(candidate.id!=section->id && range.start>=parentRange.start && range.end<=parentRange.end && range.end-range.start<span && int(at)>=range.start && int(at)<=range.end){nested=&candidate;span=range.end-range.start;}}
- if(nested){auto first=loopPlaybackFrames(state,*nested);if(first.empty())return {frameId,false};playback.stack.push_back({section->id,iteration,nextPosition});playback.current={nested->id,0,{}};return {first.front(),false};}
+ if(nested){auto first=loopPlaybackFrames(state,*nested);if(first.empty())return {frameId,false};playback.stack.push_back({section->id,iteration,nextPosition});playback.current={nested->id,0,{}};playback.repeatIndefinitely=!nested->repeatCount;return {first.front(),false};}
  playback.current.iteration=iteration;playback.current.position=nextPosition;return {ids[next],false};
 }
 

@@ -9,6 +9,8 @@
 #include "project_brush_resources.h"
 #include "image_brush.h"
 #include "color_adjustment.h"
+#include "convolution_matrix.h"
+#include "anti_alias.h"
 #include "image_resize.h"
 #include <cstdint>
 #include "brush.h"
@@ -82,6 +84,10 @@ public:
   void selectPaletteSlotRange(std::size_t slot,int columns);
   void selectSecondaryPalette(int id);
   void clearPaletteSelection();
+  void selectPaletteBox(std::size_t start,std::size_t end,int columns);
+  static std::vector<int> movedPaletteSlots(const std::vector<int>& slots,const std::vector<int>& ids,int target,int anchor,int columns);
+  void repositionPaletteColors(const std::vector<int>& slots,const std::vector<int>& ids,int target,int anchor,int columns);
+  void pastePaletteColors(const std::vector<Pixel>& colors,const std::vector<std::size_t>& targets={});
   void setPaletteRole(Pixel color,bool secondary,bool locked);
   void renamePaletteColor(int id,const std::u32string& name);
   void applyExtractedPalette(const std::vector<Pixel>& colors,bool append=false,int columns=8);
@@ -98,31 +104,93 @@ public:
   void selectFrameHeader(const std::string& id,int mode=0,bool preservePlayhead=false);
   void clearFrameSelection(){selectedFrames_.clear();frameAnchor_.clear();}
   void moveSelectedFrames(const std::string& target,bool after);
+  bool canReverseSelectedFrames() const;
+  void reverseSelectedFrames();
+  struct CelClipboardItem {DocumentCel cel;int row=0,column=0;std::optional<SelectionClipboard> selectionPixels;};
+  struct CelClipboardSnapshot {std::vector<CelClipboardItem> items;std::uint64_t sourceIdentity=0;int width=0,height=0;};
+  CelClipboardSnapshot exportCelClipboard()const{return {celClipboard_,identity_,width_,height_};}
+  bool pasteCelClipboard(const CelClipboardSnapshot& snapshot);
+  bool beginCelSelectionPaste(const std::vector<CelClipboardItem>& items);
+  bool copySelectedCels();
+  bool cutSelectedCels();
+  bool deleteSelectedCels(bool ignorePixelSelection=false);
+  bool pasteCopiedCels();
+  bool hasCelClipboard()const{return !celClipboard_.empty();}
+  struct FrameClipboardItem { DocumentFrame frame; std::vector<DocumentCel> cels; };
+  struct FrameClipboardSnapshot {std::vector<FrameClipboardItem> items;std::vector<DocumentLayer> layers;std::uint64_t sourceIdentity=0;int width=0,height=0;};
+  FrameClipboardSnapshot exportFrameClipboard()const;
+  bool pasteFrameClipboard(const FrameClipboardSnapshot& snapshot);
+  bool importGifAnimationLayer(const Document& source,int startFrameIndex);
+  bool hasFrameClipboard() const{return !frameClipboard_.empty();}
   bool copySelectedFrames();
-  bool pasteCopiedFrames();
-  void deleteSelectedFrames();
+  bool cutSelectedFrames();
+  bool pasteCopiedFrames(bool duplicateSelection=false);
+  void deleteSelectedFrames(bool clearPixelSelection=false);
   std::string createLoopSection(std::optional<timeline::LoopSection> draft={});
   void updateLoopSection(timeline::LoopSection section);
   void deleteLoopSection(const std::string& id);
 
   void addLinkedFrame(bool allLayers=false);
   void disconnectCel();
+  bool canReverseSelectedCels()const;
+  bool reverseSelectedCels();
+  bool canConnectSelectedCels()const;
+  bool connectSelectedCels();
+  bool canDisconnectSelectedCels()const;
+  bool disconnectSelectedCels();
+  bool selectedFramesDisabled()const;
+  bool setSelectedFramesDisabled(bool disabled);
   void setFrameDuration(int duration);
   void beginFrameDuration();
   void previewFrameDuration(int duration);
   void commitFrameDuration();
   bool animationLoop() const {return animationLoop_;}
+  void setAnimationLoop(bool loop);
   void setImportedLoop(bool loop) {animationLoop_=loop;}
   void addLayer();
+  bool canDuplicateSelectedLayers() const;
+  void duplicateSelectedLayers();
   void duplicateLayer();
+  bool canMergeSelectedLayers() const;
+  void mergeSelectedLayers();
+  bool canMergeLayerDown() const;
   void mergeLayerDown();
+  void mergeVisibleLayers();
   void deleteLayer();
+  void deleteSelectedLayers();
+  bool canDeleteSelectedLayers() const;
+  bool canDeleteLayers() const;
   void moveLayer(std::size_t topIndex);
+  struct TimelineSelection {
+    std::vector<std::string> layers,cels;
+    std::string layerAnchor,celAnchor;
+  };
+  const TimelineSelection& timelineSelection() const {return timelineSelection_;}
+  const std::string& frameSelectionAnchor() const {return frameAnchor_;}
+  void restoreFrameSelectionAnchor(std::string value){frameAnchor_=std::move(value);}
+  void restoreTimelineSelection(TimelineSelection value,const std::vector<std::string>& frames){timelineSelection_=std::move(value);selectedFrames_=frames;}
+  void selectTimelineLayer(const std::string& id,int mode=0);
+  void selectTimelineCel(const std::string& id,int mode=0,const std::vector<std::string>& replacement={});
+  void clearTimelineSelection(){timelineSelection_={};clearFrameSelection();}
+  void moveTimelineLayers(const std::string& target,bool after,bool copy=false);
+  void moveTimelineCels(const std::string& anchor,const std::string& target,bool copy=false);
+  void copyTimelineFrames(const std::string& target,bool after);
+  void beginLockGesture();
+  void previewLockGesture(const std::string& layerId,bool locked);
+  bool commitLockGesture();
   void setLayerLocked(bool locked);
   void setLayerAutoLinkAnimationCels(const std::string& layerId,bool enabled);
+  void beginAutoLinkGesture();
+  void previewAutoLinkGesture(const std::string& layerId,bool enabled);
+  bool commitAutoLinkGesture();
+  void beginVisibilityGesture();
+  void previewVisibilityGesture(const std::string& layerId,bool visible);
+  bool commitVisibilityGesture();
   void setLayerVisible(bool visible);
   void setLayerOpacity(double opacity);
   void beginLayerOpacity();
+  void beginLayerProperties(const std::vector<std::string>& targets={});
+  void previewLayerName(const std::u32string& name);
   void previewLayerOpacity(double opacity);
   void commitLayerOpacity();
   void cancelLayerOpacity();
@@ -131,9 +199,16 @@ public:
   void previewSelection(std::optional<SelectionMask> value){selection_=std::move(value);}
   void commitSelection(std::optional<SelectionMask> before,std::optional<SelectionMask> after,bool resetFrames=false);
   void selectAllPixels();void deselectPixels();void invertPixels();
-  std::optional<SelectionClipboard> copyPixels() const;
+  std::optional<SelectionClipboard> copyPixels();
+  std::optional<SelectionClipboard> copyMergedPixels();
+  bool flipContent(bool horizontal);
+  bool rotateContent180();
+  bool rotateContent(int angle);
+  bool centerActiveContent(bool horizontal=true,bool vertical=true);
+  bool fillSelectionOrCanvas(Pixel color);
   bool deleteSelectedPixels();bool cutPixels(std::optional<SelectionClipboard>& clipboard);
   bool beginFloatingPaste(const SelectionClipboard& clipboard,int x,int y);
+  bool beginLayerTransform();
   bool beginSelectionContentMove(bool copy=false,bool allFrameLayers=false);
   bool nudgeSelectionContent(int dx,int dy,bool allFrameLayers=false);
   void commitSelectionBox(std::optional<SelectionMask> before);
@@ -142,8 +217,12 @@ public:
   void moveFloatingPaste(int x,int y);
   void transformFloatingPaste(const SelectionTransform& target,bool rotSprite=false);
   std::optional<SelectionTransform> floatingTransform() const {return floating_?std::optional<SelectionTransform>{floating_->transform}:std::optional<SelectionTransform>{};}bool commitFloatingPaste();void cancelFloatingPaste();
-  void beginStroke(Point point, Pixel color,BrushOptions brush={},const PatternBrush* image=nullptr,double angle=0);
+  void beginStroke(Point point, Pixel color,BrushOptions brush={},const PatternBrush* image=nullptr,double angle=0,const std::unordered_map<std::size_t,Pixel>* baseline=nullptr,bool stampInitial=true);
   void updateStroke(Point point);
+  std::unordered_map<std::size_t,Pixel> strokeBaseline() const;
+  // Transient replacement pixels only; never opens a transaction or changes history.
+  std::unordered_map<std::size_t,Pixel> brushPreview(Point from,Point to,Pixel color,BrushOptions brush,const PatternBrush* image=nullptr,double angle=0,const std::unordered_map<std::size_t,Pixel>* baseline=nullptr,bool clipSelection=true) const;
+  void mergeLastStrokeEdits();
   bool commitStroke();
   void cancelStroke();
   void undo();
@@ -156,6 +235,14 @@ public:
   bool beginColorReplacement(const std::vector<std::string>& celIds,bool clipSelection=false);
   bool updateColorReplacement(Pixel source,Pixel replacement,bool enabled=true);
   bool updateColorAdjustment(const ColorAdjustment& adjustment,bool enabled=true);
+  struct ConvolutionTask {int width,height;std::uint64_t identity,revision;std::string layerId,frameId;std::optional<SelectionMask> selection;std::vector<std::pair<std::string,std::vector<Pixel>>> targets;};
+  struct AntiAliasTask {ConvolutionTask captured;timeline::Timeline timeline;std::vector<std::string> frames;std::vector<Pixel> palette;};
+  bool beginAntiAliasPreview();
+  static std::optional<std::vector<std::vector<Pixel>>> runAntiAliasTask(AntiAliasTask task,const AntiAliasOptions& options,const std::function<bool()>& cancelled);
+  std::optional<AntiAliasTask> captureAntiAliasTask() const;
+  std::optional<ConvolutionTask> captureConvolutionTask() const;
+  bool publishConvolutionTask(const ConvolutionTask& task,const std::vector<std::vector<Pixel>>& results);
+  bool restoreAdjustmentBaseline();
   bool commitColorAdjustment();void cancelColorAdjustment();
   const timeline::Timeline& displayTimeline()const{return adjustment_?adjustment_->preview:timeline_;}
   bool colorAdjustmentActive()const{return adjustment_.has_value();}
@@ -199,14 +286,19 @@ private:
     std::vector<DocumentCel> detachedCels;
     std::vector<DocumentCel> beforeCels,afterCels;
     std::optional<std::vector<timeline::LoopSection>> beforeLoops,afterLoops;
+    std::optional<bool> beforeAnimationLoop,afterAnimationLoop;
     std::optional<std::vector<std::string>> beforeSelection,afterSelection;
     std::vector<Edit> children;
+    std::optional<TimelineSelection> beforeTimelineSelection,afterTimelineSelection;
+    std::optional<std::string> beforeFrameAnchor,afterFrameAnchor;
 
     std::optional<DocumentFrame> detachedFrame;
     std::vector<std::string> beforeFrames,afterFrames;
     std::string beforeFrame,afterFrame,targetFrameId;
+    std::vector<std::pair<std::string,bool>> beforeDisabled,afterDisabled;
     std::optional<int> beforeDuration,afterDuration;
     std::optional<double> beforeOpacity,afterOpacity;
+    std::optional<std::u32string> beforeName,afterName;
     int paletteKind=0, colorId=0; // 1 add, 2 remove slots, 3 color edit
     std::size_t bytes() const;
   };
@@ -216,6 +308,9 @@ private:
   PaletteState palette_;
   std::vector<ProjectBrushResource> projectBrushes_;
   std::optional<SymmetryCenter> symmetryCenter_;
+  std::vector<std::pair<std::string,bool>> lockGestureBefore_;
+  std::vector<std::pair<std::string,bool>> visibilityGestureBefore_;
+  std::vector<std::pair<std::string,bool>> autoLinkGestureBefore_;
   bool fillSymmetryDispatch_=false;
   void pushEdit(Edit edit);
   PaletteState capturePaletteEdit(int kind,int id=0) const;
@@ -228,6 +323,7 @@ private:
   std::vector<BrushSpan> stampSpans_;
   std::optional<ImageBrushStamp> imageStamp_;
   std::unordered_map<std::size_t,int> imageEraseCoverage_;
+  std::unordered_map<std::size_t,Pixel> inheritedStrokeBaseline_;
   Point previousStamp_{};
   bool hasPreviousStamp_=false;
   int width_, height_;
@@ -239,9 +335,11 @@ private:
   std::uint64_t nextLayerId_=0,nextFrameId_=0;
   std::string activeFrameId_,frameAnchor_;
   std::vector<std::string> selectedFrames_;
-  struct FrameClipboardItem { DocumentFrame frame; std::vector<DocumentCel> cels; };
+  TimelineSelection timelineSelection_;
+  std::vector<CelClipboardItem> celClipboard_;
   std::vector<FrameClipboardItem> frameClipboard_;
   bool animationLoop_=true;
+  void mergeRasterLayers(const std::vector<std::string>& ids,std::size_t index);
   void captureFrameOrder(Edit& edit,bool after) const;
   void applyFrameEdit(const Edit& edit,bool redo);
   void applyEdit(const Edit& edit,bool redo);
@@ -260,16 +358,19 @@ private:
   std::uint64_t state_ = 0, nextState_ = 1;
   bool modified_ = false; // Legacy touch: undo/redo are document changes too.
   std::optional<double> opacityBefore_;
+  std::vector<std::pair<std::string,double>> opacityValuesBefore_;
+  std::vector<std::pair<std::string,std::u32string>> layerNamesBefore_;
+  bool layerNameChanged_=false;
   std::optional<int> durationBefore_;
   std::vector<std::pair<std::string,int>> durationValuesBefore_;
   std::optional<SelectionMask> selection_;
-  struct FloatingTarget {SelectionClipboard source;std::string celId;std::unordered_map<std::size_t,Delta> preview;std::shared_ptr<SelectionRotSpriteSource> rotSprite;};
-  struct FloatingPaste {SelectionClipboard source;SelectionTransform transform;int x=0,y=0;std::optional<SelectionMask> beforeSelection;bool clipboard=true,copy=true,rotSprite=false;int sourceX=0,sourceY=0;std::vector<FloatingTarget> targets;std::string layerId,frameId;};
+  struct FloatingTarget {SelectionClipboard source;std::string celId;std::unordered_map<std::size_t,Delta> preview;std::shared_ptr<SelectionRotSpriteSource> rotSprite;std::optional<SelectionClipboard> originalSource;};
+  struct FloatingPaste {SelectionClipboard source;SelectionTransform transform;int x=0,y=0;std::optional<SelectionMask> beforeSelection;bool clipboard=true,copy=true,rotSprite=false;int sourceX=0,sourceY=0;std::vector<FloatingTarget> targets;std::string layerId,frameId;std::optional<timeline::State> beforeCelTimeline;TimelineSelection beforeTimelineSelection;std::vector<std::string> beforeSelectedFrames;};
   std::optional<FloatingPaste> floating_;
   struct GradientPreview {Point seed;std::string celId,layerId,frameId;std::vector<Pixel> preview;std::optional<SelectionMask> selection,region;WandOptions options;std::uint64_t contentRevision;bool shape=false;};
   std::optional<GradientPreview> gradient_;std::uint64_t gradientRevision_=0;
 
-  struct AdjustmentPreview {timeline::Timeline baseline,preview;std::vector<std::string> targets;std::optional<SelectionMask> selection;std::string layerId,frameId;std::uint64_t contentRevision;bool clipSelection=true;};
+  struct AdjustmentPreview {timeline::Timeline baseline,preview;std::vector<std::string> targets;std::optional<SelectionMask> selection;std::string layerId,frameId;std::uint64_t contentRevision;bool clipSelection=true;std::vector<std::string> targetFrames;};
   std::optional<AdjustmentPreview> adjustment_;
   struct PaletteReplacementPreview {PaletteState baseline,preview;std::uint64_t contentRevision;std::optional<Pixel> restorePrimary;};
   std::optional<PaletteReplacementPreview> paletteReplacement_;

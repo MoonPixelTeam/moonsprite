@@ -9,6 +9,8 @@ int main(int argc,char**argv){try{
  auto state=scene();auto result=compositeNormalRegion(Timeline(state),"a",{0,0,3,2});CHECK(result[0]==0xffff0000 && result[1]==0xff7f0080 && result[2]==0xff00ff00);CHECK(result[4]==0xffff0000);
  CHECK(compositeNormalRegion(Timeline(state),"b",{0,0,3,2})==std::vector<Pixel>(6,0));
  auto partial=compositeNormalRegion(Timeline(state),"a",{1,0,1,1});CHECK(partial.size()==1 && partial[0]==result[1]);
+ std::vector<Pixel> replacement{0xff123456};CHECK(compositeNormalRegion(Timeline(state),"a",{2,1,1,1},"bottom",&replacement,1,2,1)[0]==replacement[0]);
+ replacement[0]=0xffffffff;CHECK(compositeNormalRegion(Timeline(state),"a",{1,0,1,1},"bottom",&replacement,1,1,0)[0]==0xff7f7fff);
  state.layers[0].visible=false;CHECK(compositeNormalRegion(Timeline(state),"a",{0,0,3,2})[1]==0xffff0000);
  state.layers[0].visible=true;state.layers[0].opacity=.5;CHECK(compositeNormalRegion(Timeline(state),"a",{2,0,1,1})[0]==0xff808000);
  state.cels[1].surface->offsetX=-1;CHECK(compositeNormalRegion(Timeline(state),"a",{-1,0,1,1})[0]==0x400000ff);

@@ -27,7 +27,7 @@ PreparedImport prepareEditableImport(const ReadManifest& m) {
  timeline::State state;
  for(const auto& section:m.loopSections)state.loopSections.push_back({section.id,unicode(section.name),section.startFrameId,section.endFrameId,section.direction,section.repeatCount});
  for(const auto& l:m.layers) state.layers.push_back({l.id,unicode(l.name),l.visible,l.locked,l.opacity,l.autoLinkAnimationCels});
- for(const auto& f:m.frames) state.frames.push_back({f.id,f.duration,false});
+ for(const auto& f:m.frames) state.frames.push_back({f.id,f.duration,f.disabled});
  for(const auto& c:m.cels) {
   timeline::Cel out;out.id=c.id;out.layerId=c.layerId;out.frameId=c.frameId;out.zIndex=c.zIndex;out.opacity=c.opacity;
   if(!c.linkedCelId.empty()) out.linkedCelId=c.linkedCelId;

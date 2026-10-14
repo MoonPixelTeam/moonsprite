@@ -51,6 +51,8 @@ int wmain(int argc,wchar_t** argv) {
     const auto dark=load(darkPath);
     for(const auto* slot:{"button.normal","canvas_frame","tab_active","panel_tab_active","panel_tab_inactive","document_frame","color_well","panel"})
       CHECK(dark.assets.patches.count(slot)==1);
+    for(const auto& part:dark.parts)CHECK(part.id!="button_normal" && part.id!="button_hot" && part.id!="button_selected" && part.id!="button_disabled" && part.id!="button_focused");
+    CHECK(dark.assets.patches.at("button.normal").bitmap->pixels==dark.assets.patches.at("icon_button.normal").bitmap->pixels);
     const auto& iconButton=dark.assets.patches.at("icon_button.normal");
     CHECK(iconButton.bitmap->width==11 && iconButton.bitmap->height==12);
     CHECK(iconButton.left==2 && iconButton.right==2 && iconButton.top==2 && iconButton.bottom==3);
@@ -59,26 +61,20 @@ int wmain(int argc,wchar_t** argv) {
     CHECK(hotIconButton.bitmap->pixels[2*11+2]==0xff443229);
     CHECK(!dark.assets.patches.count("close_button.normal"));
     for(const auto& part:dark.parts) CHECK(part.id!="dialog_close_normal" && part.id!="dialog_close_hot" && part.id!="tool_pencil" && part.id!="tool_eraser");
-    const auto& inputNormal=dark.assets.patches.at("entry.normal");const auto& inputFocus=dark.assets.patches.at("entry.focus");
-    CHECK(inputNormal.bitmap->width==5 && inputNormal.bitmap->height==18);
-    CHECK((inputNormal.bitmap->pixels[0]>>24)==0 && inputFocus.bitmap->pixels[5]==0xff000000);
-    CHECK(inputNormal.bitmap->pixels[4*5+2]==0xff352620);
+    const auto& inputNormal=dark.assets.patches.at("entry.normal");
+    CHECK(inputNormal.bitmap->width==5 && inputNormal.bitmap->height==14);
+    CHECK(!dark.assets.patches.count("entry.focus"));
     CHECK(dark.assets.patches.at("slider.normal").bitmap->width==9);
-    CHECK(dark.assets.patches.at("slider.focus").bitmap->height==18);
+    CHECK(!dark.assets.patches.count("slider.focus"));
     CHECK(dark.assets.patches.at("slider.fill").bitmap->width==3);
     CHECK(dark.assets.patches.at("slider.fill").bitmap->height==12);
-    CHECK(dark.assets.patches.at("slider.normal").bitmap->pixels[5*9+4]==0xff352620);
-    CHECK(dark.assets.patches.at("slider.normal").bitmap->pixels[16*9+4]==0xff231b18);
-    CHECK(dark.assets.patches.at("slider.focus").bitmap->pixels[9+1]==0xff8f7363);
     const auto sliderReference=importSkinPng(darkPath.parent_path()/"slider-reference.png",256).bitmap;
     CHECK(sliderReference->width==119 && sliderReference->height==35);
     const int trackColumns[]{0,1,2,115,98,115,116,117,118};
-    for(int focused=0;focused<2;++focused) {
-      const auto bitmap=dark.assets.patches.at(focused?"slider.focus":"slider.normal").bitmap;
-      for(int y=0;y<18;++y) for(int x=0;x<9;++x) {
-        const int sourceY=focused?y+17:y-2;
-        CHECK(bitmap->pixels[y*9+x]==(sourceY<0?0:sliderReference->pixels[sourceY*119+trackColumns[x]]));
-      }
+    const auto bitmap=dark.assets.patches.at("slider.normal").bitmap;
+    for(int y=0;y<18;++y) for(int x=0;x<9;++x) {
+      const int sourceY=y-2;
+      CHECK(bitmap->pixels[y*9+x]==(sourceY<0?0:sliderReference->pixels[sourceY*119+trackColumns[x]]));
     }
     // Latest slider keeps both inner track edges; discarded icon regions are really clear.
     CHECK(dark.assets.patches.at("slider.normal").bitmap->pixels[5*9+3]==0xff674f42);

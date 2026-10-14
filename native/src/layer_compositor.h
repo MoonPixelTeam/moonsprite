@@ -6,7 +6,7 @@ struct CompositeRegion {int x=0,y=0,width=0,height=0;};
 // Output is only the requested rectangle; caller retains unrelated cached pixels.
 // Unmigrated z-order, cel opacity and storage origins reject; valid links resolve once per layer.
 std::vector<timeline::Pixel> compositeNormalRegion(const timeline::Timeline& timeline,
- const std::string& frameId,CompositeRegion region,const std::string& previewLayer={},const std::vector<timeline::Pixel>* preview=nullptr,int previewWidth=0);
+ const std::string& frameId,CompositeRegion region,const std::string& previewLayer={},const std::vector<timeline::Pixel>* preview=nullptr,int previewWidth=0,int previewX=0,int previewY=0);
 struct OnionSkinSettings {
  bool enabled=false,allLayers=false,showDuringPlayback=true;
  int previousFrames=1,nextFrames=1,previousOpacity=35,nextOpacity=35;

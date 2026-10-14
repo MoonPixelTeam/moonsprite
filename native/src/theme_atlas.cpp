@@ -71,7 +71,7 @@ std::string runtimeId(std::string id) {
 }
 bool live(const std::string& id) {
   static const std::set<std::string> ids{"button","document_frame","palette","panel_tab_active","panel_tab_inactive","panel_outer","panel_content","panel_tab_join_left","panel_tab_join_right","menu_bar","menu_popup","menu_item","menu_item_hover","menu_hover"};
-  return id.rfind("cursor.",0)==0 || id.rfind("timeline.",0)==0 || id.rfind("icon.",0)==0 || ids.count(id)!=0 || id=="dialog_frame" || id.rfind("text_button.",0)==0 || id.rfind("icon_button.",0)==0 || id.rfind("entry.",0)==0 || id.rfind("slider.",0)==0 || id.rfind("role_button.",0)==0;
+  return id.rfind("scrollbar.",0)==0 || id.rfind("cursor.",0)==0 || id.rfind("timeline.",0)==0 || id.rfind("icon.",0)==0 || ids.count(id)!=0 || id=="dialog_frame" || id.rfind("text_button.",0)==0 || id.rfind("icon_button.",0)==0 || id.rfind("entry.",0)==0 || id.rfind("slider.",0)==0 || id.rfind("role_button.",0)==0;
 }
 std::string state(const std::string& s) {
   if(s.empty()) return "normal";if(s=="mouse") return "hover";if(s=="selected") return "selected";

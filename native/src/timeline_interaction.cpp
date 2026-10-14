@@ -1,0 +1,81 @@
+#include "document.h"
+#include <algorithm>
+#include <unordered_map>
+#include <unordered_set>
+
+namespace moon {
+namespace {
+bool contains(const std::vector<std::string>& ids,const std::string& id){return std::find(ids.begin(),ids.end(),id)!=ids.end();}
+void toggle(std::vector<std::string>& ids,const std::string& id){auto it=std::find(ids.begin(),ids.end(),id);if(it==ids.end())ids.push_back(id);else ids.erase(it);}
+template<class T> int indexOf(const std::vector<T>& items,const std::string& id){auto it=std::find_if(items.begin(),items.end(),[&](const T& item){return item.id==id;});return it==items.end()?-1:int(it-items.begin());}
+}
+// Ports workspace-commands-layer-selection's replace/toggle/range semantics.
+void Document::selectTimelineLayer(const std::string& id,int mode){
+ const auto& layers=timeline_.state().layers;const int end=indexOf(layers,id);if(end<0)return;
+ commitFloatingPaste();clearFrameSelection();timelineSelection_.cels.clear();timelineSelection_.celAnchor.clear();
+ if(mode==2){int start=indexOf(layers,timelineSelection_.layerAnchor);if(start<0)start=int(activeLayerIndex());timelineSelection_.layers.clear();for(int i=std::min(start,end);i<=std::max(start,end);++i)timelineSelection_.layers.push_back(layers[i].id);}
+ else{if(mode==1)toggle(timelineSelection_.layers,id);else timelineSelection_.layers={id};timelineSelection_.layerAnchor=id;}
+ selectLayer(id);
+}
+// Cel range is additive; its anchor follows the last selected focus, as in legacy.
+void Document::selectTimelineCel(const std::string& id,int mode,const std::vector<std::string>& replacement){
+ const auto* target=timeline_.findCelById(id);if(!target)return;const auto layerId=target->layerId,frameId=target->frameId;
+ const auto implicit=cel().id;commitFloatingPaste();clearFrameSelection();
+ auto& selected=timelineSelection_.cels;
+ if(mode && selected.empty())selected.push_back(implicit);
+ if(mode==1)toggle(selected,id);
+ else if(mode==2){const auto* anchor=timeline_.findCelById(timelineSelection_.celAnchor.empty()?selected.back():timelineSelection_.celAnchor);
+  if(anchor){const auto& s=timeline_.state();const int r=indexOf(s.layers,anchor->layerId),t=indexOf(s.layers,layerId),c=indexOf(s.frames,anchor->frameId),d=indexOf(s.frames,frameId);
+   for(int row=std::min(r,t);row<=std::max(r,t);++row)for(int col=std::min(c,d);col<=std::max(c,d);++col){const auto key=timeline_.findCel(s.layers[row].id,s.frames[col].id)->id;if(!contains(selected,key))selected.push_back(key);}}}
+ else{timelineSelection_.layers.clear();timelineSelection_.layerAnchor.clear();selected.clear();for(const auto& key:replacement)if(timeline_.findCelById(key) && !contains(selected,key))selected.push_back(key);if(!contains(selected,id))selected.push_back(id);}
+ timelineSelection_.celAnchor=contains(selected,id)?id:selected.empty()?std::string{}:selected.back();
+ const auto* focus=timeline_.findCelById(timelineSelection_.celAnchor);selectLayer(focus?focus->layerId:layerId);selectFrame(frameId);
+}
+void Document::moveTimelineCels(const std::string& anchorId,const std::string& targetId,bool copy){
+ commitFloatingPaste();cancelStroke();cancelLayerOpacity();
+ const auto* anchor=timeline_.findCelById(anchorId);const auto* target=timeline_.findCelById(targetId);if(!anchor || !target || timelineSelection_.cels.empty())return;
+ const auto& s=timeline_.state();int dr=indexOf(s.layers,target->layerId)-indexOf(s.layers,anchor->layerId),dc=indexOf(s.frames,target->frameId)-indexOf(s.frames,anchor->frameId);if(!dr && !dc)return;
+ struct Placement {DocumentCel source;std::string target;};std::vector<Placement> placements;
+ for(const auto& id:timelineSelection_.cels){const auto* source=timeline_.findCelById(id);if(!source)return;const int row=indexOf(s.layers,source->layerId)+dr,col=indexOf(s.frames,source->frameId)+dc;if(row<0 || row>=int(s.layers.size()) || col<0 || col>=int(s.frames.size()))return;
+  auto value=*source;const auto resolved=timeline_.resolveSurface(id);value.surface=resolved.surface?std::optional<timeline::Surface>{*resolved.surface}:std::nullopt;placements.push_back({std::move(value),timeline_.findCel(s.layers[row].id,s.frames[col].id)->id});}
+ Edit e{{},state_,nextState_};e.beforeTimelineSelection=timelineSelection_;e.beforeActive=activeLayerId_;e.beforeFrame=activeFrameId_;
+ std::unordered_set<std::string> affected,mutated;for(const auto& p:placements){affected.insert(p.source.id);affected.insert(p.target);mutated.insert(p.target);if(!copy)mutated.insert(p.source.id);}
+ // Shared surface objects in legacy outlive overwritten canonical slots. Keep
+ // surviving linked siblings on an owned source before replacing any slot.
+ for(const auto& c:s.cels)if(!affected.count(c.id)){const auto resolved=timeline_.resolveSurface(c.id);if(resolved.source && mutated.count(resolved.source->id))affected.insert(c.id);}
+ for(const auto& c:s.cels)if(affected.count(c.id))e.beforeCels.push_back(c);
+ auto after=e.beforeCels;
+ auto mutableCel=[&](const std::string& id)->DocumentCel&{return *std::find_if(after.begin(),after.end(),[&](const auto& c){return c.id==id;});};
+ std::unordered_map<std::string,std::string> survivors;
+ for(auto& c:after){const bool slot=std::any_of(placements.begin(),placements.end(),[&](const auto& p){return p.target==c.id || (!copy && p.source.id==c.id);});if(slot)continue;const auto resolved=timeline_.resolveSurface(c.id);if(!resolved.source || !mutated.count(resolved.source->id))continue;
+  const auto canonical=resolved.source->id;auto found=survivors.find(canonical);c.linkedCelId.reset();c.runtimeSharedCelId.reset();
+  if(found==survivors.end()){c.surface=*resolved.surface;survivors[canonical]=c.id;}else{c.surface.reset();c.runtimeSharedCelId=found->second;}}
+ if(!copy)for(const auto& p:placements){auto& original=mutableCel(p.source.id);original.surface=p.source.surface;if(original.surface)std::fill(original.surface->pixels.begin(),original.surface->pixels.end(),0);original.linkedCelId.reset();original.runtimeSharedCelId.reset();original.zIndex=0;}
+ timelineSelection_.cels.clear();
+ for(const auto& p:placements){auto& destination=mutableCel(p.target);destination.linkedCelId.reset();destination.runtimeSharedCelId.reset();destination.surface=p.source.surface;destination.opacity=p.source.opacity;destination.zIndex=p.source.zIndex;timelineSelection_.cels.push_back(destination.id);if(p.source.id==anchorId)timelineSelection_.celAnchor=destination.id;}
+ e.afterCels=std::move(after);e.afterTimelineSelection=timelineSelection_;e.afterActive=target->layerId;e.afterFrame=target->frameId;applyCelEdit(e,true);activeLayerId_=e.afterActive;change_={0,0,width_,height_};publishChange();pushEdit(std::move(e));
+}
+void Document::moveTimelineLayers(const std::string& target,bool after,bool copy){
+ commitFloatingPaste();cancelStroke();cancelLayerOpacity();auto& state=timeline_.state_;auto selected=timelineSelection_.layers;if(selected.empty())selected={layer().id};if(indexOf(state.layers,target)<0)return;
+ Edit e{{},state_,nextState_};e.beforeTimelineSelection=timelineSelection_;e.beforeActive=activeLayerId_;e.beforeFrame=e.afterFrame=activeFrameId_;e.beforeSelection=e.afterSelection=selectedFrames_;
+ std::vector<DocumentLayer> moving,remaining;
+ for(const auto& l:state.layers)if(contains(selected,l.id))moving.push_back(l);else remaining.push_back(l);
+ if(moving.empty())return;
+ if(copy){e.beforeTimeline=state;remaining=state.layers;std::unordered_map<std::string,std::string> celIds;std::vector<DocumentCel> copies;std::vector<std::string> ids;
+  for(auto& l:moving){const auto old=l.id;l.id="layer-native-"+std::to_string(identity_)+"-"+std::to_string(++nextLayerId_);ids.push_back(l.id);for(const auto& c:state.cels)if(c.layerId==old){auto value=c;value.layerId=l.id;value.id="cel-"+l.id+"-"+c.frameId;celIds[c.id]=value.id;copies.push_back(std::move(value));}}
+  for(auto& c:copies){const auto* original=timeline_.findCelById(std::find_if(celIds.begin(),celIds.end(),[&](const auto& p){return p.second==c.id;})->first);if(original->linkedCelId && celIds.count(*original->linkedCelId)){c.linkedCelId=celIds[*original->linkedCelId];c.surface.reset();}else{const auto source=timeline_.resolveSurface(original->id);c.surface=*source.surface;c.linkedCelId.reset();}c.runtimeSharedCelId.reset();}
+  state.cels.insert(state.cels.end(),copies.begin(),copies.end());selected=std::move(ids);
+ }else captureLayerOrder(e,false);
+ const int oldTarget=indexOf(state.layers,target);auto it=std::find_if(remaining.begin(),remaining.end(),[&](const auto& l){return l.id==target;});const int insertion=it!=remaining.end()?int(it-remaining.begin())+(after?1:0):int(std::count_if(state.layers.begin(),state.layers.begin()+oldTarget,[&](const auto& l){return !contains(selected,l.id);}));
+ remaining.insert(remaining.begin()+insertion,moving.begin(),moving.end());if(!copy && std::equal(remaining.begin(),remaining.end(),state.layers.begin(),[](const auto& a,const auto& b){return a.id==b.id;}))return;
+ state.layers=std::move(remaining);timelineSelection_.layers=selected;activeLayerId_=selected.back();timeline_.buildIndex();if(copy)e.afterTimeline=state;else captureLayerOrder(e,true);e.afterActive=activeLayerId_;e.afterTimelineSelection=timelineSelection_;change_={0,0,width_,height_};publishChange();pushEdit(std::move(e));
+}
+void Document::copyTimelineFrames(const std::string& target,bool after){
+ const auto clipboard=frameClipboard_;const auto beforeActive=activeFrameId_;const auto beforeLayer=activeLayerId_;const auto beforeSelection=selectedFrames_;const auto anchor=frameAnchor_;const auto formal=timelineSelection_;const auto pos=position_;
+ if(!copySelectedFrames())return;const auto oldGrouping=groupingHistory_;groupingHistory_=true;
+ selectFrame(target);if(!after && activeFrameIndex()>0)selectFrame(timeline_.state().frames[activeFrameIndex()-1].id);
+ if(pasteCopiedFrames(true)){moveSelectedFrames(target,after);groupingHistory_=oldGrouping;groupEdits(pos,beforeSelection);auto& edit=history_[position_-1];edit.beforeFrame=beforeActive;edit.beforeActive=beforeLayer;edit.afterFrame=activeFrameId_;edit.afterActive=activeLayerId_;edit.beforeFrameAnchor=anchor;edit.afterFrameAnchor=frameAnchor_;edit.beforeTimelineSelection=formal;edit.afterTimelineSelection=timelineSelection_;}
+ else{groupingHistory_=oldGrouping;selectFrame(beforeActive);}
+ frameClipboard_=clipboard;
+}
+}

@@ -309,3 +309,359 @@ Windows图像剪贴板使用已有MIT clip库替代legacy Tauri桥，当前24/32
 ## 2026-10-14 帧剪贴板、图层合并与精灵表预览
 
 已完成原生帧快照复制/粘贴：Surface 深拷贝，帧时长保留，内部 linked Cel 在粘贴时重映射，外部链接解析后断开；支持单次历史与撤销。图层向下合并按 compositor top-first 顺序修正，并覆盖 RGBA 合成与 undo 回归。精灵表导出弹窗增加只读 RGBA 预览，关闭不改变文档 history、revision 或 dirty 状态。限制：预览 smoke 需在正式程序单独运行确认；完整 legacy 严格等价仍未完成。
+
+
+## 2026-10-14 合并可见图层普通 RGBA 子集
+
+承接 legacy core/layer-merge.ts 的 mergeVisibleLayers/renderMergedFrames/installMergedFrames：合并前逐帧合成全部可见层，隐藏层及其 Cel/ID 原样保留；可见锁定层拒绝。结果普通可见、未锁、opacity=1 图层位于 native top-first 顶端并成为活动层，每帧为独立 Cel，单次结构历史支持 undo/redo。复用 normal compositor 的链接解析和偏移处理；非默认 Cel opacity、zIndex、storage origin 等当前不支持语义明确拒绝，不近似扁平化。两帧半透明/opacity/隐藏保留/锁定拒绝/undo-redo 与编码回读测试 exit0；来源覆盖检查通过。
+
+
+帧剪切已承接 legacy copy-first/deleteFrame 规则：剪切全选仍保留最后一帧且保留剪贴板，锁定层不阻止时间轴帧剪切，菜单与 Ctrl+X 接显式帧选择，单次删除历史可 undo/redo；粘贴历史修为完整结构快照，撤销实际删除新增帧/Cel。官方 core 回归 exit0。当前剪贴板仍是同一文档内，跨文档未迁移。
+
+精灵表拆分承接 layer×有效循环段目标顺序，每目标独立去空/去重/布局后竖向堆为单 PNG，透明补齐不同宽度；PNG 编码与只读预览共用像素 builder。现有图层菜单启用拆分图层/循环段，原生组/多选组、新建文档与导出后打开仍未迁移。
+
+本批正式验证：native/build Release 单节点 /nodeReuse:false build exit0；moon-core-tests、layer-merge-tests、project-save-tests、sprite-sheet-tests 均实际 exit0。最新正式 --animation-check 通过 System.Diagnostics.Process PID6396 WaitForExit 返回 exit0，含帧剪切菜单/粘贴撤销、合并可见菜单/撤销、拆分预览源 dirty/history/revision 前后不变。来源检查当前 exit1 的唯一覆盖问题是本批之外新增未登记 src/timeline_interaction.cpp；本批修改已补充实际 legacy 来源，不将整体 coverage 宣称通过。
+
+
+## 2026-10-14 图层多选命令上下文
+
+保留外部已接入 timeline_interaction.cpp 的 replace/Ctrl toggle/Shift range/多层拖动及既有素材外轮廓，不重新设计选择状态。补替换颜色与精灵表选中层目标为全部显式普通层，保留活动与选择分离；多层删除承接 legacy 原子锁定/至少一层守卫，隐藏层可删除，单次结构历史恢复层/Cel与显式选择。组/蒙版和多层复制等结构命令尚未完整迁移；现色调调整仍保留原普通RGBA子集范围，未假称全部多选命令完成。timeline_interaction.cpp依据读取的实际代码和legacy选择/移动入口登记partial，coverage不代表等价。
+
+播放偏好已接六档0.25/0.5/1/1.5/2/3速度(default1)、自然完成返回起点(defaultfalse)，播放按钮右键与本地持久化；速率修改重置当前帧deadline，不改帧时长/history。once/all交互需真实animation-loop历史事务、标签串行cycle状态尚未迁移，模式入口灰显准确保留。
+
+Cel复制粘贴已接时间轴显式Cel集合的编辑/右键/Ctrl+C/V入口，完整普通RGBA稀疏块按相对行列映射，快照源改/删仍可粘，内部链接重映射/外链解析，覆盖canonical root提升survivor，末端追加100ms帧并支持单次undo。锁目标原子拒绝、隐藏层允许。Document本地剪贴板不跨工程重用ID；Cel剪切、像素选区内容/mask/text/tilemap/free-tile/跨文档转换仍未迁移。
+
+本批实际验证：native/build正式Release /m:1 /nodeReuse:false构建exit0，moon-core-tests exit0；最新System.Diagnostics.Process --animation-check PID25072 WaitForExit返回exit0，覆盖Cel菜单copy/paste/undo/新Document无剪贴板，图层Ctrl/Shift范围、替换目标像素、多选删除undo和sheet集合，播放偏好reload/rate/delay/pause/completion/source invariants。多层删除测试使用revision一次变化与实际undo恢复判定，避免已有redo分支historySize截断误判。
+
+
+## 2026-10-14 完整普通 RGBA Cel 剪切
+
+复用既有同文档 Cel 快照复制，剪切先原子检查全部所选层锁定，再以一次事务清空槽位；保留位置、尺寸、透明度，清零像素/zIndex并解除链接。删除共享源时首个未选成员承接内容，其余成员重链；仅删除别名保留其余组。空 Cel 同样产生历史，显式 Cel 选择清空且撤销不恢复选择（legacy restoreAnimationCels 仅恢复数据）。编辑菜单/Ctrl+X 已接，旧版没有右键 Cel 剪切项，已有删除入口复用同一清空逻辑。像素选区剪切、特殊 Cel/蒙版、跨文档仍未迁移。
+
+本批实际验证：最终 native/build Release 单节点 /nodeReuse:false build exit0，moon-core-tests exit0，--cel-clipboard-check PID36996 WaitForExit exit0（菜单复制/粘贴/剪切/undo/redo/剪贴板再粘贴，新Document隔离及帧剪切菜单闭环）。140文件来源coverage exit0，仍标记INCOMPLETE。完整 --animation-check PID37420 exit1，失败为既有 Floating selection outside cursor，未修改光标或放宽断言，不宣称全套通过。正式exe更新时间2026-10-14 15:31:46。
+
+
+## 2026-10-14 浮动选区光标与一次播放命令
+
+待确认浮动选区也令Document::active为true，新capture优先分支曾将其误判为绘制事务而在画布外返回画笔光标。只在该绘制分支排除floating，真正floatingDragging仍走更早的选区捕获分支；原坐标和严格default断言保留，未变更素材边框命中。
+
+播放按钮右键的播放一次入口采用legacy setAnimationPlaybackMode(once)->setAnimationLoop(false)真实文档历史，loop变更dirty、单次undo/redo、相同值无历史；清除循环段遍历而不跳帧、不停止正在播放。用户Ctrl+Z可恢复先前loop，既有循环段播放入口仍可使用。仅此文档命令子集已实现，循环全部/tag入口与跨会话模式偏好仍未迁移。
+
+最终验证：关闭确认曾阻止旧进程退出，后续新正式PID38128正常关闭并WaitForExit=True，未强杀或丢弃数据。正式Release单节点nodeReuse:false build exit0，moon-core-tests exit0（沿用native现有undo仍dirty契约），完整--animation-check PID36344 WaitForExit exit0，覆盖原浮动外侧严格断言、已有选区拖动/变换和一次播放事务/撤销/无操作/运行段退出。来源140文件coverage exit0，alignment仍INCOMPLETE。
+
+
+## 2026-10-14 循环全部入口
+
+播放按钮右键循环全部已接通，once/all共用setPlaybackLoopMode和既有Document::setAnimationLoop事务；默认loop=true与旧版菜单all回退一致。勾选状态反映loop与当前段状态。切换all清段遍历、保留当前帧/播放状态/deadline；loop变化记录单次历史并更新播放revision token，同值不改历史/revision。新增回归覆盖undo/redo、重复选择、从当前末帧开始并回首帧继续播放、播放中清段和时序保持。tag与跨会话模式偏好仍未迁移，未额外接入口或快捷键。
+
+精确来源：legacy/src/renderer/src/components/AnimationPlaybackMenu.tsx；legacy/src/renderer/src/store/workspace-commands-animation-playback.ts::setAnimationPlaybackMode；workspace-commands-animation-frame.ts::setAnimationLoop及其undo/redo；workspace-animation-loop-sections.test.ts与既有history-playback证据。最终native/build正式Release /m:1 /nodeReuse:false build exit0，moon-core-tests exit0，完整--animation-check PID38864 WaitForExit exit0；正式exe 2026-10-14 15:46:13。无提交推送、新preview或外部工程。
+
+
+## 2026-10-14 标签播放模式
+
+播放按钮右键循环当前段已接入tag会话状态，不改document.loop/dirty/history；once/all清tag，文档切换重置模式。当前帧选最内层段、按正反向/ping-pong方向起点开始；运行中切tag无段停止，停止态无段启动按全部可播放帧fallback。暂停保持有效段方向/iteration/position，重新选择无限tag不重启，有限tag重选重新定位当前段起点。时间轴播放头人工切换按旧版retarget helper重选段而不跳帧。
+
+有限tag保留首段cycle锚点，重复完成后串行后续有限段及普通帧（后续无限段当普通帧经过），环回原锚点；完全照workspace-animation-loop-sections.test.ts六帧Finite/Later finite/Later infinite序列。复用现有advanceLoopPlayback嵌套栈；修正入子段/返回父段时repeatIndefinitely标记按目标段次数重置，避免无限父段下有限子段只播一次。严格子段范围、方向、边界仍使用既有legacy算法。
+
+精确来源：AnimationPlaybackMenu.tsx；workspace-commands-animation-playback.ts::setAnimationPlaybackMode/setAnimationPlaying/advanceAnimationFrame/playAnimationLoopSection；workspace-animation-commands-helpers.ts::setAnimationLoopPlaybackSection/retargetAnimationLoopPlaybackAtFrame；core/animation-loop-sections.ts::animationLoopSectionAtFrame/animationLoopSectionStartFrameId；workspace-animation-loop-sections.test.ts有限串行/最内层/暂停/retarget证据。跨会话偏好及原生未支持的mask/special上下文仍登记缺口，不接入此批。
+
+最终验证：native/build Release /m:1 /nodeReuse:false build exit0；moon-core-tests exit0；timeline-model-tests exit0（新增无限父段下有限reverse子段两次播放）；完整--animation-check PID38208 WaitForExit exit0（有限tag六帧序列、模式不改文档、暂停恢复、无段fallback/运行切换、最内层反向、无限重选、retarget、once/all回归）。140文件来源coverage exit0，整体alignment仍INCOMPLETE。正式exe时间见最终回报。正式PID36424及后续新PID35052均正常CloseMainWindow且WaitForExit=True，未强杀/丢弃。
+
+
+## 2026-10-14 播放模式跨会话偏好（集成批次）
+
+legacy file-preferences.parseAnimationPlaybackMode仅once/all/tag有效，default null；workspace-animation-commands-helpers.persistAnimationPlaybackPreferences合并保存；workspace-session创建会话时使用偏好，否则回退工程timeline.loop。原生已有animation-playback.txt尾部追加模式（空偏好-），兼容旧rate/back两字段与非法模式回退。会话模式与文档loop分开，恢复once/all/tag不改工程loop/dirty/history；明确选择模式仍沿用loop事务并保存全局偏好，undo/redo只恢复当前模式而不改已存偏好。
+
+独立验证：正式Release build exit0；完整animation-check PID8488 exit0，覆盖序列化roundtrip、旧文件/无效值fallback、once/all覆盖相反工程loop、tag、新工程恢复、loop撤销不改全局偏好。两路Cel增量等待统一集成与最终验证。
+
+
+本批三路集成状态：播放偏好持久化、跨工程完整RGBA Cel、selectionOnly浮动Cel复制已合入。带选区snapshot在pasteAnimationCels最先early return，因此跨工程同样浮动；支持非矩形mask/alpha、原坐标、多目标链接detach、追加帧取消、一次commit undo/redo。普通whole跨工程尺寸/offset不同仍明确拒绝。真实Editor菜单copy/paste与Escape/Enter/undo/redo交叉检查加入animation-check。
+
+构建与运行证据：三项集成正式Release build exit0；moon-core-tests exit0；cel-selection-clipboard-tests exit0；完整animation-check PID38696 WaitForExit exit0，exe 2026-10-14 16:07:16。最后发现清空app Cel snapshot后回退Document旧clipboard会复活，源码已修为Editor snapshot唯一authoritative并补frame-copy互斥UI断言。该最后修复尚未链接：外部同步panel改动导致main.cpp tickPanelGesture/processPanelGesture调用无定义、toggleLayersPanel columnShown(2)赋值非左值，最新build exit1；未覆盖/退回外部变化或已知修复。core与selection独立仍exit0；provenance exit1唯一批外src/panel_docking.h未登记，本批新增test已登记。正式exe是前一个三项集成版本，不能宣称包含最后剪贴板互斥修复。
+
+
+## 2026-10-14 正式集成交付及Cel后续小闭环
+
+上批Editor authoritative Cel snapshot修复已真正进入正式exe，帧复制后不复活旧Document Cel的animation-check PID36248 exit0，首个交付exe 16:11:58。panel原编译缺失已有真实定义落盘，之后private调用问题亦由外部源码增加public dispatchPanelGesture解决；本批未stub或删除panel行为。
+
+本批两个隔离小patch已集成：空显式Cel复制清本地Cel/Frame及app snapshot，异常复制保留原payload，空复制后paste不产生历史；来源copySelectedAnimationCels空分支及clipboard-service.clearAnimation。多Cel浮动变换的selection几何按clipboard矩形source处理，各target alpha/mask像素逻辑不变，primary空Cel也保留另一个Cel完整外框；来源workspace-floating-preview.floatingSelectionGeometrySource及workspace-paste-cel-selection矩形bounds、selection-flip/floating统一target。新增检查flip/scale/90 RotSprite、preview不dirty、cancel、一次commit undo/redo。
+
+最终Release /m:1 /nodeReuse:false build exit0，moon-core-tests exit0，cel-selection-clipboard-tests exit0，完整animation-check PID37352 WaitForExit exit0（含上批互斥与空复制app回归）。不同尺寸/offset完整RGBA Cel仍显式拒绝，跨工程selectionOnly仍优先floating；未扩大兼容存储语义。来源coverage结果与正式exe时间见最终回报；外部panel未登记不凭空补证据。
+
+
+## 2026-10-14 帧反转、多选Cel断链及选区Cel剪切
+
+帧菜单“反转帧顺序”已接既有swap素材，按workspace-commands-animation-reverse.ts reverseSelectedAnimationFrames反转已选槽位（含不连续选择），保留帧身份/时长/Cel与链接；循环节起止保持原时间轴位置。复用原生frame-order历史一次撤销/重做，恢复帧选择、活动帧与循环范围，少于两帧不写历史。回归沿用workspace-animation-reverse.test.ts全选和0/2/4选择。
+
+隔离补丁集成：disconnectAnimationCels与workspace-commands-animation-cel-properties.ts的多选断链，选alias仅自身、选root断整组，clone resolved surface/opacity/zIndex一次历史；选区Cel剪切来自workspace-cut.ts、workspace-commands-selection-effects.ts及workspace-selection-effects-support.ts，exact selected Cel按canonical source去重，清掩码像素、保留槽和链接，一次compound history；有像素改变才清选区，空剪切更新clipboard无历史，锁定preflight保留旧clipboard。仍限既有原生RGBA零offset存储兼容范围。
+
+最终正式Release build exit0（/m:1 /nodeReuse:false），moon-core-tests exit0，cel-selection-clipboard-tests exit0，完整--animation-check PID36372 WaitForExit exit0，含真实菜单root断链、帧反转、选区Cel剪切与undo/redo。正式exe 2026-10-14 16:33:49。新增UI测试以revision验证一次事务，正确兼容undo后redo分支截断。来源coverage143 exit0，整体Legacy alignment仍INCOMPLETE。此前外部MAIN.OBJ编译占用及多次程序重启占用仅等待状态变化/正常关闭解决，未强杀/删除数据、缓存或新preview。
+
+
+## 2026-10-14 向下合并实际差异、连接Cel及多Cel选区变换
+
+向下合并基础顶栏/API已有，本批修补真实差异并接通原灰显右键mergeDown素材：原近似代码只读cel.surface丢linked内容，现按legacy core/layer-merge.ts mergeLayerDown/mergeRasterLayers仅合相邻两层，全部帧先渲染后替换，复用既有正式layer_compositor resolved链接与不支持语义拒绝。结果名为top.name加zh-CN“ 合并”，normal/opacity1/可见非锁定，其他层不参与；捕获结构与选择history，合并后仅选新层，undo/redo恢复活动帧/层及选择。隐藏、锁定和底层拒绝无事务。来自workspace-commands-layer-structure.ts、workspace-history.ts commitLayerMerge及workspace-layer-merge.test.ts。仍限定原生normal RGBA既有兼容范围，不扩group/blend/indexed等语义。
+
+Cel连接patch来自animation.ts connectAnimationCels及animation-slot-selection.ts：每层帧序首个有alpha内容的canonical root，补空gap，不改未选非空gap；源opacity/zIndex、一次history、保持选择/播放头，复用现link菜单。多Cel选区变换来自workspace-commands-selection-move.ts与selection-transform-targets.ts：beginSelectionContentMove精确已选pair，active frame/layer优先，canonical去重，全目标锁定/隐藏preflight，沿用FloatingPaste支持move/copy/drag/nudge/free transform，取消及一次history；保留旧frame-only fallback。
+
+最终正式Release build exit0，moon-core-tests/layer-merge-tests/cel-selection-clipboard-tests各exit0。最终实际exe完整--animation-check PID35988 exit0（含真实右键连接Cel/向下合并undo redo及已有功能），--layer-context-check PID37204 exit0（legacy图标/状态与新增合并enabled计数）。exe 2026-10-14 16:44:41，10636288bytes。来源coverage143 exit0；strict exit1符合整体alignment INCOMPLETE。构建前无CL/MSBuild占用，唯一正式PID39708正常关闭，未强杀/删作品或新preview，无提交推送。
+
+
+## 2026-10-14 帧右键剪贴板、Cel反转及隐藏蚂蚁线
+
+帧复制/粘贴基础Ctrl接口已有，本批接通灰显右键copy/paste及顶栏frame context，同一Editor helper保持Cel app snapshot互斥。修正本地pasteCopiedFrames按selected最后槽插入、首帧active，单帧选active layer新Cel，多帧选headers与末anchor；捕获选择/anchor undo redo。沿用workspace-commands-animation-frame-clipboard.ts及useTimelineContextActions.tsx；duplicateAt适配参数保留原drag-copy目标与header选择，timeline-interaction-tests真实通过。全局跨工程Frame clipboard和mask/special存储仍未迁移，此批为既有普通RGBA本地路径闭环。
+
+隔离Cel反转patch复用workspace-commands-animation-reverse.ts reverseSelectedAnimationCels与animation-slot-selection.ts：每layer时间序已选slot（含blank）反转，ID/link随内容，未选slot不变，选区/anchor仍原slot，任一moved层锁定整批拒绝，单history undo redo，frame/loop不变，接swap素材。
+
+隐藏/显示蚂蚁线Ctrl+H来源workspace-commands-selection-properties.ts toggleSelectionOutline、AppMenuBar/App shortcut router与useCanvasSelectionOverlay：仅identity范围view状态，默认显示；菜单动态caption/checked与无selection禁用，repeat不切换；只gate paintSelectionAnts和timer，handles/pivot在该调用之后单独绘制且无此gate（源码检查），floating保留不提交。真实--ants-check验证隐藏alpha全透明、selection/pixels/history/dirty/revision不变、快捷键及repeat、floating当前像素和新doc默认。
+
+本批core/timeline-interaction正式build与测试各exit0，layer-merge既有frame snapshot回归exit0。正式exe build命令exit0；实际--animation-check PID38656、--ants-check PID35112、--layer-context-check PID33060均exit0，包含本批新增菜单断言。验证时exe 2026-10-14 16:57:38，10669056bytes。来源coverage143 exit0，strict exit1/整体INCOMPLETE。构建前读进程出现外部38124/23236，命令成功无文件占用失败；验证后又有外部32876/35940编译正式target，本批停止构建，未杀进程/删除缓存/新preview/提交推送。
+
+
+## 2026-10-14 合并所选图层、启停帧和多Cel像素Delete
+
+合并所选图层已接右键与现顶栏catalog。legacy workspace-commands-layer-structure.ts mergeSelectedLayers → core/layer-merge.ts mergeRasterLayers要求>=2连续同级可见非锁层；本native平级normal RGBA范围逐帧仅渲染选中层（resolved链接），保留非目标层，top.name+“ 合并”、默认normal/opacity1，结构及UI一次history undo redo。复用上一批mergeDown内部合成helper，既有down回归保留；不扩group/indexed/blend/special语义。
+
+启用/停用帧来源workspace-animation-commands-helpers.ts updateSelectedAnimationFramesDisabled、workspace-commands-animation-frame.ts与animation.ts firstPlayableAnimationFrameId/nextAnimationFrameId。selected或活动frame fallback bool batch history，重复无事务；kind2 eye/eyeOff菜单及legacy disabled SVG斜线直接转换，once/all跳disabled/all禁用拒播/live最后可播停，tag嵌套保留既有helper语义。工程Manifest/import/encode/fromImported原拒disabled已改读写保留，保存true/省false；按旧animationLoopFrameIdsForExport仍输出禁用帧，不擅改导出。
+
+Delete像素选区来自workspace-commands-selection-effects.ts与workspace-selection-effects-support.ts：精确Cel优先，否则显式layer×frames或隐式frame选取visible unlocked；canonical shared源去重，锁目标跳过，显式hidden允许清，清掩码像素保槽/link，非空child edits一次compound history，真实变化才清选区，undo恢复mask/activity/selection，clipboard floating Delete仍取消。
+
+正式统一build最终exit0，core/layer-merge/cel-selection三test各0，GIF export test0（disabled仍全部输出），project-save实际读回/reenable test0。project-save首次系统TEMP无写权限失败，仅该进程TEMP/TMP改现native/build，测试唯一timestamp目录保留且环境finally恢复。实际最后exe --animation-check PID38784和--layer-context-check PID34312 exit0（包括selected merge上下菜单、disabled播放/UI、新enabled期望），最终已验exe2026-10-14 17:17:45，10704896bytes。源码17:17:15/obj17:17:44确认最后测试修改已编入。来源coverage143 exit0，strict exit1/INCOMPLETE。
+
+构建前空闲，随后外部同target启动导致project_encode.obj Permission denied；未盲试/杀进程/删缓存，等空闲/独占obj后一次构建成功。外部后续正式增量完成最终exe，真实新增检查已运行通过。PID31936正常Close/Wait=True；无新preview/分支/worktree/提交推送。
+
+
+## 2026-10-14 复制所选对象、填充F和自动链接列手势
+
+kind1复制所选对象和已有duplicateLayer顶栏接duplicateSelectedLayers，来源useLayerContextActions.tsx duplicateContextSelection → workspace-commands-layer-structure.ts duplicateSelectedLayerRows/selectedRowInsertionTarget。普通平级RGBA选层依视觉顺序复制为块到最上选中行上方，topmost copy active/anchor、全选副本，name副本并保visible/locked/opacity/autoLink。按animation.ts cloneAnimationCelsForLayer逐帧解析并clone独立surface、原slot opacity、解除Cel链接及默认zIndex，不复制跨layer链接的旧近似实现。一次结构UIhistory恢复activity/selection，空selection不做；既有256层和内存限制适配，groups/masks/indexed/linkedContent等未迁移不近似替代。
+
+填充/F来源workspace-commands-selection-effects.ts fillSelectionOrCanvas、workspace-selection-effects-support.ts、tools-fill.ts及shortcut-contracts：packed RGBA直接replace非混合，选区或全canvas，精确Cel或selected layers×frames/shared source去重，任一hidden/locked阻止，dense选择阈值512²及mask覆盖>=1/3保留；pending先commit，选区保留，一次history。F由错误fitCanvas改真实fill入口，重复/文本输入不抢，pan测试保留fit行为直接调用fitCanvas而不再错误把F当fit。
+
+自动链接列手势来源useLayerRowToggleGesture.ts begin/updateRange/finish与useLayerControlGestures.tsx：拖扫连续row、回拖恢复原值，Ctrl formal多选否则显示rows，Alt solo同目标恢复/换目标先恢复再建立solo，释放/捕获丢失/blur提交。Document预览仅metadata最终delta一次history，无pixel/timeline复制，保持选择和activity；existing auto-link素材复用。
+
+三路统一正式Release build exit0（单node、构建前无外部CL/MSBuild、无正在运行正式进程），moon-core-tests/layer-merge-tests/cel-selection-clipboard-tests各实际exit0。最终exe --animation-check PID36144 exit0包含真实duplicate上下菜单、fill菜单/F及auto-link手势（move/up Ctrl/Alt blur/capture-loss），--layer-context-check PID40692 exit0。exe2026-10-14 17:30:58，10735104bytes。来源coverage143 exit0，strict exit1/整体INCOMPLETE。无新preview/worktree/分支/提交推送，无删数据或缓存。
+
+
+## 2026-10-14 帧属性目标、复制合并、眼睛列手势（待正式UI验收）
+
+帧属性target已修：legacy useTimelineContextActions.tsx openFrameProperties/For与workspace-commands-animation-frame.ts setActiveAnimationFrameDuration仅在active属于selected时批量，否则active单帧。native beginFrameDuration先捕获此target规则，保持既有preview/close合并transaction，不改变dirty/history实时框架。saveFrameProperties/effect cleanup确认旧版关闭commit，native Escape/X继续保留修改一次undo。新增core范围外/多选/clamp/no-op测试与实际modal烟测（待运行）。
+
+copyMerged来源workspace-commands-clipboard.ts copySelection(true)，复用正式compositeNormalRegion/PixelClipboard采当前帧可见层，先commit pending，selection mask/origin或全canvas，alpha有效payload，成功清互斥timeline/app clipboards；CtrlShiftC优先普通copy避免按Cel copy。眼睛visibility列来源useLayerControlGestures/useLayerRowToggleGesture/LayerTreeRow：真实pointer capture拖扫/回拖、Ctrl displayRows多选交集、Alt solo同目标/换目标恢复、blur/capture loss commit最终delta，一次metadata history，clicked eye不激活row、保持选择；ordinary flat范围包括滚动外displayRows，groups/masks不宣称支持。
+
+本批独立正式moon-core-tests与cel-selection-clipboard-tests构建exit0，实际CORE_EXIT=0/SELECTION_EXIT=0，来源coverage143 exit0。正式exe统一build78847编译完成但LINK LNK1104被PID33500占用exit1；CloseMainWindow=True/WaitForExit=False且进程响应，未强杀/丢弃作品。用户已被告知需要正常保存/处理关闭提示后才可继续最终链接。此次尚未成功链接本批UI，新增frame modal/copyMerged/visibility gestures真实UI smoke未运行，不能当完成迁移验收。无新preview/worktree/分支/提交推送。
+
+
+本批最终UI验收补记：用户保存处理关闭后确认无官方进程/外部构建且exe独占可读，正式链接成功。首新增smoke多帧关闭断言误以revision+1计单undo，原既有逐帧push/group使revision+N，已仅改测试historySize+1且保留值/选择/undo断言，无产品事务改变。重编时新PID37964占exe，正常Close/Wait=True后链接exit0；最终实际--animation-check PID40060 exit0，含frame target/Escape-close、多选单undo、copyMerged菜单/CtrlShiftC与visibility真实pointer手势。最终exe2026-10-14 17:43:49，10756608bytes。core/selection此前实际0不重复；coverage143 exit0，整体alignment未完成。此次UI已完成，不再处于上文待验收状态。无强杀/丢作品/新preview/分支/提交推送。
+
+
+## 2026-10-14 多选透明度、锁列手势、内容居中
+
+多选透明度沿 workspace-layer-properties.ts nextSnapshot/transactions 和 useLayerContextActions.tsx propertyTargets：活动来源在所选范围才批量，未选活动来源单层；捕获每层原值，锁定视觉目标跳过，finite/clamp预览不写历史，cancel逐层恢复，X/Escape关闭一次compound历史，undo/redo保持activity和selection。不同原值、锁定active、取消、no-op、NaN/clamp、范围外fallback核心用例和实际菜单模态预览/关闭undo通过。仅平级RGBA透明度，完整属性和group继承不宣称已迁移。
+
+锁列沿 useLayerControlGestures/useLayerRowToggleGesture/LayerTreeRow：目标id不激活row，拖扫及回拖恢复、Ctrl displayedRows与多选交集否则全部显示row、Alt solo同目标恢复及换目标恢复原snapshot，pointerup/blur/capture loss一次历史；旧锁素材与拒画行为复用，groups/masks/inherited unlock仍缺口。
+
+三个centerContent菜单沿 workspace-commands-selection-move.ts centerActiveContent、tools-selection-transform-apply.ts、workspace.test.ts旧8x8 fixture：Math.round正向半值（含负半值）轴向delta，pending只移floating preview不commit；非pending仅active layer，selection或alpha bounds，hidden允许locked阻止，单历史并平移原mask，无selection保持null。正式菜单接入命令时pivot平移。已知差异明确保留：原生Editor pivot仍是UI-only，既有undo/reset清轴心而未纳入Document Edit，不能称legacy轴心undo完整等价；本批不扩历史架构。
+
+统一正式Release build实际exit0，moon-core-tests CORE_EXIT=0、cel-selection-clipboard-tests SELECTION_EXIT=0；唯一正式exe --animation-check PID25380 ANIMATION_EXIT=0，包含新增lock实际pointer gesture、center三菜单及pivot命令时位移、多选opacity模态close/undo。正式进程PID32096正常CloseMainWindow/Wait=True后构建，未强杀或丢作品。最终exe 2026-10-14 18:02:39，10786304bytes。来源coverage143 exit0，strict保持INCOMPLETE/exit1。无新preview/worktree/branch、无提交推送、无删除用户数据或缓存。
+
+
+## 2026-10-14 图层名称属性、180内容旋转、手动帧导航
+
+属性窗口增加名称输入，沿 LayerPropertyEditor.tsx openTargets/name preview 与 workspace-layer-properties.ts nextSnapshot：先commit浮动，raw名称实时preview，锁层允许metadata，关闭JS Unicode whitespace trim，empty逐目标还原原名，多选只有changed name才批量。name和opacity合并一次compound历史，cancel恢复各目标原值，name-only undo不造成pixel invalidation，name记录UTF32 history byte预算。实际窗口menu预览、trim-close、合并history/undo已跑；核心另含locked/multi/Unicode空白/empty/no-op/cancel/single target。原生现有模态仍阻止underlying layer panel selection，不承接legacy非模态retarget，groups/tilemap name传播及完整property fields未迁，明确不宣称完整属性等价。
+
+仅rotateContent180接旧菜单，来源 workspace-edit-actions.ts rotateWorkspaceContent/workspace-session selectedTransformLayersForSession/tools-selection-transform-apply：先commit pending，以selected owning layers当前frame而非全部Cel pair，共享selection或union alpha bounds，任一明确hidden/locked拒绝，implicit frames沿旧筛选；canonical source去重，180精确映射mask及source clear/destination composite，一次compound pixel history并生成selection，成功清UI pivot。90°仍灰显缺口，既有UI-only pivot undo恢复仍缺口。多层/union/current-frame/不规则mask/hidden/locked/undo用例与真实菜单通过。
+
+手动帧导航严格分旧入口：LayersPanel/useTimelineContextActions工具栏next wrap/previous clamp/raw edge/含disabled，显式frame selection，播放中维持并retarget；workspace-commands-animation-selection/animation.ts/loop sections/shortcut router逗号句号键先pause，非播放先commit源frame浮动、默认skipDisabled=true、tag最内段、movement再清选，随后canonical Cel selection。Entry focus/模态/隐藏layer panel不抢键。skipDisabled设置和自定义快捷键未接，不创造偏好UI。timeline tests含disabled当前global索引与tag candidate索引区别、innermost、无candidate等；真实toolbar/key/input/pause/tag/floating来源提交通过。
+
+统一正式Release build实际exit0；CORE_EXIT=0、SELECTION_EXIT=0、TIMELINE_EXIT=0。首animation-check PID24100 exit1源于新smoke剪贴板缺mask，Document beginFloatingPaste正确拒绝；仅补mask={1}并新增begin成功断言，保留所有源像素/目标/浮动结束/历史断言，无导航产品改变。main正式重构build exit0后--animation-check PID15800 ANIMATION_EXIT=0，含本批真实属性/旋转/导航闭环。最终exe 2026-10-14 18:16:41，10818560bytes。来源coverage143 exit0；strict exit1/整体INCOMPLETE。无新preview/worktree/branch、无提交推送、无强杀/删数据或缓存。
+
+
+## 2026-10-14 新建图层闭环、90°双向旋转、箭头导航
+
+新建普通图层按 workspace-commands-layer-creation.ts addLayer/activateNewLayerContext → workspace-animation-selection.ts selectedRowInsertionTarget：首个视觉显式所选图层上方，无所选图层时root top，而非既有native active-index；新层active/anchor，保持当前frame，清显式row/frame/Cel selection。新建菜单/右键/工具栏/ShiftN共享createLayer UI标记清理。沿旧creation history先root top再placement语义，undo删除创建层后原top active，已清selection不恢复；redo新层active，单结构history不复制已有surface。原普通层默认值、命名、blank per-frame、256层/内存限制保留；groups/adjustment/tilemap/sparse geometry不宣称支持。核心覆盖active在选区外、最上selected placement、无选层/frame/Cel fallback、defaults/current frame/undo-redo；实际menu/ShiftN通过。
+
+两90°menu沿 workspace-edit-actions.ts rotateWorkspaceContent(90|-90)→tools-selection-transform-apply/commit applyPackedSelectionTransform：canvas尺寸不变，destination pixels clamp画布，transformSelectionMask clip=false保留越界selection geometry；fallback selectionTransformCells同样clamp，因此非新增裁剪近似。native复用fastSelectionTransformCells及transformedSelectionMask，沿既有current-frame owning layers/union bounds/锁hidden拒绝/源去重/单compound，180精确分支不变。测试双向彩色矩形、越界宽selection/像素clip、奇偶mask/半透明alpha0、undo-redo。真实两个菜单通过。此项取代此前90灰显缺口；现有UI-only pivot undo恢复仍缺口。
+
+无pixel selection时箭头Cel导航按useAppShortcutRouter heldNavigationKeys、workspace-animation-cell-navigation row、stepAnimationCell：即时首步、280ms初始delay、40ms采样、水平50ms/垂直120ms、held Map insertion order，OS repeat不额外步进，keyup/blur停timer；上下flat visible rows边界不wrap，左右沿已迁skip/tag；playing首按只pause，Entry/外部menu/模态/active gesture阻止，pixel-selection nudge优先。valid vertical target才commit浮动并选择Cel。group/mask行、设置/custom shortcuts仍缺口。实际smoke验证axes/boundaries/Cel/no-history、280/330/400 deadlines、组合held order、release/blur、pause、Shift/Entry/selection优先级。
+
+统一正式Release单node build实际exit0；CORE_EXIT=0、SELECTION_EXIT=0；正式--animation-check PID16716 ANIMATION_EXIT=0，含本批三路闭环且既有回归通过。构建前无外部cl/MSBuild/正式进程，无强杀。最终exe 2026-10-14 18:30:28，10839040bytes。来源coverage143 exit0，strict实际exit1/整体INCOMPLETE。无新preview/worktree/branch、无提交推送、无删用户数据或缓存。完成本批停止。
+
+
+## 2026-10-14 图层删除入口、Delete分流、内容镜像
+
+图层删除入口按 LayerMenuCommands.tsx/useLayerContextActions deleteSelectedLayers拆开，显式single selected也删所选、无所选禁用；deleteActiveLayer/deleteLayer保留编辑fallback的<=1 active/>1 selected语义。新增canDeleteSelectedLayers/canDeleteLayers做对应目标locked/minimum-layer原子校验。batch落点沿 workspace-commands-layer-structure bottom-first removed[0].index-1映射native top-first lowestSelected-count+1 clamp，单结构history恢复旧activity/selection。核心gapped landing、single selected outside active、locked/no-selection/undo-redo与真实layer菜单及context enabled通过；groups/masks/special layers未宣称。
+
+Delete/Backspace和编辑删除按 command-context/app-completion-shortcuts/workspace-delete精确分流：pixel/floating优先，其后显式Cel/frame；keyboard显式layer走selected，implicit keyboard选择并清active Cel，Edit菜单implicit fallback删active layer，此默认差异保留。Entry不删doc/palette，keyboard保留palette优先；sole-layer Cel菜单仍可删除内容。Document deleteSelectedFrames沿workspace-commands-animation-cel-properties deleteSelectedAnimationItems全选逐个删除直到保留1，清selection单compound，不copy；核心全选留末帧/undo-redo和实际路由通过。特殊scope/canvas-vs-panel token仍未完整，Cel opacity因旧版当前Cel同步live layer需完整模型调整未启用，不半迁移。
+
+水平/垂直镜像及ShiftH/V沿 workspace-commands-selection-flip/selection-timeline-flip/transform apply：pending翻source/mask后保持transform重新preview不commit，originalSource保存原清除mask/RotSprite sampler reset；ordinary selection精确packed含transparentRGB，animation alpha/composite及shared dedup；whole explicit Cel/layers×frames/implicit frames沿旧target规则并跳hidden/locked，plain active hidden允许locked阻止。single历史/mask undo及pivot不随flip移动。固定RGBA范围适配，groups/masks/special layers未宣称，既有UI pivot undo缺口保持。测试源mask不规则/移后pending取消、whole transparentRGB、allframes/linked dedup、historyundo以及真实menu/ShiftV通过。
+
+外部正式构建在进行时先等待，空闲且无正式app进程后统一Release/core/selection单node build实际exit0。CORE_EXIT=0、SELECTION_EXIT=0，正式--animation-check PID33036 ANIMATION_EXIT=0，--layer-context-check PID5756 CONTEXT_EXIT=0。最终exe2026-10-14 18:43:06，10901504bytes。来源coverage143 exit0，strict实际exit1/整体INCOMPLETE。无新preview/worktree/branch、无提交推送、无强杀/删数据或缓存。完成本批停止。
+
+
+## 2026-10-14 新建帧状态、多图层变换、帧属性双击（当前批验收中）
+
+新空白/复制帧沿 workspace-commands-animation-frame.ts addAnimationFrame/duplicateAnimationFrame 清像素选区、pivot及animation item selection，激活新帧；clearAnimationItemSelection 保留图层行选择。原生沿已有addFrame插入/克隆/autolink/loop逻辑，仅清pixel/frame/Cel及anchors，history不恢复旧选区。Editor AltN/AltB/context入口共用frameAction，清pivot/freeTransform/显式frame标记。核心复制像素、blank、单history、undo/redo不恢复旧选区和保留layer rows通过；UI创建smoke待正式程序。
+
+CtrlT沿 workspace-commands-selection-transform.ts selectedTransformLayersForSession 先提交pending，对显式layer/Cel owning layers取当前帧alpha union，selected hidden/locked拒绝，选区建立不产生history。beginSelectionContentMove保留既有显式Cel分支，新增explicit selected layers捕获分支，复用shared source dedup与已有FloatingPaste/history；固定RGBA/zero-offset适配，不宣称groups/masks/special layers。核心union、邻层不动、多目标nudge/cancel/singlehistoryundo-redo、非active hidden/locked拒绝、pending先commit均通过；实际menu/CtrlT smoke待正式程序。
+
+帧头双击沿 LayersPanel.tsx/useTimelineContextActions.tsx openFramePropertiesFor 修正已有callback：准确激活双击帧，保留显式多帧选择，复用FrameDuration preview/close compound history。PixelButton left-only flag默认false保持其他用户；Editor capture下第二击定位physical header并结束现gesture/release。整合时移除旧重复callback赋值以免覆盖新action。right-double、target/selection/history、多帧close、capture release smoke待正式程序；loop section lane等仍缺口。
+
+正式Release core/selection目标单node BUILD_EXIT=0；CORE_EXIT=0、SELECTION_EXIT=0。正常CloseMainWindow请求True，但正式PID39464 WaitForExit(10000)=False；未强杀、未丢弃作品，等待用户保存处理后链接唯一正式exe并运行animation-check。来源coverage143 exit0，整体INCOMPLETE；当前记录不代表正式UI验收完成。无新preview/worktree/branch、无提交推送、无删用户数据或缓存。
+
+
+### 当前批最终运行验收（2026-10-14）
+
+用户确认其他聊天停止并保存关闭后，正式源hash稳定且外部编译空闲，唯一writer继续。此前外部Region编译错误已由其修正，不覆盖其功能。首animation PID41152 exit1的双击断言源于smoke在setBounds之前运行：零宽Editor仅一列，active2自动scroll2，header0实际为frame2。仅修fixture为default dock/显示layer/1280x960，明确scroll0与三headers可见，完整保留目标、selection、history、right-double和capture断言，不改变产品逻辑或削弱断言。
+
+最终唯一正式Release moonsprite-native BUILD_EXIT=0，--animation-check PID34196 ANIMATION_EXIT=0，包含新空白/复制帧AltN/AltB状态、多图层menu/CtrlT union、双击duration selected target及capture释放闭环。前次本批CORE_EXIT=0、SELECTION_EXIT=0保留，未重复无变化测试。最终exe2026-10-14 19:15:56，10900480bytes。来源coverage143 exit0，strict exit1/整体INCOMPLETE仍保留。无新preview/worktree/branch、无提交推送、无强杀/删用户数据或缓存。当前批完成停止，不代表其他未迁功能已完成。
+
+
+## 2026-10-14 向下合并菜单、CtrlD Cel复制、浮动取消选择
+
+图层主菜单向下合并catalog命令mergeLayerDown而registry误绑mergeDown，导致已有Document功能仅context可达。本批按LayerMenuCommands.tsx81/store mergeActiveLayerDown/core layer-merge.ts119修registry，直接复用现有active layer及下邻层合并算法、RGBA composite、history和素材；真实menu验证active target与所选row分離、合并像素/一次history/undo-redo、sole/bottom/hidden/locked guard。group/special-layer仍不宣称。
+
+Ctrl/Cmd+D沿app-selection-shortcuts.ts先pixel deselect，无pixel selection时显式Cel copyAnimationCel（shortcut-contracts默认CtrlD共享context）；复用copyTimelineCels clipboard，不改数据算法。exact noShift/noAlt、repeat不执行、Entry/palette/modal优先保留。真实shortcut验证Cel copy无history/selection变化、repeat/Shift拒绝、pixel优先、Entry防抢及取消后Cel copy。settings/custom shortcut与完整commandScope token仍缺口。
+
+公共deselectPixels按AppMenuBar.tsx290和app-selection-shortcuts.ts107-117：pending paste只commitFloatingPaste并保留提交后selection，避免额外deselect history；第二次无浮动才清selection。核心验证移动单history/undo-redo、pending no-op及第二次clear；实际menu pending commit/保留selection/undo和随后CtrlD clear通过。普通取消resetTimelineSelection/selectionGuidesPreservedAtContentRevision未迁语义明确保持缺口。
+
+首次统一链接因构建期间外部app11176启动锁exe，LNK1104实际exit1。随后该app及外部build自行退出，确认空闲后一次增量正式BUILD_EXIT=0；SELECTION_EXIT=0，--animation-check PID16812 ANIMATION_EXIT=0，三个入口闭环及既有UI回归通过。最终exe2026-10-14 19:30:20，10913280bytes；来源coverage143 exit0，strict实际exit1/整体INCOMPLETE。未强杀、未删用户数据/缓存、无新preview/worktree/branch、无提交推送。本批完成停止。
+
+
+## 2026-10-14 图层双击属性、AltC时间轴删除、收缩选区状态
+
+图层行双击沿LayerTreeRow.tsx213/useLayerContextActions.tsx96：clicked属于多选时批量，否则单clicked；LayerPropertyEditor openTargets首target为表单源且不主动改activity/selection。原生beginLayerProperties可传冻结targets，不影响现有默认调用，复用name/opacity预览与compound close/undo。row callback仅left，Editor capture下second click先取消瞬时gesture恢复范围/release，再同action，避免旧select()清多选。真实right ignored、多选批量/单目标、activity/selection/history保持、capture release通过。原生modal、groups/special layers及其他属性fields/nonmodal retarget仍缺口，不宣称完整属性窗口已迁。
+
+AltC沿app-layers-shortcuts deleteSelectedAnimationItems：显式Cel优先删除完整Cel，忽略pixel mask；否则删selected/current frames，成功清pixel selection/pivot。两个Document API新增默认false opt-in仅专用路由传true，通用Delete guard保持。frame context全选仍enabled，现leave-one loop复用。shortcut strict Alt/noextra/repeat/Entry/hidden timeline通过；核心fullCel mask/guard/undo及frame-clear通过，真实全部frame选中删除保留1通过。active pending事务拒绝及groups/masks/special scopes保持未迁缺口。
+
+收缩选区沿workspace-commands-selection-properties.ts210-249：unchanged mask直接返回保留pivot/properties/history，真正收缩不清selectedFrames。现geometry/mask算法复用，UI状态与pure selection history校正；selection-check真实帧选择保持、undo/redo、noop pivot/properties/history通过。稀疏/特殊图层/pivot总体history不宣称。
+
+首次compile测试MouseButton类型错误已局部修；animation PID30796 exit1源于undo后historySize保留redo总长度，截断再写不保证size+1，且helper同判断不可靠。成功判改frames count变化以清pivot，smoke用revision+1并一次undo恢复2帧验证compound，保留所有结果断言。新app12732占用曾导致LNK1104，正常Close请求未退出后等待用户保存；无强杀。最终正式BUILD_EXIT=0，SELECTION_CORE_EXIT=0，selection-check PID37940 SELECTION_UI_EXIT=0，animation-check PID39472 ANIMATION_EXIT=0。exe2026-10-14 20:28:09，10934784bytes。来源coverage143 exit0，strict actualexit1/整体INCOMPLETE。无新preview/worktree/branch、无提交推送/删用户数据缓存。本批完成停止。
+
+
+## 2026-10-14 属性所选目标、Enter完成选区、全选状态
+
+可见图层属性菜单与工具栏按LayerMenuCommands.tsx111/useLayerPanelShortcuts.tsx170→selectedRowsForProperties，复用已有explicit target事务，首selected目标做表单source，active位于selection外仍只改所选；无selected禁用。真实batch验证多选name/history/undo、activity/selection不变、toolbar单target/no-selection disabled。双击/context已有单clicked/frozen语义保持；用户隐藏表头未恢复，其他property fields/groups/nonmodal retarget仍缺口。
+
+Enter沿app-completion-shortcuts/command-context：普通selection清selection，不play；floating先commit像素再clear选区，分别两history。没有selection时unmodified/no-repeat、多frame、timeline visible、非Entry/Button/exclusive scope才play/pause。已有gesture优先。batch验证普通selection/undo，pending两步undo，repeat/hidden/Entry/single frame和play/pause。custom shortcut/outline/text-box transform模型未完成。
+
+全选沿AppMenuBar.tsx273-278/app-selection-shortcuts64-73/workspace-commands-selection-properties45-55：commit pending再setTool/setSelection(full)，setSelection只改状态无history，清pivot/free/properties，selectionKind保留。core验证nohistory/revision/dirty、timeline帧选择保持、pending单pixel edit/undo-redo；batch menu与CtrlA状态/commit/undo通过。完整command scope/custom/special modes仍缺口。
+
+实际结果：正式Release build0，SELECTION_CORE_EXIT=0；full --selection-check PID41124 exit1 Dock resize regression did not find adjacent column split，保留失败不改无关dock。full --animation-check PID8512 exit1 Selection Cel UI commit：旧smoke期待pending Enter仅1history，与此次legacy commit+clear两history不同；已改精确两edit及两次undo/redo保留pixels/selection语义，full链未重跑。此前运行期间正式exe由外部更新，不以最终文件覆盖先前结果。最终独立--migration-batch-check复用本批三个smokes（selectAll单独提取而全selection仍调用），PID31372 actualexit0，1.16sec；不代表完整两个suite通过。最终build60844 actualexit0，exe2026-10-14 21:57:43 10954752bytes。来源覆盖143 exit0，strict overall仍INCOMPLETE。无新preview/worktree/branch/提交推送、无删数据缓存；正常关闭已保护作品。本批完成停止。
+
+
+## 2026-10-14 停靠专项、普通复制优先、时间轴删除按钮（未完成最终验收）
+
+更正上批日志归因：此前读native/build/native-smoke-error.txt的Dock resize文字mtime20:29:42，属于陈旧日志，不证明后续selection进程的失败位置。此次selection PID2504 actualexit1，刷新22:56:16的真实错误为Preview content erased merged label pixels；未改无关preview renderer。停靠专项保留原hover cursor、press同hit、visible band外拒绝断言，独立fixture明确idle/no home/no modal/visible panels/1280x960，诊断附真实point/hit/guards。独立batch PID5944已通过dock段，不改变用户布局或产品代码。
+
+普通像素copy按workspace-commands-clipboard730-769成功后才clearAnimationClipboards：copyPixels成功清Document Cel/frame payload，empty/failure保留；Editor snapshot成功后清，保留外部palette route。无新raster算法，floating复制不commit，core普通/空/floating clipboard priority实际0，独立batch copy UI段通过。
+
+时间轴删除工具栏按LayersPanel.tsx902 deleteSelectedAnimationItems，case7改复用已有deleteTimelineItems，Cel优先wholeCel/pixelmask保留、不误删frame，otherwise selected/allframes leave1。新smoke初次undo误期望恢复Cel selection；legacy animation-cel-properties253-261只restore Cels且clear selection在history外，因此精确改undo pixels恢复且selection保持清空，frame/redo/revision断言保留。修正后最终运行尚未完成。
+
+实际正式build85953 exit0，CORE_EXIT=0；batch5944 actualexit1 Timeline toolbar Cel delete undo，dock/copy前两项通过。修fixture后link49048 LNK1104外部占用，随后另轮build与外部MSBuild冲突MSB6003。已知外部34628结束后又出现39932/MSBuild14116/cl28152正式build，停止重试保留差异；非本任务创建的aseprite-preview进程37876未触碰。此批最终可执行链接/toolbar batch仍阻塞，不能宣称交付。最后本任务成功exe23:25:16 10983936bytes仅对应失败batch，非最终验证。无强杀/删数据、无本任务新preview/worktree/branch/提交推送。来源coverage另列，整体仍INCOMPLETE。
+
+
+### 本批最终运行验收（2026-10-14 23:48）
+
+外部编译空闲后正常关闭唯一正式程序PID28292，CloseMainWindow=True且WaitForExit=True，未强杀。正式Release单node构建session29013实际exit0；--migration-batch-check PID16944实际exit0，完整通过停靠hover/press/band、普通及浮动像素复制剪贴板优先、时间轴工具栏Cel/帧删除与legacy一致的undo选择状态。此前核心测试actual0保留，无变化不重复测试。正式exe2026-10-14 23:48:48，10998272bytes。
+
+以上通过结果取代本节先前的最终链接阻塞记录；完整selection-check真实Preview content erased merged label pixels失败仍未修，专项通过不宣称完整selection/animation套件通过。未改preview renderer，无新preview/worktree/branch、无提交推送或删除用户数据/缓存。本批完成停止，整体迁移仍INCOMPLETE。
+
+来源检查实际exit0：coverage143，evidence snapshots verified；整体Legacy alignment仍INCOMPLETE。此次未重复strict，已有strict失败证据保留。
+
+
+## 2026-10-15 Cel右键删除、选区转笔刷、预览标签专项收尾
+
+Cel右键沿useTimelineContextActions.tsx263-270保留已选多Cel，未选clicked替换selection；310-314判断clicked resolved内容，741-751空Cel禁用且调用dedicated fullCel删除。复用celHasContent缓存和deleteTimelineItems，像素选区不再阻止完整Cel删除，target identity与actual gesture/fallback入口一致。普通RGBA及linked范围；masks/text/tilemap仍未宣称。
+
+选择菜单createBrushFromSelection沿workspace-commands-tool.ts369-394/339-352/255-277，直接复用现selection_pattern_brush、PNG、本地根库、pencil stamping底座；成功保存后清selection/pivot切pencil，空/失败保留选择与既有笔刷。未接CtrlB无selection捕获，未新增算法。测试使用既有build/pattern-brush-library-fixture，生产仍Release/brushes。已有selection-pattern-brush-tests actual0保留，无重复核心运行。
+
+预览定点从现smokeDocking提取相同像素断言到--preview-labels-check：合并标签、未活动露出区域、笔画未松开时仅preview重绘和标签尾空白全像素。原完整docking断言保留，未改产品绘制。当前独立PID28148实际exit0，旧Preview content erased merged label pixels未在当前源码复现，不声明修复产品。
+
+正式Release单node build session99117实际exit0；本批两功能--migration-batch-check PID26192实际exit0，含Cel多选/fullCel+mask/undo/空clicked禁用/未选替换及选区笔刷菜单/PNG metadata/empty保留。exe2026-10-15 00:11:37，11038720bytes。外部Zoom两在途错误已自行修复，保留其差异；短暂main锁消失后集成，未抢改。
+
+本轮其他真实结果：full selection PID37916实际exit1，刷新native-workspace-error.txt为Selection transform confirmation history UI；docking PID29812实际exit1 Docked palette controls remained at old location；workspace PID22176实际exit1 Floating preview continuous move retained background pixels at phase50。均未解，专项通过不声明完整链通过；陈旧native-smoke-error不作为新结果。无新preview/worktree/分支、无提交推送或删用户数据/缓存。本批完成停止，整体迁移仍INCOMPLETE。
+
+来源检查实际exit0：coverage143，evidence snapshots verified；整体Legacy alignment仍INCOMPLETE，未重复strict。
+
+
+## 2026-10-15 Enter变换历史断言、剪切选区UI状态
+
+本批是一项产品修正、一项fixture修正。fresh full selection PID26284实际exit1，native-workspace-error刷新00:15:46为Selection transform confirmation history UI。legacy app-completion-shortcuts.ts9-14先提交pending像素，再commitSelectionChange清选区；当前native产品已一致，旧smoke仍期望+1/单undo。改为+2，精确检查提交像素/无选区、undo1恢复变换mask且像素保留、undo2原mask/原像素、redo1/2每步精确状态；原resize/subpixel/rotation/signed-property断言保留，同块提取为独立smokeTransformEnterHistory，未修改产品Enter逻辑。
+
+剪切结束沿workspace-commands-clipboard.ts770-782及selection-properties.ts45-55，Document既有cut/history/floating算法保持；Editor两cut分支共同清properties/pivot/free状态。smoke覆盖ordinary一次pixel history、empty无新history、floating clipboard取消且原内容保留。时间轴复制候选经反证：selectFrameHeader(mode1)已按timeline排序，reverse/move也恢复视觉顺序，未合冗余patch、不宣称修了倒序。第三路现有隔离core实际exit0，仅既有行为证据。
+
+首次正式build52755及72672编译成功但链接actualexit1 LNK1104，期间外部正式程序启动；正常关闭24172及3028各Close=True/Exit=True，未强杀。最后确认空闲后唯一正式Release单node build实际exit0；--migration-batch-check PID6068实际exit0，含完整transform验证及cut state专项。exe2026-10-15 00:22:39，11058688bytes。不重跑完整selection/workspace链，不宣称全链通过；之前docking palette位置、workspace phase50失败仍未解。无新preview/worktree/分支、无提交推送或删用户数据/缓存。本批完成停止，整体迁移仍INCOMPLETE。
+
+来源检查实际exit0：coverage143，evidence snapshots verified，整体Legacy alignment仍INCOMPLETE；未重复strict。
+
+
+## 2026-10-15 图层右键属性、帧快捷键门禁、色彩平衡
+
+图层右键沿useLayerContextActions.tsx167-190/275-301：点击已选成员保留多选及活动图层，未选目标替换选择，属性冻结菜单打开时targets。原生统一row/eye/lock/actual gesture/fallback入口prepareLayerContext，复用已有属性事务；菜单冻结targets与document identity。实际验证多选/activity/history不变、打开菜单后改变selection仍编辑原targets、一次compound与undo/redo、未选替换。仅普通RGBA，groups/masks/special fields仍未完成。
+
+AltN/M/B沿app-layers-shortcuts112-117、router223/277-283、shortcuts39及contract281-283，补visible timeline/Entry/no repeat/exact Alt门禁，Document算法保持。首batch29672实际exit1揭示旧N fallback把AltShiftN误作ShiftN新图层、AltCtrlN误作CtrlN新项目；局部精确条件排除额外修饰及Entry，保留正常ShiftN/CtrlN，不吞所有Alt。原fixture精确modifiers断言保留。最终逐三键验证repeat/hidden/Entry/extra modifiers不改文档及正常duplicate/linked/blank payload和单undo。
+
+色彩平衡沿adjustments.ts266-284及AdjustmentDialog342/365/656：原RGB luminance三tone权重、9轴、preserveLuminosity、JS round/clamp与alpha0保留；复用现Document preview/target/history。UI复用3input、tone切换分别保参、preserve checkbox，菜单已绑定。原TS六像素Node oracle比对、identity/shadows/highlights/masked cancel/onehistory/undo-redo核心实际exit0。实际UI默认midtones/0/preserve true、三个tone保参、preserve、preview/cancel/apply/history/undo均通过。
+
+正式build43327及core actualexit0；首batch29672失败准确保留。必要guard修正后最终Release单node build2125实际exit0，--migration-batch-check PID23352实际exit0覆盖本批三项；exe2026-10-15 00:50:19，11094016bytes。期间外部正式程序启动导致LNK1104，正常close19700/38920均True/ExitTrue；一次main.obj Permission denied并发结束后增量成功，未删缓存或强杀。外部preferences改动保留，不归本批。未重跑完整链，既有docking palette位置/workspace phase50遗留仍未解。无新preview/worktree/分支、无提交推送或删用户数据。本批完成停止，整体迁移仍INCOMPLETE。
+
+来源检查实际exit0：coverage143，evidence snapshots verified；整体Legacy alignment仍INCOMPLETE，未重复strict。
+
+
+## Cel属性完整迁移依赖登记（2026-10-15，尚未实现）
+
+当前右键“单元格属性”是无action的禁用入口。legacy useTimelineContextActions.tsx244-260读取resolved Cel的opacity/zIndex并冻结多选keys；workspace-commands-animation-cel-properties.ts51-116按resolved source分组、同步全部linked成员，active frame opacity投影回layer，保留多Cel轮廓及compound transaction。不能按layer opacity乘cel opacity近似：legacy animation.ts671-678/723-747/858/905的layer是active Cel透明度投影。
+
+原生尚缺以下必要依赖：Document active frame/layer切换的Cel opacity投影与编辑写回；Cel属性事务和链接源分组；compositor zIndex排序及opacity、onion ghost和single-layer direct path；导入/保存/恢复/导出/merge对非默认Cel的全链语义。当前layer_compositor.cpp35、Document::fromImported、project_import.cpp51、project_encode.cpp78/104明确拒非默认Cel属性；canvas_renderer.cpp38和project_preview.cpp17的direct判断未覆盖Cel metadata。只解除限制或接属性UI会产生显示/保存不一致，故本批不实施近似版本、不宣称完成。后续应作为完整普通RGBA Cel属性阶段，逐项验证linked多目标、跨帧切换、预览/close/undo-redo、canvas/onion/preview/GIF/sheet/save/reopen/recovery/merge一致性；groups/masks/special layers继续单独缺口。
+
+本批主Agent承担以上依赖登记与唯一集成写入；三Agent并不代表三项新增产品功能。
+
+
+## 2026-10-15 循环节保存归一化、曲线编辑闭环
+
+循环节沿AnimationLoopSectionDialog.tsx40-60及workspace-animation-loop-editing.ts35-50：有限numeric truncate/clamp后映射frame ID、范围排序、空白名称默认循环节1、repeat空无限/上限9999，同归一字段不产生历史。复用现modal及Document create/update，未迁NumberInput表达式、repeat checkbox或loop lane。实际smoke包含create/edit、取消/未改保存、无限repeat、undo-redo。
+
+曲线沿adjustments.ts191-218/90-153、AdjustmentDialog166-296、CurvePlot坐标与绘制状态：4channel独立points、RGB后channel LUT、alpha0保留，新增/拖动/邻点限制/端点X保护/右键双击Delete删除/XY/reset和baseline histogram；现Document preview/mask/history复用。原TS Node三组全部256LUT、histogram透明过滤/channel均值、mask preview/cancel/onehistory/undo-redo核心通过。Reset/delete使用legacy PixelUtilityIcon.tsx restore/delete原路径，restore6x6及translucent SVG/PNG/disabled转换到native/assets/utility-icons，未自行设计图标。
+
+正式UI现smokeCurves实际覆盖菜单默认、加内点、XY邻夹、channel切换保留、reset、删除内点/端点保护、取消、apply alpha/history/undo。直方图数据有核心证据，但直方图视觉、右键/双击删除及逐channel拖动未分别运行验收，不宣称全部UI行为等价。
+
+首正式build13847 actual1源于外部scrollbar/symmetry在途编译错误，随后已由外部自行修正，未抢改其产品逻辑。正式build42408实际exit0，core实际exit0，--migration-batch-check PID16080实际exit0包含本批两项；exe2026-10-15 01:17:27，11147264bytes。此前正常close17452 True/ExitTrue；后见14996已自行退出，未强杀。既有无关full docking/workspace失败未重跑/未宣称修复。Cel属性仅依赖登记，不作为第三项功能。无新preview/worktree/分支、无提交推送或删用户数据/缓存。本批完成停止，整体迁移仍INCOMPLETE。
+
+来源检查实际exit0：coverage143，evidence snapshots verified；整体Legacy alignment仍INCOMPLETE，未重复strict。
+
+
+## 2026-10-15 完整循环条带、卷积矩阵（正式验收在途）
+
+循环条带已合入普通RGBA时间轴：layer-timeline-layout.ts lane/laneSpan及嵌套排序，LayersPanel.tsx563-614标签、播放状态、点击/双击属性、右键播放/属性/删除及边缘拖动；useAnimationGestures.ts145/423/534的临时预览、取消、边缘滚动与单次提交。现有Loop/Document/editor/play接口复用；轨道高度统一进入帧头、行、滚动和命中位置。legacy CSS2276-2288括线必要原生适配为四个可替换9slice素材 timeline.loop.track/normal/hover/playing，sheet y640追加3行，原PNG基线SHA核对、旧像素保留，XML及sheet-regions记录来源。名称localeCompare适配Windows当前用户collation，平台排序差异仍明确保留。
+
+卷积矩阵已合入：真实convolution-matrix.ts全部40数学preset，透明tap从RGB divisor扣权重、alpha使用原divisor、zero-divisor不写、clamp/tile、选区mask和各通道；worker只持detached目标快照，generation/cancel token与Document身份/revision/frame/layer/selection/targets校验后发布。沿ConvolutionMatrixDialog/workspace-convolution-preview的40ms debounce、live/tile、滚动preset列表、Apply留窗并刷新baseline、Done不重复Apply、Cancel保留先前Apply；复用Document adjustment transaction。native现fullcanvas RGBA存储适配，bounds仍O(canvas)扫描；不宣称旧稀疏存储/indexed/layer mask及性能完全等价。
+
+原TS全文经Node剥类型执行（dense RGBA storage适配，preset/采样算法不改）生成40×6=240输出样本，native核心全部断言通过；旧convolution-matrix.test.ts实际4tests通过。正式build39194实际exit0，cel-selection-clipboard-tests和timeline-model-tests实际exit0；独立--convolution-check PID9452实际exit0覆盖默认/debounce/detached/live/Apply留窗baseline/Done防双提交/cancel/undo/stale关闭。
+
+loop实际UI首PID16636及诊断PID40068失败于capture：入口在desktop打开前，Manager拒裸Editor capture；已仅移当前batch到desktop.openWindow/finishLaunching后，保留命中/capture断言，后PID29796越过点击/双击/捕获/末指针单history/undo/preview/Esc/blur/captureloss/context后失败auto-scroll。fixture固定帧数不足overflow、新增末帧会延伸outer循环节使end离开视口；已改动态可见列数+10、复位scroll0、明确可见start-edge命中再拖向右边，保留实际滚动增加断言。该最终修正版尚未完成实际运行，不宣称loop UI通过。
+
+构建过程中外部程序37464占用正式exe导致LNK1104，授权正常CloseMainWindow True/WaitExit True后build0。后外部同build并发分别导致main.obj与native_color_picker.obj Permission denied（build76469/41781失败），未删除缓存、用户数据或终止外部编译。已等待用户暂停其他正式构建后再验收，未重复盲编译。无新preview/worktree/分支，无提交推送。来源覆盖144实际exit0，整体INCOMPLETE。
+
+最终正式验收：用户暂停其他构建后确认空闲，正式单node增量构建实际exit0；--migration-batch-check PID13492实际exit0，真实已打开desktop生命周期中loop命中/capture/末指针/单history/undo/preview/Esc/blur/captureloss/context/自动滚动增加及卷积专项全部通过。auto-scroll fixture使用动态可见列数+10、scroll0和实际可见outer起点（addFrame会把outer终点延伸到视口外），未放宽断言或修改产品滚动算法。正式exe2026-10-15 02:16:03，11290624bytes。未进行独立截图/逐像素视觉QA，不把运行断言解释为全视觉验收；旧完整docking/workspace遗留未重跑、不宣称修复。整体迁移仍INCOMPLETE，本批功能集成及最小相关验收完成。
+
+
+## 2026-10-15 跨工程帧剪贴板、自动抗锯齿
+
+跨工程普通RGBA同画布帧剪贴板沿workspace-commands-animation-frame-clipboard.ts与cel-conversion/target：应用快照独立拥有resolved像素、源关闭/cut后可用，按visual layer index映射、目标不足追加源属性层，duration/disabled及内部linked关系重映射、外部链接断开独立像素；插到最大选中/active后、first active/all inserted header selected，新增layers+frames单undo/redo。异尺寸及不支持surface geometry在修改前明确拒绝；special/mask/indexed/任意裁切geometry仍缺口，不宣称全部clipboard等价。
+
+自动抗锯齿完整移植tools-outline.ts outlinePixelSamples43-136与antiAliasSelection212-455，交点、region面积/顺序、内部边界、nearest relative-luminance/opacity/custom/自动取色先后副作用沿实际旧算法；多target沿workspace-selection-effects-support精确Cel/frame/layer优先、resolved共享去重及locked原子拒绝，detached timeline工作副本无Document/UI线程读写，stale/cancel token保护，现adjustment/history复用。UI defaults/3source/custom NativeColorPicker部分透明/live restore/cancel/apply one undo-redo/close stale专项覆盖；原生fullcanvas普通RGBA适配，background/indexed/masks/special不宣称完整。
+
+真实tools-outline/raster/outline-settings原TS剥类型执行、dense RGBA history+normal composite adapters生成132 oracle（全部source/interior/mask/partial及12多层opacity/hidden/透明top），native全部对照通过；旧tools.test.ts定点9passed。正式build44093实际exit0，cel-selection-clipboard-tests实际exit0；真实已打开desktop --migration-batch-check PID34392实际exit0，仅本批frame+AA，未重复上批或整animation。正式exe2026-10-15 02:41:04，11379712bytes。来源coverage145实际exit0，整体INCOMPLETE。
+
+本批恢复事件必须保留：cross-frame git apply check0后因外部编译document.h占用报unable unlink/write Permission denied，document.cpp/main.cpp/test真实缺失。停止写入/build、保全最新候选和hash；AA baseline+AA delta重构三候选，与AA隔离final字节一致。恢复前main由未知外部writer重新出现并包含frame/AA与7→6scrollbar变更，绝不覆写；doc/test仅缺失时恢复。随后四文件精确副本/hash保全，逐文件加frame header/doc/test接口一致，保留现main。未知外部修改时间窗main02:20:53–02:31/doc02:21:09–02:31/test02:20:41–02:31不能证明无损；成功编译和测试不证明没有丢失未知外部差异。证据位于native/build/recovery-cross-frame-20261015-0231（候选/base/hash/外部maindiff/恢复记录）。未git checkout、未删除用户数据/缓存、未强杀、无新preview/worktree/分支或提交推送。
+
+
+## 2026-10-15 渐变映射、GIF时间轴拖放
+
+渐变映射沿gradient-map.ts/gradient-color.ts：normalize、periodic256LUT、连续/阶梯/反向、9抖动、stops及色卡；GradientMapControls/gradient-map-presets完整8builtin与用户save/同名replace/delete/hide/错误生命周期，必要原生用户JSON持久化、损坏库写入拒绝保护，现有GradientStopsTrack/NativeColorPicker/adjustment history复用。396原TS设置全周期2624512RGB值以FNV64全表+每case9extras核对，包含负坐标/透明alpha/重复无端点normalize；旧gradient-map及presets两文件9tests通过。正式core还通过preset保存读回/同名replace/delete/hide/corrupt保留/write-error及preview history。测试专root固定native/build/gm-store-test-owned/PID-tick，不写用户preset；原误创空native/gm-store-test-owned保留未删除。
+
+GIF时间轴拖放沿useTimelineFileDrop/workspace importGifAnimationLayer，复用LAF Windows OLE RegisterDragDrop→Window notify→Manager DndMessage→Editor，queued真实注册callback先dispatch、hasDragTarget断言保留。GIF-only preview floor/clamp帧target，新底部layer、既有帧duration/loop保留、overflow追加来源duration/disabled，现Document结构单history、source解码复用；预先校验samecanvas普通fullcanvasRGBA、尺寸/geometry拒绝后无修改，floating先commit后import独立undo。尚不宣称异尺寸/special/indexed/masks完整。
+
+正式首build84920失败为windows TRANSPARENT宏污染UI header，9636/诊断51736暴露GetObject宏污染WinRT声明；仅调整包含顺序（main preset header在UI后，windows/undefGetObject在WinRT JSON前），未改算法。最终build8252实际exit0、core实际exit0、真实opened desktop --migration-batch-check PID34528实际exit0，仅本批GIF platform chain+GradientMap UI。正式exe2026-10-15 03:13:53，11508224bytes；来源coverage147实际exit0，整体INCOMPLETE。
+
+本批每次集成完整byte backup/candidate、唯一context与写前稳定hash检查/写后hash验证，未用删除式多文件git apply；最新外部main/Document差异保留，记录位于native/build/recovery-cross-frame-20261015-0231/next-batch-baseline-20261015-024300、gif-integration-20261015-0254、gm-integration-20261015-0302。上一批恢复未知时间窗继续保留，不能证无损，未删除旧证据/用户数据/缓存。无新preview/worktree/branch、无提交推送；不重复全animation或无关全链。

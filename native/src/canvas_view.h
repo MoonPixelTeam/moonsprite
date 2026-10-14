@@ -30,6 +30,14 @@ inline double nextCanvasScale(double current,int direction) {
   for(int i=22;i>=0;--i) if(canvasZoomLevels[i]<current-epsilon) return canvasZoomLevels[i];
   return 0.0625;
 }
+// canvas-input-navigation.ts: horizontal logical distance, 24px per step;
+// Shift forces stepped mode even when the saved mode is smooth.
+inline double canvasZoomDragTarget(double start,double distance,bool smooth,bool shift) {
+  if(smooth && !shift)return std::clamp(start*std::pow(2.0,distance/96.0),0.0625,64.0);
+  const int steps=int(distance/24.0);double result=start;
+  for(int i=0;i<std::abs(steps);++i)result=nextCanvasScale(result,steps>0?1:-1);
+  return result;
+}
 inline Point zoomedCanvasOrigin(Point origin,Point anchor,double oldScale,double newScale) {
   return {anchor.x-int(std::lround(double(anchor.x-origin.x)*newScale/oldScale)),
           anchor.y-int(std::lround(double(anchor.y-origin.y)*newScale/oldScale))};

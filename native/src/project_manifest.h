@@ -15,7 +15,7 @@ struct ManifestLayer {
   bool autoLinkAnimationCels=false;
   std::shared_ptr<const ManifestRaster> surface;
 };
-struct ManifestFrame {std::string id;int duration=100;};
+struct ManifestFrame {std::string id;int duration=100;bool disabled=false;};
 struct ManifestLoopSection {std::string id,name,startFrameId,endFrameId,direction="forward";std::optional<int> repeatCount;};
 struct ManifestCel {
   std::string id,layerId,frameId,linkedCelId;

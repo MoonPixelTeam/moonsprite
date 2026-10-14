@@ -120,3 +120,38 @@ Shift直线step1方向约束、矩形/椭圆等比、Ctrl中心、Alt冻结几�
 工程customBrushes已真正接入Document、manifest解码、prepare、archive编码保存和recovery快照/恢复，保留gray/RGBA、alpha、source原点、未知metadata与共享payload；资源独立于timeline，切帧/撤销不会清空。工程与本地ID分域，图案库可选用和删除；删除按legacy直接标dirty且不新增undo。65px既有工程资源不误用64px本地创建上限，无新增工程笔刷创建入口。图像笔刷已接真实pencil绘制、原色/coverage/旋转/间距/擦除/选区/对称/已有历史，同一库可选择工程资源。明确缺口：非intrinsic缩放、压力与动态、其它ink/多笔刷随机/texture/dither/tiled/源目标模式、笔刷预览轮廓、选择偏好持久化及primary/secondary remap。
 
 实际运行：唯一正式Release构建exit0（占用时仅正常CloseMainWindow关闭已授权官方程序）；sprite-sheet-import-tests、project-brush-roundtrip-tests、image-brush-tests均exit0。PNG真实编码/解码含隐藏RGB；切帧四顺序/间距/partial/负原点/选区/失败保持/一次undo-redo；工程资源真实save/read/prepare/recovery/reopen及删除后再次保存打开；图像笔刷核心原色/opacity/擦除/cancel/selection/symmetry/rotation/link undo验证通过。正式--animation-check运行exit0，新增切帧默认/取消/apply/undo和图像笔刷实际stamp/cancel。来源文档检查另列：136文件coverage与来源hash通过，--strict仍exit1，已知迁移差异保持登记，不宣称完整legacy等价。
+
+
+## 工具属性弹窗核对（2026-10-14）
+
+按 `legacy/src/renderer/src/components/app/EditorToolOptions.tsx` 的实际 JSX 核对：笔刷形状、尺寸/不透明度滑杆、魔棒/桶/渐变容差、闭合阈值、选区笔刷角度、填充参考图层/连接方式、纹理、自由色标、选区轴心、对称设置属于弹出内容。圆角半径、固定比例、选区变换坐标/宽高/角度和旋转算法本来就在属性行，保留。
+
+本次把纹理缩放从属性行移到纹理弹窗（旧版1094–1101行）；自由色标由简化菜单恢复独立编辑弹窗，含可拖拽轨道、位置、颜色、添加/删除/反转/重置及关闭，来源 `GradientStopsEditor.tsx`，修改即时生效。尺寸/不透明度改用真正弹出容器；容差、闭合阈值和选区笔刷角度补回焦点打开的滑杆，仍保留旧版输入框本身。按用户例外保留渐变即时/确认应用入口及待确认应用/取消按钮。
+
+尚未实现的笔刷抖动、墨水模式、压力动态、完整图案设置/程序化笔刷等不借本次核对宣称迁移完成；原灰显入口保持灰显，完整差异仍见既有迁移缺口。已接入的笔刷库、填充库继续沿用既有弹出入口。本次为原生弹窗容器适配，未承接旧版弹窗拖拽/驻留/窗口位置存储等全部能力。
+
+
+## 修饰键核对（2026-10-15）
+
+直接核对 `legacy/src/renderer/src/core/shortcut-contracts.ts`、`shortcuts.ts`、`components/useQuickToolShortcut.ts`、`useCanvasKeyboardInput.ts`、`canvas-pointer-down.ts`、`canvas-pointer-move.ts`、`canvas-input-line-connection.ts`、`canvas-input-stroke.ts`、`canvas-input-selection-begin.ts`、`useCanvasDeviceRouter.ts`、`FormField.tsx` 和 `NumberInput.tsx`。
+
+- Ctrl＋滚轮：铅笔、橡皮、直线、选区笔刷调整尺寸，每格 ±1；不缩放画布。保持当前原生 1–64 编辑边界；固有尺寸图像笔刷不调整。
+- Ctrl＋Alt：无须按鼠标，首个移动记录起点，之后每 4 个界面基准像素改 1 个尺寸，使用旧版 Math.round 规则；也支持按住左键捕获调整，松修饰键不打断已捕获的调整，松鼠标结束。偏好保存与像素历史分开。
+- Shift＋左键：铅笔/橡皮从各自上一笔终点连接；Ctrl＋Shift 加旧版 step=1 方向约束。基线按 legacy inheritBrushPaintBaseline 复用，不叠加半透明交点；第一次连接与前一笔合并撤销，后续连接独立；按下立即提交连接，随后允许自由继续绘制。
+- 渐变、缩放在原位置按下/释放修饰键立即刷新；沿用原生已经迁移的形状/选区即时更新。Ctrl 变换手柄沿用复制模式。
+- Ctrl＋1/2/3 支持铅笔/橡皮独立笔刷形状，并按旧版清除图像笔刷；方括号支持这两种工具的尺寸调整。接入已有菜单命令 Ctrl＋B 选区转笔刷、Ctrl＋W 关闭工程、Ctrl＋Alt＋I 调整图像。
+- Ctrl＋Shift＋I 不再误进 Ctrl＋I 导入；有修饰键的 B/E/H 不误切工具。输入框保留文本剪贴板与空格；松键过滤器处理焦点移交后的释放，失焦清理临时状态。
+- 已存在的 Shift 添加选区、Ctrl 中心创建、Alt 旋转创建、变换 Shift 等比/45°旋转、Ctrl 整数倍、Alt 中心、Space 平移选框、时间轴 Alt 复制/Ctrl多选/Shift范围、调色板 Ctrl多选/Shift范围/Ctrl滚轮大小、数值标签 Shift×10 拖动保持。
+
+缺口仍保留：Ctrl 临时图层移动（包括 Alt 复制图层）依赖尚未迁移的图层/Cel 偏移、画布外存储及保存语义，当前不能用裁切像素的选区移动充当；旋转视图/切片/液化/平滑等尚未接入工具的修饰键、自定义绑定及 Shift 连线的完整图像预览/台阶偏好仍未全量承接。不宣称所有 legacy 修饰键已完成。
+
+验证入口：正式 exe `--modifiers-check`，以及已有 selection-interactions / sampling-zoom / document-transactions。
+
+
+## 2026-10-15 笔刷预览
+
+直接核对 useCanvasBrushOverlay.ts、canvas-render-brush.ts、canvas-render-shape-preview.ts、canvas-render-brush-path.test.ts 和 canvas-adaptive-contrast.ts。目标承接旧版默认 full：普通/图像笔刷悬停填色、橡皮完整几何自适应轮廓、铅笔绘制时不重复叠色、Shift 连线与 Ctrl+Shift 约束预览；预览像素独立于文档历史，复用实际笔刷几何和方向敏感连线遍历，按局部替换图层重新合成。
+
+源码恢复后完成接入，唯一正式 Release exe 构建通过。实际 --brush-preview-check、--modifiers-check、document-transactions、selection-interactions、layer-compositor 均通过。专项检查覆盖悬停显示、移出清除、Space/采色隐藏、绘制不重复叠色、橡皮边缘及 Shift 整段预览；核心回归对照预览和实际提交像素，包含三种几何/四档尺寸/半透明/擦除/旋转图像笔刷/对称/选区。build/brush-preview-smoke.bmp 已检查，文档缓存上传次数在悬停期间保持不变。
+
+本批承接旧版默认 full 行为，预览偏好面板、其它预览模式、未迁移工具/高级图像笔刷仍未覆盖；局部替换合成当前按普通图层栈，洋葱皮叠加时的预览替换合成另待承接。没有宣称所有旧版笔刷预览配置完成。
