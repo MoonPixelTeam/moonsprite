@@ -1,0 +1,242 @@
+<?xml version='1.0' encoding='utf-8'?>
+<theme name="MoonSprite Template" screenscaling="2" uiscaling="1">
+  <fonts>
+    <font id="default" font="Fusion Pixel" size="10" />
+  </fonts>
+  <colors>
+    <color id="background" value="#161A24" />
+    <color id="panel" value="#202635" />
+    <color id="button" value="#2C3548" />
+    <color id="border" value="#424F67" />
+    <color id="text" value="#E6ECF5" />
+    <color id="muted" value="#91A0B8" />
+    <color id="accent" value="#2979FF" />
+    <color id="checkerA" value="#D0D5DF" />
+    <color id="checkerB" value="#EDF0F5" />
+  </colors>
+  <parts>
+    <part id="button_normal" x="4" y="4" w1="2" w2="9" w3="2" h1="2" h2="9" h3="2" />
+    <part id="button_hot" x="36" y="4" w1="2" w2="9" w3="2" h1="2" h2="9" h3="2" />
+    <part id="button_selected" x="68" y="4" w1="2" w2="9" w3="2" h1="2" h2="9" h3="2" />
+    <part id="button_disabled" x="100" y="4" w1="2" w2="9" w3="2" h1="2" h2="9" h3="2" />
+    <part id="button_focused" x="132" y="4" w1="2" w2="9" w3="2" h1="2" h2="9" h3="2" />
+    <part id="toolbutton_normal" x="164" y="4" w1="2" w2="9" w3="2" h1="2" h2="9" h3="2" />
+    <part id="toolbutton_hot" x="196" y="4" w1="2" w2="9" w3="2" h1="2" h2="9" h3="2" />
+    <part id="toolbutton_selected" x="228" y="4" w1="2" w2="9" w3="2" h1="2" h2="9" h3="2" />
+    <part id="panel" x="4" y="36" w1="2" w2="9" w3="2" h1="2" h2="9" h3="2" />
+    <part id="panel_title" x="36" y="36" w1="2" w2="9" w3="2" h1="2" h2="9" h3="2" />
+    <part id="menu_bar" x="68" y="36" w1="2" w2="9" w3="2" h1="2" h2="9" h3="2" />
+    <part id="tab_strip" x="100" y="36" w1="2" w2="9" w3="2" h1="2" h2="9" h3="2" />
+    <part id="tab_active" x="132" y="36" w1="2" w2="9" w3="2" h1="2" h2="9" h3="2" />
+    <part id="status_bar" x="164" y="36" w1="2" w2="9" w3="2" h1="2" h2="9" h3="2" />
+    <part id="tool_options" x="196" y="36" w1="2" w2="9" w3="2" h1="2" h2="9" h3="2" />
+    <part id="tool_rail" x="228" y="36" w1="2" w2="9" w3="2" h1="2" h2="9" h3="2" />
+    <part id="timeline_selected" x="4" y="68" w1="2" w2="9" w3="2" h1="2" h2="9" h3="2" />
+    <part id="timeline_cell" x="36" y="68" w1="2" w2="9" w3="2" h1="2" h2="9" h3="2" />
+    <part id="entry_normal" x="68" y="68" w1="2" w2="9" w3="2" h1="2" h2="9" h3="2" />
+    <part id="entry_focused" x="100" y="68" w1="2" w2="9" w3="2" h1="2" h2="9" h3="2" />
+    <part id="checkbox_normal" x="132" y="68" w1="2" w2="9" w3="2" h1="2" h2="9" h3="2" />
+    <part id="checkbox_selected" x="164" y="68" w1="2" w2="9" w3="2" h1="2" h2="9" h3="2" />
+    <part id="radio_normal" x="196" y="68" w1="2" w2="9" w3="2" h1="2" h2="9" h3="2" />
+    <part id="radio_selected" x="228" y="68" w1="2" w2="9" w3="2" h1="2" h2="9" h3="2" />
+    <part id="scrollbar_track" x="4" y="100" w1="2" w2="9" w3="2" h1="2" h2="9" h3="2" />
+    <part id="scrollbar_thumb" x="36" y="100" w1="2" w2="9" w3="2" h1="2" h2="9" h3="2" />
+    <part id="slider_track" x="68" y="100" w1="2" w2="9" w3="2" h1="2" h2="9" h3="2" />
+    <part id="slider_thumb" x="100" y="100" w1="2" w2="9" w3="2" h1="2" h2="9" h3="2" />
+    <part id="menuitem_normal" x="132" y="100" w1="2" w2="9" w3="2" h1="2" h2="9" h3="2" />
+    <part id="menuitem_hot" x="164" y="100" w1="2" w2="9" w3="2" h1="2" h2="9" h3="2" />
+    <part id="tooltip" x="196" y="100" w1="2" w2="9" w3="2" h1="2" h2="9" h3="2" />
+    <part id="separator" x="228" y="100" w1="2" w2="9" w3="2" h1="2" h2="9" h3="2" />
+    <part id="tool_pencil" x="4" y="132" w="10" h="10" />
+    <part id="tool_eraser" x="36" y="132" w="10" h="10" />
+    <part id="tool_fill" x="68" y="132" w="10" h="10" />
+    <part id="tool_eyedropper" x="100" y="132" w="10" h="10" />
+    <part id="tool_line" x="132" y="132" w="10" h="10" />
+    <part id="tool_rectangle" x="164" y="132" w="10" h="10" />
+    <part id="tool_selection" x="196" y="132" w="10" h="10" />
+    <part id="tool_hand" x="228" y="132" w="10" h="10" />
+    <part id="file_new" x="4" y="164" w="10" h="10" />
+    <part id="file_open" x="36" y="164" w="10" h="10" />
+    <part id="file_save" x="68" y="164" w="10" h="10" />
+    <part id="undo" x="100" y="164" w="10" h="10" />
+    <part id="redo" x="132" y="164" w="10" h="10" />
+    <part id="plus" x="164" y="164" w="10" h="10" />
+    <part id="minus" x="196" y="164" w="10" h="10" />
+    <part id="close" x="228" y="164" w="10" h="10" />
+    <part id="visible" x="4" y="196" w="10" h="10" />
+    <part id="hidden" x="36" y="196" w="10" h="10" />
+    <part id="lock" x="68" y="196" w="10" h="10" />
+    <part id="unlock" x="100" y="196" w="10" h="10" />
+    <part id="play" x="132" y="196" w="10" h="10" />
+    <part id="pause" x="164" y="196" w="10" h="10" />
+    <part id="next" x="196" y="196" w="10" h="10" />
+    <part id="previous" x="228" y="196" w="10" h="10" />
+  </parts>
+  <styles>
+    <style id="toolbutton_normal">
+      <background-border part="toolbutton_normal" />
+    </style>
+    <style id="toolbutton_hot">
+      <background-border part="toolbutton_hot" />
+    </style>
+    <style id="toolbutton_selected">
+      <background-border part="toolbutton_selected" />
+    </style>
+    <style id="panel">
+      <background-border part="panel" />
+    </style>
+    <style id="panel_title">
+      <background-border part="panel_title" />
+    </style>
+    <style id="menu_bar">
+      <background-border part="menu_bar" />
+    </style>
+    <style id="tab_strip">
+      <background-border part="tab_strip" />
+    </style>
+    <style id="tab_active">
+      <background-border part="tab_active" />
+    </style>
+    <style id="status_bar">
+      <background-border part="status_bar" />
+    </style>
+    <style id="tool_options">
+      <background-border part="tool_options" />
+    </style>
+    <style id="tool_rail">
+      <background-border part="tool_rail" />
+    </style>
+    <style id="timeline_selected">
+      <background-border part="timeline_selected" />
+    </style>
+    <style id="timeline_cell">
+      <background-border part="timeline_cell" />
+    </style>
+    <style id="entry_normal">
+      <background-border part="entry_normal" />
+    </style>
+    <style id="entry_focused">
+      <background-border part="entry_focused" />
+    </style>
+    <style id="checkbox_normal">
+      <background-border part="checkbox_normal" />
+    </style>
+    <style id="checkbox_selected">
+      <background-border part="checkbox_selected" />
+    </style>
+    <style id="radio_normal">
+      <background-border part="radio_normal" />
+    </style>
+    <style id="radio_selected">
+      <background-border part="radio_selected" />
+    </style>
+    <style id="scrollbar_track">
+      <background-border part="scrollbar_track" />
+    </style>
+    <style id="scrollbar_thumb">
+      <background-border part="scrollbar_thumb" />
+    </style>
+    <style id="slider_track">
+      <background-border part="slider_track" />
+    </style>
+    <style id="slider_thumb">
+      <background-border part="slider_thumb" />
+    </style>
+    <style id="menuitem_normal">
+      <background-border part="menuitem_normal" />
+    </style>
+    <style id="menuitem_hot">
+      <background-border part="menuitem_hot" />
+    </style>
+    <style id="tooltip">
+      <background-border part="tooltip" />
+    </style>
+    <style id="separator">
+      <background-border part="separator" />
+    </style>
+    <style id="tool_pencil">
+      <icon part="tool_pencil" />
+    </style>
+    <style id="tool_eraser">
+      <icon part="tool_eraser" />
+    </style>
+    <style id="tool_fill">
+      <icon part="tool_fill" />
+    </style>
+    <style id="tool_eyedropper">
+      <icon part="tool_eyedropper" />
+    </style>
+    <style id="tool_line">
+      <icon part="tool_line" />
+    </style>
+    <style id="tool_rectangle">
+      <icon part="tool_rectangle" />
+    </style>
+    <style id="tool_selection">
+      <icon part="tool_selection" />
+    </style>
+    <style id="tool_hand">
+      <icon part="tool_hand" />
+    </style>
+    <style id="file_new">
+      <icon part="file_new" />
+    </style>
+    <style id="file_open">
+      <icon part="file_open" />
+    </style>
+    <style id="file_save">
+      <icon part="file_save" />
+    </style>
+    <style id="undo">
+      <icon part="undo" />
+    </style>
+    <style id="redo">
+      <icon part="redo" />
+    </style>
+    <style id="plus">
+      <icon part="plus" />
+    </style>
+    <style id="minus">
+      <icon part="minus" />
+    </style>
+    <style id="close">
+      <icon part="close" />
+    </style>
+    <style id="visible">
+      <icon part="visible" />
+    </style>
+    <style id="hidden">
+      <icon part="hidden" />
+    </style>
+    <style id="lock">
+      <icon part="lock" />
+    </style>
+    <style id="unlock">
+      <icon part="unlock" />
+    </style>
+    <style id="play">
+      <icon part="play" />
+    </style>
+    <style id="pause">
+      <icon part="pause" />
+    </style>
+    <style id="next">
+      <icon part="next" />
+    </style>
+    <style id="previous">
+      <icon part="previous" />
+    </style>
+    <style id="button">
+      <background-border part="button_normal" />
+      <text color="text" x="0" y="0" />
+      <background-border part="button_hot" state="mouse" />
+      <text color="text" x="0" y="0" state="mouse" />
+      <background-border part="button_selected" state="selected" />
+      <text color="text" x="1" y="1" state="selected" />
+      <background-border part="button_disabled" state="disabled" />
+      <text color="muted" x="0" y="0" state="disabled" />
+      <background-border part="button_focused" state="focus" />
+      <text color="text" x="0" y="0" state="focus" />
+    </style>
+  </styles>
+</theme>

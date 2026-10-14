@@ -1,0 +1,13 @@
+{
+  "name": "moonsprite-template",
+  "displayName": "MoonSprite Theme Template",
+  "version": "0.1.0",
+  "contributes": {
+    "themes": [
+      {
+        "id": "moonsprite-template",
+        "path": "."
+      }
+    ]
+  }
+}

@@ -1,0 +1,15 @@
+# MoonSprite skin v1: appearance only. No layout, scripts or font size.
+background=161A24
+panel=202635
+button=2C3548
+border=424F67
+text=E6ECF5
+muted=91A0B8
+accent=2979FF
+checkerA=D0D5DF
+checkerB=EDF0F5
+
+timelineBackground=292B30
+timelineGrid=000000
+timelineEdge=424F67
+timelineInk=919BA9

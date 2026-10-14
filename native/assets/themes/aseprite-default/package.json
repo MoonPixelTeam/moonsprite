@@ -1,0 +1,14 @@
+{
+  "name": "moonsprite-aseprite-default",
+  "displayName": "Aseprite Default (MoonSprite adaptation)",
+  "version": "0.1.0",
+  "license": "CC-BY-4.0",
+  "contributes": {
+    "themes": [
+      {
+        "id": "moonsprite-aseprite-default",
+        "path": "."
+      }
+    ]
+  }
+}

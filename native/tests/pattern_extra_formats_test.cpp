@@ -1,0 +1,4 @@
+#include "pattern_brush_import.h"
+#include <iostream>
+#define CHECK(x) do{if(!(x))throw std::runtime_error(#x);}while(false)
+int wmain(int argc,wchar_t**argv){try{CHECK(argc==2);auto root=std::filesystem::path(argv[1]);auto gif=moon::importPatternBrush(root/L"offset.gif").brush;CHECK(gif.width==4&&gif.height==3);CHECK(gif.colors[0]==0&&gif.colors[5]==0xff0000ff&&gif.colors[6]==0);auto webp=moon::importPatternBrush(root/L"alpha.webp").brush;CHECK(webp.width==2&&webp.height==1&&webp.colors[0]==0xff1e140a&&webp.colors[1]==0x803c3228);auto animation=moon::importPatternBrush(root/L"animated.webp").brush;CHECK(animation.colors==webp.colors);bool failed=false;try{moon::importPatternBrush(root/L"bad.gif");}catch(const std::exception&){failed=true;}CHECK(failed);std::cout<<"GIF/WebP brush checks passed\n";return 0;}catch(const std::exception&e){std::cerr<<e.what()<<'\n';return 1;}}

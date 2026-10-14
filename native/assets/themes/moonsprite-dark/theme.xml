@@ -1,0 +1,872 @@
+<?xml version="1.0" encoding="utf-8"?>
+<theme name="MoonSprite Dark Layers" screenscaling="2" uiscaling="1">
+  <fonts>
+    <font id="default" font="Fusion Pixel" size="10" />
+  </fonts>
+  <colors>
+    <color id="background" value="#171A21" />
+    <color id="panel" value="#202635" />
+    <color id="button" value="#202635" />
+    <color id="border" value="#414D64" />
+    <color id="text" value="#D8DEEA" />
+    <color id="muted" value="#7E8AA1" />
+    <color id="accent" value="#2979FF" />
+    <color id="checkerA" value="#202635" />
+    <color id="checkerB" value="#293142" />
+    <color id="textButtonLabel" value="#919BA9" />
+    <color id="timelineBackground" value="#202635" />
+    <color id="timelineGrid" value="#000000" />
+    <color id="timelineEdge" value="#424F67" />
+    <color id="timelineInk" value="#919BA9" />
+  </colors>
+  <parts>
+    <part id="button_normal" x="0" y="0" w1="2" w2="5" w3="2" h1="2" h2="5" h3="2" />
+    <part id="button_hot" x="12" y="0" w1="2" w2="5" w3="2" h1="2" h2="5" h3="2" />
+    <part id="button_selected" x="24" y="0" w1="2" w2="5" w3="2" h1="2" h2="5" h3="2" />
+    <part id="button_disabled" x="36" y="0" w1="2" w2="5" w3="2" h1="2" h2="5" h3="2" />
+    <part id="button_focused" x="48" y="0" w1="2" w2="5" w3="2" h1="2" h2="5" h3="2" />
+    <part id="frame" x="60" y="0" w1="3" w2="3" w3="3" h1="3" h2="3" h3="3" />
+    <part id="tab" x="72" y="0" w1="3" w2="3" w3="3" h1="3" h2="6" h3="0" />
+    <part id="field" x="84" y="0" w1="1" w2="7" w3="1" h1="1" h2="7" h3="1" />
+    <part id="panel_tab_active" x="96" y="0" w1="3" w2="3" w3="3" h1="3" h2="6" h3="0" />
+    <part id="panel_tab_inactive" x="108" y="0" w1="1" w2="7" w3="1" h1="1" h2="7" h3="1" />
+    <part id="document_frame" x="40" y="16" w1="3" w2="3" w3="3" h1="3" h2="3" h3="3" />
+    <part id="color_well" x="52" y="16" w1="3" w2="3" w3="3" h1="3" h2="3" h3="3" />
+    <part id="dock_frame" x="64" y="16" w1="3" w2="3" w3="3" h1="3" h2="3" h3="3" />
+    <part id="panel_outer" x="76" y="16" w1="3" w2="3" w3="3" h1="3" h2="3" h3="3" />
+    <part id="panel_content" x="88" y="16" w1="1" w2="7" w3="1" h1="1" h2="7" h3="1" />
+    <part id="panel_tab_join_left" x="100" y="16" w="3" h="3" />
+    <part id="panel_tab_join_right" x="104" y="16" w="3" h="3" />
+    <!-- User's dialog-reference.png; coordinates are base pixels, rendered at 2x. -->
+    <part id="dialog_frame" x="0" y="36" w1="2" w2="1" w3="2" h1="16" h2="1" h3="4" />
+    <part id="text_button_normal" x="8" y="36" w1="3" w2="1" w3="3" h1="3" h2="11" h3="4" />
+    <part id="text_button_hot" x="20" y="36" w1="3" w2="1" w3="3" h1="3" h2="11" h3="4" />
+    <part id="icon_button_normal" x="0" y="64" w1="2" w2="7" w3="2" h1="2" h2="7" h3="3" />
+    <part id="icon_button_hot" x="12" y="64" w1="2" w2="7" w3="2" h1="2" h2="7" h3="3" />
+    <part id="entry_normal" x="0" y="80" w1="2" w2="1" w3="2" h1="4" h2="11" h3="3" />
+    <part id="entry_focus" x="8" y="80" w1="2" w2="1" w3="2" h1="4" h2="11" h3="3" />
+    <part id="slider_normal" x="16" y="80" w1="4" w2="1" w3="4" h1="4" h2="10" h3="4" />
+    <part id="slider_focus" x="28" y="80" w1="4" w2="1" w3="4" h1="4" h2="10" h3="4" />
+    <part id="slider_fill" x="40" y="80" w1="1" w2="1" w3="1" h1="1" h2="10" h3="1" />
+    <part id="role_button_normal" x="48" y="80" w1="2" w2="1" w3="2" h1="2" h2="16" h3="3" />
+    <part id="timeline.frame" x="128" y="0" w1="3" w2="3" w3="3" h1="3" h2="3" h3="3" />
+    <part id="timeline.button" x="140" y="0" w1="2" w2="3" w3="2" h1="2" h2="3" h3="2" />
+    <part id="timeline.active" x="0" y="576" w1="0" w2="3" w3="0" h1="0" h2="3" h3="0" />
+    <part id="timeline.hover" x="4" y="576" w1="0" w2="3" w3="0" h1="0" h2="3" h3="0" />
+    <part id="timeline.row" x="152" y="0" w1="0" w2="3" w3="0" h1="0" h2="3" h3="0" />
+    <part id="timeline.grid" x="164" y="0" w1="1" w2="1" w3="1" h1="1" h2="1" h3="1" />
+    <part id="timeline.line" x="176" y="0" w1="0" w2="1" w3="0" h1="0" h2="1" h3="0" />
+    <part id="timeline.linked-dot" x="188" y="0" w1="3" w2="1" w3="3" h1="0" h2="7" h3="0" />
+    <part id="timeline.dot" x="188" y="0" w="7" h="7" />
+    <part id="menu_bar" x="200" y="0" w1="0" w2="3" w3="0" h1="0" h2="3" h3="0" />
+    <part id="menu_item" x="212" y="0" w1="0" w2="3" w3="0" h1="0" h2="3" h3="0" />
+    <part id="menu_item_hover" x="224" y="0" w1="0" w2="3" w3="0" h1="0" h2="3" h3="0" />
+    <part id="icon.selection-brush-normal-disabled" x="128" y="20" w="11" h="11" />
+    <part id="icon.selection-brush-normal" x="144" y="20" w="11" h="11" />
+    <part id="icon.selection-ellipse-normal-disabled" x="160" y="20" w="11" h="11" />
+    <part id="icon.selection-ellipse-normal" x="176" y="20" w="11" h="11" />
+    <part id="icon.selection-lasso-normal-disabled" x="192" y="20" w="11" h="11" />
+    <part id="icon.selection-lasso-normal" x="208" y="20" w="11" h="11" />
+    <part id="icon.selection-magic-normal-disabled" x="224" y="20" w="11" h="11" />
+    <part id="icon.selection-magic-normal" x="240" y="20" w="11" h="11" />
+    <part id="icon.selection-polygon-lasso-normal-disabled" x="256" y="20" w="11" h="11" />
+    <part id="icon.selection-polygon-lasso-normal" x="272" y="20" w="11" h="11" />
+    <part id="icon.selection-rectangle-normal-disabled" x="288" y="20" w="11" h="11" />
+    <part id="icon.selection-rectangle-normal" x="304" y="20" w="11" h="11" />
+    <part id="icon.shape-curve-normal-disabled" x="320" y="20" w="11" h="11" />
+    <part id="icon.shape-curve-normal" x="336" y="20" w="11" h="11" />
+    <part id="icon.shape-ellipse-fill-normal-disabled" x="352" y="20" w="11" h="11" />
+    <part id="icon.shape-ellipse-fill-normal" x="368" y="20" w="11" h="11" />
+    <part id="icon.shape-ellipse-normal-disabled" x="384" y="20" w="11" h="11" />
+    <part id="icon.shape-ellipse-normal" x="400" y="20" w="11" h="11" />
+    <part id="icon.shape-freeform-normal-disabled" x="416" y="20" w="11" h="11" />
+    <part id="icon.shape-freeform-normal" x="432" y="20" w="11" h="11" />
+    <part id="icon.shape-line-normal-disabled" x="448" y="20" w="11" h="11" />
+    <part id="icon.shape-line-normal" x="464" y="20" w="11" h="11" />
+    <part id="icon.shape-polygon-normal-disabled" x="480" y="20" w="11" h="11" />
+    <part id="icon.shape-polygon-normal" x="496" y="20" w="11" h="11" />
+    <part id="icon.shape-rectangle-fill-normal-disabled" x="128" y="36" w="11" h="11" />
+    <part id="icon.shape-rectangle-fill-normal" x="144" y="36" w="11" h="11" />
+    <part id="icon.shape-rectangle-normal-disabled" x="160" y="36" w="11" h="11" />
+    <part id="icon.shape-rectangle-normal" x="176" y="36" w="11" h="11" />
+    <part id="icon.tool-airbrush-normal-disabled" x="192" y="36" w="11" h="11" />
+    <part id="icon.tool-airbrush-normal" x="208" y="36" w="11" h="11" />
+    <part id="icon.tool-eraser-normal-disabled" x="224" y="36" w="11" h="11" />
+    <part id="icon.tool-eraser-normal" x="240" y="36" w="11" h="11" />
+    <part id="icon.tool-eyedropper-normal-disabled" x="256" y="36" w="11" h="11" />
+    <part id="icon.tool-eyedropper-normal" x="272" y="36" w="11" h="11" />
+    <part id="icon.tool-fill-normal-disabled" x="288" y="36" w="11" h="11" />
+    <part id="icon.tool-fill-normal" x="304" y="36" w="11" h="11" />
+    <part id="icon.tool-gradient-normal-disabled" x="320" y="36" w="11" h="11" />
+    <part id="icon.tool-gradient-normal" x="336" y="36" w="11" h="11" />
+    <part id="icon.tool-hand-normal-disabled" x="352" y="36" w="11" h="11" />
+    <part id="icon.tool-hand-normal" x="368" y="36" w="11" h="11" />
+    <part id="icon.tool-liquify-normal-disabled" x="384" y="36" w="11" h="11" />
+    <part id="icon.tool-liquify-normal" x="400" y="36" w="11" h="11" />
+    <part id="icon.tool-magic-eraser-normal-disabled" x="416" y="36" w="11" h="11" />
+    <part id="icon.tool-magic-eraser-normal" x="432" y="36" w="11" h="11" />
+    <part id="icon.tool-move-normal-disabled" x="448" y="36" w="11" h="11" />
+    <part id="icon.tool-move-normal" x="464" y="36" w="11" h="11" />
+    <part id="icon.tool-pencil-normal-disabled" x="480" y="36" w="11" h="11" />
+    <part id="icon.tool-pencil-normal" x="496" y="36" w="11" h="11" />
+    <part id="icon.tool-rotate-normal-disabled" x="128" y="52" w="11" h="11" />
+    <part id="icon.tool-rotate-normal" x="144" y="52" w="11" h="11" />
+    <part id="icon.tool-slice-normal-disabled" x="160" y="52" w="11" h="11" />
+    <part id="icon.tool-slice-normal" x="176" y="52" w="11" h="11" />
+    <part id="icon.tool-smooth-normal-disabled" x="192" y="52" w="11" h="11" />
+    <part id="icon.tool-smooth-normal" x="208" y="52" w="11" h="11" />
+    <part id="icon.tool-text-normal-disabled" x="224" y="52" w="11" h="11" />
+    <part id="icon.tool-text-normal" x="240" y="52" w="11" h="11" />
+    <part id="icon.tool-zoom-normal-disabled" x="256" y="52" w="11" h="11" />
+    <part id="icon.tool-zoom-normal" x="272" y="52" w="11" h="11" />
+    <part id="icon.brush-line-disabled" x="288" y="52" w="5" h="1" />
+    <part id="icon.brush-line" x="304" y="52" w="5" h="1" />
+    <part id="icon.brush-round-disabled" x="320" y="52" w="5" h="5" />
+    <part id="icon.brush-round" x="336" y="52" w="5" h="5" />
+    <part id="icon.brush-square-disabled" x="352" y="52" w="5" h="5" />
+    <part id="icon.brush-square" x="368" y="52" w="5" h="5" />
+    <part id="icon.check-disabled" x="384" y="52" w="7" h="7" />
+    <part id="icon.check" x="400" y="52" w="7" h="7" />
+    <part id="icon.checkboxUnchecked-disabled" x="416" y="52" w="11" h="11" />
+    <part id="icon.checkboxUnchecked" x="432" y="52" w="11" h="11" />
+    <part id="icon.close-disabled" x="448" y="52" w="5" h="5" />
+    <part id="icon.close" x="464" y="52" w="5" h="5" />
+    <part id="icon.copy-disabled" x="480" y="52" w="11" h="11" />
+    <part id="icon.copy" x="496" y="52" w="11" h="11" />
+    <part id="icon.delete-disabled" x="128" y="68" w="11" h="11" />
+    <part id="icon.delete" x="144" y="68" w="11" h="11" />
+    <part id="icon.dither-disabled" x="160" y="68" w="11" h="11" />
+    <part id="icon.dither" x="176" y="68" w="11" h="11" />
+    <part id="icon.eye-disabled" x="192" y="68" w="11" h="11" />
+    <part id="icon.eye" x="208" y="68" w="11" h="11" />
+    <part id="icon.eyeOff-disabled" x="224" y="68" w="11" h="11" />
+    <part id="icon.eyeOff" x="240" y="68" w="11" h="11" />
+    <part id="icon.image-disabled" x="256" y="68" w="11" h="11" />
+    <part id="icon.image" x="272" y="68" w="11" h="11" />
+    <part id="icon.ink-simple-disabled" x="288" y="68" w="11" h="11" />
+    <part id="icon.ink-simple" x="304" y="68" w="11" h="11" />
+    <part id="icon.link-disabled" x="320" y="68" w="11" h="11" />
+    <part id="icon.link" x="336" y="68" w="11" h="11" />
+    <part id="icon.lock-disabled" x="352" y="68" w="11" h="11" />
+    <part id="icon.lock" x="368" y="68" w="11" h="11" />
+    <part id="icon.more-disabled" x="384" y="68" w="11" h="11" />
+    <part id="icon.more" x="400" y="68" w="11" h="11" />
+    <part id="icon.onion-disabled" x="416" y="68" w="11" h="11" />
+    <part id="icon.onion" x="432" y="68" w="11" h="11" />
+    <part id="icon.playback-first-disabled" x="448" y="68" w="11" h="11" />
+    <part id="icon.playback-first" x="464" y="68" w="11" h="11" />
+    <part id="icon.playback-last-disabled" x="480" y="68" w="11" h="11" />
+    <part id="icon.playback-last" x="496" y="68" w="11" h="11" />
+    <part id="icon.playback-next-disabled" x="128" y="84" w="11" h="11" />
+    <part id="icon.playback-next" x="144" y="84" w="11" h="11" />
+    <part id="icon.playback-play-disabled" x="160" y="84" w="11" h="11" />
+    <part id="icon.playback-play" x="176" y="84" w="11" h="11" />
+    <part id="icon.playback-previous-disabled" x="192" y="84" w="11" h="11" />
+    <part id="icon.playback-previous" x="208" y="84" w="11" h="11" />
+    <part id="icon.plus-disabled" x="224" y="84" w="11" h="11" />
+    <part id="icon.plus" x="240" y="84" w="11" h="11" />
+    <part id="icon.pressure-dynamics-disabled" x="256" y="84" w="11" h="11" />
+    <part id="icon.pressure-dynamics" x="272" y="84" w="11" h="11" />
+    <part id="icon.properties-disabled" x="288" y="84" w="11" h="11" />
+    <part id="icon.properties" x="304" y="84" w="11" h="11" />
+    <part id="icon.redo-disabled" x="320" y="84" w="6" h="6" />
+    <part id="icon.redo" x="336" y="84" w="6" h="6" />
+    <part id="icon.right-disabled" x="352" y="84" w="5" h="5" />
+    <part id="icon.right" x="368" y="84" w="5" h="5" />
+    <part id="icon.symmetry-diagonal-down-disabled" x="384" y="84" w="11" h="11" />
+    <part id="icon.symmetry-diagonal-down" x="400" y="84" w="11" h="11" />
+    <part id="icon.symmetry-diagonal-up-disabled" x="416" y="84" w="11" h="11" />
+    <part id="icon.symmetry-diagonal-up" x="432" y="84" w="11" h="11" />
+    <part id="icon.symmetry-horizontal-disabled" x="448" y="84" w="11" h="11" />
+    <part id="icon.symmetry-horizontal" x="464" y="84" w="11" h="11" />
+    <part id="icon.symmetry-rotational-disabled" x="480" y="84" w="11" h="11" />
+    <part id="icon.symmetry-rotational" x="496" y="84" w="11" h="11" />
+    <part id="icon.symmetry-vertical-disabled" x="128" y="100" w="11" h="11" />
+    <part id="icon.symmetry-vertical" x="144" y="100" w="11" h="11" />
+    <part id="icon.undo-disabled" x="160" y="100" w="6" h="6" />
+    <part id="icon.undo" x="176" y="100" w="6" h="6" />
+    <part id="icon.unlock-disabled" x="192" y="100" w="11" h="11" />
+    <part id="icon.unlock" x="208" y="100" w="11" h="11" />
+    <part x="128" h="4" w="4" y="160" id="icon.marker-light" />
+    <part x="144" h="4" w="4" y="160" id="icon.marker-dark" />
+    <part x="0" w="32" h="32" id="cursor.01-slice-1" y="256" />
+    <part x="32" w="32" h="32" id="cursor.02-slice-2" y="256" />
+    <part x="64" w="32" h="32" id="cursor.03-slice-3" y="256" />
+    <part x="96" w="32" h="32" id="cursor.04-slice-4" y="256" />
+    <part x="128" w="32" h="32" id="cursor.06-slice-6" y="256" />
+    <part x="160" w="32" h="32" id="cursor.10-slice-7" y="256" />
+    <part x="192" w="32" h="32" id="cursor.11-slice-8" y="256" />
+    <part x="224" w="32" h="32" id="cursor.12-slice-9" y="256" />
+    <part x="256" w="32" h="32" id="cursor.13-slice-10" y="256" />
+    <part x="288" w="32" h="32" id="cursor.14-slice-11" y="256" />
+    <part x="320" w="32" h="32" id="cursor.15-slice-12" y="256" />
+    <part x="352" w="32" h="32" id="cursor.16-icon-16" y="256" />
+    <part x="384" w="32" h="32" id="cursor.17-icon-17" y="256" />
+    <part x="416" w="32" h="32" id="cursor.19-slice-13" y="256" />
+    <part x="448" w="32" h="32" id="cursor.20-slice-14" y="256" />
+    <part x="480" w="32" h="32" id="cursor.21-slice-15" y="256" />
+    <part x="0" w="32" h="32" id="cursor.22-slice-16" y="288" />
+    <part x="32" w="32" h="32" id="cursor.23-slice-17" y="288" />
+    <part x="64" w="32" h="32" id="cursor.24-icon-24" y="288" />
+    <part x="96" w="32" h="32" id="cursor.cursor-selection-rotate-n" y="288" />
+    <part x="128" w="32" h="32" id="cursor.cursor-selection-rotate-s" y="288" />
+    <part x="160" w="32" h="32" id="cursor.cursor-selection-shear-horizontal" y="288" />
+    <part x="192" w="32" h="32" id="cursor.cursor-selection-shear-nesw" y="288" />
+    <part x="224" w="32" h="32" id="cursor.cursor-selection-shear-nwse" y="288" />
+    <part x="256" w="32" h="32" id="cursor.cursor-selection-shear-vertical" y="288" />
+    <part x="288" w="32" h="32" id="cursor.pixel-cross-cursor" y="288" />
+    <part x="320" w="32" h="32" id="cursor.pixel-grab-cursor" y="288" />
+    <part id="icon.playback-pause" x="0" y="512" w="11" h="11" />
+    <part id="icon.playback-pause-disabled" x="16" y="512" w="11" h="11" />
+    <part id="selection.normal" x="0" y="528" w1="3" w2="20" w3="3" h1="3" h2="20" h3="3" />
+    <part id="selection.hover" x="32" y="528" w1="3" w2="20" w3="3" h1="3" h2="20" h3="3" />
+    <part id="role-marker.foreground.small.white" x="0" y="560" w="4" h="4" />
+    <part id="role-marker.foreground.small.black" x="16" y="560" w="4" h="4" />
+    <part id="role-marker.foreground.medium.white" x="32" y="560" w="8" h="8" />
+    <part id="role-marker.foreground.medium.black" x="48" y="560" w="8" h="8" />
+    <part id="role-marker.foreground.large.white" x="64" y="560" w="12" h="12" />
+    <part id="role-marker.foreground.large.black" x="80" y="560" w="12" h="12" />
+    <part id="role-marker.background.small.white" x="96" y="560" w="2" h="2" />
+    <part id="role-marker.background.small.black" x="112" y="560" w="2" h="2" />
+    <part id="role-marker.background.medium.white" x="128" y="560" w="4" h="4" />
+    <part id="role-marker.background.medium.black" x="144" y="560" w="4" h="4" />
+    <part id="role-marker.background.large.white" x="160" y="560" w="7" h="7" />
+    <part id="role-marker.background.large.black" x="176" y="560" w="7" h="7" />
+    <part id="project_tab_active" x="0" y="580" w1="1" w2="1" w3="1" h1="1" h2="13" h3="1" />
+    <part id="project_tab_inactive" x="4" y="580" w1="1" w2="1" w3="1" h1="1" h2="13" h3="1" />
+  </parts>
+  <styles>
+    <style id="role_button.normal">
+      <background-border part="role_button_normal" />
+    </style>
+    <style id="button">
+      <background-border part="button_normal" />
+      <text color="text" />
+      <background-border part="button_hot" state="mouse" />
+      <text color="text" state="mouse" />
+      <background-border part="button_selected" state="selected" />
+      <text color="text" state="selected" />
+      <background-border part="button_disabled" state="disabled" />
+      <text color="muted" state="disabled" />
+      <background-border part="button_focused" state="focus" />
+      <text color="text" state="focus" />
+    </style>
+    <style id="panel">
+      <background-border part="dock_frame" />
+    </style>
+    <style id="canvas_frame">
+      <background-border part="frame" />
+    </style>
+    <style id="tab_active">
+      <background-border part="tab" />
+    </style>
+    <style id="tool_options">
+      <background-border part="field" />
+    </style>
+    <style id="panel_tab_active">
+      <background-border part="panel_tab_active" />
+    </style>
+    <style id="panel_tab_inactive">
+      <background-border part="panel_tab_inactive" />
+    </style>
+    <style id="document_frame">
+      <background-border part="document_frame" />
+    </style>
+    <style id="color_well">
+      <background-border part="color_well" />
+    </style>
+    <style id="menu_popup">
+      <background-border part="dock_frame" />
+    </style>
+    <style id="menu_hover">
+      <background-border part="button_hot" />
+    </style>
+    <style id="panel_outer">
+      <background-border part="panel_outer" />
+    </style>
+    <style id="panel_content">
+      <background-border part="panel_content" />
+    </style>
+    <style id="panel_tab_join_left">
+      <icon part="panel_tab_join_left" />
+    </style>
+    <style id="panel_tab_join_right">
+      <icon part="panel_tab_join_right" />
+    </style>
+    <style id="dialog_frame">
+      <background-border part="dialog_frame" />
+    </style>
+    <style id="text_button.normal">
+      <background-border part="text_button_normal" />
+      <text color="textButtonLabel" />
+    </style>
+    <style id="text_button.hover">
+      <background-border part="text_button_hot" />
+      <text color="textButtonLabel" />
+    </style>
+    <style id="text_button.pressed">
+      <background-border part="text_button_hot" />
+      <text color="textButtonLabel" />
+    </style>
+    <style id="text_button.selected">
+      <background-border part="text_button_hot" />
+      <text color="textButtonLabel" />
+    </style>
+    <style id="text_button.focus">
+      <background-border part="text_button_hot" />
+      <text color="textButtonLabel" />
+    </style>
+    <style id="text_button.disabled">
+      <background-border part="text_button_normal" />
+      <text color="muted" />
+    </style>
+    <style id="icon_button.normal">
+      <background-border part="icon_button_normal" />
+    </style>
+    <style id="icon_button.hover">
+      <background-border part="icon_button_hot" />
+    </style>
+    <style id="icon_button.pressed">
+      <background-border part="icon_button_hot" />
+    </style>
+    <style id="icon_button.selected">
+      <background-border part="icon_button_hot" />
+    </style>
+    <style id="icon_button.focus">
+      <background-border part="icon_button_hot" />
+    </style>
+    <style id="icon_button.disabled">
+      <background-border part="icon_button_normal" />
+    </style>
+    <style id="entry.normal">
+      <background-border part="entry_normal" />
+    </style>
+    <style id="entry.focus">
+      <background-border part="entry_focus" />
+    </style>
+    <style id="slider.normal">
+      <background-border part="slider_normal" />
+      <text color="textButtonLabel" />
+    </style>
+    <style id="slider.focus">
+      <background-border part="slider_focus" />
+      <text color="textButtonLabel" />
+    </style>
+    <style id="slider.fill">
+      <background-border part="slider_fill" />
+    </style>
+    <style id="timeline.frame">
+      <background-border part="timeline.frame" />
+    </style>
+    <style id="timeline.button">
+      <background-border part="timeline.button" />
+    </style>
+    <style id="timeline.active"><background-border part="timeline.active" /></style>
+    <style id="timeline.hover"><background-border part="timeline.hover" /></style>
+    <style id="timeline.linked-dot"><background-border part="timeline.linked-dot" /></style>
+    <style id="timeline.row">
+      <background-border part="timeline.row" />
+    </style>
+    <style id="timeline.grid">
+      <background-border part="timeline.grid" />
+    </style>
+    <style id="timeline.line">
+      <background-border part="timeline.line" />
+    </style>
+    <style id="timeline.dot">
+      <icon part="timeline.dot" />
+    </style>
+    <style id="menu_bar">
+      <background-border part="menu_bar" />
+    </style>
+    <style id="menu_item">
+      <background-border part="menu_item" />
+    </style>
+    <style id="menu_item_hover">
+      <background-border part="menu_item_hover" />
+    </style>
+    <style id="icon.selection-brush-normal-disabled">
+      <icon part="icon.selection-brush-normal-disabled" />
+    </style>
+    <style id="icon.selection-brush-normal">
+      <icon part="icon.selection-brush-normal" />
+    </style>
+    <style id="icon.selection-ellipse-normal-disabled">
+      <icon part="icon.selection-ellipse-normal-disabled" />
+    </style>
+    <style id="icon.selection-ellipse-normal">
+      <icon part="icon.selection-ellipse-normal" />
+    </style>
+    <style id="icon.selection-lasso-normal-disabled">
+      <icon part="icon.selection-lasso-normal-disabled" />
+    </style>
+    <style id="icon.selection-lasso-normal">
+      <icon part="icon.selection-lasso-normal" />
+    </style>
+    <style id="icon.selection-magic-normal-disabled">
+      <icon part="icon.selection-magic-normal-disabled" />
+    </style>
+    <style id="icon.selection-magic-normal">
+      <icon part="icon.selection-magic-normal" />
+    </style>
+    <style id="icon.selection-polygon-lasso-normal-disabled">
+      <icon part="icon.selection-polygon-lasso-normal-disabled" />
+    </style>
+    <style id="icon.selection-polygon-lasso-normal">
+      <icon part="icon.selection-polygon-lasso-normal" />
+    </style>
+    <style id="icon.selection-rectangle-normal-disabled">
+      <icon part="icon.selection-rectangle-normal-disabled" />
+    </style>
+    <style id="icon.selection-rectangle-normal">
+      <icon part="icon.selection-rectangle-normal" />
+    </style>
+    <style id="icon.shape-curve-normal-disabled">
+      <icon part="icon.shape-curve-normal-disabled" />
+    </style>
+    <style id="icon.shape-curve-normal">
+      <icon part="icon.shape-curve-normal" />
+    </style>
+    <style id="icon.shape-ellipse-fill-normal-disabled">
+      <icon part="icon.shape-ellipse-fill-normal-disabled" />
+    </style>
+    <style id="icon.shape-ellipse-fill-normal">
+      <icon part="icon.shape-ellipse-fill-normal" />
+    </style>
+    <style id="icon.shape-ellipse-normal-disabled">
+      <icon part="icon.shape-ellipse-normal-disabled" />
+    </style>
+    <style id="icon.shape-ellipse-normal">
+      <icon part="icon.shape-ellipse-normal" />
+    </style>
+    <style id="icon.shape-freeform-normal-disabled">
+      <icon part="icon.shape-freeform-normal-disabled" />
+    </style>
+    <style id="icon.shape-freeform-normal">
+      <icon part="icon.shape-freeform-normal" />
+    </style>
+    <style id="icon.shape-line-normal-disabled">
+      <icon part="icon.shape-line-normal-disabled" />
+    </style>
+    <style id="icon.shape-line-normal">
+      <icon part="icon.shape-line-normal" />
+    </style>
+    <style id="icon.shape-polygon-normal-disabled">
+      <icon part="icon.shape-polygon-normal-disabled" />
+    </style>
+    <style id="icon.shape-polygon-normal">
+      <icon part="icon.shape-polygon-normal" />
+    </style>
+    <style id="icon.shape-rectangle-fill-normal-disabled">
+      <icon part="icon.shape-rectangle-fill-normal-disabled" />
+    </style>
+    <style id="icon.shape-rectangle-fill-normal">
+      <icon part="icon.shape-rectangle-fill-normal" />
+    </style>
+    <style id="icon.shape-rectangle-normal-disabled">
+      <icon part="icon.shape-rectangle-normal-disabled" />
+    </style>
+    <style id="icon.shape-rectangle-normal">
+      <icon part="icon.shape-rectangle-normal" />
+    </style>
+    <style id="icon.tool-airbrush-normal-disabled">
+      <icon part="icon.tool-airbrush-normal-disabled" />
+    </style>
+    <style id="icon.tool-airbrush-normal">
+      <icon part="icon.tool-airbrush-normal" />
+    </style>
+    <style id="icon.tool-eraser-normal-disabled">
+      <icon part="icon.tool-eraser-normal-disabled" />
+    </style>
+    <style id="icon.tool-eraser-normal">
+      <icon part="icon.tool-eraser-normal" />
+    </style>
+    <style id="icon.tool-eyedropper-normal-disabled">
+      <icon part="icon.tool-eyedropper-normal-disabled" />
+    </style>
+    <style id="icon.tool-eyedropper-normal">
+      <icon part="icon.tool-eyedropper-normal" />
+    </style>
+    <style id="icon.tool-fill-normal-disabled">
+      <icon part="icon.tool-fill-normal-disabled" />
+    </style>
+    <style id="icon.tool-fill-normal">
+      <icon part="icon.tool-fill-normal" />
+    </style>
+    <style id="icon.tool-gradient-normal-disabled">
+      <icon part="icon.tool-gradient-normal-disabled" />
+    </style>
+    <style id="icon.tool-gradient-normal">
+      <icon part="icon.tool-gradient-normal" />
+    </style>
+    <style id="icon.tool-hand-normal-disabled">
+      <icon part="icon.tool-hand-normal-disabled" />
+    </style>
+    <style id="icon.tool-hand-normal">
+      <icon part="icon.tool-hand-normal" />
+    </style>
+    <style id="icon.tool-liquify-normal-disabled">
+      <icon part="icon.tool-liquify-normal-disabled" />
+    </style>
+    <style id="icon.tool-liquify-normal">
+      <icon part="icon.tool-liquify-normal" />
+    </style>
+    <style id="icon.tool-magic-eraser-normal-disabled">
+      <icon part="icon.tool-magic-eraser-normal-disabled" />
+    </style>
+    <style id="icon.tool-magic-eraser-normal">
+      <icon part="icon.tool-magic-eraser-normal" />
+    </style>
+    <style id="icon.tool-move-normal-disabled">
+      <icon part="icon.tool-move-normal-disabled" />
+    </style>
+    <style id="icon.tool-move-normal">
+      <icon part="icon.tool-move-normal" />
+    </style>
+    <style id="icon.tool-pencil-normal-disabled">
+      <icon part="icon.tool-pencil-normal-disabled" />
+    </style>
+    <style id="icon.tool-pencil-normal">
+      <icon part="icon.tool-pencil-normal" />
+    </style>
+    <style id="icon.tool-rotate-normal-disabled">
+      <icon part="icon.tool-rotate-normal-disabled" />
+    </style>
+    <style id="icon.tool-rotate-normal">
+      <icon part="icon.tool-rotate-normal" />
+    </style>
+    <style id="icon.tool-slice-normal-disabled">
+      <icon part="icon.tool-slice-normal-disabled" />
+    </style>
+    <style id="icon.tool-slice-normal">
+      <icon part="icon.tool-slice-normal" />
+    </style>
+    <style id="icon.tool-smooth-normal-disabled">
+      <icon part="icon.tool-smooth-normal-disabled" />
+    </style>
+    <style id="icon.tool-smooth-normal">
+      <icon part="icon.tool-smooth-normal" />
+    </style>
+    <style id="icon.tool-text-normal-disabled">
+      <icon part="icon.tool-text-normal-disabled" />
+    </style>
+    <style id="icon.tool-text-normal">
+      <icon part="icon.tool-text-normal" />
+    </style>
+    <style id="icon.tool-zoom-normal-disabled">
+      <icon part="icon.tool-zoom-normal-disabled" />
+    </style>
+    <style id="icon.tool-zoom-normal">
+      <icon part="icon.tool-zoom-normal" />
+    </style>
+    <style id="icon.brush-line-disabled">
+      <icon part="icon.brush-line-disabled" />
+    </style>
+    <style id="icon.brush-line">
+      <icon part="icon.brush-line" />
+    </style>
+    <style id="icon.brush-round-disabled">
+      <icon part="icon.brush-round-disabled" />
+    </style>
+    <style id="icon.brush-round">
+      <icon part="icon.brush-round" />
+    </style>
+    <style id="icon.brush-square-disabled">
+      <icon part="icon.brush-square-disabled" />
+    </style>
+    <style id="icon.brush-square">
+      <icon part="icon.brush-square" />
+    </style>
+    <style id="icon.check-disabled">
+      <icon part="icon.check-disabled" />
+    </style>
+    <style id="icon.check">
+      <icon part="icon.check" />
+    </style>
+    <style id="icon.checkboxUnchecked-disabled">
+      <icon part="icon.checkboxUnchecked-disabled" />
+    </style>
+    <style id="icon.checkboxUnchecked">
+      <icon part="icon.checkboxUnchecked" />
+    </style>
+    <style id="icon.close-disabled">
+      <icon part="icon.close-disabled" />
+    </style>
+    <style id="icon.close">
+      <icon part="icon.close" />
+    </style>
+    <style id="icon.copy-disabled">
+      <icon part="icon.copy-disabled" />
+    </style>
+    <style id="icon.copy">
+      <icon part="icon.copy" />
+    </style>
+    <style id="icon.delete-disabled">
+      <icon part="icon.delete-disabled" />
+    </style>
+    <style id="icon.delete">
+      <icon part="icon.delete" />
+    </style>
+    <style id="icon.dither-disabled">
+      <icon part="icon.dither-disabled" />
+    </style>
+    <style id="icon.dither">
+      <icon part="icon.dither" />
+    </style>
+    <style id="icon.eye-disabled">
+      <icon part="icon.eye-disabled" />
+    </style>
+    <style id="icon.eye">
+      <icon part="icon.eye" />
+    </style>
+    <style id="icon.eyeOff-disabled">
+      <icon part="icon.eyeOff-disabled" />
+    </style>
+    <style id="icon.eyeOff">
+      <icon part="icon.eyeOff" />
+    </style>
+    <style id="icon.image-disabled">
+      <icon part="icon.image-disabled" />
+    </style>
+    <style id="icon.image">
+      <icon part="icon.image" />
+    </style>
+    <style id="icon.ink-simple-disabled">
+      <icon part="icon.ink-simple-disabled" />
+    </style>
+    <style id="icon.ink-simple">
+      <icon part="icon.ink-simple" />
+    </style>
+    <style id="icon.link-disabled">
+      <icon part="icon.link-disabled" />
+    </style>
+    <style id="icon.link">
+      <icon part="icon.link" />
+    </style>
+    <style id="icon.lock-disabled">
+      <icon part="icon.lock-disabled" />
+    </style>
+    <style id="icon.lock">
+      <icon part="icon.lock" />
+    </style>
+    <style id="icon.more-disabled">
+      <icon part="icon.more-disabled" />
+    </style>
+    <style id="icon.more">
+      <icon part="icon.more" />
+    </style>
+    <style id="icon.onion-disabled">
+      <icon part="icon.onion-disabled" />
+    </style>
+    <style id="icon.onion">
+      <icon part="icon.onion" />
+    </style>
+    <style id="icon.playback-first-disabled">
+      <icon part="icon.playback-first-disabled" />
+    </style>
+    <style id="icon.playback-first">
+      <icon part="icon.playback-first" />
+    </style>
+    <style id="icon.playback-last-disabled">
+      <icon part="icon.playback-last-disabled" />
+    </style>
+    <style id="icon.playback-last">
+      <icon part="icon.playback-last" />
+    </style>
+    <style id="icon.playback-next-disabled">
+      <icon part="icon.playback-next-disabled" />
+    </style>
+    <style id="icon.playback-next">
+      <icon part="icon.playback-next" />
+    </style>
+    <style id="icon.playback-play-disabled">
+      <icon part="icon.playback-play-disabled" />
+    </style>
+    <style id="icon.playback-play">
+      <icon part="icon.playback-play" />
+    </style>
+    <style id="icon.playback-previous-disabled">
+      <icon part="icon.playback-previous-disabled" />
+    </style>
+    <style id="icon.playback-previous">
+      <icon part="icon.playback-previous" />
+    </style>
+    <style id="icon.plus-disabled">
+      <icon part="icon.plus-disabled" />
+    </style>
+    <style id="icon.plus">
+      <icon part="icon.plus" />
+    </style>
+    <style id="icon.pressure-dynamics-disabled">
+      <icon part="icon.pressure-dynamics-disabled" />
+    </style>
+    <style id="icon.pressure-dynamics">
+      <icon part="icon.pressure-dynamics" />
+    </style>
+    <style id="icon.properties-disabled">
+      <icon part="icon.properties-disabled" />
+    </style>
+    <style id="icon.properties">
+      <icon part="icon.properties" />
+    </style>
+    <style id="icon.redo-disabled">
+      <icon part="icon.redo-disabled" />
+    </style>
+    <style id="icon.redo">
+      <icon part="icon.redo" />
+    </style>
+    <style id="icon.right-disabled">
+      <icon part="icon.right-disabled" />
+    </style>
+    <style id="icon.right">
+      <icon part="icon.right" />
+    </style>
+    <style id="icon.symmetry-diagonal-down-disabled">
+      <icon part="icon.symmetry-diagonal-down-disabled" />
+    </style>
+    <style id="icon.symmetry-diagonal-down">
+      <icon part="icon.symmetry-diagonal-down" />
+    </style>
+    <style id="icon.symmetry-diagonal-up-disabled">
+      <icon part="icon.symmetry-diagonal-up-disabled" />
+    </style>
+    <style id="icon.symmetry-diagonal-up">
+      <icon part="icon.symmetry-diagonal-up" />
+    </style>
+    <style id="icon.symmetry-horizontal-disabled">
+      <icon part="icon.symmetry-horizontal-disabled" />
+    </style>
+    <style id="icon.symmetry-horizontal">
+      <icon part="icon.symmetry-horizontal" />
+    </style>
+    <style id="icon.symmetry-rotational-disabled">
+      <icon part="icon.symmetry-rotational-disabled" />
+    </style>
+    <style id="icon.symmetry-rotational">
+      <icon part="icon.symmetry-rotational" />
+    </style>
+    <style id="icon.symmetry-vertical-disabled">
+      <icon part="icon.symmetry-vertical-disabled" />
+    </style>
+    <style id="icon.symmetry-vertical">
+      <icon part="icon.symmetry-vertical" />
+    </style>
+    <style id="icon.undo-disabled">
+      <icon part="icon.undo-disabled" />
+    </style>
+    <style id="icon.undo">
+      <icon part="icon.undo" />
+    </style>
+    <style id="icon.unlock-disabled">
+      <icon part="icon.unlock-disabled" />
+    </style>
+    <style id="icon.unlock">
+      <icon part="icon.unlock" />
+    </style>
+    <style id="icon.marker-light">
+      <icon part="icon.marker-light" />
+    </style>
+    <style id="icon.marker-dark">
+      <icon part="icon.marker-dark" />
+    </style>
+    <style id="cursor.01-slice-1">
+      <icon part="cursor.01-slice-1" />
+    </style>
+    <style id="cursor.02-slice-2">
+      <icon part="cursor.02-slice-2" />
+    </style>
+    <style id="cursor.03-slice-3">
+      <icon part="cursor.03-slice-3" />
+    </style>
+    <style id="cursor.04-slice-4">
+      <icon part="cursor.04-slice-4" />
+    </style>
+    <style id="cursor.06-slice-6">
+      <icon part="cursor.06-slice-6" />
+    </style>
+    <style id="cursor.10-slice-7">
+      <icon part="cursor.10-slice-7" />
+    </style>
+    <style id="cursor.11-slice-8">
+      <icon part="cursor.11-slice-8" />
+    </style>
+    <style id="cursor.12-slice-9">
+      <icon part="cursor.12-slice-9" />
+    </style>
+    <style id="cursor.13-slice-10">
+      <icon part="cursor.13-slice-10" />
+    </style>
+    <style id="cursor.14-slice-11">
+      <icon part="cursor.14-slice-11" />
+    </style>
+    <style id="cursor.15-slice-12">
+      <icon part="cursor.15-slice-12" />
+    </style>
+    <style id="cursor.16-icon-16">
+      <icon part="cursor.16-icon-16" />
+    </style>
+    <style id="cursor.17-icon-17">
+      <icon part="cursor.17-icon-17" />
+    </style>
+    <style id="cursor.19-slice-13">
+      <icon part="cursor.19-slice-13" />
+    </style>
+    <style id="cursor.20-slice-14">
+      <icon part="cursor.20-slice-14" />
+    </style>
+    <style id="cursor.21-slice-15">
+      <icon part="cursor.21-slice-15" />
+    </style>
+    <style id="cursor.22-slice-16">
+      <icon part="cursor.22-slice-16" />
+    </style>
+    <style id="cursor.23-slice-17">
+      <icon part="cursor.23-slice-17" />
+    </style>
+    <style id="cursor.24-icon-24">
+      <icon part="cursor.24-icon-24" />
+    </style>
+    <style id="cursor.cursor-selection-rotate-n">
+      <icon part="cursor.cursor-selection-rotate-n" />
+    </style>
+    <style id="cursor.cursor-selection-rotate-s">
+      <icon part="cursor.cursor-selection-rotate-s" />
+    </style>
+    <style id="cursor.cursor-selection-shear-horizontal">
+      <icon part="cursor.cursor-selection-shear-horizontal" />
+    </style>
+    <style id="cursor.cursor-selection-shear-nesw">
+      <icon part="cursor.cursor-selection-shear-nesw" />
+    </style>
+    <style id="cursor.cursor-selection-shear-nwse">
+      <icon part="cursor.cursor-selection-shear-nwse" />
+    </style>
+    <style id="cursor.cursor-selection-shear-vertical">
+      <icon part="cursor.cursor-selection-shear-vertical" />
+    </style>
+    <style id="cursor.pixel-cross-cursor">
+      <icon part="cursor.pixel-cross-cursor" />
+    </style>
+    <style id="cursor.pixel-grab-cursor">
+      <icon part="cursor.pixel-grab-cursor" />
+    </style>
+    <style id="icon.playback-pause"><icon part="icon.playback-pause" /></style>
+    <style id="icon.playback-pause-disabled"><icon part="icon.playback-pause-disabled" /></style>
+    <style id="selection.normal"><background-border part="selection.normal" /></style>
+    <style id="selection.hover"><background-border part="selection.hover" /></style>
+    <style id="role-marker.foreground.small.white"><icon part="role-marker.foreground.small.white" /></style>
+    <style id="role-marker.foreground.small.black"><icon part="role-marker.foreground.small.black" /></style>
+    <style id="role-marker.foreground.medium.white"><icon part="role-marker.foreground.medium.white" /></style>
+    <style id="role-marker.foreground.medium.black"><icon part="role-marker.foreground.medium.black" /></style>
+    <style id="role-marker.foreground.large.white"><icon part="role-marker.foreground.large.white" /></style>
+    <style id="role-marker.foreground.large.black"><icon part="role-marker.foreground.large.black" /></style>
+    <style id="role-marker.background.small.white"><icon part="role-marker.background.small.white" /></style>
+    <style id="role-marker.background.small.black"><icon part="role-marker.background.small.black" /></style>
+    <style id="role-marker.background.medium.white"><icon part="role-marker.background.medium.white" /></style>
+    <style id="role-marker.background.medium.black"><icon part="role-marker.background.medium.black" /></style>
+    <style id="role-marker.background.large.white"><icon part="role-marker.background.large.white" /></style>
+    <style id="role-marker.background.large.black"><icon part="role-marker.background.large.black" /></style>
+    <style id="project_tab.active"><background-border part="project_tab_active" /></style>
+    <style id="project_tab.inactive"><background-border part="project_tab_inactive" /></style>
+  </styles>
+</theme>

@@ -1,0 +1,2119 @@
+[
+  {
+    "id": "timeline.frame",
+    "w": 9,
+    "h": 9,
+    "y": 0,
+    "x": 128,
+    "source": "User timeline reference 857e9d16 / approved existing rendering, exact pixel extraction of existing appearance",
+    "usage": "native/src/main.cpp; native/src/theme_atlas.cpp: named theme patches"
+  },
+  {
+    "id": "timeline.button",
+    "w": 7,
+    "h": 7,
+    "y": 0,
+    "x": 140,
+    "source": "User timeline reference 857e9d16 / approved existing rendering, exact pixel extraction of existing appearance",
+    "usage": "native/src/main.cpp; native/src/theme_atlas.cpp: named theme patches"
+  },
+  {
+    "id": "timeline.row",
+    "w": 3,
+    "h": 3,
+    "y": 0,
+    "x": 152,
+    "source": "User timeline reference 857e9d16 / approved existing rendering, exact pixel extraction of existing appearance; user-requested color harmony update: ordinary background #202635, pixel geometry preserved",
+    "usage": "native/src/main.cpp; native/src/theme_atlas.cpp: named theme patches"
+  },
+  {
+    "id": "timeline.grid",
+    "w": 3,
+    "h": 3,
+    "y": 0,
+    "x": 164,
+    "source": "User timeline reference 857e9d16 / approved existing rendering, exact pixel extraction of existing appearance; user-requested color harmony update: ordinary background #202635, pixel geometry preserved",
+    "usage": "native/src/main.cpp; native/src/theme_atlas.cpp: named theme patches"
+  },
+  {
+    "id": "timeline.line",
+    "w": 1,
+    "h": 1,
+    "y": 0,
+    "x": 176,
+    "source": "User timeline reference 857e9d16 / approved existing rendering, exact pixel extraction of existing appearance",
+    "usage": "native/src/main.cpp; native/src/theme_atlas.cpp: named theme patches"
+  },
+  {
+    "id": "timeline.dot",
+    "w": 7,
+    "h": 7,
+    "y": 0,
+    "x": 188,
+    "source": "User supplied codex-clipboard-7287196b-d385-447e-aaf4-b78de48a4632.png; exact 7x7 RGBA copy preserved in native/assets/utility-icons/timeline-cel-content.png",
+    "usage": "native/src/main.cpp; native/src/theme_atlas.cpp: named theme patches"
+  },
+  {
+    "id": "menu_bar",
+    "w": 3,
+    "h": 3,
+    "y": 0,
+    "x": 200,
+    "source": "User timeline reference 857e9d16 / approved existing rendering, exact pixel extraction of existing appearance",
+    "usage": "native/src/main.cpp; native/src/theme_atlas.cpp: named theme patches"
+  },
+  {
+    "id": "menu_item",
+    "w": 3,
+    "h": 3,
+    "y": 0,
+    "x": 212,
+    "source": "User timeline reference 857e9d16 / approved existing rendering, exact pixel extraction of existing appearance",
+    "usage": "native/src/main.cpp; native/src/theme_atlas.cpp: named theme patches"
+  },
+  {
+    "id": "menu_item_hover",
+    "w": 3,
+    "h": 3,
+    "y": 0,
+    "x": 224,
+    "source": "User timeline reference 857e9d16 / approved existing rendering, exact pixel extraction of existing appearance",
+    "usage": "native/src/main.cpp; native/src/theme_atlas.cpp: named theme patches"
+  },
+  {
+    "id": "icon.selection-brush-normal-disabled",
+    "w": 11,
+    "h": 11,
+    "y": 20,
+    "x": 128,
+    "source": "native/assets/tool-icons/selection-brush-normal-disabled.png",
+    "legacySource": "legacy/src/renderer/src/assets/tool-icons/selection-brush-normal.svg",
+    "usage": "native/src/main.cpp: tool icon loader"
+  },
+  {
+    "id": "icon.selection-brush-normal",
+    "w": 11,
+    "h": 11,
+    "y": 20,
+    "x": 144,
+    "source": "native/assets/tool-icons/selection-brush-normal.png",
+    "legacySource": "legacy/src/renderer/src/assets/tool-icons/selection-brush-normal.svg",
+    "usage": "native/src/main.cpp: tool icon loader"
+  },
+  {
+    "id": "icon.selection-ellipse-normal-disabled",
+    "w": 11,
+    "h": 11,
+    "y": 20,
+    "x": 160,
+    "source": "native/assets/tool-icons/selection-ellipse-normal-disabled.png",
+    "legacySource": "legacy/src/renderer/src/assets/tool-icons/selection-ellipse-normal.svg",
+    "usage": "native/src/main.cpp: tool icon loader"
+  },
+  {
+    "id": "icon.selection-ellipse-normal",
+    "w": 11,
+    "h": 11,
+    "y": 20,
+    "x": 176,
+    "source": "native/assets/tool-icons/selection-ellipse-normal.png",
+    "legacySource": "legacy/src/renderer/src/assets/tool-icons/selection-ellipse-normal.svg",
+    "usage": "native/src/main.cpp: tool icon loader"
+  },
+  {
+    "id": "icon.selection-lasso-normal-disabled",
+    "w": 11,
+    "h": 11,
+    "y": 20,
+    "x": 192,
+    "source": "native/assets/tool-icons/selection-lasso-normal-disabled.png",
+    "legacySource": "legacy/src/renderer/src/assets/tool-icons/selection-lasso-normal.svg",
+    "usage": "native/src/main.cpp: tool icon loader"
+  },
+  {
+    "id": "icon.selection-lasso-normal",
+    "w": 11,
+    "h": 11,
+    "y": 20,
+    "x": 208,
+    "source": "native/assets/tool-icons/selection-lasso-normal.png",
+    "legacySource": "legacy/src/renderer/src/assets/tool-icons/selection-lasso-normal.svg",
+    "usage": "native/src/main.cpp: tool icon loader"
+  },
+  {
+    "id": "icon.selection-magic-normal-disabled",
+    "w": 11,
+    "h": 11,
+    "y": 20,
+    "x": 224,
+    "source": "native/assets/tool-icons/selection-magic-normal-disabled.png",
+    "legacySource": "legacy/src/renderer/src/assets/tool-icons/selection-magic-normal.svg",
+    "usage": "native/src/main.cpp: tool icon loader"
+  },
+  {
+    "id": "icon.selection-magic-normal",
+    "w": 11,
+    "h": 11,
+    "y": 20,
+    "x": 240,
+    "source": "native/assets/tool-icons/selection-magic-normal.png",
+    "legacySource": "legacy/src/renderer/src/assets/tool-icons/selection-magic-normal.svg",
+    "usage": "native/src/main.cpp: tool icon loader"
+  },
+  {
+    "id": "icon.selection-polygon-lasso-normal-disabled",
+    "w": 11,
+    "h": 11,
+    "y": 20,
+    "x": 256,
+    "source": "native/assets/tool-icons/selection-polygon-lasso-normal-disabled.png",
+    "legacySource": "legacy/src/renderer/src/assets/tool-icons/selection-polygon-lasso-normal.svg",
+    "usage": "native/src/main.cpp: tool icon loader"
+  },
+  {
+    "id": "icon.selection-polygon-lasso-normal",
+    "w": 11,
+    "h": 11,
+    "y": 20,
+    "x": 272,
+    "source": "native/assets/tool-icons/selection-polygon-lasso-normal.png",
+    "legacySource": "legacy/src/renderer/src/assets/tool-icons/selection-polygon-lasso-normal.svg",
+    "usage": "native/src/main.cpp: tool icon loader"
+  },
+  {
+    "id": "icon.selection-rectangle-normal-disabled",
+    "w": 11,
+    "h": 11,
+    "y": 20,
+    "x": 288,
+    "source": "native/assets/tool-icons/selection-rectangle-normal-disabled.png",
+    "legacySource": "legacy/src/renderer/src/assets/tool-icons/selection-rectangle-normal.svg",
+    "usage": "native/src/main.cpp: tool icon loader"
+  },
+  {
+    "id": "icon.selection-rectangle-normal",
+    "w": 11,
+    "h": 11,
+    "y": 20,
+    "x": 304,
+    "source": "native/assets/tool-icons/selection-rectangle-normal.png",
+    "legacySource": "legacy/src/renderer/src/assets/tool-icons/selection-rectangle-normal.svg",
+    "usage": "native/src/main.cpp: tool icon loader"
+  },
+  {
+    "id": "icon.shape-curve-normal-disabled",
+    "w": 11,
+    "h": 11,
+    "y": 20,
+    "x": 320,
+    "source": "native/assets/tool-icons/shape-curve-normal-disabled.png",
+    "legacySource": "legacy/src/renderer/src/assets/tool-icons/shape-curve-normal.svg",
+    "usage": "native/src/main.cpp: tool icon loader"
+  },
+  {
+    "id": "icon.shape-curve-normal",
+    "w": 11,
+    "h": 11,
+    "y": 20,
+    "x": 336,
+    "source": "native/assets/tool-icons/shape-curve-normal.png",
+    "legacySource": "legacy/src/renderer/src/assets/tool-icons/shape-curve-normal.svg",
+    "usage": "native/src/main.cpp: tool icon loader"
+  },
+  {
+    "id": "icon.shape-ellipse-fill-normal-disabled",
+    "w": 11,
+    "h": 11,
+    "y": 20,
+    "x": 352,
+    "source": "native/assets/tool-icons/shape-ellipse-fill-normal-disabled.png",
+    "legacySource": "legacy/src/renderer/src/assets/tool-icons/shape-ellipse-fill-normal.svg",
+    "usage": "native/src/main.cpp: tool icon loader"
+  },
+  {
+    "id": "icon.shape-ellipse-fill-normal",
+    "w": 11,
+    "h": 11,
+    "y": 20,
+    "x": 368,
+    "source": "native/assets/tool-icons/shape-ellipse-fill-normal.png",
+    "legacySource": "legacy/src/renderer/src/assets/tool-icons/shape-ellipse-fill-normal.svg",
+    "usage": "native/src/main.cpp: tool icon loader"
+  },
+  {
+    "id": "icon.shape-ellipse-normal-disabled",
+    "w": 11,
+    "h": 11,
+    "y": 20,
+    "x": 384,
+    "source": "native/assets/tool-icons/shape-ellipse-normal-disabled.png",
+    "legacySource": "legacy/src/renderer/src/assets/tool-icons/shape-ellipse-normal.svg",
+    "usage": "native/src/main.cpp: tool icon loader"
+  },
+  {
+    "id": "icon.shape-ellipse-normal",
+    "w": 11,
+    "h": 11,
+    "y": 20,
+    "x": 400,
+    "source": "native/assets/tool-icons/shape-ellipse-normal.png",
+    "legacySource": "legacy/src/renderer/src/assets/tool-icons/shape-ellipse-normal.svg",
+    "usage": "native/src/main.cpp: tool icon loader"
+  },
+  {
+    "id": "icon.shape-freeform-normal-disabled",
+    "w": 11,
+    "h": 11,
+    "y": 20,
+    "x": 416,
+    "source": "native/assets/tool-icons/shape-freeform-normal-disabled.png",
+    "legacySource": "legacy/src/renderer/src/assets/tool-icons/shape-freeform-normal.svg",
+    "usage": "native/src/main.cpp: tool icon loader"
+  },
+  {
+    "id": "icon.shape-freeform-normal",
+    "w": 11,
+    "h": 11,
+    "y": 20,
+    "x": 432,
+    "source": "native/assets/tool-icons/shape-freeform-normal.png",
+    "legacySource": "legacy/src/renderer/src/assets/tool-icons/shape-freeform-normal.svg",
+    "usage": "native/src/main.cpp: tool icon loader"
+  },
+  {
+    "id": "icon.shape-line-normal-disabled",
+    "w": 11,
+    "h": 11,
+    "y": 20,
+    "x": 448,
+    "source": "native/assets/tool-icons/shape-line-normal-disabled.png",
+    "legacySource": "legacy/src/renderer/src/assets/tool-icons/shape-line-normal.svg",
+    "usage": "native/src/main.cpp: tool icon loader"
+  },
+  {
+    "id": "icon.shape-line-normal",
+    "w": 11,
+    "h": 11,
+    "y": 20,
+    "x": 464,
+    "source": "native/assets/tool-icons/shape-line-normal.png",
+    "legacySource": "legacy/src/renderer/src/assets/tool-icons/shape-line-normal.svg",
+    "usage": "native/src/main.cpp: tool icon loader"
+  },
+  {
+    "id": "icon.shape-polygon-normal-disabled",
+    "w": 11,
+    "h": 11,
+    "y": 20,
+    "x": 480,
+    "source": "native/assets/tool-icons/shape-polygon-normal-disabled.png",
+    "legacySource": "legacy/src/renderer/src/assets/tool-icons/shape-polygon-normal.svg",
+    "usage": "native/src/main.cpp: tool icon loader"
+  },
+  {
+    "id": "icon.shape-polygon-normal",
+    "w": 11,
+    "h": 11,
+    "y": 20,
+    "x": 496,
+    "source": "native/assets/tool-icons/shape-polygon-normal.png",
+    "legacySource": "legacy/src/renderer/src/assets/tool-icons/shape-polygon-normal.svg",
+    "usage": "native/src/main.cpp: tool icon loader"
+  },
+  {
+    "id": "icon.shape-rectangle-fill-normal-disabled",
+    "w": 11,
+    "h": 11,
+    "y": 36,
+    "x": 128,
+    "source": "native/assets/tool-icons/shape-rectangle-fill-normal-disabled.png",
+    "legacySource": "legacy/src/renderer/src/assets/tool-icons/shape-rectangle-fill-normal.svg",
+    "usage": "native/src/main.cpp: tool icon loader"
+  },
+  {
+    "id": "icon.shape-rectangle-fill-normal",
+    "w": 11,
+    "h": 11,
+    "y": 36,
+    "x": 144,
+    "source": "native/assets/tool-icons/shape-rectangle-fill-normal.png",
+    "legacySource": "legacy/src/renderer/src/assets/tool-icons/shape-rectangle-fill-normal.svg",
+    "usage": "native/src/main.cpp: tool icon loader"
+  },
+  {
+    "id": "icon.shape-rectangle-normal-disabled",
+    "w": 11,
+    "h": 11,
+    "y": 36,
+    "x": 160,
+    "source": "native/assets/tool-icons/shape-rectangle-normal-disabled.png",
+    "legacySource": "legacy/src/renderer/src/assets/tool-icons/shape-rectangle-normal.svg",
+    "usage": "native/src/main.cpp: tool icon loader"
+  },
+  {
+    "id": "icon.shape-rectangle-normal",
+    "w": 11,
+    "h": 11,
+    "y": 36,
+    "x": 176,
+    "source": "native/assets/tool-icons/shape-rectangle-normal.png",
+    "legacySource": "legacy/src/renderer/src/assets/tool-icons/shape-rectangle-normal.svg",
+    "usage": "native/src/main.cpp: tool icon loader"
+  },
+  {
+    "id": "icon.tool-airbrush-normal-disabled",
+    "w": 11,
+    "h": 11,
+    "y": 36,
+    "x": 192,
+    "source": "native/assets/tool-icons/tool-airbrush-normal-disabled.png",
+    "legacySource": "legacy/src/renderer/src/assets/tool-icons/tool-airbrush-normal.svg",
+    "usage": "native/src/main.cpp: tool icon loader"
+  },
+  {
+    "id": "icon.tool-airbrush-normal",
+    "w": 11,
+    "h": 11,
+    "y": 36,
+    "x": 208,
+    "source": "native/assets/tool-icons/tool-airbrush-normal.png",
+    "legacySource": "legacy/src/renderer/src/assets/tool-icons/tool-airbrush-normal.svg",
+    "usage": "native/src/main.cpp: tool icon loader"
+  },
+  {
+    "id": "icon.tool-eraser-normal-disabled",
+    "w": 11,
+    "h": 11,
+    "y": 36,
+    "x": 224,
+    "source": "native/assets/tool-icons/tool-eraser-normal-disabled.png",
+    "legacySource": "legacy/src/renderer/src/assets/tool-icons/tool-eraser-normal.svg",
+    "usage": "native/src/main.cpp: tool icon loader"
+  },
+  {
+    "id": "icon.tool-eraser-normal",
+    "w": 11,
+    "h": 11,
+    "y": 36,
+    "x": 240,
+    "source": "native/assets/tool-icons/tool-eraser-normal.png",
+    "legacySource": "legacy/src/renderer/src/assets/tool-icons/tool-eraser-normal.svg",
+    "usage": "native/src/main.cpp: tool icon loader"
+  },
+  {
+    "id": "icon.tool-eyedropper-normal-disabled",
+    "w": 11,
+    "h": 11,
+    "y": 36,
+    "x": 256,
+    "source": "native/assets/tool-icons/tool-eyedropper-normal-disabled.png",
+    "legacySource": "legacy/src/renderer/src/assets/tool-icons/tool-eyedropper-normal.svg",
+    "usage": "native/src/main.cpp: tool icon loader"
+  },
+  {
+    "id": "icon.tool-eyedropper-normal",
+    "w": 11,
+    "h": 11,
+    "y": 36,
+    "x": 272,
+    "source": "native/assets/tool-icons/tool-eyedropper-normal.png",
+    "legacySource": "legacy/src/renderer/src/assets/tool-icons/tool-eyedropper-normal.svg",
+    "usage": "native/src/main.cpp: tool icon loader"
+  },
+  {
+    "id": "icon.tool-fill-normal-disabled",
+    "w": 11,
+    "h": 11,
+    "y": 36,
+    "x": 288,
+    "source": "native/assets/tool-icons/tool-fill-normal-disabled.png",
+    "legacySource": "legacy/src/renderer/src/assets/tool-icons/tool-fill-normal.svg",
+    "usage": "native/src/main.cpp: tool icon loader"
+  },
+  {
+    "id": "icon.tool-fill-normal",
+    "w": 11,
+    "h": 11,
+    "y": 36,
+    "x": 304,
+    "source": "native/assets/tool-icons/tool-fill-normal.png",
+    "legacySource": "legacy/src/renderer/src/assets/tool-icons/tool-fill-normal.svg",
+    "usage": "native/src/main.cpp: tool icon loader"
+  },
+  {
+    "id": "icon.tool-gradient-normal-disabled",
+    "w": 11,
+    "h": 11,
+    "y": 36,
+    "x": 320,
+    "source": "native/assets/tool-icons/tool-gradient-normal-disabled.png",
+    "legacySource": "legacy/src/renderer/src/assets/tool-icons/tool-gradient-normal.svg",
+    "usage": "native/src/main.cpp: tool icon loader"
+  },
+  {
+    "id": "icon.tool-gradient-normal",
+    "w": 11,
+    "h": 11,
+    "y": 36,
+    "x": 336,
+    "source": "native/assets/tool-icons/tool-gradient-normal.png",
+    "legacySource": "legacy/src/renderer/src/assets/tool-icons/tool-gradient-normal.svg",
+    "usage": "native/src/main.cpp: tool icon loader"
+  },
+  {
+    "id": "icon.tool-hand-normal-disabled",
+    "w": 11,
+    "h": 11,
+    "y": 36,
+    "x": 352,
+    "source": "native/assets/tool-icons/tool-hand-normal-disabled.png",
+    "legacySource": "legacy/src/renderer/src/assets/tool-icons/tool-hand-normal.svg",
+    "usage": "native/src/main.cpp: tool icon loader"
+  },
+  {
+    "id": "icon.tool-hand-normal",
+    "w": 11,
+    "h": 11,
+    "y": 36,
+    "x": 368,
+    "source": "native/assets/tool-icons/tool-hand-normal.png",
+    "legacySource": "legacy/src/renderer/src/assets/tool-icons/tool-hand-normal.svg",
+    "usage": "native/src/main.cpp: tool icon loader"
+  },
+  {
+    "id": "icon.tool-liquify-normal-disabled",
+    "w": 11,
+    "h": 11,
+    "y": 36,
+    "x": 384,
+    "source": "native/assets/tool-icons/tool-liquify-normal-disabled.png",
+    "legacySource": "legacy/src/renderer/src/assets/tool-icons/tool-liquify-normal.svg",
+    "usage": "native/src/main.cpp: tool icon loader"
+  },
+  {
+    "id": "icon.tool-liquify-normal",
+    "w": 11,
+    "h": 11,
+    "y": 36,
+    "x": 400,
+    "source": "native/assets/tool-icons/tool-liquify-normal.png",
+    "legacySource": "legacy/src/renderer/src/assets/tool-icons/tool-liquify-normal.svg",
+    "usage": "native/src/main.cpp: tool icon loader"
+  },
+  {
+    "id": "icon.tool-magic-eraser-normal-disabled",
+    "w": 11,
+    "h": 11,
+    "y": 36,
+    "x": 416,
+    "source": "native/assets/tool-icons/tool-magic-eraser-normal-disabled.png",
+    "legacySource": "legacy/src/renderer/src/assets/tool-icons/tool-magic-eraser-normal.svg",
+    "usage": "native/src/main.cpp: tool icon loader"
+  },
+  {
+    "id": "icon.tool-magic-eraser-normal",
+    "w": 11,
+    "h": 11,
+    "y": 36,
+    "x": 432,
+    "source": "native/assets/tool-icons/tool-magic-eraser-normal.png",
+    "legacySource": "legacy/src/renderer/src/assets/tool-icons/tool-magic-eraser-normal.svg",
+    "usage": "native/src/main.cpp: tool icon loader"
+  },
+  {
+    "id": "icon.tool-move-normal-disabled",
+    "w": 11,
+    "h": 11,
+    "y": 36,
+    "x": 448,
+    "source": "native/assets/tool-icons/tool-move-normal-disabled.png",
+    "legacySource": "legacy/src/renderer/src/assets/tool-icons/tool-move-normal.svg",
+    "usage": "native/src/main.cpp: tool icon loader"
+  },
+  {
+    "id": "icon.tool-move-normal",
+    "w": 11,
+    "h": 11,
+    "y": 36,
+    "x": 464,
+    "source": "native/assets/tool-icons/tool-move-normal.png",
+    "legacySource": "legacy/src/renderer/src/assets/tool-icons/tool-move-normal.svg",
+    "usage": "native/src/main.cpp: tool icon loader"
+  },
+  {
+    "id": "icon.tool-pencil-normal-disabled",
+    "w": 11,
+    "h": 11,
+    "y": 36,
+    "x": 480,
+    "source": "native/assets/tool-icons/tool-pencil-normal-disabled.png",
+    "legacySource": "legacy/src/renderer/src/assets/tool-icons/tool-pencil-normal.svg",
+    "usage": "native/src/main.cpp: tool icon loader"
+  },
+  {
+    "id": "icon.tool-pencil-normal",
+    "w": 11,
+    "h": 11,
+    "y": 36,
+    "x": 496,
+    "source": "native/assets/tool-icons/tool-pencil-normal.png",
+    "legacySource": "legacy/src/renderer/src/assets/tool-icons/tool-pencil-normal.svg",
+    "usage": "native/src/main.cpp: tool icon loader"
+  },
+  {
+    "id": "icon.tool-rotate-normal-disabled",
+    "w": 11,
+    "h": 11,
+    "y": 52,
+    "x": 128,
+    "source": "native/assets/tool-icons/tool-rotate-normal-disabled.png",
+    "legacySource": "legacy/src/renderer/src/assets/tool-icons/tool-rotate-normal.svg",
+    "usage": "native/src/main.cpp: tool icon loader"
+  },
+  {
+    "id": "icon.tool-rotate-normal",
+    "w": 11,
+    "h": 11,
+    "y": 52,
+    "x": 144,
+    "source": "native/assets/tool-icons/tool-rotate-normal.png",
+    "legacySource": "legacy/src/renderer/src/assets/tool-icons/tool-rotate-normal.svg",
+    "usage": "native/src/main.cpp: tool icon loader"
+  },
+  {
+    "id": "icon.tool-slice-normal-disabled",
+    "w": 11,
+    "h": 11,
+    "y": 52,
+    "x": 160,
+    "source": "native/assets/tool-icons/tool-slice-normal-disabled.png",
+    "legacySource": "legacy/src/renderer/src/assets/tool-icons/tool-slice-normal.svg",
+    "usage": "native/src/main.cpp: tool icon loader"
+  },
+  {
+    "id": "icon.tool-slice-normal",
+    "w": 11,
+    "h": 11,
+    "y": 52,
+    "x": 176,
+    "source": "native/assets/tool-icons/tool-slice-normal.png",
+    "legacySource": "legacy/src/renderer/src/assets/tool-icons/tool-slice-normal.svg",
+    "usage": "native/src/main.cpp: tool icon loader"
+  },
+  {
+    "id": "icon.tool-smooth-normal-disabled",
+    "w": 11,
+    "h": 11,
+    "y": 52,
+    "x": 192,
+    "source": "native/assets/tool-icons/tool-smooth-normal-disabled.png",
+    "legacySource": "legacy/src/renderer/src/assets/tool-icons/tool-smooth-normal.svg",
+    "usage": "native/src/main.cpp: tool icon loader"
+  },
+  {
+    "id": "icon.tool-smooth-normal",
+    "w": 11,
+    "h": 11,
+    "y": 52,
+    "x": 208,
+    "source": "native/assets/tool-icons/tool-smooth-normal.png",
+    "legacySource": "legacy/src/renderer/src/assets/tool-icons/tool-smooth-normal.svg",
+    "usage": "native/src/main.cpp: tool icon loader"
+  },
+  {
+    "id": "icon.tool-text-normal-disabled",
+    "w": 11,
+    "h": 11,
+    "y": 52,
+    "x": 224,
+    "source": "native/assets/tool-icons/tool-text-normal-disabled.png",
+    "legacySource": "legacy/src/renderer/src/assets/tool-icons/tool-text-normal.svg",
+    "usage": "native/src/main.cpp: tool icon loader"
+  },
+  {
+    "id": "icon.tool-text-normal",
+    "w": 11,
+    "h": 11,
+    "y": 52,
+    "x": 240,
+    "source": "native/assets/tool-icons/tool-text-normal.png",
+    "legacySource": "legacy/src/renderer/src/assets/tool-icons/tool-text-normal.svg",
+    "usage": "native/src/main.cpp: tool icon loader"
+  },
+  {
+    "id": "icon.tool-zoom-normal-disabled",
+    "w": 11,
+    "h": 11,
+    "y": 52,
+    "x": 256,
+    "source": "native/assets/tool-icons/tool-zoom-normal-disabled.png",
+    "legacySource": "legacy/src/renderer/src/assets/tool-icons/tool-zoom-normal.svg",
+    "usage": "native/src/main.cpp: tool icon loader"
+  },
+  {
+    "id": "icon.tool-zoom-normal",
+    "w": 11,
+    "h": 11,
+    "y": 52,
+    "x": 272,
+    "source": "native/assets/tool-icons/tool-zoom-normal.png",
+    "legacySource": "legacy/src/renderer/src/assets/tool-icons/tool-zoom-normal.svg",
+    "usage": "native/src/main.cpp: tool icon loader"
+  },
+  {
+    "id": "icon.brush-line-disabled",
+    "w": 5,
+    "h": 1,
+    "y": 52,
+    "x": 288,
+    "source": "native/assets/utility-icons/brush-line-disabled.png",
+    "legacySource": "legacy/src/renderer/src/components/PixelUtilityIcon.tsx",
+    "usage": "native/src/main.cpp: utility icon loader"
+  },
+  {
+    "id": "icon.brush-line",
+    "w": 5,
+    "h": 1,
+    "y": 52,
+    "x": 304,
+    "source": "native/assets/utility-icons/brush-line.png",
+    "legacySource": "legacy/src/renderer/src/components/PixelUtilityIcon.tsx",
+    "usage": "native/src/main.cpp: utility icon loader"
+  },
+  {
+    "id": "icon.brush-round-disabled",
+    "w": 5,
+    "h": 5,
+    "y": 52,
+    "x": 320,
+    "source": "native/assets/utility-icons/brush-round-disabled.png",
+    "legacySource": "legacy/src/renderer/src/components/PixelUtilityIcon.tsx",
+    "usage": "native/src/main.cpp: utility icon loader"
+  },
+  {
+    "id": "icon.brush-round",
+    "w": 5,
+    "h": 5,
+    "y": 52,
+    "x": 336,
+    "source": "native/assets/utility-icons/brush-round.png",
+    "legacySource": "legacy/src/renderer/src/components/PixelUtilityIcon.tsx",
+    "usage": "native/src/main.cpp: utility icon loader"
+  },
+  {
+    "id": "icon.brush-square-disabled",
+    "w": 5,
+    "h": 5,
+    "y": 52,
+    "x": 352,
+    "source": "native/assets/utility-icons/brush-square-disabled.png",
+    "legacySource": "legacy/src/renderer/src/components/PixelUtilityIcon.tsx",
+    "usage": "native/src/main.cpp: utility icon loader"
+  },
+  {
+    "id": "icon.brush-square",
+    "w": 5,
+    "h": 5,
+    "y": 52,
+    "x": 368,
+    "source": "native/assets/utility-icons/brush-square.png",
+    "legacySource": "legacy/src/renderer/src/components/PixelUtilityIcon.tsx",
+    "usage": "native/src/main.cpp: utility icon loader"
+  },
+  {
+    "id": "icon.check-disabled",
+    "w": 7,
+    "h": 7,
+    "y": 52,
+    "x": 384,
+    "source": "native/assets/utility-icons/check-disabled.png",
+    "legacySource": "legacy/src/renderer/src/components/PixelUtilityIcon.tsx",
+    "usage": "native/src/main.cpp: utility icon loader"
+  },
+  {
+    "id": "icon.check",
+    "w": 7,
+    "h": 7,
+    "y": 52,
+    "x": 400,
+    "source": "native/assets/utility-icons/check.png",
+    "legacySource": "legacy/src/renderer/src/components/PixelUtilityIcon.tsx",
+    "usage": "native/src/main.cpp: utility icon loader"
+  },
+  {
+    "id": "icon.checkboxUnchecked-disabled",
+    "w": 11,
+    "h": 11,
+    "y": 52,
+    "x": 416,
+    "source": "native/assets/utility-icons/checkboxUnchecked-disabled.png",
+    "legacySource": "legacy/src/renderer/src/components/PixelUtilityIcon.tsx",
+    "usage": "native/src/main.cpp: utility icon loader"
+  },
+  {
+    "id": "icon.checkboxUnchecked",
+    "w": 11,
+    "h": 11,
+    "y": 52,
+    "x": 432,
+    "source": "native/assets/utility-icons/checkboxUnchecked.png",
+    "legacySource": "legacy/src/renderer/src/components/PixelUtilityIcon.tsx",
+    "usage": "native/src/main.cpp: utility icon loader"
+  },
+  {
+    "id": "icon.close-disabled",
+    "w": 5,
+    "h": 5,
+    "y": 52,
+    "x": 448,
+    "source": "native/assets/utility-icons/close-disabled.png",
+    "legacySource": "legacy/src/renderer/src/components/PixelUtilityIcon.tsx",
+    "usage": "native/src/main.cpp: utility icon loader"
+  },
+  {
+    "id": "icon.close",
+    "w": 5,
+    "h": 5,
+    "y": 52,
+    "x": 464,
+    "source": "native/assets/utility-icons/close.png",
+    "legacySource": "legacy/src/renderer/src/components/PixelUtilityIcon.tsx",
+    "usage": "native/src/main.cpp: utility icon loader"
+  },
+  {
+    "id": "icon.copy-disabled",
+    "w": 11,
+    "h": 11,
+    "y": 52,
+    "x": 480,
+    "source": "native/assets/utility-icons/copy-disabled.png",
+    "legacySource": "legacy/src/renderer/src/components/PixelUtilityIcon.tsx",
+    "usage": "native/src/main.cpp: utility icon loader"
+  },
+  {
+    "id": "icon.copy",
+    "w": 11,
+    "h": 11,
+    "y": 52,
+    "x": 496,
+    "source": "native/assets/utility-icons/copy.png",
+    "legacySource": "legacy/src/renderer/src/components/PixelUtilityIcon.tsx",
+    "usage": "native/src/main.cpp: utility icon loader"
+  },
+  {
+    "id": "icon.delete-disabled",
+    "w": 11,
+    "h": 11,
+    "y": 68,
+    "x": 128,
+    "source": "native/assets/utility-icons/delete-disabled.png",
+    "legacySource": "legacy/src/renderer/src/components/PixelUtilityIcon.tsx",
+    "usage": "native/src/main.cpp: utility icon loader"
+  },
+  {
+    "id": "icon.delete",
+    "w": 11,
+    "h": 11,
+    "y": 68,
+    "x": 144,
+    "source": "native/assets/utility-icons/delete.png",
+    "legacySource": "legacy/src/renderer/src/components/PixelUtilityIcon.tsx",
+    "usage": "native/src/main.cpp: utility icon loader"
+  },
+  {
+    "id": "icon.dither-disabled",
+    "w": 11,
+    "h": 11,
+    "y": 68,
+    "x": 160,
+    "source": "native/assets/utility-icons/dither-disabled.png",
+    "legacySource": "legacy/src/renderer/src/components/PixelUtilityIcon.tsx",
+    "usage": "native/src/main.cpp: utility icon loader"
+  },
+  {
+    "id": "icon.dither",
+    "w": 11,
+    "h": 11,
+    "y": 68,
+    "x": 176,
+    "source": "native/assets/utility-icons/dither.png",
+    "legacySource": "legacy/src/renderer/src/components/PixelUtilityIcon.tsx",
+    "usage": "native/src/main.cpp: utility icon loader"
+  },
+  {
+    "id": "icon.eye-disabled",
+    "w": 11,
+    "h": 11,
+    "y": 68,
+    "x": 192,
+    "source": "native/assets/utility-icons/eye-disabled.png",
+    "legacySource": "legacy/src/renderer/src/components/PixelUtilityIcon.tsx",
+    "usage": "native/src/main.cpp: utility icon loader"
+  },
+  {
+    "id": "icon.eye",
+    "w": 11,
+    "h": 11,
+    "y": 68,
+    "x": 208,
+    "source": "native/assets/utility-icons/eye.png",
+    "legacySource": "legacy/src/renderer/src/components/PixelUtilityIcon.tsx",
+    "usage": "native/src/main.cpp: utility icon loader"
+  },
+  {
+    "id": "icon.eyeOff-disabled",
+    "w": 11,
+    "h": 11,
+    "y": 68,
+    "x": 224,
+    "source": "native/assets/utility-icons/eyeOff-disabled.png",
+    "legacySource": "legacy/src/renderer/src/components/PixelUtilityIcon.tsx",
+    "usage": "native/src/main.cpp: utility icon loader"
+  },
+  {
+    "id": "icon.eyeOff",
+    "w": 11,
+    "h": 11,
+    "y": 68,
+    "x": 240,
+    "source": "native/assets/utility-icons/eyeOff.png",
+    "legacySource": "legacy/src/renderer/src/components/PixelUtilityIcon.tsx",
+    "usage": "native/src/main.cpp: utility icon loader"
+  },
+  {
+    "id": "icon.image-disabled",
+    "w": 11,
+    "h": 11,
+    "y": 68,
+    "x": 256,
+    "source": "native/assets/utility-icons/image-disabled.png",
+    "legacySource": "legacy/src/renderer/src/components/PixelUtilityIcon.tsx",
+    "usage": "native/src/main.cpp: utility icon loader"
+  },
+  {
+    "id": "icon.image",
+    "w": 11,
+    "h": 11,
+    "y": 68,
+    "x": 272,
+    "source": "native/assets/utility-icons/image.png",
+    "legacySource": "legacy/src/renderer/src/components/PixelUtilityIcon.tsx",
+    "usage": "native/src/main.cpp: utility icon loader"
+  },
+  {
+    "id": "icon.ink-simple-disabled",
+    "w": 11,
+    "h": 11,
+    "y": 68,
+    "x": 288,
+    "source": "native/assets/utility-icons/ink-simple-disabled.png",
+    "legacySource": "legacy/src/renderer/src/components/PixelUtilityIcon.tsx",
+    "usage": "native/src/main.cpp: utility icon loader"
+  },
+  {
+    "id": "icon.ink-simple",
+    "w": 11,
+    "h": 11,
+    "y": 68,
+    "x": 304,
+    "source": "native/assets/utility-icons/ink-simple.png",
+    "legacySource": "legacy/src/renderer/src/components/PixelUtilityIcon.tsx",
+    "usage": "native/src/main.cpp: utility icon loader"
+  },
+  {
+    "id": "icon.link-disabled",
+    "w": 11,
+    "h": 11,
+    "y": 68,
+    "x": 320,
+    "source": "native/assets/utility-icons/link-disabled.png",
+    "legacySource": "legacy/src/renderer/src/components/PixelUtilityIcon.tsx",
+    "usage": "native/src/main.cpp: utility icon loader"
+  },
+  {
+    "id": "icon.link",
+    "w": 11,
+    "h": 11,
+    "y": 68,
+    "x": 336,
+    "source": "native/assets/utility-icons/link.png",
+    "legacySource": "legacy/src/renderer/src/components/PixelUtilityIcon.tsx",
+    "usage": "native/src/main.cpp: utility icon loader"
+  },
+  {
+    "id": "icon.lock-disabled",
+    "w": 11,
+    "h": 11,
+    "y": 68,
+    "x": 352,
+    "source": "native/assets/utility-icons/lock-disabled.png",
+    "legacySource": "legacy/src/renderer/src/components/PixelUtilityIcon.tsx",
+    "usage": "native/src/main.cpp: utility icon loader"
+  },
+  {
+    "id": "icon.lock",
+    "w": 11,
+    "h": 11,
+    "y": 68,
+    "x": 368,
+    "source": "native/assets/utility-icons/lock.png",
+    "legacySource": "legacy/src/renderer/src/components/PixelUtilityIcon.tsx",
+    "usage": "native/src/main.cpp: utility icon loader"
+  },
+  {
+    "id": "icon.more-disabled",
+    "w": 11,
+    "h": 11,
+    "y": 68,
+    "x": 384,
+    "source": "native/assets/utility-icons/more-disabled.png",
+    "legacySource": "legacy/src/renderer/src/components/PixelUtilityIcon.tsx",
+    "usage": "native/src/main.cpp: utility icon loader"
+  },
+  {
+    "id": "icon.more",
+    "w": 11,
+    "h": 11,
+    "y": 68,
+    "x": 400,
+    "source": "native/assets/utility-icons/more.png",
+    "legacySource": "legacy/src/renderer/src/components/PixelUtilityIcon.tsx",
+    "usage": "native/src/main.cpp: utility icon loader"
+  },
+  {
+    "id": "icon.onion-disabled",
+    "w": 11,
+    "h": 11,
+    "y": 68,
+    "x": 416,
+    "source": "native/assets/utility-icons/onion-disabled.png",
+    "legacySource": "legacy/src/renderer/src/components/PixelUtilityIcon.tsx",
+    "usage": "native/src/main.cpp: utility icon loader"
+  },
+  {
+    "id": "icon.onion",
+    "w": 11,
+    "h": 11,
+    "y": 68,
+    "x": 432,
+    "source": "native/assets/utility-icons/onion.png",
+    "legacySource": "legacy/src/renderer/src/components/PixelUtilityIcon.tsx",
+    "usage": "native/src/main.cpp: utility icon loader"
+  },
+  {
+    "id": "icon.playback-first-disabled",
+    "w": 11,
+    "h": 11,
+    "y": 68,
+    "x": 448,
+    "source": "native/assets/utility-icons/playback-first-disabled.png",
+    "legacySource": "legacy/src/renderer/src/components/PixelUtilityIcon.tsx",
+    "usage": "native/src/main.cpp: utility icon loader"
+  },
+  {
+    "id": "icon.playback-first",
+    "w": 11,
+    "h": 11,
+    "y": 68,
+    "x": 464,
+    "source": "native/assets/utility-icons/playback-first.png",
+    "legacySource": "legacy/src/renderer/src/components/PixelUtilityIcon.tsx",
+    "usage": "native/src/main.cpp: utility icon loader"
+  },
+  {
+    "id": "icon.playback-last-disabled",
+    "w": 11,
+    "h": 11,
+    "y": 68,
+    "x": 480,
+    "source": "native/assets/utility-icons/playback-last-disabled.png",
+    "legacySource": "legacy/src/renderer/src/components/PixelUtilityIcon.tsx",
+    "usage": "native/src/main.cpp: utility icon loader"
+  },
+  {
+    "id": "icon.playback-last",
+    "w": 11,
+    "h": 11,
+    "y": 68,
+    "x": 496,
+    "source": "native/assets/utility-icons/playback-last.png",
+    "legacySource": "legacy/src/renderer/src/components/PixelUtilityIcon.tsx",
+    "usage": "native/src/main.cpp: utility icon loader"
+  },
+  {
+    "id": "icon.playback-next-disabled",
+    "w": 11,
+    "h": 11,
+    "y": 84,
+    "x": 128,
+    "source": "native/assets/utility-icons/playback-next-disabled.png",
+    "legacySource": "legacy/src/renderer/src/components/PixelUtilityIcon.tsx",
+    "usage": "native/src/main.cpp: utility icon loader"
+  },
+  {
+    "id": "icon.playback-next",
+    "w": 11,
+    "h": 11,
+    "y": 84,
+    "x": 144,
+    "source": "native/assets/utility-icons/playback-next.png",
+    "legacySource": "legacy/src/renderer/src/components/PixelUtilityIcon.tsx",
+    "usage": "native/src/main.cpp: utility icon loader"
+  },
+  {
+    "id": "icon.playback-play-disabled",
+    "w": 11,
+    "h": 11,
+    "y": 84,
+    "x": 160,
+    "source": "native/assets/utility-icons/playback-play-disabled.png",
+    "legacySource": "legacy/src/renderer/src/components/PixelUtilityIcon.tsx",
+    "usage": "native/src/main.cpp: utility icon loader"
+  },
+  {
+    "id": "icon.playback-play",
+    "w": 11,
+    "h": 11,
+    "y": 84,
+    "x": 176,
+    "source": "native/assets/utility-icons/playback-play.png",
+    "legacySource": "legacy/src/renderer/src/components/PixelUtilityIcon.tsx",
+    "usage": "native/src/main.cpp: utility icon loader"
+  },
+  {
+    "id": "icon.playback-previous-disabled",
+    "w": 11,
+    "h": 11,
+    "y": 84,
+    "x": 192,
+    "source": "native/assets/utility-icons/playback-previous-disabled.png",
+    "legacySource": "legacy/src/renderer/src/components/PixelUtilityIcon.tsx",
+    "usage": "native/src/main.cpp: utility icon loader"
+  },
+  {
+    "id": "icon.playback-previous",
+    "w": 11,
+    "h": 11,
+    "y": 84,
+    "x": 208,
+    "source": "native/assets/utility-icons/playback-previous.png",
+    "legacySource": "legacy/src/renderer/src/components/PixelUtilityIcon.tsx",
+    "usage": "native/src/main.cpp: utility icon loader"
+  },
+  {
+    "id": "icon.plus-disabled",
+    "w": 11,
+    "h": 11,
+    "y": 84,
+    "x": 224,
+    "source": "native/assets/utility-icons/plus-disabled.png",
+    "legacySource": "legacy/src/renderer/src/components/PixelUtilityIcon.tsx",
+    "usage": "native/src/main.cpp: utility icon loader"
+  },
+  {
+    "id": "icon.plus",
+    "w": 11,
+    "h": 11,
+    "y": 84,
+    "x": 240,
+    "source": "native/assets/utility-icons/plus.png",
+    "legacySource": "legacy/src/renderer/src/components/PixelUtilityIcon.tsx",
+    "usage": "native/src/main.cpp: utility icon loader"
+  },
+  {
+    "id": "icon.pressure-dynamics-disabled",
+    "w": 11,
+    "h": 11,
+    "y": 84,
+    "x": 256,
+    "source": "native/assets/utility-icons/pressure-dynamics-disabled.png",
+    "legacySource": "legacy/src/renderer/src/components/PixelUtilityIcon.tsx",
+    "usage": "native/src/main.cpp: utility icon loader"
+  },
+  {
+    "id": "icon.pressure-dynamics",
+    "w": 11,
+    "h": 11,
+    "y": 84,
+    "x": 272,
+    "source": "native/assets/utility-icons/pressure-dynamics.png",
+    "legacySource": "legacy/src/renderer/src/components/PixelUtilityIcon.tsx",
+    "usage": "native/src/main.cpp: utility icon loader"
+  },
+  {
+    "id": "icon.properties-disabled",
+    "w": 11,
+    "h": 11,
+    "y": 84,
+    "x": 288,
+    "source": "native/assets/utility-icons/properties-disabled.png",
+    "legacySource": "legacy/src/renderer/src/components/PixelUtilityIcon.tsx",
+    "usage": "native/src/main.cpp: utility icon loader"
+  },
+  {
+    "id": "icon.properties",
+    "w": 11,
+    "h": 11,
+    "y": 84,
+    "x": 304,
+    "source": "native/assets/utility-icons/properties.png",
+    "legacySource": "legacy/src/renderer/src/components/PixelUtilityIcon.tsx",
+    "usage": "native/src/main.cpp: utility icon loader"
+  },
+  {
+    "id": "icon.redo-disabled",
+    "w": 6,
+    "h": 6,
+    "y": 84,
+    "x": 320,
+    "source": "native/assets/utility-icons/redo-disabled.png",
+    "legacySource": "legacy/src/renderer/src/components/PixelUtilityIcon.tsx",
+    "usage": "native/src/main.cpp: utility icon loader"
+  },
+  {
+    "id": "icon.redo",
+    "w": 6,
+    "h": 6,
+    "y": 84,
+    "x": 336,
+    "source": "native/assets/utility-icons/redo.png",
+    "legacySource": "legacy/src/renderer/src/components/PixelUtilityIcon.tsx",
+    "usage": "native/src/main.cpp: utility icon loader"
+  },
+  {
+    "id": "icon.right-disabled",
+    "w": 5,
+    "h": 5,
+    "y": 84,
+    "x": 352,
+    "source": "native/assets/utility-icons/right-disabled.png",
+    "legacySource": "legacy/src/renderer/src/components/PixelUtilityIcon.tsx",
+    "usage": "native/src/main.cpp: utility icon loader"
+  },
+  {
+    "id": "icon.right",
+    "w": 5,
+    "h": 5,
+    "y": 84,
+    "x": 368,
+    "source": "native/assets/utility-icons/right.png",
+    "legacySource": "legacy/src/renderer/src/components/PixelUtilityIcon.tsx",
+    "usage": "native/src/main.cpp: utility icon loader"
+  },
+  {
+    "id": "icon.symmetry-diagonal-down-disabled",
+    "w": 11,
+    "h": 11,
+    "y": 84,
+    "x": 384,
+    "source": "native/assets/utility-icons/symmetry-diagonal-down-disabled.png",
+    "legacySource": "legacy/src/renderer/src/components/PixelUtilityIcon.tsx",
+    "usage": "native/src/main.cpp: utility icon loader"
+  },
+  {
+    "id": "icon.symmetry-diagonal-down",
+    "w": 11,
+    "h": 11,
+    "y": 84,
+    "x": 400,
+    "source": "native/assets/utility-icons/symmetry-diagonal-down.png",
+    "legacySource": "legacy/src/renderer/src/components/PixelUtilityIcon.tsx",
+    "usage": "native/src/main.cpp: utility icon loader"
+  },
+  {
+    "id": "icon.symmetry-diagonal-up-disabled",
+    "w": 11,
+    "h": 11,
+    "y": 84,
+    "x": 416,
+    "source": "native/assets/utility-icons/symmetry-diagonal-up-disabled.png",
+    "legacySource": "legacy/src/renderer/src/components/PixelUtilityIcon.tsx",
+    "usage": "native/src/main.cpp: utility icon loader"
+  },
+  {
+    "id": "icon.symmetry-diagonal-up",
+    "w": 11,
+    "h": 11,
+    "y": 84,
+    "x": 432,
+    "source": "native/assets/utility-icons/symmetry-diagonal-up.png",
+    "legacySource": "legacy/src/renderer/src/components/PixelUtilityIcon.tsx",
+    "usage": "native/src/main.cpp: utility icon loader"
+  },
+  {
+    "id": "icon.symmetry-horizontal-disabled",
+    "w": 11,
+    "h": 11,
+    "y": 84,
+    "x": 448,
+    "source": "native/assets/utility-icons/symmetry-horizontal-disabled.png",
+    "legacySource": "legacy/src/renderer/src/components/PixelUtilityIcon.tsx",
+    "usage": "native/src/main.cpp: utility icon loader"
+  },
+  {
+    "id": "icon.symmetry-horizontal",
+    "w": 11,
+    "h": 11,
+    "y": 84,
+    "x": 464,
+    "source": "native/assets/utility-icons/symmetry-horizontal.png",
+    "legacySource": "legacy/src/renderer/src/components/PixelUtilityIcon.tsx",
+    "usage": "native/src/main.cpp: utility icon loader"
+  },
+  {
+    "id": "icon.symmetry-rotational-disabled",
+    "w": 11,
+    "h": 11,
+    "y": 84,
+    "x": 480,
+    "source": "native/assets/utility-icons/symmetry-rotational-disabled.png",
+    "legacySource": "legacy/src/renderer/src/components/PixelUtilityIcon.tsx",
+    "usage": "native/src/main.cpp: utility icon loader"
+  },
+  {
+    "id": "icon.symmetry-rotational",
+    "w": 11,
+    "h": 11,
+    "y": 84,
+    "x": 496,
+    "source": "native/assets/utility-icons/symmetry-rotational.png",
+    "legacySource": "legacy/src/renderer/src/components/PixelUtilityIcon.tsx",
+    "usage": "native/src/main.cpp: utility icon loader"
+  },
+  {
+    "id": "icon.symmetry-vertical-disabled",
+    "w": 11,
+    "h": 11,
+    "y": 100,
+    "x": 128,
+    "source": "native/assets/utility-icons/symmetry-vertical-disabled.png",
+    "legacySource": "legacy/src/renderer/src/components/PixelUtilityIcon.tsx",
+    "usage": "native/src/main.cpp: utility icon loader"
+  },
+  {
+    "id": "icon.symmetry-vertical",
+    "w": 11,
+    "h": 11,
+    "y": 100,
+    "x": 144,
+    "source": "native/assets/utility-icons/symmetry-vertical.png",
+    "legacySource": "legacy/src/renderer/src/components/PixelUtilityIcon.tsx",
+    "usage": "native/src/main.cpp: utility icon loader"
+  },
+  {
+    "id": "icon.undo-disabled",
+    "w": 6,
+    "h": 6,
+    "y": 100,
+    "x": 160,
+    "source": "native/assets/utility-icons/undo-disabled.png",
+    "legacySource": "legacy/src/renderer/src/components/PixelUtilityIcon.tsx",
+    "usage": "native/src/main.cpp: utility icon loader"
+  },
+  {
+    "id": "icon.undo",
+    "w": 6,
+    "h": 6,
+    "y": 100,
+    "x": 176,
+    "source": "native/assets/utility-icons/undo.png",
+    "legacySource": "legacy/src/renderer/src/components/PixelUtilityIcon.tsx",
+    "usage": "native/src/main.cpp: utility icon loader"
+  },
+  {
+    "id": "icon.unlock-disabled",
+    "w": 11,
+    "h": 11,
+    "y": 100,
+    "x": 192,
+    "source": "native/assets/utility-icons/unlock-disabled.png",
+    "legacySource": "legacy/src/renderer/src/components/PixelUtilityIcon.tsx",
+    "usage": "native/src/main.cpp: utility icon loader"
+  },
+  {
+    "id": "icon.unlock",
+    "w": 11,
+    "h": 11,
+    "y": 100,
+    "x": 208,
+    "source": "native/assets/utility-icons/unlock.png",
+    "legacySource": "legacy/src/renderer/src/components/PixelUtilityIcon.tsx",
+    "usage": "native/src/main.cpp: utility icon loader"
+  },
+  {
+    "h": 4,
+    "source": "native/assets/color-picker/marker-light.png",
+    "w": 4,
+    "id": "icon.marker-light",
+    "x": 128,
+    "y": 160,
+    "legacySource": "User marker image codex-clipboard-0f840331-da0b-43ef-94c1-f06cb2bf6cee.png; native/assets/color-picker/README.md",
+    "usage": "native/src/main.cpp: loadMarkers"
+  },
+  {
+    "h": 4,
+    "source": "native/assets/color-picker/marker-dark.png",
+    "w": 4,
+    "id": "icon.marker-dark",
+    "x": 144,
+    "y": 160,
+    "legacySource": "User marker image codex-clipboard-0f840331-da0b-43ef-94c1-f06cb2bf6cee.png; native/assets/color-picker/README.md",
+    "usage": "native/src/main.cpp: loadMarkers"
+  },
+  {
+    "y": 256,
+    "w": 32,
+    "h": 32,
+    "x": 0,
+    "source": "native/assets/cursors/01-Slice-1.png",
+    "id": "cursor.01-slice-1",
+    "legacySource": [
+      "legacy/src/renderer/src/assets/pixel-icons/01-Slice-1.png"
+    ],
+    "hotspots": "native/assets/cursors/cursors.txt (legacy semantic IDs and source-pixel hotspots)",
+    "usage": "native/src/legacy_cursors.cpp: OS cursor surface cache"
+  },
+  {
+    "y": 256,
+    "w": 32,
+    "h": 32,
+    "x": 32,
+    "source": "native/assets/cursors/02-Slice-2.png",
+    "id": "cursor.02-slice-2",
+    "legacySource": [
+      "legacy/src/renderer/src/assets/pixel-icons/02-Slice-2.png"
+    ],
+    "hotspots": "native/assets/cursors/cursors.txt (legacy semantic IDs and source-pixel hotspots)",
+    "usage": "native/src/legacy_cursors.cpp: OS cursor surface cache"
+  },
+  {
+    "y": 256,
+    "w": 32,
+    "h": 32,
+    "x": 64,
+    "source": "native/assets/cursors/03-Slice-3.png",
+    "id": "cursor.03-slice-3",
+    "legacySource": [
+      "legacy/src/renderer/src/assets/pixel-icons/03-Slice-3.png"
+    ],
+    "hotspots": "native/assets/cursors/cursors.txt (legacy semantic IDs and source-pixel hotspots)",
+    "usage": "native/src/legacy_cursors.cpp: OS cursor surface cache"
+  },
+  {
+    "y": 256,
+    "w": 32,
+    "h": 32,
+    "x": 96,
+    "source": "native/assets/cursors/04-Slice-4.png",
+    "id": "cursor.04-slice-4",
+    "legacySource": [
+      "legacy/src/renderer/src/assets/pixel-icons/04-Slice-4.png"
+    ],
+    "hotspots": "native/assets/cursors/cursors.txt (legacy semantic IDs and source-pixel hotspots)",
+    "usage": "native/src/legacy_cursors.cpp: OS cursor surface cache"
+  },
+  {
+    "y": 256,
+    "w": 32,
+    "h": 32,
+    "x": 128,
+    "source": "native/assets/cursors/06-Slice-6.png",
+    "id": "cursor.06-slice-6",
+    "legacySource": [
+      "legacy/src/renderer/src/assets/pixel-icons/06-Slice-6.png"
+    ],
+    "hotspots": "native/assets/cursors/cursors.txt (legacy semantic IDs and source-pixel hotspots)",
+    "usage": "native/src/legacy_cursors.cpp: OS cursor surface cache"
+  },
+  {
+    "y": 256,
+    "w": 32,
+    "h": 32,
+    "x": 160,
+    "source": "native/assets/cursors/10-Slice-7.png",
+    "id": "cursor.10-slice-7",
+    "legacySource": [
+      "legacy/src/renderer/src/assets/pixel-icons/10-Slice-7.png"
+    ],
+    "hotspots": "native/assets/cursors/cursors.txt (legacy semantic IDs and source-pixel hotspots)",
+    "usage": "native/src/legacy_cursors.cpp: OS cursor surface cache"
+  },
+  {
+    "y": 256,
+    "w": 32,
+    "h": 32,
+    "x": 192,
+    "source": "native/assets/cursors/11-Slice-8.png",
+    "id": "cursor.11-slice-8",
+    "legacySource": [
+      "legacy/src/renderer/src/assets/pixel-icons/11-Slice-8.png"
+    ],
+    "hotspots": "native/assets/cursors/cursors.txt (legacy semantic IDs and source-pixel hotspots)",
+    "usage": "native/src/legacy_cursors.cpp: OS cursor surface cache"
+  },
+  {
+    "y": 256,
+    "w": 32,
+    "h": 32,
+    "x": 224,
+    "source": "native/assets/cursors/12-Slice-9.png",
+    "id": "cursor.12-slice-9",
+    "legacySource": [
+      "legacy/src/renderer/src/assets/pixel-icons/12-Slice-9.png"
+    ],
+    "hotspots": "native/assets/cursors/cursors.txt (legacy semantic IDs and source-pixel hotspots)",
+    "usage": "native/src/legacy_cursors.cpp: OS cursor surface cache"
+  },
+  {
+    "y": 256,
+    "w": 32,
+    "h": 32,
+    "x": 256,
+    "source": "native/assets/cursors/13-Slice-10.png",
+    "id": "cursor.13-slice-10",
+    "legacySource": [
+      "legacy/src/renderer/src/assets/pixel-icons/13-Slice-10.png"
+    ],
+    "hotspots": "native/assets/cursors/cursors.txt (legacy semantic IDs and source-pixel hotspots)",
+    "usage": "native/src/legacy_cursors.cpp: OS cursor surface cache"
+  },
+  {
+    "y": 256,
+    "w": 32,
+    "h": 32,
+    "x": 288,
+    "source": "native/assets/cursors/14-Slice-11.png",
+    "id": "cursor.14-slice-11",
+    "legacySource": [
+      "legacy/src/renderer/src/assets/pixel-icons/14-Slice-11.png"
+    ],
+    "hotspots": "native/assets/cursors/cursors.txt (legacy semantic IDs and source-pixel hotspots)",
+    "usage": "native/src/legacy_cursors.cpp: OS cursor surface cache"
+  },
+  {
+    "y": 256,
+    "w": 32,
+    "h": 32,
+    "x": 320,
+    "source": "native/assets/cursors/15-Slice-12.png",
+    "id": "cursor.15-slice-12",
+    "legacySource": [
+      "legacy/src/renderer/src/assets/pixel-icons/15-Slice-12.png"
+    ],
+    "hotspots": "native/assets/cursors/cursors.txt (legacy semantic IDs and source-pixel hotspots)",
+    "usage": "native/src/legacy_cursors.cpp: OS cursor surface cache"
+  },
+  {
+    "y": 256,
+    "w": 32,
+    "h": 32,
+    "x": 352,
+    "source": "native/assets/cursors/16-Icon-16.png",
+    "id": "cursor.16-icon-16",
+    "legacySource": [
+      "legacy/src/renderer/src/assets/pixel-icons/16-Icon-16.png"
+    ],
+    "hotspots": "native/assets/cursors/cursors.txt (legacy semantic IDs and source-pixel hotspots)",
+    "usage": "native/src/legacy_cursors.cpp: OS cursor surface cache"
+  },
+  {
+    "y": 256,
+    "w": 32,
+    "h": 32,
+    "x": 384,
+    "source": "native/assets/cursors/17-Icon-17.png",
+    "id": "cursor.17-icon-17",
+    "legacySource": [
+      "legacy/src/renderer/src/assets/pixel-icons/17-Icon-17.png"
+    ],
+    "hotspots": "native/assets/cursors/cursors.txt (legacy semantic IDs and source-pixel hotspots)",
+    "usage": "native/src/legacy_cursors.cpp: OS cursor surface cache"
+  },
+  {
+    "y": 256,
+    "w": 32,
+    "h": 32,
+    "x": 416,
+    "source": "native/assets/cursors/19-Slice-13.png",
+    "id": "cursor.19-slice-13",
+    "legacySource": [
+      "legacy/src/renderer/src/assets/pixel-icons/19-Slice-13.png"
+    ],
+    "hotspots": "native/assets/cursors/cursors.txt (legacy semantic IDs and source-pixel hotspots)",
+    "usage": "native/src/legacy_cursors.cpp: OS cursor surface cache"
+  },
+  {
+    "y": 256,
+    "w": 32,
+    "h": 32,
+    "x": 448,
+    "source": "native/assets/cursors/20-Slice-14.png",
+    "id": "cursor.20-slice-14",
+    "legacySource": [
+      "legacy/src/renderer/src/assets/pixel-icons/20-Slice-14.png"
+    ],
+    "hotspots": "native/assets/cursors/cursors.txt (legacy semantic IDs and source-pixel hotspots)",
+    "usage": "native/src/legacy_cursors.cpp: OS cursor surface cache"
+  },
+  {
+    "y": 256,
+    "w": 32,
+    "h": 32,
+    "x": 480,
+    "source": "native/assets/cursors/21-Slice-15.png",
+    "id": "cursor.21-slice-15",
+    "legacySource": [
+      "legacy/src/renderer/src/assets/pixel-icons/21-Slice-15.png"
+    ],
+    "hotspots": "native/assets/cursors/cursors.txt (legacy semantic IDs and source-pixel hotspots)",
+    "usage": "native/src/legacy_cursors.cpp: OS cursor surface cache"
+  },
+  {
+    "y": 288,
+    "w": 32,
+    "h": 32,
+    "x": 0,
+    "source": "native/assets/cursors/22-Slice-16.png",
+    "id": "cursor.22-slice-16",
+    "legacySource": [
+      "legacy/src/renderer/src/assets/pixel-icons/22-Slice-16.png"
+    ],
+    "hotspots": "native/assets/cursors/cursors.txt (legacy semantic IDs and source-pixel hotspots)",
+    "usage": "native/src/legacy_cursors.cpp: OS cursor surface cache"
+  },
+  {
+    "y": 288,
+    "w": 32,
+    "h": 32,
+    "x": 32,
+    "source": "native/assets/cursors/23-Slice-17.png",
+    "id": "cursor.23-slice-17",
+    "legacySource": [
+      "legacy/src/renderer/src/assets/pixel-icons/23-Slice-17.png"
+    ],
+    "hotspots": "native/assets/cursors/cursors.txt (legacy semantic IDs and source-pixel hotspots)",
+    "usage": "native/src/legacy_cursors.cpp: OS cursor surface cache"
+  },
+  {
+    "y": 288,
+    "w": 32,
+    "h": 32,
+    "x": 64,
+    "source": "native/assets/cursors/24-Icon-24.png",
+    "id": "cursor.24-icon-24",
+    "legacySource": [
+      "legacy/src/renderer/src/assets/pixel-icons/24-Icon-24.png"
+    ],
+    "hotspots": "native/assets/cursors/cursors.txt (legacy semantic IDs and source-pixel hotspots)",
+    "usage": "native/src/legacy_cursors.cpp: OS cursor surface cache"
+  },
+  {
+    "y": 288,
+    "w": 32,
+    "h": 32,
+    "x": 96,
+    "source": "native/assets/cursors/cursor-selection-rotate-n.png",
+    "id": "cursor.cursor-selection-rotate-n",
+    "legacySource": [
+      "legacy/src/renderer/src/assets/pixel-icons/cursor-selection-rotate-n.png"
+    ],
+    "hotspots": "native/assets/cursors/cursors.txt (legacy semantic IDs and source-pixel hotspots)",
+    "usage": "native/src/legacy_cursors.cpp: OS cursor surface cache"
+  },
+  {
+    "y": 288,
+    "w": 32,
+    "h": 32,
+    "x": 128,
+    "source": "native/assets/cursors/cursor-selection-rotate-s.png",
+    "id": "cursor.cursor-selection-rotate-s",
+    "legacySource": [
+      "legacy/src/renderer/src/assets/pixel-icons/cursor-selection-rotate-s.png"
+    ],
+    "hotspots": "native/assets/cursors/cursors.txt (legacy semantic IDs and source-pixel hotspots)",
+    "usage": "native/src/legacy_cursors.cpp: OS cursor surface cache"
+  },
+  {
+    "y": 288,
+    "w": 32,
+    "h": 32,
+    "x": 160,
+    "source": "native/assets/cursors/cursor-selection-shear-horizontal.png",
+    "id": "cursor.cursor-selection-shear-horizontal",
+    "legacySource": [
+      "legacy/src/renderer/src/assets/pixel-icons/cursor-selection-shear-horizontal.png"
+    ],
+    "hotspots": "native/assets/cursors/cursors.txt (legacy semantic IDs and source-pixel hotspots)",
+    "usage": "native/src/legacy_cursors.cpp: OS cursor surface cache"
+  },
+  {
+    "y": 288,
+    "w": 32,
+    "h": 32,
+    "x": 192,
+    "source": "native/assets/cursors/cursor-selection-shear-nesw.png",
+    "id": "cursor.cursor-selection-shear-nesw",
+    "legacySource": [
+      "legacy/src/renderer/src/assets/pixel-icons/cursor-selection-shear-nesw.png"
+    ],
+    "hotspots": "native/assets/cursors/cursors.txt (legacy semantic IDs and source-pixel hotspots)",
+    "usage": "native/src/legacy_cursors.cpp: OS cursor surface cache"
+  },
+  {
+    "y": 288,
+    "w": 32,
+    "h": 32,
+    "x": 224,
+    "source": "native/assets/cursors/cursor-selection-shear-nwse.png",
+    "id": "cursor.cursor-selection-shear-nwse",
+    "legacySource": [
+      "legacy/src/renderer/src/assets/pixel-icons/cursor-selection-shear-nwse.png"
+    ],
+    "hotspots": "native/assets/cursors/cursors.txt (legacy semantic IDs and source-pixel hotspots)",
+    "usage": "native/src/legacy_cursors.cpp: OS cursor surface cache"
+  },
+  {
+    "y": 288,
+    "w": 32,
+    "h": 32,
+    "x": 256,
+    "source": "native/assets/cursors/cursor-selection-shear-vertical.png",
+    "id": "cursor.cursor-selection-shear-vertical",
+    "legacySource": [
+      "legacy/src/renderer/src/assets/pixel-icons/cursor-selection-shear-vertical.png"
+    ],
+    "hotspots": "native/assets/cursors/cursors.txt (legacy semantic IDs and source-pixel hotspots)",
+    "usage": "native/src/legacy_cursors.cpp: OS cursor surface cache"
+  },
+  {
+    "y": 288,
+    "w": 32,
+    "h": 32,
+    "x": 288,
+    "source": "native/assets/cursors/pixel-cross-cursor.png",
+    "id": "cursor.pixel-cross-cursor",
+    "legacySource": [
+      "legacy/src/renderer/src/assets/pixel-cross-cursor.svg"
+    ],
+    "hotspots": "native/assets/cursors/cursors.txt (legacy semantic IDs and source-pixel hotspots)",
+    "usage": "native/src/legacy_cursors.cpp: OS cursor surface cache"
+  },
+  {
+    "y": 288,
+    "w": 32,
+    "h": 32,
+    "x": 320,
+    "source": "native/assets/cursors/pixel-grab-cursor.png",
+    "id": "cursor.pixel-grab-cursor",
+    "legacySource": [
+      "legacy/src/renderer/src/assets/pixel-grab-cursor.svg"
+    ],
+    "hotspots": "native/assets/cursors/cursors.txt (legacy semantic IDs and source-pixel hotspots)",
+    "usage": "native/src/legacy_cursors.cpp: OS cursor surface cache"
+  },
+  {
+    "id": "button_normal",
+    "x": 0,
+    "y": 0,
+    "w": 9,
+    "h": 9,
+    "source": "native/assets/themes/moonsprite-dark/ATTRIBUTION.md; README.md; dialog-materials.md (user approved native pixel skin)",
+    "usage": "native/src/main.cpp; native/src/theme_atlas.cpp: named theme patches"
+  },
+  {
+    "id": "button_hot",
+    "x": 12,
+    "y": 0,
+    "w": 9,
+    "h": 9,
+    "source": "native/assets/themes/moonsprite-dark/ATTRIBUTION.md; README.md; dialog-materials.md (user approved native pixel skin)",
+    "usage": "native/src/main.cpp; native/src/theme_atlas.cpp: named theme patches"
+  },
+  {
+    "id": "button_selected",
+    "x": 24,
+    "y": 0,
+    "w": 9,
+    "h": 9,
+    "source": "native/assets/themes/moonsprite-dark/ATTRIBUTION.md; README.md; dialog-materials.md (user approved native pixel skin)",
+    "usage": "native/src/main.cpp; native/src/theme_atlas.cpp: named theme patches"
+  },
+  {
+    "id": "button_disabled",
+    "x": 36,
+    "y": 0,
+    "w": 9,
+    "h": 9,
+    "source": "native/assets/themes/moonsprite-dark/ATTRIBUTION.md; README.md; dialog-materials.md (user approved native pixel skin)",
+    "usage": "native/src/main.cpp; native/src/theme_atlas.cpp: named theme patches"
+  },
+  {
+    "id": "button_focused",
+    "x": 48,
+    "y": 0,
+    "w": 9,
+    "h": 9,
+    "source": "native/assets/themes/moonsprite-dark/ATTRIBUTION.md; README.md; dialog-materials.md (user approved native pixel skin)",
+    "usage": "native/src/main.cpp; native/src/theme_atlas.cpp: named theme patches"
+  },
+  {
+    "id": "frame",
+    "x": 60,
+    "y": 0,
+    "w": 9,
+    "h": 9,
+    "source": "native/assets/themes/moonsprite-dark/ATTRIBUTION.md; README.md; dialog-materials.md (user approved native pixel skin)",
+    "usage": "native/src/main.cpp; native/src/theme_atlas.cpp: named theme patches"
+  },
+  {
+    "id": "tab",
+    "x": 72,
+    "y": 0,
+    "w": 9,
+    "h": 9,
+    "source": "native/assets/themes/moonsprite-dark/ATTRIBUTION.md; README.md; dialog-materials.md (user approved native pixel skin)",
+    "usage": "native/src/main.cpp; native/src/theme_atlas.cpp: named theme patches"
+  },
+  {
+    "id": "field",
+    "x": 84,
+    "y": 0,
+    "w": 9,
+    "h": 9,
+    "source": "native/assets/themes/moonsprite-dark/ATTRIBUTION.md; README.md; dialog-materials.md (user approved native pixel skin)",
+    "usage": "native/src/main.cpp; native/src/theme_atlas.cpp: named theme patches"
+  },
+  {
+    "id": "panel_tab_active",
+    "x": 96,
+    "y": 0,
+    "w": 9,
+    "h": 9,
+    "source": "native/assets/themes/moonsprite-dark/ATTRIBUTION.md; README.md; dialog-materials.md (user approved native pixel skin)",
+    "usage": "native/src/main.cpp; native/src/theme_atlas.cpp: named theme patches"
+  },
+  {
+    "id": "panel_tab_inactive",
+    "x": 108,
+    "y": 0,
+    "w": 9,
+    "h": 9,
+    "source": "native/assets/themes/moonsprite-dark/ATTRIBUTION.md; README.md; dialog-materials.md (user approved native pixel skin)",
+    "usage": "native/src/main.cpp; native/src/theme_atlas.cpp: named theme patches"
+  },
+  {
+    "id": "document_frame",
+    "x": 40,
+    "y": 16,
+    "w": 9,
+    "h": 9,
+    "source": "native/assets/themes/moonsprite-dark/ATTRIBUTION.md; README.md; dialog-materials.md (user approved native pixel skin)",
+    "usage": "native/src/main.cpp; native/src/theme_atlas.cpp: named theme patches"
+  },
+  {
+    "id": "color_well",
+    "x": 52,
+    "y": 16,
+    "w": 9,
+    "h": 9,
+    "source": "native/assets/themes/moonsprite-dark/ATTRIBUTION.md; README.md; dialog-materials.md (user approved native pixel skin)",
+    "usage": "native/src/main.cpp; native/src/theme_atlas.cpp: named theme patches"
+  },
+  {
+    "id": "dock_frame",
+    "x": 64,
+    "y": 16,
+    "w": 9,
+    "h": 9,
+    "source": "native/assets/themes/moonsprite-dark/ATTRIBUTION.md; README.md; dialog-materials.md (user approved native pixel skin)",
+    "usage": "native/src/main.cpp; native/src/theme_atlas.cpp: named theme patches"
+  },
+  {
+    "id": "panel_outer",
+    "x": 76,
+    "y": 16,
+    "w": 9,
+    "h": 9,
+    "source": "native/assets/themes/moonsprite-dark/ATTRIBUTION.md; README.md; dialog-materials.md (user approved native pixel skin)",
+    "usage": "native/src/main.cpp; native/src/theme_atlas.cpp: named theme patches"
+  },
+  {
+    "id": "panel_content",
+    "x": 88,
+    "y": 16,
+    "w": 9,
+    "h": 9,
+    "source": "native/assets/themes/moonsprite-dark/ATTRIBUTION.md; README.md; dialog-materials.md (user approved native pixel skin)",
+    "usage": "native/src/main.cpp; native/src/theme_atlas.cpp: named theme patches"
+  },
+  {
+    "id": "panel_tab_join_left",
+    "x": 100,
+    "y": 16,
+    "w": 3,
+    "h": 3,
+    "source": "native/assets/themes/moonsprite-dark/ATTRIBUTION.md; README.md; dialog-materials.md (user approved native pixel skin)",
+    "usage": "native/src/main.cpp; native/src/theme_atlas.cpp: named theme patches"
+  },
+  {
+    "id": "panel_tab_join_right",
+    "x": 104,
+    "y": 16,
+    "w": 3,
+    "h": 3,
+    "source": "native/assets/themes/moonsprite-dark/ATTRIBUTION.md; README.md; dialog-materials.md (user approved native pixel skin)",
+    "usage": "native/src/main.cpp; native/src/theme_atlas.cpp: named theme patches"
+  },
+  {
+    "id": "dialog_frame",
+    "x": 0,
+    "y": 36,
+    "w": 5,
+    "h": 21,
+    "source": "native/assets/themes/moonsprite-dark/ATTRIBUTION.md; README.md; dialog-materials.md (user approved native pixel skin)",
+    "usage": "native/src/main.cpp; native/src/theme_atlas.cpp: named theme patches"
+  },
+  {
+    "id": "text_button_normal",
+    "x": 8,
+    "y": 36,
+    "w": 7,
+    "h": 19,
+    "source": "native/assets/themes/moonsprite-dark/ATTRIBUTION.md; README.md; dialog-materials.md (user approved native pixel skin)",
+    "usage": "native/src/main.cpp; native/src/theme_atlas.cpp: named theme patches"
+  },
+  {
+    "id": "text_button_hot",
+    "x": 20,
+    "y": 36,
+    "w": 7,
+    "h": 19,
+    "source": "native/assets/themes/moonsprite-dark/ATTRIBUTION.md; README.md; dialog-materials.md (user approved native pixel skin)",
+    "usage": "native/src/main.cpp; native/src/theme_atlas.cpp: named theme patches"
+  },
+  {
+    "id": "icon_button_normal",
+    "x": 0,
+    "y": 64,
+    "w": 11,
+    "h": 12,
+    "source": "native/assets/themes/moonsprite-dark/ATTRIBUTION.md; README.md; dialog-materials.md (user approved native pixel skin)",
+    "usage": "native/src/main.cpp; native/src/theme_atlas.cpp: named theme patches"
+  },
+  {
+    "id": "icon_button_hot",
+    "x": 12,
+    "y": 64,
+    "w": 11,
+    "h": 12,
+    "source": "native/assets/themes/moonsprite-dark/ATTRIBUTION.md; README.md; dialog-materials.md (user approved native pixel skin)",
+    "usage": "native/src/main.cpp; native/src/theme_atlas.cpp: named theme patches"
+  },
+  {
+    "id": "entry_normal",
+    "x": 0,
+    "y": 80,
+    "w": 5,
+    "h": 18,
+    "source": "native/assets/themes/moonsprite-dark/ATTRIBUTION.md; README.md; dialog-materials.md (user approved native pixel skin)",
+    "usage": "native/src/main.cpp; native/src/theme_atlas.cpp: named theme patches"
+  },
+  {
+    "id": "entry_focus",
+    "x": 8,
+    "y": 80,
+    "w": 5,
+    "h": 18,
+    "source": "native/assets/themes/moonsprite-dark/ATTRIBUTION.md; README.md; dialog-materials.md (user approved native pixel skin)",
+    "usage": "native/src/main.cpp; native/src/theme_atlas.cpp: named theme patches"
+  },
+  {
+    "id": "slider_normal",
+    "x": 16,
+    "y": 80,
+    "w": 9,
+    "h": 18,
+    "source": "native/assets/themes/moonsprite-dark/ATTRIBUTION.md; README.md; dialog-materials.md (user approved native pixel skin)",
+    "usage": "native/src/main.cpp; native/src/theme_atlas.cpp: named theme patches"
+  },
+  {
+    "id": "slider_focus",
+    "x": 28,
+    "y": 80,
+    "w": 9,
+    "h": 18,
+    "source": "native/assets/themes/moonsprite-dark/ATTRIBUTION.md; README.md; dialog-materials.md (user approved native pixel skin)",
+    "usage": "native/src/main.cpp; native/src/theme_atlas.cpp: named theme patches"
+  },
+  {
+    "id": "slider_fill",
+    "x": 40,
+    "y": 80,
+    "w": 3,
+    "h": 12,
+    "source": "native/assets/themes/moonsprite-dark/ATTRIBUTION.md; README.md; dialog-materials.md (user approved native pixel skin)",
+    "usage": "native/src/main.cpp; native/src/theme_atlas.cpp: named theme patches"
+  },
+  {
+    "id": "role_button_normal",
+    "x": 48,
+    "y": 80,
+    "w": 5,
+    "h": 21,
+    "source": "native/assets/themes/moonsprite-dark/ATTRIBUTION.md; README.md; dialog-materials.md (user approved native pixel skin)",
+    "usage": "native/src/main.cpp; native/src/theme_atlas.cpp: named theme patches"
+  },
+  {
+    "id": "selection.normal",
+    "x": 0,
+    "y": 528,
+    "w": 26,
+    "h": 26,
+    "source": "native/assets/themes/moonsprite-dark/selection-reference.png; user reference e5d94664; exact crop x=0,y=0,w=26,h=26; preserves black borders and white alpha (normal 200, hover 255)",
+    "usage": "Reusable 3px nine-slice outer selection overlay (black/white/black); src/native_widgets.cpp paletteCell"
+  },
+  {
+    "id": "selection.hover",
+    "x": 32,
+    "y": 528,
+    "w": 26,
+    "h": 26,
+    "source": "native/assets/themes/moonsprite-dark/selection-reference.png; user reference e5d94664; exact crop x=28,y=0,w=26,h=26; preserves black borders and white alpha (normal 200, hover 255)",
+    "usage": "Reusable 3px nine-slice outer selection overlay (black/white/black); src/native_widgets.cpp paletteCell"
+  },
+  {
+    "usage": "palette foreground top-left / background bottom-right; small for size 0/1, medium 2/3, large 4",
+    "source": "native/assets/themes/moonsprite-dark/foreground-marker-reference.png; exact crop x=0,y=0,w=4,h=4; white RGB variant preserves source alpha",
+    "h": 4,
+    "x": 0,
+    "w": 4,
+    "id": "role-marker.foreground.small.white",
+    "y": 560
+  },
+  {
+    "usage": "palette foreground top-left / background bottom-right; small for size 0/1, medium 2/3, large 4",
+    "source": "native/assets/themes/moonsprite-dark/foreground-marker-reference.png; exact crop x=0,y=0,w=4,h=4; black RGB variant preserves source alpha",
+    "h": 4,
+    "x": 16,
+    "w": 4,
+    "id": "role-marker.foreground.small.black",
+    "y": 560
+  },
+  {
+    "usage": "palette foreground top-left / background bottom-right; small for size 0/1, medium 2/3, large 4",
+    "source": "native/assets/themes/moonsprite-dark/foreground-marker-reference.png; exact crop x=5,y=0,w=8,h=8; white RGB variant preserves source alpha",
+    "h": 8,
+    "x": 32,
+    "w": 8,
+    "id": "role-marker.foreground.medium.white",
+    "y": 560
+  },
+  {
+    "usage": "palette foreground top-left / background bottom-right; small for size 0/1, medium 2/3, large 4",
+    "source": "native/assets/themes/moonsprite-dark/foreground-marker-reference.png; exact crop x=5,y=0,w=8,h=8; black RGB variant preserves source alpha",
+    "h": 8,
+    "x": 48,
+    "w": 8,
+    "id": "role-marker.foreground.medium.black",
+    "y": 560
+  },
+  {
+    "usage": "palette foreground top-left / background bottom-right; small for size 0/1, medium 2/3, large 4",
+    "source": "native/assets/themes/moonsprite-dark/foreground-marker-reference.png; exact crop x=14,y=0,w=12,h=12; white RGB variant preserves source alpha",
+    "h": 12,
+    "x": 64,
+    "w": 12,
+    "id": "role-marker.foreground.large.white",
+    "y": 560
+  },
+  {
+    "usage": "palette foreground top-left / background bottom-right; small for size 0/1, medium 2/3, large 4",
+    "source": "native/assets/themes/moonsprite-dark/foreground-marker-reference.png; exact crop x=14,y=0,w=12,h=12; black RGB variant preserves source alpha",
+    "h": 12,
+    "x": 80,
+    "w": 12,
+    "id": "role-marker.foreground.large.black",
+    "y": 560
+  },
+  {
+    "usage": "palette foreground top-left / background bottom-right; small for size 0/1, medium 2/3, large 4",
+    "source": "native/assets/themes/moonsprite-dark/background-marker-reference.png; exact crop x=0,y=5,w=2,h=2; white RGB variant preserves source alpha",
+    "h": 2,
+    "x": 96,
+    "w": 2,
+    "id": "role-marker.background.small.white",
+    "y": 560
+  },
+  {
+    "usage": "palette foreground top-left / background bottom-right; small for size 0/1, medium 2/3, large 4",
+    "source": "native/assets/themes/moonsprite-dark/background-marker-reference.png; exact crop x=0,y=5,w=2,h=2; black RGB variant preserves source alpha",
+    "h": 2,
+    "x": 112,
+    "w": 2,
+    "id": "role-marker.background.small.black",
+    "y": 560
+  },
+  {
+    "usage": "palette foreground top-left / background bottom-right; small for size 0/1, medium 2/3, large 4",
+    "source": "native/assets/themes/moonsprite-dark/background-marker-reference.png; exact crop x=3,y=3,w=4,h=4; white RGB variant preserves source alpha",
+    "h": 4,
+    "x": 128,
+    "w": 4,
+    "id": "role-marker.background.medium.white",
+    "y": 560
+  },
+  {
+    "usage": "palette foreground top-left / background bottom-right; small for size 0/1, medium 2/3, large 4",
+    "source": "native/assets/themes/moonsprite-dark/background-marker-reference.png; exact crop x=3,y=3,w=4,h=4; black RGB variant preserves source alpha",
+    "h": 4,
+    "x": 144,
+    "w": 4,
+    "id": "role-marker.background.medium.black",
+    "y": 560
+  },
+  {
+    "usage": "palette foreground top-left / background bottom-right; small for size 0/1, medium 2/3, large 4",
+    "source": "native/assets/themes/moonsprite-dark/background-marker-reference.png; exact crop x=8,y=0,w=7,h=7; white RGB variant preserves source alpha",
+    "h": 7,
+    "x": 160,
+    "w": 7,
+    "id": "role-marker.background.large.white",
+    "y": 560
+  },
+  {
+    "usage": "palette foreground top-left / background bottom-right; small for size 0/1, medium 2/3, large 4",
+    "source": "native/assets/themes/moonsprite-dark/background-marker-reference.png; exact crop x=8,y=0,w=7,h=7; black RGB variant preserves source alpha",
+    "h": 7,
+    "x": 176,
+    "w": 7,
+    "id": "role-marker.background.large.black",
+    "y": 560
+  },
+  {
+    "id": "timeline.active",
+    "w": 3,
+    "h": 3,
+    "x": 0,
+    "y": 576,
+    "source": "User requested coordinated layer panel colors; existing approved active #171A21 and hover #2F3136 relocated into sheet",
+    "usage": "native/src/native_widgets.cpp and native/src/main.cpp: independently hovered timeline backgrounds"
+  },
+  {
+    "id": "timeline.hover",
+    "w": 3,
+    "h": 3,
+    "x": 4,
+    "y": 576,
+    "source": "User requested hover review after palette harmony update: blue-gray #2C3445 replaces neutral #2F3136; existing 3x3 geometry retained",
+    "usage": "native/src/native_widgets.cpp and native/src/main.cpp: independently hovered timeline backgrounds"
+  },
+  {
+    "id": "timeline.linked-dot",
+    "x": 188,
+    "y": 0,
+    "w": 7,
+    "h": 7,
+    "source": "User requested linked-cel capsule: reuse exact timeline.dot ball with horizontal 3/1/3 nine-slice middle extension",
+    "usage": "native/src/main.cpp: adjacent canonical linked cel marker"
+  }
+]

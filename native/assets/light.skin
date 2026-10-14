@@ -1,0 +1,10 @@
+# MoonSprite skin v1: appearance only.
+background=CFD7E4
+panel=EBEFF6
+button=DCE3EF
+border=9AACC4
+text=15263D
+muted=4E6683
+accent=2979FF
+checkerA=D0D5DF
+checkerB=EDF0F5

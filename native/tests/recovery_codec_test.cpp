@@ -1,0 +1,3 @@
+#include "recovery_codec.h"
+#include <iostream>
+using namespace moon::project;int main(){try {RecoveryRecord a{"doc-1","中文 工程","1760000000000"};auto text=encodeRecoveryRecord(a);auto b=decodeRecoveryRecord(text);if(a.id!=b.id||a.name!=b.name||a.updatedAt!=b.updatedAt)throw std::runtime_error("roundtrip mismatch");for(auto id:{"../x","a/b","","ok_id-1"})if(isSafeRecoveryId(id)!=(std::string(id)=="ok_id-1"))throw std::runtime_error("safe id mismatch");for(auto bad:{"{}","{broken","{\"id\":\"../x\",\"name\":\"n\",\"updatedAt\":\"1\"}"})try{decodeRecoveryRecord(bad);throw std::runtime_error("invalid record accepted");}catch(const Error&){}std::cout<<"Legacy recovery metadata checks passed\n";return 0;}catch(const std::exception& e){std::cerr<<e.what()<<'\n';return 1;}}

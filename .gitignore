@@ -16,6 +16,19 @@ src-tauri/gen/
 build/rustup-init.exe
 .DS_Store
 
+# The two applications retain their own local data/build boundaries.
+/legacy/target/
+/legacy/output/
+/legacy/gallery/
+/legacy/brushes/
+/legacy/workspaces/
+/legacy/recovery/
+/legacy/recoveries/
+/native/build/
+/native/out/
+/native/target/
+/native/.cache/
+
 # 运行时用户数据
 /gallery/
 /brushes/

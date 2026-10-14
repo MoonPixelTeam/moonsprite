@@ -9,6 +9,10 @@ on:
 permissions:
   contents: read
 
+defaults:
+  run:
+    working-directory: legacy
+
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
@@ -29,6 +33,7 @@ jobs:
         with:
           node-version: 22
           cache: pnpm
+          cache-dependency-path: legacy/pnpm-lock.yaml
       - run: pnpm install --frozen-lockfile
       - run: pnpm check:maintenance
 
@@ -47,6 +52,7 @@ jobs:
         with:
           node-version: 22
           cache: pnpm
+          cache-dependency-path: legacy/pnpm-lock.yaml
       - run: pnpm install --frozen-lockfile
       - id: scope
         run: node scripts/ci-scope.mjs
@@ -59,6 +65,8 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
       - if: steps.scope.outputs.rust == 'true' || steps.scope.outputs.thumbnail == 'true'
         uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: legacy/src-tauri -> target
       - if: steps.scope.outputs.thumbnail == 'true'
         run: pnpm build:thumbnail
       - if: steps.scope.outputs.rust == 'true'

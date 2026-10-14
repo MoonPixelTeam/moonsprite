@@ -1,0 +1,24 @@
+node_modules/
+.pnpm-store/
+out/
+/release/
+/output/documentation-audit/
+coverage/
+.vite/
+.planning/
+*.tsbuildinfo
+*.log
+*.tmp
+artifacts/
+src-tauri/target/
+src-tauri/thumbnail-provider/target/
+src-tauri/gen/
+build/rustup-init.exe
+.DS_Store
+
+# 运行时用户数据
+/gallery/
+/brushes/
+/workspaces/
+/recovery/
+/recoveries/

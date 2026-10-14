@@ -1,0 +1,5 @@
+const fs=require('fs'),path=require('path');const {stripTypeScriptTypes}=require('node:module');
+const source=fs.readFileSync(path.join(process.argv[2],'legacy/src/renderer/src/core/document-composite-rgba-row.ts'),'utf8');
+const js=stripTypeScriptTypes(source).replace('export const compositeRgbaRowWithOpaqueSpans','const compositeRgbaRowWithOpaqueSpans');
+const row=new Function(js+';return compositeRgbaRowWithOpaqueSpans;')();let seed=73421;const next=()=>{seed=(Math.imul(seed,1664525)+1013904223)>>>0;return seed;};let lines=[];
+for(let i=0;i<12000;i++){let bottom=next(),top=next();if(i%4===0)bottom=(bottom|0xff000000)>>>0;if(i%7===0)top=top&0xffffff;if(i%9===0)top=(top|0xff000000)>>>0;const out=new Uint8ClampedArray([bottom&255,bottom>>>8&255,bottom>>>16&255,bottom>>>24]),src=new Uint8Array([top&255,top>>>8&255,top>>>16&255,top>>>24]);row(out,src,0,0,1);const expected=(out[0]|out[1]<<8|out[2]<<16|out[3]<<24)>>>0;lines.push(`${bottom} ${top} ${expected}`);}fs.writeFileSync(process.argv[3],lines.join('\n'));
