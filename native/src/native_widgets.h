@@ -10,12 +10,21 @@
 #include "ui/size_hint_event.h"
 #include "ui/graphics.h"
 #include "ui/paint_event.h"
+#include "ui/popup_window.h"
 #include <functional>
 #include <map>
 #include <optional>
 #include "include/core/SkBitmap.h"
 
 namespace moon {
+// Runtime popup geometry must damage the exposed old area as well as the new
+// one. Widget::setBounds alone only lays out children; it is not a window move.
+class PixelPopupWindow : public ui::PopupWindow {
+public:
+  using ui::PopupWindow::PopupWindow;
+  void setBounds(const gfx::Rect& rect);
+  virtual const char* geometryCursor(gfx::Point) const {return "default";}
+};
 struct Skin {
   std::map<std::string,gfx::Color> colors;
   SkinAssets assets;
@@ -37,6 +46,8 @@ struct Skin {
   }
   static Skin load(const std::filesystem::path& path);
   bool draw(ui::Graphics& g,const std::string& slot,gfx::Rect rc,bool icon=false,int opacity=255) const;
+  // Logical skin pixels; checked state is independent of pointer/held state.
+  void drawCheckbox(ui::Graphics& g,gfx::Rect row,bool checked,bool hover,bool pressed,bool enabled=true) const;
   // All geometry arguments below are physical display pixels. Material bounds
   // include the complete skin; border bounds refer to its innermost black line.
   gfx::Rect selectionMaterialBounds(gfx::Rect borderBounds) const;
@@ -78,21 +89,41 @@ public:
   bool active=false;
   bool tab=false;
   bool paletteCell=false;
+  // Full material relative to the clipped widget; widget bounds own only visible pixels.
+  std::optional<gfx::Rect> paletteMaterialRect;
   std::function<gfx::Rect()> paletteViewport; // Physical paint and input clip.
   bool paletteSharedSelection=false;
   bool foregroundMarker=false,backgroundMarker=false;
   int paletteMarkerSize=0;
+  std::u32string paletteDisplayName;
+  static std::uint32_t paletteNameTextColor(std::uint32_t rgba);
   bool colorRole=false,recentColorSwatch=false;
   bool labelOnly=false,iconWithCaption=false,bareIconWithCaption=false;
   bool firstTab=false;
   bool tabAdd=false,bareTabIcon=false;
   std::uint32_t swatch=0;
   PixelButton(const PixelFont& font,const Skin& skin,std::u32string label,std::function<void()> action);
+  bool isCheckbox() const {return skinStyle=="checkbox" || (bareIconWithCaption && (icon=="check" || icon=="checkboxChecked" || icon=="checkboxUnchecked"));}
   gfx::Rect iconContentBounds(const std::string& state="normal") const;
   gfx::Rect paletteColorBounds() const;
   bool paletteSelectionContains(gfx::Point position) const;
   void paintTimelineContent(ui::Graphics& g,gfx::Rect rc,gfx::Point physicalOffset={});
   void onPaint(ui::PaintEvent& ev) override;
+  bool onProcessMessage(ui::Message* msg) override;
+};
+// Controlled label-row toggle, matching legacy PreferenceToggle. A caption
+// is required; the optional icon precedes it and the switch stays at right.
+class PixelCheckbox : public PixelButton {
+public:
+  PixelCheckbox(const PixelFont& font,const Skin& skin,std::u32string label,bool checked,std::function<void(bool)> changed);
+  bool checked() const {return active;}
+  void setChecked(bool checked){if(active!=checked){active=checked;invalidate();}}
+};
+class PixelSwitch : public PixelButton {
+public:
+  PixelSwitch(const PixelFont& font,const Skin& skin,std::u32string label,bool checked,std::function<void(bool)> changed);
+  bool checked() const {return active;}
+  void setChecked(bool checked){if(active!=checked){active=checked;invalidate();}}
   bool onProcessMessage(ui::Message* msg) override;
 };
 // Reuse Aseprite's MIT ScrollBar interaction and thumb geometry; only the
@@ -101,6 +132,9 @@ class PixelScrollBar : public ui::ScrollBar, private ui::ScrollableViewDelegate 
   const Skin& skin_;
   bool vertical_;
   bool thumbHover_=false;
+  int materialOpacity_=255;
+  int materialHoverOpacity_=255;
+  os::SurfaceRef materialSurface_;
   int total_=0,page_=0,value_=0;
   gfx::Size visibleSize() const override {return {page_,page_};}
   gfx::Point viewScroll() const override {return {value_,value_};}
@@ -108,7 +142,12 @@ class PixelScrollBar : public ui::ScrollBar, private ui::ScrollableViewDelegate 
 public:
   std::function<void(int)> changed;
   int wheelStep=1;
+  int wheelDirection=-1;
   PixelScrollBar(const Skin& skin,bool vertical);
+  static gfx::Rect edgeBounds(gfx::Rect frame,bool vertical);
+  static gfx::Rect gridBounds(gfx::Rect viewport,bool vertical);
+  void setMaterialOpacity(int opacity,int hoverOpacity=-1);
+  bool translucent() const {return materialOpacity_<255 || materialHoverOpacity_<255;}
   void setDockBounds(gfx::Rect track); // Share one base-pixel edge with the adjacent content.
   void configure(int total,int page,int value);
   gfx::Rect thumbBounds(); // Physical display coordinates for paint and hover.

@@ -5,6 +5,7 @@
 - [功能需求基线](docs/requirements-baseline/README.md)：从旧版 Demo 提取功能语义、兼容边界和验收场景。
 - [现有版本](../legacy/README.md)：功能和工程数据的对照。
 - [全代码 legacy 对照审查](docs/legacy-architecture-audit.md)：已修偏差、逐文件来源及尚未完成项。当前不是完整 legacy 迁移，不能通过完全一致性验收。
+- [性能框架与全功能承接计划](docs/performance-framework.md)：统一快照/后台任务、渲染/缓存/历史边界及全部需求性能矩阵；[当前性能审计与修复](docs/performance-audit-2026-10-15.md)。
 
 字体按用户最新决定使用 **Fusion Pixel 10px，整体 2×（20px 显示高度）**，取代最初的 9×9。遵守原始拉丁／中文前进宽度，不拉伸、不平滑；字体原文和许可随资源保留。
 
@@ -46,3 +47,11 @@ pwsh -File scripts/build.ps1
 `build/Release/moonsprite-native.exe --smoke` 启动原生窗口，向应用消息处理器注入限定绘图动作，检查历史、取消、菜单、颜色板、窗口布局和关闭取消，输出自身帧缓冲 `smoke.bmp` 后退出。它不是操作系统真实鼠标、IME 或长期运行测试。失败会返回非零状态，启动异常写入工作目录 `native-smoke-error.txt`。
 
 详细边界与验证见[首个原型记录](docs/native-milestone-01.md)，依赖固定版本和许可见 [THIRD_PARTY.md](THIRD_PARTY.md)。编译产物、依赖缓存和截图不提交，未创建安装包。
+
+笔刷预览跟随问题与 Aseprite 对照、修复及验证范围见 [笔刷预览性能](docs/brush-preview-performance.md)。
+
+滚轮缩放卡顿原因、局部重绘修复和实测见 [滚轮缩放性能](docs/wheel-zoom-performance.md)。
+
+大量帧／图层的绘制、可见行复用与时间轴压力验证见 [性能记录](docs/large-timeline-performance.md)。
+
+快速绘制、松笔及拖动画布的 Aseprite 代码对照、修复和像素验证见 [绘制与拖动性能](docs/drawing-pan-performance.md)。

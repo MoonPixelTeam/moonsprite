@@ -10,10 +10,33 @@ namespace moon::panels {
 // Legacy panel-layout/floating-panel ports; tab grouping is user-requested.
 enum class Dock { Left,Right,Bottom,Floating };
 struct Rect {int x=0,y=0,w=0,h=0;bool contains(int px,int py,int margin=0)const{return px>=x-margin&&py>=y-margin&&px<x+w+margin&&py<y+h+margin;}bool operator==(const Rect& r)const{return x==r.x&&y==r.y&&w==r.w&&h==r.h;}};
+// legacy core/panel-preferences.ts remapFloatingCoordinate / resizeFloatingPosition.
+// All native columns pass responsiveToViewport=true. Keep explicit dimensions;
+// only position changes, including when a panel is larger than the viewport.
+inline Rect resizeFloatingPosition(Rect position,Rect previous,Rect viewport){
+ auto coordinate=[](int value,int size,int oldOrigin,int oldSize,int origin,int viewportSize){
+  const int oldTravel=std::max(0,oldSize-size),travel=std::max(0,viewportSize-size);
+  if(!travel)return origin;
+  const double offset=oldTravel?std::clamp(double(value-oldOrigin)/oldTravel,0.0,1.0)*travel:std::clamp(value-oldOrigin,0,travel);
+  return origin+int(std::floor(offset+.5));
+ };
+ position.x=coordinate(position.x,position.w,previous.x,previous.w,viewport.x,viewport.w);
+ position.y=coordinate(position.y,position.h,previous.y,previous.h,viewport.y,viewport.h);
+ return position;
+}
 struct Group {std::vector<int> tabs;int active=0;Dock dock=Dock::Left;double weight=1;int width=140;Rect floating{200,90,220,180};Rect floatingArea{};};
 struct Geometry {std::array<Rect,4> panel{};std::array<bool,4> shown{};Rect canvas;};
 struct Target {int group=-1;Dock dock=Dock::Floating;bool after=true,merge=false;Rect hit,preview;int tabIndex=-1;bool operator==(const Target& t)const{return group==t.group&&dock==t.dock&&after==t.after&&merge==t.merge&&tabIndex==t.tabIndex;}};
 struct Model {
+ bool resizeFloating(Rect previous,Rect viewport){
+  if(viewport.w<=0 || viewport.h<=0 || previous==viewport)return false;
+  bool changed=false;
+  for(auto& g:groups)if(g.dock==Dock::Floating){
+   auto base=g.floatingArea;if(base.w<=0 || base.h<=0)base=previous;
+   if(base.w<=0 || base.h<=0)base=viewport;
+   g.floating=resizeFloatingPosition(g.floating,base,viewport);g.floatingArea=viewport;changed=true;
+  }return changed;
+ }
  bool custom=false;int leftWidth=120,rightWidth=140,bottomHeight=109;double bottomShare=0;
  std::vector<Group> groups{{{0},0,Dock::Left,2,140},{{1},1,Dock::Left,3,140},{{2},2,Dock::Bottom,1,300},{{3},3,Dock::Floating,1,180,{280,90,180,150}}};
  int groupOf(int id)const{for(int i=0;i<int(groups.size());++i)if(std::find(groups[i].tabs.begin(),groups[i].tabs.end(),id)!=groups[i].tabs.end())return i;return -1;}
@@ -53,11 +76,8 @@ struct Model {
   int main=-1;for(int i:bottom)if(std::find(groups[i].tabs.begin(),groups[i].tabs.end(),2)!=groups[i].tabs.end())main=i;if(main<0&&!bottom.empty())main=bottom.front();
   int reserved=0;for(int i:bottom)if(i!=main)reserved+=groups[i].width;const int available=centerW-gap*std::max(0,int(bottom.size())-1);const int mainMin=main>=0 && std::find(groups[main].tabs.begin(),groups[main].tabs.end(),2)!=groups[main].tabs.end()?180:116;const double factor=reserved>available-mainMin?double(std::max(0,available-mainMin))/std::max(1,reserved):1;
   int x=centerX;for(int i:bottom){const int w=i==main?std::max(1,available-int(reserved*factor)):std::max(1,int(groups[i].width*factor));assign(i,{x,area.y+area.h-bh,w,bh});x+=w+gap;}
-  for(int i:floating){auto r=groups[i].floating;const auto base=groups[i].floatingArea;const auto view=floatingViewport;
-   if(base.w>r.w)r.x=view.x+int(std::round(double(r.x-base.x)*(view.w-r.w)/(base.w-r.w)));
-   if(base.h>r.h)r.y=view.y+int(std::round(double(r.y-base.y)*(view.h-r.h)/(base.h-r.h)));
-   // User: retain the actual docked size; only constrain position to the app.
-   r.x=std::clamp(r.x,view.x,std::max(view.x,view.x+view.w-r.w));r.y=std::clamp(r.y,view.y,std::max(view.y,view.y+view.h-r.h));assign(i,r);}
+  for(int i:floating){auto base=groups[i].floatingArea;if(base.w<=0 || base.h<=0)base=floatingViewport;
+   assign(i,resizeFloatingPosition(groups[i].floating,base,floatingViewport));}
 
   return result;
  }

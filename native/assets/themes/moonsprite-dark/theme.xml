@@ -47,6 +47,7 @@
     <part id="timeline.button" x="140" y="0" w1="2" w2="3" w3="2" h1="2" h2="3" h3="2" />
     <part id="timeline.active" x="0" y="576" w1="0" w2="3" w3="0" h1="0" h2="3" h3="0" />
     <part id="timeline.hover" x="4" y="576" w1="0" w2="3" w3="0" h1="0" h2="3" h3="0" />
+    <part id="timeline.cell" x="0" y="644" w1="1" w2="10" w3="1" h1="1" h2="10" h3="1" />
     <part id="timeline.row" x="152" y="0" w1="0" w2="3" w3="0" h1="0" h2="3" h3="0" />
     <part id="timeline.grid" x="164" y="0" w1="1" w2="1" w3="1" h1="1" h2="1" h3="1" />
     <part id="timeline.line" x="176" y="0" w1="0" w2="1" w3="0" h1="0" h2="1" h3="0" />
@@ -244,6 +245,23 @@
     <part id="timeline.loop.normal" x="3" y="640" w1="1" w2="1" w3="1" h1="1" h2="1" h3="1" />
     <part id="timeline.loop.hover" x="6" y="640" w1="1" w2="1" w3="1" h1="1" h2="1" h3="1" />
     <part id="timeline.loop.playing" x="9" y="640" w1="1" w2="1" w3="1" h1="1" h2="1" h3="1" />
+    <part id="icon.up" x="0" y="656" w="5" h="5" />
+    <part id="icon.up-disabled" x="5" y="656" w="5" h="5" />
+    <part id="icon.down" x="10" y="656" w="5" h="5" />
+    <part id="icon.down-disabled" x="15" y="656" w="5" h="5" />
+    <part id="switch.off.normal" x="0" y="662" w="18" h="9" />
+    <part id="switch.off.hover" x="0" y="672" w="18" h="9" />
+    <part id="switch.on.normal" x="19" y="662" w="18" h="9" />
+    <part id="switch.on.hover" x="19" y="672" w="18" h="9" />
+    <part id="switch.container" x="0" y="682" w1="2" w2="77" w3="2" h1="2" h2="13" h3="2" />
+    <part id="checkbox.unchecked" x="0" y="700" w="7" h="7" />
+    <part id="checkbox.checked" x="8" y="700" w="7" h="7" />
+    <part id="checkbox.hover" x="16" y="700" w1="1" w2="56" w3="1" h1="1" h2="14" h3="1" />
+    <part id="checkbox.pressed" x="75" y="700" w1="1" w2="56" w3="1" h1="1" h2="14" h3="1" />
+    <part id="new_document.color-mode-rgba" x="0" y="717" w="16" h="8" />
+    <part id="new_document.color-mode-indexed" x="17" y="717" w="16" h="7" />
+    <part id="new_document.color-mode-grayscale" x="34" y="717" w="14" h="7" />
+    <part id="new_document.record-drawing" x="49" y="717" w="16" h="7" />
   </parts>
   <styles>
     <style id="role_button.normal">
@@ -370,6 +388,7 @@
     <style id="timeline.row">
       <background-border part="timeline.row" />
     </style>
+    <style id="timeline.cell"><background-border part="timeline.cell" /></style>
     <style id="timeline.grid">
       <background-border part="timeline.grid" />
     </style>
@@ -887,5 +906,22 @@
     <style id="timeline.loop.normal"><background-border part="timeline.loop.normal" /></style>
     <style id="timeline.loop.hover"><background-border part="timeline.loop.hover" /></style>
     <style id="timeline.loop.playing"><background-border part="timeline.loop.playing" /></style>
+    <style id="icon.up"><icon part="icon.up" /></style>
+    <style id="icon.up-disabled"><icon part="icon.up-disabled" /></style>
+    <style id="icon.down"><icon part="icon.down" /></style>
+    <style id="icon.down-disabled"><icon part="icon.down-disabled" /></style>
+    <style id="switch.off.normal"><icon part="switch.off.normal" /></style>
+    <style id="switch.off.hover"><icon part="switch.off.hover" /></style>
+    <style id="switch.on.normal"><icon part="switch.on.normal" /></style>
+    <style id="switch.on.hover"><icon part="switch.on.hover" /></style>
+    <style id="switch.container"><background-border part="switch.container" /></style>
+    <style id="checkbox.unchecked"><icon part="checkbox.unchecked" /></style>
+    <style id="checkbox.checked"><icon part="checkbox.checked" /></style>
+    <style id="checkbox.hover"><background-border part="checkbox.hover" /></style>
+    <style id="checkbox.pressed"><background-border part="checkbox.pressed" /></style>
+    <style id="new_document.color-mode-rgba"><icon part="new_document.color-mode-rgba" /></style>
+    <style id="new_document.color-mode-indexed"><icon part="new_document.color-mode-indexed" /></style>
+    <style id="new_document.color-mode-grayscale"><icon part="new_document.color-mode-grayscale" /></style>
+    <style id="new_document.record-drawing"><icon part="new_document.record-drawing" /></style>
   </styles>
 </theme>

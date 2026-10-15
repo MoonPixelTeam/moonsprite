@@ -4,16 +4,20 @@
 #include <regex>
 #include "document.h"
 #include "panel_docking.h"
+#include "space_drag_scroll.h"
+#include "layer_label_width.h"
 #include "selection_tools.h"
 #include "project_import.h"
 #include "project_file.h"
 #include "image_export.h"
 #include "gif_export.h"
+#include "frame_png_export.h"
 #include "sprite_sheet.h"
 #include "sprite_sheet_import.h"
 #include "image_decode.h"
 #include "recovery_store.h"
 #include "recovery_scheduler.h"
+#include "document_snapshot.h"
 #include "recovery_catalog.h"
 #include "recovery_preferences.h"
 #include "project_encode.h"
@@ -37,6 +41,7 @@
 #include "palette_extraction.h"
 #include "pattern_brush_import.h"
 #include "pattern_brush_library.h"
+#include "background_preset_library.h"
 #include "selection_pattern_brush.h"
 #include "os/os.h"
 #include "ui/system.h"
@@ -59,6 +64,7 @@
 #include <windows.h>
 #include <commctrl.h>
 #include <commdlg.h>
+#include <shellapi.h>
 #include "pixel_clipboard.h"
 #include <filesystem>
 #include <fstream>
@@ -72,6 +78,9 @@
 #include <cstdio>
 #include <iomanip>
 #include "gradient_map_presets.h"
+#include "layer_quick_actions_dialog.h"
+#include "animation_settings_dialog.h"
+#include "new_document_dialog.h"
 
 namespace {
 using namespace moon;
@@ -159,6 +168,14 @@ public:
 class PreviewPanel : public ui::Widget {
   const PixelFont& font_;Skin& skin_;Document& document_;
   CanvasRenderer renderer_;
+  // WorkspacePanels: override ?? (canvas view && app scope), reset on document id.
+  std::optional<bool> relativeLuminanceOverride_;
+  bool inheritedRelativeLuminance_=false;
+  std::uint64_t luminanceDocumentIdentity_=0;
+  void applyRelativeLuminance() {
+    const bool next=relativeLuminanceOverride_.value_or(inheritedRelativeLuminance_);
+    if(renderer_.relativeLuminance()!=next){renderer_.setRelativeLuminance(next);invalidate();}
+  }
   PixelButton* close_;
   gfx::Rect viewport_,startBounds_;
   gfx::Point startMouse_;
@@ -169,6 +186,9 @@ class PreviewPanel : public ui::Widget {
   std::uint64_t geometryUpdates_=0;
   std::uint64_t blitMoves_=0,paintCount_=0;
 public:
+  CheckerboardSettings checkerboard;
+  void noteContentChange(){renderer_.noteChange(document_);}
+  std::uint64_t uploadedPixels() const {return renderer_.uploadedPixels();}
   bool managed=false;int frameTop=0;
   std::function<void()> closed;
   std::function<void()> context;
@@ -200,6 +220,14 @@ public:
     } else next=resizedPanel(startBounds_,gfx::Point(dx/uiScale*uiScale,dy/uiScale*uiScale),resizeEdges_,viewport_,gfx::Size(180,120));
     if(next!=bounds()){++geometryUpdates_;setBounds(next);}
   }
+  bool relativeLuminance()const{return renderer_.relativeLuminance();}
+  void syncRelativeLuminance(bool canvasView,bool inPreview=false) {
+    if(luminanceDocumentIdentity_!=document_.identity()){
+      luminanceDocumentIdentity_=document_.identity();relativeLuminanceOverride_.reset();
+    }
+    inheritedRelativeLuminance_=canvasView && inPreview;applyRelativeLuminance();
+  }
+  void toggleRelativeLuminance(){relativeLuminanceOverride_=!relativeLuminance();applyRelativeLuminance();}
   void closePanel(){close_->Click();}
   void finishPointer() {
     flushGeometry();
@@ -217,11 +245,11 @@ public:
   void constrain(gfx::Rect viewport) {
     if(viewport.w<=0 || viewport.h<=0)return;
     if(viewport==viewport_ && !bounds().isEmpty())return;
-    viewport_=viewport;auto next=bounds();
+    const auto previousViewport=viewport_;viewport_=viewport;auto next=bounds();
     if(next.isEmpty())next={viewport.x2()-250-16,viewport.y2()-260-16,250,260};
-    next.w=std::min(next.w,viewport.w);next.h=std::min(next.h,viewport.h);
-    next.x=std::clamp(next.x,viewport.x,viewport.x2()-next.w);
-    next.y=std::clamp(next.y,viewport.y,viewport.y2()-next.h);
+    auto old=previousViewport.isEmpty()?viewport:previousViewport;
+    const auto adjusted=panels::resizeFloatingPosition({next.x,next.y,next.w,next.h},{old.x,old.y,old.w,old.h},{viewport.x,viewport.y,viewport.w,viewport.h});
+    next={adjusted.x,adjusted.y,adjusted.w,adjusted.h};
     if(next!=bounds())setBounds(next);
   }
   void onResize(ui::ResizeEvent& ev) override {
@@ -301,7 +329,7 @@ public:
     const gfx::Rect image(content.x+(content.w-document_.width()*fit)/2,content.y+(content.h-document_.height()*fit)/2,
                           document_.width()*fit,document_.height()*fit);
     g.saveClip();g.clipRect(content);renderer_.sync(document_);
-    renderer_.draw(g,image,fit,skin_["checkerA"],skin_["checkerB"]);g.restoreClip();
+    renderer_.draw(g,image,fit,checkerboard.light,checkerboard.dark,checkerboard.size);g.restoreClip();
     }
     // This content widget can repaint independently while a stroke is held.
     // Restore the sibling chrome in the same clipped paint, rather than
@@ -359,7 +387,14 @@ public:
  bool onProcessMessage(ui::Message* msg)override{if(!points)return ui::Widget::onProcessMessage(msg);if(msg->type()==ui::kKeyDownMessage){auto k=static_cast<ui::KeyMessage*>(msg);if(k->scancode()==ui::kKeyDel || k->scancode()==ui::kKeyBackspace){deleteSelected();return true;}}if(msg->type()!=ui::kMouseDownMessage && msg->type()!=ui::kDoubleClickMessage && msg->type()!=ui::kMouseMoveMessage && msg->type()!=ui::kMouseUpMessage)return ui::Widget::onProcessMessage(msg);auto m=static_cast<ui::MouseMessage*>(msg);if(msg->type()==ui::kMouseDownMessage || msg->type()==ui::kDoubleClickMessage){int hit=-1;for(int i=0;i<int(points->size());++i){auto at=pointPosition((*points)[i]);if(std::hypot(double(at.x-m->position().x),double(at.y-m->position().y))<=12*uiScale){hit=i;break;}}if(m->right() || msg->type()==ui::kDoubleClickMessage){if(hit>0&&hit<int(points->size())-1){selected=hit;deleteSelected();}return true;}if(!m->left())return false;requestFocus();captureMouse();if(hit<0){auto p=eventPoint(m->position());points->push_back(p);std::stable_sort(points->begin(),points->end(),[](auto a,auto b){return a.x<b.x;});hit=int(std::find_if(points->begin(),points->end(),[&](auto q){return q.x==p.x&&q.y==p.y;})-points->begin());}active_=selected=hit;notify();return true;}if(msg->type()==ui::kMouseMoveMessage && hasCapture() && active_>=0 && active_<int(points->size())){auto p=eventPoint(m->position());p.x=active_==0?0:active_==int(points->size())-1?255:std::max((*points)[active_-1].x+1,std::min((*points)[active_+1].x-1,p.x));(*points)[active_]=p;notify();return true;}if(msg->type()==ui::kMouseUpMessage){active_=-1;if(hasCapture())releaseMouse();return true;}return ui::Widget::onProcessMessage(msg);}
  void onPaint(ui::PaintEvent& ev)override{if(!points)return;auto& g=*ev.graphics();UiPaintScale scale(g);const auto r=uiLogical(clientBounds());g.fillRect(skin_["background"],r);auto pos=[&](double x,double y){return gfx::Point(int((12+x/255*100)/124*r.w),int((10+(255-y)/255*100)/124*r.h));};const auto lo=pos(0,0),hi=pos(255,255);for(int value=0;value<=4;++value){auto p=pos(value*255.0/4,value*255.0/4);g.drawLine(skin_["panel"],{p.x,hi.y},{p.x,lo.y});g.drawLine(skin_["panel"],{lo.x,p.y},{hi.x,p.y});}const auto ink=channel==1?gfx::rgba(224,100,100):channel==2?gfx::rgba(100,200,130):channel==3?gfx::rgba(110,150,235):skin_["text"];if(histogram){unsigned maximum=1;for(auto n:*histogram)maximum=std::max(maximum,n);for(int x=0;x<256;++x)if((*histogram)[x]){auto p=pos(x,0);int height=std::max(1,int(double((*histogram)[x])/maximum*(lo.y-hi.y-4)));g.fillRect(skin_["panel"],{p.x,lo.y-height,1,height});}}auto lut=buildCurveLut(*points);for(int x=1;x<256;++x)g.drawLine(ink,pos(x-1,lut[x-1]),pos(x,lut[x]));for(int i=0;i<int(points->size());++i){auto p=pos((*points)[i].x,(*points)[i].y);g.fillRect(skin_["background"],{p.x-2,p.y-2,5,5});g.drawRect(i==selected?skin_["text"]:ink,{p.x-2,p.y-2,5,5});}}
 };
-class SpriteSheetPreview final : public ui::Widget { const Skin& skin_; std::vector<Pixel> pixels_; int imageWidth_=0,imageHeight_=0; public: explicit SpriteSheetPreview(const Skin& skin):ui::Widget(ui::kGenericWidget),skin_(skin){setTransparent(false);setVisible(false);} void setImage(StaticImageExport image){imageWidth_=image.width;imageHeight_=image.height;pixels_=std::move(image.pixels);invalidate();} void clearImage(){pixels_.clear();imageWidth_=imageHeight_=0;invalidate();} void onPaint(ui::PaintEvent& ev) override {auto& g=*ev.graphics();UiPaintScale scale(g);auto r=uiLogical(clientBounds());g.fillRect(skin_["background"],r);skin_.draw(g,"panel_content",r);if(pixels_.empty())return;int fit=std::max(1,std::min((r.w-6)/imageWidth_,(r.h-6)/imageHeight_));gfx::Rect d(r.x+(r.w-imageWidth_*fit)/2,r.y+(r.h-imageHeight_*fit)/2,imageWidth_*fit,imageHeight_*fit);g.saveClip();g.clipRect(r);for(int y=0;y<imageHeight_;++y)for(int x=0;x<imageWidth_;++x){auto p=pixels_[std::size_t(y)*imageWidth_+x];if(!(p>>24))continue;g.fillRect(gfx::rgba(p&255,(p>>8)&255,(p>>16)&255,p>>24),gfx::Rect(d.x+x*fit,d.y+y*fit,fit,fit));}g.restoreClip();} };
+class SpriteSheetPreview final : public ui::Widget {
+  const Skin& skin_;os::SurfaceRef image_;int imageWidth_=0,imageHeight_=0;
+public:
+  explicit SpriteSheetPreview(const Skin& skin):ui::Widget(ui::kGenericWidget),skin_(skin){setTransparent(false);setVisible(false);}
+  void setImage(StaticImageExport image){auto surface=os::instance()->makeRgbaSurface(image.width,image.height);if(!surface)throw std::runtime_error("Cannot allocate sheet preview");uploadRgbaRegion(*surface,image.pixels.data(),image.width,image.height,image.width);imageWidth_=image.width;imageHeight_=image.height;image_=std::move(surface);invalidate();}
+  void clearImage(){image_.reset();imageWidth_=imageHeight_=0;invalidate();}
+  void onPaint(ui::PaintEvent& ev) override {auto& g=*ev.graphics();UiPaintScale scale(g);auto r=uiLogical(clientBounds());g.fillRect(skin_["background"],r);skin_.draw(g,"panel_content",r);if(!image_)return;int fit=std::max(1,std::min((r.w-6)/imageWidth_,(r.h-6)/imageHeight_));gfx::Rect d(r.x+(r.w-imageWidth_*fit)/2,r.y+(r.h-imageHeight_*fit)/2,imageWidth_*fit,imageHeight_*fit);g.saveClip();g.clipRect(r);ui::Paint over;over.blendMode(os::BlendMode::SrcOver);g.drawSurface(image_.get(),{0,0,imageWidth_,imageHeight_},d,os::Sampling(),&over);g.restoreClip();}
+};
 // Native host for legacy tool-property popovers/dialog contents.
 class ToolPropertyPopup final : public ui::PopupWindow {
   const Skin& skin_;const PixelFont& font_;std::u32string title_;
@@ -370,6 +405,36 @@ public:
   void place(ui::Widget* widget,gfx::Rect rect){addChild(widget);controls_.push_back({widget,rect});widget->setBounds(uiPhysical(rect).offset(bounds().origin()));}
   void onResize(ui::ResizeEvent& ev)override{setBoundsQuietly(ev.bounds());for(auto& item:controls_)item.first->setBounds(uiPhysical(item.second).offset(bounds().origin()));}
   void onPaint(ui::PaintEvent& ev)override{auto& g=*ev.graphics();UiPaintScale scale(g);auto r=uiLogical(clientBounds());g.fillRect(skin_["panel"],r);skin_.draw(g,"panel_outer",r);if(!title_.empty())font_.draw(g,title_,5,5,skin_["text"]);}
+};
+// Loop-dialog-only NumberInput adaptation; reuses PixelEntry expression parser.
+class LoopNumberEntry final:public PixelEntry {
+public:
+  double minimum=1,maximum=9999,value=1;
+  std::function<void()> committed;
+  using PixelEntry::PixelEntry;
+  void setValue(double next){value=next;std::ostringstream out;out.precision(12);out<<next;setText(out.str());}
+  void updateLiveValue(){
+    if(!isEnabled() || isReadOnly())return;
+    const auto source=text();if(source.empty() || source.find_first_of("+-*/()",1)!=std::string::npos)return;
+    static const std::regex plain(R"(^\s*[+\-]?(?:[0-9]+(?:\.[0-9]*)?|\.[0-9]+)(?:[eE][+\-]?[0-9]+)?\s*$)");
+    if(!std::regex_match(source,plain))return;
+    try{const double next=std::stod(source);if(std::isfinite(next)){value=std::clamp(next,minimum,maximum);if(committed)committed();}}catch(...){}
+  }
+  bool commitValue(){
+    const auto source=text();static const std::regex token(R"((\s+|[+*/()\-]|(?:[0-9]+(?:\.[0-9]*)?|\.[0-9]+)(?:[eE][+\-]?[0-9]+)?))");
+    std::size_t offset=0;std::smatch match;while(offset<source.size()){const auto tail=source.substr(offset);if(!std::regex_search(tail,match,token,std::regex_constants::match_continuous)){setValue(value);return false;}offset+=match.length();}
+    if(source.empty() || !commitExpression()){setValue(value);return false;}try{setValue(std::clamp(std::stod(text()),minimum,maximum));}catch(...){setValue(value);return false;}if(committed)committed();return true;
+  }
+  bool onProcessMessage(ui::Message* msg)override{
+    if(msg->type()==ui::kKeyDownMessage && static_cast<ui::KeyMessage*>(msg)->scancode()==ui::kKeyEnter){const auto source=text();const bool expression=source.size()>1 && source.find_first_of("+-*/()",1)!=std::string::npos;commitValue();if(!expression && accept)accept();return true;}
+    if(isEnabled() && msg->type()==ui::kFocusLeaveMessage)commitValue();return PixelEntry::onProcessMessage(msg);
+  }
+};
+class LayerLabelSeparator final : public ui::Widget {
+public:
+  std::function<bool(ui::Message*)> process;
+  LayerLabelSeparator():ui::Widget(ui::kGenericWidget){setFocusStop(true);setTransparent(true);}
+  bool onProcessMessage(ui::Message* msg) override {return (process && process(msg)) || ui::Widget::onProcessMessage(msg);}
 };
 class Editor : public ui::Widget {
 public:
@@ -392,6 +457,35 @@ private:
   struct HomeRow {std::u32string name;std::filesystem::path path;std::string recoveryId;};
   std::vector<HomeRow> homeEntries_;
   bool documentOpen_=true;
+  // legacy workspace-types.ts DocumentSession: inactive documents are moved,
+  // never serialized or copied, so pixels, selections and undo remain intact.
+  struct ProjectSession {
+    std::optional<Document> stored;
+    std::filesystem::path path;
+    gfx::Rect canvas;
+    double zoom=8;
+    int layers=0,frames=0,layerRemainder=0,frameRemainder=0,paletteScroll=0;
+    bool frameSelection=false,guides=true;
+    RecentColors recent;
+    std::optional<TransformPoint> pivot;
+    recovery::Scheduler queue;
+    std::optional<recovery::Ticket> ticket;
+    std::future<void> worker;
+    std::optional<std::pair<std::uint64_t,std::string>> cleanup;
+    std::optional<DocumentSnapshot> snapshot;
+    std::uint64_t recoveryIdentity=0,ownedIdentity=0;
+    std::string ownedId;
+    std::chrono::steady_clock::time_point due=std::chrono::steady_clock::now()+std::chrono::minutes(5);
+  };
+  std::vector<std::unique_ptr<ProjectSession>> projects_;
+  std::size_t activeProject_=0,recoveryProject_=0;
+  std::vector<PixelButton*> projectCloseButtons_;
+  std::vector<gfx::Rect> projectTabRects_;
+  int projectTabScroll_=0;
+  bool revealProjectTab_=false,closingWorkspace_=false;
+  bool projectTabDragging_=false;
+  gfx::Point projectTabPress_;
+
   std::vector<std::pair<ui::Widget*,bool>> closedControlStates_;
   std::vector<PixelButton*> commands_, swatches_, panelTabs_, timelineInactive_;
   PixelButton *paletteActions_=nullptr,*paletteLibrary_=nullptr;
@@ -401,6 +495,10 @@ private:
   std::array<bool,9> replaceReturnTools_{};
   bool replaceSamplingFinishing_=false;
   PixelButton* exportFormatButton_=nullptr;
+  PixelButton* exportOpenFolderButton_=nullptr;
+  bool exportOpenFolderRequested_=false;
+  std::filesystem::path exportedDirectory_;
+  std::function<bool(OPENFILENAMEW*)> chooseExportFile_=[](OPENFILENAMEW* dialog){return GetSaveFileNameW(dialog)!=FALSE;};
   GifExportOptions gifOptions_;
   std::array<PixelEntry*,3> gifInputs_{};
   PixelButton *gifRange_=nullptr,*gifDirection_=nullptr,*gifTrim_=nullptr;
@@ -412,6 +510,8 @@ private:
   std::string replaceScope_="layers";
   bool replacePreview_=false,replaceRemember_=true,replaceLoaded_=false;
   SheetImportOptions importSheetOptions_;std::array<PixelEntry*,8> importSheetInputs_{};PixelButton *importSheetLayout_=nullptr,*importSheetPartial_=nullptr;bool importAfterOpen_=false,importSheetUpdating_=false;
+  bool sheetOutputFile_=false,sheetOpenAfterExport_=false;std::filesystem::path sheetExportedPath_;
+  std::function<void(const std::filesystem::path&)> openSheetOutput_=[this](const auto& path){openPath(path);};
   SpriteSheetOptions sheetOptions_;PixelEntry* sheetValue_=nullptr;std::array<PixelButton*,7> sheetButtons_{};SpriteSheetPreview* sheetPreview_=nullptr;
   PixelEntry* exportScaleInput_=nullptr;PixelButton *exportTrimButton_=nullptr,*exportSelectionButton_=nullptr;StaticImageExportOptions exportOptions_;
   std::array<PixelEntry*,4> resizeInputs_{};
@@ -460,6 +560,8 @@ private:
   PixelButton* eyedropperSourceButton_=nullptr;
   bool eyedropperLensEnabled_=true;int eyedropperLensSize_=2;
   struct PreferenceDraft {bool smooth=false,lens=true,returnStart=false;int source=0,lensSize=2;double rate=1;recovery::Preferences recovery;};
+  CheckerboardSettings checkerboard_,checkerboardDraft_;
+  std::array<PixelEntry*,3> checkerboardFields_{};
   PreferenceDraft preferenceDraft_;
   int preferenceSection_=0;
   std::array<PixelButton*,14> preferenceTabs_{};
@@ -487,6 +589,7 @@ private:
   TransformPoint selectionPivotStart_,selectionPivotPointerStart_;
   std::uint64_t selectionPivotIdentity_=0;
   std::optional<SelectionMask> selectionPivotMask_;
+  std::uint64_t trimPivotIdentity_=0,trimPivotSerial_=0;
   mutable std::map<std::pair<int,int>,std::vector<Pixel>> selectionColorTiles_;
   mutable std::uint64_t selectionColorIdentity_=0,selectionColorRevision_=0;
   mutable std::string selectionColorFrame_;
@@ -605,6 +708,8 @@ private:
   bool selectionPivotHit(gfx::Point point) const {if(!document.selection() || !selectionPivotVisible_ || selectionFreeTransform_ || selectionDragging_)return false;const auto p=selectionPivotPoint();return std::abs(point.x-canvas_.x-p.x*canvasScale())<=10 && std::abs(point.y-canvas_.y-p.y*canvasScale())<=10;}
   Point constrainedSelectionDelta(Point delta,bool shift){if(!shift){selectionAxis_=0;return delta;}const int x=std::abs(delta.x),y=std::abs(delta.y);if(!selectionAxis_ && (x || y))selectionAxis_=x>=y?1:2;if(selectionAxis_==1 && y>x*1.2)selectionAxis_=2;if(selectionAxis_==2 && x>y*1.2)selectionAxis_=1;return selectionAxis_==1?Point{delta.x,0}:Point{0,delta.y};}
   void centerContent(bool horizontal,bool vertical){const auto before=document.selection();if(document.centerActiveContent(horizontal,vertical)){const auto after=document.selection();if(selectionPivot_ && before && after){selectionPivot_->x+=after->x-before->x;selectionPivot_->y+=after->y-before->y;}selectionPivotMask_=after;playing_=false;}refresh();}
+  void trimCanvas(bool allFrames){try{if(document.trimCanvas(allFrames,selectionPivot_)){playing_=false;selectionFreeTransform_=false;fitCanvas();}}catch(const std::exception& e){status_=unicodeText(e.what());}refresh();}
+  void cropCanvas(){try{if(document.cropCanvas(selectionPivot_)){playing_=false;selectionFreeTransform_=false;fitCanvas();}}catch(const std::exception& e){status_=unicodeText(e.what());}refresh();}
   void shrinkSelectionToContent(){document.commitFloatingPaste();const auto before=document.selection();if(!before)return;int left=document.width(),top=document.height(),right=-1,bottom=-1;for(int y=std::max(0,before->y);y<std::min(document.height(),before->y+before->height);++y)for(int x=std::max(0,before->x);x<std::min(document.width(),before->x+before->width);++x)if(selectionContains(before,x,y) && (document.pixels()[std::size_t(y)*document.width()+x]>>24)){left=std::min(left,x);top=std::min(top,y);right=std::max(right,x);bottom=std::max(bottom,y);}if(right<left){status_=U"选区中没有内容";refresh();return;}auto next=combineSelection(before,SelectionMask{left,top,right-left+1,bottom-top+1,{}},3);if(selectionEqual(before,next))return;document.commitSelection(before,next);selectionPivot_.reset();selectionPropertiesActive_=true;refresh();}
   void showSelectionPivotPopup(){if(!document.selection())return;ui::PopupWindow popup("",ui::PopupWindow::ClickBehavior::CloseOnClickInOtherWindow);popup.setAutoRemap(false);popup.setWantFocus(true);const auto trigger=selectionControls_[15].first->bounds();const auto popupBounds=gfx::Rect(std::clamp(trigger.x,bounds().x,std::max(bounds().x,bounds().x2()-90*uiScale)),trigger.y2()+2*uiScale,90*uiScale,84*uiScale);popup.setBounds(popupBounds);class PivotPanel final:public ui::Widget{const Skin& skin;public:PivotPanel(const Skin& value):ui::Widget(ui::kGenericWidget),skin(value){}void onPaint(ui::PaintEvent& ev)override{auto& g=*ev.graphics();UiPaintScale scale(g);const auto rect=uiLogical(clientBounds());g.fillRect(skin["panel"],rect);skin.draw(g,"panel_outer",rect);}};auto content=new PivotPanel(skin_);popup.addChild(content);content->setBounds(popupBounds);auto visible=new PixelButton(font_,skin_,U"显示轴心",[this]{selectionPivotVisible_=!selectionPivotVisible_;saveSelectionPreferences();invalidateRect(canvasViewport());});visible->active=selectionPivotVisible_;visible->icon=selectionPivotVisible_?"check":"checkboxUnchecked";visible->iconSkin=&toolIcons_;visible->bareIconWithCaption=true;content->addChild(visible);visible->setBounds(gfx::Rect(popupBounds.x+4*uiScale,popupBounds.y+4*uiScale,82*uiScale,19*uiScale));std::array<PixelButton*,9> presets{};for(int i=0;i<9;++i){auto button=new PixelButton(font_,skin_,U"",[this,i]{if(auto target=selectionTransformTarget())selectionPivot_=selectionPivotPreset(*target,i);invalidateRect(canvasViewport());});button->icon="selection-pivot-preset-"+std::to_string(i);button->iconSkin=&toolIcons_;content->addChild(button);button->setBounds(gfx::Rect(popupBounds.x+(4+(i%3)*15)*uiScale,popupBounds.y+(23+(i/3)*16)*uiScale,15*uiScale,16*uiScale));if(auto target=selectionTransformTarget()){const auto point=selectionPivotPreset(*target,i),current=selectionPivotPoint();button->active=std::abs(point.x-current.x)<1e-6 && std::abs(point.y-current.y)<1e-6;}presets[i]=button;button->Click.connect([&,i]{for(int j=0;j<9;++j){presets[j]->active=i==j;presets[j]->invalidate();}});}visible->Click.connect([this,visible]{visible->active=selectionPivotVisible_;visible->icon=selectionPivotVisible_?"check":"checkboxUnchecked";visible->invalidate();});popup.Resize.connect([&,content,visible](ui::ResizeEvent&){const auto area=content->bounds();visible->setBounds(gfx::Rect(area.x+4*uiScale,area.y+4*uiScale,82*uiScale,19*uiScale));for(int i=0;i<9;++i)presets[i]->setBounds(gfx::Rect(area.x+(4+(i%3)*15)*uiScale,area.y+(23+(i/3)*16)*uiScale,15*uiScale,16*uiScale));});std::unique_ptr<ui::Timer> verify;if(smoke_){verify=std::make_unique<ui::Timer>(160,&popup);verify->Tick.connect([&]{if(presets[0]->bounds().x!=visible->bounds().x || presets[3]->bounds().x!=visible->bounds().x || presets[6]->bounds().x!=visible->bounds().x)throw std::runtime_error("Pivot popup left alignment");presets[0]->Click();if(auto target=selectionTransformTarget()){const auto expected=selectionPivotPreset(*target,0);if(!selectionPivot_ || selectionPivot_->x!=expected.x || selectionPivot_->y!=expected.y)status_=U"轴心预设测试失败";}writeSmokeFrame(popup.display()->nativeSurface().get(),assets_.parent_path()/"selection-pivot-smoke.bmp");verify->stop();popup.closeWindow(nullptr);});verify->start();}popup.openWindowInForeground();requestFocus();}
   void startFreeSelectionTransform(){if(!document.selection() || selectionDragging_ || floatingDragging_)return;auto target=*selectionTransformTarget();if(!document.beginSelectionContentMove(false,frameSelectionExplicit_))return;target.quad=std::array<TransformPoint,4>{{transformPoint(target,0,0),transformPoint(target,1,0),transformPoint(target,1,1),transformPoint(target,0,1)}};document.transformFloatingPaste(target,false);selectionFreeTransform_=true;selectionTool_=true;eyedropperTool_=false;zoomTool_=false;selectionPropertiesActive_=true;refresh();}
@@ -659,6 +764,8 @@ private:
   void endSelectionGesture(bool cancel){if(!selectionDragging_ && !floatingDragging_)return;if(cancel){++wandGeneration_;wandRequest_.reset();if(floatingDragging_){document.cancelFloatingPaste();selectionPivot_=selectionPivotBeforeGesture_;}else document.previewSelection(selectionBefore_);}else if(selectionDragging_){if(selectionBoxDragging_)document.commitSelectionBox(selectionBefore_);else{if(selectionKind_==5)document.previewSelection(combineSelection(selectionBefore_,selectionBrushStroke_.mask(document.width()),gestureSelectionMode_));if(polygonPending_)document.previewSelection(combineSelection(selectionBefore_,lassoSelection(selectionPath_,document.width(),document.height(),true,true),gestureSelectionMode_));const bool moved=selectionMoved_ || selectionKind_>=2 || quickSelection_;document.commitSelection(selectionBefore_,moved?(selectionKind_==3 || selectionKind_==5?document.selection():combineSelection(selectionBefore_,selectionPreview_,gestureSelectionMode_)):gestureSelectionMode_==0?std::optional<SelectionMask>{}:selectionBefore_,true);frameSelectionExplicit_=false;}}selectionDragging_=floatingDragging_=selectionBoxDragging_=polygonPending_=false;wandReleased_=false;selectionPath_.clear();selectionPathRedo_.clear();selectionBrushStroke_={};selectionPreview_.reset();marqueeTarget_.reset();marqueeRotationStart_.reset();marqueeResizeStart_.reset();marqueeCtrlRestore_.reset();marqueeSpaceTarget_.reset();quickSelection_=false;selectionRight_=false;selectionAxis_=0;if(!selectionStatusBefore_.empty()){status_=selectionStatusBefore_;selectionStatusBefore_.clear();}transformHandle_.clear();if(hasCapture())releaseMouse();refresh();}
   struct PaletteGesture {std::size_t start=0,last=0;int anchor=0,columns=1;bool secondary=false,moving=false,active=false;gfx::Point origin;std::vector<int> slots,ids;std::chrono::steady_clock::time_point began;};
   std::optional<PaletteGesture> paletteGesture_;
+  struct PaletteBoxRange{std::uint64_t identity;std::size_t start,end;std::vector<int> selected;};
+  std::optional<PaletteBoxRange> paletteBoxRange_;
   FloatingColumnSurface* paletteSelectionOverlay_=nullptr;
   PixelScrollBar* paletteScrollBar_=nullptr;
   PixelScrollBar *railScrollBar_=nullptr,*timelineHorizontal_=nullptr,*timelineVertical_=nullptr,*canvasHorizontal_=nullptr,*canvasVertical_=nullptr,*homeScrollBar_=nullptr,*errorScrollBar_=nullptr,*preferenceNavBar_=nullptr,*preferenceContentBar_=nullptr;
@@ -674,17 +781,34 @@ private:
   std::optional<std::size_t> paletteFocusedSlot_;
   bool paletteLocked_=true,paletteFocused_=false,editingSecondary_=false;
   int paletteScrollPixels_=0,paletteColumns_=1,renameId_=0;
+  SpaceDragScroll panelScrollDrag_;
+  struct ScrollDragRegion {std::function<gfx::Rect()> bounds;SpaceDragScroll::Target target;};
+  std::vector<ScrollDragRegion> scrollDragRegions_;
+  bool panelScrollSpace_=false;
   std::optional<gfx::Point> paletteMousePosition_;
   std::vector<int> paletteButtonIds_;
   Pixel lastPaletteInk_=0xffff7929;
   BrushOptions brushProfiles_[2];
-  struct BrushLineAnchor {Point point;std::uint64_t identity,revision;std::string layer,frame;std::unordered_map<std::size_t,Pixel> baseline;bool mergeWithNext=true;};
+  bool brushPreviewBatch_=true;
+  struct BrushOutlinePixel {int x,y;unsigned edges;};
+  std::vector<BrushOutlinePixel> eraserOutline_;
+  int eraserOutlineSize_=0;BrushShape eraserOutlineShape_=BrushShape::Round;
+  struct BrushLineAnchor {Point point;std::uint64_t identity,revision;std::string layer,frame;mutable std::unordered_map<std::size_t,Pixel> baseline;bool mergeWithNext=true;mutable std::vector<std::pair<std::size_t,Pixel>> baselinePoints;};
   std::optional<BrushLineAnchor> brushLineAnchors_[2];
+  const std::unordered_map<std::size_t,Pixel>* brushLineBaseline(const BrushLineAnchor* anchor) const {
+    if(!anchor || anchor->revision!=document.revision())return nullptr;
+    if(!anchor->baselinePoints.empty()){anchor->baseline.reserve(anchor->baselinePoints.size());for(const auto& item:anchor->baselinePoints)anchor->baseline.emplace(item);anchor->baselinePoints.clear();}
+    return &anchor->baseline;
+  }
   Point brushStrokeLast_{};gfx::Point brushStrokePointer_{};
   bool ordinaryBrushTool() const {return !selectionTool_ && !shapeTool_ && !gradientTool_ && !fillTool_ && !handTool_ && !zoomTool_ && !eyedropperTool_;}
   const BrushLineAnchor* brushLineAnchor() const {const auto& a=brushLineAnchors_[eraser_?1:0];return a && a->identity==document.identity() && a->layer==document.layer().id && a->frame==document.frame().id?&*a:nullptr;}
   struct ModifierBrushSize {gfx::Point start;int size;bool pressed=false;};
   std::optional<ModifierBrushSize> modifierBrushSize_;
+  bool brushPreferencesPending_=false;
+  std::chrono::steady_clock::time_point brushPreferencesDue_{};
+  unsigned brushPreferenceWrites_=0,toolOptionsLayouts_=0;
+  void flushBrushSizePreferences(){if(brushPreferencesPending_)saveBrushPreferences();}
   bool modifierCtrl_=false,modifierAlt_=false;
   bool brushPreviewShift_=false;
   bool modifierBrushSupported() const {
@@ -693,9 +817,20 @@ private:
   }
   void setModifierBrushSize(int value) {
     auto& brush=brushProfiles_[eraser_?1:0];value=std::clamp(value,1,64);
-    if(brush.size==value)return;brush.size=value;layoutToolOptions();invalidateRect(canvasViewport());
+    if(brush.size==value)return;
+    const auto oldDamage=brushPreviewDamage(paletteMousePosition_);const int previous=brush.size;
+    brush.size=value;
+    // Only the selection brush's angle field changes visibility at size 1.
+    if(selectionTool_ && selectionKind_==5 && brush.shape!=BrushShape::Round && (previous==1)!=(value==1))layoutToolOptions();
+    else if(brushSizeInput_ && !brushSizeInput_->hasFocus()){
+      updatingBrushFields_=true;brushSizeInput_->setText(std::to_string(value));updatingBrushFields_=false;
+    }
+    if(brushRange_ && !brushRangeOpacity_){brushRange_->value=value;brushRange_->invalidate();}
+    for(const auto& damage:{oldDamage,brushPreviewDamage(paletteMousePosition_)})if(!damage.isEmpty())invalidateRect(damage);
+    // Model/preview update immediately; repeated wheel ticks share one disk write.
+    brushPreferencesPending_=true;brushPreferencesDue_=std::chrono::steady_clock::now()+std::chrono::milliseconds(250);
   }
-  void finishModifierBrushSize(){if(!modifierBrushSize_)return;const bool pressed=modifierBrushSize_->pressed;modifierBrushSize_.reset();if(pressed && hasCapture())releaseMouse();saveBrushPreferences();updateNavigationCursor();}
+  void finishModifierBrushSize(){if(!modifierBrushSize_)return;const bool pressed=modifierBrushSize_->pressed;modifierBrushSize_.reset();if(pressed && hasCapture())releaseMouse();flushBrushSizePreferences();updateNavigationCursor();}
 
   struct ToolControl {ui::Widget* first;int second;int gap=uiGap;bool pencilOnly=false;};
   std::vector<ToolControl> toolControls_;
@@ -713,7 +848,7 @@ private:
   std::string autoLinkSoloTarget_;
   std::map<std::string,bool> autoLinkSoloOriginals_;
   std::uint64_t autoLinkGestureIdentity_=0;
-  std::vector<std::string> autoLinkVisibleTargets()const{std::vector<std::string> ids;for(std::size_t n=0;n<layerAutoLinks_.size() && n<document.timeline().state().layers.size();++n)if(layerAutoLinks_[n]->timelineVisible)ids.push_back(document.timeline().state().layers[n].id);return ids;}
+  std::vector<std::string> autoLinkVisibleTargets()const{std::vector<std::string> ids;for(const auto& layer:document.timeline().state().layers)ids.push_back(layer.id);return ids;}
   std::vector<std::string> autoLinkModifierTargets()const{auto ids=document.timelineSelection().layers;ids.erase(std::remove_if(ids.begin(),ids.end(),[this](const auto& id){return std::none_of(document.timeline().state().layers.begin(),document.timeline().state().layers.end(),[&](const auto& layer){return layer.id==id;});}),ids.end());return ids.size()>1?ids:autoLinkVisibleTargets();}
   bool autoLinkValue(const std::string& id)const{const auto& layers=document.timeline().state().layers;const auto it=std::find_if(layers.begin(),layers.end(),[&](const auto& layer){return layer.id==id;});return it!=layers.end() && it->autoLinkAnimationCels;}
   void finishAutoLinkGesture(){if(!autoLinkGesture_)return;autoLinkGesture_.reset();if(autoLinkGestureIdentity_==document.identity())document.commitAutoLinkGesture();if(hasCapture())releaseMouse();refresh();}
@@ -724,7 +859,15 @@ private:
     if(mouse.ctrlPressed()){for(const auto& key:autoLinkModifierTargets())document.previewAutoLinkGesture(key,value);document.commitAutoLinkGesture();refresh();return;}
     autoLinkGesture_=AutoLinkGesture{id,value,{}};updateAutoLinkGesture(id);manager()->setCapture(this,true);requestFocus();
   }
-  bool processAutoLinkGesture(ui::Message* msg){if(!autoLinkGesture_)return false;if(autoLinkGestureIdentity_!=document.identity()){autoLinkGesture_.reset();if(hasCapture())releaseMouse();return false;}if(!hasCapture() || msg->type()==ui::kFocusLeaveMessage){finishAutoLinkGesture();return false;}if(msg->type()==ui::kMouseMoveMessage){const auto mouse=static_cast<ui::MouseMessage*>(msg);for(std::size_t n=0;n<layerAutoLinks_.size() && n<document.timeline().state().layers.size();++n)if(layerAutoLinks_[n]->timelineVisible && layerAutoLinks_[n]->bounds().contains(mouse->position())){updateAutoLinkGesture(document.timeline().state().layers[n].id);break;}return true;}if(msg->type()==ui::kMouseUpMessage){finishAutoLinkGesture();return true;}return false;}
+  bool processAutoLinkGesture(ui::Message* msg){if(!autoLinkGesture_)return false;if(autoLinkGestureIdentity_!=document.identity()){autoLinkGesture_.reset();if(hasCapture())releaseMouse();return false;}if(!hasCapture() || msg->type()==ui::kFocusLeaveMessage){finishAutoLinkGesture();return false;}if(msg->type()==ui::kMouseMoveMessage){const auto mouse=static_cast<ui::MouseMessage*>(msg);if(!mouse->left()){finishAutoLinkGesture();return true;}for(std::size_t n=0;n<layerAutoLinks_.size() && n+layerScroll_<document.timeline().state().layers.size();++n)if(layerAutoLinks_[n]->timelineVisible && layerAutoLinks_[n]->bounds().contains(mouse->position())){updateAutoLinkGesture(document.timeline().state().layers[n+layerScroll_].id);break;}return true;}if(msg->type()==ui::kMouseUpMessage){finishAutoLinkGesture();return true;}return false;}
+  bool processAutoLinkKeyboard(ui::Message* msg){
+    if(msg->type()!=ui::kKeyDownMessage && msg->type()!=ui::kKeyUpMessage)return false;
+    if(pending_!=Pending::None || homeOpen_ || !documentOpen_)return false;
+    const auto key=static_cast<ui::KeyMessage*>(msg);if(key->scancode()!=ui::kKeyEnter && key->scancode()!=ui::kKeySpace)return false;
+    const auto focus=manager()->getFocus();for(auto button:layerAutoLinks_)if(button==focus && button->isVisible() && button->isEnabled()){
+      if(msg->type()==ui::kKeyDownMessage){button->Click();button->requestFocus();}return true;
+    }return false;
+  }
   struct VisibilityGesture {std::string start;bool value=false;std::map<std::string,bool> originals;};
   std::optional<VisibilityGesture> visibilityGesture_;
   std::string visibilitySoloTarget_;
@@ -741,7 +884,7 @@ private:
     if(mouse.ctrlPressed()){for(const auto& key:visibilityModifierTargets())document.previewVisibilityGesture(key,value);document.commitVisibilityGesture();refresh();return;}
     visibilityGesture_=VisibilityGesture{id,value,{}};updateVisibilityGesture(id);manager()->setCapture(this,true);requestFocus();
   }
-  bool processVisibilityGesture(ui::Message* msg){if(!visibilityGesture_)return false;if(visibilityGestureIdentity_!=document.identity()){visibilityGesture_.reset();if(hasCapture())releaseMouse();return false;}if(!hasCapture() || msg->type()==ui::kFocusLeaveMessage){finishVisibilityGesture();return false;}if(msg->type()==ui::kMouseMoveMessage){const auto mouse=static_cast<ui::MouseMessage*>(msg);for(std::size_t n=0;n<layerEyes_.size() && n<document.timeline().state().layers.size();++n)if(layerEyes_[n]->timelineVisible && layerEyes_[n]->bounds().contains(mouse->position())){updateVisibilityGesture(document.timeline().state().layers[n].id);break;}return true;}if(msg->type()==ui::kMouseUpMessage){finishVisibilityGesture();return true;}return false;}
+  bool processVisibilityGesture(ui::Message* msg){if(!visibilityGesture_)return false;if(visibilityGestureIdentity_!=document.identity()){visibilityGesture_.reset();if(hasCapture())releaseMouse();return false;}if(!hasCapture() || msg->type()==ui::kFocusLeaveMessage){finishVisibilityGesture();return false;}if(msg->type()==ui::kMouseMoveMessage){const auto mouse=static_cast<ui::MouseMessage*>(msg);if(!mouse->left()){finishVisibilityGesture();return true;}for(std::size_t n=0;n<layerEyes_.size() && n+layerScroll_<document.timeline().state().layers.size();++n)if(layerEyes_[n]->timelineVisible && layerEyes_[n]->bounds().contains(mouse->position())){updateVisibilityGesture(document.timeline().state().layers[n+layerScroll_].id);break;}return true;}if(msg->type()==ui::kMouseUpMessage){finishVisibilityGesture();return true;}return false;}
   struct LockGesture {std::string start;bool value=false;std::map<std::string,bool> originals;};
   std::optional<LockGesture> lockGesture_;
   std::string lockSoloTarget_;
@@ -758,10 +901,43 @@ private:
     if(mouse.ctrlPressed()){for(const auto& key:lockModifierTargets())document.previewLockGesture(key,value);document.commitLockGesture();refresh();return;}
     lockGesture_=LockGesture{id,value,{}};updateLockGesture(id);manager()->setCapture(this,true);requestFocus();
   }
-  bool processLockGesture(ui::Message* msg){if(!lockGesture_)return false;if(lockGestureIdentity_!=document.identity()){lockGesture_.reset();if(hasCapture())releaseMouse();return false;}if(!hasCapture() || msg->type()==ui::kFocusLeaveMessage){finishLockGesture();return false;}if(msg->type()==ui::kMouseMoveMessage){const auto mouse=static_cast<ui::MouseMessage*>(msg);for(std::size_t n=0;n<layerLocks_.size() && n<document.timeline().state().layers.size();++n)if(layerLocks_[n]->timelineVisible && layerLocks_[n]->bounds().contains(mouse->position())){updateLockGesture(document.timeline().state().layers[n].id);break;}return true;}if(msg->type()==ui::kMouseUpMessage){finishLockGesture();return true;}return false;}
+  bool processLockGesture(ui::Message* msg){if(!lockGesture_)return false;if(lockGestureIdentity_!=document.identity()){lockGesture_.reset();if(hasCapture())releaseMouse();return false;}if(!hasCapture() || msg->type()==ui::kFocusLeaveMessage){finishLockGesture();return false;}if(msg->type()==ui::kMouseMoveMessage){const auto mouse=static_cast<ui::MouseMessage*>(msg);if(!mouse->left()){finishLockGesture();return true;}for(std::size_t n=0;n<layerLocks_.size() && n+layerScroll_<document.timeline().state().layers.size();++n)if(layerLocks_[n]->timelineVisible && layerLocks_[n]->bounds().contains(mouse->position())){updateLockGesture(document.timeline().state().layers[n+layerScroll_].id);break;}return true;}if(msg->type()==ui::kMouseUpMessage){finishLockGesture();return true;}return false;}
   std::vector<PixelButton*> layerRows_,layerEyes_,layerLocks_,layerAutoLinks_;
   int layerScroll_=0,frameScroll_=0;
   std::vector<PixelButton*> frameHeaders_,frameCells_;
+  std::unordered_set<std::string> timelineSelectedCels_;
+  layerlabel::Width layerLabelWidth_;
+  LayerLabelSeparator* layerLabelSeparator_=nullptr;
+  bool layerLabelReadable_=true;
+  int timelineLabelWidth()const{
+    int stored=layerLabelWidth_.logical();const auto l=columnLayout(uiLogical(clientBounds()),2);
+    const auto dock=docking_.groups[docking_.groupOf(2)].dock;
+    if(docking_.custom && (dock==panels::Dock::Left || dock==panels::Dock::Right))stored=std::min(stored,std::max(40,l.workW-34));
+    // Layout must not depend on child visibility: laf temporarily hides
+    // widgets while painting their parent's background (Widget::paintEvent).
+    constexpr int toolbarExtent=5+4*14+15+uiGap+2*14+15;
+    return std::max(stored,toolbarExtent);
+  }
+  void setLayerLabelWidth(double physical){layerLabelWidth_.set(physical);if(!smoke_ && layerLabelReadable_)try{const auto path=palettePreferencePath().parent_path()/"layer-label-width.txt";std::filesystem::create_directories(path.parent_path());const auto value=std::to_string(layerLabelWidth_.physical);writeExportBytesAtomic(path,{value.begin(),value.end()});}catch(const std::exception& e){status_=U"图层列宽保存失败："+unicodeText(e.what());}layoutLayers();invalidateTimelineGrid();}
+  gfx::Rect layerLabelSeparatorBounds()const{const auto l=columnLayout(uiLogical(clientBounds()),2);const auto row=timelineRowViewport();return toDisplay(gfx::Rect(l.workX+5+timelineLabelWidth()-2,l.layerTop+timelineHeaderOffset(),4,12+row.h/uiScale)) & toDisplay(gfx::Rect(l.workX+5,l.layerTop+timelineHeaderOffset(),std::max(0,l.workW-10),12+row.h/uiScale));}
+  bool layerLabelHit(gfx::Point at)const{return documentOpen_ && !homeOpen_ && pending_==Pending::None && columnShown(2) && (topFloatingColumnAt(at)<0 || topFloatingColumnAt(at)==2) && layerLabelSeparatorBounds().contains(at) && !timelineBorderHit(at);}
+public:
+  bool processLayerLabelResize(ui::Message* msg){
+    if((msg->type()==ui::kFocusEnterMessage || msg->type()==ui::kFocusLeaveMessage) && layerLabelSeparator_)invalidateTimelineGrid();
+    if(layerLabelWidth_.dragging){
+      if(!hasCapture() || msg->type()==ui::kFocusLeaveMessage || pending_!=Pending::None){layerLabelWidth_.finish();if(hasCapture())releaseMouse();return false;}
+      if(msg->type()==ui::kMouseMoveMessage){setLayerLabelWidth(layerLabelWidth_.at(static_cast<ui::MouseMessage*>(msg)->position().x));return true;}
+      if(msg->type()==ui::kMouseUpMessage && static_cast<ui::MouseMessage*>(msg)->left()){layerLabelWidth_.finish();if(hasCapture())releaseMouse();return true;}
+    }
+    if(msg->type()==ui::kKeyDownMessage && layerLabelSeparator_ && layerLabelSeparator_->hasFocus() && pending_==Pending::None){const auto key=static_cast<ui::KeyMessage*>(msg)->scancode();if(key==ui::kKeyLeft || key==ui::kKeyRight){setLayerLabelWidth(layerLabelWidth_.physical+(key==ui::kKeyLeft?-12:12));return true;}}
+    if(msg->type()!=ui::kMouseDownMessage)return false;const auto mouse=static_cast<ui::MouseMessage*>(msg);if(!mouse->left() || !layerLabelHit(mouse->position()))return false;
+    layerLabelSeparator_->requestFocus();layerLabelWidth_.begin(mouse->position().x);captureMouse();return true;
+  }
+private:
+  os::SurfaceRef timelinePaintCache_;
+  gfx::Rect timelinePaintCacheBounds_;
+  bool timelinePaintCacheValid_=false;
+  std::uint64_t timelineCachePaints_=0;
   bool playing_=false,frameSelectionExplicit_=false;
   // Legacy separates editing context from explicit timeline selection.
   std::string selectedTimelineLayer_,selectedTimelineCelLayer_,selectedTimelineCelFrame_;
@@ -769,6 +945,7 @@ private:
   bool timelineSelectionGuidesVisible_=true;
   struct TimelineGesture {
     int kind=0,row=0,column=0,targetRow=0,targetColumn=0,mode=0;
+    int minRow=0,maxRow=0,minColumn=0,maxColumn=0;
     bool canMove=false,moved=false,copy=false,right=false,after=false,altClick=false,addContent=false,starting=false;
     gfx::Point origin,pointer;
     std::uint64_t identity=0;
@@ -787,18 +964,36 @@ private:
   std::optional<timeline::LoopSection> loopDraft_;
   std::array<PixelEntry*,4> loopInputs_{};
   PixelButton* loopDirection_=nullptr;
+  PixelButton* loopRepeat_=nullptr;
+  bool loopFinite_=false;
   std::string frameClickCollapse_;
   OnionSkinSettings onion_;
+  bool skipDisabledFrames_=true,animationSettingsReadable_=true;
+  gfx::Rect animationSettingsGeometry_;
+  bool persistAnimationSettings(){if(smoke_)return true;if(!animationSettingsReadable_){status_=U"动画设置源损坏，保存已禁用";return false;}try{animationprefs::save(palettePreferencePath().parent_path()/"animation-settings.json",{onion_,skipDisabledFrames_});return true;}catch(const std::exception& e){status_=U"动画设置保存失败："+unicodeText(e.what());return false;}}
+  void showAnimationSettings(bool verify=false){animationprefs::Settings settings{onion_,skipDisabledFrames_};std::unique_ptr<AnimationSettingsDialog> popup;popup=std::make_unique<AnimationSettingsDialog>(font_,skin_,toolIcons_,assets_/"color-picker",settings,[&,this]{onion_=settings.onion;skipDisabledFrames_=settings.skipDisabledFrames;const bool saved=persistAnimationSettings();popup->setError(saved?U"":animationSettingsReadable_?U"保存失败，请重试":U"原设置损坏，保存已禁用");refresh();});popup->setDisplay(display(),false);auto r=animationSettingsGeometry_;if(r.isEmpty())r={bounds().center().x-190,bounds().center().y-300,380,600};popup->setBounds(r);if(!animationSettingsReadable_)popup->setError(U"原设置损坏，保存已禁用");ui::Timer timer(50,popup.get());if(verify){timer.Tick.connect([&]{timer.stop();popup->smoke();popup->closeWindow(nullptr);});timer.start();}popup->openWindowInForeground();animationSettingsGeometry_=popup->bounds();requestFocus();}
+
   int onionField_=0;
   std::chrono::steady_clock::time_point playbackDue_;
   double playbackRate_=1;bool playbackReturnToStart_=false;std::string playbackStartFrame_;
-  timeline::State recoveryState_;
-  std::size_t recoveryCelIndex_=0;
-  PixelButton *layerEye_=nullptr,*layerRow_=nullptr,*layerProperties_=nullptr;
+  PixelButton *layerEye_=nullptr,*layerRow_=nullptr,*layerProperties_=nullptr,*layerQuickSettings_=nullptr;
+  std::vector<PixelButton*> layerQuickButtons_;
+  layerquick::Actions layerQuickActions_=layerquick::normalize({});
+  gfx::Rect layerQuickDialogGeometry_;
+  void showLayerQuickActions(bool verify=false){
+    std::unique_ptr<LayerQuickActionsDialog> popup;
+    popup=std::make_unique<LayerQuickActionsDialog>(font_,skin_,toolIcons_,layerQuickActions_,[this](const std::string& id){return menuCommands_.connected(id);},[&,this]{try{if(!smoke_)layerquick::save(palettePreferencePath().parent_path()/"layer-quick-actions.json",layerQuickActions_);popup->setError({});}catch(const std::exception&){popup->setError(U"保存失败，请重试");}refresh();});
+    popup->setDisplay(display(),false);auto r=layerQuickDialogGeometry_;if(r.isEmpty())r={bounds().center().x-230,bounds().center().y-300,460,600};popup->setBounds(r);
+    ui::Timer timer(50,popup.get());if(verify){timer.Tick.connect([&]{popup->smoke();timer.stop();popup->closeWindow(nullptr);});timer.start();}
+    popup->openWindowInForeground();layerQuickDialogGeometry_=popup->bounds();if(!smoke_)try{auto path=palettePreferencePath().parent_path()/"layer-quick-actions-layout-v1.txt";std::ofstream out(path);out.exceptions(std::ios::failbit|std::ios::badbit);auto g=layerQuickDialogGeometry_;out<<g.x<<' '<<g.y<<' '<<g.w<<' '<<g.h;}catch(...){status_=U"快捷操作布局保存失败";}requestFocus();
+  }
   bool brushRangeOpacity_=false;
   bool updatingBrushFields_=false,smoke_=false;
   int toolRowScroll_=0,shownBrushProfile_=-1;
   ui::MouseButton strokeButton_=ui::kButtonNone;
+  bool syncPaletteColors_=false;
+  bool showPaletteNames_=false;
+  bool paletteSortDescending_=false;
   int swatchSize_=1;
   static constexpr int swatchPixels_[5]={22,30,40,52,64};
   static constexpr const char* swatchKeys_[5]={"tiny","small","medium","large","huge"};
@@ -817,6 +1012,28 @@ private:
   bool eraser_=false, colorPickerOpen_=true, handTool_=false, spaceHeld_=false;
   CanvasPan pan_;
   ui::MouseButton panButton_=ui::kButtonNone;
+  bool panBlit_=true;
+  unsigned canvasBlitMoves_=0;
+  std::uint64_t canvasPanRepaintPixels_=0;
+  void invalidatePanMovement(gfx::Point delta) {
+    const auto viewport=canvasViewport();
+    gfx::Region drawable;getDrawableRegion(drawable,ui::Widget::kCutTopWindows);
+    drawable&=gfx::Region(viewport);
+    gfx::Region valid=drawable;valid-=getUpdateRegion();
+    if(display())valid-=display()->getInvalidRegion();
+    // Reuse Aseprite UI's overlap-safe software scroll, keeping dirty pixels and
+    // floating controls out of both source and destination. GPU repaints.
+    if(panBlit_ && display() && !display()->nativeWindow()->gpuAcceleration() && !playing_ &&
+       !selectionTool_ && !document.gradientActive() && !document.floating()) {
+      auto source=valid;source.offset(-delta.x,-delta.y);source&=valid;
+      if(!source.isEmpty()){
+        ui::move_region(display(),source,delta.x,delta.y);++canvasBlitMoves_;
+        source.offset(delta.x,delta.y);drawable-=source;
+      }
+    }
+    for(const auto& r:drawable)canvasPanRepaintPixels_+=std::uint64_t(r.w)*r.h;
+    invalidateRegion(drawable);
+  }
   std::function<void()> refreshCursor_;
   void updateNavigationCursor() {if(refreshCursor_) refreshCursor_();}
   void finishPan(bool cancel) {
@@ -840,9 +1057,9 @@ private:
   recovery::Preferences recoveryPreferences_;
   std::optional<recovery::Ticket> recoveryTicket_;
   std::future<void> recoveryWorker_;
-  std::vector<Pixel> recoveryPixels_;
+  std::optional<std::pair<std::uint64_t,std::string>> recoveryCleanup_;
+  std::optional<DocumentSnapshot> recoverySnapshot_;
   std::uint64_t recoveryIdentity_=0;
-  std::size_t recoveryOffset_=0;
   std::chrono::steady_clock::time_point recoveryDue_=std::chrono::steady_clock::now()+std::chrono::minutes(5);
   ui::Timer* recoveryTimer_=nullptr;
   struct HeldCelNavigation {ui::KeyScancode key;std::chrono::steady_clock::time_point nextAt;};
@@ -856,7 +1073,15 @@ private:
   std::u32string openError_,errorTitle_=U"无法打开工程";
   int modalErrorScroll_=0;
   std::u32string modalErrorContent_;
-  enum class Pending { None, New, Open, OpenError, Close, CloseDocument, LayerOpacity, FrameDuration, LoopSection, OnionValue, PaletteName, PaletteExtract, ColorAdjustment, Convolution, AntiAlias, ReplaceColor, ColorRole, ImageResize, BrushFolderName, StaticExport, SpriteSheet, GifExport, SheetImport, Preferences } pending_=Pending::None;
+  enum class Pending { None, New, Open, OpenError, Close, CloseDocument, LayerOpacity, FrameDuration, LoopSection, OnionValue, PaletteName, PaletteExtract, ColorAdjustment, Convolution, AntiAlias, ReplaceColor, ColorRole, ImageResize, BrushFolderName, StaticExport, SpriteSheet, GifExport, SheetImport, Preferences, Saving } pending_=Pending::None;
+  Pending saveResume_=Pending::None;
+  bool closeAfterSave_=false;
+  std::optional<DocumentSnapshot> saveSnapshot_;
+  std::future<project::EncodedProject> saveWorker_;
+  std::filesystem::path savingPath_;
+  std::uint64_t savingIdentity_=0,savingRevision_=0,savingContentRevision_=0;
+  std::vector<std::pair<ui::Widget*,bool>> savingControlStates_;
+  void restoreSaveControls(){for(auto state:savingControlStates_)state.first->setEnabled(state.second);savingControlStates_.clear();}
   int dockWidth_=0,timelineHeight_=109;
   double paletteShare_=0;
   std::map<Pending,gfx::Rect> modalGeometry_;
@@ -865,6 +1090,7 @@ private:
   gfx::Rect sizeDragBounds_;
   int sizeDragEdges_=0,sizeDragValue_=0;
   ui::Timer sizeTimer_{16,this};
+  ui::Timer floatingViewportSaveTimer_{32,this};
   ui::Timer antsTimer_{100,this};
   int antsOffset_=0;
   bool showSelectionOutline_=true;
@@ -876,6 +1102,8 @@ private:
   std::uint64_t smokePreviewUpdates_=0;
   std::uint64_t smokePreviewBlits_=0,smokePreviewPaints_=0;
   int smokePreviewStep_=0;
+  gfx::Region smokePreviewDrawable_;
+  gfx::Rect smokePreviewBefore_;
   std::u32string status_=U"内存画布";
   gfx::Rect canvas_;
   // User layout: left tool rail, adjacent color dock, then document/timeline.
@@ -953,25 +1181,91 @@ private:
   }
   void dockColumn(int id,panels::Dock dock){initializeDocking();const auto rc=uiLogical(bounds());auto r=columnGeometry(rc).panel[id];docking_.place(id,dock,-1,true,false,r);docking_.groups[docking_.groupOf(id)].floatingArea=floatingArea(rc);refresh();saveWorkspaceSizes();}
 
-  int documentTabWidth(const Layout& l) const {return std::min(l.workW-18,font_.inkBounds(document.name()).w+2*Layout::inset+11+uiGap+(document.dirty()?3+uiGap:0));}
+  void ensureProjects(){if(documentOpen_ && projects_.empty()){projects_.push_back(std::make_unique<ProjectSession>());activeProject_=0;}}
+  const Document& projectDocument(std::size_t index)const{return index==activeProject_?document:*projects_[index]->stored;}
+  int projectWidth(const Document& value)const{return std::min(180,font_.inkBounds(value.name()).w+2*Layout::inset+11+uiGap+(value.dirty()?3+uiGap:0));}
+  int documentTabWidth(const Layout&)const{return projectWidth(document);}
+  void swapRecovery(ProjectSession& slot){
+    using std::swap;swap(recoveryQueue_,slot.queue);swap(recoveryTicket_,slot.ticket);swap(recoveryWorker_,slot.worker);swap(recoveryCleanup_,slot.cleanup);swap(recoverySnapshot_,slot.snapshot);swap(recoveryIdentity_,slot.recoveryIdentity);swap(ownedRecoveryId_,slot.ownedId);swap(ownedRecoveryIdentity_,slot.ownedIdentity);swap(recoveryDue_,slot.due);
+  }
+  void settleProjectGesture(){
+    if(colorPicker_)colorPicker_->finishInteraction();
+    if(timelineGesture_.kind)finishTimelineGesture(true);
+    finishAutoLinkGesture();finishVisibilityGesture();finishLockGesture();
+    if(selectionDragging_ || floatingDragging_)endSelectionGesture(true);
+    document.cancelGradient();document.commitFloatingPaste();cancelStroke();++wandGeneration_;wandRequest_.reset();
+    heldCelNavigation_.clear();spaceHeld_=false;
+  }
+  void storeActiveProject(){
+    auto& slot=*projects_[activeProject_];slot.path=documentPath_;slot.canvas=canvas_;slot.zoom=zoom_;
+    slot.layers=layerScroll_;slot.frames=frameScroll_;slot.layerRemainder=layerScrollRemainder_;slot.frameRemainder=frameScrollRemainder_;slot.paletteScroll=paletteScrollPixels_;
+    slot.frameSelection=frameSelectionExplicit_;slot.guides=timelineSelectionGuidesVisible_;slot.recent=std::move(recentColors_);slot.pivot=selectionPivot_;
+    swapRecovery(slot);slot.stored.emplace(std::move(document));
+  }
+  void restoreProject(std::size_t index){
+    activeProject_=index;auto& slot=*projects_[index];document=std::move(*slot.stored);slot.stored.reset();documentPath_=slot.path;
+    canvas_=slot.canvas;zoom_=slot.zoom;layerScroll_=slot.layers;frameScroll_=slot.frames;layerScrollRemainder_=slot.layerRemainder;frameScrollRemainder_=slot.frameRemainder;paletteScrollPixels_=slot.paletteScroll;
+    frameSelectionExplicit_=slot.frameSelection;timelineSelectionGuidesVisible_=slot.guides;timelineSelectionIdentity_=document.identity();timelineLastActiveFrame_=document.frame().id;
+    recentColors_=std::move(slot.recent);recentColorsIdentity_=document.identity();selectionPivot_=slot.pivot;selectionPivotMask_=document.selection();selectionPivotIdentity_=document.identity();trimPivotIdentity_=document.identity();trimPivotSerial_=document.selectionPivotHistory().serial;
+    symmetryIdentity_=document.identity();ink_=document.palette().primary;paletteFocused_=false;swapRecovery(slot);
+    documentOpen_=true;homeOpen_=false;revealProjectTab_=true;constrainCanvas();refresh();
+  }
+  void activateProject(std::size_t index){
+    if(pending_!=Pending::None || index>=projects_.size())return;
+    if(index==activeProject_){showHome(false);return;}
+    settleProjectGesture();storeActiveProject();restoreProject(index);requestFocus();
+  }
+  void addProject(Document next,std::filesystem::path path={}){
+    ensureProjects();settleProjectGesture();if(documentOpen_)storeActiveProject();
+    projects_.push_back(std::make_unique<ProjectSession>());activeProject_=projects_.size()-1;
+    document=std::move(next);documentPath_=std::move(path);documentOpen_=true;homeOpen_=false;closingWorkspace_=false;
+    layerScroll_=frameScroll_=layerScrollRemainder_=frameScrollRemainder_=paletteScrollPixels_=0;
+    frameSelectionExplicit_=false;timelineSelectionGuidesVisible_=true;ink_=document.palette().primary;
+    recoveryQueue_.setIntervalMinutes(recoveryPreferences_.minutes);revealProjectTab_=true;fitCanvas();refresh();
+  }
   void layoutDocumentTab() {
-    if(!documentTabNew_)return;
-    const auto rc=uiLogical(bounds());const auto l=workspaceLayout(rc);const int width=documentOpen_?documentTabWidth(l):0;
-    documentTabNew_->setBounds(uiPhysical(gfx::Rect(rc.x+width-(documentOpen_?1:0),rc.y+Layout::documentY,17,Layout::projectTabHeight)));
-    documentTabClose_->setBounds(uiPhysical(gfx::Rect(rc.x+width-Layout::inset-11,rc.y+Layout::documentY+2,11,11)));
-    documentTabClose_->setVisible(documentOpen_);
-    documentTabNew_->setEnabled(pending_==Pending::None);documentTabClose_->setEnabled(pending_==Pending::None);
+    if(!documentTabNew_)return;ensureProjects();
+    const auto rc=uiLogical(bounds());const int available=std::max(1,rc.w-17);int total=0;
+    for(std::size_t i=0;i<projects_.size();++i){const int w=projectWidth(projectDocument(i));if(i==activeProject_ && revealProjectTab_){if(total<projectTabScroll_)projectTabScroll_=total;else if(total+w>projectTabScroll_+available)projectTabScroll_=total+w-available;}total+=w-1;}
+    revealProjectTab_=false;projectTabScroll_=std::clamp(projectTabScroll_,0,std::max(0,total-available));
+    while(projectCloseButtons_.size()<projects_.size()){
+      const auto index=projectCloseButtons_.size();auto close=index==0?documentTabClose_:button(U"",[this,index]{activateProject(index);ask(Pending::CloseDocument);});
+      close->iconSkin=&toolIcons_;close->icon="close";close->bareTabIcon=true;projectCloseButtons_.push_back(close);
+    }
+    projectTabRects_.clear();int x=rc.x-projectTabScroll_;
+    for(std::size_t i=0;i<projects_.size();++i){const int w=projectWidth(projectDocument(i));const gfx::Rect tab(x,rc.y+Layout::documentY,w,Layout::projectTabHeight);projectTabRects_.push_back(uiPhysical(tab));auto close=projectCloseButtons_[i];close->setBounds(uiPhysical(gfx::Rect(tab.x2()-Layout::inset-11,tab.y+2,11,11)));close->setVisible(tab.x>=rc.x && tab.x2()<=rc.x+available);close->setEnabled(pending_==Pending::None);x+=w-1;}
+    for(std::size_t i=projects_.size();i<projectCloseButtons_.size();++i)projectCloseButtons_[i]->setVisible(false);
+    documentTabNew_->setBounds(uiPhysical(gfx::Rect(std::min(rc.x+available,x),rc.y+Layout::documentY,17,Layout::projectTabHeight)));documentTabNew_->setEnabled(pending_==Pending::None);documentTabNew_->setVisible(true);
   }
   void closeDocumentTab() {
-    closedControlStates_.clear();for(auto child:children())closedControlStates_.push_back({child,child->isEnabled()});
-    document=Document::withBuiltinPalette();documentPath_.clear();documentOpen_=false;showHome(true);
+    ensureProjects();if(!documentOpen_)return;
+    // Complete only this session's recovery before removing its owned record.
+    try{if(recoveryWorker_.valid())recoveryWorker_.get();if(!ownedRecoveryId_.empty())project::removeOwnedRecovery(recoveryDirectory(),ownedRecoveryId_);}catch(const std::exception& e){closingWorkspace_=false;showSaveError(e);return;}
+    recoverySnapshot_.reset();recoveryTicket_.reset();recoveryCleanup_.reset();recoveryQueue_=recovery::Scheduler(recoveryPreferences_.minutes);ownedRecoveryId_.clear();ownedRecoveryIdentity_=recoveryIdentity_=0;
+    projects_.erase(projects_.begin()+activeProject_);
+    if(!projects_.empty()){restoreProject(projects_.size()-1);}
+    else{closedControlStates_.clear();for(auto child:children())closedControlStates_.push_back({child,child->isEnabled()});document=Document::withBuiltinPalette();documentPath_.clear();documentOpen_=false;showHome(true);layoutDocumentTab();}
+  }
+  bool processProjectTabs(ui::Message* msg){
+    if(pending_!=Pending::None)return false;
+    if(projectTabDragging_){
+      if(!hasCapture() || msg->type()==ui::kFocusLeaveMessage){projectTabDragging_=false;return false;}
+      if(msg->type()==ui::kMouseUpMessage){projectTabDragging_=false;releaseMouse();return true;}
+      if(msg->type()==ui::kMouseMoveMessage){const auto point=static_cast<ui::MouseMessage*>(msg)->position();if(std::abs(point.x-projectTabPress_.x)<5*uiScale)return true;
+        for(std::size_t i=0;i<projectTabRects_.size();++i)if(i!=activeProject_ && projectTabRects_[i].contains(point)){auto current=std::move(projects_[activeProject_]);projects_.erase(projects_.begin()+activeProject_);projects_.insert(projects_.begin()+i,std::move(current));activeProject_=i;projectTabPress_=point;layoutDocumentTab();invalidate();break;}return true;}
+    }
+    if(msg->type()==ui::kKeyDownMessage){const auto key=static_cast<ui::KeyMessage*>(msg);if(key->ctrlPressed() && key->scancode()==ui::kKeyTab && projects_.size()>1){activateProject((activeProject_+projects_.size()+(key->shiftPressed()?-1:1))%projects_.size());return true;}}
+    if(msg->type()!=ui::kMouseDownMessage && msg->type()!=ui::kMouseWheelMessage)return false;
+    const auto mouse=static_cast<ui::MouseMessage*>(msg);const auto rc=uiLogical(bounds());if(!uiPhysical(gfx::Rect(rc.x,rc.y+Layout::documentY,std::max(1,rc.w-17),Layout::projectTabHeight)).contains(mouse->position()))return false;
+    if(msg->type()==ui::kMouseWheelMessage){projectTabScroll_+=mouse->wheelDelta().y*30;layoutDocumentTab();invalidate();return true;}
+    for(std::size_t i=0;i<projectTabRects_.size();++i)if(projectTabRects_[i].contains(mouse->position())){if(mouse->left() || mouse->middle()){activateProject(i);if(mouse->middle())ask(Pending::CloseDocument);else{projectTabDragging_=true;projectTabPress_=mouse->position();captureMouse();}return true;}}return false;
   }
   bool enabledTimelineAction(std::size_t i) const {return pending_==Pending::None && (i<=6 || (i==7 && document.timeline().state().frames.size()>1) || i==8);}
   // Toolbar selectAnimationEdge/selectAnimationStep explicitly select frames, independent of keyboard stepping.
   void toolbarSelectFrame(std::size_t index){document.selectFrameHeader(document.timeline().state().frames.at(index).id,0,playing_);markFrameSelection();if(playing_)retargetTagPlayback();refresh();}
   void toolbarStepFrame(int direction){const auto count=document.timeline().state().frames.size();const auto at=document.activeFrameIndex();toolbarSelectFrame(direction>0?(at+1)%count:(at?at-1:0));}
   void keyboardStepFrame(int direction){
-    if(playing_){playing_=false;refresh();return;}document.commitFloatingPaste();if(document.timeline().state().frames.size()<2)return;const auto target=timeline::stepFrameId(document.timeline().state(),document.frame().id,direction,playbackTagMode_);if(!target.empty() && target!=document.frame().id){document.clearTimelineSelection();clearTimelineRowSelection();document.selectFrame(target);}const auto* slot=document.timeline().findCel(document.layer().id,document.frame().id);if(slot)document.selectTimelineCel(slot->id);frameSelectionExplicit_=false;timelineSelectionIdentity_=document.identity();timelineSelectionGuidesVisible_=true;paletteFocused_=false;refresh();
+    if(playing_){playing_=false;refresh();return;}document.commitFloatingPaste();if(document.timeline().state().frames.size()<2)return;const auto target=timeline::stepFrameId(document.timeline().state(),document.frame().id,direction,playbackTagMode_,skipDisabledFrames_);if(!target.empty() && target!=document.frame().id){document.clearTimelineSelection();clearTimelineRowSelection();document.selectFrame(target);}const auto* slot=document.timeline().findCel(document.layer().id,document.frame().id);if(slot)document.selectTimelineCel(slot->id);frameSelectionExplicit_=false;timelineSelectionIdentity_=document.identity();timelineSelectionGuidesVisible_=true;paletteFocused_=false;refresh();
   }
   static bool celNavigationKey(ui::KeyScancode key){return key==ui::kKeyLeft || key==ui::kKeyRight || key==ui::kKeyUp || key==ui::kKeyDown;}
   bool celNavigationBlocked() const {
@@ -1042,16 +1336,20 @@ private:
   }
   void togglePlayback(){const bool next=!playing_;cancelStroke();playing_=next;if(playing_ && nextTagFrame(document.frame().id).empty()){playing_=false;loopPlayback_={};playbackTagCycle_.clear();}if(playing_){const bool paused=!loopPlayback_.current.sectionId.empty() && playbackIdentity_==document.identity() && playbackRevision_==document.revision() && playbackSection(loopPlayback_.current.sectionId) && playbackSectionContains(*playbackSection(loopPlayback_.current.sectionId),document.frame().id);if(!paused){playbackStartFrame_=document.frame().id;loopPlayback_={};playbackTagCycle_.clear();if(playbackTagMode_){const auto* section=timeline::loopAtFrame(document.timeline().state(),document.frame().id);if(section){if(!installPlaybackSection(*section,true))playing_=false;else if(section->repeatCount)playbackTagCycle_=section->id;}else if(document.frame().disabled){const auto nextFrame=nextTagFrame(document.frame().id);if(nextFrame.empty())playing_=false;else document.selectFrame(nextFrame);}}else{const auto& frames=document.timeline().state().frames;auto first=std::find_if(frames.begin(),frames.end(),[](const auto& f){return !f.disabled;});if(first==frames.end())playing_=false;else if(playbackSessionMode_=="once")document.selectFrame(first->id);else if(document.frame().disabled)document.selectFrame(nextTagFrame(document.frame().id));}}document.clearTimelineSelection();clearTimelineRowSelection();document.clearFrameSelection();frameSelectionExplicit_=false;playbackIdentity_=document.identity();playbackRevision_=document.revision();playbackDue_=std::chrono::steady_clock::now()+playbackFrameDelay();}playbackObservedFrame_=document.frame().id;refresh();}
   void playbackTick(){if(!playing_)return;if(pending_!=Pending::None || document.active() || playbackIdentity_!=document.identity() || playbackRevision_!=document.revision()){playing_=false;loopPlayback_={};playbackTagCycle_.clear();refresh();return;}const auto now=std::chrono::steady_clock::now();bool moved=false;int count=0;while(now>=playbackDue_ && playing_ && ++count<=10000){if(!loopPlayback_.current.sectionId.empty()){const auto* section=playbackSection(loopPlayback_.current.sectionId);const auto end=section?section->endFrameId:std::string{};const bool finite=section && section->repeatCount && !loopPlayback_.repeatIndefinitely;const auto step=timeline::advanceLoopPlayback(document.timeline().state(),loopPlayback_,document.frame().id);if(step.completed){if(!section){playing_=false;break;}if(playbackTagMode_ && finite){if(!continueTagPlayback(nextTagFrame(end))){playing_=false;break;}}else{completePlayback(false);moved=true;break;}}else document.selectFrame(step.frameId);}else if(playbackTagMode_){if(!continueTagPlayback(nextTagFrame(document.frame().id))){playing_=false;break;}}else{const auto& frames=document.timeline().state().frames;auto index=document.activeFrameIndex()+1;while(index<frames.size() && frames[index].disabled)++index;if(index==frames.size()){if(playbackSessionMode_=="once"){completePlayback(true);moved=true;break;}index=0;while(index<frames.size() && frames[index].disabled)++index;}if(index==frames.size()){playing_=false;break;}document.selectFrame(frames[index].id);}playbackObservedFrame_=document.frame().id;playbackDue_+=playbackFrameDelay();moved=true;}if(moved)refresh();}
-  void openLoopEditor(const std::string& id={}){playing_=false;cancelStroke();timeline::LoopSection draft;const auto& state=document.timeline().state();if(!id.empty()){const auto it=std::find_if(state.loopSections.begin(),state.loopSections.end(),[&](const auto& section){return section.id==id;});if(it==state.loopSections.end())return;draft=*it;}else{int n=1;for(;;++n){draft.name=U"循环节 "+unicodeText(std::to_string(n));if(std::none_of(state.loopSections.begin(),state.loopSections.end(),[&](const auto& section){return section.name==draft.name;}))break;}auto selected=document.selectedFrames();if(selected.empty())selected={document.frame().id};int left=int(state.frames.size()),right=0;for(int i=0;i<int(state.frames.size());++i)if(std::find(selected.begin(),selected.end(),state.frames[i].id)!=selected.end()){left=std::min(left,i);right=i;}draft.startFrameId=state.frames[left].id;draft.endFrameId=state.frames[right].id;}loopDraft_=draft;const auto range=timeline::loopRange(state,draft);loopInputs_[0]->setText(utf8Text(draft.name));loopInputs_[1]->setText(std::to_string(range.start+1));loopInputs_[2]->setText(std::to_string(range.end+1));loopInputs_[3]->setText(draft.repeatCount?std::to_string(*draft.repeatCount):"");updateLoopDirection();pending_=Pending::LoopSection;for(auto input:loopInputs_)input->setVisible(true);loopDirection_->setVisible(true);menuBar_->setEnabled(false);discard_->caption=U"保存";discard_->setVisible(true);keep_->caption=U"取消";keep_->setVisible(true);dialogClose_->setVisible(true);refresh();loopInputs_[0]->requestFocus();loopInputs_[0]->selectAllText();}
+  void openLoopEditor(const std::string& id={}){playing_=false;cancelStroke();timeline::LoopSection draft;const auto& state=document.timeline().state();if(!id.empty()){const auto it=std::find_if(state.loopSections.begin(),state.loopSections.end(),[&](const auto& section){return section.id==id;});if(it==state.loopSections.end())return;draft=*it;}else{int n=1;for(;;++n){draft.name=U"循环节 "+unicodeText(std::to_string(n));if(std::none_of(state.loopSections.begin(),state.loopSections.end(),[&](const auto& section){return section.name==draft.name;}))break;}auto selected=document.selectedFrames();if(selected.empty())selected={document.frame().id};int left=int(state.frames.size()),right=0;for(int i=0;i<int(state.frames.size());++i)if(std::find(selected.begin(),selected.end(),state.frames[i].id)!=selected.end()){left=std::min(left,i);right=i;}draft.startFrameId=state.frames[left].id;draft.endFrameId=state.frames[right].id;}loopDraft_=draft;const auto range=timeline::loopRange(state,draft);loopInputs_[0]->setText(utf8Text(draft.name));loopInputs_[1]->setText(std::to_string(range.start+1));loopInputs_[2]->setText(std::to_string(range.end+1));loopFinite_=bool(draft.repeatCount);for(int i=1;i<4;++i){auto input=static_cast<LoopNumberEntry*>(loopInputs_[i]);input->maximum=i==3?9999:int(state.frames.size());input->setValue(i==1?range.start+1:i==2?range.end+1:draft.repeatCount.value_or(1));}updateLoopRepeat();updateLoopDirection();pending_=Pending::LoopSection;for(auto input:loopInputs_)input->setVisible(true);loopDirection_->setVisible(true);loopRepeat_->setVisible(true);menuBar_->setEnabled(false);discard_->caption=U"保存";discard_->setVisible(true);keep_->caption=U"取消";keep_->setVisible(true);dialogClose_->setVisible(true);refresh();loopInputs_[0]->requestFocus();loopInputs_[0]->selectAllText();}
   void updateLoopDirection(){const char* directions[]{"forward","reverse","ping-pong","ping-pong-reverse"};for(int i=0;i<4;++i)if(loopDraft_->direction==directions[i])static_cast<PixelDropdown*>(loopDirection_)->setSelectedIndex(i);}
-  bool commitLoopEditor(){try{auto draft=*loopDraft_;auto integer=[&](int index,int limit){const auto text=loopInputs_[index]->text();std::size_t used=0;const double raw=std::stod(text,&used);if(used!=text.size() || !std::isfinite(raw))throw std::invalid_argument("Loop field");return int(std::trunc(std::clamp(raw,1.0,double(limit))));};const int count=int(document.timeline().state().frames.size());int start=integer(1,count)-1,end=integer(2,count)-1;if(start>end)std::swap(start,end);draft.startFrameId=document.timeline().state().frames[start].id;draft.endFrameId=document.timeline().state().frames[end].id;draft.name=unicodeText(loopInputs_[0]->text());const auto first=draft.name.find_first_not_of(U" \t\r\n"),last=draft.name.find_last_not_of(U" \t\r\n");if(first==std::u32string::npos)draft.name=U"循环节 1";else {draft.name=draft.name.substr(first,last-first+1);if(draft.name.size()>64)draft.name.resize(64);}draft.repeatCount=loopInputs_[3]->text().empty()?std::optional<int>{}:std::optional<int>{integer(3,9999)};if(!draft.id.empty()){const auto* existing=playbackSection(draft.id);if(existing && existing->name==draft.name && existing->startFrameId==draft.startFrameId && existing->endFrameId==draft.endFrameId && existing->direction==draft.direction && existing->repeatCount==draft.repeatCount)return true;}if(draft.id.empty())document.createLoopSection(draft);else document.updateLoopSection(draft);loopPlayback_={};return true;}catch(const std::exception&){status_=U"循环节帧范围或重复次数无效";invalidate();return false;}}
+  void updateLoopRepeat(){if(!loopRepeat_)return;loopRepeat_->active=loopFinite_;loopRepeat_->icon=loopFinite_?"checkboxChecked":"checkboxUnchecked";loopInputs_[3]->setEnabled(loopFinite_);if(!loopFinite_)loopInputs_[3]->setText("无限");invalidate();}
+  void toggleLoopRepeat(){loopFinite_=!loopFinite_;static_cast<LoopNumberEntry*>(loopInputs_[3])->setValue(1);updateLoopRepeat();}
+  std::u32string loopDisplayName()const{auto name=unicodeText(loopInputs_[0]->text());const auto first=name.find_first_not_of(U" \t\r\n"),last=name.find_last_not_of(U" \t\r\n");return first==std::u32string::npos?U"循环节 1":name.substr(first,std::min<std::size_t>(64,last-first+1));}
+  std::pair<int,int> loopDisplayRange()const{const int count=int(document.timeline().state().frames.size());const int a=int(std::trunc(std::clamp(static_cast<LoopNumberEntry*>(loopInputs_[1])->value,1.0,double(count)))),b=int(std::trunc(std::clamp(static_cast<LoopNumberEntry*>(loopInputs_[2])->value,1.0,double(count))));return {std::min(a,b),std::max(a,b)};}
+  bool commitLoopEditor(){try{for(int i=1;i<4;++i)if(i!=3 || loopFinite_)static_cast<LoopNumberEntry*>(loopInputs_[i])->commitValue();auto draft=*loopDraft_;auto integer=[&](int index,int limit){const auto text=loopInputs_[index]->text();std::size_t used=0;const double raw=std::stod(text,&used);if(used!=text.size() || !std::isfinite(raw))throw std::invalid_argument("Loop field");return int(std::trunc(std::clamp(raw,1.0,double(limit))));};const int count=int(document.timeline().state().frames.size());int start=integer(1,count)-1,end=integer(2,count)-1;if(start>end)std::swap(start,end);draft.startFrameId=document.timeline().state().frames[start].id;draft.endFrameId=document.timeline().state().frames[end].id;draft.name=unicodeText(loopInputs_[0]->text());const auto first=draft.name.find_first_not_of(U" \t\r\n"),last=draft.name.find_last_not_of(U" \t\r\n");if(first==std::u32string::npos)draft.name=U"循环节 1";else {draft.name=draft.name.substr(first,last-first+1);if(draft.name.size()>64)draft.name.resize(64);}draft.repeatCount=loopFinite_?std::optional<int>{integer(3,9999)}:std::optional<int>{};if(!draft.id.empty()){const auto* existing=playbackSection(draft.id);if(existing && existing->name==draft.name && existing->startFrameId==draft.startFrameId && existing->endFrameId==draft.endFrameId && existing->direction==draft.direction && existing->repeatCount==draft.repeatCount)return true;}if(draft.id.empty())document.createLoopSection(draft);else document.updateLoopSection(draft);loopPlayback_={};return true;}catch(const std::exception&){status_=U"循环节帧范围或重复次数无效";invalidate();return false;}}
   void openFramePropertiesFor(std::size_t index){if(pending_!=Pending::None || index>=document.timeline().state().frames.size())return;const auto id=document.timeline().state().frames[index].id;if(timelineGesture_.kind)finishTimelineGesture();document.selectFrame(id);showFrameDuration();}
   void showFrameDuration() {playing_=false;cancelStroke();document.beginFrameDuration();pending_=Pending::FrameDuration;paletteInput_->setText(std::to_string(document.frame().duration));paletteInput_->suffix=U"ms";menuBar_->setEnabled(false);discard_->setVisible(false);keep_->caption=U"关闭";keep_->setVisible(true);dialogClose_->setVisible(true);paletteInput_->setVisible(true);refresh();paletteInput_->requestFocus();paletteInput_->selectAllText();}
-  void saveOnionSettings(){if(smoke_)return;try{const auto path=palettePreferencePath().parent_path()/"onion-skin.txt";std::filesystem::create_directories(path.parent_path());std::ofstream out(path);out<<onion_.enabled<<' '<<onion_.allLayers<<' '<<onion_.showDuringPlayback<<' '<<onion_.previousFrames<<' '<<onion_.nextFrames<<' '<<onion_.previousOpacity<<' '<<onion_.nextOpacity<<' '<<onion_.previousColor<<' '<<onion_.nextColor;out.close();if(!out)throw std::runtime_error("Cannot save onion skin preferences");}catch(const std::exception& e){status_=U"洋葱皮偏好保存失败："+unicodeText(e.what());}refresh();}
+  void saveOnionSettings(){persistAnimationSettings();refresh();}
   void toggleOnion(){onion_.enabled=!onion_.enabled;saveOnionSettings();refresh();}
-  void openOnionValue(int field){onionField_=field;pending_=Pending::OnionValue;const bool color=field>=4;int values[]{onion_.previousFrames,onion_.nextFrames,onion_.previousOpacity,onion_.nextOpacity};paletteInput_->setText(color?paletteHex(field==4?onion_.previousColor:onion_.nextColor):std::to_string(values[field]));paletteInput_->suffix=field<2?U"帧":field<4?U"%":U"";keep_->caption=U"关闭";keep_->setVisible(true);dialogClose_->setVisible(true);discard_->setVisible(false);paletteInput_->setVisible(true);menuBar_->setEnabled(false);refresh();paletteInput_->requestFocus();paletteInput_->selectAllText();}
-  void previewOnionValue(){try{auto value=paletteInput_->text();if(onionField_<4){std::size_t used=0;int next=std::stoi(value,&used);if(used!=value.size())return;int* target=onionField_==0?&onion_.previousFrames:onionField_==1?&onion_.nextFrames:onionField_==2?&onion_.previousOpacity:&onion_.nextOpacity;*target=std::clamp(next,0,onionField_<2?8:100);}else{if(value.size() && value[0]=='#')value.erase(0,1);if(value.size()!=6 && value.size()!=8)return;Pixel next=0xff000000;for(std::size_t i=0;i<value.size()/2;++i){std::size_t used=0;auto byte=std::stoul(value.substr(i*2,2),&used,16);if(used!=2)return;next=(next&~(255u<<(i*8)))|Pixel(byte)<<(i*8);} (onionField_==4?onion_.previousColor:onion_.nextColor)=next;}invalidate();}catch(const std::exception&){} }
-  void showOnionMenu(){PixelMenu menu(skin_);auto item=[&](const char32_t* caption,std::function<void()> action,std::function<bool()> checked={}){auto b=new PixelMenuItem(font_,skin_,caption);b->Click.connect(action);b->checked=checked;menu.addChild(b);};item(U"显示洋葱皮",[this]{toggleOnion();},[this]{return onion_.enabled;});item(U"当前图层",[this]{onion_.allLayers=false;saveOnionSettings();},[this]{return !onion_.allLayers;});item(U"所有图层",[this]{onion_.allLayers=true;saveOnionSettings();},[this]{return onion_.allLayers;});item(U"播放时显示",[this]{onion_.showDuringPlayback=!onion_.showDuringPlayback;saveOnionSettings();},[this]{return onion_.showDuringPlayback;});const char32_t* names[]{U"前面帧数",U"后面帧数",U"前面不透明度",U"后面不透明度",U"前面颜色",U"后面颜色"};for(int i=0;i<6;++i)item(names[i],[this,i]{openOnionValue(i);});menu.showPopup(pointerMenuPosition(ui::get_mouse_position()),display());}
+  void openOnionValue(int field){onionField_=field;pending_=Pending::OnionValue;const bool color=field>=4;double values[]{onion_.previousFrames,onion_.nextFrames,onion_.previousOpacity,onion_.nextOpacity};paletteInput_->setText(color?paletteHex(field==4?onion_.previousColor:onion_.nextColor):std::to_string(values[field]));paletteInput_->suffix=field<2?U"帧":field<4?U"%":U"";keep_->caption=U"关闭";keep_->setVisible(true);dialogClose_->setVisible(true);discard_->setVisible(false);paletteInput_->setVisible(true);menuBar_->setEnabled(false);refresh();paletteInput_->requestFocus();paletteInput_->selectAllText();}
+  void previewOnionValue(){try{auto value=paletteInput_->text();if(onionField_<4){std::size_t used=0;int next=std::stoi(value,&used);if(used!=value.size())return;double* target=onionField_==0?&onion_.previousFrames:onionField_==1?&onion_.nextFrames:onionField_==2?&onion_.previousOpacity:&onion_.nextOpacity;*target=std::clamp(double(next),0.,onionField_<2?8.:100.);}else{if(value.size() && value[0]=='#')value.erase(0,1);if(value.size()!=6 && value.size()!=8)return;Pixel next=0xff000000;for(std::size_t i=0;i<value.size()/2;++i){std::size_t used=0;auto byte=std::stoul(value.substr(i*2,2),&used,16);if(used!=2)return;next=(next&~(255u<<(i*8)))|Pixel(byte)<<(i*8);} (onionField_==4?onion_.previousColor:onion_.nextColor)=next;}invalidate();}catch(const std::exception&){} }
+  void showOnionMenu(){PixelMenu menu(skin_);auto item=[&](const char32_t* caption,std::function<void()> action,std::function<bool()> checked={}){auto b=new PixelMenuItem(font_,skin_,caption);b->Click.connect(action);b->checked=checked;menu.addChild(b);};item(U"显示洋葱皮",[this]{toggleOnion();},[this]{return onion_.enabled;});item(U"当前图层",[this]{onion_.allLayers=false;saveOnionSettings();},[this]{return !onion_.allLayers;});item(U"所有图层",[this]{onion_.allLayers=true;saveOnionSettings();},[this]{return onion_.allLayers;});item(U"播放时显示",[this]{onion_.showDuringPlayback=!onion_.showDuringPlayback;saveOnionSettings();},[this]{return onion_.showDuringPlayback;});menu.addChild(new PixelMenuSeparator(skin_));auto settings=new PixelMenuItem(font_,skin_,U"动画设置");settings->iconSkin=&toolIcons_;settings->icon="properties";settings->Click.connect([this]{showAnimationSettings();});menu.addChild(settings);const char32_t* names[]{U"前面帧数",U"后面帧数",U"前面不透明度",U"后面不透明度",U"前面颜色",U"后面颜色"};for(int i=0;i<6;++i)item(names[i],[this,i]{openOnionValue(i);});menu.showPopup(pointerMenuPosition(ui::get_mouse_position()),display());}
   std::vector<std::string> contextLayerTargets_;
   std::uint64_t contextLayerIdentity_=0;
   std::string contextFrameId_;
@@ -1092,7 +1390,7 @@ private:
     if(w==paletteScrollBar_ || w==paletteSelectionOverlay_ || w==paletteActions_ || w==paletteLibrary_ || w==paletteLock_ || w==primaryRole_ || w==secondaryRole_)return 0;
     for(auto b:swatches_)if(w==b)return 0;
     for(const auto* list:{&layerRows_,&layerEyes_,&layerLocks_,&layerAutoLinks_,&frameHeaders_,&frameCells_,&timelineInactive_})for(auto b:*list)if(w==b)return 2;
-    if(w==layerProperties_)return 2;return -1;
+    if(w==layerProperties_ || w==layerQuickSettings_ || std::find(layerQuickButtons_.begin(),layerQuickButtons_.end(),w)!=layerQuickButtons_.end())return 2;if(w==layerLabelSeparator_)return 2;return -1;
   }
   bool floatingChrome(ui::Widget* w)const{for(int id=0;id<4;++id)if(columnFloating(id) && (w==dockingTabs_[id] || w==columnClose_[id] || (id==3 && w==previewPanel_)))return true;return false;}
   void raiseFloatingAt(gfx::Point point){
@@ -1112,7 +1410,7 @@ private:
       raise(floatingSurfaces_[id]);
       if(id==0){for(auto w:swatches_)if(!w->active)raise(w);for(auto w:swatches_)if(w->active)raise(w);raise(paletteSelectionOverlay_);raise(paletteScrollBar_);for(auto w:{paletteActions_,paletteLibrary_,paletteLock_,primaryRole_,secondaryRole_})raise(w);}
       if(id==1){raise(colorPicker_);for(auto w:{pickerPrimary_,pickerSecondary_,pickerAdd_})raise(w);for(auto w:recentButtons_)raise(w);}
-      if(id==2){for(const auto* list:{&layerRows_,&layerEyes_,&layerLocks_,&layerAutoLinks_,&frameHeaders_,&frameCells_,&timelineInactive_})for(auto w:*list)raise(w);raise(layerProperties_);raise(timelineHorizontal_);raise(timelineVertical_);}
+      if(id==2){for(const auto* list:{&layerRows_,&layerEyes_,&layerLocks_,&layerAutoLinks_,&frameHeaders_,&frameCells_,&timelineInactive_})for(auto w:*list)raise(w);raise(layerProperties_);raise(layerQuickSettings_);raise(layerLabelSeparator_);for(auto w:layerQuickButtons_)raise(w);raise(timelineHorizontal_);raise(timelineVertical_);}
       if(id==3)raise(previewPanel_);
       raise(dockingTabs_[id]);if(columnFloating(id))raise(columnClose_[id]);
     };
@@ -1170,7 +1468,7 @@ private:
       add(dockingTabs_[column]);add(floatingSurfaces_[column]);add(columnClose_[column]);
       if(column==0){add(paletteSelectionOverlay_);add(paletteScrollBar_);for(auto w:swatches_)add(w);for(auto w:{paletteActions_,paletteLibrary_,paletteLock_,primaryRole_,secondaryRole_})add(w);}
       if(column==1){add(colorPicker_);for(auto w:{pickerPrimary_,pickerSecondary_,pickerAdd_})add(w);for(auto w:recentButtons_)add(w);}
-      if(column==2){for(const auto* list:{&layerRows_,&layerEyes_,&layerLocks_,&layerAutoLinks_,&frameHeaders_,&frameCells_,&timelineInactive_})for(auto w:*list)add(w);add(layerProperties_);}
+      if(column==2){for(const auto* list:{&layerRows_,&layerEyes_,&layerLocks_,&layerAutoLinks_,&frameHeaders_,&frameCells_,&timelineInactive_})for(auto w:*list)add(w);add(layerProperties_);add(layerQuickSettings_);add(layerLabelSeparator_);for(auto w:layerQuickButtons_)add(w);}
       if(column==2){add(timelineHorizontal_);add(timelineVertical_);}
       if(column==3)add(previewPanel_);
     }
@@ -1252,7 +1550,7 @@ private:
     if(dockFeedback_){dockingTabs_[d.id]->setVisible(false);if(dockFeedback_->bounds()!=bounds())dockFeedback_->setBounds(bounds());dockFeedback_->setVisible(true);if(children().back()!=dockFeedback_)moveChildTo(dockFeedback_,children().back());dockFeedback_->invalidateRect(previousFeedback|dockFeedbackBounds());}
   }
 public:
-  bool dispatchPanelGesture(ui::Message* msg){return manager()->isWidgetClickable(this) && (processLoopTrack(msg) || processPanelGesture(msg));}
+  bool dispatchPanelGesture(ui::Message* msg){return manager()->isWidgetClickable(this) && (processLayerLabelResize(msg) || processSizeDrag(msg) || processLoopTrack(msg) || processPanelGesture(msg));}
 private:
   struct PanelResizeHit {int id=-1,edges=0,neighbor=-1;};
   PanelResizeHit panelResizeAt(gfx::Point point)const{
@@ -1318,7 +1616,7 @@ private:
     const char32_t* docks[]{U"停靠到左侧",U"停靠到右侧",U"停靠到底部",U"设为悬浮栏目"};
     const int current=int(docking_.groups[docking_.groupOf(int(column))].dock);
     for(int i=0;i<4;++i)add(docks[i],i==current?"check":"move",[this,column,i]{dockColumn(int(column),panels::Dock(i));});
-    if(column==Column::Preview){menu.addChild(new PixelMenuSeparator(skin_));add(U"查看相对明暗","");}
+    if(column==Column::Preview){menu.addChild(new PixelMenuSeparator(skin_));auto item=add(U"查看相对明暗","",[this]{previewPanel_->toggleRelativeLuminance();});item->checked=[this]{return previewPanel_->relativeLuminance();};}
   }
   gfx::Point pointerMenuPosition(gfx::Point screenPosition) const {
     // Menu::showPopup/fit_bounds take coordinates relative to parentDisplay.
@@ -1421,20 +1719,8 @@ private:
   }
   void showLayerContextMenu(int kind){PixelMenu menu(skin_);buildLayerContextMenu(&menu,kind);menu.showPopup(pointerMenuPosition(ui::get_mouse_position()),display());}
 
-  std::uint64_t celContentIdentity_=0,celContentRevision_=0;
-  std::map<std::string,bool> celContentCache_;
   bool celHasContent(const timeline::Cel* cel) {
-    if(celContentIdentity_!=document.identity() || celContentRevision_!=document.contentRevision()) {
-      celContentCache_.clear();celContentIdentity_=document.identity();celContentRevision_=document.contentRevision();
-    }
-    if(!cel)return false;
-    const auto resolved=document.timeline().resolveSurface(cel->id);
-    if(!resolved.surface || !resolved.source)return false;
-    auto cached=celContentCache_.find(resolved.source->id);
-    if(cached!=celContentCache_.end())return cached->second;
-    const auto& pixels=resolved.surface->pixels;
-    const bool content=std::any_of(pixels.begin(),pixels.end(),[](Pixel pixel){return (pixel>>24)!=0;});
-    celContentCache_[resolved.source->id]=content;return content;
+    return cel && document.timeline().hasVisiblePixels(cel->id,!document.active());
   }
   void clearTimelineRowSelection() {
     selectedTimelineLayer_.clear();selectedTimelineCelLayer_.clear();selectedTimelineCelFrame_.clear();
@@ -1463,12 +1749,12 @@ private:
     // Legacy useLayerSelectionGuides: only list blank space dismisses selection;
     // row controls, frame headers and cels retain their own gesture handlers.
     for(const auto& buttons:{layerRows_,layerEyes_,layerLocks_,layerAutoLinks_,frameHeaders_,frameCells_})for(auto button:buttons)
-      if(button->timelineVisible && button->bounds().contains(point))return false;
+      if(button->timelineVisible && button->bounds().contains(point) && (!button->paletteViewport || button->paletteViewport().contains(point)))return false;
     document.clearTimelineSelection();clearTimelineRowSelection();frameSelectionExplicit_=false;
     timelineSelectionGuidesVisible_=true;refresh();
     return mouse.left(); // Right click continues to the create-area menu.
   }
-  struct TimelineScrollMetrics {int width=1,height=1;bool horizontal=false,vertical=false;};
+  struct TimelineScrollMetrics {int width=1,viewportWidth=1,height=1,contentWidth=1,contentHeight=1;bool horizontal=false,vertical=false;};
   struct LoopTrackDrag {std::string id;int edge=0,start=0,end=0,previewStart=0,previewEnd=0;std::uint64_t identity=0;bool moved=false;gfx::Point pointer;};
   std::optional<LoopTrackDrag> loopTrackDrag_;
   ui::Timer loopTrackTimer_{30,this};
@@ -1476,38 +1762,49 @@ private:
   int loopTrackHeight() const {return loopTrackLayout().laneCount*20;}
   int timelineHeaderOffset() const {return 37+loopTrackHeight();}
   int timelineRowsOffset() const {return timelineHeaderOffset()+12;}
-  gfx::Rect loopTrackViewport() const {const auto l=columnLayout(uiLogical(clientBounds()),2);return toDisplay(gfx::Rect(l.workX+89,l.layerTop+37,timelineScrollMetrics(l).width/uiScale,loopTrackHeight()));}
-  gfx::Rect loopTrackItemBounds(const timeline::LoopSectionLayoutItem& item) const {const auto l=columnLayout(uiLogical(clientBounds()),2);return toDisplay(gfx::Rect(l.workX+89+(item.startIndex-frameScroll_)*12,l.layerTop+37+item.lane*20,item.span*12,item.laneSpan*20)).offset(-frameScrollRemainder_,0);}
+  gfx::Rect loopTrackViewport() const {const auto l=columnLayout(uiLogical(clientBounds()),2);return toDisplay(gfx::Rect(l.workX+5+timelineLabelWidth(),l.layerTop+37,timelineScrollMetrics(l).width/uiScale,loopTrackHeight()));}
+  gfx::Rect loopTrackItemBounds(const timeline::LoopSectionLayoutItem& item) const {const auto l=columnLayout(uiLogical(clientBounds()),2);return toDisplay(gfx::Rect(l.workX+5+timelineLabelWidth()+(item.startIndex-frameScroll_)*12,l.layerTop+37+item.lane*20,item.span*12,item.laneSpan*20)).offset(-frameScrollRemainder_,0);}
   struct LoopTrackHit {std::string id;int edge=0;};
   LoopTrackHit loopTrackHit(gfx::Point point) const {if(!documentOpen_ || !columnShown(2) || pending_!=Pending::None || (topFloatingColumnAt(point)>=0 && topFloatingColumnAt(point)!=2) || !loopTrackViewport().contains(point))return {};const auto layout=loopTrackLayout();for(auto it=layout.items.rbegin();it!=layout.items.rend();++it){const auto box=loopTrackItemBounds(*it);if(point.y<box.y || point.y>=box.y2()+uiScale)continue;const int top=box.y+8*uiScale;if(point.y>=top){if(gfx::Rect(box.x-3*uiScale,top,9*uiScale,box.y2()+uiScale-top).contains(point))return {it->id,1};if(gfx::Rect(box.x2()-6*uiScale,top,9*uiScale,box.y2()+uiScale-top).contains(point))return {it->id,2};}if(box.contains(point))return {it->id,0};}return {};}
   void buildLoopTrackMenu(PixelMenu& menu,const std::string& id){auto add=[&](const char32_t* title,const char* icon,std::function<void()> action){auto item=new PixelMenuItem(font_,skin_,title);item->iconSkin=&toolIcons_;item->icon=icon;item->setEnabled(playbackSection(id)!=nullptr);item->Click.connect(action);menu.addChild(item);};add(U"播放循环节","right",[this,id]{startLoopPlayback(id);});add(U"循环节属性","properties",[this,id]{openLoopEditor(id);});menu.addChild(new PixelMenuSeparator(skin_));add(U"删除循环节","delete",[this,id]{document.deleteLoopSection(id);if(loopPlayback_.current.sectionId==id){playing_=false;loopPlayback_={};}refresh();});}
   void finishLoopTrackResize(bool cancel=false){if(!loopTrackDrag_)return;const auto drag=*loopTrackDrag_;loopTrackDrag_.reset();loopTrackTimer_.stop();if(hasCapture())releaseMouse();if(!cancel && drag.identity==document.identity() && drag.moved){if(const auto* current=playbackSection(drag.id)){auto section=*current;if(drag.previewStart!=drag.start || drag.previewEnd!=drag.end){section.startFrameId=document.timeline().state().frames.at(drag.previewStart).id;section.endFrameId=document.timeline().state().frames.at(drag.previewEnd).id;document.updateLoopSection(section);}}}refresh();}
-  void updateLoopTrackResize(gfx::Point point,bool scrolling=false){if(!loopTrackDrag_)return;auto& drag=*loopTrackDrag_;if(drag.identity!=document.identity() || !playbackSection(drag.id)){finishLoopTrackResize(true);return;}drag.pointer=point;const auto viewport=loopTrackViewport();if(scrolling){const int width=timelineScrollMetrics(columnLayout(uiLogical(clientBounds()),2)).width;int scroll=frameScroll_*12*uiScale+frameScrollRemainder_;if(point.x>viewport.x2()-30*uiScale)scroll+=18*uiScale;else if(point.x<viewport.x+30*uiScale)scroll-=18*uiScale;scroll=std::clamp(scroll,0,std::max(0,int(document.timeline().state().frames.size())*12*uiScale-width));frameScroll_=scroll/(12*uiScale);frameScrollRemainder_=scroll%(12*uiScale);}
+  void updateLoopTrackResize(gfx::Point point,bool scrolling=false){if(!loopTrackDrag_)return;auto& drag=*loopTrackDrag_;if(drag.identity!=document.identity() || !playbackSection(drag.id)){finishLoopTrackResize(true);return;}drag.pointer=point;const auto viewport=loopTrackViewport();if(scrolling){const auto metrics=timelineScrollMetrics(columnLayout(uiLogical(clientBounds()),2));int scroll=frameScroll_*12*uiScale+frameScrollRemainder_;if(point.x>viewport.x2()-30*uiScale)scroll+=18*uiScale;else if(point.x<viewport.x+30*uiScale)scroll-=18*uiScale;scroll=std::clamp(scroll,0,std::max(0,metrics.contentWidth-metrics.width));frameScroll_=scroll/(12*uiScale);frameScrollRemainder_=scroll%(12*uiScale);}
     const double first=viewport.x-frameScroll_*12*uiScale-frameScrollRemainder_;const int index=timeline::loopResizeFrameIndex(point.x,first,12*uiScale,int(document.timeline().state().frames.size()),drag.edge==1);const int start=drag.edge==1?std::min(index,drag.end):drag.start,end=drag.edge==2?std::max(index,drag.start):drag.end;if(start!=drag.previewStart || end!=drag.previewEnd){drag.previewStart=start;drag.previewEnd=end;drag.moved=true;}layoutLayers();invalidateTimelineGrid();}
   bool processLoopTrack(ui::Message* msg){if(loopTrackDrag_){if(!hasCapture() || msg->type()==ui::kFocusLeaveMessage || (msg->type()==ui::kKeyDownMessage && static_cast<ui::KeyMessage*>(msg)->scancode()==ui::kKeyEsc)){finishLoopTrackResize(true);return true;}if(msg->type()==ui::kMouseMoveMessage){updateLoopTrackResize(static_cast<ui::MouseMessage*>(msg)->position(),true);return true;}if(msg->type()==ui::kMouseUpMessage && static_cast<ui::MouseMessage*>(msg)->left()){updateLoopTrackResize(static_cast<ui::MouseMessage*>(msg)->position());finishLoopTrackResize();return true;}if(msg->type()==ui::kKeyDownMessage || msg->type()==ui::kKeyUpMessage)return true;}
     if(msg->type()!=ui::kMouseDownMessage && msg->type()!=ui::kDoubleClickMessage)return false;const auto mouse=static_cast<ui::MouseMessage*>(msg);const auto hit=loopTrackHit(mouse->position());if(hit.id.empty())return false;if(mouse->right()){if(msg->type()==ui::kDoubleClickMessage)return true;PixelMenu menu(skin_);buildLoopTrackMenu(menu,hit.id);menu.showPopup(pointerMenuPosition(mouse->position()),display());return true;}if(!mouse->left())return false;if(hit.edge && msg->type()==ui::kMouseDownMessage){const auto* section=playbackSection(hit.id);const auto range=timeline::loopRange(document.timeline().state(),*section);loopTrackDrag_=LoopTrackDrag{hit.id,hit.edge,range.start,range.end,range.start,range.end,document.identity(),false,mouse->position()};requestFocus();captureMouse();loopTrackTimer_.start();invalidateTimelineGrid();}else openLoopEditor(hit.id);return true;}
   void paintLoopTrack(ui::Graphics& g){if(!loopTrackHeight())return;const auto viewport=loopTrackViewport().offset(-bounds().origin());g.saveClip();g.clipRect(viewport);UiPaintScale scale(g);const auto logical=uiLogical(viewport);skin_.draw(g,"timeline.loop.track",logical);for(const auto& item:loopTrackLayout().items){const auto box=uiLogical(loopTrackItemBounds(item).offset(-bounds().origin()));const auto* section=playbackSection(item.id);if(!section)continue;const bool playing=playing_ && loopPlayback_.current.sectionId==item.id,hover=paletteMousePosition_ && loopTrackHit(*paletteMousePosition_).id==item.id;const char* slot=playing?"timeline.loop.playing":hover?"timeline.loop.hover":"timeline.loop.normal";skin_.draw(g,slot,gfx::Rect(box.x+2,box.y+9,box.w-4,box.h-8));const auto ink=font_.inkBounds(section->name);auto label=gfx::Rect(box.x+4,box.y,std::max(0,box.w-8),12);g.saveClip();g.clipRect(label);const int width=std::min(label.w,ink.w);auto background=gfx::Rect(box.x+(box.w-width)/2-1,box.y,width+2,12);skin_.draw(g,"timeline.loop.track",background);font_.draw(g,section->name,box.x+(box.w-ink.w)/2-ink.x,box.y-ink.y,skin_[playing?"accent":hover?"text":"muted"]);g.restoreClip();}g.restoreClip();}
   TimelineScrollMetrics timelineScrollMetrics(const Layout& l) const {
-    TimelineScrollMetrics m;const int width=std::max(uiScale,(l.workW-94)*uiScale),height=std::max(uiScale,(l.bottom-l.layerTop-timelineRowsOffset()-4)*uiScale);
+    TimelineScrollMetrics m;const int width=std::max(uiScale,(l.workW-10)*uiScale),height=std::max(uiScale,(l.bottom-l.layerTop-timelineRowsOffset()-6)*uiScale);
     const int contentWidth=int(document.timeline().state().frames.size())*12*uiScale,contentHeight=int(document.timeline().state().layers.size())*12*uiScale;
-    for(int i=0;i<3;++i){m.width=std::max(uiScale,width-(m.vertical?6*uiScale:0));m.height=std::max(uiScale,height-(m.horizontal?6*uiScale:0));m.horizontal=contentWidth>m.width;m.vertical=contentHeight>m.height;}
+    for(int i=0;i<3;++i){m.viewportWidth=std::max(uiScale,width-(m.vertical?6*uiScale:0));m.width=std::max(0,m.viewportWidth-timelineLabelWidth()*uiScale);m.height=std::max(uiScale,height-(m.horizontal?6*uiScale:0));m.contentWidth=contentWidth+m.width/2+std::max(0,timelineLabelWidth()*uiScale-m.viewportWidth);m.contentHeight=contentHeight+12*uiScale;m.horizontal=m.contentWidth>m.width;m.vertical=m.contentHeight>m.height;}
     return m;
   }
-  int timelineColumns(const Layout& l) const {return std::max(1,(timelineScrollMetrics(l).width+frameScrollRemainder_+12*uiScale-1)/(12*uiScale));}
-  int timelineCapacity(const Layout& l) const {return std::max(1,(timelineScrollMetrics(l).height+layerScrollRemainder_+12*uiScale-1)/(12*uiScale));}
-  gfx::Rect timelineRowViewport() const {const auto l=columnLayout(uiLogical(clientBounds()),2);const auto m=timelineScrollMetrics(l);return toDisplay(gfx::Rect(l.workX+5,l.layerTop+timelineRowsOffset(),84+m.width/uiScale,m.height/uiScale));}
-  gfx::Rect timelineFrameViewport(bool header=false) const {auto r=timelineRowViewport();r.x+=84*uiScale;r.w-=84*uiScale;if(header){r.y-=12*uiScale;r.h=12*uiScale;}return r;}
+  int timelineColumns(const Layout& l) const {const auto m=timelineScrollMetrics(l);return std::max(1,(m.width+(m.vertical?6*uiScale:0)+frameScrollRemainder_+12*uiScale-1)/(12*uiScale));}
+  int timelineCapacity(const Layout& l) const {const auto m=timelineScrollMetrics(l);return std::max(1,(m.height+(m.horizontal?6*uiScale:0)+layerScrollRemainder_+12*uiScale-1)/(12*uiScale));}
+  gfx::Rect timelineRowViewport() const {const auto l=columnLayout(uiLogical(clientBounds()),2);const auto m=timelineScrollMetrics(l);return toDisplay(gfx::Rect(l.workX+5,l.layerTop+timelineRowsOffset(),m.viewportWidth/uiScale,m.height/uiScale));}
+  gfx::Rect timelineFrameViewport(bool header=false) const {auto r=timelineRowViewport();r.x+=timelineLabelWidth()*uiScale;r.w=std::max(0,r.w-timelineLabelWidth()*uiScale);if(header){r.y-=12*uiScale;r.h=12*uiScale;}return r;}
+  gfx::Rect timelineMaterialViewport(gfx::Rect viewport,bool header=false) const {
+    // Keep scrollbar input/range geometry, but paint actual cells below the
+    // translucent sheet material instead of a reserved solid-color strip.
+    const auto m=timelineScrollMetrics(columnLayout(uiLogical(clientBounds()),2));
+    if(m.vertical)viewport.w+=6*uiScale;
+    if(m.horizontal && !header)viewport.h+=6*uiScale;
+    return viewport;
+  }
   void layoutTimelineScrollBars(const Layout& l) {
     if(!timelineHorizontal_)return;const auto m=timelineScrollMetrics(l);const auto row=timelineRowViewport(),frames=timelineFrameViewport();
-    int vertical=std::clamp(layerScroll_*12*uiScale+layerScrollRemainder_,0,std::max(0,int(document.timeline().state().layers.size())*12*uiScale-m.height));
-    int horizontal=std::clamp(frameScroll_*12*uiScale+frameScrollRemainder_,0,std::max(0,int(document.timeline().state().frames.size())*12*uiScale-m.width));
+    int vertical=std::clamp(layerScroll_*12*uiScale+layerScrollRemainder_,0,std::max(0,m.contentHeight-m.height));
+    int horizontal=std::clamp(frameScroll_*12*uiScale+frameScrollRemainder_,0,std::max(0,m.contentWidth-m.width));
     layerScroll_=vertical/(12*uiScale);layerScrollRemainder_=vertical%(12*uiScale);frameScroll_=horizontal/(12*uiScale);frameScrollRemainder_=horizontal%(12*uiScale);
-    timelineVertical_->setDockBounds(gfx::Rect(row.x2(),row.y,7*uiScale,row.h));timelineVertical_->configure(int(document.timeline().state().layers.size())*12*uiScale,m.height,vertical);
-    timelineHorizontal_->setDockBounds(gfx::Rect(frames.x,row.y2(),frames.w,7*uiScale));timelineHorizontal_->configure(int(document.timeline().state().frames.size())*12*uiScale,m.width,horizontal);
+    const auto verticalBounds=PixelScrollBar::gridBounds(row,true);if(timelineVertical_->bounds()!=verticalBounds)timelineVertical_->setDockBounds(verticalBounds);timelineVertical_->configure(m.contentHeight,m.height,vertical);
+    const auto horizontalBounds=PixelScrollBar::gridBounds(row,false);if(timelineHorizontal_->bounds()!=horizontalBounds)timelineHorizontal_->setDockBounds(horizontalBounds);timelineHorizontal_->configure(m.contentWidth+std::min(timelineLabelWidth()*uiScale,m.viewportWidth),m.viewportWidth,horizontal);
     for(auto bar:{timelineHorizontal_,timelineVertical_}){bar->setEnabled(pending_==Pending::None);bar->wheelStep=12*uiScale;}
     timelineHorizontal_->setVisible(documentOpen_ && columnShown(2) && m.horizontal);timelineVertical_->setVisible(documentOpen_ && columnShown(2) && m.vertical);
   }
   void layoutLayers() {
+    timelinePaintCacheValid_=false;
+    const int priorLabelWidth=timelineLabelWidth();
+    auto place=[](ui::Widget* widget,const gfx::Rect& box){if(widget->bounds()!=box)widget->setBounds(box);};
     if(timelineSelectionIdentity_!=document.identity()){clearTimelineRowSelection();frameSelectionExplicit_=false;timelineSelectionGuidesVisible_=true;timelineSelectionIdentity_=document.identity();}
     frameSelectionExplicit_=!document.selectedFrames().empty();
     const auto& formal=document.timelineSelection();
@@ -1515,43 +1812,52 @@ private:
     const auto* selectedCel=formal.cels.empty()?nullptr:document.timeline().findCelById(formal.cels.back());
     selectedTimelineCelLayer_=selectedCel?selectedCel->layerId:std::string{};selectedTimelineCelFrame_=selectedCel?selectedCel->frameId:std::string{};
     if(!layerRow_)return;const auto rc=uiLogical(clientBounds());const auto l=columnLayout(rc,2);const int x=rc.x+l.workX+5,y=rc.y+l.layerTop;
+    const std::unordered_set<std::string> selectedLayers(formal.layers.begin(),formal.layers.end());
+    timelineSelectedCels_.clear();timelineSelectedCels_.insert(formal.cels.begin(),formal.cels.end());
+    const std::unordered_set<std::string> selectedFrames(document.selectedFrames().begin(),document.selectedFrames().end());
     const auto& layers=document.timeline().state().layers;
-    while(layerRows_.size()<layers.size()) {
-      const auto i=layerRows_.size();auto select=[this,i]{selectTimelineLayer(i);};
-      auto row=i==0?layerRow_:button(U"",select);if(i==0)row->Click.connect(select);row->skinStyle="timeline-row";row->doubleClickLeftOnly=true;row->doubleClick=[this,i]{openLayerPropertiesFor(i);};row->context=[this,i]{prepareLayerContext(document.timeline().state().layers.at(i).id);showLayerContextMenu(1);};
-      row->timelinePress=[this,i](const ui::MouseMessage& mouse){beginTimelineGesture(1,int(i),-1,mouse);};
+    layoutTimelineScrollBars(l);const int capacity=timelineCapacity(l);
+    while(layerRows_.size()<std::size_t(std::min(capacity,int(layers.size())))) {
+      const auto i=layerRows_.size();auto select=[this,i]{selectTimelineLayer(layerScroll_+i);};
+      auto row=i==0?layerRow_:button(U"",select);if(i==0)row->Click.connect(select);row->skinStyle="timeline-row";row->doubleClickLeftOnly=true;row->doubleClick=[this,i]{openLayerPropertiesFor(layerScroll_+i);};row->context=[this,i]{prepareLayerContext(document.timeline().state().layers.at(layerScroll_+i).id);showLayerContextMenu(1);};
+      row->timelinePress=[this,i](const ui::MouseMessage& mouse){beginTimelineGesture(1,layerScroll_+int(i),-1,mouse);};
 
-      auto eye=i==0?layerEye_:button(U"",[this,i]{const auto& layer=document.timeline().state().layers.at(i);document.beginVisibilityGesture();document.previewVisibilityGesture(layer.id,!layer.visible);document.commitVisibilityGesture();refresh();});eye->iconSkin=&toolIcons_;eye->skinStyle="timeline-row";eye->context=[this,i]{prepareLayerContext(document.timeline().state().layers.at(i).id);showLayerContextMenu(1);};eye->timelinePress=[this,i](const ui::MouseMessage& mouse){if(mouse.right()){prepareLayerContext(document.timeline().state().layers.at(i).id);showLayerContextMenu(1);return;}beginVisibilityGesture(document.timeline().state().layers.at(i).id,mouse);};
-      auto lock=button(U"",[this,i]{const auto& layer=document.timeline().state().layers.at(i);document.beginLockGesture();document.previewLockGesture(layer.id,!layer.locked);document.commitLockGesture();refresh();});lock->iconSkin=&toolIcons_;lock->skinStyle="timeline-row";lock->context=[this,i]{prepareLayerContext(document.timeline().state().layers.at(i).id);showLayerContextMenu(1);};lock->timelinePress=[this,i](const ui::MouseMessage& mouse){if(mouse.right()){prepareLayerContext(document.timeline().state().layers.at(i).id);showLayerContextMenu(1);return;}beginLockGesture(document.timeline().state().layers.at(i).id,mouse);};
-      auto autoLink=button(U"",[this,i]{const auto& layer=document.timeline().state().layers.at(i);document.setLayerAutoLinkAnimationCels(layer.id,!layer.autoLinkAnimationCels);refresh();});
-      autoLink->skinStyle="timeline-row";autoLink->iconSkin=&toolIcons_;autoLink->timelinePress=[this,i](const ui::MouseMessage& mouse){beginAutoLinkGesture(document.timeline().state().layers.at(i).id,mouse);};
+      auto eye=i==0?layerEye_:button(U"",[this,i]{const auto& layer=document.timeline().state().layers.at(layerScroll_+i);document.beginVisibilityGesture();document.previewVisibilityGesture(layer.id,!layer.visible);document.commitVisibilityGesture();refresh();});eye->iconSkin=&toolIcons_;eye->skinStyle="timeline-row";eye->context=[this,i]{prepareLayerContext(document.timeline().state().layers.at(layerScroll_+i).id);showLayerContextMenu(1);};eye->timelinePress=[this,i](const ui::MouseMessage& mouse){if(mouse.right()){prepareLayerContext(document.timeline().state().layers.at(layerScroll_+i).id);showLayerContextMenu(1);return;}beginVisibilityGesture(document.timeline().state().layers.at(layerScroll_+i).id,mouse);};
+      auto lock=button(U"",[this,i]{const auto& layer=document.timeline().state().layers.at(layerScroll_+i);document.beginLockGesture();document.previewLockGesture(layer.id,!layer.locked);document.commitLockGesture();refresh();});lock->iconSkin=&toolIcons_;lock->skinStyle="timeline-row";lock->context=[this,i]{prepareLayerContext(document.timeline().state().layers.at(layerScroll_+i).id);showLayerContextMenu(1);};lock->timelinePress=[this,i](const ui::MouseMessage& mouse){if(mouse.right()){prepareLayerContext(document.timeline().state().layers.at(layerScroll_+i).id);showLayerContextMenu(1);return;}beginLockGesture(document.timeline().state().layers.at(layerScroll_+i).id,mouse);};
+      auto autoLink=button(U"",[this,i]{const auto& layer=document.timeline().state().layers.at(layerScroll_+i);document.setLayerAutoLinkAnimationCels(layer.id,!layer.autoLinkAnimationCels);refresh();});
+      autoLink->skinStyle="timeline-row";autoLink->iconSkin=&toolIcons_;autoLink->timelinePress=[this,i](const ui::MouseMessage& mouse){beginAutoLinkGesture(document.timeline().state().layers.at(layerScroll_+i).id,mouse);};
       layerRows_.push_back(row);layerEyes_.push_back(eye);layerLocks_.push_back(lock);layerAutoLinks_.push_back(autoLink);
     }
-    layoutTimelineScrollBars(l);const int capacity=timelineCapacity(l);
     for(std::size_t i=0;i<layerRows_.size();++i) {
-      const bool shown=columnShown(2) && i<layers.size() && int(i)>=layerScroll_ && int(i)<layerScroll_+capacity;const int rowY=y+timelineRowsOffset()+(int(i)-layerScroll_)*12;
-      for(auto b:{layerRows_[i],layerEyes_[i],layerLocks_[i],layerAutoLinks_[i]}){b->timelineParentPainted=true;b->timelineVisible=shown;b->setTransparent(true);b->timelineRepaint=[this]{invalidateTimelineGrid();};b->paletteViewport=[this]{return timelineRowViewport();};b->setVisible(shown);b->setEnabled(pending_==Pending::None);}
-      if(i>=layers.size())continue;const auto& layer=layers[i];layerRows_[i]->caption=layer.name;layerRows_[i]->timelineCaptionPadding=2;layerRows_[i]->active=layer.id==document.layer().id;layerRows_[i]->timelineSelected=timelineSelectionGuidesVisible_ && document.selectedFrames().empty() && formal.cels.empty() && std::find(formal.layers.begin(),formal.layers.end(),layer.id)!=formal.layers.end();layerEyes_[i]->active=layerRows_[i]->active;layerLocks_[i]->active=layerRows_[i]->active;layerAutoLinks_[i]->active=layerRows_[i]->active;layerAutoLinks_[i]->icon=layer.autoLinkAnimationCels?"animation-auto-link-on":"animation-auto-link-off";layerAutoLinks_[i]->setBounds(toDisplay(gfx::Rect(x+24,rowY,12,12)).offset(0,-layerScrollRemainder_));
-      layerRows_[i]->setBounds(toDisplay(gfx::Rect(x+36,rowY,48,12)).offset(0,-layerScrollRemainder_));layerEyes_[i]->icon=layer.visible?"eye":"eyeOff";layerEyes_[i]->setBounds(toDisplay(gfx::Rect(x,rowY,12,12)).offset(0,-layerScrollRemainder_));layerLocks_[i]->icon=layer.locked?"lock":"unlock";layerLocks_[i]->setBounds(toDisplay(gfx::Rect(x+12,rowY,12,12)).offset(0,-layerScrollRemainder_));
+      const bool shown=columnShown(2) && int(i)<capacity && i+layerScroll_<layers.size();const int rowY=y+timelineRowsOffset()+int(i)*12;
+      for(auto b:{layerRows_[i],layerEyes_[i],layerLocks_[i],layerAutoLinks_[i]}){b->timelineParentPainted=true;b->timelineVisible=shown;b->setTransparent(columnFloating(2) || pending_!=Pending::None);b->timelineRepaint=[this]{invalidateTimelineGrid();};b->paletteViewport=[this]{return timelineRowViewport();};b->setVisible(shown);b->setEnabled(pending_==Pending::None);}
+      if(!shown)continue;const auto& layer=layers[i+layerScroll_];layerRows_[i]->caption=layer.name;layerRows_[i]->paletteViewport=[this]{return timelineRowViewport();};layerRows_[i]->timelineCaptionPadding=2;layerRows_[i]->active=layer.id==document.layer().id;layerRows_[i]->timelineSelected=timelineSelectionGuidesVisible_ && document.selectedFrames().empty() && formal.cels.empty() && selectedLayers.count(layer.id)!=0;layerEyes_[i]->active=layerRows_[i]->active;layerLocks_[i]->active=layerRows_[i]->active;layerAutoLinks_[i]->active=layerRows_[i]->active;layerAutoLinks_[i]->icon=layer.autoLinkAnimationCels?"animation-auto-link-on":"animation-auto-link-off";place(layerAutoLinks_[i],toDisplay(gfx::Rect(x+24,rowY,12,12)).offset(0,-layerScrollRemainder_));
+      place(layerRows_[i],toDisplay(gfx::Rect(x+36,rowY,timelineLabelWidth()-36,12)).offset(0,-layerScrollRemainder_));layerEyes_[i]->icon=layer.visible?"eye":"eyeOff";place(layerEyes_[i],toDisplay(gfx::Rect(x,rowY,12,12)).offset(0,-layerScrollRemainder_));layerLocks_[i]->icon=layer.locked?"lock":"unlock";place(layerLocks_[i],toDisplay(gfx::Rect(x+12,rowY,12,12)).offset(0,-layerScrollRemainder_));
     }
-    const auto& frames=document.timeline().state().frames;const int columns=timelineColumns(l);const int active=int(document.activeFrameIndex());if(!timelineGesture_.kind && !loopTrackDrag_ && timelineLastActiveFrame_!=document.frame().id){if(active<frameScroll_){frameScroll_=active;frameScrollRemainder_=0;}else if(active>=frameScroll_+columns){frameScroll_=active-columns+1;frameScrollRemainder_=0;}}timelineLastActiveFrame_=document.frame().id;layoutTimelineScrollBars(l);
+    const auto& frames=document.timeline().state().frames;const int columns=timelineColumns(l);const int active=int(document.activeFrameIndex());if(!timelineGesture_.kind && !loopTrackDrag_ && !layerLabelWidth_.dragging && timelineLastActiveFrame_!=document.frame().id){if(active<frameScroll_){frameScroll_=active;frameScrollRemainder_=0;}else if(active>=frameScroll_+columns){frameScroll_=active-columns+1;frameScrollRemainder_=0;}}timelineLastActiveFrame_=document.frame().id;layoutTimelineScrollBars(l);
     while(frameHeaders_.size()<std::size_t(columns)){const auto col=frameHeaders_.size();auto b=button(U"",[this,col]{document.selectFrameHeader(document.timeline().state().frames.at(frameScroll_+col).id,0,playing_);markFrameSelection();refresh();});b->skinStyle="timeline-row";
       b->timelinePress=[this,col](const ui::MouseMessage& mouse){beginTimelineGesture(2,-1,frameScroll_+int(col),mouse);};
       b->doubleClickLeftOnly=true;b->doubleClick=[this,col]{openFramePropertiesFor(frameScroll_+col);};
 
       b->context=[this,col]{const auto id=document.timeline().state().frames.at(frameScroll_+col).id;if(std::find(document.selectedFrames().begin(),document.selectedFrames().end(),id)==document.selectedFrames().end())document.selectFrameHeader(id,0,playing_);markFrameSelection();contextFrameId_=id;refresh();showLayerContextMenu(2);};frameHeaders_.push_back(b);}
-    for(std::size_t col=0;col<frameHeaders_.size();++col){auto b=frameHeaders_[col];const int index=frameScroll_+int(col);const bool shown=columnShown(2) && int(col)<columns && index<int(frames.size());b->timelineParentPainted=true;b->timelineVisible=shown;b->setTransparent(true);b->timelineRepaint=[this]{invalidateTimelineGrid();};b->paletteViewport=[this]{return timelineFrameViewport(true);};b->setVisible(shown);b->setEnabled(pending_==Pending::None);if(shown){const auto n=std::to_string(index+1);b->caption=std::u32string(n.begin(),n.end());b->centerCaption=true;b->active=frames[index].id==document.frame().id || std::find(document.selectedFrames().begin(),document.selectedFrames().end(),frames[index].id)!=document.selectedFrames().end();b->timelineSelected=timelineSelectionGuidesVisible_ && frameSelectionExplicit_ && std::find(document.selectedFrames().begin(),document.selectedFrames().end(),frames[index].id)!=document.selectedFrames().end();b->setBounds(toDisplay(gfx::Rect(x+84+int(col)*12,y+timelineHeaderOffset(),12,12)).offset(-frameScrollRemainder_,0));}}
+    for(std::size_t col=0;col<frameHeaders_.size();++col){auto b=frameHeaders_[col];const int index=frameScroll_+int(col);const bool shown=columnShown(2) && int(col)<columns && index<int(frames.size());b->timelineParentPainted=true;b->timelineVisible=shown;b->setTransparent(columnFloating(2) || pending_!=Pending::None);b->timelineRepaint=[this]{invalidateTimelineGrid();};b->paletteViewport=[this]{return timelineFrameViewport(true);};b->setVisible(shown);b->setEnabled(pending_==Pending::None);if(shown){const auto n=std::to_string(index+1);b->caption=std::u32string(n.begin(),n.end());b->centerCaption=true;b->active=frames[index].id==document.frame().id || selectedFrames.count(frames[index].id)!=0;b->timelineSelected=timelineSelectionGuidesVisible_ && frameSelectionExplicit_ && selectedFrames.count(frames[index].id)!=0;place(b,toDisplay(gfx::Rect(x+timelineLabelWidth()+int(col)*12,y+timelineHeaderOffset(),12,12)).offset(-frameScrollRemainder_,0));}}
     while(frameCells_.size()<std::size_t(columns*capacity)){const auto slot=frameCells_.size();auto b=button(U"",[this,slot]{const auto rc=uiLogical(clientBounds());const auto l=columnLayout(rc,2);const int cols=timelineColumns(l);selectTimelineCel(layerScroll_+slot/cols,frameScroll_+slot%cols);});b->skinStyle="timeline-row";b->timelineCel=true;b->context=[this,slot]{const auto rc=uiLogical(clientBounds());const auto l=columnLayout(rc,2);const int cols=timelineColumns(l);prepareCelContext(document.timeline().findCel(document.timeline().state().layers.at(layerScroll_+slot/cols).id,document.timeline().state().frames.at(frameScroll_+slot%cols).id)->id);showLayerContextMenu(3);};frameCells_.push_back(b);}
-    for(std::size_t slot=0;slot<frameCells_.size();++slot){auto b=frameCells_[slot];const int row=int(slot)/columns,col=int(slot)%columns,index=frameScroll_+col;const bool shown=columnShown(2) && row<capacity && row+layerScroll_<int(layers.size()) && index<int(frames.size());b->timelineParentPainted=true;b->timelineVisible=shown;b->setTransparent(true);b->timelineRepaint=[this]{invalidateTimelineGrid();};b->paletteViewport=[this]{return timelineFrameViewport();};b->setVisible(shown);b->setEnabled(pending_==Pending::None);b->timelinePress=[this,row,col](const ui::MouseMessage& mouse){beginTimelineGesture(3,row+layerScroll_,col+frameScroll_,mouse);};if(shown){const auto* cel=document.timeline().findCel(layers[row+layerScroll_].id,frames[index].id);b->timelineCel=celHasContent(cel);b->iconSkin=&toolIcons_;b->icon="";b->active=layers[row+layerScroll_].id==document.layer().id || frames[index].id==document.frame().id;b->timelineSelected=timelineSelectionGuidesVisible_ && std::find(formal.cels.begin(),formal.cels.end(),cel->id)!=formal.cels.end();b->setBounds(toDisplay(gfx::Rect(x+84+col*12,y+timelineRowsOffset()+row*12,12,12)).offset(-frameScrollRemainder_,-layerScrollRemainder_));}}
-    layerProperties_->setBounds(toDisplay(gfx::Rect(rc.x+l.workX+l.workW-20,y+19,15,16)));
+    for(std::size_t slot=0;slot<frameCells_.size();++slot){auto b=frameCells_[slot];const int row=int(slot)/columns,col=int(slot)%columns,index=frameScroll_+col;const bool shown=columnShown(2) && row<capacity && row+layerScroll_<int(layers.size()) && index<int(frames.size());b->timelineParentPainted=true;b->timelineVisible=shown;b->setTransparent(columnFloating(2) || pending_!=Pending::None);b->timelineRepaint=[this]{invalidateTimelineGrid();};b->paletteViewport=[this]{return timelineFrameViewport();};b->setVisible(shown);b->setEnabled(pending_==Pending::None);b->timelinePress=[this,row,col](const ui::MouseMessage& mouse){beginTimelineGesture(3,row+layerScroll_,col+frameScroll_,mouse);};if(shown){const auto* cel=document.timeline().findCel(layers[row+layerScroll_].id,frames[index].id);b->timelineCel=celHasContent(cel);b->iconSkin=&toolIcons_;b->icon="";b->active=layers[row+layerScroll_].id==document.layer().id || frames[index].id==document.frame().id;b->timelineSelected=timelineSelectionGuidesVisible_ && timelineSelectedCels_.count(cel->id)!=0;place(b,toDisplay(gfx::Rect(x+timelineLabelWidth()+col*12,y+timelineRowsOffset()+row*12,12,12)).offset(-frameScrollRemainder_,-layerScrollRemainder_));}}
+    const auto propertiesBounds=toDisplay(gfx::Rect(rc.x+l.workX+l.workW-20,y+19,15,16));if(layerProperties_->bounds()!=propertiesBounds)layerProperties_->setBounds(propertiesBounds);
+    layerLabelSeparator_->setBounds(layerLabelSeparatorBounds());layerLabelSeparator_->setVisible(columnShown(2));layerLabelSeparator_->setEnabled(pending_==Pending::None);
     layerHeaderOpacity_->setVisible(false);
     for(std::size_t i=0;i<timelineInactive_.size();++i){auto b=timelineInactive_[i];gfx::Rect at;
       if(i<5)at={x+int(i)*14,y+19,15,16};
       else if(i<8)at={x+4*14+15+uiGap+int(i-5)*14,y+19,15,16};
       else if(i<10)at={rc.x+l.workX+l.workW-48+int(i-8)*14,y+19,15,16};
       else at={x+12+int(i-10)*12,y+timelineRowsOffset(),12,12};
-      b->setBounds(toDisplay(at));b->setVisible(columnShown(2) && i<10);b->setEnabled(enabledTimelineAction(i));if(i==5)b->active=onion_.enabled;if(i==2){b->active=playing_;b->icon=playing_?"playback-pause":"playback-play";}
+      b->setBounds(toDisplay(at));b->setVisible(columnShown(2) && i<8);b->setEnabled(enabledTimelineAction(i));if(i==5)b->active=onion_.enabled;if(i==2){b->active=playing_;b->icon=playing_?"playback-pause":"playback-play";}
     }
+    const auto quick=layerquick::visible(layerQuickActions_,[this](const std::string& id){return menuCommands_.connected(id);});
+    const int quickRight=rc.x+l.workX+l.workW-20-uiGap-15;
+    for(std::size_t i=0;i<layerQuickButtons_.size();++i){auto b=layerQuickButtons_[i];const int buttonX=quickRight-int(quick.size()-i)*(15+uiGap);const bool shown=columnShown(2)&&i<quick.size() && toDisplay(gfx::Rect(buttonX,y+19,15,16)).x>=timelineInactive_[7]->bounds().x2()+uiGap*uiScale;b->setVisible(shown);if(shown){const auto id=quick[i].id;b->icon=layerquick::find(id)->icon;place(b,toDisplay(gfx::Rect(buttonX,y+19,15,16)));b->setEnabled(pending_==Pending::None && menuCommands_.enabled(id));}}
+    layerQuickSettings_->setBounds(toDisplay(gfx::Rect(quickRight,y+19,15,16)));layerQuickSettings_->setVisible(columnShown(2));layerQuickSettings_->setEnabled(pending_==Pending::None);
+    if(priorLabelWidth!=timelineLabelWidth()){layoutLayers();return;}
     const bool enabled=pending_==Pending::None;
     for(auto b:{layerProperties_}){b->setEnabled(enabled && !formal.layers.empty());b->setVisible(columnShown(2));}
   }
@@ -1565,9 +1871,9 @@ private:
     if(w==gmTrack_||w==gmPicker_||w==gmPreset_||w==gmDither_||w==gmPosition_||w==gmColor_||w==gmName_||w==gmMode_||w==gmReverse_||w==gmPalette_||w==gmSave_||w==gmDelete_||w==gmAdd_||w==gmRemove_||w==gmRestore_||w==gmFlipStops_)return true;
     if(w==aaAutoButton_ || w==aaInterior_ || w==aaLiveButton_ || w==aaSource_ || w==aaOpacity_ || w==aaOpacitySlider_ || w==aaColorEntry_ || w==aaPicker_)return true;
     if(w==convolutionScroll_ || w==convolutionTiled_ || w==convolutionLive_ || w==convolutionApply_ || std::find(convolutionPresets_.begin(),convolutionPresets_.end(),w)!=convolutionPresets_.end() || std::find(convolutionChannels_.begin(),convolutionChannels_.end(),w)!=convolutionChannels_.end())return true;
-    if(w==preferenceNavBar_ || w==preferenceContentBar_ || w==errorScrollBar_ || w==dialogClose_ || w==saveBeforeClose_ || w==discard_ || w==keep_ || w==paletteInput_ || w==layerOpacityRange_ || w==loopDirection_ || w==replaceScopeButton_ || w==replacePreviewButton_ || w==replaceRememberButton_ || w==importSheetLayout_ || w==importSheetPartial_ || w==gifRange_ || w==gifDirection_ || w==gifTrim_ || w==exportFormatButton_ || w==sheetValue_ || w==sheetPreview_ || w==exportScaleInput_ || w==exportTrimButton_ || w==exportSelectionButton_ || w==resizeLock_ || w==resizeMethod_ || w==adjustmentPreview_ || w==adjustmentColorize_ || w==adjustmentToneButton_ || w==curveEditor_ || w==curveChannelButton_ || w==curveResetButton_ || w==curveDeleteButton_ || w==extractNameInput_ || w==extractModeButton_)return true;
+    if(w==preferenceNavBar_ || w==preferenceContentBar_ || w==errorScrollBar_ || w==dialogClose_ || w==saveBeforeClose_ || w==discard_ || w==keep_ || w==paletteInput_ || w==layerOpacityRange_ || w==loopDirection_ || w==loopRepeat_ || w==replaceScopeButton_ || w==replacePreviewButton_ || w==replaceRememberButton_ || w==importSheetLayout_ || w==importSheetPartial_ || w==gifRange_ || w==gifDirection_ || w==gifTrim_ || w==exportFormatButton_ || w==exportOpenFolderButton_ || w==sheetValue_ || w==sheetPreview_ || w==exportScaleInput_ || w==exportTrimButton_ || w==exportSelectionButton_ || w==resizeLock_ || w==resizeMethod_ || w==adjustmentPreview_ || w==adjustmentColorize_ || w==adjustmentToneButton_ || w==curveEditor_ || w==curveChannelButton_ || w==curveResetButton_ || w==curveDeleteButton_ || w==extractNameInput_ || w==extractModeButton_)return true;
     auto contains=[w](const auto& items){return std::any_of(items.begin(),items.end(),[w](auto item){return item==w;});};
-    return w==preferenceApply_ || contains(preferenceTabs_) || contains(preferenceFields_) || contains(loopInputs_) || contains(replaceInputs_) || contains(replaceSample_) || contains(importSheetInputs_) || contains(gifInputs_) || contains(sheetButtons_) || contains(resizeInputs_) || contains(adjustmentInputs_);
+    return w==preferenceApply_ || contains(preferenceTabs_) || contains(preferenceFields_) || contains(checkerboardFields_) || contains(loopInputs_) || contains(replaceInputs_) || contains(replaceSample_) || contains(importSheetInputs_) || contains(gifInputs_) || contains(sheetButtons_) || contains(resizeInputs_) || contains(adjustmentInputs_);
   }
   template<class Base> void configureDialogBackground(DialogBackground<Base>* w) {
     w->blocked=[this,w]{return pending_!=Pending::None && !modalControl(w);};
@@ -1584,10 +1890,39 @@ private:
         const auto r=geometry.panel[other];visible-=gfx::Region(widget.toClient(toDisplay(gfx::Rect(r.x,r.y,r.w,r.h))));
       }
       g.clipRegion(visible);
-      if(pending_==Pending::None || modalControl(&widget)){paint();g.restoreClip();return;}
+      auto paintControl=[&]{
+        if((&widget==canvasHorizontal_ || &widget==canvasVertical_) && pending_==Pending::None){
+          auto clip=visible;clip&=gfx::Region(g.getClipBounds());clip.offset(widget.bounds().origin()-bounds().origin());
+          ui::Graphics background(g.display(),base::AddRef(g.getInternalSurface()),bounds().x,bounds().y);
+          background.saveClip();background.clipRegion(clip);paintCanvasBackdrop(background);paintCanvas(background);background.restoreClip();
+          paint();return;
+        }
+        if(auto cell=dynamic_cast<PixelButton*>(&widget);cell && cell->timelineParentPainted && !widget.isTransparent()){
+          auto clip=visible;clip&=gfx::Region(g.getClipBounds());clip.offset(widget.bounds().origin()-bounds().origin());
+          ui::Graphics background(g.display(),base::AddRef(g.getInternalSurface()),bounds().x,bounds().y);
+          background.saveClip();background.clipRegion(clip);
+          const auto ll=columnLayout(uiLogical(clientBounds()),2);
+          auto area=toDisplay(gfx::Rect(ll.workX,ll.layerTop+35,ll.workW,ll.bottom-ll.layerTop-35));area.offset(-bounds().origin());
+          paintTimelineCached(background,ll,area);background.restoreClip();return;
+        }
+        if(auto bar=dynamic_cast<PixelScrollBar*>(&widget);bar && bar->translucent()){
+          auto clip=visible;clip&=gfx::Region(g.getClipBounds());
+          if(pending_!=Pending::None && !modalControl(&widget))clip-=gfx::Region(widget.toClient(dialogDisplayBounds()));
+          clip.offset(widget.bounds().origin()-bounds().origin());
+          ui::Graphics background(g.display(),base::AddRef(g.getInternalSurface()),bounds().x,bounds().y);
+          background.saveClip();background.clipRegion(clip);
+          const auto ll=columnLayout(uiLogical(clientBounds()),2);
+          auto area=toDisplay(gfx::Rect(ll.workX,ll.layerTop+35,ll.workW,ll.bottom-ll.layerTop-35));area.offset(-bounds().origin());
+          if(id==2 && pending_==Pending::None && !columnFloating(2) && area.contains(background.getClipBounds()))paintTimelineCached(background,ll,area);
+          else{paintChrome(background,true);paintTimelineGrid(background);}
+          background.restoreClip();
+        }
+        paint();
+      };
+      if(pending_==Pending::None || modalControl(&widget)){paintControl();g.restoreClip();return;}
       const auto modal=dialogDisplayBounds();
       gfx::Region outside(widget.clientBounds());outside-=gfx::Region(widget.toClient(modal));
-      g.saveClip();g.clipRegion(outside);paint();g.restoreClip();
+      g.saveClip();g.clipRegion(outside);paintControl();g.restoreClip();
       gfx::Region overlap(g.getClipBounds());overlap&=gfx::Region(widget.toClient(modal));
       for(auto child:children())if(child->isVisible() && modalControl(child))overlap-=gfx::Region(widget.toClient(child->bounds()));
       overlap.offset(widget.bounds().origin()-bounds().origin());
@@ -1603,6 +1938,13 @@ private:
       if(pending_==Pending::None) requestFocus();
     }); configureDialogBackground(b);addChild(b); return b;
   }
+  PixelSwitch* switchButton(std::u32string label,bool checked,std::function<void(bool)> changed) {
+    auto b=new DialogBackground<PixelSwitch>(font_,skin_,std::move(label),checked,[this,changed=std::move(changed)](bool value){
+      if(colorPicker_)colorPicker_->finishInteraction();
+      if(brushRange_)brushRange_->setVisible(false);paletteFocused_=false;changed(value);
+      if(pending_==Pending::None)requestFocus();
+    });configureDialogBackground(b);addChild(b);return b;
+  }
   Point canvasPoint(gfx::Point p) const {
     return canvasPixel({p.x,p.y},{canvas_.x,canvas_.y},canvasScale());
   }
@@ -1610,7 +1952,7 @@ private:
     const auto rc=uiLogical(clientBounds()); const auto l=workspaceLayout(rc);
     const auto content=l.workspaceContent();
     // Keep artwork and pan invalidation inside the inner content frame.
-    return toDisplay(gfx::Rect(content.x+1,content.y+1,content.w-2,content.h-2));
+    return toDisplay(gfx::Rect(content.x+1,content.y+1,content.w-1,content.h-2));
   }
   gfx::Rect canvasViewport() const {
     auto r=canvasFullViewport();
@@ -1623,7 +1965,7 @@ private:
     if(!canvasHorizontal_)return;const auto r=canvasViewport(),full=canvasFullViewport();
     auto setup=[&](PixelScrollBar* bar,bool vertical){const int size=vertical?canvas_.h:canvas_.w,start=vertical?r.y:r.x,page=vertical?r.h:r.w,origin=vertical?canvas_.y:canvas_.x;
       const int upper=clampCanvasAxis(INT_MAX,start,page,size),lower=clampCanvasAxis(INT_MIN,start,page,size);
-      bar->setDockBounds(vertical?gfx::Rect(r.x2(),r.y,7*uiScale,r.h):gfx::Rect(r.x,r.y2(),r.w,7*uiScale));bar->configure(upper-lower+page,page,upper-origin);bar->wheelStep=24*uiScale;
+      const auto track=PixelScrollBar::gridBounds(r,vertical);if(bar->bounds()!=track)bar->setDockBounds(track);bar->configure(upper-lower+page,page,upper-origin);bar->wheelStep=24*uiScale;
       bar->setVisible(documentOpen_ && !homeOpen_ && (vertical?r.w<full.w:r.y2()<full.y2()));bar->setEnabled(pending_==Pending::None && !document.active());};
     setup(canvasHorizontal_,false);setup(canvasVertical_,true);
   }
@@ -1641,7 +1983,7 @@ private:
       layoutPalette();const auto rc=uiLogical(bounds());const auto l=columnLayout(rc,0);auto dock=l.pickerPanel();dock.offset(rc.x,rc.y);invalidateRect(uiPhysical(dock));
     }
     const auto area=changedCanvasPixels();if(!area.isEmpty()) invalidateRect(area);
-    if(previewPanel_ && previewPanel_->isVisible())previewPanel_->invalidate();
+    if(previewPanel_ && previewPanel_->isVisible()){previewPanel_->noteContentChange();previewPanel_->invalidate();}
   }
   void fitCanvas() {
     const auto rc=uiLogical(bounds()); const auto l=workspaceLayout(rc);
@@ -1655,12 +1997,17 @@ private:
     const double next=nextCanvasScale(zoom_,direction);
     setCanvasZoom(anchor,next);
   }
+  bool zoomFullRedraw_=false,symmetryClip_=true;
+  gfx::Rect statusBounds() const {const auto rc=uiLogical(clientBounds());return toDisplay(gfx::Rect(0,rc.h-Layout::statusHeight,rc.w,Layout::statusHeight));}
   void setCanvasZoom(gfx::Point anchor,double next) {
     if(next==zoom_) return;
     const auto origin=zoomedCanvasOrigin({canvas_.x,canvas_.y},{anchor.x,anchor.y},canvasScale(),next*uiScale);
     zoom_=next;canvas_=gfx::Rect(origin.x,origin.y,int(std::lround(document.width()*canvasScale())),int(std::lround(document.height()*canvasScale())));
     constrainCanvas();
-    invalidate();
+    // Legacy scheduleZoomPreview reuses the content draw scheduler. Zoom is
+    // view-only: repaint its viewport, scrollbar strips and percentage label.
+    if(zoomFullRedraw_)invalidate();
+    else{auto damage=canvasFullViewport();damage.enlarge(uiScale);invalidateRect(damage);invalidateRect(statusBounds());}
   }
   void useZoomTool() {
     if(document.active() && !document.floating())return;
@@ -1677,7 +2024,7 @@ private:
       int x=r.x+(single?5:0);for(int item:tabs){if(item==id)break;x+=font_.inkBounds(dockingTabs_[item]->caption).w+9;}tab->firstTab=!tabs.empty()&&tabs.front()==id;
       const auto ink=font_.inkBounds(tab->caption);tab->setBounds(toDisplay(gfx::Rect(rc.x+x,rc.y+r.y+(single?5-ink.y:0),single?ink.w:ink.w+10,single?10:Layout::tabHeight)));
     }
-    if(previewPanel_ && (only<0 || docking_.groupOf(only)==docking_.groupOf(3))){previewPanel_->managed=docking_.custom;previewPanel_->frameTop=docking_.custom?columnFrameTop(3):0;if(!docking_.custom)previewPanel_->constrain(toDisplay(gfx::Rect(rc.x+uiGap,rc.y+Layout::optionsY,rc.w-2*uiGap,rc.h-Layout::statusHeight-Layout::optionsY)));
+    if(previewPanel_ && (only<0 || docking_.groupOf(only)==docking_.groupOf(3))){previewPanel_->managed=docking_.custom;previewPanel_->frameTop=docking_.custom?columnFrameTop(3):0;if(!docking_.custom)previewPanel_->constrain(toDisplay(rc));
       if(docking_.custom){auto r=geometry.panel[3];previewPanel_->setBounds(toDisplay(gfx::Rect(rc.x+r.x,rc.y+r.y,r.w,r.h)));}
       previewPanel_->setVisible(columnShown(3));if(columnShown(3))previewPanel_->invalidate();}
     for(int id=0;id<4;++id)if(auto close=columnClose_[id]){
@@ -1713,7 +2060,7 @@ private:
     const bool overflow=(count+columns-1)/columns>rows;
     if(overflow){area.w=std::max(1,area.w-6);columns=std::max(1,(area.w-padding*2-1)/step);}
     paletteColumns_=columns;
-    if(paletteScrollBar_){auto track=paletteContentBounds();track.x=track.x2()-6*uiScale;track.w=7*uiScale;track.y+=uiScale;track.h=std::max(uiScale,track.h-2*uiScale);
+    if(paletteScrollBar_){auto track=PixelScrollBar::edgeBounds(paletteContentBounds(),true);track.y+=uiScale;track.h=std::max(uiScale,track.h-2*uiScale);
       paletteScrollBar_->setDockBounds(track);paletteScrollBar_->wheelStep=step*uiScale;paletteScrollBar_->setVisible(columnShown(0) && overflow);paletteScrollBar_->setEnabled(pending_==Pending::None);}
     const int contentHeight=(2*padding+((count+columns-1)/columns)*step+1)*uiScale;
     paletteScrollPixels_=overflow?std::clamp(paletteScrollPixels_,0,std::max(0,contentHeight-paletteViewportBounds().h)):0;
@@ -1727,7 +2074,9 @@ private:
       auto cellBounds=gfx::Rect(area.x+padding+int(i%columns)*step,area.y+padding+row*step,cell,cell);
       auto physical=toDisplay(cellBounds).offset(0,-paletteScrollPixels_);swatches_[i]->paletteViewport=[this]{return paletteViewportBounds();};if(swatches_[i]->active && shared)paletteSelectionBorder_=paletteSelectionBorder_.isEmpty()?physical:(paletteSelectionBorder_|physical);
       if(swatches_[i]->active && !shared)physical=skin_.selectionMaterialBounds(physical);
-      swatches_[i]->setBounds(physical);
+      const auto clipped=physical & paletteViewportBounds();
+      swatches_[i]->paletteMaterialRect=gfx::Rect(physical).offset(-clipped.origin());
+      swatches_[i]->setBounds(clipped);
       swatches_[i]->setVisible(columnShown(0) && paletteViewportBounds().intersects(swatches_[i]->bounds()));
     }
     if(shared){
@@ -1914,6 +2263,7 @@ private:
   }
   void saveSelectionPreferences(){if(smoke_)return;try{const auto path=palettePreferencePath().parent_path();std::filesystem::create_directories(path);std::ofstream out(path/"selection-options.txt");out<<selectionRounded_<<' '<<selectionCornerRadius_<<' '<<selectionMode_<<' '<<selectionPivotVisible_<<'\n';}catch(...){status_=U"选区偏好保存失败";}}
   void saveBrushPreferences() {
+    brushPreferencesPending_=false;++brushPreferenceWrites_;
     if(smoke_) return;
     try {
       const auto path=palettePreferencePath().parent_path();std::filesystem::create_directories(path);
@@ -2014,7 +2364,7 @@ private:
   }
   void applyHomeVisibility() {
     if(homeOpen_){for(auto child:children())if(child!=modalSurface_ && child!=menuBar_ && child!=homeButton_ && child!=discard_ && child!=keep_ && child!=dialogClose_ && child!=saveBeforeClose_ && child!=paletteInput_)child->setVisible(false);}
-    if(homeOpen_){documentTabNew_->setVisible(documentOpen_);documentTabClose_->setVisible(documentOpen_);}
+    if(homeOpen_)layoutDocumentTab();
     layoutHome();if(pending_==Pending::OpenError)layoutModal();if(pending_==Pending::Preferences)layoutPreferences(modalBounds(uiLogical(clientBounds())));
   }
   void createHome() {
@@ -2035,21 +2385,13 @@ private:
     g.fillRect(gfx::rgba(66,79,103,255),gfx::Rect(0,top+1,rc.w,1));
   }
   void paintDocumentTab(ui::Graphics& g) {
-    const auto l=workspaceLayout(uiLogical(bounds()));
-    const std::u32string documentTitle=document.name();
-    const int tabWidth=documentTabWidth(l);
-    const auto rc=uiLogical(clientBounds());
-    if(documentOpen_)skin_.draw(g,homeOpen_?"project_tab.inactive":"project_tab.active",gfx::Rect(0,Layout::documentY,tabWidth,Layout::projectTabHeight));
-    if(documentOpen_)g.fillRect(gfx::rgba(homeOpen_?23:32,homeOpen_?26:38,homeOpen_?33:53,255),gfx::Rect(0,Layout::documentY+1,1,Layout::projectTabHeight-2));
-    const auto titleInk=font_.inkBounds(documentTitle);
-    // The 16px tab has a 2px top rim and a 1px bottom rim; center
-    // nine ink rows in its 13px interior with 2px padding on both sides.
-    if(documentOpen_){
-      const int visibleTitleWidth=std::min(titleInk.w,tabWidth-2*Layout::inset-11-uiGap-(document.dirty()?3+uiGap:0));
-      g.saveClip();g.clipRect(gfx::Rect(Layout::inset,Layout::documentY+4,visibleTitleWidth,9));
-      font_.draw(g,documentTitle,Layout::inset-titleInk.x,Layout::documentY+4-titleInk.y,skin_["text"]);g.restoreClip();
-      if(document.dirty())g.fillRect(gfx::rgba(41,121,255,255),gfx::Rect(Layout::inset+visibleTitleWidth+uiGap,Layout::documentY+7,3,3));
-    }
+    const auto rc=uiLogical(clientBounds());g.saveClip();g.clipRect({0,Layout::documentY,std::max(1,rc.w-17),Layout::projectTabHeight});
+    for(std::size_t i=0;i<projects_.size();++i){const auto& value=projectDocument(i);auto tab=uiLogical(projectTabRects_[i]);tab.offset(-bounds().x/uiScale,-bounds().y/uiScale);const bool active=i==activeProject_ && !homeOpen_;
+      skin_.draw(g,active?"project_tab.active":"project_tab.inactive",tab);
+      const auto ink=font_.inkBounds(value.name());const int width=std::max(0,std::min(ink.w,tab.w-2*Layout::inset-11-uiGap-(value.dirty()?3+uiGap:0)));
+      g.saveClip();g.clipRect({tab.x+Layout::inset,tab.y+4,width,9});font_.draw(g,value.name(),tab.x+Layout::inset-ink.x,tab.y+4-ink.y,skin_["text"]);g.restoreClip();
+      if(value.dirty())g.fillRect(gfx::rgba(41,121,255,255),{tab.x+Layout::inset+width+uiGap,tab.y+7,3,3});
+    }g.restoreClip();
   }
   void paintHome(ui::Graphics& g) {
     UiPaintScale scale(g);const auto rc=uiLogical(clientBounds()),absolute=homeBounds();auto box=absolute;box.offset(-bounds().x/uiScale,-bounds().y/uiScale);
@@ -2285,6 +2627,7 @@ private:
 
   }
   void layoutToolOptions() {
+    ++toolOptionsLayouts_;
     struct Finish {Editor& editor;~Finish(){editor.finishToolScrollLayout();}} finish{*this};
     if(!document.selection())selectionPropertiesActive_=false;
     if(toolControls_.empty()) return;
@@ -2373,6 +2716,7 @@ private:
     const int foregroundId=roleId(palette.primaryId,palette.primary),backgroundId=roleId(palette.secondaryId,palette.secondary);
     for(std::size_t i=0;i<swatches_.size();++i) {
       const auto entry=document.displayPaletteEntry(paletteButtonIds_[i]);swatches_[i]->swatch=entry?entry->color:0;
+      swatches_[i]->paletteDisplayName=showPaletteNames_ && entry && std::any_of(entry->name.begin(),entry->name.end(),[](char32_t c){return !(c==0x9 || c==0xa || c==0xb || c==0xc || c==0xd || c==0x20 || c==0xa0 || c==0x1680 || (c>=0x2000 && c<=0x200a) || c==0x2028 || c==0x2029 || c==0x202f || c==0x205f || c==0x3000 || c==0xfeff);})?entry->name:U"";
       swatches_[i]->foregroundMarker=entry && entry->id==foregroundId;
       swatches_[i]->backgroundMarker=entry && entry->id==backgroundId;
       const auto& selected=document.palette().selected;
@@ -2416,7 +2760,8 @@ private:
   }
   void finishPalettePointer(bool cancel=false) {
     if(!paletteGesture_)return;const auto gesture=*paletteGesture_;paletteGesture_.reset();if(hasCapture())releaseMouse();
-    if(!cancel && gesture.moving){if(gesture.active)document.repositionPaletteColors(gesture.slots,gesture.ids,int(gesture.last),gesture.anchor,gesture.columns);else if(gesture.secondary)document.selectSecondaryPalette(gesture.anchor);}
+    if(!cancel && !gesture.moving && !gesture.secondary && gesture.active)paletteBoxRange_=PaletteBoxRange{document.identity(),gesture.start,gesture.last,document.palette().selected};
+    if(!cancel && gesture.moving){if(gesture.active){if(paletteBoxRange_ && paletteBoxRange_->identity==document.identity() && paletteBoxRange_->selected==gesture.ids){const int cols=gesture.columns,start=int(paletteBoxRange_->start),end=int(paletteBoxRange_->end),left=std::min(start%cols,end%cols),right=std::max(start%cols,end%cols),top=std::min(start/cols,end/cols);const auto anchor=std::find(gesture.slots.begin(),gesture.slots.end(),gesture.anchor);if(anchor!=gesture.slots.end()){const int slot=int(anchor-gesture.slots.begin()),dx=std::clamp(int(gesture.last)%cols-slot%cols,-left,cols-1-right),dy=std::max(-top,int(gesture.last)/cols-slot/cols),delta=dy*cols+dx;paletteBoxRange_->start=std::size_t(start+delta);paletteBoxRange_->end=std::size_t(end+delta);}}document.repositionPaletteColors(gesture.slots,gesture.ids,int(gesture.last),gesture.anchor,gesture.columns);}else if(gesture.secondary)document.selectSecondaryPalette(gesture.anchor);}
     refresh();
   }
   void copyPaletteColors() {
@@ -2440,15 +2785,20 @@ private:
     document.pastePaletteColors(colors,targets);refresh();
   }
   void selectSwatch(std::size_t index,bool ctrl,bool shift,bool secondary) {
+    paletteBoxRange_.reset();
     const int id=paletteButtonIds_.at(index);if(!gradientPending_)cancelStroke();paletteFocused_=true;
     if(secondary) document.selectSecondaryPalette(id);
     else if(shift) document.selectPaletteSlotRange(index,paletteColumns_);
     else if(id) document.selectPalette(id,ctrl);else document.clearPaletteSelection();
     ink_=document.palette().primary;lastPaletteInk_=ink_;if(gradientPending_){gradientRequest_=true;gradientTick();}requestFocus();refresh();
   }
+  static bool readPaletteNamesPreference(std::istream& in){const std::string value((std::istreambuf_iterator<char>(in)),std::istreambuf_iterator<char>());return value=="true";}
   void loadPaletteSize() {
     try {
       const auto path=palettePreferencePath();
+      {std::ifstream sync(path.parent_path()/"palette-sync-colors.txt");syncPaletteColors_=readPaletteNamesPreference(sync);}
+      {std::ifstream names(path.parent_path()/"palette-show-names.txt");showPaletteNames_=readPaletteNamesPreference(names);}
+      {std::ifstream sort(path.parent_path()/"palette-sort-direction.txt");std::string direction;sort>>direction;paletteSortDescending_=direction=="descending";}
       std::ifstream lock(path.parent_path()/"palette-edit-locked.txt");std::string value;
       if(lock>>value) paletteLocked_=value!="false";
       if(!std::filesystem::exists(path)) return;
@@ -2458,6 +2808,9 @@ private:
       // Same fallback as legacy for unknown stored preferences.
     } catch(const std::exception&) {status_=U"色卡尺寸偏好读取失败，使用小尺寸";}
   }
+  void choosePaletteSynchronization(bool enabled){syncPaletteColors_=enabled;if(!smoke_)try{const auto path=palettePreferencePath().parent_path();std::filesystem::create_directories(path);std::ofstream out(path/"palette-sync-colors.txt");out<<(enabled?"true":"false");out.close();if(!out)throw std::runtime_error("Palette synchronization preference write failed");}catch(...){status_=U"同步颜色偏好保存失败";}refresh();}
+  void choosePaletteNames(bool show){showPaletteNames_=show;if(!smoke_)try{const auto path=palettePreferencePath().parent_path();std::filesystem::create_directories(path);std::ofstream out(path/"palette-show-names.txt");out<<(show?"true":"false");out.close();if(!out)throw std::runtime_error("Palette show names write failed");}catch(...){status_=U"颜色名称显示偏好保存失败";}refresh();}
+  void choosePaletteSortDirection(bool descending){paletteSortDescending_=descending;if(!smoke_)try{const auto path=palettePreferencePath().parent_path();std::filesystem::create_directories(path);std::ofstream out(path/"palette-sort-direction.txt");out<<(descending?"descending":"ascending");out.close();if(!out)throw std::runtime_error("Palette sort direction write failed");}catch(...){status_=U"排序方向偏好保存失败";}refresh();}
   void chooseSwatchSize(int size,bool persist=true) {
     swatchSize_=std::clamp(size,0,4);
     if(persist) {
@@ -2559,17 +2912,32 @@ private:
  gmMode_=button(U"连续",[this]{adjustmentSpec_.gradientMap.steps=!adjustmentSpec_.gradientMap.steps;gmChanged();});gmReverse_=button(U"反向",[this]{adjustmentSpec_.gradientMap.reverse=!adjustmentSpec_.gradientMap.reverse;gmChanged();});gmPalette_=button(U"来自色卡",[this]{std::vector<Pixel> colors;for(auto e:document.palette().entries)if((e.color>>24)&&std::find(document.palette().slots.begin(),document.palette().slots.end(),e.id)!=document.palette().slots.end()&&colors.size()<256)colors.push_back(e.color);std::stable_sort(colors.begin(),colors.end(),[](auto a,auto b){return (int(a&255)-int(b&255))*.2126+(int((a>>8)&255)-int((b>>8)&255))*.7152+(int((a>>16)&255)-int((b>>16)&255))*.0722<0;});auto& stops=adjustmentSpec_.gradientMap.stops;stops.clear();for(int i=0;i<int(colors.size());++i)stops.push_back({colors.size()==1?0:double(i)/(colors.size()-1),colors[i]|0xff000000});gmStop_=0;gmChanged();});gmSave_=button(U"保存预设",[this]{try{auto next=gradientMapStore().save(gmName_->text(),adjustmentSpec_.gradientMap);gmSaved_=std::move(next);gmName_->setText("");gmRefreshPresets();gmError_.clear();status_=U"预设已保存";}catch(const std::exception& e){gmError_=U"预设保存失败";status_=U"保存失败："+unicodeText(e.what());}refresh();});gmDelete_=button(U"删除预设",[this]{int i=gmPreset_->selectedIndex();if(i<0||i>=int(gmKeys_.size()))return;int key=gmKeys_[i];try{if(key<8)gmHidden_=gradientMapStore().hide(key);else gmSaved_=gradientMapStore().remove(gmSaved_[key-8].name);gmRefreshPresets();gmError_.clear();}catch(const std::exception& e){gmError_=U"预设删除失败";status_=U"删除失败："+unicodeText(e.what());}refresh();});gmAdd_=button(U"添加色标",[this]{auto& stops=adjustmentSpec_.gradientMap.stops;if(stops.size()>=256)return;int i=0;double gap=-1;for(int n=0;n<int(stops.size())-1;++n)if(stops[n+1].position-stops[n].position>gap){gap=stops[n+1].position-stops[n].position;i=n;}double p=std::clamp((stops[i].position+stops[i+1].position)/2,.001,.999);if(gap<.002)return;GradientSpec s;s.stops=stops;auto color=GradientSampler(s).forAmount(p,0,0);stops.insert(stops.begin()+i+1,{p,color});gmStop_=i+1;gmChanged();});gmRemove_=button(U"删除色标",[this]{auto& stops=adjustmentSpec_.gradientMap.stops;if(stops.size()<=2)return;stops.erase(stops.begin()+gmStop_);gmStop_=std::max(0,gmStop_-1);gmChanged();});gmRestore_=button(U"重置颜色",[this]{auto& stops=adjustmentSpec_.gradientMap.stops;auto first=stops.front().color,last=stops.back().color;stops={{0,first},{1,last}};gmStop_=0;gmChanged();});gmFlipStops_=button(U"反转色标",[this]{auto& stops=adjustmentSpec_.gradientMap.stops;auto selected=stops[gmStop_];for(auto& stop:stops)stop.position=1-stop.position;std::reverse(stops.begin(),stops.end());std::stable_sort(stops.begin(),stops.end(),[](auto a,auto b){return a.position<b.position;});gmStop_=int(std::find_if(stops.begin(),stops.end(),[&](auto v){return v.position==1-selected.position&&v.color==selected.color;})-stops.begin());gmChanged();});for(auto b:{gmMode_,gmReverse_,gmPalette_,gmSave_,gmDelete_,gmAdd_,gmRemove_,gmRestore_,gmFlipStops_})b->setVisible(false);gmRemove_->caption.clear();gmRemove_->icon="delete";gmRemove_->iconSkin=&toolIcons_;}
  void layoutGradientMap(const gfx::Rect& modal){bool show=pending_==Pending::ColorAdjustment&&adjustmentSpec_.kind==ColorAdjustmentKind::GradientMap;auto place=[&](ui::Widget* w,gfx::Rect r){w->setVisible(show);w->setEnabled(!gmCommit_);w->setBounds(toDisplay(r));};int x=modal.x+6,y=modal.y+25,w=modal.w-12;place(gmPreset_,{x,y,w-80,18});place(gmDelete_,{x+w-76,y,76,18});y+=24;place(gmTrack_,{x,y,w,22});y+=28;place(gmPosition_,{x,y,64,18});place(gmColor_,{x+70,y,w-134,18});place(gmAdd_,{x+w-60,y,38,18});place(gmRemove_,{x+w-20,y,20,18});y+=24;place(gmPicker_,{x,y,w,85});y+=91;place(gmMode_,{x,y,58,18});place(gmReverse_,{x+64,y,58,18});place(gmPalette_,{x+128,y,72,18});y+=24;place(gmRestore_,{x,y,90,18});place(gmFlipStops_,{x+96,y,90,18});y+=24;place(gmDither_,{x,y,w,18});y+=24;place(gmName_,{x,y,w-86,18});place(gmSave_,{x+w-80,y,80,18});gmMode_->caption=adjustmentSpec_.gradientMap.steps?U"阶梯":U"连续";gmReverse_->active=adjustmentSpec_.gradientMap.reverse;gmRemove_->setEnabled(!gmCommit_&&adjustmentSpec_.gradientMap.stops.size()>2);gmAdd_->setEnabled(!gmCommit_&&adjustmentSpec_.gradientMap.stops.size()<256);gmSave_->setEnabled(!gmCommit_&&gmReadable_&&GradientMapPresetStore::validName(gmName_->text()));gmDelete_->setEnabled(!gmCommit_&&gmReadable_&&gmPreset_->selectedIndex()>=0);gmPalette_->setEnabled(std::any_of(document.palette().entries.begin(),document.palette().entries.end(),[](auto e){return e.color>>24;}));if(show){for(auto e:adjustmentInputs_)e->setVisible(false);adjustmentColorize_->setVisible(false);adjustmentToneButton_->setVisible(false);adjustmentPreview_->setVisible(true);adjustmentPreview_->setBounds(toDisplay(gfx::Rect(x,modal.y2()-26,90,18)));}}
   void updateAdjustmentControls(){
-    if(adjustmentSpec_.kind==ColorAdjustmentKind::GradientMap){adjustmentPreview_->icon=adjustmentPreviewEnabled_?"check":"checkboxUnchecked";gmTrack_->invalidate();return;}
-    if(adjustmentSpec_.kind==ColorAdjustmentKind::Curves){const char32_t* names[]{U"RGB",U"红色",U"绿色",U"蓝色"};curveChannelButton_->caption=names[curveChannel_];curveEditor_->points=&adjustmentSpec_.curves[curveChannel_];curveEditor_->histogram=&curveHistogram_[curveChannel_];curveEditor_->channel=curveChannel_;int index=curveEditor_->selected>=0&&curveEditor_->selected<int(curveEditor_->points->size())?curveEditor_->selected:0;auto p=(*curveEditor_->points)[index];for(int axis=0;axis<2;++axis)if(!adjustmentInputs_[axis]->hasFocus())adjustmentInputs_[axis]->setText(std::to_string(int(axis?p.y:p.x)));adjustmentInputs_[0]->setEnabled(index>0&&index<int(curveEditor_->points->size())-1);curveDeleteButton_->setEnabled(index>0&&index<int(curveEditor_->points->size())-1);adjustmentPreview_->icon=adjustmentPreviewEnabled_?"check":"checkboxUnchecked";curveEditor_->invalidate();return;}for(auto input:adjustmentInputs_)input->setEnabled(true);
-    for(int i=0;i<3;++i){if(adjustmentInputs_[i]->hasFocus())continue;double value=adjustmentSpec_.kind==ColorAdjustmentKind::ColorBalance?adjustmentSpec_.balance[adjustmentTone_][i]:adjustmentSpec_.kind==ColorAdjustmentKind::BrightnessContrast?(i?adjustmentSpec_.contrast:adjustmentSpec_.brightness):i==0?adjustmentSpec_.hue:i==1?adjustmentSpec_.saturation:adjustmentSpec_.lightness;adjustmentInputs_[i]->setText(std::to_string(int(value)));}adjustmentPreview_->icon=adjustmentPreviewEnabled_?"check":"checkboxUnchecked";adjustmentColorize_->caption=adjustmentSpec_.kind==ColorAdjustmentKind::ColorBalance?U"保持亮度":U"着色";adjustmentColorize_->icon=(adjustmentSpec_.kind==ColorAdjustmentKind::ColorBalance?adjustmentSpec_.preserveLuminosity:adjustmentSpec_.colorize)?"check":"checkboxUnchecked";if(adjustmentToneButton_){const char32_t* tones[]{U"阴影",U"中间调",U"高光"};adjustmentToneButton_->caption=tones[adjustmentTone_];}
+    if(adjustmentSpec_.kind==ColorAdjustmentKind::GradientMap){adjustmentPreview_->active=adjustmentPreviewEnabled_;gmTrack_->invalidate();return;}
+    if(adjustmentSpec_.kind==ColorAdjustmentKind::Curves){const char32_t* names[]{U"RGB",U"红色",U"绿色",U"蓝色"};curveChannelButton_->caption=names[curveChannel_];curveEditor_->points=&adjustmentSpec_.curves[curveChannel_];curveEditor_->histogram=&curveHistogram_[curveChannel_];curveEditor_->channel=curveChannel_;int index=curveEditor_->selected>=0&&curveEditor_->selected<int(curveEditor_->points->size())?curveEditor_->selected:0;auto p=(*curveEditor_->points)[index];for(int axis=0;axis<2;++axis)if(!adjustmentInputs_[axis]->hasFocus())adjustmentInputs_[axis]->setText(std::to_string(int(axis?p.y:p.x)));adjustmentInputs_[0]->setEnabled(index>0&&index<int(curveEditor_->points->size())-1);curveDeleteButton_->setEnabled(index>0&&index<int(curveEditor_->points->size())-1);adjustmentPreview_->active=adjustmentPreviewEnabled_;curveEditor_->invalidate();return;}for(auto input:adjustmentInputs_)input->setEnabled(true);
+    for(int i=0;i<3;++i){if(adjustmentInputs_[i]->hasFocus())continue;double value=adjustmentSpec_.kind==ColorAdjustmentKind::ColorBalance?adjustmentSpec_.balance[adjustmentTone_][i]:adjustmentSpec_.kind==ColorAdjustmentKind::BrightnessContrast?(i?adjustmentSpec_.contrast:adjustmentSpec_.brightness):i==0?adjustmentSpec_.hue:i==1?adjustmentSpec_.saturation:adjustmentSpec_.lightness;adjustmentInputs_[i]->setText(std::to_string(int(value)));}adjustmentPreview_->active=adjustmentPreviewEnabled_;adjustmentColorize_->caption=adjustmentSpec_.kind==ColorAdjustmentKind::ColorBalance?U"保持亮度":U"着色";adjustmentColorize_->icon=(adjustmentSpec_.kind==ColorAdjustmentKind::ColorBalance?adjustmentSpec_.preserveLuminosity:adjustmentSpec_.colorize)?"check":"checkboxUnchecked";if(adjustmentToneButton_){const char32_t* tones[]{U"阴影",U"中间调",U"高光"};adjustmentToneButton_->caption=tones[adjustmentTone_];}
   }
   void previewAdjustment(){if(adjustmentSpec_.kind==ColorAdjustmentKind::GradientMap){scheduleGradientMap();return;}document.updateColorAdjustment(adjustmentSpec_,adjustmentPreviewEnabled_);updateAdjustmentControls();invalidate();}
   void openColorAdjustment(ColorAdjustmentKind kind){if(pending_!=Pending::None || document.active())return;document.commitFloatingPaste();cancelStroke();if(!document.beginColorAdjustment())return;playing_=false;adjustmentSpec_={};adjustmentSpec_.kind=kind;curveChannel_=0;if(kind==ColorAdjustmentKind::Curves){curveHistogram_=buildCurveHistogram(document.pixels());curveEditor_->selectChannel();}adjustmentTone_=1;adjustmentPreviewEnabled_=true;relativeHsl_={};hasColorizedHsl_=false;pending_=Pending::ColorAdjustment;menuBar_->setEnabled(false);discard_->caption=U"应用";keep_->caption=U"取消";discard_->setVisible(true);keep_->setVisible(true);dialogClose_->setVisible(true);previewAdjustment();refresh();}
   void updateResizeFields(){resizeUpdating_=true;for(int i=0;i<4;++i)if(!resizeInputs_[i]->hasFocus()){const double value=i==0?resizeWidth_:i==1?resizeHeight_:i==2?100.0*resizeWidth_/document.width():100.0*resizeHeight_/document.height();resizeInputs_[i]->setText(std::to_string(int(std::floor(value+.5))));}resizeLock_->icon=resizeLocked_?"lock":"unlock";resizeMethod_->caption=resizeMethodValue_==ImageInterpolation::Nearest?U"最近邻":U"平滑";resizeUpdating_=false;}
   void openImageResize(){if(pending_!=Pending::None||document.active())return;document.commitFloatingPaste();cancelStroke();playing_=false;resizeWidth_=document.width();resizeHeight_=document.height();resizeLocked_=true;resizeMethodValue_=ImageInterpolation::Nearest;pending_=Pending::ImageResize;menuBar_->setEnabled(false);discard_->caption=U"应用";keep_->caption=U"取消";discard_->setVisible(true);keep_->setVisible(true);dialogClose_->setVisible(true);updateResizeFields();refresh();resizeInputs_[0]->requestFocus();resizeInputs_[0]->selectAllText();}
-  void openGifExport(){if(pending_!=Pending::None||document.active())return;gifOptions_={};gifOptions_.frameEnd=int(document.timeline().state().frames.size());gifExplicitRange_=false;pending_=Pending::GifExport;menuBar_->setEnabled(false);gifInputs_[0]->setText("100");gifInputs_[1]->setText("1");gifInputs_[2]->setText(std::to_string(gifOptions_.frameEnd));discard_->caption=U"导出 GIF";keep_->caption=U"取消";discard_->setVisible(true);keep_->setVisible(true);dialogClose_->setVisible(true);refresh();}
-  bool saveGifExport(){wchar_t filename[32768]{};auto name=std::filesystem::path(document.name()).stem().wstring()+L".gif";std::copy_n(name.c_str(),std::min<std::size_t>(name.size(),32767),filename);OPENFILENAMEW dialog{};dialog.lStructSize=sizeof(dialog);dialog.hwndOwner=GetActiveWindow();dialog.lpstrFile=filename;dialog.nMaxFile=32768;dialog.lpstrFilter=L"GIF 动画\0*.gif\0\0";dialog.lpstrDefExt=L"gif";dialog.Flags=OFN_EXPLORER|OFN_NOCHANGEDIR|OFN_PATHMUSTEXIST|OFN_OVERWRITEPROMPT;if(!GetSaveFileNameW(&dialog)){if(CommDlgExtendedError())status_=U"无法打开导出文件对话框";return false;}try{auto options=gifOptions_;if(!gifExplicitRange_ && options.loopSectionId.empty()){options.frameStart=1;options.frameEnd=int(document.timeline().state().frames.size());}auto out=encodeAnimationGif(document,options);writeExportBytesAtomic(filename,out.bytes);status_=U"已导出 GIF 动画";return true;}catch(const std::exception& e){status_=U"GIF 导出失败："+unicodeText(e.what());invalidate();return false;}}
-  void createGifExportControls(){for(int i=0;i<3;++i){auto input=new PixelEntry(font_,skin_);input->numeric=true;addChild(input);gifInputs_[i]=input;input->setVisible(false);auto change=[this,input,i]{try{std::size_t used=0;double v=std::stod(input->text(),&used);if(used!=input->text().size()||!std::isfinite(v))return;int n=int(std::floor(std::clamp(v,1.0,i==0?6400.0:double(document.timeline().state().frames.size()))+.5));(i==0?gifOptions_.scalePercent:i==1?gifOptions_.frameStart:gifOptions_.frameEnd)=n;}catch(...){} };input->Change.connect(change);input->blur=change;input->accept=[this]{resolve(true);};input->cancel=[this]{resolve(false);};}
+  bool framePngMode_=false,framePngAutomatic_=false,frameBmp_=false,frameIco_=false,frameSvg_=false;
+  struct FramePngJobState {std::atomic<bool> cancel{false};std::atomic<std::size_t> written{0};std::size_t total=0;};
+  std::shared_ptr<FramePngJobState> framePngJob_;
+  std::optional<DocumentSnapshot> framePngSnapshot_;
+  std::future<std::string> framePngWorker_;
+  FramePngExportOptions framePngOptions_;
+  std::vector<std::filesystem::path> framePngPaths_;
+  bool framePngBusy()const{return framePngSnapshot_.has_value()||framePngWorker_.valid();}
+  void openFramePngExport(){openGifExport();if(pending_==Pending::GifExport){framePngMode_=true;framePngAutomatic_=false;frameBmp_=false;frameIco_=false;frameSvg_=false;discard_->caption=U"导出 PNG 序列";refresh();}}
+  ExportConflictChoice framePngConflict(const std::filesystem::path& path,const std::filesystem::path& suggested){PixelMenu menu(skin_);ExportConflictChoice choice=ExportConflictChoice::Cancel;auto label=new PixelMenuItem(font_,skin_,U"文件已存在："+path.filename().u32string());label->setEnabled(false);menu.addChild(label);auto add=[&](const std::u32string& text,ExportConflictChoice value){auto item=new PixelMenuItem(font_,skin_,text);item->Click.connect([&choice,value]{choice=value;});menu.addChild(item);};add(U"覆盖",ExportConflictChoice::Overwrite);add(U"重命名为："+suggested.filename().u32string(),ExportConflictChoice::Rename);add(U"全部覆盖",ExportConflictChoice::OverwriteAll);add(U"全部重命名",ExportConflictChoice::RenameAll);add(U"取消导出",ExportConflictChoice::Cancel);auto at=discard_->bounds();menu.showPopup({at.x,at.y2()},display());return choice;}
+  void beginFramePngExport(const std::filesystem::path& path,const ExportConflictResolver& resolver){
+   auto options=gifOptions_;if(!gifExplicitRange_&&options.loopSectionId.empty()){options.frameStart=1;options.frameEnd=int(document.timeline().state().frames.size());}FramePngExportOptions requested{options,framePngAutomatic_,frameBmp_,frameIco_,frameSvg_};auto ids=framePngExportFrameIds(document.timeline().state(),requested);auto paths=planFrameSequencePaths(path.parent_path(),path.filename().u32string(),ids.size(),resolver,requested.svg?FrameSequenceFormat::Svg:requested.ico?FrameSequenceFormat::Ico:requested.bmp?FrameSequenceFormat::Bmp:FrameSequenceFormat::Png);if(!paths){status_=U"已取消导出";return;}framePngOptions_=requested;framePngPaths_=std::move(*paths);exportedDirectory_=path.parent_path();framePngJob_=std::make_shared<FramePngJobState>();framePngJob_->total=ids.size();framePngSnapshot_.emplace(document);refresh();
+  }
+  bool saveFramePngExport(){wchar_t filename[32768]{};auto name=std::filesystem::path(document.name()).stem().wstring()+(frameSvg_?L".svg":frameIco_?L".ico":frameBmp_?L".bmp":L".png");std::copy_n(name.c_str(),std::min<std::size_t>(name.size(),32767),filename);OPENFILENAMEW dialog{};dialog.lStructSize=sizeof(dialog);dialog.hwndOwner=GetActiveWindow();dialog.lpstrFile=filename;dialog.nMaxFile=32768;dialog.lpstrFilter=frameSvg_?L"SVG 帧序列\0*.svg\0\0":frameIco_?L"ICO 帧序列\0*.ico\0\0":frameBmp_?L"BMP 帧序列\0*.bmp\0\0":framePngAutomatic_?L"PNG 自动 帧序列\0*.png\0\0":L"PNG RGBA 帧序列\0*.png\0\0";dialog.lpstrDefExt=frameSvg_?L"svg":frameIco_?L"ico":frameBmp_?L"bmp":L"png";dialog.Flags=OFN_EXPLORER|OFN_NOCHANGEDIR|OFN_PATHMUSTEXIST;if(!chooseExportFile_(&dialog)){if(CommDlgExtendedError())status_=U"无法打开导出文件对话框";return false;}try{beginFramePngExport(filename,[this](const auto& path,const auto& suggested){return framePngConflict(path,suggested);});}catch(const std::exception& e){status_=U"导出失败："+unicodeText(e.what());}return false;}
+  void framePngTick(){try{if(framePngSnapshot_){if(framePngJob_->cancel){framePngSnapshot_.reset();status_=U"已取消导出";resolve(false);return;}if(!framePngSnapshot_->advance(document,std::chrono::steady_clock::now()+std::chrono::milliseconds(2)))return;auto snapshot=std::move(*framePngSnapshot_);framePngSnapshot_.reset();auto options=framePngOptions_;auto paths=framePngPaths_;auto job=framePngJob_;std::packaged_task<std::string()> work([snapshot=std::move(snapshot),options,paths=std::move(paths),job]()mutable{try{auto copy=snapshot.finish();auto count=writeFramePngSequence(copy,options,paths,[job]{return job->cancel.load();},[job](std::size_t n,std::size_t){job->written=n;});return job->cancel?std::string("cancel"):std::to_string(count);}catch(const std::exception& e){return std::string("error:")+e.what();}});framePngWorker_=work.get_future();std::thread(std::move(work)).detach();refresh();}if(framePngWorker_.valid()){if(framePngWorker_.wait_for(std::chrono::milliseconds(0))!=std::future_status::ready){invalidate();return;}auto result=framePngWorker_.get();if(result=="cancel")status_=U"已取消导出，保留已写入的文件";else if(result.rfind("error:",0)==0){status_=U"帧序列导出失败："+unicodeText(result.substr(6));exportOpenFolderRequested_=false;refresh();return;}else status_=U"已导出 "+unicodeText(result)+(framePngOptions_.svg?U" 帧 SVG":framePngOptions_.ico?U" 帧 ICO":framePngOptions_.bmp?U" 帧 BMP":U" 帧 PNG");const bool openFolder=exportOpenFolderRequested_&&result!="cancel";const auto folder=exportedDirectory_;resolve(false);if(openFolder)finishExportFolder(folder);}}catch(const std::exception& e){framePngSnapshot_.reset();exportOpenFolderRequested_=false;status_=U"帧序列导出失败："+unicodeText(e.what());refresh();}}
+  void openGifExport(){exportOpenFolderRequested_=false;exportedDirectory_.clear();if(pending_!=Pending::None||document.active())return;framePngMode_=false;frameSvg_=false;gifInputs_[0]->suffix=U"";gifOptions_={};gifOptions_.frameEnd=int(document.timeline().state().frames.size());gifExplicitRange_=false;pending_=Pending::GifExport;menuBar_->setEnabled(false);gifInputs_[0]->setText("100");gifInputs_[1]->setText("1");gifInputs_[2]->setText(std::to_string(gifOptions_.frameEnd));discard_->caption=U"导出 GIF";keep_->caption=U"取消";discard_->setVisible(true);keep_->setVisible(true);dialogClose_->setVisible(true);refresh();}
+  bool saveGifExport(){if(framePngMode_)return saveFramePngExport();wchar_t filename[32768]{};auto name=std::filesystem::path(document.name()).stem().wstring()+L".gif";std::copy_n(name.c_str(),std::min<std::size_t>(name.size(),32767),filename);OPENFILENAMEW dialog{};dialog.lStructSize=sizeof(dialog);dialog.hwndOwner=GetActiveWindow();dialog.lpstrFile=filename;dialog.nMaxFile=32768;dialog.lpstrFilter=L"GIF 动画\0*.gif\0\0";dialog.lpstrDefExt=L"gif";dialog.Flags=OFN_EXPLORER|OFN_NOCHANGEDIR|OFN_PATHMUSTEXIST|OFN_OVERWRITEPROMPT;if(!chooseExportFile_(&dialog)){if(CommDlgExtendedError())status_=U"无法打开导出文件对话框";return false;}try{auto options=gifOptions_;if(!gifExplicitRange_ && options.loopSectionId.empty()){options.frameStart=1;options.frameEnd=int(document.timeline().state().frames.size());}auto out=encodeAnimationGif(document,options);writeExportBytesAtomic(filename,out.bytes);exportedDirectory_=std::filesystem::path(filename).parent_path();status_=U"已导出 GIF 动画";return true;}catch(const std::exception& e){status_=U"GIF 导出失败："+unicodeText(e.what());invalidate();return false;}}
+  void createGifExportControls(){for(int i=0;i<3;++i){auto input=new PixelEntry(font_,skin_);input->numeric=true;addChild(input);gifInputs_[i]=input;input->setVisible(false);auto change=[this,input,i]{try{std::size_t used=0;double v=std::stod(input->text(),&used);if(used!=input->text().size()||!std::isfinite(v))return;int n=int(std::floor((i==0&&framePngMode_&&frameSvg_?std::clamp(v,1.0,64.0)*100:std::clamp(v,1.0,i==0?6400.0:double(document.timeline().state().frames.size())))+.5));(i==0?gifOptions_.scalePercent:i==1?gifOptions_.frameStart:gifOptions_.frameEnd)=n;}catch(...){} };input->Change.connect(change);input->blur=change;input->accept=[this]{resolve(true);};input->cancel=[this]{resolve(false);};}
     gifRange_=button(U"全部帧",[this]{PixelMenu menu(skin_);auto add=[&](std::u32string name,std::string id,bool range){auto item=new PixelMenuItem(font_,skin_,name);item->Click.connect([this,id,range]{gifExplicitRange_=range;gifOptions_.loopSectionId=id;refresh();});menu.addChild(item);};add(U"全部帧","",false);add(U"指定帧范围","",true);for(const auto& loop:document.timeline().state().loopSections)add(U"循环段："+loop.name,loop.id,false);auto at=gifRange_->bounds();menu.showPopup({at.x,at.y2()},display());requestFocus();});
     gifDirection_=button(U"正向",[this]{PixelMenu menu(skin_);const char32_t* names[]{U"正向",U"反向",U"正向往返",U"反向往返"};for(int i=0;i<4;++i){auto item=new PixelMenuItem(font_,skin_,names[i]);item->Click.connect([this,i]{gifOptions_.direction=GifDirection(i);refresh();});menu.addChild(item);}auto at=gifDirection_->bounds();menu.showPopup({at.x,at.y2()},display());requestFocus();});gifTrim_=button(U"裁切透明边",[this]{gifOptions_.trim=!gifOptions_.trim;refresh();});gifTrim_->iconSkin=&toolIcons_;gifTrim_->bareIconWithCaption=true;for(auto b:{gifRange_,gifDirection_,gifTrim_})b->setVisible(false);
   }
@@ -2577,26 +2945,35 @@ private:
   void openSheetImport(bool selected){if(pending_!=Pending::None||document.active())return;if(selected&&!document.selection())return;importSheetOptions_={};importSheetOptions_.selection=selected;if(selected){importSheetOptions_.width=std::min(16,document.selection()->width);importSheetOptions_.height=std::min(16,document.selection()->height);}pending_=Pending::SheetImport;menuBar_->setEnabled(false);discard_->caption=U"导入";keep_->caption=U"取消";discard_->setVisible(true);keep_->setVisible(true);dialogClose_->setVisible(true);updateSheetImportFields();refresh();}
   void chooseSheetSource(){importAfterOpen_=true;chooseProject();if(pending_!=Pending::Open&&pending_!=Pending::SheetImport)importAfterOpen_=false;}
   void createSheetImportControls(){for(int i=0;i<8;++i){auto input=new PixelEntry(font_,skin_);input->numeric=true;addChild(input);input->setVisible(false);importSheetInputs_[i]=input;auto change=[this,input,i]{if(importSheetUpdating_)return;try{std::size_t used=0;double v=std::stod(input->text(),&used);if(used!=input->text().size()||!std::isfinite(v))return;int n=int(std::floor(std::clamp(v,i<2?-262144.0:i<6?0.0:1.0,262144.0)+.5));auto& o=importSheetOptions_;if(i<6){int* fields[]{&o.x,&o.y,&o.width,&o.height,&o.paddingX,&o.paddingY};*fields[i]=i==2||i==3?std::max(1,n):n;}else{bool horizontal=i==6;int extent=o.selection&&document.selection()?(horizontal?document.selection()->width:document.selection()->height):(horizontal?document.width():document.height());int origin=horizontal?o.x:o.y,gap=horizontal?o.paddingX:o.paddingY,count=std::clamp(n,1,10000);(horizontal?o.width:o.height)=std::max(1,int(std::floor(double(extent-origin-gap*(count-1))/count)));}updateSheetImportFields();}catch(...){} };input->Change.connect(change);input->blur=change;input->accept=[this]{resolve(true);};input->cancel=[this]{resolve(false);};}importSheetLayout_=button(U"排列",[this]{PixelMenu menu(skin_);const char32_t* names[]{U"横向",U"纵向",U"按行",U"按列"};for(int i=0;i<4;++i){auto item=new PixelMenuItem(font_,skin_,names[i]);item->Click.connect([this,i]{importSheetOptions_.layout=i;updateSheetImportFields();refresh();});menu.addChild(item);}auto at=importSheetLayout_->bounds();menu.showPopup({at.x,at.y2()},display());requestFocus();});importSheetPartial_=button(U"包含不完整单元格",[this]{importSheetOptions_.partialTiles=!importSheetOptions_.partialTiles;updateSheetImportFields();refresh();});importSheetPartial_->iconSkin=&toolIcons_;importSheetPartial_->bareIconWithCaption=true;importSheetLayout_->setVisible(false);importSheetPartial_->setVisible(false);}
-  void openSpriteSheet(){if(pending_!=Pending::None||document.active())return;sheetOptions_={};sheetOptions_.fixedWidth=document.width()*4;sheetOptions_.fixedHeight=document.height()*4;sheetOptions_.selectedLayerIds=document.timelineSelection().layers;sheetValue_->setText("4");try{if(sheetPreview_) {sheetPreview_->setImage(buildSpriteSheetImage(document,sheetOptions_));sheetPreview_->setVisible(true);}}catch(...){} pending_=Pending::SpriteSheet;menuBar_->setEnabled(false);discard_->caption=U"导出 PNG";keep_->caption=U"取消";discard_->setVisible(true);keep_->setVisible(true);dialogClose_->setVisible(true);refresh();}
-  bool saveSpriteSheet(){wchar_t filename[32768]{};auto name=std::filesystem::path(document.name()).stem().wstring()+L"-sprite-sheet.png";std::copy_n(name.c_str(),std::min<std::size_t>(name.size(),32767),filename);OPENFILENAMEW dialog{};dialog.lStructSize=sizeof(dialog);dialog.hwndOwner=GetActiveWindow();dialog.lpstrFile=filename;dialog.nMaxFile=32768;dialog.lpstrFilter=L"PNG RGBA 精灵表\0*.png\0\0";dialog.lpstrDefExt=L"png";dialog.Flags=OFN_EXPLORER|OFN_NOCHANGEDIR|OFN_PATHMUSTEXIST|OFN_OVERWRITEPROMPT;if(!GetSaveFileNameW(&dialog))return false;try{writeStaticImagePngAtomic(filename,encodeSpriteSheet(document,sheetOptions_));status_=U"精灵表已导出";return true;}catch(const std::exception& e){status_=U"精灵表导出失败："+unicodeText(e.what());invalidate();return false;}}
+  void openSpriteSheet(){sheetOutputFile_=false;sheetOpenAfterExport_=false;sheetExportedPath_.clear();if(pending_!=Pending::None||document.active())return;sheetOptions_={};sheetOptions_.fixedWidth=document.width()*4;sheetOptions_.fixedHeight=document.height()*4;sheetOptions_.selectedLayerIds=document.timelineSelection().layers;sheetValue_->setText("4");try{if(sheetPreview_) {sheetPreview_->setImage(buildSpriteSheetImage(document,sheetOptions_));sheetPreview_->setVisible(true);}}catch(...){} pending_=Pending::SpriteSheet;menuBar_->setEnabled(false);discard_->caption=U"新建文档";keep_->caption=U"取消";discard_->setVisible(true);keep_->setVisible(true);dialogClose_->setVisible(true);refresh();}
+  bool saveSpriteSheet(){wchar_t filename[32768]{};auto name=std::filesystem::path(document.name()).stem().wstring()+L"-sprite-sheet.png";std::copy_n(name.c_str(),std::min<std::size_t>(name.size(),32767),filename);OPENFILENAMEW dialog{};dialog.lStructSize=sizeof(dialog);dialog.hwndOwner=GetActiveWindow();dialog.lpstrFile=filename;dialog.nMaxFile=32768;dialog.lpstrFilter=L"PNG 自动 精灵表\0*.png\0\0";dialog.lpstrDefExt=L"png";dialog.Flags=OFN_EXPLORER|OFN_NOCHANGEDIR|OFN_PATHMUSTEXIST|OFN_OVERWRITEPROMPT;if(!chooseExportFile_(&dialog))return false;try{writeStaticImagePngAtomic(filename,encodeSpriteSheet(document,sheetOptions_));sheetExportedPath_=filename;status_=U"精灵表已导出";return true;}catch(const std::exception& e){status_=U"精灵表导出失败："+unicodeText(e.what());invalidate();return false;}}
   void createSpriteSheetControls(){sheetPreview_=new SpriteSheetPreview(skin_);addChild(sheetPreview_);
     sheetButtons_[0]=button(U"排列",[this]{PixelMenu menu(skin_);const char32_t* names[]{U"横向",U"纵向",U"按行",U"按列"};for(int i=0;i<4;++i){auto item=new PixelMenuItem(font_,skin_,names[i]);item->checked=[this,i]{return int(sheetOptions_.layout)==i;};item->Click.connect([this,i]{auto& o=sheetOptions_;o.layout=SheetLayout(i);if(i<2)o.constraint=SheetConstraint::None;else if(i==2){if(o.constraint==SheetConstraint::FixedRows)o.constraint=SheetConstraint::FixedColumns;if(o.constraint==SheetConstraint::FixedHeight)o.constraint=SheetConstraint::FixedWidth;}else{if(o.constraint==SheetConstraint::FixedColumns)o.constraint=SheetConstraint::FixedRows;if(o.constraint==SheetConstraint::FixedWidth)o.constraint=SheetConstraint::FixedHeight;}refresh();});menu.addChild(item);}auto at=sheetButtons_[0]->bounds();menu.showPopup({at.x,at.y2()},display());requestFocus();});
     sheetButtons_[1]=button(U"约束",[this]{PixelMenu menu(skin_);bool columns=sheetOptions_.layout==SheetLayout::Columns;const char32_t* names[]{U"无约束",columns?U"固定行数":U"固定列数",columns?U"固定高度":U"固定宽度"};for(int i=0;i<3;++i){auto item=new PixelMenuItem(font_,skin_,names[i]);item->Click.connect([this,i,columns]{sheetOptions_.constraint=i==0?SheetConstraint::None:i==1?(columns?SheetConstraint::FixedRows:SheetConstraint::FixedColumns):(columns?SheetConstraint::FixedHeight:SheetConstraint::FixedWidth);refresh();});menu.addChild(item);}auto at=sheetButtons_[1]->bounds();menu.showPopup({at.x,at.y2()},display());requestFocus();});
     sheetButtons_[2]=button(U"帧范围",[this]{PixelMenu menu(skin_);auto add=[&](std::string id,std::u32string name){auto item=new PixelMenuItem(font_,skin_,name);item->checked=[this,id]{return sheetOptions_.frameScope==id;};item->Click.connect([this,id]{sheetOptions_.frameScope=id;refresh();});menu.addChild(item);};add("all",U"全部帧");add("selected",U"选中帧（无选择时当前帧）");for(const auto& l:document.timeline().state().loopSections)add("loop:"+l.id,l.name);auto at=sheetButtons_[2]->bounds();menu.showPopup({at.x,at.y2()},display());requestFocus();});
-    sheetButtons_[3]=button(U"图层",[this]{PixelMenu menu(skin_);const char* ids[]{"visible","all","selected"};const char32_t* names[]{U"可见图层",U"所有图层（显示隐藏层）",U"选中图层"};for(int i=0;i<3;++i){auto item=new PixelMenuItem(font_,skin_,names[i]);item->Click.connect([this,id=std::string(ids[i])]{sheetOptions_.layerScope=id;refresh();});menu.addChild(item);}for(int split=0;split<2;++split){auto item=new PixelMenuItem(font_,skin_,split==0?U"拆分图层":U"拆分循环段");item->checked=[this,split]{return split==0?sheetOptions_.splitLayers:sheetOptions_.splitLoopSections;};item->setEnabled(split==0||!document.timeline().state().loopSections.empty());item->Click.connect([this,split]{if(split==0)sheetOptions_.splitLayers=!sheetOptions_.splitLayers;else sheetOptions_.splitLoopSections=!sheetOptions_.splitLoopSections;refresh();});menu.addChild(item);}for(auto text:{U"新建文档 · 未接入",U"导出后自动打开 · 未接入"}){auto item=new PixelMenuItem(font_,skin_,text);item->setEnabled(false);menu.addChild(item);}auto at=sheetButtons_[3]->bounds();menu.showPopup({at.x,at.y2()},display());requestFocus();});
+    sheetButtons_[3]=button(U"图层",[this]{PixelMenu menu(skin_);const char* ids[]{"visible","all","selected"};const char32_t* names[]{U"可见图层",U"所有图层（显示隐藏层）",U"选中图层"};for(int i=0;i<3;++i){auto item=new PixelMenuItem(font_,skin_,names[i]);item->Click.connect([this,id=std::string(ids[i])]{sheetOptions_.layerScope=id;refresh();});menu.addChild(item);}for(int split=0;split<2;++split){auto item=new PixelMenuItem(font_,skin_,split==0?U"拆分图层":U"拆分循环段");item->checked=[this,split]{return split==0?sheetOptions_.splitLayers:sheetOptions_.splitLoopSections;};item->setEnabled(split==0||!document.timeline().state().loopSections.empty());item->Click.connect([this,split]{if(split==0)sheetOptions_.splitLayers=!sheetOptions_.splitLayers;else sheetOptions_.splitLoopSections=!sheetOptions_.splitLoopSections;refresh();});menu.addChild(item);}for(bool file:{false,true}){auto mode=new PixelMenuItem(font_,skin_,file?U"导出 PNG 文件":U"新建文档");mode->checked=[this,file]{return sheetOutputFile_==file;};mode->Click.connect([this,file]{sheetOutputFile_=file;refresh();});menu.addChild(mode);}if(sheetOutputFile_){auto openAfter=new PixelMenuItem(font_,skin_,U"导出后自动打开");openAfter->checked=[this]{return sheetOpenAfterExport_;};openAfter->Click.connect([this]{sheetOpenAfterExport_=!sheetOpenAfterExport_;refresh();});menu.addChild(openAfter);}auto at=sheetButtons_[3]->bounds();menu.showPopup({at.x,at.y2()},display());requestFocus();});
     sheetButtons_[4]=button(U"合并重复",[this]{sheetOptions_.mergeDuplicates=!sheetOptions_.mergeDuplicates;refresh();});sheetButtons_[5]=button(U"忽略空帧",[this]{sheetOptions_.ignoreEmpty=!sheetOptions_.ignoreEmpty;refresh();});sheetButtons_[6]=button(U"像素选区",[this]{sheetOptions_.selection=!sheetOptions_.selection;refresh();});for(auto b:sheetButtons_){b->setVisible(false);b->iconSkin=&toolIcons_;}
     sheetValue_=new PixelEntry(font_,skin_);sheetValue_->numeric=true;addChild(sheetValue_);sheetValue_->setVisible(false);auto change=[this]{try{std::size_t used=0;double v=std::stod(sheetValue_->text(),&used);if(used!=sheetValue_->text().size()||!std::isfinite(v))return;auto c=sheetOptions_.constraint;int n=int(std::floor(std::clamp(v,1.0,c==SheetConstraint::FixedWidth||c==SheetConstraint::FixedHeight?262144.0:16384.0)+.5));(c==SheetConstraint::FixedColumns?sheetOptions_.fixedColumns:c==SheetConstraint::FixedRows?sheetOptions_.fixedRows:c==SheetConstraint::FixedWidth?sheetOptions_.fixedWidth:sheetOptions_.fixedHeight)=n;refresh();}catch(...){} };sheetValue_->Change.connect(change);sheetValue_->blur=change;sheetValue_->accept=[this]{resolve(true);};sheetValue_->cancel=[this]{resolve(false);};
   }
+  bool staticBmp_=false,staticIco_=false,staticSvg_=false;
+  void switchStaticExportFormat(int format){const bool wasStatic=pending_==Pending::StaticExport,wasSvg=wasStatic&&staticSvg_;const auto previous=exportOptions_;if(pending_!=Pending::None)resolve(false);openStaticExport();staticBmp_=format==1;staticIco_=format==2;staticSvg_=format==3;exportOptions_.automatic=format==4;if(staticSvg_&&wasStatic){exportOptions_.trim=previous.trim;exportOptions_.selection=previous.selection;}if(wasSvg&&!staticSvg_){exportOptions_.scalePercent=previous.scalePercent;exportOptions_.trim=previous.trim;exportOptions_.selection=previous.selection;}if(staticSvg_)exportOptions_.scalePercent=100;exportScaleInput_->suffix=staticSvg_?U"x":U"%";exportScaleInput_->setText(staticSvg_?"1":std::to_string(exportOptions_.scalePercent));discard_->caption=staticSvg_?U"导出 SVG":staticIco_?U"导出 ICO":staticBmp_?U"导出 BMP":U"导出 PNG";refresh();}
+  void openSvgExport(){switchStaticExportFormat(3);}
+  void openIcoExport(){openStaticExport();staticIco_=true;discard_->caption=U"导出 ICO";refresh();}
+  void openBmpExport(){openStaticExport();staticBmp_=true;discard_->caption=U"导出 BMP";refresh();}
+  void writeCurrentStaticExport(const std::filesystem::path& path){if(staticSvg_){auto out=encodeStaticImageSvg(document,exportOptions_);writeExportBytesAtomic(path,out.bytes);}else if(staticIco_){auto out=encodeStaticImageIco(document,exportOptions_);writeExportBytesAtomic(path,out.bytes);}else if(staticBmp_){auto out=encodeStaticImageBmp(document,exportOptions_);writeExportBytesAtomic(path,out.bytes);}else{auto out=encodeStaticImagePng(document,exportOptions_);writeStaticImagePngAtomic(path,out);}}
   void openDocumentExport(){if(document.timeline().state().frames.size()>1)openGifExport();else openStaticExport();}
-  void createExportFormatControl(){exportFormatButton_=button(U"格式",[this]{PixelMenu menu(skin_);auto add=[&](std::u32string name,std::function<void()> action){auto item=new PixelMenuItem(font_,skin_,name);item->Click.connect([this,action]{resolve(false);action();});menu.addChild(item);};add(U"PNG RGBA",[this]{openStaticExport();});add(U"GIF",[this]{openGifExport();});for(auto text:{U"PNG 自动 · 未接入",U"WebP · 未接入",U"其它格式 · 未接入"}){auto item=new PixelMenuItem(font_,skin_,text);item->setEnabled(false);menu.addChild(item);}auto at=exportFormatButton_->bounds();menu.showPopup({at.x,at.y2()},display());requestFocus();});exportFormatButton_->setVisible(false);}
-  void openStaticExport(){if(pending_!=Pending::None||document.active())return;exportOptions_={};pending_=Pending::StaticExport;menuBar_->setEnabled(false);exportScaleInput_->setText("100");discard_->caption=U"导出 PNG";keep_->caption=U"取消";discard_->setVisible(true);keep_->setVisible(true);dialogClose_->setVisible(true);refresh();}
-  bool saveStaticExport(){wchar_t filename[32768]{};auto name=std::filesystem::path(document.name()).stem().wstring()+L".png";std::copy_n(name.c_str(),std::min<std::size_t>(name.size(),32767),filename);OPENFILENAMEW dialog{};dialog.lStructSize=sizeof(dialog);dialog.hwndOwner=GetActiveWindow();dialog.lpstrFile=filename;dialog.nMaxFile=32768;dialog.lpstrFilter=L"PNG RGBA 图片\0*.png\0\0";dialog.lpstrDefExt=L"png";dialog.Flags=OFN_EXPLORER|OFN_NOCHANGEDIR|OFN_PATHMUSTEXIST|OFN_OVERWRITEPROMPT;if(!GetSaveFileNameW(&dialog)){const auto error=CommDlgExtendedError();if(error)status_=U"无法打开导出文件对话框";return false;}try{auto out=encodeStaticImagePng(document,exportOptions_);writeStaticImagePngAtomic(filename,out);status_=U"已导出 PNG";return true;}catch(const std::exception& e){status_=U"导出失败："+unicodeText(e.what());invalidate();return false;}}
-  void createStaticExportControls(){exportScaleInput_=new PixelEntry(font_,skin_);exportScaleInput_->numeric=true;exportScaleInput_->suffix=U"%";addChild(exportScaleInput_);exportScaleInput_->setVisible(false);auto change=[this]{try{std::size_t used=0;double v=std::stod(exportScaleInput_->text(),&used);if(used==exportScaleInput_->text().size()&&std::isfinite(v))exportOptions_.scalePercent=int(std::floor(std::clamp(v,1.0,6400.0)+.5));}catch(...){} };exportScaleInput_->Change.connect(change);exportScaleInput_->blur=change;exportScaleInput_->accept=[this]{resolve(true);};exportScaleInput_->cancel=[this]{resolve(false);};exportTrimButton_=button(U"裁切透明边",[this]{exportOptions_.trim=!exportOptions_.trim;refresh();});exportSelectionButton_=button(U"仅像素选区",[this]{exportOptions_.selection=!exportOptions_.selection;refresh();});for(auto b:{exportTrimButton_,exportSelectionButton_}){b->iconSkin=&toolIcons_;b->bareIconWithCaption=true;b->setVisible(false);}}
+  void setFrameSequenceFormat(FrameSequenceFormat format,bool automatic=false){const bool wasSvg=frameSvg_;frameSvg_=format==FrameSequenceFormat::Svg;frameIco_=format==FrameSequenceFormat::Ico;frameBmp_=format==FrameSequenceFormat::Bmp;framePngAutomatic_=automatic;if(frameSvg_)gifOptions_.scalePercent=100;if(frameSvg_||wasSvg){gifInputs_[0]->suffix=frameSvg_?U"x":U"";gifInputs_[0]->setText(frameSvg_?"1":std::to_string(gifOptions_.scalePercent));}discard_->caption=frameSvg_?U"导出 SVG 序列":frameIco_?U"导出 ICO 序列":frameBmp_?U"导出 BMP 序列":U"导出 PNG 序列";refresh();}
+  void finishExportFolder(const std::filesystem::path& directory){if(directory.empty())return;try{projectFolderLauncher_(directory);}catch(const std::exception& e){status_=unicodeText(e.what());invalidate();}}
+  void exportAndOpenFolder(){if(framePngBusy())return;exportedDirectory_.clear();exportOpenFolderRequested_=true;resolve(true);if(pending_!=Pending::None&&!framePngBusy())exportOpenFolderRequested_=false;}
+  void createExportFormatControl(){exportOpenFolderButton_=button(U"导出并打开文件夹",[this]{exportAndOpenFolder();});exportOpenFolderButton_->iconSkin=&toolIcons_;exportOpenFolderButton_->icon="folderOpen";exportOpenFolderButton_->bareIconWithCaption=true;exportOpenFolderButton_->setVisible(false);exportFormatButton_=button(U"格式",[this]{PixelMenu menu(skin_);if(pending_==Pending::GifExport&&framePngMode_){for(bool automatic:{false,true}){auto item=new PixelMenuItem(font_,skin_,automatic?U"PNG 自动":U"PNG RGBA");item->Click.connect([this,automatic]{setFrameSequenceFormat(FrameSequenceFormat::Png,automatic);});menu.addChild(item);}auto bmp=new PixelMenuItem(font_,skin_,U"BMP");bmp->Click.connect([this]{setFrameSequenceFormat(FrameSequenceFormat::Bmp);});menu.addChild(bmp);auto ico=new PixelMenuItem(font_,skin_,U"ICO");ico->Click.connect([this]{setFrameSequenceFormat(FrameSequenceFormat::Ico);});menu.addChild(ico);auto svg=new PixelMenuItem(font_,skin_,U"SVG");svg->Click.connect([this]{setFrameSequenceFormat(FrameSequenceFormat::Svg);});menu.addChild(svg);auto at=exportFormatButton_->bounds();menu.showPopup({at.x,at.y2()},display());requestFocus();return;}auto add=[&](std::u32string name,std::function<void()> action){auto item=new PixelMenuItem(font_,skin_,name);item->Click.connect([this,action]{action();});menu.addChild(item);};add(U"PNG RGBA",[this]{switchStaticExportFormat(0);});add(U"GIF",[this]{resolve(false);openGifExport();});add(U"PNG 自动",[this]{switchStaticExportFormat(4);});add(U"BMP",[this]{switchStaticExportFormat(1);});add(U"ICO",[this]{switchStaticExportFormat(2);});add(U"SVG",[this]{openSvgExport();});for(auto text:{U"WebP · 未接入",U"其它格式 · 未接入"}){auto item=new PixelMenuItem(font_,skin_,text);item->setEnabled(false);menu.addChild(item);}auto at=exportFormatButton_->bounds();menu.showPopup({at.x,at.y2()},display());requestFocus();});exportFormatButton_->setVisible(false);}
+  void openStaticExport(){exportOpenFolderRequested_=false;exportedDirectory_.clear();staticBmp_=false;staticIco_=false;staticSvg_=false;exportScaleInput_->suffix=U"%";if(pending_!=Pending::None||document.active())return;exportOptions_={};pending_=Pending::StaticExport;menuBar_->setEnabled(false);exportScaleInput_->setText("100");discard_->caption=U"导出 PNG";keep_->caption=U"取消";discard_->setVisible(true);keep_->setVisible(true);dialogClose_->setVisible(true);refresh();}
+  bool saveStaticExport(){wchar_t filename[32768]{};auto name=std::filesystem::path(document.name()).stem().wstring()+(staticSvg_?L".svg":staticIco_?L".ico":staticBmp_?L".bmp":L".png");std::copy_n(name.c_str(),std::min<std::size_t>(name.size(),32767),filename);OPENFILENAMEW dialog{};dialog.lStructSize=sizeof(dialog);dialog.hwndOwner=GetActiveWindow();dialog.lpstrFile=filename;dialog.nMaxFile=32768;dialog.lpstrFilter=staticSvg_?L"SVG 图片\0*.svg\0\0":staticIco_?L"ICO 图片\0*.ico\0\0":staticBmp_?L"BMP 图片\0*.bmp\0\0":exportOptions_.automatic?L"PNG 自动 图片\0*.png\0\0":L"PNG RGBA 图片\0*.png\0\0";dialog.lpstrDefExt=staticSvg_?L"svg":staticIco_?L"ico":staticBmp_?L"bmp":L"png";dialog.Flags=OFN_EXPLORER|OFN_NOCHANGEDIR|OFN_PATHMUSTEXIST|OFN_OVERWRITEPROMPT;if(!chooseExportFile_(&dialog)){const auto error=CommDlgExtendedError();if(error)status_=U"无法打开导出文件对话框";return false;}try{writeCurrentStaticExport(filename);exportedDirectory_=std::filesystem::path(filename).parent_path();status_=staticSvg_?U"已导出 SVG":staticIco_?U"已导出 ICO":staticBmp_?U"已导出 BMP":U"已导出 PNG";return true;}catch(const std::exception& e){status_=U"导出失败："+unicodeText(e.what());invalidate();return false;}}
+  void createStaticExportControls(){exportScaleInput_=new PixelEntry(font_,skin_);exportScaleInput_->numeric=true;exportScaleInput_->suffix=U"%";addChild(exportScaleInput_);exportScaleInput_->setVisible(false);auto change=[this]{try{std::size_t used=0;double v=std::stod(exportScaleInput_->text(),&used);if(used==exportScaleInput_->text().size()&&std::isfinite(v))exportOptions_.scalePercent=int(std::floor((staticSvg_?std::clamp(v,1.0,64.0)*100:std::clamp(v,1.0,6400.0))+.5));}catch(...){} };exportScaleInput_->Change.connect(change);exportScaleInput_->blur=change;exportScaleInput_->accept=[this]{resolve(true);};exportScaleInput_->cancel=[this]{resolve(false);};exportTrimButton_=button(U"裁切透明边",[this]{exportOptions_.trim=!exportOptions_.trim;refresh();});exportSelectionButton_=button(U"仅像素选区",[this]{exportOptions_.selection=!exportOptions_.selection;refresh();});for(auto b:{exportTrimButton_,exportSelectionButton_}){b->iconSkin=&toolIcons_;b->bareIconWithCaption=true;b->setVisible(false);}}
   void createResizeControls(){for(int i=0;i<4;++i){auto input=new PixelEntry(font_,skin_);input->numeric=true;input->suffix=i<2?U"px":U"%";addChild(input);resizeInputs_[i]=input;input->setVisible(false);auto changed=[this,input,i]{if(resizeUpdating_||pending_!=Pending::ImageResize)return;try{std::size_t used=0;double v=std::stod(input->text(),&used);if(used!=input->text().size()||!std::isfinite(v))return;v=std::clamp(v,1.0,i<2?16384.0:6400.0);if(i<2)v=std::floor(v+.5);const bool horizontal=i%2==0;int n=i<2?int(v):std::clamp(int(std::floor((horizontal?document.width():document.height())*v/100+.5)),1,16384);(horizontal?resizeWidth_:resizeHeight_)=n;if(resizeLocked_)(horizontal?resizeHeight_:resizeWidth_)=std::max(1,int(std::floor(double(n)*(horizontal?document.height():document.width())/(horizontal?document.width():document.height())+.5)));updateResizeFields();}catch(...){} };input->Change.connect(changed);input->blur=changed;input->accept=[this]{resolve(true);};input->cancel=[this]{resolve(false);};}resizeLock_=button(U"保持比例",[this]{resizeLocked_=!resizeLocked_;updateResizeFields();});resizeLock_->iconSkin=&toolIcons_;resizeLock_->setVisible(false);resizeMethod_=button(U"最近邻",[this]{resizeMethodValue_=resizeMethodValue_==ImageInterpolation::Nearest?ImageInterpolation::Smooth:ImageInterpolation::Nearest;updateResizeFields();});resizeMethod_->setVisible(false);}
   void createAdjustmentControls(){
     curveEditor_=new CurveEditorNative(skin_);addChild(curveEditor_);curveEditor_->changed=[this]{previewAdjustment();};curveChannelButton_=button(U"RGB",[this]{curveChannel_=(curveChannel_+1)%4;curveEditor_->selectChannel();updateAdjustmentControls();});curveResetButton_=button(U"重置通道",[this]{curveEditor_->resetChannel();});curveDeleteButton_=button(U"删除点",[this]{curveEditor_->deleteSelected();});for(auto b:{curveChannelButton_,curveResetButton_,curveDeleteButton_})b->setVisible(false);curveResetButton_->caption.clear();curveResetButton_->icon="restore";curveResetButton_->iconSkin=&toolIcons_;curveDeleteButton_->caption.clear();curveDeleteButton_->icon="delete";curveDeleteButton_->iconSkin=&toolIcons_;
     for(int i=0;i<3;++i){auto input=new PixelEntry(font_,skin_);input->numeric=true;addChild(input);adjustmentInputs_[i]=input;input->setVisible(false);auto changed=[this,input,i]{try{std::size_t used=0;double v=std::stod(input->text(),&used);if(used!=input->text().size() || !std::isfinite(v))return;if(adjustmentSpec_.kind==ColorAdjustmentKind::Curves){curveEditor_->setCoordinate(i,v);return;}double lo=-100,hi=100;if(adjustmentSpec_.kind==ColorAdjustmentKind::HueSaturation && i==0){lo=adjustmentSpec_.colorize?0:-180;hi=adjustmentSpec_.colorize?360:180;}if(adjustmentSpec_.colorize && i==1)lo=0;v=std::clamp(std::floor(v+.5),lo,hi);if(adjustmentSpec_.kind==ColorAdjustmentKind::ColorBalance)adjustmentSpec_.balance[adjustmentTone_][i]=v;else if(adjustmentSpec_.kind==ColorAdjustmentKind::BrightnessContrast)(i?adjustmentSpec_.contrast:adjustmentSpec_.brightness)=v;else (i==0?adjustmentSpec_.hue:i==1?adjustmentSpec_.saturation:adjustmentSpec_.lightness)=v;previewAdjustment();}catch(...){} };input->Change.connect(changed);input->blur=changed;input->accept=[this]{resolve(true);};input->cancel=[this]{resolve(false);};}
-    adjustmentPreview_=button(U"实时预览",[this]{adjustmentPreviewEnabled_=!adjustmentPreviewEnabled_;previewAdjustment();});adjustmentColorize_=button(U"着色",[this]{if(adjustmentSpec_.kind==ColorAdjustmentKind::ColorBalance){adjustmentSpec_.preserveLuminosity=!adjustmentSpec_.preserveLuminosity;previewAdjustment();return;}auto current=std::array<double,3>{adjustmentSpec_.hue,adjustmentSpec_.saturation,adjustmentSpec_.lightness};if(!adjustmentSpec_.colorize){relativeHsl_=current;if(!hasColorizedHsl_){auto c=document.palette().primary;const double r=(c&255)/255.0,g=((c>>8)&255)/255.0,b=((c>>16)&255)/255.0,hi=std::max({r,g,b}),lo=std::min({r,g,b}),d=hi-lo;const double h=d==0?0:std::fmod((hi==r?(g-b)/d:hi==g?(b-r)/d+2:(r-g)/d+4)*60+360,360);colorizedHsl_={std::floor(h+.5),25,adjustmentSpec_.lightness};}current=colorizedHsl_;}else{colorizedHsl_=current;hasColorizedHsl_=true;current=relativeHsl_;}adjustmentSpec_.colorize=!adjustmentSpec_.colorize;adjustmentSpec_.hue=current[0];adjustmentSpec_.saturation=current[1];adjustmentSpec_.lightness=current[2];previewAdjustment();});adjustmentToneButton_=button(U"中间调",[this]{adjustmentTone_=(adjustmentTone_+1)%3;updateAdjustmentControls();invalidate();});adjustmentToneButton_->setVisible(false);for(auto b:{adjustmentPreview_,adjustmentColorize_}){b->setVisible(false);b->iconSkin=&toolIcons_;b->bareIconWithCaption=true;}
+    adjustmentPreview_=switchButton(U"实时预览",adjustmentPreviewEnabled_,[this](bool checked){adjustmentPreviewEnabled_=checked;previewAdjustment();});adjustmentPreview_->icon="eye";adjustmentColorize_=button(U"着色",[this]{if(adjustmentSpec_.kind==ColorAdjustmentKind::ColorBalance){adjustmentSpec_.preserveLuminosity=!adjustmentSpec_.preserveLuminosity;previewAdjustment();return;}auto current=std::array<double,3>{adjustmentSpec_.hue,adjustmentSpec_.saturation,adjustmentSpec_.lightness};if(!adjustmentSpec_.colorize){relativeHsl_=current;if(!hasColorizedHsl_){auto c=document.palette().primary;const double r=(c&255)/255.0,g=((c>>8)&255)/255.0,b=((c>>16)&255)/255.0,hi=std::max({r,g,b}),lo=std::min({r,g,b}),d=hi-lo;const double h=d==0?0:std::fmod((hi==r?(g-b)/d:hi==g?(b-r)/d+2:(r-g)/d+4)*60+360,360);colorizedHsl_={std::floor(h+.5),25,adjustmentSpec_.lightness};}current=colorizedHsl_;}else{colorizedHsl_=current;hasColorizedHsl_=true;current=relativeHsl_;}adjustmentSpec_.colorize=!adjustmentSpec_.colorize;adjustmentSpec_.hue=current[0];adjustmentSpec_.saturation=current[1];adjustmentSpec_.lightness=current[2];previewAdjustment();});adjustmentToneButton_=button(U"中间调",[this]{adjustmentTone_=(adjustmentTone_+1)%3;updateAdjustmentControls();invalidate();});adjustmentToneButton_->setVisible(false);for(auto b:{adjustmentPreview_,adjustmentColorize_}){b->setVisible(false);b->iconSkin=&toolIcons_;b->bareIconWithCaption=true;}
   }
   void openPaletteExtraction(){
     if(pending_!=Pending::None || document.active())return;
@@ -2608,6 +2985,11 @@ private:
       document.applyExtractedPalette(colors,extractMode_==2,paletteColumns_);paletteScrollPixels_=0;status_=extractMode_==0?U"已创建临时调色板："+unicodeText(extractNameInput_->text()):extractMode_==1?U"已替换调色板":U"已追加提取颜色";return true;
     }catch(const std::exception& e){status_=U"提取失败："+unicodeText(e.what());invalidate();return false;}
   }
+  std::vector<std::size_t> paletteGradientSlots()const{
+    const auto& slots=document.palette().slots;const int columns=paletteColumns_;if(columns<1)return {};std::vector<std::size_t> selected;for(std::size_t i=0;i<slots.size();++i)if(slots[i] && std::find(document.palette().selected.begin(),document.palette().selected.end(),slots[i])!=document.palette().selected.end())selected.push_back(i);
+    std::size_t left=columns,right=0,top=65536,bottom=0;auto include=[&](std::size_t i){left=std::min(left,i%columns);right=std::max(right,i%columns);top=std::min(top,i/columns);bottom=std::max(bottom,i/columns);};if(paletteBoxRange_ && paletteBoxRange_->identity==document.identity() && paletteBoxRange_->selected==document.palette().selected){include(paletteBoxRange_->start);include(paletteBoxRange_->end);}else{if(selected.size()<2)return {};for(auto i:selected)include(i);}std::vector<std::size_t> result;for(auto y=top;y<=bottom;++y)for(auto x=left;x<=right;++x){const auto i=y*columns+x;if(i<slots.size())result.push_back(i);}return result;
+  }
+  void applyPaletteGradient(bool hue){document.gradientPaletteSlots(paletteGradientSlots(),paletteColumns_,hue);refresh();}
   void showPaletteActions() {
     if(pending_!=Pending::None) return;
     PixelMenu popup(skin_);
@@ -2618,12 +3000,12 @@ private:
     add(popup,U"自适应布局","",[]{},[]{return true;});
     add(popup,U"自定义布局","",{},[]{return false;});separator(popup);
     add(popup,U"提取颜色","extractColors",document.active()?std::function<void()>{}:std::function<void()>{[this]{openPaletteExtraction();}});
-    add(popup,U"显示颜色名称","",{},[]{return false;});
-    add(popup,U"同步颜色","",{},[]{return false;});separator(popup);
+    add(popup,U"显示颜色名称","",[this]{choosePaletteNames(!showPaletteNames_);},[this]{return showPaletteNames_;});
+    add(popup,U"同步颜色","",[this]{choosePaletteSynchronization(!syncPaletteColors_);},[this]{return syncPaletteColors_;});separator(popup);
     auto sort=new PixelMenu(skin_);auto trigger=add(popup,U"排序与渐变","moreLines",[]{});trigger->setSubmenu(sort);
-    add(*sort,U"反向颜色","redo");add(*sort,U"渐变");add(*sort,U"色调渐变");separator(*sort);
-    for(const auto* name:{U"色调排序",U"饱和度排序",U"明度排序",U"亮度排序",U"Red 排序",U"Green 排序",U"Blue 排序",U"Alpha 排序"})add(*sort,name);
-    separator(*sort);add(*sort,U"升序","",{},[]{return true;});add(*sort,U"降序","",{},[]{return false;});separator(popup);
+    add(*sort,U"反向颜色","redo",[this]{document.reversePaletteColors();refresh();});add(*sort,U"渐变","",paletteGradientSlots().size()>=2?std::function<void()>{[this]{applyPaletteGradient(false);}}:std::function<void()>{});add(*sort,U"色调渐变","",paletteGradientSlots().size()>=2?std::function<void()>{[this]{applyPaletteGradient(true);}}:std::function<void()>{});separator(*sort);
+    const char32_t* sortNames[]{U"色调排序",U"饱和度排序",U"明度排序",U"亮度排序",U"Red 排序",U"Green 排序",U"Blue 排序",U"Alpha 排序"};for(int i=0;i<8;++i)add(*sort,sortNames[i],"",[this,i]{document.sortPaletteColors(Document::PaletteSortMode(i),paletteSortDescending_);refresh();});
+    separator(*sort);add(*sort,U"升序","",[this]{choosePaletteSortDirection(false);},[this]{return !paletteSortDescending_;});add(*sort,U"降序","",[this]{choosePaletteSortDirection(true);},[this]{return paletteSortDescending_;});separator(popup);
     const char32_t* names[]={U"较小尺寸",U"小尺寸",U"中尺寸",U"大尺寸",U"较大尺寸"};
     for(int i=0;i<5;++i) {
       const auto px=std::to_string(swatchPixels_[i]);
@@ -2646,15 +3028,20 @@ private:
     return eraser_?legacyToolGroups()[1].front().id:legacyToolGroups()[0].front().id;
   }
   void refresh() {
+    document.setPaletteColorSynchronization(syncPaletteColors_);for(auto& project:projects_)if(project->stored)project->stored->setPaletteColorSynchronization(syncPaletteColors_);
+    // Native currently admits legacy's default canvas scope only.
+    if(previewPanel_)previewPanel_->syncRelativeLuminance(renderer_.relativeLuminance(),false);
     ++panelFullRefreshes_;
     syncSelectionOutlineView();
     if(auto entry=menuItems_.find("toggleSelectionOutline");entry!=menuItems_.end())entry->second->setCaption(showSelectionOutline_?U"隐藏蚂蚁线":U"显示蚂蚁线");
     if(playbackModeIdentity_!=document.identity()){playbackSessionMode_=savedPlaybackMode_.value_or(document.animationLoop()?"all":"once");playbackTagMode_=playbackSessionMode_=="tag";playbackTagCycle_.clear();loopPlayback_={};playbackModeIdentity_=document.identity();playbackObservedFrame_=document.frame().id;}else if(playbackModeLoop_!=document.animationLoop()){playbackSessionMode_=document.animationLoop()?"all":"once";playbackTagMode_=false;playbackTagCycle_.clear();loopPlayback_={};}
     playbackModeLoop_=document.animationLoop();if(playing_ && playbackTagMode_ && playbackObservedFrame_!=document.frame().id)retargetTagPlayback();
     if(recentColorsIdentity_!=document.identity()){recentColors_={};recentDrag_.reset();recentColorsIdentity_=document.identity();}
-    if(pending_==Pending::SpriteSheet&&sheetPreview_){try{sheetPreview_->setImage(buildSpriteSheetImage(document,sheetOptions_));discard_->setEnabled(true);}catch(const std::exception& e){sheetPreview_->clearImage();status_=U"精灵表预览失败："+unicodeText(e.what());discard_->setEnabled(false);}}
+    if(pending_==Pending::SpriteSheet&&sheetPreview_){discard_->caption=sheetOutputFile_?U"导出 PNG":U"新建文档";try{sheetPreview_->setImage(buildSpriteSheetImage(document,sheetOptions_));discard_->setEnabled(true);}catch(const std::exception& e){sheetPreview_->clearImage();status_=U"精灵表预览失败："+unicodeText(e.what());discard_->setEnabled(false);}}
     if(symmetryIdentity_!=document.identity()){document.symmetryAxes=persistedSymmetryAxes_;symmetryIdentity_=document.identity();symmetryInitialized_=symmetryHas(document.symmetryAxes);}
     if(!document.floating())selectionFreeTransform_=false;
+    if(trimPivotIdentity_!=document.identity()){trimPivotIdentity_=document.identity();trimPivotSerial_=0;}
+    if(trimPivotSerial_!=document.selectionPivotHistory().serial){trimPivotSerial_=document.selectionPivotHistory().serial;selectionPivot_=document.selectionPivotHistory().pivot;selectionPivotMask_=document.selection();selectionPivotIdentity_=document.identity();}
     if(selectionPivotIdentity_!=document.identity() || (!document.floating() && !selectionEqual(selectionPivotMask_,document.selection()))){selectionPivot_.reset();selectionFreeTransform_=false;selectionPivotIdentity_=document.identity();selectionPivotMask_=document.selection();}
     if(!homeOpen_ && !homeVisibility_.empty()){for(auto state:homeVisibility_)state.first->setVisible(state.second);homeVisibility_.clear();}
     if(documentOpen_ && !closedControlStates_.empty()){for(auto state:closedControlStates_)state.first->setEnabled(state.second);closedControlStates_.clear();}
@@ -2678,7 +3065,7 @@ private:
       for(auto child:layerLocks_)child->setVisible(false);
       for(auto child:frameHeaders_)child->setVisible(false);
       for(auto child:frameCells_)child->setVisible(false);
-      layerProperties_->setVisible(false);
+      layerProperties_->setVisible(false);layerQuickSettings_->setVisible(false);layerLabelSeparator_->setVisible(false);for(auto b:layerQuickButtons_)b->setVisible(false);
       previewPanel_->setVisible(false);
     }
     for(int i=0;i<5;++i)if(topActions_[i]){topActions_[i]->setVisible(true);topActions_[i]->setEnabled(pending_==Pending::None && (i<2 || documentOpen_));}
@@ -2689,20 +3076,57 @@ private:
     finishPan(true);
     shapeDragging_=shapeRequest_=false;gradientDragging_=gradientPending_=gradientRequest_=false;gradientHandle_=-1;if(fillDragging_){fillDragging_=false;if(fillCommitted_){fillCommitted_=false;document.undo();}}document.cancelStroke(); if(hasCapture()) releaseMouse(); refresh();
   }
+  std::function<void(const std::filesystem::path&)> projectFolderLauncher_=[](const std::filesystem::path& directory){
+    // Structured Windows Shell API: the directory is never parsed as a command.
+    SHELLEXECUTEINFOW action{};action.cbSize=sizeof(action);action.fMask=SEE_MASK_FLAG_NO_UI;
+    action.lpVerb=L"open";action.lpFile=directory.c_str();action.nShow=SW_SHOWNORMAL;
+    if(!ShellExecuteExW(&action))throw std::runtime_error("无法打开工程文件夹 (Windows "+std::to_string(GetLastError())+")");
+  };
+  std::filesystem::path projectFolderSource()const{return documentPath_.empty()?document.sourceFilePath():documentPath_;}
+  bool fullscreenTransition_=false,restoreMaximizedAfterFullscreen_=false;
+  std::function<void(os::Window*,bool)> setNativeFullscreen_=[](os::Window* window,bool state){window->setFullscreen(state);};
+  bool fullscreen()const{return display() && display()->nativeWindow() && display()->nativeWindow()->isFullscreen();}
+  void toggleFullscreen(){
+    if(fullscreenTransition_ || !display() || !display()->nativeWindow())return;
+    fullscreenTransition_=true;struct Reset {bool& flag;~Reset(){flag=false;}} reset{fullscreenTransition_};
+    auto window=display()->nativeWindow();bool entering=!window->isFullscreen(),maximized=window->isMaximized();
+    try{
+      if(entering){if(maximized)window->maximize();try{setNativeFullscreen_(window,true);}catch(...){if(maximized && !window->isMaximized())window->maximize();throw;}restoreMaximizedAfterFullscreen_=maximized;}
+      else{setNativeFullscreen_(window,false);if(restoreMaximizedAfterFullscreen_ && !window->isMaximized())window->maximize();restoreMaximizedAfterFullscreen_=false;}
+      invalidate();
+    }catch(const std::exception& error){status_=unicodeText(error.what());invalidate();}
+  }
+  bool fullscreenShortcut(ui::Message* msg){
+    if(msg->type()!=ui::kKeyDownMessage || pending_!=Pending::None)return false;
+    auto key=static_cast<ui::KeyMessage*>(msg);
+    if(key->scancode()!=ui::kKeyF11 || key->ctrlPressed() || key->cmdPressed() || key->altPressed() || key->shiftPressed() || dynamic_cast<ui::Entry*>(ui::Manager::getDefault()->getFocus()))return false;
+    if(!key->repeat())toggleFullscreen();return true;
+  }
+  void openProjectFolder(){
+    const auto source=projectFolderSource();if(source.empty()){status_=U"工程尚未保存";return;}
+    try{
+      std::error_code error;if(!std::filesystem::is_regular_file(source,error))throw std::runtime_error("工程文件不存在，无法打开所在文件夹。");
+      const auto directory=source.parent_path();if(directory.empty())throw std::runtime_error("无法确定工程文件所在文件夹。");
+      projectFolderLauncher_(directory);status_=U"已打开工程所在文件夹";
+    }catch(const std::exception& e){status_=unicodeText(e.what());}invalidate();
+  }
   void acceptOpen() {
     if(!openCandidate_) return;
-    homeOpen_=false;
-    documentOpen_=true;
-    document=std::move(*openCandidate_);documentPath_=candidateRecovery_?std::filesystem::path():std::move(candidatePath_);if(candidateRecovery_)document.markRecovered(document.name()+U"（恢复）");candidateRecovery_=false;openCandidate_.reset();
+    if(!candidateRecovery_ && !openCandidate_->projectId().empty()){for(std::size_t i=0;i<projects_.size();++i)if(projectDocument(i).projectId()==openCandidate_->projectId()){openCandidate_.reset();activateProject(i);return;}}
+    auto next=std::move(*openCandidate_);if(candidateRecovery_)next.markRecovered(next.name()+U"（恢复）");const auto path=candidateRecovery_?std::filesystem::path():candidatePath_;candidateRecovery_=false;openCandidate_.reset();addProject(std::move(next),path);
     recordHomeRecent(documentPath_);
     paletteScrollPixels_=0;paletteFocused_=false;ink_=document.palette().primary;
     status_=U"工程已打开";fitCanvas();refresh();if(importAfterOpen_){importAfterOpen_=false;openSheetImport(false);}
   }
+  static bool sameProjectPath(const std::filesystem::path& a,const std::filesystem::path& b){return !a.empty() && !b.empty() && _wcsicmp(std::filesystem::absolute(a).lexically_normal().c_str(),std::filesystem::absolute(b).lexically_normal().c_str())==0;}
   void openPath(const std::filesystem::path& path) {
     try {
+      ensureProjects();for(std::size_t i=0;i<projects_.size();++i){const auto& saved=i==activeProject_?documentPath_:projects_[i]->path;if(sameProjectPath(path,saved) || sameProjectPath(path,projectDocument(i).sourceFilePath())){activateProject(i);return;}}
+
       auto ext=path.extension().wstring();std::transform(ext.begin(),ext.end(),ext.begin(),[](wchar_t c){return ::towlower(c);});
-      if(ext==L".gif"){auto image=openGifAnimation(path);if(documentOpen_&&document.dirty()){openCandidate_=std::move(image);candidatePath_.clear();candidateRecovery_=false;ask(Pending::Open);}else{document=std::move(image);documentPath_.clear();documentOpen_=true;homeOpen_=false;fitCanvas();refresh();}return;}
-      if(ext==L".png"||ext==L".jpg"||ext==L".jpeg"||ext==L".bmp"||ext==L".webp"){auto image=openRasterImage(path);if(documentOpen_&&document.dirty()){openCandidate_=std::move(image);candidatePath_.clear();candidateRecovery_=false;ask(Pending::Open);}else{document=std::move(image);documentPath_.clear();documentOpen_=true;homeOpen_=false;fitCanvas();refresh();if(importAfterOpen_){importAfterOpen_=false;openSheetImport(false);}}return;}
+      if(ext==L".gif" || ext==L".png" || ext==L".jpg" || ext==L".jpeg" || ext==L".bmp" || ext==L".webp"){
+        auto image=ext==L".gif"?openGifAnimation(path):openRasterImage(path);image.setSourceFilePath(path);openCandidate_=std::move(image);candidatePath_.clear();candidateRecovery_=false;ask(Pending::Open);return;
+      }
 
       const project::Limits limits;
       std::ifstream file(path,std::ios::binary|std::ios::ate);
@@ -2715,7 +3139,7 @@ private:
       PaletteState palette;palette.entries.clear();palette.slots=std::move(imported.palette.slots);palette.nextId=imported.palette.nextId;
       for(auto& e:imported.palette.entries) palette.entries.push_back({e.id,std::move(e.name),e.color});
       openCandidate_=Document::fromImported(imported.width,imported.height,std::move(imported.timeline),std::move(palette),std::move(imported.id),std::move(imported.name),std::move(imported.sourceArchive));openCandidate_->setImportedProjectBrushes(std::move(imported.customBrushes));openCandidate_->selectLayer(imported.activeLayerId);openCandidate_->selectFrame(imported.activeFrameId);openCandidate_->setImportedLoop(imported.loop);if(imported.symmetryCenter)openCandidate_->setSymmetryCenter({imported.symmetryCenter->first,imported.symmetryCenter->second},false);
-      candidatePath_=path;candidateRecovery_=false;ask(Pending::Open);
+      openCandidate_->setSourceFilePath(path);candidatePath_=path;candidateRecovery_=false;ask(Pending::Open);
     } catch(const std::exception& e) {
       errorTitle_=U"无法打开工程";openCandidate_.reset();openError_=unicodeText(e.what());
       pending_=Pending::OpenError;menuBar_->setEnabled(false);
@@ -2730,7 +3154,47 @@ private:
     menuBar_->setEnabled(false);for(auto b:commands_)b->setEnabled(false);for(auto b:swatches_)b->setEnabled(false);for(auto b:panelTabs_)b->setEnabled(false);
     refresh();keep_->requestFocus();
   }
-  bool savePath(const std::filesystem::path& path) {
+  void saveTick(){
+    if(pending_!=Pending::Saving)return;
+    try{
+      if(saveSnapshot_){
+        if(!saveSnapshot_->advance(document,std::chrono::steady_clock::now()+std::chrono::milliseconds(2)))return;
+        auto snapshot=std::move(*saveSnapshot_);saveSnapshot_.reset();const auto path=savingPath_;
+        saveWorker_=std::async(std::launch::async,[snapshot=std::move(snapshot),path]()mutable{
+          auto copy=snapshot.finish();project::saveDocumentAtomic(copy,path);return project::EncodedProject{copy.sourceArchive(),copy.projectId()};
+        });return;
+      }
+      if(!saveWorker_.valid() || saveWorker_.wait_for(std::chrono::milliseconds(0))!=std::future_status::ready)return;
+      auto result=saveWorker_.get();
+      if(document.identity()!=savingIdentity_ || document.revision()!=savingRevision_ || document.contentRevision()!=savingContentRevision_)throw std::runtime_error("Document changed during save");
+      document.acceptSaved(std::move(result.projectId),std::move(result.bytes));documentPath_=savingPath_;status_=U"工程已保存";recordHomeRecent(documentPath_);
+      // Complete recovery cleanup on its existing worker after that worker's
+      // write, so the UI never joins compression or storage flushing.
+      if(ownedRecoveryIdentity_==document.identity() && !ownedRecoveryId_.empty()){
+        const auto directory=recoveryDirectory();const auto id=ownedRecoveryId_;
+        recoveryWorker_=std::async(std::launch::async,[previous=std::move(recoveryWorker_),directory,id]()mutable{if(previous.valid())previous.get();project::removeOwnedRecovery(directory,id);});
+        recoverySnapshot_.reset();
+        recoveryCleanup_=std::make_pair(document.identity(),id);
+      }
+      pending_=saveResume_;restoreSaveControls();discard_->setEnabled(true);keep_->setEnabled(true);dialogClose_->setEnabled(true);
+      const bool close=closeAfterSave_;closeAfterSave_=false;
+      if(pending_!=Pending::None)resolve(true);else refresh();
+      if(close)requestClose();
+    }catch(const std::exception& e){saveSnapshot_.reset();closeAfterSave_=false;restoreSaveControls();discard_->setEnabled(true);keep_->setEnabled(true);dialogClose_->setEnabled(true);showSaveError(e);}
+  }
+  bool savePath(const std::filesystem::path& path,bool background=false) {
+    for(std::size_t i=0;i<projects_.size();++i)if(i!=activeProject_ && sameProjectPath(path,projects_[i]->path)){showSaveError(std::runtime_error("该路径已由另一个打开的工程使用，请选择其它名称"));return false;}
+    if(!smoke_ || background){
+      if(pending_==Pending::Saving)return false;
+      try{
+        document.commitFloatingPaste();saveResume_=pending_;savingPath_=path;savingIdentity_=document.identity();savingRevision_=document.revision();savingContentRevision_=document.contentRevision();
+        saveSnapshot_.emplace(document);savingControlStates_.clear();for(auto child:children())savingControlStates_.push_back({child,child->isEnabled()});pending_=Pending::Saving;refresh();
+        for(auto child:children())child->setEnabled(false);
+        for(auto child:{discard_,keep_,dialogClose_,saveBeforeClose_})child->setVisible(false);
+        invalidate();saveTick();
+      }catch(const std::exception& e){saveSnapshot_.reset();restoreSaveControls();showSaveError(e);}
+      return false; // Completion owns the pending close/new/open continuation.
+    }
     try {document.commitFloatingPaste();project::saveDocumentAtomic(document,path);documentPath_=path;status_=U"工程已保存";recordHomeRecent(path);
       if(ownedRecoveryIdentity_==document.identity() && !ownedRecoveryId_.empty()) {
         try {if(recoveryWorker_.valid()){recoveryWorker_.get();if(recoveryTicket_)recoveryQueue_.complete(*recoveryTicket_,true);recoveryTicket_.reset();}
@@ -2741,6 +3205,7 @@ private:
     catch(const std::exception& e) {showSaveError(e);return false;}
   }
   bool saveProject(bool saveAs) {
+    if(pending_==Pending::Saving)return false;
     if(!documentOpen_)return false;
     if(colorPicker_) colorPicker_->finishInteraction();cancelStroke();
     auto path=documentPath_;
@@ -2766,12 +3231,25 @@ private:
     return std::filesystem::path(local)/L"MoonSprite"/L"Native"/L"recovery";
   }
   void recoveryTick(bool force=false) {
+    activeRecoveryTick(force);
+    if(projects_.size()<2 || pending_==Pending::Saving)return;
+    const auto count=force?projects_.size():std::size_t(1);
+    for(std::size_t n=0;n<count;++n){const auto index=recoveryProject_++%projects_.size();if(index==activeProject_)continue;auto& slot=*projects_[index];
+      std::swap(document,*slot.stored);swapRecovery(slot);
+      try{activeRecoveryTick(force);}catch(...){swapRecovery(slot);std::swap(document,*slot.stored);throw;}
+      swapRecovery(slot);std::swap(document,*slot.stored);
+    }
+  }
+  void activeRecoveryTick(bool force=false) {
+    if(pending_==Pending::Saving && !force)return;
     if(homeOpen_ && !homeBanners_.empty() && std::chrono::steady_clock::now()>=homeBannerDue_){homeBanner_=(homeBanner_+1)%int(homeBanners_.size());homeBannerDue_=std::chrono::steady_clock::now()+std::chrono::seconds(8);invalidate();}
     if(smoke_ && !force)return;
     if(recoveryWorker_.valid()) {
       if(recoveryWorker_.wait_for(std::chrono::milliseconds(0))!=std::future_status::ready)return;
-      bool success=true;try{recoveryWorker_.get();}catch(const std::exception&e){success=false;status_=U"自动恢复保存失败："+unicodeText(e.what());invalidate();}
-      recoveryQueue_.complete(*recoveryTicket_,success);recoveryTicket_.reset();
+      bool success=true;try{recoveryWorker_.get();}catch(const std::exception&e){success=false;status_=(recoveryCleanup_?U"工程已保存；恢复清理失败：":U"自动恢复保存失败：")+unicodeText(e.what());invalidate();}
+      if(success && recoveryCleanup_ && ownedRecoveryIdentity_==recoveryCleanup_->first && ownedRecoveryId_==recoveryCleanup_->second)ownedRecoveryId_.clear();
+      recoveryCleanup_.reset();
+      if(recoveryTicket_)recoveryQueue_.complete(*recoveryTicket_,success);recoveryTicket_.reset();
     }
     const auto now=std::chrono::steady_clock::now();
     if(force || now>=recoveryDue_) {
@@ -2784,37 +3262,24 @@ private:
     }
     if(!recoveryTicket_) {
       recoveryTicket_=recoveryQueue_.next();if(!recoveryTicket_)return;
-      recoveryIdentity_=document.identity();recoveryOffset_=0;recoveryCelIndex_=0;recoveryPixels_.clear();recoveryState_={};recoveryState_.layers=document.timeline().state().layers;recoveryState_.frames=document.timeline().state().frames;recoveryState_.loopSections=document.timeline().state().loopSections;
-      for(const auto& source:document.timeline().state().cels){timeline::Cel cel;cel.id=source.id;cel.layerId=source.layerId;cel.frameId=source.frameId;cel.opacity=source.opacity;cel.linkedCelId=source.linkedCelId;cel.runtimeSharedCelId=source.runtimeSharedCelId;if(source.surface){timeline::Surface surface;surface.width=document.width();surface.height=document.height();surface.pixels.reserve(source.surface->pixels.size());cel.surface=std::move(surface);}recoveryState_.cels.push_back(std::move(cel));}
+      recoveryIdentity_=document.identity();recoverySnapshot_.emplace(document,ownedRecoveryId_);
     }
-    if(document.active() || !document.dirty() || document.identity()!=recoveryIdentity_ || document.revision()!=recoveryTicket_->target.revision || document.contentRevision()!=recoveryTicket_->target.contentRevision) {
-      recoveryQueue_.complete(*recoveryTicket_,false);recoveryTicket_.reset();recoveryPixels_.clear();recoveryState_={};return;
+    if(document.active() || !document.dirty() || document.identity()!=recoveryIdentity_ || document.revision()!=recoveryTicket_->target.revision || document.contentRevision()!=recoveryTicket_->target.contentRevision || !recoverySnapshot_->matches(document)) {
+      recoveryQueue_.complete(*recoveryTicket_,false);recoveryTicket_.reset();recoverySnapshot_.reset();return;
     }
-    while(recoveryCelIndex_<recoveryState_.cels.size() && !recoveryState_.cels[recoveryCelIndex_].surface)++recoveryCelIndex_;
-    if(recoveryCelIndex_<recoveryState_.cels.size()){
-    const auto& original=document.timeline().state().cels[recoveryCelIndex_].surface->pixels;auto& copy=recoveryState_.cels[recoveryCelIndex_].surface->pixels;const auto count=std::min<std::size_t>(16384,original.size()-recoveryOffset_);
-    copy.insert(copy.end(),original.begin()+recoveryOffset_,original.begin()+recoveryOffset_+count);recoveryOffset_+=count;
-    if(recoveryOffset_!=original.size())return;recoveryOffset_=0;++recoveryCelIndex_;while(recoveryCelIndex_<recoveryState_.cels.size() && !recoveryState_.cels[recoveryCelIndex_].surface)++recoveryCelIndex_;if(recoveryCelIndex_!=recoveryState_.cels.size())return;
-    }
-    auto state=std::move(recoveryState_);
-    auto source=document.sourceArchive();if(!source)source=std::make_shared<const std::vector<std::uint8_t>>();
-    // Empty archive signals a new document to encoder; build metadata without copying history.
-    auto snapshot=Document::fromImported(document.width(),document.height(),std::move(state),document.palette(),document.projectId().empty()?ownedRecoveryId_:document.projectId(),document.name(),source);
-    snapshot.setImportedProjectBrushes(document.projectBrushes());
-    snapshot.setSymmetryCenter(document.symmetryCenter(),false);
-    snapshot.selectLayer(document.layer().id);snapshot.selectFrame(document.frame().id);snapshot.setImportedLoop(document.animationLoop());
-    if(!document.sourceArchive())snapshot.clearSourceArchiveForNewSnapshot();
+    if(!recoverySnapshot_->advance(document,std::chrono::steady_clock::now()+std::chrono::milliseconds(2)))return;
+    auto snapshot=std::move(*recoverySnapshot_);recoverySnapshot_.reset();
     const auto id=ownedRecoveryId_;const auto directory=recoveryDirectory();
     recoveryWorker_=std::async(std::launch::async,[snapshot=std::move(snapshot),id,directory]() mutable {
-      const auto encoded=project::encodeRecoveryProject(snapshot);
+      auto copy=snapshot.finish();const auto encoded=project::encodeRecoveryProject(copy);
       const auto stamp=std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
-      project::writeRecoveryFiles(directory,{id,std::wstring_convert<std::codecvt_utf8<char32_t>,char32_t>{}.to_bytes(snapshot.name()),std::to_string(stamp)},*encoded.bytes);
+      project::writeRecoveryFiles(directory,{id,std::wstring_convert<std::codecvt_utf8<char32_t>,char32_t>{}.to_bytes(copy.name()),std::to_string(stamp)},*encoded.bytes);
     });
   }
   void restoreRecovery(const std::filesystem::path& archive,const std::string& id,const std::u32string& name) {
     try {auto file=std::ifstream(archive,std::ios::binary|std::ios::ate);if(!file)throw std::runtime_error("Cannot read recovery");const auto length=file.tellg();if(length<0 || std::uint64_t(length)>project::Limits{}.archiveBytes)throw std::runtime_error("Recovery size exceeds budget");auto bytes=std::make_shared<project::Bytes>(std::size_t(length));file.seekg(0);file.read(reinterpret_cast<char*>(bytes->data()),std::streamsize(bytes->size()));auto imported=project::prepareEditableImport(project::readProjectManifest(bytes));PaletteState palette;palette.entries.clear();palette.slots=imported.palette.slots;palette.nextId=imported.palette.nextId;for(auto& e:imported.palette.entries)palette.entries.push_back({e.id,std::move(e.name),e.color});openCandidate_=Document::fromImported(imported.width,imported.height,std::move(imported.timeline),std::move(palette),std::move(imported.id),name,imported.sourceArchive);openCandidate_->setImportedProjectBrushes(std::move(imported.customBrushes));openCandidate_->selectLayer(imported.activeLayerId);openCandidate_->selectFrame(imported.activeFrameId);openCandidate_->setImportedLoop(imported.loop);if(imported.symmetryCenter)openCandidate_->setSymmetryCenter({imported.symmetryCenter->first,imported.symmetryCenter->second},false);candidateRecovery_=true;ask(Pending::Open);}catch(const std::exception&e){showSaveError(e);errorTitle_=U"无法恢复工程";}}
   void setRecoveryPreferences(recovery::Preferences preferences) {
-    try {preferences=recovery::normalizePreferences(preferences);if(!smoke_)recovery::savePreferencesAtomic(recoveryDirectory().parent_path()/"recovery-preferences.txt",preferences);recoveryPreferences_=preferences;recoveryQueue_.setIntervalMinutes(preferences.minutes);recoveryDue_=std::chrono::steady_clock::now()+std::chrono::milliseconds(static_cast<long long>(preferences.minutes*60000));status_=U"恢复设置已保存";refresh();}
+    try {preferences=recovery::normalizePreferences(preferences);if(!smoke_)recovery::savePreferencesAtomic(recoveryDirectory().parent_path()/"recovery-preferences.txt",preferences);recoveryPreferences_=preferences;for(auto& slot:projects_){slot->queue.setIntervalMinutes(preferences.minutes);slot->due=std::chrono::steady_clock::now()+std::chrono::milliseconds(static_cast<long long>(preferences.minutes*60000));}recoveryQueue_.setIntervalMinutes(preferences.minutes);recoveryDue_=std::chrono::steady_clock::now()+std::chrono::milliseconds(static_cast<long long>(preferences.minutes*60000));status_=U"恢复设置已保存";refresh();}
     catch(const std::exception&e){showSaveError(e);errorTitle_=U"恢复设置保存失败";}
   }
   void openSelectedLayerProperties(){if(pending_!=Pending::None || document.timelineSelection().layers.empty())return;showLayerOpacity(document.timelineSelection().layers);}
@@ -2846,6 +3311,17 @@ private:
     for(int i=0;i<14;++i){preferenceTabs_[i]=button(preferenceSectionTitle(i),[this,i]{preferenceSection_=i;preferenceContentPixels_=0;preferenceFeedback_.clear();layoutModal();invalidate();});preferenceTabs_[i]->skinStyle="menu-row";preferenceTabs_[i]->setVisible(false);}
     const std::vector<std::u32string> choices[]{ {U"阶梯",U"平滑"},{U"合成图像",U"当前图层"},{U"关闭",U"开启"},{U"最小 · 50%",U"较小 · 75%",U"中等 · 100%",U"较大 · 125%"},{U"0.25×",U"0.5×",U"1×",U"1.5×",U"2×",U"3×"},{U"关闭",U"开启"},{U"关闭",U"开启"},{U"30 秒",U"1 分钟",U"2 分钟",U"5 分钟",U"10 分钟",U"30 分钟",U"60 分钟"},{U"1 天",U"7 天",U"30 天",U"365 天"} };
     for(int i=0;i<9;++i){auto field=new DialogBackground<PixelDropdown>(font_,skin_);configureDialogBackground(field);addChild(field);preferenceFields_[i]=field;field->setOptions(choices[i]);field->setVisible(false);field->changed=[this,i](int value){auto& d=preferenceDraft_;const double rates[]{.25,.5,1,1.5,2,3},minutes[]{.5,1,2,5,10,30,60};const int days[]{1,7,30,365};if(i==0)d.smooth=value==1;if(i==1)d.source=value;if(i==2)d.lens=value==1;if(i==3)d.lensSize=value;if(i==4)d.rate=rates[value];if(i==5)d.returnStart=value==1;if(i==6)d.recovery.enabled=value==1;if(i==7)d.recovery.minutes=minutes[value];if(i==8)d.recovery.retentionDays=days[value];preferenceFeedback_.clear();layoutModal();invalidate();};}
+    for(int i=0;i<3;++i){
+      auto field=new DialogBackground<PixelEntry>(font_,skin_);configureDialogBackground(field);addChild(field);checkerboardFields_[i]=field;field->setVisible(false);field->numeric=i==0;field->suffix=i==0?U"px":U"";
+      auto changed=[this,i,field]{
+        if(i==0){try{const double value=std::stod(field->text());if(std::isfinite(value))checkerboardDraft_.size=int(std::floor(std::clamp(value,1.,256.)+.5));}catch(...){} }
+        else {Pixel value;if(parsePaletteHex(field->text(),value)){auto c=gfx::rgba(value&255,(value>>8)&255,(value>>16)&255);(i==1?checkerboardDraft_.light:checkerboardDraft_.dark)=c;}}
+        preferenceFeedback_.clear();
+      };
+      field->Change.connect(changed);field->blur=changed;field->accept=[this,changed]{changed();requestFocus();};field->cancel=[this]{resolve(false);};
+    }
+    {std::ifstream in(palettePreferencePath().parent_path()/"canvas-checkerboard.txt");int size;unsigned light,dark;if(in>>size>>light>>dark){checkerboard_.size=std::clamp(size,1,256);checkerboard_.light=gfx::rgba(light&255,(light>>8)&255,(light>>16)&255);checkerboard_.dark=gfx::rgba(dark&255,(dark>>8)&255,(dark>>16)&255);}}
+    if(previewPanel_)previewPanel_->checkerboard=checkerboard_;
     preferenceApply_=button(U"应用",[this]{applyPreferences();});preferenceApply_->setVisible(false);
     std::ifstream lens(palettePreferencePath().parent_path()/"eyedropper-lens.txt");int enabled,size;if(lens>>enabled>>size){eyedropperLensEnabled_=enabled!=0;eyedropperLensSize_=std::clamp(size,0,3);}
   }
@@ -2856,14 +3332,22 @@ private:
     const double rates[]{.25,.5,1,1.5,2,3},minutes[]{.5,1,2,5,10,30,60};const int days[]{1,7,30,365};
     const int selected[]{int(zoomSmooth_),int(eyedropperSource_),int(eyedropperLensEnabled_),eyedropperLensSize_,index(rates,playbackRate_,2),int(playbackReturnToStart_),int(recoveryPreferences_.enabled),index(minutes,recoveryPreferences_.minutes,3),index(days,recoveryPreferences_.retentionDays,1)};
     for(int i=0;i<9;++i)preferenceFields_[i]->setSelectedIndex(selected[i]);
+    checkerboardDraft_=checkerboard_;
+    checkerboardFields_[0]->setText(std::to_string(checkerboardDraft_.size));
+    for(int i=1;i<3;++i){const auto c=i==1?checkerboardDraft_.light:checkerboardDraft_.dark;checkerboardFields_[i]->setText(paletteHex(Pixel(gfx::getr(c))|(Pixel(gfx::getg(c))<<8)|(Pixel(gfx::getb(c))<<16)|0xff000000));}
     playing_=false;pending_=Pending::Preferences;discard_->caption=U"确定";keep_->caption=U"取消";discard_->setVisible(true);keep_->setVisible(true);dialogClose_->setVisible(true);saveBeforeClose_->setVisible(false);menuBar_->setEnabled(false);refresh();preferenceTabs_[preferenceSection_]->requestFocus();
   }
   bool applyPreferences(){
     try{
       auto d=preferenceDraft_;d.recovery=recovery::normalizePreferences(d.recovery);
+      for(auto field:checkerboardFields_)if(field->blur)field->blur();
+
       if(!smoke_){const auto dir=palettePreferencePath().parent_path();std::filesystem::create_directories(dir);auto write=[&](const char* name,const std::string& text){writeExportBytesAtomic(dir/name,std::vector<std::uint8_t>(text.begin(),text.end()));};
+        auto packed=[](gfx::Color c){return unsigned(gfx::getr(c))|(unsigned(gfx::getg(c))<<8)|(unsigned(gfx::getb(c))<<16);};
+        write("canvas-checkerboard.txt",std::to_string(checkerboardDraft_.size)+" "+std::to_string(packed(checkerboardDraft_.light))+" "+std::to_string(packed(checkerboardDraft_.dark)));
         write("zoom-tool-drag-mode.txt",d.smooth?"smooth":"stepped");write("eyedropper-source.txt",d.source?"current-layer":"composite");write("eyedropper-lens.txt",std::to_string(int(d.lens))+" "+std::to_string(d.lensSize));write("animation-playback.txt",std::to_string(d.rate)+" "+std::to_string(int(d.returnStart))+(savedPlaybackMode_?" "+*savedPlaybackMode_:""));recovery::savePreferencesAtomic(recoveryDirectory().parent_path()/"recovery-preferences.txt",d.recovery);
       }
+      checkerboard_=checkerboardDraft_;if(previewPanel_){previewPanel_->checkerboard=checkerboard_;previewPanel_->invalidate();}
       zoomSmooth_=d.smooth;eyedropperSource_=d.source?EyedropperSource::CurrentLayer:EyedropperSource::Composite;eyedropperLensEnabled_=d.lens;eyedropperLensSize_=d.lensSize;playbackRate_=d.rate;playbackReturnToStart_=d.returnStart;recoveryPreferences_=d.recovery;recoveryQueue_.setIntervalMinutes(d.recovery.minutes);recoveryDue_=std::chrono::steady_clock::now()+std::chrono::milliseconds(static_cast<long long>(d.recovery.minutes*60000));preferenceDraft_=d;preferenceFeedback_=U"设置已应用";refresh();return true;
     }catch(const std::exception& e){preferenceFeedback_=U"保存失败，设置窗口保持打开";status_=unicodeText(e.what());invalidate();return false;}
   }
@@ -2874,18 +3358,34 @@ private:
     auto content=toDisplay(gfx::Rect(modal.x+98,modal.y+46,modal.w-114,std::max(1,modal.h-85)));
     const auto fields=preferencePageFields();const int textHeight=preferenceSection_==8?170:preferenceSection_==6?165:preferenceSection_==2 || preferenceSection_==3?112:preferenceSection_==0 || preferenceSection_==4?98:64;
     const int contentTotal=std::max(textHeight,int(fields.size())*28+24)*uiScale;preferenceContentPixels_=std::clamp(preferenceContentPixels_,0,std::max(0,contentTotal-content.h));
-    if(preferenceNavBar_){preferenceNavBar_->setDockBounds(gfx::Rect(nav.x2()-6*uiScale,nav.y,7*uiScale,nav.h));preferenceNavBar_->configure(navTotal,nav.h,preferenceNavPixels_);preferenceNavBar_->wheelStep=15*uiScale;preferenceNavBar_->setVisible(show && navOverflow);preferenceNavBar_->setEnabled(show);}
+    if(preferenceNavBar_){preferenceNavBar_->setDockBounds(PixelScrollBar::edgeBounds(nav,true));preferenceNavBar_->configure(navTotal,nav.h,preferenceNavPixels_);preferenceNavBar_->wheelStep=15*uiScale;preferenceNavBar_->setVisible(show && navOverflow);preferenceNavBar_->setEnabled(show);}
     if(navOverflow)nav.w-=6*uiScale;
     const bool contentOverflow=contentTotal>content.h;
-    if(preferenceContentBar_){preferenceContentBar_->setDockBounds(gfx::Rect(content.x2()-6*uiScale,content.y,7*uiScale,content.h));preferenceContentBar_->configure(contentTotal,content.h,preferenceContentPixels_);preferenceContentBar_->wheelStep=24*uiScale;preferenceContentBar_->setVisible(show && contentOverflow);preferenceContentBar_->setEnabled(show);}
+    if(preferenceContentBar_){preferenceContentBar_->setDockBounds(PixelScrollBar::edgeBounds(content,true));preferenceContentBar_->configure(contentTotal,content.h,preferenceContentPixels_);preferenceContentBar_->wheelStep=24*uiScale;preferenceContentBar_->setVisible(show && contentOverflow);preferenceContentBar_->setEnabled(show);}
     if(contentOverflow)content.w-=6*uiScale;
     for(int i=0;i<14;++i){auto tab=preferenceTabs_[i];tab->setEnabled(show);tab->active=preferenceSection_==i;tab->setBounds(gfx::Rect(nav.x,nav.y+i*15*uiScale-preferenceNavPixels_,nav.w,15*uiScale));tab->paletteViewport=[nav]{return nav;};tab->setVisible(show && nav.intersects(tab->bounds()));}
     for(auto field:preferenceFields_)field->setVisible(false);
+    for(int i=0;i<3;++i){auto field=checkerboardFields_[i];field->setEnabled(show);field->setBounds(toDisplay(gfx::Rect(modal.x+171,modal.y+47+i*28,modal.w-179-(contentOverflow?6:0),20)).offset(0,-preferenceContentPixels_));field->paletteViewport=[content]{return content;};field->setVisible(show && preferenceSection_==2 && content.intersects(field->bounds()));}
     int row=0;for(int i:fields){auto field=preferenceFields_[i];field->setEnabled(show && (i!=3 || preferenceDraft_.lens) && ((i!=7 && i!=8) || preferenceDraft_.recovery.enabled));field->setBounds(toDisplay(gfx::Rect(modal.x+171,modal.y+47+row++*28,modal.w-179-(contentOverflow?6:0),20)).offset(0,-preferenceContentPixels_));field->paletteViewport=[content]{return content;};field->setVisible(show && content.intersects(field->bounds()));}
     preferenceApply_->setVisible(show);preferenceApply_->setEnabled(show);
-    if(show){int x=modal.x2()-3*58-2*uiGap-8;keep_->setBounds(toDisplay(gfx::Rect(x,modal.y2()-25,58,19)));preferenceApply_->setBounds(toDisplay(gfx::Rect(x+58+uiGap,modal.y2()-25,58,19)));discard_->setBounds(toDisplay(gfx::Rect(x+116+2*uiGap,modal.y2()-25,58,19)));}
+    if(show){int x=modal.x2()-3*58-2*uiGap-6;keep_->setBounds(toDisplay(gfx::Rect(x,modal.y2()-25,58,19)));preferenceApply_->setBounds(toDisplay(gfx::Rect(x+58+uiGap,modal.y2()-25,58,19)));discard_->setBounds(toDisplay(gfx::Rect(x+116+2*uiGap,modal.y2()-25,58,19)));}
   }
 public:
+  void smokeCheckerboardPreferences(){
+    smoke_=true;homeOpen_=false;documentOpen_=true;pending_=Pending::None;setBounds(gfx::Rect(0,0,1280,960));refresh();
+    const auto before=checkerboard_;const auto history=document.historySize();const auto pixels=document.pixels();
+    showPreferences();preferenceTabs_[2]->Click();
+    for(auto field:checkerboardFields_)if(field->hasFlags(ui::HIDDEN) || !modalControl(field))throw std::runtime_error("Checker preferences not interactive");
+    checkerboardFields_[0]->setText("32");checkerboardFields_[0]->Change();
+    checkerboardFields_[1]->setText("#123456");checkerboardFields_[1]->Change();
+    if(checkerboard_.size!=before.size || checkerboard_.light!=before.light)throw std::runtime_error("Checker draft leaked before Apply");
+    resolve(false);if(checkerboard_.size!=before.size || checkerboard_.light!=before.light)throw std::runtime_error("Checker Cancel changed preferences");
+    showPreferences();preferenceTabs_[2]->Click();checkerboardFields_[0]->setText("300");checkerboardFields_[0]->Change();checkerboardFields_[1]->setText("#123456");checkerboardFields_[1]->Change();
+    if(!applyPreferences() || checkerboard_.size!=256 || checkerboard_.light!=gfx::rgba(0x12,0x34,0x56) || previewPanel_->checkerboard.light!=checkerboard_.light)throw std::runtime_error("Checker Apply/size clamp/preview sync");
+    resolve(false);for(auto field:checkerboardFields_)if(!field->hasFlags(ui::HIDDEN))throw std::runtime_error("Checker fields leaked from dialog");
+    if(document.historySize()!=history || document.pixels()!=pixels)throw std::runtime_error("Checker changed document");
+    checkerboard_=before;previewPanel_->checkerboard=before;refresh();
+  }
   void smokePreferences(const std::filesystem::path& directory){
     smoke_=true;homeOpen_=false;documentOpen_=true;requestFocus();refresh();const auto pixels=document.pixels();const auto history=document.historySize();const bool dirty=document.dirty(),smooth=zoomSmooth_,lens=eyedropperLensEnabled_;const auto original=bounds();
     menuItems_.at("openPreferences")->Click();if(pending_!=Pending::Preferences)throw std::runtime_error("Preferences menu did not open dialog");
@@ -2910,18 +3410,42 @@ private:
     wchar_t filename[32768]{};OPENFILENAMEW dialog{};dialog.lStructSize=sizeof(dialog);
     dialog.hwndOwner=GetActiveWindow();dialog.lpstrFile=filename;dialog.nMaxFile=32768;
     dialog.lpstrFilter=L"MoonSprite 工程\0*.moonsprite\0\0";
-    dialog.Flags=OFN_EXPLORER|OFN_NOCHANGEDIR|OFN_PATHMUSTEXIST|OFN_FILEMUSTEXIST;
-    if(GetOpenFileNameW(&dialog)) openPath(filename);
+    dialog.Flags=OFN_EXPLORER|OFN_NOCHANGEDIR|OFN_PATHMUSTEXIST|OFN_FILEMUSTEXIST|OFN_ALLOWMULTISELECT;
+    if(GetOpenFileNameW(&dialog)){const std::filesystem::path first(filename);const wchar_t* next=filename+wcslen(filename)+1;if(!*next)openPath(first);else for(;*next;next+=wcslen(next)+1){openPath(first/next);if(pending_!=Pending::None)break;}}
     else if(CommDlgExtendedError()) {
       openError_=U"无法打开文件选择器";pending_=Pending::OpenError;layoutModal();layoutPalette();
       dialogClose_->setVisible(true);discard_->setVisible(false);keep_->caption=U"确定";keep_->setVisible(true);invalidate();
     }
   }
+  int newDocumentDialogCount_=0;
+  void showNewDocument(bool verify=false) {
+    ++newDocumentDialogCount_;
+    NewDocumentDialog popup(font_,skin_,toolIcons_,verify?assets_.parent_path()/"new-document-test-owned"/"presets-v1.txt":palettePreferencePath().parent_path()/"new-document-presets-v1.txt",[this](std::u32string name,int width,int height){
+      try{auto created=Document::withBuiltinPalette(width,height,std::move(name));addProject(std::move(created));return true;}catch(const std::exception& e){status_=unicodeText(e.what());return false;}
+    });
+    popup.setDisplay(display(),false);const auto area=bounds();popup.setBounds({area.center().x-160*uiScale,area.center().y-125*uiScale,320*uiScale,249*uiScale});
+    int geometryPhase=0;std::vector<gfx::Color> incremental;
+    std::unique_ptr<ui::Timer> timer;if(verify||smoke_){timer=std::make_unique<ui::Timer>(80,&popup);timer->Tick.connect([&]{
+      if(!verify){timer->stop();popup.closeWindow(nullptr);return;}
+      auto surface=popup.display()->nativeSurface();const int pixels=surface->width()*surface->height();
+      if(geometryPhase<18){const int phase=geometryPhase++%3;
+        if(phase==0){popup.smokeGeometryStep((geometryPhase-1)/3);return;}
+        if(phase==1){incremental.resize(pixels);{os::SurfaceLock lock(surface.get());for(int y=0;y<surface->height();++y)for(int x=0;x<surface->width();++x)incremental[y*surface->width()+x]=surface->getPixel(x,y);}popup.manager()->invalidate();return;}
+        {os::SurfaceLock lock(surface.get());for(int y=0;y<surface->height();++y)for(int x=0;x<surface->width();++x)if(incremental[y*surface->width()+x]!=surface->getPixel(x,y))throw std::runtime_error("Popup incremental/full redraw mismatch phase="+std::to_string(geometryPhase/3)+" at "+std::to_string(x)+","+std::to_string(y));}return;
+      }
+      timer->stop();writeSmokeFrame(surface.get(),assets_.parent_path()/"new-document-dialog.bmp");popup.smoke();
+    });timer->start();}
+    popup.openWindowInForeground();requestFocus();refresh();
+  }
   void ask(Pending action) {
+    if(action==Pending::New){showNewDocument();return;}
+    if(action==Pending::Open){acceptOpen();return;}
+    if(action==Pending::Close){closingWorkspace_=true;if(!documentOpen_){closingWorkspace_=false;closeRequested();return;}}
+    if(action==Pending::CloseDocument && !documentOpen_)return;
     document.commitFloatingPaste();
     if(colorPicker_) colorPicker_->finishInteraction();
     cancelStroke();
-    if(!document.dirty()) { if(action==Pending::New) {document=Document::withBuiltinPalette();documentPath_.clear();documentOpen_=true;homeOpen_=false;} else if(action==Pending::Open) acceptOpen(); else if(action==Pending::Close) closeRequested(); else if(action==Pending::CloseDocument)closeDocumentTab(); refresh(); return; }
+    if(!document.dirty()) { if(action==Pending::New) {showNewDocument();} else if(action==Pending::Open) acceptOpen(); else if(action==Pending::Close){closeDocumentTab();if(closingWorkspace_)ask(Pending::Close);} else if(action==Pending::CloseDocument)closeDocumentTab(); refresh(); return; }
     spaceHeld_=false;updateNavigationCursor();
     pending_=action;layoutModal();layoutPalette();
     layoutDocumentTab();
@@ -2935,25 +3459,30 @@ private:
     saveBeforeClose_->setVisible(true);discard_->setVisible(true); keep_->setVisible(true); keep_->requestFocus(); applyHomeVisibility();invalidate();
   }
   void resolve(bool discard) {
+    if(pending_==Pending::GifExport&&framePngMode_&&framePngBusy()){if(!discard)framePngJob_->cancel=true;return;}
+    if(pending_==Pending::Saving)return;
     finishSizeDrag();
     if(pending_==Pending::ColorAdjustment&&adjustmentSpec_.kind==ColorAdjustmentKind::GradientMap&&discard){gmPicker_->finishInteraction();scheduleGradientMap(true);refresh();return;}
     if(pending_==Pending::AntiAlias && discard){requestAntiAliasApply();return;}
     if(pending_==Pending::Convolution && convolutionCommit_ && !discard)return;
     if(pending_==Pending::Convolution && discard){requestConvolutionApply(true);return;}
     const auto action=pending_;
+    std::optional<Document> createdSheet;
+    const bool openExportedSheet=action==Pending::SpriteSheet&&discard&&sheetOutputFile_&&sheetOpenAfterExport_;
+    const bool openExportFolder=discard&&exportOpenFolderRequested_&&(action==Pending::StaticExport||action==Pending::GifExport);
     if(action==Pending::AntiAlias){aaPicker_->finishInteraction();stopAntiAlias();document.cancelColorAdjustment();for(auto c:{aaAutoButton_,aaInterior_,aaLiveButton_})c->setVisible(false);aaSource_->setVisible(false);aaOpacity_->setVisible(false);aaOpacitySlider_->setVisible(false);aaColorEntry_->setVisible(false);aaPicker_->setVisible(false);discard_->caption=U"丢弃";discard_->setEnabled(true);keep_->setEnabled(true);dialogClose_->setEnabled(true);}
     if(action==Pending::Convolution){stopConvolution();document.cancelColorAdjustment();for(auto c:convolutionPresets_)c->setVisible(false);for(auto c:convolutionChannels_)c->setVisible(false);for(auto c:{convolutionTiled_,convolutionLive_,convolutionApply_})c->setVisible(false);convolutionScroll_->setVisible(false);discard_->caption=U"丢弃";discard_->setEnabled(true);keep_->setEnabled(true);dialogClose_->setEnabled(true);}
-    if(action==Pending::Preferences){if(discard && !applyPreferences())return;discard=false;discard_->caption=U"丢弃";for(auto tab:preferenceTabs_)tab->setVisible(false);for(auto field:preferenceFields_)field->setVisible(false);preferenceApply_->setVisible(false);}
+    if(action==Pending::Preferences){if(discard && !applyPreferences())return;discard=false;discard_->caption=U"丢弃";for(auto tab:preferenceTabs_)tab->setVisible(false);for(auto field:preferenceFields_)field->setVisible(false);for(auto field:checkerboardFields_)field->setVisible(false);preferenceApply_->setVisible(false);}
     if(action==Pending::ReplaceColor){finishReplaceSampling();cancelReplacePreview();if(discard){if(replaceScope_=="palette"){if(document.beginPaletteReplacement()){document.updatePaletteReplacement(replaceSource_,replaceDestination_,true);document.commitPaletteReplacement();}}else if(document.beginColorReplacement(replaceTargets(),replaceScope_=="selection")){document.updateColorReplacement(replaceSource_,replaceDestination_,true);document.commitColorAdjustment();}}for(auto input:replaceInputs_)input->setVisible(false);for(auto b:replaceSample_)b->setVisible(false);for(auto b:{replaceScopeButton_,replacePreviewButton_,replaceRememberButton_})b->setVisible(false);discard_->setEnabled(true);discard_->caption=U"丢弃";keep_->caption=U"取消";discard=false;}
     if(action==Pending::BrushFolderName){if(discard){try{PatternBrushLibrary library(fillBrushLibraryDirectory());auto result=fillFolderRename_?library.renameFolder(fillFolderEditing_,paletteInput_->text()):library.createFolder(paletteInput_->text(),fillFolderEditing_);fillFolder_=result.id;applyFillLibrarySelection();}catch(const std::exception& e){status_=U"文件夹操作失败："+unicodeText(e.what());refresh();return;}}paletteInput_->setVisible(false);discard_->caption=U"丢弃";keep_->caption=U"取消";discard=false;}
     if(action==Pending::SheetImport){if(discard){try{document.importSpriteSheet(importSheetOptions_);fitCanvas();}catch(const std::exception& e){status_=U"精灵表导入失败："+unicodeText(e.what());invalidate();return;}}for(auto input:importSheetInputs_)input->setVisible(false);importSheetLayout_->setVisible(false);importSheetPartial_->setVisible(false);discard_->caption=U"丢弃";keep_->caption=U"取消";discard=false;}
-    if(action==Pending::GifExport){if(discard&&!saveGifExport())return;for(auto input:gifInputs_)input->setVisible(false);for(auto b:{gifRange_,gifDirection_,gifTrim_})b->setVisible(false);discard_->caption=U"丢弃";keep_->caption=U"取消";discard=false;}
-    if(action==Pending::SpriteSheet){if(discard&&!saveSpriteSheet())return;discard_->setEnabled(true);for(auto b:sheetButtons_)b->setVisible(false);sheetValue_->setVisible(false);if(sheetPreview_)sheetPreview_->setVisible(false);discard_->caption=U"丢弃";keep_->caption=U"取消";discard=false;}
+    if(action==Pending::GifExport){if(discard&&!saveGifExport())return;discard_->setEnabled(true);for(auto input:gifInputs_)input->setVisible(false);for(auto b:{gifRange_,gifDirection_,gifTrim_})b->setVisible(false);discard_->caption=U"丢弃";keep_->caption=U"取消";discard=false;}
+    if(action==Pending::SpriteSheet){if(discard){if(sheetOutputFile_){if(!saveSpriteSheet())return;}else{try{createdSheet=createSpriteSheetDocument(document,sheetOptions_);}catch(const std::exception& e){status_=U"精灵表创建失败："+unicodeText(e.what());invalidate();return;}}}discard_->setEnabled(true);for(auto b:sheetButtons_)b->setVisible(false);sheetValue_->setVisible(false);if(sheetPreview_)sheetPreview_->setVisible(false);discard_->caption=U"丢弃";keep_->caption=U"取消";discard=false;}
     if(action==Pending::StaticExport){if(discard&&!saveStaticExport())return;exportScaleInput_->setVisible(false);exportTrimButton_->setVisible(false);exportSelectionButton_->setVisible(false);discard_->caption=U"丢弃";keep_->caption=U"取消";discard=false;}
-    if(action==Pending::ImageResize){if(discard){try{document.resizeImage(resizeWidth_,resizeHeight_,resizeMethodValue_);fitCanvas();}catch(const std::exception& e){status_=U"调整尺寸失败："+unicodeText(e.what());invalidate();return;}}for(auto input:resizeInputs_)input->setVisible(false);resizeLock_->setVisible(false);resizeMethod_->setVisible(false);discard_->caption=U"丢弃";keep_->caption=U"取消";discard=false;}
+    if(action==Pending::ImageResize){if(discard){try{document.resizeImage(resizeWidth_,resizeHeight_,resizeMethodValue_);fitCanvas();}catch(const std::exception& e){status_=U"调整尺寸失败："+unicodeText(e.what());invalidate();return;}}for(auto input:resizeInputs_){input->setVisible(false);}resizeLock_->setVisible(false);resizeMethod_->setVisible(false);discard_->caption=U"丢弃";keep_->caption=U"取消";discard=false;}
     if(action==Pending::ColorAdjustment){cancelGradientMapJob();if(adjustmentSpec_.kind==ColorAdjustmentKind::GradientMap)gmPicker_->finishInteraction();if(discard){document.updateColorAdjustment(adjustmentSpec_,true);document.commitColorAdjustment();}else document.cancelColorAdjustment();for(auto input:adjustmentInputs_)input->setVisible(false);adjustmentPreview_->setVisible(false);adjustmentColorize_->setVisible(false);adjustmentToneButton_->setVisible(false);curveEditor_->setVisible(false);for(auto b:{curveChannelButton_,curveResetButton_,curveDeleteButton_})b->setVisible(false);discard_->caption=U"丢弃";keep_->caption=U"取消";discard=false;}
     if(action==Pending::PaletteExtract){if(discard && !applyPaletteExtraction())return;paletteInput_->setVisible(false);extractNameInput_->setVisible(false);extractModeButton_->setVisible(false);discard_->caption=U"丢弃";keep_->caption=U"取消";discard=false;}
-    if(action==Pending::LoopSection){if(discard && !commitLoopEditor())return;for(auto input:loopInputs_)input->setVisible(false);loopDirection_->setVisible(false);loopDraft_.reset();discard_->caption=U"丢弃";keep_->caption=U"取消";discard=false;}
+    if(action==Pending::LoopSection){if(discard && !commitLoopEditor())return;for(auto input:loopInputs_){input->setVisible(false);}loopDirection_->setVisible(false);loopRepeat_->setVisible(false);loopDraft_.reset();discard_->caption=U"丢弃";keep_->caption=U"取消";discard=false;}
     if(action==Pending::OnionValue){previewOnionValue();saveOnionSettings();paletteInput_->setVisible(false);paletteInput_->suffix.clear();discard=false;}
     if(action==Pending::FrameDuration){document.commitFrameDuration();paletteInput_->setVisible(false);paletteInput_->suffix.clear();discard=false;}
     if(action==Pending::LayerOpacity){document.commitLayerOpacity();layerOpacityRange_->setVisible(false);paletteInput_->setVisible(false);discard=false;}
@@ -2964,16 +3493,21 @@ private:
       discard=false;
     }
     pending_=Pending::None;
+    if(action==Pending::StaticExport||action==Pending::GifExport){exportOpenFolderRequested_=false;if(exportOpenFolderButton_)exportOpenFolderButton_->setVisible(false);}
     menuBar_->setEnabled(true);
     dialogClose_->setVisible(false);saveBeforeClose_->setVisible(false);
     discard_->setVisible(false); keep_->setVisible(false);
     for(auto b:commands_) b->setEnabled(true);
     for(auto b:swatches_) b->setEnabled(true);
     for(auto b:panelTabs_) b->setEnabled(true);
-    if(discard) { if(action==Pending::New) {document=Document::withBuiltinPalette();documentPath_.clear();documentOpen_=true;homeOpen_=false;} else if(action==Pending::Open) acceptOpen(); else if(action==Pending::Close) closeRequested(); else if(action==Pending::CloseDocument)closeDocumentTab(); }
+    if(discard) { if(action==Pending::New) {showNewDocument();} else if(action==Pending::Open) acceptOpen(); else if(action==Pending::Close){closeDocumentTab();if(closingWorkspace_)ask(Pending::Close);} else if(action==Pending::CloseDocument)closeDocumentTab(); }
+    if(action==Pending::Close && !discard)closingWorkspace_=false;
     if(action==Pending::Open&&!discard)importAfterOpen_=false;
     openCandidate_.reset();candidateRecovery_=false;keep_->caption=U"取消";
     requestFocus(); refresh();
+    if(openExportFolder)finishExportFolder(exportedDirectory_);
+    if(createdSheet){addProject(std::move(*createdSheet));status_=U"已创建精灵表文档";invalidate();}
+    if(openExportedSheet&&!sheetExportedPath_.empty()){try{openSheetOutput_(sheetExportedPath_);}catch(const std::exception& e){status_=unicodeText(e.what());invalidate();}}
   }
   bool& symmetryFlag(int i){auto& a=document.symmetryAxes;return i==0?a.horizontal:i==1?a.vertical:i==2?a.diagonalUp:i==3?a.diagonalDown:a.rotational;}
   void saveSymmetryPreferences(){try{if(smoke_)return;const auto path=palettePreferencePath().parent_path()/"symmetry.txt";std::filesystem::create_directories(path.parent_path());std::ofstream out(path);out.exceptions(std::ios::failbit|std::ios::badbit);for(int i=0;i<5;++i)out<<symmetryFlag(i)<<' ';out<<symmetryLocked_<<' '<<symmetryThickness_<<' '<<symmetryColor_;}catch(const std::exception& e){status_=U"对称偏好保存失败："+unicodeText(e.what());}}
@@ -3000,7 +3534,7 @@ private:
       const int at=(y/2)*64+x/2;Pixel color=0;
       if(eyedropperLensMasks_[0].bitmap->pixels[at]>>24){
         const int dx=int(std::floor(px+(x+.5-64)/pixelScale)),dy=int(std::floor(py+(y+.5-64)/pixelScale));
-        const auto checker=skin_[(int(std::floor(dx/4.0))+int(std::floor(dy/4.0)))%2?"checkerA":"checkerB"];
+        const auto checker=checkerboard_.at(dx,dy);
         const Pixel bg=Pixel(gfx::getr(checker)|(gfx::getg(checker)<<8)|(gfx::getb(checker)<<16)|0xff000000);
         color=over(bg,dx>=0 && dy>=0 && dx<document.width() && dy<document.height() && dx>=sx && dx<sx+25 && dy>=sy && dy<sy+25?pixels[(dy-sy)*25+dx-sx]:0);
         if(x>=56 && x<72 && y>=56 && y<72){const auto p=pointerBitmap.pixels[(y-56)*2*32+(x-56)*2];color=over(color,(p&0xffffff)|((p>>25)<<24));}
@@ -3025,6 +3559,9 @@ private:
   std::filesystem::path fillBrushLibraryDirectory() const {
     wchar_t path[32768]{};const auto size=GetModuleFileNameW(nullptr,path,32768);if(!size || size==32768)throw std::runtime_error("Cannot locate native brush library");return std::filesystem::path(path).parent_path()/L"brushes";
   }
+  std::filesystem::path backgroundPresetDirectory() const {return fillBrushLibraryDirectory().parent_path()/L"BackgroundPresets";}
+  std::optional<std::filesystem::path> backgroundPresetTestDirectory_;
+  void createSelectionBackgroundPreset(){document.commitFloatingPaste();if(!document.selection()){status_=U"请先创建选区";refresh();return;}try{auto image=encodeSelectionBackgroundPreset(document,*document.selection());if(!image){status_=U"选区中没有可用的背景预设像素";refresh();return;}BackgroundPresetLibrary library(backgroundPresetTestDirectory_.value_or(backgroundPresetDirectory()));library.save(U"选区背景预设",image->png);status_=U"已保存背景预设";}catch(const std::exception& e){status_=U"保存背景预设失败："+unicodeText(e.what());}refresh();}
   void resolvePencilImageBrush(){pencilImageBrush_.reset();if(pencilImageBrushId_.empty())return;try{if(pencilImageBrushId_.rfind("project:",0)==0){const auto id=pencilImageBrushId_.substr(8);for(const auto& item:document.projectBrushes())if(item.metadata.id==id){pencilImageBrush_=item.brush;return;}throw std::runtime_error("工程笔刷已不存在");}PatternBrushLibrary library(fillBrushLibraryDirectory());for(const auto& item:library.list().brushes)if(item.id==pencilImageBrushId_){pencilImageBrush_=importPatternBrush(std::filesystem::u8path(item.filePath)).brush;return;}throw std::runtime_error("本地笔刷已不存在");}catch(const std::exception& e){pencilImageBrushId_.clear();status_=U"图像笔刷不可用："+unicodeText(e.what());}}
   void showPencilImageBrushes(){if(document.active())return;PixelMenu menu(skin_);auto clear=new PixelMenuItem(font_,skin_,U"普通笔刷");clear->Click.connect([this]{pencilImageBrushId_.clear();pencilImageBrush_.reset();refresh();});menu.addChild(clear);try{PatternBrushLibrary library(fillBrushLibraryDirectory());for(const auto& item:library.list().brushes){auto row=new PixelMenuItem(font_,skin_,unicodeText(item.name));row->checked=[this,id=item.id]{return pencilImageBrushId_==id;};row->Click.connect([this,id=item.id]{pencilImageBrushId_=id;resolvePencilImageBrush();refresh();});menu.addChild(row);}for(const auto& item:document.projectBrushes()){auto row=new PixelMenuItem(font_,skin_,U"工程："+unicodeText(item.metadata.name));row->checked=[this,id=item.metadata.id]{return pencilImageBrushId_=="project:"+id;};row->Click.connect([this,id=item.metadata.id]{pencilImageBrushId_="project:"+id;resolvePencilImageBrush();refresh();});menu.addChild(row);}}catch(const std::exception& e){status_=U"笔刷库读取失败："+unicodeText(e.what());}menu.addChild(new PixelMenuSeparator(skin_));auto angleLabel=new PixelMenuItem(font_,skin_,U"角度（度）");angleLabel->setEnabled(false);menu.addChild(angleLabel);auto angle=new PixelEntry(font_,skin_);angle->numeric=true;angle->setText(std::to_string(int(pencilImageBrushAngle_)));menu.addChild(angle);angle->Change.connect([this,angle]{try{std::size_t used=0;double value=std::stod(angle->text(),&used);if(used==angle->text().size() && std::isfinite(value))pencilImageBrushAngle_=std::clamp(value,-180.0,180.0);}catch(...){} });auto at=imageBrushButton_->bounds();menu.showPopup({at.x,at.y2()},display());requestFocus();}
   void applyFillLibrarySelection(){
@@ -3165,6 +3702,7 @@ private:
 public:
   ui::Widget* frontWidgetAt(gfx::Point point){
     if(!isVisible() || !bounds().contains(point))return nullptr;
+    if(layerLabelSeparator_ && layerLabelSeparator_->isVisible() && layerLabelHit(point))return layerLabelSeparator_;
     const auto widgets=children();
     for(auto it=widgets.rbegin();it!=widgets.rend();++it){auto child=*it;
       if(pending_!=Pending::None && child!=modalSurface_ && !modalControl(child))continue;
@@ -3181,25 +3719,61 @@ public:
     if(pending_!=Pending::None && modalControl(w)){dialogFocus_=++overlayClock_;raiseDockWidgets();invalidate();}
     else if(pending_==Pending::None && id>=0 && columnFloating(id)){for(int tab:docking_.groups[docking_.groupOf(id)].tabs)floatingFocus_[tab]=++overlayClock_;raiseDockWidgets();invalidate();}
   }
+  gfx::Rect brushPreviewDamage(std::optional<gfx::Point> position) {
+    if(!position || homeOpen_ || !documentOpen_ || !(ordinaryBrushTool() || (shapeTool_ && shapeSpec_.kind==ShapeKind::Line)) ||
+       !canvasViewport().contains(*position))return {};
+    // Connected lines and symmetry can cover disjoint parts of the document.
+    // Keep their existing conservative redraw until all copies are bounded.
+    if(brushPreviewShift_ || symmetryHas(document.symmetryAxes))return canvasViewport();
+    const auto p=canvasPoint(*position);const auto brush=brushProfiles_[eraser_?1:0];
+    int width=brush.size,height=brush.size;
+    if(pencilImageBrush_){
+      const double angle=std::fmod(pencilImageBrushAngle_,360)*3.14159265358979323846/180;
+      const double c=std::abs(std::cos(angle)),s=std::abs(std::sin(angle));
+      width=std::max(1,int(std::ceil(pencilImageBrush_->width*c+pencilImageBrush_->height*s-1e-9)));
+      height=std::max(1,int(std::ceil(pencilImageBrush_->width*s+pencilImageBrush_->height*c-1e-9)));
+    }
+    const double scale=canvasScale();
+    const int x=int(std::round(canvas_.x+(p.x-width/2)*scale)),y=int(std::round(canvas_.y+(p.y-height/2)*scale));
+    const int right=int(std::round(canvas_.x+(p.x-width/2+width)*scale)),bottom=int(std::round(canvas_.y+(p.y-height/2+height)*scale));
+    // Subpixel zoom still renders a pixel with a minimum one-device-pixel box.
+    return (gfx::Rect(x-1,y-1,std::max(1,right-x)+2,std::max(1,bottom-y)+2)&canvasViewport());
+  }
   void updatePaletteMouse(std::optional<gfx::Point> position) {
     const auto previous=paletteMousePosition_;
+    if(previous==position)return;
     paletteMousePosition_=position;
-    if(previous!=position && !homeOpen_ && documentOpen_ && (ordinaryBrushTool() || (shapeTool_ && shapeSpec_.kind==ShapeKind::Line)) &&
-       ((previous && canvasViewport().contains(*previous)) || (position && canvasViewport().contains(*position))))invalidateRect(canvasViewport());
-    if(previous!=position && layersPanelOpen_) {
+    if((previous && layerLabelHit(*previous)) || (position && layerLabelHit(*position)))invalidateTimelineGrid();
+    // The retained canvas cache repairs only the old/new preview footprints.
+    // Queue both regions separately so a large pointer jump does not dirty the gap.
+    if(!pan_.active && (!document.active() || eraser_))for(auto p:{previous,position}){const auto damage=brushPreviewDamage(p);if(!damage.isEmpty())invalidateRect(damage);}
+    if(layersPanelOpen_) {
       // Filtered display-relative pointer updates also cover the part of the
       // frame lying outside hit widgets, and movements inside a single widget.
+      const auto l=columnLayout(uiLogical(bounds()),2);
+      auto grid=uiPhysical(gfx::Rect(l.workX+5,l.layerTop+timelineHeaderOffset(),l.workW-9,l.bottom-l.layerTop-timelineHeaderOffset()-5));grid.offset(bounds().x,bounds().y);
+      auto hoverArea=grid;hoverArea.enlarge(4*uiScale);
+      if((previous && hoverArea.contains(*previous)) || (position && hoverArea.contains(*position))){
       const auto outlines=timelineOutlines();
       const bool changed=std::any_of(outlines.begin(),outlines.end(),[&](const auto& outline){
         auto material=skin_.selectionMaterialBounds(uiPhysical(outline.border).offset(outline.offset));material.offset(bounds().x,bounds().y);
         return (previous && skin_.selectionContains(material,*previous)) != (position && skin_.selectionContains(material,*position));
       });
-      const auto l=columnLayout(uiLogical(bounds()),2);
-      auto grid=uiPhysical(gfx::Rect(l.workX+5,l.layerTop+timelineHeaderOffset(),l.workW-9,l.bottom-l.layerTop-timelineHeaderOffset()-5));grid.offset(bounds().x,bounds().y);
-      if(changed || (previous && grid.contains(*previous)) || (position && grid.contains(*position)))invalidateTimelineGrid();
+      auto hoverSlot=[&](const std::optional<gfx::Point>& point){
+        if(!point || !grid.contains(*point))return gfx::Point(-1,-1);
+        const auto viewport=timelineFrameViewport();
+        const int x=point->x<viewport.x?int((point->x-grid.x)/(12*uiScale)):
+          7+int((point->x-viewport.x+frameScrollRemainder_)/(12*uiScale));
+        const int y=point->y<viewport.y?-1:int((point->y-viewport.y+layerScrollRemainder_)/(12*uiScale));
+        return gfx::Point(x,y);
+      };
+      if(changed || hoverSlot(previous)!=hoverSlot(position))invalidateTimelineGrid();
+      }
     }
-    if(paletteSelectionOverlay_ && paletteSelectionOverlay_->isVisible())paletteSelectionOverlay_->invalidate();
-    for(auto swatch:swatches_) if(swatch->active && swatch->isVisible()) swatch->invalidate();
+    if(paletteSelectionOverlay_ && paletteSelectionOverlay_->isVisible() &&
+       bool(previous && paletteOutlineContains(*previous))!=bool(position && paletteOutlineContains(*position)))paletteSelectionOverlay_->invalidate();
+    for(auto swatch:swatches_) if(swatch->active && swatch->isVisible() &&
+       bool(previous && swatch->bounds().contains(*previous))!=bool(position && swatch->bounds().contains(*position)))swatch->invalidate();
   }
   void smokeModalBackground() {
     const bool oldPicker=colorPickerOpen_,oldPreview=previewPanelOpen_;
@@ -3262,6 +3836,133 @@ public:
     useGradientTool();check();if(gradientType_->caption.size() || gradientRadialButton_->hasFlags(ui::HIDDEN) || gradientMode_->hasFlags(ui::HIDDEN))throw std::runtime_error("Legacy gradient controls");
     commands_[1]->Click();
   }
+  void smokePlainNumberEntry(){
+    PixelEntry input(font_,skin_);addChild(&input);input.setBounds({bounds().x+40,bounds().y+100,100*uiScale,18*uiScale});input.setText("10");
+    auto plain=os::instance()->makeRgbaSurface(input.bounds().w,input.bounds().h),numeric=os::instance()->makeRgbaSurface(input.bounds().w,input.bounds().h);plain->clear();numeric->clear();
+    {ui::Graphics g(plain);ui::PaintEvent e(&input,&g);input.onPaint(e);}input.numeric=true;{ui::Graphics g(numeric);ui::PaintEvent e(&input,&g);input.onPaint(e);}
+    for(int y=0;y<input.bounds().h;++y)for(int x=0;x<input.bounds().w;++x)if(plain->getPixel(x,y)!=numeric->getPixel(x,y))throw std::runtime_error("Numeric entry must have plain input material and full text width");
+    auto point=input.bounds().origin()+gfx::Point(input.bounds().w-10,10);for(auto type:{ui::kMouseDownMessage,ui::kMouseUpMessage}){ui::MouseMessage m(type,os::PointerType::Mouse,ui::kButtonLeft,ui::kKeyNoneModifier,point);input.onProcessMessage(&m);}if(input.text()!="10")throw std::runtime_error("Former arrow region changed numeric value");
+    ui::KeyMessage up(ui::kKeyDownMessage,ui::kKeyUp,ui::kKeyNoneModifier,0,0);input.onProcessMessage(&up);if(input.text()!="11")throw std::runtime_error("Numeric keyboard interaction lost");removeChild(&input);requestFocus();
+  }
+  void smokeMultiDocument(){
+    smoke_=true;homeOpen_=false;ensureProjects();
+    auto check=[](bool value,const char* error){if(!value)throw std::runtime_error(error);};
+    const auto directory=assets_.parent_path()/"multi-document-test-owned";std::filesystem::create_directories(directory);
+    recoveryDirectory_=directory/"recovery";
+    document=Document::withBuiltinPalette(8,8,U"作品甲");
+    document.selectAllPixels();document.beginStroke({1,1},0xff112233);document.commitStroke();
+    const auto first=document.identity();const auto firstHistory=document.historySize();fitCanvas();const auto firstCanvas=canvas_;const auto firstZoom=zoom_;
+    addProject(Document::withBuiltinPalette(16,12,U"作品乙"));const auto second=document.identity();
+    check(projects_.size()==2 && second!=first && pending_==Pending::None,"New replaced or prompted for unsaved project");
+    document.beginStroke({2,2},0xffaabbcc);document.commitStroke();document.addFrame();document.addLayer();const auto secondHistory=document.historySize();const auto secondLayer=document.layer().id,secondFrame=document.frame().id;
+    activateProject(0);check(document.identity()==first && document.pixels()[9]==0xff112233 && document.historySize()==firstHistory && document.selection().has_value(),"Switch lost first pixels/history/selection");
+    check(zoom_==firstZoom && canvas_==firstCanvas,"Switch lost canvas view");
+    document.undo();check(document.pixels()[9]==0,"First undo used another document history");document.redo();
+    activateProject(1);check(document.identity()==second && document.historySize()==secondHistory && document.layer().id==secondLayer && document.frame().id==secondFrame,"Switch lost second timeline/history");
+    const auto saved=directory/"second.moonsprite";check(savePath(saved),"Cannot save active project");check(!document.dirty() && projectDocument(0).dirty(),"Saving cleared another document dirty state");
+    activateProject(0);openPath(saved);check(projects_.size()==2 && document.identity()==second,"Reopening duplicated saved project");
+    const auto imported=directory/"third.moonsprite";auto fixture=Document::withBuiltinPalette(5,7,U"作品丙");project::saveDocumentAtomic(fixture,imported);
+    activateProject(0);openPath(imported);check(projects_.size()==3 && document.width()==5 && pending_==Pending::None && projectDocument(0).dirty(),"Opening replaced dirty project");document.beginStroke({0,0},0xff223344);document.commitStroke();
+    // Mouse hit and Ctrl+Tab use the displayed strip, including after reordering.
+    ui::KeyMessage tab(ui::kKeyDownMessage,ui::kKeyTab,ui::kKeyCtrlModifier,0,0);onProcessMessage(&tab);check(document.identity()==first,"Ctrl+Tab did not wrap");
+    auto target=projectTabRects_[1].origin()+gfx::Point(8*uiScale,8*uiScale);ui::MouseMessage down(ui::kMouseDownMessage,os::PointerType::Mouse,ui::kButtonLeft,ui::kKeyNoneModifier,target);onProcessMessage(&down);ui::MouseMessage up(ui::kMouseUpMessage,os::PointerType::Mouse,ui::kButtonLeft,ui::kKeyNoneModifier,target);onProcessMessage(&up);check(document.identity()==second && !hasCapture(),"Tab mouse activation/capture");
+    activateProject(0);ask(Pending::CloseDocument);check(pending_==Pending::CloseDocument,"Dirty tab skipped close confirmation");resolve(false);check(projects_.size()==3 && document.identity()==first && document.dirty(),"Cancel closed dirty tab");
+    // Recovery captures each dirty session even when it remains inactive.
+    recoveryTick(true);const auto deadline=std::chrono::steady_clock::now()+std::chrono::seconds(10);
+    while(std::chrono::steady_clock::now()<deadline){recoveryTick(true);if(!recoveryWorker_.valid() && !recoverySnapshot_ && std::all_of(projects_.begin(),projects_.end(),[](const auto& slot){return !slot->worker.valid() && !slot->snapshot;}))break;std::this_thread::sleep_for(std::chrono::milliseconds(5));}
+    check(project::listRecoveryRecords(recoveryDirectory()).size()>=2,"No recovery for inactive/active projects");activateProject(2);if(!savePath(imported))throw std::runtime_error("Save third project after recovery: "+utf8Text(openError_));
+    const auto count=projects_.size();activateProject(1);document.beginStroke({0,0},0xff556677);document.commitStroke();ask(Pending::CloseDocument);savePath(saved,true);
+    check(pending_==Pending::Saving,"Close save did not start asynchronous save");const auto savingDocument=document.identity();activateProject(0);check(document.identity()==savingDocument,"Switched document during save");
+    const auto saveDeadline=std::chrono::steady_clock::now()+std::chrono::seconds(10);while(pending_==Pending::Saving && std::chrono::steady_clock::now()<saveDeadline){saveTick();std::this_thread::sleep_for(std::chrono::milliseconds(5));}
+    check(pending_==Pending::None && projects_.size()==count-1 && document.width()==5,"Saved close did not activate last remaining tab");
+    activateProject(0);ask(Pending::CloseDocument);resolve(true);check(projects_.size()==1 && document.width()==5,"Discard removed wrong tab");
+    bool exited=false;closeRequested=[&]{exited=true;};document.beginStroke({0,0},0xff123456);document.commitStroke();requestClose();check(pending_==Pending::Close && !exited,"Exit bypassed dirty tab");resolve(false);check(documentOpen_ && !closingWorkspace_ && !exited,"Exit cancel lost project");
+    addProject(Document::withBuiltinPalette(3,3,U"退出检查"));document.beginStroke({0,0},0xff445566);document.commitStroke();requestClose();resolve(true);check(pending_==Pending::Close && projects_.size()==1 && !exited,"Exit skipped remaining dirty project");resolve(true);check(exited && projects_.empty() && !documentOpen_,"Exit did not complete all tabs");
+    addProject(Document::withBuiltinPalette(8,8,U"作品甲"));addProject(Document::withBuiltinPalette(16,12,U"作品乙"));addProject(Document::withBuiltinPalette(5,7,U"作品丙"));activateProject(1);
+    auto image=os::instance()->makeRgbaSurface(bounds().w,bounds().h);image->clear();{ui::Graphics g(image);ui::PaintEvent event(this,&g);onPaint(event);}writeSmokeFrame(image.get(),directory/"multi-document.bmp");
+  }
+  void smokeNewDocument() {
+    smoke_=true;const auto identity=document.identity();showNewDocument();if(document.identity()!=identity)throw std::runtime_error("Cancel replaced the document");
+    showNewDocument(true);if(document.width()!=72||document.height()!=48||document.name()!=U"布局测试"||document.palette().entries.size()!=32)throw std::runtime_error("New canvas metadata or palette");
+  }
+  void smokeCheckboxes(const std::filesystem::path& directory) {
+    auto check=[](bool okay,const char* why){if(!okay)throw std::runtime_error(why);};
+    int changes=0;PixelCheckbox box(font_,skin_,U"高级选项",false,[&](bool){++changes;});
+    addChild(&box);box.setBounds({bounds().x+40,bounds().y+100,58*uiScale,16*uiScale});
+    auto gallery=os::instance()->makeRgbaSurface(58*uiScale*2,16*uiScale*3);gallery->clear();
+    for(int checked=0;checked<2;++checked)for(int state=0;state<3;++state){
+      box.setChecked(checked);box.setSelected(state==2);box.disableFlags(ui::HAS_FOCUS|ui::HAS_MOUSE);if(state)box.enableFlags(ui::HAS_MOUSE);
+      auto frame=os::instance()->makeRgbaSurface(58*uiScale,16*uiScale);frame->clear();{ui::Graphics g(frame);ui::PaintEvent e(&box,&g);box.onPaint(e);}
+      const auto& bitmap=*skin_.assets.patches.at(checked?"checkbox.checked":"checkbox.unchecked").bitmap;
+      for(int y=0;y<7*uiScale;++y)for(int x=0;x<7*uiScale;++x){const auto pixel=bitmap.pixels[(y/uiScale)*7+x/uiScale];if((pixel>>24)==255)check(frame->getPixel(4*uiScale+x,4*uiScale+y)==gfx::rgba(pixel&255,(pixel>>8)&255,(pixel>>16)&255,255),"Checkbox body differs from sheet");}
+      check(frame->getPixel(0,0)==(state==0?gfx::rgba(0,0,0,0):state==1?gfx::rgba(66,79,103):gfx::rgba(32,33,37)),"Checkbox normal/hover/held background");
+      {ui::Graphics g(gallery);g.drawSurface(frame.get(),checked*58*uiScale,state*16*uiScale);}
+    }
+    writeSmokeFrame(gallery.get(),directory/"checkbox-states.bmp");
+    box.setSelected(false);box.setChecked(false);box.enableFlags(ui::HAS_MOUSE);auto point=box.bounds().center();
+    ui::MouseMessage down(ui::kMouseDownMessage,os::PointerType::Mouse,ui::kButtonLeft,ui::kKeyNoneModifier,point),up(ui::kMouseUpMessage,os::PointerType::Mouse,ui::kButtonLeft,ui::kKeyNoneModifier,point);
+    box.onProcessMessage(&down);check(box.hasCapture() && !box.checked() && changes==0,"Checkbox must commit on release");box.onProcessMessage(&up);check(box.checked() && changes==1 && !box.hasCapture(),"Checkbox single release toggle");
+    box.onProcessMessage(&down);box.disableFlags(ui::HAS_MOUSE);ui::MouseMessage move(ui::kMouseMoveMessage,os::PointerType::Mouse,ui::kButtonLeft,ui::kKeyNoneModifier,box.bounds().origin()-gfx::Point(5,5));box.onProcessMessage(&move);box.onProcessMessage(&up);check(box.checked() && changes==1,"Checkbox outside release must cancel");
+    box.enableFlags(ui::HAS_FOCUS);for(auto type:{ui::kKeyDownMessage,ui::kKeyUpMessage}){ui::KeyMessage key(type,ui::kKeySpace,ui::kKeyNoneModifier,0,0);box.onProcessMessage(&key);}check(!box.checked() && changes==2,"Checkbox Space toggle");
+    for(auto type:{ui::kKeyDownMessage,ui::kKeyUpMessage}){ui::KeyMessage key(type,ui::kKeyEnter,ui::kKeyNoneModifier,0,0);box.onProcessMessage(&key);}check(changes==2,"Checkbox Enter must not toggle");box.setEnabled(false);box.Click();check(changes==2,"Disabled checkbox toggled");
+    for(auto icon:{"check","checkboxChecked","checkboxUnchecked"}){PixelButton old(font_,skin_,U"选项",[]{});old.bareIconWithCaption=true;old.icon=icon;check(old.isCheckbox(),"Controlled legacy checkbox missed shared renderer");}
+    PixelButton menu(font_,skin_,U"操作",[]{});menu.icon="check";check(!menu.isCheckbox(),"Menu check mark mistaken for checkbox");
+    removeChild(&box);requestFocus();
+  }
+  void smokeSwitches(const std::filesystem::path& directory) {
+    smoke_=true;homeOpen_=false;documentOpen_=true;pending_=Pending::None;document=Document(2,2);document.beginStroke({0,0},0xff123456);document.commitStroke();refresh();
+    int changes=0;bool value=false;
+    PixelSwitch toggle(font_,skin_,U"按钮",false,[&](bool next){++changes;value=next;});addChild(&toggle);
+    toggle.setBounds(gfx::Rect(bounds().x+40,bounds().y+100,81*uiScale,17*uiScale));
+    auto check=[](bool okay,const char* why){if(!okay)throw std::runtime_error(why);};
+    bool rejected=false;try{PixelSwitch bare(font_,skin_,U"",false,{});}catch(const std::invalid_argument&){rejected=true;}check(rejected,"Switch must require label text");
+    auto gallery=os::instance()->makeRgbaSurface(81*uiScale*2,17*uiScale*4);gallery->clear();
+    for(int variant=0;variant<2;++variant)for(int state=0;state<4;++state){
+      const bool on=state>=2,hover=(state%2)!=0;toggle.setChecked(on);toggle.disableFlags(ui::HAS_FOCUS);if(hover)toggle.enableFlags(ui::HAS_MOUSE);else toggle.disableFlags(ui::HAS_MOUSE);
+      toggle.iconSkin=&toolIcons_;toggle.icon=variant?"eye":"";
+      auto frame=os::instance()->makeRgbaSurface(81*uiScale,17*uiScale);frame->clear();{ui::Graphics g(frame);ui::PaintEvent e(&toggle,&g);toggle.onPaint(e);}
+      const auto& bitmap=*skin_.assets.patches.at(std::string(on?"switch.on.":"switch.off.")+(hover?"hover":"normal")).bitmap;
+      for(int y=0;y<9*uiScale;++y)for(int x=0;x<18*uiScale;++x){const auto p=bitmap.pixels[(y/uiScale)*18+x/uiScale];check(frame->getPixel((81-4-18)*uiScale+x,4*uiScale+y)==gfx::rgba(p&255,(p>>8)&255,(p>>16)&255,p>>24),"Switch state must preserve exact sheet pixels");}
+      {ui::Graphics g(gallery);g.drawSurface(frame.get(),variant*81*uiScale,state*17*uiScale);}
+    }
+    writeSmokeFrame(gallery.get(),directory/"switch-states.bmp");check(changes==0,"Programmatic switch sync emitted change");
+    toggle.setChecked(false);toggle.enableFlags(ui::HAS_MOUSE);
+    for(int x:{5,35,65}){const bool before=toggle.checked();const int count=changes;auto point=toggle.bounds().origin()+gfx::Point(x*uiScale,8*uiScale);
+      ui::MouseMessage down(ui::kMouseDownMessage,os::PointerType::Mouse,ui::kButtonLeft,ui::kKeyNoneModifier,point),up(ui::kMouseUpMessage,os::PointerType::Mouse,ui::kButtonLeft,ui::kKeyNoneModifier,point);
+      toggle.onProcessMessage(&down);check(toggle.checked()==before,"Switch committed before release");toggle.onProcessMessage(&up);check(toggle.checked()!=before && value==toggle.checked() && changes==count+1,"Switch full-row click did not commit exactly once");
+    }
+    toggle.enableFlags(ui::HAS_FOCUS);const int count=changes;
+    for(auto type:{ui::kKeyDownMessage,ui::kKeyUpMessage}){ui::KeyMessage key(type,ui::kKeySpace,ui::kKeyNoneModifier,0,0);toggle.onProcessMessage(&key);}check(changes==count+1,"Switch Space keyboard activation");
+    for(auto type:{ui::kKeyDownMessage,ui::kKeyUpMessage}){ui::KeyMessage key(type,ui::kKeyEnter,ui::kKeyNoneModifier,0,0);toggle.onProcessMessage(&key);}check(changes==count+1,"Enter must not toggle legacy checkbox");
+    const bool before=toggle.checked();toggle.setEnabled(false);toggle.Click();check(toggle.checked()==before && changes==count+1,"Disabled switch emitted change");
+    removeChild(&toggle);requestFocus();
+    check(menuCommands_.invoke("adjustmentBrightnessContrast") && pending_==Pending::ColorAdjustment,"Live preview switch fixture failed to open adjustment");
+    check(adjustmentPreview_->skinStyle=="switch" && adjustmentPreview_->icon=="eye","Live preview must use icon+text switch");const bool enabled=adjustmentPreviewEnabled_;adjustmentPreview_->Click();check(adjustmentPreviewEnabled_!=enabled && adjustmentPreview_->active==adjustmentPreviewEnabled_,"Live preview switch state binding");resolve(false);
+  }
+  void smokeTimelineFirstPaint(os::Surface* actual=nullptr) {
+    if(homeOpen_ || !documentOpen_ || !columnShown(2))return;
+    const int width=timelineLabelWidth();const auto viewport=timelineFrameViewport(true);
+    std::vector<ui::Widget*> hidden;
+    for(auto b:timelineInactive_)if(!b->hasFlags(ui::HIDDEN)){hidden.push_back(b);b->enableFlags(ui::HIDDEN);}
+    const bool stable=timelineLabelWidth()==width && timelineFrameViewport(true)==viewport;
+    for(auto b:hidden)b->disableFlags(ui::HIDDEN);
+    if(!stable)throw std::runtime_error("Timeline geometry depends on temporary background-paint visibility");
+    if(!actual)return;
+    auto expected=os::instance()->makeRgbaSurface(actual->width(),actual->height());expected->clear();
+    {ui::Graphics g(nullptr,expected,bounds().x,bounds().y);paintChrome(g,true);paintTimelineGrid(g);}
+    writeSmokeFrame(actual,assets_.parent_path()/"timeline-first-window.bmp");
+    writeSmokeFrame(expected.get(),assets_.parent_path()/"timeline-first-expected.bmp");
+    auto region=(timelineFrameViewport(true)|timelineRowViewport()) & gfx::Rect(0,0,actual->width(),actual->height());
+    const auto geometry=columnGeometry(uiLogical(clientBounds()));std::vector<gfx::Rect> occluders;
+    for(int id=0;id<4;++id)if(id!=2 && geometry.shown[id] && columnFloating(id)){const auto r=geometry.panel[id];occluders.push_back(toDisplay(gfx::Rect(r.x,r.y,r.w,r.h)));}
+    // The initial single-layer document has no scrollbars over these pixels.
+    os::SurfaceLock a(actual),e(expected.get());
+    for(int y=region.y;y<region.y2();++y)for(int x=region.x;x<region.x2();++x){
+      if(std::any_of(occluders.begin(),occluders.end(),[&](const auto& r){return r.contains(gfx::Point(x,y));}))continue;
+      if((timelineHorizontal_->isVisible() && timelineHorizontal_->bounds().contains(gfx::Point(x,y))) || (timelineVertical_->isVisible() && timelineVertical_->bounds().contains(gfx::Point(x,y))))continue;
+      if(actual->getPixel(x,y)!=expected->getPixel(x,y))throw std::runtime_error("Initial timeline differs from clean repaint at "+std::to_string(x)+","+std::to_string(y)+" actual="+std::to_string(actual->getPixel(x,y))+" expected="+std::to_string(expected->getPixel(x,y)));
+    }
+  }
   void smokeAllScrollBars() {
     const auto savedDocument=document;const auto savedDock=docking_;const auto savedBounds=bounds(),savedCanvas=canvas_,savedPreview=previewPanel_->bounds();const auto savedEntries=homeEntries_;
     const bool savedHome=homeOpen_,savedOpen=documentOpen_,savedLayers=layersPanelOpen_;const int savedPreferenceSection=preferenceSection_,savedPreferenceNav=preferenceNavPixels_,savedPreferenceContent=preferenceContentPixels_;const double savedZoom=zoom_;const auto savedPending=pending_;const auto savedError=openError_,savedTitle=errorTitle_;const auto savedModal=modalGeometry_;
@@ -3274,8 +3975,58 @@ public:
     layerScroll_=frameScroll_=layerScrollRemainder_=frameScrollRemainder_=0;layoutLayers();const auto history=document.historySize(),revision=document.revision();const auto oldName=layerRows_[0]->bounds(),oldHeader=frameHeaders_[0]->bounds(),oldCel=frameCells_[0]->bounds();
     drag(timelineHorizontal_,false);check(frameScroll_*12*uiScale+frameScrollRemainder_>0,"Timeline horizontal drag did not move");check(layerRows_[0]->bounds()==oldName && frameHeaders_[0]->bounds().x<oldHeader.x && frameCells_[0]->bounds().x<oldCel.x,"Timeline horizontal scrolling moved fixed names or failed to move headers/cels");
     drag(timelineVertical_,true);check(layerScroll_*12*uiScale+layerScrollRemainder_>0 && layerScrollRemainder_!=0,"Timeline vertical drag snaps to rows");check(frameHeaders_[0]->bounds().y==oldHeader.y && layerRows_[0]->bounds().y<oldName.y,"Timeline vertical scrolling moved frame header or failed to move rows");check(document.historySize()==history && document.revision()==revision,"Timeline scroll changed document history");
+    // Contract: framed tracks stop at the frame edge; timeline tracks share
+    // the header/grid black line, and both wheel targets use the same sign.
+    const auto row=timelineRowViewport();const auto tl=columnLayout(uiLogical(clientBounds()),2);
+    check(timelineVertical_->bounds().y==row.y-uiScale && timelineHorizontal_->bounds().y2()==toDisplay(gfx::Rect(0,tl.bottom-5,1,1)).y,"Timeline scrollbar frame alignment changed");
+    for(auto bar:{timelineHorizontal_,timelineVertical_}){
+      ui::MouseMessage leave(ui::kMouseLeaveMessage,os::PointerType::Mouse,ui::kButtonNone,ui::kKeyNoneModifier,bar->thumbBounds().center());bar->onProcessMessage(&leave);
+      const auto r=bar->bounds();auto alpha=os::instance()->makeRgbaSurface(r.w,r.h);alpha->clear();
+      {ui::Graphics g(alpha);ui::PaintEvent event(bar,&g);bar->PixelScrollBar::onPaint(event);}
+      const auto thumb=bar->thumbBounds().offset(-r.origin()).center();os::SurfaceLock lock(alpha.get());
+      check(gfx::geta(alpha->getPixel(thumb.x,thumb.y))==96 && gfx::geta(alpha->getPixel(0,0))==96,"Timeline scrollbar opacity must composite once");
+      for(bool hover:{false,true}){
+        ui::MouseMessage state(hover?ui::kMouseEnterMessage:ui::kMouseLeaveMessage,os::PointerType::Mouse,ui::kButtonNone,ui::kKeyNoneModifier,bar->thumbBounds().center());bar->onProcessMessage(&state);
+        auto material=os::instance()->makeRgbaSurface(r.w,r.h);material->clear();
+        {ui::Graphics g(material);ui::PaintEvent event(bar,&g);bar->PixelScrollBar::onPaint(event);}
+        check(gfx::geta(material->getPixel(thumb.x,thumb.y))==(hover?204:96),"Normal/hover scrollbar material lost its translucency");
+        gfx::Color results[2];
+        for(int backdrop=0;backdrop<2;++backdrop){auto composite=os::instance()->makeRgbaSurface(r.w,r.h);composite->clear();{ui::Graphics background(composite);background.fillRect(backdrop?gfx::rgba(220,180,120):gfx::rgba(20,30,40),gfx::Rect(0,0,r.w,r.h));}
+          {ui::Graphics g(composite);ui::PaintEvent event(bar,&g);bar->PixelScrollBar::onPaint(event);}results[backdrop]=composite->getPixel(thumb.x,thumb.y);}
+        check(results[0]!=results[1] && gfx::geta(results[0])==255 && gfx::geta(results[1])==255,"Scrollbar material did not reveal its background");
+      }
+    }
+    for(auto bar:{timelineHorizontal_,timelineVertical_})for(bool hover:{false,true}){
+      ui::MouseMessage state(hover?ui::kMouseEnterMessage:ui::kMouseLeaveMessage,os::PointerType::Mouse,ui::kButtonNone,ui::kKeyNoneModifier,bar->thumbBounds().center());bar->onProcessMessage(&state);
+      auto expected=os::instance()->makeRgbaSurface(bounds().x2(),bounds().y2());expected->clear();
+      {ui::Graphics g(nullptr,expected,bounds().x,bounds().y);paintChrome(g,true);paintTimelineGrid(g);}
+      const auto r=bar->bounds();const auto thumb=bar->thumbBounds();bool gridBelowThumb=false,fillBelowThumb=false;
+      for(int y=thumb.y+uiScale;y<thumb.y2()-uiScale;++y)for(int x=thumb.x+uiScale;x<thumb.x2()-uiScale;++x){const auto c=expected->getPixel(x,y);gridBelowThumb|=c==gfx::rgba(0,0,0);fillBelowThumb|=c!=gfx::rgba(0,0,0);}
+      check(gridBelowThumb && fillBelowThumb,"Timeline thumb must overlay actual grid content, not a solid reserved strip");
+      {ui::Graphics g(nullptr,expected,r.x,r.y);g.clipRect(bar->clientBounds());ui::PaintEvent ev(bar,&g);bar->PixelScrollBar::onPaint(ev);}
+      auto actual=os::instance()->makeRgbaSurface(bounds().x2(),bounds().y2());actual->clear();
+      // Exercise the real DialogBackground wrapper, including independent
+      // hover repaints. Neither pass may compound alpha on retained pixels.
+      for(int pass=0;pass<2;++pass){ui::Graphics g(nullptr,actual,r.x,r.y);g.clipRect(bar->clientBounds());ui::PaintEvent ev(bar,&g);bar->onPaint(ev);
+        for(int y=r.y;y<r.y2();++y)for(int x=r.x;x<r.x2();++x)check(actual->getPixel(x,y)==expected->getPixel(x,y),"Timeline scrollbar real composite differs from one sheet-material blend");}
+      writeSmokeFrame(expected.get(),assets_.parent_path()/(std::string(bar==timelineVertical_?"timeline-vertical-":"timeline-horizontal-")+(hover?"hover.bmp":"normal.bmp")));
+    }
+    auto timelineWheel=[&](bool onBar,int direction){ui::MouseMessage wheel(ui::kMouseWheelMessage,os::PointerType::Mouse,ui::kButtonNone,ui::kKeyNoneModifier,onBar?timelineVertical_->bounds().center():timelineRowViewport().center(),gfx::Point(0,direction));if(onBar)timelineVertical_->onProcessMessage(&wheel);else onProcessMessage(&wheel);};
+    layerScroll_=2;layerScrollRemainder_=0;layoutLayers();timelineWheel(false,1);check(layerScroll_==3,"Timeline content down wheel moved upward");timelineWheel(false,-1);check(layerScroll_==2,"Timeline content up wheel moved downward");timelineWheel(true,1);check(layerScroll_==3,"Timeline bar down wheel differs from content");timelineWheel(true,-1);check(layerScroll_==2,"Timeline bar up wheel differs from content");
+    layerScroll_=0;layerScrollRemainder_=7;layoutLayers();timelineWheel(false,-1);
+    check(layerScroll_==0 && layerScrollRemainder_==0,"Timeline up wheel retained a partial-row offset at the top");
+    drag(timelineVertical_,true,10000);drag(timelineHorizontal_,false,10000);
+    const auto limits=timelineScrollMetrics(columnLayout(uiLogical(clientBounds()),2));
+    const int bottomOffset=layerScroll_*12*uiScale+layerScrollRemainder_,rightOffset=frameScroll_*12*uiScale+frameScrollRemainder_;
+    check(bottomOffset==limits.contentHeight-limits.height && rightOffset==limits.contentWidth-limits.width,"Timeline thumb could not reach its padded end");
+    check(limits.height-(int(document.timeline().state().layers.size())*12*uiScale-bottomOffset)==12*uiScale,"Timeline bottom padding is not one layer high");
+    check(limits.width-(int(document.timeline().state().frames.size())*12*uiScale-rightOffset)==limits.width/2,"Timeline right padding is not half its frame viewport");
+    drag(timelineVertical_,true,-10000);drag(timelineHorizontal_,false,-10000);
+    check(layerScroll_==0 && layerScrollRemainder_==0 && frameScroll_==0 && frameScrollRemainder_==0,"Timeline thumb could not return to its exact origin");
     for(auto b:frameCells_)if(b->timelineVisible){const auto visible=b->bounds()&timelineFrameViewport();if(!visible.isEmpty())check(frontWidgetAt(visible.center())==b,"Timeline partially visible cell has wrong input target");}
     docking_=panels::Model{};document=Document(512,512);zoom_=4;canvas_=gfx::Rect(100,100,4096,4096);refresh();constrainCanvas();const auto canvasBefore=canvas_;const auto viewHistory=document.historySize(),viewRevision=document.revision();drag(canvasHorizontal_,false);drag(canvasVertical_,true);check(canvas_.x!=canvasBefore.x && canvas_.y!=canvasBefore.y && document.historySize()==viewHistory && document.revision()==viewRevision,"Canvas scrollbar must pan without changing document");
+    {const auto viewport=canvasViewport();check(canvasVertical_->bounds()==PixelScrollBar::gridBounds(viewport,true) && canvasHorizontal_->bounds()==PixelScrollBar::gridBounds(viewport,false),"Canvas scrollbar corner disagrees with timeline geometry");
+      const auto content=workspaceLayout(uiLogical(clientBounds())).workspaceContent();check(canvasVertical_->bounds().x2()==toDisplay(gfx::Rect(content.x2()+1,0,1,1)).x,"Canvas scrollbar does not share the inner frame edge");}
     useGradientTool();toolRowScroll_=0;layoutToolOptions();check(canvasViewport().y==canvasFullViewport().y,"Tool options reserved an unwanted scrollbar row");commands_[1]->Click();
     setBounds(gfx::Rect(17,23,640,360));refresh();railScrollPixels_=0;layoutToolRail();drag(railScrollBar_,true);check(railScrollPixels_>0,"Small window tool rail scrollbar failed");
     setBounds(gfx::Rect(17,23,800,600));refresh();homeOpen_=true;homeEntries_.clear();for(int i=0;i<24;++i)homeEntries_.push_back({U"滚动回归",{}, {}});homeScrollPixels_=0;layoutHome();drag(homeScrollBar_,true);check(homeScrollPixels_>0 && homeScrollPixels_%(28*uiScale)!=0,"Home list drag still snaps to whole items");homeOpen_=false;
@@ -3288,6 +4039,7 @@ public:
       const auto savedDocument=document;const auto savedDock=docking_;const auto savedBounds=bounds();const int savedSize=swatchSize_,savedScroll=paletteScrollPixels_;const bool savedPalette=palettePanelOpen_;
       document=Document::withBuiltinPalette();palettePanelOpen_=true;setBounds(gfx::Rect(17,23,800,600));dockColumn(0,panels::Dock::Floating);
       auto& group=docking_.groups[docking_.groupOf(0)];group.floating={240,140,100,150};group.floatingArea=floatingArea(uiLogical(clientBounds()));swatchSize_=4;refresh();
+      if(paletteScrollBar_->bounds().x2()!=paletteContentBounds().x2())throw std::runtime_error("Palette scrollbar protrudes past its content frame");
       if(!paletteScrollBar_->isVisible() || paletteScrollBar_->bounds().w!=7*uiScale)throw std::runtime_error("Overflow palette scrollbar missing or incorrect thickness");
       for(auto cell:swatches_)if(cell->isVisible() && cell->bounds().intersects(paletteScrollBar_->bounds()))throw std::runtime_error("Palette cells overlap scrollbar");
       const auto history=document.historySize(),revision=document.revision();const auto bar=paletteScrollBar_->bounds();
@@ -3426,7 +4178,7 @@ public:
       if(menu.children().size()!=(column==Column::Preview?8:6))throw std::runtime_error("Column context entries differ from legacy");
       int index=0;for(auto child:menu.children()) {
         if(auto item=dynamic_cast<PixelMenuItem*>(child))
-          if(item->isEnabled()!=(index==0 || (index>=2 && index<=5)))throw std::runtime_error("Unmigrated column action enabled");
+          if(item->isEnabled()!=(index==0 || (index>=2 && index<=5) || (column==Column::Preview && index==7)))throw std::runtime_error("Column action availability differs from its migrated entries");
         ++index;
       }
     }
@@ -3505,6 +4257,9 @@ public:
     return "none";
   }
   const char* cursorAt(gfx::Point position) const {
+    if(panelScrollDrag_.active())return "grabbing";
+    if(panelScrollSpace_ && pending_==Pending::None)for(const auto& region:scrollDragRegions_)if(region.bounds().contains(position)){const auto maximum=region.target.maximum();if(maximum.x>0 || maximum.y>0)return "grab";}
+    if(layerLabelWidth_.dragging || layerLabelHit(position))return "ew-resize";
     if(loopTrackDrag_ || loopTrackHit(position).edge)return "ew-resize";
     if(panelGesture_.id>=0){const int edges=panelGesture_.edges;return edges?panelResizeHitCursor(edges):"move";}
     if(pending_==Pending::None)for(auto close:columnClose_)if(close && close->isVisible() && close->bounds().contains(position))return "default";
@@ -3558,7 +4313,7 @@ public:
     // Current cursor color feedback follows the active ordinary layer; legacy's
     // composited replacement sample resolves to ink or the exposed checker.
     if(eraser_ && inDocument) {
-      const auto color=skin_[(point.x/4+point.y/4)%2?"checkerA":"checkerB"];
+      const auto color=checkerboard_.at(point.x,point.y);
       return legacyPaintCursor(gfx::getr(color),gfx::getg(color),gfx::getb(color));
     }
     if(shapeTool_ || gradientTool_ || fillTool_) {
@@ -3574,9 +4329,10 @@ public:
     if(previewPanel_)previewPanel_->flushGeometry();
     flushSizeGeometry();
   }
-  ~Editor() override {cancelGradientMapJob();stopAntiAlias();stopConvolution();if(propertyRangePopup_){propertyRangePopup_->closeWindow(nullptr);propertyRangePopup_.reset();}celNavigationTimer_.stop();if(toolFlyout_){toolFlyout_->closeWindow(nullptr);toolFlyout_.reset();}antsTimer_.stop();sizeTimer_.stop();if(recoveryTimer_){recoveryTimer_->stop();delete recoveryTimer_;}if(recoveryWorker_.valid())recoveryWorker_.wait();}
+  ~Editor() override {flushBrushSizePreferences();if(framePngJob_)framePngJob_->cancel=true;floatingViewportSaveTimer_.stop();cancelGradientMapJob();stopAntiAlias();stopConvolution();if(propertyRangePopup_){propertyRangePopup_->closeWindow(nullptr);propertyRangePopup_.reset();}celNavigationTimer_.stop();if(toolFlyout_){toolFlyout_->closeWindow(nullptr);toolFlyout_.reset();}antsTimer_.stop();sizeTimer_.stop();if(recoveryTimer_){recoveryTimer_->stop();delete recoveryTimer_;}if(recoveryWorker_.valid())recoveryWorker_.wait();}
   Editor(const PixelFont& font,Skin& skin,std::filesystem::path assets,std::function<void()> refreshCursor,std::filesystem::path recoveryRoot={})
     : ui::Widget(ui::kGenericWidget),font_(font),skin_(skin),assets_(std::move(assets)),refreshCursor_(std::move(refreshCursor)) {
+    floatingViewportSaveTimer_.Tick.connect([this]{floatingViewportSaveTimer_.stop();saveWorkspaceSizes();});
     recoveryDirectory_=std::move(recoveryRoot);
     setFocusStop(true); setExpansive(true);
     loopTrackTimer_.Tick.connect([this]{if(loopTrackDrag_){if(!hasCapture())finishLoopTrackResize(true);else updateLoopTrackResize(loopTrackDrag_->pointer,true);}});
@@ -3592,7 +4348,7 @@ public:
     celNavigationTimer_.Tick.connect([this]{celNavigationTick(std::chrono::steady_clock::now());});
     auto scroll=[this](bool vertical){auto bar=new DialogBackground<PixelScrollBar>(skin_,vertical);configureDialogBackground(bar);addChild(bar);return bar;};
     railScrollBar_=scroll(true);railScrollBar_->changed=[this](int value){railScrollPixels_=value;layoutToolRail();invalidate();};
-    timelineHorizontal_=scroll(false);timelineVertical_=scroll(true);canvasHorizontal_=scroll(false);canvasVertical_=scroll(true);homeScrollBar_=scroll(true);errorScrollBar_=scroll(true);preferenceNavBar_=scroll(true);preferenceContentBar_=scroll(true);
+    timelineHorizontal_=scroll(false);timelineVertical_=scroll(true);timelineHorizontal_->setMaterialOpacity(96,204);timelineVertical_->setMaterialOpacity(96,204);timelineVertical_->wheelDirection=1;canvasHorizontal_=scroll(false);canvasVertical_=scroll(true);canvasHorizontal_->setTransparent(false);canvasVertical_->setTransparent(false);homeScrollBar_=scroll(true);errorScrollBar_=scroll(true);preferenceNavBar_=scroll(true);preferenceContentBar_=scroll(true);
     preferenceNavBar_->changed=[this](int value){preferenceNavPixels_=value;layoutModal();invalidateRect(dialogDisplayBounds());};
     preferenceContentBar_->changed=[this](int value){preferenceContentPixels_=value;layoutModal();invalidateRect(dialogDisplayBounds());};
     timelineHorizontal_->changed=[this](int value){frameScroll_=value/(12*uiScale);frameScrollRemainder_=value%(12*uiScale);layoutLayers();invalidateTimelineGrid();};
@@ -3602,13 +4358,22 @@ public:
     canvasHorizontal_->changed=[this](int value){const auto v=canvasViewport();const int upper=clampCanvasAxis(INT_MAX,v.x,v.w,canvas_.w);canvas_.x=upper-value;constrainCanvas();invalidateRect(canvasViewport());};
     canvasVertical_->changed=[this](int value){const auto v=canvasViewport();const int upper=clampCanvasAxis(INT_MAX,v.y,v.h,canvas_.h);canvas_.y=upper-value;constrainCanvas();invalidateRect(canvasViewport());};
     paletteScrollBar_=scroll(true);paletteScrollBar_->changed=[this](int value){paletteScrollPixels_=value;layoutPalette(0);invalidateRect(paletteContentBounds());};
+    registerScrollDrag([this]{return columnShown(0)?paletteViewportBounds():gfx::Rect();},{
+      [this]{return SpaceDragScroll::Position{0,paletteScrollPixels_};},
+      [this]{const int step=swatchPixels_[swatchSize_]/uiScale-1,padding=1+uiGap;const int height=(2*padding+((int(swatches_.size())+paletteColumns_-1)/paletteColumns_)*step+1)*uiScale;return SpaceDragScroll::Position{0,std::max(0,height-paletteViewportBounds().h)};},
+      [this](SpaceDragScroll::Position p){if(paletteScrollPixels_==p.y)return;paletteScrollPixels_=p.y;layoutPalette(0);invalidateRect(paletteContentBounds());}});
+    registerScrollDrag([this]{return columnShown(2)?timelineRowViewport():gfx::Rect();},{
+      [this]{return SpaceDragScroll::Position{frameScroll_*12*uiScale+frameScrollRemainder_,layerScroll_*12*uiScale+layerScrollRemainder_};},
+      [this]{const auto m=timelineScrollMetrics(columnLayout(uiLogical(clientBounds()),2));return SpaceDragScroll::Position{std::max(0,m.contentWidth-m.width),std::max(0,m.contentHeight-m.height)};},
+      [this](SpaceDragScroll::Position p){frameScroll_=p.x/(12*uiScale);frameScrollRemainder_=p.x%(12*uiScale);layerScroll_=p.y/(12*uiScale);layerScrollRemainder_=p.y%(12*uiScale);layoutLayers();invalidateTimelineGrid();}});
+
     paletteSelectionOverlay_=new FloatingColumnSurface;paletteSelectionOverlay_->setTransparent(true);addChild(paletteSelectionOverlay_);
     paletteSelectionOverlay_->paint=[this](ui::Graphics& g){UiPaintScale scale(g);const auto offset=-paletteSelectionOverlay_->bounds().origin();const bool hover=paletteMousePosition_ && paletteOutlineContains(*paletteMousePosition_);for(auto edge:paletteSelectionEdges_){edge.border.offset(offset);for(auto piece:edge.pieces){piece.offset(offset);g.saveClip();g.clipRect(uiLogical(piece));skin_.drawSelectionBorder(g,edge.border,hover);g.restoreClip();}}};
     paletteSelectionOverlay_->pointer=[this](ui::Message* msg){if(pending_!=Pending::None)return false;if(msg->type()==ui::kMouseDownMessage){const auto mouse=static_cast<ui::MouseMessage*>(msg);beginPalettePointer(std::min(paletteSlotAt(mouse->position()),paletteButtonIds_.size()-1),*mouse);return true;}return false;};
-    recoveryTimer_=new ui::Timer(16,this);recoveryTimer_->Tick.connect([this]{if(paletteGesture_ && !paletteGesture_->active && !paletteGesture_->moving && !paletteGesture_->secondary && std::chrono::steady_clock::now()-paletteGesture_->began>=std::chrono::milliseconds(360))updatePalettePointer(paletteGesture_->origin);playbackTick();recoveryTick();convolutionTick();antiAliasTick();gradientMapTick();wandTick();gradientTick();shapeTick();});recoveryTimer_->start();
+    recoveryTimer_=new ui::Timer(16,this);recoveryTimer_->Tick.connect([this]{if(brushPreferencesPending_ && !modifierBrushSize_ && std::chrono::steady_clock::now()>=brushPreferencesDue_)flushBrushSizePreferences();saveTick();framePngTick();if(paletteGesture_ && !paletteGesture_->active && !paletteGesture_->moving && !paletteGesture_->secondary && std::chrono::steady_clock::now()-paletteGesture_->began>=std::chrono::milliseconds(360))updatePalettePointer(paletteGesture_->origin);playbackTick();recoveryTick();convolutionTick();antiAliasTick();gradientMapTick();wandTick();gradientTick();shapeTick();});recoveryTimer_->start();
     commands_.push_back(button(U"新建",[this]{ask(Pending::New);}));
     documentTabNew_=button(U"",[this]{ask(Pending::New);});documentTabNew_->iconSkin=&toolIcons_;documentTabNew_->icon="plus";documentTabNew_->tabAdd=true;
-    documentTabClose_=button(U"",[this]{ask(Pending::CloseDocument);});documentTabClose_->iconSkin=&toolIcons_;documentTabClose_->icon="close";documentTabClose_->bareTabIcon=true;
+    documentTabClose_=button(U"",[this]{activateProject(0);ask(Pending::CloseDocument);});documentTabClose_->iconSkin=&toolIcons_;documentTabClose_->icon="close";documentTabClose_->bareTabIcon=true;
     commands_.push_back(button(U"画笔",[this]{if(shapeDragging_ || gradientPending_ || gradientDragging_)return;cancelStroke();selectionTool_=false;shapeTool_=false;eyedropperTool_=false;zoomTool_=false;gradientTool_=false;fillTool_=false;handTool_=false;eraser_=false;updateNavigationCursor();refresh();}));
     commands_.push_back(button(U"橡皮",[this]{if(shapeDragging_ || gradientPending_ || gradientDragging_)return;cancelStroke();selectionTool_=false;shapeTool_=false;eyedropperTool_=false;zoomTool_=false;gradientTool_=false;fillTool_=false;handTool_=false;eraser_=true;updateNavigationCursor();refresh();}));
     commands_.push_back(button(U"撤销",[this]{cancelStroke();document.undo();refresh();}));
@@ -3617,17 +4382,22 @@ public:
     createToolRail();
     loadPaletteSize();
     try{const auto path=palettePreferencePath().parent_path()/"animation-playback.txt";if(std::filesystem::exists(path)){std::ifstream in(path);readPlaybackPreferences(in);}}catch(const std::exception& e){playbackRate_=1;playbackReturnToStart_=false;savedPlaybackMode_.reset();status_=U"播放偏好读取失败："+unicodeText(e.what());}
-    try{const auto path=palettePreferencePath().parent_path()/"onion-skin.txt";if(std::filesystem::exists(path)){std::ifstream in(path);if(!(in>>onion_.enabled>>onion_.allLayers>>onion_.showDuringPlayback>>onion_.previousFrames>>onion_.nextFrames>>onion_.previousOpacity>>onion_.nextOpacity>>onion_.previousColor>>onion_.nextColor))throw std::runtime_error("Invalid onion skin preferences");onion_.previousFrames=std::clamp(onion_.previousFrames,0,8);onion_.nextFrames=std::clamp(onion_.nextFrames,0,8);onion_.previousOpacity=std::clamp(onion_.previousOpacity,0,100);onion_.nextOpacity=std::clamp(onion_.nextOpacity,0,100);}}catch(const std::exception& e){onion_={};status_=U"洋葱皮偏好读取失败："+unicodeText(e.what());}
+    layerLabelSeparator_=new LayerLabelSeparator;layerLabelSeparator_->process=[this](ui::Message* msg){return processLayerLabelResize(msg);};addChild(layerLabelSeparator_);
+    try{const auto path=palettePreferencePath().parent_path()/"layer-label-width.txt";if(std::filesystem::exists(path)){std::ifstream in(path);std::string value;if(!in || !std::getline(in,value))throw std::runtime_error("Cannot read layer label width");layerLabelWidth_.physical=layerlabel::load(value);}}catch(const std::exception& e){layerLabelReadable_=false;status_=U"图层列宽读取失败，保存已禁用："+unicodeText(e.what());}
+    try{auto settings=animationprefs::load(palettePreferencePath().parent_path()/"animation-settings.json",palettePreferencePath().parent_path()/"onion-skin.txt");onion_=settings.onion;skipDisabledFrames_=settings.skipDisabledFrames;}catch(const std::exception& e){animationSettingsReadable_=false;status_=U"动画设置读取失败，保存已禁用："+unicodeText(e.what());}
     // Recent colors belong to this project session; do not import prior runs.
-    for(const auto icon:{"restore","moreLines","paletteLocal","extractColors","properties","lock","unlock","undo","redo","dither","image","checkboxUnchecked","more","brush-round","brush-square","brush-line","ink-simple","pressure-dynamics","symmetry-horizontal","symmetry-vertical","symmetry-diagonal-up","symmetry-diagonal-down","symmetry-rotational","close","plus","eye","eyeOff","delete","playback-first","playback-previous","playback-play","playback-pause","playback-next","playback-last","right","check","copy","link","onion","animation-auto-link-off","animation-auto-link-on","newFolder","gradientMap","tilemap","freeTile","linkedLayer","convertTo","mergeDown","mergeVisible","clippingMask","layerMask","layerStyle","paste","clearRecords","info","swap","move","home","folderOpen","save","selection-pivot","gradient-linear","gradient-radial","gradient-stop"}) for(const auto suffix:{"","-disabled"}) {
+    for(const auto icon:{"up","down","restore","moreLines","paletteLocal","extractColors","properties","lock","unlock","undo","redo","dither","image","checkboxUnchecked","checkboxChecked","more","brush-round","brush-square","brush-line","ink-simple","pressure-dynamics","symmetry-horizontal","symmetry-vertical","symmetry-diagonal-up","symmetry-diagonal-down","symmetry-rotational","close","plus","eye","eyeOff","delete","playback-first","playback-previous","playback-play","playback-pause","playback-next","playback-last","right","check","copy","link","onion","animation-auto-link-off","animation-auto-link-on","newFolder","ungroupFolder","gradientMap","tilemap","freeTile","linkedLayer","convertTo","mergeDown","mergeVisible","clippingMask","layerMask","layerStyle","paste","clearRecords","info","swap","move","home","folderOpen","save","selection-pivot","gradient-linear","gradient-radial","gradient-stop"}) for(const auto suffix:{"","-disabled"}) {
       const auto name=std::string(icon)+suffix;const auto atlas=skin_.assets.patches.find("icon."+name);toolIcons_.assets.patches[name]=atlas==skin_.assets.patches.end()?importSkinPng(assets_/"utility-icons"/(name+".png"),32):atlas->second;
     }
     for(const auto icon:{"selection-replace","selection-add","selection-subtract","selection-intersect","selection-shrink","selection-pivot-preset-0","selection-pivot-preset-1","selection-pivot-preset-2","selection-pivot-preset-3","selection-pivot-preset-4","selection-pivot-preset-5","selection-pivot-preset-6","selection-pivot-preset-7","selection-pivot-preset-8"})for(const auto suffix:{"","-disabled"}){const auto name=std::string(icon)+suffix;toolIcons_.assets.patches[name]=importSkinPng(assets_/"utility-icons"/(name+".png"),32);}
     for(const auto icon:{"playback-first","playback-previous","playback-play","playback-next","playback-last","onion","plus","delete","plus","newFolder","lock","link"}){const auto index=timelineInactive_.size();auto b=button(U"",[this,index]{switch(index){case 0:toolbarSelectFrame(0);break;case 1:toolbarStepFrame(-1);break;case 2:togglePlayback();break;case 3:toolbarStepFrame(1);break;case 4:toolbarSelectFrame(document.timeline().state().frames.size()-1);break;case 5:toggleOnion();break;case 6:frameAction(1);break;case 7:deleteTimelineItems();break;case 8:createLayer();break;}});b->iconSkin=&toolIcons_;b->icon=icon;b->skinStyle=index<10?"icon_button":"timeline-row";if(index<10){b->iconGroupIndex=int(index<5?index:index<8?index-5:index-8);b->iconGroupCount=index<5?5:3;}timelineInactive_.push_back(b);if(index==5)b->context=[this]{showOnionMenu();};if(index==2)b->context=[this]{showPlaybackMenu();};}
-    layerEye_=button(U"",[this]{const auto& layer=document.timeline().state().layers.front();document.beginVisibilityGesture();document.previewVisibilityGesture(layer.id,!layer.visible);document.commitVisibilityGesture();refresh();});layerEye_->iconSkin=&toolIcons_;layerEye_->skinStyle="timeline-row";
+    layerEye_=button(U"",[this]{const auto& layer=document.timeline().state().layers.at(layerScroll_);document.beginVisibilityGesture();document.previewVisibilityGesture(layer.id,!layer.visible);document.commitVisibilityGesture();refresh();});layerEye_->iconSkin=&toolIcons_;layerEye_->skinStyle="timeline-row";
     layerRow_=button(document.layer().name,[]{});
     layerRow_->skinStyle="timeline-row";
     layerRow_->doubleClick=[this]{showLayerOpacity();};
+    try{layerQuickActions_=layerquick::load(palettePreferencePath().parent_path()/"layer-quick-actions.json");auto path=palettePreferencePath().parent_path()/"layer-quick-actions-layout-v1.txt";std::ifstream in(path);int x,y,w,h;if(in>>x>>y>>w>>h)layerQuickDialogGeometry_={x,y,std::clamp(w,340,640),std::clamp(h,360,760)};}catch(const std::exception& e){status_=U"快捷操作偏好读取失败："+unicodeText(e.what());}
+    layerQuickSettings_=button(U"",[this]{showLayerQuickActions();});layerQuickSettings_->iconSkin=&toolIcons_;layerQuickSettings_->icon="properties";layerQuickSettings_->skinStyle="icon_button";layerQuickSettings_->hover=[this]{status_=U"快捷操作设置";invalidate();};
+    for(int i=0;i<layerquick::limit;++i){auto b=button(U"",[this,i]{const auto quick=layerquick::visible(layerQuickActions_,[this](const std::string& id){return menuCommands_.connected(id);});if(i<int(quick.size()))menuCommands_.invoke(quick[i].id);});b->iconSkin=&toolIcons_;b->skinStyle="icon_button";b->hover=[this,i]{const auto quick=layerquick::visible(layerQuickActions_,[this](const std::string& id){return menuCommands_.connected(id);});if(i<int(quick.size()))status_=layerquick::find(quick[i].id)->label;invalidate();};layerQuickButtons_.push_back(b);}
     layerProperties_=button(U"",[this]{openSelectedLayerProperties();});layerProperties_->iconSkin=&toolIcons_;layerProperties_->icon="properties";layerProperties_->skinStyle="icon_button";layerProperties_->iconGroupIndex=2;layerProperties_->iconGroupCount=3;
     layerHeaderOpacity_=new PixelSlider(font_,skin_);addChild(layerHeaderOpacity_);
     layerHeaderOpacity_->interactionBegin=[this]{document.beginLayerOpacity();};
@@ -3654,7 +4424,8 @@ public:
     createAdjustmentControls();
     createGradientMapControls();createAntiAliasControls();createConvolutionControls();createPreferencesControls();createReplaceControls();createResizeControls();createStaticExportControls();createSpriteSheetControls();createGifExportControls();createExportFormatControl();createSheetImportControls();
     paletteInput_=new PixelEntry(font_,skin_);addChild(paletteInput_);paletteInput_->setVisible(false);
-    for(auto& input:loopInputs_){input=new PixelEntry(font_,skin_);input->numeric=&input!=&loopInputs_[0];addChild(input);input->setVisible(false);input->accept=[this]{resolve(true);};input->cancel=[this]{resolve(false);};}
+    for(int i=0;i<4;++i){auto& input=loopInputs_[i];input=i==0?new PixelEntry(font_,skin_):new LoopNumberEntry(font_,skin_);input->numeric=i!=0;addChild(input);input->setVisible(false);input->accept=[this]{resolve(true);};input->cancel=[this]{resolve(false);};if(i){auto number=static_cast<LoopNumberEntry*>(input);number->committed=[this]{invalidate();};input->Change.connect([number]{number->updateLiveValue();});}else input->Change.connect([this]{invalidate();});}
+    loopRepeat_=button(U"重复次数",[this]{toggleLoopRepeat();});loopRepeat_->iconSkin=&toolIcons_;loopRepeat_->bareIconWithCaption=true;loopRepeat_->setVisible(false);
     auto loopDropdown=new DialogBackground<PixelDropdown>(font_,skin_);configureDialogBackground(loopDropdown);addChild(loopDropdown);loopDirection_=loopDropdown;
     loopDropdown->setOptions({U"\u6b63\u5411",U"\u53cd\u5411",U"\u6b63\u5411\u5f80\u8fd4",U"\u53cd\u5411\u5f80\u8fd4"});
     loopDropdown->changed=[this](int index){if(!loopDraft_)return;const char* directions[]{"forward","reverse","ping-pong","ping-pong-reverse"};loopDraft_->direction=directions[index];updateLoopDirection();invalidate();};loopDirection_->setVisible(false);
@@ -3724,16 +4495,22 @@ public:
       entry->Click.connect([this,entry,action]{if(entry->available()) {cancelStroke();action();refresh();}});
       menu->addChild(entry);menuItems_[id]=entry;
     };
+menuCommands_.bind("toggleFullscreen",{[this]{toggleFullscreen();},[this]{return display() && display()->nativeWindow();},[this]{return fullscreen();}});
+menuCommands_.bind("openProjectFolder",{[this]{openProjectFolder();},[this]{return documentOpen_ && !homeOpen_ && !projectFolderSource().empty();},{}});
 menuCommands_.bind("replaceColor",{[this]{openReplaceColor();},{},{}});
 menuCommands_.bind("importSpriteSheet",{[this]{chooseSheetSource();},{},{}});
 menuCommands_.bind("importSpriteSheetDocument",{[this]{openSheetImport(false);},{},{}});
 menuCommands_.bind("importSpriteSheetSelection",{[this]{openSheetImport(true);},[this]{return document.selection().has_value();},{}});
 menuCommands_.bind("exportSpriteSheet",{[this]{openSpriteSheet();},{},{}});
+menuCommands_.bind("exportAllFrames",{[this]{openFramePngExport();},[this]{return document.timeline().state().frames.size()>1;},{}});
 menuCommands_.bind("exportDocument",{[this]{openDocumentExport();},{},{}});
 menuCommands_.bind("imageResize",{[this]{openImageResize();},{},{}});
 menuCommands_.bind("invertColors",{[this]{if(document.beginColorAdjustment()){ColorAdjustment a;a.kind=ColorAdjustmentKind::Invert;document.updateColorAdjustment(a);document.commitColorAdjustment();refresh();}},{},{}});
 menuCommands_.bind("gradientMap",{[this]{openGradientMap();},{},{}});
 menuCommands_.bind("quickAntiAlias",{[this]{openAntiAlias();},{},{}});
+menuCommands_.bind("cropCanvas",{[this]{cropCanvas();},[this]{return document.selection().has_value();},{}});
+menuCommands_.bind("trimCurrentFrame",{[this]{trimCanvas(false);},{},{}});
+menuCommands_.bind("trimCanvas",{[this]{trimCanvas(true);},{},{}});
 menuCommands_.bind("convolution",{[this]{openConvolution();},{},{}});
 menuCommands_.bind("adjustmentCurves",{[this]{openColorAdjustment(ColorAdjustmentKind::Curves);},{},{}});
 menuCommands_.bind("adjustmentColorBalance",{[this]{openColorAdjustment(ColorAdjustmentKind::ColorBalance);},{},{}});
@@ -3768,6 +4545,7 @@ menuCommands_.bind("toggleColorPanel",{[this]{colorPicker_->finishInteraction();
 menuCommands_.bind("toggleLayersPanel",{[this]{layersPanelOpen_=!layersPanelOpen_;refresh();},{},[this]{return columnShown(2);}});
 menuCommands_.bind("togglePalettePanel",{[this]{palettePanelOpen_=!palettePanelOpen_;if(palettePanelOpen_)docking_.select(0);refresh();saveWorkspaceSizes();},{},[this]{return palettePanelOpen_;}});
 menuCommands_.bind("togglePreviewPanel",{[this]{previewPanelOpen_=!previewPanelOpen_;if(previewPanelOpen_)docking_.select(3);refresh();saveWorkspaceSizes();},{},[this]{return previewPanelOpen_;}});
+menuCommands_.bind("relativeLuminance",{[this]{renderer_.setRelativeLuminance(!renderer_.relativeLuminance());invalidateRect(canvasViewport());},{},[this]{return renderer_.relativeLuminance();}});
 menuCommands_.bind("toggleSelectionOutline",{[this]{toggleSelectionOutline();refresh();},[this]{return bool(document.selection());},[this]{return !showSelectionOutline_;}});
 menuCommands_.bind("flipHorizontal",{[this]{document.flipContent(true);refresh();},{},{}});
 menuCommands_.bind("flipVertical",{[this]{document.flipContent(false);refresh();},{},{}});
@@ -3780,9 +4558,10 @@ menuCommands_.bind("centerContentVertical",{[this]{centerContent(false,true);},{
 menuCommands_.bind("copyMerged",{[this]{copyMergedPixels();},[this]{return !document.active() || document.floating();},{}});
 menuCommands_.bind("fillForeground",{[this]{playing_=false;document.fillSelectionOrCanvas(document.palette().primary);refresh();},[this]{return !document.active() || document.floating();},{}});
 menuCommands_.bind("freeTransform",{[this]{startFreeSelectionTransform();},[this]{return bool(document.selection());},{}});
+menuCommands_.bind("createBackgroundPresetFromSelection",{[this]{createSelectionBackgroundPreset();},[this]{return bool(document.selection());},{}});
 menuCommands_.bind("createBrushFromSelection",{[this]{createBrushFromSelection();},[this]{return bool(document.selection()) && !document.active();},{}});
 menuCommands_.bind("selectAll",{[this]{selectAllPixels();},{}, {}});
-menuCommands_.bind("deselect",{[this]{document.deselectPixels();refresh();},[this]{return bool(document.selection());},{}});
+menuCommands_.bind("deselect",{[this]{document.deselectPixels();selectionPropertiesActive_=false;selectionFreeTransform_=false;selectionPivot_.reset();selectionPivotMask_.reset();refresh();},[this]{return bool(document.selection());},{}});
 menuCommands_.bind("invertSelection",{[this]{document.invertPixels();refresh();},[this]{return bool(document.selection());},{}});
 menuCommands_.bind("copy",{[this]{if(paletteFocused_)copyPaletteColors();else if(celClipboardContext())copyTimelineCels();else if(frameSelectionExplicit_ && !paletteFocused_)copyTimelineFrames();else copySelectionPixels(false);},[this]{return paletteFocused_?!document.palette().selected.empty():celClipboardContext() || frameSelectionExplicit_ || (pixelClipboardContext() && bool(document.selection()));},{}});
 menuCommands_.bind("cut",{[this]{if(celClipboardContext())cutTimelineCels();else if(frameSelectionExplicit_){cutTimelineFrames();}else copySelectionPixels(true);},[this]{return !paletteFocused_ && (celClipboardContext()?true:frameSelectionExplicit_ || bool(document.selection()));},{}});
@@ -3824,7 +4603,7 @@ for(const auto& e:menus::catalog())if(!*e.parent){if(std::string(e.id)=="help"){
     loadWorkspaceSizes();
     try {recoveryPreferences_=recovery::loadPreferences(recoveryDirectory().parent_path()/"recovery-preferences.txt");recoveryQueue_.setIntervalMinutes(recoveryPreferences_.minutes);recoveryDue_=std::chrono::steady_clock::now()+std::chrono::milliseconds(static_cast<long long>(recoveryPreferences_.minutes*60000));}catch(const std::exception&e){status_=U"恢复设置读取失败："+unicodeText(e.what());}loadRecoveries(true);createHome();refresh();
   }
-  void requestClose() { ask(Pending::Close); }
+  void requestClose() {flushBrushSizePreferences();if(pending_==Pending::Saving){closeAfterSave_=true;return;}ask(Pending::Close);}
   void smokeSelectionCursors() {
     smoke_=true;document=Document(32,32);document.previewSelection(SelectionMask{8,8,16,16,{}});
     canvas_=gfx::Rect(100,100,256,256);zoom_=4;selectionTool_=true;eyedropperTool_=false;zoomTool_=false;selectionPivotVisible_=false;
@@ -3975,7 +4754,7 @@ for(const auto& e:menus::catalog())if(!*e.parent){if(std::string(e.id)=="help"){
     }
     auto modal=dialogDisplayBounds();
     drag(gfx::Point(modal.x+2,modal.y+modal.h/2),gfx::Point(5000,0));
-    if(modalBounds(uiLogical(bounds())).w!=240)throw std::runtime_error("Modal minimum width failed");
+    if(modalBounds(uiLogical(bounds())).w!=modalMinimumWidth())throw std::runtime_error("Modal minimum width failed");
     const auto footer=keep_->bounds();modal=dialogDisplayBounds();
     drag(gfx::Point(modal.x2()-2,modal.y2()-2),gfx::Point(40,40));
     if(keep_->bounds().y!=footer.y+40 || layerOpacityRange_->bounds().w!=modal.w-8*uiScale+40)throw std::runtime_error("Dialog controls did not reflow");
@@ -4104,6 +4883,20 @@ for(const auto& e:menus::catalog())if(!*e.parent){if(std::string(e.id)=="help"){
   void smokeDockResizeMigration(){smoke_=true;homeOpen_=false;documentOpen_=true;pending_=Pending::None;document=Document();palettePanelOpen_=colorPickerOpen_=layersPanelOpen_=true;previewPanelOpen_=false;setBounds(gfx::Rect(0,0,1280,960));refresh();smokeDockResizeHover();}
   void smokeDockResizeHover(){
     const auto saved=docking_;const bool savedPreview=previewPanelOpen_;previewPanelOpen_=false;
+    const auto originalBounds=bounds();const auto originalShare=paletteShare_;
+    for(const auto size:{gfx::Size(1296,968),gfx::Size(1920,1080),gfx::Size(1296,968)}){
+      docking_=panels::Model{};setBounds(gfx::Rect(17,23,size.w,size.h));refresh();
+      const auto l=workspaceLayout(uiLogical(clientBounds()));
+      const auto point=toDisplay(gfx::Rect(l.rightX+l.right-1,l.split-1,1,1)).origin();
+      if(sizeHandleAt(point)!=SizeDrag::ColorSplit || std::string(cursorAt(point))!="ns-resize")throw std::runtime_error("Palette split corner lost resize hit after window size change");
+      ui::MouseMessage down(ui::kMouseDownMessage,os::PointerType::Mouse,ui::kButtonLeft,ui::kKeyNoneModifier,point);down.setDisplay(display());
+      if(!dispatchPanelGesture(&down) || sizeDrag_!=SizeDrag::ColorSplit || !hasCapture())throw std::runtime_error("Palette split press did not capture before child dispatch");
+      ui::MouseMessage move(ui::kMouseMoveMessage,os::PointerType::Mouse,ui::kButtonLeft,ui::kKeyNoneModifier,point+gfx::Point(0,-34));processSizeDrag(&move);flushSizeGeometry();
+      if(workspaceLayout(uiLogical(clientBounds())).split!=l.split-17)throw std::runtime_error("Palette split movement lost physical origin");
+      for(auto cell:swatches_)if(cell->isVisible() && !paletteViewportBounds().contains(cell->bounds()))throw std::runtime_error("Palette child occludes pixels outside its viewport");
+      finishSizeDrag();
+    }
+    paletteShare_=originalShare;setBounds(originalBounds);docking_=saved;refresh();
     for(bool vertical:{true,false}){
       docking_=panels::Model{};dockColumn(0,vertical?panels::Dock::Left:panels::Dock::Bottom);dockColumn(1,vertical?panels::Dock::Left:panels::Dock::Bottom);refresh();
       const auto geometry=columnGeometry(uiLogical(clientBounds()));
@@ -4154,6 +4947,7 @@ for(const auto& e:menus::catalog())if(!*e.parent){if(std::string(e.id)=="help"){
   }
   void smokePreviewRepaintStep(int step) {
     const auto r=previewPanel_->bounds();
+    smokePreviewBefore_=r;previewPanel_->getDrawableRegion(smokePreviewDrawable_,ui::Widget::kCutTopWindowsAndUseChildArea);
     const bool resize=step>=4;
     const gfx::Point point=resize?gfx::Point(r.x2()-2,r.y2()-2):gfx::Point(r.x+20,r.y+12);
     const gfx::Point moves[]{gfx::Point(-180,-120),gfx::Point(280,40),gfx::Point(-100,180),gfx::Point(80,-100),gfx::Point(80,60),gfx::Point(-100,-80)};
@@ -4173,7 +4967,15 @@ for(const auto& e:menus::catalog())if(!*e.parent){if(std::string(e.id)=="help"){
     if(previewPanel_->geometryUpdates()!=smokePreviewUpdates_+1)throw std::runtime_error("Mouse batch deferred geometry until timer step="+std::to_string(smokePreviewStep_)+" updates="+std::to_string(previewPanel_->geometryUpdates()-smokePreviewUpdates_)+" captured="+std::to_string(previewPanel_->hasCapture())+" managed="+std::to_string(previewPanel_->managed));
     const bool software=!display()->nativeWindow()->gpuAcceleration();
     if(software && smokePreviewStep_<4 && previewPanel_->blitMoves()!=smokePreviewBlits_+1)throw std::runtime_error("Drawn preview did not reuse Aseprite software move_region");
-    if(software && smokePreviewStep_<4 && !previewPanel_->getUpdateRegion().isEmpty())throw std::runtime_error("Software translation requested unnecessary preview repaint");
+    if(software && smokePreviewStep_<4){
+      // A partly off-window preview can reveal pixels without a copy source.
+      // Only that newly exposed region may repaint; reusable pixels must blit.
+      const auto delta=previewPanel_->bounds().origin()-smokePreviewBefore_.origin();
+      gfx::Region source;previewPanel_->getDrawableRegion(source,ui::Widget::kCutTopWindowsAndUseChildArea);source.offset(-delta.x,-delta.y);
+      gfx::Region uncovered;uncovered.createSubtraction(source,smokePreviewDrawable_);uncovered.offset(delta.x,delta.y);
+      gfx::Region redundant;redundant.createSubtraction(previewPanel_->getUpdateRegion(),uncovered);
+      if(!redundant.isEmpty())throw std::runtime_error("Software translation repainted reusable preview pixels");
+    }
     std::ofstream report("drag-performance.txt",smokePreviewStep_==0?std::ios::trunc:std::ios::app);
     report<<"step="<<smokePreviewStep_<<" pointer_samples=200 geometry_updates=1 batch_flush_us="<<micros<<" software="<<software<<" blit_moves="<<previewPanel_->blitMoves()-smokePreviewBlits_<<"\n";
     // Release this synthetic gesture before yielding to the live OS queue so
@@ -4432,7 +5234,7 @@ for(const auto& e:menus::catalog())if(!*e.parent){if(std::string(e.id)=="help"){
   }
   void smokeTimelineGestures(const std::filesystem::path& directory) {
     setBounds(gfx::Rect(0,0,1280,960));document=Document(2,2);document.addFrame();document.addFrame();document.addFrame();document.addLayer();document.addLayer();refresh();
-    auto point=[&](int row,int col){const auto l=workspaceLayout(uiLogical(bounds()));return gfx::Point((l.workX+95+col*12)*uiScale,(l.layerTop+55+row*12)*uiScale);};
+    auto point=[&](int row,int col){const auto viewport=timelineFrameViewport();return viewport.origin()+gfx::Point((6+col*12)*uiScale,(6+row*12)*uiScale);};
     auto press=[&](int kind,int row,int col,gfx::Point p,int modifiers=ui::kKeyNoneModifier){ui::MouseMessage m(ui::kMouseDownMessage,os::PointerType::Mouse,ui::kButtonLeft,ui::KeyModifiers(modifiers),p);beginTimelineGesture(kind,row,col,m);};
     auto send=[&](ui::MessageType type,gfx::Point p,int modifiers=ui::kKeyNoneModifier){ui::MouseMessage m(type,os::PointerType::Mouse,ui::kButtonLeft,ui::KeyModifiers(modifiers),p);onProcessMessage(&m);};
     auto require=[](bool value,const char* message){if(!value)throw std::runtime_error(message);};
@@ -4447,7 +5249,7 @@ for(const auto& e:menus::catalog())if(!*e.parent){if(std::string(e.id)=="help"){
     {os::SurfaceLock lock(frame.get());const auto l=columnLayout(uiLogical(bounds()),2);for(int y=(l.layerTop+45)*uiScale;y<(l.layerTop+77)*uiScale;++y)for(int x=(l.workX+85)*uiScale;x<(l.workX+117)*uiScale;++x)require(timelineBorderHit({x,y})==(gfx::geta(frame->getPixel(x,y))!=0),"Sparse cel bounding selection alpha/hit mismatch");}
     auto composite=os::instance()->makeRgbaSurface(bounds().w,bounds().h);{ui::Graphics g(composite);paintChrome(g);paintTimelineGrid(g);}writeSmokeFrame(composite.get(),directory/"timeline-multiselect.bmp");
     require(!timelineBorderHit(point(0,0)),"Transparent selection center starts move");
-    const auto l=columnLayout(uiLogical(bounds()),2);const auto header=[&](int c){return gfx::Point((l.workX+95+c*12)*uiScale,(l.layerTop+43)*uiScale);};press(2,-1,0,header(0));send(ui::kMouseMoveMessage,header(2));send(ui::kMouseUpMessage,header(2));require(document.selectedFrames().size()==3,"Frame header drag did not select range");const auto frames=document.selectedFrames();press(2,-1,0,header(0),ui::kKeyAltModifier);send(ui::kMouseMoveMessage,header(3),ui::kKeyAltModifier);send(ui::kMouseUpMessage,header(3),ui::kKeyAltModifier);require(document.timeline().state().frames.size()==7,"Alt frame drag did not copy range");document.undo();refresh();require(document.timeline().state().frames.size()==4 && document.selectedFrames()==frames,"Alt frame drag not atomic undo");
+    const auto header=[&](int c){return frameHeaders_.at(c)->bounds().center();};press(2,-1,0,header(0));send(ui::kMouseMoveMessage,header(2));send(ui::kMouseUpMessage,header(2));require(document.selectedFrames().size()==3,"Frame header drag did not select range");const auto frames=document.selectedFrames();press(2,-1,0,header(0),ui::kKeyAltModifier);send(ui::kMouseMoveMessage,header(3),ui::kKeyAltModifier);send(ui::kMouseUpMessage,header(3),ui::kKeyAltModifier);require(document.timeline().state().frames.size()==7,"Alt frame drag did not copy range");document.undo();refresh();require(document.timeline().state().frames.size()==4 && document.selectedFrames()==frames,"Alt frame drag not atomic undo");
     const auto blankLayout=columnLayout(uiLogical(bounds()),2);
     for(int kind=1;kind<=3;++kind){
       if(kind==1)selectTimelineLayer(0);else if(kind==2){document.selectFrameHeader(document.timeline().state().frames[0].id);refresh();}else selectTimelineCel(0,0);
@@ -4482,7 +5284,7 @@ for(const auto& e:menus::catalog())if(!*e.parent){if(std::string(e.id)=="help"){
     const auto hoverLayout=workspaceLayout(uiLogical(bounds()));
     const int hx=hoverLayout.workX+5,hy=hoverLayout.layerTop+37;
     const std::vector<gfx::Point> samples{{hx+1,hy+13},{hx+13,hy+13},{hx+25,hy+13},
-      {hx+37,hy+13},{hx+85,hy+1},{hx+85,hy+13}};
+      {hx+37,hy+13},{hx+timelineLabelWidth()+1,hy+1},{hx+timelineLabelWidth()+1,hy+13}};
     auto renderHover=[&]{auto target=os::instance()->makeRgbaSurface(bounds().w,bounds().h);
       {ui::Graphics g(target);paintChrome(g);paintTimelineGrid(g);}return target;};
     const auto& hoverBitmap=*skin_.assets.patches.at("timeline.hover").bitmap;const auto hoverRgba=hoverBitmap.pixels[(hoverBitmap.height/2)*hoverBitmap.width+hoverBitmap.width/2];const auto hoverColor=gfx::rgba(hoverRgba&255,(hoverRgba>>8)&255,(hoverRgba>>16)&255,hoverRgba>>24);
@@ -4507,7 +5309,7 @@ for(const auto& e:menus::catalog())if(!*e.parent){if(std::string(e.id)=="help"){
     document.setLayerAutoLinkAnimationCels(document.layer().id,true);document.addFrame();document.addFrame();
     document.setLayerAutoLinkAnimationCels(document.layer().id,false);document.addFrame(true);refresh();updatePaletteMouse({});
     auto linkedImage=renderHover();
-    const auto linkedLayout=workspaceLayout(uiLogical(bounds()));const int markerX=linkedLayout.workX+92,markerY=linkedLayout.layerTop+55;
+    const auto markerCenter=uiLogical(frameCells_[0]->bounds()).center();const int markerX=markerCenter.x-3,markerY=markerCenter.y;
     {
       os::SurfaceLock lock(linkedImage.get());
       const auto marker=linkedImage->getPixel((markerX+3)*uiScale,markerY*uiScale);
@@ -4586,7 +5388,7 @@ for(const auto& e:menus::catalog())if(!*e.parent){if(std::string(e.id)=="help"){
         }
       }
       paletteMousePosition_.reset();
-      if(mode==0 && (box.x!=workspaceLayout(uiLogical(bounds())).workX+41 || box.w!=48+3*12+1))throw std::runtime_error("Layer selection must start after auto-link and cover name plus actual frames");
+      if(mode==0 && (box.x!=workspaceLayout(uiLogical(bounds())).workX+41 || box.w!=timelineLabelWidth()-36+3*12+1))throw std::runtime_error("Layer selection must start after auto-link and cover name plus actual frames");
       if(mode==1 && (box.w!=25 || box.h!=37))throw std::runtime_error("Selected frames outline does not cover merged columns");
       if(mode==2 && (box.w!=13 || box.h!=13))throw std::runtime_error("Cel outline does not include shared grid border");
       auto base=os::instance()->makeRgbaSurface(1280,960);auto selected=os::instance()->makeRgbaSurface(1280,960);
@@ -4628,7 +5430,7 @@ for(const auto& e:menus::catalog())if(!*e.parent){if(std::string(e.id)=="help"){
       for(auto b:timelineInactive_)paint(b);paint(layerProperties_);
       for(auto b:layerRows_)paint(b);for(auto b:layerEyes_)paint(b);for(auto b:layerLocks_)paint(b);
       for(auto b:frameHeaders_)paint(b);for(auto b:frameCells_)paint(b);
-      if(layerEyes_[layerScroll_]->bounds().x!=timelineInactive_[0]->bounds().x)
+      if(layerEyes_[0]->bounds().x!=timelineInactive_[0]->bounds().x)
         throw std::runtime_error("Timeline and toolbar left edges differ");
       if(frameHeaders_[0]->bounds().y-timelineInactive_[0]->bounds().y2()!=uiGap*uiScale)
         throw std::runtime_error("Timeline toolbar bottom gap");
@@ -4649,18 +5451,32 @@ for(const auto& e:menus::catalog())if(!*e.parent){if(std::string(e.id)=="help"){
       {ui::Graphics g(edge);UiPaintScale scale(g);skin_.draw(g,"timeline.line",gfx::Rect(0,0,1,1));}
       {os::SurfaceLock actual(target.get()),expected(edge.get());
         const auto ink=edge->getPixel(0,0);
-        for(int row=0;row<=rows;++row)for(int dx:{0,12,24,36,84,96,108,120})
+        for(int row=0;row<=rows;++row)for(int dx:{0,12,24,36,timelineLabelWidth(),timelineLabelWidth()+12,timelineLabelWidth()+24,timelineLabelWidth()+36})
           if(target->getPixel((x+dx)*uiScale,(y+row*12)*uiScale)!=ink)
-            throw std::runtime_error("Layer grid intersection missing");
+            throw std::runtime_error("Layer grid intersection missing width="+std::to_string(width)+" count="+std::to_string(count)+" row="+std::to_string(row)+" dx="+std::to_string(dx)+" x="+std::to_string(x)+" y="+std::to_string(y));
         for(int row=1;row<=rows+1;++row)
-          if(!timelineHorizontal_->bounds().contains(gfx::Point((x+130)*uiScale,(y+row*12)*uiScale)) && target->getPixel((x+130)*uiScale,(y+row*12)*uiScale)!=target->getPixel((x+130)*uiScale,(y+row*12-1)*uiScale))
+          if(!timelineHorizontal_->bounds().contains(gfx::Point((x+timelineLabelWidth()+46)*uiScale,(y+row*12)*uiScale)) && target->getPixel((x+timelineLabelWidth()+46)*uiScale,(y+row*12)*uiScale)!=target->getPixel((x+timelineLabelWidth()+46)*uiScale,(y+row*12-1)*uiScale))
             throw std::runtime_error("Unused timeline area has horizontal separators");
         for(int row=0;row<rows;++row)for(int dy=1;dy<12;++dy){
-          const auto actual=layerAutoLinks_[row+layerScroll_]->bounds();const auto sample=gfx::Point(actual.x,actual.y+dy*uiScale);
+          const auto actual=layerAutoLinks_[row]->bounds();const auto sample=gfx::Point(actual.x,actual.y+dy*uiScale);
           if(timelineRowViewport().contains(sample) && target->getPixel(sample.x,sample.y)!=ink)throw std::runtime_error("Layer auto-link separator missing");
         }
       }
       writeSmokeFrame(target.get(),directory/("layers-"+std::to_string(width)+"-"+std::to_string(count)+".bmp"));
+    }
+    document=Document(1,1);for(int i=1;i<60;++i)document.addFrame();refresh();timelineSelectionGuidesVisible_=false;
+    const auto metrics=timelineScrollMetrics(columnLayout(uiLogical(clientBounds()),2));
+    for(int remainder:{1,7,13}){
+      const int offset=(metrics.contentWidth-metrics.width)/(12*uiScale)*(12*uiScale)-12*uiScale+remainder;
+      timelineHorizontal_->changed(offset);
+      auto image=os::instance()->makeRgbaSurface(bounds().w,bounds().h);image->clear();
+      {ui::Graphics g(image);paintChrome(g);paintTimelineGrid(g);}
+      const auto viewport=timelineFrameViewport();const int end=viewport.x+(60-frameScroll_)*12*uiScale-frameScrollRemainder_;
+      for(int y:{viewport.y-12*uiScale,viewport.y,viewport.y+12*uiScale}){
+        if(image->getPixel(end,y)!=gfx::rgba(0,0,0))throw std::runtime_error("Last timeline cell lost its material edge");
+        if(image->getPixel(end+uiScale,y)!=image->getPixel(end+5*uiScale,y))throw std::runtime_error("Timeline cell frame extends into right blank space");
+      }
+      writeSmokeFrame(image.get(),directory/("timeline-cell-end-"+std::to_string(remainder)+".bmp"));
     }
   }
   void smokeSelectionDisplay(){
@@ -4678,7 +5494,7 @@ for(const auto& e:menus::catalog())if(!*e.parent){if(std::string(e.id)=="help"){
     smoke_=true;homeOpen_=false;documentOpen_=true;pending_=Pending::None;playing_=false;setBounds(gfx::Rect(0,0,1280,960));document=Document(1,1);document.addLayer();document.addLayer();const auto layers=document.timeline().state().layers;document.selectTimelineLayer(layers[0].id);document.selectTimelineLayer(layers[1].id,1);document.selectLayer(layers[2].id);refresh();const auto selected=document.timelineSelection().layers;const auto history=document.historySize();prepareLayerContext(layers[0].id);if(document.timelineSelection().layers!=selected || document.layer().id!=layers[2].id || document.historySize()!=history)throw std::runtime_error("Layer context preserves selected members and activity");
     PixelMenu menu(skin_);buildLayerContextMenu(&menu,1);PixelMenuItem* properties=nullptr;for(auto child:menu.children())if(auto item=dynamic_cast<PixelMenuItem*>(child);item && item->icon=="properties")properties=item;if(!properties || !properties->isEnabled())throw std::runtime_error("Layer context properties enabled");document.selectTimelineLayer(layers[2].id);properties->Click();paletteInput_->setText("context batch");paletteInput_->Change();resolve(false);if(document.timeline().state().layers[0].name!=U"context batch" || document.timeline().state().layers[1].name!=U"context batch" || document.timeline().state().layers[2].name!=layers[2].name || document.historySize()!=history+1)throw std::runtime_error("Layer context frozen property targets");document.undo();if(document.timeline().state().layers[0].name!=layers[0].name || document.timeline().state().layers[1].name!=layers[1].name)throw std::runtime_error("Layer context property undo");document.redo();if(document.timeline().state().layers[0].name!=U"context batch" || document.timeline().state().layers[1].name!=U"context batch")throw std::runtime_error("Layer context property redo");prepareLayerContext(layers[0].id);if(document.timelineSelection().layers!=std::vector<std::string>{layers[0].id} || document.layer().id!=layers[0].id)throw std::runtime_error("Layer context replaces absent member");document=Document();refresh();
   }
-  void smokeCurrentMigrationBatch(){ui::Manager::getDefault()->dispatchMessages();smokeTimelineGifDrop();smokeGradientMap();}
+  void smokeCurrentMigrationBatch(){ui::Manager::getDefault()->dispatchMessages();smokeCanvasCrop();smokeBackgroundPreset();smokeLayerQuickActions();}
   void smokeTransformEnterHistory() {
     smoke_=true;homeOpen_=false;documentOpen_=true;paletteFocused_=false;frameSelectionExplicit_=false;setBounds(gfx::Rect(0,0,1280,960));requestFocus();
     auto key=[&](ui::KeyScancode code,ui::KeyModifiers modifiers=ui::kKeyNoneModifier){ui::KeyMessage event(ui::kKeyDownMessage,code,modifiers,0,0);onProcessMessage(&event);};
@@ -4731,7 +5547,7 @@ for(const auto& e:menus::catalog())if(!*e.parent){if(std::string(e.id)=="help"){
     pointer(ui::kMouseDownMessage,1,1);pointer(ui::kMouseMoveMessage,5,1);if(document.selection() || document.historySize()!=0 || document.dirty())throw std::runtime_error("Brush preview published selection/history");pointer(ui::kMouseUpMessage,5,1);if(!selectionContains(document.selection(),3,1) || document.historySize()!=1 || document.pixels()!=brushPixels || document.dirty())throw std::runtime_error("Brush commit UI");
     pointer(ui::kMouseDownMessage,3,1,true);pointer(ui::kMouseUpMessage,3,1,true);if(selectionContains(document.selection(),3,1) || !selectionContains(document.selection(),2,1) || document.historySize()!=2)throw std::runtime_error("Brush right subtraction UI");
     const auto brushHistory=document.historySize();pointer(ui::kMouseDownMessage,1,5);pointer(ui::kMouseMoveMessage,5,5);key(ui::kKeyEsc);if(selectionContains(document.selection(),3,5) || document.historySize()!=brushHistory || document.pixels()!=brushPixels)throw std::runtime_error("Brush cancel UI");
-    document.deselectPixels();refresh();useSelectionTool(5);key(ui::kKey3,ui::kKeyCtrlModifier);key(ui::kKeyClosebrace);if(brushProfiles_[0].shape!=BrushShape::Line || brushProfiles_[0].size!=2 || selectionBrushAngleInput_->hasFlags(ui::HIDDEN))throw std::runtime_error("Brush property shortcuts UI shape="+std::to_string(int(brushProfiles_[0].shape))+" size="+std::to_string(brushProfiles_[0].size)+" angleVisible="+std::to_string(selectionBrushAngleInput_->isVisible()));brushProfiles_[0]={};selectionBrushAngle_=0;
+    document.deselectPixels();selectionPropertiesActive_=false;selectionFreeTransform_=false;selectionPivot_.reset();selectionPivotMask_.reset();refresh();useSelectionTool(5);key(ui::kKey3,ui::kKeyCtrlModifier);key(ui::kKeyClosebrace);if(brushProfiles_[0].shape!=BrushShape::Line || brushProfiles_[0].size!=2 || selectionBrushAngleInput_->hasFlags(ui::HIDDEN))throw std::runtime_error("Brush property shortcuts UI shape="+std::to_string(int(brushProfiles_[0].shape))+" size="+std::to_string(brushProfiles_[0].size)+" angleVisible="+std::to_string(selectionBrushAngleInput_->isVisible()));brushProfiles_[0]={};selectionBrushAngle_=0;
 
     document=Document(32,24);document.beginStroke({6,6},0x80443322);document.commitStroke();document.beginStroke({13,11},0xff778899);document.commitStroke();document.commitSelection({},SelectionMask{6,6,8,6,{}});document.markSaved();fitCanvas();refresh();useSelectionTool(0);selectionRotSprite_=false;const auto transformPixels=document.pixels();const auto transformHistory=document.historySize();
     auto transformPointer=[&](ui::MessageType type,double x,double y,ui::KeyModifiers modifiers=ui::kKeyNoneModifier){ui::MouseMessage mouse(type,os::PointerType::Mouse,ui::kButtonLeft,modifiers,gfx::Point(canvas_.x+int(std::round(x*canvasScale())),canvas_.y+int(std::round(y*canvasScale()))));onProcessMessage(&mouse);};
@@ -4803,6 +5619,27 @@ for(const auto& e:menus::catalog())if(!*e.parent){if(std::string(e.id)=="help"){
 
   }
   void smokeImageBrush(){smoke_=true;document=Document(3,1);homeOpen_=false;documentOpen_=true;PatternBrush b;b.width=2;b.height=1;b.coverage={255,255};b.colors={0x800000ff,0xff00ff00};document.beginStroke({1,0},0xffffffff,{},&b);if(document.pixels()[0]!=b.colors[0] || document.pixels()[1]!=b.colors[1])throw std::runtime_error("Image brush actual RGBA stamp");document.cancelStroke();if(document.historySize()!=0 || document.dirty() || document.pixels()[0])throw std::runtime_error("Image brush cancel");ProjectBrushResource resource;resource.metadata.id="smoke-project-brush";resource.metadata.name="smoke";resource.metadata.width=2;resource.metadata.height=1;resource.brush=b;document.setImportedProjectBrushes({resource});selectFillLibraryBrush("project:smoke-project-brush",false,false);if(fillPattern_.brushes.size()!=1||fillPattern_.brushes[0].colors!=b.colors)throw std::runtime_error("Project brush UI selection");pencilImageBrushId_="project:smoke-project-brush";resolvePencilImageBrush();if(!pencilImageBrush_)throw std::runtime_error("Pencil project resource selection");brushProfiles_[0]={};eraser_=false;handTool_=selectionTool_=eyedropperTool_=gradientTool_=shapeTool_=false;fillTool_=false;smoke_=true;setBounds(gfx::Rect(0,0,1280,960));fitCanvas();refresh();auto at=gfx::Point(canvas_.x+int(1.5*canvasScale()),canvas_.y+int(.5*canvasScale()));ui::MouseMessage down(ui::kMouseDownMessage,os::PointerType::Mouse,ui::kButtonLeft,ui::kKeyNoneModifier,at);onProcessMessage(&down);enableFlags(ui::HAS_CAPTURE);ui::MouseMessage up(ui::kMouseUpMessage,os::PointerType::Mouse,ui::kButtonLeft,ui::kKeyNoneModifier,at);onProcessMessage(&up);disableFlags(ui::HAS_CAPTURE);if(document.pixels()[0]!=b.colors[0]||document.pixels()[1]!=b.colors[1]||document.historySize()!=1)throw std::runtime_error("Image brush pointer stroke");document.undo();if(document.pixels()[0]!=0)throw std::runtime_error("Image brush pointer undo");fillLibrarySelection_={};fillPattern_.brushes.clear();pencilImageBrushId_.clear();pencilImageBrush_.reset();document=Document(4,2);document.beginStroke({1,0},0x80332211);document.commitStroke();document.previewSelection(SelectionMask{1,0,2,2,{1,0,1,1}});refresh();auto captureHistory=document.historySize();if(!menuCommands_.invoke("createBrushFromSelection") || document.selection() || !pencilImageBrush_ || pencilImageBrush_->sourceX!=1 || pencilImageBrush_->colors!=std::vector<Pixel>({0x80332211,0,0,0}) || selectionTool_ || fillTool_ || document.historySize()!=captureHistory)throw std::runtime_error("Selection brush menu saves and activates pencil");PatternBrushLibrary captureLibrary(fillBrushLibraryDirectory().parent_path().parent_path()/"pattern-brush-library-fixture");auto captures=captureLibrary.list();auto capturedItem=std::find_if(captures.brushes.begin(),captures.brushes.end(),[this](const auto& item){return item.id==pencilImageBrushId_;});if(capturedItem==captures.brushes.end() || capturedItem->sourceX!=1 || importPatternBrush(std::filesystem::u8path(capturedItem->filePath)).brush.colors!=pencilImageBrush_->colors)throw std::runtime_error("Selection brush saved PNG metadata");auto capturedId=pencilImageBrushId_;document.previewSelection(SelectionMask{0,1,4,1,{}});refresh();menuCommands_.invoke("createBrushFromSelection");if(!document.selection() || pencilImageBrushId_!=capturedId || document.historySize()!=captureHistory)throw std::runtime_error("Empty selection brush preserves state");pencilImageBrushId_.clear();pencilImageBrush_.reset();document=Document();refresh();}
+  // Register any scrollable viewport here; all gestures use one controller.
+  void registerScrollDrag(std::function<gfx::Rect()> bounds,SpaceDragScroll::Target target){scrollDragRegions_.push_back({std::move(bounds),std::move(target)});}
+  void observeScrollDragKey(ui::Message* msg){
+    if(msg->type()!=ui::kKeyDownMessage && msg->type()!=ui::kKeyUpMessage)return;
+    auto key=static_cast<ui::KeyMessage*>(msg);if(key->scancode()!=ui::kKeySpace)return;
+    panelScrollSpace_=msg->type()==ui::kKeyDownMessage && !dynamic_cast<ui::Entry*>(ui::Manager::getDefault()->getFocus());updateNavigationCursor();
+  }
+  bool processScrollDrag(ui::Message* msg){
+    if(panelScrollDrag_.active()){
+      if(msg->type()==ui::kFocusLeaveMessage || !hasCapture() || pending_!=Pending::None || homeOpen_){panelScrollDrag_.finish();panelScrollSpace_=false;if(hasCapture())releaseMouse();updateNavigationCursor();return false;}
+      if(msg->type()==ui::kMouseMoveMessage){auto p=static_cast<ui::MouseMessage*>(msg)->position();panelScrollDrag_.move({p.x,p.y});return true;}
+      if(msg->type()==ui::kMouseUpMessage){panelScrollDrag_.finish();releaseMouse();updateNavigationCursor();return true;}
+    }
+    if(msg->type()!=ui::kMouseDownMessage || pending_!=Pending::None || homeOpen_ || hasCapture())return false;
+    auto mouse=static_cast<ui::MouseMessage*>(msg);auto p=mouse->position();
+    const int floating=topFloatingColumnAt(p);
+    for(const auto& region:scrollDragRegions_){if(!region.bounds().contains(p))continue;
+      if(floating>=0){const auto r=columnGeometry(uiLogical(bounds())).panel[floating];if(!toDisplay(gfx::Rect(r.x,r.y,r.w,r.h)).contains(region.bounds().center()))continue;}
+      if(panelScrollDrag_.begin({p.x,p.y},mouse->middle(),mouse->left(),panelScrollSpace_,region.target)){captureMouse();updateNavigationCursor();return true;}
+    }return false;
+  }
   void observeModifierRelease(ui::Message* msg){
     if(msg->type()!=ui::kKeyUpMessage)return;
     brushPreviewShift_=msg->shiftPressed();invalidateRect(canvasViewport());
@@ -4810,6 +5647,20 @@ for(const auto& e:menus::catalog())if(!*e.parent){if(std::string(e.id)=="help"){
     if(static_cast<ui::KeyMessage*>(msg)->scancode()==ui::kKeySpace)spaceHeld_=false;
     if(modifierBrushSize_ && !modifierBrushSize_->pressed && (!(msg->ctrlPressed() || msg->cmdPressed()) || !msg->altPressed()))finishModifierBrushSize();
     selectionShift_=msg->shiftPressed();selectionCtrl_=msg->ctrlPressed() || msg->cmdPressed();updateNavigationCursor();
+  }
+  void smokePanelScroll(){
+    smoke_=true;homeOpen_=false;documentOpen_=true;setBounds(gfx::Rect(0,0,1000,700));document=Document();
+    for(int i=0;i<24;++i)document.addLayer();for(int i=0;i<60;++i)document.addFrame();refresh();
+    auto send=[&](ui::MessageType type,gfx::Point at,ui::MouseButton button){ui::MouseMessage m(type,os::PointerType::Mouse,button,ui::kKeyNoneModifier,at);return processScrollDrag(&m);};
+    frameScroll_=layerScroll_=frameScrollRemainder_=layerScrollRemainder_=0;layoutLayers();
+    const auto history=document.historySize();const auto selection=document.timelineSelection();auto at=timelineRowViewport().center();
+    if(!send(ui::kMouseDownMessage,at,ui::kButtonMiddle))throw std::runtime_error("Timeline middle pan not captured");enableFlags(ui::HAS_CAPTURE);
+    if(std::string(cursorAt(at))!="grabbing")throw std::runtime_error("Pan cursor missing");send(ui::kMouseMoveMessage,at-gfx::Point(37,29),ui::kButtonMiddle);
+    if(frameScroll_*12*uiScale+frameScrollRemainder_!=37 || layerScroll_*12*uiScale+layerScrollRemainder_!=29)throw std::runtime_error("Timeline pan pixel offsets");send(ui::kMouseUpMessage,at,ui::kButtonMiddle);disableFlags(ui::HAS_CAPTURE);
+    if(panelScrollDrag_.active() || document.historySize()!=history || document.timelineSelection().layers!=selection.layers)throw std::runtime_error("Panel pan changed selection/history");
+    dockColumn(0,panels::Dock::Floating);auto& group=docking_.groups[docking_.groupOf(0)];group.floating={220,100,100,130};group.floatingArea=floatingArea(uiLogical(bounds()));swatchSize_=4;refresh();paletteScrollPixels_=0;layoutPalette(0);at=paletteViewportBounds().center();panelScrollSpace_=true;
+    if(!send(ui::kMouseDownMessage,at,ui::kButtonLeft))throw std::runtime_error("Palette Space pan not captured");enableFlags(ui::HAS_CAPTURE);panelScrollSpace_=false;
+    send(ui::kMouseMoveMessage,at-gfx::Point(0,31),ui::kButtonLeft);if(paletteScrollPixels_!=31)throw std::runtime_error("Palette pan interrupted on Space release");send(ui::kMouseUpMessage,at,ui::kButtonLeft);disableFlags(ui::HAS_CAPTURE);
   }
   void smokeBrushPreview(){
     smoke_=true;setBounds(gfx::Rect(0,0,1280,960));document=Document(16,12);documentOpen_=true;homeOpen_=false;pending_=Pending::None;
@@ -4828,6 +5679,98 @@ for(const auto& e:menus::catalog())if(!*e.parent){if(std::string(e.id)=="help"){
     eraser_=true;brushProfiles_[1]={3,100,BrushShape::Round};updatePaletteMouse(point(0,0));if(same(base,render()))throw std::runtime_error("Eraser outline missing at canvas edge");eraser_=false;
     brushPreviewShift_=true;brushLineAnchors_[0]=BrushLineAnchor{{2,2},document.identity(),document.revision(),document.layer().id,document.frame().id,{},false};updatePaletteMouse(point(12,7));auto line=render();brushPreviewShift_=false;if(same(line,render()))throw std::runtime_error("Shift connected line preview missing");
     brushLineAnchors_[0].reset();updatePaletteMouse({});
+  }
+  void smokeBrushPreviewPerformance(){
+    smokeBrushPreview();document=Document(256,256);fitCanvas();refresh();ensureContentCache();
+    const auto directory=std::filesystem::path("build")/"test-tmp";std::filesystem::create_directories(directory);
+    std::ofstream report(directory/"brush-preview-performance.txt");
+    auto point=[&](int x,int y){return gfx::Point(canvas_.x+int((x+.5)*canvasScale()),canvas_.y+int((y+.5)*canvasScale()));};
+    auto paint=[&](os::SurfaceRef surface,gfx::Rect clip){if(clip.isEmpty())return;ui::Graphics g(surface);g.saveClip();g.clipRect(clip);paintCanvas(g);g.restoreClip();};
+    auto full=os::instance()->makeRgbaSurface(bounds().w,bounds().h),local=os::instance()->makeRgbaSurface(bounds().w,bounds().h);
+    auto verify=[&](const char* name){
+      paletteMousePosition_.reset();full->clear();local->clear();paint(full,canvasViewport());paint(local,canvasViewport());
+      for(auto position:std::vector<std::optional<gfx::Point>>{point(100,100),point(101,100),point(170,140),point(0,0),point(255,255),{}}){
+        const auto old=brushPreviewDamage(paletteMousePosition_);paletteMousePosition_=position;const auto next=brushPreviewDamage(position);
+        brushPreviewBatch_=true;paint(local,old);paint(local,next);brushPreviewBatch_=false;paint(full,canvasViewport());brushPreviewBatch_=true;
+        for(int y=0;y<bounds().h;++y)for(int x=0;x<bounds().w;++x)if(full->getPixel(x,y)!=local->getPixel(x,y))throw std::runtime_error(std::string("Partial brush repaint mismatch: ")+name+" at "+std::to_string(x)+","+std::to_string(y)+" full="+std::to_string(full->getPixel(x,y))+" local="+std::to_string(local->getPixel(x,y))+" next="+std::to_string(next.x)+","+std::to_string(next.y)+","+std::to_string(next.w)+","+std::to_string(next.h));
+      }
+    };
+    const auto uploads=renderer_.uploads();const auto revision=document.contentRevision();const auto history=document.historySize();
+    for(bool erase:{false,true})for(int size:{1,16,64}){
+      eraser_=erase;brushProfiles_[erase?1:0]={size,50,BrushShape::Round};
+      verify(erase?"eraser":"pencil");
+      double elapsed[2]{};std::uint64_t area[2]{};
+      for(int mode=0;mode<2;++mode){brushPreviewBatch_=mode!=0;paletteMousePosition_=point(100,100);paint(local,canvasViewport());
+        const auto start=std::chrono::steady_clock::now();
+        for(int i=0;i<120;++i){const auto old=brushPreviewDamage(paletteMousePosition_);paletteMousePosition_=point(100+i%30,100+i%7);const auto next=brushPreviewDamage(paletteMousePosition_);
+          if(!mode){paint(local,canvasViewport());area[mode]+=std::uint64_t(canvasViewport().w)*canvasViewport().h;}
+          else{const auto combined=old|next;paint(local,combined);area[mode]+=std::uint64_t(combined.w)*combined.h;}
+        }
+        elapsed[mode]=std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-start).count()/120;
+      }
+      report<<(erase?"eraser":"pencil")<<" size="<<size<<" full_ms="<<elapsed[0]<<" partial_ms="<<elapsed[1]<<" full_pixels="<<area[0]/120<<" partial_pixels="<<area[1]/120<<std::endl;
+    }
+    eraser_=true;for(auto shape:{BrushShape::Square,BrushShape::Line})for(int size:{2,3,64}){brushProfiles_[1]={size,100,shape};verify("eraser boundary cache");}
+    eraser_=false;brushProfiles_[0]={16,50,BrushShape::Square};
+    for(double scale:{.25,1.5,8.0}){setCanvasZoom(canvasViewport().center(),scale);verify("fractional zoom");}
+    fitCanvas();
+    PatternBrush image;image.width=11;image.height=5;image.coverage.assign(55,255);image.colors.assign(55,0x80123456);pencilImageBrush_=image;pencilImageBrushAngle_=37;
+    verify("rotated image");eraser_=true;verify("image eraser");eraser_=false;pencilImageBrush_.reset();
+    brushPreviewShift_=true;brushLineAnchors_[0]=BrushLineAnchor{{2,2},document.identity(),document.revision(),document.layer().id,document.frame().id,{},false};verify("connected line");brushPreviewShift_=false;brushLineAnchors_[0].reset();
+    document.symmetryAxes.horizontal=true;verify("symmetry");document.symmetryAxes={};
+    if(document.contentRevision()!=revision || document.historySize()!=history || document.dirty() || renderer_.uploads()!=uploads)throw std::runtime_error("Hover performance replay mutated document/cache");
+    std::vector<Pixel> backdrop(256*256);for(std::size_t i=0;i<backdrop.size();++i)backdrop[i]=Pixel(i%256)<<24|0x7031c9;
+    document=Document::fromImage(256,256,std::move(backdrop),U"preview alpha fixture");document.addLayer();refresh();ensureContentCache();
+    image.width=16;image.height=16;image.coverage.assign(256,255);image.colors.resize(256);for(int i=0;i<256;++i)image.colors[i]=Pixel(i)<<24|0x34a9e3;
+    pencilImageBrush_=image;pencilImageBrushAngle_=0;verify("all alpha multi-layer image");pencilImageBrush_.reset();
+    // Exercise the actual invalidation path as well as the framebuffer oracle.
+    manager()->dispatchMessages();updatePaletteMouse(point(100,100));manager()->dispatchMessages();updatePaletteMouse(point(101,100));
+    if(!getUpdateRegion().contains(point(101,100)) || getUpdateRegion().bounds().w>=canvasViewport().w || getUpdateRegion().bounds().h>=canvasViewport().h)throw std::runtime_error("Hover damage is empty or still invalidates full canvas");
+    updatePaletteMouse({});report<<"pixel_equivalence=pass\n";
+  }
+  void smokeModifierBrushPerformance(){
+    smoke_=true;homeOpen_=false;documentOpen_=true;pending_=Pending::None;playing_=false;
+    selectionTool_=shapeTool_=gradientTool_=fillTool_=handTool_=zoomTool_=eyedropperTool_=eraser_=spaceHeld_=eyedropperHeld_=false;
+    pencilImageBrush_.reset();paletteMousePosition_.reset();document=Document(256,256);fitCanvas();refresh();
+    auto drain=[&]{manager()->flushRedraw();manager()->dispatchMessages();};drain();invalidate();drain();
+    std::filesystem::create_directories("build/test-tmp");std::ofstream report("build/test-tmp/modifier-brush-performance.txt");
+    auto require=[](bool ok,const char* text){if(!ok)throw std::runtime_error(text);};
+    const auto ca=ui::KeyModifiers(ui::kKeyCtrlModifier|ui::kKeyAltModifier);
+    const auto origin=canvasViewport().center();
+    auto move=[&](gfx::Point at,ui::KeyModifiers mods){updatePaletteMouse(at);ui::MouseMessage m(ui::kMouseMoveMessage,os::PointerType::Mouse,ui::kButtonNone,mods,at);onProcessMessage(&m);};
+    auto wheel=[&](int delta){updatePaletteMouse(origin);ui::MouseMessage m(ui::kMouseWheelMessage,os::PointerType::Mouse,ui::kButtonNone,ui::kKeyCtrlModifier,origin,gfx::Point(0,delta));onProcessMessage(&m);};
+    auto pixels=[&]{auto surface=display()->nativeWindow()->surface();os::SurfaceLock lock(surface);std::vector<gfx::Color> result;result.reserve(surface->width()*surface->height());for(int y=0;y<surface->height();++y)for(int x=0;x<surface->width();++x)result.push_back(surface->getPixel(x,y));return result;};
+    const auto revision=document.contentRevision(),history=document.historySize();const auto uploads=renderer_.uploads();const auto zoom=zoom_;
+    for(bool erase:{false,true})for(bool dragging:{false,true}){
+      eraser_=erase;
+      for(int baseline=1;baseline>=0;--baseline){
+        finishModifierBrushSize();brushProfiles_[erase?1:0]={16,50,BrushShape::Round};layoutToolOptions();updatePaletteMouse(origin);invalidate();drain();
+        if(dragging){move(origin,ca);drain();}
+        const auto layouts=toolOptionsLayouts_,chrome=chromePaints_,writes=brushPreferenceWrites_;
+        const auto start=std::chrono::steady_clock::now();
+        for(int i=0;i<20;++i){
+          if(dragging)move(origin+gfx::Point((i%2?0:8)*4*uiScale,i%3),ca);else wheel(i%2?1:-1);
+          if(baseline){layoutToolOptions();invalidateRect(canvasViewport());}drain();
+        }
+        report<<(erase?"eraser":"pencil")<<" input="<<(dragging?"ctrl_alt_move":"ctrl_wheel")<<" mode="<<(baseline?"full":"local")<<" mean_ms="<<std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-start).count()/20<<" layouts="<<toolOptionsLayouts_-layouts<<" chrome_paints="<<chromePaints_-chrome<<std::endl;
+        if(!baseline){require(toolOptionsLayouts_==layouts,"Modifier resize still lays out toolbar");require(chromePaints_==chrome,"Modifier resize repainted unrelated chrome");}
+        require(brushPreferenceWrites_==writes,"Modifier input wrote preferences synchronously");
+        // Flush must persist the final model once, including no-keyup wheel bursts.
+        flushBrushSizePreferences();require(brushPreferenceWrites_==writes+1 && !brushPreferencesPending_,"Resize burst did not flush exactly once");flushBrushSizePreferences();require(brushPreferenceWrites_==writes+1,"Resize burst flushed twice");
+        finishModifierBrushSize();
+      }
+      // Compare native framebuffer after actual events with a forced full redraw.
+      for(int size:{1,64,2,32,1}){
+        if(dragging){finishModifierBrushSize();brushProfiles_[erase?1:0].size=size==64?63:size+1;layoutToolOptions();updatePaletteMouse(origin);invalidate();drain();move(origin,ca);move(origin+gfx::Point((size-brushProfiles_[erase?1:0].size)*4*uiScale,0),ca);require(brushProfiles_[erase?1:0].size==size,"Pointer resize target mismatch");}
+        else {while(brushProfiles_[erase?1:0].size!=size)wheel(brushProfiles_[erase?1:0].size<size?-1:1);}
+        drain();const auto local=pixels();invalidate();drain();require(local==pixels(),"Modifier resize leaves stale pixels or toolbar differs from full repaint");finishModifierBrushSize();
+      }
+    }
+    // Shape changes at size 1 retain the selection brush angle field semantics.
+    eraser_=false;selectionTool_=true;selectionKind_=5;selectionPropertiesActive_=false;brushProfiles_[0]={1,100,BrushShape::Square};layoutToolOptions();setModifierBrushSize(2);require(selectionBrushAngleInput_->isVisible(),"Selection brush angle was not revealed");setModifierBrushSize(1);require(!selectionBrushAngleInput_->isVisible(),"Selection brush angle was not hidden");selectionTool_=false;
+    brushProfiles_[0].size=64;flushBrushSizePreferences();const auto writes=brushPreferenceWrites_;wheel(-1);require(!brushPreferencesPending_ && brushPreferenceWrites_==writes,"Clamped wheel schedules a redundant write");
+    require(document.contentRevision()==revision && document.historySize()==history && !document.dirty() && renderer_.uploads()==uploads && zoom_==zoom,"Modifier sizing changed artwork, upload or zoom");
+    report<<"native_framebuffer_equivalence=pass\nmodel_and_persistence=pass\n";flushBrushSizePreferences();
   }
   void smokeModifiers(){
     smoke_=true;setBounds(gfx::Rect(0,0,1280,960));document=Document(32,24);homeOpen_=false;documentOpen_=true;paletteFocused_=false;requestFocus();fitCanvas();refresh();
@@ -4875,6 +5818,110 @@ for(const auto& e:menus::catalog())if(!*e.parent){if(std::string(e.id)=="help"){
     auto surface=os::instance()->makeRgbaSurface(bounds().w,bounds().h);{ui::Graphics g(surface);ui::PaintEvent event(this,&g);onPaint(event);}writeSmokeFrame(surface.get(),directory/"sampling-zoom-smoke.bmp");
     pointer(ui::kMouseUpMessage,ui::kButtonLeft,anchor);require(!eyedropperLensSurface_ && !eyedropperGesture_.active() && !document.dirty());
   }
+  void smokeLargeTimelinePerformance(){
+    smoke_=true;homeOpen_=false;documentOpen_=true;pending_=Pending::None;playing_=false;
+    layersPanelOpen_=true;previewPanelOpen_=false;paletteMousePosition_.reset();setBounds({0,0,1280,960});
+    auto require=[](bool value,const char* message){if(!value)throw std::runtime_error(message);};
+    std::filesystem::create_directories("build/test-tmp");std::ofstream report("build/test-tmp/large-timeline-performance.txt");
+    timeline::State state;constexpr int layerCount=256,frameCount=1000;
+    for(int r=0;r<layerCount;++r)state.layers.push_back({"L"+std::to_string(r),U"Layer"});
+    for(int c=0;c<frameCount;++c)state.frames.push_back({"F"+std::to_string(c),100});
+    for(int r=0;r<layerCount;++r)for(int c=0;c<frameCount;++c){timeline::Cel cel;cel.layerId=state.layers[r].id;cel.frameId=state.frames[c].id;cel.id=cel.layerId+":"+cel.frameId;
+      if(c)cel.linkedCelId=cel.layerId+":F0";else{timeline::Surface surface;surface.width=surface.height=8;surface.pixels.resize(64);if(r%7==0)surface.pixels[0]=0xff123456;cel.surface=std::move(surface);}state.cels.push_back(std::move(cel));}
+    document=Document::fromImported(8,8,std::move(state),{},"timeline-stress",U"Timeline stress",std::make_shared<const std::vector<std::uint8_t>>());
+    layerScroll_=frameScroll_=layerScrollRemainder_=frameScrollRemainder_=0;fitCanvas();refresh();invalidate();
+    manager()->flushRedraw();manager()->dispatchMessages();invalidate();manager()->flushRedraw();manager()->dispatchMessages();
+    const auto history=document.historySize();const auto revision=document.revision();const auto uploads=renderer_.uploads();
+    const auto l=columnLayout(uiLogical(clientBounds()),2);const int capacity=timelineCapacity(l);
+    require(layerRows_.size()<=std::size_t(capacity+1),"Layer controls scale with total layers");
+    auto pixels=[&]{auto surface=display()->nativeWindow()->surface();os::SurfaceLock lock(surface);std::vector<gfx::Color> out;for(int y=0;y<surface->height();++y)for(int x=0;x<surface->width();++x)out.push_back(surface->getPixel(x,y));return out;};
+    // Real scrollbar callbacks, both axes, sub-row offsets and end clamping.
+    for(const auto position:{gfx::Point(50,50),gfx::Point(999*24,255*24),gfx::Point(400*24+7,120*24+5),gfx::Point(0,0)}){
+      timelineHorizontal_->changed(position.x);timelineVertical_->changed(position.y);manager()->flushRedraw();manager()->dispatchMessages();
+      const auto partial=pixels();invalidate();manager()->flushRedraw();manager()->dispatchMessages();const auto full=pixels();if(partial!=full){std::size_t i=0;while(i<full.size() && partial[i]==full[i])++i;throw std::runtime_error("Clipped timeline scroll differs at "+std::to_string(i%display()->nativeWindow()->surface()->width())+","+std::to_string(i/display()->nativeWindow()->surface()->width())+" partial="+std::to_string(partial[i])+" full="+std::to_string(full[i])+" scroll="+std::to_string(position.x)+","+std::to_string(position.y));}
+      require(layerRows_[0]->caption==document.timeline().state().layers[layerScroll_].name,"Pooled row caption stale");
+      for(auto cell:frameCells_)if(cell->timelineVisible){const auto hit=cell->bounds()&timelineFrameViewport();if(!hit.isEmpty()){
+        const auto point=hit.center();const auto expected=layerLabelHit(point)?static_cast<ui::Widget*>(layerLabelSeparator_):static_cast<ui::Widget*>(cell);
+        require(frontWidgetAt(point)==expected,"Scrolled cell/separator hit target stale");
+      }}
+    }
+    const auto pool=layerRows_.size();const auto scans=document.timeline().contentScans();
+    auto start=std::chrono::steady_clock::now();const auto chrome=chromePaints_;const auto cachePaints=timelineCachePaints_;
+    for(int i=0;i<20;++i){timelineHorizontal_->changed((100+i)*24+3);timelineVertical_->changed((80+i)*24+5);manager()->flushRedraw();manager()->dispatchMessages();}
+    report<<"layers=256 frames=1000 slots=256000 pooled_rows="<<pool<<" visible_capacity="<<capacity<<" scroll_mean_ms="<<std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-start).count()/20<<" chrome_paints="<<chromePaints_-chrome<<" timeline_compositions="<<timelineCachePaints_-cachePaints<<std::endl;
+    require(timelineCachePaints_-cachePaints==20,"Timeline recomposed per transparent hit widget");
+    require(layerRows_.size()==pool,"Scroll allocated more row widgets");require(chromePaints_==chrome,"Timeline scroll repainted unrelated chrome");
+    require(document.timeline().contentScans()-scans<=256,"Linked slots repeatedly scanned their owner pixels");
+    require(document.historySize()==history && document.revision()==revision && renderer_.uploads()==uploads,"Scrolling mutated document or uploaded canvas");
+    // All pooled row actions must address the visible document row.
+    const auto row=layerScroll_;layerRows_[0]->Click();require(document.activeLayerIndex()==std::size_t(row),"Pooled name selected original row");
+    const bool visible=document.timeline().state().layers[row].visible;layerEyes_[0]->Click();require(document.timeline().state().layers[row].visible!=visible,"Pooled eye toggled wrong row");document.undo();refresh();
+    layerLocks_[0]->Click();require(document.timeline().state().layers[row].locked,"Pooled lock toggled wrong row");document.undo();refresh();
+    layerAutoLinks_[0]->Click();require(document.timeline().state().layers[row].autoLinkAnimationCels,"Pooled auto-link toggled wrong row");document.undo();refresh();
+    for(int kind=0;kind<3;++kind){
+      auto& controls=kind==0?layerEyes_:kind==1?layerLocks_:layerAutoLinks_;
+      ui::MouseMessage down(ui::kMouseDownMessage,os::PointerType::Mouse,ui::kButtonLeft,ui::kKeyNoneModifier,controls[0]->bounds().center());controls[0]->onProcessMessage(&down);
+      ui::MouseMessage move(ui::kMouseMoveMessage,os::PointerType::Mouse,ui::kButtonLeft,ui::kKeyNoneModifier,controls[1]->bounds().center());
+      if(kind==0)processVisibilityGesture(&move);else if(kind==1)processLockGesture(&move);else processAutoLinkGesture(&move);
+      if(kind==0)finishVisibilityGesture();else if(kind==1)finishLockGesture();else finishAutoLinkGesture();
+      for(int r=0;r<2;++r){const auto& layer=document.timeline().state().layers[row+r];require(kind==0?!layer.visible:kind==1?layer.locked:layer.autoLinkAnimationCels,"Pooled sweep addressed original row");}
+      require(document.timeline().state().layers[0].visible && !document.timeline().state().layers[0].locked && !document.timeline().state().layers[0].autoLinkAnimationCels,"Scrolled sweep changed offscreen first layer");document.undo();refresh();
+    }
+    // Large replacement and additive rectangles preserve order and uniqueness.
+    const auto& st=document.timeline().state();auto slot=[&](int r,int c){return document.timeline().findCel(st.layers[r].id,st.frames[c].id)->id;};
+    std::vector<std::string> selection;for(int r=0;r<128;++r)for(int c=0;c<128;++c)selection.push_back(slot(r,c));selection.push_back(selection.front());selection.push_back("missing");
+    start=std::chrono::steady_clock::now();document.selectTimelineCel(slot(0,0),0,selection);require(document.timelineSelection().cels.size()==16384,"Large replacement selection duplicate/unknown filtering");
+    document.selectTimelineCel(slot(127,127),2);require(document.timelineSelection().cels.size()==16384,"Large additive selection duplicates");refresh();
+    report<<"selection_16384_replace_and_add_ms="<<std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-start).count()<<std::endl;
+    start=std::chrono::steady_clock::now();for(int i=0;i<100;++i)timelineOutlines();report<<"selection_outline_mean_ms="<<std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-start).count()/100<<std::endl;
+    require(!timelineOutlines().empty(),"Large selection lost visible outline");
+    // Repeated movement inside one target must not rebuild a large selection.
+    auto point=frameCells_[0]->bounds().center();ui::MouseMessage press(ui::kMouseDownMessage,os::PointerType::Mouse,ui::kButtonRight,ui::kKeyNoneModifier,point);
+    beginTimelineGesture(3,layerScroll_,frameScroll_,press,true);require(timelineGesture_.canMove,"Large selection drag did not capture");
+    updateTimelineGesture(point+gfx::Point(6,0),false);const auto dragPaints=timelineCachePaints_;const auto dragSelection=document.timelineSelection().cels;
+    start=std::chrono::steady_clock::now();for(int i=0;i<100;++i)updateTimelineGesture(point+gfx::Point(6+i%2,0),false);
+    report<<"same_target_drag_mean_ms="<<std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-start).count()/100<<std::endl;
+    require(document.timelineSelection().cels==dragSelection && timelineCachePaints_==dragPaints,"Stable drag target rebuilt selection");finishTimelineGesture(true);
+    const auto pointer=frameCells_[0]->bounds().center();updatePaletteMouse(pointer);manager()->flushRedraw();manager()->dispatchMessages();
+    const auto paints=chromePaints_;for(int i=0;i<10;++i)updatePaletteMouse(pointer+gfx::Point(i%2,0));manager()->flushRedraw();manager()->dispatchMessages();require(chromePaints_==paints,"Stable timeline hover repainted chrome");
+    document=Document();layerScroll_=frameScroll_=layerScrollRemainder_=frameScrollRemainder_=0;refresh();
+  }
+  void smokeWheelPerformance(){
+    smoke_=true;homeOpen_=false;documentOpen_=true;pending_=Pending::None;playing_=false;
+    selectionTool_=shapeTool_=gradientTool_=fillTool_=handTool_=zoomTool_=eyedropperTool_=eraser_=spaceHeld_=eyedropperHeld_=false;
+    pencilImageBrush_.reset();paletteMousePosition_.reset();document=Document(256,256);fitCanvas();refresh();
+    manager()->flushRedraw();manager()->dispatchMessages();
+    std::filesystem::create_directories("build/test-tmp");std::ofstream report("build/test-tmp/wheel-performance.txt");
+    auto pixels=[&]{auto surface=display()->nativeWindow()->surface();os::SurfaceLock lock(surface);std::vector<gfx::Color> out;out.reserve(surface->width()*surface->height());for(int y=0;y<surface->height();++y)for(int x=0;x<surface->width();++x)out.push_back(surface->getPixel(x,y));return out;};
+    auto wheel=[&](int delta){ui::MouseMessage msg(ui::kMouseWheelMessage,os::PointerType::Mouse,ui::kButtonNone,ui::kKeyNoneModifier,canvasViewport().center(),gfx::Point(0,delta));msg.setDisplay(display());if(!onProcessMessage(&msg))throw std::runtime_error("Wheel was not consumed");};
+    const auto revision=document.contentRevision();const auto history=document.historySize();const auto uploads=renderer_.uploads();
+    const auto original=canvas_;const double originalZoom=zoom_;const std::vector<int> sequence{-1,-1,-1,1,1,1,1,1,1,1,-1,-1,-1,-1};
+    std::vector<std::vector<gfx::Color>> expected;
+    zoomFullRedraw_=true;symmetryClip_=false;
+    for(int delta:sequence){wheel(delta);manager()->flushRedraw();manager()->dispatchMessages();expected.push_back(pixels());}
+    canvas_=original;zoom_=originalZoom;layoutCanvasScrollBars();invalidate();manager()->flushRedraw();manager()->dispatchMessages();zoomFullRedraw_=false;symmetryClip_=true;
+    for(std::size_t i=0;i<sequence.size();++i){wheel(sequence[i]);manager()->flushRedraw();manager()->dispatchMessages();const auto actual=pixels();if(actual!=expected[i]){std::size_t p=0;while(p<actual.size() && actual[p]==expected[i][p])++p;throw std::runtime_error("Wheel partial redraw framebuffer mismatch at step "+std::to_string(i)+" pixel="+std::to_string(p%display()->nativeWindow()->surface()->width())+","+std::to_string(p/display()->nativeWindow()->surface()->width())+" actual="+std::to_string(actual[p])+" expected="+std::to_string(expected[i][p])+" bounds="+std::to_string(bounds().x)+","+std::to_string(bounds().y)+","+std::to_string(bounds().w)+","+std::to_string(bounds().h)+" surface="+std::to_string(display()->nativeWindow()->surface()->width())+","+std::to_string(display()->nativeWindow()->surface()->height()));}}
+    expected.clear();
+    for(bool axes:{false,true}){
+      document.symmetryAxes={axes,axes,axes,axes,axes};
+      for(int mode=0;mode<2;++mode){zoomFullRedraw_=mode==0;symmetryClip_=mode!=0;setCanvasZoom(canvasViewport().center(),24);manager()->flushRedraw();manager()->dispatchMessages();
+        const auto chrome=chromePaints_;const auto start=std::chrono::steady_clock::now();
+        for(int i=0;i<20;++i){wheel(i%2?1:-1);manager()->flushRedraw();manager()->dispatchMessages();}
+        report<<"axes="<<axes<<" mode="<<(mode?"local":"full")<<" mean_ms="<<std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-start).count()/20<<" chrome_paints="<<chromePaints_-chrome<<std::endl;
+        if(mode && chromePaints_!=chrome)throw std::runtime_error("Wheel repainted unrelated chrome");
+        if(!mode && chromePaints_==chrome)throw std::runtime_error("Wheel benchmark failed to paint baseline");
+      }
+    }
+    // The original symmetry sampler is the oracle, including translucent axes
+    // and overlapping diagonal/rotational samples at maximum zoom.
+    document.symmetryAxes={true,true,true,true,true};symmetryColor_=0x8049a7ff;
+    for(int thickness:{1,8}){symmetryThickness_=thickness;for(double z:{.333333,4.,64.}){
+      setCanvasZoom(canvasViewport().center(),z);symmetryClip_=false;invalidate();manager()->flushRedraw();manager()->dispatchMessages();const auto reference=pixels();
+      symmetryClip_=true;invalidate();manager()->flushRedraw();manager()->dispatchMessages();if(pixels()!=reference)throw std::runtime_error("Clipped symmetry pixels changed");
+    }}
+    if(document.contentRevision()!=revision || document.historySize()!=history || renderer_.uploads()!=uploads || document.dirty())throw std::runtime_error("Wheel zoom mutated content/cache");
+    zoomFullRedraw_=false;symmetryClip_=true;report<<"framebuffer_equivalence=pass; content_uploads_unchanged=pass"<<std::endl;
+  }
   void smokeEyedropper(){
     smoke_=true;setBounds(gfx::Rect(0,0,1280,960));document=Document(4,3);homeOpen_=false;documentOpen_=true;paletteFocused_=false;requestFocus();fitCanvas();refresh();document.beginStroke({1,1},0x80443322,BrushOptions{1,100,BrushShape::Round});document.commitStroke();document.markSaved();const auto history=document.historySize();const auto pixels=document.pixels();
     auto key=[&](ui::MessageType type,ui::KeyScancode code,ui::KeyModifiers modifiers=ui::kKeyNoneModifier){ui::KeyMessage event(type,code,modifiers,0,0);onProcessMessage(&event);};
@@ -4883,6 +5930,57 @@ for(const auto& e:menus::catalog())if(!*e.parent){if(std::string(e.id)=="help"){
     pointer(ui::kMouseDownMessage,1,1,true);if(document.palette().secondary!=0x80443322)throw std::runtime_error("Eyedropper background alpha");pointer(ui::kMouseMoveMessage,2,1,true);pointer(ui::kMouseUpMessage,2,1,true);if(document.palette().secondary!=0)throw std::runtime_error("Eyedropper continuous transparent sample");
     key(ui::kKeyDownMessage,ui::kKeyB);key(ui::kKeyDownMessage,ui::kKeyAlt,ui::kKeyAltModifier);pointer(ui::kMouseDownMessage,1,1,false,ui::kKeyAltModifier);key(ui::kKeyUpMessage,ui::kKeyAlt);pointer(ui::kMouseUpMessage,1,1);if(eyedropperTool_ || eyedropperHeld_ || document.palette().primary!=0x80443322 || document.pixels()!=pixels || document.historySize()!=history || document.dirty())throw std::runtime_error("Temporary eyedropper restores tool without edit");
     document=Document();eyedropperTool_=eyedropperHeld_=paletteSamplingHeld_=false;eyedropperSource_=EyedropperSource::Composite;refresh();
+  }
+  void smokePaletteSynchronization(){
+    smoke_=true;homeOpen_=false;documentOpen_=true;pending_=Pending::None;auto require=[](bool okay,const char* message){if(!okay)throw std::runtime_error(message);};const Pixel source=0x80112233,dest=0x40556677;
+    auto setup=[&]{document=Document(3,1);document.applyExtractedPalette({source});document.beginStroke({0,0},source);document.commitStroke();document.beginStroke({1,0},0xff112233);document.commitStroke();document.addFrame();document.beginStroke({2,0},source);document.commitStroke();document.addLayer();document.beginStroke({0,0},source);document.commitStroke();document.setLayerVisible(false);document.markSaved();refresh();};
+    choosePaletteSynchronization(false);setup();auto id=document.palette().order().front();const auto active=document.layer().id,frame=document.frame().id;auto old=document.timeline();document.updatePaletteColor(id,dest);require(document.pixels()[0]==source,"Palette sync disabled only palette");document.undo();choosePaletteSynchronization(true);const auto h=document.historySize();document.commitSelection({},SelectionMask{2,0,1,1,{}});const auto hs=document.historySize();document.updatePaletteColor(id,dest);require(document.historySize()==hs+1 && document.layer().id==active && document.frame().id==frame,"Palette sync one compound and active retained");for(const auto& c:document.timeline().state().cels){const auto before=old.resolveSurface(c.id),after=document.timeline().resolveSurface(c.id);for(std::size_t i=0;i<before.surface->pixels.size();++i)require(after.surface->pixels[i]==(before.surface->pixels[i]==source?dest:before.surface->pixels[i]),"Palette sync exact RGBA all frames hidden ignores mask");}document.undo();require(document.paletteEntry(id)->color==source && document.pixels()[0]==source,"Palette sync undo");document.redo();require(document.paletteEntry(id)->color==dest && document.pixels()[0]==dest,"Palette sync redo");auto no=document.historySize();document.updatePaletteColor(id,dest);require(document.historySize()==no,"Palette sync same color noop");
+    setup();id=document.palette().order().front();document.selectPalette(id);document.setLayerLocked(true);const auto locked=document.layer().id;document.setPaletteRole(dest,false,false);require(document.paletteEntry(id)->color==dest && document.pixels()[0]==source,"Palette sync unlocked role path preserves locked pixels");document.undo();require(document.paletteEntry(id)->color==source,"Palette sync role compound undo");document.setPaletteRole(dest,false,true);require(document.paletteEntry(id)->color==source,"Locked palette role no update");
+    for(bool firstLocked:{false,true}){Document seed(1,1);seed.applyExtractedPalette({source});seed.beginStroke({0,0},source);seed.commitStroke();seed.addFrame();auto state=seed.timeline().state();const auto owner=state.cels[0].id;const auto alias=state.cels[1].id;state.cels[1].surface.reset();state.cels[1].runtimeSharedCelId=owner;for(auto& l:state.layers)l.locked=l.id==state.cels[0].layerId?firstLocked:!firstLocked;document=Document::fromImported(1,1,std::move(state),seed.palette(),"sync-fixture",U"sync",std::make_shared<const std::vector<std::uint8_t>>());refresh();id=document.palette().order().front();document.updatePaletteColor(id,dest);require(document.timeline().resolveSurface(owner).surface->pixels[0]==(firstLocked?source:dest),"Palette sync same-layer shared owner lock");require(document.timeline().resolveSurface(alias).surface->pixels[0]==(firstLocked?source:dest),"Palette sync same-layer shared alias identical");}
+    Document fresh(1,1);document=std::move(fresh);refresh();require(document.paletteColorSynchronization(),"Global sync inherited by new document");choosePaletteSynchronization(false);require(!document.paletteColorSynchronization(),"Palette sync preference disable");document=Document();refresh();
+  }
+  void smokePaletteGradient(){
+    smoke_=true;homeOpen_=false;documentOpen_=true;pending_=Pending::None;auto require=[](bool okay,const char* message){if(!okay)throw std::runtime_error(message);};
+    auto check=[&](Pixel first,Pixel last,const std::vector<Pixel>& expected,bool hue){document=Document(1,1);document.applyExtractedPalette({first,last});const auto ids=document.palette().order();document.renamePaletteColor(ids[0],U"端点");document.setPaletteRole(first,false,true);document.setPaletteRole(last,true,true);document.selectPalette(ids[0]);document.markSaved();auto before=document.palette();const auto history=document.historySize(),bytes=document.historyBytes();std::vector<std::size_t> slots;for(std::size_t i=0;i<expected.size();++i)slots.push_back(i*2);document.gradientPaletteSlots(slots,3,hue);require(document.historySize()==history+1,"Palette gradient one history");for(std::size_t i=0;i<slots.size();++i){const auto entry=document.paletteEntry(document.palette().slots[slots[i]]);require(entry && entry->color==expected[i],"Palette gradient differs from legacy oracle");}require(document.paletteEntry(ids[1])->color==last && document.paletteEntry(ids[0])->name==U"端点" && document.palette().primary==before.primary && document.palette().secondary==before.secondary && document.palette().selected==before.selected,"Palette gradient preserves non-target/name/roles/selection");const auto after=document.palette();require(document.historyBytes()==bytes+(before.entries.size()+after.entries.size())*40+(before.slots.size()+after.slots.size())*4,"Palette gradient legacy history bytes");document.selectPalette(ids[1]);const auto later=document.palette().selected;document.undo();require(document.palette().slots==before.slots && document.palette().nextId==before.nextId && document.palette().selected==later,"Palette gradient undo structure independent selection");document.redo();require(document.palette().slots==after.slots && document.palette().nextId==after.nextId,"Palette gradient redo structure");};
+{const Pixel first=0x200000ffu,last=0xe0ff0000u;const std::vector<Pixel> expected{0x200000ffu,0x504000bfu,0x80800080u,0xb0bf0040u,0xe0ff0000u};check(first,last,expected,false);}
+{const Pixel first=0x200000ffu,last=0xe0ff0000u;const std::vector<Pixel> expected{0x200000ffu,0x508000ffu,0x80ff00ffu,0xb0ff0080u,0xe0ff0000u};check(first,last,expected,true);}
+{const Pixel first=0xff0080ffu,last=0xff8000ffu;const std::vector<Pixel> expected{0xff0080ffu,0xff156bffu,0xff2b55ffu,0xff4040ffu,0xff552bffu,0xff6b15ffu,0xff8000ffu};check(first,last,expected,false);}
+{const Pixel first=0xff0080ffu,last=0xff8000ffu;const std::vector<Pixel> expected{0xff0080ffu,0xff0055ffu,0xff002bffu,0xff0000ffu,0xff2b00ffu,0xff5500ffu,0xff8000ffu};check(first,last,expected,true);}
+{const Pixel first=0xff999999u,last=0x0u;const std::vector<Pixel> expected{0xff999999u,0x804d4d4du,0x0u};check(first,last,expected,false);}
+{const Pixel first=0xff999999u,last=0x0u;const std::vector<Pixel> expected{0xff999999u,0x804d4d4du,0x0u};check(first,last,expected,true);}
+{const Pixel first=0xff0000ffu,last=0xffff0000u;const std::vector<Pixel> expected{0xff0000ffu,0xff3300ccu,0xff660099u,0xff990066u,0xffcc0033u,0xffff0000u};check(first,last,expected,false);}
+{const Pixel first=0xff0000ffu,last=0xffff0000u;const std::vector<Pixel> expected{0xff0000ffu,0xff6600ffu,0xffcc00ffu,0xffff00ccu,0xffff0066u,0xffff0000u};check(first,last,expected,true);}
+
+    document=Document(1,1);document.applyExtractedPalette({0xff0000ff,0xff00ff00,0xffff0000,0xffffffff});refresh();paletteColumns_=3;auto ids=document.palette().order();document.selectPalette(ids[0]);document.selectPalette(ids[3],true);require(paletteGradientSlots()==std::vector<std::size_t>({0,3}),"Palette gradient rectangular selection slots");paletteBoxRange_=PaletteBoxRange{document.identity(),1,5,document.palette().selected};require(paletteGradientSlots()==std::vector<std::size_t>({1,2,4,5}),"Palette gradient box includes empty slots");paletteBoxRange_.reset();document.clearPaletteSelection();require(paletteGradientSlots().empty(),"Palette gradient disabled without range");document.setPaletteRole(0xff0000ff,false,true);document.setPaletteRole(0xffff0000,true,true);document.gradientPaletteSlots({5,6,7},3);require(document.paletteEntry(document.palette().slots[5])->color==0xff0000ff && document.paletteEntry(document.palette().slots[6])->color==0xff800080 && document.paletteEntry(document.palette().slots[7])->color==0xffff0000,"Palette gradient empty endpoints use foreground/background");const auto h=document.historySize();document.gradientPaletteSlots({1},3);require(document.historySize()==h,"Palette gradient short range noop");document=Document();refresh();
+  }
+  void smokePaletteNames(){
+    smoke_=true;homeOpen_=false;documentOpen_=true;pending_=Pending::None;auto require=[](bool okay,const char* message){if(!okay)throw std::runtime_error(message);};
+    for(const char* value:{"","false","TRUE"," true","true "}){std::istringstream in(value);require(!readPaletteNamesPreference(in),"Palette names default/invalid preference");}std::istringstream stored("true");require(readPaletteNamesPreference(stored),"Palette names true preference");
+    document=Document(1,1);document.applyExtractedPalette({0xff000000,0xffffffff,0x00000000});auto ids=document.palette().order();document.renamePaletteColor(ids[0],U"颜色ABCDEFG很长");document.renamePaletteColor(ids[1],U" ");document.renamePaletteColor(ids[2],U"透明");document.markSaved();const auto history=document.historySize(),revision=document.revision();const auto pixels=document.pixels();const auto selection=document.palette().selected;const auto primary=document.palette().primary,secondary=document.palette().secondary;
+    choosePaletteNames(false);for(auto button:swatches_)require(button->paletteDisplayName.empty(),"Palette names hidden");choosePaletteNames(true);require(swatches_[0]->paletteDisplayName==document.paletteEntry(ids[0])->name && swatches_[1]->paletteDisplayName.empty() && swatches_[2]->paletteDisplayName==U"透明","Palette names occupied/nonempty only");
+    require(PixelButton::paletteNameTextColor(0xff000000)==0xffffffff && PixelButton::paletteNameTextColor(0xffffffff)==0xff111111 && PixelButton::paletteNameTextColor(0x00000000)==0xff111111 && PixelButton::paletteNameTextColor(0xff969696)==0xffffffff && PixelButton::paletteNameTextColor(0xff979797)==0xff111111,"Palette name legacy alpha/luminance threshold");
+    PixelButton probe(font_,skin_,U"",[]{});probe.paletteCell=true;probe.swatch=0xff304050;probe.setBounds({0,0,64,48});auto render=[&]{auto surface=os::instance()->makeRgbaSurface(64,48);surface->clear();ui::Graphics graphics(surface);ui::PaintEvent event(&probe,&graphics);probe.onPaint(event);return surface;};auto plain=render();probe.paletteDisplayName=U"ABCDEFGHIJKLMNOPQRSTUVWXYZ";auto named=render();int changed=0;for(int y=0;y<48;++y)for(int x=0;x<64;++x)if(plain->getPixel(x,y)!=named->getPixel(x,y)){++changed;require(x>=2 && x<62 && y>=2 && y<46,"Palette name painting clipped inside swatch");}require(changed>0,"Palette name glyphs rendered");
+    const auto bounds=swatches_[0]->paletteColorBounds();choosePaletteNames(false);require(swatches_[0]->paletteColorBounds()==bounds && document.historySize()==history && document.revision()==revision && !document.dirty() && document.pixels()==pixels && document.palette().selected==selection && document.palette().primary==primary && document.palette().secondary==secondary,"Palette names preserve geometry data and history");document=Document();refresh();
+  }
+  void smokePaletteSort(){
+    smoke_=true;homeOpen_=false;documentOpen_=true;pending_=Pending::None;
+    auto require=[](bool okay,const char* message){if(!okay)throw std::runtime_error(message);};
+    const Pixel colors[]{0xff0000ffu,0xff00ff00u,0xffff0000u,0xff808080u,0x808080u,0xff808088u,0xff808089u,0x800000ffu,0xff000000u,0xffffffffu,0xff0000ffu};const int expected[8][2][11]={{{9,4,5,6,10,7,1,11,8,2,3},{3,2,8,1,11,7,10,6,5,4,9}},{{9,4,5,10,6,7,1,11,8,2,3},{3,2,8,1,11,7,6,10,5,4,9}},{{9,4,5,6,7,10,1,11,8,2,3},{3,2,8,1,11,10,7,6,5,4,9}},{{9,3,1,11,8,4,5,6,7,2,10},{10,2,7,6,5,4,8,1,11,3,9}},{{9,3,2,5,4,6,7,8,1,11,10},{10,1,11,8,7,6,4,5,2,3,9}},{{9,3,8,1,11,5,4,6,7,2,10},{10,2,7,6,4,5,1,11,8,3,9}},{{9,2,8,1,11,5,4,6,7,3,10},{10,3,7,6,4,5,1,11,8,2,9}},{{5,8,9,4,6,10,7,1,11,2,3},{3,2,1,11,7,10,6,4,9,8,5}}};
+    const bool savedDirection=paletteSortDescending_;choosePaletteSortDirection(true);require(paletteSortDescending_,"Palette descending preference");choosePaletteSortDirection(false);require(!paletteSortDescending_,"Palette ascending preference");paletteSortDescending_=savedDirection;
+    for(int mode=0;mode<8;++mode)for(int direction=0;direction<2;++direction){
+      document=Document(2,1);document.applyExtractedPalette({0xff010203});document.clearPaletteSelection();std::vector<int> ids;for(Pixel c:colors)ids.push_back(document.addPaletteColor(c,false));document.deletePaletteColors({document.palette().order().front()});
+      document.selectPalette(ids[0]);document.selectPalette(ids[1],true);document.selectSecondaryPalette(ids[2]);document.beginStroke({0,0},0xff010203);document.commitStroke();document.markSaved();const auto before=document.palette();const auto pixels=document.pixels();const auto history=document.historySize(),bytes=document.historyBytes();
+      require(document.sortPaletteColors(Document::PaletteSortMode(mode),direction!=0),"Palette sort must compact leading hole");std::vector<int> wanted;for(int i:expected[mode][direction])wanted.push_back(ids[i-1]);require(document.palette().order()==wanted,"Palette sort differs from legacy oracle");require(document.palette().slots.size()==before.slots.size() && std::all_of(document.palette().slots.begin()+11,document.palette().slots.end(),[](int id){return id==0;}),"Palette sort trailing empty slots");
+      require(document.palette().selected==before.selected && document.palette().primaryId==before.primaryId && document.palette().secondaryId==before.secondaryId && document.palette().primary==before.primary && document.palette().secondary==before.secondary && document.pixels()==pixels,"Palette sort preserves selected IDs roles and pixels");for(const auto& e:before.entries){const auto now=document.paletteEntry(e.id);require(now && now->color==e.color && now->name==e.name,"Palette sort preserves entries");}
+      require(document.historySize()==history+1 && document.historyBytes()==bytes+before.slots.size()*8,"Palette sort one slots-only history");const auto sorted=document.palette().slots;document.selectPalette(ids[3]);const auto laterSelection=document.palette().selected;document.undo();require(document.palette().slots==before.slots && document.palette().selected==laterSelection,"Palette sort undo preserves subsequent selection");document.redo();require(document.palette().slots==sorted && document.palette().selected==laterSelection,"Palette sort redo");const auto h=document.historySize(),rev=document.revision();require(!document.sortPaletteColors(Document::PaletteSortMode(mode),direction!=0) && document.historySize()==h && document.revision()==rev,"Palette sort true no-op");
+    }
+    document=Document();refresh();
+  }
+  void smokePaletteReverse(){
+    smoke_=true;pending_=Pending::None;homeOpen_=false;documentOpen_=true;document=Document(2,1);document.applyExtractedPalette({0xff112233,0x00445566,0x80778899,0xffaabbcc});document.beginStroke({0,0},0xff998877);document.commitStroke();document.markSaved();refresh();auto require=[](bool okay,const char* message){if(!okay)throw std::runtime_error(message);};const auto ids=document.palette().order(),slots=document.palette().slots;const auto entries=document.palette().entries;std::vector<Pixel> colors;for(int id:ids)colors.push_back(document.paletteEntry(id)->color);const auto pixels=document.pixels();const auto primary=document.palette().primary,secondary=document.palette().secondary;const auto history=document.historySize();
+    document.selectPalette(ids[3]);document.selectPalette(ids[0],true);const auto selected=document.palette().selected;const auto foreground=document.palette().primary;require(document.reversePaletteColors(),"Selected palette reverse must change");require(document.paletteEntry(ids[0])->color==colors[3] && document.paletteEntry(ids[3])->color==colors[0] && document.paletteEntry(ids[1])->color==colors[1],"Palette reverse follows order rather than selection order");require(document.palette().slots==slots && document.palette().order()==ids && document.palette().selected==selected && document.palette().primary==foreground && document.palette().secondary==secondary && document.historySize()==history+1 && document.pixels()==pixels,"Palette reverse preserves IDs slots selection roles and pixels");for(std::size_t i=0;i<entries.size();++i)require(document.palette().entries[i].id==entries[i].id && document.palette().entries[i].name==entries[i].name,"Palette reverse preserves names");document.undo();require(document.paletteEntry(ids[0])->color==colors[0] && document.paletteEntry(ids[3])->color==colors[3],"Palette reverse undo");document.redo();require(document.paletteEntry(ids[0])->color==colors[3],"Palette reverse redo");document.undo();
+    document.selectPalette(ids[1]);require(document.reversePaletteColors(),"One selected color reverses whole palette");for(std::size_t i=0;i<ids.size();++i)require(document.paletteEntry(ids[i])->color==colors[ids.size()-1-i],"Whole palette reverse includes transparent RGBA color");document.undo();document.clearPaletteSelection();require(document.reversePaletteColors(),"No selection reverses whole palette");document.undo();
+    document.applyExtractedPalette({0xff010203,0xff010203});document.markSaved();const auto noHistory=document.historySize(),revision=document.revision();require(!document.reversePaletteColors() && document.historySize()==noHistory && document.revision()==revision && !document.dirty(),"Identical reverse is a true no-op");document.applyExtractedPalette({0xff112233});const auto oneHistory=document.historySize();require(!document.reversePaletteColors() && document.historySize()==oneHistory,"Single entry reverse no-op");document=Document();refresh();
   }
   void smokePaletteExtraction(){
     document=Document(3,2);homeOpen_=false;documentOpen_=true;paletteFocused_=false;requestFocus();fitCanvas();refresh();document.beginStroke({0,0},0xff0000ff);document.commitStroke();document.beginStroke({1,0},0xff00ff00);document.commitStroke();document.markSaved();const auto pixels=document.pixels();const auto oldOrder=document.palette().order();const auto history=document.historySize();
@@ -4898,8 +5996,23 @@ for(const auto& e:menus::catalog())if(!*e.parent){if(std::string(e.id)=="help"){
     smoke_=true;setBounds(gfx::Rect(0,0,1280,960));document=Document(2,1);homeOpen_=false;documentOpen_=true;document.beginStroke({0,0},0x801e140a);document.commitStroke();document.markSaved();const auto pixels=document.pixels();const auto h=document.historySize();refresh();replaceLoaded_=true;replaceRemember_=true;replaceScope_="document";replaceSource_=pixels[0];replaceDestination_=0x01020304;replacePreview_=false;openReplaceColor();if(document.displayPixels()!=pixels)throw std::runtime_error("Replacement default preview off");replacePreview_=true;previewReplace();if(document.pixels()!=pixels || document.dirty() || document.displayPixels()[0]!=replaceDestination_)throw std::runtime_error("Replacement independent preview");resolve(false);if(document.historySize()!=h || document.pixels()!=pixels)throw std::runtime_error("Replacement cancel");openReplaceColor();resolve(true);if(document.historySize()!=h+1 || document.pixels()[0]!=replaceDestination_)throw std::runtime_error("Replacement apply");document.undo();if(document.pixels()!=pixels)throw std::runtime_error("Replacement undo");document=Document();refresh();
   }
   void smokeGifExport(){smoke_=true;setBounds(gfx::Rect(0,0,1280,960));document=Document(2,1);homeOpen_=false;documentOpen_=true;refresh();const auto revision=document.revision(),h=document.historySize();openGifExport();if(pending_!=Pending::GifExport || gifInputs_[0]->hasFlags(ui::HIDDEN) || gifOptions_.scalePercent!=100 || gifOptions_.direction!=GifDirection::Forward || gifOptions_.trim || gifExplicitRange_)throw std::runtime_error("GIF defaults/modal");gifInputs_[0]->setText("200");gifInputs_[0]->Change();auto out=encodeAnimationGif(document,gifOptions_);if(out.width!=4 || out.height!=2)throw std::runtime_error("GIF modal scale");resolve(false);if(document.revision()!=revision || document.historySize()!=h || document.dirty())throw std::runtime_error("GIF cancel mutation");document=Document();refresh();}
+  void prepareFocusResumeCheck(){
+    smoke_=true;homeOpen_=false;documentOpen_=true;pending_=Pending::None;playing_=false;
+    document=Document::withBuiltinPalette();document.beginStroke({1,1},0xff123456);document.commitStroke();refresh();
+  }
   void smokeDeselectPending(){
-    smoke_=true;homeOpen_=false;documentOpen_=true;pending_=Pending::None;paletteFocused_=false;playing_=false;document=Document(4,1);document.beginStroke({0,0},0xff123456);document.commitStroke();document.commitSelection({},SelectionMask{0,0,1,1,{}});const auto history=document.historySize();if(!document.nudgeSelectionContent(2,0))throw std::runtime_error("Deselect pending fixture");refresh();if(!menuCommands_.invoke("deselect") || document.floating() || !document.selection() || document.selection()->x!=2 || document.pixels()[2]!=0xff123456 || document.historySize()!=history+1)throw std::runtime_error("Deselect menu commits pending and retains selection");document.undo();if(!document.selection() || document.selection()->x!=0 || document.pixels()[0]!=0xff123456)throw std::runtime_error("Deselect pending undo");document.redo();requestFocus();ui::KeyMessage key(ui::kKeyDownMessage,ui::kKeyD,ui::kKeyCtrlModifier,0,0);onProcessMessage(&key);if(document.selection())throw std::runtime_error("Deselect next CtrlD clears selection");document=Document();refresh();
+    smoke_=true;homeOpen_=false;documentOpen_=true;pending_=Pending::None;paletteFocused_=false;playing_=false;
+    document=Document(4,1);document.beginStroke({0,0},0xff123456);document.commitStroke();document.commitSelection({},SelectionMask{0,0,1,1,{}});
+    const auto history=document.historySize();
+    auto verify=[&]{if(document.floating() || document.selection() || document.pixels()[2]!=0xff123456 || document.historySize()!=history+2)throw std::runtime_error("Deselect commits transform and clears selection immediately");};
+    if(!document.nudgeSelectionContent(2,0))throw std::runtime_error("Deselect pending fixture");refresh();
+    if(!menuCommands_.invoke("deselect"))throw std::runtime_error("Deselect menu unavailable");verify();
+    document.undo();if(!document.selection() || document.selection()->x!=2 || document.pixels()[2]!=0xff123456)throw std::runtime_error("Deselect undo restores transformed selection");
+    document.undo();if(!document.selection() || document.selection()->x!=0 || document.pixels()[0]!=0xff123456)throw std::runtime_error("Transform undo restores source");
+    document.redo();document.redo();verify();document.undo();document.undo();
+    if(!document.nudgeSelectionContent(2,0))throw std::runtime_error("CtrlD pending fixture");refresh();requestFocus();
+    ui::KeyMessage key(ui::kKeyDownMessage,ui::kKeyD,ui::kKeyCtrlModifier,0,0);onProcessMessage(&key);verify();
+    document=Document();refresh();
   }
   void smokeSelectionEnter(){
     smoke_=true;homeOpen_=false;documentOpen_=true;pending_=Pending::None;playing_=false;paletteFocused_=false;docking_=panels::Model{};layersPanelOpen_=true;setBounds(gfx::Rect(0,0,1280,960));document=Document(2,1);document.addFrame();document.commitSelection({},SelectionMask{0,0,1,1,{}});refresh();requestFocus();
@@ -4918,8 +6031,18 @@ for(const auto& e:menus::catalog())if(!*e.parent){if(std::string(e.id)=="help"){
     {PixelMenu menu(skin_);buildLoopTrackMenu(menu,child);static_cast<PixelMenuItem*>(menu.children()[0])->Click();if(!playing_ || loopPlayback_.current.sectionId!=child)throw std::runtime_error("Loop context plays clicked section");playing_=false;static_cast<PixelMenuItem*>(menu.children()[1])->Click();if(pending_!=Pending::LoopSection || loopDraft_->id!=child)throw std::runtime_error("Loop context properties target");resolve(false);static_cast<PixelMenuItem*>(menu.children().back())->Click();if(playbackSection(child))throw std::runtime_error("Loop context delete target");document.undo();if(!playbackSection(child))throw std::runtime_error("Loop context delete undo");}
     const int scrollFixtureFrames=timelineColumns(columnLayout(uiLogical(clientBounds()),2))+10;while(int(document.timeline().state().frames.size())<scrollFixtureFrames)document.addFrame();document.selectFrame(frames[0].id);frameScroll_=frameScrollRemainder_=0;refresh();box=loopTrackItemBounds(item(outer));const auto scrollEdge=gfx::Point(box.x+2*uiScale,box.y+15*uiScale);const auto scrollHit=loopTrackHit(scrollEdge);if(scrollHit.id!=outer || scrollHit.edge!=1)throw std::runtime_error("Loop scroll fixture requires visible start edge");send(ui::kMouseDownMessage,scrollEdge);const int scroll=frameScroll_*12*uiScale+frameScrollRemainder_;updateLoopTrackResize({loopTrackViewport().x2()-uiScale,box.y+15*uiScale},true);if(frameScroll_*12*uiScale+frameScrollRemainder_<=scroll){std::ostringstream detail;detail<<"Loop edge auto scroll: drag="<<bool(loopTrackDrag_)<<" before="<<scroll<<" after="<<(frameScroll_*12*uiScale+frameScrollRemainder_)<<" hit="<<scrollHit.id<<":"<<scrollHit.edge<<" pending="<<int(pending_)<<" point="<<scrollEdge.x<<","<<scrollEdge.y<<" viewport="<<loopTrackViewport().x<<","<<loopTrackViewport().y<<","<<loopTrackViewport().w<<","<<loopTrackViewport().h<<" frames="<<document.timeline().state().frames.size()<<" width="<<timelineScrollMetrics(columnLayout(uiLogical(clientBounds()),2)).width;throw std::runtime_error(detail.str());}finishLoopTrackResize(true);document=Document();playing_=false;loopPlayback_={};refresh();
   }
+  void smokeLoopDialogInteractions(){
+    smoke_=true;homeOpen_=false;documentOpen_=true;pending_=Pending::None;playing_=false;document=Document(1,1);for(int i=0;i<9;++i)document.addFrame();refresh();const auto history=document.historySize();openLoopEditor();if(loopFinite_ || loopInputs_[3]->isEnabled() || loopInputs_[3]->text()!="无限" || !loopRepeat_->isVisible())throw std::runtime_error("Loop initial infinite control");
+    auto number=[&](int i){return static_cast<LoopNumberEntry*>(loopInputs_[i]);};loopInputs_[1]->setText("3");loopInputs_[1]->Change();if(number(1)->value!=3 || loopDisplayRange().first!=3)throw std::runtime_error("Loop plain numeric live range");loopInputs_[1]->setText("3+2");loopInputs_[1]->Change();if(number(1)->value!=3)throw std::runtime_error("Loop expression stays editable");auto enter=[&](int i){ui::KeyMessage key(ui::kKeyDownMessage,ui::kKeyEnter,ui::kKeyNoneModifier,0,0);loopInputs_[i]->onProcessMessage(&key);};auto blur=[&](int i){ui::Message message(ui::kFocusLeaveMessage);loopInputs_[i]->onProcessMessage(&message);};
+    loopRepeat_->Click();if(!loopFinite_ || !loopInputs_[3]->isEnabled() || number(3)->value!=1)throw std::runtime_error("Loop finite toggle reset1");loopInputs_[3]->setText("(2 + 3) * 10");enter(3);if(pending_!=Pending::LoopSection || number(3)->value!=50 || loopInputs_[3]->text()!="50")throw std::runtime_error("Loop expression Enter only commits");loopInputs_[3]->setText("1/0");blur(3);if(number(3)->value!=50 || loopInputs_[3]->text()!="50")throw std::runtime_error("Loop invalid expression restores prior value");
+    loopInputs_[1]->setText("2*3");enter(1);loopInputs_[2]->setText("2.9");blur(2);if(loopDisplayRange()!=std::pair<int,int>{2,6})throw std::runtime_error("Loop range normalized preview");loopRepeat_->Click();if(loopFinite_ || loopInputs_[3]->isEnabled() || loopInputs_[3]->text()!="无限")throw std::runtime_error("Loop infinite disables number");loopRepeat_->Click();if(number(3)->value!=1 || loopInputs_[3]->text()!="1")throw std::runtime_error("Loop repeated toggle resets1");
+    const std::vector<std::pair<std::string,double>> valid{{"2+3*4",14},{"(2+3)*4",20},{"--2",2},{".5+2.",2.5},{"2e1+5",25},{"1e-1*20",2},{"-(2-4)",2}};for(const auto& pair:valid){loopInputs_[3]->setText(pair.first);blur(3);if(std::abs(number(3)->value-pair.second)>1e-9)throw std::runtime_error("Loop expression grammar oracle");}for(const auto text:{"", " ","1/0","(2+3","2**3","0x10","1e999","2a","2 3"}){loopInputs_[3]->setText(text);blur(3);if(number(3)->value!=2 || loopInputs_[3]->text()!="2")throw std::runtime_error("Loop expression failure oracle");}
+    loopInputs_[0]->setText("  Range  ");loopInputs_[3]->setText("1e5");blur(3);if(number(3)->value!=9999)throw std::runtime_error("Loop repeat bound");const auto direction=static_cast<PixelDropdown*>(loopDirection_);direction->changed(3);resolve(true);if(document.historySize()!=history+1 || document.timeline().state().loopSections.size()!=1)throw std::runtime_error("Loop dialog create one history");const auto section=document.timeline().state().loopSections.front();const auto range=timeline::loopRange(document.timeline().state(),section);if(section.name!=U"Range" || range.start!=1 || range.end!=5 || section.repeatCount!=9999 || section.direction!="ping-pong-reverse")throw std::runtime_error("Loop dialog normalized metadata");document.undo();if(!document.timeline().state().loopSections.empty())throw std::runtime_error("Loop dialog undo");document.redo();openLoopEditor(section.id);const auto revision=document.revision();resolve(true);if(document.revision()!=revision)throw std::runtime_error("Loop dialog noop save");openLoopEditor(section.id);loopRepeat_->Click();loopInputs_[0]->setText("cancelled");resolve(false);if(document.revision()!=revision || !document.timeline().state().loopSections.front().repeatCount || document.timeline().state().loopSections.front().name!=U"Range")throw std::runtime_error("Loop dialog cancel restores definition");openLoopEditor(section.id);loopRepeat_->Click();resolve(true);if(document.timeline().state().loopSections.front().repeatCount || document.historySize()!=history+2)throw std::runtime_error("Loop dialog save infinite");document.undo();if(document.timeline().state().loopSections.front().repeatCount!=9999)throw std::runtime_error("Loop dialog undo infinite");document=Document();refresh();
+  }
+
+
   void smokeLoopEditorNormalization(){
-    smoke_=true;homeOpen_=false;documentOpen_=true;pending_=Pending::None;playing_=false;document=Document(1,1);document.addFrame();document.addFrame();refresh();openLoopEditor();loopInputs_[0]->setText("   ");loopInputs_[1]->setText("99.75");loopInputs_[2]->setText("-4.5");loopInputs_[3]->setText("10000.8");const auto history=document.historySize();resolve(true);if(pending_!=Pending::None || document.historySize()!=history+1 || document.timeline().state().loopSections.size()!=1)throw std::runtime_error("Loop normalized create transaction");auto section=document.timeline().state().loopSections.front();auto range=timeline::loopRange(document.timeline().state(),section);if(section.name!=U"循环节 1" || range.start!=0 || range.end!=2 || section.repeatCount!=9999)throw std::runtime_error("Loop range name repeat normalization");document.undo();if(!document.timeline().state().loopSections.empty())throw std::runtime_error("Loop normalized create undo");document.redo();openLoopEditor(section.id);loopInputs_[0]->setText("  Edited  ");loopInputs_[1]->setText("2.8");loopInputs_[2]->setText("3.9");loopInputs_[3]->setText("0.4");resolve(true);section=document.timeline().state().loopSections.front();range=timeline::loopRange(document.timeline().state(),section);if(section.name!=U"Edited" || range.start!=1 || range.end!=2 || section.repeatCount!=1)throw std::runtime_error("Loop edit integer truncation and minimum");document.undo();if(document.timeline().state().loopSections.front().name!=U"循环节 1")throw std::runtime_error("Loop normalized edit undo");openLoopEditor(section.id);const auto unchangedRevision=document.revision();resolve(true);if(document.revision()!=unchangedRevision)throw std::runtime_error("Loop unchanged save no history");openLoopEditor(section.id);loopInputs_[0]->setText("cancelled");resolve(false);if(document.revision()!=unchangedRevision || document.timeline().state().loopSections.front().name!=U"循环节 1")throw std::runtime_error("Loop cancel keeps metadata history");openLoopEditor(section.id);loopInputs_[3]->setText("");resolve(true);if(document.timeline().state().loopSections.front().repeatCount)throw std::runtime_error("Loop empty repeat remains infinite");document=Document();refresh();
+    smoke_=true;homeOpen_=false;documentOpen_=true;pending_=Pending::None;playing_=false;document=Document(1,1);document.addFrame();document.addFrame();refresh();openLoopEditor();loopRepeat_->Click();loopInputs_[0]->setText("   ");loopInputs_[1]->setText("99.75");loopInputs_[2]->setText("-4.5");loopInputs_[3]->setText("10000.8");const auto history=document.historySize();resolve(true);if(pending_!=Pending::None || document.historySize()!=history+1 || document.timeline().state().loopSections.size()!=1)throw std::runtime_error("Loop normalized create transaction");auto section=document.timeline().state().loopSections.front();auto range=timeline::loopRange(document.timeline().state(),section);if(section.name!=U"循环节 1" || range.start!=0 || range.end!=2 || section.repeatCount!=9999)throw std::runtime_error("Loop range name repeat normalization");document.undo();if(!document.timeline().state().loopSections.empty())throw std::runtime_error("Loop normalized create undo");document.redo();openLoopEditor(section.id);loopInputs_[0]->setText("  Edited  ");loopInputs_[1]->setText("2.8");loopInputs_[2]->setText("3.9");loopInputs_[3]->setText("0.4");resolve(true);section=document.timeline().state().loopSections.front();range=timeline::loopRange(document.timeline().state(),section);if(section.name!=U"Edited" || range.start!=1 || range.end!=2 || section.repeatCount!=1)throw std::runtime_error("Loop edit integer truncation and minimum");document.undo();if(document.timeline().state().loopSections.front().name!=U"循环节 1")throw std::runtime_error("Loop normalized edit undo");openLoopEditor(section.id);const auto unchangedRevision=document.revision();resolve(true);if(document.revision()!=unchangedRevision)throw std::runtime_error("Loop unchanged save no history");openLoopEditor(section.id);loopInputs_[0]->setText("cancelled");resolve(false);if(document.revision()!=unchangedRevision || document.timeline().state().loopSections.front().name!=U"循环节 1")throw std::runtime_error("Loop cancel keeps metadata history");openLoopEditor(section.id);loopRepeat_->Click();resolve(true);if(document.timeline().state().loopSections.front().repeatCount)throw std::runtime_error("Loop empty repeat remains infinite");document=Document();refresh();
   }
   void smokeFrameAddShortcutGuards(){
     smoke_=true;homeOpen_=false;documentOpen_=true;pending_=Pending::None;playing_=false;paletteFocused_=false;docking_=panels::Model{};layersPanelOpen_=true;setBounds(gfx::Rect(0,0,1280,960));
@@ -4971,6 +6094,35 @@ for(const auto& e:menus::catalog())if(!*e.parent){if(std::string(e.id)=="help"){
   void smokeVisibilityGestures(){
     smoke_=true;document=Document(1,1);document.addLayer();document.addLayer();refresh();const auto layers=document.timeline().state().layers;const auto active=document.layer().id;auto press=[&](int row,ui::KeyModifiers modifier){ui::MouseMessage mouse(ui::kMouseDownMessage,os::PointerType::Mouse,ui::kButtonLeft,modifier,layerEyes_[row]->bounds().center());layerEyes_[row]->onProcessMessage(&mouse);};auto move=[&](int row){ui::MouseMessage mouse(ui::kMouseMoveMessage,os::PointerType::Mouse,ui::kButtonLeft,ui::kKeyNoneModifier,layerEyes_[row]->bounds().center());onProcessMessage(&mouse);};const auto history=document.historySize();press(0,ui::kKeyNoneModifier);move(2);move(1);ui::MouseMessage up(ui::kMouseUpMessage,os::PointerType::Mouse,ui::kButtonLeft,ui::kKeyNoneModifier,layerEyes_[1]->bounds().center());onProcessMessage(&up);if(visibilityValue(layers[0].id)||visibilityValue(layers[1].id)||!visibilityValue(layers[2].id)||document.historySize()!=history+1||document.layer().id!=active)throw std::runtime_error("Visibility sweep/backtrack/active/history");document.undo();if(!visibilityValue(layers[0].id)||!visibilityValue(layers[1].id))throw std::runtime_error("Visibility undo");document.redo();document.selectTimelineLayer(layers[0].id);document.selectTimelineLayer(layers[2].id,1);const auto selected=document.timelineSelection();press(0,ui::kKeyCtrlModifier);if(!visibilityValue(layers[0].id)||!visibilityValue(layers[2].id)||visibilityValue(layers[1].id)||document.timelineSelection().layers!=selected.layers)throw std::runtime_error("Visibility Ctrl selected");press(2,ui::kKeyAltModifier);if(visibilityValue(layers[0].id)||!visibilityValue(layers[2].id))throw std::runtime_error("Visibility solo");press(2,ui::kKeyAltModifier);if(!visibilityValue(layers[0].id)||!visibilityValue(layers[2].id))throw std::runtime_error("Visibility solo restore");document.clearTimelineSelection();press(0,ui::kKeyAltModifier);press(2,ui::kKeyAltModifier);press(2,ui::kKeyAltModifier);if(!visibilityValue(layers[0].id)||visibilityValue(layers[1].id)||!visibilityValue(layers[2].id))throw std::runtime_error("Visibility changed solo restore");press(0,ui::kKeyNoneModifier);ui::Message blur(ui::kFocusLeaveMessage);processVisibilityGesture(&blur);if(visibilityGesture_||visibilityValue(layers[0].id))throw std::runtime_error("Visibility blur commits");document.undo();press(0,ui::kKeyNoneModifier);releaseMouse();ui::Message lost(ui::kMouseMoveMessage);processVisibilityGesture(&lost);if(visibilityGesture_||visibilityValue(layers[0].id))throw std::runtime_error("Visibility cancel commits");document=Document();visibilitySoloTarget_.clear();visibilitySoloOriginals_.clear();refresh();
   }
+  void smokeAutoLinkLogicalScope(){
+    smoke_=true;homeOpen_=false;documentOpen_=true;pending_=Pending::None;playing_=false;document=Document(1,1);for(int n=0;n<69;++n)document.addLayer();layersPanelOpen_=true;docking_=panels::Model{};layerScroll_=10;layerScrollRemainder_=0;setBounds(gfx::Rect(0,0,1280,960));refresh();const auto layers=document.timeline().state().layers;const auto active=document.layer().id;const auto history=document.historySize();
+    auto press=[&](ui::KeyModifiers modifiers){if(!layerAutoLinks_[0]->isVisible() || layerScroll_==0 || layerScroll_+int(std::count_if(layerAutoLinks_.begin(),layerAutoLinks_.end(),[](auto button){return button->timelineVisible;}))>=int(layers.size()))throw std::runtime_error("Auto-link logical scope fixture requires opened visible scrolled overflow");ui::MouseMessage message(ui::kMouseDownMessage,os::PointerType::Mouse,ui::kButtonLeft,modifiers,layerAutoLinks_[0]->bounds().center());layerAutoLinks_[0]->onProcessMessage(&message);};
+    auto all=[&](bool expected){for(const auto& layer:layers)if(autoLinkValue(layer.id)!=expected)throw std::runtime_error("Auto-link logical targets include offscreen rows");};
+    if(autoLinkVisibleTargets().size()!=layers.size())throw std::runtime_error("Auto-link logical displayRows scope");press(ui::kKeyCtrlModifier);all(true);if(document.historySize()!=history+1 || document.layer().id!=active)throw std::runtime_error("Auto-link Ctrl all logical rows one history");document.undo();all(false);document.redo();all(true);
+    const auto solo=layers[layerScroll_].id;press(ui::kKeyAltModifier);for(const auto& layer:layers)if(autoLinkValue(layer.id)!=(layer.id==solo))throw std::runtime_error("Auto-link Alt solo includes offscreen rows");press(ui::kKeyAltModifier);all(true);document.undo();for(const auto& layer:layers)if(autoLinkValue(layer.id)!=(layer.id==solo))throw std::runtime_error("Auto-link Alt restore undo");document.redo();all(true);
+    document.selectTimelineLayer(layers.front().id);document.selectTimelineLayer(solo,1);const auto selection=document.timelineSelection().layers;const auto selectedActive=document.layer().id;const auto beforeSelected=document.historySize();refresh();press(ui::kKeyCtrlModifier);for(const auto& layer:layers)if(autoLinkValue(layer.id)!=(layer.id!=layers.front().id && layer.id!=solo))throw std::runtime_error("Auto-link Ctrl multiselection priority");if(document.historySize()!=beforeSelected+1 || document.timelineSelection().layers!=selection || document.layer().id!=selectedActive)throw std::runtime_error("Auto-link Ctrl selected preserves selection and activity");document.undo();all(true);press(ui::kKeyAltModifier);for(const auto& layer:layers)if(autoLinkValue(layer.id)!=(layer.id!=layers.front().id))throw std::runtime_error("Auto-link Alt selected scope preserves unselected rows");press(ui::kKeyAltModifier);all(true);if(document.timelineSelection().layers!=selection || document.layer().id!=selectedActive)throw std::runtime_error("Auto-link Alt restore preserves selection and activity");
+    document=Document();autoLinkSoloTarget_.clear();autoLinkSoloOriginals_.clear();layerScroll_=layerScrollRemainder_=0;refresh();requestFocus();
+  }
+  void smokeToggleRelease(){
+    smoke_=true;homeOpen_=false;documentOpen_=true;pending_=Pending::None;playing_=false;docking_=panels::Model{};layersPanelOpen_=true;setBounds(gfx::Rect(0,0,1280,960));
+    for(int kind=0;kind<3;++kind){document=Document(1,1);document.addLayer();document.addLayer();layerScroll_=layerScrollRemainder_=0;refresh();const auto layers=document.timeline().state().layers;const auto active=document.layer().id;const auto history=document.historySize();auto& buttons=kind==0?layerEyes_:kind==1?layerLocks_:layerAutoLinks_;auto value=[&](int row){return kind==0?visibilityValue(layers[row].id):kind==1?lockValue(layers[row].id):autoLinkValue(layers[row].id);};const bool initial=value(0);auto gesture=[&]{return kind==0?bool(visibilityGesture_):kind==1?bool(lockGesture_):bool(autoLinkGesture_);};auto process=[&](ui::Message* msg){return kind==0?processVisibilityGesture(msg):kind==1?processLockGesture(msg):processAutoLinkGesture(msg);};if(!buttons[0]->isVisible() || !buttons[1]->isVisible())throw std::runtime_error("Toggle release requires opened controls");ui::MouseMessage down(ui::kMouseDownMessage,os::PointerType::Mouse,ui::kButtonLeft,ui::kKeyNoneModifier,buttons[0]->bounds().center());buttons[0]->onProcessMessage(&down);if(!gesture() || !hasCapture() || value(0)==initial)throw std::runtime_error("Toggle release starts real held gesture");ui::MouseMessage missed(ui::kMouseMoveMessage,os::PointerType::Mouse,ui::kButtonNone,ui::kKeyNoneModifier,buttons[1]->bounds().center());onProcessMessage(&missed);if(gesture() || hasCapture() || value(1)!=initial || document.historySize()!=history+1 || document.layer().id!=active)throw std::runtime_error("No-left move finishes without painting next row");if(process(&missed) || document.historySize()!=history+1)throw std::runtime_error("Finished no-left move cannot duplicate history");document.undo();if(value(0)!=initial || value(1)!=initial)throw std::runtime_error("Toggle missed release undo");document.redo();if(value(0)==initial || value(1)!=initial)throw std::runtime_error("Toggle missed release redo");document.undo();refresh();down=ui::MouseMessage(ui::kMouseDownMessage,os::PointerType::Mouse,ui::kButtonLeft,ui::kKeyNoneModifier,buttons[0]->bounds().center());buttons[0]->onProcessMessage(&down);ui::MouseMessage held(ui::kMouseMoveMessage,os::PointerType::Mouse,ui::kButtonLeft,ui::kKeyNoneModifier,buttons[1]->bounds().center());onProcessMessage(&held);if(!gesture() || value(1)==initial)throw std::runtime_error("Held-left range still paints next row");ui::MouseMessage release(ui::kMouseMoveMessage,os::PointerType::Mouse,ui::kButtonRight,ui::kKeyNoneModifier,buttons[2]->bounds().center());onProcessMessage(&release);if(gesture() || hasCapture() || value(2)!=initial)throw std::runtime_error("Only-left drag accepts range update");document.undo();if(value(0)!=initial || value(1)!=initial || value(2)!=initial)throw std::runtime_error("Held range remains one undo transaction");}
+    document=Document();refresh();requestFocus();
+  }
+  void smokeCelContentSelection(){
+    smoke_=true;homeOpen_=false;documentOpen_=true;pending_=Pending::None;playing_=false;document=Document(4,2);document.beginStroke({1,0},0x010000ff);document.commitStroke();document.beginStroke({3,0},0xff00ff00);document.commitStroke();document.addLinkedFrame(false);const auto linked=document.cel().id;document.addFrame();const auto empty=document.cel().id;document.selectFrame(document.timeline().state().frames.front().id);document.setLayerVisible(false);document.setLayerLocked(true);layersPanelOpen_=true;docking_=panels::Model{};layerScroll_=frameScroll_=layerScrollRemainder_=frameScrollRemainder_=0;setBounds(gfx::Rect(0,0,1280,960));refresh();
+    auto click=[&](int column,bool add){auto button=frameCells_.at(column);if(!button->isVisible())throw std::runtime_error("Cel content selection requires opened visible cell");ui::MouseMessage down(ui::kMouseDownMessage,os::PointerType::Mouse,ui::kButtonLeft,add?ui::KeyModifiers(ui::kKeyAltModifier|ui::kKeyShiftModifier):ui::kKeyAltModifier,button->bounds().center());button->onProcessMessage(&down);ui::MouseMessage up(ui::kMouseUpMessage,os::PointerType::Mouse,ui::kButtonLeft,down.modifiers(),button->bounds().center());onProcessMessage(&up);if(timelineGesture_.kind || hasCapture())throw std::runtime_error("Cel content click releases gesture");};
+    const auto history=document.historySize();click(1,false);const std::optional<SelectionMask> expected=SelectionMask{1,0,3,1,{1,0,1}};if(!selectionEqual(document.selection(),expected) || document.cel().id!=linked || document.timelineSelection().cels!=std::vector<std::string>{linked} || document.historySize()!=history+1)throw std::runtime_error("Alt cel linked alpha tight mask and hidden locked selection");document.undo();if(document.selection())throw std::runtime_error("Alt cel content undo");document.redo();if(!selectionEqual(document.selection(),expected))throw std::runtime_error("Alt cel content redo");
+    document.commitSelection(document.selection(),SelectionMask{0,1,1,1,{}});const auto beforeAdd=document.selection();click(1,true);if(!selectionContains(document.selection(),0,1) || !selectionContains(document.selection(),1,0) || selectionContains(document.selection(),2,0))throw std::runtime_error("AltShift cel content adds prior selection");document.undo();if(!selectionEqual(document.selection(),beforeAdd))throw std::runtime_error("AltShift selection undo");click(2,true);if(document.selection() || document.cel().id!=empty)throw std::runtime_error("Legacy AltShift empty incoming yields null selection");document.undo();if(!selectionEqual(document.selection(),beforeAdd))throw std::runtime_error("Empty content selection undo");click(2,false);if(document.selection())throw std::runtime_error("Alt empty cel replaces with null");
+    document.setLayerLocked(false);document.setLayerVisible(true);SelectionClipboard clipboard;clipboard.width=clipboard.height=1;clipboard.pixels={0xffabcdef};clipboard.mask={1};if(!document.beginFloatingPaste(clipboard,2,1))throw std::runtime_error("Cel content floating fixture");const auto floatingBefore=document.historySize();document.selectTimelineCelContent(linked);if(document.floating() || document.timeline().resolveSurface(empty).surface->pixels[6]!=0xffabcdef || !selectionEqual(document.selection(),expected) || document.historySize()!=floatingBefore+2)throw std::runtime_error("Cel content commits floating source before selecting target");document.undo();document.undo();if(document.timeline().resolveSurface(empty).surface->pixels[6])throw std::runtime_error("Cel content floating commit undo");document=Document();refresh();requestFocus();
+  }
+  void smokeAutoLinkKeyboard(){
+    smoke_=true;homeOpen_=false;documentOpen_=true;pending_=Pending::None;playing_=false;document=Document(1,1);document.addLayer();document.addLayer();document.addFrame();layersPanelOpen_=true;docking_=panels::Model{};setBounds(gfx::Rect(0,0,1280,960));refresh();const auto layers=document.timeline().state().layers;const auto selected=document.timelineSelection().layers;const auto active=document.layer().id;const auto history=document.historySize();
+    auto key=[&](ui::MessageType type,ui::KeyScancode code,ui::KeyModifiers modifiers=ui::kKeyNoneModifier,int repeat=0){ui::KeyMessage message(type,code,modifiers,0,repeat);return onProcessMessage(&message);};layerAutoLinks_[0]->requestFocus();
+    key(ui::kKeyDownMessage,ui::kKeyEnter);if(!autoLinkValue(layers[0].id) || document.historySize()!=history+1 || manager()->getFocus()!=layerAutoLinks_[0] || playing_)throw std::runtime_error("Auto-link Enter keydown toggles immediately and retains focus value="+std::to_string(autoLinkValue(layers[0].id))+" history="+std::to_string(document.historySize())+" expected="+std::to_string(history+1)+" focus="+std::to_string(manager()->getFocus()==layerAutoLinks_[0])+" visible="+std::to_string(layerAutoLinks_[0]->isVisible())+" enabled="+std::to_string(layerAutoLinks_[0]->isEnabled())+" scroll="+std::to_string(layerScroll_));key(ui::kKeyUpMessage,ui::kKeyEnter);if(document.historySize()!=history+1)throw std::runtime_error("Auto-link Enter keyup duplicate");document.undo();if(autoLinkValue(layers[0].id))throw std::runtime_error("Auto-link keyboard undo");document.redo();if(!autoLinkValue(layers[0].id))throw std::runtime_error("Auto-link keyboard redo");
+    key(ui::kKeyDownMessage,ui::kKeySpace);if(autoLinkValue(layers[0].id) || spaceHeld_ || panelScrollSpace_)throw std::runtime_error("Auto-link Space precedes hand and panel scroll");auto count=document.historySize();key(ui::kKeyUpMessage,ui::kKeySpace);if(document.historySize()!=count)throw std::runtime_error("Auto-link Space keyup duplicate");key(ui::kKeyDownMessage,ui::kKeySpace,ui::kKeyCtrlModifier,1);if(!autoLinkValue(layers[0].id) || autoLinkValue(layers[1].id) || autoLinkValue(layers[2].id))throw std::runtime_error("Auto-link repeat and modifier still toggle one focused layer");key(ui::kKeyUpMessage,ui::kKeySpace,ui::kKeyCtrlModifier);if(document.layer().id!=active || document.timelineSelection().layers!=selected)throw std::runtime_error("Auto-link keyboard preserves active and selection");
+    ui::KeyMessage down(ui::kKeyDownMessage,ui::kKeyEnter,ui::kKeyNoneModifier,0,0);layerAutoLinks_[0]->setEnabled(false);count=document.historySize();if(processAutoLinkKeyboard(&down) || document.historySize()!=count)throw std::runtime_error("Auto-link keyboard disabled gate");layerAutoLinks_[0]->setEnabled(true);requestFocus();if(processAutoLinkKeyboard(&down) || document.historySize()!=count)throw std::runtime_error("Auto-link keyboard focus gate");
+    for(int n=0;n<60;++n)document.addLayer();layerScroll_=1;layerScrollRemainder_=0;refresh();const auto target=document.timeline().state().layers[layerScroll_].id,offscreen=document.timeline().state().layers[0].id;const bool before=autoLinkValue(target),offscreenBefore=autoLinkValue(offscreen);layerAutoLinks_[0]->requestFocus();key(ui::kKeyDownMessage,ui::kKeyEnter);key(ui::kKeyUpMessage,ui::kKeyEnter);if(autoLinkValue(target)==before || autoLinkValue(offscreen)!=offscreenBefore)throw std::runtime_error("Auto-link keyboard pooled row current binding");document=Document();layerScroll_=layerScrollRemainder_=0;refresh();requestFocus();
+  }
   void smokeAutoLinkGestures(){
     smoke_=true;document=Document(1,1);document.addLayer();document.addLayer();refresh();const auto layers=document.timeline().state().layers;const auto active=document.layer().id;const auto history=document.historySize();auto press=[&](int n,ui::KeyModifiers modifiers){ui::MouseMessage mouse(ui::kMouseDownMessage,os::PointerType::Mouse,ui::kButtonLeft,modifiers,layerAutoLinks_[n]->bounds().center());beginAutoLinkGesture(layers[n].id,mouse);};press(0,ui::kKeyNoneModifier);auto sweepMove=[&](int n){ui::MouseMessage mouse(ui::kMouseMoveMessage,os::PointerType::Mouse,ui::kButtonLeft,ui::kKeyNoneModifier,layerAutoLinks_[n]->bounds().center());onProcessMessage(&mouse);};sweepMove(2);sweepMove(1);ui::MouseMessage up(ui::kMouseUpMessage,os::PointerType::Mouse,ui::kButtonLeft,ui::kKeyNoneModifier,layerAutoLinks_[1]->bounds().center());onProcessMessage(&up);if(!autoLinkValue(layers[0].id) || !autoLinkValue(layers[1].id) || autoLinkValue(layers[2].id) || document.historySize()!=history+1 || document.layer().id!=active)throw std::runtime_error("Auto-link range/backtrack history");document.undo();if(autoLinkValue(layers[0].id) || autoLinkValue(layers[1].id))throw std::runtime_error("Auto-link gesture undo");document.redo();document.selectTimelineLayer(layers[0].id);document.selectTimelineLayer(layers[2].id,1);const auto selected=document.timelineSelection();press(0,ui::kKeyCtrlModifier);if(autoLinkValue(layers[0].id) || autoLinkValue(layers[2].id) || !autoLinkValue(layers[1].id) || document.timelineSelection().layers!=selected.layers)throw std::runtime_error("Auto-link Ctrl selected");press(2,ui::kKeyAltModifier);if(!autoLinkValue(layers[2].id) || autoLinkValue(layers[0].id) || !autoLinkValue(layers[1].id))throw std::runtime_error("Auto-link Alt selected solo");press(2,ui::kKeyAltModifier);if(autoLinkValue(layers[2].id) || !autoLinkValue(layers[1].id))throw std::runtime_error("Auto-link Alt restore");document.clearTimelineSelection();press(0,ui::kKeyAltModifier);press(2,ui::kKeyAltModifier);press(2,ui::kKeyAltModifier);if(autoLinkValue(layers[0].id) || !autoLinkValue(layers[1].id) || autoLinkValue(layers[2].id))throw std::runtime_error("Auto-link changed solo target restore");press(0,ui::kKeyNoneModifier);ui::Message blur(ui::kFocusLeaveMessage);processAutoLinkGesture(&blur);if(autoLinkGesture_ || !autoLinkValue(layers[0].id))throw std::runtime_error("Auto-link blur commits");document.undo();press(0,ui::kKeyNoneModifier);releaseMouse();ui::Message move(ui::kMouseMoveMessage);processAutoLinkGesture(&move);if(autoLinkGesture_ || !autoLinkValue(layers[0].id))throw std::runtime_error("Auto-link capture cancel commits");document=Document();autoLinkSoloTarget_.clear();autoLinkSoloOriginals_.clear();refresh();
   }
@@ -4978,12 +6130,144 @@ for(const auto& e:menus::catalog())if(!*e.parent){if(std::string(e.id)=="help"){
     smoke_=true;playing_=false;savedPlaybackMode_.reset();document=Document(1,1);document.addFrame();document.addFrame();const auto frames=document.timeline().state().frames;
     document.selectFrameHeader(frames[1].id);contextFrameId_=frames[1].id;{PixelMenu menu(skin_);buildLayerContextMenu(&menu,2);auto item=dynamic_cast<PixelMenuItem*>(menu.children()[3]);if(!item || !item->isEnabled())throw std::runtime_error("Disable frame menu");item->Click();}if(!document.frame().disabled || !document.selectedFramesDisabled())throw std::runtime_error("Disable frame target");document.clearFrameSelection();document.selectFrame(frames[0].id);playbackSessionMode_="all";playbackTagMode_=false;togglePlayback();playbackDue_=std::chrono::steady_clock::now()-std::chrono::milliseconds(1);playbackTick();if(document.frame().id!=frames[2].id || !playing_)throw std::runtime_error("Disabled all skip");playing_=false;document.selectFrameHeader(frames[0].id);updateFramesDisabled(true);document.clearFrameSelection();document.selectFrame(frames[0].id);playbackSessionMode_="once";togglePlayback();if(document.frame().id!=frames[2].id || !playing_)throw std::runtime_error("Disabled once start");playbackDue_=std::chrono::steady_clock::now()-std::chrono::milliseconds(1);playbackTick();if(playing_ || document.frame().id!=frames[2].id)throw std::runtime_error("Disabled once completion");document.selectFrameHeader(frames[0].id);document.selectFrameHeader(frames[2].id,2);updateFramesDisabled(true);togglePlayback();if(playing_)throw std::runtime_error("All disabled playback");document.undo();document.clearFrameSelection();document.selectFrame(frames[0].id);playbackSessionMode_="all";togglePlayback();if(document.frame().disabled)throw std::runtime_error("Disabled all start");document.selectFrameHeader(document.frame().id);updateFramesDisabled(true);if(playing_)throw std::runtime_error("Disable live last playable");playing_=false;document.undo();document.clearFrameSelection();timeline::LoopSection section;section.name=U"disabled";section.startFrameId=frames[0].id;section.endFrameId=frames[2].id;document.createLoopSection(section);const auto tag=document.timeline().state().loopSections.front().id;startLoopPlayback(tag);if(document.frame().disabled || !playing_)throw std::runtime_error("Disabled tag start");playbackDue_=std::chrono::steady_clock::now()-std::chrono::milliseconds(1);playbackTick();if(document.frame().disabled)throw std::runtime_error("Disabled tag step");playing_=false;loopPlayback_={};playbackTagCycle_.clear();playbackTagMode_=false;document=Document();savedPlaybackMode_.reset();refresh();
   }
+  void smokeRelativeLuminance(){smoke_=true;homeOpen_=false;documentOpen_=true;document=Document(4,3);document.beginStroke({1,1},0xff0000ff);document.commitStroke();document.markSaved();refresh();ensureContentCache();const auto pixels=document.pixels();const auto history=document.historySize(),revision=document.revision();const auto exportBefore=encodeStaticImagePng(document,{}).png;const auto uploads=renderer_.uploads();if(!menuCommands_.invoke("relativeLuminance")||!renderer_.relativeLuminance())throw std::runtime_error("Luminance menu toggle");ensureContentCache();if(renderer_.uploads()!=uploads+1 || previewPanel_->relativeLuminance())throw std::runtime_error("Luminance default canvas scope/cache");if(document.pixels()!=pixels||document.historySize()!=history||document.revision()!=revision||document.dirty())throw std::runtime_error("Luminance view edited document");if(encodeStaticImagePng(document,{}).png!=exportBefore)throw std::runtime_error("Luminance altered export");auto image=os::instance()->makeRgbaSurface(4,3);{ui::Graphics g(image);renderer_.draw(g,{0,0,4,3},1,gfx::rgba(0,0,0,255),gfx::rgba(0,0,0,255));}const auto rendered=image->getPixel(1,1);if(gfx::getr(rendered)!=127||gfx::getg(rendered)!=127||gfx::getb(rendered)!=127)throw std::runtime_error("Luminance actual uploaded pixel");const auto uploaded=renderer_.uploadedPixels();document.beginStroke({2,1},0xff00ff00);document.commitStroke();renderer_.noteChange(document);ensureContentCache();if(renderer_.uploadedPixels()-uploaded>=12)throw std::runtime_error("Luminance lost dirty region cache");document.undo();ensureContentCache();if(document.pixels()!=pixels||document.historySize()!=history+1)throw std::runtime_error("Luminance mutated source pixels");PixelMenu menu(skin_);buildColumnContextMenu(menu,Column::Preview);auto item=dynamic_cast<PixelMenuItem*>(menu.children().back());if(!item||!item->isEnabled())throw std::runtime_error("Preview luminance context disabled");item->Click();if(!previewPanel_->relativeLuminance())throw std::runtime_error("Preview independent override");menuCommands_.invoke("relativeLuminance");if(renderer_.relativeLuminance()||!previewPanel_->relativeLuminance())throw std::runtime_error("Preview scope independence");previewPanel_->toggleRelativeLuminance();document=Document();refresh();}
+  void smokeAnimationSettings(){smoke_=true;homeOpen_=false;documentOpen_=true;pending_=Pending::None;playing_=false;document=Document(1,1);document.addFrame();document.addFrame();const auto frames=document.timeline().state().frames;document.selectFrameHeader(frames[1].id);document.setSelectedFramesDisabled(true);document.selectFrame(frames[0].id);const auto history=document.historySize(),revision=document.revision();skipDisabledFrames_=false;keyboardStepFrame(1);if(document.frame().id!=frames[1].id)throw std::runtime_error("Manual skip preference false");skipDisabledFrames_=true;document.selectFrame(frames[0].id);keyboardStepFrame(1);if(document.frame().id!=frames[2].id)throw std::runtime_error("Manual skip preference true");document.selectFrame(frames[0].id);toolbarStepFrame(1);if(document.frame().id!=frames[1].id)throw std::runtime_error("Toolbar disabled frame remains selectable");showAnimationSettings(true);if(document.historySize()!=history||document.revision()!=revision)throw std::runtime_error("Animation settings altered document history");const auto original=onion_;onion_.enabled=true;onion_.showDuringPlayback=false;renderer_.setOnionSkin(onion_,false);renderer_.sync(document);const auto uploaded=renderer_.uploads();renderer_.setOnionSkin(onion_,true);renderer_.sync(document);if(renderer_.uploads()<=uploaded)throw std::runtime_error("Onion playback display transition invalidation");onion_.previousColor=0x80553311;onion_.previousOpacity=99;onion_.allLayers=true;renderer_.setOnionSkin(onion_,false);renderer_.sync(document);onion_=original;skipDisabledFrames_=true;document=Document();refresh();}
+  void smokeFullscreen(){
+    smoke_=true;pending_=Pending::None;homeOpen_=false;documentOpen_=true;document=Document(2,2);refresh();requestFocus();
+    auto require=[](bool okay,const char* text){if(!okay)throw std::runtime_error(text);};auto native=display()->nativeWindow();const auto hwnd=static_cast<HWND>(native->nativeHandle());
+    if(native->isFullscreen())toggleFullscreen();if(native->isMaximized())native->maximize();
+    RECT initial{};GetWindowRect(hwnd,&initial);const auto pixels=document.pixels();const auto history=document.historySize(),revision=document.revision();
+    auto key=[&](int repeat=0,ui::KeyModifiers modifiers=ui::kKeyNoneModifier){ui::KeyMessage event(ui::kKeyDownMessage,ui::kKeyF11,modifiers,0,repeat);onProcessMessage(&event);};
+    auto menu=menuItems_.at("toggleFullscreen");require(menu->available() && !menuCommands_.checked("toggleFullscreen"),"Fullscreen menu initial checked state");
+    key();require(fullscreen() && menuCommands_.checked("toggleFullscreen"),"F11 enters native fullscreen");
+    MONITORINFO info{};info.cbSize=sizeof(info);GetMonitorInfoW(MonitorFromWindow(hwnd,MONITOR_DEFAULTTONEAREST),&info);RECT full{};GetWindowRect(hwnd,&full);
+    require(EqualRect(&full,&info.rcMonitor) && !(GetWindowLongPtrW(hwnd,GWL_STYLE)&(WS_CAPTION|WS_THICKFRAME)),"Fullscreen must fill monitor without window chrome");
+    key(1);require(fullscreen(),"Repeated F11 must not toggle");key(0,ui::kKeyCtrlModifier);require(fullscreen(),"Modified F11 must not toggle");
+    menuCommands_.invoke("toggleFullscreen");RECT restored{};GetWindowRect(hwnd,&restored);require(!fullscreen() && EqualRect(&initial,&restored),"Exit must restore normal window size and position");
+    {auto entry=new PixelEntry(font_,skin_);addChild(entry);entry->setBounds({10,10,100,30});entry->setVisible(true);entry->requestFocus();key();require(!fullscreen(),"Focused entry must retain F11");removeChild(entry);delete entry;requestFocus();}
+    pending_=Pending::OpenError;key();require(!fullscreen(),"Pending dialog must retain F11");pending_=Pending::None;
+    native->maximize();require(native->isMaximized(),"Fullscreen maximized fixture");key();require(fullscreen() && !native->isMaximized(),"Maximized window must restore before fullscreen");key();require(!fullscreen() && native->isMaximized(),"Fullscreen exit must restore maximization");native->maximize();
+    auto setter=setNativeFullscreen_;setNativeFullscreen_=[](os::Window*,bool){throw std::runtime_error("fixture fullscreen failure");};native->maximize();toggleFullscreen();require(!fullscreen() && native->isMaximized() && status_==U"fixture fullscreen failure" && !fullscreenTransition_,"Failed enter must restore maximization and expose error");native->maximize();setNativeFullscreen_=setter;
+    homeOpen_=true;require(menu->available(),"Fullscreen menu must remain available on home");key();require(fullscreen(),"Home F11 enters fullscreen");key();require(!fullscreen(),"Home F11 exits fullscreen");homeOpen_=false;
+    require(document.pixels()==pixels && document.historySize()==history && document.revision()==revision,"Fullscreen must not edit document/history");document=Document();refresh();
+  }
+  void smokeProjectFolder(){
+    smoke_=true;homeOpen_=false;documentOpen_=true;pending_=Pending::None;document=Document(2,2);documentPath_.clear();refresh();
+    auto require=[](bool okay,const char* message){if(!okay)throw std::runtime_error(message);};
+    const auto owned=std::filesystem::absolute(std::filesystem::path("project-folder-test-owned")/(std::to_string(GetCurrentProcessId())+"-"+std::to_string(GetTickCount64()))/L"中文 & folder");
+    std::filesystem::create_directories(owned);const auto source=owned/L"source & original.png",saved=owned/L"saved.moonsprite";
+    writeExportBytesAtomic(source,encodeRgbaImagePng(2,2,{0xff112233,0,0,0}).png);
+    auto launcher=projectFolderLauncher_;std::vector<std::filesystem::path> launches;
+    struct Restore {std::function<void()> run;~Restore(){run();}} restore{[&]{projectFolderLauncher_=launcher;}};
+    projectFolderLauncher_=[&](const std::filesystem::path& path){launches.push_back(path);};
+    require(!menuCommands_.enabled("openProjectFolder"),"Unsaved folder command must be disabled");
+    openProjectFolder();require(launches.empty() && status_==U"工程尚未保存","Unsaved folder status");
+    openPath(source);require(document.sourceFilePath()==source && documentPath_.empty(),"Raster origin must be separate from save path");
+    const auto history=document.historySize(),revision=document.revision();const auto pixels=document.pixels();const auto dirty=document.dirty();
+    auto item=menuItems_.at("openProjectFolder");require(item->available() && menuCommands_.invoke("openProjectFolder") && launches==std::vector<std::filesystem::path>{owned},"Imported source folder command");
+    require(document.historySize()==history && document.revision()==revision && document.pixels()==pixels && document.dirty()==dirty,"Folder command must not edit document");
+    require(savePath(saved),"Folder fixture native save");require(document.sourceFilePath()==source && projectFolderSource()==saved,"Save path must take precedence over imported origin");
+    menuCommands_.invoke("openProjectFolder");require(launches.size()==2 && launches.back()==owned,"Saved folder command");
+    documentPath_=owned/L"missing.moonsprite";menuCommands_.invoke("openProjectFolder");require(launches.size()==2 && status_==U"工程文件不存在，无法打开所在文件夹。","Missing saved path must fail without source fallback");
+    documentPath_=saved;projectFolderLauncher_=[](const std::filesystem::path&){throw std::runtime_error("fixture launch failure");};menuCommands_.invoke("openProjectFolder");require(status_==U"fixture launch failure","Folder launch failure must be observable");
+    document=Document();documentPath_.clear();openPath(saved);require(document.sourceFilePath()==saved && documentPath_==saved,"Native reopen must use its own source path");
+    document=Document();documentPath_.clear();refresh();require(!menuCommands_.enabled("openProjectFolder"),"New document must clear folder availability");
+  }
+  void smokePreviewLuminanceContract(){
+    smoke_=true;homeOpen_=false;documentOpen_=true;document=Document(2,1);refresh();
+    auto require=[](bool value,const char* message){if(!value)throw std::runtime_error(message);};
+    const auto history=document.historySize(),revision=document.revision();const auto pixels=document.pixels();
+    require(!previewPanel_->relativeLuminance(),"Preview initial override must be null/default canvas scope");
+    previewPanel_->syncRelativeLuminance(true,false);
+    require(!previewPanel_->relativeLuminance(),"Canvas scope must not inherit canvas luminance");
+    previewPanel_->syncRelativeLuminance(true,true);
+    require(previewPanel_->relativeLuminance(),"Preview component must inherit enabled app scope");
+    PixelMenu menu(skin_);buildColumnContextMenu(menu,Column::Preview);
+    auto item=dynamic_cast<PixelMenuItem*>(menu.children().back());
+    require(item && item->checked && item->checked(),"Preview context must show inherited effective state");
+    item->Click();require(!previewPanel_->relativeLuminance(),"Preview toggle must override inherited true with false");
+    previewPanel_->syncRelativeLuminance(false,true);previewPanel_->syncRelativeLuminance(true,true);
+    require(!previewPanel_->relativeLuminance(),"Explicit false must survive canvas changes");
+    item->Click();previewPanel_->syncRelativeLuminance(false,false);
+    require(previewPanel_->relativeLuminance(),"Explicit true must survive canvas scope and canvas false");
+    require(document.historySize()==history && document.revision()==revision && document.pixels()==pixels,"Preview contract must not edit document");
+    document=Document(2,1);refresh();
+    require(!previewPanel_->relativeLuminance(),"Document identity must clear preview override to null");
+    previewPanel_->syncRelativeLuminance(true,true);
+    require(previewPanel_->relativeLuminance(),"New document null override must inherit again");
+    document=Document();refresh();
+  }
+  void smokeLayerLabelWidth(){
+    // This fixture checks the unobscured timeline. A user-positioned floating
+    // Preview legitimately owns input over the cells beneath it (column 3).
+    const bool savedPreviewOpen=previewPanelOpen_;
+    struct RestorePreview {std::function<void()> restore;~RestorePreview(){restore();}} restorePreview{[&]{previewPanelOpen_=savedPreviewOpen;refresh();}};
+    smoke_=true;previewPanelOpen_=false;homeOpen_=false;documentOpen_=true;pending_=Pending::None;playing_=false;docking_=panels::Model{};document=Document(1,1);for(int i=0;i<80;++i)document.addFrame();document.addLayer();setBounds(gfx::Rect(0,0,1280,960));frameScroll_=frameScrollRemainder_=0;layerLabelWidth_={};refresh();
+    auto require=[](bool okay,const char* message){if(!okay)throw std::runtime_error(message);};
+    auto send=[&](ui::MessageType type,gfx::Point p,ui::MouseButton button=ui::kButtonLeft){ui::MouseMessage msg(type,os::PointerType::Mouse,button,ui::kKeyNoneModifier,p);onProcessMessage(&msg);};
+    auto at=layerLabelSeparatorBounds().center();require(layerLabelHit(at) && frontWidgetAt(at)==layerLabelSeparator_,"Column separator input ownership");require(std::string(cursorAt(at))=="ew-resize","Column separator legacy cursor");
+    {ui::MouseMessage right(ui::kMouseDownMessage,os::PointerType::Mouse,ui::kButtonRight,ui::kKeyNoneModifier,at);require(!processLayerLabelResize(&right) && !layerLabelWidth_.dragging,"Right button must not resize column");}
+    const auto history=document.historySize();send(ui::kMouseDownMessage,at);require(layerLabelWidth_.dragging && hasCapture(),"Column drag capture");send(ui::kMouseMoveMessage,{at.x+400,at.y});require(layerLabelWidth_.physical==590,"Column physical drag delta");const int width=timelineLabelWidth();require(timelineFrameViewport().x==timelineRowViewport().x+width*uiScale && frameHeaders_[0]->bounds().x==timelineFrameViewport().x,"Column frame render and viewport alignment");
+    ui::Message cancel(ui::kFocusLeaveMessage);onProcessMessage(&cancel);require(!layerLabelWidth_.dragging && !hasCapture() && layerLabelWidth_.physical==590,"Column pointer cancellation retains live width");
+    layerLabelSeparator_->requestFocus();ui::KeyMessage key(ui::kKeyDownMessage,ui::kKeyLeft,ui::kKeyNoneModifier,0,0);layerLabelSeparator_->sendMessage(&key);require(layerLabelWidth_.physical==578,"Column keyboard step is twelve CSS pixels");
+    const auto name=layerRows_[0]->bounds();timelineHorizontal_->changed(19);require(layerRows_[0]->bounds()==name && frameScrollRemainder_==19 && frameHeaders_[0]->bounds().x==timelineFrameViewport().x-19,"Column sticky names and partial horizontal scrolling");
+    require(document.timelineSelection().layers.empty() && document.timelineSelection().cels.empty() && document.selectedFrames().empty(),"Column scroll fixture must have no explicit selection");
+    const auto separator=layerLabelSeparatorBounds();int separatorPixels=0,cellPixels=0;
+    for(std::size_t slot=0;slot<frameCells_.size();++slot){auto cell=frameCells_[slot];if(!cell->timelineVisible)continue;const auto hit=cell->bounds()&timelineFrameViewport();
+      if(hit.isEmpty())continue;
+      // Legacy separator extends four CSS pixels over the frame grid. The first
+      // scrolled cell has only five pixels left; its center belongs to the separator.
+      // Check every remaining pixel, including the one-pixel cell strip beside it.
+      for(int x=hit.x;x<hit.x2();++x){const gfx::Point point(x,hit.center().y);const bool inSeparator=separator.contains(point);auto expected=inSeparator?static_cast<ui::Widget*>(layerLabelSeparator_):static_cast<ui::Widget*>(cell);auto actual=frontWidgetAt(point);
+        if(actual!=expected){std::ostringstream detail;detail<<"Resized scrolled cell hit target slot="<<slot<<" point="<<point.x<<","<<point.y<<" clip="<<hit.x<<","<<hit.y<<","<<hit.w<<","<<hit.h<<" separator="<<separator.x<<","<<separator.y<<","<<separator.w<<","<<separator.h<<" expectedSeparator="<<inSeparator<<" actualSeparator="<<(actual==layerLabelSeparator_)<<" actualCell="<<(actual==cell)<<" selectionBorder="<<timelineBorderHit(point)<<" actual="<<actual<<" column="<<widgetColumn(actual)<<" actualPreview="<<(actual==previewPanel_ || (actual && actual->hasAncestor(previewPanel_)))<<" actualHorizontal="<<(actual==timelineHorizontal_)<<" actualVertical="<<(actual==timelineVertical_)<<" topFloating="<<topFloatingColumnAt(point);auto rect=[&](const char* name,const gfx::Rect& value){detail<<" "<<name<<"="<<value.x<<","<<value.y<<","<<value.w<<","<<value.h;};if(actual)rect("actualBounds",actual->bounds());rect("viewport",timelineFrameViewport());rect("previewBounds",previewPanel_->bounds());rect("verticalBounds",timelineVertical_->bounds());rect("horizontalBounds",timelineHorizontal_->bounds());detail<<" previewVisible="<<previewPanel_->isVisible();throw std::runtime_error(detail.str());}
+        if(inSeparator)++separatorPixels;else ++cellPixels;
+      }
+    }
+    require(separatorPixels>0 && cellPixels>0,"Partial scroll must test separator overlap and residual cell pixels");
+    // Actual selection pixels and hit areas must stay identical after width/scroll changes.
+    document.selectTimelineLayer(document.layer().id);refresh();
+    auto surface=os::instance()->makeRgbaSurface(bounds().w,bounds().h);surface->clear();
+    for(const auto& outline:timelineOutlines()){
+      const auto material=skin_.selectionMaterialBounds(uiPhysical(outline.border).offset(outline.offset)).offset(bounds().origin());
+      {ui::Graphics g(surface);g.clipRect(outline.clip);UiPaintScale scale(g);skin_.drawSelectionBorder(g,uiPhysical(outline.border).offset(outline.offset).offset(bounds().origin()),false);}
+      const auto area=(material & outline.clip)&bounds();os::SurfaceLock lock(surface.get());
+      for(int y=area.y;y<area.y2();++y)for(int x=area.x;x<area.x2();++x)require(bool(surface->getPixel(x,y)>>24)==(outline.clip.contains(gfx::Point(x,y))&&skin_.selectionContains(material,{x,y})),"Resized selection rendered alpha differs from hit testing");
+    }
+    setLayerLabelWidth(2000);require(layerLabelWidth_.physical==2000 && timelineLabelWidth()>=1000 && timelineFrameViewport().w==0 && layerLabelSeparatorBounds().isEmpty(),"Bottom oversized stored width must not be clamped");timelineHorizontal_->changed(1000);require(layerLabelWidth_.physical==2000 && document.historySize()==history,"Column scroll/resize must preserve stored width and document history");
+    layerLabelWidth_={};document=Document();refresh();
+  }
+  void smokeLayerQuickActions(){smoke_=true;homeOpen_=false;documentOpen_=true;document=Document(1,1);pending_=Pending::None;const auto original=layerQuickActions_;layerQuickActions_=layerquick::normalize({});refresh();const auto expected=layerquick::visible(layerQuickActions_,[this](const std::string& id){return menuCommands_.connected(id);});for(std::size_t i=0;i<layerQuickButtons_.size();++i)if(layerQuickButtons_[i]->isVisible()!=(i<expected.size()))throw std::runtime_error("Quick actions supported toolbar visibility");if(layerQuickButtons_[0]->icon!="plus"||!layerQuickSettings_->isVisible())throw std::runtime_error("Quick actions default toolbar icons");const auto count=document.timeline().state().layers.size();layerQuickButtons_[0]->Click();if(document.timeline().state().layers.size()!=count+1)throw std::runtime_error("Quick actions command dispatch");showLayerQuickActions(true);layerQuickActions_=original;document=Document();refresh();}
   void smokePlaybackPreferences(){smoke_=true;savedPlaybackMode_.reset();playing_=false;loopPlayback_={};document=Document(1,1);document.addFrame();document.addFrame();document.markSaved();const auto history=document.historySize(),revision=document.revision();const int duration=document.frame().duration;std::istringstream preferences("1.5 1");readPlaybackPreferences(preferences);if(playbackRate_!=1.5||!playbackReturnToStart_)throw std::runtime_error("Playback preference reload");setPlaybackRate(2);if(std::chrono::duration<double,std::milli>(playbackFrameDelay()).count()!=duration/2.0||document.frame().duration!=duration)throw std::runtime_error("Playback rate changed frame duration");setPlaybackRate(17);if(playbackRate_!=1)throw std::runtime_error("Playback rate normalization");document.setImportedLoop(false);const auto start=document.frame().id;togglePlayback();if(document.activeFrameIndex()!=0)throw std::runtime_error("Once must start first");togglePlayback();if(document.activeFrameIndex()!=0)throw std::runtime_error("Pause returned to start");togglePlayback();playbackDue_=std::chrono::steady_clock::now()-std::chrono::seconds(2);playbackTick();if(playing_||document.activeFrameIndex()!=0)throw std::runtime_error("Once completion return capture");document.selectFrame(start);togglePlayback();playbackDue_=std::chrono::steady_clock::now()-std::chrono::seconds(2);playbackTick();if(document.frame().id!=start)throw std::runtime_error("Return to original playback start");if(document.historySize()!=history||document.revision()!=revision||document.dirty())throw std::runtime_error("Playback preferences changed document");playbackRate_=1;playbackReturnToStart_=false;playbackStartFrame_.clear();document=Document();refresh();}
+  void smokeSheetNewDocument(){smoke_=true;homeOpen_=false;ensureProjects();document=Document(3,2);document.beginStroke({1,0},0x80112233);document.commitStroke();document.addFrame();documentOpen_=true;refresh();const auto source=document.identity(),history=document.historySize(),revision=document.revision();const auto pixels=document.pixels();const auto count=projects_.size();const auto expected=buildSpriteSheetImage(document,{});auto picker=chooseExportFile_;struct Restore{std::function<void()> run;~Restore(){run();}} restore{[&]{chooseExportFile_=picker;}};chooseExportFile_=[](OPENFILENAMEW*)->bool{throw std::runtime_error("Non-file sheet invoked file picker");};openSpriteSheet();if(sheetOutputFile_||sheetOpenAfterExport_||discard_->caption!=U"新建文档")throw std::runtime_error("Sheet non-file defaults");sheetOutputFile_=true;sheetOpenAfterExport_=true;resolve(false);openSpriteSheet();if(sheetOutputFile_||sheetOpenAfterExport_)throw std::runtime_error("Sheet output mode did not reset");sheetOpenAfterExport_=true;resolve(true);if(pending_!=Pending::None||projects_.size()!=count+1||document.identity()==source||document.width()!=expected.width||document.height()!=expected.height||document.pixels()!=expected.pixels||!document.dirty()||document.canUndo()||document.historySize()||!documentPath_.empty()||!document.sourceFilePath().empty()||document.sourceArchive()||document.name()!=U"未命名 - 精灵表"||document.layer().name!=U"精灵表"||document.frame().duration!=100||document.timeline().state().layers.size()!=1||document.timeline().state().frames.size()!=1)throw std::runtime_error("Sheet new tab metadata/raster");activateProject(0);if(document.identity()!=source||document.pixels()!=pixels||!document.dirty()||document.historySize()!=history||document.revision()!=revision)throw std::runtime_error("Sheet new document mutated source");document=Document(1024,1);document.addFrame();refresh();const auto largeIdentity=document.identity(),largeHistory=document.historySize();openSpriteSheet();resolve(true);if(pending_!=Pending::SpriteSheet||projects_.size()!=count+1||document.identity()!=largeIdentity||document.historySize()!=largeHistory||status_.find(U"1024")==std::u32string::npos)throw std::runtime_error("Oversize sheet not rejected atomically");resolve(false);document=Document();refresh();}
+  void smokeSheetOpenAfterExport(){smoke_=true;homeOpen_=false;ensureProjects();document=Document(3,2);document.beginStroke({1,0},0xff112233);document.commitStroke();documentOpen_=true;refresh();const auto source=document.identity(),history=document.historySize(),revision=document.revision();const auto pixels=document.pixels();const auto projectCount=projects_.size();auto picker=chooseExportFile_;auto opener=openSheetOutput_;struct Restore{std::function<void()> run;~Restore(){run();}}restore{[&]{chooseExportFile_=picker;openSheetOutput_=opener;}};auto owned=fillBrushLibraryDirectory().parent_path().parent_path()/"sheet-open-smoke-owned"/(std::to_string(GetCurrentProcessId())+"-"+std::to_string(GetTickCount64()));std::filesystem::create_directories(owned);auto chosen=owned/L"sheet.png";bool cancelled=false;chooseExportFile_=[&](OPENFILENAMEW* dialog){if(cancelled)return false;auto name=chosen.wstring();std::copy(name.begin(),name.end(),dialog->lpstrFile);dialog->lpstrFile[name.size()]=0;return true;};openSpriteSheet();sheetOutputFile_=true;if(sheetOpenAfterExport_)throw std::runtime_error("Sheet open default");sheetOpenAfterExport_=true;resolve(false);if(projects_.size()!=projectCount||document.identity()!=source)throw std::runtime_error("Sheet cancel opened document");openSpriteSheet();sheetOutputFile_=true;if(sheetOpenAfterExport_)throw std::runtime_error("Sheet reopen did not reset");sheetOpenAfterExport_=true;cancelled=true;resolve(true);if(pending_!=Pending::SpriteSheet||projects_.size()!=projectCount)throw std::runtime_error("Sheet picker cancel opened document");resolve(false);cancelled=false;chosen=owned/L"missing"/L"fail.png";openSpriteSheet();sheetOutputFile_=true;sheetOpenAfterExport_=true;resolve(true);if(pending_!=Pending::SpriteSheet||projects_.size()!=projectCount||std::filesystem::exists(chosen))throw std::runtime_error("Sheet failure opened document");resolve(false);chosen=owned/L"plain.png";openSpriteSheet();sheetOutputFile_=true;resolve(true);if(projects_.size()!=projectCount||document.identity()!=source||!std::filesystem::exists(chosen))throw std::runtime_error("Sheet normal export opened document");chosen=owned/L"open-fail.png";openSheetOutput_=[](const auto&){throw std::runtime_error("fixture sheet open failure");};openSpriteSheet();sheetOutputFile_=true;sheetOpenAfterExport_=true;resolve(true);if(projects_.size()!=projectCount||document.identity()!=source||!std::filesystem::exists(chosen)||status_!=U"fixture sheet open failure")throw std::runtime_error("Sheet open failure lost file/source");openSheetOutput_=opener;chosen=owned/std::filesystem::u8path(u8"精灵表&copy.png");openSpriteSheet();sheetOutputFile_=true;sheetOpenAfterExport_=true;resolve(true);if(projects_.size()!=projectCount+1||document.identity()==source||document.width()!=3||document.height()!=2||document.pixels()!=pixels||document.dirty()||!documentPath_.empty()||document.sourceFilePath()!=chosen)throw std::runtime_error("Sheet output did not open PNG new tab");activateProject(0);if(document.identity()!=source||document.pixels()!=pixels||!document.dirty()||document.historySize()!=history||document.revision()!=revision)throw std::runtime_error("Sheet open changed source document");document=Document();refresh();}
+  void smokeSpriteSheetAutomatic(){smoke_=true;homeOpen_=false;documentOpen_=true;document=Document(2,1);document.beginStroke({1,0},0x80112233);document.commitStroke();document.markSaved();refresh();const auto history=document.historySize(),revision=document.revision();openSpriteSheet();auto out=encodeSpriteSheet(document,sheetOptions_);if(!out.indexed||out.png[25]!=3||out.width!=2||out.height!=1)throw std::runtime_error("Sprite sheet automatic encoding");auto owned=fillBrushLibraryDirectory().parent_path().parent_path()/"sheet-auto-smoke-owned"/(std::to_string(GetCurrentProcessId())+"-"+std::to_string(GetTickCount64()));std::filesystem::create_directories(owned);writeStaticImagePngAtomic(owned/L"sheet.png",out);std::ifstream f(owned/L"sheet.png",std::ios::binary);std::vector<unsigned char> bytes((std::istreambuf_iterator<char>(f)),{});if(bytes!=out.png)throw std::runtime_error("Sprite sheet automatic saved bytes");resolve(false);if(document.historySize()!=history||document.revision()!=revision||document.dirty())throw std::runtime_error("Sprite sheet automatic history");document=Document();refresh();}
   void smokeSpriteSheet(){smoke_=true;setBounds(gfx::Rect(0,0,1280,960));document=Document(1,1);homeOpen_=false;documentOpen_=true;document.addFrame();refresh();auto h=document.historySize(),rev=document.revision();const bool dirtyBefore=document.dirty();openSpriteSheet();if(!sheetPreview_ || document.historySize()!=h || document.revision()!=rev || document.dirty()!=dirtyBefore)throw std::runtime_error("Sheet preview mutated document");if(sheetButtons_[0]->hasFlags(ui::HIDDEN)||sheetOptions_.layout!=SheetLayout::Rows||sheetOptions_.constraint!=SheetConstraint::None)throw std::runtime_error("Sheet default UI");auto image=encodeSpriteSheet(document,sheetOptions_);if(image.width!=2||image.height!=1)throw std::runtime_error("Sheet all frames UI");sheetOptions_.splitLayers=true;refresh();if(buildSpriteSheetImage(document,sheetOptions_).width!=2 || document.dirty()!=dirtyBefore || document.historySize()!=h || document.revision()!=rev)throw std::runtime_error("Sheet split UI mutation");resolve(false);if(document.historySize()!=h||document.revision()!=rev||document.dirty()!=dirtyBefore)throw std::runtime_error("Sheet cancel mutation");document=Document();refresh();}
+  void smokeExportFolder(){smoke_=true;homeOpen_=false;documentOpen_=true;document=Document(3,2);document.beginStroke({1,0},0xff112233);document.commitStroke();document.markSaved();refresh();auto launcher=projectFolderLauncher_;auto picker=chooseExportFile_;struct Restore {std::function<void()> run;~Restore(){run();}} restore{[&]{projectFolderLauncher_=launcher;chooseExportFile_=picker;}};auto owned=fillBrushLibraryDirectory().parent_path().parent_path()/"export-folder-smoke-owned"/(std::to_string(GetCurrentProcessId())+"-"+std::to_string(GetTickCount64()))/std::filesystem::u8path(u8"中文&folder");std::filesystem::create_directories(owned);std::filesystem::path chosen=owned/L"image.png";bool cancelled=false;chooseExportFile_=[&](OPENFILENAMEW* dialog){if(cancelled)return false;auto value=chosen.wstring();std::copy(value.begin(),value.end(),dialog->lpstrFile);dialog->lpstrFile[value.size()]=0;return true;};std::vector<std::filesystem::path> launches;projectFolderLauncher_=[&](const auto& path){if(pending_!=Pending::None)throw std::runtime_error("Folder launched before modal close");launches.push_back(path);};const auto history=document.historySize(),revision=document.revision();openStaticExport();if(exportOpenFolderButton_->hasFlags(ui::HIDDEN)||exportOpenFolderButton_->icon!="folderOpen")throw std::runtime_error("Export folder footer missing");exportOpenFolderButton_->Click();if(pending_!=Pending::None||launches!=std::vector<std::filesystem::path>{owned}||!std::filesystem::exists(chosen))throw std::runtime_error("Export folder static success");openStaticExport();cancelled=true;exportOpenFolderButton_->Click();if(pending_!=Pending::StaticExport||launches.size()!=1||exportOpenFolderRequested_)throw std::runtime_error("Export folder native picker cancel");resolve(false);cancelled=false;chosen=owned/L"missing"/L"fail.png";openStaticExport();exportOpenFolderButton_->Click();if(pending_!=Pending::StaticExport||launches.size()!=1||std::filesystem::exists(chosen))throw std::runtime_error("Export folder write failure");resolve(false);chosen=owned/L"launch-fail.png";projectFolderLauncher_=[](const auto&){throw std::runtime_error("fixture folder launch failure");};openStaticExport();exportOpenFolderButton_->Click();if(pending_!=Pending::None||!std::filesystem::exists(chosen)||status_!=U"fixture folder launch failure")throw std::runtime_error("Export folder launch failure rolled back");projectFolderLauncher_=[&](const auto& path){launches.push_back(path);};chosen=owned/L"normal.png";openStaticExport();resolve(true);if(launches.size()!=1||!std::filesystem::exists(chosen))throw std::runtime_error("Normal export opened folder");chosen=owned/L"image.gif";openGifExport();exportOpenFolderButton_->Click();if(launches.size()!=2||!std::filesystem::exists(chosen)||pending_!=Pending::None)throw std::runtime_error("Export folder GIF success");document.addFrame();chosen=owned/L"frames.png";openFramePngExport();exportOpenFolderButton_->Click();auto drain=[&]{const auto deadline=std::chrono::steady_clock::now()+std::chrono::seconds(10);while(framePngBusy()){if(std::chrono::steady_clock::now()>=deadline)throw std::runtime_error("Export folder sequence timeout");framePngTick();std::this_thread::sleep_for(std::chrono::milliseconds(1));}};drain();if(launches.size()!=3||launches.back()!=owned||!std::filesystem::exists(owned/L"frames-002.png"))throw std::runtime_error("Export folder sequence success");chosen=owned/L"cancel.png";openFramePngExport();exportOpenFolderButton_->Click();resolve(false);drain();if(launches.size()!=3||std::filesystem::exists(owned/L"cancel-001.png"))throw std::runtime_error("Export folder canceled sequence opened");if(document.historySize()!=history+1||document.revision()!=revision+1)throw std::runtime_error("Export folder changed history");document=Document();refresh();}
+  void smokeSvgFrameExport(){smoke_=true;homeOpen_=false;documentOpen_=true;document=Document(3,1);document.beginStroke({1,0},0x80112233);document.commitStroke();document.addFrame();document.beginStroke({2,0},0xff445566);document.commitStroke();document.markSaved();refresh();const auto history=document.historySize(),revision=document.revision();openFramePngExport();gifOptions_.scalePercent=250;gifOptions_.trim=true;gifOptions_.direction=GifDirection::Reverse;setFrameSequenceFormat(FrameSequenceFormat::Svg);if(exportFormatButton_->caption!=U"SVG"||gifOptions_.scalePercent!=100||!gifOptions_.trim||gifOptions_.direction!=GifDirection::Reverse||gifInputs_[0]->text()!="1"||gifInputs_[0]->suffix!=U"x")throw std::runtime_error("SVG sequence format reset");gifInputs_[0]->setText("1.25");gifInputs_[0]->Change();if(gifOptions_.scalePercent!=125)throw std::runtime_error("SVG sequence fractional scale");gifInputs_[0]->setText("1+1");if(!gifInputs_[0]->commitExpression()||gifOptions_.scalePercent!=200)throw std::runtime_error("SVG sequence expression");auto owned=fillBrushLibraryDirectory().parent_path().parent_path()/"svg-frame-smoke-owned"/(std::to_string(GetCurrentProcessId())+"-"+std::to_string(GetTickCount64()));std::filesystem::create_directories(owned);beginFramePngExport(owned/L"frames.svg",{});const auto deadline=std::chrono::steady_clock::now()+std::chrono::seconds(10);while(framePngBusy()){if(std::chrono::steady_clock::now()>=deadline)throw std::runtime_error("SVG sequence timeout");framePngTick();std::this_thread::sleep_for(std::chrono::milliseconds(1));}for(int i=1;i<=2;++i){std::ifstream f(owned/(L"frames-00"+std::to_wstring(i)+L".svg"),std::ios::binary);std::string b((std::istreambuf_iterator<char>(f)),{});auto expected=encodeFrameSvg(document,i==1?document.timeline().state().frames[1].id:document.timeline().state().frames[0].id,framePngOptions_);if(b!=std::string(expected.bytes.begin(),expected.bytes.end()))throw std::runtime_error("SVG sequence saved bytes");}if(pending_!=Pending::None||document.historySize()!=history||document.revision()!=revision||document.dirty())throw std::runtime_error("SVG sequence history");openFramePngExport();setFrameSequenceFormat(FrameSequenceFormat::Svg);gifOptions_.scalePercent=125;setFrameSequenceFormat(FrameSequenceFormat::Bmp);if(frameSvg_||!frameBmp_||gifOptions_.scalePercent!=125||gifInputs_[0]->text()!="125"||gifInputs_[0]->suffix!=U"")throw std::runtime_error("SVG sequence outgoing scale");resolve(false);openFramePngExport();if(frameSvg_||frameBmp_||frameIco_||gifOptions_.scalePercent!=100)throw std::runtime_error("SVG sequence default");resolve(false);document=Document();refresh();}
+  void smokeIcoFrameExport(){smoke_=true;homeOpen_=false;documentOpen_=true;document=Document(257,1);document.beginStroke({128,0},0x80112233);document.commitStroke();document.addFrame();document.beginStroke({0,0},0xff445566);document.commitStroke();document.markSaved();refresh();const auto history=document.historySize(),revision=document.revision();openFramePngExport();frameIco_=true;gifOptions_.scalePercent=200;refresh();if(exportFormatButton_->caption!=U"ICO")throw std::runtime_error("ICO sequence format");auto owned=fillBrushLibraryDirectory().parent_path().parent_path()/"ico-frame-smoke-owned"/(std::to_string(GetCurrentProcessId())+"-"+std::to_string(GetTickCount64()));std::filesystem::create_directories(owned);beginFramePngExport(owned/L"frames.ico",{});const auto deadline=std::chrono::steady_clock::now()+std::chrono::seconds(10);while(framePngBusy()){if(std::chrono::steady_clock::now()>=deadline)throw std::runtime_error("ICO sequence timeout");framePngTick();std::this_thread::sleep_for(std::chrono::milliseconds(1));}for(int i=1;i<=2;++i){std::ifstream f(owned/(L"frames-00"+std::to_wstring(i)+L".ico"),std::ios::binary);std::vector<unsigned char> b((std::istreambuf_iterator<char>(f)),{});auto le=[&](int p){return std::uint32_t(b[p])|(std::uint32_t(b[p+1])<<8)|(std::uint32_t(b[p+2])<<16)|(std::uint32_t(b[p+3])<<24);};if(b.size()<48||b[2]!=1||b[4]!=1||b[6]!=0||b[7]!=1||le(14)!=b.size()-22||le(18)!=22||b[47]!=6)throw std::runtime_error("ICO sequence saved directory");}if(pending_!=Pending::None||document.historySize()!=history||document.revision()!=revision||document.dirty())throw std::runtime_error("ICO sequence history");openFramePngExport();if(frameIco_||frameBmp_)throw std::runtime_error("ICO sequence default");resolve(false);document=Document();refresh();}
+  void smokeBmpFrameExport(){smoke_=true;homeOpen_=false;documentOpen_=true;document=Document(3,2);document.beginStroke({1,0},0x80112233);document.commitStroke();document.addFrame();document.beginStroke({2,1},0xff445566);document.commitStroke();document.markSaved();refresh();const auto history=document.historySize(),revision=document.revision();openFramePngExport();frameBmp_=true;gifOptions_.trim=true;gifOptions_.scalePercent=200;refresh();if(exportFormatButton_->caption!=U"BMP")throw std::runtime_error("BMP sequence format");auto owned=fillBrushLibraryDirectory().parent_path().parent_path()/"bmp-frame-smoke-owned"/(std::to_string(GetCurrentProcessId())+"-"+std::to_string(GetTickCount64()));std::filesystem::create_directories(owned);beginFramePngExport(owned/L"frames.bmp",{});const auto deadline=std::chrono::steady_clock::now()+std::chrono::seconds(10);while(framePngBusy()){if(std::chrono::steady_clock::now()>=deadline)throw std::runtime_error("BMP sequence timeout");framePngTick();std::this_thread::sleep_for(std::chrono::milliseconds(1));}for(int i=1;i<=2;++i){std::ifstream f(owned/(L"frames-00"+std::to_wstring(i)+L".bmp"),std::ios::binary);std::vector<unsigned char> b((std::istreambuf_iterator<char>(f)),{});if(b.size()!=138||b[0]!='B'||b[1]!='M'||b[18]!=2||b[22]!=2)throw std::runtime_error("BMP sequence saved bytes");}if(pending_!=Pending::None||document.historySize()!=history||document.revision()!=revision||document.dirty())throw std::runtime_error("BMP sequence history");openFramePngExport();if(frameBmp_)throw std::runtime_error("BMP sequence default");resolve(false);document=Document();refresh();}
+  void smokeSvgExport(){smoke_=true;homeOpen_=false;documentOpen_=true;document=Document(3,1);document.beginStroke({1,0},0x80112233);document.commitStroke();document.markSaved();refresh();const auto pixels=document.pixels();const auto history=document.historySize(),revision=document.revision();openStaticExport();exportOptions_.scalePercent=250;exportOptions_.trim=true;openSvgExport();if(pending_!=Pending::StaticExport||exportFormatButton_->caption!=U"SVG"||exportScaleInput_->text()!="1"||exportScaleInput_->suffix!=U"x"||exportOptions_.scalePercent!=100||!exportOptions_.trim)throw std::runtime_error("SVG format enter defaults");exportScaleInput_->setText("1.25");exportScaleInput_->Change();if(exportOptions_.scalePercent!=125)throw std::runtime_error("SVG fractional scale");exportScaleInput_->setText("1+1");if(!exportScaleInput_->commitExpression())throw std::runtime_error("SVG scale expression");if(exportOptions_.scalePercent!=200)throw std::runtime_error("SVG expression scale");auto owned=fillBrushLibraryDirectory().parent_path().parent_path()/"svg-export-smoke-owned"/(std::to_string(GetCurrentProcessId())+"-"+std::to_string(GetTickCount64()));std::filesystem::create_directories(owned);writeCurrentStaticExport(owned/L"current.svg");std::ifstream f(owned/L"current.svg",std::ios::binary);std::string b((std::istreambuf_iterator<char>(f)),{});if(b.find("width=\"2\"")==std::string::npos||b.find("fill=\"#332211\" fill-opacity=\"0.501961\"")==std::string::npos)throw std::runtime_error("SVG saved exact run");switchStaticExportFormat(1);if(staticSvg_||!staticBmp_||exportOptions_.scalePercent!=200||!exportOptions_.trim||exportScaleInput_->text()!="200"||exportScaleInput_->suffix!=U"%")throw std::runtime_error("SVG outgoing scale preservation");resolve(false);openSvgExport();resolve(false);if(document.pixels()!=pixels||document.historySize()!=history||document.revision()!=revision||document.dirty())throw std::runtime_error("SVG export changed document");document=Document();refresh();}
+  void smokeIcoExport(){smoke_=true;homeOpen_=false;documentOpen_=true;document=Document(512,128);document.beginStroke({1,0},0x80112233);document.commitStroke();document.markSaved();refresh();const auto pixels=document.pixels();const auto history=document.historySize(),revision=document.revision();openIcoExport();if(pending_!=Pending::StaticExport||exportFormatButton_->caption!=U"ICO"||discard_->caption!=U"导出 ICO")throw std::runtime_error("ICO static format controls");auto owned=fillBrushLibraryDirectory().parent_path().parent_path()/"ico-export-smoke-owned"/(std::to_string(GetCurrentProcessId())+"-"+std::to_string(GetTickCount64()));std::filesystem::create_directories(owned);writeCurrentStaticExport(owned/L"current.ico");std::ifstream f(owned/L"current.ico",std::ios::binary);std::vector<unsigned char> b((std::istreambuf_iterator<char>(f)),{});auto le=[&](int offset){return std::uint32_t(b[offset])|(std::uint32_t(b[offset+1])<<8)|(std::uint32_t(b[offset+2])<<16)|(std::uint32_t(b[offset+3])<<24);};if(b.size()<48||b[2]!=1||b[4]!=1||b[6]!=0||b[7]!=64||le(14)!=b.size()-22||le(18)!=22||b[22]!=137||b[47]!=6)throw std::runtime_error("ICO saved directory and RGBA PNG");resolve(false);openIcoExport();resolve(false);if(document.pixels()!=pixels||document.historySize()!=history||document.revision()!=revision||document.dirty())throw std::runtime_error("ICO export changed document");openStaticExport();if(staticIco_||staticBmp_||exportOptions_.automatic)throw std::runtime_error("ICO leaked into PNG defaults");resolve(false);document=Document();refresh();}
+  void smokeBmpExport(){smoke_=true;homeOpen_=false;documentOpen_=true;document=Document(3,2);document.beginStroke({1,0},0x80112233);document.commitStroke();document.markSaved();refresh();const auto pixels=document.pixels();const auto history=document.historySize(),revision=document.revision();openBmpExport();if(pending_!=Pending::StaticExport||exportFormatButton_->caption!=U"BMP"||discard_->caption!=U"导出 BMP")throw std::runtime_error("BMP static format controls");exportOptions_.scalePercent=200;exportOptions_.trim=true;auto owned=fillBrushLibraryDirectory().parent_path().parent_path()/"bmp-export-smoke-owned"/(std::to_string(GetCurrentProcessId())+"-"+std::to_string(GetTickCount64()));std::filesystem::create_directories(owned);writeCurrentStaticExport(owned/L"current.bmp");std::ifstream f(owned/L"current.bmp",std::ios::binary);std::vector<unsigned char> b((std::istreambuf_iterator<char>(f)),{});if(b.size()!=138||b[0]!='B'||b[1]!='M'||b[18]!=2||b[22]!=2||b[122]!=0x11||b[125]!=0x80)throw std::runtime_error("BMP saved bytes");resolve(false);openBmpExport();resolve(false);if(document.pixels()!=pixels||document.historySize()!=history||document.revision()!=revision||document.dirty())throw std::runtime_error("BMP export changed document");openStaticExport();if(staticBmp_||exportOptions_.automatic)throw std::runtime_error("BMP format leaked into PNG defaults");resolve(false);document=Document();refresh();}
+  void smokePngAutomatic(){smoke_=true;homeOpen_=false;documentOpen_=true;document=Document(3,1);document.beginStroke({1,0},0x80112233);document.commitStroke();refresh();const auto history=document.historySize(),revision=document.revision();openStaticExport();exportOptions_.automatic=true;refresh();auto image=encodeStaticImagePng(document,exportOptions_);if(!image.indexed||image.png[24]!=1||image.png[25]!=3||exportFormatButton_->caption!=U"PNG 自动")throw std::runtime_error("PNG auto static controls and encoding");resolve(false);openStaticExport();if(exportOptions_.automatic)throw std::runtime_error("PNG RGBA default changed");resolve(false);document.addFrame();refresh();openFramePngExport();framePngAutomatic_=true;refresh();if(exportFormatButton_->hasFlags(ui::HIDDEN)||exportFormatButton_->caption!=U"PNG 自动")throw std::runtime_error("PNG auto sequence format missing");auto owned=fillBrushLibraryDirectory().parent_path().parent_path()/"png-auto-smoke-owned"/(std::to_string(GetCurrentProcessId())+"-"+std::to_string(GetTickCount64()));std::filesystem::create_directories(owned);beginFramePngExport(owned/L"auto.png",{});const auto deadline=std::chrono::steady_clock::now()+std::chrono::seconds(10);while(framePngBusy()){if(std::chrono::steady_clock::now()>=deadline)throw std::runtime_error("PNG auto export timeout");framePngTick();std::this_thread::sleep_for(std::chrono::milliseconds(1));}std::ifstream file(owned/L"auto-001.png",std::ios::binary);std::vector<unsigned char> bytes((std::istreambuf_iterator<char>(file)),{});if(bytes.size()<26||bytes[25]!=3||pending_!=Pending::None||document.historySize()!=history+1||document.revision()!=revision+1)throw std::runtime_error("PNG auto async file");document=Document();refresh();}
+  void smokeFramePngExport(){smoke_=true;homeOpen_=false;documentOpen_=true;document=Document(3,2);document.beginStroke({1,1},0x80112233);document.commitStroke();document.addFrame();document.beginStroke({2,0},0xffaabbcc);document.commitStroke();refresh();const auto history=document.historySize(),revision=document.revision();if(!menuCommands_.invoke("exportAllFrames")||!framePngMode_||pending_!=Pending::GifExport||gifInputs_[0]->hasFlags(ui::HIDDEN)||gifOptions_.scalePercent!=100)throw std::runtime_error("PNG frames entry defaults");resolve(false);if(document.historySize()!=history||document.revision()!=revision)throw std::runtime_error("PNG frames form cancel");auto owned=fillBrushLibraryDirectory().parent_path().parent_path()/"frame-png-smoke-owned"/(std::to_string(GetCurrentProcessId())+"-"+std::to_string(GetTickCount64()));std::filesystem::create_directories(owned);openFramePngExport();gifOptions_.scalePercent=150;beginFramePngExport(owned/L"frame.png",{});if(!framePngSnapshot_)throw std::runtime_error("PNG frames snapshot missing");auto drain=[&]{const auto deadline=std::chrono::steady_clock::now()+std::chrono::seconds(10);while(framePngBusy()){if(std::chrono::steady_clock::now()>=deadline)throw std::runtime_error("PNG frames timeout");framePngTick();std::this_thread::sleep_for(std::chrono::milliseconds(1));}};drain();if(pending_!=Pending::None||!std::filesystem::exists(owned/L"frame-001.png")||!std::filesystem::exists(owned/L"frame-002.png")||document.historySize()!=history||document.revision()!=revision)throw std::runtime_error("PNG frames async completion");openFramePngExport();beginFramePngExport(owned/L"cancel.png",{});resolve(false);drain();if(std::filesystem::exists(owned/L"cancel-001.png"))throw std::runtime_error("PNG frames cancel snapshot wrote");openGifExport();if(framePngMode_||discard_->caption!=U"导出 GIF"||!discard_->isEnabled())throw std::runtime_error("PNG frames leaked GIF state");resolve(false);document=Document();refresh();}
   void smokeStaticExport(){smoke_=true;setBounds(gfx::Rect(0,0,1280,960));document=Document(3,2);homeOpen_=false;documentOpen_=true;refresh();const auto h=document.historySize(),rev=document.revision();openStaticExport();if(exportScaleInput_->hasFlags(ui::HIDDEN)||exportOptions_.scalePercent!=100||exportOptions_.trim)throw std::runtime_error("Static export defaults/UI");exportScaleInput_->setText("200");exportScaleInput_->Change();auto out=encodeStaticImagePng(document,exportOptions_);if(out.width!=6||out.height!=4)throw std::runtime_error("Static export percentage");resolve(false);if(document.historySize()!=h||document.revision()!=rev||document.dirty())throw std::runtime_error("Static export cancel mutation");document=Document();refresh();}
+
   void smokeImageResize(){smoke_=true;setBounds(gfx::Rect(0,0,1280,960));document=Document(2,1);documentOpen_=true;homeOpen_=false;refresh();auto h=document.historySize();openImageResize();resizeInputs_[0]->setText("4");resizeInputs_[0]->Change();if(resizeHeight_!=2)throw std::runtime_error("Image resize aspect");resolve(false);if(document.width()!=2||document.historySize()!=h)throw std::runtime_error("Image resize cancel");openImageResize();resizeInputs_[0]->setText("4");resizeInputs_[0]->Change();resolve(true);if(document.width()!=4||document.height()!=2||document.historySize()!=h+1)throw std::runtime_error("Image resize apply");document.undo();if(document.width()!=2||document.height()!=1)throw std::runtime_error("Image resize undo");document=Document();refresh();}
   void smokeGradientMap(){smoke_=true;homeOpen_=false;documentOpen_=true;std::vector<Pixel> pixels{0x00112233,0x3f806020,0xffffffff};document=Document::fromImage(3,1,pixels,U"GM");refresh();auto h=document.historySize();if(!menuCommands_.invoke("gradientMap")||adjustmentSpec_.kind!=ColorAdjustmentKind::GradientMap||gmTrack_->hasFlags(ui::HIDDEN)||adjustmentSpec_.gradientMap.stops.size()!=2||!adjustmentPreviewEnabled_)throw std::runtime_error("GM defaults");auto drain=[&]{auto until=std::chrono::steady_clock::now()+std::chrono::seconds(5);while((gmScheduled_||gmWorker_.valid())&&std::chrono::steady_clock::now()<until){gradientMapTick();std::this_thread::sleep_for(std::chrono::milliseconds(1));}if(gmScheduled_||gmWorker_.valid())throw std::runtime_error("GM worker timeout");};drain();if(document.pixels()!=pixels||document.displayPixels()==pixels||(document.displayPixels()[1]>>24)!=63)throw std::runtime_error("GM independent preview");gmAdd_->Click();if(adjustmentSpec_.gradientMap.stops.size()!=3||gmStop_!=1)throw std::runtime_error("GM add largest gap");gmPosition_->setText("25");gmPosition_->Change();gmColor_->setText("#FF000080");gmColor_->Change();if(adjustmentSpec_.gradientMap.stops[gmStop_].position!=.25||adjustmentSpec_.gradientMap.stops[gmStop_].color!=0xff0000ff)throw std::runtime_error("GM stop fields and opaque setting");gmRemove_->Click();if(adjustmentSpec_.gradientMap.stops.size()!=2)throw std::runtime_error("GM remove stop");gmMode_->Click();gmReverse_->Click();gmDither_->setSelectedIndex(3,true);if(!adjustmentSpec_.gradientMap.steps||!adjustmentSpec_.gradientMap.reverse||adjustmentSpec_.gradientMap.dither!=3)throw std::runtime_error("GM mode reverse dither");gmPalette_->Click();if(adjustmentSpec_.gradientMap.stops.size()<2)throw std::runtime_error("GM palette");adjustmentPreview_->Click();if(document.displayPixels()!=pixels)throw std::runtime_error("GM live off");resolve(false);if(document.historySize()!=h||document.pixels()!=pixels)throw std::runtime_error("GM cancel");menuCommands_.invoke("gradientMap");adjustmentSpec_.gradientMap=gradientMapBuiltins()[2].settings;gmChanged();resolve(true);drain();if(pending_!=Pending::None||document.historySize()!=h+1||document.pixels()==pixels||(document.pixels()[1]>>24)!=63||document.pixels()[0]!=pixels[0])throw std::runtime_error("GM apply alpha/history");document.undo();if(document.pixels()!=pixels)throw std::runtime_error("GM undo");document.redo();if(document.pixels()==pixels)throw std::runtime_error("GM redo");document.undo();menuCommands_.invoke("gradientMap");gradientMapTick();resolve(false);if(gmWorker_.valid()){gmWorker_.wait();gmWorker_.get();}if(document.pixels()!=pixels||document.colorAdjustmentActive())throw std::runtime_error("GM stale close");document=Document();refresh();}
   void smokeAntiAlias(){smoke_=true;homeOpen_=false;documentOpen_=true;std::vector<Pixel> pixels(25);pixels[6]=pixels[12]=pixels[18]=0xffc06020;document=Document::fromImage(5,5,pixels,U"AA");refresh();auto h=document.historySize();if(!menuCommands_.invoke("quickAntiAlias") || !aaAuto_||!aaLive_||aaSpec_.opacity!=50||aaSpec_.interior||aaSpec_.colorSource!=0||aaAutoButton_->hasFlags(ui::HIDDEN))throw std::runtime_error("AA menu defaults");auto drain=[&]{auto until=std::chrono::steady_clock::now()+std::chrono::seconds(5);while((aaScheduled_||aaWorker_.valid())&&std::chrono::steady_clock::now()<until){antiAliasTick();std::this_thread::sleep_for(std::chrono::milliseconds(1));}if(aaScheduled_||aaWorker_.valid())throw std::runtime_error("AA worker timeout");};drain();if(document.pixels()!=pixels||document.displayPixels()==pixels||document.historySize()!=h)throw std::runtime_error("AA detached preview");aaSource_->setSelectedIndex(2,true);drain();if(aaSpec_.colorSource!=2||!aaOpacity_->hasFlags(ui::HIDDEN))throw std::runtime_error("AA palette source");aaInterior_->Click();if(!aaSpec_.interior)throw std::runtime_error("AA interior toggle");aaAutoButton_->Click();if(aaPicker_->hasFlags(ui::HIDDEN)||aaColorEntry_->hasFlags(ui::HIDDEN)||!aaSource_->hasFlags(ui::HIDDEN))throw std::runtime_error("AA custom picker");aaColorEntry_->setText("#FF000080");aaColorEntry_->Change();drain();if(aaCustom_!=0x800000ff)throw std::runtime_error("AA custom alpha");aaLiveButton_->Click();if(document.displayPixels()!=pixels)throw std::runtime_error("AA disable live restores");resolve(false);if(document.pixels()!=pixels||document.historySize()!=h)throw std::runtime_error("AA cancel");menuCommands_.invoke("quickAntiAlias");requestAntiAliasApply();drain();if(pending_!=Pending::None||document.pixels()==pixels||document.historySize()!=h+1)throw std::runtime_error("AA apply one history");document.undo();if(document.pixels()!=pixels)throw std::runtime_error("AA undo");document.redo();if(document.pixels()==pixels)throw std::runtime_error("AA redo");document.undo();menuCommands_.invoke("quickAntiAlias");aaDue_=std::chrono::steady_clock::now();antiAliasTick();resolve(false);if(aaWorker_.valid()){aaWorker_.wait();aaWorker_.get();}if(document.pixels()!=pixels||document.colorAdjustmentActive())throw std::runtime_error("AA stale close");document=Document();refresh();}
+  void smokeCanvasCrop(){
+    smoke_=true;homeOpen_=false;documentOpen_=true;document=Document(4,3);refresh();
+    if(menuCommands_.invoke("cropCanvas"))throw std::runtime_error("Crop requires selection");
+    document.beginStroke({2,1},0xff0000ff);document.commitStroke();document.beginStroke({1,2},0xffff0000);document.commitStroke();
+    document.previewSelection(SelectionMask{1,1,2,2,{}});refresh();selectionPivot_=TransformPoint{2.5,2.5};const auto h=document.historySize();
+    if(!menuCommands_.invoke("cropCanvas") || document.width()!=2 || document.height()!=2 || document.historySize()!=h+1 || document.pixels()[1]!=0xff0000ff || !selectionPivot_ || selectionPivot_->x!=1.5 || selectionPivot_->y!=1.5)throw std::runtime_error("Crop menu exact pixels/history/pivot");
+    document.undo();refresh();if(document.width()!=4 || document.selection()->x!=1 || !selectionPivot_ || selectionPivot_->x!=2.5)throw std::runtime_error("Crop menu undo");
+    document.redo();refresh();if(document.width()!=2 || document.selection()->x || !selectionPivot_ || selectionPivot_->x!=1.5)throw std::runtime_error("Crop menu redo");
+    document=Document();refresh();
+  }
+  void smokeBackgroundPreset(){smoke_=true;homeOpen_=false;documentOpen_=true;document=Document(4,3);document.beginStroke({1,1},0x80123456);document.commitStroke();document.previewSelection(SelectionMask{0,0,3,3,{}});refresh();backgroundPresetTestDirectory_=backgroundPresetDirectory().parent_path().parent_path()/"background-preset-smoke-owned"/(std::to_string(GetCurrentProcessId())+"-"+std::to_string(GetTickCount64()));const auto h=document.historySize();const auto before=document.pixels();if(!menuCommands_.invoke("createBackgroundPresetFromSelection") || !std::filesystem::exists(*backgroundPresetTestDirectory_/std::filesystem::path(U"选区背景预设.png")) || document.historySize()!=h || document.pixels()!=before || !document.selection())throw std::runtime_error("Background preset menu save mutated document");document.previewSelection(SelectionMask{3,2,1,1,{}});if(!menuCommands_.invoke("createBackgroundPresetFromSelection") || std::filesystem::exists(*backgroundPresetTestDirectory_/std::filesystem::path(U"选区背景预设 2.png")))throw std::runtime_error("Background empty preset saved");document.previewSelection({});if(menuCommands_.enabled("createBackgroundPresetFromSelection"))throw std::runtime_error("Background preset requires selection");backgroundPresetTestDirectory_.reset();document=Document();refresh();}
+  void smokeCanvasTrim(){smoke_=true;homeOpen_=false;documentOpen_=true;document=Document(5,3);document.beginStroke({2,1},0xff123456);document.commitStroke();document.previewSelection(SelectionMask{1,0,3,3,{}});refresh();selectionPivot_=TransformPoint{3.5,2.5};const auto history=document.historySize();if(!menuCommands_.invoke("trimCurrentFrame") || document.width()!=1 || document.height()!=1 || document.historySize()!=history+1 || !selectionPivot_ || selectionPivot_->x!=1.5 || selectionPivot_->y!=1.5)throw std::runtime_error("Trim menu and pivot");document.undo();refresh();if(document.width()!=5 || !selectionPivot_ || selectionPivot_->x!=3.5 || document.selection()->x!=1)throw std::runtime_error("Trim undo pivot");document.redo();refresh();if(document.width()!=1 || !selectionPivot_ || selectionPivot_->x!=1.5)throw std::runtime_error("Trim redo pivot");selectionPivot_=TransformPoint{8,9};if(!menuCommands_.invoke("trimCanvas") || selectionPivot_->x!=8 || document.historySize()!=history+1)throw std::runtime_error("Trim noop pivot");document=Document();refresh();}
   void smokeConvolution(){smoke_=true;homeOpen_=false;documentOpen_=true;document=Document::fromImage(3,1,{0xff140a1e,0xff140a3c,0xff140a78},U"convolution");refresh();auto original=document.pixels();auto history=document.historySize();if(!menuCommands_.invoke("convolution") || convolutionSpec_.presetId!="blur-3x3" || !convolutionLiveEnabled_ || convolutionSpec_.tiled || convolutionPresets_.size()!=40)throw std::runtime_error("Convolution defaults and presets");convolutionTick();if(convolutionWorker_.valid())throw std::runtime_error("Convolution debounce missing");auto drain=[&]{const auto until=std::chrono::steady_clock::now()+std::chrono::seconds(5);while((convolutionScheduled_ || convolutionWorker_.valid()) && std::chrono::steady_clock::now()<until){convolutionTick();std::this_thread::sleep_for(std::chrono::milliseconds(1));}if(convolutionScheduled_ || convolutionWorker_.valid())throw std::runtime_error("Convolution worker timeout");};convolutionSpec_={"negative",{true,true,true,false},false};changeConvolution();drain();if(document.pixels()!=original || document.displayPixels()==original || document.historySize()!=history)throw std::runtime_error("Convolution detached live preview");requestConvolutionApply(false);drain();auto applied=document.pixels();if(pending_!=Pending::Convolution || document.historySize()!=history+1 || applied==original)throw std::runtime_error("Convolution Apply stays open");requestConvolutionApply(true);if(pending_!=Pending::None || document.historySize()!=history+1 || document.pixels()!=applied)throw std::runtime_error("Convolution Done applied twice");menuCommands_.invoke("convolution");convolutionSpec_={"brightness",{true,true,true,false},false};changeConvolution();drain();resolve(false);if(document.pixels()!=applied || document.historySize()!=history+1)throw std::runtime_error("Convolution Cancel lost applied baseline");document.undo();if(document.pixels()!=original)throw std::runtime_error("Convolution undo");menuCommands_.invoke("convolution");convolutionDue_=std::chrono::steady_clock::now();convolutionTick();resolve(false);if(convolutionWorker_.valid()){convolutionWorker_.wait();convolutionWorker_.get();}if(document.pixels()!=original || document.colorAdjustmentActive())throw std::runtime_error("Convolution stale close result");document=Document();refresh();}
   void smokeCurves(){smoke_=true;homeOpen_=false;documentOpen_=true;document=Document(2,1);document.beginStroke({0,0},0x801e140a);document.commitStroke();document.markSaved();refresh();auto history=document.historySize();if(!menuCommands_.invoke("adjustmentCurves") || curveChannel_!=0 || curveEditor_->hasFlags(ui::HIDDEN) || adjustmentSpec_.curves[0].size()!=2)throw std::runtime_error("Curves menu defaults");curveEditor_->setBounds(gfx::Rect(0,0,248*uiScale,248*uiScale));auto pointer=[&](ui::MessageType type,CurvePoint p,decltype(ui::kButtonLeft) buttons=ui::kButtonLeft){ui::MouseMessage m(type,os::PointerType::Mouse,buttons,ui::kKeyNoneModifier,curveEditor_->pointPosition(p));curveEditor_->onProcessMessage(&m);};pointer(ui::kMouseDownMessage,{128,170});pointer(ui::kMouseUpMessage,{128,170});if(adjustmentSpec_.curves[0].size()!=3 || curveEditor_->selected!=1)throw std::runtime_error("Curve adds interior point");curveEditor_->setCoordinate(0,400);if(adjustmentSpec_.curves[0][1].x!=254)throw std::runtime_error("Curve point X neighbor clamp");curveEditor_->setCoordinate(0,128);curveEditor_->setCoordinate(1,170);curveChannelButton_->Click();if(curveChannel_!=1 || curveEditor_->selected!=-1 || adjustmentSpec_.curves[0].size()!=3)throw std::runtime_error("Curve channel retains independent points");curveEditor_->resetChannel();curveChannelButton_->Click();curveChannelButton_->Click();curveChannelButton_->Click();curveEditor_->selected=1;curveEditor_->deleteSelected();if(adjustmentSpec_.curves[0].size()!=2)throw std::runtime_error("Curve deletes inner point");curveEditor_->selected=0;curveEditor_->deleteSelected();if(adjustmentSpec_.curves[0].size()!=2)throw std::runtime_error("Curve keeps endpoints");resolve(false);if(document.historySize()!=history || document.dirty())throw std::runtime_error("Curves cancel view history");menuCommands_.invoke("adjustmentCurves");adjustmentSpec_.curves[0]={{0,0},{128,170},{255,255}};previewAdjustment();resolve(true);if(document.historySize()!=history+1 || (document.pixels()[0]>>24)!=128 || document.pixels()[0]==0x801e140a)throw std::runtime_error("Curves apply pixel history");document.undo();if(document.pixels()[0]!=0x801e140a)throw std::runtime_error("Curves undo");document=Document();refresh();}
   void smokeColorAdjustments(){
@@ -5387,6 +6671,47 @@ for(const auto& e:menus::catalog())if(!*e.parent){if(std::string(e.id)=="help"){
       menuBar_->cancelMenuLoop();
     } else if(top->hasSubmenuOpened()) throw std::runtime_error("Menu did not close");
   }
+  void smokeDrawingPanPerformance(){
+    smoke_=true;homeOpen_=false;documentOpen_=true;pending_=Pending::None;playing_=false;
+    previewPanelOpen_=true;
+    selectionTool_=shapeTool_=gradientTool_=fillTool_=handTool_=zoomTool_=eyedropperTool_=eraser_=spaceHeld_=eyedropperHeld_=false;pencilImageBrush_.reset();brushPreviewShift_=false;
+    auto drain=[&]{manager()->flushRedraw();manager()->dispatchMessages();};
+    auto send=[&](ui::MessageType type,ui::MouseButton button,gfx::Point at){updatePaletteMouse(at);ui::MouseMessage m(type,os::PointerType::Mouse,button,ui::kKeyNoneModifier,at);m.setDisplay(display());onProcessMessage(&m);if(type==ui::kMouseDownMessage && (document.active() || pan_.active))enableFlags(ui::HAS_CAPTURE);if(type==ui::kMouseUpMessage)disableFlags(ui::HAS_CAPTURE);};
+    auto require=[](bool ok,const char* why){if(!ok)throw std::runtime_error(why);};
+    auto pixels=[&]{auto surface=display()->nativeWindow()->surface();os::SurfaceLock lock(surface);std::vector<gfx::Color> out;for(int y=0;y<surface->height();++y)for(int x=0;x<surface->width();++x)out.push_back(surface->getPixel(x,y));return out;};
+    std::filesystem::create_directories("build/test-tmp");std::ofstream report("build/test-tmp/drawing-pan-performance.txt");
+    for(bool erase:{false,true}){
+      document=erase?Document::fromImage(512,512,std::vector<Pixel>(512*512,0xffaabbcc),U"erase fixture"):Document(512,512);
+      const auto paintedLayer=document.layer().id;document.addLayer();document.selectLayer(paintedLayer);eraser_=erase;brushProfiles_[erase?1:0]={32,50,BrushShape::Round};fitCanvas();refresh();drain();invalidate();drain();
+      const auto point=canvasViewport().center();const auto before=document.pixels();const auto history=document.historySize();const auto chrome=chromePaints_;const auto start=std::chrono::steady_clock::now();
+      send(ui::kMouseDownMessage,ui::kButtonLeft,point);drain();const auto moveChrome=chromePaints_;
+      auto previewUploaded=previewPanel_->uploadedPixels();
+      for(int i=0;i<48;++i){send(ui::kMouseMoveMessage,ui::kButtonLeft,point+gfx::Point(i%2?80:-80,(i%12)*5-30));if(i%4==3){drain();
+        const auto uploaded=previewPanel_->uploadedPixels();require(uploaded-previewUploaded<512*512,"Batched stroke forced full preview upload");
+        if(i==3)require(uploaded>previewUploaded,"Preview did not upload changed stroke pixels");previewUploaded=uploaded;
+      }}
+      const auto movesEnd=std::chrono::steady_clock::now();const auto endChrome=chromePaints_;
+      auto expected=before;std::unordered_map<std::size_t,Pixel> touched;
+      Point last=canvasPoint(point);const Pixel color=erase?0:ink_;
+      // Use pre-stroke pixels for alpha/eraser oracle, retaining every sample.
+      auto oracleDoc=Document::fromImage(512,512,before,U"pointer oracle");last=canvasPoint(point);
+      auto segment=[&](gfx::Point target){const auto next=canvasPoint(target);const auto samples=oracleDoc.brushPreview(last,next,color,brushProfiles_[erase?1:0]);for(const auto& item:samples)touched.emplace(item);last=next;};
+      segment(point);for(int i=0;i<48;++i)segment(point+gfx::Point(i%2?80:-80,(i%12)*5-30));segment(point+gfx::Point(75,35));for(const auto& item:touched)expected[item.first]=item.second;
+      const auto endStart=std::chrono::steady_clock::now();send(ui::kMouseUpMessage,ui::kButtonLeft,point+gfx::Point(75,35));drain();
+      report<<(erase?"eraser":"pencil")<<" move_batch4_mean_ms="<<std::chrono::duration<double,std::milli>(movesEnd-start).count()/12<<" end_ms="<<std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-endStart).count()<<" chrome="<<chromePaints_-chrome<<" move_chrome="<<endChrome-moveChrome<<" end_chrome="<<chromePaints_-endChrome<<std::endl;
+      require(document.historySize()==history+1,"Fast stroke did not produce one undo entry");const auto after=document.pixels();require(after==expected,"Fast native events lost a sample or changed alpha");document.undo();require(document.pixels()==before,"Fast stroke undo mismatch");document.redo();require(document.pixels()==after,"Fast stroke redo mismatch");
+    }
+    document=Document(512,512);document.beginStroke({0,0},0x806688aa,{64,100,BrushShape::Square});document.updateStroke({511,511});document.commitStroke();document.markSaved();eraser_=false;zoom_=4;canvas_={100,100,4096,4096};refresh();constrainCanvas();paletteMousePosition_.reset();drain();invalidate();drain();
+    const auto before=document.pixels();const auto history=document.historySize(),revision=document.contentRevision();const auto uploads=renderer_.uploads();const auto origin=canvasViewport().center();send(ui::kMouseDownMessage,ui::kButtonMiddle,origin);drain();
+    for(bool reuse:{false,true}){panBlit_=reuse;invalidate();drain();
+    auto start=std::chrono::steady_clock::now();const auto chrome=chromePaints_,blits=canvasBlitMoves_;const auto area=canvasPanRepaintPixels_;
+    for(int i=0;i<32;++i){send(ui::kMouseMoveMessage,ui::kButtonMiddle,origin+gfx::Point(i%2?15:-15,i%2?11:-11));drain();}
+    report<<"pan_reuse="<<reuse<<" pan_mean_ms="<<std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-start).count()/32<<" chrome="<<chromePaints_-chrome<<" blits="<<canvasBlitMoves_-blits<<" repaint_pixels="<<(canvasPanRepaintPixels_-area)/32<<std::endl;
+    // Full redraw oracle must include frame edges and scrollbars.
+    const auto local=pixels();invalidate();drain();const auto full=pixels();if(local!=full){std::size_t i=0;while(i<local.size() && local[i]==full[i])++i;throw std::runtime_error("Pan framebuffer mismatch x="+std::to_string(i%display()->nativeWindow()->surface()->width())+" y="+std::to_string(i/display()->nativeWindow()->surface()->width())+" local="+std::to_string(local[i])+" full="+std::to_string(full[i])+" blits="+std::to_string(canvasBlitMoves_));}}
+    for(double z:{.25,1.5,4.0}){setCanvasZoom(origin,z);invalidate();drain();for(auto delta:{gfx::Point(1,1),gfx::Point(-7,5),gfx::Point(2000,-2000),gfx::Point(-5,-3)}){send(ui::kMouseMoveMessage,ui::kButtonMiddle,origin+delta);drain();const auto partial=pixels();invalidate();drain();require(partial==pixels(),"Pan fractional/jump framebuffer mismatch");}}
+    send(ui::kMouseUpMessage,ui::kButtonMiddle,origin+gfx::Point(15,11));drain();require(document.pixels()==before && document.historySize()==history && document.contentRevision()==revision && renderer_.uploads()==uploads && !document.dirty(),"Pan modified artwork/cache/history");report<<"pan_pixels=pass\nstroke_undo_redo=pass\n";
+  }
   void smokeNavigation() {
     const auto pixels=document.pixels();const auto history=document.historySize();const bool dirty=document.dirty();
     const auto original=canvas_;const double scale=zoom_;
@@ -5475,6 +6800,26 @@ for(const auto& e:menus::catalog())if(!*e.parent){if(std::string(e.id)=="help"){
     if(!document.dirty() || !documentPath_.empty() || document.name()!=U"测试恢复（恢复）" || document.pixels()[33]!=0xff112233 || document.layer().visible || document.layer().opacity!=.4)throw std::runtime_error("Recovery restore smoke failed");
     document=std::move(previous);documentPath_=previousPath;if(recoveryWorker_.valid()){recoveryWorker_.get();if(recoveryTicket_)recoveryQueue_.complete(*recoveryTicket_,true);recoveryTicket_.reset();}recoveryDirectory_.clear();ownedRecoveryId_.clear();fitCanvas();refresh();
   }
+  void smokePerformanceUi(const std::filesystem::path& directory){
+    smoke_=true;homeOpen_=false;documentOpen_=true;pending_=Pending::None;setBounds({0,0,1280,960});
+    std::filesystem::create_directories(directory);recoveryDirectory_=directory/"recovery";
+    auto check=[](bool p,const char* message){if(!p)throw std::runtime_error(message);};
+    auto finish=[&]{const auto deadline=std::chrono::steady_clock::now()+std::chrono::seconds(15);while(pending_==Pending::Saving){check(std::chrono::steady_clock::now()<deadline,"Async save deadline exceeded");saveTick();if(saveWorker_.valid())saveWorker_.wait_for(std::chrono::milliseconds(1));}};
+    document=Document(512,512);document.beginStroke({4,5},0x80123456);document.commitStroke();fitCanvas();refresh();
+    const auto path=directory/"async-save.moonsprite";const auto revision=document.revision();
+    savePath(path,true);check(pending_==Pending::Saving,"Save did not yield to UI");
+    ui::KeyMessage escape(ui::kKeyDownMessage,ui::kKeyEsc,ui::kKeyNoneModifier,0,0);onProcessMessage(&escape);check(pending_==Pending::Saving && document.revision()==revision,"Input interrupted file commit");
+    finish();check(pending_==Pending::None && !document.dirty() && documentPath_==path && document.sourceArchive(),"Async save result not accepted");check(commands_[3]->isEnabled() && homeButton_->isEnabled(),"Save left UI controls disabled");
+    auto read=std::ifstream(path,std::ios::binary);auto bytes=std::make_shared<project::Bytes>(std::istreambuf_iterator<char>(read),std::istreambuf_iterator<char>());read.close();auto reopened=project::prepareEditableImport(project::readProjectManifest(bytes));check(reopened.timeline.cels[0].surface->pixels[5*512+4]==0x80123456,"Async save changed RGBA pixels");
+    document.beginStroke({6,5},0xffabcdef);document.commitStroke();refresh();savePath(directory,true);finish();check(pending_==Pending::OpenError && document.dirty() && documentPath_==path,"Failed async save changed live save point");resolve(false);
+    const auto dialogsBeforeNew=newDocumentDialogCount_;ask(Pending::New);check(pending_==Pending::New,"Dirty new-document confirmation missing");savePath(path,true);finish();check(pending_==Pending::None && document.width()==512 && documentPath_==path && newDocumentDialogCount_==dialogsBeforeNew+1,"Save-before-new must open creation dialog; cancelling must preserve saved document");
+    document.beginStroke({0,0},0xff123456);document.commitStroke();recoveryTick(true);for(int n=0;recoverySnapshot_ && n<100;++n)recoveryTick(true);if(recoveryWorker_.valid())recoveryWorker_.wait();recoveryTick(true);
+    const auto records=project::listRecoveryRecords(recoveryDirectory_);check(!records.empty(),"Detached recovery worker did not write");
+    std::ifstream lockedRecovery(recoveryDirectory_/std::filesystem::u8path(records.front().id+".moonsprite"),std::ios::binary);
+    savePath(path,true);finish();if(recoveryWorker_.valid())recoveryWorker_.wait();recoveryTick(true);check(!document.dirty() && !ownedRecoveryId_.empty() && !project::listRecoveryRecords(recoveryDirectory_).empty(),"Cleanup failure lost recovery ownership or saved state");lockedRecovery.close();
+    savePath(path,true);finish();if(recoveryWorker_.valid())recoveryWorker_.wait();recoveryTick(true);check(project::listRecoveryRecords(recoveryDirectory_).empty(),"Save did not clean its owned recovery");
+    std::ofstream(directory/"performance-ui.txt")<<"Async save yielded; exact RGBA reopen, failure, control restoration, save-before-new, detached recovery and owned cleanup passed.\n";
+  }
   void smokeSave(const std::filesystem::path& directory) {
     auto check=[](bool ok){if(!ok)throw std::runtime_error("Project save lifecycle smoke failed");};
     auto previous=std::move(document);auto oldPath=documentPath_;document=Document(3,2);documentPath_.clear();
@@ -5488,8 +6833,8 @@ for(const auto& e:menus::catalog())if(!*e.parent){if(std::string(e.id)=="help"){
     document.undo();check(document.dirty());document.redo();check(document.dirty());
     const auto current=document.pixels();const auto savedPath=documentPath_;
     check(!savePath(directory) && document.dirty() && document.pixels()==current && documentPath_==savedPath && pending_==Pending::OpenError);resolve(false);
-    ask(Pending::New);check(pending_==Pending::New && saveBeforeClose_->isVisible());
-    saveBeforeClose_->Click();check(pending_==Pending::None && document.width()==32 && documentPath_.empty());
+    const auto dialogsBeforeNew=newDocumentDialogCount_;ask(Pending::New);check(pending_==Pending::New && saveBeforeClose_->isVisible());
+    saveBeforeClose_->Click();check(pending_==Pending::None && documentPath_==saved && newDocumentDialogCount_==dialogsBeforeNew+1);
     openPath(saved);check(document.pixels()==current && !document.dirty());
     document=std::move(previous);documentPath_=std::move(oldPath);fitCanvas();refresh();
   }
@@ -5792,11 +7137,16 @@ for(const auto& e:menus::catalog())if(!*e.parent){if(std::string(e.id)=="help"){
     }
   }
   int modalMinimumWidth() const {
+    if(pending_==Pending::StaticExport||pending_==Pending::GifExport)return 272;
     if(pending_==Pending::ColorAdjustment&&adjustmentSpec_.kind==ColorAdjustmentKind::GradientMap)return 320;
     if(pending_==Pending::AntiAlias)return 280;
     if(pending_==Pending::Convolution)return 300;
     if(pending_==Pending::Preferences)return 310;
-    return std::max({240,font_.measure(modalHint())+12,
+    const bool simple=pending_==Pending::LayerOpacity||pending_==Pending::FrameDuration||pending_==Pending::PaletteName||pending_==Pending::ColorRole||pending_==Pending::OnionValue||pending_==Pending::BrushFolderName;
+    const bool confirmation=pending_==Pending::New||pending_==Pending::Open||pending_==Pending::Close||pending_==Pending::CloseDocument;
+    // Match legacy ModalShell: separate preferred size from the content floor.
+    const int contentMinimum=simple?78:confirmation?3*66+2*uiGap+12:240;
+    return std::max({contentMinimum,font_.measure(modalHint())+12,
       pending_==Pending::OpenError?font_.measure(errorTitle_)+25:0});
   }
   // TextBox::onSizeHint reflows against the available viewport. Fusion BDF
@@ -5814,7 +7164,7 @@ for(const auto& e:menus::catalog())if(!*e.parent){if(std::string(e.id)=="help"){
     lines.push_back(line);return lines;
   }
   int modalErrorVisibleLines(gfx::Rect modal) const {return std::max(1,(modal.h-59)/12);}
-  int modalMinimumHeight() const {if(pending_==Pending::ColorAdjustment&&adjustmentSpec_.kind==ColorAdjustmentKind::GradientMap)return 382;if(pending_==Pending::AntiAlias)return aaAuto_?175:271;if(pending_==Pending::Convolution)return 250;if(pending_==Pending::Preferences)return 260;return pending_==Pending::LayerOpacity?116:pending_==Pending::SheetImport?205:pending_==Pending::GifExport?170:pending_==Pending::SpriteSheet?205:pending_==Pending::StaticExport?142:pending_==Pending::ReplaceColor?153:pending_==Pending::BrushFolderName?75:pending_==Pending::ImageResize?164:pending_==Pending::ColorAdjustment?(adjustmentSpec_.kind==ColorAdjustmentKind::Curves?285:adjustmentSpec_.kind==ColorAdjustmentKind::ColorBalance?180:153):pending_==Pending::PaletteExtract?136:pending_==Pending::LoopSection?157:pending_==Pending::OpenError?99:pending_==Pending::PaletteName || pending_==Pending::ColorRole || pending_==Pending::LayerOpacity || pending_==Pending::FrameDuration || pending_==Pending::OnionValue?75:67;}
+  int modalMinimumHeight() const {if(pending_==Pending::ColorAdjustment&&adjustmentSpec_.kind==ColorAdjustmentKind::GradientMap)return 382;if(pending_==Pending::AntiAlias)return aaAuto_?175:271;if(pending_==Pending::Convolution)return 250;if(pending_==Pending::Preferences)return 260;return pending_==Pending::LayerOpacity?116:pending_==Pending::SheetImport?205:pending_==Pending::GifExport?170:pending_==Pending::SpriteSheet?205:pending_==Pending::StaticExport?142:pending_==Pending::ReplaceColor?153:pending_==Pending::BrushFolderName?75:pending_==Pending::ImageResize?164:pending_==Pending::ColorAdjustment?(adjustmentSpec_.kind==ColorAdjustmentKind::Curves?285:adjustmentSpec_.kind==ColorAdjustmentKind::ColorBalance?180:153):pending_==Pending::PaletteExtract?136:pending_==Pending::LoopSection?212:pending_==Pending::OpenError?99:pending_==Pending::PaletteName || pending_==Pending::ColorRole || pending_==Pending::LayerOpacity || pending_==Pending::FrameDuration || pending_==Pending::OnionValue?75:67;}
   gfx::Rect modalBounds(gfx::Rect rc) const {
     const auto saved=modalGeometry_.find(pending_);const int h=modalMinimumHeight();
     const int width=std::min(modalMinimumWidth()+(pending_==Pending::Preferences?50:16),std::max(240,rc.w-2*uiGap));
@@ -5837,8 +7187,8 @@ for(const auto& e:menus::catalog())if(!*e.parent){if(std::string(e.id)=="help"){
       return SizeDrag::None;
     }
     if(docking_.custom)return SizeDrag::None;
-    if((palettePanelOpen_ || colorPickerOpen_) && toDisplay(gfx::Rect(rc.x+l.rightX+l.right-1,rc.y+l.tabY,uiGap+2,l.bottom-l.tabY)).contains(point))return SizeDrag::DockWidth;
     if(palettePanelOpen_ && colorPickerOpen_ && toDisplay(gfx::Rect(rc.x+l.rightX,rc.y+l.split-uiGap,l.right,2*uiGap)).contains(point))return SizeDrag::ColorSplit;
+    if((palettePanelOpen_ || colorPickerOpen_) && toDisplay(gfx::Rect(rc.x+l.rightX+l.right-1,rc.y+l.tabY,uiGap+2,l.bottom-l.tabY)).contains(point))return SizeDrag::DockWidth;
     if(layersPanelOpen_ && toDisplay(gfx::Rect(rc.x+l.workX,rc.y+l.layerTop-uiGap,l.workW,2*uiGap)).contains(point))return SizeDrag::Timeline;
     return SizeDrag::None;
   }
@@ -5911,7 +7261,7 @@ for(const auto& e:menus::catalog())if(!*e.parent){if(std::string(e.id)=="help"){
     const int errorPage=modalErrorVisibleLines(modal)*12*uiScale,errorTotal=int(modalErrorLines(modal.w-20).size())*12*uiScale;
     errorScrollPixels_=std::clamp(errorScrollPixels_,0,std::max(0,errorTotal-errorPage));modalErrorScroll_=errorScrollPixels_/(12*uiScale);
     if(errorScrollBar_){errorScrollBar_->setDockBounds(toDisplay(gfx::Rect(modal.x2()-13,modal.y+32,7,errorPage/uiScale)));errorScrollBar_->configure(errorTotal,errorPage,errorScrollPixels_);errorScrollBar_->wheelStep=36*uiScale;errorScrollBar_->setVisible(pending_==Pending::OpenError && errorTotal>errorPage);errorScrollBar_->setEnabled(pending_==Pending::OpenError);}
-    const int actionY=modal.y2()-(pending_==Pending::LoopSection || pending_==Pending::OpenError?23:25);
+    const int actionY=modal.y2()-25;
     dialogClose_->setBounds(toDisplay(gfx::Rect(modal.x2()-2-uiGap-11,modal.y+2,11,12)));
     const bool confirmation=pending_==Pending::New || pending_==Pending::Open || pending_==Pending::Close || pending_==Pending::CloseDocument;
     const bool two=confirmation || pending_==Pending::AntiAlias || pending_==Pending::Convolution || pending_==Pending::SheetImport || pending_==Pending::GifExport || pending_==Pending::SpriteSheet || pending_==Pending::StaticExport || pending_==Pending::ReplaceColor || pending_==Pending::BrushFolderName || pending_==Pending::ImageResize || pending_==Pending::ColorAdjustment || pending_==Pending::PaletteExtract || pending_==Pending::LoopSection || (pending_==Pending::PaletteName && renameId_!=0);
@@ -5920,23 +7270,24 @@ for(const auto& e:menus::catalog())if(!*e.parent){if(std::string(e.id)=="help"){
     if(confirmation){saveBeforeClose_->setBounds(toDisplay(gfx::Rect(buttonX,actionY,66,19)));buttonX+=66+uiGap;}
     if(two){discard_->setBounds(toDisplay(gfx::Rect(buttonX,actionY,66,19)));buttonX+=66+uiGap;}
     keep_->setBounds(toDisplay(gfx::Rect(buttonX,actionY,66,19)));
-    if(layerOpacityRange_)layerOpacityRange_->setBounds(toDisplay(gfx::Rect(modal.x+2+uiGap,modal.y+16+uiGap+10+uiGap,modal.w-2*(2+uiGap),18)));
-    if(pending_==Pending::LayerOpacity)layerOpacityRange_->setBounds(toDisplay(gfx::Rect(modal.x+2+uiGap,modal.y+68,modal.w-2*(2+uiGap),18)));
-    if(loopDirection_){for(int i=0;i<4;++i)loopInputs_[i]->setBounds(toDisplay(gfx::Rect(modal.x+98,modal.y+24+i*21,modal.w-106,18)));loopDirection_->setBounds(toDisplay(gfx::Rect(modal.x+98,modal.y+108,modal.w-106,16)));}
-    if(paletteInput_) paletteInput_->setBounds(toDisplay(gfx::Rect(modal.x+2+uiGap,modal.y+16+uiGap+10+uiGap,modal.w-2*(2+uiGap),18)));
-    if(replaceScopeButton_){bool show=pending_==Pending::ReplaceColor;for(int i=0;i<2;++i){replaceInputs_[i]->setVisible(show);replaceInputs_[i]->setBounds(toDisplay(gfx::Rect(modal.x+65,modal.y+25+i*23,modal.w-96,18)));replaceSample_[i]->setVisible(show);replaceSample_[i]->setBounds(toDisplay(gfx::Rect(modal.x+modal.w-25,modal.y+25+i*23,18,18)));}replaceScopeButton_->setVisible(show);replaceScopeButton_->setBounds(toDisplay(gfx::Rect(modal.x+6,modal.y+72,modal.w-12,18)));replacePreviewButton_->setVisible(show);replaceRememberButton_->setVisible(show);replacePreviewButton_->setBounds(toDisplay(gfx::Rect(modal.x+6,modal.y+96,78,18)));replaceRememberButton_->setBounds(toDisplay(gfx::Rect(modal.x+86,modal.y+96,78,18)));}
-    if(importSheetLayout_){const bool show=pending_==Pending::SheetImport;const char32_t* layouts[]{U"横向",U"纵向",U"按行",U"按列"};importSheetLayout_->setVisible(show);importSheetLayout_->caption=layouts[importSheetOptions_.layout];importSheetLayout_->setBounds(toDisplay(gfx::Rect(modal.x+6,modal.y+25,modal.w-14,18)));for(int i=0;i<8;++i){importSheetInputs_[i]->setVisible(show);importSheetInputs_[i]->setBounds(toDisplay(gfx::Rect(modal.x+48+(i%2)*(modal.w/2),modal.y+timelineRowsOffset()+(i/2)*23,modal.w/2-58,18)));importSheetInputs_[i]->setEnabled(i!=6&&i!=7||(i==6?importSheetOptions_.layout!=1:importSheetOptions_.layout!=0));}importSheetPartial_->setVisible(show);importSheetPartial_->icon=importSheetOptions_.partialTiles?"check":"checkboxUnchecked";importSheetPartial_->setBounds(toDisplay(gfx::Rect(modal.x+6,modal.y+143,modal.w-14,18)));}
-    if(gifRange_){bool show=pending_==Pending::GifExport;gifInputs_[0]->setVisible(show);gifInputs_[0]->setBounds(toDisplay(gfx::Rect(modal.x+70,modal.y+25,modal.w-78,18)));for(int i=1;i<3;++i){gifInputs_[i]->setVisible(show && gifExplicitRange_);gifInputs_[i]->setBounds(toDisplay(gfx::Rect(modal.x+(i==1?6:modal.w/2),modal.y+71,modal.w/2-10,18)));}gifRange_->setVisible(show);gifRange_->caption=gifExplicitRange_?U"指定帧范围":gifOptions_.loopSectionId.empty()?U"全部帧":U"循环段";gifRange_->setBounds(toDisplay(gfx::Rect(modal.x+6,modal.y+48,modal.w-12,18)));const char32_t* names[]{U"正向",U"反向",U"正向往返",U"反向往返"};gifDirection_->caption=names[int(gifOptions_.direction)];gifDirection_->setVisible(show);gifDirection_->setBounds(toDisplay(gfx::Rect(modal.x+6,modal.y+94,modal.w-12,18)));gifTrim_->setVisible(show);gifTrim_->icon=gifOptions_.trim?"check":"checkboxUnchecked";gifTrim_->setBounds(toDisplay(gfx::Rect(modal.x+6,modal.y+117,110,18)));}
-    if(exportFormatButton_){const bool show=pending_==Pending::StaticExport||pending_==Pending::GifExport;exportFormatButton_->setVisible(show);exportFormatButton_->caption=pending_==Pending::GifExport?U"GIF":U"PNG RGBA";exportFormatButton_->setBounds(toDisplay(gfx::Rect(modal.x2()-80,modal.y+3,62,18)));}
-    if(sheetPreview_){sheetPreview_->setBounds(toDisplay(gfx::Rect(modal.x+modal.w-140,modal.y+25,130,130)));} if(sheetValue_){const bool show=pending_==Pending::SpriteSheet;for(int i=0;i<7;++i){sheetButtons_[i]->setVisible(show);sheetButtons_[i]->setBounds(toDisplay(gfx::Rect(modal.x+6,modal.y+25+i*21,modal.w-14,18)));}const char32_t* layouts[]{U"横向",U"纵向",U"按行",U"按列"};sheetButtons_[0]->caption=U"排列："+std::u32string(layouts[int(sheetOptions_.layout)]);const char32_t* constraints[]{U"无约束",U"固定列数",U"固定宽度",U"固定行数",U"固定高度"};const auto c=sheetOptions_.constraint;sheetButtons_[1]->caption=constraints[int(c)];sheetButtons_[1]->setEnabled(sheetOptions_.layout==SheetLayout::Rows||sheetOptions_.layout==SheetLayout::Columns);sheetButtons_[2]->caption=sheetOptions_.frameScope=="all"?U"全部帧":sheetOptions_.frameScope=="selected"?U"选中帧":U"循环段帧";sheetButtons_[3]->caption=sheetOptions_.layerScope=="visible"?U"可见图层":sheetOptions_.layerScope=="all"?U"所有图层":U"选中图层";sheetButtons_[6]->setEnabled(document.selection().has_value());for(int i=4;i<7;++i){bool checked=i==4?sheetOptions_.mergeDuplicates:i==5?sheetOptions_.ignoreEmpty:sheetOptions_.selection;sheetButtons_[i]->icon=checked?"check":"checkboxUnchecked";sheetButtons_[i]->bareIconWithCaption=true;}sheetValue_->setVisible(show&&c!=SheetConstraint::None);sheetValue_->setBounds(toDisplay(gfx::Rect(modal.x+modal.w-70,modal.y+46,62,18)));if(c!=SheetConstraint::None){sheetButtons_[1]->setBounds(toDisplay(gfx::Rect(modal.x+6,modal.y+46,modal.w-84,18)));if(!sheetValue_->hasFocus())sheetValue_->setText(std::to_string(c==SheetConstraint::FixedColumns?sheetOptions_.fixedColumns:c==SheetConstraint::FixedRows?sheetOptions_.fixedRows:c==SheetConstraint::FixedWidth?sheetOptions_.fixedWidth:sheetOptions_.fixedHeight));}}
-    if(exportScaleInput_){const bool show=pending_==Pending::StaticExport;exportScaleInput_->setVisible(show);exportScaleInput_->setBounds(toDisplay(gfx::Rect(modal.x+70,modal.y+25,modal.w-78,18)));exportTrimButton_->setVisible(show);exportSelectionButton_->setVisible(show);exportSelectionButton_->setEnabled(document.selection().has_value());exportTrimButton_->icon=exportOptions_.trim?"check":"checkboxUnchecked";exportSelectionButton_->icon=exportOptions_.selection?"check":"checkboxUnchecked";exportTrimButton_->setBounds(toDisplay(gfx::Rect(modal.x+6,modal.y+50,110,18)));exportSelectionButton_->setBounds(toDisplay(gfx::Rect(modal.x+6,modal.y+73,110,18)));}
-    if(resizeMethod_){const bool show=pending_==Pending::ImageResize;for(int i=0;i<4;++i){resizeInputs_[i]->setVisible(show);resizeInputs_[i]->setBounds(toDisplay(gfx::Rect(modal.x+65+(i/2)*85,modal.y+25+(i%2)*23,76,18)));}resizeLock_->setVisible(show);resizeMethod_->setVisible(show);resizeLock_->setBounds(toDisplay(gfx::Rect(modal.x+6,modal.y+76,100,18)));resizeMethod_->setBounds(toDisplay(gfx::Rect(modal.x+114,modal.y+76,modal.w-122,18)));}
+    if(exportOpenFolderButton_){const bool show=pending_==Pending::StaticExport||pending_==Pending::GifExport;exportOpenFolderButton_->setVisible(show);exportOpenFolderButton_->setEnabled(!(framePngMode_&&framePngBusy()));if(show){const int left=modal.x+(modal.w-260)/2;discard_->setBounds(toDisplay(gfx::Rect(left,actionY,66,19)));exportOpenFolderButton_->setBounds(toDisplay(gfx::Rect(left+70,actionY,120,19)));keep_->setBounds(toDisplay(gfx::Rect(left+194,actionY,66,19)));}}
+    if(layerOpacityRange_)layerOpacityRange_->setBounds(toDisplay(gfx::Rect(modal.x+6,modal.y+16+uiGap+10+uiGap,modal.w-12,18)));
+    if(pending_==Pending::LayerOpacity)layerOpacityRange_->setBounds(toDisplay(gfx::Rect(modal.x+6,modal.y+68,modal.w-12,18)));
+    if(loopDirection_){for(int i=0;i<4;++i)loopInputs_[i]->setBounds(toDisplay(gfx::Rect(modal.x+98,modal.y+24+i*21,modal.w-104,18)));loopDirection_->setBounds(toDisplay(gfx::Rect(modal.x+98,modal.y+108,modal.w-104,16)));loopRepeat_->setBounds(toDisplay(gfx::Rect(modal.x+6,modal.y+87,88,18)));}
+    if(paletteInput_) paletteInput_->setBounds(toDisplay(gfx::Rect(modal.x+6,modal.y+16+uiGap+10+uiGap,modal.w-12,18)));
+    if(replaceScopeButton_){bool show=pending_==Pending::ReplaceColor;for(int i=0;i<2;++i){replaceInputs_[i]->setVisible(show);replaceInputs_[i]->setBounds(toDisplay(gfx::Rect(modal.x+65,modal.y+25+i*23,modal.w-96,18)));replaceSample_[i]->setVisible(show);replaceSample_[i]->setBounds(toDisplay(gfx::Rect(modal.x+modal.w-24,modal.y+25+i*23,18,18)));}replaceScopeButton_->setVisible(show);replaceScopeButton_->setBounds(toDisplay(gfx::Rect(modal.x+6,modal.y+72,modal.w-12,18)));replacePreviewButton_->setVisible(show);replaceRememberButton_->setVisible(show);replacePreviewButton_->setBounds(toDisplay(gfx::Rect(modal.x+6,modal.y+96,78,18)));replaceRememberButton_->setBounds(toDisplay(gfx::Rect(modal.x+86,modal.y+96,78,18)));}
+    if(importSheetLayout_){const bool show=pending_==Pending::SheetImport;const char32_t* layouts[]{U"横向",U"纵向",U"按行",U"按列"};importSheetLayout_->setVisible(show);importSheetLayout_->caption=layouts[importSheetOptions_.layout];importSheetLayout_->setBounds(toDisplay(gfx::Rect(modal.x+6,modal.y+25,modal.w-12,18)));for(int i=0;i<8;++i){importSheetInputs_[i]->setVisible(show);importSheetInputs_[i]->setBounds(toDisplay(gfx::Rect(modal.x+48+(i%2)*(modal.w/2),modal.y+timelineRowsOffset()+(i/2)*23,modal.w/2-54,18)));importSheetInputs_[i]->setEnabled(i!=6&&i!=7||(i==6?importSheetOptions_.layout!=1:importSheetOptions_.layout!=0));}importSheetPartial_->setVisible(show);importSheetPartial_->icon=importSheetOptions_.partialTiles?"check":"checkboxUnchecked";importSheetPartial_->setBounds(toDisplay(gfx::Rect(modal.x+6,modal.y+143,modal.w-12,18)));}
+    if(gifRange_){bool show=pending_==Pending::GifExport;gifInputs_[0]->setVisible(show);gifInputs_[0]->setBounds(toDisplay(gfx::Rect(modal.x+70,modal.y+25,modal.w-76,18)));for(int i=1;i<3;++i){gifInputs_[i]->setVisible(show && gifExplicitRange_);gifInputs_[i]->setBounds(toDisplay(gfx::Rect(modal.x+(i==1?6:modal.w/2),modal.y+71,modal.w/2-10,18)));}gifRange_->setVisible(show);gifRange_->caption=gifExplicitRange_?U"指定帧范围":gifOptions_.loopSectionId.empty()?U"全部帧":U"循环段";gifRange_->setBounds(toDisplay(gfx::Rect(modal.x+6,modal.y+48,modal.w-12,18)));const char32_t* names[]{U"正向",U"反向",U"正向往返",U"反向往返"};gifDirection_->caption=names[int(gifOptions_.direction)];gifDirection_->setVisible(show);gifDirection_->setBounds(toDisplay(gfx::Rect(modal.x+6,modal.y+94,modal.w-12,18)));gifTrim_->setVisible(show);gifTrim_->icon=gifOptions_.trim?"check":"checkboxUnchecked";gifTrim_->setBounds(toDisplay(gfx::Rect(modal.x+6,modal.y+117,110,18)));if(show&&framePngMode_){const bool ready=!framePngBusy();for(auto input:gifInputs_)input->setEnabled(ready);for(auto b:{gifRange_,gifDirection_,gifTrim_})b->setEnabled(ready);discard_->setEnabled(ready);keep_->setEnabled(true);dialogClose_->setEnabled(true);}else if(show){for(auto input:gifInputs_)input->setEnabled(true);for(auto b:{gifRange_,gifDirection_,gifTrim_})b->setEnabled(true);}}
+    if(exportFormatButton_){const bool show=pending_==Pending::StaticExport||pending_==Pending::GifExport;exportFormatButton_->setVisible(show);exportFormatButton_->caption=pending_==Pending::GifExport?(framePngMode_?(frameSvg_?U"SVG":frameIco_?U"ICO":frameBmp_?U"BMP":framePngAutomatic_?U"PNG 自动":U"PNG RGBA"):U"GIF"):(staticSvg_?U"SVG":staticIco_?U"ICO":staticBmp_?U"BMP":exportOptions_.automatic?U"PNG 自动":U"PNG RGBA");exportFormatButton_->setEnabled(!(framePngMode_&&framePngBusy()));exportFormatButton_->setBounds(toDisplay(gfx::Rect(modal.x2()-80,modal.y+3,62,18)));}
+    if(sheetPreview_){sheetPreview_->setBounds(toDisplay(gfx::Rect(modal.x+modal.w-136,modal.y+25,130,130)));} if(sheetValue_){const bool show=pending_==Pending::SpriteSheet;for(int i=0;i<7;++i){sheetButtons_[i]->setVisible(show);sheetButtons_[i]->setBounds(toDisplay(gfx::Rect(modal.x+6,modal.y+25+i*21,modal.w-12,18)));}const char32_t* layouts[]{U"横向",U"纵向",U"按行",U"按列"};sheetButtons_[0]->caption=U"排列："+std::u32string(layouts[int(sheetOptions_.layout)]);const char32_t* constraints[]{U"无约束",U"固定列数",U"固定宽度",U"固定行数",U"固定高度"};const auto c=sheetOptions_.constraint;sheetButtons_[1]->caption=constraints[int(c)];sheetButtons_[1]->setEnabled(sheetOptions_.layout==SheetLayout::Rows||sheetOptions_.layout==SheetLayout::Columns);sheetButtons_[2]->caption=sheetOptions_.frameScope=="all"?U"全部帧":sheetOptions_.frameScope=="selected"?U"选中帧":U"循环段帧";sheetButtons_[3]->caption=sheetOptions_.layerScope=="visible"?U"可见图层":sheetOptions_.layerScope=="all"?U"所有图层":U"选中图层";sheetButtons_[6]->setEnabled(document.selection().has_value());for(int i=4;i<7;++i){bool checked=i==4?sheetOptions_.mergeDuplicates:i==5?sheetOptions_.ignoreEmpty:sheetOptions_.selection;sheetButtons_[i]->icon=checked?"check":"checkboxUnchecked";sheetButtons_[i]->bareIconWithCaption=true;}sheetValue_->setVisible(show&&c!=SheetConstraint::None);sheetValue_->setBounds(toDisplay(gfx::Rect(modal.x+modal.w-68,modal.y+46,62,18)));if(c!=SheetConstraint::None){sheetButtons_[1]->setBounds(toDisplay(gfx::Rect(modal.x+6,modal.y+46,modal.w-84,18)));if(!sheetValue_->hasFocus())sheetValue_->setText(std::to_string(c==SheetConstraint::FixedColumns?sheetOptions_.fixedColumns:c==SheetConstraint::FixedRows?sheetOptions_.fixedRows:c==SheetConstraint::FixedWidth?sheetOptions_.fixedWidth:sheetOptions_.fixedHeight));}}
+    if(exportScaleInput_){const bool show=pending_==Pending::StaticExport;exportScaleInput_->setVisible(show);exportScaleInput_->setBounds(toDisplay(gfx::Rect(modal.x+70,modal.y+25,modal.w-76,18)));exportTrimButton_->setVisible(show);exportSelectionButton_->setVisible(show);exportSelectionButton_->setEnabled(document.selection().has_value());exportTrimButton_->icon=exportOptions_.trim?"check":"checkboxUnchecked";exportSelectionButton_->icon=exportOptions_.selection?"check":"checkboxUnchecked";exportTrimButton_->setBounds(toDisplay(gfx::Rect(modal.x+6,modal.y+50,110,18)));exportSelectionButton_->setBounds(toDisplay(gfx::Rect(modal.x+6,modal.y+73,110,18)));}
+    if(resizeMethod_){const bool show=pending_==Pending::ImageResize;for(int i=0;i<4;++i){resizeInputs_[i]->setVisible(show);resizeInputs_[i]->setBounds(toDisplay(gfx::Rect(modal.x+65+(i/2)*85,modal.y+25+(i%2)*23,76,18)));}resizeLock_->setVisible(show);resizeMethod_->setVisible(show);resizeLock_->setBounds(toDisplay(gfx::Rect(modal.x+6,modal.y+76,100,18)));resizeMethod_->setBounds(toDisplay(gfx::Rect(modal.x+114,modal.y+76,modal.w-120,18)));}
     if(aaPicker_)layoutAntiAlias(modal);
     if(convolutionScroll_)layoutConvolution(modal);
-    if(curveEditor_){const bool show=pending_==Pending::ColorAdjustment&&adjustmentSpec_.kind==ColorAdjustmentKind::Curves;curveEditor_->setVisible(show);curveEditor_->setBounds(toDisplay(gfx::Rect(modal.x+6,modal.y+47,modal.w-12,160)));for(auto b:{curveChannelButton_,curveResetButton_,curveDeleteButton_})b->setVisible(show);curveChannelButton_->setBounds(toDisplay(gfx::Rect(modal.x+6,modal.y+25,58,18)));curveResetButton_->setBounds(toDisplay(gfx::Rect(modal.x+70,modal.y+25,65,18)));curveDeleteButton_->setBounds(toDisplay(gfx::Rect(modal.x+141,modal.y+25,55,18)));if(show){for(int i=0;i<3;++i){adjustmentInputs_[i]->setVisible(i<2);adjustmentInputs_[i]->setBounds(toDisplay(gfx::Rect(modal.x+25+i*85,modal.y+211,55,18)));}adjustmentPreview_->setVisible(true);adjustmentPreview_->setBounds(toDisplay(gfx::Rect(modal.x+6,modal.y+235,80,18)));adjustmentColorize_->setVisible(false);adjustmentToneButton_->setVisible(false);}}
-    if(adjustmentPreview_ && adjustmentSpec_.kind!=ColorAdjustmentKind::Curves){const bool show=pending_==Pending::ColorAdjustment,hsl=adjustmentSpec_.kind==ColorAdjustmentKind::HueSaturation,balance=adjustmentSpec_.kind==ColorAdjustmentKind::ColorBalance;for(int i=0;i<3;++i){adjustmentInputs_[i]->setVisible(show && (i<2 || hsl || balance));adjustmentInputs_[i]->setBounds(toDisplay(gfx::Rect(modal.x+86,modal.y+25+i*23,modal.w-94,18)));}adjustmentColorize_->setVisible(show && (hsl || balance));adjustmentToneButton_->setVisible(show && balance);adjustmentToneButton_->setBounds(toDisplay(gfx::Rect(modal.x+6,modal.y+119,66,18)));adjustmentPreview_->setVisible(show);adjustmentColorize_->setBounds(toDisplay(gfx::Rect(modal.x+6,modal.y+96,66,18)));adjustmentPreview_->setBounds(toDisplay(gfx::Rect(modal.x+86,modal.y+96,80,18)));}
+    if(curveEditor_){const bool show=pending_==Pending::ColorAdjustment&&adjustmentSpec_.kind==ColorAdjustmentKind::Curves;curveEditor_->setVisible(show);curveEditor_->setBounds(toDisplay(gfx::Rect(modal.x+6,modal.y+47,modal.w-12,160)));for(auto b:{curveChannelButton_,curveResetButton_,curveDeleteButton_})b->setVisible(show);curveChannelButton_->setBounds(toDisplay(gfx::Rect(modal.x+6,modal.y+25,58,18)));curveResetButton_->setBounds(toDisplay(gfx::Rect(modal.x+70,modal.y+25,65,18)));curveDeleteButton_->setBounds(toDisplay(gfx::Rect(modal.x+141,modal.y+25,55,18)));if(show){for(int i=0;i<3;++i){adjustmentInputs_[i]->setVisible(i<2);adjustmentInputs_[i]->setBounds(toDisplay(gfx::Rect(modal.x+25+i*85,modal.y+211,55,18)));}adjustmentPreview_->setVisible(true);adjustmentPreview_->setBounds(toDisplay(gfx::Rect(modal.x+6,modal.y+235,90,18)));adjustmentColorize_->setVisible(false);adjustmentToneButton_->setVisible(false);}}
+    if(adjustmentPreview_ && adjustmentSpec_.kind!=ColorAdjustmentKind::Curves){const bool show=pending_==Pending::ColorAdjustment,hsl=adjustmentSpec_.kind==ColorAdjustmentKind::HueSaturation,balance=adjustmentSpec_.kind==ColorAdjustmentKind::ColorBalance;for(int i=0;i<3;++i){adjustmentInputs_[i]->setVisible(show && (i<2 || hsl || balance));adjustmentInputs_[i]->setBounds(toDisplay(gfx::Rect(modal.x+86,modal.y+25+i*23,modal.w-92,18)));}adjustmentColorize_->setVisible(show && (hsl || balance));adjustmentToneButton_->setVisible(show && balance);adjustmentToneButton_->setBounds(toDisplay(gfx::Rect(modal.x+6,modal.y+119,66,18)));adjustmentPreview_->setVisible(show);adjustmentColorize_->setBounds(toDisplay(gfx::Rect(modal.x+6,modal.y+96,66,18)));adjustmentPreview_->setBounds(toDisplay(gfx::Rect(modal.x+86,modal.y+96,90,18)));}
     if(gmPicker_)layoutGradientMap(modal);
-    if(extractModeButton_){const bool show=pending_==Pending::PaletteExtract;extractModeButton_->setVisible(show);extractNameInput_->setVisible(show && extractMode_==0);if(show){const char32_t* modes[]{U"新建",U"替换",U"追加"};extractModeButton_->caption=modes[extractMode_];extractModeButton_->setBounds(toDisplay(gfx::Rect(modal.x+64,modal.y+24,modal.w-72,18)));paletteInput_->setBounds(toDisplay(gfx::Rect(modal.x+64,modal.y+48,modal.w-72,18)));extractNameInput_->setBounds(toDisplay(gfx::Rect(modal.x+64,modal.y+72,modal.w-72,18)));}}
+    if(extractModeButton_){const bool show=pending_==Pending::PaletteExtract;extractModeButton_->setVisible(show);extractNameInput_->setVisible(show && extractMode_==0);if(show){const char32_t* modes[]{U"新建",U"替换",U"追加"};extractModeButton_->caption=modes[extractMode_];extractModeButton_->setBounds(toDisplay(gfx::Rect(modal.x+64,modal.y+24,modal.w-70,18)));paletteInput_->setBounds(toDisplay(gfx::Rect(modal.x+64,modal.y+48,modal.w-70,18)));extractNameInput_->setBounds(toDisplay(gfx::Rect(modal.x+64,modal.y+72,modal.w-70,18)));}}
 
     layoutPreferences(modal);
   }
@@ -5951,8 +7302,11 @@ for(const auto& e:menus::catalog())if(!*e.parent){if(std::string(e.id)=="help"){
     menuBar_->setBounds(bar);
   }
   void onResize(ui::ResizeEvent& ev) override {
-    const auto oldView=canvasViewport();const bool positioned=!canvas_.isEmpty();
-    setBoundsQuietly(ev.bounds());const auto rc=uiLogical(bounds());const auto l=workspaceLayout(rc);
+    const auto oldView=canvasViewport();const bool positioned=!canvas_.isEmpty();const auto previousWindow=floatingArea(uiLogical(bounds()));
+    setBoundsQuietly(ev.bounds());const auto rc=uiLogical(bounds());
+    const auto nextWindow=floatingArea(rc);const bool viewportChanged=previousWindow.w>0 && previousWindow.h>0 && !(previousWindow==nextWindow);
+    if(viewportChanged)docking_.resizeFloating(previousWindow,nextWindow);
+    const auto l=workspaceLayout(rc);
     if(positioned){const auto nextView=canvasViewport();const auto delta=nextView.center()-oldView.center();canvas_.offset(delta);
       if(pan_.active){pan_.origin.x+=delta.x;pan_.origin.y+=delta.y;}}
 
@@ -5964,11 +7318,13 @@ for(const auto& e:menus::catalog())if(!*e.parent){if(std::string(e.id)=="help"){
     layoutToolRail();
     layoutPanelTabs();
     layoutDocumentTab();
-    layoutPalette();layoutLayers();
+    layoutPalette();layoutLayers();panelScrollDrag_.resized();
     if(canvas_.isEmpty()) fitCanvas();
     layoutCanvasScrollBars();layoutModal();raiseDockWidgets();applyHomeVisibility();if(pending_==Pending::Preferences)layoutPreferences(modalBounds(uiLogical(clientBounds())));
+    if(viewportChanged && !smoke_ && previewPanel_)floatingViewportSaveTimer_.start();
   }
   void invalidateTimelineGrid() {
+    timelinePaintCacheValid_=false;
     const auto rc=uiLogical(bounds());const auto l=columnLayout(rc,2);
     invalidateRect(uiPhysical(gfx::Rect(rc.x+l.workX,rc.y+l.layerTop+35,l.workW,l.bottom-l.layerTop-35)));
   }
@@ -5983,15 +7339,18 @@ for(const auto& e:menus::catalog())if(!*e.parent){if(std::string(e.id)=="help"){
     if(kind==1){d.anchor=state.layers[row].id;d.canMove=!d.mode;if(!has(d.selection.layers,d.anchor) || d.mode)document.selectTimelineLayer(d.anchor,d.mode);frameSelectionExplicit_=false;}
     else if(kind==2){d.anchor=state.frames[column].id;d.canMove=!d.mode && has(d.frames,d.anchor) && (outline || d.copy || (d.right && d.frames.size()>1) || timelineBorderHit(mouse.position()));if(d.mode)document.selectFrameHeader(d.anchor,d.mode,playing_);else if(!d.canMove)document.selectFrameHeader(d.anchor,0,playing_);markFrameSelection();}
     else{d.anchor=document.timeline().findCel(state.layers[row].id,state.frames[column].id)->id;const bool selected=has(d.selection.cels,d.anchor);if(d.mode==2 && selected)d.mode=1;d.canMove=d.copy || (!d.mode && selected && (outline || (d.right && d.selection.cels.size()>1) || timelineBorderHit(mouse.position())));if(!d.canMove && !d.mode)document.selectTimelineCel(d.anchor);else if(d.copy && !selected)document.selectTimelineCel(d.anchor);frameSelectionExplicit_=false;}
+    d.minRow=d.maxRow=d.row;d.minColumn=d.maxColumn=d.column;
+    if(d.canMove && d.kind==3)for(const auto& id:document.timelineSelection().cels){const auto* c=document.timeline().findCelById(id);if(!c)continue;const int r=int(document.timeline().layerIndex(c->layerId)),col=int(document.timeline().frameIndex(c->frameId));d.minRow=std::min(d.minRow,r);d.maxRow=std::max(d.maxRow,r);d.minColumn=std::min(d.minColumn,col);d.maxColumn=std::max(d.maxColumn,col);}
     timelineSelectionIdentity_=document.identity();timelineSelectionGuidesVisible_=true;paletteFocused_=false;requestFocus();if(manager())manager()->setCapture(this,true);d.starting=false;timelineScrollTimer_.start();refresh();
   }
   void updateTimelineGesture(gfx::Point pointer,bool copy,bool scrolling=false) {
-    auto& d=timelineGesture_;if(!d.kind)return;if(d.identity!=document.identity()){finishTimelineGesture(true);return;}d.pointer=pointer;d.copy=copy && !d.right;
+    auto& d=timelineGesture_;const bool wasMoved=d.moved,wasAfter=d.after,wasCopy=d.copy;const int oldTargetRow=d.targetRow,oldTargetColumn=d.targetColumn,oldRowScroll=layerScroll_,oldColumnScroll=frameScroll_;if(!d.kind)return;if(d.identity!=document.identity()){finishTimelineGesture(true);return;}d.pointer=pointer;d.copy=copy && !d.right;
     if(!d.moved && std::hypot(double(pointer.x-d.origin.x),double(pointer.y-d.origin.y))<4)return;d.moved=true;
     const auto l=columnLayout(uiLogical(bounds()),2);const auto at=uiLogical(gfx::Rect(pointer.x-bounds().x,pointer.y-bounds().y,1,1)).origin();const auto& state=document.timeline().state();const int columns=timelineColumns(l),rows=timelineCapacity(l);
-    if(scrolling){if(d.kind!=1){if(at.x<l.workX+104)frameScroll_=std::max(0,frameScroll_-1);else if(at.x>=l.workX+89+columns*12-15)frameScroll_=std::min(std::max(0,int(state.frames.size())-columns),frameScroll_+1);}if(d.kind!=2){if(at.y<l.layerTop+timelineRowsOffset()+12)layerScroll_=std::max(0,layerScroll_-1);else if(at.y>=l.layerTop+timelineRowsOffset()+rows*12-12)layerScroll_=std::min(std::max(0,int(state.layers.size())-rows),layerScroll_+1);}}
-    d.targetRow=std::clamp(layerScroll_+int(std::floor((double(at.y-l.layerTop-timelineRowsOffset())+double(layerScrollRemainder_)/uiScale)/12)),0,int(state.layers.size())-1);d.targetColumn=std::clamp(frameScroll_+int(std::floor((double(at.x-l.workX-89)+double(frameScrollRemainder_)/uiScale)/12)),0,int(state.frames.size())-1);d.after=d.kind==1?(at.y-l.layerTop-timelineRowsOffset())%12>=6:(at.x-l.workX-89)%12>=6;
-    if(d.canMove && d.kind==3){int minR=d.row,maxR=d.row,minC=d.column,maxC=d.column;for(const auto& id:document.timelineSelection().cels){const auto* c=document.timeline().findCelById(id);if(!c)continue;const int r=int(std::find_if(state.layers.begin(),state.layers.end(),[&](const auto& l){return l.id==c->layerId;})-state.layers.begin()),col=int(std::find_if(state.frames.begin(),state.frames.end(),[&](const auto& f){return f.id==c->frameId;})-state.frames.begin());minR=std::min(minR,r);maxR=std::max(maxR,r);minC=std::min(minC,col);maxC=std::max(maxC,col);}d.targetRow=std::clamp(d.targetRow,d.row-minR,int(state.layers.size())-1-maxR+d.row);d.targetColumn=std::clamp(d.targetColumn,d.column-minC,int(state.frames.size())-1-maxC+d.column);}
+    if(scrolling){if(d.kind!=1){if(at.x<l.workX+20+timelineLabelWidth())frameScroll_=std::max(0,frameScroll_-1);else if(at.x>=l.workX+5+timelineLabelWidth()+columns*12-15)frameScroll_=std::min(std::max(0,int(state.frames.size())-columns),frameScroll_+1);}if(d.kind!=2){if(at.y<l.layerTop+timelineRowsOffset()+12)layerScroll_=std::max(0,layerScroll_-1);else if(at.y>=l.layerTop+timelineRowsOffset()+rows*12-12)layerScroll_=std::min(std::max(0,int(state.layers.size())-rows),layerScroll_+1);}}
+    d.targetRow=std::clamp(layerScroll_+int(std::floor((double(at.y-l.layerTop-timelineRowsOffset())+double(layerScrollRemainder_)/uiScale)/12)),0,int(state.layers.size())-1);d.targetColumn=std::clamp(frameScroll_+int(std::floor((double(at.x-l.workX-5-timelineLabelWidth())+double(frameScrollRemainder_)/uiScale)/12)),0,int(state.frames.size())-1);d.after=d.kind==1?(at.y-l.layerTop-timelineRowsOffset())%12>=6:(at.x-l.workX-5-timelineLabelWidth())%12>=6;
+    if(d.canMove && d.kind==3){d.targetRow=std::clamp(d.targetRow,d.row-d.minRow,int(state.layers.size())-1-d.maxRow+d.row);d.targetColumn=std::clamp(d.targetColumn,d.column-d.minColumn,int(state.frames.size())-1-d.maxColumn+d.column);}
+    if(wasMoved && d.targetRow==oldTargetRow && d.targetColumn==oldTargetColumn && d.after==wasAfter && d.copy==wasCopy && oldRowScroll==layerScroll_ && oldColumnScroll==frameScroll_)return;
     if(!d.canMove){if(d.kind==2){document.selectFrameHeader(d.anchor,0,playing_);document.selectFrameHeader(state.frames[d.targetColumn].id,2,playing_);markFrameSelection();}else if(d.kind==3){std::vector<std::string> rectangle;for(int r=std::min(d.row,d.targetRow);r<=std::max(d.row,d.targetRow);++r)for(int c=std::min(d.column,d.targetColumn);c<=std::max(d.column,d.targetColumn);++c)rectangle.push_back(document.timeline().findCel(state.layers[r].id,state.frames[c].id)->id);document.selectTimelineCel(document.timeline().findCel(state.layers[d.targetRow].id,state.frames[d.targetColumn].id)->id,0,rectangle);}}
     layoutLayers();invalidateTimelineGrid();
   }
@@ -5999,16 +7358,16 @@ for(const auto& e:menus::catalog())if(!*e.parent){if(std::string(e.id)=="help"){
     const auto d=timelineGesture_;if(!d.kind)return;timelineScrollTimer_.stop();timelineGesture_={};if(hasCapture())releaseMouse();if(d.identity!=document.identity())return;const auto& state=document.timeline().state();
     if(cancel){document.restoreTimelineSelection(d.selection,d.frames);document.restoreFrameSelectionAnchor(d.frameAnchor);document.selectLayer(d.activeLayer);document.selectFrame(d.activeFrame);}
     else if(d.canMove && d.moved){playing_=false;loopPlayback_={};if(d.kind==1)document.moveTimelineLayers(state.layers[d.targetRow].id,d.after,d.copy);else if(d.kind==2){if(d.copy)document.copyTimelineFrames(state.frames[d.targetColumn].id,d.after);else document.moveSelectedFrames(state.frames[d.targetColumn].id,d.after);}else document.moveTimelineCels(d.anchor,document.timeline().findCel(state.layers[d.targetRow].id,state.frames[d.targetColumn].id)->id,d.copy);}
-    else if(!d.moved){if(d.kind==1 && !d.mode)document.selectTimelineLayer(d.anchor);else if(d.kind==2 && !d.mode && !(d.right && d.canMove)){document.selectFrameHeader(d.anchor,0,playing_);markFrameSelection();}else if(d.kind==3 && !(d.right && d.canMove)){document.selectTimelineCel(d.anchor,d.altClick?0:d.mode);if(d.altClick){const auto before=document.selection();SelectionMask mask{0,0,document.width(),document.height(),std::vector<std::uint8_t>(std::size_t(document.width())*document.height())};const auto& pixels=document.pixels();for(std::size_t i=0;i<mask.mask.size();++i)mask.mask[i]=(pixels[i]>>24)?1:0;document.commitSelection(before,combineSelection(before,mask,d.addContent?1:0));selectionTool_=true;selectionPropertiesActive_=true;}}}
+    else if(!d.moved){if(d.kind==1 && !d.mode)document.selectTimelineLayer(d.anchor);else if(d.kind==2 && !d.mode && !(d.right && d.canMove)){document.selectFrameHeader(d.anchor,0,playing_);markFrameSelection();}else if(d.kind==3 && !(d.right && d.canMove)){if(d.altClick){document.selectTimelineCelContent(d.anchor,d.addContent);selectionTool_=true;selectionPropertiesActive_=true;}else document.selectTimelineCel(d.anchor,d.mode);}}
     timelineSelectionGuidesVisible_=true;frameSelectionExplicit_=!document.selectedFrames().empty();refresh();if(!cancel && d.right && !d.moved){if(d.kind==1)prepareLayerContext(d.anchor);else if(d.kind==3)prepareCelContext(d.anchor);showLayerContextMenu(d.kind==3?3:d.kind);}if(playing_ && !cancel){document.clearTimelineSelection();frameSelectionExplicit_=false;refresh();}
   }
 public:
   bool beginTimelineOutline(const ui::MouseMessage& mouse) {
     const int floatingHit=topFloatingColumnAt(mouse.position());if(floatingHit>=0 && floatingHit!=2)return false;
     if(!documentOpen_ || !columnShown(2) || pending_!=Pending::None || timelineGesture_.kind || (!mouse.left() && !mouse.right()) || !timelineBorderHit(mouse.position()))return false;
-    const auto l=columnLayout(uiLogical(bounds()),2);const auto at=uiLogical(gfx::Rect(mouse.position().x-bounds().x,mouse.position().y-bounds().y,1,1)).origin();const auto& state=document.timeline().state();int row=std::clamp(layerScroll_+int(std::floor((double(at.y-l.layerTop-timelineRowsOffset())+double(layerScrollRemainder_)/uiScale)/12)),0,int(state.layers.size())-1),column=std::clamp(frameScroll_+int(std::floor((double(at.x-l.workX-89)+double(frameScrollRemainder_)/uiScale)/12)),0,int(state.frames.size())-1);
+    const auto l=columnLayout(uiLogical(bounds()),2);const auto at=uiLogical(gfx::Rect(mouse.position().x-bounds().x,mouse.position().y-bounds().y,1,1)).origin();const auto& state=document.timeline().state();int row=std::clamp(layerScroll_+int(std::floor((double(at.y-l.layerTop-timelineRowsOffset())+double(layerScrollRemainder_)/uiScale)/12)),0,int(state.layers.size())-1),column=std::clamp(frameScroll_+int(std::floor((double(at.x-l.workX-5-timelineLabelWidth())+double(frameScrollRemainder_)/uiScale)/12)),0,int(state.frames.size())-1);
     if(!document.timelineSelection().cels.empty()){
-      int distance=100000;for(const auto& id:document.timelineSelection().cels){const auto* c=document.timeline().findCelById(id);if(!c)continue;const int r=int(std::find_if(state.layers.begin(),state.layers.end(),[&](const auto& l){return l.id==c->layerId;})-state.layers.begin()),col=int(std::find_if(state.frames.begin(),state.frames.end(),[&](const auto& f){return f.id==c->frameId;})-state.frames.begin());const int next=std::abs(r-row)+std::abs(col-column);if(next<distance){distance=next;timelineGesture_.targetRow=r;timelineGesture_.targetColumn=col;}}
+      int distance=100000;for(const auto& id:document.timelineSelection().cels){const auto* c=document.timeline().findCelById(id);if(!c)continue;const int r=int(document.timeline().layerIndex(c->layerId)),col=int(document.timeline().frameIndex(c->frameId));const int next=std::abs(r-row)+std::abs(col-column);if(next<distance){distance=next;timelineGesture_.targetRow=r;timelineGesture_.targetColumn=col;}}
       row=timelineGesture_.targetRow;column=timelineGesture_.targetColumn;timelineGesture_={};beginTimelineGesture(3,row,column,mouse,true);
     }else if(!document.selectedFrames().empty())beginTimelineGesture(2,-1,column,mouse,true);else if(!document.timelineSelection().layers.empty())beginTimelineGesture(1,row,-1,mouse,true);else return false;return true;
   }
@@ -6020,22 +7379,30 @@ public:
     const auto l=columnLayout(uiLogical(bounds()),2);
     const int rows=std::min(timelineCapacity(l),int(document.timeline().state().layers.size())-layerScroll_);
     const int columns=timelineColumns(l);
-    const int visibleColumns=std::min(columns,int(document.timeline().state().frames.size())-frameScroll_);
+    const int visibleColumns=std::max(0,std::min(columns,int(document.timeline().state().frames.size())-frameScroll_));
     const int x=l.workX+5,y=l.layerTop+timelineHeaderOffset();
     auto add=[&](gfx::Rect box,gfx::Point offset,gfx::Rect clip){
       clip.enlarge(2*uiScale);
       auto material=skin_.selectionMaterialBounds(uiPhysical(box).offset(offset));material.offset(bounds().x,bounds().y);
       result.push_back({box,paletteMousePosition_ && clip.contains(*paletteMousePosition_) && skin_.selectionContains(material,*paletteMousePosition_),offset,clip});
     };
-    for(int row=0;row<rows;){if(!layerRows_[row+layerScroll_]->timelineSelected){++row;continue;}const int first=row;while(row<rows && layerRows_[row+layerScroll_]->timelineSelected)++row;add(gfx::Rect(x+36,y+12+first*12,48+visibleColumns*12+1,(row-first)*12+1),{0,-layerScrollRemainder_},timelineRowViewport());}
-    for(int col=0;col<visibleColumns;){if(!frameHeaders_[col]->timelineSelected){++col;continue;}const int first=col;while(col<visibleColumns && frameHeaders_[col]->timelineSelected)++col;add(gfx::Rect(x+84+first*12,y,(col-first)*12+1,(rows+1)*12+1),{-frameScrollRemainder_,0},timelineFrameViewport(true)|timelineFrameViewport());}
-    std::set<std::pair<int,int>> selected;
+    for(int row=0;row<rows;){if(!layerRows_[row]->timelineSelected){++row;continue;}const int first=row;while(row<rows && layerRows_[row]->timelineSelected)++row;add(gfx::Rect(x+36,y+12+first*12,timelineLabelWidth()-36+visibleColumns*12+1,(row-first)*12+1),{0,-layerScrollRemainder_},timelineRowViewport());}
+    for(int col=0;col<visibleColumns;){if(!frameHeaders_[col]->timelineSelected){++col;continue;}const int first=col;while(col<visibleColumns && frameHeaders_[col]->timelineSelected)++col;add(gfx::Rect(x+timelineLabelWidth()+first*12,y,(col-first)*12+1,(rows+1)*12+1),{-frameScrollRemainder_,0},timelineFrameViewport(true)|timelineFrameViewport());}
     const auto& state=document.timeline().state();
-    for(const auto& id:document.timelineSelection().cels){const auto* cel=document.timeline().findCelById(id);if(!cel)continue;int r=int(std::find_if(state.layers.begin(),state.layers.end(),[&](const auto& l){return l.id==cel->layerId;})-state.layers.begin())-layerScroll_,c=int(std::find_if(state.frames.begin(),state.frames.end(),[&](const auto& f){return f.id==cel->frameId;})-state.frames.begin())-frameScroll_;if(timelineGesture_.kind==3 && timelineGesture_.canMove && timelineGesture_.moved){r+=timelineGesture_.targetRow-timelineGesture_.row;c+=timelineGesture_.targetColumn-timelineGesture_.column;}if(r>=0 && r<rows && c>=0 && c<visibleColumns)selected.insert({r,c});}
-
-    // deriveLayerPanelVisuals uses the bounds of directly selected cels,
-    // including gaps, for both the displayed box and the drag hit target.
-    if(!selected.empty()){int top=rows,bottom=-1,left=visibleColumns,right=-1;for(const auto [r,c]:selected){top=std::min(top,r);bottom=std::max(bottom,r);left=std::min(left,c);right=std::max(right,c);}add(gfx::Rect(x+84+left*12,y+12+top*12,(right-left+1)*12+1,(bottom-top+1)*12+1),{-frameScrollRemainder_,-layerScrollRemainder_},timelineFrameViewport());}
+    const bool moving=timelineGesture_.kind==3 && timelineGesture_.canMove && timelineGesture_.moved;
+    const int dr=moving?timelineGesture_.targetRow-timelineGesture_.row:0;
+    const int dc=moving?timelineGesture_.targetColumn-timelineGesture_.column:0;
+    int top=rows,bottom=-1,left=visibleColumns,right=-1;
+    // Query visible destinations, including selected sources just offscreen
+    // during a drag. Cost is bounded by the viewport, not selection size.
+    if(!timelineSelectedCels_.empty())for(int r=0;r<rows;++r)for(int c=0;c<visibleColumns;++c){
+      const int sourceRow=r+layerScroll_-dr,sourceColumn=c+frameScroll_-dc;
+      if(sourceRow<0 || sourceRow>=int(state.layers.size()) || sourceColumn<0 || sourceColumn>=int(state.frames.size()))continue;
+      const auto* cel=document.timeline().findCel(state.layers[sourceRow].id,state.frames[sourceColumn].id);
+      if(cel && timelineSelectedCels_.count(cel->id)){top=std::min(top,r);bottom=std::max(bottom,r);left=std::min(left,c);right=std::max(right,c);}
+    }
+    // Legacy deriveLayerPanelVisuals includes gaps in the direct selection box.
+    if(bottom>=0)add(gfx::Rect(x+timelineLabelWidth()+left*12,y+12+top*12,(right-left+1)*12+1,(bottom-top+1)*12+1),{-frameScrollRemainder_,-layerScrollRemainder_},timelineFrameViewport());
     return result;
   }
   void paintTimelineGrid(ui::Graphics& g) {
@@ -6049,9 +7416,10 @@ public:
     for(const auto& buttons:{layerRows_,layerEyes_,layerLocks_,layerAutoLinks_,frameHeaders_,frameCells_})for(auto b:buttons) {
       if(!b->timelineVisible)continue;
       auto box=b->bounds();box.offset(-bounds().x,-bounds().y);
-      if(!box.intersects(g.getClipBounds()))continue;
+      auto materialBox=box;materialBox.w+=uiScale;materialBox.h+=uiScale;
+      if(!materialBox.intersects(g.getClipBounds()))continue;
       b->timelineBackgroundHover=backgroundHover(b);
-      g.saveClip();if(b->paletteViewport)g.clipRect(b->paletteViewport().offset(-bounds().origin()));
+      g.saveClip();if(b->paletteViewport)g.clipRect(timelineMaterialViewport(b->paletteViewport(),std::find(frameHeaders_.begin(),frameHeaders_.end(),b)!=frameHeaders_.end()).offset(-bounds().origin()));
       b->paintTimelineContent(g,gfx::Rect(0,0,box.w/uiScale,box.h/uiScale),box.origin());
       // LayersPanel disabled-frame SVG: rising diagonal, inset 4, currentColor .72.
       const auto header=std::find(frameHeaders_.begin(),frameHeaders_.end(),b);
@@ -6062,7 +7430,7 @@ public:
     // Adjacent canonical linked slots reuse the user's original ball as a
     // 3/1/3 horizontal nine-slice. Only visible content receives a marker.
     {
-      g.saveClip();g.clipRect(timelineFrameViewport().offset(-bounds().origin()));
+      g.saveClip();g.clipRect(timelineMaterialViewport(timelineFrameViewport()).offset(-bounds().origin()));
       {UiPaintScale scale(g,gfx::Point(-frameScrollRemainder_,-layerScrollRemainder_));const auto l=columnLayout(uiLogical(bounds()),2);
       const int columns=timelineColumns(l);
       const int rows=std::min(timelineCapacity(l),int(document.timeline().state().layers.size())-layerScroll_);
@@ -6082,12 +7450,12 @@ public:
         }
         // Draw each complete run once: overlapping pairwise rounded caps
         // would leave dark seams inside runs of three or more cels.
-        if(col-first>1)skin_.draw(g,"timeline.linked-dot",gfx::Rect(l.workX+92+first*12,l.layerTop+timelineRowsOffset()+row*12+3,7+(col-first-1)*12,7));
+        if(col-first>1)skin_.draw(g,"timeline.linked-dot",gfx::Rect(l.workX+5+timelineLabelWidth()+3+first*12,l.layerTop+timelineRowsOffset()+row*12+3,7+(col-first-1)*12,7));
       }
     }
       }g.restoreClip();
     {UiPaintScale scale(g);
-    if(timelineGesture_.kind && timelineGesture_.canMove && timelineGesture_.moved && timelineGesture_.kind!=3){const auto l=columnLayout(uiLogical(bounds()),2);const auto& d=timelineGesture_;if(d.kind==1){const int row=d.targetRow-layerScroll_+(d.after?1:0);skin_.drawSelectionBorder(g,uiPhysical(gfx::Rect(l.workX+41,l.layerTop+timelineRowsOffset()+row*12,48+std::min(timelineColumns(l),int(document.timeline().state().frames.size())-frameScroll_)*12+1,1)),false);}else{const int col=d.targetColumn-frameScroll_+(d.after?1:0);skin_.drawSelectionBorder(g,uiPhysical(gfx::Rect(l.workX+89+col*12,l.layerTop+timelineHeaderOffset(),1,std::min(timelineCapacity(l),int(document.timeline().state().layers.size())-layerScroll_)*12+13)),false);}}
+    if(timelineGesture_.kind && timelineGesture_.canMove && timelineGesture_.moved && timelineGesture_.kind!=3){const auto l=columnLayout(uiLogical(bounds()),2);const auto& d=timelineGesture_;if(d.kind==1){const int row=d.targetRow-layerScroll_+(d.after?1:0);skin_.drawSelectionBorder(g,uiPhysical(gfx::Rect(l.workX+41,l.layerTop+timelineRowsOffset()+row*12,timelineLabelWidth()-36+std::min(timelineColumns(l),int(document.timeline().state().frames.size())-frameScroll_)*12+1,1)),false);}else{const int col=d.targetColumn-frameScroll_+(d.after?1:0);skin_.drawSelectionBorder(g,uiPhysical(gfx::Rect(l.workX+5+timelineLabelWidth()+col*12,l.layerTop+timelineHeaderOffset(),1,std::min(timelineCapacity(l),int(document.timeline().state().layers.size())-layerScroll_)*12+13)),false);}}
     }
     if(gifDropTargetIndex_){const auto grid=timelineFrameViewport(true)|timelineFrameViewport();g.saveClip();g.clipRect(gfx::Rect(grid).offset(-bounds().origin()));const int x=grid.x+(*gifDropTargetIndex_-frameScroll_)*12*uiScale-frameScrollRemainder_-uiScale;g.fillRect(skin_["accent"],gfx::Rect(x-bounds().x,grid.y-bounds().y,2*uiScale,grid.h));g.restoreClip();}
     for(const auto& outline:timelineOutlines()) {
@@ -6096,6 +7464,45 @@ public:
       auto outlineClip=outline.clip;outlineClip.offset(-bounds().origin());g.saveClip();g.clipRect(outlineClip);{UiPaintScale scale(g);skin_.drawSelectionBorder(g,uiPhysical(outline.border).offset(outline.offset),outline.hover);}g.restoreClip();
     }
     }g.restoreClip();
+  }
+  void paintTimelineCached(ui::Graphics& g,const Layout& ll,gfx::Rect area) {
+    if(!timelinePaintCache_ || timelinePaintCacheBounds_!=area){
+      timelinePaintCache_=os::instance()->makeRgbaSurface(area.w,area.h);timelinePaintCacheBounds_=area;timelinePaintCacheValid_=false;
+    }
+    if(!timelinePaintCacheValid_){
+      ui::Graphics cache(nullptr,timelinePaintCache_,-area.x,-area.y);cache.clipRect(area);
+      {UiPaintScale scale(cache);cache.fillRect(skin_["background"],uiLogical(clientBounds()));paintWorkLayer(cache,uiLogical(clientBounds()));paintTimelineBackground(cache,ll);}
+      paintTimelineGrid(cache);timelinePaintCacheValid_=true;++timelineCachePaints_;
+    }
+    g.saveClip();clipColumn(g,2,true);ui::Paint copy;copy.blendMode(os::BlendMode::Src);
+    g.drawSurface(timelinePaintCache_.get(),{0,0,area.w,area.h},area,os::Sampling(),&copy);g.restoreClip();
+  }
+  void paintTimelineBackground(ui::Graphics& g,const Layout& ll) {
+      g.saveClip();clipColumn(g,2,true);const gfx::Rect outer=docking_.custom?columnFrame(2):gfx::Rect(ll.workX,ll.layerTop,ll.workW,ll.bottom-ll.layerTop);
+      if(!skin_.draw(g,"timeline.frame",outer)){g.fillRect(skin_["panel"],outer);g.drawRect(skin_["timelineGrid"],outer);
+      g.drawRect(skin_["timelineEdge"],gfx::Rect(outer.x+1,outer.y+1,outer.w-2,outer.h-2));g.drawRect(skin_["timelineGrid"],gfx::Rect(outer.x+2,outer.y+2,outer.w-4,outer.h-4));}
+
+      const int x=ll.workX+5,y=ll.layerTop+timelineHeaderOffset(),gx=x+timelineLabelWidth();
+      if(!skin_.draw(g,"timeline.grid",gfx::Rect(ll.workX+5,y,ll.workW-9,ll.bottom-y-5))){g.fillRect(skin_["timelineBackground"],gfx::Rect(ll.workX+5,y,ll.workW-9,ll.bottom-y-5));
+      g.drawRect(skin_["timelineGrid"],gfx::Rect(ll.workX+5,y,ll.workW-9,ll.bottom-y-5));}
+      // Complete user-supplied cell frames overlap one base pixel. Actual
+      // row/header widgets paint the rest; no independent grid extensions.
+      g.saveClip();g.clipRect(gfx::Rect(x,y,timelineScrollMetrics(ll).viewportWidth/uiScale,12+timelineScrollMetrics(ll).height/uiScale));
+      for(int offset:{0,12,24,36}){
+        const int width=offset==36?timelineLabelWidth()-36:12;const gfx::Rect header(x+offset,y,width,12);
+        skin_.draw(g,"timeline.row",header);
+        skin_.draw(g,"timeline.cell",gfx::Rect(header.x,header.y,header.w+1,header.h+1));
+      }
+      for(int i=0;i<3;++i)toolIcons_.draw(g,std::string(i==0?"eye":i==1?"lock":"animation-auto-link-off")+"-disabled",gfx::Rect(x+i*12+1,y+1,11,11),true);g.restoreClip();
+      const auto metrics=timelineScrollMetrics(ll);
+      if(metrics.horizontal && metrics.vertical)paintScrollbarCorner(g,timelineRowViewport());
+      g.restoreClip();
+  }
+  void paintScrollbarCorner(ui::Graphics& g,gfx::Rect physicalViewport) {
+    const auto r=uiLogical(physicalViewport.offset(-bounds().origin()));
+    // Reuse sheet track black and panel fill; both paired bars share this cap.
+    skin_.draw(g,"scrollbar.horizontal.track",gfx::Rect(r.x2(),r.y2(),7,7));
+    skin_.draw(g,"timeline.row",gfx::Rect(r.x2(),r.y2()+1,6,5));
   }
   void paintChrome(ui::Graphics& g,bool includeFloating=false) {
     ++chromePaints_;UiPaintScale scale(g);const auto rc=uiLogical(clientBounds());const auto l=workspaceLayout(rc);const auto pl=columnLayout(rc,0),cl=columnLayout(rc,1),ll=columnLayout(rc,2);
@@ -6109,7 +7516,9 @@ public:
       g.fillRect(skin_[fill],box);
       if(!skin_.draw(g,slot,box)) g.drawRect(skin_["border"],box);
     };
-    g.saveClip();clipColumn(g,-1,true);panel(l.workspacePanel(),"panel_outer","panel");panel(l.workspaceContent(),"panel_content","background");g.restoreClip();
+    g.saveClip();clipColumn(g,-1,true);panel(l.workspacePanel(),"panel_outer","panel");panel(l.workspaceContent(),"panel_content","background");
+    if(canvasHorizontal_ && canvasHorizontal_->isVisible() && canvasVertical_->isVisible())paintScrollbarCorner(g,canvasViewport());
+    g.restoreClip();
     if(columnShown(0) && (includeFloating || !columnFloating(0))){g.saveClip();clipColumn(g,0,true);panel(colorPanel,"panel_outer","panel");g.restoreClip();}
     if(columnShown(0) && (includeFloating || !columnFloating(0))){g.saveClip();clipColumn(g,0,true);panel(colorContent,"panel_content","background");g.restoreClip();}
     if(columnShown(1) && (includeFloating || !columnFloating(1))) {
@@ -6119,36 +7528,16 @@ public:
       g.restoreClip();
     }
     if(columnShown(2) && documentOpen_ && (includeFloating || !columnFloating(2))){
-      g.saveClip();clipColumn(g,2,true);const gfx::Rect outer=docking_.custom?columnFrame(2):gfx::Rect(ll.workX,ll.layerTop,ll.workW,ll.bottom-ll.layerTop);
-      if(!skin_.draw(g,"timeline.frame",outer)){g.fillRect(skin_["panel"],outer);g.drawRect(skin_["timelineGrid"],outer);
-      g.drawRect(skin_["timelineEdge"],gfx::Rect(outer.x+1,outer.y+1,outer.w-2,outer.h-2));g.drawRect(skin_["timelineGrid"],gfx::Rect(outer.x+2,outer.y+2,outer.w-4,outer.h-4));}
-
-      const int x=ll.workX+5,y=ll.layerTop+timelineHeaderOffset(),gx=x+84;
-      if(!skin_.draw(g,"timeline.grid",gfx::Rect(ll.workX+5,y,ll.workW-9,ll.bottom-y-5))){g.fillRect(skin_["timelineBackground"],gfx::Rect(ll.workX+5,y,ll.workW-9,ll.bottom-y-5));
-      g.drawRect(skin_["timelineGrid"],gfx::Rect(ll.workX+5,y,ll.workW-9,ll.bottom-y-5));}
-      const auto& layers=document.timeline().state().layers;
-      const int capacity=timelineCapacity(ll);
-      const int rows=std::min(capacity,int(layers.size())-layerScroll_);
-      const int columns=timelineColumns(ll);
-      const int visibleColumns=std::min(columns,int(document.timeline().state().frames.size())-frameScroll_);
-      auto line=[&](gfx::Rect r){if(!skin_.draw(g,"timeline.line",r))g.fillRect(skin_["timelineGrid"],r);};
-      // Derive every separator from the visible rows/columns, including the
-      // empty auto-link column. Children own their cell's top and left edges.
-      g.saveClip();g.clipRect(gfx::Rect(x,y,84+timelineScrollMetrics(ll).width/uiScale,12+timelineScrollMetrics(ll).height/uiScale));
-      for(int dx:{0,12,24,36,84})line(gfx::Rect(x+dx,y,1,(rows+1)*12+1));
-      g.saveClip();g.clipRect(gfx::Rect(gx,y,timelineScrollMetrics(ll).width/uiScale,12+timelineScrollMetrics(ll).height/uiScale));g.save();g.concat(gfx::Matrix::MakeAll(1,0,-double(frameScrollRemainder_)/uiScale,0,1,0,0,0,1));
-      for(int col=1;col<=visibleColumns;++col)line(gfx::Rect(gx+col*12,y,1,(rows+1)*12+1));g.restore();g.restoreClip();
-      line(gfx::Rect(x,y,84+visibleColumns*12+1,1));
-      g.saveClip();g.clipRect(gfx::Rect(x,y+12,84+timelineScrollMetrics(ll).width/uiScale,timelineScrollMetrics(ll).height/uiScale));
-      g.save();g.concat(gfx::Matrix::MakeAll(1,0,0,0,1,-double(layerScrollRemainder_)/uiScale,0,0,1));
-      for(int row=1;row<=rows+1;++row)line(gfx::Rect(x,y+row*12,84+visibleColumns*12+1,1));g.restore();g.restoreClip();
-      for(int i=0;i<3;++i)toolIcons_.draw(g,std::string(i==0?"eye":i==1?"lock":"animation-auto-link-off")+"-disabled",gfx::Rect(x+i*12+1,y+1,11,11),true);g.restoreClip();
-
-
-      g.restoreClip();
+      paintTimelineBackground(g,ll);
     }
     if(includeFloating)return;
     paintDocumentTab(g);
+    paintStatusText(g);
+  }
+  void paintStatusText(ui::Graphics& g) {
+    // Called with the same logical 2x transform as paintChrome.
+    const auto rc=uiLogical(clientBounds());
+    auto label=[&](const std::u32string& s,int x,int y,bool muted=false){font_.draw(g,s,x,y,skin_[muted?"muted":"text"]);};
     auto percent=std::to_string(zoom_*100);
     while(percent.back()=='0') percent.pop_back();if(percent.back()=='.') percent.pop_back();
     const std::u32string zoomText=std::u32string(percent.begin(),percent.end())+U"%  滚轮缩放 / F 适应";
@@ -6166,7 +7555,8 @@ public:
     label(zoomText,zoomInkX-zoomInk.x,statusInkY-zoomInk.y,true);
     g.restoreClip();
   }
-  void ensureContentCache() {renderer_.setOnionSkin(onion_,playing_);renderer_.sync(document);}
+  std::uint64_t luminanceDocumentIdentity_=0;
+  void ensureContentCache() {if(luminanceDocumentIdentity_!=document.identity()){if(luminanceDocumentIdentity_)renderer_.setRelativeLuminance(false);luminanceDocumentIdentity_=document.identity();}renderer_.setOnionSkin(onion_,playing_);renderer_.sync(document);}
   void paintSelectionAnts(ui::Graphics& g,gfx::Rect cv,gfx::Rect viewport,int phase) {
     syncSelectionOutlineView();if(!showSelectionOutline_ || !document.selection())return;
     const auto& s=document.selection();const double scale=canvasScale();gfx::Path path;
@@ -6195,7 +7585,7 @@ public:
   gfx::Color selectionPreviewColor(int x,int y) const {
     Pixel pixel=0;if(selectionColorIdentity_!=document.identity() || selectionColorRevision_!=document.contentRevision() || selectionColorFrame_!=document.frame().id){selectionColorTiles_.clear();selectionColorIdentity_=document.identity();selectionColorRevision_=document.contentRevision();selectionColorFrame_=document.frame().id;}
     if(x>=0 && y>=0 && x<document.width() && y<document.height()){const auto key=std::make_pair(x/64,y/64);auto it=selectionColorTiles_.find(key);const int left=key.first*64,top=key.second*64,width=std::min(64,document.width()-left);if(it==selectionColorTiles_.end()){if(selectionColorTiles_.size()>=32)selectionColorTiles_.erase(selectionColorTiles_.begin());it=selectionColorTiles_.emplace(key,compositeNormalRegion(document.timeline(),document.frame().id,{left,top,width,std::min(64,document.height()-top)})).first;}pixel=it->second[(y-top)*width+x-left];}
-    auto color=pixel>>24?gfx::rgba(pixel&255,(pixel>>8)&255,(pixel>>16)&255,255):skin_[((int(std::floor(x/4.0))+int(std::floor(y/4.0)))%2==0)?"checkerA":"checkerB"];
+    auto color=pixel>>24?gfx::rgba(pixel&255,(pixel>>8)&255,(pixel>>16)&255,255):checkerboard_.at(x,y);
     return gfx::getr(color)*.2126+gfx::getg(color)*.7152+gfx::getb(color)*.0722>145?gfx::rgba(0,0,0,255):gfx::rgba(255,255,255,255);
   }
   void paintSelectionFeedback(ui::Graphics& g,const gfx::Rect& cv,const gfx::Rect& viewport) {
@@ -6237,28 +7627,72 @@ public:
     auto box=[&](int x,int y){const int l=int(std::round(cv.x+x*scale)),t=int(std::round(cv.y+y*scale));return gfx::Rect(l,t,std::max(1,int(std::round(cv.x+(x+1)*scale))-l),std::max(1,int(std::round(cv.y+(y+1)*scale))-t));};
     if(eraser_ && !anchor){
       // Complete outline includes the portion outside the document.
+      auto edge=[&](int x,int y,unsigned edges){const auto r=box(x,y);if(!r.intersects(g.getClipBounds()))return;const auto color=selectionPreviewColor(x,y);
+        if(edges&1)g.fillRect(color,gfx::Rect(r.x,r.y,1,r.h));
+        if(edges&2)g.fillRect(color,gfx::Rect(r.x2()-1,r.y,1,r.h));
+        if(edges&4)g.fillRect(color,gfx::Rect(r.x,r.y,r.w,1));
+        if(edges&8)g.fillRect(color,gfx::Rect(r.x,r.y2()-1,r.w,1));};
+      if(!pencilImageBrush_ && brushPreviewBatch_){
+        // Reuse legacy row-span geometry. Cache only boundary samples, rather
+        // than rebuilding a tree for every interior pixel on every mouse move.
+        if(eraserOutlineSize_!=brush.size || eraserOutlineShape_!=brush.shape){
+          eraserOutline_.clear();const auto rows=brushSpans(brush);
+          std::array<unsigned char,64*64> mask{};
+          for(const auto& row:rows)for(int x=row.left;x<=row.right;++x)mask[row.y*64+x]=1;
+          auto contains=[&](int x,int y){return x>=0 && y>=0 && x<brush.size && y<brush.size && mask[y*64+x]!=0;};
+          for(int x=0;x<brush.size;++x)for(int y=0;y<brush.size;++y)if(contains(x,y)){
+            const unsigned edges=(!contains(x-1,y)?1:0)|(!contains(x+1,y)?2:0)|(!contains(x,y-1)?4:0)|(!contains(x,y+1)?8:0);
+            if(edges)eraserOutline_.push_back({x-brush.size/2,y-brush.size/2,edges});
+          }
+          eraserOutlineSize_=brush.size;eraserOutlineShape_=brush.shape;
+        }
+        for(const auto& sample:eraserOutline_)edge(p.x+sample.x,p.y+sample.y,sample.edges);
+        return;
+      }
       std::set<std::pair<int,int>> mask;
       if(pencilImageBrush_){const auto stamp=prepareImageBrushStamp(*pencilImageBrush_,brush.size,pencilImageBrushAngle_);for(auto sample:stamp.samples)mask.emplace(p.x-stamp.width/2+sample.x,p.y-stamp.height/2+sample.y);}
       else for(auto span:brushSpans(brush))for(int x=span.left;x<=span.right;++x)mask.emplace(p.x-brush.size/2+x,p.y-brush.size/2+span.y);
-      for(auto [x,y]:mask){const auto r=box(x,y);if(!r.intersects(g.getClipBounds()))continue;const auto color=selectionPreviewColor(x,y);
-        if(!mask.count({x-1,y}))g.fillRect(color,gfx::Rect(r.x,r.y,1,r.h));
-        if(!mask.count({x+1,y}))g.fillRect(color,gfx::Rect(r.x2()-1,r.y,1,r.h));
-        if(!mask.count({x,y-1}))g.fillRect(color,gfx::Rect(r.x,r.y,r.w,1));
-        if(!mask.count({x,y+1}))g.fillRect(color,gfx::Rect(r.x,r.y2()-1,r.w,1));
-      }return;
+      for(auto [x,y]:mask)edge(x,y,(!mask.count({x-1,y})?1:0)|(!mask.count({x+1,y})?2:0)|(!mask.count({x,y-1})?4:0)|(!mask.count({x,y+1})?8:0));
+      return;
     }
-    const auto replacements=document.brushPreview(anchor?anchor->point:p,target,eraser_?0:ink_,brush,pencilImageBrush_?&*pencilImageBrush_:nullptr,pencilImageBrushAngle_,anchor && anchor->revision==document.revision()?&anchor->baseline:nullptr,bool(anchor));
+    const auto replacements=document.brushPreview(anchor?anchor->point:p,target,eraser_?0:ink_,brush,pencilImageBrush_?&*pencilImageBrush_:nullptr,pencilImageBrushAngle_,brushLineBaseline(anchor),bool(anchor));
     if(replacements.empty())return;
     PixelRegion region;for(auto [i,value]:replacements)region.include(int(i%document.width()),int(i/document.width()));
     std::vector<Pixel> pixels(std::size_t(region.w)*region.h);
-    for(int y=0;y<region.h;++y)std::copy_n(document.pixels().begin()+std::size_t(region.y+y)*document.width()+region.x,region.w,pixels.begin()+std::size_t(y)*region.w);
+    const auto& sourcePixels=document.pixels();
+    for(int y=0;y<region.h;++y)std::copy_n(sourcePixels.begin()+std::size_t(region.y+y)*document.width()+region.x,region.w,pixels.begin()+std::size_t(y)*region.w);
     for(auto [i,value]:replacements)pixels[(i/document.width()-region.y)*region.w+i%document.width()-region.x]=value;
     auto composed=compositeNormalRegion(document.displayTimeline(),document.frame().id,{region.x,region.y,region.w,region.h},document.layer().id,&pixels,region.w,region.x,region.y);
+    // Port legacy solidCompositePreviewRects: group adjacent equal colors.
+    // Keep fillRect's exact alpha rounding, including image-brush samples.
+    // Integer zoom has disjoint boxes; fractional zoom retains scalar order.
+    if(brushPreviewBatch_ && !anchor && scale>=1 && scale==std::floor(scale) && std::uint64_t(region.w)*region.h<=256*256){
+      std::vector<std::uint8_t> occupied(pixels.size(),0);
+      for(auto [i,value]:replacements)occupied[(i/document.width()-region.y)*region.w+i%document.width()-region.x]=1;
+      for(int y=0;y<region.h;++y)for(int x=0;x<region.w;){const auto at=std::size_t(y)*region.w+x;if(!occupied[at]){++x;continue;}
+        const int first=x;const auto color=composed[at];const int checker=checkerboard_.size*scale<2?0:((region.x+x)/checkerboard_.size+(region.y+y)/checkerboard_.size)%2;
+        while(++x<region.w && occupied[std::size_t(y)*region.w+x] && composed[std::size_t(y)*region.w+x]==color && (checkerboard_.size*scale<2 || ((region.x+x)/checkerboard_.size+(region.y+y)/checkerboard_.size)%2==checker)){}
+        const auto left=box(region.x+first,region.y+y),right=box(region.x+x-1,region.y+y);const gfx::Rect r(left.x,left.y,right.x2()-left.x,left.h);
+        if(!r.intersects(g.getClipBounds()))continue;
+        g.fillRect(checker?checkerboard_.dark:checkerboard_.light,r);g.fillRect(gfx::rgba(color&255,(color>>8)&255,(color>>16)&255,color>>24),r);
+      }
+      return;
+    }
     for(auto [i,value]:replacements){const int x=int(i%document.width()),y=int(i/document.width());auto r=box(x,y);if(!r.intersects(g.getClipBounds()))continue;
       auto color=composed[std::size_t(y-region.y)*region.w+x-region.x];
-      g.fillRect(skin_[(x/4+y/4)%2?"checkerB":"checkerA"],r);
+      g.fillRect(checkerboard_.size*scale<2?checkerboard_.light:checkerboard_.at(x,y),r);
       g.fillRect(gfx::rgba(color&255,(color>>8)&255,(color>>16)&255,color>>24),r);
     }
+  }
+  void paintCanvasBackdrop(ui::Graphics& g) {
+    g.saveClip();clipColumn(g,-1,true);UiPaintScale scale(g);
+    const auto rc=uiLogical(clientBounds());const auto l=workspaceLayout(rc);
+    g.fillRect(skin_["background"],rc);paintWorkLayer(g,rc);
+    for(int i=0;i<2;++i){const auto r=i?l.workspaceContent():l.workspacePanel();const char* slot=i?"panel_content":"panel_outer";
+      g.fillRect(skin_[i?"background":"panel"],r);if(!skin_.draw(g,slot,r))g.drawRect(skin_["border"],r);
+    }
+    if(canvasHorizontal_ && canvasHorizontal_->isVisible() && canvasVertical_->isVisible())paintScrollbarCorner(g,canvasViewport());
+    g.restoreClip();
   }
   void paintCanvas(ui::Graphics& g) {
     auto viewport=canvasViewport();viewport.offset(-bounds().x,-bounds().y);
@@ -6273,9 +7707,21 @@ public:
       const auto dimensions=std::to_string(document.width())+" x "+std::to_string(document.height());
       font_.draw(g,std::u32string(dimensions.begin(),dimensions.end()),0,-15,skin_["muted"]);
     }
-    renderer_.draw(g,cv,canvasScale(),skin_["checkerA"],skin_["checkerB"]);
+    if(previewPanel_)previewPanel_->checkerboard=checkerboard_;
+    renderer_.draw(g,cv,canvasScale(),checkerboard_.light,checkerboard_.dark,checkerboard_.size);
     paintBrushPreview(g,cv);
-    if(symmetryHas(document.symmetryAxes)){const auto c=document.symmetryCenter();const auto a=document.symmetryAxes;const auto color=gfx::rgba(symmetryColor_&255,(symmetryColor_>>8)&255,(symmetryColor_>>16)&255,symmetryColor_>>24);auto draw=[&](double x,double y){if(x<0 || y<0 || x>document.width() || y>document.height())return;g.fillRect(color,gfx::Rect(int(std::round(cv.x+x*canvasScale())),int(std::round(cv.y+y*canvasScale())),symmetryThickness_,symmetryThickness_));};for(int x=0;x<=cv.w;++x){const double px=x/canvasScale();if(a.horizontal||a.rotational)draw(px,c.y);if(a.diagonalDown)draw(px,px+c.y-c.x);if(a.diagonalUp)draw(px,c.x+c.y-px);}if(a.vertical||a.rotational)for(int y=0;y<=cv.h;++y)draw(c.x,y/canvasScale());}
+    if(symmetryHas(document.symmetryAxes)){
+      const auto c=document.symmetryCenter();const auto a=document.symmetryAxes;const double scale=canvasScale();
+      const auto color=gfx::rgba(symmetryColor_&255,(symmetryColor_>>8)&255,(symmetryColor_>>16)&255,symmetryColor_>>24);
+      auto draw=[&](double x,double y){if(x<0 || y<0 || x>document.width() || y>document.height())return;g.fillRect(color,gfx::Rect(int(std::round(cv.x+x*scale)),int(std::round(cv.y+y*scale)),symmetryThickness_,symmetryThickness_));};
+      const auto clip=g.getClipBounds();
+      // A sample extends to the right/bottom by the configured thickness.
+      // Preserve original sample coordinates/order; skip only invisible samples.
+      const int firstX=symmetryClip_?std::max(0,clip.x-cv.x-symmetryThickness_):0,lastX=symmetryClip_?std::min(cv.w,clip.x2()-cv.x):cv.w;
+      const int firstY=symmetryClip_?std::max(0,clip.y-cv.y-symmetryThickness_):0,lastY=symmetryClip_?std::min(cv.h,clip.y2()-cv.y):cv.h;
+      if(a.horizontal||a.rotational||a.diagonalDown||a.diagonalUp)for(int x=firstX;x<=lastX;++x){const double px=x/scale;if(a.horizontal||a.rotational)draw(px,c.y);if(a.diagonalDown)draw(px,px+c.y-c.x);if(a.diagonalUp)draw(px,c.x+c.y-px);}
+      if(a.vertical||a.rotational)for(int y=firstY;y<=lastY;++y)draw(c.x,y/scale);
+    }
 
     if(selectionTool_ && selectionKind_==5 && selectionBrushPointer_ && !spaceHeld_ && !handTool_ && ((selectionDragging_ && !selectionBoxDragging_) || transformHit(*selectionBrushPointer_).empty())){const auto pointer=*selectionBrushPointer_;if((selectionDragging_ && !selectionBoxDragging_) || selectionHit(pointer)==0){auto coverage=selectionBrushStroke_;const auto p=canvasPoint(pointer);coverage.collect(document.width(),document.height(),{p.x,p.y},{p.x,p.y},brushProfiles_[0],selectionBrushAngle_);const double scale=canvasScale();auto draw=[&](int x,int y){const int left=int(std::round(cv.x+x*scale)),top=int(std::round(cv.y+y*scale)),right=int(std::round(cv.x+(x+1)*scale)),bottom=int(std::round(cv.y+(y+1)*scale));g.fillRect(gfx::rgba(41,121,255,89),gfx::Rect(left,top,std::max(1,right-left),std::max(1,bottom-top)));};for(auto key:coverage.visited)draw(int(key%document.width()),int(key/document.width()));for(auto p:coverage.outsidePreview)draw(p.first,p.second);}}
     if(document.gradientActive()){auto handle=[&](TransformPoint p){const int x=gradientRound(cv.x+p.x*canvasScale()),y=gradientRound(cv.y+p.y*canvasScale());g.fillRect(gfx::rgba(0,0,0,255),gfx::Rect(x-5,y-5,10,10));g.fillRect(gfx::rgba(255,255,255,255),gfx::Rect(x-3,y-3,6,6));};handle(gradientSpec_.radial?resolveGradientGeometry(gradientSpec_).center:gradientSpec_.start);handle(gradientSpec_.end);}
@@ -6290,10 +7736,23 @@ public:
   }
   void onPaint(ui::PaintEvent& ev) override {
     auto& g=*ev.graphics();if(!homeOpen_)ensureContentCache();
-    auto viewport=canvasViewport();viewport.offset(-bounds().x,-bounds().y);
     // Like legacy's requestDrawRef, invalidations share the existing drawing
     // scheduler. Pan requests only the viewport and reuses composed content.
-    if(!homeOpen_ && pending_==Pending::None && viewport.contains(g.getClipBounds())) {paintCanvas(g);paintEyedropperLens(g);return;}
+    if(!homeOpen_ && pending_==Pending::None){
+      const auto ll=columnLayout(uiLogical(clientBounds()),2);
+      auto timelineArea=toDisplay(gfx::Rect(ll.workX,ll.layerTop+35,ll.workW,ll.bottom-ll.layerTop-35));timelineArea.offset(-bounds().origin());
+      if(columnShown(2) && !columnFloating(2) && timelineArea.contains(g.getClipBounds())){
+        paintTimelineCached(g,ll,timelineArea);return;
+      }
+      auto full=canvasFullViewport();full.offset(-bounds().origin());
+      full.enlarge(uiScale);
+      if(full.contains(g.getClipBounds())) {paintCanvasBackdrop(g);paintCanvas(g);paintEyedropperLens(g);return;}
+      const auto layout=workspaceLayout(uiLogical(clientBounds()));
+      const auto options=uiPhysical(gfx::Rect(layout.workX,Layout::optionsY,layout.workW,Layout::optionsHeight));
+      if(options.contains(g.getClipBounds())){g.saveClip();clipColumn(g,-1,true);UiPaintScale scale(g);g.fillRect(skin_["background"],uiLogical(clientBounds()));paintWorkLayer(g,uiLogical(clientBounds()));g.restoreClip();return;}
+      auto status=statusBounds();status.offset(-bounds().origin());
+      if(status.contains(g.getClipBounds())){UiPaintScale scale(g);g.fillRect(skin_["background"],uiLogical(clientBounds()));paintWorkLayer(g,uiLogical(clientBounds()));paintStatusText(g);return;}
+    }
     if(homeOpen_)paintHome(g);else{paintChrome(g);paintTimelineGrid(g);paintCanvas(g);paintEyedropperLens(g);}
   }
   void paintDockFeedback(ui::Graphics& g) {
@@ -6315,17 +7774,19 @@ public:
       if(!skin_.draw(g,"dialog_frame",modal)) {
         g.fillRect(skin_["panel"],modal);g.drawRect(skin_["border"],modal);
       }
+      if(pending_==Pending::Saving){label(U"正在保存工程…",modal.x+6,modal.y+6);label(U"保存完成后继续",modal.x+6,modal.y+32);return;}
       if(pending_==Pending::ReplaceColor){label(U"替换颜色",modal.x+6,modal.y+6);label(U"源 HEX",modal.x+6,modal.y+28);label(U"目标 HEX",modal.x+6,modal.y+51);return;}
       if(pending_==Pending::Preferences){
         label(U"首选项",modal.x+6,modal.y+6);
-        const gfx::Rect body(modal.x+90,modal.y+23,modal.w-98,modal.h-57);g.fillRect(skin_["background"],body);skin_.draw(g,"panel_outer",body);
+        const gfx::Rect body(modal.x+90,modal.y+23,modal.w-96,modal.h-57);g.fillRect(skin_["background"],body);skin_.draw(g,"panel_outer",body);
         const int x=body.x+8;label(preferenceSectionTitle(preferenceSection_),x,body.y+7);
         g.saveClip();g.clipRect(gfx::Rect(x,body.y+23,body.w-16-(preferenceContentBar_ && preferenceContentBar_->isVisible()?6:0),std::max(1,body.h-28)));
         g.save();g.concat(gfx::Matrix::MakeAll(1,0,0,0,1,-double(preferenceContentPixels_)/uiScale,0,0,1));
         int row=0;for(int field:preferencePageFields())label(preferenceFieldTitle(field),x,modal.y+52+row++*28);
 
         if(preferenceSection_==0){label(U"MoonSprite Native",x,body.y+29);label(U"界面语言：简体中文",x,body.y+51);label(U"设置仅影响编辑器，不修改作品",x,body.y+82);}
-        else if(preferenceSection_==2 || preferenceSection_==3){label(U"原生像素界面",x,body.y+29);label(U"Fusion Pixel · 10px",x,body.y+51);label(U"整体缩放：2×",x,body.y+73);label(U"当前主题：MoonSprite Dark",x,body.y+95);}
+        else if(preferenceSection_==2){const char32_t* names[]{U"棋盘格大小",U"浅色 HEX",U"深色 HEX"};for(int i=0;i<3;++i)label(names[i],x,modal.y+52+i*28);}
+        else if(preferenceSection_==3){label(U"原生像素界面",x,body.y+29);label(U"Fusion Pixel · 10px",x,body.y+51);label(U"整体缩放：2×",x,body.y+73);label(U"当前主题：MoonSprite Dark",x,body.y+95);}
         else if(preferenceSection_==4){label(U"沿用旧版像素指针",x,body.y+29);label(U"滑块使用默认指针",x,body.y+51);label(U"取色镜片设置位于工具分类",x,body.y+82);}
         else if(preferenceSection_==8){label(U"恢复数据保留期仅用于预览",x,body.y+134);label(U"不会自动删除已有恢复文件",x,body.y+150);}
         else if(preferenceSection_==6){label(U"Shift 拖动缩放时使用阶梯模式",x,body.y+148);}
@@ -6333,9 +7794,9 @@ public:
         g.restore();g.restoreClip();if(!preferenceFeedback_.empty())label(preferenceFeedback_,x,body.y2()-15);return;
       }
       if(pending_==Pending::SheetImport){label(U"导入精灵表 · RGBA",modal.x+6,modal.y+6);const char32_t* names[]{U"X",U"Y",U"宽",U"高",U"间距X",U"间距Y",U"列数",U"行数"};for(int i=0;i<8;++i)label(names[i],modal.x+6+(i%2)*(modal.w/2),modal.y+52+(i/2)*23);label(U"单帧 1–1024 px；独立 Cel / 可撤销",modal.x+6,modal.y+170);return;}
-      if(pending_==Pending::GifExport){label(U"导出 GIF 动画",modal.x+6,modal.y+6);label(U"比例",modal.x+6,modal.y+28);return;}
+      if(pending_==Pending::GifExport){label(framePngMode_?(frameSvg_?U"导出 SVG 帧序列":frameIco_?U"导出 ICO 帧序列":frameBmp_?U"导出 BMP 帧序列":U"导出 PNG 帧序列"):U"导出 GIF 动画",modal.x+6,modal.y+6);label(U"比例",modal.x+6,modal.y+28);if(framePngMode_&&framePngBusy())label(U"处理中："+unicodeText(std::to_string(framePngJob_->written.load()))+U" / "+unicodeText(std::to_string(framePngJob_->total)),modal.x+6,modal.y+142);return;}
       if(pending_==Pending::SpriteSheet){label(U"精灵表 · PNG文件输出子集",modal.x+6,modal.y+6);label(U"原尺寸单元格 / 透明背景",modal.x+6,modal.y+174);return;}
-      if(pending_==Pending::StaticExport){label(U"导出当前帧 · PNG RGBA",modal.x+6,modal.y+6);label(U"比例",modal.x+6,modal.y+28);label(U"当前帧全部可见图层，透明背景",modal.x+6,modal.y+98);return;}
+      if(pending_==Pending::StaticExport){label(staticSvg_?U"导出当前帧 · SVG":staticIco_?U"导出当前帧 · ICO":staticBmp_?U"导出当前帧 · BMP":exportOptions_.automatic?U"导出当前帧 · PNG 自动":U"导出当前帧 · PNG RGBA",modal.x+6,modal.y+6);label(U"比例",modal.x+6,modal.y+28);label(U"当前帧全部可见图层，透明背景",modal.x+6,modal.y+98);return;}
       if(pending_==Pending::ImageResize){label(U"调整图像尺寸",modal.x+6,modal.y+6);label(U"宽度",modal.x+6,modal.y+28);label(U"高度",modal.x+6,modal.y+51);label(U"当前原生可编辑范围 1–1024 px",modal.x+6,modal.y+101);return;}
       if(pending_==Pending::AntiAlias){label(U"自动抗锯齿",modal.x+6,modal.y+6);if(aaAuto_&&aaSpec_.colorSource==0)label(U"不透明度",modal.x+6,modal.y+76);if(aaWorker_.valid()||aaScheduled_)label(U"处理中…",modal.x+6,modal.y+(aaAuto_?125:221));return;}
       if(pending_==Pending::Convolution){label(U"卷积矩阵",modal.x+6,modal.y+6);if(convolutionWorker_.valid() || convolutionScheduled_)label(U"处理中…",modal.x2()-96,modal.y+124);return;}
@@ -6343,19 +7804,19 @@ public:
       if(pending_==Pending::ColorAdjustment&&adjustmentSpec_.kind==ColorAdjustmentKind::Curves){label(U"曲线",modal.x+6,modal.y+6);label(U"X",modal.x+6,modal.y+214);label(U"Y",modal.x+91,modal.y+214);return;}
       if(pending_==Pending::ColorAdjustment){const bool hsl=adjustmentSpec_.kind==ColorAdjustmentKind::HueSaturation;const bool balance=adjustmentSpec_.kind==ColorAdjustmentKind::ColorBalance;label(balance?U"色彩平衡":hsl?U"色相/饱和度":U"亮度/对比度",modal.x+6,modal.y+6);const char32_t* names[]{balance?U"青色 / 红色":hsl?U"色相":U"亮度",balance?U"洋红 / 绿色":hsl?U"饱和度":U"对比度",balance?U"黄色 / 蓝色":U"明度"};for(int i=0;i<((hsl || balance)?3:2);++i)label(names[i],modal.x+6,modal.y+28+i*23);return;}
       if(pending_==Pending::PaletteExtract){label(U"提取颜色",modal.x+6,modal.y+6);label(U"方式",modal.x+6,modal.y+27);label(U"数量",modal.x+6,modal.y+51);if(extractMode_==0)label(U"名称",modal.x+6,modal.y+75);return;}
-      if(pending_==Pending::LoopSection){label(U"循环节属性",modal.x+2+uiGap,modal.y+uiGap);const char32_t* labels[]{U"名称",U"开始帧",U"结束帧",U"重复（空为无限）",U"方向"};for(int i=0;i<5;++i)label(labels[i],modal.x+6,modal.y+28+i*21);return;}
-      if(pending_==Pending::OnionValue){label(U"洋葱皮设置",modal.x+2+uiGap,modal.y+uiGap);label(onionField_<2?U"0–8 帧":onionField_<4?U"0–100%":U"HEX：6 或 8 位",modal.x+2+uiGap,modal.y+16+uiGap);return;}
-      if(pending_==Pending::FrameDuration){label(U"帧时长",modal.x+2+uiGap,modal.y+uiGap);label(U"1–60000 ms，修改预览，关闭保存",modal.x+2+uiGap,modal.y+16+uiGap);return;}
-      if(pending_==Pending::LayerOpacity){label(U"图层属性",modal.x+2+uiGap,modal.y+uiGap);label(U"名称",modal.x+2+uiGap,modal.y+16+uiGap);label(U"不透明度",modal.x+2+uiGap,modal.y+54);return;}
-      if(pending_==Pending::BrushFolderName){label(fillFolderRename_?U"重命名文件夹":U"新建文件夹",modal.x+2+uiGap,modal.y+uiGap);label(U"文件夹名称，确定后应用",modal.x+2+uiGap,modal.y+16+uiGap);return;}
+      if(pending_==Pending::LoopSection){label(U"循环节属性",modal.x+6,modal.y+uiGap);const char32_t* labels[]{U"名称",U"开始帧",U"结束帧",U"",U"方向"};for(int i=0;i<5;++i)if(i!=3)label(labels[i],modal.x+6,modal.y+28+i*21);const auto range=loopDisplayRange();const int count=int(document.timeline().state().frames.size());label(U"范围："+unicodeText(std::to_string(range.second-range.first+1))+U" / "+unicodeText(std::to_string(count))+U" 帧",modal.x+6,modal.y+132);const auto bar=gfx::Rect(modal.x+6,modal.y+148,modal.w-12,5);g.fillRect(skin_["panel"],bar);g.fillRect(skin_["accent"],gfx::Rect(bar.x+(range.first-1)*bar.w/count,bar.y,std::max(1,(range.second-range.first+1)*bar.w/count),bar.h));g.saveClip();g.clipRect(gfx::Rect(modal.x+6,modal.y+157,modal.w-12,26));label(loopDisplayName(),modal.x+6,modal.y+159);const char32_t* directions[]{U"正向",U"反向",U"正向往返",U"反向往返"};int direction=0;for(int i=0;i<4;++i)if(loopDraft_->direction==std::array<const char*,4>{"forward","reverse","ping-pong","ping-pong-reverse"}[i])direction=i;label(unicodeText(std::to_string(range.first))+U"–"+unicodeText(std::to_string(range.second))+U" · "+directions[direction]+U" · "+(loopFinite_?unicodeText(std::to_string(int(std::trunc(static_cast<LoopNumberEntry*>(loopInputs_[3])->value)))):U"无限"),modal.x+6,modal.y+174);g.restoreClip();return;}
+      if(pending_==Pending::OnionValue){label(U"洋葱皮设置",modal.x+6,modal.y+uiGap);label(onionField_<2?U"0–8 帧":onionField_<4?U"0–100%":U"HEX：6 或 8 位",modal.x+6,modal.y+16+uiGap);return;}
+      if(pending_==Pending::FrameDuration){label(U"帧时长",modal.x+6,modal.y+uiGap);label(U"1–60000 ms，修改预览，关闭保存",modal.x+6,modal.y+16+uiGap);return;}
+      if(pending_==Pending::LayerOpacity){label(U"图层属性",modal.x+6,modal.y+uiGap);label(U"名称",modal.x+6,modal.y+16+uiGap);label(U"不透明度",modal.x+6,modal.y+54);return;}
+      if(pending_==Pending::BrushFolderName){label(fillFolderRename_?U"重命名文件夹":U"新建文件夹",modal.x+6,modal.y+uiGap);label(U"文件夹名称，确定后应用",modal.x+6,modal.y+16+uiGap);return;}
       if(pending_==Pending::PaletteName || pending_==Pending::ColorRole) {
-        label(pending_==Pending::PaletteName?U"颜色名称":editingSecondary_?U"背景色":U"前景色",modal.x+2+uiGap,modal.y+uiGap);
-        label(pending_==Pending::PaletteName?U"编辑名称，确定后应用":U"HEX：6 或 8 位；回车 / 关闭提交",modal.x+2+uiGap,modal.y+16+uiGap);
+        label(pending_==Pending::PaletteName?U"颜色名称":editingSecondary_?U"背景色":U"前景色",modal.x+6,modal.y+uiGap);
+        label(pending_==Pending::PaletteName?U"编辑名称，确定后应用":U"HEX：6 或 8 位；回车 / 关闭提交",modal.x+6,modal.y+16+uiGap);
         return;
       }
       if(pending_==Pending::OpenError) {
-        label(errorTitle_,modal.x+2+uiGap,modal.y+uiGap);
-        label(U"当前内容保持不变",modal.x+2+uiGap,modal.y+18,true);
+        label(errorTitle_,modal.x+6,modal.y+uiGap);
+        label(U"当前内容保持不变",modal.x+6,modal.y+18,true);
         const auto lines=modalErrorLines(modal.w-20);const int visible=modalErrorVisibleLines(modal);
         const int first=errorScrollPixels_/(12*uiScale),remainder=errorScrollPixels_%(12*uiScale);
         g.saveClip();g.clipRect(gfx::Rect(modal.x+6,modal.y+32,modal.w-20,visible*12));
@@ -6365,13 +7826,18 @@ public:
         g.restore();g.restoreClip();
         return;
       }
-      label(U"未保存的绘画",modal.x+2+uiGap,modal.y+uiGap);
-      label(U"是否保存当前工程的修改？",modal.x+2+uiGap,modal.y+16+uiGap);
-      label(U"保存成功后继续；取消保留当前内容",modal.x+2+uiGap,modal.y+16+uiGap+10+uiGap,true);
+      label(U"未保存的绘画",modal.x+6,modal.y+uiGap);
+      label(U"是否保存当前工程的修改？",modal.x+6,modal.y+16+uiGap);
+      label(U"保存成功后继续；取消保留当前内容",modal.x+6,modal.y+16+uiGap+10+uiGap,true);
     }
   }
   bool onProcessMessage(ui::Message* msg) override {
+    if(processProjectTabs(msg))return true;
+    if(processAutoLinkKeyboard(msg))return true;
+    observeScrollDragKey(msg);if(processScrollDrag(msg))return true;
+    if(fullscreenShortcut(msg))return true;
     if(msg->type()==ui::kDragLeaveMessage){clearTimelineGifDrop();return true;}
+    if(pending_==Pending::Saving && (dynamic_cast<ui::MouseMessage*>(msg) || dynamic_cast<ui::KeyMessage*>(msg) || dynamic_cast<ui::DndMessage*>(msg)))return true;
     if(msg->type()==ui::kDragEnterMessage || msg->type()==ui::kDragMessage || msg->type()==ui::kDropMessage){auto& event=static_cast<ui::DndMessage*>(msg)->event();if(handleTimelineGifDrag(event,msg->type()==ui::kDropMessage)){if(msg->type()==ui::kDragEnterMessage)static_cast<ui::DragEnterMessage*>(msg)->widget(this);if(msg->type()==ui::kDragMessage)static_cast<ui::DragMessage*>(msg)->widget(this);return true;}}
     if(msg->type()==ui::kKeyDownMessage || msg->type()==ui::kKeyUpMessage){
       brushPreviewShift_=msg->shiftPressed();if(!homeOpen_ && documentOpen_)invalidateRect(canvasViewport());
@@ -6381,16 +7847,17 @@ public:
       if(pending_==Pending::None && !homeOpen_ && !dynamic_cast<ui::Entry*>(ui::Manager::getDefault()->getFocus()) && !document.active() && !selectionDragging_ && !floatingDragging_ && !shapeDragging_ && !gradientDragging_)eyedropperHeld_=modifierAlt_ && !modifierCtrl_ && !spaceHeld_;
       updateNavigationCursor();
     }
-    if(msg->type()==ui::kFocusLeaveMessage){finishModifierBrushSize();brushPreviewShift_=false;modifierCtrl_=modifierAlt_=selectionShift_=selectionCtrl_=false;eyedropperHeld_=paletteSamplingHeld_=spaceHeld_=false;}
+    if(msg->type()==ui::kFocusLeaveMessage){panelScrollSpace_=false;finishModifierBrushSize();flushBrushSizePreferences();brushPreviewShift_=false;modifierCtrl_=modifierAlt_=selectionShift_=selectionCtrl_=false;eyedropperHeld_=paletteSamplingHeld_=spaceHeld_=false;}
     if(paletteGesture_){
       if(!hasCapture()){finishPalettePointer(true);}
       else if(msg->type()==ui::kFocusLeaveMessage || (msg->type()==ui::kKeyDownMessage && static_cast<ui::KeyMessage*>(msg)->scancode()==ui::kKeyEsc)){finishPalettePointer(true);return true;}
       if(msg->type()==ui::kMouseMoveMessage){updatePalettePointer(static_cast<ui::MouseMessage*>(msg)->position());return true;}
       if(msg->type()==ui::kMouseUpMessage){updatePalettePointer(static_cast<ui::MouseMessage*>(msg)->position());finishPalettePointer();return true;}
     }
+    if(processLayerLabelResize(msg))return true;
     // Capture routes a second frame-header click to Editor rather than its button.
     if(pending_==Pending::None && columnShown(2) && msg->type()==ui::kDoubleClickMessage && static_cast<ui::MouseMessage*>(msg)->left()){const auto point=static_cast<ui::MouseMessage*>(msg)->position();for(std::size_t col=0;col<frameHeaders_.size();++col)if(frameHeaders_[col]->timelineVisible && frameHeaders_[col]->bounds().contains(point)){openFramePropertiesFor(frameScroll_+col);return true;}}
-    if(pending_==Pending::None && columnShown(2) && msg->type()==ui::kDoubleClickMessage && static_cast<ui::MouseMessage*>(msg)->left()){const auto point=static_cast<ui::MouseMessage*>(msg)->position();for(std::size_t row=0;row<layerRows_.size();++row)if(layerRows_[row]->timelineVisible && layerRows_[row]->bounds().contains(point)){openLayerPropertiesFor(row);return true;}}
+    if(pending_==Pending::None && columnShown(2) && msg->type()==ui::kDoubleClickMessage && static_cast<ui::MouseMessage*>(msg)->left()){const auto point=static_cast<ui::MouseMessage*>(msg)->position();for(std::size_t row=0;row<layerRows_.size();++row)if(layerRows_[row]->timelineVisible && layerRows_[row]->bounds().contains(point)){openLayerPropertiesFor(layerScroll_+row);return true;}}
     if(msg->type()==ui::kFocusLeaveMessage)stopCelNavigation();
     if(msg->type()==ui::kKeyUpMessage)releaseCelNavigation(static_cast<ui::KeyMessage*>(msg)->scancode());
     if(processLockGesture(msg))return true;
@@ -6505,7 +7972,7 @@ public:
       if(selectionDragging_ || floatingDragging_){if(key->scancode()==ui::kKeyEsc || ((key->ctrlPressed() || key->cmdPressed()) && key->scancode()==ui::kKeyD))endSelectionGesture(true);else if(polygonPending_ && (key->ctrlPressed() || key->cmdPressed()) && (key->scancode()==ui::kKeyZ || key->scancode()==ui::kKeyY))polygonStep(key->scancode()==ui::kKeyY || key->shiftPressed());else if(key->scancode()==ui::kKeyEnter && polygonPending_)endSelectionGesture(false);else if(key->scancode()==ui::kKeyEnter && selectionKind_==4){wandReleased_=true;if(hasCapture())releaseMouse();if(wandPreviewReady_)endSelectionGesture(false);else wandTick();}return true;}
       if((ordinaryBrushTool() || (selectionTool_ && selectionKind_==5) || shapeTool_) && !paletteFocused_ && !key->altPressed() && !key->shiftPressed() && !dynamic_cast<ui::Entry*>(ui::Manager::getDefault()->getFocus())){
         if((key->ctrlPressed() || key->cmdPressed()) && key->scancode()>=ui::kKey1 && key->scancode()<=ui::kKey3){if(!key->repeat()){brushProfiles_[eraser_?1:0].shape=BrushShape(key->scancode()-ui::kKey1);if(pencilImageBrush_){pencilImageBrushId_.clear();pencilImageBrush_.reset();}saveBrushPreferences();refresh();}return true;}
-        if(!key->ctrlPressed() && !key->cmdPressed() && (key->scancode()==ui::kKeyOpenbrace || key->scancode()==ui::kKeyClosebrace)){if(!pencilImageBrush_ || !pencilImageBrush_->intrinsicSize){setModifierBrushSize(brushProfiles_[eraser_?1:0].size+(key->scancode()==ui::kKeyClosebrace?1:-1));saveBrushPreferences();}return true;}
+        if(!key->ctrlPressed() && !key->cmdPressed() && (key->scancode()==ui::kKeyOpenbrace || key->scancode()==ui::kKeyClosebrace)){if(!pencilImageBrush_ || !pencilImageBrush_->intrinsicSize){setModifierBrushSize(brushProfiles_[eraser_?1:0].size+(key->scancode()==ui::kKeyClosebrace?1:-1));}return true;}
       }
       if(document.selection() && !paletteFocused_ && !key->ctrlPressed() && !key->cmdPressed() && !key->altPressed()){
         int dx=0,dy=0;if(key->scancode()==ui::kKeyLeft)dx=-1;else if(key->scancode()==ui::kKeyRight)dx=1;else if(key->scancode()==ui::kKeyUp)dy=-1;else if(key->scancode()==ui::kKeyDown)dy=1;
@@ -6524,7 +7991,7 @@ public:
       if((key->ctrlPressed() || key->cmdPressed()) && !key->shiftPressed() && !key->altPressed() && key->scancode()==ui::kKeyT && !paletteFocused_){beginLayerTransform();return true;}
       if(key->shiftPressed() && !key->ctrlPressed() && !key->cmdPressed() && !key->altPressed() && (key->scancode()==ui::kKeyH || key->scancode()==ui::kKeyV) && !dynamic_cast<PixelEntry*>(ui::Manager::getDefault()->getFocus())){if(!key->repeat())menuCommands_.invoke(key->scancode()==ui::kKeyH?"flipHorizontal":"flipVertical");return true;}
       // Legacy Ctrl+D resolves pixel deselect first, then explicit Cel copy.
-      if((key->ctrlPressed() || key->cmdPressed()) && !key->shiftPressed() && !key->altPressed() && key->scancode()==ui::kKeyD && !paletteFocused_ && !dynamic_cast<ui::Entry*>(ui::Manager::getDefault()->getFocus())){if(document.selection()){if(!key->repeat()){document.deselectPixels();refresh();}return true;}if(!document.timelineSelection().cels.empty()){if(!key->repeat())copyTimelineCels();return true;}}
+      if((key->ctrlPressed() || key->cmdPressed()) && !key->shiftPressed() && !key->altPressed() && key->scancode()==ui::kKeyD && !paletteFocused_ && !dynamic_cast<ui::Entry*>(ui::Manager::getDefault()->getFocus())){if(document.selection()){if(!key->repeat()){document.deselectPixels();selectionPropertiesActive_=false;selectionFreeTransform_=false;selectionPivot_.reset();selectionPivotMask_.reset();refresh();}return true;}if(!document.timelineSelection().cels.empty()){if(!key->repeat())copyTimelineCels();return true;}}
       if((key->ctrlPressed() || key->cmdPressed()) && !key->altPressed() && !dynamic_cast<ui::Entry*>(ui::Manager::getDefault()->getFocus())){if(key->scancode()==ui::kKeyC){if(key->shiftPressed() && !key->altPressed() && !dynamic_cast<PixelEntry*>(ui::Manager::getDefault()->getFocus())){if(!key->repeat())copyMergedPixels();return true;}if(celClipboardContext()){copyTimelineCels();return true;}if(frameSelectionExplicit_ && !paletteFocused_){copyTimelineFrames();}else copySelectionPixels(false);return true;}if(key->scancode()==ui::kKeyX && !key->shiftPressed()){if(celClipboardContext()){cutTimelineCels();return true;}if(frameSelectionExplicit_){cutTimelineFrames();}else copySelectionPixels(true);return true;}if(key->scancode()==ui::kKeyV && !key->shiftPressed()){if(celClipboardContext()){pasteTimelineCels();return true;}if(frameSelectionExplicit_ && !paletteFocused_){pasteTimelineFrames();}else pasteSelectionPixels();return true;}if(!paletteFocused_ && !frameSelectionExplicit_){if(key->scancode()==ui::kKeyA && !key->shiftPressed()){selectAllPixels();return true;}if(key->shiftPressed() && key->scancode()==ui::kKeyI){document.invertPixels();refresh();return true;}}}
       if(!key->altPressed() && !key->ctrlPressed() && !key->cmdPressed() && !paletteFocused_ && !dynamic_cast<ui::Entry*>(ui::Manager::getDefault()->getFocus())){if(key->scancode()==ui::kKeyZ && !key->shiftPressed() && !dynamic_cast<PixelEntry*>(ui::Manager::getDefault()->getFocus())){useZoomTool();return true;}if(key->scancode()==ui::kKeyI && !key->shiftPressed() && !dynamic_cast<PixelEntry*>(ui::Manager::getDefault()->getFocus())){useEyedropperTool();return true;}if(key->scancode()==ui::kKeyU && !key->shiftPressed()){useShapeTool(shapeSpec_.kind==ShapeKind::Line?ShapeKind::Rectangle:shapeSpec_.kind);return true;}if(key->scancode()==ui::kKeyG){if(key->shiftPressed())useGradientTool();else useFillTool();return true;}if(key->scancode()==ui::kKeyM){useSelectionTool(key->shiftPressed()?1:0);return true;}if(key->scancode()==ui::kKeyQ){useSelectionTool(key->shiftPressed()?3:2);return true;}if(key->scancode()==ui::kKeyW && !key->shiftPressed()){useSelectionTool(4);return true;}}
 
@@ -6573,13 +8040,18 @@ public:
       const auto mouse=static_cast<ui::MouseMessage*>(msg);const auto rc=uiLogical(bounds());const auto l=columnLayout(rc,2);
       if(uiPhysical(gfx::Rect(rc.x+l.workX,rc.y+l.layerTop,l.workW,l.bottom-l.layerTop)).contains(mouse->position())){
         const auto point=mouse->position();const int row=(point.y/uiScale-rc.y-l.layerTop-timelineRowsOffset())/12+layerScroll_;
-        if(point.y/uiScale>=rc.y+l.layerTop+timelineRowsOffset() && point.x/uiScale>=rc.x+l.workX+5 && point.x/uiScale<rc.x+l.workX+89 && row>=0 && row<int(document.timeline().state().layers.size())){prepareLayerContext(document.timeline().state().layers[row].id);showLayerContextMenu(1);}else showLayerContextMenu(0);
+        if(point.y/uiScale>=rc.y+l.layerTop+timelineRowsOffset() && point.x/uiScale>=rc.x+l.workX+5 && point.x/uiScale<rc.x+l.workX+5+timelineLabelWidth() && row>=0 && row<int(document.timeline().state().layers.size())){prepareLayerContext(document.timeline().state().layers[row].id);showLayerContextMenu(1);}else showLayerContextMenu(0);
         return true;
       }
     }
     if(pending_==Pending::None && columnShown(2) && msg->type()==ui::kMouseWheelMessage) {
       const auto mouse=static_cast<ui::MouseMessage*>(msg);const auto rc=uiLogical(bounds());const auto l=columnLayout(rc,2);
-      if(uiPhysical(gfx::Rect(rc.x+l.workX,rc.y+l.layerTop+timelineHeaderOffset(),l.workW,l.bottom-l.layerTop-timelineHeaderOffset())).contains(mouse->position())){const auto delta=mouse->wheelDelta();if(mouse->shiftPressed() || delta.x){frameScroll_+=(delta.x?delta.x:delta.y)>0?-1:1;frameScroll_=std::max(0,frameScroll_);}else {layerScroll_+=delta.y>0?-1:1;layerScroll_=std::max(0,layerScroll_);}layoutLayers();invalidateTimelineGrid();return true;}
+      if(toDisplay(gfx::Rect(l.workX,l.layerTop+timelineHeaderOffset(),l.workW,l.bottom-l.layerTop-timelineHeaderOffset())).contains(mouse->position())){
+        const auto delta=mouse->wheelDelta();const auto m=timelineScrollMetrics(l);const int step=12*uiScale;
+        if(mouse->shiftPressed() || delta.x){const int direction=delta.x?delta.x:delta.y;const int offset=std::clamp(frameScroll_*step+frameScrollRemainder_+(direction>0?-step:direction<0?step:0),0,std::max(0,m.contentWidth-m.width));frameScroll_=offset/step;frameScrollRemainder_=offset%step;}
+        else {const int offset=std::clamp(layerScroll_*step+layerScrollRemainder_+(delta.y>0?step:delta.y<0?-step:0),0,std::max(0,m.contentHeight-m.height));layerScroll_=offset/step;layerScrollRemainder_=offset%step;}
+        layoutLayers();invalidateTimelineGrid();return true;
+      }
     }
     if(pending_==Pending::None && msg->type()==ui::kMouseWheelMessage) {
       const auto mouse=static_cast<ui::MouseMessage*>(msg);
@@ -6593,7 +8065,7 @@ public:
       }
       if(canvasViewport().contains(mouse->position())) {
         if((mouse->ctrlPressed() || mouse->cmdPressed()) && modifierBrushSupported() && !document.active() && !selectionDragging_ && !floatingDragging_ && !shapeDragging_ && mouse->wheelDelta().y){
-          setModifierBrushSize(brushProfiles_[eraser_?1:0].size+(mouse->wheelDelta().y<0?1:-1));saveBrushPreferences();return true;
+          setModifierBrushSize(brushProfiles_[eraser_?1:0].size+(mouse->wheelDelta().y<0?1:-1));return true;
         }
         // Keep the coordinate mapping stable until the current stroke ends.
         if((!document.active() || (document.floating() && !floatingDragging_ && !selectionDragging_)) && !pan_.active && !zoomDragging_ && mouse->wheelDelta().y!=0)
@@ -6642,7 +8114,7 @@ public:
           const auto origin=pan_.move({mouse->position().x,mouse->position().y});
           const auto previous=canvas_;
           canvas_.x=origin.x;canvas_.y=origin.y;constrainCanvas();
-          if(canvas_!=previous) invalidateRect(canvasViewport());
+          if(canvas_!=previous) invalidatePanMovement(canvas_.origin()-previous.origin());
           if(msg->type()==ui::kMouseUpMessage) finishPan(false);
         }
         return true;
@@ -6658,6 +8130,7 @@ public:
          (mouse->middle() || (mouse->left() && (spaceHeld_ || handTool_)))) {
         requestFocus();captureMouse();
         pan_.begin({mouse->position().x,mouse->position().y},{canvas_.x,canvas_.y});
+        invalidateRect(canvasViewport()); // Remove the old brush preview before reuse.
         panButton_=mouse->button();updateNavigationCursor();return true;
       }
       if((selectionDragging_ || floatingDragging_) && msg->type()==ui::kMouseMoveMessage){selectionMoved_|=std::abs(mouse->position().x-selectionPress_.x)>3 || std::abs(mouse->position().y-selectionPress_.y)>3;if(floatingDragging_ && !transformHandle_.empty()){const auto current=transformCanvasPoint(mouse->position());auto target=transformGestureStart_;if(selectionFreeTransform_ && target.quad){const int index=transformHandle_=="nw"?0:transformHandle_=="ne"?1:transformHandle_=="se"?2:3;auto quad=*target.quad;quad[index]={std::floor(current.x+.5),std::floor(current.y+.5)};if(selectionQuadConvex(quad)){target.quad=quad;const auto box=transformBounds(target);target.x=box.x;target.y=box.y;target.width=box.width;target.height=box.height;target.angle=0;target.shearX=target.shearY=0;}}
@@ -6690,7 +8163,7 @@ public:
         recentDrag_.reset();strokeColor_=mouse->right()?document.palette().secondary:eraser_?0:ink_;
         playing_=false;resolvePencilImageBrush();const auto anchor=mouse->left() && mouse->shiftPressed() && ordinaryBrushTool()?brushLineAnchor():nullptr;
         Point target=p;if(anchor && (mouse->ctrlPressed() || mouse->cmdPressed())){const auto end=constrainShapeLine({double(anchor->point.x),double(anchor->point.y)},{double(p.x),double(p.y)});target={int(end.x),int(end.y)};}
-        document.beginStroke(anchor?anchor->point:target,strokeColor_,brushProfiles_[eraser_?1:0],pencilImageBrush_?&*pencilImageBrush_:nullptr,pencilImageBrushAngle_,anchor && anchor->revision==document.revision()?&anchor->baseline:nullptr);
+        document.beginStroke(anchor?anchor->point:target,strokeColor_,brushProfiles_[eraser_?1:0],pencilImageBrush_?&*pencilImageBrush_:nullptr,pencilImageBrushAngle_,brushLineBaseline(anchor));
         if(anchor){
           document.updateStroke(target);auto baseline=document.strokeBaseline();const bool merge=anchor->mergeWithNext && anchor->revision==document.revision();
           if(document.commitStroke()){if(merge)document.mergeLastStrokeEdits();brushLineAnchors_[eraser_?1:0]=BrushLineAnchor{target,document.identity(),document.revision(),document.layer().id,document.frame().id,std::move(baseline),false};}
@@ -6702,9 +8175,15 @@ public:
       }
       if(document.active() && msg->type()==ui::kMouseMoveMessage) {const auto revision=document.contentRevision();document.updateStroke(p);brushStrokeLast_=p;brushStrokePointer_=mouse->position();invalidateStrokePixels(revision);return true;}
       if(document.active() && msg->type()==ui::kMouseUpMessage && mouse->button()==strokeButton_) {const auto revision=document.contentRevision();if(mouse->position()!=brushStrokePointer_){document.updateStroke(p);brushStrokeLast_=p;}
-        auto baseline=document.strokeBaseline();invalidateStrokePixels(revision);const bool changed=document.commitStroke();
-        if(ordinaryBrushTool() && (changed || !brushLineAnchor()))brushLineAnchors_[eraser_?1:0]=BrushLineAnchor{brushStrokeLast_,document.identity(),document.revision(),document.layer().id,document.frame().id,std::move(baseline)};
-        releaseMouse();refresh();return true;}
+        auto baseline=document.strokeBaselinePoints();invalidateStrokePixels(revision);const bool changed=document.commitStroke();
+        if(ordinaryBrushTool() && (changed || !brushLineAnchor()))brushLineAnchors_[eraser_?1:0]=BrushLineAnchor{brushStrokeLast_,document.identity(),document.revision(),document.layer().id,document.frame().id,{},true,std::move(baseline)};
+        releaseMouse();layoutCanvasScrollBars();
+        if(changed){layoutLayers();invalidateTimelineGrid();}
+        commands_[3]->setEnabled(document.canUndo());commands_[4]->setEnabled(document.canRedo());
+        if(previewPanel_ && previewPanel_->isVisible())previewPanel_->invalidate();
+        layoutDocumentTab();invalidateRect(toDisplay(gfx::Rect(0,Layout::documentY,uiLogical(clientBounds()).w,Layout::projectTabHeight+Layout::frame)));
+        const auto damage=brushPreviewDamage(paletteMousePosition_);if(!damage.isEmpty())invalidateRect(damage);
+        return true;}
     }
     return ui::Widget::onProcessMessage(msg);
   }
@@ -6727,6 +8206,14 @@ public:
   Desktop* desktop=nullptr;
   std::function<void()> refreshCursor;
   explicit Manager(const os::WindowRef& window):ui::Manager(window) {}
+  void onNewDisplayConfiguration(ui::Display* display) override {
+    ui::Manager::onNewDisplayConfiguration(display);
+    // Activation/color-profile changes replace the native framebuffer even
+    // when its size stays unchanged. Present the entire retained UI layer;
+    // widget damage alone omits areas whose backing pixels are still valid.
+    display->dirtyRect(display->bounds());
+  }
+
   ui::Widget* pickFromScreenPos(const gfx::Point& screen)const override{
     auto hit=ui::Manager::pickFromScreenPos(screen);
     if(hit && desktop && desktop->editor && hit->window()==desktop)
@@ -6735,9 +8222,10 @@ public:
   }
   bool onProcessMessage(ui::Message* msg) override {
 
+    if(msg->fromFilter() && (msg->type()==ui::kKeyDownMessage || msg->type()==ui::kKeyUpMessage)){if(desktop && desktop->editor)desktop->editor->observeScrollDragKey(msg);}
     if(msg->fromFilter() && msg->type()==ui::kKeyUpMessage){if(desktop && desktop->editor)desktop->editor->observeModifierRelease(msg);return false;}
     if(msg->fromFilter() && msg->type()==ui::kFocusEnterMessage){if(desktop && desktop->editor)desktop->editor->focusWidgetOverlay(static_cast<ui::FocusMessage*>(msg)->newFocus());return false;}
-    if(msg->fromFilter() && msg->type()==ui::kMouseDownMessage){if(!desktop || !desktop->editor)return false;const auto mouse=static_cast<ui::MouseMessage*>(msg);const auto target=desktop->editor->display();if(!msg->display() || !target)return false;const auto picked=pickFromScreenPos(mouse->screenPosition());if(!picked || picked->window()!=desktop || !isWidgetClickable(desktop->editor))return false;ui::MouseMessage translated(msg->type(),*mouse,mouse->positionForDisplay(target));if(desktop->editor->dispatchPanelGesture(&translated))return true;return desktop->editor->beginTimelineOutline(translated);}
+    if(msg->fromFilter() && msg->type()==ui::kMouseDownMessage){if(!desktop || !desktop->editor)return false;const auto mouse=static_cast<ui::MouseMessage*>(msg);const auto target=desktop->editor->display();if(!msg->display() || !target)return false;const auto picked=pickFromScreenPos(mouse->screenPosition());if(!picked || picked->window()!=desktop || !isWidgetClickable(desktop->editor))return false;ui::MouseMessage translated(msg->type(),*mouse,mouse->positionForDisplay(target));if(desktop->editor->processScrollDrag(&translated))return true;if(desktop->editor->dispatchPanelGesture(&translated))return true;return desktop->editor->beginTimelineOutline(translated);}
     if(msg->fromFilter() && (msg->type()==ui::kMouseMoveMessage || msg->type()==ui::kMouseEnterMessage || msg->type()==ui::kMouseLeaveMessage)) {
       if(desktop && desktop->editor) {
         std::optional<gfx::Point> position;
@@ -6839,19 +8327,30 @@ int app_main(int argc,char* argv[]) {
       // cursor. Capture keeps that ownership when a slider drag leaves it.
       const bool sliderPointer=dynamic_cast<PixelSlider*>(manager.getCapture()) ||
         (!manager.getCapture() && dynamic_cast<PixelSlider*>(picked));
-      const char* id=sliderPointer?"default":editor && (editor->panelHasCapture() || (picked && (picked==editor || picked->hasAncestor(editor))))?editor->cursorAt(pos):"default";
+      const auto cursorOwner=manager.getCapture()?manager.getCapture():picked;
+      const auto popup=cursorOwner?dynamic_cast<PixelPopupWindow*>(cursorOwner->window()):nullptr;
+      const char* id=popup?popup->geometryCursor(pos):sliderPointer?"default":editor && (editor->panelHasCapture() || (picked && (picked==editor || picked->hasAncestor(editor))))?editor->cursorAt(pos):"default";
       // setCursor is also needed after the OS resets it on entering the window.
       applyLegacyCursor(*window,cursors,id);
     };
-    manager.addMessageFilter(ui::kKeyUpMessage,&manager);manager.addMessageFilter(ui::kSetCursorMessage,&manager);manager.addMessageFilter(ui::kFocusEnterMessage,&manager);
+    manager.addMessageFilter(ui::kKeyDownMessage,&manager);manager.addMessageFilter(ui::kKeyUpMessage,&manager);manager.addMessageFilter(ui::kSetCursorMessage,&manager);manager.addMessageFilter(ui::kFocusEnterMessage,&manager);
     for(const auto type:{ui::kMouseDownMessage,ui::kMouseMoveMessage,ui::kMouseEnterMessage,ui::kMouseLeaveMessage}) manager.addMessageFilter(type,&manager);
     std::filesystem::path recoveryRoot;for(int i=1;i+1<argc;++i)if(std::string(argv[i])=="--recovery-test-root"){const auto root=std::filesystem::u8path(argv[i+1]);if(!root.is_absolute() || !std::filesystem::exists(root/"test-owned.marker"))throw std::runtime_error("Recovery test root must be owned");recoveryRoot=root/"recovery";}
     auto editor=new Editor(font,skin,assets,manager.refreshCursor,recoveryRoot); desktop.editor=editor;
     if(argc>1 && std::string(argv[1])=="--gradient-map-check") {try{editor->smokeGradientMap();}catch(const std::exception& e){std::ofstream("native-gradient-map-error.txt")<<e.what();delete editor;desktop.editor=nullptr;return 1;}delete editor;desktop.editor=nullptr;return 0;}
     if(argc>1 && std::string(argv[1])=="--anti-alias-check") {try{editor->smokeAntiAlias();}catch(const std::exception& e){std::ofstream("native-anti-alias-error.txt")<<e.what();delete editor;desktop.editor=nullptr;return 1;}delete editor;desktop.editor=nullptr;return 0;}
+    if(argc>1 && std::string(argv[1])=="--background-preset-check") {try{editor->smokeBackgroundPreset();}catch(const std::exception& e){std::ofstream("native-background-preset-error.txt")<<e.what();delete editor;desktop.editor=nullptr;return 1;}delete editor;desktop.editor=nullptr;return 0;}
+    if(argc>1 && std::string(argv[1])=="--canvas-trim-check") {try{editor->smokeCanvasTrim();}catch(const std::exception& e){std::ofstream("native-canvas-trim-error.txt")<<e.what();delete editor;desktop.editor=nullptr;return 1;}delete editor;desktop.editor=nullptr;return 0;}
     if(argc>1 && std::string(argv[1])=="--convolution-check") {try{editor->smokeConvolution();}catch(const std::exception& e){std::ofstream("native-convolution-error.txt")<<e.what();delete editor;desktop.editor=nullptr;return 1;}delete editor;desktop.editor=nullptr;return 0;}
+    if(argc>1 && std::string(argv[1])=="--checkerboard-preferences-check") {try{editor->smokeCheckerboardPreferences();}catch(const std::exception& e){std::ofstream("native-checkerboard-error.txt")<<e.what();delete editor;desktop.editor=nullptr;return 1;}delete editor;desktop.editor=nullptr;return 0;}
     if(argc>1 && std::string(argv[1])=="--preferences-check") {try{editor->smokePreferences(std::filesystem::u8path(argv[0]).parent_path());}catch(const std::exception& e){std::ofstream("native-preferences-error.txt")<<e.what();delete editor;desktop.editor=nullptr;return 1;}delete editor;desktop.editor=nullptr;return 0;}
+    if(argc>1 && std::string(argv[1])=="--panel-scroll-check") {try{editor->smokePanelScroll();}catch(const std::exception& e){std::ofstream("native-panel-scroll-error.txt")<<e.what();delete editor;desktop.editor=nullptr;return 1;}delete editor;desktop.editor=nullptr;return 0;}
     if(argc>1 && std::string(argv[1])=="--brush-preview-check") {try{editor->smokeBrushPreview();}catch(const std::exception& e){std::ofstream("native-brush-preview-error.txt")<<e.what();delete editor;desktop.editor=nullptr;return 1;}delete editor;desktop.editor=nullptr;return 0;}
+    if(argc>1 && std::string(argv[1])=="--brush-preview-performance-check") {desktop.addChild(editor);desktop.setBounds(manager.bounds());desktop.openWindow();try{editor->smokeBrushPreviewPerformance();}catch(const std::exception& e){std::ofstream("build/brush-preview-performance-error.txt")<<e.what();delete editor;desktop.editor=nullptr;return 1;}delete editor;desktop.editor=nullptr;return 0;}
+    if(argc>1 && std::string(argv[1])=="--large-timeline-performance-check") {desktop.addChild(editor);desktop.setBounds(manager.bounds());desktop.openWindow();try{editor->smokeLargeTimelinePerformance();}catch(const std::exception& e){std::ofstream("build/large-timeline-performance-error.txt")<<e.what();delete editor;desktop.editor=nullptr;return 1;}delete editor;desktop.editor=nullptr;return 0;}
+    if(argc>1 && std::string(argv[1])=="--drawing-pan-performance-check") {desktop.addChild(editor);desktop.setBounds(manager.bounds());desktop.openWindow();try{editor->smokeDrawingPanPerformance();}catch(const std::exception& e){std::ofstream("build/drawing-pan-performance-error.txt")<<e.what();delete editor;desktop.editor=nullptr;return 1;}delete editor;desktop.editor=nullptr;return 0;}
+    if(argc>1 && std::string(argv[1])=="--wheel-performance-check") {desktop.addChild(editor);desktop.setBounds(manager.bounds());desktop.openWindow();try{editor->smokeWheelPerformance();}catch(const std::exception& e){std::ofstream("build/wheel-performance-error.txt")<<e.what();delete editor;desktop.editor=nullptr;return 1;}delete editor;desktop.editor=nullptr;return 0;}
+    if(argc>1 && std::string(argv[1])=="--modifier-brush-performance-check") {desktop.addChild(editor);desktop.setBounds(manager.bounds());desktop.openWindow();try{editor->smokeModifierBrushPerformance();}catch(const std::exception& e){std::ofstream("build/modifier-brush-performance-error.txt")<<e.what();delete editor;desktop.editor=nullptr;return 1;}delete editor;desktop.editor=nullptr;return 0;}
     if(argc>1 && std::string(argv[1])=="--modifiers-check") {try{editor->smokeModifiers();}catch(const std::exception& e){std::ofstream("native-modifiers-error.txt")<<e.what();delete editor;desktop.editor=nullptr;return 1;}delete editor;desktop.editor=nullptr;return 0;}
     if(argc>1 && std::string(argv[1])=="--sampling-zoom-check") {try{editor->smokeSamplingAndZoom(std::filesystem::u8path(argv[0]).parent_path());}catch(const std::exception& e){std::ofstream("native-sampling-zoom-error.txt")<<e.what();delete editor;desktop.editor=nullptr;return 1;}delete editor;desktop.editor=nullptr;return 0;}
     if(argc>1 && std::string(argv[1])=="--selection-cursors-check") {try{editor->smokeSelectionCursors();}catch(const std::exception& e){std::ofstream("native-selection-cursors-error.txt")<<e.what();delete editor;desktop.editor=nullptr;return 1;}delete editor;desktop.editor=nullptr;return 0;}
@@ -6859,11 +8358,45 @@ int app_main(int argc,char* argv[]) {
     if(argc>1 && std::string(argv[1])=="--layer-context-check") {editor->smokeLayerContext(std::filesystem::u8path(argv[0]).parent_path());delete editor;desktop.editor=nullptr;return 0;}
     if(argc>1 && std::string(argv[1])=="--layers-check") {editor->smokeLayers(std::filesystem::u8path(argv[0]).parent_path());delete editor;desktop.editor=nullptr;return 0;}
     if(argc>1 && std::string(argv[1])=="--cel-clipboard-check") {try{editor->smokeCelClipboard();editor->smokeFrameCutAndMergeVisible();}catch(const std::exception& e){std::ofstream("native-cel-clipboard-error.txt")<<e.what();delete editor;desktop.editor=nullptr;manager.removeMessageFilter(ui::kSetCursorMessage,&manager);return 1;}delete editor;desktop.editor=nullptr;manager.removeMessageFilter(ui::kSetCursorMessage,&manager);return 0;}
+    if(argc>1 && std::string(argv[1])=="--deselect-check") {editor->smokeDeselectPending();delete editor;desktop.editor=nullptr;return 0;}
     if(argc>1 && std::string(argv[1])=="--animation-check") {try{editor->smokeAnimation();}catch(const std::exception& e){std::ofstream("native-animation-error.txt")<<e.what();delete editor;desktop.editor=nullptr;manager.removeMessageFilter(ui::kSetCursorMessage,&manager);return 1;}delete editor;desktop.editor=nullptr;manager.removeMessageFilter(ui::kSetCursorMessage,&manager);return 0;}
+    if(argc>1 && std::string(argv[1])=="--performance-ui-check") {try{editor->smokePerformanceUi(std::filesystem::u8path(argv[0]).parent_path().parent_path()/"test-tmp/performance-ui"/std::filesystem::u8path(std::to_string(GetCurrentProcessId())+"-"+std::to_string(GetTickCount64())));}catch(const std::exception& e){std::ofstream("native-performance-error.txt")<<e.what();delete editor;desktop.editor=nullptr;return 1;}delete editor;desktop.editor=nullptr;return 0;}
     if(argc>1 && std::string(argv[1])=="--skin-resize-check") {editor->smokeSkinResize(std::filesystem::u8path(argv[0]).parent_path());delete editor;desktop.editor=nullptr;return 0;}
     editor->closeRequested=[&]{desktop.approved=true;desktop.closeWindow(editor);};
     desktop.addChild(editor); desktop.setBounds(manager.bounds()); desktop.openWindow();
     system->finishLaunching();
+    if(argc>1 && std::string(argv[1])=="--palette-sync-check") {try{editor->smokePaletteSynchronization();}catch(const std::exception& e){std::ofstream("native-palette-sync-error.txt")<<e.what();delete editor;desktop.editor=nullptr;return 1;}delete editor;desktop.editor=nullptr;return 0;}
+    if(argc>1 && std::string(argv[1])=="--toggle-release-check") {try{editor->smokeToggleRelease();}catch(const std::exception& e){std::ofstream("native-toggle-release-error.txt")<<e.what();delete editor;desktop.editor=nullptr;return 1;}delete editor;desktop.editor=nullptr;return 0;}
+    if(argc>1 && std::string(argv[1])=="--palette-gradient-check") {try{editor->smokePaletteGradient();}catch(const std::exception& e){std::ofstream("native-palette-gradient-error.txt")<<e.what();delete editor;desktop.editor=nullptr;return 1;}delete editor;desktop.editor=nullptr;return 0;}
+    if(argc>1 && std::string(argv[1])=="--cel-content-selection-check") {try{editor->smokeCelContentSelection();}catch(const std::exception& e){std::ofstream("native-cel-content-selection-error.txt")<<e.what();delete editor;desktop.editor=nullptr;return 1;}delete editor;desktop.editor=nullptr;return 0;}
+    if(argc>1 && std::string(argv[1])=="--palette-names-check") {try{editor->smokePaletteNames();}catch(const std::exception& e){std::ofstream("native-palette-names-error.txt")<<e.what();delete editor;desktop.editor=nullptr;return 1;}delete editor;desktop.editor=nullptr;return 0;}
+    if(argc>1 && std::string(argv[1])=="--palette-sort-check") {try{editor->smokePaletteSort();}catch(const std::exception& e){std::ofstream("native-palette-sort-error.txt")<<e.what();delete editor;desktop.editor=nullptr;return 1;}delete editor;desktop.editor=nullptr;return 0;}
+    if(argc>1 && std::string(argv[1])=="--auto-link-logical-scope-check") {try{editor->smokeAutoLinkLogicalScope();}catch(const std::exception& e){std::ofstream("native-auto-link-logical-scope-error.txt")<<e.what();delete editor;desktop.editor=nullptr;return 1;}delete editor;desktop.editor=nullptr;return 0;}
+    if(argc>1 && std::string(argv[1])=="--auto-link-keyboard-check") {try{editor->smokeAutoLinkKeyboard();}catch(const std::exception& e){std::ofstream("native-auto-link-keyboard-error.txt")<<e.what();delete editor;desktop.editor=nullptr;return 1;}delete editor;desktop.editor=nullptr;return 0;}
+    if(argc>1 && std::string(argv[1])=="--plain-number-check") {try{editor->smokePlainNumberEntry();}catch(const std::exception& e){std::ofstream("native-plain-number-error.txt")<<e.what();delete editor;desktop.editor=nullptr;return 1;}delete editor;desktop.editor=nullptr;return 0;}
+    if(argc>1 && std::string(argv[1])=="--multi-document-check"){try{editor->smokeMultiDocument();}catch(const std::exception& e){std::ofstream("native-multi-document-error.txt")<<e.what();delete editor;desktop.editor=nullptr;return 1;}delete editor;desktop.editor=nullptr;return 0;}
+    if(argc>1 && std::string(argv[1])=="--new-document-check") {try{editor->smokeNewDocument();}catch(const std::exception& e){std::ofstream("native-new-document-error.txt")<<e.what();delete editor;desktop.editor=nullptr;return 1;}delete editor;desktop.editor=nullptr;return 0;}
+    if(argc>1 && std::string(argv[1])=="--checkbox-check") {try{editor->smokeCheckboxes(std::filesystem::u8path(argv[0]).parent_path());}catch(const std::exception& e){std::ofstream("native-checkbox-error.txt")<<e.what();delete editor;desktop.editor=nullptr;return 1;}delete editor;desktop.editor=nullptr;return 0;}
+    if(argc>1 && std::string(argv[1])=="--switch-check") {try{editor->smokeSwitches(std::filesystem::u8path(argv[0]).parent_path());}catch(const std::exception& e){std::ofstream("native-switch-error.txt")<<e.what();delete editor;desktop.editor=nullptr;return 1;}delete editor;desktop.editor=nullptr;return 0;}
+    if(argc>1 && std::string(argv[1])=="--relative-luminance-check") {try{editor->smokeRelativeLuminance();}catch(const std::exception& e){std::ofstream("native-relative-luminance-error.txt")<<e.what();delete editor;desktop.editor=nullptr;return 1;}delete editor;desktop.editor=nullptr;return 0;}
+    if(argc>1 && std::string(argv[1])=="--fullscreen-check") {try{editor->smokeFullscreen();}catch(const std::exception& e){std::ofstream("native-fullscreen-error.txt")<<e.what();delete editor;desktop.editor=nullptr;return 1;}delete editor;desktop.editor=nullptr;return 0;}
+    if(argc>1 && std::string(argv[1])=="--project-folder-check") {try{editor->smokeProjectFolder();}catch(const std::exception& e){std::ofstream("native-project-folder-error.txt")<<e.what();delete editor;desktop.editor=nullptr;return 1;}delete editor;desktop.editor=nullptr;return 0;}
+    if(argc>1 && std::string(argv[1])=="--preview-luminance-check") {try{editor->smokePreviewLuminanceContract();}catch(const std::exception& e){std::ofstream("native-preview-luminance-error.txt")<<e.what();delete editor;desktop.editor=nullptr;return 1;}delete editor;desktop.editor=nullptr;return 0;}
+    if(argc>1 && std::string(argv[1])=="--layer-label-width-check") {try{editor->smokeLayerLabelWidth();}catch(const std::exception& e){std::ofstream("native-layer-label-width-error.txt")<<e.what();delete editor;desktop.editor=nullptr;return 1;}delete editor;desktop.editor=nullptr;return 0;}
+    if(argc>1 && std::string(argv[1])=="--animation-settings-check") {try{editor->smokeAnimationSettings();}catch(const std::exception& e){std::ofstream("native-animation-settings-error.txt")<<e.what();delete editor;desktop.editor=nullptr;return 1;}delete editor;desktop.editor=nullptr;return 0;}
+    if(argc>1 && std::string(argv[1])=="--sheet-open-after-check") {try{editor->smokeSheetOpenAfterExport();}catch(const std::exception& e){std::ofstream("native-sheet-open-after-error.txt")<<e.what();delete editor;desktop.editor=nullptr;return 1;}delete editor;desktop.editor=nullptr;return 0;}
+    if(argc>1 && std::string(argv[1])=="--sheet-new-document-check") {try{editor->smokeSheetNewDocument();}catch(const std::exception& e){std::ofstream("native-sheet-new-document-error.txt")<<e.what();delete editor;desktop.editor=nullptr;return 1;}delete editor;desktop.editor=nullptr;return 0;}
+    if(argc>1 && std::string(argv[1])=="--sheet-png-auto-check") {try{editor->smokeSpriteSheetAutomatic();}catch(const std::exception& e){std::ofstream("native-sheet-png-auto-error.txt")<<e.what();delete editor;desktop.editor=nullptr;return 1;}delete editor;desktop.editor=nullptr;return 0;}
+    if(argc>1 && std::string(argv[1])=="--export-folder-check") {try{editor->smokeExportFolder();}catch(const std::exception& e){std::ofstream("native-export-folder-error.txt")<<e.what();delete editor;desktop.editor=nullptr;return 1;}delete editor;desktop.editor=nullptr;return 0;}
+    if(argc>1 && std::string(argv[1])=="--svg-frame-export-check") {try{editor->smokeSvgFrameExport();}catch(const std::exception& e){std::ofstream("native-svg-frame-export-error.txt")<<e.what();delete editor;desktop.editor=nullptr;return 1;}delete editor;desktop.editor=nullptr;return 0;}
+    if(argc>1 && std::string(argv[1])=="--palette-reverse-check") {try{editor->smokePaletteReverse();}catch(const std::exception& e){std::ofstream("native-palette-reverse-error.txt")<<e.what();delete editor;desktop.editor=nullptr;return 1;}delete editor;desktop.editor=nullptr;return 0;}
+    if(argc>1 && std::string(argv[1])=="--ico-frame-export-check") {try{editor->smokeIcoFrameExport();}catch(const std::exception& e){std::ofstream("native-ico-frame-export-error.txt")<<e.what();delete editor;desktop.editor=nullptr;return 1;}delete editor;desktop.editor=nullptr;return 0;}
+    if(argc>1 && std::string(argv[1])=="--bmp-frame-export-check") {try{editor->smokeBmpFrameExport();}catch(const std::exception& e){std::ofstream("native-bmp-frame-export-error.txt")<<e.what();delete editor;desktop.editor=nullptr;return 1;}delete editor;desktop.editor=nullptr;return 0;}
+    if(argc>1 && std::string(argv[1])=="--svg-export-check") {try{editor->smokeSvgExport();}catch(const std::exception& e){std::ofstream("native-svg-export-error.txt")<<e.what();delete editor;desktop.editor=nullptr;return 1;}delete editor;desktop.editor=nullptr;return 0;}
+    if(argc>1 && std::string(argv[1])=="--ico-export-check") {try{editor->smokeIcoExport();}catch(const std::exception& e){std::ofstream("native-ico-export-error.txt")<<e.what();delete editor;desktop.editor=nullptr;return 1;}delete editor;desktop.editor=nullptr;return 0;}
+    if(argc>1 && std::string(argv[1])=="--bmp-export-check") {try{editor->smokeBmpExport();}catch(const std::exception& e){std::ofstream("native-bmp-export-error.txt")<<e.what();delete editor;desktop.editor=nullptr;return 1;}delete editor;desktop.editor=nullptr;return 0;}
+    if(argc>1 && std::string(argv[1])=="--png-auto-export-check") {try{editor->smokePngAutomatic();}catch(const std::exception& e){std::ofstream("native-png-auto-export-error.txt")<<e.what();delete editor;desktop.editor=nullptr;return 1;}delete editor;desktop.editor=nullptr;return 0;}
+    if(argc>1 && std::string(argv[1])=="--frame-png-export-check") {try{editor->smokeFramePngExport();}catch(const std::exception& e){std::ofstream("native-frame-png-export-error.txt")<<e.what();delete editor;desktop.editor=nullptr;return 1;}delete editor;desktop.editor=nullptr;return 0;}
     if(argc>1 && std::string(argv[1])=="--migration-batch-check") {try{editor->smokeCurrentMigrationBatch();}catch(const std::exception& e){std::ofstream("native-migration-batch-error.txt")<<e.what();delete editor;desktop.editor=nullptr;manager.removeMessageFilter(ui::kSetCursorMessage,&manager);return 1;}delete editor;desktop.editor=nullptr;manager.removeMessageFilter(ui::kSetCursorMessage,&manager);return 0;}
     if(argc>1 && std::string(argv[1])=="--preview-labels-check") {editor->smokeMergedPreviewLabels(std::filesystem::u8path(argv[0]).parent_path());delete editor;desktop.editor=nullptr;return 0;}
     if(argc>1 && std::string(argv[1])=="--docking-check") {editor->smokeDocking(std::filesystem::u8path(argv[0]).parent_path());delete editor;desktop.editor=nullptr;return 0;}
@@ -6898,6 +8431,22 @@ int app_main(int argc,char* argv[]) {
       for(int y=0;y<surface->height();++y)for(int x=0;x<surface->width();++x)pixels.push_back(surface->getPixel(x,y));
       return pixels;
     };
+    const bool focusResumeCheck=argc>1 && std::string(argv[1])=="--focus-resume-check";
+    ui::Timer focusResumeTimer(150,editor);int focusResumePhase=0;
+    std::vector<gfx::Color> focusResumeFrame;
+    if(focusResumeCheck){focusResumeTimer.Tick.connect([&]{try{
+      if(focusResumePhase==0){editor->prepareFocusResumeCheck();}
+      else if(focusResumePhase==1){focusResumeFrame=framePixels();}
+      else if(focusResumePhase%2==0){
+        const auto hwnd=static_cast<HWND>(window->nativeHandle());
+        SendMessageW(hwnd,WM_ACTIVATE,WA_INACTIVE,0);
+        SendMessageW(hwnd,WM_ACTIVATE,WA_CLICKACTIVE,0);
+      }else {
+        if(framePixels()!=focusResumeFrame)throw std::runtime_error("Focus resume changed retained framebuffer pixels");
+        if(focusResumePhase==9){focusResumeTimer.stop();desktop.approved=true;desktop.closeWindow(editor);}
+      }
+      ++focusResumePhase;
+    }catch(const std::exception& e){std::ofstream("native-focus-resume-error.txt")<<e.what();std::exit(1);}});focusResumeTimer.start();}
     if(workspaceCheck || paletteMouseCheck || homeCheck || selectionCheck)workspaceTimer.Tick.connect([&]{try{
       // Popup checks run nested manager loops. Do not let the next test phase
       // run inside a still-open foreground menu and falsely reject capture.
@@ -6908,6 +8457,7 @@ int app_main(int argc,char* argv[]) {
         if(homeCheck){editor->smokeHome();return;}
         // Match the underlying manager's real message types, including
         // display-less Leave and early Move before display assignment.
+        editor->smokeTimelineFirstPaint(window->surface());
         editor->smokePaletteMouse([&](ui::Message* message){manager.onProcessMessage(message);});
         if(workspaceCheck){editor->smokeWorkspace();if(modalCheck)editor->smokeWorkspaceModalPreview();}return;
       }
@@ -6995,7 +8545,7 @@ int app_main(int argc,char* argv[]) {
     for(const auto type:{ui::kMouseDownMessage,ui::kMouseMoveMessage,ui::kMouseEnterMessage,ui::kMouseLeaveMessage}) manager.removeMessageFilter(type,&manager);
     return 0;
   } catch(const std::exception& e) {
-    if(argc>1 && (std::string(argv[1])=="--selection-check" || std::string(argv[1])=="--smoke" || std::string(argv[1])=="--home-check" || std::string(argv[1])=="--palette-mouse-check" || std::string(argv[1])=="--workspace-check" || std::string(argv[1])=="--layer-context-check" || std::string(argv[1])=="--layers-check" || std::string(argv[1])=="--skin-resize-check" || std::string(argv[1])=="--animation-check" || std::string(argv[1])=="--docking-check")) {std::ofstream("native-smoke-error.txt")<<e.what();std::fprintf(stderr,"%s\n",e.what());return 1;}
+    if(argc>1 && (std::string(argv[1])=="--deselect-check" || std::string(argv[1])=="--focus-resume-check" || std::string(argv[1])=="--selection-check" || std::string(argv[1])=="--smoke" || std::string(argv[1])=="--home-check" || std::string(argv[1])=="--palette-mouse-check" || std::string(argv[1])=="--workspace-check" || std::string(argv[1])=="--layer-context-check" || std::string(argv[1])=="--layers-check" || std::string(argv[1])=="--skin-resize-check" || std::string(argv[1])=="--animation-check" || std::string(argv[1])=="--docking-check")) {std::ofstream("native-smoke-error.txt")<<e.what();std::fprintf(stderr,"%s\n",e.what());return 1;}
     MessageBoxA(nullptr,e.what(),"MoonSprite native startup error",MB_OK|MB_ICONERROR); return 1;
   }
 }

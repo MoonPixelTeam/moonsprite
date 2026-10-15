@@ -1,4 +1,5 @@
 #include "panel_docking.h"
+#include "space_drag_scroll.h"
 #include <sstream>
 #include <stdexcept>
 #include <iostream>
@@ -6,6 +7,27 @@ using namespace moon::panels;
 static void check(bool value){if(!value)throw std::runtime_error("Panel docking regression");}
 int main(){
  try{
+  // Exact legacy useSpaceDragScroll.test.ts inputs and expected results.
+  using Drag=moon::SpaceDragScroll;
+  auto p=Drag::position({80,50},{44,77},{120,90},{300,200});check(p.x==156 && p.y==63);
+  p=Drag::position({20,20},{300,-300},{10,10},{100,80});check(p.x==0 && p.y==80);
+  Drag drag;Drag::Position scroll{150,100},maximum{400,350};int measures=0;
+  Drag::Target panTarget{[&]{return scroll;},[&]{++measures;return maximum;},[&](Drag::Position next){scroll=next;}};
+  check(!drag.begin({200,100},false,true,false,panTarget));check(drag.begin({200,100},true,false,false,panTarget));measures=0;
+  for(int i=0;i<1000;++i)drag.move({100,100});check(scroll.x==250 && measures==0);
+  maximum={150,350};drag.resized();drag.move({0,100});check(scroll.x==150 && measures==1);check(drag.finish());check(!drag.move({300,100}));
+  check(drag.begin({100,100},false,true,true,panTarget));drag.move({80,80});check(drag.finish() && scroll.y==120);
+  maximum={};check(!drag.begin({100,100},true,false,false,panTarget));
+  // legacy resizeFloatingPosition: responsive panel keeps its travel ratio,
+  // commits each resized position and preserves explicit dimensions.
+  check(resizeFloatingPosition({400,200,200,100},{0,0,1000,600},{0,0,600,400})==Rect{200,120,200,100});
+  check(resizeFloatingPosition({-40,900,200,100},{0,0,1000,600},{0,0,600,400})==Rect{0,300,200,100});
+  check(resizeFloatingPosition({10,12,1600,800},{0,0,900,600},{0,0,600,400})==Rect{0,0,1600,800});
+  check(resizeFloatingPosition({40,20,200,100},{0,0,150,90},{0,0,600,400})==Rect{40,20,200,100});
+  Model responsive;responsive.place(0,Dock::Floating,-1,true,false,{400,200,200,100});responsive.groups[responsive.groupOf(0)].floatingArea={0,0,1000,600};
+  check(responsive.resizeFloating({0,0,1000,600},{0,0,600,400}));check(responsive.groups[responsive.groupOf(0)].floating==Rect{200,120,200,100});
+  responsive.resizeFloating({0,0,600,400},{0,0,1000,600});check(responsive.groups[responsive.groupOf(0)].floating==Rect{400,200,200,100});
+  responsive.resizeFloating({0,0,1000,600},{0,0,180,90});responsive.resizeFloating({0,0,180,90},{0,0,1000,600});check(responsive.groups[responsive.groupOf(0)].floating==Rect{0,0,200,100});
   Model m;std::array<bool,4> visible{true,true,true,true};Rect area{20,38,820,429};
   auto initial=m.layout(area,visible);check(initial.panel[0].x==20&&initial.panel[2].y+initial.panel[2].h==467);
   m.place(1,Dock::Left,m.groupOf(0),true,true);check(m.groups.size()==3&&m.groupOf(0)==m.groupOf(1));check(!m.shown(0,visible)&&m.shown(1,visible));

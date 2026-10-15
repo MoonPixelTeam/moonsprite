@@ -127,3 +127,17 @@
 2026-10-15 工具属性栏实时跟随修正：默认 DockWidth 的 flushSizeGeometry 原来只重排栏目/时间轴，遗漏 layoutToolOptions。现在在同一合并帧内重排工具属性控件、对称按钮及撤销重做，无需窗口 resize 或完整 refresh。自定义停靠的 layoutGestureColumns(all=true) 已具备这一步，保持原有路径。workspace-layout 增加按住拖动三个连续帧、释放前属性坐标同步、撤销重做右对齐及合并刷新次数检查。用户明确要求的原生布局修复，legacy 对照仍见既有栏目迁移来源。
 
 本轮运行结果：workspace-layout 已执行通过 held resize 属性跟随断言，后续扩展阶段在 Floating preview continuous move retained background pixels at phase 50 失败，未宣称完整工作区测试通过。palette-mouse-startup 与 home-workspace 均通过。正式 Release 产物已更新。
+
+
+2026-10-15 悬浮栏目大小窗口位置迁移：直接按 legacy/core/panel-preferences.ts 的 remapFloatingCoordinate / resizeFloatingPosition、components/floating-panel.tsx 的 resize 回调迁移，栏目调用实际 responsiveToViewport=true。按 (窗口尺寸−栏目尺寸) 的可移动空间比例调整坐标，先限制旧比例到 0..1；无可移动空间时归零，旧空间为零而新空间可移动时限制原坐标。每次窗口尺寸变化提交新坐标和参考视口，避免永久引用最初视口；不改变显式栏目宽高。独立预览栏目也复用同一函数，使用完整客户区；统一原生像素取整是必要适配。窗口尺寸变化后合并延迟写入已有工作区偏好。停靠和栏目拖动/取消行为沿用现有路径。
+
+本批回归覆盖大小窗口往返、窗口小于栏目后放大、负数/超界坐标、无旧移动空间、独立宽高保持。正式 Release 构建、panel-docking、panel-docking-interactions 均通过；来源覆盖155文件通过，不代表全量 legacy 行为等价。
+
+2026-10-15 颜色板/调色盘分隔条修正：默认布局的尺寸拖动也在 Manager 已转换为显示器相对物理坐标的入口处理，先于子控件点击，避免标签或色格截获分隔条按下。上下分隔与侧边分隔交点优先上下调整，光标与点击沿用同一命中函数。按 Aseprite ui/widget.cpp 的 getDrawableRegion 机制，父背景会扣除可见子控件的整个 bounds，与子控件绘制 clip 无关；因此色格仅裁剪绘制仍会留下黑洞。现在色格 bounds 与物理视口相交，完整素材作为相对矩形保留，使用 UiPaintScale 的物理偏移绘制，保持非整基础像素滚动及选中素材位置；命中、背景遮挡和绘制范围一致。legacy 对照为 components/app/useAppWorkspaceLayout.ts 的捕获起点加指针增量和合帧调整；此处保留用户指定的原生栏目结构。回归增加 (17,23) 原点下小窗口→大窗口→小窗口、分隔角命中与捕获、按住移动17基础像素及色格不能越过视口的检查。
+
+本轮正式 Release 构建成功；workspace-layout、panel-docking-interactions、palette-mouse-startup 三项通过，包含增量/完整绘制逐像素一致检查。来源覆盖164文件及 diff 空白检查通过；全量 legacy 对齐仍为 INCOMPLETE。
+
+
+2026-10-15 栏目内容抓手滚动：直接迁移 legacy/components/useSpaceDragScroll.ts 及其 position/navigation 测试。公共 SpaceDragScroll 维护开始位置、起始滚动量、缓存边界、移动与结束，Editor::registerScrollDrag 提供区域命中、当前位置、最大范围、写入回调；目前颜色板色格区与图层行/帧格区注册，后续视口无需复制手势状态机。中键或空格+左键仅在内容溢出时启动，像素坐标反向跟手，按下捕获优先于子控件选择，不改变颜色/图层选择与历史；空格释放不终止拖动，失焦/丢捕获结束并保留偏移。输入框不抢空格，抓手/抓取指针复用旧版资源。最大范围开始时缓存，视口 resize 更新，不在持续移动包中读取几何。原生无 DOM pointerId，使用既有 OS 鼠标捕获适配。
+
+验证：唯一正式 Release 构建成功，--panel-scroll-check 实际退出0（图层37/29px二维偏移、颜色板31px偏移、空格中途释放保持、选择/历史不变）；panel-docking、panel-docking-interactions、palette-mouse-startup、selection-interactions 均通过。公共方法还沿用旧版精确输入验证156/63、边界0/80以及1000个移动包不重读几何和 resize 刷新边界。

@@ -112,6 +112,18 @@ static EncodedProject encodeProject(const Document& d,Limits limits,bool recover
       savedLayers.Append(outLayer);
     }
     doc.Insert(L"layers",savedLayers);animation.Insert(L"cels",savedCels);animation.Insert(L"frames",savedFrames);
+    // Legacy encodePixels emits the current resource plan. An edited small cel
+    // may change from sparse to raw (or back); carrying its previous payload
+    // forward leaves an unreferenced archive entry and fails import admission.
+    // Prune only known original raster resources absent from the new plan.
+    if(source){
+      std::set<std::string> retained;
+      for(const auto& value:savedCels)retained.insert(winrt::to_string(value.GetObject().GetNamedString(L"dataFile")));
+      for(const auto& resource:d.projectBrushes()){retained.insert(resource.metadata.dataFile);retained.insert(resource.metadata.colorsFile);}
+      for(const auto& layer:source->layers)if(layer.surface && !retained.count(layer.surface->dataFile))files.erase(layer.surface->dataFile);
+      for(const auto& cel:source->cels)if(cel.surface && !retained.count(cel.surface->dataFile))files.erase(cel.surface->dataFile);
+    }
+
     JsonObject display;if(doc.HasKey(L"displaySettings"))display=doc.GetNamedObject(L"displaySettings");JsonObject center;number(center,L"x",d.symmetryCenter().x);number(center,L"y",d.symmetryCenter().y);display.Insert(L"symmetryCenter",center);doc.Insert(L"displaySettings",display);
     JsonArray brushes;
     for(const auto& resource:d.projectBrushes()){

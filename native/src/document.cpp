@@ -1,5 +1,6 @@
 #include "document.h"
 #include <set>
+#include <atomic>
 #include "sprite_sheet_import.h"
 #include "palette_extraction.h"
 #include "layer_compositor.h"
@@ -15,7 +16,7 @@ void PixelRegion::include(int px,int py) {
 }
 Document::Document(int w,int h,std::size_t maxBytes,std::size_t maxEntries)
   : width_(w),height_(h),maxBytes_(maxBytes),maxEntries_(std::clamp<std::size_t>(maxEntries,1,10000)) {
-  static std::uint64_t nextIdentity=0;identity_=++nextIdentity;
+  static std::atomic<std::uint64_t> nextIdentity{0};identity_=++nextIdentity;
   if (w < 1 || h < 1 || w > 1024 || h > 1024)
     throw std::invalid_argument("Prototype canvas must be 1..1024 pixels per side");
   timeline::State initial;
@@ -28,11 +29,11 @@ Document::Document(int w,int h,std::size_t maxBytes,std::size_t maxEntries)
   first.opacity=1;first.surface=std::move(surface);initial.cels.push_back(std::move(first));
   activeLayerId_=initial.layers.front().id;activeFrameId_=initial.frames.front().id;timeline_=timeline::Timeline(std::move(initial));
 }
-Document Document::withBuiltinPalette() {
+Document Document::withBuiltinPalette(int width,int height,std::u32string name) {
   // Exact colors/order from legacy/palettes/pixel-core-32.palette.json.
   // User requests this preset for new native documents; no history transaction.
   static constexpr Pixel colors[]{0xffffffffu,0xffeae0d9u,0xffb8a79au,0xff75655bu,0xff40342du,0xff1c1511u,0xffb5ebffu,0xff5dc9f4u,0xff2b8ed9u,0xff244fa9u,0xff252a6eu,0xffb8b3ffu,0xff675be9u,0xff4a2db5u,0xff3c1e6eu,0xffffb4d8u,0xffd86195u,0xff9d3556u,0xff6b262eu,0xffffe3b7u,0xffe8b553u,0xffb77328u,0xff7a431eu,0xffc8f1b8u,0xff7ac755u,0xff578b2eu,0xff4b5b1fu,0xfff2f2f2u,0xffccc1b9u,0xff918074u,0xff5a4a3fu,0xff332620u};
-  Document result;auto& palette=result.palette_;
+  Document result(width,height);result.name_=std::move(name);auto& palette=result.palette_;
   palette.entries.clear();palette.slots.clear();palette.selected.clear();
   int id=1;
   for(const auto color:colors) {
@@ -41,6 +42,20 @@ Document Document::withBuiltinPalette() {
     palette.slots.push_back(id++);
   }
   palette.nextId=id;
+  return result;
+}
+Document Document::fromSpriteSheetRaster(int width,int height,std::vector<Pixel> pixels,std::u32string name) {
+  // legacy sprite-sheet create/stack -> createDocument(..., 'rgba'), then dirty=true.
+  // Validate editable dimensions before creating a session; never clamp sheet data.
+  if(width<1 || height<1 || width>1024 || height>1024)
+    throw std::invalid_argument("精灵表新建文档仅支持每边 1..1024 像素；请改用导出 PNG 文件");
+  if(pixels.size()!=std::size_t(width)*height)throw std::invalid_argument("Invalid sprite sheet raster length");
+  Document result(width,height);auto state=result.timeline_.state();
+  state.layers.front().name=U"精灵表";
+  state.cels.front().surface->pixels=std::move(pixels);
+  result.timeline_=timeline::Timeline(std::move(state));
+  result.palette_.entries={{1,U"墨黑",0xff211b18},{2,U"月蓝",0xffff7929}};
+  result.name_=std::move(name);result.modified_=true;
   return result;
 }
 Document Document::fromImported(int width,int height,timeline::State state,PaletteState palette,
@@ -62,20 +77,19 @@ int floorDivide(int value, int scale) {
   return static_cast<int>(std::floor(static_cast<double>(value) / scale));
 }
 std::size_t Document::activeLayerIndex() const {
- const auto& layers=timeline_.state().layers;const auto it=std::find_if(layers.begin(),layers.end(),[&](const auto& l){return l.id==activeLayerId_;});
- if(it==layers.end())throw std::logic_error("Missing active layer");return std::size_t(it-layers.begin());
+ if(!timeline_.hasLayer(activeLayerId_))throw std::logic_error("Missing active layer");return timeline_.layerIndex(activeLayerId_);
 }
 void Document::selectLayer(const std::string& id) {
- commitFloatingPaste();cancelStroke();cancelLayerOpacity();if(std::none_of(timeline_.state().layers.begin(),timeline_.state().layers.end(),[&](const auto& l){return l.id==id;}))return;activeLayerId_=id;
+ commitFloatingPaste();cancelStroke();cancelLayerOpacity();if(!timeline_.hasLayer(id))return;activeLayerId_=id;
 }
 std::size_t Document::activeFrameIndex() const {
- const auto& frames=timeline_.state().frames;const auto it=std::find_if(frames.begin(),frames.end(),[&](const auto& f){return f.id==activeFrameId_;});if(it==frames.end())throw std::logic_error("Missing active frame");return std::size_t(it-frames.begin());
+ if(!timeline_.hasFrame(activeFrameId_))throw std::logic_error("Missing active frame");return timeline_.frameIndex(activeFrameId_);
 }
 void Document::selectFrame(const std::string& id) {
- commitFloatingPaste();cancelStroke();cancelLayerOpacity();if(id==activeFrameId_ || std::none_of(timeline_.state().frames.begin(),timeline_.state().frames.end(),[&](const auto& f){return f.id==id;}))return;
+ commitFloatingPaste();cancelStroke();cancelLayerOpacity();if(id==activeFrameId_ || !timeline_.hasFrame(id))return;
  activeFrameId_=id;change_={0,0,width_,height_};publishChange();
 }
-void Document::selectFrameHeader(const std::string& id,int mode,bool preserve){if(std::none_of(timeline_.state().frames.begin(),timeline_.state().frames.end(),[&](const auto& f){return f.id==id;}))return;timelineSelection_.cels.clear();timelineSelection_.celAnchor.clear();if(!mode){timelineSelection_.layers.clear();timelineSelection_.layerAnchor.clear();}const auto& frames=timeline_.state().frames;if(mode==2 && !frameAnchor_.empty()){int a=-1,b=-1;for(int i=0;i<int(frames.size());++i){if(frames[i].id==frameAnchor_)a=i;if(frames[i].id==id)b=i;}if(a>=0 && b>=0){selectedFrames_.clear();for(int i=std::min(a,b);i<=std::max(a,b);++i)selectedFrames_.push_back(frames[i].id);}}else if(mode==1){auto it=std::find(selectedFrames_.begin(),selectedFrames_.end(),id);if(it==selectedFrames_.end())selectedFrames_.push_back(id);else selectedFrames_.erase(it);std::sort(selectedFrames_.begin(),selectedFrames_.end(),[&](const auto& a,const auto& b){return std::find_if(frames.begin(),frames.end(),[&](const auto& f){return f.id==a;})<std::find_if(frames.begin(),frames.end(),[&](const auto& f){return f.id==b;});});}else selectedFrames_={id};if(mode!=1 || frameAnchor_.empty())frameAnchor_=id;if(!preserve)selectFrame(id);}
+void Document::selectFrameHeader(const std::string& id,int mode,bool preserve){if(!timeline_.hasFrame(id))return;timelineSelection_.cels.clear();timelineSelection_.celAnchor.clear();if(!mode){timelineSelection_.layers.clear();timelineSelection_.layerAnchor.clear();}const auto& frames=timeline_.state().frames;if(mode==2 && !frameAnchor_.empty()){const int a=timeline_.hasFrame(frameAnchor_)?int(timeline_.frameIndex(frameAnchor_)):-1,b=int(timeline_.frameIndex(id));if(a>=0 && b>=0){selectedFrames_.clear();for(int i=std::min(a,b);i<=std::max(a,b);++i)selectedFrames_.push_back(frames[i].id);}}else if(mode==1){auto it=std::find(selectedFrames_.begin(),selectedFrames_.end(),id);if(it==selectedFrames_.end())selectedFrames_.push_back(id);else selectedFrames_.erase(it);std::sort(selectedFrames_.begin(),selectedFrames_.end(),[&](const auto& a,const auto& b){return timeline_.frameIndex(a)<timeline_.frameIndex(b);});}else selectedFrames_={id};if(mode!=1 || frameAnchor_.empty())frameAnchor_=id;if(!preserve)selectFrame(id);}
 void Document::moveSelectedFrames(const std::string& target,bool after){cancelStroke();cancelLayerOpacity();timeline::State previous;previous.frames=timeline_.state().frames;previous.loopSections=timeline_.state().loopSections;auto selected=selectedFrames_.empty()?std::vector<std::string>{frame().id}:selectedFrames_;auto has=[&](const auto& id){return std::find(selected.begin(),selected.end(),id)!=selected.end();};std::vector<DocumentFrame> moving,remaining;std::vector<std::string> movingIds;int targetOriginal=-1,movingStart=100000,movingEnd=-1;for(int i=0;i<int(previous.frames.size());++i){const auto& f=previous.frames[i];if(f.id==target)targetOriginal=i;if(has(f.id)){moving.push_back(f);movingIds.push_back(f.id);movingStart=std::min(movingStart,i);movingEnd=i;}else remaining.push_back(f);}if(targetOriginal<0 || moving.empty())return;auto targetIt=std::find_if(remaining.begin(),remaining.end(),[&](const auto& f){return f.id==target;});int insertion=targetIt!=remaining.end()?int(targetIt-remaining.begin())+(after?1:0):int(std::count_if(previous.frames.begin(),previous.frames.begin()+targetOriginal,[&](const auto& f){return !has(f.id);}));int side=has(target)?(after?1:-1):targetOriginal==movingStart-1 && after?-1:targetOriginal==movingEnd+1 && !after?1:0;auto reordered=remaining;reordered.insert(reordered.begin()+insertion,moving.begin(),moving.end());auto loops=timeline::reconcileLoopsReorder(previous,remaining,reordered,movingIds,insertion,side);bool same=previous.frames.size()==reordered.size() && previous.loopSections.size()==loops.size();for(std::size_t i=0;i<previous.frames.size() && same;++i)same=previous.frames[i].id==reordered[i].id;for(std::size_t i=0;i<loops.size() && same;++i)same=previous.loopSections[i].startFrameId==loops[i].startFrameId && previous.loopSections[i].endFrameId==loops[i].endFrameId;if(same)return;Edit e{{},state_,nextState_};captureFrameOrder(e,false);e.beforeLoops=previous.loopSections;e.beforeSelection=selectedFrames_;timeline_.state_.frames=std::move(reordered);timeline_.state_.loopSections=std::move(loops);selectedFrames_=movingIds;timeline_.buildIndex();captureFrameOrder(e,true);e.afterLoops=timeline_.state().loopSections;e.afterSelection=selectedFrames_;change_={0,0,width_,height_};publishChange();pushEdit(std::move(e));}
 void Document::groupEdits(std::size_t start,const std::vector<std::string>& selection){if(start>=position_)return;Edit group{{},history_[start].beforeState,history_[position_-1].afterState};group.beforeSelection=selection;group.afterSelection=selectedFrames_;for(std::size_t i=start;i<position_;++i){historyBytes_-=history_[i].bytes();group.children.push_back(std::move(history_[i]));}history_.resize(start);history_.push_back(std::move(group));position_=history_.size();historyBytes_+=history_.back().bytes();while((historyBytes_>maxBytes_ && position_>1) || history_.size()>maxEntries_){historyBytes_-=history_.front().bytes();history_.erase(history_.begin());--position_;}}
 // Whole RGBA cel snapshot: legacy snapshotLinkedAnimationCels rebase and block anchor.
@@ -666,6 +680,7 @@ void Document::beginStroke(Point p, Pixel color,BrushOptions brush,const Pattern
   if(layer().locked || !layer().visible) return;
   imageStamp_=image?std::optional<ImageBrushStamp>{prepareImageBrushStamp(*image,brush.size,angle)}:std::nullopt;imageEraseCoverage_.clear();
   strokePixels_=&timeline_.mutableOwnedSurface(timeline_.resolveSurface(cel().id).source->id)->pixels;
+  if(pendingLookup_.size()!=std::size_t(width_)*height_)pendingLookup_.assign(std::size_t(width_)*height_,-1);
   active_ = true;
   last_ = p;
   color_ = color;brush_=brush;brush_.size=std::clamp(brush_.size,1,64);brush_.opacity=std::clamp(brush_.opacity,0,100);stampSpans_=brushSpans(brush_);hasPreviousStamp_=false;
@@ -676,22 +691,22 @@ void Document::plot(int x, int y) {
   if(x<0 || y<0 || x>=width_ || y>=height_ || (selection_ && !selectionContains(selection_,x,y))) return;
   const auto index=static_cast<std::size_t>(y)*width_+x;
   const auto current=pixelStorage()[index];
-  if(pending_.find(index)!=pending_.end()) return;
+  if(pendingLookup_[index]>=0) return;
   const auto inherited=inheritedStrokeBaseline_.find(index);
   const auto value=brushComposite(inherited==inheritedStrokeBaseline_.end()?current:inherited->second,color_,brush_.opacity);
   if(current==value) return;
   // legacy core/history.ts recordPixelKnownCurrent: record only touched pixels.
-  auto inserted=pending_.emplace(index,Delta{index,current,value});
-  inserted.first->second.after=value;
+  pending_.push_back({index,current,value});
+  pendingLookup_[index]=int(pending_.size()-1);
   pixelStorage()[index]=value;change_.include(x,y);
 
 }
 void Document::stamp(int x,int y) {
   if(imageStamp_){const auto& stamp=*imageStamp_;for(const auto& sample:stamp.samples)for(const auto& p:symmetryPoints({x-stamp.width/2+sample.x,y-stamp.height/2+sample.y},width_,height_,symmetryAxes,symmetryCenter())){
-   if(selection_ && !selectionContains(selection_,p.x,p.y))continue;const auto index=std::size_t(p.y)*width_+p.x;auto current=pixelStorage()[index];auto found=pending_.find(index);const auto inherited=inheritedStrokeBaseline_.find(index);const auto before=inherited!=inheritedStrokeBaseline_.end()?inherited->second:found==pending_.end()?current:found->second.before;Pixel value;
+   if(selection_ && !selectionContains(selection_,p.x,p.y))continue;const auto index=std::size_t(p.y)*width_+p.x;auto current=pixelStorage()[index];const int found=pendingLookup_[index];const auto inherited=inheritedStrokeBaseline_.find(index);const auto before=inherited!=inheritedStrokeBaseline_.end()?inherited->second:found<0?current:pending_[found].before;Pixel value;
    if((color_>>24)==0){int coverage=int(std::floor(sample.coverage*brush_.opacity/100.0+.5));if(sample.color)coverage=int(std::floor(coverage*(*sample.color>>24)/255.0+.5));auto seen=imageEraseCoverage_.find(index);if(!coverage || (seen!=imageEraseCoverage_.end() && seen->second>=coverage))continue;imageEraseCoverage_[index]=coverage;value=coverage==255?0:(before&0xffffff)|(Pixel(std::floor((before>>24)*(1-coverage/255.0)+.5))<<24);}
    else {if(int(std::floor(sample.coverage*brush_.opacity/100.0+.5))==0)continue;value=imageBrushDirectPixel(sample.color.value_or(color_),sample.coverage,brush_.opacity);}
-   if(current==value)continue;if(found==pending_.end())found=pending_.emplace(index,Delta{index,current,value}).first;else found->second.after=value;pixelStorage()[index]=value;change_.include(p.x,p.y);
+   if(current==value)continue;if(found<0){pending_.push_back({index,current,value});pendingLookup_[index]=int(pending_.size()-1);}else pending_[found].after=value;pixelStorage()[index]=value;change_.include(p.x,p.y);
   }return;}
   const auto anchor=brush_.size/2;
   if(symmetryHas(symmetryAxes)){auto paint=[&](int y,int l,int r){if(y<0 || y>=height_)return;for(int px=std::max(0,l);px<=std::min(width_-1,r);++px)plot(px,y);};for(auto span:stampSpans_)symmetryPaintSpan(y-anchor+span.y,x-anchor+span.left,x-anchor+span.right,width_,height_,symmetryAxes,symmetryCenter(),paint);return;}
@@ -721,9 +736,10 @@ std::unordered_map<std::size_t,Pixel> Document::brushPreview(Point from,Point to
   std::unordered_map<std::size_t,Pixel> result;std::unordered_map<std::size_t,int> eraseCoverage;
   brush.size=std::clamp(brush.size,1,64);brush.opacity=std::clamp(brush.opacity,0,100);
   const auto spans=brushSpans(brush);const auto imageStamp=image?std::optional<ImageBrushStamp>{prepareImageBrushStamp(*image,brush.size,angle)}:std::nullopt;
+  const auto& sourcePixels=pixels();
   auto plot=[&](int x,int y,int coverage,std::optional<Pixel> sample){
     if(x<0 || y<0 || x>=width_ || y>=height_ || (clipSelection && selection_ && !selectionContains(selection_,x,y)))return;
-    const auto i=std::size_t(y)*width_+x;Pixel base=pixels()[i];if(baseline){auto it=baseline->find(i);if(it!=baseline->end())base=it->second;}
+    const auto i=std::size_t(y)*width_+x;Pixel base=sourcePixels[i];if(baseline){auto it=baseline->find(i);if(it!=baseline->end())base=it->second;}
     if(!imageStamp){if(!result.count(i))result.emplace(i,brushComposite(base,color,brush.opacity));return;}
     if(!(color>>24)){int c=int(std::floor(coverage*brush.opacity/100.0+.5));if(sample)c=int(std::floor(c*(*sample>>24)/255.0+.5));if(c<=eraseCoverage[i])return;eraseCoverage[i]=c;result[i]=c==255?0:(base&0xffffff)|(Pixel(std::floor((base>>24)*(1-c/255.0)+.5))<<24);}
     else if(int(std::floor(coverage*brush.opacity/100.0+.5)))result[i]=imageBrushDirectPixel(sample.value_or(color),coverage,brush.opacity);
@@ -738,31 +754,39 @@ std::unordered_map<std::size_t,Pixel> Document::brushPreview(Point from,Point to
 void Document::updateStroke(Point point) {
   if (!active_) return;
   change_={};
+  if(point.x==last_.x && point.y==last_.y)return;
   line(last_, point);
   publishChange();
   last_ = point;
 }
 void Document::mergeLastStrokeEdits(){if(position_>=2 && position_==history_.size())groupEdits(position_-2,selectedFrames_);}
-std::unordered_map<std::size_t,Pixel> Document::strokeBaseline() const {auto result=inheritedStrokeBaseline_;for(const auto& [index,delta]:pending_)result.emplace(index,delta.before);return result;}
+std::unordered_map<std::size_t,Pixel> Document::strokeBaseline() const {auto result=inheritedStrokeBaseline_;for(const auto& delta:pending_)result.emplace(delta.index,delta.before);return result;}
+std::vector<std::pair<std::size_t,Pixel>> Document::strokeBaselinePoints() const {
+  std::vector<std::pair<std::size_t,Pixel>> result;result.reserve(inheritedStrokeBaseline_.size()+pending_.size());
+  for(const auto& item:inheritedStrokeBaseline_)result.push_back(item);
+  for(const auto& delta:pending_)if(!inheritedStrokeBaseline_.count(delta.index))result.emplace_back(delta.index,delta.before);
+  return result;
+}
 bool Document::commitStroke() {
   if (!active_) return false;
   Edit edit{{}, state_, nextState_};
   edit.targetCelId=cel().id;
   edit.pixels.reserve(pending_.size());
-  for(const auto& [index,delta]:pending_) if(delta.before!=delta.after) edit.pixels.push_back(delta);
-  if(edit.pixels.empty()) {active_=false;strokePixels_=nullptr;pending_.clear();return false;}
+  for(const auto& delta:pending_) if(delta.before!=delta.after) edit.pixels.push_back(delta);
+  if(edit.pixels.empty()) {active_=false;strokePixels_=nullptr;clearPendingStroke();return false;}
   pushEdit(std::move(edit));
-  active_ = false;strokePixels_=nullptr; pending_.clear();
+  active_ = false;strokePixels_=nullptr; clearPendingStroke();
   return true;
 }
 void Document::cancelStroke() {
   cancelPaletteReplacement();cancelColorAdjustment();cancelGradient();
   if (!active_) return;
   change_={};
-  for(const auto& [index,delta]:pending_) {
+  for(const auto& delta:pending_) {
+    const auto index=delta.index;
     if(pixelStorage()[index]!=delta.before) {pixelStorage()[index]=delta.before;change_.include(int(index%width_),int(index/width_));}
   }
-  publishChange();pending_.clear();
+  publishChange();clearPendingStroke();
   active_ = false;strokePixels_=nullptr;
 }
 Document Document::fromImage(int width,int height,std::vector<Pixel> pixels,std::u32string name){if(width<1||height<1||width>1024||height>1024||pixels.size()!=std::size_t(width)*height)throw std::invalid_argument("Native images must be 1..1024 pixels");Document d(width,height);d.timeline_.mutableOwnedSurface(d.cel().id)->pixels=std::move(pixels);auto colors=extractImportedPalette({d.pixels()},256,262144);d.palette_.entries.clear();d.palette_.slots.clear();int id=1;for(auto c:colors){{auto text=std::to_string(id);d.palette_.entries.push_back({id,U"颜色 "+std::u32string(text.begin(),text.end()),c});}d.palette_.slots.push_back(id++);}d.palette_.slots.resize((d.palette_.slots.size()+7)/8*8);d.palette_.nextId=id;d.name_=std::move(name);d.markSaved();return d;}
@@ -775,7 +799,52 @@ bool Document::resizeImage(int width,int height,ImageInterpolation method){
  e.pixelSelectionEdit=true;e.beforePixelsSelection=selection_;e.afterPixelsSelection=resizeImageSelection(selection_,width_,height_,width,height);
  history_.reserve(position_+1);applyEdit(e,true);publishChange();pushEdit(std::move(e));return true;
 }
-void Document::applyEdit(const Edit& edit,bool forward){if(edit.beforeAnimationLoop)animationLoop_=forward?*edit.afterAnimationLoop:*edit.beforeAnimationLoop;if(edit.beforeTimeline){timeline_=timeline::Timeline(forward?*edit.afterTimeline:*edit.beforeTimeline);activeLayerId_=forward?edit.afterActive:edit.beforeActive;activeFrameId_=forward?edit.afterFrame:edit.beforeFrame;}if(edit.beforeDimensions){const auto dims=forward?*edit.afterDimensions:*edit.beforeDimensions;width_=dims.first;height_=dims.second;if(edit.beforeTimeline)change_={0,0,width_,height_};}if(!edit.children.empty()){if(forward)for(const auto& child:edit.children)applyEdit(child,true);else for(auto it=edit.children.rbegin();it!=edit.children.rend();++it)applyEdit(*it,false);}else{if(!edit.pixels.empty() || !edit.runs.empty() || edit.dense){const auto* target=timeline_.findCelById(edit.targetCelId);selectLayer(target->layerId);selectFrame(target->frameId);}for(const auto& delta:edit.pixels){pixelStorage()[delta.index]=forward?delta.after:delta.before;change_.include(int(delta.index%width_),int(delta.index/width_));}for(const auto& run:edit.runs){std::fill_n(pixelStorage().begin()+run.index,run.length,forward?run.after:run.before);change_.include(int(run.index%width_),int(run.index/width_));change_.include(int((run.index+run.length-1)%width_),int((run.index+run.length-1)/width_));}if(edit.dense){const auto& d=*edit.dense;const auto& values=forward?d.after:d.before;for(int y=0;y<d.height;++y)std::copy_n(values.begin()+std::size_t(y)*d.width,d.width,pixelStorage().begin()+std::size_t(y+d.y)*width_+d.x);change_.include(d.x,d.y);change_.include(d.x+d.width-1,d.y+d.height-1);}applyPaletteEdit(edit,forward);applyLayerEdit(edit,forward);applyFrameEdit(edit,forward);applyCelEdit(edit,forward);}if(!edit.children.empty() && !edit.beforeActive.empty()){selectLayer(forward?edit.afterActive:edit.beforeActive);selectFrame(forward?edit.afterFrame:edit.beforeFrame);}if(edit.pixelSelectionEdit)selection_=forward?edit.afterPixelsSelection:edit.beforePixelsSelection;const auto& selection=forward?edit.afterSelection:edit.beforeSelection;if(selection)selectedFrames_=*selection;const auto& timelineSelection=forward?edit.afterTimelineSelection:edit.beforeTimelineSelection;if(timelineSelection)timelineSelection_=*timelineSelection;const auto& anchor=forward?edit.afterFrameAnchor:edit.beforeFrameAnchor;if(anchor)frameAnchor_=*anchor;if(edit.beforeTimelineSelection && !edit.beforeActive.empty()){activeLayerId_=forward?edit.afterActive:edit.beforeActive;activeFrameId_=forward?edit.afterFrame:edit.beforeFrame;}}
+std::optional<PixelRegion> Document::visibleContentBounds(bool allFrames) const {
+ // Legacy bounds inspect the final composite, including disabled frames. Tile
+ // rows bound temporary storage and reuse the admitted normal compositor.
+ PixelRegion bounds;
+ for(const auto& f:timeline_.state().frames){
+  if(!allFrames && f.id!=activeFrameId_)continue;
+  for(int y=0;y<height_;y+=16){const int rows=std::min(16,height_-y);auto pixels=compositeNormalRegion(timeline_,f.id,{0,y,width_,rows});
+   for(int row=0;row<rows;++row)for(int x=0;x<width_;++x)if(pixels[std::size_t(row)*width_+x]>>24)bounds.include(x,y+row);
+  }
+ }
+ return bounds.empty()?std::optional<PixelRegion>{}:std::optional<PixelRegion>{bounds};
+}
+bool Document::trimCanvas(bool allFrames,std::optional<TransformPoint> pivot){
+ commitFloatingPaste();cancelStroke();cancelLayerOpacity();
+ const auto bounds=visibleContentBounds(allFrames);if(!bounds)throw std::runtime_error("画布中没有可见内容");
+ if(bounds->x==0 && bounds->y==0 && bounds->w==width_ && bounds->h==height_)return false;
+ return cropCanvasRegion(*bounds,pivot);
+}
+bool Document::cropCanvas(std::optional<TransformPoint> pivot){
+ // Legacy crop uses the selection rectangle (not its nonzero mask bounds),
+ // commits floating content first, and records even a full-canvas crop.
+ commitFloatingPaste();cancelStroke();cancelLayerOpacity();
+ if(!selection_)throw std::runtime_error("请先选择要裁切的区域");
+ const auto bounds=rectangleSelection(selection_->x,selection_->y,selection_->width,selection_->height,width_,height_);
+ if(!bounds)throw std::runtime_error("请先选择要裁切的区域");
+ return cropCanvasRegion({bounds->x,bounds->y,bounds->width,bounds->height},pivot);
+}
+bool Document::cropCanvasRegion(PixelRegion region,std::optional<TransformPoint> pivot){
+ const auto* bounds=&region;
+ Edit e{{},state_,nextState_};e.beforeDimensions={{width_,height_}};e.afterDimensions={{bounds->w,bounds->h}};
+ // Crop each owned source once. Linked and runtime-shared IDs retain sharing.
+ for(const auto& cel:timeline_.state().cels)if(cel.surface){
+  const auto& source=*cel.surface;
+  if(source.width!=width_ || source.height!=height_ || source.offsetX || source.offsetY)throw std::logic_error("Trim requires admitted full-canvas surfaces");
+  auto after=cel;auto& output=*after.surface;output.pixels.resize(std::size_t(bounds->w)*bounds->h);
+  for(int y=0;y<bounds->h;++y)std::copy_n(source.pixels.begin()+std::size_t(y+bounds->y)*width_+bounds->x,bounds->w,output.pixels.begin()+std::size_t(y)*bounds->w);
+  output.width=bounds->w;output.height=bounds->h;output.offsetX=output.offsetY=0;output.storageOriginX.reset();output.storageOriginY.reset();
+  e.beforeCels.push_back(cel);e.afterCels.push_back(std::move(after));
+ }
+ e.pixelSelectionEdit=true;e.beforePixelsSelection=selection_;
+ if(selection_){SelectionMask shifted{0,0,bounds->w,bounds->h,{}};shifted.mask.resize(std::size_t(bounds->w)*bounds->h);for(int y=0;y<bounds->h;++y)for(int x=0;x<bounds->w;++x)shifted.mask[std::size_t(y)*bounds->w+x]=selectionContains(selection_,x+bounds->x,y+bounds->y)?1:0;e.afterPixelsSelection=trimSelection(std::move(shifted));}
+ e.beforeTrimPivot.emplace(pivot);
+ if(!selection_ || !e.afterPixelsSelection)pivot.reset();else if(pivot){pivot->x-=bounds->x;pivot->y-=bounds->y;}
+ e.afterTrimPivot.emplace(pivot);history_.reserve(position_+1);applyEdit(e,true);publishChange();pushEdit(std::move(e));return true;
+}
+void Document::applyEdit(const Edit& edit,bool forward){if(edit.beforeTrimPivot){selectionPivotHistory_.pivot=forward?*edit.afterTrimPivot:*edit.beforeTrimPivot;++selectionPivotHistory_.serial;}if(edit.beforeAnimationLoop)animationLoop_=forward?*edit.afterAnimationLoop:*edit.beforeAnimationLoop;if(edit.beforeTimeline){timeline_=timeline::Timeline(forward?*edit.afterTimeline:*edit.beforeTimeline);activeLayerId_=forward?edit.afterActive:edit.beforeActive;activeFrameId_=forward?edit.afterFrame:edit.beforeFrame;}if(edit.beforeDimensions){const auto dims=forward?*edit.afterDimensions:*edit.beforeDimensions;width_=dims.first;height_=dims.second;if(edit.beforeTimeline)change_={0,0,width_,height_};}if(!edit.children.empty()){if(forward)for(const auto& child:edit.children)applyEdit(child,true);else for(auto it=edit.children.rbegin();it!=edit.children.rend();++it)applyEdit(*it,false);}else{if(!edit.pixels.empty() || !edit.runs.empty() || edit.dense){const auto* target=timeline_.findCelById(edit.targetCelId);selectLayer(target->layerId);selectFrame(target->frameId);}for(const auto& delta:edit.pixels){pixelStorage()[delta.index]=forward?delta.after:delta.before;change_.include(int(delta.index%width_),int(delta.index/width_));}for(const auto& run:edit.runs){std::fill_n(pixelStorage().begin()+run.index,run.length,forward?run.after:run.before);change_.include(int(run.index%width_),int(run.index/width_));change_.include(int((run.index+run.length-1)%width_),int((run.index+run.length-1)/width_));}if(edit.dense){const auto& d=*edit.dense;const auto& values=forward?d.after:d.before;for(int y=0;y<d.height;++y)std::copy_n(values.begin()+std::size_t(y)*d.width,d.width,pixelStorage().begin()+std::size_t(y+d.y)*width_+d.x);change_.include(d.x,d.y);change_.include(d.x+d.width-1,d.y+d.height-1);}applyPaletteEdit(edit,forward);applyLayerEdit(edit,forward);applyFrameEdit(edit,forward);applyCelEdit(edit,forward);}if(!edit.children.empty() && !edit.beforeActive.empty()){selectLayer(forward?edit.afterActive:edit.beforeActive);selectFrame(forward?edit.afterFrame:edit.beforeFrame);}if(edit.pixelSelectionEdit)selection_=forward?edit.afterPixelsSelection:edit.beforePixelsSelection;const auto& selection=forward?edit.afterSelection:edit.beforeSelection;if(selection)selectedFrames_=*selection;const auto& timelineSelection=forward?edit.afterTimelineSelection:edit.beforeTimelineSelection;if(timelineSelection)timelineSelection_=*timelineSelection;const auto& anchor=forward?edit.afterFrameAnchor:edit.beforeFrameAnchor;if(anchor)frameAnchor_=*anchor;if(edit.beforeTimelineSelection && !edit.beforeActive.empty()){activeLayerId_=forward?edit.afterActive:edit.beforeActive;activeFrameId_=forward?edit.afterFrame:edit.beforeFrame;}}
 void Document::undo() {
   if(floating_){cancelFloatingPaste();return;}cancelStroke();
   if (!canUndo()) return;
@@ -801,6 +870,8 @@ PaletteState Document::capturePaletteEdit(int kind,int id) const {
   return state;
 }
 std::size_t Document::Edit::bytes() const {
+  if(paletteKind==10)return (beforePalette->entries.size()+afterPalette->entries.size())*40+(beforePalette->slots.size()+afterPalette->slots.size())*4;
+  if(paletteKind==9)return (beforePalette->slots.size()+afterPalette->slots.size())*sizeof(int);
   std::size_t size=(beforeName?beforeName->size()*sizeof(char32_t):0)+(afterName?afterName->size()*sizeof(char32_t):0)+pixels.size()*sizeof(Delta)+runs.size()*sizeof(PixelRun)+targetCelId.size()+((beforeVisible||beforeOpacity)?32:0);
   for(const auto* t:{&beforeTimeline,&afterTimeline})if(*t)for(const auto& c:(*t)->cels)size+=128+(c.surface?c.surface->pixels.size()*sizeof(Pixel):0);
   if(dense)size+=(dense->before.size()+dense->after.size())*sizeof(Pixel);
@@ -924,11 +995,47 @@ void Document::deletePaletteColors(const std::vector<int>& ids) {
 }
 void Document::updatePaletteColor(int id,Pixel color) {
   const auto current=paletteEntry(id);if(!current || current->color==color) return;
+  if(paletteColorSynchronization_){
+    // legacy workspace-commands-color: document frames x bottom-to-top layers,
+    // owner dedup BEFORE lock filtering, hidden layers included, no selection clip.
+    const Pixel source=current->color;Edit compound{{},state_,nextState_};compound.beforeActive=compound.afterActive=layer().id;compound.beforeFrame=compound.afterFrame=frame().id;compound.beforeSelection=compound.afterSelection=selectedFrames_;
+    Edit paletteEdit{{},state_,nextState_};paletteEdit.paletteKind=3;paletteEdit.colorId=id;paletteEdit.beforePalette=capturePaletteEdit(3,id);paletteEdit.afterPalette=*paletteEdit.beforePalette;for(auto& entry:paletteEdit.afterPalette->entries)if(entry.id==id)entry.color=color;if(paletteEdit.afterPalette->primary==source)paletteEdit.afterPalette->primary=color;if(paletteEdit.afterPalette->secondary==source)paletteEdit.afterPalette->secondary=color;compound.children.push_back(std::move(paletteEdit));
+    std::set<std::string> seen;for(const auto& f:timeline_.state().frames)for(auto l=timeline_.state().layers.rbegin();l!=timeline_.state().layers.rend();++l){const auto* c=timeline_.findCel(l->id,f.id);if(!c)continue;const auto resolved=timeline_.resolveSurface(c->id);if(!resolved.source || !resolved.surface || !seen.insert(resolved.source->id).second || l->locked)continue;Edit child{{},state_,nextState_};child.targetCelId=resolved.source->id;const auto& pixels=resolved.surface->pixels;for(std::size_t i=0;i<pixels.size();++i)if(pixels[i]==source){if(!child.runs.empty() && child.runs.back().index+child.runs.back().length==i)++child.runs.back().length;else child.runs.push_back({i,1,source,color});}if(!child.runs.empty())compound.children.push_back(std::move(child));}
+    auto gradientPreview=std::move(gradient_);cancelStroke();gradient_=std::move(gradientPreview);history_.reserve(position_+1);change_={};applyEdit(compound,true);publishChange();pushEdit(std::move(compound));return;
+  }
   auto gradientPreview=std::move(gradient_);cancelStroke();gradient_=std::move(gradientPreview);Edit edit{{},state_,nextState_};edit.beforePalette=capturePaletteEdit(3,id);edit.paletteKind=3;edit.colorId=id;
   const auto before=current->color;
   for(auto& entry:palette_.entries) if(entry.id==id) entry.color=color;
   if(palette_.primary==before) palette_.primary=color;if(palette_.secondary==before) palette_.secondary=color;
   edit.afterPalette=capturePaletteEdit(edit.paletteKind,edit.colorId);pushEdit(std::move(edit));
+}
+// Exact legacy core/palette.ts comparators; stable full paletteOrder slot sorting.
+bool Document::sortPaletteColors(PaletteSortMode mode,bool descending){
+ struct Values{double hue,brightness,luminance,saturation;bool achromatic;};
+ const auto values=[](Pixel c){double r=(c&255)/255.0,g=((c>>8)&255)/255.0,b=((c>>16)&255)/255.0,maximum=std::max({r,g,b}),minimum=std::min({r,g,b}),range=maximum-minimum,h=0;if(range>0){if(maximum==r)h=((g-b)/range+(g<b?6:0))*60;else if(maximum==g)h=((b-r)/range+2)*60;else h=((r-g)/range+4)*60;}auto linear=[](double v){return v<=0.04045?v/12.92:std::pow((v+0.055)/1.055,2.4);};return Values{h,maximum,.2126*linear(r)+.7152*linear(g)+.0722*linear(b),maximum==0?0:range/maximum,range<=8/255.0};};
+ const auto hue=[&](Pixel a,Pixel b){const auto x=values(a),y=values(b);if(x.achromatic!=y.achromatic)return x.achromatic?-1.0:1.0;double d=x.achromatic?x.brightness-y.brightness:x.hue-y.hue;if(!d && !x.achromatic)d=x.brightness-y.brightness;if(!d && !x.achromatic)d=y.saturation-x.saturation;if(!d)d=double(b>>24)-double(a>>24);return d?d:double(a)-double(b);};
+ std::unordered_map<int,Pixel> colors;for(const auto& e:palette_.entries)colors.emplace(e.id,e.color);auto ids=palette_.order();ids.erase(std::remove_if(ids.begin(),ids.end(),[&](int id){return !colors.count(id);}),ids.end());
+ std::stable_sort(ids.begin(),ids.end(),[&](int left,int right){Pixel a=colors.at(left),b=colors.at(right);auto x=values(a),y=values(b);double d=0;
+ switch(mode){case PaletteSortMode::Saturation:d=x.saturation-y.saturation;if(!d)d=x.brightness-y.brightness;break;case PaletteSortMode::Brightness:d=x.brightness-y.brightness;if(!d)d=x.saturation-y.saturation;break;case PaletteSortMode::Luminance:d=x.luminance-y.luminance;if(!d)d=x.brightness-y.brightness;break;case PaletteSortMode::Red:case PaletteSortMode::Green:case PaletteSortMode::Blue:{int first=mode==PaletteSortMode::Red?0:mode==PaletteSortMode::Green?8:16;for(int shift:{first,0,8,16,24}){d=double((a>>shift)&255)-double((b>>shift)&255);if(d)break;}break;}case PaletteSortMode::Alpha:d=double(a>>24)-double(b>>24);break;default:break;}
+ if(!d)d=hue(a,b);return descending?d>0:d<0;});
+ ids.resize(std::max(ids.size(),palette_.slots.size()),0);if(ids==palette_.slots)return false;cancelStroke();Edit e{{},state_,nextState_};e.paletteKind=9;e.beforePalette=PaletteState{};e.afterPalette=PaletteState{};e.beforePalette->entries.clear();e.afterPalette->entries.clear();e.beforePalette->slots=palette_.slots;e.afterPalette->slots=ids;palette_.slots=std::move(ids);pushEdit(std::move(e));return true;
+}
+// legacy paletteGradient/raster HSV and workspace-palette gradientPaletteSlots.
+void Document::gradientPaletteSlots(std::vector<std::size_t> indices,int columns,bool byHue){
+ indices.erase(std::remove_if(indices.begin(),indices.end(),[](auto i){return i>=65536;}),indices.end());std::sort(indices.begin(),indices.end());indices.erase(std::unique(indices.begin(),indices.end()),indices.end());if(indices.size()<2)return;columns=std::clamp(columns,1,64);
+ auto next=palette_;const auto required=indices.back()+1;while(next.slots.size()<required)next.slots.resize(next.slots.size()+columns,0);std::unordered_map<int,std::size_t> positions;for(std::size_t i=0;i<next.entries.size();++i)positions.emplace(next.entries[i].id,i);
+ auto endpoint=[&](std::size_t slot,Pixel fallback){auto found=positions.find(next.slots[slot]);return found==positions.end()?fallback:next.entries[found->second].color;};const auto start=endpoint(indices.front(),palette_.primary),end=endpoint(indices.back(),palette_.secondary);
+ struct Hsv{double h,s,v;};auto hsv=[](Pixel c){double r=(c&255)/255.0,g=((c>>8)&255)/255.0,b=((c>>16)&255)/255.0,max=std::max({r,g,b}),min=std::min({r,g,b}),d=max-min,h=0;if(d>0){if(max==r)h=60*std::fmod((g-b)/d,6);else if(max==g)h=60*((b-r)/d+2);else h=60*((r-g)/d+4);}if(h<0)h+=360;return Hsv{h,max==0?0:d/max,max};};const auto a=hsv(start),b=hsv(end);double hueDelta=b.h-a.h;if(hueDelta>180)hueDelta-=360;else if(hueDelta< -180)hueDelta+=360;
+ auto byte=[](double v){return Pixel(std::clamp(std::floor(v+.5),0.0,255.0));};for(std::size_t i=0;i<indices.size();++i){const double t=double(i)/(indices.size()-1);Pixel color=0;if(byHue){double h=std::fmod(std::fmod(a.h+hueDelta*t,360)+360,360),s=a.s+(b.s-a.s)*t,v=a.v+(b.v-a.v)*t,c=v*s,x=c*(1-std::abs(std::fmod(h/60,2)-1)),m=v-c;double r=0,g=0,bl=0;switch(int(std::floor(h/60))){case 0:r=c;g=x;break;case 1:r=x;g=c;break;case 2:g=c;bl=x;break;case 3:g=x;bl=c;break;case 4:r=x;bl=c;break;default:r=c;bl=x;}color=byte((r+m)*255)|(byte((g+m)*255)<<8)|(byte((bl+m)*255)<<16)|(byte(double(start>>24)+(double(end>>24)-double(start>>24))*t)<<24);}else for(int shift:{0,8,16,24})color|=byte(double((start>>shift)&255)+(double((end>>shift)&255)-double((start>>shift)&255))*t)<<shift;
+ const auto slot=indices[i];auto found=positions.find(next.slots[slot]);if(found!=positions.end())next.entries[found->second].color=color;else{const int id=next.nextId++;const auto number=std::to_string(id);positions.emplace(id,next.entries.size());next.entries.push_back({id,U"颜色 "+std::u32string(number.begin(),number.end()),color});next.slots[slot]=id;}}
+ cancelStroke();Edit e{{},state_,nextState_};e.paletteKind=10;e.beforePalette=palette_;e.afterPalette=next;history_.reserve(position_+1);palette_=std::move(next);pushEdit(std::move(e));
+}
+// legacy workspace-palette.ts paletteOperationIds/applyPaletteColors/reversePaletteColors.
+bool Document::reversePaletteColors(){
+ const auto order=palette_.order();const std::set<int> selected(palette_.selected.begin(),palette_.selected.end());std::unordered_map<int,std::size_t> positions;positions.reserve(palette_.entries.size());for(std::size_t i=0;i<palette_.entries.size();++i)positions.emplace(palette_.entries[i].id,i);std::vector<int> ids;for(int id:order)if(selected.count(id))ids.push_back(id);if(ids.size()<2)ids=order;
+ std::vector<Pixel> colors;colors.reserve(ids.size());for(int id:ids)colors.push_back(palette_.entries[positions.at(id)].color);Edit edit{{},state_,nextState_};edit.paletteKind=8;edit.beforePalette=PaletteState{};edit.afterPalette=PaletteState{};edit.beforePalette->entries.clear();edit.beforePalette->slots.clear();edit.afterPalette->entries.clear();edit.afterPalette->slots.clear();
+ for(std::size_t i=0;i<ids.size();++i){const auto before=colors[i],after=colors[ids.size()-1-i];if(before!=after){edit.beforePalette->entries.push_back({ids[i],U"",before});edit.afterPalette->entries.push_back({ids[i],U"",after});}}
+ if(edit.beforePalette->entries.empty())return false;cancelStroke();history_.reserve(position_+1);for(const auto& source:edit.afterPalette->entries)palette_.entries[positions.at(source.id)].color=source.color;pushEdit(std::move(edit));return true;
 }
 void Document::setPaletteRole(Pixel color,bool secondary,bool locked) {
   const int id=secondary?palette_.secondaryId:palette_.primaryId;
@@ -966,6 +1073,9 @@ void Document::applyExtractedPalette(const std::vector<Pixel>& colors,bool appen
 void Document::applyPaletteEdit(const Edit& edit,bool redo) {
   if(!edit.beforePalette) return;
   const auto& state=redo?*edit.afterPalette:*edit.beforePalette;
+  if(edit.paletteKind==10){palette_.entries=state.entries;palette_.slots=state.slots;palette_.nextId=state.nextId;return;}
+  if(edit.paletteKind==9){palette_.slots=state.slots;return;}
+  if(edit.paletteKind==8){std::unordered_map<int,Pixel> colors;colors.reserve(state.entries.size());for(const auto& source:state.entries)colors.emplace(source.id,source.color);for(auto& entry:palette_.entries)if(auto found=colors.find(entry.id);found!=colors.end())entry.color=found->second;return;}
   if(edit.paletteKind==7){palette_=state;return;}
   if(edit.paletteKind==6){palette_.entries=state.entries;palette_.nextId=state.nextId;palette_.primary=state.primary;palette_.secondary=state.secondary;return;}
   if(edit.paletteKind==5){palette_.slots=state.slots;palette_.selected=state.selected;palette_.primaryId=state.primaryId;return;}
@@ -1008,8 +1118,8 @@ bool Document::commitPaletteReplacement(){
 void Document::acceptSaved(std::string projectId,std::shared_ptr<const std::vector<std::uint8_t>> sourceArchive) {
   if(active()) throw std::logic_error("Cannot accept a saved uncommitted preview");
   if(projectId.empty() || !sourceArchive || sourceArchive->empty()) throw std::invalid_argument("Missing saved project identity or archive");
-  // Caller uses a synchronous encoder/write without pumping input; only invoke
-  // after the exact current generation has been persisted successfully.
+  // Caller must verify the exact current generation has been persisted before
+  // accepting a worker result; detached snapshots never mark the live document.
   projectId_=std::move(projectId);sourceArchive_=std::move(sourceArchive);markSaved();
 }
 void Document::markSaved() {
@@ -1018,7 +1128,11 @@ void Document::markSaved() {
 }
 void Document::commitSelection(std::optional<SelectionMask> before,std::optional<SelectionMask> after,bool resetFrames){commitFloatingPaste();selection_=after;if(selectionEqual(before,after))return;Edit e{{},state_,state_};e.documentChanged=false;e.pixelSelectionEdit=true;e.beforePixelsSelection=std::move(before);e.afterPixelsSelection=std::move(after);if(resetFrames)clearFrameSelection();pushEdit(std::move(e));}
 void Document::selectAllPixels(){commitFloatingPaste();selection_=SelectionMask{0,0,width_,height_,{}};}
-void Document::deselectPixels(){if(floating_){commitFloatingPaste();return;}commitSelection(selection_,{});}
+void Document::selectTimelineCelContent(const std::string& id,bool additive){
+ commitFloatingPaste();const auto* target=timeline_.findCelById(id);if(!target)return;const auto before=selection_;const auto incoming=timeline_.contentSelection(id,width_,height_,!active_);
+ const auto after=combineSelection(before,incoming,additive?1:0);selectTimelineCel(id);selection_=before;commitSelection(before,after);
+}
+void Document::deselectPixels(){commitFloatingPaste();commitSelection(selection_,{});}
 void Document::invertPixels(){if(!selection_)return;commitFloatingPaste();commitSelection(selection_,invertSelection(selection_,width_,height_));}
 std::optional<SelectionClipboard> Document::copyPixels() {if(!selection_)return {};SelectionClipboard out;if(floating_){const auto bounds=transformBounds(floating_->transform);out.width=bounds.width;out.height=bounds.height;out.originX=bounds.x;out.originY=bounds.y;out.pixels.resize(std::size_t(out.width)*out.height);out.mask.resize(out.pixels.size());auto transform=floating_->transform;transform.x-=bounds.x;transform.y-=bounds.y;if(transform.flipOriginX)*transform.flipOriginX-=bounds.x;if(transform.flipOriginY)*transform.flipOriginY-=bounds.y;SelectionRotSpriteSource sampler(floating_->source);auto cells=floating_->rotSprite?rotSpriteSelectionCells(floating_->source,transform,out.width,out.height,sampler):fastSelectionTransformCells(floating_->source,transform,out.width,out.height);for(auto cell:cells){auto i=std::size_t(cell.y)*out.width+cell.x;out.pixels[i]=cell.value;out.mask[i]=1;}if(cells.empty())return {};celClipboard_.clear();frameClipboard_.clear();return out;}const auto clamped=rectangleSelection(selection_->x,selection_->y,selection_->width,selection_->height,width_,height_);if(!clamped)return {};out.width=clamped->width;out.height=clamped->height;out.originX=clamped->x;out.originY=clamped->y;out.pixels.resize(out.width*out.height);out.mask.resize(out.pixels.size());bool any=false;for(int y=0;y<out.height;++y)for(int x=0;x<out.width;++x){const int px=clamped->x+x,py=clamped->y+y;const auto value=pixels()[py*width_+px];if(selectionContains(selection_,px,py) && value>>24){const auto index=y*out.width+x;out.pixels[index]=value;out.mask[index]=1;any=true;}}if(!any)return {};celClipboard_.clear();frameClipboard_.clear();return out;}
 std::optional<SelectionClipboard> Document::copyMergedPixels(){

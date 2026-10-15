@@ -66,3 +66,21 @@ Cel内容标记修正：仅当解析后的RGBA surface含alpha非零像素才画
 链接球接缝修正：原因是逐相邻两格绘制胶囊，中间圆头重叠。改为按连续canonical source整段一次绘制，仅保留首尾圆头，中段复用sheet球中心列；素材本身无需修改。layers-render覆盖球全部7行和所有设备像素的中段一致性，正式Release构建与检查通过，渲染图确认无内部接缝。
 
 选中效果丢失修复：选择状态和外轮廓计算仍正确，paintTimelineGrid的outline循环遗漏drawSelectionBorder实际调用。恢复统一素材绘制入口，保持物理像素坐标、内黑边共网格、白边外扩及自动链接右侧起点。正式Release构建及layers-render三类选择的实际合成像素、逐像素alpha命中检查通过；查看timeline-outline-0图确认图层轮廓恢复。来源覆盖138文件通过，整体迁移仍不完整。
+
+2026-10-15 时间轴滚动范围修正（用户指定）：滚动内容末尾增加一行12基础像素的纵向空白和半个实际帧视口宽度的横向空白。TimelineScrollMetrics 统一提供含留白内容尺寸，供滚动条显示/滑块比例、布局边界、空格/中键平移及播放区边界自动滚动共用。滚轮按完整物理偏移加减并夹取到范围，再分解行列与余数，修复滑块拖动后的不足一行余数导致无法滚回顶部。保留原sheet及半透明效果。新增回归断言：两轴滑块拖至末端的空白尺寸、拖回起点的精确零偏移、部分行余数经向上滚轮归零；沿用旧版 LayersPanel.test.tsx 的scrollTop/scrollLeft边界语义。
+
+本轮验收：正式 Release 构建成功；layers-render、workspace-layout、palette-mouse-startup 三项通过，包含本轮两轴端点和留白断言。来源覆盖172文件及 diff 空白检查通过。主UI编译单元触发MSVC C1128，已仅对main.cpp启用/bigobj完成正式构建。
+
+2026-10-15 完整单元格素材（用户明确替换）：将 codex-clipboard-95f1440c-db7b-472f-a264-028685ab76fe.png 原12×12 RGBA像素复制到 sheet.png (0,644)，新增 timeline.cell 九宫格1/10/1。素材SHA256=139f02eaca0b5c42d6d64d6ce0f1cfc9999f301417c55ee5e33f08887088c41e。保持现有12基础像素步距，每格绘制13×13外框，相邻格子重叠共用1px黑边；名称列按相同九宫格拉伸。保留活动/悬浮背景与选中轮廓，删除背景层另补的格线，避免横向滚动余数使横线比右边框更长。时间轴滚动素材正常及悬浮统一以96/255不透明度 SrcOver 合成（较此前128更柔和）；仍只引用sheet正常/悬浮素材。画布右缘调整1基础像素，共用PixelScrollBar::gridBounds定位及竖条端帽，让右下角与时间轴遵循同一规则。回归覆盖三种物理像素横滚余数的末格描边与空白区、正常/悬浮alpha和不同底色的实际合成颜色，以及画布双滚动条边界。
+
+补充：timeline.cell 同时登记part与style；首次检查发现缺少style映射已补齐。共享右下角现在也复用sheet轨道黑色与timeline.row底色绘制端帽，避免画布继承不同的背景边缘。现有预览栏目新增相对明暗菜单后，其可用性回归断言同步允许已接入的第7项；没有改变菜单功能。
+
+完整边框的右/下共用像素同时计入paintTimelineGrid裁剪剔除范围，修复预览移过单元格右下角时仅4个物理像素的增量/完整重绘差异。图层列宽已由另一任务迁移为动态值，既有选择/交点测试改用实际timelineFrameViewport/timelineLabelWidth坐标，保留原选择数量和像素断言。
+
+最终验收：正式 Release 构建成功；layers-render、workspace-layout、palette-mouse-startup 均通过。检查末格渲染图，右侧空白无延长横线；覆盖增量/完整重绘一致性及滚动条正常/悬浮半透明合成。动态名称列宽还修正了链接球实际绘制的固定横坐标，以及帧头拖选、悬浮采样和选择宽度的旧测试坐标。来源覆盖177文件通过，diff空白检查通过；完整legacy迁移仍有既有缺口。
+
+2026-10-15 首次显示与滚动条透视修正：timelineLabelWidth不再读取按钮isVisible/当前bounds，改按两组播放按钮的布局常量计算最小列宽，避免Aseprite MIT Widget::paintEvent背景绘制临时HIDDEN状态改变布局。滚动条继续使用sheet.png(320..398,620)对应横竖track/normal/hover原素材及96/255整组alpha；可绘制网格范围延续到滚动条下方6基础像素，保留原命中视口、滚动范围与端点留白。新增原生窗口首次帧对照、临时隐藏不变几何、真实DialogBackground合成与重复悬浮重绘检查。
+
+用户后续明确：图层滚动条悬浮不透明度80%，实现为204/255，按住拖动同悬浮；普通仍96/255。两状态均复用sheet原素材，背景恢复后整组只合成一次，防止轨道/滑块重叠和重复重绘叠加不透明度。
+
+本轮最终验收：正式Release构建成功；layer-label-width、layers-render、workspace-layout、palette-mouse-startup共4项通过。首次原生窗口帧已与清洁重绘逐像素比较（排除其它悬浮栏目的遮挡），帧头和cel无需点击即完整显示。真实DialogBackground路径在普通/悬浮两状态及连续两次重绘均与单次sheet合成一致，滑块下方存在真实网格和背景两类像素；已查看timeline-startup-detail与timeline-opacity-compare图。来源覆盖178文件通过，完整legacy迁移仍有既有缺口。

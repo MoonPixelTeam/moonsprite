@@ -18,8 +18,20 @@
 #include <limits>
 #include <stdexcept>
 #include <unordered_set>
+#include <array>
+#include <list>
+#include <mutex>
 
 namespace moon::timeline {
+struct SelectionCacheEntry {std::array<int,6> key;std::optional<SelectionMask> local;std::size_t bytes=0;};
+namespace {
+constexpr std::size_t selectionBudget=4*1024*1024;
+std::list<std::shared_ptr<SelectionCacheEntry>> selectionLru;
+SelectionCacheStats selectionStats;
+std::mutex selectionMutex;
+}
+SelectionCacheStats celSelectionCacheStats(){std::lock_guard<std::mutex> lock(selectionMutex);auto result=selectionStats;result.entries=selectionLru.size();return result;}
+
 namespace {
 void requireId(const std::string& id) {if(id.empty()) throw std::invalid_argument("Timeline ID must not be empty");}
 void checkLayer(const Layer& layer) {
@@ -32,7 +44,12 @@ void checkFrame(const Frame& frame) {
 constexpr std::size_t missing=std::numeric_limits<std::size_t>::max();
 }
 Timeline::Timeline(State state):state_(std::move(state)) {buildIndex();}
+Timeline::Timeline(const Timeline& other):visibleContent_(other.visibleContent_),contentScans_(other.contentScans_),state_(other.state_),layers_(other.layers_),frames_(other.frames_),cels_(other.cels_),slots_(other.slots_),resolved_(other.resolved_) {}
+Timeline& Timeline::operator=(const Timeline& other){if(this!=&other){Timeline copy(other);*this=std::move(copy);}return *this;}
+
 void Timeline::buildIndex() {
+  selectionContent_.clear();
+  visibleContent_.clear();
   layers_.clear();frames_.clear();cels_.clear();slots_.clear();resolved_.clear();
   for(std::size_t i=0;i<state_.layers.size();++i) {
     const auto& layer=state_.layers[i];checkLayer(layer);
@@ -88,7 +105,7 @@ Timeline::CachedResolution Timeline::resolveIndex(const std::string& celId) cons
     const auto& targetId=cel.runtimeSharedCelId?*cel.runtimeSharedCelId:*cel.linkedCelId;
     const auto target=cels_.find(targetId);
     if(target==cels_.end()) return fallback(LinkIssue::MissingTarget,targetId);
-    if(state_.cels[target->second].layerId!=state_.cels[origin->second].layerId) return fallback(LinkIssue::CrossLayer,*cel.linkedCelId);
+    if(state_.cels[target->second].layerId!=state_.cels[origin->second].layerId) return fallback(LinkIssue::CrossLayer,targetId);
     current=target->second;
   }
   const CachedResolution result{current,LinkIssue::None,{}};
@@ -102,6 +119,38 @@ Resolution Timeline::resolveSurface(const std::string& celId) const {
   const auto& source=state_.cels[resolved.index];
   return {&source,source.surface?&*source.surface:nullptr,resolved.issue,resolved.offendingId};
 }
+bool Timeline::hasVisiblePixels(const std::string& celId,bool cache) const {
+  const auto resolved=resolveSurface(celId);
+  if(!resolved.source || !resolved.surface)return false;
+  const auto& id=resolved.source->id;
+  if(cache){const auto found=visibleContent_.find(id);if(found!=visibleContent_.end())return found->second;}
+  ++contentScans_;
+  const auto& pixels=resolved.surface->pixels;
+  const bool value=std::any_of(pixels.begin(),pixels.end(),[](Pixel p){return (p>>24)!=0;});
+  if(cache)visibleContent_[id]=value;
+  return value;
+}
+// legacy animation-cel-content-cache.ts: local masks, private copies and global bounded LRU.
+// Native owned value storage uses the existing write barriers in place of JS storage revisions.
+std::optional<SelectionMask> Timeline::contentSelection(const std::string& celId,int canvasWidth,int canvasHeight,bool cache) const {
+ const auto resolved=resolveSurface(celId);if(!resolved.source || !resolved.surface)return {};
+ const auto& surface=*resolved.surface;const int left=std::max(0,-surface.offsetX),top=std::max(0,-surface.offsetY),right=std::min(surface.width,canvasWidth-surface.offsetX),bottom=std::min(surface.height,canvasHeight-surface.offsetY);if(right<=left || bottom<=top)return {};
+ const std::array<int,6> key{surface.width,surface.height,left,top,right,bottom};
+ auto placed=[&](std::optional<SelectionMask> local){if(local){local->x+=surface.offsetX;local->y+=surface.offsetY;}return local;};
+ std::lock_guard<std::mutex> lock(selectionMutex);
+ auto previous=selectionContent_.find(resolved.source->id);
+ auto entry=previous==selectionContent_.end()?std::shared_ptr<SelectionCacheEntry>{}:previous->second.lock();
+ if(cache && entry && entry->key==key){const auto found=std::find(selectionLru.begin(),selectionLru.end(),entry);if(found!=selectionLru.end()){++selectionStats.hits;selectionLru.splice(selectionLru.end(),selectionLru,found);return placed(entry->local);}}
+ if(cache && entry){const auto found=std::find(selectionLru.begin(),selectionLru.end(),entry);if(found!=selectionLru.end()){selectionStats.bytes-=entry->bytes;selectionLru.erase(found);}selectionContent_.erase(resolved.source->id);}
+ ++selectionStats.builds;
+ int minX=right,minY=bottom,maxX=-1,maxY=-1;
+ for(int y=top;y<bottom;++y)for(int x=left;x<right;++x)if(surface.pixels[std::size_t(y)*surface.width+x]>>24){minX=std::min(minX,x);minY=std::min(minY,y);maxX=std::max(maxX,x);maxY=std::max(maxY,y);}
+ std::optional<SelectionMask> local;
+ if(maxX>=minX && maxY>=minY){SelectionMask mask{minX,minY,maxX-minX+1,maxY-minY+1,{}};mask.mask.resize(std::size_t(mask.width)*mask.height);std::size_t count=0;for(int y=minY;y<=maxY;++y)for(int x=minX;x<=maxX;++x){const bool opaque=(surface.pixels[std::size_t(y)*surface.width+x]>>24)!=0;mask.mask[std::size_t(y-minY)*mask.width+x-minX]=opaque;count+=opaque;}if(count==mask.mask.size())std::vector<unsigned char>{}.swap(mask.mask);local=std::move(mask);}
+ const auto bytes=local?local->mask.size():0;
+ if(cache && bytes<=selectionBudget){while(selectionStats.bytes+bytes>selectionBudget || selectionLru.size()>=256){selectionStats.bytes-=selectionLru.front()->bytes;selectionLru.pop_front();++selectionStats.evictions;}auto next=std::make_shared<SelectionCacheEntry>(SelectionCacheEntry{key,std::move(local),bytes});selectionContent_[resolved.source->id]=next;selectionLru.push_back(next);selectionStats.bytes+=bytes;return placed(next->local);}
+ return placed(std::move(local));
+}
 std::vector<LinkDiagnostic> Timeline::diagnoseLinks() const {
   std::vector<LinkDiagnostic> diagnostics;
   for(const auto& cel:state_.cels) {
@@ -109,6 +158,11 @@ std::vector<LinkDiagnostic> Timeline::diagnoseLinks() const {
     if(result.issue!=LinkIssue::None) diagnostics.push_back({cel.id,result.issue,result.offendingId});
   }
   return diagnostics;
+}
+bool Timeline::isKnownEmpty(const std::string& celId) const {
+  const auto resolved=resolveSurface(celId);if(!resolved.source || !resolved.surface)return false;
+  const auto found=visibleContent_.find(resolved.source->id);
+  return found!=visibleContent_.end() && !found->second;
 }
 void Timeline::addLayer(Layer layer) {
   checkLayer(layer);if(layers_.count(layer.id)) throw std::invalid_argument("Duplicate layer ID: "+layer.id);
@@ -135,6 +189,8 @@ void Timeline::addCel(Cel cel) {
   resolved_.clear();
 }
 Surface* Timeline::mutableOwnedSurface(const std::string& ownerCelId) {
+  selectionContent_.erase(ownerCelId);
+  visibleContent_.erase(ownerCelId);
   const auto found=cels_.find(ownerCelId);
   if(found==cels_.end()) return nullptr;
   auto& source=state_.cels[found->second];return source.surface?&*source.surface:nullptr;
@@ -146,6 +202,7 @@ PixelChange Timeline::setPixel(const std::string& celId,std::size_t localIndex,P
   if(!owner.surface) throw std::logic_error("Cannot paint an unmaterialized cel surface");
   if(localIndex>=owner.surface->pixels.size()) throw std::out_of_range("Pixel outside cel surface");
   PixelChange change{owner.id,localIndex,owner.surface->pixels[localIndex],color,result.issue};
+  if(change.changed()){selectionContent_.erase(owner.id);visibleContent_.erase(owner.id);}
   owner.surface->pixels[localIndex]=color;
   return change;
 }

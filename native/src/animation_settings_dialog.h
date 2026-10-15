@@ -1,0 +1,64 @@
+#pragma once
+#include "animation_settings.h"
+#include "native_widgets.h"
+#include "native_color_picker.h"
+#include "ui_scale.h"
+#include "ui/popup_window.h"
+#include "ui/resize_event.h"
+#include "ui/message.h"
+#include <regex>
+#include <sstream>
+#include <cmath>
+namespace moon {
+class AnimationSettingNumber final:public PixelEntry {
+public:
+ double value=0,maximum=100;std::function<void(double)> committed;
+ using PixelEntry::PixelEntry;
+ void sync(double next){value=next;std::ostringstream out;out.precision(17);out<<next;setText(out.str());}
+ void commit(){if(!commitExpression()){sync(value);return;}try{const double next=std::stod(text());if(!std::isfinite(next)){sync(value);return;}sync(std::clamp(next,0.,maximum));if(committed)committed(value);}catch(...){sync(value);}}
+ bool onProcessMessage(ui::Message* msg)override{if(msg->type()==ui::kKeyDownMessage&&static_cast<ui::KeyMessage*>(msg)->scancode()==ui::kKeyEnter){commit();return true;}return PixelEntry::onProcessMessage(msg);}
+};
+class AnimationColorPopup final:public PixelPopupWindow {
+ const PixelFont& font_;const Skin& skin_;NativeColorPicker* picker_;PixelEntry* hex_;PixelButton* close_;std::uint32_t value_;std::function<void(std::uint32_t)> changed_;
+ static std::string hex(std::uint32_t c){static const char digits[]="0123456789ABCDEF";std::string s="#";for(int shift:{0,8,16,24}){const auto b=(c>>shift)&255;s+=digits[b>>4];s+=digits[b&15];}return s;}
+public:
+ AnimationColorPopup(const PixelFont& font,const Skin& skin,const std::filesystem::path& markers,std::uint32_t value,std::function<void(std::uint32_t)> changed):PixelPopupWindow("",ui::PopupWindow::ClickBehavior::CloseOnClickInOtherWindow),font_(font),skin_(skin),value_(value),changed_(std::move(changed)){
+  setAutoRemap(false);setWantFocus(true);setEnterBehavior(ui::PopupWindow::EnterBehavior::DoNothingOnEnter);picker_=new NativeColorPicker(font,skin,markers);addChild(picker_);hex_=new PixelEntry(font,skin);addChild(hex_);hex_->setText(hex(value));picker_->syncColors(value,value);picker_->changed=[this](std::uint32_t c,bool){value_=c;hex_->setText(hex(c));changed_(c);};
+  auto update=[this]{auto s=hex_->text();if(!s.empty()&&s[0]=='#')s.erase(0,1);if(s.size()!=6&&s.size()!=8)return;std::uint32_t c=s.size()==6?value_&0xff000000:0;for(std::size_t i=0;i<s.size()/2;++i){const auto byte=s.substr(i*2,2);if(byte.find_first_not_of("0123456789abcdefABCDEF")!=std::string::npos)return;c|=std::uint32_t(std::stoul(byte,nullptr,16))<<(i*8);}value_=c;picker_->syncColors(c,c);changed_(c);};hex_->Change.connect(update);hex_->blur=[this,update]{update();hex_->setText(hex(value_));};hex_->accept=hex_->blur;close_=new PixelButton(font,skin,U"关闭",[this]{picker_->finishInteraction();closeWindow(nullptr);});addChild(close_);
+ }
+ ~AnimationColorPopup(){picker_->finishInteraction();}
+ void smoke(){hex_->setText("#12345678");hex_->Change();if(value_!=0x78563412)throw std::runtime_error("Animation color RGBA alpha input");hex_->setText("#ABCDEF");hex_->Change();if(value_!=0x78efcdab)throw std::runtime_error("Animation color RGB preserves alpha");picker_->changed(0x40332211,false);if(value_!=0x40332211||hex_->text()!="#11223340")throw std::runtime_error("Animation native picker output");}
+ void onResize(ui::ResizeEvent& ev)override{setBoundsQuietly(ev.bounds());auto r=bounds();picker_->setBounds({r.x+5*uiScale,r.y+20*uiScale,r.w-10*uiScale,r.h-51*uiScale});hex_->setBounds({r.x+5*uiScale,r.y2()-25*uiScale,106*uiScale,18*uiScale});close_->setBounds({r.x2()-60*uiScale,r.y2()-25*uiScale,55*uiScale,18*uiScale});}
+ void onPaint(ui::PaintEvent& ev)override{auto& g=*ev.graphics();UiPaintScale scale(g);auto r=uiLogical(clientBounds());g.fillRect(skin_["panel"],r);skin_.draw(g,"panel_outer",r);font_.draw(g,U"洋葱皮颜色 RGBA",r.x+5,r.y+5,skin_["text"]);}
+ bool onProcessMessage(ui::Message* msg)override{if(msg->type()==ui::kMouseLeaveMessage)return true;if(msg->type()==ui::kCloseMessage)picker_->finishInteraction();return ui::PopupWindow::onProcessMessage(msg);}
+};
+class AnimationSettingsDialog final:public PixelPopupWindow {
+ const PixelFont& font_;const Skin& skin_;const Skin& icons_;std::filesystem::path markers_;
+ animationprefs::Settings& settings_;std::function<void()> changed_;
+ PixelButton *skip_,*enabled_,*playback_,*scope_[2],*colors_[2],*close_,*headerClose_,*reset_;
+ AnimationSettingNumber* values_[4];PixelSlider* opacity_[2];int shownOpacity_=-1;
+ std::u32string error_;bool updating_=false,colorOpen_=false;int drag_=0;gfx::Point press_;gfx::Rect before_;
+ double numeric(int i)const{return i==0?settings_.onion.previousFrames:i==1?settings_.onion.nextFrames:i==2?settings_.onion.previousOpacity:settings_.onion.nextOpacity;}
+ void commitNumeric(int i,double value){const double next=value;auto& o=settings_.onion;double* target=i==0?&o.previousFrames:i==1?&o.nextFrames:i==2?&o.previousOpacity:&o.nextOpacity;*target=std::clamp(next,0.,i<2?8.:100.);apply();}
+ void checkbox(PixelButton* b,bool value){b->active=value;b->icon=value?"checkboxChecked":"checkboxUnchecked";b->invalidate();}
+ void apply(){changed_();sync();}
+ void color(int index,bool verify=false){commitInputs();colorOpen_=true;setClickBehavior(ui::PopupWindow::ClickBehavior::DoNothingOnClick);AnimationColorPopup popup(font_,skin_,markers_,index?settings_.onion.nextColor:settings_.onion.previousColor,[this,index](std::uint32_t c){(index?settings_.onion.nextColor:settings_.onion.previousColor)=c;apply();});popup.setDisplay(display(),false);auto r=bounds();popup.setBounds({r.x+10,r.y+40,400,440});ui::Timer timer(50,&popup);if(verify){timer.Tick.connect([&]{popup.smoke();timer.stop();popup.closeWindow(nullptr);});timer.start();}popup.openWindowInForeground();colorOpen_=false;setClickBehavior(ui::PopupWindow::ClickBehavior::CloseOnClickInOtherWindow);requestFocus();}
+public:
+ AnimationSettingsDialog(const PixelFont& font,const Skin& skin,const Skin& icons,const std::filesystem::path& markers,animationprefs::Settings& settings,std::function<void()> changed):PixelPopupWindow("",ui::PopupWindow::ClickBehavior::CloseOnClickInOtherWindow),font_(font),skin_(skin),icons_(icons),markers_(markers),settings_(settings),changed_(std::move(changed)){
+  setAutoRemap(false);setWantFocus(true);setEnterBehavior(ui::PopupWindow::EnterBehavior::DoNothingOnEnter);auto button=[&](const char32_t* title,std::function<void()> action){auto b=new PixelButton(font,skin,title,action);addChild(b);return b;};
+  skip_=button(U"跳过停用帧",[this]{settings_.skipDisabledFrames=!settings_.skipDisabledFrames;apply();});enabled_=button(U"启用洋葱皮",[this]{auto& o=settings_.onion;o.enabled=!o.enabled;if(o.enabled)o.showDuringPlayback=true;apply();});playback_=button(U"播放时显示",[this]{settings_.onion.showDuringPlayback=!settings_.onion.showDuringPlayback;apply();});for(auto b:{skip_,enabled_,playback_}){b->iconSkin=&icons_;b->bareIconWithCaption=true;}
+  for(int i=0;i<2;++i){scope_[i]=button(i?U"所有图层":U"当前图层",[this,i]{settings_.onion.allLayers=i!=0;apply();});colors_[i]=button(U"",[this,i]{color(i);});colors_[i]->skinStyle="color-value";colors_[i]->colorRole=true;}
+  for(int i=0;i<4;++i){auto e=new AnimationSettingNumber(font,skin);values_[i]=e;e->numeric=true;e->maximum=i<2?8:100;e->suffix=i<2?U"":U"%";addChild(e);e->committed=[this,i](double v){commitNumeric(i,v);};e->blur=[e]{e->commit();};e->wheel=[this,i,e](int delta){commitNumeric(i,numeric(i)+delta);e->sync(numeric(i));};if(i>=2)e->focus=[this,i]{shownOpacity_=i-2;layoutControls();};}
+  for(int i=0;i<2;++i){auto slider=new PixelSlider(font,skin);opacity_[i]=slider;slider->minimum=0;slider->maximum=100;slider->changed=[this,i](int value){commitNumeric(i+2,value);};addChild(slider);}
+  close_=button(U"关闭",[this]{commitInputs();closeWindow(nullptr);});headerClose_=button(U"",[this]{commitInputs();closeWindow(nullptr);});headerClose_->iconSkin=&icons_;headerClose_->icon="close";headerClose_->skinStyle="icon_button";reset_=button(U"重置",[this]{settings_=animationprefs::Settings{};shownOpacity_=-1;apply();});reset_->iconSkin=&icons_;reset_->icon="restore";reset_->iconWithCaption=true;sync();
+ }
+ void commitInputs(){for(auto e:values_)if(e->hasFocus())e->commit();}
+ void setError(std::u32string error){error_=std::move(error);invalidate();}
+ void sync(){updating_=true;checkbox(skip_,settings_.skipDisabledFrames);checkbox(enabled_,settings_.onion.enabled);checkbox(playback_,settings_.onion.showDuringPlayback);for(int i=0;i<4;++i)if(!values_[i]->hasFocus())values_[i]->sync(numeric(i));for(int i=0;i<2;++i){scope_[i]->active=settings_.onion.allLayers==(i!=0);colors_[i]->swatch=i?settings_.onion.nextColor:settings_.onion.previousColor;colors_[i]->invalidate();opacity_[i]->value=int(std::floor(numeric(i+2)+.5));opacity_[i]->invalidate();}updating_=false;layoutControls();invalidate();}
+ void layoutControls(){if(bounds().isEmpty())return;auto r=bounds();auto place=[&](ui::Widget* w,gfx::Rect b){w->setBounds(uiPhysical(b).offset(r.origin()));};const int width=r.w/uiScale;place(headerClose_,{width-20,3,15,16});place(skip_,{6,25,width-12,18});place(enabled_,{6,68,width-12,18});const bool enabled=settings_.onion.enabled;place(playback_,{6,91,width-12,18});playback_->setVisible(enabled);for(int i=0;i<2;++i){place(scope_[i],{54+i*(width-60)/2,114,(width-62)/2,18});scope_[i]->setVisible(enabled);place(colors_[i],{54+i*(width-60)/2,230,(width-62)/2,18});colors_[i]->setVisible(enabled);place(opacity_[i],{54+i*(width-60)/2,205,(width-62)/2,18});opacity_[i]->setVisible(enabled&&shownOpacity_==i);}for(int i=0;i<4;++i){place(values_[i],{54+(i%2)*(width-60)/2,i<2?160:183,(width-62)/2,18});values_[i]->setVisible(enabled);}place(reset_,{6,r.h/uiScale-24,55,18});place(close_,{width-61,r.h/uiScale-24,55,18});}
+ void onResize(ui::ResizeEvent& ev)override{setBoundsQuietly(ev.bounds());layoutControls();}
+ void onPaint(ui::PaintEvent& ev)override{auto& g=*ev.graphics();UiPaintScale scale(g);auto r=uiLogical(clientBounds());g.fillRect(skin_["panel"],r);skin_.draw(g,"panel_outer",r);auto text=[&](const char32_t* s,int x,int y){font_.draw(g,s,r.x+x,r.y+y,skin_["text"]);};text(U"动画设置",6,6);text(U"洋葱皮",6,51);if(settings_.onion.enabled){text(U"范围",6,118);const int w=r.w; text(U"前面",54,143);text(U"后面",54+(w-60)/2,143);text(U"帧数",6,164);text(U"不透明度",6,187);text(U"颜色",6,234);}font_.draw(g,error_.empty()?U"更改即时生效":error_,r.x+6,r.y2()-42,skin_["text"]);}
+ bool onProcessMessage(ui::Message* msg)override{if(colorOpen_&&msg->fromFilter())return false;if(msg->type()==ui::kMouseLeaveMessage)return true;if(msg->type()==ui::kCloseMessage){commitInputs();if(hasCapture())releaseMouse();drag_=0;}if(msg->type()==ui::kKeyDownMessage&&static_cast<ui::KeyMessage*>(msg)->scancode()==ui::kKeyEsc){commitInputs();closeWindow(nullptr);return true;}if(msg->type()==ui::kMouseDownMessage&&!msg->fromFilter()){auto m=static_cast<ui::MouseMessage*>(msg);auto p=uiLocalPoint(m->position(),bounds().origin());if(m->left()&&p.y<20){drag_=1;press_=m->position();before_=bounds();captureMouse();return true;}if(shownOpacity_>=0){shownOpacity_=-1;layoutControls();}}if(msg->type()==ui::kMouseMoveMessage&&drag_&&hasCapture()){setBounds(gfx::Rect(before_).offset(static_cast<ui::MouseMessage*>(msg)->position()-press_));return true;}if(msg->type()==ui::kMouseUpMessage&&drag_){drag_=0;if(hasCapture())releaseMouse();return true;}return ui::PopupWindow::onProcessMessage(msg);}
+ void smoke(){const auto original=settings_;skip_->Click();if(settings_.skipDisabledFrames==original.skipDisabledFrames)throw std::runtime_error("Animation skip toggle");settings_.onion.enabled=false;settings_.onion.showDuringPlayback=false;sync();enabled_->Click();if(!settings_.onion.enabled||!settings_.onion.showDuringPlayback||!values_[0]->isVisible())throw std::runtime_error("Onion enabled control transition");playback_->Click();scope_[1]->Click();if(settings_.onion.showDuringPlayback||!settings_.onion.allLayers)throw std::runtime_error("Onion scope/playback UI");values_[0]->setText("2+3");ui::KeyMessage enter(ui::kKeyDownMessage,ui::kKeyEnter,ui::kKeyNoneModifier,0,0);values_[0]->onProcessMessage(&enter);values_[2]->setText("32.5");values_[2]->commit();if(settings_.onion.previousOpacity!=32.5)throw std::runtime_error("Onion live fractional opacity");values_[2]->setText("125");values_[2]->commit();if(settings_.onion.previousFrames!=5||settings_.onion.previousOpacity!=100)throw std::runtime_error("Onion number expressions/clamp");opacity_[1]->changed(17);if(settings_.onion.nextOpacity!=17)throw std::runtime_error("Onion opacity slider");color(0,true);if(settings_.onion.previousColor!=0x40332211)throw std::runtime_error("Animation color live settings");reset_->Click();if(settings_.onion.enabled||!settings_.skipDisabledFrames||settings_.onion.previousColor!=0xff5053ef)throw std::runtime_error("Animation scoped defaults");settings_=original;sync();changed_();}
+};
+}

@@ -54,6 +54,10 @@ StaticImageExport buildSpriteSheetImage(const Document& d,const SpriteSheetOptio
  for(const auto& part:parts){for(int y=0;y<part.height;++y)std::copy_n(part.pixels.begin()+std::size_t(y)*part.width,part.width,image.pixels.begin()+std::size_t(top+y)*width);top+=part.height;}
  return image;
 }
-StaticImageExport encodeSpriteSheet(const Document& d,const SpriteSheetOptions& o){auto image=buildSpriteSheetImage(d,o);return encodeRgbaImagePng(image.width,image.height,std::move(image.pixels));}
+Document createSpriteSheetDocument(const Document& d,const SpriteSheetOptions& o){
+ auto image=buildSpriteSheetImage(d,o);
+ return Document::fromSpriteSheetRaster(image.width,image.height,std::move(image.pixels),d.name()+U" - 精灵表");
+}
+StaticImageExport encodeSpriteSheet(const Document& d,const SpriteSheetOptions& o){auto image=buildSpriteSheetImage(d,o);return encodeImagePng(image.width,image.height,std::move(image.pixels),true);}
 
 }

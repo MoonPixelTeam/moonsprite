@@ -14,5 +14,6 @@ struct SpriteSheetOptions {
 struct SheetMetrics {int columns=0,rows=0,width=0,height=0;};
 SheetMetrics spriteSheetMetrics(int count,int width,int height,const SpriteSheetOptions& options);
 StaticImageExport buildSpriteSheetImage(const Document& document,const SpriteSheetOptions& options);
+Document createSpriteSheetDocument(const Document& document,const SpriteSheetOptions& options);
 StaticImageExport encodeSpriteSheet(const Document& document,const SpriteSheetOptions& options);
 }

@@ -1,0 +1,23 @@
+#include "document.h"
+#include "project_encode.h"
+#include "project_import.h"
+#include <iostream>
+using namespace moon;
+static void check(bool value,const char* message){if(!value)throw std::runtime_error(message);}
+static void point(Document& d,int x,int y,Pixel p){d.beginStroke({x,y},p);d.commitStroke();}
+static void roundtrip(const Document& d){auto bytes=project::encodeEditableProject(d);auto loaded=project::prepareEditableImport(project::readProjectManifest(bytes.bytes));check(loaded.width==d.width()&&loaded.height==d.height(),"Crop persisted dimensions");timeline::Timeline restored(std::move(loaded.timeline));for(const auto& c:d.timeline().state().cels){const auto* next=restored.findCelById(c.id);check(next && next->linkedCelId==c.linkedCelId,"Crop persisted links");auto a=d.timeline().resolveSurface(c.id),b=restored.resolveSurface(c.id);check(a.surface&&b.surface&&a.surface->pixels==b.surface->pixels,"Crop persisted pixels");}}
+int main(){try{
+ // Exact legacy workspace.test.ts crop-selection fixture, plus pivot/history.
+ Document d(4,3);point(d,2,1,0xff0000ff);point(d,1,2,0xffff0000);d.previewSelection(SelectionMask{1,1,2,2,{}});auto before=d.pixels();auto h=d.historySize();
+ check(d.cropCanvas(TransformPoint{2.5,2.5}),"Crop apply");check(d.width()==2&&d.height()==2&&d.pixels()==std::vector<Pixel>{0,0xff0000ff,0xffff0000,0},"Legacy crop expected pixels");check(d.selection()->x==0&&d.selection()->width==2&&d.historySize()==h+1,"Crop selection/history");check(d.selectionPivotHistory().pivot->x==1.5,"Crop pivot");
+ d.undo();check(d.width()==4&&d.height()==3&&d.pixels()==before&&d.selection()->x==1&&d.selectionPivotHistory().pivot->x==2.5,"Crop undo");d.redo();roundtrip(d);
+ // Crop uses the rectangle even when only its interior mask point is selected.
+ Document masked(6,4);point(masked,1,1,0xff123456);masked.previewSelection(SelectionMask{1,1,3,2,{0,0,0,0,1,0}});check(masked.cropCanvas(),"Masked crop");check(masked.width()==3&&masked.height()==2&&masked.pixels()[0]==0xff123456&&masked.selection()->x==1&&masked.selection()->y==1,"Mask bounds do not trim crop rectangle");
+ Document clipped(4,3);point(clipped,1,0,0xffabcdef);clipped.previewSelection(SelectionMask{-2,-1,4,3,{}});check(clipped.cropCanvas()&&clipped.width()==2&&clipped.height()==2&&clipped.pixels()[1]==0xffabcdef,"Canvas-clipped selection");
+ Document empty(4,3);auto serial=empty.selectionPivotHistory().serial;bool failed=false;try{empty.cropCanvas();}catch(const std::runtime_error&){failed=true;}check(failed&&!empty.dirty()&&empty.historySize()==0&&empty.selectionPivotHistory().serial==serial,"No selection failure unchanged");empty.previewSelection(SelectionMask{8,8,1,1,{}});failed=false;try{empty.cropCanvas();}catch(const std::runtime_error&){failed=true;}check(failed&&empty.width()==4&&!empty.dirty(),"Outside selection failure unchanged");
+ // Legacy crop has no full-canvas early return, unlike trim.
+ Document full(2,2);full.previewSelection(SelectionMask{0,0,2,2,{}});check(full.cropCanvas()&&full.historySize()==1,"Full canvas crop records resize history");
+ Document animation(5,3);point(animation,2,1,0xff102030);animation.addLinkedFrame();animation.addFrame();point(animation,3,1,0xff405060);animation.setSelectedFramesDisabled(true);animation.addLayer();point(animation,2,1,0xff708090);animation.setLayerVisible(false);animation.previewSelection(SelectionMask{2,1,2,1,{}});auto state=animation.timeline().state();timeline::Timeline prior(state);h=animation.historySize();check(animation.cropCanvas(),"Animation crop");check(animation.width()==2&&animation.historySize()==h+1,"All cel one history");for(const auto& cel:state.cels){auto old=prior.resolveSurface(cel.id);auto now=animation.timeline().resolveSurface(cel.id);check(now.surface&&now.surface->pixels==std::vector<Pixel>{old.surface->pixels[7],old.surface->pixels[8]},"All frame/layer crop pixels");}check(animation.timeline().state().frames[2].disabled,"Disabled metadata retained");roundtrip(animation);animation.undo();check(animation.width()==5,"Animation crop undo");animation.redo();check(animation.width()==2,"Animation crop redo");
+ Document floating(4,3);point(floating,1,1,0xff010203);floating.previewSelection(SelectionMask{1,1,1,1,{}});floating.nudgeSelectionContent(1,0);h=floating.historySize();check(floating.cropCanvas()&&floating.historySize()==h+2&&floating.pixels()[0]==0xff010203,"Floating commit before crop");floating.undo();check(floating.width()==4&&floating.pixels()[6]==0xff010203,"Undo crop retains committed move");floating.undo();check(floating.pixels()[5]==0xff010203,"Undo prior move");
+ std::cout<<"Canvas crop checks passed\n";return 0;
+}catch(const std::exception& e){std::cerr<<e.what()<<'\n';return 1;}}

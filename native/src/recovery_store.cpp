@@ -27,6 +27,11 @@ void writeRecoveryFiles(const std::filesystem::path& directory,const RecoveryRec
 }
 void removeOwnedRecovery(const std::filesystem::path& directory,const std::string& id){
  if(!isSafeRecoveryId(id))throw std::invalid_argument("Invalid recovery ID");
- std::filesystem::remove(directory/std::filesystem::u8path(id+".json"));std::filesystem::remove(directory/std::filesystem::u8path(id+".moonsprite"));
+ // Match legacy's payload-before-sidecar order. If a payload is locked, its
+ // discovery metadata must survive so the recovery remains visible.
+ auto remove=[&](const char* suffix){std::error_code error;std::filesystem::remove(directory/std::filesystem::u8path(id+suffix),error);if(error)throw std::runtime_error(std::string("Cannot remove owned recovery ")+suffix+" (Windows "+std::to_string(error.value())+")");};
+ // filesystem_error::what() may contain ACP-encoded Windows paths. Keep the
+ // error channel ASCII/UTF-8 instead of throwing while formatting that error.
+ remove(".moonsprite");remove(".json");
 }
 }

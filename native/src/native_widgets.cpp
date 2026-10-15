@@ -2,10 +2,12 @@
 #include <locale>
 #include <sstream>
 #include <cmath>
+#include <chrono>
 #include "native_widgets.h"
 #include "color_value_ui.h"
 #include "ui_scale.h"
 #include "ui/message.h"
+#include "ui/manager.h"
 #include "os/sampling.h"
 #include "include/core/SkShader.h"
 #include "include/core/SkTileMode.h"
@@ -15,6 +17,23 @@
 #include <stdexcept>
 
 namespace moon {
+void PixelPopupWindow::setBounds(const gfx::Rect& rect) {
+  if(rect==bounds())return;
+  // Aseprite Window::moveWindow(false): retain the old drawable region before
+  // layout changes, repaint the new window, and expose old-minus-new below it.
+  // moveWindow itself is private; custom native layouts need this small adapter.
+  auto* mgr=parent()?manager():nullptr;
+  gfx::Region before,after,exposed;
+  if(mgr)getDrawableRegion(before,ui::Widget::kCutTopWindowsAndUseChildArea);
+  ui::PopupWindow::setBounds(rect);
+  if(mgr){
+    getDrawableRegion(after,ui::Widget::kCutTopWindowsAndUseChildArea);
+    exposed.createSubtraction(before,after);
+    invalidateRegion(after);
+    mgr->invalidateRegion(exposed);
+    mgr->_updateMouseWidgets();
+  }
+}
 Skin Skin::load(const std::filesystem::path& path) {
   Skin skin; std::ifstream file(path);
   if(!file) throw std::runtime_error("Skin cannot be read");
@@ -178,18 +197,57 @@ public:
   ~PhysicalViewportClip(){g_.restoreClip();}
 };
 }
+void Skin::drawCheckbox(ui::Graphics& g,gfx::Rect row,bool checked,bool hover,bool pressed,bool enabled) const {
+  const int opacity=enabled?255:115;
+  if(enabled && (pressed || hover))draw(g,pressed?"checkbox.pressed":"checkbox.hover",row,false,opacity);
+  draw(g,checked?"checkbox.checked":"checkbox.unchecked",{row.x+4,row.y+(row.h-7)/2,7,7},false,opacity);
+}
+PixelCheckbox::PixelCheckbox(const PixelFont& font,const Skin& skin,std::u32string label,bool checked,std::function<void(bool)> changed)
+  :PixelButton(font,skin,std::move(label),[]{}) {
+  skinStyle="checkbox";active=checked;
+  Click.connect([this,changed=std::move(changed)]{if(!isEnabled())return;active=!active;invalidate();if(changed)changed(active);});
+}
+PixelSwitch::PixelSwitch(const PixelFont& font,const Skin& skin,std::u32string label,bool checked,std::function<void(bool)> changed)
+  :PixelButton(font,skin,std::move(label),[]{}) {
+  if(caption.empty())throw std::invalid_argument("PixelSwitch requires a text label");
+  skinStyle="switch";active=checked;
+  Click.connect([this,changed=std::move(changed)]{if(!isEnabled())return;active=!active;invalidate();if(changed)changed(active);});
+}
+bool PixelSwitch::onProcessMessage(ui::Message* msg) {
+  // Legacy input[type=checkbox] uses Space, rather than Enter, to toggle.
+  if(msg->type()==ui::kKeyDownMessage || msg->type()==ui::kKeyUpMessage){const auto key=static_cast<ui::KeyMessage*>(msg);if(key->scancode()==ui::kKeyEnter || key->scancode()==ui::kKeyEnterPad)return false;}
+  return PixelButton::onProcessMessage(msg);
+}
 PixelScrollBar::PixelScrollBar(const Skin& skin,bool vertical)
   :ui::ScrollBar(vertical?ui::VERTICAL:ui::HORIZONTAL,this),skin_(skin),vertical_(vertical) {
   setBorder(gfx::Border(0));setBarWidth(7*uiScale);setVisible(false);
 }
 void PixelScrollBar::configure(int total,int page,int value) {
-  total_=std::max(0,total);page_=std::max(1,page);value_=std::clamp(value,0,std::max(0,total_-page_));
+  total=std::max(0,total);page=std::max(1,page);value=std::clamp(value,0,std::max(0,total-page));
+  if(total_==total && page_==page && value_==value)return;
+  total_=total;page_=page;value_=value;
   setSize(total_);setPos(value_);
 }
 void PixelScrollBar::setDockBounds(gfx::Rect track) {
   // Layout reserves six pixels: the seventh shares the content's outer edge.
   // Do not add another black strip or inset the thumb inside the track.
   setBounds(track);
+}
+gfx::Rect PixelScrollBar::edgeBounds(gfx::Rect frame,bool vertical) {
+  const int thickness=7*uiScale;
+  if(vertical){frame.x=frame.x2()-thickness;frame.w=thickness;}
+  else{frame.y=frame.y2()-thickness;frame.h=thickness;}
+  return frame;
+}
+void PixelScrollBar::setMaterialOpacity(int opacity,int hoverOpacity) {
+  materialOpacity_=std::clamp(opacity,0,255);
+  materialHoverOpacity_=hoverOpacity<0?materialOpacity_:std::clamp(hoverOpacity,0,255);
+  // The editor composites the clipped background before this material. Keep
+  // an opaque widget region so invalidation cannot escape into other panels.
+  setTransparent(false);invalidate();
+}
+gfx::Rect PixelScrollBar::gridBounds(gfx::Rect viewport,bool vertical) {
+  return vertical?gfx::Rect(viewport.x2(),viewport.y-uiScale,7*uiScale,viewport.h+2*uiScale):gfx::Rect(viewport.x,viewport.y2(),viewport.w,7*uiScale);
 }
 void PixelScrollBar::setViewScroll(const gfx::Point& point) {
   const int next=std::clamp(vertical_?point.y:point.x,0,std::max(0,total_-page_));
@@ -206,10 +264,20 @@ gfx::Rect PixelScrollBar::thumbBounds() {
 void PixelScrollBar::onPaint(ui::PaintEvent& ev) {
   auto& g=*ev.graphics();
   const std::string prefix=vertical_?"scrollbar.vertical.":"scrollbar.horizontal.";
-  {UiPaintScale scale(g);skin_.draw(g,prefix+"track",uiLogical(clientBounds()));}
   const auto thumb=thumbBounds().offset(-bounds().origin());
-  UiPaintScale scale(g,thumb.origin());
-  skin_.draw(g,prefix+(thumbHover_ || hasCapture()?"hover":"normal"),uiLogical(gfx::Rect(0,0,thumb.w,thumb.h)));
+  auto paint=[&](ui::Graphics& target){
+    {UiPaintScale scale(target);skin_.draw(target,prefix+"track",uiLogical(clientBounds()));}
+    UiPaintScale scale(target,thumb.origin());
+    skin_.draw(target,prefix+(thumbHover_ || hasCapture()?"hover":"normal"),uiLogical(gfx::Rect(0,0,thumb.w,thumb.h)));
+  };
+  const int alpha=thumbHover_ || hasCapture()?materialHoverOpacity_:materialOpacity_;
+  if(alpha==255){paint(g);return;}
+  const auto rc=clientBounds();
+  if(!materialSurface_ || materialSurface_->width()!=rc.w || materialSurface_->height()!=rc.h)
+    materialSurface_=os::instance()->makeRgbaSurface(rc.w,rc.h);
+  materialSurface_->clear();{ui::Graphics material(materialSurface_);paint(material);}
+  ui::Paint opacity;opacity.blendMode(os::BlendMode::SrcOver);opacity.skPaint().setAlpha(alpha);
+  g.drawSurface(materialSurface_.get(),rc,rc,os::Sampling(),&opacity);
 }
 bool PixelScrollBar::onProcessMessage(ui::Message* msg) {
   if(!isEnabled()){if(hasCapture())releaseMouse();return ui::Widget::onProcessMessage(msg);}
@@ -219,7 +287,7 @@ bool PixelScrollBar::onProcessMessage(ui::Message* msg) {
     if(hover!=thumbHover_){thumbHover_=hover;invalidate();}
   }
   if(msg->type()==ui::kMouseWheelMessage){const int dy=static_cast<ui::MouseMessage*>(msg)->wheelDelta().y;
-    if(dy)setViewScroll({value_+(dy<0?wheelStep:-wheelStep),value_+(dy<0?wheelStep:-wheelStep)});return true;}
+    if(dy){const int next=value_+(dy>0?wheelStep:-wheelStep)*wheelDirection;setViewScroll({next,next});}return true;}
   return ui::ScrollBar::onProcessMessage(msg);
 }
 bool PixelEntry::commitExpression() {
@@ -314,6 +382,7 @@ void PixelEntry::onPaint(ui::PaintEvent& ev) {
   if(hasFocus() && state && caret==int(value.size())) g.fillRect(skin_["text"],gfx::Rect(x,y,1,10));
   g.restoreClip();
   if(!suffix.empty()) font_.draw(g,suffix,std::min(x+uiGap,rc.x2()-2-uiGap-suffixWidth),y,skin_["muted"]);
+
 }
 void PixelSlider::begin() {if(!active_) {active_=true;if(interactionBegin) interactionBegin();}}
 void PixelSlider::finish() {if(active_) {active_=false;if(interactionCommit) interactionCommit();}invalidate();}
@@ -484,6 +553,11 @@ PixelButton::PixelButton(const PixelFont& font,const Skin& skin,std::u32string l
   });
 }
 bool PixelButton::onProcessMessage(ui::Message* msg) {
+  if(isCheckbox() && (msg->type()==ui::kKeyDownMessage || msg->type()==ui::kKeyUpMessage)) {
+    const auto key=static_cast<ui::KeyMessage*>(msg);
+    if(key->scancode()==ui::kKeyEnter || key->scancode()==ui::kKeyEnterPad)return false;
+  }
+
   if(paletteViewport && !hasCapture() && msg->type()==ui::kMouseDownMessage && !paletteViewport().contains(static_cast<ui::MouseMessage*>(msg)->position()))return false;
   if(timelinePress && isEnabled() && msg->type()==ui::kMouseDownMessage){const auto& mouse=*static_cast<ui::MouseMessage*>(msg);if(mouse.left() || mouse.right()){timelinePress(mouse);return true;}}
   if(framePress && isEnabled()) {
@@ -529,14 +603,16 @@ bool PixelButton::onProcessMessage(ui::Message* msg) {
   if(open) openGroup();
   return handled;
 }
+// legacy PalettePanel nameLuminance: alpha composite over white, threshold150.
+std::uint32_t PixelButton::paletteNameTextColor(std::uint32_t rgba){const double a=(rgba>>24)/255.0;const double luminance=(.299*(rgba&255)+.587*((rgba>>8)&255)+.114*((rgba>>16)&255))*a+255*(1-a);return luminance>150?0xff111111:0xffffffff;}
 gfx::Rect PixelButton::paletteColorBounds() const {
-  auto rc=bounds();
+  auto rc=paletteMaterialRect?gfx::Rect(*paletteMaterialRect).offset(bounds().origin()):bounds();
   if(paletteCell && !recentColorSwatch && active && !paletteSharedSelection) rc.shrink(2*uiScale);
   return rc;
 }
 bool PixelButton::paletteSelectionContains(gfx::Point position) const {
   if(!paletteCell || recentColorSwatch || paletteSharedSelection || !active || !bounds().contains(position)) return false;
-  return skin_.selectionContains(bounds(),position);
+  return skin_.selectionContains(paletteMaterialRect?gfx::Rect(*paletteMaterialRect).offset(bounds().origin()):bounds(),position);
 }
 gfx::Rect PixelButton::iconContentBounds(const std::string& state) const {
   auto rc=uiLogical(clientBounds());
@@ -559,7 +635,7 @@ void PixelButton::paintTimelineContent(ui::Graphics& g,gfx::Rect rc,gfx::Point p
     if(iconSkin && !icon.empty())iconSkin->draw(g,icon+(isEnabled()?"":"-disabled"),gfx::Rect(rc.x+1+(rc.w-12)/2,rc.y+1+(rc.h-12)/2,11,11),true);
     if(timelineCel)skin_.draw(g,"timeline.dot",gfx::Rect(rc.x+3,rc.y+3,7,7),true);
     if(active && !row)g.drawRect(skin_["accent"],gfx::Rect(rc.x+1,rc.y+1,rc.w-2,rc.h-2));
-    if(row){if(!skin_.draw(g,"timeline.line",gfx::Rect(rc.x,rc.y,rc.w,1)))g.fillRect(skin_["timelineGrid"],gfx::Rect(rc.x,rc.y,rc.w,1));if(!skin_.draw(g,"timeline.line",gfx::Rect(rc.x,rc.y,1,rc.h)))g.fillRect(skin_["timelineGrid"],gfx::Rect(rc.x,rc.y,1,rc.h));}
+    if(row)skin_.draw(g,"timeline.cell",gfx::Rect(rc.x,rc.y,rc.w+1,rc.h+1));
     if(!caption.empty()){
       g.saveClip();g.clipRect(rc);
       const auto ink=font_.inkBounds(caption);
@@ -572,7 +648,32 @@ void PixelButton::onPaint(ui::PaintEvent& ev) {
   auto& g=*ev.graphics();
   PhysicalViewportClip viewportClip(g,paletteViewport?std::optional<gfx::Rect>(paletteViewport().offset(-bounds().origin())):std::nullopt);
   if(skinStyle=="timeline" || skinStyle=="timeline-row") {if(!timelineParentPainted)paintTimelineContent(g,uiLogical(clientBounds()));return;}
-  UiPaintScale scale(g);auto rc=uiLogical(clientBounds());
+  UiPaintScale scale(g,paletteMaterialRect?paletteMaterialRect->origin():gfx::Point());
+  auto rc=uiLogical(paletteMaterialRect?gfx::Rect(paletteMaterialRect->size()):clientBounds());
+  if(isCheckbox()) {
+    // Existing controlled bindings own their checked state through the icon.
+    const bool checked=skinStyle=="checkbox"?active:icon!="checkboxUnchecked";
+    skin_.drawCheckbox(g,rc,checked,hasMouse(),isSelected(),isEnabled());
+    g.saveClip();g.clipRect({rc.x+15,rc.y,std::max(0,rc.w-15),rc.h});
+    font_.draw(g,caption,rc.x+15,rc.y+(rc.h-10)/2,skin_[isEnabled()?"text":"muted"]);
+    g.restoreClip();return;
+  }
+  if(skinStyle=="switch") {
+    const int opacity=isEnabled()?255:166;
+    skin_.draw(g,"switch.container",rc,false,opacity);
+    const gfx::Rect toggle(rc.x2()-4-18,rc.y+(rc.h-9)/2,18,9);
+    const bool over=isEnabled() && (hasMouse() || hasFocus());
+    skin_.draw(g,std::string(active?"switch.on.":"switch.off.")+(over?"hover":"normal"),toggle,false,opacity);
+    auto text=gfx::Rect(rc.x+4,rc.y+2,std::max(0,toggle.x-uiGap-(rc.x+4)),std::max(0,rc.h-4));
+    g.saveClip();g.clipRect(text);
+    if(iconSkin && !icon.empty()){
+      const auto part=iconSkin->assets.patches.find(icon);const int iw=part==iconSkin->assets.patches.end()?11:part->second.bitmap->width,ih=part==iconSkin->assets.patches.end()?11:part->second.bitmap->height;
+      iconSkin->draw(g,icon,gfx::Rect(text.x,rc.y+(rc.h-ih)/2,iw,ih),true,opacity);text.x+=iw+uiGap;text.w=std::max(0,text.w-iw-uiGap);
+    }
+    g.clipRect(text);const auto ink=font_.inkBounds(caption);
+    font_.draw(g,caption,text.x-ink.x,rc.y+(rc.h-ink.h)/2-ink.y,skin_[isEnabled()?"text":"muted"]);
+    g.restoreClip();return;
+  }
   if(skinStyle=="menu-row") {
     g.fillRect(skin_["background"],rc);skin_.draw(g,"menu_item",rc);
     if(isEnabled() && (active || hasMouse() || isSelected())) {
@@ -671,6 +772,9 @@ void PixelButton::onPaint(ui::PaintEvent& ev) {
     };
     if(foregroundMarker) marker("foreground",true);
     if(backgroundMarker) marker("background",false);
+    // Legacy name overlay is pointer-transparent, centered, single-line and clipped.
+    // Native user specification fixes Fusion Pixel10px; no CSS blur text shadow.
+    if(!paletteDisplayName.empty()){auto content=rc;content.shrink(1);if(!content.isEmpty()){const auto ink=font_.inkBounds(paletteDisplayName);const auto color=paletteNameTextColor(swatch);g.saveClip();g.clipRect(content);font_.draw(g,paletteDisplayName,content.x+(content.w-ink.w)/2-ink.x,content.y+(content.h-ink.h)/2-ink.y,gfx::rgba(color&255,(color>>8)&255,(color>>16)&255));g.restoreClip();}}
     if(active && !paletteSharedSelection) skin_.drawSelection(g,selectionBounds,paletteSelectionHover?paletteSelectionHover():hasMouse());
     return;
   }

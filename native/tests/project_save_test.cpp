@@ -34,8 +34,21 @@ void same(const Document& d,const ReadManifest& m) {
  for(std::size_t i=0;i<m.palette.size();++i)check(d.palette().entries[i].id==m.palette[i].id&&d.palette().entries[i].color==m.palette[i].color,"Palette hidden entry or RGBA changed");
 }
 void dot(Document& d,int x,int y,Pixel color) {d.beginStroke({x,y},color);d.commitStroke();}
+void checkRasterResourcePlan(){
+ {Document blank(5,7);auto opened=imported(encodeEditableProject(blank).bytes);dot(opened,0,0,0xff123456);
+  auto encoded=encodeEditableProject(opened);auto after=prepareEditableImport(readProjectManifest(encoded.bytes));check(after.timeline.cels[0].surface->pixels[0]==0xff123456,"Sparse-to-raw reopen save retained stale raster");
+  opened=imported(encoded.bytes);
+  dot(opened,0,0,0);
+  check(prepareEditableImport(readProjectManifest(encodeEditableProject(opened).bytes)).timeline.cels[0].surface->pixels[0]==0,"Raw-to-sparse reopen save retained stale raster");
+  opened.addFrame();auto multiple=imported(encodeEditableProject(opened).bytes);multiple.deleteFrame();check(prepareEditableImport(readProjectManifest(encodeEditableProject(multiple).bytes)).timeline.frames.size()==1,"Deleted cel archive payload retained");}
+
+}
+
 }
 int main(int argc,char** argv) {try {
+ checkRasterResourcePlan();
+ if(argc==2 && std::string(argv[1])=="--raster-resource-check")return 0;
+
  {Document d(1,1);d.setSelectedFramesDisabled(true);d.addFrame();d.selectFrame(d.timeline().state().frames.front().id);auto encoded=encodeEditableProject(d);auto manifest=readProjectManifest(encoded.bytes);check(manifest.frames[0].disabled&&!manifest.frames[1].disabled,"Disabled manifest flags");auto opened=imported(encoded.bytes);check(opened.timeline().state().frames[0].disabled&&!opened.timeline().state().frames[1].disabled,"Disabled frame reopen");opened.setSelectedFramesDisabled(false);check(!readProjectManifest(encodeEditableProject(opened).bytes).frames[0].disabled,"Disabled flag removal");}
 
  {Document d(2,1);dot(d,0,0,0xff112233);d.addLayer();dot(d,1,0,0x80445566);d.addLayer();dot(d,0,0,0xff778899);auto hidden=d.layer().id;d.setLayerVisible(false);d.addFrame();std::vector<std::vector<Pixel>> expected;for(const auto& f:d.timeline().state().frames)expected.push_back(compositeNormalRegion(d.timeline(),f.id,{0,0,2,1}));d.mergeVisibleLayers();auto saved=prepareEditableImport(readProjectManifest(encodeEditableProject(d).bytes));check(saved.timeline.layers.size()==2&&saved.timeline.layers[1].id==hidden&&!saved.timeline.layers[1].visible,"Visible merge save hidden layer");timeline::Timeline t(saved.timeline);for(std::size_t i=0;i<expected.size();++i)check(compositeNormalRegion(t,t.state().frames[i].id,{0,0,2,1})==expected[i],"Visible merge save every frame");}

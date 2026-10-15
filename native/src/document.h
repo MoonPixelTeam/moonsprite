@@ -20,6 +20,7 @@
 #include <optional>
 #include <string>
 #include <memory>
+#include <filesystem>
 
 namespace moon {
 using Pixel = std::uint32_t; // RGBA: red in the low byte; transparent is zero.
@@ -43,9 +44,11 @@ using DocumentCel=timeline::Cel;
 // UI and tools can inspect pixels but only transactions may change them.
 struct SheetImportOptions;
 class Document {
+  friend class DocumentSnapshot;
 public:
   explicit Document(int width = 32, int height = 32, std::size_t maxBytes=256*1024*1024, std::size_t maxEntries=10000);
-  static Document withBuiltinPalette();
+  static Document withBuiltinPalette(int width=32,int height=32,std::u32string name=U"未命名");
+  static Document fromSpriteSheetRaster(int width,int height,std::vector<Pixel> pixels,std::u32string name);
   static Document fromImported(int width,int height,timeline::State state,PaletteState palette,
     std::string projectId,std::u32string name,std::shared_ptr<const std::vector<std::uint8_t>> sourceArchive);
   std::uint64_t revision() const {return revision_;}
@@ -53,6 +56,9 @@ public:
   void markRecovered(std::u32string name) {name_=std::move(name);modified_=true;}
   const std::u32string& name() const {return name_;}
   const std::string& projectId() const {return projectId_;}
+  // Imported-file origin is session metadata, separate from the native save path.
+  const std::filesystem::path& sourceFilePath() const {return sourceFilePath_;}
+  void setSourceFilePath(std::filesystem::path path) {sourceFilePath_=std::move(path);}
   const std::shared_ptr<const std::vector<std::uint8_t>>& sourceArchive() const {return sourceArchive_;}
   int width() const { return width_; }
   int height() const { return height_; }
@@ -93,7 +99,13 @@ public:
   void applyExtractedPalette(const std::vector<Pixel>& colors,bool append=false,int columns=8);
   int addPaletteColor(Pixel color,bool selectAdded=true,std::optional<std::size_t> targetSlot=std::nullopt);
   void deletePaletteColors(const std::vector<int>& ids);
+  void setPaletteColorSynchronization(bool enabled){paletteColorSynchronization_=enabled;}
+  bool paletteColorSynchronization()const{return paletteColorSynchronization_;}
   void updatePaletteColor(int id,Pixel color);
+  enum class PaletteSortMode {Hue,Saturation,Brightness,Luminance,Red,Green,Blue,Alpha};
+  bool sortPaletteColors(PaletteSortMode mode,bool descending=false);
+  void gradientPaletteSlots(std::vector<std::size_t> indices,int columns,bool byHue=false);
+  bool reversePaletteColors();
   std::size_t activeLayerIndex() const;
   void selectLayer(const std::string& id);
   std::size_t activeFrameIndex() const;
@@ -171,6 +183,7 @@ public:
   void restoreTimelineSelection(TimelineSelection value,const std::vector<std::string>& frames){timelineSelection_=std::move(value);selectedFrames_=frames;}
   void selectTimelineLayer(const std::string& id,int mode=0);
   void selectTimelineCel(const std::string& id,int mode=0,const std::vector<std::string>& replacement={});
+  void selectTimelineCelContent(const std::string& id,bool additive=false);
   void clearTimelineSelection(){timelineSelection_={};clearFrameSelection();}
   void moveTimelineLayers(const std::string& target,bool after,bool copy=false);
   void moveTimelineCels(const std::string& anchor,const std::string& target,bool copy=false);
@@ -220,6 +233,7 @@ public:
   void beginStroke(Point point, Pixel color,BrushOptions brush={},const PatternBrush* image=nullptr,double angle=0,const std::unordered_map<std::size_t,Pixel>* baseline=nullptr,bool stampInitial=true);
   void updateStroke(Point point);
   std::unordered_map<std::size_t,Pixel> strokeBaseline() const;
+  std::vector<std::pair<std::size_t,Pixel>> strokeBaselinePoints() const;
   // Transient replacement pixels only; never opens a transaction or changes history.
   std::unordered_map<std::size_t,Pixel> brushPreview(Point from,Point to,Pixel color,BrushOptions brush,const PatternBrush* image=nullptr,double angle=0,const std::unordered_map<std::size_t,Pixel>* baseline=nullptr,bool clipSelection=true) const;
   void mergeLastStrokeEdits();
@@ -231,6 +245,11 @@ public:
   static Document fromImage(int width,int height,std::vector<Pixel> pixels,std::u32string name);
   bool importSpriteSheet(const SheetImportOptions& options);
   bool resizeImage(int width,int height,ImageInterpolation method=ImageInterpolation::Nearest);
+  std::optional<PixelRegion> visibleContentBounds(bool allFrames) const;
+  bool trimCanvas(bool allFrames,std::optional<TransformPoint> pivot={});
+  bool cropCanvas(std::optional<TransformPoint> pivot={});
+  struct SelectionPivotHistory {std::uint64_t serial=0;std::optional<TransformPoint> pivot;};
+  const SelectionPivotHistory& selectionPivotHistory() const {return selectionPivotHistory_;}
   bool beginColorAdjustment(const std::vector<std::string>& layers={});
   bool beginColorReplacement(const std::vector<std::string>& celIds,bool clipSelection=false);
   bool updateColorReplacement(Pixel source,Pixel replacement,bool enabled=true);
@@ -264,6 +283,8 @@ public:
   bool deleteProjectBrush(const std::string& id);
   void markSaved(); // Only call after successful persistence of this exact state.
 private:
+  SelectionPivotHistory selectionPivotHistory_;
+  bool cropCanvasRegion(PixelRegion bounds,std::optional<TransformPoint> pivot);
   struct Delta { std::size_t index; Pixel before, after; };
   struct PixelRun {std::size_t index,length;Pixel before,after;};
   struct DensePixels {int x,y,width,height;std::vector<Pixel> before,after;};
@@ -274,6 +295,7 @@ private:
     std::vector<PixelRun> runs;
     std::optional<DensePixels> dense;
     bool documentChanged=true;
+    std::optional<std::optional<TransformPoint>> beforeTrimPivot,afterTrimPivot;
     bool pixelSelectionEdit=false;
     std::optional<SelectionMask> beforePixelsSelection,afterPixelsSelection;
     std::optional<PaletteState> beforePalette,afterPalette;
@@ -304,6 +326,7 @@ private:
   };
   std::u32string name_=U"未命名";
   std::string projectId_;
+  std::filesystem::path sourceFilePath_;
   std::shared_ptr<const std::vector<std::uint8_t>> sourceArchive_;
   PaletteState palette_;
   std::vector<ProjectBrushResource> projectBrushes_;
@@ -347,11 +370,16 @@ private:
   void applyCelEdit(const Edit& edit,bool redo);
   void applyLayerEdit(const Edit& edit,bool redo);
   void captureLayerOrder(Edit& edit,bool after) const;
-  std::unordered_map<std::size_t,Delta> pending_;
+  // legacy PixelEditPoints: contiguous touched-pixel records, with a bounded
+  // document-local lookup instead of allocating a hash node for every pixel.
+  std::vector<Delta> pending_;
+  std::vector<int> pendingLookup_;
+  void clearPendingStroke(){for(const auto& delta:pending_)pendingLookup_[delta.index]=-1;pending_.clear();}
   PixelRegion change_;
   std::uint64_t identity_=0,contentRevision_=0,revision_=0;
   std::size_t maxBytes_,maxEntries_,historyBytes_=0;
   bool groupingHistory_=false;
+  bool paletteColorSynchronization_=false; // UI preference, never project metadata.
   void publishChange() {if(!change_.empty()) ++contentRevision_;}
   std::vector<Edit> history_;
   std::size_t position_ = 0;

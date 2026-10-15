@@ -665,3 +665,172 @@ GIF时间轴拖放沿useTimelineFileDrop/workspace importGifAnimationLayer，复
 正式首build84920失败为windows TRANSPARENT宏污染UI header，9636/诊断51736暴露GetObject宏污染WinRT声明；仅调整包含顺序（main preset header在UI后，windows/undefGetObject在WinRT JSON前），未改算法。最终build8252实际exit0、core实际exit0、真实opened desktop --migration-batch-check PID34528实际exit0，仅本批GIF platform chain+GradientMap UI。正式exe2026-10-15 03:13:53，11508224bytes；来源coverage147实际exit0，整体INCOMPLETE。
 
 本批每次集成完整byte backup/candidate、唯一context与写前稳定hash检查/写后hash验证，未用删除式多文件git apply；最新外部main/Document差异保留，记录位于native/build/recovery-cross-frame-20261015-0231/next-batch-baseline-20261015-024300、gif-integration-20261015-0254、gm-integration-20261015-0302。上一批恢复未知时间窗继续保留，不能证无损，未删除旧证据/用户数据/缓存。无新preview/worktree/branch、无提交推送；不重复全animation或无关全链。
+
+
+## 2026-10-15 循环节属性交互、画布修剪
+
+循环节属性沿 AnimationLoopSectionDialog/NumberInput 实现有限次数开关（无限禁用输入、重开重置1）、范围计数/条带/摘要、局部数字表达式提交及无效回退。复用 PixelEntry parser，plain numeric Change 即时更新范围，表达式保持可编辑至 Enter/blur，未修改全局输入。checkboxChecked 从 legacy PixelUtilityIcon 原路径/透明度转换 SVG及PNG；审阅移除无关 SpriteSheet clip hunk。
+
+trimCurrentFrame/trimCanvas 沿 workspace-commands-document-io、documentVisibleContentBounds、documentAnimationVisibleContentBounds、shiftSelection：最终合成alpha范围，所有帧包含disabled，裁切所有owned Cel且保链接、隐藏层像素及透明RGB；选区和枢轴随同单次尺寸history平移并undo/redo恢复。浮动内容先commit独立history，空内容报错、满画布noop。现有普通fullcanvas RGBA适配，独立cel opacity、groups/masks/indexed/sparse等仍不支持，不宣称完整迁移。
+
+定点执行实际83个legacy模块（仅Node剥类型，无算法stub）生成9组bounds/15组shift oracle；native test对照9组bounds/10组实际修剪shift，另5组满画布按legacy noop。正式单node Release build72193实际exit0；canvas-trim-tests实际exit0，已启用工程encode→prepareEditableImport读回并比较linked/allframe/hidden的尺寸、全部Cel像素和链接。真实opened desktop --migration-batch-check PID35600实际exit0，仅本批loop+trim，覆盖finite/expression/plain-live/range/cancel/history及真实修剪菜单/pivot undo-redo/noop。来源coverage155实际exit0；未作独立截图/逐像素视觉QA，不解释为全UI视觉通过。
+
+集成前后完整字节/hash备份位于 build/recovery-cross-frame-20261015-0231：next-batch-baseline-20261015-142218、resume-final-baseline-20261015-150033及loop/trim候选。外部性能/hover/zoom修改持续更新期间只保全不抢写，停稳后双hash核对、唯一context候选、逐文件r+b写入及写后hash核对，无unlink式多文件apply。上批未知恢复时间窗仍无法证明无损，证据继续保留。无新preview/branch/worktree、无提交推送、无删除用户数据或缓存。整体迁移仍INCOMPLETE。
+
+
+## 2026-10-15 选区裁切、背景预设保存、图层快捷操作配置
+
+cropCanvas沿workspace-commands-document-io185-199及workspace.test2331原样本：先提交floating，按clampSelection矩形裁切全部帧/owned Cel（不按mask非零范围收缩），保留links/hidden/disabled，mask和pivot同一次history平移/undo/redo。提取已有trim共享cropCanvasRegion，trim满画布仍noop，crop满画布沿旧版记录history。无选区/outside报错不产生裁切history。普通fullcanvas RGBA现有1..1024适配，未扩groups/masks/indexed/sparse/特殊Cel属性。
+
+选区背景预设保存沿background-preset-images/tool command/Rust平台存储：最终当前帧合成+mask，保留选中RGB/alpha，未选像素RGBA0，空内容不写。五种内置PNG原bytes嵌入并登记path/hash；exeparent/BackgroundPresets、marker2、新旧种子行为、Unicode80字符名清理、32MiB/4096/16M限制、同名编号和既有atomic writer。9组真实89模块TS encode/decode PNG oracle已逐RGBA比较；测试仅独立owned目录，锁失败保原数据，不写用户库。
+
+图层快捷操作仅迁移旧独立子面：25项完整配置/default前5/normalize保overlimit/拖动排序/edge scroll/limit5/live JSON保存。root确认在quick toolbar右侧新增独立旧properties素材设置入口，现图层属性入口保留；未接动作保配置、禁止新启用、已启用可明确关闭；toolbar仅显示已接动作。窄布局沿旧重叠隐藏机制适配native播放栏边界，旧lock/link隐藏保留。恢复默认仅重置quick子配置；density/autoHide/full LayerSettings仍未迁移，不把此子面称完整settings。
+
+首正式build1192实际exit1为main.obj Permission denied；确认无编译且exclusive object open成功后，一次正式单node build17984实际exit0。canvas-crop-tests（含保存读回）、background-preset-tests、layer-quick-actions-tests实际均exit0；真实opened desktop --migration-batch-check PID12552实际exit0，三项实际menu/pivot undo-redo、背景保存source不变、quick capture/reorder/edge scroll/release/toolbar调用通过。来源coverage164通过；未做独立截图/逐像素视觉QA，不扩无关全量回归。
+
+候选及完整bytes/hash保存在build/recovery-cross-frame-20261015-0231/new-batch-baseline-20261015-150618、crop/bgpreset/quick相关候选目录。写前hash guard曾拦截外部性能源码/来源台账新变化，重base保留后逐文件r+b安全写入，newfiles exclusive创建；没有多文件删除式git apply。之前恢复未知时间窗仍无法证无损，证据保留。无新preview/分支/worktree、无提交推送、无删用户数据/缓存；整体迁移INCOMPLETE。
+
+
+## 2026-10-15 画布尺寸入口依赖核对（未迁移）
+
+本批定向核对 canvasResize：CanvasResizeDialog 初始 center、锁定比例、不同步四边、trimOutside=true；workspace-commands-document-io.ts168-181 的 API trimOutside 默认 false。document-model.ts214-291 未裁切时只移动独立位图 offset 并保留画布外内容，裁切才改变局部 surface 与 storageOrigin；动画 Cel、选区与 pivot 经 shared commitCanvasResize101-143 的同一次快照历史同步，UI 另有实时预览与局部撤销。现 Document 像素复制/清空仍按 canvas stride 直接索引，跨文档 Cel/Frame paste 与 resizeImage 明确只接 full-canvas surface；仅复用现 crop 并强制 trim 会丢掉旧版未裁切语义。当前入口仍未接通，完整实现须先承接独立 surface 的编辑、渲染和保存链路；本批不以裁切近似版宣称完成。
+
+
+## 2026-10-15 PNG 帧序列与动画设置正式验收
+
+导出所有帧入口已接 PNG RGBA 帧序列：全部/指定范围/循环段、四种方向、1..6400%最近邻缩放、逐帧裁切、编号及覆盖/重命名/全部/取消冲突预检。全部与范围不展开循环段，循环段按旧逻辑展开嵌套与重复；已删除循环段回退全部帧，空帧裁切保持全画布。DocumentSnapshot 每UI tick bounded advance，完成快照转后台逐帧编码与原子写入；取消/失败保留此前已提交文件并停止后续。15 admitted真实legacy顺序与48组原worker encode/PNG decode像素对照已纳入测试。通用导出预设、每文档记忆、保护选项及其它格式仍未迁移，不称完整导出系统。
+
+动画设置从洋葱皮按钮右键的“动画设置”入口打开，承接skipDisabledFrames及洋葱皮启用/播放期间显示/当前或所有图层/前后帧数/透明度/RGBA颜色。键盘导航使用skip偏好，原工具栏导航保留旧版包含禁用帧行为。四个数值保留double实时状态，帧数在取邻帧时JSround、透明度实时保小数、保存按旧偏好normalize舍入；现有compositor/renderer缓存及性能路径保留。JSON原子保存，旧txt只读fallback，损坏源禁止覆盖。重置仅重置此子面；完整LayerSettings密度/自动隐藏、7颜色模式/全局取色、NumberInput独立重复箭头仍未迁移。
+
+首正式build65402因外部并发官方编译36308/cl37592占用main.obj实际exit1；独占open亦失败，未盲重试。用户继续后git status保留差异，确认无编译、obj独占可开及关键源码哈希稳定，一次正式单node build97122实际exit0。frame-png-export-tests、animation-settings-tests、layer-compositor-tests均实际exit0；finishLaunching后的opened desktop PNG PID38888与animation PID38788检查均exit0。仅本批定向自动运行验收，无独立截图视觉QA，不扩大至全域行为等价。唯一正式产物仍为native/build/Release/moonsprite-native.exe；本批无提交推送、无删用户数据/恢复/缓存，旧恢复时间窗未知改动无损性限制继续保留。
+
+
+## 2026-10-15 PNG自动格式、相对亮度、列宽与BMP正式验收
+
+PNG自动格式沿真实png-encode.ts首次遇到的RGBA调色板顺序、256色阈值、1/2/4/8bit行填充及PLTE/tRNS；超过256转RGBA。静态与帧序列保留默认RGBA，可明确选择自动格式；不量化、不改变文档模式。18组真实旧编码器完整头/调色板/解压raw/CRC/解码像素对照通过，静态single-layer直拷保透明RGB。
+
+相对亮度沿raster.ts的sRGB/Rec709/round，保alpha与透明RGB，4096真实旧值hash对照通过。画布仅在最终显示上传脏区转换，文档、history、导出不变；Preview独立状态。后续本批精确补WorkspacePanels nullable override：override ?? (canvas view && inPreview)，切文档identity清null，context反转effective值。组件可接继承gate，实际编辑器仍沿旧默认canvas scope传false，未新增app范围偏好或reference体系，不把组件检查称app完整迁移。
+
+图层名称列宽沿LayerTimelineColumnResizer/useLayerPanelPreferences：140..2000默认190，left初始delta/live保存、pointerup/cancel不回滚、键盘12物理像素；2x几何ceil适配保原存值。名称固定，帧格/表头滚动，共用viewport/hit/selection边界；bottom/floating大宽度不夹紧。现有half-page overscroll差异仍明确，density/autoHide未迁移。首desktop40640失败是首cell仅剩5px而separator合法覆盖4px；逐像素增强后PID28688失败slot7，诊断PID32308证明用户浮动Preview column3在1014,684,250,260合法覆盖目标1014,826。fixture仅临时隐藏Preview并RAII恢复、不写偏好；逐像素separator与剩余cell以及Skin rendered alpha/selectionContains断言全部保留，产品层级与命中未更改。
+
+当前帧BMP沿真实bmp.ts的108-byte V4 header、32bpp BI_BITFIELDS/sRGB/alpha masks/2835ppm、bottom-up BGRA含透明RGB。全画布/像素选区/trim/nearest1..6400%沿png.ts和document-export.worker；BMP选区mask外RGBA全0，trim取全帧visiblebounds与选区交集；PNG现有路径保持。静态格式菜单、保存filter/ext/title与既有atomic writer接通。8组98模块真实legacy完整BMP bytes及边界/锁失败保原文件通过；无BMP帧序列/导入/预设/保护功能迁移。
+
+先前正式build50292实际0，png-auto-export/relative-luminance/layer-label-width/frame-png-export四核心实际0；opened PNG PID39592、relative-luminance PID35216实际0。本轮不重复它们。诊断build40811及一次补link因外部反复启动正式程序LNK1104实际1，正常close38908 True/ExitTrue后仍出现23396，停止至用户再次明确暂停竞争。恢复后诊断link0，实际覆盖证据如上。最终正式单node build22036实际0；bmp-export-tests实际0；opened --layer-label-width-check PID39592、--preview-luminance-check PID37632、--bmp-export-check PID40012均实际0。正式exe2026-10-15 17:14:31、11892736bytes，唯一路径仍native/build/Release/moonsprite-native.exe。
+
+来源coverage178实际0、evidence snapshots verified，整体INCOMPLETE；未重跑strict或无关全链、未做独立截图视觉QA。完整候选/byte/hash保全于build/recovery-cross-frame-20261015-0231的label-width/preview-luminance/bmp各stage，最终证据build/pngauto-label-preview-bmp-final-20261015-1717.json。未知外部toolbar/materialviewport/firstpaint源码差异均保留、不归本批。先前恢复未知时间窗仍不能证明无损，旧证据保留。无新preview/worktree/branch、无提交推送、无删除用户数据/恢复/缓存。本批完成停止。
+
+本批收尾hash复核发现外部writer随后更新main SHA469027ca→1969ff3c，正式exe也由本批已验17:14:31/11892736bytes/SHA5e12b98c改为17:16:41/11893248bytes/SHAafdc3188。当前文件不是本批已验二进制；上述三个desktop实际通过绑定最终证据JSON中5e12b98c，不据外部新产物推断通过。协调明确停止、不再build/复测；源码与外部产物保留。
+
+
+## 2026-10-15 当前帧ICO、数字重复箭头、工程所在文件夹
+
+当前帧ICO沿ico.ts单个PNG-backed RGBA图，最大边256按比例JSround/nearest，目录宽高256记0、planes1/bpp32/offset22。复用已承接静态全画布/选区/trim/1..6400%准备与atomic writer，强制PNG RGBA；7组实际旧ico.ts/png-encode.ts验证目录、CRC/IHDR、解压raw及解码像素FNV64。压缩流不同，不声称完整ICO bytes一致。格式菜单/保存filter/ext/title实际接通，未迁ICO导入或帧序列，不重复前批BMP/PNG。
+
+数字上下箭头为公共PixelEntry opt-in，仅动画设置前后帧数与前后opacity四字段接入明确value/min/max/step回调，其余数字控件保持原有行为。NumberInput.tsx按下立即变化，300ms仅开始安排首次重复，间隔24+156*exp(-elapsed/900)，首次约435.78ms；无catch-up突发，反向进入立即反向并重置，up/leave/blur/captureloss/hidden/disabled/readonly停止，边界停止、分方向click suppression保留。原生timer ceil毫秒与9basepx右列为必要2x适配，表达式/wheel/scrub路径不改。旧PixelUtilityIcon up/down 5x5 shape/normal/disabled原像素转换，统一sheet y656四槽x0/5/10/15，512x656旧像素逐像素完全一致，仅增5px高度至661，XML parts/styles与sheet-regions登记；不是独立图标替代atlas。
+
+“在文件夹中打开”沿useAppDocumentIO107、DocumentTabs360、AppMenuBar284及Rust platform_gallery210：saved filePath优先sourceFilePath、无路径禁用/未保存提示；文件不存在报错且不fallback来源，验证普通文件后打开parent目录，不选中文件。ShellExecuteExW结构化lpFile安全路径替换Rust explorer argv，不拼shell命令。原生Document新增仅session来源元数据，raster/GIF打开赋来源，native工程打开赋自己的来源；dirty-open候选move保留，保存路径独立优先，新文档/恢复无旧来源，不写history或工程。未迁模板/backup其它未接入口，不扩大保存格式策略。专项通过实际Unicode/&图片打开、保存工程/重开、自身来源与保存优先、missing/launcher失败/nohistory；launcher注入核对精确父目录和失败，未作独立Explorer端到端打开验收。
+
+fresh git status保留外部差异，12788收到正常Close=True但10秒Exit=False后等待，未强杀；随后fresh核查已退出，无竞争，唯一正式单node build94832实际exit0。ico-export-tests与number-stepper-tests实际exit0；finishLaunching后opened --project-folder-check PID38592、--ico-export-check PID40272、--animation-settings-check PID13260实际均exit0。AnimationSettings专项含四字段真实箭头click/capture/held reverse/leave/limit与既有dialog最低相关检查；未重跑上批其它领域。正式exe2026-10-15 17:32:28、11925504bytes、SHA2567c5f35e4760b85e11f520bd490f190d07c2cd588224a47642e247fdc174a8391，唯一路径native/build/Release/moonsprite-native.exe。
+
+来源coverage181实际exit0/evidence snapshots verified，整体INCOMPLETE，覆盖不等于行为全等；未重跑strict或无关全链，无独立截图视觉QA。完整原bytes/候选/hash保存在build/recovery-cross-frame-20261015-0231的project-folder/ico/number-stepper/stepper-atlas stages，最终证据build/ico-stepper-folder-final-20261015-1733.json。外部源码/素材差异保留，之前恢复未知时间窗仍无法证明无损，旧证据继续保留。无新preview/worktree/branch、无提交推送、无删除用户数据/恢复/缓存。本批完成停止。
+
+本批最终复核：正式exe仍SHA7c5f35e4与本批验收一致；外部writer随后更新main/native_widgets.h/.cpp/sheet.png/theme.xml，源码和素材已不再等于本批已编译版本。保留外部差异，不重复build/测试、不推断其通过；证据build/ico-stepper-folder-postverify-external-20261015-1735.json。
+
+
+## 2026-10-15 当前帧SVG、循环段数字箭头、F11原生全屏
+
+当前帧SVG按legacy png.ts119–148逐行合并同RGBA连续像素，跳过alpha0，输出小写hex与六位精度去尾零opacity。14组真实旧模块完整UTF8 bytes oracle涵盖全部256alpha、行边界、透明RGB、选区与125%缩放。复用既有静态全画布/选区/trim和atomic writer。SVG比例允许1..64倍小数与表达式，存round(value*100)，进入SVG重置100%并保留trim/selection，离开至PNG/BMP/ICO保留比例与裁切；未扩展其它格式切换或SVG导入/帧序列。
+
+循环段既有开始/结束/有限次数三字段接入共享PixelEntry数字箭头，范围分别1..当前帧数及1..9999，步长1；小数草稿、取消无history、确认单次undo/redo保持既有逻辑。无限次数禁用并终止箭头捕获/重复，重开刷新帧数上界。未改共享atlas或其它数字输入。
+
+F11和已有窗口菜单接通LAF原生fullscreen；入全屏前恢复最大化窗口，退出或进入抛错后恢复最大化。菜单checked跟随窗口，拒绝repeat、修饰键、输入焦点和pending dialog，主页可用，同步重入guard对应legacy Promise合并。保留窗口位置与大小，不改文档/history。LAF setFullscreen返回void，失败反馈限于后端抛出的异常。
+
+唯一正式单node build session69125实际exit0，目标moonsprite-native与svg-export-tests；SVG核心14组oracle及边界实际通过。finishLaunching后opened --fullscreen-check PID40736、--loop-number-stepper-check PID36848、--svg-export-check PID44888实际均exit0，涵盖真实HWND监视器边界/窗口装饰/普通与最大化恢复/失败注入、三个数字控件真实箭头/禁用/取消/单次history，以及SVG真实对话框/写盘/格式切换/小数表达式/history。来源coverage182 exit0且snapshots verified；整体仍INCOMPLETE，未重跑strict、之前批次或无关全链，无独立截图视觉QA。正式exe SHA256 2b951476aa62e27ffac8b40ee88aa39e45e03f4ce4ad27feb77e8790e6b0de55。证据native/build/svg-loop-fullscreen-final-20261015-1753.json。保留全部外部差异与历史恢复未知时间窗记录，本批完成即停止。
+
+
+## 2026-10-15 BMP帧序列、帧时长和图像尺寸数字箭头
+
+BMP帧序列复用已有Snapshot分批/后台worker/范围顺序/逐帧trim/atomic writer与静态BMP encoder，仅新增格式切换和BMP扩展名。16组真实旧document-export.worker完整bytes oracle覆盖4帧（含disabled与全透明）×trim开关×50/150%；snapshot读回、Unicode/&路径、冲突取消/renameall、首文件提交后cancel、失败保留前项且不写后项实际通过。PNG默认接口兼容，不新增其它序列格式。
+
+帧时长字段沿useTimelineContextActions799–809接共享PixelEntry stepper，min1/max60000/step10；继续使用冻结选帧批量实时preview、关闭/Esc单次commit与undo/redo。resolve先停capture和timer再清icons/value/changed，避免paletteInput复用到图层opacity泄漏。
+
+图像尺寸既有四字段接共享stepper：像素宽高1..16384，百分比1..6400，默认step1，百分比读取legacy受控round并至少1，changed复用已有比例锁与JS正数舍入联动。草稿不改文档，取消停capture，成功确认一笔undo/redo；既有Document尺寸上限1024不变，超限报错保留可编辑对话框。仅承接箭头子集，不称完整尺寸功能迁移；自动尺度检测等既有缺口保留。像素网格候选核对workspace-commands-view12–31发现必须写document.displaySettings/touch及可配置appearance颜色/渲染阈值，未用固定色或session-only开关近似替代，待对应元数据及设置契约迁移。
+
+正式单node build57976实际exit0。首build67437遇外部18:08:34启动应用42440占用exe/LNK1104，正常Close=True/Exit=True；后link暴露外部旧main.obj时间戳晚于合入源码，旧4参planFramePngPaths符号不匹配。仅刷新当前main mtime触发真实重编译，未删除缓存或变更内容，构建通过。正式bmp-frame-export-tests与opened --image-resize-stepper-check PID44672、--frame-duration-stepper-check PID43204、--bmp-frame-export-check PID40964均actual exit0。来源coverage184/evidence snapshots verified通过，整体INCOMPLETE；未重跑前批/strict或无关全链，无独立截图QA。正式exe 2026-10-15T18:11:58.166858 / 12046336bytes / SHA256 85b4edcd06ffdec941110021bf4800ad174df1d48a46e3bdb646f47060b5195b；源hash对照prebuild changed=[]。证据native/build/resize-duration-bmpseq-final-20261015-1812.json；保留外部差异、所有原bytes/候选与历史恢复未知窗记录，本批完成即停止。
+
+
+## 2026-10-15 用户确认移除数值箭头；ICO帧序列
+
+用户明确确认其它聊天已要求移除数值箭头。当前PixelEntry stepper API/atlas接线及旧loop/时长/图像尺寸消费者的移除是用户取舍，不记录为未经确认的丢失。保留移除，不从历史已验候选恢复API、素材或入口。此前各批箭头通过记录只代表历史版本。本批“调色板提取数量箭头”“笔刷不透明度箭头”候选暂停且不交付；palette临时局部已guarded精确撤回，brush候选未合，未改选新功能。普通数字输入/滑条按现有源码保留。来源scope同步用户决定，后续不得自动恢复。
+
+ICO帧序列沿旧document-export.worker逐帧trim/scale/每帧最大边256及强制RGBA编码，复用现Snapshot分批、后台worker、路径冲突/cancel与atomic writer。UI仅新增ICO序列format，默认重开仍PNG，BMP/ICO互斥；原planFramePngPaths bool接口委托新格式helper保兼容，不重写架构。16组真实旧worker102模块对照ICO目录、PNG解压raw与decoded像素通过；PNG压缩流不同，不声称完整ICO bytes等价。snapshot、路径/冲突/cancel边界通过。
+
+正式单node build97817实际exit0，目标moonsprite-native和ico-frame-export-tests；首次CL.ComputeOutOfDateSources MSB6003 FileInfo.Delete访问异常后fresh无进程，保存完整log的诊断构建通过，未删缓存或强杀。核心ico-frame-export-tests actual0，opened --ico-frame-export-check PID40272 actual0。来源coverage183/evidence snapshots verified通过，整体INCOMPLETE；无独立截图QA，不重跑前批或无关全链。正式exe 2026-10-15T18:27:38.595175 / 12032000bytes / SHA256 b026c9b6cc6ae60b0d573f512aedf5d9a3b2902ae1051b4e20c11319dda677db。证据native/build/icoseq-final-20261015-1830.json，构建log native/build/icoseq-official-build-20261015-1828.log。保留全部外部差异与历史恢复未知窗，本批仅ICO完成后停止。
+
+
+## 2026-10-15 调色板反向颜色、SVG帧序列、自动链接键盘
+
+调色板既有“反向颜色”submenu沿workspace-palette330–364接通：选中至少2项时按paletteOrder反转选中颜色，否则反转全部当前RGBA有序项，包含alpha0颜色。仅entry.color变化，ID/name/order/slots/selection及foreground/background不变；原updatePaletteColor会同步role所以不复用该不同语义，使用既有事务中稀疏color-only kind8，map查找保持旧性能，noop不写history。当前仅RGBA，indexed0排除留在未承接颜色模式范围。实际专项验证选中顺序/未选项/全部/一个选中/role/pixels/name/undo/redo/相同色和单项noop。
+
+SVG帧序列沿旧worker逐帧trim/scale/encodeSvg，复用Snapshot后台、范围方向、冲突/cancel/atomic writer；16组真实102模块worker完整UTF8 bytes oracle通过。入SVG重置100%保范围/方向/trim；1..64倍允许小数表达式，存round百分比；离开SVG保scale，重开默认PNG。未迁其它预设/保护功能，未恢复任何数字箭头。
+
+自动链接控件沿LayerTreeRow258–269/useLayerControlGestures253–259 Enter/Space keydown立即toggle（包含repeat/modifiers），keyup消费不重复，只作用实际focus且visible/enabled控件，复用当前pool行Click setter并恢复按钮focus；优先于全局Space手/面板滚动。旧指针拖扫/Ctrl/Alt和atlas不变。首专项34484/34872失败原因为flag在desktop attachment/openWindow/finishLaunching之前，实际visible0/focus1；仅移动检查入口至finishLaunching后，产品门控与断言不放宽。
+
+正式65748 build0与SVG核心16组oracle0；修palette测试按有序ID取色后20902 build0，opened --palette-reverse-check PID42420、--svg-frame-export-check PID41368实际均0。诊断69521 build0；最终opened入口修补61585 build0，--auto-link-keyboard-check PID12684实际0。按协调范围未重跑已过palette/SVG，二者证据绑定20902，不宣称最终61585复验这些项。最终61585包含外部项目tabs/project_encode增量，保留且不推断其它功能通过。来源coverage184/evidence snapshots verified0，整体INCOMPLETE，无独立截图QA，无旧批重跑。最终exe 2026-10-15T18:55:47.313465 / 12087296bytes / SHA256 78720f379d1acc7c045896bce00469e4c05e27c40ecb5370eb3cc9c9b3a59356。证据native/build/palette-svgseq-autolink-final-20261015-1857.json。全部原bytes/候选保全，历史恢复未知窗记录保留，本批完成停止。
+
+## 2026-10-15 多工程标签接入
+
+本节更新此前阶段记录的单文档限制：新建、打开、恢复现在加入独立工程标签，支持切换、排序、多选打开、独立文档历史与视图、后台恢复及保存后关闭。正式入口仍为 start-native.bat，产物仍为 build/Release/moonsprite-native.exe。定向三项检查通过；完整保存套件另有 Grouped duration 断言失败，未将其计为通过。工程分屏、工程浮动窗口及浏览器本地历史服务仍未完成迁移。来源与验收见 [多工程说明](multi-document.md)。
+
+
+## 2026-10-15 调色板八种排序、导出并打开文件夹、自动链接逻辑范围（运行验收待完成）
+
+调色板既有八项排序接通旧core/palette.ts10–82比较器与workspace-palette309–328：全paletteOrder按颜色稳定排序ID，将slots空位集中尾部，entry颜色/name/roles/选择不变。排序不使用反向颜色的选集或color-only kind8；初提案混用该语义已经实际源码复核撤回。原生slots-only kind9历史仅回放slots，保持后来选择与role，bytes为前后slots×4；RGBA子集，不声明indexed迁移。方向默认ascending，仅存descending时降序，旧localStorage适配native目录文本偏好。真实旧JS生成16种排序预期，新增opened --palette-sort-check覆盖全order/空位/重复稳定/roles/pixels/history/undo-redo/noop；尚未运行。
+
+导出既有static/GIF/frame sequence新增旧ExportDialogHost155–173/footer215的“导出并打开文件夹”，复用folderOpen素材和structured projectFolderLauncher_，成功完成及关闭modal后才打开父目录；取消或写失败不打开，启动失败保留产物并刷新状态。独立sprite-sheet未在本批。原版四组submitExport契约通过；opened --export-folder-check实际写盘/取消/失败检查已加入但尚未运行。
+
+自动链接Ctrl/Alt目标改为全部逻辑普通图层（含视口外），沿useLayerControlGestures191–216 displayRows；多选优先、solo/restoration与原history不变，group/collapsed/special仍未承接。opened --auto-link-logical-scope-check含70层滚动/屏外及选择保留等断言，尚未运行。
+
+正式单node build session26413实际exit1：外部writer同时修改main/document并启动同产物build，core编译后新增strokeBaselinePoints调用导致LNK2019/LNK1120；当前document.cpp有定义，属构建期源码/对象不一致，未擅自改外部实现。链接失败后正式exe当前不存在（链接器行为，非清理/删除），没有运行三个专项，也不声称交付可启动程序。按协调要求停止重试，等待稳定构建窗口。来源coverage184/evidence snapshots通过，整体INCOMPLETE；无截图QA，不重跑旧批。证据native/build/sort-three-blocked-20261015-1918.json。三域源和原bytes/候选保留；数字箭头保持用户确认的移除，未提交/发布。
+
+
+## 2026-10-15 上批三域正式程序恢复与专项验收
+
+用户继续后fresh核查构建空闲，外部已恢复exe；保留main/document新变更，仅更新时间强制重新编译。首31303编译document/core成功，main.obj C1083 Permission denied实际exit1；fresh无构建进程、对象独占读写检查通过后，一次单node诊断build实际exit0，日志native/build/sort-three-official-build-20261015-1927.log。未删除/清缓存/改名另发，未改外部strokeBaselinePoints实现。
+
+SHA08187784c682907dd8f3d272f7fc024cfd0cac9875d796ad860b23a2b294bb0d正式exe的opened --palette-sort-check PID39088、--export-folder-check PID9568、--auto-link-logical-scope-check PID36596全部实际0。外部随后重建唯一路径为SHA1a44abff47fb4121a8b45632c09d4e919184981f67f397865549174920143770（19:26:01/12155392bytes），因产物实际变化补跑这三个最小专项：PID33876/33056/27300全部0，前后exe SHA相同。第二exe由外部build生成，不归功本次诊断build；之后外部仍在写入/构建，新产物不能自动继承上述通过声明。
+
+实际通过涵盖16个旧JS排序oracle、slots/空位/稳定ties/选集不限制排序/角色与像素保持/单笔slots-only历史及undo-redo/noop；导出static/GIF/序列真实写盘、父目录Unicode&launcher注入、正常导出不打开、取消/写失败/启动失败与async取消；70层自动链接Ctrl/Alt屏外逻辑目标、多选优先、solo/restoration及history。没有实际Explorer启动端到端或独立截图验收声明。原生来源覆盖184项，整体迁移仍INCOMPLETE；数字箭头保持移除。未扩新领域/无提交发布，本批恢复与三域专项收尾。证据native/build/sort-three-final-20261015-1928.json。
+
+
+## 2026-10-15 调色板颜色名称、精灵表自动PNG、Cel内容选区
+
+调色板既有“显示颜色名称”开关沿PalettePanel82/142/1076/1083/1144及PaletteSwatch50接通：默认关闭，仅存储精确true启用；JS trim非空时显示原name，alpha混白亮度(.299R+.587G+.114B)*a+255*(1-a)>150使用#111，否则白。沿CSS2126居中/单行/1px内距/overflow裁切，读文字不改变点击命中/选框/颜色/role/选集/history。用户原生规格Fusion Pixel10px替换旧CSS8..14px clamp；旧CSS blur text-shadow无已有像素字体等价，记录为必要原生适配，不引入新字体或绘制框架。偏好localStorage适配本机text文件。专项实际渲染diff验证文字仅在色块内部，连同默认/无效偏好/透明字色/空名/geometry/history均过。
+
+精灵表旧document-file-service932–975使用worker png-auto/scale100；现encodeSpriteSheet沿既有encodeImagePng自动路径替换强制RGBA，保存filter准确写PNG自动，不造旧版不存在的新formatselector。layout/preview/selection/source等不变。3组真实旧103模块sheet→encoder的2/16/257色oracle验证IHDR/PLTE/tRNS/inflatedraw/RGBA，复用现编码器。
+
+Cel Alt左击内容选择沿layer-cell-shortcuts/runLayerCellShortcut和workspace-commands-animation-selection429先commit浮动，再resolved Surface alpha非零建立含offset的canvas mask并trim；ShiftAlt按旧combine追加（旧add+null incoming返回null也保留），选中对应Cel后用既有selection-only history。此前误猜selectTimelineCel清空像素选区已撤回，实际修的是全canvas未trim及空mask。保Alt拖动复制、普通flat RGBA支持边界；隐藏/锁定仍按旧快捷入口允许，linked解析复用现timeline。没有重设计缓存，旧LRU仍是未迁移性能缺口。
+
+正式单node build16077 targets moonsprite-native+sheet-png-auto-tests实际0；core3组实际0。唯一正式exe SHA9be7c3fd9d1e7cccf9468e60200102364ec2bb5ea6d0e82178678ae9a83983bc的opened --palette-names-check PID38676、--sheet-png-auto-check PID38604、--cel-content-selection-check PID35264全部实际0，运行前后hash一致。Cel专项包含真实Alt无移动抬起/Shift追加/隐藏锁定linked alpha紧边孔洞/空Cel/undo-redo/先提交浮动再选目标两段history。来源coverage185/evidence snapshots通过，整体INCOMPLETE，无截图QA，不重跑旧批或无关套件。正式入口仍native/start-native.bat，未提交/发布/恢复数值箭头，本批完成停止。证据native/build/names-sheet-cel-final-20261015-2002.json；构建log native/build/names-sheet-cel-official-build-20261015-1958.log。
+
+
+## 2026-10-15 调色板渐变、精灵表导出后打开、Cel选区LRU
+
+调色板既有渐变/色调渐变按PalettePanel195–213/922矩形slot范围（含空槽）、workspace-palette376–430接通：去重排序indices，缺失首尾色取foreground/background，空槽创建nextColorId与默认名；非目标项/role/选集不变。旧core/palette85–112+raster249–280插值逐通道JSround，HSV最短hue差；8组真实旧JS oracle含alpha/近灰/跨0度。box范围保留并沿旧568–584拖动delta平移，绑定文档identity及选集避免跨工程残留。当前RGBA自适应布局仅取已显示slots；手动布局原入口仍未迁移，不改变其需求或实现近似替代。kind10单笔历史回放entries/slots/nextID，不覆盖后来选集/roles，bytes为前后entries×40+slots×4；旧slot gradient即使同色仍有历史，<2才不执行。
+
+精灵表既有“导出后自动打开”disabled设置沿SpriteSheetExportDialog默认false/outputFile和session export success path接通；默认openPath真实新tab打开生成PNG，原tab/dirty/history/pixels保留。重开导出重置false；取消/原生picker取消/写失败不打开，打开失败保文件与源状态。与上批“打开文件夹”不同入口，复用现structured chooser/openPath，不新增格式或箭头。
+
+Cel内容选区LRU沿animation-cel-content-cache103–193性能规则：全局4MiB/256条目，resolved owner共享tight local alpha结果/null/rectangle，返回独立值拷贝，命中刷新LRU，geometry key；现mutableOwnedSurface/setPixel/buildIndex写屏障失效，Timeline copy不共享selection句柄避免owner跨独立文档污染，move保留，active stroke bypass。Document内容选择委托既有timeline入口，支持offset clipping。定向测试包括linked共享一次build/hit、返回copy、修改/clip/bypass、6×1024²预算、260矩形entry上限、绘制undo/redo及resize undo/redo。限现普通flat RGBA；旧bounds accelerator/indexed/sparse仍有限制，不声明完整性能等价，不跑benchmark。
+
+正式单node build2650 targets moonsprite-native+timeline-model-tests实际0，timeline-model-tests实际0。唯一正式exe SHA37a777f8a467cf5540cf6433aad4561f9fb136ea1aab3306f6f5755616e18af8的opened --palette-gradient-check PID37484及--sheet-open-after-check PID37204全部实际0，运行前后hash一致。渐变专项覆盖真实旧8oracle、空槽回退/新ID、非目标/角色保持、矩形range、history/undo/redo；sheet专项实际写盘/openPath新tab/取消/失败/源保持。来源coverage185/evidence snapshots通过，整体INCOMPLETE，无独立截图QA或旧批回归声明。数字箭头保持移除，无提交/发布/preview，本批完成停止。证据native/build/gradient-sheetopen-lru-final-20261015-2024.json；log native/build/gradient-sheetopen-lru-build-20261015-2020.log。
+
+
+## 2026-10-15 同步颜色、精灵表新建文档、拖扫释放补迁
+
+同步颜色沿 PalettePanel 默认 false 与本地偏好、workspace-commands-color127–146 接通既有菜单；偏好全局随文档切换传播且不写工程。updatePaletteColor 与现有 setPaletteRole 未锁调色板路径共用精确 packed RGBA 替换，frames 外层、底到顶 layers 内层，owner 去重先于锁过滤，包含隐藏层且不裁选区。复用 kind3 palette delta 和压缩 PixelRuns 组成一次历史，保活动层/帧/帧选集，undo/redo 与同色 noop。现支持普通 flat RGBA 与合法同层跨帧共享；indexed/groups/cross-layer shared owners 仍缺口，混合锁跨层 owner 排序无法在现可编辑结构验收，不声明其已支持。
+
+精灵表沿真实 createSpriteSheetDocument/stack/document-model/session 默认 outputFile=false，默认确认直接创建 dirty 新 tab，使用既有 sheet raster，不经 PNG 编解码。保留源文档，承接旧名称后缀、单图层/100ms 帧、两色八槽调色板、空路径/源 archive/历史。文件输出和导出后自动打开仍可显式选择，重开重置；超过原生每边1024限制明确报错，不截断，文件导出仍可用。真实旧JS oracle与核心输入/metadata逐项比较通过。
+
+可见性/锁/自动链接拖扫沿 useLayerRowToggleGesture event.buttons&1：捕获中收到不含左键的 move，提交当前范围并释放捕获，不修改下一行；held-left 继续扫，right-only 同样结束，沿用既有单笔历史。同步非法fixture同时发现既有 Timeline runtime-only跨层错误分支解引用空 linkedCelId，最小修为返回实际 targetId，保留拒绝跨层语义，回归验证 CrossLayer 与 offendingId；不借此开放跨层结构。
+
+正式单节点 build14891 targets moonsprite-native/sheet-new-document-tests/timeline-model-tests 实际0；两个核心实际0。唯一正式 exe SHA9f5248d4796ac6e7560d0a46b92d3404512a82b3a9badb222d3070471687aa94 opened --palette-sync-check PID14608、--toggle-release-check PID31912、--sheet-new-document-check PID41520、--sheet-open-after-check PID41564 全部实际0，运行前后 hash 一致。来源 coverage186/evidence snapshots通过，strict实际1保持 INCOMPLETE；无独立截图QA。数值箭头保持移除，无提交/发布/preview，本批完成停止。证据 native/build/sync-eye-sheet-final-20261015-2117.json；log native/build/sync-eye-sheet-final-build.log。

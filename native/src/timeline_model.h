@@ -6,9 +6,14 @@
 #include <unordered_map>
 #include <utility>
 #include <vector>
+#include <memory>
+#include "selection_model.h"
 
 namespace moon {class Document;}
 namespace moon::timeline {
+struct SelectionCacheEntry;
+struct SelectionCacheStats {std::uint64_t builds=0,hits=0,evictions=0;std::size_t bytes=0,entries=0;};
+SelectionCacheStats celSelectionCacheStats();
 using Pixel=std::uint32_t; // Legacy packed RGBA: red in the low byte.
 struct Layer {
   std::string id;
@@ -75,13 +80,24 @@ public:
   explicit Timeline(State state);
   // Deep value copy: pixels are independent between timelines; links retain IDs
   // and resolve to the copied timeline's own source. No cached raw pointers.
-  Timeline(const Timeline&)=default;
-  Timeline& operator=(const Timeline&)=default;
+  Timeline(const Timeline& other);
+  Timeline& operator=(const Timeline& other);
   Timeline(Timeline&&) noexcept=default;
   Timeline& operator=(Timeline&&) noexcept=default;
   const State& state() const {return state_;}
   const Cel* findCel(const std::string& layerId,const std::string& frameId) const;
   const Cel* findCelById(const std::string& celId) const;
+  bool hasFrame(const std::string& frameId) const {return frames_.count(frameId)!=0;}
+  bool hasLayer(const std::string& layerId) const {return layers_.count(layerId)!=0;}
+  std::size_t layerIndex(const std::string& id) const {return layers_.at(id);}
+  std::size_t frameIndex(const std::string& id) const {return frames_.at(id);}
+  // Cache by resolved owner. Callers with a retained mutable surface (live
+  // strokes) bypass caching until their transaction ends.
+  bool hasVisiblePixels(const std::string& celId,bool cache=true) const;
+  // Read an existing summary without scanning or caching borrowed live pixels.
+  std::optional<SelectionMask> contentSelection(const std::string& celId,int canvasWidth,int canvasHeight,bool cache=true) const;
+  bool isKnownEmpty(const std::string& celId) const;
+  std::uint64_t contentScans() const {return contentScans_;}
   Resolution resolveSurface(const std::string& celId) const;
   std::vector<LinkDiagnostic> diagnoseLinks() const;
   void addLayer(Layer layer);
@@ -89,6 +105,9 @@ public:
   void addCel(Cel cel);
   PixelChange setPixel(const std::string& celId,std::size_t localIndex,Pixel color);
 private:
+  mutable std::unordered_map<std::string,std::weak_ptr<SelectionCacheEntry>> selectionContent_;
+  mutable std::unordered_map<std::string,bool> visibleContent_;
+  mutable std::uint64_t contentScans_=0;
   friend class ::moon::Document;
   // Document resolves once at transaction start. The borrowed storage is valid
   // only until a structural mutation; UI/extensions cannot access this entry.

@@ -2223,5 +2223,158 @@
     "h": 3,
     "source": "legacy/src/renderer/src/styles.css:2276-2288 track fill/open-bottom bracket; native 1px sheet adaptation at default 2x; existing theme palette",
     "usage": "native/src/main.cpp:paintLoopTrack; replaceable track/normal/hover/playing nine-slice"
+  },
+  {
+    "id": "icon.up",
+    "x": 0,
+    "y": 656,
+    "w": 5,
+    "h": 5,
+    "source": "legacy/src/renderer/src/components/PixelUtilityIcon.tsx up exact 5x5 path; native format conversion native/build/agent-worktrees/eyedropper/native/assets/utility-icons/up.png",
+    "usage": "NumberInput opt-in stepper; atlas-first Skin icon lookup"
+  },
+  {
+    "id": "icon.up-disabled",
+    "x": 5,
+    "y": 656,
+    "w": 5,
+    "h": 5,
+    "source": "legacy/src/renderer/src/components/PixelUtilityIcon.tsx up exact 5x5 path; native format conversion native/build/agent-worktrees/eyedropper/native/assets/utility-icons/up-disabled.png",
+    "usage": "NumberInput opt-in stepper; atlas-first Skin icon lookup"
+  },
+  {
+    "id": "icon.down",
+    "x": 10,
+    "y": 656,
+    "w": 5,
+    "h": 5,
+    "source": "legacy/src/renderer/src/components/PixelUtilityIcon.tsx down exact 5x5 path; native format conversion native/build/agent-worktrees/eyedropper/native/assets/utility-icons/down.png",
+    "usage": "NumberInput opt-in stepper; atlas-first Skin icon lookup"
+  },
+  {
+    "id": "icon.down-disabled",
+    "x": 15,
+    "y": 656,
+    "w": 5,
+    "h": 5,
+    "source": "legacy/src/renderer/src/components/PixelUtilityIcon.tsx down exact 5x5 path; native format conversion native/build/agent-worktrees/eyedropper/native/assets/utility-icons/down-disabled.png",
+    "usage": "NumberInput opt-in stepper; atlas-first Skin icon lookup"
+  },
+  {
+    "id": "switch.off.normal",
+    "x": 0,
+    "y": 662,
+    "w": 18,
+    "h": 9,
+    "source": "C:\\Users\\23105\\AppData\\Local\\Temp\\codex-clipboard-7f3c7f81-0135-4a22-95fc-2b383e5d00b9.png SHA256=36068d0d6649c684faa8d7339765088d2a3095e8da6703d31e5a63e036f851a0",
+    "usage": "PixelSwitch text and icon+text rows; original pixels copied unchanged"
+  },
+  {
+    "id": "switch.off.hover",
+    "x": 0,
+    "y": 672,
+    "w": 18,
+    "h": 9,
+    "source": "C:\\Users\\23105\\AppData\\Local\\Temp\\codex-clipboard-7f3c7f81-0135-4a22-95fc-2b383e5d00b9.png SHA256=36068d0d6649c684faa8d7339765088d2a3095e8da6703d31e5a63e036f851a0",
+    "usage": "PixelSwitch text and icon+text rows; original pixels copied unchanged"
+  },
+  {
+    "id": "switch.on.normal",
+    "x": 19,
+    "y": 662,
+    "w": 18,
+    "h": 9,
+    "source": "C:\\Users\\23105\\AppData\\Local\\Temp\\codex-clipboard-7f3c7f81-0135-4a22-95fc-2b383e5d00b9.png SHA256=36068d0d6649c684faa8d7339765088d2a3095e8da6703d31e5a63e036f851a0",
+    "usage": "PixelSwitch text and icon+text rows; original pixels copied unchanged"
+  },
+  {
+    "id": "switch.on.hover",
+    "x": 19,
+    "y": 672,
+    "w": 18,
+    "h": 9,
+    "source": "C:\\Users\\23105\\AppData\\Local\\Temp\\codex-clipboard-7f3c7f81-0135-4a22-95fc-2b383e5d00b9.png SHA256=36068d0d6649c684faa8d7339765088d2a3095e8da6703d31e5a63e036f851a0",
+    "usage": "PixelSwitch text and icon+text rows; original pixels copied unchanged"
+  },
+  {
+    "id": "switch.container",
+    "x": 0,
+    "y": 682,
+    "w": 81,
+    "h": 17,
+    "source": "C:\\Users\\23105\\AppData\\Local\\Temp\\codex-clipboard-c6f8a655-49fe-4ed4-9b29-b0f90ef3698c.png first empty container 81x17; SHA256=cf1376a7f640a22b1df23a15ebd8f1ccb1014b3e092c9f5eda35942aa9b5193a",
+    "usage": "PixelSwitch mandatory label container; 2px fixed frame; no example text or icons baked into sheet"
+  },
+  {
+    "id": "checkbox.unchecked",
+    "x": 0,
+    "y": 700,
+    "w": 7,
+    "h": 7,
+    "source": "C:\\Users\\23105\\AppData\\Local\\Temp\\codex-clipboard-d0dcfb08-194e-42e9-9e94-f0995c9c6df9.png SHA256=06d2c078751185d3b6836acac39f316b074977a4ca5d074d1148e8d52b8d7783",
+    "usage": "Shared checkbox component; separate checked, hover, and held backgrounds; no example text"
+  },
+  {
+    "id": "checkbox.checked",
+    "x": 8,
+    "y": 700,
+    "w": 7,
+    "h": 7,
+    "source": "legacy/src/renderer/src/components/PixelUtilityIcon.tsx checkboxChecked via assets/utility-icons/checkboxChecked.png; ink adapted to user checkbox",
+    "usage": "Shared checkbox component; separate checked, hover, and held backgrounds; no example text"
+  },
+  {
+    "id": "checkbox.hover",
+    "x": 16,
+    "y": 700,
+    "w": 58,
+    "h": 16,
+    "source": "C:\\Users\\23105\\AppData\\Local\\Temp\\codex-clipboard-d0dcfb08-194e-42e9-9e94-f0995c9c6df9.png SHA256=06d2c078751185d3b6836acac39f316b074977a4ca5d074d1148e8d52b8d7783",
+    "usage": "Shared checkbox component; separate checked, hover, and held backgrounds; no example text"
+  },
+  {
+    "id": "checkbox.pressed",
+    "x": 75,
+    "y": 700,
+    "w": 58,
+    "h": 16,
+    "source": "C:\\Users\\23105\\AppData\\Local\\Temp\\codex-clipboard-d0dcfb08-194e-42e9-9e94-f0995c9c6df9.png SHA256=06d2c078751185d3b6836acac39f316b074977a4ca5d074d1148e8d52b8d7783",
+    "usage": "Shared checkbox component; separate checked, hover, and held backgrounds; no example text"
+  },
+  {
+    "id": "new_document.color-mode-rgba",
+    "x": 0,
+    "y": 717,
+    "w": 16,
+    "h": 8,
+    "source": "legacy/src/renderer/src/assets/pixel-icons/color-mode-rgba.svg SHA256=91d1f2580b3d2b42c1f295670e19f1b40da4ad9d1b430e370595fd3d1bc60c13",
+    "usage": "New canvas dialog: lossless native-grid rasterization; preserve colors and transparency"
+  },
+  {
+    "id": "new_document.color-mode-indexed",
+    "x": 17,
+    "y": 717,
+    "w": 16,
+    "h": 7,
+    "source": "legacy/src/renderer/src/assets/pixel-icons/color-mode-indexed.svg SHA256=eaf313cefdd740a7f72fa8ae960fe7b3823848c0b6be7ab9846f24934cf596ed",
+    "usage": "New canvas dialog: lossless native-grid rasterization; preserve colors and transparency"
+  },
+  {
+    "id": "new_document.color-mode-grayscale",
+    "x": 34,
+    "y": 717,
+    "w": 14,
+    "h": 7,
+    "source": "legacy/src/renderer/src/assets/pixel-icons/color-mode-grayscale.svg SHA256=334288e0019f52a4cef901593028fbac05c81963a8927b6403918501b45fd5f0",
+    "usage": "New canvas dialog: lossless native-grid rasterization; preserve colors and transparency"
+  },
+  {
+    "id": "new_document.record-drawing",
+    "x": 49,
+    "y": 717,
+    "w": 16,
+    "h": 7,
+    "source": "legacy/src/renderer/src/assets/pixel-icons/record-drawing.svg SHA256=cdae0548a1e1badebef13d74b3fc1808c731c101f54c69eac2a41c29666bff00",
+    "usage": "New canvas dialog: lossless native-grid rasterization; preserve colors and transparency"
   }
 ]
