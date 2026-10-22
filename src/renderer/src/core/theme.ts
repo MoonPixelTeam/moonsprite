@@ -130,6 +130,12 @@ const COPPER_SEEDS: ThemeSeedColors = {
   border: '#837f79', borderStrong: '#58534c', controlBackground: '#e2ded5', textPrimary: '#282725', textSecondary: '#48433d', textMuted: '#5c5750',
   accent: '#8f6650', danger: '#a44d49', success: '#4f714c', warning: '#93621a'
 }
+// Cyberpunk
+const CYBERPUNK_SEEDS: ThemeSeedColors = {
+  workspace: '#06060d', surface: '#121222', raisedSurface: '#1e1c33', deepSurface: '#0a0916', canvasSurround: '#2a2440',
+  border: '#3a3259', borderStrong: '#6d5bd0', controlBackground: '#0b0a14', textPrimary: '#eef2ff', textSecondary: '#b6c2e2', textMuted: '#8a93b5',
+  accent: '#c9176f', danger: '#ff4d6d', success: '#35e08a', warning: '#ffc53d'
+}
 const DARK_VISUALS: ThemeVisualDefaults = { checkerLight: { r: 192, g: 192, b: 192, a: 255 }, checkerDark: { r: 128, g: 128, b: 128, a: 255 }, pixelGrid: { r: 69, g: 77, b: 92, a: 143 }, customGrid: { r: 0, g: 0, b: 255, a: 255 }, onionPrevious: { r: 239, g: 83, b: 80, a: 255 }, onionNext: { r: 41, g: 121, b: 255, a: 255 }, symmetryAxis: { r: 0, g: 0, b: 255, a: 255 } }
 const LIGHT_VISUALS: ThemeVisualDefaults = { checkerLight: { r: 192, g: 192, b: 192, a: 255 }, checkerDark: { r: 128, g: 128, b: 128, a: 255 }, pixelGrid: { r: 119, g: 128, b: 142, a: 150 }, customGrid: { r: 0, g: 0, b: 255, a: 255 }, onionPrevious: { r: 205, g: 55, b: 53, a: 255 }, onionNext: { r: 31, g: 97, b: 210, a: 255 }, symmetryAxis: { r: 0, g: 0, b: 255, a: 255 } }
 const PINK_VISUALS: ThemeVisualDefaults = { checkerLight: { r: 192, g: 192, b: 192, a: 255 }, checkerDark: { r: 128, g: 128, b: 128, a: 255 }, pixelGrid: { r: 166, g: 112, b: 141, a: 145 }, customGrid: { r: 0, g: 0, b: 255, a: 255 }, onionPrevious: { r: 192, g: 45, b: 82, a: 255 }, onionNext: { r: 83, g: 121, b: 190, a: 255 }, symmetryAxis: { r: 0, g: 0, b: 255, a: 255 } }
@@ -144,6 +150,7 @@ const SUNSET_VISUALS: ThemeVisualDefaults = { checkerLight: { r: 192, g: 192, b:
 const CLASSIC_VISUALS: ThemeVisualDefaults = { checkerLight: { r: 192, g: 192, b: 192, a: 255 }, checkerDark: { r: 128, g: 128, b: 128, a: 255 }, pixelGrid: { r: 76, g: 82, b: 88, a: 145 }, customGrid: { r: 0, g: 0, b: 255, a: 255 }, onionPrevious: { r: 178, g: 55, b: 68, a: 255 }, onionNext: { r: 49, g: 98, b: 168, a: 255 }, symmetryAxis: { r: 0, g: 0, b: 255, a: 255 } }
 const SLATE_VISUALS: ThemeVisualDefaults = { checkerLight: { r: 192, g: 192, b: 192, a: 255 }, checkerDark: { r: 128, g: 128, b: 128, a: 255 }, pixelGrid: { r: 82, g: 96, b: 84, a: 145 }, customGrid: { r: 0, g: 0, b: 255, a: 255 }, onionPrevious: { r: 174, g: 73, b: 77, a: 255 }, onionNext: { r: 64, g: 119, b: 158, a: 255 }, symmetryAxis: { r: 0, g: 0, b: 255, a: 255 } }
 const COPPER_VISUALS: ThemeVisualDefaults = { checkerLight: { r: 192, g: 192, b: 192, a: 255 }, checkerDark: { r: 128, g: 128, b: 128, a: 255 }, pixelGrid: { r: 91, g: 87, b: 81, a: 145 }, customGrid: { r: 0, g: 0, b: 255, a: 255 }, onionPrevious: { r: 174, g: 74, b: 67, a: 255 }, onionNext: { r: 67, g: 119, b: 157, a: 255 }, symmetryAxis: { r: 0, g: 0, b: 255, a: 255 } }
+const CYBERPUNK_VISUALS: ThemeVisualDefaults = { checkerLight: { r: 192, g: 192, b: 192, a: 255 }, checkerDark: { r: 128, g: 128, b: 128, a: 255 }, pixelGrid: { r: 108, g: 92, b: 158, a: 145 }, customGrid: { r: 0, g: 0, b: 255, a: 255 }, onionPrevious: { r: 255, g: 77, b: 109, a: 255 }, onionNext: { r: 0, g: 229, b: 255, a: 255 }, symmetryAxis: { r: 0, g: 0, b: 255, a: 255 } }
 
 export const BUILT_IN_THEMES: readonly ThemeDefinition[] = [
   { kind: 'moonsprite-theme', schemaVersion: 2, id: 'dark', name: 'MoonSprite Dark', seeds: DARK_SEEDS, visualDefaults: DARK_VISUALS },
@@ -159,7 +166,8 @@ export const BUILT_IN_THEMES: readonly ThemeDefinition[] = [
   { kind: 'moonsprite-theme', schemaVersion: 2, id: 'plum', name: 'Pixel Plum', seeds: PLUM_SEEDS, visualDefaults: PLUM_VISUALS },
   { kind: 'moonsprite-theme', schemaVersion: 2, id: 'ocean', name: 'Pixel Aurora', seeds: OCEAN_SEEDS, visualDefaults: OCEAN_VISUALS },
   { kind: 'moonsprite-theme', schemaVersion: 2, id: 'forest', name: 'Pixel Workshop', seeds: FOREST_SEEDS, visualDefaults: FOREST_VISUALS },
-  { kind: 'moonsprite-theme', schemaVersion: 2, id: 'sunset', name: 'Pixel Bloom', seeds: SUNSET_SEEDS, visualDefaults: SUNSET_VISUALS }
+  { kind: 'moonsprite-theme', schemaVersion: 2, id: 'sunset', name: 'Pixel Bloom', seeds: SUNSET_SEEDS, visualDefaults: SUNSET_VISUALS },
+  { kind: 'moonsprite-theme', schemaVersion: 2, id: 'cyberpunk', name: 'Cyberpunk Neon', seeds: CYBERPUNK_SEEDS, visualDefaults: CYBERPUNK_VISUALS }
 ]
 export const DEFAULT_THEME_PREFERENCES: ThemePreferences = { activeThemeId: 'dark', customThemes: [] }
 
