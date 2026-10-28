@@ -1,0 +1,19 @@
+# Native style split, Frame clipboard and timeline visibility integration
+
+Style split follows legacy workspace-layer-style-split.ts and tests, preserving original source pixels/links/masks while creating an editable wrapper/effect stack. Native top-to-bottom order is inner stroke, inner glow, gradient overlay, gradient map, color overlay, original, outer stroke, shadow. Wrapper inherits visibility/blend/clipping and opacity; animated opacity uses per-frame group masks. Effect surfaces use sparse style output bounds and canvas-limited writes; existing shared sampler exposes parts. Native RGBA admission remains unchanged. Legacy TS executed for 448 exact per-effect oracle pixels. Single structure undo/redo and project reopen covered by existing tests.
+
+Whole tilemap Frame clipboard carries authoritative grids and unique referenced native resources. Same-document identity reuses resources; cross identity clones resources once and remaps only incoming cells/new owner references. Existing target owners stay intact. Kind mismatch and grid-size mismatch reject atomically through existing Timeline validation. Cut retains at least one frame, rebases links/masks and loops, and keeps owner resources. Frame duration/disabled and batch mask links survive. Standalone Cel and free-tile clipboard remain unimplemented.
+
+Timeline hidden mode independently keeps the layers panel and uses legacy44px rows/30px cel+mask thumbnails, clears transient animation state, stops playback/preview, and persists through native v2 named workspaces with v1 compatibility. Legacy JSON UI is not invented; four-way tool rail remains unimplemented. See timeline-hidden-migration-20261023.md.
+
+Source review, runtime assertions and comprehensive visual acceptance are separate. The previous unfiltered workspace check still fails Home scrollbar availability; only the existing named-workspace focused entrance is used for this batch. No benchmark, packaging or comprehensive visual approval.
+
+## Results
+
+All four necessary Release targets built and ran with exit 0: document-layer-groups-tests, tilemap-project-tests, tilemap-document-tests, cel-selection-clipboard-tests. The first target includes 448 exact actual-legacy per-effect oracle pixels. Cel fixture initially faulted before entering its first fixture: Windows Debug API C00000FD in __chkstk, return RVA1547C0, main prologue EAX1182F0 (1147632 bytes), PE reserve100000. Only this test target now uses a 2 MiB reserve, matching the existing core fixture treatment; production stack unchanged. Original executable then exited0.
+
+Official application Release build passed (final app-build-fix4 log). Existing real entrances passed separately: --color-overlay-check exit0, --tileset-management-check exit0, --workspace-check --named-workspace-only exit0. Runtime correction aligned actual cut/paste Commands::enabled/invoke with existing UI tilemap Cel gates while retaining whole Frame and layer admission. Smoke assertions were not weakened. Two test-only fixes made the intended context executable: explicit gfx::Point for overloaded contains and correct kind1 layer context instead of kind0 create context.
+
+Normal provenance exit0: 473 files, evidence snapshots verified. Strict provenance exit1 remains expected because known migration gaps remain registered. Full unfiltered workspace check remains the previously established failure: Scrollable region has no sheet scrollbar: home. No full-workspace or comprehensive visual pass is claimed.
+
+Stable executable native/build/Release/moonsprite-native.exe: 18399232 bytes; SHA256 BA359CACCA968E6A06C6E91500BD5D5A4C2B365AE629B3370EE696EDC0D28A89. Reopened through native/start-native.bat; process40956 confirmed this exact path and Responding=True. Logs use native/build/integration-split-frame-timeline-*-20261023.log.

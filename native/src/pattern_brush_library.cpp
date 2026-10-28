@@ -6,6 +6,7 @@
 #include <tuple>
 #include <windows.h>
 #include <regex>
+#include <exception>
 namespace moon {namespace {
 constexpr const char* orderFile=".brush-order.json";
 void atomicBytes(const std::filesystem::path& p,const std::vector<std::uint8_t>& b){auto t=p;t+=L".tmp";{std::ofstream f(t,std::ios::binary|std::ios::trunc);if(!f)throw std::runtime_error("Cannot write brush file");f.write((const char*)b.data(),std::streamsize(b.size()));if(!f)throw std::runtime_error("Cannot write brush file");}std::error_code e;if(!MoveFileExW(t.c_str(),p.c_str(),MOVEFILE_REPLACE_EXISTING|MOVEFILE_WRITE_THROUGH)){std::filesystem::remove(t);throw std::runtime_error("Cannot replace brush file");}}
@@ -35,4 +36,16 @@ StoredPatternBrushFolder PatternBrushLibrary::renameFolder(const std::string& id
 StoredPatternBrush PatternBrushLibrary::move(const std::string& id,const std::string& folder){auto source=pathFor(directory_,id),destination=folderPath(directory_,folder,true);if(!std::filesystem::is_directory(destination))throw std::runtime_error("Brush folder does not exist");auto target=destination/source.filename();if(source!=target){if(std::filesystem::exists(target))throw std::runtime_error("Brush already exists in target folder");auto oldMeta=source,newMeta=target;oldMeta.replace_extension(L".meta.json");newMeta.replace_extension(L".meta.json");std::filesystem::rename(source,target);try{if(std::filesystem::exists(oldMeta)){if(std::filesystem::exists(newMeta))throw std::runtime_error("Target brush metadata already exists");std::filesystem::rename(oldMeta,newMeta);}}catch(...){std::filesystem::rename(target,source);throw;}}for(auto& item:list().brushes)if(item.id==id)return item;throw std::runtime_error("Moved brush missing from library");}
 void PatternBrushLibrary::removeFolder(const std::string& id){auto target=folderPath(directory_,id);if(!std::filesystem::is_directory(target))throw std::runtime_error("Brush folder does not exist");std::set<std::string> deleted;for(auto& entry:std::filesystem::recursive_directory_iterator(target)){auto attributes=GetFileAttributesW(entry.path().c_str());if(attributes!=INVALID_FILE_ATTRIBUTES&&(attributes&FILE_ATTRIBUTE_REPARSE_POINT))throw std::invalid_argument("Linked brush folder content is not supported");if(entry.is_regular_file()&&entry.path().extension()==L".png")deleted.insert(entry.path().filename().u8string());}auto previous=readOrder(),next=previous;next.erase(std::remove_if(next.begin(),next.end(),[&](auto& value){return deleted.count(value);}),next.end());writeOrder(next);try{std::filesystem::remove_all(target);}catch(...){writeOrder(previous);throw;}}
 
+void PatternBrushLibrary::moveGroup(const std::vector<std::string>& ids,const std::string& folder){
+ const auto listing=list();const auto destination=folderPath(directory_,folder,true);if(!std::filesystem::is_directory(destination))throw std::runtime_error("Brush folder does not exist");std::vector<StoredPatternBrush> sources;std::set<std::string> seen;
+ for(const auto& id:ids){if(!seen.insert(id).second)continue;auto found=std::find_if(listing.brushes.begin(),listing.brushes.end(),[&](const auto& item){return item.id==id;});if(found==listing.brushes.end())throw std::runtime_error("Brush file does not exist");auto source=std::filesystem::u8path(found->filePath),target=destination/source.filename();if(source!=target){auto metadata=target;metadata.replace_extension(L".meta.json");if(std::filesystem::exists(target)||std::filesystem::exists(metadata))throw std::runtime_error("Brush or metadata already exists in target folder");}sources.push_back(*found);}
+ std::size_t completed=0;try{for(const auto& item:sources){move(item.id,folder);++completed;}}catch(...){auto failure=std::current_exception();bool restored=true;while(completed){const auto& item=sources[--completed];try{move(item.id,item.folderId);}catch(...){restored=false;}}if(!restored)throw std::runtime_error("Brush move failed; restoring original folder also failed");std::rethrow_exception(failure);}
+}
+
+}
+
+namespace moon {
+std::string PatternBrushDropPaths::lower(std::string value){
+ if(value.empty())return value;auto wide=std::filesystem::u8path(value).wstring();const int count=LCMapStringEx(LOCALE_NAME_INVARIANT,LCMAP_LOWERCASE,wide.data(),int(wide.size()),nullptr,0,nullptr,nullptr,0);if(!count)throw std::runtime_error("Cannot compare dropped file paths");std::wstring result(count,wchar_t(0));if(!LCMapStringEx(LOCALE_NAME_INVARIANT,LCMAP_LOWERCASE,wide.data(),int(wide.size()),result.data(),count,nullptr,nullptr,0))throw std::runtime_error("Cannot compare dropped file paths");return std::filesystem::path(result).u8string();
+}
 }

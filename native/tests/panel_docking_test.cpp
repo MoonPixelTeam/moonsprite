@@ -28,9 +28,9 @@ int main(){
   check(responsive.resizeFloating({0,0,1000,600},{0,0,600,400}));check(responsive.groups[responsive.groupOf(0)].floating==Rect{200,120,200,100});
   responsive.resizeFloating({0,0,600,400},{0,0,1000,600});check(responsive.groups[responsive.groupOf(0)].floating==Rect{400,200,200,100});
   responsive.resizeFloating({0,0,1000,600},{0,0,180,90});responsive.resizeFloating({0,0,180,90},{0,0,1000,600});check(responsive.groups[responsive.groupOf(0)].floating==Rect{0,0,200,100});
-  Model m;std::array<bool,4> visible{true,true,true,true};Rect area{20,38,820,429};
+  Model m;Visibility visible{true,true,true,true};Rect area{20,38,820,429};
   auto initial=m.layout(area,visible);check(initial.panel[0].x==20&&initial.panel[2].y+initial.panel[2].h==467);
-  m.place(1,Dock::Left,m.groupOf(0),true,true);check(m.groups.size()==3&&m.groupOf(0)==m.groupOf(1));check(!m.shown(0,visible)&&m.shown(1,visible));
+  m.place(1,Dock::Left,m.groupOf(0),true,true);check(m.groups.size()==7&&m.groupOf(0)==m.groupOf(1));check(!m.shown(0,visible)&&m.shown(1,visible));
   auto grouped=m.layout(area,visible);check(grouped.panel[0]==grouped.panel[1]);m.select(0);check(m.shown(0,visible)&&!m.shown(1,visible));
   visible[0]=false;check(m.shown(1,visible));visible[0]=true;
   m.place(1,Dock::Right);check(m.groupOf(0)!=m.groupOf(1));check(m.layout(area,visible).canvas.w<grouped.canvas.w);
@@ -73,6 +73,8 @@ int main(){
   }
   std::stringstream stored;m.write(stored);Model restored;check(restored.read(stored));std::stringstream roundtrip;restored.write(roundtrip);std::stringstream expected;m.write(expected);check(roundtrip.str()==expected.str());
   const auto before=roundtrip.str();std::stringstream invalid("panels-v1 1 120 140 109 .2 1\n0 0 1 140 20 50 180 120 4 0 1 1 3\n");check(!restored.read(invalid));std::stringstream unchanged;restored.write(unchanged);check(unchanged.str()==before);
+  Model pickers;Visibility all{true,true,true,true,true,true,true,true};pickers.place(4,Dock::Left,pickers.groupOf(1),true,true);pickers.place(5,Dock::Left,pickers.groupOf(1),true,true);pickers.select(1);check(pickers.shown(1,all)&&!pickers.shown(4,all));pickers.place(4,Dock::Right);check(pickers.shown(1,all)&&pickers.shown(4,all));std::stringstream savedPickers;pickers.write(savedPickers);Model pickerCopy;check(pickerCopy.read(savedPickers)&&pickerCopy.groupOf(1)==pickerCopy.groupOf(5)&&pickerCopy.groupOf(4)!=pickerCopy.groupOf(1));
+  std::stringstream oldLayout("panels-v3 1 120 140 109 .2 4\n0 0 2 140 200 90 220 180 1 0 0 0 0 0 0\n0 1 3 140 200 90 220 180 1 1 0 0 0 0 0\n2 2 1 300 200 90 220 180 1 2 0 0 0 0 0\n3 3 1 180 280 90 180 150 1 3 0 0 0 0 0\n");Model upgraded;check(upgraded.read(oldLayout));for(int id=0;id<columnCount;++id)check(upgraded.groupOf(id)>=0);
   std::cout<<"Panel docking, groups, visibility, layout and persistence passed\n";return 0;
  }catch(const std::exception& e){std::cerr<<e.what()<<'\n';return 1;}
 }

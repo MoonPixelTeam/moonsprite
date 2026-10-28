@@ -19,7 +19,7 @@ const std::vector<Entry>& catalog(){static const std::vector<Entry> rows={
 {"exportAllFrames","export",U"导出所有帧","exportAllFrames","",false},
 {"exportSpriteSheet","export",U"导出精灵表","exportSpriteSheet","",false},
 {"openProjectFolder","file",U"在文件夹中打开","openProjectFolder","",false},
-{"openTimelapse","file",U"缩时视频","openTimelapse","",false,true},
+{"openTimelapse","file",U"缩时视频","openTimelapse","",true,true},
 {"openProjectInfo","file",U"项目信息","openProjectInfo","",false},
 {"scripts","file",U"脚本","","",true,true},
 {"openScriptFolder","scripts",U"打开脚本文件夹","openScriptFolder","",false,true},
@@ -132,7 +132,7 @@ const std::vector<Entry>& catalog(){static const std::vector<Entry> rows={
 {"toggleFullscreen","window",U"全屏模式","toggleFullscreen","F11",false},
 {"display","window",U"显示","","",true,true},
 {"toggleGrid","display",U"显示像素网格","toggleGrid","",false},
-{"toggleCustomGrid","display",U"显示自定义网格","toggleCustomGrid","",false},
+{"toggleCustomGrid","display",U"显示自定义网格","toggleCustomGrid","Ctrl+'",false},
 {"toggleSliceOutlines","display",U"显示切片边框","toggleSliceOutlines","",false},
 {"relativeLuminance","display",U"查看相对明暗","relativeLuminance","Ctrl+Y",false},
 {"alignment","window",U"对齐","","",true},
@@ -153,7 +153,12 @@ const std::vector<Entry>& catalog(){static const std::vector<Entry> rows={
 {"mirrorViewVertical","mirrorViewMenu",U"垂直镜像","mirrorViewVertical","Ctrl+Shift+Alt+M",false},
 {"resetView","window",U"复位视图","resetView","",false},
 {"panels","window",U"栏目","","",true,true},
-{"toggleColorPanel","panels",U"颜色","toggleColorPanel","",false},
+{"pickerPanels","panels",U"调色盘","","",true},
+{"toggleColorPanel","pickerPanels",U"饱和度／明度","toggleColorPanel","",false},
+{"toggleMoonRingPanel","pickerPanels",U"月环","toggleMoonRingPanel","",false},
+{"toggleHsPanel","pickerPanels",U"色相／饱和度平面","toggleHsPanel","",false},
+{"toggleWheelPanel","pickerPanels",U"色轮","toggleWheelPanel","",false},
+{"toggleNormalMapPanel","pickerPanels",U"切线空间法线球","toggleNormalMapPanel","",false},
 {"togglePalettePanel","panels",U"颜色板","togglePalettePanel","",false},
 {"toggleLayersPanel","panels",U"图层","toggleLayersPanel","Tab",false},
 {"panelHistory","panels",U"历史记录","","",false},
@@ -180,7 +185,9 @@ const std::vector<Entry>& catalog(){static const std::vector<Entry> rows={
 };return rows;}
 bool Commands::bind(const std::string& id,Binding binding){
  const auto& rows=catalog();auto it=std::find_if(rows.begin(),rows.end(),[&](const Entry& e){return id==e.id&&!e.group;});
- if(it==rows.end()||!binding.run)return false;bindings_[id]=std::move(binding);return true;
+ // The independent top workspace dropdown uses these same shortcut commands.
+ const bool workspaceAction=id=="saveWorkspaceLayout"||id=="openWorkspaceManager"||id=="resetWorkspaceLayout";
+ if((it==rows.end()&&!workspaceAction)||!binding.run)return false;bindings_[id]=std::move(binding);return true;
 }
 bool Commands::connected(const std::string& id)const{return bindings_.find(id)!=bindings_.end();}
 bool Commands::enabled(const std::string& id)const{auto it=bindings_.find(id);return it!=bindings_.end()&&(!it->second.enabled||it->second.enabled());}

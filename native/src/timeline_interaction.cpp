@@ -11,16 +11,18 @@ template<class T> int indexOf(const std::vector<T>& items,const std::string& id)
 }
 // Ports workspace-commands-layer-selection's replace/toggle/range semantics.
 void Document::selectTimelineLayer(const std::string& id,int mode){
+ if(!timeline_.state().groups.empty()){selectTimelineRow({LayerPanelKind::Layer,id,0},mode);return;}
+ selectedGroupIds_.clear();selectedGroupId_.reset();
  const auto& layers=timeline_.state().layers;if(!timeline_.hasLayer(id))return;const int end=int(timeline_.layerIndex(id));
- commitFloatingPaste();clearFrameSelection();timelineSelection_.cels.clear();timelineSelection_.celAnchor.clear();
+ commitFloatingPaste();clearFrameSelection();timelineSelection_.maskRows.clear();timelineSelection_.cels.clear();timelineSelection_.celAnchor.clear();
  if(mode==2){int start=timeline_.hasLayer(timelineSelection_.layerAnchor)?int(timeline_.layerIndex(timelineSelection_.layerAnchor)):-1;if(start<0)start=int(activeLayerIndex());timelineSelection_.layers.clear();for(int i=std::min(start,end);i<=std::max(start,end);++i)timelineSelection_.layers.push_back(layers[i].id);}
  else{if(mode==1)toggle(timelineSelection_.layers,id);else timelineSelection_.layers={id};timelineSelection_.layerAnchor=id;}
  selectLayer(id);
 }
 // Cel range is additive; its anchor follows the last selected focus, as in legacy.
 void Document::selectTimelineCel(const std::string& id,int mode,const std::vector<std::string>& replacement){
- const auto* target=timeline_.findCelById(id);if(!target)return;const auto layerId=target->layerId,frameId=target->frameId;
- const auto implicit=cel().id;commitFloatingPaste();clearFrameSelection();
+ const auto* target=timeline_.findCelById(id);if(!target)return;selectedGroupIds_.clear();selectedGroupId_.reset();const auto layerId=target->layerId,frameId=target->frameId;
+ const auto implicit=cel().id;commitFloatingPaste();clearFrameSelection();timelineSelection_.maskRows.clear();
  auto& selected=timelineSelection_.cels;
  if(mode && selected.empty())selected.push_back(implicit);
  if(mode==1)toggle(selected,id);
@@ -56,21 +58,7 @@ void Document::moveTimelineCels(const std::string& anchorId,const std::string& t
  for(const auto& p:placements){auto& destination=mutableCel(p.target);destination.linkedCelId.reset();destination.runtimeSharedCelId.reset();destination.surface=p.source.surface;destination.opacity=p.source.opacity;destination.zIndex=p.source.zIndex;timelineSelection_.cels.push_back(destination.id);if(p.source.id==anchorId)timelineSelection_.celAnchor=destination.id;}
  e.afterCels=std::move(after);e.afterTimelineSelection=timelineSelection_;e.afterActive=target->layerId;e.afterFrame=target->frameId;applyCelEdit(e,true);activeLayerId_=e.afterActive;change_={0,0,width_,height_};publishChange();pushEdit(std::move(e));
 }
-void Document::moveTimelineLayers(const std::string& target,bool after,bool copy){
- commitFloatingPaste();cancelStroke();cancelLayerOpacity();auto& state=timeline_.state_;auto selected=timelineSelection_.layers;if(selected.empty())selected={layer().id};if(indexOf(state.layers,target)<0)return;
- Edit e{{},state_,nextState_};e.beforeTimelineSelection=timelineSelection_;e.beforeActive=activeLayerId_;e.beforeFrame=e.afterFrame=activeFrameId_;e.beforeSelection=e.afterSelection=selectedFrames_;
- std::vector<DocumentLayer> moving,remaining;
- for(const auto& l:state.layers)if(contains(selected,l.id))moving.push_back(l);else remaining.push_back(l);
- if(moving.empty())return;
- if(copy){e.beforeTimeline=state;remaining=state.layers;std::unordered_map<std::string,std::string> celIds;std::vector<DocumentCel> copies;std::vector<std::string> ids;
-  for(auto& l:moving){const auto old=l.id;l.id="layer-native-"+std::to_string(identity_)+"-"+std::to_string(++nextLayerId_);ids.push_back(l.id);for(const auto& c:state.cels)if(c.layerId==old){auto value=c;value.layerId=l.id;value.id="cel-"+l.id+"-"+c.frameId;celIds[c.id]=value.id;copies.push_back(std::move(value));}}
-  for(auto& c:copies){const auto* original=timeline_.findCelById(std::find_if(celIds.begin(),celIds.end(),[&](const auto& p){return p.second==c.id;})->first);if(original->linkedCelId && celIds.count(*original->linkedCelId)){c.linkedCelId=celIds[*original->linkedCelId];c.surface.reset();}else{const auto source=timeline_.resolveSurface(original->id);c.surface=*source.surface;c.linkedCelId.reset();}c.runtimeSharedCelId.reset();}
-  state.cels.insert(state.cels.end(),copies.begin(),copies.end());selected=std::move(ids);
- }else captureLayerOrder(e,false);
- const int oldTarget=indexOf(state.layers,target);auto it=std::find_if(remaining.begin(),remaining.end(),[&](const auto& l){return l.id==target;});const int insertion=it!=remaining.end()?int(it-remaining.begin())+(after?1:0):int(std::count_if(state.layers.begin(),state.layers.begin()+oldTarget,[&](const auto& l){return !contains(selected,l.id);}));
- remaining.insert(remaining.begin()+insertion,moving.begin(),moving.end());if(!copy && std::equal(remaining.begin(),remaining.end(),state.layers.begin(),[](const auto& a,const auto& b){return a.id==b.id;}))return;
- state.layers=std::move(remaining);timelineSelection_.layers=selected;activeLayerId_=selected.back();timeline_.buildIndex();if(copy)e.afterTimeline=state;else captureLayerOrder(e,true);e.afterActive=activeLayerId_;e.afterTimelineSelection=timelineSelection_;change_={0,0,width_,height_};publishChange();pushEdit(std::move(e));
-}
+
 void Document::copyTimelineFrames(const std::string& target,bool after){
  const auto clipboard=frameClipboard_;const auto beforeActive=activeFrameId_;const auto beforeLayer=activeLayerId_;const auto beforeSelection=selectedFrames_;const auto anchor=frameAnchor_;const auto formal=timelineSelection_;const auto pos=position_;
  if(!copySelectedFrames())return;const auto oldGrouping=groupingHistory_;groupingHistory_=true;

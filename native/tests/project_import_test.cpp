@@ -15,13 +15,21 @@ ReadManifest sample() {
 void rejects(std::function<void(ReadManifest&)> edit,ErrorKind kind) {
  auto m=sample();edit(m);try {auto out=prepareEditableImport(m);(void)out;}catch(const Error& e){check(e.kind==kind);return;}throw std::runtime_error("Import should reject");
 }
-int main() {try {
+int main(int argc,char** argv) {try {
  auto m=sample();auto out=prepareEditableImport(m);
  check(out.id==m.id&&out.timeline.layers[0].id==m.activeLayerId&&out.timeline.frames[0].duration==130&&out.timeline.cels[0].id=="cel:|");
  check(out.timeline.cels[0].surface->pixels==m.cels[0].surface->pixels&&out.sourceArchive==m.sourceArchive);
  check(out.palette.entries.size()==2&&out.palette.slots==m.paletteSlots&&out.palette.nextId==8);
  out.timeline.cels[0].surface->pixels[0]=99;check(m.cels[0].surface->pixels[0]==0x00112233u);
  m.paletteSlots.clear();out=prepareEditableImport(m);check(out.palette.slots==std::vector<int>({1,0,0,0}));
+ {
+  auto local=sample();auto storage=std::make_shared<ManifestRaster>();storage->width=3;storage->height=2;storage->offsetX=-2;storage->offsetY=3;storage->pixels={0x00030201,0xff123456,0,0,0,0xffaabbcc};local.cels[0].surface=storage;local.layers[0].surface=storage;
+  local.frames.push_back({"linked-frame",90});auto alias=local.cels[0];alias.id="linked-cel";alias.frameId="linked-frame";alias.linkedCelId=local.cels[0].id;local.cels.push_back(alias);local.activeFrameId="linked-frame";
+  const auto prepared=prepareEditableImport(local);moon::timeline::Timeline timeline(prepared.timeline);const auto owner=timeline.resolveSurface(alias.id);
+  check(owner.source->id==local.cels[0].id&&owner.surface->width==3&&owner.surface->height==2&&owner.surface->offsetX==-2&&owner.surface->offsetY==3&&owner.surface->pixels==storage->pixels);
+  check(!owner.surface->storageOriginX&&!owner.surface->storageOriginY&&prepared.activeFrameId=="linked-frame");
+ }
+ if(argc==2&&std::string(argv[1])=="--sparse-import-check")return 0;
  const auto corrupt=ErrorKind::Corrupt,unsupported=ErrorKind::Unsupported;
  rejects([](auto& m){m.layers.push_back(m.layers[0]);},corrupt);
  rejects([](auto& m){m.frames.push_back(m.frames[0]);},corrupt);

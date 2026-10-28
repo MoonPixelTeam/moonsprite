@@ -1,0 +1,13 @@
+#include "palette_layout.h"
+#include "document.h"
+#include "palette_clipboard.h"
+#include "project_encode.h"
+#include "project_manifest.h"
+#include <iostream>
+using namespace moon;
+void check(bool v,const char* m){if(!v)throw std::runtime_error(m);}
+int main(){try{
+ auto fit=fitPaletteSlotsToGrid({1,0,2,0,3,0},3,2);check(fit.columns==3&&fit.rows==2&&fit.slots==std::vector<int>({1,0,2,0,3,0}),"Cannot narrow occupied rightmost column");fit=fitPaletteSlotsToGrid({1,0,2,0,3,0},3,5);check(fit.slots==std::vector<int>({1,0,2,0,0,0,3,0,0,0}),"Width resize retains holes and XY");fit=fitPaletteSlotsToGrid(fit.slots,5,3,8);check(fit.rows==8&&fit.slots[4]==3&&fit.slots[2]==2,"Height resize keeps geometry");
+ Document d(1,1);auto source=d.palette().order();source.resize(6);source[2]=source[1];source[1]=0;d.repositionPaletteColors(source,{},0,0,3,true);const auto raw=d.palette().slots;check(d.palette().columns==3,"Manual transaction stores columns");auto view=fitPaletteSlotsToGrid(raw,3,5);d.clearPaletteSelection();d.selectPaletteBox(8,1,5,&view.slots);check(d.palette().selected.size()==1,"Reverse box uses view coordinates and holes");d.selectPaletteBox(20,27,5,&view.slots);check(d.palette().selected.empty(),"All-empty virtual box");const auto h=d.historySize();auto before=PaletteViewSelection{5,20,std::make_pair(20,27)},after=PaletteViewSelection{5,10,std::make_pair(10,17)};d.pastePaletteColors({0xff0000ff,0x00112233},{10,17},true,&view.slots,5);d.annotatePaletteView(before,after);check(d.historySize()==h+1&&d.palette().columns==5&&d.palette().slots[11]==0,"Rectangular destination holes and one history");d.undo();check(d.palette().slots==raw&&d.palette().columns==3&&d.paletteViewRestore()->box==before.box,"Undo restores stored layout and selection geometry");d.redo();check(d.palette().slots[10]&&d.palette().slots[17]&&d.paletteViewRestore()->focused==after.focused,"Redo restores destination rectangle");
+ PaletteClipboardData clip;clip.colors={0xff0000ff,0x00112233};clip.columns=3;clip.slots={0,std::nullopt,1,std::nullopt,std::nullopt,std::nullopt};auto decoded=parsePaletteClipboard(encodePaletteClipboard(clip));check(decoded&&decoded->columns==3&&decoded->slots==clip.slots&&decoded->colors==clip.colors,"V2 rectangle encode/decode retains blank edges");const auto manifest=project::readProjectManifest(project::encodeEditableProject(d).bytes);check(manifest.paletteColumns==5,"Edited manual columns saved");std::cout<<"Manual palette fit, holes, virtual boxes, transactions, selection restore and V2 rectangle passed\n";return 0;
+}catch(const std::exception& e){std::cerr<<e.what()<<"\n";return 1;}}

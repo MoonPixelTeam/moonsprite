@@ -1,8 +1,9 @@
 #pragma once
 #include "document.h"
+#include "export_protection.h"
 #include <filesystem>
 namespace moon {
-struct StaticImageExportOptions {int scalePercent=100;bool trim=false,selection=false,automatic=false;};
+struct StaticImageExportOptions {int scalePercent=100;bool trim=false,selection=false,automatic=false;std::string layerId;bool trimCommon=false;ExportProtection protection=ExportProtection::Off;std::string sliceId;};
 struct StaticImageExport {int width=0,height=0;std::vector<Pixel> pixels;std::vector<std::uint8_t> png;bool indexed=false;};
 struct SvgImageExport {int width=0,height=0;std::vector<std::uint8_t> bytes;};
 std::vector<std::uint8_t> encodeImageSvg(int width,int height,const std::vector<Pixel>& pixels);
@@ -13,9 +14,14 @@ IcoImageExport encodeStaticImageIco(const Document& document,StaticImageExportOp
 struct BmpImageExport {int width=0,height=0;std::vector<std::uint8_t> bytes;};
 std::vector<std::uint8_t> encodeImageBmp(int width,int height,const std::vector<Pixel>& pixels);
 BmpImageExport encodeStaticImageBmp(const Document& document,StaticImageExportOptions options={});
+struct JpegImageExport {int width=0,height=0;std::vector<std::uint8_t> bytes;};
+JpegImageExport encodeImageJpeg(int width,int height,const std::vector<Pixel>& pixels);
+JpegImageExport encodeStaticImageJpeg(const Document& document,StaticImageExportOptions options={});
 StaticImageExport encodeImagePng(int width,int height,std::vector<Pixel> pixels,bool automatic);
+StaticImageExport encodePaletteImagePng(const std::vector<Pixel>& colors);
 StaticImageExport encodeRgbaImagePng(int width,int height,std::vector<Pixel> pixels);
 void writeExportBytesAtomic(const std::filesystem::path& path,const std::vector<std::uint8_t>& bytes);
+std::u32string staticLayerExportStem(const Document& document,const std::string& layerId);
 StaticImageExport encodeStaticImagePng(const Document& document,StaticImageExportOptions options={});
 void writeStaticImagePngAtomic(const std::filesystem::path& path,const StaticImageExport& image);
 }

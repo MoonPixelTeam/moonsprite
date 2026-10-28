@@ -1,0 +1,4 @@
+#include "document.h"
+#include <stdexcept>
+#include <iostream>
+int main(){try{moon::Document blank(32,32);if(blank.displayPixels().size()!=1024||blank.displayPixels().data()!=blank.pixels().data())throw std::runtime_error("Blank display storage lifetime");const auto* stable=blank.displayPixels().data();if(blank.displayPixels().data()!=stable)throw std::runtime_error("Repeated display reference lifetime");moon::Document copy=blank;if(copy.displayPixels().size()!=1024||copy.displayPixels().data()!=copy.pixels().data())throw std::runtime_error("Copied display storage lifetime");blank.beginStroke({1,1},0xff0000ff);blank.commitStroke();if(blank.displayPixels()[33]!=0xff0000ff||copy.displayPixels()[33]!=0)throw std::runtime_error("Display edit/copy isolation");std::cout<<"Blank/copy/edit display pixel lifetime passed\n";return 0;}catch(const std::exception& e){std::cerr<<e.what();return 1;}}

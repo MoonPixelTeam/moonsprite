@@ -3,9 +3,39 @@
 #include <cmath>
 #include <cstdint>
 #include <vector>
+#include <optional>
+#include "brush_dynamics.h"
 namespace moon {
+enum class PatternPaintMode { Paint, Source, Target };
 enum class BrushShape { Round, Square, Line };
-struct BrushOptions {int size=1,opacity=100;BrushShape shape=BrushShape::Round;};
+enum class InkMode { Simple, CopyAlphaColor, LockAlpha };
+enum class BrushDitherTemplate { Checker, Diagonal, DiagonalReverse, Horizontal, Vertical, Bayer2, Bayer4, Bayer8 };
+inline int brushDitherStageCount(BrushDitherTemplate t){switch(t){case BrushDitherTemplate::Checker:return 2;case BrushDitherTemplate::Diagonal:case BrushDitherTemplate::DiagonalReverse:case BrushDitherTemplate::Horizontal:case BrushDitherTemplate::Vertical:return 6;case BrushDitherTemplate::Bayer2:return 4;case BrushDitherTemplate::Bayer4:return 16;case BrushDitherTemplate::Bayer8:return 64;}return 1;}
+inline int brushDitherStageAt(BrushDitherTemplate t,int x,int y){auto mod=[](int v,int n){v%=n;return v<0?v+n:v;};if(t==BrushDitherTemplate::Checker)return ((x+y)&1)==0?0:1;if(t==BrushDitherTemplate::Diagonal)return mod(x+y,6);if(t==BrushDitherTemplate::DiagonalReverse)return mod(x-y,6);if(t==BrushDitherTemplate::Horizontal)return mod(y,6);if(t==BrushDitherTemplate::Vertical)return mod(x,6);const int n=t==BrushDitherTemplate::Bayer2?2:t==BrushDitherTemplate::Bayer4?4:8;static constexpr int q[2][2]={{0,2},{3,1}};int value=0;for(int stride=1;stride<n;stride*=2)value=value*4+q[(mod(y,n)/stride)&1][(mod(x,n)/stride)&1];return value;}
+struct BrushOptions {int size=1,opacity=100;BrushShape shape=BrushShape::Round;bool perfectPixels=false;int lineDirectionStep=1;bool dither=false;BrushDitherTemplate ditherTemplate=BrushDitherTemplate::Bayer4;int ditherStage=8;InkMode ink=InkMode::Simple;PatternPaintMode imagePaintMode=PatternPaintMode::Paint;};
+inline bool brushDitherContains(const BrushOptions& b,int x,int y){if(!b.dither)return true;return brushDitherStageAt(b.ditherTemplate,x,y)<std::clamp(b.ditherStage,1,brushDitherStageCount(b.ditherTemplate));}
+struct BrushPathPoint { int x=0,y=0; int size=1; int opacity=100; double angle=0; std::optional<double> gradient; };
+// Legacy appendPerfectPixelSegment: interpolate a raster segment while
+// removing the middle pixel of a 2-pixel diagonal corner.
+inline bool appendPerfectPixelSegment(std::vector<BrushPathPoint>& path, BrushPathPoint target) {
+  if(path.empty()){path.push_back(target);return false;}
+  const auto start=path.back(); int x=start.x,y=start.y;
+  const int dx=std::abs(target.x-x), sx=x<target.x?1:-1;
+  const int dy=-std::abs(target.y-y), sy=y<target.y?1:-1;
+  int error=dx+dy; const int total=std::max(dx,-dy); bool removed=false; int step=0;
+  while(x!=target.x || y!=target.y){ const int twice=2*error;
+    if(twice>=dy){error+=dy;x+=sx;} if(twice<=dx){error+=dx;y+=sy;} ++step;
+    const double t=total?double(step)/total:1.0;
+    BrushPathPoint p{x,y,int(std::lround(start.size+(target.size-start.size)*t)),int(std::lround(start.opacity+(target.opacity-start.opacity)*t)),dynamics::interpolateAngle(start.angle,target.angle,t),start.gradient&&target.gradient?std::optional<double>{*start.gradient+(*target.gradient-*start.gradient)*t}:target.gradient};
+    if(path.size()>=2){const auto prev=path.back(), before=path[path.size()-2];
+      const bool diagonal=std::abs(p.x-before.x)==1&&std::abs(p.y-before.y)==1;
+      const bool corner=(prev.x==before.x&&prev.y==p.y)||(prev.y==before.y&&prev.x==p.x);
+      if(diagonal&&corner){path.pop_back();removed=true;}
+    }
+    if(path.empty()||path.back().x!=p.x||path.back().y!=p.y)path.push_back(p);
+  } return removed;
+}
+template<class PointLike> inline std::vector<BrushPathPoint> perfectPixelPathPoints(const std::vector<PointLike>& points){std::vector<BrushPathPoint> out;for(const auto& p:points)appendPerfectPixelSegment(out,{int(p.x),int(p.y),1,100});return out;}
 struct BrushSpan {int y,left,right;};
 // legacy tools-brush / selection raster traversal: keep direction-sensitive ties
 // and stamp spacing identical for the preview and the committed stroke.
@@ -23,8 +53,8 @@ template<class Stamp> inline void visitBrushLine(int ax,int ay,int bx,int by,int
   }
 }
 // Direct port: legacy core/tools-brush-spans.ts integerEllipseRowSpans.
-inline std::vector<BrushSpan> brushSpans(BrushOptions brush) {
-  const int size=std::clamp(brush.size,1,64);
+inline std::vector<BrushSpan> brushSpans(BrushOptions brush,int maximumSize=64) {
+  const int size=std::clamp(brush.size,1,maximumSize);
   if(brush.shape==BrushShape::Line) return {{size/2,0,size-1}};
   std::vector<BrushSpan> spans;for(int y=0;y<size;++y) spans.push_back({y,brush.shape==BrushShape::Square?0:size,brush.shape==BrushShape::Square?size-1:-1});
   if(brush.shape==BrushShape::Square) return spans;
@@ -61,4 +91,9 @@ inline std::uint32_t brushComposite(std::uint32_t base,std::uint32_t color,int o
   }
   return result;
 }
+// Direct legacy core/ink.ts: copy retains mask coverage but ignores opacity.
+inline std::uint32_t resolveInkStampColor(InkMode mode,std::uint32_t source,int coverage=255,int opacity=100){coverage=std::clamp(coverage,0,255);const int effective=mode==InkMode::CopyAlphaColor?coverage:int(std::floor(coverage*std::clamp(opacity,0,100)/100.0+.5));return (source&0xffffff)|(std::uint32_t(std::floor((source>>24)*effective/255.0+.5))<<24);}
+inline std::uint32_t applyInkColor(InkMode mode,std::uint32_t destination,std::uint32_t source){if(mode==InkMode::CopyAlphaColor)return source;if(mode==InkMode::LockAlpha&&(!(source>>24)||!(destination>>24)))return destination;auto value=brushComposite(destination,source,100);return mode==InkMode::LockAlpha?(value&0xffffff)|(destination&0xff000000):value;}
+inline std::uint32_t inkBrushComposite(std::uint32_t base,std::uint32_t color,int opacity,InkMode mode,int coverage=255){if(mode==InkMode::Simple)return brushComposite(base,color,int(std::floor(std::clamp(opacity,0,100)*std::clamp(coverage,0,255)/255.0+.5)));if(mode!=InkMode::CopyAlphaColor&&int(std::floor(coverage*std::clamp(opacity,0,100)/100.0+.5))==0)return base;return applyInkColor(mode,base,resolveInkStampColor(mode,color,coverage,opacity));}
+
 }

@@ -1,0 +1,12 @@
+#include "move_click_flash.h"
+#include <iostream>
+#include <memory>
+#include <stdexcept>
+#define CHECK(...) do{if(!(__VA_ARGS__))throw std::runtime_error(#__VA_ARGS__);}while(false)
+using namespace moon;
+int main(){try{
+ timeline::Surface s;s.width=s.height=8;s.pixels.assign(64,0xffffffff);GridRect region{0,0,8,8};auto g=moveFlashGeometry(region,0,0,.25);auto solid=buildMoveFlashRaster(s,region,g);CHECK(g.width==2&&g.height==2&&solid.visitedPixels==16);for(auto p:solid.pixels)CHECK(p==0xff000000);s.pixels.assign(64,0);s.pixels[63]=0xff141414;auto sparse=buildMoveFlashRaster(s,region,g);CHECK(sparse.visitedPixels==64&&sparse.pixels.back()==0xffffffff);
+ s.offsetX=-3;s.offsetY=7;s.pixels.assign(64,0);s.pixels[0]=0x7f141414;region={-3,7,8,8};for(double scale:{.1,.5,1.,1.5,3.}){g=moveFlashGeometry(region,-.3,.7,scale);auto r=buildMoveFlashRaster(s,region,g);int visible=0;for(auto p:r.pixels)if(p>>24){++visible;CHECK((p>>24)==127);}CHECK(visible==1);CHECK(g.left==moveFlashEdge(-.3-3*scale)&&g.top==moveFlashEdge(.7+7*scale));}
+ auto owner=std::make_shared<int>(1);timeline::Timeline::StorageStamp stamp{owner,1};MoveClickFlashCache<std::shared_ptr<int>> cache(512,2);g=moveFlashGeometry(region,0,0,1);int builds=0;auto build=[&]{return std::make_shared<int>(++builds);};auto acquire=[&](const std::string& key){return cache.acquire(key,s,stamp,region,g,build);};auto one=acquire("one"),two=acquire("two");CHECK(acquire("one")==one&&cache.hits()==1&&builds==2);acquire("three");CHECK(acquire("one")==one);CHECK(acquire("two")!=two&&cache.size()==2&&cache.bytes()==512);auto before=acquire("two");++stamp.revision;CHECK(acquire("two")!=before);before=acquire("two");stamp.owner=std::make_shared<int>(2);CHECK(acquire("two")!=before);before=acquire("two");++s.offsetX;CHECK(acquire("two")!=before);
+ g=moveFlashGeometry(region,0,0,.5);auto phase=acquire("phase");g=moveFlashGeometry(region,.4,0,.5);CHECK(acquire("phase")!=phase);auto changed=acquire("phase");cache.clear();CHECK(cache.size()==0&&cache.bytes()==0&&acquire("phase")!=changed);MoveClickFlashCache<std::shared_ptr<int>> oversized(1,1);g=moveFlashGeometry(region,0,0,1);auto large=oversized.acquire("large",s,stamp,region,g,build);CHECK(large&&oversized.size()==1&&oversized.bytes()==256);std::cout<<"Legacy move flash dense-RGBA/LRU fixtures passed\n";return 0;
+}catch(const std::exception& e){std::cerr<<e.what()<<'\n';return 1;}}

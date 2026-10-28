@@ -18,6 +18,7 @@ struct CheckerboardSettings {
 };
 class CanvasRenderer {
   os::SurfaceRef content_;
+  std::string previewFrame_;
   std::uint64_t identity_=0,revision_=0;
   unsigned uploads_=0;
   OnionSkinSettings onion_;
@@ -27,7 +28,9 @@ class CanvasRenderer {
   std::uint64_t onionGeneration_=0,syncedOnionGeneration_=0;
   std::uint64_t uploadedPixels_=0;
   std::uint64_t pendingRevision_=0;
-  PixelRegion pendingChange_,gradientBounds_;std::uint64_t gradientRevision_=0;
+  std::vector<PixelRegion> tilemapPreviewRegions_;bool tilemapPreviewLocal_=false;
+  bool syncTilemapPreview(const Document&,const std::string&,bool eligible);
+  PixelRegion pendingChange_,gradientBounds_;std::uint64_t gradientRevision_=0,floatingRevision_=0;
   SkBitmap checker_;
   gfx::Color checkerA_=0,checkerB_=0;
 public:
@@ -36,6 +39,7 @@ public:
   bool relativeLuminance()const{return relativeLuminance_;}
   void noteChange(const Document& document);
   void sync(const Document& document);
+  void syncFrame(const Document& document,const std::string& frame);
   void draw(ui::Graphics& g,const gfx::Rect& target,double pixelScale,gfx::Color a,gfx::Color b,int checkerSize=16);
   std::uint64_t uploadedPixels() const {return uploadedPixels_;}
   unsigned uploads() const {return uploads_;}

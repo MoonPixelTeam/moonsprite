@@ -54,31 +54,35 @@ int wmain(int argc,wchar_t** argv) {
     for(const auto& part:dark.parts)CHECK(part.id!="button_normal" && part.id!="button_hot" && part.id!="button_selected" && part.id!="button_disabled" && part.id!="button_focused");
     CHECK(dark.assets.patches.at("button.normal").bitmap->pixels==dark.assets.patches.at("icon_button.normal").bitmap->pixels);
     const auto& iconButton=dark.assets.patches.at("icon_button.normal");
-    CHECK(iconButton.bitmap->width==11 && iconButton.bitmap->height==12);
-    CHECK(iconButton.left==2 && iconButton.right==2 && iconButton.top==2 && iconButton.bottom==3);
+    CHECK(iconButton.bitmap->width==11 && iconButton.bitmap->height==11);
+    CHECK(iconButton.left==2 && iconButton.right==2 && iconButton.top==2 && iconButton.bottom==2);
     CHECK(iconButton.bitmap->pixels[2*11+2]==0xff352620);
     const auto& hotIconButton=dark.assets.patches.at("icon_button.hover");
     CHECK(hotIconButton.bitmap->pixels[2*11+2]==0xff443229);
+    CHECK(dark.assets.patches.at("text_button.normal").bitmap->pixels==iconButton.bitmap->pixels);
+    CHECK(dark.assets.patches.at("icon_button.pressed").bitmap->pixels!=dark.assets.patches.at("icon_button.selected").bitmap->pixels);
+    CHECK(dark.assets.patches.at("button.pressed").bitmap->pixels==dark.assets.patches.at("icon_button.pressed").bitmap->pixels);
+    CHECK(dark.assets.patches.at("text_button.selected").bitmap->pixels==dark.assets.patches.at("icon_button.selected").bitmap->pixels);
     CHECK(!dark.assets.patches.count("close_button.normal"));
     for(const auto& part:dark.parts) CHECK(part.id!="dialog_close_normal" && part.id!="dialog_close_hot" && part.id!="tool_pencil" && part.id!="tool_eraser");
     const auto& inputNormal=dark.assets.patches.at("entry.normal");
     CHECK(inputNormal.bitmap->width==5 && inputNormal.bitmap->height==14);
+    CHECK(inputNormal.top==2 && inputNormal.bottom==1);
     CHECK(!dark.assets.patches.count("entry.focus"));
-    CHECK(dark.assets.patches.at("slider.normal").bitmap->width==9);
+    const auto& slider=dark.assets.patches.at("slider.normal");
+    CHECK(slider.bitmap->width==5 && slider.bitmap->height==15);
+    CHECK(slider.left==2 && slider.right==2 && slider.top==2 && slider.bottom==2);
     CHECK(!dark.assets.patches.count("slider.focus"));
-    CHECK(dark.assets.patches.at("slider.fill").bitmap->width==3);
-    CHECK(dark.assets.patches.at("slider.fill").bitmap->height==12);
-    const auto sliderReference=importSkinPng(darkPath.parent_path()/"slider-reference.png",256).bitmap;
-    CHECK(sliderReference->width==119 && sliderReference->height==35);
-    const int trackColumns[]{0,1,2,115,98,115,116,117,118};
-    const auto bitmap=dark.assets.patches.at("slider.normal").bitmap;
-    for(int y=0;y<18;++y) for(int x=0;x<9;++x) {
-      const int sourceY=y-2;
-      CHECK(bitmap->pixels[y*9+x]==(sourceY<0?0:sliderReference->pixels[sourceY*119+trackColumns[x]]));
+    const auto& fill=dark.assets.patches.at("slider.fill");
+    CHECK(fill.bitmap->width==3 && fill.bitmap->height==13);
+    CHECK(fill.left==1 && fill.right==0 && fill.top==1 && fill.bottom==1);
+    for(int y=0;y<15;++y)for(int x=0;x<5;++x){
+      const auto expected=(x==0 || x==4 || y==0 || y==14)?0xff000000u:
+        (x==1 || x==3 || y==1 || y==13)?0xff674f42u:0xff352620u;
+      CHECK(slider.bitmap->pixels[y*5+x]==expected);
     }
-    // Latest slider keeps both inner track edges; discarded icon regions are really clear.
-    CHECK(dark.assets.patches.at("slider.normal").bitmap->pixels[5*9+3]==0xff674f42);
-    CHECK(dark.assets.patches.at("slider.normal").bitmap->pixels[5*9+5]==0xff674f42);
+    for(int y=0;y<13;++y)for(int x=0;x<3;++x)
+      CHECK(fill.bitmap->pixels[y*3+x]==((x==0 || y==0 || y==12)?0xff8f7363u:0xff674f42u));
     for(const auto rect:{std::array<int,4>{0,16,16,16},std::array<int,4>{20,16,16,16},std::array<int,4>{32,36,11,12},std::array<int,4>{48,36,11,12}})
       for(int y=rect[1];y<rect[1]+rect[3];++y) for(int x=rect[0];x<rect[0]+rect[2];++x) CHECK((dark.sheet->pixels[y*dark.sheet->width+x]>>24)==0);
     std::ifstream darkIn(darkPath);write(std::string((std::istreambuf_iterator<char>(darkIn)),{}));

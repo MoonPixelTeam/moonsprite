@@ -2,6 +2,7 @@
 #include "layer_compositor.h"
 #include "os/skia/skia_surface.h"
 #include "ui/paint.h"
+#include "os/sampling.h"
 #include <algorithm>
 #include <chrono>
 #include <iostream>
@@ -107,8 +108,22 @@ static void largeTimeline(){
   doc.selectLayer("L1");doc.beginStroke({0,0},0);renderer.sync(doc);doc.updateStroke({1,0});renderer.sync(doc);doc.cancelStroke();
   auto copy=doc;require(copy.activeFrameIndex()==999 && copy.activeLayerIndex()==1,"Copied index retained pointers");
 }
+static void tilemapPreviewOracle(){
+ constexpr int size=64;Document source(size,size);source.beginStroke({2,2},0xff112233);source.commitStroke();source.convertLayerToTilemap(2,2,U"local preview");const auto tileId=source.cel().tilemap->cells[33]->tileId;auto state=source.timeline().state();const auto setId=source.layer().tilemapTilesetId,layerId=source.layer().id,frameId=source.frame().id;
+ auto& grid=*state.cels.front().tilemap;grid.cells[std::size_t(50/2)*grid.columns+50/2]=tiles::Cell{setId,tileId,true,false,1};state.cels.front().surface->pixels=tiles::render(grid,state.tilesets);state.frames.push_back({"other-frame",100});auto second=state.cels.front();second.id="other-cel";second.frameId="other-frame";state.cels.push_back(second);
+ auto doc=Document::fromImported(size,size,state,{},"tile-preview-oracle",U"Tile preview",std::make_shared<const std::vector<std::uint8_t>>());doc.selectLayer(layerId);doc.selectFrame(frameId);doc.setTilemapMode(tiles::Mode::Hybrid);const auto authority=doc.timeline().state().tilesets.front().pixels,baseline=doc.canvasPixels();const auto history=doc.historySize(),revision=doc.contentRevision();
+ CanvasRenderer cache,other;cache.sync(doc);other.syncFrame(doc,"other-frame");
+ auto oracle=[&](CanvasRenderer& renderer,const std::string& frame){auto expected=compositeNormalRegion(doc.displayTimeline(),frame,{0,0,size,size},{},nullptr,0,0,0,false);auto rendered=os::instance()->makeRgbaSurface(size,size),reference=os::instance()->makeRgbaSurface(size,size);rendered->clear();reference->clear();{ui::Graphics g(rendered);renderer.draw(g,{0,0,size,size},1,gfx::rgba(0,0,0),gfx::rgba(0,0,0));}auto content=os::instance()->makeRgbaSurface(size,size);uploadRgbaRegion(*content,expected.data(),size,size,size);{ui::Graphics g(reference);g.fillRect(gfx::rgba(0,0,0),{0,0,size,size});ui::Paint p;p.blendMode(os::BlendMode::SrcOver);g.drawSurface(content.get(),gfx::Rect(0,0,size,size),gfx::Rect(0,0,size,size),os::Sampling(),&p);}for(int y=0;y<size;++y)for(int x=0;x<size;++x)require(rendered->getPixel(x,y)==reference->getPixel(x,y),"Tile preview actual canvas pixel differs from full composite");};
+ auto sync=[&]{const auto before=cache.uploadedPixels(),beforeOther=other.uploadedPixels();cache.sync(doc);other.syncFrame(doc,"other-frame");require(cache.uploadedPixels()-before<=32&&other.uploadedPixels()-beforeOther<=32,"Tile preview forced full canvas/frame upload");oracle(cache,frameId);oracle(other,"other-frame");require(doc.historySize()==history&&doc.contentRevision()==revision&&doc.timeline().state().tilesets.front().pixels==authority,"Preview polluted authority/history");};
+ ShapeSpec shape;shape.kind=ShapeKind::Rectangle;shape.bounds={2,2,1,1};require(doc.beginShapePreview()&&doc.updateShapePreview(shape,0xff998877),"Local shape begin");sync();shape.bounds={8,8,2,2};doc.updateShapePreview(shape,0xffabcdef);sync();shape.bounds={9,9,1,1};doc.updateShapePreview(shape,0xffaabbcc);sync();doc.cancelShapePreview();sync();require(doc.canvasPixels()==baseline,"Local shape cancellation changed authority");
+ doc.previewSelection(SelectionMask{2,2,1,1,{}});WandOptions options;GradientSpec gradient;gradient.start={2,2};gradient.end={3,3};gradient.first=gradient.last=0xff776655;require(doc.beginGradient({2,2},options)&&doc.updateGradient(gradient,options),"Local gradient begin");sync();gradient.first=gradient.last=0xff554433;doc.updateGradient(gradient,options);sync();doc.cancelGradient();sync();
+ doc.previewSelection({});cache.sync(doc);other.syncFrame(doc,"other-frame");
+ require(doc.beginShapePreview(),"Skipped shape begin");shape.bounds={2,2,1,1};doc.updateShapePreview(shape,0xff556677);sync();shape.bounds={8,8,1,1};doc.updateShapePreview(shape,0xff778899);shape.bounds={10,10,1,1};doc.updateShapePreview(shape,0xff99aabb);sync();doc.cancelShapePreview();sync();
+ std::cout<<"Tile preview local upload and actual canvas/frame pixel oracle passed\n";
+}
 int main(int argc,char* argv[]){try{
   auto system=os::System::make();system->setAppMode(os::AppMode::GUI);
+  if(argc>1&&std::string(argv[1])=="--tilemap-preview"){tilemapPreviewOracle();return 0;}
   checkerboardOracle();if(argc>1 && std::string(argv[1])=="--checkerboard")return 0;
   strokeRecorderOracle();pixelOracle();largeTimeline();
   for(int size:{32,256,512,1024})benchmark(size,1,1);

@@ -10,6 +10,37 @@ constexpr Pixel ink = 0xff3379ff;
 void dot(Document& d, int x, int y, Pixel p = ink) { d.beginStroke({x,y},p); d.commitStroke(); }
 int main() {
   try {
+    {CHECK(shapeViewAlignedAngle(30,false,false)==-30&&shapeViewAlignedAngle(30,true,false)==30&&shapeViewAlignedAngle(30,true,true)==-30&&shapeViewAlignedAngle(180,false,false)==-180);ShapeSpec spec;spec.start={10,10};ShapeDragGeometry geometry;geometry.viewAngle=90;geometry.update(spec,{14,12},false,false,false);CHECK(std::abs(spec.bounds.x-11)<1e-9&&std::abs(spec.bounds.y-9)<1e-9&&spec.bounds.width==3&&spec.bounds.height==5&&spec.bounds.angle==90&&geometry.directionX==1&&geometry.directionY==-1);geometry.update(spec,{14,12},true,false,false);CHECK(spec.bounds.width==5&&spec.bounds.height==5&&spec.bounds.angle==90);geometry.update(spec,{14,12},false,true,false);CHECK(spec.bounds.width==5&&spec.bounds.height==9);CHECK(std::abs(spec.bounds.x+spec.bounds.width/2-10.5)<1e-9&&std::abs(spec.bounds.y+spec.bounds.height/2-10.5)<1e-9);geometry.update(spec,{14,12},false,false,true);geometry.update(spec,{16,11},false,false,true);CHECK(std::isfinite(spec.bounds.angle));geometry.update(spec,{17,13},false,false,false);CHECK(std::isfinite(spec.bounds.x)&&geometry.resize.has_value());}
+    {for(auto size:std::vector<TransformPoint>{{32,24},{31,25}})for(auto anchor:std::vector<TransformPoint>{{size.x/2,size.y/2},{0,0},{32,24},{8,6.5}}){ShapeSpec s;ShapeDragGeometry geometry;s.start={anchor.x-.5,anchor.y-.5};for(auto point:std::vector<TransformPoint>{{20,16},{23,18},{21,15}}){geometry.update(s,point,false,true,false);s.bounds=centerDrawingBounds(s.bounds,anchor);CHECK(s.bounds.x+s.bounds.width/2==anchor.x&&s.bounds.y+s.bounds.height/2==anchor.y&&s.bounds.x==std::floor(s.bounds.x)&&s.bounds.y==std::floor(s.bounds.y));}geometry.update(s,{22,17},false,true,true);geometry.update(s,{12,19},false,true,true);s.bounds=centerDrawingBounds(s.bounds,anchor);CHECK(s.bounds.x+s.bounds.width/2==anchor.x&&s.bounds.y+s.bounds.height/2==anchor.y);geometry.update(s,{23,18},false,true,false);s.bounds=centerDrawingBounds(s.bounds,anchor);CHECK(s.bounds.x+s.bounds.width/2==anchor.x&&s.bounds.y+s.bounds.height/2==anchor.y);}ShapeSpec s;ShapeDragGeometry g;s.start={15.5,11.5};g.update(s,{20,16},false,true,false);s.bounds=centerDrawingBounds(s.bounds,{16,12});CHECK(s.bounds.x==11&&s.bounds.y==7&&s.bounds.width==10&&s.bounds.height==10);}
+
+    {const auto path=bezierCurvePixelPoints({1,8},{{3,0},{8,0}},{10,8});CHECK(!path.empty()&&path.front().x==1&&path.front().y==8&&path.back().x==10&&path.back().y==8);for(std::size_t i=1;i<path.size();++i)CHECK(std::abs(path[i].x-path[i-1].x)<=1&&std::abs(path[i].y-path[i-1].y)<=1);Document d(12,10);BrushOptions brush;brush.size=1;brush.opacity=0;CHECK(d.beginShapePreview()&&d.updateGeometricBrushPreview(path,0x80123456,brush));CHECK(d.pixels()==std::vector<Pixel>(120)&&d.historySize()==0);const auto preview=d.displayPixels();d.cancelShapePreview();CHECK(d.pixels()==std::vector<Pixel>(120));CHECK(d.paintGeometricBrushPath(path,0x80123456,brush)&&d.historySize()==1&&d.pixels()==preview);const auto after=d.pixels();d.undo();CHECK(d.pixels()==std::vector<Pixel>(120));d.redo();CHECK(d.pixels()==after);}
+
+    // tools-shapes.ts filledShapePathPixelPoints: lasso scanline without polygon boundary.
+    {Document d(8,7);ShapeSpec s;s.kind=ShapeKind::Freeform;s.polygonPath={{1,1},{6,1},{3,5}};s.brush.ink=InkMode::LockAlpha;s.brush.opacity=0;CHECK(d.beginShapePreview()&&d.updateShapePreview(s,0x80112233));CHECK(!d.dirty()&&d.historySize()==0&&d.pixels()==std::vector<Pixel>(56));CHECK((*d.gradientPreviewPixels())[2*8+2]==0x80112233&&(*d.gradientPreviewPixels())[2*8+1]==0);d.cancelShapePreview();CHECK(d.historySize()==0);CHECK(d.beginShapePreview()&&d.updateShapePreview(s,0x80112233)&&d.commitShapePreview());const auto result=d.pixels();CHECK(result[2*8+2]==0x80112233&&result[2*8+1]==0&&d.historySize()==1);d.undo();CHECK(d.pixels()==std::vector<Pixel>(56));d.redo();CHECK(d.pixels()==result);}
+    {Document d(9,7);ShapeSpec s;s.kind=ShapeKind::Freeform;s.polygonPath={{1,1},{3,1},{3,3},{1,3}};d.symmetryAxes.vertical=true;SelectionMask mask{0,0,9,7,std::vector<unsigned char>(63,1)};mask.mask[2*9+2]=0;d.previewSelection(mask);CHECK(d.beginShapePreview()&&d.updateShapePreview(s,0x40112233)&&d.commitShapePreview());CHECK(d.pixels()[2*9+2]==0&&d.pixels()[2*9+6]==0x40112233);d.undo();CHECK(d.selection()&&d.selection()->mask==mask.mask&&d.pixels()==std::vector<Pixel>(63));}
+    // tools-shapes.ts filledPolygonPathPixelPoints / paintShapePixelPoints.
+    {Document d(9,9);ShapeSpec s;s.kind=ShapeKind::Polygon;s.polygonPath={{1,1},{5,1},{5,5},{1,5}};s.brush.ink=InkMode::LockAlpha;s.brush.size=64;s.brush.opacity=1;
+     CHECK(d.beginShapePreview()&&d.updateShapePreview(s,0x80112233));CHECK(!d.dirty()&&d.historySize()==0&&d.pixels()[3*9+3]==0);CHECK((*d.gradientPreviewPixels())[3*9+3]==0x80112233);d.cancelShapePreview();CHECK(!d.dirty()&&d.historySize()==0);
+     CHECK(d.beginShapePreview()&&d.updateShapePreview(s,0x80112233)&&d.commitShapePreview());for(int y=0;y<9;++y)for(int x=0;x<9;++x)CHECK(d.pixels()[y*9+x]==(x>=1&&x<=5&&y>=1&&y<=5?0x80112233u:0u));const auto after=d.pixels();d.undo();CHECK(d.pixels()==std::vector<Pixel>(81));d.redo();CHECK(d.pixels()==after);
+     s.polygonFilled=false;s.polygonContour={{1,1},{2,1},{3,1}};CHECK(d.beginShapePreview()&&d.updateShapePreview(s,0xff445566));CHECK((*d.gradientPreviewPixels())[3*9+3]==after[3*9+3]&&(*d.gradientPreviewPixels())[1*9+2]==0xff445566);d.cancelShapePreview();
+    }
+    {Document d(9,7);ShapeSpec s;s.kind=ShapeKind::Polygon;s.polygonPath={{1,1},{3,1},{3,3},{1,3}};d.symmetryAxes.vertical=true;d.previewSelection(SelectionMask{0,0,9,7,std::vector<unsigned char>(63,1)});auto mask=*d.selection();mask.mask[2*9+2]=0;d.previewSelection(mask);CHECK(d.beginShapePreview()&&d.updateShapePreview(s,0x80776655)&&d.commitShapePreview());CHECK(d.pixels()[2*9+2]==0&&d.pixels()[2*9+6]==0x80776655&&d.pixels()[2*9+1]==0x80776655);d.undo();CHECK(d.selection()&&d.selection()->mask==mask.mask&&d.pixels()==std::vector<Pixel>(63));}
+    {ShapeSpec s;s.kind=ShapeKind::Polygon;s.polygonPath={{1,1},{5,1},{5,2},{2,2},{2,5},{1,5}};auto mask=shapeMask(s,8,8);CHECK(selectionContains(mask,1,4)&&selectionContains(mask,4,1)&&!selectionContains(mask,4,4));s.polygonPath={{1,1},{5,3}};mask=shapeMask(s,8,8);CHECK(selectionContains(mask,1,1)&&selectionContains(mask,5,3)&&!selectionContains(mask,1,3));s.polygonPath.clear();CHECK(!shapeMask(s,8,8));}
+
+
+    // legacy smooth-brush.test.ts exact source-color contour fixtures.
+    {
+      constexpr Pixel color=0xffc86432;
+      auto apply=[&](std::vector<Pixel> source,int side,const std::vector<std::size_t>& covered,int strength,std::optional<SelectionMask> selection=std::nullopt){const auto changed=smoothBrushPixels(side,side,covered,selection,strength,[&](int x,int y){return source[std::size_t(y)*side+x];});for(auto [i,p]:changed){CHECK(p==0||p==color);source[i]=p;}return source;};
+      for(int rotation=0;rotation<4;++rotation){std::vector<Pixel> source(21*21);std::vector<std::size_t> tails;auto index=[&](int x,int y){for(int turn=0;turn<rotation;++turn){const int next=20-y;y=x;x=next;}return std::size_t(y)*21+x;};for(int y=9;y<=15;++y)for(int x=9;x<=15;++x)source[index(x,y)]=color;for(auto p:{SelectionPoint{12,8},SelectionPoint{12,7},SelectionPoint{8,8}}){const auto i=index(p.x,p.y);source[i]=color;tails.push_back(i);}auto expected=source;for(auto i:tails)expected[i]=0;CHECK(apply(source,21,tails,50)==expected);}
+      {std::vector<Pixel> source(21*21);for(int y=10;y<=16;++y)for(int x=7;x<=13;++x)source[y*21+x]=color;for(int y=3;y<=9;++y)source[y*21+10]=color;CHECK(apply(source,21,{73,94,115,136},100)==source);}
+      for(bool diagonal:{false,true}){std::vector<Pixel> source(81);const std::size_t a=40,b=diagonal?50:41;source[a]=source[b]=color;CHECK(apply(source,9,{a,b},50)==std::vector<Pixel>(81));CHECK(apply(source,9,{a,b},100,SelectionMask{4,4,1,1,{}})==source);}
+      {std::vector<Pixel> source(81);for(int y=1;y<=7;++y)for(int x=1;x<=7;++x)source[y*9+x]=color;source[40]=source[49]=0;auto expected=source;expected[40]=expected[49]=color;CHECK(apply(source,9,{40,49},10)==source);CHECK(apply(source,9,{40,49},50)==expected);CHECK(apply(source,9,{40,49},100)==expected);}
+      {std::vector<Pixel> source(81);for(int x=2;x<=6;++x)source[4*9+x]=color;CHECK(apply(source,9,{38,39},100)==source);CHECK(apply(source,9,{38,39},0)==source);}
+      {std::vector<Pixel> source(33*33);for(int y=4;y<=28;++y)for(int x=7+(y%4<2?3:0);x<=25;++x)source[y*33+x]=color;SmoothBrushArea area;area.collect(33,33,{16,16},{16,16},{64,100,BrushShape::Round},0,{});std::vector<int> boundaries;for(int strength:{50,65,80,100}){const auto result=apply(source,33,area.visited,strength);std::set<std::size_t> filled;for(std::size_t i=0;i<result.size();++i)if(result[i])filled.insert(i);CHECK(!filled.empty());int boundary=0;for(auto i:filled)for(int delta:{-33,33,-1,1})if(!filled.count(std::size_t(std::int64_t(i)+delta)))++boundary;boundaries.push_back(boundary);std::set<std::size_t> connected;std::vector<std::size_t> queue{*filled.begin()};while(!queue.empty()){const auto i=queue.back();queue.pop_back();if(!filled.count(i)||!connected.insert(i).second)continue;for(int delta:{-33,33,-1,1})queue.push_back(std::size_t(std::int64_t(i)+delta));}CHECK(connected.size()==filled.size());}CHECK(boundaries[1]<=boundaries[0]&&boundaries[2]<=boundaries[0]&&boundaries[3]<boundaries[0]&&boundaries[3]<boundaries[1]);}
+    }
+    {Document d(9,9);dot(d,4,4);dot(d,5,4);const auto before=d.pixels();const auto history=d.historySize();CHECK(!d.applySmoothBrush({40,41},0)&&d.pixels()==before&&d.historySize()==history);CHECK(d.applySmoothBrush({40,41},50)&&d.historySize()==history+1&&d.pixels()==std::vector<Pixel>(81));d.undo();CHECK(d.pixels()==before);d.redo();CHECK(d.pixels()==std::vector<Pixel>(81));d.undo();d.setLayerLocked(true);const auto lockedHistory=d.historySize();CHECK(!d.applySmoothBrush({40,41},100)&&d.pixels()==before&&d.historySize()==lockedHistory);}
+
     // legacy canvas-render-brush-path.test: preview equals a committed footprint
     // while leaving source pixels, selection, revisions and history untouched.
     for(auto shape:{BrushShape::Round,BrushShape::Square,BrushShape::Line})for(int size:{1,2,7,16})for(bool erasing:{false,true}){
@@ -131,7 +162,7 @@ int main() {
       source.selectTimelineCel(source.timeline().findCel(source.layer().id,first)->id);source.selectTimelineCel(source.timeline().findCel(source.layer().id,second)->id,1);CHECK(source.copySelectedCels());auto snapshot=source.exportCelClipboard();source.selectFrame(first);dot(source,0,0,0xffabcdef);
       Document target(2,1);target.selectTimelineCel(target.cel().id);auto history=target.historySize();CHECK(target.pasteCelClipboard(snapshot));CHECK(target.timeline().state().frames.size()==2 && target.historySize()==history+1);
       const auto& frames=target.timeline().state().frames;auto a=target.timeline().findCel(target.layer().id,frames[0].id);auto b=target.timeline().findCel(target.layer().id,frames[1].id);CHECK(a->id!=snapshot.items[0].cel.id && b->linkedCelId==a->id);CHECK(target.timeline().resolveSurface(b->id).surface->pixels[0]==0x80112233);target.undo();CHECK(target.timeline().state().frames.size()==1 && target.pixels()[0]==0);target.redo();CHECK(target.pixels()[0]==0x80112233);
-      Document small(1,1);auto revision=small.contentRevision();bool failed=false;try{small.pasteCelClipboard(snapshot);}catch(const std::exception&){failed=true;}CHECK(failed && small.contentRevision()==revision && !small.canUndo());
+      Document small(1,1);auto revision=small.contentRevision();CHECK(small.pasteCelClipboard(snapshot)&&small.contentRevision()>revision&&small.canUndo());const auto smallFrames=small.timeline().state().frames;const auto* smallA=small.timeline().findCel(small.layer().id,smallFrames[0].id);const auto* smallB=small.timeline().findCel(small.layer().id,smallFrames[1].id);CHECK(smallA&&smallB&&smallB->linkedCelId==smallA->id);const auto smallSurface=*small.timeline().resolveSurface(smallB->id).surface;CHECK(smallSurface.width==2&&smallSurface.height==1&&smallSurface.offsetX==0&&smallSurface.offsetY==0&&smallSurface.pixels==snapshot.items[0].cel.surface->pixels);small.undo();CHECK(small.timeline().state().frames.size()==1&&small.pixels()==std::vector<Pixel>({0}));small.redo();CHECK(small.timeline().resolveSurface(small.cel().id).surface->pixels==smallSurface.pixels);bool failed=false;
       Document locked(2,1);locked.setLayerLocked(true);auto count=locked.historySize();failed=false;try{locked.pasteCelClipboard(snapshot);}catch(const std::exception&){failed=true;}CHECK(failed && locked.historySize()==count && locked.timeline().state().frames.size()==1);
     }
 
@@ -208,7 +239,9 @@ int main() {
       CHECK(candidate.pixels()==original.pixels() && !candidate.dirty() && !candidate.canUndo() && candidate.sourceArchive()==bytes);
       CHECK(candidate.cel().id=="saved-cel" && candidate.layer().id=="saved-layer");
       dot(candidate,0,0);candidate.undo();CHECK(candidate.dirty() && candidate.pixels()==original.pixels());
-      imported.cels[0].surface->offsetX=1;bool refused=false;
+      imported.cels[0].surface->offsetX=1;
+      auto local=Document::fromImported(3,2,imported,original.palette(),"saved-project",U"local",bytes);CHECK(local.timeline().resolveSurface(local.cel().id).surface->offsetX==1&&local.pixels()==original.pixels());
+      imported.cels[0].surface->pixels.pop_back();bool refused=false;
       try {
     {Document d(1,1);const auto first=d.layer().id;d.addLayer();const auto second=d.layer().id;const auto active=d.layer().id;d.selectTimelineLayer(first);d.selectTimelineLayer(second,1);const auto selected=d.timelineSelection();const auto history=d.historySize();d.beginLockGesture();d.previewLockGesture(first,true);d.previewLockGesture(second,true);d.previewLockGesture(second,false);CHECK(d.historySize()==history && d.commitLockGesture());CHECK(d.historySize()==history+1 && d.timeline().state().layers[1].locked && !d.timeline().state().layers[0].locked && d.layer().id==active && d.timelineSelection().layers==selected.layers);d.undo();CHECK(!d.timeline().state().layers[1].locked);d.redo();CHECK(d.timeline().state().layers[1].locked);d.beginLockGesture();d.previewLockGesture(first,false);d.previewLockGesture(first,true);CHECK(!d.commitLockGesture() && d.historySize()==history+1);d.selectLayer(first);dot(d,0,0);CHECK(d.pixels()[0]==0 && d.historySize()==history+1);d.beginLockGesture();d.previewLockGesture(first,false);CHECK(d.commitLockGesture());dot(d,0,0);CHECK(d.pixels()[0]==ink);}Document::fromImported(3,2,imported,original.palette(),"saved-project",U"test",bytes);} catch(const std::invalid_argument&){refused=true;}
       CHECK(refused && original.identity()==identity && original.dirty() && original.canUndo());
@@ -227,7 +260,8 @@ int main() {
       CHECK(doc.cel().surface->width==7 && doc.cel().surface->height==5);
       CHECK(doc.cel().surface->offsetX==0 && doc.cel().surface->offsetY==0);
       CHECK(doc.layer().visible && !doc.layer().locked && doc.layer().opacity==1);
-      CHECK(&doc.pixels()==&doc.cel().surface->pixels && !doc.dirty());
+      CHECK(doc.pixels().data()==doc.cel().surface->pixels.data() && !doc.dirty());
+      CHECK(doc.displayPixels().data()==doc.pixels().data() && doc.displayPixels().size()==35);
       dot(doc,2,3);const auto revision=doc.contentRevision();
       CHECK(doc.cel().surface->pixels[23]==ink && doc.dirty());
       doc.undo();CHECK(doc.cel().surface->pixels[23]==0 && doc.dirty());
@@ -277,6 +311,40 @@ int main() {
       p.selectPalette(1);p.updatePaletteColor(1,ink);CHECK(p.palette().primary==ink);
       p.undo();CHECK(p.paletteEntry(1)->color==primary && p.palette().primary==primary);
       p.redo();CHECK(p.paletteEntry(1)->color==ink);
+      // Actual legacy renamePaletteColor 31 cases: ECMAScript edge whitespace, not interior.
+      {const std::vector<std::pair<std::u32string,std::u32string>> cases={
+        {U"\u0009\u540d\u79f0\u0009",U"\u540d\u79f0"},
+        {U"\u000a\u540d\u79f0\u000a",U"\u540d\u79f0"},
+        {U"\u000b\u540d\u79f0\u000b",U"\u540d\u79f0"},
+        {U"\u000c\u540d\u79f0\u000c",U"\u540d\u79f0"},
+        {U"\u000d\u540d\u79f0\u000d",U"\u540d\u79f0"},
+        {U" \u540d\u79f0 ",U"\u540d\u79f0"},
+        {U"\u00a0\u540d\u79f0\u00a0",U"\u540d\u79f0"},
+        {U"\u1680\u540d\u79f0\u1680",U"\u540d\u79f0"},
+        {U"\u2000\u540d\u79f0\u2000",U"\u540d\u79f0"},
+        {U"\u2001\u540d\u79f0\u2001",U"\u540d\u79f0"},
+        {U"\u2002\u540d\u79f0\u2002",U"\u540d\u79f0"},
+        {U"\u2003\u540d\u79f0\u2003",U"\u540d\u79f0"},
+        {U"\u2004\u540d\u79f0\u2004",U"\u540d\u79f0"},
+        {U"\u2005\u540d\u79f0\u2005",U"\u540d\u79f0"},
+        {U"\u2006\u540d\u79f0\u2006",U"\u540d\u79f0"},
+        {U"\u2007\u540d\u79f0\u2007",U"\u540d\u79f0"},
+        {U"\u2008\u540d\u79f0\u2008",U"\u540d\u79f0"},
+        {U"\u2009\u540d\u79f0\u2009",U"\u540d\u79f0"},
+        {U"\u200a\u540d\u79f0\u200a",U"\u540d\u79f0"},
+        {U"\u2028\u540d\u79f0\u2028",U"\u540d\u79f0"},
+        {U"\u2029\u540d\u79f0\u2029",U"\u540d\u79f0"},
+        {U"\u202f\u540d\u79f0\u202f",U"\u540d\u79f0"},
+        {U"\u205f\u540d\u79f0\u205f",U"\u540d\u79f0"},
+        {U"\u3000\u540d\u79f0\u3000",U"\u540d\u79f0"},
+        {U"\ufeff\u540d\u79f0\ufeff",U"\u540d\u79f0"},
+        {U"\u0085\u540d\u79f0\u0085",U"\u0085\u540d\u79f0\u0085"},
+        {U"\u180e\u540d\u79f0\u180e",U"\u180e\u540d\u79f0\u180e"},
+        {U"\u200b\u540d\u79f0\u200b",U"\u200b\u540d\u79f0\u200b"},
+        {U"\u4e2d\u3000\u95f4\u00a0\u8272",U"\u4e2d\u3000\u95f4\u00a0\u8272"},
+        {U"\u0009\u000a\u000b\u000c\u000d \u00a0\u1680\u2000\u2001\u2002\u2003\u2004\u2005\u2006\u2007\u2008\u2009\u200a\u2028\u2029\u202f\u205f\u3000\ufeff",U""},
+        {U"\u540d\u79f0",U"\u540d\u79f0"}};
+       for(const auto& sample:cases){Document renamed(1,1);renamed.renamePaletteColor(1,U"原名");const auto history=renamed.historySize();const auto pixels=renamed.pixels();const auto revision=renamed.contentRevision();renamed.renamePaletteColor(1,sample.first);CHECK(renamed.paletteEntry(1)->name==sample.second && renamed.historySize()==history+1);renamed.undo();CHECK(renamed.paletteEntry(1)->name==U"原名");renamed.redo();CHECK(renamed.paletteEntry(1)->name==sample.second);const auto finalHistory=renamed.historySize();renamed.renamePaletteColor(1,sample.first);renamed.renamePaletteColor(-1,sample.first);CHECK(renamed.historySize()==finalHistory && renamed.pixels()==pixels && renamed.contentRevision()==revision);}}
       p.renamePaletteColor(1,U"  名称  ");CHECK(p.paletteEntry(1)->name==U"名称");p.undo();CHECK(p.paletteEntry(1)->name==U"墨黑");p.redo();
       const auto count=p.historySize();p.renamePaletteColor(1,U"名称");p.updatePaletteColor(1,ink);CHECK(p.historySize()==count);
       CHECK(p.pixels()==pixels && p.contentRevision()==revision);
@@ -399,12 +467,46 @@ int main() {
       Document p;while(p.palette().order().size()<8)p.addPaletteColor(ink,false);
       const auto before=p.palette().slots;const auto pixels=p.pixels();p.selectPaletteBox(0,5,4);
       CHECK(p.palette().selected==std::vector<int>({1,2,5,6}));
-      const auto history=p.historySize();p.repositionPaletteColors(before,p.palette().selected,2,1,4);
-      CHECK(p.palette().slots==std::vector<int>({3,4,1,2,7,8,5,6}));CHECK(p.historySize()==history+1);
-      p.undo();CHECK(p.palette().slots==before);p.redo();CHECK(p.palette().slots[2]==1);
+      const auto history=p.historySize(), bytes=p.historyBytes(), content=p.contentRevision();
+      p.repositionPaletteColors(before,p.palette().selected,2,1,4);const auto moved=p.palette().slots;
+      CHECK(moved==std::vector<int>({3,4,1,2,7,8,5,6}));CHECK(p.historySize()==history+1);
+      CHECK(p.historyBytes()==bytes+(before.size()+moved.size())*sizeof(int));
+      p.selectPalette(3);p.selectSecondaryPalette(4);const auto later=p.palette();
+      p.undo();CHECK(p.palette().slots==before);
+      CHECK(p.palette().selected==later.selected && p.palette().primaryId==later.primaryId && p.palette().secondaryId==later.secondaryId);
+      CHECK(p.palette().primary==later.primary && p.palette().secondary==later.secondary && p.pixels()==pixels && p.contentRevision()==content);
+      p.redo();CHECK(p.palette().slots==moved);
+      CHECK(p.palette().selected==later.selected && p.palette().primaryId==later.primaryId && p.palette().secondaryId==later.secondaryId);
+      CHECK(p.palette().primary==later.primary && p.palette().secondary==later.secondary && p.pixels()==pixels && p.contentRevision()==content);
+      const auto noOpHistory=p.historySize(), noOpRevision=p.revision(), noOpBytes=p.historyBytes();
+      p.repositionPaletteColors(moved,{1},2,1,4);p.repositionPaletteColors(moved,{999999},2,999999,4);
+      CHECK(p.palette().slots==moved && p.historySize()==noOpHistory && p.revision()==noOpRevision && p.historyBytes()==noOpBytes);
       p.undo();p.pastePaletteColors({0x00123456,0xffabcdef},{0,7});CHECK(p.paletteEntry(1)->color==0x00123456);CHECK(p.paletteEntry(8)->color==0xffabcdef);
       p.undo();CHECK(p.paletteEntry(1)->color!=0x00123456);p.redo();CHECK(p.paletteEntry(1)->color==0x00123456);CHECK(p.pixels()==pixels);
       p.deletePaletteColors({2});p.pastePaletteColors({0xff876543},{1});const auto added=p.palette().slots[1];CHECK(added!=2 && p.paletteEntry(added)->color==0xff876543);p.undo();CHECK(p.palette().slots[1]==0 && !p.paletteEntry(added));p.redo();CHECK(p.palette().slots[1]==added);
+    }
+    {Document p(1,1);p.markSaved();p.clearPaletteSelection();const auto colors=std::vector<Pixel>{p.paletteEntry(1)->color,p.paletteEntry(2)->color};const auto pixels=p.pixels();const auto slots=p.palette().slots;const auto history=p.historySize(),revision=p.revision(),bytes=p.historyBytes(),content=p.contentRevision();const auto nextId=p.palette().nextId;
+      p.pastePaletteColors({colors[0],colors[1],colors[0]},{0,1});CHECK(p.palette().selected==std::vector<int>({1,2})&&p.palette().primaryId==2&&p.palette().primary==colors[1]);CHECK(p.palette().slots==slots&&p.palette().nextId==nextId&&p.historySize()==history&&p.revision()==revision&&p.historyBytes()==bytes&&p.contentRevision()==content&&!p.dirty()&&p.pixels()==pixels);
+      p.pastePaletteColors({colors[1],colors[0]},{0,1});CHECK(p.historySize()==history+1&&p.paletteEntry(1)->color==colors[1]&&p.paletteEntry(2)->color==colors[0]);p.undo();CHECK(p.canRedo());const bool undoDirty=p.dirty();const auto undoRevision=p.revision(),undoBytes=p.historyBytes();p.clearPaletteSelection();p.pastePaletteColors(colors,{0,1});CHECK(p.canRedo()&&p.dirty()==undoDirty&&p.historySize()==history+1&&p.revision()==undoRevision&&p.historyBytes()==undoBytes&&p.palette().selected==std::vector<int>({1,2})&&p.palette().primaryId==2);p.redo();CHECK(p.paletteEntry(1)->color==colors[1]&&p.paletteEntry(2)->color==colors[0]&&p.pixels()==pixels);
+    }
+    {Document p(1,1);const auto old=p.paletteEntry(1)->color;const auto pixels=p.pixels();const auto content=p.contentRevision();p.selectPalette(1);p.pastePaletteColors({0xff010203},{0});const auto history=p.historySize();p.selectSecondaryPalette(2);const auto background=p.palette().secondary;
+      p.undo();CHECK(p.paletteEntry(1)->color==old&&p.palette().primaryId==1&&p.palette().secondaryId==2&&p.palette().secondary==background);p.redo();CHECK(p.paletteEntry(1)->color==0xff010203&&p.palette().primaryId==1&&p.palette().secondaryId==2&&p.palette().secondary==background);p.setPaletteRole(0x7f563412,true,true);p.undo();CHECK(p.palette().secondaryId==0&&p.palette().secondary==0x7f563412);p.redo();CHECK(p.palette().secondaryId==0&&p.palette().secondary==0x7f563412&&p.pixels()==pixels&&p.contentRevision()==content&&p.historySize()==history);
+      Document q(1,1);q.selectPalette(1);q.pastePaletteColors({0x00563412},{2});const int added=q.palette().slots[2];q.selectSecondaryPalette(added);q.undo();CHECK(!q.paletteEntry(added)&&q.palette().secondaryId==added&&q.palette().secondary==0x00563412);q.redo();CHECK(q.paletteEntry(added)&&q.palette().slots[2]==added&&q.palette().secondaryId==added&&q.palette().secondary==0x00563412);
+    }
+    { // workspace-magic-eraser.test.ts: noncontiguous default, preview/cancel, one history, selection.
+      Document d(3,1);d.beginStroke({0,0},0xff0000ff);d.commitStroke();d.beginStroke({1,0},0xffff0000);d.commitStroke();d.beginStroke({2,0},0xff0000fa);d.commitStroke();const auto source=d.pixels();WandOptions o;o.contiguous=false;o.tolerance=5;const auto start=d.historySize();
+      CHECK(d.eraseMatchingColor({0,0},o,true)&&d.strokeActive()&&d.historySize()==start&&d.pixels()[0]==0&&d.pixels()[2]==0);d.cancelStroke();CHECK(d.pixels()==source&&d.historySize()==start);
+      CHECK(d.eraseMatchingColor({0,0},o)&&d.historySize()==start+1&&d.pixels()[1]==source[1]);d.undo();CHECK(d.pixels()==source);d.redo();CHECK(d.pixels()[0]==0&&d.pixels()[2]==0);d.undo();
+      o.contiguous=true;CHECK(d.eraseMatchingColor({0,0},o)&&d.pixels()[2]==source[2]);d.undo();d.previewSelection(SelectionMask{0,0,1,1,{}});CHECK(!d.eraseMatchingColor({2,0},o));CHECK(d.eraseMatchingColor({0,0},o)&&d.selection()->width==1&&d.pixels()[2]==source[2]);d.undo();d.setLayerLocked(true);CHECK(!d.eraseMatchingColor({0,0},o));d.setLayerLocked(false);d.setLayerVisible(false);CHECK(!d.eraseMatchingColor({0,0},o));
+    }
+    { // Visible-layer sampling changes the matched region, never the upper target.
+      Document d(3,1);d.beginStroke({0,0},0xff0000ff);d.updateStroke({2,0});d.commitStroke();const auto bottom=d.layer().id;d.addLayer();const auto top=d.layer().id;d.beginStroke({2,0},0xffff0000);d.commitStroke();const auto upper=d.pixels();d.selectLayer(bottom);WandOptions o;o.contiguous=false;o.visibleLayers=true;CHECK(d.eraseMatchingColor({0,0},o)&&d.pixels()[0]==0&&d.pixels()[2]==0xff0000ff);d.selectLayer(top);CHECK(d.pixels()==upper);
+    }
+    { // Match the whole source before selection intersection; preserve transparent RGB.
+      Document d(3,2);d.fillPixels({0,0},0xff0000ff);SelectionMask selected{0,0,3,2,{1,0,1,0,0,0}};d.previewSelection(selected);WandOptions o;o.contiguous=true;CHECK(d.eraseMatchingColor({0,0},o)&&d.pixels()[0]==0&&d.pixels()[2]==0&&d.pixels()[1]==0xff0000ff&&selectionEqual(d.selection(),selected));
+    }
+    { // Active mask uses its own source even when visible-layer reference is requested.
+      Document d(3,1);d.beginStroke({0,0},0xff0000ff);d.commitStroke();const auto pixels=d.pixels();const auto owner=d.layer().id,frame=d.frame().id;CHECK(d.createAttachedMask(owner,frame));CHECK(d.selectAttachedMask(owner,frame));CHECK(d.fillPixels({0,0},0xffffffff));const auto masks=d.timeline().state().masks;WandOptions o;o.contiguous=false;o.visibleLayers=true;const auto start=d.historySize();CHECK(d.eraseMatchingColor({0,0},o,true)&&d.pixels()==pixels&&d.historySize()==start);d.cancelStroke();CHECK(d.timeline().state().masks[0].mask.surface.pixels==masks[0].mask.surface.pixels);CHECK(d.eraseMatchingColor({0,0},o)&&d.historySize()==start+1&&d.pixels()==pixels);d.undo();CHECK(d.timeline().state().masks[0].mask.surface.pixels==masks[0].mask.surface.pixels);d.redo();CHECK(d.pixels()==pixels);
     }
     Document bounded(8,8,1,2);
     dot(bounded,1,1);dot(bounded,2,2);CHECK(bounded.historySize()==1);

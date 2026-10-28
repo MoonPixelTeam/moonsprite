@@ -1,5 +1,7 @@
 #pragma once
 #include "color_picker_layout.h"
+#include "color_picker_scheme.h"
+#include "color_picker_quantization.h"
 #include "native_widgets.h"
 #include "ui/timer.h"
 
@@ -9,6 +11,13 @@ namespace moon {
 class NativeColorPicker : public ui::Widget {
   const PixelFont& font_;const Skin& skin_;
   PickerRole roles_[2];
+  ColorPickerScheme scheme_=ColorPickerScheme::SvSquare;
+  PickerQuantization quantization_;PickerQuantTriangleGeometry quantTriangleGeometry_;
+  PickerMoonField moonField_=PickerMoonField::HsvSquare;
+  PickerMoonGesture moonGesture_;PickerMoonGeometry moonGeometry_;
+  os::SurfaceRef moonRing_;int moonRingWidth_=0,moonRingHeight_=0;
+  double fieldValue_=-1,stripHue_=-1,stripSaturation_=-1;
+  gfx::Color fieldOutline_=0;
   Skin markerSkin_;int markerWidth_=4,markerHeight_=4;
   int role_=0,zone_=0,focusedZone_=1;
   bool pending_=false;
@@ -30,6 +39,12 @@ public:
   std::function<void()> interactionBegin,interactionCommit;
   explicit NativeColorPicker(const PixelFont& font,const Skin& skin,const std::filesystem::path& markerDir);
   ~NativeColorPicker() override;
+  ColorPickerScheme scheme()const{return scheme_;}
+  void setScheme(ColorPickerScheme scheme);
+  PickerMoonField moonField()const{return moonField_;}
+  void setMoonField(PickerMoonField field);
+  PickerQuantization quantization()const{return quantization_;}
+  void setQuantization(PickerQuantization q);
   void syncColors(std::uint32_t primary,std::uint32_t secondary);
   void finishInteraction();
   void smokeSurfacePixels();

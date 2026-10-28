@@ -1,0 +1,17 @@
+#pragma once
+#include "timeline_model.h"
+#include <algorithm>
+#include <cmath>
+#include <stdexcept>
+namespace moon {
+inline bool isBackgroundPattern(const std::string& p){return p=="solid"||p=="grid"||p=="stripes"||p=="diamond"||p=="diamond-nested"||p=="circles";}
+inline int backgroundModulo(int n,int d){return (n%d+d)%d;}
+inline std::pair<int,int> backgroundPatternSize(const std::string& p){return p=="solid"?std::pair<int,int>{1,1}:p=="diamond-nested"?std::pair<int,int>{22,22}:p=="circles"?std::pair<int,int>{16,16}:std::pair<int,int>{32,32};}
+inline timeline::Pixel backgroundPatternColor(const std::string& p,int x,int y){
+static const char* diamondNestedRows[]={"BABBBBBAABBBBBABAAAAAA","ABBBBBABBABBBBBABAAAAB","BBBBBABAABABBBBBABAABA","BBBBABAAAABABBBBBABBAB","BBBABAAAAAABABBBBBAABB","BBABAAAAAAAABABBBBBBBB","BABAAABBBBAAABABBBBBBB","ABAAAABAABAAAABABBAABB","ABAAAABAABAAAABABBAABB","BABAAABBBBAAABABBBBBBB","BBABAAAAAAAABABBBBBBBB","BBBABAAAAAABABBBBBAABB","BBBBABAAAABABBBBBABBAB","BBBBBABAABABBBBBABAABA","ABBBBBABBABBBBBABAAAAB","BABBBBBAABBBBBABAAAAAA","ABABBBBBBBBBBABAAAAAAA","AABABBBBBBBBABAAABBBBA","AAABABBAABBABAAAABAABA","AAABABBAABBABAAAABAABA","AABABBBBBBBBABAAABBBBA","ABABBBBBBBBBBABAAAAAAA"};
+static const char* circleRows[]={"ABBBABBBBBBABBBA","BBBBABBBBBBABBBB","BBBABBBBBBBBABBB","BBABBBAAAABBBABB","AABBBABBBBABBBAA","BBBBABBBBBBABBBB","BBBABBBBBBBBABBB","BBBABBBAABBBABBB","BBBABBBAABBBABBB","BBBABBBBBBBBABBB","BBBBABBBBBBABBBB","AABBBABBBBABBBAA","BBABBBAAAABBBABB","BBBABBBBBBBBABBB","BBBBABBBBBBABBBB","ABBBABBBBBBABBBA"};
+ const auto size=backgroundPatternSize(p);x=backgroundModulo(x,size.first);y=backgroundModulo(y,size.second);int gray=228;if(p=="grid")gray=((x<16)==(y<16))?214:228;else if(p=="stripes"){const int q=(x>=16)+(y>=16);gray=q==0?202:q==1?214:228;}else if(p=="diamond"){const double d=std::abs(x%16-7.5)+std::abs(y%16-7.5);gray=d>8?214:((x/16+y/16)%2==0?228:202);}else if(p=="diamond-nested")gray=diamondNestedRows[y][x]=='A'?214:228;else if(p=="circles")gray=circleRows[y][x]=='A'?214:228;return 0xff000000u|unsigned(gray)*0x010101u;
+}
+// Exact legacy tileBackgroundSurfaceToCanvas: retain visible edits and a complete phase-aligned unit.
+inline timeline::Surface tileBackgroundSurface(const timeline::Surface& source,int oldWidth,int oldHeight,int width,int height,int dx,int dy,const timeline::BackgroundSettings& b){const auto size=b.mode=="preset"?backgroundPatternSize(b.pattern):std::pair<int,int>{b.repeatWidth?b.repeatWidth:oldWidth,b.repeatHeight?b.repeatHeight:oldHeight};const int rw=size.first,rh=size.second,left=-backgroundModulo(-source.offsetX-dx,rw),top=-backgroundModulo(-source.offsetY-dy,rh);timeline::Surface out;out.offsetX=left;out.offsetY=top;out.width=std::max(rw,width-left);out.height=std::max(rh,height-top);if(std::uint64_t(out.width)*out.height>67108864)throw std::length_error("Background pixel budget exceeded");out.pixels.resize(std::size_t(out.width)*out.height);for(int y=0;y<out.height;++y)for(int x=0;x<out.width;++x){const int sx=x+left-dx,sy=y+top-dy;const bool inside=sx>=0&&sy>=0&&sx<oldWidth&&sy<oldHeight;const int lx=inside?sx-source.offsetX:backgroundModulo(sx-source.offsetX,rw),ly=inside?sy-source.offsetY:backgroundModulo(sy-source.offsetY,rh);auto& p=out.pixels[std::size_t(y)*out.width+x];if(!inside&&b.mode=="preset")p=backgroundPatternColor(b.pattern,sx-source.offsetX,sy-source.offsetY);else if(lx>=0&&ly>=0&&lx<source.width&&ly<source.height)p=source.pixels[std::size_t(ly)*source.width+lx];}return out;}
+}

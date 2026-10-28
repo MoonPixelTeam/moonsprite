@@ -1,3 +1,4 @@
+#include "timelapse_session.h"
 #include "project_file.h"
 #include "project_encode.h"
 #include "project_import.h"
@@ -9,8 +10,9 @@ namespace moon::project {
 namespace {
 [[noreturn]] void failed(const char* action){throw std::runtime_error(std::string(action)+" (Windows "+std::to_string(GetLastError())+")");}
 }
-void saveDocumentAtomic(Document& document,const std::filesystem::path& path) {
+void saveDocumentAtomic(Document& document,const std::filesystem::path& path,BackupPolicy backup) {
   if(path.empty()) throw std::invalid_argument("Empty project path");
+  if(auto recording=document.recordingSession())recording->flush(document);
   auto encoded=encodeEditableProject(document);
   // The generated archive must pass the same admission gate as a reopened file.
   prepareEditableImport(readProjectManifest(encoded.bytes));
@@ -40,6 +42,7 @@ void saveDocumentAtomic(Document& document,const std::filesystem::path& path) {
       offset+=count;
     }
     file.close();
+    createCommittedProjectBackup(path,backup);
     if(!MoveFileExW(temporary.c_str(),path.c_str(),MOVEFILE_REPLACE_EXISTING|MOVEFILE_WRITE_THROUGH)) failed("Cannot replace project");
   } catch(...) {
     if(handle!=INVALID_HANDLE_VALUE) CloseHandle(handle);
@@ -47,5 +50,6 @@ void saveDocumentAtomic(Document& document,const std::filesystem::path& path) {
     throw;
   }
   document.acceptSaved(std::move(encoded.projectId),std::move(encoded.bytes));
+  if(backup.enabled)try{scheduleNativeBackupPrune(std::move(backup));}catch(const std::exception& e){OutputDebugStringA(e.what());}
 }
 }

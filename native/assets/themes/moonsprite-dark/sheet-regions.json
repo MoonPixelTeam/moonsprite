@@ -1824,25 +1824,7 @@
     "x": 0,
     "y": 36,
     "w": 5,
-    "h": 21,
-    "source": "native/assets/themes/moonsprite-dark/ATTRIBUTION.md; README.md; dialog-materials.md (user approved native pixel skin)",
-    "usage": "native/src/main.cpp; native/src/theme_atlas.cpp: named theme patches"
-  },
-  {
-    "id": "text_button_normal",
-    "x": 8,
-    "y": 36,
-    "w": 7,
-    "h": 19,
-    "source": "native/assets/themes/moonsprite-dark/ATTRIBUTION.md; README.md; dialog-materials.md (user approved native pixel skin)",
-    "usage": "native/src/main.cpp; native/src/theme_atlas.cpp: named theme patches"
-  },
-  {
-    "id": "text_button_hot",
-    "x": 20,
-    "y": 36,
-    "w": 7,
-    "h": 19,
+    "h": 26,
     "source": "native/assets/themes/moonsprite-dark/ATTRIBUTION.md; README.md; dialog-materials.md (user approved native pixel skin)",
     "usage": "native/src/main.cpp; native/src/theme_atlas.cpp: named theme patches"
   },
@@ -1851,8 +1833,8 @@
     "x": 0,
     "y": 64,
     "w": 11,
-    "h": 12,
-    "source": "User supplied codex-clipboard-f8440175-72a5-4e45-87a0-4dc79273fe06.png; icon-button-reference.png.",
+    "h": 11,
+    "source": "User codex-clipboard-bf450a85-c8b3-4d92-942a-3df9b9fcf334.png; four exact 11x11 tiles, shared by text/icon buttons. normal, hover, held (before release), checked are distinct.",
     "usage": "native/src/main.cpp; native/src/theme_atlas.cpp: named theme patches"
   },
   {
@@ -1860,8 +1842,8 @@
     "x": 12,
     "y": 64,
     "w": 11,
-    "h": 12,
-    "source": "User supplied codex-clipboard-f8440175-72a5-4e45-87a0-4dc79273fe06.png; icon-button-reference.png.",
+    "h": 11,
+    "source": "User codex-clipboard-bf450a85-c8b3-4d92-942a-3df9b9fcf334.png; four exact 11x11 tiles, shared by text/icon buttons. normal, hover, held (before release), checked are distinct.",
     "usage": "native/src/main.cpp; native/src/theme_atlas.cpp: named theme patches"
   },
   {
@@ -1869,26 +1851,17 @@
     "x": 24,
     "y": 64,
     "w": 11,
-    "h": 12,
-    "source": "User supplied codex-clipboard-f8440175-72a5-4e45-87a0-4dc79273fe06.png; icon-button-reference.png, third state (pressed/selected).",
-    "usage": "native/src/main.cpp; native/src/theme_atlas.cpp: named theme patches"
-  },
-  {
-    "id": "entry_normal",
-    "x": 0,
-    "y": 80,
-    "w": 5,
-    "h": 14,
-    "source": "User entry-reference.png (69x14); text-free edge/center columns 0,1,65,67,68. Focus reuses selection.normal/hover, old entry_focus removed.",
+    "h": 11,
+    "source": "User codex-clipboard-bf450a85-c8b3-4d92-942a-3df9b9fcf334.png; four exact 11x11 tiles, shared by text/icon buttons. normal, hover, held (before release), checked are distinct.",
     "usage": "native/src/main.cpp; native/src/theme_atlas.cpp: named theme patches"
   },
   {
     "id": "slider_normal",
     "x": 16,
     "y": 80,
-    "w": 9,
-    "h": 18,
-    "source": "native/assets/themes/moonsprite-dark/ATTRIBUTION.md; README.md; dialog-materials.md (user approved native pixel skin)",
+    "w": 5,
+    "h": 15,
+    "source": "User codex-clipboard-7c620c7a-5f78-4471-9816-ecba60305eea.png; text-free columns 0,113,100,113,114, all 15 rows; fixed 2px borders.",
     "usage": "native/src/main.cpp; native/src/theme_atlas.cpp: named theme patches"
   },
   {
@@ -1896,8 +1869,8 @@
     "x": 40,
     "y": 80,
     "w": 3,
-    "h": 12,
-    "source": "native/assets/themes/moonsprite-dark/ATTRIBUTION.md; README.md; dialog-materials.md (user approved native pixel skin)",
+    "h": 13,
+    "source": "User codex-clipboard-7c620c7a-5f78-4471-9816-ecba60305eea.png; text-free crop x=1..3,y=1..13; fixed 1px left/top/bottom highlight.",
     "usage": "native/src/main.cpp; native/src/theme_atlas.cpp: named theme patches"
   },
   {
@@ -2376,5 +2349,167 @@
     "h": 7,
     "source": "legacy/src/renderer/src/assets/pixel-icons/record-drawing.svg SHA256=cdae0548a1e1badebef13d74b3fc1808c731c101f54c69eac2a41c29666bff00",
     "usage": "New canvas dialog: lossless native-grid rasterization; preserve colors and transparency"
+  },
+  {
+    "id": "icon_button_pressed",
+    "x": 36,
+    "y": 64,
+    "w": 11,
+    "h": 11,
+    "source": "User codex-clipboard-bf450a85-c8b3-4d92-942a-3df9b9fcf334.png; third tile, held before release.",
+    "usage": "native/src/native_widgets.cpp: button.pressed/text_button.pressed/icon_button.pressed"
+  },
+  {
+    "id": "role_button_hover",
+    "x": 0,
+    "y": 728,
+    "w": 5,
+    "h": 21,
+    "source": "color-role-states-reference.png; exact blank-column extraction; left hover/right held",
+    "usage": "src/native_widgets.cpp"
+  },
+  {
+    "id": "role_button_pressed",
+    "x": 8,
+    "y": 728,
+    "w": 7,
+    "h": 21,
+    "source": "color-role-states-reference.png right tile; user codex-clipboard-c6146008-d838-43f8-9d22-b06a77e8d80f.png; exact blank-column extraction preserving RGBA, held before release",
+    "usage": "src/native_widgets.cpp"
+  },
+  {
+    "id": "entry_normal",
+    "x": 24,
+    "y": 728,
+    "w": 5,
+    "h": 16,
+    "source": "input-states-reference.png; user 4b9d6f1c; exact blank-column nine-slice, shared by entry and dropdown",
+    "usage": "src/native_widgets.cpp"
+  },
+  {
+    "id": "entry_hover",
+    "x": 32,
+    "y": 728,
+    "w": 5,
+    "h": 16,
+    "source": "input-states-reference.png; user 4b9d6f1c; exact blank-column nine-slice, shared by entry and dropdown",
+    "usage": "src/native_widgets.cpp"
+  },
+  {
+    "id": "switch.container.hover",
+    "x": 48,
+    "y": 728,
+    "w": 5,
+    "h": 17,
+    "source": "switch-background-hover-reference.png; user d35c1da2; exact border and blank-column extraction",
+    "usage": "src/native_widgets.cpp"
+  },
+  {
+    "y": 764,
+    "h": 11,
+    "x": 0,
+    "w": 11,
+    "id": "icon.folder",
+    "usage": "native/src/editor_timeline.cpp group collapse icon; replaceable sheet region",
+    "source": "legacy/src/renderer/src/components/PixelUtilityIcon.tsx folder/folderOpen opaque and .42 translucent paths; exact existing SVG rasterizer conversion"
+  },
+  {
+    "y": 764,
+    "h": 11,
+    "x": 12,
+    "w": 11,
+    "id": "icon.folder-disabled",
+    "usage": "native/src/editor_timeline.cpp group collapse icon; replaceable sheet region",
+    "source": "legacy/src/renderer/src/components/PixelUtilityIcon.tsx folder/folderOpen opaque and .42 translucent paths; exact existing SVG rasterizer conversion"
+  },
+  {
+    "y": 764,
+    "h": 11,
+    "x": 24,
+    "w": 11,
+    "id": "icon.folderOpen",
+    "usage": "native/src/editor_timeline.cpp group collapse icon; replaceable sheet region",
+    "source": "legacy/src/renderer/src/components/PixelUtilityIcon.tsx folder/folderOpen opaque and .42 translucent paths; exact existing SVG rasterizer conversion"
+  },
+  {
+    "y": 764,
+    "h": 11,
+    "x": 36,
+    "w": 11,
+    "id": "icon.folderOpen-disabled",
+    "usage": "native/src/editor_timeline.cpp group collapse icon; replaceable sheet region",
+    "source": "legacy/src/renderer/src/components/PixelUtilityIcon.tsx folder/folderOpen opaque and .42 translucent paths; exact existing SVG rasterizer conversion"
+  },
+  {
+    "id": "icon.left",
+    "x": 48,
+    "y": 764,
+    "w": 5,
+    "h": 5,
+    "source": "legacy/src/renderer/src/components/PixelUtilityIcon.tsx utilityIconPaths.left; exact 5px SVG rasterizer conversion",
+    "usage": "native/src/free_tile_instances_panel.h back to layers; editable sheet region"
+  },
+  {
+    "id": "icon.left-disabled",
+    "x": 60,
+    "y": 764,
+    "w": 5,
+    "h": 5,
+    "source": "legacy/src/renderer/src/components/PixelUtilityIcon.tsx utilityIconPaths.left; exact 5px SVG rasterizer conversion",
+    "usage": "native/src/free_tile_instances_panel.h back to layers; editable sheet region"
+  },
+  {
+    "id": "icon.rotateClockwise90",
+    "x": 72,
+    "y": 764,
+    "w": 11,
+    "h": 11,
+    "source": "legacy/src/renderer/src/components/PixelUtilityIcon.tsx rotateClockwise90; exact SVG rasterizer conversion",
+    "usage": "Free tile instance context menu; editable sheet region"
+  },
+  {
+    "id": "icon.rotateClockwise90-disabled",
+    "x": 84,
+    "y": 764,
+    "w": 11,
+    "h": 11,
+    "source": "legacy/src/renderer/src/components/PixelUtilityIcon.tsx rotateClockwise90; exact SVG rasterizer conversion",
+    "usage": "Free tile instance context menu; editable sheet region"
+  },
+  {
+    "id": "icon.selectionFlipHorizontal",
+    "x": 96,
+    "y": 764,
+    "w": 11,
+    "h": 11,
+    "source": "legacy/src/renderer/src/components/PixelUtilityIcon.tsx selectionFlipHorizontal; exact SVG rasterizer conversion",
+    "usage": "Free tile instance context menu; editable sheet region"
+  },
+  {
+    "id": "icon.selectionFlipHorizontal-disabled",
+    "x": 108,
+    "y": 764,
+    "w": 11,
+    "h": 11,
+    "source": "legacy/src/renderer/src/components/PixelUtilityIcon.tsx selectionFlipHorizontal; exact SVG rasterizer conversion",
+    "usage": "Free tile instance context menu; editable sheet region"
+  },
+  {
+    "id": "icon.selectionFlipVertical",
+    "x": 120,
+    "y": 764,
+    "w": 11,
+    "h": 11,
+    "source": "legacy/src/renderer/src/components/PixelUtilityIcon.tsx selectionFlipVertical; exact SVG rasterizer conversion",
+    "usage": "Free tile instance context menu; editable sheet region"
+  },
+  {
+    "id": "icon.selectionFlipVertical-disabled",
+    "x": 132,
+    "y": 764,
+    "w": 11,
+    "h": 11,
+    "source": "legacy/src/renderer/src/components/PixelUtilityIcon.tsx selectionFlipVertical; exact SVG rasterizer conversion",
+    "usage": "Free tile instance context menu; editable sheet region"
   }
 ]

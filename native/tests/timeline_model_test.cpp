@@ -23,7 +23,7 @@ static Cel cel(std::string id,std::string layer,std::string frame,Pixel color=0)
 
   Cel result;result.id=std::move(id);result.layerId=std::move(layer);result.frameId=std::move(frame);
 
-  result.surface=Surface{2,2,-3,5,7,9,std::vector<Pixel>(4,color)};return result;
+  result.surface=Surface{2,2,-3,5,7,9,moon::timeline::LinkedPixelStorage(std::vector<Pixel>(4,color))};return result;
 
 }
 

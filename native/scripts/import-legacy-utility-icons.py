@@ -3,23 +3,34 @@ from pathlib import Path
 import re
 import subprocess
 import sys
+import argparse
+
+parser = argparse.ArgumentParser()
+parser.add_argument('--only', nargs='+', help='Import only these PixelUtilityIcon names without touching other assets')
+args = parser.parse_args()
 
 root = Path(__file__).resolve().parents[2]
 source = root / 'legacy/src/renderer/src/components/PixelUtilityIcon.tsx'
 target = root / 'native/assets/utility-icons'
 target.mkdir(parents=True, exist_ok=True)
 text = source.read_text(encoding='utf-8')
-for name in ['properties', 'lock', 'unlock', 'undo', 'redo', 'dither', 'image', 'checkboxUnchecked', 'more', 'close', 'plus', 'eye', 'eyeOff', 'delete', 'right', 'check', 'copy', 'link', 'onion', 'newFolder', 'gradientMap', 'tilemap', 'freeTile', 'linkedLayer', 'convertTo', 'mergeDown', 'mergeVisible', 'clippingMask', 'layerMask', 'layerStyle', 'paste', 'clearRecords', 'info', 'swap', 'move']:
+names = args.only or ['rotateClockwise90', 'selectionFlipHorizontal', 'selectionFlipVertical', 'properties', 'workspace', 'aspectLink', 'selectionOutline', 'lock', 'unlock', 'undo', 'redo', 'dither', 'image', 'checkboxUnchecked', 'more', 'close', 'plus', 'eye', 'eyeOff', 'delete', 'left', 'right', 'check', 'copy', 'link', 'onion', 'newFolder', 'gradientMap', 'tileModeEdit', 'tileModeCreate', 'tileModeHybrid', 'tilemap', 'freeTile', 'linkedLayer', 'convertTo', 'mergeDown', 'mergeVisible', 'clippingMask', 'layerMask', 'layerStyle', 'paste', 'clearRecords', 'info', 'swap', 'move']
+for name in names:
     match = re.search(r"\b" + name + r":\s*'([^']+)'", text)
     if not match:
         raise SystemExit(f'Legacy icon missing: {name}')
     translucent = re.search(r"\b" + name + r":\s*'([^']+)'", text.split('const utilityIconTranslucentPaths', 1)[1])
     extra = f'<path fill="#D8DEEA" fill-opacity=".42" d="{translucent[1]}"/>' if translucent else ''
-    size = 5 if name in ['close', 'right'] else 7 if name == 'check' else 6 if name in ['undo', 'redo'] else 11
+    size = 5 if name in ['close', 'left', 'right'] else 7 if name == 'check' else 6 if name in ['undo', 'redo'] else 11
     # Legacy currentColor resolves to the native theme's default text color.
     (target / f'{name}.svg').write_text(
         f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {size} {size}">'
         f'<path fill="#D8DEEA" d="{match[1]}"/>{extra}</svg>\n', encoding='utf-8')
+if args.only:
+    for name in names:
+        subprocess.run([sys.executable, str(root / 'native/scripts/import-legacy-tool-icons.py'),
+                        '--source', str(target), '--target', str(target), '--pattern', f'{name}.svg'], check=True)
+    sys.exit(0)
 # Preserve the exact 5px shape masks from editor-tools; format conversion only.
 shape_source = root / 'legacy/src/renderer/src/components/app/editor-tools.tsx'
 shape_text = shape_source.read_text(encoding='utf-8').split('const pixelMasks =', 1)[1]

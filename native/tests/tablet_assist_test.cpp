@@ -1,0 +1,5 @@
+#include "tablet_assist_model.h"
+#include <stdexcept>
+#include <iostream>
+using namespace moon;
+int main(){try{auto check=[](bool b){if(!b)throw std::runtime_error("Tablet legacy fixture mismatch");};TabletAssistState s;s.modifier(7,0,true);s.sample(7,true);s.move(7,true);check(s.modifier(7,0)&&!s.modifier(8,0)&&s.sampling&&s.boxMove);s.latch(7,true);check(!s.modifier(7,0)&&s.latched);s.modifier(7,2,true);s.sample(8,true);check(s.owner==8&&!s.modifier(8,2)&&!s.boxMove&&!s.latched&&s.sampling);s.move(8,false);check(s.explicitMove&&!s.boxMove);s.reset();check(!s.owner&&!s.sampling&&!s.explicitMove);TabletAssistVisibility v;check(!v.visible&&v.touch()&&v.visible);v.manual(false);check(!v.touch()&&!v.visible);v.preference(1);check(v.visible&&!v.touch());v.preference(2);check(!v.visible&&!v.touch());v.preference(0);check(v.touch()&&v.visible);std::cout<<"Tablet document isolation, hold/latch and first-touch visibility fixtures passed\n";return 0;}catch(const std::exception& e){std::cerr<<e.what()<<'\n';return 1;}}

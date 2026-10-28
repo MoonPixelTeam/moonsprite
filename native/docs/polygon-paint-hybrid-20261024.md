@@ -1,0 +1,15 @@
+# Polygon lasso / Paint cell move / Hybrid pending operations — 2026-10-24
+
+Polygon lasso restores actual canvas-input-selection/canvas-input-path contract: single first-point click appends, left double click with >=3 clicked vertices or Enter commits, right click only local Undo; configured Undo/Redo now intercepted before deferred document history. Raster preview/local Undo/final mask/outline use existing tools.balancedShiftLineEnabled rather than hardcoded true. Existing symmetry/combine/history reused. No new UI/icon; native pointer/doubleclick adapter only. Actual input test covers both balanced settings and local history/cancel.
+
+Hybrid pending Cut/Delete now follows actual cutSelection/deleteSelection origin lifecycle through frozen Hybrid gate: Cut publishes transformed copy first, cancels reference/pixel preview then deletes only original lifted pixels for move; duplicate Cut only cancels. Delete commits existing aligned reference or nonaligned sampled Hybrid path then ordinary pixel deletion in separate history. Drift refuses without clipboard mutation. Core/UI check clipboard, authority, refs, resources, two Undo/Redo and deferred Cut; Paint compound pending remains separate.
+
+Paint tilemap selection move/copy uses actual expanded touched-cell mask, snapshots null/transformed refs, JS Math.round tile displacement, pointer canvas clip and keyboard clamped immediate movement. Independent native PaintCellMove holds cell-delta preview/history through existing applyEdit renderer; live cell refs/cache preview then mouseup one history, Escape/mode-drift cancel restores refs and expanded pointer selection; keyboard zero movement preserves original unexpanded selection and history. Source tileset pixels/resources never edited. Existing native admission budgets and canonical single target gates retained. Repeated previews retain baseline deltas; source selection optional allocated once outside pixel loops. RGBA floating remains refused. Free transform/flip/remaining Paint selection operations are explicit gaps.
+
+Actual Ctrl-copy UI also exposed quick layer move swallowing selection input. Restored legacy temporaryMoveToolAllowed: selection/shape own their Ctrl interactions (canvas-input-state.ts:47, canvas-pointer-down.ts:326).
+
+Validation 2026-10-25: tilemap-document, tilemap-project and document-raster-history actual test exits all 0. Official target build session 92966 exit 0. Actual UI process 45092 exit 0 for --polygon-paint-hybrid-only, covering Polygon history/cancel/balanced settings, Paint pointer preview/Escape/mouseup/Undo/zero keyboard/Ctrl copy, and Hybrid Cut/Delete compound lifecycle. Provenance coverage 483 files exit 0; strict exit 1 remains INCOMPLETE. Scoped diff check exit 0. No manual screenshot acceptance in this batch. Source coverage is separate from actual UI acceptance.
+
+Evidence: native/build/polygon-paint-hybrid-final-20261024.json. Formal executable SHA256: 0DA4A1E03FFE93D8A67167B362E5458346B5FA28A879D04A94878988FA5FB6B7.
+
+Official BAT restart: exit 0, process 40104 responding.

@@ -834,3 +834,712 @@ Cel内容选区LRU沿animation-cel-content-cache103–193性能规则：全局4M
 可见性/锁/自动链接拖扫沿 useLayerRowToggleGesture event.buttons&1：捕获中收到不含左键的 move，提交当前范围并释放捕获，不修改下一行；held-left 继续扫，right-only 同样结束，沿用既有单笔历史。同步非法fixture同时发现既有 Timeline runtime-only跨层错误分支解引用空 linkedCelId，最小修为返回实际 targetId，保留拒绝跨层语义，回归验证 CrossLayer 与 offendingId；不借此开放跨层结构。
 
 正式单节点 build14891 targets moonsprite-native/sheet-new-document-tests/timeline-model-tests 实际0；两个核心实际0。唯一正式 exe SHA9f5248d4796ac6e7560d0a46b92d3404512a82b3a9badb222d3070471687aa94 opened --palette-sync-check PID14608、--toggle-release-check PID31912、--sheet-new-document-check PID41520、--sheet-open-after-check PID41564 全部实际0，运行前后 hash 一致。来源 coverage186/evidence snapshots通过，strict实际1保持 INCOMPLETE；无独立截图QA。数值箭头保持移除，无提交/发布/preview，本批完成停止。证据 native/build/sync-eye-sheet-final-20261015-2117.json；log native/build/sync-eye-sheet-final-build.log。
+
+
+## 2026-10-15 调色板剪贴板、导入层名、时间轴键盘补迁
+
+调色板剪贴板替换旧正则抓取V1子串，直接承接 components/palette-clipboard.ts 全JSON验证：V1/V2、RGBA全为finite number、JSround后clamp、字段顺序任意；V2严格验证1..256整数列数、非空整行slot及null/合法颜色索引。保留系统读取4MiB预算、内部fallback、原V1复制输出和既有pastePaletteColors目标/单笔历史。当前auto模式同旧PalettePanel仅使用V2 colors，manual布局仍缺口，不称其已迁移。真实原TS执行23输入oracle覆盖重复稀疏布局、小数/负数/超限、字段乱序、残缺JSON/尾随垃圾、类型错误、越界layout；native全部一致。
+
+精灵表导入层名沿 buildImportedSpriteSheet 与中文spriteSheetImport.layer，纠正“精灵表”为“导入的精灵表”，不改变算法或导出层名。现有核心补result/apply/undo/redo名称断言，原opened fixture仅编译，不为一个名称重跑完整animation。
+
+时间轴帧头/Cel键盘选择沿旧detail0 button click，Shift range优先Ctrl toggle，其余replace，委托现有selection API。真实本机headless Edge DOM oracle确认Enter down含repeat激活、up不激活；Space down含repeat仅arm，up用释放当刻修饰激活，焦点/文档改变或不可用取消，避免启动hand。仅已显示且可用焦点头/Cel，按当前pool/scroll映射；无新增通用快捷键或文档历史。
+
+正式两核心build44691实际0：palette-clipboard-tests真实23oracle及sprite-sheet-import-tests实际0。最终唯一正式app build97661实际0；外部构建曾先读旧main后写较新obj，已由本批fixture真实改动重编解决，不删缓存/obj。两opened采用start-native.bat相同显式theme/cursors路径，--palette-clipboard-check PID15024、--timeline-selection-keyboard-check PID37280均实际0；旧产物镜像theme导致前次启动未入检查，旧Clipboard undo error文件未更新，不计成功。SHA13f627fcb89dea19fd98e37f896e4cb8135146b462278460b379f4ea6d880c1f运行前后相同。来源coverage189通过，strict1保持INCOMPLETE，无截图QA，数值箭头不恢复，无提交/发布/preview，本批完成停止。证据native/build/clipboard-import-keyboard-final-20261015-2341.json；log native/build/clipboard-import-keyboard-app-final-build.log。
+
+
+## 2026-10-16 重命名Unicode边缘、时间轴tail、指定单层静态导出
+
+调色板重命名承接 workspace-palette177–190 的 name.trim()，复用此前名称可见判断相同ECMAScript whitespace集合，不再仅ASCII space/tab/CR/LF。包含NBSP/FEFF/Unicode Zs/行分隔符，保留内部空白与非空白U+0085/U+180E/U+200B，仍允许空名称；现UTF8 editor→UTF32安全路径、kind4差量历史、未知ID/normalized同名noop/undo-redo不变。原函数提取实际执行31输入oracle；既有moon-core-tests增加结果/历史/像素revision断言，正式build43078/core实际0。
+
+时间轴half-tail沿 useProjectScrollMemory，只在frame grid内容宽度真正超过frame viewport时增加半视口尾部，exact-fit和fit不产生空滚动；保现大label补偿、真实overflow公式、滚动条/offset夹紧。opened专项测exact-fit/±1logical阈值、实际fit/overflowhalf-tail/末端可达、view-only与undo恢复fit时offset归零，非时间轴架构重设计。
+
+静态PNG/BMP/ICO/SVG补指定单图层导出目标：沿layer-export.ts隔离目标但保源visible/opacity，current frame复用compositeNormalRegion目标过滤参数，不复制Document/history/timeline。无效layerID按旧回退document；保trim/scale/透明空内容和现codec输出，文件名沿sourceStem-layerStem与旧非法字符清理。原导出目标/格式切换、取消picker、写盘成功/源history保持按定向opened验证。真实旧PNG解码RGBA的normal/.5opacity/hidden/0opacity及命名oracle通过；linked/invalid fallback/trim/scale/四格式/source核心通过。本批不接all-layers批量、动画层导出或完整导出偏好记忆；旧主入口重开reset仍明确缺口。
+
+正式单节点build47351 targets moonsprite-native/layer-export-tests实际0；layer-export-tests实际0。唯一正式exe SHAe4ac384c29dac426566d767bb55575e5d7d028df2555fc38d5aac5402c6cd772，以start-native.bat相同native/assets显式theme/cursors运行，opened --palette-rename-trim-check PID31788、--timeline-tail-check PID41940、--layer-export-check PID31628全部实际0，运行前后hash同。来源coverage190/evidence snapshots通过，strict1保持INCOMPLETE；无截图QA，数值箭头不恢复，无提交/发布/preview，本批完成停止。证据native/build/rename-tail-layerexport-final-20261016-0000.json；log native/build/rename-tail-layerexport-final-build.log。
+
+## 2026-10-16 HEX严格解析、播放前浮动提交、静态统一裁切
+
+HEX沿实际color-values.ts parseRgbaHex与ColorValueControl：ECMAScript边缘trim，严格可选#加6/8位ASCII hex；6位保当前alpha，8位显式覆盖，拒绝符号和部分解析。共享空白helper承接上批重命名和名称可见判断；保留既有角色/锁/同步/单笔历史路径，非法输入恢复当前HEX。实际旧函数43组oracle与color-picker-tests通过。
+
+播放开始沿旧入口先提交floating paste，再取消stroke并记录播放revision；真实Play与直接loop入口均承接，Pause不提交。opened覆盖立即提交、两次tick仍播放、Pause无额外历史及undo恢复。静态导出新增none/individual/common三态，common先用原文档可见内容范围再与baseCrop相交，沿旧空范围fallback；格式切换保选择。实际旧worker12组oracle、layer-export-tests覆盖可见/隐藏目标、选区和空交集、四格式、源状态。动画/序列裁切与跨重开设置持久化仍未迁移。
+
+正式单节点构建app及layer-export-tests实际0，layer核心实际0。唯一正式exe SHA c3f0404b3ca21270b0e70699cd4b822a384c2ef47ce3b19c887f2e992fd68cb6，以启动器相同显式theme/cursors运行：--role-hex-check PID35084、--playback-floating-check PID22640、--layer-export-check PID45008均实际0，运行前后hash一致。来源coverage191/evidence snapshots通过，strict1保持INCOMPLETE；无截图QA，数值箭头不恢复，无提交/发布/preview。本批完成停止。证据native/build/hex-playback-common-final-20261016-0013.json；构建log native/build/hex-playback-common-final-build.log。
+
+2026-10-16 导出弹窗布局：对照 legacy/src/renderer/src/components/app/ExportDialogHost.tsx 与 styles.css 的 export-primary-fields、gif-export-options、scale-control、footer 重排现有静态/动画导出入口。格式与区域同排，动画范围/起止/方向在比例前，比例旁复用旧版默认100/200/400/1000/2000快捷项，修剪在后，底部取消/导出并打开文件夹/导出。适配用户原生6px边距和2px标签间距；指定帧范围展开自动增加最低高度。文件名和路径仍在原有Win32保存步骤选择；内联路径/名称、命名导出预设、从首选项加载自定义比例列表不在本次布局调整内，保持迁移缺口。
+
+2026-10-16 用户追加：导出选择项现改为真实 PixelDropdown，数值为 PixelEntry，快捷操作为 PixelButton；新建工程预设区抽取 PixelPresetControls，两处直接复用构造与布局。已接入原生导出预设的命名覆盖保存、重载、选择应用、删除及损坏保护。持久化支持已迁移的格式/目标/修剪/比例/动画范围和方向；文件名/路径仍为系统保存窗口，旧localStorage导出预设导入及自定义比例首选项仍未迁移。
+
+
+## 2026-10-16 导出设置跨重开记忆与动画修剪三态
+
+沿旧 core/export-settings.ts198–273 与 ExportDialogHost48–94、document-file-service205–224，普通导出入口恢复每工程最近成功设置。身份优先保存路径，其次导入来源路径，Windows路径统一分隔符/大小写；无路径文档使用进程限定runtime identity，互不串用。最多100条，成功静态/GIF写盘或帧序列完整完成后原子写入；取消、冲突取消、部分序列取消及失败不覆盖。恢复现已迁格式/比例/静态目标/裁切/动画范围与方向、成功文件名和仍存在且匹配的原生预设名。目录继续按旧openExport的当前首选项确定，不以旧记录覆盖。显式格式入口保指定格式，显式帧序列入口按旧规则将GIF变为PNG自动。无效选区/图层/循环段及缩短帧范围复用已有回退。
+
+动画修剪补不修剪/独立/统一三态；当前原生动画仅画布目标，两种修剪复用已有GIF全时间轴帧内容并集（包含范围外帧）及序列逐帧裁切，不新造矩形算法。既有原生命名预设v1读取兼容，v2追加该状态，不扩预设功能。
+
+未迁格式、切片、动画图层目标、旧localStorage导入、无路径恢复文档稳定身份仍为缺口。定向 --export-memory-check 与GIF/序列核心检查已补；正式首次构建main/core编译成功，链接LNK1104因现有PID11904占用唯一正式exe。CloseMainWindow后仍未退出，未强杀/丢弃未保存作品；等待用户处理后构建运行，不计运行通过。来源覆盖检查与行为运行验收分开。唯一正式产物/入口不变，数值箭头未恢复，无提交/发布。
+
+
+用户保存退出后，fresh确认旧app及构建均退出，再进行唯一正式单节点构建43896，app/gif-export-tests/frame-png-export-tests实际0；GIF与帧序列核心实际均0。opened --export-memory-check PID41036仅最后损坏回退断言失败：fixture当前2帧，应沿既有默认GIF，误写Static；只修该fixture预期，正式app增量构建81946实际0。最终opened --export-memory-check PID11040实际0（desktop.openWindow+finishLaunching后执行，显式使用启动器native/assets theme/cursors），成功覆盖真实静态/GIF/异步BMP序列写盘、取消/写失败不覆盖、路径大小写+fresh Document重开与范围夹紧、无路径工程隔离、显式入口、动画common状态、100条MRU上限与损坏记录回退。核心验证GIF范围外帧仍参与全帧union，序列对既有真实worker帧样本含空帧验证common/individual PNG字节与像素一致。首链接占用与fixture失败历史保留，不再作为当前阻塞。
+
+最终唯一正式exe SHA256 DAFB483AA3CB716E8E24A481D4E9646175FC6E27B7CF9C432D534A243539987F，2026-10-16T19:05:54.4359606+08:00 / 12652032bytes，运行前后相同；main源码运行前后同SHA AFDB3A13D4BF3728D725EC4539AEB13CE537845CBB5C9FB1D109783E1A17D5C3。来源coverage200/evidence snapshots verified，strict实际1保持INCOMPLETE，无独立截图QA与无关套件回归声明。未删除用户数据/未恢复数值箭头/无提交推送或preview。证据 native/build/export-memory-final-20261016.json；构建日志 native/build/export-memory-final-build.log、native/build/export-memory-check-fix-build.log。本批完成停止。
+
+
+## 2026-10-16 最近成功导出目录、拖排历史、循环节Unicode空白
+
+最近成功导出目录沿 file-preferences.ts1231–1235 outputDirectoryForOperation 与 document-file-service193–204 rememberExportPath：recent模式用全局最后成功父目录，无记录回configured目录；fixed始终用配置值，但成功也更新last供之后切回recent。原生原子UTF8偏好文件适配localStorage字段，静态/GIF/序列表单共用目录，sheet picker用lpstrInitialDir共享prefill。仅静态/GIF实际写盘、完整未取消序列完成、sheet成功写盘更新；取消/失败/未完成不更新。10条最近导出列表UI不在本批。实际原函数5组JS oracle通过；新opened --recent-export-directory-check待运行。
+
+调色板拖排历史仅repositionPaletteColors改用既有kind9 slots-only快照，对齐workspace-palette293与applyPaletteSlots27，undo/redo保用户后来选集与前后景身份/颜色，bytes仅前后slots×4。kind5仍供原applyExtractedPalette，不改其语义；原movedPaletteSlots与拖排提交路径保留。既有document-test fixture补后来选择/角色保持、精确bytes、pixels/contentRevision及noop，核心待运行；manual columns仍未迁移。
+
+循环节名称沿AnimationLoopSectionDialog49的JS trim和默认“循环节 1”，复用已有javascriptTrim，预览与commit共用loopDisplayName。仅修空白/回退差异；保现64码点限制，旧core trim().slice(0,64)按UTF16、可能切开surrogate的差异明确保留，不能宣称完整名称迁移。新增opened --loop-unicode-name-check待运行，涵盖六组边缘/内部/非空白Unicode、preview/commit、undo/redo/noop/cancel。唯一正式路径/数值箭头约束不变，未提交推送。
+
+
+正式单node build9421 targets app+moon-core-tests实际0；moon-core-tests实际0，包含拖排后选集/角色身份和RGBA保持、slots/bytes、undo-redo/contentRevision/noop。真实旧workspace-palette reorder/apply及palette-layout normalize原函数oracle实际0：before[1..8]→[3,4,1,2,7,8,5,6]，bytes64；后来selected[4]/primaryId3/secondaryId4与颜色值经undo/redo保持，重复相同target不新增命令。第一opened recent PID36488实际0；loop PID5620仅fixture用historySize误判redo尾被替换，改用revision+1验证单次提交，产品不改。正式app增量build29735实际0，最终launcher相同native/assets显式theme/cursors opened recent PID30804、loop PID15824实际均0，入口在desktop.openWindow+finishLaunching后。
+
+最终唯一正式exe SHA256 36A3B28778C087A6EB71C861C36D746B011D3519C5A300D93594BC0A01DC8062，两个opened前后同hash。来源coverage200/evidence verified、strict1保持INCOMPLETE，文档检查与运行分别记录，无独立截图QA/无关旧批回归。保留64UTF16/无路径恢复identity/manual/最近导出列表等已知缺口，不把本批小修称完整功能迁移。未恢复数值箭头，无提交推送/preview。证据native/build/recent-palette-loop-final-20261016.json；log native/build/recent-palette-loop-build.log、native/build/recent-palette-loop-fixture-build.log。本批完成停止。
+
+循环节原组件sectionName表达式已直接抽取实际执行6组Unicode oracle，exit0，结果与opened断言一致，详见本批证据oracle.loopOriginalExpression6Cases。
+
+
+## 2026-10-16 默认导出格式、相同粘贴无历史、帧时长提交
+
+默认导出格式沿ExportDialogHost48–94和file-preferences1178：工程记忆优先，其后首选项；多帧默认GIF，显式帧序列沿旧规则把GIF/WebP/PSD/MoonSprite转PNG自动。首选项接入现有draft/apply/cancel及持久化，只启用PNG/SVG/GIF/BMP/ICO；未接格式明确禁用，已有不支持的单帧配置报告未接入。显式格式入口和已记忆的有效格式保原规则。真实旧映射/默认表达式20组oracle通过。
+
+相同调色板粘贴沿workspace-palette113–149及recordPaletteEdit63–67，在更新selected与primary后比较slots和ordered entries；无变化不push历史、不改dirty/revision/bytes、不截断redo。沿旧history test57扩输入有多余颜色的有界粘贴及真实改色undo/redo证据；manual columns仍未迁。
+
+帧时长仅专用输入承接NumberInput默认live=false、commit/normalize、表达式Enter停留/纯数Enter关闭、失焦提交、Esc丢弃未提交草稿但保留已应用值、关闭按钮先提交、滚轮从已应用值±10，夹紧1..60000再沿store trunc。保持既有冻结多选目标事务/单步undo-redo，无上下箭头步进。字符过滤、scrub及其它数值字段不在本批，不能称NumberInput完整迁移。真实旧numeric-expression与NumberInput normalize/commit抽取执行8组oracle通过。
+
+正式单节点app/moon-core-tests/editor-preferences-tests构建实际0，首选项核心0。调色板核心首次1仅新增fixture误认undo后clean；仓库既有规则history navigation仍dirty，fixture改为记录undoDirty并断言相同paste不改。仅核心重构建0，最终moon-core-tests0，产品exe未变。opened --export-format-preference-check PID7020、--frame-duration-input-check PID29448实际均0，在desktop.openWindow+finishLaunching后使用启动器相同显式native/assets theme/cursors。正式exe SHA256 650A1F83B8C046550EDE8EB99D74692F1590C2284C31822C21D9649F1E284C65运行前后一致。来源coverage200/快照通过，strict1保持INCOMPLETE，与运行分别记录。未补独立截图QA；未删除用户数据、恢复数值箭头、提交推送、外部工程或preview。本批完成停止。证据native/build/export-palette-duration-final-20261016.json；构建日志export-palette-duration-build.log及export-palette-duration-core-fixture-build.log。
+
+只读palette分析Agent另报告实际Node24 stripTypeScriptTypes原workspace-palette paste/recordPaletteEdit oracle exit0：相同有界red/blue/red→slots0,1返回IDs1,2、history0、selected1,2、primary2/blue、nextId3；真实交换history1、undo恢复red/blue。此为执行Agent报告，无独立产物路径，主写入者未重复运行。
+
+
+## 2026-10-16 GIF指定单层、粘贴历史背景色、多层复制活动副本
+
+GIF补有效指定单图层目标，复用静态目标dropdown与现compositeNormalRegion targetLayerId，不复制Document/history/timeline；动画范围/循环/方向/codec不改。沿旧worker73–93：individual使用目标隔离文档的全部帧union，common使用原文档全部帧union，包含所导范围外帧；实际编码每帧始终只过滤指定层，保visibility/opacity，空范围回画布。隐藏/.5/零opacity、链接帧/scale/范围、原源保持沿native核心验证；实际旧worker encode与gif prepare/export加载执行六组oracle通过，结果individual1×1/common5×2、hidden/zero回5×2、目标RGBA一致。
+
+文件沿document-file-service506–595对用户base名称加sanitize后的图层stem，复用原生冲突菜单；成功记忆保base名称（不重复追加layer），取消/失败不写memory。原生memory v2及presetv3末尾追加animation.layerId，旧memoryv1/presetv1/v2继续读且不误把旧image.layerId当GIF层。有效目标存取、命名、真实写盘bytes、cancel/failure/reopen与源状态经opened检查。无效已记忆目标保留明显未接入提示，并在选有效单层或显式画布前拒绝导出：旧版失效ID实际会回退全部图层批量，本批未接，不能称其已一致迁移。all-layers/group等既有缺口不变；不扩帧序列目标。
+
+调色板仅kind7 paste历史回放前后保当前secondary RGBA/ID。实际旧capturePaletteEdit/recordPaletteEdit未记录background；history undo/redo也不normalize。故后选已有颜色、未匹配RGBA/ID0、甚至paste新ID后undo移除该entry时的悬空secondaryId都保留。只读palette Agent实际原函数三类oracle报告exit0，主写入者未重复执行/无独立artifact路径；native核心验证同类及entry/primary/pixels/contentRevision/history。未改其它history kind。
+
+多图层复制沿workspace-commands-layer-structure311–318/redo339将活动层设最后副本；只改afterActive从front到back，保持副本顺序/选集/anchor/linked展开。旧入口context/shortcut证据核对，未执行JS oracle；native非连续源核心和真实context opened验证单笔history、最后副本活动、立即绘制只改最后副本、源/首副本保持、undo/redo及帧保持。
+
+正式单节点app/moon-core-tests/gif-export-tests/layer-merge-tests构建实际0，三个核心均0。opened --gif-layer-target-check PID15524、--duplicate-last-layer-check PID29216均实际0（desktop.openWindow+finishLaunching后，启动器相同显式theme/cursors），唯一正式exe SHA256 40ACE369746C3E6A2EDE4B7250B766CF3D529C5881673AE27999B1271B5EC51F运行前后一致。来源coverage200/snapshots通过，strict1保持INCOMPLETE，与运行分开记录。oracle早期fixture复用旧render cache/尾空格sanitize期望造成失败，fixture改fresh document与原函数实际期望后通过，产品未因此改动。无截图QA/未声明原生压缩GIF字节与旧encoder等价；未删用户数据、恢复数字箭头、创建分支/外部目录/preview或提交推送。证据native/build/gif-layer-secondary-duplicate-final-20261016.json；log native/build/gif-layer-secondary-duplicate-build.log。本批完成停止。
+
+## 2026-10-16 Custom export scales, real palette window blur, duplicate regression correction
+
+Custom scale presets follow the actual legacy file-preferences parser/default and PreferencesDialog/ExportDialogHost behavior: five defaults [100,200,400,1000,2000], finite 1..6400 values rounded and deduplicated in order, 100 preferred otherwise first. Native preferences retain draft/add/delete/edit/apply/cancel and at least one row, persist in the existing native quoted format. Export shortcuts use configured values; horizontal existing-skin scrolling is the necessary native adaptation for overflow. Static/GIF/frame-sequence defaults use preference; SVG remains100 and fractional shortcuts such as150->1.5x work. Numeric arrows were not added. No legacy localStorage JSON import claim. Actual original parser/default expression oracle10+3 cases passed; core preferences and opened dynamic controls/overflow/real150%PNG dimensions passed.
+
+Palette terminal blur follows actual PalettePanel finishBlur/finishPaletteDrag: moving commits the last preview once; selection retains its live selected IDs without finalizing box range. Native WM_ACTIVATE inactive -> WindowLeave -> manager mouseup buttonNone carries current OS position, so this terminal event now finishes without resampling it. Ordinary release, internal FocusLeave and Escape remain unchanged. Real opened test uses SendMessageW(WM_ACTIVATE,WA_INACTIVE), timer and manager loop, checking moving commit/history/roles/capture/undo-redo and selection retention/capture. Palette original function execution exit0 was reported by the read-only analysis agent, with no independent oracle artifact path.
+
+CORRECTION: the previous batch's copies.back active-layer change was a regression. Legacy layer storage is bottom-first while native is visual top-first; actual legacy sourceLayers filter plus layers.at(-1), viewed through descending panel order, selects source A's clone for both visual [A,B,C] selections A,C and A,B. Restore copies.front; keep ordering/selection/anchor/frame/link semantics. Tests now use distinct source colors and immediate paint to prove the corresponding visual source clone is active, with originals and other clone preserved and undo/redo. Previous passing tests mirrored the wrong expectation and were not equivalence evidence. Actual original statements execution exit0 was reported by the read-only animation agent, no independent artifact path. Delete fallback was not changed.
+
+Official single-node app/editor-preferences-tests/layer-merge-tests build0 and both core tests0. Opened --custom-export-scales-check PID27212 and --duplicate-last-layer-check PID41908 passed0 on SHA D450B96A5D011F425C603470D86D62B125E81530697044CEB651A266AE7932FF. Subsequent builds changed only the palette blur fixture. Initial fixture failures were setup defects: background selection overwrites selected IDs; final setup selects secondary2 then primary1 and explicitly asserts selected=={1}, preserving all real window assertions. Final official app build0; real --palette-window-blur-check PID34120 passed0, final SHA E9EFD330B78CC6CA6B898BB5CB8C2E856254D75D48CFDDF7C10BF41946BF3026 before/after identical. Launcher assets/theme/cursors match start-native.bat; checks run after opened window. Failed evidence is retained. No unrelated suite reruns or independent screenshot QA. Coverage200/snapshots pass; strict1 remains INCOMPLETE, reported separately from runtime. No branches/worktrees/external projects/preview/commits/pushes/user-data deletion. Evidence native/build/scales-blur-visual-copy-final-20261016.json. This batch is complete.
+
+## 2026-10-16 Export completion sound and appended extraction count
+
+Export completion sound follows actual platform/export-success-sound.ts and workspace-commands-document-io.ts exportActive / workspace-commands-session.ts exportSpriteSheet. Default enabled, existing preferences toggle now wired to draft/apply/cancel and native persistence. Original legacy WAV is copied byte-for-byte, SHA256 4c92a202984ec78219926833b485520e3dfd38543587ab748be4871989f35a1e; native/build/Release/assets copy matches. License legacy/LICENSE2(b,c), covering original assets, permits this internal modification/compile/test; no public binary distribution performed. WinMM PlaySoundW with SND_FILENAME|SND_ASYNC|SND_NODEFAULT is the necessary native audio adaptation. No gesture/canvas warmup or WebView; false/exception is contained by noexcept feedback and diagnostic is reported once. Audio feedback never changes successful export status or source history.
+
+Static and GIF complete output each request sound once; frame sequence requests once only after noncancel/nonerror terminal result, never per-file/progress. Earlier written files or even last file written do not make a canceled job successful. Actual legacy session source corrected the initial proposal: sheet new-document success also plays; file auto-open failure must not play. Sheet completion is placed after new-document/auto-open completion. Default native sheet opener verifies actual opened source/path because openPath absorbs errors instead of returning legacy boolean; existing error status is preserved. Already admitted static/sequence formats use their existing shared success nodes; no other format or export feature added.
+
+Palette append extraction now supplies the missing added-color count from actual PalettePanel extractFromImage merged.length-orderedColors.length. Native status previously had no quantity; an early analysis claim that it showed colors.size was incorrect and was retracted before implementation. Only append mode uses visible order after-before; create/replace text, merge algorithm, IDs/roles and history behavior are unchanged. Hidden stored colors becoming visible count as new, despite unchanged entries size. Read-only palette agent executed actual colorKey/mergePaletteColors and count expression: duplicate0, mixed1, pre-existing duplicates retained with new1, hidden-entry visible addition1, exit0. No independent oracle artifact path; first extraction script missed newline and was fixed without product changes.
+
+Single-node official app/editor-preferences-tests build0 on first attempt (sound-append-count-build.log), preferences core0. Opened --export-success-sound-check PID39784 and --append-extraction-count-check PID16872 both0, after desktop.openWindow/finishLaunching using launcher-equivalent theme/cursors. Sound fixture uses actual Windows MMIO WAV RIFF/format loading and injected playback requests; UI preference visible/enabled/modal ownership and draft/apply/cancel/persistence, static success/cancel/write failure, GIF success, complete sequence once, real partial-write failure, actual writer cancellation after final file then deterministic existing-worker terminal future, early snapshot cancel, file/new-document sheet, auto-open failure, audio exception/false isolation all pass. Append fixture covers full duplicates as existing noop, one new visible color with one history/undo/redo, hidden ID reuse with unchanged entries and added-visible1. No expanded old suite reruns or device-level listening/fidelity/overlap QA.
+
+Official executable SHA256 7011F2F78D550B025F422BE5012B6FFE35B7DAFB32319E74090196FC12CB9DAF before/after identical. Provenance coverage200/evidence snapshots verified0; strict1 remains INCOMPLETE, separately reported from runtime. No numeric arrows/branches/worktrees/external projects/preview/commits/pushes or user-data deletion. Evidence native/build/sound-append-count-final-20261016.json. This batch is complete.
+
+## 2026-10-16 Export protection and temporary extraction names
+
+Export protection follows the actual 41-line core/export-protection.ts and its tests. Existing settings off/blur/blur-noise default off now use native draft/apply/cancel/persistence. Only image export above100% is processed: crop/mask/nearest scale first, then horizontal+vertical alpha-aware narrow kernels [1,6,1] below400% or [1,6,18,6,1] at400%+, then stable output-index noise. Every pass matches Uint8ClampedArray nearest/ties-to-even; integer quotient/remainder is the necessary C++ adaptation, and uint32 overflow matches Math.imul. Off/<=100 returns the same vector without output allocation. Only prepared export buffers and two necessary per-output scratch buffers are used; no Document copy, snapshot worker redesign, timeline-wide added copies, or codec change. This is the existing image effect and does not guarantee prevention of copying.
+
+Already supported static PNG RGBA/automatic, BMP, existing SVG encoder, ICO and GIF use protection before encoding; automatic PNG indexing and GIF alpha threshold/palette/quantization happen afterwards. ICO's existing256px proportional fit happens after protection. Frame PNG/BMP/SVG/ICO use the existing snapshot/background per-frame path and cancellation/backpressure handling. Global protection is captured when export starts, not stored/restored in document memory or export presets. Regular save defaults remain off; sprite sheet remains100% and unaffected. Missing formats/slices/groups remain missing. An earlier informal description of SVG as rect output was inaccurate; actual existing encoder is untouched.
+
+Actual original protectExportPixels was executed with Node24 stripTypeScriptTypes,12 cases exit0:101/200/399/400/6400, off/100/50 bypass, edge clamping, multiple alpha values and stable noise. New core compares native RGBA FNV64 to those original outputs and verifies all admitted codec integration, ICO320px raster before256px fit, GIF before quantization and unchanged source/history. Oracle native/build/export-protection-legacy-oracle.cjs/json. Core export-protection-tests and editor-preferences-tests first build0 and run0. No old broad suite reruns.
+
+Temporary extraction name follows PalettePanel openExtractDialog/extractFromImage and zh-CN defaultName: document name plus ' 色板', JavaScript trim, empty fallback. Shared javascriptTrim is used with owned input lifetime; internal whitespace and U+0085/U+180E/U+200B are preserved. Input draft remains as entered, because legacy only updated separate saveName; no new library/saveName state/storage was invented. Create feedback uses normalized temporary name; replace/append, algorithms/history and document name stay unchanged. Read-only palette agent executed actual old expression with locale default7 cases exit0, no independent artifact path. Library saving remains unimplemented.
+
+Official single-node app compilation succeeded; first link failed LNK1104 because PID41084 held the sole executable. CloseMainWindow requested normally and it exited without forced termination; only relink was repeated and succeeded0 in9s, no source fixture retry. Logs protection-names-configure.log, protection-names-core-build.log, protection-names-app-build.log, protection-names-app-link-build.log; close evidence protection-names-close-results.json. Opened --export-protection-check PID39960 and --extraction-names-check PID41612 passed0 after desktop.openWindow/finishLaunching using launcher-equivalent theme/cursors. UI verifies visible/enabled/modal controls and draft/apply/cancel/persistence, actual protected PNG/GIF files, real background sequence captured global mode despite later preference change, source clean/history preserved; names cover7 Unicode/default cases plus cancel/empty-image failure.
+
+Final official executable SHA256 5C763720823A6A8C1511865EBA9211A6C437DBBA411E5B34D70D1A83AF932547 before/after identical. Provenance coverage202/snapshots verified0; strict1 remains INCOMPLETE, separate from runtime. No independent screenshot QA or full legacy migration claim. No numeric arrows, branches/worktrees/external projects/preview/commit/push or user-data deletion. Evidence native/build/protection-names-final-20261016.json. This batch is complete.
+
+
+### 2026-10-16 色板 PNG 与最近导出路径（本批）
+
+- 按旧版 PalettePanel / palette.ts 接入保存名称弹窗、前24色预览与完整数量、全部顺序颜色16px平铺PNG；提取新建名称承接。取消/失败保留弹窗与名称，成功才写目录/最近路径并播放已有成功音效。色板库JSON、手动保存和图库仍未迁移。
+- 导出位置按钮接入旧版路径菜单；图库禁用，工程目录和最近文件的父目录不修改文件名。最近记录10条，实际完整成功后记录，帧序列仅记最后文件；取消/失败不记。Windows本地大小写与原生版本化存储属于必要适配，不声明通用JS locale一致或旧localStorage导入。
+- 核心检查与正式窗口检查分别记录在 native/build/palette-paths-final-20261016.json；全量迁移未完成，strict应保持失败。
+
+## 2026-10-17 单张 JPEG 导出
+
+按旧core/png.ts encodeScaledPixels、document-files、worker、ExportDialogHost与service接单张JPEG完整现有表单路径：quality0.92、.jpg、现有裁切/选区/图层/缩放/全局保护、原子写盘、首选/预设/每工程记忆及成功音效/目录/最近路径。旧代码白fill后putImageData覆盖，因此透明区最终黑色；实际旧函数Chrome155 oracle五组透明/半透明/opaque结果与Skia quality92/420/sRGB/black alpha原生样本解码RGB全部相同，不把有损codec跨版本byte一致作为承诺。复用已分发Skia BSD编码器及许可，不引入WebView或新编码架构。
+
+仅单张静态子流程；JPEG帧序列明确未接入并禁用，原多帧普通导出默认GIF保持。未扩直接来源格式保存、WebP/PSD/切片/分组。调色板JSON依赖manual/layout完整链，时间轴密度依赖几何/缩略图/缓存完整链，本批只读登记后续依赖，未以未可见底座冒充新功能。
+
+核心/正式程序/打开窗口行为检查分别记录native/build/jpeg-final-20261017.json；来源strict继续保持INCOMPLETE。
+
+正式单节点core构建0，jpeg-export-tests最终0。测试自身selection改变history的初始断言已修，不改编码器；5组原生JPEG经WIC解码RGB与实际旧Chrome155原函数输出均精确相同。首次opened停默认多点名差异，JPEG分支改用既有sanitize再追加.jpg；随后fixture错误用opacity事务改层名，修用真实beginLayerProperties，并移除直接替换Document却遗留旧layer UI状态的尾部fixture。保留所有失败记录，不据此改其它codec或文档切换行为。
+
+最终app单node jpeg-sequence-boundary-app-build.log实际0；opened --jpeg-export-check PID30204实际0，desktop.openWindow+finishLaunching后使用启动器相同native/assets theme/cursors。验证首选draft/apply/persist、真实JPEG选择与.jpg默认多点名、预设保存重载、取消/失败保弹窗与元数据、真实半透明解码与source/history/dirty、成功音效/目录/MRU、跨重开记忆与优先级、图层命名及保护写盘；preferred和remembered JPEG帧序列都明确拒绝，原多帧默认GIF不变。最终唯一正式exe SHA256 F028E1D830B81D5356EFAD2F4CB04A6E8D9720C891530697A800A0932E3224EE运行前后相同。来源coverage205/evidence verified/normal0，strict1继续INCOMPLETE。无独立截图QA/跨版本codec bytes等价/完整迁移声明，无外部工程、preview、数值箭头、提交推送或数据删除。证据native/build/jpeg-final-20261017.json。本批完成停止。
+
+
+## 2026-10-17 JPEG frame sequences and stored palette columns
+
+JPEG sequences reuse existing range/raster/snapshot/background worker, conflict preplanning and atomic per-file writing. JPEG dropdown/preference/kind2 format5 presets/memory and multi-dot jpg naming are enabled. Only whole success remembers base settings and last actual path once and plays sound once; partial cancel/failure retains earlier files without success metadata. Actual original worker12 off/common/individual scale150 raster cases pass; this captures pre-codec raster only and reuses prior actual Chrome JPEG codec evidence. No cross-codec compressed-byte equivalence claim.
+
+Palette columns default8/validated1..256 now survive actual project open/recovery, current-metadata save and existing snapshots; automatic viewport layout remains independent. Manual layout/library and animation six-density/thumbnails remain deferred. Both focused core tests pass. Initial columns fixture identity mismatch/empty ID fixed to encoded manifest identity, without product identity changes. Official build/opened results recorded below when complete.
+
+Official single-node app build0 (jpeg-frames-columns-app-build.log); opened --jpeg-frames-columns-check PID3976 exit0 after desktop.openWindow/finishLaunching with launcher-equivalent theme/cursors. Real background success, settings/preset/dropdown/naming, source history, metadata/sound success boundaries, early cancel and actual partial core writer plus deterministic UI terminal injection pass; no partial-async timing claim. Actual project open/recovery mapping and re-encode retain columns4 and holes. Exe SHA256 CE196768E581B93939089F590E9EF5D86C8826D9EDD4AED6B5BC5F0D24535BE1 unchanged before/after. Provenance207 normal0/evidence verified; strict1 INCOMPLETE separately from runtime. No screenshot QA/full migration claim, numeric arrows, branches/worktrees/external projects/preview/commit/push/data deletion. Evidence native/build/jpeg-frames-columns-final-20261017.json. This batch complete.
+
+
+## 2026-10-17 WebP admitted animation/single-frame export
+
+Actual legacy webp-animation.ts always exports ANIM/ANMF even for one frame, lossy quality0.92, exact milliseconds, full replacement flags2, loop infinite0/once1, VP8X0x12, only VP8/VP8L/ALPH image chunks. Native existing GIF preparation is extracted without changing frame/range/trim/scale/protection/layer/loop algorithms, and shared by WebP. Existing pinned Skia/libwebp codec with its distributed BSD licenses replaces OffscreenCanvas per-frame encoding; old RIFF mux is directly adapted, not replaced by Skia animated encoder. Legacy Source-Available terms cover internal development/test, no public binary distribution performed.
+
+WebP format6 kind1 native memory/preset, preferred single-frame WebP and GIF/WebP dropdown switching, .webp naming/picker/atomic write, successful path/settings/sound once are admitted. Unremembered multiframe still defaults GIF regardless preferred WebP, matching old ExportDialogHost; explicit frames converts preferred/remembered GIF/WebP to PNG auto and disables WebP sequence. Existing valid single-layer target supported; existing animated selection/slices/groups/all-layer fallback gaps remain unimplemented. No claim all export targets complete. Color palette manual/library and animation density remain deferred.
+
+Focused core first build/run0, actual SkCodec decode frame count/order/durations/alpha and one-frame no-loop/dimension limits passed. Existing GIF test0 and gif-basic exact output SHA256 0BFCE9B507CA7676CF59ECEAD7A226C90357D47F58C5842817BEB584C2A4D2D4 unchanged before/after shared preparation. Actual original encodeAnimatedWebp JS function remuxes native compressed frame payloads to identical output bytes for animation and single-frame; this proves container semantics only, not cross-codec compressed bytes or image fidelity. Artifacts webp-core-result.json, webp-container-legacy-oracle.cjs/json in native/build. Formal app/opened results follow.
+
+Official single-node app first build0 (webp-app-build.log); opened --webp-export-check PID40596 first run0 after desktop.openWindow/finishLaunching with launcher-equivalent theme/cursors. Actual preference draft/cancel/apply/persist, GIF/WebP dropdown preserving draft, native preset/memory format6 kind1, picker cancel/real failed write/successful bytes and metadata/sound, source history/pixels/dirty, protected existing valid single-layer write and explicit-frame preferred/remembered WebP-to-PNG-auto boundaries pass. Canvas and existing valid single-layer flow only; animated selection/slices/groups/all-layer batch/deleted-layer fallback remain explicit gaps. No screenshot/device fidelity QA or claim all WebP targets complete. Official exe SHA256 7B19B9A9F468B1E9248013AE5EF8C7EFC2ABFBDED1E5FF403ED9BCED4F8AADCD before/after identical. Provenance210 normal0/evidence verified; strict1 remains INCOMPLETE, separate from actual runtime. Evidence native/build/webp-final-20261017.json. No numeric arrows, branches/worktrees/external projects/preview/commit/push/user-data deletion. This batch complete; stopped after minimum checks.
+
+
+## 2026-10-17 GIF/WebP pixel-selection animation export
+
+Actual service595-667/worker74-100 GIF/WebP selection uses selection rectangle only, intentionally ignores irregular mask. Shared prepare now starts with that base crop, intersects full-animation visible union when trimming (including frames outside requested export range), retains base on empty intersection, then runs old gif normalizeCrop origin/extent clamp. Existing animation ordering/range/direction/loop/protection/codec preserved, no extra Document copy or worker redesign. Actual dropdown enables present selection and excludes layer target; static/GIF/WebP transitions carry selection. Native preset4/memory3 trailing bool preserves older schema semantics and default false; absent remembered/preset selection falls back canvas per actual old dialog. Explicit frames clears animated target.
+
+Actual original worker+prepare executed6 focused raster cases0 (rectangle, irregular mask ignored, specified range with full-animation trim union, empty intersection, negative/beyond canvas, 400% protection); core first build/run0. Existing GIF and WebP regression tests0. Artifacts native/build/animation-selection-legacy-oracle.cjs/json and animation-selection-core-result.json. Slices/groups/all-layer batch/deleted-layer fallback, palette manual/library and animation density remain deferred. Formal build/opened results follow.
+
+Official single-node app first build0 (animation-selection-app-build.log); opened --animation-selection-export-check PID3588 first run0 after desktop.openWindow/finishLaunching using launcher-equivalent theme/cursors. Actual visible/enabled/modal target selection and layer exclusion, static/GIF/WebP carry-over, selected GIF and WebP real output files, preset4/memory3 selection persistence, old preset3/memory2 default false, missing selection canvas fallback, picker cancellation/actual failed write/success metadata and sound, explicit frames target clearing, unchanged source pixels/selection/history/revision/dirty all pass. Official exe SHA256 D3F30F4D4898B310A6FC6A717EA4A356F8F91C73B59A70551DC27EDCD82F8D44 identical before/after. Provenance211 normal0/evidence verified; strict1 remains INCOMPLETE separately from runtime. No screenshot/full target migration claim; remaining slices/groups/all-layer/deleted-layer fallback explicit. Evidence native/build/animation-selection-final-20261017.json. No arrows/branches/worktrees/external projects/preview/commit/push/user-data deletion. Batch complete; stopped.
+
+
+## 2026-10-17 GIF/WebP all-layer batch and invalid-layer fallback
+
+Actual service492-595 layer target with absent/invalid ID exports all legacy document.layers in bottom-to-top order. Native reverses timeline ordering, sanitizes base/layer stems, case-deduplicates -2 suffixes and uses layer-N empty-stem fallback, preplans all conflicts before encoding. Existing frame conflict algorithm is extracted to shared resolveExportDestinations without changing it. Existing bounded DocumentSnapshot/background task/per-file atomic writer/cancel/terminal success infrastructure is reused for layer tasks; no Document-per-layer copies or worker redesign. Complete success alone remembers base filename/settings, last actual file once, directory and sound once; partial cancel/failure retains earlier files without success metadata.
+
+Actual all-layers dropdown, deleted-layer preset/memory fallback, native memory4/preset5 append allLayers bool with older versions readable. Explicit frame sequence clears target. Only GIF/WebP batch admitted; static batch options disabled explicitly, no silent canvas interpretation. Existing valid single-layer/selection remain. Windows case folding is a necessary native locale adaptation, not full Unicode JS locale equivalence.
+
+Actual original legacy service planning all/invalid/valid-ID three cases0 (animation-layers-legacy-oracle.cjs/json). Focused batch core0 checks exact names/order, hidden/opacity, snapshot, GIF/WebP per-layer bytes, range/common trim/protection, preflight conflict cancel/renameall, real partial cancel/failure/source unchanged; shared JPEG frame sequence conflict regression0. Initial empty-name fixture failed because existing native rename retained old name; use legal .png whose sanitized stem is empty, no product rename change. Formal runtime results follow.
+
+Official single-node app first build0 (animation-layers-app-build.log); opened --animation-layer-batch-check PID12236 first run0 after desktop.openWindow/finishLaunching with launcher-equivalent theme/cursors. Actual all-target/preset persistence/deleted-ID preset fallback, GIF/WebP real snapshot/background sequential files, busy controls, base memory/all-target and last actual MRU/sound once, snapshot cancellation, real background second-file write failure retaining first/skipping third and unchanged success metadata, explicit frames target clearing and unchanged source/history/active IDs passed. Formal exe SHA256 AE05D42522E0D9F8DEF2FF452D03415D7155247B2E3BD7161EEE43BDFB1C3FE0 before/after identical. Provenance214 normal0/evidence verified; strict1 INCOMPLETE separately from runtime. Static batch/slices/groups remain incomplete; no screenshot/full-migration claim. Evidence native/build/animation-layers-final-20261017.json. No numeric arrows/branches/worktrees/external projects/preview/commit/push/user-data deletion. Batch complete; stopped after minimum checks.
+
+## 2026-10-17 six static-format all-layer batch and invalid-layer fallback
+
+PNG RGBA/automatic, BMP, ICO, SVG and JPEG now reuse the existing layer batch planner, bounded snapshot, sequential atomic writer and terminal metadata path. Actual legacy service492-595 retains bottom-to-top ordering, name/conflict planning and absent/deleted ID fallback. Actual worker72-100 uses the current active frame for static output, original-document current-frame bounds for common trim and isolated visible bounds for individual trim; layer-export.ts keeps hidden layers hidden, with empty individual bounds retaining full canvas. Existing admitted encoders and SVG100 entry rule unchanged. Target persists across static/GIF/WebP format changes, native memory4/preset5 carries static allLayers, invalid static layer IDs normalize to all-target.
+
+Focused static-layer-export-tests0 validates all six routes against direct encoder bytes without expanding codec internals, plus active frame, both trim scopes, transparent hidden fallback, snapshot source preservation and real partial cancellation. Existing animation-layer-export-tests0 guards the generalized writer. Formal build/opened results follow. Groups/slices and other formats remain incomplete.
+
+Official single-node app first build0; opened --static-layer-batch-check PID10872 first run0 using launcher-equivalent theme/cursors. Actual static all-target control, cross-static/GIF/WebP target preservation, scale/trim preservation under existing SVG entry rule, static preset roundtrip/deleted-ID fallback, all six background output routes, busy controls, base filename/all-target memory reopen, last actual file MRU and sound once per complete batch passed. Early cancellation writes nothing; real background second-file failure keeps first/skips third with success metadata unchanged. Source pixels/history/revision/dirty/active frame/layer unchanged. Official exe SHA256 28DBB7BFE7E3E73584DCEB869F7C4CDE6C8DBC613B4195096D1B3E919AB8AF92 before/after identical. Provenance215 normal0/evidence verified, strict1 INCOMPLETE separately from runtime. Evidence native/build/static-layers-final-20261017.json. No branches/worktrees/external projects/preview/commit/push/user-data deletion. Batch complete; stopped after minimum checks.
+
+## 2026-10-17 RGBA auto palette growth/shrink handle
+
+Actual PalettePanel buildPaletteGrowthPreview46-70/move555/finish696/handle1087-1104 reused: existing original Ⅱ text control in native skin, existing ew-resize cursor retained under capture, left non-sampling press clears selection and focuses grid. Compact ordered color-ID view is now shared across rendering/hit/selection/reorder/paste/gradient; duplicate and transparent IDs are retained. Preview negative IDs show black without modifying the document, next-cell handle excluded from length, minimum1 and base+4096 cap, columns captured. Release to original document commits one existing paste(selectResult=false, compact source layout) or delete transaction; primary/background colors preserved. Escape/capture loss/Unknown-button window blur cancel without endpoint resampling. Optional viewSlots on existing Document APIs preserves defaults for non-view callers and retains old sparse slots in undo snapshot. Indexed ID0/minimum, manual/library remain incomplete.
+
+Focused palette-growth-tests first build/run0 verifies downward growth/handle exclusion, shrink/minimum1/4096 clamp, compact append with holes, duplicate black unique IDs, transparent duplicate IDs, role preservation and grow/shrink single undo/redo transactions. Formal opened checks follow.
+
+Official single-node app first build0; opened --palette-growth-check PID14356 first run0 includes actual original glyph handle press/capture, non-sampling/left-only guard, immutable black preview, compact holes projection with duplicate/transparent IDs, captured ew-resize outside panel, growth/shrink single transaction, undo/redo, minimum1, role preservation, Escape/Unknown-pointer-button-none/capture-loss cancellation, original-document identity guard and real WM_ACTIVATE inactive cancellation. Existing opened --palette-clipboard-check PID33268 first run0 guards compact paste seam. Formal exe SHA256 ECD731616FE40E5470DFF2336324546A594345D211C5346D54705E2847759C6C before/after identical. Provenance217 normal0/snapshots verified; strict1 INCOMPLETE separately from runtime. Evidence native/build/palette-growth-final-20261017.json. Indexed/manual/library remain incomplete; no screenshot/full migration claim. No branches/worktrees/external projects/preview/commit/push/user-data deletion. Unrelated running app PID22364 untouched. Batch complete; stopped after minimum relevant checks.
+
+## 2026-10-17 RGBA manual palette layout
+
+Manual mode admits the full fitted two-dimensional palette path: exact manual preference, preserve XY/holes/occupied-rightmost lower bound under resize, virtual blank cells and reverse/all-empty box selection without allocating height-only swatches, original skin horizontal/vertical scrolling for overflow, add current color at explicit virtual blank slot, rectangle V2 clipboard with null edge cells and fitted destination expansion, V1 bounded selection paste, drag clamped by full box including blank edges, and single slots+columns transactions with focus/box undo/redo restore. Existing auto compact/growth behavior remains separate by mode. New manual outline uses existing Skin material/draw/hit APIs, physical coordinates and clipped transparent center. Indexed/library/JSON management remains incomplete; no absent library migration claim.
+
+Focused palette-layout-tests first build/run0 checks fitted XY/holes/occupied minimum, reverse and all-empty virtual boxes, slots+columns one transaction, undo/redo view restoration, V2 null rectangle roundtrip and project saved columns. Formal build/opened runtime results follow.
+
+Official first build0; opened manual first run PID43152 failed one test assertion using total historySize after undo/replacement of redo branch. Verified actual Document historySize() returns history_.size(), pushEdit resizes to current position then pushes, so total size need not grow. Test assertion corrected to revision+1; all slots/columns/holes/destination box and subsequent undo/redo checks retained; no product change for this test failure. Necessary rebuild0; opened --palette-manual-check PID32712 passed. Actual reverse/all-empty virtual boxes, blank rectangle per-pixel rendered-alpha/material-hit equality, outward border/transparent center, height no extra buttons/no document mutation, width preserved stored XY/columns, virtual blank add exact XY with undo/redo, rectangle V2 copy/null edges/paste with undo destination geometry, full blank-edge outline drag with one transaction and undo/redo, and auto/manual projection/handle switching passed. Existing opened --palette-growth-check PID16096 passed including real window blur cancellation. Final exe SHA256 4620253639552B49DB4462C9863097B91C0081F75DF2A3A89242B09A032932AA before/after identical. Provenance219 normal0/evidence verified; strict1 INCOMPLETE separately from actual runtime. Final evidence native/build/palette-manual-final-20261017.json. Indexed/library remain out of scope; no screenshot/full migration claim. No branches/worktrees/external projects/preview/commit/push/user-data deletion. Stopped after minimum relevant checks.
+
+## 2026-10-17 本地色板库 schema1/2
+
+已接入内置/用户库列表、紧凑颜色预览、应用、刷新、打开目录、schema1/2 JSON 导入、另存新建/覆盖当前、用户库删除和内置隐藏；保存保留名称、列数及 null 空槽，原 PNG 导出继续使用。内置 JSON 原样复用 legacy/palettes；import/refresh 图标使用 legacy/src/renderer/src/components/PixelUtilityIcon.tsx 对应路径，经现有脚本转换。用户库在 native/palettes；不迁入旧版启动清理用户文件逻辑。
+
+应用沿 workspace-palette.ts 逐个复用相同 RGBA 的不同 ID，保留隐藏条目/旧像素引用；名称/布局/选择一次撤销，重复应用稳定后无新历史。首次载入 row-major 保存的重复色可能按旧 entry 顺序交换 ID 和名称，属于旧算法的单次结构事务。保存失败保留模态及草稿，文件系统错误以原生路径/错误码显示。
+
+验证分开报告：palette-library-tests exit0；正式程序 --palette-library-check PID12076 exit0；来源覆盖224文件 exit0，strict仍exit1 INCOMPLETE。正式 SHA256：4B3FFF2B9253018D078777F715587E4C204AAF41FB1E212376003B084617F6AD。证据 native/build/palette-library-opened-final-20261017.json。未声称截图验收或全部迁移完成；外部 ASE/ACO/GPL/JASC/PNG 等色板导入格式和 indexed remap 未接入，本次仅开放 schema1/2 .palette.json。
+
+## 2026-10-17 外部色板格式与缩略图纯模块
+
+实际接入通用/原生 JSON、GPL/TXT/HEX/CSV、ACT、PAL（先文本后ACT）、Adobe ASE/ACO；同一解析器用于选择文件导入与目录枚举，原子保存新schema2库文件后才应用。保留旧文本#整行跳过、UTF8替换、u16数字筛选、文件顺序与重复色、16列补空、ACT透明索引、ASE模型及ACO首组语义。目录采用稳定FNV外部ID，native副本优先；覆盖当前外部色板写native副本，保留外部原件。原生schema1导入按旧min(N,16)且不补尾，非整行多行v1保存失败也保留，不自行修订旧行为。PNG/JPG/JPEG/WebP/BMP/GIF/ICO图像色板仍未接入，不在picker开放。
+
+两个只读Agent本批交付完整代码，由唯一writer串行实际落盘、接线、构建：ASE/ACO已接实际入口；Cel thumbnail仅新增moon-core纯CPU dense RGBA renderer，7组旧TS像素hash及非方canvas/offset/alpha检查通过。六档密度UI、linked-owner缓存及64任务/8ms队列仍未实现，不将底座当作完整动画功能。
+
+最小验证：palette-import-tests / palette-adobe-import-tests / cel-thumbnail-tests均exit0，正式 --palette-import-check PID4656 exit0（取消、GPL成功、解析失败、ASE成功）；来源覆盖233文件exit0，strict仍exit1 INCOMPLETE。正式SHA256 E10FC88ACECEA8CBF455AD2F8ECA52983CBA5DA557AAD3EAF0AEB150B837D1C0。证据native/build/palette-import-final-20261017.json；未新增截图验收、全量库UI回归或发布产物。
+
+
+## 2026-10-17 六档时间轴密度与图像色板导入
+
+六档已接实际图层设置0..5即时滑块、偏好保存及整个图层面板Ctrl/Meta滚轮（Alt步长3）；行高、帧宽、表头、虚拟行池、滚动条/像素余量/Space拖动、loop位置与resize、选区轮廓和拖动目标一同联动。保留已验收compact12logical，默认2x的物理尺寸为row/frame/header：24/24/24、42/34/34、54/54/34、72/72/34、96/96/34、128/128/34；compact与旧28px有用户确认的适配差异。详细及以上复用旧CPU缩略图算法，原图标与选框皮肤沿用，不在paint生成缩略图。visible-slot绑定取消与generation检查、owner弱缓存8变体/软128KiB、64任务或8ms让出、native deferred fallback已接入；linked共享owner，mutableOwnedSurface/setPixel递增定向revision，live owner绕缓存；结构重建沿现内容缓存的保守全清边界，不声称所有结构操作性能与旧WeakMap完全相同。
+
+图像色板现在实际开放PNG/JPG/JPEG/WebP/BMP/GIF/ICO，同bounded snapshot与原子新库保存再应用链；顺序去重RGBA、PNG旧8bit输出类型门槛、隐藏透明RGB、GIF首帧索引透明RGB与逻辑画布、ICO按bpp/area择页均有明确适配。复用现WIC/Skia替代Rust png/image；JPEG色度/CMYK数值和损坏文件容错可能不同，PNG完整CRC/IEND尾校验可能比旧next_frame更严格，已登记为已知兼容限制。不是所有损坏输入逐字节等价，也不代表indexed/sparse或全部重构完成。
+
+实际验证：cel-thumbnail-pipeline-tests exit0（弱owner、FIFO/软预算、revision/bypass、64/8ms、取消/销毁/异常、真实linked/像素撤销/深拷贝身份）；palette-image-import-tests exit0（全部已开放图像容器有效样本、PNG边界/alpha、快照与共享导入布局）。正式唯一exe build0；--timeline-density-check PID32640 exit0，六档geometry/loop/drag/scroll/thumbnail及选框逐像素alpha/真实命中、Ctrl/Alt与设置滑块回调通过；--palette-import-check PID35324 exit0，新增实际PNG选择/保存/应用入口验证。生成六档运行渲染图并目检detailed图。正式SHA256 C228893AB2CA866498DBAC9F2B77464C22BF253AF4354D11607C9CBD2FBD26D1，前后相同；证据native/build/density-image-final-20261017.json。
+
+文档检查另报：来源覆盖239文件exit0、snapshot校验通过；strict仍exit1 INCOMPLETE。保留先前失败fixture诊断文件，最终结果以带PID/hash的证据为准。不新建分支/工作树/preview、不提交发布、不删除用户数据；本批无正常用户窗口需关闭或恢复。既定检查通过后停止。
+
+
+### 2026-10-17 Cel 属性与 HS 方块
+
+已接单元格右键属性入口；打开时冻结选中目标，按实际 resolved source 分组并更新整个链接组。opacity 0–100%、Z -999–999；多次有效预览作为一个 metadata-only compound，回到初值仍保留旧版 compound。Close／Enter／Escape 均提交；内部 abort API 可取消。Escape 来源为 LayersPanel.tsx387–395 -> closeCelProperties -> useTimelineContextActions.tsx79–82/894；未增加默认快捷键。
+
+帧 opacity 覆盖 layer opacity，切帧投影到图层控件，普通图层 opacity 修改／撤销写回当前源及活动 slot。正常合成、onion（active Z 排 layer blocks，neighbor opacity）、单层直传 guard、静态／动画导出、合并和工程／恢复编码共用该语义；Z order 缓存只校验metadata，不复制像素，默认全不透明仍走原行合成快速路径。
+
+HS 沿现有像素布局和 marker，仅开放 SV／HS，标题菜单切换并保存全局偏好；未完成的色轮／法线／复合环／离散色阶仍为缺口。
+
+源码／来源覆盖246文件通过，strict仍以INCOMPLETE失败；这与运行检查分开。正式构建 exit0；cel-properties、color-picker-scheme、layer-compositor三组定向检查 exit0，旧命令／resolver／normalize 实际源码oracle exit0。正式程序 `--cel-picker-check` PID37656 exit0（属性预览、linked单历史、Esc／Enter提交、撤销重做、HS像素oracle／双角色／capture／偏好）。证据 `build/cel-picker-final-20261017.json`，本批没有关闭或重启普通工程窗口，没有截图或长期手工验收。未宣称迁移全部完成。
+
+
+### 2026-10-17 连续色轮、24 RGBA 混合与恢复正方形
+
+调色盘标题菜单新增连续色轮，沿旧版极坐标输入、圆形命中、拖出圆外投影、HSV/V/alpha与双角色语义，复用现有native缓存和marker。标题恢复图标直接转换自旧paletteCenter；仅点击时改变栏目尺寸，保留停靠侧、顺序与分组。原生布局适配：单组固定主轴尺寸保存panels-v3（兼容读取v1/v2）；显式resize或换dock解除，底栏过矮时先满足native最小宽高。没有启动自动重排。
+
+图层属性新增24种RGBA混合模式，共用名称/opacity现有baseline-final事务，支持预览、取消、撤销重做、锁定批选排除及无变化不入历史。混合公式与实际旧raster.ts的12480个RGBA输入逐字节一致；单层透明backdrop仍保留源色，normal行快速路径保留；合成、onion活动层、merge、静态/动画共用导出合成和工程IO承接模式，ghost仍按旧版normal。
+
+运行检查：四组focused（layer-blend、color-picker-wheel、color-picker-scheme、panel-docking）exit0；blend含24模式双层composite/export/merge及工程往返。正式exe最终build0，`--wheel-blend-square-check` PID40416 exit0，逐像素SV/HS/wheel、角外拒绝、右键role、scheme保存、blend下拉撤销、default及四dock square/幂等/持久化、显式resize解除均过。SHA256 258910432EF47EE21E38509EEBFB8E7A95F8DBAF0761EE55F038243DCA1EF8EC，运行前后相同。链接前正常关闭精确正式exe PID19408（CloseMainWindow成功，无强杀），最终通过唯一start-native.bat恢复普通窗口PID38460；保留作品与恢复文件。没有截图或长期手工验收。
+
+文档覆盖与运行结果分开：来源检查记录在build/wheel-blend-square-final-20261017.json；strict仍须INCOMPLETE失败。法线、复合环、离散色阶及其他已有迁移缺口未宣称完成。
+
+
+### 2026-10-17 Continuous normal map, layer metadata and pixel grid
+
+Normal-map picker now preserves legacy continuous hemisphere, raw pointer disk/projection, fixed RGB field, alpha/roles, HSV V strip and preference. Moon ring and quantized modes remain gaps. Layer optional RGBA and editable multiline description support preview, JS-trim commit, locked/batch metadata, compound undo, UTF16 budget and project/recovery persistence. User requested Aseprite display-color behavior: independent whole-name-cell source-over, no eye/lock/autolink/cel tint; selection remains last. Read-only Aseprite HEAD14fe117 timeline behavior only, no EULA code/assets copied. Native textarea is independent, using existing MIT clipboard/tooltip; unsupported layer eyedropper disabled. Pixel grid uses actual toggleGrid, per-document save/recovery/snapshot, dirty touch without undo, zoom>=8, clipped physical 1px and legacy RGBA preference. Custom grid remains incomplete.
+
+Three focused tests exit0; actual legacy metadata oracle exit0. Official build0; --metadata-normal-grid-check PID43876 exit0 (multiline Enter, name-only color, tooltip/undo, all four picker pixels, normal input/alpha/preference, menu and zoom7/8 grid). SHA256 41C548FE1BDAA69FF1D45E60BCB491989D53139453B5E6118D5BD2BA8FAB5B3E unchanged across run. No ordinary app was closed/restored, no screenshot/long manual acceptance. Provenance reported separately, strict must remain INCOMPLETE. Evidence build/metadata-normal-grid-final-20261017.json.
+
+
+### 2026-10-17 Moon ring and adjacent-frame crossfade
+
+Moon ring now has HSV square/HSL triangle centers, original geometry/rotation, captured hue-or-center zone, role alpha, two markers, cached ring/triangle geometry and center preference. Native target-pixel sampling and binary triangle coverage differ from browser512 raster scaling/clip antialias; no browser pixel equivalence claimed. Quantized presets remain gaps.
+
+Explicit adjacent-frame crossfade entry supports current/selected/all unlocked layers, original count/duration/easing/custom cubic, isolated step preview and once playback, generate/cancel, independent unlinked new frames after source, automatic forward infinite loop, selection, one delta undo and save/reopen. Morph is visibly unavailable; frame/loop/path tween remain gaps. Native curve uses four numeric controls. Dense128MiB generation and256MiB/10000frame document bounds fail before live mutation; candidate staging copies the value-model timeline once while history stores generated deltas.
+
+Focused crossfade/moon-ring/scheme all exit0; actual legacy crossfade/easing oracle exit0. First official build found one UI member-name shadow, fixed; final official build55163 exit0. --moon-crossfade-check PID46668 exit0: dialog cancel unchanged, actual generation/one undo/redo, moon dual roles/corner capture/zone/prefs. SHA256 4935BAD644646761BC1C0F1DBD62A1D7D425E776148D6C72CFC3BFAE565994DF unchanged before/after. No ordinary user app closed/restored, no screenshot/long manual acceptance. Provenance separately reported, strict remains INCOMPLETE. Evidence build/moon-crossfade-final-20261017.json.
+
+
+### 2026-10-17 Picker quantization and adjacent RGBA morph
+
+All legacy hue/color-level presets now reach five picker schemes, both moon centers, value/alpha strips, pointer/wheel/keyboard, markers, cache keys and menu/preferences; changing settings preserves current roles/history. Existing native target-pixel/clip coverage adaptation remains, no browser raster equality claimed. Extracted exact legacy formula fixtures cover rounding/ties/cell boundaries/normal/triangle/outline. Alpha operation order now matches actual legacy percent/100 then *255.
+
+Adjacent morph now uses original bounds/SDF/nearest-seed/color algorithm, interpolated shape/location, empty-endpoint current rejection and all/selected fallback. New dialog default restores morph and offers crossfade; frame/loop/path remain unavailable. One prepared source survives slider/playback/easing changes, scope/mode changes release it before rebuilding. Existing dense canvas/output limits remain explicit; shape budget follows old1Mi padded pixels/64MiB source. Preview/generate reuse existing isolated preview and atomic single-delta history/project chain.
+
+Actual original morph TS oracle exit0; native morph/quantization/crossfade focused all0. Initial build69456 and final official build14674 both0; final includes single-source cache lifetime fix. --quantization-morph-check PID46492 exit0: cancel unchanged, default morph moving shape distinct from fade, one undo/redo, five-scheme quantized actual input/render/alpha/history and preference. SHA256 DC09837EEA959908A4428F585A97A1FEC83390DA3FBC7D3022D5EEDC2018A8EC unchanged across run. No ordinary user process closed/restored, no screenshot/long manual acceptance. Provenance separately reported, strict remains INCOMPLETE. Evidence build/quantization-morph-final-20261017.json.
+
+
+### 2026-10-18 Custom grid and frame/loop transform foundation
+
+Custom grid display/settings now use actual legacy defaults false/(0,0,16,16), integer truncation with dimensions >=1, logical zoom 4px density skipping and clipped physical 1px independent RGBA source-over axes. Native draft settings commit only on Done/Enter; Cancel/Escape/title/outside close leave source unchanged. Applying does not implicitly show the grid. Display menu and legacy Ctrl+quote toggle are wired; settings, showGrid and colors travel through project/recovery and bounded save snapshot without adding undo history. Existing pixel-grid behavior retained. Grid snapping, quick-command right-click entry and quick cell selection remain explicit gaps; this is the grid display/settings slice, not all grid interactions.
+
+Frame/loop transform pure CPU foundation is implemented by the read-only animation agent and serially applied by the sole writer: playable source pose cycles, disabled filtering, reverse order, unlocked scope pivot, translation/rotation/scale/opacity, independent output Cels, preview/canvas bounds and bounded staging. It is not connected to Document or main UI. Old autoCrop=false retains out-of-canvas sparse Cels, while current editable Document/IO assumes full-canvas dense pixels. Frame/loop/path entries remain unavailable until this storage contract and atomic resize/history/save are migrated; no autoCrop-only approximation is exposed.
+
+Focused pixel-grid (including custom grid metadata/snapshot/project) and animation-transform tests passed. Initial C++17 default-comparison and UI parameter-shadow build errors were corrected before final runtime checks. Final official build/opened/hash/provenance evidence is recorded in build/grid-transform-final-20261018.json. Source coverage is separate from runtime; strict must still fail INCOMPLETE. No screenshot or long manual acceptance, public release, branch/worktree, preview, commit/push or user-data deletion.
+
+Final result: official single-node build session91114 exit0 after one transient LNK1104 retry; no ordinary app process was present to close. Final focused pixel-grid-tests and animation-transform-tests both exit0; opened --custom-grid-check PID17880 exit0 including actual Ctrl+quote. Official SHA256 136FDD35664D74668BE433727F4B1175898BAF2400BAAB1507C08B861D7EAA38 unchanged across run. Provenance276 normal0 / strict1 INCOMPLETE, snapshots verified. Evidence native/build/grid-transform-final-20261018.json. Stopped after minimum checks.
+
+
+### 2026-10-18 Admitted RGBA grid snapping, quick grid-cell selection, raster addressing foundation
+
+The actual global grid alignment menu/preference now reaches currently admitted native RGBA consumers: pencil/eraser brush-bound origins (including intrinsic image stamp geometry), Shift straight lines with constraint-before-snap, native line/rectangle/ellipse shapes, bucket seed and gradient pointer geometry, angle-zero rectangular/elliptic marquees snapped outward to full cells, selection box/content movement and existing CtrlT layer-floating union movement. Grid visibility remains required; movement captures the alignment flag and uses the old union-top-left Math.round rule without a threshold. Preview brush damage/pixels and modifier-key shape updates share the same snap results. Existing cancel/one-edit undo chains remain. Legacy independent move-layer, iso/tile and other unadmitted tools are not opened; no whole legacy alignment migration claim.
+
+Quick rectangular selection now uses custom-grid origins/dimensions when visible and actual checkerboard size when hidden, clipping each cell independently before union; a clipped edge cell never becomes the grid period. Outside-canvas moves preserve the last valid range. Logical 6px/500ms second-press boundaries and actual Windows LAF kDoubleClickMessage (which replaces second Down) precede transform/pivot capture; native mouse Down synthesis starts the second drag, real Up commits once. Cancel preserves baseline selection; source pixels and dirty state remain unchanged. Native pointer identity0 is a mouse adaptation, not multi-pen/touch equivalence.
+
+Raster addressing/expansion foundation adapts actual document-model.ts expandLayerToRect and history.test.ts dense expansion fixture: separate world/local/stable-storage coordinates, blank1x1 alpha-zero placeholder rule, hidden transparent RGB preservation for other stored regions, detached candidate and preallocation bounds. Production compositor row start uses safe worldIndex and preserves existing contiguous row kernels/admission. This does not migrate sparse editing, storage-aware Document history or project import, and frame/loop/path tween UI remains unavailable. No live owner is expanded by this batch.
+
+Sources and functional checks are reported separately. Focused grid-snap/raster-geometry and existing layer-compositor tests passed; official/opened final results follow in native/build/grid-snap-quick-final-20261018.json. Provenance281 coverage0 with snapshots verified; strict1 remains INCOMPLETE. No screenshot/long manual acceptance, branch/worktree/preview, public release, commit/push or user-data deletion.
+
+Final result: official single-node build session49400 exit0; grid-snap-tests, raster-geometry-tests and layer-compositor-tests each exit0. Opened --grid-snap-quick-check PID38712 exit0, including actual snapped bucket seed and floating-content movement/cancel. Official SHA256 EB19F15EF8346D1B213BF7826962A0D30C769C0497EC276193105B2EE6AB9316 unchanged across run. Evidence native/build/grid-snap-quick-final-20261018.json. Stopped after minimum checks.
+
+### 2026-10-18 Production brush owner expansion and stable pixel history
+
+Existing pencil/eraser entry now ensures its resolved owner covers the canvas before starting a stroke, using detached bounded expansion without cropping outside pixels. Solid/image brush, symmetry/line traversal, preview, cancel and commit retain canvas-index gesture state and map only storage accesses. Dense full-canvas strokes retain direct indexing. Linked Cels keep their original source and link IDs. Successful cancel/no-op commit retains enlarged geometry, matching legacy pixel-history revert; preparation and initial-stamp failure restore pixels and original geometry before propagating the error. Native peak live-plus-candidate pixel allocation remains bounded to 256MiB.
+
+Production pixel edits capture the owner's width, height and stable storage origin. Undo/redo replay point/run/dense captures across later expansions; same-geometry history retains contiguous run fill and row copy kernels. Existing palette synchronization records owner-local addresses before applying its stored-pixel replacement. Rendering uses world offsets independently of stable history origins. Focused Document fixtures inject otherwise unadmitted sparse geometry solely to exercise these real production entries, outside hidden RGB retention, linked owners, cancellation and old dense-history expansion inputs.
+
+This completes the brush/history slice only. General sparse Document editing and import/save admissions remain unchanged; fill, selection, floating, other edit consumers and IO still require their full storage-contract migration. Frame/loop/path tween UI remains unavailable. Source coverage and focused/opened runtime results are reported separately; final evidence will follow in native/build/raster-history-view-final-20261018.json.
+
+The existing advancedMode menu/CtrlF now follows legacy useAppViewMode's three session states: normal, tool options with expanded canvas, canvas only, then normal. All hidden chrome widgets and raw geometry hit paths (including Desktop dispatch) follow the actual canvas viewport; tool attributes move to the top in the first state. Returning restores ordinary panel geometry/visibility preferences; home/no-document resets the mode. The original 1700ms notice uses existing native skin/Fusion text and does not intercept input. This is native layout/visibility adaptation of the old CSS behavior; no new zoom menu/default shortcuts or document/history changes.
+
+Final result: single-node official build38416 exit0; final core build51691 and document-raster-history-tests/moon-core-tests/layer-compositor-tests each exit0. Opened --advanced-mode-check PID10748 exit0, including three real states, repeated shortcut, Desktop hidden chrome gates, coordinate/layout restoration and home reset. Verification corrected a repeat-fixture constructor argument and a real home visibility snapshot ordering bug. Official SHA256 38329E4CF824B52AA2BF067ED96BB59F3B07C96C806054DCC7614E17CA9DAA3A unchanged across run. Provenance283 normal0 / strict1 INCOMPLETE; snapshots verified. Evidence native/build/raster-history-view-final-20261018.json. No screenshot/long manual acceptance or public release. Stopped after minimum checks.
+
+
+### 2026-10-18 Sparse solid/pattern fill and Paste as New Document
+
+Production solid and pattern fills now stage canvas-addressed pixels while retaining resolved owner geometry, outside-canvas pixels and stable history addresses. Legacy seed-outside expansion (including no-op geometry retention), alpha-zero 1x1 placeholder handling, four-connected escape detection, cropped compact solid smart closure, visible-layer owner limits and symmetry seed sequence drive the geometry decision. Staged visible composites preview every linked instance of the same owner. One detached owner install and one compound history entry preserve undo/redo across sparse expansion; allocation/validation failure does not install candidate geometry. Dense fill keeps its original direct storage/run kernels. The 500x767 cropped owner fixture comes from workspace-fill-history.test.ts. This slice does not admit sparse project import/save, gradients, filters, selection or floating-content consumers; their existing explicit admission gates remain in place.
+
+The existing Paste as New Document menu now validates a candidate before settling the previous session. It uses legacy mask===1, preserves alpha-zero hidden RGB, ignores clipboard origin, creates the default two-color RGBA document with dirty state and empty history, and opens a new project tab. A visible system image takes priority; missing/transparent/read-error image falls back to internal pixels. Native unsupported formats or dimensions above 1024 explicitly reject. The injected-source opened check invokes the actual menu including home and failed reads/malformed input during an active stroke, without changing the real system clipboard. The read-only legacy method-body oracle passed mixed mask, undefined mask and empty clipboard fixtures; native runtime evidence is reported separately below.
+
+
+Final result: official single-node build98953 exit0; document-raster-history-tests, clipboard-document-tests, pattern-fill-tests, moon-core-tests and layer-compositor-tests each exit0. The new compositor fixture initially used an unsupported cross-layer link and was corrected to a legal same-layer cross-frame owner, then rebuilt and passed without a production-code change. Opened --paste-new-document-check PID41364 exit0 and existing --grid-snap-quick-check PID14436 exit0 (actual bucket pointer included). Official SHA256 76697D8CD6E89DE15AE330B896A95CD0705F5C5BA5A2BBA202626D74D6B799E7 remained unchanged across opened checks. Provenance285 normal0 / strict1 INCOMPLETE; source coverage does not establish general behavior equivalence. Evidence native/build/sparse-fill-clipboard-final-20261018.json. No screenshot/extended manual acceptance or public release. Stopped after focused checks.
+
+
+### 2026-10-18 Sparse gradient chain and existing About menu
+
+Sparse gradient begin/update use a canvas baseline and preview without changing live owner geometry. Commit follows gradient.ts region intersection with the paint selection bounds, preserves outside owner pixels and linked source identity, installs one detached candidate and stores stable pixel-history addresses. The original dense GradientSampler and shape shared commit branch remain in place. Transparent source uses source-over; the legacy 1x1 alpha-zero placeholder no-op exception restores geometry while clearing packed hidden RGB/resetting origin. A full traversal domain bypasses the native wand's empty-alpha shortcut only for the new sparse consumer when packed hidden RGB forms a barrier; user selection still clips painting only. CanvasRenderer direct upload now requires full-canvas owner geometry or an actual canvas preview, so cancel returns to offset-aware compositing. Native live/preview/reference/row/candidate/dense-history pixel allocations are budgeted before installation. Sparse IO and other consumer admissions remain unchanged.
+
+The existing About command now opens a native PixelDialog using existing Fusion10px/2x skin, identical home logo, real authors/license/URL, and exact converted legacy lucide-react 1.26.0 icon nodes with upstream LICENSE retained. It displays Native - Development separately from the legacy 1.0.0-beta9 baseline, without changing a product version or release metadata. Repository launch occurs only on click and preserves launch failures; Done/header/Escape/outside dismissal follow the old entry. Native about-v2 geometry storage adapts the old ModalShell storage key. The opened smoke injects repository launch results and bypasses user layout storage, including original document/active gesture preservation and home availability.
+
+Source coverage287 normal0 / strict1 INCOMPLETE is separate from runtime verification. Initial official build83982 reached compiled moon-core but failed main.obj C1083 Permission denied because another chat/start-native build concurrently wrote the same official output. No process was terminated and no cache/data was deleted. Sequential rebuild is pending exclusive compiler availability; final runtime results follow below when actually completed.
+
+
+Final result: current main.cpp and canvas_renderer.cpp were forced to recompile after external compiler contention ended, preserving source content. Focused build38298 exit0; document-raster-history-tests and moon-core-tests each exit0. About focus handling now exempts only the active About popup target (including LAF queued-null/current-focus transition); real OS focus loss with no current focus and other modal cancellation remain unchanged. Final official build28806 exit0; --gradient-shape-check PID26964 exit0 and --about-check PID37248 exit0, including active stroke preservation and injected repository failure without browser launch. Official SHA256 B3CD11E1644AE99C6913AB865B8738F7A05FA7CD0230BEA35B4BBA161860E3D4 unchanged across final checks. Final source hashes/evidence: native/build/gradient-about-final-20261018.json. Provenance287 normal0 / strict1 INCOMPLETE.
+
+Known unresolved check: existing --palette-gradient-check PID37168 exit1 at “Palette gradient box includes empty slots”, before the gradient section. Original check and failure artifact remain; this batch did not change palette behavior or claim a full regression pass. The independent gradient/shape check directly reuses its existing production pointer assertions. App PID7576 was closed normally for linking with no forced termination/discard, then restored once through native/start-native.bat as PID30584. No screenshot/extended manual acceptance or public release. Stopped after scoped checks.
+
+
+### 2026-10-18 Sparse Cel clipboard, immediate transform and deselect restoration
+
+Matching-canvas RGBA Cel clipboard retains complete sparse owner geometry/stable origins and linked groups, samples masked copy/cut in world coordinates, stages owner handoff/history and restores failed selection-Cel previews. Sparse whole flip uses owner-local storage; selection flip/rotate use actual legacy capture/clamp contracts, and first nudge plans its destination before publishing. Existing dense paths remain. Floating deselect now follows the real two-entry legacy lifecycle; undo retains original clipboard payload, and unchanged restored confirm/cancel/undo never stamp pixels twice. Earlier conflicting native deselect assertions are corrected with exact pixels/history/selection assertions.
+
+Scope and concrete sources: native/docs/clipboard-floating-migration-20261018.md and legacy-provenance.json. Mismatched-canvas clipboard, external sparse IO, deferred overlay/outside destination commit and owner-offset optimization remain INCOMPLETE; prior unrelated project-save duration failure is not repaired here. Final scoped verification follows after completion; no branch/worktree/preview, commit/push or user data deletion.
+
+Final result: official single-node build4805 exit0; document-raster-history-tests and cel-selection-clipboard-tests each exit0. Existing opened --playback-floating-check PID34632 exit0. Official executable SHA256 E8C44A02FB31A5EB151FBF2144E8198F61D101920D129A67594079A33F8CBD14 unchanged across runtime. Provenance311 coverage0 / strict1 INCOMPLETE, evidence snapshots verified. Evidence native/build/sparse-cel-deselect-final-20261018.json. No screenshot/extended UI acceptance; prior unrelated project-save duration failure remains outside this batch. Stopped after scoped checks.
+
+
+### 2026-10-19 当前补间集成状态
+
+当前帧与循环节参数工作流、稀疏 IO 的既有验收记录见 `clipboard-floating-migration-20261018.md` 末尾及 `build/frame-transform-final-20261019.json`。本批接入独立缓动曲线草稿窗、Editor 临时终点显示和拖动、相邻形变/交叉淡化自动裁切；已补纯候选/单事务/保存重开和实际弹窗回归，正式产物构建、四个相关测试及实际opened验证均通过，详见 `build/tween-closure-final-20261019.json`。路径补间仍未迁移；文档覆盖不代表行为等价。
+
+
+### 2026-10-19 路径补间当前状态
+
+普通RGBA frame/loop绘制路径已迁移并通过最少定向验收：私有路径编辑/局部history/anchor/view、命名相对路径库、父参数取消/应用与模式记忆、原transform单事务/裁切/undo、生成工程实际保存重开。当前路径配置按legacy只保留于本次弹窗；仅命名库保存设置，不新增schema21字段。正式构建、四相关tests与actual opened均exit0。详见 `clipboard-floating-migration-20261018.md` 末尾及 `build/path-tween-final-20261019.json`。provenance317 coverage通过，strict仍INCOMPLETE，未宣称全部legacy行为等价。
+
+
+## 2026-10-19 Canvas Resize 与 Ctrl+B 临时捕获闭合
+
+本批承接此前稀疏 IO 阻塞的普通 RGBA CanvasResize。来源为 legacy CanvasResizeDialog.tsx、canvas-input-bounds.ts、canvas-render-guides.ts、core/document-model.ts、animation.ts、canvas-resize-resources.ts 与 workspace-commands-document-io.ts。真实菜单和 C 入口已接原生 PixelDialog：初始 center、锁比例、不同步四边、trimOutside=true；公开 Document API 默认 trimOutside=false。九点锚点、宽高、四边、同步、表达式、局部撤销重做、实时蓝线/checker/遮罩、外部边缘与内部移动手势、取消/确认保留旧语义。复用原始 PixelUtilityIcon 九点素材，无重绘。预览按 legacy 保持已提交合成不变，新扩区域只显示棋盘。
+
+Document::resizeCanvas 复用既有 ownerOffsets/surfaceChanges/dimensions 历史管线，canonical owner 每个只处理一次，retain 不复制像素，trim 才裁局部 storage 并累加 storageOrigin；未裁 hiddenRGB、links/shared、帧/loop IDs、disabled 和图层元数据保留。selection/pivot 与尺寸同一次 undo/redo。cropCanvasRegion 改为真实 resize(trim=true) 薄包装，承接 sparse crop，满画布裁切仍记历史；trim 满画布 noop 保留。沿用 1..1024 和 256MiB admission，不扩特殊层/色彩模式。先提交 floating 是独立动作，其后 resize 失败不回滚已提交 floating，不能宣称整个调用全回滚。
+
+Ctrl+B 无 selection 现在沿 legacy begin/finishTemporaryBrushCapture 和 canvas-input-selection 的 marquee 结束分支捕获内存笔刷，复用实际矩形选择手势，无新增捕获算法，不保存本地库，不写 selection/document history。成功返回 pencil，Esc 恢复既有 pencil profile/selection options；空白和超限失败保留草稿与文档；切工具取消恢复选项。会话切换保留所属项目临时状态。已有 selection 的菜单保存库行为保留。
+
+验证：canvas-resize-tests 与 document-raster-history-tests exit0；前者包含 retain/trim 的真实磁盘保存重开、hiddenRGB、canonical/shared、边界/预算、稀疏 crop、selection/pivot 和撤销重做。正式单序列 Release build exit0；实际 opened --canvas-resize-check PID41524 exit0，覆盖 Ctrl+B 真实键鼠捕获与失败/Esc/切工具、CanvasResize 实际弹窗字段/默认/9anchors/local undo/Cancel/Apply 和文档 undo/redo。查看 canvas-resize-smoke.bmp 默认弹窗未见重叠；本次未新增外部边缘拖动全部物理场景验收。provenance320覆盖通过，strict仍exit1/INCOMPLETE。最终 EXE SHA256 D43CFE3E37648A49B7A4F3021778763D2FED2EF84843B2346B08FCD6BDE2AAD8。完整日志与失败修复记录见 build/canvas-resize-final-20261019.json。本批未关闭普通运行程序，不额外启动新实例。
+
+
+## 2026-10-19 六种普通 RGBA 滤镜闭合
+
+承接 legacy filter-presets.ts、workspace-commands-layer-adjustment.ts、workspace-filter-preview.ts 和 FilterDialog.tsx 的六项：三种 CRT、VHS 色彩偏移、暗角、荧光绿辉光。真实 filter: 菜单接共用 PixelDialog，默认实时预览、40ms 防抖、每项独立 opacity、说明与取消/应用。六纹理像素、名称、blend、默认 opacity 沿用旧版；全部帧新增同一普通顶层覆盖，原图层锁/像素选区不约束新覆盖。可见覆盖按旧 connectAnimationCels 链接首帧；透明 tiny 覆盖各帧独立完整空 surface，不强连。无 LCD、indexed 或特殊层扩项。
+
+原生必要适配：displayTimeline 独立预览，单可取消 worker 串行处理最新参数，identity/revision/contentRevision/generation 共同校验；取消/关闭丢弃预览，确认才复用 detachedLayer/detachedCels 单 delta 历史。原始稀疏负偏移、hiddenRGB、storageOrigin、冗余 alias、帧/loop 元数据、选区/当前帧保留。快照/恢复拒绝 active 预览，取消后采 committed timeline。保持既有 1..1024/256 layer/256MiB admission，未增加 project 字段。许可复核 legacy/LICENSE Source-Available1.0 §2b/c，仅本地修改构建测试。
+
+自动检查：filter-presets-tests、document-raster-history-tests、editor-recovery-tests exit0；包含六纹理独立像素预期、切换/取消/失效任务、单历史 undo/redo、锁定源/选区保留、真实工程保存重开、透明空覆盖重开及真实 RecoverySession 预览跳过/取消后保存。边界203 sources通过；provenance323覆盖通过，strict exit1，整体迁移仍INCOMPLETE。
+
+正式 Release build exit0，实际 opened --filter-presets-check PID39184 exit0。查看 build/Release/filter-presets-smoke.bmp，默认两列选项、说明、opacity、live/取消/应用未见重叠，画布显示预览而提交时间轴仍原层；取消/确认/undo/redo实际运行通过。未验收所有尺寸/DPI组合。首次 PID40116 exit1 抓到 menu漏 filter: 前缀，已修复后重建通过；原错误文件保留，其mtime早于最终通过。本批未关闭普通程序、不额外启动普通实例。最终 SHA256 F28D620F7DADF5B2BB4418533D1B0C5C07B50014312B1FC0A89AC42A511ACB7F；证据 build/filter-presets-final-20261019.json。
+
+
+## 2026-10-19 LCD 依赖的普通图层组内部基础（未开放 LCD/组编辑）
+
+核对真实 legacy LCD 后确认它会隐藏单个源层，建立真实组及 Scanlines/Blue/Green/Red 四个子层并选择组；不能用四个平铺层声称迁移完成。该入口实际来自共享 FilterDialog 的 lcd 选择，历史 LcdScreenDialog 不是当前唯一入口。本批调整为内部组基础阶段：LCD 入口继续禁用，完整普通组编辑同样未开放。无新用户界面、无图标重画。
+
+内部 State 追加 Group 与 Layer.groupId，保留 parent/name/visible/locked/opacity/blend/panelOrder/displayColor/description；校验空/重复/层组冲突ID、坏引用、自父/循环和非有限/非法元数据。祖先visible/locked提供纯helper，尚未宣称所有编辑写入路径已支持组锁。合成依据 legacy document-composite-plan/sampling：normal1组传递真实backdrop，其他opacity/blend先隔离整组后仅应用一次，cel Z只在真兄弟内排序；既有稀疏/link/预览/onion叶渲染复用。原生128行tile限制临时隔离buffer；新增tile边界回归属于技术适配，不替代全legacy等价验收。五个单层直出fastpath对非空groups绕回正确合成。
+
+纯 layer_panel_tree 模型承接 legacy 嵌套/空组/持久anchor/折叠及显式layer/group多选/范围选择；State适配反转native top-first输入，group.panelOrder保留legacy坐标。未接Editor面板和创建/删除/移动/属性/history操作，mask rows仍缺，不称为可用组UI。
+
+编解码能够读取并保留普通组DTO，以及验证内部普通工程/恢复编码真实落盘读回；RasterSnapshot保留并比对groups/groupId。外部 prepareEditableImport 对组仍显式拒绝；正式save沿同一preflight门控原子拒绝，测试确认不覆盖旧目标、不改变dirty/history/revision。内部编码验证不等于组工程可编辑，未向RecoverySession加入无可达状态的用户提示/静默删数据。effects/masks/adjustment/cumulativeBlend保持Unsupported，不被静默接受。
+
+验证：layer-panel-tree-tests、layer-group-compositor-tests、layer-group-io-tests及无组layer-compositor/raster-snapshot/document-snapshot/filter-presets四回归均实际exit0；来源覆盖328文件通过，strict exit1仍INCOMPLETE；依赖边界205 sources通过。正式单序列Release build exit0，既有 --filter-presets-check 实际opened PID38384 exit0，并断言lcdScreen仍未绑定。没有新增组/LCD视觉验收或可用性声明。首次两项fixture错误已定点修正：tree花括号重载歧义显式vector；IO构造遵守fromImported非空archive契约，未放宽生产入口。
+
+legacy/LICENSE Source-Available1.0 §2b/c 许可复核仅本地修改构建测试。本批未关闭普通程序、不另开普通实例。最终程序SHA256 9E7E56E75F154024E7C0D66966AC4039575F60251A44B480A6692F90E18B7656，完整证据 build/group-foundation-final-20261019.json。后续须补完整组编辑/历史/面板及LCD事务再开放入口，本条不能视为LCD迁移完成。
+
+### 2026-10-19 普通组内部编辑基础补充
+
+Document 内部组 metadata history、独立组选中/惰性后代解析、创建/取消组、可见/锁定状态已补；原像素 owner/链接与存储不克隆。祖先状态进入光栅工具与部分像素目标，补间临时预览保留组结构。四项最少相关测试均实际通过，来源330覆盖及206 sources边界检查通过，strict仍INCOMPLETE。
+
+组面板 virtual cel/拖动与普通层/组命令整体兼容未闭合，外部组工程编辑/正式保存门禁保持；本批不开放 UI/LCD。后续必须按 legacy targets helper 逐命令落实，不能把惰性 resolver 加入接口视作所有调用者已完成迁移。本批范围及最终构建证据见 clipboard-floating-migration-20261018.md 和 build/group-internal-edit-final-20261019.json。
+
+### 2026-10-19 普通组结构和纯行身份模型
+
+本批内部delete/copy/mixed tree move/add/flag sweep、惰性多目标和必要稀疏填充修正已落并通过focused/no-group六项实际回归。新增TimelineRows仅纯model+fixture，不接Editor；02~13 UI草案不算交付。组merge/clipboard/properties及真实行交互尚未闭合，外部可编辑IO与用户组入口继续关闭，LCD不扩。来源332覆盖及207 sources边界通过，strict仍INCOMPLETE。下一批精确UI纠正见 build/group-ui-deferred-handoff-20261019.md，最终构建记录见 build/group-structure-final-20261019.json。
+
+本批收尾仅核验既有正式产物，未重跑六项测试、未重建或修改实现。原 integrator 的 build session92521 在接手工具域返回 Unknown process id，构建退出码暂记 null，不以产物存在推断 exit0。正式 EXE 更新时间 UTC2026-10-19T13:22:27.2816370Z，SHA256 980245E1DC805708571111C983CD3D98C0F35C4DE33797153F5EDEC2B8882CC1。按 start-native.bat 同一 theme/cursors 参数仅运行一次真实窗口 --filter-presets-check，PID3088 exit0；新截图 UTC13:56:02，历史错误文件 UTC11:01 未改变。该运行仅回归既有六滤镜并断言 LCD 未绑定，不是组 UI 验收；未新增图像审查结论。六项 exit0 来自原 integrator 的实际运行报告，未冒用10月18日旧 LastTest.log。来源覆盖332/exit0、strict exit1/INCOMPLETE 和207 sources/exit0来自本批已有检查，不重跑。完整证据见 build/group-structure-final-20261019.json；组 UI/外部组可编辑 IO/LCD 门禁继续保留。本次未启动普通应用窗口、提交或删除用户数据。
+
+### 2026-10-20 Ordinary group editing and visible timeline rows
+
+普通RGBA组接入真实时间轴行、折叠/嵌套缩进、独立组/图层选择、虚拟帧格及混合真实Cel拖动。显示行以稳定ID/kind查询，虚拟组格不创建Cel/像素或缩略图。真实拖动保持raw layer delta钳制，虚拟装饰单独映射；取消恢复组/真实Cel/帧/anchor/活动上下文。选择继续使用Skin物理像素素材边界/绘制/命中。组区域按用户指定Aseprite视觉配色独立实现，保留Moon背景/10px字体与2x；folder仅由legacy对应路径无损转换，素材在原sheet追加可替换区域。
+
+组属性沿现有层属性窗口预览/取消/trim/单历史事务接入name、opacity、blend、displayColor、description；锁组metadata仍可改，视觉值遵循继承锁。组merge保留外层opacity/blend，子树先独立合成；普通层merge保共同parent与继承锁，merge-visible仅删除实际可见叶并保留隐藏祖先子树。layer clipboard完整独立RGBA帧快照、按帧序补齐、跨工程树粘贴与一次结构undo；Copy/Cut依像素选区→真实Cel→帧→图层/组调度，虚拟组格不会回退活动子层像素。普通组DTO接入外部editable open和正式save；effects/masks/cumulativeBlend、layer linkedContentId及其他特殊类型继续Unsupported，LCD仍未接入。
+
+首正式build与三个focused tests及新opened --group-timeline-check实际exit0；检查覆盖真实菜单创建、virtual-only/mixed cancel、逐alpha选择边框命中、属性、clipboard paste、实际保存重开和组merge undo/redo，并生成build/Release/timeline-group-open.bmp。最终构建追加既有duplicate选中数组top-first修正、clipboard互斥/virtual清理和真实cut+undo检查；最终验证与程序hash见本节后续记录及build/group-ui-final-20261020.json。源码/文档覆盖不代表完整legacy行为等价，strict仍INCOMPLETE。
+
+最终结果：正式单序列 /m:1 /nodeReuse:false build session62589 exit0；layer-merge-tests、document-layer-groups-tests、layer-metadata-tests、layer-group-io-tests、cel-selection-clipboard-tests五项实际exit0（末项在最终编译退出后重跑）。既有duplicateVisualSourceCheck揭示上批副本选择数组重复反转，按legacy bottom-first与native top-first差异定点修为top-first，未改像素与活动副本语义。最终正式exe --group-timeline-check PID39668 exit0，包含新增真实cut/undo；相关无组 --timeline-selection-keyboard-check PID20240 exit0。opened前后SHA256均A47B2DA51924FD09C26F695D7AE5DE42981272A8DFD39A2D9137BC89C2C0FC22。实际截图build/Release/timeline-group-open.png已检查父组名称整格色、嵌套折叠行、原图标与白色外选择轮廓；这不是所有手势/显示器状态的全面人工验收。来源332覆盖/快照验证exit0、strict1/INCOMPLETE、边界207 sources exit0另行记录。完整证据build/group-ui-final-20261020.json。普通组入口/open/save现已接通；特殊层/effects/masks/cumulativeBlend/linkedContent与LCD仍未开放。未关闭或另开普通实例，无分支/工作树/preview/提交推送或删除用户数据；达到本批最少相关验证后停止。
+
+
+### 2026-10-24 魔术橡皮 / 混合工程像素剪贴板 / 渐变色标颜色编辑器
+
+魔术橡皮按legacy独立continuity与共享wand参数、普通层/蒙版自身采样、按下preview/松开单history及取消迁移。tilemap渲染缓存Copy→混合工程普通RGBA floating Paste接通，保留Cut/瓦片目标/源变换门禁。渐变选中色标接既有五模式ColorEditorPopup，父子生命周期与切色标关闭闭合；nested canvas采样/double-click仍缺。来源与适配详见magic-eraser-pixel-clipboard-gradient-color-20261024.md。
+
+正式串行build60652/final89139 exit0；三core tests与actual UI PID8484 exit0，来源483覆盖通过/strict1 INCOMPLETE，diff check通过。初UI测试点误命中缩放手柄，修fixture内容中心后通过，生产命中不变。唯一BAT重开正式PID36540响应正常。未截图/全DPI人工验收，无分支/工作树/preview/commit/push或用户数据删除；本批最少验收后停止。
+
+
+### 2026-10-26 工程保存与重开修正
+
+主 Agent 单写入完成。修复导入旧工程后关闭图层自动链接、保存重开却重新开启的问题：`project_encode.cpp` 按 legacy `project-format-encode.ts` 的条件字段规则移除旧 true，已有 Cel 链接保持。可编辑工程与恢复编码、Undo/Redo 的重新编码均有针对性回归。
+
+原保存检查栈溢出源于 Windows 测试 main 的 0xF3F20 字节栈帧，现按独立用例拆成函数，无扩大栈或减少断言；两处历史断言改用当前位置，分组时长先明确选中活动帧，新增帧清空选择后显式重选删除范围。测试临时数据仅使用测试工作目录。
+
+实际结果：正式 Release 同一产物构建 exit0；project-save（含普通工程、多图层、关联帧与失败保护）、raster-resource、project-rollback 三项 exit0；正式 exe `--sparse-project-io-check` exit0，覆盖实际异步保存、打开和恢复。未作截图或全量界面验收，不能视为全部迁移完成。本批未提交、推送或发布。
+
+
+### 2026-10-27 蒙版绑定移动入口与链接语义
+
+- 按 Legacy `LayerMenuCommands.tsx` 接通顶部图层菜单“开启绑定移动／停用绑定移动”；仅单一图层或组且当前帧存在蒙版时可用，蒙版行及多选不作为属性目标。
+- 顶部入口、蒙版右键和折叠时间轴的链接按钮共用操作；链接蒙版修改解析后的共享蒙版属性，保留可撤销的一条历史，不受像素编辑锁误拦截。
+- 修正拖动时读取链接槽自身属性导致关闭绑定仍移动的问题；开关、撤销、重做及取消以现有蒙版事务承接。
+- 已核对保存限制：Legacy `project-format-encode.ts` 的 `encodeMask` 没有保存 `moveWithOwner`，现有原生格式也未保存；重开默认开启。这与需求中状态承接目标存在差异，登记为待裁定项，本批没有擅自扩展格式或宣称保存状态已完成。
+- 检查范围：attached-masks-tests 与正式程序 --attached-masks-check；执行结果以本次交付说明为准。其他蒙版菜单缺口不在此记录中宣称完成。
+
+- 本批实际验证：Release `attached-masks-tests` 通过；正式 `moonsprite-native.exe --attached-masks-check` 退出码 0，覆盖图层及组菜单调用；来源检查 508 文件通过。未做截图验收或全量性能测试。
+
+
+### 2026-10-27 顶部图层蒙版创建与组蒙版开关
+
+- 按 `workspace-commands-layer-mask.ts/createLayerMasksForLayer` 补齐整层批量创建：遍历所有有内容的帧（解析链接 Cel），跳过已有蒙版与空帧；调整图层针对全部帧。既有蒙版的像素与标识保留，新增蒙版相互独立，一次撤销整个操作。
+- 顶部图层菜单和图层行右键共用创建命令。单元格右键仍保留只操作当前帧的既有语义。组蒙版按当前帧显示“创建图层组蒙版／删除图层组蒙版”；多目标、蒙版行和无可创建目标不能误执行。
+- 重做新建蒙版时恢复新建蒙版编辑目标；遵循 Legacy 创建后的非隔离编辑模式。锁定图层／组不修改数据。
+- 素材和布局未新增；继续使用 Legacy layerMask 图标及现有菜单组件。原生保留既有 256MiB 蒙版内存上限并先完成新增像素分配，避免部分创建。
+
+- 实际验证：Release `attached-masks-tests` 通过（含批量创建、跳过空帧、保留已有蒙版、链接 Cel、调整图层、锁定、单步撤销重做、重开）；正式程序 `--attached-masks-check` 退出码 0，包含顶部图层／组创建删除入口。来源登记 508 文件通过。未做截图验收或全量性能测试。
+
+
+### 2026-10-27 蒙版删除事务与撤销承接
+
+- 按 Legacy `deleteSelectedLayerMasks` 在删除前核对全部所属图层／组及祖先锁；只锁蒙版本身不会阻止删除。任一所属对象锁定时整批不执行，界面保留选择。
+- 去掉原来的逐项删除后再合并历史，改为暂存、校验并一次提交；重复目标去重，缺失槽忽略，无有效目标不写历史。组蒙版单删使用对应历史名称。
+- 删除活动蒙版后退出编辑，撤销恢复编辑目标及隔离状态；批量删除的选择通过与像素选区枢轴相同的文档历史序号桥接，供撤销、重做和历史跳转恢复。
+- 必要原生适配沿用现有行为：链接目标删除时，幸存引用从删除前解析结果保留像素并解除悬空链接。Legacy 缺失链接会退回槽自身，原生禁止悬空标识；此项不宣称完全行为等价。
+
+- 删除后切换帧再撤销，会恢复删除前的活动帧和图层，避免蒙版编辑目标与当前帧错位。
+- 实际验证：Release `attached-masks-tests` 通过（锁定、祖先锁、批量原子删除、链接链保留、跨帧撤销、重做、无操作、保存重开）；正式程序 `--attached-masks-check` 退出码 0，覆盖锁定时保留选择、一次删除、撤销恢复选择及编辑目标、重做清空。来源登记 508 文件通过。未做截图验收或全量性能测试。
+
+
+### 2026-10-27 蒙版链接与断开语义
+
+- 以 Legacy `connectSelectedAnimationMasks` 与 `animationLinkSlotKeys` 为依据，按所属图层／组分别链接，以帧顺序中首个可解析蒙版为源；补齐选中端点之间缺失的槽，不覆盖未选中的已有中间蒙版。
+- 断开按已选蒙版解析后的共享源收集全部链接成员；在源蒙版上右键也可断开相关链接。每个受影响对象先检查图层／组及祖先锁，整批暂存后提交；独立副本保留槽标识并复制解析后像素与属性。
+- 一次操作一条历史，重复链接或已独立对象断开不写空历史。复用现有 `MaskContextHistory` 保存编辑源的前后身份，选区历史扩展为前后蒙版选择，供撤销重做恢复。
+- 仍有界面缺口：空蒙版单元格的拖动／范围选择尚未完整承接；本批核心接口支持空端点，现有界面可用已有端点链接并自动补齐缺失的中间槽。不将此项登记为整个蒙版时间轴迁移完成。
+
+- 实际验证：Release `attached-masks-tests` 通过；正式程序 `--attached-masks-check` 退出码 0，直接触发真实右键菜单的链接／断开条目并核对撤销选择。来源登记 508 文件通过。未做截图验收或全量性能测试。
+
+
+### 2026-10-27 空蒙版单元格选择与范围拖动
+
+- 直接按 Legacy `selectAnimationMaskCell` 承接空格选择、Ctrl 切换、Shift 矩形范围追加和最近点击锚点；当前鼠标目标帧保持活动，普通单元格选择不进入蒙版隔离视图。空格不创建蒙版，也不擅自新增绘图门禁。
+- 蒙版格接入既有时间轴鼠标捕获、4px 拖动阈值、边缘滚动和 Escape 取消；往回拖动重新从按下时的快照计算范围，取消恢复原选择、活动帧和蒙版编辑目标。选择不写作品历史。
+- 空格右键可使用所选范围的链接／断开入口；至少存在一个可解析蒙版才允许链接，全空范围保持禁用。延续上一批单事务链接与撤销逻辑。
+- 选中轮廓复用公共 sheet 素材和物理坐标命中管线，每个蒙版行的连续选区共享外轮廓。此项补上上一批登记的空格选择／范围拖动缺口，不将蒙版内容移动／复制手势标为完成。
+- 实际验证：Release 正式程序构建成功；`attached-masks-tests` 通过；正式程序 `--attached-masks-check` 退出码 0，覆盖图层／组的真实格子按下回调、鼠标移动／释放、Escape、空格右键链接条目 Click、单步撤销、无历史选择及逐像素选中素材 alpha／物理坐标命中一致性。来源登记 508 文件通过。未做截图审美验收或全量性能测试。
+
+
+### 2026-10-27 蒙版单元格内容移动与复制粘贴
+
+- 按 Legacy `moveSelectedAnimationMasks` 和 `mapAnimationMaskBlock` 使用完整、未折叠的图层／组顺序计算相对目标；整块越界直接不执行。只有选中轮廓拖动移动内容，内部拖动仍为选择。Alt 不新增复制拖动语义，旧版蒙版分支始终执行移动。
+- 源位置留下新标识的白色蒙版，原内容及标识跟随目标；先保存全部源内容，再处理源白色占位及目标覆盖，支持重叠块。锁定检查按旧实现针对目标所属图层／组及祖先。链接成员拒绝整批移动，并从选择中移除链接成员，不写内容历史。
+- 复制解析后的独立蒙版快照，以所属对象／帧排序保存在当前文档会话；粘贴按同一映射创建独立新标识，拒绝空普通图层帧和锁定目标。移动按旧版不增加空帧门禁。剪切复用复制和既有批量删除。
+- 接入蒙版右键复制／粘贴和现有编辑菜单、Ctrl+C／X／V；切换到普通帧或单元格复制时清除蒙版剪贴板。普通单元格可作为剪掉最后一个蒙版后的粘贴目标。键盘粘贴通过系统剪贴板序号识别新外部图像，优先既有像素粘贴路径。
+- 移动预览复用时间轴现有捕获、边缘滚动、Escape 和 sheet 边框；预览不写像素或历史。移动／粘贴各一条历史，撤销重做恢复内容、蒙版选择和活动目标。
+- 保留必要原生差异：原生标识不得悬空，覆盖某个链接源时先保留幸存引用的原解析结果并解除悬空链接；这与此前删除适配一致，不将其宣称为 Legacy 悬空引用行为完全相同。
+- 实际验证：Release 正式程序构建成功；`attached-masks-tests` 通过，覆盖源白色保留、独立复制快照、空目标拒绝、锁定、链接成员拒绝、整块越界、重叠块、跨图层／组移动、单步撤销重做与工程重开。正式程序 `--attached-masks-check` 退出码 0，覆盖图层／组的真实边框命中、移动预览、Escape、松开提交及编辑菜单复制／剪切／粘贴（含启用条件）；`--mask-selection-clipboard-check` 退出码 0，确认原有蒙版内部像素选区粘贴路线保持可用。来源登记 508 文件通过。未做截图审美验收、全量性能测试或所有外部剪贴板格式验证。
+
+
+### 2026-10-27 蒙版隔离查看与共享状态控制
+
+- 以 Legacy `layer-cell-shortcuts.ts`、`selectLayerMask`、`selectGroupMask` 为依据：Alt 点击有蒙版的格子／名称切换隔离查看；再次 Alt 点击同一解析后的蒙版返回合成视图。Alt+Shift 保留并追加蒙版格选择，Alt 点击空格不切换帧、不改当前编辑目标。
+- 折叠时间轴的蒙版缩略图接入同一 Alt 行为；按 `LayerRowMaskThumbnail/clearAnimationSelection(true)` 保留编辑上下文并清空时间轴选择。普通缩略图点击保持非隔离编辑。
+- 显示、锁定和自动链接统一读取／修改解析后的共享源，避免链接格图标显示根状态却修改局部默认值。锁定活动蒙版会退出编辑和隔离查看，撤销／重做通过既有上下文历史恢复。
+- 当前帧缺少蒙版时禁用对应控制；按旧版行组件禁用组蒙版的锁定／自动链接入口，显示切换保留。底层原生通用属性接口仍能承接导入的组蒙版属性，不把格式可保存解释为已有 UI 能力。
+- 不新增素材，继续复用 Legacy 图标与现有 sheet 控件。本批沿用现有原生蒙版事务及完整失效通知，不宣称已达到 Legacy metadata-only 缓存失效性能一致性。蒙版整行选择、混合行范围选择仍是独立缺口。
+- 补充源码证据：Legacy `setLayerMaskAutoLinkAnimationCels` 通过 `animationMaskAt` 修改共享源，而 `animation.ts/inheritAnimationFrameMaskLinks` 判断直接槽位的 `sourceMask.autoLinkAnimationCels`。本批承接该实际组合，不将新建帧判断改为共享源判断；这两处表现存在需另行裁定的规则冲突，不能将“开关图标一致”写成全部帧继承规则已统一。
+- 保存限制：Legacy `project-format-encode.ts/encodeMask` 不保存显示开关与移动绑定，原生继续承接此格式，重开恢复默认显示／绑定；锁定和自动链接状态保留。该限制不计为完整状态承接。
+- 实际验证：正式 Release 构建成功；`attached-masks-tests` 通过，覆盖共享源属性、无操作历史、锁定退出、跨帧撤销恢复隔离及选择、重做和保存重开。正式程序 `--attached-masks-check`、`--mask-selection-clipboard-check` 均退出码 0，覆盖展开／折叠、图层／组的 Alt 交互及原有蒙版像素粘贴。来源登记 508 文件通过，相关修改 whitespace 检查通过；未做截图审美验收或全量性能测试。
+
+
+### 2026-10-27 蒙版整行与混合范围选择
+
+- 按 Legacy `selectAnimationMaskRow`、`applyLayerRowRange`、`animationLayerPanelSelectionRows` 和 `workspace.test.ts` 的行选择场景迁移：名称点击只选择整行，不进入蒙版编辑，不启动格子拖动；Ctrl 增减蒙版行并保留普通图层／组，Shift 双向选择混合行范围。
+- 行选择与蒙版格选择分开存储，复用原生 `TimelineSelection` 和历史恢复；范围按旧版 mask-before-owner 的语义顺序计算，显示仍沿用当前 owner-before-mask 排列。折叠组的隐藏子项不加入可见范围；普通行目标的组内范围沿用旧版完整子树规则。
+- Delete／时间轴删除优先处理选中蒙版：整行收集全部帧槽位，所有 owner 锁定检查通过才执行，一条历史完成，撤销／重做恢复或清空蒙版行选择。混选的普通图层保留，帧和工程像素不被误删。
+- 点击帧标题保留已有蒙版行，普通格或普通行替换选择退出蒙版行模式。轮廓复用现有 sheet 行选择素材与公共物理像素 alpha 命中路径，新增单行／混选实际事件及轮廓回归检查。
+- 本批不声称完成全部时间轴活动上下文、键盘导航或蒙版行剪贴板行为；既有完整缓存失效与保存格式限制仍保留。
+- 实际验证：Release 正式程序构建成功；`attached-masks-tests`、`--attached-masks-check`、`--mask-selection-clipboard-check` 均退出码 0。覆盖图层／组整行选择、Ctrl 混选、双向 Shift 混合范围、整行删除事务、锁定拒绝、撤销／重做行选择与边框命中。来源登记 508 文件通过，修改 whitespace 检查通过；未做截图审美验收或全量性能测试。
+
+
+### 2026-10-27 蒙版上下文与帧标题切换
+
+- 根据 `workspace-commands-animation-selection.ts/selectAnimationFrame` 和 `workspace.test.ts` 的蒙版行／格切帧测试：点击帧标题保留原活动蒙版标识和隔离状态，即使新帧不存在对应蒙版；普通直接切帧仍走现有退出路径。
+- 选中的蒙版格提升为去重的所属行选择，清除格选择及锚点，保留显式帧选择；随后点击普通图层名称清除蒙版上下文。复用现有选择状态与控件，无新增素材。
+- 撤回此前中断时尚未交付的整行蒙版复制／剪切扩展：旧版 `copySelectedAnimationMasks` 只消费格选择，不支持自动展开整行，不能自行扩展后称为迁移。
+- 实际验证：正式 Release 构建成功；`attached-masks-tests`、正式程序 `--attached-masks-check`、`--mask-selection-clipboard-check` 均退出码 0，覆盖图层／组的帧标题按下与松开、空蒙版帧、格转行、保留编辑与隔离、不新增历史、普通行替换退出。新增测试最后补齐普通行鼠标松开，避免下一组用例继承未结束手势。来源 508 文件通过；未做截图审美验收或全量性能测试。
+
+
+### 2026-10-27 蒙版时间轴方向键导航
+
+- 按 `workspace-animation-cell-navigation.ts/animationCellNavigationRow`、`stepAnimationCell` 和 `useAppShortcutRouter.ts` 迁移：上下键使用旧版 mask-before-owner 的语义行序，蒙版空槽也可成为焦点，组摘要跳过，折叠组隐藏后代不进入导航。当前原生 owner-before-mask 的显示排列保持。
+- 左右键在切帧前保存蒙版 owner，再通过现有帧步进处理循环段、禁用帧与回绕，选中目标帧对应的蒙版格；无蒙版时仍保留空格目标。进入蒙版格使用普通非隔离编辑，离开到普通 Cel 清理蒙版选择和编辑状态。
+- 继续复用原有长按重复定时器与稀疏 Cel 查询，不新增导航历史或批量物化空 Cel；不声称全部工作区入口的 TimelineActiveContext 已等价。
+- 实际验证：正式 Release 构建成功；正式程序 `--attached-masks-check`、`--timeline-selection-keyboard-check` 均退出码 0，覆盖普通图层／组蒙版空格、左右切帧、离开蒙版、无新增历史及既有普通时间轴键盘回归。来源登记 508 文件通过；未做截图审美验收或全量性能测试。
+
+
+### 2026-10-27 蒙版右键菜单的可用条件与删除范围
+
+- 对照 `useTimelineContextActions.tsx/openCelMenu` 和 mask 菜单：复制以点击格是否有解析蒙版判断；缺少蒙版且普通 Cel 无可见内容时禁用新建；粘贴要求已有蒙版剪贴板，普通图层目标还须有可见 Cel 内容，组目标不受空 Cel 条件限制。调用后仍由现有事务检查整块边界和 owner／祖先锁。
+- 普通图层蒙版右键删除改用当前选集批量删除，一次历史并能撤销恢复内容和选择；组蒙版仍按旧版独立分支只删除点击的 owner/frame，不擅自统一两种行为。
+- 折叠时间轴缩略图右键通过 owner/frame 选择目标，不再依赖被隐藏的展开蒙版行。既有原生菜单附加项仍保留，本批不宣称菜单外观、文案和全部入口完全等价。
+- 实际验证：正式 Release 构建 exit0；正式程序 `--attached-masks-check` exit0，包含空格菜单灰态、选集批量删除／单历史／撤销恢复，以及组蒙版单格删除。来源登记 508 文件及修改 whitespace 检查通过；未做截图审美验收或全量性能测试。
+
+
+### 2026-10-27 蒙版专用快捷键完整接线
+
+- 根据 `useLayerPanelShortcuts.tsx/shortcutCommandHandlerRef` 接通现有目录中五个命令：复制蒙版单元格、粘贴蒙版单元格、关联所选蒙版、断开关联、创建或删除当前格蒙版。快捷键设置从不可用变为可绑定，沿旧版保留空默认绑定，不擅加按键。
+- 复制／粘贴直接复用蒙版剪贴板，专用粘贴以最后选中的蒙版格为目标；链接／断开复用已有事务。创建／删除按旧版取首个蒙版格、首个普通 Cel、选中组或当前层；删除只影响目标格并过滤对应选择，创建选中目标格。
+- 原生虚拟组格使用既有 TimelineSlot 适配，常规 Ctrl+C／V 的调度优先级不变。链接菜单与底层本次核对未发现需改动的条件，不为凑迁移增写近似算法。
+- 实际验证：正式 Release 构建成功；正式程序 `--shortcuts-check`、`--attached-masks-check` 均 exit0，前者以临时 F9 绑定经过实际按键路由覆盖全部五命令、图层／组目标与删除撤销。测试绑定仅在 smoke 内存中修改并恢复；未改用户快捷键文件。来源登记与 whitespace 检查通过；未作完整快捷键目录或截图审美验收。
+
+### 2026-10-27 时间轴帧与单元格快捷键接线
+
+- 对照 Legacy `useLayerPanelShortcuts.tsx` 与 `updateSelectedAnimationFramesDisabled`，接通帧复制、帧粘贴、单元格粘贴、单元格关联／断开，以及帧启用、停用、逐项切换状态八个现有快捷键目录项；默认绑定保持为空。
+- 复制／粘贴／关联操作复用已有 Editor 与 Document 事务，不新增数据语义。切换停用状态按 Legacy 对每个选中帧独立反转，混合状态仍一次历史，并支持撤销／重做；播放更新继续复用 `updateFramesDisabled`。
+- 临时 F9 路由烟测覆盖新增八项及混合状态撤销／重做。未宣称完整快捷键目录或全部时间轴入口等价。
+
+### 2026-10-27 动画循环节与属性快捷键接线
+
+- 按 Legacy `useLayerPanelShortcuts.tsx` 与 `app-layers-shortcuts.ts` 接通新建循环节、帧属性、当前循环节播放／属性／删除、单元格属性六项已有快捷键。
+- 循环节命令解析当前帧所在的最内层循环节，复用原生已有循环节编辑器、播放和删除事务；属性命令复用现有帧／单元格属性窗口。默认快捷键保持为空。
+- 快捷键设置烟测仅覆盖六项目录可用性，未执行这六项实际按键路由；未宣称全部快捷键目录与全部时间轴入口完全等价。
+
+### 2026-10-27 动画播放设置快捷键接线
+
+- 按 Legacy `app-layers-shortcuts.ts` 接通播放一次、循环全部、循环当前节、播放速度 0.25×／0.5×／1×／1.5×／2×／3×，以及停止后返回起点。
+- 直接复用原生播放模式、倍率归一化、播放计时与偏好保存；快捷键设置默认仍为空。`--shortcuts-check` 通过，未宣称完整播放界面或全部快捷键目录等价。
+
+
+### 2026-10-27 动画播放快捷键重新迁移核对
+
+- 重新逐项核对 `app-layers-shortcuts.ts`、`workspace-commands-animation-playback.ts`：保留十项命令及既有播放函数，移除倍率判断中重复的命令列表和并列数组，改为显式命令／倍率对应表；未重写底层播放状态机或改变默认按键。
+- 更正上一轮来源登记：当时 `--shortcuts-check` 仅检查这十项 supported 状态，未调用其实际按键路由，不能作为执行验证。上一轮循环节／属性六项也只有 supported 检查，此处同步纠正文档，不冒称已验证。
+- 本次补充实际 F9 按键事件：全部十项执行、一次／全部播放的文档循环事务及无操作历史、当前节模式、六档倍率／帧延迟、返回起点开关、会话设置不改内容历史、长按不重复切换、播放中改倍率保留帧与历史、无工程不执行。测试只改内存，结束恢复快捷键与播放偏好。
+- 实际结果：正式 Release 构建成功，包含上述按键执行断言的 `--shortcuts-check` exit0；来源登记 508 文件通过，本次三个修改文件 whitespace 检查通过。未进行截图验收或全量性能测试。
+
+
+### 2026-10-27 循环节快捷键目标规则与实际执行补齐
+
+- 修正此前循环节快捷键接线遗漏的 Legacy `shortcutLoopSection` 规则：优先查找范围与显式帧选集完全相同的循环节（按存储顺序），无精确匹配才回退到当前帧最内层循环节。播放、属性、删除共用同一解析路径，不影响右键已指定目标。
+- 补齐六项真实 F9 路由检查：创建按选集初始化、取消无历史、确认一条历史；嵌套范围精确匹配外层的属性／播放／删除、删除撤销、无精确选集时回退内层；帧属性与实际单元格模态窗口打开后无改动关闭；没有循环节时三项目标命令无操作。
+- 实际结果：正式 Release 构建成功，包含新增断言的 `--shortcuts-check` exit0。来源与修改文件 whitespace 检查通过；没有新增 UI 素材或布局，未进行截图审美验收。本批不声明所有属性窗口内容与活动上下文已完全等价。
+
+### 2026-10-27 洋葱皮快捷键与单元格属性选择目标
+
+- 接通 Legacy `useLayerPanelShortcuts` 的 `toggleOnionSkin`，直接调用已有原生开关与偏好保存；承接 `useLayerPanelPreferences/applyLayerSettings` 的时间轴隐藏时不改变洋葱皮规则，默认按键保持为空。
+- 实际 F9 事件覆盖切换／恢复、长按抑制、首页无工程及时间轴隐藏无操作；开关不改变文档历史、版本或单元格选集。
+- 补齐单元格属性的非活动层目标验证：首个选中格与活动层不同，通过实际属性弹窗将首个选中格不透明度改为42%，其他活动层不变、选集保留、一次历史，撤销恢复。现有目标路由符合这一普通单元格场景，无需另写实现；虚拟组格及全部属性语义未在本批宣称完成。
+- 实际结果：正式 Release 构建成功，`--shortcuts-check` exit0，来源登记508文件通过；本次修改文件whitespace检查通过。未改UI素材和布局，未做截图审美或全量性能检查。
+
+### 2026-10-27 图层栏目设置入口与侧边停靠行为
+
+- 根据 `LayerSettingsEditor.tsx`、`useLayerPanelPreferences.tsx`、`LayersPanel.tsx` 补齐普通图层／动画时间轴模式、侧边吸附自动隐藏结构操作（默认开启）、动画／洋葱皮设置入口和完整默认值重置，并接通原有 `openLayerSettings` 快捷键目录项；默认按键为空。
+- 复用 `setTimelineHidden` 的停止播放与清除时间轴选择、密度保存、快捷操作模型及动画偏好保存。左右停靠且动画模式下隐藏增帧／删帧与配置的图层结构快捷按钮，保留播放、洋葱皮、设置；关闭自动隐藏后恢复。新偏好以有界文本启动读取、原子写入，不修改工程格式，读取损坏时阻止覆盖。
+- 原生适配差异明确保留：当前原生设置窗口内已有快捷操作列表，本批在同一窗口接入显示设置，并复用独立动画设置窗口；旧版则在主设置内展示洋葱皮、快捷操作另开子窗口。不是旧版设置窗口布局完全复刻，未将该差异记作视觉等价。
+- 新增实际按键与窗口交互检查涵盖栏目模式、侧边按钮隐藏／恢复、打开动画子窗口后返回、默认值重置及不新增作品历史；测试只更改并恢复内存设置，不写用户偏好。结果待本批正式构建验证。
+- 本批实际结果：正式 Release 构建成功；`--shortcuts-check` 与 `--animation-settings-check` 均 exit0，来源登记508文件通过、修改文件whitespace检查通过。已查看正式程序生成的图层设置截图，当前默认窗口无控件重叠／裁切；未作所有分辨率或全量性能验收。
+
+
+### 2026-10-27 图层快捷操作子页面承接
+
+- 对照 `LayerSettingsEditor.tsx` 与其指针捕获测试，将快捷操作列表从主设置正文移入子页面，主页面只保留入口；子页面关闭按钮、标题关闭和 Esc 均返回主设置，主页面关闭才退出。
+- 原生使用同一个 PixelDialog 切页，继续复用既有快捷操作排序、最多五项开关和即时保存模型。切页结束拖拽、计时器与指针捕获，主／子页面分别保留位置和尺寸；旧快捷操作布局文件继续用于子页面，主页面单独保存。
+- 新增真实窗口交互断言：主页面列表隐藏、子页面主控件隐藏、拖拽排序及释放、子页调整尺寸后返回与重开、Esc 返回，并沿用栏目模式／侧边隐藏／动画设置／重置检查。
+- 本批只解决快捷操作的父子流程差异；动画／洋葱皮仍复用独立设置窗口，不声明主设置与 Legacy 完全一致。正式构建与交互验收结果见后续记录。
+- 本批实际结果：正式 Release 构建成功；`--shortcuts-check` exit0，执行新增父子页面、排序及尺寸记忆断言和原有栏目设置检查。已查看本次生成的 `layer-settings-migration-smoke.bmp`，主页面控件无重叠／裁切；未覆盖所有缩放及分辨率。来源登记508文件通过，修改文件whitespace检查通过。
+
+
+### 2026-10-27 图层设置内联动画与洋葱皮
+
+- 根据 `LayerSettingsEditor.tsx` 的主设置正文恢复跳过停用帧、洋葱皮启用、播放时显示、图层范围、前后帧数、不透明度及颜色控件。普通图层模式隐藏密度和动画正文，快捷操作仍进入原有子页面。
+- 提取已有原生动画控件供主设置与独立动画菜单窗口共用，继续复用表达式输入、数值范围、百分比滑块、RGBA颜色选择及偏好保存。开启洋葱皮仍同时启用播放时显示，重置同步共享草稿，不改变工程历史。
+- 主页面正文采用裁切滚动容器与共享滚动条，标题和底部操作固定。只承接旧版功能流程；DOM尺寸按原生统一规范适配，不声明逐像素一致。上一轮登记的动画只能另开窗口的差异由本批替代。
+- 验证结果待正式构建及实际交互检查。
+- 首次正式构建及实际运行：Release 构建 exit0，`--shortcuts-check` 和 `--animation-settings-check` 均 exit0；后者保留独立动画窗口八方向缩放检查。已查看主页面及展开后滚到底部的两张截图，无标题／底部操作覆盖或控件裁切。正在补齐最终共享头文件变更的增量构建，最终结果另记。
+- 最终结果：共享头文件依赖增量构建与正式链接成功；最终 exe 重新执行 `--shortcuts-check`、`--animation-settings-check` 均 exit0，来源登记508文件及本批修改文件whitespace检查通过。无全量回归或所有分辨率验收声明。
+
+
+### 2026-10-27 图层显示模式与密度控件
+
+- 对照 Legacy `LayerSettingsEditor`，将单按钮反转改为明确的动画模式／普通模式分段选择；重复点击当前模式不重复执行切换。两枚按钮复用现有素材并共用1px描边。
+- 缩略图与帧信息大小恢复旧版六档标签：紧凑、标准、详细、扩展、大、特大；名称和悬停说明来自 `layer-density-labels.ts` 与中文语言文件。公共 PixelSlider 增加可选分类值文案，未提供时保留原数字／百分比绘制。
+- 侧边自动隐藏改用已有 PixelSwitch，对应旧版 PreferenceToggle；状态、保存失败恢复、全局重置和模式隐藏仍走原有模型，不改工程数据语义。
+- 交互检查补充六档即时切换、选择当前模式无操作、两项选中态以及普通模式隐藏密度与动画。正式构建与实际检查结果待记录。
+- 本批实际结果：正式 Release 构建成功，`--shortcuts-check` 与 `--animation-settings-check` 均 exit0。已查看主设置截图，双选项共边和分类名称正常，正文边缘按滚动视口裁切；未验收悬停提示外观或所有分辨率。来源登记508文件和本批修改文件whitespace检查通过。
+
+
+### 2026-10-27 洋葱皮设置开关与不透明度浮层生命周期
+
+- 按 Legacy `LayerSettingsEditor` 和 `PreferenceToggle` 复用现有 PixelSwitch，承接“左右切换时跳过停用帧”“播放动画时显示洋葱皮”等完整文案及原说明。范围选项共用1px描边，重复选中当前范围无操作。
+- 不透明度浮层按旧版点击外部／焦点离开收起，点击当前数值框或滑块保留；关闭洋葱皮、进入颜色窗口及离开页面结束浮层。原生用限定生命周期的 UI 消息过滤适配 DOM 事件，结束及析构移除过滤器。
+- 修正滑块更新后焦点数值框仍保留旧文字、后续失焦可能回写旧值的问题；同步数值文本，继续复用原范围约束、表达式和设置保存。标签列根据完整文案宽度计算，避免“叠加透明度”与输入框重叠。
+- 新增相关实际控件消息检查，结果待正式构建与运行记录；不声明整个栏目已全部迁移。
+- 首轮正式 Release 构建与两项运行检查均成功；截图检查额外发现正文滚动高度比快捷操作按钮底部少4个逻辑像素，已按实际布局终点修正并补充最大滚动位置断言，正在重建最终程序。此处不将首轮截图记为完整通过。
+- 最终结果：修正后正式 Release 链接成功；`--shortcuts-check`、`--animation-settings-check` exit0。截图采集补充 flushRedraw/flip，避免读取上一帧；再次运行快捷键检查exit0并查看最新截图，快捷操作按钮滚到底后完整可见，完整标签与输入框无重叠。来源登记508文件、本批修改文件whitespace检查通过；未宣称全量回归、提示外观或所有分辨率验收。
+
+
+### 2026-10-27 图层快捷操作入口与取消状态
+
+- 对照 `LayerSettingsEditor.tsx` 与中文语言文件，补齐主设置内“图层快捷操作”入口的已启用数量 / 5，复用旧版 properties/right 图标；子页恢复完整用途说明与标题，说明按窗口宽度换行。原有五项上限、排序、未接通项灰显和即时保存逻辑不变。
+- 修正原生列表取消交互：切页、关闭、Esc 清除复选框按下与鼠标捕获，取消后的迟到松键不再改变配置。补充实际窗口检查中的取消、Esc、正常切换及数量刷新断言，保留原有拖动、边缘滚动和返回检查。
+- 本批实际结果：正式 Release 构建成功，`--shortcuts-check` exit0，覆盖列表拖动、边缘滚动、取消后的迟到松键、Esc、正常勾选、数量刷新及主子页返回。查看新生成的子页和主设置截图，说明、数量、原图标及入口箭头可见且无重叠。来源登记508文件通过，本批修改文件whitespace检查通过；不声明完整图层模块或所有分辨率视觉等价。
+
+
+### 2026-10-27 图层右键菜单已实现能力接线
+
+- 对照 `useLayerContextActions.tsx` 与 `workspace-commands-layer-properties.ts`，将新建背景图层、创建关联图层、转换为背景图层及样式编辑／复制／粘贴／清除接入已有原生功能，替换没有回调的灰色占位。关联、背景／普通转换与样式拆分绑定右键目标及工程身份，保持单目标限制。
+- 右键上下文单独保存的目标列表将被点击对象置首，不改变文档选集或当前绘制层；样式窗口增加可选初始来源参数，批量预览／提交继续沿用原有文档事务。复制取被点击对象，清除检查选集中任一对象有样式，避免错误取当前绘制层或只看选集第一项。
+- 复用已有图标、窗口、共享像素与历史逻辑；不重写底层算法。瓦片转换、合并、蒙版及自由瓦片缺口不在本批完成声明中。对应 LA-001、LA-002、LA-004 的入口承接，不等于这些需求已全部通过替换验收。
+- 实际结果：正式 Release 构建成功，`--layer-context-check`、`--color-overlay-check` 均 exit0。覆盖右键目标不同于活动图层时的关联／背景转换与撤销、多选样式复制／清除／粘贴与撤销、跨工程失效菜单保护、真实样式窗口初始来源与取消、真实背景窗口取消，以及原有样式编辑／拆分／栅格化检查；已查看图层右键菜单渲染图。来源登记508文件与本批修改文件whitespace检查通过。首次常规编译发生 C1060 堆内存不足，停止后以同一 build、正式输出路径逐文件单编译器构建成功，未修改项目编译配置或创建新版本目录。未验收所有上下文分支、保存往返或所有分辨率。
+
+
+### 2026-10-27 图层组合并与折叠操作入口
+
+- 对照 `app-layers-shortcuts.ts`、`useLayerPanelShortcuts.tsx` 和 `useLayerContextActions.tsx` 接通 `合并图层组`、`展开／折叠组` 的顶栏命令，既有快捷键系统同步识别并执行；快捷操作配置中的合并图层组也复用同一绑定。默认按键不变，不新增默认快捷键。
+- 顶栏折叠依次切换每个所选组；右键只对被点击的组提供解组和折叠，合并、解组、折叠限制单一上下文目标，普通图层显示向下／所选图层合并。复用原有组状态、合并算法、锁定判断、历史及图标。
+- 实际结果：正式 Release 构建成功，`--layer-context-check` 和 `--shortcuts-check` 均 exit0。覆盖真实F9按键、重复按键、多选组折叠、右键单目标限制、全部帧合并画面对照与撤销／重做、锁定／无组选中／首页禁用和旧工程菜单失效；确认折叠不增加作品历史或修订。查看新增图层组菜单渲染图，组专属入口及复用图标正常。来源登记508文件、本批修改文件whitespace检查通过；未验收组保存往返或所有上下文菜单分支。
+
+
+### 2026-10-28 图层样式批量启用／停用
+
+- 对照 `workspace-commands-layer-properties.ts::setLayerStylesEnabled`、`useLayerPanelShortcuts.tsx` 与 `useLayerContextActions.tsx`，修复原生快捷命令将首项完整样式覆盖给所有目标的问题。逐对象保留各自效果参数和未知样式 JSON，只修改 enabled；配置有效且状态改变的目标去重后，通过既有结构元数据事务一次提交，可撤销／重做，无变化不消耗历史或重做栈。
+- 图层样式右键子菜单增加启用／停用项，依据被点击对象确定目标状态，复用旧版 eye/eyeOff 图标；回调绑定原工程身份，重复同一停用操作不反转状态。快捷入口继续使用原有选集主项和命令路由，并限制配置有效且无活动事务时执行。
+- 补充多层不同样式、图层组、重复／无效／未配置目标、预览保护、单次历史、无变化、撤销／重做，以及真实右键和快捷键的回归断言。已有 `layerStyleTargets` 对特殊图层类型的过滤比旧版严格，仍列为未完成缺口，本批不宣称完整样式编辑或所有类型兼容。
+- 实际结果：既有目录逐文件单编译器 Release 构建成功，稳定产物仍为 `native/build/Release/moonsprite-native.exe`。`document-layer-groups-tests` 通过，正式程序 `--layer-context-check`、`--color-overlay-check` 均 exit0；覆盖不同样式的多选右键启用／停用、同回调重复执行、单次历史及撤销、真实F9主项状态切换、样式编辑取消／拆分既有回归。来源登记508文件与本批源码whitespace检查通过。未进行新增子菜单的图像验收、所有特殊类型兼容或完整工程保存往返验收。
+
+
+### 2026-10-28 图层样式支持特殊图层目标
+
+- 对照 `workspace-commands-layer-properties.ts::layerStyleOwnerForTarget` 和 `uniqueLayerStyleTargets`，修正 `Document::layerStyleTargets` 错误排除所有 `kind` 非空对象的筛选。现与 Legacy 一致：允许所有已有图层类型及图层组作为样式目标，去重并保持先到顺序，只排除调整层。
+- 复用既有样式预览／取消／提交、metadata history、合成渲染、弹窗、右键菜单及快捷键，不替换组件、算法或图标。没有新增 UI 入口或改变默认值。
+- 回归覆盖普通图层、独立文本对象、真实瓦片层及自由瓦片样式目标元数据。检查样式取消、应用、启停、撤销、原像素和文本／格子／tileset 结构保留；真实 UI 检查包括样式编辑器、右键复制／清除／粘贴／启停及F9。文字和瓦片工程往返验证样式字段和合成像素一致；调整层仍被排除。
+- 实际结果：Release 正式构建成功；`document-layer-groups-tests`、正式程序 `--layer-context-check` 与 `--color-overlay-check` 均 exit0。来源登记508文件、来源快照及本批diff whitespace检查通过。自由瓦片测试仅验证目标准入和已有原生样式操作；其完整资源编辑、导入及导出仍未迁移，不作等价声明。未进行新增UI的图像验收。
+
+
+### 2026-10-28 自由瓦片工程承接与普通层转换
+
+- 对照 Legacy 自由瓦片模型、渲染与工程编解码，接通已有工程的共享源集合、逐帧独立实例、权威像素重建、显示、保存重开、恢复与快照；保留源/实例额外字段，复用现有资源、合成器及历史。详细范围与来源见 `free-tile-project-20261028.md`。
+- 接通原有转换为普通图层命令，全帧保留合成外观，清理不再被持有的源资源，一次历史支持撤销/重做；蒙版被烘焙删除时退出隔离，撤销恢复原上下文。未接通的操作显式禁用，避免编辑派生缓存。
+- 实际结果：正式 Release 构建成功，`free-tile-project-tests`、`tilemap-document-tests` 与正式程序 `--layer-context-check` 通过；本轮前段 `document-layer-groups-tests` 通过。来源登记511文件、来源快照验证通过。修正测试样本工程ID及测试专用栈容量；重编译依赖静态库后菜单运行通过，不混用旧文档结构二进制。
+- TI-004 仍未整体完成：新建/放置、源与实例编辑、剪贴板、尺寸/变换未接通；链接自由瓦片和规则/自由瓦片混用同一可编辑资源暂明确拒绝，保留既有原生schema/尺寸限制。未进行本批UI图像验收，不宣称完整语义或性能等价。
+
+
+### 2026-10-28 自由瓦片新建、源选择与 Paint 放置
+
+- 按 Legacy 新建/共享集合、源默认值、逐帧独立实例和默认 Edit 模式，接入原有顶栏及图层右键；复用 PixelDialog、现有瓦片栏目和图标，不新建栏目或替换素材。
+- Paint 点击放置一次，拖动笔刷不重复盖章；橡皮擦连续路径命中最上层实例矩形，锁定顶层阻挡，静止重复事件不继续删除。承接源/画布偏移、选区和对称；当前帧预览/取消/提交，一次历史可撤销重做，不改共享源或其他帧。
+- 详细边界见 `free-tile-placement-20261028.md`。该批交付时 Edit 入口暂灰显；后续源笔刷/橡皮擦和 Edit 入口承接见 `free-tile-source-brush-20261028.md`。实例移动/属性/剪贴板/变换仍未完成，TI-004 不标为整体完成；增量缓存性能仍有差异。
+- 已通过定向 `free-tile-project-tests`，包含新建/共享、独立帧、放置/擦除、取消/撤销重做、保存重开及锁定/选区保护。保存重开按规范化实例字段和实际像素比较，避免把保存时补齐的默认字段误作权威内容改变。正式 Release 构建成功，正式程序 `--layer-context-check` exit0，真实窗口检查含弹窗取消/新建/共享、源缩略图选择、画布一次点击放置/擦除、Esc取消及撤销重做。检查入口补齐真实桌面挂载和画布布局，正常启动路径不变；未完成本批UI图像或性能验收。
+
+### 2026-10-28 自由瓦片 Edit 源笔刷与橡皮擦
+
+- 复用 Legacy 的源编辑临时栅格、实例方向逆映射、compact 起点及增长、透明裁边、空源规范化、共享源写回及单条历史语义；调用已有普通/动态笔刷实现。接通现有 Edit 按钮、笔刷和橡皮擦，取消或失败恢复源与引用缓存；提交后刷新源缩略图。
+- Shift 连线按 Legacy 的均匀台阶算法或普通 Bresenham 路径生成像素，在点击目标处准备源快照并独立提交历史。右键橡皮擦仅替换与主色 RGBA 完全相同的源像素，覆盖度插值至副色，重复覆盖取最大值。普通笔刷、动态笔刷及图像笔刷都复用既有原生笔划路径。
+- 首次真实画布检查发现共享笔划入口用 `rasterToolsAvailable()` 把自由瓦片层拦在 `Document::beginStroke` 之前；现仅对无蒙版、具有现代源集合且处于 Edit 模式的自由瓦片层开放该入口，源/实例锁定与可见性仍由源编辑准备逻辑检查。该回归由正式程序 `--layer-context-check` 的真实消息路径覆盖。
+- 实际结果：正式 Release 构建成功；`free-tile-project-tests`、`tilemap-document-tests`、`brush-dynamics-tests` 与正式程序 `--layer-context-check` 均 exit0。覆盖线段两种算法及反向绘制、源线独立撤销、替色匹配/插值/重叠/撤销，以及 UI 笔划按下捕获、拖动扩源、释放提交和 Escape 回滚。来源覆盖511文件及证据快照、本批 whitespace 检查通过；未做图像或性能验收。
+- TI-004 仍未整体完成：其他源工具、源/实例属性、实例选择/移动/多选/剪贴板及变换仍有缺口。保留现有原生源256像素和临时栅格16M预算限制；全 timeline 历史和引用缓存重渲染尚不等于 Legacy 全部增量性能方案。
+
+- 本批最终结果：`tilemap-document-tests` 通过，来源覆盖511文件、证据快照及本批diff whitespace检查通过。正式程序已更新至既有唯一Release路径；未提交或推送。
+
+### 2026-10-28 自由瓦片实例列表选择与移动
+
+- 对照 Legacy 集成实例视图与实例移动分支，在自由瓦片图层右键接入“打开实例图层”；返回按钮恢复普通图层和时间轴。列表倒序、单选、Ctrl 切换及 Shift 范围选择使用旧版语义，复用既有时间轴素材和图标。
+- 移动工具在实例视图中拖动所选实例；复用现有放置事务、指针捕获、约束轴及历史。预览从初始位置计算位移，Escape、失焦或捕获丢失取消；一次拖动一条历史，移回原点保留既有重做栈。共享源、实例方向及其他帧不变。
+- 最新 `free-tile-project-tests` 已通过；正式 Release 构建成功，最新 `--layer-context-check` exit0，覆盖真实菜单、列表多选、移动工具栏启用及按钮点击、画布拖动/取消/撤销重做、轴约束按键和返回按钮。查看实例列表截图，补齐旧版返回左箭头的现有 sheet 切片，未重画图标；来源覆盖512文件和证据快照检查通过。详细范围见 `free-tile-instance-move-20261028.md`。
+- 本批不标记 TI-004 整体完成：实例属性、排序、删除、显隐/锁定操作、剪贴板及完整变换仍有缺口；列表状态图标暂只读。现有派生缓存仍只覆盖画布范围，不能声明与 Legacy 性能方案完全等价。

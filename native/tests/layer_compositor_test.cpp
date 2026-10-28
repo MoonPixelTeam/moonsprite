@@ -9,6 +9,10 @@ int main(int argc,char**argv){try{
  auto state=scene();auto result=compositeNormalRegion(Timeline(state),"a",{0,0,3,2});CHECK(result[0]==0xffff0000 && result[1]==0xff7f0080 && result[2]==0xff00ff00);CHECK(result[4]==0xffff0000);
  CHECK(compositeNormalRegion(Timeline(state),"b",{0,0,3,2})==std::vector<Pixel>(6,0));
  auto partial=compositeNormalRegion(Timeline(state),"a",{1,0,1,1});CHECK(partial.size()==1 && partial[0]==result[1]);
+ // A staged owner in another frame is visible through its linked active Cel before installation.
+ {auto linked=state;auto owner=linked.cels[1];owner.id="top-b";owner.frameId="b";linked.cels.push_back(owner);linked.cels[1].surface.reset();linked.cels[1].linkedCelId="top-b";linked.layers[1].visible=false;std::vector<Pixel> staged(6,0x800000ff);CHECK(compositeNormalRegion(Timeline(linked),"a",{0,0,1,1},{},&staged,3,0,0,false,{},"top-b")[0]==0x800000ff);}
+ // Legacy storage-origin metadata is independent from world-space rendering.
+ {auto shifted=state;shifted.cels[0].surface->storageOriginX=-8;shifted.cels[0].surface->storageOriginY=-6;shifted.cels[1].surface->storageOriginX=123;shifted.cels[1].surface->storageOriginY=-456;CHECK(compositeNormalRegion(Timeline(shifted),"a",{0,0,3,2})==result);CHECK(compositeNormalRegion(Timeline(shifted),"a",{1,0,1,1})==partial);}
  std::vector<Pixel> replacement{0xff123456};CHECK(compositeNormalRegion(Timeline(state),"a",{2,1,1,1},"bottom",&replacement,1,2,1)[0]==replacement[0]);
  replacement[0]=0xffffffff;CHECK(compositeNormalRegion(Timeline(state),"a",{1,0,1,1},"bottom",&replacement,1,1,0)[0]==0xff7f7fff);
  state.layers[0].visible=false;CHECK(compositeNormalRegion(Timeline(state),"a",{0,0,3,2})[1]==0xffff0000);

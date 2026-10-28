@@ -18,6 +18,14 @@
     <color id="timelineGrid" value="#000000" />
     <color id="timelineEdge" value="#424F67" />
     <color id="timelineInk" value="#D8DEEA" />
+    <color id="groupNormal" value="#41444A" />
+    <color id="groupNormalInk" value="#636D79" />
+    <color id="groupHover" value="#D9D9D9" />
+    <color id="groupHoverInk" value="#636D79" />
+    <color id="groupActive" value="#C0C0C0" />
+    <color id="groupActiveInk" value="#41444A" />
+    <color id="groupClicked" value="#536069" />
+    <color id="groupClickedInk" value="#C0C0C0" />
   </colors>
   <parts>
     <part id="frame" x="60" y="0" w1="3" w2="3" w3="3" h1="3" h2="3" h3="3" />
@@ -33,15 +41,13 @@
     <part id="panel_tab_join_left" x="100" y="16" w="3" h="3" />
     <part id="panel_tab_join_right" x="104" y="16" w="3" h="3" />
     <!-- User's dialog-reference.png; coordinates are base pixels, rendered at 2x. -->
-    <part id="dialog_frame" x="0" y="36" w1="2" w2="1" w3="2" h1="16" h2="1" h3="4" />
-    <part id="text_button_normal" x="8" y="36" w1="3" w2="1" w3="3" h1="3" h2="11" h3="4" />
-    <part id="text_button_hot" x="20" y="36" w1="3" w2="1" w3="3" h1="3" h2="11" h3="4" />
-    <part id="icon_button_normal" x="0" y="64" w1="2" w2="7" w3="2" h1="2" h2="7" h3="3" />
-    <part id="icon_button_hot" x="12" y="64" w1="2" w2="7" w3="2" h1="2" h2="7" h3="3" />
-    <part id="icon_button_selected" x="24" y="64" w1="2" w2="7" w3="2" h1="2" h2="7" h3="3" />
-    <part id="entry_normal" x="0" y="80" w1="2" w2="1" w3="2" h1="1" h2="12" h3="1" />
-    <part id="slider_normal" x="16" y="80" w1="4" w2="1" w3="4" h1="4" h2="10" h3="4" />
-    <part id="slider_fill" x="40" y="80" w1="1" w2="1" w3="1" h1="1" h2="10" h3="1" />
+    <part id="dialog_frame" x="0" y="36" w1="2" w2="1" w3="2" h1="21" h2="1" h3="4" />
+    <part id="icon_button_normal" x="0" y="64" w1="2" w2="7" w3="2" h1="2" h2="7" h3="2" />
+    <part id="icon_button_hot" x="12" y="64" w1="2" w2="7" w3="2" h1="2" h2="7" h3="2" />
+    <part id="icon_button_selected" x="24" y="64" w1="2" w2="7" w3="2" h1="2" h2="7" h3="2" />
+    <part id="icon_button_pressed" x="36" y="64" w1="2" w2="7" w3="2" h1="2" h2="7" h3="2" />
+    <part id="slider_normal" x="16" y="80" w1="2" w2="1" w3="2" h1="2" h2="11" h3="2" />
+    <part id="slider_fill" x="40" y="80" w1="1" w2="2" w3="0" h1="1" h2="11" h3="1" />
     <part id="role_button_normal" x="48" y="80" w1="2" w2="1" w3="2" h1="2" h2="16" h3="3" />
     <part id="timeline.frame" x="128" y="0" w1="3" w2="3" w3="3" h1="3" h2="3" h3="3" />
     <part id="timeline.button" x="140" y="0" w1="2" w2="3" w3="2" h1="2" h2="3" h3="2" />
@@ -262,23 +268,34 @@
     <part id="new_document.color-mode-indexed" x="17" y="717" w="16" h="7" />
     <part id="new_document.color-mode-grayscale" x="34" y="717" w="14" h="7" />
     <part id="new_document.record-drawing" x="49" y="717" w="16" h="7" />
+    <part id="role_button_hover" x="0" y="728" w1="2" w2="1" w3="2" h1="2" h2="16" h3="3" />
+    <part id="role_button_pressed" x="8" y="728" w1="3" w2="1" w3="3" h1="3" h2="14" h3="4" />
+    <part id="entry_normal" x="24" y="728" w1="2" w2="1" w3="2" h1="3" h2="11" h3="2" />
+    <part id="entry_hover" x="32" y="728" w1="2" w2="1" w3="2" h1="3" h2="11" h3="2" />
+    <part id="switch.container.hover" x="48" y="728" w1="2" w2="1" w3="2" h1="2" h2="13" h3="2" />
+    <part id="icon.folder" x="0" y="764" w="11" h="11" />
+    <part id="icon.folder-disabled" x="12" y="764" w="11" h="11" />
+    <part id="icon.folderOpen" x="24" y="764" w="11" h="11" />
+    <part id="icon.folderOpen-disabled" x="36" y="764" w="11" h="11" />
+    <part id="icon.left" x="48" y="764" w="5" h="5" />
+    <part id="icon.left-disabled" x="60" y="764" w="5" h="5" />
+    <part id="icon.rotateClockwise90" x="72" y="764" w="11" h="11" />
+    <part id="icon.rotateClockwise90-disabled" x="84" y="764" w="11" h="11" />
+    <part id="icon.selectionFlipHorizontal" x="96" y="764" w="11" h="11" />
+    <part id="icon.selectionFlipHorizontal-disabled" x="108" y="764" w="11" h="11" />
+    <part id="icon.selectionFlipVertical" x="120" y="764" w="11" h="11" />
+    <part id="icon.selectionFlipVertical-disabled" x="132" y="764" w="11" h="11" />
   </parts>
   <styles>
     <style id="role_button.normal">
       <background-border part="role_button_normal" />
     </style>
-    <style id="button">
-      <background-border part="icon_button_normal" />
-      <text color="text" />
-      <background-border part="icon_button_hot" state="mouse" />
-      <text color="text" state="mouse" />
-      <background-border part="icon_button_selected" state="selected" />
-      <text color="text" state="selected" />
-      <background-border part="icon_button_normal" state="disabled" />
-      <text color="muted" state="disabled" />
-      <background-border part="icon_button_hot" state="focus" />
-      <text color="text" state="focus" />
-    </style>
+    <style id="button.normal"><background-border part="icon_button_normal" /><text color="text" /></style>
+    <style id="button.hover"><background-border part="icon_button_hot" /><text color="text" /></style>
+    <style id="button.pressed"><background-border part="icon_button_pressed" /><text color="text" /></style>
+    <style id="button.selected"><background-border part="icon_button_selected" /><text color="text" /></style>
+    <style id="button.focus"><background-border part="icon_button_hot" /><text color="text" /></style>
+    <style id="button.disabled"><background-border part="icon_button_normal" /><text color="muted" /></style>
     <style id="panel">
       <background-border part="dock_frame" />
     </style>
@@ -325,27 +342,27 @@
       <background-border part="dialog_frame" />
     </style>
     <style id="text_button.normal">
-      <background-border part="text_button_normal" />
+      <background-border part="icon_button_normal" />
       <text color="textButtonLabel" />
     </style>
     <style id="text_button.hover">
-      <background-border part="text_button_hot" />
+      <background-border part="icon_button_hot" />
       <text color="textButtonLabel" />
     </style>
     <style id="text_button.pressed">
-      <background-border part="text_button_hot" />
+      <background-border part="icon_button_pressed" />
       <text color="textButtonLabel" />
     </style>
     <style id="text_button.selected">
-      <background-border part="text_button_hot" />
+      <background-border part="icon_button_selected" />
       <text color="textButtonLabel" />
     </style>
     <style id="text_button.focus">
-      <background-border part="text_button_hot" />
+      <background-border part="icon_button_hot" />
       <text color="textButtonLabel" />
     </style>
     <style id="text_button.disabled">
-      <background-border part="text_button_normal" />
+      <background-border part="icon_button_normal" />
       <text color="muted" />
     </style>
     <style id="icon_button.normal">
@@ -355,7 +372,7 @@
       <background-border part="icon_button_hot" />
     </style>
     <style id="icon_button.pressed">
-      <background-border part="icon_button_selected" />
+      <background-border part="icon_button_pressed" />
     </style>
     <style id="icon_button.selected">
       <background-border part="icon_button_selected" />
@@ -923,5 +940,21 @@
     <style id="new_document.color-mode-indexed"><icon part="new_document.color-mode-indexed" /></style>
     <style id="new_document.color-mode-grayscale"><icon part="new_document.color-mode-grayscale" /></style>
     <style id="new_document.record-drawing"><icon part="new_document.record-drawing" /></style>
+    <style id="role_button.hover"><background-border part="role_button_hover" /></style>
+    <style id="role_button.pressed"><background-border part="role_button_pressed" /></style>
+    <style id="entry.hover"><background-border part="entry_hover" /></style>
+    <style id="switch.container.hover"><background-border part="switch.container.hover" /></style>
+    <style id="icon.folder"><icon part="icon.folder" /></style>
+    <style id="icon.folder-disabled"><icon part="icon.folder-disabled" /></style>
+    <style id="icon.folderOpen"><icon part="icon.folderOpen" /></style>
+    <style id="icon.folderOpen-disabled"><icon part="icon.folderOpen-disabled" /></style>
+    <style id="icon.left"><icon part="icon.left" /></style>
+    <style id="icon.left-disabled"><icon part="icon.left-disabled" /></style>
+    <style id="icon.rotateClockwise90"><icon part="icon.rotateClockwise90" /></style>
+    <style id="icon.rotateClockwise90-disabled"><icon part="icon.rotateClockwise90-disabled" /></style>
+    <style id="icon.selectionFlipHorizontal"><icon part="icon.selectionFlipHorizontal" /></style>
+    <style id="icon.selectionFlipHorizontal-disabled"><icon part="icon.selectionFlipHorizontal-disabled" /></style>
+    <style id="icon.selectionFlipVertical"><icon part="icon.selectionFlipVertical" /></style>
+    <style id="icon.selectionFlipVertical-disabled"><icon part="icon.selectionFlipVertical-disabled" /></style>
   </styles>
 </theme>

@@ -1,0 +1,11 @@
+#include "text_font_service.h"
+#include <chrono>
+#include <iostream>
+#include <stdexcept>
+#define CHECK(...) do{if(!(__VA_ARGS__))throw std::runtime_error(#__VA_ARGS__);}while(false)
+using namespace moon;
+int wmain(int argc,wchar_t** argv){try{
+ CHECK(argc==3);const std::filesystem::path bundled=std::filesystem::path(argv[1]),base=std::filesystem::path(argv[2]);const auto run=base/("text-font-test-"+std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));std::filesystem::create_directories(run);const auto library=run/"Font",settings=run/"preferences"/"fonts.txt";TextFontService fonts(library,bundled,settings);auto options=fonts.catalog();CHECK(options.size()>=4);CHECK(options[0].family==defaultTextFontFamily&&options[0].builtIn&&!options[0].imported);CHECK(options[1].family=="Silkscreen"&&options[2].family=="Tiny5");auto provider=fonts.provider();for(const auto* family:{defaultTextFontFamily,"Silkscreen","Tiny5"}){auto g=provider(family,10,U'A',192);CHECK(g&&g->width>0&&g->height>0&&g->alpha.size()==std::size_t(g->width)*g->height);for(auto alpha:g->alpha)CHECK(alpha==0||alpha==255);auto smooth=provider(family,10,U'A',1);CHECK(smooth&&smooth->width>0);}CHECK(!provider(defaultTextFontFamily,10,U' ',192));CHECK(!fonts.systemFamilies().empty());bool protectedBuiltin=false;try{fonts.erase(defaultTextFontFamily);}catch(const std::exception&){protectedBuiltin=true;}CHECK(protectedBuiltin);
+ fonts.recordSize(17);fonts.recordUsage("Tiny5");CHECK(fonts.catalog().front().family=="Tiny5");TextFontService restored(library,bundled,settings);CHECK(restored.lastSize()==17&&restored.catalog().front().family=="Tiny5");const auto local=run/"fixture.ttf";std::filesystem::copy_file(bundled/"moonsprite-builtin-silkscreen-regular.ttf",local);auto imported=restored.importFile(local);CHECK(imported.imported&&!imported.builtIn&&std::filesystem::is_regular_file(imported.file));CHECK(restored.importFile(local).file==imported.file);restored.erase(imported.id);CHECK(!std::filesystem::exists(imported.file));
+ std::cout<<"Native font decoding/threshold/import/preferences fixtures passed; scratch: "<<run.u8string()<<"\n";return 0;
+}catch(const std::exception& e){std::cerr<<e.what()<<'\n';return 1;}}

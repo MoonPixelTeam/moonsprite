@@ -1,0 +1,11 @@
+#include "pixel_grid.h"
+#include "document.h"
+#include "document_snapshot.h"
+#include "project_encode.h"
+#include "project_import.h"
+#include "editor_preferences.h"
+#include <iostream>
+#include <stdexcept>
+#define CHECK(x) do{if(!(x))throw std::runtime_error(#x);}while(false)
+using namespace moon;
+int main(){try{CHECK(!shouldRenderPixelGrid(7.999)&&shouldRenderPixelGrid(8)&&!shouldRenderPixelGrid(NAN));CHECK(pixelGridLines(-3,16,4,0,60)==std::vector<int>({13,29,45}));Document d(2,2);d.markSaved();auto h=d.historySize(),r=d.revision(),c=d.contentRevision();d.setPixelGrid(true);CHECK(d.showPixelGrid()&&d.dirty()&&d.historySize()==h&&d.revision()==r+1&&d.contentRevision()==c+1);d.setCustomGrid(true,{-3.9,4.8,0,7.9});CHECK(d.customGrid()==(GridSettings{-3,4,1,7})&&d.showCustomGrid()&&d.historySize()==h);DocumentSnapshot snapshot(d);while(!snapshot.advance(d,std::chrono::steady_clock::now()+std::chrono::seconds(1))){}auto frozen=snapshot.finish();CHECK(frozen.showPixelGrid()&&frozen.showCustomGrid()&&frozen.customGrid()==d.customGrid());auto encoded=project::encodeEditableProject(frozen);auto manifest=project::readProjectManifest(encoded.bytes);CHECK(manifest.showPixelGrid&&project::prepareEditableImport(manifest).showPixelGrid);CHECK(manifest.showCustomGrid&&manifest.customGrid==d.customGrid()&&project::prepareEditableImport(manifest).customGrid==d.customGrid());CHECK(gridLinePositions(3,1,0,20,.5)==std::vector<double>({3,11,19}));CHECK(gridLinePositions(1,2,-10,10,1)==std::vector<double>({-7,-3,1,5,9}));CHECK(gridLinePositions(0,1,0,1e100,1).empty());d.setPixelGrid(false);encoded=project::encodeEditableProject(d);CHECK(!project::readProjectManifest(encoded.bytes).showPixelGrid);preferences::RuntimeSettings prefs;CHECK(prefs.get("appearance.pixelGridColor")=="#454D5C8F");prefs.set("appearance.pixelGridColor","#12345678");prefs.set("appearance.gridColor","#12345678");std::istringstream text(prefs.encode());CHECK(preferences::RuntimeSettings::decode(text).get("appearance.pixelGridColor")=="#12345678");std::cout<<"Pixel grid threshold, clipped lines, touch/history, snapshot/project and RGBA preference passed\n";return 0;}catch(const std::exception&e){std::cerr<<e.what()<<'\n';return 1;}}

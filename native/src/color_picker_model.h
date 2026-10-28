@@ -2,9 +2,15 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
+#include "javascript_text.h"
 
 namespace moon {
 // Literal numerical port of legacy/core/raster.ts and ColorPicker.tsx.
+// Exact legacy color-values::parseRgbaHex; packing adapts RGBA to native low-byte red.
+inline bool pickerParseRgbaHex(std::u32string_view text,std::uint32_t& result,int fallbackAlpha=255){
+  text=javascriptTrim(text);if(!text.empty() && text.front()==U'#')text.remove_prefix(1);if(text.size()!=6 && text.size()!=8)return false;
+  std::uint32_t color=std::uint32_t(fallbackAlpha)<<24;for(std::size_t i=0;i<text.size()/2;++i){unsigned value=0;for(int n=0;n<2;++n){const auto c=text[i*2+n];unsigned digit;if(c>=U'0'&&c<=U'9')digit=c-U'0';else if(c>=U'a'&&c<=U'f')digit=c-U'a'+10;else if(c>=U'A'&&c<=U'F')digit=c-U'A'+10;else return false;value=value*16+digit;}color=(color&~(255u<<(8*i)))|(value<<(8*i));}result=color;return true;
+}
 struct PickerHsv {double h=0,s=0,v=0;};
 inline double pickerUnit(double v) {return std::clamp(v,0.0,1.0);}
 inline double pickerHue(double v) {return std::fmod(std::fmod(v,360.0)+360.0,360.0);}

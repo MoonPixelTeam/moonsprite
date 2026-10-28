@@ -39,3 +39,16 @@ Tool rail material deduplication: tools and horizontal flyouts explicitly reuse 
 2026-10-15 滚动条素材：用户scrollbar-reference.png四组中，第一组仅为组合示意；sheet实际存储轨道、悬浮滑块、正常滑块，并按像素旋转提供纵向版本。horizontal track/hover/normal位于(320,620)/(336,620)/(352,620)，vertical位于(368,620)/(380,620)/(392,620)。轨道总厚度7px（1×）、滑块可见厚度5px，正常#424F67、悬浮#63738F。滑块透明的1px侧沿保留轨道描边；仅沿滚动轴拉伸，中间纯色区域可重复。组合时横向滑块在轨道长度方向内缩1px，厚度方向不内缩；纵向同理。不要把第一组组合图再作为独立滑块使用。本轮仅加入皮肤素材，滚动条控件及交互未在此任务迁移。
 
 本批验证：六块素材490像素与原图裁剪/旋转逐像素一致，正常组合91像素与原图第一组完全一致；theme-atlas通过，来源覆盖检查通过。正式程序构建未完成，当前main.cpp偏好设置相关代码有protected/private访问及菜单caption成员错误；本批不声明控件实装或正式程序已更新。
+
+2026-10-28：自由瓦片实例视图返回按钮复用 legacy/src/renderer/src/components/PixelUtilityIcon.tsx 的 left 原始5×5路径，与 LayersPanel.tsx 的返回按钮一致。正常/禁用状态逐像素转入 sheet (48,764)/(60,764)，各5×5；对应 icon.left/icon.left-disabled，可直接替换素材。原始路径转存 assets/utility-icons/left.svg，未重画图标。
+
+### 自由瓦片实例右键图标
+
+来源：`legacy/src/renderer/src/components/PixelUtilityIcon.tsx`，保留路径及透明度。
+
+- `icon.rotateClockwise90`：sheet `(72,764,11,11)`。
+- `icon.rotateClockwise90-disabled`：sheet `(84,764,11,11)`。
+- `icon.selectionFlipHorizontal`：sheet `(96,764,11,11)`。
+- `icon.selectionFlipHorizontal-disabled`：sheet `(108,764,11,11)`。
+- `icon.selectionFlipVertical`：sheet `(120,764,11,11)`。
+- `icon.selectionFlipVertical-disabled`：sheet `(132,764,11,11)`。

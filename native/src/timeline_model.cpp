@@ -1,4 +1,5 @@
 #include "timeline_model.h"
+#include "layer_blend.h"
 #include <cmath>
 #include <algorithm>
 #ifdef _WIN32
@@ -35,7 +36,8 @@ SelectionCacheStats celSelectionCacheStats(){std::lock_guard<std::mutex> lock(se
 namespace {
 void requireId(const std::string& id) {if(id.empty()) throw std::invalid_argument("Timeline ID must not be empty");}
 void checkLayer(const Layer& layer) {
-  requireId(layer.id);
+  requireId(layer.id);if(!layer.linkedContentId.empty()&&(!layer.kind.empty()||layer.background))throw std::invalid_argument("Special/background layers cannot share linked raster content");
+  if(!parseLayerBlendMode(layer.blendMode))throw std::invalid_argument("Invalid layer blend mode");
   if(!std::isfinite(layer.opacity) || layer.opacity<0 || layer.opacity>1) throw std::invalid_argument("Invalid layer opacity");
 }
 void checkFrame(const Frame& frame) {
@@ -43,18 +45,50 @@ void checkFrame(const Frame& frame) {
 }
 constexpr std::size_t missing=std::numeric_limits<std::size_t>::max();
 }
-Timeline::Timeline(State state):state_(std::move(state)) {buildIndex();}
-Timeline::Timeline(const Timeline& other):visibleContent_(other.visibleContent_),contentScans_(other.contentScans_),state_(other.state_),layers_(other.layers_),frames_(other.frames_),cels_(other.cels_),slots_(other.slots_),resolved_(other.resolved_) {}
+namespace {
+void validateTilemapState(const State& s){
+ std::unordered_map<std::string,const tiles::Tileset*> sets;
+ for(const auto& t:s.tilesets){tiles::sizeCheck(t.tileWidth,t.tileHeight,t.columns,t.rows,true);if(t.id.empty()||!sets.emplace(t.id,&t).second||t.tileIds.empty()||t.tileIds.size()>std::size_t(t.columns)*t.rows||t.pixels.size()!=std::size_t(t.columns)*t.rows*t.tileWidth*t.tileHeight||t.tileSlots.size()>tiles::MaxLayoutSlots)throw std::invalid_argument("Invalid tileset");std::unordered_set<std::string> ids,slots;for(const auto& id:t.tileIds)if(id.empty()||!ids.insert(id).second)throw std::invalid_argument("Duplicate tile ID");for(const auto& id:t.tileSlots)if(id&&(!ids.count(*id)||!slots.insert(*id).second))throw std::invalid_argument("Invalid tile slot");}
+ tiles::Catalog catalog(s.tilesets);
+ for(const auto& l:s.layers){const auto owner=sets.find(l.tilemapTilesetId);if(l.kind=="tilemap"&&owner==sets.end())throw std::invalid_argument("Missing layer tileset");for(const auto& c:s.cels)if(c.layerId==l.id){if(l.kind!="tilemap"){if(c.tilemap)throw std::invalid_argument("Tile cells on raster layer");continue;}if(!c.tilemap&&!c.linkedCelId)throw std::invalid_argument("Missing tilemap metadata");if(!c.tilemap)continue;const auto& grid=*c.tilemap;tiles::sizeCheck(grid.tileWidth,grid.tileHeight,grid.columns,grid.rows);if(grid.cells.size()!=std::size_t(grid.columns)*grid.rows||grid.tileWidth!=owner->second->tileWidth||grid.tileHeight!=owner->second->tileHeight)throw std::invalid_argument("Invalid tilemap grid");for(const auto& v:grid.cells)if(v){auto t=sets.find(v->tilesetId);if(t==sets.end()||t->second->tileWidth!=grid.tileWidth||t->second->tileHeight!=grid.tileHeight||!catalog.indexes.at(v->tilesetId).find(v->tileId)||v->rotation<0||v->rotation>3)throw std::invalid_argument("Invalid tile reference");}}}
+}
+}
+namespace {
+void validateFreeTileState(const State& s){
+ std::map<std::string,const free_tiles::LayerData*> shared;
+ for(const auto& l:s.layers){
+  if(l.kind!="free-tile"){if(l.freeTiles)throw std::invalid_argument("Free tile sources on another layer kind");}
+  else {if(!l.freeTiles||l.freeTiles->setId.empty())throw std::invalid_argument("Missing free tile source set");free_tiles::validate(*l.freeTiles,{},s.tilesets);auto found=shared.emplace(l.freeTiles->setId,&*l.freeTiles);if(!found.second&&([&]{auto a=*found.first->second,b=*l.freeTiles;for(auto& v:a.sources)v.preservedJson.clear();for(auto& v:b.sources)v.preservedJson.clear();return a!=b;})())throw std::invalid_argument("Inconsistent shared free tile source set");}
+  for(const auto& c:s.cels)if(c.layerId==l.id){if(l.kind!="free-tile"){if(c.freeTiles)throw std::invalid_argument("Free tile instances on another layer kind");continue;}if(!c.freeTiles||c.linkedCelId||c.runtimeSharedCelId||c.text||c.tilemap)throw std::invalid_argument("Free tile cels must own independent instances");free_tiles::validate(*l.freeTiles,*c.freeTiles,s.tilesets);}
+ }
+}
+}
+Timeline::Timeline(State state):state_(std::move(state)) {buildIndex();validateMasks(state_);validateTilemapState(state_);validateFreeTileState(state_);}
+namespace {
+bool inheritedGroupFlag(const State& state,std::optional<std::string> id,bool visibility){std::size_t visited=0;while(id){if(++visited>state.groups.size())throw std::invalid_argument("Cyclic group ancestry");const auto found=std::find_if(state.groups.begin(),state.groups.end(),[&](const auto& g){return g.id==*id;});if(found==state.groups.end())throw std::invalid_argument("Unknown group ancestry");if(visibility&&!found->visible)return false;if(!visibility&&found->locked)return true;id=found->parentGroupId;}return visibility;}
+}
+bool isGroupEffectivelyVisible(const State& s,const Group& g){return g.visible&&inheritedGroupFlag(s,g.parentGroupId,true);}
+bool isGroupEffectivelyLocked(const State& s,const Group& g){return g.locked||inheritedGroupFlag(s,g.parentGroupId,false);}
+bool isLayerEffectivelyVisible(const State& s,const Layer& l){return l.visible&&inheritedGroupFlag(s,l.groupId,true);}
+bool isLayerEffectivelyLocked(const State& s,const Layer& l){return l.locked||inheritedGroupFlag(s,l.groupId,false);}
+Timeline::Timeline(const Timeline& other):visibleContent_(other.visibleContent_),contentScans_(other.contentScans_),state_(other.state_),layers_(other.layers_),frames_(other.frames_),cels_(other.cels_),slots_(other.slots_),resolved_(other.resolved_) {synchronizeLinkedLayers();}
 Timeline& Timeline::operator=(const Timeline& other){if(this!=&other){Timeline copy(other);*this=std::move(copy);}return *this;}
 
 void Timeline::buildIndex() {
+  invalidateCompositeOrder();
   selectionContent_.clear();
+  thumbnailStorage_.clear();
   visibleContent_.clear();
   layers_.clear();frames_.clear();cels_.clear();slots_.clear();resolved_.clear();
   for(std::size_t i=0;i<state_.layers.size();++i) {
     const auto& layer=state_.layers[i];checkLayer(layer);
     if(!layers_.emplace(layer.id,i).second) throw std::invalid_argument("Duplicate layer ID: "+layer.id);
   }
+  std::unordered_map<std::string,const Group*> groups;
+  for(const auto& group:state_.groups){requireId(group.id);if(layers_.count(group.id)||!groups.emplace(group.id,&group).second)throw std::invalid_argument("Duplicate group/layer ID: "+group.id);if(!std::isfinite(group.opacity)||group.opacity<0||group.opacity>1||!parseLayerBlendMode(group.blendMode)||(group.panelOrder&&!std::isfinite(*group.panelOrder)))throw std::invalid_argument("Invalid group metadata");}
+  std::unordered_set<std::string> verified;
+  for(const auto& group:state_.groups){std::unordered_set<std::string> path;const Group* current=&group;while(current&&!verified.count(current->id)){if(!path.insert(current->id).second)throw std::invalid_argument("Cyclic group parent");if(!current->parentGroupId)break;const auto parent=groups.find(*current->parentGroupId);if(parent==groups.end())throw std::invalid_argument("Unknown group parent");current=parent->second;}verified.insert(path.begin(),path.end());}
+  for(const auto& layer:state_.layers)if(layer.groupId&&!groups.count(*layer.groupId))throw std::invalid_argument("Unknown layer group");
   for(std::size_t i=0;i<state_.frames.size();++i) {
     const auto& frame=state_.frames[i];checkFrame(frame);
     if(!frames_.emplace(frame.id,i).second) throw std::invalid_argument("Duplicate frame ID: "+frame.id);
@@ -64,6 +98,7 @@ void Timeline::buildIndex() {
     if(!cels_.emplace(cel.id,i).second) throw std::invalid_argument("Duplicate cel ID: "+cel.id);
     if(!slots_.emplace(std::make_pair(cel.layerId,cel.frameId),i).second) throw std::invalid_argument("Duplicate layer/frame cel slot");
   }
+  synchronizeLinkedLayers();
 }
 void Timeline::checkCel(const Cel& cel) const {
   requireId(cel.id);
@@ -169,6 +204,7 @@ void Timeline::addLayer(Layer layer) {
   state_.layers.push_back(std::move(layer));
   try {layers_.emplace(state_.layers.back().id,state_.layers.size()-1);}
   catch(...) {state_.layers.pop_back();throw;}
+  invalidateCompositeOrder();
 }
 void Timeline::addFrame(Frame frame) {
   checkFrame(frame);if(frames_.count(frame.id)) throw std::invalid_argument("Duplicate frame ID: "+frame.id);
@@ -187,13 +223,14 @@ void Timeline::addCel(Cel cel) {
   } catch(...) {cels_.erase(state_.cels.back().id);slots_.erase(key);state_.cels.pop_back();throw;}
   // A previously dangling link may now resolve to this newly inserted cel.
   resolved_.clear();
+  invalidateCompositeOrder();
+}
+Timeline::StorageStamp Timeline::thumbnailStorage(const std::string& celId) const {
+  const auto resolved=resolveSurface(celId);if(!resolved.source||!resolved.surface)return {};
+  auto& stamp=thumbnailStorage_[resolved.source->id];if(!stamp.owner)stamp.owner=std::make_shared<int>(0);return stamp;
 }
 Surface* Timeline::mutableOwnedSurface(const std::string& ownerCelId) {
-  selectionContent_.erase(ownerCelId);
-  visibleContent_.erase(ownerCelId);
-  const auto found=cels_.find(ownerCelId);
-  if(found==cels_.end()) return nullptr;
-  auto& source=state_.cels[found->second];return source.surface?&*source.surface:nullptr;
+ const auto found=cels_.find(ownerCelId);if(found==cels_.end())return nullptr;auto& source=state_.cels[found->second];linkedDirtyOwner_=ownerCelId;if(source.surface)for(const auto& c:state_.cels)if(c.surface&&c.surface->pixels.identity()==source.surface->pixels.identity()){selectionContent_.erase(c.id);visibleContent_.erase(c.id);++thumbnailStorage_[c.id].revision;}return source.surface?&*source.surface:nullptr;
 }
 PixelChange Timeline::setPixel(const std::string& celId,std::size_t localIndex,Pixel color) {
   const auto result=resolveIndex(celId);
@@ -202,8 +239,7 @@ PixelChange Timeline::setPixel(const std::string& celId,std::size_t localIndex,P
   if(!owner.surface) throw std::logic_error("Cannot paint an unmaterialized cel surface");
   if(localIndex>=owner.surface->pixels.size()) throw std::out_of_range("Pixel outside cel surface");
   PixelChange change{owner.id,localIndex,owner.surface->pixels[localIndex],color,result.issue};
-  if(change.changed()){selectionContent_.erase(owner.id);visibleContent_.erase(owner.id);}
-  owner.surface->pixels[localIndex]=color;
+  if(change.changed())mutableOwnedSurface(owner.id)->pixels[localIndex]=color;
   return change;
 }
 // Native counterpart of JS localeCompare for equal-range labels.

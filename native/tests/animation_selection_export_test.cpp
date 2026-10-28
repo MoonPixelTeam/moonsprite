@@ -1,0 +1,15 @@
+#include "gif_export.h"
+#include "webp_export.h"
+#include <iostream>
+using namespace moon;
+void check(bool value,const char* message){if(!value)throw std::runtime_error(message);}
+struct SelectionCase {int x,y,w,h,trim,scale,start,end;bool reverse,protection,irregular;int width,height,count;unsigned long long hash;};
+const SelectionCase oracleCases[]={
+{2,0,4,4,0,150,1,4,false,false,false,6,6,4,9130220584161038101ull},
+{2,0,4,4,2,150,2,3,true,false,true,5,3,2,17906487800075691109ull},
+{0,0,1,1,2,100,1,4,false,false,false,1,1,4,9808874869469701221ull},
+{-2,-1,4,3,0,100,1,4,false,false,false,4,3,4,1322914479141900076ull},
+{8,9,3,2,0,100,1,4,false,false,false,1,1,4,9808874869469701221ull},
+{2,0,4,4,1,400,1,2,false,true,false,12,8,2,3743303481946480403ull}
+};
+int main(){try{Document d(6,4);d.beginStroke({1,1},0xff0000ff);d.commitStroke();d.beginStroke({4,2},0x80ff0000);d.commitStroke();d.addFrame();d.beginStroke({2,1},0xff00ff00);d.commitStroke();d.addFrame();d.setSelectedFramesDisabled(true);d.addFrame();d.beginStroke({3,2},0xff00ffff);d.commitStroke();d.markSaved();const auto history=d.historySize(),revision=d.revision();const auto source=d.pixels();for(const auto& c:oracleCases){SelectionMask selection{c.x,c.y,c.w,c.h,{}};if(c.irregular){selection.mask.resize(c.w*c.h);selection.mask.front()=selection.mask.back()=1;}d.previewSelection(selection);GifExportOptions options;options.selection=true;options.trim=c.trim!=0;options.trimCommon=c.trim==2;options.scalePercent=c.scale;options.frameStart=c.start;options.frameEnd=c.end;options.direction=c.reverse?GifDirection::Reverse:GifDirection::Forward;options.protection=c.protection?ExportProtection::Blur:ExportProtection::Off;auto prepared=prepareAnimationExport(d,options);unsigned long long hash=14695981039346656037ull;for(const auto& frame:prepared.frames)for(Pixel pixel:frame)for(int channel=0;channel<4;++channel){hash^=(pixel>>(channel*8))&255;hash*=1099511628211ull;}check(prepared.width==c.width&&prepared.height==c.height&&prepared.frames.size()==c.count&&hash==c.hash,"Actual original worker/prepare raster mismatch");auto gif=encodeAnimationGif(d,options),webp=encodeAnimationWebp(d,options);check(gif.width==c.width&&gif.height==c.height&&webp.width==c.width&&webp.height==c.height&&gif.frameIds==webp.frameIds,"Shared GIF/WebP selection integration");check(d.historySize()==history&&d.revision()==revision&&!d.dirty()&&d.pixels()==source&&selectionEqual(d.selection(),selection),"Selection export changed source");}GifExportOptions options;options.selection=true;d.previewSelection({});bool missing=false;try{prepareAnimationExport(d,options);}catch(const std::invalid_argument&){missing=true;}check(missing,"Missing selection accepted");d.previewSelection(SelectionMask{1,1,2,2,{}});options.layerId=d.layer().id;bool exclusive=false;try{prepareAnimationExport(d,options);}catch(const std::invalid_argument&){exclusive=true;}check(exclusive,"Selection and layer ambiguity accepted");std::cout<<"Animation selection six original worker rasters, GIF/WebP integration and source boundaries passed\n";return 0;}catch(const std::exception& e){std::cerr<<e.what()<<"\n";return 1;}}

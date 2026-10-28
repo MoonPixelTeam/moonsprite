@@ -5,6 +5,51 @@
 using namespace moon;
 static void require(bool condition) {if(!condition) throw std::runtime_error("Color picker legacy contract failed");}
 int main() {
+  // Actual original color-values::parseRgbaHex 43-case oracle.
+{std::uint32_t parsed=0x12345678;const bool valid=pickerParseRgbaHex(U"112233",parsed,0);require(valid && parsed==0x332211u);}
+{std::uint32_t parsed=0x12345678;const bool valid=pickerParseRgbaHex(U"#aAbBcC",parsed,127);require(valid && parsed==0x7fccbbaau);}
+{std::uint32_t parsed=0x12345678;const bool valid=pickerParseRgbaHex(U"11223300",parsed,255);require(valid && parsed==0x332211u);}
+{std::uint32_t parsed=0x12345678;const bool valid=pickerParseRgbaHex(U"#01020380",parsed,0);require(valid && parsed==0x80030201u);}
+{std::uint32_t parsed=0x12345678;const bool valid=pickerParseRgbaHex(U"+11223",parsed,127);require(!valid && parsed==0x12345678);}
+{std::uint32_t parsed=0x12345678;const bool valid=pickerParseRgbaHex(U"11+233",parsed,255);require(!valid && parsed==0x12345678);}
+{std::uint32_t parsed=0x12345678;const bool valid=pickerParseRgbaHex(U"11-133",parsed,0);require(!valid && parsed==0x12345678);}
+{std::uint32_t parsed=0x12345678;const bool valid=pickerParseRgbaHex(U"11 233",parsed,127);require(!valid && parsed==0x12345678);}
+{std::uint32_t parsed=0x12345678;const bool valid=pickerParseRgbaHex(U"12345",parsed,255);require(!valid && parsed==0x12345678);}
+{std::uint32_t parsed=0x12345678;const bool valid=pickerParseRgbaHex(U"1234567",parsed,0);require(!valid && parsed==0x12345678);}
+{std::uint32_t parsed=0x12345678;const bool valid=pickerParseRgbaHex(U"123456789",parsed,127);require(!valid && parsed==0x12345678);}
+{std::uint32_t parsed=0x12345678;const bool valid=pickerParseRgbaHex(U"#GG2233",parsed,255);require(!valid && parsed==0x12345678);}
+{std::uint32_t parsed=0x12345678;const bool valid=pickerParseRgbaHex(U"##112233",parsed,0);require(!valid && parsed==0x12345678);}
+{std::uint32_t parsed=0x12345678;const bool valid=pickerParseRgbaHex(U"0x112233",parsed,127);require(!valid && parsed==0x12345678);}
+{std::uint32_t parsed=0x12345678;const bool valid=pickerParseRgbaHex(U"",parsed,255);require(!valid && parsed==0x12345678);}
+{std::uint32_t parsed=0x12345678;const bool valid=pickerParseRgbaHex(U"\u0085112233",parsed,0);require(!valid && parsed==0x12345678);}
+{std::uint32_t parsed=0x12345678;const bool valid=pickerParseRgbaHex(U"\u200b112233",parsed,127);require(!valid && parsed==0x12345678);}
+{std::uint32_t parsed=0x12345678;const bool valid=pickerParseRgbaHex(U"11\u30002233",parsed,255);require(!valid && parsed==0x12345678);}
+{std::uint32_t parsed=0x12345678;const bool valid=pickerParseRgbaHex(U"\u0009#123456\u0009",parsed,0);require(valid && parsed==0x563412u);}
+{std::uint32_t parsed=0x12345678;const bool valid=pickerParseRgbaHex(U"\u000a#123456\u000a",parsed,127);require(valid && parsed==0x7f563412u);}
+{std::uint32_t parsed=0x12345678;const bool valid=pickerParseRgbaHex(U"\u000b#123456\u000b",parsed,255);require(valid && parsed==0xff563412u);}
+{std::uint32_t parsed=0x12345678;const bool valid=pickerParseRgbaHex(U"\u000c#123456\u000c",parsed,0);require(valid && parsed==0x563412u);}
+{std::uint32_t parsed=0x12345678;const bool valid=pickerParseRgbaHex(U"\u000d#123456\u000d",parsed,127);require(valid && parsed==0x7f563412u);}
+{std::uint32_t parsed=0x12345678;const bool valid=pickerParseRgbaHex(U" #123456 ",parsed,255);require(valid && parsed==0xff563412u);}
+{std::uint32_t parsed=0x12345678;const bool valid=pickerParseRgbaHex(U"\u00a0#123456\u00a0",parsed,0);require(valid && parsed==0x563412u);}
+{std::uint32_t parsed=0x12345678;const bool valid=pickerParseRgbaHex(U"\u1680#123456\u1680",parsed,127);require(valid && parsed==0x7f563412u);}
+{std::uint32_t parsed=0x12345678;const bool valid=pickerParseRgbaHex(U"\u2000#123456\u2000",parsed,255);require(valid && parsed==0xff563412u);}
+{std::uint32_t parsed=0x12345678;const bool valid=pickerParseRgbaHex(U"\u2001#123456\u2001",parsed,0);require(valid && parsed==0x563412u);}
+{std::uint32_t parsed=0x12345678;const bool valid=pickerParseRgbaHex(U"\u2002#123456\u2002",parsed,127);require(valid && parsed==0x7f563412u);}
+{std::uint32_t parsed=0x12345678;const bool valid=pickerParseRgbaHex(U"\u2003#123456\u2003",parsed,255);require(valid && parsed==0xff563412u);}
+{std::uint32_t parsed=0x12345678;const bool valid=pickerParseRgbaHex(U"\u2004#123456\u2004",parsed,0);require(valid && parsed==0x563412u);}
+{std::uint32_t parsed=0x12345678;const bool valid=pickerParseRgbaHex(U"\u2005#123456\u2005",parsed,127);require(valid && parsed==0x7f563412u);}
+{std::uint32_t parsed=0x12345678;const bool valid=pickerParseRgbaHex(U"\u2006#123456\u2006",parsed,255);require(valid && parsed==0xff563412u);}
+{std::uint32_t parsed=0x12345678;const bool valid=pickerParseRgbaHex(U"\u2007#123456\u2007",parsed,0);require(valid && parsed==0x563412u);}
+{std::uint32_t parsed=0x12345678;const bool valid=pickerParseRgbaHex(U"\u2008#123456\u2008",parsed,127);require(valid && parsed==0x7f563412u);}
+{std::uint32_t parsed=0x12345678;const bool valid=pickerParseRgbaHex(U"\u2009#123456\u2009",parsed,255);require(valid && parsed==0xff563412u);}
+{std::uint32_t parsed=0x12345678;const bool valid=pickerParseRgbaHex(U"\u200a#123456\u200a",parsed,0);require(valid && parsed==0x563412u);}
+{std::uint32_t parsed=0x12345678;const bool valid=pickerParseRgbaHex(U"\u2028#123456\u2028",parsed,127);require(valid && parsed==0x7f563412u);}
+{std::uint32_t parsed=0x12345678;const bool valid=pickerParseRgbaHex(U"\u2029#123456\u2029",parsed,255);require(valid && parsed==0xff563412u);}
+{std::uint32_t parsed=0x12345678;const bool valid=pickerParseRgbaHex(U"\u202f#123456\u202f",parsed,0);require(valid && parsed==0x563412u);}
+{std::uint32_t parsed=0x12345678;const bool valid=pickerParseRgbaHex(U"\u205f#123456\u205f",parsed,127);require(valid && parsed==0x7f563412u);}
+{std::uint32_t parsed=0x12345678;const bool valid=pickerParseRgbaHex(U"\u3000#123456\u3000",parsed,255);require(valid && parsed==0xff563412u);}
+{std::uint32_t parsed=0x12345678;const bool valid=pickerParseRgbaHex(U"\ufeff#123456\ufeff",parsed,0);require(valid && parsed==0x563412u);}
+
   require(pickerHsvToRgb({0,1,1},180)==0xb40000ff);
   require(pickerHsvToRgb({60,1,1})==0xff00ffff);
   require(pickerHsvToRgb({120,1,1})==0xff00ff00);

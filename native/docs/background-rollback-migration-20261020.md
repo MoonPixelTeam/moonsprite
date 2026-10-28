@@ -1,0 +1,7 @@
+# 背景与工程回档
+
+Background migration: exact legacy creation/conversion/root-bottom/active selection/frame-owner semantics, default solid228 or actual PNG decoded pixels, canvas repeat metadata, preset pattern geometry and phase preservation after tiny crop. Native PixelDialog and existing preset directory library, native surface/history/project codec adapters. Background resize uses native full Timeline history snapshots rather than legacy shared-surface delta optimization and applies native256MiB admission. PNG importer currently native1024 dimension cap (legacy library allows4096); tile/text/style generic raster conversion remains unavailable and is explicitly gated. Icons existing legacy import. Visual acceptance separately pending.
+
+Project backup/rollback migration: previous committed file hardlink/copy pending atomic commit, original path FNV1a group, legacy bak listing read-only, versions1..10 days1..365 global50/512MiB retain latest; pruning only module-owned native-v1 ordinary files. Complete undo/redo payload preserves current identity/id/name/path, marks dirty, does not autosave; async listing/read budget/native supported import subset. PixelDialog with actual rows/time/bytes/restore/refresh/close and busy/error/empty state. Existing preferences now live. Native Windows/thread/shared Timeline adaptation; post-save cleanup errors cannot undo committed save. Owned disk test covers previous bytes, undo/redo, active rejection, disabled/first save and backup failure.
+
+来源路径和SHA256见legacy-provenance.json。源码登记通过不等价行为全量迁移；实际构建、模型运行与界面目视验收分别记录。

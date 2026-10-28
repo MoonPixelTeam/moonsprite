@@ -147,8 +147,58 @@ inline std::optional<SelectionMask> magicWandSelection(const std::vector<std::ui
   return compactWandFlood(w,h,x,y,matches);
  }
  selection_detail::Mask matching(pixels.size());for(int row=0;row<h;++row)for(int col=0;col<w;++col)matching[row*w+col]=matches(col,row);
- auto region=matching;if(options.contiguous){selection_detail::Mask barrier;if(options.gapClosing){const int threshold=std::clamp(options.gapThreshold,1,16);int left=w,top=h,right=0,bottom=0;for(int i=0;i<int(matching.size());++i)if(!matching[i]){left=std::min(left,i%w);top=std::min(top,i/w);right=std::max(right,i%w+1);bottom=std::max(bottom,i/w+1);}if(right>left && bottom>top){const int padding=threshold+2;left=std::max(0,left-padding);top=std::max(0,top-padding);right=std::min(w,right+padding);bottom=std::min(h,bottom+padding);const int lw=right-left,lh=bottom-top;selection_detail::Mask local(std::size_t(lw)*lh);for(int row=0;row<lh;++row)std::copy_n(matching.begin()+(top+row)*w+left,lw,local.begin()+row*lw);auto small=selection_detail::gapBarrier(local,lw,lh,threshold);barrier.resize(matching.size());for(int row=0;row<lh;++row)std::copy_n(small.begin()+row*lw,lw,barrier.begin()+(top+row)*w+left);}}
- region=selection_detail::flood(matching,barrier,w,h,y*w+x,options.connectivity);if(!barrier.empty()){if(!region[y*w+x])region=selection_detail::flood(matching,{},w,h,y*w+x,options.connectivity);selection_detail::includeClosure(region,barrier,matching,w,h,std::clamp(options.gapThreshold,1,16));}}
+ selection_detail::Mask region = matching;
+ if (options.contiguous) {
+  selection_detail::Mask barrier;
+  const int threshold = std::clamp(options.gapThreshold, 1, 16);
+  if (options.gapClosing) {
+   int left = w;
+   int top = h;
+   int right = 0;
+   int bottom = 0;
+   for (int i = 0; i < int(matching.size()); ++i) {
+    if (!matching[i]) {
+     left = std::min(left, i % w);
+     top = std::min(top, i / w);
+     right = std::max(right, i % w + 1);
+     bottom = std::max(bottom, i / w + 1);
+    }
+   }
+   if (right > left && bottom > top) {
+    const int padding = threshold + 2;
+    left = std::max(0, left - padding);
+    top = std::max(0, top - padding);
+    right = std::min(w, right + padding);
+    bottom = std::min(h, bottom + padding);
+    const int localWidth = right - left;
+    const int localHeight = bottom - top;
+    selection_detail::Mask local(std::size_t(localWidth) * localHeight);
+    for (int row = 0; row < localHeight; ++row) {
+     std::copy_n(matching.begin() + (top + row) * w + left,
+                 localWidth, local.begin() + row * localWidth);
+    }
+    // Avoid Windows RPC's `small` macro, visible to manifest reader fixtures.
+    const selection_detail::Mask localBarrier = selection_detail::gapBarrier(
+      local, localWidth, localHeight, threshold);
+    barrier.resize(matching.size());
+    for (int row = 0; row < localHeight; ++row) {
+     std::copy_n(localBarrier.begin() + row * localWidth, localWidth,
+                 barrier.begin() + (top + row) * w + left);
+    }
+   }
+  }
+  region = selection_detail::flood(matching, barrier, w, h,
+                                    y * w + x, options.connectivity);
+  if (!barrier.empty()) {
+   if (!region[y * w + x]) {
+    region = selection_detail::flood(matching, {}, w, h,
+                                      y * w + x, options.connectivity);
+   }
+   selection_detail::includeClosure(region, barrier, matching, w, h, threshold);
+  }
+ }
  return trimSelection(SelectionMask{0,0,w,h,std::move(region)});
 }
 }
+
+

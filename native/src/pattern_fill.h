@@ -7,7 +7,6 @@
 namespace moon {
 enum class FillTexture { Solid, Cracks, Wood, Grain };
 enum class PatternMode { Default, Random, Regular };
-enum class PatternPaintMode { Paint, Source, Target };
 struct PatternSettings {
  int randomDensity=100,randomCount=0,randomSpacing=0;bool randomOverlap=true;
  int regularCount=0,regularSpacingX=0,regularSpacingY=0;bool regularOverlap=false;int regularRowOffset=0;

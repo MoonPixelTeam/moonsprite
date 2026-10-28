@@ -1,7 +1,9 @@
 #include "document.h"
+#include "document_snapshot.h"
 #include "selection_tools.h"
 #include "layer_compositor.h"
 #include "project_encode.h"
+#include "project_preview.h"
 #include "project_file.h"
 #include "project_import.h"
 #include <filesystem>
@@ -11,6 +13,15 @@
 #define NOMINMAX
 #include <windows.h>
 #include <algorithm>
+namespace moon {
+struct RasterHistoryFixture {
+ static void install(Document& d,timeline::Surface surface){
+  auto state=d.timeline_.state();const auto owner=d.timeline_.resolveSurface(d.cel().id).source->id;
+  auto found=std::find_if(state.cels.begin(),state.cels.end(),[&](const auto& c){return c.id==owner;});found->surface=std::move(surface);d.timeline_=timeline::Timeline(std::move(state));
+ }
+ static void truncate(Document& d){const_cast<timeline::Surface*>(d.timeline_.resolveSurface(d.cel().id).surface)->pixels.pop_back();}
+};
+}
 using namespace moon;
 using namespace moon::project;
 namespace {
@@ -20,7 +31,7 @@ std::shared_ptr<const Bytes> load(const std::filesystem::path& path) {
  return std::make_shared<const Bytes>(std::istreambuf_iterator<char>(f),std::istreambuf_iterator<char>());
 }
 Document imported(std::shared_ptr<const Bytes> bytes) {
- auto a=prepareEditableImport(readProjectManifest(bytes));PaletteState p;p.entries.clear();p.slots=a.palette.slots;p.nextId=a.palette.nextId;
+ auto a=prepareEditableImport(readProjectManifest(bytes));PaletteState p;p.entries.clear();p.slots=a.palette.slots;p.nextId=a.palette.nextId;p.columns=a.palette.columns;
  for(const auto& e:a.palette.entries)p.entries.push_back({e.id,e.name,e.color});
  auto result=Document::fromImported(a.width,a.height,std::move(a.timeline),std::move(p),a.id,a.name,a.sourceArchive);result.selectLayer(a.activeLayerId);result.selectFrame(a.activeFrameId);result.setImportedLoop(a.loop);return result;
 }
@@ -30,10 +41,59 @@ void same(const Document& d,const ReadManifest& m) {
  check(d.pixels()==m.cels.at(0).surface->pixels&&d.pixels()==m.layers.at(0).surface->pixels,"Pixels or transparent RGB changed");
  check(d.layer().id==m.layers[0].id&&d.frame().id==m.frames[0].id&&d.cel().id==m.cels[0].id,"Stable identities changed");
  check(d.cel().layerId==m.cels[0].layerId&&d.cel().frameId==m.cels[0].frameId&&d.frame().duration==m.frames[0].duration,"Relationships changed");
- check(d.palette().entries.size()==m.palette.size()&&d.palette().slots==m.paletteSlots&&d.palette().order()==m.paletteOrder&&d.palette().nextId==m.nextColorId,"Palette structure changed");
+ check(d.palette().entries.size()==m.palette.size()&&d.palette().slots==m.paletteSlots&&d.palette().order()==m.paletteOrder&&d.palette().nextId==m.nextColorId&&d.palette().columns==m.paletteColumns,"Palette structure changed");
  for(std::size_t i=0;i<m.palette.size();++i)check(d.palette().entries[i].id==m.palette[i].id&&d.palette().entries[i].color==m.palette[i].color,"Palette hidden entry or RGBA changed");
 }
 void dot(Document& d,int x,int y,Pixel color) {d.beginStroke({x,y},color);d.commitStroke();}
+void checkSparseFormatEncoding(){
+ for(const bool tiled:{false,true})for(const bool withSource:{false,true}){
+  Document d=withSource?imported(encodeEditableProject(Document(8,8)).bytes):Document(8,8);
+  dot(d,0,0,0xff765432);d.addLinkedFrame(true);
+  timeline::Surface surface;surface.width=tiled?130:2;surface.height=tiled?66:2;
+  surface.offsetX=tiled?-129:-1;surface.offsetY=tiled?-65:-1;surface.storageOriginX=37;surface.storageOriginY=-42;
+  surface.pixels.resize(std::size_t(surface.width)*surface.height);surface.pixels.back()=0xff112233;
+  surface.pixels[std::size_t(surface.height-2)*surface.width+surface.width-2]=0x00030201;
+  RasterHistoryFixture::install(d,surface);
+  const auto history=d.historySize(),revision=d.revision(),content=d.contentRevision();const auto identity=d.identity();
+  const auto owner=d.timeline().resolveSurface(d.cel().id).source->id;const auto link=d.cel().linkedCelId;
+  const auto activeFrame=d.frame().id,activeLayer=d.layer().id;const bool dirty=d.dirty();
+  auto verify=[&](std::shared_ptr<const Bytes> bytes,bool recovery){
+   const auto m=readProjectManifest(bytes);Archive zip(bytes);
+   check(m.width==8&&m.height==8&&m.activeFrameId==activeFrame&&m.activeLayerId==activeLayer,"Sparse encoder changed canvas/active identity");
+   check(m.layers.size()==1&&m.cels.size()==2,"Sparse encoder changed structure");
+   check(m.layers.front().surface&&m.layers.front().surface->width==surface.width&&m.layers.front().surface->height==surface.height&&m.layers.front().surface->offsetX==surface.offsetX&&m.layers.front().surface->offsetY==surface.offsetY&&m.layers.front().surface->pixels==surface.pixels,"Sparse active layer fallback clipped geometry/transparent RGB");
+   for(const auto& c:m.cels){
+    const auto original=std::find_if(d.timeline().state().cels.begin(),d.timeline().state().cels.end(),[&](const auto& value){return value.id==c.id;});
+    check(original!=d.timeline().state().cels.end()&&c.layerId==original->layerId&&c.frameId==original->frameId&&c.linkedCelId==original->linkedCelId.value_or(""),"Sparse encoder changed cel/link identity");
+    check(c.surface&&c.surface->width==surface.width&&c.surface->height==surface.height&&c.surface->offsetX==surface.offsetX&&c.surface->offsetY==surface.offsetY&&c.surface->pixels==surface.pixels,"Sparse cel raster clipped geometry/transparent RGB");
+    check(c.surface->dataEncoding==(tiled?"sparse-tiles-v1":"raw"),"Sparse format changed legacy raw/tile choice");
+    const auto encodedBytes=zip.read(c.surface->dataFile,1024*1024);
+    const std::string expectedHex=tiled?"4d535431400001008200000042000000010000001000000080000000400000000200020028000000010203000000000000000000332211ff":"010203000000000000000000332211ff";
+    Bytes oracle;for(std::size_t i=0;i<expectedHex.size();i+=2)oracle.push_back(std::uint8_t(std::stoul(expectedHex.substr(i,2),nullptr,16)));
+    check(encodedBytes==oracle,"Sparse raster bytes differ from actual legacy encoder oracle");
+    check(decodeRgba(encodedBytes,c.surface->dataEncoding,surface.width,surface.height,1024*1024)==surface.pixels,"Legacy raster bytes failed exact decode");
+   }
+   check((zip.entries().count("preview.png")!=0)==!recovery,"Recovery preview policy changed");
+   if(!recovery){Document expected(8,8);dot(expected,0,0,0xff112233);check(zip.read("preview.png",1024*1024)==encodeProjectPreview(expected),"Sparse preview did not use world geometry");}
+   auto reopened=imported(bytes);check(reopened.frame().id==activeFrame&&reopened.layer().id==activeLayer&&!reopened.dirty()&&!reopened.canUndo(),"Sparse reopen changed active identity or imported history");
+   for(const auto& c:reopened.timeline().state().cels){const auto resolved=reopened.timeline().resolveSurface(c.id);check(resolved.surface&&resolved.surface->width==surface.width&&resolved.surface->height==surface.height&&resolved.surface->offsetX==surface.offsetX&&resolved.surface->offsetY==surface.offsetY&&resolved.surface->pixels==surface.pixels,"Sparse reopen changed world geometry or hidden RGB");check(resolved.surface->storageOriginX.value_or(0)==0&&resolved.surface->storageOriginY.value_or(0)==0,"Sparse reopen carried obsolete runtime history coordinates");}
+   check(reopened.timeline().resolveSurface(reopened.cel().id).source->id==owner&&reopened.cel().linkedCelId==link,"Sparse reopen lost canonical owner/link");
+   const auto reencoded=encodeRecoveryProject(reopened);const auto again=imported(reencoded.bytes);check(again.pixels()==reopened.pixels()&&again.cel().linkedCelId==link,"Sparse reopen-save-reopen changed bytes or links");
+  };
+  DocumentSnapshot snapshot(d);while(!snapshot.advance(d,std::chrono::steady_clock::now()+std::chrono::seconds(1))){}
+  auto captured=snapshot.finish();
+  verify(encodeEditableProject(captured).bytes,false);verify(encodeRecoveryProject(captured).bytes,true);
+  const auto directory=std::filesystem::path("sparse-save-admission-test-owned");std::filesystem::create_directories(directory);
+  const auto path=directory/"existing.moonsprite";Document existing(1,1);saveDocumentAtomic(existing,path);
+  saveDocumentAtomic(captured,path);auto persisted=imported(load(path));check(persisted.pixels()==surface.pixels&&persisted.timeline().resolveSurface(persisted.cel().id).surface->offsetX==surface.offsetX&&persisted.cel().linkedCelId==link&&!captured.dirty(),"Formal sparse save could not reopen its exact owner");
+  const auto previous=load(path);RasterHistoryFixture::truncate(captured);bool saveBlocked=false;try{saveDocumentAtomic(captured,path);}catch(const Error& error){saveBlocked=error.kind==ErrorKind::Corrupt;}
+  check(saveBlocked&&*load(path)==*previous,"Malformed sparse snapshot replaced an existing usable project");
+  const auto& after=*d.timeline().resolveSurface(d.cel().id).surface;
+  check(d.identity()==identity&&d.historySize()==history&&d.revision()==revision&&d.contentRevision()==content&&d.dirty()==dirty&&d.timeline().resolveSurface(d.cel().id).source->id==owner&&d.cel().linkedCelId==link&&after.pixels==surface.pixels&&after.storageOriginX==37&&after.storageOriginY==-42,"Sparse encoding mutated owner/history/storage origin");
+  Limits tiny;tiny.expandedBytes=16;bool limited=false;try{(void)encodeRecoveryProject(d,tiny);}catch(const Error& error){limited=error.kind==ErrorKind::Limit;}check(limited,"Sparse encoder ignored decoded raster budget");
+ }
+ Document malformed(8,8);RasterHistoryFixture::truncate(malformed);bool corrupt=false;try{(void)encodeRecoveryProject(malformed);}catch(const Error& error){corrupt=error.kind==ErrorKind::Corrupt;}check(corrupt,"Sparse encoder accepted malformed raster length");
+}
 void checkRasterResourcePlan(){
  {Document blank(5,7);auto opened=imported(encodeEditableProject(blank).bytes);dot(opened,0,0,0xff123456);
   auto encoded=encodeEditableProject(opened);auto after=prepareEditableImport(readProjectManifest(encoded.bytes));check(after.timeline.cels[0].surface->pixels[0]==0xff123456,"Sparse-to-raw reopen save retained stale raster");
@@ -45,10 +105,20 @@ void checkRasterResourcePlan(){
 }
 
 }
-int main(int argc,char** argv) {try {
- checkRasterResourcePlan();
- if(argc==2 && std::string(argv[1])=="--raster-resource-check")return 0;
-
+void projectRollbackOwnedCheck(){const auto folder=std::filesystem::current_path()/("moonsprite-rollback-test-"+std::to_string(GetCurrentProcessId())+"-"+std::to_string(GetTickCount64()));if(std::filesystem::exists(folder))throw std::runtime_error("Owned fixture exists");std::filesystem::create_directory(folder);
+ {
+  const auto root=folder/"rollback-owned";std::filesystem::create_directory(root);const auto path=root/"saved.moonsprite";BackupPolicy policy{true,10,30,root/"backups"};
+  Document current(1,1);dot(current,0,0,0xff0000ff);current.setSourceFilePath(path);saveDocumentAtomic(current,path,policy);check(listProjectBackups(path,policy.directory).empty(),"First save must not invent a backup");const auto original=load(path);dot(current,0,0,0xffff0000);saveDocumentAtomic(current,path,policy);const auto records=listProjectBackups(path,policy.directory);check(records.size()==1&&*load(records[0].path)==*original,"Backup must contain previous committed file bytes");
+  const auto identity=current.identity();const auto id=current.projectId();const auto name=current.name();const auto sourcePath=current.sourceFilePath();const auto history=current.historyPosition();const auto revision=current.contentRevision();auto previous=imported(load(records[0].path));check(current.rollbackProject(previous),"Real decoded backup restore failed");check(current.pixels()[0]==0xff0000ff&&current.identity()==identity&&current.projectId()==id&&current.name()==name&&current.sourceFilePath()==sourcePath&&current.dirty()&&current.historyPosition()==history+1&&current.contentRevision()>revision,"Rollback identity/path/history");current.undo();check(current.pixels()[0]==0xffff0000,"Rollback undo");current.redo();check(current.pixels()[0]==0xff0000ff&&current.identity()==identity&&current.sourceFilePath()==sourcePath,"Rollback redo");check(readProjectManifest(load(path)).cels[0].surface->pixels[0]==0xffff0000,"Rollback must not silently save");
+  current.beginStroke({0,0},0xff00ff00);const auto activeHistory=current.historyPosition();check(!current.rollbackProject(previous)&&current.active()&&current.historyPosition()==activeHistory,"Active preview rejects rollback");current.cancelStroke();
+  const auto beforeFailure=load(path);const auto beforeArchive=current.sourceArchive();const auto blocker=root/"blocked-root";{std::ofstream out(blocker);out<<"owned test blocker";}auto bad=policy;bad.directory=blocker;bool backupFailed=false;try{saveDocumentAtomic(current,path,bad);}catch(const std::exception&){backupFailed=true;}check(backupFailed&&*load(path)==*beforeFailure&&current.sourceArchive()==beforeArchive&&current.dirty(),"Backup failure preserves file and baseline");
+  const auto disabledPath=root/"disabled.moonsprite";auto disabled=policy;disabled.enabled=false;Document noBackup(1,1);saveDocumentAtomic(noBackup,disabledPath,disabled);dot(noBackup,0,0,0xff112233);saveDocumentAtomic(noBackup,disabledPath,disabled);check(listProjectBackups(disabledPath,policy.directory).empty(),"Disabled backup created backup");
+  // Keep owned fixtures: asynchronous retention may still be inspecting this directory.
+ }
+}
+// Keep each independent fixture on its own stack frame: the combined Windows
+// test frame exceeded the default 1 MiB before reaching the save assertions.
+__declspec(noinline) void checkPaintRoundtrip(){
  {Document d(1,1);d.setSelectedFramesDisabled(true);d.addFrame();d.selectFrame(d.timeline().state().frames.front().id);auto encoded=encodeEditableProject(d);auto manifest=readProjectManifest(encoded.bytes);check(manifest.frames[0].disabled&&!manifest.frames[1].disabled,"Disabled manifest flags");auto opened=imported(encoded.bytes);check(opened.timeline().state().frames[0].disabled&&!opened.timeline().state().frames[1].disabled,"Disabled frame reopen");opened.setSelectedFramesDisabled(false);check(!readProjectManifest(encodeEditableProject(opened).bytes).frames[0].disabled,"Disabled flag removal");}
 
  {Document d(2,1);dot(d,0,0,0xff112233);d.addLayer();dot(d,1,0,0x80445566);d.addLayer();dot(d,0,0,0xff778899);auto hidden=d.layer().id;d.setLayerVisible(false);d.addFrame();std::vector<std::vector<Pixel>> expected;for(const auto& f:d.timeline().state().frames)expected.push_back(compositeNormalRegion(d.timeline(),f.id,{0,0,2,1}));d.mergeVisibleLayers();auto saved=prepareEditableImport(readProjectManifest(encodeEditableProject(d).bytes));check(saved.timeline.layers.size()==2&&saved.timeline.layers[1].id==hidden&&!saved.timeline.layers[1].visible,"Visible merge save hidden layer");timeline::Timeline t(saved.timeline);for(std::size_t i=0;i<expected.size();++i)check(compositeNormalRegion(t,t.state().frames[i].id,{0,0,2,1})==expected[i],"Visible merge save every frame");}
@@ -72,12 +142,24 @@ int main(int argc,char** argv) {try {
  {Document f(512,512);f.fillPixels({0,0},0xff123456);check(f.historyBytes()<512*48 && f.pixels().back()==0xff123456,"Compact uniform run history");f.undo();check(f.pixels().back()==0,"Compact undo");f.redo();check(f.pixels().back()==0xff123456,"Compact redo");}
  {Document f(2,1);dot(f,0,0,0xff998877);f.addLinkedFrame();const auto alias=f.frame().id,source=f.timeline().state().frames.front().id;f.selectFrameHeader(source);f.selectFrameHeader(alias,1);f.fillPixels({1,0},0xff123456);f.selectFrame(source);check(f.pixels()[1]==0xff123456,"Canonical linked fill shared");f.undo();check(f.frame().id==alias && f.pixels()[1]==0,"Linked fill undo alias target");}
 
- check(argc>=2,"Expected legacy fixture directory");
+}
+
+__declspec(noinline) void checkSelectionTransformRoundtrip(){
  {
   Document d(2,2);dot(d,0,0,0xff123456);d.setLayerAutoLinkAnimationCels(d.layer().id,true);d.addFrame(true);
   const auto encoded=encodeEditableProject(d).bytes;const auto m=readProjectManifest(encoded);const auto restored=imported(encoded);
   check(m.layers[0].autoLinkAnimationCels && restored.layer().autoLinkAnimationCels && restored.cel().linkedCelId,"Auto-link metadata/link save roundtrip");
   check(imported(encodeRecoveryProject(d).bytes).layer().autoLinkAnimationCels,"Auto-link recovery roundtrip");
+ // project-format-encode.ts omits the flag when disabled, even for a reopened source archive.
+ auto disabled=imported(encoded);const auto history=disabled.historyPosition();
+ disabled.setLayerAutoLinkAnimationCels(disabled.layer().id,false);
+ check(!disabled.layer().autoLinkAnimationCels&&disabled.cel().linkedCelId&&disabled.historyPosition()==history+1,"Disable auto-link retains existing link and one edit");
+ const auto disabledBytes=encodeEditableProject(disabled).bytes;
+ check(!readProjectManifest(disabledBytes).layers[0].autoLinkAnimationCels&&!imported(disabledBytes).layer().autoLinkAnimationCels,"Disabled auto-link resurrected from imported archive");
+ check(!imported(encodeRecoveryProject(disabled).bytes).layer().autoLinkAnimationCels,"Disabled auto-link resurrected in recovery");
+ disabled.undo();check(imported(encodeEditableProject(disabled).bytes).layer().autoLinkAnimationCels,"Auto-link Undo save roundtrip");
+ disabled.redo();check(!imported(encodeEditableProject(disabled).bytes).layer().autoLinkAnimationCels&&disabled.cel().linkedCelId,"Auto-link Redo save retains existing link");
+
  }
 
  // Legacy selection brush: solid footprints, Euclidean sampling and finite visited keys.
@@ -106,6 +188,9 @@ int main(int argc,char** argv) {try {
  Document quadDoc(12,12);dot(quadDoc,3,3,0xff123456);quadDoc.commitSelection({},SelectionMask{2,2,4,4,{}});const auto quadPixels=quadDoc.pixels();const auto quadHistory=quadDoc.historySize();quadDoc.beginSelectionContentMove();quadDoc.transformFloatingPaste(quadTarget);quadDoc.cancelFloatingPaste();check(quadDoc.pixels()==quadPixels && quadDoc.historySize()==quadHistory,"Quad cancellation restores source pixels/history");
  Document transformDoc(12,10);dot(transformDoc,2,2,0x80443322);dot(transformDoc,3,2,0xff778899);transformDoc.commitSelection({},SelectionMask{2,2,2,2,{}});transformDoc.markSaved();const auto transformOriginal=transformDoc.pixels();const auto transformHistory=transformDoc.historySize();transformDoc.beginSelectionContentMove();transformDoc.transformFloatingPaste({-8,-7,6,4,45},true);transformDoc.transformFloatingPaste({3,3,4,4});transformDoc.transformFloatingPaste({2,2,2,2});check(transformDoc.pixels()==transformOriginal && transformDoc.historySize()==transformHistory && !transformDoc.dirty(),"Transform sampled accumulated preview/offcanvas source");transformDoc.transformFloatingPaste({3,3,4,4});transformDoc.cancelFloatingPaste();check(transformDoc.pixels()==transformOriginal && transformDoc.selection()->x==2,"Transform cancel source/mask");transformDoc.beginSelectionContentMove();transformDoc.transformFloatingPaste({3,3,4,4});transformDoc.commitFloatingPaste();check(transformDoc.historySize()==transformHistory+1 && transformDoc.pixels()[3*12+3]==0x80443322,"Transform single transaction/composite");transformDoc.undo();check(transformDoc.pixels()==transformOriginal && transformDoc.selection()->x==2,"Transform undo");transformDoc.redo();check(transformDoc.pixels()[3*12+3]==0x80443322,"Transform redo");
  Document transformLinked(10,10);dot(transformLinked,2,2,0x80443322);transformLinked.addLinkedFrame();const auto transformFrame=transformLinked.frame().id;transformLinked.selectFrameHeader(transformLinked.timeline().state().frames.front().id);transformLinked.selectFrameHeader(transformFrame,2);transformLinked.commitSelection({},SelectionMask{2,2,2,2,{}});const auto canonicalHistory=transformLinked.historySize();transformLinked.beginSelectionContentMove(false,true);transformLinked.transformFloatingPaste({4,4,4,4,90});transformLinked.commitFloatingPaste();check(transformLinked.historySize()==canonicalHistory+1 && transformLinked.pixels()[4*10+7]==0x80443322,"Transform canonical source dedup");transformLinked.undo();check(transformLinked.frame().id==transformFrame && transformLinked.pixels()[2*10+2]==0x80443322,"Transform linked undo");
+}
+
+__declspec(noinline) void checkLayerAnimationRoundtrip(){
  // Ordinary multi-layer single-frame migration: pixels stay on their owned cel,
  // structural history restores ordering/selection, and ZIP roundtrip retains all layers.
  Document multi(4,3);const auto bottom=multi.layer().id;dot(multi,0,0,0xff0000ff);multi.addLayer();const auto top=multi.layer().id;dot(multi,0,0,0xffff0000);
@@ -135,16 +220,19 @@ int main(int argc,char** argv) {try {
  Document rangeDoc(3,1);for(int i=0;i<5;++i)rangeDoc.addFrame();std::vector<std::string> frameIds;for(const auto& f:rangeDoc.timeline().state().frames)frameIds.push_back(f.id);
  rangeDoc.selectFrameHeader(frameIds[1]);rangeDoc.selectFrameHeader(frameIds[3],2);check(rangeDoc.selectedFrames()==std::vector<std::string>({frameIds[1],frameIds[2],frameIds[3]}),"Shift frame range");rangeDoc.selectFrameHeader(frameIds[2],1);check(rangeDoc.selectedFrames()==std::vector<std::string>({frameIds[1],frameIds[3]}),"Ctrl frame toggle");
  rangeDoc.moveSelectedFrames(frameIds[5],true);check(rangeDoc.timeline().state().frames[4].id==frameIds[1] && rangeDoc.timeline().state().frames[5].id==frameIds[3],"Selected block order");rangeDoc.undo();check(rangeDoc.timeline().state().frames[1].id==frameIds[1] && rangeDoc.selectedFrames().size()==2,"Move undo selection");rangeDoc.redo();rangeDoc.undo();
- const auto rangeHistory=rangeDoc.historySize();rangeDoc.beginFrameDuration();rangeDoc.previewFrameDuration(250);rangeDoc.commitFrameDuration();check(rangeDoc.historySize()==rangeHistory && rangeDoc.timeline().state().frames[1].duration==250 && rangeDoc.timeline().state().frames[3].duration==250,"Grouped duration");rangeDoc.undo();check(rangeDoc.timeline().state().frames[1].duration==100 && rangeDoc.timeline().state().frames[3].duration==100,"Grouped duration undo");
+ rangeDoc.selectFrame(frameIds[3]);const auto rangeHistory=rangeDoc.historyPosition();rangeDoc.beginFrameDuration();rangeDoc.previewFrameDuration(250);rangeDoc.commitFrameDuration();check(rangeDoc.historyPosition()==rangeHistory+1 && rangeDoc.timeline().state().frames[1].duration==250 && rangeDoc.timeline().state().frames[3].duration==250,"Grouped duration");rangeDoc.undo();check(rangeDoc.timeline().state().frames[1].duration==100 && rangeDoc.timeline().state().frames[3].duration==100,"Grouped duration undo");
  rangeDoc.selectFrameHeader(frameIds[1]);rangeDoc.selectFrameHeader(frameIds[3],2);const auto sectionId=rangeDoc.createLoopSection();auto section=rangeDoc.timeline().state().loopSections.front();section.direction="ping-pong";section.repeatCount=1;rangeDoc.updateLoopSection(section);timeline::LoopPlayback playback{{sectionId,0,{}},{},false};std::string playFrame=frameIds[1];const std::vector<std::string> expected{frameIds[2],frameIds[3],frameIds[2]};for(const auto& expectedFrame:expected){const auto step=timeline::advanceLoopPlayback(rangeDoc.timeline().state(),playback,playFrame);check(!step.completed && step.frameId==expectedFrame,"Ping pong direction");playFrame=step.frameId;}check(timeline::advanceLoopPlayback(rangeDoc.timeline().state(),playback,playFrame).completed,"Finite loop completion");
  auto encodedRange=encodeEditableProject(rangeDoc);auto reopenedRange=imported(encodedRange.bytes);check(reopenedRange.timeline().state().loopSections.front().direction=="ping-pong" && reopenedRange.timeline().state().loopSections.front().repeatCount==1,"Loop save reopen");section.name=U"Changed";reopenedRange.updateLoopSection(section);check(readProjectManifest(encodeRecoveryProject(reopenedRange).bytes).loopSections.front().name=="Changed","Imported loop change recovery serialization");
- rangeDoc.selectFrame(frameIds[3]);rangeDoc.addFrame();check(rangeDoc.timeline().state().loopSections.front().endFrameId==rangeDoc.frame().id,"Loop insertion boundary");rangeDoc.undo();check(rangeDoc.timeline().state().loopSections.front().endFrameId==frameIds[3],"Loop insertion undo");const auto deleteHistory=rangeDoc.historySize();rangeDoc.deleteSelectedFrames();check(rangeDoc.timeline().state().frames.size()==3 && rangeDoc.historySize()==deleteHistory && rangeDoc.timeline().state().loopSections.empty(),"Grouped range deletion");rangeDoc.undo();check(rangeDoc.timeline().state().frames.size()==6 && rangeDoc.timeline().state().loopSections.size()==1 && rangeDoc.selectedFrames().size()==3,"Range delete undo");
+ rangeDoc.selectFrame(frameIds[3]);rangeDoc.addFrame();check(rangeDoc.timeline().state().loopSections.front().endFrameId==rangeDoc.frame().id,"Loop insertion boundary");rangeDoc.undo();check(rangeDoc.timeline().state().loopSections.front().endFrameId==frameIds[3],"Loop insertion undo");rangeDoc.selectFrameHeader(frameIds[1]);rangeDoc.selectFrameHeader(frameIds[3],2);const auto deleteHistory=rangeDoc.historyPosition();rangeDoc.deleteSelectedFrames();check(rangeDoc.timeline().state().frames.size()==3 && rangeDoc.historyPosition()==deleteHistory+1 && rangeDoc.timeline().state().loopSections.empty(),"Grouped range deletion");rangeDoc.undo();check(rangeDoc.timeline().state().frames.size()==6 && rangeDoc.timeline().state().loopSections.size()==1 && rangeDoc.selectedFrames().size()==3,"Range delete undo");
  timeline::State nestedState;nestedState.frames={{"a",100},{"b",100},{"c",100},{"d",100}};nestedState.loopSections={{"outer",U"Outer","a","d","forward",1},{"inner",U"Inner","b","c","reverse",1}};timeline::LoopPlayback nested{{"outer",0,{}},{},false};auto nestedStep=timeline::advanceLoopPlayback(nestedState,nested,"a");check(nestedStep.frameId=="c" && nested.stack.size()==1,"Nested start");nestedStep=timeline::advanceLoopPlayback(nestedState,nested,nestedStep.frameId);check(nestedStep.frameId=="b","Nested reverse");nestedStep=timeline::advanceLoopPlayback(nestedState,nested,nestedStep.frameId);check(nestedStep.frameId=="c" && nested.stack.empty(),"Nested parent boundary");nestedStep=timeline::advanceLoopPlayback(nestedState,nested,nestedStep.frameId);check(nestedStep.frameId=="d","Nested parent resume");
  onion.selectFrameHeader(onion.timeline().state().frames.front().id);onion.selectFrameHeader(onion.timeline().state().frames.back().id,2);onion.createLoopSection();onion.selectFrame(onion.timeline().state().frames.front().id);settings.previousFrames=1;ghost=compositeOnionRegion(onion.timeline(),onion.frame().id,onion.layer().id,{0,0,3,1},settings);check(ghost[2]!=0,"Loop onion wrap");
+}
+
+__declspec(noinline) void checkSelectionClipboardRoundtrip(){
  // Rectangle selection, floating paste and linked Cel destination use existing pixel history.
  Document selectionDoc(4,3);selectionDoc.commitSelection({},rectangleSelection(-1,-1,3,3,4,3));check(!selectionDoc.dirty() && selectionDoc.selection()->width==2,"Selection changed dirty or clipping");dot(selectionDoc,3,2,0xff123456);check(selectionDoc.pixels()[11]==0,"Stroke outside selection");dot(selectionDoc,1,1,0x80443322);selectionDoc.markSaved();auto copiedPixels=selectionDoc.copyPixels();check(copiedPixels && copiedPixels->mask[3]==1 && copiedPixels->mask[0]==0,"Clipboard transparent mask");const auto stablePixels=selectionDoc.pixels();const auto selectionHistory=selectionDoc.historySize();check(selectionDoc.beginFloatingPaste(*copiedPixels,3,2),"Paste rejected");selectionDoc.moveFloatingPaste(2,1);selectionDoc.moveFloatingPaste(0,0);selectionDoc.cancelFloatingPaste();check(selectionDoc.pixels()==stablePixels && !selectionDoc.dirty() && selectionDoc.historySize()==selectionHistory,"Floating cancel changed pixels/history/dirty");selectionDoc.beginFloatingPaste(*copiedPixels,2,1);selectionDoc.commitFloatingPaste();check(selectionDoc.historySize()==selectionHistory+1 && selectionDoc.pixels()[11]==0x80443322,"Paste commit history/pixel");selectionDoc.undo();check(selectionDoc.pixels()==stablePixels && selectionDoc.selection()->x==0,"Paste undo selection/pixels");selectionDoc.redo();const auto pastedSave=imported(encodeEditableProject(selectionDoc).bytes);check(pastedSave.pixels()==selectionDoc.pixels() && !pastedSave.selection(),"Save selection payload or pixels");
  selectionDoc.markSaved();selectionDoc.deselectPixels();selectionDoc.undo();check(!selectionDoc.dirty(),"Selection undo dirtied saved document");selectionDoc.redo();check(!selectionDoc.copyPixels(),"No selection copied whole canvas");selectionDoc.selectAllPixels();selectionDoc.invertPixels();check(!selectionDoc.selection(),"Full selection inverse");selectionDoc.undo();check(selectionDoc.selection()->width==4,"Selection inverse undo");
- Document selectionLinked(3,1);dot(selectionLinked,0,0,0xff111111);selectionLinked.addLinkedFrame();const auto linkedFrameId=selectionLinked.frame().id;selectionLinked.selectAllPixels();auto linkPayload=selectionLinked.copyPixels();selectionLinked.beginFloatingPaste(*linkPayload,1,0);selectionLinked.commitFloatingPaste();check(selectionLinked.pixels()[1]==0xff111111,"Linked paste missing");selectionLinked.selectFrame(selectionLinked.timeline().state().frames.front().id);check(selectionLinked.pixels()[1]==0xff111111,"Linked paste lost source sharing");selectionLinked.undo();check(selectionLinked.frame().id==linkedFrameId && selectionLinked.pixels()[1]==0,"Paste undo did not activate alias");selectionLinked.setLayerLocked(true);check(!selectionLinked.beginFloatingPaste(*linkPayload,1,0),"Locked layer accepted paste");selectionLinked.setLayerLocked(false);selectionLinked.setLayerVisible(false);check(!selectionLinked.beginFloatingPaste(*linkPayload,1,0),"Hidden layer accepted paste");
+ Document selectionLinked(3,1);dot(selectionLinked,0,0,0xff111111);selectionLinked.addLinkedFrame();const auto linkedFrameId=selectionLinked.frame().id;selectionLinked.selectAllPixels();auto linkPayload=selectionLinked.copyPixels();selectionLinked.beginFloatingPaste(*linkPayload,1,0);selectionLinked.commitFloatingPaste();check(selectionLinked.pixels()[1]==0xff111111,"Linked paste missing");selectionLinked.selectFrame(selectionLinked.timeline().state().frames.front().id);check(selectionLinked.pixels()[1]==0xff111111,"Linked paste lost source sharing");selectionLinked.undo();check(selectionLinked.frame().id==linkedFrameId && selectionLinked.pixels()[1]==0,"Paste undo did not activate alias");selectionLinked.setLayerLocked(true);check(!selectionLinked.beginFloatingPaste(*linkPayload,1,0),"Locked layer accepted paste");selectionLinked.setLayerLocked(false);selectionLinked.setLayerVisible(false);check(selectionLinked.beginFloatingPaste(*linkPayload,1,0),"Hidden layer rejected legacy paste");selectionLinked.cancelFloatingPaste();
  // Legacy original-selection move: stable source outside canvas, overlap, copy and atomic history.
  Document lift(5,2);dot(lift,0,0,0x80443322);dot(lift,1,0,0xff778899);dot(lift,4,0,0xffabcdef);lift.commitSelection({},SelectionMask{0,0,2,2,{}});lift.markSaved();const auto liftPixels=lift.pixels();const auto liftHistory=lift.historySize();
  check(lift.beginSelectionContentMove(),"Original lift rejected");lift.moveFloatingPaste(8,-3);lift.moveFloatingPaste(1,0);check(lift.pixels()[0]==0 && lift.pixels()[1]==0x80443322 && lift.pixels()[2]==0xff778899,"Overlap cleared/composited against wrong backdrop");check(!lift.dirty() && lift.historySize()==liftHistory,"Lift preview published history");lift.cancelFloatingPaste();check(lift.pixels()==liftPixels && lift.selection()->x==0 && !lift.dirty(),"Lift cancel source/mask");
@@ -166,6 +254,9 @@ int main(int argc,char** argv) {try {
  wand={};std::vector<Pixel> sparseWand(400);for(int y=8;y<12;++y)for(int x=8;x<12;++x)sparseWand[y*20+x]=0xff0000ff;auto exteriorWand=magicWandSelection(sparseWand,20,20,0,0,wand);check(selectionContains(exteriorWand,19,19) && !selectionContains(exteriorWand,8,8),"Sparse transparent exterior");
  Document maskHistory(5,5);maskHistory.markSaved();const auto maskRevision=maskHistory.contentRevision();maskHistory.commitSelection({},ellipse);maskHistory.commitSelection(ellipse,combineSelection(ellipse,singleLasso,2));maskHistory.undo();check(selectionEqual(maskHistory.selection(),ellipse) && !maskHistory.dirty() && maskHistory.contentRevision()==maskRevision,"Tool mask history wrote pixels/dirty");
  const auto combined=combineSelection(SelectionMask{0,0,2,2,{}},SelectionMask{1,1,2,2,{}},2);check(selectionContains(combined,0,0) && !selectionContains(combined,1,1),"Selection subtraction mask");
+}
+
+__declspec(noinline) void checkAtomicSaveRoundtrip(int argc,char** argv){
  Document d(4,3);dot(d,0,0,0xffabcdefu);dot(d,2,1,0xff112233u);
  const auto duplicate=d.addPaletteColor(d.palette().entries[0].color,false);d.deletePaletteColors({duplicate});
  const auto visible=d.addPaletteColor(0x00112233u,false);d.renamePaletteColor(visible,U"透明色");
@@ -183,7 +274,7 @@ int main(int argc,char** argv) {try {
 auto legacyParsed=readProjectManifest(legacyEncoded.bytes);same(legacy,legacyParsed);
  check(legacyEncoded.projectId==original.id&&legacyParsed.name==original.name&&legacyParsed.loop==original.loop,"Imported metadata identity changed");
  check(legacyParsed.cels[0].surface->pixels[1]==0x0046505au,"Transparent RGB lost");
- const auto folder=std::filesystem::temp_directory_path()/ ("moonsprite-save-test-"+std::to_string(std::chrono::high_resolution_clock::now().time_since_epoch().count()));
+ const auto folder=std::filesystem::current_path()/ ("moonsprite-save-test-"+std::to_string(std::chrono::high_resolution_clock::now().time_since_epoch().count()));
  std::filesystem::create_directory(folder);const auto target=folder/"roundtrip.moonsprite";
  saveDocumentAtomic(d,target);check(!d.dirty()&&d.sourceArchive()&&d.projectId()==readProjectManifest(load(target)).id,"Successful save not accepted");same(d,readProjectManifest(load(target)));
  const auto savedBytes=load(target);const auto source=d.sourceArchive();const auto projectId=d.projectId();
@@ -202,6 +293,23 @@ auto legacyParsed=readProjectManifest(legacyEncoded.bytes);same(legacy,legacyPar
  check(d.pixels()==readProjectManifest(load(target)).cels[0].surface->pixels,"Redo pixels differ from saved state");
  d.beginStroke({1,2},0xff010203u);failed=false;try{encodeEditableProject(d);}catch(const std::exception&){failed=true;}
  check(failed&&d.active(),"Active preview was encoded/modified");d.cancelStroke();
+
+
  std::filesystem::remove(target);check(std::filesystem::is_empty(folder),"Atomic writer leaked temporary files");std::filesystem::remove(folder);
+}
+
+int main(int argc,char** argv) {try {
+ if(argc==2&&std::string(argv[1])=="--project-rollback-check"){projectRollbackOwnedCheck();std::cout<<"Committed backup/decoded rollback/history/failure checks passed\n";return 0;}
+ checkRasterResourcePlan();
+ checkSparseFormatEncoding();
+ if(argc==2 && std::string(argv[1])=="--raster-resource-check")return 0;
+ if(argc==2 && std::string(argv[1])=="--sparse-format-check")return 0;
+
+ checkPaintRoundtrip();
+ check(argc>=2,"Expected legacy fixture directory");
+ checkSelectionTransformRoundtrip();
+ checkLayerAnimationRoundtrip();
+ checkSelectionClipboardRoundtrip();
+ checkAtomicSaveRoundtrip(argc,argv);
  std::cout<<"Project save roundtrip checks passed\n";return 0;
  }catch(const std::exception& e){std::cerr<<e.what()<<'\n';return 1;}}

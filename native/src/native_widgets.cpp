@@ -5,9 +5,11 @@
 #include <chrono>
 #include "native_widgets.h"
 #include "color_value_ui.h"
+#include "color_picker_layout.h"
 #include "ui_scale.h"
 #include "ui/message.h"
 #include "ui/manager.h"
+#include "ui/resize_event.h"
 #include "os/sampling.h"
 #include "include/core/SkShader.h"
 #include "include/core/SkTileMode.h"
@@ -17,7 +19,8 @@
 #include <stdexcept>
 
 namespace moon {
-void PixelPopupWindow::setBounds(const gfx::Rect& rect) {
+void PixelPopupWindow::setBounds(const gfx::Rect& requested) {
+  auto rect=requested;const auto floor=minimumDialogSize(rect.w);rect.w=std::max(rect.w,floor.w);rect.h=std::max(rect.h,minimumDialogSize(rect.w).h);
   if(rect==bounds())return;
   // Aseprite Window::moveWindow(false): retain the old drawable region before
   // layout changes, repaint the new window, and expose old-minus-new below it.
@@ -33,6 +36,134 @@ void PixelPopupWindow::setBounds(const gfx::Rect& rect) {
     mgr->invalidateRegion(exposed);
     mgr->_updateMouseWidgets();
   }
+}
+int PixelPopupWindow::geometryEdges(gfx::Point p) const {
+  auto r=bounds();if(!r.contains(p))return 0;const int edge=3*uiScale;
+  return (p.x<r.x+edge?1:p.x>=r.x2()-edge?2:0)|(p.y<r.y+edge?4:p.y>=r.y2()-edge?8:0);
+}
+const char* PixelPopupWindow::geometryCursor(gfx::Point p) const {
+  const int e=hasCapture() && geometryDrag_>1?geometryDrag_-1:geometryEdges(p);
+  if((e&1&&e&4)||(e&2&&e&8))return "nwse-resize";
+  if((e&1&&e&8)||(e&2&&e&4))return "nesw-resize";
+  return e&3?"ew-resize":e&12?"ns-resize":"default";
+}
+bool PixelPopupWindow::processDialogGeometry(ui::Message* msg) {
+  if(geometryDrag_ && !hasCapture())geometryDrag_=0;
+  if(msg->type()==ui::kCloseMessage || (msg->type()==ui::kFocusLeaveMessage &&
+      (!static_cast<ui::FocusMessage*>(msg)->newFocus() || static_cast<ui::FocusMessage*>(msg)->newFocus()->window()!=this))){geometryDrag_=0;if(hasCapture())releaseMouse();}
+  if(msg->type()==ui::kMouseDownMessage){
+    auto m=static_cast<ui::MouseMessage*>(msg);const int edges=geometryEdges(m->position());
+    // Manager gives visible resize edges first refusal before child controls.
+    // Interior/header controls retain their normal click handling.
+    if(msg->fromFilter() && !edges)return false;
+    if(m->left() && (edges || (bounds().contains(m->position()) && m->position().y<bounds().y+FloatingColumnChrome::headerHeight*uiScale))){geometryDrag_=edges?edges+1:1;geometryOrigin_=m->position();geometryBefore_=bounds();captureMouse();return true;}
+  }
+  if(msg->type()==ui::kMouseMoveMessage && geometryDrag_ && hasCapture()){
+    auto r=geometryBefore_;const auto delta=static_cast<ui::MouseMessage*>(msg)->position()-geometryOrigin_;
+    if(geometryDrag_==1)r.offset(delta);
+    else {const int e=geometryDrag_-1;const auto floor=minimumDialogSize(r.w);
+      if(e&1){r.w=std::max(floor.w,r.w-delta.x);r.x=geometryBefore_.x2()-r.w;}
+      if(e&2)r.w=std::max(floor.w,r.w+delta.x);
+      const int h=minimumDialogSize(r.w).h;
+      if(e&4){r.h=std::max(h,r.h-delta.y);r.y=geometryBefore_.y2()-r.h;}
+      else if(e&8)r.h=std::max(h,r.h+delta.y);else r.h=std::max(h,r.h);
+    }setBounds(r);return true;
+  }
+  if(msg->type()==ui::kMouseUpMessage && geometryDrag_){
+    geometryDrag_=0;if(hasCapture())releaseMouse();
+    if(parent()){
+      auto cursor=new ui::MouseMessage(ui::kSetCursorMessage,*static_cast<ui::MouseMessage*>(msg),static_cast<ui::MouseMessage*>(msg)->position());
+      cursor->setDisplay(display());cursor->setRecipient(manager());manager()->enqueueMessage(cursor);
+    }
+    return true;
+  }
+  return false;
+}
+bool PixelPopupWindow::onProcessMessage(ui::Message* msg){return processDialogGeometry(msg)||ui::PopupWindow::onProcessMessage(msg);}
+void PixelDialog::onPaint(ui::PaintEvent& ev) {
+  {auto& g=*ev.graphics();UiPaintScale scale(g);dialogSkin_.drawDialogBackground(g,uiLogical(clientBounds()));}
+  paintDialogContents(ev);
+}
+void FloatingColumnChrome::layoutHeaderButton(PixelButton* button,gfx::Rect physicalFrame){
+  button->columnHeaderAction=true;
+  button->setBounds(uiPhysical(closeBounds({0,0,physicalFrame.w/uiScale,physicalFrame.h/uiScale})).offset(physicalFrame.origin()));
+}
+void FloatingColumnChrome::drawTitle(const Skin& skin,const PixelFont& font,ui::Graphics& g,gfx::Rect r,const std::u32string& title){
+  const auto ink=font.inkBounds(title);
+  font.draw(g,title,r.x+6,r.y+(headerHeight-ink.h)/2-ink.y,skin["text"]);
+}
+void PixelDialog::drawDialogTitle(const PixelFont& font,ui::Graphics& g,gfx::Rect r,const std::u32string& title)const{FloatingColumnChrome::drawTitle(dialogSkin_,font,g,r,title);}
+void FloatingColumnChrome::paint(const Skin& skin,ui::Graphics& g,gfx::Rect r){skin.drawDialogBackground(g,r);}
+void Skin::drawDialogBackground(ui::Graphics& g,gfx::Rect rc) const {
+  if(!draw(g,"dialog_frame",rc))throw std::runtime_error("Dialog sheet material is missing: dialog_frame");
+}
+void checkDialogGeometry(const PixelFont& font,const Skin& skin,
+                         const std::function<bool(ui::MouseMessage&)>& dispatch) {
+  PixelPopupWindow popup("",ui::PopupWindow::ClickBehavior::DoNothingOnClick,
+                         ui::PopupWindow::EnterBehavior::DoNothingOnEnter);
+  popup.setAutoRemap(false);popup.setWantFocus(true);
+  auto child=new PixelButton(font,skin,U"edge child",[]{});popup.addChild(child);
+  popup.setBounds({70,90,300,220});popup.openWindow();
+  try {
+    for(auto size:{gfx::Size(160,120),gfx::Size(520,400)})for(int edge:{1,2,4,8,5,6,9,10}) {
+      popup.setBounds({70,90,size.w,size.h});const auto before=popup.bounds();
+      // The child covers every edge: normal child dispatch would swallow press.
+      child->setBounds(before);
+      gfx::Point point((edge&1)?before.x+1:(edge&2)?before.x2()-1:before.center().x,
+                       (edge&4)?before.y+1:(edge&8)?before.y2()-1:before.center().y);
+      if(std::string(popup.geometryCursor(point))=="default")throw std::runtime_error("Dialog edge cursor missing");
+      ui::MouseMessage down(ui::kMouseDownMessage,os::PointerType::Mouse,ui::kButtonLeft,ui::kKeyNoneModifier,point);
+      down.setDisplay(popup.display());down.setFromFilter(true);
+      if(!dispatch(down) || !popup.hasCapture() || child->hasCapture())throw std::runtime_error("Dialog edge lost press to child");
+      ui::FocusMessage focus(ui::kFocusLeaveMessage,&popup,child);popup.onProcessMessage(&focus);
+      if(!popup.hasCapture())throw std::runtime_error("Dialog internal focus cancelled resize");
+      const gfx::Point delta((edge&1)?-14:(edge&2)?14:0,(edge&4)?-18:(edge&8)?18:0);
+      ui::MouseMessage move(ui::kMouseMoveMessage,os::PointerType::Mouse,ui::kButtonLeft,ui::kKeyNoneModifier,point+delta);
+      popup.onProcessMessage(&move);
+      const auto after=popup.bounds();
+      if(after==before || ((edge&1)&&after.x2()!=before.x2()) || ((edge&4)&&after.y2()!=before.y2()))throw std::runtime_error("Dialog resize failed or opposite edge moved");
+      ui::MouseMessage up(ui::kMouseUpMessage,os::PointerType::Mouse,ui::kButtonLeft,ui::kKeyNoneModifier,point+delta);
+      popup.onProcessMessage(&up);if(popup.hasCapture())throw std::runtime_error("Dialog resize capture leaked");
+      if(std::string(popup.geometryCursor(popup.bounds().center()))!="default" || std::string(popup.geometryCursor(popup.bounds().origin()-gfx::Point(1,1)))!="default")throw std::runtime_error("Dialog resize cursor persisted away from edge");
+      ui::MouseMessage interior(ui::kMouseDownMessage,os::PointerType::Mouse,ui::kButtonLeft,ui::kKeyNoneModifier,popup.bounds().center());
+      interior.setDisplay(popup.display());interior.setFromFilter(true);
+      if(dispatch(interior) || popup.hasCapture())throw std::runtime_error("Dialog resize swallowed interior child click");
+    }
+    const auto r=popup.bounds();
+    ui::MouseMessage lost(ui::kMouseDownMessage,os::PointerType::Mouse,ui::kButtonLeft,ui::kKeyNoneModifier,{r.x+1,r.center().y});
+    popup.onProcessMessage(&lost);popup.releaseMouse();
+    if(std::string(popup.geometryCursor(r.center()))!="default")throw std::runtime_error("Dialog cursor retained lost capture");
+    class ContentDialog final:public PixelDialog {
+    public:
+      using PixelDialog::PixelDialog;
+      gfx::Size minimumDialogSize(int width)const override{return {180*uiScale,(width<240*uiScale?160:120)*uiScale};}
+      void paintDialogContents(ui::PaintEvent&)override{}
+    } content(skin,"");
+    content.setBounds({20,20,1,1});
+    if(content.bounds().w!=180*uiScale || content.bounds().h!=160*uiScale)throw std::runtime_error("Dialog content floor not enforced");
+    content.setBounds({20,20,300*uiScale,1});
+    if(content.bounds().h!=120*uiScale)throw std::runtime_error("Dialog responsive content floor not enforced");
+    auto shell=os::instance()->makeRgbaSurface(content.bounds().w,content.bounds().h),expected=os::instance()->makeRgbaSurface(content.bounds().w,content.bounds().h);
+    shell->clear();expected->clear();
+    {ui::Graphics g(shell);ui::PaintEvent ev(&content,&g);content.onPaint(ev);}
+    {ui::Graphics g(expected);UiPaintScale scale(g);skin.drawDialogBackground(g,uiLogical(content.clientBounds()));}
+    {os::SurfaceLock a(shell.get()),b(expected.get());for(int y=0;y<shell->height();++y)for(int x=0;x<shell->width();++x)if(shell->getPixel(x,y)!=expected->getPixel(x,y))throw std::runtime_error("Dialog component shell material differs");}
+    for(int width:{146,260,400}){const gfx::Rect frame(0,0,width,DialogLayout::fit(DialogLayout::field(2)+textControlHeight));const auto body=DialogLayout::body(frame);
+      if(body.x!=6||frame.x2()-body.x2()!=6||body.y-FloatingColumnChrome::headerHeight!=6||DialogLayout::field()-DialogLayout::label()-PixelFont::cell!=2||DialogLayout::label(1)-DialogLayout::field()-textControlHeight!=6||frame.h-DialogLayout::footer(frame.h)-textControlHeight!=6||DialogLayout::footer(frame.h)-body.y2()!=6)throw std::runtime_error("Shared spacing relationships failed");
+    }
+    for(auto size:{gfx::Size(100,64),gfx::Size(260,160)}){
+      const gfx::Rect r(0,0,size.w,size.h);auto floating=os::instance()->makeRgbaSurface(size.w,size.h);floating->clear();{ui::Graphics g(floating);FloatingColumnChrome::paint(skin,g,r);}
+      const auto close=FloatingColumnChrome::closeBounds(r);if(close.w!=15 || close.h!=15 || close.y-r.y!=r.y+FloatingColumnChrome::headerHeight-close.y2())throw std::runtime_error("Dialog header actions must be square and vertically centered");if(close.y<2 || close.y2()>FloatingColumnChrome::headerHeight-2 || FloatingColumnChrome::bodyTop(r)<=FloatingColumnChrome::headerHeight)throw std::runtime_error("Floating header overlaps close or content");
+      const auto& material=*skin.assets.patches.at("dialog_frame").bitmap;const auto title=material.pixels[5*material.width+2];const auto pixel=gfx::rgba(title&255,(title>>8)&255,(title>>16)&255,title>>24);
+      for(int y=2;y<FloatingColumnChrome::headerHeight;++y)if(floating->getPixel(30,y)!=pixel)throw std::runtime_error("Header color band does not contain full title/close row");
+    }
+    auto reference=os::instance()->makeRgbaSurface(260,160),actual=os::instance()->makeRgbaSurface(260,160);
+    reference->clear();actual->clear();
+    {ui::Graphics g(reference);skin.draw(g,"dialog_frame",{0,0,260,160});}
+    {ui::Graphics g(actual);skin.drawDialogBackground(g,{0,0,260,160});}
+    {os::SurfaceLock a(reference.get()),b(actual.get());for(int y=0;y<160;++y)for(int x=0;x<260;++x)if(reference->getPixel(x,y)!=actual->getPixel(x,y))throw std::runtime_error("Dialog background differs from new canvas material");}
+  }catch(...){popup.closeWindow(nullptr);throw;}
+  popup.closeWindow(nullptr);
 }
 Skin Skin::load(const std::filesystem::path& path) {
   Skin skin; std::ifstream file(path);
@@ -189,27 +320,20 @@ bool Skin::drawPanelTab(ui::Graphics& g,gfx::Rect rc,bool first) const {
 }
 std::u32string unicodeText(const std::string& value) {return std::wstring_convert<std::codecvt_utf8<char32_t>,char32_t>{}.from_bytes(value);}
 std::string utf8Text(const std::u32string& value) {return std::wstring_convert<std::codecvt_utf8<char32_t>,char32_t>{}.to_bytes(value);}
-namespace {
-class PhysicalViewportClip {
-  ui::Graphics& g_;
-public:
-  PhysicalViewportClip(ui::Graphics& g,std::optional<gfx::Rect> clip):g_(g){g_.saveClip();if(clip)g_.clipRect(*clip);}
-  ~PhysicalViewportClip(){g_.restoreClip();}
-};
-}
 void Skin::drawCheckbox(ui::Graphics& g,gfx::Rect row,bool checked,bool hover,bool pressed,bool enabled) const {
   const int opacity=enabled?255:115;
-  if(enabled && (pressed || hover))draw(g,pressed?"checkbox.pressed":"checkbox.hover",row,false,opacity);
-  draw(g,checked?"checkbox.checked":"checkbox.unchecked",{row.x+4,row.y+(row.h-7)/2,7,7},false,opacity);
+  const auto background=row;
+  if(enabled && (pressed || hover))draw(g,pressed?"checkbox.pressed":"checkbox.hover",background,false,opacity);
+  draw(g,checked?"checkbox.checked":"checkbox.unchecked",{row.x+4,row.y+(row.h-7)/2,7,7},true,opacity);
 }
 PixelCheckbox::PixelCheckbox(const PixelFont& font,const Skin& skin,std::u32string label,bool checked,std::function<void(bool)> changed)
   :PixelButton(font,skin,std::move(label),[]{}) {
-  skinStyle="checkbox";active=checked;
+  skinStyle="checkbox";active=checked;setTransparent(true);
   Click.connect([this,changed=std::move(changed)]{if(!isEnabled())return;active=!active;invalidate();if(changed)changed(active);});
 }
 PixelSwitch::PixelSwitch(const PixelFont& font,const Skin& skin,std::u32string label,bool checked,std::function<void(bool)> changed)
   :PixelButton(font,skin,std::move(label),[]{}) {
-  if(caption.empty())throw std::invalid_argument("PixelSwitch requires a text label");
+  if(caption.find_first_not_of(U" \t\r\n")==std::u32string::npos)throw std::invalid_argument("PixelSwitch requires a text label");
   skinStyle="switch";active=checked;
   Click.connect([this,changed=std::move(changed)]{if(!isEnabled())return;active=!active;invalidate();if(changed)changed(active);});
 }
@@ -286,8 +410,10 @@ bool PixelScrollBar::onProcessMessage(ui::Message* msg) {
     const bool hover=msg->type()!=ui::kMouseLeaveMessage && thumbBounds().contains(static_cast<ui::MouseMessage*>(msg)->position());
     if(hover!=thumbHover_){thumbHover_=hover;invalidate();}
   }
-  if(msg->type()==ui::kMouseWheelMessage){const int dy=static_cast<ui::MouseMessage*>(msg)->wheelDelta().y;
-    if(dy){const int next=value_+(dy>0?wheelStep:-wheelStep)*wheelDirection;setViewScroll({next,next});}return true;}
+  if(msg->type()==ui::kMouseWheelMessage){const auto delta=static_cast<ui::MouseMessage*>(msg)->wheelDelta();
+    // LAF already normalizes wheel-down/right to positive deltas.
+    const int steps=vertical_?delta.y:(delta.x?delta.x:delta.y);
+    if(steps){const int next=int(std::clamp<long long>(value_+1LL*steps*wheelStep,0,std::max(0,total_-page_)));setViewScroll({next,next});}return true;}
   return ui::ScrollBar::onProcessMessage(msg);
 }
 bool PixelEntry::commitExpression() {
@@ -306,27 +432,28 @@ bool PixelEntry::commitExpression() {
   };
   product=[&]{double value=primary();space();while(at<source.size() && (source[at]=='*' || source[at]=='/')){const char op=source[at++];const double rhs=primary();if(op=='/' && rhs==0)throw std::runtime_error("Division zero");value=op=='*'?value*rhs:value/rhs;space();}return value;};
   sum=[&]{double value=product();space();while(at<source.size() && (source[at]=='+' || source[at]=='-')){const char op=source[at++];const double rhs=product();value=op=='+'?value+rhs:value-rhs;space();}return value;};
-  try{const double value=sum();space();if(at!=source.size() || !std::isfinite(value))return false;std::ostringstream out;out.precision(12);out<<value;setText(out.str());Change();return true;}catch(...){return false;}
+  try{double value=sum();space();if(at!=source.size() || !std::isfinite(value))throw std::runtime_error("Invalid expression");if(deferredNumeric)value=std::clamp(value,numericMinimum,numericMaximum);std::ostringstream out;out.precision(12);out<<value;setText(out.str());if(deferredNumeric&&deferredCommit)deferredCommit();else if(!deferredNumeric||!numericValue||value!=numericValue())Change();if(deferredNumeric&&numericValue){std::ostringstream normalized;normalized.precision(12);normalized<<numericValue();setText(normalized.str());}return true;}catch(...){if(deferredNumeric&&numericValue){std::ostringstream out;out.precision(12);out<<numericValue();setText(out.str());}return false;}
 }
 void PixelEntry::adjustNumber(int delta) {
   if(!isEnabled() || isReadOnly() || !delta)return;
   if(wheel){wheel(delta);return;}
   if(!numeric)return;
-  try{std::size_t used=0;const double value=text().empty()?0:std::stod(text(),&used);
+  try{if(deferredNumeric&&numericValue){const double next=std::clamp(numericValue()+delta*numericStep,numericMinimum,numericMaximum);std::ostringstream out;out.precision(12);out<<next;setText(out.str());Change();invalidate();return;}std::size_t used=0;const double value=text().empty()?0:std::stod(text(),&used);
     if(used!=text().size() || !std::isfinite(value))return;
     std::ostringstream out;out.precision(12);out<<value+delta*numericStep;
     setText(out.str());Change();invalidate();
   }catch(...){ }
 }
-// The shared selection material includes its outer pixels in the control's
-// bounds. Reserve them even while unfocused so focus never shifts text/layout.
-static gfx::Rect inputBorderBounds(gfx::Rect physical) {physical.shrink(2*uiScale);return physical;}
-static void drawInputFrame(ui::Graphics& g,const Skin& skin,gfx::Rect physical,bool selected,bool hover=false) {
-  const auto border=inputBorderBounds(physical);
-  skin.draw(g,"entry.normal",uiLogical(border));
-  if(selected)skin.drawSelectionBorder(g,border,hover);
+static void drawInputFrame(ui::Graphics& g,const Skin& skin,gfx::Rect physical,bool frameHover=false) {
+  skin.draw(g,frameHover?"entry.hover":"entry.normal",uiLogical(physical));
 }
 bool PixelEntry::onProcessMessage(ui::Message* msg) {
+  if(msg->type()==ui::kMouseLeaveMessage){if(frameHover_){frameHover_=false;invalidate();}}
+  else if(msg->type()==ui::kMouseEnterMessage || msg->type()==ui::kMouseMoveMessage || msg->type()==ui::kMouseDownMessage || msg->type()==ui::kMouseUpMessage){
+    const auto point=static_cast<ui::MouseMessage*>(msg)->position();
+    const bool inside=bounds().contains(point) && (!paletteViewport || paletteViewport().contains(point));
+    if(inside!=frameHover_){frameHover_=inside;invalidate();}
+  }
   if(paletteViewport && !hasCapture() && msg->type()==ui::kMouseDownMessage && !paletteViewport().contains(static_cast<ui::MouseMessage*>(msg)->position()))return false;
   if(msg->type()==ui::kMouseDownMessage && isEnabled() && !isReadOnly() && focus){
     const auto mouse=static_cast<ui::MouseMessage*>(msg);
@@ -336,12 +463,7 @@ bool PixelEntry::onProcessMessage(ui::Message* msg) {
     // focus handling entirely. Both clicks must still reopen the legacy flyout.
     if(mouse->left() && (hasFocus() || scrub))focus();
   }
-  if(msg->type()==ui::kMouseMoveMessage || msg->type()==ui::kMouseEnterMessage || msg->type()==ui::kMouseLeaveMessage || msg->type()==ui::kFocusEnterMessage || msg->type()==ui::kFocusLeaveMessage) {
-    bool next=false;
-    if(hasFocus() && (msg->type()==ui::kMouseMoveMessage || msg->type()==ui::kMouseEnterMessage))next=skin_.selectionContains(skin_.selectionMaterialBounds(inputBorderBounds(bounds())),static_cast<ui::MouseMessage*>(msg)->position());
-    if(next!=selectionHover_){selectionHover_=next;invalidate();}
-    if(msg->type()==ui::kFocusEnterMessage || msg->type()==ui::kFocusLeaveMessage)invalidate();
-  }
+  if(msg->type()==ui::kFocusEnterMessage || msg->type()==ui::kFocusLeaveMessage)invalidate();
   if(isEnabled() && !isReadOnly() && (numeric || wheel)) {
     if(msg->type()==ui::kMouseDownMessage){const auto mouse=static_cast<ui::MouseMessage*>(msg);
       const int suffixWidth=(font_.measure(suffix)+4)*uiScale;
@@ -360,20 +482,51 @@ bool PixelEntry::onProcessMessage(ui::Message* msg) {
   }
   if(msg->type()==ui::kKeyDownMessage) {
     const auto key=static_cast<ui::KeyMessage*>(msg);
-    if(key->scancode()==ui::kKeyEnter && accept) {commitExpression();accept();return true;}
+    if(key->scancode()==ui::kKeyEnter && accept) {const bool expression=deferredNumeric&&text().find_first_of("+-*/()",1)!=std::string::npos;commitExpression();if(!expression)accept();return true;}
     if(key->scancode()==ui::kKeyEsc && cancel) {cancel();return true;}
   }
   const bool handled=ui::Entry::onProcessMessage(msg);
-  if(msg->type()==ui::kFocusLeaveMessage && blur) {commitExpression();blur();}return handled;
+  // A field that can show its entire value must not retain an end-only scroll
+  // left over from the smaller geometry used before the toolbar relayout.
+  if(bounds().w>=currentContentWidth()*uiScale){
+    int scroll=0,caret=0;getEntryThemeInfo(&scroll,&caret,nullptr,nullptr);
+    if(scroll){setCaretPos(0);setCaretPos(caret);invalidate();}
+  }
+  if(msg->type()==ui::kFocusLeaveMessage && blur) {if(deferredNumeric&&numericMounted&&!numericMounted()){if(numericValue){std::ostringstream out;out.precision(12);out<<numericValue();setText(out.str());}}else{commitExpression();blur();}}return handled;
+}
+void PixelEntry::onResize(ui::ResizeEvent& ev) {
+  auto rect=ev.bounds();rect.h=textControlHeight*uiScale;setBoundsQuietly(rect);
+}
+int PixelEntry::contentWidth() const {
+  if(fixedContentWidth_>0)return fixedContentWidth_;
+  return currentContentWidth();
+}
+int PixelEntry::widthForValue(const std::u32string& value) const {
+  return 9+font_.measure(value)+(suffix.empty()?0:font_.measure(suffix)+uiGap);
+}
+int PixelEntry::currentContentWidth() const {
+  const int visible=font_.measure(unicodeText(text()));
+  const int editing=int(std::ceil(getCharBoxBounds(lastCaretPos()).x*scale().x/uiScale));
+  return 6+std::max({font_.measure(U"0"),visible,editing})+3+
+    (suffix.empty()?0:font_.measure(suffix)+uiGap);
+}
+gfx::Rect PixelEntry::onGetEntryTextBounds() const {
+  auto rc=clientBounds();
+  // Normal frame and text padding share the same layout origin.
+  const int padding=3*uiScale;
+  rc.x+=padding;rc.w=std::max(0,rc.w-2*padding-(suffix.empty()?0:(font_.measure(suffix)+uiGap)*uiScale));
+  rc.y+=(rc.h-10*uiScale)/2;rc.h=10*uiScale;
+  return rc;
 }
 void PixelEntry::onPaint(ui::PaintEvent& ev) {
   auto& g=*ev.graphics();PhysicalViewportClip viewportClip(g,paletteViewport?std::optional<gfx::Rect>(paletteViewport().offset(-bounds().origin())):std::nullopt);UiPaintScale scale(g);const auto rc=uiLogical(clientBounds());
-  drawInputFrame(g,skin_,uiPhysical(rc),hasFocus(),selectionHover_);
+  drawInputFrame(g,skin_,uiPhysical(rc),isEnabled() && frameHover_);
   int scroll=0,caret=0,state=0;Range selection;getEntryThemeInfo(&scroll,&caret,&state,&selection);
   const auto value=unicodeText(text());const int start=std::clamp(scroll,0,int(value.size()));
-  int x=rc.x+2+uiGap;const int y=rc.y+(rc.h-10)/2;
+  const auto textBounds=uiLogical(getEntryTextBounds());
+  int x=textBounds.x;const int y=textBounds.y;
   const int suffixWidth=font_.measure(suffix);
-  g.saveClip();g.clipRect(gfx::Rect(rc.x+2+uiGap,y,std::max(0,rc.w-2*(2+uiGap)-(suffix.empty()?0:suffixWidth+uiGap)),10));
+  g.saveClip();g.clipRect(textBounds);
   for(int i=start;i<int(value.size());++i) {
     const auto glyph=value.substr(i,1);const int width=font_.measure(glyph);
     if(!selection.isEmpty() && i>=selection.from && i<selection.to) g.fillRect(skin_["accent"],gfx::Rect(x,y,width,10));
@@ -381,7 +534,7 @@ void PixelEntry::onPaint(ui::PaintEvent& ev) {
   }
   if(hasFocus() && state && caret==int(value.size())) g.fillRect(skin_["text"],gfx::Rect(x,y,1,10));
   g.restoreClip();
-  if(!suffix.empty()) font_.draw(g,suffix,std::min(x+uiGap,rc.x2()-2-uiGap-suffixWidth),y,skin_["muted"]);
+  if(!suffix.empty()) font_.draw(g,suffix,std::min(x+uiGap,rc.x2()-3-suffixWidth),y,skin_["muted"]);
 
 }
 void PixelSlider::begin() {if(!active_) {active_=true;if(interactionBegin) interactionBegin();}}
@@ -394,7 +547,7 @@ void PixelSlider::change(int next,bool shift) {
 bool PixelSlider::onProcessMessage(ui::Message* msg) {
   if(msg->type()==ui::kMouseMoveMessage || msg->type()==ui::kMouseEnterMessage || msg->type()==ui::kMouseLeaveMessage || msg->type()==ui::kFocusLeaveMessage) {
     bool hover=false;
-    if((hasFocus() || active_) && (msg->type()==ui::kMouseMoveMessage || msg->type()==ui::kMouseEnterMessage))hover=skin_.selectionContains(skin_.selectionMaterialBounds(inputBorderBounds(bounds())),static_cast<ui::MouseMessage*>(msg)->position());
+    if((hasFocus() || active_) && (msg->type()==ui::kMouseMoveMessage || msg->type()==ui::kMouseEnterMessage))hover=skin_.selectionContains(skin_.selectionMaterialBounds(bounds()),static_cast<ui::MouseMessage*>(msg)->position());
     if(hover!=selectionHover_){selectionHover_=hover;invalidate();}
   }
   if(msg->type()==ui::kFocusEnterMessage)invalidate();
@@ -407,7 +560,7 @@ bool PixelSlider::onProcessMessage(ui::Message* msg) {
     const auto mouse=static_cast<ui::MouseMessage*>(msg);
     if(msg->type()==ui::kMouseDownMessage && mouse->left()) {requestFocus();captureMouse();begin();}
     if(hasCapture()) {
-      const auto rc=bounds();const int left=rc.x+3*uiScale,width=std::max(1,rc.w-6*uiScale-1);
+      const auto rc=bounds();const int left=rc.x+uiScale,width=std::max(1,rc.w-2*uiScale-1);
       const double progress=std::clamp(double(mouse->position().x-left)/width,0.0,1.0);
       change(int(std::floor(minimum+progress*(maximum-minimum)+0.5)),mouse->shiftPressed());
       if(msg->type()==ui::kMouseUpMessage && mouse->left()) {releaseMouse();finish();}
@@ -435,19 +588,35 @@ bool PixelSlider::onProcessMessage(ui::Message* msg) {
   }
   return ui::Widget::onProcessMessage(msg);
 }
+void PixelSlider::onResize(ui::ResizeEvent& ev) {auto rect=ev.bounds();rect.h=textControlHeight*uiScale;setBoundsQuietly(rect);}
 void PixelSlider::onPaint(ui::PaintEvent& ev) {
   auto& g=*ev.graphics();UiPaintScale scale(g);const auto rc=uiLogical(clientBounds());
-  // Widget transparency repaints the underlying UI through the skin's clear margins.
+  // Normal material bounds own layout; selection pixels extend outward.
   const char* slot="slider.normal";
-  skin_.draw(g,slot,gfx::Rect(rc.x,rc.y,rc.w,std::max(1,rc.h-2)));
-  const int width=std::max(0,rc.w-6),height=std::max(0,rc.h-7);
+  const auto border=rc;
+  skin_.draw(g,slot,border);
+  const int width=std::max(0,border.w-2),height=std::max(0,border.h-2);
   const double progress=maximum>minimum?std::clamp(double(value-minimum)/(maximum-minimum),0.0,1.0):0;
   const int fill=int(std::floor(width*progress+0.5));
-  if(fill>0 && height>0) {g.saveClip();g.clipRect(gfx::Rect(rc.x+3,rc.y+3,fill,height));skin_.draw(g,"slider.fill",gfx::Rect(rc.x+3,rc.y+3,std::max(3,fill),height));g.restoreClip();}
-  if(hasFocus() || active_)skin_.drawSelectionBorder(g,inputBorderBounds(uiPhysical(rc)),selectionHover_);
+  if(colorGradient && border.w>4 && border.h>4){
+    std::array<std::uint32_t,5> stops;for(int i=0;i<5;++i)stops[i]=colorGradient(i/4.);
+    for(int x=0;x<border.w-4;++x){const double t=double(x)/std::max(1,border.w-5)*4;const int i=std::min(3,int(t));const double f=t-i;auto channel=[&](int n){return int(std::floor(((stops[i]>>(8*n))&255)*(1-f)+((stops[i+1]>>(8*n))&255)*f+.5));};
+      for(int y=0;y<border.h-4;++y){const int checker=((x/4+y/4)%2)?128:192,a=channel(3);auto over=[&](int n){return (channel(n)*a+checker*(255-a)+127)/255;};g.fillRect(gfx::rgba(over(0),over(1),over(2)),{border.x+2+x,border.y+2+y,1,1});}
+    }
+    const auto part=skin_.assets.patches.find("icon.marker-light");
+    if(part!=skin_.assets.patches.end()){
+      const auto box=pickerMarkerBox({border.x+2,border.y+2,border.w-4,border.h-4},progress,.5,part->second.bitmap->width,part->second.bitmap->height);
+      const int sx=std::clamp(box.x-(border.x+2)+box.w/2,0,border.w-5),sy=std::clamp(box.y-(border.y+2)+box.h/2,0,border.h-5);
+      const double t=double(sx)/std::max(1,border.w-5)*4;const int i=std::min(3,int(t));const double f=t-i;auto channel=[&](int n){return int(std::floor(((stops[i]>>(8*n))&255)*(1-f)+((stops[i+1]>>(8*n))&255)*f+.5));};
+      const int a=channel(3),checker=((sx/4+sy/4)%2)?128:192;auto over=[&](int n){return (channel(n)*a+checker*(255-a)+127)/255;};
+      skin_.draw(g,pickerLightMarker(over(0),over(1),over(2))?"icon.marker-light":"icon.marker-dark",{box.x,box.y,box.w,box.h},true);
+    }
+  }
+  else if(fill>0 && height>0) {g.saveClip();g.clipRect(gfx::Rect(border.x+1,border.y+1,fill,height));skin_.draw(g,"slider.fill",gfx::Rect(border.x+1,border.y+1,std::max(3,fill),height));g.restoreClip();}
+  if(hasFocus() || active_)skin_.drawSelectionBorder(g,uiPhysical(rc),selectionHover_);
   const auto style=skin_.assets.text.find(slot);
   const auto color=skin_[!isEnabled()?"muted":style==skin_.assets.text.end()?"text":style->second.color.c_str()];
-  auto label=unicodeText(std::to_string(value))+(percentage?U"%":U"px");font_.draw(g,label,rc.x+(rc.w-font_.measure(label))/2,rc.y+(rc.h-10)/2,color);
+  if(!colorGradient){auto label=valueLabel?valueLabel(value):unicodeText(std::to_string(value))+(percentage?U"%":numberSuffix);font_.draw(g,label,rc.x+(rc.w-font_.measure(label))/2,rc.y+(rc.h-10)/2,color);}
 }
 namespace {
 // Insets reserve the skin's frame first, then the requested clear content gap.
@@ -552,14 +721,49 @@ PixelButton::PixelButton(const PixelFont& font,const Skin& skin,std::u32string l
     releaseMouse();setSelected(false);invalidate();openGroup();
   });
 }
+gfx::Rect PixelButton::switchToggleBounds() const {
+  const auto rc=uiLogical(clientBounds());
+  return uiPhysical(gfx::Rect(rc.x2()-4-18,rc.y+(rc.h-9)/2,18,9)).offset(bounds().origin());
+}
+void PixelButton::onResize(ui::ResizeEvent& ev) {
+  if(isCheckbox()){auto rect=ev.bounds();rect.h=textControlHeight*uiScale;setBoundsQuietly(rect);}
+  else ui::Button::onResize(ev);
+}
 bool PixelButton::onProcessMessage(ui::Message* msg) {
+  if(msg->type()==ui::kMouseLeaveMessage){if(contentPointerInside_){contentPointerInside_=false;invalidate();}}
+  else if(msg->type()==ui::kMouseEnterMessage || msg->type()==ui::kMouseMoveMessage || msg->type()==ui::kMouseDownMessage || msg->type()==ui::kMouseUpMessage){
+    const auto point=static_cast<ui::MouseMessage*>(msg)->position();
+    const bool inside=bounds().contains(point) && (!paletteViewport || paletteViewport().contains(point));
+    if(inside!=contentPointerInside_){contentPointerInside_=inside;invalidate();}
+  }
+  if(skinStyle=="switch"){
+    if(msg->type()==ui::kMouseLeaveMessage){switchPointerInside_=false;invalidate();}
+    else if(msg->type()==ui::kMouseEnterMessage || msg->type()==ui::kMouseMoveMessage || msg->type()==ui::kMouseDownMessage || msg->type()==ui::kMouseUpMessage){
+      const auto point=static_cast<ui::MouseMessage*>(msg)->position();
+      const bool inside=switchToggleBounds().contains(point) && (!paletteViewport || paletteViewport().contains(point));
+      if(inside!=switchPointerInside_){switchPointerInside_=inside;invalidate();}
+    }
+  }
+  if(isCheckbox()) {
+    // Normal material is transparent: expose the parent when hover/held ends.
+    setTransparent(true);
+    // Pointer messages use physical display coordinates, including while captured.
+    // Keep state repainting independent of the manager's HAS_MOUSE update order.
+    if(msg->type()==ui::kMouseLeaveMessage){checkboxPointerInside_=false;invalidate();}
+    else if(msg->type()==ui::kMouseEnterMessage || msg->type()==ui::kMouseMoveMessage ||
+            msg->type()==ui::kMouseDownMessage || msg->type()==ui::kMouseUpMessage){
+      const auto point=static_cast<ui::MouseMessage*>(msg)->position();
+      const bool inside=bounds().contains(point) && (!paletteViewport || paletteViewport().contains(point));
+      if(checkboxPointerInside_!=inside){checkboxPointerInside_=inside;invalidate();}
+    }
+  }
   if(isCheckbox() && (msg->type()==ui::kKeyDownMessage || msg->type()==ui::kKeyUpMessage)) {
     const auto key=static_cast<ui::KeyMessage*>(msg);
     if(key->scancode()==ui::kKeyEnter || key->scancode()==ui::kKeyEnterPad)return false;
   }
 
   if(paletteViewport && !hasCapture() && msg->type()==ui::kMouseDownMessage && !paletteViewport().contains(static_cast<ui::MouseMessage*>(msg)->position()))return false;
-  if(timelinePress && isEnabled() && msg->type()==ui::kMouseDownMessage){const auto& mouse=*static_cast<ui::MouseMessage*>(msg);if(mouse.left() || mouse.right()){timelinePress(mouse);return true;}}
+  if(pointerPress && isEnabled() && msg->type()==ui::kMouseDownMessage){const auto& mouse=*static_cast<ui::MouseMessage*>(msg);if(mouse.left() || mouse.right()){pointerPress(mouse);return true;}}
   if(framePress && isEnabled()) {
     if(msg->type()==ui::kMouseDownMessage && static_cast<ui::MouseMessage*>(msg)->left()){auto& mouse=*static_cast<ui::MouseMessage*>(msg);frameDragStart=mouse.position().x;framePress(mouse);requestFocus();captureMouse();return true;}
     if(msg->type()==ui::kMouseMoveMessage && hasCapture()){if(frameDrag && (labelOnly || std::abs(static_cast<ui::MouseMessage*>(msg)->position().x-frameDragStart)>=4*uiScale))frameDrag(static_cast<ui::MouseMessage*>(msg)->position().x);return true;}
@@ -599,7 +803,7 @@ bool PixelButton::onProcessMessage(ui::Message* msg) {
     static_cast<ui::MouseMessage*>(msg)->left() && bounds().contains(static_cast<ui::MouseMessage*>(msg)->position());
   const bool handled=ui::Button::onProcessMessage(msg);
   if(paletteRepaint && (msg->type()==ui::kMouseEnterMessage || msg->type()==ui::kMouseLeaveMessage || msg->type()==ui::kMouseMoveMessage)) paletteRepaint();
-  if(timelineRepaint && (msg->type()==ui::kMouseEnterMessage || msg->type()==ui::kMouseLeaveMessage)) timelineRepaint();
+  if(hoverRepaint && (msg->type()==ui::kMouseEnterMessage || msg->type()==ui::kMouseLeaveMessage)) hoverRepaint();
   if(open) openGroup();
   return handled;
 }
@@ -616,7 +820,7 @@ bool PixelButton::paletteSelectionContains(gfx::Point position) const {
 }
 gfx::Rect PixelButton::iconContentBounds(const std::string& state) const {
   auto rc=uiLogical(clientBounds());
-  // All states reserve the same content rectangle, including asymmetric shadow.
+  // All four button materials share the same fixed border and content rectangle.
   const auto family=skin_.assets.patches.count("icon_button.normal")?"icon_button.":"button.";
   int left=0,right=0,top=0,bottom=0;
   for(const auto suffix:{"normal","hover","pressed","selected","focus","disabled"}) {
@@ -626,49 +830,39 @@ gfx::Rect PixelButton::iconContentBounds(const std::string& state) const {
   const int size=std::max(0,std::min(rc.w-left-right,rc.h-top-bottom));
   return gfx::Rect(rc.x+(rc.w-size-left-right)/2+left,rc.y+(rc.h-size-top-bottom)/2+top,size,size);
 }
-void PixelButton::paintTimelineContent(ui::Graphics& g,gfx::Rect rc,gfx::Point physicalOffset) {
-  UiPaintScale scale(g,physicalOffset);
-    const bool row=skinStyle=="timeline-row";const bool material=skin_.draw(g,row?"timeline.row":"timeline.button",rc);if(!material)g.fillRect(skin_[row?"timelineBackground":"panel"],rc);
-    // Timeline states tint only the cell interior; grid and glyphs stay intact.
-    if(row && (active || timelineBackgroundHover))skin_.draw(g,timelineBackgroundHover?"timeline.hover":"timeline.active",gfx::Rect(rc.x+1,rc.y+1,rc.w-1,rc.h-1));
-    if(!row && !material){g.drawRect(skin_["timelineGrid"],rc);g.drawRect(skin_["timelineEdge"],gfx::Rect(rc.x+1,rc.y+1,rc.w-2,rc.h-2));}
-    if(iconSkin && !icon.empty())iconSkin->draw(g,icon+(isEnabled()?"":"-disabled"),gfx::Rect(rc.x+1+(rc.w-12)/2,rc.y+1+(rc.h-12)/2,11,11),true);
-    if(timelineCel)skin_.draw(g,"timeline.dot",gfx::Rect(rc.x+3,rc.y+3,7,7),true);
-    if(active && !row)g.drawRect(skin_["accent"],gfx::Rect(rc.x+1,rc.y+1,rc.w-2,rc.h-2));
-    if(row)skin_.draw(g,"timeline.cell",gfx::Rect(rc.x,rc.y,rc.w+1,rc.h+1));
-    if(!caption.empty()){
-      g.saveClip();g.clipRect(rc);
-      const auto ink=font_.inkBounds(caption);
-      const int x=centerCaption?rc.x+1+(rc.w-1-ink.w)/2-ink.x:rc.x+1+timelineCaptionPadding-(timelineCaptionPadding?ink.x:0);
-      const int y=centerCaption?rc.y+1+(rc.h-1-ink.h)/2-ink.y:rc.y+(rc.h-10)/2;
-      font_.draw(g,caption,x,y,skin_["timelineInk"]);g.restoreClip();
-    }return;
-  }
+// Center the visible icon pixels, preserving its original bitmap and alpha.
+static void drawCaptionIcon(ui::Graphics& g,const Skin& skin,const std::string& name,gfx::Rect slot,int opacity) {
+  const auto it=skin.assets.patches.find(name);if(it==skin.assets.patches.end())return;
+  const auto& b=*it->second.bitmap;int x0=b.width,y0=b.height,x1=0,y1=0;
+  for(int y=0;y<b.height;++y)for(int x=0;x<b.width;++x)if(b.pixels[y*b.width+x]>>24){x0=std::min(x0,x);y0=std::min(y0,y);x1=std::max(x1,x+1);y1=std::max(y1,y+1);}
+  if(x1>x0 && y1>y0)skin.draw(g,name,{slot.x+(slot.w-(x1-x0))/2-x0,slot.y+(slot.h-(y1-y0))/2-y0,b.width,b.height},true,opacity);
+}
 void PixelButton::onPaint(ui::PaintEvent& ev) {
   auto& g=*ev.graphics();
   PhysicalViewportClip viewportClip(g,paletteViewport?std::optional<gfx::Rect>(paletteViewport().offset(-bounds().origin())):std::nullopt);
-  if(skinStyle=="timeline" || skinStyle=="timeline-row") {if(!timelineParentPainted)paintTimelineContent(g,uiLogical(clientBounds()));return;}
   UiPaintScale scale(g,paletteMaterialRect?paletteMaterialRect->origin():gfx::Point());
   auto rc=uiLogical(paletteMaterialRect?gfx::Rect(paletteMaterialRect->size()):clientBounds());
   if(isCheckbox()) {
     // Existing controlled bindings own their checked state through the icon.
     const bool checked=skinStyle=="checkbox"?active:icon!="checkboxUnchecked";
-    skin_.drawCheckbox(g,rc,checked,hasMouse(),isSelected(),isEnabled());
+    const bool over=checkboxPointerInside_.value_or(hasMouse());
+    skin_.drawCheckbox(g,rc,checked,over,isSelected() && (!hasCapture() || over),isEnabled());
     g.saveClip();g.clipRect({rc.x+15,rc.y,std::max(0,rc.w-15),rc.h});
-    font_.draw(g,caption,rc.x+15,rc.y+(rc.h-10)/2,skin_[isEnabled()?"text":"muted"]);
+    const auto ink=font_.inkBounds(caption);
+    font_.draw(g,caption,rc.x+15-ink.x,rc.y+(rc.h-ink.h)/2-ink.y,skin_[isEnabled()?"text":"muted"]);
     g.restoreClip();return;
   }
   if(skinStyle=="switch") {
     const int opacity=isEnabled()?255:166;
-    skin_.draw(g,"switch.container",rc,false,opacity);
-    const gfx::Rect toggle(rc.x2()-4-18,rc.y+(rc.h-9)/2,18,9);
-    const bool over=isEnabled() && (hasMouse() || hasFocus());
+    skin_.draw(g,isEnabled() && contentPointerInside_?"switch.container.hover":"switch.container",rc,false,opacity);
+    const auto toggle=uiLogical(switchToggleBounds().offset(-bounds().origin()));
+    const bool over=isEnabled() && switchPointerInside_;
     skin_.draw(g,std::string(active?"switch.on.":"switch.off.")+(over?"hover":"normal"),toggle,false,opacity);
     auto text=gfx::Rect(rc.x+4,rc.y+2,std::max(0,toggle.x-uiGap-(rc.x+4)),std::max(0,rc.h-4));
     g.saveClip();g.clipRect(text);
     if(iconSkin && !icon.empty()){
-      const auto part=iconSkin->assets.patches.find(icon);const int iw=part==iconSkin->assets.patches.end()?11:part->second.bitmap->width,ih=part==iconSkin->assets.patches.end()?11:part->second.bitmap->height;
-      iconSkin->draw(g,icon,gfx::Rect(text.x,rc.y+(rc.h-ih)/2,iw,ih),true,opacity);text.x+=iw+uiGap;text.w=std::max(0,text.w-iw-uiGap);
+      const auto part=iconSkin->assets.patches.find(icon);const int iw=part==iconSkin->assets.patches.end()?11:part->second.bitmap->width;
+      drawCaptionIcon(g,*iconSkin,icon,{text.x,rc.y,iw,rc.h},opacity);text.x+=iw+uiGap;text.w=std::max(0,text.w-iw-uiGap);
     }
     g.clipRect(text);const auto ink=font_.inkBounds(caption);
     font_.draw(g,caption,text.x-ink.x,rc.y+(rc.h-ink.h)/2-ink.y,skin_[isEnabled()?"text":"muted"]);
@@ -687,10 +881,16 @@ void PixelButton::onPaint(ui::PaintEvent& ev) {
   }
   const int contentOpacity=isEnabled() && !isSelected() && !active && !hasMouse()?128:255;
   auto contentColor=[&](gfx::Color color){return gfx::rgba(gfx::getr(color),gfx::getg(color),gfx::getb(color),gfx::geta(color)*contentOpacity/255);};
-  if(iconGroupCount>0) {
+  if(columnHeaderAction){
+    const char* state=!isEnabled()?"disabled":isSelected()&&contentPointerInside_?"pressed":active?"selected":contentPointerInside_?"hover":"normal";
+    if(!skin_.draw(g,std::string("icon_button.")+state,rc))skin_.draw(g,"icon_button.normal",rc);
+    if(iconSkin)iconSkin->draw(g,icon+(isEnabled()?"":"-disabled"),{rc.x+2,rc.y+2,11,11},true,contentOpacity);
+    return;
+  }
+  if(iconGroupCount>0 && caption.empty()) {
     // Preserve each button's complete material. Layout overlaps the outermost
     // one-pixel edges so neighbours share exactly one outline.
-    const char* state=!isEnabled()?"disabled":isSelected()?"pressed":active?"selected":hasMouse()?"hover":hasFocus()?"focus":"normal";
+    const char* state=!isEnabled()?"disabled":isSelected() && contentPointerInside_?"pressed":contentPointerInside_?"hover":"normal";
     g.saveClip();g.clipRect(rc);g.fillRect(skin_["panel"],rc);
     if(!skin_.draw(g,std::string("icon_button.")+state,rc))skin_.draw(g,"icon_button.normal",rc);
     if(iconSkin)iconSkin->draw(g,icon+(isEnabled()?"":"-disabled"),gfx::Rect(rc.x+(rc.w-11)/2,rc.y+(rc.h-11)/2,11,11),true,contentOpacity);
@@ -704,11 +904,12 @@ void PixelButton::onPaint(ui::PaintEvent& ev) {
       if(it!=iconSkin->assets.patches.end()){const auto& bitmap=*it->second.bitmap;iconSkin->draw(g,name,gfx::Rect(rc.x+(rc.w-bitmap.width)/2,rc.y+(rc.h-bitmap.height)/2,bitmap.width,bitmap.height),true,contentOpacity);}}
     return;
 }
-  if(labelOnly) {g.fillRect(skin_["panel"],rc);font_.draw(g,caption,rc.x,rc.y+(rc.h-10)/2,skin_["text"]);return;}
+  if(labelOnly) {if(!transparentLabel)g.fillRect(skin_["panel"],rc);font_.draw(g,caption,rc.x,rc.y+(rc.h-10)/2,skin_["text"]);return;}
   if(bareIconWithCaption && iconSkin) {
     g.fillRect(skin_["panel"],rc);
-    iconSkin->draw(g,icon+(!isEnabled()?"-disabled":""),gfx::Rect(rc.x,rc.y+(rc.h-11)/2,11,11),true,contentOpacity);
-    font_.draw(g,caption,rc.x+11+uiGap,rc.y+(rc.h-10)/2,contentColor(skin_[isEnabled()?"text":"muted"]));
+    drawCaptionIcon(g,*iconSkin,icon+(!isEnabled()?"-disabled":""),{rc.x,rc.y,11,rc.h},contentOpacity);
+    const auto ink=font_.inkBounds(caption);
+    font_.draw(g,caption,rc.x+11+uiGap-ink.x,rc.y+(rc.h-ink.h)/2-ink.y,contentColor(skin_[isEnabled()?"text":"muted"]));
     return;
   }
   if(colorRole || recentColorSwatch) {
@@ -730,8 +931,8 @@ void PixelButton::onPaint(ui::PaintEvent& ev) {
       const auto black=gfx::rgba(0,0,0);
       g.fillRect(black,gfx::Rect(rc.x,rc.y,rc.w,1));
       g.fillRect(black,gfx::Rect(rc.x,rc.y2()-1,rc.w,1));
-      g.fillRect(black,gfx::Rect(rc.x,rc.y,1,rc.h));
-      g.fillRect(black,gfx::Rect(rc.x2()-1,rc.y,1,rc.h));return;
+      if(!(swatchOpenEdges&1))g.fillRect(black,gfx::Rect(rc.x,rc.y,1,rc.h));
+      if(!(swatchOpenEdges&2))g.fillRect(black,gfx::Rect(rc.x2()-1,rc.y,1,rc.h));return;
     }
     const char* state=!isEnabled()?"disabled":isSelected()?"pressed":active?"selected":hasMouse()?"hover":hasFocus()?"focus":"normal";
     const auto slot=std::string("role_button.")+state;
@@ -814,8 +1015,9 @@ void PixelButton::onPaint(ui::PaintEvent& ev) {
     g.drawRect(skin_[hasFocus()||hasMouse()?"accent":"border"],rc);
   }
   if(iconWithCaption && iconSkin) {
-    iconSkin->draw(g,icon+(!isEnabled()?"-disabled":""),gfx::Rect(rc.x+3+uiGap,rc.y+(rc.h-11)/2,11,11),true,contentOpacity);
-    font_.draw(g,caption,rc.x+3+uiGap+11+uiGap,rc.y+(rc.h-10)/2,contentColor(skin_[isEnabled()?"text":"muted"]));return;
+    drawCaptionIcon(g,*iconSkin,icon+(!isEnabled()?"-disabled":""),{rc.x+3+uiGap,rc.y,11,rc.h},contentOpacity);
+    const auto ink=font_.inkBounds(caption);
+    font_.draw(g,caption,rc.x+3+uiGap+11+uiGap-ink.x,rc.y+(rc.h-ink.h)/2-ink.y,contentColor(skin_[isEnabled()?"text":"muted"]));return;
   }
   if(swatch) g.fillRect(gfx::rgba(swatch&255,(swatch>>8)&255,(swatch>>16)&255),gfx::Rect(rc.x+3,rc.y+3,rc.w-6,rc.h-6));
   else if(icon.empty() || !(iconSkin?*iconSkin:skin_).draw(g,icon+((iconSkin && (!isEnabled() || mutedIcon))?"-disabled":""),iconOnly?iconArea:rc,true,contentOpacity)) {
@@ -828,10 +1030,15 @@ void PixelButton::onPaint(ui::PaintEvent& ev) {
 }
 PixelDropdown::PixelDropdown(const PixelFont& font,const Skin& skin)
   :PixelButton(font,skin,U"",[this]{showOptions();}),dropdownFont_(font),dropdownSkin_(skin) {setTransparent(true);}
+void PixelDropdown::onResize(ui::ResizeEvent& ev) {
+  auto rect=ev.bounds();rect.h=textControlHeight*uiScale;
+  setBoundsQuietly(rect);
+}
 void PixelDropdown::setOptions(std::vector<std::u32string> options) {
   options_=std::move(options);setSelectedIndex(options_.empty()?-1:std::max(0,std::min(selectedIndex_,int(options_.size())-1)));
 }
 void PixelDropdown::setSelectedIndex(int index,bool notify) {
+  if(notify && optionEnabled && !optionEnabled(index))return;
   const int next=options_.empty()?-1:std::clamp(index,0,int(options_.size())-1);
   const bool different=next!=selectedIndex_;selectedIndex_=next;
   const auto text=next<0?U"":options_[next];const bool textChanged=caption!=text;caption=text;if(different || textChanged)invalidate();
@@ -843,32 +1050,18 @@ void PixelDropdown::showOptions() {
   if(options_.empty())return;
   PixelMenu menu(dropdownSkin_);
   for(int i=0;i<int(options_.size());++i){
+    if(auto group=optionGroups.find(i);group!=optionGroups.end()){if(i)menu.addChild(new PixelMenuSeparator(dropdownSkin_));auto heading=new PixelMenuItem(dropdownFont_,dropdownSkin_,group->second);heading->setEnabled(false);menu.addChild(heading);}
     auto item=new PixelMenuItem(dropdownFont_,dropdownSkin_,options_[i]);
-    item->Click.connect([this,i]{setSelectedIndex(i,true);});menu.addChild(item);
+    item->setEnabled(!optionEnabled || optionEnabled(i));item->Click.connect([this,i]{setSelectedIndex(i,true);});menu.addChild(item);
   }
   menu.setMinSize(gfx::Size(bounds().w,0));
-  open_=true;updateHover();invalidate();
+  open_=true;invalidate();if(popupStateChanged)popupStateChanged(true);
   try{menu.showPopup({bounds().x,bounds().y2()+2*uiScale},display());}
-  catch(...){open_=false;invalidate();throw;}
-  open_=false;requestFocus();updateHover();invalidate();
-}
-gfx::Rect PixelDropdown::arrowBounds() const {
-  const auto r=bounds();return {r.x2()-15*uiScale,r.y+(r.h-16*uiScale)/2,15*uiScale,16*uiScale};
-}
-void PixelDropdown::updateHover() {
-  const bool arrow=isEnabled() && pointer_ && arrowBounds().contains(*pointer_);
-  if(arrow!=arrowHover_){arrowHover_=arrow;invalidate();}
+  catch(...){open_=false;invalidate();if(popupStateChanged)popupStateChanged(false);throw;}
+  open_=false;if(popupStateChanged)popupStateChanged(false);requestFocus();invalidate();
 }
 bool PixelDropdown::onProcessMessage(ui::Message* msg) {
   if(paletteViewport && !hasCapture() && msg->type()==ui::kMouseDownMessage && !paletteViewport().contains(static_cast<ui::MouseMessage*>(msg)->position()))return false;
-  if(msg->type()==ui::kMouseMoveMessage || msg->type()==ui::kMouseEnterMessage || msg->type()==ui::kMouseDownMessage || msg->type()==ui::kMouseUpMessage) {
-    const auto mouse=static_cast<ui::MouseMessage*>(msg);
-    pointer_=mouse->position();updateHover();
-    if(msg->type()==ui::kMouseDownMessage && mouse->left()){arrowPressed_=isEnabled() && arrowHover_;invalidate();}
-    if(msg->type()==ui::kMouseUpMessage){arrowPressed_=false;invalidate();}
-  }
-  if(msg->type()==ui::kMouseLeaveMessage){pointer_.reset();updateHover();}
-  if(msg->type()==ui::kFocusEnterMessage || msg->type()==ui::kFocusLeaveMessage){if(msg->type()==ui::kFocusLeaveMessage)arrowPressed_=false;updateHover();invalidate();}
   if(isEnabled() && msg->type()==ui::kKeyDownMessage){
     if(prepareOptions)prepareOptions();
     const auto key=static_cast<ui::KeyMessage*>(msg)->scancode();
@@ -879,13 +1072,9 @@ bool PixelDropdown::onProcessMessage(ui::Message* msg) {
 void PixelDropdown::onPaint(ui::PaintEvent& ev) {
   auto& g=*ev.graphics();PhysicalViewportClip viewportClip(g,paletteViewport?std::optional<gfx::Rect>(paletteViewport().offset(-bounds().origin())):std::nullopt);UiPaintScale scale(g);const auto r=uiLogical(clientBounds());
   const int arrowWidth=15;const auto field=r;
-  drawInputFrame(g,dropdownSkin_,uiPhysical(field),false);
-  const gfx::Rect arrow(r.x2()-arrowWidth,r.y+(r.h-16)/2,arrowWidth,16);
-  const char* state=!isEnabled()?"disabled":arrowPressed_ && isSelected() && arrowHover_?"pressed":arrowHover_?"hover":"normal";
-  {
-    dropdownSkin_.draw(g,std::string("icon_button.")+state,arrow);
-    dropdownSkin_.draw(g,"dropdown.arrow",gfx::Rect(arrow.x+(arrow.w-5)/2,arrow.y+(arrow.h-3)/2,5,3),true,isEnabled() && !arrowHover_ && !arrowPressed_?128:255);
-  }
+  drawInputFrame(g,dropdownSkin_,uiPhysical(field),isEnabled() && contentPointerInside());
+  // One entry frame owns the whole control; the arrow is only an inset glyph.
+  dropdownSkin_.draw(g,"dropdown.arrow",gfx::Rect(r.x2()-3-5,r.y+(r.h-3)/2,5,3),true,isEnabled()?255:115);
   const auto ink=dropdownFont_.inkBounds(caption);
   g.saveClip();g.clipRect(gfx::Rect(field.x+3,field.y+2,std::max(0,field.w-arrowWidth-3),std::max(0,field.h-4)));
   dropdownFont_.draw(g,caption,field.x+3-ink.x,field.y+(field.h-ink.h)/2-ink.y,dropdownSkin_[isEnabled()?"text":"muted"]);g.restoreClip();

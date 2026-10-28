@@ -1,0 +1,22 @@
+#include "reference_images.h"
+#include "document.h"
+#include "document_snapshot.h"
+#include "project_encode.h"
+#include "project_import.h"
+#include "relative_luminance.h"
+#include <chrono>
+#include <iostream>
+using namespace moon;
+static void check(bool value,const char* why){if(!value)throw std::runtime_error(why);}
+static ReferenceImage picture(std::string id){return {std::move(id),2,1,std::make_shared<const std::vector<Pixel>>(std::vector<Pixel>{0x800000ff,0xff00ff00})};}
+int main(){try{
+ auto first=picture("first");validateReferenceImage(first);bool rejected=false;try{auto bad=first;bad.id="../bad";validateReferenceImage(bad);}catch(const std::invalid_argument&){rejected=true;}check(rejected,"Reject unsafe reference resource ID");rejected=false;try{auto bad=first;bad.width=3;validateReferenceImage(bad);}catch(const std::invalid_argument&){rejected=true;}check(rejected,"Reject malformed clipboard geometry");
+ Document d(2,2);d.beginStroke({0,0},0xff112233);d.commitStroke();d.markSaved();const auto history=d.historySize(),content=d.contentRevision();const auto artwork=d.pixels();d.addReferenceImage(first);check(d.dirty()&&d.historySize()==history&&d.contentRevision()==content&&d.pixels()==artwork,"Reference metadata dirties without artwork/history");
+ d.markSaved();ReferenceSession main;main.synchronize(d.referenceImages());check(main.activeId=="first","Loaded reference picks first");main.views["first"].zoom=3;main.views["first"].pan={5,7};const auto w=main.openWindow(d.referenceImages(),"first");const auto empty=main.openWindow(d.referenceImages());main.step(d.referenceImages(),1,w);check(!main.window(w)->view.zoom&&main.views["first"].zoom==3,"Independent window navigation");main.relativeLuminance=true;main.closeWindow(empty);check(main.windows.size()==1&&!d.dirty()&&d.historySize()==history,"Closing/view state does not change project");
+ d.addReferenceImage(picture("second"));main.synchronize(d.referenceImages());main.step(d.referenceImages(),1);check(main.activeId=="second","Reference next");main.step(d.referenceImages(),1);check(main.activeId=="first"&&main.views["first"].zoom==3,"Reference cyclic navigation retains main image view");d.removeReferenceImage("first");main.synchronize(d.referenceImages());check(main.activeId=="second"&&main.window(w)->activeId=="second"&&!main.window(w)->view.zoom,"Delete selects previous valid fallback in all windows");
+ ReferenceSession initiallyEmpty;ReferenceLibrary images;initiallyEmpty.synchronize(images);const auto blank=initiallyEmpty.openWindow(images);images.push_back(first);initiallyEmpty.synchronize(images);initiallyEmpty.chooseAdded("first",blank);check(initiallyEmpty.activeId.empty()&&initiallyEmpty.window(blank)->activeId=="first","Paste into new window leaves empty main unselected");
+ check(referenceFit(7.8,2)==7.5&&referenceFit(.7,2)==.7&&referenceZoomStep(.666667,true)==1&&referenceZoomStep(1,false)==.666667,"Legacy fit and zoom sequence");auto pan=referenceAnchoredPan(10,20,100,100,{17,33},{5,7},2,3);const double oldX=(17-((100-10*2)/2.+5))/2,oldY=(33-((100-20*2)/2.+7))/2;check(std::abs((17-((100-10*3)/2.+pan.x))/3-oldX)<1e-9&&std::abs((33-((100-20*3)/2.+pan.y))/3-oldY)<1e-9,"Zoom remains anchored");check(sampleReference(first,10,20,2,{10,20})==0x800000ff&&!sampleReference(first,10,20,2,{9,20}),"Sample original RGBA and reject outside");check(relativeLuminancePixel(0x800000ff)!=0x800000ff,"Display luminance conversion");
+ DocumentSnapshot snapshot(d);while(!snapshot.advance(d,std::chrono::steady_clock::now()+std::chrono::seconds(1))){}auto captured=snapshot.finish();check(captured.referenceImages().size()==1&&captured.referenceImages()[0].pixels==d.referenceImages()[0].pixels,"Snapshot shares immutable reference pixels");
+ for(bool recovery:{false,true}){auto encoded=recovery?project::encodeRecoveryProject(d):project::encodeEditableProject(d);auto manifest=project::readProjectManifest(encoded.bytes);auto prepared=project::prepareEditableImport(manifest);check(prepared.referenceImages.size()==1&&prepared.referenceImages[0].id=="second"&&*prepared.referenceImages[0].pixels==*d.referenceImages()[0].pixels,"Project and recovery reference RGBA round trip");}
+ d.undo();check(d.referenceImages().size()==1&&d.referenceImages()[0].id=="second","Artwork undo leaves reference metadata alone");std::cout<<"reference-images-test passed\n";return 0;
+ }catch(const std::exception& e){std::cerr<<e.what()<<'\n';return 1;}}

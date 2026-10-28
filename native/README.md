@@ -55,3 +55,5 @@ pwsh -File scripts/build.ps1
 大量帧／图层的绘制、可见行复用与时间轴压力验证见 [性能记录](docs/large-timeline-performance.md)。
 
 快速绘制、松笔及拖动画布的 Aseprite 代码对照、修复和像素验证见 [绘制与拖动性能](docs/drawing-pan-performance.md)。
+
+全界面交互卡顿的公共命中检测原因、修复及同程序对照见 [交互性能记录](docs/interaction-performance-2026-10-18.md)。

@@ -1,0 +1,17 @@
+#include "document.h"
+#include "history_panel_model.h"
+#include <iostream>
+#include <stdexcept>
+using namespace moon;
+#define CHECK(...) do{if(!(__VA_ARGS__))throw std::runtime_error(#__VA_ARGS__);}while(false)
+int main(){try{
+ Document d(4,4);d.beginStroke({0,0},0xff123456);CHECK(d.commitStroke());d.addLayer();d.addFrame();const auto* pixels=d.pixels().data();const auto revision=d.revision(),content=d.contentRevision();const auto timeline=d.historyTimeline();CHECK(timeline.position==3&&timeline.entries.size()==3);CHECK(timeline.entries[0].label==U"绘制"&&timeline.entries[1].label==U"新建图层"&&timeline.entries[2].label==U"新建动画帧");CHECK(d.pixels().data()==pixels&&d.revision()==revision&&d.contentRevision()==content);
+ CHECK(d.setHistoryPosition(1));CHECK(d.historyPosition()==1&&d.timeline().state().layers.size()==1&&d.timeline().state().frames.size()==1&&d.pixels()[0]==0xff123456);CHECK(d.setHistoryPosition(3));CHECK(d.timeline().state().layers.size()==2&&d.timeline().state().frames.size()==2);CHECK(d.setHistoryPosition(10000)&&d.historyPosition()==3);
+ const auto hidden=std::vector<std::u32string>{historyDisplayType(U"新建图层")};const auto visible=historyVisibleEntries(d.historyTimeline(),hidden);CHECK(visible.size()==3&&visible[0].position==0&&visible[1].position==1&&visible[2].position==3);CHECK(d.historySize()==3);CHECK(d.setHistoryPosition(2)&&d.historyPosition()==2);d.beginStroke({1,1},0xffabcdef);CHECK(!d.setHistoryPosition(0)&&d.strokeActive());d.cancelStroke();d.addLayer();CHECK(!d.canRedo()&&d.historySize()==3&&d.historyTimeline().entries.back().label==U"新建图层");
+ CHECK(historyDisplayType(U"unknown")==U"label:unknown");const auto& catalog=historyLabelCatalog();CHECK(!catalog.empty());CHECK(historyDisplayType(catalog.front().second)==catalog.front().first);auto options=historyDisplayOptions({U"未知原生操作"},{U"label:已隐藏操作"});CHECK(std::any_of(options.begin(),options.end(),[](const auto& row){return row.id==U"label:已隐藏操作"&&row.label==U"已隐藏操作";}));CHECK(historyVisibleEntries(d.historyTimeline(),{historyDisplayType(U"新建图层"),historyDisplayType(U"绘制")}).size()==1);
+ CHECK(historyRevealScroll(20,40,0,100,300)==0);CHECK(historyRevealScroll(120,140,0,100,300)==40);CHECK(historyRevealScroll(20,40,100,100,300)==20);CHECK(historyRevealScroll(0,20,900,100,300)==0);
+ const auto oldRevision=d.revision();const auto oldHistoryRevision=d.historyRevision();const auto snapshot=d.pixels();d.setHistoryEntryLimit(1);CHECK(d.historySize()==1&&d.historyPosition()==1&&d.historyRevision()>oldHistoryRevision&&d.revision()==oldRevision&&d.pixels()==snapshot);CHECK(d.setHistoryPosition(0));CHECK(d.setHistoryPosition(1));
+ Document other(1,1);CHECK(other.historyTimeline().entries.empty()&&other.historyPosition()==0);{Document::HistoryLabelScope label(other,U"橡皮擦");other.beginStroke({0,0},0xff000000);other.commitStroke();}CHECK(other.historyTimeline().entries.back().label==U"橡皮擦");other.beginStroke({0,0},0xff123456);other.commitStroke();CHECK(other.historyTimeline().entries.back().label==U"绘制");
+ Document groups(1,1);groups.clearTimelineSelection();CHECK(groups.createLayerGroup());CHECK(groups.historyTimeline().entries.back().label==U"新建图层组");CHECK(groups.setHistoryPosition(0)&&groups.timeline().state().groups.empty());CHECK(groups.setHistoryPosition(1)&&groups.timeline().state().groups.size()==1);
+ std::cout<<"History timeline, jump, filtering, labels, budget and isolation passed\n";return 0;
+ }catch(const std::exception& e){std::cerr<<e.what()<<'\n';return 1;}}

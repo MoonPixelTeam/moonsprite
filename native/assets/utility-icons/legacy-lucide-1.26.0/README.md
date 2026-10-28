@@ -1,0 +1,1 @@
+Exact icon nodes from legacy dependency lucide-react@1.26.0. Original mjs and complete upstream LICENSE retained. SVG preserves viewBox, strokes, shape and transparent background; PNG conversion uses sharp at the legacy 15px/13px sizes. Disabled alpha is 0.4. Source: https://unpkg.com/lucide-react@1.26.0/dist/esm/icons/ . External-link includes Feather attribution in LICENSE.
