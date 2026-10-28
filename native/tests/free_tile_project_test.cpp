@@ -83,6 +83,38 @@ void sourceDrawing(){
  for(int rotation=0;rotation<4;++rotation)for(bool mirror:{false,true}){auto d=fixture(false);auto state=d->timeline().state();for(auto& c:state.cels){c.freeTiles->instances.front().rotation=rotation;c.freeTiles->instances.front().flipHorizontal=mirror;const auto& owner=*std::find_if(state.layers.begin(),state.layers.end(),[&](const auto& l){return l.id==c.layerId;});c.surface->pixels=free_tiles::render(*owner.freeTiles,*c.freeTiles,state.tilesets,6,5);}const auto encoded=encodeEditableProject(*d);*d=Document::fromImported(6,5,std::move(state),d->palette(),encoded.projectId,U"Oriented edit",encoded.bytes);const auto p=free_tiles::transform(d->cel().freeTiles->instances.front(),-1,0);d->beginStroke({1+p.first,3+p.second},0xffaabbcc);check(d->strokeActive()&&d->timeline().state().tilesets.front().pixels[0]==0xffaabbcc,"Oriented instance maps brush back to canonical source");d->cancelStroke();}
  {auto d=fixture(false);auto state=d->timeline().state();for(auto& l:state.layers)l.freeTiles->sources.front().locked=true;const auto encoded=encodeEditableProject(*d);*d=Document::fromImported(6,5,std::move(state),d->palette(),encoded.projectId,U"Locked source",encoded.bytes);d->beginStroke({0,3},0xffffffff);check(!d->active()&&d->historyPosition()==0,"Locked source blocks edit without touching history");}
 }
+void selectedSourceEditTarget(){
+ // FreeTileSourceEditTargetAtPoint: a preferred copy of the resolved source
+ // supplies the edit coordinate system, even over a sibling or empty space.
+ const auto make=[](int rotation=0,int flips=0,bool hidden=false,bool locked=false,bool otherSource=false){
+  auto d=std::make_unique<Document>(16,16);d->createFreeTileLayer(U"Selected edit target");const auto encoded=encodeEditableProject(*d);auto state=d->timeline().state();const auto layerId=d->layer().id;
+  auto& layer=*std::find_if(state.layers.begin(),state.layers.end(),[&](const auto& l){return l.id==layerId;});auto& source=layer.freeTiles->sources.front();source.offsetX=-1;source.offsetY=0;
+  auto& set=state.tilesets.front();set.tileWidth=2;set.tileHeight=1;set.columns=set.rows=1;set.pixels={0xff0000ff,0xff00ff00};
+  free_tiles::Instance chosen;chosen.id="preferred";chosen.sourceId=source.id;chosen.x=4;chosen.y=5;chosen.rotation=rotation;chosen.flipHorizontal=(flips&1)!=0;chosen.flipVertical=(flips&2)!=0;chosen.visible=!hidden;chosen.locked=locked;
+  auto sibling=chosen;sibling.id="under-pointer";sibling.x=10;sibling.y=5;sibling.rotation=0;sibling.flipHorizontal=sibling.flipVertical=false;sibling.visible=true;sibling.locked=false;
+  if(otherSource){auto second=source;second.id="other-source";second.tilesetId="other-resource";auto resource=set;resource.id=second.tilesetId;layer.freeTiles->sources.push_back(second);state.tilesets.push_back(resource);sibling.sourceId=second.id;}
+  for(auto& cel:state.cels)if(cel.layerId==layerId){cel.freeTiles->instances={chosen,sibling};cel.surface->pixels=free_tiles::render(*layer.freeTiles,*cel.freeTiles,state.tilesets,16,16);}
+  *d=Document::fromImported(16,16,std::move(state),d->palette(),encoded.projectId,U"Selected edit target",encoded.bytes);d->selectLayer(layerId);d->setFreeTileInstanceView(true);d->selectFreeTileInstance(chosen.id);return d;
+ };
+ const Pixel color=0xffabcdef;
+ for(int rotation=0;rotation<4;++rotation)for(int flips=0;flips<4;++flips){
+  auto d=make(rotation,flips);const auto before=d->timeline().state();const auto placements=*d->cel().freeTiles;const auto pixels=d->canvasPixels();const auto chosen=d->cel().freeTiles->instances.front();const auto h=d->historyPosition();
+  // This point hits the other copy. Only the preferred copy's inverse maps it
+  // to a new canonical pixel; using the hit would overwrite canonical -1,0.
+  const Point point{9,5};Point canonical;bool found=false;for(int y=-12;y<=12;++y)for(int x=-12;x<=12;++x){const auto p=free_tiles::transform(chosen,x,y);if(p.first+chosen.x==point.x&&p.second+chosen.y==point.y){canonical={x,y};found=true;}}
+  check(found,"Selected source coordinate fixture");d->beginStroke(point,color);check(d->strokeActive(),"Preferred source edit begins over sibling");
+  const auto& source=d->layer().freeTiles->sources.front();const auto& set=d->timeline().state().tilesets.front();const auto content=tiles::readTile(set,0);
+  check(content[std::size_t(canonical.y-source.offsetY)*set.tileWidth+canonical.x-source.offsetX]==color,"Selected instance transform anchors the source edit");
+  check(content[std::size_t(-source.offsetY)*set.tileWidth-1-source.offsetX]==0xff0000ff,"Sibling hit does not replace its canonical source pixel");
+  check(d->commitStroke()&&d->historyPosition()==h+1&&*d->cel().freeTiles==placements,"Preferred edit preserves placement and commits once");
+  auto saved=reopen(*d);check(saved->canvasPixels()==d->canvasPixels(),"Preferred source edit pixels save and reopen");freejson::JsonObject normalized;freejson::encodeLayer(normalized,*d->layer().freeTiles);check(saved->layer().freeTiles->sources==freejson::decodeLayer(normalized,d->layer().freeTiles->setId).sources,"Preferred source metadata saves and reopens after JSON normalization");
+  const auto after=d->canvasPixels();d->undo();check(d->canvasPixels()==pixels&&d->timeline().state().tilesets.front().pixels==before.tilesets.front().pixels,"Preferred source edit undo");d->redo();check(d->canvasPixels()==after,"Preferred source edit redo");
+  d->beginStroke({12,8},color);check(d->strokeActive(),"Preferred instance anchors drawing over empty space");d->cancelStroke();check(d->canvasPixels()==after&&!d->active(),"Preferred source edit cancel restores shared cache");
+ }
+ for(bool hidden:{false,true}){auto d=make(0,0,hidden,!hidden);const auto before=d->canvasPixels();const auto h=d->historyPosition();d->beginStroke({9,5},color);check(!d->active()&&d->canvasPixels()==before&&d->historyPosition()==h,"Hidden or locked preferred instance blocks fallback to editable sibling");}
+ {auto d=make(0,0,false,false,true);const auto first=d->timeline().state().tilesets.front().pixels;d->beginStroke({9,5},color);check(d->strokeActive()&&d->timeline().state().tilesets.front().pixels==first&&d->timeline().state().tilesets.back().pixels[0]==color,"Hit of another source resolves that source before preferred instance");d->cancelStroke();}
+ {auto d=make();d->setFreeTileInstanceView(false);d->beginStroke({9,5},color);check(d->strokeActive()&&d->timeline().state().tilesets.front().pixels[0]==color,"No selected instance retains pointer-hit routing");d->cancelStroke();}
+}
 void sourceLineAndReplacement(){
  for(bool balanced:{false,true})for(bool reverse:{false,true}){auto line=std::make_unique<Document>(8,8);check(line->createFreeTileLayer(U"Line algorithm"),"Create line sample");const Point from=reverse?Point{7,2}:Point{0,0},to=reverse?Point{0,0}:Point{7,2};check(line->paintFreeTileSourceLine(from,to,0xff123456,{},nullptr,0,{},0,0,balanced),"Source diagonal line");const auto pixels=line->canvasPixels();for(int x=0;x<8;++x){const int y=balanced?(x<2?0:x<5?1:2):(x<2?0:x<6?1:2);check(pixels[std::size_t(y)*8+x]==0xff123456,"Legacy source line pixel locations match both algorithms and directions");}}
  auto d=std::make_unique<Document>(8,8);check(d->createFreeTileLayer(U"Connected source"),"Create source for line");
@@ -217,4 +249,4 @@ void rasterizationMaskContext(bool styled){
  d->redo();check(styled?(d->activeMaskId().empty()&&!d->maskIsolated()):(d->activeMaskId()==mask&&d->maskIsolated()),"Redo restores converted mask context");
 }
 }
-int main(){try{transforms();roundtrip();creationAndPlacement();sourceDrawing();sourceLineAndReplacement();instanceSelectionAndMove();instanceFlagsAndDeletion();instanceProperties();instanceContextActions();freeTileInstanceClipboard();rasterization(false);rasterization(true);rasterizationMaskContext(false);rasterizationMaskContext(true);std::cout<<"free tile project tests passed\n";return 0;}catch(const std::exception& e){std::cerr<<e.what()<<'\n';return 1;}}
+int main(){try{transforms();roundtrip();creationAndPlacement();sourceDrawing();selectedSourceEditTarget();sourceLineAndReplacement();instanceSelectionAndMove();instanceFlagsAndDeletion();instanceProperties();instanceContextActions();freeTileInstanceClipboard();rasterization(false);rasterization(true);rasterizationMaskContext(false);rasterizationMaskContext(true);std::cout<<"free tile project tests passed\n";return 0;}catch(const std::exception& e){std::cerr<<e.what()<<'\n';return 1;}}

@@ -721,6 +721,11 @@ bool Document::beginFreeTileSourceStroke(Point point,Pixel color,BrushOptions br
  if(!source){auto selected=std::find_if(data.sources.begin(),data.sources.end(),[&](const auto& s){return s.id==tileSelection_.tilesetId||s.tilesetId==tileSelection_.tilesetId;});source=selected==data.sources.end()?&data.sources.front():&*selected;}
  if(!source->visible||source->locked)return false;
  const auto* set=freeSourceSet(state,source->tilesetId);if(!set||set->tileIds.empty())return false;
+ // Legacy freeTileSourceEditTargetAtPoint prefers the selected instance of the
+ // resolved source even when another copy is under the pointer. Its transform
+ // and origin remain the edit anchor; hidden/locked preferences block below.
+ const auto preferred=primaryFreeTileInstance();
+ if(!preferred.empty()){const auto chosen=std::find_if(slot->freeTiles->instances.begin(),slot->freeTiles->instances.end(),[&](const auto& i){return i.id==preferred;});if(chosen!=slot->freeTiles->instances.end()){const auto* selected=freeSourceFor(data,*chosen);if(selected&&selected->id==source->id)hit=&*chosen;}}
  if(!hit)for(auto it=slot->freeTiles->instances.rbegin();it!=slot->freeTiles->instances.rend();++it){const auto* s=freeSourceFor(data,*it);if(it->visible&&s&&s->id==source->id){hit=&*it;break;}}
  if(hit&&(!hit->visible||hit->locked))return false;
  auto d=std::make_shared<FreeTileSourceStroke>();d->before=timeline_;d->sourceId=source->id;d->tilesetId=set->id;d->targetCel=slot->id;

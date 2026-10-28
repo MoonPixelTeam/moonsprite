@@ -139,6 +139,14 @@ public:
   }
   if(handleCommand(msg))return true;
   if(auto m=dynamic_cast<ui::MouseMessage*>(msg)){
+   if(msg->type()==ui::kDoubleClickMessage&&m->left()){
+    if(!isEnabled()||doc_.active())return true;
+    const int index=rowAt(m->position());const auto order=ids();
+    if(index<0||controlAt(m->position(),index)>=0||m->position().x>=rowBounds(index).x2()-(propertySize()+2)*uiScale)return true;
+    const auto& all=doc_.cel().freeTiles->instances;const auto instance=std::find_if(all.begin(),all.end(),[&](const auto& i){return i.id==order[index];});
+    if(instance==all.end()||instance->locked)return true;
+    cancelDrag();if(activate()&&doc_.selectFreeTileInstance(order[index])){requestFocus();notify();}return true;
+   }
    if(msg->type()==ui::kMouseWheelMessage){scroll_+=m->wheelDelta().y*rowHeight()*uiScale;layout();invalidate();return true;}
    if(msg->type()==ui::kMouseDownMessage){if(!isEnabled())return true;requestFocus();const int index=rowAt(m->position());const auto order=ids();if(index>=0){if(!activate())return true;if(m->right()){showContext(order[index],m->position());return true;}if(m->left()){const int control=controlAt(m->position(),index);if(control>=0){const auto& all=doc_.cel().freeTiles->instances;const auto it=std::find_if(all.begin(),all.end(),[&](const auto& i){return i.id==order[index];});const bool value=!(control==1?it->locked:it->visible);if(doc_.beginFreeTileInstanceFlags(control==1)){toggle_=Toggle{control,index,value,doc_.identity(),doc_.cel().id};manager()->setCapture(this,true);updateToggle(index);}return true;}const auto id=order[index];const auto selected=doc_.selectedFreeTileInstances();const bool modified=m->shiftPressed()||m->ctrlPressed()||m->cmdPressed();
    const bool alreadySelected=std::find(selected.begin(),selected.end(),id)!=selected.end();
@@ -216,6 +224,12 @@ public:
   const auto click=[&](int n,ui::KeyModifiers mods){const auto point=rowBounds(n).center();ui::MouseMessage down(ui::kMouseDownMessage,os::PointerType::Mouse,ui::kButtonLeft,mods,point);onProcessMessage(&down);ui::MouseMessage up(ui::kMouseUpMessage,os::PointerType::Mouse,ui::kButtonLeft,mods,point);onProcessMessage(&up);};
   click(0,ui::kKeyNoneModifier);click(2,ui::kKeyShiftModifier);if(doc_.selectedFreeTileInstances()!=std::vector<std::string>({order[0],order[1],order[2]}))throw std::runtime_error("Free instance actual Shift row range");smokeSelectionMaterial();
   click(1,ui::kKeyCtrlModifier);if(doc_.selectedFreeTileInstances()!=std::vector<std::string>({order[0],order[2]}))throw std::runtime_error("Free instance actual Ctrl row toggle");smokeSelectionMaterial();
+  const auto history=doc_.historyPosition(),revision=doc_.revision();const auto before=*doc_.cel().freeTiles;
+  const auto twice=[&](int row,int x){const auto b=rowBounds(row);ui::MouseMessage message(ui::kDoubleClickMessage,os::PointerType::Mouse,ui::kButtonLeft,ui::kKeyNoneModifier,{b.x+x*uiScale,b.center().y});onProcessMessage(&message);};
+  twice(1,6);if(doc_.selectedFreeTileInstances()!=std::vector<std::string>({order[0],order[2]}))throw std::runtime_error("Double-click eye must not enter source editing");
+  twice(1,28);if(doc_.selectedFreeTileInstances()!=std::vector<std::string>{order[1]}||doc_.primaryFreeTileInstance()!=order[1]||doc_.freeTilePaintMode()||hasCapture()||doc_.historyPosition()!=history||doc_.revision()!=revision||*doc_.cel().freeTiles!=before)throw std::runtime_error("Double-click selects one source-edit target without document history");
+  if(!doc_.beginFreeTileInstanceFlags(true)||!doc_.previewFreeTileInstanceFlags({order[2]},true)||!doc_.commitFreeTilePlacement())throw std::runtime_error("Locked source entry fixture");notify();
+  twice(2,28);if(doc_.primaryFreeTileInstance()!=order[1])throw std::runtime_error("Locked instance double-click must preserve selected target");doc_.undo();notify();
  }
  void smokeSelectionMaterial(){
   const auto v=viewport();auto surface=os::instance()->makeRgbaSurface(std::max(1,bounds().x2()+8),std::max(1,bounds().y2()+8));surface->clear();
