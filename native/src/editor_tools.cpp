@@ -278,7 +278,7 @@ gfx::Rect Editor::toDisplay(gfx::Rect local)const{return uiDisplayRect(local,bou
 
 gfx::Rect Editor::dialogDisplayBounds()const{return toDisplay(modalBounds(uiLogical(clientBounds())));}
 
-panels::Visibility Editor::columnVisibility()const{auto visible=pickerOpen_;visible[0]=palettePanelOpen_;visible[1]=colorPickerOpen_;visible[2]=layersPanelOpen_&&documentOpen_;visible[3]=previewPanelOpen_;visible[8]=historyPanelOpen_&&documentOpen_;visible[9]=referencePanelOpen_;visible[10]=tabletVisibility_.visible&&documentOpen_;visible[11]=tilesetPanelOpen_&&documentOpen_;visible[12]=brushLibraryPanelOpen_&&documentOpen_;return visible;}
+panels::Visibility Editor::columnVisibility()const{auto visible=pickerOpen_;visible[0]=palettePanelOpen_;visible[1]=colorPickerOpen_;visible[2]=layersPanelOpen_&&documentOpen_;visible[3]=previewPanelOpen_;visible[8]=historyPanelOpen_&&documentOpen_;visible[9]=referencePanelOpen_;visible[10]=tabletVisibility_.visible&&documentOpen_;visible[11]=tilesetPanelOpen_&&documentOpen_;visible[12]=brushLibraryPanelOpen_&&documentOpen_;visible[13]=freeTileInstancesSeparate_&&freeTileInstancesOpen_&&documentOpen_&&!homeOpen_;return visible;}
 
 panels::Rect Editor::dockArea(gfx::Rect rc)const{const auto r=Layout::rail(rc,toolRailSide_,int(toolRail_.size())).main;return {r.x,r.y,r.w,r.h};}
 

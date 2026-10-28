@@ -144,7 +144,7 @@ void Editor::setLayerLabelWidth(double physical){layerLabelWidth_.set(physical);
 
 gfx::Rect Editor::layerLabelSeparatorBounds()const{const auto l=columnLayout(uiLogical(clientBounds()),2);const auto row=timelineRowViewport();return toDisplay(gfx::Rect(l.workX+5+timelineLabelWidth()-2,l.layerTop+timelineHeaderOffset(),4,timelineHeaderHeight()+row.h/uiScale)) & toDisplay(gfx::Rect(l.workX+5,l.layerTop+timelineHeaderOffset(),std::max(0,l.workW-10),timelineHeaderHeight()+row.h/uiScale));}
 
-bool Editor::layerLabelHit(gfx::Point at)const{return !document.freeTileInstanceView() && documentOpen_ && !homeOpen_ && pending_==Pending::None && columnShown(2) && (topFloatingColumnAt(at)<0 || topFloatingColumnAt(at)==2) && layerLabelSeparatorBounds().contains(at) && !timelineBorderHit(at);}
+bool Editor::layerLabelHit(gfx::Point at)const{return !integratedFreeTileInstances() && documentOpen_ && !homeOpen_ && pending_==Pending::None && columnShown(2) && (topFloatingColumnAt(at)<0 || topFloatingColumnAt(at)==2) && layerLabelSeparatorBounds().contains(at) && !timelineBorderHit(at);}
 
 bool Editor::processLayerLabelResize(ui::Message* msg){
     if(advancedActive()&&msg->type()==ui::kMouseDownMessage)return false;
@@ -468,7 +468,7 @@ void Editor::buildLayerContextMenu(PixelMenu* menu,int kind) {
     const auto contextLayer=singleLayerContext?contextLayerTargets_.front():std::string{};
     const auto* source=singleLayerContext?&document.timeline().state().layers[document.timeline().layerIndex(contextLayer)]:nullptr;
     const auto identity=document.identity();
-    if(source&&source->kind=="free-tile")add(menu,U"打开实例图层","freeTile",U"",[this,contextLayer,identity]{if(document.identity()!=identity)return;document.selectLayer(contextLayer);document.setFreeTileInstanceView(true);refresh();},source->freeTiles&&!source->freeTiles->sources.empty()&&document.timeline().findCel(contextLayer,document.frame().id)&&document.timeline().findCel(contextLayer,document.frame().id)->freeTiles&&!document.timeline().findCel(contextLayer,document.frame().id)->freeTiles->instances.empty());
+    if(source&&source->kind=="free-tile")add(menu,U"打开实例图层","freeTile",U"",[this,contextLayer,identity]{if(document.identity()!=identity)return;document.selectLayer(contextLayer);document.setFreeTileInstanceView(true);if(freeTileInstancesSeparate_){freeTileInstancesOpen_=true;initializeDocking();docking_.custom=true;docking_.select(13);}refresh();},source->freeTiles&&!source->freeTiles->sources.empty()&&document.timeline().findCel(contextLayer,document.frame().id)&&document.timeline().findCel(contextLayer,document.frame().id)->freeTiles&&!document.timeline().findCel(contextLayer,document.frame().id)->freeTiles->instances.empty());
     add(menu,U"创建关联图层","linkedLayer",U"",[this,contextLayer,identity]{if(document.identity()==identity&&document.canCreateLinkedLayer(contextLayer))document.createLinkedLayer(contextLayer);},source&&document.canCreateLinkedLayer(contextLayer));
 
       {auto submenu=branch(menu,U"转换为","convertTo");
@@ -706,7 +706,7 @@ void Editor::hideTimelineSelectionGuides() {
 
 bool Editor::clearTimelineSelectionFromBlank(const ui::MouseMessage& mouse) {
 
-    if(document.freeTileInstanceView() || pending_!=Pending::None || !columnShown(2) || !documentOpen_ || homeOpen_ || timelineGesture_.kind || (!mouse.left() && !mouse.right()))return false;
+    if(integratedFreeTileInstances() || pending_!=Pending::None || !columnShown(2) || !documentOpen_ || homeOpen_ || timelineGesture_.kind || (!mouse.left() && !mouse.right()))return false;
 
     const auto rc=uiLogical(bounds());const auto l=columnLayout(rc,2);const auto point=mouse.position();
 
@@ -916,15 +916,12 @@ void Editor::layoutLayers() {InteractionScope interactionScope(1,"timeline-layou
 
     if(!layerRow_)return;const auto rc=uiLogical(clientBounds());const auto l=columnLayout(rc,2);const int x=rc.x+l.workX+5,y=rc.y+l.layerTop;
 
-    if(freeTileInstancesPanel_){
-      const bool show=documentOpen_&&!homeOpen_&&columnShown(2)&&document.freeTileInstanceView();freeTileInstancesPanel_->setVisible(show);
-      if(show){
-        for(const auto& controls:{layerRows_,layerEyes_,layerLocks_,layerAutoLinks_,frameHeaders_,frameCells_,hiddenCelThumbnails_,hiddenMaskThumbnails_,hiddenMaskLinks_})for(auto b:controls){b->timelineVisible=false;b->setVisible(false);}
-        for(auto b:timelineInactive_)b->setVisible(false);for(auto b:layerQuickButtons_)b->setVisible(false);
-        for(ui::Widget* w:{static_cast<ui::Widget*>(layerProperties_),static_cast<ui::Widget*>(layerQuickSettings_),static_cast<ui::Widget*>(layerLabelSeparator_),static_cast<ui::Widget*>(timelineHorizontal_),static_cast<ui::Widget*>(timelineVertical_)})if(w)w->setVisible(false);
-        const auto chrome=columnChrome(2);freeTileInstancesPanel_->setBounds(toDisplay(chrome.actions|chrome.content));freeTileInstancesPanel_->sync();freeTileInstancesPanel_->setEnabled(pending_==Pending::None&&freeTileInstancesPanel_->isEnabled());
-        return;
-      }
+    layoutFreeTileInstancePanel();
+    if(integratedFreeTileInstances()&&documentOpen_&&!homeOpen_&&columnShown(2)){
+      for(const auto& controls:{layerRows_,layerEyes_,layerLocks_,layerAutoLinks_,frameHeaders_,frameCells_,hiddenCelThumbnails_,hiddenMaskThumbnails_,hiddenMaskLinks_})for(auto b:controls){b->timelineVisible=false;b->setVisible(false);}
+      for(auto b:timelineInactive_)b->setVisible(false);for(auto b:layerQuickButtons_)b->setVisible(false);
+      for(ui::Widget* w:{static_cast<ui::Widget*>(layerProperties_),static_cast<ui::Widget*>(layerQuickSettings_),static_cast<ui::Widget*>(layerLabelSeparator_),static_cast<ui::Widget*>(timelineHorizontal_),static_cast<ui::Widget*>(timelineVertical_)})if(w)w->setVisible(false);
+      return;
     }
 
     const std::unordered_set<std::string> selectedLayers(formal.layers.begin(),formal.layers.end());
@@ -1165,7 +1162,7 @@ std::vector<Editor::TimelineOutline> Editor::timelineOutlines()const{
 void Editor::paintTimelineGrid(ui::Graphics& g) {InteractionScope interactionScope(10,"timeline-paint");
 
     if(!documentOpen_ || !columnShown(2))return;
-    if(document.freeTileInstanceView())return;
+    if(integratedFreeTileInstances())return;
 
     g.saveClip();clipColumn(g,2,true);paintLoopTrack(g);{
 
@@ -1363,7 +1360,7 @@ void Editor::paintTimelineBackground(ui::Graphics& g,const Layout& ll) {
 
 
 bool Editor::processTimelineInput(ui::Message* msg){
-    if(document.freeTileInstanceView())return processPanelGesture(msg);
+    if(integratedFreeTileInstances())return processPanelGesture(msg);
     if(processLayerLabelResize(msg))return true;
     if(processGroupExpandGesture(msg))return true;
 

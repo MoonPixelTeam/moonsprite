@@ -1162,6 +1162,16 @@ private:
 
   TimelineButton *layerEye_=nullptr,*layerRow_=nullptr;
   FreeTileInstancesPanel* freeTileInstancesPanel_=nullptr;
+  PixelButton* freeTileInstanceSettings_=nullptr;
+  bool freeTileInstancesSeparate_=true,freeTileInstancesOpen_=false,freeTileInstanceLayoutReadable_=true;
+  std::string freeTileInstanceAutoKey_;
+  int freeTileInstanceAutoCount_=0;
+  bool freeTileInstanceAutoSeparate_=false;
+  void syncFreeTileInstancePanel();
+  void layoutFreeTileInstancePanel();
+  void showFreeTileInstancePanelSettings(bool verify=false);
+  void setFreeTileInstancePanelLayout(bool separate,bool persist=true);
+  bool integratedFreeTileInstances()const{return !freeTileInstancesSeparate_&&document.freeTileInstanceView();}
   PixelButton *layerProperties_=nullptr,*layerQuickSettings_=nullptr;
 
   std::vector<PixelButton*> layerQuickButtons_;

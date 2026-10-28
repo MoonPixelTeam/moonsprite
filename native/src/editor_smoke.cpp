@@ -2474,6 +2474,7 @@ void Editor::smokeDocking(const std::filesystem::path& directory) {
     const auto closeLayout=docking_;const char* closeCommands[]{"togglePalettePanel","toggleColorPanel","toggleLayersPanel","togglePreviewPanel"};
 
     for(int id=0;id<panels::columnCount;++id){
+      if(id>=8)continue; // Other columns require their own real content fixtures.
       if(id>=4)pickerOpen_[id]=true;
       dockColumn(id,panels::Dock::Floating);check(columnClose_[id]->hasFlags(ui::HIDDEN) && columnShown(id),"Floating column retained close button");
       const auto frame=columnFrame(id);for(auto child:children())if(auto button=dynamic_cast<PixelButton*>(child))if(widgetColumn(button)==id && button->columnHeaderAction && button->isVisible()){
@@ -2677,6 +2678,23 @@ void Editor::smokeLayerContext(const std::filesystem::path& directory) {
         const auto history=document.historyPosition();require(menuCommands_.enabled("convertLayerToRaster"),"Free tile raster conversion menu disabled");require(menuItems_.at("imageResize")->available&&!menuItems_.at("imageResize")->available(),"Unsupported free tile resize menu must be disabled");require(menuCommands_.invoke("convertLayerToRaster"),"Free tile raster menu route");require(document.layer().kind.empty()&&!document.cel().freeTiles&&document.timeline().state().tilesets.empty()&&document.historyPosition()==history+1,"Free tile menu conversion authority/history");document.undo();require(document.layer().kind=="free-tile"&&document.cel().freeTiles&&document.timeline().state().tilesets.size()==1&&document.pixels()==raw,"Free tile menu conversion undo");
       }
     }
+    document=Document(8,8);
+    require(document.createFreeTileLayer(U"Instance layout"),"Instance layout layer fixture");
+    document.setFreeTilePaintMode(true);
+    require(document.beginFreeTilePlacement({1,1})&&document.commitFreeTilePlacement(),"Instance layout placement fixture");
+    document.setFreeTilePaintMode(false);refresh();
+    const auto separateHistory=document.historyPosition(),separateRevision=document.revision();const auto separatePixels=document.canvasPixels();
+    setFreeTileInstancePanelLayout(true,false);
+    require(columnShown(13)&&freeTileInstancesPanel_->isVisible()&&layerRows_.front()->isVisible(),"Separate instances coexist with ordinary timeline");
+    require(!document.freeTileInstanceView()&&document.historyPosition()==separateHistory&&document.revision()==separateRevision&&document.canvasPixels()==separatePixels,"Opening separate instances does not enter instance editing or change content");
+    freeTileInstancesOpen_=false;refresh();require(!columnShown(13),"Manually hidden instances remain hidden on refresh");
+    document.setFreeTilePaintMode(true);require(document.beginFreeTilePlacement({3,3})&&document.commitFreeTilePlacement(),"Separate panel new instance fixture");document.setFreeTilePaintMode(false);refresh();require(columnShown(13),"New instance reopens manually hidden panel");document.undo();refresh();
+    const auto separateDock=docking_;
+    for(const auto dock:{panels::Dock::Left,panels::Dock::Right,panels::Dock::Floating}){dockColumn(13,dock);require(columnShown(13)&&freeTileInstancesPanel_->bounds()==toDisplay(columnChrome(13).content)&&freeTileInstanceSettings_->isVisible(),"Separate instance content uses shared dock geometry");if(dock==panels::Dock::Floating){const auto r=uiLogical(freeTileInstanceSettings_->bounds()),frame=columnFrame(13);require(r.h==15&&r.w==15&&r.y==frame.y+FloatingColumnChrome::actionTop,"Instance settings use shared floating title action");}}
+    docking_=separateDock;refresh();
+    for(int selection=0;selection<3;++selection){require(document.setFreeTileInstanceView(true),"Instance selection routing view fixture");require(!document.cel().freeTiles->instances.empty(),"Instance selection routing empty fixture");require(document.selectFreeTileInstance(document.cel().freeTiles->instances.front().id),"Instance selection routing selection fixture");if(selection==0)document.selectTimelineRow({LayerPanelKind::Layer,document.layer().id,0});else if(selection==1)document.selectTimelineCel(document.cel().id);else document.selectFrameHeader(document.frame().id);refresh();require(!document.freeTileInstanceView()&&document.selectedFreeTileInstances().empty()&&columnShown(13),"Ordinary timeline selection exits instance command context without hiding panel");}
+    showFreeTileInstancePanelSettings(true);require(!freeTileInstancesSeparate_&&document.freeTileInstanceView()&&!columnShown(13)&&freeTileInstancesPanel_->isVisible()&&!layerRows_.front()->isVisible(),"Actual settings dialog switches to integrated instances immediately");
+    setFreeTileInstancePanelLayout(true,false);document.setFreeTileInstanceView(false);refresh();require(columnShown(13)&&layerRows_.front()->isVisible(),"Separate layout returns without replacing timeline");
     layerStyleClipboard_=false;copiedLayerStyle_.reset();document=Document();contextLayerTargets_.clear();contextLayerIdentity_=0;refresh();
     document=Document(2,2);const auto bottom=document.layer().id;document.addLayer();const auto top=document.layer().id;
     document.selectTimelineLayer(bottom);document.selectLayer(top);prepareLayerContext(bottom);
@@ -2762,6 +2780,7 @@ void Editor::smokeLayerContext(const std::filesystem::path& directory) {
     const auto replaceHistory=document.historyPosition();sourcePointer(ui::kMouseDownMessage,editAt,ui::kKeyNoneModifier,ui::kButtonRight);sourcePointer(ui::kMouseUpMessage,editAt,ui::kKeyNoneModifier,ui::kButtonRight);
     require(!document.active()&&!hasCapture()&&document.historyPosition()==replaceHistory+1&&document.timeline().state().tilesets.front().pixels==std::vector<Pixel>({0xff998877,ink_,ink_}),"Actual source right eraser replaces foreground only");
     document.undo();require(document.timeline().state().tilesets.front().pixels==std::vector<Pixel>(3,ink_),"Actual source replacement Undo");eraser_=false;
+    setFreeTileInstancePanelLayout(false,false);
     // Integrated free-instance view is entered through the real layer context.
     document.setFreeTilePaintMode(true);for(Point p:std::array<Point,2>{{{1,1},{6,1}}}){require(document.beginFreeTilePlacement(p)&&document.commitFreeTilePlacement(),"Instance list fixture placement");}document.setFreeTilePaintMode(false);
     prepareLayerContext(document.layer().id);{PixelMenu menu(skin_);buildLayerContextMenu(&menu,1);auto item=menuItem(menu,"freeTile");require(item->isEnabled(),"Open instances action disabled");item->Click();}

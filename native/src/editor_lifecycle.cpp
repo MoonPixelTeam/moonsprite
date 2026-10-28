@@ -250,7 +250,7 @@ Editor::Editor(const PixelFont& font,Skin& skin,std::filesystem::path assets,std
 
     panelTabs_[0]->context=[this]{showColumnContextMenu(Column::Palette);};
 
-    dockingTabs_[0]=panelTabs_[0];const char32_t* dockNames[]{U"颜色板",pickerColumnName(1),U"图层",U"预览",pickerColumnName(4),pickerColumnName(5),pickerColumnName(6),pickerColumnName(7),U"历史",U"参考图",U"数位板辅助",U"瓦片集",U"图案笔刷"};
+    dockingTabs_[0]=panelTabs_[0];const char32_t* dockNames[]{U"颜色板",pickerColumnName(1),U"图层",U"预览",pickerColumnName(4),pickerColumnName(5),pickerColumnName(6),pickerColumnName(7),U"历史",U"参考图",U"数位板辅助",U"瓦片集",U"图案笔刷",U"实例图层"};
 
     for(int id=1;id<panels::columnCount;++id)dockingTabs_[id]=button(dockNames[id],[this,id]{docking_.select(id);refresh();saveWorkspaceSizes();});
 

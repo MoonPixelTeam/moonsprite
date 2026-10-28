@@ -17,11 +17,11 @@ void Document::selectTimelineLayer(const std::string& id,int mode){
  commitFloatingPaste();clearFrameSelection();timelineSelection_.maskRows.clear();timelineSelection_.cels.clear();timelineSelection_.celAnchor.clear();
  if(mode==2){int start=timeline_.hasLayer(timelineSelection_.layerAnchor)?int(timeline_.layerIndex(timelineSelection_.layerAnchor)):-1;if(start<0)start=int(activeLayerIndex());timelineSelection_.layers.clear();for(int i=std::min(start,end);i<=std::max(start,end);++i)timelineSelection_.layers.push_back(layers[i].id);}
  else{if(mode==1)toggle(timelineSelection_.layers,id);else timelineSelection_.layers={id};timelineSelection_.layerAnchor=id;}
- selectLayer(id);
+ if(freeTileInstanceView())setFreeTileInstanceView(false);selectLayer(id);
 }
 // Cel range is additive; its anchor follows the last selected focus, as in legacy.
 void Document::selectTimelineCel(const std::string& id,int mode,const std::vector<std::string>& replacement){
- const auto* target=timeline_.findCelById(id);if(!target)return;selectedGroupIds_.clear();selectedGroupId_.reset();const auto layerId=target->layerId,frameId=target->frameId;
+ const auto* target=timeline_.findCelById(id);if(!target)return;if(freeTileInstanceView())setFreeTileInstanceView(false);selectedGroupIds_.clear();selectedGroupId_.reset();const auto layerId=target->layerId,frameId=target->frameId;
  const auto implicit=cel().id;commitFloatingPaste();clearFrameSelection();timelineSelection_.maskRows.clear();
  auto& selected=timelineSelection_.cels;
  if(mode && selected.empty())selected.push_back(implicit);

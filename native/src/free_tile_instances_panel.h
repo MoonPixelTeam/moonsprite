@@ -12,11 +12,30 @@
 #include "os/system.h"
 #include "os/surface.h"
 namespace moon {
+// Legacy FreeTileInstancePanelSettings: changes apply immediately, including Esc.
+class FreeTileInstancePanelSettingsDialog final:public PixelDialog {
+ const PixelFont& font_;const Skin& skin_;PixelDropdown* layout_;PixelButton* close_;
+public:
+ FreeTileInstancePanelSettingsDialog(const PixelFont& font,const Skin& skin,const Skin& icons,bool separate,std::function<void(bool)> change)
+  :PixelDialog(skin,"",ui::PopupWindow::ClickBehavior::CloseOnClickInOtherWindow),font_(font),skin_(skin){
+  setAutoRemap(false);setWantFocus(true);
+  layout_=new PixelDropdown(font,skin);layout_->setOptions({U"独立栏目",U"合并到图层栏目"});layout_->setSelectedIndex(separate?0:1);layout_->changed=[change=std::move(change)](int index){change(index==0);};addChild(layout_);
+  close_=new PixelButton(font,skin,U"",[this]{closeWindow(nullptr);});close_->iconSkin=&icons;close_->icon="close";close_->skinStyle="icon_button";addChild(close_);
+ }
+ void onResize(ui::ResizeEvent& ev)override{setBoundsQuietly(ev.bounds());const auto r=bounds();layout_->setBounds({r.x+6*uiScale,r.y+(DialogLayout::bodyTop+12)*uiScale,r.w-12*uiScale,textControlHeight*uiScale});layoutHeaderButton(close_);}
+ gfx::Size minimumDialogSize(int)const override{return {220*uiScale,(DialogLayout::bodyTop+12+textControlHeight+6)*uiScale};}
+ void paintDialogContents(ui::PaintEvent& ev)override{auto& g=*ev.graphics();UiPaintScale scale(g);const auto r=uiLogical(clientBounds());drawDialogTitle(font_,g,r,U"实例图层设置");font_.draw(g,U"栏目布局",r.x+6,r.y+DialogLayout::bodyTop,skin_["text"]);}
+ void smokeChange(){layout_->setSelectedIndex(layout_->selectedIndex()==0?1:0,true);closeWindow(nullptr);}
+ bool onProcessMessage(ui::Message* msg)override{if(msg->type()==ui::kKeyDownMessage&&static_cast<ui::KeyMessage*>(msg)->scancode()==ui::kKeyEsc){closeWindow(nullptr);return true;}return PixelPopupWindow::onProcessMessage(msg);}
+};
 // Legacy LayersPanel integrated instance view and FreeTileInstanceLayers row
 // selection. Native timeline skin/font/icons remain shared with ordinary rows.
 class FreeTileInstancesPanel final:public ui::Widget {
  const PixelFont& font_;const Skin& skin_;const Skin& icons_;Document& doc_;
  TimelineButton painter_;
+ bool separate_=false;
+ bool available()const{return doc_.layer().kind=="free-tile"&&doc_.activeMaskId().empty()&&doc_.layer().freeTiles&&doc_.cel().freeTiles&&!doc_.layer().freeTiles->sources.empty();}
+ bool activate(){return available()&&(doc_.freeTileInstanceView()||doc_.setFreeTileInstanceView(true));}
  PixelButton* back_;PixelScrollBar* bar_;int scroll_=0;std::string target_;
  struct Toggle {int control,start;bool value;std::uint64_t identity;std::string cel;};
  std::optional<Toggle> toggle_;
@@ -38,8 +57,8 @@ class FreeTileInstancesPanel final:public ui::Widget {
  }
 
  std::vector<PixelButton*> properties_;
- std::vector<std::string> ids()const{std::vector<std::string> out;if(doc_.freeTileInstanceView()&&doc_.cel().freeTiles)for(auto i=doc_.cel().freeTiles->instances.rbegin();i!=doc_.cel().freeTiles->instances.rend();++i)out.push_back(i->id);return out;}
- gfx::Rect viewport()const{const auto b=bounds();return {b.x,b.y+22*uiScale,std::max(1,b.w-7*uiScale),std::max(1,b.h-22*uiScale)};}
+ std::vector<std::string> ids()const{std::vector<std::string> out;if(available()&&(separate_||doc_.freeTileInstanceView()))for(auto i=doc_.cel().freeTiles->instances.rbegin();i!=doc_.cel().freeTiles->instances.rend();++i)out.push_back(i->id);return out;}
+ gfx::Rect viewport()const{const auto b=bounds();return {b.x,b.y+(separate_?0:22)*uiScale,std::max(1,b.w-7*uiScale),std::max(1,b.h-(separate_?0:22)*uiScale)};}
  gfx::Rect rowBounds(int row)const{auto v=viewport();return {v.x,v.y+row*20*uiScale-scroll_,v.w,20*uiScale};}
  int rowAt(gfx::Point p)const{const auto v=viewport();if(!v.contains(p))return -1;const int row=(p.y-v.y+scroll_)/(20*uiScale);return row<int(ids().size())?row:-1;}
  int controlAt(gfx::Point p,int row)const{const auto b=rowBounds(row);for(int c=0;c<2;++c)if(gfx::Rect(b.x+(1+c*12)*uiScale,b.y+4*uiScale,11*uiScale,11*uiScale).contains(p))return c;return -1;}
@@ -52,7 +71,7 @@ class FreeTileInstancesPanel final:public ui::Widget {
  void rotateClockwise(const std::string& id){const auto& all=doc_.cel().freeTiles->instances;const auto it=std::find_if(all.begin(),all.end(),[&](const auto& instance){return instance.id==id;});if(it==all.end()||it->locked)return;Document::FreeTileInstanceChanges changes;changes.rotation=(it->rotation+1)%4;if(doc_.setFreeTileInstanceProperties(id,changes))notify();}
  void mirror(const std::string& id,bool horizontal){const auto& all=doc_.cel().freeTiles->instances;const auto it=std::find_if(all.begin(),all.end(),[&](const auto& instance){return instance.id==id;});if(it==all.end()||it->locked)return;Document::FreeTileInstanceChanges changes;if(horizontal)changes.flipHorizontal=!it->flipHorizontal;else changes.flipVertical=!it->flipVertical;if(doc_.setFreeTileInstanceProperties(id,changes))notify();}
  void showProperties(const std::string& id,bool verify=false){
-  if(!doc_.freeTileInstanceView()||!doc_.cel().freeTiles)return;
+  if(!activate())return;
   const auto& instances=doc_.cel().freeTiles->instances;const auto found=std::find_if(instances.begin(),instances.end(),[&](const auto& i){return i.id==id;});
   if(found==instances.end())return;const auto instance=*found;const auto& sources=doc_.layer().freeTiles->sources;const auto sourceId=instance.sourceId.empty()?instance.tileId:instance.sourceId;
   const auto source=std::find_if(sources.begin(),sources.end(),[&](const auto& s){return s.id==sourceId||s.tilesetId==sourceId;});const auto rect=doc_.freeTileInstanceBounds(id);if(source==sources.end()||!rect)return;
@@ -63,6 +82,7 @@ class FreeTileInstancesPanel final:public ui::Widget {
   notify();requestFocus();
  }
  void buildContextMenu(PixelMenu& menu,const std::string& id){
+  if(!activate())return;
   const auto selected=doc_.selectedFreeTileInstances();if(std::find(selected.begin(),selected.end(),id)==selected.end()){doc_.selectFreeTileInstance(id);if(flashInstance)flashInstance(id);notify();}
   const auto targets=deleteTargets(id);const auto& all=doc_.cel().freeTiles->instances;const auto instance=std::find_if(all.begin(),all.end(),[&](const auto& value){return value.id==id;});if(instance==all.end())return;const bool transformable=!instance->locked;
   auto add=[&](std::u32string label,const char* icon,std::function<void()> action,bool enabled=true){auto item=new PixelMenuItem(font_,skin_,std::move(label));item->iconSkin=&icons_;item->icon=icon;item->setEnabled(enabled);item->Click.connect(std::move(action));menu.addChild(item);return item;};
@@ -83,6 +103,8 @@ class FreeTileInstancesPanel final:public ui::Widget {
  }
  void layout(){const auto b=bounds();back_->setBounds({b.x,b.y,15*uiScale,15*uiScale});const auto v=viewport();const int total=int(ids().size())*20*uiScale;scroll_=std::clamp(scroll_,0,std::max(0,total-v.h));bar_->setDockBounds(PixelScrollBar::gridBounds(v,true));bar_->configure(total,v.h,scroll_);bar_->setVisible(total>v.h);const auto order=ids();while(properties_.size()<order.size()){const auto n=properties_.size();auto button=new PixelButton(font_,skin_,U"",[this,n]{const auto current=ids();if(n<current.size())showProperties(current[n]);});button->iconSkin=&icons_;button->icon="properties";addChild(button);properties_.push_back(button);}for(std::size_t n=0;n<properties_.size();++n){const auto row=rowBounds(int(n));properties_[n]->setBounds({row.x2()-17*uiScale,row.y+2*uiScale,15*uiScale,15*uiScale});properties_[n]->setVisible(n<order.size()&&row.y>=v.y&&row.y2()<=v.y2());}}
 public:
+ bool owns(ui::Widget* w)const{if(w==this||w==back_||w==bar_)return true;return std::find(properties_.begin(),properties_.end(),w)!=properties_.end();}
+ void setSeparate(bool value){separate_=value;back_->setVisible(!value);layout();}
  std::function<void()> changed;
  std::function<void(const std::string&)> flashInstance;
  void openSelectedProperties(){if(!isVisible()||doc_.active()||!doc_.freeTileInstanceView())return;auto id=doc_.primaryFreeTileInstance();const auto selected=doc_.selectedFreeTileInstances();if(id.empty()&&!selected.empty())id=selected.front();if(!id.empty())showProperties(id); }
@@ -91,7 +113,7 @@ public:
   back_=new PixelButton(font,skin,U"",[this]{doc_.setFreeTileInstanceView(false);if(changed)changed();});back_->iconSkin=&icons;back_->icon="left";addChild(back_);
   bar_=new PixelScrollBar(skin,true);addChild(bar_);bar_->wheelStep=20*uiScale;bar_->changed=[this](int v){scroll_=v;layout();invalidate();};
  }
- void sync(){const auto key=std::to_string(doc_.identity())+"/"+doc_.layer().id+"/"+doc_.frame().id;if(target_!=key){target_=key;scroll_=0;toggle_.reset();cancelDrag();if(hasCapture())releaseMouse();}layout();setEnabled(!doc_.active()||(toggle_&&doc_.freeTileInstanceFlagsActive()));invalidate();}
+ void sync(bool enabled=true){const auto key=std::to_string(doc_.identity())+"/"+doc_.layer().id+"/"+doc_.frame().id;if(target_!=key){target_=key;scroll_=0;toggle_.reset();cancelDrag();if(hasCapture())releaseMouse();}layout();setEnabled(enabled&&(!doc_.active()||(toggle_&&doc_.freeTileInstanceFlagsActive())));invalidate();}
  bool borderHit(gfx::Point p)const{if(!viewport().contains(p))return false;for(const auto& b:selectionBorders())if(skin_.selectionContains(skin_.selectionMaterialBounds(b),p))return true;return false;}
  void onResize(ui::ResizeEvent& ev)override{setBoundsQuietly(ev.bounds());layout();}
  bool onProcessMessage(ui::Message* msg)override{
@@ -110,7 +132,7 @@ public:
   if(handleCommand(msg))return true;
   if(auto m=dynamic_cast<ui::MouseMessage*>(msg)){
    if(msg->type()==ui::kMouseWheelMessage){scroll_+=m->wheelDelta().y*20*uiScale;layout();invalidate();return true;}
-   if(msg->type()==ui::kMouseDownMessage){if(!isEnabled())return true;requestFocus();const int index=rowAt(m->position());const auto order=ids();if(index>=0){if(m->right()){showContext(order[index],m->position());return true;}if(m->left()){const int control=controlAt(m->position(),index);if(control>=0){const auto& all=doc_.cel().freeTiles->instances;const auto it=std::find_if(all.begin(),all.end(),[&](const auto& i){return i.id==order[index];});const bool value=!(control==1?it->locked:it->visible);if(doc_.beginFreeTileInstanceFlags(control==1)){toggle_=Toggle{control,index,value,doc_.identity(),doc_.cel().id};manager()->setCapture(this,true);updateToggle(index);}return true;}const auto id=order[index];const auto selected=doc_.selectedFreeTileInstances();const bool modified=m->shiftPressed()||m->ctrlPressed()||m->cmdPressed();
+   if(msg->type()==ui::kMouseDownMessage){if(!isEnabled())return true;requestFocus();const int index=rowAt(m->position());const auto order=ids();if(index>=0){if(!activate())return true;if(m->right()){showContext(order[index],m->position());return true;}if(m->left()){const int control=controlAt(m->position(),index);if(control>=0){const auto& all=doc_.cel().freeTiles->instances;const auto it=std::find_if(all.begin(),all.end(),[&](const auto& i){return i.id==order[index];});const bool value=!(control==1?it->locked:it->visible);if(doc_.beginFreeTileInstanceFlags(control==1)){toggle_=Toggle{control,index,value,doc_.identity(),doc_.cel().id};manager()->setCapture(this,true);updateToggle(index);}return true;}const auto id=order[index];const auto selected=doc_.selectedFreeTileInstances();const bool modified=m->shiftPressed()||m->ctrlPressed()||m->cmdPressed();
    const bool alreadySelected=std::find(selected.begin(),selected.end(),id)!=selected.end();
    if(modified||!alreadySelected){doc_.selectFreeTileInstance(id,(m->ctrlPressed()||m->cmdPressed())?1:m->shiftPressed()?2:0);if(flashInstance)flashInstance(id);}
    if(!modified){const auto& all=doc_.cel().freeTiles->instances;const auto it=std::find_if(all.begin(),all.end(),[&](const auto& i){return i.id==id;});if(it!=all.end()&&!it->locked){drag_=Drag{id,{},m->position(),doc_.identity(),doc_.cel().id};drag_->flashOnClick=alreadySelected;manager()->setCapture(this,true);}else if(alreadySelected&&flashInstance)flashInstance(id);}
@@ -119,8 +141,8 @@ public:
  }
  bool handleCommand(ui::Message* msg){if(msg->type()!=ui::kKeyDownMessage||!isVisible()||!doc_.freeTileInstanceView()||ui::Manager::getDefault()->getFocus()!=this)return false;const auto key=static_cast<ui::KeyMessage*>(msg)->scancode();if(drag_&&key==ui::kKeyEsc){cancelDrag();return true;}if(drag_&&(key==ui::kKeyDel||key==ui::kKeyBackspace))cancelDrag();if(key==ui::kKeyDel||key==ui::kKeyBackspace){finishToggle();deleteSelection();return true;}return false;}
  void onPaint(ui::PaintEvent& ev)override{
-  auto& g=*ev.graphics();{UiPaintScale scale(g);const auto r=uiLogical(clientBounds());g.fillRect(skin_["panel"],r);g.saveClip();g.clipRect({r.x+17,r.y,r.w-17,20});font_.draw(g,U"实例图层 · "+doc_.layer().name,r.x+17,r.y+3,skin_["text"]);g.restoreClip();}
-  if(!doc_.freeTileInstanceView())return;
+  auto& g=*ev.graphics();{UiPaintScale scale(g);const auto r=uiLogical(clientBounds());g.fillRect(skin_["panel"],r);if(!separate_){g.saveClip();g.clipRect({r.x+17,r.y,std::max(0,r.w-36),20});font_.draw(g,U"实例图层 · "+doc_.layer().name,r.x+17,r.y+3,skin_["text"]);g.restoreClip();}}
+  if(!available()||(!separate_&&!doc_.freeTileInstanceView()))return;
   const auto order=ids(),selected=doc_.selectedFreeTileInstances();const auto v=viewport().offset(-bounds().origin());g.saveClip();g.clipRect(v);
   if(order.empty()){UiPaintScale scale(g);font_.draw(g,U"暂无实例",2,24,skin_["text"]);}
   for(int n=0;n<int(order.size());++n){const auto physical=rowBounds(n).offset(-bounds().origin());if(!physical.intersects(v))continue;

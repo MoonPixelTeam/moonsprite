@@ -106,6 +106,7 @@ void Editor::refresh(RefreshScope scope){
   }
   if(previewPanel_)previewPanel_->syncRelativeLuminance(renderer_.relativeLuminance(),false);
   if(previewPanel_){const double values[]{.5,.75,1,1.5,2};previewPanel_->eyedropper=eyedropperTool_||eyedropperHeld_;previewPanel_->dragSensitivity=values[std::clamp(runtimePreferences_.index("editing.viewDragSensitivity.Select"),0,4)];previewPanel_->timelineAvailable=columnShown(2)&&!timelineHidden_;}
+  syncFreeTileInstancePanel();
   syncReferencePanels();
   if(historyPanelOpen_&&!docking_.custom){initializeDocking();docking_.custom=true;}
   syncHistoryPanel();

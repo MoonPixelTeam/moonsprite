@@ -1747,6 +1747,7 @@ void Editor::paintPanelBackdrops(ui::Graphics& g,bool includeFloating) {
     for(int id=1;id<panels::columnCount;++id)if(panels::isPicker(id)&&columnShown(id)&&(includeFloating||!columnFloating(id))){const auto pickerLayout=columnLayout(rc,id);g.saveClip();clipColumn(g,id,true);if(columnFloating(id))FloatingColumnChrome::paint(skin_,g,columnFrame(id));else panel(docking_.custom?columnFrame(id):pickerLayout.pickerPanel(),"panel_outer","panel");panel(pickerLayout.pickerGradient(runtimePreferences_.flag("colorLayers.recentColorsVisible")&&!recentColors_.values().empty()),"panel_content","background");g.restoreClip();}
 
     if(columnShown(8)&&documentOpen_&&(includeFloating||!columnFloating(8))){g.saveClip();clipColumn(g,8,true);if(columnFloating(8))FloatingColumnChrome::paint(skin_,g,columnFrame(8));else panel(columnFrame(8),"panel_outer","panel");panel(columnChrome(8).content,"panel_content","background");g.restoreClip();}
+    if(columnShown(13)&&documentOpen_&&(includeFloating||!columnFloating(13))){g.saveClip();clipColumn(g,13,true);if(columnFloating(13))FloatingColumnChrome::paint(skin_,g,columnFrame(13));else panel(columnFrame(13),"panel_outer","panel");panel(columnChrome(13).content,"panel_content","background");g.restoreClip();}
     if(columnShown(2) && documentOpen_ && (includeFloating || !columnFloating(2))){
 
       paintTimelineBackground(g,ll);

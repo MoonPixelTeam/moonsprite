@@ -1,5 +1,6 @@
 #include "editor_implementation.h"
 #include "editor.h"
+#include "free_tile_instances_panel.h"
 
 namespace moon::editor {
 
@@ -168,6 +169,7 @@ int Editor::widgetColumn(ui::Widget* w)const{
 
     if(w==timelineHorizontal_ || w==timelineVertical_)return 2;
 
+    if(w==freeTileInstanceSettings_||(freeTileInstancesPanel_&&freeTileInstancesPanel_->owns(w)))return freeTileInstancesSeparate_?13:2;
     if(w==previewPanel_)return 3;
     if(referencePanel_&&referencePanel_->owns(w))return 9;
     if(tilesetPanel_&&(tilesetPanel_->owns(w)||w==tilesetDelete_))return 11;
@@ -230,6 +232,7 @@ void Editor::raiseDockWidgets() {
 
       if(id==2){for(const auto* list:{&layerRows_,&layerEyes_,&layerLocks_,&layerAutoLinks_,&frameHeaders_,&frameCells_,&timelineInactive_})for(auto w:*list)raise(w);raise(layerProperties_);raise(layerQuickSettings_);raise(layerLabelSeparator_);for(auto w:layerQuickButtons_)raise(w);raise(timelineHorizontal_);raise(timelineVertical_);}
 
+      if(id==(freeTileInstancesSeparate_?13:2)){raise(freeTileInstancesPanel_);raise(freeTileInstanceSettings_);}
       if(id==3)raise(previewPanel_);
       if(id==9)raise(referencePanel_);
       if(id==10)raise(tabletPanel_);if(id==11){raise(tilesetPanel_);raise(tilesetDelete_);}if(id==12){raise(brushLibraryPanel_);for(auto b:brushLibraryActions_)raise(b);}
@@ -421,7 +424,7 @@ void Editor::moveFloatingWidgets(int id,gfx::Point delta){
 
 void Editor::layoutGestureColumns(int id,bool all){
 
-    layoutPanelTabs(all?-1:id);if(all || id==0 || panels::isPicker(id))layoutPalette(all?-1:id);if(all || id==2)layoutLayers();
+    layoutPanelTabs(all?-1:id);if(all || id==0 || panels::isPicker(id))layoutPalette(all?-1:id);if(all || id==2)layoutLayers();if(all || id==13)layoutFreeTileInstancePanel();
 
     if(all){layoutDocumentTab();layoutToolOptions();constrainCanvas();}
 
@@ -619,7 +622,7 @@ bool Editor::processPanelGesture(ui::Message* msg) {
 
 void Editor::buildColumnContextMenu(PixelMenu& menu,Column column) {
 
-    const char32_t* names[]{U"颜色板",pickerColumnName(1),U"图层",U"预览",pickerColumnName(4),pickerColumnName(5),pickerColumnName(6),pickerColumnName(7),U"历史",U"参考图",U"数位板辅助",U"瓦片集",U"图案笔刷"};
+    const char32_t* names[]{U"颜色板",pickerColumnName(1),U"图层",U"预览",pickerColumnName(4),pickerColumnName(5),pickerColumnName(6),pickerColumnName(7),U"历史",U"参考图",U"数位板辅助",U"瓦片集",U"图案笔刷",U"实例图层"};
 
     const char* commands[]{"togglePalettePanel","toggleColorPanel","toggleLayersPanel","togglePreviewPanel"};
 
@@ -637,8 +640,9 @@ void Editor::buildColumnContextMenu(PixelMenu& menu,Column column) {
 
     if(int(column)==2){auto child=new PixelMenu(skin_);auto entry=new PixelMenuItem(font_,skin_,U"显示密度");entry->setSubmenu(child);menu.addChild(entry);const char32_t* labels[]{U"紧凑",U"常规",U"详细",U"扩展",U"大",U"超大"};for(int i=0;i<6;++i){auto item=new PixelMenuItem(font_,skin_,labels[i]);item->menuMarks=&toolIcons_;item->checked=[this,i]{return timelineDensity_==i;};item->Click.connect([this,i]{setTimelineDensity(i);});child->addChild(item);}}
 
+    if(int(column)==13){add(U"实例图层设置","properties",[this]{showFreeTileInstancePanelSettings();});menu.addChild(new PixelMenuSeparator(skin_));}
     if(int(column)==11){auto item=add(U"清空未使用瓦片","delete",[this]{tilesetPanel_->clearUnused();});item->setEnabled(pending_==Pending::None&&tilesetPanel_&&tilesetPanel_->canManage());menu.addChild(new PixelMenuSeparator(skin_));}
-    add(U"隐藏 "+std::u32string(names[int(column)])+U" 栏目","eyeOff",[this,column]{cancelStroke();if(int(column)==12)menuCommands_.invoke("toggleBrushLibraryPanel");else if(int(column)==11)menuCommands_.invoke("toggleTilesetPanel");else if(int(column)==10)menuCommands_.invoke("panelTabletAssist");else if(int(column)==9)menuCommands_.invoke("panelReference");else if(int(column)==8)menuCommands_.invoke("panelHistory");else if(panels::isPicker(int(column)))togglePickerColumn(int(column));else {const char* commands[]{"togglePalettePanel","toggleColorPanel","toggleLayersPanel","togglePreviewPanel"};menuCommands_.invoke(commands[int(column)]);}});
+    add(U"隐藏 "+std::u32string(names[int(column)])+U" 栏目","eyeOff",[this,column]{cancelStroke();if(int(column)==13){freeTileInstancesOpen_=false;refresh();}else if(int(column)==12)menuCommands_.invoke("toggleBrushLibraryPanel");else if(int(column)==11)menuCommands_.invoke("toggleTilesetPanel");else if(int(column)==10)menuCommands_.invoke("panelTabletAssist");else if(int(column)==9)menuCommands_.invoke("panelReference");else if(int(column)==8)menuCommands_.invoke("panelHistory");else if(panels::isPicker(int(column)))togglePickerColumn(int(column));else {const char* commands[]{"togglePalettePanel","toggleColorPanel","toggleLayersPanel","togglePreviewPanel"};menuCommands_.invoke(commands[int(column)]);}});
 
     menu.addChild(new PixelMenuSeparator(skin_));
 
@@ -840,7 +844,7 @@ void Editor::useZoomTool() {liquifyTool_=false;liquifyResetPosition_.reset();smo
 void Editor::finishZoomTool() {navigation_.zoomDragging_=false;if(hasCapture())releaseMouse();updateNavigationCursor();}
 
 void Editor::layoutPanelTabs(int only) {
-    struct ReferenceLayout {Editor& e;~ReferenceLayout(){e.layoutReferencePanel();e.layoutHistoryPanel();e.layoutTabletPanel();e.layoutTilesetPanel();e.layoutBrushLibraryPanel();}} referenceLayout{*this};
+    struct ReferenceLayout {Editor& e;~ReferenceLayout(){e.layoutReferencePanel();e.layoutHistoryPanel();e.layoutTabletPanel();e.layoutTilesetPanel();e.layoutBrushLibraryPanel();e.layoutFreeTileInstancePanel();}} referenceLayout{*this};
     struct AdvancedVisibility{Editor& e;~AdvancedVisibility(){e.applyAdvancedVisibility();}} advancedVisibility{*this};
 
     if(panelTabs_.empty())return;const auto rc=uiLogical(clientBounds());const auto geometry=columnGeometry(rc);
@@ -1500,6 +1504,7 @@ void Editor::layoutFloatingColumnActions(){
     std::vector<PixelButton*> actions;
     if(id==0)actions={paletteLock_,paletteLibrary_,paletteActions_};
     else if(panels::isPicker(id)){const auto& p=pickerColumns_[id];actions={p.restore,p.settings};}
+    else if((id==13&&freeTileInstancesSeparate_)||(id==2&&integratedFreeTileInstances()))actions={freeTileInstanceSettings_};
     else if(id==8)actions={historySettings_};
     else if(id==11)actions={tilesetDelete_};else if(id==12)actions.assign(brushLibraryActions_.begin(),brushLibraryActions_.end());
     else if(id==2){for(auto b:timelineInactive_)if(b && b->isVisible())actions.push_back(b);for(auto b:layerQuickButtons_)if(b && b->isVisible())actions.push_back(b);if(layerQuickSettings_)actions.push_back(layerQuickSettings_);if(layerProperties_ && layerProperties_->isVisible())actions.push_back(layerProperties_);}
