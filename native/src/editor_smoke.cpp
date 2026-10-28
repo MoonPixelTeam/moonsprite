@@ -2761,6 +2761,7 @@ void Editor::smokeLayerContext(const std::filesystem::path& directory) {
       const auto bindings=shortcutBindings_;shortcuts::assign(shortcutBindings_,"addFreeTileSource","F9");shortcuts::assign(shortcutBindings_,"deleteTilesetSelection","F10");requestFocus();ui::KeyMessage addSourceKey(ui::kKeyDownMessage,ui::kKeyF9,ui::kKeyNoneModifier,0,0),deleteSourceKey(ui::kKeyDownMessage,ui::kKeyF10,ui::kKeyNoneModifier,0,0);
       require(routeShortcutMessage(&addSourceKey)==1&&document.layer().freeTiles->sources.size()==sources.size()+1,"Actual custom Add source shortcut");require(routeShortcutMessage(&deleteSourceKey)==1&&document.layer().freeTiles->sources==sources,"Actual custom Delete source shortcut");shortcutBindings_=bindings;document.undo();document.undo();refresh();
       const auto layers=document.timeline().state().layers.size();tilesetAdd_->Click();tilesetAdd_->requestFocus();ui::KeyMessage sourceDeleteKey(ui::kKeyDownMessage,ui::kKeyDel,ui::kKeyNoneModifier,0,0);require(onProcessMessage(&sourceDeleteKey)&&document.layer().freeTiles->sources==sources&&document.timeline().state().layers.size()==layers,"Delete after Add toolbar action must delete source, never owning layer");document.undo();document.undo();refresh();tilesetPanel_->smokeFreePlacement();}
+    tilesetPanel_->smokeSourceReordering();refresh();
     // Keep the real pointer fixture clear of the default floating tileset window.
     // Production canvas ownership must continue to reject covered coordinates.
     docking_.place(11,panels::Dock::Right);refresh();

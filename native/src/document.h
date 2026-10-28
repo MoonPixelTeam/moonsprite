@@ -92,6 +92,7 @@ public:
   bool hasFreeTileContent()const {return std::any_of(timeline_.state().layers.begin(),timeline_.state().layers.end(),[](const auto& l){return l.kind=="free-tile";});}
   bool createFreeTileLayer(std::u32string name,const std::string& sharedSet={});
   bool addFreeTileSource();
+  bool reorderFreeTileSource(const std::string& id,const std::string& target);
   bool deleteFreeTileSource(const std::string&);
   bool freeTilePaintMode()const{return tileSelection_.freePaint;}
   void setFreeTilePaintMode(bool paint);
@@ -653,7 +654,7 @@ private:
     std::optional<std::pair<int,int>> beforeDimensions,afterDimensions;
     std::optional<timeline::State> beforeTimeline,afterTimeline;
     std::optional<TilemapSelection> beforeTileSelection,afterTileSelection;
-    bool freeTileSourceAddition=false,freeTileSourceDeletion=false;
+    bool freeTileSourceAddition=false,freeTileSourceDeletion=false,freeTileSourceReorder=false;
     std::shared_ptr<const TilemapPixelHistory> tilemapPixels;
     std::shared_ptr<const LayerTilesetHistory> layerTilesets;
     std::string tilesetSlotsId;std::optional<std::vector<std::optional<std::string>>> beforeTilesetSlots,afterTilesetSlots;

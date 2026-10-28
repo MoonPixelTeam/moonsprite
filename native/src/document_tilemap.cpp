@@ -31,6 +31,19 @@ bool Document::createFreeTileLayer(std::u32string name,const std::string& shared
 }
 // Legacy workspace-commands-free-tile add/delete source: collection metadata
 // is shared across layers, but each cel owns its ordered instance references.
+bool Document::reorderFreeTileSource(const std::string& id,const std::string& target){
+ if(active()||id==target)return false;
+ const auto& layers=timeline_.state().layers;
+ const auto owner=std::find_if(layers.begin(),layers.end(),[&](const auto& l){return l.kind=="free-tile"&&l.freeTiles&&std::any_of(l.freeTiles->sources.begin(),l.freeTiles->sources.end(),[&](const auto& s){return s.id==id;});});
+ if(owner==layers.end())return false;
+ auto sources=owner->freeTiles->sources;const auto destination=std::find_if(sources.begin(),sources.end(),[&](const auto& s){return s.id==target;});if(destination==sources.end())return false;
+ // Legacy inserts at the target's original index: forward drops go after it,
+ // backward drops before it. This is not instance stacking or pixel editing.
+ const auto index=std::size_t(destination-sources.begin());const auto moving=std::find_if(sources.begin(),sources.end(),[&](const auto& s){return s.id==id;});const auto source=*moving;sources.erase(moving);sources.insert(sources.begin()+index,source);
+ auto next=timeline_.state();for(auto& l:next.layers)if(l.kind=="free-tile"&&l.freeTiles&&(l.id==owner->id||(!owner->freeTiles->setId.empty()&&l.freeTiles->setId==owner->freeTiles->setId)))l.freeTiles->sources=sources;
+ Edit edit{{},state_,nextState_};edit.beforeTimeline=timeline_.state();edit.afterTimeline=std::move(next);edit.beforeActive=edit.afterActive=activeLayerId_;edit.beforeFrame=edit.afterFrame=activeFrameId_;edit.freeTileSourceReorder=true;
+ history_.reserve(position_+1);applyEdit(edit,true);change_={0,0,width_,height_};publishChange();pushEdit(std::move(edit),U"源瓦片");return true;
+}
 bool Document::addFreeTileSource(){
  if(active()||layer().kind!="free-tile"||!layer().freeTiles||layer().freeTiles->sources.empty())return false;
  const auto& original=*layer().freeTiles;int index=1;
