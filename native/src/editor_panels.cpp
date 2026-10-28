@@ -638,7 +638,7 @@ void Editor::buildColumnContextMenu(PixelMenu& menu,Column column) {
 
     };
 
-    if(int(column)==2){auto child=new PixelMenu(skin_);auto entry=new PixelMenuItem(font_,skin_,U"显示密度");entry->setSubmenu(child);menu.addChild(entry);const char32_t* labels[]{U"紧凑",U"常规",U"详细",U"扩展",U"大",U"超大"};for(int i=0;i<6;++i){auto item=new PixelMenuItem(font_,skin_,labels[i]);item->menuMarks=&toolIcons_;item->checked=[this,i]{return timelineDensity_==i;};item->Click.connect([this,i]{setTimelineDensity(i);});child->addChild(item);}}
+    if(int(column)==2||int(column)==13){auto child=new PixelMenu(skin_);auto entry=new PixelMenuItem(font_,skin_,U"显示密度");entry->setSubmenu(child);menu.addChild(entry);const char32_t* labels[]{U"紧凑",U"常规",U"详细",U"扩展",U"大",U"超大"};for(int i=0;i<6;++i){auto item=new PixelMenuItem(font_,skin_,labels[i]);item->menuMarks=&toolIcons_;item->checked=[this,i]{return timelineDensity_==i;};item->Click.connect([this,i]{setTimelineDensity(i);});child->addChild(item);}}
 
     if(int(column)==13){add(U"实例图层设置","properties",[this]{showFreeTileInstancePanelSettings();});menu.addChild(new PixelMenuSeparator(skin_));}
     if(int(column)==11){auto item=add(U"清空未使用瓦片","delete",[this]{tilesetPanel_->clearUnused();});item->setEnabled(pending_==Pending::None&&tilesetPanel_&&tilesetPanel_->canManage());menu.addChild(new PixelMenuSeparator(skin_));}

@@ -2807,6 +2807,9 @@ void Editor::smokeLayerContext(const std::filesystem::path& directory) {
       }
       document=std::move(original);runtimePreferences_=savedPreferences;refresh();
     }
+    {const auto savedDensity=timelineDensity_;const bool savedSeparate=freeTileInstancesSeparate_;const auto history=document.historyPosition();const auto pixels=document.canvasPixels();
+      for(bool separate:{true,false}){setFreeTileInstancePanelLayout(separate,false);document.setFreeTileInstanceView(true);refresh();for(int density=0;density<6;++density){setTimelineDensity(density);freeTileInstancesPanel_->smokeDensity(density);}}
+      setTimelineDensity(savedDensity);setFreeTileInstancePanelLayout(savedSeparate,false);document.setFreeTileInstanceView(true);refresh();require(document.historyPosition()==history&&document.canvasPixels()==pixels,"Instance density changes preserve content and history");}
     freeTileInstancesPanel_->smokeFlagsAndDelete([this](ui::Message* msg){onProcessMessage(msg);});
     freeTileInstancesPanel_->smokeProperties();
     freeTileInstancesPanel_->smokeContext();

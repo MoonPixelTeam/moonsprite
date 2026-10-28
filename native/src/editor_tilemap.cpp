@@ -75,7 +75,7 @@ void Editor::layoutFreeTileInstancePanel(){
  const int id=freeTileInstancesSeparate_?13:2;
  const bool show=documentOpen_&&!homeOpen_&&columnShown(id)&&(freeTileInstancesSeparate_?freeTileInstancesOpen_:document.freeTileInstanceView());
  freeTileInstancesPanel_->setVisible(show);freeTileInstanceSettings_->setVisible(show);if(!show)return;
- const auto chrome=columnChrome(id);freeTileInstancesPanel_->setSeparate(freeTileInstancesSeparate_);freeTileInstancesPanel_->setBounds(toDisplay(freeTileInstancesSeparate_?chrome.content:(chrome.actions|chrome.content)));freeTileInstancesPanel_->sync(pending_==Pending::None);
+ const auto chrome=columnChrome(id);const auto dock=docking_.groups[docking_.groupOf(id)].dock;freeTileInstancesPanel_->setSideDocked(dock==panels::Dock::Left||dock==panels::Dock::Right);freeTileInstancesPanel_->setDensity(timelineDensity_);freeTileInstancesPanel_->setSeparate(freeTileInstancesSeparate_);freeTileInstancesPanel_->setBounds(toDisplay(freeTileInstancesSeparate_?chrome.content:(chrome.actions|chrome.content)));freeTileInstancesPanel_->sync(pending_==Pending::None);
  freeTileInstanceSettings_->setBounds(toDisplay({chrome.actions.x2()-15,chrome.actions.y,15,15}));freeTileInstanceSettings_->setEnabled(pending_==Pending::None&&!document.active());
 }
 
