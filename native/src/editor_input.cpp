@@ -81,6 +81,12 @@ bool Editor::onProcessMessage(ui::Message* msg) {
 
     observeShortcutInputs(msg);syncShortcutTools(*msg);
     struct ShortcutAfterMessage {std::function<void()> action;~ShortcutAfterMessage(){action();}} shortcutAfter{[this,msg]{syncShortcutTools(*msg);}};
+    // The source toolbar is a sibling for column chrome layout, but belongs
+    // to the legacy tileset command scope. Delete must never reach layer delete.
+    if(tilesetPanel_&&msg->type()==ui::kKeyDownMessage&&document.layer().kind=="free-tile"){
+      auto key=static_cast<ui::KeyMessage*>(msg);auto focus=ui::Manager::getDefault()->getFocus();
+      if((focus==tilesetAdd_||focus==tilesetDelete_)&&(key->scancode()==ui::kKeyDel||key->scancode()==ui::kKeyBackspace)){if(pending_==Pending::None)tilesetPanel_->deleteSelection();return true;}
+    }
     if(tilesetPanel_&&tilesetPanel_->handleCommand(msg))return true;
     if(brushLibraryPanel_&&brushLibraryPanel_->handleCommand(msg))return true;
     if(freeTileInstancesPanel_&&freeTileInstancesPanel_->handleCommand(msg))return true;

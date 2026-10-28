@@ -2781,7 +2781,7 @@ public:
   std::map<std::uint64_t,int> historyScrollByDocument_;
   std::optional<std::pair<std::uint64_t,std::size_t>> pendingHistoryJump_;
   ui::Timer historyJumpTimer_{16,this};
-  TilesetPanel* tilesetPanel_=nullptr;PixelButton* tilesetDelete_=nullptr;bool tilesetPanelOpen_=false;
+  TilesetPanel* tilesetPanel_=nullptr;PixelButton* tilesetDelete_=nullptr;PixelButton* tilesetAdd_=nullptr;bool tilesetPanelOpen_=false;
   void createTilesetPanel();void syncTilesetPanel();void layoutTilesetPanel();void showTilemapLayerDialog(bool);void showFreeTileLayerDialog(int verify=0);bool processFreeTileInput(ui::Message*);
   TabletAssistPanel* tabletPanel_=nullptr;TabletAssistState tabletAssist_;TabletAssistVisibility tabletVisibility_;bool tabletVisibilityReadable_=true;
   void createTabletPanel();void syncTabletPanel();void layoutTabletPanel();void setTabletVisible(bool);void saveTabletVisibility();void resetTabletInteraction();void observeTabletInput(ui::Message*);void tabletAction(const std::string&);bool tabletBusy()const;void smokeTabletAssist();void smokeTilesetManagement();void smokeBrushLibraryPanel();void smokeLinkedHybridStatic();void smokeLinkedCreateFloating();void smokeLinkedEditFloating();void smokeLinkedHybridFloating();void smokeTilemapSelectionDelete();void smokeTilemapFill();void smokeTilemapPreview();

@@ -172,7 +172,7 @@ int Editor::widgetColumn(ui::Widget* w)const{
     if(w==freeTileInstanceSettings_||(freeTileInstancesPanel_&&freeTileInstancesPanel_->owns(w)))return freeTileInstancesSeparate_?13:2;
     if(w==previewPanel_)return 3;
     if(referencePanel_&&referencePanel_->owns(w))return 9;
-    if(tilesetPanel_&&(tilesetPanel_->owns(w)||w==tilesetDelete_))return 11;
+    if(tilesetPanel_&&(tilesetPanel_->owns(w)||w==tilesetDelete_||w==tilesetAdd_))return 11;
     if(brushLibraryPanel_&&(brushLibraryPanel_->owns(w)||std::find(brushLibraryActions_.begin(),brushLibraryActions_.end(),w)!=brushLibraryActions_.end()))return 12;
     if(tabletPanel_&&tabletPanel_->owns(w))return 10;
     if(historyList_&&(w==historyList_||w==historyList_->scrollBar()||w==historySettings_))return 8;
@@ -235,7 +235,7 @@ void Editor::raiseDockWidgets() {
       if(id==(freeTileInstancesSeparate_?13:2)){raise(freeTileInstancesPanel_);raise(freeTileInstanceSettings_);}
       if(id==3)raise(previewPanel_);
       if(id==9)raise(referencePanel_);
-      if(id==10)raise(tabletPanel_);if(id==11){raise(tilesetPanel_);raise(tilesetDelete_);}if(id==12){raise(brushLibraryPanel_);for(auto b:brushLibraryActions_)raise(b);}
+      if(id==10)raise(tabletPanel_);if(id==11){raise(tilesetPanel_);raise(tilesetAdd_);raise(tilesetDelete_);}if(id==12){raise(brushLibraryPanel_);for(auto b:brushLibraryActions_)raise(b);}
       if(id==8){raise(historyList_);raise(historySettings_);}
 
       raise(dockingTabs_[id]);if(columnFloating(id))raise(columnClose_[id]);
@@ -357,7 +357,7 @@ void Editor::moveFloatingWidgets(int id,gfx::Point delta){
 
       if(column==3)add(previewPanel_);
       if(column==9)add(referencePanel_);
-      if(column==10)add(tabletPanel_);if(column==11){add(tilesetPanel_);add(tilesetDelete_);}if(column==12){add(brushLibraryPanel_);for(auto b:brushLibraryActions_)add(b);}
+      if(column==10)add(tabletPanel_);if(column==11){add(tilesetPanel_);add(tilesetAdd_);add(tilesetDelete_);}if(column==12){add(brushLibraryPanel_);for(auto b:brushLibraryActions_)add(b);}
       if(column==8){add(historyList_);add(historySettings_);}
 
     }
@@ -1506,7 +1506,7 @@ void Editor::layoutFloatingColumnActions(){
     else if(panels::isPicker(id)){const auto& p=pickerColumns_[id];actions={p.restore,p.settings};}
     else if((id==13&&freeTileInstancesSeparate_)||(id==2&&integratedFreeTileInstances()))actions={freeTileInstanceSettings_};
     else if(id==8)actions={historySettings_};
-    else if(id==11)actions={tilesetDelete_};else if(id==12)actions.assign(brushLibraryActions_.begin(),brushLibraryActions_.end());
+    else if(id==11){if(tilesetAdd_&&tilesetAdd_->isVisible())actions.push_back(tilesetAdd_);actions.push_back(tilesetDelete_);}else if(id==12)actions.assign(brushLibraryActions_.begin(),brushLibraryActions_.end());
     else if(id==2){for(auto b:timelineInactive_)if(b && b->isVisible())actions.push_back(b);for(auto b:layerQuickButtons_)if(b && b->isVisible())actions.push_back(b);if(layerQuickSettings_)actions.push_back(layerQuickSettings_);if(layerProperties_ && layerProperties_->isVisible())actions.push_back(layerProperties_);}
     const bool floating=columnFloating(id);auto frame=columnFrame(id);int right=frame.x2()-5;
     for(auto it=actions.rbegin();it!=actions.rend();++it){auto b=*it;if(!b)continue;b->columnHeaderAction=floating;if(floating){right-=15;b->setBounds(toDisplay({right,frame.y+FloatingColumnChrome::actionTop,15,15}));right-=uiGap;}}

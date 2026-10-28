@@ -19,8 +19,8 @@ bool Document::createFreeTileLayer(std::u32string name,const std::string& shared
  auto next=timeline_.state();free_tiles::LayerData data;
  if(!shared.empty())for(const auto& l:next.layers)if(l.kind=="free-tile"&&l.freeTiles&&l.freeTiles->setId==shared&&!l.freeTiles->sources.empty()){data=*l.freeTiles;break;}
  if(data.sources.empty()){
-  data.setId=uniqueTileId("free-tile-set");auto set=tiles::blankTileset(uniqueTileId("tileset"),U"源 1",1,1,uniqueTileId("tile"));
-  free_tiles::Source source;source.id=uniqueTileId("free-tile-source");source.name="源 1";source.tilesetId=set.id;source.displayColor=layerDisplayColors_.front();data.sources.push_back(std::move(source));next.tilesets.push_back(std::move(set));
+  data.setId=uniqueTileId("free-tile-set");auto set=tiles::blankTileset(uniqueTileId("tileset"),U"自由瓦片1",1,1,uniqueTileId("tile"),1);
+  free_tiles::Source source;source.id=uniqueTileId("free-tile-source");source.name="自由瓦片1";source.tilesetId=set.id;source.displayColor=layerDisplayColors_.front();data.sources.push_back(std::move(source));next.tilesets.push_back(std::move(set));
  }
  Document placement(width_,height_);placement.timeline_=timeline_;placement.activeLayerId_=activeLayerId_;placement.activeFrameId_=activeFrameId_;placement.timelineSelection_=timelineSelection_;placement.selectedFrames_=selectedFrames_;placement.selectedGroupIds_=selectedGroupIds_;placement.selectedGroupId_=selectedGroupId_;placement.collapsedGroupIds_=collapsedGroupIds_;placement.nextLayerId_=nextLayerId_;placement.addLayer();nextLayerId_=placement.nextLayerId_;
  const auto id=placement.activeLayerId_;next.layers=placement.timeline_.state().layers;next.groups=placement.timeline_.state().groups;next.cels=placement.timeline_.state().cels;
@@ -28,6 +28,34 @@ bool Document::createFreeTileLayer(std::u32string name,const std::string& shared
  for(auto& c:next.cels)if(c.layerId==id){c.freeTiles=free_tiles::CelData{};c.tilemap.reset();c.text.reset();c.linkedCelId.reset();c.runtimeSharedCelId.reset();timeline::Surface surface;surface.width=width_;surface.height=height_;surface.pixels=free_tiles::render(data,*c.freeTiles,next.tilesets,width_,height_);c.surface=std::move(surface);}
  TilemapSelection selected;selected.mode=tiles::Mode::Edit;selected.tilesetId=data.sources.front().tilesetId;const auto& set=*std::find_if(next.tilesets.begin(),next.tilesets.end(),[&](const auto& s){return s.id==selected.tilesetId;});selected.primary=selected.secondary=set.tileIds.front();
  Edit e{{},state_,nextState_};e.beforeTimeline=timeline_.state();e.afterTimeline=std::move(next);e.beforeActive=activeLayerId_;e.afterActive=id;e.beforeFrame=e.afterFrame=activeFrameId_;e.beforeSelection=selectedFrames_;e.afterSelection=std::vector<std::string>{};e.beforeTimelineSelection=timelineSelection_;e.afterTimelineSelection=placement.timelineSelection_;e.beforeFrameAnchor=frameAnchor_;e.afterFrameAnchor=placement.frameAnchor_;e.beforePalette=palette_;e.afterPalette=palette_;e.maskContext=std::make_shared<Edit::MaskContextHistory>(Edit::MaskContextHistory{activeMaskId_,{},maskIsolated_,false});e.beforeTileSelection=tileSelection_;e.afterTileSelection=selected;e.beforeGroupUi=GroupUiSnapshot{selectedGroupIds_,collapsedGroupIds_,selectedGroupId_};e.afterGroupUi=GroupUiSnapshot{placement.selectedGroupIds_,placement.collapsedGroupIds_,placement.selectedGroupId_};history_.reserve(position_+1);applyEdit(e,true);change_={0,0,width_,height_};publishChange();pushEdit(std::move(e),U"新建自由瓦片图层");return true;
+}
+// Legacy workspace-commands-free-tile add/delete source: collection metadata
+// is shared across layers, but each cel owns its ordered instance references.
+bool Document::addFreeTileSource(){
+ if(active()||layer().kind!="free-tile"||!layer().freeTiles||layer().freeTiles->sources.empty())return false;
+ const auto& original=*layer().freeTiles;int index=1;
+ while(std::any_of(original.sources.begin(),original.sources.end(),[&](const auto& s){return s.name=="自由瓦片"+std::to_string(index);}))++index;
+ const auto digits=std::to_string(index);std::u32string name=U"自由瓦片";for(char digit:digits)name+=char32_t(digit);
+ auto set=tiles::blankTileset(uniqueTileId("tileset"),name,1,1,uniqueTileId("tile"),1);
+ free_tiles::Source source;source.id=uniqueTileId("free-tile-source");source.name="自由瓦片"+digits;source.tilesetId=set.id;source.displayColor=layerDisplayColors_[original.sources.size()%layerDisplayColors_.size()];
+ auto next=timeline_.state();for(auto& l:next.layers)if(l.kind=="free-tile"&&l.freeTiles&&(l.id==activeLayerId_||(!original.setId.empty()&&l.freeTiles->setId==original.setId)))l.freeTiles->sources.push_back(source);
+ next.tilesets.push_back(set);timeline::Timeline checked(next);
+ auto selection=tileSelection_;selection.tilesetId=set.id;selection.primary=selection.secondary=set.tileIds.front();selection.freePaint=false;
+ Edit edit{{},state_,nextState_};edit.beforeTimeline=timeline_.state();edit.afterTimeline=std::move(next);edit.beforeActive=edit.afterActive=activeLayerId_;edit.beforeFrame=edit.afterFrame=activeFrameId_;edit.beforeTileSelection=tileSelection_;edit.afterTileSelection=selection;edit.freeTileSourceAddition=true;
+ history_.reserve(position_+1);applyEdit(edit,true);change_={0,0,width_,height_};publishChange();pushEdit(std::move(edit),U"新增瓦片");return true;
+}
+bool Document::deleteFreeTileSource(const std::string& id){
+ if(active()||layer().kind!="free-tile"||!layer().freeTiles||layer().freeTiles->sources.size()<=1)return false;
+ const auto& original=*layer().freeTiles;const auto at=std::find_if(original.sources.begin(),original.sources.end(),[&](const auto& s){return s.id==id;});if(at==original.sources.end())return false;
+ const auto source=*at;const auto set=std::find_if(timeline_.state().tilesets.begin(),timeline_.state().tilesets.end(),[&](const auto& s){return s.id==source.tilesetId;});if(set==timeline_.state().tilesets.end())return false;
+ const auto tileId=set->tileIds.empty()?std::string{}:set->tileIds.front();auto sources=original.sources;const auto index=std::size_t(at-original.sources.begin());sources.erase(sources.begin()+index);
+ auto next=timeline_.state();std::unordered_map<std::string,std::string> sourceForLayer;
+ for(auto& l:next.layers)if(l.kind=="free-tile"&&l.freeTiles){const auto ref=std::find_if(l.freeTiles->sources.begin(),l.freeTiles->sources.end(),[&](const auto& s){return s.tilesetId==source.tilesetId;});if(ref!=l.freeTiles->sources.end())sourceForLayer[l.id]=ref->id;if(l.id==activeLayerId_||(!original.setId.empty()&&l.freeTiles->setId==original.setId))l.freeTiles->sources=sources;}
+ next.tilesets.erase(std::remove_if(next.tilesets.begin(),next.tilesets.end(),[&](const auto& s){return s.id==source.tilesetId;}),next.tilesets.end());
+ for(auto& c:next.cels){const auto owner=sourceForLayer.find(c.layerId);if(owner==sourceForLayer.end()||!c.freeTiles)continue;auto& instances=c.freeTiles->instances;const auto before=instances.size();instances.erase(std::remove_if(instances.begin(),instances.end(),[&](const auto& i){return i.sourceId==owner->second||i.sourceId==source.tilesetId||(!tileId.empty()&&i.tileId==tileId);}),instances.end());if(instances.size()!=before&&c.surface){const auto l=std::find_if(next.layers.begin(),next.layers.end(),[&](const auto& v){return v.id==c.layerId;});c.surface->pixels=free_tiles::render(*l->freeTiles,*c.freeTiles,next.tilesets,c.surface->width,c.surface->height);}}
+ auto selection=tileSelection_;if(selection.tilesetId==source.tilesetId){const auto& fallback=sources[std::min(index,sources.size()-1)];const auto resource=std::find_if(next.tilesets.begin(),next.tilesets.end(),[&](const auto& s){return s.id==fallback.tilesetId;});if(resource==next.tilesets.end()||resource->tileIds.empty())return false;selection.tilesetId=resource->id;selection.primary=selection.secondary=resource->tileIds.front();}
+ timeline::Timeline checked(next);Edit edit{{},state_,nextState_};edit.beforeTimeline=timeline_.state();edit.afterTimeline=std::move(next);edit.beforeActive=edit.afterActive=activeLayerId_;edit.beforeFrame=edit.afterFrame=activeFrameId_;edit.beforeTileSelection=tileSelection_;edit.afterTileSelection=selection;edit.freeTileSourceDeletion=true;
+ history_.reserve(position_+1);applyEdit(edit,true);change_={0,0,width_,height_};publishChange();pushEdit(std::move(edit),U"删除瓦片");return true;
 }
 bool Document::beginFreeTilePlacement(Point point,bool erase,bool secondary){
  commitFloatingPaste();cancelStroke();cancelLayerOpacity();
