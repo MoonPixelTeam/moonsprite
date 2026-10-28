@@ -92,7 +92,7 @@ public:
   bool hasFreeTileContent()const {return std::any_of(timeline_.state().layers.begin(),timeline_.state().layers.end(),[](const auto& l){return l.kind=="free-tile";});}
   bool createFreeTileLayer(std::u32string name,const std::string& sharedSet={});
   bool freeTilePaintMode()const{return tileSelection_.freePaint;}
-  void setFreeTilePaintMode(bool paint){if(!active()){tileSelection_.freePaint=paint;if(paint){freeInstanceSelected_.clear();freeInstancePrimary_.clear();freeInstanceAnchor_.clear();}}}
+  void setFreeTilePaintMode(bool paint);
   bool beginFreeTilePlacement(Point,bool erase=false,bool secondary=false);
   bool updateFreeTilePlacement(Point);
   bool commitFreeTilePlacement();void cancelFreeTilePlacement();

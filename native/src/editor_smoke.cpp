@@ -2783,6 +2783,7 @@ void Editor::smokeLayerContext(const std::filesystem::path& directory) {
     setFreeTileInstancePanelLayout(false,false);
     // Integrated free-instance view is entered through the real layer context.
     document.setFreeTilePaintMode(true);for(Point p:std::array<Point,2>{{{1,1},{6,1}}}){require(document.beginFreeTilePlacement(p)&&document.commitFreeTilePlacement(),"Instance list fixture placement");}document.setFreeTilePaintMode(false);
+    document.setFreeTileInstanceView(false);tilesetPanel_->smokeFreePlacement();require(document.selectedFreeTileInstances().empty(),"Actual Paint button clears selected source edit anchor");document.setFreeTilePaintMode(false);require(!document.freeTileInstanceView()&&!document.primaryFreeTileInstance().empty(),"Edit chooses source anchor without opening instance list");
     prepareLayerContext(document.layer().id);{PixelMenu menu(skin_);buildLayerContextMenu(&menu,1);auto item=menuItem(menu,"freeTile");require(item->isEnabled(),"Open instances action disabled");item->Click();}
     refresh();require(document.freeTileInstanceView()&&freeTileInstancesPanel_&&freeTileInstancesPanel_->isVisible()&&!layerRows_.front()->isVisible(),"Instances replace ordinary timeline content");
     runtimePreferences_.set("tools.moveLayerClickFlashEnabled","true");

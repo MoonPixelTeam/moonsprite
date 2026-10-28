@@ -133,6 +133,42 @@ auto shared=fixture(false);shared->setPaletteRole(0xff0000ff,false,false);shared
  PatternBrush image;image.width=image.height=1;image.intrinsicSize=true;image.coverage={255};image.colors={0x11000000};shared->beginStroke({0,3},0x80445566,{},&image,0,nullptr,true,true,true);check(shared->timeline().state().tilesets.front().pixels.front()==0x80445566,"Replacement ignores image pigment and uses mask coverage");shared->cancelStroke();
 auto blank=std::make_unique<Document>(8,8);check(blank->createFreeTileLayer(U"Transparent replacement"),"Create blank replacement source");blank->setPaletteRole(0,false,false);blank->setPaletteRole(0xff112233,true,false);blank->beginStroke({4,4},0xff112233,{},nullptr,0,nullptr,true,true,true);check(blank->commitStroke()&&blank->timeline().state().tilesets.front().pixels==std::vector<Pixel>{0xff112233},"Right eraser can replace exactly transparent baseline");
 }
+void freeTileModeSelection(){
+ const auto make=[](bool none=false){
+  auto d=fixture(false);auto state=d->timeline().state();auto& data=*state.layers.front().freeTiles;
+  auto extra=tiles::blankTileset("other-resource",U"Other source",2,1,"other-pixels");tiles::writeTile(extra,"other-pixels",state.tilesets.front().pixels);state.tilesets.push_back(extra);
+  auto source=data.sources.front();source.id="other-source";source.tilesetId=extra.id;data.sources.push_back(source);
+  source.id="hidden-source";source.visible=false;data.sources.push_back(source);
+  source.id="locked-source";source.visible=true;source.locked=true;data.sources.push_back(source);
+  for(auto& layer:state.layers)if(layer.freeTiles&&layer.freeTiles->setId==data.setId)layer.freeTiles=data;
+  auto& instances=state.cels.front().freeTiles->instances;const auto seed=instances.front();instances.clear();
+  for(const auto& id:{"hidden","locked","source-hidden","source-locked","first","other","last"}){auto i=seed;i.id=id;i.visible=std::string(id)!="hidden";i.locked=none||std::string(id)=="locked";if(i.id=="source-hidden")i.sourceId="hidden-source";if(i.id=="source-locked")i.sourceId="locked-source";if(i.id=="other")i.sourceId="other-source";instances.push_back(i);}
+  for(auto& c:state.cels)if(c.layerId==state.layers.front().id)c.surface->pixels=free_tiles::render(data,*c.freeTiles,state.tilesets,6,5);
+  const auto encoded=encodeEditableProject(*d);*d=Document::fromImported(6,5,std::move(state),d->palette(),encoded.projectId,U"Mode selection",encoded.bytes);return d;
+ };
+ auto d=make();const auto pixels=d->canvasPixels(),sourcePixels=d->timeline().state().tilesets.front().pixels;const auto original=*d->cel().freeTiles;
+ const auto history=d->historyPosition(),revision=d->revision();
+ d->setFreeTilePaintMode(true);d->setSelectedTileset("other-resource");d->setFreeTilePaintMode(false);
+ check(!d->freeTileInstanceView()&&!d->freeTilePaintMode()&&d->selectedFreeTileInstances()==std::vector<std::string>{"other"},"Edit picks selected source without opening instance view");
+ check(d->tileSelection().primary=="other-pixels"&&d->tileSelection().secondary=="other-pixels","Edit synchronizes both source tile roles");
+ d->setSelectedTileset("free-resource");d->setFreeTilePaintMode(false);
+ check(d->primaryFreeTileInstance()=="other"&&d->tileSelection().tilesetId=="other-resource","Editable current primary wins over selected source");
+ d->setFreeTilePaintMode(true);check(d->selectedFreeTileInstances().empty()&&d->primaryFreeTileInstance().empty(),"Paint clears source edit selection");
+ d->setSelectedTileset("free-resource");d->setFreeTilePaintMode(false);
+ check(d->selectedFreeTileInstances()==std::vector<std::string>{"first"},"Edit skips hidden and locked instances and sources in stored order");
+ check(d->setFreeTileInstanceView(true)&&d->selectFreeTileInstance("first")&&d->selectFreeTileInstance("other",1),"Mode multiselection fixture");
+ d->setFreeTilePaintMode(false);check(d->selectedFreeTileInstances()==std::vector<std::string>{"other"},"Edit reduces multiselection to editable primary");
+ d->selectFreeTileInstance("locked");d->setFreeTilePaintMode(false);check(d->primaryFreeTileInstance()=="first","Locked current primary falls back to source match");
+ check(d->historyPosition()==history&&d->revision()==revision&&d->canvasPixels()==pixels&&*d->cel().freeTiles==original&&d->timeline().state().tilesets.front().pixels==sourcePixels,"Mode changes are session-only and preserve pixels, resources and history");
+ auto saved=reopen(*d);check(saved->canvasPixels()==pixels&&*saved->cel().freeTiles==freejson::decodeCel(freejson::encodeCel(original))&&saved->primaryFreeTileInstance().empty(),"Mode switch preserves saved content and does not persist transient selection");
+ d->selectFrame("free-frame-2");check(d->selectedFreeTileInstances().empty(),"Frame switch clears source edit anchor");d->setFreeTilePaintMode(false);check(!d->primaryFreeTileInstance().empty(),"Edit resolves current frame instances");d->selectLayer("free-layer-2");check(d->selectedFreeTileInstances().empty(),"Layer switch clears source edit anchor");d->selectLayer(d->timeline().state().layers.front().id);d->selectFrame(d->timeline().state().frames.front().id);
+ auto fallback=make();auto state=fallback->timeline().state();state.tilesets.push_back(tiles::blankTileset("unused",U"Unused",1,1,"unused-pixel"));const auto encoded=encodeEditableProject(*fallback);*fallback=Document::fromImported(6,5,std::move(state),fallback->palette(),encoded.projectId,U"Fallback",encoded.bytes);fallback->setSelectedTileset("unused");fallback->setFreeTilePaintMode(false);
+ check(fallback->primaryFreeTileInstance()=="first"&&fallback->tileSelection().tilesetId=="free-resource","No matching source falls back to first editable stored instance");
+ auto none=make(true);none->setFreeTileInstanceView(true);none->selectFreeTileInstance("last");none->setFreeTilePaintMode(false);
+ check(!none->freeTilePaintMode()&&none->selectedFreeTileInstances().empty(),"No eligible instance enters Edit with empty selection");
+ d->setFreeTilePaintMode(true);check(d->beginFreeTilePlacement({1,1}),"Active placement mode guard fixture");d->setFreeTilePaintMode(false);check(d->freeTilePaintMode(),"Mode changes do not interrupt active transaction");d->cancelFreeTilePlacement();
+ check(d->beginFreeTilePlacement({1,1})&&d->commitFreeTilePlacement(),"Mode redo fixture placement");d->undo();check(d->canRedo(),"Mode redo fixture undo");d->setFreeTilePaintMode(false);check(d->canRedo(),"Mode change preserves redo branch");d->redo();
+}
 void instanceSelectionAndMove(){
  auto d=fixture(false);auto state=d->timeline().state();const auto layer=d->layer().id,frame=d->frame().id;
  auto& slot=*std::find_if(state.cels.begin(),state.cels.end(),[&](const auto& c){return c.layerId==layer&&c.frameId==frame;});
@@ -249,4 +285,4 @@ void rasterizationMaskContext(bool styled){
  d->redo();check(styled?(d->activeMaskId().empty()&&!d->maskIsolated()):(d->activeMaskId()==mask&&d->maskIsolated()),"Redo restores converted mask context");
 }
 }
-int main(){try{transforms();roundtrip();creationAndPlacement();sourceDrawing();selectedSourceEditTarget();sourceLineAndReplacement();instanceSelectionAndMove();instanceFlagsAndDeletion();instanceProperties();instanceContextActions();freeTileInstanceClipboard();rasterization(false);rasterization(true);rasterizationMaskContext(false);rasterizationMaskContext(true);std::cout<<"free tile project tests passed\n";return 0;}catch(const std::exception& e){std::cerr<<e.what()<<'\n';return 1;}}
+int main(){try{transforms();roundtrip();creationAndPlacement();sourceDrawing();selectedSourceEditTarget();sourceLineAndReplacement();freeTileModeSelection();instanceSelectionAndMove();instanceFlagsAndDeletion();instanceProperties();instanceContextActions();freeTileInstanceClipboard();rasterization(false);rasterization(true);rasterizationMaskContext(false);rasterizationMaskContext(true);std::cout<<"free tile project tests passed\n";return 0;}catch(const std::exception& e){std::cerr<<e.what()<<'\n';return 1;}}

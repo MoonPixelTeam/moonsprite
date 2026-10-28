@@ -444,6 +444,26 @@ const free_tiles::Instance* freeSourceHit(const timeline::State& state,const Doc
 }
 // Legacy workspace-free-tile-selection + canvas-input-free-tile. Selection is
 // session state; placement history contains the target cel, never source pixels.
+void Document::setFreeTilePaintMode(bool paint){
+ if(active())return;
+ tileSelection_.freePaint=paint;
+ const auto clear=[&]{freeInstanceSelected_.clear();freeInstancePrimary_.clear();freeInstanceAnchor_.clear();freeInstanceSelectionFrame_=activeFrameId_;};
+ if(paint){clear();return;}
+ // workspace-commands-free-tile.setFreeTileMode: retain an editable primary,
+ // then prefer the selected source, then the first editable stored instance.
+ const auto* slot=timeline_.findCel(activeLayerId_,activeFrameId_);
+ if(!activeMaskId_.empty()||layer().kind!="free-tile"||!layer().freeTiles||!slot||!slot->freeTiles){clear();return;}
+ const auto& data=*layer().freeTiles;const auto& instances=slot->freeTiles->instances;
+ const auto editable=[&](const auto& i){const auto* s=freeSourceFor(data,i);return i.visible&&!i.locked&&s&&s->visible&&!s->locked;};
+ auto chosen=std::find_if(instances.begin(),instances.end(),[&](const auto& i){return editable(i)&&freeInstanceSelectionFrame_==activeFrameId_&&i.id==freeInstancePrimary_;});
+ if(chosen==instances.end())chosen=std::find_if(instances.begin(),instances.end(),[&](const auto& i){const auto* s=freeSourceFor(data,i);return editable(i)&&(i.sourceId==tileSelection_.tilesetId||s->tilesetId==tileSelection_.tilesetId);});
+ if(chosen==instances.end())chosen=std::find_if(instances.begin(),instances.end(),editable);
+ if(chosen==instances.end()){clear();return;}
+ const auto* source=freeSourceFor(data,*chosen);const auto* set=freeSourceSet(timeline_.state(),source->tilesetId);
+ if(!set||set->tileIds.empty()){clear();return;}
+ setSelectedTile(set->id,set->tileIds.front());
+ freeInstanceSelected_={chosen->id};freeInstancePrimary_=freeInstanceAnchor_=chosen->id;freeInstanceSelectionFrame_=activeFrameId_;
+}
 bool Document::freeTileInstanceView()const{
  return freeInstanceViewLayer_==activeLayerId_&&activeMaskId_.empty()&&layer().kind=="free-tile"&&layer().freeTiles&&!layer().freeTiles->sources.empty();
 }
@@ -456,7 +476,8 @@ bool Document::setFreeTileInstanceView(bool open){
  return true;
 }
 std::vector<std::string> Document::selectedFreeTileInstances()const{
- std::vector<std::string> result;if(!freeTileInstanceView()||freeInstanceSelectionFrame_!=activeFrameId_||!cel().freeTiles)return result;
+ // Source Edit mode also owns a selection without opening the instance list.
+ std::vector<std::string> result;if(!activeMaskId_.empty()||layer().kind!="free-tile"||!layer().freeTiles||freeInstanceSelectionFrame_!=activeFrameId_||!cel().freeTiles)return result;
  std::unordered_set<std::string> valid;for(const auto& i:cel().freeTiles->instances)valid.insert(i.id);
  for(const auto& id:freeInstanceSelected_)if(valid.count(id))result.push_back(id);
  return result;

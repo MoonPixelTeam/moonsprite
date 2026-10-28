@@ -68,6 +68,14 @@ public:
 
  void smokeFreePlacement(){
   if(!freeActive()||freeSources().empty())throw std::runtime_error("Free source panel fixture missing");const auto savedBounds=bounds();setVisible(true);setBounds({23,31,336,300});sync();doc_.setFreeTilePaintMode(false);const auto box=grid_->bounds();ui::MouseMessage click(ui::kMouseDownMessage,os::PointerType::Mouse,ui::kButtonLeft,ui::kKeyNoneModifier,{box.x+20*uiScale,box.y+20*uiScale});grid_->onProcessMessage(&click);if(!doc_.freeTilePaintMode()||doc_.tileSelection().tilesetId!=freeSources().front().tilesetId||modes_[1]->isVisible()||modes_[2]->isVisible()||!modes_[0]->isEnabled())throw std::runtime_error("Free source click mode or unported mode visibility");modes_[0]->Click();if(doc_.freeTilePaintMode())throw std::runtime_error("Free source Edit mode button");modes_[3]->Click();setBounds(savedBounds);sync();
+  // Exercise the existing buttons after placement as well as on a blank source.
+  const auto history=doc_.historyPosition(),revision=doc_.revision();const auto view=doc_.freeTileInstanceView();
+  modes_[3]->Click();if(!doc_.selectedFreeTileInstances().empty())throw std::runtime_error("Paint button retains edit target");
+  modes_[0]->Click();
+  const auto& data=*doc_.layer().freeTiles;const auto& instances=doc_.cel().freeTiles->instances;
+  const auto eligible=std::find_if(instances.begin(),instances.end(),[&](const auto& i){const auto s=std::find_if(data.sources.begin(),data.sources.end(),[&](const auto& v){return v.id==i.sourceId||v.tilesetId==i.sourceId;});return i.visible&&!i.locked&&s!=data.sources.end()&&s->visible&&!s->locked;});
+  if((eligible!=instances.end()&&doc_.primaryFreeTileInstance().empty())||doc_.freeTileInstanceView()!=view||doc_.historyPosition()!=history||doc_.revision()!=revision)throw std::runtime_error("Actual Edit button selection/session semantics");
+  modes_[3]->Click();
  }
  void smokeManagement(){
   auto require=[](bool v,const char* m){if(!v)throw std::runtime_error(m);};auto t=current();require(t&&t->tileIds.size()>=3,"tileset smoke requires three tiles");const auto ids=t->tileIds;const auto savedBounds=bounds();auto savedChanged=changed;changed={};setVisible(true);setBounds({23,31,336,300});sync();

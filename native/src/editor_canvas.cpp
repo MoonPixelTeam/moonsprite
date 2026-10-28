@@ -1267,7 +1267,7 @@ void Editor::paintCanvas(ui::Graphics& g) {InteractionScope interactionScope(9,"
 
     // Legacy useCanvasSelectionOverlay: one union outline for selected free
     // instances, below an explicit pixel selection and hidden during playback.
-    if(showSelectionOutline_&&!document.selection()&&!playing_&&document.freeTileInstanceView()){
+    if(showSelectionOutline_&&!document.selection()&&!playing_){
       PixelRegion selected;for(const auto& id:document.selectedFreeTileInstances())if(const auto b=document.freeTileInstanceBounds(id)){selected.include(b->x,b->y);selected.include(b->x+b->w-1,b->y+b->h-1);}
       if(selected.w>0&&selected.h>0){Pixel packed=0xffff0000;parsePaletteHex(runtimePreferences_.get("appearance.freeTileInstanceOutlineColor.Color"),packed);const auto color=gfx::rgba(packed&255,(packed>>8)&255,(packed>>16)&255,packed>>24);const auto coord=[](double n){return int(std::clamp(std::floor(n+.5),-10000000.,10000000.));};const int left=coord(cv.x+selected.x*canvasScale()),top=coord(cv.y+selected.y*canvasScale()),right=coord(cv.x+(selected.x+selected.w)*canvasScale()),bottom=coord(cv.y+(selected.y+selected.h)*canvasScale());g.drawRect(color,{left,top,std::max(1,right-left),std::max(1,bottom-top)});}
     }
