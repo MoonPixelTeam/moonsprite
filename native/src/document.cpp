@@ -541,8 +541,6 @@ void Document::commitLayerOpacity() {
 }
 
 
-bool Document::beginShapePreview(){commitFloatingPaste();cancelStroke();if(!activeMaskId_.empty())return beginMaskPreview({}, {},true);if(layer().kind=="tilemap")return beginTilemapPreview({}, {},true);if(!rasterToolsAvailable())return false;{const auto r=timeline_.resolveSurface(cel().id);if(r.issue!=timeline::LinkIssue::None||!r.source||!r.surface)throw std::logic_error("Invalid shape owner");if(!raster::fullCanvas(*r.surface,width_,height_))return beginSparseShape();}gradient_=GradientPreview{{},cel().id,layer().id,frame().id,pixels(),selection_,{},{},contentRevision_,true};++gradientRevision_;return true;}
-bool Document::updateShapePreview(const ShapeSpec& spec,Pixel color){if(!shapeActive())return false;auto& g=*gradient_;if(g.contentRevision!=contentRevision_ || !selectionEqual(g.selection,selection_) || g.layerId!=layer().id || g.frameId!=frame().id || !(g.mask?maskPreviewValid():g.tilemap?tilemapPreviewValid():rasterToolsAvailable())){cancelGradient();return false;}if(g.sparse)return updateSparseShape(spec,color);if(g.region){const auto& r=*g.region;for(int y=r.y;y<r.y+r.height;++y)std::copy_n(previewBaseline().begin()+std::size_t(y)*width_+r.x,r.width,g.preview.begin()+std::size_t(y)*width_+r.x);}PixelRegion touched;auto write=[&](int x,int y){for(auto p:symmetryPoints({x,y},width_,height_,symmetryAxes,symmetryCenter())){if(g.selection && !selectionContains(g.selection,p.x,p.y))continue;const auto i=std::size_t(p.y)*width_+p.x;{const auto painted=((((spec.kind==ShapeKind::Polygon||spec.kind==ShapeKind::Freeform)||spec.brush.ink==InkMode::Simple)&&!(color>>24))?color:inkBrushComposite(previewBaseline()[i],color,100,(spec.kind==ShapeKind::Polygon||spec.kind==ShapeKind::Freeform)?InkMode::Simple:spec.brush.ink));g.preview[i]=g.mask?timeline::normalizedMaskPixel(painted):painted;}touched.include(p.x,p.y);}};if(spec.kind==ShapeKind::Line){const auto spans=brushSpans(spec.brush);const int anchor=spec.brush.size/2;shapeLineCenters(spec.start,spec.end,width_,height_,spec.brush.size,[&](int x,int y){for(const auto& span:spans)for(int px=std::max(0,x-anchor+span.left);px<=std::min(width_-1,x-anchor+span.right);++px)write(px,y-anchor+span.y);},spec.brush.shape==BrushShape::Line);}else if(auto mask=shapeMask(spec,width_,height_)){for(int y=mask->y;y<mask->y+mask->height;++y)for(int x=mask->x;x<mask->x+mask->width;++x)if(selectionContains(mask,x,y))write(x,y);}g.region=touched.empty()?std::optional<SelectionMask>{}:std::optional<SelectionMask>{SelectionMask{touched.x,touched.y,touched.w,touched.h,{}}};if(g.tilemap)publishTilemapPreview();publishMaskPreview();++gradientRevision_;return true;}
 namespace {
 constexpr std::size_t adjustmentByteLimit=256*1024*1024;
 std::size_t adjustmentStorageBudget(const timeline::Timeline& timeline,std::size_t copies){
@@ -1091,14 +1089,6 @@ std::unordered_map<std::size_t,Pixel> Document::brushPreview(Point from,Point to
   visitBrushLine(from.x,from.y,to.x,to.y,imageStamp?std::max(imageStamp->width,imageStamp->height):brush.size,bool(imageStamp),brush.shape==BrushShape::Line,width_,height_,stamp);
   return result;
 }
-bool Document::paintGeometricBrushPath(const std::vector<SelectionPoint>& points,Pixel color,BrushOptions brush,const PatternBrush* image,double angle){
- if(points.empty())return false;brush.opacity=100;brush.perfectPixels=false;
- try{beginStroke({points.front().x,points.front().y},color,brush,image,angle,nullptr,false);if(!active_)return false;
-  const int dimension=imageStamp_?std::max(imageStamp_->width,imageStamp_->height):brush_.size,spacing=brush_.shape==BrushShape::Line?1:std::max(1,dimension/16);int since=0;
-  for(std::size_t i=0;i<points.size();++i){if(i)++since;if(i&&i+1<points.size()&&since<spacing)continue;stamp(points[i].x,points[i].y);since=0;}
-  publishChange();return commitStroke();
- }catch(...){cancelStroke();throw;}
-}
 bool Document::updateGeometricBrushPreview(const std::vector<SelectionPoint>& points,Pixel color,BrushOptions brush,const PatternBrush* image,double angle){
  if(!shapeActive())return false;const auto& initial=*gradient_;
  if(initial.contentRevision!=contentRevision_||initial.layerId!=layer().id||initial.frameId!=frame().id||!selectionEqual(initial.selection,selection_)){cancelGradient();return false;}
@@ -1106,9 +1096,9 @@ bool Document::updateGeometricBrushPreview(const std::vector<SelectionPoint>& po
  // transaction. Never run a pending stroke against the live document.
  std::size_t bytes=0;for(const auto& cel:timeline_.state().cels)if(cel.surface)bytes+=cel.surface->pixels.size()*sizeof(Pixel);for(const auto& mask:timeline_.state().masks)bytes+=mask.mask.surface.pixels.size()*sizeof(Pixel);for(const auto& set:timeline_.state().tilesets)bytes+=set.pixels.size()*sizeof(Pixel);
  if(bytes>64*1024*1024||std::uint64_t(width_)*height_*24>256*1024*1024-bytes*2)throw std::length_error("Curve preview exceeds document pixel budget");
- auto draft=std::make_unique<Document>(width_,height_);draft->timeline_=timeline_;draft->activeLayerId_=activeLayerId_;draft->activeFrameId_=activeFrameId_;draft->selection_=selection_;draft->activeMaskId_=activeMaskId_;draft->symmetryAxes=symmetryAxes;draft->symmetryCenter_=symmetryCenter_;draft->tileSelection_=tileSelection_;
- draft->paintGeometricBrushPath(points,color,brush,image,angle);
- auto& g=*gradient_;g.preview=draft->canvasPixels();g.region=SelectionMask{0,0,width_,height_,{}};
+ auto draft=std::make_unique<Document>(width_,height_);draft->timeline_=timeline_;draft->activeLayerId_=activeLayerId_;draft->activeFrameId_=activeFrameId_;draft->selection_=selection_;draft->activeMaskId_=activeMaskId_;draft->symmetryAxes=symmetryAxes;draft->symmetryCenter_=symmetryCenter_;draft->tileSelection_=tileSelection_;draft->freeInstanceSelected_=freeInstanceSelected_;draft->freeInstancePrimary_=freeInstancePrimary_;draft->freeInstanceSelectionFrame_=freeInstanceSelectionFrame_;
+ const bool changed=draft->paintGeometricBrushPath(points,color,brush,image,angle,initial.sourceShapeSeed);
+ auto& g=*gradient_;g.preview=draft->canvasPixels();g.region=layer().kind=="free-tile"&&!changed?std::optional<SelectionMask>{}:std::optional<SelectionMask>{SelectionMask{0,0,width_,height_,{}}};
  if(g.mask){const auto* mask=draft->mutableActiveMask();if(!mask)throw std::logic_error("Missing curve mask preview");g.mask->display=*mask;}
  else {g.tilemapDisplay=std::move(draft->timeline_);g.tilemapRegions={{0,0,width_,height_}};}
  ++gradientRevision_;return true;

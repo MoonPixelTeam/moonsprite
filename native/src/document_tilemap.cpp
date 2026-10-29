@@ -979,7 +979,11 @@ bool Document::updateGradient(const GradientSpec& spec,WandOptions options){if(!
 }if(g.contentRevision!=contentRevision_ || !selectionEqual(g.selection,selection_) || g.layerId!=layer().id || g.frameId!=frame().id || !(g.mask?maskPreviewValid():g.tilemap?tilemapPreviewValid():rasterToolsAvailable())){cancelGradient();return false;}if(g.sparse)return updateSparseGradient(spec,options);options.gapClosing=false;const auto previousRegion=g.region;if(options.tolerance!=g.options.tolerance || options.contiguous!=g.options.contiguous || options.connectivity!=g.options.connectivity || options.visibleLayers!=g.options.visibleLayers){const auto source=options.visibleLayers?compositeNormalRegion(timeline_,frame().id,{0,0,width_,height_}):std::vector<Pixel>{};g.region=magicWandSelection(options.visibleLayers?source:previewBaseline(),width_,height_,g.seed.x,g.seed.y,options);g.options=options;}
  if(previousRegion){const auto& r=*previousRegion;for(int y=r.y;y<r.y+r.height;++y)std::copy_n(previewBaseline().begin()+std::size_t(y)*width_+r.x,r.width,g.preview.begin()+std::size_t(y)*width_+r.x);}if(g.region){const auto& r=*g.region;GradientSampler sample(spec);std::vector<Pixel> row(r.width);for(int y=r.y;y<r.y+r.height;++y){sample.row(y,r.x,r.x+r.width,row.data());for(int x=r.x;x<r.x+r.width;++x){const auto i=std::size_t(y)*width_+x;const auto current=previewBaseline()[i];const auto source=row[x-r.x];{const auto painted=selectionContains(g.region,x,y) && (!g.selection || selectionContains(g.selection,x,y)) && (source>>24)?brushComposite(current,source,100):current;g.preview[i]=g.mask&&painted!=current?timeline::normalizedMaskPixel(painted):painted;}}}}if(g.tilemap)publishTilemapPreview();publishMaskPreview();++gradientRevision_;return true;}
 void Document::cancelGradient(){if(freeSourceStroke_&&freeSourceStroke_->gradientPreview)cancelFreeTileSourceStroke();if(gradient_){gradient_.reset();++gradientRevision_;}}
-bool Document::commitGradient(){if(!gradient_)return false;const auto& g=*gradient_;if(freeSourceStroke_&&freeSourceStroke_->gradientPreview){
+bool Document::commitGradient(){if(!gradient_)return false;const auto& g=*gradient_;if(g.shape&&!g.mask&&layer().kind=="free-tile"){
+ if(g.contentRevision!=contentRevision_||!selectionEqual(g.selection,selection_)||g.layerId!=layer().id||g.frameId!=frame().id||freeTilePaintMode()||layerEffectivelyLocked(layer())||!layerEffectivelyVisible(layer())||!g.region||!g.tilemapDisplay){cancelGradient();return false;}
+ Edit edit{{},state_,nextState_};edit.beforeTimeline=timeline_.state();edit.afterTimeline=g.tilemapDisplay->state();edit.beforeActive=edit.afterActive=activeLayerId_;edit.beforeFrame=edit.afterFrame=activeFrameId_;history_.reserve(position_+1);
+ timeline_=std::move(*gradient_->tilemapDisplay);gradient_.reset();++gradientRevision_;change_={0,0,width_,height_};publishChange();pushEdit(std::move(edit),U"绘制自由瓦片源");projectInformation_.drawing(std::max<std::int64_t>(1,std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now()-projectStrokeStarted_).count()));return true;
+}if(freeSourceStroke_&&freeSourceStroke_->gradientPreview){
  auto& d=*freeSourceStroke_;
  if(g.contentRevision!=contentRevision_||!selectionEqual(g.selection,selection_)||g.layerId!=layer().id||g.frameId!=frame().id||!d.gradientMoved||freeTilePaintMode()||layerEffectivelyLocked(layer())||!layerEffectivelyVisible(layer())){cancelGradient();return false;}
  try{
@@ -990,5 +994,54 @@ bool Document::commitGradient(){if(!gradient_)return false;const auto& g=*gradie
 }if(g.contentRevision!=contentRevision_ || !selectionEqual(g.selection,selection_) || g.layerId!=layer().id || g.frameId!=frame().id || !(g.mask?maskPreviewValid():g.tilemap?tilemapPreviewValid():rasterToolsAvailable())){cancelGradient();return false;}if(g.mask)return commitMaskPreview();if(g.tilemap)return commitTilemapPreview();if(g.sparse)return g.shape?commitSparseShape():commitSparseGradient();Edit edit{{},state_,nextState_};edit.targetCelId=g.celId;edit.beforeSelection=edit.afterSelection=selectedFrames_;int left=width_,top=height_,right=0,bottom=0;for(int y=0;y<height_;++y)for(int x=0;x<width_;++x){const auto i=std::size_t(y)*width_+x;if(pixels()[i]!=g.preview[i]){left=std::min(left,x);right=std::max(right,x+1);top=std::min(top,y);bottom=std::max(bottom,y+1);}}if(right<=left){cancelGradient();return false;}history_.reserve(position_+1);if(std::size_t(right-left)*(bottom-top)>=512*512){DensePixels dense{left,top,right-left,bottom-top,{},{}};dense.before.reserve(std::size_t(dense.width)*dense.height);dense.after.reserve(std::size_t(dense.width)*dense.height);for(int y=top;y<bottom;++y){dense.before.insert(dense.before.end(),pixels().begin()+std::size_t(y)*width_+left,pixels().begin()+std::size_t(y)*width_+right);dense.after.insert(dense.after.end(),g.preview.begin()+std::size_t(y)*width_+left,g.preview.begin()+std::size_t(y)*width_+right);}edit.dense=std::move(dense);}else{for(int y=top;y<bottom;++y)for(int x=left;x<right;++x){const auto i=std::size_t(y)*width_+x;if(pixels()[i]!=g.preview[i])edit.pixels.push_back({i,pixels()[i],g.preview[i]});}}
  auto result=std::move(gradient_->preview);gradient_.reset();++gradientRevision_;auto& storage=pixelStorage();for(int y=top;y<bottom;++y)std::copy_n(result.begin()+std::size_t(y)*width_+left,right-left,storage.begin()+std::size_t(y)*width_+left);change_={left,top,right-left,bottom-top};publishChange();pushEdit(std::move(edit),U"渐变");return true;
 }
+
+
+bool Document::paintGeometricBrushPath(const std::vector<SelectionPoint>& points,Pixel color,BrushOptions brush,const PatternBrush* image,double angle,std::optional<Point> sourceSeed){
+ if(points.empty())return false;brush.opacity=100;brush.perfectPixels=false;
+ if(activeMaskId_.empty()&&layer().kind=="free-tile"){
+  if(active()||freeTilePaintMode())return false;
+  try{
+   if(!beginFreeTileSourceStroke(sourceSeed.value_or(Point{points.front().x,points.front().y}),color,brush,image,angle,nullptr,false))return false;
+   auto& d=*freeSourceStroke_;auto& raster=*d.raster;raster.cancelStroke();for(const auto& p:points)d.local({p.x,p.y});
+   std::vector<SelectionPoint> local;local.reserve(points.size());for(const auto& p:points)local.push_back({p.x-d.origin.x,p.y-d.origin.y});
+   if(!raster.paintGeometricBrushPath(local,color,brush,image,angle)){cancelFreeTileSourceStroke();return false;}
+   publishFreeTileSourceStroke();return commitFreeTileSourceStroke();
+  }catch(...){cancelFreeTileSourceStroke();throw;}
+ }
+ try{beginStroke({points.front().x,points.front().y},color,brush,image,angle,nullptr,false);if(!active_)return false;
+  const int dimension=imageStamp_?std::max(imageStamp_->width,imageStamp_->height):brush_.size,spacing=brush_.shape==BrushShape::Line?1:std::max(1,dimension/16);int since=0;
+  for(std::size_t i=0;i<points.size();++i){if(i)++since;if(i&&i+1<points.size()&&since<spacing)continue;stamp(points[i].x,points[i].y);since=0;}
+  publishChange();return commitStroke();
+ }catch(...){cancelStroke();throw;}
+}
+
+bool Document::beginShapePreview(std::optional<Point> sourceSeed){commitFloatingPaste();cancelStroke();if(!activeMaskId_.empty())return beginMaskPreview({}, {},true);if(layer().kind=="tilemap")return beginTilemapPreview({}, {},true);if(layer().kind=="free-tile"){
+ if(active()||freeTilePaintMode()||!layer().freeTiles||layer().freeTiles->sources.empty()||hasSelectedGroups()||layerEffectivelyLocked(layer())||!layerEffectivelyVisible(layer()))return false;
+ gradient_=GradientPreview{{},cel().id,layer().id,frame().id,{},selection_,{},{},contentRevision_,true};gradient_->sourceShapeSeed=sourceSeed;gradient_->tilemapDisplay=timeline_;gradient_->tilemapRegions={{0,0,width_,height_}};projectStrokeStarted_=std::chrono::steady_clock::now();++gradientRevision_;return true;
+}if(!rasterToolsAvailable())return false;{const auto r=timeline_.resolveSurface(cel().id);if(r.issue!=timeline::LinkIssue::None||!r.source||!r.surface)throw std::logic_error("Invalid shape owner");if(!raster::fullCanvas(*r.surface,width_,height_))return beginSparseShape();}gradient_=GradientPreview{{},cel().id,layer().id,frame().id,pixels(),selection_,{},{},contentRevision_,true};++gradientRevision_;return true;}
+bool Document::updateShapePreview(const ShapeSpec& spec,Pixel color){if(!shapeActive())return false;auto& g=*gradient_;if(!g.mask&&layer().kind=="free-tile"){
+ if(g.contentRevision!=contentRevision_||!selectionEqual(g.selection,selection_)||g.layerId!=layer().id||g.frameId!=frame().id||freeTilePaintMode()||layerEffectivelyLocked(layer())||!layerEffectivelyVisible(layer())){cancelGradient();return false;}
+ if(spec.kind==ShapeKind::Curve){cancelGradient();return false;}
+ try{
+  // Existing isolated preview pattern: run the actual source transaction on a
+  // COW draft and keep the authoritative timeline untouched until confirmation.
+  auto draft=std::make_unique<Document>(width_,height_);draft->timeline_=timeline_;draft->activeLayerId_=activeLayerId_;draft->activeFrameId_=activeFrameId_;draft->selection_=selection_;draft->tileSelection_=tileSelection_;draft->freeInstanceSelected_=freeInstanceSelected_;draft->freeInstancePrimary_=freeInstancePrimary_;draft->freeInstanceSelectionFrame_=freeInstanceSelectionFrame_;
+  bool changed=false;
+  if(!g.sourceShapeSeed)g.sourceShapeSeed=Point{int(spec.start.x),int(spec.start.y)};
+  if(draft->beginFreeTileSourceStroke(*g.sourceShapeSeed,color,spec.brush,nullptr,0,nullptr,false)){
+   auto& d=*draft->freeSourceStroke_;auto& raster=*d.raster;raster.cancelStroke();
+   const auto bounds=transformBounds(spec.bounds);d.local({bounds.x,bounds.y});d.local({bounds.x+bounds.width-1,bounds.y+bounds.height-1});d.local({int(spec.start.x),int(spec.start.y)});d.local({int(spec.end.x),int(spec.end.y)});
+   for(const auto& point:spec.polygonPath)d.local({point.x,point.y});for(const auto& point:spec.polygonContour)d.local({point.x,point.y});
+   auto local=spec;if(local.kind!=ShapeKind::Line)local.brush.ink=InkMode::Simple;local.start.x-=d.origin.x;local.start.y-=d.origin.y;local.end.x-=d.origin.x;local.end.y-=d.origin.y;local.bounds.x-=d.origin.x;local.bounds.y-=d.origin.y;
+   if(local.bounds.flipOriginX)*local.bounds.flipOriginX-=d.origin.x;if(local.bounds.flipOriginY)*local.bounds.flipOriginY-=d.origin.y;if(local.bounds.quad)for(auto& point:*local.bounds.quad){point.x-=d.origin.x;point.y-=d.origin.y;}
+   for(auto& point:local.polygonPath){point.x-=d.origin.x;point.y-=d.origin.y;}for(auto& point:local.polygonContour){point.x-=d.origin.x;point.y-=d.origin.y;}
+   // Legacy commitShapePoints receives points clipped by the main document's
+   // filledPolygonPathPixelPoints/filledShapePathPixelPoints before local mapping.
+   if((spec.kind==ShapeKind::Polygon||spec.kind==ShapeKind::Freeform)&&spec.polygonFilled){local.polygonFilled=false;local.polygonContour.clear();if(auto mask=shapeMask(spec,width_,height_))for(int y=mask->y;y<mask->y+mask->height;++y)for(int x=mask->x;x<mask->x+mask->width;++x)if(selectionContains(mask,x,y))local.polygonContour.push_back({x-d.origin.x,y-d.origin.y});}
+   if(raster.beginShapePreview()&&raster.updateShapePreview(local,color)&&raster.commitShapePreview()){draft->publishFreeTileSourceStroke();changed=draft->commitFreeTileSourceStroke();}else draft->cancelFreeTileSourceStroke();
+  }
+  g.tilemapDisplay=std::move(draft->timeline_);g.tilemapRegions={{0,0,width_,height_}};g.region=changed?std::optional<SelectionMask>{SelectionMask{0,0,width_,height_,{}}}:std::optional<SelectionMask>{};++gradientRevision_;return true;
+ }catch(...){cancelGradient();throw;}
+}if(g.contentRevision!=contentRevision_ || !selectionEqual(g.selection,selection_) || g.layerId!=layer().id || g.frameId!=frame().id || !(g.mask?maskPreviewValid():g.tilemap?tilemapPreviewValid():rasterToolsAvailable())){cancelGradient();return false;}if(g.sparse)return updateSparseShape(spec,color);if(g.region){const auto& r=*g.region;for(int y=r.y;y<r.y+r.height;++y)std::copy_n(previewBaseline().begin()+std::size_t(y)*width_+r.x,r.width,g.preview.begin()+std::size_t(y)*width_+r.x);}PixelRegion touched;auto write=[&](int x,int y){for(auto p:symmetryPoints({x,y},width_,height_,symmetryAxes,symmetryCenter())){if(g.selection && !selectionContains(g.selection,p.x,p.y))continue;const auto i=std::size_t(p.y)*width_+p.x;{const auto painted=((((spec.kind==ShapeKind::Polygon||spec.kind==ShapeKind::Freeform)||spec.brush.ink==InkMode::Simple)&&!(color>>24))?color:inkBrushComposite(previewBaseline()[i],color,100,(spec.kind==ShapeKind::Polygon||spec.kind==ShapeKind::Freeform)?InkMode::Simple:spec.brush.ink));g.preview[i]=g.mask?timeline::normalizedMaskPixel(painted):painted;}touched.include(p.x,p.y);}};if(spec.kind==ShapeKind::Line){const auto spans=brushSpans(spec.brush);const int anchor=spec.brush.size/2;shapeLineCenters(spec.start,spec.end,width_,height_,spec.brush.size,[&](int x,int y){for(const auto& span:spans)for(int px=std::max(0,x-anchor+span.left);px<=std::min(width_-1,x-anchor+span.right);++px)write(px,y-anchor+span.y);},spec.brush.shape==BrushShape::Line);}else if(auto mask=shapeMask(spec,width_,height_)){for(int y=mask->y;y<mask->y+mask->height;++y)for(int x=mask->x;x<mask->x+mask->width;++x)if(selectionContains(mask,x,y))write(x,y);}g.region=touched.empty()?std::optional<SelectionMask>{}:std::optional<SelectionMask>{SelectionMask{touched.x,touched.y,touched.w,touched.h,{}}};if(g.tilemap)publishTilemapPreview();publishMaskPreview();++gradientRevision_;return true;}
 
 }

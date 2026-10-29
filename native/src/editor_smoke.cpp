@@ -2820,6 +2820,11 @@ void Editor::smokeLayerContext(const std::filesystem::path& directory) {
      const auto to=editTo;sourcePointer(ui::kMouseMoveMessage,to);sourcePointer(ui::kMouseUpMessage,to);require(!document.active()&&!hasCapture()&&document.historyPosition()==history+1,"Actual source gradient drag commits and releases capture");
      document.undo();require(document.timeline().state().tilesets.front().pixels==pixels,"Actual source gradient undo");gradientConfirm_=confirm;runShortcutCommand("tool.pencil");
     }
+    {const auto before=document.timeline().state().tilesets.front().pixels;const auto history=document.historyPosition();const auto to=canvasDocumentToDisplay({6.5,6.5});
+     require(isToolAvailableForSession("line.line")&&isToolAvailableForSession("shape.polygon")&&isToolAvailableForSession("shape.freeform")&&!isToolAvailableForSession("line.curve"),"Source shape tools available without unported curve");
+     for(auto kind:{ShapeKind::Line,ShapeKind::RectangleOutline,ShapeKind::Rectangle,ShapeKind::EllipseOutline,ShapeKind::Ellipse}){useShapeTool(kind);refresh();sourcePointer(ui::kMouseDownMessage,editAt);require(document.shapeActive()&&hasCapture(),"Actual source shape press starts preview");sourcePointer(ui::kMouseMoveMessage,to);sourcePointer(ui::kMouseUpMessage,to);require(!document.active()&&!hasCapture()&&document.historyPosition()==history+1,"Actual source shape drag commits exactly once");document.undo();require(document.timeline().state().tilesets.front().pixels==before,"Actual source shape undo");}
+     useShapeTool(ShapeKind::Rectangle);sourcePointer(ui::kMouseDownMessage,editAt);sourcePointer(ui::kMouseMoveMessage,to);onProcessMessage(&sourceEscape);require(!document.active()&&!hasCapture()&&document.timeline().state().tilesets.front().pixels==before&&document.historyPosition()==history,"Actual source shape Escape cancels");runShortcutCommand("tool.pencil");
+    }
     setFreeTileInstancePanelLayout(false,false);
     // Integrated free-instance view is entered through the real layer context.
     document.setFreeTilePaintMode(true);for(Point p:std::array<Point,2>{{{1,1},{6,1}}}){require(document.beginFreeTilePlacement(p)&&document.commitFreeTilePlacement(),"Instance list fixture placement");}document.setFreeTilePaintMode(false);

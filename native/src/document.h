@@ -562,8 +562,8 @@ public:
   bool commitGradient();void cancelGradient();
   bool gradientActive()const{return gradient_ && !gradient_->shape;}
   bool shapeActive()const{return gradient_ && gradient_->shape;}
-  bool beginShapePreview();bool updateShapePreview(const ShapeSpec& spec,Pixel color);
-  bool paintGeometricBrushPath(const std::vector<SelectionPoint>& points,Pixel color,BrushOptions brush,const PatternBrush* image=nullptr,double angle=0);
+  bool beginShapePreview(std::optional<Point> sourceSeed={});bool updateShapePreview(const ShapeSpec& spec,Pixel color);
+  bool paintGeometricBrushPath(const std::vector<SelectionPoint>& points,Pixel color,BrushOptions brush,const PatternBrush* image=nullptr,double angle=0,std::optional<Point> sourceSeed={});
   bool paintFreeTileSourceLine(Point from,Point to,Pixel color,BrushOptions brush={},const PatternBrush* image=nullptr,double angle=0,std::optional<BrushPathPoint> dynamics={},Pixel gradientStart=0,int gradientDither=0,bool balanced=true);
   bool updateGeometricBrushPreview(const std::vector<SelectionPoint>& points,Pixel color,BrushOptions brush,const PatternBrush* image=nullptr,double angle=0);
   bool commitShapePreview(){return commitGradient();}void cancelShapePreview(){cancelGradient();}
@@ -934,7 +934,7 @@ private:
   void publishTilemapPreview();void publishTilemapPreview(GradientPreview&);bool linkedCreateFloatingSupported(const FloatingPaste&)const;bool linkedEditFloatingSupported(const FloatingPaste&)const;bool linkedHybridFloatingSupported(const FloatingPaste&)const;bool prepareTilemapFloating(FloatingPaste&,std::optional<Point>);
   bool commitTilemapPreview();
   struct MaskPreviewBaseline {std::string id;timeline::Surface surface;std::vector<Pixel> canvas;timeline::AttachedMask display;PixelRegion previous;};
-  struct GradientPreview {Point seed;std::string celId,layerId,frameId;std::vector<Pixel> preview;std::optional<SelectionMask> selection,region;WandOptions options;std::uint64_t contentRevision;bool shape=false;std::optional<SparseGradientBaseline> sparse;std::optional<SelectionMask> shapePaintMask,shapeExpansion;std::optional<MaskPreviewBaseline> mask;bool tilemap=false;tiles::Mode tilemapMode=tiles::Mode::Hybrid;std::vector<Pixel> tilemapBaseline;std::optional<timeline::Timeline> tilemapDisplay;std::vector<std::string> previewTileIds;std::unordered_map<std::string,std::vector<std::pair<std::size_t,std::size_t>>> tilemapReferences;std::vector<PixelRegion> tilemapRegions;PixelRegion tilemapRawRegion;};
+  struct GradientPreview {Point seed;std::string celId,layerId,frameId;std::vector<Pixel> preview;std::optional<SelectionMask> selection,region;WandOptions options;std::uint64_t contentRevision;bool shape=false;std::optional<SparseGradientBaseline> sparse;std::optional<SelectionMask> shapePaintMask,shapeExpansion;std::optional<MaskPreviewBaseline> mask;bool tilemap=false;tiles::Mode tilemapMode=tiles::Mode::Hybrid;std::vector<Pixel> tilemapBaseline;std::optional<timeline::Timeline> tilemapDisplay;std::vector<std::string> previewTileIds;std::unordered_map<std::string,std::vector<std::pair<std::size_t,std::size_t>>> tilemapReferences;std::vector<PixelRegion> tilemapRegions;PixelRegion tilemapRawRegion;std::optional<Point> sourceShapeSeed;};
   std::optional<GradientPreview> gradient_;std::uint64_t gradientRevision_=0;
   struct FilterPreview{std::uint64_t revision=0,contentRevision=0,generation=0;std::optional<timeline::Timeline> timeline;};
   std::vector<timeline::Pixel> layerDisplayColors_=defaultLayerDisplayColors();
