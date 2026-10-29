@@ -1104,6 +1104,18 @@ bool Document::updateGeometricBrushPreview(const std::vector<SelectionPoint>& po
  ++gradientRevision_;return true;
 }
 void Document::sprayStroke(const std::vector<SelectionPoint>& particles,BrushOptions brush,int angle){
+ if(auto edit=freeTileSourceStrokeDocument()){
+  if(particles.empty())return;
+  try{
+   const auto footprint=selectionBrushFootprint(brush,angle);
+   for(const auto& p:particles){freeTileSourceStrokePoint({p.x-footprint.width/2,p.y-footprint.height/2});freeTileSourceStrokePoint({p.x-footprint.width/2+footprint.width-1,p.y-footprint.height/2+footprint.height-1});}
+   std::vector<SelectionPoint> local;local.reserve(particles.size());for(const auto& p:particles){const auto q=freeTileSourceStrokePoint({p.x,p.y});local.push_back({q.x,q.y});}
+   const auto revision=edit->contentRevision();edit->sprayStroke(local,brush,angle);
+   // Legacy useCanvasStrokeClock skips source copying for unchanged batches.
+   if(edit->contentRevision()!=revision)publishFreeTileSourceStroke();
+  }catch(...){cancelFreeTileSourceStroke();throw;}
+  return;
+ }
  if(!active_)return;change_={};const auto footprint=selectionBrushFootprint(brush,angle);const auto saved=brush_;brush_=brush;brush_.opacity=100;brush_.ink=InkMode::Simple;brush_.dither=false;brush_.perfectPixels=false;
  try{for(auto particle:particles)for(auto row:footprint.spans)for(int x=particle.x-footprint.width/2+row.left;x<=particle.x-footprint.width/2+row.right;++x)for(auto q:symmetryPoints({x,particle.y-footprint.height/2+row.y},width_,height_,symmetryAxes,symmetryCenter()))plot(q.x,q.y);brush_=saved;publishChange();}catch(...){brush_=saved;cancelStroke();throw;}
 }

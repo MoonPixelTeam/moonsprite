@@ -28,7 +28,7 @@ bool Editor::isToolAvailableForSession(const char* id) const {
   if(text) return s=="text"||s=="move"||s=="eyedropper"||s=="hand"||s=="zoom"||s=="rotate";
   if(tilemap && document.tilemapMode()==tiles::Mode::Paint)
     return s=="pencil"||s=="eraser"||s=="selection"||s=="move"||s=="eyedropper"||s=="hand"||s=="zoom"||s=="rotate";
-  if(freeTile) return ((raw=="fill"||raw=="fill.bucket"||raw=="fill.gradient"||s=="shape"||s=="line")&&!document.freeTilePaintMode()&&document.layer().freeTiles&&!document.layer().freeTiles->sources.empty())||s=="hand"||s=="zoom"||s=="rotate"||s=="eyedropper"||((raw=="move"||raw=="move.move")&&document.freeTileInstanceView())||((document.freeTilePaintMode()||(document.layer().freeTiles&&!document.layer().freeTiles->sources.empty()))&&(s=="pencil"||s=="eraser"));
+  if(freeTile) return ((raw=="fill"||raw=="fill.bucket"||raw=="fill.gradient"||s=="shape"||s=="line"||s=="airbrush")&&!document.freeTilePaintMode()&&document.layer().freeTiles&&!document.layer().freeTiles->sources.empty())||s=="hand"||s=="zoom"||s=="rotate"||s=="eyedropper"||((raw=="move"||raw=="move.move")&&document.freeTileInstanceView())||((document.freeTilePaintMode()||(document.layer().freeTiles&&!document.layer().freeTiles->sources.empty()))&&(s=="pencil"||s=="eraser"));
   if(special) return true;
   if(s=="eyedropper") return true;
   return document.rasterToolsAvailable()||s=="zoom"||s=="move"||s=="hand"||s=="rotate";
