@@ -809,7 +809,7 @@ struct Document::FreeTileSourceStroke {
  PixelRegion scan;
  std::vector<Pixel> beforePixels,lastPixels;
  int beforeWidth=1,beforeHeight=1,beforeX=0,beforeY=0,lastWidth=0,lastHeight=0,lastX=0,lastY=0;
- bool placement=false,published=false,mutated=false;
+ bool placement=false,published=false,mutated=false,gradientPreview=false,gradientMoved=false;
 };
 Document* Document::freeTileSourceStrokeDocument()const{return freeSourceStroke_?freeSourceStroke_->raster.get():nullptr;}
 Point Document::FreeTileSourceStroke::local(Point point){
@@ -938,12 +938,57 @@ void Document::publishFreeTileSourceStroke(){
  auto& state=timeline_.state_;*std::find_if(state.tilesets.begin(),state.tilesets.end(),[&](const auto& t){return t.id==d.tilesetId;})=std::move(resource);
  for(auto& owner:state.layers)if(owner.freeTiles)for(auto& s:owner.freeTiles->sources)if(s.id==d.sourceId){s.offsetX=offsetX;s.offsetY=offsetY;}
  for(auto& c:changed){const auto id=c.id;state.cels[timeline_.cels_.at(id)]=std::move(c);timeline_.selectionContent_.erase(id);timeline_.visibleContent_.erase(id);++timeline_.thumbnailStorage_[id].revision;}
- timeline_.invalidateCompositeOrder();d.published=true;d.mutated=true;change_={0,0,width_,height_};publishChange();
+ timeline_.invalidateCompositeOrder();d.published=true;d.mutated=true;if(!d.gradientPreview){change_={0,0,width_,height_};publishChange();}
 }
 bool Document::commitFreeTileSourceStroke(){
  if(!freeSourceStroke_)return false;auto& d=*freeSourceStroke_;const bool sourceChanged=d.beforeWidth!=d.lastWidth||d.beforeHeight!=d.lastHeight||d.beforeX!=d.lastX||d.beforeY!=d.lastY||d.beforePixels!=d.lastPixels;
  if(!sourceChanged&&!d.placement){cancelFreeTileSourceStroke();return false;}
  Edit e{{},state_,nextState_};e.beforeTimeline=d.before.state();e.afterTimeline=timeline_.state();e.beforeActive=e.afterActive=activeLayerId_;e.beforeFrame=e.afterFrame=activeFrameId_;history_.reserve(position_+1);freeSourceStroke_.reset();pushEdit(std::move(e),U"绘制自由瓦片源");projectInformation_.drawing(std::max<std::int64_t>(1,std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now()-projectStrokeStarted_).count()));return true;
 }
-void Document::cancelFreeTileSourceStroke(){if(!freeSourceStroke_)return;auto d=std::move(freeSourceStroke_);if(d->mutated){timeline_=d->before;change_={0,0,width_,height_};publishChange();}}
+void Document::cancelFreeTileSourceStroke(){if(!freeSourceStroke_)return;auto d=std::move(freeSourceStroke_);if(d->gradientPreview&&gradient_){gradient_.reset();++gradientRevision_;}if(d->mutated){timeline_=d->before;change_={0,0,width_,height_};publishChange();}}
+
+// Gradient dispatch lives with the shared-source transaction adapter.
+bool Document::beginGradient(Point seed,WandOptions options){commitFloatingPaste();cancelStroke();if(!activeMaskId_.empty())return beginMaskPreview(seed,options,false);if(layer().kind=="tilemap")return beginTilemapPreview(seed,options,false);if(layer().kind=="free-tile"){
+ if(active()||freeTilePaintMode())return false;
+ try{
+  if(!beginFreeTileSourceStroke(seed,0,{},nullptr,0,nullptr,false))return false;
+  auto& d=*freeSourceStroke_;auto& raster=*d.raster;raster.cancelStroke();
+  timeline_=d.before;d.mutated=false;d.gradientPreview=true;
+  const Point local{seed.x-d.origin.x,seed.y-d.origin.y};
+  if(!raster.beginGradient(local,options)){cancelFreeTileSourceStroke();return false;}
+  gradient_=GradientPreview{seed,cel().id,layer().id,frame().id,{},selection_,{},options,contentRevision_};
+  gradient_->tilemapDisplay=timeline_;gradient_->tilemapRegions={{0,0,width_,height_}};++gradientRevision_;return true;
+ }catch(...){cancelGradient();cancelFreeTileSourceStroke();throw;}
+}if(!rasterToolsAvailable() || seed.x<0 || seed.y<0 || seed.x>=width_ || seed.y>=height_ || (selection_ && !selectionContains(selection_,seed.x,seed.y)))return false;{const auto r=timeline_.resolveSurface(cel().id);if(r.issue!=timeline::LinkIssue::None||!r.source||!r.surface)throw std::logic_error("Invalid gradient owner");if(!raster::fullCanvas(*r.surface,width_,height_))return beginSparseGradient(seed,options);}options.gapClosing=false;const auto source=options.visibleLayers?compositeNormalRegion(timeline_,frame().id,{0,0,width_,height_}):std::vector<Pixel>{};auto region=magicWandSelection(options.visibleLayers?source:pixels(),width_,height_,seed.x,seed.y,options);if(!region)return false;gradient_=GradientPreview{seed,cel().id,layer().id,frame().id,pixels(),selection_,std::move(region),options,contentRevision_};++gradientRevision_;return true;}
+bool Document::updateGradient(const GradientSpec& spec,WandOptions options){if(!gradient_)return false;auto& g=*gradient_;if(freeSourceStroke_&&freeSourceStroke_->gradientPreview){
+ auto& d=*freeSourceStroke_;auto& raster=*d.raster;
+ if(g.contentRevision!=contentRevision_||!selectionEqual(g.selection,selection_)||g.layerId!=layer().id||g.frameId!=frame().id||freeTilePaintMode()||layerEffectivelyLocked(layer())||!layerEffectivelyVisible(layer())){cancelGradient();return false;}
+ try{
+  auto local=spec;local.start.x-=d.origin.x;local.start.y-=d.origin.y;local.end.x-=d.origin.x;local.end.y-=d.origin.y;
+  if(local.geometry){local.geometry->center.x-=d.origin.x;local.geometry->center.y-=d.origin.y;}
+  if(!raster.updateGradient(local,options)){cancelGradient();return false;}
+  d.gradientMoved=spec.start.x!=spec.end.x||spec.start.y!=spec.end.y;
+  // Present canonical source pixels through the existing timeline preview,
+  // while keeping authoritative resources and save output at their baseline.
+  if(raster.gradient_->region){const auto& r=*raster.gradient_->region;d.scan.include(r.x,r.y);d.scan.include(r.x+r.width-1,r.y+r.height-1);}
+  auto& storage=raster.pixelStorage();storage.swap(raster.gradient_->preview);
+  try{d.published=false;publishFreeTileSourceStroke();g.tilemapDisplay=timeline_;timeline_=d.before;d.mutated=false;storage.swap(raster.gradient_->preview);}
+  catch(...){storage.swap(raster.gradient_->preview);throw;}
+  g.options=options;++gradientRevision_;return true;
+ }catch(...){cancelGradient();throw;}
+}if(g.contentRevision!=contentRevision_ || !selectionEqual(g.selection,selection_) || g.layerId!=layer().id || g.frameId!=frame().id || !(g.mask?maskPreviewValid():g.tilemap?tilemapPreviewValid():rasterToolsAvailable())){cancelGradient();return false;}if(g.sparse)return updateSparseGradient(spec,options);options.gapClosing=false;const auto previousRegion=g.region;if(options.tolerance!=g.options.tolerance || options.contiguous!=g.options.contiguous || options.connectivity!=g.options.connectivity || options.visibleLayers!=g.options.visibleLayers){const auto source=options.visibleLayers?compositeNormalRegion(timeline_,frame().id,{0,0,width_,height_}):std::vector<Pixel>{};g.region=magicWandSelection(options.visibleLayers?source:previewBaseline(),width_,height_,g.seed.x,g.seed.y,options);g.options=options;}
+ if(previousRegion){const auto& r=*previousRegion;for(int y=r.y;y<r.y+r.height;++y)std::copy_n(previewBaseline().begin()+std::size_t(y)*width_+r.x,r.width,g.preview.begin()+std::size_t(y)*width_+r.x);}if(g.region){const auto& r=*g.region;GradientSampler sample(spec);std::vector<Pixel> row(r.width);for(int y=r.y;y<r.y+r.height;++y){sample.row(y,r.x,r.x+r.width,row.data());for(int x=r.x;x<r.x+r.width;++x){const auto i=std::size_t(y)*width_+x;const auto current=previewBaseline()[i];const auto source=row[x-r.x];{const auto painted=selectionContains(g.region,x,y) && (!g.selection || selectionContains(g.selection,x,y)) && (source>>24)?brushComposite(current,source,100):current;g.preview[i]=g.mask&&painted!=current?timeline::normalizedMaskPixel(painted):painted;}}}}if(g.tilemap)publishTilemapPreview();publishMaskPreview();++gradientRevision_;return true;}
+void Document::cancelGradient(){if(freeSourceStroke_&&freeSourceStroke_->gradientPreview)cancelFreeTileSourceStroke();if(gradient_){gradient_.reset();++gradientRevision_;}}
+bool Document::commitGradient(){if(!gradient_)return false;const auto& g=*gradient_;if(freeSourceStroke_&&freeSourceStroke_->gradientPreview){
+ auto& d=*freeSourceStroke_;
+ if(g.contentRevision!=contentRevision_||!selectionEqual(g.selection,selection_)||g.layerId!=layer().id||g.frameId!=frame().id||!d.gradientMoved||freeTilePaintMode()||layerEffectivelyLocked(layer())||!layerEffectivelyVisible(layer())){cancelGradient();return false;}
+ try{
+  if(!d.raster->commitGradient()){cancelGradient();return false;}
+  gradient_.reset();++gradientRevision_;d.gradientPreview=false;d.published=false;
+  HistoryLabelScope label(*this,U"渐变");publishFreeTileSourceStroke();return commitFreeTileSourceStroke();
+ }catch(...){cancelGradient();cancelFreeTileSourceStroke();throw;}
+}if(g.contentRevision!=contentRevision_ || !selectionEqual(g.selection,selection_) || g.layerId!=layer().id || g.frameId!=frame().id || !(g.mask?maskPreviewValid():g.tilemap?tilemapPreviewValid():rasterToolsAvailable())){cancelGradient();return false;}if(g.mask)return commitMaskPreview();if(g.tilemap)return commitTilemapPreview();if(g.sparse)return g.shape?commitSparseShape():commitSparseGradient();Edit edit{{},state_,nextState_};edit.targetCelId=g.celId;edit.beforeSelection=edit.afterSelection=selectedFrames_;int left=width_,top=height_,right=0,bottom=0;for(int y=0;y<height_;++y)for(int x=0;x<width_;++x){const auto i=std::size_t(y)*width_+x;if(pixels()[i]!=g.preview[i]){left=std::min(left,x);right=std::max(right,x+1);top=std::min(top,y);bottom=std::max(bottom,y+1);}}if(right<=left){cancelGradient();return false;}history_.reserve(position_+1);if(std::size_t(right-left)*(bottom-top)>=512*512){DensePixels dense{left,top,right-left,bottom-top,{},{}};dense.before.reserve(std::size_t(dense.width)*dense.height);dense.after.reserve(std::size_t(dense.width)*dense.height);for(int y=top;y<bottom;++y){dense.before.insert(dense.before.end(),pixels().begin()+std::size_t(y)*width_+left,pixels().begin()+std::size_t(y)*width_+right);dense.after.insert(dense.after.end(),g.preview.begin()+std::size_t(y)*width_+left,g.preview.begin()+std::size_t(y)*width_+right);}edit.dense=std::move(dense);}else{for(int y=top;y<bottom;++y)for(int x=left;x<right;++x){const auto i=std::size_t(y)*width_+x;if(pixels()[i]!=g.preview[i])edit.pixels.push_back({i,pixels()[i],g.preview[i]});}}
+ auto result=std::move(gradient_->preview);gradient_.reset();++gradientRevision_;auto& storage=pixelStorage();for(int y=top;y<bottom;++y)std::copy_n(result.begin()+std::size_t(y)*width_+left,right-left,storage.begin()+std::size_t(y)*width_+left);change_={left,top,right-left,bottom-top};publishChange();pushEdit(std::move(edit),U"渐变");return true;
+}
+
 }
