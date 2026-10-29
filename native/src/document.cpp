@@ -1925,7 +1925,7 @@ void Document::configureSymmetryContentDrag(FloatingPaste& f,Point start){
  f.symmetryStart=SymmetryPixel{start.x-int(f.transform.x)+f.sourceX,start.y-int(f.transform.y)+f.sourceY};f.symmetryAxes=symmetryAxes;f.symmetryCenter=symmetryCenter();
 }
 Point Document::symmetryContentDragDelta(Point delta)const{
- if(!floating_||!floatingSymmetryTranslation(*floating_,floating_->transform))return delta;const auto& f=*floating_;const auto out=symmetrySelectionDragDelta(*f.beforeSelection,*f.symmetryStart,{delta.x,delta.y},width_,height_,f.symmetryAxes,f.symmetryCenter);return {out.x,out.y};
+ if(!floating_)return delta;const auto& f=*floating_;if(f.freeTile&&f.symmetryStart&&f.beforeSelection){const auto out=symmetrySelectionDragDelta(*f.beforeSelection,*f.symmetryStart,{delta.x,delta.y},width_,height_,f.symmetryAxes,f.symmetryCenter);return {out.x,out.y};}if(!floatingSymmetryTranslation(f,f.transform))return delta;const auto out=symmetrySelectionDragDelta(*f.beforeSelection,*f.symmetryStart,{delta.x,delta.y},width_,height_,f.symmetryAxes,f.symmetryCenter);return {out.x,out.y};
 }
 bool Document::supportsDeferredFloating(const FloatingPaste& f)const{
  if((f.tilemap&&f.tilemapMode==tiles::Mode::Edit)||f.beforeCelTimeline||f.targets.size()!=1)return false;
@@ -2119,7 +2119,7 @@ bool Document::prepareTilemapFloating(FloatingPaste& f,std::optional<Point> seed
  for(std::size_t ci=0;ci<state.cels.size();++ci){const auto& c=state.cels[ci];if(c.tilemap&&c.surface)for(std::size_t i=0;i<c.tilemap->cells.size();++i){const auto& cell=c.tilemap->cells[i];if(cell&&cell->tilesetId==set->id)g->tilemapReferences[cell->tileId].push_back({ci,i});}}
  f.tilemapPreview=std::move(g);return true;
 }
-bool Document::beginSelectionContentMove(bool copy,bool allFrameLayers,int initialDx,int initialDy,std::optional<Point> tilemapSeed,bool symmetryTranslation,bool symmetryScale,bool symmetryRotation,bool symmetryShear){if(hasFreeTileContent())return false;if(hasTilemapContent()){
+bool Document::beginSelectionContentMove(bool copy,bool allFrameLayers,int initialDx,int initialDy,std::optional<Point> tilemapSeed,bool symmetryTranslation,bool symmetryScale,bool symmetryRotation,bool symmetryShear){if(hasFreeTileContent()){if(layer().kind=="free-tile"&&activeMaskId_.empty()){const bool started=beginFreeTileSelectionMove(copy,allFrameLayers,initialDx,initialDy);if(started&&symmetryTranslation&&tilemapSeed){floating_->symmetryStart=SymmetryPixel{tilemapSeed->x,tilemapSeed->y};floating_->symmetryAxes=symmetryAxes;floating_->symmetryCenter=symmetryCenter();}return started;}return false;}if(hasTilemapContent()){
  if(floating_){if(floating_->tilemap){if(tileSelection_.mode!=floating_->tilemapMode||layerEffectivelyLocked(layer())||!layerEffectivelyVisible(layer()))return false;}else if(!(floating_->clipboard&&floating_->maskId.empty()&&layer().kind.empty()&&!layerEffectivelyLocked(layer())))return false;}
  else if(allFrameLayers||!tilemapSelectionTransformAvailable())return false;
  }if(!activeMaskId_.empty())return beginMaskSelectionMove(copy,allFrameLayers,initialDx,initialDy);
@@ -2216,7 +2216,7 @@ void Document::prepareSelectionBoxMove(){if(floating_ && !floating_->clipboard)c
 void Document::commitSelectionBox(std::optional<SelectionMask> before){if(selectionEqual(before,selection_))return;Edit e{{},state_,state_};e.documentChanged=false;e.pixelSelectionEdit=true;e.beforePixelsSelection=std::move(before);e.afterPixelsSelection=selection_;pushEdit(std::move(e),U"移动选框");}
 void Document::moveFloatingPaste(int x,int y){if(!floating_)return;auto transform=floating_->transform;if(transform.width<1 || transform.height<1){transform.width=floating_->source.width;transform.height=floating_->source.height;}transform.x=x;transform.y=y;transformFloatingPaste(transform,floating_->rotSprite);}
 void Document::transformFloatingPaste(const SelectionTransform& transform,bool rotSprite){
- if(!floating_)return;auto& f=*floating_;const auto bounds=checkedFloatingBounds(transform);if(f.tilemap&&(tileSelection_.mode!=f.tilemapMode||layer().id!=f.layerId||frame().id!=f.frameId||layerEffectivelyLocked(layer())||!layerEffectivelyVisible(layer())||(!tilemapDeltaSupported()&&!linkedCreateFloatingSupported(f)&&!linkedEditFloatingSupported(f)&&!linkedHybridFloatingSupported(f))))throw std::logic_error("Tilemap floating target changed");if(!f.maskId.empty()){transformMaskFloating(transform,rotSprite);return;}
+ if(!floating_)return;if(floating_->freeTile){transformFreeTileSelectionMove(transform);return;}auto& f=*floating_;const auto bounds=checkedFloatingBounds(transform);if(f.tilemap&&(tileSelection_.mode!=f.tilemapMode||layer().id!=f.layerId||frame().id!=f.frameId||layerEffectivelyLocked(layer())||!layerEffectivelyVisible(layer())||(!tilemapDeltaSupported()&&!linkedCreateFloatingSupported(f)&&!linkedEditFloatingSupported(f)&&!linkedHybridFloatingSupported(f))))throw std::logic_error("Tilemap floating target changed");if(!f.maskId.empty()){transformMaskFloating(transform,rotSprite);return;}
  if(f.deferred){
   if(f.restoredFromDeselect){const auto old=f.transform;transformSparseFloatingPaste(transform,rotSprite);f.deferred=false;noteFloatingOverlayChange(f,old,transform);return;}
   const auto& target=f.targets.front();const auto r=timeline_.resolveSurface(target.celId);if(r.issue!=timeline::LinkIssue::None||!r.source||!r.surface||(!target.ownerId.empty()&&r.source->id!=target.ownerId))throw std::logic_error("Floating overlay owner changed");
@@ -2327,7 +2327,7 @@ bool Document::commitTilemapFloating(){
  if(sharedPreview){change_={0,0,width_,height_};publishChange();}return changed;
 }
 bool Document::commitFloatingPaste(){
- if(!floating_)return false;if(floating_->tilemap)return commitTilemapFloating();if(floating_->restoredFromDeselect){floating_.reset();return false;}if(!floating_->maskId.empty())return commitMaskFloating();if(floating_->deferred)return commitDeferredFloatingPaste();if(floating_->sparse&&!floating_->beforeCelTimeline)return commitSparseFloatingPaste();auto& f=*floating_;
+ if(!floating_)return false;if(floating_->freeTile)return commitFreeTileSelectionMove();if(floating_->tilemap)return commitTilemapFloating();if(floating_->restoredFromDeselect){floating_.reset();return false;}if(!floating_->maskId.empty())return commitMaskFloating();if(floating_->deferred)return commitDeferredFloatingPaste();if(floating_->sparse&&!floating_->beforeCelTimeline)return commitSparseFloatingPaste();auto& f=*floating_;
  for(const auto& target:f.targets)if(!target.ownerId.empty()){const auto r=timeline_.resolveSurface(target.celId);if(r.issue!=timeline::LinkIssue::None||!r.source||r.source->id!=target.ownerId)throw std::logic_error("Floating commit owner changed");}
  std::size_t extra=0;if(f.beforeSelection)floatingAddBytes(extra,f.beforeSelection->mask.size());if(selection_)floatingAddBytes(extra,selection_->mask.size());
  if(f.beforeCelTimeline)floatingAddBytes(extra,adjustmentStorageBudget(timeline_,1));else for(const auto& target:f.targets)floatingAddBytes(extra,std::uint64_t(target.preview.size())*sizeof(Delta));checkFloatingBudget(f,extra);

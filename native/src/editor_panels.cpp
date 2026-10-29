@@ -846,6 +846,7 @@ void Editor::useZoomTool() {liquifyTool_=false;liquifyResetPosition_.reset();smo
 
     if(selectionDragging_ || floatingDragging_ || shapeDragging_ || gradientDragging_ || gradientPending_ || fillDragging_ || eyedropperGesture_.active() || navigation_.zoomDragging_)return;
 
+    document.commitFloatingPaste();
     textTool_=false;moveTool_=false;selectionTool_=shapeTool_=gradientTool_=fillTool_=handTool_=eraser_=eyedropperTool_=false;navigation_.zoomTool_=true;toolRowScroll_=0;refresh();updateNavigationCursor();
 
   }

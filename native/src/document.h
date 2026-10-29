@@ -465,6 +465,7 @@ public:
   void prepareSelectionBoxMove();
   Point symmetryContentDragDelta(Point delta)const;
   bool floating() const {return floating_.has_value();}
+  bool freeTileSelectionPlacementMoving()const;
   bool floatingDeferred()const{return floating_&&floating_->deferred&&!floating_->restoredFromDeselect;}
   std::uint64_t floatingOverlayRevision()const{return floatingOverlayRevision_;}
   PixelRegion floatingOverlayChange()const{return floatingOverlayChange_;}
@@ -609,6 +610,11 @@ private:
   Point freeTileSourceStrokePoint(Point)const;
   bool beginFreeTileSourceStroke(Point,Pixel,BrushOptions,const PatternBrush*,double,const std::unordered_map<std::size_t,Pixel>*,bool,bool=false);
   void publishFreeTileSourceStroke();
+  void publishFreeTileSourceStroke(FreeTileSourceStroke&);
+  struct FreeTileSelectionMove;
+  bool beginFreeTileSelectionMove(bool,bool,int,int);
+  void transformFreeTileSelectionMove(const SelectionTransform&);
+  bool commitFreeTileSelectionMove();
   bool commitFreeTileSourceStroke();
   void cancelFreeTileSourceStroke();
 
@@ -899,7 +905,7 @@ private:
   struct FloatingTarget {SelectionClipboard source;std::string celId;std::unordered_map<std::size_t,Delta> preview;std::shared_ptr<SelectionRotSpriteSource> rotSprite;std::optional<SelectionClipboard> originalSource;std::string ownerId;std::optional<timeline::Surface> baseline;std::shared_ptr<const SymmetryRotationRaster> symmetryRotation;};
   struct PaintCellMove {std::string layerId,frameId,celId;SelectionMask expanded;std::optional<SelectionMask> beforeSelection;std::vector<TilemapPixelHistory::CellChange> sources;std::shared_ptr<Edit> preview;bool copy=false;int columns=0,rows=0;};
   std::optional<PaintCellMove> paintCellMove_;std::optional<SelectionMask> expandedPaintCellSelection(bool discreteFlip=false)const;
-  struct FloatingPaste {bool linkedCreate=false,linkedEdit=false,linkedHybrid=false;bool symmetryRotation=false;bool symmetryShear=false;bool symmetryScale=false;std::optional<SymmetryPixel> symmetryStart;SymmetryAxes symmetryAxes;SymmetryCenter symmetryCenter;std::string maskId;std::optional<std::vector<timeline::MaskSlot>> beforeMasks;SelectionClipboard source;SelectionTransform transform;int x=0,y=0;std::optional<SelectionMask> beforeSelection;bool clipboard=true,copy=true,rotSprite=false,tilemap=false;int sourceX=0,sourceY=0;std::vector<FloatingTarget> targets;std::string layerId,frameId;std::optional<timeline::State> beforeCelTimeline;TimelineSelection beforeTimelineSelection;std::vector<std::string> beforeSelectedFrames;bool sparse=false,restoredFromDeselect=false;std::size_t transientBytes=0;bool deferred=false;tiles::Mode tilemapMode=tiles::Mode::Create;std::optional<std::size_t> tilemapEditCell;std::shared_ptr<GradientPreview> tilemapPreview;};
+  struct FloatingPaste {std::shared_ptr<FreeTileSelectionMove> freeTile;bool linkedCreate=false,linkedEdit=false,linkedHybrid=false;bool symmetryRotation=false;bool symmetryShear=false;bool symmetryScale=false;std::optional<SymmetryPixel> symmetryStart;SymmetryAxes symmetryAxes;SymmetryCenter symmetryCenter;std::string maskId;std::optional<std::vector<timeline::MaskSlot>> beforeMasks;SelectionClipboard source;SelectionTransform transform;int x=0,y=0;std::optional<SelectionMask> beforeSelection;bool clipboard=true,copy=true,rotSprite=false,tilemap=false;int sourceX=0,sourceY=0;std::vector<FloatingTarget> targets;std::string layerId,frameId;std::optional<timeline::State> beforeCelTimeline;TimelineSelection beforeTimelineSelection;std::vector<std::string> beforeSelectedFrames;bool sparse=false,restoredFromDeselect=false;std::size_t transientBytes=0;bool deferred=false;tiles::Mode tilemapMode=tiles::Mode::Create;std::optional<std::size_t> tilemapEditCell;std::shared_ptr<GradientPreview> tilemapPreview;};
   bool beginMaskFloating(const SelectionClipboard&,int,int,bool,bool);
   bool beginMaskSelectionMove(bool,bool,int,int);
   void transformMaskFloating(const SelectionTransform&,bool);

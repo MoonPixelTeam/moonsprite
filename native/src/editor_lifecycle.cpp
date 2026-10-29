@@ -121,15 +121,15 @@ Editor::Editor(const PixelFont& font,Skin& skin,std::filesystem::path assets,std
 
     documentTabClose_=button(U"",[this]{activateProject(0);ask(Pending::CloseDocument);});documentTabClose_->iconSkin=&toolIcons_;documentTabClose_->icon="close";documentTabClose_->bareTabIcon=true;
 
-    commands_.push_back(button(U"画笔",[this]{if(shapeDragging_ || gradientPending_ || gradientDragging_)return;cancelStroke();liquifyTool_=false;liquifyResetPosition_.reset();smoothTool_=false;airbrushTool_=false;rotateTool_=false;textTool_=false;moveTool_=false;selectionTool_=false;shapeTool_=false;eyedropperTool_=false;navigation_.zoomTool_=false;gradientTool_=false;fillTool_=false;handTool_=false;eraser_=false;updateNavigationCursor();refresh();}));
+    commands_.push_back(button(U"画笔",[this]{if(shapeDragging_ || gradientPending_ || gradientDragging_)return;document.commitFloatingPaste();cancelStroke();liquifyTool_=false;liquifyResetPosition_.reset();smoothTool_=false;airbrushTool_=false;rotateTool_=false;textTool_=false;moveTool_=false;selectionTool_=false;shapeTool_=false;eyedropperTool_=false;navigation_.zoomTool_=false;gradientTool_=false;fillTool_=false;handTool_=false;eraser_=false;updateNavigationCursor();refresh();}));
 
-    commands_.push_back(button(U"橡皮",[this]{if(shapeDragging_ || gradientPending_ || gradientDragging_)return;cancelStroke();liquifyTool_=false;liquifyResetPosition_.reset();smoothTool_=false;airbrushTool_=false;rotateTool_=false;textTool_=false;moveTool_=false;selectionTool_=false;shapeTool_=false;eyedropperTool_=false;navigation_.zoomTool_=false;gradientTool_=false;fillTool_=false;handTool_=false;eraser_=true;updateNavigationCursor();refresh();}));
+    commands_.push_back(button(U"橡皮",[this]{if(shapeDragging_ || gradientPending_ || gradientDragging_)return;document.commitFloatingPaste();cancelStroke();liquifyTool_=false;liquifyResetPosition_.reset();smoothTool_=false;airbrushTool_=false;rotateTool_=false;textTool_=false;moveTool_=false;selectionTool_=false;shapeTool_=false;eyedropperTool_=false;navigation_.zoomTool_=false;gradientTool_=false;fillTool_=false;handTool_=false;eraser_=true;updateNavigationCursor();refresh();}));
 
     commands_.push_back(button(U"撤销",[this]{cancelStroke();document.undo();refresh();}));
 
     commands_.push_back(button(U"重做",[this]{cancelStroke();document.redo();refresh();}));
 
-    commands_.push_back(button(U"手",[this]{if(shapeDragging_ || gradientPending_ || gradientDragging_)return;cancelStroke();liquifyTool_=false;liquifyResetPosition_.reset();smoothTool_=false;airbrushTool_=false;rotateTool_=false;textTool_=false;moveTool_=false;shapeTool_=false;eyedropperTool_=false;navigation_.zoomTool_=false;gradientTool_=false;fillTool_=false;handTool_=true;updateNavigationCursor();refresh();}));
+    commands_.push_back(button(U"手",[this]{if(shapeDragging_ || gradientPending_ || gradientDragging_)return;document.commitFloatingPaste();cancelStroke();liquifyTool_=false;liquifyResetPosition_.reset();smoothTool_=false;airbrushTool_=false;rotateTool_=false;textTool_=false;moveTool_=false;shapeTool_=false;eyedropperTool_=false;navigation_.zoomTool_=false;gradientTool_=false;fillTool_=false;handTool_=true;updateNavigationCursor();refresh();}));
 
     createToolRail();
 

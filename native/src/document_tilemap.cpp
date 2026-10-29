@@ -1,3 +1,4 @@
+#include "free_tile_selection_target.h"
 #include "document.h"
 #include "raster_geometry.h"
 #include "layer_compositor.h"
@@ -963,7 +964,10 @@ bool Document::paintFreeTileSourceLine(Point from,Point to,Pixel color,BrushOpti
  }catch(...){cancelFreeTileSourceStroke();throw;}
 }
 void Document::publishFreeTileSourceStroke(){
- if(!freeSourceStroke_)return;auto& d=*freeSourceStroke_;const auto& edit=*d.raster;const auto& pixels=edit.pixels();
+ if(freeSourceStroke_)publishFreeTileSourceStroke(*freeSourceStroke_);
+}
+void Document::publishFreeTileSourceStroke(FreeTileSourceStroke& d){
+ const auto& edit=*d.raster;const auto& pixels=edit.pixels();
  if(!edit.change_.empty()){d.scan.include(edit.change_.x,edit.change_.y);d.scan.include(edit.change_.x+edit.change_.w-1,edit.change_.y+edit.change_.h-1);}
  int left=edit.width_,top=edit.height_,right=-1,bottom=-1;for(int y=std::max(0,d.scan.y);y<std::min(edit.height_,d.scan.y+d.scan.h);++y)for(int x=std::max(0,d.scan.x);x<std::min(edit.width_,d.scan.x+d.scan.w);++x)if(pixels[std::size_t(y)*edit.width_+x]>>24){left=std::min(left,x);top=std::min(top,y);right=std::max(right,x);bottom=std::max(bottom,y);}
  std::vector<Pixel> source;int width=1,height=1,offsetX=0,offsetY=0;
@@ -987,6 +991,66 @@ void Document::publishFreeTileSourceStroke(){
  for(auto& owner:state.layers)if(owner.freeTiles)for(auto& s:owner.freeTiles->sources)if(s.id==d.sourceId){s.offsetX=offsetX;s.offsetY=offsetY;}
  for(auto& c:changed){const auto id=c.id;state.cels[timeline_.cels_.at(id)]=std::move(c);timeline_.selectionContent_.erase(id);timeline_.visibleContent_.erase(id);++timeline_.thumbnailStorage_[id].revision;}
  timeline_.invalidateCompositeOrder();d.published=true;d.mutated=true;if(!d.gradientPreview){change_={0,0,width_,height_};publishChange();}
+}
+// Legacy canvas-input-selection-begin: whole selected instances move by
+// placement; partial selections and copy drags edit the primary shared source.
+struct Document::FreeTileSelectionMove {
+ std::shared_ptr<FreeTileSourceStroke> source;
+ std::vector<std::string> instances;
+ bool placement=false,changed=false;
+};
+bool Document::freeTileSelectionPlacementMoving()const{return floating_&&floating_->freeTile&&floating_->freeTile->placement;}
+bool Document::beginFreeTileSelectionMove(bool copy,bool allFrames,int dx,int dy){
+ if(floating_){if(!floating_->freeTile)return false;if(copy&&!floating_->copy)commitFloatingPaste();else return true;}
+ if(active()||allFrames||!selection_||!freeTileSelectionTargetBounds(*this))return false;
+ auto state=std::make_shared<FreeTileSelectionMove>();FloatingPaste f;f.freeTile=state;f.clipboard=false;f.copy=copy;f.beforeSelection=selection_;f.sourceX=selection_->x;f.sourceY=selection_->y;f.layerId=activeLayerId_;f.frameId=activeFrameId_;f.beforeCelTimeline=timeline_.state();f.beforeTimelineSelection=timelineSelection_;f.beforeSelectedFrames=selectedFrames_;
+ const auto bounds=*freeTileSelectionTargetBounds(*this);const auto primary=primaryFreeTileInstance();const auto& instances=cel().freeTiles->instances;const auto& chosen=*std::find_if(instances.begin(),instances.end(),[&](const auto& i){return i.id==primary;});
+ auto selected=selectedFreeTileInstances();if(selected.empty())selected={primary};PixelRegion unionBounds;
+ for(const auto& id:selected){const auto i=std::find_if(instances.begin(),instances.end(),[&](const auto& v){return v.id==id&&v.visible&&!v.locked;});if(i==instances.end())continue;const auto b=freeTileInstanceBounds(id);if(!b)continue;state->instances.push_back(id);unionBounds.include(b->x,b->y);unionBounds.include(b->x+b->w-1,b->y+b->h-1);}
+ bool covers=!copy&&!state->instances.empty()&&std::find(selected.begin(),selected.end(),primary)!=selected.end()&&selection_->x<=unionBounds.x&&selection_->y<=unionBounds.y&&selection_->x+selection_->width>=unionBounds.x+unionBounds.w&&selection_->y+selection_->height>=unionBounds.y+unionBounds.h;
+ if(covers&&!selection_->mask.empty())for(int y=unionBounds.y;covers&&y<unionBounds.y+unionBounds.h;++y)for(int x=unionBounds.x;x<unionBounds.x+unionBounds.w;++x)if(!selectionContains(selection_,x,y)){covers=false;break;}
+ if(!covers){bool intersects=false;for(int y=std::max(selection_->y,bounds.y);!intersects&&y<std::min(selection_->y+selection_->height,bounds.y+bounds.h);++y)for(int x=std::max(selection_->x,bounds.x);x<std::min(selection_->x+selection_->width,bounds.x+bounds.w);++x)if(selectionContains(selection_,x,y)){intersects=true;break;}if(!intersects)return false;}
+ state->placement=covers;
+ const auto count=std::uint64_t(selection_->width)*selection_->height;if(selection_->width<1||selection_->height<1||count>16*1024*1024)throw std::length_error("自由瓦片选区超出原生内存预算");
+ f.source.width=selection_->width;f.source.height=selection_->height;f.source.mask=selection_->mask;if(f.source.mask.empty())f.source.mask.assign(std::size_t(count),1);f.source.pixels.resize(std::size_t(count));
+ if(!covers){
+  const auto& source=*freeSourceFor(*layer().freeTiles,chosen);const auto& set=*freeSourceSet(timeline_.state(),source.tilesetId);auto d=std::make_shared<FreeTileSourceStroke>();d->before=timeline_;d->sourceId=source.id;d->tilesetId=set.id;d->targetCel=cel().id;d->instance=chosen;d->anchor={cel().surface->offsetX+chosen.x,cel().surface->offsetY+chosen.y};d->beforeWidth=set.tileWidth;d->beforeHeight=set.tileHeight;d->beforeX=source.offsetX;d->beforeY=source.offsetY;d->beforePixels=tiles::readTile(set,0);state->source=d;
+  for(int y=0;y<set.tileHeight;++y)for(int x=0;x<set.tileWidth;++x){const auto q=free_tiles::transform(chosen,source.offsetX+x,source.offsetY+y);const int px=q.first+d->anchor.x-selection_->x,py=q.second+d->anchor.y-selection_->y;if(px>=0&&py>=0&&px<selection_->width&&py<selection_->height)f.source.pixels[std::size_t(py)*selection_->width+px]=d->beforePixels[std::size_t(y)*set.tileWidth+x];}
+ }
+ f.transform={double(selection_->x),double(selection_->y),double(selection_->width),double(selection_->height)};f.x=selection_->x;f.y=selection_->y;floating_=std::move(f);
+ try{if(dx||dy){auto target=floating_->transform;target.x+=dx;target.y+=dy;transformFreeTileSelectionMove(target);}}catch(...){cancelFloatingPaste();throw;}return true;
+}
+void Document::transformFreeTileSelectionMove(const SelectionTransform& transform){
+ if(!floating_||!floating_->freeTile)return;auto& f=*floating_;auto& move=*f.freeTile;
+ if(transform.width!=f.source.width||transform.height!=f.source.height||transform.angle!=0||transform.shearX!=0||transform.shearY!=0||transform.flipHorizontal||transform.flipVertical||transform.quad)throw std::logic_error("自由瓦片选区缩放、旋转和斜切尚未迁移");
+ if(layer().id!=f.layerId||frame().id!=f.frameId||!freeTileSelectionTargetBounds(*this))throw std::logic_error("自由瓦片选区目标已改变");
+ const auto tx=std::floor(transform.x),ty=std::floor(transform.y);if(!std::isfinite(tx)||!std::isfinite(ty)||std::abs(tx)>free_tiles::MaxCoordinate||std::abs(ty)>free_tiles::MaxCoordinate)throw std::length_error("自由瓦片选区位置超出限制");const int dx=int(tx)-f.sourceX,dy=int(ty)-f.sourceY;
+ auto selected=f.beforeSelection;selected->x+=dx;selected->y+=dy;selected=combineSelection(selected,SelectionMask{0,0,width_,height_,{}},3);
+ if(move.placement){
+  // Same single-Cel preview strategy as previewFreeTileInstanceMove.
+  const auto& original=f.beforeCelTimeline->cels;auto after=*std::find_if(original.begin(),original.end(),[&](const auto& c){return c.id==cel().id;});
+  for(auto& instance:after.freeTiles->instances)if(std::find(move.instances.begin(),move.instances.end(),instance.id)!=move.instances.end()){const auto x=std::int64_t(instance.x)+dx,y=std::int64_t(instance.y)+dy;if(std::abs(x)>free_tiles::MaxCoordinate||std::abs(y)>free_tiles::MaxCoordinate)throw std::length_error("自由瓦片实例位置超出限制");instance.x=int(x);instance.y=int(y);}
+  if(after.freeTiles!=cel().freeTiles){after.surface->pixels=free_tiles::render(*layer().freeTiles,*after.freeTiles,timeline_.state().tilesets,after.surface->width,after.surface->height);timeline_.state_.cels[timeline_.cels_.at(after.id)]=std::move(after);}move.changed=dx||dy;
+ }else{
+  auto& d=*move.source;PixelRegion sourceBounds;for(int y:{0,d.beforeHeight-1})for(int x:{0,d.beforeWidth-1}){const auto q=free_tiles::transform(d.instance,d.beforeX+x,d.beforeY+y);sourceBounds.include(q.first+d.anchor.x,q.second+d.anchor.y);}
+  const int padding=std::clamp(std::max(width_,height_),16,128),left=std::min({0,sourceBounds.x,int(tx),f.sourceX})-padding,top=std::min({0,sourceBounds.y,int(ty),f.sourceY})-padding;
+  const auto right=std::max({std::int64_t(width_),std::int64_t(sourceBounds.x)+sourceBounds.w,std::int64_t(tx)+f.source.width,std::int64_t(f.sourceX)+f.source.width})+padding,bottom=std::max({std::int64_t(height_),std::int64_t(sourceBounds.y)+sourceBounds.h,std::int64_t(ty)+f.source.height,std::int64_t(f.sourceY)+f.source.height})+padding;
+  const auto w=right-left,h=bottom-top;if(w<1||h<1||w*h>16*1024*1024)throw std::length_error("自由瓦片源临时画布超出原生内存预算");
+  auto raster=std::make_unique<Document>(1,1);raster->width_=int(w);raster->height_=int(h);auto data=raster->timeline_.state();data.canvasWidth=int(w);data.canvasHeight=int(h);auto& surface=*data.cels.front().surface;surface.width=int(w);surface.height=int(h);surface.pixels=std::vector<Pixel>(std::size_t(w*h));auto& pixels=surface.pixels;
+  for(int y=0;y<d.beforeHeight;++y)for(int x=0;x<d.beforeWidth;++x){const auto q=free_tiles::transform(d.instance,d.beforeX+x,d.beforeY+y);pixels[std::size_t(q.second+d.anchor.y-top)*w+q.first+d.anchor.x-left]=d.beforePixels[std::size_t(y)*d.beforeWidth+x];}
+  if(!f.copy)for(int y=0;y<f.source.height;++y)for(int x=0;x<f.source.width;++x)if(f.source.mask[std::size_t(y)*f.source.width+x])pixels[std::size_t(f.sourceY+y-top)*w+f.sourceX+x-left]=0;
+  if(f.copy||dx||dy)for(int y=0;y<f.source.height;++y)for(int x=0;x<f.source.width;++x){const auto i=std::size_t(y)*f.source.width+x;if(f.source.mask[i]&&(f.source.pixels[i]>>24)){const auto at=std::size_t(int(ty)+y-top)*w+int(tx)+x-left;pixels[at]=brushComposite(pixels[at],f.source.pixels[i],100);}}
+  else {for(int y=0;y<f.source.height;++y)for(int x=0;x<f.source.width;++x){const auto i=std::size_t(y)*f.source.width+x;if(f.source.mask[i])pixels[std::size_t(f.sourceY+y-top)*w+f.sourceX+x-left]=f.source.pixels[i];}}
+  raster->timeline_=timeline::Timeline(std::move(data));d.raster=std::move(raster);d.origin={left,top};d.scan={0,0,int(w),int(h)};publishFreeTileSourceStroke(d);move.changed=d.beforeWidth!=d.lastWidth||d.beforeHeight!=d.lastHeight||d.beforeX!=d.lastX||d.beforeY!=d.lastY||d.beforePixels!=d.lastPixels;
+ }
+ f.transform=transform;f.transform.x=tx;f.transform.y=ty;f.x=int(tx);f.y=int(ty);selection_=std::move(selected);change_={0,0,width_,height_};publishChange();
+}
+bool Document::commitFreeTileSelectionMove(){
+ if(!floating_||!floating_->freeTile)return false;auto& f=*floating_;const bool changed=f.freeTile->changed,selectionChanged=!selectionEqual(f.beforeSelection,selection_);if(!changed&&!selectionChanged){floating_.reset();return false;}
+ Edit e{{},state_,changed?nextState_:state_};e.documentChanged=changed;e.beforeActive=e.afterActive=f.layerId;e.beforeFrame=e.afterFrame=f.frameId;e.pixelSelectionEdit=true;e.beforePixelsSelection=f.beforeSelection;e.afterPixelsSelection=selection_;
+ if(changed&&f.freeTile->placement){const auto& original=f.beforeCelTimeline->cels;e.beforeCels.push_back(*std::find_if(original.begin(),original.end(),[&](const auto& c){return c.id==cel().id;}));e.afterCels.push_back(cel());}
+ else if(changed){e.beforeTimeline=*f.beforeCelTimeline;e.afterTimeline=timeline_.state();e.beforeTimelineSelection=e.afterTimelineSelection=f.beforeTimelineSelection;e.beforeSelection=e.afterSelection=f.beforeSelectedFrames;}
+ const auto label=f.copy?U"复制选区内容":U"移动选区内容";history_.reserve(position_+1);floating_.reset();pushEdit(std::move(e),label);return changed;
 }
 bool Document::commitFreeTileSourceStroke(){
  if(!freeSourceStroke_)return false;auto& d=*freeSourceStroke_;const bool sourceChanged=d.beforeWidth!=d.lastWidth||d.beforeHeight!=d.lastHeight||d.beforeX!=d.lastX||d.beforeY!=d.lastY||d.beforePixels!=d.lastPixels;
