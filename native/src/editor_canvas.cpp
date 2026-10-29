@@ -1,6 +1,7 @@
 #include "raster_geometry.h"
 #include "editor_implementation.h"
 #include "editor.h"
+#include "free_tile_instances_panel.h"
 
 namespace moon::editor {
 bool Editor::processAirbrushInput(ui::Message* msg){
@@ -426,6 +427,9 @@ ui::Widget* Editor::frontWidgetAt(gfx::Point point,bool checkParentsVisibility){
 void Editor::focusWidgetOverlay(ui::Widget* w){
 
     if(!w)return;const int id=widgetColumn(w);
+    // Legacy useAppCommandScope remembers the last editor surface; menu focus
+    // has no surface and must not replace the instance-list command target.
+    if(freeTileInstancesPanel_&&pending_==Pending::None&&(w==this||id>=0)){const bool instances=freeTileInstancesPanel_->owns(w);freeTileInstancesPanel_->rememberClipboardScope(instances);if(instances)paletteFocused_=false;}
 
     if(pending_!=Pending::None && modalControl(w)){dialogFocus_=++overlayClock_;raiseDockWidgets();invalidate();}
 
@@ -1354,7 +1358,7 @@ void Editor::paintDockFeedback(ui::Graphics& g) {
 
 namespace moon::editor {
 void Editor::copyEditorClipboard(bool cut){
- try{if(document.hasTilemapContent()&&!paletteFocused_&&document.selection()&&!mixedPixelCopyContext(cut))throw std::runtime_error("瓦片文档当前支持整图层、图层组、整帧与整单元格剪贴板");if(paletteFocused_){if(!cut)copyPaletteColors();return;}if(document.selection()){copySelectionPixels(cut);return;}if(document.freeTileInstanceView()){auto clipboard=document.copyFreeTileInstances();if(!clipboard)return;freeTileInstanceClipboard_=std::move(clipboard);layerClipboardSnapshot_.reset();celClipboardSnapshot_={};frameClipboardSnapshot_={};pixelClipboard_.clear();document.clearMaskClipboard();if(cut)document.deleteFreeTileInstances(document.selectedFreeTileInstances());refresh();return;}if(!selectedMaskSlots_.empty()){freeTileInstanceClipboard_.reset();copyMaskTimeline(cut);return;}document.clearMaskClipboard();if(celClipboardContext()){if(cut)cutTimelineCels();else copyTimelineCels();return;}if(frameSelectionExplicit_){if(cut)cutTimelineFrames();else copyTimelineFrames();return;}
+ try{if(paletteFocused_){if(!cut)copyPaletteColors();return;}if(document.freeTileInstanceView()&&(!document.selection()||(freeTileInstancesPanel_&&freeTileInstancesPanel_->clipboardScope()))){auto clipboard=document.copyFreeTileInstances();if(!clipboard)return;freeTileInstanceClipboard_=std::move(clipboard);layerClipboardSnapshot_.reset();celClipboardSnapshot_={};frameClipboardSnapshot_={};pixelClipboard_.clear();document.clearMaskClipboard();if(cut)document.deleteFreeTileInstances(document.selectedFreeTileInstances());refresh();return;}if(document.hasTilemapContent()&&document.selection()&&!mixedPixelCopyContext(cut))throw std::runtime_error("瓦片文档当前支持整图层、图层组、整帧与整单元格剪贴板");if(document.selection()){copySelectionPixels(cut);return;}if(!selectedMaskSlots_.empty()){freeTileInstanceClipboard_.reset();copyMaskTimeline(cut);return;}document.clearMaskClipboard();if(celClipboardContext()){if(cut)cutTimelineCels();else copyTimelineCels();return;}if(frameSelectionExplicit_){if(cut)cutTimelineFrames();else copyTimelineFrames();return;}
  if(cut&&!document.canDeleteSelectedLayers())return;auto snapshot=document.copyLayerClipboard();freeTileInstanceClipboard_.reset();layerClipboardSnapshot_=std::move(snapshot);if(layerClipboardSnapshot_){celClipboardSnapshot_={};frameClipboardSnapshot_={};pixelClipboard_.clear();if(cut)document.deleteSelectedLayers();}refresh();}catch(const std::exception& e){showSaveError(e);}
 }
 void Editor::pasteEditorClipboard(){try{if(!paletteFocused_&&!document.selection()&&!layerClipboardSnapshot_&&!hasApplicationCelClipboard()&&!hasApplicationFrameClipboard()&&document.hasMaskClipboard()&&(!selectedMaskSlots_.empty()||!document.timelineSelection().cels.empty())){

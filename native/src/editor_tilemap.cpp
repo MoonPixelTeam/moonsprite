@@ -60,7 +60,7 @@ void Editor::createTilesetPanel(){
   if(paletteFocused_||!document.hasFreeTileContent())return !previous||previous();
   if(document.active())return false;
   if(paste){if(!freeTileInstanceClipboard_||document.layer().kind!="free-tile"||!document.layer().freeTiles||!document.cel().freeTiles||!document.activeMaskId().empty()||document.layerEffectivelyLocked(document.layer()))return false;}
-  else if(!document.freeTileInstanceView()||document.selection()||document.selectedFreeTileInstances().empty())return false;
+  else if(!document.freeTileInstanceView()||(document.selection()&&!freeTileInstancesPanel_->clipboardScope())||document.selectedFreeTileInstances().empty())return false;
   return !previous||previous();
  };}
 

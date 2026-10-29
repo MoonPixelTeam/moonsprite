@@ -34,7 +34,7 @@ public:
 class FreeTileInstancesPanel final:public ui::Widget {
  const PixelFont& font_;const Skin& skin_;const Skin& icons_;Document& doc_;
  TimelineButton painter_;
- bool separate_=false,sideDocked_=false;
+ bool separate_=false,sideDocked_=false,clipboardScope_=false;
  int density_=0;
  // Legacy styles.css: instance row heights 26/42/54/72/96/128 at 2x.
  int rowHeight()const{return std::array<int,6>{13,21,27,36,48,64}[density_];}
@@ -109,6 +109,8 @@ class FreeTileInstancesPanel final:public ui::Widget {
  }
  void layout(){const auto b=bounds();back_->setBounds({b.x,b.y,15*uiScale,15*uiScale});const auto v=viewport();const int total=int(ids().size())*rowHeight()*uiScale;scroll_=std::clamp(scroll_,0,std::max(0,total-v.h));bar_->setDockBounds(PixelScrollBar::gridBounds(v,true));bar_->configure(total,v.h,scroll_);bar_->setVisible(total>v.h);const auto order=ids();while(properties_.size()<order.size()){const auto n=properties_.size();auto button=new PixelButton(font_,skin_,U"",[this,n]{const auto current=ids();if(n<current.size())showProperties(current[n]);});button->iconSkin=&icons_;button->icon="properties";addChild(button);properties_.push_back(button);}for(std::size_t n=0;n<properties_.size();++n){const auto row=rowBounds(int(n));properties_[n]->setBounds({row.x2()-(propertySize()+2)*uiScale,row.y+(rowHeight()-propertySize())*uiScale/2,propertySize()*uiScale,propertySize()*uiScale});properties_[n]->setVisible(n<order.size()&&row.y>=v.y&&row.y2()<=v.y2());}}
 public:
+ bool clipboardScope()const{return clipboardScope_;}
+ void rememberClipboardScope(bool value){clipboardScope_=value;}
  bool owns(ui::Widget* w)const{if(w==this||w==back_||w==bar_)return true;return std::find(properties_.begin(),properties_.end(),w)!=properties_.end();}
  void setSideDocked(bool value){if(sideDocked_==value)return;sideDocked_=value;invalidate();}
  void setDensity(int value){value=std::clamp(value,0,5);if(value==density_)return;finishToggle();cancelDrag();density_=value;bar_->wheelStep=rowHeight()*uiScale;layout();invalidate();}
@@ -125,6 +127,7 @@ public:
  bool borderHit(gfx::Point p)const{if(!viewport().contains(p))return false;for(const auto& b:selectionBorders())if(skin_.selectionContains(skin_.selectionMaterialBounds(b),p))return true;return false;}
  void onResize(ui::ResizeEvent& ev)override{setBoundsQuietly(ev.bounds());layout();}
  bool onProcessMessage(ui::Message* msg)override{
+  if(msg->type()==ui::kFocusEnterMessage||msg->type()==ui::kMouseDownMessage)clipboardScope_=true;
   if(drag_){
    if(drag_->identity!=doc_.identity()||drag_->cel!=doc_.cel().id||doc_.active()||!doc_.freeTileInstanceView()||!hasCapture()||msg->type()==ui::kFocusLeaveMessage)cancelDrag();
    else if(msg->type()==ui::kMouseUpMessage){finishDrag();return true;}
