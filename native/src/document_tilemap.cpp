@@ -680,7 +680,8 @@ std::optional<Document::FreeTileInstanceClipboardSnapshot> Document::copyFreeTil
  return clip.instances.empty()?std::nullopt:std::optional<FreeTileInstanceClipboardSnapshot>{std::move(clip)};
 }
 bool Document::pasteFreeTileInstances(const FreeTileInstanceClipboardSnapshot& clip){
- if(active()||!freeTileInstanceView()||layer().kind!="free-tile"||!layer().freeTiles||!cel().freeTiles||!cel().surface||layerEffectivelyLocked(layer())||!activeMaskId_.empty()||clip.instances.empty())return false;
+ // Legacy activeFreeTileCelTarget accepts an ordinary free-tile layer view too.
+ if(active()||layer().kind!="free-tile"||!layer().freeTiles||!cel().freeTiles||!cel().surface||layerEffectivelyLocked(layer())||!activeMaskId_.empty()||clip.instances.empty())return false;
  if(clip.instances.size()>free_tiles::MaxInstances-cel().freeTiles->instances.size())return false;
  auto next=timeline_.state();const auto original=*layer().freeTiles;auto sources=original.sources;std::unordered_map<std::string,std::string> sourceIds;
  const bool shared=clip.sourceIdentity==identity_&&clip.setId==original.setId;
