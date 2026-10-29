@@ -189,7 +189,8 @@ bool Commands::bind(const std::string& id,Binding binding){
  const bool workspaceAction=id=="saveWorkspaceLayout"||id=="openWorkspaceManager"||id=="resetWorkspaceLayout";
  // Legacy source toolbar actions are also configurable shortcut commands.
  const bool sourceAction=id=="addFreeTileSource"||id=="deleteTilesetSelection"||id=="openFreeTileSourceProperties";
- if((it==rows.end()&&!workspaceAction&&!sourceAction)||!binding.run)return false;bindings_[id]=std::move(binding);return true;
+ const bool brushAction=id=="importBrushImage"||id=="createBrushFolder"||id=="openBrushFolder"||id=="refreshBrushLibrary"||id=="brushLibraryParentFolder"||id=="brushSwatchSmall"||id=="brushSwatchMedium"||id=="brushSwatchLarge"||id=="deleteBrushSelection";
+ if((it==rows.end()&&!workspaceAction&&!sourceAction&&!brushAction)||!binding.run)return false;bindings_[id]=std::move(binding);return true;
 }
 bool Commands::connected(const std::string& id)const{return bindings_.find(id)!=bindings_.end();}
 bool Commands::enabled(const std::string& id)const{auto it=bindings_.find(id);return it!=bindings_.end()&&(!it->second.enabled||it->second.enabled());}
