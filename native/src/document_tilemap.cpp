@@ -679,6 +679,54 @@ std::optional<Document::FreeTileInstanceClipboardSnapshot> Document::copyFreeTil
  }
  return clip.instances.empty()?std::nullopt:std::optional<FreeTileInstanceClipboardSnapshot>{std::move(clip)};
 }
+// Legacy workspace-commands-clipboard: selected-instance overwrite or raster chunks.
+bool Document::pasteFreeTilePixels(const SelectionClipboard& image,Point at){
+ if(active()||!activeMaskId_.empty()||layer().kind!="free-tile"||!layer().freeTiles||!cel().freeTiles||!cel().surface||layerEffectivelyLocked(layer()))return false;
+ if(!free_tiles::coordinate(at.x)||!free_tiles::coordinate(at.y)||image.width<1||image.height<1||image.width>8192||image.height>8192||std::uint64_t(image.width)*image.height>16*1024*1024||image.pixels.size()!=std::size_t(image.width)*image.height||(!image.mask.empty()&&image.mask.size()!=image.pixels.size()))throw std::invalid_argument("Invalid free-tile clipboard image");
+ const auto selected=primaryFreeTileInstance();const auto& instances=cel().freeTiles->instances;const auto chosen=std::find_if(instances.begin(),instances.end(),[&](const auto& i){return i.id==selected;});
+ auto next=timeline_.state();auto tileSelection=tileSelection_;auto counter=nextTileId_;std::vector<std::string> added;std::string primary;
+ std::set<std::string> affectedOwners,used;for(const auto& set:next.tilesets)used.insert(set.id);for(const auto& l:next.layers)if(l.freeTiles)for(const auto& source:l.freeTiles->sources)used.insert(source.id);for(const auto& c:next.cels)if(c.freeTiles)for(const auto& i:c.freeTiles->instances)used.insert(i.id);
+ auto newId=[&](const char* prefix){std::string id;do{id=std::string(prefix)+"-native-"+std::to_string(identity_)+"-"+std::to_string(++counter);}while(!used.insert(id).second);return id;};
+ auto selectedPixel=[&](int x,int y){const auto i=std::size_t(y)*image.width+x;return image.mask.empty()||image.mask[i]==1;};
+ auto target=std::find_if(next.cels.begin(),next.cels.end(),[&](const auto& c){return c.id==cel().id;});
+ if(chosen!=instances.end()){
+  const auto* source=freeSourceFor(*layer().freeTiles,*chosen);if(!source||!source->visible||source->locked||!chosen->visible||chosen->locked)return false;
+  auto resource=std::find_if(next.tilesets.begin(),next.tilesets.end(),[&](const auto& t){return t.id==source->tilesetId;});if(resource==next.tilesets.end())return false;
+  const auto old=tiles::readTile(*resource,0);const Point anchor{cel().surface->offsetX+chosen->x,cel().surface->offsetY+chosen->y};PixelRegion world;
+  for(int y:{0,resource->tileHeight-1})for(int x:{0,resource->tileWidth-1}){auto q=free_tiles::transform(*chosen,x+source->offsetX,y+source->offsetY);world.include(q.first+anchor.x,q.second+anchor.y);}
+  const int padding=std::clamp(std::max(width_,height_),16,128);const int left=std::min({0,world.x,at.x})-padding,top=std::min({0,world.y,at.y})-padding;
+  const int right=std::max({width_,world.x+world.w,at.x+1})+padding,bottom=std::max({height_,world.y+world.h,at.y+1})+padding,w=right-left,h=bottom-top;
+  if(std::uint64_t(w)*h>16*1024*1024)throw std::length_error("自由瓦片源临时画布超出原生内存预算");
+  std::vector<Pixel> raster(std::size_t(w)*h);for(int y=0;y<resource->tileHeight;++y)for(int x=0;x<resource->tileWidth;++x){auto q=free_tiles::transform(*chosen,x+source->offsetX,y+source->offsetY);raster[std::size_t(q.second+anchor.y-top)*w+q.first+anchor.x-left]=old[std::size_t(y)*resource->tileWidth+x];}
+  bool wrote=false;for(int y=0;y<image.height;++y)for(int x=0;x<image.width;++x){const auto px=std::int64_t(at.x)+x,py=std::int64_t(at.y)+y;if(!selectedPixel(x,y)||px<left||py<top||px>=right||py>=bottom)continue;raster[std::size_t(py-top)*w+std::size_t(px-left)]=image.pixels[std::size_t(y)*image.width+x];wrote=true;}
+  if(!wrote)return false;PixelRegion canonical;for(int y=0;y<h;++y)for(int x=0;x<w;++x)if(raster[std::size_t(y)*w+x]>>24){const auto q=freeSourceInverse(*chosen,x+left-anchor.x,y+top-anchor.y);canonical.include(q.x,q.y);}
+  const bool empty=canonical.empty();if(empty)canonical={0,0,1,1};if(canonical.w>256||canonical.h>256)throw std::length_error("自由瓦片源宽高超出原生支持的256像素，粘贴未修改作品");
+  std::vector<Pixel> pixels(std::size_t(canonical.w)*canonical.h);for(int y=0;y<canonical.h;++y)for(int x=0;x<canonical.w&&!empty;++x){auto q=free_tiles::transform(*chosen,x+canonical.x,y+canonical.y);const int px=q.first+anchor.x-left,py=q.second+anchor.y-top;if(px>=0&&py>=0&&px<w&&py<h)pixels[std::size_t(y)*canonical.w+x]=raster[std::size_t(py)*w+px];}
+  if(resource->tileWidth==canonical.w&&resource->tileHeight==canonical.h&&old==pixels&&source->offsetX==canonical.x&&source->offsetY==canonical.y){tileSelection_.tilesetId=resource->id;tileSelection_.primary=tileSelection_.secondary=resource->tileIds.front();tileSelection_.freePaint=false;freeInstanceSelected_={chosen->id};freeInstancePrimary_=freeInstanceAnchor_=chosen->id;freeInstanceSelectionFrame_=activeFrameId_;return true;}
+  resource->tileWidth=canonical.w;resource->tileHeight=canonical.h;resource->columns=resource->rows=1;resource->tileIds={resource->tileIds.front()};resource->tileSlots={resource->tileIds.front()};resource->pixels=std::move(pixels);
+  for(auto& l:next.layers)if(l.freeTiles)for(auto& s:l.freeTiles->sources)if(s.id==source->id){s.offsetX=canonical.x;s.offsetY=canonical.y;affectedOwners.insert(l.id);}
+  tileSelection.tilesetId=resource->id;tileSelection.primary=tileSelection.secondary=resource->tileIds.front();primary=chosen->id;
+ }else{
+  PixelRegion bounds;for(int y=0;y<image.height;++y)for(int x=0;x<image.width;++x)if(selectedPixel(x,y)&&(image.pixels[std::size_t(y)*image.width+x]>>24))bounds.include(x,y);if(bounds.empty())return false;
+  auto sources=layer().freeTiles->sources;std::set<std::string> names;for(const auto& s:sources)names.insert(s.name);int number=1;
+  for(int cy=bounds.y;cy<bounds.y+bounds.h;cy+=256)for(int cx=bounds.x;cx<bounds.x+bounds.w;cx+=256){PixelRegion chunk;
+   for(int y=cy;y<std::min(cy+256,bounds.y+bounds.h);++y)for(int x=cx;x<std::min(cx+256,bounds.x+bounds.w);++x)if(selectedPixel(x,y)&&(image.pixels[std::size_t(y)*image.width+x]>>24))chunk.include(x,y);if(chunk.empty())continue;
+   if(target->freeTiles->instances.size()>=free_tiles::MaxInstances)throw std::length_error("自由瓦片实例数量超出限制，粘贴未修改作品");
+   std::string name;do{name="自由瓦片"+std::to_string(number++);}while(names.count(name));names.insert(name);std::u32string title=U"自由瓦片";for(char digit:std::to_string(number-1))title.push_back(digit);
+   auto set=tiles::blankTileset(newId("tileset"),title,chunk.w,chunk.h,newId("tile"),1);std::vector<Pixel> pixels(std::size_t(chunk.w)*chunk.h);for(int y=0;y<chunk.h;++y)for(int x=0;x<chunk.w;++x)if(selectedPixel(x+chunk.x,y+chunk.y))pixels[std::size_t(y)*chunk.w+x]=image.pixels[std::size_t(y+chunk.y)*image.width+x+chunk.x];tiles::writeTile(set,set.tileIds.front(),pixels);
+   free_tiles::Source source;source.id=newId("free-tile-source");source.name=name;source.tilesetId=set.id;source.displayColor=layerDisplayColors_[sources.size()%layerDisplayColors_.size()];
+   free_tiles::Instance instance;instance.id=newId("free-tile-instance");instance.sourceId=source.id;const auto x=std::int64_t(at.x)+chunk.x-target->surface->offsetX,y=std::int64_t(at.y)+chunk.y-target->surface->offsetY;if(std::abs(x)>free_tiles::MaxCoordinate||std::abs(y)>free_tiles::MaxCoordinate)throw std::length_error("自由瓦片粘贴位置超出限制");instance.x=int(x);instance.y=int(y);instance.opacity=1;instance.blendMode="normal";
+   primary=instance.id;added.push_back(primary);target->freeTiles->instances.push_back(std::move(instance));sources.push_back(source);tileSelection.tilesetId=set.id;tileSelection.primary=tileSelection.secondary=set.tileIds.front();next.tilesets.push_back(std::move(set));
+  }
+  for(auto& l:next.layers)if(l.freeTiles&&(l.id==layer().id||(!layer().freeTiles->setId.empty()&&l.freeTiles->setId==layer().freeTiles->setId))){l.freeTiles->sources=sources;affectedOwners.insert(l.id);}
+ }
+ // Reuse the existing authoritative source/instance render and atomic timeline history.
+ for(auto& c:next.cels)if(affectedOwners.count(c.layerId)&&c.freeTiles&&c.surface){const auto l=std::find_if(next.layers.begin(),next.layers.end(),[&](const auto& l){return l.id==c.layerId;});free_tiles::validate(*l->freeTiles,*c.freeTiles,next.tilesets);c.surface->pixels=free_tiles::render(*l->freeTiles,*c.freeTiles,next.tilesets,c.surface->width,c.surface->height);}
+ timeline::Timeline checked(next);tileSelection.freePaint=false;
+ Edit edit{{},state_,nextState_};edit.beforeTimeline=timeline_.state();edit.afterTimeline=std::move(next);edit.beforeActive=edit.afterActive=activeLayerId_;edit.beforeFrame=edit.afterFrame=activeFrameId_;
+ edit.beforeTileSelection=tileSelection_;edit.afterTileSelection=tileSelection;edit.beforeFreeTileSelection=FreeTileSelectionSnapshot{freeInstanceSelected_,freeInstancePrimary_,freeInstanceAnchor_,freeInstanceSelectionFrame_,freeInstanceViewLayer_};edit.afterFreeTileSelection=FreeTileSelectionSnapshot{{primary},primary,primary,activeFrameId_,freeInstanceViewLayer_};
+ history_.reserve(position_+1);applyEdit(edit,true);nextTileId_=counter;change_={0,0,width_,height_};publishChange();pushEdit(std::move(edit),U"粘贴到图层");return true;
+}
 bool Document::pasteFreeTileInstances(const FreeTileInstanceClipboardSnapshot& clip){
  // Legacy activeFreeTileCelTarget accepts an ordinary free-tile layer view too.
  if(active()||layer().kind!="free-tile"||!layer().freeTiles||!cel().freeTiles||!cel().surface||layerEffectivelyLocked(layer())||!activeMaskId_.empty()||clip.instances.empty())return false;

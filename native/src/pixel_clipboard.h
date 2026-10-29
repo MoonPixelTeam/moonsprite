@@ -50,6 +50,7 @@ public:
 private:
  std::optional<SelectionClipboard> internal_;
  ImageReader systemImageReaderForSmoke_;
+ std::optional<SelectionClipboard> structuredCopyBaseline_;
  std::optional<SelectionClipboard> readSystemImage(bool forNewDocument){
   clip::lock lock;if(!lock.locked())throw std::runtime_error("Clipboard busy");
   if(!lock.is_convertible(clip::image_format()))return {};
@@ -70,6 +71,16 @@ private:
   return result;
  }
 public:
+ // Legacy ClipboardService: compare image content, not clipboard sequence/size.
+ std::optional<SelectionClipboard> readSystemSelection(){try{return readSelectionSource({},[this]{return systemImageReaderForSmoke_?systemImageReaderForSmoke_():readSystemImage(false);});}catch(...){return {};}}
+ void captureStructuredCopyBaseline(){structuredCopyBaseline_=readSystemSelection();}
+ bool preferStructuredCopy(const std::optional<SelectionClipboard>& current)const{
+  if(!current)return true;if(!structuredCopyBaseline_)return false;
+  const auto& before=*structuredCopyBaseline_;const auto& after=*current;
+  if(before.width!=after.width||before.height!=after.height||before.originX!=after.originX||before.originY!=after.originY||before.pixels!=after.pixels)return false;
+  for(std::size_t i=0;i<after.pixels.size();++i)if((before.mask.empty()?1:before.mask.at(i))!=(after.mask.empty()?1:after.mask.at(i)))return false;
+  return true;
+ }
  bool write(const SelectionClipboard& source){
   if(source.width<1 || source.height<1 || std::uint64_t(source.width)*source.height!=source.pixels.size() || (!source.mask.empty() && source.mask.size()!=source.pixels.size()))throw std::invalid_argument("Invalid selection clipboard image");
   internal_=source;clip::image_spec spec;spec.width=source.width;spec.height=source.height;spec.bits_per_pixel=32;spec.bytes_per_row=source.width*4;spec.red_mask=255;spec.green_mask=255<<8;spec.blue_mask=255<<16;spec.alpha_mask=0xff000000;spec.green_shift=8;spec.blue_shift=16;spec.alpha_shift=24;clip::image image(spec);

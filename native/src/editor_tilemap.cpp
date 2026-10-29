@@ -53,13 +53,13 @@ void Editor::createTilesetPanel(){
  // Keep unsupported free-instance operations visibly disabled, using existing entries.
  const std::set<std::string> freeBlocked{"imageResize","canvasResize","cropCanvas","trimCanvas","trimCurrentFrame","duplicateLayer","mergeLayerDown","mergeSelectedLayers","mergeLayerGroup","mergeVisibleLayers","transform","freeTransform","flipHorizontal","flipVertical","rotateContent180","rotateContentCounterClockwise","rotateContentClockwise","centerContentBoth","centerContentHorizontal","centerContentVertical","fillForeground","invertColors","replaceColor","quickAntiAlias","adjustmentColorBalance","adjustmentBrightnessContrast","adjustmentHueSaturation","adjustmentCurves","gradientMap","convolution","lcdScreen","splitLayerStyles","pasteToCurrentCell"};
  for(auto& [id,item]:menuItems_)if(freeBlocked.count(id)||id.rfind("filter:",0)==0){auto previous=item->available;item->available=[this,previous]{return !document.hasFreeTileContent()&&(!previous||previous());};}
- // The instance clipboard already uses the legacy capture/paste transactions.
+ // Image and instance paste both use the legacy free-tile transactions.
  // Paste targets any editable free-tile cel, independent of the instance view.
  // Copy/cut retain their existing instance selection context.
  for(const auto* id:{"copy","cut","paste"}){auto found=menuItems_.find(id);if(found==menuItems_.end())continue;auto previous=found->second->available;const bool paste=std::string(id)=="paste";found->second->available=[this,previous,paste]{
   if(paletteFocused_||!document.hasFreeTileContent())return !previous||previous();
   if(document.active())return false;
-  if(paste){if(!freeTileInstanceClipboard_||document.layer().kind!="free-tile"||!document.layer().freeTiles||!document.cel().freeTiles||!document.activeMaskId().empty()||document.layerEffectivelyLocked(document.layer()))return false;}
+  if(paste){if(document.layer().kind!="free-tile"||!document.layer().freeTiles||!document.cel().freeTiles||!document.activeMaskId().empty()||document.layerEffectivelyLocked(document.layer()))return false;}
   else if(!document.freeTileInstanceView()||(document.selection()&&!freeTileInstancesPanel_->clipboardScope())||document.selectedFreeTileInstances().empty())return false;
   return !previous||previous();
  };}

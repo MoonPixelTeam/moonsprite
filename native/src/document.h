@@ -145,6 +145,7 @@ public:
   };
   std::optional<FreeTileInstanceClipboardSnapshot> copyFreeTileInstances()const;
   bool pasteFreeTileInstances(const FreeTileInstanceClipboardSnapshot&);
+  bool pasteFreeTilePixels(const SelectionClipboard&,Point);
   bool freeTileInstancePropertiesActive()const{return freeTilePlacement_&&freeTilePlacement_->flagControl==2;}
   bool previewFreeTileInstanceFlags(const std::vector<std::string>&,bool value);
   bool freeTileInstanceFlagsActive()const{return freeTilePlacement_&&freeTilePlacement_->flagControl>=0&&freeTilePlacement_->flagControl<2;}
