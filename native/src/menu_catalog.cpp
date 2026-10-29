@@ -188,7 +188,7 @@ bool Commands::bind(const std::string& id,Binding binding){
  // The independent top workspace dropdown uses these same shortcut commands.
  const bool workspaceAction=id=="saveWorkspaceLayout"||id=="openWorkspaceManager"||id=="resetWorkspaceLayout";
  // Legacy source toolbar actions are also configurable shortcut commands.
- const bool sourceAction=id=="addFreeTileSource"||id=="deleteTilesetSelection";
+ const bool sourceAction=id=="addFreeTileSource"||id=="deleteTilesetSelection"||id=="openFreeTileSourceProperties";
  if((it==rows.end()&&!workspaceAction&&!sourceAction)||!binding.run)return false;bindings_[id]=std::move(binding);return true;
 }
 bool Commands::connected(const std::string& id)const{return bindings_.find(id)!=bindings_.end();}

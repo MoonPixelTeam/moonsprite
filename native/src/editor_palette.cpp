@@ -335,7 +335,7 @@ void Editor::setColorEditorSampling(bool active,ColorEditorPopup* target){
       colorEditorSamplingTarget_=target?target:colorEditorPopup_.get();
       colorEditorSamplingIdentity_=document.identity();
       colorEditorReturnTools_={selectionTool_,shapeTool_,gradientTool_,fillTool_,handTool_,eraser_,eyedropperTool_,eyedropperHeld_,navigation_.zoomTool_};
-      if(!gradientPending_)cancelStroke();
+      if(!gradientPending_&&!document.freeTileSourcePropertiesActive())cancelStroke();
       selectionTool_=shapeTool_=gradientTool_=fillTool_=handTool_=eraser_=eyedropperHeld_=navigation_.zoomTool_=false;
       eyedropperTool_=true;playing_=false;
     }else{

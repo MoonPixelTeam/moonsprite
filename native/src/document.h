@@ -117,6 +117,19 @@ public:
     std::optional<double> opacity;
     std::optional<std::string> blendMode;
   };
+  struct FreeTileSourceChanges {
+    std::optional<std::u32string> name;
+    std::optional<std::string> description;
+    std::optional<std::optional<Pixel>> displayColor;
+    std::optional<bool> visible,locked;
+    std::optional<double> offsetX,offsetY;
+  };
+  bool beginFreeTileSourceProperties(const std::string&);
+  bool previewFreeTileSourceProperties(const FreeTileSourceChanges&);
+  bool commitFreeTileSourceProperties(const FreeTileSourceChanges&);
+  void cancelFreeTileSourceProperties();
+  bool freeTileSourcePropertiesActive()const{return bool(freeSourceProperties_);}
+  bool setFreeTileSourceProperties(const std::string&,const FreeTileSourceChanges&);
   bool beginFreeTileInstanceProperties(const std::vector<std::string>&);
   bool previewFreeTileInstanceProperties(const FreeTileInstanceChanges&);
   bool setFreeTileInstanceProperties(const std::string&,const FreeTileInstanceChanges&);
@@ -238,7 +251,7 @@ public:
   PixelRegion lastContentChange() const {return change_;}
   std::size_t historyBytes() const {return historyBytes_;}
   std::uint64_t tilemapCacheCellWrites()const{return tilemapCacheCellWrites_;}
-  bool active() const { return bool(freeSourceStroke_) || freeTilePlacement_.has_value() || paintCellMove_.has_value() || layerStyleBaseline_.has_value() || layerAdjustmentBaseline_.has_value() || textDraft_.has_value() || layerMove_.has_value() || filterPreview_.has_value() || paletteReplacement_.has_value() || adjustment_.has_value() || gradient_.has_value() || floating_.has_value() || active_ || opacityBefore_.has_value() || durationBefore_.has_value() || celPropertyPreview_.has_value(); }
+  bool active() const { return bool(freeSourceProperties_) || bool(freeSourceStroke_) || freeTilePlacement_.has_value() || paintCellMove_.has_value() || layerStyleBaseline_.has_value() || layerAdjustmentBaseline_.has_value() || textDraft_.has_value() || layerMove_.has_value() || filterPreview_.has_value() || paletteReplacement_.has_value() || adjustment_.has_value() || gradient_.has_value() || floating_.has_value() || active_ || opacityBefore_.has_value() || durationBefore_.has_value() || celPropertyPreview_.has_value(); }
   bool canUndo() const { return position_ > 0; }
   bool canRedo() const { return position_ < history_.size(); }
   std::size_t historySize() const { return history_.size(); }
@@ -581,6 +594,10 @@ private:
   TilemapSelection tileSelection_;std::uint64_t nextTileId_=0;
   struct FreeTilePlacement {DocumentCel before;Point last;bool erase=false,sampled=false,moving=false;std::vector<std::string> movingIds;int flagControl=-1;std::string initiatingInstance;};
   std::optional<FreeTilePlacement> freeTilePlacement_;
+  struct FreeTileSourceSnapshot {free_tiles::Source source;std::u32string tilesetName;};
+  std::shared_ptr<const FreeTileSourceSnapshot> freeSourceProperties_;
+  bool applyFreeTileSourceSnapshot(const FreeTileSourceSnapshot&);
+  FreeTileSourceSnapshot freeTileSourceAfterChanges(const FreeTileSourceChanges&,bool)const;
   std::string freeInstanceViewLayer_,freeInstanceSelectionFrame_,freeInstancePrimary_,freeInstanceAnchor_;
   std::vector<std::string> freeInstanceSelected_;
   // Legacy free-tile-edit.ts uses a temporary ordinary raster, never the cel cache.
@@ -654,6 +671,7 @@ private:
     std::optional<std::pair<int,int>> beforeDimensions,afterDimensions;
     std::optional<timeline::State> beforeTimeline,afterTimeline;
     std::optional<TilemapSelection> beforeTileSelection,afterTileSelection;
+    std::shared_ptr<const FreeTileSourceSnapshot> beforeSourceProperties,afterSourceProperties;
     bool freeTileSourceAddition=false,freeTileSourceDeletion=false,freeTileSourceReorder=false;
     std::shared_ptr<const TilemapPixelHistory> tilemapPixels;
     std::shared_ptr<const LayerTilesetHistory> layerTilesets;

@@ -236,8 +236,8 @@ bool Editor::onProcessMessage(ui::Message* msg) {
     const bool enteringGradientStops=gradientStopsFocusOwner_&&(inOwner(gradientStopsFocusOwner_)||inOwner(gradientStopsColorFocusOwner_)||inOwner(this));
     if(msg->type()==ui::kFocusLeaveMessage && !enteringAbout && !enteringGradientStops) {
 
-      if(symmetryDragging_)finishSymmetryDrag(true);eyedropperHeld_=false;paletteSamplingHeld_=false;if(eyedropperGesture_.active())finishEyedropper();spaceHeld_=false;if(drawingAnchorDragging_){drawingAnchor_=drawingAnchorDragBefore_;drawingAnchorDragging_=false;if(hasCapture())releaseMouse();}if(selectionPivotDragging_){selectionPivot_=selectionPivotStart_;selectionPivotDragging_=false;if(hasCapture())releaseMouse();}if(selectionDragging_ || floatingDragging_)endSelectionGesture(true);// The owned instance dialog keeps its preview until its normal close.
-      if(!document.freeTileInstancePropertiesActive())cancelStroke();updateNavigationCursor();
+      if(symmetryDragging_)finishSymmetryDrag(true);eyedropperHeld_=false;paletteSamplingHeld_=false;if(eyedropperGesture_.active())finishEyedropper();spaceHeld_=false;if(drawingAnchorDragging_){drawingAnchor_=drawingAnchorDragBefore_;drawingAnchorDragging_=false;if(hasCapture())releaseMouse();}if(selectionPivotDragging_){selectionPivot_=selectionPivotStart_;selectionPivotDragging_=false;if(hasCapture())releaseMouse();}if(selectionDragging_ || floatingDragging_)endSelectionGesture(true);// Owned free-tile property dialogs keep previews until their normal close.
+      if(!document.freeTileInstancePropertiesActive()&&!document.freeTileSourcePropertiesActive())cancelStroke();updateNavigationCursor();
 
     }
 

@@ -1,5 +1,6 @@
 #pragma once
 #include "document.h"
+#include "free_tile_source_properties_dialog.h"
 #include "native_widgets.h"
 #include "canvas_renderer.h"
 #include "os/system.h"
@@ -29,7 +30,7 @@ class TilesetPanel final:public ui::Widget {
   TilesetPanel& p;ui::Timer hold{360,this};
   Grid(TilesetPanel& panel):ui::Widget(ui::kGenericWidget),p(panel){setTransparent(true);setFocusStop(true);hold.Tick.connect([this]{hold.stop();if(p.gesture_==Gesture::PendingRange&&hasCapture()){p.gesture_=Gesture::Range;p.updateRange(p.last_);}});}
   void onPaint(ui::PaintEvent& ev)override{p.paintGrid(*ev.graphics(),clientBounds());}
-  bool onProcessMessage(ui::Message* msg)override{if(p.handleCommand(msg))return true;if(auto m=dynamic_cast<ui::MouseMessage*>(msg)){if(msg->type()==ui::kMouseWheelMessage){const auto delta=m->wheelDelta();if(m->ctrlPressed()||m->cmdPressed()){const int step=std::abs(delta.y)>=std::abs(delta.x)?delta.y:delta.x;if(step)p.setSwatchSize(p.swatchSizeIndex(p.freeActive())+(step<0?1:-1));return true;}p.cancelGesture();p.scroll_=std::max(0,p.scroll_+delta.y);p.clampScroll();invalidate();return true;}if(msg->type()==ui::kMouseDownMessage){if(!isEnabled())return true;requestFocus();return p.pointerDown(*m);}if(msg->type()==ui::kMouseMoveMessage)return p.pointerMove(*m);if(msg->type()==ui::kMouseUpMessage)return p.pointerUp(*m);}return ui::Widget::onProcessMessage(msg);}
+  bool onProcessMessage(ui::Message* msg)override{if(p.handleCommand(msg))return true;if(auto m=dynamic_cast<ui::MouseMessage*>(msg)){if(msg->type()==ui::kMouseWheelMessage){const auto delta=m->wheelDelta();if(m->ctrlPressed()||m->cmdPressed()){const int step=std::abs(delta.y)>=std::abs(delta.x)?delta.y:delta.x;if(step)p.setSwatchSize(p.swatchSizeIndex(p.freeActive())+(step<0?1:-1));return true;}p.cancelGesture();p.scroll_=std::max(0,p.scroll_+delta.y);p.clampScroll();invalidate();return true;}if(msg->type()==ui::kDoubleClickMessage&&m->left()&&isEnabled()&&p.freeActive()){if(auto id=p.sourceAt(m->position()))p.showSourceProperties(*id);return true;}if(msg->type()==ui::kMouseDownMessage){if(!isEnabled())return true;requestFocus();return p.pointerDown(*m);}if(msg->type()==ui::kMouseMoveMessage)return p.pointerMove(*m);if(msg->type()==ui::kMouseUpMessage)return p.pointerUp(*m);}return ui::Widget::onProcessMessage(msg);}
  };Grid* grid_;
  int columns()const{return std::max(1,(grid_->bounds().w/uiScale+2)/pitch());}
  int pageRows()const{return std::max(1,(grid_->bounds().h/uiScale+2)/pitch());}
@@ -47,7 +48,7 @@ class TilesetPanel final:public ui::Widget {
  void updateRange(gfx::Point point){if(auto at=slotAt(point,true))selectRectangle(rangeStart_,*at);}
  std::string nearestAnchor(gfx::Point point)const{const auto layout=slots();double nearest=std::numeric_limits<double>::max();std::string id;for(std::size_t i=0;i<layout.size();++i)if(layout[i]&&isSelected(*layout[i])){const auto center=uiDisplayRect({int(i%columns())*pitch(),(int(i/columns())-scroll_)*pitch(),cellSize(),cellSize()},grid_->bounds().origin()).center();const double dx=center.x-point.x,dy=center.y-point.y,d=dx*dx+dy*dy;if(d<nearest){nearest=d;id=*layout[i];}}return id;}
  void buildSourceContext(PixelMenu& menu,const std::string& id){
-  auto properties=new PixelMenuItem(font_,skin_,U"源瓦片属性");properties->iconSkin=&icons_;properties->icon="properties";properties->setEnabled(false);menu.addChild(properties);menu.addChild(new PixelMenuSeparator(skin_));
+  auto properties=new PixelMenuItem(font_,skin_,U"源瓦片属性");properties->iconSkin=&icons_;properties->icon="properties";properties->setEnabled(canAddSource());const auto propertyIdentity=doc_.identity();properties->Click.connect([this,id,propertyIdentity]{if(doc_.identity()==propertyIdentity)showSourceProperties(id);});menu.addChild(properties);menu.addChild(new PixelMenuSeparator(skin_));
   auto remove=new PixelMenuItem(font_,skin_,U"删除瓦片");remove->iconSkin=&icons_;remove->icon="delete";remove->setEnabled(canDelete());const auto identity=doc_.identity();remove->Click.connect([this,id,identity]{if(doc_.identity()==identity&&doc_.deleteFreeTileSource(id)){if(changed)changed();sync();}});menu.addChild(remove);
  }
  bool pointerDown(ui::MouseMessage& m){auto t=current();if(!t)return true;cancelGesture();if(freeActive()){const auto clicked=sourceAt(m.position());if(!clicked)return true;const auto catalog=freeSources();auto found=std::find_if(catalog.begin(),catalog.end(),[&](const auto& v){return v.id==*clicked;});if(found==catalog.end()||!(m.left()||m.right()))return true;const auto sourceId=found->id;if(m.right()&&t->id==found->tilesetId){gesture_=Gesture::SourcePending;sourceDragId_=sourceTargetId_=sourceId;sourceDragLayer_=doc_.layer().id;sourceDragFrame_=doc_.frame().id;start_=last_=m.position();grid_->captureMouse();return true;}doc_.setSelectedTile(found->tilesetId,found->tileId);if(m.left())doc_.setFreeTilePaintMode(true);selected_={sourceId};anchor_=sourceId;if(changed)changed();sync();if(m.right()){PixelMenu menu(skin_);buildSourceContext(menu,sourceId);menu.showPopup(m.position(),display());grid_->requestFocus();}return true;}selectionSet_=t->id;start_=last_=m.position();const bool modifier=m.shiftPressed()||m.ctrlPressed()||m.cmdPressed();const auto clicked=idAt(start_);const bool move=!modifier&&((m.left()&&borderHit(start_))||(m.right()&&clicked&&isSelected(*clicked)));
@@ -79,6 +80,18 @@ class TilesetPanel final:public ui::Widget {
  }
  void paintGrid(ui::Graphics& g,gfx::Rect physical){if(freeActive()){paintFreeGrid(g,physical);return;}clampScroll();{UiPaintScale scale(g);auto r=uiLogical(physical);g.fillRect(skin_["panel"],r);const auto t=current();if(!t)return;const auto layout=slots();const int cols=columns(),page=pageRows();const auto roles=doc_.tileSelection();for(int row=0;row<=page;++row)for(int col=0;col<cols;++col){auto i=std::size_t(row+scroll_)*cols+col;if(i>=layout.size()||!layout[i])continue;const auto& id=*layout[i];gfx::Rect cell(r.x+col*pitch(),r.y+row*pitch(),cellSize(),cellSize());if(roles.tilesetId==t->id&&roles.primary==id)g.fillRect(skin_["accent"],cell);else if(roles.tilesetId==t->id&&roles.secondary==id)g.fillRect(skin_["muted"],cell);for(int y=2;y<cellSize()-2;y+=6)for(int x=2;x<cellSize()-2;x+=6)g.fillRect(skin_[((x/6+y/6)%2)?"checkerA":"checkerB"],{cell.x+x,cell.y+y,std::min(6,cellSize()-2-x),std::min(6,cellSize()-2-y)});const auto key=t->id+"/"+id;auto& image=images_[key];if(!image){auto index=tiles::Index(*t).find(id);if(!index)continue;auto pixels=tiles::readTile(*t,*index);image=os::instance()->makeRgbaSurface(t->tileWidth,t->tileHeight);if(!image)continue;uploadRgbaRegion(*image,pixels.data(),t->tileWidth,t->tileHeight,t->tileWidth);}const double z=std::min(double(cellSize()-4)/t->tileWidth,double(cellSize()-4)/t->tileHeight);const int w=std::max(1,int(t->tileWidth*z)),h=std::max(1,int(t->tileHeight*z));ui::Paint paint;paint.blendMode(os::BlendMode::SrcOver);g.drawSurface(image.get(),{0,0,t->tileWidth,t->tileHeight},{cell.x+(cellSize()-w)/2,cell.y+(cellSize()-h)/2,w,h},os::Sampling(os::Sampling::Filter::Nearest),&paint);}}paintSelection(g);}
 public:
+ void smokeSourceProperties(){
+  auto require=[](bool ok,const char* text){if(!ok)throw std::runtime_error(text);};const auto before=doc_.layer().freeTiles->sources;const bool paint=doc_.freeTilePaintMode();const auto history=doc_.historyPosition();
+  for(int close=0;close<4;++close){sourcePropertiesVerify=close;const auto savedStorage=sourceColorStorage;sourceColorStorage=std::filesystem::path("source-color-smoke-size.txt");
+   if(close==0){PixelMenu menu(skin_);buildSourceContext(menu,before.front().id);auto item=dynamic_cast<PixelMenuItem*>(*menu.children().begin());require(item&&item->icon=="properties"&&item->isEnabled(),"Source context properties enabled");item->Click();}
+   else if(close==1){const auto point=grid_->bounds().origin();require(sourceAt(point)==std::optional<std::string>{before.front().id},"Source double-click fixture hits first visible source");ui::MouseMessage twice(ui::kDoubleClickMessage,os::PointerType::Mouse,ui::kButtonLeft,ui::kKeyNoneModifier,point);grid_->onProcessMessage(&twice);}
+   else showSourceProperties(before.front().id);
+   sourceColorStorage=savedStorage;sourcePropertiesVerify=-1;
+   require(!doc_.active()&&doc_.freeTilePaintMode()==paint,"Source popup close ends transaction and preserves mode");
+   if(close==3)require(doc_.historyPosition()==history&&doc_.layer().freeTiles->sources==before,"Untouched source popup does not add history");
+   else {const auto source=doc_.layer().freeTiles->sources.front();require(doc_.historyPosition()==history+1&&source.name=="Shared source"&&source.visible==!before.front().visible&&source.locked==!before.front().locked&&!source.displayColor,("Source UI close="+std::to_string(close)+" history="+std::to_string(doc_.historyPosition())+" expected="+std::to_string(history+1)+" name="+source.name+" visible="+std::to_string(source.visible)+" beforeVisible="+std::to_string(before.front().visible)+" locked="+std::to_string(source.locked)+" beforeLocked="+std::to_string(before.front().locked)+" color="+std::to_string(bool(source.displayColor))).c_str());doc_.undo();if(changed)changed();sync();require(doc_.layer().freeTiles->sources==before,"Source popup undo restores original metadata");}
+  }
+ }
  void smokeSwatchSizing(){
   auto require=[](bool ok,const char* text){if(!ok)throw std::runtime_error(text);};
   const auto sizes=swatchSizes_;const auto savedBounds=bounds();const auto savedSelection=selected_;const auto savedAnchor=anchor_;const int savedScroll=scroll_;const auto savedCallback=swatchSizeChanged;int writes=0;
@@ -112,7 +125,7 @@ public:
  }
  void smokeSourceContext(){
   if(!freeActive()||freeSources().empty())throw std::runtime_error("Source context fixture missing");const auto set=selectedTilesetId();const auto sources=freeSources();const auto at=std::find_if(sources.begin(),sources.end(),[&](const auto& s){return s.tilesetId==set;});if(at==sources.end())throw std::runtime_error("Source context selected resource missing");
-  PixelMenu menu(skin_);buildSourceContext(menu,at->id);PixelMenuItem* remove=nullptr;for(auto child:menu.children())if(auto item=dynamic_cast<PixelMenuItem*>(child)){if(item->icon=="properties"&&item->isEnabled())throw std::runtime_error("Unported source properties must be disabled");if(item->icon=="delete")remove=item;}
+  PixelMenu menu(skin_);buildSourceContext(menu,at->id);PixelMenuItem* remove=nullptr;for(auto child:menu.children())if(auto item=dynamic_cast<PixelMenuItem*>(child)){if(item->icon=="properties"&&item->isEnabled()!=canAddSource())throw std::runtime_error("Source properties availability");if(item->icon=="delete")remove=item;}
   if(!remove||remove->isEnabled()!=canDelete())throw std::runtime_error("Source context delete availability");if(remove->isEnabled())remove->Click();
  }
 
@@ -144,6 +157,16 @@ public:
   origin=edge();pointer(ui::kMouseDownMessage,origin);grid_->releaseMouse();pointer(ui::kMouseMoveMessage,center(2));require(gesture_==Gesture::None&&doc_.timeline().state().tilesets.front().tileSlots==original,"capture loss cancellation");ui::FocusMessage blur(ui::kFocusLeaveMessage,grid_,nullptr);handleCommand(&blur);require(selected_.empty()&&anchor_.empty(),"outside blur clears selection");setBounds(savedBounds);changed=std::move(savedChanged);sync();
  }
 
+ std::function<void(bool,ColorEditorPopup*)> sourceSamplingChanged;std::function<bool(ui::Message*)> sourceSamplingInput;
+ int sourcePropertiesVerify=-1;std::function<std::vector<Pixel>()> sourceColors;
+ std::vector<Pixel> sourceColorPresets=defaultLayerDisplayColors();std::filesystem::path sourceColorStorage;
+ bool openSelectedSourceProperties(){if(!canAddSource())return false;const auto all=freeSources();const auto id=selectedTilesetId();const auto at=std::find_if(all.begin(),all.end(),[&](const auto& source){return source.tilesetId==id;});if(at==all.end())return false;showSourceProperties(at->id);return true;}
+ void showSourceProperties(const std::string& id,int verify=-1){
+  if(!canAddSource())return;if(verify<0)verify=sourcePropertiesVerify;cancelGesture();const auto& sources=doc_.layer().freeTiles->sources;const auto found=std::find_if(sources.begin(),sources.end(),[&](const auto& s){return s.id==id;});if(found==sources.end())return;const auto source=*found;doc_.setSelectedTileset(source.tilesetId);const auto identity=doc_.identity();if(!doc_.beginFreeTileSourceProperties(id))return;
+  try{FreeTileSourcePropertiesDialog popup(font_,skin_,icons_,source,sourceColors?sourceColors():sourceColorPresets,sourceColorStorage,[this,identity](const auto& patch){if(doc_.identity()==identity&&doc_.previewFreeTileSourceProperties(patch)){if(changed)changed();}});popup.samplingChanged=sourceSamplingChanged;popup.samplingInput=sourceSamplingInput;for(const auto& color:doc_.palette().entries)if(color.id)popup.paletteColors.push_back(color.color);popup.setDisplay(display(),false);const auto size=popup.minimumDialogSize(264*uiScale);const auto center=bounds().center();popup.setBounds({center.x-size.w/2,center.y-size.h/2,264*uiScale,size.h});ui::Timer timer(50,&popup);if(verify>=0){timer.Tick.connect([&]{timer.stop();popup.smoke(verify);});timer.start();}else{timer.Tick.connect([&]{timer.stop();popup.focusName();});timer.start();}popup.openWindowInForeground();timer.stop();if(doc_.identity()==identity&&doc_.freeTileSourcePropertiesActive())doc_.commitFreeTileSourceProperties(popup.changes());}
+  catch(...){if(doc_.identity()==identity)doc_.cancelFreeTileSourceProperties();if(changed)changed();throw;}
+  if(changed)changed();sync();grid_->requestFocus();
+ }
  // Legacy TilesetPanel.handleTileWheel/handleWheel: independent five-step
  // panel preferences, dominant wheel axis, one step per event, no document edit.
  static constexpr std::array<const char*,5> swatchSizeKeys{"tiny","small","medium","large","huge"};

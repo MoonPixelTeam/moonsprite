@@ -6,6 +6,8 @@
 #include <set>
 #include <map>
 #include <unordered_set>
+#include <codecvt>
+#include <locale>
 namespace moon {
 namespace {
 void rebuildTilemapCaches(timeline::State& s){
@@ -31,6 +33,44 @@ bool Document::createFreeTileLayer(std::u32string name,const std::string& shared
 }
 // Legacy workspace-commands-free-tile add/delete source: collection metadata
 // is shared across layers, but each cel owns its ordered instance references.
+// Legacy workspace-free-tile-properties: source metadata snapshots, cumulative
+// preview from baseline, trim only at commit, one shared-source history entry.
+bool Document::beginFreeTileSourceProperties(const std::string& id){
+ cancelFreeTileSourceProperties();if(active())return false;
+ for(const auto& l:timeline_.state().layers)if(l.kind=="free-tile"&&l.freeTiles)for(const auto& source:l.freeTiles->sources)if(source.id==id){
+  const auto& sets=timeline_.state().tilesets;const auto set=std::find_if(sets.begin(),sets.end(),[&](const auto& t){return t.id==source.tilesetId;});if(set==sets.end())return false;
+  freeSourceProperties_=std::make_shared<FreeTileSourceSnapshot>(FreeTileSourceSnapshot{source,set->name});return true;
+ }return false;
+}
+Document::FreeTileSourceSnapshot Document::freeTileSourceAfterChanges(const FreeTileSourceChanges& patch,bool commit)const{
+ auto out=*freeSourceProperties_;auto& source=out.source;std::wstring_convert<std::codecvt_utf8<char32_t>,char32_t> utf;
+ if(patch.name){const auto name=commit?std::u32string(javascriptTrim(*patch.name)):*patch.name;if(!commit||!name.empty())source.name=utf.to_bytes(name);}
+ if(patch.description)source.description=*patch.description;if(patch.displayColor)source.displayColor=*patch.displayColor;if(patch.visible)source.visible=*patch.visible;if(patch.locked)source.locked=*patch.locked;
+ if(patch.offsetX&&std::isfinite(*patch.offsetX)&&std::abs(std::trunc(*patch.offsetX))<=free_tiles::MaxCoordinate)source.offsetX=int(std::trunc(*patch.offsetX));
+ if(patch.offsetY&&std::isfinite(*patch.offsetY)&&std::abs(std::trunc(*patch.offsetY))<=free_tiles::MaxCoordinate)source.offsetY=int(std::trunc(*patch.offsetY));
+ out.tilesetName=utf.from_bytes(source.name);return out;
+}
+bool Document::applyFreeTileSourceSnapshot(const FreeTileSourceSnapshot& value){
+ auto next=timeline_.state();std::set<std::string> owners;bool changed=false;
+ for(auto& l:next.layers)if(l.kind=="free-tile"&&l.freeTiles)for(auto& source:l.freeTiles->sources)if(source.id==value.source.id){owners.insert(l.id);if(source!=value.source)changed=true;source=value.source;for(auto& t:next.tilesets)if(t.id==source.tilesetId){if(t.name!=value.tilesetName)changed=true;t.name=value.tilesetName;}}
+ if(!changed)return false;
+ for(auto& c:next.cels)if(owners.count(c.layerId)&&c.freeTiles&&c.surface){const auto l=std::find_if(next.layers.begin(),next.layers.end(),[&](const auto& layer){return layer.id==c.layerId;});const auto& data=*l->freeTiles;const auto& source=value.source;
+  const auto set=std::find_if(next.tilesets.begin(),next.tilesets.end(),[&](const auto& t){return t.id==source.tilesetId;});
+  const bool referenced=std::any_of(c.freeTiles->instances.begin(),c.freeTiles->instances.end(),[&](const auto& i){const auto& id=i.sourceId.empty()?i.tileId:i.sourceId;return id==source.id||id==source.tilesetId||(set!=next.tilesets.end()&&std::find(set->tileIds.begin(),set->tileIds.end(),i.tileId)!=set->tileIds.end());});
+  if(referenced)c.surface->pixels=free_tiles::render(data,*c.freeTiles,next.tilesets,c.surface->width,c.surface->height);
+ }
+ timeline_.state_=std::move(next);timeline_.buildIndex();return true;
+}
+bool Document::previewFreeTileSourceProperties(const FreeTileSourceChanges& patch){
+ if(!freeSourceProperties_)return false;const auto after=freeTileSourceAfterChanges(patch,false);if(!applyFreeTileSourceSnapshot(after))return false;change_={0,0,width_,height_};publishChange();return true;
+}
+bool Document::commitFreeTileSourceProperties(const FreeTileSourceChanges& patch){
+ if(!freeSourceProperties_)return false;const auto before=freeSourceProperties_;const auto after=std::make_shared<FreeTileSourceSnapshot>(freeTileSourceAfterChanges(patch,true));
+ if(before->source==after->source&&before->tilesetName==after->tilesetName){cancelFreeTileSourceProperties();return false;}
+ Edit edit{{},state_,nextState_};edit.beforeSourceProperties=before;edit.afterSourceProperties=after;history_.reserve(position_+1);applyFreeTileSourceSnapshot(*after);freeSourceProperties_.reset();change_={0,0,width_,height_};publishChange();pushEdit(std::move(edit),U"图层属性");return true;
+}
+void Document::cancelFreeTileSourceProperties(){if(!freeSourceProperties_)return;const auto before=freeSourceProperties_;const bool changed=applyFreeTileSourceSnapshot(*before);freeSourceProperties_.reset();if(changed){change_={0,0,width_,height_};publishChange();}}
+bool Document::setFreeTileSourceProperties(const std::string& id,const FreeTileSourceChanges& patch){if(!beginFreeTileSourceProperties(id))return false;try{return commitFreeTileSourceProperties(patch);}catch(...){cancelFreeTileSourceProperties();throw;}}
 bool Document::reorderFreeTileSource(const std::string& id,const std::string& target){
  if(active()||id==target)return false;
  const auto& layers=timeline_.state().layers;
