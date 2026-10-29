@@ -1,3 +1,4 @@
+#include "free_tile_selection_target.h"
 #include "editor_implementation.h"
 #include "editor.h"
 #include "free_tile_instances_panel.h"
@@ -703,6 +704,11 @@ bool Editor::onProcessMessage(ui::Message* msg) {
 
       if(msg->type()==ui::kMouseDownMessage && (mouse->left() || mouse->right()) && !spaceHeld_ && !handTool_ && canvasViewport().contains(mouse->position()) && (selectionTool_ || document.floating())){
 
+        const bool freeSelection=document.activeMaskId().empty()&&document.layer().kind=="free-tile";
+        const auto freeSelectionBounds=freeSelection?freeTileSelectionTargetBounds(document):std::optional<PixelRegion>{};
+        if(freeSelection&&!freeSelectionBounds){status_=U"请在编辑模式选择可见且未锁定的自由瓦片实例";refresh();return true;}
+        if(freeSelection&&selectionKind_==4&&(p.x<freeSelectionBounds->x||p.y<freeSelectionBounds->y||p.x>=freeSelectionBounds->x+freeSelectionBounds->w||p.y>=freeSelectionBounds->y+freeSelectionBounds->h))return true;
+
         if(polygonPending_){if(mouse->right())polygonStep(false);else{if(selectionPath_.empty() || selectionPath_.back().x!=p.x || selectionPath_.back().y!=p.y){selectionPath_.push_back({p.x,p.y});selectionPathRedo_.clear();}updateSelectionCreation(p);}return true;}
 
         bool quickPress=false;
@@ -719,6 +725,9 @@ bool Editor::onProcessMessage(ui::Message* msg) {
 
         const auto handle=mouse->left() && (selectionFreeTransform_ || !mouse->shiftPressed()) && !quickPress?transformHit(mouse->position()):std::string{};if(selectionFreeTransform_ && !(mouse->left() && (hit==2 || !handle.empty())))return true;if(document.selection() && (hit || !handle.empty()))selectionPropertiesActive_=true;
 
+        // Source content transforms need their own shared-source transaction.
+        // Do not let the ordinary raster path consume the derived free-tile cache.
+        if(freeSelection&&(!handle.empty()||hit==2||(copy&&hit==1))){status_=U"自由瓦片选区内容变换尚未迁移";refresh();return true;}
         beginAlignmentMove(hit==2 || (copy && hit==1) || !handle.empty());
         if(!handle.empty()){if(document.layer().kind=="tilemap"&&document.tilemapMode()==tiles::Mode::Paint){status_=U"瓦片绘制模式的变换尚未迁移";refresh();return true;}if(!document.beginSelectionContentMove(copy,frameSelectionExplicit_,0,0,p,false,!selectionFreeTransform_&&handle.rfind("rotate-",0)!=0&&handle.rfind("shear-",0)!=0,!selectionFreeTransform_&&handle.rfind("rotate-",0)==0,!selectionFreeTransform_&&handle.rfind("shear-",0)==0)){status_=U"目标图层隐藏或锁定";refresh();return true;}floatingDragging_=true;transformHandle_=handle;transformGestureStart_=*document.floatingTransform();transformPointerStart_=transformCanvasPoint(mouse->position());selectionPivotBeforeGesture_=selectionPivot_;selectionPivotStart_=selectionPivotPoint();selectionMoved_=false;selectionStart_=p;selectionPress_=mouse->position();playing_=false;captureMouse();invalidateRect(canvasViewport());return true;}
 
@@ -726,7 +735,7 @@ bool Editor::onProcessMessage(ui::Message* msg) {
 
         else if(hit==1){document.prepareSelectionBoxMove();selectionBefore_=document.selection();selectionDragging_=selectionBoxDragging_=true;}
 
-        else{selectionPropertiesActive_=false;document.commitFloatingPaste();selectionBefore_=document.selection();selectionStatusBefore_=status_;selectionPreview_.reset();gestureSelectionMode_=mouse->right()?2:mouse->shiftPressed()?1:selectionMode_;selectionDragging_=true;selectionBoxDragging_=false;polygonPending_=selectionKind_==3;selectionPath_={{p.x,p.y}};selectionPathRedo_.clear();if(selectionKind_==5){selectionBrushStroke_={};selectionBrushLast_={p.x,p.y};selectionBrushIdentity_=document.identity();}if(selectionKind_==4){++wandGeneration_;wandReleased_=false;wandPreviewReady_=false;wandLastPoint_.reset();wandIdentity_=document.identity();wandContentRevision_=document.contentRevision();wandLayer_=document.layer().id;wandFrame_=document.frame().id;wandSource_=std::make_shared<const std::vector<Pixel>>(wandOptions_.visibleLayers?compositeNormalRegion(document.timeline(),document.frame().id,{0,0,document.width(),document.height()}):document.canvasPixels());}}
+        else{selectionPropertiesActive_=false;document.commitFloatingPaste();selectionBefore_=document.selection();selectionStatusBefore_=status_;selectionPreview_.reset();gestureSelectionMode_=mouse->right()?2:mouse->shiftPressed()?1:selectionMode_;selectionDragging_=true;selectionBoxDragging_=false;polygonPending_=selectionKind_==3;selectionPath_={{p.x,p.y}};selectionPathRedo_.clear();if(selectionKind_==5){selectionBrushStroke_={};selectionBrushLast_={p.x,p.y};selectionBrushIdentity_=document.identity();}if(selectionKind_==4){++wandGeneration_;wandReleased_=false;wandPreviewReady_=false;wandLastPoint_.reset();wandIdentity_=document.identity();wandContentRevision_=document.contentRevision();wandLayer_=document.layer().id;wandFrame_=document.frame().id;wandSource_=std::make_shared<const std::vector<Pixel>>(freeSelection?std::vector<Pixel>{}:wandOptions_.visibleLayers?compositeNormalRegion(document.timeline(),document.frame().id,{0,0,document.width(),document.height()}):document.canvasPixels());}}
 
         selectionMoved_=false;selectionStart_=selectionLast_=p;selectionPress_=mouse->position();
 

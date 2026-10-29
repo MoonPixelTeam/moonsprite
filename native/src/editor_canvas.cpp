@@ -1,3 +1,4 @@
+#include "free_tile_selection_target.h"
 #include "raster_geometry.h"
 #include "editor_implementation.h"
 #include "editor.h"
@@ -20,7 +21,7 @@ void Editor::wandTick(){
 
     if(wandWorker_.valid() && wandWorker_.wait_for(std::chrono::seconds(0))==std::future_status::ready){const auto generation=wandWorkerGeneration_;std::optional<SelectionMask> result;try{result=wandWorker_.get();}catch(const std::exception& e){if(selectionDragging_ && generation==wandGeneration_){endSelectionGesture(true);status_=U"魔棒失败："+unicodeText(e.what());refresh();}return;}if(selectionDragging_ && selectionKind_==4 && generation==wandGeneration_ && !wandRequest_){wandPreviewReady_=true;selectionPreview_=result;invalidateRect(canvasViewport());if(wandReleased_)endSelectionGesture(false);}}
 
-    if(wandRequest_ && !wandWorker_.valid()){const auto p=*wandRequest_;wandRequest_.reset();const auto source=wandSource_;const auto options=wandOptions_;const int w=document.width(),h=document.height();wandWorkerGeneration_=wandGeneration_;std::packaged_task<std::optional<SelectionMask>()> task([source,options,w,h,p]{return magicWandSelection(*source,w,h,p.x,p.y,options);});wandWorker_=task.get_future();std::thread(std::move(task)).detach();}
+    if(wandRequest_ && !wandWorker_.valid()){const auto p=*wandRequest_;wandRequest_.reset();const auto source=wandSource_;const auto options=wandOptions_;const int w=document.width(),h=document.height();wandWorkerGeneration_=wandGeneration_;std::optional<FreeTileSelectionRaster> freeSource;try{if(document.layer().kind=="free-tile"&&document.activeMaskId().empty())freeSource=freeTileSelectionRaster(document);}catch(const std::exception& e){endSelectionGesture(true);status_=U"魔棒失败："+unicodeText(e.what());refresh();return;}const bool freeSelection=document.layer().kind=="free-tile"&&document.activeMaskId().empty();const auto axes=document.symmetryAxes;const auto center=document.symmetryCenter();std::packaged_task<std::optional<SelectionMask>()> task([source,options,w,h,p,freeSelection,axes,center,freeSource=std::move(freeSource)]{return freeSelection?symmetrySelection(freeSource?freeSource->select({p.x,p.y},options,w,h):std::optional<SelectionMask>{},w,h,axes,center):magicWandSelection(*source,w,h,p.x,p.y,options);});wandWorker_=task.get_future();std::thread(std::move(task)).detach();}
 
   }
 
@@ -670,6 +671,8 @@ const char* Editor::selectionTransformCursor(const std::string& hit,const Select
 
 const char* Editor::selectionCursorAt(gfx::Point position) const {
 
+    const bool freeSelection=document.activeMaskId().empty()&&document.layer().kind=="free-tile";
+    if(freeSelection&&!freeTileSelectionTargetBounds(document))return "unavailable";
     if(selectionPivotDragging_)return "move";
 
     if(floatingDragging_ && transformHandle_.empty())return selectionCopyDrag_?"copy":"move";
@@ -684,19 +687,20 @@ const char* Editor::selectionCursorAt(gfx::Point position) const {
 
     const auto hit=selectionShift_ && !floatingDragging_?std::string{}:transformHandle_.empty()?transformHit(position):transformHandle_;
 
+    if(freeSelection&&!hit.empty())return "unavailable";
     if(!hit.empty())if(auto target=selectionTransformTarget())return selectionTransformCursor(hit,*target,position);
 
     const int inside=selectionHit(position);
 
     if(!selectionShift_ && (inside==1 || (inside==2 && (selectionMode_<2 || selectionCtrl_))))
 
-      return selectionCtrl_?"copy":inside==1?"selection-move":"move";
+      return freeSelection&&(inside==2||selectionCtrl_)?"unavailable":selectionCtrl_?"copy":inside==1?"selection-move":"move";
 
     if(selectionTool_ && selectionKind_==5) {
 
       const auto p=canvasPoint(position);
 
-      if(p.x>=0 && p.y>=0 && p.x<document.width() && p.y<document.height() && !(document.rasterToolsAvailable()||document.maskBrushAvailable()))return "unavailable";
+      if(p.x>=0 && p.y>=0 && p.x<document.width() && p.y<document.height() && !(document.rasterToolsAvailable()||document.maskBrushAvailable()||freeSelection))return "unavailable";
 
       return legacyPaintCursor(ink_&255,(ink_>>8)&255,(ink_>>16)&255);
 
@@ -706,7 +710,7 @@ const char* Editor::selectionCursorAt(gfx::Point position) const {
 
     const bool insideCanvas=p.x>=0 && p.y>=0 && p.x<document.width() && p.y<document.height();
 
-    if(insideCanvas && !(document.rasterToolsAvailable()||document.maskBrushAvailable()))return "unavailable";
+    if(insideCanvas && !(document.rasterToolsAvailable()||document.maskBrushAvailable()||freeSelection))return "unavailable";
 
     return "none";
 
