@@ -283,7 +283,7 @@ void Editor::togglePaletteLock() {
 
     paletteLocked_=!paletteLocked_;
 
-    try {const auto path=palettePreferencePath().parent_path();std::filesystem::create_directories(path);
+    if(!smoke_)try {const auto path=palettePreferencePath().parent_path();std::filesystem::create_directories(path);
 
       std::ofstream out(path/"palette-edit-locked.txt");out<<(paletteLocked_?"true":"false");out.close();if(!out) throw std::runtime_error("Palette lock write failed");
 
@@ -566,7 +566,7 @@ bool Editor::storedPaletteModalControl(ui::Widget* w)const{if(w==storedPaletteSc
 void Editor::createStoredPaletteControls(){try{std::ifstream in(palettePreferencePath().parent_path()/"palette-library.txt");std::getline(in,activeStoredPalette_);std::string id;while(std::getline(in,id))if(!id.empty())hiddenStoredPalettes_.push_back(id);}catch(const std::exception& e){status_=U"色板库偏好读取失败："+storedPaletteError(e);}
  auto scroll=new DialogBackground<PixelScrollBar>(skin_,true);configureDialogBackground(scroll);addChild(scroll);storedPaletteScroll_=scroll;scroll->changed=[this](int value){storedPaletteScrollPixels_=value;layoutModal();invalidateRect(dialogDisplayBounds());};scroll->setVisible(false);
  auto action=[this](const std::u32string& label,const std::string& icon,std::function<void()> fn){auto b=button(label,std::move(fn));b->iconSkin=&toolIcons_;b->icon=icon;b->iconWithCaption=true;b->setVisible(false);storedPaletteActions_.push_back(b);};
- action(U"打开目录","folderOpen",[this]{try{std::filesystem::create_directories(paletteLibraryDirectory());auto path=paletteLibraryDirectory().wstring();if(reinterpret_cast<INT_PTR>(ShellExecuteW(nullptr,L"open",path.c_str(),nullptr,nullptr,SW_SHOWNORMAL))<=32)throw std::runtime_error("Cannot open palette folder");resolve(false);}catch(const std::exception& e){status_=storedPaletteError(e);refresh();}});
+ action(U"打开目录","folderOpen",[this]{try{std::filesystem::create_directories(paletteLibraryDirectory());auto path=paletteLibraryDirectory().wstring();if(reinterpret_cast<INT_PTR>(ShellExecuteW(nullptr,L"open",path.c_str(),nullptr,nullptr,SW_SHOWNORMAL))<=32)throw std::runtime_error("Cannot open palette folder");if(pending_==Pending::PaletteLibrary)resolve(false);}catch(const std::exception& e){status_=storedPaletteError(e);refresh();}});
  action(U"导入","import",[this]{importStoredPalette();});action(U"刷新","refresh",[this]{refreshStoredPalettes();});
  paletteSaveNew_=button(U"另存新建",[this]{if(saveStoredPalette(false))resolve(false);});paletteSaveCurrent_=button(U"保存当前",[this]{if(saveStoredPalette(true))resolve(false);});for(auto b:{paletteSaveNew_,paletteSaveCurrent_}){b->iconSkin=&toolIcons_;b->iconWithCaption=true;b->setVisible(false);}paletteSaveNew_->icon="plus";paletteSaveCurrent_->icon="save";
 }
