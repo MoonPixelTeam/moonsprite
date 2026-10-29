@@ -207,6 +207,7 @@ int app_main(int argc,char* argv[]) {
 
     if(argc>1 && std::string(argv[1])=="--deselect-check") {editor->smokeDeselectPending();delete editor;desktop.editor=nullptr;return 0;}
 
+    if(argc>1 && std::string(argv[1])=="--symmetry-shortcuts-check") {try{editor->smokeSymmetry();}catch(const std::exception& e){std::ofstream("native-symmetry-shortcuts-error.txt")<<e.what();delete editor;desktop.editor=nullptr;return 1;}delete editor;desktop.editor=nullptr;return 0;}
     if(argc>1 && std::string(argv[1])=="--animation-check") {try{editor->smokeAnimation();}catch(const std::exception& e){std::ofstream("native-animation-error.txt")<<e.what();delete editor;desktop.editor=nullptr;manager.removeMessageFilter(ui::kSetCursorMessage,&manager);return 1;}delete editor;desktop.editor=nullptr;manager.removeMessageFilter(ui::kSetCursorMessage,&manager);return 0;}
 
     if(argc>1 && std::string(argv[1])=="--performance-ui-check") {try{editor->smokePerformanceUi(std::filesystem::u8path(argv[0]).parent_path().parent_path()/"test-tmp/performance-ui"/std::filesystem::u8path(std::to_string(GetCurrentProcessId())+"-"+std::to_string(GetTickCount64())));}catch(const std::exception& e){std::ofstream("native-performance-error.txt")<<e.what();delete editor;desktop.editor=nullptr;return 1;}delete editor;desktop.editor=nullptr;return 0;}

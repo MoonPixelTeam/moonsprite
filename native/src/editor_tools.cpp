@@ -1426,7 +1426,50 @@ bool& Editor::symmetryFlag(int i){auto& a=document.symmetryAxes;return i==0?a.ho
 
 void Editor::saveSymmetryPreferences(){try{if(smoke_)return;const auto path=palettePreferencePath().parent_path()/"symmetry.txt";std::filesystem::create_directories(path.parent_path());std::ofstream out(path);out.exceptions(std::ios::failbit|std::ios::badbit);for(int i=0;i<5;++i)out<<symmetryFlag(i)<<' ';out<<symmetryLocked_<<' '<<symmetryThickness_<<' '<<symmetryColor_;}catch(const std::exception& e){status_=U"对称偏好保存失败："+unicodeText(e.what());}}
 
-void Editor::toggleSymmetry(int i){if(document.active())return;const bool on=!symmetryFlag(i);if(on && (!symmetryInitialized_ || !canvasViewport().contains(gfx::Point(int(canvas_.x+document.symmetryCenter().x*canvasScale()),int(canvas_.y+document.symmetryCenter().y*canvasScale()))))){const auto at=canvasViewport().center();document.setSymmetryCenter({canvasDocumentPoint(at).x,canvasDocumentPoint(at).y});symmetryInitialized_=true;}symmetryFlag(i)=on;persistedSymmetryAxes_=document.symmetryAxes;saveSymmetryPreferences();refresh();}
+void Editor::toggleSymmetry(int i){
+  if(document.active() || i<0 || i>4)return;
+  const bool on=!symmetryFlag(i);
+  const auto viewport=canvasViewport();
+  const auto center=document.symmetryCenter();
+  // Legacy symmetryAxisSegment + viewportSegmentVisible: test the finite
+  // displayed axis, rather than requiring its center to be on screen.
+  auto visible=[&]{
+    if(viewport.w<=0 || viewport.h<=0)return true;
+    auto displayPoint=[&](double x,double y){return viewRotation_.forward({canvas_.x+x*canvasScale(),canvas_.y+y*canvasScale()},canvasRotationPivot());};
+    const auto pivot=displayPoint(center.x,center.y);
+    if(i==4)return pivot.x>=viewport.x && pivot.x<=viewport.x2() && pivot.y>=viewport.y && pivot.y<=viewport.y2();
+    std::vector<view::Point> points;
+    const double w=document.width(),h=document.height();
+    auto add=[&](double x,double y){
+      const double e=1e-6;if(x< -e || y< -e || x>w+e || y>h+e)return;
+      view::Point point{std::clamp(x,0.,w),std::clamp(y,0.,h)};
+      for(const auto& p:points)if(std::abs(p.x-point.x)<e && std::abs(p.y-point.y)<e)return;
+      points.push_back(point);
+    };
+    if(i==0){add(0,center.y);add(w,center.y);}
+    else if(i==1){add(center.x,0);add(center.x,h);}
+    else if(i==3){const double d=center.y-center.x;add(0,d);add(w,w+d);add(-d,0);add(h-d,h);}
+    else{const double sum=center.x+center.y;add(0,sum);add(w,sum-w);add(sum,0);add(sum-h,h);}
+    if(points.size()<2)return false;
+    std::sort(points.begin(),points.end(),[](const auto& a,const auto& b){return a.x<b.x || (a.x==b.x && a.y<b.y);});
+    const auto start=displayPoint(points.front().x,points.front().y),end=displayPoint(points.back().x,points.back().y);
+    double from=0,to=1;const double dx=end.x-start.x,dy=end.y-start.y;
+    for(const auto edge:std::array<std::pair<double,double>,4>{{{start.x-viewport.x,dx},{viewport.x2()-start.x,-dx},{start.y-viewport.y,dy},{viewport.y2()-start.y,-dy}}}){
+      if(edge.second==0){if(edge.first<0)return false;continue;}
+      const double ratio=-edge.first/edge.second;
+      if(edge.second>0)from=std::max(from,ratio);else to=std::min(to,ratio);
+      if(from>to)return false;
+    }
+    return true;
+  };
+  if(on && (!symmetryInitialized_ || !visible())){
+    const auto at=canvasDocumentPoint(viewport.center());
+    const auto next=moveSymmetryCenter(center,SymmetryAxis::Center,{at.x,at.y},document.width(),document.height());
+    if(next.x!=center.x || next.y!=center.y)document.setSymmetryCenter(next);
+  }
+  if(on)symmetryInitialized_=true;
+  symmetryFlag(i)=on;persistedSymmetryAxes_=document.symmetryAxes;saveSymmetryPreferences();refresh();
+}
 
 void Editor::showSymmetryMenu(){PixelMenu menu(skin_);auto add=[&](const char32_t* label,std::function<void()> action){auto item=new PixelMenuItem(font_,skin_,label);item->Click.connect(action);menu.addChild(item);return item;};add(U"重置对称轴",[this]{document.setSymmetryCenter(defaultSymmetryCenter(document.width(),document.height()));refresh();});auto lock=add(U"锁定对称轴（Ctrl临时解锁）",[this]{symmetryLocked_=!symmetryLocked_;saveSymmetryPreferences();});lock->checked=[this]{return symmetryLocked_;};for(int n=1;n<=8;++n){auto item=new PixelMenuItem(font_,skin_,U"轴粗细 "+unicodeText(std::to_string(n))+U" px");item->checked=[this,n]{return symmetryThickness_==n;};item->Click.connect([this,n]{symmetryThickness_=n;saveSymmetryPreferences();invalidateRect(canvasViewport());});menu.addChild(item);}auto colorLabel=new PixelMenuItem(font_,skin_,U"对称轴颜色 HEX");colorLabel->setEnabled(false);menu.addChild(colorLabel);auto colorInput=new PixelEntry(font_,skin_);colorInput->setText(paletteHex(symmetryColor_));menu.addChild(colorInput);colorInput->Change.connect([this,colorInput]{Pixel next;if(parsePaletteHex(colorInput->text(),next)){symmetryColor_=next;saveSymmetryPreferences();invalidateRect(canvasViewport());}});const auto at=symmetryButtons_[5]->bounds();menu.showPopup({at.x,at.y2()},display());requestFocus();}
 

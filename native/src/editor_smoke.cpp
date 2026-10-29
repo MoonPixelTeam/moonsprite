@@ -5757,7 +5757,22 @@ void Editor::smokeColorAdjustments(){
 
 void Editor::smokeSymmetry(){
 
-    smoke_=true;setBounds(gfx::Rect(0,0,1280,960));const auto savedAxes=persistedSymmetryAxes_;document=Document(8,8);homeOpen_=false;documentOpen_=true;requestFocus();fitCanvas();refresh();symmetryInitialized_=false;toggleSymmetry(1);layoutToolOptions();if(!document.symmetryAxes.vertical || !symmetryButtons_[1]->active)throw std::runtime_error("Symmetry toggle");const auto history=document.historySize();const auto center=document.symmetryCenter();symmetryLocked_=true;if(symmetryHit(gfx::Point(int(canvas_.x+center.x*canvasScale()),int(canvas_.y+center.y*canvasScale()))))throw std::runtime_error("Symmetry lock");if(!symmetryHit(gfx::Point(int(canvas_.x+center.x*canvasScale()),int(canvas_.y+center.y*canvasScale())),true))throw std::runtime_error("Symmetry Ctrl override");symmetryDragging_=true;symmetryDragBefore_=center;document.setSymmetryCenter({1.5,2},false);finishSymmetryDrag(true);if(document.symmetryCenter().x!=center.x || document.historySize()!=history)throw std::runtime_error("Symmetry axis cancel");symmetryLocked_=false;persistedSymmetryAxes_=savedAxes;document=Document();refresh();
+    smoke_=true;setBounds(gfx::Rect(0,0,1280,960));const auto savedAxes=persistedSymmetryAxes_;document=Document(8,8);homeOpen_=false;documentOpen_=true;requestFocus();fitCanvas();refresh();symmetryInitialized_=false;toggleSymmetry(1);layoutToolOptions();if(!document.symmetryAxes.vertical || !symmetryButtons_[1]->active)throw std::runtime_error("Symmetry toggle");const auto history=document.historySize();const auto center=document.symmetryCenter();symmetryLocked_=true;if(symmetryHit(gfx::Point(int(canvas_.x+center.x*canvasScale()),int(canvas_.y+center.y*canvasScale()))))throw std::runtime_error("Symmetry lock");if(!symmetryHit(gfx::Point(int(canvas_.x+center.x*canvasScale()),int(canvas_.y+center.y*canvasScale())),true))throw std::runtime_error("Symmetry Ctrl override");symmetryDragging_=true;symmetryDragBefore_=center;document.setSymmetryCenter({1.5,2},false);finishSymmetryDrag(true);if(document.symmetryCenter().x!=center.x || document.historySize()!=history)throw std::runtime_error("Symmetry axis cancel");symmetryLocked_=false;
+    const auto bindings=shortcutBindings_;
+    const char* commands[]={"toggleSymmetryHorizontal","toggleSymmetryVertical","toggleSymmetryDiagonalUp","toggleSymmetryDiagonalDown","toggleSymmetryRotational"};
+    auto send=[&](const char* id,int repeat=0){if(!shortcutSupported(id))throw std::runtime_error("Symmetry shortcut unavailable");shortcutBindings_.clear();shortcuts::assign(shortcutBindings_,id,"F8");requestFocus();ui::KeyMessage key(ui::kKeyDownMessage,ui::kKeyF8,ui::kKeyNoneModifier,0,repeat);if(routeShortcutMessage(&key)!=1)throw std::runtime_error("Symmetry shortcut route");};
+    document.symmetryAxes={};
+    const auto pixels=document.pixels();
+    for(int i=0;i<5;++i){send(commands[i]);for(int j=0;j<5;++j)if(symmetryFlag(j)!=(i==j))throw std::runtime_error("Symmetry independent axes");send(commands[i],1);if(!symmetryFlag(i))throw std::runtime_error("Symmetry key repeat");send(commands[i]);if(symmetryFlag(i))throw std::runtime_error("Symmetry disable");}
+    document.setSymmetryCenter({1.5,2});send("resetSymmetryCenter");const auto reset=defaultSymmetryCenter(8,8);if(document.symmetryCenter().x!=reset.x||document.symmetryCenter().y!=reset.y||!document.dirty())throw std::runtime_error("Symmetry reset metadata");
+    if(document.pixels()!=pixels||document.historySize()!=history)throw std::runtime_error("Symmetry shortcut changed pixel history");
+    document=Document(100,80);refresh();zoom_=2;const auto viewport=canvasViewport();
+    canvas_=gfx::Rect(viewport.x-100,viewport.y+20,200,160);viewRotation_={};symmetryInitialized_=true;document.symmetryAxes={};document.setSymmetryCenter({20,20});
+    // The pivot is left of the viewport, but its finite horizontal axis crosses it.
+    send(commands[0]);if(document.symmetryCenter().x!=20||document.symmetryCenter().y!=20)throw std::runtime_error("Visible axis recentered offscreen pivot");
+    send(commands[0]);canvas_.y=viewport.y-200;send(commands[0]);if(document.symmetryCenter().x==20&&document.symmetryCenter().y==20)throw std::runtime_error("Offscreen axis not recentered");
+    shortcutBindings_=bindings;
+    symmetryLocked_=false;persistedSymmetryAxes_=savedAxes;document=Document();refresh();
 
   }
 
