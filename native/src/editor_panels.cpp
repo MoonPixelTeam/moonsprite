@@ -3,6 +3,15 @@
 #include "free_tile_instances_panel.h"
 
 namespace moon::editor {
+// PreviewPanel.tsx zoom-shortcut handler; reuse the existing anchored preview view.
+void PreviewPanel::zoomPreviewTo(double next,std::optional<gfx::Point> pointer){
+ syncPreview();previewLayout();
+ if(!std::isfinite(next)||next<=0||previewBox_.w<=0||previewBox_.h<=0||next==previewScale())return;
+ const auto position=pointer.value_or(previewBox_.center());
+ previewView_.setZoom(document_.width(),document_.height(),double(previewBox_.w)/uiScale,double(previewBox_.h)/uiScale,next,{double(position.x-previewBox_.x)/uiScale,double(position.y-previewBox_.y)/uiScale},uiScale);
+ invalidate();
+}
+
 
 panels::Geometry Editor::columnGeometry(gfx::Rect rc)const{InteractionScope interactionScope(0,"geometry");
 
