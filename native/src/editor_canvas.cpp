@@ -687,7 +687,6 @@ const char* Editor::selectionCursorAt(gfx::Point position) const {
 
     const auto hit=selectionShift_ && !floatingDragging_?std::string{}:transformHandle_.empty()?transformHit(position):transformHandle_;
 
-    if(freeSelection&&!hit.empty())return "unavailable";
     if(!hit.empty())if(auto target=selectionTransformTarget())return selectionTransformCursor(hit,*target,position);
 
     const int inside=selectionHit(position);

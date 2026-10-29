@@ -144,7 +144,7 @@ int app_main(int argc,char* argv[]) {
     std::filesystem::path recoveryRoot;for(int i=1;i+1<argc;++i)if(std::string(argv[i])=="--recovery-test-root"){const auto root=std::filesystem::u8path(argv[i+1]);if(!root.is_absolute() || !std::filesystem::exists(root/"test-owned.marker"))throw std::runtime_error("Recovery test root must be owned");recoveryRoot=root/"recovery";}
 
     const bool toolRailCheck=argc>1 && std::string(argv[1])=="--tool-rail-check";
-    auto editor=new Editor(font,skin,assets,manager.refreshCursor,recoveryRoot,toolRailCheck); desktop.editor=editor;
+    auto editor=new Editor(font,skin,assets,manager.refreshCursor,recoveryRoot,toolRailCheck||(argc>1&&std::string(argv[1])=="--free-tile-transform-check")); desktop.editor=editor;
     bool usageTesting=false;for(int i=1;i<argc;++i){const std::string a=argv[i];if(a.find("--")==0&&(a.find("check")!=std::string::npos||a.find("smoke")!=std::string::npos||a.find("test")!=std::string::npos))usageTesting=true;}editor->initializeUsageStatistics(usageTesting);editor->initializeDiagnostics(usageTesting);
 
     if(argc>1 && std::string(argv[1])=="--export-dialog-check") {try{editor->smokeStaticExport();}catch(const std::exception& e){std::ofstream("native-export-dialog-error.txt")<<e.what();delete editor;desktop.editor=nullptr;return 1;}delete editor;desktop.editor=nullptr;return 0;}
@@ -199,7 +199,7 @@ int app_main(int argc,char* argv[]) {
 
     if(argc>1 && std::string(argv[1])=="--ants-check") {try{editor->smokeAnts(std::filesystem::u8path(argv[0]).parent_path());}catch(const std::exception& e){std::ofstream("native-ants-error.txt")<<e.what();delete editor;desktop.editor=nullptr;return 1;}delete editor;desktop.editor=nullptr;return 0;}
 
-    if(argc>1 && std::string(argv[1])=="--layer-context-check") {desktop.addChild(editor);desktop.setBounds(manager.bounds());desktop.openWindow();try{editor->smokeLayerContext(std::filesystem::u8path(argv[0]).parent_path());}catch(const std::exception& e){std::ofstream("native-smoke-error.txt")<<e.what();delete editor;desktop.editor=nullptr;return 1;}delete editor;desktop.editor=nullptr;return 0;}
+    if(argc>1 && (std::string(argv[1])=="--layer-context-check"||std::string(argv[1])=="--free-tile-transform-check")) {desktop.addChild(editor);desktop.setBounds(manager.bounds());desktop.openWindow();try{editor->smokeLayerContext(std::string(argv[1])=="--free-tile-transform-check"?std::filesystem::path{}:std::filesystem::u8path(argv[0]).parent_path());}catch(const std::exception& e){std::ofstream("native-smoke-error.txt")<<e.what();delete editor;desktop.editor=nullptr;return 1;}delete editor;desktop.editor=nullptr;return 0;}
 
     if(argc>1 && std::string(argv[1])=="--layers-check") {editor->smokeLayers(std::filesystem::u8path(argv[0]).parent_path());delete editor;desktop.editor=nullptr;return 0;}
 

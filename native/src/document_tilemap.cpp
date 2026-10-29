@@ -997,6 +997,7 @@ void Document::publishFreeTileSourceStroke(FreeTileSourceStroke& d){
 struct Document::FreeTileSelectionMove {
  std::shared_ptr<FreeTileSourceStroke> source;
  std::vector<std::string> instances;
+ std::shared_ptr<SelectionRotSpriteSource> sampler;
  bool placement=false,changed=false;
 };
 bool Document::freeTileSelectionPlacementMoving()const{return floating_&&floating_->freeTile&&floating_->freeTile->placement;}
@@ -1013,8 +1014,8 @@ bool Document::beginFreeTileSelectionMove(bool copy,bool allFrames,int dx,int dy
  state->placement=covers;
  const auto count=std::uint64_t(selection_->width)*selection_->height;if(selection_->width<1||selection_->height<1||count>16*1024*1024)throw std::length_error("自由瓦片选区超出原生内存预算");
  f.source.width=selection_->width;f.source.height=selection_->height;f.source.mask=selection_->mask;if(f.source.mask.empty())f.source.mask.assign(std::size_t(count),1);f.source.pixels.resize(std::size_t(count));
- if(!covers){
-  const auto& source=*freeSourceFor(*layer().freeTiles,chosen);const auto& set=*freeSourceSet(timeline_.state(),source.tilesetId);auto d=std::make_shared<FreeTileSourceStroke>();d->before=timeline_;d->sourceId=source.id;d->tilesetId=set.id;d->targetCel=cel().id;d->instance=chosen;d->anchor={cel().surface->offsetX+chosen.x,cel().surface->offsetY+chosen.y};d->beforeWidth=set.tileWidth;d->beforeHeight=set.tileHeight;d->beforeX=source.offsetX;d->beforeY=source.offsetY;d->beforePixels=tiles::readTile(set,0);state->source=d;
+ {
+  const auto& source=*freeSourceFor(*layer().freeTiles,chosen);const auto& set=*freeSourceSet(timeline_.state(),source.tilesetId);auto d=std::make_shared<FreeTileSourceStroke>();d->sourceId=source.id;d->tilesetId=set.id;d->targetCel=cel().id;d->instance=chosen;d->anchor={cel().surface->offsetX+chosen.x,cel().surface->offsetY+chosen.y};d->beforeWidth=set.tileWidth;d->beforeHeight=set.tileHeight;d->beforeX=source.offsetX;d->beforeY=source.offsetY;d->beforePixels=tiles::readTile(set,0);state->source=d;
   for(int y=0;y<set.tileHeight;++y)for(int x=0;x<set.tileWidth;++x){const auto q=free_tiles::transform(chosen,source.offsetX+x,source.offsetY+y);const int px=q.first+d->anchor.x-selection_->x,py=q.second+d->anchor.y-selection_->y;if(px>=0&&py>=0&&px<selection_->width&&py<selection_->height)f.source.pixels[std::size_t(py)*selection_->width+px]=d->beforePixels[std::size_t(y)*set.tileWidth+x];}
  }
  f.transform={double(selection_->x),double(selection_->y),double(selection_->width),double(selection_->height)};f.x=selection_->x;f.y=selection_->y;floating_=std::move(f);
@@ -1022,35 +1023,52 @@ bool Document::beginFreeTileSelectionMove(bool copy,bool allFrames,int dx,int dy
 }
 void Document::transformFreeTileSelectionMove(const SelectionTransform& transform){
  if(!floating_||!floating_->freeTile)return;auto& f=*floating_;auto& move=*f.freeTile;
- if(transform.width!=f.source.width||transform.height!=f.source.height||transform.angle!=0||transform.shearX!=0||transform.shearY!=0||transform.flipHorizontal||transform.flipVertical||transform.quad)throw std::logic_error("自由瓦片选区缩放、旋转和斜切尚未迁移");
+ const bool translation=transform.x==std::floor(transform.x)&&transform.y==std::floor(transform.y)&&transform.width==f.source.width&&transform.height==f.source.height&&transform.angle==0&&transform.shearX==0&&transform.shearY==0&&!transform.flipHorizontal&&!transform.flipVertical&&!transform.quad;
+ // Validate before transformBounds converts floating coordinates to integers.
+ for(double value:{transform.x,transform.y,transform.width,transform.height,transform.angle,transform.shearX,transform.shearY})if(!std::isfinite(value)||std::abs(value)>free_tiles::MaxCoordinate)throw std::length_error("自由瓦片选区变换超出限制");
+ if(transform.width<1||transform.height<1)throw std::length_error("自由瓦片选区尺寸无效");
+ for(auto uv:std::array<TransformPoint,4>{{{0,0},{1,0},{1,1},{0,1}}}){const auto point=transformPoint(transform,uv.x,uv.y);if(!std::isfinite(point.x)||!std::isfinite(point.y)||std::abs(point.x)>free_tiles::MaxCoordinate||std::abs(point.y)>free_tiles::MaxCoordinate)throw std::length_error("自由瓦片选区边界超出限制");}
+ const auto destination=transformBounds(transform);if(std::uint64_t(destination.width)*destination.height>16*1024*1024)throw std::length_error("自由瓦片变换超出原生内存预算");
  if(layer().id!=f.layerId||frame().id!=f.frameId||!freeTileSelectionTargetBounds(*this))throw std::logic_error("自由瓦片选区目标已改变");
  const auto tx=std::floor(transform.x),ty=std::floor(transform.y);if(!std::isfinite(tx)||!std::isfinite(ty)||std::abs(tx)>free_tiles::MaxCoordinate||std::abs(ty)>free_tiles::MaxCoordinate)throw std::length_error("自由瓦片选区位置超出限制");const int dx=int(tx)-f.sourceX,dy=int(ty)-f.sourceY;
- auto selected=f.beforeSelection;selected->x+=dx;selected->y+=dy;selected=combineSelection(selected,SelectionMask{0,0,width_,height_,{}},3);
- if(move.placement){
+ auto selected=f.beforeSelection;
+ if(translation){selected->x+=dx;selected->y+=dy;}else selected=transformedSelectionMask(f.source,transform);
+ selected=combineSelection(selected,SelectionMask{0,0,width_,height_,{}},3);
+ if(move.placement&&translation){
   // Same single-Cel preview strategy as previewFreeTileInstanceMove.
   const auto& original=f.beforeCelTimeline->cels;auto after=*std::find_if(original.begin(),original.end(),[&](const auto& c){return c.id==cel().id;});
   for(auto& instance:after.freeTiles->instances)if(std::find(move.instances.begin(),move.instances.end(),instance.id)!=move.instances.end()){const auto x=std::int64_t(instance.x)+dx,y=std::int64_t(instance.y)+dy;if(std::abs(x)>free_tiles::MaxCoordinate||std::abs(y)>free_tiles::MaxCoordinate)throw std::length_error("自由瓦片实例位置超出限制");instance.x=int(x);instance.y=int(y);}
   if(after.freeTiles!=cel().freeTiles){after.surface->pixels=free_tiles::render(*layer().freeTiles,*after.freeTiles,timeline_.state().tilesets,after.surface->width,after.surface->height);timeline_.state_.cels[timeline_.cels_.at(after.id)]=std::move(after);}move.changed=dx||dy;
  }else{
   auto& d=*move.source;PixelRegion sourceBounds;for(int y:{0,d.beforeHeight-1})for(int x:{0,d.beforeWidth-1}){const auto q=free_tiles::transform(d.instance,d.beforeX+x,d.beforeY+y);sourceBounds.include(q.first+d.anchor.x,q.second+d.anchor.y);}
-  const int padding=std::clamp(std::max(width_,height_),16,128),left=std::min({0,sourceBounds.x,int(tx),f.sourceX})-padding,top=std::min({0,sourceBounds.y,int(ty),f.sourceY})-padding;
-  const auto right=std::max({std::int64_t(width_),std::int64_t(sourceBounds.x)+sourceBounds.w,std::int64_t(tx)+f.source.width,std::int64_t(f.sourceX)+f.source.width})+padding,bottom=std::max({std::int64_t(height_),std::int64_t(sourceBounds.y)+sourceBounds.h,std::int64_t(ty)+f.source.height,std::int64_t(f.sourceY)+f.source.height})+padding;
+  const int padding=std::clamp(std::max(width_,height_),16,128),left=std::min({0,sourceBounds.x,destination.x,f.sourceX})-padding,top=std::min({0,sourceBounds.y,destination.y,f.sourceY})-padding;
+  const auto right=std::max({std::int64_t(width_),std::int64_t(sourceBounds.x)+sourceBounds.w,std::int64_t(destination.x)+destination.width,std::int64_t(f.sourceX)+f.source.width})+padding,bottom=std::max({std::int64_t(height_),std::int64_t(sourceBounds.y)+sourceBounds.h,std::int64_t(destination.y)+destination.height,std::int64_t(f.sourceY)+f.source.height})+padding;
   const auto w=right-left,h=bottom-top;if(w<1||h<1||w*h>16*1024*1024)throw std::length_error("自由瓦片源临时画布超出原生内存预算");
   auto raster=std::make_unique<Document>(1,1);raster->width_=int(w);raster->height_=int(h);auto data=raster->timeline_.state();data.canvasWidth=int(w);data.canvasHeight=int(h);auto& surface=*data.cels.front().surface;surface.width=int(w);surface.height=int(h);surface.pixels=std::vector<Pixel>(std::size_t(w*h));auto& pixels=surface.pixels;
   for(int y=0;y<d.beforeHeight;++y)for(int x=0;x<d.beforeWidth;++x){const auto q=free_tiles::transform(d.instance,d.beforeX+x,d.beforeY+y);pixels[std::size_t(q.second+d.anchor.y-top)*w+q.first+d.anchor.x-left]=d.beforePixels[std::size_t(y)*d.beforeWidth+x];}
   if(!f.copy)for(int y=0;y<f.source.height;++y)for(int x=0;x<f.source.width;++x)if(f.source.mask[std::size_t(y)*f.source.width+x])pixels[std::size_t(f.sourceY+y-top)*w+f.sourceX+x-left]=0;
-  if(f.copy||dx||dy)for(int y=0;y<f.source.height;++y)for(int x=0;x<f.source.width;++x){const auto i=std::size_t(y)*f.source.width+x;if(f.source.mask[i]&&(f.source.pixels[i]>>24)){const auto at=std::size_t(int(ty)+y-top)*w+int(tx)+x-left;pixels[at]=brushComposite(pixels[at],f.source.pixels[i],100);}}
+  if(!translation){
+   auto local=transform;local.x-=left;local.y-=top;if(local.flipOriginX)*local.flipOriginX-=left;if(local.flipOriginY)*local.flipOriginY-=top;
+   if(local.quad){auto quad=*local.quad;for(auto& point:quad){point.x-=left;point.y-=top;}local.quad=quad;}
+   if(f.rotSprite&&!move.sampler)move.sampler=std::make_shared<SelectionRotSpriteSource>(f.source);
+   const auto cells=f.rotSprite?rotSpriteSelectionCells(f.source,local,int(w),int(h),*move.sampler):fastSelectionTransformCells(f.source,local,int(w),int(h));
+   for(const auto& cell:cells){const auto at=std::size_t(cell.y)*w+cell.x;pixels[at]=brushComposite(pixels[at],cell.value,100);}
+  }else if(f.copy||dx||dy)for(int y=0;y<f.source.height;++y)for(int x=0;x<f.source.width;++x){const auto i=std::size_t(y)*f.source.width+x;if(f.source.mask[i]&&(f.source.pixels[i]>>24)){const auto at=std::size_t(int(ty)+y-top)*w+int(tx)+x-left;pixels[at]=brushComposite(pixels[at],f.source.pixels[i],100);}}
   else {for(int y=0;y<f.source.height;++y)for(int x=0;x<f.source.width;++x){const auto i=std::size_t(y)*f.source.width+x;if(f.source.mask[i])pixels[std::size_t(f.sourceY+y-top)*w+f.sourceX+x-left]=f.source.pixels[i];}}
-  raster->timeline_=timeline::Timeline(std::move(data));d.raster=std::move(raster);d.origin={left,top};d.scan={0,0,int(w),int(h)};publishFreeTileSourceStroke(d);move.changed=d.beforeWidth!=d.lastWidth||d.beforeHeight!=d.lastHeight||d.beforeX!=d.lastX||d.beforeY!=d.lastY||d.beforePixels!=d.lastPixels;
+  raster->timeline_=timeline::Timeline(std::move(data));d.raster=std::move(raster);d.origin={left,top};d.scan={0,0,int(w),int(h)};// A handle transform edits the primary source even when the mask covers whole instances.
+  // Restore a preceding placement preview only for this Cel; failed publication is atomic.
+  std::optional<DocumentCel> previous;if(move.placement){previous=cel();const auto& original=f.beforeCelTimeline->cels;timeline_.state_.cels[timeline_.cels_.at(previous->id)]=*std::find_if(original.begin(),original.end(),[&](const auto& c){return c.id==previous->id;});}
+  try{publishFreeTileSourceStroke(d);}catch(...){if(previous)timeline_.state_.cels[timeline_.cels_.at(previous->id)]=std::move(*previous);throw;}
+  move.placement=false;move.changed=d.beforeWidth!=d.lastWidth||d.beforeHeight!=d.lastHeight||d.beforeX!=d.lastX||d.beforeY!=d.lastY||d.beforePixels!=d.lastPixels;
  }
- f.transform=transform;f.transform.x=tx;f.transform.y=ty;f.x=int(tx);f.y=int(ty);selection_=std::move(selected);change_={0,0,width_,height_};publishChange();
+ f.transform=transform;if(translation){f.transform.x=tx;f.transform.y=ty;}f.x=int(tx);f.y=int(ty);selection_=std::move(selected);change_={0,0,width_,height_};publishChange();
 }
 bool Document::commitFreeTileSelectionMove(){
  if(!floating_||!floating_->freeTile)return false;auto& f=*floating_;const bool changed=f.freeTile->changed,selectionChanged=!selectionEqual(f.beforeSelection,selection_);if(!changed&&!selectionChanged){floating_.reset();return false;}
  Edit e{{},state_,changed?nextState_:state_};e.documentChanged=changed;e.beforeActive=e.afterActive=f.layerId;e.beforeFrame=e.afterFrame=f.frameId;e.pixelSelectionEdit=true;e.beforePixelsSelection=f.beforeSelection;e.afterPixelsSelection=selection_;
  if(changed&&f.freeTile->placement){const auto& original=f.beforeCelTimeline->cels;e.beforeCels.push_back(*std::find_if(original.begin(),original.end(),[&](const auto& c){return c.id==cel().id;}));e.afterCels.push_back(cel());}
  else if(changed){e.beforeTimeline=*f.beforeCelTimeline;e.afterTimeline=timeline_.state();e.beforeTimelineSelection=e.afterTimelineSelection=f.beforeTimelineSelection;e.beforeSelection=e.afterSelection=f.beforeSelectedFrames;}
- const auto label=f.copy?U"复制选区内容":U"移动选区内容";history_.reserve(position_+1);floating_.reset();pushEdit(std::move(e),label);return changed;
+ const auto label=f.copy?U"复制选区内容":f.transform.angle!=0?U"旋转选区内容":f.transform.width!=f.source.width||f.transform.height!=f.source.height||f.transform.shearX!=0||f.transform.shearY!=0||f.transform.flipHorizontal||f.transform.flipVertical||f.transform.quad?U"变换选区内容":U"移动选区内容";history_.reserve(position_+1);floating_.reset();pushEdit(std::move(e),label);return changed;
 }
 bool Document::commitFreeTileSourceStroke(){
  if(!freeSourceStroke_)return false;auto& d=*freeSourceStroke_;const bool sourceChanged=d.beforeWidth!=d.lastWidth||d.beforeHeight!=d.lastHeight||d.beforeX!=d.lastX||d.beforeY!=d.lastY||d.beforePixels!=d.lastPixels;

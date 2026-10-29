@@ -16,7 +16,7 @@
 
 `canvas-input-selection-begin.ts` 的 `onlySelectedFreeTileInstance` 分派；`canvas-input-free-tile.ts` 的实例平移与松手提交；`useCanvasSelectionTransform.ts` 的源范围与捕获；`tools-selection-transform-translation.ts` 的清除后叠加；`workspace-commands-selection-floating.ts` 及 `workspace-free-tile-transaction.ts` 的确认／取消与历史。
 
-原生仍采用现有 256px 源尺寸、16M 临时像素预算和历史实现，超限拒绝发布，不伪称完全复用旧版性能。缩放、旋转、斜切及多帧自由瓦片变换继续明确标记未迁移。
+原生仍采用现有 256px 源尺寸、16M 临时像素预算和历史实现，超限拒绝发布，不伪称完全复用旧版性能。选区缩放、旋转、斜切已在[后续迁移](free-tile-selection-transforms-20261030.md)接通；多帧自由瓦片变换仍未迁移。
 
 ## 验证
 

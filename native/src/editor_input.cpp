@@ -727,7 +727,6 @@ bool Editor::onProcessMessage(ui::Message* msg) {
 
         // Source content transforms need their own shared-source transaction.
         // Do not let the ordinary raster path consume the derived free-tile cache.
-        if(freeSelection&&!handle.empty()){status_=U"自由瓦片选区缩放、旋转和斜切尚未迁移";refresh();return true;}
         beginAlignmentMove(hit==2 || (copy && hit==1) || !handle.empty());
         if(!handle.empty()){if(document.layer().kind=="tilemap"&&document.tilemapMode()==tiles::Mode::Paint){status_=U"瓦片绘制模式的变换尚未迁移";refresh();return true;}if(!document.beginSelectionContentMove(copy,frameSelectionExplicit_,0,0,p,false,!selectionFreeTransform_&&handle.rfind("rotate-",0)!=0&&handle.rfind("shear-",0)!=0,!selectionFreeTransform_&&handle.rfind("rotate-",0)==0,!selectionFreeTransform_&&handle.rfind("shear-",0)==0)){status_=U"目标图层隐藏或锁定";refresh();return true;}floatingDragging_=true;transformHandle_=handle;transformGestureStart_=*document.floatingTransform();transformPointerStart_=transformCanvasPoint(mouse->position());selectionPivotBeforeGesture_=selectionPivot_;selectionPivotStart_=selectionPivotPoint();selectionMoved_=false;selectionStart_=p;selectionPress_=mouse->position();playing_=false;captureMouse();invalidateRect(canvasViewport());return true;}
 
