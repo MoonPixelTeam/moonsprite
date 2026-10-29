@@ -1,3 +1,4 @@
+#include "free_tile_selection_target.h"
 #include "relative_luminance.h"
 #include "symmetry_content_translation.h"
 #include "mask_resize.h"
@@ -2078,7 +2079,16 @@ bool Document::beginFloatingPaste(const SelectionClipboard& clipboard,int x,int 
  try{moveFloatingPaste(x,y);}catch(...){cancelFloatingPaste();throw;}
  return true;
 }
-bool Document::beginLayerTransform(){if(hasTilemapContent()||hasFreeTileContent())return false;if(!activeMaskId_.empty()){
+bool Document::beginLayerTransform(){
+ if(hasFreeTileContent()){
+  if(layer().kind!="free-tile"||!activeMaskId_.empty()||hasSelectedGroups()||!selectedFrames_.empty())return false;
+  for(const auto& id:timelineSelection_.layers)if(id!=activeLayerId_)return false;
+  for(const auto& id:timelineSelection_.cels){const auto* c=timeline_.findCelById(id);if(!c||c->layerId!=activeLayerId_||c->frameId!=activeFrameId_)return false;}
+  commitFloatingPaste();cancelStroke();cancelGradient();const auto bounds=freeTileSelectionTargetBounds(*this);if(!bounds)return false;
+  auto visible=combineSelection(SelectionMask{bounds->x,bounds->y,bounds->w,bounds->h,{}},SelectionMask{0,0,width_,height_,{}},3);if(!visible)return false;
+  selection_=std::move(visible);return true;
+ }
+ if(hasTilemapContent())return false;if(!activeMaskId_.empty()){
  commitFloatingPaste();cancelStroke();cancelGradient();if(!maskBrushAvailable())return false;const auto& surface=mutableActiveMask()->surface;int l=width_,t=height_,r=-1,b=-1;
  for(int y=0;y<height_;++y)for(int x=0;x<width_;++x)if(raster::readWorld(surface,x,y)>>24){l=std::min(l,x);t=std::min(t,y);r=std::max(r,x);b=std::max(b,y);}if(r<l)return false;selection_=SelectionMask{l,t,r-l+1,b-t+1,{}};return true;
  }

@@ -1,3 +1,4 @@
+#include "free_tile_selection_target.h"
 #include "editor_implementation.h"
 #include "editor.h"
 #include "free_tile_instances_panel.h"
@@ -51,8 +52,17 @@ void Editor::createTilesetPanel(){
  const char* blocked[]{"resizeImage","resizeCanvas","cropCanvas","trimCanvas","trimCurrentFrame","duplicateLayer","createLinkedLayer","mergeLayerDown","mergeSelectedLayers","mergeLayerGroup","mergeVisibleLayers","connectCels","disconnectCels","addFrame","addLinkedFrame","deleteFrame","pasteFrames","pasteCels","flipHorizontal","flipVertical","rotate90","rotate180","rotate270","centerContent","delete","openColorAdjustment","openColorReplacement","generateTransformTween","generateCrossfadeTween"};
  for(auto id:blocked){auto it=menuItems_.find(id);if(it==menuItems_.end())continue;auto previous=it->second->available;const bool paintFlip=std::string(id)=="flipHorizontal"||std::string(id)=="flipVertical";it->second->available=[this,previous,paintFlip]{return (!document.hasTilemapContent()||(paintFlip&&document.paintCellFlipAvailable()))&&(!previous||previous());};}
  // Keep unsupported free-instance operations visibly disabled, using existing entries.
- const std::set<std::string> freeBlocked{"imageResize","canvasResize","cropCanvas","trimCanvas","trimCurrentFrame","duplicateLayer","mergeLayerDown","mergeSelectedLayers","mergeLayerGroup","mergeVisibleLayers","transform","freeTransform","flipHorizontal","flipVertical","rotateContent180","rotateContentCounterClockwise","rotateContentClockwise","centerContentBoth","centerContentHorizontal","centerContentVertical","fillForeground","invertColors","replaceColor","quickAntiAlias","adjustmentColorBalance","adjustmentBrightnessContrast","adjustmentHueSaturation","adjustmentCurves","gradientMap","convolution","lcdScreen","splitLayerStyles","pasteToCurrentCell"};
+ const std::set<std::string> freeBlocked{"imageResize","canvasResize","cropCanvas","trimCanvas","trimCurrentFrame","duplicateLayer","mergeLayerDown","mergeSelectedLayers","mergeLayerGroup","mergeVisibleLayers","flipHorizontal","flipVertical","rotateContent180","rotateContentCounterClockwise","rotateContentClockwise","centerContentBoth","centerContentHorizontal","centerContentVertical","fillForeground","invertColors","replaceColor","quickAntiAlias","adjustmentColorBalance","adjustmentBrightnessContrast","adjustmentHueSaturation","adjustmentCurves","gradientMap","convolution","lcdScreen","splitLayerStyles","pasteToCurrentCell"};
  for(auto& [id,item]:menuItems_)if(freeBlocked.count(id)||id.rfind("filter:",0)==0){auto previous=item->available;item->available=[this,previous]{return !document.hasFreeTileContent()&&(!previous||previous());};}
+ // Legacy beginLayerTransform/beginFreeTransform: single editable source target.
+ for(const auto* id:{"transform","freeTransform"}){auto found=menuItems_.find(id);if(found==menuItems_.end())continue;auto previous=found->second->available;const bool free=std::string(id)=="freeTransform";found->second->available=[this,previous,free]{
+  if(!document.hasFreeTileContent())return !previous||previous();
+  if(!documentOpen_||homeOpen_||pending_!=Pending::None||historyGestureBusy()||frameSelectionExplicit_||!freeTileSelectionTargetBounds(document)||document.hasSelectedGroups())return false;
+  for(const auto& layer:document.timelineSelection().layers)if(layer!=document.layer().id)return false;
+  for(const auto& id:document.timelineSelection().cels){const auto* c=document.timeline().findCelById(id);if(!c||c->layerId!=document.layer().id||c->frameId!=document.frame().id)return false;}
+  if(free)return bool(document.selection());
+  const auto b=*freeTileSelectionTargetBounds(document);return b.x<document.width()&&b.y<document.height()&&std::int64_t(b.x)+b.w>0&&std::int64_t(b.y)+b.h>0;
+ };}
  // Image and instance paste both use the legacy free-tile transactions.
  // Paste targets any editable free-tile cel, independent of the instance view.
  // Canvas pixel selection is copied unless the instance list owns clipboard scope.

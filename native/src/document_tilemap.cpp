@@ -1030,6 +1030,13 @@ void Document::transformFreeTileSelectionMove(const SelectionTransform& transfor
  for(auto uv:std::array<TransformPoint,4>{{{0,0},{1,0},{1,1},{0,1}}}){const auto point=transformPoint(transform,uv.x,uv.y);if(!std::isfinite(point.x)||!std::isfinite(point.y)||std::abs(point.x)>free_tiles::MaxCoordinate||std::abs(point.y)>free_tiles::MaxCoordinate)throw std::length_error("自由瓦片选区边界超出限制");}
  const auto destination=transformBounds(transform);if(std::uint64_t(destination.width)*destination.height>16*1024*1024)throw std::length_error("自由瓦片变换超出原生内存预算");
  if(layer().id!=f.layerId||frame().id!=f.frameId||!freeTileSelectionTargetBounds(*this))throw std::logic_error("自由瓦片选区目标已改变");
+ // Legacy beginFreeTransform changes session geometry only. Installing the
+ // initial rectangle must not crop transparent source margins or edit caches.
+ if(transform.quad&&!move.source->published){
+  const std::array<TransformPoint,4> original{{{double(f.sourceX),double(f.sourceY)},{double(f.sourceX+f.source.width),double(f.sourceY)},{double(f.sourceX+f.source.width),double(f.sourceY+f.source.height)},{double(f.sourceX),double(f.sourceY+f.source.height)}}};bool identity=true;
+  for(int i=0;i<4;++i)identity=identity&&(*transform.quad)[i].x==original[i].x&&(*transform.quad)[i].y==original[i].y;
+  if(identity){move.placement=false;f.transform=transform;return;}
+ }
  const auto tx=std::floor(transform.x),ty=std::floor(transform.y);if(!std::isfinite(tx)||!std::isfinite(ty)||std::abs(tx)>free_tiles::MaxCoordinate||std::abs(ty)>free_tiles::MaxCoordinate)throw std::length_error("自由瓦片选区位置超出限制");const int dx=int(tx)-f.sourceX,dy=int(ty)-f.sourceY;
  auto selected=f.beforeSelection;
  if(translation){selected->x+=dx;selected->y+=dy;}else selected=transformedSelectionMask(f.source,transform);
