@@ -1666,7 +1666,7 @@ bool Document::flipPaintCellSelection(bool horizontal){
  // legacy Paint flip history contains cell edits only; the flipped mask stays through Undo/Redo.
  const auto label=horizontal?U"水平翻转瓦片选区":U"垂直翻转瓦片选区";history_.reserve(position_+1);edit.label.reserve(32);applyEdit(edit,true);selection_=std::move(after);change_={0,0,width_,height_};publishChange();pushEdit(std::move(edit),label);return true;
 }
-bool Document::flipContent(bool horizontal){if(layer().kind=="tilemap"&&tileSelection_.mode==tiles::Mode::Paint)return flipPaintCellSelection(horizontal);if(hasTilemapContent()||hasFreeTileContent())return false;if(!activeMaskId_.empty()&&!floating_)return selection_?transformMaskImmediate(true,horizontal,0):false;
+bool Document::flipContent(bool horizontal){if(layer().kind=="free-tile"&&activeMaskId_.empty())return flipFreeTileContent(horizontal);if(layer().kind=="tilemap"&&tileSelection_.mode==tiles::Mode::Paint)return flipPaintCellSelection(horizontal);if(hasTilemapContent()||hasFreeTileContent())return false;if(!activeMaskId_.empty()&&!floating_)return selection_?transformMaskImmediate(true,horizontal,0):false;
  const auto commandLayers=selectedLayerIdsWithGroups();
  if(floating_){
   auto& f=*floating_;std::size_t extra=0;for(const auto& target:f.targets){floatingAddBytes(extra,std::uint64_t(target.source.pixels.size())*5);if(!target.originalSource)floatingAddBytes(extra,std::uint64_t(target.source.pixels.size())*5);}floatingAddBytes(extra,std::uint64_t(f.source.pixels.size())*5);checkFloatingBudget(f,extra);

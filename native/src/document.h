@@ -612,6 +612,7 @@ private:
   void publishFreeTileSourceStroke();
   void publishFreeTileSourceStroke(FreeTileSourceStroke&);
   struct FreeTileSelectionMove;
+  bool flipFreeTileContent(bool);
   bool beginFreeTileSelectionMove(bool,bool,int,int);
   void transformFreeTileSelectionMove(const SelectionTransform&);
   bool commitFreeTileSelectionMove();
