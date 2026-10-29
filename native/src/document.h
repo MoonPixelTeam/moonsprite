@@ -603,6 +603,7 @@ private:
   // Legacy free-tile-edit.ts uses a temporary ordinary raster, never the cel cache.
   struct FreeTileSourceStroke;
   std::shared_ptr<FreeTileSourceStroke> freeSourceStroke_;
+  bool fillFreeTileSourcePixels(Point,Pixel,WandOptions,const PatternFillOptions*);
   Document* freeTileSourceStrokeDocument()const;
   Point freeTileSourceStrokePoint(Point)const;
   bool beginFreeTileSourceStroke(Point,Pixel,BrushOptions,const PatternBrush*,double,const std::unordered_map<std::size_t,Pixel>*,bool,bool=false);

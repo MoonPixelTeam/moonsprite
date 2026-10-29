@@ -108,6 +108,7 @@ bool Document::fillSparse(Point point,Pixel color,WandOptions options,const Patt
 bool Document::fillPixels(Point point,Pixel color,WandOptions options){
  if(!activeMaskId_.empty())return fillAttachedMask(point,color,options,nullptr);
  if(layer().kind=="tilemap")return fillTilemapPixels(point,color,options,nullptr);
+ if(layer().kind=="free-tile")return fillFreeTileSourcePixels(point,color,options,nullptr);
  {const auto r=timeline_.resolveSurface(cel().id);if(r.surface&&!raster::fullCanvas(*r.surface,width_,height_))return fillSparse(point,color,options);}
  if(symmetryHas(symmetryAxes)&&!fillSymmetryDispatch_){const auto start=position_;const auto selected=selectedFrames_;const auto axes=symmetryAxes;symmetryAxes={};fillSymmetryDispatch_=true;const auto oldGrouping=groupingHistory_;groupingHistory_=true;try{for(auto p:symmetryPoints({point.x,point.y},width_,height_,axes,symmetryCenter()))fillPixels({p.x,p.y},color,options);}catch(...){groupingHistory_=oldGrouping;fillSymmetryDispatch_=false;symmetryAxes=axes;while(position_>start)undo();throw;}groupingHistory_=oldGrouping;fillSymmetryDispatch_=false;symmetryAxes=axes;groupEdits(start,selected);return position_>start;}
  commitFloatingPaste();cancelStroke();if(!rasterToolsAvailable()||point.x<0||point.y<0||point.x>=width_||point.y>=height_||(selection_&&!selectionContains(selection_,point.x,point.y)))return false;
@@ -116,6 +117,7 @@ bool Document::fillPixels(Point point,Pixel color,WandOptions options){
 bool Document::fillPatternPixels(Point point,Pixel color,const PatternFillOptions& pattern,WandOptions options){
  if(!activeMaskId_.empty())return fillAttachedMask(point,color,options,&pattern);
  if(layer().kind=="tilemap")return fillTilemapPixels(point,color,options,pattern.brushes.empty()&&pattern.texture==FillTexture::Solid?nullptr:&pattern);
+ if(layer().kind=="free-tile")return fillFreeTileSourcePixels(point,color,options,&pattern);
  if(pattern.brushes.empty()&&pattern.texture==FillTexture::Solid)return fillPixels(point,color,options);
  {const auto r=timeline_.resolveSurface(cel().id);if(r.surface&&!raster::fullCanvas(*r.surface,width_,height_))return fillSparse(point,color,options,&pattern);}
  if(symmetryHas(symmetryAxes)&&!fillSymmetryDispatch_){const auto start=position_;const auto selected=selectedFrames_;const auto axes=symmetryAxes;symmetryAxes={};fillSymmetryDispatch_=true;const auto oldGrouping=groupingHistory_;groupingHistory_=true;try{for(auto p:symmetryPoints({point.x,point.y},width_,height_,axes,symmetryCenter()))fillPatternPixels({p.x,p.y},color,pattern,options);}catch(...){groupingHistory_=oldGrouping;fillSymmetryDispatch_=false;symmetryAxes=axes;while(position_>start)undo();throw;}groupingHistory_=oldGrouping;fillSymmetryDispatch_=false;symmetryAxes=axes;groupEdits(start,selected);return position_>start;}

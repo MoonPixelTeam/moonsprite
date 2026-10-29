@@ -878,6 +878,24 @@ bool Document::beginFreeTileSourceStroke(Point point,Pixel color,BrushOptions br
  if(initial)edit.stamp(local.x,local.y);projectStrokeStarted_=std::chrono::steady_clock::now();freeSourceStroke_=std::move(d);
  try{publishFreeTileSourceStroke();}catch(...){cancelFreeTileSourceStroke();throw;}return true;
 }
+// Legacy beginFreeTileEdit(fill): selection ?? transformed sourceRegion,
+// fill immediately, then publish and commit the existing shared-source edit.
+bool Document::fillFreeTileSourcePixels(Point point,Pixel color,WandOptions options,const PatternFillOptions* pattern){
+ if(active()||freeTilePaintMode()||!activeMaskId_.empty()||layer().kind!="free-tile")return false;
+ const bool patterned=pattern&&(!pattern->brushes.empty()||pattern->texture!=FillTexture::Solid);
+ HistoryLabelScope label(*this,patterned?U"笔刷填充":options.contiguous?U"连续填充":U"不连续填充");
+ try{
+  if(!beginFreeTileSourceStroke(point,color,{},nullptr,0,nullptr,false))return false;
+  auto& d=*freeSourceStroke_;auto& raster=*d.raster;
+  const auto local=freeTileSourceStrokePoint(point);raster.cancelStroke();
+  if(!raster.selection_)raster.selection_=SelectionMask{d.scan.x,d.scan.y,d.scan.w,d.scan.h,{}};
+  // The legacy source fill passes no symmetry axes; the temporary source is
+  // also its visible-layer reference. Reuse the existing fill implementation.
+  const bool changed=pattern?raster.fillPatternPixels(local,color,*pattern,options):raster.fillPixels(local,color,options);
+  if(!changed){cancelFreeTileSourceStroke();return false;}
+  publishFreeTileSourceStroke();return commitFreeTileSourceStroke();
+ }catch(...){cancelFreeTileSourceStroke();throw;}
+}
 bool Document::paintFreeTileSourceLine(Point from,Point to,Pixel color,BrushOptions brush,const PatternBrush* image,double angle,std::optional<BrushPathPoint> dynamics,Pixel gradientStart,int gradientDither,bool balanced){
  if(active()||!activeMaskId_.empty()||layer().kind!="free-tile"||freeTilePaintMode())return false;
  // Legacy beginLineConnection prepares the source at the clicked endpoint,

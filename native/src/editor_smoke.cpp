@@ -2810,6 +2810,11 @@ void Editor::smokeLayerContext(const std::filesystem::path& directory) {
     const auto replaceHistory=document.historyPosition();sourcePointer(ui::kMouseDownMessage,editAt,ui::kKeyNoneModifier,ui::kButtonRight);sourcePointer(ui::kMouseUpMessage,editAt,ui::kKeyNoneModifier,ui::kButtonRight);
     require(!document.active()&&!hasCapture()&&document.historyPosition()==replaceHistory+1&&document.timeline().state().tilesets.front().pixels==std::vector<Pixel>({0xff998877,ink_,ink_}),"Actual source right eraser replaces foreground only");
     document.undo();require(document.timeline().state().tilesets.front().pixels==std::vector<Pixel>(3,ink_),"Actual source replacement Undo");eraser_=false;
+    {const auto beforeFill=document.timeline().state().tilesets.front().pixels;const auto history=document.historyPosition();const auto pattern=fillPattern_;const auto options=fillOptions_;fillPattern_={};fillOptions_={};
+     require(isToolAvailableForSession("fill.bucket")&&!isToolAvailableForSession("fill.gradient"),"Source Edit enables bucket without unported gradient");useFillTool();ink_=0xffc0ffee;refresh();
+     sourcePointer(ui::kMouseDownMessage,editAt);sourcePointer(ui::kMouseUpMessage,editAt);require(!document.active()&&!hasCapture()&&document.historyPosition()==history+1&&document.timeline().state().tilesets.front().pixels==std::vector<Pixel>(3,ink_),"Actual source bucket click fills source and releases capture");
+     document.undo();require(document.timeline().state().tilesets.front().pixels==beforeFill,"Actual source bucket undo");document.redo();require(document.timeline().state().tilesets.front().pixels==std::vector<Pixel>(3,ink_),"Actual source bucket redo");document.undo();fillPattern_=pattern;fillOptions_=options;runShortcutCommand("tool.pencil");
+    }
     setFreeTileInstancePanelLayout(false,false);
     // Integrated free-instance view is entered through the real layer context.
     document.setFreeTilePaintMode(true);for(Point p:std::array<Point,2>{{{1,1},{6,1}}}){require(document.beginFreeTilePlacement(p)&&document.commitFreeTilePlacement(),"Instance list fixture placement");}document.setFreeTilePaintMode(false);
