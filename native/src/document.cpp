@@ -1828,7 +1828,23 @@ bool Document::fillSelectionOrCanvas(Pixel color){if(hasTilemapContent()||hasFre
  if(edit.children.empty())return false;
  history_.reserve(position_+1);change_={};applyEdit(edit,true);publishChange();pushEdit(std::move(edit),selection_?U"填充选区前景色":U"填充画布前景色");return true;
 }
-bool Document::deleteSelectedPixels(){if(hasFreeTileContent())return false;if(!activeMaskId_.empty())return deleteMaskSelection();
+bool Document::deleteSelectedPixels(){if(hasFreeTileContent()){
+ // Legacy deleteFreeTileSourceSelectionInSession clears the primary shared
+ // source in instance world coordinates; never erase a derived Cel cache.
+ if(active()||!selection_||!activeMaskId_.empty()||layer().kind!="free-tile"||freeTilePaintMode()||!layer().freeTiles||!cel().freeTiles||!cel().surface||layerEffectivelyLocked(layer()))return false;
+ const auto primary=primaryFreeTileInstance();const auto instance=std::find_if(cel().freeTiles->instances.begin(),cel().freeTiles->instances.end(),[&](const auto& i){return i.id==primary;});if(instance==cel().freeTiles->instances.end()||!instance->visible||instance->locked)return false;
+ const auto& sourceId=instance->sourceId.empty()?instance->tileId:instance->sourceId;const auto source=std::find_if(layer().freeTiles->sources.begin(),layer().freeTiles->sources.end(),[&](const auto& s){return s.id==sourceId||s.tilesetId==sourceId;});if(source==layer().freeTiles->sources.end()||!source->visible||source->locked)return false;
+ const auto resource=std::find_if(timeline_.state().tilesets.begin(),timeline_.state().tilesets.end(),[&](const auto& t){return t.id==source->tilesetId;});if(resource==timeline_.state().tilesets.end())return false;
+ const auto pixels=tiles::readTile(*resource,0);const Point anchor{cel().surface->offsetX+instance->x,cel().surface->offsetY+instance->y};PixelRegion content;
+ for(int y=0;y<resource->tileHeight;++y)for(int x=0;x<resource->tileWidth;++x)if(pixels[std::size_t(y)*resource->tileWidth+x]>>24){auto q=free_tiles::transform(*instance,x+source->offsetX,y+source->offsetY);content.include(q.first+anchor.x,q.second+anchor.y);}if(content.empty())return false;
+ SelectionClipboard clear;clear.width=content.w;clear.height=content.h;clear.pixels.resize(std::size_t(content.w)*content.h);clear.mask.resize(clear.pixels.size());bool changed=false;
+ for(int y=0;y<resource->tileHeight;++y)for(int x=0;x<resource->tileWidth;++x){auto q=free_tiles::transform(*instance,x+source->offsetX,y+source->offsetY);const int px=q.first+anchor.x,py=q.second+anchor.y;if(px<content.x||py<content.y||px>=content.x+content.w||py>=content.y+content.h||!selectionContains(selection_,px,py))continue;clear.mask[std::size_t(py-content.y)*content.w+px-content.x]=1;changed=changed||pixels[std::size_t(y)*resource->tileWidth+x]!=0;}if(!changed)return false;
+ // Reuse the image-paste source adapter in an isolated candidate; source delete
+ // preserves instance/source selection instead of applying paste session changes.
+ Document draft(1,1);draft.width_=width_;draft.height_=height_;draft.timeline_=timeline_;draft.activeLayerId_=activeLayerId_;draft.activeFrameId_=activeFrameId_;draft.tileSelection_=tileSelection_;draft.freeInstanceSelected_=freeInstanceSelected_;draft.freeInstancePrimary_=freeInstancePrimary_;draft.freeInstanceAnchor_=freeInstanceAnchor_;draft.freeInstanceSelectionFrame_=freeInstanceSelectionFrame_;draft.freeInstanceViewLayer_=freeInstanceViewLayer_;
+ if(!draft.pasteFreeTilePixels(clear,{content.x,content.y})||draft.historyPosition()==0)return false;
+ Edit edit{{},state_,nextState_};edit.beforeTimeline=timeline_.state();edit.afterTimeline=std::move(draft.timeline_.state_);edit.beforeActive=edit.afterActive=activeLayerId_;edit.beforeFrame=edit.afterFrame=activeFrameId_;history_.reserve(position_+1);applyEdit(edit,true);change_={0,0,width_,height_};publishChange();pushEdit(std::move(edit),U"删除选区");selection_.reset();return true;
+ }if(!activeMaskId_.empty())return deleteMaskSelection();
  // legacy deleteSelection resolves selection-origin pending pixels first; clipboard-origin cancels.
  // Frozen Create/Edit/Hybrid modes share legacy copy/cancel/commit routing; Paint compound remains unmigrated.
  if(floating_&&floating_->tilemap&&(tileSelection_.mode!=floating_->tilemapMode||(floating_->tilemapMode!=tiles::Mode::Create&&floating_->tilemapMode!=tiles::Mode::Edit&&floating_->tilemapMode!=tiles::Mode::Hybrid)))return false;
@@ -1895,7 +1911,7 @@ bool Document::deleteSelectedPixels(){if(hasFreeTileContent())return false;if(!a
  if(edit.children.empty())return false;
  history_.reserve(position_+1);change_={};applyEdit(edit,true);publishChange();pushEdit(std::move(edit),U"删除选区");return true;
 }
-bool Document::cutPixels(std::optional<SelectionClipboard>& clipboard){if(hasFreeTileContent())return false;if(hasTilemapContent()&&!tilemapSelectionCutAvailable())return false;if(!selection_)return false;clipboard=copyPixels();const bool deleteOriginal=!floating_ || (!floating_->clipboard && !floating_->copy);if(floating_)cancelFloatingPaste();if(deleteOriginal)deleteSelectedPixels();selection_.reset();return bool(clipboard);}
+bool Document::cutPixels(std::optional<SelectionClipboard>& clipboard){const bool freeSource=layer().kind=="free-tile"&&activeMaskId_.empty();if(hasFreeTileContent()&&!freeSource)return false;if(hasTilemapContent()&&!freeSource&&!tilemapSelectionCutAvailable())return false;if(!selection_)return false;clipboard=copyPixels();const bool deleteOriginal=!floating_ || (!floating_->clipboard && !floating_->copy);if(floating_)cancelFloatingPaste();if(deleteOriginal)deleteSelectedPixels();selection_.reset();return bool(clipboard);}
 bool Document::floatingSymmetryRotation(const FloatingPaste& f,const SelectionTransform& t)const{return (f.symmetryRotation||f.symmetryShear)&&f.beforeSelection&&!f.clipboard&&!f.tilemap&&f.maskId.empty()&&symmetryHas(f.symmetryAxes)&&(f.symmetryShear||(t.shearX==0&&t.shearY==0))&&!t.quad;}
 void Document::configureSymmetryContentRotation(FloatingPaste& f){
  f.symmetryShear=false;f.symmetryRotation=false;if(f.clipboard||f.tilemap||!f.maskId.empty()||!f.beforeSelection)return;f.symmetryRotation=symmetryHas(symmetryAxes);f.symmetryScale=false;f.symmetryAxes=symmetryAxes;f.symmetryCenter=symmetryCenter();for(auto& target:f.targets)target.symmetryRotation.reset();
