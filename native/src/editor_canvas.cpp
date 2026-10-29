@@ -116,7 +116,12 @@ void Editor::curveTick(){
 }
 void Editor::finishCurveShape(){
  if(!shapeDragging_||shapeSpec_.kind!=ShapeKind::Curve||curveEndpoint_)return;
- try{const auto points=bezierCurvePixelPoints(shapeSpec_.start,curveControls_,shapeSpec_.end,brushFeedback_.brushProfiles_[0].perfectPixels);auto brush=brushFeedback_.brushProfiles_[0];brush.ink=currentInkMode();document.cancelShapePreview();shapeDragging_=shapeRequest_=false;Document::HistoryLabelScope label(document,U"绘制曲线");document.paintGeometricBrushPath(points,shapeColor_,brush,pencilImageBrush_?&*pencilImageBrush_:nullptr,pencilImageBrushAngle_);}
+ try{const auto points=bezierCurvePixelPoints(shapeSpec_.start,curveControls_,shapeSpec_.end,brushFeedback_.brushProfiles_[0].perfectPixels);auto brush=brushFeedback_.brushProfiles_[0];brush.ink=currentInkMode();Document::HistoryLabelScope label(document,U"绘制曲线");
+ if(document.layer().kind=="free-tile"&&document.activeMaskId().empty()){
+  // Keep the source target captured on initial press and commit the same
+  // source-local brush path used by preview (legacy commitBrushPath).
+  if(document.updateGeometricBrushPreview(points,shapeColor_,brush,pencilImageBrush_?&*pencilImageBrush_:nullptr,pencilImageBrushAngle_))document.commitShapePreview();else document.cancelShapePreview();
+ }else{document.cancelShapePreview();document.paintGeometricBrushPath(points,shapeColor_,brush,pencilImageBrush_?&*pencilImageBrush_:nullptr,pencilImageBrushAngle_);}shapeDragging_=shapeRequest_=false;}
  catch(const std::exception& e){document.cancelStroke();status_=U"曲线失败："+unicodeText(e.what());}
  shapeDragging_=shapeRequest_=false;curveControls_.clear();if(hasCapture())releaseMouse();refresh();
 }
@@ -126,7 +131,7 @@ void Editor::shapeTick(){if(shapeDragging_&&shapeDrawingAnchor_)shapeSpec_.bound
  document.updateGeometricBrushPreview(points,shapeColor_,shapeSpec_.brush,pencilImageBrush_?&*pencilImageBrush_:nullptr,pencilImageBrushAngle_);
 }else document.updateShapePreview(shapeSpec_,shapeColor_);invalidateRect(canvasViewport());}catch(const std::exception& e){document.cancelShapePreview();shapeDragging_=shapeRequest_=false;if(hasCapture())releaseMouse();status_=U"形状失败："+unicodeText(e.what());refresh();}}}
 
-void Editor::useShapeTool(ShapeKind kind){if(kind==ShapeKind::Curve&&document.activeMaskId().empty()&&document.layer().kind=="free-tile")return;if(document.activeMaskId().empty()&&document.layer().kind=="tilemap"&&document.tilemapMode()==tiles::Mode::Paint){status_=U"瓦片绘制模式不支持此工具，请切换像素模式";refresh();return;}if(gradientPending_ || gradientDragging_ || selectionDragging_ || floatingDragging_ || shapeDragging_)return;document.commitFloatingPaste();cancelStroke();liquifyTool_=false;liquifyResetPosition_.reset();smoothTool_=false;airbrushTool_=false;textTool_=false;moveTool_=false;shapeSpec_.kind=kind;shapeTool_=true;eyedropperTool_=false;navigation_.zoomTool_=false;selectionTool_=gradientTool_=fillTool_=handTool_=eraser_=false;playing_=false;toolRowScroll_=0;refresh();}
+void Editor::useShapeTool(ShapeKind kind){if(document.activeMaskId().empty()&&document.layer().kind=="tilemap"&&document.tilemapMode()==tiles::Mode::Paint){status_=U"瓦片绘制模式不支持此工具，请切换像素模式";refresh();return;}if(gradientPending_ || gradientDragging_ || selectionDragging_ || floatingDragging_ || shapeDragging_)return;document.commitFloatingPaste();cancelStroke();liquifyTool_=false;liquifyResetPosition_.reset();smoothTool_=false;airbrushTool_=false;textTool_=false;moveTool_=false;shapeSpec_.kind=kind;shapeTool_=true;eyedropperTool_=false;navigation_.zoomTool_=false;selectionTool_=gradientTool_=fillTool_=handTool_=eraser_=false;playing_=false;toolRowScroll_=0;refresh();}
 
 void Editor::gradientColors(){gradientSpec_.first=gradientRight_?document.palette().secondary:ink_;gradientSpec_.last=gradientRight_?ink_:document.palette().secondary;gradientSpec_.stops=gradientFreeform_?gradientStops_:std::vector<GradientStop>{};if(gradientRight_)for(auto& stop:gradientSpec_.stops)stop.position=1-stop.position;}
 
