@@ -5,6 +5,7 @@
 #include "free_tile_instances_panel.h"
 
 namespace moon::editor {
+std::string textBoxPointerHit(const Document&,const Skin&,const gfx::Rect&,double,Point,gfx::Point);
 bool Editor::processAirbrushInput(ui::Message* msg){
  if(!airbrushTool_)return false;
  if(msg->type()!=ui::kMouseDownMessage&&msg->type()!=ui::kMouseMoveMessage&&msg->type()!=ui::kMouseUpMessage)return false;
@@ -723,6 +724,12 @@ const char* Editor::selectionCursorAt(gfx::Point position) const {
   }
 
 const char* Editor::cursorAt(gfx::Point position) const {InteractionScope interactionScope(6,"cursor");
+    const auto textResizeCursor=[&](const std::string& hit){
+      if(hit.empty()||hit=="inside")return "move";
+      const auto direction=viewRotation_.forward({hit.find('w')!=std::string::npos?-1.:hit.find('e')!=std::string::npos?1.:0.,hit.find('n')!=std::string::npos?-1.:hit.find('s')!=std::string::npos?1.:0.},{0,0});
+      const int bucket=(int(std::floor(std::atan2(direction.y,direction.x)*180/3.141592653589793/45+.5))%4+4)%4;
+      return bucket==0?"ew-resize":bucket==1?"nwse-resize":bucket==2?"ns-resize":"nesw-resize";
+    };
     if(referenceSamplingCursor_)return "eyedropper";
 
     if(const auto capture=ui::Manager::getDefault()->getCapture();capture && capture!=this){
@@ -738,6 +745,8 @@ const char* Editor::cursorAt(gfx::Point position) const {InteractionScope intera
       if(hasCapture() && sizeDrag_==SizeDrag::ModalMove)return "move";
       return panelResizeCursor(panelResizeEdges(dialogDisplayBounds(),position));
     }
+    if(textTransforming_)return textResizeCursor(textHandle_);
+    if(textCreating_)return "text";
     if(panelScrollDrag_.active())return "grabbing";
 
     if(panelScrollSpace_ && pending_==Pending::None)for(const auto& region:scrollDragRegions_)if(region.bounds().contains(position)){const auto maximum=region.target.maximum();if(maximum.x>0 || maximum.y>0)return "grab";}
@@ -851,6 +860,11 @@ const char* Editor::cursorAt(gfx::Point position) const {InteractionScope intera
 
     const bool inDocument=point.x>=0 && point.y>=0 && point.x<document.width() && point.y<document.height();
 
+    if(textTool_){
+      const auto hit=textBoxPointerHit(document,skin_,canvas_,canvasScale(),point,canvasUnrotatedDisplay(position));
+      if(!hit.empty())return textResizeCursor(hit);
+      return "text";
+    }
     if(inDocument && !(document.rasterToolsAvailable()||document.maskBrushAvailable()))return "unavailable";
 
     // Current cursor color feedback follows the active ordinary layer; legacy's
