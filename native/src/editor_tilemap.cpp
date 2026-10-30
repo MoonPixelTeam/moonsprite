@@ -74,10 +74,15 @@ void Editor::createTilesetPanel(){
  // Image and instance paste both use the legacy free-tile transactions.
  // Paste targets any editable free-tile cel, independent of the instance view.
  // Canvas pixel selection is copied unless the instance list owns clipboard scope.
- for(const auto* id:{"copy","cut","paste"}){auto found=menuItems_.find(id);if(found==menuItems_.end())continue;auto previous=found->second->available;const bool paste=std::string(id)=="paste";found->second->available=[this,previous,paste]{
+ for(const auto* id:{"copy","cut","paste"}){auto found=menuItems_.find(id);if(found==menuItems_.end())continue;auto previous=found->second->available;const bool paste=std::string(id)=="paste",cut=std::string(id)=="cut";found->second->available=[this,previous,paste,cut]{
   if(paletteFocused_||!document.hasFreeTileContent())return !previous||previous();
   if(document.active())return false;
   if(paste&&layerClipboardSnapshot_)return !previous||previous();
+  if(!document.selection()&&document.activeMaskId().empty()&&celClipboardContext()&&!document.freeTileInstanceView()){
+   if((paste||cut)&&document.layerEffectivelyLocked(document.layer()))return false;
+   if(paste){if(!hasApplicationCelClipboard()||applicationCelSelectionOnly())return false;if(celClipboardSnapshot_.sourceIdentity!=document.identity()&&std::any_of(celClipboardSnapshot_.items.begin(),celClipboardSnapshot_.items.end(),[](const auto& item){return item.cel.freeTiles.has_value();}))return false;}
+   return !previous||previous();
+  }
   if(paste){if(document.layer().kind!="free-tile"||!document.layer().freeTiles||!document.cel().freeTiles||!document.activeMaskId().empty()||document.layerEffectivelyLocked(document.layer()))return false;}
   else if(document.selection()&&!freeTileInstancesPanel_->clipboardScope()){if(document.layer().kind!="free-tile"||!document.activeMaskId().empty()||!pixelClipboardContext())return false;}
   else if(!document.freeTileInstanceView()||document.selectedFreeTileInstances().empty()){if(document.freeTileInstanceView()||celClipboardContext()||frameSelectionExplicit_||!document.activeMaskId().empty())return false;}

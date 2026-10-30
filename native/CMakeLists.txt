@@ -455,9 +455,9 @@ add_test(NAME extension-host-lifecycle COMMAND extension-host-lifecycle-tests)
 add_executable(cel-selection-clipboard-tests tests/cel_selection_clipboard_test.cpp)
 target_link_libraries(cel-selection-clipboard-tests PRIVATE moon-core)
 if(MSVC)
-  # Existing test main probes 0x1182F0 bytes before its first fixture.
-  # Match the core fixture reserve; production keeps the default stack.
-  target_link_options(cel-selection-clipboard-tests PRIVATE /STACK:2097152)
+  # Large existing main and nested oracle fixtures exceed the former 2MiB
+  # test reserve (0xC00000FD before assertions). Production keeps its default.
+  target_link_options(cel-selection-clipboard-tests PRIVATE /STACK:8388608)
 endif()
 add_test(NAME cel-selection-clipboard COMMAND cel-selection-clipboard-tests)
 
