@@ -1760,3 +1760,10 @@ Paint／无主选实例的源像素删除仍未开放，剪切在这些场景只
 已接通含自由／网格瓦片工程的现有Cel删除、所选帧删除路由。删除与Cut共用既有特殊图层事务，Delete不复制载荷；保留共享源，删除帧时承接蒙版、循环段与最后一帧保护。普通RGBA分支只移至共同实现文件。来源、适配和剩余限制见[专项记录](free-tile-timeline-delete-20261030.md)。
 
 实际完成：free-tile-project-tests、moon-core-tests通过；唯一正式Release程序构建通过；--free-tile-transform-check退出0，实际编辑菜单Cel／帧Delete、撤销、资源与剪贴板检查通过，既有Copy/Cut/Paste检查通过。来源登记覆盖515文件、快照核对通过；git diff --check通过。本批没有新增视觉素材，未做截图外观或长期性能验收，不代表全部功能迁移完成。
+
+
+## 2026-10-30：自由／网格瓦片新增帧与空白帧
+
+接通已有新增帧、空白帧以及Alt+N、Alt+B。复用既有帧／Cel增量结构历史：复制当前帧实例／格子并共享原资源，保留时长及停用；空白100ms且保留特殊Cel尺寸、偏移与网格模板。图层／组蒙版、自动层蒙版继承与循环段延伸按旧版承接。需要自由Cel自动链接的工程在变更前明确拒绝。范围与适配见[专项记录](free-tile-frame-creation-20261030.md)。
+
+已执行：free-tile-project-tests、moon-core-tests通过；唯一正式Release程序构建通过；--free-tile-transform-check退出0，实际Alt+N／Alt+B及撤销、资源保留通过，原整层／Cel／帧剪贴板和删除检查通过。来源覆盖515文件及快照核对、git diff --check通过。未新增素材／布局，不报告截图或长期性能验收；整体迁移仍未完成。
