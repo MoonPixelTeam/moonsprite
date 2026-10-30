@@ -41,6 +41,20 @@ public:
  key(ui::kKeyY,ui::kKeyCtrlModifier);check(value_.text==u"A\U0001f600BCxy","Local redo");
  text_->setSelectionRange(1,2);key(ui::kKeyBackspace,ui::kKeyNoneModifier);check(value_.text==u"ABCxy","Unicode deletion");key(ui::kKeyZ,ui::kKeyCtrlModifier);check(value_.text==u"A\U0001f600BCxy"&&text_->selectionRange()==std::pair<int,int>{1,2},"Local undo restores selection");
  key(ui::kKeyNil,ui::kKeyNoneModifier,'q');check(!text_->redoLocal(),"New edit must clear redo");
+ // Drive the same key handler used by both text and layer-property inputs.
+ text_->setValue(U"ABCDE\nx\nABCDE");
+ auto at=[&](int a,int b){check(text_->selectionRange()==std::pair<int,int>{a,b},"Text keyboard selection position");};
+ text_->setSelectionRange(1,4);key(ui::kKeyLeft,ui::kKeyNoneModifier);at(1,1);
+ text_->setSelectionRange(4,1);key(ui::kKeyRight,ui::kKeyNoneModifier);at(4,4);
+ text_->setSelectionRange(1,4);key(ui::kKeyLeft,ui::kKeyShiftModifier);at(1,3);
+ text_->setSelectionRange(4,4);key(ui::kKeyDown,ui::kKeyNoneModifier);at(7,7);key(ui::kKeyDown,ui::kKeyNoneModifier);at(12,12);
+ key(ui::kKeyUp,ui::kKeyShiftModifier);at(7,12);key(ui::kKeyUp,ui::kKeyShiftModifier);at(4,12);
+ // Horizontal navigation resets the desired column after crossing a short row.
+ text_->setSelectionRange(4,4);key(ui::kKeyDown,ui::kKeyNoneModifier);key(ui::kKeyLeft,ui::kKeyNoneModifier);key(ui::kKeyDown,ui::kKeyNoneModifier);at(8,8);
+ key(ui::kKeyHome,ui::kKeyCtrlModifier);at(0,0);key(ui::kKeyUp,ui::kKeyNoneModifier);at(0,0);
+ key(ui::kKeyEnd,ui::kKeyCtrlModifier);at(13,13);key(ui::kKeyDown,ui::kKeyNoneModifier);at(13,13);
+ key(ui::kKeyPageUp,ui::kKeyNoneModifier);at(0,0);key(ui::kKeyPageDown,ui::kKeyShiftModifier);at(0,13);
+ check(!text_->undoLocal(),"Navigation must not create local text history");
  fonts_.recordSize(originalLastSize);value_=original;live=originalLive;text_->setValue(textUtf32(value_.text));text_->setSelectionRange(0,0);update();
  }
  os::SurfaceRef smokeFrame(){auto surface=os::instance()->makeRgbaSurface(bounds().w,bounds().h);surface->clear();{ui::Graphics g(surface);{UiPaintScale scale(g);skin_.drawDialogBackground(g,uiLogical(clientBounds()));}ui::PaintEvent ev(this,&g);paintDialogContents(ev);}auto paint=[&](auto child){if(!child->isVisible())return;ui::Graphics g(nullptr,surface,child->bounds().x-bounds().x,child->bounds().y-bounds().y);ui::PaintEvent ev(child,&g);child->onPaint(ev);};paint(text_);for(PixelButton* b:{family_,align_,layout_,spacing_,render_})paint(b);for(auto e:numbers_)paint(e);for(auto b:{color_,ok_,cancel_,close_,live_,import_,system_,erase_})paint(b);return surface;}
