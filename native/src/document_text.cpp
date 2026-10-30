@@ -5,15 +5,32 @@
 #include <set>
 namespace moon {
 namespace {
-// canvas-input-text.ts invalidates both old and new text extents. Existing
-// derived/style stacks retain full damage until their expansion is migrated.
+// layer-styles.ts layerStyleAffectedRect, with wide coordinates until clipping.
+struct TextDamageRect {std::int64_t left,top,right,bottom;};
+TextDamageRect mergeTextDamage(TextDamageRect a,TextDamageRect b){return {std::min(a.left,b.left),std::min(a.top,b.top),std::max(a.right,b.right),std::max(a.bottom,b.bottom)};}
+TextDamageRect styledTextDamage(TextDamageRect rect,const std::optional<timeline::ColorOverlayStyle>& style){
+ if(!timeline::styleVisible(style))return rect;
+ auto affected=rect;
+ const int radius=std::max(style->stroke.enabled?style->stroke.size:0,style->innerGlow.enabled?style->innerGlow.size:0);
+ if(radius)affected=mergeTextDamage(affected,{rect.left-radius,rect.top-radius,rect.right+radius,rect.bottom+radius});
+ if(style->shadow.enabled){const auto& shadow=style->shadow;affected=mergeTextDamage(affected,{rect.left+shadow.offsetX-shadow.blur,rect.top+shadow.offsetY-shadow.blur,rect.right+shadow.offsetX+shadow.blur,rect.bottom+shadow.offsetY+shadow.blur});}
+ return affected;
+}
 PixelRegion textPreviewDamage(const timeline::State& state,const timeline::Surface* before,const timeline::Surface& after,int width,int height){
- for(const auto& layer:state.layers)if(layer.kind=="adjustment"||timeline::styleVisible(layer.layerStyles))return {0,0,width,height};
- if(!state.groups.empty())return {0,0,width,height};
+ for(const auto& layer:state.layers)if(layer.kind=="adjustment")return {0,0,width,height};
+ // A group gradient depends on geometry of other children as well as the edit.
+ for(const auto& group:state.groups)if(timeline::styleVisible(group.layerStyles)&&group.layerStyles->gradientEnabled)return {0,0,width,height};
  PixelRegion result;
  auto include=[&](const timeline::Surface& surface){
-  const auto left=std::max<std::int64_t>(0,surface.offsetX),top=std::max<std::int64_t>(0,surface.offsetY);
-  const auto right=std::min<std::int64_t>(width,std::int64_t(surface.offsetX)+surface.width),bottom=std::min<std::int64_t>(height,std::int64_t(surface.offsetY)+surface.height);
+  const TextDamageRect raw{surface.offsetX,surface.offsetY,std::int64_t(surface.offsetX)+surface.width,std::int64_t(surface.offsetY)+surface.height};
+  auto affected=raw;
+  // document-composite-plan.ts without affectedOwnerIds: visit every branch.
+  for(const auto& layer:state.layers){
+   auto branch=styledTextDamage(raw,layer.layerStyles);auto groupId=layer.groupId;std::set<std::string> visited;
+   while(groupId&&visited.insert(*groupId).second){const auto group=std::find_if(state.groups.begin(),state.groups.end(),[&](const auto& g){return g.id==*groupId;});if(group==state.groups.end())break;branch=styledTextDamage(branch,group->layerStyles);groupId=group->parentGroupId;}
+   affected=mergeTextDamage(affected,branch);
+  }
+  const auto left=std::max<std::int64_t>(0,affected.left),top=std::max<std::int64_t>(0,affected.top),right=std::min<std::int64_t>(width,affected.right),bottom=std::min<std::int64_t>(height,affected.bottom);
   if(right>left&&bottom>top){result.include(int(left),int(top));result.include(int(right-1),int(bottom-1));}
  };
  if(before)include(*before);include(after);return result;
