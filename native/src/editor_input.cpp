@@ -320,7 +320,11 @@ bool Editor::onProcessMessage(ui::Message* msg) {
 
         int dx=0,dy=0;if(key->scancode()==ui::kKeyLeft)dx=-1;else if(key->scancode()==ui::kKeyRight)dx=1;else if(key->scancode()==ui::kKeyUp)dy=-1;else if(key->scancode()==ui::kKeyDown)dy=1;
 
-        if(dx || dy){if(selectionFreeTransform_&&document.layer().kind=="tilemap"&&document.tilemapMode()==tiles::Mode::Paint)return true;if(document.nudgeSelectionContent(dx,dy,frameSelectionExplicit_)){playing_=false;hideTimelineSelectionGuides();refresh();}return true;}
+        if(dx || dy){
+          const bool paintCells=document.layer().kind=="tilemap"&&document.activeMaskId().empty()&&document.tilemapMode()==tiles::Mode::Paint;
+          if(selectionFreeTransform_&&paintCells)return true;
+          if(paintCells){const auto resolved=document.timeline().resolveSurface(document.cel().id);if(!resolved.source||!resolved.source->tilemap)return true;dx*=resolved.source->tilemap->tileWidth;dy*=resolved.source->tilemap->tileHeight;}
+          if(document.nudgeSelectionContent(dx,dy,frameSelectionExplicit_)){playing_=false;hideTimelineSelectionGuides();refresh();}return true;}
 
       }
 
