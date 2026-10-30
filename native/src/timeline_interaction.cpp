@@ -40,7 +40,11 @@ void Document::moveTimelineCels(const std::string& anchorId,const std::string& t
  const auto& s=timeline_.state();int dr=indexOf(s.layers,target->layerId)-int(timeline_.layerIndex(anchor->layerId)),dc=indexOf(s.frames,target->frameId)-int(timeline_.frameIndex(anchor->frameId));if(!dr && !dc)return;
  struct Placement {DocumentCel source;std::string target;};std::vector<Placement> placements;
  for(const auto& id:timelineSelection_.cels){const auto* source=timeline_.findCelById(id);if(!source)return;const int row=indexOf(s.layers,source->layerId)+dr,col=indexOf(s.frames,source->frameId)+dc;if(row<0 || row>=int(s.layers.size()) || col<0 || col>=int(s.frames.size()))return;
-  auto value=*source;const auto resolved=timeline_.resolveSurface(id);value.surface=resolved.surface?std::optional<timeline::Surface>{*resolved.surface}:std::nullopt;placements.push_back({std::move(value),timeline_.findCel(s.layers[row].id,s.frames[col].id)->id});}
+  const auto& sourceLayer=s.layers[std::size_t(indexOf(s.layers,source->layerId))];const auto& targetLayer=s.layers[std::size_t(row)];
+  if(sourceLayer.kind=="free-tile"||targetLayer.kind=="free-tile")throw std::runtime_error("Free tile Cel dragging requires a legacy semantic decision; use whole Cel clipboard");
+  if(sourceLayer.kind!=targetLayer.kind)return;
+  if(layerEffectivelyLocked(targetLayer)||(!copy&&layerEffectivelyLocked(sourceLayer)))return;
+  auto value=*source;const auto resolved=timeline_.resolveSurface(id);if(resolved.issue!=timeline::LinkIssue::None||!resolved.source)throw std::runtime_error("Invalid Cel drag source");value.tilemap=resolved.source->tilemap;value.text=resolved.source->text;value.opacity=resolved.source->opacity;value.zIndex=resolved.source->zIndex;value.surface=resolved.surface?std::optional<timeline::Surface>{*resolved.surface}:std::nullopt;placements.push_back({std::move(value),timeline_.findCel(s.layers[row].id,s.frames[col].id)->id});}
  Edit e{{},state_,nextState_};e.beforeTimelineSelection=timelineSelection_;e.beforeActive=activeLayerId_;e.beforeFrame=activeFrameId_;
  std::unordered_set<std::string> affected,mutated;for(const auto& p:placements){affected.insert(p.source.id);affected.insert(p.target);mutated.insert(p.target);if(!copy)mutated.insert(p.source.id);}
  // Shared surface objects in legacy outlive overwritten canonical slots. Keep
@@ -51,12 +55,16 @@ void Document::moveTimelineCels(const std::string& anchorId,const std::string& t
  auto mutableCel=[&](const std::string& id)->DocumentCel&{return *std::find_if(after.begin(),after.end(),[&](const auto& c){return c.id==id;});};
  std::unordered_map<std::string,std::string> survivors;
  for(auto& c:after){const bool slot=std::any_of(placements.begin(),placements.end(),[&](const auto& p){return p.target==c.id || (!copy && p.source.id==c.id);});if(slot)continue;const auto resolved=timeline_.resolveSurface(c.id);if(!resolved.source || !mutated.count(resolved.source->id))continue;
+  c.tilemap=resolved.source->tilemap;c.text=resolved.source->text;c.opacity=resolved.source->opacity;c.zIndex=resolved.source->zIndex;
   const auto canonical=resolved.source->id;auto found=survivors.find(canonical);c.linkedCelId.reset();c.runtimeSharedCelId.reset();
   if(found==survivors.end()){c.surface=*resolved.surface;survivors[canonical]=c.id;}else{c.surface.reset();c.runtimeSharedCelId=found->second;}}
- if(!copy)for(const auto& p:placements){auto& original=mutableCel(p.source.id);original.surface=p.source.surface;if(original.surface)std::fill(original.surface->pixels.begin(),original.surface->pixels.end(),0);original.linkedCelId.reset();original.runtimeSharedCelId.reset();original.zIndex=0;}
- timelineSelection_.cels.clear();
- for(const auto& p:placements){auto& destination=mutableCel(p.target);destination.linkedCelId.reset();destination.runtimeSharedCelId.reset();destination.surface=p.source.surface;destination.opacity=p.source.opacity;destination.zIndex=p.source.zIndex;timelineSelection_.cels.push_back(destination.id);if(p.source.id==anchorId)timelineSelection_.celAnchor=destination.id;}
- e.afterCels=std::move(after);e.afterTimelineSelection=timelineSelection_;e.afterActive=target->layerId;e.afterFrame=target->frameId;applyCelEdit(e,true);activeLayerId_=e.afterActive;change_={0,0,width_,height_};publishChange();pushEdit(std::move(e));
+ if(!copy)for(const auto& p:placements){auto& original=mutableCel(p.source.id);original.surface=p.source.surface;if(original.surface)std::fill(original.surface->pixels.begin(),original.surface->pixels.end(),0);original.linkedCelId.reset();original.runtimeSharedCelId.reset();original.zIndex=0;original.text.reset();if(original.tilemap)std::fill(original.tilemap->cells.begin(),original.tilemap->cells.end(),std::nullopt);}
+ auto selected=timelineSelection_;selected.cels.clear();selected.celAnchor.clear();
+ for(const auto& p:placements){auto& destination=mutableCel(p.target);destination.linkedCelId.reset();destination.runtimeSharedCelId.reset();destination.surface=p.source.surface;destination.opacity=p.source.opacity;destination.zIndex=p.source.zIndex;destination.tilemap=p.source.tilemap;destination.text=p.source.text;selected.cels.push_back(destination.id);if(p.source.id==anchorId)selected.celAnchor=destination.id;}
+ // Validate the whole proposed state before publishing content or selection.
+ if(std::any_of(placements.begin(),placements.end(),[](const auto& p){return p.source.tilemap.has_value()||p.source.text.has_value();})){auto candidate=s;for(const auto& value:after){auto it=std::find_if(candidate.cels.begin(),candidate.cels.end(),[&](const auto& c){return c.id==value.id;});*it=value;}
+ timeline::Timeline validated(std::move(candidate));if(!validated.diagnoseLinks().empty())throw std::runtime_error("Cel drag creates invalid links");}
+ history_.reserve(position_+1);e.afterCels=std::move(after);e.afterTimelineSelection=selected;e.afterActive=target->layerId;e.afterFrame=target->frameId;applyCelEdit(e,true);timelineSelection_=std::move(selected);activeLayerId_=e.afterActive;change_={0,0,width_,height_};publishChange();pushEdit(std::move(e));
 }
 
 void Document::copyTimelineFrames(const std::string& target,bool after){
