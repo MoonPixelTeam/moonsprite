@@ -2125,6 +2125,8 @@ bool Document::beginLayerTransform(){
  const auto commandLayers=selectedLayerIdsWithGroups();if(hasSelectedGroups()&&commandLayers.empty())return false;
  commitFloatingPaste();cancelStroke();std::unordered_set<std::string> selected(commandLayers.begin(),commandLayers.end());for(const auto& id:timelineSelection_.cels)if(const auto* target=timeline_.findCelById(id))selected.insert(target->layerId);
  const bool implicitFrames=!selectedFrames_.empty() && commandLayers.empty();if(selected.empty() && !implicitFrames)selected.insert(activeLayerId_);
+ if(selected.size()==1){const auto* target=timeline_.findCel(*selected.begin(),activeFrameId_);if(target){const auto source=timeline_.resolveSurface(target->id);if(source.source&&source.source->text&&source.source->text->boxed)return false;}}
+
  int left=width_,top=height_,right=-1,bottom=-1;
  for(const auto& l:timeline_.state().layers){if(implicitFrames){if(layerEffectivelyLocked(l) || !layerEffectivelyVisible(l))continue;}else if(!selected.count(l.id))continue;if(layerEffectivelyLocked(l) || !layerEffectivelyVisible(l))return false;const auto* target=timeline_.findCel(l.id,activeFrameId_);if(!target)continue;const auto resolved=timeline_.resolveSurface(target->id);if(!resolved.surface)continue;const auto& s=*resolved.surface;raster::validate(s);for(int y=0;y<s.height;++y)for(int x=0;x<s.width;++x){const auto wx=std::int64_t(s.offsetX)+x,wy=std::int64_t(s.offsetY)+y;if(wx<0||wy<0||wx>=width_||wy>=height_||!(s.pixels[std::size_t(y)*s.width+x]>>24))continue;left=std::min(left,int(wx));top=std::min(top,int(wy));right=std::max(right,int(wx));bottom=std::max(bottom,int(wy));}}
  if(right<left)return false;selection_=SelectionMask{left,top,right-left+1,bottom-top+1,{}};return true;
