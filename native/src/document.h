@@ -448,6 +448,7 @@ public:
   bool beginLayerTransform();
   bool beginSelectionContentMove(bool copy=false,bool allFrameLayers=false,int initialDx=0,int initialDy=0,std::optional<Point> tilemapSeed={},bool symmetryTranslation=false,bool symmetryScale=false,bool symmetryRotation=false,bool symmetryShear=false);
   bool nudgeSelectionContent(int dx,int dy,bool allFrameLayers=false);
+  bool nudgeTextLayer(int dx,int dy);
   bool paintCellFlipAvailable()const{return bool(expandedPaintCellSelection(true));}bool flipPaintCellSelection(bool horizontal);
   bool beginPaintCellMove(bool copy=false,bool keyboard=false);void updatePaintCellMove(int dx,int dy,bool clamp=false);bool finishPaintCellMove(bool cancel=false);bool paintCellMoving()const{return paintCellMove_.has_value();}
   bool beginTextDraft(const TextCelData&,timeline::Surface,const std::string& celId={});

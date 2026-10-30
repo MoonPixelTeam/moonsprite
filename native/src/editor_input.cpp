@@ -316,6 +316,12 @@ bool Editor::onProcessMessage(ui::Message* msg) {
 
       }
 
+      // Legacy text-tool arrows take priority even when the layer list has focus.
+      if(textTool_ && document.layer().kind=="text" && !document.hasSelectedGroups() && !shortcutInputBlocked() && !hasCapture() && !historyGestureBusy() && !key->ctrlPressed() && !key->cmdPressed() && !key->altPressed()){
+        int dx=0,dy=0;if(key->scancode()==ui::kKeyLeft)dx=-1;else if(key->scancode()==ui::kKeyRight)dx=1;else if(key->scancode()==ui::kKeyUp)dy=-1;else if(key->scancode()==ui::kKeyDown)dy=1;
+        if(dx||dy){if(document.nudgeTextLayer(dx,dy)){playing_=false;refresh();}return true;}
+      }
+
       if(document.selection() && !paletteFocused_ && !key->ctrlPressed() && !key->cmdPressed() && !key->altPressed()){
 
         int dx=0,dy=0;if(key->scancode()==ui::kKeyLeft)dx=-1;else if(key->scancode()==ui::kKeyRight)dx=1;else if(key->scancode()==ui::kKeyUp)dy=-1;else if(key->scancode()==ui::kKeyDown)dy=1;

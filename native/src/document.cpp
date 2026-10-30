@@ -1779,11 +1779,14 @@ bool Document::centerActiveContent(bool horizontal,bool vertical){if(hasTilemapC
  if(!horizontal && !vertical)return false;
  auto bounds=selection_;
  const auto& initial=activeSurface();raster::validate(initial);
+ const bool wholeText=!selection_&&layer().kind=="text"&&activeMaskId_.empty();
+ if(wholeText){const auto source=timeline_.resolveSurface(cel().id);if(source.source&&source.source->text&&source.source->text->boxed){const auto& text=*source.source->text;bounds=SelectionMask{text.originX.value_or(initial.offsetX),text.originY.value_or(initial.offsetY),text.boxWidth,text.boxHeight,{}};}}
  if(!bounds){int left=initial.width,top=initial.height,right=-1,bottom=-1;for(int y=0;y<initial.height;++y)for(int x=0;x<initial.width;++x)if(initial.pixels[std::size_t(y)*initial.width+x]>>24){left=std::min(left,x);top=std::min(top,y);right=std::max(right,x);bottom=std::max(bottom,y);}if(right<left)return false;bounds=SelectionMask{raster::coordinate(std::int64_t(initial.offsetX)+left),raster::coordinate(std::int64_t(initial.offsetY)+top),right-left+1,bottom-top+1,{}};}
  // Math.round uses ties towards positive infinity, including negative deltas.
  const std::int64_t dx=horizontal?std::int64_t(std::floor(width_/2.0-(bounds->x+bounds->width/2.0)+.5)):0;
  const std::int64_t dy=vertical?std::int64_t(std::floor(height_/2.0-(bounds->y+bounds->height/2.0)+.5)):0;
  if(!dx && !dy)return false;
+ if(wholeText)return nudgeTextLayer(raster::coordinate(dx),raster::coordinate(dy));
  if(floating_){if(layerEffectivelyLocked(layer()))return false;auto transform=floating_->transform;transform.x+=dx;transform.y+=dy;if(transform.flipOriginX)*transform.flipOriginX+=dx;if(transform.flipOriginY)*transform.flipOriginY+=dy;if(transform.quad)for(auto& p:*transform.quad){p.x+=dx;p.y+=dy;}transformFloatingPaste(transform,floating_->rotSprite);return true;}
  if(!raster::fullCanvas(activeSurface(),width_,height_)){
   if(layerEffectivelyLocked(layer()))return false;cancelStroke();const auto resolved=timeline_.resolveSurface(cel().id);if(resolved.issue!=timeline::LinkIssue::None||!resolved.source||!resolved.surface)throw std::logic_error("Invalid center content owner");const auto& before=*resolved.surface;raster::validate(before);

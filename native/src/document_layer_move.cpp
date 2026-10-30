@@ -4,6 +4,19 @@
 #include <algorithm>
 #include <set>
 namespace moon {
+bool Document::nudgeTextLayer(int dx,int dy){
+ // Legacy moveLayerBy updates the active frame's resolved text owner, not
+ // the pixel selection, sibling frames, or a move-tool mask attachment.
+ if((!dx&&!dy)||layer().kind!="text"||hasSelectedGroups()||layerEffectivelyLocked(layer())||active())return false;
+ const auto resolved=timeline_.resolveSurface(cel().id);
+ if(resolved.issue!=timeline::LinkIssue::None||!resolved.source||!resolved.surface)return false;
+ const auto& surface=*resolved.surface;
+ const int x=raster::coordinate(std::int64_t(surface.offsetX)+dx),y=raster::coordinate(std::int64_t(surface.offsetY)+dy);
+ raster::coordinate(std::int64_t(x)+surface.width);raster::coordinate(std::int64_t(y)+surface.height);
+ Edit edit{{},state_,nextState_};edit.beforeActive=edit.afterActive=activeLayerId_;edit.beforeFrame=edit.afterFrame=activeFrameId_;edit.beforeTimelineSelection=edit.afterTimelineSelection=timelineSelection_;edit.beforeSelection=edit.afterSelection=selectedFrames_;edit.beforeGroupUi=edit.afterGroupUi=GroupUiSnapshot{selectedGroupIds_,collapsedGroupIds_,selectedGroupId_};edit.ownerOffsets.push_back({resolved.source->id,surface.offsetX,surface.offsetY,x,y});
+ if(resolved.source->text){auto data=*resolved.source->text;translateTextCelData(data,dx,dy);edit.textChanges.push_back({resolved.source->id,resolved.source->text,std::move(data)});}
+ history_.reserve(position_+1);applyEdit(edit,true);publishChange();pushEdit(std::move(edit),U"移动图层");return true;
+}
 std::vector<std::string> Document::layerMoveTargets()const{return layerMove_?layerMove_->celIds:std::vector<std::string>{};}
 bool Document::beginLayerMove(const std::vector<std::string>& ids,bool duplicate,std::optional<TransformPoint> pivot){if(hasTilemapContent()||hasFreeTileContent())return false;
  if(layerMove_)return false;if(!activeMaskId_.empty()){commitFloatingPaste();if(active()||!maskBrushAvailable())return false;LayerMovePreview move;move.edit=Edit{{},state_,nextState_};move.edit.beforeMasks=timeline_.state().masks;layerMove_=std::move(move);return true;}commitFloatingPaste();if(active())return false;LayerMovePreview move;move.edit=Edit{{},state_,nextState_};auto& e=move.edit;e.beforeActive=e.afterActive=activeLayerId_;e.beforeFrame=e.afterFrame=activeFrameId_;e.beforeTimelineSelection=e.afterTimelineSelection=timelineSelection_;e.beforeSelection=e.afterSelection=selectedFrames_;e.pixelSelectionEdit=true;e.beforePixelsSelection=e.afterPixelsSelection=selection_;e.beforeTrimPivot.emplace(pivot);e.afterTrimPivot.emplace(pivot);
