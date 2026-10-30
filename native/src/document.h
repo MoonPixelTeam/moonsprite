@@ -457,7 +457,8 @@ public:
   bool canRasterizeLayer(const std::string& layerId)const;
   bool rasterizeLayer(const std::string& layerId);
   bool canCreateLinkedLayer(const std::string&)const;std::string createLinkedLayer(const std::string&);bool detachLinkedLayer(const std::string&);
-  bool beginLayerMove(const std::vector<std::string>& celIds,bool duplicate=false,std::optional<TransformPoint> pivot={});
+  enum class LayerMoveScope { ContentAndSelection,TextBox };
+  bool beginLayerMove(const std::vector<std::string>& celIds,bool duplicate=false,std::optional<TransformPoint> pivot={},LayerMoveScope scope=LayerMoveScope::ContentAndSelection);
   bool previewLayerMove(int dx,int dy);bool commitLayerMove();void cancelLayerMove();
   bool layerMoveActive()const{return layerMove_.has_value();}
   std::vector<std::string> layerMoveTargets()const;
@@ -742,7 +743,7 @@ private:
   };
   void applyTilemapPixelHistory(const Edit&,bool forward);
   std::vector<tiles::Tileset> tilesetsForLayerEdit(const Edit&,bool)const;
-  struct LayerMovePreview {Edit edit;std::vector<std::string> celIds;bool duplicate=false,duplicated=false;int x=0,y=0;std::vector<PixelRegion> bounds;};
+  struct LayerMovePreview {Edit edit;LayerMoveScope scope=LayerMoveScope::ContentAndSelection;std::vector<std::string> celIds;bool duplicate=false,duplicated=false;int x=0,y=0;std::vector<PixelRegion> bounds;};
   std::optional<LayerMovePreview> layerMove_;
   struct TextDraft {Edit edit;std::string owner;bool created=false;std::optional<timeline::Surface> originalSurface;std::optional<TextCelData> originalText;};
   std::optional<TextDraft> textDraft_;
