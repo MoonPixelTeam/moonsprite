@@ -44,6 +44,12 @@ public:
  fonts_.recordSize(originalLastSize);value_=original;live=originalLive;text_->setValue(textUtf32(value_.text));text_->setSelectionRange(0,0);update();
  }
  os::SurfaceRef smokeFrame(){auto surface=os::instance()->makeRgbaSurface(bounds().w,bounds().h);surface->clear();{ui::Graphics g(surface);{UiPaintScale scale(g);skin_.drawDialogBackground(g,uiLogical(clientBounds()));}ui::PaintEvent ev(this,&g);paintDialogContents(ev);}auto paint=[&](auto child){if(!child->isVisible())return;ui::Graphics g(nullptr,surface,child->bounds().x-bounds().x,child->bounds().y-bounds().y);ui::PaintEvent ev(child,&g);child->onPaint(ev);};paint(text_);for(PixelButton* b:{family_,align_,layout_,spacing_,render_})paint(b);for(auto e:numbers_)paint(e);for(auto b:{color_,ok_,cancel_,close_,live_,import_,system_,erase_})paint(b);return surface;}
+ void smokeClearAndRestore(const std::function<void(bool)>& verify){
+  const auto original=value_.text;auto send=[&](ui::KeyScancode code,ui::KeyModifiers mods){ui::KeyMessage event(ui::kKeyDownMessage,code,mods,0,0);if(!text_->onProcessMessage(&event))throw std::runtime_error("Text empty draft input was not consumed");};
+  send(ui::kKeyA,ui::kKeyCtrlModifier);send(ui::kKeyBackspace,ui::kKeyNoneModifier);if(!value_.text.empty())throw std::runtime_error("Text deletion did not clear value");verify(true);ok_->Click();if(accepted_)throw std::runtime_error("Empty text cannot be confirmed");
+  send(ui::kKeyZ,ui::kKeyCtrlModifier);if(value_.text!=original)throw std::runtime_error("Text local Undo did not restore emptied draft");verify(false);
+  send(ui::kKeyY,ui::kKeyCtrlModifier);verify(true);send(ui::kKeyZ,ui::kKeyCtrlModifier);verify(false);
+ }
  void smokeAccept(){ok_->Click();}
  bool accepted()const{return accepted_;}const TextCelData& value()const{return value_;}
  gfx::Size minimumDialogSize(int)const override{return {440*uiScale,340*uiScale};}
