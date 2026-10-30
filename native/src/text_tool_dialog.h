@@ -55,6 +55,28 @@ public:
  key(ui::kKeyEnd,ui::kKeyCtrlModifier);at(13,13);key(ui::kKeyDown,ui::kKeyNoneModifier);at(13,13);
  key(ui::kKeyPageUp,ui::kKeyNoneModifier);at(0,0);key(ui::kKeyPageDown,ui::kKeyShiftModifier);at(0,13);
  check(!text_->undoLocal(),"Navigation must not create local text history");
+ // Three glyphs fit per visual row; Home/End must not jump the whole paragraph.
+ const auto originalTextBounds=text_->bounds();
+ auto narrow=originalTextBounds;narrow.w=(12+font_.measure(U"ABC"))*uiScale;text_->setBounds(narrow);
+ value_.text=u"ABCDEF\nG";value_.styleRuns.clear();text_->setValue(textUtf32(value_.text));text_->setSelectionRange(1,1);
+ key(ui::kKeyEnd,ui::kKeyNoneModifier);at(3,3);key(ui::kKeyHome,ui::kKeyNoneModifier);at(0,0);
+ key(ui::kKeyEnd,ui::kKeyShiftModifier);at(0,3);key(ui::kKeyRight,ui::kKeyNoneModifier);at(3,3);key(ui::kKeyHome,ui::kKeyNoneModifier);at(0,0);
+ key(ui::kKeyEnd,ui::kKeyShiftModifier);key(ui::kKeyHome,ui::kKeyShiftModifier);at(0,0);
+ key(ui::kKeyEnd,ui::kKeyNoneModifier);key(ui::kKeyDown,ui::kKeyNoneModifier);at(6,6);
+ key(ui::kKeyUp,ui::kKeyNoneModifier);at(3,3);key(ui::kKeyHome,ui::kKeyNoneModifier);at(0,0);
+ // Explicitly setting the same offset addresses the next row's start instead.
+ text_->setSelectionRange(3,3);key(ui::kKeyEnd,ui::kKeyNoneModifier);at(6,6);key(ui::kKeyHome,ui::kKeyNoneModifier);at(3,3);
+ // An edit and local Undo restore the visual side of the wrap as well as the offset.
+ text_->setSelectionRange(1,1);key(ui::kKeyEnd,ui::kKeyNoneModifier);key(ui::kKeyNil,ui::kKeyNoneModifier,'z');
+ key(ui::kKeyZ,ui::kKeyCtrlModifier);check(value_.text==u"ABCDEF\nG","Wrapped input undo restores content");at(3,3);
+ key(ui::kKeyHome,ui::kKeyNoneModifier);at(0,0);
+ // Hit testing includes the trailing insertion point of the preceding row.
+ auto pointer=text_->bounds().origin()+gfx::Point((6+font_.measure(U"ABC"))*uiScale,9*uiScale);
+ ui::MouseMessage down(ui::kMouseDownMessage,os::PointerType::Mouse,ui::kButtonLeft,ui::kKeyNoneModifier,pointer);
+ text_->onProcessMessage(&down);
+ ui::MouseMessage up(ui::kMouseUpMessage,os::PointerType::Mouse,ui::kButtonLeft,ui::kKeyNoneModifier,pointer);
+ text_->onProcessMessage(&up);at(3,3);key(ui::kKeyHome,ui::kKeyNoneModifier);at(0,0);
+ text_->setBounds(originalTextBounds);
  fonts_.recordSize(originalLastSize);value_=original;live=originalLive;text_->setValue(textUtf32(value_.text));text_->setSelectionRange(0,0);update();
  }
  os::SurfaceRef smokeFrame(){auto surface=os::instance()->makeRgbaSurface(bounds().w,bounds().h);surface->clear();{ui::Graphics g(surface);{UiPaintScale scale(g);skin_.drawDialogBackground(g,uiLogical(clientBounds()));}ui::PaintEvent ev(this,&g);paintDialogContents(ev);}auto paint=[&](auto child){if(!child->isVisible())return;ui::Graphics g(nullptr,surface,child->bounds().x-bounds().x,child->bounds().y-bounds().y);ui::PaintEvent ev(child,&g);child->onPaint(ev);};paint(text_);for(PixelButton* b:{family_,align_,layout_,spacing_,render_})paint(b);for(auto e:numbers_)paint(e);for(auto b:{color_,ok_,cancel_,close_,live_,import_,system_,erase_})paint(b);return surface;}
