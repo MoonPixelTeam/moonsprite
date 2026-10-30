@@ -2845,7 +2845,7 @@ public:
   void paintFreeTileInstanceFeedback(ui::Graphics&,const gfx::Rect&);
   std::set<std::string> moveHeldKeys_;
   bool moveModifierHeld(const std::string&,const ui::Message&)const;
-  bool textTool_=false,textCreating_=false,textTransforming_=false,textTransformMoved_=false;std::string textTransformId_,textHandle_;TextCelData textTransformData_;SelectionTransform textTransformStart_;Point textStart_;gfx::Point textPointer_;std::unique_ptr<TextFontService> textFonts_;
+  bool textTool_=false,textCreating_=false,textTransforming_=false,textTransformMoved_=false;std::string textTransformId_,textHandle_;TextCelData textTransformData_;SelectionTransform textTransformStart_,textTransformPreview_;Point textStart_;gfx::Point textPointer_;std::unique_ptr<TextFontService> textFonts_;
   void useTextTool();void editText(TextCelData,const std::string& id={},bool smokeAccept=false);bool processTextInput(ui::Message*);void paintTextBox(ui::Graphics&,const gfx::Rect&);void smokeTextTool();void smokeTextRasterization();void smokeLinkedLayers();
   void useMoveTool();void createMoveOptions();void layoutMoveOptions();
   const DocumentLayer* moveLayerAt(Point)const;
