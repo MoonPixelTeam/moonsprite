@@ -755,7 +755,7 @@ private:
   void captureGroupEdit(Edit&,bool after)const;
   void appendDetachLinkedLayer(Edit&,const std::string&);std::u32string linkedLayerCopyName(const std::string&,const std::u32string&,const std::vector<DocumentLayer>* namingLayers=nullptr)const;
   bool pasteTilemapCels(const CelClipboardSnapshot&);bool cutTilemapCels();void detachTilemapCelTargets(timeline::State&,const std::vector<std::string>&)const;
-  bool pasteTilemapFrames(const FrameClipboardSnapshot&);bool cutTilemapFrames();
+  bool pasteTilemapFrames(const FrameClipboardSnapshot&,bool duplicateSelection=false,std::optional<int> insertion=std::nullopt);bool cutTilemapFrames();
   void applyLayerStructure(const Edit&,bool forward);
   void applyGroupUi(const Edit&,bool forward);
   bool commitGroupEdit(Edit,std::u32string label={});

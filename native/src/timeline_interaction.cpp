@@ -60,6 +60,13 @@ void Document::moveTimelineCels(const std::string& anchorId,const std::string& t
 }
 
 void Document::copyTimelineFrames(const std::string& target,bool after){
+ if(!timeline_.hasFrame(target))return;
+ if(hasFreeTileContent()||hasTilemapContent()){
+  const auto clipboard=frameClipboard_;const auto celClipboard=celClipboard_;
+  try{if(copySelectedFrames()){const auto snapshot=exportFrameClipboard();pasteTilemapFrames(snapshot,true,int(timeline_.frameIndex(target))+(after?1:0));}}
+  catch(...){frameClipboard_=clipboard;celClipboard_=celClipboard;throw;}
+  frameClipboard_=clipboard;celClipboard_=celClipboard;return;
+ }
  const auto clipboard=frameClipboard_;const auto beforeActive=activeFrameId_;const auto beforeLayer=activeLayerId_;const auto beforeSelection=selectedFrames_;const auto anchor=frameAnchor_;const auto formal=timelineSelection_;const auto pos=position_;
  if(!copySelectedFrames())return;const auto oldGrouping=groupingHistory_;groupingHistory_=true;
  selectFrame(target);if(!after && activeFrameIndex()>0)selectFrame(timeline_.state().frames[activeFrameIndex()-1].id);
