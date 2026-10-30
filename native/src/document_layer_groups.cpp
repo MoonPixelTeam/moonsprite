@@ -309,16 +309,7 @@ bool Document::pasteTilemapFrames(const FrameClipboardSnapshot& clip){
 
 namespace moon {
 bool Document::cutTilemapFrames(){
- if(active()||selection_||!activeMaskId_.empty())throw std::runtime_error("Finish the active edit before cutting frames");if(!copySelectedFrames())return false;const auto clipboard=exportFrameClipboard();(void)clipboard;
- const auto& before=timeline_.state();auto candidate=before;const auto ids=selectedFrames_.empty()?std::vector<std::string>{activeFrameId_}:selectedFrames_;std::unordered_set<std::string> removed;std::string active=activeFrameId_;
- for(const auto& id:ids){if(candidate.frames.size()<=1)break;auto it=std::find_if(candidate.frames.begin(),candidate.frames.end(),[&](const auto& f){return f.id==id;});if(it==candidate.frames.end())continue;const auto index=std::size_t(it-candidate.frames.begin());removed.insert(id);candidate.frames.erase(it);active=candidate.frames[std::min(index,candidate.frames.size()-1)].id;}if(removed.empty())return false;
- candidate.cels.erase(std::remove_if(candidate.cels.begin(),candidate.cels.end(),[&](const auto& c){return removed.count(c.frameId);}),candidate.cels.end());std::unordered_set<std::string> surviving;for(const auto& c:candidate.cels)surviving.insert(c.id);std::unordered_map<std::string,std::string> newRoots;
- for(auto& c:candidate.cels){const auto resolved=timeline_.resolveSurface(c.id);if(resolved.issue!=timeline::LinkIssue::None||!resolved.source)throw std::invalid_argument("Invalid frame cut cel link");const auto root=resolved.source->id;auto mapped=newRoots.find(root);if(mapped==newRoots.end())mapped=newRoots.emplace(root,surviving.count(root)?root:c.id).first;const bool dangling=(c.linkedCelId&&!surviving.count(*c.linkedCelId))||(c.runtimeSharedCelId&&!surviving.count(*c.runtimeSharedCelId))||!surviving.count(root);if(!dangling)continue;c.tilemap=resolved.source->tilemap;c.text=resolved.source->text;c.opacity=resolved.source->opacity;c.zIndex=resolved.source->zIndex;
- if(c.id==mapped->second){c.surface=resolved.surface?std::optional<timeline::Surface>{*resolved.surface}:std::nullopt;c.linkedCelId.reset();c.runtimeSharedCelId.reset();}else{const bool explicitLink=c.linkedCelId.has_value();c.surface.reset();c.linkedCelId=explicitLink?std::optional<std::string>{mapped->second}:std::nullopt;c.runtimeSharedCelId=explicitLink?std::nullopt:std::optional<std::string>{mapped->second};}}
- candidate.masks.erase(std::remove_if(candidate.masks.begin(),candidate.masks.end(),[&](const auto& m){return removed.count(m.frameId);}),candidate.masks.end());for(auto& slot:candidate.masks)if(!slot.mask.linkedMaskId.empty()&&std::none_of(candidate.masks.begin(),candidate.masks.end(),[&](const auto& m){return m.mask.id==slot.mask.linkedMaskId;})){const auto* resolved=timeline::resolvedMask(before,slot.ownerId,slot.frameId);if(!resolved)throw std::invalid_argument("Missing surviving frame cut mask");slot.mask.surface=resolved->surface;slot.mask.linkedMaskId.clear();}
- candidate.loopSections.clear();for(auto loop:before.loopSections){const auto range=timeline::loopRange(before,loop);if(range.start<0||range.end<0)continue;std::vector<std::string> kept;for(int i=range.start;i<=range.end;++i)if(!removed.count(before.frames[i].id))kept.push_back(before.frames[i].id);if(kept.empty())continue;loop.startFrameId=kept.front();loop.endFrameId=kept.back();candidate.loopSections.push_back(std::move(loop));}
- timeline::Timeline validated(std::move(candidate));if(!validated.diagnoseLinks().empty())throw std::invalid_argument("Frame cut leaves invalid cel links");Edit e{{},state_,nextState_};e.beforeTimeline=before;e.afterTimeline=validated.state();e.beforeTimeline->tilesets.clear();e.afterTimeline->tilesets.clear();e.layerTilesets=std::make_shared<const LayerTilesetHistory>();e.beforeActive=e.afterActive=activeLayerId_;e.beforeFrame=activeFrameId_;e.afterFrame=active;e.beforeSelection=selectedFrames_;e.afterSelection=std::vector<std::string>{};e.beforeTimelineSelection=timelineSelection_;e.afterTimelineSelection=TimelineSelection{};e.beforeFrameAnchor=frameAnchor_;e.afterFrameAnchor=std::string{};
- history_.reserve(position_+1);timeline_=std::move(validated);activeFrameId_=std::move(active);selectedFrames_.clear();timelineSelection_={};frameAnchor_.clear();projectActiveCelOpacities();change_={0,0,width_,height_};publishChange();pushEdit(std::move(e),U"剪切动画帧");return true;
+ if(active()||selection_||!activeMaskId_.empty())throw std::runtime_error("Finish the active edit before cutting frames");if(!copySelectedFrames())return false;const auto clipboard=exportFrameClipboard();(void)clipboard;const auto count=timeline_.state().frames.size();deleteSelectedFrames();return timeline_.state().frames.size()!=count;
 }
 }
 
@@ -380,12 +371,54 @@ bool Document::pasteTilemapCels(const CelClipboardSnapshot& clip){
 
 namespace moon {
 bool Document::cutTilemapCels(){
- if(active()||selection_||!activeMaskId_.empty())throw std::runtime_error("Only complete inactive Cel cut is migrated");const auto& before=timeline_.state();std::vector<std::string> selected=timelineSelection_.cels;if(selected.empty())return false;
- for(const auto& id:selected){const auto* c=timeline_.findCelById(id);if(!c)throw std::invalid_argument("Missing Cel cut target");const auto& l=before.layers[timeline_.layerIndex(c->layerId)];if(layerEffectivelyLocked(l))throw std::runtime_error("Cel cut layer is locked");}
- if(!copySelectedCels())return false;const auto clipboard=exportCelClipboard();(void)clipboard;auto candidate=before;detachTilemapCelTargets(candidate,selected);
+ if(active()||selection_||!activeMaskId_.empty())throw std::runtime_error("Finish the active edit before cutting Cels");
+ for(const auto& id:timelineSelection_.cels){const auto* c=timeline_.findCelById(id);if(!c)throw std::invalid_argument("Missing Cel cut target");if(layerEffectivelyLocked(timeline_.state().layers[timeline_.layerIndex(c->layerId)]))throw std::runtime_error("Cel cut layer is locked");}
+ if(!copySelectedCels())return false;const auto clipboard=exportCelClipboard();(void)clipboard;return deleteSelectedCels();
+}
+}
+
+namespace moon {
+bool Document::deleteSelectedCels(bool ignorePixelSelection){
+ if(hasTilemapContent()||hasFreeTileContent()){
+ if(active()||(selection_&&!ignorePixelSelection)||!activeMaskId_.empty())throw std::runtime_error("Only complete inactive Cel deletion is migrated");const auto& before=timeline_.state();std::vector<std::string> selected=timelineSelection_.cels;if(selected.empty())return false;
+ for(const auto& id:selected){const auto* c=timeline_.findCelById(id);if(!c)throw std::invalid_argument("Missing Cel deletion target");const auto& l=before.layers[timeline_.layerIndex(c->layerId)];if(layerEffectivelyLocked(l))throw std::runtime_error("Cel deletion layer is locked");}
+ auto candidate=before;detachTilemapCelTargets(candidate,selected);
  for(auto& c:candidate.cels)if(std::find(selected.begin(),selected.end(),c.id)!=selected.end()){if(c.surface)std::fill(c.surface->pixels.begin(),c.surface->pixels.end(),0);if(c.freeTiles)c.freeTiles=free_tiles::CelData{};if(c.tilemap)std::fill(c.tilemap->cells.begin(),c.tilemap->cells.end(),std::nullopt);c.text.reset();c.zIndex=0;c.linkedCelId.reset();c.runtimeSharedCelId.reset();}
- timeline::Timeline validated(std::move(candidate));if(!validated.diagnoseLinks().empty())throw std::invalid_argument("Cel cut leaves invalid links");
+ timeline::Timeline validated(std::move(candidate));if(!validated.diagnoseLinks().empty())throw std::invalid_argument("Cel deletion leaves invalid links");
  TimelineSelection cleared=timelineSelection_;cleared.cels.clear();cleared.celAnchor.clear();Edit e{{},state_,nextState_};e.beforeTimeline=before;e.afterTimeline=validated.state();e.beforeTimeline->tilesets.clear();e.afterTimeline->tilesets.clear();e.layerTilesets=std::make_shared<const LayerTilesetHistory>();e.beforeActive=e.afterActive=activeLayerId_;e.beforeFrame=e.afterFrame=activeFrameId_;e.beforeSelection=e.afterSelection=selectedFrames_;e.beforeFrameAnchor=e.afterFrameAnchor=frameAnchor_;
- e.beforeTimelineSelection=e.afterTimelineSelection=cleared;history_.reserve(position_+1);timeline_=std::move(validated);timelineSelection_=std::move(cleared);projectActiveCelOpacities();change_={0,0,width_,height_};publishChange();pushEdit(std::move(e),U"剪切动画单元格");return true;
+ e.beforeTimelineSelection=e.afterTimelineSelection=cleared;history_.reserve(position_+1);timeline_=std::move(validated);timelineSelection_=std::move(cleared);projectActiveCelOpacities();change_={0,0,width_,height_};publishChange();pushEdit(std::move(e),U"删除动画单元格");return true;
+
+ }
+if(!activeMaskId_.empty())return false;
+ if(active() || (selection_ && !ignorePixelSelection))throw std::runtime_error("Only complete RGBA Cel deletion is migrated");
+ const auto& state=timeline_.state();std::unordered_set<std::string> selected(timelineSelection_.cels.begin(),timelineSelection_.cels.end());if(selected.empty())return false;
+ auto candidate=state;
+ // Hand off a selected canonical source before clearing its slot.
+ for(const auto& source:state.cels){if(!selected.count(source.id))continue;auto resolved=timeline_.resolveSurface(source.id);if(resolved.issue!=timeline::LinkIssue::None)throw std::runtime_error("Invalid Cel link");if(resolved.source->id!=source.id)continue;std::string survivor;
+  for(auto& c:candidate.cels){if(selected.count(c.id))continue;auto member=timeline_.resolveSurface(c.id);if(member.issue!=timeline::LinkIssue::None)throw std::runtime_error("Invalid Cel link");if(member.source->id!=source.id)continue;if(survivor.empty()){survivor=c.id;c.surface=resolved.surface?std::optional<timeline::Surface>{*resolved.surface}:std::nullopt;c.linkedCelId.reset();}else{c.surface.reset();c.linkedCelId=survivor;}c.runtimeSharedCelId.reset();}}
+ for(auto& c:candidate.cels)if(selected.count(c.id)){auto resolved=timeline_.resolveSurface(c.id);if(!c.surface && resolved.surface)c.surface=*resolved.surface;if(c.surface)std::fill(c.surface->pixels.begin(),c.surface->pixels.end(),0);c.linkedCelId.reset();c.runtimeSharedCelId.reset();c.zIndex=0;}
+ timeline::Timeline validated(std::move(candidate));if(!validated.diagnoseLinks().empty())throw std::runtime_error("Cel deletion creates invalid links");
+ Edit e{{},state_,nextState_};e.beforeTimeline=state;e.beforeActive=e.afterActive=activeLayerId_;e.beforeFrame=e.afterFrame=activeFrameId_;e.beforeSelection=e.afterSelection=selectedFrames_;
+ e.afterTimeline=validated.state();history_.reserve(position_+1);capturePixelAddresses(e);timeline_=std::move(validated);timelineSelection_.cels.clear();timelineSelection_.celAnchor.clear();change_={0,0,width_,height_};publishChange();pushEdit(std::move(e),U"删除动画单元格");return true;
+
+}
+}
+
+namespace moon {
+void Document::deleteSelectedFrames(bool clearPixelSelection){
+ if(hasTilemapContent()||hasFreeTileContent()){
+ if(active()||(selection_&&!clearPixelSelection)||!activeMaskId_.empty())throw std::runtime_error("Finish the active edit before deleting frames");
+ const auto& before=timeline_.state();auto candidate=before;const auto ids=selectedFrames_.empty()?std::vector<std::string>{activeFrameId_}:selectedFrames_;std::unordered_set<std::string> removed;std::string active=activeFrameId_;
+ for(const auto& id:ids){if(candidate.frames.size()<=1)break;auto it=std::find_if(candidate.frames.begin(),candidate.frames.end(),[&](const auto& f){return f.id==id;});if(it==candidate.frames.end())continue;const auto index=std::size_t(it-candidate.frames.begin());removed.insert(id);candidate.frames.erase(it);active=candidate.frames[std::min(index,candidate.frames.size()-1)].id;}if(removed.empty())return;
+ candidate.cels.erase(std::remove_if(candidate.cels.begin(),candidate.cels.end(),[&](const auto& c){return removed.count(c.frameId);}),candidate.cels.end());std::unordered_set<std::string> surviving;for(const auto& c:candidate.cels)surviving.insert(c.id);std::unordered_map<std::string,std::string> newRoots;
+ for(auto& c:candidate.cels){const auto resolved=timeline_.resolveSurface(c.id);if(resolved.issue!=timeline::LinkIssue::None||!resolved.source)throw std::invalid_argument("Invalid frame deletion cel link");const auto root=resolved.source->id;auto mapped=newRoots.find(root);if(mapped==newRoots.end())mapped=newRoots.emplace(root,surviving.count(root)?root:c.id).first;const bool dangling=(c.linkedCelId&&!surviving.count(*c.linkedCelId))||(c.runtimeSharedCelId&&!surviving.count(*c.runtimeSharedCelId))||!surviving.count(root);if(!dangling)continue;c.tilemap=resolved.source->tilemap;c.text=resolved.source->text;c.opacity=resolved.source->opacity;c.zIndex=resolved.source->zIndex;
+ if(c.id==mapped->second){c.surface=resolved.surface?std::optional<timeline::Surface>{*resolved.surface}:std::nullopt;c.linkedCelId.reset();c.runtimeSharedCelId.reset();}else{const bool explicitLink=c.linkedCelId.has_value();c.surface.reset();c.linkedCelId=explicitLink?std::optional<std::string>{mapped->second}:std::nullopt;c.runtimeSharedCelId=explicitLink?std::nullopt:std::optional<std::string>{mapped->second};}}
+ candidate.masks.erase(std::remove_if(candidate.masks.begin(),candidate.masks.end(),[&](const auto& m){return removed.count(m.frameId);}),candidate.masks.end());for(auto& slot:candidate.masks)if(!slot.mask.linkedMaskId.empty()&&std::none_of(candidate.masks.begin(),candidate.masks.end(),[&](const auto& m){return m.mask.id==slot.mask.linkedMaskId;})){const auto* resolved=timeline::resolvedMask(before,slot.ownerId,slot.frameId);if(!resolved)throw std::invalid_argument("Missing surviving frame deletion mask");slot.mask.surface=resolved->surface;slot.mask.linkedMaskId.clear();}
+ candidate.loopSections.clear();for(auto loop:before.loopSections){const auto range=timeline::loopRange(before,loop);if(range.start<0||range.end<0)continue;std::vector<std::string> kept;for(int i=range.start;i<=range.end;++i)if(!removed.count(before.frames[i].id))kept.push_back(before.frames[i].id);if(kept.empty())continue;loop.startFrameId=kept.front();loop.endFrameId=kept.back();candidate.loopSections.push_back(std::move(loop));}
+ timeline::Timeline validated(std::move(candidate));if(!validated.diagnoseLinks().empty())throw std::invalid_argument("Frame deletion leaves invalid cel links");Edit e{{},state_,nextState_};e.beforeTimeline=before;e.afterTimeline=validated.state();e.beforeTimeline->tilesets.clear();e.afterTimeline->tilesets.clear();e.layerTilesets=std::make_shared<const LayerTilesetHistory>();e.beforeActive=e.afterActive=activeLayerId_;e.beforeFrame=activeFrameId_;e.afterFrame=active;e.beforeSelection=selectedFrames_;e.afterSelection=std::vector<std::string>{};e.beforeTimelineSelection=timelineSelection_;e.afterTimelineSelection=TimelineSelection{};e.beforeFrameAnchor=frameAnchor_;e.afterFrameAnchor=std::string{};
+ history_.reserve(position_+1);timeline_=std::move(validated);activeFrameId_=std::move(active);selectedFrames_.clear();timelineSelection_={};frameAnchor_.clear();projectActiveCelOpacities();change_={0,0,width_,height_};if(clearPixelSelection)selection_.reset();publishChange();pushEdit(std::move(e),U"删除动画帧");return;
+
+ }
+const auto selection=selectedFrames_;auto ids=selection.empty()?std::vector<std::string>{frame().id}:selection;const auto start=position_;groupingHistory_=true;for(const auto& id:ids){if(timeline_.state().frames.size()<=1)break;selectFrame(id);deleteFrame();}selectedFrames_.clear();groupingHistory_=false;groupEdits(start,selection);if(clearPixelSelection && position_>start)selection_.reset();
 }
 }
