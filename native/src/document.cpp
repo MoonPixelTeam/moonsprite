@@ -1655,10 +1655,7 @@ bool Document::flipPaintCellSelection(bool horizontal){
  const auto expanded=expandedPaintCellSelection(true);if(!expanded)return false;const auto resolvedOwner=timeline_.resolveSurface(cel().id);const auto& grid=*resolvedOwner.source->tilemap;
  const auto bytes=std::uint64_t(grid.cells.size())*1024;if(bytes>256*1024*1024-adjustmentStorageBudget(timeline_,1))throw std::length_error("Paint cell flip exceeds document budget");
  std::set<std::size_t> selected;int left=grid.columns,right=-1,top=grid.rows,bottom=-1;for(std::size_t i=0;i<grid.cells.size();++i){const int x=int(i%grid.columns),y=int(i/grid.columns);if(selectionContains(expanded,activeSurface().offsetX+x*grid.tileWidth,activeSurface().offsetY+y*grid.tileHeight)){selected.insert(i);left=std::min(left,x);right=std::max(right,x);top=std::min(top,y);bottom=std::max(bottom,y);}}
- auto mirrored=[&](const std::optional<tiles::Cell>& cell){if(!cell)return cell;
-  // Preserve legacy candidate object spread: absent false/zero retains the original fields.
-  for(bool fh:{false,true})for(bool fv:{false,true})for(int rotation=0;rotation<(grid.tileWidth==grid.tileHeight?4:1);++rotation){auto candidate=*cell;if(fh)candidate.flipHorizontal=true;if(fv)candidate.flipVertical=true;if(rotation)candidate.rotation=rotation;bool same=true;for(int y=0;same&&y<grid.tileHeight;++y)for(int x=0;x<grid.tileWidth;++x){const auto expected=tiles::sourcePoint(horizontal?grid.tileWidth-1-x:x,horizontal?y:grid.tileHeight-1-y,grid.tileWidth,grid.tileHeight,*cell),actual=tiles::sourcePoint(x,y,grid.tileWidth,grid.tileHeight,candidate);if(expected!=actual){same=false;break;}}if(same)return std::optional<tiles::Cell>{candidate};}return cell;
- };
+ auto mirrored=[&](const std::optional<tiles::Cell>& cell){return mirroredTimelineTilemapCell(cell,horizontal,grid.tileWidth,grid.tileHeight);};
  TilemapPixelHistory payload;payload.celId=resolvedOwner.source->id;payload.tilesetEdit=false;payload.independentCellOwner=true;payload.cellOffsetLayout=true;payload.linkedCellOwner=true;payload.beforeSet.id=layer().tilemapTilesetId;for(const auto i:selected){const int x=int(i%grid.columns),y=int(i/grid.columns);const auto target=std::size_t(horizontal?y:top+bottom-y)*grid.columns+std::size_t(horizontal?left+right-x:x);if(!selected.count(target))continue;const auto value=mirrored(grid.cells[i]);if(value!=grid.cells[target])payload.cells.push_back({target,grid.cells[target],value});}
  auto after=selection_;if(after&&!after->mask.empty()){auto source=after->mask;for(int y=0;y<after->height;++y)for(int x=0;x<after->width;++x)after->mask[std::size_t(y)*after->width+x]=source[std::size_t(horizontal?y:after->height-1-y)*after->width+(horizontal?after->width-1-x:x)];}
  if(payload.cells.empty()){selection_=std::move(after);return false;}
@@ -1666,7 +1663,32 @@ bool Document::flipPaintCellSelection(bool horizontal){
  // legacy Paint flip history contains cell edits only; the flipped mask stays through Undo/Redo.
  const auto label=horizontal?U"水平翻转瓦片选区":U"垂直翻转瓦片选区";history_.reserve(position_+1);edit.label.reserve(32);applyEdit(edit,true);selection_=std::move(after);change_={0,0,width_,height_};publishChange();pushEdit(std::move(edit),label);return true;
 }
-bool Document::flipContent(bool horizontal){if(layer().kind=="free-tile"&&activeMaskId_.empty())return flipFreeTileContent(horizontal);if(layer().kind=="tilemap"&&tileSelection_.mode==tiles::Mode::Paint)return flipPaintCellSelection(horizontal);if(hasTilemapContent()||hasFreeTileContent())return false;if(!activeMaskId_.empty()&&!floating_)return selection_?transformMaskImmediate(true,horizontal,0):false;
+bool Document::flipContent(bool horizontal){
+ // Whole-Cel timeline edits take precedence over the active layer type, but
+ // an explicit free-instance pick still owns its existing narrower command.
+ if((hasTilemapContent()||hasFreeTileContent())&&!selection_&&!floating_&&activeMaskId_.empty()&&!(layer().kind=="free-tile"&&!selectedFreeTileInstances().empty())){
+  const auto targets=timelineContentFlipTargets(*this);if(targets.empty())return false;
+  Edit edit{{},state_,nextState_};edit.beforeActive=edit.afterActive=activeLayerId_;edit.beforeFrame=edit.afterFrame=activeFrameId_;edit.beforeTimelineSelection=edit.afterTimelineSelection=timelineSelection_;edit.beforeSelection=edit.afterSelection=selectedFrames_;edit.beforeFrameAnchor=edit.afterFrameAnchor=frameAnchor_;edit.beforeGroupUi=edit.afterGroupUi=GroupUiSnapshot{selectedGroupIds_,collapsedGroupIds_,selectedGroupId_};
+  std::size_t used=adjustmentStorageBudget(timeline_,1);
+  for(const auto& id:targets){const auto* source=timeline_.findCelById(id);const auto owner=std::find_if(timeline_.state().layers.begin(),timeline_.state().layers.end(),[&](const auto& l){return l.id==source->layerId;});const auto& surface=*source->surface;raster::validate(surface);
+   floatingAddBytes(used,std::uint64_t(surface.pixels.size())*sizeof(Pixel)*3);
+   Edit child{{},state_,nextState_};
+   if(owner->kind=="free-tile"){
+    floatingAddBytes(used,std::uint64_t(source->freeTiles->instances.size())*sizeof(free_tiles::Instance)*3);auto after=*source;for(auto& i:after.freeTiles->instances)if(!i.locked){if(horizontal)i.flipHorizontal=!i.flipHorizontal;else i.flipVertical=!i.flipVertical;}if(after.freeTiles==source->freeTiles)continue;
+    after.surface->pixels=free_tiles::render(*owner->freeTiles,*after.freeTiles,timeline_.state().tilesets,surface.width,surface.height);child.beforeCels={*source};child.afterCels={std::move(after)};
+   }else if(owner->kind=="tilemap"){
+    const auto& grid=*source->tilemap;floatingAddBytes(used,std::uint64_t(grid.cells.size())*1024);auto after=*source;for(int y=0;y<grid.rows;++y)for(int x=0;x<grid.columns;++x)after.tilemap->cells[std::size_t(y)*grid.columns+x]=mirroredTimelineTilemapCell(grid.cells[std::size_t(horizontal?y:grid.rows-1-y)*grid.columns+(horizontal?grid.columns-1-x:x)],horizontal,grid.tileWidth,grid.tileHeight);if(after.tilemap->cells==grid.cells)continue;
+    const auto rendered=tiles::render(*after.tilemap,timeline_.state().tilesets);std::vector<Pixel> cache(surface.pixels.size());const int width=grid.columns*grid.tileWidth,height=grid.rows*grid.tileHeight;for(int y=0;y<std::min(surface.height,height);++y)std::copy_n(rendered.begin()+std::size_t(y)*width,std::min(surface.width,width),cache.begin()+std::size_t(y)*surface.width);after.surface->pixels=std::move(cache);child.beforeCels={*source};child.afterCels={std::move(after)};
+   }else if(owner->kind.empty()){
+    child.targetCelId=id;child.pixelAddress=PixelAddressSpace{surface.width,surface.height,surface.storageOriginX.value_or(0),surface.storageOriginY.value_or(0)};
+    for(int y=0;y<surface.height;++y)for(int x=0;x<surface.width;++x){const auto at=std::size_t(y)*surface.width+x,from=std::size_t(horizontal?y:surface.height-1-y)*surface.width+(horizontal?surface.width-1-x:x);if(surface.pixels[at]!=surface.pixels[from]){floatingAddBytes(used,sizeof(Delta));child.pixels.push_back({at,surface.pixels[at],surface.pixels[from]});}}
+    if(child.pixels.empty())continue;
+   }else continue;
+   edit.children.push_back(std::move(child));
+  }
+  if(edit.children.empty())return false;history_.reserve(position_+1);capturePixelAddresses(edit);change_={};try{applyEdit(edit,true);}catch(...){applyEdit(edit,false);throw;}change_={0,0,width_,height_};publishChange();pushEdit(std::move(edit),horizontal?U"水平翻转选区":U"垂直翻转选区");return true;
+ }
+ if(layer().kind=="free-tile"&&activeMaskId_.empty())return flipFreeTileContent(horizontal);if(layer().kind=="tilemap"&&tileSelection_.mode==tiles::Mode::Paint)return flipPaintCellSelection(horizontal);if(hasTilemapContent()||hasFreeTileContent())return false;if(!activeMaskId_.empty()&&!floating_)return selection_?transformMaskImmediate(true,horizontal,0):false;
  const auto commandLayers=selectedLayerIdsWithGroups();
  if(floating_){
   auto& f=*floating_;std::size_t extra=0;for(const auto& target:f.targets){floatingAddBytes(extra,std::uint64_t(target.source.pixels.size())*5);if(!target.originalSource)floatingAddBytes(extra,std::uint64_t(target.source.pixels.size())*5);}floatingAddBytes(extra,std::uint64_t(f.source.pixels.size())*5);checkFloatingBudget(f,extra);

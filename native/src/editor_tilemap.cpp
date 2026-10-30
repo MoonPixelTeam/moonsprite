@@ -64,6 +64,7 @@ void Editor::createTilesetPanel(){
   const auto b=*freeTileSelectionTargetBounds(document);return b.x<document.width()&&b.y<document.height()&&std::int64_t(b.x)+b.w>0&&std::int64_t(b.y)+b.h>0;
  };}
  for(const auto* id:{"flipHorizontal","flipVertical"}){auto it=menuItems_.find(id);if(it==menuItems_.end())continue;auto previous=it->second->available;it->second->available=[this,previous]{
+  if((document.hasTilemapContent()||document.hasFreeTileContent())&&!document.selection()&&!document.floating()&&!(document.layer().kind=="free-tile"&&!document.selectedFreeTileInstances().empty()))return documentOpen_&&!homeOpen_&&pending_==Pending::None&&!historyGestureBusy()&&!timelineContentFlipTargets(document).empty();
   if(!document.hasFreeTileContent())return !previous||previous();
   if(!documentOpen_||homeOpen_||pending_!=Pending::None||historyGestureBusy()||document.layer().kind!="free-tile"||!document.activeMaskId().empty()||document.hasSelectedGroups()||document.layerEffectivelyLocked(document.layer())||!document.layerEffectivelyVisible(document.layer()))return false;
   if(auto target=document.floatingTransform())return !target->quad&&bool(freeTileSelectionTargetBounds(document));
