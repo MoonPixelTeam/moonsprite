@@ -77,9 +77,10 @@ void Editor::createTilesetPanel(){
  for(const auto* id:{"copy","cut","paste"}){auto found=menuItems_.find(id);if(found==menuItems_.end())continue;auto previous=found->second->available;const bool paste=std::string(id)=="paste";found->second->available=[this,previous,paste]{
   if(paletteFocused_||!document.hasFreeTileContent())return !previous||previous();
   if(document.active())return false;
+  if(paste&&layerClipboardSnapshot_)return !previous||previous();
   if(paste){if(document.layer().kind!="free-tile"||!document.layer().freeTiles||!document.cel().freeTiles||!document.activeMaskId().empty()||document.layerEffectivelyLocked(document.layer()))return false;}
   else if(document.selection()&&!freeTileInstancesPanel_->clipboardScope()){if(document.layer().kind!="free-tile"||!document.activeMaskId().empty()||!pixelClipboardContext())return false;}
-  else if(!document.freeTileInstanceView()||document.selectedFreeTileInstances().empty())return false;
+  else if(!document.freeTileInstanceView()||document.selectedFreeTileInstances().empty()){if(document.freeTileInstanceView()||celClipboardContext()||frameSelectionExplicit_||!document.activeMaskId().empty())return false;}
   return !previous||previous();
  };}
 
