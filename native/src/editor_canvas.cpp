@@ -6,6 +6,7 @@
 
 namespace moon::editor {
 std::string textBoxPointerHit(const Document&,const Skin&,const gfx::Rect&,double,Point,gfx::Point);
+std::string textLayerAtPoint(const Document&,Point);
 bool Editor::processAirbrushInput(ui::Message* msg){
  if(!airbrushTool_)return false;
  if(msg->type()!=ui::kMouseDownMessage&&msg->type()!=ui::kMouseMoveMessage&&msg->type()!=ui::kMouseUpMessage)return false;
@@ -828,6 +829,23 @@ const char* Editor::cursorAt(gfx::Point position) const {InteractionScope intera
     if(fillDragging_)return legacyPaintCursor(ink_&255,(ink_>>8)&255,(ink_>>16)&255);
 
     if(!canvasOwnsPointer(position))return "default";
+
+    // useCanvasCursor: text Alt-copy and configured temporary move precede
+    // sampling and ordinary text-box hover. Captured gestures were handled above.
+    if(textTool_&&!document.active()&&!spaceHeld_&&!handTool_&&canvasViewport().contains(position)&&!shortcutInputBlocked()){
+      auto held=moveHeldKeys_;
+      if(brushFeedback_.modifierAlt_)held.insert("Alt");
+      if(brushFeedback_.modifierCtrl_&&!held.count("Win"))held.insert("Ctrl");
+      if(selectionShift_)held.insert("Shift");
+      const auto point=canvasPoint(position);
+      if(held.count("Alt")&&!textLayerAtPoint(document,point).empty())return "copy";
+      if(shortcuts::quickToolMatch(shortcutBindings_,held,[this](const std::string& id){return shortcutSupported(id);})=="tool.move.quick"){
+        const bool inside=point.x>=0&&point.y>=0&&point.x<document.width()&&point.y<document.height();
+        auto selected=document.selectedLayerIdsWithGroups();if(selected.empty())selected.push_back(document.layer().id);
+        const bool movable=std::any_of(selected.begin(),selected.end(),[this](const auto& id){const auto& layer=document.timeline().state().layers[document.timeline().layerIndex(id)];return document.layerEffectivelyVisible(layer)&&!document.layerEffectivelyLocked(layer);});
+        return !inside||movable?"move":"unavailable";
+      }
+    }
 
     if(symmetryDragging_ || (!document.active() && !spaceHeld_ && !handTool_ && !navigation_.zoomTool_ && !eyedropperTool_ && !eyedropperHeld_ && symmetryHit(position)))return "move";
 
