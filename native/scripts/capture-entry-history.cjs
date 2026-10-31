@@ -41,6 +41,12 @@ const literal=text=>'U"'+[...text].map(c=>{const n=c.codePointAt(0);return n<128
    ['',0,0,['type:ab','blur','focus','type:c','key:Control+z','key:Control+z']],
    ['ABCD',2,2,['blur','focus','type:X','key:Control+z','key:Control+y']],
   ];
+  // Bare text and decimal input navigation uses the same browser control.
+  // This matrix deliberately uses simple BMP text: complex shaping/IME is separate.
+  const navigationKeys=['ArrowLeft','ArrowRight','Shift+ArrowLeft','Shift+ArrowRight','Home','End','Shift+Home','Shift+End','Control+Home','Control+End','Control+Shift+Home','Control+Shift+End','Control+a'];
+  const navigationRanges=[['ABCD',1,3],['ABCD',3,1],['ABCD',0,0],['ABCD',4,4],['ABCD',2,2],['中文测试',1,3],['中文测试',3,1],['',0,0]];
+  for(const [initial,a,c] of navigationRanges)for(const readonly of [false,true])for(const key of navigationKeys)
+   scenarios.push([initial,a,c,[...(readonly?['readonly:true']:[]),'key:'+key]]);
   const rows=[],records=[];
   for(let scenario=0;scenario<scenarios.length;scenario++){
    const [initial,a,c,actions]=scenarios[scenario];
@@ -60,6 +66,6 @@ const literal=text=>'U"'+[...text].map(c=>{const n=c.codePointAt(0);return n<128
    }
   }
   fs.writeFileSync(path.join(__dirname,'../tests/fixtures/entry_history_browser.h'),`#pragma once\n// Actual Edge ${await browser.version()} input local edit history.\n// Regenerate: node native/scripts/capture-entry-history.cjs\nnamespace moon {\nstruct EntryHistoryBrowserCase {int scenario;const char32_t* initial;int anchor,caret;const char32_t* action;const char32_t* text;int start,end;bool backward,undo,redo,compare;};\ninline const EntryHistoryBrowserCase entryHistoryBrowserCases[]{\n${rows.join('\n')}\n};\n}\n`);
-  console.log(`Captured ${rows.length} input history observations.`);
+  console.log(`Captured ${rows.length} input history/navigation observations (${records.filter(r=>![11,13].includes(r.scenario)).length} normative).`);
  }finally{await browser.close();}
 })().catch(error=>{console.error(error);process.exitCode=1;});

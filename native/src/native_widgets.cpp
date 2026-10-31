@@ -552,7 +552,7 @@ bool PixelEntry::onProcessMessage(ui::Message* msg) {
     }
     return true;
   }
-  bool clipboardHandled=false;
+  bool clipboardHandled=false,navigationHandled=false;
   std::optional<EntryEditHistory::Record> textEdit;
   if(msg->type()==ui::kKeyDownMessage && isEnabled() && hasFocus()) {
     const auto key=static_cast<ui::KeyMessage*>(msg);const auto code=key->scancode();
@@ -565,11 +565,24 @@ bool PixelEntry::onProcessMessage(ui::Message* msg) {
       const int start=std::clamp(scroll,0,int(value.size())),caret=std::clamp(caretPos(),start,int(value.size()));
       const auto rc=getEntryTextBounds();showInputEditMenu(bounds().origin()+gfx::Point(std::clamp(rc.x+font_.measure(value.substr(start,caret-start))*uiScale,rc.x,rc.x2()),rc.y2()));return true;
     }
+    // Reuse MIT commands for anchors, boxes, scrolling and the IME caret.
+    // Browser readonly inputs expose selection, without an editable caret.
+    if(!key->altPressed()&&!key->cmdPressed()&&
+       (((code==ui::kKeyLeft||code==ui::kKeyRight)&&!key->ctrlPressed())||
+        code==ui::kKeyHome||code==ui::kKeyEnd||(code==ui::kKeyA&&key->onlyCtrlPressed()))) {
+      history->group=0;const auto range=selectedRange();
+      if(!isReadOnly()||code==ui::kKeyA||(key->shiftPressed()&&!selectedText().empty())) {
+        if(!key->shiftPressed()&&(code==ui::kKeyLeft||code==ui::kKeyRight)&&!selectedText().empty()) {
+          const int edge=code==ui::kKeyLeft?range.from:range.to;selectText(edge,edge);
+        }else executeCmd(cmdFromKeyMessage(key),0,key->shiftPressed());
+      }
+      navigationHandled=true;
+    }
     const bool control=key->onlyCtrlPressed(),shift=key->onlyShiftPressed();
     if(control && (code==ui::kKeyC || code==ui::kKeyInsert))clipboardHandled=editClipboard(Cmd::Copy);
     else if((control && code==ui::kKeyX) || (shift && code==ui::kKeyDel))clipboardHandled=editClipboard(Cmd::Cut);
     else if((control && code==ui::kKeyV) || (shift && code==ui::kKeyInsert))clipboardHandled=editClipboard(Cmd::Paste);
-    if(!clipboardHandled&&!isReadOnly()){
+    if(!clipboardHandled&&!navigationHandled&&!isReadOnly()){
       if(code==ui::kKeyBackspace||code==ui::kKeyDel)textEdit.emplace(*this,key->ctrlPressed()||key->altPressed()?0:code==ui::kKeyBackspace?2:3);
       else if(!key->ctrlPressed()&&!key->altPressed()&&!key->cmdPressed()&&key->unicodeChar()>=32)textEdit.emplace(*this,key->unicodeChar()<128?1:0);
       else if(code==ui::kKeyLeft||code==ui::kKeyRight||code==ui::kKeyHome||code==ui::kKeyEnd||code==ui::kKeyA)history->group=0;
@@ -612,7 +625,7 @@ bool PixelEntry::onProcessMessage(ui::Message* msg) {
     if(key->scancode()==ui::kKeyEnter && accept) {const bool expression=deferredNumeric&&text().find_first_of("+-*/()",1)!=std::string::npos;commitExpression();if(!expression)accept();return true;}
     if(key->scancode()==ui::kKeyEsc && cancel) {cancel();return true;}
   }
-  const bool handled=clipboardHandled || ui::Entry::onProcessMessage(msg);
+  const bool handled=clipboardHandled || navigationHandled || ui::Entry::onProcessMessage(msg);
   // A field that can show its entire value must not retain an end-only scroll
   // left over from the smaller geometry used before the toolbar relayout.
   if(bounds().w>=currentContentWidth()*uiScale){
