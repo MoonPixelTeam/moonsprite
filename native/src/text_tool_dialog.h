@@ -17,6 +17,8 @@
 #include "../tests/fixtures/text_context_browser.h"
 #include "../tests/fixtures/entry_clipboard_browser.h"
 #include "../tests/fixtures/entry_context_browser.h"
+#include "../tests/fixtures/entry_history_browser.h"
+#include "entry_edit_history.h"
 namespace moon {
 class TextToolDialog final:public PixelDialog {
  const PixelFont& font_;const Skin& skin_;TextFontService& fonts_;TextCelData value_;std::function<void(const TextCelData&,bool)> preview_;std::vector<TextFontOption> options_;PixelTextArea* text_;PixelDropdown *family_,*align_,*layout_,*spacing_,*render_;std::vector<PixelEntry*> numbers_;PixelButton* color_=nullptr;std::unique_ptr<ColorEditorPopup> colorPopup_;PixelButton *ok_,*cancel_,*close_,*live_,*import_,*system_,*erase_;bool live=true,accepted_=false,syncing_=false;std::u32string error_;
@@ -253,6 +255,33 @@ public:
    throwingRead=true;entryKey(ui::kKeyV,ui::kKeyCtrlModifier);throwingRead=false;
    system.setClipboardDelegate(nullptr);entryKey(ui::kKeyX,ui::kKeyCtrlModifier);entryKey(ui::kKeyV,ui::kKeyCtrlModifier);system.setClipboardDelegate(&bridge);
    check(input->text()=="ABCD"&&input->selectedRange().from==1&&input->selectedRange().to==3&&clipboard==saved&&changes==0,"Single-line clipboard failures preserve text, selection and notifications");
+   // Compare local input history with the actual browser edit sequences.
+   auto typeEntry=[&](const std::u32string& value){for(const auto cp:value){ui::KeyMessage message(ui::kKeyDownMessage,ui::kKeyNil,ui::kKeyNoneModifier,int(cp),0);check(input->onProcessMessage(&message),"Single-line typed input consumed");}};
+   int historyScenario=-1,historyRows=0;
+   for(const auto& fixture:entryHistoryBrowserCases){
+    // Retain these observations as evidence, without adopting browser bugs in
+    // read-only/external-value Undo or conflating old focus-selection gaps.
+    if(!fixture.compare)continue;
+    if(historyScenario!=fixture.scenario){input->removeProperty(EntryEditHistory::propertyName);input->setReadOnly(false);input->setText(utf8Text(fixture.initial));input->selectText(fixture.anchor,fixture.caret);historyScenario=fixture.scenario;}
+    const std::u32string action=fixture.action;const auto colon=action.find(U':');const auto kind=action.substr(0,colon),arg=colon==std::u32string::npos?U"":action.substr(colon+1);
+    if(kind==U"type")typeEntry(arg);
+    else if(kind==U"paste"){check(bridge.trySetClipboardText(utf8Text(arg)),"History paste seed");entryKey(ui::kKeyV,ui::kKeyCtrlModifier);}
+    else if(kind==U"set")input->setText(utf8Text(arg));
+    else if(kind==U"select"){const auto comma=arg.find(U',');input->selectText(std::stoi(utf8Text(arg.substr(0,comma))),std::stoi(utf8Text(arg.substr(comma+1))));}
+    else if(kind==U"key"){
+     const auto split=arg.rfind(U'+');const auto name=split==std::u32string::npos?arg:arg.substr(split+1);ui::KeyScancode scan=ui::kKeyNil;
+     if(name==U"z")scan=ui::kKeyZ;else if(name==U"y")scan=ui::kKeyY;else if(name==U"x")scan=ui::kKeyX;else if(name==U"c")scan=ui::kKeyC;else if(name==U"a")scan=ui::kKeyA;else if(name==U"ArrowLeft")scan=ui::kKeyLeft;else if(name==U"Backspace")scan=ui::kKeyBackspace;else if(name==U"Delete")scan=ui::kKeyDel;
+     check(scan!=ui::kKeyNil,"Known browser history key");const auto mods=ui::KeyModifiers((arg.find(U"Control+")!=std::u32string::npos?ui::kKeyCtrlModifier:0)|(arg.find(U"Shift+")!=std::u32string::npos?ui::kKeyShiftModifier:0));entryKey(scan,mods);
+    }else check(false,"Known browser history action");
+    const auto range=input->selectedRange();const int a=range.isEmpty()?input->caretPos():range.from,b=range.isEmpty()?input->caretPos():range.to;auto history=EntryEditHistory::get(*input);
+    if(input->text()!=utf8Text(fixture.text)||a!=fixture.start||b!=fixture.end||input->caretPos()!=(fixture.backward?fixture.start:fixture.end)||!history->undo.empty()!=fixture.undo||!history->redo.empty()!=fixture.redo)throw std::runtime_error("Browser input history mismatch scenario "+std::to_string(fixture.scenario)+" action "+utf8Text(action)+" text="+input->text()+" range="+std::to_string(a)+","+std::to_string(b));
+    ++historyRows;
+   }
+   check(historyRows==99,"All normative browser input history observations checked");
+   input->removeProperty(EntryEditHistory::propertyName);input->setText("");input->selectText(0,0);typeEntry(U"a");input->setReadOnly(true);const auto beforeReadOnly=EntryEditHistory::get(*input);entryKey(ui::kKeyZ,ui::kKeyCtrlModifier);check(input->text()=="a"&&beforeReadOnly->undo.size()==1&&beforeReadOnly->redo.empty(),"Read-only Undo is a safe no-op, not browser stale-operation corruption");input->setReadOnly(false);entryKey(ui::kKeyZ,ui::kKeyCtrlModifier);entryKey(ui::kKeyY,ui::kKeyCtrlModifier);check(input->text()=="a","Read-only history cannot duplicate content on Redo");
+   input->setText("external");entryKey(ui::kKeyZ,ui::kKeyCtrlModifier);check(input->text()=="external"&&EntryEditHistory::get(*input)->undo.empty()&&EntryEditHistory::get(*input)->redo.empty(),"External value replacement cannot replay stale input history");
+   input->setText("");input->selectText(0,0);typeEntry(U"a");input->setText("other");input->setText("a");entryKey(ui::kKeyZ,ui::kKeyCtrlModifier);check(input->text()=="a"&&EntryEditHistory::get(*input)->undo.empty(),"Intermediate external replacement clears stale history even when original text returns");
+   const bool oldDeferred=input->deferredNumeric;input->deferredNumeric=true;input->removeProperty(EntryEditHistory::propertyName);input->setText("");input->selectText(0,0);changes=0;typeEntry(U"2");entryKey(ui::kKeyZ,ui::kKeyCtrlModifier);check(input->text().empty()&&changes==0,"Deferred numeric history does not commit a document change");input->deferredNumeric=oldDeferred;
    // Actual input menus run in the existing MIT popup loop, with an injected
    // clipboard and form callbacks to detect premature focus-driven commits.
    int menuBlurs=0,menuFocus=0;auto oldBlur=input->blur,oldFocus=input->focus;
@@ -260,7 +289,7 @@ public:
    auto entryContext=[&](const std::function<void()>& open,const std::function<void(PixelMenu&)>& verify){
     bool opened=false;std::string failure;ui::Timer timer(20,input);
     timer.Tick.connect([&]{timer.stop();auto top=manager()->getTopWindow();PixelMenu* menu=nullptr;std::function<void(ui::Widget*)> find=[&](ui::Widget* widget){if(auto candidate=dynamic_cast<PixelMenu*>(widget))menu=candidate;else for(auto child:widget->children())find(child);};if(top)find(top);
-     try{check(menu!=nullptr,"Single-line context menu is shown");opened=true;check(menu->children().size()==6&&dynamic_cast<PixelMenuSeparator*>(menu->children()[4]),"Single-line menu uses shared rows and separator");check(!input->hasCapture(),"Single-line menu releases pointer capture");verify(*menu);auto popup=menu->window();ui::KeyMessage escape(ui::kKeyDownMessage,ui::kKeyEsc,ui::kKeyNoneModifier,0,0);escape.setRecipient(manager()->getFocus());manager()->sendMessage(&escape);check(!popup->isVisible()&&isVisible(),"Single-line menu Escape preserves parent dialog");}catch(const std::exception& error){failure=error.what();}
+     try{check(menu!=nullptr,"Single-line context menu is shown");opened=true;check(menu->children().size()==9&&dynamic_cast<PixelMenuSeparator*>(menu->children()[2])&&dynamic_cast<PixelMenuSeparator*>(menu->children()[7]),"Single-line menu uses shared rows and separator");check(!input->hasCapture(),"Single-line menu releases pointer capture");verify(*menu);auto popup=menu->window();ui::KeyMessage escape(ui::kKeyDownMessage,ui::kKeyEsc,ui::kKeyNoneModifier,0,0);escape.setRecipient(manager()->getFocus());manager()->sendMessage(&escape);check(!popup->isVisible()&&isVisible(),"Single-line menu Escape preserves parent dialog");}catch(const std::exception& error){failure=error.what();}
      if(menu){if(auto popup=menu->window())popup->closeWindow(nullptr);}else if(top&&top!=this)top->closeWindow(nullptr);
     });timer.start();open();timer.stop();manager()->dispatchMessages();if(!failure.empty())throw std::runtime_error(failure);check(opened&&input->hasFocus(),"Single-line menu restores input focus");check(menuBlurs==0&&menuFocus==0,"Input menu does not trigger form blur commit or focus flyout");
    };
@@ -271,22 +300,24 @@ public:
     auto mouse=[&](ui::MessageType type){ui::MouseMessage message(type,os::PointerType::Mouse,ui::kButtonRight,ui::kKeyNoneModifier,point);check(input->onProcessMessage(&message),"Single-line right click consumed");};
     auto matches=[&](int a,int b){const auto range=input->selectedRange();return (range.isEmpty()?input->caretPos():range.from)==a&&(range.isEmpty()?input->caretPos():range.to)==b;};
     if(fixture.key==ui::kKeyNil){mouse(ui::kMouseDownMessage);if(!matches(fixture.downStart,fixture.downEnd))throw std::runtime_error("Single-line browser right-down mismatch "+std::to_string(entryContextCase));}
-    entryContext([&]{if(fixture.key==ui::kKeyNil)mouse(ui::kMouseUpMessage);else entryKey(fixture.key,fixture.shift?ui::kKeyShiftModifier:ui::kKeyNoneModifier);},[&](PixelMenu& menu){const bool selected=fixture.upStart!=fixture.upEnd;for(const int index:{0,1,3})check(menu.children()[index]->isEnabled()==selected,"Single-line menu selection availability");});
+    entryContext([&]{if(fixture.key==ui::kKeyNil)mouse(ui::kMouseUpMessage);else entryKey(fixture.key,fixture.shift?ui::kKeyShiftModifier:ui::kKeyNoneModifier);},[&](PixelMenu& menu){const bool selected=fixture.upStart!=fixture.upEnd;for(const int index:{3,4,6})check(menu.children()[index]->isEnabled()==selected,"Single-line menu selection availability");});
     check(matches(fixture.upStart,fixture.upEnd)&&input->caretPos()==(fixture.backward?fixture.upStart:fixture.upEnd),"Single-line menu cancellation preserves browser range and direction");check(input->text()==utf8Text(sample)&&clipboard==savedClipboard&&changes==0,"Single-line menu cancellation is not an edit");++entryContextCase;
    }
    auto entryMenuAction=[&](int index,const std::function<void()>& before={}){entryContext([&]{entryKey(ui::kKeyF10,ui::kKeyShiftModifier);},[&](PixelMenu& menu){auto row=dynamic_cast<PixelMenuItem*>(menu.children()[index]);check(row&&row->isEnabled(),"Single-line menu action enabled");if(before)before();row->Click();});};
-   for(const int index:{0,1,2,3,5}){
+   input->removeProperty(EntryEditHistory::propertyName);input->setText("ABCD");input->selectText(3,1);typeEntry(U"xy");changes=0;
+   entryMenuAction(0);check(input->text()=="ABCD"&&input->selectedRange().from==1&&input->selectedRange().to==3&&input->caretPos()==1&&changes==1,"Menu Undo restores text and backward selection once");changes=0;entryMenuAction(1);check(input->text()=="AxyD"&&input->caretPos()==3&&changes==1,"Menu Redo shares input local history once");
+   for(const int index:{3,4,5,6,8}){
     input->setText("ABCD");input->selectText(1,3);check(bridge.trySetClipboardText(utf8Text(U"\u4e00\n\u4e8c")),"Single-line menu paste seed");changes=0;entryMenuAction(index);
-    const auto expected=index==0||index==3?"AD":index==2?utf8Text(U"A\u4e00 \u4e8cD"):"ABCD";check(input->text()==expected&&changes==((index==0||index==2||index==3)?1:0),"Single-line menu shares keyboard edit and notification semantics");
-    if(index==0||index==1)check(clipboard=="BC","Single-line menu exports selected text");
-    if(index==5)check(input->selectedRange().from==0&&input->selectedRange().to==4,"Single-line menu Select All");
+    const auto expected=index==3||index==6?"AD":index==5?utf8Text(U"A\u4e00 \u4e8cD"):"ABCD";check(input->text()==expected&&changes==((index==3||index==5||index==6)?1:0),"Single-line menu shares keyboard edit and notification semantics");
+    if(index==3||index==4)check(clipboard=="BC","Single-line menu exports selected text");
+    if(index==8)check(input->selectedRange().from==0&&input->selectedRange().to==4,"Single-line menu Select All");
    }
    input->setText("ABCD");input->selectText(1,3);const auto failureClipboard=clipboard;changes=0;
-   writable=false;entryMenuAction(0);writable=true;throwingWrite=true;entryMenuAction(0);throwingWrite=false;
-   entryMenuAction(2,[&]{readable=false;});readable=true;entryMenuAction(2,[&]{throwingRead=true;});throwingRead=false;
+   writable=false;entryMenuAction(3);writable=true;throwingWrite=true;entryMenuAction(3);throwingWrite=false;
+   entryMenuAction(5,[&]{readable=false;});readable=true;entryMenuAction(5,[&]{throwingRead=true;});throwingRead=false;
    check(input->text()=="ABCD"&&input->selectedRange().from==1&&input->selectedRange().to==3&&changes==0&&clipboard==failureClipboard,"Single-line menu clipboard failures preserve draft and range");
-   input->setReadOnly(true);entryContext([&]{entryKey(ui::kKeyMenu,ui::kKeyNoneModifier);},[&](PixelMenu& menu){for(const int index:{0,2,3})check(!menu.children()[index]->isEnabled(),"Read-only context disables editing");check(menu.children()[1]->isEnabled()&&menu.children()[5]->isEnabled(),"Read-only context permits Copy and Select All");});input->setReadOnly(false);
-   input->setText("");readable=false;entryContext([&]{entryKey(ui::kKeyMenu,ui::kKeyNoneModifier);},[&](PixelMenu& menu){for(const int index:{0,1,2,3,5})check(!menu.children()[index]->isEnabled(),"Empty single-line and absent text clipboard disable actions");});readable=true;
+   input->setReadOnly(true);entryContext([&]{entryKey(ui::kKeyMenu,ui::kKeyNoneModifier);},[&](PixelMenu& menu){for(const int index:{0,1,3,5,6})check(!menu.children()[index]->isEnabled(),"Read-only context disables editing");check(menu.children()[4]->isEnabled()&&menu.children()[8]->isEnabled(),"Read-only context permits Copy and Select All");});input->setReadOnly(false);
+   input->setText("");readable=false;entryContext([&]{entryKey(ui::kKeyMenu,ui::kKeyNoneModifier);},[&](PixelMenu& menu){for(const int index:{3,4,5,6,8})check(!menu.children()[index]->isEnabled(),"Empty single-line and absent text clipboard disable actions");});readable=true;
    input->blur=std::move(oldBlur);input->focus=std::move(oldFocus);
    connection.disconnect();input->setText(initial);syncing_=previousSync;
   }

@@ -6,6 +6,7 @@
 #include "native_widgets.h"
 #include "native_text_clipboard.h"
 #include "pixel_input_menu.h"
+#include "entry_edit_history.h"
 #include "os/system.h"
 #include "color_value_ui.h"
 #include "color_picker_layout.h"
@@ -452,6 +453,7 @@ static void drawInputFrame(ui::Graphics& g,const Skin& skin,gfx::Rect physical,b
 }
 bool PixelEntry::editClipboard(Cmd command) {
   if(!isEnabled())return false;
+  EntryEditHistory::Record edit(*this,0);
   if(command==Cmd::Copy || command==Cmd::Cut) {
     if((command==Cmd::Copy || !isReadOnly()) && !selectedText().empty() &&
        trySetInputClipboardText(selectedText()) && command==Cmd::Cut)
@@ -489,13 +491,21 @@ void PixelEntry::showInputEditMenu(gfx::Point position) {
   // selectedRange clamps against its sentinel box. Empty text has no selection.
   if(text().empty())selectText(0,0);
   PixelInputMenu menu(skin_);const bool selected=!selectedText().empty();
+  auto history=EntryEditHistory::get(*this);
+  auto historyItem=[&](std::u32string caption,std::u32string shortcut,bool forward){
+    auto row=new PixelMenuItem(font_,skin_,std::move(caption),std::move(shortcut));
+    row->setEnabled(!isReadOnly()&&!(forward?history->redo:history->undo).empty());
+    row->Click.connect([this,history,forward]{history->restore(*this,forward,[this]{onChange();});});menu.addChild(row);
+  };
+  historyItem(U"撤销",U"Ctrl+Z",false);historyItem(U"重做",U"Ctrl+Y",true);
+  menu.addChild(new PixelMenuSeparator(skin_));
   auto clipboard=ui::UISystem::instance()->clipboardDelegate();
   auto item=[&](std::u32string label,std::u32string shortcut,bool enabled,Cmd command){
     auto row=new PixelMenuItem(font_,skin_,std::move(label),std::move(shortcut));row->setEnabled(enabled);
     row->Click.connect([this,enabled,command]{if(!enabled || !isEnabled())return;
       if(!editClipboard(command)) {
         if(command==Cmd::SelectAll)selectAllText();
-        else if(command==Cmd::DeleteNextChar && !isReadOnly() && !selectedText().empty())executeCmd(command);
+        else if(command==Cmd::DeleteNextChar && !isReadOnly() && !selectedText().empty()){EntryEditHistory::Record edit(*this,3);executeCmd(command);}
       }
     });menu.addChild(row);
   };
@@ -540,8 +550,13 @@ bool PixelEntry::onProcessMessage(ui::Message* msg) {
     return true;
   }
   bool clipboardHandled=false;
+  std::optional<EntryEditHistory::Record> textEdit;
   if(msg->type()==ui::kKeyDownMessage && isEnabled() && hasFocus()) {
     const auto key=static_cast<ui::KeyMessage*>(msg);const auto code=key->scancode();
+    auto history=EntryEditHistory::get(*this);
+    const bool undo=(code==ui::kKeyZ&&(key->onlyCtrlPressed()||key->modifiers()==ui::KeyModifiers(ui::kKeyCtrlModifier|ui::kKeyShiftModifier)));
+    const bool redo=(code==ui::kKeyY&&key->onlyCtrlPressed())||(undo&&key->shiftPressed());
+    if(undo||redo){history->restore(*this,redo,[this]{onChange();});return true;}
     if(code==ui::kKeyMenu || (code==ui::kKeyF10 && key->onlyShiftPressed())){
       int scroll=0;getEntryThemeInfo(&scroll,nullptr,nullptr,nullptr);const auto value=unicodeText(text());
       const int start=std::clamp(scroll,0,int(value.size())),caret=std::clamp(caretPos(),start,int(value.size()));
@@ -551,6 +566,11 @@ bool PixelEntry::onProcessMessage(ui::Message* msg) {
     if(control && (code==ui::kKeyC || code==ui::kKeyInsert))clipboardHandled=editClipboard(Cmd::Copy);
     else if((control && code==ui::kKeyX) || (shift && code==ui::kKeyDel))clipboardHandled=editClipboard(Cmd::Cut);
     else if((control && code==ui::kKeyV) || (shift && code==ui::kKeyInsert))clipboardHandled=editClipboard(Cmd::Paste);
+    if(!clipboardHandled&&!isReadOnly()){
+      if(code==ui::kKeyBackspace||code==ui::kKeyDel)textEdit.emplace(*this,key->ctrlPressed()||key->altPressed()?0:code==ui::kKeyBackspace?2:3);
+      else if(!key->ctrlPressed()&&!key->altPressed()&&!key->cmdPressed()&&key->unicodeChar()>=32)textEdit.emplace(*this,key->unicodeChar()<128?1:0);
+      else if(code==ui::kKeyLeft||code==ui::kKeyRight||code==ui::kKeyHome||code==ui::kKeyEnd||code==ui::kKeyA)history->group=0;
+    }
   }
   if(msg->type()==ui::kMouseLeaveMessage){if(frameHover_){frameHover_=false;invalidate();}}
   else if(msg->type()==ui::kMouseEnterMessage || msg->type()==ui::kMouseMoveMessage || msg->type()==ui::kMouseDownMessage || msg->type()==ui::kMouseUpMessage){
@@ -567,7 +587,7 @@ bool PixelEntry::onProcessMessage(ui::Message* msg) {
     // focus handling entirely. Both clicks must still reopen the legacy flyout.
     if(mouse->left() && (hasFocus() || scrub))focus();
   }
-  if(msg->type()==ui::kFocusEnterMessage || msg->type()==ui::kFocusLeaveMessage)invalidate();
+  if(msg->type()==ui::kFocusEnterMessage || msg->type()==ui::kFocusLeaveMessage){if(auto history=std::dynamic_pointer_cast<EntryEditHistory>(getProperty(EntryEditHistory::propertyName)))history->group=0;invalidate();}
   if(isEnabled() && !isReadOnly() && (numeric || wheel)) {
     if(msg->type()==ui::kMouseDownMessage){const auto mouse=static_cast<ui::MouseMessage*>(msg);
       const int suffixWidth=(font_.measure(suffix)+4)*uiScale;
