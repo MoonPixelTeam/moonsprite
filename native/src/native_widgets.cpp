@@ -5,6 +5,8 @@
 #include <chrono>
 #include "native_widgets.h"
 #include "native_text_clipboard.h"
+#include "pixel_input_menu.h"
+#include "os/system.h"
 #include "color_value_ui.h"
 #include "color_picker_layout.h"
 #include "ui_scale.h"
@@ -448,50 +450,107 @@ void PixelEntry::adjustNumber(int delta) {
 static void drawInputFrame(ui::Graphics& g,const Skin& skin,gfx::Rect physical,bool frameHover=false) {
   skin.draw(g,frameHover?"entry.hover":"entry.normal",uiLogical(physical));
 }
+bool PixelEntry::editClipboard(Cmd command) {
+  if(!isEnabled())return false;
+  if(command==Cmd::Copy || command==Cmd::Cut) {
+    if((command==Cmd::Copy || !isReadOnly()) && !selectedText().empty() &&
+       trySetInputClipboardText(selectedText()) && command==Cmd::Cut)
+      executeCmd(Cmd::DeleteNextChar);
+  }else if(command==Cmd::Paste) {
+    if(!isReadOnly()) {
+      std::string text;
+      if(ui::get_clipboard_text(text)) {
+        // Actual legacy input paste replaces CR/LF/CRLF with one space.
+        std::string normalized;normalized.reserve(text.size());
+        for(std::size_t i=0;i<text.size();++i){
+          if(text[i]=='\r'||text[i]=='\n'){
+            normalized+=' ';if(text[i]=='\r'&&i+1<text.size()&&text[i+1]=='\n')++i;
+          }else normalized+=text[i];
+        }
+        auto& system=*ui::UISystem::instance();
+        NativeTextClipboard snapshot(system,[](const std::string&){return false;},
+          [&](std::string& out){out=normalized;return true;},[]{return true;});
+        if(selectedRange().isEmpty())deselectText();
+        executeCmd(Cmd::Paste);
+      }
+    }
+  }else return false;
+  // Preserve the shared input's existing post-edit scroll correction for both
+  // keyboard and menu commands; reuse Entry boxes and its one Change callback.
+  if(bounds().w>=currentContentWidth()*uiScale){
+    int scroll=0,caret=0;getEntryThemeInfo(&scroll,&caret,nullptr,nullptr);
+    if(scroll){setCaretPos(0);setCaretPos(caret);invalidate();}
+  }
+  return true;
+}
+void PixelEntry::showInputEditMenu(gfx::Point position) {
+  if(editMenuOpen_ || !isEnabled())return;
+  // Entry::setText may leave an old anchor beyond the shortened value, which
+  // selectedRange clamps against its sentinel box. Empty text has no selection.
+  if(text().empty())selectText(0,0);
+  PixelInputMenu menu(skin_);const bool selected=!selectedText().empty();
+  auto clipboard=ui::UISystem::instance()->clipboardDelegate();
+  auto item=[&](std::u32string label,std::u32string shortcut,bool enabled,Cmd command){
+    auto row=new PixelMenuItem(font_,skin_,std::move(label),std::move(shortcut));row->setEnabled(enabled);
+    row->Click.connect([this,enabled,command]{if(!enabled || !isEnabled())return;
+      if(!editClipboard(command)) {
+        if(command==Cmd::SelectAll)selectAllText();
+        else if(command==Cmd::DeleteNextChar && !isReadOnly() && !selectedText().empty())executeCmd(command);
+      }
+    });menu.addChild(row);
+  };
+  item(U"剪切",U"Ctrl+X",selected&&!isReadOnly()&&clipboard,Cmd::Cut);
+  item(U"复制",U"Ctrl+C",selected&&clipboard,Cmd::Copy);
+  item(U"粘贴",U"Ctrl+V",!isReadOnly()&&clipboard&&clipboard->hasClipboardText(),Cmd::Paste);
+  item(U"删除",U"Delete",selected&&!isReadOnly(),Cmd::DeleteNextChar);
+  menu.addChild(new PixelMenuSeparator(skin_));
+  item(U"全选",U"Ctrl+A",!text().empty(),Cmd::SelectAll);
+  // Focus temporarily belongs to the menu, not another form field. Preserve
+  // the input draft/selection and suppress numeric blur commit during this hop.
+  editMenuOpen_=true;
+  try {menu.showPopup(position,display());}catch(...){editMenuOpen_=false;editMenuRefocus_=true;requestFocus();throw;}
+  editMenuOpen_=false;editMenuRefocus_=true;requestFocus();
+}
 bool PixelEntry::onProcessMessage(ui::Message* msg) {
+  if(rightSelecting_ && msg->type()==ui::kFocusLeaveMessage && !editMenuOpen_){rightSelecting_=false;editMenuRefocus_=false;if(hasCapture())releaseMouse();}
+  if((editMenuOpen_ || editMenuRefocus_) && (msg->type()==ui::kFocusEnterMessage || msg->type()==ui::kFocusLeaveMessage)) {
+    const bool entering=msg->type()==ui::kFocusEnterMessage;
+    if(entering){if(!editMenuOpen_)editMenuRefocus_=false;showCaret();}
+    else hideCaret();
+    os::System::instance()->setTextInput(entering,entering?caretPosOnScreen():gfx::Point());
+    invalidate();return true;
+  }
+  if(paletteViewport && !hasCapture() && msg->type()==ui::kMouseDownMessage && !paletteViewport().contains(static_cast<ui::MouseMessage*>(msg)->position()))return false;
+  if(msg->type()==ui::kMouseDownMessage && static_cast<ui::MouseMessage*>(msg)->right()) {
+    if(!isEnabled())return true;
+    editMenuRefocus_=true;requestFocus();if(hasCapture())releaseMouse();scrubbing_=false;
+    const auto mouse=static_cast<ui::MouseMessage*>(msg);int scroll=0;getEntryThemeInfo(&scroll,nullptr,nullptr,nullptr);
+    const auto value=unicodeText(text());const int start=std::clamp(scroll,0,int(value.size()));
+    int x=bounds().x+getEntryTextBounds().x,best=start,distance=std::abs(mouse->position().x-x);
+    for(int i=start;i<int(value.size());++i){x+=font_.measure(value.substr(i,1))*uiScale;const int next=std::abs(mouse->position().x-x);if(next<distance){distance=next;best=i+1;}}
+    best=std::min(best,lastCaretPos());const auto range=selectedRange();
+    if(range.isEmpty() || best<range.from || best>range.to)selectText(best,best);
+    rightSelecting_=true;captureMouse();return true;
+  }
+  if(rightSelecting_ && (msg->type()==ui::kMouseMoveMessage || msg->type()==ui::kMouseUpMessage)) {
+    if(!hasCapture()){rightSelecting_=false;editMenuRefocus_=false;return true;}
+    if(msg->type()==ui::kMouseUpMessage && static_cast<ui::MouseMessage*>(msg)->right()){
+      rightSelecting_=false;releaseMouse();showInputEditMenu(static_cast<ui::MouseMessage*>(msg)->position());
+    }
+    return true;
+  }
   bool clipboardHandled=false;
   if(msg->type()==ui::kKeyDownMessage && isEnabled() && hasFocus()) {
-    const auto key=static_cast<ui::KeyMessage*>(msg);
-    const bool control=key->onlyCtrlPressed();
-    const bool shift=key->onlyShiftPressed();
-    const auto code=key->scancode();
-    const bool copy=(control && (code==ui::kKeyC || code==ui::kKeyInsert));
-    const bool cut=(control && code==ui::kKeyX) || (shift && code==ui::kKeyDel);
-    const bool paste=(control && code==ui::kKeyV) || (shift && code==ui::kKeyInsert);
-    if(copy || cut) {
-      // Browser input cut is a no-op without a selection. MIT Entry otherwise
-      // treats it as forward Delete and cannot report a clipboard write failure.
-      if((copy || !isReadOnly()) && !selectedRange().isEmpty() &&
-         trySetInputClipboardText(selectedText()) && cut)
-        executeCmd(Cmd::DeleteNextChar);
-      clipboardHandled=true;
+    const auto key=static_cast<ui::KeyMessage*>(msg);const auto code=key->scancode();
+    if(code==ui::kKeyMenu || (code==ui::kKeyF10 && key->onlyShiftPressed())){
+      int scroll=0;getEntryThemeInfo(&scroll,nullptr,nullptr,nullptr);const auto value=unicodeText(text());
+      const int start=std::clamp(scroll,0,int(value.size())),caret=std::clamp(caretPos(),start,int(value.size()));
+      const auto rc=getEntryTextBounds();showInputEditMenu(bounds().origin()+gfx::Point(std::clamp(rc.x+font_.measure(value.substr(start,caret-start))*uiScale,rc.x,rc.x2()),rc.y2()));return true;
     }
-    if(paste) {
-      if(!isReadOnly()) {
-        std::string text;
-        if(ui::get_clipboard_text(text)) {
-          // Legacy browser paste replaces each line break with a space; a CRLF
-          // pair is one break. TextInput and NumberInput both use type=text.
-          std::string normalized;normalized.reserve(text.size());
-          for(std::size_t i=0;i<text.size();++i){
-            if(text[i]=='\r'||text[i]=='\n'){
-              normalized+=' ';if(text[i]=='\r'&&i+1<text.size()&&text[i+1]=='\n')++i;
-            }else normalized+=text[i];
-          }
-          text=std::move(normalized);
-          auto& system=*ui::UISystem::instance();
-          NativeTextClipboard snapshot(system,[](const std::string&){return false;},
-            [&](std::string& out){out=text;return true;},[]{return true;});
-          // A collapsed selectText(a,a) still leaves Entry's internal anchor
-          // active; clear it so insertion does not select the newly pasted text.
-          if(selectedRange().isEmpty())deselectText();
-          // Reuse Entry's selection, character boxes, maximum length and one
-          // Change notification. The snapshot never writes the OS clipboard.
-          executeCmd(Cmd::Paste);
-        }
-      }
-      clipboardHandled=true;
-    }
+    const bool control=key->onlyCtrlPressed(),shift=key->onlyShiftPressed();
+    if(control && (code==ui::kKeyC || code==ui::kKeyInsert))clipboardHandled=editClipboard(Cmd::Copy);
+    else if((control && code==ui::kKeyX) || (shift && code==ui::kKeyDel))clipboardHandled=editClipboard(Cmd::Cut);
+    else if((control && code==ui::kKeyV) || (shift && code==ui::kKeyInsert))clipboardHandled=editClipboard(Cmd::Paste);
   }
   if(msg->type()==ui::kMouseLeaveMessage){if(frameHover_){frameHover_=false;invalidate();}}
   else if(msg->type()==ui::kMouseEnterMessage || msg->type()==ui::kMouseMoveMessage || msg->type()==ui::kMouseDownMessage || msg->type()==ui::kMouseUpMessage){

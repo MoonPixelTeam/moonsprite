@@ -286,6 +286,9 @@ public:
   gfx::Rect onGetEntryTextBounds() const override;
 private:
   int fixedContentWidth_=0;
+  bool editMenuOpen_=false,editMenuRefocus_=false,rightSelecting_=false;
+  bool editClipboard(Cmd command);
+  void showInputEditMenu(gfx::Point position);
 };
 std::u32string unicodeText(const std::string& value);
 std::string utf8Text(const std::u32string& value);

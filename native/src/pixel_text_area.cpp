@@ -1,4 +1,5 @@
 #include "pixel_text_area.h"
+#include "pixel_input_menu.h"
 #include "native_text_clipboard.h"
 #include <algorithm>
 #include <cmath>
@@ -11,17 +12,6 @@
 
 namespace moon {
 namespace {
-class TextContextMenu final : public PixelMenu {
-public:
- explicit TextContextMenu(const Skin& skin):PixelMenu(skin){}
- bool onProcessMessage(ui::Message* msg) override {
-  if(msg->type()==ui::kKeyDownMessage&&static_cast<ui::KeyMessage*>(msg)->scancode()==ui::kKeyEsc){
-   if(auto popup=window())popup->closeWindow(nullptr);
-   return true;
-  }
-  return PixelMenu::onProcessMessage(msg);
- }
-};
 // The existing MIT UI Entry/laf contract takes a screen-space caret bottom.
 // Multi-line fields share the same native input service and OS candidate UI.
 void textInputCaret(ui::Widget& input,gfx::Point caret,int scroll){
@@ -172,7 +162,7 @@ PixelTextArea::CaretStop PixelTextArea::at(gfx::Point physical)const{
 
 bool PixelTextArea::onProcessMessage(ui::Message* msg){
   auto editMenu=[&](gfx::Point position){
-   TextContextMenu menu(skin_);const bool selected=caret_!=anchor_;
+   PixelInputMenu menu(skin_);const bool selected=caret_!=anchor_;
    auto clipboard=ui::UISystem::instance()->clipboardDelegate();
    auto item=[&](std::u32string label,std::u32string shortcut,bool enabled,ui::KeyScancode scan,ui::KeyModifiers modifiers){
     auto entry=new PixelMenuItem(font_,skin_,std::move(label),std::move(shortcut));entry->setEnabled(enabled);
