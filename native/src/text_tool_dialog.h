@@ -19,6 +19,7 @@
 #include "../tests/fixtures/entry_context_browser.h"
 #include "../tests/fixtures/entry_history_browser.h"
 #include "../tests/fixtures/entry_resize_browser.h"
+#include "../tests/fixtures/entry_edge_drag_browser.h"
 #include "entry_edit_history.h"
 namespace moon {
 class TextToolDialog final:public PixelDialog {
@@ -322,6 +323,50 @@ public:
    }
    check(resizeRows==48&&resizedScrolled>0,"All24 browser resize cases checked with and without unit; real scroll exercised");
    input->setReadOnly(false);input->suffix.clear();input->setBounds(resizeBounds);
+   // Exercise the inherited MIT scan directly: PixelEntry's painted hit
+   // correction must not hide a dependency coordinate error in edge scrolling.
+   class EntryGeometryProbe final:public PixelEntry {
+   public:
+    using PixelEntry::PixelEntry;
+    bool inheritedMessage(ui::Message* message){return ui::Entry::onProcessMessage(message);}
+    gfx::Rect character(int index) const{return getCharBoxBounds(index);}
+   };
+   auto geometry=new EntryGeometryProbe(font_,skin_);addChild(geometry);geometry->requestFocus();manager()->dispatchMessages();
+   const std::string geometryText="abcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyz";
+   int geometryRows=0;
+   for(const int factor:{1,2})for(const int width:{50,90}){
+    geometry->setScale(gfx::PointF(factor,factor));auto geometryBounds=resizeBounds;geometryBounds.w=width*factor;geometry->setBounds(geometryBounds);geometry->setText(geometryText);
+    auto geometryMouse=[&](ui::MessageType type,gfx::Point point){ui::MouseMessage event(type,os::PointerType::Mouse,ui::kButtonLeft,ui::kKeyNoneModifier,point);check(geometry->inheritedMessage(&event),"Inherited Entry mouse message consumed");};
+    for(const int offset:{0,1,2}){
+     geometry->selectText(geometry->lastCaretPos(),geometry->lastCaretPos());int start=0;geometry->getEntryThemeInfo(&start,nullptr,nullptr,nullptr);check(start>0,"Geometry probe exercises a scrolled field");
+     const int target=start+offset;const auto first=geometry->character(start),box=geometry->character(target);const auto textBounds=geometry->getEntryTextBounds();
+     const auto point=geometry->bounds().origin()+gfx::Point(textBounds.x+int((box.x-first.x+box.w*0.25)*factor),textBounds.y+textBounds.h/2);
+     auto visibleBounds=textBounds;visibleBounds.offset(geometry->bounds().origin());check(visibleBounds.contains(point),"Probe point is inside visible text");
+     geometryMouse(ui::kMouseDownMessage,point);check(geometry->caretPos()==target,"Scrolled glyph hit uses scaled position, scroll and width");geometryMouse(ui::kMouseUpMessage,point);check(!geometry->hasCapture(),"Geometry probe releases capture");++geometryRows;
+    }
+    // Edge drag must continue toward the requested side and reach both ends.
+    geometry->selectText(0,0);const auto area=geometry->getEntryTextBounds().offset(geometry->bounds().origin());
+    geometryMouse(ui::kMouseDownMessage,{area.x+1,area.y+area.h/2});
+    const auto right=gfx::Point(area.x2()+10*factor,area.y+area.h/2),left=gfx::Point(area.x-10*factor,area.y+area.h/2);
+    int previous=geometry->caretPos();for(int step=0;step<=geometry->lastCaretPos();++step){geometryMouse(ui::kMouseMoveMessage,right);check(geometry->caretPos()>=previous,"Right edge drag never moves backward");previous=geometry->caretPos();}
+    check(geometry->caretPos()==geometry->lastCaretPos(),"Right edge drag reaches text end");
+    for(int step=0;step<=geometry->lastCaretPos();++step){geometryMouse(ui::kMouseMoveMessage,left);check(geometry->caretPos()<=previous,"Left edge drag never moves forward");previous=geometry->caretPos();}
+    check(geometry->caretPos()==0&&geometry->text()==geometryText,"Left edge drag reaches start without changing content");geometryMouse(ui::kMouseUpMessage,left);
+   }
+   check(geometryRows==12,"Scrolled inherited mouse geometry checked at1x and2x in two widths");
+   int edgeCases=0;geometry->setScale(gfx::PointF(uiScale,uiScale));
+   for(const auto& fixture:entryEdgeDragBrowserCases){
+    auto edgeBounds=resizeBounds;edgeBounds.w=fixture.width;geometry->setBounds(edgeBounds);geometry->setText(utf8Text(fixture.text));geometry->selectText(0,0);
+    const auto area=geometry->getEntryTextBounds().offset(geometry->bounds().origin());
+    auto edgeMouse=[&](ui::MessageType type,int x){ui::MouseMessage event(type,os::PointerType::Mouse,ui::kButtonLeft,ui::kKeyNoneModifier,{x,area.y+area.h/2});check(geometry->onProcessMessage(&event),"PixelEntry edge selection consumed");};
+    edgeMouse(ui::kMouseDownMessage,area.x+1);
+    for(int step=0;step<=geometry->lastCaretPos();++step)edgeMouse(ui::kMouseMoveMessage,area.x2()+30);
+    auto range=geometry->selectedRange();check(range.from==fixture.rightStart&&range.to==fixture.rightEnd,"Right edge drag matches browser endpoint");
+    for(int step=0;step<=geometry->lastCaretPos();++step)edgeMouse(ui::kMouseMoveMessage,area.x-30);
+    range=geometry->selectedRange();check((range.isEmpty()?geometry->caretPos():range.from)==fixture.leftStart&&(range.isEmpty()?geometry->caretPos():range.to)==fixture.leftEnd,"Reverse edge drag matches browser endpoint");
+    edgeMouse(ui::kMouseUpMessage,area.x-30);check(!geometry->hasCapture()&&geometry->text()==utf8Text(fixture.text),"Edge selection releases capture without editing content");++edgeCases;
+   }
+   check(edgeCases==4,"All browser edge endpoint cases checked");delete geometry;input->requestFocus();manager()->dispatchMessages();
    input->setText("ABCD");input->selectText(1,3);int interruptedRightBlur=0;input->blur=[&]{++interruptedRightBlur;};
    {const auto rc=input->getEntryTextBounds();const auto point=input->bounds().origin()+gfx::Point(rc.x,rc.y+rc.h/2);ui::MouseMessage message(ui::kMouseDownMessage,os::PointerType::Mouse,ui::kButtonRight,ui::kKeyNoneModifier,point);check(input->onProcessMessage(&message)&&input->hasCapture(),"Right selection begins capture");}
    cancel_->requestFocus();manager()->dispatchMessages();check(!input->hasCapture()&&!input->hasFocus()&&interruptedRightBlur==1,"Interrupted right selection releases capture and follows real form blur, not popup refocus");input->blur={};

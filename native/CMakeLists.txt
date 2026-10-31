@@ -366,6 +366,21 @@ if(MOONSPRITE_BUILD_APP)
   file(RELATIVE_PATH MOON_ENTRY_HISTORY_HEADER "${CMAKE_CURRENT_BINARY_DIR}/generated" "${CMAKE_CURRENT_SOURCE_DIR}/src/entry_edit_history.h")
   string(REPLACE "#include \"ui/entry.h\"" "#include \"ui/entry.h\"\n#include \"${MOON_ENTRY_HISTORY_HEADER}\"" MOON_ENTRY_CODE "${MOON_ENTRY_CODE}")
   string(REPLACE "${MOON_ENTRY_OLD}" "${MOON_ENTRY_OLD}\n  if (!hasProperty(\"moonsprite.input-edit-history-active\")) {\n    auto history = std::dynamic_pointer_cast<moon::EntryEditHistory>(getProperty(moon::EntryEditHistory::propertyName));\n    if (history) history->sync(*this);\n  }" MOON_ENTRY_CODE "${MOON_ENTRY_CODE}")
+  # Entry's original mouse scan mixes scaled glyph positions with unscaled
+  # scroll offsets/widths. Keep its selection and edge-scroll algorithm, but
+  # convert every horizontal operand into the same physical coordinate space.
+  foreach(MOON_ENTRY_MOUSE_CONTRACT IN ITEMS
+      "int scrollX = m_boxes[scroll].x;"
+      "x + m_boxes[i].width)"
+      "scrollX = m_boxes[scroll].x;")
+    string(FIND "${MOON_ENTRY_CODE}" "${MOON_ENTRY_MOUSE_CONTRACT}" MOON_ENTRY_MOUSE_OFFSET)
+    if(MOON_ENTRY_MOUSE_OFFSET LESS 0)
+      message(FATAL_ERROR "Pinned Entry mouse geometry changed; review scale adaptation")
+    endif()
+  endforeach()
+  string(REPLACE "int scrollX = m_boxes[scroll].x;" "float scrollX = m_boxes[scroll].x * m_scale.x;" MOON_ENTRY_CODE "${MOON_ENTRY_CODE}")
+  string(REPLACE "x + m_boxes[i].width)" "x + m_boxes[i].width * m_scale.x)" MOON_ENTRY_CODE "${MOON_ENTRY_CODE}")
+  string(REPLACE "scrollX = m_boxes[scroll].x;" "scrollX = m_boxes[scroll].x * m_scale.x;" MOON_ENTRY_CODE "${MOON_ENTRY_CODE}")
   file(CONFIGURE OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/generated/moonsprite_entry.cpp" CONTENT "${MOON_ENTRY_CODE}" @ONLY)
   get_target_property(MOON_UI_SOURCES ui-lib SOURCES)
   list(REMOVE_ITEM MOON_UI_SOURCES menu.cpp entry.cpp)
