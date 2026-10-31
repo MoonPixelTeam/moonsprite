@@ -4,6 +4,7 @@
 #include "text_font_service.h"
 #include "text_cel_data.h"
 #include "../tests/fixtures/text_word_navigation_browser.h"
+#include "../tests/fixtures/text_double_click_browser.h"
 namespace moon {
 class TextToolDialog final:public PixelDialog {
  const PixelFont& font_;const Skin& skin_;TextFontService& fonts_;TextCelData value_;std::function<void(const TextCelData&,bool)> preview_;std::vector<TextFontOption> options_;PixelTextArea* text_;PixelDropdown *family_,*align_,*layout_,*spacing_,*render_;std::vector<PixelEntry*> numbers_;PixelButton* color_=nullptr;std::unique_ptr<ColorEditorPopup> colorPopup_;PixelButton *ok_,*cancel_,*close_,*live_,*import_,*system_,*erase_;bool live=true,accepted_=false,syncing_=false;std::u32string error_;
@@ -115,6 +116,22 @@ public:
   check(text_->value()==sample&&!text_->undoLocal(),"Pointer and vertical navigation do not alter content/history");
  }
  text_->setBounds(clusterBounds);
+ int doubleClickCase=0;std::string doubleClickErrors;
+ for(const auto& fixture:textDoubleClickBrowserCases){
+  const std::u32string sample=fixture.text;value_.text=textUtf16(sample);value_.styleRuns.clear();text_->setValue(sample);
+  const int x=font_.measure(sample.substr(0,fixture.index))+std::max(1,font_.measure(sample.substr(fixture.index,1))*fixture.percent/100);
+  const auto point=text_->bounds().origin()+gfx::Point((6+x)*uiScale,9*uiScale);
+  auto pointer=[&](ui::MessageType type){ui::MouseMessage event(type,os::PointerType::Mouse,ui::kButtonLeft,ui::kKeyNoneModifier,point);return text_->onProcessMessage(&event);};
+  // Toolkit emits double-click for the second press, followed by mouse release.
+  pointer(ui::kMouseDownMessage);pointer(ui::kMouseUpMessage);check(pointer(ui::kDoubleClickMessage),"Double click is consumed");pointer(ui::kMouseUpMessage);
+  if(text_->selectionRange()!=std::pair<int,int>{fixture.start,fixture.end}){doubleClickErrors+="Browser double-click mismatch in case "+std::to_string(doubleClickCase)+" actual="+std::to_string(text_->selectionRange().first)+","+std::to_string(text_->selectionRange().second)+"\n";++doubleClickCase;continue;}
+  check(text_->value()==sample&&!text_->undoLocal(),"Double click does not edit content/history");
+  key(ui::kKeyDel,ui::kKeyNoneModifier);const auto expected=sample.substr(0,fixture.start)+sample.substr(fixture.end);
+  check(text_->value()==expected,"Delete uses double-click selection");key(ui::kKeyZ,ui::kKeyCtrlModifier);
+  check(text_->value()==sample&&text_->selectionRange()==std::pair<int,int>{fixture.start,fixture.end},"Double-click selection is restored by local Undo");
+  ++doubleClickCase;
+ }
+ if(!doubleClickErrors.empty())throw std::runtime_error(doubleClickErrors);
  int wordCase=0;std::string wordErrors;
  for(const auto& fixture:textWordBrowserCases){
   value_.text=textUtf16(fixture.before);value_.styleRuns.clear();text_->setValue(fixture.before);text_->setSelectionRange(fixture.anchor,fixture.caret);

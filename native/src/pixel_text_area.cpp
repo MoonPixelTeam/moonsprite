@@ -18,7 +18,7 @@ struct PlatformWordBreaks {
  decltype(&u_isalpha) alphabetic=module?reinterpret_cast<decltype(&u_isalpha)>(GetProcAddress(module,"u_isalpha")):nullptr;
  decltype(&u_ispunct) punctuation=module?reinterpret_cast<decltype(&u_ispunct)>(GetProcAddress(module,"u_ispunct")):nullptr;
  ~PlatformWordBreaks(){if(module)FreeLibrary(module);}
- std::vector<int> boundaries(const std::u16string& text,const std::vector<int>& indices,const std::u32string& original)const {
+ std::vector<int> boundaries(const std::u16string& text,const std::vector<int>& indices,const std::u32string& original,bool groupPunctuation)const {
   if(!open||!close||!first||!next)return {};
   UErrorCode error=U_ZERO_ERROR;auto iterator=open(UBRK_WORD,"en",reinterpret_cast<const UChar*>(text.data()),int(text.size()),&error);
   if(!iterator||U_FAILURE(error)){if(iterator)close(iterator);return {};}
@@ -28,14 +28,14 @@ struct PlatformWordBreaks {
   // Windows ICU 72 joins letter.period/colon.letter, whereas the browser
   // reference splits these punctuation positions (decimal separators stay intact).
   if(alphabetic)for(int i=1;i+1<int(original.size());++i)if((original[i]==U'.'||original[i]==U':')&&alphabetic(original[i-1])&&alphabetic(original[i+1])){result.push_back(i);result.push_back(i+1);}
-  if(punctuation)result.erase(std::remove_if(result.begin(),result.end(),[&](int at){return at>0&&at<int(original.size())&&punctuation(original[at-1])&&punctuation(original[at]);}),result.end());
+  if(groupPunctuation&&punctuation)result.erase(std::remove_if(result.begin(),result.end(),[&](int at){return at>0&&at<int(original.size())&&punctuation(original[at-1])&&punctuation(original[at]);}),result.end());
   std::sort(result.begin(),result.end());result.erase(std::unique(result.begin(),result.end()),result.end());
   return result;
  }
 };
 // Legacy TextAreaInput delegates character navigation to the browser. Use the
 // existing Unicode backend rather than enumerating combining/emoji ranges.
-std::vector<int> textBreakBoundaries(const std::u32string& text,SkUnicode::BreakType type=SkUnicode::BreakType::kGraphemes){
+std::vector<int> textBreakBoundaries(const std::u32string& text,SkUnicode::BreakType type=SkUnicode::BreakType::kGraphemes,bool groupPunctuation=true){
  static const auto unicode=SkUnicode::Make();
  if(!unicode)return {};
  std::u16string utf16;std::vector<int> indices{0};
@@ -47,7 +47,7 @@ std::vector<int> textBreakBoundaries(const std::u32string& text,SkUnicode::Break
  }
  if(type==SkUnicode::BreakType::kWords){
   static const PlatformWordBreaks platform;
-  return platform.boundaries(utf16,indices,text);
+  return platform.boundaries(utf16,indices,text,groupPunctuation);
  }
  auto iterator=unicode->makeBreakIterator(type);
  if(!iterator||!iterator->setText(utf16.data(),int(utf16.size())))return {};
@@ -131,6 +131,29 @@ PixelTextArea::CaretStop PixelTextArea::at(gfx::Point physical)const{
  }
 
 bool PixelTextArea::onProcessMessage(ui::Message* msg){
+  if(msg->type()==ui::kDoubleClickMessage&&isEnabled()){
+   const auto mouse=static_cast<ui::MouseMessage*>(msg);if(mouse->left()){
+    requestFocus();preferredX_=-1;editGroup_=0;dragging_=false;if(hasCapture())releaseMouse();
+    const auto points=positions();const auto stop=at(mouse->position());int index=stop.index;
+    // Browser selection follows the nearest insertion position; the right
+    // side of a final letter may therefore select the following whitespace.
+    if(index>0&&stop.upstream)index=textGraphemeStep(value_,index,true);
+    const auto breaks=textBreakBoundaries(value_,SkUnicode::BreakType::kWords,false);
+    if(!breaks.empty()){
+     if(index==int(value_.size())&&index>0)index=textGraphemeStep(value_,index,true);
+     const auto end=std::upper_bound(breaks.begin(),breaks.end(),index);
+     if(end!=breaks.end()&&end!=breaks.begin()){
+      anchor_=*std::prev(end);caret_=*end;
+      static const auto unicode=SkUnicode::Make();
+      // Browser double-click includes trailing horizontal whitespace. Clicking
+      // whitespace itself selects that whitespace run, without the preceding word.
+      while(caret_<int(value_.size())&&value_[caret_]!=U'\n'&&value_[caret_]!=U'\r'&&unicode&&unicode->isWhitespace(value_[caret_]))++caret_;
+      caretUpstream_=softWrapAt(points,caret_);reveal();notifySelection();
+     }
+    }
+    return true;
+   }
+  }
   if(msg->type()==ui::kMouseDownMessage&&isEnabled()){auto m=static_cast<ui::MouseMessage*>(msg);if(m->left()){requestFocus();preferredX_=-1;editGroup_=0;const auto stop=at(m->position());caret_=stop.index;caretUpstream_=stop.upstream;if(!m->shiftPressed())anchor_=caret_;dragging_=true;captureMouse();reveal();notifySelection();return true;}}
   if(dragging_&&(msg->type()==ui::kMouseMoveMessage||msg->type()==ui::kMouseUpMessage)){auto m=static_cast<ui::MouseMessage*>(msg);const auto stop=at(m->position());caret_=stop.index;caretUpstream_=stop.upstream;reveal();notifySelection();if(msg->type()==ui::kMouseUpMessage){dragging_=false;if(hasCapture())releaseMouse();}return true;}
   if(msg->type()==ui::kMouseWheelMessage){scroll_=std::max(0,scroll_+static_cast<ui::MouseMessage*>(msg)->wheelDelta().y*12);invalidate();return true;}
