@@ -1,4 +1,5 @@
 #include "pixel_text_area.h"
+#include "native_text_clipboard.h"
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
@@ -217,8 +218,14 @@ bool PixelTextArea::onProcessMessage(ui::Message* msg){
    if(code==ui::kKeyEsc){if(cancel)cancel();return true;}
    if(ctrl&&(code==ui::kKeyZ||code==ui::kKeyY)){if(code==ui::kKeyY||shift)redoLocal();else undoLocal();return true;}
    if(ctrl&&code==ui::kKeyA){caretUpstream_=false;preferredX_=-1;editGroup_=0;anchor_=0;caret_=int(value_.size());reveal();notifySelection();return true;}
-   if(ctrl&&(code==ui::kKeyC||code==ui::kKeyX)){ui::set_clipboard_text(utf8Text(value_.substr(std::min(caret_,anchor_),std::abs(caret_-anchor_))));if(code==ui::kKeyX)replace({});return true;}
-   if(ctrl&&code==ui::kKeyV){std::string text;if(ui::get_clipboard_text(text)){auto value=unicodeText(text);std::u32string normalized;for(std::size_t i=0;i<value.size();++i){if(value[i]==U'\r'){normalized+=U'\n';if(i+1<value.size()&&value[i+1]==U'\n')++i;}else normalized+=value[i];}replace(std::move(normalized));}return true;}
+   const bool cutting=(ctrl&&code==ui::kKeyX)||(!ctrl&&shift&&code==ui::kKeyDel);
+   const bool copying=(ctrl&&code==ui::kKeyC)||(ctrl&&!shift&&code==ui::kKeyInsert);
+   const bool pasting=(ctrl&&code==ui::kKeyV)||(!ctrl&&shift&&code==ui::kKeyInsert);
+   if(copying||cutting){
+    if(caret_!=anchor_&&trySetInputClipboardText(utf8Text(value_.substr(std::min(caret_,anchor_),std::abs(caret_-anchor_))))&&cutting)replace({});
+    return true;
+   }
+   if(pasting){std::string text;if(ui::get_clipboard_text(text)){auto value=unicodeText(text);std::u32string normalized;for(std::size_t i=0;i<value.size();++i){if(value[i]==U'\r'){normalized+=U'\n';if(i+1<value.size()&&value[i+1]==U'\n')++i;}else normalized+=value[i];}replace(std::move(normalized));}return true;}
    if(code==ui::kKeyLeft||code==ui::kKeyRight){
     // The legacy browser textarea collapses an unmodified selection before stepping.
     const bool left=code==ui::kKeyLeft;

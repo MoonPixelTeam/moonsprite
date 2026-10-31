@@ -1,5 +1,6 @@
 #pragma once
 #include "pixel_text_area.h"
+#include "native_text_clipboard.h"
 #include "color_editor_popup.h"
 #include "text_font_service.h"
 #include "text_cel_data.h"
@@ -12,6 +13,7 @@
 #include "../tests/fixtures/text_double_click_browser.h"
 #include "../tests/fixtures/text_word_drag_browser.h"
 #include "../tests/fixtures/text_wrap_browser.h"
+#include "../tests/fixtures/text_clipboard_browser.h"
 namespace moon {
 class TextToolDialog final:public PixelDialog {
  const PixelFont& font_;const Skin& skin_;TextFontService& fonts_;TextCelData value_;std::function<void(const TextCelData&,bool)> preview_;std::vector<TextFontOption> options_;PixelTextArea* text_;PixelDropdown *family_,*align_,*layout_,*spacing_,*render_;std::vector<PixelEntry*> numbers_;PixelButton* color_=nullptr;std::unique_ptr<ColorEditorPopup> colorPopup_;PixelButton *ok_,*cancel_,*close_,*live_,*import_,*system_,*erase_;bool live=true,accepted_=false,syncing_=false;std::u32string error_;
@@ -204,6 +206,33 @@ public:
  wheel(std::numeric_limits<int>::max());text_->setBounds(expanded);clickTop();text_->setBounds(scrollBounds);
  wheel(std::numeric_limits<int>::max());text_->setBounds(expanded);textFrame();text_->setBounds(scrollBounds);check(sameFrame(topFrame,textFrame()),"Resize paint clamps stale scroll to new content range");clickTop();
  check(text_->value()==longText&&!text_->undoLocal(),"Scroll/resize does not edit text or local history");
+ // Keep the user's real clipboard untouched: use the existing UI delegate seam.
+ {
+  auto& system=*ui::UISystem::instance();auto installed=system.clipboardDelegate();
+  check(dynamic_cast<NativeTextClipboard*>(installed)!=nullptr,"Application installs the native text clipboard bridge");
+  std::string clipboard;bool readable=true,writable=true,throwingRead=false,throwingWrite=false;int writes=0;
+  NativeTextClipboard bridge(system,[&](const std::string& text){if(throwingWrite)throw std::runtime_error("Clipboard lock failure fixture");if(!writable)return false;clipboard=text;++writes;return true;},[&](std::string& text){if(throwingRead)throw std::runtime_error("Clipboard read failure fixture");if(!readable)return false;text=clipboard;return true;},[&]{if(throwingRead)throw std::runtime_error("Clipboard probe failure fixture");return readable;});
+  int clipboardCase=0;
+  for(const auto& fixture:textClipboardBrowserCases){
+   check(bridge.trySetClipboardText(utf8Text(fixture.seed)),"Clipboard fixture seed");writes=0;
+   const std::u32string before=fixture.before,after=fixture.after;scrollText(before);text_->setSelectionRange(fixture.anchor,fixture.caret);
+   const auto mods=ui::KeyModifiers((fixture.ctrl?ui::kKeyCtrlModifier:0)|(fixture.shift?ui::kKeyShiftModifier:0));
+   key(fixture.key,mods);
+   if(text_->value()!=after||value_.text!=textUtf16(after)||text_->selectionRange()!=std::pair<int,int>{fixture.start,fixture.end}||clipboard!=utf8Text(fixture.clipboard))throw std::runtime_error("Browser clipboard mismatch at case "+std::to_string(clipboardCase));
+   if(before==after){check(!text_->undoLocal(),"Clipboard no-op/copy must not create undo history");if(fixture.anchor==fixture.caret&&(fixture.key==ui::kKeyC||fixture.key==ui::kKeyX||fixture.key==ui::kKeyDel||(fixture.key==ui::kKeyInsert&&fixture.ctrl)))check(writes==0,"Empty selection leaves existing clipboard formats untouched");}
+   else {check(text_->undoLocal()&&text_->value()==before,"Clipboard edit Undo restores previous content");at(std::min(fixture.anchor,fixture.caret),std::max(fixture.anchor,fixture.caret));check(!text_->undoLocal()&&text_->redoLocal()&&text_->value()==after,"Clipboard edit is one local transaction");at(fixture.start,fixture.end);}
+   ++clipboardCase;
+  }
+  scrollText(U"ABCD");text_->setSelectionRange(1,3);const auto saved=clipboard;writable=false;
+  key(ui::kKeyX,ui::kKeyCtrlModifier);key(ui::kKeyDel,ui::kKeyShiftModifier);check(text_->value()==U"ABCD"&&clipboard==saved&&!text_->undoLocal(),"Failed clipboard write never deletes selected text");at(1,3);
+  writable=true;readable=false;key(ui::kKeyV,ui::kKeyCtrlModifier);key(ui::kKeyInsert,ui::kKeyShiftModifier);check(text_->value()==U"ABCD"&&!text_->undoLocal(),"Unreadable/nontext clipboard preserves text and history");at(1,3);readable=true;
+  throwingWrite=true;key(ui::kKeyX,ui::kKeyCtrlModifier);check(text_->value()==U"ABCD"&&clipboard==saved&&!text_->undoLocal(),"Clipboard lock exception never deletes selected text");at(1,3);throwingWrite=false;
+  throwingRead=true;key(ui::kKeyV,ui::kKeyCtrlModifier);check(text_->value()==U"ABCD"&&!text_->undoLocal()&&!bridge.hasClipboardText(),"Clipboard read/probe exception is contained");at(1,3);throwingRead=false;
+  system.setClipboardDelegate(nullptr);key(ui::kKeyX,ui::kKeyCtrlModifier);key(ui::kKeyV,ui::kKeyCtrlModifier);check(text_->value()==U"ABCD"&&!text_->undoLocal(),"Absent delegate is a safe clipboard no-op");system.setClipboardDelegate(&bridge);
+  // The same registration also serves existing single-line MIT UI Entry controls.
+  {auto input=numbers_[0];const auto initial=input->text();input->requestFocus();input->selectAllText();ui::KeyMessage copy(ui::kKeyDownMessage,ui::kKeyC,ui::kKeyCtrlModifier,0,0);check(input->onProcessMessage(&copy)&&clipboard==initial,"Single-line Entry Copy uses the shared delegate");check(bridge.trySetClipboardText("12"),"Entry paste fixture");input->selectAllText();ui::KeyMessage paste(ui::kKeyDownMessage,ui::kKeyV,ui::kKeyCtrlModifier,0,0);check(input->onProcessMessage(&paste)&&input->text()=="12","Single-line Entry Paste uses the shared delegate");}
+  text_->requestFocus();
+ }
  // Exercise the existing Windows IME backend, retaining unrelated queued events.
  {
   auto window=text_->display()->nativeWindow();const auto hwnd=static_cast<HWND>(window->nativeHandle());

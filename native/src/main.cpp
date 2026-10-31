@@ -1,5 +1,6 @@
 #include "editor_implementation.h"
 #include "editor_desktop.h"
+#include "native_text_clipboard.h"
 
 using namespace moon::editor;
 using namespace moon;
@@ -57,6 +58,7 @@ int app_main(int argc,char* argv[]) {
     window->setTitle("MoonSprite Native - Development");
 
     ui::UISystem uiSystem;
+    NativeTextClipboard textClipboard(uiSystem);
 
     PixelTheme theme((assets/"fusion-ascii.png").u8string()); ui::set_theme(&theme,uiScale);
 
