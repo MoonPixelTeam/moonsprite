@@ -3,6 +3,7 @@
 #include "color_editor_popup.h"
 #include "text_font_service.h"
 #include "text_cel_data.h"
+#include "os/surface.h"
 #include "../tests/fixtures/text_word_navigation_browser.h"
 #include "../tests/fixtures/text_double_click_browser.h"
 #include "../tests/fixtures/text_word_drag_browser.h"
@@ -171,6 +172,19 @@ public:
   ++wordCase;
  }
  if(!wordErrors.empty())throw std::runtime_error(wordErrors);
+ // Browser textarea clamps scrolling to content, including after resize.
+ auto scrollText=[&](const std::u32string& text){value_.text=textUtf16(text);value_.styleRuns.clear();text_->setValue(text);text_->setSelectionRange(0,0);};
+ auto wheel=[&](int delta){ui::MouseMessage message(ui::kMouseWheelMessage,os::PointerType::Mouse,ui::kButtonNone,ui::kKeyNoneModifier,text_->bounds().origin(),gfx::Point(0,delta));check(text_->onProcessMessage(&message),"Textarea wheel is consumed");};
+ auto textFrame=[&]{auto frame=os::instance()->makeRgbaSurface(text_->bounds().w,text_->bounds().h);frame->clear();ui::Graphics g(frame);ui::PaintEvent event(text_,&g);text_->onPaint(event);return frame;};
+ auto sameFrame=[&](const os::SurfaceRef& left,const os::SurfaceRef& right){if(left->width()!=right->width()||left->height()!=right->height())return false;os::SurfaceLock a(left.get()),b(right.get());for(int y=0;y<left->height();++y)for(int x=0;x<left->width();++x)if(left->getPixel(x,y)!=right->getPixel(x,y))return false;return true;};
+ for(const auto& text:std::vector<std::u32string>{U"",U"short"}){scrollText(text);const auto before=textFrame();wheel(std::numeric_limits<int>::max());check(sameFrame(before,textFrame()),"Short text cannot scroll into blank space");wheel(std::numeric_limits<int>::min());check(sameFrame(before,textFrame()),"Negative wheel remains at top without overflow");}
+ std::u32string longText;for(int i=0;i<30;++i){if(i)longText+=U'\n';longText+=U"row";}
+ scrollText(longText);const auto topFrame=textFrame();wheel(std::numeric_limits<int>::max());const auto bottomFrame=textFrame();check(!sameFrame(topFrame,bottomFrame),"Long text actually scrolls");wheel(std::numeric_limits<int>::max());check(sameFrame(bottomFrame,textFrame()),"Repeated wheel saturates at content bottom");wheel(std::numeric_limits<int>::min());check(sameFrame(topFrame,textFrame()),"Wheel returns exactly to content top");
+ const auto scrollBounds=text_->bounds();auto expanded=scrollBounds;expanded.h=500*uiScale;
+ auto clickTop=[&]{const auto point=text_->bounds().origin()+gfx::Point(6*uiScale,9*uiScale);for(const auto type:{ui::kMouseDownMessage,ui::kMouseUpMessage}){ui::MouseMessage event(type,os::PointerType::Mouse,ui::kButtonLeft,ui::kKeyNoneModifier,point);text_->onProcessMessage(&event);}at(0,0);};
+ wheel(std::numeric_limits<int>::max());text_->setBounds(expanded);clickTop();text_->setBounds(scrollBounds);
+ wheel(std::numeric_limits<int>::max());text_->setBounds(expanded);textFrame();text_->setBounds(scrollBounds);check(sameFrame(topFrame,textFrame()),"Resize paint clamps stale scroll to new content range");clickTop();
+ check(text_->value()==longText&&!text_->undoLocal(),"Scroll/resize does not edit text or local history");
  fonts_.recordSize(originalLastSize);value_=original;live=originalLive;text_->setValue(textUtf32(value_.text));text_->setSelectionRange(0,0);update();
  }
  os::SurfaceRef smokeFrame(){auto surface=os::instance()->makeRgbaSurface(bounds().w,bounds().h);surface->clear();{ui::Graphics g(surface);{UiPaintScale scale(g);skin_.drawDialogBackground(g,uiLogical(clientBounds()));}ui::PaintEvent ev(this,&g);paintDialogContents(ev);}auto paint=[&](auto child){if(!child->isVisible())return;ui::Graphics g(nullptr,surface,child->bounds().x-bounds().x,child->bounds().y-bounds().y);ui::PaintEvent ev(child,&g);child->onPaint(ev);};paint(text_);for(PixelButton* b:{family_,align_,layout_,spacing_,render_})paint(b);for(auto e:numbers_)paint(e);for(auto b:{color_,ok_,cancel_,close_,live_,import_,system_,erase_})paint(b);return surface;}

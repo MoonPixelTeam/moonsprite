@@ -1,6 +1,7 @@
 #include "pixel_text_area.h"
 #include <algorithm>
 #include <cmath>
+#include <cstdint>
 #include "modules/skunicode/include/SkUnicode.h"
 #include <windows.h>
 #include <icu.h>
@@ -78,6 +79,10 @@ int textWordStep(const std::u32string& text,int caret,bool left,bool deleting=fa
  while(at<int(text.size())&&horizontal(at))++at;
  return at;
 }
+int textScrollLimit(const std::vector<gfx::Point>& points,int physicalHeight){
+ const int visible=std::max(12,physicalHeight/uiScale-8);
+ return std::max(0,points.back().y+10-visible);
+}
 int textGraphemeStep(const std::u32string& text,int caret,bool left){
  const auto boundaries=textBreakBoundaries(text);
  if(boundaries.empty())return caret;
@@ -123,8 +128,9 @@ std::vector<PixelTextArea::CaretStop> PixelTextArea::caretStops(const std::vecto
 }
 
 PixelTextArea::CaretStop PixelTextArea::at(gfx::Point physical)const{
-  auto p=physical-bounds().origin();p={p.x/uiScale-6,p.y/uiScale-4+scroll_};
-  const auto all=caretStops(positions());auto best=all.front();
+  const auto layout=positions();const int offset=std::clamp(scroll_,0,textScrollLimit(layout,bounds().h));
+  auto p=physical-bounds().origin();p={p.x/uiScale-6,p.y/uiScale-4+offset};
+  const auto all=caretStops(layout);auto best=all.front();
   int rowDistance=std::numeric_limits<int>::max(),columnDistance=rowDistance;
   for(const auto& stop:all){const int row=std::abs(stop.point.y-p.y),column=std::abs(stop.point.x-p.x);if(row<rowDistance||(row==rowDistance&&column<columnDistance)){rowDistance=row;columnDistance=column;best=stop;}}
   return best;
@@ -174,7 +180,10 @@ bool PixelTextArea::onProcessMessage(ui::Message* msg){
    if(msg->type()==ui::kMouseUpMessage){dragging_=false;wordDrag_.reset();releaseMouse();}
    return true;
   }
-  if(msg->type()==ui::kMouseWheelMessage){scroll_=std::max(0,scroll_+static_cast<ui::MouseMessage*>(msg)->wheelDelta().y*12);invalidate();return true;}
+  if(msg->type()==ui::kMouseWheelMessage){
+   const auto layout=positions();const auto requested=std::int64_t(scroll_)+std::int64_t(static_cast<ui::MouseMessage*>(msg)->wheelDelta().y)*12;
+   scroll_=int(std::clamp<std::int64_t>(requested,0,textScrollLimit(layout,bounds().h)));invalidate();return true;
+  }
   if(msg->type()==ui::kFocusEnterMessage||msg->type()==ui::kFocusLeaveMessage){if(msg->type()==ui::kFocusLeaveMessage){wordDrag_.reset();dragging_=false;if(hasCapture())releaseMouse();}preferredX_=-1;editGroup_=0;invalidate();notifySelection();}
   if(msg->type()==ui::kKeyDownMessage&&isEnabled()){wordDrag_.reset();dragging_=false;if(hasCapture())releaseMouse();auto k=static_cast<ui::KeyMessage*>(msg);auto code=k->scancode();bool ctrl=k->ctrlPressed()||k->cmdPressed(),shift=k->shiftPressed();
    if(code==ui::kKeyEsc){if(cancel)cancel();return true;}
@@ -244,5 +253,5 @@ bool PixelTextArea::onProcessMessage(ui::Message* msg){
   }return ui::Widget::onProcessMessage(msg);
  }
 
-void PixelTextArea::onPaint(ui::PaintEvent& ev){auto& g=*ev.graphics();UiPaintScale scale(g);auto rc=uiLogical(clientBounds());skin_.draw(g,"entry.normal",rc);g.saveClip();g.clipRect({rc.x+5,rc.y+3,std::max(0,rc.w-10),std::max(0,rc.h-6)});auto all=positions();for(int i=0;i<int(value_.size());++i){auto p=all[i];p+=gfx::Point(rc.x+6,rc.y+4-scroll_);if(i>=std::min(caret_,anchor_)&&i<std::max(caret_,anchor_))g.fillRect(skin_["accent"],{p.x,p.y,value_[i]==U'\n'?3:font_.measure(value_.substr(i,1)),10});if(value_[i]!=U'\n')font_.draw(g,value_.substr(i,1),p.x,p.y,skin_["text"]);}if(hasFocus()){auto p=caretPoint(all);g.fillRect(skin_["text"],{rc.x+6+p.x,rc.y+4+p.y-scroll_,1,10});}g.restoreClip();}
+void PixelTextArea::onPaint(ui::PaintEvent& ev){auto& g=*ev.graphics();UiPaintScale scale(g);auto rc=uiLogical(clientBounds());skin_.draw(g,"entry.normal",rc);g.saveClip();g.clipRect({rc.x+5,rc.y+3,std::max(0,rc.w-10),std::max(0,rc.h-6)});auto all=positions();scroll_=std::clamp(scroll_,0,textScrollLimit(all,bounds().h));for(int i=0;i<int(value_.size());++i){auto p=all[i];p+=gfx::Point(rc.x+6,rc.y+4-scroll_);if(i>=std::min(caret_,anchor_)&&i<std::max(caret_,anchor_))g.fillRect(skin_["accent"],{p.x,p.y,value_[i]==U'\n'?3:font_.measure(value_.substr(i,1)),10});if(value_[i]!=U'\n')font_.draw(g,value_.substr(i,1),p.x,p.y,skin_["text"]);}if(hasFocus()){auto p=caretPoint(all);g.fillRect(skin_["text"],{rc.x+6+p.x,rc.y+4+p.y-scroll_,1,10});}g.restoreClip();}
 }
