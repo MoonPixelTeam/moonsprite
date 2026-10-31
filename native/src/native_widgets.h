@@ -13,6 +13,7 @@
 #include "ui/paint_event.h"
 #include "ui/popup_window.h"
 #include <functional>
+#include <limits>
 #include <map>
 #include <optional>
 #include "include/core/SkBitmap.h"
@@ -281,7 +282,7 @@ public:
     ui::Entry::onSizeHint(ev);
     ev.setSizeHint(ev.sizeHint().w,textControlHeight*uiScale);
   }
-  PixelEntry(const PixelFont& font,const Skin& skin):ui::Entry(256,""),font_(font),skin_(skin) {setScale(gfx::PointF(2,2));setTransparent(true);}
+  PixelEntry(const PixelFont& font,const Skin& skin):ui::Entry((std::numeric_limits<int>::max)(),""),font_(font),skin_(skin) {setScale(gfx::PointF(2,2));setTransparent(true);}
   void onPaint(ui::PaintEvent& ev) override;
   gfx::Rect onGetEntryTextBounds() const override;
 private:

@@ -99,6 +99,15 @@ const literal=text=>'U"'+[...text].map(c=>{const n=c.codePointAt(0);return n<128
     scenarios.push(['ABCD',0,0,[...(readonly?['readonly:true']:[]),'press:'+from,'move:'+to,interrupt,'move:0','move:1','release:1',...(!readonly?['type:Y','key:Control+z','key:Control+y']:[])]]);
   for(const interrupt of ['key:Control+z','key:Alt+Backspace','key:Control+y','key:Control+Shift+z'])
    scenarios.push(['ABCD',4,4,['type:X',...(['key:Control+y','key:Control+Shift+z'].includes(interrupt)?['key:Control+z']:[]),'press:1','move:3',interrupt,'move:0','move:1','release:1','type:Y','key:Control+z','key:Control+y']]);
+  // Legacy TextInput has no default maxlength. Existing long values must
+  // remain editable and middle insertion must not truncate the trailing text.
+  for(const size of [255,256,512])
+   scenarios.push(['a'.repeat(size),size,size,['type:BCDE','key:Control+z','key:Control+y']]);
+  scenarios.push(['a'.repeat(512),128,128,['type:XYZ','key:Control+z','key:Control+y']]);
+  scenarios.push(['a'.repeat(512),512,512,['paste:'+'b'.repeat(300),'key:Control+z','key:Control+y']]);
+  scenarios.push(['a'.repeat(512),200,300,['paste:'+'b'.repeat(300),'key:Control+z','key:Control+y']]);
+  scenarios.push(['中文测试'.repeat(75),0,0,['paste:'+'颜色'.repeat(60),'key:Control+z','key:Control+y']]);
+  scenarios.push(['',0,0,['paste:'+'x'.repeat(1024),'key:Control+z','key:Control+y']]);
   const rows=[],records=[];
   for(let scenario=0;scenario<scenarios.length;scenario++){
    const [initial,a,c,actions]=scenarios[scenario];
