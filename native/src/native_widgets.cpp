@@ -4,6 +4,7 @@
 #include <cmath>
 #include <chrono>
 #include "native_widgets.h"
+#include "native_text_clipboard.h"
 #include "color_value_ui.h"
 #include "color_picker_layout.h"
 #include "ui_scale.h"
@@ -448,6 +449,50 @@ static void drawInputFrame(ui::Graphics& g,const Skin& skin,gfx::Rect physical,b
   skin.draw(g,frameHover?"entry.hover":"entry.normal",uiLogical(physical));
 }
 bool PixelEntry::onProcessMessage(ui::Message* msg) {
+  bool clipboardHandled=false;
+  if(msg->type()==ui::kKeyDownMessage && isEnabled() && hasFocus()) {
+    const auto key=static_cast<ui::KeyMessage*>(msg);
+    const bool control=key->onlyCtrlPressed();
+    const bool shift=key->onlyShiftPressed();
+    const auto code=key->scancode();
+    const bool copy=(control && (code==ui::kKeyC || code==ui::kKeyInsert));
+    const bool cut=(control && code==ui::kKeyX) || (shift && code==ui::kKeyDel);
+    const bool paste=(control && code==ui::kKeyV) || (shift && code==ui::kKeyInsert);
+    if(copy || cut) {
+      // Browser input cut is a no-op without a selection. MIT Entry otherwise
+      // treats it as forward Delete and cannot report a clipboard write failure.
+      if((copy || !isReadOnly()) && !selectedRange().isEmpty() &&
+         trySetInputClipboardText(selectedText()) && cut)
+        executeCmd(Cmd::DeleteNextChar);
+      clipboardHandled=true;
+    }
+    if(paste) {
+      if(!isReadOnly()) {
+        std::string text;
+        if(ui::get_clipboard_text(text)) {
+          // Legacy browser paste replaces each line break with a space; a CRLF
+          // pair is one break. TextInput and NumberInput both use type=text.
+          std::string normalized;normalized.reserve(text.size());
+          for(std::size_t i=0;i<text.size();++i){
+            if(text[i]=='\r'||text[i]=='\n'){
+              normalized+=' ';if(text[i]=='\r'&&i+1<text.size()&&text[i+1]=='\n')++i;
+            }else normalized+=text[i];
+          }
+          text=std::move(normalized);
+          auto& system=*ui::UISystem::instance();
+          NativeTextClipboard snapshot(system,[](const std::string&){return false;},
+            [&](std::string& out){out=text;return true;},[]{return true;});
+          // A collapsed selectText(a,a) still leaves Entry's internal anchor
+          // active; clear it so insertion does not select the newly pasted text.
+          if(selectedRange().isEmpty())deselectText();
+          // Reuse Entry's selection, character boxes, maximum length and one
+          // Change notification. The snapshot never writes the OS clipboard.
+          executeCmd(Cmd::Paste);
+        }
+      }
+      clipboardHandled=true;
+    }
+  }
   if(msg->type()==ui::kMouseLeaveMessage){if(frameHover_){frameHover_=false;invalidate();}}
   else if(msg->type()==ui::kMouseEnterMessage || msg->type()==ui::kMouseMoveMessage || msg->type()==ui::kMouseDownMessage || msg->type()==ui::kMouseUpMessage){
     const auto point=static_cast<ui::MouseMessage*>(msg)->position();
@@ -485,7 +530,7 @@ bool PixelEntry::onProcessMessage(ui::Message* msg) {
     if(key->scancode()==ui::kKeyEnter && accept) {const bool expression=deferredNumeric&&text().find_first_of("+-*/()",1)!=std::string::npos;commitExpression();if(!expression)accept();return true;}
     if(key->scancode()==ui::kKeyEsc && cancel) {cancel();return true;}
   }
-  const bool handled=ui::Entry::onProcessMessage(msg);
+  const bool handled=clipboardHandled || ui::Entry::onProcessMessage(msg);
   // A field that can show its entire value must not retain an end-only scroll
   // left over from the smaller geometry used before the toolbar relayout.
   if(bounds().w>=currentContentWidth()*uiScale){

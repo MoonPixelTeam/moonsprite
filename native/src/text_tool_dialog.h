@@ -15,6 +15,7 @@
 #include "../tests/fixtures/text_wrap_browser.h"
 #include "../tests/fixtures/text_clipboard_browser.h"
 #include "../tests/fixtures/text_context_browser.h"
+#include "../tests/fixtures/entry_clipboard_browser.h"
 namespace moon {
 class TextToolDialog final:public PixelDialog {
  const PixelFont& font_;const Skin& skin_;TextFontService& fonts_;TextCelData value_;std::function<void(const TextCelData&,bool)> preview_;std::vector<TextFontOption> options_;PixelTextArea* text_;PixelDropdown *family_,*align_,*layout_,*spacing_,*render_;std::vector<PixelEntry*> numbers_;PixelButton* color_=nullptr;std::unique_ptr<ColorEditorPopup> colorPopup_;PixelButton *ok_,*cancel_,*close_,*live_,*import_,*system_,*erase_;bool live=true,accepted_=false,syncing_=false;std::u32string error_;
@@ -232,6 +233,27 @@ public:
   system.setClipboardDelegate(nullptr);key(ui::kKeyX,ui::kKeyCtrlModifier);key(ui::kKeyV,ui::kKeyCtrlModifier);check(text_->value()==U"ABCD"&&!text_->undoLocal(),"Absent delegate is a safe clipboard no-op");system.setClipboardDelegate(&bridge);
   // The same registration also serves existing single-line MIT UI Entry controls.
   {auto input=numbers_[0];const auto initial=input->text();input->requestFocus();input->selectAllText();ui::KeyMessage copy(ui::kKeyDownMessage,ui::kKeyC,ui::kKeyCtrlModifier,0,0);check(input->onProcessMessage(&copy)&&clipboard==initial,"Single-line Entry Copy uses the shared delegate");check(bridge.trySetClipboardText("12"),"Entry paste fixture");input->selectAllText();ui::KeyMessage paste(ui::kKeyDownMessage,ui::kKeyV,ui::kKeyCtrlModifier,0,0);check(input->onProcessMessage(&paste)&&input->text()=="12","Single-line Entry Paste uses the shared delegate");}
+  {auto input=numbers_[0];const auto initial=input->text();const bool previousSync=syncing_;syncing_=true;input->requestFocus();
+   int changes=0;auto connection=input->Change.connect([&]{++changes;});int entryCase=0;
+   auto entryKey=[&](ui::KeyScancode scan,ui::KeyModifiers mods){ui::KeyMessage message(ui::kKeyDownMessage,scan,mods,0,0);check(input->onProcessMessage(&message),"Single-line clipboard shortcut consumed");};
+   for(const auto& fixture:entryClipboardBrowserCases){
+    input->setReadOnly(fixture.readOnly);input->setText(utf8Text(fixture.before));input->selectText(fixture.anchor,fixture.caret);check(bridge.trySetClipboardText(utf8Text(fixture.seed)),"Single-line clipboard fixture seed");writes=0;changes=0;
+    const auto modifiers=ui::KeyModifiers((fixture.ctrl?ui::kKeyCtrlModifier:0)|(fixture.shift?ui::kKeyShiftModifier:0));entryKey(fixture.key,modifiers);
+    const auto range=input->selectedRange();const int from=range.isEmpty()?input->caretPos():range.from,to=range.isEmpty()?input->caretPos():range.to;
+    if(input->text()!=utf8Text(fixture.after)||from!=fixture.start||to!=fixture.end||clipboard!=utf8Text(fixture.clipboard))throw std::runtime_error("Browser single-line clipboard mismatch at case "+std::to_string(entryCase)+" text="+input->text()+" range="+std::to_string(from)+","+std::to_string(to)+" clipboard="+clipboard);
+    check(changes==(std::u32string(fixture.before)==fixture.after?0:1),"Single-line clipboard edit emits one Change, no-op emits none");
+    if(fixture.anchor==fixture.caret&&(fixture.key==ui::kKeyC||fixture.key==ui::kKeyX||fixture.key==ui::kKeyDel||(fixture.key==ui::kKeyInsert&&fixture.ctrl)))check(writes==0,"Empty single-line selection preserves clipboard formats");
+    ++entryCase;
+   }
+   input->setReadOnly(false);input->setText("ABCD");input->selectText(1,3);const auto saved=clipboard;changes=0;
+   writable=false;entryKey(ui::kKeyX,ui::kKeyCtrlModifier);entryKey(ui::kKeyDel,ui::kKeyShiftModifier);writable=true;
+   throwingWrite=true;entryKey(ui::kKeyX,ui::kKeyCtrlModifier);throwingWrite=false;
+   readable=false;entryKey(ui::kKeyV,ui::kKeyCtrlModifier);entryKey(ui::kKeyInsert,ui::kKeyShiftModifier);readable=true;
+   throwingRead=true;entryKey(ui::kKeyV,ui::kKeyCtrlModifier);throwingRead=false;
+   system.setClipboardDelegate(nullptr);entryKey(ui::kKeyX,ui::kKeyCtrlModifier);entryKey(ui::kKeyV,ui::kKeyCtrlModifier);system.setClipboardDelegate(&bridge);
+   check(input->text()=="ABCD"&&input->selectedRange().from==1&&input->selectedRange().to==3&&clipboard==saved&&changes==0,"Single-line clipboard failures preserve text, selection and notifications");
+   connection.disconnect();input->setText(initial);syncing_=previousSync;
+  }
   text_->requestFocus();
   auto context=[&](const std::function<void()>& open,const std::function<void(PixelMenu&)>& verify){
    bool opened=false;std::string failure;ui::Timer timer(20,text_);
