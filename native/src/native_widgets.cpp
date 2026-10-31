@@ -526,6 +526,13 @@ bool PixelEntry::onProcessMessage(ui::Message* msg) {
   // Legacy text/decimal inputs retain selection across blur and programmatic
   // refocus. Keep explicit form focus callbacks free to select their own range.
   setPersistSelection(true);
+  std::optional<int> shiftClickAnchor;
+  std::optional<EntryEditHistory::State> mouseSelectionBefore;
+  if(isEnabled()&&(msg->type()==ui::kMouseDownMessage||(msg->type()==ui::kMouseMoveMessage&&hasCapture())||msg->type()==ui::kDoubleClickMessage)) {
+    mouseSelectionBefore=EntryEditHistory::state(*this);
+    const auto mouse=static_cast<ui::MouseMessage*>(msg);
+    if(msg->type()==ui::kMouseDownMessage&&mouse->left()&&mouse->shiftPressed())shiftClickAnchor=EntryEditHistory::state(*this).anchor;
+  }
   if(rightSelecting_ && msg->type()==ui::kFocusLeaveMessage && !editMenuOpen_){rightSelecting_=false;editMenuRefocus_=false;if(hasCapture())releaseMouse();}
   if((editMenuOpen_ || editMenuRefocus_) && (msg->type()==ui::kFocusEnterMessage || msg->type()==ui::kFocusLeaveMessage)) {
     const bool entering=msg->type()==ui::kFocusEnterMessage;
@@ -656,6 +663,16 @@ bool PixelEntry::onProcessMessage(ui::Message* msg) {
     if(key->scancode()==ui::kKeyEsc && cancel) {cancel();return true;}
   }
   const bool handled=clipboardHandled || navigationHandled || ui::Entry::onProcessMessage(msg);
+  if(shiftClickAnchor)selectText(*shiftClickAnchor,caretPos());
+  else if(mouseSelectionBefore&&msg->type()==ui::kMouseMoveMessage&&hasCapture()){
+    const auto mouse=static_cast<ui::MouseMessage*>(msg);
+    if(mouse->left()&&mouse->shiftPressed())selectText(caretPos(),caretPos());
+  }
+  if(mouseSelectionBefore){
+    const auto after=EntryEditHistory::state(*this);
+    if(after.anchor!=mouseSelectionBefore->anchor||after.caret!=mouseSelectionBefore->caret)
+      if(auto history=std::dynamic_pointer_cast<EntryEditHistory>(getProperty(EntryEditHistory::propertyName)))history->group=0;
+  }
   // A field that can show its entire value must not retain an end-only scroll
   // left over from the smaller geometry used before the toolbar relayout.
   if(bounds().w>=currentContentWidth()*uiScale){

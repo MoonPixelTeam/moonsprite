@@ -68,15 +68,30 @@ const literal=text=>'U"'+[...text].map(c=>{const n=c.codePointAt(0);return n<128
    scenarios.push(['',0,0,['type:abc','key:'+key,'type:d','key:Control+z','key:Control+y']]);
    scenarios.push(['',0,0,['type:abc','key:Control+z','key:'+key,'key:Control+y']]);
   }
+  for(const [a,c] of [[0,0],[4,4],[1,3],[3,1]])for(const index of [0,2,4]){
+   scenarios.push(['ABCD',a,c,['shiftclick:'+index,'type:X','key:Control+z','key:Control+y']]);
+   scenarios.push(['ABCD',a,c,['click:'+index,'type:X','key:Control+z','key:Control+y']]);
+  }
+  for(const action of ['drag:0,4','drag:4,0','shiftdrag:1,4','shiftdrag:3,0'])
+   scenarios.push(['ABCD',2,2,[action,'type:X','key:Control+z','key:Control+y']]);
+  for(const action of ['click:2','shiftclick:2','click:0','drag:2,0'])
+   scenarios.push(['',0,0,['type:ab',action,'type:c','key:Control+z','key:Control+z']]);
   const rows=[],records=[];
   for(let scenario=0;scenario<scenarios.length;scenario++){
    const [initial,a,c,actions]=scenarios[scenario];
-   await page.evaluate(({initial,a,c})=>{document.body.innerHTML='<input type="text"><button>other</button>';const el=document.querySelector('input');el.value=initial;el.focus();el.setSelectionRange(Math.min(a,c),Math.max(a,c),a>c?'backward':'forward');},{initial,a,c});
+   await page.evaluate(({initial,a,c})=>{document.body.innerHTML='<input type="text"><button>other</button>';const el=document.querySelector('input');el.style.cssText='font:20px monospace;padding:0;border:0;width:500px';el.value=initial;el.focus();el.setSelectionRange(Math.min(a,c),Math.max(a,c),a>c?'backward':'forward');},{initial,a,c});
    for(const action of actions){
     const at=action.indexOf(':'),kind=at<0?action:action.slice(0,at),arg=at<0?'':action.slice(at+1);
     if(kind==='type')await page.keyboard.type(arg);
     else if(kind==='key')await page.keyboard.press(arg);
     else if(kind==='paste'){await page.evaluate(t=>navigator.clipboard.writeText(t),arg);await page.keyboard.press('Control+v');}
+    else if(['click','shiftclick','drag','shiftdrag'].includes(kind)){
+     const points=await page.locator('input').evaluate((el,arg)=>{const canvas=document.createElement('canvas'),ctx=canvas.getContext('2d');ctx.font=getComputedStyle(el).font;const r=el.getBoundingClientRect();return arg.split(',').map(x=>({x:r.x+ctx.measureText(el.value.slice(0,Number(x))).width+0.1,y:r.y+r.height/2}));},arg);
+     if(kind.startsWith('shift'))await page.keyboard.down('Shift');
+     await page.mouse.move(points[0].x,points[0].y);await page.mouse.down();
+     if(points.length>1)await page.mouse.move(points[1].x,points[1].y,{steps:4});
+     await page.mouse.up();if(kind.startsWith('shift'))await page.keyboard.up('Shift');
+    }
     else if(kind==='readonly')await page.locator('input').evaluate((el,x)=>el.readOnly=x==='true',arg);
     else if(kind==='set')await page.locator('input').evaluate((el,x)=>el.value=x,arg);
     else if(kind==='select')await page.locator('input').evaluate((el,x)=>{const [a,c]=x.split(',').map(Number);el.setSelectionRange(Math.min(a,c),Math.max(a,c),a>c?'backward':'forward');},arg);
