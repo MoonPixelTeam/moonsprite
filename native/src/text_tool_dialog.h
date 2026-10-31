@@ -4,6 +4,10 @@
 #include "text_font_service.h"
 #include "text_cel_data.h"
 #include "os/surface.h"
+#include "os/event.h"
+#include "os/event_queue.h"
+#include "os/win/ime_manager.h"
+#include <imm.h>
 #include "../tests/fixtures/text_word_navigation_browser.h"
 #include "../tests/fixtures/text_double_click_browser.h"
 #include "../tests/fixtures/text_word_drag_browser.h"
@@ -200,6 +204,22 @@ public:
  wheel(std::numeric_limits<int>::max());text_->setBounds(expanded);clickTop();text_->setBounds(scrollBounds);
  wheel(std::numeric_limits<int>::max());text_->setBounds(expanded);textFrame();text_->setBounds(scrollBounds);check(sameFrame(topFrame,textFrame()),"Resize paint clamps stale scroll to new content range");clickTop();
  check(text_->value()==longText&&!text_->undoLocal(),"Scroll/resize does not edit text or local history");
+ // Exercise the existing Windows IME backend, retaining unrelated queued events.
+ {
+  auto window=text_->display()->nativeWindow();const auto hwnd=static_cast<HWND>(window->nativeHandle());
+  struct ImeProbe {HWND hwnd;HIMC context,previous;explicit ImeProbe(HWND w):hwnd(w),context(ImmCreateContext()),previous(nullptr){if(!context)throw std::runtime_error("Cannot create IME test context");previous=ImmAssociateContext(hwnd,context);}~ImeProbe(){ImmAssociateContext(hwnd,previous);ImmDestroyContext(context);}} probe(hwnd);
+  struct SavedEvents {std::vector<os::Event> events;~SavedEvents(){for(const auto& event:events)os::EventQueue::instance()->queueEvent(event);}} pending;
+  auto focus=[&](bool enter){ui::Message event(enter?ui::kFocusEnterMessage:ui::kFocusLeaveMessage);text_->onProcessMessage(&event);check(os::IMEManagerWin::instance()->textInput()==enter,"Textarea toggles native text input with focus");};
+  scrollText(U"AB\nCD");focus(false);focus(true);
+  auto candidate=[&](gfx::Point caret){textFrame();SendMessageW(hwnd,WM_IME_STARTCOMPOSITION,0,0);COMPOSITIONFORM form{};check(ImmGetCompositionWindow(probe.context,&form)!=FALSE,"IME composition position is available");const auto screen=window->pointToScreen(text_->bounds().origin()+caret);POINT origin{};check(ClientToScreen(hwnd,&origin)!=FALSE,"IME window screen origin");check(form.dwStyle==CFS_POINT&&form.ptCurrentPos.x==screen.x-origin.x&&form.ptCurrentPos.y==screen.y-origin.y,"IME position follows the rendered caret in screen coordinates");};
+  candidate({6*uiScale,14*uiScale});key(ui::kKeyEnd,ui::kKeyNoneModifier);candidate({(6+font_.measure(U"AB"))*uiScale,14*uiScale});key(ui::kKeyDown,ui::kKeyNoneModifier);candidate({(6+font_.measure(U"CD"))*uiScale,26*uiScale});
+  scrollText(U"A\u4e2dB");text_->setSelectionRange(1,2);
+  auto commit=[&](char32_t code){if(code>0xffff){SendMessageW(hwnd,WM_IME_CHAR,0xd800+((code-0x10000)>>10),0);SendMessageW(hwnd,WM_IME_CHAR,0xdc00+((code-0x10000)&1023),0);}else SendMessageW(hwnd,WM_IME_CHAR,code,0);bool delivered=false;for(int n=0;n<256&&!delivered;++n){os::Event event;os::EventQueue::instance()->getEvent(event,0.0);if(event.type()==os::Event::KeyDown&&event.scancode()==os::kKeyNil){if(event.unicodeChar()!=code)throw std::runtime_error("Windows IME scalar expected "+std::to_string(code)+" got "+std::to_string(event.unicodeChar()));ui::KeyMessage message(ui::kKeyDownMessage,event.scancode(),event.modifiers(),event.unicodeChar(),event.repeat());check(text_->onProcessMessage(&message),"Committed IME text consumed");delivered=true;}else if(event.type()!=os::Event::None)pending.events.push_back(event);}check(delivered,"Windows IME emits committed text event");};
+  commit(U'\u6587');check(text_->value()==U"A\u6587B"&&value_.text==u"A\u6587B","Chinese commit replaces selected text through normal style reconciliation");
+  commit(U'\U0001f600');commit(U'\U00020000');check(text_->value()==U"A\u6587\U0001f600\U00020000B"&&value_.text==u"A\u6587\U0001f600\U00020000B","Supplementary IME commits preserve UTF32 text and UTF16 metadata");
+  key(ui::kKeyZ,ui::kKeyCtrlModifier);check(text_->value()==U"A\u6587B","Local undo removes supplementary insertion without document undo");key(ui::kKeyZ,ui::kKeyCtrlModifier);check(text_->value()==U"A\u4e2dB","Local undo restores text before IME replacement");at(1,2);key(ui::kKeyY,ui::kKeyCtrlModifier);key(ui::kKeyY,ui::kKeyCtrlModifier);check(text_->value()==U"A\u6587\U0001f600\U00020000B","IME insertion redo");
+  focus(false);focus(true);
+ }
  fonts_.recordSize(originalLastSize);value_=original;live=originalLive;text_->setValue(textUtf32(value_.text));text_->setSelectionRange(0,0);update();
  }
  os::SurfaceRef smokeFrame(){auto surface=os::instance()->makeRgbaSurface(bounds().w,bounds().h);surface->clear();{ui::Graphics g(surface);{UiPaintScale scale(g);skin_.drawDialogBackground(g,uiLogical(clientBounds()));}ui::PaintEvent ev(this,&g);paintDialogContents(ev);}auto paint=[&](auto child){if(!child->isVisible())return;ui::Graphics g(nullptr,surface,child->bounds().x-bounds().x,child->bounds().y-bounds().y);ui::PaintEvent ev(child,&g);child->onPaint(ev);};paint(text_);for(PixelButton* b:{family_,align_,layout_,spacing_,render_})paint(b);for(auto e:numbers_)paint(e);for(auto b:{color_,ok_,cancel_,close_,live_,import_,system_,erase_})paint(b);return surface;}

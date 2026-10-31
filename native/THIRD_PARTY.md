@@ -17,3 +17,5 @@
 Fusion 官方源：[项目](https://github.com/TakWolf/fusion-pixel-font)、[固定发布](https://github.com/TakWolf/fusion-pixel-font/releases/tag/2026.09.25)。`fusion-ascii.png` 仅为 laf 内部字符测量准备等高图集，由 `scripts/prepare-font.py` 从同一 BDF 原样排列；实际界面直接按 BDF 的字形边界、基线和前进宽度绘制。拉丁字符可以是 5px 前进宽度，中文通常为 10px，均属同一个 10px 字号；不拉伸成等宽方块。
 
 所有上游完整许可文本保留在对应缓存源码中；可执行文件旁需附带的 MIT 原文由构建复制。当前不创建安装包、不作发行许可完备声明。
+
+2026-10-31：构建时从锁定laf的`os/win/window.cpp`生成保留版权头的副本，仅将WM_IME_CHAR的UTF16代理对合成从错误的按位OR改为加法；原缓存源码不修改。生成副本替代原编译单元，许可仍为laf MIT，详见[原生输入法接线](docs/text-input-ime-20261031.md)。

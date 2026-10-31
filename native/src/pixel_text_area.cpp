@@ -3,11 +3,21 @@
 #include <cmath>
 #include <cstdint>
 #include "modules/skunicode/include/SkUnicode.h"
+#include "ui/display.h"
+#include "os/system.h"
 #include <windows.h>
 #include <icu.h>
 
 namespace moon {
 namespace {
+// The existing MIT UI Entry/laf contract takes a screen-space caret bottom.
+// Multi-line fields share the same native input service and OS candidate UI.
+void textInputCaret(ui::Widget& input,gfx::Point caret,int scroll){
+ if(auto display=input.display())if(auto window=display->nativeWindow()){
+  const auto position=input.bounds().origin()+gfx::Point((6+caret.x)*uiScale,(14+caret.y-scroll)*uiScale);
+  os::System::instance()->setTextInput(true,window->pointToScreen(position));
+ }
+}
 // Skia's bundled data omits dictionary segmentation. Windows ships the full
 // ICU word service; load only the system copy, without a new runtime package.
 struct PlatformWordBreaks {
@@ -196,7 +206,13 @@ bool PixelTextArea::onProcessMessage(ui::Message* msg){
    const auto layout=positions();const auto requested=std::int64_t(scroll_)+std::int64_t(static_cast<ui::MouseMessage*>(msg)->wheelDelta().y)*12;
    scroll_=int(std::clamp<std::int64_t>(requested,0,textScrollLimit(layout,bounds().h)));invalidate();return true;
   }
-  if(msg->type()==ui::kFocusEnterMessage||msg->type()==ui::kFocusLeaveMessage){if(msg->type()==ui::kFocusLeaveMessage){wordDrag_.reset();dragging_=false;if(hasCapture())releaseMouse();}preferredX_=-1;editGroup_=0;invalidate();notifySelection();}
+  if(msg->type()==ui::kFocusEnterMessage||msg->type()==ui::kFocusLeaveMessage){
+   if(msg->type()==ui::kFocusLeaveMessage){
+    wordDrag_.reset();dragging_=false;if(hasCapture())releaseMouse();
+    os::System::instance()->setTextInput(false);
+   }else {const auto all=positions();textInputCaret(*this,caretPoint(all),std::clamp(scroll_,0,textScrollLimit(all,bounds().h)));}
+   preferredX_=-1;editGroup_=0;invalidate();notifySelection();
+  }
   if(msg->type()==ui::kKeyDownMessage&&isEnabled()){wordDrag_.reset();dragging_=false;if(hasCapture())releaseMouse();auto k=static_cast<ui::KeyMessage*>(msg);auto code=k->scancode();bool ctrl=k->ctrlPressed()||k->cmdPressed(),shift=k->shiftPressed();
    if(code==ui::kKeyEsc){if(cancel)cancel();return true;}
    if(ctrl&&(code==ui::kKeyZ||code==ui::kKeyY)){if(code==ui::kKeyY||shift)redoLocal();else undoLocal();return true;}
@@ -265,5 +281,5 @@ bool PixelTextArea::onProcessMessage(ui::Message* msg){
   }return ui::Widget::onProcessMessage(msg);
  }
 
-void PixelTextArea::onPaint(ui::PaintEvent& ev){auto& g=*ev.graphics();UiPaintScale scale(g);auto rc=uiLogical(clientBounds());skin_.draw(g,"entry.normal",rc);g.saveClip();g.clipRect({rc.x+5,rc.y+3,std::max(0,rc.w-10),std::max(0,rc.h-6)});auto all=positions();scroll_=std::clamp(scroll_,0,textScrollLimit(all,bounds().h));for(int i=0;i<int(value_.size());++i){auto p=all[i];p+=gfx::Point(rc.x+6,rc.y+4-scroll_);if(i>=std::min(caret_,anchor_)&&i<std::max(caret_,anchor_))g.fillRect(skin_["accent"],{p.x,p.y,value_[i]==U'\n'?3:font_.measure(value_.substr(i,1)),10});if(value_[i]!=U'\n')font_.draw(g,value_.substr(i,1),p.x,p.y,skin_["text"]);}if(hasFocus()){auto p=caretPoint(all);g.fillRect(skin_["text"],{rc.x+6+p.x,rc.y+4+p.y-scroll_,1,10});}g.restoreClip();}
+void PixelTextArea::onPaint(ui::PaintEvent& ev){auto& g=*ev.graphics();UiPaintScale scale(g);auto rc=uiLogical(clientBounds());skin_.draw(g,"entry.normal",rc);g.saveClip();g.clipRect({rc.x+5,rc.y+3,std::max(0,rc.w-10),std::max(0,rc.h-6)});auto all=positions();scroll_=std::clamp(scroll_,0,textScrollLimit(all,bounds().h));for(int i=0;i<int(value_.size());++i){auto p=all[i];p+=gfx::Point(rc.x+6,rc.y+4-scroll_);if(i>=std::min(caret_,anchor_)&&i<std::max(caret_,anchor_))g.fillRect(skin_["accent"],{p.x,p.y,value_[i]==U'\n'?3:font_.measure(value_.substr(i,1)),10});if(value_[i]!=U'\n')font_.draw(g,value_.substr(i,1),p.x,p.y,skin_["text"]);}if(hasFocus()){auto p=caretPoint(all);textInputCaret(*this,p,scroll_);g.fillRect(skin_["text"],{rc.x+6+p.x,rc.y+4+p.y-scroll_,1,10});}g.restoreClip();}
 }
