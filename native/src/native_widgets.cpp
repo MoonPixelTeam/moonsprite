@@ -532,22 +532,57 @@ struct EntryWordDrag final:ui::Property {
  int from,to;
  EntryWordDrag(int a,int b):ui::Property(name),from(a),to(b){}
 };
+struct EntryPointerGesture final:ui::Property {
+ static constexpr const char* name="moonsprite.input-pointer-gesture";
+ gfx::Point start;bool moved=false;
+ explicit EntryPointerGesture(gfx::Point point):ui::Property(name),start(point){}
+};
+// Browser insertion, non-Shift navigation, Select All and effective history
+// restore reset a held pointer's continuation. Deletion/Shift selection do not.
+// Observe the completed command so read-only/failed/no-op routes stay neutral.
+struct EntryPointerKey final {
+ static constexpr const char* name="moonsprite.input-pointer-after-key";
+ PixelEntry& input;EntryEditHistory::State before;
+ explicit EntryPointerKey(PixelEntry& entry):input(entry),before(EntryEditHistory::state(entry)){}
+ ~EntryPointerKey(){
+  if(!input.hasCapture())return;
+  const auto after=EntryEditHistory::state(input);
+  if(before.text!=after.text||before.anchor!=after.anchor||before.caret!=after.caret)
+   input.setProperty(std::make_shared<ui::Property>(name));
+ }
+};
 }
 bool PixelEntry::onProcessMessage(ui::Message* msg) {
   // Legacy text/decimal inputs retain selection across blur and programmatic
   // refocus. Keep explicit form focus callbacks free to select their own range.
   setPersistSelection(true);
-  constexpr const char* pointerAfterKey="moonsprite.input-pointer-after-key";
+  constexpr const char* pointerAfterKey=EntryPointerKey::name;
   if(msg->type()==ui::kFocusLeaveMessage){
     if(rightSelecting_&&!editMenuOpen_)editMenuRefocus_=false;
     if(hasCapture())releaseMouse();scrubbing_=false;rightSelecting_=false;
     removeProperty(pointerAfterKey);
   }
   if(msg->type()==ui::kMouseDownMessage||!hasCapture())removeProperty(pointerAfterKey);
-  if(msg->type()==ui::kKeyDownMessage&&hasCapture()){
+  // Readonly click normalization is specific to a stationary click. A real
+  // drag that returns to its anchor retains that interior endpoint on release.
+  if(msg->type()==ui::kMouseDownMessage||!hasCapture())removeProperty(EntryPointerGesture::name);
+  if(isEnabled()&&msg->type()==ui::kMouseDownMessage&&static_cast<ui::MouseMessage*>(msg)->left())
+    setProperty(std::make_shared<EntryPointerGesture>(static_cast<ui::MouseMessage*>(msg)->position()));
+  auto pointerGesture=std::dynamic_pointer_cast<EntryPointerGesture>(getProperty(EntryPointerGesture::name));
+  if(pointerGesture&&msg->type()==ui::kMouseMoveMessage&&hasCapture()&&static_cast<ui::MouseMessage*>(msg)->position()!=pointerGesture->start)pointerGesture->moved=true;
+  const bool pointerWasDragged=pointerGesture&&pointerGesture->moved;
+  if(msg->type()==ui::kMouseUpMessage)removeProperty(EntryPointerGesture::name);
+  std::optional<EntryPointerKey> pointerKey;
+  if(msg->type()==ui::kKeyDownMessage&&hasCapture()&&!scrubbing_&&!rightSelecting_){
     const auto key=static_cast<ui::KeyMessage*>(msg);const auto code=key->scancode();
-    if(code==ui::kKeyLeft||code==ui::kKeyRight||code==ui::kKeyHome||code==ui::kKeyEnd||(!key->ctrlPressed()&&!key->altPressed()&&key->unicodeChar()>=32))
-      setProperty(std::make_shared<ui::Property>(pointerAfterKey));
+    const bool navigation=!key->shiftPressed()&&!key->altPressed()&&!key->cmdPressed()&&
+      (code==ui::kKeyLeft||code==ui::kKeyRight||code==ui::kKeyHome||code==ui::kKeyEnd||code==ui::kKeyUp||code==ui::kKeyDown);
+    const bool selection=code==ui::kKeyA&&key->onlyCtrlPressed();
+    const bool paste=(code==ui::kKeyV&&key->onlyCtrlPressed())||(code==ui::kKeyInsert&&key->onlyShiftPressed());
+    const bool history=(code==ui::kKeyBackspace&&key->onlyAltPressed())||(code==ui::kKeyY&&key->onlyCtrlPressed())||
+      (code==ui::kKeyZ&&(key->onlyCtrlPressed()||key->modifiers()==ui::KeyModifiers(ui::kKeyCtrlModifier|ui::kKeyShiftModifier)));
+    const bool insertion=!key->ctrlPressed()&&!key->altPressed()&&!key->cmdPressed()&&key->unicodeChar()>=32;
+    if(navigation||selection||paste||history||insertion)pointerKey.emplace(*this);
   }
   auto nearestPaintedCaret=[&](gfx::Point point){
     const auto value=unicodeText(text());int scroll=0;getEntryThemeInfo(&scroll,nullptr,nullptr,nullptr);
@@ -733,7 +768,7 @@ bool PixelEntry::onProcessMessage(ui::Message* msg) {
     const auto mouse=static_cast<ui::MouseMessage*>(msg);
     // Browser readonly inputs have no interior editable caret after a plain
     // click clears selection. Keep the logical drag anchor until release.
-    if(mouse->left()&&!mouse->shiftPressed()&&selectedText().empty()){
+    if(mouse->left()&&!mouse->shiftPressed()&&!pointerWasDragged&&selectedText().empty()){
       const int end=lastCaretPos(),caret=caretPos()==end?end:0;selectText(caret,caret);
     }
   }

@@ -91,6 +91,14 @@ const literal=text=>'U"'+[...text].map(c=>{const n=c.codePointAt(0);return n<128
     scenarios.push([initial,Math.min(a,initial.length),Math.min(c,initial.length),[...(readonly?['readonly:true']:[]),'key:'+key]]);
   for(const key of ['ArrowUp','ArrowDown','PageUp','PageDown'])
    scenarios.push(['',0,0,['type:ab','key:'+key,'type:c','key:Control+z','key:Control+z','key:Control+y']]);
+  // Keep a drag captured while keyboard commands edit/navigate the input.
+  // A second move distinguishes a reset pointer anchor from a coincidental
+  // collapsed selection at the first move's boundary.
+  for(const [from,to] of [[1,3],[3,1]])for(const readonly of [false,true])
+   for(const interrupt of ['key:ArrowUp','key:ArrowDown','key:Shift+ArrowLeft','key:Shift+ArrowRight','key:Control+ArrowLeft','key:Control+ArrowRight','key:Control+a','key:Backspace','key:Delete','key:Control+Backspace','key:Control+Delete','key:Control+x','key:Control+c','paste:X','key:Control+z','key:Control+y','key:PageUp','key:PageDown','key:Control+Shift+Backspace','key:Control+Shift+Delete'])
+    scenarios.push(['ABCD',0,0,[...(readonly?['readonly:true']:[]),'press:'+from,'move:'+to,interrupt,'move:0','move:1','release:1',...(!readonly?['type:Y','key:Control+z','key:Control+y']:[])]]);
+  for(const interrupt of ['key:Control+z','key:Alt+Backspace','key:Control+y','key:Control+Shift+z'])
+   scenarios.push(['ABCD',4,4,['type:X',...(['key:Control+y','key:Control+Shift+z'].includes(interrupt)?['key:Control+z']:[]),'press:1','move:3',interrupt,'move:0','move:1','release:1','type:Y','key:Control+z','key:Control+y']]);
   const rows=[],records=[];
   for(let scenario=0;scenario<scenarios.length;scenario++){
    const [initial,a,c,actions]=scenarios[scenario];

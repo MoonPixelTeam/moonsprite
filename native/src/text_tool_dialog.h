@@ -295,7 +295,7 @@ public:
     if(input->text()!=utf8Text(fixture.text)||a!=fixture.start||b!=fixture.end||input->caretPos()!=(fixture.backward?fixture.start:fixture.end)||!history->undo.empty()!=fixture.undo||!history->redo.empty()!=fixture.redo)throw std::runtime_error("Browser input history mismatch scenario "+std::to_string(fixture.scenario)+" action "+utf8Text(action)+" text="+input->text()+" range="+std::to_string(a)+","+std::to_string(b));
     ++historyRows;
    }
-   check(historyRows==2923,"All normative browser input history/navigation observations checked");
+   check(historyRows==3605,"All normative browser input history/navigation observations checked");
    // Browser resize clamps an obsolete horizontal offset when all text fits.
    // Do not send another key/mouse/focus message before checking: the bug was
    // precisely the need for that extra event after a window expansion.
