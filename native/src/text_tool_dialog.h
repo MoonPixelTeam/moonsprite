@@ -277,13 +277,13 @@ public:
     else if(kind==U"key"){
      const auto split=arg.rfind(U'+');const auto name=split==std::u32string::npos?arg:arg.substr(split+1);ui::KeyScancode scan=ui::kKeyNil;
      if(name==U"z")scan=ui::kKeyZ;else if(name==U"y")scan=ui::kKeyY;else if(name==U"x")scan=ui::kKeyX;else if(name==U"c")scan=ui::kKeyC;else if(name==U"a")scan=ui::kKeyA;else if(name==U"ArrowLeft")scan=ui::kKeyLeft;else if(name==U"ArrowRight")scan=ui::kKeyRight;else if(name==U"Home")scan=ui::kKeyHome;else if(name==U"End")scan=ui::kKeyEnd;else if(name==U"Backspace")scan=ui::kKeyBackspace;else if(name==U"Delete")scan=ui::kKeyDel;
-     check(scan!=ui::kKeyNil,"Known browser history key");const auto mods=ui::KeyModifiers((arg.find(U"Control+")!=std::u32string::npos?ui::kKeyCtrlModifier:0)|(arg.find(U"Shift+")!=std::u32string::npos?ui::kKeyShiftModifier:0));entryKey(scan,mods);
+     check(scan!=ui::kKeyNil,"Known browser history key");const auto mods=ui::KeyModifiers((arg.find(U"Control+")!=std::u32string::npos?ui::kKeyCtrlModifier:0)|(arg.find(U"Shift+")!=std::u32string::npos?ui::kKeyShiftModifier:0)|(arg.find(U"Alt+")!=std::u32string::npos?ui::kKeyAltModifier:0));entryKey(scan,mods);
     }else check(false,"Known browser history action");
     const auto range=input->selectedRange();const int a=range.isEmpty()?input->caretPos():range.from,b=range.isEmpty()?input->caretPos():range.to;auto history=EntryEditHistory::get(*input);
     if(input->text()!=utf8Text(fixture.text)||a!=fixture.start||b!=fixture.end||input->caretPos()!=(fixture.backward?fixture.start:fixture.end)||!history->undo.empty()!=fixture.undo||!history->redo.empty()!=fixture.redo)throw std::runtime_error("Browser input history mismatch scenario "+std::to_string(fixture.scenario)+" action "+utf8Text(action)+" text="+input->text()+" range="+std::to_string(a)+","+std::to_string(b));
     ++historyRows;
    }
-   check(historyRows==1031,"All normative browser input history/navigation observations checked");
+   check(historyRows==1711,"All normative browser input history/navigation observations checked");
    auto historyInput=input;input=numericInput;input->requestFocus();delete historyInput;
    input->removeProperty(EntryEditHistory::propertyName);input->setText("");input->selectText(0,0);typeEntry(U"a");input->setReadOnly(true);const auto beforeReadOnly=EntryEditHistory::get(*input);entryKey(ui::kKeyZ,ui::kKeyCtrlModifier);check(input->text()=="a"&&beforeReadOnly->undo.size()==1&&beforeReadOnly->redo.empty(),"Read-only Undo is a safe no-op, not browser stale-operation corruption");input->setReadOnly(false);entryKey(ui::kKeyZ,ui::kKeyCtrlModifier);entryKey(ui::kKeyY,ui::kKeyCtrlModifier);check(input->text()=="a","Read-only history cannot duplicate content on Redo");
    input->setText("external");entryKey(ui::kKeyZ,ui::kKeyCtrlModifier);check(input->text()=="external"&&EntryEditHistory::get(*input)->undo.empty()&&EntryEditHistory::get(*input)->redo.empty(),"External value replacement cannot replay stale input history");

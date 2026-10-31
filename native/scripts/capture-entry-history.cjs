@@ -58,6 +58,16 @@ const literal=text=>'U"'+[...text].map(c=>{const n=c.codePointAt(0);return n<128
      scenarios.push([initial,a,c,['key:'+key,'key:Control+z','key:Control+y']]);
    }
   }
+  for(const initial of ['abc def ghi','  abc  def  ','foo.bar:baz','中文测试内容','']){
+   const ranges=[[0,0],[initial.length,initial.length],[Math.floor(initial.length/2),Math.floor(initial.length/2)]];
+   if(initial.length>=4)ranges.push([1,initial.length-1],[initial.length-1,1]);
+   for(const [a,c] of ranges)for(const readonly of [false,true])for(const key of ['Control+Shift+Backspace','Control+Shift+Delete','Alt+Backspace','Alt+Delete'])
+    scenarios.push([initial,a,c,[...(readonly?['readonly:true']:[]),'key:'+key,'key:Control+z','key:Control+y']]);
+  }
+  for(const key of ['Control+Shift+Backspace','Control+Shift+Delete','Alt+Backspace','Alt+Delete']){
+   scenarios.push(['',0,0,['type:abc','key:'+key,'type:d','key:Control+z','key:Control+y']]);
+   scenarios.push(['',0,0,['type:abc','key:Control+z','key:'+key,'key:Control+y']]);
+  }
   const rows=[],records=[];
   for(let scenario=0;scenario<scenarios.length;scenario++){
    const [initial,a,c,actions]=scenarios[scenario];

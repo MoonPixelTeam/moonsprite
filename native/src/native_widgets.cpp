@@ -558,7 +558,7 @@ bool PixelEntry::onProcessMessage(ui::Message* msg) {
   if(msg->type()==ui::kKeyDownMessage && isEnabled() && hasFocus()) {
     const auto key=static_cast<ui::KeyMessage*>(msg);const auto code=key->scancode();
     auto history=EntryEditHistory::get(*this);
-    const bool undo=(code==ui::kKeyZ&&(key->onlyCtrlPressed()||key->modifiers()==ui::KeyModifiers(ui::kKeyCtrlModifier|ui::kKeyShiftModifier)));
+    const bool undo=(code==ui::kKeyBackspace&&key->onlyAltPressed())||(code==ui::kKeyZ&&(key->onlyCtrlPressed()||key->modifiers()==ui::KeyModifiers(ui::kKeyCtrlModifier|ui::kKeyShiftModifier)));
     const bool redo=(code==ui::kKeyY&&key->onlyCtrlPressed())||(undo&&key->shiftPressed());
     if(undo||redo){history->restore(*this,redo,[this]{onChange();});return true;}
     if(code==ui::kKeyMenu || (code==ui::kKeyF10 && key->onlyShiftPressed())){
@@ -566,6 +566,10 @@ bool PixelEntry::onProcessMessage(ui::Message* msg) {
       const int start=std::clamp(scroll,0,int(value.size())),caret=std::clamp(caretPos(),start,int(value.size()));
       const auto rc=getEntryTextBounds();showInputEditMenu(bounds().origin()+gfx::Point(std::clamp(rc.x+font_.measure(value.substr(start,caret-start))*uiScale,rc.x,rc.x2()),rc.y2()));return true;
     }
+    // Windows browser inputs do not delete for these modifier combinations.
+    // MIT TextCmdProcessor otherwise maps them to word/end-of-line deletion.
+    if((code==ui::kKeyBackspace||code==ui::kKeyDel)&&
+       (key->altPressed()||(key->ctrlPressed()&&key->shiftPressed())))return true;
     // Match the legacy browser's word boundaries using the existing textarea
     // service. Entry boxes may combine codepoints: do not reinterpret them as
     // Unicode offsets until that separate mapping has been migrated.
