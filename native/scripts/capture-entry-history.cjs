@@ -86,6 +86,11 @@ const literal=text=>'U"'+[...text].map(c=>{const n=c.codePointAt(0);return n<128
    scenarios.push(['abc def ghi',0,0,[action,'type:X','key:Control+z','key:Control+y']]);
   for(const interrupt of ['blur','key:ArrowRight','type:X'])
    scenarios.push(['ABCD',0,0,['press:1','move:3',interrupt,'move:0','release:0','focus','type:Y','key:Control+z']]);
+  for(const initial of ['ABCD','中文测试',''])for(const [a,c] of [[0,0],[initial.length,initial.length],[1,3],[3,1]])for(const readonly of [false,true])
+   for(const key of ['ArrowUp','ArrowDown','Shift+ArrowUp','Shift+ArrowDown','Control+ArrowUp','Control+ArrowDown','Control+Shift+ArrowUp','Control+Shift+ArrowDown','PageUp','PageDown','Shift+PageUp','Shift+PageDown'])
+    scenarios.push([initial,Math.min(a,initial.length),Math.min(c,initial.length),[...(readonly?['readonly:true']:[]),'key:'+key]]);
+  for(const key of ['ArrowUp','ArrowDown','PageUp','PageDown'])
+   scenarios.push(['',0,0,['type:ab','key:'+key,'type:c','key:Control+z','key:Control+z','key:Control+y']]);
   const rows=[],records=[];
   for(let scenario=0;scenario<scenarios.length;scenario++){
    const [initial,a,c,actions]=scenarios[scenario];

@@ -656,6 +656,19 @@ bool PixelEntry::onProcessMessage(ui::Message* msg) {
       }
       navigationHandled=true;
     }
+    // Legacy bare inputs keep vertical navigation inside the field instead of
+    // letting Manager move focus. Numeric controls retain their own route.
+    if(!numeric&&!wheel&&!key->altPressed()&&!key->cmdPressed()) {
+      if(code==ui::kKeyUp||code==ui::kKeyDown) {
+        history->group=0;
+        if(!isReadOnly()||(key->shiftPressed()&&!selectedText().empty()))
+          executeCmd(code==ui::kKeyUp||isReadOnly()?Cmd::BegOfLine:Cmd::EndOfLine,0,key->shiftPressed());
+        navigationHandled=true;
+      }else if(code==ui::kKeyPageUp||code==ui::kKeyPageDown) {
+        // Browser single-line Page keys leave selection and edit grouping intact.
+        navigationHandled=true;
+      }
+    }
     const bool control=key->onlyCtrlPressed(),shift=key->onlyShiftPressed();
     if(control && (code==ui::kKeyC || code==ui::kKeyInsert))clipboardHandled=editClipboard(Cmd::Copy);
     else if((control && code==ui::kKeyX) || (shift && code==ui::kKeyDel))clipboardHandled=editClipboard(Cmd::Cut);

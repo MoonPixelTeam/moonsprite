@@ -286,14 +286,14 @@ public:
     else if(kind==U"select"){const auto comma=arg.find(U',');input->selectText(std::stoi(utf8Text(arg.substr(0,comma))),std::stoi(utf8Text(arg.substr(comma+1))));}
     else if(kind==U"key"){
      const auto split=arg.rfind(U'+');const auto name=split==std::u32string::npos?arg:arg.substr(split+1);ui::KeyScancode scan=ui::kKeyNil;
-     if(name==U"z")scan=ui::kKeyZ;else if(name==U"y")scan=ui::kKeyY;else if(name==U"x")scan=ui::kKeyX;else if(name==U"c")scan=ui::kKeyC;else if(name==U"a")scan=ui::kKeyA;else if(name==U"ArrowLeft")scan=ui::kKeyLeft;else if(name==U"ArrowRight")scan=ui::kKeyRight;else if(name==U"Home")scan=ui::kKeyHome;else if(name==U"End")scan=ui::kKeyEnd;else if(name==U"Backspace")scan=ui::kKeyBackspace;else if(name==U"Delete")scan=ui::kKeyDel;
+     if(name==U"z")scan=ui::kKeyZ;else if(name==U"y")scan=ui::kKeyY;else if(name==U"x")scan=ui::kKeyX;else if(name==U"c")scan=ui::kKeyC;else if(name==U"a")scan=ui::kKeyA;else if(name==U"ArrowLeft")scan=ui::kKeyLeft;else if(name==U"ArrowRight")scan=ui::kKeyRight;else if(name==U"ArrowUp")scan=ui::kKeyUp;else if(name==U"ArrowDown")scan=ui::kKeyDown;else if(name==U"PageUp")scan=ui::kKeyPageUp;else if(name==U"PageDown")scan=ui::kKeyPageDown;else if(name==U"Home")scan=ui::kKeyHome;else if(name==U"End")scan=ui::kKeyEnd;else if(name==U"Backspace")scan=ui::kKeyBackspace;else if(name==U"Delete")scan=ui::kKeyDel;
      check(scan!=ui::kKeyNil,"Known browser history key");const auto mods=ui::KeyModifiers((arg.find(U"Control+")!=std::u32string::npos?ui::kKeyCtrlModifier:0)|(arg.find(U"Shift+")!=std::u32string::npos?ui::kKeyShiftModifier:0)|(arg.find(U"Alt+")!=std::u32string::npos?ui::kKeyAltModifier:0));entryKey(scan,mods);
     }else check(false,"Known browser history action");
     const auto range=input->selectedRange();const int a=range.isEmpty()?input->caretPos():range.from,b=range.isEmpty()?input->caretPos():range.to;auto history=EntryEditHistory::get(*input);
     if(input->text()!=utf8Text(fixture.text)||a!=fixture.start||b!=fixture.end||input->caretPos()!=(fixture.backward?fixture.start:fixture.end)||!history->undo.empty()!=fixture.undo||!history->redo.empty()!=fixture.redo)throw std::runtime_error("Browser input history mismatch scenario "+std::to_string(fixture.scenario)+" action "+utf8Text(action)+" text="+input->text()+" range="+std::to_string(a)+","+std::to_string(b));
     ++historyRows;
    }
-   check(historyRows==2467,"All normative browser input history/navigation observations checked");
+   check(historyRows==2923,"All normative browser input history/navigation observations checked");
    input->setText("ABCD");input->selectText(1,3);int interruptedRightBlur=0;input->blur=[&]{++interruptedRightBlur;};
    {const auto rc=input->getEntryTextBounds();const auto point=input->bounds().origin()+gfx::Point(rc.x,rc.y+rc.h/2);ui::MouseMessage message(ui::kMouseDownMessage,os::PointerType::Mouse,ui::kButtonRight,ui::kKeyNoneModifier,point);check(input->onProcessMessage(&message)&&input->hasCapture(),"Right selection begins capture");}
    cancel_->requestFocus();manager()->dispatchMessages();check(!input->hasCapture()&&!input->hasFocus()&&interruptedRightBlur==1,"Interrupted right selection releases capture and follows real form blur, not popup refocus");input->blur={};
