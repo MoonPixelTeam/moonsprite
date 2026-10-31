@@ -98,10 +98,22 @@ std::vector<gfx::Point> PixelTextArea::positions()const {
  if(boundaries.empty()){boundaries.push_back(0);for(int i=1;i<=int(value_.size());++i)boundaries.push_back(i);}
  std::vector<gfx::Point> out(value_.size()+1);int x=0,y=0;
  const int width=std::max(1,bounds().w/uiScale-12);
+ const auto lineBreaks=textBreakBoundaries(value_,SkUnicode::BreakType::kLines);
+ std::vector<int> advances(value_.size()+1);
+ for(int i=0;i<int(value_.size());++i)advances[i+1]=advances[i]+(value_[i]==U'\n'?0:font_.measure(value_.substr(i,1)));
  for(std::size_t cluster=1;cluster<boundaries.size();++cluster){
   const int from=boundaries[cluster-1],to=boundaries[cluster];
   const auto text=value_.substr(from,to-from);const bool newline=text.find(U'\n')!=std::u32string::npos;
-  if(!newline&&x&&x+font_.measure(text)>width){x=0;y+=12;}
+  // textarea's pre-wrap keeps a fitting word together and allows trailing
+  // spaces to hang. Only an overlong unbreakable run falls back to clusters.
+  if(!newline&&x&&std::binary_search(lineBreaks.begin(),lineBreaks.end(),from)){
+   const auto next=std::upper_bound(lineBreaks.begin(),lineBreaks.end(),from);
+   int end=next==lineBreaks.end()?int(value_.size()):*next;
+   while(end>from&&(value_[end-1]==U' '||value_[end-1]==U'\n'))--end;
+   if(x+advances[end]-advances[from]>width){x=0;y+=12;}
+  }
+  const bool hangingSpace=std::all_of(text.begin(),text.end(),[](char32_t c){return c==U' ';});
+  if(!newline&&!hangingSpace&&x&&x+advances[to]-advances[from]>width){x=0;y+=12;}
   for(int i=from;i<to;++i){out[i]={x,y};if(value_[i]==U'\n'){x=0;y+=12;}else x+=font_.measure(value_.substr(i,1));}
  }
  out.back()={x,y};return out;

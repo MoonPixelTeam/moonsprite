@@ -7,6 +7,7 @@
 #include "../tests/fixtures/text_word_navigation_browser.h"
 #include "../tests/fixtures/text_double_click_browser.h"
 #include "../tests/fixtures/text_word_drag_browser.h"
+#include "../tests/fixtures/text_wrap_browser.h"
 namespace moon {
 class TextToolDialog final:public PixelDialog {
  const PixelFont& font_;const Skin& skin_;TextFontService& fonts_;TextCelData value_;std::function<void(const TextCelData&,bool)> preview_;std::vector<TextFontOption> options_;PixelTextArea* text_;PixelDropdown *family_,*align_,*layout_,*spacing_,*render_;std::vector<PixelEntry*> numbers_;PixelButton* color_=nullptr;std::unique_ptr<ColorEditorPopup> colorPopup_;PixelButton *ok_,*cancel_,*close_,*live_,*import_,*system_,*erase_;bool live=true,accepted_=false,syncing_=false;std::u32string error_;
@@ -172,6 +173,20 @@ public:
   ++wordCase;
  }
  if(!wordErrors.empty())throw std::runtime_error(wordErrors);
+ // Browser textarea soft wrap: compare visual Home/End at every logical offset.
+ const auto wrapBounds=text_->bounds();int wrapCase=0;std::string wrapErrors;
+ for(const auto& fixture:textWrapBrowserCases){
+  auto narrow=wrapBounds;narrow.w=(12+fixture.columns*font_.measure(U"a"))*uiScale;narrow.h=500*uiScale;text_->setBounds(narrow);
+  const std::u32string sample=fixture.text;value_.text=textUtf16(sample);value_.styleRuns.clear();text_->setValue(sample);
+  for(const bool home:{true,false}){text_->setSelectionRange(fixture.offset,fixture.offset);key(home?ui::kKeyHome:ui::kKeyEnd,ui::kKeyNoneModifier);const int expected=home?fixture.home:fixture.end;if(text_->selectionRange()!=std::pair<int,int>{expected,expected}){if(wrapErrors.size()<4000)wrapErrors+=" wrap case "+std::to_string(wrapCase)+(home?" Home":" End")+" got "+std::to_string(text_->selectionRange().first)+" expected "+std::to_string(expected);}}
+  if(fixture.offset==0&&wrapErrors.empty()){
+   std::vector<std::pair<int,int>> rows;for(const auto& other:textWrapBrowserCases)if(other.columns==fixture.columns&&std::u32string(other.text)==sample)rows.emplace_back(other.home,other.end);
+   std::sort(rows.begin(),rows.end());rows.erase(std::unique(rows.begin(),rows.end()),rows.end());
+   for(int row=0;row<int(rows.size());++row){const auto point=text_->bounds().origin()+gfx::Point(6*uiScale,(9+12*row)*uiScale);for(const auto type:{ui::kMouseDownMessage,ui::kMouseUpMessage}){ui::MouseMessage event(type,os::PointerType::Mouse,ui::kButtonLeft,ui::kKeyNoneModifier,point);text_->onProcessMessage(&event);}at(rows[row].first,rows[row].first);key(ui::kKeyEnd,ui::kKeyShiftModifier);at(rows[row].first,rows[row].second);key(ui::kKeyHome,ui::kKeyNoneModifier);if(row+1<int(rows.size())){key(ui::kKeyDown,ui::kKeyNoneModifier);at(rows[row+1].first,rows[row+1].first);}}
+  }
+  check(text_->value()==sample&&!text_->undoLocal(),"Soft wrap navigation preserves text and local history");++wrapCase;
+ }
+ text_->setBounds(wrapBounds);if(!wrapErrors.empty())throw std::runtime_error(wrapErrors);
  // Browser textarea clamps scrolling to content, including after resize.
  auto scrollText=[&](const std::u32string& text){value_.text=textUtf16(text);value_.styleRuns.clear();text_->setValue(text);text_->setSelectionRange(0,0);};
  auto wheel=[&](int delta){ui::MouseMessage message(ui::kMouseWheelMessage,os::PointerType::Mouse,ui::kButtonNone,ui::kKeyNoneModifier,text_->bounds().origin(),gfx::Point(0,delta));check(text_->onProcessMessage(&message),"Textarea wheel is consumed");};
