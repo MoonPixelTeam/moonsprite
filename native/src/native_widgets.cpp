@@ -522,6 +522,9 @@ void PixelEntry::showInputEditMenu(gfx::Point position) {
   editMenuOpen_=false;editMenuRefocus_=true;requestFocus();
 }
 bool PixelEntry::onProcessMessage(ui::Message* msg) {
+  // Legacy text/decimal inputs retain selection across blur and programmatic
+  // refocus. Keep explicit form focus callbacks free to select their own range.
+  setPersistSelection(true);
   if(rightSelecting_ && msg->type()==ui::kFocusLeaveMessage && !editMenuOpen_){rightSelecting_=false;editMenuRefocus_=false;if(hasCapture())releaseMouse();}
   if((editMenuOpen_ || editMenuRefocus_) && (msg->type()==ui::kFocusEnterMessage || msg->type()==ui::kFocusLeaveMessage)) {
     const bool entering=msg->type()==ui::kFocusEnterMessage;

@@ -36,6 +36,10 @@ const literal=text=>'U"'+[...text].map(c=>{const n=c.codePointAt(0);return n<128
    ['',0,0,['type:ab','set:ab','key:Control+z','key:Control+y']],
    ['ABCD',1,2,['type:B','key:Control+z','key:Control+y']],
    ['ABCD',1,3,['paste:BC','key:Control+z','key:Control+y']],
+   ['ABCD',1,3,['blur','focus','type:X','key:Control+z','key:Control+y']],
+   ['ABCD',3,1,['blur','focus','type:X','key:Control+z','key:Control+y']],
+   ['',0,0,['type:ab','blur','focus','type:c','key:Control+z','key:Control+z']],
+   ['ABCD',2,2,['blur','focus','type:X','key:Control+z','key:Control+y']],
   ];
   const rows=[],records=[];
   for(let scenario=0;scenario<scenarios.length;scenario++){
@@ -52,7 +56,7 @@ const literal=text=>'U"'+[...text].map(c=>{const n=c.codePointAt(0);return n<128
     else if(kind==='blur')await page.locator('button').focus();
     else if(kind==='focus')await page.locator('input').focus();
     const result=await page.locator('input').evaluate(el=>({text:el.value,start:el.selectionStart,end:el.selectionEnd,backward:el.selectionDirection==='backward',undo:document.queryCommandEnabled('undo'),redo:document.queryCommandEnabled('redo')}));
-    records.push({scenario,action,...result});rows.push(` {${scenario},${literal(initial)},${a},${c},${literal(action)},${literal(result.text)},${result.start},${result.end},${result.backward},${result.undo},${result.redo},${![11,12,13].includes(scenario)}},`);
+    records.push({scenario,action,...result});rows.push(` {${scenario},${literal(initial)},${a},${c},${literal(action)},${literal(result.text)},${result.start},${result.end},${result.backward},${result.undo},${result.redo},${![11,13].includes(scenario)}},`);
    }
   }
   fs.writeFileSync(path.join(__dirname,'../tests/fixtures/entry_history_browser.h'),`#pragma once\n// Actual Edge ${await browser.version()} input local edit history.\n// Regenerate: node native/scripts/capture-entry-history.cjs\nnamespace moon {\nstruct EntryHistoryBrowserCase {int scenario;const char32_t* initial;int anchor,caret;const char32_t* action;const char32_t* text;int start,end;bool backward,undo,redo,compare;};\ninline const EntryHistoryBrowserCase entryHistoryBrowserCases[]{\n${rows.join('\n')}\n};\n}\n`);

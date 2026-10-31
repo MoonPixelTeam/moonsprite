@@ -257,15 +257,20 @@ public:
    check(input->text()=="ABCD"&&input->selectedRange().from==1&&input->selectedRange().to==3&&clipboard==saved&&changes==0,"Single-line clipboard failures preserve text, selection and notifications");
    // Compare local input history with the actual browser edit sequences.
    auto typeEntry=[&](const std::u32string& value){for(const auto cp:value){ui::KeyMessage message(ui::kKeyDownMessage,ui::kKeyNil,ui::kKeyNoneModifier,int(cp),0);check(input->onProcessMessage(&message),"Single-line typed input consumed");}};
+   // Use a real bare Entry: the dialog synchronizes its numeric fields when
+   // focus/selection changes, independently of the input's own callbacks.
+   auto numericInput=input;input=new PixelEntry(font_,skin_);addChild(input);input->setBounds(numericInput->bounds());input->requestFocus();manager()->dispatchMessages();
    int historyScenario=-1,historyRows=0;
    for(const auto& fixture:entryHistoryBrowserCases){
     // Retain these observations as evidence, without adopting browser bugs in
-    // read-only/external-value Undo or conflating old focus-selection gaps.
+    // read-only/external-value Undo.
     if(!fixture.compare)continue;
     if(historyScenario!=fixture.scenario){input->removeProperty(EntryEditHistory::propertyName);input->setReadOnly(false);input->setText(utf8Text(fixture.initial));input->selectText(fixture.anchor,fixture.caret);historyScenario=fixture.scenario;}
     const std::u32string action=fixture.action;const auto colon=action.find(U':');const auto kind=action.substr(0,colon),arg=colon==std::u32string::npos?U"":action.substr(colon+1);
     if(kind==U"type")typeEntry(arg);
     else if(kind==U"paste"){check(bridge.trySetClipboardText(utf8Text(arg)),"History paste seed");entryKey(ui::kKeyV,ui::kKeyCtrlModifier);}
+    else if(kind==U"blur"){cancel_->requestFocus();manager()->dispatchMessages();check(!input->hasFocus(),"Input focus leaves for another control");}
+    else if(kind==U"focus"){input->requestFocus();manager()->dispatchMessages();check(input->hasFocus(),"Input regains real focus");}
     else if(kind==U"set")input->setText(utf8Text(arg));
     else if(kind==U"select"){const auto comma=arg.find(U',');input->selectText(std::stoi(utf8Text(arg.substr(0,comma))),std::stoi(utf8Text(arg.substr(comma+1))));}
     else if(kind==U"key"){
@@ -277,7 +282,8 @@ public:
     if(input->text()!=utf8Text(fixture.text)||a!=fixture.start||b!=fixture.end||input->caretPos()!=(fixture.backward?fixture.start:fixture.end)||!history->undo.empty()!=fixture.undo||!history->redo.empty()!=fixture.redo)throw std::runtime_error("Browser input history mismatch scenario "+std::to_string(fixture.scenario)+" action "+utf8Text(action)+" text="+input->text()+" range="+std::to_string(a)+","+std::to_string(b));
     ++historyRows;
    }
-   check(historyRows==99,"All normative browser input history observations checked");
+   check(historyRows==125,"All normative browser input history observations checked");
+   auto historyInput=input;input=numericInput;input->requestFocus();delete historyInput;
    input->removeProperty(EntryEditHistory::propertyName);input->setText("");input->selectText(0,0);typeEntry(U"a");input->setReadOnly(true);const auto beforeReadOnly=EntryEditHistory::get(*input);entryKey(ui::kKeyZ,ui::kKeyCtrlModifier);check(input->text()=="a"&&beforeReadOnly->undo.size()==1&&beforeReadOnly->redo.empty(),"Read-only Undo is a safe no-op, not browser stale-operation corruption");input->setReadOnly(false);entryKey(ui::kKeyZ,ui::kKeyCtrlModifier);entryKey(ui::kKeyY,ui::kKeyCtrlModifier);check(input->text()=="a","Read-only history cannot duplicate content on Redo");
    input->setText("external");entryKey(ui::kKeyZ,ui::kKeyCtrlModifier);check(input->text()=="external"&&EntryEditHistory::get(*input)->undo.empty()&&EntryEditHistory::get(*input)->redo.empty(),"External value replacement cannot replay stale input history");
    input->setText("");input->selectText(0,0);typeEntry(U"a");input->setText("other");input->setText("a");entryKey(ui::kKeyZ,ui::kKeyCtrlModifier);check(input->text()=="a"&&EntryEditHistory::get(*input)->undo.empty(),"Intermediate external replacement clears stale history even when original text returns");
