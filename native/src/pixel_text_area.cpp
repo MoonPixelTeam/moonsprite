@@ -11,6 +11,17 @@
 
 namespace moon {
 namespace {
+class TextContextMenu final : public PixelMenu {
+public:
+ explicit TextContextMenu(const Skin& skin):PixelMenu(skin){}
+ bool onProcessMessage(ui::Message* msg) override {
+  if(msg->type()==ui::kKeyDownMessage&&static_cast<ui::KeyMessage*>(msg)->scancode()==ui::kKeyEsc){
+   if(auto popup=window())popup->closeWindow(nullptr);
+   return true;
+  }
+  return PixelMenu::onProcessMessage(msg);
+ }
+};
 // The existing MIT UI Entry/laf contract takes a screen-space caret bottom.
 // Multi-line fields share the same native input service and OS candidate UI.
 void textInputCaret(ui::Widget& input,gfx::Point caret,int scroll){
@@ -160,6 +171,34 @@ PixelTextArea::CaretStop PixelTextArea::at(gfx::Point physical)const{
  }
 
 bool PixelTextArea::onProcessMessage(ui::Message* msg){
+  auto editMenu=[&](gfx::Point position){
+   TextContextMenu menu(skin_);const bool selected=caret_!=anchor_;
+   auto clipboard=ui::UISystem::instance()->clipboardDelegate();
+   auto item=[&](std::u32string label,std::u32string shortcut,bool enabled,ui::KeyScancode scan,ui::KeyModifiers modifiers){
+    auto entry=new PixelMenuItem(font_,skin_,std::move(label),std::move(shortcut));entry->setEnabled(enabled);
+    entry->Click.connect([this,enabled,scan,modifiers]{if(enabled){ui::KeyMessage key(ui::kKeyDownMessage,scan,modifiers,0,0);onProcessMessage(&key);}});menu.addChild(entry);
+   };
+   item(U"撤销",U"Ctrl+Z",!undo_.empty(),ui::kKeyZ,ui::kKeyCtrlModifier);
+   item(U"重做",U"Ctrl+Y",!redo_.empty(),ui::kKeyY,ui::kKeyCtrlModifier);
+   menu.addChild(new PixelMenuSeparator(skin_));
+   item(U"剪切",U"Ctrl+X",selected&&clipboard,ui::kKeyX,ui::kKeyCtrlModifier);
+   item(U"复制",U"Ctrl+C",selected&&clipboard,ui::kKeyC,ui::kKeyCtrlModifier);
+   item(U"粘贴",U"Ctrl+V",clipboard&&clipboard->hasClipboardText(),ui::kKeyV,ui::kKeyCtrlModifier);
+   item(U"删除",U"Delete",selected,ui::kKeyDel,ui::kKeyNoneModifier);
+   menu.addChild(new PixelMenuSeparator(skin_));
+   item(U"全选",U"Ctrl+A",!value_.empty(),ui::kKeyA,ui::kKeyCtrlModifier);
+   menu.showPopup(position,display());requestFocus();
+  };
+  if(msg->type()==ui::kMouseDownMessage&&isEnabled()&&static_cast<ui::MouseMessage*>(msg)->right()){
+   auto mouse=static_cast<ui::MouseMessage*>(msg);requestFocus();wordDrag_.reset();dragging_=false;preferredX_=-1;editGroup_=0;if(hasCapture())releaseMouse();
+   const auto stop=at(mouse->position());const auto range=selectionRange();
+   // Browser right-click preserves selection at either nearest-insertion edge.
+   if(range.first==range.second||stop.index<range.first||stop.index>range.second){caret_=anchor_=stop.index;caretUpstream_=stop.upstream;reveal();notifySelection();}
+   captureMouse();return true;
+  }
+  if(msg->type()==ui::kMouseUpMessage&&isEnabled()&&static_cast<ui::MouseMessage*>(msg)->right()&&hasCapture()&&!dragging_){
+   releaseMouse();editMenu(static_cast<ui::MouseMessage*>(msg)->position());return true;
+  }
   if(msg->type()==ui::kDoubleClickMessage&&isEnabled()){
    const auto mouse=static_cast<ui::MouseMessage*>(msg);if(mouse->left()){
     requestFocus();preferredX_=-1;editGroup_=0;dragging_=false;wordDrag_.reset();if(hasCapture())releaseMouse();
@@ -215,6 +254,10 @@ bool PixelTextArea::onProcessMessage(ui::Message* msg){
    preferredX_=-1;editGroup_=0;invalidate();notifySelection();
   }
   if(msg->type()==ui::kKeyDownMessage&&isEnabled()){wordDrag_.reset();dragging_=false;if(hasCapture())releaseMouse();auto k=static_cast<ui::KeyMessage*>(msg);auto code=k->scancode();bool ctrl=k->ctrlPressed()||k->cmdPressed(),shift=k->shiftPressed();
+   if(code==ui::kKeyMenu||(code==ui::kKeyF10&&shift&&!ctrl)){
+    const auto layout=positions();const auto point=caretPoint(layout);const int offset=std::clamp(scroll_,0,textScrollLimit(layout,bounds().h));
+    editMenu(bounds().origin()+gfx::Point((6+point.x)*uiScale,(14+point.y-offset)*uiScale));return true;
+   }
    if(code==ui::kKeyEsc){if(cancel)cancel();return true;}
    if(ctrl&&(code==ui::kKeyZ||code==ui::kKeyY)){if(code==ui::kKeyY||shift)redoLocal();else undoLocal();return true;}
    if(ctrl&&code==ui::kKeyA){caretUpstream_=false;preferredX_=-1;editGroup_=0;anchor_=0;caret_=int(value_.size());reveal();notifySelection();return true;}

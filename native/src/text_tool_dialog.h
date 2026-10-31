@@ -14,6 +14,7 @@
 #include "../tests/fixtures/text_word_drag_browser.h"
 #include "../tests/fixtures/text_wrap_browser.h"
 #include "../tests/fixtures/text_clipboard_browser.h"
+#include "../tests/fixtures/text_context_browser.h"
 namespace moon {
 class TextToolDialog final:public PixelDialog {
  const PixelFont& font_;const Skin& skin_;TextFontService& fonts_;TextCelData value_;std::function<void(const TextCelData&,bool)> preview_;std::vector<TextFontOption> options_;PixelTextArea* text_;PixelDropdown *family_,*align_,*layout_,*spacing_,*render_;std::vector<PixelEntry*> numbers_;PixelButton* color_=nullptr;std::unique_ptr<ColorEditorPopup> colorPopup_;PixelButton *ok_,*cancel_,*close_,*live_,*import_,*system_,*erase_;bool live=true,accepted_=false,syncing_=false;std::u32string error_;
@@ -232,6 +233,27 @@ public:
   // The same registration also serves existing single-line MIT UI Entry controls.
   {auto input=numbers_[0];const auto initial=input->text();input->requestFocus();input->selectAllText();ui::KeyMessage copy(ui::kKeyDownMessage,ui::kKeyC,ui::kKeyCtrlModifier,0,0);check(input->onProcessMessage(&copy)&&clipboard==initial,"Single-line Entry Copy uses the shared delegate");check(bridge.trySetClipboardText("12"),"Entry paste fixture");input->selectAllText();ui::KeyMessage paste(ui::kKeyDownMessage,ui::kKeyV,ui::kKeyCtrlModifier,0,0);check(input->onProcessMessage(&paste)&&input->text()=="12","Single-line Entry Paste uses the shared delegate");}
   text_->requestFocus();
+  auto context=[&](const std::function<void()>& open,const std::function<void(PixelMenu&)>& verify){
+   bool opened=false;std::string failure;ui::Timer timer(20,text_);
+   timer.Tick.connect([&]{timer.stop();auto top=manager()->getTopWindow();PixelMenu* menu=nullptr;std::function<void(ui::Widget*)> find=[&](ui::Widget* widget){if(auto candidate=dynamic_cast<PixelMenu*>(widget))menu=candidate;else for(auto child:widget->children())find(child);};if(top)find(top);
+    try{check(menu!=nullptr,"Textarea context menu is shown");opened=true;check(menu->children().size()==9&&dynamic_cast<PixelMenuSeparator*>(menu->children()[2])&&dynamic_cast<PixelMenuSeparator*>(menu->children()[7]),"Text context menu uses shared pixel rows and separators");check(!text_->hasCapture(),"Context menu releases the text gesture capture");verify(*menu);auto popup=menu->window();ui::KeyMessage escape(ui::kKeyDownMessage,ui::kKeyEsc,ui::kKeyNoneModifier,0,0);escape.setRecipient(manager()->getFocus());manager()->sendMessage(&escape);check(!popup->isVisible()&&isVisible(),"Escape closes text menu without closing the text dialog");}catch(const std::exception& error){failure=error.what();}
+    if(menu){if(auto popup=menu->window())popup->closeWindow(nullptr);}else if(top&&top!=this)top->closeWindow(nullptr);
+   });timer.start();open();timer.stop();if(!failure.empty())throw std::runtime_error(failure);check(opened,"Text context popup was not opened");
+  };
+  int contextCase=0;
+  for(const auto& fixture:textContextBrowserCases){
+   scrollText(fixture.text);text_->setSelectionRange(fixture.anchor,fixture.caret);const auto originalClipboard=clipboard;
+   const std::u32string sample=fixture.text;const int x=font_.measure(sample.substr(0,fixture.index))+std::max(1,font_.measure(sample.substr(fixture.index,1))*fixture.percent/100);const auto point=text_->bounds().origin()+gfx::Point((6+x)*uiScale,9*uiScale);
+   auto mouse=[&](ui::MessageType type){ui::MouseMessage message(type,os::PointerType::Mouse,ui::kButtonRight,ui::kKeyNoneModifier,point);check(text_->onProcessMessage(&message),"Textarea right input consumed");};
+   if(fixture.key==ui::kKeyNil){mouse(ui::kMouseDownMessage);if(text_->selectionRange()!=std::pair<int,int>{fixture.downStart,fixture.downEnd})throw std::runtime_error("Browser right-down mismatch "+std::to_string(contextCase));}
+   context([&]{if(fixture.key==ui::kKeyNil)mouse(ui::kMouseUpMessage);else key(fixture.key,fixture.shift?ui::kKeyShiftModifier:ui::kKeyNoneModifier);},[&](PixelMenu& menu){const bool selected=fixture.upStart!=fixture.upEnd;for(const int index:{3,4,6})check(menu.children()[index]->isEnabled()==selected,"Context selection actions reflect right-click range");check(!menu.children()[0]->isEnabled()&&!menu.children()[1]->isEnabled(),"Context history actions disabled without local history");});
+   if(text_->selectionRange()!=std::pair<int,int>{fixture.upStart,fixture.upEnd})throw std::runtime_error("Browser context cancellation mismatch "+std::to_string(contextCase));
+   check(text_->value()==sample&&clipboard==originalClipboard&&!text_->undoLocal(),"Context cancellation preserves text clipboard and local history");++contextCase;
+  }
+  auto menuAction=[&](int index){context([&]{key(ui::kKeyF10,ui::kKeyShiftModifier);},[&](PixelMenu& menu){auto item=dynamic_cast<PixelMenuItem*>(menu.children()[index]);check(item&&item->isEnabled(),"Requested text menu action enabled");item->Click();});};
+  scrollText(U"ABCD");text_->setSelectionRange(1,3);key(ui::kKeyDel,ui::kKeyNoneModifier);menuAction(0);check(text_->value()==U"ABCD","Context Undo restores content");at(1,3);menuAction(1);check(text_->value()==U"AD","Context Redo repeats content edit");
+  for(const int index:{3,4,5,6,8}){scrollText(U"ABCD");text_->setSelectionRange(1,3);check(bridge.trySetClipboardText(utf8Text(U"\u6587")),"Context paste fixture");menuAction(index);const auto expected=index==3||index==6?U"AD":index==5?U"A\u6587D":U"ABCD";check(text_->value()==expected&&value_.text==textUtf16(expected),"Context edit shares text/style reconciliation");if(index==3||index==4)check(clipboard=="BC","Context clipboard exports selected text");if(index==8)at(0,4);if(index==3||index==5||index==6){check(text_->undoLocal()&&text_->value()==U"ABCD"&&!text_->undoLocal(),"Context editing is one local transaction");at(1,3);}else check(!text_->undoLocal(),"Context copy/select all adds no local history");}
+  scrollText(U"");readable=false;context([&]{key(ui::kKeyMenu,ui::kKeyNoneModifier);},[&](PixelMenu& menu){for(const int index:{0,1,3,4,5,6,8})check(!menu.children()[index]->isEnabled(),"Empty text/unavailable clipboard disables inapplicable context actions");});readable=true;
  }
  // Exercise the existing Windows IME backend, retaining unrelated queued events.
  {
