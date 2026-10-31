@@ -2,12 +2,40 @@
 #include <algorithm>
 #include <cmath>
 #include "modules/skunicode/include/SkUnicode.h"
+#include <windows.h>
+#include <icu.h>
 
 namespace moon {
 namespace {
+// Skia's bundled data omits dictionary segmentation. Windows ships the full
+// ICU word service; load only the system copy, without a new runtime package.
+struct PlatformWordBreaks {
+ HMODULE module=LoadLibraryExW(L"icu.dll",nullptr,LOAD_LIBRARY_SEARCH_SYSTEM32);
+ decltype(&ubrk_open) open=module?reinterpret_cast<decltype(&ubrk_open)>(GetProcAddress(module,"ubrk_open")):nullptr;
+ decltype(&ubrk_close) close=module?reinterpret_cast<decltype(&ubrk_close)>(GetProcAddress(module,"ubrk_close")):nullptr;
+ decltype(&ubrk_first) first=module?reinterpret_cast<decltype(&ubrk_first)>(GetProcAddress(module,"ubrk_first")):nullptr;
+ decltype(&ubrk_next) next=module?reinterpret_cast<decltype(&ubrk_next)>(GetProcAddress(module,"ubrk_next")):nullptr;
+ decltype(&u_isalpha) alphabetic=module?reinterpret_cast<decltype(&u_isalpha)>(GetProcAddress(module,"u_isalpha")):nullptr;
+ decltype(&u_ispunct) punctuation=module?reinterpret_cast<decltype(&u_ispunct)>(GetProcAddress(module,"u_ispunct")):nullptr;
+ ~PlatformWordBreaks(){if(module)FreeLibrary(module);}
+ std::vector<int> boundaries(const std::u16string& text,const std::vector<int>& indices,const std::u32string& original)const {
+  if(!open||!close||!first||!next)return {};
+  UErrorCode error=U_ZERO_ERROR;auto iterator=open(UBRK_WORD,"en",reinterpret_cast<const UChar*>(text.data()),int(text.size()),&error);
+  if(!iterator||U_FAILURE(error)){if(iterator)close(iterator);return {};}
+  std::vector<int> result;
+  for(int at=first(iterator);at!=UBRK_DONE;at=next(iterator))if(at>=0&&at<int(indices.size()))result.push_back(indices[at]);
+  close(iterator);
+  // Windows ICU 72 joins letter.period/colon.letter, whereas the browser
+  // reference splits these punctuation positions (decimal separators stay intact).
+  if(alphabetic)for(int i=1;i+1<int(original.size());++i)if((original[i]==U'.'||original[i]==U':')&&alphabetic(original[i-1])&&alphabetic(original[i+1])){result.push_back(i);result.push_back(i+1);}
+  if(punctuation)result.erase(std::remove_if(result.begin(),result.end(),[&](int at){return at>0&&at<int(original.size())&&punctuation(original[at-1])&&punctuation(original[at]);}),result.end());
+  std::sort(result.begin(),result.end());result.erase(std::unique(result.begin(),result.end()),result.end());
+  return result;
+ }
+};
 // Legacy TextAreaInput delegates character navigation to the browser. Use the
 // existing Unicode backend rather than enumerating combining/emoji ranges.
-std::vector<int> textGraphemeBoundaries(const std::u32string& text){
+std::vector<int> textBreakBoundaries(const std::u32string& text,SkUnicode::BreakType type=SkUnicode::BreakType::kGraphemes){
  static const auto unicode=SkUnicode::Make();
  if(!unicode)return {};
  std::u16string utf16;std::vector<int> indices{0};
@@ -17,7 +45,11 @@ std::vector<int> textGraphemeBoundaries(const std::u32string& text){
   else utf16+=char16_t(cp<=0xffff?cp:0xfffd);
   indices.push_back(i+1);
  }
- auto iterator=unicode->makeBreakIterator(SkUnicode::BreakType::kGraphemes);
+ if(type==SkUnicode::BreakType::kWords){
+  static const PlatformWordBreaks platform;
+  return platform.boundaries(utf16,indices,text);
+ }
+ auto iterator=unicode->makeBreakIterator(type);
  if(!iterator||!iterator->setText(utf16.data(),int(utf16.size())))return {};
  std::vector<int> result;
  for(auto at=iterator->first();!iterator->isDone();at=iterator->next()){
@@ -25,8 +57,29 @@ std::vector<int> textGraphemeBoundaries(const std::u32string& text){
  }
  return result;
 }
+// Match Windows browser word motion: keep punctuation as ICU segments,
+// skip horizontal whitespace, and treat paragraph boundaries separately.
+int textWordStep(const std::u32string& text,int caret,bool left,bool deleting=false){
+ const auto boundaries=textBreakBoundaries(text,SkUnicode::BreakType::kWords);
+ if(boundaries.empty())return caret;
+ static const auto unicode=SkUnicode::Make();
+ auto horizontal=[&](int i){return i>=0&&i<int(text.size())&&text[i]!=U'\n'&&text[i]!=U'\r'&&unicode&&unicode->isWhitespace(text[i]);};
+ if(left){
+  int at=caret;
+  while(at>0&&horizontal(at-1))--at;
+  if(at>0&&text[at-1]==U'\n')return deleting?(at==caret?at-1:at):(at==int(text.size())||text[at]==U'\n'?at-1:at);
+  const auto boundary=std::lower_bound(boundaries.begin(),boundaries.end(),at);
+  return boundary==boundaries.begin()?0:*std::prev(boundary);
+ }
+ if(caret>=int(text.size()))return int(text.size());
+ if(text[caret]==U'\n'){int at=caret+1;while(at<int(text.size())&&horizontal(at))++at;return at;}
+ const auto boundary=std::upper_bound(boundaries.begin(),boundaries.end(),caret);
+ int at=boundary==boundaries.end()?int(text.size()):*boundary;
+ while(at<int(text.size())&&horizontal(at))++at;
+ return at;
+}
 int textGraphemeStep(const std::u32string& text,int caret,bool left){
- const auto boundaries=textGraphemeBoundaries(text);
+ const auto boundaries=textBreakBoundaries(text);
  if(boundaries.empty())return caret;
  if(left){const auto at=std::lower_bound(boundaries.begin(),boundaries.end(),caret);return at==boundaries.begin()?0:*std::prev(at);}
  const auto at=std::upper_bound(boundaries.begin(),boundaries.end(),caret);
@@ -47,8 +100,8 @@ bool PixelTextArea::onProcessMessage(ui::Message* msg){
    if(code==ui::kKeyLeft||code==ui::kKeyRight){
     // The legacy browser textarea collapses an unmodified selection before stepping.
     const bool left=code==ui::kKeyLeft;
-    const bool collapse=!shift&&caret_!=anchor_;
-    const int next=collapse?(left?std::min(caret_,anchor_):std::max(caret_,anchor_)):textGraphemeStep(value_,caret_,left);
+    const bool collapse=!ctrl&&!shift&&caret_!=anchor_;
+    const int next=collapse?(left?std::min(caret_,anchor_):std::max(caret_,anchor_)):ctrl?textWordStep(value_,caret_,left):textGraphemeStep(value_,caret_,left);
     // A selected visual row ends before the wrap, even though the next row
     // starts at the same logical offset.
     const bool upstream=collapse&&!left&&softWrapAt(positions(),next);
@@ -81,8 +134,15 @@ bool PixelTextArea::onProcessMessage(ui::Message* msg){
    }
    if(code==ui::kKeyBackspace||code==ui::kKeyDel){
     if(caret_!=anchor_)replace({});
+    else if(ctrl){
+     const bool left=code==ui::kKeyBackspace;
+     const auto clusters=textBreakBoundaries(value_);const auto stop=std::lower_bound(clusters.begin(),clusters.end(),caret_);
+     // Browser deletion normalizes an interior logical caret to the cluster end.
+     const int caret=stop==clusters.end()?caret_:*stop;
+     const int next=textWordStep(value_,caret,left,true);replace({},0,std::min(caret,next),std::max(caret,next));
+    }
     else {
-     const auto boundaries=textGraphemeBoundaries(value_);
+     const auto boundaries=textBreakBoundaries(value_);
      if(!boundaries.empty()){
       const auto at=std::lower_bound(boundaries.begin(),boundaries.end(),caret_);
       // Mouse/vertical placement still uses the pixel-font codepoint layout.

@@ -3,6 +3,7 @@
 #include "color_editor_popup.h"
 #include "text_font_service.h"
 #include "text_cel_data.h"
+#include "../tests/fixtures/text_word_navigation_browser.h"
 namespace moon {
 class TextToolDialog final:public PixelDialog {
  const PixelFont& font_;const Skin& skin_;TextFontService& fonts_;TextCelData value_;std::function<void(const TextCelData&,bool)> preview_;std::vector<TextFontOption> options_;PixelTextArea* text_;PixelDropdown *family_,*align_,*layout_,*spacing_,*render_;std::vector<PixelEntry*> numbers_;PixelButton* color_=nullptr;std::unique_ptr<ColorEditorPopup> colorPopup_;PixelButton *ok_,*cancel_,*close_,*live_,*import_,*system_,*erase_;bool live=true,accepted_=false,syncing_=false;std::u32string error_;
@@ -91,6 +92,19 @@ public:
   key(ui::kKeyBackspace,ui::kKeyNoneModifier);check(text_->value()==U"AB","Interior caret Backspace removes complete cluster");key(ui::kKeyZ,ui::kKeyCtrlModifier);check(text_->value()==sample,"Interior Backspace undo");
  }
  value_.text=u"A\nB";value_.styleRuns.clear();text_->setValue(U"A\nB");text_->setSelectionRange(1,1);key(ui::kKeyDel,ui::kKeyNoneModifier);check(value_.text==u"AB","Newline remains an editable boundary");key(ui::kKeyZ,ui::kKeyCtrlModifier);check(value_.text==u"A\nB","Newline undo");
+ int wordCase=0;std::string wordErrors;
+ for(const auto& fixture:textWordBrowserCases){
+  value_.text=textUtf16(fixture.before);value_.styleRuns.clear();text_->setValue(fixture.before);text_->setSelectionRange(fixture.anchor,fixture.caret);
+  const auto modifiers=ui::KeyModifiers(ui::kKeyCtrlModifier|(fixture.shift?ui::kKeyShiftModifier:ui::kKeyNoneModifier));
+  key(fixture.key,modifiers);
+  if(text_->value()!=fixture.after||text_->selectionRange()!=std::pair<int,int>{fixture.start,fixture.end}){if(wordErrors.size()<3000)wordErrors+="Browser word-navigation mismatch in case "+std::to_string(wordCase)+" actual="+std::to_string(text_->selectionRange().first)+","+std::to_string(text_->selectionRange().second)+" text="+utf8Text(text_->value())+"\n";++wordCase;continue;}
+  if(std::u32string(fixture.before)!=fixture.after){
+   key(ui::kKeyZ,ui::kKeyCtrlModifier);check(text_->value()==fixture.before,"Word deletion local undo");
+   key(ui::kKeyY,ui::kKeyCtrlModifier);check(text_->value()==fixture.after,"Word deletion local redo");
+  }else check(!text_->undoLocal(),"Word navigation adds no text history");
+  ++wordCase;
+ }
+ if(!wordErrors.empty())throw std::runtime_error(wordErrors);
  fonts_.recordSize(originalLastSize);value_=original;live=originalLive;text_->setValue(textUtf32(value_.text));text_->setSelectionRange(0,0);update();
  }
  os::SurfaceRef smokeFrame(){auto surface=os::instance()->makeRgbaSurface(bounds().w,bounds().h);surface->clear();{ui::Graphics g(surface);{UiPaintScale scale(g);skin_.drawDialogBackground(g,uiLogical(clientBounds()));}ui::PaintEvent ev(this,&g);paintDialogContents(ev);}auto paint=[&](auto child){if(!child->isVisible())return;ui::Graphics g(nullptr,surface,child->bounds().x-bounds().x,child->bounds().y-bounds().y);ui::PaintEvent ev(child,&g);child->onPaint(ev);};paint(text_);for(PixelButton* b:{family_,align_,layout_,spacing_,render_})paint(b);for(auto e:numbers_)paint(e);for(auto b:{color_,ok_,cancel_,close_,live_,import_,system_,erase_})paint(b);return surface;}
