@@ -18,6 +18,7 @@
 #include "../tests/fixtures/entry_clipboard_browser.h"
 #include "../tests/fixtures/entry_context_browser.h"
 #include "../tests/fixtures/entry_history_browser.h"
+#include "../tests/fixtures/entry_resize_browser.h"
 #include "entry_edit_history.h"
 namespace moon {
 class TextToolDialog final:public PixelDialog {
@@ -294,6 +295,33 @@ public:
     ++historyRows;
    }
    check(historyRows==2923,"All normative browser input history/navigation observations checked");
+   // Browser resize clamps an obsolete horizontal offset when all text fits.
+   // Do not send another key/mouse/focus message before checking: the bug was
+   // precisely the need for that extra event after a window expansion.
+   const auto resizeBounds=input->bounds();int resizedScrolled=0,resizeRows=0;
+   for(const auto& fixture:entryResizeBrowserCases){
+    for(const auto& unit:std::vector<std::u32string>{U"",U"px"}){
+     input->setReadOnly(false);input->suffix=unit;input->removeProperty(EntryEditHistory::propertyName);
+     auto narrow=resizeBounds;narrow.w=45*uiScale;input->setBounds(narrow);
+     input->setText(utf8Text(std::u32string(fixture.text)+U"X"));input->setCaretToEnd();entryKey(ui::kKeyBackspace,ui::kKeyNoneModifier);
+     check(input->text()==utf8Text(fixture.text),"Resize history seed");
+     input->selectText(fixture.anchor,fixture.caret);input->setReadOnly(fixture.readOnly);
+     int narrowScroll=0;input->getEntryThemeInfo(&narrowScroll,nullptr,nullptr,nullptr);if(narrowScroll)++resizedScrolled;
+     auto history=EntryEditHistory::get(*input);const auto before=EntryEditHistory::state(*input);const auto undoSize=history->undo.size(),redoSize=history->redo.size();const int group=history->group;
+     int resizeChanges=0;auto resizedConnection=input->Change.connect([&]{++resizeChanges;});
+     auto wide=narrow;wide.w=std::max(2000,input->currentContentWidth())*uiScale;input->setBounds(wide);
+     const auto after=EntryEditHistory::state(*input);
+     check(after.text==before.text&&after.anchor==before.anchor&&after.caret==before.caret&&after.scroll==fixture.wideScroll,"Resize immediately reveals complete text without changing selection");
+     check(after.caret==(fixture.backward?fixture.start:fixture.end),"Resize retains browser selection direction");
+     check(resizeChanges==0&&history->undo.size()==undoSize&&history->redo.size()==redoSize&&history->group==group,"Resize emits no content change or edit history");
+     // Repeat to cover several window expansions, rather than a one-time reset.
+     input->setBounds(narrow);input->selectText(fixture.anchor,fixture.caret);input->setBounds(wide);
+     int repeatScroll=-1;input->getEntryThemeInfo(&repeatScroll,nullptr,nullptr,nullptr);check(repeatScroll==0,"Repeated expansion clears stale scroll");
+     resizedConnection.disconnect();++resizeRows;
+    }
+   }
+   check(resizeRows==48&&resizedScrolled>0,"All24 browser resize cases checked with and without unit; real scroll exercised");
+   input->setReadOnly(false);input->suffix.clear();input->setBounds(resizeBounds);
    input->setText("ABCD");input->selectText(1,3);int interruptedRightBlur=0;input->blur=[&]{++interruptedRightBlur;};
    {const auto rc=input->getEntryTextBounds();const auto point=input->bounds().origin()+gfx::Point(rc.x,rc.y+rc.h/2);ui::MouseMessage message(ui::kMouseDownMessage,os::PointerType::Mouse,ui::kButtonRight,ui::kKeyNoneModifier,point);check(input->onProcessMessage(&message)&&input->hasCapture(),"Right selection begins capture");}
    cancel_->requestFocus();manager()->dispatchMessages();check(!input->hasCapture()&&!input->hasFocus()&&interruptedRightBlur==1,"Interrupted right selection releases capture and follows real form blur, not popup refocus");input->blur={};

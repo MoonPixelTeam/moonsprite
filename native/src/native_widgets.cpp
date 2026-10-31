@@ -452,6 +452,13 @@ void PixelEntry::adjustNumber(int delta) {
 static void drawInputFrame(ui::Graphics& g,const Skin& skin,gfx::Rect physical,bool frameHover=false) {
   skin.draw(g,frameHover?"entry.hover":"entry.normal",uiLogical(physical));
 }
+// Keep the existing MIT caret/scroll state authoritative. Geometry changes
+// must apply the same all-visible correction as edits, without moving anchors.
+static void refreshEntryViewport(PixelEntry& input) {
+  if(input.bounds().w<input.currentContentWidth()*uiScale)return;
+  int scroll=0,caret=0;input.getEntryThemeInfo(&scroll,&caret,nullptr,nullptr);
+  if(scroll){input.setCaretPos(0);input.setCaretPos(caret);input.invalidate();}
+}
 bool PixelEntry::editClipboard(Cmd command) {
   if(!isEnabled())return false;
   EntryEditHistory::Record edit(*this,0);
@@ -480,10 +487,7 @@ bool PixelEntry::editClipboard(Cmd command) {
   }else return false;
   // Preserve the shared input's existing post-edit scroll correction for both
   // keyboard and menu commands; reuse Entry boxes and its one Change callback.
-  if(bounds().w>=currentContentWidth()*uiScale){
-    int scroll=0,caret=0;getEntryThemeInfo(&scroll,&caret,nullptr,nullptr);
-    if(scroll){setCaretPos(0);setCaretPos(caret);invalidate();}
-  }
+  refreshEntryViewport(*this);
   return true;
 }
 void PixelEntry::showInputEditMenu(gfx::Point position) {
@@ -746,14 +750,12 @@ bool PixelEntry::onProcessMessage(ui::Message* msg) {
   }
   // A field that can show its entire value must not retain an end-only scroll
   // left over from the smaller geometry used before the toolbar relayout.
-  if(bounds().w>=currentContentWidth()*uiScale){
-    int scroll=0,caret=0;getEntryThemeInfo(&scroll,&caret,nullptr,nullptr);
-    if(scroll){setCaretPos(0);setCaretPos(caret);invalidate();}
-  }
+  refreshEntryViewport(*this);
   if(msg->type()==ui::kFocusLeaveMessage && blur) {if(deferredNumeric&&numericMounted&&!numericMounted()){if(numericValue){std::ostringstream out;out.precision(12);out<<numericValue();setText(out.str());}}else{commitExpression();blur();}}return handled;
 }
 void PixelEntry::onResize(ui::ResizeEvent& ev) {
   auto rect=ev.bounds();rect.h=textControlHeight*uiScale;setBoundsQuietly(rect);
+  refreshEntryViewport(*this);
 }
 int PixelEntry::contentWidth() const {
   if(fixedContentWidth_>0)return fixedContentWidth_;
