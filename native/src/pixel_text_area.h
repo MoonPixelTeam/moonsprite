@@ -7,6 +7,8 @@ namespace moon {
 // Native adapter for legacy LayerPropertyEditor's textarea; shares pixel input skin.
 class PixelTextArea : public ui::Widget {
  const PixelFont& font_;const Skin& skin_;std::u32string value_;int caret_=0,anchor_=0,scroll_=0,preferredX_=-1;bool dragging_=false,caretUpstream_=false;
+ struct WordDrag {int from,to;gfx::Point origin;bool moved=false;};
+ std::optional<WordDrag> wordDrag_;
  struct InputState {std::u32string text;int caret,anchor,scroll;bool upstream;};
  struct LocalEdit {InputState before,after;int kind=0;};
  std::vector<LocalEdit> undo_,redo_;int editGroup_=0;
@@ -28,7 +30,7 @@ class PixelTextArea : public ui::Widget {
 public:
  std::function<void(const std::u32string&)> changed;std::function<void()> cancel,selectionChanged;
  PixelTextArea(const PixelFont& f,const Skin& s):ui::Widget(ui::kGenericWidget),font_(f),skin_(s){setFocusStop(true);setTransparent(true);}
- void setValue(const std::u32string& value){caretUpstream_=false;preferredX_=-1;value_=value;caret_=anchor_=int(value.size());scroll_=0;undo_.clear();redo_.clear();editGroup_=0;invalidate();notifySelection();}
+ void setValue(const std::u32string& value){wordDrag_.reset();dragging_=false;if(hasCapture())releaseMouse();caretUpstream_=false;preferredX_=-1;value_=value;caret_=anchor_=int(value.size());scroll_=0;undo_.clear();redo_.clear();editGroup_=0;invalidate();notifySelection();}
  const std::u32string& value()const{return value_;}
  std::pair<int,int> selectionRange()const{return {std::min(caret_,anchor_),std::max(caret_,anchor_)};}
  void setSelectionRange(int from,int to){caretUpstream_=false;preferredX_=-1;editGroup_=0;anchor_=std::clamp(from,0,int(value_.size()));caret_=std::clamp(to,0,int(value_.size()));reveal();notifySelection();}

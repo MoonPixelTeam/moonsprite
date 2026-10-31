@@ -5,6 +5,7 @@
 #include "text_cel_data.h"
 #include "../tests/fixtures/text_word_navigation_browser.h"
 #include "../tests/fixtures/text_double_click_browser.h"
+#include "../tests/fixtures/text_word_drag_browser.h"
 namespace moon {
 class TextToolDialog final:public PixelDialog {
  const PixelFont& font_;const Skin& skin_;TextFontService& fonts_;TextCelData value_;std::function<void(const TextCelData&,bool)> preview_;std::vector<TextFontOption> options_;PixelTextArea* text_;PixelDropdown *family_,*align_,*layout_,*spacing_,*render_;std::vector<PixelEntry*> numbers_;PixelButton* color_=nullptr;std::unique_ptr<ColorEditorPopup> colorPopup_;PixelButton *ok_,*cancel_,*close_,*live_,*import_,*system_,*erase_;bool live=true,accepted_=false,syncing_=false;std::u32string error_;
@@ -132,6 +133,31 @@ public:
   ++doubleClickCase;
  }
  if(!doubleClickErrors.empty())throw std::runtime_error(doubleClickErrors);
+ int dragCase=0;std::string dragErrors;
+ for(const auto& fixture:textWordDragBrowserCases){
+  const std::u32string sample=fixture.text;value_.text=textUtf16(sample);value_.styleRuns.clear();text_->setValue(sample);
+  auto point=[&](int index,int percent){const int x=font_.measure(sample.substr(0,index))+std::max(1,font_.measure(sample.substr(index,1))*percent/100);return text_->bounds().origin()+gfx::Point((6+x)*uiScale,9*uiScale);};
+  auto pointer=[&](ui::MessageType type,gfx::Point at){ui::MouseMessage event(type,os::PointerType::Mouse,ui::kButtonLeft,ui::kKeyNoneModifier,at);return text_->onProcessMessage(&event);};
+  const auto origin=point(fixture.origin,20),target=point(fixture.target,fixture.percent);
+  pointer(ui::kMouseDownMessage,origin);pointer(ui::kMouseUpMessage,origin);pointer(ui::kDoubleClickMessage,origin);
+  check(text_->hasCapture(),"Word drag captures pointer");if(fixture.via>=0)pointer(ui::kMouseMoveMessage,point(fixture.via,20));
+  pointer(ui::kMouseMoveMessage,target);pointer(ui::kMouseUpMessage,target);
+  check(!text_->hasCapture()&&text_->value()==sample&&!text_->undoLocal(),"Word drag releases pointer without content/history edits");
+  const auto selected=text_->selectionRange();key(ui::kKeyRight,ui::kKeyShiftModifier);
+  if(selected!=std::pair<int,int>{fixture.start,fixture.end}||text_->selectionRange()!=std::pair<int,int>{fixture.shiftStart,fixture.shiftEnd}){if(dragErrors.size()<2500)dragErrors+="Word drag browser mismatch case "+std::to_string(dragCase)+" actual="+std::to_string(selected.first)+","+std::to_string(selected.second)+"\n";}
+  ++dragCase;
+ }
+ // Gesture lifetime must not leak into later input or another document value.
+ value_.text=u"one two three";value_.styleRuns.clear();text_->setValue(U"one two three");
+ const auto wordOrigin=text_->bounds().origin()+gfx::Point((6+font_.measure(U"one t"))*uiScale,9*uiScale);
+ auto beginWordGesture=[&]{ui::MouseMessage message(ui::kDoubleClickMessage,os::PointerType::Mouse,ui::kButtonLeft,ui::kKeyNoneModifier,wordOrigin);text_->onProcessMessage(&message);check(text_->hasCapture(),"Word gesture starts capture");};
+ beginWordGesture();key(ui::kKeyRight,ui::kKeyNoneModifier);check(!text_->hasCapture(),"Keyboard retires word gesture");
+ beginWordGesture();ui::Message focusLeave(ui::kFocusLeaveMessage);text_->onProcessMessage(&focusLeave);check(!text_->hasCapture(),"Focus loss retires word gesture");
+ beginWordGesture();text_->setValue(U"replacement");check(!text_->hasCapture()&&text_->value()==U"replacement","Replacing content retires word gesture");
+ value_.text=u"one two three";text_->setValue(U"one two three");beginWordGesture();const auto captureSelection=text_->selectionRange();text_->releaseMouse();
+ ui::MouseMessage captureLost(ui::kMouseMoveMessage,os::PointerType::Mouse,ui::kButtonLeft,ui::kKeyNoneModifier,wordOrigin+gfx::Point(30*uiScale,0));text_->onProcessMessage(&captureLost);
+ check(text_->selectionRange()==captureSelection&&!text_->hasCapture(),"Lost capture stops word expansion");
+ if(!dragErrors.empty())throw std::runtime_error(dragErrors);
  int wordCase=0;std::string wordErrors;
  for(const auto& fixture:textWordBrowserCases){
   value_.text=textUtf16(fixture.before);value_.styleRuns.clear();text_->setValue(fixture.before);text_->setSelectionRange(fixture.anchor,fixture.caret);

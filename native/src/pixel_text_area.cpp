@@ -133,7 +133,7 @@ PixelTextArea::CaretStop PixelTextArea::at(gfx::Point physical)const{
 bool PixelTextArea::onProcessMessage(ui::Message* msg){
   if(msg->type()==ui::kDoubleClickMessage&&isEnabled()){
    const auto mouse=static_cast<ui::MouseMessage*>(msg);if(mouse->left()){
-    requestFocus();preferredX_=-1;editGroup_=0;dragging_=false;if(hasCapture())releaseMouse();
+    requestFocus();preferredX_=-1;editGroup_=0;dragging_=false;wordDrag_.reset();if(hasCapture())releaseMouse();
     const auto points=positions();const auto stop=at(mouse->position());int index=stop.index;
     // Browser selection follows the nearest insertion position; the right
     // side of a final letter may therefore select the following whitespace.
@@ -143,7 +143,7 @@ bool PixelTextArea::onProcessMessage(ui::Message* msg){
      if(index==int(value_.size())&&index>0)index=textGraphemeStep(value_,index,true);
      const auto end=std::upper_bound(breaks.begin(),breaks.end(),index);
      if(end!=breaks.end()&&end!=breaks.begin()){
-      anchor_=*std::prev(end);caret_=*end;
+      anchor_=*std::prev(end);caret_=*end;wordDrag_=WordDrag{anchor_,caret_,mouse->position()};dragging_=true;captureMouse();
       static const auto unicode=SkUnicode::Make();
       // Browser double-click includes trailing horizontal whitespace. Clicking
       // whitespace itself selects that whitespace run, without the preceding word.
@@ -154,11 +154,29 @@ bool PixelTextArea::onProcessMessage(ui::Message* msg){
     return true;
    }
   }
-  if(msg->type()==ui::kMouseDownMessage&&isEnabled()){auto m=static_cast<ui::MouseMessage*>(msg);if(m->left()){requestFocus();preferredX_=-1;editGroup_=0;const auto stop=at(m->position());caret_=stop.index;caretUpstream_=stop.upstream;if(!m->shiftPressed())anchor_=caret_;dragging_=true;captureMouse();reveal();notifySelection();return true;}}
-  if(dragging_&&(msg->type()==ui::kMouseMoveMessage||msg->type()==ui::kMouseUpMessage)){auto m=static_cast<ui::MouseMessage*>(msg);const auto stop=at(m->position());caret_=stop.index;caretUpstream_=stop.upstream;reveal();notifySelection();if(msg->type()==ui::kMouseUpMessage){dragging_=false;if(hasCapture())releaseMouse();}return true;}
+  if(msg->type()==ui::kMouseDownMessage&&isEnabled()){auto m=static_cast<ui::MouseMessage*>(msg);if(m->left()){wordDrag_.reset();requestFocus();preferredX_=-1;editGroup_=0;const auto stop=at(m->position());caret_=stop.index;caretUpstream_=stop.upstream;if(!m->shiftPressed())anchor_=caret_;dragging_=true;captureMouse();reveal();notifySelection();return true;}}
+  if(dragging_&&(msg->type()==ui::kMouseMoveMessage||msg->type()==ui::kMouseUpMessage)){
+   auto mouse=static_cast<ui::MouseMessage*>(msg);
+   if(!hasCapture()){dragging_=false;wordDrag_.reset();return ui::Widget::onProcessMessage(msg);}
+   if(wordDrag_){
+    if(msg->type()==ui::kMouseMoveMessage){
+     wordDrag_->moved=true;const auto stop=at(mouse->position());int index=stop.index;
+     const auto breaks=textBreakBoundaries(value_,SkUnicode::BreakType::kWords,false);
+     if(index==int(value_.size())&&index>0)index=textGraphemeStep(value_,index,true);
+     const auto end=std::upper_bound(breaks.begin(),breaks.end(),index);
+     if(end!=breaks.begin()&&end!=breaks.end()){
+      if(stop.index<wordDrag_->from){anchor_=wordDrag_->to;caret_=*std::prev(end);caretUpstream_=false;}
+      else {anchor_=wordDrag_->from;caret_=*end;caretUpstream_=softWrapAt(positions(),caret_);}
+      reveal();notifySelection();
+     }
+    }
+   }else {const auto stop=at(mouse->position());caret_=stop.index;caretUpstream_=stop.upstream;reveal();notifySelection();}
+   if(msg->type()==ui::kMouseUpMessage){dragging_=false;wordDrag_.reset();releaseMouse();}
+   return true;
+  }
   if(msg->type()==ui::kMouseWheelMessage){scroll_=std::max(0,scroll_+static_cast<ui::MouseMessage*>(msg)->wheelDelta().y*12);invalidate();return true;}
-  if(msg->type()==ui::kFocusEnterMessage||msg->type()==ui::kFocusLeaveMessage){preferredX_=-1;editGroup_=0;invalidate();notifySelection();}
-  if(msg->type()==ui::kKeyDownMessage&&isEnabled()){auto k=static_cast<ui::KeyMessage*>(msg);auto code=k->scancode();bool ctrl=k->ctrlPressed()||k->cmdPressed(),shift=k->shiftPressed();
+  if(msg->type()==ui::kFocusEnterMessage||msg->type()==ui::kFocusLeaveMessage){if(msg->type()==ui::kFocusLeaveMessage){wordDrag_.reset();dragging_=false;if(hasCapture())releaseMouse();}preferredX_=-1;editGroup_=0;invalidate();notifySelection();}
+  if(msg->type()==ui::kKeyDownMessage&&isEnabled()){wordDrag_.reset();dragging_=false;if(hasCapture())releaseMouse();auto k=static_cast<ui::KeyMessage*>(msg);auto code=k->scancode();bool ctrl=k->ctrlPressed()||k->cmdPressed(),shift=k->shiftPressed();
    if(code==ui::kKeyEsc){if(cancel)cancel();return true;}
    if(ctrl&&(code==ui::kKeyZ||code==ui::kKeyY)){if(code==ui::kKeyY||shift)redoLocal();else undoLocal();return true;}
    if(ctrl&&code==ui::kKeyA){caretUpstream_=false;preferredX_=-1;editGroup_=0;anchor_=0;caret_=int(value_.size());reveal();notifySelection();return true;}
