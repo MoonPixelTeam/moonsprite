@@ -533,6 +533,18 @@ bool PixelEntry::onProcessMessage(ui::Message* msg) {
   // Legacy text/decimal inputs retain selection across blur and programmatic
   // refocus. Keep explicit form focus callbacks free to select their own range.
   setPersistSelection(true);
+  constexpr const char* pointerAfterKey="moonsprite.input-pointer-after-key";
+  if(msg->type()==ui::kFocusLeaveMessage){
+    if(rightSelecting_&&!editMenuOpen_)editMenuRefocus_=false;
+    if(hasCapture())releaseMouse();scrubbing_=false;rightSelecting_=false;
+    removeProperty(pointerAfterKey);
+  }
+  if(msg->type()==ui::kMouseDownMessage||!hasCapture())removeProperty(pointerAfterKey);
+  if(msg->type()==ui::kKeyDownMessage&&hasCapture()){
+    const auto key=static_cast<ui::KeyMessage*>(msg);const auto code=key->scancode();
+    if(code==ui::kKeyLeft||code==ui::kKeyRight||code==ui::kKeyHome||code==ui::kKeyEnd||(!key->ctrlPressed()&&!key->altPressed()&&key->unicodeChar()>=32))
+      setProperty(std::make_shared<ui::Property>(pointerAfterKey));
+  }
   auto nearestPaintedCaret=[&](gfx::Point point){
     const auto value=unicodeText(text());int scroll=0;getEntryThemeInfo(&scroll,nullptr,nullptr,nullptr);
     int best=std::clamp(scroll,0,int(value.size())),x=bounds().x+getEntryTextBounds().x,distance=std::abs(point.x-x);
@@ -696,7 +708,7 @@ bool PixelEntry::onProcessMessage(ui::Message* msg) {
     const auto mouse=static_cast<ui::MouseMessage*>(msg);const auto rc=getEntryTextBounds().offset(bounds().origin());
     if(mouse->left()&&mouse->position().x>=rc.x&&mouse->position().x<rc.x2()&&lastCaretPos()==int(unicodeText(text()).size())){
       const int caret=nearestPaintedCaret(mouse->position());
-      const int anchor=msg->type()==ui::kMouseDownMessage?(shiftClickAnchor?*shiftClickAnchor:caret):mouseSelectionBefore->anchor;
+      const int anchor=msg->type()==ui::kMouseDownMessage?(shiftClickAnchor?*shiftClickAnchor:caret):hasProperty(pointerAfterKey)?caret:mouseSelectionBefore->anchor;
       selectText(anchor,caret);
     }
   }
@@ -708,6 +720,7 @@ bool PixelEntry::onProcessMessage(ui::Message* msg) {
       const int end=lastCaretPos(),caret=caretPos()==end?end:0;selectText(caret,caret);
     }
   }
+  if(msg->type()==ui::kMouseUpMessage)removeProperty(pointerAfterKey);
   if(shiftClickAnchor)selectText(*shiftClickAnchor,caretPos());
   else if(mouseSelectionBefore&&msg->type()==ui::kMouseMoveMessage&&hasCapture()){
     const auto mouse=static_cast<ui::MouseMessage*>(msg);

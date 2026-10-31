@@ -269,13 +269,17 @@ public:
     const std::u32string action=fixture.action;const auto colon=action.find(U':');const auto kind=action.substr(0,colon),arg=colon==std::u32string::npos?U"":action.substr(colon+1);
     if(kind==U"type")typeEntry(arg);
     else if(kind==U"paste"){check(bridge.trySetClipboardText(utf8Text(arg)),"History paste seed");entryKey(ui::kKeyV,ui::kKeyCtrlModifier);}
-    else if(kind==U"blur"){cancel_->requestFocus();manager()->dispatchMessages();check(!input->hasFocus(),"Input focus leaves for another control");}
+    else if(kind==U"blur"){cancel_->requestFocus();manager()->dispatchMessages();check(!input->hasFocus()&&!input->hasCapture(),"Input focus leaves and cancels pointer capture");}
     else if(kind==U"focus"){input->requestFocus();manager()->dispatchMessages();check(input->hasFocus(),"Input regains real focus");}
-    else if(kind==U"click"||kind==U"shiftclick"||kind==U"drag"||kind==U"shiftdrag"||kind==U"double"||kind==U"worddrag"){
+    else if(kind==U"click"||kind==U"shiftclick"||kind==U"drag"||kind==U"shiftdrag"||kind==U"double"||kind==U"worddrag"||kind==U"press"||kind==U"move"||kind==U"release"){
      const auto comma=arg.find(U',');const double from=std::stod(utf8Text(arg.substr(0,comma))),to=comma==std::u32string::npos?from:std::stod(utf8Text(arg.substr(comma+1)));
      const auto value=unicodeText(input->text());const auto textBounds=input->getEntryTextBounds();const auto modifiers=kind==U"shiftclick"||kind==U"shiftdrag"?ui::kKeyShiftModifier:ui::kKeyNoneModifier;
-     auto mouse=[&](ui::MessageType type,double index){const int whole=int(index);const auto point=input->bounds().origin()+gfx::Point(textBounds.x+int((font_.measure(value.substr(0,whole))+(index-whole)*font_.measure(value.substr(whole,1)))*uiScale),textBounds.y+textBounds.h/2);ui::MouseMessage message(type,os::PointerType::Mouse,ui::kButtonLeft,modifiers,point);check(input->onProcessMessage(&message),"Single-line mouse selection consumed");};
-     mouse(ui::kMouseDownMessage,from);if(kind==U"double"||kind==U"worddrag"){mouse(ui::kMouseUpMessage,from);mouse(ui::kMouseDownMessage,from);mouse(ui::kDoubleClickMessage,from);}if(comma!=std::u32string::npos)mouse(ui::kMouseMoveMessage,to);mouse(ui::kMouseUpMessage,to);check(!input->hasCapture(),"Single-line mouse selection releases capture");
+     auto mouse=[&](ui::MessageType type,double index){const int whole=int(index);const auto point=input->bounds().origin()+gfx::Point(textBounds.x+int((font_.measure(value.substr(0,whole))+(index-whole)*font_.measure(value.substr(whole,1)))*uiScale),textBounds.y+textBounds.h/2);ui::MouseMessage message(type,os::PointerType::Mouse,ui::kButtonLeft,modifiers,point);const bool captured=input->hasCapture();const bool handled=input->onProcessMessage(&message);if(type!=ui::kMouseMoveMessage||captured)check(handled,"Single-line mouse selection consumed");};
+     if(kind==U"press")mouse(ui::kMouseDownMessage,from);
+     else if(kind==U"move")mouse(ui::kMouseMoveMessage,from);
+     else if(kind==U"release")mouse(ui::kMouseUpMessage,from);
+     else {mouse(ui::kMouseDownMessage,from);if(kind==U"double"||kind==U"worddrag"){mouse(ui::kMouseUpMessage,from);mouse(ui::kMouseDownMessage,from);mouse(ui::kDoubleClickMessage,from);}if(comma!=std::u32string::npos)mouse(ui::kMouseMoveMessage,to);mouse(ui::kMouseUpMessage,to);}
+     if(kind==U"press")check(input->hasCapture(),"Pointer down captures selection");else if(kind!=U"move")check(!input->hasCapture(),"Single-line mouse selection releases capture");
     }
     else if(kind==U"readonly")input->setReadOnly(arg==U"true");
     else if(kind==U"set")input->setText(utf8Text(arg));
@@ -289,7 +293,10 @@ public:
     if(input->text()!=utf8Text(fixture.text)||a!=fixture.start||b!=fixture.end||input->caretPos()!=(fixture.backward?fixture.start:fixture.end)||!history->undo.empty()!=fixture.undo||!history->redo.empty()!=fixture.redo)throw std::runtime_error("Browser input history mismatch scenario "+std::to_string(fixture.scenario)+" action "+utf8Text(action)+" text="+input->text()+" range="+std::to_string(a)+","+std::to_string(b));
     ++historyRows;
    }
-   check(historyRows==2443,"All normative browser input history/navigation observations checked");
+   check(historyRows==2467,"All normative browser input history/navigation observations checked");
+   input->setText("ABCD");input->selectText(1,3);int interruptedRightBlur=0;input->blur=[&]{++interruptedRightBlur;};
+   {const auto rc=input->getEntryTextBounds();const auto point=input->bounds().origin()+gfx::Point(rc.x,rc.y+rc.h/2);ui::MouseMessage message(ui::kMouseDownMessage,os::PointerType::Mouse,ui::kButtonRight,ui::kKeyNoneModifier,point);check(input->onProcessMessage(&message)&&input->hasCapture(),"Right selection begins capture");}
+   cancel_->requestFocus();manager()->dispatchMessages();check(!input->hasCapture()&&!input->hasFocus()&&interruptedRightBlur==1,"Interrupted right selection releases capture and follows real form blur, not popup refocus");input->blur={};
    auto historyInput=input;input=numericInput;input->requestFocus();delete historyInput;
    input->removeProperty(EntryEditHistory::propertyName);input->setText("");input->selectText(0,0);typeEntry(U"a");input->setReadOnly(true);const auto beforeReadOnly=EntryEditHistory::get(*input);entryKey(ui::kKeyZ,ui::kKeyCtrlModifier);check(input->text()=="a"&&beforeReadOnly->undo.size()==1&&beforeReadOnly->redo.empty(),"Read-only Undo is a safe no-op, not browser stale-operation corruption");input->setReadOnly(false);entryKey(ui::kKeyZ,ui::kKeyCtrlModifier);entryKey(ui::kKeyY,ui::kKeyCtrlModifier);check(input->text()=="a","Read-only history cannot duplicate content on Redo");
    input->setText("external");entryKey(ui::kKeyZ,ui::kKeyCtrlModifier);check(input->text()=="external"&&EntryEditHistory::get(*input)->undo.empty()&&EntryEditHistory::get(*input)->redo.empty(),"External value replacement cannot replay stale input history");
