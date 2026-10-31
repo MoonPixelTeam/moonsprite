@@ -80,6 +80,10 @@ const literal=text=>'U"'+[...text].map(c=>{const n=c.codePointAt(0);return n<128
    scenarios.push([initial,0,0,['double:'+(i+side),'type:X','key:Control+z','key:Control+y']]);
   for(const action of ['worddrag:1.25,8.25','worddrag:8.25,1.25','worddrag:1.25,5.25','worddrag:5.25,1.25'])
    scenarios.push(['abc def ghi',0,0,[action,'type:X','key:Control+z','key:Control+y']]);
+  for(const initial of ['ABCD','中文测试'])for(const [a,c] of [[1,3],[3,1]])for(const readonly of [false,true])for(let i=0;i<initial.length;i++)for(const side of [0.25,0.75])for(const kind of ['click','shiftclick'])
+   scenarios.push([initial,a,c,[...(readonly?['readonly:true']:[]),kind+':'+(i+side),...(!readonly?['type:X','key:Control+z','key:Control+y']:[])]]);
+  for(const action of ['drag:0.25,2.75','drag:3.75,1.25','worddrag:1.25,6.75','worddrag:8.25,2.75'])
+   scenarios.push(['abc def ghi',0,0,[action,'type:X','key:Control+z','key:Control+y']]);
   const rows=[],records=[];
   for(let scenario=0;scenario<scenarios.length;scenario++){
    const [initial,a,c,actions]=scenarios[scenario];

@@ -533,13 +533,17 @@ bool PixelEntry::onProcessMessage(ui::Message* msg) {
   // Legacy text/decimal inputs retain selection across blur and programmatic
   // refocus. Keep explicit form focus callbacks free to select their own range.
   setPersistSelection(true);
+  auto nearestPaintedCaret=[&](gfx::Point point){
+    const auto value=unicodeText(text());int scroll=0;getEntryThemeInfo(&scroll,nullptr,nullptr,nullptr);
+    int best=std::clamp(scroll,0,int(value.size())),x=bounds().x+getEntryTextBounds().x,distance=std::abs(point.x-x);
+    for(int i=best;i<int(value.size());++i){x+=font_.measure(value.substr(i,1))*uiScale;const int next=std::abs(point.x-x);if(next<distance){distance=next;best=i+1;}}
+    return std::min(best,lastCaretPos());
+  };
   if(msg->type()==ui::kMouseDownMessage||msg->type()==ui::kFocusLeaveMessage||msg->type()==ui::kKeyDownMessage||!hasCapture())removeProperty(EntryWordDrag::name);
   if(isEnabled()&&msg->type()==ui::kDoubleClickMessage&&static_cast<ui::MouseMessage*>(msg)->left()){
     const auto value=unicodeText(text());
     if(lastCaretPos()==int(value.size())){
-      int scroll=0;getEntryThemeInfo(&scroll,nullptr,nullptr,nullptr);int index=std::clamp(scroll,0,int(value.size()));
-      int x=bounds().x+getEntryTextBounds().x,distance=std::abs(static_cast<ui::MouseMessage*>(msg)->position().x-x);
-      for(int i=index;i<int(value.size());++i){x+=font_.measure(value.substr(i,1))*uiScale;const int next=std::abs(static_cast<ui::MouseMessage*>(msg)->position().x-x);if(next<distance){distance=next;index=i+1;}}
+      const int index=nearestPaintedCaret(static_cast<ui::MouseMessage*>(msg)->position());
       const auto range=inputWordRange(value,index,false),selection=inputWordRange(value,index,true);
       if(range.first>=0){requestFocus();selectText(selection.first,selection.second);setProperty(std::make_shared<EntryWordDrag>(range.first,range.second));captureMouse();EntryEditHistory::get(*this)->group=0;return true;}
     }
@@ -548,7 +552,7 @@ bool PixelEntry::onProcessMessage(ui::Message* msg) {
     if(msg->type()==ui::kMouseMoveMessage&&hasCapture()){
       // Let the original Entry perform hit-testing/edge scrolling, then expand
       // its insertion endpoint with the shared browser-derived word service.
-      const auto value=unicodeText(text());ui::Entry::onProcessMessage(msg);const int index=caretPos();
+      const auto value=unicodeText(text());ui::Entry::onProcessMessage(msg);const auto point=static_cast<ui::MouseMessage*>(msg)->position();const auto rc=getEntryTextBounds().offset(bounds().origin());const int index=point.x>=rc.x&&point.x<rc.x2()?nearestPaintedCaret(point):caretPos();
       const auto range=inputWordRange(value,index,false);
       if(range.first>=0){if(index<drag->from)selectText(drag->to,range.first);else selectText(drag->from,range.second);}
       return true;
@@ -574,11 +578,7 @@ bool PixelEntry::onProcessMessage(ui::Message* msg) {
   if(msg->type()==ui::kMouseDownMessage && static_cast<ui::MouseMessage*>(msg)->right()) {
     if(!isEnabled())return true;
     editMenuRefocus_=true;requestFocus();if(hasCapture())releaseMouse();scrubbing_=false;
-    const auto mouse=static_cast<ui::MouseMessage*>(msg);int scroll=0;getEntryThemeInfo(&scroll,nullptr,nullptr,nullptr);
-    const auto value=unicodeText(text());const int start=std::clamp(scroll,0,int(value.size()));
-    int x=bounds().x+getEntryTextBounds().x,best=start,distance=std::abs(mouse->position().x-x);
-    for(int i=start;i<int(value.size());++i){x+=font_.measure(value.substr(i,1))*uiScale;const int next=std::abs(mouse->position().x-x);if(next<distance){distance=next;best=i+1;}}
-    best=std::min(best,lastCaretPos());const auto range=selectedRange();
+    const auto mouse=static_cast<ui::MouseMessage*>(msg);const int best=nearestPaintedCaret(mouse->position());const auto range=selectedRange();
     if(range.isEmpty() || best<range.from || best>range.to)selectText(best,best);
     rightSelecting_=true;captureMouse();return true;
   }
@@ -692,6 +692,22 @@ bool PixelEntry::onProcessMessage(ui::Message* msg) {
     if(key->scancode()==ui::kKeyEsc && cancel) {cancel();return true;}
   }
   const bool handled=clipboardHandled || navigationHandled || ui::Entry::onProcessMessage(msg);
+  if(mouseSelectionBefore&&(msg->type()==ui::kMouseDownMessage||msg->type()==ui::kMouseMoveMessage)&&hasCapture()&&!scrubbing_){
+    const auto mouse=static_cast<ui::MouseMessage*>(msg);const auto rc=getEntryTextBounds().offset(bounds().origin());
+    if(mouse->left()&&mouse->position().x>=rc.x&&mouse->position().x<rc.x2()&&lastCaretPos()==int(unicodeText(text()).size())){
+      const int caret=nearestPaintedCaret(mouse->position());
+      const int anchor=msg->type()==ui::kMouseDownMessage?(shiftClickAnchor?*shiftClickAnchor:caret):mouseSelectionBefore->anchor;
+      selectText(anchor,caret);
+    }
+  }
+  if(msg->type()==ui::kMouseUpMessage&&isReadOnly()){
+    const auto mouse=static_cast<ui::MouseMessage*>(msg);
+    // Browser readonly inputs have no interior editable caret after a plain
+    // click clears selection. Keep the logical drag anchor until release.
+    if(mouse->left()&&!mouse->shiftPressed()&&selectedText().empty()){
+      const int end=lastCaretPos(),caret=caretPos()==end?end:0;selectText(caret,caret);
+    }
+  }
   if(shiftClickAnchor)selectText(*shiftClickAnchor,caretPos());
   else if(mouseSelectionBefore&&msg->type()==ui::kMouseMoveMessage&&hasCapture()){
     const auto mouse=static_cast<ui::MouseMessage*>(msg);
