@@ -92,6 +92,29 @@ public:
   key(ui::kKeyBackspace,ui::kKeyNoneModifier);check(text_->value()==U"AB","Interior caret Backspace removes complete cluster");key(ui::kKeyZ,ui::kKeyCtrlModifier);check(text_->value()==sample,"Interior Backspace undo");
  }
  value_.text=u"A\nB";value_.styleRuns.clear();text_->setValue(U"A\nB");text_->setSelectionRange(1,1);key(ui::kKeyDel,ui::kKeyNoneModifier);check(value_.text==u"AB","Newline remains an editable boundary");key(ui::kKeyZ,ui::kKeyCtrlModifier);check(value_.text==u"A\nB","Newline undo");
+ // Native pixel geometry has different glyph widths from browser shaping;
+ // verify the browser-observed invariant with the actual pointer/key handler.
+ const auto clusterBounds=text_->bounds();
+ for(const auto& cluster:std::vector<std::u32string>{U"e\u0301",U"\U0001f1e8\U0001f1f3",U"\U0001f469\u200d\U0001f4bb",U"\U0001f44d\U0001f3fd",U"\u1100\u1161\u11a8"}){
+  const auto sample=U"A"+cluster+U"B";const int end=1+int(cluster.size());
+  value_.text=textUtf16(sample);value_.styleRuns.clear();text_->setValue(sample);
+  const int width=std::max(font_.measure(cluster),font_.measure(U"A"));
+  auto narrow=clusterBounds;narrow.w=(12+width)*uiScale;text_->setBounds(narrow);
+  auto legal=[&]{const auto selected=text_->selectionRange();for(const int offset:{selected.first,selected.second})check(offset==0||offset==1||offset==end||offset==end+1,"Pointer/vertical selection must not split Unicode cluster");};
+  auto pointer=[&](ui::MessageType type,int x,int row,ui::KeyModifiers modifiers=ui::kKeyNoneModifier){ui::MouseMessage event(type,os::PointerType::Mouse,ui::kButtonLeft,modifiers,text_->bounds().origin()+gfx::Point((6+x)*uiScale,(9+12*row)*uiScale));check(text_->onProcessMessage(&event),"Cluster pointer input consumed");legal();};
+  // Whole cluster wraps after A; its internal codepoints cannot create extra rows.
+  text_->setSelectionRange(0,0);key(ui::kKeyDown,ui::kKeyNoneModifier);at(1,1);
+  key(ui::kKeyEnd,ui::kKeyNoneModifier);at(end,end);key(ui::kKeyHome,ui::kKeyNoneModifier);at(1,1);
+  key(ui::kKeyEnd,ui::kKeyShiftModifier);at(1,end);
+  text_->setSelectionRange(0,0);key(ui::kKeyDown,ui::kKeyShiftModifier);at(0,1);key(ui::kKeyDown,ui::kKeyShiftModifier);at(0,end);
+  for(int row=0;row<3;++row)for(int x=0;x<=width+2;++x){pointer(ui::kMouseDownMessage,x,row);pointer(ui::kMouseUpMessage,x,row);}
+  pointer(ui::kMouseDownMessage,0,0);pointer(ui::kMouseMoveMessage,width,1);pointer(ui::kMouseUpMessage,width,1);at(0,end);
+  pointer(ui::kMouseDownMessage,width,1);pointer(ui::kMouseMoveMessage,0,0);pointer(ui::kMouseUpMessage,0,0);at(0,end);
+  pointer(ui::kMouseDownMessage,0,1);pointer(ui::kMouseUpMessage,0,1);at(1,1);
+  pointer(ui::kMouseDownMessage,width,1,ui::kKeyShiftModifier);pointer(ui::kMouseUpMessage,width,1,ui::kKeyShiftModifier);at(1,end);
+  check(text_->value()==sample&&!text_->undoLocal(),"Pointer and vertical navigation do not alter content/history");
+ }
+ text_->setBounds(clusterBounds);
  int wordCase=0;std::string wordErrors;
  for(const auto& fixture:textWordBrowserCases){
   value_.text=textUtf16(fixture.before);value_.styleRuns.clear();text_->setValue(fixture.before);text_->setSelectionRange(fixture.anchor,fixture.caret);

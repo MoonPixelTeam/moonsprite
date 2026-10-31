@@ -86,6 +86,50 @@ int textGraphemeStep(const std::u32string& text,int caret,bool left){
  return at==boundaries.end()?int(text.size()):*at;
 }
 }
+std::vector<gfx::Point> PixelTextArea::positions()const {
+ auto boundaries=textBreakBoundaries(value_);
+ // Keep all text visible if the Unicode service is unavailable. User-driven
+ // caret stops below still exclude internal positions rather than splitting data.
+ if(boundaries.empty()){boundaries.push_back(0);for(int i=1;i<=int(value_.size());++i)boundaries.push_back(i);}
+ std::vector<gfx::Point> out(value_.size()+1);int x=0,y=0;
+ const int width=std::max(1,bounds().w/uiScale-12);
+ for(std::size_t cluster=1;cluster<boundaries.size();++cluster){
+  const int from=boundaries[cluster-1],to=boundaries[cluster];
+  const auto text=value_.substr(from,to-from);const bool newline=text.find(U'\n')!=std::u32string::npos;
+  if(!newline&&x&&x+font_.measure(text)>width){x=0;y+=12;}
+  for(int i=from;i<to;++i){out[i]={x,y};if(value_[i]==U'\n'){x=0;y+=12;}else x+=font_.measure(value_.substr(i,1));}
+ }
+ out.back()={x,y};return out;
+}
+
+bool PixelTextArea::softWrapAt(const std::vector<gfx::Point>& all,int index)const{
+  return index>0&&index<int(value_.size())&&value_[index-1]!=U'\n'&&all[index].y>all[index-1].y;
+ }
+
+gfx::Point PixelTextArea::caretPoint(const std::vector<gfx::Point>& all)const{
+  if(caretUpstream_&&softWrapAt(all,caret_))return {all[caret_-1].x+font_.measure(value_.substr(caret_-1,1)),all[caret_-1].y};
+  return all[caret_];
+ }
+
+std::vector<PixelTextArea::CaretStop> PixelTextArea::caretStops(const std::vector<gfx::Point>& all)const {
+ auto boundaries=textBreakBoundaries(value_);
+ if(boundaries.empty()){boundaries={0};if(!value_.empty())boundaries.push_back(int(value_.size()));}
+ std::vector<CaretStop> result;result.reserve(boundaries.size()*2);
+ for(const int i:boundaries){
+  result.push_back({i,false,all[i]});
+  if(softWrapAt(all,i))result.push_back({i,true,{all[i-1].x+font_.measure(value_.substr(i-1,1)),all[i-1].y}});
+ }
+ return result;
+}
+
+PixelTextArea::CaretStop PixelTextArea::at(gfx::Point physical)const{
+  auto p=physical-bounds().origin();p={p.x/uiScale-6,p.y/uiScale-4+scroll_};
+  const auto all=caretStops(positions());auto best=all.front();
+  int rowDistance=std::numeric_limits<int>::max(),columnDistance=rowDistance;
+  for(const auto& stop:all){const int row=std::abs(stop.point.y-p.y),column=std::abs(stop.point.x-p.x);if(row<rowDistance||(row==rowDistance&&column<columnDistance)){rowDistance=row;columnDistance=column;best=stop;}}
+  return best;
+ }
+
 bool PixelTextArea::onProcessMessage(ui::Message* msg){
   if(msg->type()==ui::kMouseDownMessage&&isEnabled()){auto m=static_cast<ui::MouseMessage*>(msg);if(m->left()){requestFocus();preferredX_=-1;editGroup_=0;const auto stop=at(m->position());caret_=stop.index;caretUpstream_=stop.upstream;if(!m->shiftPressed())anchor_=caret_;dragging_=true;captureMouse();reveal();notifySelection();return true;}}
   if(dragging_&&(msg->type()==ui::kMouseMoveMessage||msg->type()==ui::kMouseUpMessage)){auto m=static_cast<ui::MouseMessage*>(msg);const auto stop=at(m->position());caret_=stop.index;caretUpstream_=stop.upstream;reveal();notifySelection();if(msg->type()==ui::kMouseUpMessage){dragging_=false;if(hasCapture())releaseMouse();}return true;}
@@ -145,7 +189,7 @@ bool PixelTextArea::onProcessMessage(ui::Message* msg){
      const auto boundaries=textBreakBoundaries(value_);
      if(!boundaries.empty()){
       const auto at=std::lower_bound(boundaries.begin(),boundaries.end(),caret_);
-      // Mouse/vertical placement still uses the pixel-font codepoint layout.
+      // Programmatic selection may still provide an interior codepoint offset.
       // If it lands inside a cluster, either deletion removes that whole cluster.
       if(at!=boundaries.end()&&*at!=caret_&&at!=boundaries.begin())replace({},0,*std::prev(at),*at);
       else if(code==ui::kKeyBackspace&&caret_>0)replace({},2,textGraphemeStep(value_,caret_,true),caret_);
