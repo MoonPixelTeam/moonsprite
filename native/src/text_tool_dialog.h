@@ -77,6 +77,20 @@ public:
  ui::MouseMessage up(ui::kMouseUpMessage,os::PointerType::Mouse,ui::kButtonLeft,ui::kKeyNoneModifier,pointer);
  text_->onProcessMessage(&up);at(3,3);key(ui::kKeyHome,ui::kKeyNoneModifier);at(0,0);
  text_->setBounds(originalTextBounds);
+ // Unicode clusters are single navigation/deletion units, UTF16 styles remain unchanged.
+ for(const auto& cluster:std::vector<std::u32string>{U"e\u0301",U"\U0001f1e8\U0001f1f3",U"\U0001f469\u200d\U0001f4bb",U"\U0001f44d\U0001f3fd",U"\u1100\u1161\u11a8"}){
+  const auto sample=U"A"+cluster+U"B";const int end=1+int(cluster.size());
+  value_.text=textUtf16(sample);value_.styleRuns.clear();text_->setValue(sample);text_->setSelectionRange(1,1);
+  key(ui::kKeyRight,ui::kKeyNoneModifier);at(end,end);key(ui::kKeyLeft,ui::kKeyShiftModifier);at(1,end);
+  key(ui::kKeyLeft,ui::kKeyNoneModifier);at(1,1);key(ui::kKeyDel,ui::kKeyNoneModifier);check(text_->value()==U"AB","Delete preserves complete Unicode clusters");
+  key(ui::kKeyZ,ui::kKeyCtrlModifier);check(text_->value()==sample,"Cluster Delete undo restores original codepoints");at(1,1);
+  key(ui::kKeyY,ui::kKeyCtrlModifier);check(text_->value()==U"AB","Cluster Delete redo");key(ui::kKeyZ,ui::kKeyCtrlModifier);
+  text_->setSelectionRange(end,end);key(ui::kKeyBackspace,ui::kKeyNoneModifier);check(text_->value()==U"AB","Backspace preserves complete Unicode clusters");
+  key(ui::kKeyZ,ui::kKeyCtrlModifier);check(text_->value()==sample,"Cluster Backspace undo");at(end,end);
+  text_->setSelectionRange(2,2);key(ui::kKeyDel,ui::kKeyNoneModifier);check(text_->value()==U"AB","Interior caret Delete removes complete cluster");key(ui::kKeyZ,ui::kKeyCtrlModifier);check(text_->value()==sample,"Interior Delete undo");at(2,2);
+  key(ui::kKeyBackspace,ui::kKeyNoneModifier);check(text_->value()==U"AB","Interior caret Backspace removes complete cluster");key(ui::kKeyZ,ui::kKeyCtrlModifier);check(text_->value()==sample,"Interior Backspace undo");
+ }
+ value_.text=u"A\nB";value_.styleRuns.clear();text_->setValue(U"A\nB");text_->setSelectionRange(1,1);key(ui::kKeyDel,ui::kKeyNoneModifier);check(value_.text==u"AB","Newline remains an editable boundary");key(ui::kKeyZ,ui::kKeyCtrlModifier);check(value_.text==u"A\nB","Newline undo");
  fonts_.recordSize(originalLastSize);value_=original;live=originalLive;text_->setValue(textUtf32(value_.text));text_->setSelectionRange(0,0);update();
  }
  os::SurfaceRef smokeFrame(){auto surface=os::instance()->makeRgbaSurface(bounds().w,bounds().h);surface->clear();{ui::Graphics g(surface);{UiPaintScale scale(g);skin_.drawDialogBackground(g,uiLogical(clientBounds()));}ui::PaintEvent ev(this,&g);paintDialogContents(ev);}auto paint=[&](auto child){if(!child->isVisible())return;ui::Graphics g(nullptr,surface,child->bounds().x-bounds().x,child->bounds().y-bounds().y);ui::PaintEvent ev(child,&g);child->onPaint(ev);};paint(text_);for(PixelButton* b:{family_,align_,layout_,spacing_,render_})paint(b);for(auto e:numbers_)paint(e);for(auto b:{color_,ok_,cancel_,close_,live_,import_,system_,erase_})paint(b);return surface;}
