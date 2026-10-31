@@ -76,6 +76,10 @@ const literal=text=>'U"'+[...text].map(c=>{const n=c.codePointAt(0);return n<128
    scenarios.push(['ABCD',2,2,[action,'type:X','key:Control+z','key:Control+y']]);
   for(const action of ['click:2','shiftclick:2','click:0','drag:2,0'])
    scenarios.push(['',0,0,['type:ab',action,'type:c','key:Control+z','key:Control+z']]);
+  for(const initial of ['abc def','foo.bar!','中文测试','a  b'])for(let i=0;i<initial.length;i++)for(const side of [0.25,0.75])
+   scenarios.push([initial,0,0,['double:'+(i+side),'type:X','key:Control+z','key:Control+y']]);
+  for(const action of ['worddrag:1.25,8.25','worddrag:8.25,1.25','worddrag:1.25,5.25','worddrag:5.25,1.25'])
+   scenarios.push(['abc def ghi',0,0,[action,'type:X','key:Control+z','key:Control+y']]);
   const rows=[],records=[];
   for(let scenario=0;scenario<scenarios.length;scenario++){
    const [initial,a,c,actions]=scenarios[scenario];
@@ -85,12 +89,13 @@ const literal=text=>'U"'+[...text].map(c=>{const n=c.codePointAt(0);return n<128
     if(kind==='type')await page.keyboard.type(arg);
     else if(kind==='key')await page.keyboard.press(arg);
     else if(kind==='paste'){await page.evaluate(t=>navigator.clipboard.writeText(t),arg);await page.keyboard.press('Control+v');}
-    else if(['click','shiftclick','drag','shiftdrag'].includes(kind)){
-     const points=await page.locator('input').evaluate((el,arg)=>{const canvas=document.createElement('canvas'),ctx=canvas.getContext('2d');ctx.font=getComputedStyle(el).font;const r=el.getBoundingClientRect();return arg.split(',').map(x=>({x:r.x+ctx.measureText(el.value.slice(0,Number(x))).width+0.1,y:r.y+r.height/2}));},arg);
+    else if(['click','shiftclick','drag','shiftdrag','double','worddrag'].includes(kind)){
+     const points=await page.locator('input').evaluate((el,arg)=>{const canvas=document.createElement('canvas'),ctx=canvas.getContext('2d');ctx.font=getComputedStyle(el).font;const r=el.getBoundingClientRect();return arg.split(',').map(x=>({x:r.x+ctx.measureText(el.value.slice(0,Math.floor(Number(x)))).width+(Number(x)%1)*ctx.measureText(el.value.slice(Math.floor(Number(x)),Math.floor(Number(x))+1)).width+0.1,y:r.y+r.height/2}));},arg);
      if(kind.startsWith('shift'))await page.keyboard.down('Shift');
-     await page.mouse.move(points[0].x,points[0].y);await page.mouse.down();
+     await page.mouse.move(points[0].x,points[0].y);
+     if(kind==='double'||kind==='worddrag'){await page.mouse.down();await page.mouse.up();await page.mouse.down({clickCount:2});}else await page.mouse.down();
      if(points.length>1)await page.mouse.move(points[1].x,points[1].y,{steps:4});
-     await page.mouse.up();if(kind.startsWith('shift'))await page.keyboard.up('Shift');
+     await page.mouse.up({clickCount:kind==='double'||kind==='worddrag'?2:1});if(kind.startsWith('shift'))await page.keyboard.up('Shift');
     }
     else if(kind==='readonly')await page.locator('input').evaluate((el,x)=>el.readOnly=x==='true',arg);
     else if(kind==='set')await page.locator('input').evaluate((el,x)=>el.value=x,arg);

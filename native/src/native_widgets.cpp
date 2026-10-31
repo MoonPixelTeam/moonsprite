@@ -522,10 +522,39 @@ void PixelEntry::showInputEditMenu(gfx::Point position) {
   try {menu.showPopup(position,display());}catch(...){editMenuOpen_=false;editMenuRefocus_=true;requestFocus();throw;}
   editMenuOpen_=false;editMenuRefocus_=true;requestFocus();
 }
+namespace {
+struct EntryWordDrag final:ui::Property {
+ static constexpr const char* name="moonsprite.input-word-drag";
+ int from,to;
+ EntryWordDrag(int a,int b):ui::Property(name),from(a),to(b){}
+};
+}
 bool PixelEntry::onProcessMessage(ui::Message* msg) {
   // Legacy text/decimal inputs retain selection across blur and programmatic
   // refocus. Keep explicit form focus callbacks free to select their own range.
   setPersistSelection(true);
+  if(msg->type()==ui::kMouseDownMessage||msg->type()==ui::kFocusLeaveMessage||msg->type()==ui::kKeyDownMessage||!hasCapture())removeProperty(EntryWordDrag::name);
+  if(isEnabled()&&msg->type()==ui::kDoubleClickMessage&&static_cast<ui::MouseMessage*>(msg)->left()){
+    const auto value=unicodeText(text());
+    if(lastCaretPos()==int(value.size())){
+      int scroll=0;getEntryThemeInfo(&scroll,nullptr,nullptr,nullptr);int index=std::clamp(scroll,0,int(value.size()));
+      int x=bounds().x+getEntryTextBounds().x,distance=std::abs(static_cast<ui::MouseMessage*>(msg)->position().x-x);
+      for(int i=index;i<int(value.size());++i){x+=font_.measure(value.substr(i,1))*uiScale;const int next=std::abs(static_cast<ui::MouseMessage*>(msg)->position().x-x);if(next<distance){distance=next;index=i+1;}}
+      const auto range=inputWordRange(value,index,false),selection=inputWordRange(value,index,true);
+      if(range.first>=0){requestFocus();selectText(selection.first,selection.second);setProperty(std::make_shared<EntryWordDrag>(range.first,range.second));captureMouse();EntryEditHistory::get(*this)->group=0;return true;}
+    }
+  }
+  if(auto drag=std::dynamic_pointer_cast<EntryWordDrag>(getProperty(EntryWordDrag::name))){
+    if(msg->type()==ui::kMouseMoveMessage&&hasCapture()){
+      // Let the original Entry perform hit-testing/edge scrolling, then expand
+      // its insertion endpoint with the shared browser-derived word service.
+      const auto value=unicodeText(text());ui::Entry::onProcessMessage(msg);const int index=caretPos();
+      const auto range=inputWordRange(value,index,false);
+      if(range.first>=0){if(index<drag->from)selectText(drag->to,range.first);else selectText(drag->from,range.second);}
+      return true;
+    }
+    if(msg->type()==ui::kMouseUpMessage){removeProperty(EntryWordDrag::name);if(hasCapture())releaseMouse();return true;}
+  }
   std::optional<int> shiftClickAnchor;
   std::optional<EntryEditHistory::State> mouseSelectionBefore;
   if(isEnabled()&&(msg->type()==ui::kMouseDownMessage||(msg->type()==ui::kMouseMoveMessage&&hasCapture())||msg->type()==ui::kDoubleClickMessage)) {

@@ -105,6 +105,16 @@ int textGraphemeStep(const std::u32string& text,int caret,bool left){
 }
 }
 int inputWordStep(const std::u32string& text,int caret,bool left,bool deleting){return textWordStep(text,caret,left,deleting);}
+std::pair<int,int> inputWordRange(const std::u32string& text,int index,bool trailingWhitespace){
+ if(text.empty())return {0,0};
+ if(index==int(text.size()))index=textGraphemeStep(text,index,true);
+ const auto breaks=textBreakBoundaries(text,SkUnicode::BreakType::kWords,false);
+ const auto end=std::upper_bound(breaks.begin(),breaks.end(),index);
+ if(end==breaks.begin()||end==breaks.end())return {-1,-1};
+ int from=*std::prev(end),to=*end;static const auto unicode=SkUnicode::Make();
+ if(trailingWhitespace)while(to<int(text.size())&&text[to]!=U'\n'&&text[to]!=U'\r'&&unicode&&unicode->isWhitespace(text[to]))++to;
+ return {from,to};
+}
 std::vector<gfx::Point> PixelTextArea::positions()const {
  auto boundaries=textBreakBoundaries(value_);
  // Keep all text visible if the Unicode service is unavailable. User-driven

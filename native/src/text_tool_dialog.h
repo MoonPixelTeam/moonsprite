@@ -271,11 +271,11 @@ public:
     else if(kind==U"paste"){check(bridge.trySetClipboardText(utf8Text(arg)),"History paste seed");entryKey(ui::kKeyV,ui::kKeyCtrlModifier);}
     else if(kind==U"blur"){cancel_->requestFocus();manager()->dispatchMessages();check(!input->hasFocus(),"Input focus leaves for another control");}
     else if(kind==U"focus"){input->requestFocus();manager()->dispatchMessages();check(input->hasFocus(),"Input regains real focus");}
-    else if(kind==U"click"||kind==U"shiftclick"||kind==U"drag"||kind==U"shiftdrag"){
-     const auto comma=arg.find(U',');const int from=std::stoi(utf8Text(arg.substr(0,comma))),to=comma==std::u32string::npos?from:std::stoi(utf8Text(arg.substr(comma+1)));
+    else if(kind==U"click"||kind==U"shiftclick"||kind==U"drag"||kind==U"shiftdrag"||kind==U"double"||kind==U"worddrag"){
+     const auto comma=arg.find(U',');const double from=std::stod(utf8Text(arg.substr(0,comma))),to=comma==std::u32string::npos?from:std::stod(utf8Text(arg.substr(comma+1)));
      const auto value=unicodeText(input->text());const auto textBounds=input->getEntryTextBounds();const auto modifiers=kind==U"shiftclick"||kind==U"shiftdrag"?ui::kKeyShiftModifier:ui::kKeyNoneModifier;
-     auto mouse=[&](ui::MessageType type,int index){const auto point=input->bounds().origin()+gfx::Point(textBounds.x+font_.measure(value.substr(0,index))*uiScale,textBounds.y+textBounds.h/2);ui::MouseMessage message(type,os::PointerType::Mouse,ui::kButtonLeft,modifiers,point);check(input->onProcessMessage(&message),"Single-line mouse selection consumed");};
-     mouse(ui::kMouseDownMessage,from);if(comma!=std::u32string::npos)mouse(ui::kMouseMoveMessage,to);mouse(ui::kMouseUpMessage,to);check(!input->hasCapture(),"Single-line mouse selection releases capture");
+     auto mouse=[&](ui::MessageType type,double index){const int whole=int(index);const auto point=input->bounds().origin()+gfx::Point(textBounds.x+int((font_.measure(value.substr(0,whole))+(index-whole)*font_.measure(value.substr(whole,1)))*uiScale),textBounds.y+textBounds.h/2);ui::MouseMessage message(type,os::PointerType::Mouse,ui::kButtonLeft,modifiers,point);check(input->onProcessMessage(&message),"Single-line mouse selection consumed");};
+     mouse(ui::kMouseDownMessage,from);if(kind==U"double"||kind==U"worddrag"){mouse(ui::kMouseUpMessage,from);mouse(ui::kMouseDownMessage,from);mouse(ui::kDoubleClickMessage,from);}if(comma!=std::u32string::npos)mouse(ui::kMouseMoveMessage,to);mouse(ui::kMouseUpMessage,to);check(!input->hasCapture(),"Single-line mouse selection releases capture");
     }
     else if(kind==U"readonly")input->setReadOnly(arg==U"true");
     else if(kind==U"set")input->setText(utf8Text(arg));
@@ -289,7 +289,7 @@ public:
     if(input->text()!=utf8Text(fixture.text)||a!=fixture.start||b!=fixture.end||input->caretPos()!=(fixture.backward?fixture.start:fixture.end)||!history->undo.empty()!=fixture.undo||!history->redo.empty()!=fixture.redo)throw std::runtime_error("Browser input history mismatch scenario "+std::to_string(fixture.scenario)+" action "+utf8Text(action)+" text="+input->text()+" range="+std::to_string(a)+","+std::to_string(b));
     ++historyRows;
    }
-   check(historyRows==1843,"All normative browser input history/navigation observations checked");
+   check(historyRows==2043,"All normative browser input history/navigation observations checked");
    auto historyInput=input;input=numericInput;input->requestFocus();delete historyInput;
    input->removeProperty(EntryEditHistory::propertyName);input->setText("");input->selectText(0,0);typeEntry(U"a");input->setReadOnly(true);const auto beforeReadOnly=EntryEditHistory::get(*input);entryKey(ui::kKeyZ,ui::kKeyCtrlModifier);check(input->text()=="a"&&beforeReadOnly->undo.size()==1&&beforeReadOnly->redo.empty(),"Read-only Undo is a safe no-op, not browser stale-operation corruption");input->setReadOnly(false);entryKey(ui::kKeyZ,ui::kKeyCtrlModifier);entryKey(ui::kKeyY,ui::kKeyCtrlModifier);check(input->text()=="a","Read-only history cannot duplicate content on Redo");
    input->setText("external");entryKey(ui::kKeyZ,ui::kKeyCtrlModifier);check(input->text()=="external"&&EntryEditHistory::get(*input)->undo.empty()&&EntryEditHistory::get(*input)->redo.empty(),"External value replacement cannot replay stale input history");
