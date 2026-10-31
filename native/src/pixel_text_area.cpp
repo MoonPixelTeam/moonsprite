@@ -1,4 +1,5 @@
 #include "pixel_text_area.h"
+#include "text_edit_navigation.h"
 #include "pixel_input_menu.h"
 #include "native_text_clipboard.h"
 #include <algorithm>
@@ -103,6 +104,7 @@ int textGraphemeStep(const std::u32string& text,int caret,bool left){
  return at==boundaries.end()?int(text.size()):*at;
 }
 }
+int inputWordStep(const std::u32string& text,int caret,bool left,bool deleting){return textWordStep(text,caret,left,deleting);}
 std::vector<gfx::Point> PixelTextArea::positions()const {
  auto boundaries=textBreakBoundaries(value_);
  // Keep all text visible if the Unicode service is unavailable. User-driven

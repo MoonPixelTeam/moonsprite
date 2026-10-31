@@ -283,7 +283,7 @@ public:
     if(input->text()!=utf8Text(fixture.text)||a!=fixture.start||b!=fixture.end||input->caretPos()!=(fixture.backward?fixture.start:fixture.end)||!history->undo.empty()!=fixture.undo||!history->redo.empty()!=fixture.redo)throw std::runtime_error("Browser input history mismatch scenario "+std::to_string(fixture.scenario)+" action "+utf8Text(action)+" text="+input->text()+" range="+std::to_string(a)+","+std::to_string(b));
     ++historyRows;
    }
-   check(historyRows==437,"All normative browser input history/navigation observations checked");
+   check(historyRows==1031,"All normative browser input history/navigation observations checked");
    auto historyInput=input;input=numericInput;input->requestFocus();delete historyInput;
    input->removeProperty(EntryEditHistory::propertyName);input->setText("");input->selectText(0,0);typeEntry(U"a");input->setReadOnly(true);const auto beforeReadOnly=EntryEditHistory::get(*input);entryKey(ui::kKeyZ,ui::kKeyCtrlModifier);check(input->text()=="a"&&beforeReadOnly->undo.size()==1&&beforeReadOnly->redo.empty(),"Read-only Undo is a safe no-op, not browser stale-operation corruption");input->setReadOnly(false);entryKey(ui::kKeyZ,ui::kKeyCtrlModifier);entryKey(ui::kKeyY,ui::kKeyCtrlModifier);check(input->text()=="a","Read-only history cannot duplicate content on Redo");
    input->setText("external");entryKey(ui::kKeyZ,ui::kKeyCtrlModifier);check(input->text()=="external"&&EntryEditHistory::get(*input)->undo.empty()&&EntryEditHistory::get(*input)->redo.empty(),"External value replacement cannot replay stale input history");

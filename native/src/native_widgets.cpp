@@ -7,6 +7,7 @@
 #include "native_text_clipboard.h"
 #include "pixel_input_menu.h"
 #include "entry_edit_history.h"
+#include "text_edit_navigation.h"
 #include "os/system.h"
 #include "color_value_ui.h"
 #include "color_picker_layout.h"
@@ -564,6 +565,31 @@ bool PixelEntry::onProcessMessage(ui::Message* msg) {
       int scroll=0;getEntryThemeInfo(&scroll,nullptr,nullptr,nullptr);const auto value=unicodeText(text());
       const int start=std::clamp(scroll,0,int(value.size())),caret=std::clamp(caretPos(),start,int(value.size()));
       const auto rc=getEntryTextBounds();showInputEditMenu(bounds().origin()+gfx::Point(std::clamp(rc.x+font_.measure(value.substr(start,caret-start))*uiScale,rc.x,rc.x2()),rc.y2()));return true;
+    }
+    // Match the legacy browser's word boundaries using the existing textarea
+    // service. Entry boxes may combine codepoints: do not reinterpret them as
+    // Unicode offsets until that separate mapping has been migrated.
+    if(key->ctrlPressed()&&!key->altPressed()&&!key->cmdPressed()&&
+       (code==ui::kKeyLeft||code==ui::kKeyRight||((code==ui::kKeyBackspace||code==ui::kKeyDel)&&!key->shiftPressed()))) {
+      const auto value=unicodeText(text());
+      if(lastCaretPos()==int(value.size())) {
+        const bool deleting=code==ui::kKeyBackspace||code==ui::kKeyDel;
+        const bool left=code==ui::kKeyLeft||code==ui::kKeyBackspace;
+        if(deleting) {
+          if(!isReadOnly()) {
+            EntryEditHistory::Record edit(*this,0);
+            if(selectedText().empty()){const int before=caretPos();selectText(before,inputWordStep(value,before,left,true));}
+            if(!selectedText().empty())executeCmd(Cmd::DeleteNextChar);
+          }
+        }else {
+          history->group=0;
+          if(!isReadOnly()||(key->shiftPressed()&&!selectedText().empty())) {
+            const auto before=EntryEditHistory::state(*this);
+            selectText(key->shiftPressed()?before.anchor:inputWordStep(value,before.caret,left),inputWordStep(value,before.caret,left));
+          }
+        }
+        navigationHandled=true;
+      }
     }
     // Reuse MIT commands for anchors, boxes, scrolling and the IME caret.
     // Browser readonly inputs expose selection, without an editable caret.

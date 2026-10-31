@@ -47,6 +47,17 @@ const literal=text=>'U"'+[...text].map(c=>{const n=c.codePointAt(0);return n<128
   const navigationRanges=[['ABCD',1,3],['ABCD',3,1],['ABCD',0,0],['ABCD',4,4],['ABCD',2,2],['中文测试',1,3],['中文测试',3,1],['',0,0]];
   for(const [initial,a,c] of navigationRanges)for(const readonly of [false,true])for(const key of navigationKeys)
    scenarios.push([initial,a,c,[...(readonly?['readonly:true']:[]),'key:'+key]]);
+  const wordSamples=['abc def ghi','  abc  def  ','foo.bar:baz','hello, world!','中文测试内容','你好 世界',''];
+  for(const initial of wordSamples){
+   const ranges=[[0,0],[initial.length,initial.length],[Math.floor(initial.length/2),Math.floor(initial.length/2)]];
+   if(initial.length>=4)ranges.push([1,initial.length-1],[initial.length-1,1]);
+   for(const [a,c] of ranges){
+    for(const readonly of [false,true])for(const key of ['Control+ArrowLeft','Control+ArrowRight','Control+Shift+ArrowLeft','Control+Shift+ArrowRight'])
+     scenarios.push([initial,a,c,[...(readonly?['readonly:true']:[]),'key:'+key]]);
+    for(const key of ['Control+Backspace','Control+Delete'])
+     scenarios.push([initial,a,c,['key:'+key,'key:Control+z','key:Control+y']]);
+   }
+  }
   const rows=[],records=[];
   for(let scenario=0;scenario<scenarios.length;scenario++){
    const [initial,a,c,actions]=scenarios[scenario];
