@@ -106,6 +106,26 @@ void Editor::buildAttachedMaskMenu(PixelMenu& menu,const std::string& owner,cons
  add(U"连接所选蒙版","animation-auto-link-on",[this,keys]{document.linkAttachedMasks(keys);},canLink);add(U"断开蒙版链接","animation-auto-link-off",[this,keys]{document.linkAttachedMasks(keys,true);},canUnlink);add(U"退出蒙版编辑","image",[this]{document.exitAttachedMask();selectedMaskSlots_.clear();});}
 void Editor::showAttachedMaskMenu(const std::string& owner,const std::string& frame){const auto key=std::make_pair(owner,frame);if(std::find(selectedMaskSlots_.begin(),selectedMaskSlots_.end(),key)==selectedMaskSlots_.end())selectMaskSlot(owner,frame);PixelMenu menu(skin_);buildAttachedMaskMenu(menu,owner,frame);menu.showPopup(pointerMenuPosition(ui::get_mouse_position()),display());}
 void Editor::smokeAttachedMasks(){smoke_=true;homeOpen_=false;documentOpen_=true;pending_=Pending::None;
+ // Legacy paste selectInsertedItems clears mask cells/anchor instead of the
+ // frame-header click behavior that promotes those cells into mask rows.
+ for(bool group:{false,true})for(bool isolated:{false,true})for(bool header:{false,true}){
+  selectedMaskSlots_.clear();maskSelectionAnchor_.reset();document=Document(2,1);document.fillSelectionOrCanvas(0xff123456);
+  if(group&&!document.createLayerGroup())throw std::runtime_error("Frame paste mask UI group fixture");
+  const auto owner=group?*document.selectedGroupId():document.layer().id;const auto first=document.frame().id;
+  if(!document.createAttachedMask(owner,first,group))throw std::runtime_error("Frame paste mask UI fixture");
+  document.exitAttachedMask();document.selectFrameHeader(first);copyTimelineFrames();
+  if(!selectMaskSlot(owner,first,0,nullptr,isolated)||selectedMaskSlots_.empty()||!maskSelectionAnchor_)throw std::runtime_error("Frame paste mask UI selection fixture");
+  if(header)document.selectFrameHeader(first);else document.selectTimelineCel(document.cel().id);
+  const auto h=document.historyPosition();pasteTimelineFrames();
+  auto verify=[&]{if(!selectedMaskSlots_.empty()||maskSelectionAnchor_||!document.timelineSelection().maskRows.empty()||!document.activeMaskId().empty()||document.maskIsolated())throw std::runtime_error("Frame paste retained or promoted old mask selection");};
+  verify();if(document.historyPosition()!=h+1||document.timeline().state().frames.size()!=2||frameSelectionExplicit_!=!document.selectedFrames().empty())throw std::runtime_error("Frame paste UI history or frame selection");
+  document.undo();refresh();verify();document.redo();refresh();verify();
+ }
+ // Empty clipboard must not clear the current mask selection or its anchor.
+ selectedMaskSlots_.clear();maskSelectionAnchor_.reset();document=Document(2,1);document.fillSelectionOrCanvas(0xff123456);document.createAttachedMask(document.layer().id,document.frame().id);selectMaskSlot(document.layer().id,document.frame().id);
+ frameClipboardSnapshot_={};const auto beforeSlots=selectedMaskSlots_;const auto beforeAnchor=maskSelectionAnchor_;const auto beforeMask=document.activeMaskId();const auto beforeHistory=document.historyPosition();pasteTimelineFrames();
+ if(selectedMaskSlots_!=beforeSlots||maskSelectionAnchor_!=beforeAnchor||document.activeMaskId()!=beforeMask||document.historyPosition()!=beforeHistory)throw std::runtime_error("Rejected frame paste changed mask UI context");
+
  for(bool group:{false,true}){
   selectedMaskSlots_.clear();maskSelectionAnchor_.reset();document=Document(2,1);document.fillSelectionOrCanvas(0xff123456);timelineHidden_=false;frameScroll_=layerScroll_=0;frameScrollRemainder_=layerScrollRemainder_=0;
   std::string owner=document.layer().id;if(group){if(!document.createLayerGroup()||!document.selectedGroupId())throw std::runtime_error("Mask selection group setup failed");owner=*document.selectedGroupId();}

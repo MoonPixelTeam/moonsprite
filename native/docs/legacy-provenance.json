@@ -12713,6 +12713,7 @@
     },
     {
       "file": "src/editor_canvas.cpp",
+      "localFramePasteMaskUi20261101": "依据legacy/src/renderer/src/store/workspace-commands-animation-frame-clipboard.ts::pasteAnimationFrames::selectInsertedItems显式清selectedAnimationMaskCellKeys/selectedAnimationMaskRowKeys/animationMaskCellSelectionAnchorKey，而普通selectAnimationFrame可将蒙版格提升为owner行。Native Editor::pasteTimelineFrames在同工程粘贴成功后、复用markFrameSelection之前清selectedMaskSlots_及maskSelectionAnchor_，避免将粘贴误当帧标题点击；空载荷或失败不清理，跨工程处理不在本批改变。smokeAttachedMasks新增八组图层/组、隔离开关、帧/Cel选择上下文，检查成功后无蒙版格/anchor/整行残留、一次历史、帧选择方式及Undo/Redo；新增空载荷拒绝保持检查。复用原UI结构与素材，不新增界面。",
       "spacingAudit20261019": "User UI spacing audit 2026-10-19: selection pivot popover 6px inset, 20px toggle, 15px square preset buttons and 2px related gaps; preserved pivot presets and visibility command semantics.",
       "classification": "legacy-partial",
       "sources": [
@@ -20172,6 +20173,7 @@
     },
     {
       "file": "src/editor_attached_masks.cpp",
+      "localFramePasteMaskUi20261101": "依据legacy/src/renderer/src/store/workspace-commands-animation-frame-clipboard.ts::pasteAnimationFrames::selectInsertedItems显式清selectedAnimationMaskCellKeys/selectedAnimationMaskRowKeys/animationMaskCellSelectionAnchorKey，而普通selectAnimationFrame可将蒙版格提升为owner行。Native Editor::pasteTimelineFrames在同工程粘贴成功后、复用markFrameSelection之前清selectedMaskSlots_及maskSelectionAnchor_，避免将粘贴误当帧标题点击；空载荷或失败不清理，跨工程处理不在本批改变。smokeAttachedMasks新增八组图层/组、隔离开关、帧/Cel选择上下文，检查成功后无蒙版格/anchor/整行残留、一次历史、帧选择方式及Undo/Redo；新增空载荷拒绝保持检查。复用原UI结构与素材，不新增界面。",
       "classification": "legacy-partial",
       "sources": [
         "legacy/src/renderer/src/store/workspace-commands-layer-mask.ts",

@@ -260,3 +260,12 @@
 本批同工程复用既有 `Edit::MaskContextHistory` 和结构事务，成功及Undo／Redo均退出蒙版编辑和隔离；普通跨工程在候选校验完成后清理当前蒙版上下文，不新增旧版未明确要求的跨工程Undo上下文行为。保留原像素选区，不扩大特殊资源帧粘贴准入。
 
 八组回归覆盖同／跨工程、图层／组蒙版及隔离开／关，检查一次历史、原蒙版身份与像素保持、粘贴后的真实笔画进入新Cel、Undo／Redo及保存重开。`free-tile-project-tests`、`moon-core-tests`、`cel-selection-clipboard-tests`和唯一正式Release程序构建通过。未执行实际鼠标／菜单验收；不声明界面层所有蒙版选择状态或整个帧剪贴板模块已完成迁移。
+
+
+## 后续补齐：同工程帧粘贴清理蒙版格选择
+
+旧版 `workspace-commands-animation-frame-clipboard.ts::pasteAnimationFrames::selectInsertedItems` 明确清空蒙版格、蒙版行和蒙版格锚点。原生 `Editor::pasteTimelineFrames` 成功后调用 `markFrameSelection`，但该函数承接的是普通帧标题点击，会将已有蒙版格提升为owner行；当粘贴结果选择Cel时，另一个分支也没有清旧蒙版格和锚点。
+
+本批仅在同工程帧粘贴成功后、套用原帧／Cel选择显示前清理 `selectedMaskSlots_` 与 `maskSelectionAnchor_`。文档事务已负责清理蒙版行；不重写标题点击的提升行为，不改变跨工程语义，空载荷或失败不清理选择。
+
+`smokeAttachedMasks` 新增八组图层／组、隔离开／关、帧／Cel上下文，经过真实Editor粘贴及refresh检查无旧蒙版格／锚点／整行残留、退出蒙版编辑、一次历史、帧或Cel选择显示，以及Undo／Redo；另检查空剪贴板拒绝保持原蒙版上下文。唯一正式Release构建通过，正式程序 `--attached-masks-check` 退出码0，包含新增检查及既有蒙版交互回归。本批未做截图视觉验收或系统鼠标手动操作，不声明整个帧剪贴板模块迁移完成。
