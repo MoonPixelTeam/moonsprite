@@ -119,10 +119,11 @@ void Document::groupEdits(std::size_t start,const std::vector<std::string>& sele
 // Whole RGBA cel snapshot: legacy snapshotLinkedAnimationCels rebase and block anchor.
 bool Document::copySelectedCels(){if((hasTilemapContent()||hasFreeTileContent())&&(active()||selection_||!activeMaskId_.empty()))throw std::runtime_error("Only complete inactive tilemap Cel copy is migrated");
 
+ // legacy copySelectedAnimationCels filters with a Set before row/frame ordering.
+ const std::unordered_set<std::string> selected(timelineSelection_.cels.begin(),timelineSelection_.cels.end());
  std::vector<CelClipboardItem> items;const auto& state=timeline_.state();
- for(int r=0;r<int(state.layers.size());++r)for(int c=0;c<int(state.frames.size());++c){const auto* cel=timeline_.findCel(state.layers[r].id,state.frames[c].id);if(cel && std::find(timelineSelection_.cels.begin(),timelineSelection_.cels.end(),cel->id)!=timelineSelection_.cels.end())items.push_back({*cel,r,c});}
+ for(int r=0;r<int(state.layers.size());++r)for(int c=0;c<int(state.frames.size());++c){const auto* cel=timeline_.findCel(state.layers[r].id,state.frames[c].id);if(cel && selected.count(cel->id))items.push_back({*cel,r,c});}
  if(items.empty()){celClipboard_.clear();frameClipboard_.clear();frameClipboardMetadata_.reset();return false;}
- std::unordered_set<std::string> selected;for(const auto& item:items)selected.insert(item.cel.id);
  std::unordered_map<std::string,std::string> roots;
  const int row=items.front().row,col=items.front().column;
  for(auto& item:items){const auto resolved=timeline_.resolveSurface(item.cel.id);if(resolved.issue!=timeline::LinkIssue::None)throw std::runtime_error("Cannot resolve copied Cel");if(resolved.surface)raster::validate(*resolved.surface);const auto source=resolved.source->id;auto root=roots.find(source);if(root==roots.end())root=roots.emplace(source,selected.count(source)?source:item.cel.id).first;

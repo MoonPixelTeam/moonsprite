@@ -413,3 +413,15 @@
 原地向画布外写入的浮动变换限制未在本批承接，不声明画布外粘贴全部等价；未执行实际UI操作验收。
 
 本批实际结果：四组新增场景、更新后的画布外剪切回归及既有 `free-tile-project-tests`、`cel-selection-clipboard-tests` 均通过；唯一正式Release构建、542文件来源覆盖和diff检查通过。未执行实际UI操作验收。
+
+## 后续补齐：大范围单元格复制的选择筛选（2026-11-02）
+
+旧版 `workspace-commands-animation-cel-clipboard.ts::copySelectedAnimationCels` 先将选中键放入Set，遍历Cel时使用成员判断，再按图层／帧排序。原生此前对每个图层帧槽线性查找整个选中ID列表，选择越多，重复比较越多。
+
+本批复用旧版集合筛选方案，创建一次 `unordered_set`，同时供既有关联重定根判断使用；仍按原图层／帧遍历，复制顺序、锚点、像素和关联语义保持。只是成员筛选从逐格线性查找改为集合查找，不声明耗时基准或整个剪贴板性能已经完成迁移。
+
+四组整格／选区和独立／关联场景使用24层、20帧，共480格，逆序选择其中320格；检查准确输出集合、图层／帧顺序、相对锚点、规范源内容、关联根自包含、历史与dirty保持。
+
+另经 `selection-transform-targets.ts::applySelectionTransformLayerState`、`tools-selection-transform-apply.ts` 核对，旧版浮动变换实际也对画布内写入做边界判断。此前“原地画布外粘贴限制未承接”表示未核对范围，并非已确认的新旧差异；本批没有扩大原生写入范围。未执行实际UI操作验收。
+
+本批实际结果：四组新增场景及既有 `free-tile-project-tests`、唯一正式Release构建、542文件来源覆盖及diff检查通过；未执行实际UI操作或耗时基准验收。
