@@ -136,3 +136,11 @@
 本次复用现有复合操作开关，在追加空白帧期间暂缓录制和操作计数，异常时恢复原开关；链接、蒙版和历史快照完成后再通知一次，外层已有复合操作时继续由外层发布。复用原录制队列和历史，不增加通知接口或改变缩时采样算法。
 
 六组现有链接帧场景增加observer断言，覆盖最终像素／组蒙版／选择、一次通知和一次操作计数、Undo／Redo通知策略以及下一次普通操作计数。另两组实际Session检查追加／复用右列、异步PNG与最终画布完全一致、关闭撤销记录时不新增帧、开启后Redo记录最终画面。`free-tile-project-tests`、`moon-core-tests`、`timelapse-tests`实际通过，正式Release构建通过。关闭上一节所列的追加链接帧录制时机缺口；未扩大特殊图层链接支持或声明全部缩时行为等价。
+
+## 后续补齐：连接／断开单元格的可编辑内容
+
+旧版 `core/animation.ts::connectAnimationCels` 及 `normalizeAnimationCelLinks` 同步规范源的编辑数据；`disconnectAnimationCels` 独立复制像素和文字等元数据，最后 `applyFrameSurfaces` 同步显示。原生批量连接／断开入口缺少文字等编辑元数据，断开文字副本可能留下原目标的旧文字，与画面不一致。
+
+本批连接及批量断开补齐text／tilemap／freeTiles字段的规范源承接，沿用既有结构准入（特殊瓦片链接仍禁用），调用现有活动Cel透明度投影。继续复用原关联规则、空白间隙选择与beforeCels／afterCels历史，没有新设历史或改变范围。无UI调用的旧 `disconnectCel` 辅助入口不在本批等价声明内。
+
+八组回归覆盖连接／断开、选中源／副本、普通／文字图层，验证规范文字及文字原点、像素和偏移、透明度和zIndex、未选关联不变、一次历史、选择保持、保存重开和Undo原数据／Redo。`free-tile-project-tests`、`moon-core-tests`、`cel-selection-clipboard-tests`均通过，正式Release构建及来源覆盖检查通过。没有新增实际菜单点击验收，不表示整个时间轴模块完成。

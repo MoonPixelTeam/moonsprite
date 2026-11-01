@@ -471,9 +471,9 @@ bool Document::connectSelectedCels(){if(hasTilemapContent()||hasFreeTileContent(
  if(first<0 || first==last)continue;
  for(int f=first;f<=last;++f){const auto* c=timeline_.findCel(l.id,frames[f].id);if(std::find(timelineSelection_.cels.begin(),timelineSelection_.cels.end(),c->id)!=timelineSelection_.cels.end() || !content(c))slots.push_back(c);}
  const auto original=std::find_if(slots.begin(),slots.end(),content);if(original==slots.end())continue;const auto resolved=timeline_.resolveSurface((*original)->id);if(resolved.issue!=timeline::LinkIssue::None)throw std::runtime_error("Cannot resolve Cel link source");const auto source=*resolved.source;
- for(const auto* c:slots){if(c->id==source.id)continue;if(c->linkedCelId==source.id && !c->runtimeSharedCelId && c->opacity==source.opacity && c->zIndex==source.zIndex)continue;auto next=*c;next.linkedCelId=source.id;next.runtimeSharedCelId.reset();next.surface.reset();next.opacity=source.opacity;next.zIndex=source.zIndex;e.beforeCels.push_back(*c);e.afterCels.push_back(std::move(next));}
+ for(const auto* c:slots){if(c->id==source.id)continue;if(c->linkedCelId==source.id && !c->runtimeSharedCelId && c->opacity==source.opacity && c->zIndex==source.zIndex)continue;auto next=*c;next.linkedCelId=source.id;next.runtimeSharedCelId.reset();next.surface.reset();next.opacity=source.opacity;next.zIndex=source.zIndex;next.text=source.text;next.tilemap=source.tilemap;next.freeTiles=source.freeTiles;e.beforeCels.push_back(*c);e.afterCels.push_back(std::move(next));}
  }
- if(e.afterCels.empty())return false;applyCelEdit(e,true);publishChange();pushEdit(std::move(e),U"连接动画单元格");return true;
+ if(e.afterCels.empty())return false;applyCelEdit(e,true);projectActiveCelOpacities();publishChange();pushEdit(std::move(e),U"连接动画单元格");return true;
 }
 // legacy animation.ts disconnectAnimationCels: selecting a source unlinks its group.
 bool Document::canDisconnectSelectedCels()const{
@@ -485,8 +485,8 @@ bool Document::disconnectSelectedCels(){if(hasTilemapContent()||hasFreeTileConte
  const auto selected=timelineSelection_.cels.empty()?std::vector<std::string>{cel().id}:timelineSelection_.cels;
  Edit e{{},state_,nextState_};e.beforeFrame=e.afterFrame=activeFrameId_;
  for(const auto& c:timeline_.state().cels){if(!c.linkedCelId)continue;const auto resolved=timeline_.resolveSurface(c.id);if(!resolved.source || resolved.issue!=timeline::LinkIssue::None)throw std::runtime_error("Cannot resolve Cel unlink source");if(std::find(selected.begin(),selected.end(),c.id)==selected.end() && std::find(selected.begin(),selected.end(),resolved.source->id)==selected.end())continue;
- e.beforeCels.push_back(c);auto next=c;next.surface=resolved.surface?std::optional<timeline::Surface>{*resolved.surface}:std::nullopt;next.opacity=resolved.source->opacity;next.zIndex=resolved.source->zIndex;next.linkedCelId.reset();next.runtimeSharedCelId.reset();e.afterCels.push_back(std::move(next));}
- if(e.afterCels.empty())return false;applyCelEdit(e,true);publishChange();pushEdit(std::move(e),U"断开动画单元格连接");return true;
+ e.beforeCels.push_back(c);auto next=c;next.surface=resolved.surface?std::optional<timeline::Surface>{*resolved.surface}:std::nullopt;next.opacity=resolved.source->opacity;next.zIndex=resolved.source->zIndex;next.text=resolved.source->text;next.tilemap=resolved.source->tilemap;next.freeTiles=resolved.source->freeTiles;next.linkedCelId.reset();next.runtimeSharedCelId.reset();e.afterCels.push_back(std::move(next));}
+ if(e.afterCels.empty())return false;applyCelEdit(e,true);projectActiveCelOpacities();publishChange();pushEdit(std::move(e),U"断开动画单元格连接");return true;
 }
 void Document::disconnectCel(){if(hasTilemapContent()||hasFreeTileContent())return;cancelStroke();cancelLayerOpacity();if(!cel().linkedCelId)return;Edit e{{},state_,nextState_};e.beforeFrame=e.afterFrame=frame().id;e.beforeCels.push_back(cel());DocumentCel c=cel();const auto resolved=timeline_.resolveSurface(c.id);c.surface=*resolved.surface;c.linkedCelId.reset();c.runtimeSharedCelId.reset();e.afterCels.push_back(c);applyCelEdit(e,true);publishChange();pushEdit(std::move(e),U"断开动画单元格连接");}
 // workspace-animation-commands-helpers updateSelectedAnimationFramesDisabled.
