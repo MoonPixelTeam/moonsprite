@@ -291,7 +291,7 @@ bool Document::pasteFrameClipboard(const FrameClipboardSnapshot& snapshot){if(ha
  }
  candidate.cels.insert(candidate.cels.end(),incoming.begin(),incoming.end());timeline::Timeline validated(std::move(candidate));if(!validated.diagnoseLinks().empty())throw std::runtime_error("Frame paste creates invalid links");
  Edit edit{{},state_,nextState_};edit.beforeTimeline=before;edit.beforeActive=edit.afterActive=activeLayerId_;edit.beforeFrame=activeFrameId_;edit.beforeSelection=selectedFrames_;edit.beforeTimelineSelection=timelineSelection_;edit.beforeFrameAnchor=frameAnchor_;edit.afterTimeline=validated.state();edit.afterFrame=inserted.front();edit.afterSelection=inserted;edit.afterTimelineSelection=decltype(timelineSelection_){};edit.afterFrameAnchor=inserted.back();history_.reserve(position_+1);
- timeline_=std::move(validated);nextFrameId_=next;activeFrameId_=inserted.front();projectActiveCelOpacities();selectedFrames_=inserted;timelineSelection_={};frameAnchor_=inserted.back();change_={0,0,width_,height_};publishChange();pushEdit(std::move(edit),U"粘贴动画帧");return true;
+ activeMaskId_.clear();maskIsolated_=false;timeline_=std::move(validated);nextFrameId_=next;activeFrameId_=inserted.front();projectActiveCelOpacities();selectedFrames_=inserted;timelineSelection_={};frameAnchor_=inserted.back();change_={0,0,width_,height_};publishChange();pushEdit(std::move(edit),U"粘贴动画帧");return true;
 }
 // legacy workspace-commands-animation-frame.ts::importGifAnimationLayer.
 bool Document::importGifAnimationLayer(const Document& source,int startFrameIndex){if(hasTilemapContent()||hasFreeTileContent())return false;

@@ -251,3 +251,12 @@
 八组新增场景覆盖源层删除／保留、组移除／保留和新层自动关联开／关，验证当前层顺序及完整slot、按身份接收旧内容、透明槽或前帧继承、仅存活蒙版恢复、帧时长／禁用、选择、一条历史、Undo／Redo和保存重开。修正结构测试的删除夹具：解组后明确单选目标层，断言实际已删除，避免多选最后两层导致删除被拒绝而误判覆盖。
 
 三套相关检查（`free-tile-project-tests`、`moon-core-tests`、`cel-selection-clipboard-tests`）通过，唯一正式Release构建通过，542文件来源覆盖通过。仅普通RGBA同工程；特殊资源帧粘贴未扩大准入，未执行实际鼠标／菜单验收。
+
+
+## 后续补齐：帧粘贴退出蒙版编辑
+
+旧版 `workspace-commands-animation-frame-clipboard.ts::pasteAnimationFrames` 及其 `restoreInserted/reapplyInserted` 在粘贴成功、Undo和Redo时均清空 `activeLayerMaskId`；跨工程 `pasteCrossDocumentAnimationFrames::applyInserted` 成功后同样退出蒙版。原生普通帧粘贴此前可能仍指向旧帧蒙版，切换到新帧后继续绘制会修改旧蒙版。
+
+本批同工程复用既有 `Edit::MaskContextHistory` 和结构事务，成功及Undo／Redo均退出蒙版编辑和隔离；普通跨工程在候选校验完成后清理当前蒙版上下文，不新增旧版未明确要求的跨工程Undo上下文行为。保留原像素选区，不扩大特殊资源帧粘贴准入。
+
+八组回归覆盖同／跨工程、图层／组蒙版及隔离开／关，检查一次历史、原蒙版身份与像素保持、粘贴后的真实笔画进入新Cel、Undo／Redo及保存重开。`free-tile-project-tests`、`moon-core-tests`、`cel-selection-clipboard-tests`和唯一正式Release程序构建通过。未执行实际鼠标／菜单验收；不声明界面层所有蒙版选择状态或整个帧剪贴板模块已完成迁移。
