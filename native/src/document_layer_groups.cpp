@@ -276,7 +276,11 @@ bool Document::splitLayerStyles(const std::string& requested){
 
 namespace moon {
 bool Document::pasteTilemapFrames(const FrameClipboardSnapshot& clip,bool duplicateSelection,std::optional<int> dropIndex){
- if(clip.items.empty())return false;if(active()||selection_||!activeMaskId_.empty())throw std::runtime_error("Finish the active edit before frame paste");
+ if(clip.items.empty())return false;
+ const bool ordinaryLocal=clip.sourceIdentity==identity_&&!hasFreeTileContent()&&!hasTilemapContent()&&clip.tilesets.empty()&&std::none_of(clip.layers.begin(),clip.layers.end(),[](const auto& l){return l.kind=="free-tile"||l.kind=="tilemap";});
+ // Ordinary frame paste already permits a static pixel selection. Reusing the
+ // structural transaction must not make the auto-link toggle disable paste.
+ if(active()||(!ordinaryLocal&&(selection_||!activeMaskId_.empty())))throw std::runtime_error("Finish the active edit before frame paste");
  const bool same=clip.sourceIdentity==identity_;const auto& original=timeline_.state();
  if(clip.width<1||clip.height<1||clip.layers.empty()||original.frames.size()+clip.items.size()>10000||std::max(original.layers.size(),clip.layers.size())>256)throw std::invalid_argument("Invalid frame clipboard extent");
  if(!same&&std::any_of(clip.layers.begin(),clip.layers.end(),[](const auto& l){return l.kind=="free-tile";}))throw std::invalid_argument("Cross-document free tile frame source transfer is not migrated; use whole-layer clipboard");if(same)for(const auto& l:original.layers)if(l.kind=="free-tile"&&l.autoLinkAnimationCels)throw std::invalid_argument("Linked free tile frame paste is not migrated");

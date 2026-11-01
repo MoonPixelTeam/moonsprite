@@ -131,6 +131,35 @@ int main() {
         CHECK(timeline::resolvedMask(target.timeline().state(),target.layer().id,frames.back().id)->surface.pixels[0]==0xff808080);
         const auto pastedId=pasted->id,maskId=masks.back().mask.id;target.undo();CHECK(target.timeline().state().frames.size()==1&&target.timeline().state().masks.empty());target.redo();CHECK(target.timeline().findCelById(pastedId)&&target.timeline().diagnoseLinks().empty());CHECK(target.timeline().state().masks.back().mask.id==maskId);
       }
+      // Legacy pasteAnimationFrames inherits opted-in layers from the actual
+      // preceding slot; empty independent slots do not start a link chain.
+      for(bool enabled:{false,true})for(bool visible:{false,true}){
+        Document d(1,1);dot(d,0,0,0xff123456);const auto copied=d.frame().id;
+        d.addFrame();const auto preceding=d.frame().id;if(visible)dot(d,0,0,0xffabcdef);
+        const auto owner=d.cel().id;d.setLayerAutoLinkAnimationCels(d.layer().id,enabled);
+        d.selectFrameHeader(copied);CHECK(d.copySelectedFrames());d.selectFrameHeader(preceding);
+        d.previewSelection(SelectionMask{0,0,1,1,{}});const auto history=d.historyPosition();CHECK(d.pasteCopiedFrames());CHECK(d.historyPosition()==history+1&&d.selection().has_value());
+        const auto pasted=d.cel().id;CHECK(enabled&&visible?d.cel().linkedCelId==owner:!d.cel().linkedCelId);
+        CHECK(d.pixels()[0]==(enabled&&visible?0xffabcdef:0xff123456));
+        d.undo();CHECK(d.timeline().state().frames.size()==2&&d.frame().id==preceding);d.redo();CHECK(d.cel().id==pasted&&d.timeline().diagnoseLinks().empty());
+      }
+      {
+        Document d(1,1);dot(d,0,0,0xff123456);const auto root=d.cel().id,first=d.frame().id;
+        d.addFrame();dot(d,0,0,0xffabcdef);const auto second=d.frame().id;
+        d.setLayerAutoLinkAnimationCels(d.layer().id,true);d.selectFrameHeader(first);d.selectFrameHeader(second,1);CHECK(d.copySelectedFrames());d.selectFrameHeader(first);
+        CHECK(d.pasteCopiedFrames());const auto& frames=d.timeline().state().frames;
+        for(int i:{1,2})CHECK(d.timeline().findCel(d.layer().id,frames[i].id)->linkedCelId==root);
+        d.undo();CHECK(d.timeline().state().frames.size()==2);d.redo();CHECK(d.timeline().diagnoseLinks().empty());
+      }
+      for(bool after:{false,true}){
+        Document d(1,1);dot(d,0,0,0xff123456);const auto first=d.frame().id,root=d.cel().id;
+        d.addFrame();dot(d,0,0,0xffabcdef);const auto second=d.frame().id;
+        d.setLayerAutoLinkAnimationCels(d.layer().id,true);d.selectFrameHeader(second);const auto history=d.historyPosition();
+        d.copyTimelineFrames(first,after);CHECK(d.historyPosition()==history+1&&d.timeline().state().frames.size()==3);
+        const auto& frames=d.timeline().state().frames;const auto* pasted=d.timeline().findCel(d.layer().id,frames[after?1:0].id);
+        CHECK(after?pasted->linkedCelId==root:!pasted->linkedCelId);CHECK(d.timeline().resolveSurface(pasted->id).surface->pixels[0]==(after?0xff123456:0xffabcdef));
+        d.undo();CHECK(d.timeline().state().frames.size()==2);d.redo();CHECK(d.timeline().diagnoseLinks().empty());
+      }
       // Frame clipboard inserts after the final selected slot and activates first.
       Document d(1,1);for(int i=1;i<4;++i)d.addFrame();const auto frames=d.timeline().state().frames;
       d.selectFrame(frames[0].id);dot(d,0,0);d.selectFrameHeader(frames[0].id);CHECK(d.copySelectedFrames() && d.hasFrameClipboard());

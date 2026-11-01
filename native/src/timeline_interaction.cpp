@@ -69,9 +69,9 @@ void Document::moveTimelineCels(const std::string& anchorId,const std::string& t
 
 void Document::copyTimelineFrames(const std::string& target,bool after){
  if(!timeline_.hasFrame(target))return;
- if(hasFreeTileContent()||hasTilemapContent()){
+ if(hasFreeTileContent()||hasTilemapContent()||std::any_of(timeline_.state().layers.begin(),timeline_.state().layers.end(),[](const auto& l){return l.autoLinkAnimationCels;})){
   const auto clipboard=frameClipboard_;const auto celClipboard=celClipboard_;
-  try{if(copySelectedFrames()){const auto snapshot=exportFrameClipboard();pasteTilemapFrames(snapshot,true,int(timeline_.frameIndex(target))+(after?1:0));}}
+  try{if(copySelectedFrames()){auto snapshot=exportFrameClipboard();if(!hasFreeTileContent()&&!hasTilemapContent())for(auto& item:snapshot.items){for(auto& c:item.cels)c.linkedCelId.reset();for(auto& mask:item.masks)mask.mask.linkedMaskId.clear();}pasteTilemapFrames(snapshot,true,int(timeline_.frameIndex(target))+(after?1:0));}}
   catch(...){frameClipboard_=clipboard;celClipboard_=celClipboard;throw;}
   frameClipboard_=clipboard;celClipboard_=celClipboard;return;
  }
