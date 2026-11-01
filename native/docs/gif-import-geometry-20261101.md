@@ -21,3 +21,11 @@ native此前仅允许同尺寸、铺满画布、零偏移、默认透明度／zI
 既有`cel-selection-clipboard-tests`和`moon-core-tests`实际通过，含浮动选区提交、起点越界限制及时间槽承接的原有检查。正式Release主程序构建成功，来源覆盖检查通过。没有新增实际OS拖放或GIF文件选择的人工验收，不把核心检查描述为人工界面验收。
 
 目标编辑文档仍限RGBA；索引／灰度模式转换、特殊瓦片目标及整个GIF模块的全部等价性不在本批完成声明内。
+
+## 后续补齐：导入后的编辑目标和选择历史
+
+旧版`workspace-commands-animation-frame.ts::importGifAnimationLayer`在导入前后捕获动画选择历史，导入时清除活动蒙版和隔离视图，通过`applyLayerRowSelection`选中新图层；Undo／Redo调用`workspace-animation-selection-history.ts::restoreAnimationSelectionHistory`恢复上下文。
+
+native此前只更新活动层、帧和部分时间轴选择，可能留下旧蒙版编辑目标或组选中，导致新图层绘制入口仍不可用。本批复用已有`Edit::MaskContextHistory`及`GroupUiSnapshot`：导入后退出旧蒙版编辑，清除组选中并选中新层，保留组结构和折叠显示；Undo恢复原活动层／帧、蒙版及隔离状态、组选中和原时间轴行，Redo回到新图层。不新增历史类型或独立选择管理器。
+
+新增四组核心场景覆盖图层／组蒙版与隔离开／关，检查导入后一条历史、普通绘图可用、立即绘制不改变旧蒙版、组折叠显示、Undo／Redo。`free-tile-project-tests`、`cel-selection-clipboard-tests`和`moon-core-tests`实际通过，正式Release构建成功，来源覆盖检查通过。此批是状态／事务检查，没有新增实际鼠标拖放或截图验收。
