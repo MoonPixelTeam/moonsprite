@@ -160,3 +160,11 @@
 本批在 `pasteCopiedCels` 既有剩余成员提升过程中补齐规范源编辑数据和属性，粘贴完成后复用活动Cel透明度投影。candidate事务、ID映射、目标选择和完整时间轴历史继续沿用，不改变资源准入或重设架构。浮动像素选区粘贴路径未在本批修改或声明等价。
 
 八组回归覆盖同工程／跨工程snapshot分支、覆盖根／副本、普通／文字图层，验证替换目标与剩余成员的像素、偏移、透明度、zIndex、文字及原点，一次历史、目标选择、保存重开、Undo恢复原关联和编辑属性、Redo。`free-tile-project-tests`、`moon-core-tests`、`cel-selection-clipboard-tests`均通过，正式Release构建通过。未新增系统剪贴板或实际菜单操作验收，不声明完整粘贴模块完成。
+
+## 后续补齐：跨工程单元格粘贴的目标类型
+
+旧版 `workspace-commands-animation-cel-clipboard.ts::pasteCrossDocumentAnimationCels` 为每个目标调用 `workspace-animation-cel-target.ts::animationCelForTarget`，按目标层kind清除不适用的编辑数据。原生普通跨工程粘贴此前直接复制源Cel，文字元数据可能进入普通像素层。
+
+本批在既有Cel ID和关联映射后，按实际目标类型保留或清除文字及特殊编辑数据。文字目标承接源文字，普通目标保留栅格像素并清文字；源无文字时覆盖文字目标也不保留目标旧文字。同工程分支、源快照、像素尺寸／偏移、一次时间轴事务和资源准入保持原逻辑。
+
+八组回归覆盖普通／文字源及普通／文字目标、复制后删除源内容及保留源内容，检查较小目标中的越界像素、透明度／zIndex、内部关联、追加帧、目标选择、一条历史、保存重开、Undo原文字和Redo同一帧身份。三套相关测试与正式Release构建通过，来源覆盖检查通过。特殊资源跨工程协议、索引／灰度目标转换和实际系统剪贴板交互不在本批完成范围。
