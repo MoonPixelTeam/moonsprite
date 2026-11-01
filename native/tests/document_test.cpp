@@ -106,6 +106,31 @@ int main() {
 
 
     {
+      // Portable frame snapshots retain internal Cel links after all copied
+      // source frames disappear; links to frames outside the payload detach.
+      for(const bool includeRoot:{false,true}){
+        Document source(1,1);dot(source,0,0,0xff123456);const auto first=source.frame().id;
+        source.addLinkedFrame();const auto second=source.frame().id;source.addFrame();
+        auto state=source.timeline().state();
+        timeline::MaskSlot root;root.ownerId=source.layer().id;root.frameId=first;root.mask.id="clipboard-root-mask";root.mask.surface.width=root.mask.surface.height=1;root.mask.surface.pixels=std::vector<Pixel>{0xff808080};
+        auto alias=root;alias.frameId=second;alias.mask.id="clipboard-alias-mask";alias.mask.linkedMaskId=root.mask.id;state.masks={root,alias};
+        source=Document::fromImported(1,1,std::move(state),source.palette(),"clipboard-mask-fixture",U"fixture",std::make_shared<const std::vector<std::uint8_t>>());
+        source.selectFrameHeader(second);if(includeRoot)source.selectFrameHeader(first,1);
+        CHECK(source.copySelectedFrames());
+        source.deleteSelectedFrames();const auto revision=source.revision();const auto clip=source.exportFrameClipboard();
+        CHECK(clip.items.size()==(includeRoot?2:1)&&source.revision()==revision);
+        const auto& last=clip.items.back().cels.front();CHECK(last.surface&&last.surface->pixels[0]==0xff123456);
+        CHECK(includeRoot?last.linkedCelId==clip.items.front().cels.front().id:!last.linkedCelId);
+        Document target(1,1);CHECK(target.pasteFrameClipboard(clip));const auto frames=target.timeline().state().frames;
+        const auto* pasted=target.timeline().findCel(target.layer().id,frames.back().id);
+        CHECK(pasted&&target.timeline().resolveSurface(pasted->id).surface->pixels[0]==0xff123456);
+        CHECK(includeRoot?pasted->linkedCelId==target.timeline().findCel(target.layer().id,frames[1].id)->id:!pasted->linkedCelId);
+        const auto& masks=target.timeline().state().masks;CHECK(masks.size()==clip.items.size());
+        CHECK(masks.back().ownerId==target.layer().id&&masks.back().frameId==frames.back().id);
+        CHECK(includeRoot?masks.back().mask.linkedMaskId==masks.front().mask.id:masks.back().mask.linkedMaskId.empty());
+        CHECK(timeline::resolvedMask(target.timeline().state(),target.layer().id,frames.back().id)->surface.pixels[0]==0xff808080);
+        const auto pastedId=pasted->id,maskId=masks.back().mask.id;target.undo();CHECK(target.timeline().state().frames.size()==1&&target.timeline().state().masks.empty());target.redo();CHECK(target.timeline().findCelById(pastedId)&&target.timeline().diagnoseLinks().empty());CHECK(target.timeline().state().masks.back().mask.id==maskId);
+      }
       // Frame clipboard inserts after the final selected slot and activates first.
       Document d(1,1);for(int i=1;i<4;++i)d.addFrame();const auto frames=d.timeline().state().frames;
       d.selectFrame(frames[0].id);dot(d,0,0);d.selectFrameHeader(frames[0].id);CHECK(d.copySelectedFrames() && d.hasFrameClipboard());

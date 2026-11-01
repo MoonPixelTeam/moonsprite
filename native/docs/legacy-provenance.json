@@ -1604,6 +1604,7 @@
     },
     {
       "file": "src/document.cpp",
+      "frameClipboardInternalLinks20261101": "依据legacy/src/renderer/src/store/workspace-commands-animation-frame-clipboard.ts的跨工程全载荷Cel与layerMask/groupMask ID映射：复制时物化跨帧内容并保留复制集合内部链接；源帧删除后export仍保留内部Cel/蒙版链接，范围外断开。普通RGBA跨工程粘贴补齐蒙版，复用已有帧事务、source layer索引和group索引映射，缺少目标组时跳过。核心回归覆盖仅复制别名/同时复制根、删除源、跨工程像素/蒙版、身份与Undo/Redo；同工程现有逐帧独立副本逻辑不变，不宣称跨工程自由瓦片或整个动画模块已完成。",
       "frameClipboardDetachedSource20261101": "2026-11-01 动画帧剪贴板源删除生命周期：依据legacy workspace-commands-animation-frame-clipboard.ts::copySelectedAnimationFrames中cloneAnimationCel/animationCelClipboardSnapshot及workspace-cut.ts先复制后删除，捕获内容独立于源Cel存活。Document::exportFrameClipboard在源Cel已删除时改用复制时持有的内容，清除失效链接/临时共享标记并校验已有surface，避免直接抛Missing frame clipboard Cel；源仍存在时保留既有刷新行为。copySelectedFrames在物化跨帧链接时同步保留freeTiles权威实例，和已有tilemap/text一致。free-tile-project新增复制后删除/剪切后再导出、完整实例/像素/资源、无文档修改、粘贴保存重开和撤销重做身份检查。跨工程自由帧资源协议仍明确禁用：旧frame snapshot仅含层基本属性而无自由源集合/tilesets，不能擅自发明兼容语义。本批不改变UI素材、跨工程准入、资源预算或自动链接能力。",
       "classification": "legacy-partial",
       "sources": [
@@ -2191,6 +2192,7 @@
     },
     {
       "file": "tests/document_test.cpp",
+      "frameClipboardInternalLinks20261101": "依据legacy/src/renderer/src/store/workspace-commands-animation-frame-clipboard.ts的跨工程全载荷Cel与layerMask/groupMask ID映射：复制时物化跨帧内容并保留复制集合内部链接；源帧删除后export仍保留内部Cel/蒙版链接，范围外断开。普通RGBA跨工程粘贴补齐蒙版，复用已有帧事务、source layer索引和group索引映射，缺少目标组时跳过。核心回归覆盖仅复制别名/同时复制根、删除源、跨工程像素/蒙版、身份与Undo/Redo；同工程现有逐帧独立副本逻辑不变，不宣称跨工程自由瓦片或整个动画模块已完成。",
       "classification": "legacy-partial",
       "sources": [
         "legacy/src/renderer/src/core/history.ts",
