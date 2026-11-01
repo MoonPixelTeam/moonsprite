@@ -68,3 +68,13 @@
 回归样本包含组内源图层、源样式／共享内容引用、新增普通层和文字层、文字像素粘贴到现有普通层、基础属性、无对应目标组的蒙版、源工程不变、Undo／Redo和保存重开。本批不扩展索引色／灰度转换或特殊瓦片资源协议，也没有变更布局或素材。
 
 本批实际验证：`free-tile-project-tests`（含新增图层／文字适配和保存重开场景）、`cel-selection-clipboard-tests`、`moon-core-tests`均通过；正式Release构建成功，唯一正式程序`--free-tile-transform-check`退出码0。来源登记覆盖检查通过；没有新增系统剪贴板人工交互或整板块等价性声明。
+
+## 后续补齐：普通帧Alt拖动复制（AN-003）
+
+旧版`workspace-commands-animation-frame-clipboard.ts::pasteAnimationFrames(duplicateAt)`从所选帧构造局部复制载荷，直接插入最终落点；不会覆盖session的帧／Cel剪贴板，也不会调用移动帧的循环段重排算法。
+
+此前普通、未启用自动关联的native路径先粘贴再移动，只恢复帧剪贴板，导致原Cel剪贴板被清空，并额外经过循环段重排。现在所有帧拖动复制统一复用现有`pasteTilemapFrames`直接插入事务，保留最终落点参数、一次结构历史、帧选择及原活动上下文。普通Cel和蒙版按同工程独立复制规则断开关联，自动关联继续由已有前槽继承处理；特殊资源准入规则不变。成功后退出旧蒙版编辑，异常路径恢复两类剪贴板。
+
+新增六组检查覆盖无剪贴板／帧剪贴板／Cel剪贴板及首帧前／后落点，核对复制像素、独立Cel、循环段原端点、帧选择、一条历史、Undo／Redo活动帧恢复及剪贴板保持。新增场景放在独立测试函数，避免继续增大已有大型核心测试main的栈帧，未调整软件或测试的栈容量配置。
+
+`moon-core-tests`、`free-tile-project-tests`和`cel-selection-clipboard-tests`实际通过；正式Release构建成功，来源覆盖检查通过。没有新增物理Alt拖放、异常取消或本批普通复制结果的保存重开专项验收，不把这些列为本批实际运行结果。

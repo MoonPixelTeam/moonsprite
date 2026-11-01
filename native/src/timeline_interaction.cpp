@@ -69,17 +69,14 @@ void Document::moveTimelineCels(const std::string& anchorId,const std::string& t
 
 void Document::copyTimelineFrames(const std::string& target,bool after){
  if(!timeline_.hasFrame(target))return;
- if(hasFreeTileContent()||hasTilemapContent()||std::any_of(timeline_.state().layers.begin(),timeline_.state().layers.end(),[](const auto& l){return l.autoLinkAnimationCels;})){
-  const auto clipboard=frameClipboard_;const auto celClipboard=celClipboard_;
-  try{if(copySelectedFrames()){auto snapshot=exportFrameClipboard();if(!hasFreeTileContent()&&!hasTilemapContent())for(auto& item:snapshot.items){for(auto& c:item.cels)c.linkedCelId.reset();for(auto& mask:item.masks)mask.mask.linkedMaskId.clear();}pasteTilemapFrames(snapshot,true,int(timeline_.frameIndex(target))+(after?1:0));}}
-  catch(...){frameClipboard_=clipboard;celClipboard_=celClipboard;throw;}
-  frameClipboard_=clipboard;celClipboard_=celClipboard;return;
- }
- const auto clipboard=frameClipboard_;const auto beforeActive=activeFrameId_;const auto beforeLayer=activeLayerId_;const auto beforeSelection=selectedFrames_;const auto anchor=frameAnchor_;const auto formal=timelineSelection_;const auto pos=position_;
- if(!copySelectedFrames())return;const auto oldGrouping=groupingHistory_;groupingHistory_=true;
- selectFrame(target);if(!after && activeFrameIndex()>0)selectFrame(timeline_.state().frames[activeFrameIndex()-1].id);
- if(pasteCopiedFrames(true)){moveSelectedFrames(target,after);groupingHistory_=oldGrouping;groupEdits(pos,beforeSelection);auto& edit=history_[position_-1];edit.beforeFrame=beforeActive;edit.beforeActive=beforeLayer;edit.afterFrame=activeFrameId_;edit.afterActive=activeLayerId_;edit.beforeFrameAnchor=anchor;edit.afterFrameAnchor=frameAnchor_;edit.beforeTimelineSelection=formal;edit.afterTimelineSelection=timelineSelection_;}
- else{groupingHistory_=oldGrouping;selectFrame(beforeActive);}
- frameClipboard_=clipboard;
+ // Legacy duplicateAt captures the dragged frames directly, without replacing
+ // either clipboard or temporarily moving a pasted block through the timeline.
+ const auto clipboard=frameClipboard_;const auto celClipboard=celClipboard_;
+ try{if(copySelectedFrames()){
+  auto snapshot=exportFrameClipboard();
+  if(!hasFreeTileContent()&&!hasTilemapContent())for(auto& item:snapshot.items){for(auto& c:item.cels)c.linkedCelId.reset();for(auto& mask:item.masks)mask.mask.linkedMaskId.clear();}
+  if(pasteTilemapFrames(snapshot,true,int(timeline_.frameIndex(target))+(after?1:0))){activeMaskId_.clear();maskIsolated_=false;}
+ }}catch(...){frameClipboard_=clipboard;celClipboard_=celClipboard;throw;}
+ frameClipboard_=clipboard;celClipboard_=celClipboard;
 }
 }

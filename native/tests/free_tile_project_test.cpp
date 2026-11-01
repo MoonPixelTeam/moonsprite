@@ -88,6 +88,25 @@ void gifImportEditingContext(){
   target.beginStroke({0,0},0xffabcdef);check(target.commitStroke(),"Imported ordinary layer immediately accepts drawing");check(target.timeline().state().masks.front().mask.surface.pixels[1]==0xff888888,"Drawing after GIF import leaves old mask unchanged");
  }
 }
+void ordinaryFrameDragCopy(){
+ const auto verify=[](bool value){check(value,"Ordinary frame drag copy");};
+ const auto dot=[](Document& d,int x,int y,Pixel color){d.beginStroke({x,y},color);d.commitStroke();};
+      // Legacy duplicateAt leaves both clipboards untouched and does not run
+      // frame-reorder loop reconciliation on a freshly inserted copy.
+      for(int clipboardKind:{0,1,2})for(bool after:{false,true}){
+        Document d(1,1);dot(d,0,0,0xff123456);const auto first=d.frame().id,firstCel=d.cel().id;
+        d.addFrame();dot(d,0,0,0xff445566);const auto middle=d.frame().id;d.addFrame();dot(d,0,0,0xffabcdef);const auto last=d.frame().id;
+        timeline::LoopSection loop;loop.name=U"Original range";loop.startFrameId=first;loop.endFrameId=middle;const auto loopId=d.createLoopSection(loop);
+        if(clipboardKind==1){d.selectFrameHeader(first);verify(d.copySelectedFrames());}
+        if(clipboardKind==2){d.selectTimelineCel(firstCel);verify(d.copySelectedCels());}
+        d.selectFrameHeader(last);const auto history=d.historyPosition();const auto active=d.frame().id;d.copyTimelineFrames(first,after);
+        verify(d.historyPosition()==history+1&&d.timeline().state().frames.size()==4&&d.selectedFrames()==std::vector<std::string>{d.frame().id});
+        verify(d.activeFrameIndex()==(after?1:0)&&d.pixels()[0]==0xffabcdef&&!d.cel().linkedCelId);
+        const auto& copiedLoop=d.timeline().state().loopSections.front();verify(copiedLoop.id==loopId&&copiedLoop.startFrameId==first&&copiedLoop.endFrameId==middle);
+        const auto verifyClipboard=[&]{verify(d.hasFrameClipboard()==(clipboardKind==1)&&d.hasCelClipboard()==(clipboardKind==2));if(clipboardKind==1)verify(d.exportFrameClipboard().items.front().frame.id==first);if(clipboardKind==2)verify(d.exportCelClipboard().items.front().cel.id==firstCel);};
+        verifyClipboard();const auto copied=d.frame().id;d.undo();verify(d.timeline().state().frames.size()==3&&d.frame().id==active&&d.selectedFrames()==std::vector<std::string>{last});verifyClipboard();d.redo();verify(d.frame().id==copied&&d.timeline().state().frames.size()==4);verifyClipboard();
+      }
+}
 void imagePaste(){
  for(int rotation=0;rotation<4;++rotation)for(bool horizontal:{false,true})for(bool vertical:{false,true}){
   auto d=fixture(false);d->setFreeTileInstanceView(true);d->selectFreeTileInstance("instance");Document::FreeTileInstanceChanges transform;transform.rotation=rotation;transform.flipHorizontal=horizontal;transform.flipVertical=vertical;d->setFreeTileInstanceProperties("instance",transform);
@@ -739,4 +758,4 @@ void rasterizationMaskContext(bool styled){
  d->redo();check(styled?(d->activeMaskId().empty()&&!d->maskIsolated()):(d->activeMaskId()==mask&&d->maskIsolated()),"Redo restores converted mask context");
 }
 }
-int main(){try{gifImportEditingContext();portableGifImport();portableFrameLayerMapping();portableRgbaFrames();transforms();roundtrip();creationAndPlacement();sourceDrawing();sourceBucketFill();sourceGradientFill();sourceShapes();sourceCurves();sourceAirbrush();imagePaste();freeSelectionMovement();freeSelectionTransforms();freeSelectionTransformEntry();freeContentFlips();timelineContentFlips();independentLayerCopies();freeLayerClipboard();freeCelClipboard();freeFrameClipboard();freeTimelineDeletion();freeFrameCreation();freeFrameDragCopy();specialCelDragging();freeSourceSelection();pixelSelectionClipboard();selectedSourceEditTarget();sourceLineAndReplacement();sourceManagement();sourceHistoryFocus();sourceProperties();sourceUnusedCleanup();sourceReordering();freeTileModeSelection();instanceSelectionAndMove();instanceFlagsAndDeletion();instanceProperties();instanceContextActions();freeTileInstanceClipboard();rasterization(false);rasterization(true);rasterizationMaskContext(false);rasterizationMaskContext(true);std::cout<<"free tile project tests passed\n";return 0;}catch(const std::exception& e){std::cerr<<e.what()<<'\n';return 1;}}
+int main(){try{ordinaryFrameDragCopy();gifImportEditingContext();portableGifImport();portableFrameLayerMapping();portableRgbaFrames();transforms();roundtrip();creationAndPlacement();sourceDrawing();sourceBucketFill();sourceGradientFill();sourceShapes();sourceCurves();sourceAirbrush();imagePaste();freeSelectionMovement();freeSelectionTransforms();freeSelectionTransformEntry();freeContentFlips();timelineContentFlips();independentLayerCopies();freeLayerClipboard();freeCelClipboard();freeFrameClipboard();freeTimelineDeletion();freeFrameCreation();freeFrameDragCopy();specialCelDragging();freeSourceSelection();pixelSelectionClipboard();selectedSourceEditTarget();sourceLineAndReplacement();sourceManagement();sourceHistoryFocus();sourceProperties();sourceUnusedCleanup();sourceReordering();freeTileModeSelection();instanceSelectionAndMove();instanceFlagsAndDeletion();instanceProperties();instanceContextActions();freeTileInstanceClipboard();rasterization(false);rasterization(true);rasterizationMaskContext(false);rasterizationMaskContext(true);std::cout<<"free tile project tests passed\n";return 0;}catch(const std::exception& e){std::cerr<<e.what()<<'\n';return 1;}}
