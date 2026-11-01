@@ -2496,6 +2496,10 @@ bool Document::commitFloatingPaste(){
  std::size_t extra=0;if(f.beforeSelection)floatingAddBytes(extra,f.beforeSelection->mask.size());if(selection_)floatingAddBytes(extra,selection_->mask.size());
  if(f.beforeCelTimeline)floatingAddBytes(extra,adjustmentStorageBudget(timeline_,1));else for(const auto& target:f.targets)floatingAddBytes(extra,std::uint64_t(target.preview.size())*sizeof(Delta));checkFloatingBudget(f,extra);
  Edit e{{},state_,nextState_};e.beforeActive=e.afterActive=f.layerId;e.beforeFrame=e.afterFrame=f.frameId;e.pixelSelectionEdit=true;e.beforePixelsSelection=f.beforeSelection;e.afterPixelsSelection=selection_;
+ if(f.beforeCelTimeline&&f.beforeCelTimeline->frames.size()==timeline_.state().frames.size()){
+  const bool pixelsChanged=std::any_of(f.targets.begin(),f.targets.end(),[](const auto& target){return std::any_of(target.preview.begin(),target.preview.end(),[](const auto& entry){return entry.second.before!=entry.second.after;});});
+  if(!pixelsChanged){const bool selectionChanged=!selectionEqual(f.beforeSelection,selection_);e.documentChanged=false;e.afterState=state_;floating_.reset();if(selectionChanged)pushEdit(std::move(e),U"变换选区内容");return false;}
+ }
  if(f.beforeCelTimeline){e.afterTimeline=timeline_.state();e.beforeTimelineSelection=e.afterTimelineSelection=f.beforeTimelineSelection;e.beforeSelection=e.afterSelection=f.beforeSelectedFrames;history_.reserve(position_+1);e.beforeTimeline=std::move(f.beforeCelTimeline);floating_.reset();pushEdit(std::move(e),U"变换选区内容");return true;}
  for(const auto& target:f.targets){Edit child{{},state_,nextState_};child.targetCelId=target.celId;for(const auto& item:target.preview){const auto& delta=item.second;if(delta.before!=delta.after)child.pixels.push_back(delta);}if(!child.pixels.empty())e.children.push_back(std::move(child));}
  const bool pixelsChanged=!e.children.empty(),selectionChanged=!selectionEqual(f.beforeSelection,selection_);if(!pixelsChanged){e.documentChanged=false;e.afterState=state_;}
