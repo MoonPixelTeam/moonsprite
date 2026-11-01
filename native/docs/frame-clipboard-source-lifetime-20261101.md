@@ -240,3 +240,14 @@
 四组新增场景覆盖复制后重排／删除图层、保留／移除组、新增图层，并执行临时Alt拖拽复制及Undo后重新导出，验证原元数据未被污染。跨工程粘贴验证原始行顺序、新建层名称及显示属性、图层／组蒙版索引、一次历史、保存重开和Undo／Redo。`free-tile-project-tests`、`moon-core-tests`、`cel-selection-clipboard-tests`实际通过；源码来源覆盖542文件通过。实际鼠标／菜单验收未执行。
 
 唯一正式Release程序最终构建成功，产物仍为 `native/build/Release/moonsprite-native.exe`，未创建其他编译版本。
+
+
+## 后续补齐：同工程帧粘贴承接当前图层集合
+
+旧版 `workspace-commands-animation-frame-clipboard.ts::pasteAnimationFrames` 插入内容后经 `animation.ts::ensureAnimationDocument` 过滤已删除图层／组的Cel及蒙版，按当前图层集合补齐空槽，再执行 `inheritAnimationFrameCelLinks`。因此同工程不应恢复删除的owner，新增图层在粘贴帧中应为空白，启用自动关联时再继承前帧。
+
+原生普通路径此前直接追加捕获的Cel／蒙版：已删owner会残留、新增层缺槽；自动关联分支则因源层缺失而拒绝。本批在 `pasteCopiedFrames` 的临时载荷中按当前owner过滤，为新层补当前几何／原点／透明度的透明槽，并清除同工程复制关联；统一复用已有 `pasteTilemapFrames` 的候选结构事务、预算、自动关联、蒙版映射与一次历史，不直接修改活timeline。此规范化只用于本次同工程粘贴，不改写复制时的跨工程快照。
+
+八组新增场景覆盖源层删除／保留、组移除／保留和新层自动关联开／关，验证当前层顺序及完整slot、按身份接收旧内容、透明槽或前帧继承、仅存活蒙版恢复、帧时长／禁用、选择、一条历史、Undo／Redo和保存重开。修正结构测试的删除夹具：解组后明确单选目标层，断言实际已删除，避免多选最后两层导致删除被拒绝而误判覆盖。
+
+三套相关检查（`free-tile-project-tests`、`moon-core-tests`、`cel-selection-clipboard-tests`）通过，唯一正式Release构建通过，542文件来源覆盖通过。仅普通RGBA同工程；特殊资源帧粘贴未扩大准入，未执行实际鼠标／菜单验收。
