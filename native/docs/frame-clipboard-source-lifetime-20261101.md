@@ -214,3 +214,15 @@
 本节仅针对普通RGBA同层显式关联；不扩大特殊图层、跨图层共享或图层组关联支持。实际鼠标／菜单验收未在本批执行。
 
 本批实际结果：上述八组新增场景及 `free-tile-project-tests`、`moon-core-tests`、`cel-selection-clipboard-tests` 通过，唯一正式Release程序构建通过，542文件来源覆盖与diff检查通过。
+
+
+## 后续补齐：复制帧内容不随源编辑漂移
+
+旧版 `workspace-commands-animation-frame-clipboard.ts::copySelectedAnimationFrames` 使用 `cloneAnimationCel`、`cloneAnimationLayerMask` 和 `cloneAnimationGroupMask` 捕获帧内容，跨工程载荷也在复制命令内经 `workspace-animation-cel-conversion.ts::animationCelClipboardSnapshot` 建立。原生 `exportFrameClipboard` 先前在源Cel仍存在时重新读取Surface、文字等编辑数据与关联，并重新读取蒙版链接；结果取决于源是否被删除，同一次复制重新导出可能得到不同内容。
+
+本批统一使用已捕获的Cel及蒙版内容，只清除载荷范围外的关联并复用Surface校验，不回读活源。`copySelectedFrames` 物化关联副本时补齐规范源opacity／zIndex，与已有文字／瓦片编辑数据一起捕获。保持原同工程独立帧粘贴、跨工程身份映射和完整时间轴事务。
+
+本批范围是Cel／蒙版内容及其关联。帧导出目前仍读取当前图层、组及tileset元数据，复制后删除或重排图层／组等结构变化的完整冻结尚未在本批承接；特殊共享资源沿用当前重渲染策略。本节不表示完整工程结构快照或全部帧剪贴板已等价。
+
+
+八组回归覆盖普通／文字图层、只复制关联副本／复制根与副本、修改后保留／删除源根。复制后改像素或文字与原点、透明度、断开Cel关联、删除蒙版根，再导出时验证旧像素／文字／属性／蒙版／关联与帧时长保持。验证同工程及跨工程粘贴、一次历史、保存重开和Undo／Redo。三套相关测试（`free-tile-project-tests`、`moon-core-tests`、`cel-selection-clipboard-tests`）、唯一正式Release构建、542文件来源覆盖和diff检查通过；未执行实际鼠标／系统剪贴板验收。
