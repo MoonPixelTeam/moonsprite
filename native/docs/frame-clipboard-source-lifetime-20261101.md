@@ -120,3 +120,11 @@
 新增八组回归覆盖单删／批删／剪切、部分／全部帧范围、活动层回退、Cel保留／清除和Undo／Redo的范围及起点。特殊图层的现有准入和事务规则保持，没有扩大跨工程资源兼容范围。
 
 实际运行：八组新增回归通过，`free-tile-project-tests`、`moon-core-tests`、`cel-selection-clipboard-tests`三套相关检查通过；唯一正式Release程序构建成功，542文件来源覆盖检查通过。未新增实际鼠标／Shift范围选择截图验收，不声明完整动画模块完成。
+
+## 后续补齐：新建链接帧的来源与操作上下文
+
+旧版 `workspace-commands-animation-frame.ts::addLinkedAnimationFrame` 按选中Cel范围起点、帧范围起点、活动位置的顺序取源，Cel只作用对应行，帧选择作用全部行。`workspace-animation-linked-cel.ts::linkCelsInRightFrame` 优先复用右列；没有右列时复用空白帧创建，非Cel范围独立复制源组蒙版。
+
+原生继续复用addFrame和既有Cel／蒙版历史，补齐上述来源选择、文字编辑数据及内容属性、成功清除帧／Cel／蒙版选择和画布选区。已有右列路径Undo恢复原活动帧、选择范围及蒙版隔离，Redo回到清理后的状态；新增列Undo按旧版退出蒙版编辑，恢复原活动帧。新增列组蒙版使用新身份和独立内容，Cel范围不复制组蒙版。
+
+六组回归覆盖活动／Cel／帧范围及复用右列／尾部追加，包含来源不同于活动位置、未选行不变、文字与偏移／透明度／zIndex、独立组蒙版、一次历史、保存重开和Undo／Redo。三套相关检查通过，正式Release构建通过。特殊图层链接准入未扩展；未新增实际Alt+M鼠标／键盘交互验收。追加路径仍使用addFrame的既有录制通知时机，缩时最终捕获一致性尚未在本批验证，不声明整个关联帧模块完成。

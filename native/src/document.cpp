@@ -422,13 +422,26 @@ void Document::deleteFrame() {if(hasTilemapContent()||hasFreeTileContent())retur
 }
 void Document::applyCelEdit(const Edit& e,bool redo){const auto& values=redo?e.afterCels:e.beforeCels;if(values.empty())return;for(const auto& value:values){auto it=std::find_if(timeline_.state_.cels.begin(),timeline_.state_.cels.end(),[&](const auto& c){return c.id==value.id;});if(it==timeline_.state_.cels.end())throw std::logic_error("Missing history cel");*it=value;}timeline_.buildIndex();if(e.beforeFrames.empty() && !e.beforeFrame.empty())activeFrameId_=redo?e.afterFrame:e.beforeFrame;change_={0,0,width_,height_};}
 void Document::addLinkedFrame(bool allLayers){if(hasTilemapContent()||hasFreeTileContent())return;
- cancelStroke();cancelLayerOpacity();const auto sourceFrame=frame().id;const auto layerId=layer().id;const auto index=activeFrameIndex();const bool inserted=index+1==timeline_.state().frames.size();if(inserted)addFrame();
- Edit e{{},state_,nextState_};e.beforeFrame=sourceFrame;e.afterFrame=timeline_.state().frames[index+1].id;
- for(const auto& l:timeline_.state().layers){if(!allLayers && l.id!=layerId)continue;const auto source=timeline_.resolveSurface(timeline_.findCel(l.id,sourceFrame)->id);if(!source.surface || std::none_of(source.surface->pixels.begin(),source.surface->pixels.end(),[](auto p){return (p>>24)!=0;}))continue;
-  auto& target=*std::find_if(timeline_.state_.cels.begin(),timeline_.state_.cels.end(),[&](const auto& c){return c.layerId==l.id && c.frameId==e.afterFrame;});if(target.id==source.source->id)continue;e.beforeCels.push_back(target);target.linkedCelId=source.source->id;target.runtimeSharedCelId.reset();target.surface.reset();target.zIndex=source.source->zIndex;target.opacity=source.source->opacity;e.afterCels.push_back(target);
+ cancelStroke();cancelLayerOpacity();
+ // Legacy chooses a selected Cel first, then a selected frame anchor, then activity.
+ const DocumentCel* selected=nullptr;const auto& cells=timelineSelection_.cels;
+ if(!cells.empty()){const auto id=std::find(cells.begin(),cells.end(),timelineSelection_.celAnchor)!=cells.end()?timelineSelection_.celAnchor:cells.back();selected=timeline_.findCelById(id);}
+ const auto previousFrame=activeFrameId_;const auto previousLayer=activeLayerId_;
+ auto sourceFrame=selected?selected->frameId:activeFrameId_;const auto sourceLayer=selected?selected->layerId:activeLayerId_;
+ if(!selected&&!selectedFrames_.empty()){const auto id=std::find(selectedFrames_.begin(),selectedFrames_.end(),frameAnchor_)!=selectedFrames_.end()?frameAnchor_:selectedFrames_.back();if(timeline_.hasFrame(id))sourceFrame=id;}
+ const bool linkAll=!selected&&(allLayers||!selectedFrames_.empty());const bool copyGroupMasks=!selected;
+ const auto index=timeline_.frameIndex(sourceFrame);const bool inserted=index+1==timeline_.state().frames.size();
+ Edit e{{},state_,nextState_};e.beforeFrame=previousFrame;e.beforeActive=e.afterActive=previousLayer;e.beforeSelection=selectedFrames_;e.beforeTimelineSelection=timelineSelection_;e.beforeFrameAnchor=frameAnchor_;
+ e.maskContext=std::make_shared<Edit::MaskContextHistory>(Edit::MaskContextHistory{inserted?std::string{}:activeMaskId_,{},inserted?false:maskIsolated_,false});
+ if(inserted){if(sourceFrame!=activeFrameId_)selectFrame(sourceFrame);addFrame();}
+ e.afterFrame=timeline_.state().frames[index+1].id;
+ for(const auto& l:timeline_.state().layers){if(!linkAll&&l.id!=sourceLayer)continue;const auto source=timeline_.resolveSurface(timeline_.findCel(l.id,sourceFrame)->id);if(!source.surface||std::none_of(source.surface->pixels.begin(),source.surface->pixels.end(),[](auto p){return (p>>24)!=0;}))continue;
+  auto& target=*std::find_if(timeline_.state_.cels.begin(),timeline_.state_.cels.end(),[&](const auto& c){return c.layerId==l.id&&c.frameId==e.afterFrame;});if(target.id==source.source->id)continue;e.beforeCels.push_back(target);target.linkedCelId=source.source->id;target.runtimeSharedCelId.reset();target.surface.reset();target.zIndex=source.source->zIndex;target.opacity=source.source->opacity;target.text=source.source->text;target.tilemap=source.source->tilemap;target.freeTiles=source.source->freeTiles;e.afterCels.push_back(target);
  }
- timeline_.buildIndex();activeFrameId_=e.afterFrame;change_={0,0,width_,height_};publishChange();
- if(inserted){auto& frameEdit=history_.back();historyBytes_-=frameEdit.bytes();frameEdit.detachedCels.clear();for(const auto& c:timeline_.state().cels)if(c.frameId==e.afterFrame)frameEdit.detachedCels.push_back(c);historyBytes_+=frameEdit.bytes();}else pushEdit(std::move(e),U"新建链接动画帧");
+ if(inserted&&copyGroupMasks){const auto masks=timeline_.state().masks;for(const auto& slot:masks)if(slot.group&&slot.frameId==sourceFrame){auto copy=slot;copy.frameId=e.afterFrame;copy.mask.id="mask-native-"+std::to_string(identity_)+"-"+std::to_string(++nextLayerId_);copy.mask.surface=timeline::resolvedMask(timeline_.state(),slot.ownerId,sourceFrame)->surface;copy.mask.linkedMaskId.clear();timeline_.state_.masks.push_back(std::move(copy));}}
+ timeline_.buildIndex();activeFrameId_=e.afterFrame;activeMaskId_.clear();maskIsolated_=false;selection_.reset();clearFrameSelection();timelineSelection_.cels.clear();timelineSelection_.celAnchor.clear();timelineSelection_.maskRows.clear();normalizeFrameDeletionSelection();projectActiveCelOpacities();
+ e.afterSelection=selectedFrames_;e.afterTimelineSelection=timelineSelection_;e.afterFrameAnchor=frameAnchor_;change_={0,0,width_,height_};publishChange();
+ if(inserted){auto& frameEdit=history_.back();historyBytes_-=frameEdit.bytes();frameEdit.beforeFrame=previousFrame;frameEdit.beforeActive=frameEdit.afterActive=previousLayer;frameEdit.beforeSelection=frameEdit.afterSelection=selectedFrames_;frameEdit.beforeTimelineSelection=frameEdit.afterTimelineSelection=timelineSelection_;frameEdit.beforeFrameAnchor=frameEdit.afterFrameAnchor=frameAnchor_;frameEdit.maskContext=e.maskContext;frameEdit.afterMasks=timeline_.state().masks;frameEdit.detachedCels.clear();for(const auto& c:timeline_.state().cels)if(c.frameId==e.afterFrame)frameEdit.detachedCels.push_back(c);frameEdit.label=U"新建链接动画帧";historyBytes_+=frameEdit.bytes();}else pushEdit(std::move(e),U"新建链接动画帧");
 }
 // legacy animationReversedSlotTargets: reverse selected time slots independently per row.
 bool Document::canReverseSelectedCels()const{
