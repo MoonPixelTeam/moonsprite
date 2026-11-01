@@ -86,3 +86,11 @@
 本次在删除槽前保留其他帧引用的解析像素，并断开指向被删除蒙版的关联，复用现有特殊帧删除规则。已有帧顺序历史负责恢复蒙版和原始关联，MaskContextHistory负责在成功及历史回放后退出蒙版编辑，不恢复已失效的绘制目标。
 
 六组独立回归覆盖单帧删除、批量删除、剪切及两个起点，包含图层／组蒙版三级关联、存活像素、一条历史、剪切载荷、保存重开、Undo恢复原关联和Redo，以及操作前后切换蒙版编辑。`free-tile-project-tests`、`moon-core-tests`、`cel-selection-clipboard-tests`实际通过，唯一正式Release程序构建成功。未新增实际鼠标交互或整个动画模块等价验收。
+
+## 后续补齐：删除多级关联的中间帧
+
+旧版 `deleteAnimationFrame` 先经 `ensureAnimationDocument`，其中 `normalizeAnimationCelLinks` 把多级关联规范为根Cel。原生Timeline允许保留多跳关联，原删除逻辑只处理删除根帧，遗漏删除中间别名，后续帧可能留下无效目标。
+
+本次删除普通帧时，将直接引用被删除别名的存活Cel改为引用其仍存活的根，保留显式关联和运行期共享的区别，复用现有 beforeCels／afterCels 历史。没有复制全画布或新增另一套事务，根身份、像素及偏移保持不变。
+
+六组独立回归覆盖单删、批删、剪切和两种关联表示，使用四帧多级链验证无悬空引用、规范根、像素／偏移、一条历史、保存重开、Undo恢复原链及Redo。三套相关检查 `free-tile-project-tests`、`moon-core-tests`、`cel-selection-clipboard-tests` 通过，唯一正式Release程序构建通过。未新增物理鼠标交互或整板块等价验收。

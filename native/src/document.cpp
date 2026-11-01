@@ -380,6 +380,13 @@ void Document::addFrame(bool duplicate) {
 void Document::deleteFrame() {if(hasTilemapContent()||hasFreeTileContent())return;
  commitFloatingPaste();
  cancelStroke();cancelLayerOpacity();if(timeline_.state().frames.size()==1)return;Edit e{{},state_,nextState_};captureFrameOrder(e,false);e.beforeLoops=timeline_.state().loopSections;e.detachedFrame=frame();timeline::State oldLoops;oldLoops.frames=timeline_.state().frames;for(const auto& c:timeline_.state().cels)if(c.frameId==frame().id)e.detachedCels.push_back(c);
+ // Legacy normalizes explicit chains to their surviving canonical source.
+ // Native also accepts multi-hop imported links, so bypass a removed alias
+ // before erasing it; keep explicit links distinct from runtime sharing.
+ for(const auto& removed:e.detachedCels){if(!removed.linkedCelId&&!removed.runtimeSharedCelId)continue;
+  const auto resolved=timeline_.resolveSurface(removed.id);if(resolved.issue!=timeline::LinkIssue::None||!resolved.source)throw std::invalid_argument("Invalid frame deletion cel link");const auto root=resolved.source->id;
+  for(auto& c:timeline_.state_.cels){if(c.frameId==e.detachedFrame->id)continue;const bool explicitLink=c.linkedCelId&&*c.linkedCelId==removed.id;const bool shared=c.runtimeSharedCelId&&*c.runtimeSharedCelId==removed.id;if(!explicitLink&&!shared)continue;e.beforeCels.push_back(c);if(explicitLink)c.linkedCelId=root;if(shared)c.runtimeSharedCelId=root;e.afterCels.push_back(c);}
+ }
  // Native adapter of legacy shared surface objects surviving normalizeAnimationCelLinks.
  for(const auto& removed:e.detachedCels){if(removed.linkedCelId || removed.runtimeSharedCelId || !removed.surface)continue;
   std::vector<std::string> survivors;for(const auto& c:timeline_.state().cels)if(c.frameId!=e.detachedFrame->id && timeline_.resolveSurface(c.id).source->id==removed.id)survivors.push_back(c.id);
