@@ -102,3 +102,11 @@
 本批在现有根内容移交过程中保留透明度、zIndex、文字和既有编辑元数据，复用 beforeCels／afterCels 历史；完成删除后调用现有 `projectActiveCelOpacities`，同步活动层显示属性。不改变既有显式关联转运行期共享的处理，不增加另一套结构事务。当前导入要求可解析的根Surface存在，该限制保持；空白场景使用全透明像素。
 
 18组独立回归覆盖单删／批删／剪切、普通像素／文字／全透明内容及显式／运行期关联，验证剩余像素、偏移、透明度、zIndex、文字编辑数据、一条历史、保存重开、Undo恢复原属性和关联、Redo。`free-tile-project-tests`、`moon-core-tests`、`cel-selection-clipboard-tests` 均通过，唯一正式Release程序构建成功。没有新增物理鼠标交互或完整动画模块验收。
+
+## 后续补齐：普通帧删除后的画布选区
+
+旧版 `workspace-commands-animation-frame.ts::deleteAnimationFrame` 在成功分支清空画布选区和旋转中心，最后一帧不能删除时提前返回。其Undo／Redo闭包不接管当前像素选区；用户后来建立的选区保持。剪切由 `workspace-cut.ts` 先复制再进入相同逐帧删除路径。
+
+原生普通 `deleteFrame` 现于成功删除后清空 `selection_`，批删和剪切直接复用。没有把临时选区写入帧结构历史，也没有新增一条撤销记录；沿用Editor刷新中由选区变化清理旋转中心和自由变换的既有逻辑。特殊图层的现有准入保持，未扩展该部分行为。
+
+九组独立回归覆盖单删／批删／剪切、矩形／稀疏选区、剪切全帧而非选区像素、一条历史、Undo／Redo不恢复旧选区及保持后来选区、最后一帧无操作保留选区和剪切载荷。`free-tile-project-tests`、`moon-core-tests`、`cel-selection-clipboard-tests` 均通过，唯一正式Release程序构建通过。未新增实际鼠标交互和旋转中心截图验收，不声明整个动画模块完成。
