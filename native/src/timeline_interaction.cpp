@@ -71,12 +71,12 @@ void Document::copyTimelineFrames(const std::string& target,bool after){
  if(!timeline_.hasFrame(target))return;
  // Legacy duplicateAt captures the dragged frames directly, without replacing
  // either clipboard or temporarily moving a pasted block through the timeline.
- const auto clipboard=frameClipboard_;const auto celClipboard=celClipboard_;
+ const auto clipboard=frameClipboard_;const auto metadata=frameClipboardMetadata_;const auto celClipboard=celClipboard_;
  try{if(copySelectedFrames()){
   auto snapshot=exportFrameClipboard();
   if(!hasFreeTileContent()&&!hasTilemapContent())for(auto& item:snapshot.items){for(auto& c:item.cels)c.linkedCelId.reset();for(auto& mask:item.masks)mask.mask.linkedMaskId.clear();}
   if(pasteTilemapFrames(snapshot,true,int(timeline_.frameIndex(target))+(after?1:0))){activeMaskId_.clear();maskIsolated_=false;}
- }}catch(...){frameClipboard_=clipboard;celClipboard_=celClipboard;throw;}
- frameClipboard_=clipboard;celClipboard_=celClipboard;
+ }}catch(...){frameClipboard_=clipboard;frameClipboardMetadata_=metadata;celClipboard_=celClipboard;throw;}
+ frameClipboard_=clipboard;frameClipboardMetadata_=metadata;celClipboard_=celClipboard;
 }
 }

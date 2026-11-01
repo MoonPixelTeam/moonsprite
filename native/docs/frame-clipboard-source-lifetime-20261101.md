@@ -226,3 +226,17 @@
 
 
 八组回归覆盖普通／文字图层、只复制关联副本／复制根与副本、修改后保留／删除源根。复制后改像素或文字与原点、透明度、断开Cel关联、删除蒙版根，再导出时验证旧像素／文字／属性／蒙版／关联与帧时长保持。验证同工程及跨工程粘贴、一次历史、保存重开和Undo／Redo。三套相关测试（`free-tile-project-tests`、`moon-core-tests`、`cel-selection-clipboard-tests`）、唯一正式Release构建、542文件来源覆盖和diff检查通过；未执行实际鼠标／系统剪贴板验收。
+
+
+## 后续补齐：帧剪贴板图层／组结构索引快照
+
+旧版 `workspace-commands-animation-frame-clipboard.ts::copySelectedAnimationFrames` 在复制时创建layers及layerIndexById／groupIndexById，跨工程载荷以此确定源行和蒙版owner索引。原生导出此前使用当前timeline的layers／groups；复制后重排或删除图层、移除组，会改变行映射或使已捕获Cel／蒙版找不到owner。
+
+本批复制帧时保存只读结构元数据：layers、groups、sourceIdentity及画布规格；Cel／蒙版仍由原frameClipboard_持有，不重复保存整份像素。导出使用原索引和属性，清空载荷时同步释放元数据。`timeline_interaction.cpp::copyTimelineFrames` 的临时复制在成功及异常路径恢复原结构快照，避免拖拽复制覆盖用户原剪贴板。
+
+范围仅图层／组元数据及画布规格的跨工程映射；tileset仍按当前共享资源查询和重渲染规则处理，特殊跨工程自由瓦片仍拒绝。同工程原粘贴路径在owner被删除后的行为不在本批承接，不能将本节解释为全部结构变化均已支持。
+
+
+四组新增场景覆盖复制后重排／删除图层、保留／移除组、新增图层，并执行临时Alt拖拽复制及Undo后重新导出，验证原元数据未被污染。跨工程粘贴验证原始行顺序、新建层名称及显示属性、图层／组蒙版索引、一次历史、保存重开和Undo／Redo。`free-tile-project-tests`、`moon-core-tests`、`cel-selection-clipboard-tests`实际通过；源码来源覆盖542文件通过。实际鼠标／菜单验收未执行。
+
+唯一正式Release程序最终构建成功，产物仍为 `native/build/Release/moonsprite-native.exe`，未创建其他编译版本。

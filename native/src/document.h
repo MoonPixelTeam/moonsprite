@@ -836,6 +836,7 @@ private:
   TimelineSelection timelineSelection_;
   std::vector<CelClipboardItem> celClipboard_;
   std::vector<FrameClipboardItem> frameClipboard_;
+  std::shared_ptr<const FrameClipboardSnapshot> frameClipboardMetadata_;
   bool animationLoop_=true;
   void mergeRasterLayers(const std::vector<std::string>& ids,std::size_t index);
   void captureFrameOrder(Edit& edit,bool after) const;
