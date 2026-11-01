@@ -256,7 +256,7 @@ bool Document::pasteFrameClipboard(const FrameClipboardSnapshot& snapshot){if(ha
  if(active())throw std::runtime_error("Finish the active edit before pasting frames");
  if(snapshot.width<1 || snapshot.height<1)throw std::runtime_error("Invalid frame clipboard canvas dimensions");
  const auto& before=timeline_.state();const auto layerCount=std::max(before.layers.size(),snapshot.layers.size());const auto frameCount=before.frames.size()+snapshot.items.size();
- if(layerCount>256 || frameCount>10000 || std::uint64_t(width_)*height_*layerCount*frameCount*4>256*1024*1024)throw std::runtime_error("Frame paste exceeds pixel memory limit");
+ if(layerCount>256 || frameCount>10000)throw std::runtime_error("Frame paste exceeds layer or frame limit");
  std::unordered_map<std::string,std::size_t> sourceLayers;for(std::size_t n=0;n<snapshot.layers.size();++n)if(!sourceLayers.emplace(snapshot.layers[n].id,n).second)throw std::runtime_error("Duplicate clipboard layer");
  // Same sparse-storage working budget as Cel paste; source geometry is
  // independent of either canvas, and blank destination slots use our canvas.
@@ -268,10 +268,10 @@ bool Document::pasteFrameClipboard(const FrameClipboardSnapshot& snapshot){if(ha
   for(const auto& cel:item.cels){if(!sourceLayers.count(cel.layerId))throw std::runtime_error("Missing frame clipboard layer");if(cel.frameId!=item.frame.id||!occupied.insert(cel.layerId).second)throw std::runtime_error("Invalid frame clipboard Cel slot");if(cel.surface)countBytes(clipboardBytes,*cel.surface);}
   for(const auto& m:item.masks)countBytes(clipboardBytes,m.mask.surface);blankSlots+=layerCount-occupied.size();
  }
- const auto appendedBytes=blankSlots*width_*height_*sizeof(Pixel);
+ const auto activeBlankSlots=layerCount-before.layers.size();const auto appendedBytes=((blankSlots-activeBlankSlots)+activeBlankSlots*width_*height_)*sizeof(Pixel);
  if(beforeBytes>frameWorkingLimit/5||clipboardBytes>frameWorkingLimit/4||appendedBytes>frameWorkingLimit/4||beforeBytes*5+clipboardBytes*4+appendedBytes*4>frameWorkingLimit)throw std::length_error("Frame paste exceeds sparse working budget");
  auto candidate=before;std::uint64_t next=nextFrameId_;auto fresh=[&](const char* prefix){return std::string(prefix)+std::to_string(identity_)+"-"+std::to_string(++next);};
- auto blank=[&](const DocumentLayer& layer,const std::string& frame){DocumentCel cel;cel.id=fresh("cel-frame-paste-");cel.layerId=layer.id;cel.frameId=frame;cel.opacity=layer.opacity;timeline::Surface surface;surface.width=width_;surface.height=height_;surface.pixels.resize(std::size_t(width_)*height_);cel.surface=std::move(surface);return cel;};
+ auto blank=[&](const DocumentLayer& layer,const std::string& frame){DocumentCel cel;cel.id=fresh("cel-frame-paste-");cel.layerId=layer.id;cel.frameId=frame;cel.opacity=layer.opacity;timeline::Surface surface;surface.width=frame==activeFrameId_?width_:1;surface.height=frame==activeFrameId_?height_:1;surface.pixels.resize(std::size_t(surface.width)*surface.height);cel.surface=std::move(surface);return cel;};
  for(std::size_t n=candidate.layers.size();n<snapshot.layers.size();++n){const auto& source=snapshot.layers[n];DocumentLayer layer;layer.name=source.name;layer.kind=source.kind;layer.visible=source.visible;layer.locked=source.locked;layer.opacity=source.opacity;layer.blendMode=source.blendMode;layer.clippingMask=source.clippingMask;do{layer.id=fresh("layer-frame-paste-");}while(std::any_of(candidate.layers.begin(),candidate.layers.end(),[&](const auto& item){return item.id==layer.id;}));layer.autoLinkAnimationCels=false;candidate.layers.push_back(layer);for(const auto& frame:before.frames)candidate.cels.push_back(blank(layer,frame.id));}
  int insert=int(activeFrameIndex())+1;if(!selectedFrames_.empty()){insert=0;for(int n=0;n<int(before.frames.size());++n)if(std::find(selectedFrames_.begin(),selectedFrames_.end(),before.frames[n].id)!=selectedFrames_.end())insert=n+1;}
  std::vector<std::string> inserted;std::unordered_map<std::string,std::string> celRemap;std::vector<DocumentCel> incoming;
