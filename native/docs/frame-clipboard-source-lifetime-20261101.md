@@ -78,3 +78,11 @@
 新增六组检查覆盖无剪贴板／帧剪贴板／Cel剪贴板及首帧前／后落点，核对复制像素、独立Cel、循环段原端点、帧选择、一条历史、Undo／Redo活动帧恢复及剪贴板保持。新增场景放在独立测试函数，避免继续增大已有大型核心测试main的栈帧，未调整软件或测试的栈容量配置。
 
 `moon-core-tests`、`free-tile-project-tests`和`cel-selection-clipboard-tests`实际通过；正式Release构建成功，来源覆盖检查通过。没有新增物理Alt拖放、异常取消或本批普通复制结果的保存重开专项验收，不把这些列为本批实际运行结果。
+
+## 后续补齐：普通帧删除与剪切的附带蒙版
+
+旧版 `core/animation.ts::deleteAnimationFrame` 会删除该帧的图层和组蒙版；`workspace-commands-animation-frame.ts::deleteAnimationFrame` 在成功、撤销和重做时均退出蒙版编辑。普通RGBA原生删除路径遗漏了蒙版槽清理，批删和剪切复用该路径也受影响。
+
+本次在删除槽前保留其他帧引用的解析像素，并断开指向被删除蒙版的关联，复用现有特殊帧删除规则。已有帧顺序历史负责恢复蒙版和原始关联，MaskContextHistory负责在成功及历史回放后退出蒙版编辑，不恢复已失效的绘制目标。
+
+六组独立回归覆盖单帧删除、批量删除、剪切及两个起点，包含图层／组蒙版三级关联、存活像素、一条历史、剪切载荷、保存重开、Undo恢复原关联和Redo，以及操作前后切换蒙版编辑。`free-tile-project-tests`、`moon-core-tests`、`cel-selection-clipboard-tests`实际通过，唯一正式Release程序构建成功。未新增实际鼠标交互或整个动画模块等价验收。

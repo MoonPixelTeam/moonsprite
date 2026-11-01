@@ -386,8 +386,18 @@ void Document::deleteFrame() {if(hasTilemapContent()||hasFreeTileContent())retur
   if(survivors.empty())continue;
   for(const auto& id:survivors){auto& c=*std::find_if(timeline_.state_.cels.begin(),timeline_.state_.cels.end(),[&](const auto& x){return x.id==id;});e.beforeCels.push_back(c);c.linkedCelId.reset();if(id==survivors.front()){c.surface=removed.surface;c.runtimeSharedCelId.reset();}else{c.surface.reset();c.runtimeSharedCelId=survivors.front();}e.afterCels.push_back(c);}
  }
+ // Legacy removes both layer/group mask slots with the deleted frame.
+ // Preserve resolved pixels before detaching links to those removed masks,
+ // using the same rule as the existing special-frame deletion transaction.
+ auto& masks=timeline_.state_.masks;std::unordered_set<std::string> removedMasks;
+ for(const auto& slot:masks)if(slot.frameId==e.detachedFrame->id)removedMasks.insert(slot.mask.id);
+ for(auto& slot:masks)if(slot.frameId!=e.detachedFrame->id&&!slot.mask.linkedMaskId.empty()&&removedMasks.count(slot.mask.linkedMaskId)){
+  const auto* resolved=timeline::resolvedMask(timeline_.state(),slot.ownerId,slot.frameId);if(!resolved)throw std::invalid_argument("Missing surviving frame deletion mask");slot.mask.surface=resolved->surface;slot.mask.linkedMaskId.clear();
+ }
+ masks.erase(std::remove_if(masks.begin(),masks.end(),[&](const auto& slot){return slot.frameId==e.detachedFrame->id;}),masks.end());
  const auto index=activeFrameIndex();timeline_.state_.frames.erase(timeline_.state_.frames.begin()+index);auto& cels=timeline_.state_.cels;cels.erase(std::remove_if(cels.begin(),cels.end(),[&](const auto& c){return c.frameId==e.detachedFrame->id;}),cels.end());activeFrameId_=timeline_.state_.frames[std::min(index,timeline_.state_.frames.size()-1)].id;
  std::vector<timeline::LoopSection> kept;for(auto section:timeline_.state().loopSections){const auto r=timeline::loopRange(oldLoops,section);if(r.start<0 || r.end<0)continue;if(section.startFrameId==e.detachedFrame->id || section.endFrameId==e.detachedFrame->id){std::vector<std::string> members;for(int i=r.start;i<=r.end;++i)if(oldLoops.frames[i].id!=e.detachedFrame->id)members.push_back(oldLoops.frames[i].id);if(members.empty())continue;section.startFrameId=members.front();section.endFrameId=members.back();}kept.push_back(section);}timeline_.state_.loopSections=std::move(kept);e.afterLoops=timeline_.state().loopSections;
+ e.maskContext=std::make_shared<Edit::MaskContextHistory>(Edit::MaskContextHistory{{},{},false,false});activeMaskId_.clear();maskIsolated_=false;
  timeline_.buildIndex();captureFrameOrder(e,true);change_={0,0,width_,height_};publishChange();pushEdit(std::move(e),U"删除动画帧");
 }
 void Document::applyCelEdit(const Edit& e,bool redo){const auto& values=redo?e.afterCels:e.beforeCels;if(values.empty())return;for(const auto& value:values){auto it=std::find_if(timeline_.state_.cels.begin(),timeline_.state_.cels.end(),[&](const auto& c){return c.id==value.id;});if(it==timeline_.state_.cels.end())throw std::logic_error("Missing history cel");*it=value;}timeline_.buildIndex();if(e.beforeFrames.empty() && !e.beforeFrame.empty())activeFrameId_=redo?e.afterFrame:e.beforeFrame;change_={0,0,width_,height_};}
