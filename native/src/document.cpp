@@ -140,7 +140,10 @@ bool Document::cutSelectedCels(){if(hasTilemapContent()||hasFreeTileContent())re
  edit.beforeActive=edit.afterActive=activeLayerId_;edit.beforeFrame=edit.afterFrame=activeFrameId_;edit.beforeTimelineSelection=edit.afterTimelineSelection=timelineSelection_;edit.beforeSelection=edit.afterSelection=selectedFrames_;edit.pixelSelectionEdit=true;edit.beforePixelsSelection=selection_;
  for(const auto& id:timelineSelection_.cels){const auto* slot=timeline_.findCelById(id);if(timelineSelection_.cels.size()>1&&slot&&!timeline_.state().layers[timeline_.layerIndex(slot->layerId)].kind.empty())continue;const auto resolved=timeline_.resolveSurface(id);if(resolved.issue!=timeline::LinkIssue::None||!resolved.source)throw std::runtime_error("Cannot resolve cut Cel");if(!resolved.surface||!sources.insert(timeline_.linkedStorageKey(resolved.source->id)).second)continue;
   const auto& before=*resolved.surface;raster::validate(before);auto after=before;bool changed=false;
-  for(int y=0;y<before.height;++y)for(int x=0;x<before.width;++x){const auto wx=std::int64_t(before.offsetX)+x,wy=std::int64_t(before.offsetY)+y;if(wx<std::numeric_limits<int>::min()||wx>std::numeric_limits<int>::max()||wy<std::numeric_limits<int>::min()||wy>std::numeric_limits<int>::max()||!selectionContains(selection_,int(wx),int(wy)))continue;auto& value=after.pixels[std::size_t(y)*before.width+x];if(value){value=0;changed=true;}}
+  // legacy clearSelection intersects clampSelection(document) with layer content.
+  const auto left=std::max<std::int64_t>({0,selection_->x,before.offsetX}),top=std::max<std::int64_t>({0,selection_->y,before.offsetY});
+  const auto right=std::min<std::int64_t>({width_,std::int64_t(selection_->x)+selection_->width,std::int64_t(before.offsetX)+before.width}),bottom=std::min<std::int64_t>({height_,std::int64_t(selection_->y)+selection_->height,std::int64_t(before.offsetY)+before.height});
+  for(auto y=top;y<bottom;++y)for(auto x=left;x<right;++x){if(!selectionContains(selection_,int(x),int(y)))continue;auto& value=after.pixels[std::size_t(y-before.offsetY)*before.width+std::size_t(x-before.offsetX)];if(value){value=0;changed=true;}}
   if(changed)edit.surfaceChanges.push_back({resolved.source->id,before,std::move(after)});
  }
  if(edit.surfaceChanges.empty())return true;
