@@ -309,7 +309,7 @@ bool Document::pasteTilemapFrames(const FrameClipboardSnapshot& clip,bool duplic
  if(!resources.after.empty())e.layerTilesets=std::make_shared<const LayerTilesetHistory>(std::move(resources));e.structureCelBytes=0;for(const auto& c:e.structureCels)e.structureCelBytes+=groupCelStorageBytes(c);e.afterFrame=inserted.front();e.afterSelection=inserted;e.afterFrameAnchor=inserted.back();e.afterTimelineSelection=TimelineSelection{};
  if(same&&!duplicateSelection&&inserted.size()==1){const auto c=std::find_if(e.structureCels.begin(),e.structureCels.end(),[&](const auto& v){return v.layerId==activeLayerId_&&v.frameId==inserted.front();});if(c!=e.structureCels.end()){e.afterSelection=std::vector<std::string>{};e.afterFrameAnchor=std::string{};e.afterTimelineSelection->cels={c->id};e.afterTimelineSelection->celAnchor=c->id;}}
  // Legacy local frame paste, undo and redo all exit mask editing.
- if(ordinaryLocal)e.maskContext=std::make_shared<Edit::MaskContextHistory>(Edit::MaskContextHistory{{},{},false,false});
+ if(ordinaryLocal){e.maskContext=std::make_shared<Edit::MaskContextHistory>(Edit::MaskContextHistory{{},{},false,false});e.beforeTimelineSelection->cels.clear();e.beforeTimelineSelection->celAnchor.clear();}
  if(!commitGroupEdit(std::move(e),U"粘贴动画帧"))return false;nextFrameId_=frameCounter;nextLayerId_=layerCounter;nextTileId_=tileCounter;return true;
 }
 }
