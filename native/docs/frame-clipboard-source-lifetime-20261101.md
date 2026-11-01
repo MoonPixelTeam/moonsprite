@@ -371,3 +371,13 @@
 四组场景覆盖单／多Cel、矩形／带孔蒙版，验证画布四侧像素与蒙版孔保留、画布内内容删除、剪贴板维持画布裁切、稀疏几何、一次历史、保存重开与Undo／Redo。未扩展画布外复制协议或特殊瓦片路径，未执行实际UI操作验收。
 
 本批实际结果：四组新增场景及既有 `free-tile-project-tests`、唯一正式Release构建、542文件来源覆盖与diff检查通过；未执行实际UI操作验收。
+
+## 后续补齐：选区粘贴追加帧的空白单元格（2026-11-02）
+
+旧版 `workspace-paste-cel-selection.ts::pasteCelSelection` 追加帧后调用 `animation.ts::ensureAnimationDocument`。当前活动帧仍是旧帧，因此新增帧的缺失槽通过 `blankSurfaceFromLayer` 使用1×1、零偏移透明存储，并继承所属图层的opacity。此路径没有调用整格同工程粘贴的 `inheritAnimationFrameCelLinks`，即使旁层开启自动关联，也保留独立空槽。
+
+原生此前为每个新增槽分配整张画布，并固定opacity为1。本批在 `beginCelSelectionPaste` 按旧版补槽规则初始化，继续复用既有预览、取消、Surface扩展及完整时间轴历史。未改动密集预算准入，未扩展特殊资源路径。
+
+八组场景覆盖同／跨工程、普通／文字旁层和0%／35%目标透明度，检查新目标实际粘贴像素与透明度，旁层1×1独立空白、不继承文字元数据，既有内容保持，预览取消恢复结构／选区／dirty，以及一次历史、保存重开和Undo／Redo。未执行实际UI操作验收。
+
+本批实际结果：八组新增场景及既有 `free-tile-project-tests`、唯一正式Release构建、542文件来源覆盖及diff检查通过；未执行实际UI操作验收。
