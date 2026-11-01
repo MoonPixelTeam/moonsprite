@@ -56,3 +56,15 @@
 验收场景包括：较小和较大目标画布、负offset与稀疏Surface、两帧关联、原有目标图层的空槽、透明度／zIndex、时长／禁用标记、图层及组蒙版关联、无效Surface原子拒绝、Undo／Redo及工程保存重开。旧版来源和源码范围已登记在来源表。
 
 范围仅普通RGBA跨工程帧几何，不表示索引色／灰度目标转换、跨工程自由瓦片资源协议、全部文字元数据适配或完整系统剪贴板交互已完成。实际运行：`free-tile-project-tests`（含本批保存重开）、`cel-selection-clipboard-tests`和`moon-core-tests`均通过；正式Release构建成功，唯一正式程序`--free-tile-transform-check`退出码0。来源登记覆盖检查通过。未新增鼠标／系统剪贴板人工操作验收，布局和素材没有变化。
+
+## 后续补齐：跨工程目标图层承接（AN-003）
+
+旧版`workspace-commands-animation-frame-clipboard.ts::pasteCrossDocumentAnimationFrames`用`createLayer`创建目标缺少的图层，再承接帧载荷中明确列出的基础属性。此前native直接复制源DocumentLayer，连同源groupId等引用一并带入；源组不在目标工程时，保存／后续结构操作可能遇到悬空引用。
+
+现在按旧版白名单承接名称、类型、显隐、锁定、透明度、混合模式及剪贴蒙版。新增层使用新的身份及默认属性，不携带源组、关联内容身份、层样式、显示色、描述或旧载荷未提供的背景等字段；现有目标层的属性保持原值。源组没有对应目标组时仍按旧版跳过其组蒙版，不自动创建源组。
+
+同时依照`workspace-animation-cel-target.ts::animationCelForTarget`，按实际目标层类型处理Cel编辑元数据：普通像素层不接收text，非tilemap／free-tile层不接收相应元数据；栅格像素保持。新增文字层接收并保留文字编辑内容。既有映射、一次历史事务及跨工程资源限制继续使用。
+
+回归样本包含组内源图层、源样式／共享内容引用、新增普通层和文字层、文字像素粘贴到现有普通层、基础属性、无对应目标组的蒙版、源工程不变、Undo／Redo和保存重开。本批不扩展索引色／灰度转换或特殊瓦片资源协议，也没有变更布局或素材。
+
+本批实际验证：`free-tile-project-tests`（含新增图层／文字适配和保存重开场景）、`cel-selection-clipboard-tests`、`moon-core-tests`均通过；正式Release构建成功，唯一正式程序`--free-tile-transform-check`退出码0。来源登记覆盖检查通过；没有新增系统剪贴板人工交互或整板块等价性声明。
