@@ -6,7 +6,20 @@
 #include <iostream>
 using namespace moon;
 #define CHECK(x) do{if(!(x))throw std::runtime_error(#x);}while(false)
-int main(){try{
+void linkedFrameRecording(){
+ using namespace timelapse;
+ const auto stamp=std::to_string(std::chrono::steady_clock::now().time_since_epoch().count());
+ const auto owned=std::filesystem::current_path()/("timelapse-test-owned-linked-"+stamp);
+ for(bool append:{false,true}){
+  Document d(128,128);d.beginStroke({0,0},0xff123456);d.commitStroke();const auto source=d.frame().id;if(!append){d.addFrame();d.selectFrame(source);}
+  d.mutableTimelapseSettings().enabled=true;d.mutableTimelapseSettings().mode=Mode::Full;
+  auto session=ensureRecordingSession(d,owned/(append?"append":"reuse"));d.addLinkedFrame();session->flush(d);
+  CHECK(session->error.empty()&&d.timelapseSettings().snapshots.size()==1);auto image=decodeRecordingPng(session->read(d.timelapseSettings().snapshots.back()));CHECK(image.width==128&&image.height==128&&image.pixels==d.canvasPixels()&&image.pixels[0]==0xff123456);
+  d.undo();session->flush(d);CHECK(d.timelapseSettings().snapshots.size()==1);
+  d.mutableTimelapseSettings().recordUndoSteps=true;session->settingsChanged(d);d.redo();session->flush(d);CHECK(d.timelapseSettings().snapshots.size()==2);image=decodeRecordingPng(session->read(d.timelapseSettings().snapshots.back()));CHECK(image.pixels==d.canvasPixels()&&image.pixels[0]==0xff123456);
+ }
+}
+int main(){try{linkedFrameRecording();
  using namespace timelapse;Settings s;CHECK(!s.enabled&&!s.recordUndoSteps&&s.fps==12&&s.speed==8&&s.mode==Mode::Smart);CHECK(captureDimensions(1024,512,Quality::Low).width==640);
  s.enabled=true;SmartState smart;for(int i=0;i<181;++i){Frame f;f.id="frame-"+std::to_string(i);f.capturedAt=i;f.width=f.height=1;f.changeScore=i%3==0?.9:.1;append(s,smart,std::move(f),Mode::Smart);}CHECK(s.snapshots.size()==121);CHECK(s.snapshots[60].capturedAt==120&&s.snapshots.back().capturedAt==180);
  auto p=videoPlan(s,.1);CHECK(p.size()==1&&p[0].snapshotIndex==120);
