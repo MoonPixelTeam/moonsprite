@@ -350,3 +350,14 @@
 四组新增场景覆盖普通／文字图层、仅复制共享叶／连同新规范源复制两帧，经实际删除原源帧构造运行时共享；检查复制的像素、稀疏几何、属性及可编辑文字，同工程与不同尺寸工程粘贴、一次历史、保存重开与Undo／Redo。实际结果见迁移计划，未新增实际UI操作验收。
 
 本批实际结果：四组新增场景及既有 `free-tile-project-tests`、唯一正式Release构建、542文件来源覆盖与diff检查通过。
+
+
+## 后续补齐：带选区多单元格剪切跳过特殊删除目标（2026-11-02）
+
+旧版 `workspace-cut.ts::cutWorkspaceItems` 先复制选中单元格，有像素选区时委托 `deleteSelection`。`workspace-commands-selection-effects.ts` 的多目标分支使用 `workspace-selection-effects-support.ts::selectedEffectTargets`，其collect跳过非空kind，因此文字等特殊图层仍被复制，但不会作为普通像素删除目标。
+
+原生 `cutSelectedCels` 此前对多选中的文字层也清除渲染像素，文字编辑数据却仍保留。本批在多单元格删除循环按所属图层kind过滤，复用既有复制、规范源去重、选区删除及历史。只有普通目标实际发生变化时才新增历史并清选区；单Cel分支及整格剪切不改。
+
+四组新增场景覆盖活动普通／文字目标、普通层选区有／无像素，检查普通层按选区删除、文字像素与编辑数据不变、剪贴板仍包含文字选区像素、原单元格选择、历史／dirty／像素选区、保存重开和Undo／Redo。特殊瓦片路径未扩大，未新增实际UI操作验收；实际检查结果见迁移计划。
+
+本批实际结果：四组新增场景及既有 `free-tile-project-tests`、唯一正式Release构建、542文件来源覆盖与diff检查通过；未执行实际UI操作验收。
