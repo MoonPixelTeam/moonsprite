@@ -424,6 +424,6 @@ void Document::deleteSelectedFrames(bool clearPixelSelection){
  history_.reserve(position_+1);timeline_=std::move(validated);activeFrameId_=std::move(active);selectedFrames_.clear();timelineSelection_={};frameAnchor_.clear();projectActiveCelOpacities();change_={0,0,width_,height_};if(clearPixelSelection)selection_.reset();publishChange();pushEdit(std::move(e),U"删除动画帧");return;
 
  }
-const auto selection=selectedFrames_;auto ids=selection.empty()?std::vector<std::string>{frame().id}:selection;const auto start=position_;groupingHistory_=true;for(const auto& id:ids){if(timeline_.state().frames.size()<=1)break;selectFrame(id);deleteFrame();}selectedFrames_.clear();groupingHistory_=false;groupEdits(start,selection);if(clearPixelSelection && position_>start)selection_.reset();
+const auto selection=selectedFrames_;auto ids=selection.empty()?std::vector<std::string>{frame().id}:selection;const auto start=position_;groupingHistory_=true;for(const auto& id:ids){if(timeline_.state().frames.size()<=1)break;selectFrame(id);deleteFrame();}clearFrameSelection();normalizeFrameDeletionSelection();groupingHistory_=false;groupEdits(start,selection);if(clearPixelSelection && position_>start)selection_.reset();
 }
 }

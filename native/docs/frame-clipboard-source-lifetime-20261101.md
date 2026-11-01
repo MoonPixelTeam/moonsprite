@@ -110,3 +110,13 @@
 原生普通 `deleteFrame` 现于成功删除后清空 `selection_`，批删和剪切直接复用。没有把临时选区写入帧结构历史，也没有新增一条撤销记录；沿用Editor刷新中由选区变化清理旋转中心和自由变换的既有逻辑。特殊图层的现有准入保持，未扩展该部分行为。
 
 九组独立回归覆盖单删／批删／剪切、矩形／稀疏选区、剪切全帧而非选区像素、一条历史、Undo／Redo不恢复旧选区及保持后来选区、最后一帧无操作保留选区和剪切载荷。`free-tile-project-tests`、`moon-core-tests`、`cel-selection-clipboard-tests` 均通过，唯一正式Release程序构建通过。未新增实际鼠标交互和旋转中心截图验收，不声明整个动画模块完成。
+
+## 后续补齐：帧删除的时间轴选择与范围起点
+
+旧版 `workspace-animation-selection.ts::normalizeAnimationSelection` 在删除边界过滤失效帧／Cel，保留有效项；帧选择优先于Cel，范围起点失效时回退最后有效项。没有任何选择时回到活动图层，帧选择可保留显式蒙版行。批删／剪切由 `workspace-commands-animation-cel-properties.ts::deleteSelectedAnimationItems` 在复合删除后清空帧范围并统一规范选择。
+
+本批将上述规则适配到普通原生帧删除，只清理帧删除可能失效的身份，保留未删除的图层／组／蒙版行。直接删除保存前后帧范围；批删和剪切复用同一清理逻辑并清范围起点。既有复合历史在子编辑已经具有帧起点快照时记录最终起点和时间轴选择，避免Redo重新带回中间状态；不携带该快照的历史保持原路径。
+
+新增八组回归覆盖单删／批删／剪切、部分／全部帧范围、活动层回退、Cel保留／清除和Undo／Redo的范围及起点。特殊图层的现有准入和事务规则保持，没有扩大跨工程资源兼容范围。
+
+实际运行：八组新增回归通过，`free-tile-project-tests`、`moon-core-tests`、`cel-selection-clipboard-tests`三套相关检查通过；唯一正式Release程序构建成功，542文件来源覆盖检查通过。未新增实际鼠标／Shift范围选择截图验收，不声明完整动画模块完成。

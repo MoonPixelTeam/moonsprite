@@ -839,6 +839,7 @@ private:
   bool animationLoop_=true;
   void mergeRasterLayers(const std::vector<std::string>& ids,std::size_t index);
   void captureFrameOrder(Edit& edit,bool after) const;
+  void normalizeFrameDeletionSelection();
   void applyFrameEdit(const Edit& edit,bool redo);
   void applyEdit(const Edit& edit,bool redo);
   void groupEdits(std::size_t start,const std::vector<std::string>& selection);
