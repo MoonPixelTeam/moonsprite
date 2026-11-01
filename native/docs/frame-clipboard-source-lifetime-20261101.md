@@ -179,3 +179,14 @@
 四组回归覆盖单个外链副本／内部关联双格、覆盖／追加，检查新身份、像素／原点、会话标志、旧关联保护、一次历史、保存重开、Undo原身份／Redo新身份；另十二组损坏载荷拒绝检查通过。按旧版 `project-format-encode.ts::encodeMask` 和 `project-format-decode.ts`，visible及moveWithOwner不持久化，重开恢复显示及绑定移动；locked及autoLink持久化。本批没有擅自扩展工程格式。
 
 `free-tile-project-tests`、`moon-core-tests`、`cel-selection-clipboard-tests`通过，唯一正式Release程序构建通过，542文件来源覆盖通过。未进行系统剪贴板或实际鼠标菜单验收；特殊跨工程资源协议仍维持原准入，不声明整个粘贴板块完成。
+
+
+## 后续补齐：同工程整格粘贴的类型与追加帧继承
+
+旧版 `workspace-commands-animation-cel-clipboard.ts::pasteAnimationCels` 的同工程分支按 `workspace-animation-commands-helpers.ts::animationCelContentKind/layerContentKind` 对比实际载荷与目标层，类型不兼容即返回，不转换内容。跨工程分支才使用目标类型转换。原生普通整格同工程粘贴现补齐此准入，在candidate追加帧前拒绝，保留目标、历史和剪贴板；无文字编辑数据的文字层Cel按旧版判为raster。
+
+同流程的 `core/animation.ts::inheritAnimationFrameCelLinks` 在追加帧时将未被粘贴覆盖、开启自动关联的图层链接到前帧规范源，同时承接text/tilemap/freeTiles。原生原路径只关联像素和显示属性，本批补齐编辑元数据及清除runtimeSharedCelId，沿用原内容准入、链接来源、candidate和完整时间轴历史。
+
+八组类型组合检查包含普通／文字来源及目标、文字源缺少text、拒绝后像素／选择／history／revision／clipboard保持，以及成功保存和Undo／Redo。四组追加回归覆盖独立／已关联前帧、追加一／两帧，检查自动关联文字内容与原点、规范像素及几何／透明度／zIndex、一条历史、保存重开、Undo恢复原帧与选择、Redo稳定身份。三套相关检查及正式Release构建通过，542文件来源覆盖通过。
+
+本批未改浮动选区、同工程蒙版槽粘贴及特殊跨工程资源协议；未执行实际鼠标／菜单操作验收，不据此声明整个粘贴模块完成。
