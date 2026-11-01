@@ -328,3 +328,14 @@
 原八组当前owner变化／自动关联场景增加1×1／零偏移／像素数断言，移除原来要求密集尺寸的不等价预期；四组非自动关联场景补充范围外真实绘制、另一新帧独立保持、Undo空白像素和Redo／保存重开。画笔Undo不收缩扩展Surface的既有存储回收差异仍保留。实际构建与检查结果见迁移计划，未新增实际UI操作验收。
 
 本批实际结果：上述场景及既有 `free-tile-project-tests`、唯一正式Release构建、542文件来源覆盖与diff检查通过。
+
+
+## 后续补齐：跨工程帧粘贴Redo退出重新进入的蒙版（2026-11-02）
+
+旧版 `workspace-commands-animation-frame-clipboard.ts::pasteCrossDocumentAnimationFrames` 的Redo重新执行 `applyInserted`，因此每次重做都清空 `activeLayerMaskId`。原生初次粘贴已退出蒙版，但完整时间轴历史没有记录Redo侧的编辑目标；用户Undo后再进入旧帧蒙版编辑，Redo会保留旧蒙版目标。
+
+本批复用已有 `Edit::maskToActivateOnRedo`，空字符串表示回到文档编辑；普通跨工程帧历史设置此目标，完整时间轴前向恢复时清理蒙版及隔离。Undo侧保持原逻辑，创建蒙版的既有 `beforeMasks` 历史路径保持。没有增加历史类型、修改特殊资源准入或重新定义蒙版选择UI。
+
+八组新增场景覆盖图层／组蒙版、隔离开／关和粘贴一／两帧，检查Undo后重新进入蒙版、Redo退出且保留像素选区、真实笔画写入新Cel且原蒙版保持、重复Undo／Redo及保存重开。构建和测试结果见迁移计划；未新增实际UI操作验收。
+
+本批实际结果：八组新增回归及既有 `free-tile-project-tests`、唯一正式Release构建、542文件来源覆盖与diff检查通过。
