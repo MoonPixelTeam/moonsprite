@@ -44,3 +44,15 @@
 拖动复制在存在自动关联层时，也直接复用该事务并传入最终插入位置。原先普通路径先粘贴后移动，无法为首帧之前的落点正确计算前槽；现在从最终落点计算，一次历史记录完成，并恢复原剪贴板。
 
 验证：核心检查覆盖自动关联开关、独立前帧可见／空白、多帧连续继承同一规范根、拖到首帧之前／之后、保留静态像素选区及Undo／Redo。`moon-core-tests`、`free-tile-project-tests`通过，正式Release构建成功，唯一正式程序`--free-tile-transform-check`退出码0。来源登记覆盖检查通过。没有新增实际鼠标拖放截图、普通自动关联帧保存重开或完整动画模块验收，不将这些列为已完成。
+
+## 后续补齐：不同画布尺寸与偏移像素帧（AN-003）
+
+普通RGBA帧跨工程粘贴原来要求源／目标画布同尺寸，并拒绝未铺满目标画布或带偏移的Surface。旧版`workspace-commands-animation-frame-clipboard.ts::pasteCrossDocumentAnimationFrames`通过`workspace-animation-cel-target.ts::animationCelForTarget`复制内容，保留Surface几何，没有按文档画布裁切、缩放或要求同尺寸。
+
+本批取消这两项未迁移限制：保留原始Surface尺寸、offset、存储原点及画布外像素，目标画布尺寸不变；目标额外图层和新增层在原有帧中的空槽继续使用目标画布尺寸。Cel内部关联、图层／组蒙版映射、帧时长和禁用状态沿用已有一次历史事务，跨工程不套用同工程前帧自动关联。
+
+沿用`pasteCopiedCels`的稀疏存储校验与256MiB工作预算计算，计入原文档Cel／蒙版、复制载荷及新增空槽，保留已有帧／图层数量和密集画布预算上限。在修改文档前拒绝损坏Surface、重复图层槽或错帧Cel。不是只放开尺寸判断而忽略更大载荷。
+
+验收场景包括：较小和较大目标画布、负offset与稀疏Surface、两帧关联、原有目标图层的空槽、透明度／zIndex、时长／禁用标记、图层及组蒙版关联、无效Surface原子拒绝、Undo／Redo及工程保存重开。旧版来源和源码范围已登记在来源表。
+
+范围仅普通RGBA跨工程帧几何，不表示索引色／灰度目标转换、跨工程自由瓦片资源协议、全部文字元数据适配或完整系统剪贴板交互已完成。实际运行：`free-tile-project-tests`（含本批保存重开）、`cel-selection-clipboard-tests`和`moon-core-tests`均通过；正式Release构建成功，唯一正式程序`--free-tile-transform-check`退出码0。来源登记覆盖检查通过。未新增鼠标／系统剪贴板人工操作验收，布局和素材没有变化。

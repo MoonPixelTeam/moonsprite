@@ -246,11 +246,22 @@ bool Document::pasteFrameClipboard(const FrameClipboardSnapshot& snapshot){if(ha
  if(snapshot.items.empty())return false;
  if(snapshot.sourceIdentity==identity_)return pasteCopiedFrames();
  if(active())throw std::runtime_error("Finish the active edit before pasting frames");
- if(snapshot.width!=width_ || snapshot.height!=height_)throw std::runtime_error("Cross-project frame paste requires matching canvas dimensions");
+ if(snapshot.width<1 || snapshot.height<1)throw std::runtime_error("Invalid frame clipboard canvas dimensions");
  const auto& before=timeline_.state();const auto layerCount=std::max(before.layers.size(),snapshot.layers.size());const auto frameCount=before.frames.size()+snapshot.items.size();
  if(layerCount>256 || frameCount>10000 || std::uint64_t(width_)*height_*layerCount*frameCount*4>256*1024*1024)throw std::runtime_error("Frame paste exceeds pixel memory limit");
  std::unordered_map<std::string,std::size_t> sourceLayers;for(std::size_t n=0;n<snapshot.layers.size();++n)if(!sourceLayers.emplace(snapshot.layers[n].id,n).second)throw std::runtime_error("Duplicate clipboard layer");
- for(const auto& item:snapshot.items){if(item.frame.duration<1 || item.frame.duration>60000)throw std::runtime_error("Invalid frame clipboard duration");for(const auto& cel:item.cels){if(!sourceLayers.count(cel.layerId))throw std::runtime_error("Missing frame clipboard layer");if(cel.surface && (cel.surface->width!=width_ || cel.surface->height!=height_ || cel.surface->offsetX || cel.surface->offsetY || cel.surface->pixels.size()!=std::size_t(width_)*height_))throw std::runtime_error("Frame clipboard surface geometry is not migrated");}}
+ // Same sparse-storage working budget as Cel paste; source geometry is
+ // independent of either canvas, and blank destination slots use our canvas.
+ constexpr std::uint64_t frameWorkingLimit=256ull*1024*1024;std::uint64_t beforeBytes=0,clipboardBytes=0;
+ auto countBytes=[&](std::uint64_t& total,const timeline::Surface& storage){raster::validate(storage);const auto bytes=std::uint64_t(storage.pixels.size())*sizeof(Pixel);if(bytes>frameWorkingLimit-total)throw std::length_error("Frame paste exceeds sparse pixel budget");total+=bytes;};
+ for(const auto& c:before.cels)if(c.surface)countBytes(beforeBytes,*c.surface);for(const auto& m:before.masks)countBytes(beforeBytes,m.mask.surface);
+ std::uint64_t blankSlots=(layerCount-before.layers.size())*before.frames.size();
+ for(const auto& item:snapshot.items){if(item.frame.duration<1 || item.frame.duration>60000)throw std::runtime_error("Invalid frame clipboard duration");std::unordered_set<std::string> occupied;
+  for(const auto& cel:item.cels){if(!sourceLayers.count(cel.layerId))throw std::runtime_error("Missing frame clipboard layer");if(cel.frameId!=item.frame.id||!occupied.insert(cel.layerId).second)throw std::runtime_error("Invalid frame clipboard Cel slot");if(cel.surface)countBytes(clipboardBytes,*cel.surface);}
+  for(const auto& m:item.masks)countBytes(clipboardBytes,m.mask.surface);blankSlots+=layerCount-occupied.size();
+ }
+ const auto appendedBytes=blankSlots*width_*height_*sizeof(Pixel);
+ if(beforeBytes>frameWorkingLimit/5||clipboardBytes>frameWorkingLimit/4||appendedBytes>frameWorkingLimit/4||beforeBytes*5+clipboardBytes*4+appendedBytes*4>frameWorkingLimit)throw std::length_error("Frame paste exceeds sparse working budget");
  auto candidate=before;std::uint64_t next=nextFrameId_;auto fresh=[&](const char* prefix){return std::string(prefix)+std::to_string(identity_)+"-"+std::to_string(++next);};
  auto blank=[&](const std::string& layer,const std::string& frame){DocumentCel cel;cel.id=fresh("cel-frame-paste-");cel.layerId=layer;cel.frameId=frame;timeline::Surface surface;surface.width=width_;surface.height=height_;surface.pixels.resize(std::size_t(width_)*height_);cel.surface=std::move(surface);return cel;};
  for(std::size_t n=candidate.layers.size();n<snapshot.layers.size();++n){auto layer=snapshot.layers[n];do{layer.id=fresh("layer-frame-paste-");}while(std::any_of(candidate.layers.begin(),candidate.layers.end(),[&](const auto& item){return item.id==layer.id;}));layer.autoLinkAnimationCels=false;candidate.layers.push_back(layer);for(const auto& frame:before.frames)candidate.cels.push_back(blank(layer.id,frame.id));}
