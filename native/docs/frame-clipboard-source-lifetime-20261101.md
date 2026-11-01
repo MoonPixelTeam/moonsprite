@@ -168,3 +168,14 @@
 本批在既有Cel ID和关联映射后，按实际目标类型保留或清除文字及特殊编辑数据。文字目标承接源文字，普通目标保留栅格像素并清文字；源无文字时覆盖文字目标也不保留目标旧文字。同工程分支、源快照、像素尺寸／偏移、一次时间轴事务和资源准入保持原逻辑。
 
 八组回归覆盖普通／文字源及普通／文字目标、复制后删除源内容及保留源内容，检查较小目标中的越界像素、透明度／zIndex、内部关联、追加帧、目标选择、一条历史、保存重开、Undo原文字和Redo同一帧身份。三套相关测试与正式Release构建通过，来源覆盖检查通过。特殊资源跨工程协议、索引／灰度目标转换和实际系统剪贴板交互不在本批完成范围。
+
+
+## 后续补齐：跨工程单元格粘贴附带蒙版
+
+旧版 `workspace-commands-animation-cel-clipboard.ts::pasteCrossDocumentAnimationCels` 克隆源蒙版，映射新身份及复制范围内的关联，并通过 `setAnimationMaskSlot` 替换目标槽；覆盖前的解除关联保护剩余成员。原生普通RGBA整格粘贴此前遗漏蒙版，本批直接复用 `document_layer_groups.cpp::pasteTilemapCels` 已有的跨工程蒙版处理，适配到普通candidate事务。
+
+复制范围外的蒙版关联由既有export物化并清除；范围内关联重映射为新身份。覆盖旧蒙版时提升仍存活的关联根并保留像素。预算包含目标及传入蒙版，非法owner、重复身份、无效Surface或关联在提交前拒绝。继续复用一条完整时间轴历史，不改同工程及浮动像素选区粘贴。
+
+四组回归覆盖单个外链副本／内部关联双格、覆盖／追加，检查新身份、像素／原点、会话标志、旧关联保护、一次历史、保存重开、Undo原身份／Redo新身份；另十二组损坏载荷拒绝检查通过。按旧版 `project-format-encode.ts::encodeMask` 和 `project-format-decode.ts`，visible及moveWithOwner不持久化，重开恢复显示及绑定移动；locked及autoLink持久化。本批没有擅自扩展工程格式。
+
+`free-tile-project-tests`、`moon-core-tests`、`cel-selection-clipboard-tests`通过，唯一正式Release程序构建通过，542文件来源覆盖通过。未进行系统剪贴板或实际鼠标菜单验收；特殊跨工程资源协议仍维持原准入，不声明整个粘贴板块完成。
