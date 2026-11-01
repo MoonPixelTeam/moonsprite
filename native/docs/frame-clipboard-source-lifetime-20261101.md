@@ -401,3 +401,15 @@
 八组场景覆盖同／跨工程、密集／稀疏Surface及选区变／不变，检查像素、浮动状态、dirty、历史位置、原redo可用、保存重开和选区Undo／Redo。追加帧但没有像素修改的旧版结构历史行为仍待独立核对，本批不变更；未执行实际UI操作验收。
 
 本批实际结果：八组新增场景及既有 `free-tile-project-tests`、唯一正式Release构建、542文件来源覆盖和diff检查通过；未执行实际UI操作验收。
+
+## 后续补齐：选区复制的实际内容边界与共同坐标（2026-11-02）
+
+旧版 `workspace-animation-cel-links.ts::snapshotLinkedAnimationCels` 调用 `workspace-animation-cel-conversion.ts::clipAnimationCelToSelection`：每个规范源按世界坐标将选区与Surface求交，不裁到画布；无交集维度保留1像素透明fallback。裁切快照清除文字、瓦片和自由瓦片编辑数据。随后 `workspace-paste-cel-selection.ts::pasteCelSelection` 用所有裁切Surface的并集建立共同变换坐标。
+
+原生此前统一裁到画布，导致画布外内容无法复制、稀疏源的选区边界偏大；同时Cel快照保留完整Surface和文字数据，未表达选区复制的实际内容。本批直接承接逐源裁切规则，在Cel快照保存各自裁切Surface，再将像素填入共同并集大小的SelectionClipboard，以适配现有多目标浮动接口。保留关联重定根、alpha蒙版和原有技术预算保护；不增加新的剪贴板协议。
+
+四组普通／文字层与矩形／带孔蒙版场景覆盖两种不同偏移的稀疏源，检查画布外像素、各自截取范围、共同坐标、文字编辑数据清除而源内容保持；移动到画布内后验证实际粘贴、保存重开及Undo／Redo，另覆盖无交集的1×1透明fallback。原画布外剪切回归更新为剪贴板保留完整选中内容，删除仍按旧版clearSelection裁到画布。此前各批“复制保持画布裁切”的描述仅代表当时范围，本批已纠正。
+
+原地向画布外写入的浮动变换限制未在本批承接，不声明画布外粘贴全部等价；未执行实际UI操作验收。
+
+本批实际结果：四组新增场景、更新后的画布外剪切回归及既有 `free-tile-project-tests`、`cel-selection-clipboard-tests` 均通过；唯一正式Release构建、542文件来源覆盖和diff检查通过。未执行实际UI操作验收。
