@@ -201,3 +201,16 @@
 八组回归覆盖同工程／跨工程、普通／文字目标和锁定／解锁：拒绝时检查所有Cel的像素、文字及原点、帧数、选择、history、contentRevision、dirty保持；成功路径检查追加帧预览不入历史、取消恢复、一次提交、保存重开及Undo／Redo。`free-tile-project-tests`、`moon-core-tests`、`cel-selection-clipboard-tests`通过，唯一正式Release构建及542文件来源覆盖通过。
 
 未执行实际鼠标／菜单验收。此检查只关闭目标类型准入缺口；原浮动流程中关联Cel拆分与旧版规范源编辑的行为差异仍需单独核对，不声明整个浮动粘贴流程已等价。
+
+
+## 后续补齐：带选区Cel粘贴保留共同源关联
+
+本节关闭上一批登记的普通同层显式关联Cel拆分差异。旧版 `workspace-paste-cel-selection.ts::pasteCelSelection` 通过 `selection-transform-targets.ts::applySelectionTransformLayerState` 编辑帧代理，再由 `animation.ts::animationLayerAtFrame/syncAnimationLayerAtFrame` 写回规范源，不拆除目标关联。原生先前套用了整格覆盖时的解除关联和存活成员提升，选区粘贴进入副本时会错误地只修改该帧。
+
+本批移除该路径的拆链和根提升，继续使用原candidate、浮动变换及完整时间轴历史。普通与稀疏预览按规范owner暂存结果，同一owner收到多个载荷时按顺序逐次source-over，不能直接跳过后续项；每个owner只保留一份回滚数据，反复预览从原基线计算。沿用旧版初次载荷顺序及随后提升活动目标的规则，转移owner回滚记录；不同载荷的采样缓存分别使用，稀疏路径预算计入额外共享目标的高质量采样缓存。初始化失败恢复原timeline与选择。
+
+八组回归覆盖根／链副本目标、单／双半透明载荷、完整／稀疏Surface及画布外原点。检查所有关联帧同步显示、原身份与链结构保持、规范透明度／zIndex、活动目标提升后的叠加顺序、重复移动与缩放、快速／高质量采样切换，以及取消精确恢复几何、一条提交历史、保存重开和Undo／Redo。原 `cel-selection-clipboard-tests` 中断言副本拆链的用例按旧版修正。
+
+本节仅针对普通RGBA同层显式关联；不扩大特殊图层、跨图层共享或图层组关联支持。实际鼠标／菜单验收未在本批执行。
+
+本批实际结果：上述八组新增场景及 `free-tile-project-tests`、`moon-core-tests`、`cel-selection-clipboard-tests` 通过，唯一正式Release程序构建通过，542文件来源覆盖与diff检查通过。
