@@ -315,7 +315,7 @@ public:
   bool pasteCopiedCels(bool crossDocument=false);
   bool hasCelClipboard()const{return !celClipboard_.empty();}
   struct FrameClipboardItem { DocumentFrame frame; std::vector<DocumentCel> cels;std::vector<timeline::MaskSlot> masks; };
-  struct FrameClipboardSnapshot {std::vector<FrameClipboardItem> items;std::vector<DocumentLayer> layers;std::uint64_t sourceIdentity=0;int width=0,height=0;std::vector<tiles::Tileset> tilesets;std::vector<timeline::Group> groups;};
+  struct FrameClipboardSnapshot {std::vector<FrameClipboardItem> items;std::vector<DocumentLayer> layers;std::uint64_t sourceIdentity=0;int width=0,height=0;std::vector<tiles::Tileset> tilesets;std::vector<timeline::Group> groups;std::vector<std::array<int,4>> layerGeometry;};
   FrameClipboardSnapshot exportFrameClipboard()const;
   bool pasteFrameClipboard(const FrameClipboardSnapshot& snapshot);
   bool importGifAnimationLayer(const Document& source,int startFrameIndex);
