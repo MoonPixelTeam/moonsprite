@@ -94,3 +94,11 @@
 本次删除普通帧时，将直接引用被删除别名的存活Cel改为引用其仍存活的根，保留显式关联和运行期共享的区别，复用现有 beforeCels／afterCels 历史。没有复制全画布或新增另一套事务，根身份、像素及偏移保持不变。
 
 六组独立回归覆盖单删、批删、剪切和两种关联表示，使用四帧多级链验证无悬空引用、规范根、像素／偏移、一条历史、保存重开、Undo恢复原链及Redo。三套相关检查 `free-tile-project-tests`、`moon-core-tests`、`cel-selection-clipboard-tests` 通过，唯一正式Release程序构建通过。未新增物理鼠标交互或整板块等价验收。
+
+## 后续补齐：删除关联源帧的内容属性
+
+旧版 `ensureAnimationDocument` 的 `normalizeAnimationCelLinks` 会同步关联Cel的Surface、透明度、zIndex、文字及特殊编辑数据，`deleteAnimationFrame` 删除源后经 `applyFrameSurfaces` 显示剩余内容。原生删除根Cel后的共享内容重建只复制Surface，剩余帧可能显示不同透明度／顺序，并丢失可编辑文字。
+
+本批在现有根内容移交过程中保留透明度、zIndex、文字和既有编辑元数据，复用 beforeCels／afterCels 历史；完成删除后调用现有 `projectActiveCelOpacities`，同步活动层显示属性。不改变既有显式关联转运行期共享的处理，不增加另一套结构事务。当前导入要求可解析的根Surface存在，该限制保持；空白场景使用全透明像素。
+
+18组独立回归覆盖单删／批删／剪切、普通像素／文字／全透明内容及显式／运行期关联，验证剩余像素、偏移、透明度、zIndex、文字编辑数据、一条历史、保存重开、Undo恢复原属性和关联、Redo。`free-tile-project-tests`、`moon-core-tests`、`cel-selection-clipboard-tests` 均通过，唯一正式Release程序构建成功。没有新增物理鼠标交互或完整动画模块验收。
