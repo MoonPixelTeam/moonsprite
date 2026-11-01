@@ -339,3 +339,14 @@
 八组新增场景覆盖图层／组蒙版、隔离开／关和粘贴一／两帧，检查Undo后重新进入蒙版、Redo退出且保留像素选区、真实笔画写入新Cel且原蒙版保持、重复Undo／Redo及保存重开。构建和测试结果见迁移计划；未新增实际UI操作验收。
 
 本批实际结果：八组新增回归及既有 `free-tile-project-tests`、唯一正式Release构建、542文件来源覆盖与diff检查通过。
+
+
+## 后续补齐：原关联源删除后复制运行时共享帧（2026-11-02）
+
+旧版 `workspace-commands-animation-frame-clipboard.ts::copySelectedAnimationFrames` 经 `animation.ts::cloneAnimationCel/cloneAnimationCelSurface` 复制每个帧实际持有的Surface；删除原规范源后，仍共享像素的存活帧可正常复制。原生删除源帧后，为存活副本建立 `runtimeSharedCelId`。帧复制此前只为显式 `linkedCelId` 物化内容，再无条件清运行时引用，运行时共享叶副本可能失去Surface。
+
+本批让运行时共享副本复用原规范源解析与内容物化分支，捕获Surface、编辑数据、透明度和zIndex后清运行时引用，保持剪贴板自持内容。没有新建共享或剪贴板架构，不扩大特殊资源协议。
+
+四组新增场景覆盖普通／文字图层、仅复制共享叶／连同新规范源复制两帧，经实际删除原源帧构造运行时共享；检查复制的像素、稀疏几何、属性及可编辑文字，同工程与不同尺寸工程粘贴、一次历史、保存重开与Undo／Redo。实际结果见迁移计划，未新增实际UI操作验收。
+
+本批实际结果：四组新增场景及既有 `free-tile-project-tests`、唯一正式Release构建、542文件来源覆盖与diff检查通过。
