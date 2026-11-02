@@ -53,3 +53,13 @@ native此前只更新活动层、帧和部分时间轴选择，可能留下旧�
 核心六组覆盖图层／组蒙版及null／首格／末格锚点、编辑目标、重复UndoRedo和蒙版像素持久化。独立拖放自动检查扩展为两蒙版格／首格锚点，检查实际导入后的清空、Undo精确恢复和Redo清空。未进行人工拖放或截图验收。
 
 本批实际结果：新增六组选择／锚点场景所在 `free-tile-project-tests` 与既有 `attached-masks-tests` 通过；唯一正式 Release 构建成功，正式程序 `--timeline-gif-drop-check` 返回0，覆盖两蒙版格、首格锚点及重复Undo／Redo后的界面同步。542文件来源覆盖和diff检查通过。拖放检查自动构造已注册LAF事件，未进行人工资源管理器拖放或截图验收。
+
+## GIF 导入含瓦片／自由瓦片图层的工程（2026-11-02）
+
+旧版 `importGifAnimationLayer` 不按既有图层类型拒绝导入，追加帧后由 `animation.ts::ensureAnimationDocument` 为各owner补齐槽。`blankAnimationTilemap` 采用该owner第一个网格模板，保留tile尺寸、行列并清空引用；`blankAnimationFreeTiles` 创建空实例，具有源资源时通过 `renderFreeTileSurface` 建立画布尺寸的透明Surface。
+
+本批解除原生GIF导入对混合工程的整体验证拒绝，复用现有tiles/free_tiles结构、网格模板和原有GIF结构历史。新GIF层仍为普通像素；既有图层、共享源、tileset像素及Cel的实例／引用／几何保持。追加grid空槽按网格尺寸，free空槽按其源配置和目标画布尺寸，均保留layer.opacity且不继承旧实例或格引用。既有256MiB工作预算补计资源像素、网格存储及实际特殊空槽，不提高限额；预算失败发生于提交浮动内容和结构复制之前。
+
+六组核心场景覆盖从grid／free层进入及起点0／1／2，验证覆盖／追加、原共享资源与自定义元数据、保存重开、重复Undo／Redo以及原grid继续绘制；另有1024画布稀疏旧Cel的特殊空槽超预算拒绝保护。自动LAF拖放入口增加两组混合工程检查。目标颜色模式仍限原生已支持的RGBA；不代表旧版索引／灰度模式已迁移。
+
+本批实际结果：新增六组混合图层场景、特殊空槽预算失败保护及既有 `free-tile-project-tests` 通过；唯一正式Release构建成功，正式程序 `--timeline-gif-drop-check` 返回0，包含原有普通／蒙版场景和新增两组混合图层拖放、空槽及Undo／Redo检查。542文件来源覆盖和diff检查通过。检查自动构造已注册LAF拖放事件，未进行人工资源管理器拖放或截图验收。

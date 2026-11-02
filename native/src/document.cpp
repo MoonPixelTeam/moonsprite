@@ -327,7 +327,7 @@ bool Document::pasteFrameClipboard(const FrameClipboardSnapshot& snapshot){if(ha
  activeMaskId_.clear();maskIsolated_=false;timeline_=std::move(validated);nextFrameId_=next;activeFrameId_=inserted.front();projectActiveCelOpacities();selectedFrames_=inserted;timelineSelection_=*edit.afterTimelineSelection;frameAnchor_=inserted.back();change_={0,0,width_,height_};publishChange();pushEdit(std::move(edit),U"粘贴动画帧");return true;
 }
 // legacy workspace-commands-animation-frame.ts::importGifAnimationLayer.
-bool Document::importGifAnimationLayer(const Document& source,int startFrameIndex,const std::vector<MaskSlotKey>* maskSelection,const std::optional<MaskSlotKey>* maskAnchor){if(hasTilemapContent()||hasFreeTileContent())return false;
+bool Document::importGifAnimationLayer(const Document& source,int startFrameIndex,const std::vector<MaskSlotKey>* maskSelection,const std::optional<MaskSlotKey>* maskAnchor){
  const auto& incoming=source.timeline().state();if(incoming.layers.empty() || incoming.frames.empty())return false;
  if(active() && !floating())throw std::runtime_error("Finish the active edit before importing GIF");
  const int start=std::clamp(startFrameIndex,0,int(timeline_.state().frames.size()));const auto total=std::max(timeline_.state().frames.size(),std::size_t(start)+incoming.frames.size());
@@ -337,18 +337,30 @@ bool Document::importGifAnimationLayer(const Document& source,int startFrameInde
  // Reuse the sparse working budget from Cel/frame paste before settling edits.
  constexpr std::uint64_t gifWorkingLimit=256ull*1024*1024;std::uint64_t beforeBytes=0,sourceBytes=0;
  auto countBytes=[&](std::uint64_t& sum,const timeline::Surface& surface){raster::validate(surface);const auto bytes=std::uint64_t(surface.pixels.size())*sizeof(Pixel);if(bytes>gifWorkingLimit-sum)throw std::length_error("GIF import exceeds sparse pixel budget");sum+=bytes;};
- for(const auto& c:timeline_.state().cels)if(c.surface)countBytes(beforeBytes,*c.surface);for(const auto& m:timeline_.state().masks)countBytes(beforeBytes,m.mask.surface);for(const auto& c:sourceCels)countBytes(sourceBytes,*c.surface);
+ // Legacy ensureAnimationDocument builds one first-grid template per owner.
+ // Keep special empty slots editable, and account for their real raster/grid
+ // allocations before committing a pending edit or copying the timeline.
+ std::unordered_map<std::string,const tiles::CelData*> gridTemplates;
+ auto chargeBytes=[&](std::uint64_t& sum,std::uint64_t bytes){if(bytes>gifWorkingLimit-sum)throw std::length_error("GIF import exceeds sparse storage budget");sum+=bytes;};
+ for(const auto& c:timeline_.state().cels){if(c.surface)countBytes(beforeBytes,*c.surface);if(c.tilemap){gridTemplates.emplace(c.layerId,&*c.tilemap);chargeBytes(beforeBytes,std::uint64_t(c.tilemap->cells.size())*sizeof(std::optional<tiles::Cell>));}}
+ for(const auto& t:timeline_.state().tilesets)chargeBytes(beforeBytes,std::uint64_t(t.pixels.size())*sizeof(Pixel));
+ for(const auto& m:timeline_.state().masks)countBytes(beforeBytes,m.mask.surface);for(const auto& c:sourceCels)countBytes(sourceBytes,*c.surface);
  // Legacy normalization keeps nonactive empty slots at 1x1. The new
  // layer's unimported active slot uses the source layer's displayed geometry.
  const auto& sourceGeometry=*sourceCels[source.activeFrameIndex()].surface;
  const bool activeBlank=activeFrameIndex()<std::size_t(start)||activeFrameIndex()>=std::size_t(start)+sourceCels.size();
  std::uint64_t blankPixels=(total-timeline_.state().frames.size())*timeline_.state().layers.size()+total-sourceCels.size();
  if(activeBlank)blankPixels+=std::uint64_t(sourceGeometry.width)*sourceGeometry.height-1;
- const auto blankBytes=blankPixels*sizeof(Pixel);
+ std::uint64_t blankBytes=blankPixels*sizeof(Pixel);
+ const auto appended=total-timeline_.state().frames.size();
+ for(const auto& owner:timeline_.state().layers){
+  if(owner.kind=="tilemap"){const auto found=gridTemplates.find(owner.id);if(found==gridTemplates.end())throw std::invalid_argument("Missing GIF destination grid template");const auto& grid=*found->second;tiles::sizeCheck(grid.tileWidth,grid.tileHeight,grid.columns,grid.rows);if(grid.cells.size()!=std::size_t(grid.columns)*grid.rows)throw std::invalid_argument("Invalid GIF destination grid template");const auto pixels=std::uint64_t(grid.columns)*grid.tileWidth*grid.rows*grid.tileHeight;chargeBytes(blankBytes,appended*((pixels-1)*sizeof(Pixel)+std::uint64_t(grid.cells.size())*sizeof(std::optional<tiles::Cell>)));}
+  else if(owner.kind=="free-tile"&&owner.freeTiles&&(!owner.freeTiles->sources.empty()||!owner.freeTiles->legacyTilesetId.empty()))chargeBytes(blankBytes,appended*(std::uint64_t(width_)*height_-1)*sizeof(Pixel));
+ }
  if(beforeBytes>gifWorkingLimit/5||sourceBytes>gifWorkingLimit/4||blankBytes>gifWorkingLimit/4||beforeBytes*5+sourceBytes*4+blankBytes*4>gifWorkingLimit)throw std::length_error("GIF import exceeds sparse working budget");
  // Validation precedes pending-paste commit; imported structure is one further edit.
- commitFloatingPaste();const auto before=timeline_.state();auto candidate=before;std::uint64_t next=nextFrameId_;auto fresh=[&](const char* prefix){return std::string(prefix)+std::to_string(identity_)+"-"+std::to_string(++next);};
- auto blank=[&](const DocumentLayer& layer,const std::string& frame,const timeline::Surface* geometry=nullptr){DocumentCel cel;cel.id=fresh("cel-gif-");cel.layerId=layer.id;cel.frameId=frame;cel.opacity=layer.opacity;timeline::Surface surface;surface.width=surface.height=1;if(geometry){surface.width=geometry->width;surface.height=geometry->height;surface.offsetX=geometry->offsetX;surface.offsetY=geometry->offsetY;}surface.pixels.resize(std::size_t(surface.width)*surface.height);cel.surface=std::move(surface);return cel;};
+ commitFloatingPaste();const auto before=timeline_.state();gridTemplates.clear();for(const auto& c:before.cels)if(c.tilemap)gridTemplates.emplace(c.layerId,&*c.tilemap);auto candidate=before;std::uint64_t next=nextFrameId_;auto fresh=[&](const char* prefix){return std::string(prefix)+std::to_string(identity_)+"-"+std::to_string(++next);};
+ auto blank=[&](const DocumentLayer& layer,const std::string& frame,const timeline::Surface* geometry=nullptr){DocumentCel cel;cel.id=fresh("cel-gif-");cel.layerId=layer.id;cel.frameId=frame;cel.opacity=layer.opacity;timeline::Surface surface;surface.width=surface.height=1;if(geometry){surface.width=geometry->width;surface.height=geometry->height;surface.offsetX=geometry->offsetX;surface.offsetY=geometry->offsetY;}if(layer.kind=="tilemap"){cel.tilemap=*gridTemplates.at(layer.id);std::fill(cel.tilemap->cells.begin(),cel.tilemap->cells.end(),std::nullopt);surface.width=cel.tilemap->columns*cel.tilemap->tileWidth;surface.height=cel.tilemap->rows*cel.tilemap->tileHeight;}else if(layer.kind=="free-tile"){cel.freeTiles=free_tiles::CelData{};if(layer.freeTiles&&(!layer.freeTiles->sources.empty()||!layer.freeTiles->legacyTilesetId.empty())){surface.width=width_;surface.height=height_;}}surface.pixels.resize(std::size_t(surface.width)*surface.height);cel.surface=std::move(surface);return cel;};
  while(candidate.frames.size()<total){auto frame=incoming.frames[candidate.frames.size()-start];frame.id=fresh("frame-gif-");candidate.frames.push_back(frame);for(const auto& layer:before.layers)candidate.cels.push_back(blank(layer,frame.id));}
  DocumentLayer layer;layer.id=fresh("layer-gif-");layer.name=source.name().empty()?U"GIF":source.name();candidate.layers.push_back(layer);std::vector<std::string> imported;
  for(std::size_t i=0;i<candidate.frames.size();++i){const bool importedSlot=i>=std::size_t(start)&&i<std::size_t(start)+sourceCels.size();auto cel=blank(layer,candidate.frames[i].id,!importedSlot&&candidate.frames[i].id==activeFrameId_?&sourceGeometry:nullptr);if(importedSlot){cel.surface=sourceCels[i-start].surface;cel.opacity=sourceCels[i-start].opacity;cel.zIndex=sourceCels[i-start].zIndex;imported.push_back(cel.id);}candidate.cels.push_back(std::move(cel));}
