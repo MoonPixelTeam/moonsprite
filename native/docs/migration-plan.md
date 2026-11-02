@@ -2074,3 +2074,5 @@ Paint／无主选实例的源像素删除仍未开放，剪切在这些场景只
 - 2026-11-02：整格同／跨工程Cel粘贴Redo复用现有历史编辑目标，退出Undo后重新进入的旧蒙版及隔离，按旧版恢复粘贴后的文档编辑目标。八组同／跨工程、图层／组蒙版及隔离开关，覆盖重复Undo／Redo、真实笔画写入Cel、原蒙版保持、保存重开及笔画独立Undo；既有 `free-tile-project-tests`、唯一正式Release构建、542文件来源覆盖与diff检查通过。详见[整格Cel粘贴Redo编辑目标](frame-clipboard-source-lifetime-20261101.md)。蒙版中初次粘贴准入未扩展，实际UI操作未验收。
 
 - 2026-11-02：选区Cel粘贴的像素历史与仅选区历史按旧版恢复文档编辑目标，Undo／Redo退出后来进入的蒙版及隔离；复用现有MaskContextHistory，普通／蒙版浮动路径保持。八组像素变化／仅选区变化、图层／组蒙版及隔离开关，覆盖重复历史、选区／像素／dirty分类、后续真实笔画、原蒙版保持和保存重开；既有 `free-tile-project-tests`、唯一正式Release构建、542文件来源覆盖及diff检查通过。详见[选区Cel历史编辑上下文](frame-clipboard-source-lifetime-20261101.md)。未执行实际UI操作验收。
+
+- 2026-11-02：整格Cel粘贴历史改用已有双侧MaskContextHistory，补齐Undo恢复文档编辑目标，保留原Redo修正；同／跨工程、图层／组蒙版及隔离开关的八组回归两侧都进入蒙版，验证重复历史、原像素／粘贴像素、旧蒙版保持、后续真实笔画和保存重开。既有 `free-tile-project-tests`、唯一正式Release构建、542文件来源覆盖及diff检查通过。详见[整格Cel粘贴Undo编辑目标](frame-clipboard-source-lifetime-20261101.md)。蒙版中初次粘贴准入未扩展，实际UI操作未验收。

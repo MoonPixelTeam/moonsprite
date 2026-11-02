@@ -463,3 +463,13 @@
 八组像素变化／仅选区变化、图层／组蒙版和隔离开／关场景，两侧都实际进入蒙版后反复Undo／Redo，检查编辑目标、选区、像素、仅选区历史的dirty分类，以及真实后续笔画写入Cel、原蒙版保持和保存重开。未执行实际UI操作验收。
 
 本批实际结果：八组新增场景及既有 `free-tile-project-tests`、唯一正式Release构建、542文件来源覆盖和diff检查通过；未执行实际UI操作验收。
+
+## 后续补齐：整格Cel粘贴Undo恢复文档编辑目标（2026-11-02）
+
+旧版 `workspace-animation-selection-history.ts::historyEntryWithAnimationSelection` 在Undo和Redo两侧均恢复编辑目标。此前原生只补齐整格Cel粘贴Redo退出后来进入的蒙版，Undo仍可能保留该蒙版。
+
+本批将整格同／跨工程粘贴历史的单侧maskToActivateOnRedo改为现有 `Edit::MaskContextHistory` 空文档上下文，双侧恢复文档编辑及非隔离状态。Redo结果保持，未增加历史类型或扩大在蒙版中初次粘贴的准入。
+
+原八组同／跨工程、图层／组蒙版和隔离开／关回归扩展为Undo前也进入蒙版，检查撤销恢复原像素并退出蒙版，Redo恢复粘贴像素并退出蒙版；沿用重复历史、原蒙版保持、实际笔画及保存重开检查。未执行实际UI操作验收。
+
+本批实际结果：扩展后的八组双侧上下文场景及既有 `free-tile-project-tests`、唯一正式Release构建、542文件来源覆盖和diff检查通过；未执行实际UI操作验收。
