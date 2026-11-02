@@ -76,13 +76,13 @@ bool Editor::flushTimelapse(){
  }catch(const std::exception& e){status_=U"缩时录像未能保存："+unicodeText(e.what());invalidate();return false;}
 }
 void Editor::showTimelapse(){
- if(pending_!=Pending::None||!documentOpen_||homeOpen_)return;if(!flushTimelapse())return;
+ if(pending_!=Pending::None||!documentOpen_||homeOpen_)return;
  auto session=timelapse::ensureRecordingSession(document,smoke_?assets_.parent_path()/("timelapse-smoke-owned-"+std::to_string(GetCurrentProcessId())):timelapse::executableLibraryRoot(),smoke_?std::filesystem::path{}:timelapse::legacyLibraryRoot());
  TimelapseDialog popup(font_,skin_,toolIcons_,document.mutableTimelapseSettings(),session->reader(),[this,session]{session->settingsChanged(document);},[this,session]{session->clear(document);},[this]{exportTimelapseImages();});popup.setPreviewCheckerboard(checkerboard_);popup.setDisplay(display(),false);auto r=bounds();const int width=420*uiScale,height=525*uiScale;popup.setBounds({r.center().x-width/2,r.center().y-height/2,width,height});
  auto previous=pending_;pending_=Pending::Timelapse;popup.openWindowInForeground();pending_=previous;requestFocus();refresh();
 }
 void Editor::exportTimelapseImages(){
- if(!flushTimelapse())return;auto session=document.recordingSession();if(!session||document.timelapseSettings().snapshots.empty())return;
+ auto session=document.recordingSession();if(!session||document.timelapseSettings().snapshots.empty())return;
  const auto identity=document.identity();const auto settings=document.timelapseSettings();
  RecordingExportDialog popup(font_,skin_,toolIcons_,settings,session->reader(),[this,identity,count=settings.snapshots.size()](bool jpeg)->std::optional<std::vector<std::filesystem::path>>{
   if(document.identity()!=identity)throw std::runtime_error("Recording project changed during export");std::filesystem::path initial=std::filesystem::path(document.name()+U"-timelapse");initial.replace_extension(jpeg?L".jpg":L".png");wchar_t filename[32768]{};wcsncpy_s(filename,initial.c_str(),_TRUNCATE);OPENFILENAMEW dialog{};dialog.lStructSize=sizeof(dialog);dialog.hwndOwner=GetActiveWindow();dialog.lpstrFile=filename;dialog.nMaxFile=32768;dialog.lpstrFilter=jpeg?L"JPEG 图片序列\0*.jpg\0\0":L"PNG 图片序列\0*.png\0\0";dialog.lpstrDefExt=jpeg?L"jpg":L"png";dialog.Flags=OFN_EXPLORER|OFN_NOCHANGEDIR|OFN_PATHMUSTEXIST;const auto preferred=preferredExportDirectory().wstring();dialog.lpstrInitialDir=preferred.empty()?nullptr:preferred.c_str();

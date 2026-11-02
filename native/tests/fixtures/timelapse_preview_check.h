@@ -3,6 +3,7 @@
 namespace moon {
 // Controlled completions exercise the real dialog without disk or timing races.
 struct TimelapsePreviewCheck {
+ static bool shown(const TimelapseDialog& dialog,const std::string& id){return dialog.shown_==id&&dialog.error_.empty();}
  static void run(const PixelFont& font,const Skin& skin,const Skin& icons){
   auto check=[](bool ok){if(!ok)throw std::runtime_error("Timelapse preview stale-result/playback regression");};
   timelapse::Settings settings;settings.fps=1;settings.speed=1;
@@ -33,6 +34,12 @@ struct TimelapsePreviewCheck {
   dialog.toggle();dialog.exportButton_->Click();check(exported&&!dialog.playing_&&dialog.play_->icon=="playback-play");
   dialog.toggle();dialog.error_=U"Previous error";dialog.clearButton_->Click();dialog.tick();
   check(settings.snapshots.empty()&&dialog.cache_.empty()&&dialog.shown_.empty()&&dialog.error_.empty()&&!dialog.playing_&&dialog.play_->icon=="playback-play"&&!dialog.play_->isEnabled());
+  // Pending capture publications remain visible without a persistence barrier.
+  timelapse::Frame added;added.id="late-preview";added.width=added.height=1;settings.snapshots.push_back(added);dialog.cache_.push_front({added.id,image});dialog.tick();
+  check(dialog.shown_==added.id&&dialog.exportButton_->isEnabled()&&dialog.clearButton_->isEnabled()&&dialog.seek_->isEnabled()&&!dialog.play_->isEnabled());
+  added.id="late-second";settings.snapshots.push_back(added);dialog.tick();check(dialog.play_->isEnabled()&&dialog.seek_->maximum==1);
+  dialog.select(1);std::promise<timelapse::Image> late;dialog.loading_=late.get_future();dialog.requested_=added.id;dialog.requestedGeneration_=dialog.loadGeneration_;
+  dialog.tick();late.set_value(image);dialog.tick();check(dialog.shown_==added.id&&dialog.error_.empty());
  }
 };
 }

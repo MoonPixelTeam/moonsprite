@@ -2,6 +2,7 @@
 #include "editor_implementation.h"
 #include "native_document_open.h"
 #include "project_restore_report.h"
+#include "timelapse_session.h"
 #include "../tests/fixtures/timelapse_restore_archive.h"
 #include "../tests/fixtures/timelapse_preview_check.h"
 #include "editor.h"
@@ -6180,6 +6181,26 @@ void Editor::smokeTimelineGifDrop(){
     }
 
     TimelapsePreviewCheck::run(font_,skin_,toolIcons_);
+    {
+      auto previous=std::move(document);
+      struct RestoreDocument {Document& target;Document& previous;~RestoreDocument(){target=std::move(previous);}} restore{document,previous};
+      const auto blocked=fixtureRoot/"unwritable-recording-library";{std::ofstream file(blocked,std::ios::binary);file<<"owned-file-obstacle";}
+      document=Document::fromImage(1,1,{0xff123456},U"内嵌录像可用");
+      timelapse::Settings settings;timelapse::Frame frame;frame.id="embedded-preview-without-library";frame.width=frame.height=1;frame.data=encodeRgbaImagePng(1,1,{0xff123456}).png;settings.snapshots.push_back(frame);document.setImportedTimelapse(settings);document.markSaved();
+      auto session=timelapse::ensureRecordingSession(document,blocked);bool failed=false;try{session->flush(document);}catch(const std::exception&){failed=true;}
+      if(!failed||session->error.empty())throw std::runtime_error("Unwritable preview library fixture did not fail persistence");
+      const auto revision=document.revision(),history=document.historyPosition();const auto retained=document.timelapseSettings().snapshots[0].data;
+      bool previewShown=false,exportOpened=false;int ticks=0;ui::Timer inspect(20,this);
+      inspect.Tick.connect([&]{
+        ++ticks;auto focus=ui::Manager::getDefault()->getFocus();auto popup=focus?dynamic_cast<TimelapseDialog*>(focus->window()):nullptr;
+        if(popup&&TimelapsePreviewCheck::shown(*popup,frame.id)){previewShown=true;inspect.stop();popup->closeWindow(nullptr);}
+        else if(ticks>=100){inspect.stop();if(popup)popup->closeWindow(nullptr);}
+      });inspect.start();showTimelapse();inspect.stop();
+      if(!previewShown)throw std::runtime_error("Embedded recording preview was blocked by failed local persistence");
+      ui::Timer closeExport(20,this);closeExport.Tick.connect([&]{closeExport.stop();auto focus=ui::Manager::getDefault()->getFocus();auto popup=focus?dynamic_cast<PixelDialog*>(focus->window()):nullptr;if(popup){exportOpened=true;popup->closeWindow(nullptr);}});
+      closeExport.start();exportTimelapseImages();closeExport.stop();
+      if(!exportOpened||document.revision()!=revision||document.historyPosition()!=history||document.dirty()||document.timelapseSettings().snapshots[0].data!=retained||document.timelapseSettings().snapshots[0].local)throw std::runtime_error("Recording export entry required local writes or modified the source");
+    }
     // Inspect the real Win32 chooser and cancel it; no fake dialog result.
     const auto chooserIdentity=document.identity(),chooserHistory=document.historyPosition();const auto chooserCount=projects_.size();const DWORD chooserThread=GetCurrentThreadId();std::string chooserError;bool inspected=false;
     std::thread cancelChooser([&]{

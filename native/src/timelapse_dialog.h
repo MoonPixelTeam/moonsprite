@@ -21,11 +21,14 @@ struct TimelapsePreviewCheck;
 class TimelapseDialog final:public PixelDialog {
  friend struct TimelapsePreviewCheck;
  const PixelFont& font_;const Skin& skin_;const Skin& icons_;timelapse::Settings& settings_;timelapse::Reader read_;std::function<void()> changed_,clear_,export_;PixelSwitch *enabled_,*undo_;PixelDropdown* mode_;PixelButton *close_,*done_,*clearButton_,*exportButton_,*play_;PixelSlider* seek_;TimelapsePreview* preview_;ui::Timer timer_{16,this};std::future<timelapse::Image> loading_;std::string requested_,shown_;std::size_t frame_=0,start_=0;bool playing_=false;std::chrono::steady_clock::time_point started_;std::u32string error_;
- struct Cached {std::string id;timelapse::Image image;};std::list<Cached> cache_;std::uint64_t loadGeneration_=0,requestedGeneration_=0;
+ struct Cached {std::string id;timelapse::Image image;};std::list<Cached> cache_;std::uint64_t loadGeneration_=0,requestedGeneration_=0;std::size_t observedCount_=0;std::string selectedId_;
  void stopPlayback(){playing_=false;play_->icon="playback-play";play_->invalidate();}
- void select(std::size_t n){const auto next=settings_.snapshots.empty()?0:std::min(n,settings_.snapshots.size()-1);if(next!=frame_){++loadGeneration_;error_.clear();}frame_=next;seek_->value=int(frame_);seek_->invalidate();invalidate();}
+ void select(std::size_t n){const auto next=settings_.snapshots.empty()?0:std::min(n,settings_.snapshots.size()-1);const auto id=settings_.snapshots.empty()?std::string{}:settings_.snapshots[next].id;if(next!=frame_||id!=selectedId_){++loadGeneration_;error_.clear();}frame_=next;selectedId_=id;seek_->value=int(frame_);seek_->invalidate();invalidate();}
  void toggle(){if(settings_.snapshots.size()<2)return;playing_=!playing_;if(playing_){if(frame_+1>=settings_.snapshots.size())select(0);start_=frame_;started_=std::chrono::steady_clock::now();}play_->icon=playing_?"playback-pause":"playback-play";play_->invalidate();}
  void tick(){
+  if(observedCount_!=settings_.snapshots.size())sync();
+  const auto selected=settings_.snapshots.empty()?std::string{}:settings_.snapshots[std::min(frame_,settings_.snapshots.size()-1)].id;
+  if(selected!=selectedId_){selectedId_=selected;++loadGeneration_;error_.clear();}
   if(loading_.valid()&&loading_.wait_for(std::chrono::milliseconds(0))==std::future_status::ready){
    try{
     auto image=loading_.get();
@@ -54,7 +57,7 @@ public:
   exportButton_=button(U"导出",[this]{stopPlayback();if(export_)export_();});done_=button(U"关闭",[this]{closeWindow(nullptr);});close_=button(U"",[this]{closeWindow(nullptr);});close_->iconSkin=&icons;close_->icon="close";close_->skinStyle="icon_button";timer_.Tick.connect([this]{tick();});timer_.start();sync();
  }
  ~TimelapseDialog(){timer_.stop();if(loading_.valid())loading_.wait();}
- void sync(){enabled_->setChecked(settings_.enabled);undo_->setChecked(settings_.recordUndoSteps);mode_->setSelectedIndex(settings_.mode==timelapse::Mode::Full?0:1);play_->setEnabled(settings_.snapshots.size()>1);clearButton_->setEnabled(!settings_.snapshots.empty());exportButton_->setEnabled(!settings_.snapshots.empty());seek_->maximum=std::max(0,int(settings_.snapshots.size())-1);seek_->setEnabled(!settings_.snapshots.empty());invalidate();}
+ void sync(){observedCount_=settings_.snapshots.size();enabled_->setChecked(settings_.enabled);undo_->setChecked(settings_.recordUndoSteps);mode_->setSelectedIndex(settings_.mode==timelapse::Mode::Full?0:1);play_->setEnabled(settings_.snapshots.size()>1);clearButton_->setEnabled(!settings_.snapshots.empty());exportButton_->setEnabled(!settings_.snapshots.empty());seek_->maximum=std::max(0,int(settings_.snapshots.size())-1);seek_->setEnabled(!settings_.snapshots.empty());invalidate();}
  void setPreviewCheckerboard(const CheckerboardSettings& value){preview_->checkerboard=value;preview_->invalidate();}
  void setError(std::u32string value){error_=std::move(value);invalidate();}
  gfx::Size minimumDialogSize(int)const override{return {420*uiScale,420*uiScale};}

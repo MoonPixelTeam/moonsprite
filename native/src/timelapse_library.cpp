@@ -14,7 +14,10 @@ namespace {
 constexpr std::uint64_t chunkBytes=64ULL*1024*1024;
 struct Handle {HANDLE value=INVALID_HANDLE_VALUE;explicit Handle(HANDLE h):value(h){}~Handle(){if(value!=INVALID_HANDLE_VALUE)CloseHandle(value);}Handle(const Handle&)=delete;};
 [[noreturn]] void ioError(const char* message){throw std::runtime_error(std::string(message)+"; Win32="+std::to_string(GetLastError()));}
-std::filesystem::path contained(const std::filesystem::path& root,const std::filesystem::path& path){const auto r=std::filesystem::canonical(root),p=std::filesystem::canonical(path);auto a=r.begin(),b=p.begin();for(;a!=r.end();++a,++b)if(b==p.end()||_wcsicmp(a->c_str(),b->c_str())!=0)throw std::runtime_error("Recording path escapes its library");return p;}
+// filesystem_error::what() uses the Windows code page for paths. UI errors
+// cross a UTF-8 boundary, so retain the path and system code explicitly.
+[[noreturn]] void pathError(const char* action,const std::filesystem::path& path,const std::error_code& error){throw std::runtime_error(std::string(action)+": "+path.u8string()+"; system="+std::to_string(error.value()));}
+std::filesystem::path contained(const std::filesystem::path& root,const std::filesystem::path& path){std::error_code ec;const auto r=std::filesystem::canonical(root,ec);if(ec)pathError("Cannot resolve recording library",root,ec);const auto p=std::filesystem::canonical(path,ec);if(ec)pathError("Cannot resolve recording path",path,ec);auto a=r.begin(),b=p.begin();for(;a!=r.end();++a,++b)if(b==p.end()||_wcsicmp(a->c_str(),b->c_str())!=0)throw std::runtime_error("Recording path escapes its library");return p;}
 std::uint32_t checksum(const Bytes& b){return static_cast<std::uint32_t>(crc32(0,b.data(),static_cast<uInt>(b.size())));}
 std::mutex chunksMutex;
 std::list<std::pair<std::filesystem::path,std::filesystem::path>> chunks;
@@ -25,7 +28,7 @@ Reference appendLibraryFrame(const std::filesystem::path& root,const std::string
  static constexpr unsigned char signature[]{137,80,78,71,13,10,26,10};
  if(!safeId(store))throw std::invalid_argument("Invalid local recording identifier");
  if(png.size()<24||png.size()>32ULL*1024*1024||!std::equal(std::begin(signature),std::end(signature),png.begin()))throw std::invalid_argument("Invalid or oversized recording frame");
- std::filesystem::create_directories(root);std::filesystem::create_directories(root/store);const auto directory=contained(root,root/store);
+ std::error_code directoryError;std::filesystem::create_directories(root,directoryError);if(directoryError)pathError("Cannot create recording library",root,directoryError);std::filesystem::create_directories(root/store,directoryError);if(directoryError)pathError("Cannot create recording store",root/store,directoryError);const auto directory=contained(root,root/store);
  std::lock_guard<std::mutex> lock(chunksMutex);std::filesystem::path path;
  for(auto it=chunks.begin();it!=chunks.end();++it)if(it->first==directory){std::error_code ec;const auto size=std::filesystem::file_size(it->second,ec);if(!ec&&size<=chunkBytes-png.size())path=it->second;chunks.splice(chunks.end(),chunks,it);break;}
  if(path.empty()){
@@ -53,6 +56,6 @@ Bytes readLibraryFrame(const std::filesystem::path& root,const Reference& r){
  LARGE_INTEGER begin{};begin.QuadPart=static_cast<LONGLONG>(r.offset);if(!SetFilePointerEx(in.value,begin,nullptr,FILE_BEGIN))ioError("Cannot seek recording range");Bytes data(static_cast<std::size_t>(r.length));std::size_t offset=0;while(offset<data.size()){DWORD got=0;if(!ReadFile(in.value,data.data()+offset,static_cast<DWORD>(data.size()-offset),&got,nullptr))ioError("Cannot read recording range");if(!got)throw std::runtime_error("Incomplete recording frame");offset+=got;}if(checksum(data)!=r.checksum)throw std::runtime_error("Recording checksum mismatch");return data;
 }
 Bytes readLibraryFrameWithLegacy(const std::filesystem::path& root,const std::filesystem::path& legacy,const Reference& r){
- if(!validReference(r))throw std::invalid_argument("Invalid local recording reference");const auto path=root/r.store/(r.chunk+".bin");std::error_code ec;const auto status=std::filesystem::symlink_status(path,ec);if(ec&&ec!=std::errc::no_such_file_or_directory)throw std::filesystem::filesystem_error("Local recording unavailable",path,ec);if(!ec&&status.type()!=std::filesystem::file_type::not_found)return readLibraryFrame(root,r);return readLibraryFrame(legacy,r);
+ if(!validReference(r))throw std::invalid_argument("Invalid local recording reference");const auto path=root/r.store/(r.chunk+".bin");std::error_code ec;const auto status=std::filesystem::symlink_status(path,ec);if(ec&&ec!=std::errc::no_such_file_or_directory)pathError("Local recording unavailable",path,ec);if(!ec&&status.type()!=std::filesystem::file_type::not_found)return readLibraryFrame(root,r);return readLibraryFrame(legacy,r);
 }
 }
