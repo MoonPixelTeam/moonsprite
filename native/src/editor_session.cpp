@@ -311,11 +311,14 @@ void Editor::openPath(const std::filesystem::path& path) {
         auto candidate=Document::fromImported(imported.width,imported.height,std::move(imported.timeline),std::move(palette),std::move(imported.id),std::move(imported.name),std::move(imported.sourceArchive));candidate.setImportedProjectInformation(imported.information);candidate.setImportedReferenceImages(std::move(imported.referenceImages));candidate.setImportedSlices(std::move(imported.slices));candidate.setImportedTimelapse(std::move(imported.timelapse));candidate.setImportedProjectBrushes(std::move(imported.customBrushes));candidate.selectLayer(imported.activeLayerId);candidate.selectFrame(imported.activeFrameId);candidate.setImportedLoop(imported.loop);candidate.setPixelGrid(imported.showPixelGrid,false);candidate.setCustomGrid(imported.showCustomGrid,imported.customGrid,false);if(imported.symmetryCenter)candidate.setSymmetryCenter({imported.symmetryCenter->first,imported.symmetryCenter->second},false);
 
         candidate.setSourceFilePath(path);return candidate;
-      },U"打开文件");
+      },U"打开文件",&toolIcons_);
       loading.setDisplay(display(),false);const auto size=loading.minimumDialogSize(bounds().w);
       loading.setBounds({bounds().center().x-size.w/2,bounds().center().y-size.h/2,size.w,size.h});
       loading.openWindowInForeground();
-      openCandidate_=loading.result();candidatePath_=ase||raster?std::filesystem::path{}:path;
+      auto loaded=loading.result([this]{return pending_==Pending::None&&!document.strokeActive()&&!ui::Manager::getDefault()->getCapture();});
+      // Another open may finish while this progress overlay is dismissed.
+      ensureProjects();for(std::size_t i=0;i<projects_.size();++i){const auto& saved=i==activeProject_?documentPath_:projects_[i]->path;if(sameProjectPath(path,saved)||sameProjectPath(path,projectDocument(i).sourceFilePath())){activateProject(i);recordHomeRecent(path);return;}}
+      openCandidate_=std::move(loaded);candidatePath_=ase||raster?std::filesystem::path{}:path;
       candidateRecovery_=false;ask(Pending::Open);
       if(ase)status_=U"已打开 ASE；沿用原格式保存时将保存回源文件。";
 
@@ -546,7 +549,7 @@ void Editor::chooseProject() {
       host.add=[this](Document value){addProject(std::move(value));};
       host.error=[&failures](const std::string& error){if(!failures.empty())failures+=U"\n";failures+=unicodeText(error);};
       std::vector<std::string> sequencePaths;for(const auto& path:paths)sequencePaths.push_back(path.u8string());
-      openImageSequenceDocuments(font_,skin_,toolIcons_,display(),bounds(),palettePreferencePath().parent_path()/"image-sequence-v1.txt",sequencePaths,std::move(host));
+      openImageSequenceDocuments(font_,skin_,toolIcons_,display(),bounds(),palettePreferencePath().parent_path()/"image-sequence-v1.txt",sequencePaths,std::move(host),{},[this]{return pending_==Pending::None&&!document.strokeActive()&&!ui::Manager::getDefault()->getCapture();});
       if(!failures.empty()){showSaveError(std::runtime_error(utf8Text(failures)));errorTitle_=U"无法打开选择的文件";refresh();}
     }
 
@@ -602,6 +605,6 @@ void Editor::showNewDocument(bool verify) {
 
   }
 
-void Editor::requestClose() {flushBrushSizePreferences();if(pending_==Pending::Saving){closeAfterSave_=true;return;}ask(Pending::Close);}
+void Editor::requestClose() {if(DocumentLoadingDialog::deferClose([this]{requestClose();}))return;flushBrushSizePreferences();if(pending_==Pending::Saving){closeAfterSave_=true;return;}ask(Pending::Close);}
 
 }

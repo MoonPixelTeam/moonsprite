@@ -160,7 +160,7 @@ bool Editor::onProcessMessage(ui::Message* msg) {
           };
           host.add=[this](Document value){addProject(std::move(value));};
           host.error=[&failures](const std::string& error){if(!failures.empty())failures+=U"\n";failures+=unicodeText(error);};
-          openImageSequenceDocuments(font_,skin_,toolIcons_,display(),bounds(),palettePreferencePath().parent_path()/"image-sequence-v1.txt",paths,std::move(host));
+          openImageSequenceDocuments(font_,skin_,toolIcons_,display(),bounds(),palettePreferencePath().parent_path()/"image-sequence-v1.txt",paths,std::move(host),{},[this]{return pending_==Pending::None&&!document.strokeActive()&&!ui::Manager::getDefault()->getCapture();});
           if(!failures.empty()){showSaveError(std::runtime_error(utf8Text(failures)));errorTitle_=U"无法打开拖入的文件";refresh();}
           return true;
         }

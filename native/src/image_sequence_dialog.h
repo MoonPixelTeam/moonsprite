@@ -4,6 +4,7 @@
 #include "native_widgets.h"
 #include "ui/message.h"
 #include "ui/manager.h"
+#include "ui/message_loop.h"
 #include "ui/resize_event.h"
 #include "ui/timer.h"
 #include <future>
@@ -40,25 +41,46 @@ public:
 // Legacy awaits decode/composite; a native worker keeps the modal event loop
 // responsive while preserving the same all-or-nothing document publication.
 class DocumentLoadingDialog final:public PixelDialog {
- const PixelFont& font_;const Skin& skin_;std::u32string title_;std::future<Document> task_;ui::Timer timer_{20,this};bool closeRequested_=false;
+ // The close guard outlives the visible progress popup. A hidden progress
+ // window must not let OS shutdown destroy its caller while a read is pending.
+ class CloseGuard final:public ui::Widget {
+  bool requested_=false;std::function<void()> deferred_;CloseGuard* previous_;
+  inline static CloseGuard* current_=nullptr;
+ public:
+  CloseGuard():ui::Widget(ui::kGenericWidget),previous_(current_){current_=this;ui::Manager::getDefault()->addMessageFilter(ui::kCloseDisplayMessage,this);}
+  static bool defer(std::function<void()> action){if(!current_)return false;current_->deferred_=std::move(action);return true;}
+  bool onProcessMessage(ui::Message* msg)override{if(msg->type()==ui::kCloseDisplayMessage&&msg->display()==ui::Manager::getDefault()->display()){requested_=true;return true;}return ui::Widget::onProcessMessage(msg);}
+  ~CloseGuard(){auto* manager=ui::Manager::getDefault();manager->removeMessageFilter(ui::kCloseDisplayMessage,this);current_=previous_;if(previous_){previous_->requested_=previous_->requested_||requested_;if(deferred_)previous_->deferred_=std::move(deferred_);return;}if(deferred_){auto* callback=new ui::CallbackMessage(std::move(deferred_));callback->setRecipient(manager);manager->enqueueMessage(callback);}else if(requested_){auto* msg=new ui::Message(ui::kCloseDisplayMessage);msg->setDisplay(manager->display());msg->setRecipient(manager);msg->setPropagateToChildren(true);manager->enqueueMessage(msg);}}
+ } closeGuard_;
+ const PixelFont& font_;const Skin& skin_;std::u32string title_;std::future<Document> task_;ui::Timer timer_{20,this};PixelButton* close_;
 public:
- DocumentLoadingDialog(const PixelFont& font,const Skin& skin,std::function<Document()> task,std::u32string title=U"图片序列"):PixelDialog(skin,""),font_(font),skin_(skin),title_(std::move(title)),task_(std::async(std::launch::async,std::move(task))){setAutoRemap(false);timer_.Tick.connect([this]{if(task_.wait_for(std::chrono::seconds(0))==std::future_status::ready){timer_.stop();closeWindow(nullptr);}});timer_.start();}
+ DocumentLoadingDialog(const PixelFont& font,const Skin& skin,std::function<Document()> task,std::u32string title=U"图片序列",const Skin* icons=nullptr):PixelDialog(skin,""),font_(font),skin_(skin),title_(std::move(title)),task_(std::async(std::launch::async,std::move(task))){
+  setAutoRemap(false);
+  close_=new PixelButton(font,skin,U"",[this]{dismiss();});close_->iconSkin=icons?icons:&skin;close_->icon="close";close_->skinStyle="icon_button";addChild(close_);
+  timer_.Tick.connect([this]{if(task_.wait_for(std::chrono::seconds(0))==std::future_status::ready){if(isVisible())closeWindow(nullptr);}});timer_.start();
+ }
  gfx::Size minimumDialogSize(int)const override{return {220*uiScale,(DialogLayout::bodyTop+UiSpacing::labelHeight+DialogLayout::inset)*uiScale};}
+ void onResize(ui::ResizeEvent& ev)override{setBoundsQuietly(ev.bounds());layoutHeaderButton(close_);}
  void paintDialogContents(ui::PaintEvent& ev)override{auto& g=*ev.graphics();UiPaintScale scale(g);const auto r=uiLogical(clientBounds());drawDialogTitle(font_,g,r,title_);font_.draw(g,U"正在导入…",r.x+DialogLayout::inset,r.y+DialogLayout::bodyTop,skin_["text"]);}
- // A worker cannot be abandoned through Escape or an OS close: future::get
- // would otherwise block the UI. Replay OS close after publication/error routing.
+ // Legacy openProgress.dismiss only hides the overlay; decoding still completes.
+ static bool deferClose(std::function<void()> action){return CloseGuard::defer(std::move(action));}
+ void dismiss(){closeWindow(nullptr);}
  bool onProcessMessage(ui::Message* msg)override{
-  if(msg->type()==ui::kCloseDisplayMessage){closeRequested_=true;return true;}
-  if(msg->type()==ui::kKeyDownMessage)return true;
+  if(msg->type()==ui::kKeyDownMessage&&static_cast<ui::KeyMessage*>(msg)->scancode()==ui::kKeyEsc)return true;
   return PixelDialog::onProcessMessage(msg);
  }
- ~DocumentLoadingDialog(){if(closeRequested_){auto* msg=new ui::Message(ui::kCloseDisplayMessage);msg->setDisplay(display());msg->setRecipient(ui::Manager::getDefault());msg->setPropagateToChildren(true);ui::Manager::getDefault()->enqueueMessage(msg);}}
- Document result(){return task_.get();}
+ Document result(const std::function<bool()>& canPublish={}){
+  // Continue the same LAF event pump after the foreground overlay is dismissed.
+  // The stack-owned task and its caller stay alive; editing is now accessible.
+  ui::MessageLoop loop(ui::Manager::getDefault());
+  while(task_.wait_for(std::chrono::seconds(0))!=std::future_status::ready||(canPublish&&!canPublish()))loop.pumpMessages();
+  timer_.stop();return task_.get();
+ }
 };
-inline bool openImageSequenceDocuments(const PixelFont& font,const Skin& skin,const Skin& icons,ui::Display* display,const gfx::Rect& bounds,const std::filesystem::path& preference,const std::vector<std::string>& paths,image_sequence::Host host,const std::function<void(ImageSequenceDialog&)>& automate={}){
+inline bool openImageSequenceDocuments(const PixelFont& font,const Skin& skin,const Skin& icons,ui::Display* display,const gfx::Rect& bounds,const std::filesystem::path& preference,const std::vector<std::string>& paths,image_sequence::Host host,const std::function<void(ImageSequenceDialog&)>& automate={},const std::function<bool()>& canPublish={}){
  host.read=[](const std::string& path){return openRasterImage(std::filesystem::u8path(path));};
  host.ask=[&](const auto& batch,auto& settings){ImageSequenceDialog dialog(font,skin,icons,batch,settings);dialog.setDisplay(display,false);const auto size=dialog.minimumDialogSize(bounds.w);dialog.setBounds({bounds.center().x-size.w/2,bounds.center().y-size.h/2,size.w,size.h});std::unique_ptr<ui::Timer> timer;if(automate){timer=std::make_unique<ui::Timer>(80,&dialog);timer->Tick.connect([&]{timer->stop();automate(dialog);});timer->start();}dialog.openWindowInForeground();return dialog.choice();};
- host.work=[&](std::function<Document()> task){DocumentLoadingDialog dialog(font,skin,std::move(task));dialog.setDisplay(display,false);const auto size=dialog.minimumDialogSize(bounds.w);dialog.setBounds({bounds.center().x-size.w/2,bounds.center().y-size.h/2,size.w,size.h});dialog.openWindowInForeground();return dialog.result();};
+ host.work=[&](std::function<Document()> task){DocumentLoadingDialog dialog(font,skin,std::move(task),U"图片序列",&icons);dialog.setDisplay(display,false);const auto size=dialog.minimumDialogSize(bounds.w);dialog.setBounds({bounds.center().x-size.w/2,bounds.center().y-size.h/2,size.w,size.h});dialog.openWindowInForeground();return dialog.result(canPublish);};
  return image_sequence::open(paths,preference,host);
 }
 }

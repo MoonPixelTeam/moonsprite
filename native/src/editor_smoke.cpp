@@ -6114,6 +6114,32 @@ void Editor::smokeTimelineGifDrop(){
       if(ticks!=2||workerThread==uiThread||!untouched||!escapeKeptOpen||candidate.width()<1)throw std::runtime_error("Background document read blocked UI, escaped early, or changed the active project");
     }
 
+    // Legacy progress dismissal permits editing without abandoning the read.
+    // Repeat after success and failure so a dismissed operation cannot leave
+    // later progress stuck; gate publication independently of decoder timing.
+    for(bool fail:{false,true,false}){
+      const auto identity=document.identity(),history=document.historyPosition();const auto pixels=document.pixels();
+      bool canPublish=false,editable=false,closeDeferred=false,closed=false,sawFailure=false;int ticks=0;
+      {
+        std::promise<void> release;auto ready=release.get_future().share();
+        DocumentLoadingDialog loading(font_,skin_,[&,fail]{ready.wait();return openGifAnimation(fail?fixtureRoot/"missing-dismissed.gif":path);},U"打开文件",&toolIcons_);
+        loading.setDisplay(display(),false);const auto size=loading.minimumDialogSize(bounds().w);
+        loading.setBounds({bounds().center().x-size.w/2,bounds().center().y-size.h/2,size.w,size.h});
+        ui::Timer interactions(20,this);
+        interactions.Tick.connect([&]{
+          ++ticks;
+          if(ticks==1){auto* button=dynamic_cast<PixelButton*>(loading.children().front());if(button)button->Click();else loading.dismiss();}
+          if(ticks==2){editable=!loading.isVisible()&&!loading.isForeground()&&ui::Manager::getDefault()->isWidgetClickable(this);document.beginStroke({0,0},(pixels.front()^0x0000ffff)|0xff000000);document.commitStroke();refresh();closeDeferred=DocumentLoadingDialog::deferClose([&]{closed=true;});release.set_value();}
+          if(ticks==4){canPublish=true;interactions.stop();}
+        });interactions.start();loading.openWindowInForeground();
+        try{auto candidate=loading.result([&]{return canPublish;});if(candidate.width()!=2)throw std::runtime_error("Dismissed read returned wrong GIF");}
+        catch(const std::exception&){sawFailure=true;}
+        if(!editable||!closeDeferred||closed||ticks!=4||sawFailure!=fail||document.identity()!=identity||document.historyPosition()!=history+1||document.pixels().front()!=((pixels.front()^0x0000ffff)|0xff000000))throw std::runtime_error("Dismissed file progress editable="+std::to_string(editable)+" deferred="+std::to_string(closeDeferred)+" closed="+std::to_string(closed)+" ticks="+std::to_string(ticks)+" failure="+std::to_string(sawFailure)+" expected="+std::to_string(fail)+" history="+std::to_string(document.historyPosition())+" before="+std::to_string(history));
+      }
+      ui::Manager::getDefault()->dispatchMessages();if(!closed||DocumentLoadingDialog::deferClose([]{}))throw std::runtime_error("Completed loading retained close guard or lost deferred close");
+      document.undo();refresh();if(document.pixels()!=pixels||document.historyPosition()!=history)throw std::runtime_error("Dismissed loading edit cannot be undone");
+    }
+
     // Inspect the real Win32 chooser and cancel it; no fake dialog result.
     const auto chooserIdentity=document.identity(),chooserHistory=document.historyPosition();const auto chooserCount=projects_.size();const DWORD chooserThread=GetCurrentThreadId();std::string chooserError;bool inspected=false;
     std::thread cancelChooser([&]{
