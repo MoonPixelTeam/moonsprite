@@ -110,6 +110,7 @@ int main(){try{linkedFrameRecording();localRecordingReadContract();
  const auto durableBytes=totalBytes(root/"embedded");for(int i=0;i<3;++i){es->poll(embedded);es->flush(embedded);}CHECK(totalBytes(root/"embedded")==durableBytes&&embedded.timelapseSettings().snapshots[0].local->offset==firstRef.offset&&embedded.timelapseSettings().snapshots[1].local->offset==secondRef.offset);
  const auto blockedRoot=root/"blocked-embedded";{std::ofstream blocked(blockedRoot,std::ios::binary);blocked<<"owned-path-obstacle";}
  Document failed(8,8);Settings failureSettings;failureSettings.snapshots={importedFrame("failure-retained")};failed.setImportedTimelapse(failureSettings);auto fs=ensureRecordingSession(failed,blockedRoot);bool didFail=false;try{fs->flush(failed);}catch(const std::exception&){didFail=true;}CHECK(didFail&&failed.timelapseSettings().snapshots[0].data==png&&!failed.timelapseSettings().snapshots[0].local);
+ fs->beginCaptureFlush();CHECK(fs->captureFlushReady(failed));
  const auto embeddedExport=root/"embedded-export-without-library.png";CHECK(writeRecordingSequence(failed.timelapseSettings(),fs->reader(),{embeddedExport},false)==1);
  {std::ifstream in(embeddedExport,std::ios::binary);const Bytes exported((std::istreambuf_iterator<char>(in)),{});CHECK(decodeRecordingPng(exported).pixels==decodeRecordingPng(png).pixels);}
  CHECK(failed.timelapseSettings().snapshots[0].data==png&&!failed.timelapseSettings().snapshots[0].local&&std::filesystem::is_regular_file(blockedRoot));
@@ -131,6 +132,16 @@ int main(){try{linkedFrameRecording();localRecordingReadContract();
  const auto originalPath=root/"sequence-original.png";CHECK(writeRecordingSequence(images,read,{originalPath},false,100,{},{},ExportProtection::BlurNoise)==1);CHECK(decodeRecordingPng(bytes(originalPath)).pixels==before);
  CHECK(images.snapshots[0].data==retained&&!images.snapshots[0].local&&source.pixels()==before&&source.revision()==revision&&source.historySize()==history&&!source.dirty());
  Frame wide;wide.width=5;wide.height=1;Frame square;square.width=square.height=4;const auto summary=imageOutputDimensions({wide,square},200);CHECK(summary.width==10&&summary.height==2);CHECK(imageOutputDimensions({},200).width==0);
+}
+{
+ const auto blocked=root/"capture-export-blocked";{std::ofstream file(blocked);file<<"owned-capture-obstacle";}
+ Document capturing(2,1);capturing.mutableTimelapseSettings().enabled=true;capturing.mutableTimelapseSettings().mode=Mode::Full;auto captureSession=ensureRecordingSession(capturing,blocked);
+ capturing.beginStroke({1,0},0xff123456);capturing.commitStroke();const auto pixels=capturing.pixels();const auto history=capturing.historyPosition();
+ auto wait=[&]{captureSession->beginCaptureFlush();while(!captureSession->captureFlushReady(capturing))Sleep(1);};
+ bool failed=false;try{wait();}catch(const std::exception&){failed=true;}
+ CHECK(failed&&capturing.timelapseSettings().snapshots.empty()&&captureSession->pendingCount()>0&&capturing.pixels()==pixels&&capturing.historyPosition()==history);
+ std::filesystem::rename(blocked,root/"capture-export-obstacle-retained");wait();CHECK(capturing.timelapseSettings().snapshots.size()==1&&capturing.pixels()==pixels&&capturing.historyPosition()==history);
+ CHECK(decodeRecordingPng(captureSession->read(capturing.timelapseSettings().snapshots[0])).pixels==pixels);
 }
 std::cout<<"Timelapse model, dirty capture, undo, detached copies, project/portable, PNG sequence and durable ranges passed; owned fixture retained at "<<root.u8string()<<'\n';return 0;
  }catch(const std::exception& e){std::cerr<<e.what()<<'\n';return 1;}}

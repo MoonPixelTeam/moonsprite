@@ -6259,6 +6259,24 @@ void Editor::smokeTimelineGifDrop(){
         else if(document.timelapseSettings().snapshots.size()!=1||document.dirty())throw std::runtime_error("Canceled recording clear changed project records");
       }
     }
+    {
+      auto previous=std::move(document);struct RestoreDocument {Document& target;Document& previous;~RestoreDocument(){target=std::move(previous);}} restore{document,previous};
+      const auto output=fixtureRoot/("pending-capture-export-"+std::to_string(GetCurrentProcessId()));std::filesystem::create_directories(output);
+      document=Document(2,1);document.mutableTimelapseSettings().enabled=true;document.mutableTimelapseSettings().mode=timelapse::Mode::Full;
+      auto session=timelapse::ensureRecordingSession(document,output/"library");document.beginStroke({0,0},0xff123456);document.commitStroke();session->flush(document);
+      const auto originalChooser=chooseSaveFile_;struct RestoreChooser {decltype(chooseSaveFile_)& target;decltype(chooseSaveFile_) original;~RestoreChooser(){target=std::move(original);}} restoreChooser{chooseSaveFile_,originalChooser};
+      chooseSaveFile_=[&](OPENFILENAMEW* request){const auto chosen=(output/L"pending.png").wstring();wcsncpy_s(request->lpstrFile,request->nMaxFile,chosen.c_str(),_TRUNCATE);return true;};
+      std::exception_ptr failure;bool submitted=false;ui::Timer submit(20,this);
+      submit.Tick.connect([&]{submit.stop();auto focus=ui::Manager::getDefault()->getFocus();auto popup=focus?dynamic_cast<PixelDialog*>(focus->window()):nullptr;
+        try{if(!popup)throw std::runtime_error("Pending capture export form missing");PixelButton *browse=nullptr,*run=nullptr;for(auto child:popup->children())if(auto button=dynamic_cast<PixelButton*>(child)){if(button->icon=="folderOpen")browse=button;if(button->caption==U"导出")run=button;}if(!browse||!run)throw std::runtime_error("Pending capture export actions missing");browse->Click();
+          // The form captured only the first recording. Queue a new capture now,
+          // so submission must await and take a fresh snapshot before planning.
+          document.beginStroke({1,0},0xffabcdef);document.commitStroke();submitted=true;run->Click();
+        }catch(...){failure=std::current_exception();if(popup)popup->closeWindow(nullptr);}
+      });submit.start();exportTimelapseImages();submit.stop();if(failure)std::rethrow_exception(failure);
+      std::ifstream file(output/L"pending-002.png",std::ios::binary);const timelapse::Bytes bytes((std::istreambuf_iterator<char>(file)),{});
+      if(!submitted||document.timelapseSettings().snapshots.size()!=2||timelapse::decodeRecordingPng(bytes).pixels!=document.pixels())throw std::runtime_error("Recording export omitted a capture queued after opening its form");
+    }
     // Inspect the real Win32 chooser and cancel it; no fake dialog result.
     const auto chooserIdentity=document.identity(),chooserHistory=document.historyPosition();const auto chooserCount=projects_.size();const DWORD chooserThread=GetCurrentThreadId();std::string chooserError;bool inspected=false;
     std::thread cancelChooser([&]{

@@ -28,3 +28,5 @@
 验证另发现Windows filesystem_error::what()会把中文路径按系统代码页放入错误字符串，进入UTF-8界面边界后触发bad conversion。录像库目录创建、规范路径和状态查询现使用error_code入口，以UTF-8路径和系统错误码传递，保留失败和仅缺失回退的语义。实际中文仓库路径下的失败入口回归已覆盖。
 
 本批验收：唯一正式Release构建、timelapse-tests及正式程序--timeline-gif-drop-check返回0；555文件来源覆盖与git diff --check通过。未做人工操作或截图验收，未扩大原生视频编码能力，不把无法读取的录像当作可导出的录像。
+
+后续补充：上述“不强制写入录像库”指已存在的内嵌PNG迁移，不意味着可以省略尚未生成的录像帧。导出提交现按旧版先等待捕获队列，再刷新快照和输出数量；详见[导出前等待捕获](timelapse-export-capture-barrier-20261103.md)。

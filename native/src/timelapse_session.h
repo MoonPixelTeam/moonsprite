@@ -87,6 +87,9 @@ public:
  if(!queue_.error.empty())error=queue_.error;
  else if(!embeddedError_.empty())error=embeddedError_;
  }
+ // Export waits for new captures, not migration of already readable embedded PNGs.
+ void beginCaptureFlush(){queue_.retry();}
+ bool captureFlushReady(Document& d){queue_.poll(valid(),commit(d));if(queue_.failed())throw std::runtime_error(queue_.error);return queue_.empty();}
  void beginFlush(Document& d){queue_.retry();embeddedBlocked_=false;embeddedError_.clear();error.clear();poll(d);}
  bool flushReady(Document& d){poll(d);if(queue_.failed())throw std::runtime_error(queue_.error);if(embeddedBlocked_)throw std::runtime_error(embeddedError_);return queue_.empty()&&!embeddedTask_.valid()&&cursorComplete_;}
  void flush(Document& d){beginFlush(d);while(!flushReady(d)){if(embeddedTask_.valid())embeddedTask_.wait_for(std::chrono::milliseconds(1));else Sleep(1);}}
