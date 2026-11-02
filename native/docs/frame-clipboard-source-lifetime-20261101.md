@@ -513,3 +513,13 @@
 四组同／跨工程、追加／不追加场景实际重排已复制源帧，检查同工程使用新间隔、跨工程使用旧间隔，像素仍来自复制快照，目标选择、追加结构、一次历史、保存重开及Undo／Redo正确；保存重开只检查持久内容，不要求保存会话内Cel选择。未执行实际UI操作验收。
 
 本批实际结果：四组新增帧重排场景及既有 `free-tile-project-tests`、`cel-selection-clipboard-tests`、唯一正式Release构建、542文件来源覆盖和diff检查通过；图层重排与删除源的实际操作未新增回归，未执行实际UI操作验收。
+
+## 后续补齐：重排图层的粘贴边界与删除源拒绝（2026-11-02）
+
+旧版 `workspace-commands-animation-cel-clipboard.ts` 同工程通过minimumDestination和placements完整性检查拒绝无法完整放下的范围，跨工程也检查resolvedDestinations完整性；`animation.ts::mapAnimationCelBlock` 对越界不返回目标。原生合法载荷的映射越界此前抛异常。本批改为返回false，保持损坏载荷校验异常和锁定准入规则。
+
+新增四组同／跨工程与合法／负向越界图层落点，实际将已复制的第二源图层移到首行，使同工程相对偏移为负，验证合法落点使用当前间距、跨工程保留复制时偏移；越界不修改历史、revision、选择或dirty。另四组实际删除源图层／帧及锚点／非锚点，覆盖上一批的缺失owner拒绝路径，确认不产生额外修改。成功场景包含一次历史、保存重开和Undo／Redo。
+
+本批不改选区载荷的位置规则。未执行实际UI操作验收。
+
+本批实际结果：八组新增图层重排／源删除场景及既有 `free-tile-project-tests`、`cel-selection-clipboard-tests` 通过；唯一正式 Release 程序构建成功。未执行实际 UI 操作验收。

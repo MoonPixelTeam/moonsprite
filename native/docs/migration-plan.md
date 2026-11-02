@@ -2084,3 +2084,5 @@ Paint／无主选实例的源像素删除仍未开放，剪切在这些场景只
 - 2026-11-02：整格Cel粘贴的未覆盖自动关联层，对原有规范源复用现有内容缓存，候选新增源保留私有判断，既有显式关联短路保持；依据旧版inheritAnimationFrameCelLinks内容缓存路径。稀疏追加场景扩展16组同／跨工程、普通／文字、autoLink和透明／可见独立源，验证空源不启动关联及原有像素／属性／历史／保存重开。`free-tile-project-tests`、唯一正式Release构建、542文件来源覆盖与diff检查通过。详见[整格粘贴自动关联内容缓存](frame-clipboard-source-lifetime-20261101.md)。未执行实际UI、耗时或扫描计数验收。
 
 - 2026-11-02：整格同工程Cel粘贴按旧版当前源图层／帧ID重算相对位置，复制内容与持有载荷不改；跨工程和选区路径保持冻结偏移，源owner缺失不执行同工程整格粘贴。四组同／跨工程、追加／不追加的实际帧重排回归，验证新旧间隔、目标像素／选择、结构和一次历史／保存重开／UndoRedo；`free-tile-project-tests`、`cel-selection-clipboard-tests`、唯一正式Release构建、542文件来源覆盖及diff检查通过。详见[整格同工程当前源位置](frame-clipboard-source-lifetime-20261101.md)。图层重排及删除源未新增实际回归，实际UI操作未验收。
+
+- 2026-11-02：整格 Cel 粘贴按旧版在图层／帧落点越界时直接拒绝，不抛出合法载荷映射异常；补齐图层重排后同工程当前偏移、跨工程冻结偏移，以及删除源图层／帧的锚点／非锚点拒绝。八组新增场景检查无副作用拒绝或成功后的像素、一次历史、保存重开和 Undo／Redo；`free-tile-project-tests`、`cel-selection-clipboard-tests` 与唯一正式 Release 构建通过。详见[图层重排边界与删除源拒绝](frame-clipboard-source-lifetime-20261101.md)。未执行实际 UI 操作验收。
