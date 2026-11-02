@@ -1,5 +1,6 @@
 #include "image_sequence_dialog.h"
 #include "editor_implementation.h"
+#include "native_document_open.h"
 #include "editor.h"
 #include "free_tile_instances_panel.h"
 
@@ -6121,6 +6122,14 @@ void Editor::smokeTimelineGifDrop(){
     if(sequenceAdds!=1||projects_.size()!=beforeSequence+1||document.identity()!=sequenceIdentity||document.historyPosition()!=sequenceHistory||sequenceErrors)throw std::runtime_error("Sequence dialog cancel changed active project");
     openImageSequenceDocuments(font_,skin_,toolIcons_,display(),bounds(),sequencePreference,{sequenceA.u8string(),sequenceB.u8string()},sequenceHost,[&](ImageSequenceDialog& dialog){dialog.smoke(image_sequence::Choice::Separate,{1});});
     if(projects_.size()!=beforeSequence+2||document.pixels()!=std::vector<Pixel>{0xffaabbcc,0}||!sameProjectPath(document.sourceFilePath(),sequenceB)||sequenceErrors)throw std::runtime_error("Sequence separate selected file");
+    // Startup/second-instance delivery uses the same document entry without
+    // inventing a physical timeline or resource-panel drop position.
+    Document launched(2,1);launched.beginStroke({0,0},0xff123456);launched.commitStroke();const auto launchPath=fixtureRoot/"native-launch.moonsprite";writeExportBytesAtomic(launchPath,*project::encodeEditableProject(launched).bytes);
+    const auto launchCount=projects_.size(),launchIdentity=document.identity();
+    openPath(fixtureRoot/"unsupported.psd");if(pending_!=Pending::OpenError)throw std::runtime_error("Launch busy fixture");
+    if(dispatchNativeDocumentPaths(*this,display()->nativeWindow(),{launchPath.u8string()})||document.identity()!=launchIdentity||projects_.size()!=launchCount)throw std::runtime_error("Native launch must defer while editor is modal");resolve(false);
+    if(!dispatchNativeDocumentPaths(*this,display()->nativeWindow(),{launchPath.u8string()})||pending_!=Pending::None||projects_.size()!=launchCount+1||document.pixels()!=launched.pixels()||!sameProjectPath(documentPath_,launchPath)||projectDocument(0).pixels()[2]!=0xff765432)throw std::runtime_error("Native launch document route/new tab/original dirty protection");
+    if(!dispatchNativeDocumentPaths(*this,display()->nativeWindow(),{launchPath.u8string()})||projects_.size()!=launchCount+1)throw std::runtime_error("Repeated native launch reuses existing project");
     document=Document();clearTimelineGifDrop();refresh();
 
   }

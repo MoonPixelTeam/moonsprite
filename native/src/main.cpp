@@ -1,6 +1,8 @@
 #include "editor_implementation.h"
 #include "editor_desktop.h"
 #include "native_text_clipboard.h"
+#include "native_document_launch.h"
+#include "native_document_open.h"
 
 using namespace moon::editor;
 using namespace moon;
@@ -42,6 +44,11 @@ int app_main(int argc,char* argv[]) {
       Sleep(INFINITE);return 0;
 
     }
+
+    std::vector<std::string> launchArguments;for(int i=1;i<argc;++i)launchArguments.push_back(argv[i]);
+    const bool automatedLaunch=document_launch::automation(launchArguments);
+    std::unique_ptr<document_launch::Instance> fileInstance;
+    if(!automatedLaunch){fileInstance=std::make_unique<document_launch::Instance>();const auto paths=document_launch::supported(launchArguments);if(!fileInstance->primary()){fileInstance->forward(paths);return 0;}fileInstance->enqueue(paths);}
 
     const auto assets=std::filesystem::u8path(argv[0]).parent_path()/"assets";
 
@@ -224,6 +231,9 @@ int app_main(int argc,char* argv[]) {
     desktop.addChild(editor); desktop.setBounds(manager.bounds()); desktop.openWindow();
 
     system->finishLaunching();
+
+    ui::Timer fileLaunchTimer(50,editor);
+    if(fileInstance){fileLaunchTimer.Tick.connect([&]{fileInstance->pump([&]{const auto hwnd=static_cast<HWND>(window->nativeHandle());if(IsIconic(hwnd))ShowWindow(hwnd,SW_RESTORE);else ShowWindow(hwnd,SW_SHOW);SetForegroundWindow(hwnd);},[&](const std::vector<std::string>& paths){if(manager.getForegroundWindow()!=&desktop)return false;return dispatchNativeDocumentPaths(*editor,window.get(),paths);});});fileLaunchTimer.start();}
 
     if(argc>1 && std::string(argv[1])=="--role-hex-check") {try{editor->smokeRoleHex();}catch(const std::exception& e){std::ofstream("native-role-hex-error.txt")<<e.what();delete editor;desktop.editor=nullptr;return 1;}delete editor;desktop.editor=nullptr;return 0;}
 
