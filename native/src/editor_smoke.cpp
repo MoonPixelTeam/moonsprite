@@ -6200,6 +6200,32 @@ void Editor::smokeTimelineGifDrop(){
       ui::Timer closeExport(20,this);closeExport.Tick.connect([&]{closeExport.stop();auto focus=ui::Manager::getDefault()->getFocus();auto popup=focus?dynamic_cast<PixelDialog*>(focus->window()):nullptr;if(popup){exportOpened=true;popup->closeWindow(nullptr);}});
       closeExport.start();exportTimelapseImages();closeExport.stop();
       if(!exportOpened||document.revision()!=revision||document.historyPosition()!=history||document.dirty()||document.timelapseSettings().snapshots[0].data!=retained||document.timelapseSettings().snapshots[0].local)throw std::runtime_error("Recording export entry required local writes or modified the source");
+      {
+        const auto originalChooser=chooseSaveFile_;struct RestoreChooser {decltype(chooseSaveFile_)& target;decltype(chooseSaveFile_) original;~RestoreChooser(){target=std::move(original);}} restoreChooser{chooseSaveFile_,originalChooser};
+        int choices=0;chooseSaveFile_=[&](OPENFILENAMEW* request){++choices;if(choices==1)return false;const auto chosen=(fixtureRoot/L"选择.any").wstring();wcsncpy_s(request->lpstrFile,request->nMaxFile,chosen.c_str(),_TRUNCATE);return true;};
+        bool configured=false;std::exception_ptr failure;ui::Timer configure(20,this);
+        configure.Tick.connect([&]{
+          configure.stop();auto focus=ui::Manager::getDefault()->getFocus();auto popup=focus?dynamic_cast<PixelDialog*>(focus->window()):nullptr;
+          try{
+            if(!popup)throw std::runtime_error("Recording export form not open");
+            PixelEntry *name=nullptr,*scale=nullptr;PixelDropdown* format=nullptr;PixelButton *browse=nullptr,*run=nullptr;
+            for(auto child:popup->children()){
+              if(auto entry=dynamic_cast<PixelEntry*>(child)){if(entry->numeric)scale=entry;else name=entry;}
+              if(auto dropdown=dynamic_cast<PixelDropdown*>(child))format=dropdown;
+              if(auto button=dynamic_cast<PixelButton*>(child)){if(button->icon=="folderOpen")browse=button;if(button->caption==U"导出")run=button;}
+            }
+            if(!name||!scale||!format||!browse||!run)throw std::runtime_error("Recording export location controls missing");
+            name->setText(utf8Text(U"自定义.jpg.png"));scale->setText("100");format->setSelectedIndex(1,true);
+            if(name->text()!=utf8Text(U"自定义.jpg.jpg"))throw std::runtime_error("Recording JPG format did not preserve the filename stem");
+            format->setSelectedIndex(0,true);browse->Click();
+            if(name->text()!=utf8Text(U"自定义.jpg.png")||scale->text()!="100"||format->selectedIndex()!=0)throw std::runtime_error("Canceling recording location changed form values");
+            browse->Click();if(name->text()!=utf8Text(U"选择.any.png"))throw std::runtime_error("Recording chooser changed the selected output format");
+            name->setText(utf8Text(U"自定义.jpg.png"));configured=true;run->Click();
+          }catch(...){failure=std::current_exception();if(popup)popup->closeWindow(nullptr);}
+        });configure.start();exportTimelapseImages();configure.stop();if(failure)std::rethrow_exception(failure);
+        const auto output=fixtureRoot/L"自定义.jpg-001.png";std::ifstream exported(output,std::ios::binary);const timelapse::Bytes png((std::istreambuf_iterator<char>(exported)),{});
+        if(!configured||choices!=2||timelapse::decodeRecordingPng(png).pixels!=std::vector<Pixel>{0xff123456}||document.revision()!=revision||document.historyPosition()!=history||document.dirty()||document.timelapseSettings().snapshots[0].data!=retained)throw std::runtime_error("Recording named export failed or modified its source");
+      }
     }
     // Inspect the real Win32 chooser and cancel it; no fake dialog result.
     const auto chooserIdentity=document.identity(),chooserHistory=document.historyPosition();const auto chooserCount=projects_.size();const DWORD chooserThread=GetCurrentThreadId();std::string chooserError;bool inspected=false;
