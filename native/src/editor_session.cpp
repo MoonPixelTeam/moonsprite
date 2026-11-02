@@ -314,8 +314,7 @@ void Editor::openPath(const std::filesystem::path& path) {
       },U"打开文件",&toolIcons_);
       loading.setDisplay(display(),false);const auto size=loading.minimumDialogSize(bounds().w);
       loading.setBounds({bounds().center().x-size.w/2,bounds().center().y-size.h/2,size.w,size.h});
-      loading.openWindowInForeground();
-      auto loaded=loading.result([this]{return pending_==Pending::None&&!document.strokeActive()&&!ui::Manager::getDefault()->getCapture();});
+      auto loaded=loading.run([this]{return pending_==Pending::None&&!document.strokeActive()&&!ui::Manager::getDefault()->getCapture();});
       // Another open may finish while this progress overlay is dismissed.
       ensureProjects();for(std::size_t i=0;i<projects_.size();++i){const auto& saved=i==activeProject_?documentPath_:projects_[i]->path;if(sameProjectPath(path,saved)||sameProjectPath(path,projectDocument(i).sourceFilePath())){activateProject(i);recordHomeRecent(path);return;}}
       openCandidate_=std::move(loaded);candidatePath_=ase||raster?std::filesystem::path{}:path;

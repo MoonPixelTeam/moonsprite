@@ -54,11 +54,16 @@ class DocumentLoadingDialog final:public PixelDialog {
  } closeGuard_;
  const PixelFont& font_;const Skin& skin_;std::u32string title_;std::future<Document> task_;ui::Timer timer_{20,this};PixelButton* close_;
 public:
- DocumentLoadingDialog(const PixelFont& font,const Skin& skin,std::function<Document()> task,std::u32string title=U"图片序列",const Skin* icons=nullptr):PixelDialog(skin,""),font_(font),skin_(skin),title_(std::move(title)),task_(std::async(std::launch::async,std::move(task))){
+ DocumentLoadingDialog(const PixelFont& font,const Skin& skin,std::function<Document()> task,std::u32string title=U"图片序列",const Skin* icons=nullptr):DocumentLoadingDialog(font,skin,std::async(std::launch::async,std::move(task)),std::move(title),icons){}
+ DocumentLoadingDialog(const PixelFont& font,const Skin& skin,std::future<Document> task,std::u32string title=U"图片序列",const Skin* icons=nullptr):PixelDialog(skin,""),font_(font),skin_(skin),title_(std::move(title)),task_(std::move(task)){
   setAutoRemap(false);
   close_=new PixelButton(font,skin,U"",[this]{dismiss();});close_->iconSkin=icons?icons:&skin;close_->icon="close";close_->skinStyle="icon_button";addChild(close_);
   timer_.Tick.connect([this]{if(task_.wait_for(std::chrono::seconds(0))==std::future_status::ready){if(isVisible())closeWindow(nullptr);}});timer_.start();
  }
+ // setDisplay registers even a never-opened popup. LAF only detaches it in
+ // _closeWindow when it was actually parented; fast-path suppression must
+ // release that registration explicitly before the stack object disappears.
+ ~DocumentLoadingDialog(){if(!parent())setDisplay(nullptr,false);}
  gfx::Size minimumDialogSize(int)const override{return {220*uiScale,(DialogLayout::bodyTop+UiSpacing::labelHeight+DialogLayout::inset)*uiScale};}
  void onResize(ui::ResizeEvent& ev)override{setBoundsQuietly(ev.bounds());layoutHeaderButton(close_);}
  void paintDialogContents(ui::PaintEvent& ev)override{auto& g=*ev.graphics();UiPaintScale scale(g);const auto r=uiLogical(clientBounds());drawDialogTitle(font_,g,r,title_);font_.draw(g,U"正在导入…",r.x+DialogLayout::inset,r.y+DialogLayout::bodyTop,skin_["text"]);}
@@ -68,6 +73,17 @@ public:
  bool onProcessMessage(ui::Message* msg)override{
   if(msg->type()==ui::kKeyDownMessage&&static_cast<ui::KeyMessage*>(msg)->scancode()==ui::kKeyEsc)return true;
   return PixelDialog::onProcessMessage(msg);
+ }
+ Document run(const std::function<bool()>& canPublish={}){
+  // Legacy schedules visible progress on requestAnimationFrame. Use one native
+  // UI frame (16ms timer) and suppress it if the task has already completed.
+  bool nextFrame=false;ui::Timer appearance(16,this);
+  appearance.Tick.connect([&]{nextFrame=true;appearance.stop();});appearance.start();
+  ui::MessageLoop loop(ui::Manager::getDefault());
+  while(task_.wait_for(std::chrono::seconds(0))!=std::future_status::ready&&(!nextFrame||(canPublish&&!canPublish())))loop.pumpMessages();
+  appearance.stop();
+  if(task_.wait_for(std::chrono::seconds(0))!=std::future_status::ready)openWindowInForeground();
+  return result(canPublish);
  }
  Document result(const std::function<bool()>& canPublish={}){
   // Continue the same LAF event pump after the foreground overlay is dismissed.
@@ -80,7 +96,7 @@ public:
 inline bool openImageSequenceDocuments(const PixelFont& font,const Skin& skin,const Skin& icons,ui::Display* display,const gfx::Rect& bounds,const std::filesystem::path& preference,const std::vector<std::string>& paths,image_sequence::Host host,const std::function<void(ImageSequenceDialog&)>& automate={},const std::function<bool()>& canPublish={}){
  host.read=[](const std::string& path){return openRasterImage(std::filesystem::u8path(path));};
  host.ask=[&](const auto& batch,auto& settings){ImageSequenceDialog dialog(font,skin,icons,batch,settings);dialog.setDisplay(display,false);const auto size=dialog.minimumDialogSize(bounds.w);dialog.setBounds({bounds.center().x-size.w/2,bounds.center().y-size.h/2,size.w,size.h});std::unique_ptr<ui::Timer> timer;if(automate){timer=std::make_unique<ui::Timer>(80,&dialog);timer->Tick.connect([&]{timer->stop();automate(dialog);});timer->start();}dialog.openWindowInForeground();return dialog.choice();};
- host.work=[&](std::function<Document()> task){DocumentLoadingDialog dialog(font,skin,std::move(task),U"图片序列",&icons);dialog.setDisplay(display,false);const auto size=dialog.minimumDialogSize(bounds.w);dialog.setBounds({bounds.center().x-size.w/2,bounds.center().y-size.h/2,size.w,size.h});dialog.openWindowInForeground();return dialog.result(canPublish);};
+ host.work=[&](std::function<Document()> task){DocumentLoadingDialog dialog(font,skin,std::move(task),U"图片序列",&icons);dialog.setDisplay(display,false);const auto size=dialog.minimumDialogSize(bounds.w);dialog.setBounds({bounds.center().x-size.w/2,bounds.center().y-size.h/2,size.w,size.h});return dialog.run(canPublish);};
  return image_sequence::open(paths,preference,host);
 }
 }

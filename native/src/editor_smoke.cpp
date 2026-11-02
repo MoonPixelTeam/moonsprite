@@ -6140,6 +6140,28 @@ void Editor::smokeTimelineGifDrop(){
       document.undo();refresh();if(document.pixels()!=pixels||document.historyPosition()!=history)throw std::runtime_error("Dismissed loading edit cannot be undone");
     }
 
+    // Legacy schedules visibility on the next frame: fast success/failure
+    // never opens a popup; a genuinely pending read opens exactly once.
+    for(int mode:{0,1,2,3}){
+      const auto identity=document.identity(),history=document.historyPosition();const auto pixels=document.pixels();const bool dirty=document.dirty();
+      std::promise<Document> completion;int opens=0;bool failed=false,completedOnUi=false;
+      if(mode==0)completion.set_value(openGifAnimation(path));
+      if(mode==1){try{openGifAnimation(fixtureRoot/"missing-fast.gif");}catch(...){completion.set_exception(std::current_exception());}}
+      const auto registeredWindows=display()->getWindows().size();
+      {
+      DocumentLoadingDialog loading(font_,skin_,completion.get_future(),U"打开文件",&toolIcons_);
+      loading.setDisplay(display(),false);const auto size=loading.minimumDialogSize(bounds().w);
+      loading.setBounds({bounds().center().x-size.w/2,bounds().center().y-size.h/2,size.w,size.h});
+      loading.Open.connect([&](ui::Event&){++opens;if(mode==3)completion.set_value(openGifAnimation(path));});
+      // Complete before appearance in the same event pump, without relying on
+      // decoder speed or a wall-clock performance threshold.
+      ui::Timer finish(1,this);finish.Tick.connect([&]{finish.stop();completedOnUi=true;completion.set_value(openGifAnimation(path));});if(mode==2)finish.start();
+      try{auto candidate=loading.run();if(candidate.width()!=2)throw std::runtime_error("Deferred progress GIF result");}catch(const std::exception&){failed=true;}
+      if(opens!=(mode==3?1:0)||failed!=(mode==1)||(mode==2&&!completedOnUi)||loading.isVisible()||document.identity()!=identity||document.historyPosition()!=history||document.pixels()!=pixels||document.dirty()!=dirty)throw std::runtime_error("Deferred progress flashed for a fast read, suppressed a pending read, or changed the active project");
+      }
+      if(display()->getWindows().size()!=registeredWindows)throw std::runtime_error("Suppressed loading retained a dead display window registration");
+    }
+
     // Inspect the real Win32 chooser and cancel it; no fake dialog result.
     const auto chooserIdentity=document.identity(),chooserHistory=document.historyPosition();const auto chooserCount=projects_.size();const DWORD chooserThread=GetCurrentThreadId();std::string chooserError;bool inspected=false;
     std::thread cancelChooser([&]{
