@@ -2092,3 +2092,5 @@ Paint／无主选实例的源像素删除仍未开放，剪切在这些场景只
 - 2026-11-02：普通同／跨工程整帧粘贴按 legacy 保留原图层行选择及 layerAnchor，继续复用原事务与历史；单帧／多帧选择规则、同工程蒙版行清理和 Undo 清空 Cel 选择保持。八组扩展场景覆盖单／多图层行、一次历史、Undo／Redo、重复 Undo、原像素及保存重开；`free-tile-project-tests`、唯一正式 Release 构建、542 文件来源覆盖与 diff 检查通过。详见[整帧粘贴保留图层选择](frame-clipboard-source-lifetime-20261101.md)。特殊资源路径未扩展，未做实际 UI 验收。
 
 - 2026-11-02：帧粘贴界面入口按 legacy 直接显示文档事务的帧／Cel选择，不再借用帧标题点击的 markFrameSelection，避免跨工程已有蒙版格被提升为owner行并清空图层选择；普通帧标题点击和同工程蒙版选择清理保持。正式程序 `--cel-clipboard-check` 通过，含四组同／跨工程、一／两帧的空载荷、图层行、蒙版选择、显示标记及Undo／Redo回归；唯一正式Release构建、542文件来源覆盖及diff检查通过。详见[帧粘贴蒙版选择入口](frame-clipboard-source-lifetime-20261101.md)。未做截图外观或手动操作验收。
+
+- 2026-11-02：GIF 导入按 legacy 采用非活动1×1空槽并继承旧层透明度；新图层未覆盖的原活动槽承接源活动图层几何。同步按实际存储计算既有working budget，移除密集全画布估算误拒绝，保留层／帧／内存上限。六组1024×1024／80帧／两层、起点0／79／80及0%／35%透明度场景，验证新旧空槽几何、导入像素与时间、保存重开／UndoRedo及空槽远点绘制；`free-tile-project-tests`、唯一正式Release构建、542文件来源覆盖及diff检查通过。详见[GIF稀疏空槽和预算](gif-import-geometry-20261101.md)。RGBA之外转换和实际OS拖放未扩展。
