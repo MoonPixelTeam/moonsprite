@@ -233,7 +233,7 @@ bool Editor::handleTimelineGifDrag(os::DragEvent& event,bool drop){
 
     event.dropResult(os::DropOperation::Copy);if(!drop){if(gifDropTargetIndex_!=index){gifDropTargetIndex_=index;invalidateTimelineGrid();}return true;}
 
-    clearTimelineGifDrop();try{for(const auto& path:paths){auto source=openGifAnimation(std::filesystem::u8path(path));if(document.importGifAnimationLayer(source,*index)){selectedMaskSlots_.clear();maskSelectionAnchor_.reset();clearTimelineRowSelection();playing_=false;frameSelectionExplicit_=false;timelineSelectionIdentity_=document.identity();timelineSelectionGuidesVisible_=true;paletteFocused_=false;status_=U"GIF 已导入时间轴";}}}catch(const std::exception& error){status_=unicodeText(error.what());}refresh();event.acceptDrop(true);return true;
+    clearTimelineGifDrop();try{for(const auto& path:paths){auto source=openGifAnimation(std::filesystem::u8path(path));if(document.importGifAnimationLayer(source,*index,&selectedMaskSlots_,&maskSelectionAnchor_)){selectedMaskSlots_.clear();maskSelectionAnchor_.reset();clearTimelineRowSelection();playing_=false;frameSelectionExplicit_=false;timelineSelectionIdentity_=document.identity();timelineSelectionGuidesVisible_=true;paletteFocused_=false;status_=U"GIF 已导入时间轴";}}}catch(const std::exception& error){status_=unicodeText(error.what());}refresh();event.acceptDrop(true);return true;
 
   }
 

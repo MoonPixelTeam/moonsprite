@@ -60,7 +60,7 @@ bool Document::copyAttachedMasks(const std::vector<MaskSlotKey>& keys,std::uint3
 Document::MaskTransferResult Document::moveAttachedMasks(const std::vector<MaskSlotKey>& keys,const MaskSlotKey& anchor,const MaskSlotKey& target){
  std::vector<timeline::MaskSlot> sources;std::vector<MaskSlotKey> independent;std::set<MaskSlotKey> seen;bool linked=false;
  for(const auto& key:keys)if(seen.insert(key).second)if(const auto* direct=timeline::directMask(timeline_.state(),key.first,key.second)){if(!direct->mask.linkedMaskId.empty())linked=true;else{sources.push_back(*direct);independent.push_back(key);}}
- if(linked){maskSelectionHistory_.slots=std::move(independent);++maskSelectionHistory_.serial;return MaskTransferResult::LinkedSelection;}
+ if(linked){maskSelectionHistory_.slots=std::move(independent);maskSelectionHistory_.anchor.reset();++maskSelectionHistory_.serial;return MaskTransferResult::LinkedSelection;}
  return transferAttachedMasks(sources,keys,anchor,target,true);
 }
 Document::MaskTransferResult Document::pasteAttachedMasks(const std::vector<MaskSlotKey>& selection,const MaskSlotKey& target){
@@ -91,7 +91,7 @@ Document::MaskTransferResult Document::transferAttachedMasks(const std::vector<t
  edit.beforeFrame=activeFrameId_;edit.afterFrame=move?target.second:activeFrameId_;edit.beforeActive=activeLayerId_;edit.afterActive=move&&timeline_.hasLayer(target.first)?target.first:activeLayerId_;
  std::string nextActive=move&&ids.count(activeMaskId_)?activeMaskId_:std::string{};edit.maskContext=std::make_shared<Edit::MaskContextHistory>(Edit::MaskContextHistory{activeMaskId_,nextActive,maskIsolated_,!nextActive.empty()&&maskIsolated_});
  history_.reserve(position_+1);timeline_.state_.masks=std::move(after);nextLayerId_=nextId;activeFrameId_=edit.afterFrame;activeLayerId_=edit.afterActive;activeMaskId_=std::move(nextActive);if(activeMaskId_.empty())maskIsolated_=false;
- maskSelectionHistory_.slots=*edit.afterMaskSelection;++maskSelectionHistory_.serial;pushEdit(std::move(edit),move?U"移动图层蒙版单元格":U"粘贴图层蒙版单元格");change_={0,0,width_,height_};publishChange();return R::Done;
+ maskSelectionHistory_.slots=*edit.afterMaskSelection;maskSelectionHistory_.anchor.reset();++maskSelectionHistory_.serial;pushEdit(std::move(edit),move?U"移动图层蒙版单元格":U"粘贴图层蒙版单元格");change_={0,0,width_,height_};publishChange();return R::Done;
 }
 bool Document::setMaskMoveWithOwner(const std::string& owner,const std::string& frame,bool enabled){
  // Legacy animationMaskAt resolves linked masks before changing this property.
@@ -142,7 +142,7 @@ bool Document::removeAttachedMasks(const std::vector<std::pair<std::string,std::
  }
  history_.reserve(position_+1);timeline_.state_.masks=std::move(after);
  if(edit.maskEditingOnUndo){activeMaskId_.clear();maskIsolated_=false;}
- if(selected){maskSelectionHistory_.slots.clear();++maskSelectionHistory_.serial;}
+ if(selected){maskSelectionHistory_.slots.clear();maskSelectionHistory_.anchor.reset();++maskSelectionHistory_.serial;}
  if(edit.afterTimelineSelection)timelineSelection_=*edit.afterTimelineSelection;
  pushEdit(std::move(edit),!selected&&group?U"删除图层组蒙版":U"删除图层蒙版");
  change_={0,0,width_,height_};publishChange();return true;
@@ -197,7 +197,7 @@ bool Document::linkAttachedMasks(const std::vector<std::pair<std::string,std::st
  std::string afterActive=activeMaskId_;if(!activeMaskId_.empty()&&!editOwner.empty())if(const auto* m=timeline::resolvedMask(validation,editOwner,activeFrameId_))afterActive=m->id;
  edit.maskContext=std::make_shared<Edit::MaskContextHistory>(Edit::MaskContextHistory{activeMaskId_,afterActive,maskIsolated_,maskIsolated_});
  history_.reserve(position_+1);timeline_.state_.masks=std::move(after);activeMaskId_=afterActive;
- maskSelectionHistory_.slots=selected;++maskSelectionHistory_.serial;
+ maskSelectionHistory_.slots=selected;maskSelectionHistory_.anchor.reset();++maskSelectionHistory_.serial;
  pushEdit(std::move(edit),detach?U"断开蒙版链接":U"连接所选蒙版");change_={0,0,width_,height_};publishChange();return true;
 }
 }

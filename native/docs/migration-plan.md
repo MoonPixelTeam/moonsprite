@@ -2096,3 +2096,5 @@ Paint／无主选实例的源像素删除仍未开放，剪切在这些场景只
 - 2026-11-02：GIF 导入按 legacy 采用非活动1×1空槽并继承旧层透明度；新图层未覆盖的原活动槽承接源活动图层几何。同步按实际存储计算既有working budget，移除密集全画布估算误拒绝，保留层／帧／内存上限。六组1024×1024／80帧／两层、起点0／79／80及0%／35%透明度场景，验证新旧空槽几何、导入像素与时间、保存重开／UndoRedo及空槽远点绘制；`free-tile-project-tests`、唯一正式Release构建、542文件来源覆盖及diff检查通过。详见[GIF稀疏空槽和预算](gif-import-geometry-20261101.md)。RGBA之外转换和实际OS拖放未扩展。
 
 - 2026-11-02：GIF拖放导入成功后按legacy清理Editor旧蒙版格／锚点及显示缓存，避免新图层仍受旧蒙版选择影响；失败保留原内容、历史和编辑目标。独立 `--timeline-gif-drop-check` 经已注册LAF拖放回调验证GIF-only预览／移出、实际解码导入、原蒙版像素、选择清理、结构UndoRedo、异尺寸导入及缺失文件失败保护，返回0；唯一正式Release构建、来源覆盖及diff检查通过。详见[GIF拖放选择清理](gif-import-geometry-20261101.md)。自动构造拖放事件，不等同人工资源管理器拖放或截图验收。
+
+- 2026-11-02：GIF导入复用既有Edit和蒙版选择serial通知，按legacy捕获蒙版格选择及独立锚点；导入清空、Undo精确恢复、Redo清空，兼容显式null／首格／末格锚点，其他蒙版操作保留原末格规则。六组图层／组蒙版与三种锚点场景及既有 `free-tile-project-tests`、`attached-masks-tests` 通过；唯一正式Release构建、正式程序 `--timeline-gif-drop-check` 的两格首锚点重复历史检查、542文件来源覆盖及diff检查通过。详见[GIF蒙版选择与锚点历史](gif-import-geometry-20261101.md)。自动构造LAF拖放事件，未做人工资源管理器拖放或截图验收。

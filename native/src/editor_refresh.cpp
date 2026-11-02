@@ -19,7 +19,7 @@ void Editor::syncDocumentViewState(){
     syncSelectionOutlineView();
     const auto& maskHistory=document.maskSelectionHistory();
     if(maskSelectionIdentity_!=document.identity()){maskSelectionIdentity_=document.identity();maskSelectionSerial_=maskHistory.serial;maskSelectionAnchor_.reset();}
-    else if(maskSelectionSerial_!=maskHistory.serial){maskSelectionSerial_=maskHistory.serial;selectedMaskSlots_=maskHistory.slots;maskSelectionAnchor_=selectedMaskSlots_.empty()?std::nullopt:std::optional<Document::MaskSlotKey>(selectedMaskSlots_.back());}
+    else if(maskSelectionSerial_!=maskHistory.serial){maskSelectionSerial_=maskHistory.serial;selectedMaskSlots_=maskHistory.slots;maskSelectionAnchor_=maskHistory.anchor?*maskHistory.anchor:(selectedMaskSlots_.empty()?std::nullopt:std::optional<Document::MaskSlotKey>(selectedMaskSlots_.back()));}
 
     if(auto entry=menuItems_.find("toggleGroupMask");entry!=menuItems_.end()){
       const auto owner=selectedMaskPropertyOwner();

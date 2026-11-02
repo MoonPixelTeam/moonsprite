@@ -318,7 +318,7 @@ public:
   struct FrameClipboardSnapshot {std::vector<FrameClipboardItem> items;std::vector<DocumentLayer> layers;std::uint64_t sourceIdentity=0;int width=0,height=0;std::vector<tiles::Tileset> tilesets;std::vector<timeline::Group> groups;std::vector<std::array<int,4>> layerGeometry;};
   FrameClipboardSnapshot exportFrameClipboard()const;
   bool pasteFrameClipboard(const FrameClipboardSnapshot& snapshot);
-  bool importGifAnimationLayer(const Document& source,int startFrameIndex);
+  bool importGifAnimationLayer(const Document& source,int startFrameIndex,const std::vector<MaskSlotKey>* maskSelection=nullptr,const std::optional<MaskSlotKey>* maskAnchor=nullptr);
   bool hasFrameClipboard() const{return !frameClipboard_.empty();}
   bool copySelectedFrames();
   bool cutSelectedFrames();
@@ -501,7 +501,7 @@ public:
   bool cropCanvas(std::optional<TransformPoint> pivot={});
   struct SelectionPivotHistory {std::uint64_t serial=0;std::optional<TransformPoint> pivot;};
   const SelectionPivotHistory& selectionPivotHistory() const {return selectionPivotHistory_;}
-  struct MaskSelectionHistory {std::uint64_t serial=0;std::vector<std::pair<std::string,std::string>> slots;};
+  struct MaskSelectionHistory {std::uint64_t serial=0;std::vector<std::pair<std::string,std::string>> slots;std::optional<std::optional<MaskSlotKey>> anchor;};
   const MaskSelectionHistory& maskSelectionHistory()const{return maskSelectionHistory_;}
   bool beginColorAdjustment(const std::vector<std::string>& layers={});
   bool beginColorReplacement(const std::vector<std::string>& celIds,bool clipSelection=false);
@@ -677,6 +677,7 @@ private:
     std::optional<std::string> maskToActivateOnRedo;
     std::optional<std::pair<std::string,bool>> maskEditingOnUndo;
     std::optional<std::vector<std::pair<std::string,std::string>>> beforeMaskSelection,afterMaskSelection;
+    std::optional<std::optional<MaskSlotKey>> beforeMaskSelectionAnchor,afterMaskSelectionAnchor;
     std::shared_ptr<const RollbackPayload> beforeRollback,afterRollback;std::size_t rollbackBytes=0;
   std::optional<SliceState> beforeSlices,afterSlices;
     std::optional<std::pair<int,int>> beforeDimensions,afterDimensions;
