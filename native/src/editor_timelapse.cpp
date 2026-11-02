@@ -78,7 +78,7 @@ bool Editor::flushTimelapse(){
 void Editor::showTimelapse(){
  if(pending_!=Pending::None||!documentOpen_||homeOpen_)return;if(!flushTimelapse())return;
  auto session=timelapse::ensureRecordingSession(document,smoke_?assets_.parent_path()/("timelapse-smoke-owned-"+std::to_string(GetCurrentProcessId())):timelapse::executableLibraryRoot(),smoke_?std::filesystem::path{}:timelapse::legacyLibraryRoot());
- TimelapseDialog popup(font_,skin_,toolIcons_,document.mutableTimelapseSettings(),session->reader(),[this,session]{session->settingsChanged(document);},[this,session]{session->clear(document);},[this]{exportTimelapseImages();});popup.setDisplay(display(),false);auto r=bounds();const int width=420*uiScale,height=525*uiScale;popup.setBounds({r.center().x-width/2,r.center().y-height/2,width,height});
+ TimelapseDialog popup(font_,skin_,toolIcons_,document.mutableTimelapseSettings(),session->reader(),[this,session]{session->settingsChanged(document);},[this,session]{session->clear(document);},[this]{exportTimelapseImages();});popup.setPreviewCheckerboard(checkerboard_);popup.setDisplay(display(),false);auto r=bounds();const int width=420*uiScale,height=525*uiScale;popup.setBounds({r.center().x-width/2,r.center().y-height/2,width,height});
  auto previous=pending_;pending_=Pending::Timelapse;popup.openWindowInForeground();pending_=previous;requestFocus();refresh();
 }
 void Editor::exportTimelapseImages(){

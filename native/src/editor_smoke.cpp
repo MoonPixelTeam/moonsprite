@@ -3,6 +3,7 @@
 #include "native_document_open.h"
 #include "project_restore_report.h"
 #include "../tests/fixtures/timelapse_restore_archive.h"
+#include "../tests/fixtures/timelapse_preview_check.h"
 #include "editor.h"
 #include "free_tile_instances_panel.h"
 
@@ -6178,6 +6179,7 @@ void Editor::smokeTimelineGifDrop(){
       if(pending_!=Pending::None||projects_.size()!=count+1||!document.dirty()||document.timelapseSettings().snapshots.size()!=1||document.pixels()!=std::vector<Pixel>(16,0xff123456)||status_!=U"该工程的缩时记录有 2 帧无法恢复，已保留 1 帧。")throw std::runtime_error("Actual recovery must retain artwork and report partial recording damage");
     }
 
+    TimelapsePreviewCheck::run(font_,skin_,toolIcons_);
     // Inspect the real Win32 chooser and cancel it; no fake dialog result.
     const auto chooserIdentity=document.identity(),chooserHistory=document.historyPosition();const auto chooserCount=projects_.size();const DWORD chooserThread=GetCurrentThreadId();std::string chooserError;bool inspected=false;
     std::thread cancelChooser([&]{
