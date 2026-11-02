@@ -2078,3 +2078,5 @@ Paint／无主选实例的源像素删除仍未开放，剪切在这些场景只
 - 2026-11-02：整格Cel粘贴历史改用已有双侧MaskContextHistory，补齐Undo恢复文档编辑目标，保留原Redo修正；同／跨工程、图层／组蒙版及隔离开关的八组回归两侧都进入蒙版，验证重复历史、原像素／粘贴像素、旧蒙版保持、后续真实笔画和保存重开。既有 `free-tile-project-tests`、唯一正式Release构建、542文件来源覆盖及diff检查通过。详见[整格Cel粘贴Undo编辑目标](frame-clipboard-source-lifetime-20261101.md)。蒙版中初次粘贴准入未扩展，实际UI操作未验收。
 
 - 2026-11-02：整格Cel粘贴按旧版区分帧选择／锚点：同工程保留，跨工程清空；复用既有历史字段恢复两侧状态。八组同／跨工程、原单／多帧选择、追加／不追加，验证初次结果、重复Undo／Redo、后来锚点覆盖、Cel选择及保存重开结构；既有 `free-tile-project-tests`、`cel-selection-clipboard-tests`、唯一正式Release构建、542文件来源覆盖及diff检查通过。详见[整格Cel粘贴帧选择](frame-clipboard-source-lifetime-20261101.md)。未执行实际UI操作验收。
+
+- 2026-11-02：整格Cel粘贴按旧版保留图层选择与layerAnchor；Cel锚点同工程保留，跨工程定位结果末尾，既有时间轴历史恢复前后状态。八组同／跨工程、单／多帧原选择、追加／不追加扩展验证图层选择及Cel锚点，重复Undo／Redo、帧选择与保存重开结构保持；`free-tile-project-tests`、`cel-selection-clipboard-tests`、唯一正式Release构建、542文件来源覆盖及diff检查通过。详见[整格粘贴图层选择与锚点](frame-clipboard-source-lifetime-20261101.md)。未执行实际UI操作验收。

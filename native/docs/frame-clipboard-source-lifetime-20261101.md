@@ -483,3 +483,13 @@
 八组同／跨工程、原单／多帧选择、追加／不追加场景，验证初次结果及重复历史中的帧选择、帧锚点、Cel选择和帧结构；Undo／Redo前刻意改动锚点，确认历史覆盖后来状态；保存重开检查内容结构。未执行实际UI操作验收。
 
 本批实际结果：八组新增场景及既有 `free-tile-project-tests`、`cel-selection-clipboard-tests`、唯一正式Release构建、542文件来源覆盖和diff检查通过；未执行实际UI操作验收。
+
+## 后续补齐：整格Cel粘贴的图层选择与Cel锚点（2026-11-02）
+
+旧版 `workspace-commands-animation-cel-clipboard.ts` 整格同／跨工程粘贴都保留selectedLayerIds。同工程只更新selectedAnimationCellKeys而保留animationCellSelectionAnchorKey；跨工程显式将该锚点设为粘贴结果末尾。`historyEntryWithAnimationSelection` 恢复这些前后字段。
+
+原生此前清空TimelineSelection.layers，并总将celAnchor设为目标末尾。本批保留原图层选择及layerAnchor，仅跨工程设置celAnchor为目标末尾，复用既有完整时间轴选择历史。没有新增UI入口或改变选择手势。
+
+扩展既有八组同／跨工程、原单／多帧选择、追加／不追加场景，加入原图层选择与layerAnchor，检查成功粘贴、重复Undo／Redo中的图层选择和Cel锚点，继续运行帧选择／锚点、内容结构与保存重开检查。未执行实际UI操作验收。
+
+本批实际结果：扩展后的八组选择上下文场景及既有 `free-tile-project-tests`、`cel-selection-clipboard-tests`、唯一正式Release构建、542文件来源覆盖和diff检查通过；未执行实际UI操作验收。
