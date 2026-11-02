@@ -6211,15 +6211,15 @@ void Editor::smokeTimelineGifDrop(){
             if(!popup)throw std::runtime_error("Recording export form not open");
             PixelEntry *name=nullptr,*scale=nullptr;PixelDropdown* format=nullptr;PixelButton *browse=nullptr,*run=nullptr;
             for(auto child:popup->children()){
-              if(auto entry=dynamic_cast<PixelEntry*>(child)){if(entry->numeric)scale=entry;else name=entry;}
-              if(auto dropdown=dynamic_cast<PixelDropdown*>(child))format=dropdown;
+              if(auto entry=dynamic_cast<PixelEntry*>(child)){if(entry->suffix==U"%")scale=entry;else if(!entry->numeric)name=entry;}
+              if(auto dropdown=dynamic_cast<PixelDropdown*>(child);dropdown&&dropdown->caption==U"MP4")format=dropdown;
               if(auto button=dynamic_cast<PixelButton*>(child)){if(button->icon=="folderOpen")browse=button;if(button->caption==U"导出")run=button;}
             }
             if(!name||!scale||!format||!browse||!run)throw std::runtime_error("Recording export location controls missing");
-            name->setText(utf8Text(U"自定义.jpg.png"));scale->setText("100");format->setSelectedIndex(1,true);
+            name->setText(utf8Text(U"自定义.jpg.png"));scale->setText("100");format->setSelectedIndex(3,true);
             if(name->text()!=utf8Text(U"自定义.jpg.jpg"))throw std::runtime_error("Recording JPG format did not preserve the filename stem");
-            format->setSelectedIndex(0,true);browse->Click();
-            if(name->text()!=utf8Text(U"自定义.jpg.png")||scale->text()!="100"||format->selectedIndex()!=0)throw std::runtime_error("Canceling recording location changed form values");
+            format->setSelectedIndex(2,true);browse->Click();
+            if(name->text()!=utf8Text(U"自定义.jpg.png")||scale->text()!="100"||format->selectedIndex()!=2)throw std::runtime_error("Canceling recording location changed form values");
             browse->Click();if(name->text()!=utf8Text(U"选择.any.png"))throw std::runtime_error("Recording chooser changed the selected output format");
             name->setText(utf8Text(U"自定义.jpg.png"));configured=true;run->Click();
           }catch(...){failure=std::current_exception();if(popup)popup->closeWindow(nullptr);}
@@ -6268,7 +6268,7 @@ void Editor::smokeTimelineGifDrop(){
       chooseSaveFile_=[&](OPENFILENAMEW* request){const auto chosen=(output/L"pending.png").wstring();wcsncpy_s(request->lpstrFile,request->nMaxFile,chosen.c_str(),_TRUNCATE);return true;};
       std::exception_ptr failure;bool submitted=false;ui::Timer submit(20,this);
       submit.Tick.connect([&]{submit.stop();auto focus=ui::Manager::getDefault()->getFocus();auto popup=focus?dynamic_cast<PixelDialog*>(focus->window()):nullptr;
-        try{if(!popup)throw std::runtime_error("Pending capture export form missing");PixelButton *browse=nullptr,*run=nullptr;for(auto child:popup->children())if(auto button=dynamic_cast<PixelButton*>(child)){if(button->icon=="folderOpen")browse=button;if(button->caption==U"导出")run=button;}if(!browse||!run)throw std::runtime_error("Pending capture export actions missing");browse->Click();
+        try{if(!popup)throw std::runtime_error("Pending capture export form missing");for(auto child:popup->children())if(auto dropdown=dynamic_cast<PixelDropdown*>(child);dropdown&&dropdown->caption==U"MP4")dropdown->setSelectedIndex(2,true);PixelButton *browse=nullptr,*run=nullptr;for(auto child:popup->children())if(auto button=dynamic_cast<PixelButton*>(child)){if(button->icon=="folderOpen")browse=button;if(button->caption==U"导出")run=button;}if(!browse||!run)throw std::runtime_error("Pending capture export actions missing");browse->Click();
           // The form captured only the first recording. Queue a new capture now,
           // so submission must await and take a fresh snapshot before planning.
           document.beginStroke({1,0},0xffabcdef);document.commitStroke();submitted=true;run->Click();
@@ -6276,6 +6276,27 @@ void Editor::smokeTimelineGifDrop(){
       });submit.start();exportTimelapseImages();submit.stop();if(failure)std::rethrow_exception(failure);
       std::ifstream file(output/L"pending-002.png",std::ios::binary);const timelapse::Bytes bytes((std::istreambuf_iterator<char>(file)),{});
       if(!submitted||document.timelapseSettings().snapshots.size()!=2||timelapse::decodeRecordingPng(bytes).pixels!=document.pixels())throw std::runtime_error("Recording export omitted a capture queued after opening its form");
+    }
+    {
+      auto previous=std::move(document);struct RestoreDocument {Document& target;Document& previous;~RestoreDocument(){target=std::move(previous);}} restore{document,previous};
+      const auto output=fixtureRoot/("mp4-export-"+std::to_string(GetCurrentProcessId()));std::filesystem::create_directories(output);
+      document=Document::fromImage(64,48,std::vector<Pixel>(64*48,0xff0000ff),U"视频导出");timelapse::Settings settings;settings.fps=6;settings.speed=2;settings.quality=timelapse::Quality::Medium;timelapse::Frame frame;frame.id="mp4-ui";frame.width=64;frame.height=48;frame.local=timelapse::appendLibraryFrame(output/"library","mp4-ui-store",encodeRgbaImagePng(64,48,document.pixels()).png);settings.snapshots.push_back(frame);document.setImportedTimelapse(settings);document.markSaved();timelapse::ensureRecordingSession(document,output/"library");
+      const auto revision=document.revision(),history=document.historyPosition();const auto pixels=document.pixels();
+      const auto originalChooser=chooseSaveFile_;struct RestoreChooser {decltype(chooseSaveFile_)& target;decltype(chooseSaveFile_) original;~RestoreChooser(){target=std::move(original);}} restoreChooser{chooseSaveFile_,originalChooser};
+      PixelDialog* videoForm=nullptr;int choices=0,stage=0,ticks=0;bool checked=false;std::exception_ptr failure;PixelButton *browse=nullptr,*run=nullptr;PixelEntry *name=nullptr,*speed=nullptr,*duration=nullptr;PixelDropdown *format=nullptr,*mode=nullptr,*quality=nullptr;
+      chooseSaveFile_=[&](OPENFILENAMEW* request){++choices;if(std::wstring(request->lpstrDefExt)!=L"mp4")throw std::runtime_error("MP4 chooser extension mismatch");const auto chosen=(choices==1?output/"missing"/L"保留草稿.mp4":output/L"完成视频.mp4").wstring();wcsncpy_s(request->lpstrFile,request->nMaxFile,chosen.c_str(),_TRUNCATE);return true;};
+      ui::Timer interact(20,this);interact.Tick.connect([&]{auto focus=ui::Manager::getDefault()->getFocus();auto popup=videoForm?videoForm:focus?dynamic_cast<PixelDialog*>(focus->window()):nullptr;if(popup)videoForm=popup;
+        try{if(++ticks>500)throw std::runtime_error("MP4 UI export did not finish");if(!popup)return;if(stage==0){for(auto child:popup->children()){
+            if(auto entry=dynamic_cast<PixelEntry*>(child)){if(!entry->numeric)name=entry;else if(entry->suffix==U"x")speed=entry;else if(entry->suffix==U"s")duration=entry;}
+            if(auto dropdown=dynamic_cast<PixelDropdown*>(child)){if(dropdown->caption==U"MP4")format=dropdown;else if(dropdown->caption==U"按选择时长导出")mode=dropdown;else if(dropdown->caption.find(U"标准")!=std::u32string::npos)quality=dropdown;}
+            if(auto button=dynamic_cast<PixelButton*>(child)){if(button->icon=="folderOpen")browse=button;else if(button->caption==U"导出")run=button;}}
+          if(!name||!speed||!duration||!format||!mode||!quality||!browse||!run||format->optionEnabled(1))throw std::runtime_error("MP4 form controls or unsupported WebM gate missing");
+          format->setSelectedIndex(1,true);if(format->selectedIndex()!=0)throw std::runtime_error("Unsupported WebM became selectable");quality->setSelectedIndex(0,true);duration->setText("2");mode->setSelectedIndex(1,true);speed->setText("3");if(!speed->isVisible()||duration->isVisible())throw std::runtime_error("Video mode controls not switched");mode->setSelectedIndex(0,true);if(speed->isVisible()||!duration->isVisible()||duration->text()!="2")throw std::runtime_error("Video mode lost its duration draft");duration->setText("1");browse->Click();stage=1;run->Click();
+        }else if(stage==1&&run->isEnabled()){
+          if(name->text()!=utf8Text(U"保留草稿.mp4")||duration->text()!="1"||speed->text()!="3"||quality->selectedIndex()!=0||document.revision()!=revision||document.historyPosition()!=history)throw std::runtime_error("Failed MP4 export lost draft or changed document");checked=true;browse->Click();stage=2;run->Click();
+        }}catch(...){failure=std::current_exception();interact.stop();if(popup)popup->closeWindow(nullptr);}
+      });interact.start();exportTimelapseImages();interact.stop();if(failure)std::rethrow_exception(failure);
+      std::ifstream file(output/L"完成视频.mp4",std::ios::binary);const timelapse::Bytes bytes((std::istreambuf_iterator<char>(file)),{});if(!checked||stage!=2||choices!=2||bytes.size()<24||std::string(bytes.begin()+4,bytes.begin()+8)!="ftyp"||document.pixels()!=pixels||document.revision()!=revision||document.historyPosition()!=history||document.dirty()||document.timelapseSettings().quality!=timelapse::Quality::Medium||document.timelapseSettings().speed!=2)throw std::runtime_error("MP4 actual export or isolated quality/speed settings failed");
     }
     // Inspect the real Win32 chooser and cancel it; no fake dialog result.
     const auto chooserIdentity=document.identity(),chooserHistory=document.historyPosition();const auto chooserCount=projects_.size();const DWORD chooserThread=GetCurrentThreadId();std::string chooserError;bool inspected=false;
