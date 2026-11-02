@@ -2080,3 +2080,5 @@ Paint／无主选实例的源像素删除仍未开放，剪切在这些场景只
 - 2026-11-02：整格Cel粘贴按旧版区分帧选择／锚点：同工程保留，跨工程清空；复用既有历史字段恢复两侧状态。八组同／跨工程、原单／多帧选择、追加／不追加，验证初次结果、重复Undo／Redo、后来锚点覆盖、Cel选择及保存重开结构；既有 `free-tile-project-tests`、`cel-selection-clipboard-tests`、唯一正式Release构建、542文件来源覆盖及diff检查通过。详见[整格Cel粘贴帧选择](frame-clipboard-source-lifetime-20261101.md)。未执行实际UI操作验收。
 
 - 2026-11-02：整格Cel粘贴按旧版保留图层选择与layerAnchor；Cel锚点同工程保留，跨工程定位结果末尾，既有时间轴历史恢复前后状态。八组同／跨工程、单／多帧原选择、追加／不追加扩展验证图层选择及Cel锚点，重复Undo／Redo、帧选择与保存重开结构保持；`free-tile-project-tests`、`cel-selection-clipboard-tests`、唯一正式Release构建、542文件来源覆盖及diff检查通过。详见[整格粘贴图层选择与锚点](frame-clipboard-source-lifetime-20261101.md)。未执行实际UI操作验收。
+
+- 2026-11-02：整格Cel粘贴的未覆盖自动关联层，对原有规范源复用现有内容缓存，候选新增源保留私有判断，既有显式关联短路保持；依据旧版inheritAnimationFrameCelLinks内容缓存路径。稀疏追加场景扩展16组同／跨工程、普通／文字、autoLink和透明／可见独立源，验证空源不启动关联及原有像素／属性／历史／保存重开。`free-tile-project-tests`、唯一正式Release构建、542文件来源覆盖与diff检查通过。详见[整格粘贴自动关联内容缓存](frame-clipboard-source-lifetime-20261101.md)。未执行实际UI、耗时或扫描计数验收。

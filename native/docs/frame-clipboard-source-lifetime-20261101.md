@@ -493,3 +493,13 @@
 扩展既有八组同／跨工程、原单／多帧选择、追加／不追加场景，加入原图层选择与layerAnchor，检查成功粘贴、重复Undo／Redo中的图层选择和Cel锚点，继续运行帧选择／锚点、内容结构与保存重开检查。未执行实际UI操作验收。
 
 本批实际结果：扩展后的八组选择上下文场景及既有 `free-tile-project-tests`、`cel-selection-clipboard-tests`、唯一正式Release构建、542文件来源覆盖和diff检查通过；未执行实际UI操作验收。
+
+## 后续补齐：整格Cel粘贴自动关联的内容缓存（2026-11-02）
+
+旧版 `animation.ts::inheritAnimationFrameCelLinks` 对已有显式关联直接继承；独立前驱通过 `animationCelHasContent` 复用 `animation-cel-content-cache.ts` 内容缓存。原生整格粘贴的独立前驱判断此前总扫描规范源像素。
+
+本批沿用原继承分支，对仍属于原timeline的规范源复用既有 `Timeline::hasVisiblePixels`；候选新增源保持私有像素判断，不将未提交候选内容写入活缓存。已有显式关联的短路保持。没有增加新的缓存架构或扩大关联准入。
+
+稀疏追加回归扩展为16组同／跨工程、普通／文字旁层、autoLink开／关及独立源透明／可见；检查透明源不启动关联链，可见源仅同工程自动继承，以及原有像素、透明度、编辑数据、一次历史、保存重开和Undo／Redo。未做耗时基准、扫描计数或实际UI操作验收。
+
+本批实际结果：扩展后的16组场景及既有 `free-tile-project-tests`、唯一正式Release构建、542文件来源覆盖及diff检查通过；未执行实际UI、耗时基准或扫描计数验收。
