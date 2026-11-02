@@ -443,3 +443,13 @@
 八组同／跨工程、普通／文字旁层和autoLink开／关场景使用1024×1024、70帧的稀疏工程，验证整格粘贴准入、新帧像素／透明度、旁层独立1×1空槽或同工程继承、文字数据规则、旧内容保持、一次历史、保存重开和Undo／Redo。未执行实际UI操作或耗时基准验收。
 
 本批实际结果：八组新增场景及既有 `free-tile-project-tests` 通过；`cel-selection-clipboard-tests` 中原要求2×2密集空槽的跨工程断言按旧版改为1×1后整套通过。唯一正式Release构建、542文件来源覆盖及diff检查通过；未执行实际UI操作或耗时基准验收。
+
+## 后续补齐：整格Cel粘贴Redo恢复文档编辑目标（2026-11-02）
+
+旧版 `workspace-commands-animation-cel-clipboard.ts` 的整格同／跨工程粘贴清空activeLayerMaskId，并经 `workspace-animation-selection-history.ts::historyEntryWithAnimationSelection` 捕获粘贴后的编辑目标；Redo恢复after快照，因此Undo后重新进入的旧蒙版不会残留。
+
+原生完整时间轴历史恢复像素，但未记录整格Cel粘贴的Redo编辑目标。本批复用已有 `Edit::maskToActivateOnRedo` 空字符串及其时间轴恢复路径，Redo退出蒙版和隔离；不新增历史类型，不改变初次在蒙版中的整格粘贴准入。
+
+八组同／跨工程、图层／组蒙版和隔离开／关场景，检查Undo后进入旧蒙版，重复Redo恢复文档编辑及粘贴内容；实际笔画落到Cel、原蒙版保持，保存重开与该笔画独立Undo。未执行实际UI操作验收。
+
+本批实际结果：八组新增场景及既有 `free-tile-project-tests`、唯一正式Release构建、542文件来源覆盖及diff检查通过；未执行实际UI操作验收。
