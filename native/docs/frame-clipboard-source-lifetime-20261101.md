@@ -523,3 +523,9 @@
 本批不改选区载荷的位置规则。未执行实际UI操作验收。
 
 本批实际结果：八组新增图层重排／源删除场景及既有 `free-tile-project-tests`、`cel-selection-clipboard-tests` 通过；唯一正式 Release 程序构建成功。未执行实际 UI 操作验收。
+
+## 后续补齐：整帧复制的选择集合筛选（2026-11-02）
+
+旧版 `workspace-commands-animation-frame-clipboard.ts::copySelectedAnimationFrames` 先建立 selectedIds Set，再按时间轴顺序筛选帧。原生此前在帧筛选、复制 Cel ID 和蒙版 ID 收集时逐项扫描选择列表。本批复用一个 `unordered_set` 处理三处成员判断；帧输出仍取时间轴顺序，载荷与关联快照逻辑保持原状。逐帧载荷扫描仍存在，不声明完整复制路径已变为线性复杂度，未进行耗时基准或实际 UI 验收。
+
+本批实际结果：既有 `free-tile-project-tests`（含帧复制内容／结构快照、运行时共享源与跨工程粘贴回归）、唯一正式 Release 构建、542 文件来源覆盖及 diff 检查通过。未新增测试、未进行耗时基准或实际 UI 操作验收。
