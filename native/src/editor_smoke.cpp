@@ -6094,6 +6094,26 @@ void Editor::smokeTimelineGifDrop(){
     std::ifstream backupFile(backupPath,std::ios::binary);const std::vector<std::uint8_t> backupBytes((std::istreambuf_iterator<char>(backupFile)),{});if(backupBytes!=*backupData.bytes)throw std::runtime_error("Opening native backup wrote its source file");
     const auto beforePsd=document.identity();openPath(fixtureRoot/"unsupported.psd");if(pending_!=Pending::OpenError||document.identity()!=beforePsd||openError_.find(U"PSD import is not migrated")==std::u32string::npos)throw std::runtime_error("PSD reader gap must be explicit and preserve the active project");resolve(false);
 
+    // Deterministic worker boundary: completion is gated by UI timer ticks,
+    // not a machine-dependent duration or a throughput benchmark.
+    {
+      const auto identity=document.identity(),history=document.historyPosition();
+      const auto pixels=document.pixels();const bool dirty=document.dirty();
+      const auto uiThread=std::this_thread::get_id();std::thread::id workerThread;
+      std::promise<void> release;auto ready=release.get_future().share();int ticks=0;
+      DocumentLoadingDialog loading(font_,skin_,[&]{workerThread=std::this_thread::get_id();ready.wait();return openGifAnimation(path);},U"打开文件");
+      loading.setDisplay(display(),false);const auto size=loading.minimumDialogSize(bounds().w);
+      loading.setBounds({bounds().center().x-size.w/2,bounds().center().y-size.h/2,size.w,size.h});
+      bool untouched=true,escapeKeptOpen=false;ui::Timer pump(20,&loading);
+      pump.Tick.connect([&]{
+        ++ticks;untouched=untouched&&document.identity()==identity&&document.historyPosition()==history&&document.pixels()==pixels&&document.dirty()==dirty;
+        if(ticks==1){ui::KeyMessage escape(ui::kKeyDownMessage,ui::kKeyEsc,ui::kKeyNoneModifier,0,0);loading.onProcessMessage(&escape);escapeKeptOpen=loading.isVisible();}
+        if(ticks==2){release.set_value();pump.stop();}
+      });pump.start();loading.openWindowInForeground();
+      auto candidate=loading.result();
+      if(ticks!=2||workerThread==uiThread||!untouched||!escapeKeptOpen||candidate.width()<1)throw std::runtime_error("Background document read blocked UI, escaped early, or changed the active project");
+    }
+
     // Inspect the real Win32 chooser and cancel it; no fake dialog result.
     const auto chooserIdentity=document.identity(),chooserHistory=document.historyPosition();const auto chooserCount=projects_.size();const DWORD chooserThread=GetCurrentThreadId();std::string chooserError;bool inspected=false;
     std::thread cancelChooser([&]{

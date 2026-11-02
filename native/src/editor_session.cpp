@@ -282,37 +282,42 @@ void Editor::openPath(const std::filesystem::path& path) {
 
       auto ext=path.extension().wstring();std::transform(ext.begin(),ext.end(),ext.begin(),[](wchar_t c){return ::towlower(c);});
 
-      if(ext==L".psd")throw std::runtime_error("PSD import is not migrated; the existing PSD capability is export only");
-      if(ext==L".ase"||ext==L".aseprite"){openCandidate_=openAseprite(path);openCandidate_->setSourceFilePath(path);candidatePath_.clear();candidateRecovery_=false;ask(Pending::Open);status_=U"已打开 ASE；沿用原格式保存时将保存回源文件。";return;}
-      if(ext==L".gif" || ext==L".png" || ext==L".jpg" || ext==L".jpeg" || ext==L".bmp" || ext==L".webp"){
+      const bool ase=ext==L".ase"||ext==L".aseprite";
+      const bool raster=ext==L".gif"||ext==L".png"||ext==L".jpg"||ext==L".jpeg"||ext==L".bmp"||ext==L".webp";
+      DocumentLoadingDialog loading(font_,skin_,[path,ext,ase,raster]() -> Document {
+        if(ext==L".psd")throw std::runtime_error("PSD import is not migrated; the existing PSD capability is export only");
+        if(ase){auto candidate=openAseprite(path);candidate.setSourceFilePath(path);return candidate;}
+        if(raster){auto candidate=ext==L".gif"?openGifAnimation(path):openRasterImage(path);candidate.setSourceFilePath(path);return candidate;}
+        const project::Limits limits;
 
-        auto image=ext==L".gif"?openGifAnimation(path):openRasterImage(path);image.setSourceFilePath(path);openCandidate_=std::move(image);candidatePath_.clear();candidateRecovery_=false;ask(Pending::Open);return;
+        std::ifstream file(path,std::ios::binary|std::ios::ate);
 
-      }
+        if(!file) throw std::runtime_error("Cannot read project file");
 
-      const project::Limits limits;
+        const auto size=file.tellg();
 
-      std::ifstream file(path,std::ios::binary|std::ios::ate);
+        if(size<0 || std::uint64_t(size)>limits.archiveBytes) throw project::Error(project::ErrorKind::Limit,"Project exceeds read budget");
 
-      if(!file) throw std::runtime_error("Cannot read project file");
+        auto bytes=std::make_shared<project::Bytes>(std::size_t(size));file.seekg(0);
 
-      const auto size=file.tellg();
+        if(!file.read(reinterpret_cast<char*>(bytes->data()),std::streamsize(bytes->size()))) throw std::runtime_error("Incomplete project read");
 
-      if(size<0 || std::uint64_t(size)>limits.archiveBytes) throw project::Error(project::ErrorKind::Limit,"Project exceeds read budget");
+        auto imported=project::prepareEditableImport(project::readProjectManifest(bytes,limits));
 
-      auto bytes=std::make_shared<project::Bytes>(std::size_t(size));file.seekg(0);
+        PaletteState palette;palette.entries.clear();palette.slots=std::move(imported.palette.slots);palette.nextId=imported.palette.nextId;palette.columns=imported.palette.columns;
 
-      if(!file.read(reinterpret_cast<char*>(bytes->data()),std::streamsize(bytes->size()))) throw std::runtime_error("Incomplete project read");
+        for(auto& e:imported.palette.entries) palette.entries.push_back({e.id,std::move(e.name),e.color});
 
-      auto imported=project::prepareEditableImport(project::readProjectManifest(bytes,limits));
+        auto candidate=Document::fromImported(imported.width,imported.height,std::move(imported.timeline),std::move(palette),std::move(imported.id),std::move(imported.name),std::move(imported.sourceArchive));candidate.setImportedProjectInformation(imported.information);candidate.setImportedReferenceImages(std::move(imported.referenceImages));candidate.setImportedSlices(std::move(imported.slices));candidate.setImportedTimelapse(std::move(imported.timelapse));candidate.setImportedProjectBrushes(std::move(imported.customBrushes));candidate.selectLayer(imported.activeLayerId);candidate.selectFrame(imported.activeFrameId);candidate.setImportedLoop(imported.loop);candidate.setPixelGrid(imported.showPixelGrid,false);candidate.setCustomGrid(imported.showCustomGrid,imported.customGrid,false);if(imported.symmetryCenter)candidate.setSymmetryCenter({imported.symmetryCenter->first,imported.symmetryCenter->second},false);
 
-      PaletteState palette;palette.entries.clear();palette.slots=std::move(imported.palette.slots);palette.nextId=imported.palette.nextId;palette.columns=imported.palette.columns;
-
-      for(auto& e:imported.palette.entries) palette.entries.push_back({e.id,std::move(e.name),e.color});
-
-      openCandidate_=Document::fromImported(imported.width,imported.height,std::move(imported.timeline),std::move(palette),std::move(imported.id),std::move(imported.name),std::move(imported.sourceArchive));openCandidate_->setImportedProjectInformation(imported.information);openCandidate_->setImportedReferenceImages(std::move(imported.referenceImages));openCandidate_->setImportedSlices(std::move(imported.slices));openCandidate_->setImportedTimelapse(std::move(imported.timelapse));openCandidate_->setImportedProjectBrushes(std::move(imported.customBrushes));openCandidate_->selectLayer(imported.activeLayerId);openCandidate_->selectFrame(imported.activeFrameId);openCandidate_->setImportedLoop(imported.loop);openCandidate_->setPixelGrid(imported.showPixelGrid,false);openCandidate_->setCustomGrid(imported.showCustomGrid,imported.customGrid,false);if(imported.symmetryCenter)openCandidate_->setSymmetryCenter({imported.symmetryCenter->first,imported.symmetryCenter->second},false);
-
-      openCandidate_->setSourceFilePath(path);candidatePath_=path;candidateRecovery_=false;ask(Pending::Open);
+        candidate.setSourceFilePath(path);return candidate;
+      },U"打开文件");
+      loading.setDisplay(display(),false);const auto size=loading.minimumDialogSize(bounds().w);
+      loading.setBounds({bounds().center().x-size.w/2,bounds().center().y-size.h/2,size.w,size.h});
+      loading.openWindowInForeground();
+      openCandidate_=loading.result();candidatePath_=ase||raster?std::filesystem::path{}:path;
+      candidateRecovery_=false;ask(Pending::Open);
+      if(ase)status_=U"已打开 ASE；沿用原格式保存时将保存回源文件。";
 
     } catch(const std::exception& e) {
 
