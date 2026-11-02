@@ -6201,8 +6201,9 @@ void Editor::smokeTimelineGifDrop(){
       closeExport.start();exportTimelapseImages();closeExport.stop();
       if(!exportOpened||document.revision()!=revision||document.historyPosition()!=history||document.dirty()||document.timelapseSettings().snapshots[0].data!=retained||document.timelapseSettings().snapshots[0].local)throw std::runtime_error("Recording export entry required local writes or modified the source");
       {
+        const auto namedOutput=fixtureRoot/("named-recording-"+std::to_string(GetCurrentProcessId()));std::filesystem::create_directories(namedOutput);
         const auto originalChooser=chooseSaveFile_;struct RestoreChooser {decltype(chooseSaveFile_)& target;decltype(chooseSaveFile_) original;~RestoreChooser(){target=std::move(original);}} restoreChooser{chooseSaveFile_,originalChooser};
-        int choices=0;chooseSaveFile_=[&](OPENFILENAMEW* request){++choices;if(choices==1)return false;const auto chosen=(fixtureRoot/L"选择.any").wstring();wcsncpy_s(request->lpstrFile,request->nMaxFile,chosen.c_str(),_TRUNCATE);return true;};
+        int choices=0;chooseSaveFile_=[&](OPENFILENAMEW* request){++choices;if(choices==1)return false;const auto chosen=(namedOutput/L"选择.any").wstring();wcsncpy_s(request->lpstrFile,request->nMaxFile,chosen.c_str(),_TRUNCATE);return true;};
         bool configured=false;std::exception_ptr failure;ui::Timer configure(20,this);
         configure.Tick.connect([&]{
           configure.stop();auto focus=ui::Manager::getDefault()->getFocus();auto popup=focus?dynamic_cast<PixelDialog*>(focus->window()):nullptr;
@@ -6223,8 +6224,39 @@ void Editor::smokeTimelineGifDrop(){
             name->setText(utf8Text(U"自定义.jpg.png"));configured=true;run->Click();
           }catch(...){failure=std::current_exception();if(popup)popup->closeWindow(nullptr);}
         });configure.start();exportTimelapseImages();configure.stop();if(failure)std::rethrow_exception(failure);
-        const auto output=fixtureRoot/L"自定义.jpg-001.png";std::ifstream exported(output,std::ios::binary);const timelapse::Bytes png((std::istreambuf_iterator<char>(exported)),{});
+        const auto output=namedOutput/L"自定义.jpg-001.png";std::ifstream exported(output,std::ios::binary);const timelapse::Bytes png((std::istreambuf_iterator<char>(exported)),{});
         if(!configured||choices!=2||timelapse::decodeRecordingPng(png).pixels!=std::vector<Pixel>{0xff123456}||document.revision()!=revision||document.historyPosition()!=history||document.dirty()||document.timelapseSettings().snapshots[0].data!=retained)throw std::runtime_error("Recording named export failed or modified its source");
+      }
+    }
+    {
+      auto previous=std::move(document);struct RestoreDocument {Document& target;Document& previous;~RestoreDocument(){target=std::move(previous);}} restore{document,previous};
+      document=Document::fromImage(1,1,{0xff123456},U"确认清空录像");
+      const auto library=fixtureRoot/"clear-recording-library";
+      timelapse::Settings settings;settings.enabled=true;settings.recordUndoSteps=true;settings.mode=timelapse::Mode::Full;settings.speed=3;
+      timelapse::Frame frame;frame.id="clear-confirm-frame";frame.width=frame.height=1;frame.local=timelapse::appendLibraryFrame(library,"clear-store",encodeRgbaImagePng(1,1,{0xff123456}).png);settings.snapshots.push_back(frame);
+      document.setImportedTimelapse(settings);document.markSaved();auto session=timelapse::ensureRecordingSession(document,library);
+      const auto revision=document.revision(),history=document.historyPosition();const auto pixels=document.pixels();
+      for(int decision:{0,1,2}){
+        bool asked=false,handled=false;std::exception_ptr failure;int ticks=0;ui::Timer activate(20,this),answer(20,this);
+        answer.Tick.connect([&]{
+          answer.stop();auto focus=ui::Manager::getDefault()->getFocus();auto question=focus?dynamic_cast<TimelapseClearDialog*>(focus->window()):nullptr;
+          try{
+            if(!question)throw std::runtime_error("Recording clear confirmation did not open");asked=true;
+            if(decision==1){ui::KeyMessage escape(ui::kKeyDownMessage,ui::kKeyEsc,ui::kKeyNoneModifier,0,0);question->onProcessMessage(&escape);}
+            else{PixelButton* choice=nullptr;for(auto child:question->children())if(auto button=dynamic_cast<PixelButton*>(child);button&&button->caption==(decision==2?U"确认清空":U"取消"))choice=button;if(!choice)throw std::runtime_error("Recording clear confirmation action missing");choice->Click();}
+          }catch(...){failure=std::current_exception();if(question)question->closeWindow(nullptr);}
+        });
+        activate.Tick.connect([&]{
+          ++ticks;auto focus=ui::Manager::getDefault()->getFocus();auto popup=focus?dynamic_cast<TimelapseDialog*>(focus->window()):nullptr;
+          if(popup&&TimelapsePreviewCheck::shown(*popup,frame.id)){
+            activate.stop();PixelButton* clear=nullptr;for(auto child:popup->children())if(auto button=dynamic_cast<PixelButton*>(child);button&&button->icon=="clearRecords")clear=button;
+            if(clear){answer.start();clear->Click();handled=true;}else failure=std::make_exception_ptr(std::runtime_error("Recording clear button missing"));
+            popup->closeWindow(nullptr);
+          }else if(ticks>=100){activate.stop();failure=std::make_exception_ptr(std::runtime_error("Recording clear preview did not load"));if(popup)popup->closeWindow(nullptr);}
+        });activate.start();showTimelapse();activate.stop();answer.stop();if(failure)std::rethrow_exception(failure);
+        if(!asked||!handled||document.pixels()!=pixels||document.historyPosition()!=history||document.revision()!=revision+(decision==2?1:0)||document.timelapseSettings().enabled!=settings.enabled||document.timelapseSettings().recordUndoSteps!=settings.recordUndoSteps||document.timelapseSettings().speed!=settings.speed||document.timelapseSettings().mode!=settings.mode||timelapse::readLibraryFrame(library,*frame.local)!=encodeRgbaImagePng(1,1,pixels).png)throw std::runtime_error("Recording clear changed artwork, settings, history or local library");
+        if(decision==2){if(!document.timelapseSettings().snapshots.empty()||!document.dirty())throw std::runtime_error("Confirmed clear did not remove project records and mark metadata dirty");}
+        else if(document.timelapseSettings().snapshots.size()!=1||document.dirty())throw std::runtime_error("Canceled recording clear changed project records");
       }
     }
     // Inspect the real Win32 chooser and cancel it; no fake dialog result.

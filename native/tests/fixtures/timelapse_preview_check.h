@@ -32,7 +32,7 @@ struct TimelapsePreviewCheck {
   dialog.cache_.push_front({"preview-first",image});dialog.select(0);dialog.tick();
   check(dialog.error_.empty()&&dialog.shown_=="preview-first");
   dialog.toggle();dialog.exportButton_->Click();check(exported&&!dialog.playing_&&dialog.play_->icon=="playback-play");
-  dialog.toggle();dialog.error_=U"Previous error";dialog.clearButton_->Click();dialog.tick();
+  dialog.toggle();dialog.error_=U"Previous error";dialog.stopPlayback();dialog.select(0);dialog.clearAccepted();dialog.tick();
   check(settings.snapshots.empty()&&dialog.cache_.empty()&&dialog.shown_.empty()&&dialog.error_.empty()&&!dialog.playing_&&dialog.play_->icon=="playback-play"&&!dialog.play_->isEnabled());
   // Pending capture publications remain visible without a persistence barrier.
   timelapse::Frame added;added.id="late-preview";added.width=added.height=1;settings.snapshots.push_back(added);dialog.cache_.push_front({added.id,image});dialog.tick();
