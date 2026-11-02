@@ -114,7 +114,7 @@ ReadManifest readProjectManifest(std::shared_ptr<const Bytes> bytes,Limits limit
     using RasterKey=std::tuple<std::string,std::string,int,int,int,int>;
     std::map<RasterKey,std::shared_ptr<const ManifestRaster>> rasters;std::size_t decodedBytes=0;
     std::set<std::string> consumedFiles{"manifest.json","preview.png"};
-    if(present(doc,"timelapse"))out.timelapse=timelapsejson::decode(object(doc,"timelapse"),archive,consumedFiles,limits.expandedBytes,report);
+    if(auto recording=value(doc,"timelapse");recording&&recording.ValueType()==JsonValueType::Object)out.timelapse=timelapsejson::decode(recording.GetObject(),archive,consumedFiles,limits.expandedBytes,report);
     auto raster=[&](const JsonObject& metadata,bool mask=false)->std::shared_ptr<const ManifestRaster> {
       if(!present(metadata,"dataFile")) return {};
       auto file=str(metadata,"dataFile"),encoding=str(metadata,"dataEncoding",false,"raw");consumedFiles.insert(file);

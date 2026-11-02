@@ -33,6 +33,17 @@ inline std::shared_ptr<const project::Bytes> timelapseRestoreArchive(int mode){
  if(mode==7)middle.Insert(L"futureField",JsonValue::CreateBooleanValue(true));
  if(mode==8)files["timelapse/frame-1.png"][0]=0;
  if(mode==9)middle.Insert(L"width",JsonValue::CreateNumberValue(2401));
+ auto settings=manifest.GetNamedObject(L"document").GetNamedObject(L"timelapse");
+ if(mode==10){middle.Insert(L"width",JsonValue::CreateStringValue(L" 4 "));middle.Insert(L"height",JsonValue::CreateStringValue(L"0x4"));middle.Insert(L"capturedAt",JsonValue::CreateStringValue(L"19.8"));middle.Insert(L"elapsedMs",JsonValue::CreateStringValue(L"bad"));middle.Insert(L"changeScore",JsonValue::CreateStringValue(L"0.9"));}
+ if(mode==11){settings.Insert(L"enabled",JsonValue::CreateStringValue(L"true"));settings.Insert(L"recordUndoSteps",JsonValue::CreateNumberValue(1));settings.Insert(L"quality",JsonValue::CreateBooleanValue(false));settings.Insert(L"fps",JsonValue::CreateStringValue(L"24"));settings.Insert(L"speed",JsonValue::CreateBooleanValue(true));settings.Insert(L"mode",JsonObject{});}
+ if(mode==12)settings.Insert(L"snapshots",JsonObject{});
+ if(mode==13)manifest.GetNamedObject(L"document").Insert(L"timelapse",JsonValue::CreateNullValue());
+ if(mode==14){JsonObject ignored;ignored.Insert(L"futureLocalField",JsonValue::CreateBooleanValue(true));middle.Insert(L"local",ignored);}
+ if(mode==15||mode==16||mode==22){JsonObject local;local.Insert(L"store",JsonValue::CreateStringValue(L"store"));local.Insert(L"chunk",JsonValue::CreateStringValue(L"chunk"));local.Insert(L"offset",mode==22?IJsonValue(JsonValue::CreateStringValue(L"0")):IJsonValue(JsonValue::CreateNumberValue(0)));local.Insert(L"length",JsonValue::CreateNumberValue(16));local.Insert(L"checksum",JsonValue::CreateNumberValue(42));middle.Insert(L"local",local);if(mode==15)middle.Insert(L"dataFile",JsonValue::CreateStringValue(L""));else if(mode==16)middle.Insert(L"dataFile",JsonValue::CreateNumberValue(17));else middle.Remove(L"dataFile");}
+ if(mode==17){middle.Insert(L"width",JsonArray::Parse(L"[4]"));middle.Insert(L"height",JsonArray::Parse(L"[[4]]"));middle.Insert(L"capturedAt",JsonArray::Parse(L"[19.8]"));middle.Insert(L"elapsedMs",JsonValue::CreateBooleanValue(true));middle.Insert(L"changeScore",JsonValue::CreateBooleanValue(true));}
+ if(mode==18||mode==19)middle.Insert(L"width",JsonValue::CreateStringValue(mode==18?L"not-a-number":L"4.5"));
+ if(mode==20)manifest.GetNamedObject(L"document").Insert(L"timelapse",JsonArray{});
+ if(mode==21){settings.Insert(L"fps",JsonValue::CreateNumberValue(12.5));settings.Insert(L"speed",JsonValue::CreateNumberValue(999));settings.Insert(L"quality",JsonValue::CreateStringValue(L"high"));middle.Insert(L"changeScore",JsonValue::CreateNumberValue(1.5));middle.Insert(L"capturedAt",JsonValue::CreateNumberValue(-8.5));middle.Insert(L"elapsedMs",JsonValue::CreateStringValue(L"-3"));}
  auto text=winrt::to_string(manifest.Stringify());files["manifest.json"]={text.begin(),text.end()};return std::make_shared<project::Bytes>(recordingZip(files));
 }
 }

@@ -6165,9 +6165,9 @@ void Editor::smokeTimelineGifDrop(){
     }
 
     // Legacy partial timelapse restore opens the artwork and reports losses.
-    for(int mode:{0,1,2,3,4}){
+    for(int mode:{0,1,2,3,4,10,11,14,15,17,18,21,22}){
       const auto damaged=tests::timelapseRestoreArchive(mode);const auto damagedPath=fixtureRoot/("partial-recording-"+std::to_string(mode)+".moonsprite");writeExportBytesAtomic(damagedPath,*damaged);
-      const auto count=projects_.size();openPath(damagedPath);const auto dropped=mode==0?0:mode==4?3:1;
+      const auto count=projects_.size();openPath(damagedPath);const auto dropped=(mode==0||mode==10||mode==11||mode==14||mode==17||mode==21)?0:mode==4?3:1;
       const auto warning=U"该工程的缩时记录有 "+unicodeText(std::to_string(dropped))+U" 帧无法恢复，已保留 "+unicodeText(std::to_string(3-dropped))+U" 帧。";
       if(pending_!=Pending::None||projects_.size()!=count+1||document.pixels()!=std::vector<Pixel>(16,0xff123456)||document.timelapseSettings().snapshots.size()!=3-dropped||document.dirty()||!sameProjectPath(documentPath_,damagedPath)||(dropped?status_!=warning:status_!=U"工程已打开")||projectDocument(0).pixels()[2]!=0xff765432)throw std::runtime_error("Actual partial recording open lost artwork or failed to report truthful retained/dropped counts");
       std::ifstream original(damagedPath,std::ios::binary);const project::Bytes unchanged((std::istreambuf_iterator<char>(original)),{});if(unchanged!=*damaged)throw std::runtime_error("Partial recording restore modified the source archive");
