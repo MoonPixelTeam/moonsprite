@@ -2104,3 +2104,5 @@ Paint／无主选实例的源像素删除仍未开放，剪切在这些场景只
 - 2026-11-02：桌面文件拖放按legacy useAppDocumentIO分流，单GIF命中时间轴导入，多个GIF及其他区域文件走既有openPath多工程生命周期；补齐普通文件投递入口，复用PatternBrushDropPaths的引号／空白／file URI规范化、同批去重及1000ms跨路由重复投递抑制。坏文件收集错误后继续其余文件，保留原dirty工程和已开成功文件，扩展包安装明确提示未迁移。正式Release构建、正式程序 `--timeline-gif-drop-check` 的多GIF／URI／重复投递／已开工程复用／部分失败保护及既有导入回归、542文件来源覆盖与diff检查通过。详见[桌面拖放路由](gif-import-geometry-20261101.md)。未人工拖放或截图验收，不扩大解码器和扩展兼容范围。
 
 - 2026-11-02：桌面拖放服务按legacy将规范化和1000ms投递过滤前移至统一输入入口，在分流前排除旧路径；统一时间源，移除各目的地重复过滤及笔刷URI自行拒绝。旧A+新B组合按过滤后数量分流，单GIF时间轴导入可UndoRedo；新file URI PNG笔刷实际解码、持久化并选中，原作品像素及历史保持。正式Release构建、`--timeline-gif-drop-check`、`--brush-library-panel-check`、542文件来源覆盖与diff检查通过。详见[统一拖放服务](gif-import-geometry-20261101.md)。未人工拖放或截图验收，扩展安装和PSD等缺口保持。
+
+- 2026-11-02：文件→打开按legacy平台窗口接通原生已有ASE／PNG／JPEG／WebP／BMP／GIF及MoonSprite备份读器，提供全部可用格式、ASE、工程与备份、图片四组筛选；多选坏文件收集后继续其余项。PSD未实现的读取显式报缺口，不误当归档损坏。正式Release构建与 `--timeline-gif-drop-check` 通过，含实际Win32四组筛选／默认组／取消状态保护、真实备份拖放／像素／源路径及文件字节不变、PSD失败保护和已有回归；542文件来源覆盖和diff检查通过。详见[打开入口格式与备份](gif-import-geometry-20261101.md)。未人工选择多文件，图片序列检测／合并／偏好仍未接入。

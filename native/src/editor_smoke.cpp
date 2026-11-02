@@ -6086,6 +6086,24 @@ void Editor::smokeTimelineGifDrop(){
     document.undo();refresh();if(document.timeline().state().layers.size()!=1)throw std::runtime_error("Fresh-only routed GIF import Undo");document.redo();refresh();if(document.timeline().state().layers.size()!=2)throw std::runtime_error("Fresh-only routed GIF import Redo");
     brushLibraryDropPaths_=PatternBrushDropPaths{};const auto noChange=document.identity();auto unsupported=event(canvasViewport().center(),{(fixtureRoot/"notes.txt").u8string()});native->notifyDragEnter(unsupported);native->notifyDrop(unsupported);if(projects_.size()!=4||document.identity()!=noChange||pending_!=Pending::None)throw std::runtime_error("Unsupported document drop must not open an archive");
 
+    // A native backup is accepted through the same public open/drop path.
+    Document backup(2,1);backup.beginStroke({1,0},0x80443322);backup.commitStroke();const auto backupData=project::encodeEditableProject(backup);const auto backupPath=fixtureRoot/"chooser.moonsprite.bak";writeExportBytesAtomic(backupPath,*backupData.bytes);brushLibraryDropPaths_=PatternBrushDropPaths{};
+    auto backupDrop=event(canvasViewport().center(),{backupPath.u8string()});native->notifyDragEnter(backupDrop);native->notifyDrop(backupDrop);if(!backupDrop.acceptDrop()||pending_!=Pending::None||projects_.size()!=5||document.pixels()!=backup.pixels()||document.dirty()||!sameProjectPath(documentPath_,backupPath)||!sameProjectPath(document.sourceFilePath(),backupPath)||projectDocument(0).pixels()[2]!=0xff765432)throw std::runtime_error("Native project backup drop must open without modifying the backup or dirty original");
+    std::ifstream backupFile(backupPath,std::ios::binary);const std::vector<std::uint8_t> backupBytes((std::istreambuf_iterator<char>(backupFile)),{});if(backupBytes!=*backupData.bytes)throw std::runtime_error("Opening native backup wrote its source file");
+    const auto beforePsd=document.identity();openPath(fixtureRoot/"unsupported.psd");if(pending_!=Pending::OpenError||document.identity()!=beforePsd||openError_.find(U"PSD import is not migrated")==std::u32string::npos)throw std::runtime_error("PSD reader gap must be explicit and preserve the active project");resolve(false);
+
+    // Inspect the real Win32 chooser and cancel it; no fake dialog result.
+    const auto chooserIdentity=document.identity(),chooserHistory=document.historyPosition();const auto chooserCount=projects_.size();const DWORD chooserThread=GetCurrentThreadId();std::string chooserError;bool inspected=false;
+    std::thread cancelChooser([&]{
+      HWND dialog=nullptr;const auto deadline=GetTickCount64()+5000;
+      while(!dialog&&GetTickCount64()<deadline){EnumThreadWindows(chooserThread,[](HWND window,LPARAM value)->BOOL{wchar_t cls[32]{};GetClassNameW(window,cls,32);if(wcscmp(cls,L"#32770")==0&&IsWindowVisible(window)){*reinterpret_cast<HWND*>(value)=window;return FALSE;}return TRUE;},reinterpret_cast<LPARAM>(&dialog));if(!dialog)std::this_thread::sleep_for(std::chrono::milliseconds(10));}
+      if(!dialog){chooserError="Native open chooser was not shown";PostThreadMessageW(chooserThread,WM_QUIT,0,0);return;}
+      const HWND formats=GetDlgItem(dialog,0x470);const auto count=SendMessageW(formats,CB_GETCOUNT,0,0);if(!formats||count!=4)chooserError="Native chooser must expose four supported format groups";
+      else{wchar_t label[256]{};SendMessageW(formats,CB_GETLBTEXT,0,reinterpret_cast<LPARAM>(label));if(std::wstring(label).find(L"当前支持的文件")==std::wstring::npos)chooserError="Native chooser default format is not all supported files";else inspected=true;}
+      PostMessageW(dialog,WM_COMMAND,MAKEWPARAM(IDCANCEL,BN_CLICKED),0);
+    });
+    chooseProject();cancelChooser.join();if(!chooserError.empty())throw std::runtime_error(chooserError);if(!inspected||pending_!=Pending::None||document.identity()!=chooserIdentity||document.historyPosition()!=chooserHistory||projects_.size()!=chooserCount||projectDocument(0).pixels()[2]!=0xff765432)throw std::runtime_error("Canceling native chooser changed existing project state");
+
     document=Document();clearTimelineGifDrop();refresh();
 
   }

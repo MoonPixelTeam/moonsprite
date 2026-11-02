@@ -14633,6 +14633,7 @@
     },
     {
       "file": "src/editor_session.cpp",
+      "nativeOpenChooserFormats20261102": "依据 legacy/src-tauri/src/platform_dialogs.rs::open_files 的全部格式/Aseprite/MoonSprite/图片筛选，以及 store/workspace-commands-document-io.ts::openFiles/openPaths/openPath 和 image-sequence-import.ts 独立打开及读取失败继续逻辑。原生chooseProject不再只显示moonsprite，列出已有RGBA读器的ASE/PNG/JPEG/WebP/BMP/GIF和工程备份；PSD读器未迁移，因此不广告为当前支持格式，直接打开时明确提示现有能力为导出。系统选择多文件时沿用桌面drop错误聚合与openPath多会话生命周期，坏文件不阻断后续成功项。实际Win32文件窗口检查四组筛选并取消，验证不变更作品；真实bak归档拖放验证像素/路径/原文件字节保持。图片序列检测、选择/合并与偏好仍未迁移，未计为完成。",
       "classification": "legacy-partial",
       "sources": [
         "legacy/src/renderer/src/store/document-file-service.ts",
@@ -14789,6 +14790,7 @@
     },
     {
       "file": "src/editor_smoke.cpp",
+      "nativeOpenChooserFormats20261102": "依据 legacy/src-tauri/src/platform_dialogs.rs::open_files 的全部格式/Aseprite/MoonSprite/图片筛选，以及 store/workspace-commands-document-io.ts::openFiles/openPaths/openPath 和 image-sequence-import.ts 独立打开及读取失败继续逻辑。原生chooseProject不再只显示moonsprite，列出已有RGBA读器的ASE/PNG/JPEG/WebP/BMP/GIF和工程备份；PSD读器未迁移，因此不广告为当前支持格式，直接打开时明确提示现有能力为导出。系统选择多文件时沿用桌面drop错误聚合与openPath多会话生命周期，坏文件不阻断后续成功项。实际Win32文件窗口检查四组筛选并取消，验证不变更作品；真实bak归档拖放验证像素/路径/原文件字节保持。图片序列检测、选择/合并与偏好仍未迁移，未计为完成。",
       "unifiedDocumentDropService20261102": "依据 legacy/src/renderer/src/platform/document-drop-service.ts::handleDroppedPaths 在claimPaths前统一normalizeDroppedDocumentPaths和recentlyOpened过滤，以及 components/app/useAppDocumentIO.ts::claimPaths 依freshPaths数量选择单GIF时间轴或openPaths/笔刷栏目。将已有PatternBrushDropPaths一次规范化和1000ms过滤移到Editor输入入口，用同一GetTickCount64时钟，构造仅此回调有效的LAF路径事件并回传结果；不增加编辑器/文档状态。笔刷、时间轴及普通文件目的地只消费已处理路径，移除笔刷file URI自行拒绝。自动回归覆盖旧路径+新路径过滤后单GIF导入、UndoRedo、URI笔刷实际持久化/选择、重复URI投递和原文档内容历史保持。扩展安装、PSD等原缺口不变。",
       "documentDropRouting20261102": "依据 legacy/src/renderer/src/components/app/useAppDocumentIO.ts::claimPaths 仅单GIF命中时间轴时import、其余openPaths，以及 core/document-drop.ts 与 platform/document-drop-service.ts 的路径规范化/同批去重/1000ms重复投递过滤。复用已有PatternBrushDropPaths和其Editor实例，使时间轴与普通文件路由共享去重，复用openPath/acceptOpen多工程生命周期；单GIF导入不变，多GIF打开独立工程，画布外拖放打开或激活已有工程。批量读失败收集既有OpenError后继续其余文件，最终共用错误弹窗报告，不覆盖原dirty工程。扩展包安装与PSD读取仍为未迁移能力，未承诺可用。实际LAF回调检查覆盖多GIF/引号空白/重复路径/file URI/重复投递/单GIF不同区域/失败兄弟继续/未知后缀。",
       "gifMixedLayerImport20261102": "依据 legacy/src/renderer/src/store/workspace-commands-animation-frame.ts::importGifAnimationLayer 与 legacy/src/renderer/src/core/animation.ts::ensureAnimationDocument、blankAnimationTilemap、blankAnimationFreeTiles：GIF导入不排斥已有tilemap/free-tile层；按每owner首个grid模板补可编辑空格、自由实例归空、保留全部已有资源和Cel。复用原生tilemap_data.h和free_tile_data.h数据结构及既有GIF结构历史，仅做RGBA原生适配；工作预算补计tileset像素、grid存储及特殊空槽实际尺寸，失败不改变工程。六组活动grid/free与起点0/1/2覆盖保存重开、原资源/元数据/几何保持、两轮UndoRedo和继续绘制；另覆盖特殊槽预算拒绝。正式拖放自动入口增加两组grid/free活动层的实际解码和历史同步。",

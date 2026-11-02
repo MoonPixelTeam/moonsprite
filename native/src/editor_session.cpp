@@ -281,6 +281,7 @@ void Editor::openPath(const std::filesystem::path& path) {
 
       auto ext=path.extension().wstring();std::transform(ext.begin(),ext.end(),ext.begin(),[](wchar_t c){return ::towlower(c);});
 
+      if(ext==L".psd")throw std::runtime_error("PSD import is not migrated; the existing PSD capability is export only");
       if(ext==L".ase"||ext==L".aseprite"){openCandidate_=openAseprite(path);openCandidate_->setSourceFilePath(path);candidatePath_.clear();candidateRecovery_=false;ask(Pending::Open);status_=U"已打开 ASE；沿用原格式保存时将保存回源文件。";return;}
       if(ext==L".gif" || ext==L".png" || ext==L".jpg" || ext==L".jpeg" || ext==L".bmp" || ext==L".webp"){
 
@@ -519,11 +520,24 @@ void Editor::chooseProject() {
 
     dialog.hwndOwner=GetActiveWindow();dialog.lpstrFile=filename;dialog.nMaxFile=32768;
 
-    dialog.lpstrFilter=L"MoonSprite 工程\0*.moonsprite\0\0";
+    // Legacy platform_dialogs.rs::open_files exposes the existing readers,
+    // instead of restricting the chooser to the native project suffix.
+    // PSD is still an explicit native reader gap, not a supported filter.
+    dialog.lpstrTitle=L"打开文件";
+    dialog.lpstrFilter=L"当前支持的文件\0*.moonsprite;*.moonsprite.bak;*.ase;*.aseprite;*.png;*.jpg;*.jpeg;*.webp;*.bmp;*.gif\0Aseprite 工程\0*.ase;*.aseprite\0MoonSprite 工程与备份\0*.moonsprite;*.moonsprite.bak\0图片\0*.png;*.jpg;*.jpeg;*.webp;*.bmp;*.gif\0\0";
+    dialog.nFilterIndex=1;
 
     dialog.Flags=OFN_EXPLORER|OFN_NOCHANGEDIR|OFN_PATHMUSTEXIST|OFN_FILEMUSTEXIST|OFN_ALLOWMULTISELECT;
 
-    if(GetOpenFileNameW(&dialog)){const std::filesystem::path first(filename);const wchar_t* next=filename+wcslen(filename)+1;if(!*next)openPath(first);else for(;*next;next+=wcslen(next)+1){openPath(first/next);if(pending_!=Pending::None)break;}}
+    if(GetOpenFileNameW(&dialog)){
+      const std::filesystem::path first(filename);const wchar_t* next=filename+wcslen(filename)+1;
+      std::vector<std::filesystem::path> paths;if(!*next)paths.push_back(first);else for(;*next;next+=wcslen(next)+1)paths.push_back(first/next);
+      // The same batch failure policy as desktop drop: successful siblings
+      // remain open, and a corrupt file does not discard later selections.
+      std::u32string failures;
+      for(const auto& path:paths){openPath(path);if(pending_==Pending::OpenError){if(!failures.empty())failures+=U"\n";failures+=unicodeText(path.u8string())+U"："+openError_;resolve(false);}else if(pending_!=Pending::None)break;}
+      if(!failures.empty()){showSaveError(std::runtime_error(utf8Text(failures)));errorTitle_=U"无法打开选择的文件";refresh();}
+    }
 
     else if(CommDlgExtendedError()) {
 
