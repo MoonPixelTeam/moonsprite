@@ -19,7 +19,54 @@ void linkedFrameRecording(){
   d.mutableTimelapseSettings().recordUndoSteps=true;session->settingsChanged(d);d.redo();session->flush(d);CHECK(d.timelapseSettings().snapshots.size()==2);image=decodeRecordingPng(session->read(d.timelapseSettings().snapshots.back()));CHECK(image.pixels==d.canvasPixels()&&image.pixels[0]==0xff123456);
  }
 }
-int main(){try{linkedFrameRecording();
+void localRecordingReadContract(){
+ using namespace timelapse;
+ const auto owned=std::filesystem::current_path()/("timelapse-test-owned-read-"+std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
+ const auto primary=owned/"primary",legacy=owned/"legacy";
+ const auto png=encodeRgbaImagePng(1,1,{0xff123456}).png;
+ Frame frame;frame.id="local-frame";frame.width=frame.height=1;frame.local=appendLibraryFrame(legacy,"read-store",png);
+ // A captured reader owns paths, not the Session; an export can outlive its caller.
+ Reader reader;
+ {Session session({},primary,legacy);reader=session.reader();CHECK(session.read(frame)==png);}
+ CHECK(reader(frame)==png);
+ auto error=[&](const Frame& f){try{reader(f);}catch(const std::exception& e){return std::string(e.what());}throw std::runtime_error("Expected recording read failure");};
+ auto missing=frame;missing.id="missing-frame";missing.local->chunk="missing-chunk";CHECK(!error(missing).empty());
+ auto invalid=frame;invalid.local->store="../outside";
+ CHECK(error(invalid)==u8"缩时录像不在本机。请从原电脑打包携带录像的工程后重新打开。");
+ auto absent=frame;absent.local.reset();CHECK(error(absent)==error(invalid));
+ for(auto f:{invalid,absent,missing}){f.data=png;CHECK(reader(f)==png);}
+ const auto relative=std::filesystem::path(frame.local->store)/(frame.local->chunk+".bin");
+ std::filesystem::create_directories((primary/relative).parent_path());
+ std::filesystem::copy_file(legacy/relative,primary/relative);
+ CHECK(reader(frame)==png);
+ // A valid legacy copy must not conceal a truncated or corrupt primary chunk.
+ std::filesystem::resize_file(primary/relative,png.size()-1);
+ CHECK(error(frame).find("Incomplete recording frame")!=std::string::npos);
+ CHECK(readLibraryFrame(legacy,*frame.local)==png);
+ std::filesystem::copy_file(legacy/relative,primary/relative,std::filesystem::copy_options::overwrite_existing);
+ {std::fstream out(primary/relative,std::ios::binary|std::ios::in|std::ios::out);CHECK(bool(out));out.seekp(12);out.put(char(png[12]^0xff));}
+ CHECK(error(frame).find("Recording checksum mismatch")!=std::string::npos);
+ CHECK(readLibraryFrame(legacy,*frame.local)==png);
+ // Unavailable local bytes never prevent ordinary artwork/recovery serialization.
+ Document document=Document::fromImage(1,1,{0xffabcdef},U"local-recording-failure");
+ Settings settings;settings.snapshots={frame,missing};document.setImportedTimelapse(settings);document.markSaved();
+ const auto pixels=document.pixels();const auto revision=document.revision(),history=document.historySize();
+ for(bool recovery:{false,true}){
+  const auto encoded=recovery?project::encodeRecoveryProject(document):project::encodeEditableProject(document);
+  const auto imported=project::prepareEditableImport(project::readProjectManifest(encoded.bytes));
+  CHECK(imported.timelapse.snapshots.size()==2&&imported.timelapse.snapshots[1].local->chunk=="missing-chunk");
+ }
+ // Reading succeeds for the first frame and fails for the second: no partial
+ // hydration is published to the live document and no chunk is rewritten.
+ Session portableSession(settings,owned/"unavailable-primary",legacy);
+ bool failed=false;try{portableSession.portable(document);}catch(const std::exception&){failed=true;}
+ CHECK(failed&&document.timelapseSettings().snapshots.size()==2);
+ for(const auto& f:document.timelapseSettings().snapshots)CHECK(f.data.empty()&&f.local);
+ CHECK(document.pixels()==pixels&&document.revision()==revision&&document.historySize()==history&&!document.dirty());
+ CHECK(readLibraryFrame(legacy,*frame.local)==png);
+ CHECK(!std::filesystem::exists(owned/"unavailable-primary"));
+}
+int main(){try{linkedFrameRecording();localRecordingReadContract();
  using namespace timelapse;Settings s;CHECK(!s.enabled&&!s.recordUndoSteps&&s.fps==12&&s.speed==8&&s.mode==Mode::Smart);CHECK(captureDimensions(1024,512,Quality::Low).width==640);
  s.enabled=true;SmartState smart;for(int i=0;i<181;++i){Frame f;f.id="frame-"+std::to_string(i);f.capturedAt=i;f.width=f.height=1;f.changeScore=i%3==0?.9:.1;append(s,smart,std::move(f),Mode::Smart);}CHECK(s.snapshots.size()==121);CHECK(s.snapshots[60].capturedAt==120&&s.snapshots.back().capturedAt==180);
  auto p=videoPlan(s,.1);CHECK(p.size()==1&&p[0].snapshotIndex==120);

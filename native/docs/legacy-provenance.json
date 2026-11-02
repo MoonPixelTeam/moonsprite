@@ -958,7 +958,8 @@
     "legacy/src/renderer/src/core/open-progress.ts": "32eeebb0454761312a8cfdeab1a2c96229647d4f7df3a2fff258e4ce2fba802a",
     "legacy/src/renderer/src/components/OpenProgressOverlay.tsx": "0b3ee5e5d34ed6f48d5d9a7b3f828695873a2e821f1ac12896f79b00bcdd4fb0",
     "legacy/src/renderer/src/core/open-progress.test.ts": "22824d26fbf118d902210da95a1ca0fc9c223b7a7db58089c5b242c9ad74c9e9",
-    "native/.cache/aseprite/src/ui/message_loop.cpp": "962a17a13057f6eb7b8a9a913b7caf4b1366892d07f5cf6022e0a0202183ebcc"
+    "native/.cache/aseprite/src/ui/message_loop.cpp": "962a17a13057f6eb7b8a9a913b7caf4b1366892d07f5cf6022e0a0202183ebcc",
+    "legacy/src/renderer/src/platform/timelapse-library.ts": "2c7e8b8f5568efe6fca307855720b3f9d9d0b3e4d99ec62b9b281e6a69dd40d6"
   },
   "files": [
     {
@@ -21111,20 +21112,28 @@
       "classification": "legacy-partial",
       "sources": [
         "legacy/src-tauri/src/platform_timelapse.rs",
-        "legacy/src/renderer/src/core/timelapse-reference.ts"
+        "legacy/src/renderer/src/core/timelapse-reference.ts",
+        "legacy/src/renderer/src/platform/timelapse-library.ts",
+        "legacy/src/renderer/src/store/timelapse-library-service.ts",
+        "legacy/src/renderer/src/store/timelapse-library-service.test.ts"
       ],
       "scope": "Native timelapse integration in progress; completion requires actual build and behavioral checks.",
-      "adaptation": "Partial native Win32 adaptation of append-only PNG chunk library API. No automatic deletion or tail repair. Production Document/Editor/IO wiring was saved on 2026-10-22; prior unconnected status describes initial staging only."
+      "adaptation": "Partial native Win32 adaptation of append-only PNG chunk library API. No automatic deletion or tail repair. Production Document/Editor/IO wiring was saved on 2026-10-22; prior unconnected status describes initial staging only.",
+      "localRecordingRead20261103": "Shared readRecordingFrame follows platform/timelapse-library.ts: embedded bytes first, exact Chinese missing-reference error, lazy local reads. Session read and value-captured reader share this contract. Existing missing-only Rust backend fallback retained; corrupt/truncated primary data never falls back. Tests exercise detached reader lifetime, embedded priority, missing/invalid references, primary corruption/truncation, artwork and recovery serialization with unavailable chunks, and failed portable hydration without live-document or legacy chunk mutation. No repair or deletion introduced."
     },
     {
       "file": "src/timelapse_library.cpp",
       "classification": "legacy-partial",
       "sources": [
         "legacy/src-tauri/src/platform_timelapse.rs",
-        "legacy/src/renderer/src/core/timelapse-reference.ts"
+        "legacy/src/renderer/src/core/timelapse-reference.ts",
+        "legacy/src/renderer/src/platform/timelapse-library.ts",
+        "legacy/src/renderer/src/store/timelapse-library-service.ts",
+        "legacy/src/renderer/src/store/timelapse-library-service.test.ts"
       ],
       "scope": "Native timelapse integration in progress; completion requires actual build and behavioral checks.",
-      "adaptation": "Partial Win32 CreateFile/FlushFileBuffers adaptation of durable raw-PNG ranges, CRC32, executable-relative timelapse-v1, 64MiB chunks, 128-store cache and missing-only legacy lookup. Not yet linked/validated in production. Production Document/Editor/IO wiring was saved on 2026-10-22; prior unconnected status describes initial staging only."
+      "adaptation": "Partial Win32 CreateFile/FlushFileBuffers adaptation of durable raw-PNG ranges, CRC32, executable-relative timelapse-v1, 64MiB chunks, 128-store cache and missing-only legacy lookup. Not yet linked/validated in production. Production Document/Editor/IO wiring was saved on 2026-10-22; prior unconnected status describes initial staging only.",
+      "localRecordingRead20261103": "Shared readRecordingFrame follows platform/timelapse-library.ts: embedded bytes first, exact Chinese missing-reference error, lazy local reads. Session read and value-captured reader share this contract. Existing missing-only Rust backend fallback retained; corrupt/truncated primary data never falls back. Tests exercise detached reader lifetime, embedded priority, missing/invalid references, primary corruption/truncation, artwork and recovery serialization with unavailable chunks, and failed portable hydration without live-document or legacy chunk mutation. No repair or deletion introduced."
     },
     {
       "file": "src/timelapse_pixels.h",
@@ -21209,13 +21218,16 @@
         "legacy/src/renderer/src/core/timelapse-migration.ts",
         "legacy/src/renderer/src/store/workspace-commands-document-io.ts",
         "legacy/src/renderer/src/store/timelapse-library-service.ts",
-        "legacy/src/renderer/src/store/timelapse-library-service.test.ts"
+        "legacy/src/renderer/src/store/timelapse-library-service.test.ts",
+        "legacy/src/renderer/src/platform/timelapse-library.ts",
+        "legacy/src-tauri/src/platform_timelapse.rs"
       ],
       "scope": "Native timelapse capture, durable library, project metadata, dialog and image sequence integration.",
       "adaptation": "Win32 append/flush and C++ immutable tiles/background PNG replace Tauri/browser worker. MP4/WebM encoding not migrated; embedded persistence now follows timelapse_session.h worker acknowledgement provenance. Build/runtime verification tracked in 2026-10-22 integration evidence.",
       "timelapseRestore20261022": "Backup rollback payload preserves recording Settings and immutable frame references through undo/redo. Session restore advances both generations and resets frozen cache, invalidating old pending/blocked results before commit. deleteAttachedMasks suppresses intermediate observers within grouped action. Pending-capture/rollback/undo/flush regression added; final run tracked separately.",
       "timelapseEmbeddedPersistence20261022": "Imported embedded PNGs append one at a time on a worker; original bytes survive until a validated durable acknowledgement. Bounded 256-entry cursor handles append, compaction and generation resets. Failed writes retry only on explicit flush. Native vector ownership requires one per-frame copy bounded by existing 32 MiB limit. Shared PixelDialog/Timer waits for the Promise barrier with no added cancellation. Tests cover durable ack, repeated flush, failure retention/recovery and clear/rollback stale-result rejection. MP4/WebM and cooperative large-canvas capture remain partial.",
-      "integrationRuntime20261022": "Serial Release build succeeded; tilemap document/project, timelapse, document core and group-compositor tests passed. Official exe --tileset-management-check exited 0, including actual grid gestures, pixel alpha/hit comparison and gradient layer create/cancel/apply through existing controls. start-native.bat launched the official Release path. Provenance coverage 465 passed; strict deliberately fails remaining gaps. Detailed scope and UI verification limits: native/docs/tileset-gradient-timelapse-integration-20261022.md."
+      "integrationRuntime20261022": "Serial Release build succeeded; tilemap document/project, timelapse, document core and group-compositor tests passed. Official exe --tileset-management-check exited 0, including actual grid gestures, pixel alpha/hit comparison and gradient layer create/cancel/apply through existing controls. start-native.bat launched the official Release path. Provenance coverage 465 passed; strict deliberately fails remaining gaps. Detailed scope and UI verification limits: native/docs/tileset-gradient-timelapse-integration-20261022.md.",
+      "localRecordingRead20261103": "Shared readRecordingFrame follows platform/timelapse-library.ts: embedded bytes first, exact Chinese missing-reference error, lazy local reads. Session read and value-captured reader share this contract. Existing missing-only Rust backend fallback retained; corrupt/truncated primary data never falls back. Tests exercise detached reader lifetime, embedded priority, missing/invalid references, primary corruption/truncation, artwork and recovery serialization with unavailable chunks, and failed portable hydration without live-document or legacy chunk mutation. No repair or deletion introduced."
     },
     {
       "file": "src/timelapse_dialog.h",
@@ -21264,14 +21276,17 @@
         "legacy/src/renderer/src/core/export-protection.ts",
         "legacy/src/renderer/src/components/dialogs/TimelapseExportDialog.tsx",
         "legacy/src/renderer/src/core/file-preferences.ts",
-        "legacy/src/renderer/src/store/timelapse-export-flow.test.ts"
+        "legacy/src/renderer/src/store/timelapse-export-flow.test.ts",
+        "legacy/src/renderer/src/platform/timelapse-library.ts",
+        "legacy/src-tauri/src/platform_timelapse.rs"
       ],
       "scope": "Native timelapse capture, durable library, project metadata, dialog and image sequence integration.",
       "adaptation": "Win32 append/flush and C++ immutable tiles/background PNG replace Tauri/browser worker. MP4/WebM encoding not migrated; embedded persistence now follows timelapse_session.h worker acknowledgement provenance. Build/runtime verification tracked in 2026-10-22 integration evidence.",
       "timelapseRestore20261022": "Backup rollback payload preserves recording Settings and immutable frame references through undo/redo. Session restore advances both generations and resets frozen cache, invalidating old pending/blocked results before commit. deleteAttachedMasks suppresses intermediate observers within grouped action. Pending-capture/rollback/undo/flush regression added; final run tracked separately.",
       "timelapseEmbeddedPersistence20261022": "Imported embedded PNGs append one at a time on a worker; original bytes survive until a validated durable acknowledgement. Bounded 256-entry cursor handles append, compaction and generation resets. Failed writes retry only on explicit flush. Native vector ownership requires one per-frame copy bounded by existing 32 MiB limit. Shared PixelDialog/Timer waits for the Promise barrier with no added cancellation. Tests cover durable ack, repeated flush, failure retention/recovery and clear/rollback stale-result rejection. MP4/WebM and cooperative large-canvas capture remain partial.",
       "integrationRuntime20261022": "Serial Release build succeeded; tilemap document/project, timelapse, document core and group-compositor tests passed. Official exe --tileset-management-check exited 0, including actual grid gestures, pixel alpha/hit comparison and gradient layer create/cancel/apply through existing controls. start-native.bat launched the official Release path. Provenance coverage 465 passed; strict deliberately fails remaining gaps. Detailed scope and UI verification limits: native/docs/tileset-gradient-timelapse-integration-20261022.md.",
-      "timelapseImageExportOptions20261022": "PNG/JPEG sequence uses existing global scale presets/default and shared export protection after nearest-neighbour scaling before encoding. Original size bypasses protection. Summary selects first largest long side, per-frame dimensions retained. Existing cancellation/conflict/partial outputs preserved. All-success records last actual destination using existing export/recent helpers. No video encoding added. Actual PNG/JPEG output and unchanged source regression."
+      "timelapseImageExportOptions20261022": "PNG/JPEG sequence uses existing global scale presets/default and shared export protection after nearest-neighbour scaling before encoding. Original size bypasses protection. Summary selects first largest long side, per-frame dimensions retained. Existing cancellation/conflict/partial outputs preserved. All-success records last actual destination using existing export/recent helpers. No video encoding added. Actual PNG/JPEG output and unchanged source regression.",
+      "localRecordingRead20261103": "Shared readRecordingFrame follows platform/timelapse-library.ts: embedded bytes first, exact Chinese missing-reference error, lazy local reads. Session read and value-captured reader share this contract. Existing missing-only Rust backend fallback retained; corrupt/truncated primary data never falls back. Tests exercise detached reader lifetime, embedded priority, missing/invalid references, primary corruption/truncation, artwork and recovery serialization with unavailable chunks, and failed portable hydration without live-document or legacy chunk mutation. No repair or deletion introduced."
     },
     {
       "file": "src/document_tilemap.cpp",

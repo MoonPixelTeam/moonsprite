@@ -2122,3 +2122,5 @@ Paint／无主选实例的源像素删除仍未开放，剪切在这些场景只
 - 2026-11-03：工程读器按legacy restoreProjectTimelapse跳过缺失／空缩时载荷、无效尺寸及必要元数据，报告丢失数／保留数和去重原因；普通打开、备份及恢复入口显示旧版精确中文提示并记诊断，原作品与源文件保持。保存重建已保留录制PNG，清理丢弃帧旧载荷，重开不重复报告；保留未知字段、坏PNG、原生尺寸与ZIP／CRC／预算硬错误。真实归档重打包和往返、timelapse-restore-tests、既有timelapse-tests、正式Release构建、--timeline-gif-drop-check实际打开／恢复及既有回归、553文件来源和diff检查通过。详见[缩时记录部分恢复](timelapse-partial-restore-20261103.md)。数值字符串宽松转换、本地chunk修复和人工操作未覆盖。
 
 - 2026-11-03：缩时恢复继续按legacy Number／normalizeTimelapseSettings／validTimelapseReference补齐尺寸和时间的JSON转换、严格布尔／枚举／有限数字设置默认与取整、非数组／非对象缺省、数值评分及嵌入数据优先规则；空嵌入路径报缺失，非字符串dataFile可承接有效本地引用。58组Node Number参考值和13组实际归档变体含保存重开、正式Release构建、--timeline-gif-drop-check扩展实际打开与既有回归、554文件来源和diff检查通过。详见[缩时元数据转换](timelapse-partial-restore-20261103.md)。继续保留原生表示／PNG／容器及预算边界，不宣称全部畸形JS对象转换或本地chunk修复等价，未人工外观验收。
+
+- 2026-11-03：缩时直接读取及预览／导出／便携保存回调共用旧版读取契约，统一缺失引用的精确中文提示；内嵌优先、仅缺失块回退旧目录及坏块报错保持。新增缺失／无效引用、截断／CRC损坏不回退、回调生命周期、不可用录像的普通／恢复归档、便携读取中途失败不修改作品／历史／引用或旧库数据回归；timelapse-tests、唯一正式Release构建、554文件来源覆盖及diff检查通过。详见[本地录像读取与失败保护](timelapse-partial-restore-20261103.md)。未做人工预览／导出或截图验收，未增加视频编码或自动修复。

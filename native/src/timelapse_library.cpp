@@ -41,6 +41,11 @@ Reference appendLibraryFrame(const std::filesystem::path& root,const std::string
  if(!FlushFileBuffers(out.value))ioError("Cannot flush recording frame");
  Reference r{store,path.stem().string(),static_cast<std::uint64_t>(size.QuadPart),static_cast<std::uint64_t>(png.size()),checksum(png)};if(!validReference(r))throw std::runtime_error("Invalid durable recording range");return r;
 }
+Bytes readRecordingFrame(const std::filesystem::path& root,const std::filesystem::path& legacy,const Frame& frame){
+ if(!frame.data.empty())return frame.data;
+ if(!frame.local||!validReference(*frame.local))throw std::runtime_error(u8"缩时录像不在本机。请从原电脑打包携带录像的工程后重新打开。");
+ return legacy.empty()?readLibraryFrame(root,*frame.local):readLibraryFrameWithLegacy(root,legacy,*frame.local);
+}
 Bytes readLibraryFrame(const std::filesystem::path& root,const Reference& r){
  if(!validReference(r))throw std::invalid_argument("Invalid local recording reference");const auto path=contained(root,root/r.store/(r.chunk+".bin"));
  Handle in(CreateFileW(path.c_str(),GENERIC_READ,FILE_SHARE_READ|FILE_SHARE_WRITE,nullptr,OPEN_EXISTING,FILE_ATTRIBUTE_NORMAL,nullptr));if(in.value==INVALID_HANDLE_VALUE)ioError("Local recording unavailable");
