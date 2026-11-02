@@ -425,3 +425,11 @@
 另经 `selection-transform-targets.ts::applySelectionTransformLayerState`、`tools-selection-transform-apply.ts` 核对，旧版浮动变换实际也对画布内写入做边界判断。此前“原地画布外粘贴限制未承接”表示未核对范围，并非已确认的新旧差异；本批没有扩大原生写入范围。未执行实际UI操作验收。
 
 本批实际结果：四组新增场景及既有 `free-tile-project-tests`、唯一正式Release构建、542文件来源覆盖及diff检查通过；未执行实际UI操作或耗时基准验收。
+
+## 后续补齐：单元格复制按实际存储遍历（2026-11-02）
+
+旧版 `workspace-commands-animation-cel-clipboard.ts::copySelectedAnimationCels` 直接遍历 `timeline.cels`，通过选择Set筛选，再经图层和帧索引排序。上一批原生已承接Set，但仍对图层×帧网格逐槽调用findCel。本批继续承接旧版实际Cel遍历，复用Timeline已有图层／帧ID索引取得坐标，再只对选中结果排序。关联重定根和截取逻辑保持。
+
+原大范围复制回归扩展为八组：整格／选区、独立／关联、有序／乱序实际Cel存储。乱序场景将480个实际单元格逆序并旋转，仍逆序选择其中320格，检查结果集合、图层／帧顺序、相对锚点、规范源像素和自包含关联根。未执行实际UI操作或耗时基准验收，不声明整体复制性能迁移完成。
+
+本批实际结果：扩展后的八组范围复制场景及既有 `free-tile-project-tests`、唯一正式Release构建、542文件来源覆盖和diff检查通过；未执行实际UI或耗时基准验收。

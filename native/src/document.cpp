@@ -122,7 +122,8 @@ bool Document::copySelectedCels(){if((hasTilemapContent()||hasFreeTileContent())
  // legacy copySelectedAnimationCels filters with a Set before row/frame ordering.
  const std::unordered_set<std::string> selected(timelineSelection_.cels.begin(),timelineSelection_.cels.end());
  std::vector<CelClipboardItem> items;const auto& state=timeline_.state();
- for(int r=0;r<int(state.layers.size());++r)for(int c=0;c<int(state.frames.size());++c){const auto* cel=timeline_.findCel(state.layers[r].id,state.frames[c].id);if(cel && selected.count(cel->id))items.push_back({*cel,r,c});}
+ for(const auto& cel:state.cels)if(selected.count(cel.id))items.push_back({cel,int(timeline_.layerIndex(cel.layerId)),int(timeline_.frameIndex(cel.frameId))});
+ std::sort(items.begin(),items.end(),[](const auto& a,const auto& b){return a.row<b.row||(a.row==b.row&&a.column<b.column);});
  if(items.empty()){celClipboard_.clear();frameClipboard_.clear();frameClipboardMetadata_.reset();return false;}
  std::unordered_map<std::string,std::string> roots;
  const int row=items.front().row,col=items.front().column;
