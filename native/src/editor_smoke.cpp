@@ -6015,6 +6015,24 @@ void Editor::smokeFrameContextClipboard(){
 
     if(document.activeFrameIndex()!=2 || document.pixels()[0]!=0xff123456 || document.revision()!=rev+1 || frameSelectionExplicit_ || document.timelineSelection().cels.empty())throw std::runtime_error("Frame context paste semantics");document.undo();if(document.selectedFrames()!=selection || document.timeline().state().frames.size()!=2)throw std::runtime_error("Frame context paste undo");document.redo();if(document.timeline().state().frames.size()!=3 || document.timelineSelection().cels.empty())throw std::runtime_error("Frame context paste redo");document=Document();frameSelectionExplicit_=false;refresh();
 
+
+    // Pasting frames is not a frame-header click: cross-document paste keeps
+    // valid mask-cell selection instead of promoting it to owner rows.
+    for(bool cross:{false,true})for(bool multiple:{false,true}){
+      Document seed(1,1);auto state=seed.timeline().state();const auto owner=state.layers.front().id,original=state.frames.front().id;
+      timeline::MaskSlot slot;slot.ownerId=owner;slot.frameId=original;slot.mask.id="frame-ui-existing-mask";slot.mask.surface=timeline::Surface{1,1,0,0,{},{},{0xff888888}};state.masks.push_back(slot);
+      document=Document::fromImported(1,1,std::move(state),seed.palette(),"frame-ui-selection",U"Frames",std::make_shared<const std::vector<std::uint8_t>>());document.clearSourceArchiveForNewSnapshot();document.addFrame();const auto second=document.frame().id;
+      document.selectFrameHeader(original);if(multiple)document.selectFrameHeader(second,1);copyTimelineFrames();
+      if(cross){Document source(1,1);if(multiple)source.addFrame();source.selectFrameHeader(source.timeline().state().frames.front().id);if(multiple)source.selectFrameHeader(source.timeline().state().frames.back().id,1);if(!source.copySelectedFrames())throw std::runtime_error("Frame UI external source copy");frameClipboardSnapshot_=source.exportFrameClipboard();}
+      document.selectFrameHeader(second);auto rows=document.timelineSelection();rows.layers={owner};rows.layerAnchor=owner;document.restoreTimelineSelection(rows,document.selectedFrames());selectedMaskSlots_={{owner,original}};maskSelectionAnchor_=selectedMaskSlots_.front();const auto maskCells=selectedMaskSlots_;const auto maskAnchor=maskSelectionAnchor_;frameSelectionExplicit_=true;
+      const auto snapshot=frameClipboardSnapshot_;frameClipboardSnapshot_={};const auto h=document.historyPosition();pasteTimelineFrames();if(document.historyPosition()!=h||selectedMaskSlots_!=maskCells||maskSelectionAnchor_!=maskAnchor||document.timelineSelection().layers!=rows.layers)throw std::runtime_error("Empty frame UI paste changes selection");frameClipboardSnapshot_=snapshot;
+      pasteTimelineFrames();if(document.historyPosition()!=h+1||document.timeline().state().frames.size()!=(multiple?4:3)||document.timelineSelection().layers!=rows.layers||document.timelineSelection().layerAnchor!=owner||!document.timelineSelection().maskRows.empty())throw std::runtime_error("Frame UI paste changes layer rows or promotes mask cells");
+      if(cross?(selectedMaskSlots_!=maskCells||maskSelectionAnchor_!=maskAnchor):(!selectedMaskSlots_.empty()||maskSelectionAnchor_.has_value()))throw std::runtime_error("Frame UI paste violates local versus cross mask selection");
+      if(frameSelectionExplicit_!=(cross||multiple)||(!cross&&!multiple&&document.timelineSelection().cels.size()!=1))throw std::runtime_error("Frame UI paste selection display differs from transaction");
+      document.undo();refresh();if(document.timeline().state().frames.size()!=2||document.timelineSelection().layers!=rows.layers)throw std::runtime_error("Frame UI paste Undo loses rows");document.redo();refresh();if(document.timeline().state().frames.size()!=(multiple?4:3)||document.timelineSelection().layers!=rows.layers||timeline::directMask(document.timeline().state(),owner,original)->mask.surface.pixels!=slot.mask.surface.pixels)throw std::runtime_error("Frame UI paste Redo changes rows or original mask");
+      selectedMaskSlots_.clear();maskSelectionAnchor_.reset();frameClipboardSnapshot_={};document=Document();frameSelectionExplicit_=false;refresh();
+    }
+
   }
 
 void Editor::smokeTimelineGifDrop(){

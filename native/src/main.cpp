@@ -205,7 +205,7 @@ int app_main(int argc,char* argv[]) {
 
     if(argc>1 && std::string(argv[1])=="--layers-check") {editor->smokeLayers(std::filesystem::u8path(argv[0]).parent_path());delete editor;desktop.editor=nullptr;return 0;}
 
-    if(argc>1 && std::string(argv[1])=="--cel-clipboard-check") {try{editor->smokeCelClipboard();editor->smokeFrameCutAndMergeVisible();}catch(const std::exception& e){std::ofstream("native-cel-clipboard-error.txt")<<e.what();delete editor;desktop.editor=nullptr;manager.removeMessageFilter(ui::kSetCursorMessage,&manager);return 1;}delete editor;desktop.editor=nullptr;manager.removeMessageFilter(ui::kSetCursorMessage,&manager);return 0;}
+    if(argc>1 && std::string(argv[1])=="--cel-clipboard-check") {try{editor->smokeCelClipboard();editor->smokeFrameCutAndMergeVisible();editor->smokeFrameContextClipboard();}catch(const std::exception& e){std::ofstream("native-cel-clipboard-error.txt")<<e.what();delete editor;desktop.editor=nullptr;manager.removeMessageFilter(ui::kSetCursorMessage,&manager);return 1;}delete editor;desktop.editor=nullptr;manager.removeMessageFilter(ui::kSetCursorMessage,&manager);return 0;}
 
     if(argc>1 && std::string(argv[1])=="--deselect-check") {editor->smokeDeselectPending();delete editor;desktop.editor=nullptr;return 0;}
 

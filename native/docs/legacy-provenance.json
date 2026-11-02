@@ -2659,6 +2659,7 @@
     },
     {
       "file": "src/main.cpp",
+      "framePasteUiMaskPromotion20261102": "依据 legacy/src/renderer/src/store/workspace-commands-animation-frame-clipboard.ts：跨工程 pasteCrossDocumentAnimationFrames::applyInserted 只更新帧/Cel选择，不将原 selectedAnimationMaskCellKeys 提升为 owner 行；同工程 selectInsertedItems 显式清空蒙版格/行/锚点。Editor::pasteTimelineFrames 不再调用具有帧标题点击提升语义的 markFrameSelection，改复用 clearTimelineRowSelection 清显示缓存，并从文档已提交选择设置 frameSelectionExplicit_；保持同工程蒙版格清理与空载荷不改选择。smokeFrameContextClipboard新增四组同/跨工程、一/两帧，验证实际粘贴入口不提升蒙版格、不清图层选择、保留或清理蒙版选择及Undo/Redo，复用--cel-clipboard-check入口。未改普通帧标题点击。",
       "dialogCorrection20261018": "User specifies NewDocumentDialog dialog_frame as the common dialog sheet material. Skin::drawDialogBackground replaces panel_outer outer shells. Shared popup resize hit/cursor edges run before child press dispatch, preserve internal focus, use display coordinates; new-document duplicate geometry removed. Evidence: native/.cache/aseprite/src/ui/window.cpp kMouseDown hitTest/capture and manager focus messages. Regression: --dialog-geometry-check plus existing new-document/export/preferences checks.",
       "preferencesFeedbackCorrection": "User requested save failure diagnosis and non-overlapping feedback. Native adaptation of legacy PreferencesDialog.persist: shared body/feedback geometry, setting/file-specific errors, real isolated disk roundtrip and exclusive-file failure/retry regression in --preferences-runtime-check.",
       "classification": "legacy-partial",
@@ -12741,6 +12742,7 @@
     },
     {
       "file": "src/editor_canvas.cpp",
+      "framePasteUiMaskPromotion20261102": "依据 legacy/src/renderer/src/store/workspace-commands-animation-frame-clipboard.ts：跨工程 pasteCrossDocumentAnimationFrames::applyInserted 只更新帧/Cel选择，不将原 selectedAnimationMaskCellKeys 提升为 owner 行；同工程 selectInsertedItems 显式清空蒙版格/行/锚点。Editor::pasteTimelineFrames 不再调用具有帧标题点击提升语义的 markFrameSelection，改复用 clearTimelineRowSelection 清显示缓存，并从文档已提交选择设置 frameSelectionExplicit_；保持同工程蒙版格清理与空载荷不改选择。smokeFrameContextClipboard新增四组同/跨工程、一/两帧，验证实际粘贴入口不提升蒙版格、不清图层选择、保留或清理蒙版选择及Undo/Redo，复用--cel-clipboard-check入口。未改普通帧标题点击。",
       "localFramePasteMaskUi20261101": "依据legacy/src/renderer/src/store/workspace-commands-animation-frame-clipboard.ts::pasteAnimationFrames::selectInsertedItems显式清selectedAnimationMaskCellKeys/selectedAnimationMaskRowKeys/animationMaskCellSelectionAnchorKey，而普通selectAnimationFrame可将蒙版格提升为owner行。Native Editor::pasteTimelineFrames在同工程粘贴成功后、复用markFrameSelection之前清selectedMaskSlots_及maskSelectionAnchor_，避免将粘贴误当帧标题点击；空载荷或失败不清理，跨工程处理不在本批改变。smokeAttachedMasks新增八组图层/组、隔离开关、帧/Cel选择上下文，检查成功后无蒙版格/anchor/整行残留、一次历史、帧选择方式及Undo/Redo；新增空载荷拒绝保持检查。复用原UI结构与素材，不新增界面。",
       "spacingAudit20261019": "User UI spacing audit 2026-10-19: selection pivot popover 6px inset, 20px toggle, 15px square preset buttons and 2px related gaps; preserved pivot presets and visibility command semantics.",
       "classification": "legacy-partial",
@@ -14775,6 +14777,7 @@
     },
     {
       "file": "src/editor_smoke.cpp",
+      "framePasteUiMaskPromotion20261102": "依据 legacy/src/renderer/src/store/workspace-commands-animation-frame-clipboard.ts：跨工程 pasteCrossDocumentAnimationFrames::applyInserted 只更新帧/Cel选择，不将原 selectedAnimationMaskCellKeys 提升为 owner 行；同工程 selectInsertedItems 显式清空蒙版格/行/锚点。Editor::pasteTimelineFrames 不再调用具有帧标题点击提升语义的 markFrameSelection，改复用 clearTimelineRowSelection 清显示缓存，并从文档已提交选择设置 frameSelectionExplicit_；保持同工程蒙版格清理与空载荷不改选择。smokeFrameContextClipboard新增四组同/跨工程、一/两帧，验证实际粘贴入口不提升蒙版格、不清图层选择、保留或清理蒙版选择及Undo/Redo，复用--cel-clipboard-check入口。未改普通帧标题点击。",
       "spacingAudit20261019": "User requested audit and unification under native/docs/ui-design-spec.md (2026-10-19). UiSpacing and DialogLayout centralize 2px related, 6px group/body/footer padding, 27px dialog body origin, 20px form rows, 15px utility buttons. Existing commands/callbacks retained. New modal minimum-size audit covers title intrusion and body/footer overlap; existing dialog/new-document/docking/component checks verify native adaptation. This is user-directed layout, not a change to legacy business semantics.",
       "sharedHeader20261019": "User reference images 373e37c4 and f7758030: common dialog/floating header, square 15x15 actions centered in 21px band (3px top/bottom), existing 5px right inset; titles centered using PixelFont ink bounds. PixelDialog delegates header geometry and title painting to FloatingColumnChrome, including editor modal shell. Sheet dialog_frame extended to 26px. Existing legacy actions and callbacks retained. --dialog-geometry-check asserts square actions and symmetric padding.",
       "classification": "legacy-partial",

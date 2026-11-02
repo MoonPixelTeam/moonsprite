@@ -537,3 +537,11 @@
 本批保留普通粘贴前的 layers／layerAnchor，复用原事务及历史快照；不改变单帧／多帧的帧与Cel选择规则，保持同工程蒙版行清理和Undo清空Cel选择。特殊资源路径不扩大。扩展既有八组同／跨工程、一／两复制帧、单／多图层行及Cel选择场景，检查成功、Undo／Redo、重复Undo、原像素及保存重开。未执行实际UI操作验收。
 
 本批实际结果：扩展后的八组图层行选择场景及既有 `free-tile-project-tests`、唯一正式 Release 构建、542 文件来源覆盖和 diff 检查通过。未执行实际 UI 操作验收。
+
+## 后续补齐：帧粘贴入口不执行帧标题点击的蒙版提升（2026-11-02）
+
+旧版跨工程 `pasteCrossDocumentAnimationFrames::applyInserted` 更新帧／Cel选择，不将原蒙版格选择提升为owner行；同工程 `selectInsertedItems` 则显式清空蒙版格、行和锚点。原生 `Editor::pasteTimelineFrames` 在结果选择帧时调用 `markFrameSelection`，后者用于帧标题点击，会把蒙版格提升为owner行并清空图层行选择，覆盖文档事务的正确结果。
+
+本批粘贴入口继续清理会话显示缓存，直接根据文档的 selectedFrames 设置帧选择显示标记；不再运行帧标题点击的提升逻辑。同工程原有蒙版格／锚点清理保持，跨工程保留仍有效的原蒙版格选择。普通帧标题点击不变。既有 `smokeFrameContextClipboard` 增加四组同／跨工程与一／两帧场景，检查空载荷无变化、实际粘贴入口、图层行、蒙版格／行／锚点、选择显示及Undo／Redo；通过现有 `--cel-clipboard-check` 执行，不运行整套UI冒烟。
+
+本批实际结果：唯一正式 Release 构建通过，正式程序 `--cel-clipboard-check` 返回0（包含既有Cel复制／剪切／粘贴、帧剪切与合并、帧上下文菜单，以及新增四组帧粘贴选择场景）；542文件来源覆盖和diff检查通过。属于实际原生界面入口自动检查，未进行截图外观或手动操作验收。
