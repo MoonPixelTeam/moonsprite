@@ -2136,3 +2136,6 @@ Paint／无主选实例的源像素删除仍未开放，剪切在这些场景只
 - 2026-11-03：缩时图片导出按legacy exportTimelapse先等待新捕获完成，再刷新快照与帧数、规划输出；独立捕获等待不强制迁移已有内嵌PNG。失败保留表单、画作、历史与待处理像素，显式重试可恢复；正式表单打开后追加第二帧的PNG像素检查、timelapse-tests、唯一正式Release、--timeline-gif-drop-check、555文件来源覆盖和diff检查通过。详见[缩时导出捕获等待](timelapse-export-capture-barrier-20261103.md)。未人工或截图验收，视频编码缺口保持。
 
 - 2026-11-03：完成 FS-008 的 MP4 视频导出操作链路：默认 MP4、三档画质及尺寸、按时长／倍率、名称／目录、共享覆盖确认、捕获等待、后台编码进度／取消、失败保留草稿重试及成功路径记忆。复用旧帧采样计划，Windows Media Foundation H.264 适配浏览器录像；同目录临时流完成／刷盘后原子替换，取消和失败保护已有文件。修复忙时焦点，摘要只读元数据不复制录像 PNG。实际 MP4 解码尺寸／首尾颜色／帧时间、取消／失败／替换，正式表单模式切换／失败重试／作品与设置隔离及原图片导出检查通过；timelapse-video-tests、timelapse-tests、唯一正式 Release、--timeline-gif-drop-check、558 文件来源和 diff 检查通过。详见[MP4 视频导出](timelapse-video-export-20261103.md)。WebM 仍未迁移并灰置；不宣称 FS-008 全部完成，未人工或全状态视觉验收。
+
+
+- 2026-11-03：补齐缩时 WebM 完整导出链路，格式可选，复用画质／时长／倍率、草稿、路径与覆盖、捕获等待、后台进度／取消、失败重试及成功路径记忆。固定 libvpx VP9 优先／VP8 初始化备用和原 libwebm 封装，保留旧码率、几何与帧采样；临时流完成／关闭／刷盘后原子替换，失败与取消保留旧文件。仓库内依赖脚本实际重建通过，修复 Windows 长命令、UTF-8／中文／& 路径及 NASM 输入兼容，不修改上游或另建应用目录。实际 MP4／WebM 解码、时间与颜色、读取缓存、取消／失败／替换，正式表单双格式失败重试与源状态保护通过；timelapse-video-tests、timelapse-tests、唯一正式 Release、--timeline-gif-drop-check、560 文件来源覆盖与 diff 检查通过。详见[WebM 导出](timelapse-webm-export-20261103.md)。不宣称 FS-008 全量验收；未人工截图、长时间运行或强制 VP8 备用初始化验收。

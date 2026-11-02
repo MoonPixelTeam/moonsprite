@@ -7,6 +7,12 @@
 #include <wrl/client.h>
 #include <atomic>
 #include <limits>
+#include <memory>
+#include <thread>
+#include "vpx/vpx_encoder.h"
+#include "vpx/vp8cx.h"
+#include "mkvmuxer/mkvmuxer.h"
+#include "mkvmuxer/mkvwriter.h"
 namespace moon::timelapse {
 namespace {
 using Microsoft::WRL::ComPtr;
@@ -18,10 +24,10 @@ struct MediaRuntime {
 };
 struct VideoTemporary {
  std::filesystem::path path;
- explicit VideoTemporary(const std::filesystem::path& destination){
+ explicit VideoTemporary(const std::filesystem::path& destination,const wchar_t* extension=L".mp4"){
   static std::atomic<unsigned long long> serial{0};
   const auto directory=destination.parent_path().empty()?std::filesystem::path(L"."):destination.parent_path();
-  path=directory/(L".moonsprite-video-"+std::to_wstring(GetCurrentProcessId())+L"-"+std::to_wstring(GetTickCount64())+L"-"+std::to_wstring(++serial)+L".mp4");
+  path=directory/(L".moonsprite-video-"+std::to_wstring(GetCurrentProcessId())+L"-"+std::to_wstring(GetTickCount64())+L"-"+std::to_wstring(++serial)+extension);
   const auto handle=CreateFileW(path.c_str(),GENERIC_WRITE,0,nullptr,CREATE_NEW,FILE_ATTRIBUTE_NORMAL,nullptr);
   if(handle==INVALID_HANDLE_VALUE)throw std::runtime_error("Cannot create temporary video; Win32="+std::to_string(GetLastError()));CloseHandle(handle);
  }
@@ -73,5 +79,48 @@ bool writeRecordingMp4(const Settings& settings,const Reader& reader,const std::
   ComPtr<IMFMediaBuffer> buffer;requireVideo(MFCreateMemoryBuffer(DWORD(pixels.size()),&buffer),"Cannot allocate video sample");BYTE* target=nullptr;requireVideo(buffer->Lock(&target,nullptr,nullptr),"Cannot access video sample");std::copy(pixels.begin(),pixels.end(),target);requireVideo(buffer->Unlock(),"Cannot release video sample");requireVideo(buffer->SetCurrentLength(DWORD(pixels.size())),"Cannot set video sample size");ComPtr<IMFSample> sample;requireVideo(MFCreateSample(&sample),"Cannot create video sample");requireVideo(sample->AddBuffer(buffer.Get()),"Cannot attach video sample");const auto begin=LONGLONG(i)*10000000/fps,end=LONGLONG(i+1)*10000000/fps;requireVideo(sample->SetSampleTime(begin),"Cannot set video timestamp");requireVideo(sample->SetSampleDuration(end-begin),"Cannot set video duration");requireVideo(writer->WriteSample(stream,sample.Get()),"Cannot encode video frame");if(progress)progress(i+1,plan.size());
  }
  if(cancelled&&cancelled())return false;requireVideo(writer->Finalize(),"Cannot finalize MP4");writer.Reset();if(cancelled&&cancelled())return false;temporary.publish(destination);return true;
+}
+bool writeRecordingWebm(const Settings& settings,const Reader& reader,const std::filesystem::path& destination,const VideoOptions& options,const std::function<bool()>& cancelled,const std::function<void(std::size_t,std::size_t)>& progress){
+ if(settings.snapshots.empty())throw std::invalid_argument("No recording frames");if(options.durationMode&&!std::isfinite(options.durationSeconds))throw std::invalid_argument("Invalid video duration");if(cancelled&&cancelled())return false;
+ const auto geometry=videoGeometry(settings);const auto plan=videoPlan(settings,options.durationMode?std::optional<double>(options.durationSeconds):std::nullopt);const int fps=std::clamp(settings.fps,1,60);
+ struct Codec {vpx_codec_ctx_t context{};bool initialized=false;~Codec(){if(initialized)vpx_codec_destroy(&context);}} codec;
+ vpx_codec_enc_cfg_t config{};bool vp9=true;
+ auto initialize=[&](vpx_codec_iface_t* iface){
+  if(vpx_codec_enc_config_default(iface,&config,0)!=VPX_CODEC_OK)return false;
+  config.g_w=geometry.width;config.g_h=geometry.height;config.g_timebase={1,fps};config.g_threads=std::clamp(std::thread::hardware_concurrency(),1u,4u);config.g_lag_in_frames=0;
+  config.rc_target_bitrate=settings.quality==Quality::High?8000:settings.quality==Quality::Low?1500:4000;config.rc_end_usage=VPX_VBR;config.rc_dropframe_thresh=0;config.kf_max_dist=fps*5;
+  codec.initialized=vpx_codec_enc_init(&codec.context,iface,&config,0)==VPX_CODEC_OK;return codec.initialized;
+ };
+ // Legacy resolves VP9 before VP8. Failure after encoding starts is an error,
+ // not an excuse to replace an already partially written video silently.
+ if(!initialize(vpx_codec_vp9_cx())){vp9=false;if(!initialize(vpx_codec_vp8_cx()))throw std::runtime_error("Cannot initialize WebM VP9/VP8 encoder");}
+ auto requireVpx=[&](vpx_codec_err_t result,const char* action){if(result!=VPX_CODEC_OK)throw std::runtime_error(std::string(action)+": "+vpx_codec_error(&codec.context));};
+ requireVpx(vpx_codec_control(&codec.context,VP8E_SET_CPUUSED,vp9?6:8),"Cannot set WebM encoding speed");
+ if(vp9)requireVpx(vpx_codec_control(&codec.context,VP9E_SET_ROW_MT,1),"Cannot set WebM encoding threads");
+ struct Picture {vpx_image_t image{};bool allocated=false;~Picture(){if(allocated)vpx_img_free(&image);}} picture;
+ if(!vpx_img_alloc(&picture.image,VPX_IMG_FMT_I420,geometry.width,geometry.height,32))throw std::runtime_error("Cannot allocate WebM image");picture.allocated=true;picture.image.cs=VPX_CS_BT_601;picture.image.range=VPX_CR_STUDIO_RANGE;
+ VideoTemporary temporary(destination,L".webm");
+ {
+  FILE* opened=nullptr;if(_wfopen_s(&opened,temporary.path.c_str(),L"w+b")||!opened)throw std::runtime_error("Cannot open temporary WebM stream");std::unique_ptr<FILE,decltype(&fclose)> file(opened,&fclose);
+  mkvmuxer::MkvWriter writer(file.get());mkvmuxer::Segment segment;if(!segment.Init(&writer))throw std::runtime_error("Cannot create WebM container");segment.set_mode(mkvmuxer::Segment::kFile);segment.OutputCues(true);
+  auto* info=segment.GetSegmentInfo();info->set_timecode_scale(1000000);info->set_writing_app("MoonSprite");segment.set_duration(plan.size()*1000./fps);
+  const auto trackId=segment.AddVideoTrack(geometry.width,geometry.height,1);auto* track=static_cast<mkvmuxer::VideoTrack*>(segment.GetTrackByNumber(trackId));if(!track)throw std::runtime_error("Cannot create WebM track");track->set_codec_id(vp9?"V_VP9":"V_VP8");track->set_frame_rate(fps);track->set_default_duration(1000000000ULL/fps);
+  auto packets=[&]{std::size_t count=0;vpx_codec_iter_t iterator=nullptr;while(const auto* packet=vpx_codec_get_cx_data(&codec.context,&iterator)){if(packet->kind!=VPX_CODEC_CX_FRAME_PKT)continue;if(!segment.AddFrame(static_cast<const std::uint8_t*>(packet->data.frame.buf),packet->data.frame.sz,trackId,std::uint64_t(packet->data.frame.pts)*1000000000ULL/fps,(packet->data.frame.flags&VPX_FRAME_IS_KEY)!=0))throw std::runtime_error("Cannot write WebM frame");++count;}return count;};
+  std::size_t cached=std::numeric_limits<std::size_t>::max();
+  for(std::size_t i=0;i<plan.size();++i){
+   if(cancelled&&cancelled())return false;
+   const auto index=plan[i].snapshotIndex;if(index!=cached){const auto& frame=settings.snapshots[index];auto source=decodeRecordingPng(reader(frame));if(source.width!=frame.width||source.height!=frame.height)throw std::runtime_error("Recording dimensions mismatch");const auto pixels=nv12(renderVideoFrame(source,geometry));
+    for(int y=0;y<geometry.height;++y)std::copy_n(pixels.data()+std::size_t(y)*geometry.width,geometry.width,picture.image.planes[0]+y*picture.image.stride[0]);
+    for(int y=0;y<geometry.height/2;++y)for(int x=0;x<geometry.width/2;++x){const auto at=std::size_t(geometry.width)*geometry.height+std::size_t(y)*geometry.width+2*x;picture.image.planes[1][y*picture.image.stride[1]+x]=pixels[at];picture.image.planes[2][y*picture.image.stride[2]+x]=pixels[at+1];}cached=index;
+   }
+   if(cancelled&&cancelled())return false;requireVpx(vpx_codec_encode(&codec.context,&picture.image,vpx_codec_pts_t(i),1,0,VPX_DL_REALTIME),"Cannot encode WebM frame");packets();if(progress)progress(i+1,plan.size());
+  }
+  if(cancelled&&cancelled())return false;
+  // Drain the codec even with zero lookahead; delayed packets belong to the
+  // same export and must reach the container before it is finalized.
+  do{requireVpx(vpx_codec_encode(&codec.context,nullptr,-1,1,0,VPX_DL_REALTIME),"Cannot finish WebM encoding");if(cancelled&&cancelled())return false;}while(packets());
+  if(!segment.Finalize()||fflush(file.get())||ferror(file.get()))throw std::runtime_error("Cannot finalize WebM");
+ }
+ if(cancelled&&cancelled())return false;temporary.publish(destination);return true;
 }
 }

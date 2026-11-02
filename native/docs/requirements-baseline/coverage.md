@@ -13,7 +13,7 @@
 | [FS-005](requirements/files.md#fs-005) | 工程兼容与资源身份 | 保留能力，允许重设计入口；详尽分支/参数按证据确认 | 未实现 |
 | [FS-006](requirements/files.md#fs-006) | 恢复与本地回溯 | 保留能力，允许重设计入口；详尽分支/参数按证据确认 | 未实现 |
 | [FS-007](requirements/files.md#fs-007) | 导出与精灵表 | 保留能力，允许重设计入口；详尽分支/参数按证据确认 | 未实现 |
-| [FS-008](requirements/files.md#fs-008) | 缩时录制、便携与导出 | 保留能力，详尽分支/参数按证据确认 | 部分完成：录制、本地／便携、预览、清空确认、PNG／JPG 与 [MP4 完整导出链路](../timelapse-video-export-20261103.md)已接入；WebM 等剩余验收不标完成 |
+| [FS-008](requirements/files.md#fs-008) | 缩时录制、便携与导出 | 保留能力，详尽分支/参数按证据确认 | 部分完成：录制、本地／便携、预览、清空确认、PNG／JPG 、[MP4](../timelapse-video-export-20261103.md) 与 [WebM 完整导出链路](../timelapse-webm-export-20261103.md)已接入；跨格式、长时间使用等剩余验收不标完成 |
 | [DR-001](requirements/drawing.md#dr-001) | 基础笔画与橡皮擦 | 保留能力，允许重设计入口；详尽分支/参数按证据确认 | 部分接入：[原生工具属性批次](../tool-options-migration-01.md)，其余笔刷语义待迁移 |
 | [DR-002](requirements/drawing.md#dr-002) | 图片笔刷与图案模式 | 保留能力，允许重设计入口；详尽分支/参数按证据确认 | 未实现 |
 | [DR-003](requirements/drawing.md#dr-003) | 笔刷动态与压感 | 保留能力，允许重设计入口；详尽分支/参数按证据确认 | 未实现 |

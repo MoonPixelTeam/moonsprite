@@ -8,6 +8,12 @@
 #include <fstream>
 #include <iostream>
 #include <map>
+#include <algorithm>
+#include <memory>
+#include "mkvparser/mkvparser.h"
+#include "mkvparser/mkvreader.h"
+#include "vpx/vp8dx.h"
+#include "vpx/vpx_decoder.h"
 #define CHECK(value) do{if(!(value))throw std::runtime_error("Check failed: " #value);}while(0)
 using namespace moon;
 using namespace moon::timelapse;
@@ -25,6 +31,18 @@ Decoded decode(const std::filesystem::path& path){
  return out;
 }
 int channel(Pixel p,int shift){return int((p>>shift)&255);}
+Decoded decodeWebm(const std::filesystem::path& path){
+ FILE* fp=nullptr;CHECK(_wfopen_s(&fp,path.c_str(),L"rb")==0&&fp);std::unique_ptr<FILE,decltype(&fclose)> file(fp,&fclose);mkvparser::MkvReader reader(fp);long long position=0;mkvparser::EBMLHeader header;CHECK(header.Parse(&reader,position)==0);mkvparser::Segment* raw=nullptr;CHECK(mkvparser::Segment::CreateInstance(&reader,position,raw)==0);std::unique_ptr<mkvparser::Segment> segment(raw);CHECK(segment->Load()==0);
+ const auto track=segment->GetTracks()->GetTrackByNumber(1);CHECK(track);const std::string codecId=track->GetCodecId();CHECK(codecId=="V_VP9"||codecId=="V_VP8");vpx_codec_ctx_t codec{};CHECK(vpx_codec_dec_init(&codec,codecId=="V_VP9"?vpx_codec_vp9_dx():vpx_codec_vp8_dx(),nullptr,0)==VPX_CODEC_OK);struct Cleanup{vpx_codec_ctx_t& codec;~Cleanup(){vpx_codec_destroy(&codec);}} cleanup{codec};Decoded out;
+ for(auto cluster=segment->GetFirst();cluster&&!cluster->EOS();cluster=segment->GetNext(cluster)){
+  const mkvparser::BlockEntry* entry=nullptr;CHECK(cluster->GetFirst(entry)==0);while(entry&&!entry->EOS()){
+   const auto block=entry->GetBlock();for(int n=0;n<block->GetFrameCount();++n){const auto& frame=block->GetFrame(n);Bytes bytes(frame.len);CHECK(frame.Read(&reader,bytes.data())==0);CHECK(vpx_codec_decode(&codec,bytes.data(),unsigned(bytes.size()),nullptr,0)==VPX_CODEC_OK);vpx_codec_iter_t iterator=nullptr;while(auto image=vpx_codec_get_frame(&codec,&iterator)){
+    out.width=image->d_w;out.height=image->d_h;auto color=[&](int y){const int x=out.width/2;const int l=image->planes[0][y*image->stride[0]+x]-16,u=image->planes[1][(y/2)*image->stride[1]+x/2]-128,v=image->planes[2][(y/2)*image->stride[2]+x/2]-128;auto clamp=[](int c){return Pixel(std::clamp(c,0,255));};return 0xff000000|clamp((298*l+409*v+128)>>8)|(clamp((298*l-100*u-208*v+128)>>8)<<8)|(clamp((298*l+516*u+128)>>8)<<16);};out.colors.push_back({color(out.height/4),color(out.height*3/4)});out.times.push_back(block->GetTime(cluster)/100);
+   }}const mkvparser::BlockEntry* next=nullptr;CHECK(cluster->GetNext(entry,next)==0);entry=next;
+  }
+ }
+ CHECK(segment->GetDuration()>=999000000&&segment->GetDuration()<=1001000000);return out;
+}
 }
 int main(){try{
  require(CoInitializeEx(nullptr,COINIT_MULTITHREADED));require(MFStartup(MF_VERSION));struct Runtime{~Runtime(){MFShutdown();CoUninitialize();}} runtime;
@@ -44,6 +62,8 @@ int main(){try{
  bool failed=false;try{writeRecordingMp4(settings,[&](const Frame& f){if(f.id=="video-1")throw std::runtime_error("owned missing frame");return pngs.at(f.id);},protectedPath,{true,1});}catch(const std::exception&){failed=true;}CHECK(failed&&read(protectedPath)==sentinel);
  failed=false;try{writeRecordingMp4(settings,reader,root/"missing"/"bad.mp4");}catch(const std::exception&){failed=true;}CHECK(failed&&!std::filesystem::exists(root/"missing"));
  CHECK(writeRecordingMp4(settings,reader,protectedPath,{false,1}));const auto bySpeed=decode(protectedPath);CHECK(bySpeed.times.size()==3&&read(protectedPath)!=sentinel);
+ const auto webm=root/L"实际缩时.webm";reads=0;completed=total=0;CHECK(writeRecordingWebm(settings,reader,webm,{true,1},{},[&](auto n,auto count){completed=n;total=count;}));CHECK(reads==3&&completed==6&&total==6);const auto webmDecoded=decodeWebm(webm);CHECK(webmDecoded.width==640&&webmDecoded.height==480&&webmDecoded.times.size()==6&&webmDecoded.times.front()==0&&webmDecoded.times.back()>=8330000&&webmDecoded.times.back()<=8340000);const auto webmFirst=webmDecoded.colors.front(),webmLast=webmDecoded.colors.back();CHECK(channel(webmFirst.first,0)>200&&channel(webmFirst.first,8)<40&&channel(webmFirst.second,8)>200);CHECK(channel(webmLast.first,16)>200&&channel(webmLast.first,0)<40&&channel(webmLast.second,0)>200&&channel(webmLast.second,8)>200);
+ const auto protectedWebm=root/L"保留原文件.webm";writeExportBytesAtomic(protectedWebm,sentinel);CHECK(!writeRecordingWebm(settings,reader,protectedWebm,{true,1},[]{return true;}));CHECK(read(protectedWebm)==sentinel);cancel=false;CHECK(!writeRecordingWebm(settings,reader,protectedWebm,{true,1},[&]{return cancel;},[&](auto,auto){cancel=true;}));CHECK(read(protectedWebm)==sentinel);failed=false;try{writeRecordingWebm(settings,[&](const Frame& f){if(f.id=="video-1")throw std::runtime_error("owned missing frame");return pngs.at(f.id);},protectedWebm,{true,1});}catch(const std::exception&){failed=true;}CHECK(failed&&read(protectedWebm)==sentinel);CHECK(writeRecordingWebm(settings,reader,protectedWebm,{false,1})&&read(protectedWebm)!=sentinel);
  for(const auto& file:std::filesystem::directory_iterator(root))CHECK(file.path().filename().wstring().find(L".moonsprite-video-")!=0);
- std::cout<<"Timelapse MP4 geometry, decoded colors/timestamps, sampling cache, cancellation, failure and atomic replacement passed; fixture retained: "<<root.u8string()<<'\n';return 0;
+ std::cout<<"Timelapse MP4/WebM geometry, decoded colors/timestamps, sampling cache, cancellation, failure and atomic replacement passed; fixture retained: "<<root.u8string()<<'\n';return 0;
  }catch(const std::exception& e){std::cerr<<e.what()<<'\n';return 1;}}

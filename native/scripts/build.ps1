@@ -8,6 +8,9 @@ $cmake = Join-Path $vs 'Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/bin/c
 $ctest = Join-Path (Split-Path $cmake -Parent) 'ctest.exe'
 $build = Join-Path $nativeRoot $(if($CoreOnly){'build-core'}else{'build'})
 $app = if($CoreOnly){'OFF'}else{'ON'}
+if (!$CoreOnly -and !(Test-Path -LiteralPath (Join-Path $nativeRoot 'build/libvpx/x64/Release/vpxmt.lib'))) {
+  & (Join-Path $PSScriptRoot 'bootstrap-video.ps1')
+}
 & $cmake -S $nativeRoot -B $build -G 'Visual Studio 17 2022' -A x64 '-DCMAKE_BUILD_TYPE=Release' "-DMOONSPRITE_BUILD_APP=$app"
 if ($LASTEXITCODE -ne 0) { throw 'Configure failed' }
 & $cmake --build $build --config Release --parallel 8

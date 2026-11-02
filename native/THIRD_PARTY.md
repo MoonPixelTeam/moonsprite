@@ -11,11 +11,15 @@
 | fmt | aseprite/fmt `f781d2b9321934f881de1ddb5be1db69fae1632e` | MIT |
 | clip | aseprite/clip `964847c26261f00c5e5bf9ceab622347b75cf85d` | MIT；laf Windows DND 及已有色卡等剪贴板后端；共享文本输入现经MIT UI delegate接入，验证范围见[文本剪贴板](docs/text-input-clipboard-20261031.md) |
 | zlib | aseprite/zlib `51b7f2abdade71cd9bb0e7a373ef2610ec6f9daf` | zlib 许可 |
+| libvpx | webmproject/libvpx v1.15.2，commit `d168454ecd099805c675d4a98c66f4891373302a` | BSD 3-Clause，保留 LICENSE 和 PATENTS；原生 VP9／VP8 视频编码，不修改上游源码 |
+| libwebm | 上述 libvpx 的 `third_party/libwebm`；上游来源 `3b630045052e1e4d563207ab9e3be8d137c26067` | BSD 3-Clause，保留 LICENSE.TXT、PATENTS.TXT；直接编译原封装库 |
 | Skia | aseprite/skia `m124-08a5439a6b` Windows Release x64 | BSD 及其第三方许可；含 FreeType、HarfBuzz、libpng、ICU。保留下载包 LICENSE 和 third_party 通知，发布前整理完整分发清单 |
 | Fusion Pixel | TakWolf/fusion-pixel-font `2026.09.25`，10px monospaced zh_hans BDF | SIL OFL 1.1；原字体及完整 LICENSES/OFL.txt 在 assets/fonts，未修改字形。发布包 SHA256：4E0F328F55E07A971DEE491CADB5472FA71587D29C33042F799FA209EBE53E2A |
 
 Fusion 官方源：[项目](https://github.com/TakWolf/fusion-pixel-font)、[固定发布](https://github.com/TakWolf/fusion-pixel-font/releases/tag/2026.09.25)。`fusion-ascii.png` 仅为 laf 内部字符测量准备等高图集，由 `scripts/prepare-font.py` 从同一 BDF 原样排列；实际界面直接按 BDF 的字形边界、基线和前进宽度绘制。拉丁字符可以是 5px 前进宽度，中文通常为 10px，均属同一个 10px 字号；不拉伸成等宽方块。
 
 所有上游完整许可文本保留在对应缓存源码中；可执行文件旁需附带的 MIT 原文由构建复制。当前不创建安装包、不作发行许可完备声明。
+
+WebM 构建工具固定为 NASM 2.16.03（BSD 2-Clause）和 GNU Make 4.4.1（GPLv3+）；仅在 `.cache/video-tools` 构建时使用，不链接到应用，不随程序分发。下载 SHA256 固定在 `scripts/bootstrap-video.ps1`；构建生成的上游脚本副本保留原版权，只适配响应源列表、Windows 长命令、Unicode 路径和 XML 转义。libvpx／libwebm 的许可与专利授权原文随正式程序复制到 licenses。
 
 2026-10-31：构建时从锁定laf的`os/win/window.cpp`生成保留版权头的副本，仅将WM_IME_CHAR的UTF16代理对合成从错误的按位OR改为加法；原缓存源码不修改。生成副本替代原编译单元，许可仍为laf MIT，详见[原生输入法接线](docs/text-input-ime-20261031.md)。

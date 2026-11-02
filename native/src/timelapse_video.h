@@ -8,12 +8,15 @@ VideoGeometry videoGeometry(const std::vector<Frame>&,Quality);
 VideoGeometry videoGeometry(const Settings&);
 std::size_t videoFrameCount(std::size_t snapshots,int fps,int speed,const VideoOptions&);
 std::size_t videoFrameCount(const Settings&,const VideoOptions&);
-// Canvas capture streams discard alpha; the native H.264 adapter composites
+// Canvas capture streams discard alpha; the native video adapters composite
 // onto black, scales with nearest sampling, and centers each source frame.
 Image renderVideoFrame(const Image&,const VideoGeometry&);
 // Returns false on cancellation. Existing destination stays intact until the
 // completed stream has been finalized, flushed and atomically replaced.
 bool writeRecordingMp4(const Settings&,const Reader&,const std::filesystem::path&,
+ const VideoOptions& = {},const std::function<bool()>& cancelled={},
+ const std::function<void(std::size_t,std::size_t)>& progress={});
+bool writeRecordingWebm(const Settings&,const Reader&,const std::filesystem::path&,
  const VideoOptions& = {},const std::function<bool()>& cancelled={},
  const std::function<void(std::size_t,std::size_t)>& progress={});
 }

@@ -37,4 +37,5 @@ if (!(Test-Path -LiteralPath $zlib)) {
   if (!$source.StartsWith($scope) -or !$target.StartsWith($scope)) { throw 'Move outside dependency cache' }
   Move-Item -LiteralPath $source -Destination $target
 }
+& (Join-Path $PSScriptRoot 'bootstrap-video.ps1')
 Write-Host 'Pinned dependencies ready. Only MIT src/ui is compiled from the Aseprite checkout.'
