@@ -6130,6 +6130,13 @@ void Editor::smokeTimelineGifDrop(){
     if(dispatchNativeDocumentPaths(*this,display()->nativeWindow(),{launchPath.u8string()})||document.identity()!=launchIdentity||projects_.size()!=launchCount)throw std::runtime_error("Native launch must defer while editor is modal");resolve(false);
     if(!dispatchNativeDocumentPaths(*this,display()->nativeWindow(),{launchPath.u8string()})||pending_!=Pending::None||projects_.size()!=launchCount+1||document.pixels()!=launched.pixels()||!sameProjectPath(documentPath_,launchPath)||projectDocument(0).pixels()[2]!=0xff765432)throw std::runtime_error("Native launch document route/new tab/original dirty protection");
     if(!dispatchNativeDocumentPaths(*this,display()->nativeWindow(),{launchPath.u8string()})||projects_.size()!=launchCount+1)throw std::runtime_error("Repeated native launch reuses existing project");
+    // Same-named GIFs from different folders remain independent projects;
+    // an imported GIF can be saved to a native project without treating its
+    // source bytes as an existing ZIP archive.
+    const auto gifA=fixtureRoot/"gif-a"/"same.gif",gifB=fixtureRoot/"gif-b"/"same.gif";std::filesystem::create_directories(gifA.parent_path());std::filesystem::create_directories(gifB.parent_path());writeExportBytesAtomic(gifA,encoded.bytes);writeExportBytesAtomic(gifB,encoded.bytes);const auto beforeGifPair=projects_.size();brushLibraryDropPaths_=PatternBrushDropPaths{};
+    auto gifPair=event(canvasViewport().center(),{gifA.u8string(),gifB.u8string()});native->notifyDragEnter(gifPair);native->notifyDrop(gifPair);
+    if(!gifPair.acceptDrop()||pending_!=Pending::None||projects_.size()!=beforeGifPair+2||!document.animationLoop()||document.sourceArchive()||document.name()!=U"same.gif"||!sameProjectPath(document.sourceFilePath(),gifB)||projectDocument(0).pixels()[2]!=0xff765432)throw std::runtime_error("Same-named GIF import identity/loop/source protection");
+    const auto savedGif=fixtureRoot/"gif-as-project.moonsprite";if(!savePath(savedGif)||document.dirty()||!sameProjectPath(documentPath_,savedGif))throw std::runtime_error("Imported GIF native project save failed");
     document=Document();clearTimelineGifDrop();refresh();
 
   }
