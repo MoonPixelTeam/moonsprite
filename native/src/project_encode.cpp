@@ -195,7 +195,7 @@ static EncodedProject encodeProject(const Document& d,Limits limits,bool recover
     }
     for(const auto slot:d.palette().slots){if(slot==0){slots.Append(JsonValue::CreateNullValue());continue;}if(!ids.count(slot)||!visible.insert(slot).second)throw Error(ErrorKind::Corrupt,"Invalid save palette slot");slots.Append(JsonValue::CreateNumberValue(slot));order.Append(JsonValue::CreateNumberValue(slot));}
     number(doc,L"paletteColumns",d.palette().columns);doc.Insert(L"palette",palette);doc.Insert(L"paletteOrder",order);doc.Insert(L"paletteSlots",slots);number(doc,L"nextColorId",d.palette().nextId);
-    if(source)for(const auto& f:source->timelapse.snapshots)files.erase("timelapse/"+f.id+".png");
+    if(source)for(auto it=files.begin();it!=files.end();){const auto& name=it->first;if(name.rfind("timelapse/",0)==0&&name.size()>14&&name.substr(name.size()-4)==".png")it=files.erase(it);else ++it;}
     doc.Insert(L"timelapse",timelapsejson::encode(d.timelapseSettings(),files));
     if(!recovery) files["preview.png"]=encodeProjectPreview(d);
     const auto json=winrt::to_string(root.Stringify());if(json.size()>limits.manifestBytes)throw Error(ErrorKind::Limit,"Encoded manifest exceeds budget");files["manifest.json"]=Bytes(json.begin(),json.end());

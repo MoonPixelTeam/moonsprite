@@ -8,6 +8,7 @@
 #include "layer_metadata.h"
 #include "project_manifest.h"
 #include "timelapse_project_json.h"
+#include "project_restore_report.h"
 #include "background_layer.h"
 #include "layer_blend.h"
 #include <winrt/Windows.Foundation.Collections.h>
@@ -65,7 +66,9 @@ std::optional<timeline::ColorOverlayStyle> readColorOverlay(const JsonObject& ow
  return s;
 }
 }
-ReadManifest readProjectManifest(std::shared_ptr<const Bytes> bytes,Limits limits) {
+ReadManifest readProjectManifest(std::shared_ptr<const Bytes> bytes,Limits limits) {return readProjectManifest(std::move(bytes),limits,nullptr);}
+ReadManifest readProjectManifest(std::shared_ptr<const Bytes> bytes,Limits limits,TimelapseRestoreReport* report) {
+  if(report)*report={};
   Archive archive(bytes,limits);const auto json=archive.read("manifest.json",limits.manifestBytes);
   if(json.empty()) bad("empty manifest");
   // Strict UTF-8 decoding; malformed sequences must not silently change names/IDs.
@@ -111,7 +114,7 @@ ReadManifest readProjectManifest(std::shared_ptr<const Bytes> bytes,Limits limit
     using RasterKey=std::tuple<std::string,std::string,int,int,int,int>;
     std::map<RasterKey,std::shared_ptr<const ManifestRaster>> rasters;std::size_t decodedBytes=0;
     std::set<std::string> consumedFiles{"manifest.json","preview.png"};
-    if(present(doc,"timelapse"))out.timelapse=timelapsejson::decode(object(doc,"timelapse"),archive,consumedFiles,limits.expandedBytes);
+    if(present(doc,"timelapse"))out.timelapse=timelapsejson::decode(object(doc,"timelapse"),archive,consumedFiles,limits.expandedBytes,report);
     auto raster=[&](const JsonObject& metadata,bool mask=false)->std::shared_ptr<const ManifestRaster> {
       if(!present(metadata,"dataFile")) return {};
       auto file=str(metadata,"dataFile"),encoding=str(metadata,"dataEncoding",false,"raw");consumedFiles.insert(file);
@@ -220,6 +223,9 @@ ReadManifest readProjectManifest(std::shared_ptr<const Bytes> bytes,Limits limit
     for(const auto& item:array(doc,"paletteSlots",false)) {const auto id=item.ValueType()==JsonValueType::Null?0:integerValue(item,"paletteSlots",1);if(id && !paletteIds.count(id)) bad("paletteSlots reference");out.paletteSlots.push_back(id);}
     out.paletteColumns=integer(doc,"paletteColumns",8,1);out.nextColorId=integer(doc,"nextColorId",1,1,true);
     for(const auto id:paletteIds) if(id>=out.nextColorId) bad("nextColorId");
+    // Legacy storedTimelapseEntryViews accounts for every recording PNG,
+    // including payloads whose declared snapshot metadata was unusable.
+    for(const auto& entry:archive.entries())if(entry.first.rfind("timelapse/",0)==0&&entry.first.size()>14&&entry.first.substr(entry.first.size()-4)==".png")consumedFiles.insert(entry.first);
     for(const auto& entry:archive.entries()) if(!consumedFiles.count(entry.first)) out.unsupported.emplace_back("unmapped archive resource "+entry.first);
     return out;
   } catch(const winrt::hresult_error& error) {

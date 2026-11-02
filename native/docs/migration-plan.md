@@ -2118,3 +2118,5 @@ Paint／无主选实例的源像素删除仍未开放，剪切在这些场景只
 - 2026-11-02：按 legacy OpenProgressOverlay／openProgress.dismiss，普通文件和图片序列支持关闭加载提示后继续编辑，读取仍完成并沿用原入口打开。共享标题按钮复用legacy关闭图标；候选等表单／保存、笔画与鼠标抓取结束后发布，同路径再次核对避免重复标签；退出请求延后至最外层加载结束，再走既有保存／关闭。正式Release构建、--timeline-gif-drop-check成功／失败／再次成功的隐藏后编辑与撤销、发布门控和退出延后，以及既有文件回归均通过；550文件来源和diff检查通过。详见[隐藏加载提示](background-document-open-20261102.md)。保留栈上串行批次，未承诺任意并发完成顺序、短任务延迟显示或人工外观验收。
 
 - 2026-11-02：普通文件与图片序列加载按legacy open-progress.begin的下一帧规则延后显示，已就绪／首个UI周期内完成的成功和失败不闪弹窗，未完成任务继续显示原有可隐藏提示；原生以一次16ms LAF Timer适配requestAnimationFrame。补齐未显示栈上窗口的display注册清理，避免失效窗口残留。正式Release构建与--timeline-gif-drop-check四组Open事件／候选／错误／状态保护及窗口列表回收回归、既有文件回归、550文件来源和diff检查通过。详见[快速打开不闪进度窗口](background-document-open-20261102.md)。未做人工外观验收，不宣称垂直同步或任意并发完成顺序等价。
+
+- 2026-11-03：工程读器按legacy restoreProjectTimelapse跳过缺失／空缩时载荷、无效尺寸及必要元数据，报告丢失数／保留数和去重原因；普通打开、备份及恢复入口显示旧版精确中文提示并记诊断，原作品与源文件保持。保存重建已保留录制PNG，清理丢弃帧旧载荷，重开不重复报告；保留未知字段、坏PNG、原生尺寸与ZIP／CRC／预算硬错误。真实归档重打包和往返、timelapse-restore-tests、既有timelapse-tests、正式Release构建、--timeline-gif-drop-check实际打开／恢复及既有回归、553文件来源和diff检查通过。详见[缩时记录部分恢复](timelapse-partial-restore-20261103.md)。数值字符串宽松转换、本地chunk修复和人工操作未覆盖。

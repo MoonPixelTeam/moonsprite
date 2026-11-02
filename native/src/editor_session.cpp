@@ -4,8 +4,18 @@
 #include "editor_implementation.h"
 #include "editor.h"
 #include "timelapse_session.h"
+#include "project_restore_report.h"
+#include "runtime_diagnostics.h"
 
 namespace moon::editor {
+namespace {
+std::u32string timelapseRestoreWarning(const project::TimelapseRestoreReport& report){
+ std::string reasons;for(const auto& reason:report.dropReasons){if(!reasons.empty())reasons+=",";reasons+=reason;}
+ diagnostics::recordGlobal("error","project.timelapse.restore",{{"declaredFrames",std::int64_t(report.droppedTimelapseFrames+report.timelapseFrames)},{"droppedFrames",std::int64_t(report.droppedTimelapseFrames)},{"restoredFrames",std::int64_t(report.timelapseFrames)},{"reasons",reasons}});
+ return U"该工程的缩时记录有 "+unicodeText(std::to_string(report.droppedTimelapseFrames))+U" 帧无法恢复，已保留 "+unicodeText(std::to_string(report.timelapseFrames))+U" 帧。";
+}
+}
+
 
 void Editor::ensureProjects(){if(documentOpen_ && projects_.empty()){projects_.push_back(std::make_unique<ProjectSession>());activeProject_=0;}}
 
@@ -284,7 +294,8 @@ void Editor::openPath(const std::filesystem::path& path) {
 
       const bool ase=ext==L".ase"||ext==L".aseprite";
       const bool raster=ext==L".gif"||ext==L".png"||ext==L".jpg"||ext==L".jpeg"||ext==L".bmp"||ext==L".webp";
-      DocumentLoadingDialog loading(font_,skin_,[path,ext,ase,raster]() -> Document {
+      auto restoreReport=std::make_shared<project::TimelapseRestoreReport>();
+      DocumentLoadingDialog loading(font_,skin_,[path,ext,ase,raster,restoreReport]() -> Document {
         if(ext==L".psd")throw std::runtime_error("PSD import is not migrated; the existing PSD capability is export only");
         if(ase){auto candidate=openAseprite(path);candidate.setSourceFilePath(path);return candidate;}
         if(raster){auto candidate=ext==L".gif"?openGifAnimation(path):openRasterImage(path);candidate.setSourceFilePath(path);return candidate;}
@@ -302,7 +313,7 @@ void Editor::openPath(const std::filesystem::path& path) {
 
         if(!file.read(reinterpret_cast<char*>(bytes->data()),std::streamsize(bytes->size()))) throw std::runtime_error("Incomplete project read");
 
-        auto imported=project::prepareEditableImport(project::readProjectManifest(bytes,limits));
+        auto imported=project::prepareEditableImport(project::readProjectManifest(bytes,limits,restoreReport.get()));
 
         PaletteState palette;palette.entries.clear();palette.slots=std::move(imported.palette.slots);palette.nextId=imported.palette.nextId;palette.columns=imported.palette.columns;
 
@@ -320,6 +331,7 @@ void Editor::openPath(const std::filesystem::path& path) {
       openCandidate_=std::move(loaded);candidatePath_=ase||raster?std::filesystem::path{}:path;
       candidateRecovery_=false;ask(Pending::Open);
       if(ase)status_=U"已打开 ASE；沿用原格式保存时将保存回源文件。";
+      if(restoreReport->droppedTimelapseFrames){status_=timelapseRestoreWarning(*restoreReport);refresh();}
 
     } catch(const std::exception& e) {
 
@@ -494,7 +506,7 @@ void Editor::activeRecoveryTick(bool force) {
 
 void Editor::restoreRecovery(const std::filesystem::path& archive,const std::string& id,const std::u32string& name) {
 
-    try {auto file=std::ifstream(archive,std::ios::binary|std::ios::ate);if(!file)throw std::runtime_error("Cannot read recovery");const auto length=file.tellg();if(length<0 || std::uint64_t(length)>project::Limits{}.archiveBytes)throw std::runtime_error("Recovery size exceeds budget");auto bytes=std::make_shared<project::Bytes>(std::size_t(length));file.seekg(0);file.read(reinterpret_cast<char*>(bytes->data()),std::streamsize(bytes->size()));auto imported=project::prepareEditableImport(project::readProjectManifest(bytes));PaletteState palette;palette.entries.clear();palette.slots=imported.palette.slots;palette.nextId=imported.palette.nextId;palette.columns=imported.palette.columns;for(auto& e:imported.palette.entries)palette.entries.push_back({e.id,std::move(e.name),e.color});openCandidate_=Document::fromImported(imported.width,imported.height,std::move(imported.timeline),std::move(palette),std::move(imported.id),name,imported.sourceArchive);openCandidate_->setImportedProjectInformation(imported.information);openCandidate_->setImportedReferenceImages(std::move(imported.referenceImages));openCandidate_->setImportedSlices(std::move(imported.slices));openCandidate_->setImportedTimelapse(std::move(imported.timelapse));openCandidate_->setImportedProjectBrushes(std::move(imported.customBrushes));openCandidate_->selectLayer(imported.activeLayerId);openCandidate_->selectFrame(imported.activeFrameId);openCandidate_->setImportedLoop(imported.loop);openCandidate_->setPixelGrid(imported.showPixelGrid,false);openCandidate_->setCustomGrid(imported.showCustomGrid,imported.customGrid,false);if(imported.symmetryCenter)openCandidate_->setSymmetryCenter({imported.symmetryCenter->first,imported.symmetryCenter->second},false);candidateRecovery_=true;ask(Pending::Open);}catch(const std::exception&e){showSaveError(e);errorTitle_=U"无法恢复工程";}}
+    try {auto file=std::ifstream(archive,std::ios::binary|std::ios::ate);if(!file)throw std::runtime_error("Cannot read recovery");const auto length=file.tellg();if(length<0 || std::uint64_t(length)>project::Limits{}.archiveBytes)throw std::runtime_error("Recovery size exceeds budget");auto bytes=std::make_shared<project::Bytes>(std::size_t(length));file.seekg(0);file.read(reinterpret_cast<char*>(bytes->data()),std::streamsize(bytes->size()));project::TimelapseRestoreReport restoreReport;auto imported=project::prepareEditableImport(project::readProjectManifest(bytes,{},&restoreReport));PaletteState palette;palette.entries.clear();palette.slots=imported.palette.slots;palette.nextId=imported.palette.nextId;palette.columns=imported.palette.columns;for(auto& e:imported.palette.entries)palette.entries.push_back({e.id,std::move(e.name),e.color});openCandidate_=Document::fromImported(imported.width,imported.height,std::move(imported.timeline),std::move(palette),std::move(imported.id),name,imported.sourceArchive);openCandidate_->setImportedProjectInformation(imported.information);openCandidate_->setImportedReferenceImages(std::move(imported.referenceImages));openCandidate_->setImportedSlices(std::move(imported.slices));openCandidate_->setImportedTimelapse(std::move(imported.timelapse));openCandidate_->setImportedProjectBrushes(std::move(imported.customBrushes));openCandidate_->selectLayer(imported.activeLayerId);openCandidate_->selectFrame(imported.activeFrameId);openCandidate_->setImportedLoop(imported.loop);openCandidate_->setPixelGrid(imported.showPixelGrid,false);openCandidate_->setCustomGrid(imported.showCustomGrid,imported.customGrid,false);if(imported.symmetryCenter)openCandidate_->setSymmetryCenter({imported.symmetryCenter->first,imported.symmetryCenter->second},false);candidateRecovery_=true;ask(Pending::Open);if(restoreReport.droppedTimelapseFrames){status_=timelapseRestoreWarning(restoreReport);refresh();}}catch(const std::exception&e){showSaveError(e);errorTitle_=U"无法恢复工程";}}
 
 void Editor::setRecoveryPreferences(recovery::Preferences preferences) {
 

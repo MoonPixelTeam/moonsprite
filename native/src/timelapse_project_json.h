@@ -1,6 +1,7 @@
 #pragma once
 #include "timelapse.h"
 #include "project_reader.h"
+#include "project_restore_report.h"
 #include <set>
 #include <winrt/Windows.Data.Json.h>
 #include <winrt/Windows.Foundation.Collections.h>
@@ -13,14 +14,40 @@ inline std::string string(const JsonObject& o,const wchar_t* key,const std::stri
 inline bool boolean(const JsonObject& o,const wchar_t* key,bool fallback){if(!o.HasKey(key))return fallback;auto v=o.GetNamedValue(key);if(v.ValueType()!=JsonValueType::Boolean)fail("invalid boolean recording metadata");return v.GetBoolean();}
 inline std::uint64_t safeInteger(double n){if(n<0||n>9007199254740991.||std::floor(n)!=n)fail("invalid recording range");return static_cast<std::uint64_t>(n);}
 inline void png(const timelapse::Frame& f){const unsigned char sig[]{137,80,78,71,13,10,26,10};if(f.data.size()<24||f.data.size()>32ULL*1024*1024||!std::equal(std::begin(sig),std::end(sig),f.data.begin()))fail("invalid embedded PNG");auto be=[&](std::size_t at){std::uint32_t n=0;for(int i=0;i<4;++i)n=(n<<8)|f.data[at+i];return n;};if(be(16)!=std::uint32_t(f.width)||be(20)!=std::uint32_t(f.height))fail("recording PNG dimensions mismatch");}
-inline timelapse::Settings decode(const JsonObject& o,const Archive& archive,std::set<std::string>& consumed,std::size_t budget){
+inline timelapse::Settings decode(const JsonObject& o,const Archive& archive,std::set<std::string>& consumed,std::size_t budget,TimelapseRestoreReport* report=nullptr){
  known(o,{L"enabled",L"recordUndoSteps",L"quality",L"fps",L"speed",L"mode",L"snapshots"});timelapse::Settings s;s.enabled=boolean(o,L"enabled",false);s.recordUndoSteps=boolean(o,L"recordUndoSteps",false);const auto quality=string(o,L"quality","medium"),mode=string(o,L"mode","smart");s.quality=quality=="low"?timelapse::Quality::Low:quality=="high"?timelapse::Quality::High:timelapse::Quality::Medium;s.mode=mode=="full"?timelapse::Mode::Full:timelapse::Mode::Smart;s.fps=int(std::clamp(std::floor(number(o,L"fps",12)+.5),1.,60.));s.speed=int(std::clamp(std::floor(number(o,L"speed",8)+.5),1.,64.));std::set<std::string> ids;std::size_t bytes=0;
  if(!o.HasKey(L"snapshots"))return s;auto values=o.GetNamedArray(L"snapshots");if(values.Size()>timelapse::fullFrameLimit)fail("recording frame count exceeds native limit");
- for(const auto& value:values){const auto v=value.GetObject();known(v,{L"id",L"capturedAt",L"elapsedMs",L"width",L"height",L"changeScore",L"local",L"dataFile"});timelapse::Frame f;f.id=string(v,L"id");if(!timelapse::safeId(f.id)||!ids.insert(f.id).second)fail("invalid or duplicate recording frame ID");f.capturedAt=number(v,L"capturedAt",0);f.elapsedMs=number(v,L"elapsedMs",0);const auto width=safeInteger(number(v,L"width",0)),height=safeInteger(number(v,L"height",0));if(width<1||height<1||width>2400||height>2400)fail("invalid recording dimensions");f.width=int(width);f.height=int(height);f.changeScore=std::clamp(number(v,L"changeScore",0),0.,1.);
-  if(v.HasKey(L"local")){const auto local=v.GetNamedObject(L"local");known(local,{L"store",L"chunk",L"offset",L"length",L"checksum"});timelapse::Reference r;r.store=string(local,L"store");r.chunk=string(local,L"chunk");r.offset=safeInteger(number(local,L"offset",-1));r.length=safeInteger(number(local,L"length",0));const auto crc=safeInteger(number(local,L"checksum",-1));if(crc>0xffffffff||!timelapse::validReference(r))fail("invalid local recording reference");r.checksum=std::uint32_t(crc);f.local=std::move(r);if(v.HasKey(L"dataFile"))fail("ambiguous embedded and local recording frame");}
-  else{const auto file=string(v,L"dataFile");if(file!="timelapse/"+f.id+".png")fail("invalid embedded recording path");f.data=archive.read(file,std::min<std::size_t>(32ULL*1024*1024,budget-bytes));png(f);if(f.data.size()>budget-bytes)fail("embedded recordings exceed archive budget");bytes+=f.data.size();consumed.insert(file);}
-  s.snapshots.push_back(std::move(f));
- }return s;
+ auto drop=[&](const char* reason){if(report)report->drop(reason);};
+ for(const auto& value:values){
+  if(value.ValueType()!=JsonValueType::Object){drop("invalid-metadata");continue;}
+  const auto v=value.GetObject();known(v,{L"id",L"capturedAt",L"elapsedMs",L"width",L"height",L"changeScore",L"local",L"dataFile"});
+  // Account for declared recording payloads even when their metadata is lost.
+  // Keep unrelated/unknown resources subject to normal manifest admission.
+  std::string file;
+  if(v.HasKey(L"dataFile")&&v.GetNamedValue(L"dataFile").ValueType()==JsonValueType::String){file=winrt::to_string(v.GetNamedString(L"dataFile"));if(file.rfind("timelapse/",0)==0&&file.size()>14&&file.substr(file.size()-4)==".png")consumed.insert(file);}
+  if(!v.HasKey(L"id")||v.GetNamedValue(L"id").ValueType()!=JsonValueType::String){drop("invalid-metadata");continue;}
+  timelapse::Frame f;f.id=string(v,L"id");if(!timelapse::safeId(f.id))fail("invalid recording frame ID");
+  if(file.empty()&&!v.HasKey(L"local")){drop("invalid-metadata");continue;}
+  auto dimension=[&](const wchar_t* key){if(!v.HasKey(key))return 0.;const auto n=v.GetNamedValue(key);return n.ValueType()==JsonValueType::Number?n.GetNumber():0.;};
+  const auto width=dimension(L"width"),height=dimension(L"height");
+  if(!std::isfinite(width)||!std::isfinite(height)||width<1||height<1||std::floor(width)!=width||std::floor(height)!=height||width>9007199254740991.||height>9007199254740991.){drop("invalid-dimensions");continue;}
+  if(width>2400||height>2400)fail("recording dimensions exceed native limit");f.width=int(width);f.height=int(height);
+  f.capturedAt=std::max(0.,std::trunc(number(v,L"capturedAt",0)));f.elapsedMs=std::max(0.,std::trunc(number(v,L"elapsedMs",0)));f.changeScore=std::clamp(number(v,L"changeScore",0),0.,1.);
+  if(v.HasKey(L"local")){
+   if(v.GetNamedValue(L"local").ValueType()!=JsonValueType::Object){drop("invalid-metadata");continue;}
+   const auto local=v.GetNamedObject(L"local");known(local,{L"store",L"chunk",L"offset",L"length",L"checksum"});timelapse::Reference r;
+   try{r.store=string(local,L"store");r.chunk=string(local,L"chunk");r.offset=safeInteger(number(local,L"offset",-1));r.length=safeInteger(number(local,L"length",0));const auto crc=safeInteger(number(local,L"checksum",-1));if(crc>0xffffffff||!timelapse::validReference(r)){drop("invalid-metadata");continue;}r.checksum=std::uint32_t(crc);}catch(const Error&){drop("invalid-metadata");continue;}
+   f.local=std::move(r);if(v.HasKey(L"dataFile"))fail("ambiguous embedded and local recording frame");
+  }else{
+   if(file!="timelapse/"+f.id+".png")fail("invalid embedded recording path");
+   if(!archive.entries().count(file)){drop("missing-data");continue;}
+   f.data=archive.read(file,std::min<std::size_t>(32ULL*1024*1024,budget-bytes));if(f.data.empty()){drop("missing-data");continue;}
+   png(f);if(f.data.size()>budget-bytes)fail("embedded recordings exceed archive budget");bytes+=f.data.size();consumed.insert(file);
+  }
+  if(!ids.insert(f.id).second)fail("duplicate recording frame ID");s.snapshots.push_back(std::move(f));
+ }
+ if(report)report->timelapseFrames=s.snapshots.size();return s;
 }
+
 inline JsonObject encode(const timelapse::Settings& s,std::map<std::string,Bytes>& files){JsonObject o;auto text=[](JsonObject v,const wchar_t* k,const std::string& s){v.Insert(k,JsonValue::CreateStringValue(winrt::to_hstring(s)));};auto num=[](JsonObject v,const wchar_t* k,double n){if(!std::isfinite(n))fail("invalid recording number on save");v.Insert(k,JsonValue::CreateNumberValue(n));};o.Insert(L"enabled",JsonValue::CreateBooleanValue(s.enabled));o.Insert(L"recordUndoSteps",JsonValue::CreateBooleanValue(s.recordUndoSteps));text(o,L"quality",s.quality==timelapse::Quality::Low?"low":s.quality==timelapse::Quality::High?"high":"medium");text(o,L"mode",s.mode==timelapse::Mode::Full?"full":"smart");num(o,L"fps",s.fps);num(o,L"speed",s.speed);JsonArray snapshots;std::set<std::string> ids;for(const auto& f:s.snapshots){if(!timelapse::safeId(f.id)||!ids.insert(f.id).second)fail("invalid recording frame ID on save");JsonObject v;text(v,L"id",f.id);num(v,L"capturedAt",f.capturedAt);num(v,L"elapsedMs",f.elapsedMs);num(v,L"width",f.width);num(v,L"height",f.height);num(v,L"changeScore",f.changeScore);if(f.data.empty()){if(!f.local||!timelapse::validReference(*f.local))fail("missing recording payload on save");const auto& r=*f.local;JsonObject local;text(local,L"store",r.store);text(local,L"chunk",r.chunk);num(local,L"offset",double(r.offset));num(local,L"length",double(r.length));num(local,L"checksum",r.checksum);v.Insert(L"local",local);}else{png(f);const auto file="timelapse/"+f.id+".png";text(v,L"dataFile",file);files[file]=f.data;}snapshots.Append(v);}o.Insert(L"snapshots",snapshots);return o;}
 }
