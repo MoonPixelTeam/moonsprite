@@ -122,7 +122,21 @@ bool Editor::onProcessMessage(ui::Message* msg) {
     if(pending_==Pending::Saving && (dynamic_cast<ui::MouseMessage*>(msg) || dynamic_cast<ui::KeyMessage*>(msg) || dynamic_cast<ui::DndMessage*>(msg)))return true;
 
     if(msg->type()==ui::kDragEnterMessage || msg->type()==ui::kDragMessage || msg->type()==ui::kDropMessage){
-      auto& event=static_cast<ui::DndMessage*>(msg)->event();const bool drop=msg->type()==ui::kDropMessage;
+      auto& original=static_cast<ui::DndMessage*>(msg)->event();const bool drop=msg->type()==ui::kDropMessage;
+      // Legacy document-drop-service filters before useAppDocumentIO chooses
+      // a destination. One cache and one clock serve every drop destination.
+      class Paths final:public os::DragDataProvider{base::paths paths_;public:explicit Paths(base::paths paths):paths_(std::move(paths)){}base::paths getPaths()override{return paths_;}os::SurfaceRef getImage()override{return {};}std::string getUrl()override{return {};}bool contains(os::DragDataItemType type)override{return type==os::DragDataItemType::Paths;}};
+      std::unique_ptr<os::DragEvent> routed;
+      if(auto data=original.dataProvider();data&&data->contains(os::DragDataItemType::Paths)){
+        auto paths=PatternBrushDropPaths{}.fresh(data->getPaths(),0);
+        if(drop&&pending_==Pending::None&&original.sourceSupports(os::DropOperation::Copy)&&!paths.empty()){
+          paths=brushLibraryDropPaths_.fresh(paths,static_cast<std::int64_t>(GetTickCount64()));
+          if(paths.empty()){clearTimelineGifDrop();if(brushLibraryPanel_)brushLibraryPanel_->setExternalDrop(false);original.dropResult(os::DropOperation::Copy);original.acceptDrop(true);return true;}
+        }
+        routed=std::make_unique<os::DragEvent>(original.target(),original.supportedOperations(),original.position(),std::make_unique<Paths>(std::move(paths)));
+      }
+      auto& event=routed?*routed:original;
+      struct DropResult{os::DragEvent& original;os::DragEvent& routed;~DropResult(){original.dropResult(routed.dropResult());original.acceptDrop(routed.acceptDrop());}} result{original,event};
       const auto claim=[&]{if(msg->type()==ui::kDragEnterMessage)static_cast<ui::DragEnterMessage*>(msg)->widget(this);if(msg->type()==ui::kDragMessage)static_cast<ui::DragMessage*>(msg)->widget(this);};
       if(handleBrushLibraryDrop(event,drop)||handleTimelineGifDrag(event,drop)){claim();return true;}
       // Legacy useAppDocumentIO: paths not claimed by a resource panel or a
@@ -130,14 +144,13 @@ bool Editor::onProcessMessage(ui::Message* msg) {
       // existing dirty sessions, duplicate project tabs and read errors retain
       // their normal lifecycle. Never replace the current document in-place.
       auto data=event.dataProvider();if(pending_==Pending::None&&data&&data->contains(os::DragDataItemType::Paths)){
-        const auto paths=PatternBrushDropPaths{}.fresh(data->getPaths(),0);
+        const auto paths=data->getPaths();
         if(!paths.empty()){
           if(!event.sourceSupports(os::DropOperation::Copy)){event.dropResult(os::DropOperation::None);claim();return true;}
           event.dropResult(os::DropOperation::Copy);claim();if(!drop)return true;
           clearTimelineGifDrop();event.acceptDrop(true);
-          const auto fresh=brushLibraryDropPaths_.fresh(paths,std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now().time_since_epoch()).count());
           std::u32string failures;
-          for(const auto& path:fresh){
+          for(const auto& path:paths){
             auto ext=std::filesystem::u8path(path).extension().wstring();std::transform(ext.begin(),ext.end(),ext.begin(),[](wchar_t c){return std::towlower(c);});
             if(ext==L".msext"){if(!failures.empty())failures+=U"\n";failures+=unicodeText(path)+U"：原生扩展包安装尚未迁移。";continue;}
             openPath(std::filesystem::u8path(path));
