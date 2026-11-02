@@ -2515,6 +2515,8 @@ bool Document::commitFloatingPaste(){
  std::size_t extra=0;if(f.beforeSelection)floatingAddBytes(extra,f.beforeSelection->mask.size());if(selection_)floatingAddBytes(extra,selection_->mask.size());
  if(f.beforeCelTimeline)floatingAddBytes(extra,adjustmentStorageBudget(timeline_,1));else for(const auto& target:f.targets)floatingAddBytes(extra,std::uint64_t(target.preview.size())*sizeof(Delta));checkFloatingBudget(f,extra);
  Edit e{{},state_,nextState_};e.beforeActive=e.afterActive=f.layerId;e.beforeFrame=e.afterFrame=f.frameId;e.pixelSelectionEdit=true;e.beforePixelsSelection=f.beforeSelection;e.afterPixelsSelection=selection_;
+ // Legacy historyEntryWithAnimationSelection restores document editing on both sides.
+ if(f.beforeCelTimeline)e.maskContext=std::make_shared<Edit::MaskContextHistory>(Edit::MaskContextHistory{{},{},false,false});
  if(f.beforeCelTimeline&&f.beforeCelTimeline->frames.size()==timeline_.state().frames.size()){
   const bool pixelsChanged=std::any_of(f.targets.begin(),f.targets.end(),[](const auto& target){return std::any_of(target.preview.begin(),target.preview.end(),[](const auto& entry){return entry.second.before!=entry.second.after;});});
   if(!pixelsChanged){const bool selectionChanged=!selectionEqual(f.beforeSelection,selection_);e.documentChanged=false;e.afterState=state_;floating_.reset();if(selectionChanged)pushEdit(std::move(e),U"变换选区内容");return false;}

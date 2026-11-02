@@ -453,3 +453,13 @@
 八组同／跨工程、图层／组蒙版和隔离开／关场景，检查Undo后进入旧蒙版，重复Redo恢复文档编辑及粘贴内容；实际笔画落到Cel、原蒙版保持，保存重开与该笔画独立Undo。未执行实际UI操作验收。
 
 本批实际结果：八组新增场景及既有 `free-tile-project-tests`、唯一正式Release构建、542文件来源覆盖及diff检查通过；未执行实际UI操作验收。
+
+## 后续补齐：选区Cel粘贴历史的蒙版编辑上下文（2026-11-02）
+
+旧版 `workspace-commands-selection-floating.ts::commitFloatingPaste` 的pending.layers分支，对像素变更历史和仅选区变化历史均使用 `workspace-animation-selection-history.ts::historyEntryWithAnimationSelection`，恢复提交前后的编辑目标。提交时是文档编辑，因此用户随后进入蒙版再Undo／Redo，历史应恢复文档编辑而非保留后来进入的蒙版。
+
+原生选区Cel粘贴的时间轴历史及无像素变化分支均未捕获此目标。本批仅对带beforeCelTimeline的Cel选区粘贴，复用现有 `Edit::MaskContextHistory` 的空文档上下文，Undo和Redo均退出后来进入的蒙版及隔离。不改普通像素或蒙版自身的浮动路径；完全无变化不新增历史的逻辑保持。
+
+八组像素变化／仅选区变化、图层／组蒙版和隔离开／关场景，两侧都实际进入蒙版后反复Undo／Redo，检查编辑目标、选区、像素、仅选区历史的dirty分类，以及真实后续笔画写入Cel、原蒙版保持和保存重开。未执行实际UI操作验收。
+
+本批实际结果：八组新增场景及既有 `free-tile-project-tests`、唯一正式Release构建、542文件来源覆盖和diff检查通过；未执行实际UI操作验收。
