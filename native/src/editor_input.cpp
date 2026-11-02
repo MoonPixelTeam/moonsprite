@@ -121,7 +121,34 @@ bool Editor::onProcessMessage(ui::Message* msg) {
 
     if(pending_==Pending::Saving && (dynamic_cast<ui::MouseMessage*>(msg) || dynamic_cast<ui::KeyMessage*>(msg) || dynamic_cast<ui::DndMessage*>(msg)))return true;
 
-    if(msg->type()==ui::kDragEnterMessage || msg->type()==ui::kDragMessage || msg->type()==ui::kDropMessage){auto& event=static_cast<ui::DndMessage*>(msg)->event();if(handleBrushLibraryDrop(event,msg->type()==ui::kDropMessage)||handleTimelineGifDrag(event,msg->type()==ui::kDropMessage)){if(msg->type()==ui::kDragEnterMessage)static_cast<ui::DragEnterMessage*>(msg)->widget(this);if(msg->type()==ui::kDragMessage)static_cast<ui::DragMessage*>(msg)->widget(this);return true;}}
+    if(msg->type()==ui::kDragEnterMessage || msg->type()==ui::kDragMessage || msg->type()==ui::kDropMessage){
+      auto& event=static_cast<ui::DndMessage*>(msg)->event();const bool drop=msg->type()==ui::kDropMessage;
+      const auto claim=[&]{if(msg->type()==ui::kDragEnterMessage)static_cast<ui::DragEnterMessage*>(msg)->widget(this);if(msg->type()==ui::kDragMessage)static_cast<ui::DragMessage*>(msg)->widget(this);};
+      if(handleBrushLibraryDrop(event,drop)||handleTimelineGifDrag(event,drop)){claim();return true;}
+      // Legacy useAppDocumentIO: paths not claimed by a resource panel or a
+      // single-GIF timeline drop open as separate documents. Reuse openPath so
+      // existing dirty sessions, duplicate project tabs and read errors retain
+      // their normal lifecycle. Never replace the current document in-place.
+      auto data=event.dataProvider();if(pending_==Pending::None&&data&&data->contains(os::DragDataItemType::Paths)){
+        const auto paths=PatternBrushDropPaths{}.fresh(data->getPaths(),0);
+        if(!paths.empty()){
+          if(!event.sourceSupports(os::DropOperation::Copy)){event.dropResult(os::DropOperation::None);claim();return true;}
+          event.dropResult(os::DropOperation::Copy);claim();if(!drop)return true;
+          clearTimelineGifDrop();event.acceptDrop(true);
+          const auto fresh=brushLibraryDropPaths_.fresh(paths,std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now().time_since_epoch()).count());
+          std::u32string failures;
+          for(const auto& path:fresh){
+            auto ext=std::filesystem::u8path(path).extension().wstring();std::transform(ext.begin(),ext.end(),ext.begin(),[](wchar_t c){return std::towlower(c);});
+            if(ext==L".msext"){if(!failures.empty())failures+=U"\n";failures+=unicodeText(path)+U"：原生扩展包安装尚未迁移。";continue;}
+            openPath(std::filesystem::u8path(path));
+            if(pending_==Pending::OpenError){if(!failures.empty())failures+=U"\n";failures+=unicodeText(path)+U"："+openError_;resolve(false);}
+            else if(pending_!=Pending::None)break;
+          }
+          if(!failures.empty()){showSaveError(std::runtime_error(utf8Text(failures)));errorTitle_=U"无法打开拖入的文件";refresh();}
+          return true;
+        }
+      }
+    }
 
     if(msg->type()==ui::kKeyDownMessage || msg->type()==ui::kKeyUpMessage){
 

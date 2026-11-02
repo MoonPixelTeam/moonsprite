@@ -2100,3 +2100,5 @@ Paint／无主选实例的源像素删除仍未开放，剪切在这些场景只
 - 2026-11-02：GIF导入复用既有Edit和蒙版选择serial通知，按legacy捕获蒙版格选择及独立锚点；导入清空、Undo精确恢复、Redo清空，兼容显式null／首格／末格锚点，其他蒙版操作保留原末格规则。六组图层／组蒙版与三种锚点场景及既有 `free-tile-project-tests`、`attached-masks-tests` 通过；唯一正式Release构建、正式程序 `--timeline-gif-drop-check` 的两格首锚点重复历史检查、542文件来源覆盖及diff检查通过。详见[GIF蒙版选择与锚点历史](gif-import-geometry-20261101.md)。自动构造LAF拖放事件，未做人工资源管理器拖放或截图验收。
 
 - 2026-11-02：GIF导入解除对已有tilemap／free-tile图层的整体拒绝，按legacy ensureAnimationDocument补齐各类可编辑空槽，保留原共享资源、网格、实例、几何及元数据；特殊空槽实际Surface、grid存储和tileset像素计入既有工作预算，失败不改内容／历史。六组grid／free活动层与起点0／1／2、保存重开、两轮UndoRedo、继续绘制及稀疏大画布预算保护，连同既有 `free-tile-project-tests` 通过；正式Release构建、正式程序 `--timeline-gif-drop-check` 两组混合图层入口、542文件来源覆盖与diff检查通过。详见[混合图层GIF导入](gif-import-geometry-20261101.md)。仍限RGBA；自动构造LAF事件，未做人工OS拖放或截图验收。
+
+- 2026-11-02：桌面文件拖放按legacy useAppDocumentIO分流，单GIF命中时间轴导入，多个GIF及其他区域文件走既有openPath多工程生命周期；补齐普通文件投递入口，复用PatternBrushDropPaths的引号／空白／file URI规范化、同批去重及1000ms跨路由重复投递抑制。坏文件收集错误后继续其余文件，保留原dirty工程和已开成功文件，扩展包安装明确提示未迁移。正式Release构建、正式程序 `--timeline-gif-drop-check` 的多GIF／URI／重复投递／已开工程复用／部分失败保护及既有导入回归、542文件来源覆盖与diff检查通过。详见[桌面拖放路由](gif-import-geometry-20261101.md)。未人工拖放或截图验收，不扩大解码器和扩展兼容范围。

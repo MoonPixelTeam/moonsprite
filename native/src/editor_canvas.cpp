@@ -227,13 +227,15 @@ bool Editor::handleTimelineGifDrag(os::DragEvent& event,bool drop){
 
     const auto index=timelineGifDropIndex(event.position());auto data=event.dataProvider();if(!index || !data || !data->contains(os::DragDataItemType::Paths)){clearTimelineGifDrop();return false;}
 
-    const auto paths=data->getPaths();if(paths.empty() || !std::all_of(paths.begin(),paths.end(),[](const auto& path){auto ext=std::filesystem::u8path(path).extension().wstring();std::transform(ext.begin(),ext.end(),ext.begin(),[](wchar_t c){return std::towlower(c);});return ext==L".gif";})){clearTimelineGifDrop();return false;}
+    // Legacy document-drop-service normalizes/deduplicates before claimPaths;
+    // useAppDocumentIO claims the timeline only for a single GIF.
+    const auto paths=PatternBrushDropPaths{}.fresh(data->getPaths(),0);if(paths.empty() || !std::all_of(paths.begin(),paths.end(),[](const auto& path){auto ext=std::filesystem::u8path(path).extension().wstring();std::transform(ext.begin(),ext.end(),ext.begin(),[](wchar_t c){return std::towlower(c);});return ext==L".gif";}) || (drop&&paths.size()!=1)){clearTimelineGifDrop();return false;}
 
     if(!event.sourceSupports(os::DropOperation::Copy)){clearTimelineGifDrop();event.dropResult(os::DropOperation::None);return true;}
 
     event.dropResult(os::DropOperation::Copy);if(!drop){if(gifDropTargetIndex_!=index){gifDropTargetIndex_=index;invalidateTimelineGrid();}return true;}
 
-    clearTimelineGifDrop();try{for(const auto& path:paths){auto source=openGifAnimation(std::filesystem::u8path(path));if(document.importGifAnimationLayer(source,*index,&selectedMaskSlots_,&maskSelectionAnchor_)){selectedMaskSlots_.clear();maskSelectionAnchor_.reset();clearTimelineRowSelection();playing_=false;frameSelectionExplicit_=false;timelineSelectionIdentity_=document.identity();timelineSelectionGuidesVisible_=true;paletteFocused_=false;status_=U"GIF 已导入时间轴";}}}catch(const std::exception& error){status_=unicodeText(error.what());}refresh();event.acceptDrop(true);return true;
+    clearTimelineGifDrop();const auto fresh=brushLibraryDropPaths_.fresh(paths,std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now().time_since_epoch()).count());try{for(const auto& path:fresh){auto source=openGifAnimation(std::filesystem::u8path(path));if(document.importGifAnimationLayer(source,*index,&selectedMaskSlots_,&maskSelectionAnchor_)){selectedMaskSlots_.clear();maskSelectionAnchor_.reset();clearTimelineRowSelection();playing_=false;frameSelectionExplicit_=false;timelineSelectionIdentity_=document.identity();timelineSelectionGuidesVisible_=true;paletteFocused_=false;status_=U"GIF 已导入时间轴";}}}catch(const std::exception& error){status_=unicodeText(error.what());}refresh();event.acceptDrop(true);return true;
 
   }
 
