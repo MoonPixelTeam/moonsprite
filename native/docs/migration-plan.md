@@ -2088,3 +2088,5 @@ Paint／无主选实例的源像素删除仍未开放，剪切在这些场景只
 - 2026-11-02：整格 Cel 粘贴按旧版在图层／帧落点越界时直接拒绝，不抛出合法载荷映射异常；补齐图层重排后同工程当前偏移、跨工程冻结偏移，以及删除源图层／帧的锚点／非锚点拒绝。八组新增场景检查无副作用拒绝或成功后的像素、一次历史、保存重开和 Undo／Redo；`free-tile-project-tests`、`cel-selection-clipboard-tests` 与唯一正式 Release 构建通过。详见[图层重排边界与删除源拒绝](frame-clipboard-source-lifetime-20261101.md)。未执行实际 UI 操作验收。
 
 - 2026-11-02：整帧复制承接 legacy 的 selectedIds Set 筛选，用同一哈希集合处理帧筛选及复制 Cel／蒙版 ID 收集，减少每个对象反复扫描已选列表；保留时间轴输出顺序及原快照／关联处理。既有 `free-tile-project-tests`、唯一正式 Release 构建、542 文件来源覆盖及 diff 检查通过。详见[整帧复制选择集合](frame-clipboard-source-lifetime-20261101.md)。逐帧载荷扫描未调整，未执行耗时基准或实际 UI 验收。
+
+- 2026-11-02：普通同／跨工程整帧粘贴按 legacy 保留原图层行选择及 layerAnchor，继续复用原事务与历史；单帧／多帧选择规则、同工程蒙版行清理和 Undo 清空 Cel 选择保持。八组扩展场景覆盖单／多图层行、一次历史、Undo／Redo、重复 Undo、原像素及保存重开；`free-tile-project-tests`、唯一正式 Release 构建、542 文件来源覆盖与 diff 检查通过。详见[整帧粘贴保留图层选择](frame-clipboard-source-lifetime-20261101.md)。特殊资源路径未扩展，未做实际 UI 验收。

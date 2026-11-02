@@ -529,3 +529,11 @@
 旧版 `workspace-commands-animation-frame-clipboard.ts::copySelectedAnimationFrames` 先建立 selectedIds Set，再按时间轴顺序筛选帧。原生此前在帧筛选、复制 Cel ID 和蒙版 ID 收集时逐项扫描选择列表。本批复用一个 `unordered_set` 处理三处成员判断；帧输出仍取时间轴顺序，载荷与关联快照逻辑保持原状。逐帧载荷扫描仍存在，不声明完整复制路径已变为线性复杂度，未进行耗时基准或实际 UI 验收。
 
 本批实际结果：既有 `free-tile-project-tests`（含帧复制内容／结构快照、运行时共享源与跨工程粘贴回归）、唯一正式 Release 构建、542 文件来源覆盖及 diff 检查通过。未新增测试、未进行耗时基准或实际 UI 操作验收。
+
+## 后续补齐：整帧粘贴保留图层行选择（2026-11-02）
+
+旧版 `workspace-commands-animation-frame-clipboard.ts` 跨工程 applyInserted／restore／redo 与同工程 selectInsertedItems／restoreInserted／reapplyInserted 只调整帧、Cel及相关蒙版选择，不清空 selectedLayerIds 或图层选择锚点。原生普通同／跨工程的粘贴后 TimelineSelection 此前整体置空，导致图层行选择丢失。
+
+本批保留普通粘贴前的 layers／layerAnchor，复用原事务及历史快照；不改变单帧／多帧的帧与Cel选择规则，保持同工程蒙版行清理和Undo清空Cel选择。特殊资源路径不扩大。扩展既有八组同／跨工程、一／两复制帧、单／多图层行及Cel选择场景，检查成功、Undo／Redo、重复Undo、原像素及保存重开。未执行实际UI操作验收。
+
+本批实际结果：扩展后的八组图层行选择场景及既有 `free-tile-project-tests`、唯一正式 Release 构建、542 文件来源覆盖和 diff 检查通过。未执行实际 UI 操作验收。
