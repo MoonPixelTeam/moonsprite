@@ -473,3 +473,13 @@
 原八组同／跨工程、图层／组蒙版和隔离开／关回归扩展为Undo前也进入蒙版，检查撤销恢复原像素并退出蒙版，Redo恢复粘贴像素并退出蒙版；沿用重复历史、原蒙版保持、实际笔画及保存重开检查。未执行实际UI操作验收。
 
 本批实际结果：扩展后的八组双侧上下文场景及既有 `free-tile-project-tests`、唯一正式Release构建、542文件来源覆盖和diff检查通过；未执行实际UI操作验收。
+
+## 后续补齐：整格Cel粘贴的帧选择与锚点（2026-11-02）
+
+旧版 `workspace-commands-animation-cel-clipboard.ts::pasteCrossDocumentAnimationCels` 清空帧选择和帧选择锚点；同工程 `pasteAnimationCels` 保留它们。两者通过 `historyEntryWithAnimationSelection` 恢复各自的前后快照。原生此前一律清空帧选择，却留下帧锚点，历史也未记录该锚点。
+
+本批根据crossDocument区分结果，复用既有Edit的before／afterSelection与before／afterFrameAnchor；成功粘贴、Undo和Redo使用一致的状态。没有添加新选择模型或改变单元格落点映射。
+
+八组同／跨工程、原单／多帧选择、追加／不追加场景，验证初次结果及重复历史中的帧选择、帧锚点、Cel选择和帧结构；Undo／Redo前刻意改动锚点，确认历史覆盖后来状态；保存重开检查内容结构。未执行实际UI操作验收。
+
+本批实际结果：八组新增场景及既有 `free-tile-project-tests`、`cel-selection-clipboard-tests`、唯一正式Release构建、542文件来源覆盖和diff检查通过；未执行实际UI操作验收。
