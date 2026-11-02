@@ -1,3 +1,4 @@
+#include "image_sequence_dialog.h"
 #include "editor_implementation.h"
 #include "editor.h"
 #include "free_tile_instances_panel.h"
@@ -6104,6 +6105,22 @@ void Editor::smokeTimelineGifDrop(){
     });
     chooseProject();cancelChooser.join();if(!chooserError.empty())throw std::runtime_error(chooserError);if(!inspected||pending_!=Pending::None||document.identity()!=chooserIdentity||document.historyPosition()!=chooserHistory||projects_.size()!=chooserCount||projectDocument(0).pixels()[2]!=0xff765432)throw std::runtime_error("Canceling native chooser changed existing project state");
 
+    // Real sequence dialog controls and decoder, with test-owned preferences.
+    const auto sequenceA=fixtureRoot/"sequence001.png",sequenceB=fixtureRoot/"sequence002.png";
+    writeExportBytesAtomic(sequenceA,encodeRgbaImagePng(2,1,{0x80443322,0xff112233}).png);
+    writeExportBytesAtomic(sequenceB,encodeRgbaImagePng(2,1,{0xffaabbcc,0}).png);
+    const auto sequencePreference=fixtureRoot/("sequence-settings-"+std::to_string(GetTickCount64())+".txt");
+    const auto beforeSequence=projects_.size();int sequenceAdds=0,sequenceErrors=0,sequenceAsks=0;
+    image_sequence::Host sequenceHost;sequenceHost.open=[this](const std::string& path){openPath(std::filesystem::u8path(path));return pending_==Pending::None;};
+    sequenceHost.add=[this,&sequenceAdds](Document value){++sequenceAdds;addProject(std::move(value));};sequenceHost.error=[&sequenceErrors](const std::string&){++sequenceErrors;};
+    openImageSequenceDocuments(font_,skin_,toolIcons_,display(),bounds(),sequencePreference,{sequenceB.u8string(),sequenceA.u8string()},sequenceHost,[&](ImageSequenceDialog& dialog){++sequenceAsks;writeSmokeFrame(dialog.display()->nativeSurface().get(),assets_.parent_path()/"image-sequence-dialog.bmp");dialog.smoke(image_sequence::Choice::Animation,{1,0},143);});
+    if(sequenceAdds!=1||sequenceAsks!=1||sequenceErrors||projects_.size()!=beforeSequence+1||!document.dirty()||!documentPath_.empty()||!document.sourceFilePath().empty()||document.name()!=U"sequence"||document.timeline().state().frames.size()!=2||document.timeline().state().frames[0].duration!=143||document.pixels()!=std::vector<Pixel>{0x80443322,0xff112233}||projectDocument(0).pixels()[2]!=0xff765432)throw std::runtime_error("Sequence dialog animation/source protection");
+    document.selectFrame(document.timeline().state().frames[1].id);if(document.pixels()!=std::vector<Pixel>{0xffaabbcc,0})throw std::runtime_error("Sequence animation second frame");
+    const auto sequenceIdentity=document.identity(),sequenceHistory=document.historyPosition();
+    openImageSequenceDocuments(font_,skin_,toolIcons_,display(),bounds(),sequencePreference,{sequenceA.u8string(),sequenceB.u8string()},sequenceHost,[&](ImageSequenceDialog& dialog){dialog.smoke(image_sequence::Choice::Cancel,{});});
+    if(sequenceAdds!=1||projects_.size()!=beforeSequence+1||document.identity()!=sequenceIdentity||document.historyPosition()!=sequenceHistory||sequenceErrors)throw std::runtime_error("Sequence dialog cancel changed active project");
+    openImageSequenceDocuments(font_,skin_,toolIcons_,display(),bounds(),sequencePreference,{sequenceA.u8string(),sequenceB.u8string()},sequenceHost,[&](ImageSequenceDialog& dialog){dialog.smoke(image_sequence::Choice::Separate,{1});});
+    if(projects_.size()!=beforeSequence+2||document.pixels()!=std::vector<Pixel>{0xffaabbcc,0}||!sameProjectPath(document.sourceFilePath(),sequenceB)||sequenceErrors)throw std::runtime_error("Sequence separate selected file");
     document=Document();clearTimelineGifDrop();refresh();
 
   }

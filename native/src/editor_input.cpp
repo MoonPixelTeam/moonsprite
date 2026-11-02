@@ -1,3 +1,4 @@
+#include "image_sequence_dialog.h"
 #include "free_tile_selection_target.h"
 #include "editor_implementation.h"
 #include "editor.h"
@@ -140,7 +141,7 @@ bool Editor::onProcessMessage(ui::Message* msg) {
       const auto claim=[&]{if(msg->type()==ui::kDragEnterMessage)static_cast<ui::DragEnterMessage*>(msg)->widget(this);if(msg->type()==ui::kDragMessage)static_cast<ui::DragMessage*>(msg)->widget(this);};
       if(handleBrushLibraryDrop(event,drop)||handleTimelineGifDrag(event,drop)){claim();return true;}
       // Legacy useAppDocumentIO: paths not claimed by a resource panel or a
-      // single-GIF timeline drop open as separate documents. Reuse openPath so
+      // single-GIF timeline drop use legacy sequence detection or separate documents. Reuse openPath so
       // existing dirty sessions, duplicate project tabs and read errors retain
       // their normal lifecycle. Never replace the current document in-place.
       auto data=event.dataProvider();if(pending_==Pending::None&&data&&data->contains(os::DragDataItemType::Paths)){
@@ -150,13 +151,16 @@ bool Editor::onProcessMessage(ui::Message* msg) {
           event.dropResult(os::DropOperation::Copy);claim();if(!drop)return true;
           clearTimelineGifDrop();event.acceptDrop(true);
           std::u32string failures;
-          for(const auto& path:paths){
+          image_sequence::Host host;
+          host.open=[this,&failures](const std::string& path){
             auto ext=std::filesystem::u8path(path).extension().wstring();std::transform(ext.begin(),ext.end(),ext.begin(),[](wchar_t c){return std::towlower(c);});
-            if(ext==L".msext"){if(!failures.empty())failures+=U"\n";failures+=unicodeText(path)+U"：原生扩展包安装尚未迁移。";continue;}
-            openPath(std::filesystem::u8path(path));
-            if(pending_==Pending::OpenError){if(!failures.empty())failures+=U"\n";failures+=unicodeText(path)+U"："+openError_;resolve(false);}
-            else if(pending_!=Pending::None)break;
-          }
+            if(ext==L".msext"){if(!failures.empty())failures+=U"\n";failures+=unicodeText(path)+U"：原生扩展包安装尚未迁移。";return false;}
+            openPath(std::filesystem::u8path(path));if(pending_!=Pending::OpenError)return pending_==Pending::None;
+            if(!failures.empty())failures+=U"\n";failures+=unicodeText(path)+U"："+openError_;resolve(false);return false;
+          };
+          host.add=[this](Document value){addProject(std::move(value));};
+          host.error=[&failures](const std::string& error){if(!failures.empty())failures+=U"\n";failures+=unicodeText(error);};
+          openImageSequenceDocuments(font_,skin_,toolIcons_,display(),bounds(),palettePreferencePath().parent_path()/"image-sequence-v1.txt",paths,std::move(host));
           if(!failures.empty()){showSaveError(std::runtime_error(utf8Text(failures)));errorTitle_=U"无法打开拖入的文件";refresh();}
           return true;
         }

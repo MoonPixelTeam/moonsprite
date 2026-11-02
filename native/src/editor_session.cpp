@@ -1,3 +1,4 @@
+#include "image_sequence_dialog.h"
 #include "aseprite_save_policy.h"
 #include "aseprite_io.h"
 #include "editor_implementation.h"
@@ -535,7 +536,12 @@ void Editor::chooseProject() {
       // The same batch failure policy as desktop drop: successful siblings
       // remain open, and a corrupt file does not discard later selections.
       std::u32string failures;
-      for(const auto& path:paths){openPath(path);if(pending_==Pending::OpenError){if(!failures.empty())failures+=U"\n";failures+=unicodeText(path.u8string())+U"："+openError_;resolve(false);}else if(pending_!=Pending::None)break;}
+      image_sequence::Host host;
+      host.open=[this,&failures](const std::string& path){openPath(std::filesystem::u8path(path));if(pending_!=Pending::OpenError)return pending_==Pending::None;if(!failures.empty())failures+=U"\n";failures+=unicodeText(path)+U"："+openError_;resolve(false);return false;};
+      host.add=[this](Document value){addProject(std::move(value));};
+      host.error=[&failures](const std::string& error){if(!failures.empty())failures+=U"\n";failures+=unicodeText(error);};
+      std::vector<std::string> sequencePaths;for(const auto& path:paths)sequencePaths.push_back(path.u8string());
+      openImageSequenceDocuments(font_,skin_,toolIcons_,display(),bounds(),palettePreferencePath().parent_path()/"image-sequence-v1.txt",sequencePaths,std::move(host));
       if(!failures.empty()){showSaveError(std::runtime_error(utf8Text(failures)));errorTitle_=U"无法打开选择的文件";refresh();}
     }
 
