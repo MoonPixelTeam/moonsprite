@@ -9,10 +9,10 @@
 | [FS-001](requirements/files.md#fs-001) | 新建、多工程与视图 | 保留能力，允许重设计入口；详尽分支/参数按证据确认 | 未实现 |
 | [FS-002](requirements/files.md#fs-002) | 打开与格式边界 | 保留能力；入口按旧版承接，详尽分支/参数按证据确认 | 部分承接，含[PSD 分层导入](../psd-import-20261103.md)；各格式边界见迁移记录 |
 | [FS-003](requirements/files.md#fs-003) | 保存、另存为与串行写入 | 保留能力，允许重设计入口；详尽分支/参数按证据确认 | 未实现 |
-| [FS-004](requirements/files.md#fs-004) | 原图片格式与有损结构提示 | 保留能力，允许重设计入口；详尽分支/参数按证据确认 | 未实现 |
+| [FS-004](requirements/files.md#fs-004) | 原图片格式与有损结构提示 | 保留能力；按旧版语义及实际格式边界承接 | 部分承接，含[PSD 原格式保存与兼容选择](../psd-export-20261103.md)；其余格式见迁移记录 |
 | [FS-005](requirements/files.md#fs-005) | 工程兼容与资源身份 | 保留能力，允许重设计入口；详尽分支/参数按证据确认 | 未实现 |
 | [FS-006](requirements/files.md#fs-006) | 恢复与本地回溯 | 保留能力，允许重设计入口；详尽分支/参数按证据确认 | 未实现 |
-| [FS-007](requirements/files.md#fs-007) | 导出与精灵表 | 保留能力，允许重设计入口；详尽分支/参数按证据确认 | 未实现 |
+| [FS-007](requirements/files.md#fs-007) | 导出与精灵表 | 保留能力；按旧版语义及实际格式边界承接 | 部分承接，含[PSD 当前帧分层导出](../psd-export-20261103.md)；其余格式见迁移记录 |
 | [FS-008](requirements/files.md#fs-008) | 缩时录制、便携与导出 | 保留能力，详尽分支/参数按证据确认 | 部分完成：录制、本地／便携、预览、清空确认、PNG／JPG 、[MP4](../timelapse-video-export-20261103.md) 与 [WebM 完整导出链路](../timelapse-webm-export-20261103.md)已接入；跨格式、长时间使用等剩余验收不标完成 |
 | [DR-001](requirements/drawing.md#dr-001) | 基础笔画与橡皮擦 | 保留能力，允许重设计入口；详尽分支/参数按证据确认 | 部分接入：[原生工具属性批次](../tool-options-migration-01.md)，其余笔刷语义待迁移 |
 | [DR-002](requirements/drawing.md#dr-002) | 图片笔刷与图案模式 | 保留能力，允许重设计入口；详尽分支/参数按证据确认 | 未实现 |

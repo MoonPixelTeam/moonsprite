@@ -270,7 +270,7 @@ void Editor::openImageResize(){if(pending_!=Pending::None||document.active())ret
 
 bool Editor::framePngBusy()const{return framePngSnapshot_.has_value()||framePngWorker_.valid();}
 
-bool Editor::supportedExportPreference(int index)const{return index==1||index==2||index==3||index==4||index==5||index==6||index==7;}
+bool Editor::supportedExportPreference(int index)const{return index==1||index==2||index==3||index==4||index==5||index==6||index==7||index==8;}
 
 void Editor::unsupportedExportPreference(){status_=U"默认导出格式尚未接入，请在首选项选择已支持格式";refresh();}
 
@@ -344,7 +344,7 @@ void Editor::openBmpExport(){openStaticExport();staticBmp_=true;discard_->captio
 
 void Editor::writeCurrentStaticExport(const std::filesystem::path& path){auto options=exportOptions_;options.protection=ExportProtection(runtimePreferences_.index("files.exportProtection.Select"));if(staticJpeg_){auto out=encodeStaticImageJpeg(document,options);writeExportBytesAtomic(path,out.bytes);}else if(staticSvg_){auto out=encodeStaticImageSvg(document,options);writeExportBytesAtomic(path,out.bytes);}else if(staticIco_){auto out=encodeStaticImageIco(document,options);writeExportBytesAtomic(path,out.bytes);}else if(staticBmp_){auto out=encodeStaticImageBmp(document,options);writeExportBytesAtomic(path,out.bytes);}else{auto out=encodeStaticImagePng(document,options);writeStaticImagePngAtomic(path,out);}}
 
-void Editor::openDocumentExport(){if(pending_!=Pending::None||document.active())return;if(restoreExportMemory())return;const int preferred=runtimePreferences_.index("files.exportFormat.Select");if(document.timeline().state().frames.size()>1&&preferred!=0){openGifExport();return;}if(preferred==3||preferred==5){openGifExport();gifWebp_=preferred==3;discard_->caption=gifWebp_?U"导出 WebP":U"导出 GIF";refresh();return;}if(!supportedExportPreference(preferred)){unsupportedExportPreference();return;}switchStaticExportFormat(preferred==2?5:preferred==4?3:preferred==6?1:preferred==7?2:4);}
+void Editor::openDocumentExport(){if(pending_!=Pending::None||document.active())return;if(restoreExportMemory())return;const int preferred=runtimePreferences_.index("files.exportFormat.Select");if(preferred==8){openAsepriteExport(true);return;}if(document.timeline().state().frames.size()>1&&preferred!=0){openGifExport();return;}if(preferred==3||preferred==5){openGifExport();gifWebp_=preferred==3;discard_->caption=gifWebp_?U"导出 WebP":U"导出 GIF";refresh();return;}if(!supportedExportPreference(preferred)){unsupportedExportPreference();return;}switchStaticExportFormat(preferred==2?5:preferred==4?3:preferred==6?1:preferred==7?2:4);}
 
 void Editor::setFrameSequenceFormat(FrameSequenceFormat format,bool automatic){const bool wasSvg=frameSvg_;frameJpeg_=format==FrameSequenceFormat::Jpeg;frameSvg_=format==FrameSequenceFormat::Svg;frameIco_=format==FrameSequenceFormat::Ico;frameBmp_=format==FrameSequenceFormat::Bmp;framePngAutomatic_=automatic;if(frameSvg_)gifOptions_.scalePercent=100;if(frameSvg_||wasSvg){gifInputs_[0]->suffix=frameSvg_?U"x":U"";gifInputs_[0]->setText(frameSvg_?"1":std::to_string(gifOptions_.scalePercent));}discard_->caption=frameSvg_?U"导出 SVG 序列":frameIco_?U"导出 ICO 序列":frameBmp_?U"导出 BMP 序列":U"导出 PNG 序列";refresh();}
 
@@ -436,11 +436,11 @@ void Editor::createExportComponents() {
 
     auto format=exportDropdown(exportFormatButton_);
 
-    format->setOptions({U"PNG RGBA",U"PNG 自动",U"GIF",U"BMP",U"ICO",U"SVG",U"JPEG",U"WebP",U"PSD · 未接入",U"ASE / ASEPRITE"});
+    format->setOptions({U"PNG RGBA",U"PNG 自动",U"GIF",U"BMP",U"ICO",U"SVG",U"JPEG",U"WebP",U"PSD",U"ASE / ASEPRITE"});
 
-    format->optionEnabled=[this](int i){return (i<8||i==9)&&!(pending_==Pending::GifExport&&framePngMode_&&(i==2||i==7||i==9));};
+    format->optionEnabled=[this](int i){return (i<=9)&&!(pending_==Pending::GifExport&&framePngMode_&&(i==2||i==7||i==8||i==9));};
 
-    format->changed=[this](int i){if(i==9){resolve(false);openAsepriteExport();return;}if(pending_==Pending::GifExport&&framePngMode_){setFrameSequenceFormat(i==6?FrameSequenceFormat::Jpeg:i==3?FrameSequenceFormat::Bmp:i==4?FrameSequenceFormat::Ico:i==5?FrameSequenceFormat::Svg:FrameSequenceFormat::Png,i==1);return;}if(i==2||i==7){switchAnimatedExportFormat(i==7);}else if(i==5)openSvgExport();else switchStaticExportFormat(i==6?5:i==1?4:i==3?1:i==4?2:0);};
+    format->changed=[this](int i){if(i==8||i==9){resolve(false);openAsepriteExport(i==8);return;}if(pending_==Pending::GifExport&&framePngMode_){setFrameSequenceFormat(i==6?FrameSequenceFormat::Jpeg:i==3?FrameSequenceFormat::Bmp:i==4?FrameSequenceFormat::Ico:i==5?FrameSequenceFormat::Svg:FrameSequenceFormat::Png,i==1);return;}if(i==2||i==7){switchAnimatedExportFormat(i==7);}else if(i==5)openSvgExport();else switchStaticExportFormat(i==6?5:i==1?4:i==3?1:i==4?2:0);};
 
     auto target=exportDropdown(exportLayerButton_);
 
@@ -817,7 +817,7 @@ void Editor::createPreferenceCatalogControls(){
 
       }else if(item.kind==preferences::Kind::Select){
 
-        auto field=new DialogBackground<PixelDropdown>(font_,skin_);configureDialogBackground(field);addChild(field);widget=field;field->setOptions(item.options);field->setSelectedIndex(item.selected);if(std::string(item.id)=="files.saveFormat.Select"){auto labels=item.options;for(int i=0;i<int(labels.size());++i)if(i!=0&&i!=7&&i!=8)labels[i]+=U" · 未接入";field->setOptions(std::move(labels));field->optionEnabled=[](int i){return i==0||i==7||i==8;};}if(std::string(item.id)=="files.exportFormat.Select"){auto labels=item.options;for(int i=0;i<int(labels.size());++i)if(!supportedExportPreference(i))labels[i]+=U" · 未接入";field->setOptions(std::move(labels));field->optionEnabled=[this](int i){return supportedExportPreference(i);};}
+        auto field=new DialogBackground<PixelDropdown>(font_,skin_);configureDialogBackground(field);addChild(field);widget=field;field->setOptions(item.options);field->setSelectedIndex(item.selected);if(std::string(item.id)=="files.saveFormat.Select"){auto labels=item.options;for(int i=0;i<int(labels.size());++i)if(i!=0&&i!=6&&i!=7&&i!=8)labels[i]+=U" · 未接入";field->setOptions(std::move(labels));field->optionEnabled=[](int i){return i==0||i==6||i==7||i==8;};}if(std::string(item.id)=="files.exportFormat.Select"){auto labels=item.options;for(int i=0;i<int(labels.size());++i)if(!supportedExportPreference(i))labels[i]+=U" · 未接入";field->setOptions(std::move(labels));field->optionEnabled=[this](int i){return supportedExportPreference(i);};}
 
         if(item.binding==12){field->changed=[this](int value){const double minutes[]{.5,1,2,5,10};preferenceDraft_.recovery.enabled=value!=0;if(value>0)preferenceDraft_.recovery.minutes=minutes[std::clamp(value-1,0,4)];layoutModal();invalidate();};}
 

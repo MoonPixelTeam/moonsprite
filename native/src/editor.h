@@ -1318,7 +1318,7 @@ public:
   Pending queuedSaveResume_=Pending::None;bool queuedSaveClose_=false;
   std::function<bool(OPENFILENAMEW*)> chooseSaveFile_=[](OPENFILENAMEW* dialog){return GetSaveFileNameW(dialog)!=FALSE;};
   std::function<int(bool,const std::vector<std::string>&)> asepriteSaveDecisionForSmoke_;
-  int confirmAsepriteSave(bool projectPreferred,const std::vector<std::string>& issues);
+  int confirmAsepriteSave(bool projectPreferred,const std::vector<std::string>& issues,bool psd=false);
 
 
   std::uint64_t savingIdentity_=0,savingRevision_=0,savingContentRevision_=0;
@@ -2312,7 +2312,7 @@ private:
 
   void writeCurrentStaticExport(const std::filesystem::path& path);
 
-  void openAsepriteExport();
+  void openAsepriteExport(bool psd=false);
   void openDocumentExport();
 
   void setFrameSequenceFormat(FrameSequenceFormat format,bool automatic=false);

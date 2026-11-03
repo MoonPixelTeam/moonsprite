@@ -25,3 +25,5 @@ WebM 构建工具固定为 NASM 2.16.03（BSD 2-Clause）和 GNU Make 4.4.1（GP
 2026-10-31：构建时从锁定laf的`os/win/window.cpp`生成保留版权头的副本，仅将WM_IME_CHAR的UTF16代理对合成从错误的按位OR改为加法；原缓存源码不修改。生成副本替代原编译单元，许可仍为laf MIT，详见[原生输入法接线](docs/text-input-ime-20261031.md)。
 
 2026-11-03：PSD 导入将旧版实际依赖 ag-psd 31.0.2 的 psdReader.ts、helpers.ts、additionalInfo.ts 中相关读取算法适配为有界 C++，应用不运行 JavaScript。MIT 版权与许可原文保留在 assets/licenses/ag-psd-LICENSE.txt，并随正式程序复制到 licenses。文档语义来自 legacy/core/psd.ts；未编译或链接 Aseprite 的 PSD 库。
+
+2026-11-03：PSD导出继续适配同一MIT ag-psd的 psdWriter.ts、descriptor.ts、helpers.ts，涉及文件结构、五类效果的action descriptor及PackBits RLE。许可沿用 assets/licenses/ag-psd-LICENSE.txt，应用不运行脚本。

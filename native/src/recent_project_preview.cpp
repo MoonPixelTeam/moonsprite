@@ -3,6 +3,7 @@
 #include "project_manifest.h"
 #include "project_import.h"
 #include "aseprite_io.h"
+#include "psd_import.h"
 #include "document.h"
 #include "image_export.h"
 #include <windows.h>
@@ -58,7 +59,7 @@ Preview readPreview(const Project& record,const std::filesystem::path& cacheDire
   else{std::lock_guard<std::mutex> lock(fallbackMutex());checkCanceled();auto imported=project::prepareEditableImport(project::readProjectManifest(bytes));PaletteState palette;palette.entries.clear();palette.slots=imported.palette.slots;palette.columns=imported.palette.columns;palette.nextId=imported.palette.nextId;for(const auto& entry:imported.palette.entries)palette.entries.push_back({entry.id,entry.name,entry.color});auto document=Document::fromImported(imported.width,imported.height,std::move(imported.timeline),std::move(palette),std::move(imported.id),std::move(imported.name),imported.sourceArchive);document.selectLayer(imported.activeLayerId);document.selectFrame(imported.activeFrameId);result.png=project::encodeProjectPreview(document);decode(result,result.png);}
  }else{
   std::lock_guard<std::mutex> lock(fallbackMutex());checkCanceled();
-  if(extension==".ase"||extension==".aseprite"){auto document=documentFromAseprite(decodeAseprite(source,file.stem().u32string()));result.width=document.width();result.height=document.height();result.png=project::encodeProjectPreview(document);decode(result,result.png);}
+  if(extension==".ase"||extension==".aseprite"||extension==".psd"){auto document=extension==".psd"?decodePsd(source,file.stem().u32string()):documentFromAseprite(decodeAseprite(source,file.stem().u32string()));result.width=document.width();result.height=document.height();result.png=project::encodeProjectPreview(document);decode(result,result.png);}
   else{decode(result,source,extension==".webp");encode(result);}
  }
  checkCanceled();need(std::filesystem::file_size(file)==sourceSize&&std::filesystem::last_write_time(file).time_since_epoch().count()==sourceTime,"Preview source changed during read");

@@ -1,6 +1,7 @@
 #include "editor_implementation.h"
 #include "editor.h"
 #include "aseprite_io.h"
+#include "psd_export.h"
 #include "aseprite_save_policy.h"
 #include "layer_compositor.h"
 #include "project_backup.h"
@@ -14,8 +15,8 @@ class AsepriteSaveDecisionDialog final:public PixelDialog {
  int height(int w)const{return DialogLayout::fit(DialogLayout::bodyTop+int(lines(w-12).size())*12);}
  void choose(int result){choice_=result;closeWindow(nullptr);}
 public:
- AsepriteSaveDecisionDialog(const PixelFont& f,const Skin& s,const Skin& icons,bool preferred,const std::vector<std::string>& issues):PixelDialog(s,"",ClickBehavior::DoNothingOnClick,EnterBehavior::DoNothingOnEnter),font_(f),skin_(s),projectPreferred_(preferred){setAutoRemap(false);setWantFocus(true);message_=preferred?U"首选项已关闭“沿用原格式保存”。是否另存为 .moonsprite 工程？原文件将保留。":U"当前工程包含 ASE 无法完整保留的内容。请选择保存方式：";if(!preferred)for(const auto& issue:issues){message_+=U'\n';if(issue=="editable")message_+=U"文字与瓦片内容会栅格化，失去原有编辑能力。";else if(issue=="effects")message_+=U"蒙版、裁剪或图层效果会烘焙，无法继续独立编辑。";else if(issue=="resources")message_+=U"工程笔刷、瓦片资源或切片定义不会完整保留。";else if(issue=="frameFlags")message_+=U"禁用帧状态或内容无法完整保留。";}
- auto add=[&](std::u32string label,int choice){auto button=new PixelButton(f,s,std::move(label),[this,choice]{choose(choice);});actions_.push_back(button);addChild(button);};add(U"另存为 MoonSprite（完整保留）",1);if(!preferred)add(U"仍保存为 ASE",2);add(U"取消",0);close_=new PixelButton(f,s,U"",[this]{choose(0);});close_->icon="close";close_->iconSkin=&icons;close_->skinStyle="icon_button";addChild(close_);}
+ AsepriteSaveDecisionDialog(const PixelFont& f,const Skin& s,const Skin& icons,bool preferred,const std::vector<std::string>& issues,bool psd):PixelDialog(s,"",ClickBehavior::DoNothingOnClick,EnterBehavior::DoNothingOnEnter),font_(f),skin_(s),projectPreferred_(preferred){setAutoRemap(false);setWantFocus(true);message_=preferred?U"首选项已关闭“沿用原格式保存”。是否另存为 .moonsprite 工程？原文件将保留。":psd?U"当前工程包含 PSD 无法完整保留的内容。请选择保存方式：":U"当前工程包含 ASE 无法完整保留的内容。请选择保存方式：";if(!preferred)for(const auto& issue:issues){message_+=U'\n';if(issue=="frames")message_+=U"PSD 只保存当前帧，其余动画帧不会保留。";else if(issue=="loops")message_+=U"动画循环段不会保留。";else if(issue=="timelapse")message_+=U"缩时记录不会保留。";else if(issue=="editable")message_+=U"文字与瓦片内容会栅格化，失去原有编辑能力。";else if(issue=="effects")message_+=U"蒙版、裁剪或图层效果会烘焙，无法继续独立编辑。";else if(issue=="resources")message_+=U"工程笔刷、瓦片资源或切片定义不会完整保留。";else if(issue=="frameFlags")message_+=U"禁用帧状态或内容无法完整保留。";}
+ auto add=[&](std::u32string label,int choice){auto button=new PixelButton(f,s,std::move(label),[this,choice]{choose(choice);});actions_.push_back(button);addChild(button);};add(U"另存为 MoonSprite（完整保留）",1);if(!preferred)add(psd?U"仍保存为 PSD":U"仍保存为 ASE",2);add(U"取消",0);close_=new PixelButton(f,s,U"",[this]{choose(0);});close_->icon="close";close_->iconSkin=&icons;close_->skinStyle="icon_button";addChild(close_);}
  int result()const{return choice_;}
  void smokeChoose(int choice){choose(choice==1?1:choice==2&&!projectPreferred_?2:0);}
  gfx::Size initialSize()const{return {width()*uiScale,height(width())*uiScale};}
@@ -25,7 +26,7 @@ public:
  bool onProcessMessage(ui::Message* msg)override{if(msg->type()==ui::kKeyDownMessage){auto code=static_cast<ui::KeyMessage*>(msg)->scancode();if(code==ui::kKeyEsc){choose(0);return true;}if(code==ui::kKeyEnter){choose(1);return true;}}return PixelDialog::onProcessMessage(msg);}
 };
 }
-int Editor::confirmAsepriteSave(bool projectPreferred,const std::vector<std::string>& issues){AsepriteSaveDecisionDialog popup(font_,skin_,toolIcons_,projectPreferred,issues);popup.setDisplay(display(),false);auto size=popup.initialSize();auto center=bounds().center();popup.setBounds({center.x-size.w/2,center.y-size.h/2,size.w,size.h});ui::Timer check(40,&popup);if(smoke_&&asepriteSaveDecisionForSmoke_){check.Tick.connect([&]{check.stop();popup.smokeChoose(asepriteSaveDecisionForSmoke_(projectPreferred,issues));});check.start();}popup.openWindowInForeground();requestFocus();refresh();return popup.result();}
+int Editor::confirmAsepriteSave(bool projectPreferred,const std::vector<std::string>& issues,bool psd){AsepriteSaveDecisionDialog popup(font_,skin_,toolIcons_,projectPreferred,issues,psd);popup.setDisplay(display(),false);auto size=popup.initialSize();auto center=bounds().center();popup.setBounds({center.x-size.w/2,center.y-size.h/2,size.w,size.h});ui::Timer check(40,&popup);if(smoke_&&asepriteSaveDecisionForSmoke_){check.Tick.connect([&]{check.stop();popup.smokeChoose(asepriteSaveDecisionForSmoke_(projectPreferred,issues));});check.start();}popup.openWindowInForeground();requestFocus();refresh();return popup.result();}
 
 void Editor::smokeAsepriteSaveLifecycle(){
  smoke_=true;homeOpen_=false;documentOpen_=true;pending_=Pending::None;queuedSaves_.clear();

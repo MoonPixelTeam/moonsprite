@@ -2,6 +2,7 @@
 #include "aseprite_save_policy.h"
 #include "aseprite_io.h"
 #include "psd_import.h"
+#include "psd_export.h"
 #include "editor_implementation.h"
 #include "editor.h"
 #include "timelapse_session.h"
@@ -373,7 +374,7 @@ void Editor::saveTick(){
   if(saveSnapshot_){
    if(!saveSnapshot_->advance(document,std::chrono::steady_clock::now()+std::chrono::milliseconds(2)))return;
    auto snapshot=std::move(*saveSnapshot_);saveSnapshot_.reset();const auto path=savingPath_;const auto backup=projectBackupPolicy();const bool ase=savingAseprite_;const bool portable=savingPortableTimelapse_;const auto recordingReader=document.recordingSession()?document.recordingSession()->reader():timelapse::Reader{};
-   saveWorker_=std::async(std::launch::async,[snapshot=std::move(snapshot),path,backup,ase,portable,recordingReader]()mutable{auto copy=snapshot.finish();if(portable){auto settings=copy.timelapseSettings();for(auto& frame:settings.snapshots){if(recordingReader)frame.data=recordingReader(frame);else if(frame.data.empty())throw std::runtime_error("Cannot carry unavailable recording frames");frame.local.reset();}copy.setImportedTimelapse(std::move(settings));}if(ase){auto bytes=encodeAseprite(copy,100);writeExportBytesAtomic(path,bytes);return project::EncodedProject{};}project::saveDocumentAtomic(copy,path,backup);return project::EncodedProject{copy.sourceArchive(),copy.projectId()};});return;
+   saveWorker_=std::async(std::launch::async,[snapshot=std::move(snapshot),path,backup,ase,portable,recordingReader]()mutable{auto copy=snapshot.finish();if(portable){auto settings=copy.timelapseSettings();for(auto& frame:settings.snapshots){if(recordingReader)frame.data=recordingReader(frame);else if(frame.data.empty())throw std::runtime_error("Cannot carry unavailable recording frames");frame.local.reset();}copy.setImportedTimelapse(std::move(settings));}if(ase){auto bytes=isPsdSavePath(path)?encodePsd(copy,100):encodeAseprite(copy,100);writeExportBytesAtomic(path,bytes);return project::EncodedProject{};}project::saveDocumentAtomic(copy,path,backup);return project::EncodedProject{copy.sourceArchive(),copy.projectId()};});return;
   }
   if(!saveWorker_.valid()||saveWorker_.wait_for(std::chrono::milliseconds(0))!=std::future_status::ready)return;
   auto result=saveWorker_.get();if(document.identity()!=savingIdentity_)throw std::runtime_error("Document changed during save");
@@ -395,7 +396,7 @@ void Editor::saveTick(){
 }
 
 bool Editor::savePath(const std::filesystem::path& path,bool background,bool sourceOnly) {
- const bool ase=isAsepriteSavePath(path);
+ const bool ase=isAsepriteSavePath(path)||isPsdSavePath(path);
 
     for(std::size_t i=0;i<projects_.size();++i)if(i!=activeProject_ && (sameProjectPath(path,projects_[i]->path)||sameProjectPath(path,projectDocument(i).sourceFilePath()))){showSaveError(std::runtime_error("该路径已由另一个打开的工程使用，请选择其它名称"));return false;}
 
@@ -445,34 +446,35 @@ bool Editor::saveProject(bool saveAs) {
  for(auto& picker:pickerColumns_)if(picker.picker)picker.picker->finishInteraction();cancelStroke();document.commitFloatingPaste();if(!flushTimelapse())return false;portableTimelapseSave_=false;
  auto target=documentPath_.empty()?document.sourceFilePath():documentPath_;
  const bool original=runtimePreferences_.flag("files.saveOriginalFormat");
- const bool sourceAse=isAsepriteSavePath(target);
+ bool psd=isPsdSavePath(target);const bool sourceAse=isAsepriteSavePath(target)||psd;
  if(!saveAs&&!document.dirty()&&!target.empty()&&(sourceAse?original:!documentPath_.empty())){status_=U"工程已保存";refresh();return true;}
  bool forceProject=!original&&(sourceAse||target.empty());
- if(forceProject&&!saveAs){if(confirmAsepriteSave(true,{})!=1)return false;}
+ if(forceProject&&!saveAs){if(confirmAsepriteSave(true,{},psd)!=1)return false;}
  std::vector<std::string> approved;
- auto confirm=[&]()->int{approved=asepriteSaveIssues(document);if(approved.empty())return 2;auto identity=document.identity();int choice=confirmAsepriteSave(false,approved);if(document.identity()!=identity||!asepriteApprovalCovers(approved,asepriteSaveIssues(document)))throw std::runtime_error("工程在格式确认期间发生变化，请重新保存。");return choice;};
+ auto confirm=[&]()->int{approved=psd?psdSaveIssues(document):asepriteSaveIssues(document);if(approved.empty())return 2;auto identity=document.identity();int choice=confirmAsepriteSave(false,approved,psd);if(document.identity()!=identity||!asepriteApprovalCovers(approved,psd?psdSaveIssues(document):asepriteSaveIssues(document)))throw std::runtime_error("工程在格式确认期间发生变化，请重新保存。");return choice;};
  try{
   if(!saveAs&&sourceAse&&!forceProject){int choice=confirm();if(!choice)return false;if(choice==2){if(target!=(documentPath_.empty()?document.sourceFilePath():documentPath_))throw std::runtime_error("保存目标在确认期间发生变化，请重试。");return savePath(target,false,documentPath_.empty());}forceProject=true;}
   if(!saveAs&&!forceProject&&!documentPath_.empty())return savePath(documentPath_);
-  bool ase=!forceProject&&(sourceAse||(target.empty()&&(runtimePreferences_.index("files.saveFormat.Select")==7||runtimePreferences_.index("files.saveFormat.Select")==8)));
+  bool ase=!forceProject&&(sourceAse||(target.empty()&&(runtimePreferences_.index("files.saveFormat.Select")==6||runtimePreferences_.index("files.saveFormat.Select")==7||runtimePreferences_.index("files.saveFormat.Select")==8)));
+  if(target.empty()&&ase)psd=runtimePreferences_.index("files.saveFormat.Select")==6;
   std::filesystem::path initial=target.empty()?std::filesystem::path(document.name()):target;
   if(initial.filename().empty())initial=L"未命名";
-  if(ase)initial=normalizedAsepriteSavePath(initial,runtimePreferences_.index("files.saveFormat.Select")==7?L".ase":L".aseprite");else initial.replace_extension(L".moonsprite");
+  if(ase)initial=psd?normalizedPsdSavePath(initial):normalizedAsepriteSavePath(initial,runtimePreferences_.index("files.saveFormat.Select")==7?L".ase":L".aseprite");else initial.replace_extension(L".moonsprite");
   if(ase){int choice=confirm();if(!choice)return false;if(choice==1){ase=false;initial.replace_extension(L".moonsprite");}}
   for(;;){
    wchar_t filename[32768]{};wcsncpy_s(filename,initial.c_str(),_TRUNCATE);
    OPENFILENAMEW dialog{};dialog.lStructSize=sizeof(dialog);dialog.hwndOwner=GetActiveWindow();dialog.lpstrFile=filename;dialog.nMaxFile=32768;
-   dialog.lpstrFilter=L"MoonSprite 工程\0*.moonsprite\0ASE / ASEPRITE 工程\0*.ase;*.aseprite\0\0";dialog.nFilterIndex=ase?2:1;dialog.lpstrDefExt=ase?L"aseprite":L"moonsprite";
+   dialog.lpstrFilter=L"MoonSprite 工程\0*.moonsprite\0ASE / ASEPRITE 工程\0*.ase;*.aseprite\0PSD 工程\0*.psd\0\0";dialog.nFilterIndex=ase?(psd?3:2):1;dialog.lpstrDefExt=ase?(psd?L"psd":L"aseprite"):L"moonsprite";
    auto preferred=std::filesystem::u8path(runtimePreferences_.get("files.saveDirectory.Text"));
    if(runtimePreferences_.index("files.saveLocationMode.Select")!=1){std::ifstream in(palettePreferencePath().parent_path()/"last-save-directory.txt",std::ios::binary);std::string value((std::istreambuf_iterator<char>(in)),{});if(!value.empty())preferred=std::filesystem::u8path(value);else preferred=target.parent_path();}
    if(!preferred.empty())dialog.lpstrInitialDir=preferred.c_str();dialog.Flags=OFN_EXPLORER|OFN_NOCHANGEDIR|OFN_PATHMUSTEXIST|OFN_OVERWRITEPROMPT;
    if(!chooseSaveFile_(&dialog)){if(CommDlgExtendedError())showSaveError(std::runtime_error("Cannot open save dialog"));return false;}
    std::filesystem::path path=filename;
-   bool selectedAse=dialog.nFilterIndex==2;
+   bool selectedPsd=dialog.nFilterIndex==3;bool selectedAse=dialog.nFilterIndex==2||selectedPsd;
    auto requested=path;
-   if(selectedAse)path=normalizedAsepriteSavePath(path,ase&&isAsepriteSavePath(initial)?initial.extension().c_str():L".aseprite");else if(path.extension()!=L".moonsprite"){auto lower=path.extension().wstring();std::transform(lower.begin(),lower.end(),lower.begin(),[](wchar_t c){return std::towlower(c);});if(lower!=L".moonsprite")path.replace_extension(L".moonsprite");}
+   if(selectedAse)path=selectedPsd?normalizedPsdSavePath(path):normalizedAsepriteSavePath(path,ase&&isAsepriteSavePath(initial)?initial.extension().c_str():L".aseprite");else if(path.extension()!=L".moonsprite"){auto lower=path.extension().wstring();std::transform(lower.begin(),lower.end(),lower.begin(),[](wchar_t c){return std::towlower(c);});if(lower!=L".moonsprite")path.replace_extension(L".moonsprite");}
    if(path!=requested&&std::filesystem::exists(path)){showSaveError(std::runtime_error("请选择完整文件名以确认覆盖目标。"));return false;}
-   if(selectedAse){if(!ase||!asepriteApprovalCovers(approved,asepriteSaveIssues(document))){int choice=confirm();if(!choice)return false;if(choice==1){ase=false;initial=path;initial.replace_extension(L".moonsprite");continue;}}return savePath(path,false,false);}
+   if(selectedAse){bool changedFormat=psd!=selectedPsd;psd=selectedPsd;if(!ase||changedFormat||!asepriteApprovalCovers(approved,psd?psdSaveIssues(document):asepriteSaveIssues(document))){int choice=confirm();if(!choice)return false;if(choice==1){ase=false;initial=path;initial.replace_extension(L".moonsprite");continue;}}return savePath(path,false,false);}
    if(saveAs&&!document.timelapseSettings().snapshots.empty()){const int choice=chooseTimelapsePortability();if(!choice)return false;portableTimelapseSave_=choice==2;}
    return savePath(path);
   }
