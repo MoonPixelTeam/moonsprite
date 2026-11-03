@@ -817,7 +817,7 @@ void Editor::createPreferenceCatalogControls(){
 
       }else if(item.kind==preferences::Kind::Select){
 
-        auto field=new DialogBackground<PixelDropdown>(font_,skin_);configureDialogBackground(field);addChild(field);widget=field;field->setOptions(item.options);field->setSelectedIndex(item.selected);if(std::string(item.id)=="files.saveFormat.Select"){auto labels=item.options;for(int i=0;i<int(labels.size());++i)if(i!=0&&i!=6&&i!=7&&i!=8)labels[i]+=U" · 未接入";field->setOptions(std::move(labels));field->optionEnabled=[](int i){return i==0||i==6||i==7||i==8;};}if(std::string(item.id)=="files.exportFormat.Select"){auto labels=item.options;for(int i=0;i<int(labels.size());++i)if(!supportedExportPreference(i))labels[i]+=U" · 未接入";field->setOptions(std::move(labels));field->optionEnabled=[this](int i){return supportedExportPreference(i);};}
+        auto field=new DialogBackground<PixelDropdown>(font_,skin_);configureDialogBackground(field);addChild(field);widget=field;field->setOptions(item.options);field->setSelectedIndex(item.selected);if(std::string(item.id)=="files.exportFormat.Select"){auto labels=item.options;for(int i=0;i<int(labels.size());++i)if(!supportedExportPreference(i))labels[i]+=U" · 未接入";field->setOptions(std::move(labels));field->optionEnabled=[this](int i){return supportedExportPreference(i);};}
 
         if(item.binding==12){field->changed=[this](int value){const double minutes[]{.5,1,2,5,10};preferenceDraft_.recovery.enabled=value!=0;if(value>0)preferenceDraft_.recovery.minutes=minutes[std::clamp(value-1,0,4)];layoutModal();invalidate();};}
 

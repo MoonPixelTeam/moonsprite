@@ -1,5 +1,6 @@
 #include <atomic>
 #include "image_export.h"
+#include "image_export_prepare.h"
 #include "layer_compositor.h"
 #include "cel_properties.h"
 #include "include/core/SkColorSpace.h"
@@ -22,7 +23,7 @@ std::u32string staticLayerExportStem(const Document& d,const std::string& layerI
  if(it==layers.end())return sanitize(d.name(),U"MoonSprite-export");auto index=std::to_string(it-layers.begin()+1);
  return sanitize(d.name(),U"MoonSprite-export")+U"-"+sanitize(it->name,U"layer-"+std::u32string(index.begin(),index.end()));
 }
-static StaticImageExport prepareStaticImage(const Document& d,StaticImageExportOptions options,bool bmp=false){
+StaticImageExport prepareStaticImage(const Document& d,StaticImageExportOptions options,bool bmp){
  if(d.active())throw std::runtime_error("Commit or cancel the active operation before exporting");
  CompositeRegion r{0,0,d.width(),d.height()};if(options.selection){if(!d.selection())throw std::runtime_error("No pixel selection to export");const auto& s=*d.selection();r={s.x,s.y,s.width,s.height};}
  if(!options.sliceId.empty()){if(options.selection||!options.layerId.empty())throw std::invalid_argument("Slice and other export targets are exclusive");const auto it=std::find_if(d.slices().begin(),d.slices().end(),[&](const auto& s){return s.id==options.sliceId;});if(it==d.slices().end())throw std::invalid_argument("Slice export target unavailable");const auto s=clampSliceRect(it->rect,d.width(),d.height());r={s.x,s.y,s.width,s.height};}
@@ -31,7 +32,7 @@ static StaticImageExport prepareStaticImage(const Document& d,StaticImageExportO
  const bool layerTarget=!options.layerId.empty()&&d.timeline().hasLayer(options.layerId);
  auto pixels=compositeNormalRegion(d.timeline(),d.frame().id,r,{},nullptr,0,0,0,false,layerTarget?options.layerId:std::string{});
  // Same direct RGBA bytes as legacy compositeRegion's single-layer fast path.
- if(d.timeline().state().groups.empty() && d.timeline().state().layers.size()==1){const auto& layer=d.timeline().state().layers.front();if(!timeline::styleVisible(layer.layerStyles)&&layer.visible&&layer.blendMode=="normal"&&frameCelOpacity(d.timeline(),layer,d.frame().id)==1){auto slot=d.timeline().findCel(layer.id,d.frame().id);auto resolved=d.timeline().resolveSurface(slot->id);if(resolved.surface){const auto& source=*resolved.surface;for(int y=0;y<r.height;++y)for(int x=0;x<r.width;++x){const int sx=r.x+x-source.offsetX,sy=r.y+y-source.offsetY;if(sx>=0&&sy>=0&&sx<source.width&&sy<source.height)pixels[std::size_t(y)*r.width+x]=source.pixels[std::size_t(sy)*source.width+sx];}}}}
+ if(d.timeline().state().groups.empty() && d.timeline().state().layers.size()==1){const auto& layer=d.timeline().state().layers.front();if(layer.kind.empty()&&!layer.clippingMask&&!timeline::resolvedMask(d.timeline().state(),layer.id,d.frame().id)&&!timeline::styleVisible(layer.layerStyles)&&layer.visible&&layer.blendMode=="normal"&&frameCelOpacity(d.timeline(),layer,d.frame().id)==1){auto slot=d.timeline().findCel(layer.id,d.frame().id);auto resolved=d.timeline().resolveSurface(slot->id);if(resolved.surface){const auto& source=*resolved.surface;for(int y=0;y<r.height;++y)for(int x=0;x<r.width;++x){const int sx=r.x+x-source.offsetX,sy=r.y+y-source.offsetY;if(sx>=0&&sy>=0&&sx<source.width&&sy<source.height)pixels[std::size_t(y)*r.width+x]=source.pixels[std::size_t(sy)*source.width+sx];}}}}
 
  // Worker common mode uses original document visible bounds before target isolation.
  if(options.trimCommon){if(auto visible=d.visibleContentBounds(false)){const int l=std::max(r.x,visible->x),t=std::max(r.y,visible->y),right=std::min(r.x+r.width,visible->x+visible->w),bottom=std::min(r.y+r.height,visible->y+visible->h);if(right>l&&bottom>t){const int w=right-l,h=bottom-t;std::vector<Pixel> crop(std::size_t(w)*h);for(int y=0;y<h;++y)std::copy_n(pixels.begin()+std::size_t(y+t-r.y)*r.width+l-r.x,w,crop.begin()+std::size_t(y)*w);pixels=std::move(crop);r={l,t,w,h};}}}
