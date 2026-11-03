@@ -37,6 +37,7 @@ struct ManifestGroup {
   std::optional<std::uint32_t> displayColor;
   bool clippingMask=false;
   std::optional<timeline::ColorOverlayStyle> layerStyles;
+  bool cumulativeBlend=false;
 };
 struct ManifestLoopSection {std::string id,name,startFrameId,endFrameId,direction="forward";std::optional<int> repeatCount;};
 struct ManifestCel {

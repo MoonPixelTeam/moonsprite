@@ -107,7 +107,8 @@ ReadManifest readProjectManifest(std::shared_ptr<const Bytes> bytes,Limits limit
       if(!parseLayerBlendMode(group.blendMode))out.unsupported.emplace_back("group blendMode="+group.blendMode);
       group.clippingMask=boolean(o,"clippingMask",false);
       group.layerStyles=readColorOverlay(o,out,group.id);
-      if(present(o,"adjustment")||boolean(o,"cumulativeBlend",false))out.unsupported.emplace_back("group effects "+group.id);
+      group.cumulativeBlend=boolean(o,"cumulativeBlend",false);
+      if(present(o,"adjustment"))out.unsupported.emplace_back("group effects "+group.id);
       fields(o,{"id","name","parentGroupId","visible","locked","opacity","blendMode","panelOrder","displayColor","description","clippingMask","layerStyles","adjustment","cumulativeBlend"},"group",out);out.groups.push_back(std::move(group));
     }
     // Decode each shared resource/geometry tuple once. Source archive preserves all other files.

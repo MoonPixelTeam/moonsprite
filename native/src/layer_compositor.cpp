@@ -74,7 +74,7 @@ std::vector<Pixel> compositeNormalRegion(const timeline::Timeline& timeline,cons
    else for(auto x=left;x<right;++x)out[dst+std::size_t(x-left)]=over(out[dst+std::size_t(x-left)],s.pixels[src+std::size_t(x-left)],opacity);
   }
  };
- if(std::any_of(state.layers.begin(),state.layers.end(),[](const auto& l){return layerStyleNeedsSampling(l.layerStyles);})||std::any_of(state.groups.begin(),state.groups.end(),[](const auto& g){return layerStyleNeedsSampling(g.layerStyles);})||std::any_of(state.layers.begin(),state.layers.end(),[](const auto& l){return l.clippingMask;})||std::any_of(state.groups.begin(),state.groups.end(),[](const auto& g){return g.clippingMask;}))return compositeClippingRegion(timeline,frameId,r,[&](auto i,auto tile,auto& pixels){renderLayer(i,tile,pixels,true);},maskPreview);
+ if(std::any_of(state.layers.begin(),state.layers.end(),[](const auto& l){return layerStyleNeedsSampling(l.layerStyles);})||std::any_of(state.groups.begin(),state.groups.end(),[](const auto& g){return layerStyleNeedsSampling(g.layerStyles);})||std::any_of(state.layers.begin(),state.layers.end(),[](const auto& l){return l.clippingMask;})||std::any_of(state.groups.begin(),state.groups.end(),[](const auto& g){return g.clippingMask||g.cumulativeBlend;}))return compositeClippingRegion(timeline,frameId,r,[&](auto i,auto tile,auto& pixels){renderLayer(i,tile,pixels,true);},maskPreview);
  if(!state.groups.empty())return compositeGroupedRegion(timeline,frameId,r,renderLayer,maskPreview);
  std::vector<Pixel> out(std::size_t(r.width)*r.height,0);for(const auto index:frameCompositeLayerOrder(timeline,frameId))renderLayer(index,r,out);
  return out;
@@ -116,7 +116,7 @@ std::vector<Pixel> compositeClippingOnionRegion(const timeline::Timeline& timeli
 }
 std::vector<Pixel> compositeOnionRegion(const timeline::Timeline& timeline,const std::string& frameId,const std::string& layerId,CompositeRegion region,const OnionSkinSettings& settings,const std::string& previewLayer,const std::vector<Pixel>* preview,int previewWidth,const timeline::AttachedMask* maskPreview){
  if(!settings.enabled || timeline.state().frames.size()<2)return compositeNormalRegion(timeline,frameId,region,previewLayer,preview,previewWidth,0,0,false,{},{},maskPreview);
- if(std::any_of(timeline.state().layers.begin(),timeline.state().layers.end(),[](const auto& l){return l.clippingMask||l.kind=="adjustment"||layerStyleNeedsSampling(l.layerStyles);})||std::any_of(timeline.state().groups.begin(),timeline.state().groups.end(),[](const auto& g){return g.clippingMask||layerStyleNeedsSampling(g.layerStyles);}))return compositeClippingOnionRegion(timeline,frameId,layerId,region,settings,previewLayer,preview,previewWidth,maskPreview);
+ if(std::any_of(timeline.state().layers.begin(),timeline.state().layers.end(),[](const auto& l){return l.clippingMask||l.kind=="adjustment"||layerStyleNeedsSampling(l.layerStyles);})||std::any_of(timeline.state().groups.begin(),timeline.state().groups.end(),[](const auto& g){return g.clippingMask||g.cumulativeBlend||layerStyleNeedsSampling(g.layerStyles);}))return compositeClippingOnionRegion(timeline,frameId,layerId,region,settings,previewLayer,preview,previewWidth,maskPreview);
  const auto* linkedPreviewSlot=previewLayer.empty()?nullptr:timeline.findCel(previewLayer,frameId);
  const auto linkedPreviewRoot=linkedPreviewSlot?timeline.resolveSurface(linkedPreviewSlot->id):timeline::Resolution{};
 

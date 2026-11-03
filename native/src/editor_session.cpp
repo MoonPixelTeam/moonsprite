@@ -1,6 +1,7 @@
 #include "image_sequence_dialog.h"
 #include "aseprite_save_policy.h"
 #include "aseprite_io.h"
+#include "psd_import.h"
 #include "editor_implementation.h"
 #include "editor.h"
 #include "timelapse_session.h"
@@ -296,7 +297,7 @@ void Editor::openPath(const std::filesystem::path& path) {
       const bool raster=ext==L".gif"||ext==L".png"||ext==L".jpg"||ext==L".jpeg"||ext==L".bmp"||ext==L".webp";
       auto restoreReport=std::make_shared<project::TimelapseRestoreReport>();
       DocumentLoadingDialog loading(font_,skin_,[path,ext,ase,raster,restoreReport]() -> Document {
-        if(ext==L".psd")throw std::runtime_error("PSD import is not migrated; the existing PSD capability is export only");
+        if(ext==L".psd")return openPsd(path);
         if(ase){auto candidate=openAseprite(path);candidate.setSourceFilePath(path);return candidate;}
         if(raster){auto candidate=ext==L".gif"?openGifAnimation(path):openRasterImage(path);candidate.setSourceFilePath(path);return candidate;}
         const project::Limits limits;
@@ -328,7 +329,7 @@ void Editor::openPath(const std::filesystem::path& path) {
       auto loaded=loading.run([this]{return pending_==Pending::None&&!document.strokeActive()&&!ui::Manager::getDefault()->getCapture();});
       // Another open may finish while this progress overlay is dismissed.
       ensureProjects();for(std::size_t i=0;i<projects_.size();++i){const auto& saved=i==activeProject_?documentPath_:projects_[i]->path;if(sameProjectPath(path,saved)||sameProjectPath(path,projectDocument(i).sourceFilePath())){activateProject(i);recordHomeRecent(path);return;}}
-      openCandidate_=std::move(loaded);candidatePath_=ase||raster?std::filesystem::path{}:path;
+      openCandidate_=std::move(loaded);candidatePath_=ase||raster||ext==L".psd"?std::filesystem::path{}:path;
       candidateRecovery_=false;ask(Pending::Open);
       if(ase)status_=U"已打开 ASE；沿用原格式保存时将保存回源文件。";
       if(restoreReport->droppedTimelapseFrames){status_=timelapseRestoreWarning(*restoreReport);refresh();}
@@ -542,9 +543,9 @@ void Editor::chooseProject() {
 
     // Legacy platform_dialogs.rs::open_files exposes the existing readers,
     // instead of restricting the chooser to the native project suffix.
-    // PSD is still an explicit native reader gap, not a supported filter.
+    // PSD follows the same candidate-document loading and error protection.
     dialog.lpstrTitle=L"打开文件";
-    dialog.lpstrFilter=L"当前支持的文件\0*.moonsprite;*.moonsprite.bak;*.ase;*.aseprite;*.png;*.jpg;*.jpeg;*.webp;*.bmp;*.gif\0Aseprite 工程\0*.ase;*.aseprite\0MoonSprite 工程与备份\0*.moonsprite;*.moonsprite.bak\0图片\0*.png;*.jpg;*.jpeg;*.webp;*.bmp;*.gif\0\0";
+    dialog.lpstrFilter=L"当前支持的文件\0*.moonsprite;*.moonsprite.bak;*.ase;*.aseprite;*.psd;*.png;*.jpg;*.jpeg;*.webp;*.bmp;*.gif\0Aseprite / PSD 工程\0*.ase;*.aseprite;*.psd\0MoonSprite 工程与备份\0*.moonsprite;*.moonsprite.bak\0图片\0*.png;*.jpg;*.jpeg;*.webp;*.bmp;*.gif\0\0";
     dialog.nFilterIndex=1;
 
     dialog.Flags=OFN_EXPLORER|OFN_NOCHANGEDIR|OFN_PATHMUSTEXIST|OFN_FILEMUSTEXIST|OFN_ALLOWMULTISELECT;

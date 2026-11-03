@@ -23,3 +23,5 @@ Fusion 官方源：[项目](https://github.com/TakWolf/fusion-pixel-font)、[固
 WebM 构建工具固定为 NASM 2.16.03（BSD 2-Clause）和 GNU Make 4.4.1（GPLv3+）；仅在 `.cache/video-tools` 构建时使用，不链接到应用，不随程序分发。下载 SHA256 固定在 `scripts/bootstrap-video.ps1`；构建生成的上游脚本副本保留原版权，只适配响应源列表、Windows 长命令、Unicode 路径和 XML 转义。libvpx／libwebm 的许可与专利授权原文随正式程序复制到 licenses。
 
 2026-10-31：构建时从锁定laf的`os/win/window.cpp`生成保留版权头的副本，仅将WM_IME_CHAR的UTF16代理对合成从错误的按位OR改为加法；原缓存源码不修改。生成副本替代原编译单元，许可仍为laf MIT，详见[原生输入法接线](docs/text-input-ime-20261031.md)。
+
+2026-11-03：PSD 导入将旧版实际依赖 ag-psd 31.0.2 的 psdReader.ts、helpers.ts、additionalInfo.ts 中相关读取算法适配为有界 C++，应用不运行 JavaScript。MIT 版权与许可原文保留在 assets/licenses/ag-psd-LICENSE.txt，并随正式程序复制到 licenses。文档语义来自 legacy/core/psd.ts；未编译或链接 Aseprite 的 PSD 库。

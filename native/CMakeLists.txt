@@ -122,6 +122,10 @@ if(MOONSPRITE_BUILD_APP)
   add_subdirectory("${DEPS}/zlib" deps/zlib EXCLUDE_FROM_ALL)
   add_library(moon-project-reader src/palette_image_import.cpp src/palette_adobe_import.cpp src/palette_import.cpp src/palette_library.cpp src/palette_clipboard.cpp src/animation_settings.cpp src/layer_quick_actions.cpp src/project_reader.cpp src/project_manifest.cpp src/project_import.cpp src/project_encode.cpp src/project_file.cpp src/project_preview.cpp src/image_export.cpp src/frame_png_export.cpp src/webp_export.cpp src/animation_layer_export.cpp src/background_preset_library.cpp src/sprite_sheet.cpp src/recovery_codec.cpp src/recovery_scheduler.cpp src/recovery_store.cpp src/recovery_catalog.cpp src/recovery_preferences.cpp)
   target_sources(moon-project-reader PRIVATE src/timelapse_library.cpp src/timelapse_images.cpp src/timelapse_video.cpp)
+  target_sources(moon-project-reader PRIVATE src/psd_import.cpp)
+  add_executable(psd-import-tests tests/psd_import_test.cpp)
+  target_link_libraries(psd-import-tests PRIVATE moon-project-reader)
+  add_test(NAME psd-import COMMAND psd-import-tests "${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/psd-import")
   set(MOON_VPX_ROOT "${DEPS}/libvpx-1.15.2")
   set(MOON_VPX_LIBRARY "${CMAKE_CURRENT_BINARY_DIR}/libvpx/x64/Release/vpxmt.lib")
   if(NOT EXISTS "${MOON_VPX_LIBRARY}")
@@ -474,6 +478,10 @@ if(MOONSPRITE_BUILD_APP)
     COMMAND "${MOON_POWERSHELL}" -NoProfile -File "${CMAKE_CURRENT_SOURCE_DIR}/scripts/ensure-native-app-integrity.ps1" -ExecutablePath "$<TARGET_FILE:moonsprite-native>"
     COMMAND ${CMAKE_COMMAND} -E copy_directory "${CMAKE_CURRENT_SOURCE_DIR}/assets" "$<TARGET_FILE_DIR:moonsprite-native>/assets"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different "${SKIA_DIR}/third_party/externals/icu/flutter/icudtl.dat" "$<TARGET_FILE_DIR:moonsprite-native>/icudtl.dat"
+    VERBATIM)
+  add_custom_command(TARGET moonsprite-native POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E make_directory "$<TARGET_FILE_DIR:moonsprite-native>/licenses"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different "${CMAKE_CURRENT_SOURCE_DIR}/assets/licenses/ag-psd-LICENSE.txt" "$<TARGET_FILE_DIR:moonsprite-native>/licenses/ag-psd-LICENSE.txt"
     VERBATIM)
   foreach(item IN ITEMS "aseprite/src/ui/LICENSE.txt" "laf/LICENSE.txt" "aseprite/src/observable/LICENSE.txt" "aseprite/third_party/fmt/LICENSE" "laf/clip/LICENSE.txt" "skia-m124/LICENSE" "skia-m124/third_party/externals/libwebp/COPYING" "skia-m124/third_party/externals/libwebp/PATENTS" "libvpx-1.15.2/LICENSE" "libvpx-1.15.2/PATENTS" "libvpx-1.15.2/third_party/libwebm/LICENSE.TXT" "libvpx-1.15.2/third_party/libwebm/PATENTS.TXT")
     string(REPLACE "/" "-" notice "${item}")

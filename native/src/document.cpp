@@ -772,7 +772,7 @@ void antiAliasTaskStorage(const Document::AntiAliasSurfaceTask& task){
 }
 bool antiAliasCompositeContextEqual(const timeline::Timeline& a,const timeline::Timeline& b){
  const auto& x=a.state();const auto& y=b.state();if(x.layers.size()!=y.layers.size()||x.cels.size()!=y.cels.size()||x.groups.size()!=y.groups.size())return false;
- for(std::size_t i=0;i<x.groups.size();++i){const auto& g=x.groups[i];const auto& h=y.groups[i];if(g.id!=h.id||g.parentGroupId!=h.parentGroupId||g.visible!=h.visible||g.locked!=h.locked||g.opacity!=h.opacity||g.blendMode!=h.blendMode||g.panelOrder!=h.panelOrder)return false;}
+ for(std::size_t i=0;i<x.groups.size();++i){const auto& g=x.groups[i];const auto& h=y.groups[i];if(g.id!=h.id||g.parentGroupId!=h.parentGroupId||g.visible!=h.visible||g.locked!=h.locked||g.opacity!=h.opacity||g.blendMode!=h.blendMode||g.cumulativeBlend!=h.cumulativeBlend||g.panelOrder!=h.panelOrder)return false;}
  for(std::size_t i=0;i<x.layers.size();++i){const auto& l=x.layers[i];const auto& r=y.layers[i];if(l.id!=r.id||l.groupId!=r.groupId||l.visible!=r.visible||l.locked!=r.locked||l.opacity!=r.opacity||l.blendMode!=r.blendMode)return false;}
  for(const auto& c:x.cels){const auto* d=b.findCelById(c.id);if(!d||c.layerId!=d->layerId||c.frameId!=d->frameId||c.linkedCelId!=d->linkedCelId||c.runtimeSharedCelId!=d->runtimeSharedCelId||c.opacity!=d->opacity||c.zIndex!=d->zIndex)return false;}
  return true;

@@ -60,6 +60,7 @@ struct Group {
   std::optional<double> panelOrder;std::optional<Pixel> displayColor;std::u32string description;
   bool clippingMask=false;
   std::optional<ColorOverlayStyle> layerStyles;
+  bool cumulativeBlend=false; // legacy PSD-import group backdrop semantics.
 };
 struct Frame {std::string id;int duration=100;bool disabled=false;};
 struct Surface {
