@@ -1,4 +1,5 @@
 #include "recent_project_preview.h"
+#include "image_file_signature.h"
 #include "project_preview.h"
 #include "project_manifest.h"
 #include "project_import.h"
@@ -53,14 +54,15 @@ Preview readPreview(const Project& record,const std::filesystem::path& cacheDire
  Preview result;
  if(!cacheDirectory.empty())try{std::lock_guard<std::mutex> lock(diskMutex());std::ifstream in(metadata,std::ios::binary);std::string version,path,mode;std::uintmax_t size=0;long long time=0;int width=0,height=0;if(in>>version>>std::quoted(path)>>size>>time>>width>>height>>mode&&version=="moon-preview-v1"&&path==record.path&&size==sourceSize&&time==sourceTime&&width>0&&height>0&&(mode=="rgba"||mode=="indexed"||mode=="grayscale")){result.width=width;result.height=height;result.colorMode=mode;result.png=readBytes(pngFile,32u*1024u*1024u);decode(result,result.png);checkCanceled();return result;}}catch(...){result={};}
  auto extension=file.extension().u8string();std::transform(extension.begin(),extension.end(),extension.begin(),[](unsigned char c){return char(std::tolower(c));});const auto source=readBytes(file,project::Limits{}.archiveBytes);checkCanceled();
- if(extension==".moonsprite"){
+ if(hasGifSignature(source.data(),source.size())){decode(result,source);encode(result);}
+ else if(extension==".moonsprite"){
   auto bytes=std::make_shared<const Bytes>(source);project::Archive archive(bytes);auto manifest=archive.read("manifest.json",project::Limits{}.manifestBytes);using namespace winrt::Windows::Data::Json;JsonObject root;need(JsonObject::TryParse(winrt::to_hstring(std::string(manifest.begin(),manifest.end())),root),"Cannot read project preview metadata");auto document=root.GetNamedObject(L"document");auto dimension=[&](const wchar_t* name){double value=document.GetNamedNumber(name);need(std::isfinite(value)&&value>=1&&std::floor(value)==value&&value<=2147483647,"Invalid project preview dimensions");return int(value);};result.width=dimension(L"width");result.height=dimension(L"height");result.colorMode=winrt::to_string(document.GetNamedString(L"colorMode"));need(result.colorMode=="rgba"||result.colorMode=="indexed"||result.colorMode=="grayscale","Invalid project preview color mode");
   if(archive.entries().count("preview.png")){result.png=archive.read("preview.png",32u*1024u*1024u);need(!result.png.empty(),"Project preview is empty");decode(result,result.png);}
   else{std::lock_guard<std::mutex> lock(fallbackMutex());checkCanceled();auto imported=project::prepareEditableImport(project::readProjectManifest(bytes));PaletteState palette;palette.entries.clear();palette.slots=imported.palette.slots;palette.columns=imported.palette.columns;palette.nextId=imported.palette.nextId;for(const auto& entry:imported.palette.entries)palette.entries.push_back({entry.id,entry.name,entry.color});auto document=Document::fromImported(imported.width,imported.height,std::move(imported.timeline),std::move(palette),std::move(imported.id),std::move(imported.name),imported.sourceArchive);document.selectLayer(imported.activeLayerId);document.selectFrame(imported.activeFrameId);result.png=project::encodeProjectPreview(document);decode(result,result.png);}
  }else{
   std::lock_guard<std::mutex> lock(fallbackMutex());checkCanceled();
   if(extension==".ase"||extension==".aseprite"||extension==".psd"){auto document=extension==".psd"?decodePsd(source,file.stem().u32string()):documentFromAseprite(decodeAseprite(source,file.stem().u32string()));result.width=document.width();result.height=document.height();result.png=project::encodeProjectPreview(document);decode(result,result.png);}
-  else{decode(result,source,extension==".webp");encode(result);}
+  else{decode(result,source,extension==".webp"&&!hasGifSignature(source.data(),source.size()));encode(result);}
  }
  checkCanceled();need(std::filesystem::file_size(file)==sourceSize&&std::filesystem::last_write_time(file).time_since_epoch().count()==sourceTime,"Preview source changed during read");
  if(!cacheDirectory.empty())try{std::lock_guard<std::mutex> lock(diskMutex());checkCanceled();std::filesystem::create_directories(cacheDirectory);writeExportBytesAtomic(pngFile,result.png);std::ostringstream text;text<<"moon-preview-v1\n"<<std::quoted(record.path)<<' '<<sourceSize<<' '<<sourceTime<<' '<<result.width<<' '<<result.height<<' '<<result.colorMode<<'\n';const auto value=text.str();writeExportBytesAtomic(metadata,{value.begin(),value.end()});}catch(...){}

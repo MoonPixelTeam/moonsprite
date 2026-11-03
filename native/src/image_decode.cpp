@@ -1,4 +1,5 @@
 #include "image_decode.h"
+#include "image_file_signature.h"
 #include "palette_extraction.h"
 #include "gif_import.h"
 #include <unordered_set>
@@ -16,6 +17,7 @@ void require(HRESULT hr){if(FAILED(hr))throw std::runtime_error("Cannot decode i
 struct Com {HRESULT hr=CoInitializeEx(nullptr,COINIT_APARTMENTTHREADED);Com(){if(hr!=RPC_E_CHANGED_MODE)require(hr);}~Com(){if(SUCCEEDED(hr))CoUninitialize();}};
 }
 Document openRasterImage(const std::filesystem::path& path){
+ if(hasGifFileSignature(path))return openGifAnimation(path);
  auto ext=path.extension().wstring();std::transform(ext.begin(),ext.end(),ext.begin(),[](wchar_t c){return std::towlower(c);});std::vector<Pixel> pixels;int w=0,h=0;
  if(ext==L".webp"){std::ifstream input(path,std::ios::binary);if(!input)throw std::runtime_error("Cannot read WebP image");std::vector<char> bytes((std::istreambuf_iterator<char>(input)),{});auto data=SkData::MakeWithCopy(bytes.data(),bytes.size());SkCodec::Result status;auto codec=SkWebpDecoder::Decode(std::move(data),&status);if(!codec)throw std::runtime_error("Cannot decode WebP image");w=codec->dimensions().width();h=codec->dimensions().height();if(w<1||h<1||w>1024||h>1024)throw std::runtime_error("Native editable images support 1..1024 pixels");pixels.resize(std::size_t(w)*h);auto info=SkImageInfo::Make(w,h,kRGBA_8888_SkColorType,kUnpremul_SkAlphaType,SkColorSpace::MakeSRGB());SkCodec::Options options;options.fFrameIndex=0;options.fZeroInitialized=SkCodec::kYes_ZeroInitialized;if(codec->getPixels(info,pixels.data(),w*4,&options)!=SkCodec::kSuccess)throw std::runtime_error("Invalid WebP image pixels");for(auto& p:pixels)if(!(p>>24))p=0;
  }else{

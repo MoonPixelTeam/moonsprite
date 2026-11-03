@@ -6,6 +6,7 @@
 #include "image_save.h"
 #include "image_decode.h"
 #include "gif_import.h"
+#include "native_document_open.h"
 #include "aseprite_save_policy.h"
 #include "layer_compositor.h"
 #include "project_backup.h"
@@ -84,6 +85,27 @@ void Editor::smokeAsepriteSaveLifecycle(){
   asepriteSaveDecisionForSmoke_=[](bool preferred,const auto&){if(!preferred)throw std::runtime_error("Disabled original raster save did not ask for project");return 0;};const auto beforeDisabled=read(layeredPath);saveProject(false);check(pending_==Pending::None&&documentPath_.empty()&&read(layeredPath)==beforeDisabled,"Disabled original raster preference cancel");
   runtimePreferences_.set("files.saveOriginalFormat","true");document=opaque();documentPath_.clear();const auto blockedImage=root/"blocked.png";std::filesystem::create_directory(blockedImage);document.setSourceFilePath(blockedImage);document.beginStroke({0,0},0xff123456);document.commitStroke();saveProject(false);saveProject(false);finish();
   check(pending_==Pending::OpenError&&document.dirty()&&documentPath_.empty()&&!queuedSaves_.empty(),"Raster failed commit falsely saved or discarded queue");resolve(false);document.setSourceFilePath(root/"retry.png");finish();check(pending_==Pending::None&&!document.dirty()&&std::filesystem::is_regular_file(root/"retry.png"),"Raster queued retry did not recover");
+  // legacy document-files.test.ts: chat-cache GIF data can carry any of the
+  // six static-image suffixes. Actual openPath must keep frames; subsequent
+  // saving follows the selected path's format and confirms still-frame loss.
+  auto chat=opaque();chat.setFrameDuration(120);chat.addFrame();chat.fillSelectionOrCanvas(0xffff0000);chat.setFrameDuration(240);const auto chatBytes=encodeAnimationGif(chat).bytes;
+  for(auto suffix:{L".png",L".jpg",L".jpeg",L".webp",L".bmp",L".gif"}){
+   const auto path=root/(std::wstring(L"chat-cache")+suffix);writeExportBytesAtomic(path,chatBytes);check(dispatchNativeDocumentPaths(*this,display()->nativeWindow(),{path.u8string()}),"Chat GIF document drop not accepted");
+   check(pending_==Pending::None&&documentPath_.empty()&&document.sourceFilePath()==path&&!document.dirty()&&document.timeline().state().frames.size()==2&&document.timeline().state().frames[0].duration==120&&document.timeline().state().frames[1].duration==240,"Chat GIF suffix lost frames on actual open");
+   const auto count=projects_.size(),identity=document.identity();openPath(path);check(projects_.size()==count&&document.identity()==identity,"Chat GIF duplicate open created another tab");
+   document.beginStroke({0,0},0xff00ff00);document.commitStroke();const auto before=read(path);const bool gif=saveImageFormat(path)==SaveImageFormat::Gif;int lossPrompts=0;
+   chooseSaveFile_=[](OPENFILENAMEW*){throw std::runtime_error("Chat GIF source unexpectedly opened Save As");return false;};
+   asepriteSaveDecisionForSmoke_=[&](bool preferred,const auto& issues){++lossPrompts;check(!preferred&&std::find(issues.begin(),issues.end(),"frames")!=issues.end(),"Chat GIF still-format loss missing");return 0;};
+   if(!gif){saveProject(false);check(lossPrompts==1&&pending_==Pending::None&&document.dirty()&&read(path)==before,"Chat GIF cancel did not protect original animation bytes");}
+   asepriteSaveDecisionForSmoke_=[&](bool,const auto& issues){++lossPrompts;check(!gif&&std::find(issues.begin(),issues.end(),"frames")!=issues.end(),"Chat GIF format confirmation mismatch");return 2;};saveProject(false);finish();
+   check(pending_==Pending::None&&!document.dirty()&&document.timeline().state().frames.size()==2&&document.sourceFilePath()==path&&documentPath_.empty(),"Chat GIF saving mutated live animation/source identity");
+   auto saved=gif?openGifAnimation(path):openRasterImage(path);check(saved.timeline().state().frames.size()==(gif?2:1),"Chat GIF save must obey actual output path format");
+  }
+  for(auto suffix:{L".ase",L".psd",L".cache"}){
+   const auto path=root/(std::wstring(L"signature-priority")+suffix);writeExportBytesAtomic(path,chatBytes);openPath(path);check(pending_==Pending::None&&documentPath_.empty()&&document.sourceFilePath()==path&&document.timeline().state().frames.size()==2,"GIF signature did not win structured/unknown suffix routing");
+  }
+  const auto badCache=root/"bad-chat.webp";writeExportBytesAtomic(badCache,{'G','I','F','8','9','a',1});const auto originalIdentity=document.identity(),originalHistory=document.historySize();const auto originalPixels=document.pixels();const auto originalCount=projects_.size();openPath(badCache);
+  check(pending_==Pending::OpenError&&document.identity()==originalIdentity&&document.historySize()==originalHistory&&document.pixels()==originalPixels&&projects_.size()==originalCount,"Corrupt chat GIF changed existing project");resolve(false);
   chooseSaveFile_=std::move(originalChooser);asepriteSaveDecisionForSmoke_=std::move(originalDecision);
   std::ofstream(root/"result.txt")<<"Actual ASE and raster source Save/SaveAs/default formats/queue/newer-generation/loss choices/preference cancel/failure retry passed. File chooser injected; compatibility dialog opened and selected via shared choice callback. ASE creates no project backups. Native preservation uses existing project save. No visual acceptance claimed.\n";refresh();
  }catch(...){chooseSaveFile_=std::move(originalChooser);asepriteSaveDecisionForSmoke_=std::move(originalDecision);throw;}

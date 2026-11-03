@@ -6,6 +6,7 @@
 #include "editor_implementation.h"
 #include "editor.h"
 #include "image_save.h"
+#include "image_file_signature.h"
 #include "save_format_dialog.h"
 #include "timelapse_session.h"
 #include "project_restore_report.h"
@@ -299,7 +300,9 @@ void Editor::openPath(const std::filesystem::path& path) {
       const bool ase=ext==L".ase"||ext==L".aseprite";
       const bool raster=ext==L".gif"||ext==L".png"||ext==L".jpg"||ext==L".jpeg"||ext==L".bmp"||ext==L".webp";
       auto restoreReport=std::make_shared<project::TimelapseRestoreReport>();
-      DocumentLoadingDialog loading(font_,skin_,[path,ext,ase,raster,restoreReport]() -> Document {
+      auto detectedGif=std::make_shared<bool>(false);
+      DocumentLoadingDialog loading(font_,skin_,[path,ext,ase,raster,restoreReport,detectedGif]() -> Document {
+        if(!raster&&hasGifFileSignature(path)){*detectedGif=true;return openGifAnimation(path);}
         if(ext==L".psd")return openPsd(path);
         if(ase){auto candidate=openAseprite(path);candidate.setSourceFilePath(path);return candidate;}
         if(raster){auto candidate=ext==L".gif"?openGifAnimation(path):openRasterImage(path);candidate.setSourceFilePath(path);return candidate;}
@@ -332,9 +335,9 @@ void Editor::openPath(const std::filesystem::path& path) {
       auto loaded=loading.run([this]{return pending_==Pending::None&&!document.strokeActive()&&!ui::Manager::getDefault()->getCapture();});
       // Another open may finish while this progress overlay is dismissed.
       ensureProjects();for(std::size_t i=0;i<projects_.size();++i){const auto& saved=i==activeProject_?documentPath_:projects_[i]->path;if(sameProjectPath(path,saved)||sameProjectPath(path,projectDocument(i).sourceFilePath())){activateProject(i);recordHomeRecent(path);return;}}
-      openCandidate_=std::move(loaded);candidatePath_=ase||raster||ext==L".psd"?std::filesystem::path{}:path;
+      openCandidate_=std::move(loaded);candidatePath_=ase||raster||ext==L".psd"||(*detectedGif&&ext!=L".moonsprite"&&ext!=L".bak")?std::filesystem::path{}:path;
       candidateRecovery_=false;ask(Pending::Open);
-      if(ase)status_=U"已打开 ASE；沿用原格式保存时将保存回源文件。";
+      if(ase&&!*detectedGif)status_=U"已打开 ASE；沿用原格式保存时将保存回源文件。";
       if(restoreReport->droppedTimelapseFrames){status_=timelapseRestoreWarning(*restoreReport);refresh();}
 
     } catch(const std::exception& e) {
