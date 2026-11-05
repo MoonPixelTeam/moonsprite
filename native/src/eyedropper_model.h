@@ -1,5 +1,6 @@
 #pragma once
 #include "layer_compositor.h"
+#include "raster_geometry.h"
 #include <optional>
 #include <stdexcept>
 
@@ -18,10 +19,8 @@ inline timeline::Pixel sampleEyedropper(const timeline::Timeline& timeline,
  if(resolved.issue!=timeline::LinkIssue::None)throw std::runtime_error("Eyedropper cannot resolve active cel");
  if(!resolved.surface)return 0;
  const auto& surface=*resolved.surface;
- if(surface.storageOriginX || surface.storageOriginY)throw std::runtime_error("Eyedropper sparse storage is not migrated");
- x-=surface.offsetX;y-=surface.offsetY;
- if(x<0 || y<0 || x>=surface.width || y>=surface.height)return 0;
- return surface.pixels.at(std::size_t(y)*surface.width+x);
+ raster::validate(surface);
+ return raster::readWorld(surface,x,y);
 }
 // Fixed target for a pointer gesture, mirroring sampleSecondary on sample-color.
 // Alt is an overlay, so release restores the selected tool without rewriting it.

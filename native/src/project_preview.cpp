@@ -15,7 +15,7 @@ Bytes encodeProjectPreview(const Document& d) {
   // centre sample, straight RGBA on transparency, no UI checkerboard.
   const auto scale=std::min(1.0,std::min(512.0/d.width(),512.0/d.height()));
   const int w=std::max(1,int(std::lround(d.width()*scale))),h=std::max(1,int(std::lround(d.height()*scale)));
-  const auto* surface=d.timeline().resolveSurface(d.cel().id).surface;
+  const auto* surface=d.activeSurfaceIfPresent();
   const bool direct=surface && surface->width==d.width() && surface->height==d.height() && !surface->offsetX && !surface->offsetY && d.timeline().state().groups.empty() && d.timeline().state().layers.size()==1 && !timeline::styleVisible(d.layer().layerStyles) && d.layer().visible && d.layer().blendMode=="normal" && frameCelOpacity(d.timeline(),d.layer(),d.frame().id)==1;
   const auto composed=direct?std::vector<Pixel>{}:compositeNormalRegion(d.timeline(),d.frame().id,{0,0,d.width(),d.height()});
   Bytes scan;scan.reserve((w*4+1)*h);

@@ -63,7 +63,8 @@ void validateFreeTileState(const State& s){
  }
 }
 }
-Timeline::Timeline(State state):state_(std::move(state)) {buildIndex();validateMasks(state_);validateTilemapState(state_);validateFreeTileState(state_);}
+Timeline::Timeline(State state,std::string preferredOwner):linkedDirtyOwner_(std::move(preferredOwner)),state_(std::move(state)) {buildIndex();validateMasks(state_);validateTilemapState(state_);validateFreeTileState(state_);}
+State Timeline::takeState() && {auto result=std::move(state_);*this=Timeline{};return result;}
 namespace {
 bool inheritedGroupFlag(const State& state,std::optional<std::string> id,bool visibility){std::size_t visited=0;while(id){if(++visited>state.groups.size())throw std::invalid_argument("Cyclic group ancestry");const auto found=std::find_if(state.groups.begin(),state.groups.end(),[&](const auto& g){return g.id==*id;});if(found==state.groups.end())throw std::invalid_argument("Unknown group ancestry");if(visibility&&!found->visible)return false;if(!visibility&&found->locked)return true;id=found->parentGroupId;}return visibility;}
 }

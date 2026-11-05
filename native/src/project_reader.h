@@ -20,6 +20,13 @@ class Archive {
 public:
   explicit Archive(std::shared_ptr<const Bytes> bytes,Limits limits={});
   const std::map<std::string,ZipEntry>& entries() const {return entries_;}
+  // Logical legacy zero-copy source after read() has validated the resource.
+  // Deflated entries own their inflated buffer and have no archive backing.
+  std::shared_ptr<const Bytes> storedBacking(const std::string& name) const {
+    const auto found=entries_.find(name);
+    if(found==entries_.end())throw Error(ErrorKind::Corrupt,"Missing project resource: "+name);
+    return found->second.method==0?bytes_:nullptr;
+  }
   Bytes read(const std::string& name,std::size_t limit) const;
 };
 // The dense destination preserves exact RGBA bytes, including transparent RGB.

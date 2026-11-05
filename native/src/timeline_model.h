@@ -61,6 +61,7 @@ struct Group {
   bool clippingMask=false;
   std::optional<ColorOverlayStyle> layerStyles;
   bool cumulativeBlend=false; // legacy PSD-import group backdrop semantics.
+  bool parentGroupIdPresent=true; // Decoded missing key differs from explicit null.
 };
 struct Frame {std::string id;int duration=100;bool disabled=false;};
 struct Surface {
@@ -136,7 +137,7 @@ public:
   std::string linkedStorageKey(const std::string& celId)const;
   bool hasLinkedLayers()const;void synchronizeLinkedLayers(const std::string& preferredOwner={});
   Timeline()=default;
-  explicit Timeline(State state);
+  explicit Timeline(State state,std::string preferredOwner={});
   // Deep value copy: pixels are independent between timelines; links retain IDs
   // and resolve to the copied timeline's own source. No cached raw pointers.
   Timeline(const Timeline& other);
@@ -144,6 +145,9 @@ public:
   Timeline(Timeline&&) noexcept=default;
   Timeline& operator=(Timeline&&) noexcept=default;
   const State& state() const {return state_;}
+  // Consume a temporary validated timeline without cloning its owned resources.
+  // Resets indexes/caches so the consumed timeline is an empty valid object.
+  State takeState() &&;
   const Cel* findCel(const std::string& layerId,const std::string& frameId) const;
   const Cel* findCelById(const std::string& celId) const;
   bool hasFrame(const std::string& frameId) const {return frames_.count(frameId)!=0;}

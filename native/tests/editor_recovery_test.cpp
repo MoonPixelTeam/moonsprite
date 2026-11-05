@@ -16,7 +16,7 @@ using namespace moon;
 #define CHECK(x) do{if(!(x))throw std::runtime_error(#x);}while(false)
 int wmain(int argc,wchar_t** argv){try{
  if(argc!=2)throw std::runtime_error("Owned fixture directory required");
- const std::filesystem::path root(argv[1]);std::filesystem::create_directories(root);
+ const std::filesystem::path root=std::filesystem::path(argv[1])/("run-"+std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));std::filesystem::create_directories(root);
  Document first(3,2),second(2,3);first.beginStroke({1,1},0xff123456);first.commitStroke();second.beginStroke({0,2},0xff654321);second.commitStroke();
  const auto identity=first.identity(),revision=first.revision(),history=first.historySize();const auto pixels=first.pixels();
  editor::RecoverySession a,b;recovery::Preferences settings;

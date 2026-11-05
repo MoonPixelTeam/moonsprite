@@ -14,6 +14,7 @@
 | libvpx | webmproject/libvpx v1.15.2，commit `d168454ecd099805c675d4a98c66f4891373302a` | BSD 3-Clause，保留 LICENSE 和 PATENTS；原生 VP9／VP8 视频编码，不修改上游源码 |
 | libwebm | 上述 libvpx 的 `third_party/libwebm`；上游来源 `3b630045052e1e4d563207ab9e3be8d137c26067` | BSD 3-Clause，保留 LICENSE.TXT、PATENTS.TXT；直接编译原封装库 |
 | Skia | aseprite/skia `m124-08a5439a6b` Windows Release x64 | BSD 及其第三方许可；含 FreeType、HarfBuzz、libpng、ICU。保留下载包 LICENSE 和 third_party 通知，发布前整理完整分发清单 |
+| Windows 系统 ICU | Windows SDK `icu.h` / `icu.lib`，运行时由 Windows 提供 | 本地历史路径身份通过系统 `u_strToLower` 适配旧版 JavaScript 按区域 Unicode 小写转换；没有复制或随程序分发 ICU DLL。该接口要求 Windows 10 1703 或更新系统 |
 | Fusion Pixel | TakWolf/fusion-pixel-font `2026.09.25`，10px monospaced zh_hans BDF | SIL OFL 1.1；原字体及完整 LICENSES/OFL.txt 在 assets/fonts，未修改字形。发布包 SHA256：4E0F328F55E07A971DEE491CADB5472FA71587D29C33042F799FA209EBE53E2A |
 
 Fusion 官方源：[项目](https://github.com/TakWolf/fusion-pixel-font)、[固定发布](https://github.com/TakWolf/fusion-pixel-font/releases/tag/2026.09.25)。`fusion-ascii.png` 仅为 laf 内部字符测量准备等高图集，由 `scripts/prepare-font.py` 从同一 BDF 原样排列；实际界面直接按 BDF 的字形边界、基线和前进宽度绘制。拉丁字符可以是 5px 前进宽度，中文通常为 10px，均属同一个 10px 字号；不拉伸成等宽方块。

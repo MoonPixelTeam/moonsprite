@@ -22,14 +22,14 @@ void Document::selectTimelineLayer(const std::string& id,int mode){
 // Cel range is additive; its anchor follows the last selected focus, as in legacy.
 void Document::selectTimelineCel(const std::string& id,int mode,const std::vector<std::string>& replacement){
  const auto* target=timeline_.findCelById(id);if(!target)return;if(freeTileInstanceView())setFreeTileInstanceView(false);selectedGroupIds_.clear();selectedGroupId_.reset();const auto layerId=target->layerId,frameId=target->frameId;
- const auto implicit=cel().id;commitFloatingPaste();clearFrameSelection();timelineSelection_.maskRows.clear();
+ const auto* implicitSlot=timeline_.findCel(activeLayerId_,activeFrameId_);const auto implicit=implicitSlot?implicitSlot->id:std::string{};commitFloatingPaste();clearFrameSelection();timelineSelection_.maskRows.clear();
  auto& selected=timelineSelection_.cels;
- if(mode && selected.empty())selected.push_back(implicit);
+ if(mode && selected.empty()&&!implicit.empty())selected.push_back(implicit);
  if(mode==1)toggle(selected,id);
- else if(mode==2){const auto* anchor=timeline_.findCelById(timelineSelection_.celAnchor.empty()?selected.back():timelineSelection_.celAnchor);
+ else if(mode==2){const auto* anchor=timeline_.findCelById(timelineSelection_.celAnchor.empty()?(selected.empty()?id:selected.back()):timelineSelection_.celAnchor);
   if(anchor){const auto& s=timeline_.state();const int r=int(timeline_.layerIndex(anchor->layerId)),t=int(timeline_.layerIndex(layerId)),c=int(timeline_.frameIndex(anchor->frameId)),d=int(timeline_.frameIndex(frameId));
    std::unordered_set<std::string> unique(selected.begin(),selected.end());
-   for(int row=std::min(r,t);row<=std::max(r,t);++row)for(int col=std::min(c,d);col<=std::max(c,d);++col){const auto key=timeline_.findCel(s.layers[row].id,s.frames[col].id)->id;if(unique.insert(key).second)selected.push_back(key);}}}
+   for(int row=std::min(r,t);row<=std::max(r,t);++row)for(int col=std::min(c,d);col<=std::max(c,d);++col){const auto* slot=timeline_.findCel(s.layers[row].id,s.frames[col].id);if(!slot)continue;const auto& key=slot->id;if(unique.insert(key).second)selected.push_back(key);}}}
  else{timelineSelection_.layers.clear();timelineSelection_.layerAnchor.clear();selected.clear();std::unordered_set<std::string> unique;for(const auto& key:replacement)if(timeline_.findCelById(key) && unique.insert(key).second)selected.push_back(key);if(unique.insert(id).second)selected.push_back(id);}
  timelineSelection_.celAnchor=contains(selected,id)?id:selected.empty()?std::string{}:selected.back();
  const auto* focus=timeline_.findCelById(timelineSelection_.celAnchor);selectLayer(focus?focus->layerId:layerId);selectFrame(frameId);

@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <limits>
 #include <optional>
+#include <memory>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -14,7 +15,11 @@ enum class Mode {Full,Smart};
 struct Reference {std::string store,chunk;std::uint64_t offset=0,length=0;std::uint32_t checksum=0;};
 inline bool safeId(const std::string& s){return !s.empty()&&s.size()<=100&&std::all_of(s.begin(),s.end(),[](unsigned char c){return (c>='a'&&c<='z')||(c>='A'&&c<='Z')||(c>='0'&&c<='9')||c=='-';});}
 inline bool validReference(const Reference& r){constexpr std::uint64_t safe=9007199254740991ULL;return safeId(r.store)&&safeId(r.chunk)&&r.length>0&&r.length<=32*1024*1024&&r.offset<=safe-r.length;}
-struct Frame {std::string id;double capturedAt=0,elapsedMs=0;int width=0,height=0;double changeScore=0;Bytes data;std::optional<Reference> local;};
+// Legacy stored ZIP entries are views of one backing ArrayBuffer. Native PNG
+// bytes remain independently owned for existing readers; retain that logical
+// backing identity for exact history costing. Replacing data must clear it.
+struct HistoryDataBacking {std::shared_ptr<const Bytes> buffer;std::size_t viewLength=0;};
+struct Frame {std::string id;double capturedAt=0,elapsedMs=0;int width=0,height=0;double changeScore=0;Bytes data;std::optional<Reference> local;std::optional<HistoryDataBacking> historyDataBacking;bool historyChangeScoreUndefined=false;std::vector<std::string> historyLocalKeys;};
 struct Settings {bool enabled=false,recordUndoSteps=false;Quality quality=Quality::Medium;int fps=12,speed=8;Mode mode=Mode::Smart;std::vector<Frame> snapshots;};
 inline void normalize(Settings& s){s.fps=std::clamp(s.fps,1,60);s.speed=std::clamp(s.speed,1,64);}
 inline int maximumDimension(Quality q){return q==Quality::Low?640:q==Quality::High?2400:1280;}

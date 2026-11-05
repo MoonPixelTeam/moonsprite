@@ -23,6 +23,81 @@ static Document fixture(int size,int layers,int frames){
   }
   return Document::fromImported(size,size,std::move(state),{},"benchmark",U"Benchmark",std::make_shared<const std::vector<std::uint8_t>>());
 }
+namespace moon {struct RasterHistoryFixture {
+ static void shadow(Document& d,int dx,int dy){auto state=d.timeline_.state();timeline::ColorOverlayStyle style;style.shadow.enabled=true;style.shadow.offsetX=dx;style.shadow.offsetY=dy;style.shadow.blur=1;state.layers.front().layerStyles=style;d.timeline_=timeline::Timeline(std::move(state));}
+ static void nestedShadow(Document& d){auto state=d.timeline_.state();timeline::ColorOverlayStyle style;style.shadow.enabled=true;style.shadow.offsetX=3;style.shadow.offsetY=2;style.shadow.blur=1;timeline::Group outer;outer.id="outer-shadow";outer.name=U"Outer";outer.layerStyles=style;timeline::Group inner;inner.id="inner-shadow";inner.name=U"Inner";inner.parentGroupId=outer.id;inner.layerStyles=style;state.layers.front().groupId=inner.id;state.groups={outer,inner};d.timeline_=timeline::Timeline(std::move(state));}
+ static void clipboardStack(Document& d,int mode){auto state=d.timeline_.state();auto& l=state.layers.front();l.opacity=.57;if(mode==1)l.blendMode="multiply";for(auto& c:state.cels)if(c.layerId==l.id)c.opacity=l.opacity;d.timeline_=timeline::Timeline(std::move(state));if(mode==2)d.selectLayer(d.timeline_.state().layers.back().id);}
+ static void effects(Document& d,int mode){auto state=d.timeline_.state();auto& l=state.layers.front();l.opacity=.63;
+  if(mode>=1){timeline::Group group;group.id="preview-group";group.name=U"Preview";group.opacity=.71;state.groups.push_back(group);l.groupId=group.id;}
+  if(mode>=2){timeline::MaskSlot m;m.ownerId=l.id;m.frameId=state.frames.front().id;m.mask.id="preview-mask";m.mask.surface.width=m.mask.surface.height=8;m.mask.surface.pixels.resize(64,0xff808080);state.masks.push_back(std::move(m));}
+  if(mode>=3){timeline::ColorOverlayStyle style;style.overlayEnabled=true;style.color=0x8066bb22;l.layerStyles=style;}
+  if(mode>=4){timeline::ColorOverlayStyle style;style.gradientEnabled=true;style.gradientFrom=0xff0000ff;style.gradientTo=0xffff0000;state.groups.front().layerStyles=style;}
+  if(mode>=5){auto& style=*state.groups.front().layerStyles;style.stroke.enabled=true;style.stroke.size=1;style.stroke.color=0xff00ff00;style.shadow.enabled=true;style.shadow.offsetX=1;style.shadow.offsetY=1;}
+  d.timeline_=timeline::Timeline(std::move(state));}
+ static void emptyActiveSlot(Document& d){auto state=d.timeline_.state();const auto layer=d.layer().id,frame=d.frame().id;state.cels.erase(std::remove_if(state.cels.begin(),state.cels.end(),[&](const auto& c){return c.layerId==layer&&c.frameId==frame;}),state.cels.end());d.timeline_=timeline::Timeline(std::move(state));}
+};}
+static void absentStrokeRenderOracle(){
+ for(int layers:{1,2})for(bool onion:{false,true}){
+  auto doc=fixture(8,layers,onion?2:1);RasterHistoryFixture::emptyActiveSlot(doc);CanvasRenderer renderer;OnionSkinSettings settings;settings.enabled=onion;renderer.setOnionSkin(settings,false);
+  auto displayed=[&](){renderer.sync(doc);auto output=os::instance()->makeRgbaSurface(8,8);ui::Graphics graphics(output);renderer.draw(graphics,{0,0,8,8},1,gfx::rgba(0,0,0),gfx::rgba(0,0,0));return output->getPixel(2,3);};
+  const auto before=displayed();doc.beginStroke({2,3},0xff123456);renderer.noteChange(doc);require(displayed()==gfx::rgba(0x56,0x34,0x12),"Absent-slot stroke invisible on canvas");require(!doc.timeline().findCel(doc.layer().id,doc.frame().id),"Rendering created a Cel");doc.cancelStroke();renderer.noteChange(doc);require(displayed()==before,"Absent-slot cancel retained preview");
+  doc.beginStroke({2,3},0xff123456);renderer.noteChange(doc);displayed();require(doc.commitStroke(),"Absent render commit failed");require(displayed()==gfx::rgba(0x56,0x34,0x12),"Committed absent stroke changed display");doc.undo();renderer.noteChange(doc);require(displayed()==before,"Absent render undo mismatch");doc.redo();renderer.noteChange(doc);require(displayed()==gfx::rgba(0x56,0x34,0x12),"Absent render redo mismatch");
+ }
+}
+static void absentEffectRenderOracle(){
+ for(int mode=0;mode<6;++mode)for(bool onion:{false,true}){
+  auto doc=fixture(8,2,onion?2:1);RasterHistoryFixture::effects(doc,mode);RasterHistoryFixture::emptyActiveSlot(doc);CanvasRenderer renderer;OnionSkinSettings settings;settings.enabled=onion;renderer.setOnionSkin(settings,false);
+  auto displayed=[&](CanvasRenderer& cache){cache.sync(doc);auto output=os::instance()->makeRgbaSurface(8,8);ui::Graphics graphics(output);cache.draw(graphics,{0,0,8,8},1,gfx::rgba(0,0,0),gfx::rgba(0,0,0));std::vector<Pixel> pixels;for(int y=0;y<8;++y)for(int x=0;x<8;++x)pixels.push_back(output->getPixel(x,y));return pixels;};
+  const auto before=displayed(renderer);doc.beginStroke({2,3},0xff123456);doc.updateStroke({5,4});renderer.noteChange(doc);const auto preview=displayed(renderer);require(preview!=before,"Effects hid absent stroke");require(doc.commitStroke(),"Effects stroke commit failed");CanvasRenderer fresh;fresh.setOnionSkin(settings,false);require(displayed(fresh)==preview,"Absent effects preview differs from committed composition");doc.undo();renderer.noteChange(doc);require(displayed(renderer)==before,"Effects undo differs from empty composition");
+ }
+}
+static void absentPasteRenderOracle(){
+ for(int mode=0;mode<6;++mode)for(bool onion:{false,true}){
+  auto doc=fixture(8,2,onion?2:1);RasterHistoryFixture::effects(doc,mode);RasterHistoryFixture::emptyActiveSlot(doc);CanvasRenderer cache;OnionSkinSettings settings;settings.enabled=onion;cache.setOnionSkin(settings,false);
+  auto displayed=[&](CanvasRenderer& renderer){renderer.sync(doc);auto output=os::instance()->makeRgbaSurface(8,8);ui::Graphics graphics(output);renderer.draw(graphics,{0,0,8,8},1,gfx::rgba(0,0,0),gfx::rgba(0,0,0));std::vector<gfx::Color> pixels;for(int y=0;y<8;++y)for(int x=0;x<8;++x)pixels.push_back(output->getPixel(x,y));return pixels;};
+  const auto before=displayed(cache);SelectionClipboard clip;clip.width=3;clip.height=2;clip.pixels={0xff123456,0x80123456,0,0xffabcdef,0,0xff667788};clip.mask={1,1,1,1,0,1};require(doc.beginFloatingPaste(clip,2,3),"Absent paste admission");const auto preview=displayed(cache);require(preview!=before&&!doc.activeSurfaceIfPresent(),"Absent paste overlay invisible or creates Cel");doc.cancelFloatingPaste();require(displayed(cache)==before,"Absent paste cancel leaves overlay");require(doc.beginFloatingPaste(clip,2,3),"Absent paste restart");auto transform=*doc.floatingTransform();transform.angle=30;doc.transformFloatingPaste(transform);const auto rotated=displayed(cache);require(doc.commitFloatingPaste(),"Absent paste commit");CanvasRenderer fresh;fresh.setOnionSkin(settings,false);require(displayed(fresh)==rotated&&displayed(cache)==rotated,"Absent paste preview/commit composition differs");doc.undo();cache.noteChange(doc);require(displayed(cache)==before,"Absent paste undo differs");doc.redo();cache.noteChange(doc);require(displayed(cache)==rotated,"Absent paste redo differs");
+ }
+}
+static void absentGradientRenderOracle(){
+ for(int mode=0;mode<6;++mode)for(bool onion:{false,true}){
+  auto doc=fixture(8,2,onion?2:1);RasterHistoryFixture::effects(doc,mode);RasterHistoryFixture::emptyActiveSlot(doc);doc.previewSelection(SelectionMask{1,1,6,5,{}});CanvasRenderer cache;OnionSkinSettings settings;settings.enabled=onion;cache.setOnionSkin(settings,false);
+  auto pixels=[&](CanvasRenderer& renderer){renderer.sync(doc);auto output=os::instance()->makeRgbaSurface(8,8);ui::Graphics g(output);renderer.draw(g,{0,0,8,8},1,gfx::rgba(43,73,111),gfx::rgba(43,73,111));std::vector<gfx::Color> result;for(int y=0;y<8;++y)for(int x=0;x<8;++x)result.push_back(output->getPixel(x,y));return result;};
+  const auto before=pixels(cache);GradientSpec spec;spec.start={1,1};spec.end={6,5};spec.first=0xff123456;spec.last=0x80776655;require(doc.beginGradient({2,2})&&doc.updateGradient(spec,{}),"Empty gradient preview failed");const auto preview=pixels(cache);require(preview!=before&&!doc.timeline().findCel(doc.layer().id,doc.frame().id),"Gradient preview missing or created Cel");doc.cancelGradient();require(pixels(cache)==before,"Gradient cancel retained effect");require(doc.beginGradient({2,2})&&doc.updateGradient(spec,{}),"Second empty gradient failed");require(pixels(cache)==preview,"Repeated gradient changed preview");require(doc.commitGradient(),"Empty gradient commit failed");CanvasRenderer fresh;fresh.setOnionSkin(settings,false);require(pixels(fresh)==preview&&pixels(cache)==preview,"Empty gradient preview differs from committed render");doc.undo();cache.noteChange(doc);require(pixels(cache)==before,"Empty gradient undo residual");doc.redo();cache.noteChange(doc);require(pixels(cache)==preview,"Empty gradient redo mismatch");
+ }
+}
+static void spatialDirtyOracle(){
+ for(int dx:{-3,3})for(int dy:{-2,2})for(bool nested:{false,true}){
+  Document doc(32,32);if(nested)RasterHistoryFixture::nestedShadow(doc);else RasterHistoryFixture::shadow(doc,dx,dy);CanvasRenderer cache;cache.sync(doc);const auto initial=cache.uploadedPixels();doc.beginStroke({16,16},0xff123456);cache.noteChange(doc);cache.sync(doc);
+  require(cache.uploadedPixels()-initial==(nested?std::uint64_t(9*7):std::uint64_t((std::abs(dx)+2)*(std::abs(dy)+2))),"Shadow dirty rectangle did not match legacy affected union");
+  auto pixels=[&](CanvasRenderer& renderer){renderer.sync(doc);auto output=os::instance()->makeRgbaSurface(32,32);ui::Graphics g(output);renderer.draw(g,{0,0,32,32},1,gfx::rgba(0,0,0),gfx::rgba(0,0,0));std::vector<gfx::Color> out;for(int y=0;y<32;++y)for(int x=0;x<32;++x)out.push_back(output->getPixel(x,y));return out;};
+  CanvasRenderer fresh;require(pixels(cache)==pixels(fresh),"Local shadow upload differs from full renderer");doc.cancelStroke();cache.noteChange(doc);CanvasRenderer cancelled;require(pixels(cache)==pixels(cancelled),"Local shadow cancel left residual pixels");
+ }
+}
+static void floatingEffectDirtyOracle(){
+ for(bool nested:{false,true}){
+  Document doc(320,320);if(nested)RasterHistoryFixture::nestedShadow(doc);else RasterHistoryFixture::shadow(doc,3,2);CanvasRenderer cache;cache.sync(doc);
+  auto pixels=[&](CanvasRenderer& renderer){renderer.sync(doc);auto output=os::instance()->makeRgbaSurface(320,320);ui::Graphics g(output);renderer.draw(g,{0,0,320,320},1,gfx::rgba(0,0,0),gfx::rgba(0,0,0));std::vector<gfx::Color> out;for(int y=0;y<320;++y)for(int x=0;x<320;++x)out.push_back(output->getPixel(x,y));return out;};
+  auto check=[&](){CanvasRenderer fresh;require(pixels(cache)==pixels(fresh),"Floating effect dirty update differs from full renderer");};
+  SelectionClipboard clip{257,257,0,0,std::vector<Pixel>(257*257),std::vector<unsigned char>(257*257,1)};clip.pixels[0]=0xff123456;clip.pixels.back()=0xff123456;require(doc.beginFloatingPaste(clip,5,6),"Floating effect paste failed");require(doc.floatingDeferred()==nested,"Styled target must use fallback; group-only styles preserve deferred path");check();doc.moveFloatingPaste(15,16);check();doc.moveFloatingPaste(7,8);check();doc.cancelFloatingPaste();check();require(doc.beginFloatingPaste(clip,5,6),"Floating effect second paste failed");check();doc.commitFloatingPaste();check();doc.undo();cache.noteChange(doc);check();doc.redo();cache.noteChange(doc);check();
+ }
+}
+static void clipboardPreviewAdmissionOracle(){
+ for(bool supported:{false,true})for(bool configured:{false,true})for(bool enabled:{false,true}){
+  Document doc(320,320);if(configured){RasterHistoryFixture::shadow(doc,3,2);if(!enabled){doc.beginLayerStyle();auto style=*doc.layer().layerStyles;style.enabled=false;doc.commitLayerStyle(style);}}
+  doc.setDeferredFloatingDisplaySupported(supported);SelectionClipboard clip{257,257,0,0,std::vector<Pixel>(257*257,0xff123456),std::vector<unsigned char>(257*257,1)};
+  const auto history=doc.historySize();require(doc.beginFloatingPaste(clip,0,0),"Admission clipboard failed");require(doc.floatingDeferred()==(supported&&!(configured&&enabled)),"Clipboard preview admission mismatch");doc.cancelFloatingPaste();require(!doc.floating()&&doc.historySize()==history,"Admission cancel changed history");
+ }
+}
+static void clipboardStackParityOracle(){
+ for(int mode=0;mode<3;++mode){
+  auto optimized=fixture(320,2,1);RasterHistoryFixture::clipboardStack(optimized,mode);auto fallback=optimized;fallback.setDeferredFloatingDisplaySupported(false);CanvasRenderer fast,slow;
+  SelectionClipboard clip{257,257,0,0,std::vector<Pixel>(257*257),std::vector<unsigned char>(257*257,1)};clip.pixels[0]=0xff123456;clip.pixels[256]=0x8056789a;clip.pixels.back()=0xff99aabb;
+  auto pixels=[](Document& doc,CanvasRenderer& renderer){renderer.sync(doc);auto out=os::instance()->makeRgbaSurface(320,320);ui::Graphics g(out);renderer.draw(g,{0,0,320,320},1,gfx::rgba(43,73,111),gfx::rgba(43,73,111));std::vector<gfx::Color> result;for(int y=0;y<320;++y)for(int x=0;x<320;++x)result.push_back(out->getPixel(x,y));return result;};
+  auto check=[&](){require(pixels(optimized,fast)==pixels(fallback,slow),"Clipboard stack deferred/fallback pixels differ");};check();
+  for(auto* d:{&optimized,&fallback})require(d->beginFloatingPaste(clip,5,6),"Stack clipboard failed");require(optimized.floatingDeferred()&&!fallback.floatingDeferred(),"Stack parity must exercise distinct paths");check();for(auto* d:{&optimized,&fallback})d->moveFloatingPaste(15,16);check();for(auto* d:{&optimized,&fallback})d->cancelFloatingPaste();check();
+  for(auto* d:{&optimized,&fallback}){require(d->beginFloatingPaste(clip,5,6),"Stack second clipboard failed");d->commitFloatingPaste();}check();for(auto* d:{&optimized,&fallback})d->undo();check();for(auto* d:{&optimized,&fallback})d->redo();check();
+ }
+}
 static void strokeRecorderOracle(){
   for(auto shape:{BrushShape::Round,BrushShape::Square,BrushShape::Line})for(bool erase:{false,true})for(bool symmetry:{false,true}){
     auto doc=Document::fromImage(128,128,std::vector<Pixel>(128*128,0x80664422),U"recorder oracle");
@@ -125,7 +200,7 @@ int main(int argc,char* argv[]){try{
   auto system=os::System::make();system->setAppMode(os::AppMode::GUI);
   if(argc>1&&std::string(argv[1])=="--tilemap-preview"){tilemapPreviewOracle();return 0;}
   checkerboardOracle();if(argc>1 && std::string(argv[1])=="--checkerboard")return 0;
-  strokeRecorderOracle();pixelOracle();largeTimeline();
+  absentPasteRenderOracle();absentStrokeRenderOracle();absentEffectRenderOracle();absentGradientRenderOracle();spatialDirtyOracle();floatingEffectDirtyOracle();clipboardPreviewAdmissionOracle();clipboardStackParityOracle();strokeRecorderOracle();pixelOracle();largeTimeline();
   for(int size:{32,256,512,1024})benchmark(size,1,1);
   benchmark(256,1,100);benchmark(512,4,2);
   std::cout<<"RGBA oracle and accumulated dirty upload passed. CPU offscreen sync; excludes input/display latency.\n";

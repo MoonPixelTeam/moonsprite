@@ -62,11 +62,30 @@ void CanvasRenderer::sync(const Document& doc) {
   if(displayChanged)region={0,0,doc.width(),doc.height()};
   if(gradientChanged&&(doc.tilemapPreviewRegions()||tilemapPreviewLocal_))region={0,0,doc.width(),doc.height()};
   if(floatingChanged&&!replacement&&!displayChanged){if(revision_==doc.contentRevision()&&floatingRevision_+1==doc.floatingOverlayRevision())region=doc.floatingOverlayChange();else if(floatingRevision_+1!=doc.floatingOverlayRevision())region={0,0,doc.width(),doc.height()};else{auto delta=doc.floatingOverlayChange();if(!delta.empty()){region.include(delta.x,delta.y);region.include(delta.x+delta.w-1,delta.y+delta.h-1);}}if(region.empty())region={0,0,doc.width(),doc.height()};}
-  const auto activeSurface=doc.displayTimeline().resolveSurface(doc.cel().id).surface;
+  // Spatial effects can change outside the raw stroke dirty rectangle, and
+  // group gradients can move across all content when source bounds change.
+  const auto& effectState=doc.displayTimeline().state();
+  if(std::any_of(effectState.groups.begin(),effectState.groups.end(),[](const auto& g){return g.layerStyles&&g.layerStyles->enabled&&g.layerStyles->gradientEnabled;}))region={0,0,doc.width(),doc.height()};
+  else if(!region.empty()){
+    // legacy invalidateStyleSources walks each owner and its ancestors;
+    // each parent receives the affected output of its child before expanding.
+    struct Bounds{std::int64_t l,t,r,b;};const Bounds raw{region.x,region.y,std::int64_t(region.x)+region.w,std::int64_t(region.y)+region.h};auto total=raw;
+    auto merge=[](Bounds& a,const Bounds& b){a.l=std::min(a.l,b.l);a.t=std::min(a.t,b.t);a.r=std::max(a.r,b.r);a.b=std::max(a.b,b.b);};
+    auto affect=[&](Bounds source,const std::optional<timeline::ColorOverlayStyle>& value){auto result=source;if(!value||!value->enabled)return result;const auto& style=*value;auto include=[&](int dx,int dy,int padding){merge(result,{source.l+dx-padding,source.t+dy-padding,source.r+dx+padding,source.b+dy+padding});};if(style.stroke.enabled)include(0,0,style.stroke.size);if(style.innerGlow.enabled)include(0,0,style.innerGlow.size);if(style.shadow.enabled)include(style.shadow.offsetX,style.shadow.offsetY,style.shadow.blur);return result;};
+    std::unordered_map<std::string,const timeline::Group*> groups;for(const auto& g:effectState.groups)groups.emplace(g.id,&g);
+    auto ancestors=[&](Bounds affected,std::optional<std::string> parent){std::size_t remaining=groups.size();while(parent&&remaining--){auto found=groups.find(*parent);if(found==groups.end())break;affected=affect(affected,found->second->layerStyles);parent=found->second->parentGroupId;}merge(total,affected);};
+    for(const auto& layer:effectState.layers)ancestors(affect(raw,layer.layerStyles),layer.groupId);
+    // Changes may originate in group masks as well as leaf pixel storage.
+    for(const auto& group:effectState.groups)ancestors(affect(raw,group.layerStyles),group.parentGroupId);
+    total.l=std::max<std::int64_t>(0,total.l);total.t=std::max<std::int64_t>(0,total.t);total.r=std::min<std::int64_t>(doc.width(),total.r);total.b=std::min<std::int64_t>(doc.height(),total.b);region={int(total.l),int(total.t),int(total.r-total.l),int(total.b-total.t)};
+  }
+  const auto* displaySlot=doc.displayTimeline().findCel(doc.layer().id,doc.frame().id);
+  const auto* activeSurface=displaySlot?doc.displayTimeline().resolveSurface(displaySlot->id).surface:doc.activeSurfaceIfPresent();
   const bool canvasStorage=doc.gradientPreviewPixels() || (activeSurface && raster::fullCanvas(*activeSurface,doc.width(),doc.height()));
   const bool direct=!(doc.layer().kind=="tilemap"&&doc.active())&&!doc.maskIsolated()&&doc.displayTimeline().state().masks.empty()&&canvasStorage && !doc.floatingDeferred() && !onion_.enabled && doc.displayTimeline().state().groups.empty() && doc.displayTimeline().state().layers.size()==1 && !timeline::styleVisible(doc.layer().layerStyles) && doc.layer().visible && doc.layer().blendMode=="normal" && frameCelOpacity(doc.displayTimeline(),doc.layer(),doc.frame().id)==1;
   const auto overlay=doc.floatingDeferred()?doc.floatingOverlayRegion(onion_.enabled?PixelRegion{0,0,doc.width(),doc.height()}:region):std::vector<timeline::Pixel>{};
   const auto* preview=doc.floatingDeferred()?&overlay:doc.gradientPreviewPixels();
+  if(!preview&&!displaySlot&&activeSurface)preview=&static_cast<const std::vector<timeline::Pixel>&>(activeSurface->pixels);
   const int previewWidth=doc.floatingDeferred()&&!onion_.enabled?region.w:doc.width();
   const int previewX=doc.floatingDeferred()&&!onion_.enabled?region.x:0,previewY=doc.floatingDeferred()&&!onion_.enabled?region.y:0;
   const auto composed=doc.maskIsolated()?doc.maskDisplayRegion(region):direct?std::vector<timeline::Pixel>{}:(onion_.enabled?compositeOnionRegion(doc.displayTimeline(),doc.frame().id,doc.layer().id,{region.x,region.y,region.w,region.h},onion_,doc.layer().id,preview,previewWidth,doc.maskPreview()):compositeNormalRegion(doc.displayTimeline(),doc.frame().id,{region.x,region.y,region.w,region.h},doc.layer().id,preview,previewWidth,previewX,previewY,!doc.active(),{},{},doc.maskPreview()));

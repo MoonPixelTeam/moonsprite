@@ -46,7 +46,7 @@ void pollPersistence(Document& d){
     if(frame.data.data()==embeddedSource_&&frame.data.size()==embeddedLength_){
      if(!result.error.empty()){embeddedBlocked_=true;embeddedError_="Cannot write recording library "+root_.u8string()+": "+result.error;return;}
      if(!result.local||!validReference(*result.local)){embeddedBlocked_=true;embeddedError_="Invalid recording storage acknowledgement";return;}
-     frame.local=std::move(result.local);Bytes{}.swap(frame.data);d.markTimelapseModified();
+     frame.local=std::move(result.local);Bytes{}.swap(frame.data);frame.historyDataBacking.reset();d.markTimelapseModified();
     }
    }
   }
@@ -93,7 +93,7 @@ public:
  void beginFlush(Document& d){queue_.retry();embeddedBlocked_=false;embeddedError_.clear();error.clear();poll(d);}
  bool flushReady(Document& d){poll(d);if(queue_.failed())throw std::runtime_error(queue_.error);if(embeddedBlocked_)throw std::runtime_error(embeddedError_);return queue_.empty()&&!embeddedTask_.valid()&&cursorComplete_;}
  void flush(Document& d){beginFlush(d);while(!flushReady(d)){if(embeddedTask_.valid())embeddedTask_.wait_for(std::chrono::milliseconds(1));else Sleep(1);}}
- Settings portable(Document& d){flush(d);auto settings=d.timelapseSettings();for(auto& f:settings.snapshots){f.data=read(f);f.local.reset();}return settings;}
+ Settings portable(Document& d){flush(d);auto settings=d.timelapseSettings();for(auto& f:settings.snapshots){f.data=read(f);f.historyDataBacking.reset();f.local.reset();}return settings;}
 };
 inline std::shared_ptr<Session> ensureRecordingSession(Document& d,std::filesystem::path root=executableLibraryRoot(),std::filesystem::path legacy={}){auto session=d.recordingSession();if(!session){session=std::make_shared<Session>(d.timelapseSettings(),std::move(root),std::move(legacy));d.setRecordingSession(session,[session](Document& document,bool undo){session->capture(document,undo);});}return session;}
 }

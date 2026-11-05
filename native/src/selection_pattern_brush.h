@@ -24,4 +24,8 @@ inline std::optional<PatternBrush> createSelectionPatternBrush(const timeline::S
  raster::validate(surface);const bool dense=raster::fullCanvas(surface,canvasWidth,canvasHeight);
  return createSelectionPatternBrushSampled([&](int x,int y){return dense?surface.pixels[std::size_t(y)*canvasWidth+x]:raster::readWorld(surface,x,y);},canvasWidth,canvasHeight,selection);
 }
+inline std::optional<PatternBrush> createSelectionPatternBrush(const timeline::Surface* surface,int canvasWidth,int canvasHeight,const SelectionMask& selection){
+ if(surface)return createSelectionPatternBrush(*surface,canvasWidth,canvasHeight,selection);
+ return createSelectionPatternBrushSampled([](int,int){return timeline::Pixel(0);},canvasWidth,canvasHeight,selection);
+}
 }

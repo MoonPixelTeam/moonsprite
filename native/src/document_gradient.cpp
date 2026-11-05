@@ -67,9 +67,9 @@ bool Document::commitSparseGradient(){
  if(changed){
   edit.targetCelId=g.celId;edit.beforeSelection=edit.afterSelection=selectedFrames_;
   edit.pixelAddress=PixelAddressSpace{width_,height_,raster::coordinate(std::int64_t(prepared.storageOriginX.value_or(0))-prepared.offsetX),raster::coordinate(std::int64_t(prepared.storageOriginY.value_or(0))-prepared.offsetY)};
-  if(std::size_t(dirtyRight-dirtyLeft)*(dirtyBottom-dirtyTop)>=512*512){
-   DensePixels dense{dirtyLeft,dirtyTop,dirtyRight-dirtyLeft,dirtyBottom-dirtyTop,{},{}};const auto count=std::size_t(dense.width)*dense.height;account(count);account(count);dense.before.reserve(count);dense.after.reserve(count);
-   for(int y=dirtyTop;y<dirtyBottom;++y)for(int x=dirtyLeft;x<dirtyRight;++x){dense.before.push_back(beforeAt(x,y));dense.after.push_back(afterAt(x,y));}edit.dense=std::move(dense);
+  if(std::size_t(right-left)*(bottom-top)>=512*512){
+   DensePixels dense{left,top,right-left,bottom-top,{},{}};const auto count=std::size_t(dense.width)*dense.height;account(count);account(count);dense.before.reserve(count);dense.after.reserve(count);
+   for(int y=top;y<bottom;++y)for(int x=left;x<right;++x){dense.before.push_back(beforeAt(x,y));dense.after.push_back(afterAt(x,y));}edit.dense=std::move(dense);
   }else for(int y=dirtyTop;y<dirtyBottom;++y)for(int x=dirtyLeft;x<dirtyRight;++x){const auto before=beforeAt(x,y),after=afterAt(x,y);if(before!=after)edit.pixels.push_back({std::size_t(y)*width_+x,before,after});}
   history_.reserve(position_+1);
  }

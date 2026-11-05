@@ -19,6 +19,7 @@ struct RasterHistoryFixture {
   auto state=d.timeline_.state();const auto owner=d.timeline_.resolveSurface(d.cel().id).source->id;
   auto found=std::find_if(state.cels.begin(),state.cels.end(),[&](const auto& c){return c.id==owner;});found->surface=std::move(surface);d.timeline_=timeline::Timeline(std::move(state));
  }
+ static void absent(Document& d,bool all){auto state=d.timeline_.state();const auto frame=d.frame().id;state.cels.erase(std::remove_if(state.cels.begin(),state.cels.end(),[&](const auto& c){return all||c.frameId==frame;}),state.cels.end());d.timeline_=timeline::Timeline(std::move(state));}
  static void truncate(Document& d){const_cast<timeline::Surface*>(d.timeline_.resolveSurface(d.cel().id).surface)->pixels.pop_back();}
 };
 }
@@ -93,6 +94,32 @@ void checkSparseFormatEncoding(){
   Limits tiny;tiny.expandedBytes=16;bool limited=false;try{(void)encodeRecoveryProject(d,tiny);}catch(const Error& error){limited=error.kind==ErrorKind::Limit;}check(limited,"Sparse encoder ignored decoded raster budget");
  }
  Document malformed(8,8);RasterHistoryFixture::truncate(malformed);bool corrupt=false;try{(void)encodeRecoveryProject(malformed);}catch(const Error& error){corrupt=error.kind==ErrorKind::Corrupt;}check(corrupt,"Sparse encoder accepted malformed raster length");
+}
+void checkAbsentSlotEncoding(){
+ for(bool source:{false,true})for(bool all:{false,true})for(int width:{2,130}){
+  Document d(8,8);dot(d,0,0,0xff123456);d.addFrame();dot(d,1,0,0xff654321);
+  if(source)d=imported(encodeEditableProject(d).bytes);
+  RasterHistoryFixture::absent(d,all);
+  d.setImportedLayerGeometry({{d.layer().id,{width,2,-7,9}}});
+  const auto history=d.historySize(),revision=d.revision(),content=d.contentRevision(),count=d.timeline().state().cels.size();const auto dirty=d.dirty();
+  for(int mode=0;mode<3;++mode){
+   const auto encoded=mode==0?encodeEditableProject(d):mode==1?encodeRecoveryProject(d):encodeHistoryProject(d);
+   const auto manifest=readProjectManifest(encoded.bytes);Archive zip(encoded.bytes);
+   check(manifest.cels.size()==count,"Encoder materialized absent cel");
+   check(manifest.activeFrameId==d.frame().id&&manifest.layers.size()==1,"Absent slot changed active identities");
+   const auto& fallback=*manifest.layers.front().surface;
+   check(fallback.width==width&&fallback.height==2&&fallback.offsetX==-7&&fallback.offsetY==9&&fallback.pixels==std::vector<Pixel>(width*2),"Absent layer fallback lost geometry or retained stale pixels");
+   check(fallback.dataEncoding=="sparse-tiles-v1","Absent layer fallback differs from legacy runtime sparse encoding");
+   check(zip.read(fallback.dataFile,1024).size()==24,"Empty fallback allocated dense resource");
+   Bytes oracle{0x4d,0x53,0x54,0x31,64,0,1,0,std::uint8_t(width),0,0,0,2,0,0,0,0,0,0,0,0,0,0,0};
+   check(zip.read(fallback.dataFile,1024)==oracle,"Absent fallback differs from legacy runtime sparse header");
+   if(mode==0)check(zip.read("preview.png",1024*1024)==encodeProjectPreview(Document(8,8)),"Absent active preview retained old frame pixels");
+   for(const auto& cel:manifest.cels)check(cel.frameId!=d.frame().id,"Missing active slot became a cel");
+   if(source){const auto original=readProjectManifest(d.sourceArchive());for(const auto& cel:original.cels)if(cel.frameId==d.frame().id)check(!zip.entries().count(cel.surface->dataFile),"Removed active cel resource retained");}
+  }
+  Limits tiny;tiny.expandedBytes=8;bool limited=false;try{encodeRecoveryProject(d,tiny);}catch(const Error& e){limited=e.kind==ErrorKind::Limit;}check(limited,"Absent display ignored decoded pixel budget");
+  check(d.historySize()==history&&d.revision()==revision&&d.contentRevision()==content&&d.dirty()==dirty&&d.timeline().state().cels.size()==count&&!d.activeSurfaceIfPresent(),"Absent encoding mutated live document");
+ }
 }
 void checkRasterResourcePlan(){
  {Document blank(5,7);auto opened=imported(encodeEditableProject(blank).bytes);dot(opened,0,0,0xff123456);
@@ -300,6 +327,7 @@ auto legacyParsed=readProjectManifest(legacyEncoded.bytes);same(legacy,legacyPar
 
 int main(int argc,char** argv) {try {
  if(argc==2&&std::string(argv[1])=="--project-rollback-check"){projectRollbackOwnedCheck();std::cout<<"Committed backup/decoded rollback/history/failure checks passed\n";return 0;}
+ checkAbsentSlotEncoding();
  checkRasterResourcePlan();
  checkSparseFormatEncoding();
  if(argc==2 && std::string(argv[1])=="--raster-resource-check")return 0;

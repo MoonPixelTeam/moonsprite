@@ -15,6 +15,7 @@ int wmain(int argc,wchar_t** argv){try{
  check(argc>=2,"fixture path");const auto path=std::filesystem::path(argv[1]);std::filesystem::create_directories(path.parent_path());
  auto source=Document::fromImage(2,1,{0xff0000ff,0xff0000ff},U"chat animation");source.setFrameDuration(120);source.addFrame();source.fillSelectionOrCanvas(0xffff0000);source.setFrameDuration(240);auto gif=encodeAnimationGif(source);writeExportBytesAtomic(path,gif.bytes);
  auto opened=openGifAnimation(path);check(opened.timeline().state().frames.size()==2&&opened.timeline().state().frames[0].duration==120&&opened.timeline().state().frames[1].duration==240&&opened.palette().entries.size()>=2&&!opened.dirty(),"GIF open mismatch");
+ for(const auto& entry:opened.palette().entries){const auto number=std::to_string(entry.id);check(entry.name==std::u32string(number.begin(),number.end()),"GIF import color name");}
  for(auto ext:{L".jpg",L".jpeg",L".webp",L".bmp",L".png",L".gif"}){
   const auto named=path.parent_path()/(std::wstring(L"聊天缓存")+ext);writeExportBytesAtomic(named,gif.bytes);const auto before=std::filesystem::file_size(named);
   check(hasGifFileSignature(named),"Chat GIF signature must beat suffix");auto imported=openRasterImage(named);const auto& state=imported.timeline().state();
@@ -35,5 +36,12 @@ int wmain(int argc,wchar_t** argv){try{
  // A single-frame GIF with a static suffix remains a valid sequence source.
  writeExportBytesAtomic(first,encodeAnimationGif(still).bytes);writeExportBytesAtomic(second,encodeAnimationGif(still).bytes);std::optional<Document> assembled;host.add=[&](Document d){++adds;assembled=std::move(d);};
  check(image_sequence::open({first.u8string(),second.u8string()},path.parent_path()/"not-remembered.txt",host)&&adds==1&&errors==1&&assembled->timeline().state().frames.size()==2,"Single-frame cache sequence rejected");
+ // Static decoder -> palette -> native archive must retain rare unsampled colors.
+ const auto rarePath=path.parent_path()/L"大图稀有色.png";std::vector<Pixel> rare(1024*1024,0xff000000);rare[1]=0xff0000ff;rare[2]=0x8000ff00;
+ writeExportBytesAtomic(rarePath,encodeRgbaImagePng(1024,1024,rare).png);auto rareDocument=openRasterImage(rarePath);
+ check(rareDocument.palette().entries.size()==3&&rareDocument.pixels()==rare&&!rareDocument.dirty(),"Static raster rare colors missing");
+ for(const auto& entry:rareDocument.palette().entries){const auto number=std::to_string(entry.id);check(entry.name==std::u32string(number.begin(),number.end()),"Static import color name");}
+ auto rareEncoded=project::encodeEditableProject(rareDocument);auto rareRound=project::prepareEditableImport(project::readProjectManifest(rareEncoded.bytes));
+ check(rareRound.palette.entries.size()==3&&rareRound.timeline.cels.front().surface->pixels==rare,"Rare colors project roundtrip");
  std::cout<<"GIF/chat-cache suffixes, frames, timing, source identity, native roundtrip, preview, sequence and corrupt protection passed\n";return 0;
  }catch(const std::exception& e){std::cerr<<e.what()<<'\n';return 1;}}

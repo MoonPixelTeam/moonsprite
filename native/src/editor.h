@@ -1075,6 +1075,7 @@ private:
   std::uint64_t timelineCachePaints_=0;
 
   bool playing_=false,frameSelectionExplicit_=false;
+  bool selectionCommandOverride_=false; // Legacy explicit preferSelection command scope.
 
   // Legacy separates editing context from explicit timeline selection.
 

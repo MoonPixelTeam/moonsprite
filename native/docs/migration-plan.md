@@ -2149,3 +2149,805 @@ Paint／无主选实例的源像素删除仍未开放，剪切在这些场景只
 - 2026-11-03：承接legacy按签名优先识别聊天缓存GIF，jpg/jpeg/webp/bmp/png/gif后缀均保留完整动画、时长、像素和来源身份，普通打开／文档拖入／重复来源聚焦／序列读取沿既有入口；ASE/PSD/未知后缀亦优先识别，WebP命名缓存缩略图修复。多帧缓存序列按旧版拒绝，单帧允许；损坏不降级静态图，原格式保存取消保护源字节、确认保持会话动画。gif-open-tests六后缀读器／缩略图／原生往返／序列检查、唯一正式Release、--aseprite-save-check实际拖入／保存／错误保护及既有ASE／图片回归、574文件来源覆盖通过。详见[聊天缓存GIF](chat-gif-open-20261103.md)。未人工聊天软件拖放或截图验收，时间轴仅.gif命中及原生预算保持。
 
 - 2026-11-03：工程备份回档按 legacy 成功后关闭选择窗口，失败保留窗口和作品；实际入口补齐成功／失败、身份与路径、单次事务、UndoRedo和不自动覆盖磁盘工程检查。唯一正式Release及 --project-rollback-check 返回0，574文件来源覆盖通过。详见[回档生命周期](project-rollback-lifecycle-20261103.md)。未人工截图验收，不宣称全部恢复功能完成。
+
+- 2026-11-03：导入色卡承接 legacy 少色图全量／高色图抽样、完整亮度排序、量化重复平均色代表与补足；补齐末色权重过大导致空桶时的停止切分保护，实际旧版对照曾触发原生除零并在修复后通过。静态图／GIF／ASE／PSD 导入颜色名按 zh-CN 原值使用纯编号，不改已有工程名称。58 组实际旧版提色／排序参考、PNG 稀有色与半透明像素／工程往返、5 项 CTest、唯一正式 Release、--aseprite-save-check 与 --aseprite-io-check 均通过；576 文件来源覆盖、需求静态台账和 diff 检查通过。详见[导入色卡行为对齐](imported-palette-parity-20261103.md)。未人工截图／全格式外部软件验收，不称文件、颜色领域或全软件迁移完成；FS-006 本地历史差量记录、持久化和重开恢复仍未迁移。
+
+- 2026-11-03：FS-006 本地历史迁移开始，移植 legacy v2/v3/v4 归档、中央目录分块、精确字节去重／opaque／streaming ZIP、惰性并发快照重建、九种 typed array 差量及完整路径／偏移／类型／坐标校验、已准备转移缓存的 v3/v4 写入。复用现有原生 ZIP 读写器，仅增加历史所需逐资源 level6；工程存储／恢复 level1 保持。旧版实际生成6组归档／3组差量／25组拒绝用例，原生重包交旧版反向精确核对通过；4项归档／保存／恢复CTest、自动恢复连续两次、唯一正式Release与--aseprite-save-check通过，581文件来源覆盖通过。修复恢复测试复用残留目录误判，不删除旧样本。详见[本地历史迁移](local-history-migration-20261103.md)。编辑差量捕获、缺缓存编译、历史窗口安装、750ms后台队列与较新作品保护仍待接入，设置不开放，不称本地历史或整体迁移完成。
+
+- 2026-11-03：FS-006 补齐路径身份／步数／恢复窗口、独立二进制存储及元数据指纹／异步代际保护辅助模块；复用原图片导出原子写入器，Windows 系统 ICU 保留旧版按区域 Unicode 小写。13 身份／17 设置／294 窗口／2 指纹参考、原生双图层双帧工程经实际旧版解码指纹对照及旧版归档反向互读通过，修复指纹图层顺序。6 项保存／恢复／历史 CTest、唯一正式 Release 构建与 --aseprite-save-check 通过；590 文件来源覆盖及需求静态台账通过，strict 仍按迁移缺口失败。详见[本地历史迁移](local-history-migration-20261103.md)。辅助模块尚未接入实际编辑、历史安装、目录生命周期和后台队列，功能仍不启用。
+
+- 2026-11-03：FS-006 增加从现有原生叶子 Document::Edit 获取点／连续段／区域的已提交差量适配器及元数据形状判断；保留规范 cel 路径、别名、存储原点和顺序，仅复制补丁字节。原生跨行连续段转换为旧版逐行范围；编辑前票据拒绝结构／预览／跨提交等不适用情况。8 类实际原生提交（含后台帧及普通／原点映射重叠连续段）输出工程和差量，与旧版实际 commitPixelEdit／captureCommittedHistoryDelta 比较规范补丁完全一致；旧版 hydrate 撤销／重做／重复重做通过。回归复现并修复已有原生重叠连续段撤销顺序错误，普通／映射路径改按旧版逆序撤销；原生精确像素恢复、5 项相关 CTest、唯一正式 Release 及 --aseprite-save-check 通过；594 文件来源覆盖／静态台账／diff 检查通过。详见[本地历史迁移](local-history-migration-20261103.md)。尚未接入真实服务事件、结构检查点、历史安装及后台队列，功能继续关闭。
+
+- 2026-11-03：FS-006 增加旧版 LatestTaskQueue 的原生 future 适配、750ms／压力 timer 及 PreparedWriter，将已有归档器和原子存储接后台。实际旧版 queue／schedule／flush 函数参考、23 个计时状态、共享待写完成结果／释放被替换数据／失败继续／文件锁保护／关闭 drain 通过；4 项本地历史 CTest、旧版实际反向读取后台写出的 .history、唯一正式 Release 和 --aseprite-save-check 通过；599 文件来源覆盖及静态台账／diff 检查通过，strict 仍失败。详见[本地历史迁移](local-history-migration-20261103.md)。仅接收已准备转移，真实会话事件、结构检查点、按身份共享队列、旧版 weak 去重、预算重基及重开历史安装仍未接入，功能继续关闭。
+
+- 2026-11-04：FS-006 同拓扑 RGBA 差量接入现有 Document::Edit／UndoRedo，增加不可变部分通道字节载荷、规范 owner／链接别名解析、整批准备与 RestoreTicket 再检查、原生历史位置安装；保留当前检查点身份／录像／视图及安装时 dirty／计数。八类已提交差量安装与重复 UndoRedo、实际 legacy 编译器的偏移1／2单通道转移从三个位置恢复、新编辑截断重做、后置错误／预算／字节冻结／代际保护通过；7项相关 CTest、604文件来源覆盖与静态台账通过。该批像素差量的唯一正式程序重编译成功，--aseprite-save-check 返回0；后续元数据／计数修正需独立验收。详见[本地历史迁移](local-history-migration-20261103.md)。仅接入已准备像素转移，属性／结构／增量检查点物化和真实重开服务仍不完整，功能继续关闭。
+
+- 2026-11-04（实现中，待运行）：同一历史载荷增加 dirty／时间戳／statistics 标量及兼容别名；实际 legacy 混合像素／元数据、纯元数据和别名重叠参考已生成并通过旧版 hydrate。发现并修正原生统计上限饱和与旧版先归一化后累加的差异，新增原生直接补丁／正常导航／8组实际计数参考及普通／蒙版笔画边界检查。上一批正式构建及 --aseprite-save-check 已通过，当前正在构建元数据／计数修正和新增检查，尚未取得新增运行结果；不以此前七项通过代替本批验证。605文件来源覆盖通过，FS-006仍为部分承接。
+
+- 2026-11-04：FS-006 dirty／时间戳／statistics 同栈差量、标量别名及逆序撤销完成本批后端验证；按实际 recordDocumentOperation 修正安全整数上限处先归一化后累加、JS Number 舍入，并将蒙版 drawing 放到成功提交后。八组实际计数参考、直接元数据／正常导航／别名重叠、真实普通／蒙版笔画边界及8项相关 CTest 全部通过；605文件来源覆盖通过，strict仍因已知缺口失败。另执行实际旧版恢复服务主体，登记初次安装保留 authoritative 录像与结构项导航替换历史快照的不同语义，输出结构归档参考；原生结构恢复仍待接入。元数据／计数的新正式程序构建将与结构恢复集中进行，当前正式 exe 已通过的是前一像素差量批次。无 UI 激活／截图验收，整体迁移仍不完整。
+
+- 2026-11-04：FS-006 增加已缓存归档的保留窗口结构项准备、增量链物化及当前检查点安装，复用完整工程导入/原生回档载荷和既有撤销栈；按实际旧版区分初次保留authoritative录像与结构导航恢复历史录像，验证全量/增量快照对独立查看帧的不同规则。所有路径准备后移动检查点缓冲，共享相邻结构项载荷；混合像素目标按结构段解析，manifest标签覆盖缓存标签。实际旧版结构窗口/混合归档/查看帧对照、原生所有位置导航和保护、9项相关CTest及工程备份回档专项均通过；605文件来源覆盖与静态台账通过，strict仍失败。扩展检查修正旧project-import锁定图层拒绝预期，验证现有保留锁定且禁画行为。唯一正式 native/build/Release/moonsprite-native.exe 构建成功，--aseprite-save-check 返回0，真实后台线程归档准备与主线程安装专项通过。结构字节成本仍为原生资源估算，余下属性、无缓存编译、真实会话接线/持久化/重开服务仍待迁移，本地历史不启用。详见[本地历史迁移](local-history-migration-20261103.md)。
+
+- 2026-11-04：FS-006 修正异步准备期间只切帧被票据拒绝的问题。原生把渲染/录像失效代际与恢复保护所需mutation代际分开，仅豁免selectFrame最终视图发布，其提交/取消笔画/浮动/渐变/透明度仍走默认保护。保存指纹按真实legacy对live initialDocument重新判定；实际延迟read Promise证明无指纹允许切帧恢复、有指纹可因当前帧不匹配而拒绝，原生真实std::async对照通过，取消笔画仍令旧票据失效。回档/UndoRedo复用预备链接存储以避免重复同步。9项相关CTest与备份回档专项、605来源覆盖/静态台账/diff通过，strict仍1；另记录真实legacy结构项成本供后续精确迁移，未把原生估算当等价。正式程序仍是前批结构恢复版本，本批后台代码待与会话接线集中正式构建。其余视图规范化、精确成本/属性/无缓存编译及完整会话流程仍未完成，FS-006部分承接且功能不启用。详见[本地历史迁移](local-history-migration-20261103.md)。
+
+- 2026-11-04：FS-006 同栈scalar差量扩展工程名称/循环/网格、图层和组名称/说明/开关、帧时长/禁用。准备时绑定规范序列到稳定ID，预留UTF8/UTF32字段容量后按旧版别名顺序及逆序undo应用；跨名称/说明/时间戳Unicode别名和重叠补丁通过实际legacy hydrate。22项actual compile/hydrate属性参考、原生直接应用/普通导航/增量归档恢复、9项相关CTest和备份回档专项通过；605来源覆盖/静态台账/diff通过，strict仍1。opacity/blend/cel、其余资源属性/对象替换、变化原点、精确结构成本/无缓存编译/会话接线仍待迁移；正式程序保持前批已验证结构恢复版本，本地历史未启用。详见[本地历史迁移](local-history-migration-20261103.md)。
+
+
+- 2026-11-04：FS-006 属性差量补齐 layer/group opacity/blend 和 literal cel opacity/zIndex，仅有 celTarget 时投影当前帧透明度。实际旧版双图层双帧/关联cel参考暴露原适配器按图层×帧重排索引的问题；捕获/形状、恢复与工程编码统一保留实际 animation.cels 数组顺序。新增原生保存重开后应用原差量的检查。9项相关CTest、新样本实际legacy互读/原生hydration、备份回档专项、605来源覆盖/静态台账/diff通过；strict仍1。唯一正式程序重编译成功，--aseprite-save-check返回0，包含此前帧代际保护和基础标量迁移。另新增实际旧版raw zIndex与保存clamp的边界参考及待运行原生检查，单独登记后续验证。详见[本地历史迁移](local-history-migration-20261103.md)最新记录。其余资源/完整替换、独立图层原点、精确结构成本、无缓存编译和真实会话接线仍未完成，本地历史保持关闭。
+
+
+- 2026-11-04：本地历史新增raw zIndex边界与保存序列化对照，实际legacy保留1000/-1000/INT_MAX/INT_MIN补丁值，而encode/decode工程为±999。原生新增检查先复现保存1000与旧版999差异；修正project_encode复用已有normalizeCelZIndex，仅规范保存字段，现场和历史仍保留raw值。opacity 0/1及group opacity 0、直接/正常导航、增量归档恢复、保存重开及编码不修改现场均通过，9项相关CTest、实际旧版重生成互读/原生hydration与备份回档通过；唯一正式程序增量构建成功，--aseprite-save-check返回0；605来源覆盖/静态台账/diff通过，strict因已知缺口仍1。完整记录见[本地历史迁移](local-history-migration-20261103.md)。功能仍未启用，全量迁移继续。
+
+
+- 2026-11-04：FS-006新增独立快照链预算/不可变重基后端，沿用旧版256MiB软阈值、增量权重、身份去重与前缀重基，不删除可见步骤。保留JS Map插入顺序和平均常数查找、共享delta、在途旧代际及失败原链；native共享引用以迭代删除避免长链析构递归。实际120编辑/117裁剪及六类边界参考、原生像素物化/身份/失败/30000链释放和10项相关CTest通过；最新旧版参考重生成后budget/hydration专项通过；608来源覆盖/静态台账/diff通过，strict仍1。完整文档精确成本仍为外部依赖（测试使用actual oracle），真实捕获/预算/写后重基/缓存与会话接线未完成，不能宣称FS-006闭环。正式程序保持前批02:37已验版，未为未接线后端重复构建。整数组/几何恢复先需承接legacy图层投影与cel存储分离，不以原地覆盖代替。详见[本地历史迁移](local-history-migration-20261103.md)。
+
+- 2026-11-04：FS-006新增historyDocumentBytes逻辑对象图计数核心，承接UTF16/primitive/container/Map、对象与完整backing-buffer身份去重、递归Number分组；原生使用迭代栈，不复制像素。15组真实legacy transfer图及直接actual成本对照通过，含4000px稀疏计数34154且未物化、共享/独立缓冲、孤立UTF16代理项与显式Map/环/短视图探针；cost/budget/hydration三项CTest、611来源覆盖/静态台账/diff通过，strict仍1。native Document字段/身份适配和正式成本接线仍未完成，不能把图遍历核心当作完整文档成本迁移。未重编译正式exe，本地历史继续关闭。详见[本地历史迁移](local-history-migration-20261103.md)。
+
+
+- 2026-11-04：FS-006将精确成本适配推进到真实原生Document的色卡/工程画笔/参考图/切片字段，直接读取当前值及共享buffer身份，不编码整个工程、不复制像素。承接decode后的画笔undefined字段/源坐标形状与UTF16名称；追加失败回收新增图节点。五组实际旧版资源样本及解码后原地修改对照逐字段/整体通过，包含共享参考图、覆盖/颜色缓冲、非BMP名称及原生计数不改变revision/history/像素地址。Release后端和cost/budget/hydration三项CTest、613来源覆盖/静态台账/diff通过，strict仍1。完整根/栅格/图层动画/录像等对象图和DocumentWeigher/结构成本/服务接线继续待迁移；正式exe不变，本地历史不启用。详见[本地历史迁移](local-history-migration-20261103.md)。
+
+
+- 2026-11-04：FS-006录像对象成本适配承接规范化设置/快照/local引用，并补齐存储PNG共享整个ZIP backing的来源关系：Frame保留只读归档身份/视图长度，压缩PNG独立计数；迁入本地库成功清除、失败保留，portable及后台保存替换字节后清除。真实旧版10组录像图（压缩/未压缩/混合/本地及显式状态变化）、逐字段原生对照、正式DocumentSnapshot、实际Session成功/失败/重试和保存重开检查通过；6项CTest及613来源覆盖/静态台账/diff通过，strict仍1。尚缺完整文档其余字段和跨模块身份、DocumentWeigher/结构成本/会话接线。正式exe本批未重编译，后台保存入口未做正式运行验收，本地历史继续关闭。详见[本地历史迁移](local-history-migration-20261103.md)。
+
+
+- 2026-11-04：FS-006统一资源/录像/栅格构图的object/view/backing身份表，事务失败同时撤销节点和身份；从已验证manifest准备初始raw/sparse解码存储布局，保留raw与录像共享整个ZIP、sparse共享runtime及独立4字节占位规则，不展开原生像素。六组真实legacy混合图、两种字段准备顺序、逐surface/整体成本、身份复用/失败重试及36组参考通过；Release后端、cost/budget/hydration三项CTest、615来源覆盖/静态台账/diff通过，strict仍1。完整根/层组/动画/蒙版/瓦片与live来源生命周期、整体预算、DocumentWeigher/结构成本/真实服务接线仍未完成，不宣称native稀疏性能已迁移。正式exe不变，本地历史关闭。详见[本地历史迁移](local-history-migration-20261103.md)。
+
+
+- 2026-11-04：FS-006成本适配补充规范化帧（enabled省略disabled）、循环区间（保留null repeatCount）、活动帧/loop和瓦片集（ID/名称/尺寸/ID与空槽位表/独立pixel buffer）。四组实际legacy工程含四方向/禁用/非BMP/现场元数据修改/两个瓦片集，对照整体与逐字段成本，验证晚期身份冲突事务回滚与重试；累计40图及cost/budget/hydration三项CTest通过，615来源覆盖/需求静态台账/diff通过，strict仍1。完整根/图层组/cel/蒙版等、live形状与存储来源、DocumentWeigher和真实服务仍缺，FS-006保持partial。正式exe未重编译，无UI运行验收，本地历史仍禁用。详见[本地历史迁移](local-history-migration-20261103.md)。
+
+
+- 2026-11-04：FS-006新增初始解码图层组字段存在性计划，保留parentGroupId缺省/null差别；直接读取当前原生组属性和完整样式成本，拓扑不符/非法枚举事务拒绝。七组真实legacy对照覆盖嵌套/可选字段/默认与9种dither、4种kernel、3种position、256-stop及现场修改探针；累计47图、cost/budget/hydration三项CTest和615来源覆盖/需求静态台账/diff通过，strict仍1。原构建目录补充现有VS准确版本配置恢复工具链，无新工程/产物。完整根/图层/cel/蒙版、任意live形状/alias及DocumentWeigher/历史服务仍待迁移；FS-006partial、本地历史UI禁用，未重建正式exe或运行界面验收。详见[本地历史迁移](local-history-migration-20261103.md)。
+
+
+- 2026-11-04：FS-006初始解码成本补齐普通RGBA图层/cel完整对象图，保持图层投影与cel.surface独立、cel原始顺序及链接无自有surface形状、undefined text和storageOrigin字段；与录像共享raw ZIP/稀疏runtime身份。计划绑定Document/revision/活动帧并拒绝陈旧/外部使用，未冒充live适配。八组实际legacy全对象envelope、两种准备顺序/逐字段成本/后期冲突回滚和55累计图通过，Release构建与cost/budget/hydration三项CTest、615来源覆盖/静态台账/diff通过，strict仍1。完整根/特殊层/cel/蒙版/live来源与DocumentWeigher/真实历史服务仍待迁移；FS-006partial、UI禁用，正式exe未重编译，无运行界面验收。详见[本地历史迁移](local-history-migration-20261103.md)。
+
+
+- 2026-11-04：FS-006初始解码成本补齐图层/组蒙版slot与实际mask字段；每mask独立RGBA backing，灰度/同file/linked均不错误共享ZIP，保留moveWithOwner缺省和调用方decoder语言name。七组真实legacy组合样本覆盖存储/压缩/灰度/共享链接/旧内嵌覆盖/中英及像素归一化，累计62图、Release目标及cost/budget/hydration三项CTest、615来源/静态台账/diff通过，strict仍1。完整根/特殊层/cel/live存储与字段/DocumentWeigher/真实历史服务仍待迁移；FS-006partial、UI禁用，未重建正式exe，无界面验收。详见[本地历史迁移](local-history-migration-20261103.md)。
+
+
+- 2026-11-04：FS-006增加初始根部元数据成本形状（名称/活动层/显示网格及可选对称中心/统计/时间戳/outline/持久化layerPanelState），精确承接有序ID过滤去重和active/group/anchor回退，不拿native当前选区代替独立文档字段。九组真实legacy参考逐节点字符串/kind/顺序/整体成本、失败回滚/陈旧拒绝通过；累计71图、Release及cost/budget/hydration三项CTest、615来源覆盖/静态台账/diff通过，strict仍1。完整根/特殊层/cel/live来源与DocumentWeigher/历史服务仍缺，面板与outline运行状态接线未完成；FS-006partial、UI禁用，正式exe不变，无UI验收。详见[本地历史迁移](local-history-migration-20261103.md)。
+
+
+- 2026-11-04：FS-006以单一shared builder完成显式契约下初始普通RGBA文档完整根图组装，保留真实字段顺序/固定空数组/identity与全缓冲去重，显式传入真实decode session ID及mask语言名称。42份实际legacy完整图中34份正式native导入并通过全图身份双向映射/字符串/顺序/bytes及失败回滚；另外8份pixel布局样本验证现有Unsupported准入，不计native迁移成功。累计113实际图、Release及cost/budget/hydration三项CTest、615来源覆盖/静态台账/diff通过，strict仍1。通用live/new Document、其他布局/特殊层/缺省名称及来源生命周期、DocumentWeigher/结构成本/真实历史服务仍缺，FS-006partial、UI禁用，正式exe不变，无界面运行验收。详见[本地历史迁移](local-history-migration-20261103.md)。
+
+
+- 2026-11-04：FS-006初始完整根成本扩展text图层/cel：保留归档raster cache和链接cel自身文本，覆盖UTF16孤立代理项/字体截断、styleRuns的undefined color、box/origin/transform/shear。新增10份真实legacy完整图，9份native全图一致；小数样式偏移对照发现并修正原生导入round→trunc错误。矩形额外枚举属性因TextRect尚丢失而明确拒绝成本适配，保持缺口登记。累计123图/52完整根，其中43份native比对、8份pixel准入拒绝、1份文本矩形适配拒绝。通用live形状/特殊层/DocumentWeigher/真实历史服务仍缺，FS-006partial，UI关闭，正式exe未重建。详见[本地历史迁移](local-history-migration-20261103.md)。
+
+
+- 2026-11-04：接续补齐文本变换矩形扩展属性，保留UTF16 JSON属性树并在保存时覆盖实际坐标，原生move/undo/redo/save-reopen均对照真实legacy；初始成本保留Object.values字段顺序（含数值索引键和嵌套/转义/孤立代理项），移除上一批矩形拒绝。修正缺坐标变换/缺amount剪切的错误默认值，以及项目JSON孤立代理项写出替换问题，现转义保留；补计原生历史/恢复元数据内存。累计128真实图、57完整文档中49份native全图一致、8份pixel-layout准入拒绝，四份属性移动保存回读与内存增量检查通过；Release五目标和cost/budget/hydration/text-document/text-raster五项CTest、615来源覆盖/需求静态台账/diff通过，strict仍1。其他文本归一化/字体WTF8与live生命周期、特殊层及通用DocumentWeigher/真实历史服务仍缺，FS-006partial、UI关闭、正式exe不变，无运行界面验收。详见[本地历史迁移](local-history-migration-20261103.md)。
+
+
+- 2026-11-04：文本数据补齐字体WTF8/UTF16保留路径，修复128单元截断字体名在保存前被替换；所有已有text用例升级为逐字段解码/保存回读对照。复用legacy_json_number处理finiteOr字段，保持origin/box/style可选数值/shear的严格finite语义；无效style/transform容器与项、truthy颜色、array/primitive文本元数据按legacy归一化。新增12份真实完整图，累计140图/69完整文档，61份native全根一致、8份pixel准入拒绝；六项目标/CTest及615来源覆盖/需求静态台账/diff通过，strict仍1。超范围origin、glyph像素等价、live生命周期/特殊层/通用weigher和真实历史服务等仍缺，FS-006partial、UI关闭、正式exe不变，无界面验收。详见[本地历史迁移](local-history-migration-20261103.md)。
+
+
+- 2026-11-04：FS-006初始完整根成本增加background与gradient-map adjustment，沿用归档raster cache/字段顺序、共享渐变成本装配；40份真实legacy案例覆盖6背景预设/repeat边界、beta样式迁移与truthy/literal-true/nullish参数、无stops渐变/9抖动/256 stops/array颜色、共存属性和混合共享像素资源。修正原生无效背景类型错误拒绝、调整enabled/回退和无stops丢mode/dither/reverse。累计180图/109完整文档中101份native全图一致、8份pixel准入拒绝；40例保存重开与完整background/adjustment/layerStyles值检查通过，七项相关CTest及最终cost复跑、615来源覆盖/需求静态台账/diff通过，strict仍1。tilemap/free-tile初始存储、live别名/投影与通用DocumentWeigher/真实历史服务等仍缺，FS-006partial、UI关闭、正式exe不变，无界面验收。详见[本地历史迁移](local-history-migration-20261103.md)。
+
+
+2026-11-04 tilemap 导入增量：按实际 legacy 解码规则修复网格尺寸 Number 转换、字面布尔翻转与严格数字旋转归一化；原生边界回归及实际 legacy 归档对照通过，tilemap-project CTest 通过。tilemap/free-tile 历史成本图、通用 DocumentWeigher 与本地历史服务仍未完成，FS-006 保持 partial。详见 local-history-migration-20261103.md 最新记录。
+
+
+2026-11-04 tilemap 初始历史成本图：接入实际重渲染缓冲身份、图层 tileset ID、网格/null 单元格及旧版字段顺序，保留无缓存链接的首次列表归一化。新增20个真实legacy归档，累计200成本图/129完整文档（121原生完整比对、8像素布局门禁）；tilemap网格与活动像素及原生保存重开值对照、成本图双射、两个对应CTest通过。free-tile、live生命周期、通用DocumentWeigher和本地历史服务未完成，FS-006仍partial，正式exe未更新。详见 local-history-migration-20261103.md。
+
+
+2026-11-04 modern free-tile 初始成本图：接入显式素材集的共享来源数组身份、实例规范字段和独立重渲染缓冲；修复实例source/tileset/tile别名在Timeline校验前归一化、来源sheet名称及7种可选字段显式null拒绝。新增24真实legacy归档，累计224图/153完整文档（145原生完整根图、8像素布局门禁），来源/实例/像素及保存重开对照和两个CTest通过。旧free-tile所有权迁移、链接free-tile、来源归一化/locale、live及DocumentWeigher/服务未完成；FS-006保持partial，正式exe未更新。详见 local-history-migration-20261103.md。
+
+
+2026-11-04 free-tile来源解析增量：承接旧版布尔状态、实际有限数字透明度限幅、混合模式默认、非安全整数偏移归零、description类型与完整四通道颜色舍入/限幅。新增16真实legacy归档，累计240成本图/169完整文档（161原生比对、8像素布局门禁），40现代free-tile案例均检查来源/实例/像素及保存重开；两个相关CTest通过。来源名称locale、超范围安全整数坐标、旧所有权、链接free-tile、live/通用weigher/服务仍未完成，FS-006保持partial。
+
+
+2026-11-04 modern free-tile所有权校验：接入素材集ID的JS trim边界、局部来源/sheet唯一性、跨集合资源占用以及1tile/1×1来源sheet和tilemap owner冲突拒绝；14个真实legacy拒绝归档的原生拒绝回归通过。修正既有现代来源测试夹具误用8列及共用sheet，实际原生创建入口已使用1×1；保留异常归档拒绝检查。240成本图/169完整文档有效回归和两个相关CTest通过，615来源覆盖/diff通过，strict继续失败。旧所有权转换、链接free-tile、live/DocumentWeigher/服务未完成，正式exe未更新。
+
+
+2026-11-04 modern free-tile实例引用类型：承接严格非空字符串sourceId、任何字符串tileId（含空串）拒绝、非字符串tileId忽略的旧版规则。新增6有效/9拒绝真实legacy归档，累计246成本图/175完整文档（167原生比对、8像素布局门禁），46现代free-tile有效例及23所有权/引用拒绝归档通过；两个相关CTest、615来源覆盖与diff通过。旧所有权、链接free-tile、locale、live/通用weigher/服务仍未完成，FS-006保持partial，正式exe未更新。
+
+
+2026-11-04 schema21 free-tile素材集字段：读取入口显式要求非空字符串freeTileSetId及非空来源数组，阻止layer ID自动补值/空来源掩盖非法现代工程；保留独立兼容解析接口。新增14真实legacy拒绝归档，累计37拒绝；246成本图/175完整文档及46现代free-tile有效例和两个相关CTest通过。615来源覆盖/diff通过，strict仍失败；旧schema/资源转换、链接free-tile、locale、live/weigher/服务仍未完成。FS-006仍partial，正式exe未更新。
+
+
+2026-11-04 多来源free-tile：所有权校验复用sheet索引、别名归一化按layer分组cel；新增5个真实legacy归档覆盖3来源、倒序、别名冲突和共享图层。累计251成本图/180完整文档（172原生比对、8门禁），51现代free-tile有效/37拒绝归档。分别以实际legacy首次解码和保存重开预期对照，保留旧版重名别名的再次归一化行为；成本及free-tile测试通过。旧格式/链接/locale/live/weigher/服务仍未完成，FS-006仍partial、正式exe未更新。
+
+
+2026-11-04 导入关系校验内存适配：准备State移动进入现有Timeline构造/关系检查，通过后rvalue takeState移回，移除原来的全状态/tileset像素临时副本；消费对象清空索引与缓存。原始像素buffer地址保持、消费后空对象和重建回归通过；四相关目标重建和timeline-model/project-import/local-history-cost/free-tile-project四项CTest通过。615来源覆盖/diff通过，strict仍失败。仅该临时副本消除，无整体内存准入或功能迁移完成声明；FS-006仍partial、正式exe未更新。
+
+
+2026-11-04 导入cel查询：按旧版lookup边界复用结构化slot与ID索引，缓存链接最终owner；保持原cel序列与显式链，取消像素安装和关联比较中的逐格完整扫描。新增3×192倒序cel原生回归与真实legacy192帧倒序链归档，累计252成本图/181完整文档（173原生比对、8门禁）；三个相关CTest通过。整体导入性能、旧格式/free-tile链接、locale、live/通用weigher/服务未完成，FS-006仍partial，正式exe未更新。
+
+
+2026-11-04 free-tile JSON 归一化：按实际 legacy 导入丢弃未知 source/instance/cel 字段，保存省略默认旋转/翻转和容器扩展。52 有效归档新增实际保存 manifest 的 sources/freeTiles 完整 JSON 对照；累计253成本图/182完整文档（174原生比对、8门禁），37拒绝归档。相关三目标构建及三个定向CTest通过；615来源覆盖/diff通过，strict仍失败。FS-006仍partial，正式exe未更新；旧格式/链接/locale/live weigher/服务/UI未完成。
+
+
+2026-11-04 free-tile默认名称：按legacy默认zh-CN将缺失/空/非字符串source名称回退为“图层”，保留空白及Unicode原文；九语言切换仍未接入。修正初始成本对源专属tileset名称的过度trim门禁，要求与source一致。新增11实际legacy归档，累计264图/193文档（185原生比对、8门禁），63有效free-tile/37拒绝归档。三相关测试通过，615来源覆盖/diff通过，strict仍失败；FS-006仍partial、正式exe未更新，其他迁移缺口保留。
+
+
+2026-11-04 本地历史会话状态机：按实际legacy record/trim迁移提交/形状门禁/分支、撤销重做、两侧裁剪、上限、清空及预算重基形状传递。新增42真实legacy事件对照（普通/0预算），检查快照身份/基础/差量/标签/位置/压力/回调次数及失败事务和弱引用释放；local-history-budget构建/CTest通过。617来源覆盖/diff通过，strict仍失败。尚未接原生settled事件、服务配置/异步写入/诊断与一般live weigher；FS-006仍partial、入口禁用、正式exe未更新。
+
+
+2026-11-04 已完成编辑适配：CommittedCapture.latest读取绑定historyRevision的真实提交条目，JournalSession.recordSettled使用实际Document形状和committed捕获，拒绝active/stale通知；保留原编辑前票据的严格门禁。8类差量两入口JSON/字节一致、legacy独立验证及真实原生笔画/撤销重做/结构/裁剪/取消会话回归通过。两个相关CTest通过，617来源覆盖/diff通过，strict仍失败。统一settled事件分发、配置/后台服务和一般live成本仍未完成；FS-006入口禁用、正式exe未更新。
+
+
+2026-11-04 原生历史通知源：Document实现push/undo/redo/trim/clear与组合完成监听器，传递标签/两侧裁剪/代际；运行时回调不随Document复制，支持自取消及闭包状态，恢复安装静默。实际legacy40命令/34事件逐步对照和真实通知到JournalSession操作后适配通过，三个相关CTest通过，618来源覆盖/diff通过，strict仍失败。生产统一settled派发/末两笔合并批次、失败暂停、后台服务及一般live成本仍未完成；FS-006入口禁用、正式exe未更新。
+
+
+2026-11-04 历史不可变代际准备：按legacy实际直接base相邻判定选择增量或完整checkpoint编码，复用archive，区分cached-null/未命中编译；输出已有packPrepared/Writer所需准备数据和编码checkpoint。六序列legacy对照、实际物化编码/打包重读/像素及失败输入不变回归通过，local-history-budget通过；620来源覆盖/diff通过，strict仍失败。一般compiler/encoder缓存/service写后rebase与settled多事件派发尚未完成；FS-006入口禁用、正式exe未更新。
+
+
+2026-11-04 历史快照编码缓存：按legacy encodeSnapshot复用同一节点并发/成功结果、失败逐出重试、archive直返；弱owner键避免保留文档/base链，限制每次清理量。实际legacy函数验证和原生并发/失败/null重试/弱生命周期回归通过，local-history-budget通过；620来源覆盖/diff通过，strict仍失败。生产worker编排/写后重基/一般compiler及live成本/settled事件仍未完成；FS-006禁用、正式exe未更新。
+
+
+2026-11-04 相邻快照差量缓存：按legacy cacheDelta使用有方向弱owner对，区分未命中/null/字节，保留覆盖与独立后继；prepareGeneration消费真实缓存不再编译命中项。旧版函数及原生字节隔离/弱生命周期/150短生命周期对回归通过，local-history-budget通过，620来源覆盖/diff通过；strict仍失败。生产回执/重基缓存迁移、一般compiler、settled派发及live成本仍未完成，FS-006禁用、正式exe未更新。
+
+
+2026-11-04 历史成功写后重基：按legacy条件仅替换仍可见的已编码checkpoint，重接直接base、保持delta身份并转移shape/相邻差量缓存，重映射已确认record，其他in-flight代际不变。五组实际legacy写后代码对照及回执后继续增量/非法输入回归通过，local-history-budget通过；620来源覆盖/diff通过，strict仍失败。生产回执派发/service/通用compiler与成本/settled事件仍未接入，FS-006禁用、正式exe未更新。
+
+
+2026-11-04 JournalWriter串联不可变代际准备/编码与转移缓存/后台打包/原子写入及owner成功回执，复用既有单运行+待写替换队列和指纹语义。真实文件系统待写替换、线程、缓存重用、锁文件失败/重试回归通过，local-history-persistence通过；620来源覆盖/diff通过，strict仍失败。Editor service/通用compiler与成本/settled事件和增量重复编码性能缺口保留，FS-006禁用、正式exe未更新。
+
+
+2026-11-04 打包结果复用：核对 legacy core/local-history-archive.ts 的 packLocalHistory 返回 archive+deltas 及 store/local-history-service.ts 写入前 cacheDelta 调用；原生增加 packPreparedResult，旧 packPrepared 保留为包装器。JournalWriter 直接移动打包得到的实际差量到缓存，移除第二次 encodeDelta。归档回归覆盖返回差量与归档 cachedDeltas/增量 payload 字节一致、增量覆盖陈旧缓存、结构 null 和包装器输出一致。local-history-archive（0.17s）与 local-history-persistence（0.21s）通过；620文件来源覆盖和 diff 检查通过，strict 因现存迁移缺口仍返回1。生产 service、通用 compiler/live成本和 settled 事件仍未完成，FS-006保持禁用，正式exe未更新。
+
+
+2026-11-04 会话写后派发：enqueueSession 在owner捕获不可变state，仅弱引用JournalSession；后台不读取live会话，owner poll在disk success后调用acknowledge，关闭会话不被写入任务保留。回执逐项隔离异常并在其他已完成项派发后抛首个错误。测试覆盖trimmed根checkpoint/缓存迁移（显式合成encoder，仅验证派发）、锁文件失败保留live链、关闭会话释放、空target拒绝及回调异常隔离。最终local-history-persistence单次通过0.65s。两次最多10次的有界重复验证分别在第8/6次暴露非预期Windows5原子替换失败，位置跨PreparedWriter和JournalWriter；未修改通用atomic writer或添加盲重试，存储可靠性缺口待定位。sessionWrites/latestWrites去重及写记录重映射尚未实现；Editor service/通用compiler/live成本/settled事件仍未完成，FS-006禁用，正式exe未更新。
+
+
+2026-11-04 单identity会话写入去重：按legacy persistLocalHistory/sameHistoryWrite，仅当session record仍为当前identity最新记录且位置/有序label/显式fingerprint/逐快照owner相同时复用回执（运行中或已完成均可）。另一session/raw写入失效旧记录；待写替换清理被替换记录，已完成失败不阻止重试；成功acknowledge后更新record的重基owner。C++记录使用弱session和弱snapshot比较，避免关闭项目被去重元数据保留。直接提取执行旧版persist/helpers+实际LatestTaskQueue，23次操作/10次实际代际写入对应原生回执ID、pending状态与成功写入计数；额外覆盖重基后去重、锁失败后重试、关闭snapshot释放。local-history-persistence通过0.16s，620来源覆盖/diff通过，strict仍返回1。当前仅单writer/identity；全局registry/256条latest弱元数据上限、restore预置记录与Editor接入仍未完成。通用compiler/live成本/settled事件及Windows5偶发原子替换问题保留，FS-006禁用，正式exe未更新。
+
+
+2026-11-04 Windows原子写入证据与诊断：核对legacy platform_storage.rs，原生与旧版同用MoveFileExW(REPLACE_EXISTING|WRITE_THROUGH)，旧版无替换重试。用rustc直接包含未修改legacy模块，生成独立测试探针native/build/history-legacy-atomic-probe.rs/.exe；在新建保留目录连续写入不同代际，第35次复现拒绝访问/os error5，日志native/build/history-legacy-atomic-probe.log。因此故障可跨旧/原生实现复现，尚未识别外部占用者或根因，不作为已修复。原生共享binary写入错误改为system_error，立即捕获Windows码并附临时及目标UTF8路径，短写使用ERROR_WRITE_FAULT，去除误导PNG文案；无重试/替换算法变更。锁history回归验证类型/码5或32、两路径、旧字节及owned临时清理。本地历史通过0.19s、image-save0.19s、project-save0.60s、project-save-raster-resources0.34s；620来源覆盖/diff通过，strict仍1。未更新正式exe、未进行UI运行验收，整体迁移/FS-006仍未完成。
+
+
+2026-11-04 恢复后已写记录登记：核对legacy restoreLocalHistory结尾hasCache&&!writeQueues.has(projectKey)分支。rememberRestored接受已验证ReadResult及裁剪前完整snapshot vector，按writer identity核对并预置缓存对、已完成回执及弱session/latest record；有运行/待写或无cache不登记。恢复未变化时enqueueSession返回相同ready回执且不创建写入目录，裁剪后不误用完整record，另一session写入失效旧去重；实际legacy opaque归档回归覆盖cache命中不编译、busy拒绝及非法identity/count/null。local-history-persistence通过0.46s。仅post-install服务接口，未接Editor恢复；全局registry、一般compiler/live成本/settled事件和Windows5占用根因仍缺。FS-006禁用，正式exe未更新。
+
+
+2026-11-04 录制协调器：新增LocalHistoryRecording复用JournalSession/PersistTimer/JournalWriter，承接legacy configure监听try(record+schedule)/catch(suspend)、suspend取消计时并释放state、pressure/750ms定时及flush先取消再提交。捕获失败保存exception并暂停本地history，不动Document普通undo/disk历史；诊断sink抛错不逃回提交栈。IO/worker失败保留在ack，不暂停捕获。显式resume接收已完成baseline，不绑定raw listener。回归覆盖真实Document commit后settled捕获失败仍可undo/redo、sink失败、IO准备失败继续record、初始pressure立即/后续不推迟deadline、到期捕获live位置、flush取消/disable/resume。本地历史持久化回归通过，622文件来源覆盖与diff通过，strict仍1。基线捕获/偏好maxEntries设置、一般compiler/live成本、全局registry与settled生产派发/Editor接入仍未完成；Windows5根因保留，FS-006禁用，正式exe未更新。
+
+
+2026-11-04 生产快照物化/编码：PixelHistory.materialize按legacy materializeLocalHistorySnapshot迭代追溯base、archive decode/Document clone、snapshotFrameId后顺序hydrate redo，直接复用prepare/applyLocalHistoryPixels，不安装普通undo、不逐步编码。未知path/layout仍报错，原生maxEntries限链长。encodeJournalSnapshot对archive直接复用Data、Document直接编码、increment仅在需checkpoint时物化；encodeHistoryProject复用工程编码器，无preview/默认level6、timelapse PNG存储，普通save0/recovery1不变；JournalWriter空encoder现在使用真实默认实现。预算测试六组实际legacy generation plan已切换生产codec，补充源像素/revision/history不变、valid缩时PNG字节存储/reopen、unsupported/tiny budget拒绝和默认writer真实写盘。local-history-budget0.61s/hydration0.20s/persistence0.27s、recovery-codec0.05s、project-save0.65s及raster-resources0.38s均通过；622来源覆盖/diff通过，strict仍1。通用compiler/live成本、其他layout/结构hydrate、全局registry/settled生产派发与Editor/UI尚未完成，Windows5根因保留，FS-006禁用、正式exe未更新。
+
+
+2026-11-04 通用compiler字节视图核心：直接迁移compileLocalHistoryDelta的类型拒绝、不同长度整段替换、对齐32位跳过、最长1024byte补丁/尾部相等裁剪与bytes计数。输入保留typed view offset/length，输出独立copy的before/after，原生bounds/expandedBytes/maxEntries门禁；不伪造全Document编译。复用TS loader执行实际完整legacy compiler，74组空/相同/对齐与非对齐、1024边界、dense/sparse、Uint16/Uint32/DataView、type change/grow/shrink对照，逐patch offset/内容/计数一致并独立重放得到目标bytes；local-history-budget通过0.87s。对象双向别名映射/primitive Object.is与字段顺序、路径/region/affected元数据及完整runtime Document adapter仍未迁移，Writer compiler继续显式依赖。无Editor/UI启用，正式exe未更新。
+
+
+2026-11-04 通用对象比较core：compareHistoryObjects迁移Object.is/NaN/正负零、String primitive UTF16计费、双向对象映射/循环、仅root忽略identity字段、按before Object.keys顺序、数组长度/键、非Object prototype退回、替换view aliases，复用74组byte core。输出origins/affected顺序/region frame与normalize标记；native显式DFS及node/property/task/patch/bytes预算。执行实际legacy full compiler产生32组runtime图，逐patch path/value/offset/alias、cost、origin/invalidation完全对照，含field reorder、array hole、共享拆分/合并/循环、Float64字节与共享Object.is、layer/runtime门禁。local-history-budget通过0.78s。图输入需真实身份和字段序，不以project JSON代替；原生Document graph adapter、result->Delta bridge及生产compiler串联仍未完成。FS-006禁用，正式exe未更新。
+
+
+2026-11-04 compiler结果Delta桥接：historyDifferenceDelta/compileHistoryGraphs把比较结果转为既有Delta+buffers，复用encodeDelta归档。匹配legacy encodeHistoryDelta/JSON.stringify：undefined side省略、非有限number为null、signed-zero为JSON0，保留UTF16/string/path/alias、origins/label/bytes/invalidation/affected/normalize；typed view按可见字节和type写外置buffer，保留expanded/manifest门禁。32组runtime图中23个非null结果的原生ZIP资源集、完整JSON结构和每个buffer字节与实际legacy编码一致；原生decode通过，实际legacy decodeHistoryDelta --verify反读全部23原生产物deepEqual通过。local-history-budget通过1.24s。Document真实runtime graph adapter及Writer生产generic compiler串联仍未完成，FS-006禁用，正式exe未更新。
+
+
+2026-11-04 共享identity写入登记表：JournalWriterRegistry按legacy writeQueues/sessionWrites/latestWrites统一每个应用history store的写入。相同identity的不同会话复用既有JournalWriter单运行/待写替换；owner派发后释放idle queue，弱session records及snapshot/transition缓存跨queue重建保留。latest弱键按实际rememberLatestWrite插入顺序限定256，命中不刷新顺序；淘汰不取消运行/待写，失败清理不覆盖更新记录，restore遇busy不登记。LocalHistoryRecording增加registry+identity接入，不持有可被idle释放的queue引用。原生使用应用持有的单服务实例适配renderer模块全局，Editor实例化及生产调用尚未接入。
+
+直接执行旧版persist、rememberLatestWrite和restore登记代码块及实际LatestTaskQueue，生成527条观测；原生逐项对照ack身份/queue数量/latest键数量及drain后写入次数，覆盖256淘汰运行identity、跨session待写替换、显式save粘滞与idle清除。补充跨idle queue转移缓存复用、ready去重、关闭session/snapshot释放、worker失败/owner回调错误隔离、失败重试和录制协调器跨会话失效。最终local-history-persistence通过0.25s；625文件来源覆盖及证据快照通过，strict因现存缺口仍1，diff检查通过。日志native/build/history-registry-{build,build-final,tests,tests-final,provenance,strict}.log；构建/测试句柄全部结束。Document真实runtime图adapter/通用compiler、live成本、settled生产事件及Editor/UI接入仍未完成；Windows5原子替换根因保留。FS-006继续partial/入口禁用，正式exe未更新，无UI运行验收。
+
+
+2026-11-04 解码资源真实比较图：appendDecodedHistoryResourceValues直接读取Document画笔/参考图/切片，为既有比较图追加实际字段名、值、数组长度、字段顺序与完整像素字节；画笔colors/sourceX/sourceY保留enumerable undefined，颜色Uint32/参考图Uint8Clamped/coverage Uint8保持typed tag，透明像素RGB不丢失。共享reference pixel owner在单次capture内复用view节点；捕获拥有独立字节，不用可复用native地址伪造跨capture Object.is身份。画笔metadata尺寸/来源默认值与实际brush不一致明确拒绝；节点/字符串/字节预算失败回滚新增节点，不修改已有owner。
+
+实际legacy createDocument/encodeProject/decodeProject新增12组资源工程对，覆盖空/相等、Unicode/坐标/来源undefined变化、coverage/colors/参考图字节变化、colors有无、尺寸增长、增删资源及两个独立解码参考图。原生逐项打开真实工程、直接构图，再对照legacy runtime图的字段序/标量/字节/别名双射；随后compiler结果与实际legacy Delta编码比较。合计74 byte-view及44 object图；31个非null原生Delta由实际legacy decodeHistoryDelta反读deepEqual通过。补充native共享参考图owner、捕获后源更改不影响字节、undefined、三种预算rollback和metadata分歧拒绝。local-history-budget最终通过0.90s；625来源覆盖/证据快照通过，strict因现有缺口仍1，diff通过。日志native/build/history-resource-values-{legacy,build,build-final,tests,tests-final,reverse,provenance,strict}.log，全部构建/测试句柄结束。
+
+本次仅decoded resource fragment，不是完整live Document compiler；palette原始entry/order、layer/cel/mask与root元数据、live字段生命周期及Editor/settled接入仍未完成，不能将resource图测试解释为全文档等价。FS-006保持partial/入口禁用，正式exe未更新，无UI运行验收，Windows5原子替换根因仍保留。
+
+
+2026-11-05 解码动画元数据比较图：appendDecodedHistoryTimelineValues直接构建frames/loopSections/activeFrameId/loop/tilesets的真实值图。enabled帧省略disabled，disabled保留true；repeatCount无限和图块layout空槽为enumerable null；RGBA图块sheet保留Uint8ClampedArray tag与透明RGB原始字节。复用既有tilejson validate并补充decoder的完整slot覆盖要求，拒绝不规范frame/loop/range/direction/repeat/name；free-tile source覆盖后的set名称按实际source核对。抽出内部CompareAppend复用资源构图，并计入已存在节点的文本与去重backing bytes，修正跨片段拼接预算重复从零计数问题；失败只回滚新增节点。
+
+实际legacy createDocument/encodeProject/decodeProject新增17组工程对，原生逐字段序/标量/typed bytes/别名图对照后编译并比较legacy Delta。覆盖duration、disabled字段结构变化、activeFrame/loop、repeat null到9999、四种direction、Unicode名称/range、增加frame/删除loop、tileset像素/名称/slot移动/尺寸/增加/空数组。补充已捕获值不随native duration变动、跨append累计byte预算、node/string rollback、缺slot/未trim名称/无效direction拒绝。合计74 byte-view与61 object图；44个非null原生Delta由实际legacy decodeHistoryDelta反读deepEqual通过。local-history-budget最终通过0.79s，625来源覆盖及证据快照通过，strict因现存缺口仍1，diff通过。日志native/build/history-timeline-values-{legacy,build,build-final,tests,tests-final,reverse,provenance,strict}.log，全部构建/测试句柄结束。
+
+仅decoded timeline片段；完整Document根对象、palette、layer/cel/mask及live身份/字段生命周期、通用live weigher和Editor/settled生产事件仍未接完。FS-006保持partial/入口禁用，正式exe未更新，无UI运行验收；Windows5替换根因仍保留。
+
+
+2026-11-05 缩时录制比较图与缺省状态：appendDecodedHistoryRecordingValues直接构造实际normalized timelapse设置/快照键序、原始数字/布尔/字符串、enumerable undefined changeScore、PNG Uint8Array可见字节及local引用。PNG作为opaque bytes，不解码、不读library。核对实际restoreProjectTimelapse发现native此前把缺失/非有限changeScore统一成0；Frame新增historyChangeScoreUndefined保留运行时undefined，同时既有compact排序仍使用0，工程encode省略该JSON值，修正roundtrip语义。local解码直接保留原对象：historyLocalKeys保存实际Stringify键序，比较及重新保存沿用，避免固定顺序替代；未知extension字段仍按已有native门禁拒绝。比较拥有可见字节，完整ZIP backing身份/费用继续由已有cost adapter负责，不把比较图当成transfer-cost图。设置/帧/时间/引用与预算校验失败只回滚新增节点。
+
+实际legacy encode/decode新增16组录制工程对，覆盖三种quality/两种mode、设置变动、空/相等、缺失/NaN/有值score、时间、PNG byte/长度变化、external reference JS-safe大offset、local键序改变及原序patch顺序、embedded转local和增加frame。原生直接打开Document构图，与legacy runtime图逐字段序/值/typed bytes/别名对照后再compile；合计74 byte-view与77 object图，58个非null原生Delta由实际legacy decodeHistoryDelta反读deepEqual通过。实际legacy decodeProject还反读32个native重新保存工程，对照完整timelapse及local Object.keys，证明缺省score及原字段序跨保存保留。native补充捕获后源字节更改隔离、设置/非规范时间/无效local shape拒绝以及预算rollback。
+
+local-history-cost5.80s、local-history-budget1.12s、timelapse0.66s、timelapse-restore0.37s全部通过。625来源覆盖/证据快照通过，strict因现存缺口仍1，diff通过。日志native/build/history-recording-values-{legacy,build,build-final,tests,reverse,provenance,strict}.log；全部构建/测试句柄结束。完整Document图（palette/root/layer/cel/mask）、一般live weigher/字段身份生命周期与Editor/settled生产派发仍未完成；FS-006继续partial/入口禁用，正式exe未更新，无UI运行验收，Windows5原子替换根因保留。
+
+
+2026-11-05 解码调色板比较图：appendDecodedHistoryPaletteValues以保留的ReadManifest提供实际palette entry/color对象键序、缺失/null/空name以及独立paletteOrder，以Document提供经门禁核对的当前值与规范槽位。复用从prepareEditableImport原逻辑抽出的prepareEditablePalette，不复制或重建完整raster；核对source archive身份、project ID、每个entry及columns/slots/nextId，变化后明确拒绝旧decoded捕获。颜色通道读取原JSON数值；未知entry/color扩展字段拒绝，预算失败回滚新增节点。Windows GetObject宏与WinRT方法冲突已通过局部undef修正。独立paletteOrder与槽位遍历序不一致的既有导入限制仍保留并测试，不能视为该缺口已完成；未实现一般live palette字段生命周期。
+
+实际legacy createDocument/encodeProject/decodeProject及compiler新增13组调色板工程对：相等/空、Unicode与透明RGB、名称缺失/null/空、entry及color键序变化、带转义字段样文本的名称、顺序变更、列数/槽位间隙/nextId、增加/删除颜色。原生打开实际工程并构图，逐字段序、标量、数组长度及别名双射对照，再比完整Delta JSON及外部资源。补充不修改revision、跨append节点/字符串预算回滚、foreign archive身份、已编辑颜色、未知color字段和独立order/slot门禁回归。
+
+local-history-budget通过1.36s，project-import通过0.03s；合计74 byte-view及90 object图，实际legacy decodeHistoryDelta反读66个原生Delta、decodeProject反读32个native重存录制工程均通过。625文件来源覆盖/证据快照通过；strict仍因已登记迁移缺口退出1，diff检查通过。日志native/build/history-palette-values-{build,build-final,tests,reverse,provenance,strict}.log；全部构建/测试句柄结束。仅验证decoded palette片段，完整Document root/layer/cel/mask、一般live比较/成本/身份生命周期及Editor settled生产派发仍未完成；FS-006保持partial/入口禁用，正式exe未更新，无UI运行验收，Windows5原子替换根因保留。
+
+
+2026-11-05 解码根元数据真实比较图：appendDecodedHistoryMetadataValues追加decoder顺序的schemaVersion、调用方提供的runtime document ID、name/width/height/colorMode/pixelFormat/activeLayerId、已接入空canvasReferences、可选outlineSettings、displaySettings/grid/可选symmetryCenter、statistics、filePath null/dirty false、createdAt/updatedAt和layerPanelState。outline直接迁移legacy normalizeOutlineSettings各字段/颜色/方向默认值及取整钳位；panel直接迁移实际normalizeProjectLayerPanelState的ID过滤、去重、active/group/anchor回退与collapsed数组，独立于native当前UI选择。预算失败回滚新增节点；source身份及native元数据必须一致。缺失时间戳依赖同一decode时钟上下文、空名称依赖实际decoder本地化上下文，当前显式拒绝，未近似推断。完整root字段合成、layer/group/cel/mask和live生命周期仍未接完。
+
+核对实逻辑发现原生工程导入曾误用拖动setter，把对称中心钳位到画布并量化为半像素；legacy normalizeProjectDisplaySettings保留任意有限坐标。新增setImportedSymmetryCenter只校验有限值，createEditableDocument改用该入口；互动setSymmetryCenter维持旧有半像素/画布钳位。比较捕获核对中心（包含源缺省中心）及grid原点的signed-zero语义，变化后拒绝旧捕获。
+
+实际legacy encode/decode/compiler新增19组工程对，覆盖相等/Unicode名称/尺寸、pixelFormat缺省、统计JS安全大整数与非法值归零、dates、grid取整/flags/缺省、任意小数与画布外对称中心/可选字段结构、outline有无/颜色/厚度/方向/所有kernel与position分支（本轮覆盖round/square/horizontal/vertical、inside/outside/both）、非法字段归默认、array对象形态及panel过滤/分组/anchor/collapse。原生逐字段序/标量/数组长度/别名双射对照后再compile和比较完整Delta JSON/resources。补充捕获不改revision、source/metadata/预算rollback、缺失时间戳拒绝、缺省中心变化拒绝、导入坐标保真与工具仍钳位，以及非有限导入中心拒绝。
+
+local-history-budget最终1.19s、project-import0.03s通过；合计74 byte-view及109 object图。实际legacy decodeHistoryDelta反读81个原生Delta；decodeProject反读5个原生重存元数据工程，核对displaySettings/statistics/name/dimensions/format/dates，证明fractional/outside中心跨保存保留；已有32个录制重存工程反读继续通过。625文件来源覆盖/证据快照通过，strict因现有迁移缺口仍退出1，diff检查通过。日志native/build/history-metadata-values-{build,build-final,tests,tests-final,reverse,provenance,strict}.log；全部构建/测试句柄结束。FS-006保持partial/入口禁用，正式exe未更新，无UI运行验收；一般live weigher/身份字段生命周期及Editor settled生产派发、Windows5原子替换根因仍未完成。
+
+
+2026-11-05 分组/样式及蒙版解码比较片段：appendDecodedHistoryGroupValues逐项构造实际groups键序、可选panelOrder/displayColor/description/parentGroupId/clippingMask/layerStyles/cumulativeBlend及普通标量。共享compareColor/compareGradientMap/compareLayerStyles构建完整规范化样式值（gradient-map、stroke、shadow、innerGlow、colorOverlay、gradientOverlay），为后续layer/cel图合成复用；gradient stop强制opaque RGB、scope为layer、方向按kernel规范，shadow Number转换产生的负零从保留源字段恢复到比较图。源archive身份、组顺序/值/样式signature及父字段presence变化明确拒绝旧decoded捕获；预算失败回滚新增节点。
+
+实际发现并修正两项既有迁移偏差：readColorOverlay原先只接受number且对部分flag严格拒绝，现直接按legacy normalizeLayerStyles的record/Number()/严格true/not-false规则解码，复用legacyjson::number支持数字字符串、null、布尔、数组及NaN fallback，gradient-map颜色仍遵从其独立strict-number规则；JSON array样式解码为默认值，重存不再错误地当成JsonObject解析。父组缺失字段原先被保存为null：ManifestGroup与timeline::Group新增parentGroupIdPresent（原生新建默认存在，解码按HasKey设置），import/snapshot/encode保留该状态，不再从旧archive推断live父字段。显式tree位置写入、复制/粘贴/解组更新presence；moveLayerPanelRows的before回放按旧版applyLayerPanelTree/undo写入null语义处理。直接执行实际legacy moveLayerPanelRows与返回undo/redo产生四组父字段观测，原生逐组核对id/presence/parent；属性可见性撤销保留原缺失字段。其他层级命令的完整字段生命周期/撤销等价性尚未全面审计。
+
+appendDecodedHistoryMaskValues复用validateMasks和normalizedMaskPixel门禁，构造layerMasks/groupMasks数组、slot/owner字段、实际locale名称、正常字段序、可选linkedMaskId/autolink与独立Uint8ClampedArray。每个mask捕获拥有新RGBA字节，即使链接或源资源共享也不伪造JS像素view别名；拒绝未规范化颜色/可见性/moveWithOwner/geometry/name，预算失败回滚。捕获不改document revision，后续源像素变化不改已捕获数据。名字由调用方传入实际decoder locale，不用native UI文本近似。
+
+实际legacy encode/decode/compiler新增17组groups/style与7组mask工程对，合计74 byte-view及133 object图。覆盖空/相等、Unicode/可选元数据、parent缺失/null/重挂/增删组、全部样式设置/Number强制转换/array/null/负零shadow、四种kernel/gradient排序与透明RGB，以及layer/group masks空/相等/尺寸/偏移/flags/灰度bytes/链接和独立链接view。每个工程先对照graph字段序/标量/数组长度/别名双射，再比较完整Delta JSON及资源。首次发现分组测试调用方在追加节点后使用失效vector引用，已改为先完成append、再取得根owner；保留有文件/节点/键序上下文的失败诊断。
+
+最终8项通过：local-history-cost6.37s、local-history-budget2.15s、project-import0.13s、project-save0.92s、project-save-raster-resources0.40s、project-manifest0.32s、document-layer-groups0.06s、document-layer-group-structure0.04s。实际legacy decodeHistoryDelta反读96个原生Delta；decodeProject按legacy canonical encode/decode反读48个native分组/蒙版重存工程（包含array样式与父字段presence）；已有5个metadata和32个录制重存反读继续通过。625文件来源覆盖与证据快照通过，strict因现有迁移缺口仍退出1，diff检查通过。日志native/build/history-group-mask-values-{legacy,build,build-final,build-presence,build-verified,tests-verified,reverse,provenance,strict}.log；全部构建/测试句柄结束。
+
+仍只是decoded片段：空字符串parent在legacy是string而native拓扑折叠为无父，新增实际legacy工程证据并在比较入口显式拒绝；缺省本地化组名仍需真实decoder上下文。完整layer/cel/raster图、一般live身份/字段/成本生命周期及Editor settled生产派发仍未完成，FS-006保持partial/入口禁用，正式exe未更新，无UI运行验收。Windows5原子替换根因仍保留，未用重试掩盖。
+
+
+2026-11-05 解码栅格存储比较值：扩展既有DecodedHistoryRasterStorage的resource/geometry缓存，新增显式retainComparisonBytes准备模式及appendComparison。默认cost-only模式仍不保留raw像素/payload/offset字节，延续原有成本路径；comparison模式为捕获独立拥有所需数据，不走dense展开。复用既有sparse header/table/entry range/duplicate slot验证，生成实际Int32Array little-endian tileOffsets、Uint8Array payload、tile rectangle visibleBounds或null及runtime字段序。raw按decodePixels(dataFile/encoding/dimensions)键共享Uint8ClampedArray view；sparse按相同键共享runtime对象，而每个surface按historyDocumentTransferView新建独立4byte Uint8Clamped占位view。单次调用组装全部surface保证别名一致，独立调用不伪造跨capture identity；成本图的完整ZIP backing身份仍由既有cost adapter独立处理。节点/字符串/累计bytes失败只回滚新增节点，未知资源/空指针/未准备比较bytes显式拒绝。
+
+实际legacy encodeProject/decodeProject/historyDocumentTransferView/compiler新增12组工程对，合计74 byte-view及145 object图。覆盖raw相等/字节变更/共享cel视图、稀疏空/非空/边缘2x6小块/多tile/变更/空到内容/raw-sparse结构，以及ZIP stored、deflated raw与deflated sparse。原生直接按真实manifest准备storage，对照实际transfer graph键序/标量/typed bytes/array与alias双射后再比较完整Delta JSON及资源。原生安全检查覆盖raw共享视图、sparse独立placeholder但共享runtime、多次捕获新节点、缺少准备/未知resource/null、跨append byte/node/string rollback。当前仅storage片段，不把测试根layers=[]当成实际图层可增量编译证据：真实compiler对未物化runtimeRaster图层仍须返回null，该既有门禁未移除。完整layer/cel字段图、特殊图层rendered storage与实时栅格生命周期尚未接入。
+
+最终local-history-cost通过9.02s，local-history-budget通过2.06s；实际legacy decodeHistoryDelta反读106个原生Delta，48组分组/蒙版、5个metadata与32个录制native重存反读继续通过。625文件来源覆盖及证据快照通过，strict因现存迁移缺口仍退出1，diff检查通过。日志native/build/history-raster-values-{legacy,build,build-final,tests,tests-final,reverse,provenance,strict}.log；全部构建/测试句柄结束。FS-006保持partial/入口禁用，正式exe未更新，无UI运行验收；一般live比较/成本/字段身份生命周期与Editor settled派发仍待完成，Windows5原子替换根因保留。
+
+
+2026-11-05 图层/Cel 解码比较片段：新增 appendDecodedHistoryRasterValues，以实际 project-format-decode、normalizeCels、applyFrameSurfaces 与 historyDocumentTransferView 为依据，构造 decoder 顺序的 layer/cel 对象。layer 按活动帧解析链接根后投影 geometry/opacity，保持与 cel.surface 不同的 owner；Cel 保留自身 linkedCelId、非零 zIndex、可选 opacity、显式 text:undefined 和独立 surface 字段序/storageOrigin。复用先前 compareLayerStyles/compareGradientMap 和 DecodedHistoryRasterStorage，一次组装全部 layer/own-cel 存储，保留 raw view 共享、sparse runtime 共享及每个 surface 的独立 placeholder。同时提供 compiler 所需 layer 顺序、width/offset、零 storage origin、runtime 标记及 activeFrameId；只在全部节点构造成功后发布这些元数据。
+
+捕获先核对原生反向 layer 顺序、元数据、Cel 顺序/链接/独立参数/解析后像素、source archive 身份及活动帧；拒绝已改变值、已有 layer 比较元数据及未适配的 text/tilemap/free-tile/linked-layer 情况。支持普通 layer 的样式、背景 canvas/preset 和 adjustment gradient-map。当前只承接 schema21 且原生已有完整 slot 的解码状态；空字符串 groupId、缺失 slot、旧版本 compact-storage、特殊图层渲染与一般 live 生命周期尚未适配，不由此宣称完整 layer 能力。预算失败回滚新增节点并保留已有 owner 与比较元数据；捕获拥有独立字节，跨捕获不复用 identity。
+
+实际 legacy encodeProject/decodeProject/historyDocumentTransferView/compiler 新增21组 layer 工程对，累计74 byte-view及166 object图。覆盖相等/Unicode/可选属性、活动Cel opacity（含缺失和零）、像素/geometry/zIndex/group/style、canvas与preset背景、adjustment、非活动Cel、活动帧切换、链接Cel及其活动投影、多个layer及稀疏空/非空/变化。测试先逐项核对 graph 键序/标量/typed bytes/alias 双射、layer invalidation geometry/activeFrameId，再比较完整非null Delta JSON与外部资源。真实 layers 含 runtimeRaster 时仍按旧版返回null，未以 layers=[] 的存储片段替代该验收。
+
+原生安全检查新增 stale source/名称/描述/flags/style/Cel opacity/zIndex/offset/pixel/活动帧拒绝、capture不改revision、layer与surface独立owner但共享raw view、显式undefined、跨capture独立bytes，以及storage完成后owner预算失败的事务回滚。local-history-budget最终通过2.10s；实际legacy反读115个原生Delta，已有48个group/mask、5个metadata、32个recording原生重存工程反读继续通过。625文件来源覆盖/证据快照通过；strict因既有迁移缺口仍退出1；diff检查通过。日志 native/build/history-layer-values-{legacy,build,build-final,tests,tests-final,reverse,provenance,strict}.log；所有构建/测试句柄均结束。本轮只构建测试目标，正式exe未更新，无UI运行验收。
+
+后续仍需完整Document root合成、特殊/rendered layer和linked-layer共享同步、一般实时对象身份/可选字段生命周期/成本及Editor settled生产派发。FS-006维持partial且入口禁用；Windows5原子替换问题根因仍未解决。整体“完成软件所有功能迁移”目标保持进行中。
+
+
+2026-11-05 初始解码完整根对象比较：新增 decodedHistoryComparison，复用此前 metadata/raster/group/palette/resources/timeline/masks/recording 全部比较片段，沿用 InitialHistoryDocumentCost 的 HistoryDecodeContext（真实运行时document ID与decoder locale蒙版名）。按实际 project-format-decode 的根字段顺序合成：schema/id/name/dimensions/mode/format、layers/groups/active、palette/layout/resources、canvasReferences/tilesets、animation（frames/cels/layerMasks/groupMasks/loopSections/activeFrameId/loop）、可选outline、display/statistics/recording/slices、filePath/dirty/dates，最后追加layerPanelState。返回独立拥有的graph，不改变Document；保留raster提供的layer invalidation metadata及资源view/runtime别名。metadata临时owner不在返回root可达路径内，但累计node/string/byte预算仍包含该分配；没有把比较所需的紧凑bytes当作JS完整backing内存成本。
+
+实际legacy工程新增21组完整文档对，累计74 byte-view和187 object图。覆盖相等、name、pixels、layer/opacity、brush/reference/slices、palette/layout、grid/outline/symmetry、statistics/dates、groups/style/panel、frame duration/active/linked cel、recording、tilesets、layer/group masks/linked mask、adjustment、background，以及sparse gate和多领域同时变更。每份原生graph先对照真实decodeProject/historyDocumentTransferView的全部字段序/标量/typed bytes/对象alias双射及layer geometry/activeFrame；再比较actual compiler完整非null Delta JSON/resources。另从相同真实decoded document读取historyDocumentBytes，42份before/after均与同一decode context下既有InitialHistoryDocumentCost一致，包含栅格和recording共享ZIP backing场景。
+
+新增安全检查：不同runtime ID的独立捕获仍受root-only id exclusion且编译为空Delta；不同capture字节独立拥有；整图累计byte/string及最终root node预算超限拒绝；缺少ID/实际mask名称、source archive不符拒绝；捕获不改revision/history；原生资源之后变化或后续捕获失败不改已返回graph。local-history-budget最终通过1.91s。actual legacy decodeHistoryDelta反读122个原生Delta；既有48个group/mask、5个metadata及32个recording原生重存反读继续通过。625文件来源覆盖/证据快照通过，strict因已登记迁移缺口仍退出1，diff检查通过。日志 native/build/history-document-values-{legacy,build,build-final,tests,tests-final,reverse,provenance,strict}.log；全部构建/测试句柄结束。本轮只构建测试目标，正式exe未更新，无UI运行验收。
+
+本阶段完成的是已有门禁内的初始decoded根对象组装。仍未支持rendered text/tilemap/free-tile和linked-layer同步比较、缺失timeline slot、任意live对象identity/可选字段生命周期、解码本地化/时钟fallback上下文，以及一般live成本与Editor settled生产派发。后续须以此为起点补齐这些能力；不得把初始graph直接绑定生产实时编辑。FS-006保持partial/入口禁用，整体功能迁移目标进行中；Windows5原子替换根因仍未解决。
+
+
+2026-11-05 文字解码比较片段：compareTextCel接入完整decoded根对象，保留UTF16内容、字体128码元截断、样式区间显式color:undefined、变换矩形扩展字段与JS键序、取整/截断负零，复用既有textjson键序解析。15组实际legacy工程对覆盖文字/字体/代理码元/布局/重叠样式/矩形扩展/链接帧/稀疏及原JSON数值强制转换。完整graph字段序、标量、typed bytes、alias及同上下文historyDocumentBytes逐项对照。发现并修复历史增量编译及归档Stringify的孤立代理码元UTF8替换：javascriptJsonUtf8按JSON.stringify转义孤立代理码元、保留合法配对；实际legacy反读129个原生Delta。另修正无效transforms过滤为空后再次normalize省略字段的成本与比较语义。新增stale text/font/color/origin/transform拒绝、预算回滚及捕获隔离检查。
+local-history-cost6.63s、local-history-budget2.09s、local-history-archive0.07s通过。625来源覆盖通过，strict仍因现存迁移缺口退出1。日志history-text-values-{legacy,build-final,build-verified,tests,ctest,reverse,provenance,strict}。只构建测试目标，正式exe未更新，无UI验收。特殊tilemap/free-tile/linked-layer、任意live身份生命周期及Editor settled生产派发仍待完成，FS-006保持partial/入口禁用。
+
+
+2026-11-05 tilemap解码比较：appendDecodedHistoryRasterValues接入tiles::render，依据source manifest图块集渲染并核对原生resolved surface与grid，拒绝原生图块集值变化。每个实际有surface的Cel独立拥有新RGBA view，活动layer共享所属Cel view；不复用存档raw/sparse缓存替代渲染结果。rendered surface不含storageOrigin/runtimeRaster；layer tilemapTilesetId及Cel tilemap/text顺序、cells空槽/flag/rotation沿用真实decoder。无数据链接Cel保留首次normalize的dense字段序/manifest cell序及sparse省略语义；原生额外渲染surface不改变返回旧版字段形态。复用现有原生tiles::render，无新渲染算法。避免surfaceFor复制普通栅格，按引用读取源/渲染存储。
+实际legacy新增15组完整工程对，累计74 byte-view与217 object图，覆盖空/非空/尺寸/4种旋转与翻转/图块像素/链接、链接元数据none/sparse/dense/surface及乱序dense。完整graph逐字段序/标量/typed bytes/alias/geometry与同上下文transfer cost核对后再compile；132个原生Delta由actual legacy decodeHistoryDelta反读通过。新增stale cell/rotation/tileset pixel拒绝、layer-Cel view共享、rendered无storageOrigin及预算失败回滚。4项回归通过：local-history-cost6.07s、local-history-budget1.86s、local-history-archive0.06s、tilemap-project0.56s。625来源覆盖通过；strict因已登记缺口仍退出1。日志history-tilemap-values-{legacy,build-final,tests-final,ctest,reverse,provenance,strict}。仅测试构建，正式exe未更新，无UI运行验收。
+仍需free-tile与linked-layer比较、一般live身份/字段生命周期与成本、Editor settled生产事件和完整持久化恢复服务，缺省locale/clock及缺失timeline slot等门禁仍保留。FS-006维持partial/入口禁用，Windows5原子替换根因仍待处理；不代表整体功能迁移完成。
+
+
+2026-11-05 现代free-tile解码比较：完整decoded根对象接入自由图块来源和实例值图。仅free-tile存在时复用prepareEditableImport完成已迁移的ownership/名称/alias规范化，复用free_tiles::render生成真实像素；普通raster/tilemap不额外prepare。核对原生实例、来源及规范化图块集内容，拒绝过期捕获。来源数组按setId共享，layer/Cel渲染视图沿用所属Cel身份；source描述/颜色可选，instance opacity/blend与非零变换字段按实际decoder顺序构造，rendered surface省略storageOrigin/runtimeRaster。历史legacy source与链接free-tile Cel仍受原导入门禁，未冒充已完成。
+实际legacy新增18组完整工程对，累计74 byte-view与235 object图，覆盖空/相等、位置、source metadata/name/hidden、instance metadata、4种变换、来源别名、共享layer、像素、半透明叠加、多source及顺序、未知字段规范化。完整字段序/值/typed bytes/alias/geometry及同上下文historyDocumentBytes对照后再compile；139个原生Delta被actual legacy decodeHistoryDelta反读通过。新增stale实例位置/透明度、source名称/offset、tileset pixels拒绝及字节/节点预算回滚，layer与Cel view共享检查。
+4项回归通过：local-history-cost5.53s、local-history-budget2.13s、local-history-archive0.06s、free-tile-project10.75s。625来源覆盖/证据快照通过，strict仍因已登记缺口退出1，diff通过。日志history-free-values-{legacy,build-final,tests-final,ctest,reverse,provenance,strict}；全部构建/测试句柄结束。仅测试目标构建，正式exe未更新，无UI运行验收。
+整体所有功能迁移仍未完成。下一步仍需linked-layer比较同步、链接free-tile与历史ownership导入、一般live对象身份/字段生命周期/成本及Editor settled生产事件与恢复服务。缺失timeline slot、locale/clock等门禁和Windows5原子替换根因继续保留；FS-006为partial且入口禁用。
+
+
+2026-11-05 linked-layer初始比较：允许普通链接栅格layer，linkedContentId位于name之后，复用既有DecodedHistoryRasterStorage保留shared view/runtime及各自owner与偏移。真实decodeProject只校验链接storage identity，refreshActiveAnimationFrame不会调用normalizeLinkedLayerMetadata；因此初始decoded各层displayColor的原值/presence必须保留，后续ensureAnimationDocument才同步。原生现有导入已同步颜色：捕获核对同步后的第一有效颜色，却以源字段构建比较图；InitialHistoryRasterObjects成本同样改用原decoded字段presence。未改变原生导入时序，也不将此差异宣称完全迁移。
+实际legacy新增11组完整工程对，累计74 byte-view与246 object图。覆盖相等/metadata/pixels/color/独立offset、singleton/unlink、sparse、原JSON冲突颜色/缺失首层颜色、多帧。逐字段序/值/typed bytes/alias/geometry与同上下文historyDocumentBytes对照后compile；143个原生Delta由actual legacy反读通过。新增stale linked ID/description/color/offset拒绝、共享view/独立owner及节点预算回滚检查；图值错误增加source/node上下文诊断。
+local-history-cost6.21s、local-history-budget2.58s、linked-layers0.39s通过。625来源覆盖/证据快照通过，strict仍因已登记迁移缺口退出1，diff通过。日志history-linked-values-{legacy,build-final,tests-final,ctest,reverse,provenance,strict}。全部构建/测试句柄结束；只构建测试目标，正式exe未更新，无UI验收。
+尚未迁移任意实时对象identity/字段生命周期及成本、Editor settled生产派发/完整持久化重开服务、linked free-tile/历史ownership、缺失timeline slot/locale/clock等门禁；Windows5原子替换根因保留。FS-006继续partial且入口禁用，整体所有功能迁移目标保持进行中。
+
+
+2026-11-05 链接颜色导入/保存时序纠正：本轮追查linked free-tile发现门禁贯穿Timeline::validateFreeTileState、实例放置要求own surface、连接/断开/拖拽入口及复制帧扩展，不能只解除prepareEditableImport拒绝；仍明确未迁移。沿上轮真实legacy证据修正已定位偏差：decodeProject保留每层displayColor，后续ensureAnimationDocument才同步。移除原生prepareEditableImport过早linkedColors同步，比较适配改回直接核对源颜色，无需source/live两套值。新增三组直接prepare/Document检查，覆盖第一/第二层缺颜色和冲突颜色。
+实际legacy encodeProject会ensureAnimationDocument，因此保存输出按decoder bottom-to-top顺序取链接组第一有效颜色。project_encode只规范化输出、不修改Document；对11组完整linked before/after工程生成22份原生重存，actual legacy decode反读与canonical legacy encode/decode逐层比较颜色/presence；编码前后原生revision及各层颜色保持。此前初始graph/transfer cost仍对照原decoded状态，143个原生Delta反读继续通过。
+4项最终回归通过：local-history-budget2.50s、project-import0.03s、project-save0.57s、linked-layers0.04s。625来源覆盖/证据快照通过，strict因现有缺口仍退出1，diff通过。日志linked-color-decode-{build-final,build-verified,tests,reverse,ctest,provenance,strict}。全部构建/测试句柄结束；正式exe未更新，无UI验收。
+整体功能迁移未完成。linked free-tile仍需完整数据/交互/撤销生命周期迁移，原生live身份/成本/settled事件及完整恢复服务尚未接入，FS-006继续partial/入口禁用；Windows5原子替换根因仍保留。
+
+
+2026-11-05 显式空groupId解码形状：核对legacy project-format-decode.ts:376和458，空字符串保留，只有truthy且未知组才归null。原生timeline用optional absence表示无组；初始decoded比较与transfer cost从原始manifest保留空字符串形状，移除该比较门禁，不改变timeline组归属。新增5组真实legacy完整工程对：empty/null/missing、empty equal、empty-to-null；累计74 byte-view及251 object graph。完整graph字段序/值/alias与transfer cost验证通过；actual legacy反读148个原生Delta通过。非字符串及未知groupId仍有原生导入差异，未解除其契约或宣称迁移完成。
+Windows原子替换旧版同样复现error5的证据已重新核对，根因仍未知，未改写算法或增加重试。本轮只构建本地历史测试目标，正式exe未更新，无UI验收；FS-006仍partial/入口禁用，整体所有功能迁移目标进行中。
+
+
+2026-11-05 图层groupId导入规范化：以legacy project-format-decode.ts:376、454-458为依据，非字符串组ID解码为null，truthy未知组ID清除。原生manifest解析按该规则规范化，prepareEditableImport对内存manifest独立核对组归属；不放松其他字段契约。直接测试未知组导入为无组且源manifest未变。实际legacy新增number/boolean/array/object/unknown string五组完整工程对，完整graph字段序/值/alias与transfer cost通过；10份原生重存由actual legacy解码并核对组归属。累计74 byte-view、256 object graph，actual legacy反读153个原生Delta通过。
+local-history-budget2.53s、project-import0.03s、project-save0.52s、project-save-raster-resources0.31s、project-manifest0.19s全部通过；625来源覆盖/证据快照通过，strict因其他已登记迁移缺口仍退出1，diff检查通过。日志native/build/group-normalization-{build,ctest,reverse,provenance,strict}.log。未更新正式exe、无UI运行验收。任意live对象身份/成本/settled事件及完整恢复服务、linked free-tile/历史ownership、缺失timeline slot/locale/clock等仍未完成，FS-006维持partial/入口禁用，Windows5原子替换根因保留，整体所有功能迁移目标保持进行中。
+
+
+2026-11-05 解码时间fallback：核对legacy project-format-decode.ts:630/634，createdAt/updatedAt缺省分别按字段顺序调用new Date；有效非空字符串不调用fallback。原生此前复用ReadManifest默认fresh时间，本轮将缺省时间改为字段解码时按顺序读取，增加readProjectManifestWithClock供真实legacy/native差分共享时钟。历史比较复用manifest和Document已解析时间，禁止捕获时再次读钟；保留truthy非字符串createdAt门禁（旧版保留其类型，原生尚未表达），支持false/0等falsy值fallback。
+7组actual legacy完整工程对共享递增Date/clock，覆盖missing/null/empty/false/zero、updated object、created-only；逐字段图/键序/alias及transfer cost通过，原生检查实际fallback调用次数。累计74 byte-view、263 object graph，actual legacy反读160个原生Delta通过。6项回归全部通过：local-history-cost6.02s、local-history-budget2.64s、project-import0.03s、project-save0.56s、project-save-raster-resources0.34s、project-manifest0.20s。625文件来源覆盖/证据快照通过，strict因既有缺口仍1，diff通过。日志native/build/history-decode-clock-{build,ctest,reverse,provenance,strict}.log；无运行中构建句柄。
+本轮仅构建测试目标，正式exe未更新，无UI运行验收。一般live身份/可选字段生命周期/成本、Editor settled生产派发与完整恢复服务、linked free-tile/legacy ownership、缺失timeline slot及locale等仍未迁移；FS-006保持partial/入口禁用，Windows5原子替换根因保留，整体功能迁移目标继续进行。
+
+
+2026-11-05 图块集名称解码：实际legacy decodeManifestTilesets按string或空值读取name，再trim或默认Tileset。原生复用javascriptTrim。8组真实旧版样例覆盖Unicode首尾空白、全空白、空串、缺失、null、数字、对象及内部零宽字符；完整原生graph/cost检查通过。5项CTest通过：local-history-budget2.86s、tilemap-project0.62s、free-tile-project10.61s、project-save0.53s、project-manifest0.17s。625来源覆盖通过，strict仍1。
+旧版反读未完成：Node首次因semi-space内存提交失败退出，独立重跑遭系统资源不足及PowerShell运行时异常。停止重试，保留tileset-decode-name-reverse.log和reverse-final.log；不宣称本轮新增Delta或保存工程已通过旧版反读。正式exe未更新，无UI验收。缺失timeline slot仍受Document::cel/activeSurface完整槽假设限制，不能提前补Cel替代旧版稀疏语义。FS-006及整体功能迁移继续未完成。
+
+
+2026-11-05 图块名称反读闭环与验证器字节边界：定位前轮OOM到Node Buffer传入actual legacy decodeManifestTilesets，bytes.slice().buffer期待浏览器Uint8Array复制语义；Buffer.slice保留池/整块backing，解压图块资源因此扩大。验证器所有文件工程输入复制为普通Uint8Array，实际legacy源码不改。新增可选case前缀、空scope拒绝、阶段/样例和产物计数。限定8组先通过，再全量271 object验证通过：168个原生Delta、16份tileset-name重存、48组/蒙版重存、5 metadata和32 recording重存；既有linked/group normalization断言仍执行。前轮“反读未完成”由此证据更新为已完成，日志tileset-decode-name-reverse-typed.log与reverse-all.log。正式exe未更新，无UI验收；整体迁移/FS-006仍未完成。
+
+
+2026-11-05 循环段导入规范化：依据legacy animation-loop-sections.ts normalizeAnimationLoopSections与project-format-manifest.ts normalizeManifestAnimation，移植非array为空、无效条目/引用过滤、首个有效ID优先、端点帧排序、名称trim/64 UTF16单位截断/Loop N默认、方向forward默认、repeat Number/trunc/clamp或null。实际readManifest与decodeProject会先后两次规范化，名称第一次截断后须再次trim；初次差分发现该时序并修正，历史严格名称校验未放松。10组actual legacy完整工程对覆盖名称/方向/repeat/无效重复条目/default编号/非array；完整graph/cost及20份原生重存循环段由actual legacy反读对照通过。累计281 object graph，176个原生Delta反读通过。
+local-history-budget2.93s、project-save0.53s、project-manifest0.17s通过，625来源覆盖/证据快照通过，strict仍因其他缺口退出1，diff通过。日志loop-decode-normalize-{build-verified,ctest-final,reverse,provenance,strict}.log。UTF16截断形成孤立代理码元的通用名称存储路径仍需专门适配，不以本轮普通/完整代理对样例宣称已解决。正式exe未更新，无UI验收。live历史对象生命周期与成本、生产settled事件/恢复服务、稀疏缺失slot和linked free-tile等仍待迁移，FS-006保持partial/入口禁用，整体目标进行中。
+
+
+2026-11-05 帧duration/disabled导入规范化：依据legacy animation.ts normalizeFrame，有限number时长trunc并clamp1..60000，非number/缺失使用100；disabled仅literal true。原生manifest解析替代此前严格整数/范围/boolean拒绝。12组actual legacy完整工程对覆盖fraction/negative/zero/large/string/null/missing/object与disabled true/string/number/null，完整graph键序/值/alias和transfer cost通过，24份原生重存由actual legacy核对frames。累计293 object graph、187个原生Delta反读通过。local-history-budget4.19s、project-save0.69s、project-manifest0.22s通过，625来源覆盖/证据快照通过，strict因既有缺口仍1，diff通过。日志frame-decode-normalize-{build,ctest,reverse,provenance,strict}.log。正式exe未更新，无UI验收；帧ID默认/去重、稀疏slot生命周期、live对象/成本/settled生产事件和完整历史恢复等仍未完成，FS-006保持partial/入口禁用，整体迁移目标进行中。
+
+
+2026-11-05 Cel zIndex/opacity解码及保存默认值：依据legacy animation.ts normalizeAnimationCelZIndex/normalizeCels及project-format-manifest.ts normalizeManifestAnimation，zIndex按JS Number转换后对有限值trunc并clamp到-999..999，否则0；opacity仅接受有限number并clamp0..1，其余保持缺失。实际legacy encodeProject先调用ensureAnimationDocument，保存时为缺失Cel opacity补入图层opacity；原生project_encode仅在输出补齐，不改变Document中的可选字段、颜色或revision。本轮覆盖未链接初始标量，不代表linked值同步及实时生命周期已完成。
+14组actual legacy完整工程对覆盖zIndex fraction/越界/string/array/boolean/null/object和opacity越界/string/null/boolean/object；累计74 byte-view、307 object graph。初始graph/cost逐项对照，28份Cel原生重存与canonical legacy encode/decode比较，actual legacy反读191个原生Delta通过。local-history-budget3.37s、project-save0.55s、project-manifest0.18s全部通过；625来源覆盖/证据快照通过，strict因已登记缺口仍退出1，diff检查通过。日志native/build/cel-decode-normalize-{build-verified,ctest-final,reverse-final,provenance,strict}.log。仅测试目标构建，正式exe未更新，无UI运行验收。
+整体功能迁移仍进行中；任意live对象身份/可选字段生命周期/成本、Editor settled生产事件及完整历史恢复服务、linked free-tile/legacy ownership、缺失timeline slot、帧ID规范化和通用名称孤立代理码元等仍待完成。FS-006保持partial/入口禁用，Windows原子替换error5根因仍未解决。
+
+
+2026-11-05 链接帧Cel保存标量：actual legacy ensureAnimationDocument调用normalizeAnimationCelLinks，将同层链接帧的opacity/zIndex同步为最终来源值后编码；此前原生slot优先会把冲突成员值重新存出。新增差分先复现opacity .8/-3与旧版.25/7不符，再修正project_encode按resolved owner输出opacity及zIndex；不改变Document中原始字段、链接或revision。跨图层linkedContentId只共享像素，各层opacity/zIndex保持独立，未增加错误的跨层标量同步。
+新增6组同层链接工程对覆盖源/成员缺失opacity、冲突标量及两种活动帧，另3组跨层链接覆盖独立值与缺失字段。完整初始decoded graph/cost保持对照，新增12份及既有2份同层链接原生重存、全部28份跨层链接重存与actual legacy canonical encode/decode标量比较通过。累计74 byte-view、316 object graph；191个原生Delta反读继续通过（本轮新增样例经初始链接规范化后无新Delta，不虚增计数）。编码前后检查opacity/zIndex/linkedCelId及revision不变。
+local-history-budget4.56s、project-save0.63s通过；625文件来源覆盖/证据快照通过，strict因其他已登记缺口仍退出1，diff通过。日志native/build/linked-cel-scalars-{fixtures,build-final,tests-final,reverse-final,ctest,provenance,strict}.log；首次差分失败日志保留。仅测试目标构建，正式exe未更新，无UI运行验收。live历史身份/成本/settled事件及完整恢复服务、linked free-tile、稀疏slot等仍未完成；FS-006保持partial/入口禁用，整体功能迁移目标继续进行。
+
+
+2026-11-05 帧ID及活动帧/loop规范化：依据legacy animation.ts normalizeFrame/normalizeAnimationTimeline，跳过非object，array按空对象候选处理；缺失/非字符串/JS空白ID按原数组下标生成frame-N，非空白ID原样保留，重复只保留首项。活动帧无效回退首帧，loop仅literal false关闭。空/nonarray帧列表的默认时间线及稀疏Cel联动仍未适配，不解除门禁。保存器移除raw frames[0]必须是对象的假设，直接由规范化状态重建输出帧。
+16组actual legacy工程对覆盖ID默认、原下标、默认ID冲突、带空白有效ID、重复首项、无效条目、活动帧回退及loop类型；累计74 byte-view、332 object graph，207个原生Delta反读通过。新增32份及既有24份帧规范化重存按actual legacy检查frames/activeFrameId/loop。既有project-manifest测试仍期待拒绝重复帧，与旧版证据冲突，改为核对首帧ID/时长/活动引用；其他拒绝断言保留。
+local-history-budget4.95s、project-save0.63s通过；修正旧断言后project-manifest0.18s通过。625来源覆盖/证据快照通过，strict因已登记其他缺口仍1，diff通过。日志native/build/frame-identity-{fixtures-final,build-verified,tests-final,reverse-final,ctest,manifest-ctest-final,provenance-final,strict}.log；首轮编译错误及旧断言失败日志保留。仅测试构建，正式exe未更新，无UI验收。整体迁移仍进行中，FS-006保持partial/入口禁用；live历史/恢复服务、稀疏slot及linked free-tile等缺口继续保留。
+
+
+2026-11-05 Cel候选过滤：依据legacy animation.ts normalizeCels与project-format-decode.ts，忽略非object、无效/空ID、重复已接受ID、无效帧引用和重复layerId:frameId槽，校验后才登记ID/槽，再丢弃未知图层。原生按顺序适配，保留后续完整槽导入门禁；broken-reference旧测试从解析报错改为确认Cel过滤，未放松编辑导入。原始Cel遍历增加类型/ID检查，保存器不再要求raw cels[0]对象。
+10组实际legacy工程对覆盖重复ID/槽、未知帧/层、null/number、缺失/数字ID、空层ID及无效同ID在前。最后一组完整graph差分发现normalizeManifestAnimation从首个raw ID取有限opacity覆盖accepted值；原生建立firstRawCels索引保留此两阶段语义，保留accepted opacity作为无有限覆盖时的值。完整初始graph/cost及20份新重存与旧版canonical标量对照通过；累计74 byte-view、342 object graph、217个原生Delta反读通过。
+local-history-budget4.52s、project-save0.56s、project-manifest0.18s通过；625来源覆盖/证据快照通过，strict因其他已登记缺口仍1，diff通过。日志native/build/cel-filter-{fixtures-final,build-verified,tests-verified,reverse-verified,ctest,provenance,strict}.log。首次graph差异及先前日志保留。只构建测试，正式exe未更新，无UI验收。
+本轮只完成上述候选及opacity范围：无效同ID前项的raw资源dataFile/text/tilemap等恢复规则、被丢弃项独有资源的存档登记、inline mask过滤仍须专门差分核对，不能宣称完整异常输入兼容。稀疏slot、live历史身份/成本/settled派发及完整恢复服务等仍未完成；FS-006保持partial/入口禁用，整体迁移目标继续进行。
+
+
+2026-11-05 同ID原始栅格恢复：依据project-format-manifest.ts normalizeManifestAnimation，规范化后的有效Cel资源元数据来自首个raw ID匹配，槽/linkedCelId/zIndex来自有效候选。原生raster改读已有firstRawCels索引。3组actual legacy完整工程对将同ID无效帧项放前，覆盖非活动帧offsetX/offsetY与相同字节数的宽高变化；完整decoded graph/alias/cost通过，6份原生重存由actual legacy与canonical结果核对Cel栅格尺寸/位置/像素及标量通过。
+累计74 byte-view、345 object graph，220个原生Delta全量反读通过；追加栅格保存断言后限定3组再次通过。local-history-budget4.38s、project-save0.53s、project-manifest0.17s通过，625来源覆盖/证据快照通过，strict因其他缺口仍1，diff通过。日志native/build/cel-resource-{fixtures-verified,build,tests,reverse,raster-reverse,ctest,provenance,strict}.log。首次错误payload尺寸及缺失shadow文件样例被actual legacy拒绝，保留诊断日志，不计入通过样例。
+本轮未完成通用数值元数据规范化、同ID text/tilemap/freeTiles/mask恢复及被丢弃项独有资源登记；不把读取raw元数据等同于完整异常输入兼容。只构建测试目标，正式exe未更新，无UI验收；FS-006仍partial/入口禁用，live历史/恢复服务及稀疏slot等继续未完成，整体功能迁移目标保持进行中。
+
+
+2026-11-05 同ID原始文字恢复：依据legacy project-format-manifest.ts normalizeManifestAnimation，先保留有效候选规范化文字，仅首个raw同ID的非null object（含array）覆盖，随后decodeProject再次规范化。原生先解码有效候选text，再按raw object/array覆盖；缺失/null/number保留有效文字，空object/array重置默认。沿用decodeTextCel，不创建新文字规范化算法。
+6组actual legacy完整工程对覆盖content/font、missing/null/number、empty object和array，逐项decoded graph/transfer cost对照及12份原生重存文字与canonical legacy encode/decode比较通过。累计74 byte-view、351 object graph，226个原生Delta反读通过。local-history-budget4.52s、project-save0.55s、project-manifest0.17s通过，625来源覆盖/证据快照通过，strict因已登记缺口仍1，diff通过。日志native/build/text-raw-{fixtures-final,build-final,tests,reverse,ctest,provenance,strict}.log；仅测试构建，正式exe未更新，无UI验收。
+同ID tilemap/freeTiles/mask恢复、丢弃资源登记、稀疏slot及live历史身份/成本/settled派发与完整恢复服务仍未完成；FS-006保持partial/入口禁用，整体功能迁移目标继续进行。
+
+
+2026-11-05 同ID图块数据恢复：依据legacy normalizeManifestAnimation移除normalized tilemap/freeTiles后从首个raw ID object恢复、decodeProject校验/渲染；原生两类数据改读firstRawCels。初始history比较不再用过滤后Cel下标索引raw数组，改按ID首项；成本tileShapes仅保留首项，防止后续重复项覆盖来源形状。
+8组actual legacy完整工程对覆盖tilemap empty/flip/rotation/dense和现代free-tile empty/position/opacity/rotation。完整graph/键序/alias/cost通过，16份原生重存与canonical actual legacy对比tilemap/freeTiles及渲染栅格尺寸/位置/像素通过。累计74 byte-view、359 object graph，227个原生Delta全量反读通过；追加渲染断言后41组Cel规范化限定反读通过。初次试验误用90旋转单位被旧版free-tile拒绝，改用既有0..3语义，失败日志保留。
+local-history-budget4.50s、project-save0.66s、project-manifest0.20s通过；625来源覆盖/证据快照通过，strict因其他迁移缺口仍1，diff通过。日志native/build/tile-raw-{fixtures-final,build,tests,reverse,raster-reverse,ctest,provenance,strict}.log。仅测试构建，正式exe未更新，无UI验收。nonobject/null图块字段、inline mask恢复、丢弃资源登记、稀疏slot和linked free-tile/live历史完整生命周期仍未完成；FS-006保持partial/入口禁用，整体迁移目标继续进行。
+
+
+2026-11-05 inline mask候选恢复：依据legacy normalizeManifestAnimation仅从首个raw同ID truthy mask恢复到通过normalizeCels的候选，decodeProject再按显式layerMasks优先处理inline并校验owner/frame。原生在候选规范化阶段收集inline（早于未知图层过滤），不再直接解码原始全部Cel的mask；补inline引用校验。原始mask资源引用仍独立登记，以兼容被过滤候选留下的存档资源，不创建相应蒙版；保存沿用既有maskDataFiles清理输出资源语义。
+5组actual legacy完整工程对覆盖无效同ID前项mask、重复槽mask忽略、无效帧mask忽略、首项null移除有效项mask及显式槽优先于缺失shadow资源。完整graph/alias/cost及10份原生重存layerMasks与canonical legacy对照通过。首次原生误报unmapped被过滤mask资源，经分开资源登记与语义解码修正，失败日志保留。累计74 byte-view、364 object graph，229个原生Delta全量反读通过。
+local-history-budget4.89s、project-save0.53s、project-manifest0.19s通过；625来源覆盖/证据快照通过，strict因其他迁移缺口仍1，diff通过。日志native/build/mask-raw-{fixtures,build-final,tests-final,reverse,ctest,provenance,strict}.log。仅测试构建，正式exe未更新，无UI验收。无效scalar mask完整规范化、通用异常字段/孤立代理码元、稀疏slot、linked free-tile和live历史身份/成本/settled派发及完整恢复服务仍未完成；FS-006保持partial/入口禁用，整体功能迁移目标继续进行。
+
+
+2026-11-05 蒙版Number转换与链接边界：依据legacy project-format-decode.ts decodeMask，尺寸/偏移先Number转换，正整数尺寸、有限偏移后trunc，flags仅literal true；nonnull显式空linkedMaskId应拒绝。原生复用legacyjson::number，保留原生坐标及解码预算上限，增加空链接Corrupt检查。8组actual legacy完整工程对覆盖string/array尺寸、string/null/boolean/array偏移、非boolean flags及null链接；逐项graph/alias/cost及16份原生重存layerMasks与canonical旧版一致。另新增actual legacy拒绝空链接fixture并由原生project-manifest回归确认。
+累计74 byte-view、372 object graph，237个原生Delta全量反读通过。local-history-budget5.31s、project-save0.54s、project-manifest0.17s通过；625来源覆盖/证据快照通过，strict因其他已登记缺口仍1，diff通过。日志native/build/mask-numeric-{fixtures,build-final,tests,reverse,ctest,provenance,strict}.log。仅测试构建，正式exe未更新，无UI验收。
+尚未完成全部无效mask/scalar规范化、通用资源字段、稀疏slot、linked free-tile及live历史身份/成本/settled派发与完整恢复服务；FS-006保持partial/入口禁用，整体功能迁移目标继续进行。
+
+
+2026-11-05 显式蒙版槽候选过滤：依据legacy project-format-manifest.ts normalizeManifestAnimation，layerMasks/groupMasks非array为空，忽略非object、空/非string owner、无效frame及falsy mask，之后decodeProject再核对owner存在和重复语义。原生maskArray/maskCandidate按此顺序过滤，保留原始object资源登记、图层重复首项优先及组重复拒绝。16组actual legacy完整工程对覆盖两类槽的null/numeric条目、invalid frame、empty owner、null/false/zero mask及nonarray；完整graph/alias/cost和32份原生重存layerMasks/groupMasks与canonical旧版对照通过。
+累计74 byte-view、388 object graph，253个原生Delta全量反读通过。local-history-budget6.28s、project-save0.67s、project-manifest0.20s通过，625来源覆盖/证据快照通过，strict因其他迁移缺口仍1，diff通过。日志native/build/mask-slot-filter-{fixtures-final,build,tests-final,reverse-final,ctest,provenance,strict}.log。
+首次nonarray替换整个含资源列表后暴露unmapped payload门禁：本轮nonarray样例明确从该列表无载荷状态构造，仅证明字段规范化；整列表消失但保留未引用文件的兼容仍待实际旧版资源策略迁移，未一并放行未知资源。首次失败日志保留。只构建测试，正式exe未更新，无UI验收；稀疏slot、linked free-tile、live历史身份/成本/settled派发与完整恢复服务仍未完成，FS-006保持partial/入口禁用，整体迁移目标继续进行。
+
+
+2026-11-05 Cel栅格偏移规范化：依据legacy normalizeManifestAnimation仅保留finite number offset并trunc，decodeProject缺省0。原生复制首个raw ID资源元数据，规范化offsetX/Y后交既有raster解码，不修改原始JSON；非number/missing默认0，超原生坐标保持Limit。8组actual legacy完整工程对覆盖正负fraction、string/null/boolean/array/object/missing非活动Cel偏移；完整graph/alias/cost与16份原生重存栅格geometry/pixels按canonical旧版核对通过。
+累计74 byte-view、396 object graph，261个原生Delta全量反读通过。local-history-budget5.95s、project-save0.59s、project-manifest0.19s通过；625来源覆盖/证据快照通过，strict因其他迁移缺口仍1，diff通过。日志native/build/cel-offset-{fixtures,build,tests,reverse,ctest,provenance,strict}.log。负零、超原生坐标及通用其他栅格字段仍有边界，未声称全部元数据等价。仅测试构建，正式exe未更新，无UI验收；稀疏slot、linked free-tile、live历史身份/成本/settled派发及完整恢复服务仍未完成，FS-006保持partial/入口禁用，整体功能迁移目标继续进行。
+
+
+2026-11-05 缺失槽只读路径：核对legacy animation.ts applyFrameSurfaces/clearLayerSurface，缺失Cel清空显示且不创建Cel。原生核心新增activeSurfaceIfPresent；canvasPixels遇缺失槽返回透明画布快照，selectionContentBounds返回无内容，不改timeline。沿用已有RasterHistoryFixture构造缺失活动槽，重复查询验证Cel数组/存储、revision/contentRevision/history/dirty保持，现有稀疏owner及撤销测试继续执行。document-raster-history0.05s通过；625来源覆盖/证据快照通过，strict因既有缺口仍1，diff通过。日志native/build/absent-slot-read-{build,ctest,provenance,strict}.log。构建句柄已结束，只构建测试目标，正式exe未更新，无UI验收。
+本轮是稀疏生命周期的读取适配：fromImported/prepareEditableImport完整槽门禁仍保留，cel()/activeSurface()/绘图/复制粘贴/保存仍有完整槽假设，尚未实现按旧版时序创建Cel及撤销恢复缺失槽，不能宣称稀疏工程导入完成。下一步需在编辑事务中迁移materialization，而非全局补空Cel。FS-006/live历史完整服务和整体功能迁移继续未完成。
+
+
+2026-11-05 稀疏选择安全与实际提交生命周期：修正timeline_interaction selectTimelineCel对缺失活动槽cel()解引用、空range anchor selected.back及范围中缺失slot解引用；只选择存在Cel，不创建缺失槽。既有RasterHistoryFixture构造三帧中间缺槽，验证跨槽范围、缺失活动槽toggle/range fallback、Cel数/history/dirty保持；document-raster-history通过。测试发现selectFrame的原生contentRevision用于显示失效会递增，与legacy workspace-selection-mode.test会话contentRevision保持不同，已登记，不以移除断言宣称等价。空槽显式key选择仍无原生表达。
+追查legacy workspace-commands-history：commitPixelEdit入栈后才syncActiveAnimationLayer；后者只创建缺失活动Cel，pixel undo不删除。生成器新增实际legacy可执行oracle：refresh后/recordPixel后/commitPixelEdit后均0 Cel，同步后1，undo/redo并同步保持该ID。已通过，明确纠正前轮“下一步撤销恢复缺失槽”的未经证实假设；原生笔画materialization尚未接入，不按错误假设实现。fixture重新生成后原生完整graph/cost及261份旧版Delta反读通过，396 object/74 byte-view保持。
+625来源覆盖/证据快照通过，strict因其他缺口仍1，diff通过。日志native/build/sparse-selection-{build-final,tests-final,provenance,strict}.log及sparse-commit-{oracle,fixture-refresh,reverse}.log。只构建测试，正式exe未更新，无UI验收；完整槽导入门禁、笔画预览/取消/失败的独立display storage、稀疏结构及live历史服务仍待迁移，FS-006保持partial/入口禁用，整体功能迁移目标进行中。
+
+
+### 2026-11-05 缺失槽普通栅格笔画生命周期
+
+依据 legacy core/history.ts 的 recordPixelKnownCurrent/commitPixelEdit、workspace-commands-history.ts 先 push 后 sync，以及 animation.ts 的 createActiveLayerCel：普通栅格缺失槽以独立临时 Surface 预览，取消或无变化提交不创建 Cel；有效提交仅创建活动槽，继承 layer.opacity，像素撤销/重做保留 Cel ID。临时存储沿用原生绘图直达像素缓冲，使用全画布缓冲，尚未等同旧版稀疏 runtime raster 性能。缺失槽关联图层明确阻止，特殊图层和整体稀疏导入门槛继续保留。新增核心回归检查预览、连续绘制、取消、透明无变化、提交和撤销重做；构建与测试结果见后续记录，不代表 UI 实际验收或完整稀疏迁移。
+
+验证：正式 build 目录仅构建 document-raster-history-tests，最终构建成功；执行结果 `Document raster history and sparse fill passed`（exit 0，native/build/sparse-stroke-tests.log）。来源覆盖 625 文件通过，--strict exit 1（已知迁移缺口），git diff --check exit 0。未构建或替换 moonsprite-native.exe，未执行 UI 运行验收。
+
+
+### 2026-11-05 缺失槽笔画画布显示接通
+
+发现 canvas_renderer 仍通过 doc.cel() 解引用空槽，合成器也在缺少 Cel 时直接跳过活动层。现改为可空槽解析；独立显示表面传入既有 preview 通道，合成器以 preview 的尺寸与偏移提供显示几何，不创建时间线 Cel。复用既有图层透明度、样式、组、蒙版和洋葱皮合成管线。来源：legacy animation.ts clearLayerSurface/applyFrameSurfaces、history.ts recordPixelKnownCurrent，及 workspace-commands-history.ts 提交后同步。
+
+验证：canvas-performance-tests 构建并执行通过（exit 0，native/build/sparse-render-tests.log），新增 Skia 离屏像素回归覆盖 1/2 图层、洋葱皮开/关、空槽初始显示、笔画、取消、提交、撤销/重做，确认显示不创建 Cel；原有像素上传、脏矩形、大时间线检查通过。来源覆盖 625 文件通过；git diff --check exit 0。未运行交互式程序验收，未构建或替换正式 moonsprite-native.exe。整体稀疏导入及特殊图层等迁移缺口保留。
+
+
+### 2026-11-05 真实多帧洋葱皮与空槽效果验证
+
+纠正上一批测试证据：洋葱皮 enabled 但仅一帧会退回普通合成，不能证明真实洋葱皮路径。现回归使用两帧，发现并修复 compositeOnionRegion 的活动缺失槽提前 return；只允许活动非 ghost 层读取显式预览，其他帧继续使用实际存储。依据 legacy onion-skin.ts、animation.ts 的显示层生命周期。
+
+新增离屏全图比较：图层 opacity=.63，组 opacity=.71，图层 mask 覆盖128，颜色 overlay，逐项累计组合，并分别关闭/开启真实多帧洋葱皮；临时预览与提交后全新 CanvasRenderer 输出一致，撤销恢复原图。组空间样式（渐变/描边/阴影等）依赖内容几何，尚未由此验证。canvas-performance-tests 最终构建、执行 exit 0（native/build/sparse-effects-tests.log）；原有像素上传、脏矩形、大时间线测试通过。未更新正式 exe，未进行交互 UI 验收。
+
+
+### 2026-11-05 空槽组空间样式与缓存失效
+
+新增组渐变、组描边+阴影的多像素笔画回归，普通/真实多帧洋葱皮两条路径。旧代码先复现 preview/commit 像素差异（sparse-spatial-before-tests.log）：groupStyleGeometry 只读 Cel，遗漏独立显示表面。现把既有 preview 像素、尺寸和偏移递归传入组内容 alpha 边界扫描，复用 legacy document-composite-sampling.ts 的可见子内容几何语义。
+
+随后复现撤销残影（sparse-spatial-tests.log）：原始像素脏矩形未覆盖效果 halo 或组渐变几何变化。启用图层空间效果或组空间/渐变效果时保守全画布刷新；普通笔画及逐点颜色效果仍保留脏矩形路径。精确 legacy 效果缓存失效/性能方案仍待迁移，不能将此保守适配视为性能等价。最终 Skia 离屏回归比较临时预览与提交后的全新 renderer，全图一致且撤销恢复；未更新正式 exe，未执行交互式 UI 验收。
+
+
+### 2026-11-05 图层空间效果局部刷新
+
+直接承接 legacy core/layer-styles.ts:231-240 layerStyleAffectedRect：原始变化与 stroke/innerGlow 扩展、平移 shadow 后 blur 扩展取并集。原生上传区域采用 int64 坐标后裁剪画布，图层效果不再一律全画布刷新。组空间/渐变效果仍保守全量刷新；多个 owner 仍保守合并所有 layer 效果足迹，旧版 owner 队列、64px block 缓存尚未全部迁移。
+
+新增实际 Skia 回归在 32x32 图像检查 shadow 的四个偏移方向、blur=1，精确上传区域面积（单点、offset 3/2 时 5x4=20 像素），对比完整重绘及取消后的全图像素。测试初版预期面积误算为 6x5，已按原始矩形与偏移扩展并集修正。未更新正式 exe，未进行交互 UI 验收。
+
+验证结果：canvas-performance-tests 最终构建及运行 exit 0（native/build/style-dirty-tests-final.log）；原有普通/空槽/组/洋葱皮/脏矩形/大时间线回归通过，来源覆盖 625 文件通过，git diff --check exit 0。
+
+
+### 2026-11-05 嵌套组效果局部刷新
+
+直接承接 legacy document-composite-cache.ts invalidateStyleSources:132-155 的 owner→parent 传播：每一级 layerStyleAffectedRect 的输出作为父级输入。原生以 int64 计算各 owner 链并合并，组蒙版变化也以组链为起点；由于 Document 尚未提供精确改变 owner ID，仍保守遍历潜在 owner。组 gradient 内容边界变化仍全量刷新。旧版按 owner 的脏区域队列及64px style block 缓存尚未全部迁移。
+
+实际 Skia 回归增加双层阴影组（每层 offset 3/2、blur1）：单点笔画准确上传9x7=63像素；局部结果与全量重绘逐像素一致，取消无残影。canvas-performance-tests 构建执行 exit0（native/build/group-dirty-tests.log），既有空槽、洋葱皮、空间样式、大时间线回归通过。未更新正式 exe 或运行交互式 UI 验收。
+
+
+### 2026-11-05 浮动预览最终脏区域与空间效果衔接
+
+将效果 ancestor 扩展放在 floatingOverlayChange/tilemap 最终原始区域计算之后，避免浮动预览覆盖已扩展的阴影/描边范围。依据 legacy document-composite-cache.ts invalidateStyleSources 对最终 source dirty 应用效果传播；canvas-composite-cache-selection.ts 对 styled selection 使用 fallback，原生延迟样式路径尚有技术差异，不能视为性能等价。
+
+新增实际延迟剪贴板场景：320x320画布、257x257剪贴板（小剪贴板不会触发 deferred，已明确断言），两角不透明像素。分别图层阴影和双层组阴影，移动、取消、提交、撤销重做均将缓存全图与全新 renderer 逐像素对比。未更新正式 exe，未进行交互 UI 验收。
+
+
+### 2026-11-05 样式图层的浮动预览准入
+
+对照 legacy canvas-composite-cache-selection.ts：启用的目标图层样式必须退出优化浮动预览；原生 supportsDeferredFloating 在 clipboard 尺寸判断之前检查能力、活动目标槽和目标 layerStyles.enabled/configured，避免样式目标误走 deferred fast path。全局禁用样式保留优化资格。
+
+新增 admission matrix 覆盖 capability 开关、配置样式开关、样式 enabled 开关以及取消历史稳定性；大剪贴板空间效果移动/取消/提交/撤销/重做继续与全量 renderer 逐像素一致。canvas-performance-tests exit0（native/build/preview-admission-tests.log），来源覆盖通过，diff check通过。旧版剪贴板优化还包括顶层图层、opacity/blend、内容为空等条件，后续继续核对。
+
+
+### 2026-11-05 剪贴板专用与通用预览分支核对
+
+核对 legacy canvas-composite-cache.ts:367/391：先尝试 drawClipboardPreview，失败后仍尝试 drawSelectionPreview。因此 canvas-composite-cache-selection.ts:78-86 的顶层、RGBA、不透明、Normal、空内容条件仅限制专用剪贴板优化，不能照搬为全部 deferred 预览的必要条件。此前“剩余条件待核对”现已澄清为两条路径的区别，未擅自缩小通用预览范围。
+
+新增实际 Skia 差分：320x320已有内容的两层文档，257x257剪贴板以混合alpha角像素覆盖；opacity=.57、Multiply混合、活动图层位于底层三种情况，对照 deferred 与能力关闭 fallback 的不同路径，移动、取消、提交、撤销重做逐像素一致。canvas-performance-tests 构建执行 exit0（native/build/clipboard-stack-tests.log）。此项证明测试场景行为，不代表旧版全部 cache/performance 算法迁移完成。未更新正式exe或执行交互UI验收。
+
+
+### 2026-11-05 缺失槽普通与纹理填充生命周期
+
+以 legacy tools-fill.ts floodFill/floodFillSymmetric → history recordPixelKnownCurrent → workspace history push后sync 的实际路径为依据：缺失普通栅格槽先以独立画布存储调用已有 fillCanvasAt/fillPatternCanvasAt，保留 symmetry seed 子编辑次序和 selection，只有有效像素编辑才创建活动槽，继承 layer.opacity；撤销重做修改像素并保留 Cel ID。无变化、越界不创建槽，不改history/dirty。关联缺失槽明确阻止，特殊图层/稀疏导入门槛保持。全画布 staging 是原生必要适配，尚未承接旧版稀疏 runtime 性能。
+
+验证：document-raster-history-tests 构建运行exit0（native/build/absent-fill-tests.log），新增实色/Grain纹理、无效seed、透明无变化、commit/undo/redo像素与Cel身份回归；来源覆盖625文件通过，diff check通过。未更新正式exe，未执行交互UI验收。
+
+
+### 2026-11-05 空槽可见层对称填充顺序修复
+
+新增有选区与两层背景的差分矩阵：实色/Grain × visibleLayers开关 × contiguous开关 × symmetry开关，比较已有空白Cel与缺失Cel路径，检查提交像素、单次历史、撤销重做及Cel身份。复现 Grain+visible+非连续+symmetry 差异（native/build/absent-fill-parity-tests.log）：后续对称seed采样未见先前临时写入。依据 legacy tools-fill.ts floodFillSymmetric 顺序编辑显示layer，现通过既有compositor preview参数传入活动空槽的当前staging像素，保持提交前无Cel。
+
+最终 document-raster-history-tests 构建运行exit0（native/build/absent-fill-parity-tests-final.log），来源覆盖通过，diff check通过。未更新正式exe，未进行交互UI验收；整体稀疏导入与特殊层迁移仍未完成。
+
+
+### 2026-11-05 空槽魔棒读取与选区历史验证
+
+核对 native editor_input.cpp 魔棒快照使用 canvasPixels()/compositeNormalRegion，普通栅格空槽没有新增Cel解引用。沿用 legacy magic-wand-operation.ts 的选区操作及 workspace-selection-mode.test.ts 空槽不改变作品内容语义，新增精确 source→magicWandSelection→commitSelection 核心链回归：visibleLayers开关、contiguous开关、tolerance0/64，验证透明空槽/背景隔断的选择范围，undo/redo选择，同时Cel缺失/count、contentRevision、dirty不变。
+
+构建执行 document-raster-history-tests exit0（native/build/absent-wand-tests.log）。此项为核心链验证，不代表异步Editor手势或交互UI验收；未更新正式exe。
+
+
+### 2026-11-05 缺失槽魔术橡皮擦无变化路径
+
+依据 legacy store/workspace-magic-eraser.ts eraseWorkspaceMatchingColor → tools-fill.ts clearSelection：只有实际像素变化才提交。原生提前检测普通栅格活动槽缺失并安全return false，不解引用cel、不创建Cel；蒙版路径独立解析，不再强制依赖栅格Cel。新增选区+已有背景层的 visible/contiguous/preview组合、有效/越界seed，检查Cel缺失/count、revision/contentRevision/history/dirty及背景合成不变。
+
+验证：document-raster-history-tests 构建执行exit0（native/build/absent-eraser-tests.log）；来源覆盖和diff检查通过。补跑 moon-core-tests 构建成功但执行exit -1073741571（0xC00000FD，Windows栈溢出），日志为空；CMake已有测试专用2MiB栈设置，本轮未调整或将该综合测试记为通过，蒙版综合回归未获得运行证据。未更新正式exe或进行交互UI验收。
+
+
+### 2026-11-05 恢复综合核心测试并纠正过时预期
+
+通过MSVC反汇编定位 moon-core-tests main 栈帧0x1f98f0，原测试PE stack reserve为2MiB。仅提高测试目标reserve至4MiB；生产目标未变。随后测试到达旧断言：复制 Cel 后删除其源帧，旧版 animation.ts mapAnimationCelBlock 源锚点不存在则返回空；据实际legacy契约将测试修正为不粘贴且作品/历史/clipboard不变，而非改生产代码。保留CHECK源码行诊断。
+
+最终 moon-core-tests exit0（native/build/core-legacy-anchor-tests.log），document-raster-history-tests exit0（native/build/absent-eraser-tests-final.log）；来源覆盖通过，diff check通过。综合测试现覆盖蒙版魔术橡皮擦等既有编辑路径。未更新正式exe或做交互UI验收。
+
+
+### 2026-11-05 空槽渐变预览与提交生命周期
+
+依据 legacy core/gradient.ts 通过recordPixel编辑显示像素、无变化恢复空扩展，及 workspace history push后sync 的Cel生命周期。普通栅格缺失槽新增独立透明baseline，沿用magicWandSelection和GradientSampler；取消/透明无变化不创建Cel，有效提交仅创建活动槽并继承layer.opacity，撤销重做保留Cel身份。关联图层缺失槽继续阻止，整体稀疏导入仍未放开。当前空槽全画布baseline与逐点history尚待承接旧版稀疏/dense性能方案，不标记完整等价。
+
+回归覆盖selection及visibleLayers开关，与已有空白Cel渐变预览逐像素比较，取消时Cel/count/history/contentRevision/dirty稳定，提交/undo/redo像素与Cel ID一致，透明no-op不创建槽。document-raster-history-tests构建执行exit0（native/build/absent-gradient-tests.log），来源覆盖与diff检查通过。此轮未进行离屏renderer或交互UI验收，未更新正式exe。
+
+
+### 2026-11-05 空槽渐变离屏渲染验收
+
+新增Skia实际全图像素回归，普通栅格缺失活动槽，选区、半透明渐变、多图层、layer/group opacity、layer mask、overlay、组gradient/stroke/shadow，分别关闭/开启真实两帧onion。临时预览不创建Cel，取消恢复原图，提交后新建renderer完整重绘与预览一致，undo恢复初始图，redo恢复预览图。依据legacy gradient-preview.ts/gradient.ts与animation.ts显示/提交生命周期，补齐上一批核心检查之外的renderer证据。
+
+canvas-performance-tests构建运行exit0（native/build/absent-gradient-render-tests.log）；既有画布回归通过。未进行交互式Editor/UI验收，未更新正式exe。全画布staging/逐点history性能、特殊关联层和整体稀疏导入仍待迁移。
+
+
+### 2026-11-05 空槽大面积渐变密集历史
+
+承接 legacy gradient.ts DENSE_GRADIENT_MIN_PIXELS=512*512/applyDenseGradient 的packed before/after策略，空槽提交复用原生已有DensePixels；先扫描dirty再选择dense/point，避免先分配大批逐点记录。当前原生以dirty矩形选阈值，而legacy以paint范围，并有changed mask/cost差异，完整history等价仍未完成。
+
+新增511/512边界回归，检查payload分支、512历史存储小于9bytes/pixel，commit/undo/redo像素与Cel身份。新增测试先因大函数栈占用溢出，已抽为独立函数避免累加栈占用；最终document-raster-history-tests构建运行exit0（native/build/absent-gradient-dense-tests-final.log），来源覆盖与diff检查通过。未更新正式exe或运行交互UI验收。
+
+
+### 2026-11-05 空槽渐变dense绘制范围语义
+
+对照legacy gradient.ts:242-266，dense阈值以canvas、selection包围矩形、paintRegion交集面积判断，mask位仅限制写入。空槽提交现按此paint bounds选dense并存储对应packed矩形，实际dirty仍只含变化像素。新增512x512选区仅一位允许写入的回归：仍必须dense，其他像素透明，undo/redo一致；保留511/512阈值测试。document-raster-history-tests构建执行exit0（native/build/gradient-paint-bounds-tests.log），来源覆盖与diff检查通过。旧版changed mask/cost及既有非空槽分支仍待对齐，未更新正式exe或做交互UI验收。
+
+
+### 2026-11-05 已有普通Cel渐变dense准入
+
+继续对齐legacy gradient.ts applyGradient：已有full-canvas Cel渐变同样以canvas/selection/paintRegion交集选择dense，独立于dirty bounds；shared shape提交保留其既有策略。512x512选区仅一位可写回归现在同时覆盖已有Cel/缺失Cel，两者都必须dense，像素及undo/redo正确。document-raster-history-tests构建运行exit0（native/build/gradient-existing-dense-tests.log），来源覆盖与diff检查通过。sparse surface渐变、changed mask/cost仍待对齐，未更新正式exe或进行交互UI验收。
+
+
+### 2026-11-05 稀疏表面渐变dense准入
+
+对照legacy/src/renderer/src/core/gradient.ts applyGradient/applyDenseGradient，带偏移的稀疏表面提交改用canvas、selection包围矩形及paintRegion交集面积选择dense，并按该范围存储before/after；实际dirty仍按变化像素发布，保留分配预算及存储坐标映射。新增512x512选区仅一位可写、2x1透明表面带偏移及非零storageOrigin的回归，检查扩展、dense分支、像素、Cel身份与undo/redo。document-raster-history-tests构建运行exit0（native/build/gradient-sparse-dense-tests.log）。changed mask/history cost等价仍未完成；未更新正式exe或进行交互UI验收。
+
+
+### 2026-11-05 空槽选区复制与dense历史复核
+
+已核对legacy history.ts:649-703：commitPixelEdit将dense转换为完整regionPatch，正式undo/redo均回放完整before/after矩形；changed掩码用于revertPixelEdit提交前回退（734-740），不能将其直接套到正式undo。原生正式dense整矩形回放在此点无需修改，changed mask缺口应限定为临时编辑回退语义，整体history成本等价仍未完成。
+
+继续迁移空槽读取：legacy animation.ts clearLayerSurface/applyFrameSurfaces为空槽提供透明显示，workspace-commands-clipboard.ts copySelection:730-761跳过透明像素，空结果在清除动画剪贴板之前返回。原生copyPixels改用nullable active surface，避免空槽访问cel()；保留floating分支及空结果不改动画剪贴板的行为。新增矩形/掩码选区、有无不透明背景层的组合回归，验证空结果、不生成Cel、保留帧剪贴板、选区、revision/contentRevision/history/dirty及合成像素。document-raster-history-tests构建运行exit0（native/build/absent-copy-tests.log）。系统剪贴板及完整稀疏帧复制生命周期仍未完成；未更新正式exe或进行交互UI验收。
+
+
+### 2026-11-05 空槽删除、剪切与居中内容
+
+核对legacy tools-fill.ts clearSelection、workspace-commands-selection-effects.ts deleteSelection、workspace-commands-clipboard.ts cutSelection及workspace-commands-selection-move.ts centerActiveContent。空透明内容删除无编辑且保留选区；剪切无论复制是否为空均结束选区；居中仅在pixel entry成功后移动选区。原生deleteSelectedPixels已跳过缺失Cel，cutPixels可复用上轮空槽copyPixels修正；本轮修复centerActiveContent直接解引用缺失activeSurface的问题。
+
+新增独立回归函数，覆盖矩形/掩码选区、其他不透明图层、水平/垂直/双轴居中与无选区，检查删除保留选区、剪切清除选区、帧剪贴板保留、Cel数/history/revision/contentRevision/dirty与合成像素均不变。document-raster-history-tests构建运行exit0（native/build/absent-selection-commands-tests.log）。旧版临时显示存储的扩展、特殊图层及完整稀疏导入/保存生命周期仍未完成；本轮未更新正式exe或进行交互UI验收。
+
+
+### 2026-11-05 单目标空槽填充选区／画布
+
+核对legacy workspace-commands-selection-effects.ts fillForeground、workspace-selection-effects-support.ts selectionEffectUsesMultipleTargets/selectedEffectTargets、tools-fill.ts fillSelectionOrCanvas及animation.ts animationLayerAtFrame/createActiveLayerCel/syncActiveAnimationLayer。单目标直接编辑activePaintLayer的透明显示栅格，成功后同步创建活动Cel；多目标使用帧代理，缺失Cel返回null并跳过。原生补齐单目标空槽分支，不改变多目标跳过缺失槽位的语义。
+
+空槽提交先检查选区、锁定/可见性和实际非零写入，按512*512及selectedCount*3>=area判断dense；按packed值覆盖，保留半透明及隐藏RGB，预算检查后安装候选Timeline并提交历史。撤销清空像素但保留Cel身份。缺失linked-layer生命周期仍明确拒绝。回归对照已有空白Cel，覆盖画布/矩形/掩码、背景层、不透明度、半透明/隐藏RGB、零色/空mask/越界/锁定/隐藏、dense与稀疏掩码、undo/redo。首次组合测试因多个Document栈对象溢出，改为堆分配后document-raster-history-tests构建运行exit0（native/build/absent-selection-fill-tests.log）。稀疏显示存储/几何、linked及导入保存全生命周期仍未完成；未更新正式exe或进行交互UI验收。
+
+
+### 2026-11-05 空槽形状预览与提交
+
+承接legacy tools-shapes.ts paintShape/paintShapePixelPoints、直线笔刷及history.ts recordPixel/commitPixelEdit与animation.ts createActiveLayerCel/syncActiveAnimationLayer的绘制/同步边界。原生beginShapePreview在普通栅格缺失Cel时建立独立透明baseline，分配前检查256MiB预览预算，update继续复用既有形状栅格器、选区/对称/ink语义；共用absentRaster提交仅在有变化时创建活动Cel，撤销重做保持身份。形状dense按dirty bounds选择，渐变保持paint bounds，避免共用提交引入阈值偏差。缺失linked-layer形状生命周期仍明确拒绝。
+
+document-raster-history-tests构建运行exit0（native/build/absent-shape-tests.log），新增对照已有空白Cel的直线/矩形/矩形轮廓/椭圆/旋转椭圆轮廓/多边形/自由形状测试，覆盖掩码、对称、半透明/隐藏RGB、重复更新、取消、零变化、提交/undo/redo及Cel身份。稀疏运行时存储/几何、linked和特殊图层缺失槽位仍未完成；未更新正式exe或进行交互UI验收。
+
+
+### 2026-11-05 空槽透明选区浮动变换
+
+核对legacy tools-selection-transform-source.ts captureSelectionTransform、workspace-commands-selection-move.ts及workspace-commands-selection-floating.ts:403-500。透明选区仍有source/geometry，浮动确认没有pixel entry时仅提交选区历史。原生beginSelectionContentMove允许普通栅格缺失活动Cel且没有其他解析目标时保留透明source，不创建Cel；变换复用floatingSelectionMask，避免空targets访问owner，翻转使用透明source的mask；commit/cancel复用既有选区历史与恢复。
+
+新增对照已有透明Cel的矩形/掩码、越界选区、复制/移动、初始平移、取消、翻转/旋转、确认及undo/redo回归，验证选区一致、contentRevision/dirty不变、始终没有Cel。document-raster-history-tests构建运行exit0（native/build/absent-selection-move-tests.log）。本轮没有扩展多目标缺失代理、linked/特殊图层或运行时稀疏几何；全软件迁移仍未完成，未更新正式exe或进行交互UI验收。
+
+
+### 2026-11-05 透明选区直接翻转历史边界
+
+对照legacy workspace-commands-selection-flip.ts：单活动图层在操作前检查lock，透明mask翻转有变化时保留selection-only history；animation selection先捕获states，无states直接返回，有states则更新mask但只有pixel entries才增加历史。原生flipContent补齐缺失Cel时的单目标lock检查、空animation targets返回，以及已有透明animation target不生成多余选区历史。workspace-edit-actions.ts rotateWorkspaceContent没有pixel entry则返回，原生透明直接旋转行为验证保留。
+
+新增缺失/已有透明Cel、矩形边界内外mask、水平/垂直、普通/帧选择、锁定、90/-90/180旋转回归。新增函数初次运行触发Release内联后测试栈溢出；verifyEmptyImmediateTransforms及verifySparseMigration明确noinline隔离测试栈帧后整套document-raster-history-tests运行exit0（native/build/empty-immediate-transform-tests.log），未提高正式程序栈或改变程序发布配置。全软件迁移仍未完成；未更新正式exe或进行交互UI验收。
+
+
+### 2026-11-05 带存储原点的稀疏表面吸管
+
+对照legacy eyedropper-source.ts sampleEyedropperColor及document-model.ts readLayerColorAt，当前图层取色在画布范围内读取图层偏移下的原始颜色，不受history storage origin、可见性或锁定状态影响。原生sampleEyedropper移除storageOrigin存在即拒绝的旧迁移限制，复用raster::validate/readWorld，避免int坐标减法在极端偏移下溢出。
+
+新增正/负偏移、非零storage origins、链接Cel、隐藏/锁定、半透明/隐藏RGB、画布和owner边界、缺失Cel当前层透明与合成背景、INT_MIN偏移回归，并确认取色不改像素和Cel数。eyedropper-tests构建运行exit0（native/build/sparse-eyedropper-tests.log）。本轮不代表完整稀疏导入/编辑器预览/持久化生命周期完成，未更新正式exe或进行交互UI验收。
+
+
+### 2026-11-05 空槽选区笔刷读取入口
+
+核对legacy brushes.ts createSelectionBrush：先裁剪并校验笔刷尺寸，读取active layer原始颜色，仅有不透明像素才返回笔刷，选中透明RGB保留。原生selection_pattern_brush增加nullable Surface重载，缺失来源通过原采样器返回透明，不分配整画布；editor_tools的临时捕获、铅笔库保存及填充库保存三个入口改用activeSurfaceIfPresent，避免空Cel解引用。保持原空结果提示及尺寸/掩码校验。
+
+回归覆盖空活动槽位加不透明背景、矩形/掩码/越界选区、超尺寸和损坏mask拒绝、Cel/history/revision/content/dirty不变，以及带偏移/非零存储原点的隐藏RGB与alpha。新回归暴露测试Release内联叠加栈帧问题，独立verify函数统一noinline，不修改正式程序配置。编辑器三个入口已源码核对，未更新正式exe或进行交互UI验收；完整稀疏生命周期仍未完成。
+
+补充实际验证：noinline及独立调用仍未消除0xC00000FD，不能归因仅为内联。仅document-raster-history-tests的MSVC测试栈由2MiB增至4MiB后，整套构建运行exit0（native/build/absent-selection-brush-tests.log）；正式程序配置未改。新增选区笔刷回归通过。
+
+
+### 2026-11-05 编辑器空槽笔刷悬停来源
+
+核心brushPreview已经支持缺失Cel，但editor_canvas的普通笔刷预览合成底图、喷枪轮廓与粒子预览仍直接读取activeSurface。对照legacy canvas-brush-composite-preview.ts原始活动图层读取以及animation.ts透明显示语义，普通预览改用nullable source并保留零初始化region，喷枪两个读取以透明值回退；既有偏移、合成和边界算法不变。
+
+新增核心对照：缺失槽位brushPreview加显式composite preview，比较已有透明Cel实际落笔提交后的合成，覆盖不透明/半透明及有无背景；Cel数/history/contentRevision/dirty不变。document-raster-history-tests构建运行exit0（native/build/absent-hover-tests.log）。编辑器绘制入口仅源码核对，未编译更新正式exe、未做交互预览图像验收；完整软件迁移仍未完成。
+
+
+### 2026-11-05 正式编辑器集成构建与启动检查
+
+累积编辑器、核心和项目读写改动已构建进入唯一正式产物 native/build/Release/moonsprite-native.exe；构建 exit0，记录 native/build/editor-integration-build.log。补齐此前 editor_canvas/editor_tools 仅源码核对的编译证据，不代表全部行为等价。
+
+实际运行发现 start-native.bat 把主题参数放在用户参数前，而 main.cpp 检查入口判断 argv[1]，导致检查参数被静默忽略、打开普通工作区。正常关闭本轮启动的窗口后，将用户参数置于默认主题/指针参数之前；保留同一入口、工作目录与正式程序。通过该入口运行 --brush-preview-check、--preview-luminance-check，两个进程均 exit0。现有检查覆盖笔刷预览模式/抑制/缓存不变及亮度契约，尚不覆盖缺失Cel的实际编辑器悬停、喷枪和三个选区笔刷入口，也未进行人工交互图像验收。
+
+光栅历史、吸管现有测试均 exit0，日志 editor-integration-raster-tests.log、editor-integration-eyedropper-tests.log；625文件来源覆盖通过，完整迁移仍 INCOMPLETE。空帧粘贴已核对 legacy workspace-commands-clipboard.ts pasteSelection 与 workspace-commands-selection-floating.ts commitFloatingPaste：预览保留完整源，成功像素历史才 syncActiveAnimationLayer；原生 beginFloatingPaste 仍直接 cel().id，后续浮动目标生命周期尚待迁移，未解除稀疏导入门禁。
+
+
+### 2026-11-05 空槽剪贴板浮动粘贴生命周期
+
+对照 legacy workspace-commands-clipboard.ts pasteSelection、workspace-commands-selection-floating.ts commitFloatingPaste 及 animation.ts syncActiveAnimationLayer，原生 beginFloatingPaste 不再直接读取缺失 cel().id。缺失普通栅格目标保留独立透明基线，复用既有 floatingOverlayRegion、采样/变换/预算和合成管线；预览与取消不创建Cel、不改内容历史。成功像素提交才安装活动Cel并记录像素历史，撤销保留新Cel身份；完全越界/透明源只有必要选区历史。取消选择后的恢复快照在成功提交后绑定新Cel，避免恢复时读取不存在owner。缺失链接图层生命周期继续明确拦截。
+
+按 tools-selection-transform-translation.ts changedCount > area/4 和 tools-selection-transform-commit.ts packed transform 采用密集矩形历史；其他平移保留稀疏点历史。回归包括掩码、隐藏RGB/半透明、有无背景、图层透明度、取消、翻转/缩放/普通旋转/RotSprite、越界、300x300大剪贴板、稀疏mask、取消选择/撤销/重做。document-raster-history-tests exit0（absent-paste-tests.log）。canvas-performance-tests离屏回归比较预览、提交、新renderer、撤销重做，覆盖组/蒙版/图层样式/组渐变/描边阴影/洋葱皮；记录 absent-paste-render-tests.log。上述为核心与Skia离屏证据，非人工交互验收；本批源码尚未重新链接进入正式exe，完整稀疏导入门禁仍保留，全部功能迁移未完成。
+
+
+### 2026-11-05 粘贴恢复后的继续编辑与组锁定集成
+
+追加空槽/已有透明Cel对照：取消选择→撤销恢复浮动→翻转/移动/旋转/RotSprite→提交或取消，以及再次撤销重做，结果一致。未为此更改既有恢复算法。核对legacy workspace-restored-clipboard.ts restoredClipboardSnapshot、workspace-floating-preview-command.ts恢复编辑入口。
+
+另按legacy workspace-commands-clipboard.ts pasteSelection的isLayerEffectivelyLocked修复普通栅格粘贴入口只检查layer.locked的迁移差异；改为共享layerEffectivelyLocked。新增自身锁定和嵌套祖先组锁定、有无Cel的拒绝回归，选区/history/content/Cel数/dirty保持不变。
+
+document-raster-history-tests构建运行exit0，日志 absent-paste-integration-tests.log。唯一正式exe已重新链接，构建日志 absent-paste-integration-build.log；通过native/start-native.bat运行--deselect-check与--playback-floating-check，两个进程exit0。此处覆盖实际编辑器既有取消选择和播放提交路径，不等同于缺失Cel人工交互验收；本节更新上一批尚未进入正式产物的状态。完整软件迁移仍未完成，稀疏工程导入门禁继续保留。
+
+
+### 2026-11-05 空槽浮动内容居中顺序
+
+对照legacy workspace-commands-selection-move.ts centerActiveContent先处理pendingPaste+selection，再读取活动图层内容；其移动入口采用allowOutsideCanvas=true并核对effective lock。原生此前在浮动分支之前要求activeSurfaceIfPresent，导致空槽剪贴板及透明选区浮动无法居中。现将既有浮动变换分支前置，沿用Math.round等价取整、flip origins/quad平移和transformFloatingPaste，不改变非浮动空槽无操作语义。
+
+新增对照已有透明Cel的水平/垂直/双轴居中，普通剪贴板、旋转、缩放与透明选区浮动，居中再次调用无操作及取消恢复；验证预览像素/选区一致且不创建Cel、不改history/content/dirty。document-raster-history-tests构建运行exit0，日志native/build/absent-floating-center-tests.log。此次核心修改尚未重新链接正式exe，未做人工交互验收；全部功能迁移与完整稀疏生命周期仍未完成。
+
+
+### 2026-11-05 空槽平滑笔刷
+
+核对legacy core/smooth-brush.ts applySmoothBrush：readSource将alpha为0的颜色归零，全透明源没有可生成的变化；animation.ts空活动槽位显示透明。原生applySmoothBrush先校验visited范围，再对缺失活动Cel返回false，避免cel().id解引用，不分配整画布，不改变已有表面算法。新增与已有透明Cel对照，覆盖强度0/1/50/100、无选区/矩形/掩码、有无不透明背景，确认Cel/history/revision/content/dirty/合成不变及损坏覆盖拒绝。document-raster-history-tests构建运行exit0（absent-smooth-tests.log）。本批核心源码未重新链接正式exe，无人工UI验收。
+
+资源路径检查另确认beginStroke缺失Cel的透明画布resize发生在现有扩展预算门禁之外；这一分配前预算缺口尚未修复，不将当前空槽绘图称为完整资源边界验收，也不放开稀疏导入门禁。全部功能迁移仍未完成。
+
+### 2026-11-05 空槽笔刷分配前预算与正式集成
+
+beginStroke 的缺失普通栅格 Cel 分支现在先复用 adjustmentStorageBudget(timeline_,1) 和既有 256MiB 像素存储上限，再分配透明预览画布。该上限是必要原生资源适配，不是 legacy 的产品要求；legacy animation.ts 的显示编辑后才物化 Cel 生命周期及笔刷算法保持原有迁移语义，缺失链接图层仍拦截，总笔划与历史工作内存核算仍不完整。
+
+回归以非活动帧 8192×8192 owner 占满预算，确认缺失活动槽落笔在预览分配前拒绝，Cel/history/revision/contentRevision/dirty 以及既有存储身份、数据地址和版本不变；释放一行存储后允许开始并取消，仍不创建 Cel。document-raster-history-tests 构建与运行通过，日志 native/build/absent-stroke-budget-build.log、absent-stroke-budget-tests.log。
+
+唯一正式产物 native/build/Release/moonsprite-native.exe 已构建成功（absent-stroke-budget-app-build.log），同时纳入前两节浮动内容居中和平滑笔刷修复，更新此前尚未重新链接的状态。通过 native/start-native.bat 运行 --brush-preview-check 与 --deselect-check 均 exit0；这些是既有编辑器自动检查，未完成缺失 Cel 人工交互图像验收。完整功能迁移仍 INCOMPLETE，稀疏导入门禁保留。
+### 2026-11-05 空槽断开 Cel 连接
+
+核对 legacy core/animation.ts disconnectAnimationCels 只遍历已有 Cel，空目标返回 false，以及 workspace-commands-animation-cel-properties.ts 将选择槽位映射为已有 Cel。原生 canDisconnectSelectedCels、disconnectSelectedCels 的活动目标回退与 disconnectCel 直接入口改用 nullable Cel，空槽无操作；活动槽缺失时仍保留显式源/别名选择的既有断开算法。
+
+document-raster-history-tests 构建运行 exit0（native/build/absent-disconnect-build.log、absent-disconnect-tests.log）。新增回归覆盖空槽无选择不改变 Cel/history/revision/content/dirty，以及空活动帧中选择已有源或别名断开，像素与 Cel 数不变、撤销重做恢复链接。此次源码尚未重新链接正式 exe，未做人工 UI 验收。
+
+帧复制进一步核对：legacy clearLayerSurface 保留显示 layer.width/height/offset，applyFrameSurfaces 在有 Cel 时更新，跨工程 frame clipboard 从显示 layer 取几何。原生目前缺少对应显示几何状态，copySelectedFrames 的缺失活动槽异常仍待迁移；不能以画布尺寸回退假定等价。稀疏导入门禁及完整迁移 INCOMPLETE 状态保留。
+### 2026-11-05 空槽帧复制的显示几何承接
+
+依据 legacy core/animation.ts clearLayerSurface/applyFrameSurfaces 与 workspace-commands-animation-frame-clipboard.ts copySelectedAnimationFrames，新增按图层保存的运行时显示几何：从已有解析表面投影宽高和偏移，切入缺失槽位保留；正常变更发布和帧/历史投影更新已有表面。copySelectedFrames 缺失活动 Cel 时读取该状态，不创建 Cel，不以画布尺寸猜测源几何。
+
+回归覆盖 3×2 表面、负偏移、两个不同几何帧先后进入同一空槽，空载荷不改变 Cel/history/revision/content/dirty；跨工程新增图层使用保留几何并可撤销重做。document-raster-history-tests 构建运行 exit0，日志 native/build/absent-frame-geometry-build.log、absent-frame-geometry-tests.log。625 文件来源登记覆盖、diff --check 通过；行为等价仍 INCOMPLETE。
+
+本批尚未重新链接正式 exe、未做人工 UI 验收。工程初始缺失槽位的持久化显示几何尚未迁移，仍保留 full-slot 导入门禁；缺失链接层、文字/瓦片槽位及整体稀疏生命周期仍待继续迁移。
+### 2026-11-05 空槽显示几何的工程回档事务
+
+核对 legacy workspace-commands-document-io.ts cloneProjectRollbackSnapshot 使用 structuredClone(document)，restoreProjectRollbackSnapshot 经 sessionFromDocument 替换整份文档，因此图层显示宽高和偏移也属于 before/after 快照。原生 RollbackPayload 现保留 displayedLayerGeometry，capture 复制、take 移动、apply 在候选状态准备后安装，避免空活动槽回档沿用当前或缺失的几何。
+
+新增回归在同一空活动槽中，将 3×2、偏移(-7,9)的备份与经另一帧显示的8×6几何互换，检查回档、撤销、重做后的帧剪贴板几何、一次历史和不创建 Cel。document-raster-history-tests 构建运行 exit0（native/build/absent-geometry-rollback-build.log、absent-geometry-rollback-tests.log）；来源登记覆盖与差异格式检查通过。take 路径已编译，未单独增加运行用例。
+
+此次源码未重新链接正式 exe，无人工 UI 验收。工程初始空槽的持久化几何尚未接通，项目导入/编码的 full-slot 门禁继续保留；完整功能迁移仍 INCOMPLETE。
+### 2026-11-05 跨缺失槽位连接 Cel
+
+核对 legacy animation-slot-selection.ts animationLinkSlotKeys 扩展中间空槽 key 后，workspace-commands-animation-cel-properties.ts connectSelectedAnimationCels 只从 timeline.cels 过滤实际存在目标。原生 connectSelectedCels 在扫描首尾之间时跳过不存在 Cel，消除对空指针的 id/content 读取，不创建中间 Cel；已有空白 Cel 的范围扩展算法不变。
+
+新增可见/全透明端点对照，覆盖缺失中间槽、连接/撤销/重做、源像素及 Cel 数量。document-raster-history-tests 构建运行 exit0，日志 native/build/sparse-connect-build.log、sparse-connect-tests.log。工程 manifest 已有 layer.surface 几何，但初始缺失槽位接入仍需承接加载与完整生命周期；full-slot 门禁不变。
+正式集成补记：native/build/Release/moonsprite-native.exe 构建 exit0（native/build/sparse-connect-app-build.log），纳入空槽断开连接、显示几何帧复制、几何回档事务及跨空槽连接修复。通过唯一入口 native/start-native.bat 运行 --cel-clipboard-check、--deselect-check，两个进程 exit0；前者覆盖实际编辑器 Cel/帧剪贴板菜单及上下文路径，后者覆盖既有取消选择路径，不作为缺失 Cel 人工交互验收。更新前几节未链接正式程序的状态；全部功能迁移仍 INCOMPLETE。
+### 2026-11-05 从缺失活动槽新建动画帧
+
+对照 legacy core/animation.ts blankSurfaceFromLayer（1×1透明、零偏移）、duplicateAnimationFrame 的 nullable source 回退和 inheritAnimationFrameCelLinks 的缺失源跳过，原生 addFrame 的复制分支不再解引用缺失源；普通空槽新建/复制产生1×1透明 Cel，自动关联跳过缺失源。addLinkedFrame 的源扫描同样跳过缺失槽。
+
+新增普通空白/复制/末尾插入关联帧与 autoLink 开关共6种回归，验证一次历史、新帧透明几何、原槽不创建 Cel、Undo/Redo。document-raster-history-tests 构建运行 exit0（native/build/absent-frame-create-build.log、absent-frame-create-tests.log）。特殊图层缺失源仍拦截；非插入关联帧的缺失目标、已有源新建空白帧仍用原生画布几何的差异尚待继续迁移，不宣称整个新建帧生命周期等价。
+
+本批尚未重新链接正式 exe，未做人工交互验收。完整功能迁移仍 INCOMPLETE，稀疏工程导入门禁保留。
+### 2026-11-05 普通空白帧统一紧凑透明几何
+
+按 legacy core/animation.ts blankSurfaceFromLayer 的固定1×1透明零偏移，以及 addBlankAnimationFrame 先生成空白再 inheritAnimationFrameCelLinks，原生 addFrame 普通栅格空白表面不再根据源存在与否分配整画布。可见源且开启autoLink时仍继承既有源身份/几何；tilemap/free与复制已有源的分支不变。
+
+回归覆盖3×2负偏移源、可见/透明、autoLink开关、帧Undo/Redo及1×1之外落笔后的像素Undo/Redo。首轮失败定位为测试越界读取旧整画布存储假设，以及新增测试误要求笔划Undo收缩几何；改用canvasPixels检查可观察像素，未修改既有笔划历史算法。document-raster-history-tests与moon-core-tests均exit0，日志native/build/blank-frame-geometry-*.log。
+
+本批尚未重新链接正式exe、无人工UI验收。新建帧的保守整画布容量门禁、非插入关联帧缺失目标以及特殊图层缺失源仍待继续迁移；完整功能迁移INCOMPLETE，稀疏导入门禁保留。
+### 2026-11-05 关联帧复用缺失目标槽位
+
+核对 legacy core/animation.ts linkAnimationFrameCels 对 !target 跳过；store/workspace-animation-linked-cel.ts linkCelsInRightFrame 在下一帧存在时复用该帧、保存已有目标Cel快照、切帧并清理选择，即使没有链接改变也记录一次帧/选择历史。原生 addLinkedFrame 目标查找增加 end 检查，不再解引用缺失槽，不创建替代Cel或插入新帧。
+
+回归覆盖可见/空白源与Cel/帧头选择，确认下一空槽保持缺失、帧/Cel数量不变、一次历史、选择清理，Undo恢复原帧及选择、Redo回到空槽。document-raster-history-tests构建运行exit0（native/build/linked-absent-target-build.log、linked-absent-target-tests.log）。本批未重新链接正式exe、未做人工UI验收；特殊图层缺失源、工程初始空槽持久化及完整迁移仍未完成，稀疏导入门禁保留。
+### 2026-11-05 紧凑空白帧的原生资源准入
+
+此前 addFrame 以画布面积×图层×全部帧数估算，和 legacy animation.ts 的紧凑1×1空白表面相冲突。普通栅格路径现复用 adjustmentStorageBudget 的已有链接存储去重，累加新表面与detached历史副本，并为蒙版及其快照预留空间，在帧身份和表面分配前拒绝越限；保留10000帧及原生256MiB限制，特殊tile/free路径仍采用原门禁。该限制是原生适配，非legacy产品要求；总历史/元数据/文字工作内存仍未完整核算。
+
+新增1024×1024画布连续70个紧凑空白帧、帧Undo/Redo和原始大表面不变回归；另以非活动8192×8192表面占满存储，确认新建帧拒绝且frame/history/revision/dirty不变。document-raster-history-tests与moon-core-tests构建运行均exit0，日志native/build/compact-frame-budget-*.log。本批未链接正式exe、未做人工UI验收；完整功能迁移仍INCOMPLETE，稀疏导入门禁保留。
+### 2026-11-05 整 Cel 粘贴缺失目标的取消语义
+
+对照 legacy core/animation.ts mapAnimationCelBlock 仅返回已有目标，workspace-commands-animation-cel-clipboard.ts 同工程 placements 与跨工程 resolvedDestinations 必须覆盖全部源条目，否则取消。原生 pasteCopiedCels 活动目标改为 nullable 查找，并在预算/候选分配前拒绝既有帧中的任意缺失块目标，避免活动 cel() 异常或后续 slot->id 空指针读取；不自行物化缺失槽。
+
+同/跨工程与缺失首目标/后续目标共4种回归，验证无像素、frame/Cel/history/revision/content/dirty/选择变更，旧剪贴板保留。document-raster-history-tests 构建运行 exit0（native/build/cel-paste-missing-build.log、cel-paste-missing-tests.log）。新增帧目标沿用已有创建行为；selection-only Cel 浮动路径未由本批验收。
+
+本批尚未链接正式exe、无人工UI验收。完整功能迁移仍 INCOMPLETE，稀疏工程导入门禁保留。
+### 2026-11-05 Cel选区载荷跳过非活动缺失目标
+
+核对legacy workspace-paste-cel-selection.ts创建目标状态后，selection-transform-targets.ts selectionTransformLayerForState对非活动帧经animationLayerAtFrame解析，缺失槽返回null并跳过预览。原生beginCelSelectionPaste收集目标时改为nullable，不再对缺失目标读取id；浮动目标仅保留实际存在Cel，不创建替代槽，既有预览/提交/取消算法不变。
+
+回归覆盖已有活动目标+下一帧缺失目标，取消、提交、像素Undo/Redo及空槽/Cel数保持，document-raster-history-tests构建运行exit0（native/build/selection-paste-missing-build.log、selection-paste-missing-tests.log）。活动槽缺失的anchor仍未迁移，全部目标跳过时不建立浮动状态；不将此近似边界称为完整旧版浮动生命周期等价。
+
+本批未链接正式exe、无人工UI验收。完整迁移仍INCOMPLETE，稀疏工程导入门禁保留。
+### 2026-11-05 整 Cel 活动目标修复更正
+
+复查发现前述 celPasteMissingDestination 的首次字符串替换实际落在 beginCelSelectionPaste，pasteCopiedCels 仍为 &cel()；优化测试返回false不能证明该空指针解引用安全。现明确修复整Cel入口，使用 findCel(activeLayerId_,activeFrameId_)，源码检查不再保留该目标回退表达式。新增直接调用 pasteCopiedCels 与 beginCelSelectionPaste 的缺失anchor回归，确认无浮动/Cel/history/revision/content/dirty变更、剪贴板保留。
+
+另核对legacy workspace-commands-animation-cel-clipboard.ts selectionOnly 分支确实先commitFloatingPaste，再进入pasteCelSelection，因此本批不改变该顺序。document-raster-history-tests构建运行exit0（native/build/cel-anchor-direct-build.log、cel-anchor-direct-tests.log）。活动空槽的选区载荷生命周期仍未迁移，不以返回false宣称等价完成。本批未更新正式exe、无人工UI验收，完整迁移仍INCOMPLETE。
+### 2026-11-05 紧凑帧与Cel粘贴正式集成
+
+唯一正式exe重新构建exit0（native/build/compact-frames-integration-build.log），纳入紧凑空白帧、缺失源/目标关联帧、实际存储准入和Cel粘贴目标修复。通过native/start-native.bat运行--cel-clipboard-check、--playback-floating-check均exit0。
+
+--animation-check未通过：进程数分钟未退出，本轮正常关闭测试窗口后exit1，native-animation-error.txt更新为Cross frame dimension refusal atomic。定位editor_smoke.cpp smokeCrossProjectFrameClipboard仍要求2×1目标拒绝1×1源帧；当前pasteFrameClipboard已支持保留源表面的跨尺寸粘贴。此为下一轮须按legacy核对修正的验收差异，不能将总检查记绿；正常关闭行为可能涉及待处理错误提示，未进行强制终止或删除恢复数据。完整迁移仍INCOMPLETE，无人工交互验收。
+### 2026-11-05 跨尺寸帧粘贴编辑器验收修正
+
+核对legacy workspace-commands-animation-frame-clipboard.ts pasteCrossDocumentAnimationFrames 与 workspace-animation-cel-target.ts animationCelForTarget：额外图层采用源几何，RGBA表面直接克隆，不以目标画布尺寸拒绝。editor_smoke.cpp旧Cross frame dimension refusal atomic断言已替换为成功跨尺寸粘贴，检查2×1目标画布不变、1×1源表面不缩放、原点像素与其余透明、一次结构变更及Undo/Redo。main.cpp既有--cel-clipboard-check纳入smokeCrossProjectFrameClipboard，便于专项验证；未更改生产粘贴算法。
+
+正式exe构建exit0（native/build/cross-frame-acceptance-build.log）；通过唯一入口运行--cel-clipboard-check exit0，已覆盖本次跨工程用例，来源登记和diff检查通过。上轮动画总检查的此项失败已由专项验收关闭，但未重新运行整个--animation-check，不宣称总检查通过。完整功能迁移仍INCOMPLETE，无人工UI验收。
+### 2026-11-05 动画总检查后续失败定位
+
+重跑--animation-check，正常关闭本轮测试窗口后exit1，更新native-animation-error.txt为Selected Cel cut menu transaction。为避免复合断言掩盖原因，将smokeMigratedTimelineActions纳入既有--cel-clipboard-check，拆分命令/像素/选区/剪贴板/修订号断言。正式构建exit0（native/build/cel-cut-acceptance-build.log），专项检查exit1明确为Selected Cel cut clipboard lost selection payload：像素与选择清理已通过，Cel载荷路由未通过。
+
+源码定位editor_canvas.cpp copyEditorClipboard在document.selection()时优先copySelectionPixels，早于celClipboardContext；legacy app-document-shortcuts.ts在selectedAnimationCellKeys且!selectionOverride()时优先Cel，useAppCommandScope.ts通过pointer/focus和COMMAND_SCOPE_EVENT维护selectionCommandOverrideRef，显式preferSelection事件才覆盖。原生尚缺对应作用域状态，不能仅换条件顺序而破坏画布选区剪切。此次只增强验收定位，生产路由未改变；下一步迁移该作用域/选择覆盖契约。完整迁移INCOMPLETE，正式程序当前专项检查如上失败，非通过。
+### 2026-11-05 Cel剪贴板选择覆盖路由专项验证
+
+按legacy useAppCommandScope.ts、app-document-shortcuts.ts、app-selection-shortcuts.ts与layer-cell-shortcuts.ts迁移显式选择覆盖状态：编辑器鼠标按下清除覆盖，全选像素及时间轴Alt内容选择设置覆盖；未覆盖时所选Cel先进入Cel剪贴板路径，显式覆盖保留像素选区复制。专项验收同时检查选择载荷Cel剪切与全选像素复制覆盖。
+
+唯一正式exe构建exit0（native/build/cel-selection-scope-build.log），通过native/start-native.bat运行--cel-clipboard-check exit0。此前Selected Cel cut clipboard lost selection payload专项失败已关闭。子窗口焦点与蒙版作用域仍未完整迁移，未重新运行动画总检查、无人工UI验收；完整迁移仍INCOMPLETE。
+
+### 2026-11-05 Enter粘贴撤销与紧凑Cel验收
+
+动画总检查正常关闭测试窗口后exit1，native-animation-error.txt更新为Enter paste undo。smokeSelectionEnter在撤销粘贴恢复1×1空白Cel后仍读pixels()[1]，越过表面存储边界；legacy core/animation.ts blankSurfaceFromLayer明确创建1×1空白表面。该验收三处改读canvasPixels()[1]，验证画布坐标语义。legacy app-completion-shortcuts.ts Enter先commitFloatingPaste再commitSelectionChange，仍要求两步Undo，未修改生产行为。
+
+既有--playback-floating-check纳入smokeSelectionEnter；正式exe构建exit0（native/build/selection-enter-compact-build.log），通过唯一启动入口运行专项exit0，覆盖粘贴提交、选区完成、两步撤销及Enter播放守卫。未重跑修正后的动画总检查，无人工UI验收。另已核对legacy app-document-shortcuts.ts未覆盖时所选蒙版Cel应先于像素选区，原生路由尚待补齐。完整迁移仍INCOMPLETE。
+
+### 2026-11-05 蒙版Cel剪贴板作用域优先级
+
+核对legacy app-document-shortcuts.ts所选蒙版优先于Cel和像素选区（除非selectionOverride），workspace-cut.ts蒙版剪切先复制后删除所选动画项。copyEditorClipboard新增相同未覆盖蒙版路由，保留显式全选像素覆盖。专项增加蒙版/像素选区并存的复制、剪切、Undo与全选像素覆盖检查，验证原图像素和选区不被蒙版剪切替代修改。
+
+正式exe构建exit0（native/build/mask-clipboard-scope-build.log），通过唯一入口运行--cel-clipboard-check exit0。来源覆盖与diff检查通过。子窗口焦点作用域仍部分未迁移；未运行动画总检查和人工UI验收。完整功能迁移仍INCOMPLETE。
+
+### 2026-11-05 动画验收窗口与鼠标捕获环境
+
+动画总检查正常关闭后报告Loop edge captures mouse（drag=1、capture=0）。检查main.cpp发现--animation-check在desktop.addChild/openWindow之前运行，无法取得窗口鼠标捕获；未据此修改生产循环状态机。验收入口补齐桌面挂载和打开；既有播放专项纳入smokeLoopTrack，检查边缘捕获、释放最终指针提交、Undo、Escape/失焦/捕获丢失取消及边缘自动滚动。
+
+正式exe构建exit0（native/build/animation-capture-harness-build.log）；唯一入口--playback-floating-check exit0。重跑--animation-check后正常关闭exit1，更新错误为Delete implicit active Cel，循环拖拽已越过，删除路由为下一项待核对。来源覆盖与diff检查通过，无人工UI验收。完整迁移仍INCOMPLETE。
+
+### 2026-11-05 Delete快捷键作用域迁移
+
+专项复现Delete implicit active Cel：唯一图层、像素未变、history未变，排除切片/蒙版/焦点残留。runShortcutCommand将默认deleteLayer快捷键映射图层菜单并受canDeleteLayers限制，唯一图层时提前返回；legacy app-completion-shortcuts.ts与core/command-context.ts要求无其他选择时删除活动Cel。新增deleteLayer快捷键专用键盘作用域路由，保留所选切片优先级，使用既有deleteWorkspaceContent(true)，不修改图层菜单含义。
+
+正式构建exit0（native/build/keyboard-delete-scope-build.log）；既有--playback-floating-check纳入smokeDeleteRouting并exit0，覆盖隐式/显式Cel、Backspace、帧、图层、像素选区、Undo与Entry守卫。来源与diff检查通过，未重新运行动画总检查，无人工UI验收。完整迁移仍INCOMPLETE。
+
+### 2026-11-05 多边形重做快捷键验收修正
+
+Delete修正后动画总检查继续推进到Polygon step redo失败。核对legacy core/shortcut-contracts.ts：redo默认Ctrl+Shift+Z，Ctrl+Y为relativeLuminance；native shortcut_catalog.h已采用相同默认。smokeSelectionTools旧输入仍发Ctrl+Y，现改发Ctrl+Shift+Z，保留右键局部撤销及重做顶点断言；未修改生产快捷键或多边形状态机。
+
+正式构建exit0（native/build/polygon-redo-binding-build.log）；唯一入口重跑--animation-check，正常关闭测试窗口后exit1，更新错误Brush property shortcuts UI shape=0 size=1 angleVisible=0，已越过多边形重做。笔刷属性快捷键为下一项待核对，总检查未通过。来源与diff检查通过，无人工UI验收，完整迁移仍INCOMPLETE。
+
+### 2026-11-05 笔刷属性可配置快捷键作用域
+
+动画检查Brush property shortcuts UI失败，原生runShortcutCommand的brushShape/brushSize入口限制ordinaryBrushTool，提前拦截editor_input已有选区画笔/形状分支。核对legacy app-tools-shortcuts.ts形状快捷键无普通画笔限制；useAppShortcutRouter.ts尺寸处理特殊工具后setBrushSize，workspace-commands-tool.ts保留固定尺寸图像笔刷限制但shape/smooth例外。原生移除多余普通画笔限制，保留特殊工具及图像尺寸门槛（shape例外）。
+
+正式构建exit0（native/build/brush-property-scope-build.log）；唯一入口--animation-check已越过选区画笔Ctrl+3、]及角度显示断言，后续自行退出1：Quick selection must precede transform hit。总检查仍失败，快速选择/变换优先级待核对。来源与diff检查通过，无人工UI验收，完整迁移仍INCOMPLETE。
+
+### 2026-11-05 快速选择验收捕获状态修正
+
+核对legacy canvas-input-selection-begin.ts快速第二次按下先于选区/变换命中，原生顺序已一致。诊断显示失败时未进入选择创建（无press、preview或drag）。smokeSelectionTools键盘辅助函数直接disableFlags(HAS_CAPTURE)，留下Manager捕获者与Widget标志不一致，canvasOwnsPointer拒绝后续事件。改用releaseMouse同步释放，不修改生产快速选择算法，并保留详细失败诊断。
+
+正式构建exit0（native/build/quick-selection-capture-build.log）；唯一入口--animation-check正常关闭测试窗口后exit1，后续错误为Gradient pending tool lock，已越过Quick selection must precede transform hit与Quick cell commit。来源及diff检查通过，无人工UI验收，动画总检查和完整迁移仍INCOMPLETE。
+
+### 2026-11-05 待确认渐变工具切换守卫
+
+legacy workspace-commands-tool.ts setTool在pendingGradientFor存在时拒绝不同工具，setFillKind拒绝离开gradient。原生可配置工具快捷键直接修改工具标志，绕过已有入口限制。runShortcutCommand在临时工具恢复和工具分发之前消费待确认期间的工具快捷键，保留Enter应用、Escape取消。
+
+正式构建exit0（native/build/pending-gradient-tool-scope-build.log）；唯一启动入口--gradient-shape-check exit0，覆盖待提交工具锁定、取消、反向渐变应用及Undo。--animation-check本轮等待时正常CloseMainWindow后exit0，不能称无人干预完成；native-animation-error.txt仍为旧文件，不能作为本轮错误。来源与diff检查通过，无人工UI验收。动画覆盖仅限已有smoke断言，工程稀疏槽/完整历史持久化等已登记缺口仍在，完整迁移INCOMPLETE。
+
+### 2026-11-05 缺失Cel填充暂存预算
+
+核查稀疏工程准入时确认prepareEditableImport与Document::fromImported仍要求全槽；缺失活动槽的图层显示几何尚无导入交接，部分编辑路径仍有限制，因此本批保留IO门槛，不以删除门槛声称迁移完成。另定位fillSparse缺失槽分支直接分配画布，绕过现有槽sparseFillCanvas的文档+暂存256MiB准入。现复用该已有准入/暂存路径，以1×1透明空源生成画布，不改变填充算法、Cel延迟创建或历史语义。
+
+新增回归用256MiB非活动owner分别触发普通/图案填充，确认分配前拒绝且Cel数、历史、revision/contentRevision、dirty及存储身份不变。document-raster-history-tests构建/运行exit0（native/build/absent-fill-budget-build.log、absent-fill-budget-tests.log）。来源及diff检查通过；本批正式编辑器尚未重链接、无人工UI验收。稀疏导入/保存及整体迁移仍INCOMPLETE。
+
+### 2026-11-05 缺失Cel填充正式集成与共享预算核对
+
+上一批缺失Cel填充暂存预算已重链接唯一正式exe，构建exit0（native/build/absent-fill-integration-build.log）；通过唯一启动入口--gradient-shape-check exit0。
+
+继续核对legacy animation.ts clearLayerSurface保留显示几何且不分配Cel，与原生稀疏导入缺少显示几何交接的缺口一致，IO门槛仍保留。探索共享存储预算去重，回归证明输入可共享，但当前缺失Cel填充构造candidate timeline深复制存储；单独去重会低估事务内存，故撤回本轮去重及探索性测试，保留保守预算，不声称共享事务迁移完成。完整迁移仍INCOMPLETE，无人工UI验收。
+
+### 2026-11-05 导入图层显示几何交接
+
+legacy animation.ts clearLayerSurface清空显示像素时保留图层几何；applyFrameSurfaces只在存在Cel时从其表面更新几何。PreparedImport现保留ManifestLayer表面几何，createEditableDocument选好活动帧后交给Document的已校验几何接口，活动现存Cel仍优先投影。接口先校验全部身份/正尺寸/坐标边界再安装，不创建Cel或历史。
+
+project-import-tests与document-raster-history-tests构建/运行均exit0（native/build/import-display-geometry-*），新增检查prepared几何与缺失槽帧剪贴板几何、无Cel/历史/revision变更、无效身份拒绝后缓存保留。来源及diff检查通过。全槽IO门槛仍保留，缺失槽完整编辑/保存/重开未验收；本批正式编辑器尚未重链接、无人工UI验收，完整迁移INCOMPLETE。
+
+### 2026-11-05：缺失 Cel 的编码与图层显示回退
+
+- 依据 `legacy/src/renderer/src/core/animation.ts` 的 `clearLayerSurface/applyFrameSurfaces`、`project-format-encode.ts` 的 layer/animation.cels 编码及 `project-format-raster.ts::encodeRuntimeRasterData`，编码器遍历帧时跳过缺失槽，不生成空 Cel。
+- 活动槽缺失时保留 Document 缓存的图层尺寸和偏移，输出独立 `layers/<id>.rgba.tiles` 透明显示资源（64px tile、24字节空头，小图也使用 runtime sparse 格式）；计入展开像素预算，原资源清理同时保留图层显示资源。预览使用可选活动 Surface，并由现有合成器生成透明空帧。
+- 回归覆盖有/无源归档、所有槽/仅活动槽缺失、小/大显示几何、普通/恢复/历史三种编码、旧 Cel 资源清理、精确空头字节、空帧预览和无文档副作用。验证：`cmake --build native/build --config Release --target project-save-tests --parallel 4` 退出0；`native/build/Release/project-save-tests.exe native/build/project-manifest-fixtures` 退出0（完整工程保存回归，含上述新增用例）。日志 `native/build/absent-slot-encode-build.log`、`native/build/absent-slot-encode-test.log`。
+- 边界：此批为编码与预览实现。`prepareEditableImport`、`Document::fromImported` 及正式保存重开校验仍保留稀疏槽准入限制；尚不能声称稀疏工程可完整打开、编辑和保存。未改动正式程序产物。
+
+### 2026-11-05：无关关联组不再阻止普通图层空槽绘图
+
+核对 `legacy/src/renderer/src/core/animation.ts::syncActiveAnimationLayer` 与 `synchronizeLinkedLayerGroupContentsForTimeline`：单图层提交只对该图层所属关联组同步。原生六处缺失槽保护此前检查整个时间轴的 `hasLinkedLayers()`，导致文档中其他图层的关联关系也阻止普通空槽编辑。改为检查当前图层的 `linkedContentId`，覆盖画笔、选区填充、浮动粘贴、普通/图案填充、渐变、形状入口。
+
+新增七组自动回归，确认取消不创建槽或历史，提交生成一个 Cel 和一个历史项，撤销/重做恢复像素，其他关联组的像素和共享存储身份持续一致。`document-raster-history-tests` 构建和完整测试退出0；日志 `native/build/unrelated-links-absent-build.log`、`native/build/unrelated-links-absent-test.log`。当前活动图层本身属于关联组时的稀疏生命周期仍明确未迁移；正式程序本轮未重新链接，尚未进行桌面验收。
+
+### 2026-11-05：关联图层缺失活动 Cel 的画笔提交
+
+依据 `animation.ts::syncActiveAnimationLayer/synchronizeLinkedLayerGroupContentsForTimeline` 的活动源优先规则，为 Timeline 构造增加可选 preferredOwner，确保首次共享就采用新提交 Cel，避免先构造再指定源时新数据已被覆盖。画笔缺失槽提交接入该参数，取消或无变化不创建槽；仅创建活动槽，同组缺失同伴不自动补槽。已有同伴按旧版连通分量共享新像素及保持独立放置。
+
+新增四种组合回归（同伴有/无槽 × 有/无跨帧 Cel 链接），检查取消、透明空笔画、新槽数、提交内容、共享身份及撤销/重做。构建 `document-raster-history-tests timeline-model-tests` 退出0；两个完整测试均退出0。日志：`native/build/linked-absent-brush-build.log`、`linked-absent-brush-test.log`、`linked-absent-timeline-test.log`。
+
+范围仍有限：关联空槽的其他工具仍保留未迁移保护，稀疏导入与正式保存重开限制未解除；正式应用未重新链接，无桌面验收结论。
+
+### 2026-11-05：关联空 Cel 的填充、渐变、形状和粘贴
+
+沿用画笔已验证的 Timeline preferredOwner 构造能力，将缺失槽的普通/图案填充、选区填充、渐变/形状、浮动粘贴提交均设为新 Cel 优先源，移除对应未迁移保护。依据 `animation.ts::syncActiveAnimationLayer/synchronizeLinkedLayerGroupContentsForTimeline`、`linked-layers.ts::shareLinkedRasterContent`，以及 `workspace-commands-history.ts` 提交像素历史后同步活动图层的顺序。仅活动槽创建 Cel，同组缺失槽保持缺失；关联共享仍使用现有连通分量算法。
+
+新增24种组合测试（同伴槽有/无 × 跨帧链接有/无 × 六类工具），验证预览取消、单槽/单历史提交、共享存储身份及撤销/重做像素。`document-raster-history-tests` 构建和完整运行均退出0；日志 `native/build/linked-absent-tools-build.log`、`native/build/linked-absent-tools-test.log`。
+
+此结果不等于稀疏工程全功能验收：特殊图层空槽生命周期、导入准入和其他 Cel 消费方仍有缺口。正式程序尚未重新链接，也未做本批桌面运行验收。
+
+### 2026-11-05：空槽渐变预算与画笔安装失效通知
+
+- 空槽渐变入口补齐现有原生稀疏渐变的256MiB像素预算：现有Cel存储、两份画布暂存及可见图层取样缓冲在分配前检查。普通取样直接引用空基线，去掉无用整幅复制。此为原生密集暂存的必要防护，仍不代表已达到legacy稀疏分配性能。
+- 新增预算耗尽时两种取样模式均原子拒绝的回归，核对未创建Cel/预览/历史、版本及存储身份不变；释放一行后可预览并取消。`document-raster-history-tests` 构建和完整测试退出0，日志 `native/build/absent-gradient-budget-build.log`、`absent-gradient-budget-test.log`。
+- 对照 `workspace-commands-history.ts` 的同步后touch顺序，空槽画笔安装新时间轴后补发内容失效通知，避免最终共享安装仅依赖提交前预览版本。关联空槽画笔回归新增提交内容版本递增断言；再次构建及完整测试退出0，日志 `native/build/absent-install-refresh-build.log`、`absent-install-refresh-test.log`。
+- 正式程序未重新链接；全量迁移、稀疏工程准入和桌面验收仍未完成。

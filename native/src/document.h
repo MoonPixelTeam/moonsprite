@@ -3,6 +3,7 @@
 #include "layer_metadata.h"
 #include "layer_panel_tree.h"
 #pragma once
+#include "history_change.h"
 #include <map>
 #include "project_information.h"
 #include "document_slices.h"
@@ -41,6 +42,7 @@
 #include <filesystem>
 
 namespace moon {
+namespace local_history {class CommittedCapture;class PixelHistory;struct PixelHistoryEdit;}
 struct SymmetryRotationRaster;
 namespace timelapse {class Session;}
 using Pixel = std::uint32_t; // RGBA: red in the low byte; transparent is zero.
@@ -68,6 +70,8 @@ struct SheetImportOptions;
 struct LayerPanelDropTarget{enum class Kind{Top,Bottom,Inside,Above,Below};Kind kind=Kind::Above;LayerPanelKind rowKind=LayerPanelKind::Layer;std::string id;};
 struct TilemapSelection {tiles::Mode mode=tiles::Mode::Hybrid;std::string tilesetId,primary,secondary;bool freePaint=false;};
 class Document {
+  friend class local_history::CommittedCapture;
+  friend class local_history::PixelHistory;
 public:
  const std::vector<DocumentSlice>& slices()const{return sliceState_.items;}
  const std::vector<std::string>& selectedSliceIds()const{return sliceState_.selected;}
@@ -171,6 +175,8 @@ public:
   static Document fromSpriteSheetRaster(int width,int height,std::vector<Pixel> pixels,std::u32string name);
   static Document fromImported(int width,int height,timeline::State state,PaletteState palette,
     std::string projectId,std::u32string name,std::shared_ptr<const std::vector<std::uint8_t>> sourceArchive);
+  std::array<int,4> displayedLayerGeometry(const std::string&) const;
+  void setImportedLayerGeometry(std::unordered_map<std::string,std::array<int,4>>);
   bool rollbackProject(const Document& backup);
   std::uint64_t revision() const {return revision_;}
   void clearSourceArchiveForNewSnapshot() {sourceArchive_.reset();}
@@ -190,9 +196,12 @@ public:
   const std::shared_ptr<const std::vector<std::uint8_t>>& sourceArchive() const {return sourceArchive_;}
   int width() const { return width_; }
   int height() const { return height_; }
-  const std::vector<Pixel>& pixels() const { return timeline_.resolveSurface(cel().id).surface->pixels; }
+  const std::vector<Pixel>& pixels() const { return activeSurface().pixels; }
   // Owner storage is local; canvas snapshots sample document/world coordinates.
-  const timeline::Surface& activeSurface()const {return *timeline_.resolveSurface(cel().id).surface;}
+  // Read-only empty-slot queries preserve Cel absence; callers that edit must
+  // materialize through their transaction before requesting activeSurface().
+  const timeline::Surface* activeSurfaceIfPresent()const {if(absentStrokeSurface_)return &*absentStrokeSurface_;const auto* slot=timeline_.findCel(layer().id,frame().id);return slot?timeline_.resolveSurface(slot->id).surface:nullptr;}
+  const timeline::Surface& activeSurface()const {return *activeSurfaceIfPresent();}
   std::vector<Pixel> canvasPixels()const;
   std::optional<SelectionMask> selectionContentBounds(const SelectionMask&)const;
   const DocumentLayer& layer() const {return timeline_.state().layers.at(activeLayerIndex());}
@@ -227,6 +236,8 @@ public:
   SymmetryAxes symmetryAxes;
   SymmetryCenter symmetryCenter() const{return symmetryCenter_.value_or(defaultSymmetryCenter(width_,height_));}
   void setSymmetryCenter(SymmetryCenter c,bool metadata=true){if(!std::isfinite(c.x) || !std::isfinite(c.y))throw std::invalid_argument("Invalid symmetry center");symmetryCenter_=moveSymmetryCenter(symmetryCenter(),SymmetryAxis::Center,c,width_,height_);if(metadata){modified_=true;projectInformation_.operation();}}
+  // Project decode preserves finite source coordinates; tool dragging quantizes separately.
+  void setImportedSymmetryCenter(SymmetryCenter c){if(!std::isfinite(c.x)||!std::isfinite(c.y))throw std::invalid_argument("Invalid imported symmetry center");symmetryCenter_=c;}
   bool showCustomGrid() const{return showCustomGrid_;}
   GridSettings customGrid() const{return customGrid_;}
   void setCustomGrid(bool enabled,GridSettings grid,bool metadata=true){showCustomGrid_=enabled;customGrid_=normalizeGridSettings(grid);if(metadata){modified_=true;projectInformation_.operation();++revision_;change_={0,0,width_,height_};publishChange();}}
@@ -237,6 +248,8 @@ public:
   HistoryPanelTimeline historyTimeline()const;
   std::size_t historyPosition()const{return position_;}
   std::uint64_t historyRevision()const{return historyRevision_;}
+  void setHistoryChangeListener(HistoryChangeBinding::Observer observer){historyChangeBinding_.set(std::move(observer));}
+  void clearHistory();
   bool setHistoryPosition(std::size_t target);
   bool strokeActive()const{return active_||bool(freeSourceStroke_);}
   bool applySmoothBrush(const std::vector<std::size_t>& visited,int strength,std::optional<std::chrono::steady_clock::time_point> started={});
@@ -249,6 +262,9 @@ public:
     HistoryLabelScope& operator=(const HistoryLabelScope&)=delete;
   };
   std::uint64_t contentRevision() const {return contentRevision_;}
+  // Restoration must reject raster previews/edits even after cancellation,
+  // while a frame view invalidation alone may arrive during journal I/O.
+  std::uint64_t contentMutationRevision()const{return contentMutationRevision_;}
   PixelRegion lastContentChange() const {return change_;}
   std::size_t historyBytes() const {return historyBytes_;}
   std::uint64_t tilemapCacheCellWrites()const{return tilemapCacheCellWrites_;}
@@ -643,9 +659,11 @@ private:
   struct GroupUiSnapshot {std::vector<std::string> selected,collapsed;std::optional<std::string> focus;};
   struct FreeTileSelectionSnapshot {std::vector<std::string> selected;std::string primary,anchor,frame,viewLayer;};
   struct RollbackPayload {
- int width=0,height=0;timeline::State timeline;PaletteState palette;std::vector<ProjectBrushResource> brushes;ReferenceLibrary references;SliceState slices;std::optional<SymmetryCenter> symmetry;bool loop=true,pixelGrid=false,customGridVisible=false;GridSettings grid;std::string activeLayer,activeFrame;std::vector<std::string> collapsed;std::shared_ptr<const std::vector<std::uint8_t>> archive;ProjectInformation information;timelapse::Settings timelapse;
+ int width=0,height=0;timeline::State timeline;std::unordered_map<std::string,std::array<int,4>> displayedLayerGeometry;PaletteState palette;std::vector<ProjectBrushResource> brushes;ReferenceLibrary references;SliceState slices;std::optional<SymmetryCenter> symmetry;bool loop=true,pixelGrid=false,customGridVisible=false;GridSettings grid;std::string activeLayer,activeFrame;std::vector<std::string> collapsed;std::shared_ptr<const std::vector<std::uint8_t>> archive;ProjectInformation information;timelapse::Settings timelapse;
  };
- std::shared_ptr<const RollbackPayload> captureRollbackPayload()const;void applyRollbackPayload(const RollbackPayload&);
+ std::shared_ptr<const RollbackPayload> captureRollbackPayload()const;
+ std::shared_ptr<const RollbackPayload> takeRollbackPayload()&&;
+ void applyRollbackPayload(const RollbackPayload&,bool preserveRecording=false,const std::string* viewedFrame=nullptr);
   std::string activeMaskId_;bool maskIsolated_=false;
   std::optional<std::vector<timeline::MaskSlot>> maskStrokeBefore_;
   std::vector<timeline::MaskSlot> maskClipboard_;
@@ -673,6 +691,11 @@ private:
   struct LayerTilesetHistory {struct Entry{std::size_t index;tiles::Tileset value;};std::vector<Entry> before,after;std::size_t bytes()const;};
   struct Edit {
     std::vector<Delta> pixels; std::uint64_t beforeState, afterState;
+    std::shared_ptr<const local_history::PixelHistoryEdit> localHistoryPixels;
+    // A restored structural entry also restores root name/dirty. Ordinary
+    // project backup rollback retains its existing root-field semantics.
+    bool localHistorySnapshot=false,beforeHistoryDirty=false,afterHistoryDirty=false;
+    std::u32string beforeHistoryName,afterHistoryName;
     std::optional<std::vector<timeline::MaskSlot>> beforeMasks,afterMasks;
     std::optional<std::string> maskToActivateOnRedo;
     std::optional<std::pair<std::string,bool>> maskEditingOnUndo;
@@ -822,6 +845,7 @@ private:
   // Resolve the selected owned surface once per stroke, retaining the direct pixel hot path.
   std::vector<Pixel>& pixelStorage() {return strokePixels_?*strokePixels_:timeline_.mutableOwnedSurface(timeline_.resolveSurface(cel().id).source->id)->pixels;}
   std::vector<Pixel>* strokePixels_=nullptr;
+  std::optional<timeline::Surface> absentStrokeSurface_;
   bool strokeCanvasStorage_=true;
   int strokeStride_=0,strokeOffsetX_=0,strokeOffsetY_=0;
   PixelAddressSpace strokeAddress_;
@@ -833,6 +857,9 @@ private:
   std::string activeLayerId_;
   std::uint64_t nextLayerId_=0,nextFrameId_=0;
   std::string activeFrameId_,frameAnchor_;
+  // Legacy display layer geometry survives an absent animation slot.
+  std::unordered_map<std::string,std::array<int,4>> displayedLayerGeometry_;
+  void projectActiveLayerGeometry();
   std::vector<std::string> selectedFrames_;
   TimelineSelection timelineSelection_;
   std::vector<CelClipboardItem> celClipboard_;
@@ -844,6 +871,7 @@ private:
   void normalizeFrameDeletionSelection();
   void applyFrameEdit(const Edit& edit,bool redo);
   void applyEdit(const Edit& edit,bool redo);
+  void applyLocalHistoryPixels(const local_history::PixelHistoryEdit&,bool forward);
   void groupEdits(std::size_t start,const std::vector<std::string>& selection);
   void applyCelEdit(const Edit& edit,bool redo);
   void applyLayerEdit(const Edit& edit,bool redo);
@@ -869,22 +897,25 @@ private:
     RecordingBinding(RecordingBinding&&)=default;RecordingBinding& operator=(RecordingBinding&&)=default;
   } recordingBinding_;
   void notifyRecording(bool undoStep=false){if(recordingBinding_.observer)recordingBinding_.observer(*this,undoStep);}
-  std::uint64_t identity_=0,contentRevision_=0,revision_=0;
+  std::uint64_t identity_=0,contentRevision_=0,contentMutationRevision_=0,revision_=0;
   std::size_t maxBytes_,maxEntries_,historyBytes_=0;
+  HistoryChangeBinding historyChangeBinding_;
+  void notifyHistoryChange(HistoryStackChange::Kind,const std::u32string& label={},std::size_t discardedUndo=0,std::size_t discardedRedo=0);
   std::uint64_t historyRevision_=0;
   std::u32string historyLabelOverride_;
   bool groupingHistory_=false;
   bool paletteColorSynchronization_=false; // UI preference, never project metadata.
   std::optional<std::vector<std::pair<std::string,std::optional<timeline::ColorOverlayStyle>>>> layerStyleBaseline_;
   std::optional<timeline::LayerAdjustment> layerAdjustmentBaseline_;std::string layerAdjustmentId_;
-  void publishChange(){
+  void publishChange(bool linkedLayersPrepared=false,bool frameViewOnly=false){
     timeline_.state_.canvasWidth=width_;timeline_.state_.canvasHeight=height_;
-    if(timeline_.hasLinkedLayers()){timeline_.synchronizeLinkedLayers();if(!change_.empty())change_={0,0,width_,height_};}
+    if(timeline_.hasLinkedLayers()){if(!linkedLayersPrepared)timeline_.synchronizeLinkedLayers();if(!change_.empty())change_={0,0,width_,height_};}
+    projectActiveLayerGeometry();
     if(!change_.empty()){
       if(recordingDirtyTo_!=contentRevision_)recordingDirtyValid_=false;
       if(recordingDirty_.empty())recordingDirty_=change_;
       else{const int x=std::min(recordingDirty_.x,change_.x),y=std::min(recordingDirty_.y,change_.y);const auto right=std::max(std::int64_t(recordingDirty_.x)+recordingDirty_.w,std::int64_t(change_.x)+change_.w),bottom=std::max(std::int64_t(recordingDirty_.y)+recordingDirty_.h,std::int64_t(change_.y)+change_.h);if(right-x>std::numeric_limits<int>::max()||bottom-y>std::numeric_limits<int>::max())recordingDirtyValid_=false;else recordingDirty_={x,y,int(right-x),int(bottom-y)};}
-      ++contentRevision_;recordingDirtyTo_=contentRevision_;
+      ++contentRevision_;if(!frameViewOnly)++contentMutationRevision_;recordingDirtyTo_=contentRevision_;
     }
   }
   std::vector<Edit> history_;
@@ -947,7 +978,7 @@ private:
   void publishTilemapPreview();void publishTilemapPreview(GradientPreview&);bool linkedCreateFloatingSupported(const FloatingPaste&)const;bool linkedEditFloatingSupported(const FloatingPaste&)const;bool linkedHybridFloatingSupported(const FloatingPaste&)const;bool prepareTilemapFloating(FloatingPaste&,std::optional<Point>);
   bool commitTilemapPreview();
   struct MaskPreviewBaseline {std::string id;timeline::Surface surface;std::vector<Pixel> canvas;timeline::AttachedMask display;PixelRegion previous;};
-  struct GradientPreview {Point seed;std::string celId,layerId,frameId;std::vector<Pixel> preview;std::optional<SelectionMask> selection,region;WandOptions options;std::uint64_t contentRevision;bool shape=false;std::optional<SparseGradientBaseline> sparse;std::optional<SelectionMask> shapePaintMask,shapeExpansion;std::optional<MaskPreviewBaseline> mask;bool tilemap=false;tiles::Mode tilemapMode=tiles::Mode::Hybrid;std::vector<Pixel> tilemapBaseline;std::optional<timeline::Timeline> tilemapDisplay;std::vector<std::string> previewTileIds;std::unordered_map<std::string,std::vector<std::pair<std::size_t,std::size_t>>> tilemapReferences;std::vector<PixelRegion> tilemapRegions;PixelRegion tilemapRawRegion;std::optional<Point> sourceShapeSeed;};
+  struct GradientPreview {Point seed;std::string celId,layerId,frameId;std::vector<Pixel> preview;std::optional<SelectionMask> selection,region;WandOptions options;std::uint64_t contentRevision;bool shape=false,absentRaster=false;std::optional<SparseGradientBaseline> sparse;std::optional<std::vector<Pixel>> absentRasterBaseline;std::optional<SelectionMask> shapePaintMask,shapeExpansion;std::optional<MaskPreviewBaseline> mask;bool tilemap=false;tiles::Mode tilemapMode=tiles::Mode::Hybrid;std::vector<Pixel> tilemapBaseline;std::optional<timeline::Timeline> tilemapDisplay;std::vector<std::string> previewTileIds;std::unordered_map<std::string,std::vector<std::pair<std::size_t,std::size_t>>> tilemapReferences;std::vector<PixelRegion> tilemapRegions;PixelRegion tilemapRawRegion;std::optional<Point> sourceShapeSeed;};
   std::optional<GradientPreview> gradient_;std::uint64_t gradientRevision_=0;
   struct FilterPreview{std::uint64_t revision=0,contentRevision=0,generation=0;std::optional<timeline::Timeline> timeline;};
   std::vector<timeline::Pixel> layerDisplayColors_=defaultLayerDisplayColors();

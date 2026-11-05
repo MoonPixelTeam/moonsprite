@@ -101,22 +101,23 @@ int main(){try{linkedFrameRecording();localRecordingReadContract();
 
  
 {
- auto importedFrame=[&](std::string id){Frame f;f.id=std::move(id);f.width=f.height=128;f.data=png;return f;};
+ auto importedFrame=[&](std::string id){Frame f;f.id=std::move(id);f.width=f.height=128;f.data=png;f.historyDataBacking=HistoryDataBacking{std::make_shared<const Bytes>(png),png.size()};return f;};
  Document embedded(8,8);Settings imported;imported.snapshots={importedFrame("embedded-one"),importedFrame("embedded-two")};embedded.setImportedTimelapse(imported);
  auto es=ensureRecordingSession(embedded,root/"embedded");es->poll(embedded);CHECK(es->pendingCount()>0&&embedded.timelapseSettings().snapshots[0].data==png&&!embedded.timelapseSettings().snapshots[0].local);
- es->flush(embedded);CHECK(es->pendingCount()==0);for(const auto& f:embedded.timelapseSettings().snapshots)CHECK(f.data.empty()&&f.local&&es->read(f)==png);
+ es->flush(embedded);CHECK(es->pendingCount()==0);for(const auto& f:embedded.timelapseSettings().snapshots)CHECK(f.data.empty()&&f.local&&!f.historyDataBacking&&es->read(f)==png);
+ auto portableEmbedded=es->portable(embedded);for(const auto& f:portableEmbedded.snapshots)CHECK(!f.local&&!f.historyDataBacking&&f.data==png);
  const auto firstRef=*embedded.timelapseSettings().snapshots[0].local;const auto secondRef=*embedded.timelapseSettings().snapshots[1].local;
  auto totalBytes=[](const std::filesystem::path& path){std::uintmax_t total=0;for(const auto& entry:std::filesystem::recursive_directory_iterator(path))if(entry.is_regular_file())total+=entry.file_size();return total;};
  const auto durableBytes=totalBytes(root/"embedded");for(int i=0;i<3;++i){es->poll(embedded);es->flush(embedded);}CHECK(totalBytes(root/"embedded")==durableBytes&&embedded.timelapseSettings().snapshots[0].local->offset==firstRef.offset&&embedded.timelapseSettings().snapshots[1].local->offset==secondRef.offset);
  const auto blockedRoot=root/"blocked-embedded";{std::ofstream blocked(blockedRoot,std::ios::binary);blocked<<"owned-path-obstacle";}
- Document failed(8,8);Settings failureSettings;failureSettings.snapshots={importedFrame("failure-retained")};failed.setImportedTimelapse(failureSettings);auto fs=ensureRecordingSession(failed,blockedRoot);bool didFail=false;try{fs->flush(failed);}catch(const std::exception&){didFail=true;}CHECK(didFail&&failed.timelapseSettings().snapshots[0].data==png&&!failed.timelapseSettings().snapshots[0].local);
+ Document failed(8,8);Settings failureSettings;failureSettings.snapshots={importedFrame("failure-retained")};failed.setImportedTimelapse(failureSettings);auto fs=ensureRecordingSession(failed,blockedRoot);bool didFail=false;try{fs->flush(failed);}catch(const std::exception&){didFail=true;}CHECK(didFail&&failed.timelapseSettings().snapshots[0].data==png&&!failed.timelapseSettings().snapshots[0].local&&failed.timelapseSettings().snapshots[0].historyDataBacking);
  fs->beginCaptureFlush();CHECK(fs->captureFlushReady(failed));
  const auto embeddedExport=root/"embedded-export-without-library.png";CHECK(writeRecordingSequence(failed.timelapseSettings(),fs->reader(),{embeddedExport},false)==1);
  {std::ifstream in(embeddedExport,std::ios::binary);const Bytes exported((std::istreambuf_iterator<char>(in)),{});CHECK(decodeRecordingPng(exported).pixels==decodeRecordingPng(png).pixels);}
  CHECK(failed.timelapseSettings().snapshots[0].data==png&&!failed.timelapseSettings().snapshots[0].local&&std::filesystem::is_regular_file(blockedRoot));
  std::filesystem::rename(blockedRoot,root/"blocked-embedded-obstacle-retained");fs->flush(failed);CHECK(failed.timelapseSettings().snapshots[0].data.empty()&&failed.timelapseSettings().snapshots[0].local&&fs->read(failed.timelapseSettings().snapshots[0])==png);
  Document stale(8,8),backup(8,8);Settings staleSettings;staleSettings.snapshots={importedFrame("same-id")};stale.setImportedTimelapse(staleSettings);auto ss=ensureRecordingSession(stale,root/"stale-embedded");ss->poll(stale);ss->clear(stale);ss->flush(stale);CHECK(stale.timelapseSettings().snapshots.empty());
- stale.setImportedTimelapse(staleSettings);ss->restoreSettings(stale.timelapseSettings());ss->poll(stale);Settings replacement;Frame local=staleSettings.snapshots[0];local.data.clear();local.local=b;replacement.snapshots={local};backup.setImportedTimelapse(replacement);CHECK(stale.rollbackProject(backup));ss->flush(stale);CHECK(stale.timelapseSettings().snapshots.size()==1&&stale.timelapseSettings().snapshots[0].data.empty()&&stale.timelapseSettings().snapshots[0].local->store==b.store&&stale.timelapseSettings().snapshots[0].local->chunk==b.chunk&&stale.timelapseSettings().snapshots[0].local->offset==b.offset);
+ stale.setImportedTimelapse(staleSettings);ss->restoreSettings(stale.timelapseSettings());ss->poll(stale);Settings replacement;Frame local=staleSettings.snapshots[0];local.data.clear();local.historyDataBacking.reset();local.local=b;replacement.snapshots={local};backup.setImportedTimelapse(replacement);CHECK(stale.rollbackProject(backup));ss->flush(stale);CHECK(stale.timelapseSettings().snapshots.size()==1&&stale.timelapseSettings().snapshots[0].data.empty()&&stale.timelapseSettings().snapshots[0].local->store==b.store&&stale.timelapseSettings().snapshots[0].local->chunk==b.chunk&&stale.timelapseSettings().snapshots[0].local->offset==b.offset);
 }
 
 {

@@ -1658,7 +1658,7 @@ void Editor::beginTemporaryBrushCapture(){
 void Editor::finishTemporaryBrushCapture(const SelectionMask& selection){
  if(!temporaryBrushCapture_ || temporaryBrushCapture_->identity!=document.identity())return;
  try{
-  auto brush=createSelectionPatternBrush(document.activeSurface(),document.width(),document.height(),selection);
+  auto brush=createSelectionPatternBrush(document.activeSurfaceIfPresent(),document.width(),document.height(),selection);
   if(!brush){status_=U"选区中没有可用笔刷像素";return;}
   const auto old=*temporaryBrushCapture_;selectionKind_=old.kind;selectionMode_=old.mode;selectionRounded_=old.rounded;selectionCornerRadius_=old.radius;temporaryBrushCapture_.reset();
   if(temporaryBrushReturnProfile_)brushFeedback_.brushProfiles_[0]=*temporaryBrushReturnProfile_;
@@ -1680,7 +1680,7 @@ void Editor::createBrushFromSelection(){
 
     document.commitFloatingPaste();if(!document.selection()){status_=U"需要像素选区";refresh();return;}
 
-    try{auto brush=createSelectionPatternBrush(document.activeSurface(),document.width(),document.height(),*document.selection());if(!brush){status_=U"选区中没有可用笔刷像素";refresh();return;}const auto directory=smoke_?fillBrushLibraryDirectory().parent_path().parent_path()/"pattern-brush-library-fixture":fillBrushLibraryDirectory();PatternBrushLibrary library(directory);auto stored=library.save("笔刷",encodePatternBrushPng(*brush),true,brush->sourceX,brush->sourceY);pencilImageBrushId_=stored.id;pencilImageBrush_=*brush;fillPattern_.brushes.clear();fillLibrarySelection_={};fillImageName_.clear();document.previewSelection({});selectionPivot_.reset();selectionPropertiesActive_=false;selectionFreeTransform_=false;selectionTool_=shapeTool_=eyedropperTool_=gradientTool_=fillTool_=handTool_=eraser_=false;brushLibraryNeedsReload_=true;status_=U"选区笔刷已保存到本地库";}catch(const std::exception& e){status_=U"创建选区笔刷失败："+unicodeText(e.what());}refresh();
+    try{auto brush=createSelectionPatternBrush(document.activeSurfaceIfPresent(),document.width(),document.height(),*document.selection());if(!brush){status_=U"选区中没有可用笔刷像素";refresh();return;}const auto directory=smoke_?fillBrushLibraryDirectory().parent_path().parent_path()/"pattern-brush-library-fixture":fillBrushLibraryDirectory();PatternBrushLibrary library(directory);auto stored=library.save("笔刷",encodePatternBrushPng(*brush),true,brush->sourceX,brush->sourceY);pencilImageBrushId_=stored.id;pencilImageBrush_=*brush;fillPattern_.brushes.clear();fillLibrarySelection_={};fillImageName_.clear();document.previewSelection({});selectionPivot_.reset();selectionPropertiesActive_=false;selectionFreeTransform_=false;selectionTool_=shapeTool_=eyedropperTool_=gradientTool_=fillTool_=handTool_=eraser_=false;brushLibraryNeedsReload_=true;status_=U"选区笔刷已保存到本地库";}catch(const std::exception& e){status_=U"创建选区笔刷失败："+unicodeText(e.what());}refresh();
 
   }
 
@@ -1688,7 +1688,7 @@ void Editor::createFillBrushFromSelection(){
 
     document.commitFloatingPaste();if(!document.selection()){status_=U"需要选区";refresh();return;}
 
-    try{auto brush=createSelectionPatternBrush(document.activeSurface(),document.width(),document.height(),*document.selection());if(!brush){status_=U"选区中没有可用笔刷像素";refresh();return;}PatternBrushLibrary library(fillBrushLibraryDirectory());auto stored=library.save("笔刷",encodePatternBrushPng(*brush),true,brush->sourceX,brush->sourceY);if(!fillFolder_.empty())library.move(stored.id,fillFolder_);fillLibrarySelection_.ids={stored.id};fillLibrarySelection_.active=fillLibrarySelection_.anchor=stored.id;applyFillLibrarySelection();document.previewSelection({});selectionPropertiesActive_=false;brushLibraryNeedsReload_=true;status_=U"选区笔刷已保存到本地库";}catch(const std::exception& e){status_=U"创建选区笔刷失败："+unicodeText(e.what());}refresh();
+    try{auto brush=createSelectionPatternBrush(document.activeSurfaceIfPresent(),document.width(),document.height(),*document.selection());if(!brush){status_=U"选区中没有可用笔刷像素";refresh();return;}PatternBrushLibrary library(fillBrushLibraryDirectory());auto stored=library.save("笔刷",encodePatternBrushPng(*brush),true,brush->sourceX,brush->sourceY);if(!fillFolder_.empty())library.move(stored.id,fillFolder_);fillLibrarySelection_.ids={stored.id};fillLibrarySelection_.active=fillLibrarySelection_.anchor=stored.id;applyFillLibrarySelection();document.previewSelection({});selectionPropertiesActive_=false;brushLibraryNeedsReload_=true;status_=U"选区笔刷已保存到本地库";}catch(const std::exception& e){status_=U"创建选区笔刷失败："+unicodeText(e.what());}refresh();
 
   }
 

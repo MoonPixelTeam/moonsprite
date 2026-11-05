@@ -26,7 +26,9 @@ void Document::applyPixelEdit(const Edit& e,bool forward){
   auto* owner=timeline_.mutableOwnedSurface(r.source->id);if(!owner)throw std::logic_error("Missing writable history owner");auto& pixels=owner->pixels;
   auto mark=[&](std::int64_t x,std::int64_t y,std::int64_t w,std::int64_t h){const auto left=std::max<std::int64_t>(0,std::int64_t(owner->offsetX)+x),top=std::max<std::int64_t>(0,std::int64_t(owner->offsetY)+y),right=std::min<std::int64_t>(width_,std::int64_t(owner->offsetX)+x+w),bottom=std::min<std::int64_t>(height_,std::int64_t(owner->offsetY)+y+h);if(right>left&&bottom>top){change_.include(int(left),int(top));change_.include(int(right-1),int(bottom-1));}};
   for(const auto& d:e.pixels){pixels[d.index]=forward?d.after:d.before;mark(d.index%std::size_t(a.width),d.index/std::size_t(a.width),1,1);}
-  for(const auto& run:e.runs){std::fill_n(pixels.begin()+run.index,run.length,forward?run.after:run.before);if(!run.length)continue;const auto startRow=run.index/std::size_t(a.width),endRow=(run.index+run.length-1)/std::size_t(a.width);if(startRow==endRow)mark(run.index%std::size_t(a.width),startRow,run.length,1);else mark(0,startRow,a.width,endRow-startRow+1);}
+  // Legacy history.ts applyRuns(runBefore, true): overlapping writes must
+  // unwind in reverse order, including the direct native storage path.
+  for(std::size_t step=0;step<e.runs.size();++step){const auto& run=e.runs[forward?step:e.runs.size()-1-step];std::fill_n(pixels.begin()+run.index,run.length,forward?run.after:run.before);if(!run.length)continue;const auto startRow=run.index/std::size_t(a.width),endRow=(run.index+run.length-1)/std::size_t(a.width);if(startRow==endRow)mark(run.index%std::size_t(a.width),startRow,run.length,1);else mark(0,startRow,a.width,endRow-startRow+1);}
   if(e.dense){const auto& d=*e.dense;const auto& values=forward?d.after:d.before;for(int y=0;y<d.height;++y)std::copy_n(values.begin()+std::size_t(y)*d.width,d.width,pixels.begin()+std::size_t(y+d.y)*a.width+d.x);mark(d.x,d.y,d.width,d.height);}
   return;
  }
@@ -41,7 +43,7 @@ void Document::applyPixelEdit(const Edit& e,bool forward){
  };
  auto walk=[&](auto&& emit){
   for(const auto& d:e.pixels){if(d.index>=size)throw std::logic_error("Pixel history point exceeds capture");emit(d.index%std::size_t(a.width),d.index/std::size_t(a.width),std::size_t(1),forward?&d.after:&d.before,Pixel(0));}
-  for(const auto& run:e.runs){if(run.index>size||run.length>size-run.index)throw std::logic_error("Pixel history run exceeds capture");auto index=run.index,left=run.length;while(left){const auto count=std::min(left,std::size_t(a.width)-index%std::size_t(a.width));emit(index%std::size_t(a.width),index/std::size_t(a.width),count,static_cast<const Pixel*>(nullptr),forward?run.after:run.before);index+=count;left-=count;}}
+  for(std::size_t step=0;step<e.runs.size();++step){const auto& run=e.runs[forward?step:e.runs.size()-1-step];if(run.index>size||run.length>size-run.index)throw std::logic_error("Pixel history run exceeds capture");auto index=run.index,left=run.length;while(left){const auto count=std::min(left,std::size_t(a.width)-index%std::size_t(a.width));emit(index%std::size_t(a.width),index/std::size_t(a.width),count,static_cast<const Pixel*>(nullptr),forward?run.after:run.before);index+=count;left-=count;}}
   if(e.dense){const auto& d=*e.dense;const auto& values=forward?d.after:d.before;if(d.x<0||d.y<0||d.width<1||d.height<1||std::int64_t(d.x)+d.width>a.width||std::int64_t(d.y)+d.height>a.height||std::uint64_t(d.width)*d.height!=values.size())throw std::logic_error("Invalid dense pixel history capture");for(int y=0;y<d.height;++y)emit(d.x,std::int64_t(d.y)+y,std::size_t(d.width),values.data()+std::size_t(y)*d.width,Pixel(0));}
  };
  // Check all spans before invalidating caches or mutating the first pixel.

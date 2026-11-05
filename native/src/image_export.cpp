@@ -1,4 +1,6 @@
+#include "atomic_file.h"
 #include <atomic>
+#include <system_error>
 #include "image_export.h"
 #include "image_export_prepare.h"
 #include "layer_compositor.h"
@@ -14,7 +16,11 @@
 namespace moon {namespace {
 void be(std::vector<std::uint8_t>& out,std::uint32_t n){for(int i=3;i>=0;--i)out.push_back(std::uint8_t(n>>(i*8)));}
 void chunk(std::vector<std::uint8_t>& out,const char* type,const std::vector<std::uint8_t>& data){be(out,std::uint32_t(data.size()));auto begin=out.size();out.insert(out.end(),type,type+4);out.insert(out.end(),data.begin(),data.end());be(out,std::uint32_t(crc32(0,out.data()+begin,uInt(data.size()+4))));}
-[[noreturn]] void failed(const char* action){throw std::runtime_error(std::string(action)+" (Windows "+std::to_string(GetLastError())+")");}
+[[noreturn]] void failed(DWORD error,const char* action,const std::filesystem::path& source,const std::filesystem::path& target){
+ // Capture GetLastError at the failed call, before allocations/cleanup can
+ // overwrite it. Binary history/project writes share this boundary with images.
+ throw std::system_error(std::error_code(int(error),std::system_category()),std::string(action)+": "+source.u8string()+" -> "+target.u8string());
+}
 }
 std::u32string staticLayerExportStem(const Document& d,const std::string& layerId){
  // legacy document-files sanitizeFileStem + document-file-service layer stem.
@@ -98,8 +104,22 @@ StaticImageExport encodeImagePng(int width,int height,std::vector<Pixel> pixels,
 void writeStaticImagePngAtomic(const std::filesystem::path& path,const StaticImageExport& image){writeExportBytesAtomic(path,image.png);}
 void writeExportBytesAtomic(const std::filesystem::path& path,const std::vector<std::uint8_t>& bytes){
  if(path.empty()||bytes.empty())throw std::invalid_argument("Empty PNG output");
+ writeBinaryFileAtomic(path,bytes);
+}
+void writeBinaryFileAtomic(const std::filesystem::path& path,const std::vector<std::uint8_t>& bytes){
+ if(path.empty())throw std::invalid_argument("Empty binary output path");
  static std::atomic<unsigned> serial{0};const auto temp=path.parent_path()/(path.filename().wstring()+L"."+std::to_wstring(GetCurrentProcessId())+L"."+std::to_wstring(GetTickCount64())+L"."+std::to_wstring(++serial)+L".tmp");
- HANDLE handle=CreateFileW(temp.c_str(),GENERIC_WRITE,0,nullptr,CREATE_NEW,FILE_ATTRIBUTE_NORMAL,nullptr);if(handle==INVALID_HANDLE_VALUE){const auto error=GetLastError();throw std::runtime_error("Cannot create temporary file: "+temp.u8string()+" (Windows "+std::to_string(error)+")");}
- try{std::size_t offset=0;while(offset<bytes.size()){DWORD written=0;const DWORD count=DWORD(std::min<std::size_t>(1024*1024,bytes.size()-offset));if(!WriteFile(handle,bytes.data()+offset,count,&written,nullptr)||written!=count)failed("Cannot write PNG");offset+=written;}if(!FlushFileBuffers(handle))failed("Cannot flush PNG");CloseHandle(handle);handle=INVALID_HANDLE_VALUE;if(!MoveFileExW(temp.c_str(),path.c_str(),MOVEFILE_REPLACE_EXISTING|MOVEFILE_WRITE_THROUGH))failed("Cannot replace PNG");}catch(...){if(handle!=INVALID_HANDLE_VALUE)CloseHandle(handle);DeleteFileW(temp.c_str());throw;}
+ HANDLE handle=CreateFileW(temp.c_str(),GENERIC_WRITE,0,nullptr,CREATE_NEW,FILE_ATTRIBUTE_NORMAL,nullptr);if(handle==INVALID_HANDLE_VALUE)failed(GetLastError(),"Cannot create binary temporary file",temp,path);
+ try{
+  std::size_t offset=0;while(offset<bytes.size()){
+   DWORD written=0;const DWORD count=DWORD(std::min<std::size_t>(1024*1024,bytes.size()-offset));
+   if(!WriteFile(handle,bytes.data()+offset,count,&written,nullptr))failed(GetLastError(),"Cannot write binary temporary file",temp,path);
+   if(written!=count)failed(ERROR_WRITE_FAULT,"Incomplete binary temporary write",temp,path);
+   offset+=written;
+  }
+  if(!FlushFileBuffers(handle))failed(GetLastError(),"Cannot flush binary temporary file",temp,path);
+  CloseHandle(handle);handle=INVALID_HANDLE_VALUE;
+  if(!MoveFileExW(temp.c_str(),path.c_str(),MOVEFILE_REPLACE_EXISTING|MOVEFILE_WRITE_THROUGH))failed(GetLastError(),"Cannot replace binary file",temp,path);
+ }catch(...){if(handle!=INVALID_HANDLE_VALUE)CloseHandle(handle);DeleteFileW(temp.c_str());throw;}
 }
 }

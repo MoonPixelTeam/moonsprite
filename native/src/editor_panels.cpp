@@ -15,7 +15,18 @@ void PreviewPanel::zoomPreviewTo(double next,std::optional<gfx::Point> pointer){
 
 panels::Geometry Editor::columnGeometry(gfx::Rect rc)const{InteractionScope interactionScope(0,"geometry");
 
-    if(docking_.custom)return docking_.layout(dockArea(rc),columnVisibility(),Layout::gap,floatingArea(rc));
+    if(docking_.custom){
+      // Public docking fields can change without a revision notification.
+      // Compare the complete layout input instead of relying on invalidation.
+      struct Cache {const Editor* owner=nullptr;panels::Model model;panels::Rect area,viewport;panels::Visibility visible{};panels::Geometry result;};
+      static thread_local Cache cache;
+      const auto area=dockArea(rc),viewport=floatingArea(rc);const auto visible=columnVisibility();
+      auto sameGroup=[](const panels::Group& a,const panels::Group& b){return a.tabs==b.tabs&&a.active==b.active&&a.dock==b.dock&&a.weight==b.weight&&a.width==b.width&&a.floating==b.floating&&a.floatingArea==b.floatingArea&&a.fixedExtent==b.fixedExtent;};
+      const auto& old=cache.model;
+      const bool same=cache.owner==this&&cache.area==area&&cache.viewport==viewport&&cache.visible==visible&&old.leftWidth==docking_.leftWidth&&old.rightWidth==docking_.rightWidth&&old.bottomHeight==docking_.bottomHeight&&old.bottomShare==docking_.bottomShare&&old.groups.size()==docking_.groups.size()&&std::equal(old.groups.begin(),old.groups.end(),docking_.groups.begin(),sameGroup);
+      if(!same){cache.result=docking_.layout(area,visible,Layout::gap,viewport);cache.model=docking_;cache.area=area;cache.viewport=viewport;cache.visible=visible;cache.owner=this;}
+      return cache.result;
+    }
 
     const Layout l(rc,layersPanelOpen_,dockWidth_,paletteShare_,timelineHeight_,toolRailSide_,int(toolRail_.size()));panels::Geometry g;g.shown=columnVisibility();
 
@@ -854,7 +865,10 @@ void Editor::useZoomTool() {liquifyTool_=false;liquifyResetPosition_.reset();smo
 void Editor::finishZoomTool() {navigation_.zoomDragging_=false;if(hasCapture())releaseMouse();updateNavigationCursor();}
 
 void Editor::layoutPanelTabs(int only) {
-    struct ReferenceLayout {Editor& e;~ReferenceLayout(){e.layoutReferencePanel();e.layoutHistoryPanel();e.layoutTabletPanel();e.layoutTilesetPanel();e.layoutBrushLibraryPanel();e.layoutFreeTileInstancePanel();}} referenceLayout{*this};
+    struct ReferenceLayout {Editor& e;int only;~ReferenceLayout(){
+      auto affected=[&](int id){return only<0||e.docking_.groupOf(id)==e.docking_.groupOf(only);};
+      if(affected(9))e.layoutReferencePanel();if(affected(8))e.layoutHistoryPanel();if(affected(10))e.layoutTabletPanel();if(affected(11))e.layoutTilesetPanel();if(affected(12))e.layoutBrushLibraryPanel();if(affected(13))e.layoutFreeTileInstancePanel();
+    }} referenceLayout{*this,only};
     struct AdvancedVisibility{Editor& e;~AdvancedVisibility(){e.applyAdvancedVisibility();}} advancedVisibility{*this};
 
     if(panelTabs_.empty())return;const auto rc=uiLogical(clientBounds());const auto geometry=columnGeometry(rc);
@@ -1169,7 +1183,7 @@ void Editor::layoutPalette(int only) {
 
       auto inner=columnLayout(rc,1).pickerGradient((runtimePreferences_.flag("colorLayers.recentColorsVisible") && !recentColors_.values().empty()));inner.offset(rc.x,rc.y);inner.shrink(1);inner=toDisplay(inner);
 
-      colorPicker_->setBounds(inner);
+      if(colorPicker_->bounds()!=inner)colorPicker_->setBounds(inner);
 
       colorPicker_->syncColors(document.displayPalette().primary,document.displayPalette().secondary);
 
@@ -1389,7 +1403,7 @@ void Editor::createExtraPickerColumns(){
   }
 }
 void Editor::layoutPickerColumn(int id){
-  auto& p=pickerColumns_[id];if(!p.picker)return;const auto rc=uiLogical(clientBounds());const auto box=columnLayout(rc,id).pickerGradient(runtimePreferences_.flag("colorLayers.recentColorsVisible")&&!recentColors_.values().empty());auto inner=box;inner.offset(rc.x,rc.y);inner.shrink(1);p.picker->setBounds(toDisplay(inner));p.picker->syncColors(document.displayPalette().primary,document.displayPalette().secondary);
+  auto& p=pickerColumns_[id];if(!p.picker)return;const auto rc=uiLogical(clientBounds());const auto box=columnLayout(rc,id).pickerGradient(runtimePreferences_.flag("colorLayers.recentColorsVisible")&&!recentColors_.values().empty());auto inner=box;inner.offset(rc.x,rc.y);inner.shrink(1);if(p.picker->bounds()!=toDisplay(inner))p.picker->setBounds(toDisplay(inner));p.picker->syncColors(document.displayPalette().primary,document.displayPalette().secondary);
   const bool shown=columnShown(id);p.picker->setVisible(shown);p.picker->setEnabled(pending_==Pending::None);const auto actions=columnChrome(id).actions;
   p.settings->setBounds(toDisplay({rc.x+actions.x2()-15,rc.y+actions.y,15,15}));p.restore->setBounds(toDisplay({rc.x+actions.x2()-31,rc.y+actions.y,15,15}));
   const int x=rc.x+box.x,y=rc.y+box.y2()+uiGap;bool inPalette=false;for(int slot:document.palette().slots)if(auto entry=document.paletteEntry(slot))inPalette|=entry->color==document.palette().primary;

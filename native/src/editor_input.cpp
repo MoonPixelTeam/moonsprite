@@ -55,10 +55,6 @@ void Editor::observeModifierRelease(ui::Message* msg){
 
     brushFeedback_.brushPreviewShift_=msg->shiftPressed();if(liquifyTool_)layoutToolOptions();invalidateRect(canvasViewport());
 
-    syncShortcutTools(*msg);
-
-    syncShortcutTools(*msg);
-
     if(brushFeedback_.modifierBrushSize_ && !brushFeedback_.modifierBrushSize_->pressed && !moveModifierHeld("brushSizeAdjust",*msg))finishModifierBrushSize();
 
     selectionShift_=msg->shiftPressed();selectionCtrl_=msg->ctrlPressed() || msg->cmdPressed();updateNavigationCursor();
@@ -66,6 +62,7 @@ void Editor::observeModifierRelease(ui::Message* msg){
   }
 
 bool Editor::onProcessMessage(ui::Message* msg) {
+    if(msg->type()==ui::kMouseDownMessage)selectionCommandOverride_=false;
     if(msg->fromFilter()&&parameterRangeFilters_)return processParameterRangeMessage(msg);
     observeDynamicsInput(msg);
 
@@ -81,8 +78,15 @@ bool Editor::onProcessMessage(ui::Message* msg) {
 
     }
 
-    observeShortcutInputs(msg);syncShortcutTools(*msg);
-    struct ShortcutAfterMessage {std::function<void()> action;~ShortcutAfterMessage(){action();}} shortcutAfter{[this,msg]{syncShortcutTools(*msg);}};
+    // Shortcut state only depends on input/focus messages.  Re-running the
+    // catalog-wide matcher for paint, timer, and layout messages caused a
+    // significant amount of work on the UI thread.
+    const bool shortcutEvent=dynamic_cast<ui::KeyMessage*>(msg)||dynamic_cast<ui::MouseMessage*>(msg)||msg->type()==ui::kFocusLeaveMessage||msg->type()==ui::kFocusEnterMessage||
+      (msg->type()==ui::kTimerMessage&&(shortcutTemporaryRestore_||spaceHeld_||eyedropperHeld_||paletteSamplingHeld_||!moveHeldKeys_.empty()||brushFeedback_.modifierBrushSize_));
+    if(shortcutEvent){
+      observeShortcutInputs(msg);syncShortcutTools(*msg);
+    }
+    struct ShortcutAfterMessage {std::function<void()> action;~ShortcutAfterMessage(){action();}} shortcutAfter{[this,msg,shortcutEvent]{if(shortcutEvent)syncShortcutTools(*msg);}};
     // The source toolbar is a sibling for column chrome layout, but belongs
     // to the legacy tileset command scope. Delete must never reach layer delete.
     if(tilesetPanel_&&msg->type()==ui::kKeyDownMessage&&document.layer().kind=="free-tile"){

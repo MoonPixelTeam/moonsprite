@@ -7,4 +7,6 @@ struct EncodedProject {std::shared_ptr<const Bytes> bytes;std::string projectId;
 EncodedProject encodeEditableProject(const Document& document,Limits limits={});
 // legacy recovery-service: no preview, ZIP compression level 1.
 EncodedProject encodeRecoveryProject(const Document& document,Limits limits={});
+// legacy local-history-service encodeSnapshot: no preview, default ZIP level 6.
+EncodedProject encodeHistoryProject(const Document& document,Limits limits={});
 }

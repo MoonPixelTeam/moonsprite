@@ -8,4 +8,4 @@ if not exist "%moonexe%" (
   pause
   exit /b 1
 )
-start "MoonSprite Native" /D "%moonLaunchCwd%" "%moonexe%" --theme "%~dp0assets\themes\moonsprite-dark\theme.xml" --cursors "%~dp0assets\cursors" %*
+start "MoonSprite Native" /D "%moonLaunchCwd%" "%moonexe%" %* --theme "%~dp0assets\themes\moonsprite-dark\theme.xml" --cursors "%~dp0assets\cursors"

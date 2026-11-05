@@ -9,7 +9,13 @@
 #include <vector>
 namespace moon {
 inline constexpr const char* defaultTextFontFamily="Fusion Pixel 10px Prop Zh_hans";
-struct TextRect {double x=0,y=0,width=1,height=1;};
+struct TextRect {
+ double x=0,y=0,width=1,height=1;
+ // Legacy normalizes transform rectangles with a shallow spread. Preserve
+ // their JSON properties through native edits instead of dropping extensions.
+ // Empty for ordinary four-number rectangles; immutable serialized value data.
+ std::u16string projectProperties;
+};
 struct TextShear {char axis='x',edge='s';double amount=0;};
 struct TextTransform {TextRect source,target;double angle=0;std::optional<TextShear> shear;};
 struct TextStyleRun {int start=0,end=0;std::optional<int> fontSize,lineSpacing,letterSpacing;std::optional<std::uint32_t> color;};
@@ -26,7 +32,7 @@ inline std::vector<TextStyleRun> normalizeTextStyleRuns(std::vector<TextStyleRun
  std::sort(boundaries.begin(),boundaries.end());boundaries.erase(std::unique(boundaries.begin(),boundaries.end()),boundaries.end());std::vector<TextStyleRun> result;
  for(std::size_t i=0;i+1<boundaries.size();++i){const int from=boundaries[i],to=boundaries[i+1];auto found=std::find_if(candidates.rbegin(),candidates.rend(),[&](const TextStyleRun& r){return r.start<=from&&r.end>=to;});if(found==candidates.rend())continue;auto next=*found;next.start=from;next.end=to;if(!result.empty()&&result.back().end==from&&textStyleEqual(result.back(),next))result.back().end=to;else result.push_back(next);}return result;
 }
-inline bool validTextRect(TextRect r){return std::isfinite(r.x)&&std::isfinite(r.y)&&std::isfinite(r.width)&&std::isfinite(r.height)&&r.width>=1&&r.height>=1;}
+inline bool validTextRect(const TextRect& r){return std::isfinite(r.x)&&std::isfinite(r.y)&&std::isfinite(r.width)&&std::isfinite(r.height)&&r.width>=1&&r.height>=1;}
 inline std::string normalizeTextFontFamily(const std::string& raw){
  std::u16string units;for(std::size_t i=0;i<raw.size();){const auto first=static_cast<unsigned char>(raw[i++]);char32_t cp=first;int extra=0;if(first>=0xf0){cp=first&7;extra=3;}else if(first>=0xe0){cp=first&15;extra=2;}else if(first>=0xc0){cp=first&31;extra=1;}for(int n=0;n<extra;++n){if(i>=raw.size()||(static_cast<unsigned char>(raw[i])&0xc0)!=0x80){cp=0xfffd;break;}cp=(cp<<6)|(static_cast<unsigned char>(raw[i++])&63);}if(cp>0x10ffff)cp=0xfffd;if(cp<=0xffff)units+=char16_t(cp);else{cp-=0x10000;units+=char16_t(0xd800+(cp>>10));units+=char16_t(0xdc00+(cp&1023));}}
  const auto a=std::find_if_not(units.begin(),units.end(),[](char16_t c){return javascriptWhitespace(c);}),b=std::find_if_not(units.rbegin(),units.rend(),[](char16_t c){return javascriptWhitespace(c);}).base();if(a>=b)return defaultTextFontFamily;units=std::u16string(a,b);if(units.size()>128)units.resize(128);std::string out;for(std::size_t i=0;i<units.size();++i){char32_t cp=units[i];if(cp>=0xd800&&cp<=0xdbff&&i+1<units.size()&&units[i+1]>=0xdc00&&units[i+1]<=0xdfff)cp=0x10000+((cp-0xd800)<<10)+(units[++i]-0xdc00);if(cp<128)out+=char(cp);else if(cp<2048){out+=char(0xc0|(cp>>6));out+=char(0x80|(cp&63));}else if(cp<65536){out+=char(0xe0|(cp>>12));out+=char(0x80|((cp>>6)&63));out+=char(0x80|(cp&63));}else{out+=char(0xf0|(cp>>18));out+=char(0x80|((cp>>12)&63));out+=char(0x80|((cp>>6)&63));out+=char(0x80|(cp&63));}}return out;

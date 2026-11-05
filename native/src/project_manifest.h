@@ -9,6 +9,7 @@
 #include "reference_images.h"
 #include "text_cel_data.h"
 #include <optional>
+#include <functional>
 namespace moon::project {
 struct ManifestRaster {
   int width=0,height=0,offsetX=0,offsetY=0;
@@ -38,6 +39,7 @@ struct ManifestGroup {
   bool clippingMask=false;
   std::optional<timeline::ColorOverlayStyle> layerStyles;
   bool cumulativeBlend=false;
+  bool parentGroupIdPresent=true;
 };
 struct ManifestLoopSection {std::string id,name,startFrameId,endFrameId,direction="forward";std::optional<int> repeatCount;};
 struct ManifestCel {
@@ -77,4 +79,7 @@ struct ReadManifest {
   std::shared_ptr<const Bytes> sourceArchive;
 };
 ReadManifest readProjectManifest(std::shared_ptr<const Bytes> bytes,Limits limits={});
+// One clock read per missing/invalid timestamp, in decoder created/updated order.
+// Injection lets differential tests share the actual legacy decode clock.
+ReadManifest readProjectManifestWithClock(std::shared_ptr<const Bytes>,Limits,std::function<std::string()>);
 }
