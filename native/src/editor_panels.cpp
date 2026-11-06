@@ -1159,17 +1159,26 @@ void Editor::layoutPalette(int only) {
 
       auto interior=[&](int x,int y){for(int dy=-uiScale;dy<=uiScale;dy+=uiScale)for(int dx=-uiScale;dx<=uiScale;dx+=uiScale)if(!occupied(x+dx,y+dy))return false;return true;};
 
+      // Preserve edge order for equal-distance ownership, but only inspect
+      // strips intersecting this scanline. Material/hit testing remains exact.
+      std::vector<int> rowEdges;rowEdges.reserve(paletteSelectionEdges_.size());
+      const bool compareEdges=smoke_ && std::getenv("MOONSPRITE_PALETTE_EDGE_REFERENCE");
+      auto pickEdge=[&](int x,int y,const std::vector<int>* candidates){
+        int winner=-1,best=100000;
+        auto consider=[&](int i){const auto& edge=paletteSelectionEdges_[i];if(!edge.clip.contains(gfx::Point(x,y)))return;
+          const auto& b=edge.border;const int distance=edge.side==0?b.y-y:edge.side==1?x-(b.x2()-uiScale):edge.side==2?y-(b.y2()-uiScale):b.x-x;
+          if(distance>=0 && distance<best && skin_.selectionContains(skin_.selectionMaterialBounds(b),{x,y})){best=distance;winner=i;}};
+        if(candidates){for(int i:*candidates)consider(i);}else for(int i=0;i<int(paletteSelectionEdges_.size());++i)consider(i);
+        return winner;
+      };
       for(int y=material.y;y<material.y2();y+=uiScale){int run=-1,begin=material.x;
-
+        rowEdges.clear();for(int i=0;i<int(paletteSelectionEdges_.size());++i){const auto& clip=paletteSelectionEdges_[i].clip;if(y>=clip.y && y<clip.y2())rowEdges.push_back(i);}
         auto flush=[&](int x){if(run>=0)paletteSelectionEdges_[run].pieces.push_back({begin,y,x-begin,uiScale});};
-
-        for(int x=material.x;x<=material.x2();x+=uiScale){int winner=-1,best=100000;
-
-          if(x<material.x2() && !interior(x,y))for(int i=0;i<int(paletteSelectionEdges_.size());++i){const auto& edge=paletteSelectionEdges_[i];if(!edge.clip.contains(gfx::Point(x,y)))continue;
-
-            const auto& b=edge.border;const int distance=edge.side==0?b.y-y:edge.side==1?x-(b.x2()-uiScale):edge.side==2?y-(b.y2()-uiScale):b.x-x;
-
-            if(distance>=0 && distance<best && skin_.selectionContains(skin_.selectionMaterialBounds(b),{x,y})){best=distance;winner=i;}}
+        for(int x=material.x;x<=material.x2();x+=uiScale){int winner=-1;
+          if(x<material.x2() && !interior(x,y)){
+            winner=pickEdge(x,y,&rowEdges);
+            if(compareEdges && winner!=pickEdge(x,y,nullptr))throw std::runtime_error("Palette scanline edge ownership mismatch");
+          }
 
           if(winner!=run){flush(x);run=winner;begin=x;}
 

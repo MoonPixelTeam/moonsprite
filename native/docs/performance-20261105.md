@@ -510,3 +510,10 @@ Aseprite `src/ui/manager.cpp` 的 flushRedraw 和编辑器局部 canvas invalida
 
 - 对照Aseprite MIT Widget::setBounds与setBoundsQuietly：相同矩形仍派发ResizeEvent并invalidate；MenuBox::onResize继续调用Menu::onResize并重排。对照legacy AppMenuBar.tsx保留全部命令与可用性，本轮仅在原生顶部工作区按钮、五个操作按钮以及菜单行居中步骤比较当前/目标矩形，变化时才setBounds。菜单容器继续无条件布局，以响应同尺寸下的标题、皮肤和overflow子项变化；不在依赖层全局跳过ResizeEvent。
 - header-stable-bounds-build.log正式Release构建exit0；--window-input-check和--ui-geometry-performance-check均exit0，覆盖菜单溢出/恢复、真实窗口输入、局部与全量帧一致及尺寸变化几何。来源625文件覆盖/快照检查通过，完整迁移仍INCOMPLETE；未做人工图像验收。此轮是可核对的重复事件减少，不宣称整体帧率提升比例。仅提交源码、来源与记录，生成物和用户数据保留。
+
+
+## 2026-11-07：调色盘多选轮廓按扫描行筛选候选边
+
+- layoutPaletteButtons的非矩形共享选框逐像素遍历全部轮廓边。保留legacy core/palette-layout.ts paletteSelectionBoundaryEdges及PaletteSelectionOutline.tsx的联合外轮廓语义和原生素材适配，每行先按clip.y范围筛选，保持原边索引顺序，再用原clip、距离、Skin::selectionContains判定归属。缩减无关边访问，不改变凹角、并列距离、alpha、pieces分段或命中坐标。无跨帧缓存。MOONSPRITE_PALETTE_EDGE_REFERENCE在smoke中逐点比较全边遍历oracle。
+- 新增自动轮廓验收置于smokePaletteManual原场景之前：五种色块尺寸×全选/阶梯/每第三格不连续选择，逐像素核对绘制alpha与命中。开启oracle的--palette-manual-check通过，随后--palette-growth-check和--ui-geometry-performance-check通过。palette-scanline-fixture-build.log正式Release构建exit0，来源625文件/快照检查通过，迁移仍INCOMPLETE。无人工图像验收，不宣称整体提速百分比。
+- --palette-mouse-check exit1，组合在smokeToolPropertyLayout的Legacy gradient controls断言停止，未完成其后全部鼠标检查；不得记为全通过。本轮针对轮廓的完整新场景及原手动场景已独立通过。源码、来源、记录推送dev，用户数据/缓存/生成物保留。

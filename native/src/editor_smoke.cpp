@@ -4825,6 +4825,21 @@ void Editor::smokeExportMemory(){
 
 void Editor::smokePaletteManual(){
 
+    // Exercise the automatic union contour before the manual rectangle cases.
+    smoke_=true;homeOpen_=false;documentOpen_=true;palettePanelOpen_=true;paletteManual_=false;
+    document=Document::withBuiltinPalette();
+    for(int size=0;size<5;++size){
+      chooseSwatchSize(size,false);const auto ids=document.palette().order();
+      for(int shape=0;shape<3;++shape){
+        std::vector<int> selected;for(int i=0;i<int(ids.size());++i)if(shape==0 || (shape==1?i<paletteColumns_+2:i%3==0))selected.push_back(ids[i]);
+        document.clearPaletteSelection();for(int id:selected)document.selectPalette(id,true);refresh();
+        if(paletteSelectionEdges_.empty())throw std::runtime_error("Automatic palette contour fixture missing edges");
+        const auto box=paletteSelectionOverlay_->bounds();auto image=os::instance()->makeRgbaSurface(bounds().x2(),bounds().y2());image->clear();
+        {ui::Graphics g(nullptr,image,box.x,box.y);g.clipRect(paletteSelectionOverlay_->clientBounds());ui::PaintEvent ev(paletteSelectionOverlay_,&g);paletteSelectionOverlay_->onPaint(ev);}
+        {os::SurfaceLock lock(image.get());for(int y=box.y;y<box.y2();++y)for(int x=box.x;x<box.x2();++x)if(paletteOutlineContains({x,y})!=(gfx::geta(image->getPixel(x,y))!=0))throw std::runtime_error("Automatic palette contour alpha/hit mismatch");}
+      }
+    }
+
     smoke_=true;homeOpen_=false;documentOpen_=true;palettePanelOpen_=true;document=Document(1,1);auto ids=document.palette().order();std::vector<int> source{ids[0],0,ids[1],0,0,0};document.repositionPaletteColors(source,{},0,0,3,true);document.markSaved();ensureProjects();dockColumn(0,panels::Dock::Floating);auto& group=docking_.groups[docking_.groupOf(0)];group.floating={200,100,160,180};group.floatingArea=floatingArea(uiLogical(clientBounds()));swatchSize_=1;choosePaletteLayout(true);auto require=[](bool v,const char* m){if(!v)throw std::runtime_error(m);};require(paletteManual_&&!paletteGrowthHandle_->isVisible()&&paletteButtonIds_[1]==0&&paletteButtonIds_[2]==ids[1],"Manual mode renders holes and hides growth");const auto savedSlots=document.palette().slots;const auto history=document.historySize(),revision=document.revision();const auto buttonCount=swatches_.size();group.floating.h+=60;refresh();require(swatches_.size()==buttonCount&&document.historySize()==history&&document.revision()==revision,"Height resize cannot allocate blank buttons or edit document");group.floating.w+=40;refresh();require(paletteButtonIds_[2]==ids[1]&&document.palette().slots==savedSlots&&document.palette().columns==3&&document.revision()==revision,"Width resize retains stored layout and color XY");
 
     auto point=[&](std::size_t slot){const auto origin=swatches_.front()->paletteColorBounds().origin();const int pitch=(swatchPixels_[swatchSize_]/uiScale-1)*uiScale;return origin+gfx::Point(int(slot%paletteColumns_)*pitch+uiScale*2,int(slot/paletteColumns_)*pitch+uiScale*2);};auto down=[&](std::size_t slot,bool right=false){ui::MouseMessage m(ui::kMouseDownMessage,os::PointerType::Mouse,right?ui::kButtonRight:ui::kButtonLeft,ui::kKeyNoneModifier,point(slot));onProcessMessage(&m);};auto move=[&](std::size_t slot){ui::MouseMessage m(ui::kMouseMoveMessage,os::PointerType::Mouse,ui::kButtonLeft,ui::kKeyNoneModifier,point(slot));onProcessMessage(&m);};auto up=[&](std::size_t slot){ui::MouseMessage m(ui::kMouseUpMessage,os::PointerType::Mouse,ui::kButtonLeft,ui::kKeyNoneModifier,point(slot));onProcessMessage(&m);};const int columns=paletteColumns_;const auto emptyStart=std::size_t(columns*2+1),emptyEnd=std::size_t(columns*3+3);down(emptyEnd);move(emptyStart);up(emptyStart);require(paletteBoxRange_&&paletteBoxRange_->start==emptyEnd&&paletteBoxRange_->end==emptyStart&&document.palette().selected.empty()&&paletteSelectionOverlay_->isVisible()&&document.historySize()==history,"Virtual reverse all-empty rectangle is visible without document edit");
