@@ -447,3 +447,12 @@ Aseprite `src/ui/manager.cpp` 的 flushRedraw 和编辑器局部 canvas invalida
 - 对照legacy platform/usage-statistics.ts：数据序列化、2000ms延迟及串行Promise行为保持，只有原生主线程写盘移到worker。Aseprite MIT ui::Property/Timer用于owner和poll生命周期，不复用app代码。env仅smoke重定向MOONSPRITE_USAGE_SAVE_TEST_ROOT；MOONSPRITE_USAGE_SAVE_SYNC_REFERENCE用于独立同步对照。
 - Release usage-save-async-final-build.log exit0。async/sync两个隔离root分别运行usage-statistics-check均exit0，每轮45次提交，最终文件文本与最新Tracker快照完全一致；40次队列覆盖最终值、阻挡目录通知、失败后恢复、析构最终快照均通过。profile主线程总提交181.066ms/max6.3533→0.6319ms/max0.1922；异步文件落盘延迟单独计算，不能据此声称端到端I/O时间缩短。sync基线明确强制JSON+磁盘路径，非首次启动的baseline。
 - 无存储注入usage-statistics、ui-geometry-performance、drawing-pan-performance、view-zoom-shortcuts、native-window-resize均exit0。来源625/evidence和diff通过，整体迁移仍INCOMPLETE。本轮源码、provenance及记录推送dev，本地报告/缓存/用户数据保留。
+
+
+## 2026-11-07：六份笔刷工具偏好后台批次保存
+
+- 渐变色标track changed、颜色/数值Change及其他工具参数调用saveBrushPreferences时，原先每次同步重写六份偏好。现UI用原表达式/default stream precision生成六份文本，作为完整批次复用LatestTaskQueue后台串行写入；最新pending合并，最新在途完全相同则跳过。保留现有六文件名/格式及顺序、笔刷默认值更新、写入计数与已有250ms笔刷大小调节机制。文件原本为普通ofstream非事务，此轮也不声称跨文件原子性。
+- 原生适配以legacy core/tool-preferences.ts::saveToolSettings完整设置快照为依据，复用Aseprite MIT Property/Timer承载owner队列；UI16ms poll报告错误、析构等待最终批次。createToolOptions/loadMagicEraserPreferences/loadFillPatternPreferences读取前等待在途写入。测试中的直接pixel/dither读文件同样显式等待，不将异步提交误当落盘完成。Worker仅持有路径/字符串，不引用Editor。
+- 正式brush-save-async-build.log exit0。--workspace-check --named-workspace-only --pixel-stroke-only --brush-write-queue-only异步/同步均exit0：40次保存最终size40/opacity39，六文件逐字节一致；阻挡目录失败通知、恢复全六文件、析构40次最终39全六文件、作品/history/revision/dirty保持通过。同步参考MOONSPRITE_BRUSH_SAVE_SYNC_REFERENCE；profile .brush-save.tsv。40次UI序列化/提交总148.775ms/max5.8481→1.4068ms/max0.1657；实际异步磁盘完成时间另计，未声明端到端磁盘提速。
+- tool-property-shortcuts、gradient-shape、palette-gradient、drawing-pan-performance、ui-geometry-performance及完整--workspace-check --named-workspace-only均exit0。误将--pixel-stroke-only单独作为主入口会打开普通窗口，已正常关闭；该次不计测试通过，真正pixel/dither覆盖来自完整named workspace。
+- --workspace-check --named-workspace-only --offcanvas-pattern-create-only在同步参考和异步均exit -1073741571（0xC00000FD栈溢出），未归因于本轮改动也未宣称通过，组合检查缺口待定位。来源625/evidence和diff通过；整体迁移INCOMPLETE。提交源码/来源/记录推送dev，生成物和用户数据保留。

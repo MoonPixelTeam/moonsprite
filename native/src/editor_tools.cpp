@@ -2,8 +2,32 @@
 #include "editor.h"
 #include "brush_library_delete_dialog.h"
 #include "fill_pattern_settings_dialog.h"
+#include "latest_task_queue.h"
+#include "ui/property.h"
 
 namespace moon::editor {
+namespace {
+struct BrushWrite {std::filesystem::path root;std::array<std::string,6> text;};
+constexpr const char* brushFiles[]{"image-brush-modes.txt","pixel-stroke-options.txt","fill-pattern-options.txt","brush-dither-options.txt","magic-eraser-options.txt","brush-profiles.txt"};
+void writeBrushBatch(const BrushWrite& value){std::filesystem::create_directories(value.root);for(int i=0;i<6;++i){std::ofstream out(value.root/brushFiles[i]);out<<value.text[i];out.close();if(!out)throw std::runtime_error("Brush preferences write failed");}}
+struct BrushWrites final:ui::Property {
+ LatestTaskQueue<BrushWrite> queue{[](auto value){return std::async(std::launch::async,[value]{writeBrushBatch(*value);});},[]{}};
+ std::vector<LatestTaskQueue<BrushWrite>::Acknowledgement> acknowledgements;
+ ui::Timer timer;std::function<void()> error;
+ BrushWrites(ui::Widget* owner,std::function<void()> failure):ui::Property("moonsprite.brush-writes"),timer(16,owner),error(std::move(failure)){timer.Tick.connect([this]{poll(false);});}
+ void poll(bool wait){if(wait)queue.waitIdle();else queue.poll();for(auto it=acknowledgements.begin();it!=acknowledgements.end();){if((*it)->wait_for(std::chrono::seconds(0))!=std::future_status::ready){++it;continue;}try{(*it)->get();}catch(const std::exception&){if(error)error();}it=acknowledgements.erase(it);}if(!queue.busy())timer.stop();}
+ void enqueue(BrushWrite value){poll(false);const auto pending=queue.pendingValue(),active=queue.runningValue();const auto latest=pending?pending:active;if(latest&&latest->root==value.root&&latest->text==value.text)return;auto ack=queue.enqueue(std::make_shared<const BrushWrite>(std::move(value)));if(acknowledgements.empty()||acknowledgements.back()!=ack)acknowledgements.push_back(ack);timer.start();}
+ ~BrushWrites(){timer.stop();error={};poll(true);}
+};
+void waitBrushWrites(const ui::Widget* owner){if(auto writes=std::dynamic_pointer_cast<BrushWrites>(owner->getProperty("moonsprite.brush-writes")))writes->poll(true);}
+struct BrushSaveProfile {
+ std::filesystem::path path;std::uint64_t calls=0;double total=0,maximum=0;
+ BrushSaveProfile(){if(const auto value=_wgetenv(L"MOONSPRITE_INTERACTION_PROFILE")){path=value;path+=L".brush-save.tsv";}}
+ ~BrushSaveProfile(){if(path.empty())return;try{std::ofstream out(path);out<<"calls\ttotal_ms\tmax_ms\n"<<calls<<'\t'<<total<<'\t'<<maximum<<'\n';}catch(...){}}
+};
+BrushSaveProfile& brushSaveProfile(){static BrushSaveProfile value;return value;}
+struct BrushSaveScope {BrushSaveProfile& profile=brushSaveProfile();std::chrono::steady_clock::time_point start;BrushSaveScope(){if(!profile.path.empty())start=std::chrono::steady_clock::now();}~BrushSaveScope(){if(!profile.path.empty()){const auto ms=std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-start).count();++profile.calls;profile.total+=ms;profile.maximum=std::max(profile.maximum,ms);}}};
+}
 bool Editor::isToolAvailableForSession(const char* id) const {
   if(!documentOpen_ || pending_!=Pending::None) return false;
   std::string raw=id ? id : "";
@@ -32,7 +56,7 @@ bool Editor::isToolAvailableForSession(const char* id) const {
   if(special) return true;
   if(s=="eyedropper") return true;
   return document.rasterToolsAvailable()||s=="zoom"||s=="move"||s=="hand"||s=="rotate";
-}void Editor::loadMagicEraserPreferences(){
+}void Editor::loadMagicEraserPreferences(){waitBrushWrites(this);
  const auto path=smoke_&&workspacePresetTestDirectory_?*workspacePresetTestDirectory_:palettePreferencePath().parent_path();std::ifstream in(path/"magic-eraser-options.txt");int contiguous,tolerance,gap,threshold;if(in>>contiguous>>tolerance>>gap>>threshold){magicEraserContiguous_=contiguous!=0;wandOptions_.tolerance=std::clamp(tolerance,0,255);wandOptions_.gapClosing=gap!=0;wandOptions_.gapThreshold=std::clamp(threshold,1,16);}
 }
 void Editor::smokeFillPatternSettings(){
@@ -50,7 +74,7 @@ void Editor::smokeFillPatternSettings(){
  require(document.canvasPixels()==pixels&&document.historyPosition()==history&&!document.dirty(),"Pattern property transactions do not edit image or history");
  {std::ofstream invalid(testDirectory/"fill-pattern-options.txt");invalid<<"1 1 0 37 broken";}const auto beforeBad=fillPattern_.settings;loadFillPatternPreferences();require(values(fillPattern_.settings)==values(beforeBad)&&fillPattern_.mode==PatternMode::Regular,"Malformed pattern preferences cannot partially change live parameters");
 }
-void Editor::loadFillPatternPreferences(){
+void Editor::loadFillPatternPreferences(){waitBrushWrites(this);
  {const auto directory=smoke_&&workspacePresetTestDirectory_?*workspacePresetTestDirectory_:palettePreferencePath().parent_path();std::ifstream modes(directory/"image-brush-modes.txt");if(modes){int version,pencil,eraser;if((modes>>version>>pencil>>eraser)&&version==1&&pencil>=0&&pencil<=2&&eraser>=0&&eraser<=2&&(modes>>std::ws).eof()){brushFeedback_.brushProfiles_[0].imagePaintMode=PatternPaintMode(pencil);brushFeedback_.brushProfiles_[1].imagePaintMode=PatternPaintMode(eraser);}else status_=U"图像笔刷模式偏好读取失败，保留当前模式";}}
 
  const auto directory=smoke_&&workspacePresetTestDirectory_?*workspacePresetTestDirectory_:palettePreferencePath().parent_path();std::ifstream in(directory/"fill-pattern-options.txt");int version,mode,paint,randomOverlap,regularOverlap;PatternSettings settings;
@@ -347,9 +371,24 @@ void Editor::smokeInkModes(){
  const auto savedImage=pencilImageBrush_;const auto savedImageId=pencilImageBrushId_;
  const auto savedPencil=brushFeedback_.brushProfiles_[0],savedEraser=brushFeedback_.brushProfiles_[1];const auto savedStep=runtimePreferences_.index("tools.lineDirectionStep.Number");auto savedRuntimeValues=runtimePreferences_.values;
  struct RestoreBrush{std::function<void()> f;~RestoreBrush(){f();}} restoreBrush{[&]{pencilImageBrush_=savedImage;pencilImageBrushId_=savedImageId;brushFeedback_.brushProfiles_[0]=savedPencil;brushFeedback_.brushProfiles_[1]=savedEraser;runtimePreferences_.values.swap(savedRuntimeValues);ditherSmokeChoice=-1;layoutToolOptions();}};
+ if(std::wstring(GetCommandLineW()).find(L"--brush-write-queue-only")!=std::wstring::npos){
+  const auto identity=document.identity();const auto pixels=document.canvasPixels();const auto history=document.historySize(),revision=document.revision();const auto dirty=document.dirty();
+  for(int i=0;i<40;++i){brushFeedback_.brushProfiles_[0].size=i+1;brushFeedback_.brushProfiles_[0].opacity=i;saveBrushPreferences();}
+  waitBrushWrites(this);const auto root=*workspacePresetTestDirectory_;auto read=[](const auto& path){std::ifstream in(path,std::ios::binary);return std::string(std::istreambuf_iterator<char>(in),{});};
+  std::istringstream profile(read(root/"brush-profiles.txt"));int size=0,opacity=0;require(bool(profile>>size>>opacity)&&size==40&&opacity==39,"Brush queue lost latest parameters");
+  const auto reportRoot=_wgetenv(L"MOONSPRITE_BRUSH_SAVE_REPORT_ROOT");const auto output=reportRoot?std::filesystem::path(reportRoot):std::filesystem::path("build/test-tmp/brush-save-result");std::filesystem::create_directories(output);
+  for(auto name:brushFiles){const auto bytes=read(root/name);std::ofstream out(output/name,std::ios::binary);out<<bytes;}
+  BrushWrite value;value.root=root/"recovered";for(int i=0;i<6;++i)value.text[i]=std::to_string(i);
+  const auto blocked=root/"blocked";writeExportBytesAtomic(blocked,{1});int errors=0;
+  {BrushWrites writes(this,[&]{++errors;});auto bad=value;bad.root=blocked;writes.enqueue(bad);writes.poll(true);require(errors==1,"Brush queue write failure not reported");writes.enqueue(value);writes.poll(true);for(int i=0;i<6;++i)require(read(value.root/brushFiles[i])==value.text[i],"Brush queue failed recovery batch");}
+  {BrushWrites writes(this,{});value.root=root/"closed";for(int i=0;i<40;++i){value.text.fill(std::to_string(i));writes.enqueue(value);}}
+  for(auto name:brushFiles)require(read(value.root/name)=="39","Brush writer destructor failed final batch");
+  require(document.identity()==identity&&document.canvasPixels()==pixels&&document.historySize()==history&&document.revision()==revision&&document.dirty()==dirty,"Brush settings queue modified document");std::ofstream(output/"check.txt")<<"latest_six_files=pass\nfailure_recovery=pass\ndestructor_batch=pass\nartwork_history=pass\n";return;
+ }
  lineStepInput_->setText("99");lineStepInput_->Change();require(runtimePreferences_.index("tools.lineDirectionStep.Number")==16,"Stair actual numeric control clamps max");lineStepInput_->setText("0");lineStepInput_->Change();require(runtimePreferences_.index("tools.lineDirectionStep.Number")==1,"Stair actual numeric control clamps min");
  const bool perfectBefore=brushFeedback_.brushProfiles_[0].perfectPixels;perfectPixelsButton_->Click();require(brushFeedback_.brushProfiles_[0].perfectPixels!=perfectBefore&&brushFeedback_.brushProfiles_[1].perfectPixels!=perfectBefore,"Perfect actual checkbox applies session setting");
  pencilImageBrush_.reset();brushFeedback_.brushProfiles_[eraser_?1:0].dither=false;ditherSmokeChoice=5;showBrushDitherPopup();ditherSmokeChoice=-1;const auto& testedDither=brushFeedback_.brushProfiles_[eraser_?1:0];require(testedDither.dither&&testedDither.ditherTemplate==BrushDitherTemplate::Bayer2,"Dither actual popup selects template");
+ waitBrushWrites(this);
  {std::ifstream in(*workspacePresetTestDirectory_/"pixel-stroke-options.txt");int perfect=-1,step=-1;require(bool(in>>perfect>>step)&&perfect==int(!perfectBefore)&&step==1,"Pixel stroke isolated preferences persist");}
  {std::ifstream in(*workspacePresetTestDirectory_/"brush-dither-options.txt");int enabled,t,stage;for(int i=0;i<2;++i){require(bool(in>>enabled>>t>>stage),"Dither isolated profiles stored");if(i==(eraser_?1:0))require(enabled&&t==5,"Dither selected profile persists");}}
 inkPreferenceOverride_=*workspacePresetTestDirectory_/"ink-modes.txt";pending_=Pending::None;
@@ -366,20 +405,23 @@ void Editor::saveBrushPreferences() {
 
     if(smoke_&&!workspacePresetTestDirectory_) return;
 
+    BrushSaveScope scope;
     try {
 
-      const auto path=smoke_?*workspacePresetTestDirectory_:palettePreferencePath().parent_path();std::filesystem::create_directories(path);
+      const auto path=smoke_?*workspacePresetTestDirectory_:palettePreferencePath().parent_path();BrushWrite value;value.root=path;
 
-      {std::ofstream modes(path/"image-brush-modes.txt");modes<<1<<' '<<int(brushFeedback_.brushProfiles_[0].imagePaintMode)<<' '<<int(brushFeedback_.brushProfiles_[1].imagePaintMode);modes.close();if(!modes)throw std::runtime_error("Image brush modes preference write failed");}
-      std::ofstream pixelStroke(path/"pixel-stroke-options.txt");pixelStroke<<brushFeedback_.brushProfiles_[0].perfectPixels<<' '<<std::clamp(runtimePreferences_.index("tools.lineDirectionStep.Number"),1,16)<<'\n';
-      {const auto& settings=fillPattern_.settings;std::ofstream patternOut(path/"fill-pattern-options.txt");patternOut<<1<<' '<<int(fillPattern_.mode)<<' '<<int(fillPattern_.paintMode)<<' '<<settings.randomDensity<<' '<<settings.randomCount<<' '<<settings.randomSpacing<<' '<<settings.randomOverlap<<' '<<settings.regularCount<<' '<<settings.regularSpacingX<<' '<<settings.regularSpacingY<<' '<<settings.regularOverlap<<' '<<settings.regularRowOffset;patternOut.close();if(!patternOut)throw std::runtime_error("Pattern settings preference write failed");}
-      std::ofstream ditherOut(path/"brush-dither-options.txt");for(const auto& b:brushFeedback_.brushProfiles_)ditherOut<<b.dither<<' '<<int(b.ditherTemplate)<<' '<<b.ditherStage<<'\n';
-      std::ofstream magicOut(path/"magic-eraser-options.txt");magicOut<<magicEraserContiguous_<<' '<<wandOptions_.tolerance<<' '<<wandOptions_.gapClosing<<' '<<wandOptions_.gapThreshold<<'\n';
-      std::ofstream out(path/"brush-profiles.txt");
+      {std::ostringstream modes;modes<<1<<' '<<int(brushFeedback_.brushProfiles_[0].imagePaintMode)<<' '<<int(brushFeedback_.brushProfiles_[1].imagePaintMode);value.text[0]=modes.str();}
+      std::ostringstream pixelStroke;pixelStroke<<brushFeedback_.brushProfiles_[0].perfectPixels<<' '<<std::clamp(runtimePreferences_.index("tools.lineDirectionStep.Number"),1,16)<<'\n';
+      {const auto& settings=fillPattern_.settings;std::ostringstream patternOut;patternOut<<1<<' '<<int(fillPattern_.mode)<<' '<<int(fillPattern_.paintMode)<<' '<<settings.randomDensity<<' '<<settings.randomCount<<' '<<settings.randomSpacing<<' '<<settings.randomOverlap<<' '<<settings.regularCount<<' '<<settings.regularSpacingX<<' '<<settings.regularSpacingY<<' '<<settings.regularOverlap<<' '<<settings.regularRowOffset;value.text[2]=patternOut.str();}
+      std::ostringstream ditherOut;for(const auto& b:brushFeedback_.brushProfiles_)ditherOut<<b.dither<<' '<<int(b.ditherTemplate)<<' '<<b.ditherStage<<'\n';
+      std::ostringstream magicOut;magicOut<<magicEraserContiguous_<<' '<<wandOptions_.tolerance<<' '<<wandOptions_.gapClosing<<' '<<wandOptions_.gapThreshold<<'\n';
+      std::ostringstream out;
 
       for(const auto& brush:brushFeedback_.brushProfiles_) out<<brush.size<<' '<<brush.opacity<<' '<<int(brush.shape)<<'\n';
 
-      out<<selectionBrushAngle_<<' '<<selectionRotSprite_<<'\n';out<<fillOptions_.tolerance<<' '<<fillOptions_.contiguous<<' '<<fillOptions_.gapClosing<<' '<<fillOptions_.gapThreshold<<' '<<fillOptions_.visibleLayers<<' '<<fillOptions_.connectivity<<'\n';out<<gradientSpec_.radial<<' '<<gradientSpec_.dither<<' '<<gradientOptions_.tolerance<<' '<<gradientOptions_.contiguous<<' '<<gradientConfirm_<<' '<<gradientFreeform_<<' '<<gradientStops_.size()<<'\n';for(const auto& stop:gradientStops_)out<<stop.position<<' '<<stop.color<<'\n';out<<int(shapeSpec_.kind)<<' '<<shapeRounded_<<' '<<shapeRadius_<<' '<<shapeRatio_<<' '<<shapeRatioWidth_<<' '<<shapeRatioHeight_<<'\n';out<<int(fillPattern_.texture)<<' '<<fillPattern_.textureScale<<'\n';out<<curveAnchorCount_<<'\n';out<<drawFromCanvasCenter_<<' '<<drawingAnchorVisible_<<' '<<std::setprecision(17)<<drawingAnchor_.x<<' '<<drawingAnchor_.y<<'\n';out.close();if(!out) throw std::runtime_error("Brush preferences write failed");
+      out<<selectionBrushAngle_<<' '<<selectionRotSprite_<<'\n';out<<fillOptions_.tolerance<<' '<<fillOptions_.contiguous<<' '<<fillOptions_.gapClosing<<' '<<fillOptions_.gapThreshold<<' '<<fillOptions_.visibleLayers<<' '<<fillOptions_.connectivity<<'\n';out<<gradientSpec_.radial<<' '<<gradientSpec_.dither<<' '<<gradientOptions_.tolerance<<' '<<gradientOptions_.contiguous<<' '<<gradientConfirm_<<' '<<gradientFreeform_<<' '<<gradientStops_.size()<<'\n';for(const auto& stop:gradientStops_)out<<stop.position<<' '<<stop.color<<'\n';out<<int(shapeSpec_.kind)<<' '<<shapeRounded_<<' '<<shapeRadius_<<' '<<shapeRatio_<<' '<<shapeRatioWidth_<<' '<<shapeRatioHeight_<<'\n';out<<int(fillPattern_.texture)<<' '<<fillPattern_.textureScale<<'\n';out<<curveAnchorCount_<<'\n';out<<drawFromCanvasCenter_<<' '<<drawingAnchorVisible_<<' '<<std::setprecision(17)<<drawingAnchor_.x<<' '<<drawingAnchor_.y<<'\n';value.text[1]=pixelStroke.str();value.text[3]=ditherOut.str();value.text[4]=magicOut.str();value.text[5]=out.str();
+      if(_wgetenv(L"MOONSPRITE_BRUSH_SAVE_SYNC_REFERENCE")){waitBrushWrites(this);writeBrushBatch(value);}
+      else{auto writes=std::dynamic_pointer_cast<BrushWrites>(getProperty("moonsprite.brush-writes"));if(!writes){writes=std::make_shared<BrushWrites>(this,[this]{status_=U"笔刷参数已调整，但偏好保存失败";invalidateRect(statusBounds());});setProperty(writes);}writes->enqueue(std::move(value));}
 
     } catch(const std::exception&) {status_=U"笔刷参数已调整，但偏好保存失败";}
 
@@ -706,7 +748,7 @@ void Editor::showBrushDitherPopup(){
  following=new PixelButton(font_,skin_,U"",[&]{auto& b=brushFeedback_.brushProfiles_[eraser_?1:0];b.ditherStage=std::min(brushDitherStageCount(b.ditherTemplate),b.ditherStage+1);changed();});following->icon="playback-next";following->iconSkin=&toolIcons_;popup.place(following,{151,DialogLayout::bodyTop+94,15,15});
  sync();ui::Timer timer(40,&popup);if(ditherSmokeChoice>=0){timer.Tick.connect([&]{timer.stop();choices.at(ditherSmokeChoice)->Click();popup.closeWindow(nullptr);});timer.start();}popup.openWindowInForeground();timer.stop();requestFocus();
 }
-void Editor::createToolOptions() {
+void Editor::createToolOptions() {waitBrushWrites(this);
  createLiquifyOptions();
     createSmoothOptions();
     createAirbrushOptions();
