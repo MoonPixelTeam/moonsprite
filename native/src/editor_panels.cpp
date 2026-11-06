@@ -995,6 +995,10 @@ void Editor::layoutPalette(int only) {
     if(paletteGrowthHandle_){const auto slot=paletteGrowth_?paletteGrowth_->preview.handleSlot:swatches_.size();const auto physical=toDisplay(gfx::Rect(area.x+padding+int(slot%columns)*step,area.y+padding+int(slot/columns)*step,cell,cell)).offset(0,-paletteScrollPixels_);paletteGrowthHandle_->setBounds(physical & paletteViewportBounds());paletteGrowthHandle_->setVisible(!paletteManual_&&columnShown(0)&&!(paletteGesture_&&paletteGesture_->moving)&&physical.intersects(paletteViewportBounds()));paletteGrowthHandle_->setEnabled(pending_==Pending::None);paletteGrowthHandle_->active=paletteGrowth_.has_value();}
 
     restorePaletteView();
+    // Scrollbar visibility and dock geometry are settled for this layout pass.
+    // Keep callbacks live, but share this immutable viewport across swatches.
+    const auto paletteViewport=paletteViewportBounds();
+    const bool compareViewport=smoke_ && _wgetenv(L"MOONSPRITE_PALETTE_VIEWPORT_REFERENCE");
 
     std::optional<PaletteSlotRange> manualRange;if(paletteManual_){if(paletteBoxRange_&&paletteBoxRange_->identity==document.identity())manualRange=paletteSlotRange(columns,paletteBoxRange_->start,paletteBoxRange_->end);else for(std::size_t i=0;i<paletteButtonIds_.size();++i)if(paletteButtonIds_[i]&&std::find(document.palette().selected.begin(),document.palette().selected.end(),paletteButtonIds_[i])!=document.palette().selected.end()){const auto x=i%columns,y=i/columns;if(!manualRange)manualRange=PaletteSlotRange{x,y,x,y};else{manualRange->left=std::min(manualRange->left,x);manualRange->right=std::max(manualRange->right,x);manualRange->top=std::min(manualRange->top,y);manualRange->bottom=std::max(manualRange->bottom,y);}}}const bool manualBox=manualRange.has_value();
 
@@ -1016,13 +1020,14 @@ void Editor::layoutPalette(int only) {
 
       if(swatches_[i]->active && !shared)physical=skin_.selectionMaterialBounds(physical);
 
-      const auto clipped=physical & paletteViewportBounds();
+      if(compareViewport && paletteViewport!=paletteViewportBounds())throw std::runtime_error("Palette viewport changed during swatch layout");
+      const auto clipped=physical & paletteViewport;
 
       swatches_[i]->paletteMaterialRect=gfx::Rect(physical).offset(-clipped.origin());
 
       swatches_[i]->setBounds(clipped);
 
-      swatches_[i]->setVisible(columnShown(0) && paletteViewportBounds().intersects(swatches_[i]->bounds()));
+      swatches_[i]->setVisible(columnShown(0) && paletteViewport.intersects(swatches_[i]->bounds()));
 
     }
 
@@ -1152,7 +1157,7 @@ void Editor::layoutPalette(int only) {
 
     if(manualBox){const auto range=*manualRange;const auto origin=toDisplay(gfx::Rect(area.x+padding,area.y+padding,1,1)).origin()-gfx::Point(paletteScrollXPixels_,paletteScrollPixels_);const gfx::Rect border(origin.x+int(range.left)*step*uiScale,origin.y+int(range.top)*step*uiScale,int(range.right-range.left)*step*uiScale+cell*uiScale,int(range.bottom-range.top)*step*uiScale+cell*uiScale);paletteSelectionBorder_=border;paletteSelectionEdges_.clear();const auto material=skin_.selectionMaterialBounds(border);paletteSelectionEdges_.push_back({border,material,{material},0});}
 
-    if(paletteSelectionOverlay_){const bool show=shared && columnShown(0) && !paletteSelectionBorder_.isEmpty();paletteSelectionOverlay_->setVisible(show);if(show)paletteSelectionOverlay_->setBounds(skin_.selectionMaterialBounds(paletteSelectionBorder_)&paletteViewportBounds());paletteSelectionOverlay_->invalidate();}
+    if(paletteSelectionOverlay_){const bool show=shared && columnShown(0) && !paletteSelectionBorder_.isEmpty();paletteSelectionOverlay_->setVisible(show);if(show)paletteSelectionOverlay_->setBounds(skin_.selectionMaterialBounds(paletteSelectionBorder_)&paletteViewport);paletteSelectionOverlay_->invalidate();}
 
     // Paint surrounding selection frames after neighboring color cells.
 

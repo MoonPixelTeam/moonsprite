@@ -202,3 +202,10 @@ Aseprite `src/ui/manager.cpp` 的 flushRedraw 和编辑器局部 canvas invalida
 - paintTimelineBackground的TimelineRows/滚动指标仅供左侧表头与双滚动条交角使用。现在在frame/grid原绘制后，对这两处的物理damage保守范围先判断；不相交则跳过metrics/表头/交角。保留timelineHidden早退，表头覆盖1px cell外扩，交角范围涵盖6px横纵条所有组合及最小1px钳位。对照既有Aseprite MIT Graphics clip边界语义，不复制app代码。
 - MOONSPRITE_BACKGROUND_DAMAGE_REFERENCE恢复原完整背景路径。ui-geometry检查新增22个窄clip，包含窗口外部区域、表头各段、实际交角四周，原/新路径完整surface逐像素比较；保留既有悬浮move/resize局部与全量画面对照。另以独立公式枚举width/height -25..120和横纵条四组合，验证交角位置总在保守边界内。
 - 正式唯一Release两次构建exit0；最终geometry含22clip exit0；初次生产算法构建的large-timeline-performance/timeline-density也exit0（后续仅补测试采样）。来源覆盖625文件/diff通过。最终profile：panel-backdrops1901次135.807ms，window-layout18次40.544ms，12次resize354.175ms。非稳定配对基准，不宣称整体缩放解决；真实输入至呈现延迟仍需验证。验证后提交推送dev。
+
+
+## 2026-11-06：调色盘布局循环共享可视区域
+
+- layoutPalette在每个swatch的clip/visible及共享选择overlay中重复paletteViewportBounds，间接重复columnLayout/columnChrome/geometry。两条滚动条visibility/configure及restorePaletteView之后，在当前布局调用内只计算一次；逐色块输入paletteViewport回调仍实时查询，选择素材/命中/外扩与排序不变。对照Aseprite MIT Widget setBounds/visibility和原生scrollbar configure确认循环没有改变栏目几何。
+- MOONSPRITE_PALETTE_VIEWPORT_REFERENCE逐色块将本次共享矩形与原实时函数精确比较。正式唯一Release构建palette-layout-viewport-build.log exit0；开启对照的palette-manual、palette-growth、ui-geometry-performance、wheel-performance全部exit0，包含已有选框拖动/撤销/重做及窗口局部与全量framebuffer检查。来源覆盖625文件/diff通过。
+- 本轮profile启动时前一个wheel检查仍在运行，进程观察使用Get-Process同名列表，不具备性能隔离，因此不采用该profile数值作速度证据。确认重复几何查询从每色块多次改为当前布局一次，但真实窗口输入至呈现延迟仍未验证，不宣称整体卡顿解决。验证后提交推送dev。
