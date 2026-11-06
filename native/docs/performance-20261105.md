@@ -358,3 +358,10 @@ Aseprite `src/ui/manager.cpp` 的 flushRedraw 和编辑器局部 canvas invalida
 - 现有InteractionProfile的16槽已满。在paintPanelBackdrops增加本地固定8项统计，沿用MOONSPRITE_INTERACTION_PROFILE，退出时写同路径.backdrops.tsv；关闭时不读时钟、不写文件，不改绘制顺序、参数、裁剪或图形状态。panel-skin嵌套于各栏目phase，不可与phase时间再次相加。
 - 唯一Release backdrop-phases-build.log exit0。原生resize exit0，38次背景总40.037ms：base-fill10.685、workspace9.760、palette2.654、pickers3.401、history8.405、timeline4.829；panel-skin228次22.848ms。证据将下一步定位收敛到工作区/历史皮肤和复杂damage合成，未作性能提升声明。
 - 关闭profile的native-window-resize exit0。ui-geometry-performance首次exit1，报UI geometry cache differs from layout；同一二进制再次运行exit0。此间歇性一致性失败未定位，不能报告稳定通过；绘制参数未变化并不证明与修改无关。来源覆盖625文件/evidence及diff通过。整体卡顿仍未完成验收；仅提交诊断源码/来源/记录并推送dev，生成物与历史错误报告保留。
+
+
+## 2026-11-06：几何缓存检查遍历实际分组
+
+- 检查上一轮间歇性geometry失败时发现fixture固定索引docking_.groups[0..13]，但Model::place合并栏目会减少groups.size；应用启动还可恢复用户已分组工作区。columnCount14不是分组数，固定索引存在越界。改为遍历实际groups，并在明确合并栏目后再运行全部weight/width/floating/floatingArea/fixedExtent变更及直接layout等价检查，不缩减校验范围。
+- 几何失败信息增加step/groups/area及不同panel矩形，局部/全量framebuffer不一致使用独立错误，便于区分真实缓存与绘制问题。未修改生产columnGeometry/cache或用户工作区。初次编译发现旧check辅助函数残留调用，已修复；geometry-group-fixture-final-build.log最终exit0。
+- 正式Release ui-geometry-performance exit0：geometry equivalence与floating_move_resize_framebuffer通过，200000查询direct264.793ms/cached27.515ms为既有缓存收益，不归因于本轮fixture修复；native-window-resize exit0。历史build/ui-geometry-performance-error.txt保留，成功运行不清除，以本次进程exit0和新report为证。此越界缺陷已修复，但不能仅凭一次通过断言此前所有间歇性失败均由此导致。来源覆盖/evidence和diff通过后推送dev。整体性能优化未完成，下一步仍需定位面板皮肤合成开销。

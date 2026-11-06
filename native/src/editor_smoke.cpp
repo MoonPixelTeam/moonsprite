@@ -1956,10 +1956,13 @@ void Editor::smokeFloatingPreviewRepaintStep(int step){
 void Editor::smokeDockResizeMigration(){smoke_=true;homeOpen_=false;documentOpen_=true;pending_=Pending::None;document=Document();palettePanelOpen_=colorPickerOpen_=layersPanelOpen_=true;previewPanelOpen_=false;setBounds(gfx::Rect(0,0,1280,960));refresh();if(std::wstring(GetCommandLineW()).find(L"--ui-geometry-performance-check")==std::wstring::npos)smokeDockResizeHover();
  if(std::wstring(GetCommandLineW()).find(L"--ui-geometry-performance-check")==std::wstring::npos)return;
  initializeDocking();docking_.custom=true;
- auto check=[](bool ok){if(!ok)throw std::runtime_error("UI geometry cache differs from layout");};
- auto verify=[&]{const auto rc=uiLogical(clientBounds());const auto expected=docking_.layout(dockArea(rc),columnVisibility(),Layout::gap,floatingArea(rc));const auto actual=columnGeometry(rc);check(actual.panel==expected.panel&&actual.canvas==expected.canvas&&actual.shown==expected.shown);};
- for(int i=0;i<14;++i){verify();auto& g=docking_.groups[i];g.weight+=.25;verify();++g.width;verify();g.floating.x+=3;g.floatingArea=floatingArea(uiLogical(clientBounds()));verify();g.fixedExtent+=2;verify();}
- docking_.leftWidth+=7;verify();docking_.rightWidth+=3;verify();docking_.bottomShare=.3;verify();docking_.bottomHeight+=4;verify();previewPanelOpen_=true;verify();colorPickerOpen_=false;verify();colorPickerOpen_=true;verify();docking_.place(1,panels::Dock::Left,docking_.groupOf(0),true,true);verify();docking_.select(0);verify();
+ int geometryStep=0;
+ auto verify=[&]{++geometryStep;const auto rc=uiLogical(clientBounds());const auto expected=docking_.layout(dockArea(rc),columnVisibility(),Layout::gap,floatingArea(rc));const auto actual=columnGeometry(rc);if(actual.panel!=expected.panel||!(actual.canvas==expected.canvas)||actual.shown!=expected.shown){std::ostringstream detail;detail<<"UI geometry cache differs from layout step="<<geometryStep<<" groups="<<docking_.groups.size()<<" area="<<rc.x<<','<<rc.y<<','<<rc.w<<','<<rc.h;for(int id=0;id<panels::columnCount;++id)if(!(actual.panel[id]==expected.panel[id])){const auto& a=actual.panel[id];const auto& e=expected.panel[id];detail<<" panel="<<id<<" actual="<<a.x<<','<<a.y<<','<<a.w<<','<<a.h<<" expected="<<e.x<<','<<e.y<<','<<e.w<<','<<e.h;}throw std::runtime_error(detail.str());}};
+ // Grouping reduces the number of groups; columnCount is not a group count.
+ // Use every actual group, including a deliberately merged fixture below.
+ auto mutateGroups=[&]{for(auto& g:docking_.groups){verify();g.weight+=.25;verify();++g.width;verify();g.floating.x+=3;g.floatingArea=floatingArea(uiLogical(clientBounds()));verify();g.fixedExtent+=2;verify();}};
+ mutateGroups();
+ docking_.leftWidth+=7;verify();docking_.rightWidth+=3;verify();docking_.bottomShare=.3;verify();docking_.bottomHeight+=4;verify();previewPanelOpen_=true;verify();colorPickerOpen_=false;verify();colorPickerOpen_=true;verify();docking_.place(1,panels::Dock::Left,docking_.groupOf(0),true,true);verify();docking_.select(0);verify();mutateGroups();
  std::filesystem::create_directories("build/test-tmp");std::ofstream report("build/test-tmp/ui-geometry-performance.txt");
  const auto rc=uiLogical(clientBounds());const auto area=dockArea(rc),viewport=floatingArea(rc);const auto visible=columnVisibility();std::uint64_t sum=0;
  auto time=[&](bool cached){const auto start=std::chrono::steady_clock::now();for(int i=0;i<200000;++i){const auto g=cached?columnGeometry(rc):docking_.layout(area,visible,Layout::gap,viewport);sum+=g.canvas.w;}return std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-start).count();};
@@ -1993,7 +1996,7 @@ void Editor::smokeDockResizeMigration(){smoke_=true;homeOpen_=false;documentOpen
  }
  smokePrepareColumnRepaint();drain();
  auto pixels=[&]{auto surface=display()->nativeWindow()->surface();os::SurfaceLock lock(surface);std::vector<gfx::Color> result;for(int y=0;y<surface->height();++y)for(int x=0;x<surface->width();++x)result.push_back(surface->getPixel(x,y));return result;};
- for(int edges:{0,10}){smokeColumnRepaintStep(edges);drain();const auto partial=pixels();invalidate();drain();check(partial==pixels());}
+ for(int edges:{0,10}){smokeColumnRepaintStep(edges);drain();const auto partial=pixels();invalidate();drain();if(partial!=pixels())throw std::runtime_error("Floating partial/full framebuffer differs");}
  const auto start=std::chrono::steady_clock::now();const auto original=bounds();
  for(int i=0;i<12;++i){auto next=original;next.w-=i%3*20;next.h-=i%4*16;setBounds(next);verify();drain();}
  setBounds(original);drain();report<<"window resize samples=12 total_ms="<<std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-start).count()<<"\ngeometry_equivalence=pass; floating_move_resize_framebuffer=pass\n";
