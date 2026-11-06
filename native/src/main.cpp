@@ -207,6 +207,10 @@ int app_main(int argc,char* argv[]) {
           auto ms=[](auto duration){return std::chrono::duration<double,std::milli>(duration).count();};
           report<<sample<<'\t'<<ms(resized-begin)<<'\t'<<ms(done-resized)<<'\t'<<ms(done-begin)<<'\t'<<client.right<<'\t'<<client.bottom<<'\n';
           if(window->surface()->width()!=client.right || window->surface()->height()!=client.bottom)throw std::runtime_error("Native resize surface/client mismatch");
+          if(const auto frames=std::getenv("MOONSPRITE_RESIZE_FRAMES")){
+            const auto directory=std::filesystem::u8path(frames);std::filesystem::create_directories(directory);
+            writeSmokeFrame(window->surface(),directory/(std::to_string(sample)+".bmp"));
+          }
         }
         SetWindowPos(hwnd,nullptr,0,0,original.right-original.left,original.bottom-original.top,SWP_NOMOVE|SWP_NOZORDER|SWP_NOACTIVATE);drain();
       }catch(const std::exception& e){std::ofstream("build/native-window-resize-error.txt")<<e.what();delete editor;desktop.editor=nullptr;return 1;}

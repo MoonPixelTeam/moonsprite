@@ -62,6 +62,47 @@ void Editor::observeModifierRelease(ui::Message* msg){
   }
 
 bool Editor::onProcessMessage(ui::Message* msg) {
+    // Aseprite Widget::flushRedraw queues all rectangles for a widget together,
+    // with count()==0 ending the chain. Keep their exact union (including holes)
+    // and run the editor background once, before the queued children are drawn.
+    // Transparent parent replays use Widget::paint directly and stay unchanged.
+    struct PaintChain {
+      Editor* owner=nullptr;
+      os::SurfaceRef surface;
+      gfx::Rect bounds;
+      gfx::Region damage;
+      int next=-1;
+      void clear(){owner=nullptr;surface.reset();damage.clear();next=-1;}
+    };
+    static PaintChain chain;
+    const bool paintMessage=msg->type()==ui::kPaintMessage && !msg->fromFilter() && msg->recipient()==this;
+    if(chain.owner==this && !paintMessage){invalidateRegion(chain.damage);chain.clear();}
+    static const bool fragmentReference=std::getenv("MOONSPRITE_PAINT_FRAGMENTS_REFERENCE")!=nullptr;
+    if(paintMessage && !fragmentReference && !isTransparent() && !isDoubleBuffered()){
+      auto* paint=static_cast<ui::PaintMessage*>(msg);
+      const auto surface=display()->backLayer()->surface();
+      // Manager::sendMessageToWidget owns one saved clip around this delivery.
+      // Only combine its normal back-layer path, never a custom/synthetic clip.
+      const auto expected=paint->rect().createIntersection(gfx::Rect(0,0,surface->width(),surface->height()));
+      const bool managerClip=msg->display()==display() && surface->getSaveCount()>1 && surface->getClipBounds()==expected;
+      if(chain.owner && (chain.owner!=this || chain.surface!=surface || chain.bounds!=bounds() || chain.next!=paint->count() || !managerClip)){
+        // A changed/interrupted chain must be redrawn, not carried into a later frame.
+        if(chain.owner==this)invalidateRegion(chain.damage);
+        chain.clear();
+      }
+      if(managerClip && (paint->count()>0 || chain.owner==this)){
+        chain.owner=this;chain.surface=surface;chain.bounds=bounds();
+        chain.damage|=gfx::Region(paint->rect());chain.next=paint->count()-1;
+        if(paint->count()>0)return true;
+        auto damage=chain.damage;chain.clear();
+        // Replace only Manager's current rectangle clip. Its matching restore
+        // still restores the original surface state after this handler returns.
+        surface->restoreClip();surface->saveClip();surface->clipRegion(damage);
+        auto graphics=getGraphics(clientBounds());
+        ui::PaintEvent event(this,graphics.get());onPaint(event);
+        return true;
+      }
+    }
     if(msg->type()==ui::kMouseDownMessage)selectionCommandOverride_=false;
     if(msg->fromFilter()&&parameterRangeFilters_)return processParameterRangeMessage(msg);
     observeDynamicsInput(msg);

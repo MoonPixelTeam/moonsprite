@@ -270,3 +270,11 @@ Aseprite `src/ui/manager.cpp` 的 flushRedraw 和编辑器局部 canvas invalida
 
 - clipColumn记录是否真正扣除了相交浮动栏目；没有扣除时原Graphics::clipRegion只以当前clip bounding rect再次相交，数学上对已有复杂clip仍为恒等。现在省去最后的Graphics/LAF/Skia region clip调用，保留实际surface裁剪。对照Aseprite MIT Graphics::clipRegion及LAF SkiaSurface::clipRegion委托；无upstream修改。MOONSPRITE_NO_OCCLUSION_REFERENCE强制原提交，既有区域双向差集oracle保留。
 - 正式Release unchanged-clip-build.log exit0；开启MOONSPRITE_OCCLUSION_REFERENCE的ui-geometry-performance含悬浮partial/full framebuffer、group-timeline、playback-floating均exit0。来源覆盖625文件/diff通过。真实窗口reference/optimized均exit0、尺寸一致，变化样本均值35.021/34.825ms，相近，不能证明整体加速。减少每片重复裁剪操作，未减少碎片数量；整体卡顿仍未解决，验证后提交推送dev。
+
+
+## 2026-11-06：合并Editor同批背景碎片，保留精确Region
+
+- 对照Aseprite MIT Widget::flushRedraw、PaintMessage::count与Manager::sendMessageToWidget/dispatchMessages：同一widget的rect消息连续排队，count=0收尾，Manager逐条保存/裁剪back-layer，所有绘制结束才flip。Editor输入入口收集同批rect的精确Region，在末条消息临时替换Manager这一层矩形clip，以完整Region调用一次onPaint；随后由Manager照常恢复clip。不是bounding-box重绘，child/top-window孔洞保留；透明父背景Widget::paint重放不走此入口，保持原行为。仅普通不透明非double-buffer Editor生效；surface/bounds/count不匹配或非paint中断会清空并重新invalidate旧damage。没有改上游或复制Aseprite app代码。MOONSPRITE_PAINT_FRAGMENTS_REFERENCE恢复旧入口。
+- main原生resize诊断新增opt-in MOONSPRITE_RESIZE_FRAMES逐尺寸截图，输出位于本地build/test-tmp不提交。唯一Release paint-chain-final-build.log exit0；同一二进制reference/optimized各16个尺寸BMP全部逐字节一致。启用trace时背景onPaint总调用3449→126，累计253.945→59.803ms；排除热身的窗口resize均值29.691→18.612ms。trace及截图为证据采集，有额外开销。
+- 关闭trace/截图后独占ABBA四轮真实Win32 resize均exit0、surface/client一致：reference32.645ms、optimized23.654ms、optimized23.629ms、reference33.176ms；本夹具均值约下降28%。不包含DWM/输入到显示延迟，不据此宣称全部卡顿消失。
+- ui-geometry-performance（含局部/全量framebuffer及悬浮移动/resize）、playback-floating、advanced-mode、drawing-pan-performance、group-timeline、multi-document均exit0。来源覆盖625文件及diff检查通过；迁移完整性仍INCOMPLETE。只提交源码/来源记录/本文，生成物及既有未跟踪文件保留不提交。验证后推送dev。
