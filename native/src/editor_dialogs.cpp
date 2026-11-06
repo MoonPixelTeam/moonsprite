@@ -1676,7 +1676,7 @@ void Editor::layoutModal() {const auto rc=uiLogical(clientBounds());
   }
 
 void Editor::layoutTopMenu(gfx::Rect bar) {
-    if(workspaceMenuButton_){const int size=UiSpacing::iconSize*uiScale;workspaceMenuButton_->setBounds({bar.x2()-size,bar.y+(bar.h-size)/2,size,size});workspaceMenuButton_->setVisible(!advancedActive());workspaceMenuButton_->setEnabled(pending_==Pending::None&&!document.active()&&!workspacePresetDialogOpen_);bar.w-=(UiSpacing::iconSize+UiSpacing::related)*uiScale;}
+    if(workspaceMenuButton_){const int size=UiSpacing::iconSize*uiScale;const gfx::Rect target{bar.x2()-size,bar.y+(bar.h-size)/2,size,size};if(workspaceMenuButton_->bounds()!=target)workspaceMenuButton_->setBounds(target);workspaceMenuButton_->setVisible(!advancedActive());workspaceMenuButton_->setEnabled(pending_==Pending::None&&!document.active()&&!workspacePresetDialogOpen_);bar.w-=(UiSpacing::iconSize+UiSpacing::related)*uiScale;}
 
     if(!menuBar_)return;auto menu=menuBar_->getMenu();
 
@@ -1753,7 +1753,7 @@ void Editor::layoutTopMenu(gfx::Rect bar) {
 
     // Center the actual menu rows, rather than only their taller container.
 
-    for(auto child:menu->children()){auto r=child->bounds();r.y=bar.y+(bar.h-r.h)/2;child->setBounds(r);}
+    for(auto child:menu->children()){auto r=child->bounds();r.y=bar.y+(bar.h-r.h)/2;if(child->bounds()!=r)child->setBounds(r);}
 
   }
 

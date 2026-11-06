@@ -1423,7 +1423,9 @@ void Editor::onResize(ui::ResizeEvent& ev) {
 
     layoutTopMenu(uiPhysical(gfx::Rect(rc.x+uiGap,rc.y,rc.w-2*uiGap-actionWidth,Layout::menuHeight)));
 
-    for(int i=0;i<5;++i)if(topActions_[i])topActions_[i]->setBounds(uiPhysical(gfx::Rect(rc.x+rc.w-uiGap-actionWidth+(i<4?i*(textControlHeight-1):actionGroupWidth+4),rc.y+(Layout::menuHeight-textControlHeight)/2,i==4?48:textControlHeight,textControlHeight)));
+    // Aseprite setBounds emits ResizeEvent and invalidates even an unchanged
+    // rectangle. These leaf actions need resizing only when their target moves.
+    for(int i=0;i<5;++i)if(topActions_[i]){const auto target=uiPhysical(gfx::Rect(rc.x+rc.w-uiGap-actionWidth+(i<4?i*(textControlHeight-1):actionGroupWidth+4),rc.y+(Layout::menuHeight-textControlHeight)/2,i==4?48:textControlHeight,textControlHeight));if(topActions_[i]->bounds()!=target)topActions_[i]->setBounds(target);}
 
     layoutToolOptions();
 

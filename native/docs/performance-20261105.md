@@ -504,3 +504,9 @@ Aseprite `src/ui/manager.cpp` 的 flushRedraw 和编辑器局部 canvas invalida
 - 用户确认窄窗口将放不下的菜单收进“更多”；现有layoutTopMenu已经承接此行为。本轮保留全部压缩、溢出、对象移动和弹窗关闭顺序，仅将每个压缩候选对全部标题的重复topMenuSizeHint改为本轮一次各标题测量，加共享menu_hover边距差。每次调用重测，避免标题、皮肤、缩放变化的跨轮缓存失效问题。smoke模式逐次与原完整求和oracle比较。对照Aseprite MIT src/ui/menu.cpp Menu::onSizeHint的换行及MenuBox尺寸计算，不复制依赖代码。
 - top-menu-metrics-build.log正式Release构建exit0。--window-input-check exit0，覆盖窄宽溢出顺序、稳定对象、菜单打开时重复布局及恢复宽度释放capture，且本轮测量oracle通过；--ui-geometry-performance-check exit0。来源625文件覆盖与证据快照检查通过，迁移仍INCOMPLETE。未做人工交互图像验收，不宣称整体帧率提升比例。
 - 前轮Ctrl+X诊断确认状态为Finish the active edit before cutting Cels：fixture显式selectTimelineCel，未设selectionCommandOverride_，因此按legacy app-document-shortcuts.ts与useAppCommandScope.ts优先Cel。已移除临时诊断，不擅改产品优先级；锚点组合回归仍未通过，此问题保留。本轮仅提交菜单布局优化、来源和记录，缓存/用户数据/生成物不提交。
+
+
+## 2026-11-07：顶部叶控件避免相同矩形ResizeEvent
+
+- 对照Aseprite MIT Widget::setBounds与setBoundsQuietly：相同矩形仍派发ResizeEvent并invalidate；MenuBox::onResize继续调用Menu::onResize并重排。对照legacy AppMenuBar.tsx保留全部命令与可用性，本轮仅在原生顶部工作区按钮、五个操作按钮以及菜单行居中步骤比较当前/目标矩形，变化时才setBounds。菜单容器继续无条件布局，以响应同尺寸下的标题、皮肤和overflow子项变化；不在依赖层全局跳过ResizeEvent。
+- header-stable-bounds-build.log正式Release构建exit0；--window-input-check和--ui-geometry-performance-check均exit0，覆盖菜单溢出/恢复、真实窗口输入、局部与全量帧一致及尺寸变化几何。来源625文件覆盖/快照检查通过，完整迁移仍INCOMPLETE；未做人工图像验收。此轮是可核对的重复事件减少，不宣称整体帧率提升比例。仅提交源码、来源与记录，生成物和用户数据保留。
