@@ -3047,3 +3047,12 @@ offset-tile-paint-build.log正式Release/两核心测试构建exit0，夹具构�
 对照legacy store/workspace-commands-animation-frame.ts::addLinkedAnimationFrame、workspace-animation-linked-cel.ts::linkCelsInRightFrame与core/animation.ts::linkAnimationFrameCels：优先选中Cel，再选中帧锚点，再活动帧；复用右侧帧，无右侧才插帧；作用域分别为选中Cel图层、全部图层、活动图层。移除原生addLinkedFrame的tilemap整篇阻断，复用既有链接帧事务；free-tile仍明确在变更前拒绝，未声称其链接模型完成。
 
 新增既有目标/末尾插帧×活动/Cel/帧三作用域六组合回归，混合普通和瓦片图层，核对不移动既有帧列、规范来源网格/像素/opacity/zIndex、未选中行独立、单历史和选择清理、Undo原数据/活动帧、Redo及实际保存重开。linked-tile-frame-build.log正式Release与两组测试构建exit0；完整free-tile-project-tests/tilemap-project-tests exit0（linked-tile-frame-free-test.log、linked-tile-frame-grid-test.log）；正式工作区drawing-anchor-edit-floating组合exit0；来源625文件快照及diff通过。无人工UI验收。全部迁移、自由Cel链接、稀疏工程准入等仍INCOMPLETE。
+
+
+### 2026-11-07：混合自由瓦片文档链接帧作用域
+
+核对legacy workspace-commands-animation-frame.ts的layerIds选择及animation.ts::linkAnimationFrameCels可见来源条件。addLinkedFrame不再因为文档任意free-tile层一律拒绝，只在本次作用域内确需创建可见自由Cel链接时明确拒绝。活动普通层/Cel选择可在混合文档复用下一帧或插帧；空自由来源不创建链接，允许原有导航/历史行为。自由Cel链接模型本身仍未迁移。
+
+新增两种目标位置×三种作用域检查，普通活动/Cel作用域核对无关free数据、链接、Undo/Redo和保存重开；整帧作用域遇可见free来源原子拒绝；额外空free整帧作用域允许且保持独立。首次重开比较将未知JSON字段当作必保留字段，按现有legacy导入规范化规则改为已知实例字段/像素对比，未改格式行为。
+
+mixed-free-linked-frame-build.log正式Release/两核心测试构建exit0；fixture-build日志exit0；完整free-tile-project-tests/tilemap-project-tests exit0（mixed-free-linked-frame-free-test.log、mixed-free-linked-frame-grid-test.log）；正式工作区drawing-anchor-edit-floating组合exit0；来源625文件快照和diff通过，无人工UI验收。全量迁移仍INCOMPLETE。

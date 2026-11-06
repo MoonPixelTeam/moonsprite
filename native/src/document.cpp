@@ -520,7 +520,7 @@ void Document::deleteFrame() {
  timeline_.buildIndex();projectActiveCelOpacities();normalizeFrameDeletionSelection();captureFrameOrder(e,true);e.afterSelection=selectedFrames_;change_={0,0,width_,height_};publishChange();pushEdit(std::move(e),U"删除动画帧");
 }
 void Document::applyCelEdit(const Edit& e,bool redo){const auto& values=redo?e.afterCels:e.beforeCels;if(values.empty())return;for(const auto& value:values){auto it=std::find_if(timeline_.state_.cels.begin(),timeline_.state_.cels.end(),[&](const auto& c){return c.id==value.id;});if(it==timeline_.state_.cels.end())throw std::logic_error("Missing history cel");*it=value;}timeline_.buildIndex();if(e.beforeFrames.empty() && !e.beforeFrame.empty())activeFrameId_=redo?e.afterFrame:e.beforeFrame;change_={0,0,width_,height_};}
-void Document::addLinkedFrame(bool allLayers){if(hasFreeTileContent())throw std::runtime_error("Linked free tile frames are not migrated");
+void Document::addLinkedFrame(bool allLayers){
  cancelStroke();cancelLayerOpacity();
  // Legacy chooses a selected Cel first, then a selected frame anchor, then activity.
  const DocumentCel* selected=nullptr;const auto& cells=timelineSelection_.cels;
@@ -529,6 +529,12 @@ void Document::addLinkedFrame(bool allLayers){if(hasFreeTileContent())throw std:
  auto sourceFrame=selected?selected->frameId:activeFrameId_;const auto sourceLayer=selected?selected->layerId:activeLayerId_;
  if(!selected&&!selectedFrames_.empty()){const auto id=std::find(selectedFrames_.begin(),selectedFrames_.end(),frameAnchor_)!=selectedFrames_.end()?frameAnchor_:selectedFrames_.back();if(timeline_.hasFrame(id))sourceFrame=id;}
  const bool linkAll=!selected&&(allLayers||!selectedFrames_.empty());const bool copyGroupMasks=!selected;
+ // Only visible free-tile sources in this command's scope need unsupported links.
+ for(const auto& l:timeline_.state().layers)if(l.kind=="free-tile"&&(linkAll||l.id==sourceLayer)){
+  const auto* slot=timeline_.findCel(l.id,sourceFrame);const auto source=slot?timeline_.resolveSurface(slot->id):timeline::Resolution{};
+  if(source.surface&&std::any_of(source.surface->pixels.begin(),source.surface->pixels.end(),[](Pixel p){return (p>>24)!=0;}))throw std::runtime_error("Linked free tile frames are not migrated");
+ }
+
  const auto index=timeline_.frameIndex(sourceFrame);const bool inserted=index+1==timeline_.state().frames.size();
  Edit e{{},state_,nextState_};e.beforeFrame=previousFrame;e.beforeActive=e.afterActive=previousLayer;e.beforeSelection=selectedFrames_;e.beforeTimelineSelection=timelineSelection_;e.beforeFrameAnchor=frameAnchor_;
  e.maskContext=std::make_shared<Edit::MaskContextHistory>(Edit::MaskContextHistory{inserted?std::string{}:activeMaskId_,{},inserted?false:maskIsolated_,false});
