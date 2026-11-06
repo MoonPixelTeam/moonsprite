@@ -1172,10 +1172,19 @@ void Editor::layoutPalette(int only) {
         return winner;
       };
       for(int y=material.y;y<material.y2();y+=uiScale){int run=-1,begin=material.x;
-        rowEdges.clear();for(int i=0;i<int(paletteSelectionEdges_.size());++i){const auto& clip=paletteSelectionEdges_[i].clip;if(y>=clip.y && y<clip.y2())rowEdges.push_back(i);}
+        rowEdges.clear();int left=material.x2(),right=material.x;
+        for(int i=0;i<int(paletteSelectionEdges_.size());++i){const auto& clip=paletteSelectionEdges_[i].clip;if(y>=clip.y && y<clip.y2()){rowEdges.push_back(i);left=std::min(left,clip.x);right=std::max(right,clip.x2());}}
+        // No edge can own samples outside these clips. Align to the original
+        // material-origin grid so negative/offscreen coordinates stay exact.
+        left=std::max(material.x,left);right=std::min(material.x2(),right);
+        const int firstX=material.x+((left-material.x+uiScale-1)/uiScale)*uiScale;
+        const int endX=material.x+((std::max(material.x,right)-material.x+uiScale-1)/uiScale)*uiScale;
+        if(compareEdges){for(int x=material.x;x<material.x2();x+=uiScale)if((rowEdges.empty() || x<firstX || x>=endX) && pickEdge(x,y,nullptr)!=-1)throw std::runtime_error("Palette skipped scanline sample has an owner");}
+        if(rowEdges.empty())continue;
+        begin=firstX;
         auto flush=[&](int x){if(run>=0)paletteSelectionEdges_[run].pieces.push_back({begin,y,x-begin,uiScale});};
-        for(int x=material.x;x<=material.x2();x+=uiScale){int winner=-1;
-          if(x<material.x2() && !interior(x,y)){
+        for(int x=firstX;x<=endX;x+=uiScale){int winner=-1;
+          if(x<endX && !interior(x,y)){
             winner=pickEdge(x,y,&rowEdges);
             if(compareEdges && winner!=pickEdge(x,y,nullptr))throw std::runtime_error("Palette scanline edge ownership mismatch");
           }

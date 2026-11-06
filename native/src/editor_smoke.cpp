@@ -4828,11 +4828,14 @@ void Editor::smokePaletteManual(){
     // Exercise the automatic union contour before the manual rectangle cases.
     smoke_=true;homeOpen_=false;documentOpen_=true;palettePanelOpen_=true;paletteManual_=false;
     document=Document::withBuiltinPalette();
+    std::filesystem::create_directories("build/test-tmp");std::ofstream contourReport("build/test-tmp/palette-contour-layout.txt");
     for(int size=0;size<5;++size){
       chooseSwatchSize(size,false);const auto ids=document.palette().order();
       for(int shape=0;shape<3;++shape){
         std::vector<int> selected;for(int i=0;i<int(ids.size());++i)if(shape==0 || (shape==1?i<paletteColumns_+2:i%3==0))selected.push_back(ids[i]);
-        document.clearPaletteSelection();for(int id:selected)document.selectPalette(id,true);refresh();
+        document.clearPaletteSelection();for(int id:selected)document.selectPalette(id,true);
+        const auto contourStart=std::chrono::steady_clock::now();refresh();
+        contourReport<<"size="<<size<<" shape="<<shape<<" layout-ms="<<std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-contourStart).count()<<" edges="<<paletteSelectionEdges_.size()<<"\n";
         if(paletteSelectionEdges_.empty())throw std::runtime_error("Automatic palette contour fixture missing edges");
         const auto box=paletteSelectionOverlay_->bounds();auto image=os::instance()->makeRgbaSurface(bounds().x2(),bounds().y2());image->clear();
         {ui::Graphics g(nullptr,image,box.x,box.y);g.clipRect(paletteSelectionOverlay_->clientBounds());ui::PaintEvent ev(paletteSelectionOverlay_,&g);paletteSelectionOverlay_->onPaint(ev);}

@@ -517,3 +517,10 @@ Aseprite `src/ui/manager.cpp` 的 flushRedraw 和编辑器局部 canvas invalida
 - layoutPaletteButtons的非矩形共享选框逐像素遍历全部轮廓边。保留legacy core/palette-layout.ts paletteSelectionBoundaryEdges及PaletteSelectionOutline.tsx的联合外轮廓语义和原生素材适配，每行先按clip.y范围筛选，保持原边索引顺序，再用原clip、距离、Skin::selectionContains判定归属。缩减无关边访问，不改变凹角、并列距离、alpha、pieces分段或命中坐标。无跨帧缓存。MOONSPRITE_PALETTE_EDGE_REFERENCE在smoke中逐点比较全边遍历oracle。
 - 新增自动轮廓验收置于smokePaletteManual原场景之前：五种色块尺寸×全选/阶梯/每第三格不连续选择，逐像素核对绘制alpha与命中。开启oracle的--palette-manual-check通过，随后--palette-growth-check和--ui-geometry-performance-check通过。palette-scanline-fixture-build.log正式Release构建exit0，来源625文件/快照检查通过，迁移仍INCOMPLETE。无人工图像验收，不宣称整体提速百分比。
 - --palette-mouse-check exit1，组合在smokeToolPropertyLayout的Legacy gradient controls断言停止，未完成其后全部鼠标检查；不得记为全通过。本轮针对轮廓的完整新场景及原手动场景已独立通过。源码、来源、记录推送dev，用户数据/缓存/生成物保留。
+
+
+## 2026-11-07：调色盘轮廓跳过无候选扫描区
+
+- 上轮每行筛边后仍遍历整份material宽度并计算interior。现按行候选clip横向min/max限定扫描，空行直接跳过，仍以原material.x为采样网格原点向上对齐uiScale。终点保留哨兵flush，边顺序、凹角距离、Skin::selectionContains与pieces归属不变。开启MOONSPRITE_PALETTE_EDGE_REFERENCE除原逐点winner oracle外，检查全部省略样本的全边遍历确实无owner。legacy palette-layout.ts与用户共享外轮廓规格未变；对照Aseprite MIT Widget::onInvalidateRegion先按区域相交过滤的策略，不复制依赖代码。
+- palette-scanline-span-build.log正式Release构建exit0；带oracle的--palette-manual-check通过五尺寸×三种选择形状与alpha/hit逐像素对照及原手动场景；--palette-growth-check、--ui-geometry-performance-check通过，关闭oracle的manual也exit0。新增build/test-tmp/palette-contour-layout.txt记录全refresh耗时/边数，仅作观察；例如size3离散44边3.9442ms，size4全选6边5.2584ms，不构成优化前后或整机提速比例。未增加候选边实际计数。来源覆盖625文件/快照及diff通过，迁移仍INCOMPLETE，未做人工作品验收。
+- 源码、来源及记录推送dev；旧组合梯度断言和剪切回归问题仍待定位，用户数据/缓存/生成物保留。
