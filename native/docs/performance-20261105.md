@@ -439,3 +439,11 @@ Aseprite `src/ui/manager.cpp` 的 flushRedraw 和编辑器局部 canvas invalida
 - 所有workspacePresetLibrary获取先等待既有写入，flush显式等待后保留原同步语义，确保命名保存/读取/切换/重置/删除/active记录不被旧任务覆盖；管理入口可能为一致性等待在途IO，普通拖动/尺寸变更不等待。UI析构先flush，后台任务绝不持有Editor。参考legacy useAppWorkspaceLayout.ts串行Promise自动保存和platform_workspaces.rs save_workspace；不复制Aseprite app代码。
 - Release preset-save-async-build.log exit0。--workspace-check --named-workspace-only --preset-write-queue-only同步参考/异步均exit0：40次timer更新最终layout正确，initial保持，active一致；新建/切换/重置有序；文件阻挡路径失败通知一次，失败后恢复；局部writer析构40次最终39确实落盘；作品/历史/dirty保持。41次timer UI耗时sync402.134ms/max12.3703，async3.1215ms/max0.1929。只测UI提交时间，异步实际磁盘完成另计；同步参考启用MOONSPRITE_PRESET_SAVE_SYNC_REFERENCE，profile输出.preset-save.tsv。
 - 完整--workspace-check --named-workspace-only exit0（真实保存/管理弹窗、800ms自动保存、初始状态重置、切换、坏文件/写入失败、删除、重启恢复及时间轴/工具栏保存）。ui-geometry-performance、native-window-resize均exit0。来源625文件/evidence、diff通过，整体迁移INCOMPLETE。不宣称完整workspace-check或docking-check通过，其既有渐变/旧分隔fixture缺口保留。仅源码/来源/记录推送dev，保留本地生成物和用户数据。
+
+
+## 2026-11-07：使用统计快照后台原子保存
+
+- usage::Tracker原数据和核心/renderer计数方式不变。persistUsageStatistics将Data值快照及路径交给复用LatestTaskQueue，worker进行WinRT JSON编码并调用原writeExportBytesAtomic；快速连发时只保存最新待执行快照。UI enqueue后标记该快照已交队列，后续更改独立标脏。16ms owner Timer轮询失败并沿用原ephemeral状态/错误栏语义；析构等待已接受的最后一项。无Editor跨线程访问。
+- 对照legacy platform/usage-statistics.ts：数据序列化、2000ms延迟及串行Promise行为保持，只有原生主线程写盘移到worker。Aseprite MIT ui::Property/Timer用于owner和poll生命周期，不复用app代码。env仅smoke重定向MOONSPRITE_USAGE_SAVE_TEST_ROOT；MOONSPRITE_USAGE_SAVE_SYNC_REFERENCE用于独立同步对照。
+- Release usage-save-async-final-build.log exit0。async/sync两个隔离root分别运行usage-statistics-check均exit0，每轮45次提交，最终文件文本与最新Tracker快照完全一致；40次队列覆盖最终值、阻挡目录通知、失败后恢复、析构最终快照均通过。profile主线程总提交181.066ms/max6.3533→0.6319ms/max0.1922；异步文件落盘延迟单独计算，不能据此声称端到端I/O时间缩短。sync基线明确强制JSON+磁盘路径，非首次启动的baseline。
+- 无存储注入usage-statistics、ui-geometry-performance、drawing-pan-performance、view-zoom-shortcuts、native-window-resize均exit0。来源625/evidence和diff通过，整体迁移仍INCOMPLETE。本轮源码、provenance及记录推送dev，本地报告/缓存/用户数据保留。

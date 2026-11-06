@@ -19115,6 +19115,7 @@
     },
     {
       "file": "src/editor_usage.cpp",
+      "usageAsyncSave20261107": "Legacy platform/usage-statistics.ts queuePersist captures a whole snapshot and serializes asynchronous writes; core/usage-statistics.ts accounting unchanged. Native persistUsageStatistics copies usage::Data and path to LatestTaskQueue; worker reuses usage::encode and existing atomic writer, only UI thread mutates Tracker and marks queued snapshot persisted. Later events remain dirty; UI failure poll keeps existing ephemeral fallback. Immutable full snapshots make latest pending replacement preserve reset/disabled/count state. Aseprite MIT ui::Property/Timer owner lifecycle reused, no app code copied. Test-root gated real IO and sync reference/profile compare final serialization, failure/recovery and destructor flush.",
       "classification": "legacy-adapted",
       "sources": [
         "legacy/src/renderer/src/core/usage-statistics.ts",
