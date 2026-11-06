@@ -244,3 +244,9 @@ Aseprite `src/ui/manager.cpp` 的 flushRedraw 和编辑器局部 canvas invalida
 - 新增opt-in MOONSPRITE_REPAINT_TRACE，按PaintEvent::isTransparentBg及clip矩形累计次数，最多4096条key，退出输出TSV；默认不记录/写文件。唯一Release repaint-trace-build.log exit0；真实native-window-resize检查exit0、尺寸一致，关闭trace的ui-geometry-performance检查exit0。来源覆盖625文件/diff通过。
 - native-resize-repaint-trace.tsv记录直接绘制3342次（875种clip），透明父背景107次（24种clip）；直接绘制中2298次至少一边<=8px。重复高频例子为左边缘x0,w4的多条窄片，每片约19次。此前仅凭canvas/panel scope调用数把主要成本解释为透明父背景重放，证据不足，现予纠正。
 - 对照Aseprite MIT Widget::getDrawableRegion会逐个扣除可见child，再flushRedraw按updateRegion每个rect生成PaintMessage。因此当前扁平控件布局把完整窗口damage切成大量背景碎片，分别进入Editor::onPaint；下一步应减少碎片背景路径中的全量工作/检查合并策略，不能无证据改透明控件。未修改上游依赖或生产绘制语义。本轮定位进展，无性能改善声明，验证后提交推送dev。
+
+
+## 2026-11-06：项目页签空裁剪跳过全工程准备
+
+- 碎片背景会调用paintDocumentTab；原函数设置project strip裁剪后仍遍历所有projects，计算名称ink并准备皮肤。现检查原clipRect后的实际空clip并配对restore后返回；有像素的路径不变，不推断矩阵坐标。MOONSPRITE_PROJECT_TAB_REFERENCE恢复旧loop。沿用Aseprite MIT Graphics clip语义，无上游修改。
+- 正式Release project-tab-empty-build.log exit0；multi-document、ui-geometry-performance（局部/全量framebuffer）、drawing-pan-performance均exit0；来源覆盖625文件/diff通过。真实窗口reference/optimized/optimized/reference均exit0，均值38.745/41.025/34.018/31.112ms，无稳定提速证据。只确认无关全工程字体/皮肤准备被排除；碎片数量和窗口卡顿仍未解决。验证后提交推送dev。

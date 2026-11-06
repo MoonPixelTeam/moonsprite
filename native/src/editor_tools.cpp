@@ -617,6 +617,9 @@ void Editor::paintDocumentTab(ui::Graphics& g) {
     if(advancedActive())return;
 
     const auto rc=uiLogical(clientBounds());g.saveClip();g.clipRect({0,Layout::documentY,std::max(1,rc.w-17),Layout::projectTabHeight});
+    // Fragmented parent damage often lies entirely outside the project strip.
+    // Respect the actual transformed clip before visiting every open project.
+    if(g.getClipBounds().isEmpty() && !(smoke_ && _wgetenv(L"MOONSPRITE_PROJECT_TAB_REFERENCE"))){g.restoreClip();return;}
 
     for(std::size_t i=0;i<projects_.size();++i){const auto& value=projectDocument(i);auto tab=uiLogical(projectTabRects_[i]);tab.offset(-bounds().x/uiScale,-bounds().y/uiScale);const bool active=i==activeProject_ && !homeOpen_;
 
