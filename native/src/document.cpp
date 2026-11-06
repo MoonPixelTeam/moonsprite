@@ -562,7 +562,12 @@ bool Document::reverseSelectedCels(){
 bool Document::canConnectSelectedCels()const{
  for(const auto& l:timeline_.state().layers){int count=0;bool content=false;for(const auto& c:timeline_.state().cels){if(c.layerId!=l.id || std::find(timelineSelection_.cels.begin(),timelineSelection_.cels.end(),c.id)==timelineSelection_.cels.end())continue;++count;const auto r=timeline_.resolveSurface(c.id);content|=r.surface && std::any_of(r.surface->pixels.begin(),r.surface->pixels.end(),[](Pixel p){return (p>>24)!=0;});}if(count>1 && content)return true;}return false;
 }
-bool Document::connectSelectedCels(){if(hasTilemapContent()||hasFreeTileContent())return false;
+bool Document::connectSelectedCels(){
+ // Free instance links still need model support. Check before any mutation.
+ for(const auto& l:timeline_.state().layers)if(l.kind=="free-tile"){
+  int count=0;bool content=false;for(const auto& c:timeline_.state().cels)if(c.layerId==l.id&&std::find(timelineSelection_.cels.begin(),timelineSelection_.cels.end(),c.id)!=timelineSelection_.cels.end()){++count;const auto r=timeline_.resolveSurface(c.id);content|=r.surface&&std::any_of(r.surface->pixels.begin(),r.surface->pixels.end(),[](Pixel p){return (p>>24)!=0;});}
+  if(count>1&&content)throw std::runtime_error("Linked free tile cels are not migrated");
+ }
  commitFloatingPaste();cancelStroke();cancelLayerOpacity();Edit e{{},state_,nextState_};e.beforeFrame=e.afterFrame=activeFrameId_;
  for(const auto& l:timeline_.state().layers){std::vector<const DocumentCel*> slots;int first=-1,last=-1;const auto& frames=timeline_.state().frames;
  auto content=[&](const DocumentCel* c){const auto r=timeline_.resolveSurface(c->id);return r.surface && std::any_of(r.surface->pixels.begin(),r.surface->pixels.end(),[](Pixel p){return (p>>24)!=0;});};

@@ -3003,3 +3003,12 @@ free-missing-duplicate-build.log正式Release和测试构建exit0；夹具调整
 新增瓦片单Cel、选中别名、选中来源三组合回归，核对独立网格尺寸/单元、像素、透明度/层叠值，未选中别名保持链接，一次历史、Undo恢复无载荷别名、Redo、实际保存重开和重复断开无历史。tile-disconnect-build.log正式Release及free-tile-project-tests/tilemap-project-tests构建exit0；两个完整测试exit0（tile-disconnect-free-test.log、tile-disconnect-grid-test.log）；正式工作区drawing-anchor-edit-floating组合exit0。来源625文件快照、diff通过，无人工UI验收。
 
 自由瓦片Cel链接仍受模型约束，未新增或宣称其链接支持；整体迁移仍INCOMPLETE。用户数据、缓存和构建生成物不提交。
+
+
+### 2026-11-07：瓦片Cel选中连接事务
+
+依据legacy animation-slot-selection.ts::animationLinkSlotKeys与animation.ts::connectAnimationCels，按选中端点补齐空槽并跳过未选中可见内容，取首个可见规范来源共享完整载荷。移除connectSelectedCels的全篇特殊图层阻断，瓦片使用已有连接事务；选中自由瓦片组确需链接时在任何编辑前明确拒绝，保留其尚未迁移模型保护。
+
+新增空白/可见间隔两组合测试，验证链接与网格、像素、opacity/zIndex、未选中内容保留、选区保留、单历史、Undo/Redo、实际保存重开、重复连接无历史，及Create模式选区删除传播至来源并可撤销。初版重开断言错误要求别名自带网格，改为通过解析来源检查，符合现有IO链接存储。直接别名画笔检查暴露beginStroke要求cel().tilemap而保存别名不含该字段，尚未解决，明确登记为后续迁移缺口；未宣称画笔传播已通过，保留选区删除的实际通过证据。
+
+tile-connect-build.log正式Release与两核心测试构建exit0；夹具调整tile-connect-fixture-build.log exit0；完整free-tile-project-tests/tilemap-project-tests均exit0（tile-connect-free-test.log、tile-connect-grid-test.log）；正式工作区drawing-anchor-edit-floating组合exit0。来源625文件及diff通过，无人工UI验收。全量迁移、自由Cel链接、稀疏工程准入与链接别名直接画笔仍未完成。
