@@ -4445,6 +4445,7 @@
     },
     {
       "file": "CMakeLists.txt",
+      "releaseAddressMap20261106": "Necessary native diagnostic adaptation for user-requested performance/crash investigation: MSVC sole Release executable emits linker /MAP beside normal build artifacts so Windows fault RVA can be matched to the exact linked code without relying on stale PDB. No runtime flags, optimization level, version, alternate executable or distribution changes. Generated map is not committed. Evidence in performance-20261105.md.",
       "singleLineScaledMouse20261101": "2026-11-01 单行长文本横向命中与边缘拖选：legacy TextInput.tsx 交给浏览器 input；实际Edge156采集英文/中文两种长文本、90/180px两种宽度的四组左右拖选最终范围。采样用Home与scrollLeft=0显式建立左端起始视口，不宣称程序赋值后会自动显示行首。原生继续使用MIT Entry getCaretFromMouse扫描和捕获/选择/边缘滚动算法，仅在build生成适配中将scrollX及字符命中宽度乘m_scale.x，与原有已缩放字符位置统一为物理坐标，依赖源码不改。源码契约变更时配置失败。直接调用继承Entry路径的12组1x/2x滚动字符命中检查，避免PixelEntry绘制命中纠正掩盖底层错位；两个宽度检查左右边缘方向与到达端点。生产PixelEntry回放四组浏览器最终选区、释放捕获及内容不变。采样等待时间不定义原生滚动速度；不是逐事件轨迹/定时、部分像素偏移、复杂字形及IME完全等价。",
       "desktopIntegrityCorrection": "User-reported preferences Windows 5: post-build ensures Medium integrity for the desktop executable using scripts/ensure-native-app-integrity.ps1, retaining original DACL and all user-directory permissions.",
       "classification": "legacy-partial",

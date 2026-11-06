@@ -460,6 +460,8 @@ if(MOONSPRITE_BUILD_APP)
   set_property(SOURCE src/main.cpp src/editor_canvas.cpp src/editor_dialogs.cpp src/editor_reference.cpp src/editor_history.cpp src/editor_tablet.cpp src/editor_help.cpp src/editor_project_information.cpp src/editor_release_notes.cpp src/editor_recent_projects.cpp src/editor_diagnostics.cpp src/runtime_diagnostics.cpp src/editor_rotation.cpp src/editor_slices.cpp src/editor_background.cpp src/editor_project_rollback.cpp src/editor_text.cpp
   src/editor_layer_move.cpp src/editor_shortcuts.cpp src/editor_shortcut_inputs.cpp src/editor_usage.cpp src/editor_frame_capture.cpp src/editor_input.cpp src/editor_lifecycle.cpp src/editor_palette.cpp src/editor_panels.cpp src/editor_refresh.cpp src/editor_recovery.cpp src/editor_session.cpp src/editor_smoke.cpp src/editor_timeline.cpp src/editor_tools.cpp APPEND PROPERTY COMPILE_OPTIONS /bigobj)
   target_link_options(moonsprite-native PRIVATE /ENTRY:wWinMainCRTStartup)
+  # Keep an address map matching the sole Release binary for crash/perf diagnosis.
+  target_link_options(moonsprite-native PRIVATE "$<$<CONFIG:Release>:/MAP>")
   add_executable(canvas-performance-tests tests/canvas_performance_test.cpp src/canvas_renderer.cpp)
   target_link_libraries(canvas-performance-tests PRIVATE moon-core ui-lib)
   target_include_directories(canvas-performance-tests PRIVATE src)

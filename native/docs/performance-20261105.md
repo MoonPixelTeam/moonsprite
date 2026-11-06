@@ -165,3 +165,11 @@ Aseprite `src/ui/manager.cpp` 的 flushRedraw 和编辑器局部 canvas invalida
 - PixelFont::draw半透明路径把每行相邻set bits合成不重叠水平fill，替代每像素一次fillRect；不透明glyph raster、基线、字距与字形不变。不基于Graphics clip推断逻辑缩放，避免坐标转换风险。
 - smokeRasterEquivalent保留旧逐像素oracle，扩展alpha1/128/254/255、scale1/2、普通/窄clip、非零Graphics origin，逐像素一致。正式skin-resize（含此oracle）、ui-geometry、wheel-performance均exit0，Release构建/来源覆盖/diff通过。
 - 本轮减少连续笔画的绘图调用，未设置独立绘制微基准，不报告整体提速比例。窗口缩放和工具轨道退出异常仍未解决；验证后提交推送dev。
+
+
+## 2026-11-06：退出异常定位所需的匹配地址映射
+
+- 重新复现tool-rail-check：工具矩阵complete后exit0xC0000005。发现Release目录PDB最后更新2026-10-15，远早于当前exe；此前依据该PDB解析出的UnDecorator符号不可信，撤回其定位意义。
+- 为唯一正式MSVC Release链接添加/MAP，生成匹配当前exe的moonsprite-native.map，不修改优化等级/入口/版本，不提交生成物。正式Release重链接exit0。
+- 新构建Windows Application1000事件fault RVA0x9eb73c；同次链接map的preferred base0x140000000，widgetColumn起始0x1409eb5e0，下一函数workspaceLayout0x1409ebaf0。因此异常处于Editor::widgetColumn+0x15c（editor_panels.obj）。这是地址归属证据，不是根因或修复证明。
+- widgetColumn读取多种panel owns/scrollbar及成员vector；退出销毁时仍有回调访问是待验证假设，不能未经调用链证据就更改销毁行为。异常仍复现，本轮仅完善诊断基础，不宣称性能提升或稳定性修复。来源覆盖/diff通过后提交推送。
