@@ -1395,7 +1395,8 @@ void Editor::paintTimelineBackground(ui::Graphics& g,const Layout& ll) {
 
       // row/header widgets paint the rest; no independent grid extensions.
 
-      g.saveClip();g.clipRect(gfx::Rect(x,y,timelineScrollMetrics(ll).viewportWidth/uiScale,timelineHeaderHeight()+timelineScrollMetrics(ll).height/uiScale));
+      const auto metrics=timelineScrollMetrics(ll);
+      g.saveClip();g.clipRect(gfx::Rect(x,y,metrics.viewportWidth/uiScale,timelineHeaderHeight()+metrics.height/uiScale));
 
       for(int offset:{0,12,24,36}){
 
@@ -1409,9 +1410,11 @@ void Editor::paintTimelineBackground(ui::Graphics& g,const Layout& ll) {
 
       for(int i=0;i<3;++i)toolIcons_.draw(g,std::string(i==0?"eye":i==1?"lock":"animation-auto-link-off")+"-disabled",gfx::Rect(x+i*12+1,y+1,11,11),true);g.restoreClip();
 
-      const auto metrics=timelineScrollMetrics(ll);
-
-      if(metrics.horizontal && metrics.vertical)paintScrollbarCorner(g,timelineRowViewport());
+      if(metrics.horizontal && metrics.vertical){
+        const auto row=toDisplay(gfx::Rect(ll.workX+5,ll.layerTop+timelineRowsOffset(),metrics.viewportWidth/uiScale,metrics.height/uiScale));
+        if(smoke_ && _wgetenv(L"MOONSPRITE_BACKGROUND_METRICS_REFERENCE") && row!=timelineRowViewport())throw std::runtime_error("Timeline background metrics differ from live viewport");
+        paintScrollbarCorner(g,row);
+      }
 
       g.restoreClip();
 

@@ -151,3 +151,10 @@ Aseprite `src/ui/manager.cpp` 的 flushRedraw 和编辑器局部 canvas invalida
 - paintPanelBackdrops的局部panel helper在目标物理矩形与当前damage不相交时跳过fill/skin draw。Skin::draw的非icon九切片/lattice目标都限制在rc内；没有缩窄clip、修改皮肤素材或浮动chrome。MOONSPRITE_PANEL_DAMAGE_REFERENCE恢复旧工作。
 - 正式Release构建exit0。旧/新ui-geometry均exit0并通过浮动移动/resize framebuffer比较。backdrops累计251.429ms/210.641ms，窗口12次684.307ms/511.740ms；新旧其他scope同样波动，只作诊断，不能把全部差值归因本轮。group-timeline检查exit0；其余运行结果见本轮命令输出。
 - 保留真实Windows呈现延迟与工具轨道退出异常为未解决项。来源覆盖和diff通过后提交推送dev。
+
+
+## 2026-11-06：时间轴背景复用滚动指标
+
+- paintTimelineBackground的header clip原先调用两次timelineScrollMetrics，corner又直接调用一次及通过timelineRowViewport调用一次。改为一次同步metrics供header/corner使用；保留clip、素材和顺序，不新增跨调用缓存。
+- MOONSPRITE_BACKGROUND_METRICS_REFERENCE在双滚动条时将派生corner row与原实时函数比较。正式Release构建exit0；开启对照的large-timeline、group-timeline、timeline-density、ui-geometry全部exit0，framebuffer等价通过。来源覆盖/diff通过。
+- 本轮带oracle窗口12次762.962ms，大时间轴scroll6.719ms、outline4.189ms。环境波动且oracle增加旧计算，不用这些数字支持整体加速结论；仅确认减少重复metrics/树构造。窗口缩放和退出异常仍未解决。验证后提交推送dev。
