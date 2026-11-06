@@ -138,6 +138,8 @@ void Editor::clipColumn(ui::Graphics& g,int id,bool physical)const {
     if(!docking_.custom)return;const auto geometry=columnGeometry(uiLogical(bounds()));const auto damage=g.getClipBounds();gfx::Region clip(damage);const int own=id<0?-1:docking_.groupOf(id);
     const bool compare=smoke_ && _wgetenv(L"MOONSPRITE_OCCLUSION_REFERENCE");
     gfx::Region reference;if(compare)reference=damage;
+    const bool forceClip=smoke_ && _wgetenv(L"MOONSPRITE_NO_OCCLUSION_REFERENCE");
+    bool subtracted=false;
 
     for(int other=0;other<panels::columnCount;++other){if(!geometry.shown[other] || other==id)continue;const int group=docking_.groupOf(other);if(docking_.groups[group].dock!=panels::Dock::Floating)continue;
 
@@ -149,10 +151,13 @@ void Editor::clipColumn(ui::Graphics& g,int id,bool physical)const {
       if(compare)reference-=gfx::Region(box);
       // Subtracting an unrelated column cannot alter this damage region.
       // Reject before constructing a SkRegion for every child repaint.
-      if(box.intersects(damage))clip-=gfx::Region(box);}
+      if(box.intersects(damage)){clip-=gfx::Region(box);subtracted=true;}}
     if(compare){auto missing=reference;missing-=clip;auto extra=clip;extra-=reference;if(!missing.isEmpty() || !extra.isEmpty())throw std::runtime_error("Column occlusion differs from full subtraction");}
 
-    g.clipRegion(clip);
+    // The current surface clip already carries the exact (possibly complex)
+    // damage. Intersecting its bounding rectangle cannot change it when no
+    // column was subtracted; avoid a redundant SkRegion clip operation.
+    if(subtracted || forceClip)g.clipRegion(clip);
 
   }
 

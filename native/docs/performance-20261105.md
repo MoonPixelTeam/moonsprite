@@ -264,3 +264,9 @@ Aseprite `src/ui/manager.cpp` 的 flushRedraw 和编辑器局部 canvas invalida
 - 扩展既有MOONSPRITE_REPAINT_TRACE，为最多4096个clip/background key记录calls、total_ms、max_ms。RAII计时涵盖onPaint所有早退和advanced notice收尾；仅trace启用且key被保留时读取时钟。无生产绘制/输入改动。Aseprite MIT PaintEvent background与Widget flushRedraw逐rect消息语义保持。
 - 唯一Release repaint-duration-build.log exit0；启用trace的native-window-resize exit0、surface/client一致，关闭trace的ui-geometry-performance含局部/全量framebuffer exit0；来源覆盖625文件/diff通过。
 - native-resize-repaint-duration.tsv：直接3342次累计302.906ms，其中任一边<=8px的窄clip148.493ms；透明父背景107次累计12.663ms（窄clip0.551ms）。此前“碎片是主要来源”的调用计数现在有CPU耗时支持；并非只有大量便宜调用。最高单key约5.025ms/7次。应优先减少窄碎片完整背景计算/考虑绘制合并，不优先改变透明控件机制。trace会增加时钟/容器开销，数值不能代表显示器延迟。本轮诊断进展，尚无生产性能修复；验证后提交推送dev。
+
+
+## 2026-11-06：未改变的栏目裁剪不再重复提交
+
+- clipColumn记录是否真正扣除了相交浮动栏目；没有扣除时原Graphics::clipRegion只以当前clip bounding rect再次相交，数学上对已有复杂clip仍为恒等。现在省去最后的Graphics/LAF/Skia region clip调用，保留实际surface裁剪。对照Aseprite MIT Graphics::clipRegion及LAF SkiaSurface::clipRegion委托；无upstream修改。MOONSPRITE_NO_OCCLUSION_REFERENCE强制原提交，既有区域双向差集oracle保留。
+- 正式Release unchanged-clip-build.log exit0；开启MOONSPRITE_OCCLUSION_REFERENCE的ui-geometry-performance含悬浮partial/full framebuffer、group-timeline、playback-floating均exit0。来源覆盖625文件/diff通过。真实窗口reference/optimized均exit0、尺寸一致，变化样本均值35.021/34.825ms，相近，不能证明整体加速。减少每片重复裁剪操作，未减少碎片数量；整体卡顿仍未解决，验证后提交推送dev。
