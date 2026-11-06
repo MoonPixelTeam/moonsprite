@@ -10,7 +10,10 @@ struct ViewWrite {std::filesystem::path path;std::string text;};
 // Workers receive only immutable bytes and paths, never an Editor pointer.
 struct ViewWrites final:ui::Property {
  struct Writer {
-   LatestTaskQueue<ViewWrite> queue{[](auto value){return std::async(std::launch::async,[value]{std::filesystem::create_directories(value->path.parent_path());writeExportBytesAtomic(value->path,{value->text.begin(),value->text.end()});});},[]{}};
+   using Runner=LatestTaskQueue<ViewWrite>::Runner;
+   static std::future<void> run(std::shared_ptr<const ViewWrite> value){return std::async(std::launch::async,[value]{std::filesystem::create_directories(value->path.parent_path());writeExportBytesAtomic(value->path,{value->text.begin(),value->text.end()});});}
+   LatestTaskQueue<ViewWrite> queue;
+   explicit Writer(Runner runner=run):queue(std::move(runner),[]{}){}
    std::vector<LatestTaskQueue<ViewWrite>::Acknowledgement> acknowledgements;
  };
  std::map<std::filesystem::path,std::unique_ptr<Writer>> writers;
@@ -23,7 +26,13 @@ struct ViewWrites final:ui::Property {
    }
    if(writers.empty())timer.stop();
  }
- void enqueue(ViewWrite value){poll(false);auto& writer=writers[value.path];if(!writer)writer=std::make_unique<Writer>();auto ack=writer->queue.enqueue(std::make_shared<const ViewWrite>(std::move(value)));if(writer->acknowledgements.empty()||writer->acknowledgements.back()!=ack)writer->acknowledgements.push_back(ack);timer.start();}
+ void enqueue(ViewWrite value){poll(false);auto& writer=writers[value.path];if(!writer)writer=std::make_unique<Writer>();
+   // Compare the last scheduled state, not merely the running one: A/B/A
+   // must replace pending B even when A is still being written.
+   const auto pending=writer->queue.pendingValue();
+   const auto latest=pending?pending:writer->queue.runningValue();
+   if(latest && latest->text==value.text)return;
+   auto ack=writer->queue.enqueue(std::make_shared<const ViewWrite>(std::move(value)));if(writer->acknowledgements.empty()||writer->acknowledgements.back()!=ack)writer->acknowledgements.push_back(ack);timer.start();}
  ~ViewWrites(){timer.stop();error={};poll(true);}
 };
 }
@@ -78,6 +87,22 @@ void Editor::paintViewRotationIndicator(ui::Graphics& g){if(!rotationDragging_)r
 void Editor::smokeViewRotation(){
  if(const auto root=_wgetenv(L"MOONSPRITE_VIEW_SAVE_TEST_ROOT")){
    const auto directory=std::filesystem::path(root);std::filesystem::create_directories(directory);
+   // Gate the first worker so duplicate and A/B/A order checks are independent
+   // of disk speed. Release before checking/throwing to keep teardown finite.
+   {
+     std::promise<void> release;const auto gate=release.get_future().share();
+     std::vector<std::string> seen;
+     ViewWrites ordered(this,{});const auto path=directory/"queue-ordered.txt";
+     auto writer=std::make_unique<ViewWrites::Writer>([&](auto value){seen.push_back(value->text);return std::async(std::launch::async,[gate]{gate.wait();});});
+     auto* state=writer.get();writer->acknowledgements.push_back(writer->queue.enqueue(std::make_shared<const ViewWrite>(ViewWrite{path,"A"})));ordered.writers.emplace(path,std::move(writer));
+     ordered.enqueue({path,"A"});ordered.enqueue({path,"A"});
+     const bool duplicateActive=!state->queue.pendingValue();
+     ordered.enqueue({path,"B"});const auto pending=state->queue.pendingValue();
+     ordered.enqueue({path,"B"});const bool duplicatePending=state->queue.pendingValue()==pending;
+     ordered.enqueue({path,"A"});const bool latestWins=state->queue.pendingValue()&&state->queue.pendingValue()->text=="A";
+     release.set_value();ordered.poll(true);
+     if(!duplicateActive||!duplicatePending||!latestWins||seen!=std::vector<std::string>{"A","A"})throw std::runtime_error("View duplicate suppression changed latest state ordering");
+   }
    int errors=0;ViewWrites writes(this,[&](const std::string&){++errors;});
    const auto first=directory/"queue-first.txt",second=directory/"queue-second.txt";
    for(int i=0;i<40;++i){writes.enqueue({first,std::to_string(i)});writes.enqueue({second,"second-"+std::to_string(i)});}

@@ -394,3 +394,10 @@ Aseprite `src/ui/manager.cpp` 的 flushRedraw 和编辑器局部 canvas invalida
 - 复用LatestTaskQueue（legacy core/latest-task-queue.ts及对应native适配），每个目标路径一个有序writer，immutable path/text交给std::async工作线程，连续同文档更新合并为最新pending；后台不访问Editor。原view-v1内容、目录/哈希规则、writeExportBytesAtomic强制flush/原子替换保留。UI16ms timer poll完成状态并显示失败；读取磁盘视图前waitIdle；Editor-owned Property析构等待全部pending完成且清空回调，避免已析构Editor访问。不同文档独立，不会互相覆盖pending。进程被强制杀死时仍可能丢失尚未完成的最后视图，此为异步提交窗口，不涉及作品内容。
 - MOONSPRITE_VIEW_SAVE_SYNC_REFERENCE恢复原同步路径；使用独立smoke存储root实测view-zoom-shortcuts10次：sync29.759ms/max3.359、async0.286ms/max0.137，均exit0。该指标是UI序列化/提交耗时，不是磁盘完成时延。另两个独立root分别运行同步/异步，最终两份view-v1字段完全一致。
 - 新增view-rotation注入真实IO检查：两个目标各40次更新最终39、second-39；无效目录写入失败确实通知；失败后保存成功；局部writer析构确实落盘最终值，全部exit0。唯一Release view-save-async-final-build.log exit0；drawing-pan-performance及ui-geometry-performance均exit0，保留作品/history/pan framebuffer检查。来源625覆盖/evidence、diff通过后推送dev。整体性能目标尚未完成；新诊断/测试数据不提交，保留本地。
+
+
+## 2026-11-06：后台视图写入去除相同在途状态
+
+- ViewWrites此前即使相同文本已有active/pending仍enqueue，造成冗余pending写入或替换。现比较最新排队状态（优先pending，否则active），相同则返回。A/B/A不能仅看active A而丢弃最终A；不增加持久成功缓存，idle或失败后的重复保存仍重试。沿用legacy LatestTaskQueue语义及原native原子写入。
+- 受控runner用promise固定第一任务完成时机，验证相同active不创建pending、相同pending保留对象、A/B/A最终执行A/A；释放gate后再断言，避免失败时析构等待死锁。真实IO两文档最终值、失败恢复、析构收尾检查保留。首次测试构造的空writer会被正常idle清理，已调整为先启动受控active再注入，最终正式构建view-save-dedup-final-build.log exit0。
+- 独立smoke测试root下view-rotation（含受控顺序和真实IO）、view-zoom-shortcuts、drawing-pan-performance均exit0。来源覆盖/evidence及diff通过；仅确认冗余任务消除，无新增整体提速数字。正式Release更新，提交源码/来源/记录推送dev，保留本地生成物和用户数据。总体性能目标继续。
