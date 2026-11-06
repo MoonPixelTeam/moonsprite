@@ -3012,3 +3012,13 @@ free-missing-duplicate-build.log正式Release和测试构建exit0；夹具调整
 新增空白/可见间隔两组合测试，验证链接与网格、像素、opacity/zIndex、未选中内容保留、选区保留、单历史、Undo/Redo、实际保存重开、重复连接无历史，及Create模式选区删除传播至来源并可撤销。初版重开断言错误要求别名自带网格，改为通过解析来源检查，符合现有IO链接存储。直接别名画笔检查暴露beginStroke要求cel().tilemap而保存别名不含该字段，尚未解决，明确登记为后续迁移缺口；未宣称画笔传播已通过，保留选区删除的实际通过证据。
 
 tile-connect-build.log正式Release与两核心测试构建exit0；夹具调整tile-connect-fixture-build.log exit0；完整free-tile-project-tests/tilemap-project-tests均exit0（tile-connect-free-test.log、tile-connect-grid-test.log）；正式工作区drawing-anchor-edit-floating组合exit0。来源625文件及diff通过，无人工UI验收。全量迁移、自由Cel链接、稀疏工程准入与链接别名直接画笔仍未完成。
+
+
+### 2026-11-07：链接瓦片Cel画笔Create/Edit/Hybrid
+
+针对上一阶段确认的保存重开后payload-free别名无法直接落笔，核对legacy core/tilemap-document.ts::tilemapCelTargetAt解析规范来源，以及canvas-render-brush-path.ts使用解析目标和指针格锚点。原生beginStroke按解析来源检查网格；受既有linkedCreate/Edit/Hybrid可用性约束的笔画读取来源网格锚点，预览写解析表面，取消恢复原像素，提交复用既有链接像素历史，保持别名无私有表面/网格及精确两级链。
+
+新增三模式实际画笔回归，检查begin、cancel无历史、commit单历史、来源与全部别名像素一致、Undo/Redo、实际保存重开。完整free-tile-project-tests和tilemap-project-tests均exit0（linked-tile-brush-free-test.log、linked-tile-brush-grid-test.log）。原有零偏移、完整画布、单目标及引用所有者检查保留；Paint模式、偏移/非标准布局和更广泛多目标仍未完成，不能宣称所有链接绘图迁移结束。
+
+
+正式构建linked-tile-brush-build.log exit0；最终源码增量确认linked-tile-brush-final-build.log exit0，工作区drawing-anchor-edit-floating组合exit0。来源625文件快照校验与diff通过，无人工UI验收。全量迁移仍INCOMPLETE。

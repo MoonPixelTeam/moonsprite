@@ -219,7 +219,7 @@ bool Document::convertLayerToTilemap(int tw,int th,std::u32string name){
  TilemapSelection selected;selected.mode=tiles::Mode::Hybrid;selected.tilesetId=set.id;selected.primary=selected.secondary=set.tileIds.front();next.tilesets.push_back(std::move(set));return commitTilemapState(std::move(next),selected,U"转换为瓦片图层");
 }
 void Document::startTilemapStroke(Point p,bool secondary){
- tileStrokeCells_.clear();tileStrokeIncremental_=tilemapDeltaSupported();tileStrokeBefore_.reset();if(!tileStrokeIncremental_)tileStrokeBefore_=timeline_.state();tileStrokeCel_=cel().id;tileStrokePoint_=p;const auto& c=cel();tileEditCell_.reset();if(c.tilemap&&p.x>=0&&p.y>=0&&p.x<c.tilemap->columns*c.tilemap->tileWidth&&p.y<c.tilemap->rows*c.tilemap->tileHeight)tileEditCell_=std::size_t(p.y/c.tilemap->tileHeight)*c.tilemap->columns+p.x/c.tilemap->tileWidth;
+ tileStrokeCells_.clear();tileStrokeLinked_=linkedCreateSelectionAvailable(false)||linkedEditSelectionAvailable(false)||linkedHybridSelectionAvailable(false);tileStrokeIncremental_=tileStrokeLinked_||tilemapDeltaSupported();tileStrokeBefore_.reset();if(!tileStrokeIncremental_)tileStrokeBefore_=timeline_.state();tileStrokeCel_=cel().id;tileStrokePoint_=p;const auto& c=tileStrokeLinked_?*timeline_.resolveSurface(cel().id).source:cel();tileEditCell_.reset();if(c.tilemap&&p.x>=0&&p.y>=0&&p.x<c.tilemap->columns*c.tilemap->tileWidth&&p.y<c.tilemap->rows*c.tilemap->tileHeight)tileEditCell_=std::size_t(p.y/c.tilemap->tileHeight)*c.tilemap->columns+p.x/c.tilemap->tileWidth;
  tilePaintValue_.reset();const auto& id=secondary?tileSelection_.secondary:tileSelection_.primary;if(!id.empty()){auto t=std::find_if(timeline_.state().tilesets.begin(),timeline_.state().tilesets.end(),[&](const auto& s){return s.id==tileSelection_.tilesetId;});if(t!=timeline_.state().tilesets.end()&&t->tileWidth==c.tilemap->tileWidth&&t->tileHeight==c.tilemap->tileHeight&&tiles::Index(*t).find(id))tilePaintValue_=tiles::Cell{t->id,id};}
 }
 void Document::paintTilemapLine(Point p){
@@ -258,7 +258,8 @@ bool Document::commitTilemapStroke(){
    // Revert only raster preview pixels; source tile authority has not changed.
    for(const auto& delta:pending_)strokePixel(delta.index)=delta.before;
    tileStrokeIncremental_=false;tileStrokeCells_.clear();active_=false;strokePixels_=nullptr;clearPendingStroke();
-   const bool committed=commitTilemapPixelCanvas(baseline,canvas,U"绘制瓦片",hint);if(!committed){change_={0,0,width_,height_};publishChange();}return committed;
+   const bool linked=tileStrokeLinked_;tileStrokeLinked_=false;
+   const bool committed=linked?commitTilemapPixelCanvas(baseline,canvas,U"绘制瓦片",hint,false,&selection_,&selection_,false,false,false,tileSelection_.mode==tiles::Mode::Create,tileSelection_.mode==tiles::Mode::Edit,tileSelection_.mode==tiles::Mode::Hybrid):commitTilemapPixelCanvas(baseline,canvas,U"绘制瓦片",hint);if(!committed){change_={0,0,width_,height_};publishChange();}return committed;
   }catch(...){if(tileStrokeIncremental_)cancelTilemapStroke();else{change_={0,0,width_,height_};publishChange();}throw;}
  }
  if(!tileStrokeBefore_)return false;auto before=*tileStrokeBefore_;auto next=before;const auto* live=timeline_.findCelById(tileStrokeCel_);auto target=std::find_if(next.cels.begin(),next.cels.end(),[&](const auto& c){return c.id==tileStrokeCel_;});bool changed=false;
@@ -266,6 +267,7 @@ bool Document::commitTilemapStroke(){
  tileStrokeBefore_.reset();active_=false;strokePixels_=nullptr;clearPendingStroke();timeline_=timeline::Timeline(std::move(before));if(!changed){change_={0,0,width_,height_};publishChange();return false;}return commitTilemapState(std::move(next),tileSelection_,U"绘制瓦片");
 }
 void Document::cancelTilemapStroke(){
+ tileStrokeLinked_=false;
  if(tileStrokeIncremental_){
   if(tileSelection_.mode==tiles::Mode::Paint){
    auto found=timeline_.cels_.find(tileStrokeCel_);if(found!=timeline_.cels_.end()){auto& c=timeline_.state_.cels[found->second];if(c.tilemap&&c.surface){auto& grid=*c.tilemap;

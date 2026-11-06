@@ -639,7 +639,7 @@ private:
 
   std::optional<timeline::State> tileStrokeBefore_;
   struct TilemapStrokeCell {std::optional<tiles::Cell> before;std::vector<Pixel> beforePixels;};
-  bool tileStrokeIncremental_=false;std::map<std::size_t,TilemapStrokeCell> tileStrokeCells_;std::string tileStrokeCel_;Point tileStrokePoint_{};std::optional<std::size_t> tileEditCell_;std::optional<tiles::Cell> tilePaintValue_;
+  bool tileStrokeIncremental_=false,tileStrokeLinked_=false;std::map<std::size_t,TilemapStrokeCell> tileStrokeCells_;std::string tileStrokeCel_;Point tileStrokePoint_{};std::optional<std::size_t> tileEditCell_;std::optional<tiles::Cell> tilePaintValue_;
   std::string uniqueTileId(const std::string&);
   bool commitTilemapState(timeline::State,const TilemapSelection&,std::u32string,const std::string& active={},bool clearPixelSelection=false);
   bool fillTilemapPixels(Point,Pixel,WandOptions,const PatternFillOptions*);
