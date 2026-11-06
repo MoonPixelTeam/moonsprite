@@ -379,3 +379,11 @@ Aseprite `src/ui/manager.cpp` 的 flushRedraw 和编辑器局部 canvas invalida
 - 实际sheet检查panel_outer/panel_content/timeline.frame/timeline.grid中心均为单色。Skin::draw既有stretchEquivalent逐像素证明重复横纵轴恒定，包含中心恒定；该合格且尺寸充分分支现用中心原始RGBA fillRect，再通过Aseprite MIT drawSurfaceNine(drawCenter=false)绘制原边框。所有边界条件、原素材/透明度、纹理和小尺寸fallback保留；参考开关MOONSPRITE_SKIN_CENTER_REFERENCE恢复完整lattice。核对laf SkiaSurface中心透明RectType语义，无app代码复制。
 - 唯一正式Release skin-center-build.log exit0。reference/optimized原生resize均exit0、16张BMP逐字节一致；profile panel-skin228次21.883→14.772ms（约32.5%），workspace9.155→5.911ms、history8.354→5.176ms；base-fill8.164→11.280ms显示环境波动，不能把局部收益直接推广整帧。
 - 无截图/profile ABBA变化样本mean reference24.224/optimized23.641/optimized22.381/reference24.530ms，夹具平均约5.6%改善；仅CPU到flip提交，不代表DWM或真实输入显示延迟。skin-resize含逐像素alpha/hit、ui-geometry-performance局部/全量、window-input、advanced-mode均exit0。来源覆盖625文件/evidence及diff通过；保留本轮优化并推送dev。整体性能目标仍未完成，生成物/本地报告不提交。
+
+
+## 2026-11-06：补齐视图保存的真实UI阻塞测量
+
+- 检查画布zoom/pan路径发现setCanvasZoom同步saveDocumentView；原生view-v1保存经writeExportBytesAtomic/create+WriteFile+FlushFileBuffers+MoveFileEx WRITE_THROUGH。smoke_原先全部跳过，导致既有性能夹具漏测真实磁盘成本。旧版core/document-view-state.ts与store/workspace-commands-view.ts在setView保存storage；原生强制落盘是适配额外成本。核对Aseprite editor setZoom实现，仅概念比较、不复制app代码。
+- 增加MOONSPRITE_INTERACTION_PROFILE的固定保存统计，写.view-save.tsv；仅smoke_且显式MOONSPRITE_VIEW_SAVE_TEST_ROOT时允许写指定测试目录。正常生产保存时机/格式/原子替换和正常smoke默认跳过均不变，不改用户偏好文件。构建view-save-profile-build.log exit0。
+- 使用仓库build/test-tmp/view-save-storage独立目录运行真实writer：drawing-pan-performance exit0，5次17.535ms/max3.736ms；view-zoom-shortcuts exit0，10次40.866ms/max4.848ms；检查落盘view-v1文本含最终zoom/pan/rotation/mirror字段。未开启存储注入的view-rotation exit0。来源625覆盖/evidence及diff通过。
+- 本轮补齐证据，无生产提速声明。实际每轮UI保存约3–5ms，是下一步应处理的热点；需保留同文档顺序、切文档/关闭最终状态与失败提示，不能通过测试默认跳过掩盖。只提交诊断源码/来源/记录推送dev，测试输出与用户数据保留不提交。
