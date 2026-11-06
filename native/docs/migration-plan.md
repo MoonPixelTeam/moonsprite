@@ -2994,3 +2994,12 @@ free-missing-duplicate-build.log正式Release和测试构建exit0；夹具调整
 依据legacy core/animation.ts::deleteAnimationFrame，删除当前帧对所有图层类型移除帧、Cel和蒙版，保留资源与至少一个帧。原生deleteSelectedFrames已有特殊图层路径，但deleteFrame仍对包含tilemap/free-tile的文档直接返回。移除该入口阻断，复用现有单帧事务、完整Cel载荷历史、蒙版清理和选区规范化，不改变多选帧删除行为。
 
 新增自由瓦片/瓦片网格×首帧/末帧四组合回归，检查单历史、画布/Cel选择清理、剩余实例/网格/像素及资源不变、蒙版删除、保存重开、Undo完整载荷恢复、Redo及最后一帧无操作。首次测试编译暴露tiles结构没有整体相等操作符，改为逐字段核对资源与网格，未改产品模型。正式Release和核心测试构建exit0（direct-special-frame-build.log）；完整free-tile-project-tests exit0（direct-special-frame-test.log）；正式工作区drawing-anchor-edit-floating组合exit0；来源625文件快照及diff通过。没有人工UI验收。自由Cel链接、稀疏准入等既有缺口不因入口接通而视为迁移完成，整体仍INCOMPLETE。
+
+
+### 2026-11-07：瓦片Cel断开连接入口及完整载荷
+
+对照legacy core/animation.ts::disconnectAnimationCels，断开时克隆解析来源的surface、tilemap/freeTiles/text、opacity和zIndex，选中来源则断开其链接组。原生模型/IO已支持瓦片Cel链接，但disconnectSelectedCels和disconnectCel仍按整篇文档含特殊图层直接返回。移除此阻断；单Cel入口补齐来源网格/文字/实例及属性复制、解析校验和活动透明度投影，选中Cel入口沿用已有完整载荷事务。
+
+新增瓦片单Cel、选中别名、选中来源三组合回归，核对独立网格尺寸/单元、像素、透明度/层叠值，未选中别名保持链接，一次历史、Undo恢复无载荷别名、Redo、实际保存重开和重复断开无历史。tile-disconnect-build.log正式Release及free-tile-project-tests/tilemap-project-tests构建exit0；两个完整测试exit0（tile-disconnect-free-test.log、tile-disconnect-grid-test.log）；正式工作区drawing-anchor-edit-floating组合exit0。来源625文件快照、diff通过，无人工UI验收。
+
+自由瓦片Cel链接仍受模型约束，未新增或宣称其链接支持；整体迁移仍INCOMPLETE。用户数据、缓存和构建生成物不提交。
