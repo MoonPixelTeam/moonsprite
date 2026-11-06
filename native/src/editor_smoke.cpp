@@ -1098,7 +1098,10 @@ void Editor::smokePaletteMouse(const std::function<void(ui::Message*)>& dispatch
 
       auto dropdown=dynamic_cast<PixelDropdown*>(selectionAlgorithmButton_);
 
-      if(!dropdown || propertyDropdowns_.size()!=3 || dynamic_cast<PixelDropdown*>(brushShapeButton_) || toolControls_[0].second!=15)throw std::runtime_error("Legacy property component types");
+      const std::vector<PixelButton*> expectedDropdowns{imagePaintModeDropdown_,selectionAlgorithmButton_,gradientDither_,eyedropperSourceButton_};
+      if(!dropdown || propertyDropdowns_.size()!=expectedDropdowns.size() || dynamic_cast<PixelDropdown*>(brushShapeButton_) || toolControls_[0].second!=15)throw std::runtime_error("Legacy property component types");
+      for(auto expected:expectedDropdowns){auto typed=dynamic_cast<PixelDropdown*>(expected);if(!typed || std::count(propertyDropdowns_.begin(),propertyDropdowns_.end(),typed)!=1)throw std::runtime_error("Legacy property dropdown missing or duplicated");}
+
 
       for(auto button:{wandConnectivityButton_,fillConnectivityButton_,gradientConnectivity_,wandReferenceButton_,fillReferenceButton_,gradientReference_,gradientType_,gradientMode_,fillTextureButton_,shapeModeButton_})
 

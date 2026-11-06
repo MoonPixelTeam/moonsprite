@@ -530,3 +530,9 @@ Aseprite `src/ui/manager.cpp` 的 flushRedraw 和编辑器局部 canvas invalida
 
 - palette-mouse组合此前要求gradientMode始终未HIDDEN，与legacy app/useToolOptionsScroll.ts的单行横向溢出契约及现有finishToolScrollLayout的视口相交显隐不符。现在检查线性/径向/应用模式均有scrollViewports且显隐严格等于相交状态；保留图标/文案验证，并滚到clamped末端要求应用模式可见，再恢复原滚动检查。未修改产品控件可用性、显隐、滚动或布局。
 - gradient-viewport-fixture-build.log正式Release构建exit0；--palette-mouse-check通过此新断言，继续在Legacy property component types失败，完整组合仍未通过。--tool-property-shortcuts-check和--ui-geometry-performance-check exit0。来源625文件覆盖/证据快照与diff通过，完整迁移仍INCOMPLETE。本轮为恢复性能回归覆盖路径的验证修正，无产品提速声明；后续组件类型断言保持原样待证据核对。仅源码/来源/记录推送dev，用户数据/缓存/生成物保留。
+
+
+## 2026-11-07：属性下拉验收清单包含图像笔刷模式
+
+- 核对legacy app/EditorToolOptions.tsx的brush-paint-mode-select与brushPaintModeGroups，以及native migratePropertyDropdowns：现有四项为图像笔刷模式、选区旋转算法、渐变抖动、吸管来源。原fixture固定count=3遗漏后来迁移的图像笔刷模式。改为精确四项类型/唯一注册清单，原非下拉控件、ownership、选中值及refresh绑定断言保留。无产品代码改动或提速声明。
+- property-dropdown-inventory-build.log正式Release构建exit0；--tool-property-shortcuts-check及--ui-geometry-performance-check exit0。开启轮廓oracle的--palette-mouse-check进程退出0xC0000005，未得本次异常定位；native-workspace-error.txt仍为旧Palette title/button gap（时间02:17:14），不能据此判本次崩溃原因，完整组合未通过。下拉新清单的组合实际执行覆盖仍缺少成功终点证据，后续需定位访问异常。来源625文件覆盖/快照及diff通过，迁移仍INCOMPLETE。源码、来源、记录推送dev，不提交生成物或用户数据。
