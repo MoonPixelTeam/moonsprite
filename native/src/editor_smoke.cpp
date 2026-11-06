@@ -2016,7 +2016,7 @@ void Editor::smokeDockResizeHover(){
 
       const auto point=toDisplay(gfx::Rect(l.rightX+l.right-1,l.split-1,1,1)).origin();
 
-      if(sizeHandleAt(point)!=SizeDrag::ColorSplit || std::string(cursorAt(point))!="ns-resize")throw std::runtime_error("Palette split corner lost resize hit after window size change");
+      if(sizeHandleAt(point)!=SizeDrag::ColorSplit || std::string(cursorAt(point))!="ns-resize")throw std::runtime_error("Palette split corner lost resize hit after window size change: handle="+std::to_string(int(sizeHandleAt(point)))+" cursor="+cursorAt(point)+" palette="+std::to_string(palettePanelOpen_)+" picker="+std::to_string(colorPickerOpen_)+" custom="+std::to_string(docking_.custom)+" capture="+std::to_string(ui::Manager::getDefault()->getCapture()!=nullptr));
 
       ui::MouseMessage down(ui::kMouseDownMessage,os::PointerType::Mouse,ui::kButtonLeft,ui::kKeyNoneModifier,point);down.setDisplay(display());
 

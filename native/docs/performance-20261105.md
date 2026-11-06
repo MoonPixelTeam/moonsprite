@@ -423,3 +423,11 @@ Aseprite `src/ui/manager.cpp` 的 flushRedraw 和编辑器局部 canvas invalida
 - workspace 的home scrollbar失败是fixture仍选择近期项目页，该页已经使用独立RecentProjectsPane并显式隐藏旧列表滚动条。fixture改为普通列表section2，退出恢复原section；不修改产品首页行为。
 - 正式Release modal-footer-regression-build.log exit0；ui-geometry-performance-check、dialog-geometry-check、recent-projects-check均exit0。docking已越过原模态命中/capture断言，随后在Palette split corner lost resize hit after window size change失败；workspace已越过home scrollbar，随后在Legacy gradient controls失败。两项完整检查仍非通过，后续缺口留待定位。本轮没有新增性能提速数字。
 - 人工查看本轮panel-docking-dialog-focus-smoke.bmp：关闭按钮位于说明区下方，弹窗覆盖悬浮栏目；该离屏render fixture不覆盖全部真实窗口控件绘制，不宣称完整视觉验收。来源625文件/evidence通过，整体迁移仍INCOMPLETE。本地生成物及用户数据保留。
+
+
+## 2026-11-07：键盘消息去除重复快捷工具同步
+
+- editor_input.cpp键盘down/up分支连续两次syncShortcutTools，中间没有状态改变。删除第二次，保留输入观察、首次同步、post-dispatch同步以及独立release路径。该函数会扫描绑定、匹配held chords并检查冲突；直接重复不提供额外输入语义。对照legacy useAppShortcutRouter.ts的keydown/keyup路由及core/quick-tools.ts held派生；检查Aseprite MIT ui/manager.cpp每个OS key事件构建一个KeyMessage并路由，无app代码复制。
+- 正式Release shortcut-sync-dedup-build.log exit0。同一shortcuts-input-check前后均exit0，profile shortcut-sync调用80→64（减少20%），单次采样累计2.9007→2.3500ms、self2.0830→1.6973ms；只证明此fixture调用减少，单次时间不声称稳定整体提速。tool-property-shortcuts、modifier-brush-performance、ui-geometry-performance均exit0。
+- modifiers-check改前已失败Captured brush resize survives modifier release，未将其宣称通过。docking新增诊断且仍exit1：handle=0,cursor=ns-resize,palette=1,picker=1,custom=1,capture=0。说明重置Model后refresh已启用custom布局，旧ColorSplit检查的非custom前提失效；本轮不改产品布局或削弱断言。workspace的Legacy gradient controls缺口保留。
+- 来源625文件/evidence及diff通过，整体迁移仍INCOMPLETE。仅源码/来源/记录提交推送dev；生成物、报告及用户数据保留。整体卡顿目标继续，不将快捷键局部优化等同全软件流畅验收。

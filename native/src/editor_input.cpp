@@ -222,8 +222,6 @@ bool Editor::onProcessMessage(ui::Message* msg) {
 
       syncShortcutTools(*msg);
 
-      syncShortcutTools(*msg);
-
       updateNavigationCursor();
 
     }
