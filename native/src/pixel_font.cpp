@@ -5,6 +5,11 @@
 #include <filesystem>
 #include <sstream>
 #include <stdexcept>
+#include <intrin.h>
+#include <algorithm>
+#include <cstdint>
+#include <chrono>
+#include <iostream>
 namespace moon {
 PixelFont::PixelFont(const std::string& path) {
   std::ifstream file(std::filesystem::u8path(path));
@@ -60,6 +65,12 @@ void PixelFont::draw(ui::Graphics& g,const std::u32string& text,int x,int y,gfx:
   }
 }
 void PixelFont::smokeRasterEquivalent() const {
+  auto reference=[&](const std::u32string& value){gfx::Rect ink;int pen=0;for(auto c:value){const auto it=glyphs_.find(c);const auto& glyph=it==glyphs_.end()?glyphs_.at(65534):it->second;for(int y=0;y<glyph.height;++y)for(int x=0;x<glyph.width;++x)if(glyph.rows[y]&(1u<<(glyph.width-1-x))){const gfx::Rect pixel(pen+glyph.x+x,9-glyph.height-glyph.y+y,1,1);ink=ink.isEmpty()?pixel:ink.createUnion(pixel);}pen+=glyph.advance;}return ink;};
+  for(const auto& item:glyphs_){const std::u32string value{U' ',item.first,U'A'};if(inkBounds(value)!=reference(value))throw std::runtime_error("Fusion ink bounds differ for glyph "+std::to_string(item.first));}
+  for(const auto& value:{std::u32string{},std::u32string{U"   "},std::u32string{U"未命名 图层 Ag09\U0001ffff"}})if(inkBounds(value)!=reference(value))throw std::runtime_error("Fusion text ink bounds differ");
+  const std::u32string sample=U"未命名 颜色板 图层 恢复 Aa09%";std::uint64_t checksum=0;
+  auto timing=[&](bool old){const auto start=std::chrono::steady_clock::now();for(int i=0;i<20000;++i)checksum+=(old?reference(sample):inkBounds(sample)).w;return std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-start).count();};
+  const auto oldMs=timing(true),newMs=timing(false);std::cout<<"Fusion ink bounds 20000: reference_ms="<<oldMs<<" optimized_ms="<<newMs<<" glyphs="<<glyphs_.size()<<" checksum="<<checksum<<'\n';
   const std::u32string text=U"Aa09% 未命名 颜色板 图层 恢复\U0001ffff";
   for(int scale:{1,2}) for(const auto color:{gfx::rgba(220,180,140),gfx::rgba(100,170,250,128)}) {
     const int w=(measure(text)+20)*scale,h=24*scale;
@@ -94,11 +105,14 @@ gfx::Rect PixelFont::inkBounds(const std::u32string& text) const {
   for(auto c:text) {
     const auto it=glyphs_.find(c);
     const auto& glyph=it==glyphs_.end()?glyphs_.at(65534):it->second;
-    for(int y=0;y<glyph.height;++y) for(int x=0;x<glyph.width;++x)
-      if(glyph.rows[y] & (1u << (glyph.width-1-x))) {
-        const gfx::Rect pixel(pen+glyph.x+x,9-glyph.height-glyph.y+y,1,1);
-        ink=ink.isEmpty()?pixel:ink.createUnion(pixel);
-      }
+    // A bitmap row is at most 32 bits. Reduce its occupied columns with
+    // bit scans, avoiding one rectangle union for every opaque pixel.
+    unsigned columns=0;int top=glyph.height,bottom=0;
+    for(int y=0;y<glyph.height;++y)if(const auto row=glyph.rows[y]){columns|=row;top=std::min(top,y);bottom=y+1;}
+    if(columns){unsigned long first=0,last=0;_BitScanForward(&first,columns);_BitScanReverse(&last,columns);
+      const gfx::Rect bounds(pen+glyph.x+glyph.width-1-int(last),9-glyph.height-glyph.y+top,int(last-first+1),bottom-top);
+      ink=ink.isEmpty()?bounds:ink.createUnion(bounds);
+    }
     pen+=glyph.advance;
   }
   return ink;

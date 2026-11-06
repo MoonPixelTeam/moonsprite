@@ -41,3 +41,68 @@ Aseprite `src/ui/manager.cpp` 的 flushRedraw 和编辑器局部 canvas invalida
 - 连续12次窗口尺寸改变并完整绘制，加最后恢复尺寸总计434.251ms，仍有整体重排/绘制成本；尚未验证真实 Windows 标题栏拖动、DPI变化及硬件呈现延迟。
 - 命中、滚轮缩放、绘画/平移回放全部 exit 0。来源覆盖与 diff 空白检查通过。
 - 旧 `--workspace-check` 在修改前正式程序就失败：Scrollable region has no sheet scrollbar: home。此次调用旧 smokeDockResizeHover 又在 Palette split corner lost resize hit after window size change 断言失败，不能据此声明整个旧工作区验收通过。新的专项入口独立执行本次的几何、浮动移动/resize和窗口重排检查；原有入口未删。build/ui-geometry-performance-error.txt 可能保留前次失败文本，以本次进程 exit 0 和最终报告为准，未删除旧证据。
+
+
+## 后续文本测量优化
+
+- `pixel_font.cpp::inkBounds` 过去逐个亮点合并矩形；现在将字形各行按位合并，以首尾非零位及行范围得到相同墨迹边界。每次仍读取实际文本，没有无界字符串缓存，也不改变字距、基线或绘制。
+- `smokeRasterEquivalent` 对全部25,314个字形分别加入空格及邻接拉丁字符，与旧像素扫描算法精确对照；额外覆盖空文本、全空格、中文、缺字。全部通过；原有1x/2x不透明/半透明绘制对照保留并通过。
+- 同进程20,000次固定文本测量：旧算法90.896ms，新算法9.077ms，约10倍。此为文本测量提速，不是整应用提速。
+- 唯一正式Release构建成功，`--skin-resize-check`、`--ui-geometry-performance-check`、`--hit-testing-performance-check`、`--wheel-performance-check` exit0。来源覆盖、diff检查通过。
+- 本轮窗口缩放回放437.825ms，与前轮434.251ms没有明确改善；浮动移动约2.243ms、尺寸调整约1.833ms（各200输入合并一次）。因此窗口整体缩放瓶颈仍未解决，不能用字形微基准替代真实响应验收。
+
+
+## 控件层叠与大选择轮廓
+
+- raiseDockWidgets 先收集目标顺序，按最后一次 raise 去重，并在实际尾部顺序已相同时跳过所有 sibling vector 搬移。保留原modal、floating、flyout顺序。MOONSPRITE_STACK_REFERENCE 在smoke中与旧逐次raise算法对照；UI几何、命中、大时间线均通过。27次排序总计3.180ms；窗口缩放12次回放472.646ms，未证实整体缩放提速。
+- timelineOutlines 原先对每个已选Cel构造字符串槽位、线性查找所有视觉行；现在以可见行索引排除屏幕外项目，仅为可见帧/行保留槽位。每次重算，不引入选区失效缓存。素材、偏移、裁剪和selectionContains保持不变。
+- MOONSPRITE_OUTLINE_REFERENCE 保留原始全选择扫描，精确比较四个可见边界；正式大时间线、分组timeline（含逐像素alpha/命中）、timeline密度检查exit0。
+- 256层x1000帧、16,384选择：轮廓平均9.572ms降至2.789ms（约71%）；同目标拖动4.170ms至2.962ms。滚动35.875ms，与此前36.432ms相近，不宣称滚动瓶颈已解决。测试为软件回放，不等于输入到屏幕延迟。
+- 正式Release已更新；来源覆盖及差异检查通过。改动未自动提交推送。
+
+
+## 2026-11-06：时间轴绘制循环
+
+- 定位到链接标记循环中每个run/cell重复构建TimelineRows（整棵图层树），并在每个run重复查询所在层。改为每次合成构建一次，每行查询一次；不跨绘制缓存，分组折叠和mask拓扑仍立即生效。
+- 原控件循环的initializer_list复制九组vector；每个按钮还线性搜索header/cell列表。改为引用原列表并直接使用类别与slot索引，保留原绘制顺序、裁剪、缩略图、禁用帧斜线和轮廓素材坐标。
+- legacy依据：LayersPanel.tsx:100的celLookup、deriveTimelineLinks.ts的拓扑/链接块分离与复用。此项仅消除原生绘制内重复计算，不声称补齐全部legacy链接视觉语义。
+- Aseprite固定源码src/app/ui/timeline/timeline.cpp:1679-1745先取得可见范围，再按行查询layer，内层仅处理帧。仅作方案对照，没有复制app代码，许可仍按THIRD_PARTY.md。
+- 修改前后相同大时间轴诊断回放均979次timeline-paint：累计6794.53ms →2403.40ms（约降低65%）。这是本次绘制scope累计时间，其他scope也有波动，不能当作严格整应用提速比例。完整滚动32.2825ms →37.3186ms，未观察到整体提速；去掉profile后37.2669ms。
+- 唯一正式Release构建成功。large-timeline、group-timeline、timeline-density、ui-geometry检查均exit0。现有滚动partial/full framebuffer对照、池化控件动作/命中、history/revision/upload不变检查通过。窗口resize12次372.744ms，浮动移动/调整尺寸framebuffer等价通过；不作真实Windows拖拽/硬件呈现验收声明。
+- 修改保存在本地，未自动提交或推送。
+
+
+## 2026-11-06：每次合成共享视口裁剪
+
+- paintTimelineGrid原先对每个可见按钮调用paletteViewport，再调用timelineMaterialViewport；两者均会经scroll metrics重建TimelineRows。当前同步合成期间视口不变化，现在仅计算row/frame/header三类material clip，所有对应按钮共享；不修改输入回调，不跨合成保存几何，不改选中边框、透明中心与外扩命中规则。
+- MOONSPRITE_TIMELINE_CLIP_REFERENCE在smoke中逐个已绘制控件比较共享clip与原回调+material计算完全相等。开启后large-timeline、group-timeline、timeline-density、ui-geometry全部exit0；保留现有局部/完整framebuffer比较、分组mask、缩略图密度、滚动边界与浮动移动/resize验证。另行hit-testing-performance检查exit0。
+- 原生适配依据仍为legacy LayersPanel.tsx及layer-timeline-cell-window.ts的窗口化与共享视口；Aseprite固定timeline/timeline.cpp:1692,1726在内层帧循环外设置header/cel裁剪，方案参考而未复制app代码。
+- 正式Release构建exit0。无profile/无clip oracle的256层x1000帧滚动20次均值：上轮37.2669ms，本轮10.387ms（约降低72%）。开启profile但关闭oracle时11.7221ms；不等于真实硬件输入至屏幕延迟。合成次数仍20、外框绘制0，无文档/history/upload变化。
+- 诊断回放timeline-paint累计2324.84ms/980次，与前轮2403.40ms/979次不能解释滚动全部差值：回放还包含大量直接outline调用且运行环境有波动。因此主要报告完整滚动独立指标。大选择轮廓本轮5.114ms，没有新的轮廓算法改动或提速声明。
+- 开启clip oracle的窗口resize12次554.952ms，含逐控件旧计算对照开销，不与上轮无oracle372.744ms比较；尚未取得窗口整体resize改善证据。没有人工UI/硬件呈现验收。
+- 正式产物仍为native/build/Release/moonsprite-native.exe。修改本地保存，未自动提交推送。
+
+
+## 2026-11-06：工具栏空尺寸事件
+
+- editor_tools.cpp：属性控件与工具轨道仅在矩形变化时setBounds；PixelEntry保留每次属性布局resize以更新文字/后缀/光标视口。finishToolScrollLayout在水平偏移为0时跳过相同尺寸重放及子控件resize，仍更新可见性与输入视口，非零偏移逻辑保持。
+- 上游MIT Widget::setBounds无条件调用onResize；此次只在业务层跳过空操作，没有修改上游。依据legacy EditorToolOptions.tsx与useToolOptionsScroll.ts保留布局与滚动语义，没有采用隐藏/显示批处理以免影响focus/capture。
+- MOONSPRITE_TOOL_LAYOUT_REFERENCE在smoke中恢复本轮三处旧无条件路径；同一正式exe旧/新ui-geometry均exit0，浮动移动/resize framebuffer等价通过。26次tool-options-layout累计旧23.9267ms、新21.2785ms（约11%）；窗口12次旧492.010ms、新457.073ms，另一次新535.226ms，环境波动明显，不能声称窗口整体稳定提速。
+- 正式Release两次构建exit0；tool-property-shortcuts、modifier-brush-performance检查exit0。tool-rail-check在写出raster enabled/mask enabled/complete后退出发生访问异常0xC0000005；同一exe恢复旧路径仍同样失败，此项不作为通过。退出异常的根因尚未定位，此结论只排除本轮三处空事件跳过作为必要触发条件，不代表全部历史代码无缺陷。
+- 来源覆盖与diff检查结果另见构建日志。修改未自动提交、推送，未做人工UI/硬件延迟验收。
+
+
+## 2026-11-06：空裁剪绘制检查
+
+- paintTimelineGrid在clipColumn后检查空clip，恢复saveClip后立即返回，避免全遮挡时计算视口/图层树/轮廓。MOONSPRITE_EMPTY_CLIP_REFERENCE在smoke中恢复旧路径。不改变有可绘像素时的绘制或输入。
+- 同一正式exe旧/新ui-geometry均exit0，浮动移动/resize framebuffer等价。窗口12次408.331ms/416.215ms；timeline-paint均1913次，累计110.045ms/120.306ms。未观察到收益，此防御性快速返回不是当前窗口瓶颈的解决证据。
+- large-timeline、group-timeline检查exit0；大时间轴滚动本轮18.0736ms，环境波动，不作新增提速声明。窗口整体重绘仍待进一步定位；工具轨道退出访问异常也仍未解决。正式Release构建exit0，修改仅本地保存。
+
+
+## 2026-11-06：时间轴与damage不相交时跳过网格计算
+
+- 空clip快速返回未解决问题，进一步检查发现非空damage可能完全落在时间轴之外。paintTimelineGrid先独立绘制loop track，再以row/frame/header material viewport并集（额外扩大2*uiScale保留选择clip外扩）判断damage；不相交则恢复clip返回，避免链接和outline计算。没有收窄任何现有绘制clip。
+- layer/frame拖动插入线不受上述视口clip限制，因此其活动手势显式禁用此优化；保留旧完整路径。GIF插入线仍在frame viewport内裁剪。MOONSPRITE_GRID_DAMAGE_REFERENCE在smoke中恢复旧工作。
+- 同一exe旧/新窗口几何检查均exit0，timeline-paint1913次累计152.871ms/63.113ms，窗口12次590.788ms/423.533ms（单轮环境有波动，不作严格整应用加速比例）。加上插入线保守例外后最终Release构建exit0；最终无profile窗口12次428.012ms、大时间轴滚动10.1197ms。
+- 最终正式程序ui-geometry、large-timeline、group-timeline、playback-floating全部exit0；含浮动move/resize framebuffer、滚动partial/full framebuffer、分组/选择alpha命中和循环节捕获拖动检查。前一构建timeline-density亦exit0，最终差异只放宽插入线手势绘制范围。旧工具轨道退出异常未在此轮解决。
+- 来源覆盖及diff检查通过。修改本地保存，未提交推送；真实Windows拖动和硬件呈现延迟尚未验收。

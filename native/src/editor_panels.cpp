@@ -1,6 +1,7 @@
 #include "editor_implementation.h"
 #include "editor.h"
 #include "free_tile_instances_panel.h"
+#include <unordered_set>
 
 namespace moon::editor {
 // PreviewPanel.tsx zoom-shortcut handler; reuse the existing anchored preview view.
@@ -227,6 +228,7 @@ void Editor::raiseFloatingAt(gfx::Point point){
   }
 
 void Editor::raiseDockWidgets() {
+    InteractionScope stackingScope(12,"widget-stacking");
     layoutFloatingColumnActions();
 
     const auto geometry=columnGeometry(uiLogical(bounds()));
@@ -237,7 +239,10 @@ void Editor::raiseDockWidgets() {
 
     if(modalSurface_){modalSurface_->setVisible(pending_!=Pending::None);if(pending_!=Pending::None && modalSurface_->bounds()!=dialogDisplayBounds())modalSurface_->setBounds(dialogDisplayBounds());}
 
-    auto raise=[this](ui::Widget* w){if(w && w->parent()==this)moveChildTo(w,children().back());};
+    // Build the requested order first. Repeatedly moving every child to the
+    // back shifts the entire sibling vector even when the final order is stable.
+    std::vector<ui::Widget*> requested;
+    auto raise=[this,&requested](ui::Widget* w){if(w && w->parent()==this)requested.push_back(w);};
 
     auto column=[&](int id){
 
@@ -275,6 +280,13 @@ void Editor::raiseDockWidgets() {
     // Legacy rail180, floating220+, rail with an open flyout240.
     if(toolRailFlyoutOpen_ && pending_==Pending::None){for(auto button:toolRail_)raise(button);raise(railScrollBar_);}
     if(dockFeedback_ && !dockFeedback_->hasFlags(ui::HIDDEN))raise(dockFeedback_);
+    std::unordered_set<ui::Widget*> seen;std::vector<ui::Widget*> suffix;suffix.reserve(requested.size());
+    // Raising a widget twice gives its last occurrence priority.
+    for(auto at=requested.rbegin();at!=requested.rend();++at)if(seen.insert(*at).second)suffix.push_back(*at);
+    const bool ordered=std::equal(suffix.begin(),suffix.end(),children().rbegin());
+    if(smoke_ && _wgetenv(L"MOONSPRITE_STACK_REFERENCE")){auto expected=children();for(auto w:requested){expected.erase(std::find(expected.begin(),expected.end(),w));expected.push_back(w);}auto optimized=children();for(auto at=suffix.rbegin();at!=suffix.rend();++at){optimized.erase(std::find(optimized.begin(),optimized.end(),*at));optimized.push_back(*at);}if(expected!=optimized)throw std::runtime_error("Widget stacking optimization differs from sequential raises");}
+    if(!ordered)for(auto at=suffix.rbegin();at!=suffix.rend();++at)if(children().back()!=*at)moveChildTo(*at,children().back());
+
 
   }
 

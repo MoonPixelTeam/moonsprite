@@ -1149,7 +1149,9 @@ void Editor::placePropertyControl(ui::Widget* control,int x,int width) {
 
     const int height=(!selectionControls_.empty() && control==selectionControls_[0].first) || (button && !button->icon.empty() && button->caption.empty())?propertyIconHeight:button && button->labelOnly?Layout::optionsHeight:textControlHeight;
 
-    control->setBounds(uiPhysical(gfx::Rect(x,uiLogical(bounds()).y+optionsTop()+(Layout::optionsHeight-height)/2,propertyControlWidth(control,width),height)));
+    const auto next=uiPhysical(gfx::Rect(x,uiLogical(bounds()).y+optionsTop()+(Layout::optionsHeight-height)/2,propertyControlWidth(control,width),height));
+    // Entries also refresh text/caret viewport after content and suffix changes.
+    if(control->bounds()!=next || dynamic_cast<PixelEntry*>(control) || (smoke_ && _wgetenv(L"MOONSPRITE_TOOL_LAYOUT_REFERENCE")))control->setBounds(next);
 
   }
 
@@ -1178,7 +1180,7 @@ void Editor::layoutToolRail() {
  struct AdvancedVisibility{Editor& e;~AdvancedVisibility(){e.applyAdvancedVisibility();}} advancedVisibility{*this};
  if(!railVerticalScrollBar_||!railHorizontalScrollBar_)return;const auto rc=uiLogical(clientBounds());const auto geometry=Layout::rail(rc,toolRailSide_,int(toolRail_.size()));const auto viewport=toDisplay(geometry.viewport);auto active=geometry.horizontal?railHorizontalScrollBar_:railVerticalScrollBar_;auto inactive=geometry.horizontal?railVerticalScrollBar_:railHorizontalScrollBar_;inactive->setVisible(false);railScrollBar_=active;
  const int page=geometry.page*uiScale,total=geometry.total*uiScale;railScrollPixels_=std::clamp(railScrollPixels_,0,std::max(0,total-page));
- for(std::size_t i=0;i<toolRail_.size();++i){auto b=toolRail_[i];auto box=geometry.viewport;box.w=Layout::toolSize;box.h=Layout::toolHeight;if(geometry.horizontal)box.x+=int(i)*geometry.step;else box.y+=int(i)*geometry.step;b->setBounds(toDisplay(box).offset(geometry.horizontal?-railScrollPixels_:0,geometry.horizontal?0:-railScrollPixels_));b->paletteViewport=[viewport]{return viewport;};b->setVisible(!homeOpen_&&viewport.intersects(b->bounds()));}
+ for(std::size_t i=0;i<toolRail_.size();++i){auto b=toolRail_[i];auto box=geometry.viewport;box.w=Layout::toolSize;box.h=Layout::toolHeight;if(geometry.horizontal)box.x+=int(i)*geometry.step;else box.y+=int(i)*geometry.step;const auto next=toDisplay(box).offset(geometry.horizontal?-railScrollPixels_:0,geometry.horizontal?0:-railScrollPixels_);if(b->bounds()!=next || (smoke_ && _wgetenv(L"MOONSPRITE_TOOL_LAYOUT_REFERENCE")))b->setBounds(next);b->paletteViewport=[viewport]{return viewport;};b->setVisible(!homeOpen_&&viewport.intersects(b->bounds()));}
  active->setDockBounds(toDisplay(geometry.bar));active->configure(total,page,railScrollPixels_);active->wheelStep=geometry.step*uiScale;active->setVisible(!homeOpen_&&geometry.overflow);active->setEnabled(pending_==Pending::None);
 }
 
@@ -1207,7 +1209,7 @@ void Editor::finishToolScrollLayout() {
 
     toolRowScroll_=std::clamp(toolRowScroll_,0,std::max(0,total-viewport.w));
 
-    for(auto w:controls){scrollViewports_[w]=viewport;if(w->children().empty())w->setBounds(w->bounds().offset(-toolRowScroll_,0));else {w->setBoundsQuietly(w->bounds().offset(-toolRowScroll_,0));for(auto child:w->children())child->setBounds(child->bounds().offset(-toolRowScroll_,0));}w->setVisible(viewport.intersects(w->bounds()));if(auto b=dynamic_cast<PixelButton*>(w))b->paletteViewport=[viewport]{return viewport;};if(auto entry=dynamic_cast<PixelEntry*>(w))entry->paletteViewport=[viewport]{return viewport;};}
+    for(auto w:controls){scrollViewports_[w]=viewport;if(toolRowScroll_!=0 || (smoke_ && _wgetenv(L"MOONSPRITE_TOOL_LAYOUT_REFERENCE"))){if(w->children().empty())w->setBounds(w->bounds().offset(-toolRowScroll_,0));else {w->setBoundsQuietly(w->bounds().offset(-toolRowScroll_,0));for(auto child:w->children())child->setBounds(child->bounds().offset(-toolRowScroll_,0));}}w->setVisible(viewport.intersects(w->bounds()));if(auto b=dynamic_cast<PixelButton*>(w))b->paletteViewport=[viewport]{return viewport;};if(auto entry=dynamic_cast<PixelEntry*>(w))entry->paletteViewport=[viewport]{return viewport;};}
 
     for(auto b:selectionModeButtons_)if(b)b->paletteViewport=[viewport]{return viewport;};
 
@@ -1218,6 +1220,7 @@ void Editor::finishToolScrollLayout() {
   }
 
 void Editor::layoutToolOptions() {
+    InteractionScope optionsScope(13,"tool-options-layout");
     if(imagePaintModeDropdown_)imagePaintModeDropdown_->setVisible(false);
     if(drawingAnchorButton_){drawingAnchorButton_->setVisible(false);drawingAnchorPresetButton_->setVisible(false);}
 

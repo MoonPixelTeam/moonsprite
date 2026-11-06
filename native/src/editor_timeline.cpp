@@ -1155,8 +1155,15 @@ std::vector<Editor::TimelineOutline> Editor::timelineOutlines()const{
   auto selected=[&](int c){return std::find(maskVisualSlots.begin(),maskVisualSlots.end(),std::make_pair(visual.owner(r+layerScroll_),state.frames[c+frameScroll_].id))!=maskVisualSlots.end();};
   for(int c=0;c<cols;){if(!selected(c)){++c;continue;}const int first=c;while(c<cols&&selected(c))++c;add({x+timelineLabelWidth()+first*timelineFrameWidth(),y+timelineHeaderHeight()+r*timelineRowHeight(),(c-first)*timelineFrameWidth()+1,timelineRowHeight()+1},{-frameScrollRemainder_,-layerScrollRemainder_},timelineFrameViewport());}
  }
- std::vector<TimelineSlot> slots=virtualSlots_;const auto& d=timelineGesture_;const bool moving=d.kind==3&&d.canMove&&d.moved;const auto* anchor=moving?document.timeline().findCelById(d.anchor):nullptr;const auto* target=moving?document.timeline().findCelById(d.realTargetCel):nullptr;int dr=0,dc=0;if(anchor&&target){dr=int(document.timeline().layerIndex(target->layerId))-int(document.timeline().layerIndex(anchor->layerId));dc=visual.frameIndex(target->frameId)-visual.frameIndex(anchor->frameId);slots=visual.movedGroups(d.virtualSlots,*anchor,*target);}if(selectedMaskSlots_.empty())for(const auto& id:document.timelineSelection().cels){const auto* cel=document.timeline().findCelById(id);if(!cel)continue;int r=int(document.timeline().layerIndex(cel->layerId))+dr,c=visual.frameIndex(cel->frameId)+dc;if(r>=0&&r<int(state.layers.size())&&c>=0&&c<int(state.frames.size()))slots.push_back({state.layers[r].id,state.frames[c].id});}
- int top=rows,bottom=-1,left=cols,right=-1;for(const auto& slot:slots){int r=visual.index(slot.rowId)-layerScroll_,c=visual.frameIndex(slot.frameId)-frameScroll_;if(r<0||r>=rows||c<0||c>=cols)continue;top=std::min(top,r);bottom=std::max(bottom,r);left=std::min(left,c);right=std::max(right,c);}if(bottom>=0)add({x+timelineLabelWidth()+left*timelineFrameWidth(),y+timelineHeaderHeight()+top*timelineRowHeight(),(right-left+1)*timelineFrameWidth()+1,(bottom-top+1)*timelineRowHeight()+1},{-frameScrollRemainder_,-layerScrollRemainder_},timelineFrameViewport());return out;
+ std::vector<TimelineSlot> slots=virtualSlots_;const auto& d=timelineGesture_;const bool moving=d.kind==3&&d.canMove&&d.moved;const auto* anchor=moving?document.timeline().findCelById(d.anchor):nullptr;const auto* target=moving?document.timeline().findCelById(d.realTargetCel):nullptr;int dr=0,dc=0;if(anchor&&target){dr=int(document.timeline().layerIndex(target->layerId))-int(document.timeline().layerIndex(anchor->layerId));dc=visual.frameIndex(target->frameId)-visual.frameIndex(anchor->frameId);slots=visual.movedGroups(d.virtualSlots,*anchor,*target);}std::unordered_set<std::string> outlineVisibleRows;for(int r=0;r<rows;++r)if(const auto* node=visual.at(r+layerScroll_))outlineVisibleRows.insert(node->id);if(selectedMaskSlots_.empty())for(const auto& id:document.timelineSelection().cels){const auto* cel=document.timeline().findCelById(id);if(!cel)continue;int r=int(document.timeline().layerIndex(cel->layerId))+dr,c=visual.frameIndex(cel->frameId)+dc;if(r>=0&&r<int(state.layers.size())&&c>=frameScroll_&&c<frameScroll_+cols&&outlineVisibleRows.count(state.layers[r].id))slots.push_back({state.layers[r].id,state.frames[c].id});}
+ // Only visible rows can contribute. The former visual.index() linearly
+ // searched every row for every selected slot, including offscreen slots.
+ std::unordered_map<std::string,int> visibleRows;visibleRows.reserve(rows);
+ for(int r=0;r<rows;++r)if(const auto* node=visual.at(r+layerScroll_))visibleRows.emplace(node->id,r);
+ int top=rows,bottom=-1,left=cols,right=-1;
+ for(const auto& slot:slots){const auto found=visibleRows.find(slot.rowId);if(found==visibleRows.end())continue;const int r=found->second,c=visual.frameIndex(slot.frameId)-frameScroll_;if(c<0||c>=cols)continue;top=std::min(top,r);bottom=std::max(bottom,r);left=std::min(left,c);right=std::max(right,c);}
+ if(smoke_&&_wgetenv(L"MOONSPRITE_OUTLINE_REFERENCE")){auto referenceSlots=slots;if(selectedMaskSlots_.empty())for(const auto& id:document.timelineSelection().cels)if(const auto* cel=document.timeline().findCelById(id)){int r=int(document.timeline().layerIndex(cel->layerId))+dr,c=visual.frameIndex(cel->frameId)+dc;if(r>=0&&r<int(state.layers.size())&&c>=0&&c<int(state.frames.size()))referenceSlots.push_back({state.layers[r].id,state.frames[c].id});}int t=rows,b=-1,lft=cols,rgt=-1;for(const auto& slot:referenceSlots){int r=visual.index(slot.rowId)-layerScroll_,c=visual.frameIndex(slot.frameId)-frameScroll_;if(r<0||r>=rows||c<0||c>=cols)continue;t=std::min(t,r);b=std::max(b,r);lft=std::min(lft,c);rgt=std::max(rgt,c);}if(t!=top||b!=bottom||lft!=left||rgt!=right)throw std::runtime_error("Timeline outline visible bounds differ from reference");}
+ if(bottom>=0)add({x+timelineLabelWidth()+left*timelineFrameWidth(),y+timelineHeaderHeight()+top*timelineRowHeight(),(right-left+1)*timelineFrameWidth()+1,(bottom-top+1)*timelineRowHeight()+1},{-frameScrollRemainder_,-layerScrollRemainder_},timelineFrameViewport());return out;
 }
 
 void Editor::paintTimelineGrid(ui::Graphics& g) {InteractionScope interactionScope(10,"timeline-paint");
@@ -1164,7 +1171,11 @@ void Editor::paintTimelineGrid(ui::Graphics& g) {InteractionScope interactionSco
     if(!documentOpen_ || !columnShown(2))return;
     if(integratedFreeTileInstances())return;
 
-    g.saveClip();clipColumn(g,2,true);paintLoopTrack(g);{
+    g.saveClip();clipColumn(g,2,true);
+    // Occluded child background passes can have no drawable pixels. Avoid
+    // rebuilding rows, viewports and selection outlines for an empty clip.
+    if(g.getClipBounds().isEmpty() && !(smoke_ && _wgetenv(L"MOONSPRITE_EMPTY_CLIP_REFERENCE"))){g.restoreClip();return;}
+    paintLoopTrack(g);{
 
     auto backgroundHover=[&](TimelineButton* button){
 
@@ -1176,7 +1187,25 @@ void Editor::paintTimelineGrid(ui::Graphics& g) {InteractionScope interactionSco
 
     // Their temporarily hidden flag during laf's background pass is not layout visibility.
 
-    for(const auto& buttons:{layerRows_,layerEyes_,layerLocks_,layerAutoLinks_,frameHeaders_,frameCells_,hiddenCelThumbnails_,hiddenMaskThumbnails_,hiddenMaskLinks_})for(auto b:buttons) {
+    // Viewports are immutable during this synchronous composition. Input keeps
+    // its live callbacks; paint reuses one clip per control category.
+    const auto rowMaterial=timelineMaterialViewport(timelineRowViewport());
+    const auto frameMaterial=timelineMaterialViewport(timelineFrameViewport());
+    const auto headerMaterial=timelineMaterialViewport(timelineFrameViewport(true),true);
+    // All grid primitives are clipped to these viewports. Selection materials
+    // extend two physical skin pixels beyond them; retain that overhang.
+    auto gridMaterial=rowMaterial|frameMaterial|headerMaterial;
+    gridMaterial.enlarge(2*uiScale);
+    const bool insertion=timelineGesture_.kind && timelineGesture_.kind!=3 && timelineGesture_.canMove && timelineGesture_.moved;
+    if(!insertion && !gridMaterial.offset(-bounds().origin()).intersects(g.getClipBounds()) &&
+       !(smoke_ && _wgetenv(L"MOONSPRITE_GRID_DAMAGE_REFERENCE"))){g.restoreClip();return;}
+    const bool referenceClip=smoke_ && _wgetenv(L"MOONSPRITE_TIMELINE_CLIP_REFERENCE");
+
+    // Keep vector identity and slot index instead of copying vectors and searching
+    // them again for every painted control. Preserve the original paint order.
+    for(const auto* buttons:{&layerRows_,&layerEyes_,&layerLocks_,&layerAutoLinks_,&frameHeaders_,&frameCells_,&hiddenCelThumbnails_,&hiddenMaskThumbnails_,&hiddenMaskLinks_})for(std::size_t slot=0;slot<buttons->size();++slot) {
+      auto b=(*buttons)[slot];
+      const bool header=buttons==&frameHeaders_;
 
       if(!b->timelineVisible)continue;
 
@@ -1188,23 +1217,22 @@ void Editor::paintTimelineGrid(ui::Graphics& g) {InteractionScope interactionSco
 
       b->timelineBackgroundHover=backgroundHover(b);
 
-      g.saveClip();if(b->paletteViewport)g.clipRect(timelineMaterialViewport(b->paletteViewport(),std::find(frameHeaders_.begin(),frameHeaders_.end(),b)!=frameHeaders_.end()).offset(-bounds().origin()));
+      const auto material=header?headerMaterial:buttons==&frameCells_?frameMaterial:rowMaterial;
+      if(referenceClip && b->paletteViewport && material!=timelineMaterialViewport(b->paletteViewport(),header))
+        throw std::runtime_error("Timeline shared paint clip differs from live callback");
+      g.saveClip();if(b->paletteViewport)g.clipRect(gfx::Rect(material).offset(-bounds().origin()));
 
       b->paintTimelineContent(g,gfx::Rect(0,0,box.w/uiScale,box.h/uiScale),box.origin());
 
       if(timelineThumbnailSize()){
 
-        const auto cell=std::find(frameCells_.begin(),frameCells_.end(),b);
-
-        if(cell!=frameCells_.end()){const auto slot=std::size_t(cell-frameCells_.begin());if(slot<thumbnailBindings_.size() && thumbnailBindings_[slot].image){const auto& image=thumbnailBindings_[slot].image;const int size=timelineThumbnailSize()*uiScale;const gfx::Rect target(box.x+(box.w-size)/2,box.y+(box.h-size)/2,size,size);g.drawSurface(image.get(),gfx::Rect(0,0,size,size),target,os::Sampling(),nullptr);}}
+        if(buttons==&frameCells_){if(slot<thumbnailBindings_.size() && thumbnailBindings_[slot].image){const auto& image=thumbnailBindings_[slot].image;const int size=timelineThumbnailSize()*uiScale;const gfx::Rect target(box.x+(box.w-size)/2,box.y+(box.h-size)/2,size,size);g.drawSurface(image.get(),gfx::Rect(0,0,size,size),target,os::Sampling(),nullptr);}}
 
       }
 
       // LayersPanel disabled-frame SVG: rising diagonal, inset 4, currentColor .72.
 
-      const auto header=std::find(frameHeaders_.begin(),frameHeaders_.end(),b);
-
-      if(header!=frameHeaders_.end()){const auto index=frameScroll_+int(header-frameHeaders_.begin());if(index<int(document.timeline().state().frames.size()) && document.timeline().state().frames[index].disabled){UiPaintScale scale(g);const auto rc=uiLogical(box);g.drawLine(gfx::rgba(gfx::getr(skin_["timelineInk"]),gfx::getg(skin_["timelineInk"]),gfx::getb(skin_["timelineInk"]),184),gfx::Point(rc.x+2,rc.y2()-3),gfx::Point(rc.x2()-3,rc.y+2));}}
+      if(header){const auto index=frameScroll_+int(slot);if(index<int(document.timeline().state().frames.size()) && document.timeline().state().frames[index].disabled){UiPaintScale scale(g);const auto rc=uiLogical(box);g.drawLine(gfx::rgba(gfx::getr(skin_["timelineInk"]),gfx::getg(skin_["timelineInk"]),gfx::getb(skin_["timelineInk"]),184),gfx::Point(rc.x+2,rc.y2()-3),gfx::Point(rc.x2()-3,rc.y+2));}}
 
       g.restoreClip();
 
@@ -1222,15 +1250,18 @@ void Editor::paintTimelineGrid(ui::Graphics& g) {InteractionScope interactionSco
 
       const int columns=timelineColumns(l);
 
-      const int rows=std::min(timelineCapacity(l),TimelineRows(document.timeline(),document.collapsedGroupIds(),!timelineHidden_).size()-layerScroll_);
+      // One immutable row view per composition, shared by all visible runs.
+      const TimelineRows visual(document.timeline(),document.collapsedGroupIds(),!timelineHidden_);
+      const int rows=std::min(timelineCapacity(l),visual.size()-layerScroll_);
 
       const auto& frames=document.timeline().state().frames;
 
       const int visible=std::min(columns,int(frames.size())-frameScroll_);
 
-      for(int row=0;!timelineHidden_&&row<rows;++row)for(int col=0;col<visible;) {
-
-        const auto* visualLayer=TimelineRows(document.timeline(),document.collapsedGroupIds(),!timelineHidden_).layer(row+layerScroll_);if(!visualLayer){++col;continue;}const auto& layer=*visualLayer;
+      for(int row=0;!timelineHidden_&&row<rows;++row) {
+        const auto* visualLayer=visual.layer(row+layerScroll_);if(!visualLayer)continue;
+        const auto& layer=*visualLayer;
+        for(int col=0;col<visible;) {
 
         const auto* left=document.timeline().findCel(layer.id,frames[frameScroll_+col].id);
 
@@ -1258,6 +1289,7 @@ void Editor::paintTimelineGrid(ui::Graphics& g) {InteractionScope interactionSco
 
         if(!timelineThumbnailSize() && col-first>1)skin_.draw(g,"timeline.linked-dot",gfx::Rect(l.workX+5+timelineLabelWidth()+(timelineFrameWidth()-7)/2+1+first*timelineFrameWidth(),l.layerTop+timelineRowsOffset()+row*timelineRowHeight()+(timelineRowHeight()-7)/2,7+(col-first-1)*timelineFrameWidth(),7));
 
+        }
       }
 
     }
