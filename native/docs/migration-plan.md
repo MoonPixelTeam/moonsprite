@@ -3040,3 +3040,10 @@ tile-connect-build.log正式Release与两核心测试构建exit0；夹具调整t
 扩大链接Paint回归为12组：横向offset -1/0/+1 × 有无局部选区 × 放置/擦除，核对精确目标格、取消无历史、单历史、源瓦片像素不变、Undo/Redo、实际重开。初次负偏移擦除样本仅有画布外不透明像素，无法断言可见画面变化；补充可见像素后通过，没有为测试更改产品语义。局部缓存与世界画布分别验证，避免把偏移表面像素直接等同canvasPixels。
 
 offset-tile-paint-build.log正式Release/两核心测试构建exit0，夹具构建offset-tile-paint-fixture-build.log exit0；完整free-tile-project-tests与tilemap-project-tests exit0（offset-tile-paint-free-test.log、offset-tile-paint-grid-test.log）；正式工作区drawing-anchor-edit-floating组合exit0，来源625文件快照及diff通过。无人工UI验收。纵向偏移、对称复杂组合及Create/Edit/Hybrid偏移等尚无本批完整证据，全量迁移仍INCOMPLETE。
+
+
+### 2026-11-07：瓦片新建链接帧入口
+
+对照legacy store/workspace-commands-animation-frame.ts::addLinkedAnimationFrame、workspace-animation-linked-cel.ts::linkCelsInRightFrame与core/animation.ts::linkAnimationFrameCels：优先选中Cel，再选中帧锚点，再活动帧；复用右侧帧，无右侧才插帧；作用域分别为选中Cel图层、全部图层、活动图层。移除原生addLinkedFrame的tilemap整篇阻断，复用既有链接帧事务；free-tile仍明确在变更前拒绝，未声称其链接模型完成。
+
+新增既有目标/末尾插帧×活动/Cel/帧三作用域六组合回归，混合普通和瓦片图层，核对不移动既有帧列、规范来源网格/像素/opacity/zIndex、未选中行独立、单历史和选择清理、Undo原数据/活动帧、Redo及实际保存重开。linked-tile-frame-build.log正式Release与两组测试构建exit0；完整free-tile-project-tests/tilemap-project-tests exit0（linked-tile-frame-free-test.log、linked-tile-frame-grid-test.log）；正式工作区drawing-anchor-edit-floating组合exit0；来源625文件快照及diff通过。无人工UI验收。全部迁移、自由Cel链接、稀疏工程准入等仍INCOMPLETE。

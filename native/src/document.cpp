@@ -520,7 +520,7 @@ void Document::deleteFrame() {
  timeline_.buildIndex();projectActiveCelOpacities();normalizeFrameDeletionSelection();captureFrameOrder(e,true);e.afterSelection=selectedFrames_;change_={0,0,width_,height_};publishChange();pushEdit(std::move(e),U"删除动画帧");
 }
 void Document::applyCelEdit(const Edit& e,bool redo){const auto& values=redo?e.afterCels:e.beforeCels;if(values.empty())return;for(const auto& value:values){auto it=std::find_if(timeline_.state_.cels.begin(),timeline_.state_.cels.end(),[&](const auto& c){return c.id==value.id;});if(it==timeline_.state_.cels.end())throw std::logic_error("Missing history cel");*it=value;}timeline_.buildIndex();if(e.beforeFrames.empty() && !e.beforeFrame.empty())activeFrameId_=redo?e.afterFrame:e.beforeFrame;change_={0,0,width_,height_};}
-void Document::addLinkedFrame(bool allLayers){if(hasTilemapContent()||hasFreeTileContent())return;
+void Document::addLinkedFrame(bool allLayers){if(hasFreeTileContent())throw std::runtime_error("Linked free tile frames are not migrated");
  cancelStroke();cancelLayerOpacity();
  // Legacy chooses a selected Cel first, then a selected frame anchor, then activity.
  const DocumentCel* selected=nullptr;const auto& cells=timelineSelection_.cels;
