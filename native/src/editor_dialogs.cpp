@@ -1354,7 +1354,7 @@ int Editor::modalPreferredHeight() const {
     if(pending_==Pending::StaticExport||pending_==Pending::GifExport){int bottom=exportScaleY()+130+(exportPresetFeedback_.empty()?0:16);if(framePngMode_&&framePngBusy())bottom=std::max(bottom,exportScaleY()+156);return DialogLayout::fit(bottom);}
     if(pending_==Pending::ColorAdjustment&&adjustmentSpec_.kind==ColorAdjustmentKind::Curves)return DialogLayout::fit(261);
 if(pending_==Pending::ColorAdjustment && adjustmentSpec_.kind!=ColorAdjustmentKind::Curves && adjustmentSpec_.kind!=ColorAdjustmentKind::GradientMap){const bool hsl=adjustmentSpec_.kind==ColorAdjustmentKind::HueSaturation,balance=adjustmentSpec_.kind==ColorAdjustmentKind::ColorBalance;const int top=DialogLayout::bodyTop+(balance?26:0),count=(hsl||balance)?3:2;return DialogLayout::fit(top+count*DialogLayout::fieldStep+((hsl||balance)?22:0)+textControlHeight);}
-    if(pending_==Pending::LayerOpacity)return 275;
+    if(pending_==Pending::LayerOpacity)return DialogLayout::fit(213+52);
     if(pending_==Pending::LoopSection)return 218;
     if(pending_==Pending::ReplaceColor)return 127;
     if(pending_==Pending::SheetImport)return 213;

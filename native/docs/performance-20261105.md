@@ -415,3 +415,11 @@ Aseprite `src/ui/manager.cpp` 的 flushRedraw 和编辑器局部 canvas invalida
 - UI捕获writeWorkspaceSizes及Model::write输出，作为同一immutable批次交给复用LatestTaskQueue的后台writer；保持原ostream格式、文件名和先sizes后panels顺序。同一queue合并最新pending，比较最新批次避免重复；工作线程不访问Editor。16ms UI timer报告失败，Property析构等待最后批次且禁用Editor回调。原两文件保存本就不是跨文件事务，本轮不宣称断电原子性。预设800ms保存机制未改动。
 - 正式Release workspace-save-async-final-build.log exit0。独立测试root+QUEUE_CHECK下ui-geometry-performance同步/异步均exit0，3次保存UI耗时sync5.555ms/max1.980→async0.408ms/max0.151；最终workspace-sizes.txt和workspace-panels.txt逐字节一致。此为提交耗时，磁盘完成时间另计。queue-check40次两字段更新最终39/panels-39、文件阻挡目录失败通知、失败后恢复、析构两文件最终值全部通过；包含既有几何等价及局部/全量绘制。
 - 上一轮docking-check弹窗命中及workspace-check首页滚动条失败仍未修复，本轮没有据几何检查宣称两项通过。来源625覆盖/evidence及diff通过后提交推送dev，整体性能目标尚未完成。仅源码/登记/记录提交，本地报告及用户数据保留。
+
+
+## 2026-11-07：补齐工作区性能回归的两个旧失败点
+
+- docking 的按钮命中失败是实际布局重叠：LayerOpacity 固定高度275，但说明字段底为213+52=265，footer起点249。改用既有 DialogLayout::fit(213+52)=297，含6px组间距、20px操作行和6px底内边距。不改变legacy LayerHeaderProperties的说明/关闭语义。保留原模态命中和按下capture检查，并加说明/按钮间距断言。对照Aseprite MIT Widget::pick/moveChildTo后未发现需要改变本轮叠放算法的证据。
+- workspace 的home scrollbar失败是fixture仍选择近期项目页，该页已经使用独立RecentProjectsPane并显式隐藏旧列表滚动条。fixture改为普通列表section2，退出恢复原section；不修改产品首页行为。
+- 正式Release modal-footer-regression-build.log exit0；ui-geometry-performance-check、dialog-geometry-check、recent-projects-check均exit0。docking已越过原模态命中/capture断言，随后在Palette split corner lost resize hit after window size change失败；workspace已越过home scrollbar，随后在Legacy gradient controls失败。两项完整检查仍非通过，后续缺口留待定位。本轮没有新增性能提速数字。
+- 人工查看本轮panel-docking-dialog-focus-smoke.bmp：关闭按钮位于说明区下方，弹窗覆盖悬浮栏目；该离屏render fixture不覆盖全部真实窗口控件绘制，不宣称完整视觉验收。来源625文件/evidence通过，整体迁移仍INCOMPLETE。本地生成物及用户数据保留。

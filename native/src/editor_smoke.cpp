@@ -772,11 +772,11 @@ void Editor::smokeAllScrollBars() {
 
     const auto savedDocument=document;const auto savedDock=docking_;const auto savedBounds=bounds(),savedCanvas=canvas_,savedPreview=previewPanel_->bounds();const auto savedEntries=homeEntries_;
 
-    const bool savedHome=homeOpen_,savedOpen=documentOpen_,savedLayers=layersPanelOpen_;const int savedPreferenceSection=preferenceSection_,savedPreferenceNav=preferenceNavPixels_,savedPreferenceContent=preferenceContentPixels_;const double savedZoom=zoom_;const auto savedPending=pending_;const auto savedError=openError_,savedTitle=errorTitle_;const auto savedModal=modalGeometry_;
+    const bool savedHome=homeOpen_,savedOpen=documentOpen_,savedLayers=layersPanelOpen_;const int savedHomeSection=homeSection_,savedPreferenceSection=preferenceSection_,savedPreferenceNav=preferenceNavPixels_,savedPreferenceContent=preferenceContentPixels_;const double savedZoom=zoom_;const auto savedPending=pending_;const auto savedError=openError_,savedTitle=errorTitle_;const auto savedModal=modalGeometry_;
 
     const int savedLayer=layerScroll_,savedFrame=frameScroll_,savedLayerRem=layerScrollRemainder_,savedFrameRem=frameScrollRemainder_,savedTool=toolRowScroll_,savedRail=railScrollPixels_,savedHomePixels=homeScrollPixels_,savedErrorPixels=errorScrollPixels_;
 
-    struct Restore {std::function<void()> run;~Restore(){run();}} restore{[&]{document=savedDocument;docking_=savedDock;homeEntries_=savedEntries;homeOpen_=savedHome;documentOpen_=savedOpen;layersPanelOpen_=savedLayers;zoom_=savedZoom;canvas_=savedCanvas;pending_=savedPending;openError_=savedError;errorTitle_=savedTitle;modalGeometry_=savedModal;layerScroll_=savedLayer;frameScroll_=savedFrame;layerScrollRemainder_=savedLayerRem;frameScrollRemainder_=savedFrameRem;toolRowScroll_=savedTool;railScrollPixels_=savedRail;homeScrollPixels_=savedHomePixels;errorScrollPixels_=savedErrorPixels;preferenceSection_=savedPreferenceSection;preferenceNavPixels_=savedPreferenceNav;preferenceContentPixels_=savedPreferenceContent;setBounds(savedBounds);previewPanel_->setBounds(savedPreview);refresh();}};
+    struct Restore {std::function<void()> run;~Restore(){run();}} restore{[&]{document=savedDocument;docking_=savedDock;homeEntries_=savedEntries;homeSection_=savedHomeSection;homeOpen_=savedHome;documentOpen_=savedOpen;layersPanelOpen_=savedLayers;zoom_=savedZoom;canvas_=savedCanvas;pending_=savedPending;openError_=savedError;errorTitle_=savedTitle;modalGeometry_=savedModal;layerScroll_=savedLayer;frameScroll_=savedFrame;layerScrollRemainder_=savedLayerRem;frameScrollRemainder_=savedFrameRem;toolRowScroll_=savedTool;railScrollPixels_=savedRail;homeScrollPixels_=savedHomePixels;errorScrollPixels_=savedErrorPixels;preferenceSection_=savedPreferenceSection;preferenceNavPixels_=savedPreferenceNav;preferenceContentPixels_=savedPreferenceContent;setBounds(savedBounds);previewPanel_->setBounds(savedPreview);refresh();}};
 
     auto check=[](bool okay,const char* message){if(!okay)throw std::runtime_error(message);};
 
@@ -900,7 +900,7 @@ void Editor::smokeAllScrollBars() {
 
     setBounds(gfx::Rect(17,23,640,360));refresh();railScrollPixels_=0;layoutToolRail();drag(railScrollBar_,true);check(railScrollPixels_>0,"Small window tool rail scrollbar failed");
 
-    setBounds(gfx::Rect(17,23,800,600));refresh();homeOpen_=true;homeEntries_.clear();for(int i=0;i<24;++i)homeEntries_.push_back({U"滚动回归",{}, {}});homeScrollPixels_=0;layoutHome();drag(homeScrollBar_,true);check(homeScrollPixels_>0 && homeScrollPixels_%(28*uiScale)!=0,"Home list drag still snaps to whole items");homeOpen_=false;
+    setBounds(gfx::Rect(17,23,800,600));refresh();homeOpen_=true;homeSection_=2;homeEntries_.clear();for(int i=0;i<24;++i)homeEntries_.push_back({U"滚动回归",{}, {}});homeScrollPixels_=0;layoutHome();drag(homeScrollBar_,true);check(homeScrollPixels_>0 && homeScrollPixels_%(28*uiScale)!=0,"Home list drag still snaps to whole items");homeOpen_=false;
 
     setBounds(gfx::Rect(17,23,800,600));openError_=U"";for(int i=0;i<80;++i)openError_+=U"较长的错误信息\n";pending_=Pending::OpenError;errorScrollPixels_=0;layoutModal();drag(errorScrollBar_,true);check(errorScrollPixels_>0,"Error text scrollbar failed");
 
@@ -2603,6 +2603,8 @@ void Editor::smokeDocking(const std::filesystem::path& directory) {
     focusWidgetOverlay(columnClose_[0]);check(indexOf(floatingSurfaces_[0])<indexOf(modalSurface_),"Background keyboard focus bypassed modal barrier");
 
     focusWidgetOverlay(paletteInput_);check(dialogFocus_>groupFocus(0),"Keyboard/control focus did not raise dialog");
+
+    check(layerDescription_->bounds().y2()+UiSpacing::group*uiScale<=keep_->bounds().y,"Layer description overlaps dialog footer");
 
     check(frontWidgetAt(keep_->bounds().center())==keep_,"Modal surface intercepted the visible dialog button");
 
