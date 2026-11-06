@@ -3031,3 +3031,12 @@ tile-connect-build.log正式Release与两核心测试构建exit0；夹具调整t
 新增放置/擦除两组合回归，包含无私有载荷的两级别名链，检查begin/cancel无历史、单次提交、来源/别名共享像素、资源不变、精确链保留、Undo/Redo及实际保存重开。linked-tile-paint-build.log正式Release及两组测试构建exit0；完整free-tile-project-tests和tilemap-project-tests exit0（linked-tile-paint-free-test.log、linked-tile-paint-grid-test.log）；正式工作区drawing-anchor-edit-floating组合exit0；来源625文件快照和diff通过，无人工UI验收。
 
 本批仅推进标准布局的Paint笔画。偏移/非标准布局、多目标、自由瓦片链接和稀疏准入等仍待迁移，整体INCOMPLETE。用户数据、缓存和生成物保留且不提交。
+
+
+### 2026-11-07：偏移瓦片Paint世界坐标
+
+对照legacy core/tilemap.ts::tilemapCellIndexAtPoint/Bounds，Paint指针先减表面offset再取格；选区按世界坐标检测，镜像格中心亦包含offset。原生Paint笔画应用此转换，将已存在cellOffsetLayout格子历史用于偏移来源，保持规范来源及别名拓扑，避免位置偏移后画错格。
+
+扩大链接Paint回归为12组：横向offset -1/0/+1 × 有无局部选区 × 放置/擦除，核对精确目标格、取消无历史、单历史、源瓦片像素不变、Undo/Redo、实际重开。初次负偏移擦除样本仅有画布外不透明像素，无法断言可见画面变化；补充可见像素后通过，没有为测试更改产品语义。局部缓存与世界画布分别验证，避免把偏移表面像素直接等同canvasPixels。
+
+offset-tile-paint-build.log正式Release/两核心测试构建exit0，夹具构建offset-tile-paint-fixture-build.log exit0；完整free-tile-project-tests与tilemap-project-tests exit0（offset-tile-paint-free-test.log、offset-tile-paint-grid-test.log）；正式工作区drawing-anchor-edit-floating组合exit0，来源625文件快照及diff通过。无人工UI验收。纵向偏移、对称复杂组合及Create/Edit/Hybrid偏移等尚无本批完整证据，全量迁移仍INCOMPLETE。
