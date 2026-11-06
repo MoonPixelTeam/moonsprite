@@ -1205,6 +1205,17 @@ void Editor::paintTimelineGrid(ui::Graphics& g) {InteractionScope interactionSco
     // Viewports are immutable during this synchronous composition. Input keeps
     // its live callbacks; paint reuses one clip per control category.
     const auto paintLayout=columnLayout(uiLogical(clientBounds()),2);
+    const bool insertion=timelineGesture_.kind && timelineGesture_.kind!=3 && timelineGesture_.canMove && timelineGesture_.moved;
+    // Conservative union of every scrollbar combination, including minimum
+    // viewports and selection overhang. Loop track has already painted above.
+    const int gridX=paintLayout.workX+5,rowY=paintLayout.layerTop+timelineRowsOffset();
+    const int gridRight=gridX+std::max(std::max(1,paintLayout.workW-10)+6,timelineLabelWidth()+6);
+    const int gridBottom=rowY+std::max(1,paintLayout.bottom-rowY-6)+6;
+    auto coarseMaterial=uiPhysical(gfx::Rect(gridX,rowY-timelineHeaderHeight(),gridRight-gridX,gridBottom-rowY+timelineHeaderHeight()));
+    coarseMaterial.enlarge(2*uiScale);
+    const bool compareEarly=smoke_ && _wgetenv(L"MOONSPRITE_GRID_EARLY_REFERENCE");
+    if(!insertion && !gfx::Rect(coarseMaterial).offset(-bounds().origin()).intersects(g.getClipBounds()) && !compareEarly &&
+       !(smoke_ && _wgetenv(L"MOONSPRITE_GRID_DAMAGE_REFERENCE"))){g.restoreClip();return;}
     const auto paintMetrics=timelineScrollMetrics(paintLayout);
     const auto rowViewport=toDisplay(gfx::Rect(paintLayout.workX+5,paintLayout.layerTop+timelineRowsOffset(),paintMetrics.viewportWidth/uiScale,paintMetrics.height/uiScale));
     auto frameViewport=rowViewport;
@@ -1221,7 +1232,7 @@ void Editor::paintTimelineGrid(ui::Graphics& g) {InteractionScope interactionSco
     // extend two physical skin pixels beyond them; retain that overhang.
     auto gridMaterial=rowMaterial|frameMaterial|headerMaterial;
     gridMaterial.enlarge(2*uiScale);
-    const bool insertion=timelineGesture_.kind && timelineGesture_.kind!=3 && timelineGesture_.canMove && timelineGesture_.moved;
+    if(compareEarly && !coarseMaterial.contains(gridMaterial))throw std::runtime_error("Early grid bound excludes actual material viewport");
     if(!insertion && !gridMaterial.offset(-bounds().origin()).intersects(g.getClipBounds()) &&
        !(smoke_ && _wgetenv(L"MOONSPRITE_GRID_DAMAGE_REFERENCE"))){g.restoreClip();return;}
     const bool referenceClip=smoke_ && _wgetenv(L"MOONSPRITE_TIMELINE_CLIP_REFERENCE");

@@ -250,3 +250,10 @@ Aseprite `src/ui/manager.cpp` 的 flushRedraw 和编辑器局部 canvas invalida
 
 - 碎片背景会调用paintDocumentTab；原函数设置project strip裁剪后仍遍历所有projects，计算名称ink并准备皮肤。现检查原clipRect后的实际空clip并配对restore后返回；有像素的路径不变，不推断矩阵坐标。MOONSPRITE_PROJECT_TAB_REFERENCE恢复旧loop。沿用Aseprite MIT Graphics clip语义，无上游修改。
 - 正式Release project-tab-empty-build.log exit0；multi-document、ui-geometry-performance（局部/全量framebuffer）、drawing-pan-performance均exit0；来源覆盖625文件/diff通过。真实窗口reference/optimized/optimized/reference均exit0，均值38.745/41.025/34.018/31.112ms，无稳定提速证据。只确认无关全工程字体/皮肤准备被排除；碎片数量和窗口卡顿仍未解决。验证后提交推送dev。
+
+
+## 2026-11-06：时间轴无关碎片在metrics前排除
+
+- paintTimelineGrid原有精确damage判断位于TimelineRows/滚动指标之后。新增无需行构造的保守material范围，涵盖最小viewport、横纵6px外扩、label宽度与2px选择外扩，在metrics前排除无关碎片。paintLoopTrack保持在此前原位；活动行/帧插入手势绕过跳过。原精确检查保留。与Aseprite MIT Graphics裁剪语义一致，无上游改动。
+- MOONSPRITE_GRID_EARLY_REFERENCE执行原metrics并逐次要求保守范围包含精确material union，GRID_DAMAGE_REFERENCE同时绕过新判断。正式最终Release grid-early-final-build.log exit0；开启对照的large-timeline-performance、timeline-density、group-timeline、ui-geometry-performance全部exit0。关闭对照的ui-geometry（悬浮partial/full framebuffer）、playback-floating也exit0；来源覆盖625文件/diff通过。
+- 同二进制reference/optimized真实resize均exit0，timeline-paint累计61.421/55.693ms，self49.954/50.272ms；窗口均值42.671/49.618ms，未证明整体改善。对照额外包含边界校验，不能将全部scope差值归因提前排除。仅确认无关碎片不再构造metrics；碎片数量及整体卡顿仍未解决，验证后提交推送dev。

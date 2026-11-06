@@ -17189,6 +17189,7 @@
     },
     {
       "file": "src/editor_timeline.cpp",
+      "earlyGridDamage20261106": "Preserves legacy timeline rendering and native material overhang. After loop track paints, a conservative physical viewport union of all scrollbar combinations/minimum clamps rejects unrelated damage before TimelineRows/metrics construction. Active insertion gestures bypass early rejection. MOONSPRITE_GRID_EARLY_REFERENCE restores metrics construction and requires conservative bound contain exact material union every call. Existing GRID_DAMAGE_REFERENCE also disables early rejection; shared material/outline oracle checks retained. Aseprite MIT Graphics region/clip semantics unchanged.",
       "backgroundMetricsDamage20261106": "Keeps legacy timeline header and paired scrollbar appearance. Native paintTimelineBackground bounds label header (+1px overlapping cell) and all possible paired-bar corner positions from existing 6px scrollbar metrics formulas before constructing TimelineRows; frame/grid painting unchanged. MOONSPRITE_BACKGROUND_DAMAGE_REFERENCE restores old work. Geometry smoke compares original and optimized backgrounds pixel-for-pixel over 22 narrow damage rectangles including paired-bar corner edges, plus existing floating partial/full framebuffer. Aseprite MIT Graphics clip semantics inspected; no app code copied.",
       "classification": "legacy-partial",
       "sources": [
