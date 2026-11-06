@@ -401,3 +401,10 @@ Aseprite `src/ui/manager.cpp` 的 flushRedraw 和编辑器局部 canvas invalida
 - ViewWrites此前即使相同文本已有active/pending仍enqueue，造成冗余pending写入或替换。现比较最新排队状态（优先pending，否则active），相同则返回。A/B/A不能仅看active A而丢弃最终A；不增加持久成功缓存，idle或失败后的重复保存仍重试。沿用legacy LatestTaskQueue语义及原native原子写入。
 - 受控runner用promise固定第一任务完成时机，验证相同active不创建pending、相同pending保留对象、A/B/A最终执行A/A；释放gate后再断言，避免失败时析构等待死锁。真实IO两文档最终值、失败恢复、析构收尾检查保留。首次测试构造的空writer会被正常idle清理，已调整为先启动受控active再注入，最终正式构建view-save-dedup-final-build.log exit0。
 - 独立smoke测试root下view-rotation（含受控顺序和真实IO）、view-zoom-shortcuts、drawing-pan-performance均exit0。来源覆盖/evidence及diff通过；仅确认冗余任务消除，无新增整体提速数字。正式Release更新，提交源码/来源/记录推送dev，保留本地生成物和用户数据。总体性能目标继续。
+
+
+## 2026-11-07：工作区尺寸保存真实磁盘成本
+
+- saveWorkspaceSizes生产路径在UI线程同步创建目录并写workspace-sizes.txt/workspace-panels.txt，smoke默认跳过。增加固定统计（沿用MOONSPRITE_INTERACTION_PROFILE，.workspace-save.tsv），及仅smoke显式MOONSPRITE_WORKSPACE_SAVE_TEST_ROOT独立目录注入。正常保存时机/格式、原ostream写入及800ms预设保存队列不变。正式workspace-save-profile-build.log exit0。
+- 独立root docking-check37次保存累计61.928ms/max5.613ms；workspace-check1次2.439ms。确认两个文件存在，分别389/684bytes；该采样来自随后失败的检查，只证明实际保存路径被执行及耗时，不证明完整功能通过。
+- docking-check在Modal surface intercepted the visible dialog button失败；workspace-check在Scrollable region has no sheet scrollbar: home失败。新shell关闭注入/profile后同一二进制均在相同断言exit1，证明不依赖测试存储注入，但未对前一提交构建作基线比较，不能断言历史来源。ui-geometry-performance exit0；来源覆盖625/evidence及diff通过。两项缺口待定位，不将其报告为通过。本轮只提交诊断与证据，不声称新增提速；下一步需处理真实工作区保存阻塞及验收缺口。测试输出、用户数据和错误报告保留不提交。

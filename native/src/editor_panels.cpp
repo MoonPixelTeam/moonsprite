@@ -1345,11 +1345,18 @@ void Editor::writeWorkspaceSizes(std::ostream& out) const {
 void Editor::saveWorkspaceSizes() {
     queueWorkspacePresetSave();
 
-    if(smoke_)return;
-
+    const auto testRoot=smoke_?_wgetenv(L"MOONSPRITE_WORKSPACE_SAVE_TEST_ROOT"):nullptr;
+    if(smoke_&&!testRoot)return;
+    struct SaveProfile {
+      std::filesystem::path path;std::uint64_t calls=0;double total=0,maximum=0;
+      SaveProfile(){if(const auto value=_wgetenv(L"MOONSPRITE_INTERACTION_PROFILE")){path=value;path+=L".workspace-save.tsv";}}
+      ~SaveProfile(){if(path.empty())return;try{std::ofstream out(path);out<<"calls\ttotal_ms\tmax_ms\n"<<calls<<'\t'<<total<<'\t'<<maximum<<'\n';}catch(...){}}
+    };
+    static SaveProfile profile;
+    struct Scope {bool enabled=!profile.path.empty();std::chrono::steady_clock::time_point start;Scope(){if(enabled)start=std::chrono::steady_clock::now();}~Scope(){if(enabled){const auto ms=std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-start).count();++profile.calls;profile.total+=ms;profile.maximum=std::max(profile.maximum,ms);}}} scope;
     try {
 
-      const auto path=palettePreferencePath().parent_path()/"workspace-sizes.txt";std::filesystem::create_directories(path.parent_path());
+      const auto path=(testRoot?std::filesystem::path(testRoot):palettePreferencePath().parent_path())/"workspace-sizes.txt";std::filesystem::create_directories(path.parent_path());
 
       std::ofstream out(path);writeWorkspaceSizes(out);
 
