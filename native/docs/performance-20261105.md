@@ -372,3 +372,10 @@ Aseprite `src/ui/manager.cpp` 的 flushRedraw 和编辑器局部 canvas invalida
 - Skin::draw纹理/小尺寸fallback原先无论damage都为九块查询源缓存、创建repeat shader并drawRect。现读取surface device clip，按Graphics内部offset后再surface matrix映射目标块；仅scale/translate时保守拒绝完全不相交块。复杂region内部孔洞继续由Skia裁剪，不改变纹理相位、绘制尺寸/顺序或原始素材；lattice与icon路径不变。Aseprite MIT Graphics::drawRect和laf SkiaSurface::getClipBounds语义已核对。MOONSPRITE_SKIN_TILE_CLIP_REFERENCE恢复完整loop。
 - 唯一正式Release skin-tile-clip-build.log exit0。reference/optimized原生resize均exit0，16张BMP逐字节一致。skin-resize（包含选中边框逐像素alpha/hit）、ui-geometry-performance含局部/全量、window-input均exit0；来源覆盖625文件/evidence及diff通过。
 - Profile panel-skin reference23.803/optimized25.946ms，未提升；关闭截图/profile的ABBA变化样本mean24.450/23.144/23.006/23.000ms，顺序漂移，不支持整体提速结论。局部绘制密集的geometry-check ABBA完整进程1382/1291/1323/1651ms均exit0，仅辅助观察，含启动/模型计算且末次reference变慢，不能归因。保留可明确跳过裁剪外shader准备的局部优化，不声明解决整体卡顿。后续仍需定位复杂damage及背景绘制主耗时；只提交源码/来源/记录，生成物及历史本地报告保留，推送dev。
+
+
+## 2026-11-06：恒定中心皮肤用矩形填充配合原九宫格边框
+
+- 实际sheet检查panel_outer/panel_content/timeline.frame/timeline.grid中心均为单色。Skin::draw既有stretchEquivalent逐像素证明重复横纵轴恒定，包含中心恒定；该合格且尺寸充分分支现用中心原始RGBA fillRect，再通过Aseprite MIT drawSurfaceNine(drawCenter=false)绘制原边框。所有边界条件、原素材/透明度、纹理和小尺寸fallback保留；参考开关MOONSPRITE_SKIN_CENTER_REFERENCE恢复完整lattice。核对laf SkiaSurface中心透明RectType语义，无app代码复制。
+- 唯一正式Release skin-center-build.log exit0。reference/optimized原生resize均exit0、16张BMP逐字节一致；profile panel-skin228次21.883→14.772ms（约32.5%），workspace9.155→5.911ms、history8.354→5.176ms；base-fill8.164→11.280ms显示环境波动，不能把局部收益直接推广整帧。
+- 无截图/profile ABBA变化样本mean reference24.224/optimized23.641/optimized22.381/reference24.530ms，夹具平均约5.6%改善；仅CPU到flip提交，不代表DWM或真实输入显示延迟。skin-resize含逐像素alpha/hit、ui-geometry-performance局部/全量、window-input、advanced-mode均exit0。来源覆盖625文件/evidence及diff通过；保留本轮优化并推送dev。整体性能目标仍未完成，生成物/本地报告不提交。

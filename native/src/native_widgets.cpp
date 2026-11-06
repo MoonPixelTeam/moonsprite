@@ -273,8 +273,15 @@ bool Skin::draw(ui::Graphics& g,const std::string& slot,gfx::Rect rc,bool icon,i
   if(c.stretchEquivalent && p.left>0 && p.right>0 && p.top>0 && p.bottom>0 &&
      rc.w>=2*p.left && rc.w>=p.left+p.right && rc.h>=2*p.top && rc.h>=p.top+p.bottom) {
     // Reuse Aseprite MIT UI -> laf/Skia nearest-neighbor image lattice directly.
+    static const bool centerReference=std::getenv("MOONSPRITE_SKIN_CENTER_REFERENCE")!=nullptr;
+    if(!centerReference){
+      // stretchEquivalent proves the center is constant on both axes.
+      const auto color=b.pixels[p.top*b.width+p.left];
+      g.fillRect(gfx::rgba(color&255,(color>>8)&255,(color>>16)&255,color>>24),
+        gfx::Rect(rc.x+p.left,rc.y+p.top,rc.w-p.left-p.right,rc.h-p.top-p.bottom));
+    }
     g.drawSurfaceNine(c.surface.get(),gfx::Rect(0,0,b.width,b.height),
-      gfx::Rect(p.left,p.top,b.width-p.left-p.right,b.height-p.top-p.bottom),rc,true);
+      gfx::Rect(p.left,p.top,b.width-p.left-p.right,b.height-p.top-p.bottom),rc,centerReference);
     return true;
   }
   // Textured skins and undersized rectangles retain exact fixed-corner/tile
