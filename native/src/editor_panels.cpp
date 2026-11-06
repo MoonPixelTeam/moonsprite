@@ -1437,7 +1437,10 @@ void Editor::onResize(ui::ResizeEvent& ev) {
 
     if(canvas_.isEmpty()) fitCanvas();
 
-    layoutCanvasScrollBars();layoutModal();raiseDockWidgets();applyHomeVisibility();if(pending_==Pending::Preferences)layoutPreferences(modalBounds(uiLogical(clientBounds())));
+    layoutCanvasScrollBars();layoutModal();raiseDockWidgets();applyHomeVisibility();
+    // layoutModal places preferences; applyHomeVisibility restores them after
+    // any home hiding. A third pass has no intervening layout input changes.
+    if(smoke_ && _wgetenv(L"MOONSPRITE_RESIZE_PREFERENCES_REFERENCE") && pending_==Pending::Preferences)layoutPreferences(modalBounds(uiLogical(clientBounds())));
 
     applyAdvancedVisibility();
     if(viewportChanged && !advancedActive() && !smoke_ && previewPanel_)floatingViewportSaveTimer_.start();
