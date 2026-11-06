@@ -158,3 +158,10 @@ Aseprite `src/ui/manager.cpp` 的 flushRedraw 和编辑器局部 canvas invalida
 - paintTimelineBackground的header clip原先调用两次timelineScrollMetrics，corner又直接调用一次及通过timelineRowViewport调用一次。改为一次同步metrics供header/corner使用；保留clip、素材和顺序，不新增跨调用缓存。
 - MOONSPRITE_BACKGROUND_METRICS_REFERENCE在双滚动条时将派生corner row与原实时函数比较。正式Release构建exit0；开启对照的large-timeline、group-timeline、timeline-density、ui-geometry全部exit0，framebuffer等价通过。来源覆盖/diff通过。
 - 本轮带oracle窗口12次762.962ms，大时间轴scroll6.719ms、outline4.189ms。环境波动且oracle增加旧计算，不用这些数字支持整体加速结论；仅确认减少重复metrics/树构造。窗口缩放和退出异常仍未解决。验证后提交推送dev。
+
+
+## 2026-11-06：半透明字体连续像素段合并
+
+- PixelFont::draw半透明路径把每行相邻set bits合成不重叠水平fill，替代每像素一次fillRect；不透明glyph raster、基线、字距与字形不变。不基于Graphics clip推断逻辑缩放，避免坐标转换风险。
+- smokeRasterEquivalent保留旧逐像素oracle，扩展alpha1/128/254/255、scale1/2、普通/窄clip、非零Graphics origin，逐像素一致。正式skin-resize（含此oracle）、ui-geometry、wheel-performance均exit0，Release构建/来源覆盖/diff通过。
+- 本轮减少连续笔画的绘图调用，未设置独立绘制微基准，不报告整体提速比例。窗口缩放和工具轨道退出异常仍未解决；验证后提交推送dev。

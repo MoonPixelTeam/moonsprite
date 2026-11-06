@@ -4023,6 +4023,7 @@
     },
     {
       "file": "src/pixel_font.cpp",
+      "translucentRunsPerformance20261106": "Native BDF rendering adaptation: translucent glyph bitmap rows combine contiguous set bits into disjoint horizontal fills instead of one fill per lit pixel. Keeps font, bitmap, advance, baseline, alpha and ordering unchanged; opaque raster path untouched. Original pixel-fill oracle expanded to alpha1/128/254/255, scale1/2, normal/narrow clips with nonzero graphics origin. No clip inference across UiPaintScale. Formal runtime results in performance-20261105.md.",
       "classification": "user-design",
       "sources": [
         "native/.cache/aseprite/src/ui/graphics.cpp",

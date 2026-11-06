@@ -48,8 +48,14 @@ void PixelFont::draw(ui::Graphics& g,const std::u32string& text,int x,int y,gfx:
     if(gfx::geta(color)!=255) {
       // laf's color filter rounds translucent overlaps differently from the
       // original rectangles. Keep that uncommon path pixel-exact.
-      for(int j=0;j<glyph.height;++j) for(int i=0;i<glyph.width;++i)
-        if(glyph.rows[j] & (1u << (glyph.width-1-i))) g.fillRect(color,gfx::Rect(x+glyph.x+i,y+9-glyph.height-glyph.y+j,1,1));
+      // Adjacent opaque mask pixels on one row have disjoint coverage;
+      // one horizontal fill preserves alpha blending without a call per pixel.
+      for(int j=0;j<glyph.height;++j)for(int i=0;i<glyph.width;){
+        if(!(glyph.rows[j] & (1u << (glyph.width-1-i)))){++i;continue;}
+        const int first=i++;
+        while(i<glyph.width && (glyph.rows[j] & (1u << (glyph.width-1-i))))++i;
+        g.fillRect(color,gfx::Rect(x+glyph.x+first,y+9-glyph.height-glyph.y+j,i-first,1));
+      }
     } else if(glyph.width>0 && glyph.height>0) {
       auto& surface=rasterGlyphs_[it==glyphs_.end()?65534:c];
       if(!surface) {
@@ -72,7 +78,7 @@ void PixelFont::smokeRasterEquivalent() const {
   auto timing=[&](bool old){const auto start=std::chrono::steady_clock::now();for(int i=0;i<20000;++i)checksum+=(old?reference(sample):inkBounds(sample)).w;return std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-start).count();};
   const auto oldMs=timing(true),newMs=timing(false);std::cout<<"Fusion ink bounds 20000: reference_ms="<<oldMs<<" optimized_ms="<<newMs<<" glyphs="<<glyphs_.size()<<" checksum="<<checksum<<'\n';
   const std::u32string text=U"Aa09% 未命名 颜色板 图层 恢复\U0001ffff";
-  for(int scale:{1,2}) for(const auto color:{gfx::rgba(220,180,140),gfx::rgba(100,170,250,128)}) {
+  for(int scale:{1,2}) for(const auto color:{gfx::rgba(220,180,140),gfx::rgba(100,170,250,128),gfx::rgba(100,170,250,1),gfx::rgba(100,170,250,254)}) for(bool narrow:{false,true}) {
     const int w=(measure(text)+20)*scale,h=24*scale;
     auto before=os::instance()->makeRgbaSurface(w,h),after=os::instance()->makeRgbaSurface(w,h);
     before->clear();after->clear();
@@ -80,6 +86,7 @@ void PixelFont::smokeRasterEquivalent() const {
       ui::Graphics a(nullptr,before,3,5),b(nullptr,after,3,5);
       a.fillRect(gfx::rgba(20,25,35),gfx::Rect(-3,-5,w,h));b.fillRect(gfx::rgba(20,25,35),gfx::Rect(-3,-5,w,h));
       a.clipRect(gfx::Rect(1,1,w-8,h-8));b.clipRect(gfx::Rect(1,1,w-8,h-8));
+      if(narrow){const gfx::Rect clip(7,9,37,11);a.clipRect(clip);b.clipRect(clip);}
       std::unique_ptr<UiPaintScale> sa,sb;
       if(scale==2){sa=std::make_unique<UiPaintScale>(a);sb=std::make_unique<UiPaintScale>(b);}
       int x=2;const int y=4;
