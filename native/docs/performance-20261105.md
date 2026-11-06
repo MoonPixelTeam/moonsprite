@@ -464,3 +464,9 @@ Aseprite `src/ui/manager.cpp` 的 flushRedraw 和编辑器局部 canvas invalida
 - 继承并登记 paintCanvas 七阶段 opt-in profile；未开启环境变量时不读时钟、不写报告。初始 Release 构建及 performance-ui、drawing-pan-performance、hit-testing-performance 3 项通过。ui-geometry-performance-check 在 Floating partial/full framebuffer differs 失败；保留此缺口，不把其它检查通过解释为该项通过。
 - 最终正式 Release font-ink-cache-build.log exit0。font-ink-cache-tests.log 中 performance-ui、drawing-pan-performance、skin-resize-render、window-input-hit-testing 四项全通过；覆盖25,314字形精确墨迹边界及1×/2×透明度像素对照、真实菜单溢出/恢复/展开和命中。20,000次同进程查询，紧邻上一版行缩减10.4668ms→缓存6.1181ms（约减少42%）；最初逐像素参考90.6198ms。此为文字边界微基准，不声明整机或完整窗口帧时缩短42%。来源625文件/evidence与diff检查通过；未执行新一轮人工图像验收。
 - 最终 --native-window-resize-check exit0，完成16次真实 HWND 尺寸变化并核对 surface/client 尺寸；报告 build/test-tmp/native-window-resize.tsv。本轮源码、来源登记与记录提交推送dev，保留工作区原有未跟踪数据及诊断文件。
+
+## 2026-11-07：恢复浮动移动/缩放性能检查的真实帧基准
+
+- 原ui-geometry-performance-check只flush/dispatch便读取nativeWindow surface，未处理窗口初始原生事件；截图显示局部帧大部分为黑色，990216像素差异从(0,0)起。按现有main.cpp真实HWND尺寸检查补齐dontWaitEvents、generateMessages/dispatch、flush/dispatch及flipAllDisplays，移动前明确invalidate建立完整帧。单补invalidate或flip仍失败，补全事件循环后通过。对照Aseprite MIT Manager::flipAllDisplays和Window::moveWindow，不修改产品区域复制/重排语义。
+- 最终floating-repaint-events-build.log Release构建exit0。--ui-geometry-performance-check exit0：几何查询等价、200个输入样本只更新一次布局、无完整refresh、软件移动复用一次move_region、浮动移动和缩放局部/全量帧逐像素一致，12次窗口尺寸变化合计147.297ms。200000次几何查询direct88.3307ms/cache21.0316ms仅为既有优化回归，无本轮产品提速声明。新增失败坐标/差异数量及paired BMP诊断，保留完整oracle，不放宽断言。此前该项失败归因修正为fixture显示初始化缺失。
+- 本轮仅验证夹具/来源登记/记录；正式程序已重新构建。源码及记录提交推送dev，生成截图、缓存、工程与用户数据保留。

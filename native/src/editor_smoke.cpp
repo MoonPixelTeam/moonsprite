@@ -1967,7 +1967,8 @@ void Editor::smokeDockResizeMigration(){smoke_=true;homeOpen_=false;documentOpen
  const auto rc=uiLogical(clientBounds());const auto area=dockArea(rc),viewport=floatingArea(rc);const auto visible=columnVisibility();std::uint64_t sum=0;
  auto time=[&](bool cached){const auto start=std::chrono::steady_clock::now();for(int i=0;i<200000;++i){const auto g=cached?columnGeometry(rc):docking_.layout(area,visible,Layout::gap,viewport);sum+=g.canvas.w;}return std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-start).count();};
  const auto direct=time(false),cached=time(true);report<<"geometry queries=200000 direct_ms="<<direct<<" cached_ms="<<cached<<" checksum="<<sum<<'\n';
- auto drain=[&]{manager()->flushRedraw();manager()->dispatchMessages();};
+ manager()->dontWaitEvents();
+ auto drain=[&]{manager()->generateMessages();manager()->dispatchMessages();manager()->flushRedraw();manager()->dispatchMessages();manager()->flipAllDisplays();};
  refresh();drain();
  // Compare the original background path for narrow damage across the window,
  // including header/corner boundaries and damage outside the timeline.
@@ -1994,9 +1995,11 @@ void Editor::smokeDockResizeMigration(){smoke_=true;homeOpen_=false;documentOpen
    }
    _wputenv_s(L"MOONSPRITE_BACKGROUND_DAMAGE_REFERENCE",savedReference.c_str());
  }
- smokePrepareColumnRepaint();drain();
+ // Geometry/offscreen checks do not establish a fully painted native frame.
+ // Seed one before testing incremental copies against a full repaint.
+ smokePrepareColumnRepaint();invalidate();drain();
  auto pixels=[&]{auto surface=display()->nativeWindow()->surface();os::SurfaceLock lock(surface);std::vector<gfx::Color> result;for(int y=0;y<surface->height();++y)for(int x=0;x<surface->width();++x)result.push_back(surface->getPixel(x,y));return result;};
- for(int edges:{0,10}){smokeColumnRepaintStep(edges);drain();const auto partial=pixels();invalidate();drain();if(partial!=pixels())throw std::runtime_error("Floating partial/full framebuffer differs");}
+ for(int edges:{0,10}){smokeColumnRepaintStep(edges);drain();const auto partial=pixels();writeSmokeFrame(display()->nativeWindow()->surface(),"build/test-tmp/floating-partial.bmp");invalidate();drain();const auto full=pixels();if(partial!=full){writeSmokeFrame(display()->nativeWindow()->surface(),"build/test-tmp/floating-full.bmp");std::size_t first=0,count=0;for(std::size_t i=0;i<partial.size();++i)if(partial[i]!=full[i]){if(!count)first=i;++count;}const auto width=display()->nativeWindow()->surface()->width();throw std::runtime_error("Floating partial/full framebuffer differs edges="+std::to_string(edges)+" pixels="+std::to_string(count)+" first="+std::to_string(first%width)+","+std::to_string(first/width));}}
  const auto start=std::chrono::steady_clock::now();const auto original=bounds();
  for(int i=0;i<12;++i){auto next=original;next.w-=i%3*20;next.h-=i%4*16;setBounds(next);verify();drain();}
  setBounds(original);drain();report<<"window resize samples=12 total_ms="<<std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-start).count()<<"\ngeometry_equivalence=pass; floating_move_resize_framebuffer=pass\n";
