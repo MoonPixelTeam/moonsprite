@@ -285,8 +285,18 @@ bool Skin::draw(ui::Graphics& g,const std::string& slot,gfx::Rect rc,bool icon,i
   const int sw[]{left,b.width-p.left-p.right,right},sh[]{top,b.height-p.top-p.bottom,bottom};
   const int dx[]{0,left,rc.w-right},dy[]{0,top,rc.h-bottom};
   const int dw[]{left,rc.w-left-right,right},dh[]{top,rc.h-top-bottom,bottom};
+  const auto tileMatrix=g.matrix();
+  const auto tileClip=g.getInternalSurface()->getClipBounds();
+  static const bool tileReference=std::getenv("MOONSPRITE_SKIN_TILE_CLIP_REFERENCE")!=nullptr;
   for(int row=0;row<3;++row) for(int col=0;col<3;++col) {
     if(sw[col]<=0 || sh[row]<=0 || dw[col]<=0 || dh[row]<=0) continue;
+    const int x=rc.x+dx[col],y=rc.y+dy[row];
+    // Graphics offsets before the surface matrix; compare in device pixels.
+    // A bounding clip is conservative even when damage has child/window holes.
+    if(!tileReference && tileMatrix.isScaleTranslate()){
+      const auto device=tileMatrix.mapRect(gfx::RectF(float(x+g.getInternalDeltaX()),float(y+g.getInternalDeltaY()),float(dw[col]),float(dh[row])));
+      if(device.x>=tileClip.x2() || device.y>=tileClip.y2() || device.x2()<=tileClip.x || device.y2()<=tileClip.y)continue;
+    }
     const std::array<int,4> key{sx[col],sy[row],sw[col],sh[row]};
     auto found=c.tiles.find(key);
     if(found==c.tiles.end()) {
@@ -301,7 +311,6 @@ bool Skin::draw(ui::Graphics& g,const std::string& slot,gfx::Rect rc,bool icon,i
       if(c.tiles.size()>=64) c.tiles.clear();
       found=c.tiles.emplace(key,std::move(tile)).first;
     }
-    const int x=rc.x+dx[col],y=rc.y+dy[row];
     ui::Paint paint;
     const auto matrix=SkMatrix::Translate(float(x+g.getInternalDeltaX()),float(y+g.getInternalDeltaY()));
     paint.skPaint().setShader(found->second.makeShader(SkTileMode::kRepeat,SkTileMode::kRepeat,SkSamplingOptions(),matrix));

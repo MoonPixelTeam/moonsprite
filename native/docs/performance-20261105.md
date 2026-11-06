@@ -365,3 +365,10 @@ Aseprite `src/ui/manager.cpp` 的 flushRedraw 和编辑器局部 canvas invalida
 - 检查上一轮间歇性geometry失败时发现fixture固定索引docking_.groups[0..13]，但Model::place合并栏目会减少groups.size；应用启动还可恢复用户已分组工作区。columnCount14不是分组数，固定索引存在越界。改为遍历实际groups，并在明确合并栏目后再运行全部weight/width/floating/floatingArea/fixedExtent变更及直接layout等价检查，不缩减校验范围。
 - 几何失败信息增加step/groups/area及不同panel矩形，局部/全量framebuffer不一致使用独立错误，便于区分真实缓存与绘制问题。未修改生产columnGeometry/cache或用户工作区。初次编译发现旧check辅助函数残留调用，已修复；geometry-group-fixture-final-build.log最终exit0。
 - 正式Release ui-geometry-performance exit0：geometry equivalence与floating_move_resize_framebuffer通过，200000查询direct264.793ms/cached27.515ms为既有缓存收益，不归因于本轮fixture修复；native-window-resize exit0。历史build/ui-geometry-performance-error.txt保留，成功运行不清除，以本次进程exit0和新report为证。此越界缺陷已修复，但不能仅凭一次通过断言此前所有间歇性失败均由此导致。来源覆盖/evidence和diff通过后推送dev。整体性能优化未完成，下一步仍需定位面板皮肤合成开销。
+
+
+## 2026-11-06：平铺皮肤跳过裁剪外九宫格块
+
+- Skin::draw纹理/小尺寸fallback原先无论damage都为九块查询源缓存、创建repeat shader并drawRect。现读取surface device clip，按Graphics内部offset后再surface matrix映射目标块；仅scale/translate时保守拒绝完全不相交块。复杂region内部孔洞继续由Skia裁剪，不改变纹理相位、绘制尺寸/顺序或原始素材；lattice与icon路径不变。Aseprite MIT Graphics::drawRect和laf SkiaSurface::getClipBounds语义已核对。MOONSPRITE_SKIN_TILE_CLIP_REFERENCE恢复完整loop。
+- 唯一正式Release skin-tile-clip-build.log exit0。reference/optimized原生resize均exit0，16张BMP逐字节一致。skin-resize（包含选中边框逐像素alpha/hit）、ui-geometry-performance含局部/全量、window-input均exit0；来源覆盖625文件/evidence及diff通过。
+- Profile panel-skin reference23.803/optimized25.946ms，未提升；关闭截图/profile的ABBA变化样本mean24.450/23.144/23.006/23.000ms，顺序漂移，不支持整体提速结论。局部绘制密集的geometry-check ABBA完整进程1382/1291/1323/1651ms均exit0，仅辅助观察，含启动/模型计算且末次reference变慢，不能归因。保留可明确跳过裁剪外shader准备的局部优化，不声明解决整体卡顿。后续仍需定位复杂damage及背景绘制主耗时；只提交源码/来源/记录，生成物及历史本地报告保留，推送dev。
