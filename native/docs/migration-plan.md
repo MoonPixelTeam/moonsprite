@@ -3056,3 +3056,10 @@ offset-tile-paint-build.log正式Release/两核心测试构建exit0，夹具构�
 新增两种目标位置×三种作用域检查，普通活动/Cel作用域核对无关free数据、链接、Undo/Redo和保存重开；整帧作用域遇可见free来源原子拒绝；额外空free整帧作用域允许且保持独立。首次重开比较将未知JSON字段当作必保留字段，按现有legacy导入规范化规则改为已知实例字段/像素对比，未改格式行为。
 
 mixed-free-linked-frame-build.log正式Release/两核心测试构建exit0；fixture-build日志exit0；完整free-tile-project-tests/tilemap-project-tests exit0（mixed-free-linked-frame-free-test.log、mixed-free-linked-frame-grid-test.log）；正式工作区drawing-anchor-edit-floating组合exit0；来源625文件快照和diff通过，无人工UI验收。全量迁移仍INCOMPLETE。
+
+
+### 2026-11-07：特殊图层活动蒙版填充入口
+
+核对legacy workspace-commands-selection-effects.ts::fillForeground、workspace-session.ts::activePaintLayer（activeLayerMask优先于getActiveLayer）及core/tools-fill.ts。原生fillSelectionOrCanvas此前先按文档含tilemap/free-tile拒绝，导致已有蒙版填充事务无法到达；现先路由活动蒙版，再保留普通像素填充的特殊图层保护。算法继续使用fillAttachedMaskSelection，不另造填充方案。
+
+新增tilemap/free-tile×整幅/局部mask四组合，核对逐像素灰度及选区覆盖、原图层像素/网格/实例不变、单历史、同色no-op、Undo/Redo和实际重开。special-mask-fill-build.log正式Release及两测试构建exit0；完整free-tile-project-tests、tilemap-project-tests exit0（special-mask-fill-free-test.log、special-mask-fill-grid-test.log）；正式工作区drawing-anchor-edit-floating组合exit0；来源625文件及diff通过，无人工UI验收。此为活动蒙版入口修复，不代表特殊层原图填充、所有蒙版工具及全量迁移完成。
