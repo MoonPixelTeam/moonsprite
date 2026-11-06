@@ -1702,8 +1702,19 @@ void Editor::layoutTopMenu(gfx::Rect bar) {
     }
     // Measure top-level metrics without moving popup rows into the bar.
     // Reuse the existing objects whenever the overflow boundary is unchanged.
+    // All top-level entries share the same skin padding. Measure each label
+    // once per layout, then vary only that shared padding while finding a fit.
+    // Keep this local so caption, scale and skin changes need no cache invalidation.
+    std::vector<int> widths; widths.reserve(entries.size());
+    int baseWidth=menu->border().width()+menuBar_->border().width()+std::max(0,int(entries.size())-1)*menu->childSpacing();
+    for(auto entry:entries){const int width=entry->topMenuSizeHint(0).w;widths.push_back(width);baseWidth+=width;}
     int reduction=0;
-    auto required=[&]{int width=menu->border().width()+menuBar_->border().width();for(auto entry:entries)width+=entry->topMenuSizeHint(reduction).w;return width+std::max(0,int(entries.size())-1)*menu->childSpacing();};
+    auto paddingDelta=[&]{return entries.empty()?0:widths.front()-entries.front()->topMenuSizeHint(reduction).w;};
+    auto required=[&]{
+      const int width=baseWidth-int(entries.size())*paddingDelta();
+      if(smoke_){int reference=menu->border().width()+menuBar_->border().width()+std::max(0,int(entries.size())-1)*menu->childSpacing();for(auto entry:entries)reference+=entry->topMenuSizeHint(reduction).w;if(width!=reference)throw std::runtime_error("Top menu shared padding measurement mismatch");}
+      return width;
+    };
     int previous=required();
     for(reduction=1;previous>bar.w && reduction<=32;++reduction){
       const int width=required();if(width==previous)break;previous=width;
@@ -1717,7 +1728,8 @@ void Editor::layoutTopMenu(gfx::Rect bar) {
       if(!state->more){state->more=new PixelMenuItem(font_,skin_,U"更多");state->more->menuMarks=&toolIcons_;state->more->setSubmenu(new PixelMenu(skin_));}
       const int gap=menu->childSpacing();
       int width=menu->border().width()+menuBar_->border().width()+state->more->topMenuSizeHint(0).w;
-      for(keep=0;keep<entries.size();++keep){const int next=entries[keep]->topMenuSizeHint(reduction).w+gap;if(width+next>bar.w)break;width+=next;}
+      const int delta=paddingDelta();
+      for(keep=0;keep<entries.size();++keep){const int next=widths[keep]-delta+gap;if(width+next>bar.w)break;width+=next;}
     }
     const std::size_t current=state->more && state->more->parent()==menu?menu->children().size()-1:entries.size();
     if(current!=keep){

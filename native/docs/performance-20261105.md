@@ -497,3 +497,10 @@ Aseprite `src/ui/manager.cpp` 的 flushRedraw 和编辑器局部 canvas invalida
 
 - 核对legacy useCanvasKeyboardInput.ts:388-389及既有tilemap-paint-arrow-input-20261030.md：键盘方向单位乘以tileWidth/tileHeight，产品已正确迁移。组合fixture仍期望4px瓦片收到1px并取整零，属于旧预期。改为断言一格位移、一次历史、选择x+4、tileset不变、无关链接资源不变，Undo精确恢复后继续复制场景。不修改产品输入或核心代码。
 - paint-arrow-fixture-build.log正式Release构建exit0。锚点组合已通过新的方向移动/Undo断言及后续Paint复制，最终在actual tile Ctrl+X packs RGBA and deletes one transaction失败；完整组合仍未通过，剪切问题待后续检查。本轮无产品提速声明，是性能优化回归验收的夹具修正。来源检查后源码/来源/记录推送dev。
+
+
+## 2026-11-07：顶部菜单压缩布局复用本轮文字测量
+
+- 用户确认窄窗口将放不下的菜单收进“更多”；现有layoutTopMenu已经承接此行为。本轮保留全部压缩、溢出、对象移动和弹窗关闭顺序，仅将每个压缩候选对全部标题的重复topMenuSizeHint改为本轮一次各标题测量，加共享menu_hover边距差。每次调用重测，避免标题、皮肤、缩放变化的跨轮缓存失效问题。smoke模式逐次与原完整求和oracle比较。对照Aseprite MIT src/ui/menu.cpp Menu::onSizeHint的换行及MenuBox尺寸计算，不复制依赖代码。
+- top-menu-metrics-build.log正式Release构建exit0。--window-input-check exit0，覆盖窄宽溢出顺序、稳定对象、菜单打开时重复布局及恢复宽度释放capture，且本轮测量oracle通过；--ui-geometry-performance-check exit0。来源625文件覆盖与证据快照检查通过，迁移仍INCOMPLETE。未做人工交互图像验收，不宣称整体帧率提升比例。
+- 前轮Ctrl+X诊断确认状态为Finish the active edit before cutting Cels：fixture显式selectTimelineCel，未设selectionCommandOverride_，因此按legacy app-document-shortcuts.ts与useAppCommandScope.ts优先Cel。已移除临时诊断，不擅改产品优先级；锚点组合回归仍未通过，此问题保留。本轮仅提交菜单布局优化、来源和记录，缓存/用户数据/生成物不提交。
