@@ -1692,37 +1692,49 @@ void Editor::layoutTopMenu(gfx::Rect bar) {
     // after those messages have detached their MenuBox from the old owner.
     bool opened=state->more && state->more->hasSubmenuOpened();
     for(auto entry:entries)opened=opened || entry->hasSubmenuOpened();
+    if(opened && menuBar_->bounds()==bar)return;
     if(opened){
       menuBar_->cancelMenuLoop();
       auto originalBar=bar;if(workspaceMenuButton_)originalBar.w+=(UiSpacing::iconSize+UiSpacing::related)*uiScale;
-      manager()->enqueueMessage(new ui::CallbackMessage([this,originalBar]{layoutTopMenu(originalBar);}));
+      auto callback=new ui::CallbackMessage([this,originalBar]{layoutTopMenu(originalBar);});
+      callback->setRecipient(this);manager()->enqueueMessage(callback);
       return;
     }
-    // Restore original items before measuring their top-level metrics.
-    // Move the same objects, retaining callbacks, submenus and enabled state.
-    auto restore=[&]{
-      if(!state->more)return;
-      menuBar_->cancelMenuLoop();
-      auto submenu=state->more->getSubmenu();
-      const auto rows=submenu->children();for(auto row:rows){submenu->removeChild(row);menu->addChild(row);}
-      menu->removeChild(state->more);delete state->more;state->more=nullptr;
-    };
-    restore();
-    for(auto entry:entries)entry->barInsetReduction=0;
-    auto required=[&]{int width=menu->border().width()+menuBar_->border().width();for(auto entry:entries)width+=entry->sizeHint().w;return width+std::max(0,int(entries.size())-1)*menu->childSpacing();};
+    // Measure top-level metrics without moving popup rows into the bar.
+    // Reuse the existing objects whenever the overflow boundary is unchanged.
+    int reduction=0;
+    auto required=[&]{int width=menu->border().width()+menuBar_->border().width();for(auto entry:entries)width+=entry->topMenuSizeHint(reduction).w;return width+std::max(0,int(entries.size())-1)*menu->childSpacing();};
     int previous=required();
-    for(int reduction=1;previous>bar.w && reduction<=32;++reduction){
-      for(auto entry:entries)entry->barInsetReduction=reduction;
+    for(reduction=1;previous>bar.w && reduction<=32;++reduction){
       const int width=required();if(width==previous)break;previous=width;
     }
+    // Match the last measured reduction (including the unsqueezed fit case).
+    if(previous<=bar.w)reduction=std::max(0,reduction-1);
+    reduction=std::min(reduction,32);
+    for(auto entry:entries)entry->barInsetReduction=reduction;
+    std::size_t keep=entries.size();
     if(required()>bar.w){
-      state->more=new PixelMenuItem(font_,skin_,U"更多");state->more->menuMarks=&toolIcons_;
-      state->more->setSubmenu(new PixelMenu(skin_));menu->addChild(state->more);
+      if(!state->more){state->more=new PixelMenuItem(font_,skin_,U"更多");state->more->menuMarks=&toolIcons_;state->more->setSubmenu(new PixelMenu(skin_));}
       const int gap=menu->childSpacing();
-      int width=menu->border().width()+menuBar_->border().width()+state->more->sizeHint().w;
-      std::size_t keep=0;
-      for(;keep<entries.size();++keep){const int next=entries[keep]->sizeHint().w+gap;if(width+next>bar.w)break;width+=next;}
-      for(std::size_t i=keep;i<entries.size();++i){menu->removeChild(entries[i]);state->more->getSubmenu()->addChild(entries[i]);}
+      int width=menu->border().width()+menuBar_->border().width()+state->more->topMenuSizeHint(0).w;
+      for(keep=0;keep<entries.size();++keep){const int next=entries[keep]->topMenuSizeHint(reduction).w+gap;if(width+next>bar.w)break;width+=next;}
+    }
+    const std::size_t current=state->more && state->more->parent()==menu?menu->children().size()-1:entries.size();
+    if(current!=keep){
+      // Preserve order on both sides by moving only the changed suffix.
+      auto submenu=state->more->getSubmenu();
+      if(keep<current){
+        for(std::size_t i=current;i>keep;--i){auto entry=entries[i-1];menu->removeChild(entry);submenu->insertChild(0,entry);}
+      }else{
+        if(state->more->parent()==menu)menu->removeChild(state->more);
+        for(std::size_t i=current;i<keep;++i){auto entry=entries[i];submenu->removeChild(entry);menu->addChild(entry);}
+      }
+    }
+    if(keep<entries.size()){
+      if(state->more->parent()!=menu)menu->addChild(state->more);
+    }else if(state->more){
+      if(state->more->parent()==menu)menu->removeChild(state->more);
+      delete state->more;state->more=nullptr;
     }
 
     menuBar_->setBounds(bar);

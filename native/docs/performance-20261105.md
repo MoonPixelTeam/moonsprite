@@ -337,3 +337,10 @@ Aseprite `src/ui/manager.cpp` 的 flushRedraw 和编辑器局部 canvas invalida
 - 核对Aseprite MIT MenuItem::closeSubmenu通过队列释放MenuBox，不能在popup打开时直接删除owner。布局检测已打开子菜单时先cancelMenuLoop，并排队回调在close消息之后重排。普通关闭态复用现有绘制/命中布局。
 - 唯一正式Release menu-overflow-final-build.log exit0；window-input在4个原生位置/最大化恢复变体中全部exit0，包含逐点顶级菜单命中、弹出菜单点击/行命中及capture释放，此前重叠失败消失。menu-pointer、ui-geometry-performance局部/全量framebuffer、advanced-mode均exit0。已人工查看window-input-0.bmp：720x600顶栏单行并显示更多，项目/其他区位置不变；没有对所有菜单嵌套状态逐图验收。来源覆盖625文件/evidence及diff通过。
 - 本轮修复窄窗口重叠与错误点击，不作性能提速声明。生成物/截图/历史错误报告保留不提交。整体卡顿尚未全面验收，后续继续测量余下热点。验证后提交推送dev。
+
+
+## 2026-11-06：更多菜单复用与展开后缩放恢复
+
+- 每次layoutTopMenu原先将全部overflow行恢复顶层、删除More并重建，再搬回尾项。现PixelMenuItem::topMenuSizeHint复用原顶层尺寸公式，脱离当前父菜单查询而不缓存文字/皮肤尺寸；只搬动overflow边界变化的项目，保持顺序、原对象、回调及子菜单。同bounds且popup已打开时保留当前菜单。对照Aseprite MIT Menu::onResize/onSizeHint及Widget消息分派，无app代码复制。
+- 新增window-input回归覆盖宽→窄→同宽多次布局的对象身份/顺序、打开More后同宽保持展开、打开后变宽恢复全部原项目和释放capture、再次往返。首次运行发现上一轮CallbackMessage未指定recipient，Manager::pumpQueue不会执行；现绑定Editor，延迟重排生效且沿用控件销毁消息清理。
+- 唯一正式Release menu-overflow-reuse-build.log及menu-overflow-callback-build.log均exit0；最终window-input、menu-pointer、ui-geometry-performance局部/全量framebuffer、native-window-resize均exit0。来源覆盖625文件/evidence与diff通过。未额外人工截图验收；缩放单次计时波动明显，无整体性能提升结论，确认避免重复菜单拆建与修复展开后重排。迁移完整性仍INCOMPLETE，整体卡顿尚未全面验收。仅提交源码/来源/记录并推送dev，保留本地生成物及历史报告。

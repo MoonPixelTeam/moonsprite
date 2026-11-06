@@ -7257,6 +7257,32 @@ void Editor::smokeWindowInput(const LegacyCursors& cursors) {
 
     };
 
+    // Exercise overflow transitions using the same real menu objects.
+    {
+      auto menu=menuBar_->getMenu();
+      const auto bar=menuBar_->bounds();
+      auto inputBar=bar;if(workspaceMenuButton_)inputBar.w+=(UiSpacing::iconSize+UiSpacing::related)*uiScale;
+      auto wide=inputBar;wide.w=4096;layoutTopMenu(wide);
+      const auto original=menu->children();
+      auto narrow=inputBar;narrow.w=360;layoutTopMenu(narrow);
+      const auto compact=menu->children();
+      auto more=dynamic_cast<ui::MenuItem*>(compact.back());
+      if(!more || !more->hasSubmenu() || more->getSubmenu()->children().empty())throw std::runtime_error("Overflow menu missing");
+      const auto overflow=more->getSubmenu()->children();
+      for(int pass=0;pass<3;++pass){
+        layoutTopMenu(narrow);
+        if(menu->children()!=compact || more->getSubmenu()->children()!=overflow)throw std::runtime_error("Stable overflow layout replaced menu objects");
+      }
+      more->openSubmenu();manager()->dispatchMessages();
+      layoutTopMenu(narrow);manager()->dispatchMessages();
+      if(!more->hasSubmenuOpened())throw std::runtime_error("Unchanged layout closed overflow popup");
+      layoutTopMenu(wide);manager()->dispatchMessages();
+      if(menu->children()!=original || manager()->getCapture())throw std::runtime_error("Open overflow resize did not restore order/capture");
+      layoutTopMenu(narrow);layoutTopMenu(wide);
+      if(menu->children()!=original)throw std::runtime_error("Repeated overflow transition changed menu order");
+      layoutTopMenu(inputBar);manager()->dispatchMessages();
+    }
+
     for(auto item:menuBar_->getMenu()->children())if(item->isVisible()){
 
       const auto r=item->bounds();if(!menuBar_->bounds().contains(r))throw std::runtime_error("Top menu wrapped outside its input container");

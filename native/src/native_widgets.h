@@ -328,6 +328,7 @@ class PixelMenuItem : public ui::MenuItem {
   const PixelFont& font_; const Skin& skin_;
   std::u32string caption_, shortcut_;
 public:
+  gfx::Size topMenuSizeHint(int reduction) const;
   int barInsetReduction=0;
   const Skin* iconSkin=nullptr;
   const Skin* menuMarks=nullptr;

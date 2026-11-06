@@ -974,7 +974,15 @@ void PixelMenuSeparator::onPaint(ui::PaintEvent& ev) {
   if(rc.w>2*uiGap) g.fillRect(skin_["border"],gfx::Rect(rc.x+uiGap,rc.y,rc.w-2*uiGap,1));
 }
 void PixelMenuItem::onValidate() {if(available) setEnabled(available());}
+gfx::Size PixelMenuItem::topMenuSizeHint(int reduction) const {
+  const auto inset=menuBarInsets(skin_,reduction);
+  const auto captionInk=font_.inkBounds(caption_),shortcutInk=font_.inkBounds(shortcut_);
+  const int iconHeight=iconSkin && !icon.empty()?menuIconSize:0;
+  return {(captionInk.w+inset.width())*uiScale,
+          (std::max({9,captionInk.h,shortcutInk.h,iconHeight})+inset.height())*uiScale};
+}
 void PixelMenuItem::onSizeHint(ui::SizeHintEvent& ev) {
+  if(inBar()){ev.setSizeHint(topMenuSizeHint(barInsetReduction));return;}
   const auto inset=inBar()?menuBarInsets(skin_,barInsetReduction):menuRowInsets();
   const auto captionInk=font_.inkBounds(caption_),shortcutInk=font_.inkBounds(shortcut_);
   const int iconHeight=iconSkin && !icon.empty()?menuIconSize:0;
