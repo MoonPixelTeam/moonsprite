@@ -219,7 +219,7 @@ bool Document::convertLayerToTilemap(int tw,int th,std::u32string name){
  TilemapSelection selected;selected.mode=tiles::Mode::Hybrid;selected.tilesetId=set.id;selected.primary=selected.secondary=set.tileIds.front();next.tilesets.push_back(std::move(set));return commitTilemapState(std::move(next),selected,U"转换为瓦片图层");
 }
 void Document::startTilemapStroke(Point p,bool secondary){
- tileStrokeCells_.clear();tileStrokeLinked_=linkedCreateSelectionAvailable(false)||linkedEditSelectionAvailable(false)||linkedHybridSelectionAvailable(false);tileStrokeIncremental_=tileStrokeLinked_||tilemapDeltaSupported();tileStrokeBefore_.reset();if(!tileStrokeIncremental_)tileStrokeBefore_=timeline_.state();tileStrokeCel_=cel().id;tileStrokePoint_=p;const auto& c=tileStrokeLinked_?*timeline_.resolveSurface(cel().id).source:cel();tileEditCell_.reset();if(c.tilemap&&p.x>=0&&p.y>=0&&p.x<c.tilemap->columns*c.tilemap->tileWidth&&p.y<c.tilemap->rows*c.tilemap->tileHeight)tileEditCell_=std::size_t(p.y/c.tilemap->tileHeight)*c.tilemap->columns+p.x/c.tilemap->tileWidth;
+ tileStrokeCells_.clear();tileStrokeLinked_=(tileSelection_.mode==tiles::Mode::Paint&&tilemapCellOwnerSupported(cel().id,false,true))||linkedCreateSelectionAvailable(false)||linkedEditSelectionAvailable(false)||linkedHybridSelectionAvailable(false);tileStrokeIncremental_=tileStrokeLinked_||tilemapDeltaSupported();tileStrokeBefore_.reset();if(!tileStrokeIncremental_)tileStrokeBefore_=timeline_.state();tileStrokeCel_=tileStrokeLinked_&&tileSelection_.mode==tiles::Mode::Paint?timeline_.resolveSurface(cel().id).source->id:cel().id;tileStrokePoint_=p;const auto& c=tileStrokeLinked_?*timeline_.resolveSurface(cel().id).source:cel();tileEditCell_.reset();if(c.tilemap&&p.x>=0&&p.y>=0&&p.x<c.tilemap->columns*c.tilemap->tileWidth&&p.y<c.tilemap->rows*c.tilemap->tileHeight)tileEditCell_=std::size_t(p.y/c.tilemap->tileHeight)*c.tilemap->columns+p.x/c.tilemap->tileWidth;
  tilePaintValue_.reset();const auto& id=secondary?tileSelection_.secondary:tileSelection_.primary;if(!id.empty()){auto t=std::find_if(timeline_.state().tilesets.begin(),timeline_.state().tilesets.end(),[&](const auto& s){return s.id==tileSelection_.tilesetId;});if(t!=timeline_.state().tilesets.end()&&t->tileWidth==c.tilemap->tileWidth&&t->tileHeight==c.tilemap->tileHeight&&tiles::Index(*t).find(id))tilePaintValue_=tiles::Cell{t->id,id};}
 }
 void Document::paintTilemapLine(Point p){
@@ -246,13 +246,13 @@ bool Document::commitTilemapStroke(){
   try{
    if(tileSelection_.mode==tiles::Mode::Paint){
     const auto* live=timeline_.findCelById(tileStrokeCel_);if(!live||!live->tilemap)throw std::logic_error("Missing incremental Paint owner");
-    TilemapPixelHistory payload;payload.celId=tileStrokeCel_;payload.tilesetEdit=false;payload.beforeSet.id=layer().tilemapTilesetId;
+    TilemapPixelHistory payload;payload.celId=tileStrokeCel_;payload.tilesetEdit=false;payload.independentCellOwner=tileStrokeLinked_;payload.linkedCellOwner=tileStrokeLinked_;payload.beforeSet.id=layer().tilemapTilesetId;
     for(const auto& item:tileStrokeCells_)if(item.second.before!=live->tilemap->cells[item.first])payload.cells.push_back({item.first,item.second.before,live->tilemap->cells[item.first]});
     if(payload.cells.empty()){cancelTilemapStroke();return false;}
     Edit edit{{},state_,nextState_};edit.tilemapPixels=std::make_shared<const TilemapPixelHistory>(std::move(payload));
     edit.beforeTileSelection=edit.afterTileSelection=tileSelection_;edit.beforeActive=edit.afterActive=activeLayerId_;edit.beforeFrame=edit.afterFrame=activeFrameId_;edit.beforeSelection=edit.afterSelection=selectedFrames_;edit.beforeTimelineSelection=edit.afterTimelineSelection=timelineSelection_;edit.beforeFrameAnchor=edit.afterFrameAnchor=frameAnchor_;edit.beforeGroupUi=edit.afterGroupUi=GroupUiSnapshot{selectedGroupIds_,collapsedGroupIds_,selectedGroupId_};
     std::u32string label=U"绘制瓦片";history_.reserve(position_+1);edit.label.reserve(std::max(label.size(),historyLabelOverride_.size()));applyEdit(edit,true);
-    tileStrokeIncremental_=false;tileStrokeCells_.clear();active_=false;strokePixels_=nullptr;clearPendingStroke();publishChange();pushEdit(std::move(edit),std::move(label));return true;
+    tileStrokeIncremental_=false;tileStrokeLinked_=false;tileStrokeCells_.clear();active_=false;strokePixels_=nullptr;clearPendingStroke();publishChange();pushEdit(std::move(edit),std::move(label));return true;
    }
    auto canvas=canvasPixels();auto baseline=canvas;for(const auto& delta:pending_)baseline[delta.index]=delta.before;const auto hint=tileEditCell_;
    // Revert only raster preview pixels; source tile authority has not changed.

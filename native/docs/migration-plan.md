@@ -3022,3 +3022,12 @@ tile-connect-build.log正式Release与两核心测试构建exit0；夹具调整t
 
 
 正式构建linked-tile-brush-build.log exit0；最终源码增量确认linked-tile-brush-final-build.log exit0，工作区drawing-anchor-edit-floating组合exit0。来源625文件快照校验与diff通过，无人工UI验收。全量迁移仍INCOMPLETE。
+
+
+### 2026-11-07：链接瓦片Cel的Paint放置与擦除
+
+依据legacy core/tilemap-document.ts::tilemapCelTargetAt与writeTilemapCell，Paint编辑解析来源网格并重绘该格。原生Paint笔画沿用tilemapCellOwnerSupported的标准零偏移所有者校验，将操作对象设为规范来源；复用现有TilemapPixelHistory的independentCellOwner/linkedCellOwner格子历史能力。预览、取消、提交均更新来源，不向别名添加私有网格或表面，资源像素不变。没有修改共享头文件。
+
+新增放置/擦除两组合回归，包含无私有载荷的两级别名链，检查begin/cancel无历史、单次提交、来源/别名共享像素、资源不变、精确链保留、Undo/Redo及实际保存重开。linked-tile-paint-build.log正式Release及两组测试构建exit0；完整free-tile-project-tests和tilemap-project-tests exit0（linked-tile-paint-free-test.log、linked-tile-paint-grid-test.log）；正式工作区drawing-anchor-edit-floating组合exit0；来源625文件快照和diff通过，无人工UI验收。
+
+本批仅推进标准布局的Paint笔画。偏移/非标准布局、多目标、自由瓦片链接和稀疏准入等仍待迁移，整体INCOMPLETE。用户数据、缓存和生成物保留且不提交。
