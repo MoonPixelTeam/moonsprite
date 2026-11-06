@@ -3583,7 +3583,14 @@ void Editor::smokeSelectionDisplay(){
 
     // Stable transform geometry must not reshape the same five numeric fields.
     {
+      const auto originalBounds=bounds();setBounds({0,0,4096,960});
       document=Document(32,24);document.previewSelection(SelectionMask{2,3,5,4,{}});useSelectionTool(0);selectionPropertiesActive_=true;refresh();requestFocus();
+      if(!_wgetenv(L"MOONSPRITE_ANCHOR_VISIBILITY_REFERENCE")){
+        drawingAnchorButton_->requestFocus();
+        if(!drawingAnchorButton_->hasFocus())throw std::runtime_error("Selection anchor focus fixture");
+        for(int repeat=0;repeat<20;++repeat)layoutToolOptions();
+        if(!drawingAnchorButton_->hasFocus() || !drawingAnchorButton_->isVisible())throw std::runtime_error("Selection anchor stable layout lost focus");requestFocus();
+      }
       const auto pixels=document.pixels();const auto revision=document.revision(),history=document.historySize();
       std::array<std::string,5> values;std::array<gfx::Rect,5> boxes;
       for(int i=0;i<5;++i){values[i]=selectionTransformFields_[i]->text();boxes[i]=selectionTransformFields_[i]->bounds();}
@@ -3595,6 +3602,7 @@ void Editor::smokeSelectionDisplay(){
       if(selectionTransformFields_[0]->text()!="7" || selectionTransformFields_[1]->text()!="8" || selectionTransformFields_[2]->text()!="9" || selectionTransformFields_[3]->text()!="10")throw std::runtime_error("Changed selection geometry did not update fields");
       if(document.pixels()!=pixels || document.historySize()!=history || document.revision()!=revision)throw std::runtime_error("Selection field layout mutated artwork/history");
       selectionPropertiesActive_=false;
+      setBounds(originalBounds);
     }
 
     document=Document(32,24);document.markSaved();document.commitSelection({},SelectionMask{2,2,5,4,{}});fitCanvas();refresh();useSelectionTool(0);const auto before=document.selection();const auto history=document.historySize();
@@ -8827,6 +8835,12 @@ void Editor::smokeDrawingAnchor(){
  auto mouse=[&](ui::MessageType type,double x,double y,ui::KeyModifiers modifiers=ui::kKeyNoneModifier){ui::MouseMessage event(type,os::PointerType::Mouse,ui::kButtonLeft,modifiers,canvasDocumentToDisplay({x,y}));event.setDisplay(display());onProcessMessage(&event);if(type==ui::kMouseDownMessage&&(shapeDragging_||selectionDragging_||drawingAnchorDragging_))enableFlags(ui::HAS_CAPTURE);if(type==ui::kMouseUpMessage)disableFlags(ui::HAS_CAPTURE);};auto key=[&](ui::KeyScancode scan){ui::KeyMessage event(ui::kKeyDownMessage,scan,ui::kKeyNoneModifier,0,0);onProcessMessage(&event);};
  try{
  if(drawingAnchorButton_->hasFlags(ui::HIDDEN)){const gfx::Point top(bounds().x+(workspaceLayout(uiLogical(bounds())).workX+2)*uiScale,bounds().y+(optionsTop()+2)*uiScale);ui::MouseMessage wheel(ui::kMouseWheelMessage,os::PointerType::Mouse,ui::kButtonNone,ui::kKeyNoneModifier,top,gfx::Point(0,4));onProcessMessage(&wheel);}if(!drawingAnchorButton_->isVisible()||drawingAnchorPresetButton_->isEnabled())throw std::runtime_error("Drawing anchor actual eligible controls: visible="+std::to_string(drawingAnchorButton_->isVisible())+" enabled="+std::to_string(drawingAnchorPresetButton_->isEnabled())+" eligible="+std::to_string(drawingAnchorEligible())+" shape="+std::to_string(shapeTool_)+" kind="+std::to_string(int(shapeSpec_.kind))+" advanced="+std::to_string(advancedMode_)+" bounds="+std::to_string(drawingAnchorButton_->bounds().x)+","+std::to_string(drawingAnchorButton_->bounds().y)+","+std::to_string(drawingAnchorButton_->bounds().w)+" viewport="+std::to_string(commands_[3]->bounds().x)+" root="+std::to_string(bounds().w));drawingAnchorButton_->Click();require(drawFromCanvasCenter_&&drawingAnchorPresetButton_->isEnabled()&&!document.dirty()&&document.historySize()==0,"Drawing anchor toggle is view setting");
+ if(!_wgetenv(L"MOONSPRITE_ANCHOR_VISIBILITY_REFERENCE")){
+   drawingAnchorButton_->requestFocus();require(drawingAnchorButton_->hasFocus(),"Drawing anchor focus fixture");
+   const auto before=drawingAnchorButton_->bounds();
+   for(int repeat=0;repeat<20;++repeat)layoutToolOptions();
+   require(drawingAnchorButton_->hasFocus()&&drawingAnchorButton_->bounds()==before&&drawingAnchorButton_->isVisible(),"Stable anchor layout lost focus or changed geometry");requestFocus();
+ }
  for(auto kind:{ShapeKind::Rectangle,ShapeKind::RectangleOutline,ShapeKind::Ellipse,ShapeKind::EllipseOutline}){useShapeTool(kind);const auto before=document.pixels();const auto h=document.historyPosition();mouse(ui::kMouseDownMessage,20.5,16.5);require(shapeDragging_&&shapeSpec_.bounds.x==11&&shapeSpec_.bounds.y==7&&shapeSpec_.bounds.width==10&&shapeSpec_.bounds.height==10&&document.pixels()==before,"Drawing anchor centers actual pointer-down preview");mouse(ui::kMouseMoveMessage,23.5,18.5);require(shapeSpec_.bounds.x+shapeSpec_.bounds.width/2==16&&shapeSpec_.bounds.y+shapeSpec_.bounds.height/2==12,"Drawing anchor shape resize fixed center");mouse(ui::kMouseUpMessage,23.5,18.5);require(!shapeDragging_&&document.historyPosition()==h+1&&document.pixels()!=before,"Drawing anchor shape commits preview once");document.undo();require(document.pixels()==before,"Drawing anchor shape undo");}
  require(selectionPivot_&&selectionPivot_->x==2&&selectionPivot_->y==3,"Drawing anchor independent selection pivot");document.markSaved();setDrawingAnchor({8,6.5});const auto selectedPivot=selectionPivot_;const auto anchor=drawingAnchorPoint();mouse(ui::kMouseDownMessage,anchor.x,anchor.y);mouse(ui::kMouseMoveMessage,anchor.x+2,anchor.y-1);mouse(ui::kMouseUpMessage,anchor.x+2,anchor.y-1);if(drawingAnchorPoint().x!=10||drawingAnchorPoint().y!=5.5||!selectionPivot_||selectionPivot_->x!=selectedPivot->x||document.dirty())throw std::runtime_error("Drawing anchor drag: anchor="+std::to_string(drawingAnchorPoint().x)+","+std::to_string(drawingAnchorPoint().y)+" pivot="+std::to_string(selectionPivot_?selectionPivot_->x:-99)+" expectedPivot="+std::to_string(selectedPivot?selectedPivot->x:-99)+" dirty="+std::to_string(document.dirty())+" dragging="+std::to_string(drawingAnchorDragging_));mouse(ui::kMouseDownMessage,10,5.5);mouse(ui::kMouseMoveMessage,12,7.5);key(ui::kKeyEsc);require(!drawingAnchorDragging_&&drawingAnchorPoint().x==10&&drawingAnchorPoint().y==5.5,"Drawing anchor Escape restores setting");
  drawingAnchorPresetButton_->Click();if(drawingAnchorPoint().x!=.5||drawingAnchorPoint().y!=.5||!selectionPivot_||selectionPivot_->x!=2)throw std::runtime_error("Drawing anchor preset: anchor="+std::to_string(drawingAnchorPoint().x)+","+std::to_string(drawingAnchorPoint().y)+" pivot="+std::to_string(selectionPivot_?selectionPivot_->x:-99)+" active="+std::to_string(document.active())+" drawing="+std::to_string(drawingAnchorActive())+" enabled="+std::to_string(drawingAnchorPresetButton_->isEnabled()));setDrawingAnchor({16,12});drawingAnchorVisible_=false;

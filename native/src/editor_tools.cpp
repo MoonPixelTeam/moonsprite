@@ -1272,7 +1272,9 @@ void Editor::layoutToolOptions() {
     const bool textReference=smoke_ && _wgetenv(L"MOONSPRITE_TOOL_TEXT_REFERENCE");
     auto syncText=[&](PixelEntry* entry,const std::string& value){if(textReference || entry->text()!=value)entry->setText(value);};
     if(imagePaintModeDropdown_)imagePaintModeDropdown_->setVisible(false);
-    if(drawingAnchorButton_){drawingAnchorButton_->setVisible(false);drawingAnchorPresetButton_->setVisible(false);}
+    // Eligible shape/selection branches place these same controls below.
+    // Hiding first frees focus/capture and invalidates the occupied area.
+    if(drawingAnchorButton_ && (!drawingAnchorEligible() || (smoke_ && _wgetenv(L"MOONSPRITE_ANCHOR_VISIBILITY_REFERENCE")))){drawingAnchorButton_->setVisible(false);drawingAnchorPresetButton_->setVisible(false);}
 
     ++brushFeedback_.toolOptionsLayouts_;
 

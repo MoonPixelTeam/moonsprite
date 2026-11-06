@@ -480,3 +480,9 @@ Aseprite `src/ui/manager.cpp` 的 flushRedraw 和编辑器局部 canvas invalida
 
 - layoutToolOptions已有syncText覆盖普通笔刷等字段，但选区x/y/宽/高/角度仍每次无条件setText。现复用同一syncText，不改焦点保护、格式化、翻转符号、角度或提交逻辑。Aseprite MIT Entry::onSetText明确无条件recalcCharBoxes，因此稳定目标不再触发该重复整形；字段变化仍正常更新。不改legacy选区数据语义。
 - 正式selection-field-sync-build.log构建exit0。完整--selection-check优化和MOONSPRITE_TOOL_TEXT_REFERENCE参考均exit0；增加100次稳定布局五字段文字/位置不变、目标坐标尺寸变化立即更新、像素/revision/history保持检查，原输入/像素/历史检查保留。100次布局优化64.3758ms/参考69.5824ms为整栏单次观察，参考开关也恢复其他字段赋值，不能独立归因或当作稳定整机提速。--tool-property-shortcuts-check exit0。来源与diff检查通过后源码/来源/记录提交推送dev。
+
+## 2026-11-07：绘图锚点避免瞬间隐藏再显示
+
+- layoutToolOptions原先无条件隐藏绘图锚点两按钮，再由适用的形状/选区分支重新放置显示。对照Aseprite MIT Widget::setVisible(false)，隐藏会freeWidget释放焦点/capture并invalidate旧范围。现适用工具保留状态，由原有放置、滚动及advanced路径决定最终显示；不适用工具仍隐藏。smoke参考MOONSPRITE_ANCHOR_VISIBILITY_REFERENCE恢复原行为。无素材、命中、锚点数据或工具资格变化。
+- anchor-visibility-final-build.log正式Release构建exit0；--selection-check完整通过，新增宽窗口适用选区按钮获得焦点后连续20次布局仍可见且保持焦点，原五字段位置/数据/历史检查保留。绘图锚点原有检查也新增稳定形状按钮焦点断言，但--workspace-check --named-workspace-only --drawing-anchor-edit-floating-only在优化及原显隐参考均exit 0xC00000FD栈溢出，因此该组合未验收，不以旧native-workspace-error.txt判定失败原因。本轮未宣称完整锚点组合通过或整体提速比例。来源检查后源码/来源/记录提交推送dev。
+- --tool-property-shortcuts-check与--ui-geometry-performance-check均exit0。
