@@ -1710,6 +1710,7 @@ void Editor::paintScrollbarCorner(ui::Graphics& g,gfx::Rect physicalViewport) {
   }
 
 void Editor::paintPanelBackdrops(ui::Graphics& g,bool includeFloating) {
+    InteractionScope backdropScope(15,"panel-backdrops");
 
     UiPaintScale scale(g);const auto rc=uiLogical(clientBounds());const auto l=workspaceLayout(rc);const auto pl=columnLayout(rc,0),cl=columnLayout(rc,1),ll=columnLayout(rc,2);
     if(advancedActive()){g.fillRect(skin_["background"],rc);if(advancedMode_==1)g.fillRect(skin_["panel"],gfx::Rect(0,0,rc.w,Layout::optionsHeight+Layout::gap));return;}
@@ -1727,7 +1728,9 @@ void Editor::paintPanelBackdrops(ui::Graphics& g,bool includeFloating) {
     auto colorContent=uiLogical(paletteContentBounds().offset(-bounds().origin()));
 
     auto panel=[&](const gfx::Rect& box,const char* slot,const char* fill) {
-
+      // Panel skin patches are confined to their target rectangle. Avoid
+      // preparing nine-slices for unrelated child background damage.
+      if(!uiPhysical(box).intersects(g.getClipBounds()) && !(smoke_ && _wgetenv(L"MOONSPRITE_PANEL_DAMAGE_REFERENCE")))return;
       g.fillRect(skin_[fill],box);
 
       if(!skin_.draw(g,slot,box)) g.drawRect(skin_["border"],box);

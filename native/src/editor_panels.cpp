@@ -1345,6 +1345,7 @@ void Editor::saveWorkspaceSizes() {
   }
 
 void Editor::onResize(ui::ResizeEvent& ev) {
+    InteractionScope resizeScope(14,"window-layout");
 
     restoreAdvancedVisibility();
     const auto oldView=canvasViewport();const bool positioned=!canvas_.isEmpty();const auto previousWindow=floatingArea(uiLogical(bounds()));

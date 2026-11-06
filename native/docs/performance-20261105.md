@@ -143,3 +143,11 @@ Aseprite `src/ui/manager.cpp` 的 flushRedraw 和编辑器局部 canvas invalida
 - timelineOutlines的selected Cel循环在dr==0时先按可见行ID排除屏幕外项目，再查询layer/frame索引；有纵向位移时保留原layer index平移，并在查询frame前排除目标不可见行。没有缓存、素材或选择语义变更。
 - 正式Release构建exit0；MOONSPRITE_OUTLINE_REFERENCE开启的大时间轴、分组、密度检查全部exit0，继续与原全选择扫描精确比较四个边界。来源覆盖及diff检查通过。
 - 无oracle回放selection_outline_mean4.293ms、same_target_drag2.724ms、scroll8.839ms。与前轮outline4.164ms接近且环境波动，没有证明加速；只确认无关行索引查询减少，不作整应用性能结论。退出异常和真实窗口缩放仍待解决。本轮验证后提交推送dev。
+
+
+## 2026-11-06：窗口重排/背景绘制分项与栏目damage排除
+
+- 新增opt-in window-layout(slot14)、panel-backdrops(slot15)，关闭诊断时不读时钟。首次窗口回放中layout18次60.716ms、backdrops1901次157.543ms，提示子控件背景重绘是剩余开销之一。
+- paintPanelBackdrops的局部panel helper在目标物理矩形与当前damage不相交时跳过fill/skin draw。Skin::draw的非icon九切片/lattice目标都限制在rc内；没有缩窄clip、修改皮肤素材或浮动chrome。MOONSPRITE_PANEL_DAMAGE_REFERENCE恢复旧工作。
+- 正式Release构建exit0。旧/新ui-geometry均exit0并通过浮动移动/resize framebuffer比较。backdrops累计251.429ms/210.641ms，窗口12次684.307ms/511.740ms；新旧其他scope同样波动，只作诊断，不能把全部差值归因本轮。group-timeline检查exit0；其余运行结果见本轮命令输出。
+- 保留真实Windows呈现延迟与工具轨道退出异常为未解决项。来源覆盖和diff通过后提交推送dev。
