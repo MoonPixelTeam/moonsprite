@@ -293,3 +293,10 @@ Aseprite `src/ui/manager.cpp` 的 flushRedraw 和编辑器局部 canvas invalida
 - 继续沿上轮参数栏热点检查，发现普通笔刷toolControls循环将6个symmetryButtons逐个setVisible(false)，随后layoutSymmetryOptions及finishToolScrollLayout再次显示。对照Aseprite MIT Widget::setVisible，隐藏会freeWidget并Manager::invalidateRect，触发无用兄弟控件区域计算；旧版EditorToolOptions.tsx:1210按supportsSymmetry呈现，未要求中间隐藏。移除这次中间隐藏，原最终可见性/空间判断、其他工具分支及尺寸布局不变；MOONSPRITE_SYMMETRY_VISIBILITY_REFERENCE恢复原路径。无app代码复制。
 - 唯一Release symmetry-visibility-build.log exit0；reference/optimized原生resize各16尺寸surface/client一致、BMP逐字节一致。profile参数栏26次21.558→13.252ms，window-layout20次51.993→44.390ms。局部成本下降有实测；无trace/截图ABBA真实resize均exit0，变化样本均值reference23.539、optimized22.948、optimized23.058、reference27.355ms，顺序/系统波动仍存在，不能把局部约38%下降当作整体提速比例。
 - ui-geometry-performance含悬浮partial/full framebuffer、symmetry-shortcuts、tool-property-shortcuts、modifier-brush-performance均exit0；来源覆盖625文件/evidence及diff通过。迁移完整性仍INCOMPLETE、整体流畅度仍未全面验收。只提交源码/来源/记录，验证后推送dev。
+
+
+## 2026-11-06：输入框无滚动偏移时跳过文字测量
+
+- refreshEntryViewport每次输入/绘制/尺寸更新都调用currentContentWidth（UTF转换、Fusion文本/后缀measure、字符box），随后才读取m_scroll，实际只有scroll非零才修正。对照Aseprite MIT Entry::getEntryThemeInfo仅读取状态，现先读scroll，无偏移直接返回；有偏移照旧测量与setCaretPos修正。未更改尺寸、选区、caret或输入模型。MOONSPRITE_ENTRY_VIEWPORT_REFERENCE恢复原测量路径。此前“尺寸不变仍重绘”的候选尚未修改，本轮按已确认的无效测量推进。
+- 唯一正式Release entry-viewport-build.log exit0；reference/optimized各16尺寸BMP逐字节一致、surface/client检查通过。profile options26次13.750/11.084ms、window-layout20次45.153/27.853ms，仅一组且后者self下降超过局部节省，存在运行环境影响，不全归因此修复。关闭profile/截图ABBA原生resize均exit0，变化样本均值reference24.107、optimized22.691、optimized22.316、reference23.445ms；夹具中约5–6%差异，不代表DWM/真实输入显示延迟。
+- plain-number（多值/后缀、caret/click滚动及文本framebuffer）、ui-geometry-performance（局部/全量framebuffer）、tool-property-shortcuts全部exit0；来源覆盖625文件/evidence与diff通过。迁移完整性仍INCOMPLETE、整体卡顿未全部验收。验证后提交推送dev，生成物及既有未跟踪文件不提交。

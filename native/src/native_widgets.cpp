@@ -455,8 +455,12 @@ static void drawInputFrame(ui::Graphics& g,const Skin& skin,gfx::Rect physical,b
 // Keep the existing MIT caret/scroll state authoritative. Geometry changes
 // must apply the same all-visible correction as edits, without moving anchors.
 static void refreshEntryViewport(PixelEntry& input) {
-  if(input.bounds().w<input.currentContentWidth()*uiScale)return;
   int scroll=0,caret=0;input.getEntryThemeInfo(&scroll,&caret,nullptr,nullptr);
+  // No scroll means there is nothing to correct. Avoid measuring UTF text,
+  // suffix and shaped caret boxes on every input/paint/layout message.
+  static const bool reference=std::getenv("MOONSPRITE_ENTRY_VIEWPORT_REFERENCE")!=nullptr;
+  if(!scroll && !reference)return;
+  if(input.bounds().w<input.currentContentWidth()*uiScale)return;
   if(scroll){input.setCaretPos(0);input.setCaretPos(caret);input.invalidate();}
 }
 bool PixelEntry::editClipboard(Cmd command) {
