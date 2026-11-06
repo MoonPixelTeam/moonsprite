@@ -2978,3 +2978,12 @@ project-import-tests与document-raster-history-tests构建/运行均exit0（nati
 新增autoLink开/关两组合验证独立空数据、精确几何/像素、一次历史、Undo恢复缺失源、Redo恢复新帧。初版fromImported夹具暴露导入仍要求完整slot矩阵，未放宽生产准入；测试明确通过const_cast注入Timeline构造器校验的稀疏状态，仅验证核心命令。稀疏工程导入/重开未通过且未宣称完成。
 
 free-missing-duplicate-build.log正式Release和测试构建exit0；夹具调整free-missing-duplicate-fixture-build.log exit0；完整free-tile-project-tests exit0，--workspace-check --named-workspace-only --drawing-anchor-edit-floating-only exit0。来源625文件/快照及diff通过，无人工UI验收。全量迁移、自由Cel链接、稀疏工程准入仍未完成。源码/测试/来源/记录推送dev，用户数据与生成物保留。
+
+
+### 2026-11-07：无素材自由瓦片空白帧几何
+
+对照 legacy core/animation.ts::addBlankAnimationFrame、blankSurfaceFromLayer：无 freeTileSources 时空白帧使用1×1原点透明表面，有来源的复制帧保留原几何。原生此前无素材空白帧仍继承旧Cel大表面，现修正这一分支。测试覆盖空白/复制两类几何、独立空实例、单历史与Undo/Redo。
+
+首次重开检查失败为 Missing modern free tile collection metadata。核对legacy core/project-format-decode.ts:435亦拒绝现代格式空素材集合，保留准入并明确测试拒绝；不声称该状态保存重开已迁移。free-source-less-frame-build.log正式Release与核心测试构建exit0，完整free-tile-project-tests exit0（free-source-less-frame-test.log），正式程序工作区drawing-anchor-edit-floating组合exit0。来源625文件快照、diff检查通过。
+
+用户确认窄窗口放不下的顶部菜单收进“更多”。核对现有layoutTopMenu实现已采用此行为；本轮正式--palette-mouse-check（MOONSPRITE_PALETTE_EDGE_REFERENCE=1）exit0，覆盖真实菜单对象的宽窄转换、重复布局、打开更多后调整尺寸、顺序及捕获释放。未进行人工截图验收，无额外菜单实现修改。全部迁移仍INCOMPLETE，自由Cel链接和稀疏准入等缺口继续保留。

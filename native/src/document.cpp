@@ -473,7 +473,8 @@ void Document::addFrame(bool duplicate) {
  for(const auto& l:timeline_.state().layers){DocumentCel c;const auto* sourceSlot=timeline_.findCel(l.id,frame().id);if(duplicate&&sourceSlot){c=*timeline_.resolveSurface(sourceSlot->id).source;c.linkedCelId.reset();c.runtimeSharedCelId.reset();}else{timeline::Surface surface;surface.width=surface.height=1;c.opacity=l.opacity;
  if(l.kind=="free-tile"||l.kind=="tilemap"){
   const auto* slot=timeline_.findCel(l.id,frame().id);const auto source=slot?timeline_.resolveSurface(slot->id):timeline::Resolution{};
-  if(source.surface){surface.width=source.surface->width;surface.height=source.surface->height;surface.offsetX=source.surface->offsetX;surface.offsetY=source.surface->offsetY;}
+  if(l.kind=="free-tile"&&(!l.freeTiles||l.freeTiles->sources.empty())){ /* Legacy blankSurfaceFromLayer stays 1x1 at origin. */ }
+  else if(source.surface){surface.width=source.surface->width;surface.height=source.surface->height;surface.offsetX=source.surface->offsetX;surface.offsetY=source.surface->offsetY;}
   else if(l.kind=="free-tile"){if(!duplicate&&l.freeTiles&&!l.freeTiles->sources.empty()){surface.width=width_;surface.height=height_;}}
   else throw std::runtime_error("Missing special frame source geometry");
   if(l.kind=="free-tile")c.freeTiles=free_tiles::CelData{};
