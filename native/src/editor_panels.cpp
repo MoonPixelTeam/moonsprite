@@ -2,8 +2,27 @@
 #include "editor.h"
 #include "free_tile_instances_panel.h"
 #include <unordered_set>
+#include "latest_task_queue.h"
+#include "ui/property.h"
 
 namespace moon::editor {
+namespace {
+struct WorkspaceWrite {std::filesystem::path root;std::string sizes,panels;};
+void writeWorkspaceBatch(const WorkspaceWrite& value){
+ std::filesystem::create_directories(value.root);
+ auto write=[&](const char* name,const std::string& text){std::ofstream out(value.root/name);out<<text;out.close();if(!out)throw std::runtime_error(std::string("Cannot save ")+name);};
+ write("workspace-sizes.txt",value.sizes);write("workspace-panels.txt",value.panels);
+}
+struct WorkspaceWrites final:ui::Property {
+ LatestTaskQueue<WorkspaceWrite> queue{[](auto value){return std::async(std::launch::async,[value]{writeWorkspaceBatch(*value);});},[]{}};
+ std::vector<LatestTaskQueue<WorkspaceWrite>::Acknowledgement> acknowledgements;
+ ui::Timer timer;std::function<void(const std::string&)> error;
+ WorkspaceWrites(ui::Widget* owner,std::function<void(const std::string&)> failure):ui::Property("moonsprite.workspace-writes"),timer(16,owner),error(std::move(failure)){timer.Tick.connect([this]{poll(false);});}
+ void poll(bool wait){if(wait)queue.waitIdle();else queue.poll();for(auto it=acknowledgements.begin();it!=acknowledgements.end();){if((*it)->wait_for(std::chrono::seconds(0))!=std::future_status::ready){++it;continue;}try{(*it)->get();}catch(const std::exception& e){if(error)error(e.what());}it=acknowledgements.erase(it);}if(!queue.busy())timer.stop();}
+ void enqueue(WorkspaceWrite value){poll(false);const auto pending=queue.pendingValue(),active=queue.runningValue();const auto latest=pending?pending:active;if(latest&&latest->root==value.root&&latest->sizes==value.sizes&&latest->panels==value.panels)return;auto ack=queue.enqueue(std::make_shared<const WorkspaceWrite>(std::move(value)));if(acknowledgements.empty()||acknowledgements.back()!=ack)acknowledgements.push_back(ack);timer.start();}
+ ~WorkspaceWrites(){timer.stop();error={};poll(true);}
+};
+}
 // PreviewPanel.tsx zoom-shortcut handler; reuse the existing anchored preview view.
 void PreviewPanel::zoomPreviewTo(double next,std::optional<gfx::Point> pointer){
  syncPreview();previewLayout();
@@ -1347,6 +1366,18 @@ void Editor::saveWorkspaceSizes() {
 
     const auto testRoot=smoke_?_wgetenv(L"MOONSPRITE_WORKSPACE_SAVE_TEST_ROOT"):nullptr;
     if(smoke_&&!testRoot)return;
+    if(testRoot && _wgetenv(L"MOONSPRITE_WORKSPACE_SAVE_QUEUE_CHECK")){
+      static bool checked=false;if(!checked){checked=true;
+        const auto root=std::filesystem::path(testRoot)/"queue-check";int errors=0;
+        auto read=[](const auto& file){std::ifstream in(file);return std::string(std::istreambuf_iterator<char>(in),{});};
+        {WorkspaceWrites writes(this,[&](const std::string&){++errors;});for(int i=0;i<40;++i)writes.enqueue({root,std::to_string(i),"panels-"+std::to_string(i)});writes.poll(true);
+         if(errors||read(root/"workspace-sizes.txt")!="39"||read(root/"workspace-panels.txt")!="panels-39")throw std::runtime_error("Workspace final batch mismatch");
+         const auto blocker=root/"blocker.txt";{std::ofstream out(blocker);out<<"file";}writes.enqueue({blocker,"failure","failure"});writes.poll(true);if(errors!=1)throw std::runtime_error("Workspace write error missing");
+         writes.enqueue({root,"recovered","recovered-panels"});writes.poll(true);if(read(root/"workspace-panels.txt")!="recovered-panels")throw std::runtime_error("Workspace recovery failed");}
+        {WorkspaceWrites closing(this,{});closing.enqueue({root,"closed","closed-panels"});}
+        if(read(root/"workspace-sizes.txt")!="closed"||read(root/"workspace-panels.txt")!="closed-panels")throw std::runtime_error("Workspace close flush failed");
+      }
+    }
     struct SaveProfile {
       std::filesystem::path path;std::uint64_t calls=0;double total=0,maximum=0;
       SaveProfile(){if(const auto value=_wgetenv(L"MOONSPRITE_INTERACTION_PROFILE")){path=value;path+=L".workspace-save.tsv";}}
@@ -1356,13 +1387,13 @@ void Editor::saveWorkspaceSizes() {
     struct Scope {bool enabled=!profile.path.empty();std::chrono::steady_clock::time_point start;Scope(){if(enabled)start=std::chrono::steady_clock::now();}~Scope(){if(enabled){const auto ms=std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-start).count();++profile.calls;profile.total+=ms;profile.maximum=std::max(profile.maximum,ms);}}} scope;
     try {
 
-      const auto path=(testRoot?std::filesystem::path(testRoot):palettePreferencePath().parent_path())/"workspace-sizes.txt";std::filesystem::create_directories(path.parent_path());
-
-      std::ofstream out(path);writeWorkspaceSizes(out);
-
-      out.close();if(!out)throw std::runtime_error("Cannot save workspace sizes");
-
-      std::ofstream panelsOut(path.parent_path()/"workspace-panels.txt");docking_.write(panelsOut);panelsOut<<palettePanelOpen_<<' '<<colorPickerOpen_<<' '<<layersPanelOpen_<<' '<<previewPanelOpen_<<'\n';panelsOut<<"picker-columns-v1";for(int id=4;id<8;++id)panelsOut<<' '<<pickerOpen_[id];panelsOut<<'\n';panelsOut.close();if(!panelsOut)throw std::runtime_error("Cannot save panel docking");
+      const auto root=testRoot?std::filesystem::path(testRoot):palettePreferencePath().parent_path();
+      std::ostringstream sizes,panels;writeWorkspaceSizes(sizes);docking_.write(panels);
+      panels<<palettePanelOpen_<<' '<<colorPickerOpen_<<' '<<layersPanelOpen_<<' '<<previewPanelOpen_<<'\n';panels<<"picker-columns-v1";for(int id=4;id<8;++id)panels<<' '<<pickerOpen_[id];panels<<'\n';
+      WorkspaceWrite value{root,sizes.str(),panels.str()};
+      static const bool synchronous=std::getenv("MOONSPRITE_WORKSPACE_SAVE_SYNC_REFERENCE")!=nullptr;
+      if(synchronous)writeWorkspaceBatch(value);
+      else{auto writes=std::dynamic_pointer_cast<WorkspaceWrites>(getProperty("moonsprite.workspace-writes"));if(!writes){writes=std::make_shared<WorkspaceWrites>(this,[this](const std::string& message){status_=U"栏目尺寸保存失败："+unicodeText(message);invalidateRect(statusBounds());});setProperty(writes);}writes->enqueue(std::move(value));}
 
     }catch(const std::exception& e){status_=U"栏目尺寸保存失败："+unicodeText(e.what());}
 

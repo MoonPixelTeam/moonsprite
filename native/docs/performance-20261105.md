@@ -408,3 +408,10 @@ Aseprite `src/ui/manager.cpp` 的 flushRedraw 和编辑器局部 canvas invalida
 - saveWorkspaceSizes生产路径在UI线程同步创建目录并写workspace-sizes.txt/workspace-panels.txt，smoke默认跳过。增加固定统计（沿用MOONSPRITE_INTERACTION_PROFILE，.workspace-save.tsv），及仅smoke显式MOONSPRITE_WORKSPACE_SAVE_TEST_ROOT独立目录注入。正常保存时机/格式、原ostream写入及800ms预设保存队列不变。正式workspace-save-profile-build.log exit0。
 - 独立root docking-check37次保存累计61.928ms/max5.613ms；workspace-check1次2.439ms。确认两个文件存在，分别389/684bytes；该采样来自随后失败的检查，只证明实际保存路径被执行及耗时，不证明完整功能通过。
 - docking-check在Modal surface intercepted the visible dialog button失败；workspace-check在Scrollable region has no sheet scrollbar: home失败。新shell关闭注入/profile后同一二进制均在相同断言exit1，证明不依赖测试存储注入，但未对前一提交构建作基线比较，不能断言历史来源。ui-geometry-performance exit0；来源覆盖625/evidence及diff通过。两项缺口待定位，不将其报告为通过。本轮只提交诊断与证据，不声称新增提速；下一步需处理真实工作区保存阻塞及验收缺口。测试输出、用户数据和错误报告保留不提交。
+
+
+## 2026-11-07：工作区尺寸两文件后台批次保存
+
+- UI捕获writeWorkspaceSizes及Model::write输出，作为同一immutable批次交给复用LatestTaskQueue的后台writer；保持原ostream格式、文件名和先sizes后panels顺序。同一queue合并最新pending，比较最新批次避免重复；工作线程不访问Editor。16ms UI timer报告失败，Property析构等待最后批次且禁用Editor回调。原两文件保存本就不是跨文件事务，本轮不宣称断电原子性。预设800ms保存机制未改动。
+- 正式Release workspace-save-async-final-build.log exit0。独立测试root+QUEUE_CHECK下ui-geometry-performance同步/异步均exit0，3次保存UI耗时sync5.555ms/max1.980→async0.408ms/max0.151；最终workspace-sizes.txt和workspace-panels.txt逐字节一致。此为提交耗时，磁盘完成时间另计。queue-check40次两字段更新最终39/panels-39、文件阻挡目录失败通知、失败后恢复、析构两文件最终值全部通过；包含既有几何等价及局部/全量绘制。
+- 上一轮docking-check弹窗命中及workspace-check首页滚动条失败仍未修复，本轮没有据几何检查宣称两项通过。来源625覆盖/evidence及diff通过后提交推送dev，整体性能目标尚未完成。仅源码/登记/记录提交，本地报告及用户数据保留。
