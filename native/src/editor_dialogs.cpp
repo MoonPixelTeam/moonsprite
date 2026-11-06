@@ -1729,6 +1729,9 @@ void Editor::paintPanelBackdrops(ui::Graphics& g,bool includeFloating) {
 
     };
 
+    const auto damage=g.getClipBounds();
+    const bool referenceColumns=smoke_ && _wgetenv(L"MOONSPRITE_BACKDROP_COLUMNS_REFERENCE");
+    auto touches=[&](gfx::Rect outer,gfx::Rect content){return referenceColumns || uiPhysical(outer|content).intersects(damage);};
     const auto l=workspaceLayout(rc);
     g.saveClip();clipColumn(g,-1,true);panel(l.workspacePanel(),"panel_outer","panel");panel(l.workspaceContent(),"panel_content","background");
 
@@ -1741,15 +1744,31 @@ void Editor::paintPanelBackdrops(ui::Graphics& g,bool includeFloating) {
       const gfx::Rect colorPanel=docking_.custom?columnFrame(0):gfx::Rect(pl.rightX,pl.tabY,pl.right,pl.paletteBottom(colorPickerOpen_)-pl.tabY);
       const auto colorContent=uiLogical(paletteContentBounds().offset(-bounds().origin()));
       // Both palette layers share the same immutable column occlusion.
+      if(touches(colorPanel,colorContent)){
       g.saveClip();clipColumn(g,0,true);
       if(columnFloating(0))FloatingColumnChrome::paint(skin_,g,colorPanel);else panel(colorPanel,"panel_outer","panel");
       panel(colorContent,"panel_content","background");g.restoreClip();
+      }
     }
 
-    for(int id=1;id<panels::columnCount;++id)if(panels::isPicker(id)&&columnShown(id)&&(includeFloating||!columnFloating(id))){const auto pickerLayout=columnLayout(rc,id);g.saveClip();clipColumn(g,id,true);if(columnFloating(id))FloatingColumnChrome::paint(skin_,g,columnFrame(id));else panel(docking_.custom?columnFrame(id):pickerLayout.pickerPanel(),"panel_outer","panel");panel(pickerLayout.pickerGradient(runtimePreferences_.flag("colorLayers.recentColorsVisible")&&!recentColors_.values().empty()),"panel_content","background");g.restoreClip();}
+    for(int id=1;id<panels::columnCount;++id)if(panels::isPicker(id)&&columnShown(id)&&(includeFloating||!columnFloating(id))){
+      const auto pickerLayout=columnLayout(rc,id);
+      const auto outer=docking_.custom?columnFrame(id):pickerLayout.pickerPanel();
+      const auto content=pickerLayout.pickerGradient(runtimePreferences_.flag("colorLayers.recentColorsVisible")&&!recentColors_.values().empty());
+      if(!touches(outer,content))continue;
+      g.saveClip();clipColumn(g,id,true);
+      if(columnFloating(id))FloatingColumnChrome::paint(skin_,g,columnFrame(id));else panel(outer,"panel_outer","panel");
+      panel(content,"panel_content","background");g.restoreClip();
+    }
 
-    if(columnShown(8)&&documentOpen_&&(includeFloating||!columnFloating(8))){g.saveClip();clipColumn(g,8,true);if(columnFloating(8))FloatingColumnChrome::paint(skin_,g,columnFrame(8));else panel(columnFrame(8),"panel_outer","panel");panel(columnChrome(8).content,"panel_content","background");g.restoreClip();}
-    if(columnShown(13)&&documentOpen_&&(includeFloating||!columnFloating(13))){g.saveClip();clipColumn(g,13,true);if(columnFloating(13))FloatingColumnChrome::paint(skin_,g,columnFrame(13));else panel(columnFrame(13),"panel_outer","panel");panel(columnChrome(13).content,"panel_content","background");g.restoreClip();}
+    if(columnShown(8)&&documentOpen_&&(includeFloating||!columnFloating(8))){
+      const auto outer=columnFrame(8),content=columnChrome(8).content;
+      if(touches(outer,content)){g.saveClip();clipColumn(g,8,true);if(columnFloating(8))FloatingColumnChrome::paint(skin_,g,outer);else panel(outer,"panel_outer","panel");panel(content,"panel_content","background");g.restoreClip();}
+    }
+    if(columnShown(13)&&documentOpen_&&(includeFloating||!columnFloating(13))){
+      const auto outer=columnFrame(13),content=columnChrome(13).content;
+      if(touches(outer,content)){g.saveClip();clipColumn(g,13,true);if(columnFloating(13))FloatingColumnChrome::paint(skin_,g,outer);else panel(outer,"panel_outer","panel");panel(content,"panel_content","background");g.restoreClip();}
+    }
     if(columnShown(2) && documentOpen_ && (includeFloating || !columnFloating(2))){
 
       paintTimelineBackground(g,columnLayout(rc,2));

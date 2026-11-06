@@ -230,3 +230,10 @@ Aseprite `src/ui/manager.cpp` 的 flushRedraw 和编辑器局部 canvas invalida
 
 - 核对Skin::draw发现已复用Aseprite九切片快速路径，未在缺少矩阵证据时增加通用皮肤裁剪。paintStatusText现按原状态/缩放两段clip的并集物理矩形排除无关damage，再格式化percent与计算inkBounds；原clip和文字位置/顺序不变。MOONSPRITE_STATUS_DAMAGE_REFERENCE恢复旧工作。对照Aseprite MIT Graphics getClipBounds与UiPaintScale，未复制app代码。
 - 唯一Release构建status-damage-build.log exit0；ui-geometry-performance局部/全量framebuffer、drawing-pan-performance、advanced-mode均exit0。真实窗口reference/optimized均exit0及surface/client一致；15个变化样本均值51.033/59.279ms，未证明加速且后者更慢，不能据此宣称窗口改善。仅确认无关文字格式化/字形计算减少，整体卡顿未解决。来源覆盖625文件/diff通过，验证后提交推送dev。
+
+
+## 2026-11-06：父背景重放先排除无关栏目
+
+- 对照Aseprite MIT Widget::paintEvent/paint确认透明控件会隐藏自身并重放parent背景，原生沿用此机制不变。paintPanelBackdrops在palette/picker/history/instances进入clipColumn/皮肤前，使用实际outer与content联合边界排除无关damage；包含压缩布局下content可能超出outer的情况。无选框、命中或重排语义变化。MOONSPRITE_BACKDROP_COLUMNS_REFERENCE恢复此前栏目全量工作。
+- 唯一Release构建backdrop-columns-build.log exit0；ui-geometry-performance含悬浮move/resize局部与全量framebuffer、group-timeline、playback-floating检查均exit0。来源覆盖625文件及diff通过。
+- 同二进制独占reference/optimized/optimized/reference四次真实窗口resize检查全部exit0及surface/client一致。每次panel-backdrops约2777次，累计230.007/147.981/175.184/230.440ms，geometry调用175548/165936/169935/182627；窗口变化样本均值37.597/33.701/43.149/38.303ms。背景绘制开销下降有交替采样支持，但整体窗口均值无稳定改善，仍需追查其余重放及原生表面开销，不宣称卡顿解决。验证后提交推送dev。
