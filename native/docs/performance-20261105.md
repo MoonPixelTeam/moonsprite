@@ -475,3 +475,8 @@ Aseprite `src/ui/manager.cpp` 的 flushRedraw 和编辑器局部 canvas invalida
 
 - 真实native-window-resize profile显示20次window-layout总25.0556ms、26次tool-options-layout总10.2266ms、panel-backdrops总25.9393ms，继续保留这些热点。核对onResize发现layoutModal已布局偏好设置，applyHomeVisibility又恢复偏好控件，末尾仍第三次调用layoutPreferences。仅删除末尾第三次，保留首页隐藏后的恢复及所有排序。smoke环境MOONSPRITE_RESIZE_PREFERENCES_REFERENCE可恢复原路径。未改变legacy偏好应用/取消、滚动、焦点及弹窗语义；对照Aseprite MIT Widget ResizeEvent派发，不修改依赖。
 - preferences-check优化/参考各两次exit0，覆盖720×600/1280×960边界、应用/取消/重开及首页显示。两条路径输出preferences-smoke.bmp SHA256完全相同（D7EBF89E5BBF4308298A3787D2C132001DF3763F296D504D0B17A367DA2E4919）。ui-geometry-performance-check exit0。本轮无整体帧率改善百分比声明；尺寸变化中少执行一次偏好布局为源码可核对的工作量减少。最终构建与来源检查记录见本地preferences-resize-dedup-final-build.log及provenance报告。源码/来源/记录提交推送dev，用户数据保留。
+
+## 2026-11-07：选区变换字段避免相同文本重复整形
+
+- layoutToolOptions已有syncText覆盖普通笔刷等字段，但选区x/y/宽/高/角度仍每次无条件setText。现复用同一syncText，不改焦点保护、格式化、翻转符号、角度或提交逻辑。Aseprite MIT Entry::onSetText明确无条件recalcCharBoxes，因此稳定目标不再触发该重复整形；字段变化仍正常更新。不改legacy选区数据语义。
+- 正式selection-field-sync-build.log构建exit0。完整--selection-check优化和MOONSPRITE_TOOL_TEXT_REFERENCE参考均exit0；增加100次稳定布局五字段文字/位置不变、目标坐标尺寸变化立即更新、像素/revision/history保持检查，原输入/像素/历史检查保留。100次布局优化64.3758ms/参考69.5824ms为整栏单次观察，参考开关也恢复其他字段赋值，不能独立归因或当作稳定整机提速。--tool-property-shortcuts-check exit0。来源与diff检查通过后源码/来源/记录提交推送dev。

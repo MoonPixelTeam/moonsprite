@@ -3581,6 +3581,22 @@ void Editor::smokeLayers(const std::filesystem::path& directory) {
 
 void Editor::smokeSelectionDisplay(){
 
+    // Stable transform geometry must not reshape the same five numeric fields.
+    {
+      document=Document(32,24);document.previewSelection(SelectionMask{2,3,5,4,{}});useSelectionTool(0);selectionPropertiesActive_=true;refresh();requestFocus();
+      const auto pixels=document.pixels();const auto revision=document.revision(),history=document.historySize();
+      std::array<std::string,5> values;std::array<gfx::Rect,5> boxes;
+      for(int i=0;i<5;++i){values[i]=selectionTransformFields_[i]->text();boxes[i]=selectionTransformFields_[i]->bounds();}
+      const auto start=std::chrono::steady_clock::now();
+      for(int repeat=0;repeat<100;++repeat)layoutToolOptions();
+      std::filesystem::create_directories("build/test-tmp");std::ofstream("build/test-tmp/selection-field-layout.txt")<<"layouts=100 total_ms="<<std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-start).count()<<'\n';
+      for(int i=0;i<5;++i)if(selectionTransformFields_[i]->text()!=values[i] || selectionTransformFields_[i]->bounds()!=boxes[i])throw std::runtime_error("Stable selection field text/placement changed");
+      document.previewSelection(SelectionMask{7,8,9,10,{}});layoutToolOptions();
+      if(selectionTransformFields_[0]->text()!="7" || selectionTransformFields_[1]->text()!="8" || selectionTransformFields_[2]->text()!="9" || selectionTransformFields_[3]->text()!="10")throw std::runtime_error("Changed selection geometry did not update fields");
+      if(document.pixels()!=pixels || document.historySize()!=history || document.revision()!=revision)throw std::runtime_error("Selection field layout mutated artwork/history");
+      selectionPropertiesActive_=false;
+    }
+
     document=Document(32,24);document.markSaved();document.commitSelection({},SelectionMask{2,2,5,4,{}});fitCanvas();refresh();useSelectionTool(0);const auto before=document.selection();const auto history=document.historySize();
 
     const auto start=gfx::Point(canvas_.x+int(12.5*canvasScale()),canvas_.y+int(7.5*canvasScale())),end=gfx::Point(canvas_.x+int(25.5*canvasScale()),canvas_.y+int(18.5*canvasScale()));
