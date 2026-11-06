@@ -2951,3 +2951,12 @@ project-import-tests与document-raster-history-tests构建/运行均exit0（nati
 - 新增预算耗尽时两种取样模式均原子拒绝的回归，核对未创建Cel/预览/历史、版本及存储身份不变；释放一行后可预览并取消。`document-raster-history-tests` 构建和完整测试退出0，日志 `native/build/absent-gradient-budget-build.log`、`absent-gradient-budget-test.log`。
 - 对照 `workspace-commands-history.ts` 的同步后touch顺序，空槽画笔安装新时间轴后补发内容失效通知，避免最终共享安装仅依赖提交前预览版本。关联空槽画笔回归新增提交内容版本递增断言；再次构建及完整测试退出0，日志 `native/build/absent-install-refresh-build.log`、`absent-install-refresh-test.log`。
 - 正式程序未重新链接；全量迁移、稀疏工程准入和桌面验收仍未完成。
+
+
+### 2026-11-07：迁移继续阶段——显式像素作用域下瓦片剪切验收
+
+用户目标更新为完成全部迁移，每个已验收阶段保存推送dev。范围仍为requirements-baseline的全部已登记功能，不以性能小改或来源覆盖替代功能迁移；当前整体仍INCOMPLETE。
+
+核对legacy app-selection-shortcuts.ts的Select All preferSelection事件、useAppCommandScope.ts作用域状态与app-document-shortcuts.ts Cel优先路由；native既有selectAllPixels/selectionCommandOverride_及Alt Cel内容入口已承接。旧Cut fixture同时selectTimelineCel且直接previewSelection，却未触发显式像素命令，导致实际走Cel Cut。现先调用真实selectAllPixels并断言override，再安装原局部mask；保留Cel选择、RGBA/mask、单历史、Undo/Redo、菜单一致性、pending Create/duplicate及Paint权限等原断言。产品剪贴板优先级未修改。
+
+正式tile-cut-scope-build.log Release构建exit0；--workspace-check --named-workspace-only --drawing-anchor-edit-floating-only完整exit0，--selection-check完整exit0。来源625文件/快照和diff通过。此阶段闭合此前特定Cut组合验收失败，不代表所有剪贴板、瓦片及全量迁移完成；稀疏工程准入、特殊图层生命周期、扩展等仍需按领域缺口逐项推进。源码/来源/记录推送dev，用户数据/缓存/生成物保留。
