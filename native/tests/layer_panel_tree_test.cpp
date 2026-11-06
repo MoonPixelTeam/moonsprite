@@ -1,10 +1,22 @@
 #include "layer_panel_tree.h"
 #include "editor_timeline_rows.h"
 #include <iostream>
+#include <chrono>
 #include <stdexcept>
 using namespace moon;
 static void check(bool ok,const char* why){if(!ok)throw std::runtime_error(why);}
 int main(){try{
+ {
+  auto reference=[](const timeline::State& state){std::vector<LayerPanelLayerRef> refs;for(const auto& l:state.layers)refs.push_back({l.id,l.groupId});return buildLayerPanelTreeFromTopFirst(refs,{}, {"missing"});};
+  for(int count:{0,1,2,256})for(bool duplicate:{false,true}){
+   timeline::State state;for(int i=0;i<count;++i){timeline::Layer layer;layer.id=std::to_string(duplicate?i%3:i);if(i%2)layer.groupId="missing";state.layers.push_back(layer);}
+   check(buildLayerPanelTree(state,{"missing"})==reference(state),"Ungrouped fast path differs from generic tree, including duplicate/orphan IDs");
+  }
+  timeline::State state;for(int i=0;i<256;++i){timeline::Layer layer;layer.id=std::to_string(i);state.layers.push_back(layer);}
+  std::size_t sum=0;auto measure=[&](bool fast){auto start=std::chrono::steady_clock::now();for(int i=0;i<2000;++i)sum+=(fast?buildLayerPanelTree(state):reference(state)).size();return std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-start).count();};
+  const auto old=measure(false),next=measure(true);std::cout<<"ungrouped tree generic_ms="<<old<<" fast_ms="<<next<<" checksum="<<sum<<'\n';
+ }
+
  {
  timeline::State state;for(const char* id:{"top","middle","bottom"}){timeline::Layer l;l.id=id;state.layers.push_back(l);}state.layers[0].groupId="a";state.layers[2].groupId="b";timeline::Group a;a.id="a";a.panelOrder=2;timeline::Group b;b.id="b";b.panelOrder=0;state.groups={a,b};state.frames={{"f0",100,false},{"f1",100,false}};for(const auto& l:state.layers)for(const auto& f:state.frames){timeline::Cel c;c.id=l.id+"/"+f.id;c.layerId=l.id;c.frameId=f.id;state.cels.push_back(c);}
  state.groups[0].displayColor=0xff123456;state.groups[1].parentGroupId="a";state.layers[2].groupId="b";

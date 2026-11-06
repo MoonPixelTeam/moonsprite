@@ -18257,6 +18257,7 @@
     },
     {
       "file": "src/layer_panel_tree.h",
+      "ungroupedTreePerformance20261106": "Native performance adaptation of registered legacy layer-panel-layout.ts top/bottom ordering: State overload with no groups and unique layer IDs emits native top-first root nodes directly, bypassing generic maps and sort. Missing group references still resolve to root; collapsed unknown IDs have no effect. Duplicate IDs fall back to unchanged generic behavior. Differential tests compare empty/single/multiple/256 rows, duplicate IDs and orphan references; benchmark measures2000 constructions, runtime evidence in performance-20261105.md. No grouped-tree or selection behavior changes.",
       "classification": "legacy-partial",
       "scope": "Internal normal group tree order/collapse and explicit layer/group row selection model; legacy bottom-first refs, native top-first State adapter; not wired into Editor or editable group admission.",
       "sources": [
@@ -18362,6 +18363,7 @@
     },
     {
       "file": "tests/layer_panel_tree_test.cpp",
+      "ungroupedTreePerformance20261106": "Native performance adaptation of registered legacy layer-panel-layout.ts top/bottom ordering: State overload with no groups and unique layer IDs emits native top-first root nodes directly, bypassing generic maps and sort. Missing group references still resolve to root; collapsed unknown IDs have no effect. Duplicate IDs fall back to unchanged generic behavior. Differential tests compare empty/single/multiple/256 rows, duplicate IDs and orphan references; benchmark measures2000 constructions, runtime evidence in performance-20261105.md. No grouped-tree or selection behavior changes.",
       "classification": "legacy-partial",
       "scope": "Legacy nested/empty/persisted group anchors, collapse, ancestry, explicit mixed/range row selection and top-first adaptation fixture.",
       "sources": [

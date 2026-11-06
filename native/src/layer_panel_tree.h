@@ -10,6 +10,7 @@
 #include <set>
 #include <string>
 #include <vector>
+#include <unordered_set>
 namespace moon {
 // These ref arrays follow legacy bottom-first storage; use the State overload for native data.
 struct LayerPanelLayerRef {std::string id;std::optional<std::string> groupId;};
@@ -50,5 +51,14 @@ inline std::vector<std::string> toggleLayerPanelGroupCollapsed(std::vector<std::
 // Group panelOrder stays expressed in legacy bottom-first coordinates.
 inline std::vector<LayerPanelNode> buildLayerPanelTreeFromTopFirst(const std::vector<LayerPanelLayerRef>& layers,const std::vector<LayerPanelGroupRef>& groups,const std::vector<std::string>& collapsed={}){return buildLayerPanelTree(std::vector<LayerPanelLayerRef>(layers.rbegin(),layers.rend()),groups,collapsed);}
 inline LayerPanelSelection selectLayerPanelRowFromTopFirst(const std::vector<LayerPanelLayerRef>& layers,const std::vector<LayerPanelGroupRef>& groups,const std::vector<std::string>& collapsed,LayerPanelSelection previous,const LayerPanelNode& target,LayerPanelSelectionMode mode=LayerPanelSelectionMode::Replace){return selectLayerPanelRow(std::vector<LayerPanelLayerRef>(layers.rbegin(),layers.rend()),groups,collapsed,std::move(previous),target,mode);}
-inline std::vector<LayerPanelNode> buildLayerPanelTree(const timeline::State& state,const std::vector<std::string>& collapsed={}){std::vector<LayerPanelLayerRef> layers;std::vector<LayerPanelGroupRef> groups;for(const auto& l:state.layers)layers.push_back({l.id,l.groupId});for(const auto& g:state.groups)groups.push_back({g.id,g.parentGroupId,g.panelOrder});return buildLayerPanelTreeFromTopFirst(layers,groups,collapsed);}
+inline std::vector<LayerPanelNode> buildLayerPanelTree(const timeline::State& state,const std::vector<std::string>& collapsed={}){
+ // With no groups every layer is a root in native top-first order. Retain the
+ // generic path for duplicate IDs, whose legacy tie behavior is different.
+ if(state.groups.empty()){
+  std::unordered_set<std::string> ids;ids.reserve(state.layers.size());
+  std::vector<LayerPanelNode> result;result.reserve(state.layers.size());
+  for(const auto& layer:state.layers){if(!ids.insert(layer.id).second)break;result.push_back({LayerPanelKind::Layer,layer.id,0});}
+  if(result.size()==state.layers.size())return result;
+ }
+ std::vector<LayerPanelLayerRef> layers;std::vector<LayerPanelGroupRef> groups;for(const auto& l:state.layers)layers.push_back({l.id,l.groupId});for(const auto& g:state.groups)groups.push_back({g.id,g.parentGroupId,g.panelOrder});return buildLayerPanelTreeFromTopFirst(layers,groups,collapsed);}
 }

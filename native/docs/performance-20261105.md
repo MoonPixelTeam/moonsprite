@@ -113,3 +113,11 @@ Aseprite `src/ui/manager.cpp` 的 flushRedraw 和编辑器局部 canvas invalida
 - timelineOutlines在创建TimelineRows前检查formal Cel、virtual、mask及手势virtual/mask placements，同时扫描原行/帧控件timelineSelected标记。所有来源均空才返回，不把活动背景当显式选区；不缓存状态。
 - MOONSPRITE_EMPTY_SELECTION_REFERENCE对快速返回候选执行旧算法，断言其轮廓确实为空。正式Release构建exit0；开启此oracle的large-timeline、group-timeline、timeline-density、playback-floating全部exit0。无oracle的ui-geometry亦exit0，framebuffer等价通过；窗口12次506.345ms，仍有环境波动，未证明整体提速。
 - 本轮减少无选区时树/视口/轮廓临时对象构造，不宣称特定加速比例。来源覆盖和diff检查通过后提交推送dev。原工具轨道退出访问异常、真实窗口缩放响应仍未解决。
+
+
+## 2026-11-06：无分组图层树直接路径
+
+- State版buildLayerPanelTree在groups为空且layer ID唯一时直接输出native top-first根节点，跳过底序引用转换、map、stable_sort及递归。无效groupId仍按根节点处理；重复ID回退原通用算法，保留其tie语义。分组树逻辑未变。
+- layer-panel-tree-tests新增空/单/多/256层、重复ID、孤立groupId、未知collapsed ID与原通用路径逐项对照，exit0；原分组选择与TimelineRows测试也通过。256层2000次构造同进程generic183.892ms、fast26.3628ms，约降低86%，仅表示树构造微基准。
+- 正式Release完整重编译成功；large-timeline、group-timeline、timeline-density回归exit0。该公共头文件引发较大依赖范围重编译，不是应用运行耗时。实际窗口和滚动指标另记录，不将树构造微基准当作整应用提速。
+- 最终ui-geometry exit0：窗口12次333.071ms，framebuffer等价通过。大时间轴滚动6.087ms、同目标拖动2.492ms；较前轮10.120ms有改善，但非同进程新旧对照，不给出严格整应用比例。工具轨道退出异常和真实硬件呈现仍未验收。本轮验证后推送dev。
