@@ -1213,6 +1213,17 @@ void Editor::paintCanvas(ui::Graphics& g) {InteractionScope interactionScope(9,"
 
     g.saveClip();g.clipRect(viewport);clipColumn(g,-1,true);
 
+    // Transparent children can replay the parent with no canvas pixels left.
+    // Preserve non-paint state updates; content/cache work stays lazy until
+    // an actual canvas region is exposed.
+    if(g.getClipBounds().isEmpty() && !(smoke_ && _wgetenv(L"MOONSPRITE_CANVAS_EMPTY_REFERENCE"))){
+      if(documentOpen_){
+        if(previewPanel_)previewPanel_->checkerboard=checkerboard_;
+        if(showSelectionOutline_ && document.selection() && !homeOpen_ && !smoke_ && !antsTimer_.isRunning())antsTimer_.start();
+      }
+      g.restoreClip();return;
+    }
+
     g.fillRect(skin_["background"],viewport);
 
     if(!documentOpen_){g.restoreClip();return;}

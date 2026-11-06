@@ -217,3 +217,10 @@ Aseprite `src/ui/manager.cpp` 的 flushRedraw 和编辑器局部 canvas invalida
 - 对照Aseprite MIT Manager构造中的handleWindowResize和dispatchMessages、LAF SkiaWindowBase::onResize：WM_SIZE先resizeSkiaSurface，再同步enqueue ResizeDisplay+dispatch，后者布局/flushRedraw/flip。因此直接Editor::setBounds的旧回放漏掉原生表面重建及同步回调，不能作为真实Windows窗口流畅的证明。
 - 最终正式Release构建native-window-resize-fixture-build.log exit0；独占运行检查exit0，全部surface/client尺寸一致。排除首个未改变尺寸的热身样本，15次total平均39.554ms/max43.636ms，window_call平均38.269ms，后续drain/flip平均1.285ms。profile含初始化/恢复：window-layout20次50.395ms，但canvas-paint与panel-backdrops各2777次，分别109.006/215.258ms，geometry180722次25.376ms。证据将下一步导向子控件背景重放与画布空clip开销；不能将这些累计值解释为单次调用耗时或GPU延迟。
 - 本轮是定位进展，无生产性能修复；真实窗口resize仍约40ms/次。来源覆盖625文件/diff通过，验证后提交推送dev。
+
+
+## 2026-11-06：画布空clip跳过无效准备
+
+- paintCanvas在viewport/column occlusion之后检查实际Graphics空clip；透明子控件父背景重放没有画布像素时，跳过尺寸文字/皮肤/内容缓存/辅助绘制。保留preview checkerboard同步与选区antsTimer启动，下一次实际画布曝光照常ensureContentCache。对照Aseprite MIT Widget::paint透明控件parent重放、Graphics clip语义，无app代码复制。
+- MOONSPRITE_CANVAS_EMPTY_REFERENCE恢复旧完整工作。唯一Release构建canvas-empty-replay-build.log exit0；ui-geometry-performance（含悬浮局部/全量framebuffer）、drawing-pan-performance、playback-floating全部exit0。来源覆盖625文件/diff通过。
+- 同一二进制独占顺序执行reference/optimized真实Win32 resize检查均exit0、surface/client一致。两者canvas-paint均2921次；content-cache2921→234次，canvas-paint累计121.868→43.805ms，panel-backdrops239.246→220.735ms；排除首热身后resize平均42.939→35.944ms。只有一组先旧后新，环境/顺序影响未排除，不宣称稳定百分比；无效画布准备显著减少有调用计数证据。实际输入至显示延迟和整体卡顿仍未验收。验证后提交推送dev。
