@@ -158,7 +158,7 @@ void Editor::smokePreferenceCatalog(const std::filesystem::path& directory,const
 
       const auto viewport=preferenceViewport_;const auto modal=modalBounds(uiLogical(clientBounds()));
 
-      std::vector<gfx::Point> points{viewport.origin()+gfx::Point(2,2),viewport.center(),preferenceContentBar_->bounds().center(),toDisplay(gfx::Rect(modal.x+94,modal.y+25,1,1)).origin()};
+      std::vector<gfx::Point> points{viewport.origin()+gfx::Point(2,2),viewport.center(),preferenceContentBar_->bounds().center(),toDisplay(gfx::Rect(modal.x+94,modal.y+DialogLayout::bodyTop+2,1,1)).origin()};
 
       for(auto field:preferenceRows_)if(!field->hasFlags(ui::HIDDEN))points.push_back((field->bounds()&viewport).center());
 

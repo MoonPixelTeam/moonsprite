@@ -308,3 +308,10 @@ Aseprite `src/ui/manager.cpp` 的 flushRedraw 和编辑器局部 canvas invalida
 - 唯一Release preferences-layout-build.log exit0；reference/optimized原生resize均exit0、surface/client一致，16尺寸BMP逐字节一致。profile window-layout20次32.251/37.833ms，优化后更慢；无profile/截图ABBA均值31.729/29.714/25.170/23.342ms，顺序波动明显，不能证明整体加速。仅确认每次layoutModal减少一次完整preferences计算，继续需要定位大头。
 - preferences-runtime、preferences、dialog-geometry、ui-geometry-performance含局部/全量framebuffer、advanced-mode均exit0。preferences-catalog在wheel-down/container routing失败；打开reference恢复原双pass同样exit1/同一断言，已确认该失败不由本轮引入，尚未修复，不将其报告为通过。失败点位于smokePreferenceCatalog窗口尺寸循环后的滚轮路由检查，后续需定位实际路由/fixture。来源覆盖625文件/evidence及diff通过；迁移完整性仍INCOMPLETE。
 - 验证范围如上，仅提交源码/来源/记录并推送dev，生成物及原未跟踪文件不提交。检查生成的native-preferences-catalog-error.txt本地保留。
+
+
+## 2026-11-06：偏好设置滚轮检查使用公共正文起点
+
+- 定位上一轮preferences-catalog失败，临时Manager命中诊断记录point192,54、picked desktop=true、Editor720x600。该点来自旧fixture的modal.y+25；当前用户规格标题21+正文内边距6，DialogLayout::bodyTop=27，实际位于正文外。生产processPreferencesWheel正确拒绝该点，非滚轮功能回归。移除临时main诊断，fixture改为bodyTop+2的正文空白位置，其他所有滚轮目标、方向、批量delta、数字框不消费、容器外不滚动、上下限和溢出导航断言不变。
+- 唯一正式Release preferences-wheel-final-build.log exit0；修正fixture后的preferences-catalog完整检查exit0，打开MOONSPRITE_DUPLICATE_PREFERENCES_REFERENCE恢复上一轮双pass同样exit0。上一轮去重布局的偏好设置全面检查缺口现补齐。旧native-preferences-catalog-error.txt是失败时留下的历史文件，成功检查不清除此文件；本轮以捕获到的进程exit0为证，保留本地不提交。
+- 来源覆盖625文件/evidence及diff通过。本轮修复验证依据，没有新增生产性能改动或速度声明。生成的14页偏好设置截图与诊断报告不提交。验证后提交推送dev。
