@@ -554,3 +554,9 @@ Aseprite `src/ui/manager.cpp` 的 flushRedraw 和编辑器局部 canvas invalida
 
 - 上轮New页签等待人工输入的原因已从源码确认：smokePaletteMouse入口没有设置smoke_，而showNewDocument仅verify||smoke_时启用自动取消定时器。入口现在RAII保存/启用/恢复smoke_，与独立smokeNewDocument一致；原对话框及产品流程未修改。测试同时避免真实偏好写入，并使可选轮廓oracle生效。
 - palette-mouse-smoke-scope-build.log正式Release构建exit0。开启MOONSPRITE_PALETTE_EDGE_REFERENCE的--palette-mouse-check在9.6秒内自动越过新建/取消/后续addProject断言，最终exit1于Column context entries differ from legacy，未关闭/打断测试进程。完整组合仍未通过；先前访问异常仍未定位。--ui-geometry-performance-check exit0，来源625文件/快照与diff通过，迁移仍INCOMPLETE。本轮测试调度修复，无产品提速声明。源码、来源、记录推送dev，用户数据/缓存/生成物保留。
+
+
+## 2026-11-07：栏目菜单组合承接六档显示密度
+
+- buildColumnContextMenu现有图层首项为显示密度子菜单，旧palette-mouse断言仍期望所有非预览栏目六项。核对现有smokeTimelineDensity及legacy panels/LayersPanel.test.tsx compact语义，更新图层为七项，明确首项submenu及六个选项的类型/可用性/当前密度checked绑定，原隐藏/分隔/四种停靠/预览明暗可用性检查保留并按前缀偏移。标题顺序源码核对，未新增标题getter或改产品逻辑。首次fixture编译因不存在caption getter失败，修正后正式column-density-menu-fixture-final-build.log exit0。
+- 开启MOONSPRITE_PALETTE_EDGE_REFERENCE的完整--palette-mouse-check现exit0（8.1秒），涵盖此前依次修复的梯度视口、四下拉清单、共享chrome、新建取消和栏目菜单，轮廓逐点oracle实际启用。--timeline-density-check、--ui-geometry-performance-check亦exit0；来源625文件/证据快照与diff通过，完整迁移仍INCOMPLETE。此前孤立0xC0000005未有根因，不能因本次通过宣称已定位修复。本轮为性能优化验收路径修复，无产品提速声明。源码、来源、记录推送dev，用户数据/缓存/生成物保留。

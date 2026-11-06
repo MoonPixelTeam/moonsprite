@@ -1207,13 +1207,20 @@ void Editor::smokePaletteMouse(const std::function<void(ui::Message*)>& dispatch
 
       PixelMenu menu(skin_);buildColumnContextMenu(menu,column);
 
-      if(menu.children().size()!=(column==Column::Preview?8:6))throw std::runtime_error("Column context entries differ from legacy");
-
+      const bool density=column==Column::Layers;
+      if(menu.children().size()!=std::size_t(column==Column::Preview?8:density?7:6))throw std::runtime_error("Column context entries differ from legacy");
+      if(density){
+        auto entry=dynamic_cast<PixelMenuItem*>(menu.children().front());
+        if(!entry || !entry->hasSubmenu() || entry->getSubmenu()->children().size()!=6)throw std::runtime_error("Column density submenu missing");
+        int option=0;
+        for(auto child:entry->getSubmenu()->children()){auto item=dynamic_cast<PixelMenuItem*>(child);if(!item || !item->isEnabled() || !item->checked || item->checked()!=(option==timelineDensity_))throw std::runtime_error("Column density option contract");++option;}
+      }
       int index=0;for(auto child:menu.children()) {
 
-        if(auto item=dynamic_cast<PixelMenuItem*>(child))
-
-          if(item->isEnabled()!=(index==0 || (index>=2 && index<=5) || (column==Column::Preview && index==7)))throw std::runtime_error("Column action availability differs from its migrated entries");
+        if(auto item=dynamic_cast<PixelMenuItem*>(child)){
+          const int base=index-(density?1:0);
+          if(item->isEnabled()!=(base==-1 || base==0 || (base>=2 && base<=5) || (column==Column::Preview && base==7)))throw std::runtime_error("Column action availability differs from its migrated entries");
+        }
 
         ++index;
 
