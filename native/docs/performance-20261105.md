@@ -286,3 +286,10 @@ Aseprite `src/ui/manager.cpp` 的 flushRedraw 和编辑器局部 canvas invalida
 - 核对Aseprite MIT Widget::setText无条件onSetText，Entry::onSetText无条件recalcCharBoxes；旧版EditorToolOptions.tsx受控NumberInput和brush-size测试保留模型值/即时大小显示。layoutToolOptions内22处数值/文本同步使用当前text比较，相同字符串不再提交setText。原focus/profile条件、格式化、改变值刷新、entry尺寸/viewport修正保持，不修改共享Entry API。MOONSPRITE_TOOL_TEXT_REFERENCE恢复旧setter。
 - 唯一正式Release tool-text-build.log exit0；reference/optimized真实Win32 resize均exit0、surface/client一致，16尺寸BMP逐字节一致。26次options累计20.917/20.512ms，window-layout51.844/50.064ms，差异小且仅一组，不作整体提速结论。确认省去相同字符串的字体塑形/字符box重建，但参数栏主要开销仍需进一步定位。
 - tool-property-shortcuts、modifier-brush-performance、ui-geometry-performance（含局部/全量framebuffer）、tool-rail均exit0。来源覆盖625文件/evidence及diff检查通过，迁移完整性仍INCOMPLETE。验证后提交推送dev；生成物和既有未跟踪文件不提交。
+
+
+## 2026-11-06：对称按钮不再布局内先隐藏再显示
+
+- 继续沿上轮参数栏热点检查，发现普通笔刷toolControls循环将6个symmetryButtons逐个setVisible(false)，随后layoutSymmetryOptions及finishToolScrollLayout再次显示。对照Aseprite MIT Widget::setVisible，隐藏会freeWidget并Manager::invalidateRect，触发无用兄弟控件区域计算；旧版EditorToolOptions.tsx:1210按supportsSymmetry呈现，未要求中间隐藏。移除这次中间隐藏，原最终可见性/空间判断、其他工具分支及尺寸布局不变；MOONSPRITE_SYMMETRY_VISIBILITY_REFERENCE恢复原路径。无app代码复制。
+- 唯一Release symmetry-visibility-build.log exit0；reference/optimized原生resize各16尺寸surface/client一致、BMP逐字节一致。profile参数栏26次21.558→13.252ms，window-layout20次51.993→44.390ms。局部成本下降有实测；无trace/截图ABBA真实resize均exit0，变化样本均值reference23.539、optimized22.948、optimized23.058、reference27.355ms，顺序/系统波动仍存在，不能把局部约38%下降当作整体提速比例。
+- ui-geometry-performance含悬浮partial/full framebuffer、symmetry-shortcuts、tool-property-shortcuts、modifier-brush-performance均exit0；来源覆盖625文件/evidence及diff通过。迁移完整性仍INCOMPLETE、整体流畅度仍未全面验收。只提交源码/来源/记录，验证后推送dev。

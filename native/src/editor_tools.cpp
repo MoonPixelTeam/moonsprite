@@ -1361,7 +1361,13 @@ void Editor::layoutToolOptions() {
 
     for(std::size_t i=0;i<toolControls_.size();++i) {
 
-      auto& control=toolControls_[i];if(std::find(symmetryButtons_.begin(),symmetryButtons_.end(),control.first)!=symmetryButtons_.end()){control.first->setVisible(false);continue;}const bool applies=!(eraser_ && control.pencilOnly)&&(control.first!=imagePaintModeDropdown_||(ordinaryBrushTool()&&pencilImageBrush_&&pencilImageBrush_->intrinsicSize));
+      auto& control=toolControls_[i];if(std::find(symmetryButtons_.begin(),symmetryButtons_.end(),control.first)!=symmetryButtons_.end()){
+        // These controls are laid out immediately below by layoutSymmetryOptions.
+        // Hiding them here makes Manager invalidate every sibling and release
+        // focus/capture, only to show the same buttons again in this call.
+        if(smoke_ && _wgetenv(L"MOONSPRITE_SYMMETRY_VISIBILITY_REFERENCE"))control.first->setVisible(false);
+        continue;
+      }const bool applies=!(eraser_ && control.pencilOnly)&&(control.first!=imagePaintModeDropdown_||(ordinaryBrushTool()&&pencilImageBrush_&&pencilImageBrush_->intrinsicSize));
 
       const auto button=dynamic_cast<PixelButton*>(control.first);
 
