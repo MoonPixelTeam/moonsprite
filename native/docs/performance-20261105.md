@@ -237,3 +237,10 @@ Aseprite `src/ui/manager.cpp` 的 flushRedraw 和编辑器局部 canvas invalida
 - 对照Aseprite MIT Widget::paintEvent/paint确认透明控件会隐藏自身并重放parent背景，原生沿用此机制不变。paintPanelBackdrops在palette/picker/history/instances进入clipColumn/皮肤前，使用实际outer与content联合边界排除无关damage；包含压缩布局下content可能超出outer的情况。无选框、命中或重排语义变化。MOONSPRITE_BACKDROP_COLUMNS_REFERENCE恢复此前栏目全量工作。
 - 唯一Release构建backdrop-columns-build.log exit0；ui-geometry-performance含悬浮move/resize局部与全量framebuffer、group-timeline、playback-floating检查均exit0。来源覆盖625文件及diff通过。
 - 同二进制独占reference/optimized/optimized/reference四次真实窗口resize检查全部exit0及surface/client一致。每次panel-backdrops约2777次，累计230.007/147.981/175.184/230.440ms，geometry调用175548/165936/169935/182627；窗口变化样本均值37.597/33.701/43.149/38.303ms。背景绘制开销下降有交替采样支持，但整体窗口均值无稳定改善，仍需追查其余重放及原生表面开销，不宣称卡顿解决。验证后提交推送dev。
+
+
+## 2026-11-06：重绘来源实测纠正——主要是直接碎片绘制
+
+- 新增opt-in MOONSPRITE_REPAINT_TRACE，按PaintEvent::isTransparentBg及clip矩形累计次数，最多4096条key，退出输出TSV；默认不记录/写文件。唯一Release repaint-trace-build.log exit0；真实native-window-resize检查exit0、尺寸一致，关闭trace的ui-geometry-performance检查exit0。来源覆盖625文件/diff通过。
+- native-resize-repaint-trace.tsv记录直接绘制3342次（875种clip），透明父背景107次（24种clip）；直接绘制中2298次至少一边<=8px。重复高频例子为左边缘x0,w4的多条窄片，每片约19次。此前仅凭canvas/panel scope调用数把主要成本解释为透明父背景重放，证据不足，现予纠正。
+- 对照Aseprite MIT Widget::getDrawableRegion会逐个扣除可见child，再flushRedraw按updateRegion每个rect生成PaintMessage。因此当前扁平控件布局把完整窗口damage切成大量背景碎片，分别进入Editor::onPaint；下一步应减少碎片背景路径中的全量工作/检查合并策略，不能无证据改透明控件。未修改上游依赖或生产绘制语义。本轮定位进展，无性能改善声明，验证后提交推送dev。

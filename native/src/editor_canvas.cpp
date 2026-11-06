@@ -1356,6 +1356,18 @@ void Editor::paintCanvas(ui::Graphics& g) {InteractionScope interactionScope(9,"
 void Editor::onPaint(ui::PaintEvent& ev) {
 
     auto& g=*ev.graphics();
+    // Bounded opt-in evidence for transparent-child parent background replays.
+    struct ReplayTrace {
+      std::filesystem::path path;
+      std::map<std::tuple<bool,int,int,int,int>,std::uint64_t> clips;
+      ReplayTrace(){if(const auto value=_wgetenv(L"MOONSPRITE_REPAINT_TRACE"))path=value;}
+      ~ReplayTrace(){if(path.empty())return;try{std::ofstream out(path);out<<"background\tx\ty\tw\th\tcalls\n";for(const auto& item:clips){const auto& [bg,x,y,w,h]=item.first;out<<bg<<'\t'<<x<<'\t'<<y<<'\t'<<w<<'\t'<<h<<'\t'<<item.second<<'\n';}}catch(...){}}
+    };
+    static ReplayTrace replayTrace;
+    if(!replayTrace.path.empty()){
+      const auto r=g.getClipBounds();const auto key=std::make_tuple(ev.isTransparentBg(),r.x,r.y,r.w,r.h);
+      if(replayTrace.clips.size()<4096 || replayTrace.clips.count(key))++replayTrace.clips[key];
+    }
     struct AdvancedNoticePaint{Editor& e;ui::Graphics& g;~AdvancedNoticePaint(){e.paintAdvancedNotice(g);}} advancedNoticePaint{*this,g};
 
     // Like legacy's requestDrawRef, invalidations share the existing drawing
