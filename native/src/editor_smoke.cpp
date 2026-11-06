@@ -916,6 +916,9 @@ void Editor::smokeAllScrollBars() {
 
 void Editor::smokePaletteMouse(const std::function<void(ui::Message*)>& dispatch) {
 
+    const bool previousSmoke=smoke_;smoke_=true;
+    struct RestoreSmoke {bool& value;bool previous;~RestoreSmoke(){value=previous;}} restoreSmoke{smoke_,previousSmoke};
+
     smokeAllScrollBars();
 
     {
