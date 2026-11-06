@@ -1559,7 +1559,9 @@ void Editor::layoutModal() {const auto rc=uiLogical(clientBounds());
 
     const auto modal=modalBounds(rc);
 
-    layoutPreferences(modal);
+    // The final preferences pass below also places its action buttons after
+    // generic modal layout. No intervening modal layout reads its geometry.
+    if(smoke_ && _wgetenv(L"MOONSPRITE_DUPLICATE_PREFERENCES_REFERENCE"))layoutPreferences(modal);
 
     if(modalErrorContent_!=openError_){modalErrorContent_=openError_;modalErrorScroll_=errorScrollPixels_=0;}
 

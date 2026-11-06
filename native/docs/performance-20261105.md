@@ -300,3 +300,11 @@ Aseprite `src/ui/manager.cpp` 的 flushRedraw 和编辑器局部 canvas invalida
 - refreshEntryViewport每次输入/绘制/尺寸更新都调用currentContentWidth（UTF转换、Fusion文本/后缀measure、字符box），随后才读取m_scroll，实际只有scroll非零才修正。对照Aseprite MIT Entry::getEntryThemeInfo仅读取状态，现先读scroll，无偏移直接返回；有偏移照旧测量与setCaretPos修正。未更改尺寸、选区、caret或输入模型。MOONSPRITE_ENTRY_VIEWPORT_REFERENCE恢复原测量路径。此前“尺寸不变仍重绘”的候选尚未修改，本轮按已确认的无效测量推进。
 - 唯一正式Release entry-viewport-build.log exit0；reference/optimized各16尺寸BMP逐字节一致、surface/client检查通过。profile options26次13.750/11.084ms、window-layout20次45.153/27.853ms，仅一组且后者self下降超过局部节省，存在运行环境影响，不全归因此修复。关闭profile/截图ABBA原生resize均exit0，变化样本均值reference24.107、optimized22.691、optimized22.316、reference23.445ms；夹具中约5–6%差异，不代表DWM/真实输入显示延迟。
 - plain-number（多值/后缀、caret/click滚动及文本framebuffer）、ui-geometry-performance（局部/全量framebuffer）、tool-property-shortcuts全部exit0；来源覆盖625文件/evidence与diff通过。迁移完整性仍INCOMPLETE、整体卡顿未全部验收。验证后提交推送dev，生成物及既有未跟踪文件不提交。
+
+
+## 2026-11-06：弹窗布局去除重复偏好设置预布局
+
+- layoutModal以同一modal先后两次调用layoutPreferences；第二次需保留以覆盖generic modal action按钮位置。审计中间代码无preferenceViewport/scroll/field bounds读取，去掉第一遍，保留最终完整布局。旧版PreferencesDialog.tsx单份控件布局；对照Aseprite MIT Widget::setBoundsQuietly即使尺寸相同也invalidate，重复pass有真实计算/失效成本。MOONSPRITE_DUPLICATE_PREFERENCES_REFERENCE恢复双pass。未修改其他onResize中的preferences调用，未在无modal时省略隐藏清理。
+- 唯一Release preferences-layout-build.log exit0；reference/optimized原生resize均exit0、surface/client一致，16尺寸BMP逐字节一致。profile window-layout20次32.251/37.833ms，优化后更慢；无profile/截图ABBA均值31.729/29.714/25.170/23.342ms，顺序波动明显，不能证明整体加速。仅确认每次layoutModal减少一次完整preferences计算，继续需要定位大头。
+- preferences-runtime、preferences、dialog-geometry、ui-geometry-performance含局部/全量framebuffer、advanced-mode均exit0。preferences-catalog在wheel-down/container routing失败；打开reference恢复原双pass同样exit1/同一断言，已确认该失败不由本轮引入，尚未修复，不将其报告为通过。失败点位于smokePreferenceCatalog窗口尺寸循环后的滚轮路由检查，后续需定位实际路由/fixture。来源覆盖625文件/evidence及diff通过；迁移完整性仍INCOMPLETE。
+- 验证范围如上，仅提交源码/来源/记录并推送dev，生成物及原未跟踪文件不提交。检查生成的native-preferences-catalog-error.txt本地保留。
