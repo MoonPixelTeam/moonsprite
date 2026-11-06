@@ -368,7 +368,13 @@ void Editor::smokeToolPropertyLayout(){
 
     useFillTool();check();if(!fillConnectivityButton_->hasFlags(ui::HIDDEN) || !fillReferenceButton_->caption.empty() || fillReferenceButton_->icon!="properties")throw std::runtime_error("Legacy fill settings entry");
 
-    useGradientTool();check();if(gradientType_->caption.size() || gradientRadialButton_->hasFlags(ui::HIDDEN) || gradientMode_->hasFlags(ui::HIDDEN))throw std::runtime_error("Legacy gradient controls");
+    useGradientTool();check();
+    auto checkGradientViewport=[&]{for(auto control:{gradientType_,gradientRadialButton_,gradientMode_}){const auto found=scrollViewports_.find(control);if(found==scrollViewports_.end() || control->hasFlags(ui::HIDDEN)==found->second.intersects(control->bounds()))throw std::runtime_error("Gradient control visibility differs from property viewport");}};
+    checkGradientViewport();
+    if(!gradientType_->caption.empty() || gradientType_->icon!="gradient-linear" || gradientRadialButton_->icon!="gradient-radial" || gradientMode_->caption!=(gradientConfirm_?U"确认应用":U"即时应用"))throw std::runtime_error("Legacy gradient controls");
+    const int savedScroll=toolRowScroll_;toolRowScroll_=100000;layoutToolOptions();checkGradientViewport();
+    if(gradientMode_->hasFlags(ui::HIDDEN))throw std::runtime_error("Gradient application mode unreachable at property scroll end");
+    toolRowScroll_=savedScroll;layoutToolOptions();checkGradientViewport();
 
     commands_[1]->Click();
 

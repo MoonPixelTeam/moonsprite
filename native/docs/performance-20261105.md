@@ -524,3 +524,9 @@ Aseprite `src/ui/manager.cpp` 的 flushRedraw 和编辑器局部 canvas invalida
 - 上轮每行筛边后仍遍历整份material宽度并计算interior。现按行候选clip横向min/max限定扫描，空行直接跳过，仍以原material.x为采样网格原点向上对齐uiScale。终点保留哨兵flush，边顺序、凹角距离、Skin::selectionContains与pieces归属不变。开启MOONSPRITE_PALETTE_EDGE_REFERENCE除原逐点winner oracle外，检查全部省略样本的全边遍历确实无owner。legacy palette-layout.ts与用户共享外轮廓规格未变；对照Aseprite MIT Widget::onInvalidateRegion先按区域相交过滤的策略，不复制依赖代码。
 - palette-scanline-span-build.log正式Release构建exit0；带oracle的--palette-manual-check通过五尺寸×三种选择形状与alpha/hit逐像素对照及原手动场景；--palette-growth-check、--ui-geometry-performance-check通过，关闭oracle的manual也exit0。新增build/test-tmp/palette-contour-layout.txt记录全refresh耗时/边数，仅作观察；例如size3离散44边3.9442ms，size4全选6边5.2584ms，不构成优化前后或整机提速比例。未增加候选边实际计数。来源覆盖625文件/快照及diff通过，迁移仍INCOMPLETE，未做人工作品验收。
 - 源码、来源及记录推送dev；旧组合梯度断言和剪切回归问题仍待定位，用户数据/缓存/生成物保留。
+
+
+## 2026-11-07：梯度属性组合验收承接横向视口
+
+- palette-mouse组合此前要求gradientMode始终未HIDDEN，与legacy app/useToolOptionsScroll.ts的单行横向溢出契约及现有finishToolScrollLayout的视口相交显隐不符。现在检查线性/径向/应用模式均有scrollViewports且显隐严格等于相交状态；保留图标/文案验证，并滚到clamped末端要求应用模式可见，再恢复原滚动检查。未修改产品控件可用性、显隐、滚动或布局。
+- gradient-viewport-fixture-build.log正式Release构建exit0；--palette-mouse-check通过此新断言，继续在Legacy property component types失败，完整组合仍未通过。--tool-property-shortcuts-check和--ui-geometry-performance-check exit0。来源625文件覆盖/证据快照与diff通过，完整迁移仍INCOMPLETE。本轮为恢复性能回归覆盖路径的验证修正，无产品提速声明；后续组件类型断言保持原样待证据核对。仅源码/来源/记录推送dev，用户数据/缓存/生成物保留。
