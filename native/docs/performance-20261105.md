@@ -181,3 +181,10 @@ Aseprite `src/ui/manager.cpp` 的 flushRedraw 和编辑器局部 canvas invalida
 - 原生Manager只在FocusEnter的newFocus非空且等于Manager当前getFocus时更新overlay/命令scope；不解引用旧目标，也不对过时焦点执行widgetColumn扫描、栏目重排和invalidate。保持正常当前焦点路线，legacy useAppCommandScope.ts的有效surface记忆语义不变。未复制Aseprite app代码。
 - --tool-rail-check新增把已删除临时Widget作为FocusEnter payload送入实际Manager过滤器的回归，再跑原工具矩阵和事件循环退出。正式唯一Release构建queued-focus-build.log exit0；工具轨道由此前0xC0000005变为exit0，stage到complete。焦点恢复、ui-geometry-performance、hit-testing-performance均exit0；来源覆盖625文件与diff检查通过，迁移整体仍未完成。
 - 本轮确认稳定性修复和过期通知的无效工作减少；未对真实窗口输入至呈现延迟作量测，不宣称整体缩放已流畅。验证后提交推送dev。
+
+
+## 2026-11-06：栏目遮挡裁剪先排除无关damage
+
+- clipColumn原先为每个可见悬浮栏目构造gfx::Region并求差，即使与当前子控件damage完全不相交。现在先以原damage物理矩形作相交判断，再构造并求差；遮挡顺序、group focus、素材和坐标转换保持。对照Aseprite MIT ui Graphics::clipRegion及LAF gfx Region求差接口，没有复制app代码。
+- MOONSPRITE_OCCLUSION_REFERENCE在同次调用执行原全量求差，与优化结果分别作双向差集，要求均为空。开启对照的ui-geometry-performance、group-timeline、playback-floating均exit0；geometry检查包含悬浮移动/resize局部与全量framebuffer比较。唯一正式Release构建occlusion-damage-build.log exit0，来源覆盖625文件与diff检查通过。
+- 关闭对照的geometry profile exit0：12次窗口resize累计498.296ms，window-layout18次54.638ms，panel-backdrops1901次198.335ms。无配对稳定基准，不把历史运行差值当本轮提速；减少无关region构造/求差已由代码与区域等价对照确认。真实Windows输入至呈现延迟仍未验证，不宣称整应用流畅。验证后提交推送dev。

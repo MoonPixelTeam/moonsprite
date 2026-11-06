@@ -135,7 +135,9 @@ void Editor::clipColumn(ui::Graphics& g,int id,bool physical)const {
 
     if(advancedActive())return;
 
-    if(!docking_.custom)return;const auto geometry=columnGeometry(uiLogical(bounds()));gfx::Region clip(g.getClipBounds());const int own=id<0?-1:docking_.groupOf(id);
+    if(!docking_.custom)return;const auto geometry=columnGeometry(uiLogical(bounds()));const auto damage=g.getClipBounds();gfx::Region clip(damage);const int own=id<0?-1:docking_.groupOf(id);
+    const bool compare=smoke_ && _wgetenv(L"MOONSPRITE_OCCLUSION_REFERENCE");
+    gfx::Region reference;if(compare)reference=damage;
 
     for(int other=0;other<panels::columnCount;++other){if(!geometry.shown[other] || other==id)continue;const int group=docking_.groupOf(other);if(docking_.groups[group].dock!=panels::Dock::Floating)continue;
 
@@ -143,7 +145,12 @@ void Editor::clipColumn(ui::Graphics& g,int id,bool physical)const {
 
       if(own>=0 && docking_.groups[own].dock==panels::Dock::Floating && (groupFocus(other)<groupFocus(id) || (groupFocus(other)==groupFocus(id) && group<own)))continue;
 
-      auto r=geometry.panel[other];gfx::Rect box(r.x,r.y,r.w,r.h);clip-=gfx::Region(uiPhysical(box));}
+      auto r=geometry.panel[other];const auto box=uiPhysical(gfx::Rect(r.x,r.y,r.w,r.h));
+      if(compare)reference-=gfx::Region(box);
+      // Subtracting an unrelated column cannot alter this damage region.
+      // Reject before constructing a SkRegion for every child repaint.
+      if(box.intersects(damage))clip-=gfx::Region(box);}
+    if(compare){auto missing=reference;missing-=clip;auto extra=clip;extra-=reference;if(!missing.isEmpty() || !extra.isEmpty())throw std::runtime_error("Column occlusion differs from full subtraction");}
 
     g.clipRegion(clip);
 
