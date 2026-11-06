@@ -2960,3 +2960,12 @@ project-import-tests与document-raster-history-tests构建/运行均exit0（nati
 核对legacy app-selection-shortcuts.ts的Select All preferSelection事件、useAppCommandScope.ts作用域状态与app-document-shortcuts.ts Cel优先路由；native既有selectAllPixels/selectionCommandOverride_及Alt Cel内容入口已承接。旧Cut fixture同时selectTimelineCel且直接previewSelection，却未触发显式像素命令，导致实际走Cel Cut。现先调用真实selectAllPixels并断言override，再安装原局部mask；保留Cel选择、RGBA/mask、单历史、Undo/Redo、菜单一致性、pending Create/duplicate及Paint权限等原断言。产品剪贴板优先级未修改。
 
 正式tile-cut-scope-build.log Release构建exit0；--workspace-check --named-workspace-only --drawing-anchor-edit-floating-only完整exit0，--selection-check完整exit0。来源625文件/快照和diff通过。此阶段闭合此前特定Cut组合验收失败，不代表所有剪贴板、瓦片及全量迁移完成；稀疏工程准入、特殊图层生命周期、扩展等仍需按领域缺口逐项推进。源码/来源/记录推送dev，用户数据/缓存/生成物保留。
+
+
+### 2026-11-07：自由瓦片空白自动链接图层新增帧
+
+对照legacy core/animation.ts自动链接继承：独立源没有可见alpha时不启动链接链。原生addFrame此前只要free-tile层autoLinkAnimationCels为true便无条件拒绝，连无需链接的空白源也被阻断。现按旧版源slot/link/渲染alpha判定，仅实际需要链接时继续在commit前拒绝；空白独立源和缺失源沿既有新增/复制逻辑执行。仍使用公共Timeline，未放宽free Cel必须独立实例的模型约束。
+
+新增空白/复制两类测试，核对独立freeTiles与surface、单历史、Undo/Redo、保存重开。初次fixture空归档导致Missing ZIP directory，改用现有编码器真实容器后，完整free-tile-project-tests exit0。free-empty-auto-frame-build.log正式程序/核心测试构建exit0；夹具修正test-build日志exit0；--workspace-check --named-workspace-only --drawing-anchor-edit-floating-only exit0。来源625文件覆盖/快照及diff通过。无人工UI验收。
+
+仅闭合空白源分支；有内容的自由Cel自动链接、链接编辑传播、导入导出兼容仍未迁移，拒绝保护保留，不称该功能或全部迁移完成。源码/测试/来源/记录推送dev，生成物及用户数据不提交。

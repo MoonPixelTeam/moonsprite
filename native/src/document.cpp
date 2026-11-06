@@ -445,9 +445,14 @@ void Document::normalizeFrameDeletionSelection(){
 }
 void Document::captureFrameOrder(Edit& e,bool after) const {if(after)e.afterMasks=timeline_.state().masks;else e.beforeMasks=timeline_.state().masks;auto& order=after?e.afterFrames:e.beforeFrames;for(const auto& f:timeline_.state().frames)order.push_back(f.id);(after?e.afterFrame:e.beforeFrame)=activeFrameId_;(after?e.afterFrameAnchor:e.beforeFrameAnchor)=frameAnchor_;(after?e.afterTimelineSelection:e.beforeTimelineSelection)=timelineSelection_;(after?e.afterActive:e.beforeActive)=activeLayerId_;}
 void Document::addFrame(bool duplicate) {
- // Free Cel links are not represented by the native model yet. Reject before
- // committing previews or allocating any frame/history objects.
- for(const auto& l:timeline_.state().layers)if(l.kind=="free-tile"&&l.autoLinkAnimationCels)throw std::runtime_error("Linked free tile frame creation is not migrated");
+ // Legacy leaves empty independent sources unlinked even with auto-link on.
+ // Actual free Cel links still require a model migration; reject those before
+ // committing previews or allocating frame/history objects.
+ for(const auto& l:timeline_.state().layers)if(l.kind=="free-tile"&&l.autoLinkAnimationCels){
+  const auto* slot=timeline_.findCel(l.id,activeFrameId_);
+  const auto source=slot?timeline_.resolveSurface(slot->id):timeline::Resolution{};
+  if(slot && (slot->linkedCelId || (source.surface && std::any_of(source.surface->pixels.begin(),source.surface->pixels.end(),[](Pixel p){return (p>>24)!=0;}))))throw std::runtime_error("Linked free tile frame creation is not migrated");
+ }
  commitFloatingPaste();
  cancelStroke();cancelLayerOpacity();if(timeline_.state().frames.size()>=10000)throw std::runtime_error("Frame limit reached");
  constexpr std::uint64_t frameByteLimit=256ull*1024*1024;
