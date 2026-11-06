@@ -387,3 +387,10 @@ Aseprite `src/ui/manager.cpp` 的 flushRedraw 和编辑器局部 canvas invalida
 - 增加MOONSPRITE_INTERACTION_PROFILE的固定保存统计，写.view-save.tsv；仅smoke_且显式MOONSPRITE_VIEW_SAVE_TEST_ROOT时允许写指定测试目录。正常生产保存时机/格式/原子替换和正常smoke默认跳过均不变，不改用户偏好文件。构建view-save-profile-build.log exit0。
 - 使用仓库build/test-tmp/view-save-storage独立目录运行真实writer：drawing-pan-performance exit0，5次17.535ms/max3.736ms；view-zoom-shortcuts exit0，10次40.866ms/max4.848ms；检查落盘view-v1文本含最终zoom/pan/rotation/mirror字段。未开启存储注入的view-rotation exit0。来源625覆盖/evidence及diff通过。
 - 本轮补齐证据，无生产提速声明。实际每轮UI保存约3–5ms，是下一步应处理的热点；需保留同文档顺序、切文档/关闭最终状态与失败提示，不能通过测试默认跳过掩盖。只提交诊断源码/来源/记录推送dev，测试输出与用户数据保留不提交。
+
+
+## 2026-11-06：视图持久化移出交互UI线程
+
+- 复用LatestTaskQueue（legacy core/latest-task-queue.ts及对应native适配），每个目标路径一个有序writer，immutable path/text交给std::async工作线程，连续同文档更新合并为最新pending；后台不访问Editor。原view-v1内容、目录/哈希规则、writeExportBytesAtomic强制flush/原子替换保留。UI16ms timer poll完成状态并显示失败；读取磁盘视图前waitIdle；Editor-owned Property析构等待全部pending完成且清空回调，避免已析构Editor访问。不同文档独立，不会互相覆盖pending。进程被强制杀死时仍可能丢失尚未完成的最后视图，此为异步提交窗口，不涉及作品内容。
+- MOONSPRITE_VIEW_SAVE_SYNC_REFERENCE恢复原同步路径；使用独立smoke存储root实测view-zoom-shortcuts10次：sync29.759ms/max3.359、async0.286ms/max0.137，均exit0。该指标是UI序列化/提交耗时，不是磁盘完成时延。另两个独立root分别运行同步/异步，最终两份view-v1字段完全一致。
+- 新增view-rotation注入真实IO检查：两个目标各40次更新最终39、second-39；无效目录写入失败确实通知；失败后保存成功；局部writer析构确实落盘最终值，全部exit0。唯一Release view-save-async-final-build.log exit0；drawing-pan-performance及ui-geometry-performance均exit0，保留作品/history/pan framebuffer检查。来源625覆盖/evidence、diff通过后推送dev。整体性能目标尚未完成；新诊断/测试数据不提交，保留本地。
