@@ -195,3 +195,10 @@ Aseprite `src/ui/manager.cpp` 的 flushRedraw 和编辑器局部 canvas invalida
 - paintPanelBackdrops中palette外框/内容原来连续两次saveClip/clipColumn/restoreClip，二者之间没有几何变更。改用一次裁剪包裹原顺序绘制，减少一次栏目geometry/region循环。palette布局、内容边界仅在实际绘制palette时计算，timeline布局仅在绘制timeline时计算；advanced早退不再构建workspace/三栏目布局，移除未使用picker layout与label闭包。对照Aseprite MIT Graphics的saveClip/restoreClip委托和clipRegion偏移语义，素材与绘制层次不变。
 - 唯一Release构建backdrop-clip-reuse-build.log exit0。开启MOONSPRITE_OCCLUSION_REFERENCE的ui-geometry-performance、advanced-mode、playback-floating全部exit0，包含悬浮移动/resize局部与全量framebuffer一致检查；来源覆盖625文件、diff检查通过。未进行人工UI验收。
 - 关闭对照的profile exit0：panel-backdrops1901次145.469ms，window-layout18次42.929ms，12次窗口resize359.04ms。上一轮相同profile分别198.335/54.638/498.296ms，多个scope同步变化，非配对稳定测量，不将全部差值归因本轮。仍需真实窗口响应延迟证据，不能据此宣称整体卡顿已解决。验证后提交推送dev。
+
+
+## 2026-11-06：时间轴背景按damage延后滚动指标
+
+- paintTimelineBackground的TimelineRows/滚动指标仅供左侧表头与双滚动条交角使用。现在在frame/grid原绘制后，对这两处的物理damage保守范围先判断；不相交则跳过metrics/表头/交角。保留timelineHidden早退，表头覆盖1px cell外扩，交角范围涵盖6px横纵条所有组合及最小1px钳位。对照既有Aseprite MIT Graphics clip边界语义，不复制app代码。
+- MOONSPRITE_BACKGROUND_DAMAGE_REFERENCE恢复原完整背景路径。ui-geometry检查新增22个窄clip，包含窗口外部区域、表头各段、实际交角四周，原/新路径完整surface逐像素比较；保留既有悬浮move/resize局部与全量画面对照。另以独立公式枚举width/height -25..120和横纵条四组合，验证交角位置总在保守边界内。
+- 正式唯一Release两次构建exit0；最终geometry含22clip exit0；初次生产算法构建的large-timeline-performance/timeline-density也exit0（后续仅补测试采样）。来源覆盖625文件/diff通过。最终profile：panel-backdrops1901次135.807ms，window-layout18次40.544ms，12次resize354.175ms。非稳定配对基准，不宣称整体缩放解决；真实输入至呈现延迟仍需验证。验证后提交推送dev。

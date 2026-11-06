@@ -1965,7 +1965,33 @@ void Editor::smokeDockResizeMigration(){smoke_=true;homeOpen_=false;documentOpen
  auto time=[&](bool cached){const auto start=std::chrono::steady_clock::now();for(int i=0;i<200000;++i){const auto g=cached?columnGeometry(rc):docking_.layout(area,visible,Layout::gap,viewport);sum+=g.canvas.w;}return std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-start).count();};
  const auto direct=time(false),cached=time(true);report<<"geometry queries=200000 direct_ms="<<direct<<" cached_ms="<<cached<<" checksum="<<sum<<'\n';
  auto drain=[&]{manager()->flushRedraw();manager()->dispatchMessages();};
- refresh();drain();smokePrepareColumnRepaint();drain();
+ refresh();drain();
+ // Compare the original background path for narrow damage across the window,
+ // including header/corner boundaries and damage outside the timeline.
+ {
+   const auto ll=columnLayout(uiLogical(clientBounds()),2);
+   const auto prior=_wgetenv(L"MOONSPRITE_BACKGROUND_DAMAGE_REFERENCE");const std::wstring savedReference=prior?prior:L"";
+   const auto size=clientBounds().size();
+   const auto metrics=timelineScrollMetrics(ll);
+   const int cornerX=(ll.workX+5)*uiScale+metrics.viewportWidth;
+   const int cornerY=(ll.layerTop+timelineRowsOffset())*uiScale+metrics.height;
+   for(int sample=0;sample<22;++sample){
+     const int x=sample<12?sample*size.w/12:sample<18?(ll.workX+5+(sample-12)*12)*uiScale:cornerX+(sample%2?1:-1);
+     const int y=sample<12?sample*size.h/12:sample<18?(ll.layerTop+timelineHeaderOffset())*uiScale:cornerY+(sample%4<2?1:-1);
+     const gfx::Rect clip(x,y,17,19);
+     auto render=[&](bool reference){
+       _wputenv_s(L"MOONSPRITE_BACKGROUND_DAMAGE_REFERENCE",reference?L"1":L"");
+       auto surface=os::instance()->makeRgbaSurface(size.w,size.h);surface->clear();
+       {ui::Graphics g(surface);g.clipRect(clip);UiPaintScale scale(g);paintTimelineBackground(g,ll);}
+       return surface;
+     };
+     const auto expected=render(true),actual=render(false);
+     os::SurfaceLock expectedLock(expected.get()),actualLock(actual.get());
+     for(int py=0;py<size.h;++py)for(int px=0;px<size.w;++px)if(expected->getPixel(px,py)!=actual->getPixel(px,py))throw std::runtime_error("Timeline background damage differs from full work");
+   }
+   _wputenv_s(L"MOONSPRITE_BACKGROUND_DAMAGE_REFERENCE",savedReference.c_str());
+ }
+ smokePrepareColumnRepaint();drain();
  auto pixels=[&]{auto surface=display()->nativeWindow()->surface();os::SurfaceLock lock(surface);std::vector<gfx::Color> result;for(int y=0;y<surface->height();++y)for(int x=0;x<surface->width();++x)result.push_back(surface->getPixel(x,y));return result;};
  for(int edges:{0,10}){smokeColumnRepaintStep(edges);drain();const auto partial=pixels();invalidate();drain();check(partial==pixels());}
  const auto start=std::chrono::steady_clock::now();const auto original=bounds();

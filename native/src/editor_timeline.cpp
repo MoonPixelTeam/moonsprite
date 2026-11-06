@@ -1395,6 +1395,16 @@ void Editor::paintTimelineBackground(ui::Graphics& g,const Layout& ll) {
 
       // row/header widgets paint the rest; no independent grid extensions.
 
+      // Only the label header and paired-bar corner need scroll metrics.
+      // Bound both possible corner positions (with/without either 6px bar)
+      // before building TimelineRows for unrelated child background damage.
+      const int rowTop=ll.layerTop+timelineRowsOffset();
+      const int minRight=x+std::max(1,ll.workW-16),maxRight=x+std::max(1,ll.workW-10);
+      const int minBottom=rowTop+std::max(1,ll.bottom-rowTop-12),maxBottom=rowTop+std::max(1,ll.bottom-rowTop-6);
+      const gfx::Rect headerDamage(x,y,std::max(36,timelineLabelWidth())+1,timelineHeaderHeight()+1);
+      const gfx::Rect cornerDamage(minRight,minBottom,maxRight-minRight+7,maxBottom-minBottom+7);
+      const auto damage=g.getClipBounds();
+      if(!uiPhysical(headerDamage).intersects(damage) && !uiPhysical(cornerDamage).intersects(damage) && !(smoke_ && _wgetenv(L"MOONSPRITE_BACKGROUND_DAMAGE_REFERENCE"))){g.restoreClip();return;}
       const auto metrics=timelineScrollMetrics(ll);
       g.saveClip();g.clipRect(gfx::Rect(x,y,metrics.viewportWidth/uiScale,timelineHeaderHeight()+metrics.height/uiScale));
 
