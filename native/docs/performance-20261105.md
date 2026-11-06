@@ -536,3 +536,9 @@ Aseprite `src/ui/manager.cpp` 的 flushRedraw 和编辑器局部 canvas invalida
 
 - 核对legacy app/EditorToolOptions.tsx的brush-paint-mode-select与brushPaintModeGroups，以及native migratePropertyDropdowns：现有四项为图像笔刷模式、选区旋转算法、渐变抖动、吸管来源。原fixture固定count=3遗漏后来迁移的图像笔刷模式。改为精确四项类型/唯一注册清单，原非下拉控件、ownership、选中值及refresh绑定断言保留。无产品代码改动或提速声明。
 - property-dropdown-inventory-build.log正式Release构建exit0；--tool-property-shortcuts-check及--ui-geometry-performance-check exit0。开启轮廓oracle的--palette-mouse-check进程退出0xC0000005，未得本次异常定位；native-workspace-error.txt仍为旧Palette title/button gap（时间02:17:14），不能据此判本次崩溃原因，完整组合未通过。下拉新清单的组合实际执行覆盖仍缺少成功终点证据，后续需定位访问异常。来源625文件覆盖/快照及diff通过，迁移仍INCOMPLETE。源码、来源、记录推送dev，不提交生成物或用户数据。
+
+
+## 2026-11-07：调色盘工具行验收使用共享chrome边界
+
+- 用既有ctypes Windows调试器运行palette-mouse，日志debug-palette-mouse.log记录caught C++ exception和exit1，实际到达Palette title/button gap；未复现上一轮0xC0000005，仍不能解释其根因。对照用户ui-design-spec.md第4节和既有docking smoke，原断言用标题glyph ink末端到按钮作间距，与共享工具行规范不符。改为核对columnChrome.actions的y/height及停靠工具行到content的2px，悬浮动作位置继续由自身chrome决定。产品代码无变化。
+- palette-chrome-fixture-build.log正式Release构建exit0，--ui-geometry-performance-check exit0，来源625文件/快照及diff通过。带轮廓oracle的palette-mouse此次越过旧断言并继续到新建页签流程，运行未自动结束；仅对本次测试PID25920正常CloseMainWindow，随后exit1并报告New tab creation failed，因此本次受关闭操作影响，不能据此认定新产品故障或组合通过。完整鼠标回归仍未验收。无性能提升声明；源码、来源、记录推送dev，用户数据/缓存/生成物保留。

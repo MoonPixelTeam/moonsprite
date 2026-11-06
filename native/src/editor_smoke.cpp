@@ -1151,9 +1151,10 @@ void Editor::smokePaletteMouse(const std::function<void(ui::Message*)>& dispatch
 
     if((runtimePreferences_.flag("colorLayers.recentColorsVisible") && !recentColors_.values().empty()))throw std::runtime_error("New project loaded old recent colors");
 
-    const auto title=panelTabs_[0]->bounds();
-
-    if(paletteActions_->bounds().y-(title.y+(font_.inkBounds(panelTabs_[0]->caption).y+Layout::labelInkHeight)*uiScale)!=uiGap*uiScale)throw std::runtime_error("Palette title/button gap");
+    const auto paletteChrome=columnChrome(0);
+    const auto paletteActionBounds=uiLogical(paletteActions_->bounds());
+    if(paletteActionBounds.y!=paletteChrome.actions.y || paletteActionBounds.h!=paletteChrome.actions.h)throw std::runtime_error("Palette actions detached from shared chrome");
+    if(!columnFloating(0) && paletteChrome.content.y-paletteActionBounds.y2()!=uiGap)throw std::runtime_error("Palette toolbar/content gap is not 2px");
 
     smokeModalBackground();
 
