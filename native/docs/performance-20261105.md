@@ -136,3 +136,10 @@ Aseprite `src/ui/manager.cpp` 的 flushRedraw 和编辑器局部 canvas invalida
 - MOONSPRITE_VIEWPORT_METRICS_REFERENCE逐次对照原实时viewport/material函数，保留hidden timeline的零宽与零高header，以及横纵滚动条外扩规则。开启对照的large-timeline、group-timeline、timeline-density、ui-geometry、playback-floating均exit0；正式Release构建、来源覆盖与diff检查通过。
 - 关闭对照的大时间轴滚动20次平均4.180ms，16,384选择轮廓4.164ms、同目标拖动3.453ms。与历史不同进程回放不构成严格比例，不宣称整应用同比提速。现有framebuffer/选择alpha命中/分组/循环节回归保持。
 - 本轮提交推送dev。真实窗口输入至呈现延迟及工具轨道退出异常仍未解决。
+
+
+## 2026-11-06：大选择先排除屏幕外行
+
+- timelineOutlines的selected Cel循环在dr==0时先按可见行ID排除屏幕外项目，再查询layer/frame索引；有纵向位移时保留原layer index平移，并在查询frame前排除目标不可见行。没有缓存、素材或选择语义变更。
+- 正式Release构建exit0；MOONSPRITE_OUTLINE_REFERENCE开启的大时间轴、分组、密度检查全部exit0，继续与原全选择扫描精确比较四个边界。来源覆盖及diff检查通过。
+- 无oracle回放selection_outline_mean4.293ms、same_target_drag2.724ms、scroll8.839ms。与前轮outline4.164ms接近且环境波动，没有证明加速；只确认无关行索引查询减少，不作整应用性能结论。退出异常和真实窗口缩放仍待解决。本轮验证后提交推送dev。
