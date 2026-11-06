@@ -1,3 +1,4 @@
+#include "ui/property.h"
 #include "layer_compositor.h"
 #include "canvas_resize_dialog.h"
 #include "filter_preset_dialog.h"
@@ -1679,37 +1680,56 @@ void Editor::layoutTopMenu(gfx::Rect bar) {
 
     if(!menuBar_)return;auto menu=menuBar_->getMenu();
 
-    std::vector<PixelMenuItem*> entries;
-
-    for(auto child:menu->children())if(auto entry=dynamic_cast<PixelMenuItem*>(child)){entry->barInsetReduction=0;entries.push_back(entry);}
-
-    // Aseprite Menu wraps overflowing labels. Our fixed-height menu bar must
-
-    // fit its labels before layout, otherwise their painted/hit regions escape.
-
+    struct OverflowState final:ui::Property {
+      std::vector<PixelMenuItem*> entries;
+      PixelMenuItem* more=nullptr;
+      OverflowState():ui::Property("moonsprite.top-menu-overflow"){}
+    };
+    auto state=std::dynamic_pointer_cast<OverflowState>(menu->getProperty("moonsprite.top-menu-overflow"));
+    if(!state){state=std::make_shared<OverflowState>();for(auto child:menu->children())if(auto entry=dynamic_cast<PixelMenuItem*>(child))state->entries.push_back(entry);menu->setProperty(state);}
+    const auto& entries=state->entries;
+    // Aseprite closes popup windows through queued messages. Reparent only
+    // after those messages have detached their MenuBox from the old owner.
+    bool opened=state->more && state->more->hasSubmenuOpened();
+    for(auto entry:entries)opened=opened || entry->hasSubmenuOpened();
+    if(opened){
+      menuBar_->cancelMenuLoop();
+      auto originalBar=bar;if(workspaceMenuButton_)originalBar.w+=(UiSpacing::iconSize+UiSpacing::related)*uiScale;
+      manager()->enqueueMessage(new ui::CallbackMessage([this,originalBar]{layoutTopMenu(originalBar);}));
+      return;
+    }
+    // Restore original items before measuring their top-level metrics.
+    // Move the same objects, retaining callbacks, submenus and enabled state.
+    auto restore=[&]{
+      if(!state->more)return;
+      menuBar_->cancelMenuLoop();
+      auto submenu=state->more->getSubmenu();
+      const auto rows=submenu->children();for(auto row:rows){submenu->removeChild(row);menu->addChild(row);}
+      menu->removeChild(state->more);delete state->more;state->more=nullptr;
+    };
+    restore();
+    for(auto entry:entries)entry->barInsetReduction=0;
     auto required=[&]{int width=menu->border().width()+menuBar_->border().width();for(auto entry:entries)width+=entry->sizeHint().w;return width+std::max(0,int(entries.size())-1)*menu->childSpacing();};
-
-    const bool reference=smoke_ && _wgetenv(L"MOONSPRITE_MENU_FIT_REFERENCE");
-    if(reference){
-      for(int reduction=1;required()>bar.w && reduction<=32;++reduction)for(auto entry:entries)entry->barInsetReduction=reduction;
-    }else{
-      int previous=required();
-      for(int reduction=1;previous>bar.w && reduction<=32;++reduction){
-        for(auto entry:entries)entry->barInsetReduction=reduction;
-        const int width=required();
-        // menuBarInsets clamps both horizontal sides to uiGap. Once the
-        // complete width stops shrinking, further reductions cannot help.
-        // Preserve the original final reduction when the labels cannot fit.
-        if(width==previous){for(auto entry:entries)entry->barInsetReduction=32;break;}
-        previous=width;
-      }
+    int previous=required();
+    for(int reduction=1;previous>bar.w && reduction<=32;++reduction){
+      for(auto entry:entries)entry->barInsetReduction=reduction;
+      const int width=required();if(width==previous)break;previous=width;
+    }
+    if(required()>bar.w){
+      state->more=new PixelMenuItem(font_,skin_,U"更多");state->more->menuMarks=&toolIcons_;
+      state->more->setSubmenu(new PixelMenu(skin_));menu->addChild(state->more);
+      const int gap=menu->childSpacing();
+      int width=menu->border().width()+menuBar_->border().width()+state->more->sizeHint().w;
+      std::size_t keep=0;
+      for(;keep<entries.size();++keep){const int next=entries[keep]->sizeHint().w+gap;if(width+next>bar.w)break;width+=next;}
+      for(std::size_t i=keep;i<entries.size();++i){menu->removeChild(entries[i]);state->more->getSubmenu()->addChild(entries[i]);}
     }
 
     menuBar_->setBounds(bar);
 
     // Center the actual menu rows, rather than only their taller container.
 
-    for(auto entry:entries){auto r=entry->bounds();r.y=bar.y+(bar.h-r.h)/2;entry->setBounds(r);}
+    for(auto child:menu->children()){auto r=child->bounds();r.y=bar.y+(bar.h-r.h)/2;child->setBounds(r);}
 
   }
 

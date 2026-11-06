@@ -329,3 +329,11 @@ Aseprite `src/ui/manager.cpp` 的 flushRedraw 和编辑器局部 canvas invalida
 - 增强smokeWindowInput失败诊断，包含widget地址/parent/id/text，唯一正式Release window-hit-diagnostic-build.log exit0；实际window-input再现exit1。point5,8期望和实际均type15/bounds4,7,46,34，地址不同、parent相同，证明是同父菜单项重叠，不是Win32屏幕坐标换算或期望层级错误。
 - 对照Aseprite MIT Menu::onResize：inBar总宽溢出时cpos.x重置、cpos.y增加；native layoutTopMenu随后对所有顶级项统一r.y居中，抹掉换行y并保留换行x，因而不同菜单重叠。此前menu fit收缩到最小仍无法fit，32轮或饱和提前返回均不能解决该产品空间问题。源码和运行证据一致，不能通过放宽hit断言将其标记通过。
 - 受用户迁移规则约束，不自行改变菜单交互/隐藏功能入口；已询问用户横向滚动或更多菜单的窄窗溢出选择。待明确后按旧功能入口/素材约束实现并重新验收。当前仅提交诊断改进及证据，不声称性能或命中修复。来源覆盖/evidence及diff检查通过，生成物/错误报告保留不提交，推送dev。
+
+
+## 2026-11-06：按用户选择实现窄窗“更多”菜单
+
+- 用户明确选择将放不下的顶级菜单收进“更多”。layoutTopMenu复用原PixelMenuItem对象及其callbacks/submenu/enabled状态，menu-owned Property保留完整顺序；先用原顶级指标计算，最小间距仍溢出时将尾部项目移入共享PixelMenu更多子菜单，变宽后恢复原序。原素材/字体/功能入口保留，没有新绘制图标。新用户行为优先于此前禁止自行改变入口规则。
+- 核对Aseprite MIT MenuItem::closeSubmenu通过队列释放MenuBox，不能在popup打开时直接删除owner。布局检测已打开子菜单时先cancelMenuLoop，并排队回调在close消息之后重排。普通关闭态复用现有绘制/命中布局。
+- 唯一正式Release menu-overflow-final-build.log exit0；window-input在4个原生位置/最大化恢复变体中全部exit0，包含逐点顶级菜单命中、弹出菜单点击/行命中及capture释放，此前重叠失败消失。menu-pointer、ui-geometry-performance局部/全量framebuffer、advanced-mode均exit0。已人工查看window-input-0.bmp：720x600顶栏单行并显示更多，项目/其他区位置不变；没有对所有菜单嵌套状态逐图验收。来源覆盖625文件/evidence及diff通过。
+- 本轮修复窄窗口重叠与错误点击，不作性能提速声明。生成物/截图/历史错误报告保留不提交。整体卡顿尚未全面验收，后续继续测量余下热点。验证后提交推送dev。
