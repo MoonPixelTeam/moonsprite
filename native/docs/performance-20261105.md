@@ -492,3 +492,8 @@ Aseprite `src/ui/manager.cpp` 的 flushRedraw 和编辑器局部 canvas invalida
 - 对正式Release map定位函数入口并读取PE代码：smokeTilemapSelectionDelete prologue原以__chkstk预留0xF0540（984384）字节，未含调用方及嵌套UI调用，接近Windows默认1MiB。不是据旧错误文本猜测递归。将14个原有独立scope通过noinline回调依序调用，保留全部场景、断言和早退位置；不修改产品栈配置或选择算法。最终入口预留0x62F0（25328）字节，减少约97%。
 - selection-smoke-stack-build.log正式Release构建exit0。--workspace-check --named-workspace-only --offcanvas-pattern-create-only由0xC00000FD变为exit0。锚点组合越过smokeDrawingAnchor（含上一轮焦点断言）及栈探测，随后在actual Paint one-pixel keyboard rounds zero on four-pixel tiles断言失败，未宣称完整组合通过。该断言留待后续核对legacy键盘步长/fixture状态，不削弱断言。本轮是验证路径资源优化，不声明产品帧率提升。源码/来源/记录提交推送dev，缓存及用户数据保留。
 - 原锚点显隐参考组合到达相同Paint微移断言，确认并非上一轮显隐优化专有失败；完整--selection-check exit0。
+
+## 2026-11-07：Paint组合方向键断言对齐已迁移语义
+
+- 核对legacy useCanvasKeyboardInput.ts:388-389及既有tilemap-paint-arrow-input-20261030.md：键盘方向单位乘以tileWidth/tileHeight，产品已正确迁移。组合fixture仍期望4px瓦片收到1px并取整零，属于旧预期。改为断言一格位移、一次历史、选择x+4、tileset不变、无关链接资源不变，Undo精确恢复后继续复制场景。不修改产品输入或核心代码。
+- paint-arrow-fixture-build.log正式Release构建exit0。锚点组合已通过新的方向移动/Undo断言及后续Paint复制，最终在actual tile Ctrl+X packs RGBA and deletes one transaction失败；完整组合仍未通过，剪切问题待后续检查。本轮无产品提速声明，是性能优化回归验收的夹具修正。来源检查后源码/来源/记录推送dev。
