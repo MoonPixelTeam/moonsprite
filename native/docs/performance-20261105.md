@@ -344,3 +344,10 @@ Aseprite `src/ui/manager.cpp` 的 flushRedraw 和编辑器局部 canvas invalida
 - 每次layoutTopMenu原先将全部overflow行恢复顶层、删除More并重建，再搬回尾项。现PixelMenuItem::topMenuSizeHint复用原顶层尺寸公式，脱离当前父菜单查询而不缓存文字/皮肤尺寸；只搬动overflow边界变化的项目，保持顺序、原对象、回调及子菜单。同bounds且popup已打开时保留当前菜单。对照Aseprite MIT Menu::onResize/onSizeHint及Widget消息分派，无app代码复制。
 - 新增window-input回归覆盖宽→窄→同宽多次布局的对象身份/顺序、打开More后同宽保持展开、打开后变宽恢复全部原项目和释放capture、再次往返。首次运行发现上一轮CallbackMessage未指定recipient，Manager::pumpQueue不会执行；现绑定Editor，延迟重排生效且沿用控件销毁消息清理。
 - 唯一正式Release menu-overflow-reuse-build.log及menu-overflow-callback-build.log均exit0；最终window-input、menu-pointer、ui-geometry-performance局部/全量framebuffer、native-window-resize均exit0。来源覆盖625文件/evidence与diff通过。未额外人工截图验收；缩放单次计时波动明显，无整体性能提升结论，确认避免重复菜单拆建与修复展开后重排。迁移完整性仍INCOMPLETE，整体卡顿尚未全面验收。仅提交源码/来源/记录并推送dev，保留本地生成物及历史报告。
+
+
+## 2026-11-06：背景重复填充候选测量，未采纳
+
+- 恢复后当前正式版本resize采样：panel-backdrops38次43.823ms、window-layout20次30.384ms，背景仍是可见开销。检查paintPanelBackdrops先全背景再paintWorkLayer覆盖下方，试验限制初始fill到顶部条带；半透明panel保留原完整fill。核对Aseprite MIT Graphics::fillRect直接绘制并更新dirty；不能仅按覆盖面积推断实际CPU收益。
+- 同一试验Release参考开关/优化16张resize BMP逐字节一致，ui-geometry-performance局部/全量及advanced-mode均exit0。最初跨构建截图差异仅位于画布160x160范围，同程序reference/optimized无差异；不将跨构建比较用于验收。profile背景45.560/46.067ms，无收益。关闭profile/截图ABBA原生resize均exit0、变化样本平均reference29.531/optimized25.297/optimized25.587/reference24.258ms，时间漂移大，未证明整体加速。
+- 候选源码与来源登记已撤回，避免加入无实测收益的分支；本轮只提交调查记录。背景/面板绘制仍待进一步细分定位，未声称卡顿解决。正式程序随后从已恢复源码重新构建；本地截图/报告及既有未跟踪文件保留不提交。
