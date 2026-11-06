@@ -2987,3 +2987,10 @@ free-missing-duplicate-build.log正式Release和测试构建exit0；夹具调整
 首次重开检查失败为 Missing modern free tile collection metadata。核对legacy core/project-format-decode.ts:435亦拒绝现代格式空素材集合，保留准入并明确测试拒绝；不声称该状态保存重开已迁移。free-source-less-frame-build.log正式Release与核心测试构建exit0，完整free-tile-project-tests exit0（free-source-less-frame-test.log），正式程序工作区drawing-anchor-edit-floating组合exit0。来源625文件快照、diff检查通过。
 
 用户确认窄窗口放不下的顶部菜单收进“更多”。核对现有layoutTopMenu实现已采用此行为；本轮正式--palette-mouse-check（MOONSPRITE_PALETTE_EDGE_REFERENCE=1）exit0，覆盖真实菜单对象的宽窄转换、重复布局、打开更多后调整尺寸、顺序及捕获释放。未进行人工截图验收，无额外菜单实现修改。全部迁移仍INCOMPLETE，自由Cel链接和稀疏准入等缺口继续保留。
+
+
+### 2026-11-07：特殊图层直接删除当前帧入口
+
+依据legacy core/animation.ts::deleteAnimationFrame，删除当前帧对所有图层类型移除帧、Cel和蒙版，保留资源与至少一个帧。原生deleteSelectedFrames已有特殊图层路径，但deleteFrame仍对包含tilemap/free-tile的文档直接返回。移除该入口阻断，复用现有单帧事务、完整Cel载荷历史、蒙版清理和选区规范化，不改变多选帧删除行为。
+
+新增自由瓦片/瓦片网格×首帧/末帧四组合回归，检查单历史、画布/Cel选择清理、剩余实例/网格/像素及资源不变、蒙版删除、保存重开、Undo完整载荷恢复、Redo及最后一帧无操作。首次测试编译暴露tiles结构没有整体相等操作符，改为逐字段核对资源与网格，未改产品模型。正式Release和核心测试构建exit0（direct-special-frame-build.log）；完整free-tile-project-tests exit0（direct-special-frame-test.log）；正式工作区drawing-anchor-edit-floating组合exit0；来源625文件快照及diff通过。没有人工UI验收。自由Cel链接、稀疏准入等既有缺口不因入口接通而视为迁移完成，整体仍INCOMPLETE。
