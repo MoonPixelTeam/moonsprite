@@ -486,3 +486,9 @@ Aseprite `src/ui/manager.cpp` 的 flushRedraw 和编辑器局部 canvas invalida
 - layoutToolOptions原先无条件隐藏绘图锚点两按钮，再由适用的形状/选区分支重新放置显示。对照Aseprite MIT Widget::setVisible(false)，隐藏会freeWidget释放焦点/capture并invalidate旧范围。现适用工具保留状态，由原有放置、滚动及advanced路径决定最终显示；不适用工具仍隐藏。smoke参考MOONSPRITE_ANCHOR_VISIBILITY_REFERENCE恢复原行为。无素材、命中、锚点数据或工具资格变化。
 - anchor-visibility-final-build.log正式Release构建exit0；--selection-check完整通过，新增宽窗口适用选区按钮获得焦点后连续20次布局仍可见且保持焦点，原五字段位置/数据/历史检查保留。绘图锚点原有检查也新增稳定形状按钮焦点断言，但--workspace-check --named-workspace-only --drawing-anchor-edit-floating-only在优化及原显隐参考均exit 0xC00000FD栈溢出，因此该组合未验收，不以旧native-workspace-error.txt判定失败原因。本轮未宣称完整锚点组合通过或整体提速比例。来源检查后源码/来源/记录提交推送dev。
 - --tool-property-shortcuts-check与--ui-geometry-performance-check均exit0。
+
+## 2026-11-07：瓦片选区组合验收栈帧缩减
+
+- 对正式Release map定位函数入口并读取PE代码：smokeTilemapSelectionDelete prologue原以__chkstk预留0xF0540（984384）字节，未含调用方及嵌套UI调用，接近Windows默认1MiB。不是据旧错误文本猜测递归。将14个原有独立scope通过noinline回调依序调用，保留全部场景、断言和早退位置；不修改产品栈配置或选择算法。最终入口预留0x62F0（25328）字节，减少约97%。
+- selection-smoke-stack-build.log正式Release构建exit0。--workspace-check --named-workspace-only --offcanvas-pattern-create-only由0xC00000FD变为exit0。锚点组合越过smokeDrawingAnchor（含上一轮焦点断言）及栈探测，随后在actual Paint one-pixel keyboard rounds zero on four-pixel tiles断言失败，未宣称完整组合通过。该断言留待后续核对legacy键盘步长/fixture状态，不削弱断言。本轮是验证路径资源优化，不声明产品帧率提升。源码/来源/记录提交推送dev，缓存及用户数据保留。
+- 原锚点显隐参考组合到达相同Paint微移断言，确认并非上一轮显隐优化专有失败；完整--selection-check exit0。
