@@ -96,7 +96,14 @@ public:
 
     if(msg->fromFilter() && msg->type()==ui::kKeyUpMessage){if(desktop && desktop->editor)desktop->editor->observeModifierRelease(msg);return false;}
 
-    if(msg->fromFilter() && msg->type()==ui::kFocusEnterMessage){if(desktop && desktop->editor)desktop->editor->focusWidgetOverlay(static_cast<ui::FocusMessage*>(msg)->newFocus());return false;}
+    if(msg->fromFilter() && msg->type()==ui::kFocusEnterMessage){
+      // LAF removes a deleted recipient, but retains FocusMessage::newFocus.
+      // Filters still see that queued message. Only the current focus is live
+      // and relevant to overlay order; never walk an obsolete target's parents.
+      const auto focus=static_cast<ui::FocusMessage*>(msg)->newFocus();
+      if(focus && focus==getFocus() && desktop && desktop->editor)desktop->editor->focusWidgetOverlay(focus);
+      return false;
+    }
 
     if(msg->fromFilter() && msg->type()==ui::kMouseDownMessage){
       const auto mouse=static_cast<ui::MouseMessage*>(msg);

@@ -173,3 +173,11 @@ Aseprite `src/ui/manager.cpp` 的 flushRedraw 和编辑器局部 canvas invalida
 - 为唯一正式MSVC Release链接添加/MAP，生成匹配当前exe的moonsprite-native.map，不修改优化等级/入口/版本，不提交生成物。正式Release重链接exit0。
 - 新构建Windows Application1000事件fault RVA0x9eb73c；同次链接map的preferred base0x140000000，widgetColumn起始0x1409eb5e0，下一函数workspaceLayout0x1409ebaf0。因此异常处于Editor::widgetColumn+0x15c（editor_panels.obj）。这是地址归属证据，不是根因或修复证明。
 - widgetColumn读取多种panel owns/scrollbar及成员vector；退出销毁时仍有回调访问是待验证假设，不能未经调用链证据就更改销毁行为。异常仍复现，本轮仅完善诊断基础，不宣称性能提升或稳定性修复。来源覆盖/diff通过后提交推送。
+
+
+## 2026-11-06：跳过失效的排队焦点通知
+
+- 用当前Release的dumpbin反汇编核实RVA0x9eb73c指令为读取目标Widget的parent（偏移0x240），位于内联TilesetPanel::owns循环；不是此前不匹配PDB所指的符号。对照Aseprite MIT ui/manager.cpp：setFocus排队保存raw newFocus，Widget销毁时removeMessagesFor只移除recipient，pumpQueue仍先发送给filters，因此已删除目标仍可能进入原生Manager焦点过滤器。
+- 原生Manager只在FocusEnter的newFocus非空且等于Manager当前getFocus时更新overlay/命令scope；不解引用旧目标，也不对过时焦点执行widgetColumn扫描、栏目重排和invalidate。保持正常当前焦点路线，legacy useAppCommandScope.ts的有效surface记忆语义不变。未复制Aseprite app代码。
+- --tool-rail-check新增把已删除临时Widget作为FocusEnter payload送入实际Manager过滤器的回归，再跑原工具矩阵和事件循环退出。正式唯一Release构建queued-focus-build.log exit0；工具轨道由此前0xC0000005变为exit0，stage到complete。焦点恢复、ui-geometry-performance、hit-testing-performance均exit0；来源覆盖625文件与diff检查通过，迁移整体仍未完成。
+- 本轮确认稳定性修复和过期通知的无效工作减少；未对真实窗口输入至呈现延迟作量测，不宣称整体缩放已流畅。验证后提交推送dev。

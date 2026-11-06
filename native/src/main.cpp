@@ -551,7 +551,14 @@ int app_main(int argc,char* argv[]) {
         if(fillDraftCheck){editor->smokeFillParameterDrafts();restart.again=false;workspaceTimer.stop();desktop.approved=true;desktop.closeWindow(editor);return;}
         if(selectionDraftCheck){editor->smokeSelectionTransformDraftRoute();restart.again=false;workspaceTimer.stop();desktop.approved=true;desktop.closeWindow(editor);return;}
         if(magicEraserCheck){editor->smokeMagicEraser();restart.again=false;workspaceTimer.stop();desktop.approved=true;desktop.closeWindow(editor);return;}
-        if(toolRailCheck){editor->smokeToolRailMatrix();restart.again=false;workspaceTimer.stop();desktop.approved=true;desktop.closeWindow(editor);return;}
+        if(toolRailCheck){
+          // Filters must ignore queued focus payloads after their recipient dies.
+          auto temporary=new ui::Widget(ui::kGenericWidget);
+          ui::FocusMessage obsolete(ui::kFocusEnterMessage,nullptr,temporary);
+          obsolete.setFromFilter(true);
+          delete temporary;
+          manager.onProcessMessage(&obsolete);
+          editor->smokeToolRailMatrix();restart.again=false;workspaceTimer.stop();desktop.approved=true;desktop.closeWindow(editor);return;}
         if(workspaceCheck&&std::wstring(GetCommandLineW()).find(L"--named-workspace-only")!=std::wstring::npos){editor->smokeWorkspace();restart.again=false;workspaceTimer.stop();desktop.approved=true;desktop.closeWindow(editor);return;}
 
         if(selectionCheck){editor->smokeSelectionTools();editor->smokeSelectionDisplay();return;}
