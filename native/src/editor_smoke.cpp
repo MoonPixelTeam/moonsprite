@@ -7231,7 +7231,7 @@ void Editor::smokeWindowInput(const LegacyCursors& cursors) {
 
       if(native->pointFromScreen(absolute)!=point || native->pointToScreen(point)!=absolute)throw std::runtime_error("Window screen/client conversion differs from Win32");
 
-      if(auto actual=manager()->pickFromScreenPos(absolute);actual!=expected){auto describe=[](ui::Widget* w){if(!w)return std::string("null");const auto b=w->bounds();return std::to_string(w->type())+" rect="+std::to_string(b.x)+","+std::to_string(b.y)+","+std::to_string(b.w)+","+std::to_string(b.h);};throw std::runtime_error("Window input target differs at "+std::to_string(point.x)+","+std::to_string(point.y)+" window origin="+std::to_string(screen.x-point.x)+","+std::to_string(screen.y-point.y)+" expected "+describe(expected)+" actual "+describe(actual)+" editor "+describe(this)+" bar "+describe(menuBar_));}
+      if(auto actual=manager()->pickFromScreenPos(absolute);actual!=expected){auto describe=[](ui::Widget* w){if(!w)return std::string("null");const auto b=w->bounds();return std::string("id=")+w->id()+" text="+w->text()+" address="+std::to_string(reinterpret_cast<std::uintptr_t>(w))+" parent="+std::to_string(reinterpret_cast<std::uintptr_t>(w->parent()))+" type="+std::to_string(w->type())+" rect="+std::to_string(b.x)+","+std::to_string(b.y)+","+std::to_string(b.w)+","+std::to_string(b.h);};throw std::runtime_error("Window input target differs at "+std::to_string(point.x)+","+std::to_string(point.y)+" window origin="+std::to_string(screen.x-point.x)+","+std::to_string(screen.y-point.y)+" expected "+describe(expected)+" actual "+describe(actual)+" editor "+describe(this)+" bar "+describe(menuBar_));}
 
     };
 

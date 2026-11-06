@@ -322,3 +322,10 @@ Aseprite `src/ui/manager.cpp` 的 flushRedraw 和编辑器局部 canvas invalida
 - layoutTopMenu原循环即使menuBarInsets两侧均已clamp到uiGap，仍尝试最多32轮required()，每轮重新查询全部PixelMenuItem文字ink/sizeHint。现保留原有逐步收缩，发现相邻两轮总宽相等后结束；各边距整数单调下降，相等意味着均饱和。溢出情形仍将barInsetReduction设为原最终32，不改变实际inset、布局、文字或命中。MOONSPRITE_MENU_FIT_REFERENCE恢复原loop。对照Aseprite MIT Menu sizeHint/wrap和现有PixelMenuItem实现，无app代码复制。
 - 唯一Release menu-fit-build.log exit0；reference/optimized原生resize各16尺寸surface/client一致、BMP逐字节一致。menu-pointer、ui-geometry-performance含局部/全量framebuffer均exit0。window-input在首个变体命中断言失败（5,8，expected/actual均type15同bounds但widget指针不同）；恢复reference仍同一错误exit1，非本轮引入，尚待定位，不能报告该检查通过。
 - 关闭采集ABBA原生resize全部exit0，变化样本均值reference25.209、optimized28.374、optimized25.606、reference23.193ms，无整体提速证据。只确认最窄/无法fit路径不继续无效32轮测量；当前resize夹具未独立量化该路径收益。来源覆盖625文件/evidence及diff通过。迁移完整性仍INCOMPLETE，整体卡顿仍未全部验收；记录window-input缺口后继续检查。生成物和本地错误报告不提交，验证后推送dev。
+
+
+## 2026-11-06：窄窗口菜单命中失败确认为真实重叠
+
+- 增强smokeWindowInput失败诊断，包含widget地址/parent/id/text，唯一正式Release window-hit-diagnostic-build.log exit0；实际window-input再现exit1。point5,8期望和实际均type15/bounds4,7,46,34，地址不同、parent相同，证明是同父菜单项重叠，不是Win32屏幕坐标换算或期望层级错误。
+- 对照Aseprite MIT Menu::onResize：inBar总宽溢出时cpos.x重置、cpos.y增加；native layoutTopMenu随后对所有顶级项统一r.y居中，抹掉换行y并保留换行x，因而不同菜单重叠。此前menu fit收缩到最小仍无法fit，32轮或饱和提前返回均不能解决该产品空间问题。源码和运行证据一致，不能通过放宽hit断言将其标记通过。
+- 受用户迁移规则约束，不自行改变菜单交互/隐藏功能入口；已询问用户横向滚动或更多菜单的窄窗溢出选择。待明确后按旧功能入口/素材约束实现并重新验收。当前仅提交诊断改进及证据，不声称性能或命中修复。来源覆盖/evidence及diff检查通过，生成物/错误报告保留不提交，推送dev。
