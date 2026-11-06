@@ -1359,14 +1359,20 @@ void Editor::onPaint(ui::PaintEvent& ev) {
     // Bounded opt-in evidence for transparent-child parent background replays.
     struct ReplayTrace {
       std::filesystem::path path;
-      std::map<std::tuple<bool,int,int,int,int>,std::uint64_t> clips;
+      struct Sample{std::uint64_t calls=0;double total=0,maximum=0;};
+      std::map<std::tuple<bool,int,int,int,int>,Sample> clips;
       ReplayTrace(){if(const auto value=_wgetenv(L"MOONSPRITE_REPAINT_TRACE"))path=value;}
-      ~ReplayTrace(){if(path.empty())return;try{std::ofstream out(path);out<<"background\tx\ty\tw\th\tcalls\n";for(const auto& item:clips){const auto& [bg,x,y,w,h]=item.first;out<<bg<<'\t'<<x<<'\t'<<y<<'\t'<<w<<'\t'<<h<<'\t'<<item.second<<'\n';}}catch(...){}}
+      ~ReplayTrace(){if(path.empty())return;try{std::ofstream out(path);out<<"background\tx\ty\tw\th\tcalls\ttotal_ms\tmax_ms\n";for(const auto& item:clips){const auto& [bg,x,y,w,h]=item.first;out<<bg<<'\t'<<x<<'\t'<<y<<'\t'<<w<<'\t'<<h<<'\t'<<item.second.calls<<'\t'<<item.second.total<<'\t'<<item.second.maximum<<'\n';}}catch(...){}}
     };
     static ReplayTrace replayTrace;
+    struct ReplayDuration {
+      ReplayTrace::Sample* sample=nullptr;
+      std::chrono::steady_clock::time_point start;
+      ~ReplayDuration(){if(!sample)return;const auto ms=std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-start).count();++sample->calls;sample->total+=ms;sample->maximum=std::max(sample->maximum,ms);}
+    } replayDuration;
     if(!replayTrace.path.empty()){
       const auto r=g.getClipBounds();const auto key=std::make_tuple(ev.isTransparentBg(),r.x,r.y,r.w,r.h);
-      if(replayTrace.clips.size()<4096 || replayTrace.clips.count(key))++replayTrace.clips[key];
+      if(replayTrace.clips.size()<4096 || replayTrace.clips.count(key)){replayDuration.sample=&replayTrace.clips[key];replayDuration.start=std::chrono::steady_clock::now();}
     }
     struct AdvancedNoticePaint{Editor& e;ui::Graphics& g;~AdvancedNoticePaint(){e.paintAdvancedNotice(g);}} advancedNoticePaint{*this,g};
 

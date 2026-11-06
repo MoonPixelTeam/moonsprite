@@ -257,3 +257,10 @@ Aseprite `src/ui/manager.cpp` 的 flushRedraw 和编辑器局部 canvas invalida
 - paintTimelineGrid原有精确damage判断位于TimelineRows/滚动指标之后。新增无需行构造的保守material范围，涵盖最小viewport、横纵6px外扩、label宽度与2px选择外扩，在metrics前排除无关碎片。paintLoopTrack保持在此前原位；活动行/帧插入手势绕过跳过。原精确检查保留。与Aseprite MIT Graphics裁剪语义一致，无上游改动。
 - MOONSPRITE_GRID_EARLY_REFERENCE执行原metrics并逐次要求保守范围包含精确material union，GRID_DAMAGE_REFERENCE同时绕过新判断。正式最终Release grid-early-final-build.log exit0；开启对照的large-timeline-performance、timeline-density、group-timeline、ui-geometry-performance全部exit0。关闭对照的ui-geometry（悬浮partial/full framebuffer）、playback-floating也exit0；来源覆盖625文件/diff通过。
 - 同二进制reference/optimized真实resize均exit0，timeline-paint累计61.421/55.693ms，self49.954/50.272ms；窗口均值42.671/49.618ms，未证明整体改善。对照额外包含边界校验，不能将全部scope差值归因提前排除。仅确认无关碎片不再构造metrics；碎片数量及整体卡顿仍未解决，验证后提交推送dev。
+
+
+## 2026-11-06：碎片CPU累计耗时证据
+
+- 扩展既有MOONSPRITE_REPAINT_TRACE，为最多4096个clip/background key记录calls、total_ms、max_ms。RAII计时涵盖onPaint所有早退和advanced notice收尾；仅trace启用且key被保留时读取时钟。无生产绘制/输入改动。Aseprite MIT PaintEvent background与Widget flushRedraw逐rect消息语义保持。
+- 唯一Release repaint-duration-build.log exit0；启用trace的native-window-resize exit0、surface/client一致，关闭trace的ui-geometry-performance含局部/全量framebuffer exit0；来源覆盖625文件/diff通过。
+- native-resize-repaint-duration.tsv：直接3342次累计302.906ms，其中任一边<=8px的窄clip148.493ms；透明父背景107次累计12.663ms（窄clip0.551ms）。此前“碎片是主要来源”的调用计数现在有CPU耗时支持；并非只有大量便宜调用。最高单key约5.025ms/7次。应优先减少窄碎片完整背景计算/考虑绘制合并，不优先改变透明控件机制。trace会增加时钟/容器开销，数值不能代表显示器延迟。本轮诊断进展，尚无生产性能修复；验证后提交推送dev。
