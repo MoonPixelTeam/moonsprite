@@ -2969,3 +2969,12 @@ project-import-tests与document-raster-history-tests构建/运行均exit0（nati
 新增空白/复制两类测试，核对独立freeTiles与surface、单历史、Undo/Redo、保存重开。初次fixture空归档导致Missing ZIP directory，改用现有编码器真实容器后，完整free-tile-project-tests exit0。free-empty-auto-frame-build.log正式程序/核心测试构建exit0；夹具修正test-build日志exit0；--workspace-check --named-workspace-only --drawing-anchor-edit-floating-only exit0。来源625文件覆盖/快照及diff通过。无人工UI验收。
 
 仅闭合空白源分支；有内容的自由Cel自动链接、链接编辑传播、导入导出兼容仍未迁移，拒绝保护保留，不称该功能或全部迁移完成。源码/测试/来源/记录推送dev，生成物及用户数据不提交。
+
+
+### 2026-11-07：自由瓦片缺失Cel复制帧核心分支
+
+对照legacy core/animation.ts duplicateAnimationFrame与blankSurfaceFromLayer：缺失来源时复制生成1×1、原点、透明RGBA。原生addFrame此前对free-tile缺失slot一律拒绝duplicate，现允许该分支，生成独立空CelData（原生模型必须字段的适配）和旧版1×1表面。已有来源与blank新增几何不变，tilemap缺失来源保护保留。
+
+新增autoLink开/关两组合验证独立空数据、精确几何/像素、一次历史、Undo恢复缺失源、Redo恢复新帧。初版fromImported夹具暴露导入仍要求完整slot矩阵，未放宽生产准入；测试明确通过const_cast注入Timeline构造器校验的稀疏状态，仅验证核心命令。稀疏工程导入/重开未通过且未宣称完成。
+
+free-missing-duplicate-build.log正式Release和测试构建exit0；夹具调整free-missing-duplicate-fixture-build.log exit0；完整free-tile-project-tests exit0，--workspace-check --named-workspace-only --drawing-anchor-edit-floating-only exit0。来源625文件/快照及diff通过，无人工UI验收。全量迁移、自由Cel链接、稀疏工程准入仍未完成。源码/测试/来源/记录推送dev，用户数据与生成物保留。

@@ -466,7 +466,7 @@ void Document::addFrame(bool duplicate) {
 
 
  for(const auto& l:timeline_.state().layers)if(l.kind=="free-tile"||l.kind=="tilemap"){
-  const auto* slot=timeline_.findCel(l.id,frame().id);if(!slot){if(l.kind=="free-tile"&&!duplicate)continue;throw std::runtime_error("Missing special frame source slot");}const auto source=timeline_.resolveSurface(slot->id);
+  const auto* slot=timeline_.findCel(l.id,frame().id);if(!slot){if(l.kind=="free-tile")continue;throw std::runtime_error("Missing special frame source slot");}const auto source=timeline_.resolveSurface(slot->id);
   if(!source.source||!source.surface||source.issue!=timeline::LinkIssue::None||(l.kind=="tilemap"&&!source.source->tilemap))throw std::runtime_error("Invalid special frame source");
  }
  Edit e{{},state_,nextState_};captureFrameOrder(e,false);e.beforeLoops=timeline_.state().loopSections;const auto previousFrames=timeline_.state().frames;DocumentFrame f;do{f.id="frame-native-"+std::to_string(identity_)+"-"+std::to_string(++nextFrameId_);}while(std::any_of(timeline_.state().frames.begin(),timeline_.state().frames.end(),[&](const auto& old){return old.id==f.id;}));f.duration=duplicate?frame().duration:100;f.disabled=duplicate&&frame().disabled;
@@ -474,7 +474,7 @@ void Document::addFrame(bool duplicate) {
  if(l.kind=="free-tile"||l.kind=="tilemap"){
   const auto* slot=timeline_.findCel(l.id,frame().id);const auto source=slot?timeline_.resolveSurface(slot->id):timeline::Resolution{};
   if(source.surface){surface.width=source.surface->width;surface.height=source.surface->height;surface.offsetX=source.surface->offsetX;surface.offsetY=source.surface->offsetY;}
-  else if(l.kind=="free-tile"&&!duplicate){if(l.freeTiles&&!l.freeTiles->sources.empty()){surface.width=width_;surface.height=height_;}}
+  else if(l.kind=="free-tile"){if(!duplicate&&l.freeTiles&&!l.freeTiles->sources.empty()){surface.width=width_;surface.height=height_;}}
   else throw std::runtime_error("Missing special frame source geometry");
   if(l.kind=="free-tile")c.freeTiles=free_tiles::CelData{};
   else{if(!source.source||!source.source->tilemap)throw std::runtime_error("Missing frame tilemap template");c.tilemap=source.source->tilemap;std::fill(c.tilemap->cells.begin(),c.tilemap->cells.end(),std::nullopt);}
