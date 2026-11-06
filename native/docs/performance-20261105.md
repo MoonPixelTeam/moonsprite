@@ -209,3 +209,11 @@ Aseprite `src/ui/manager.cpp` 的 flushRedraw 和编辑器局部 canvas invalida
 - layoutPalette在每个swatch的clip/visible及共享选择overlay中重复paletteViewportBounds，间接重复columnLayout/columnChrome/geometry。两条滚动条visibility/configure及restorePaletteView之后，在当前布局调用内只计算一次；逐色块输入paletteViewport回调仍实时查询，选择素材/命中/外扩与排序不变。对照Aseprite MIT Widget setBounds/visibility和原生scrollbar configure确认循环没有改变栏目几何。
 - MOONSPRITE_PALETTE_VIEWPORT_REFERENCE逐色块将本次共享矩形与原实时函数精确比较。正式唯一Release构建palette-layout-viewport-build.log exit0；开启对照的palette-manual、palette-growth、ui-geometry-performance、wheel-performance全部exit0，包含已有选框拖动/撤销/重做及窗口局部与全量framebuffer检查。来源覆盖625文件/diff通过。
 - 本轮profile启动时前一个wheel检查仍在运行，进程观察使用Get-Process同名列表，不具备性能隔离，因此不采用该profile数值作速度证据。确认重复几何查询从每色块多次改为当前布局一次，但真实窗口输入至呈现延迟仍未验证，不宣称整体卡顿解决。验证后提交推送dev。
+
+
+## 2026-11-06：真实Win32窗口resize诊断
+
+- 新增--native-window-resize-check，唯一正式入口启动，复用prepareFocusResumeCheck设置smoke隔离和内建调色盘，再以smokePrepareDockSplitRepaint配置栏目。16次SetWindowPos实际改变原生客户区，分别记录同步调用与后续generate/dispatch/redraw/flip耗时，并校验Skia surface尺寸与客户区一致。仅测试入口，不改变生产交互。输出build/test-tmp/native-window-resize.tsv；不包含DWM/显示器呈现延迟。
+- 对照Aseprite MIT Manager构造中的handleWindowResize和dispatchMessages、LAF SkiaWindowBase::onResize：WM_SIZE先resizeSkiaSurface，再同步enqueue ResizeDisplay+dispatch，后者布局/flushRedraw/flip。因此直接Editor::setBounds的旧回放漏掉原生表面重建及同步回调，不能作为真实Windows窗口流畅的证明。
+- 最终正式Release构建native-window-resize-fixture-build.log exit0；独占运行检查exit0，全部surface/client尺寸一致。排除首个未改变尺寸的热身样本，15次total平均39.554ms/max43.636ms，window_call平均38.269ms，后续drain/flip平均1.285ms。profile含初始化/恢复：window-layout20次50.395ms，但canvas-paint与panel-backdrops各2777次，分别109.006/215.258ms，geometry180722次25.376ms。证据将下一步导向子控件背景重放与画布空clip开销；不能将这些累计值解释为单次调用耗时或GPU延迟。
+- 本轮是定位进展，无生产性能修复；真实窗口resize仍约40ms/次。来源覆盖625文件/diff通过，验证后提交推送dev。

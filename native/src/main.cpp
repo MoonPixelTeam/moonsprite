@@ -190,6 +190,29 @@ int app_main(int argc,char* argv[]) {
     if(argc>1 && std::string(argv[1])=="--group-timeline-check") {desktop.addChild(editor);desktop.setBounds(manager.bounds());desktop.openWindow();try{editor->smokeGroupTimeline(std::filesystem::u8path(argv[0]).parent_path());}catch(const std::exception& e){std::ofstream("build/group-timeline-error.txt")<<e.what();delete editor;desktop.editor=nullptr;return 1;}delete editor;desktop.editor=nullptr;return 0;}
     if(argc>1 && std::string(argv[1])=="--large-timeline-performance-check") {desktop.addChild(editor);desktop.setBounds(manager.bounds());desktop.openWindow();try{editor->smokeLargeTimelinePerformance();}catch(const std::exception& e){std::ofstream("build/large-timeline-performance-error.txt")<<e.what();delete editor;desktop.editor=nullptr;return 1;}delete editor;desktop.editor=nullptr;return 0;}
 
+    if(argc>1 && std::string(argv[1])=="--native-window-resize-check") {
+      desktop.addChild(editor);desktop.setBounds(manager.bounds());desktop.openWindow();
+      try {
+        editor->prepareFocusResumeCheck();editor->smokePrepareDockSplitRepaint();manager.dontWaitEvents();
+        auto drain=[&]{manager.generateMessages();manager.dispatchMessages();manager.flushRedraw();manager.dispatchMessages();manager.flipAllDisplays();};
+        drain();
+        const auto hwnd=static_cast<HWND>(window->nativeHandle());RECT original{};
+        if(!GetWindowRect(hwnd,&original))throw std::runtime_error("Cannot read native window rectangle");
+        std::filesystem::create_directories("build/test-tmp");std::ofstream report("build/test-tmp/native-window-resize.tsv");
+        report<<"sample\twindow_call_ms\tdrain_flip_ms\ttotal_ms\tclient_w\tclient_h\n";
+        for(int sample=0;sample<16;++sample){
+          const auto begin=std::chrono::steady_clock::now();
+          if(!SetWindowPos(hwnd,nullptr,0,0,original.right-original.left-(sample%4)*24,original.bottom-original.top-(sample%3)*20,SWP_NOMOVE|SWP_NOZORDER|SWP_NOACTIVATE))throw std::runtime_error("Native resize failed");
+          const auto resized=std::chrono::steady_clock::now();drain();const auto done=std::chrono::steady_clock::now();RECT client{};GetClientRect(hwnd,&client);
+          auto ms=[](auto duration){return std::chrono::duration<double,std::milli>(duration).count();};
+          report<<sample<<'\t'<<ms(resized-begin)<<'\t'<<ms(done-resized)<<'\t'<<ms(done-begin)<<'\t'<<client.right<<'\t'<<client.bottom<<'\n';
+          if(window->surface()->width()!=client.right || window->surface()->height()!=client.bottom)throw std::runtime_error("Native resize surface/client mismatch");
+        }
+        SetWindowPos(hwnd,nullptr,0,0,original.right-original.left,original.bottom-original.top,SWP_NOMOVE|SWP_NOZORDER|SWP_NOACTIVATE);drain();
+      }catch(const std::exception& e){std::ofstream("build/native-window-resize-error.txt")<<e.what();delete editor;desktop.editor=nullptr;return 1;}
+      delete editor;desktop.editor=nullptr;return 0;
+    }
+
     if(argc>1 && std::string(argv[1])=="--ui-geometry-performance-check") {desktop.addChild(editor);desktop.setBounds(manager.bounds());desktop.openWindow();try{editor->smokeDockResizeMigration();}catch(const std::exception& e){std::ofstream("build/ui-geometry-performance-error.txt")<<e.what();delete editor;desktop.editor=nullptr;return 1;}delete editor;desktop.editor=nullptr;return 0;}
     if(argc>1 && std::string(argv[1])=="--hit-testing-performance-check") {desktop.addChild(editor);desktop.setBounds(manager.bounds());desktop.openWindow();try{editor->smokeHitTestingPerformance();}catch(const std::exception& e){std::ofstream("build/hit-testing-performance-error.txt")<<e.what();delete editor;desktop.editor=nullptr;return 1;}delete editor;desktop.editor=nullptr;return 0;}
 
