@@ -128,3 +128,11 @@ Aseprite `src/ui/manager.cpp` 的 flushRedraw 和编辑器局部 canvas invalida
 - 原链接run循环仅在!timelineThumbnailSize时绘制圆点，隐藏时间轴也不会访问行；现在将判断移到整个pass外，避免无输出情况下构建树/metrics和逐Cel resolveSurface。可见圆点、缩略图、选择与命中均保持。
 - 同一正式exe用MOONSPRITE_LINK_PASS_REFERENCE恢复旧扫描，旧/新timeline-density均exit0。394次timeline-paint累计59.439ms/43.852ms（约降低26%，单轮软件诊断而非整应用提速）。正式Release构建exit0；large/group回归结果随本轮命令输出记录。全六种密度的现有geometry、selection alpha/hit、缩略图检查通过。
 - 本轮仅移除必然无绘制结果的查询；图层内容缓存仍按需建立。工具轨道退出异常、实际Windows缩放延迟尚未解决。来源覆盖/diff通过后推送dev。
+
+
+## 2026-11-06：布局与绘制共享滚动指标
+
+- layoutTimelineScrollBars从已计算metrics直接生成row viewport，删除未使用的frame viewport求值。paintTimelineGrid以一次metrics计算生成row/frame/header及material clips，链接圆点复用已有frameMaterial。避免多次构建相同TimelineRows；没有跨调用缓存，也未改变输入回调。
+- MOONSPRITE_VIEWPORT_METRICS_REFERENCE逐次对照原实时viewport/material函数，保留hidden timeline的零宽与零高header，以及横纵滚动条外扩规则。开启对照的large-timeline、group-timeline、timeline-density、ui-geometry、playback-floating均exit0；正式Release构建、来源覆盖与diff检查通过。
+- 关闭对照的大时间轴滚动20次平均4.180ms，16,384选择轮廓4.164ms、同目标拖动3.453ms。与历史不同进程回放不构成严格比例，不宣称整应用同比提速。现有framebuffer/选择alpha命中/分组/循环节回归保持。
+- 本轮提交推送dev。真实窗口输入至呈现延迟及工具轨道退出异常仍未解决。

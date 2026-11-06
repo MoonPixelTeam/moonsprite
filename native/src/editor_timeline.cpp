@@ -807,7 +807,9 @@ gfx::Rect Editor::timelineMaterialViewport(gfx::Rect viewport,bool header) const
 
 void Editor::layoutTimelineScrollBars(const Layout& l) {
 
-    if(!timelineHorizontal_)return;const auto m=timelineScrollMetrics(l);const auto row=timelineRowViewport(),frames=timelineFrameViewport();
+    if(!timelineHorizontal_)return;const auto m=timelineScrollMetrics(l);
+    const auto row=toDisplay(gfx::Rect(l.workX+5,l.layerTop+timelineRowsOffset(),m.viewportWidth/uiScale,m.height/uiScale));
+    if(smoke_ && _wgetenv(L"MOONSPRITE_VIEWPORT_METRICS_REFERENCE") && row!=timelineRowViewport())throw std::runtime_error("Scrollbar shared metrics differ from live row viewport");
 
     int vertical=std::clamp(layerScroll_*timelineRowHeight()*uiScale+layerScrollRemainder_,0,std::max(0,m.contentHeight-m.height));
 
@@ -1195,9 +1197,19 @@ void Editor::paintTimelineGrid(ui::Graphics& g) {InteractionScope interactionSco
 
     // Viewports are immutable during this synchronous composition. Input keeps
     // its live callbacks; paint reuses one clip per control category.
-    const auto rowMaterial=timelineMaterialViewport(timelineRowViewport());
-    const auto frameMaterial=timelineMaterialViewport(timelineFrameViewport());
-    const auto headerMaterial=timelineMaterialViewport(timelineFrameViewport(true),true);
+    const auto paintLayout=columnLayout(uiLogical(clientBounds()),2);
+    const auto paintMetrics=timelineScrollMetrics(paintLayout);
+    const auto rowViewport=toDisplay(gfx::Rect(paintLayout.workX+5,paintLayout.layerTop+timelineRowsOffset(),paintMetrics.viewportWidth/uiScale,paintMetrics.height/uiScale));
+    auto frameViewport=rowViewport;
+    if(timelineHidden_){frameViewport.x=frameViewport.x2();frameViewport.w=0;}
+    else{frameViewport.x+=timelineLabelWidth()*uiScale;frameViewport.w=std::max(0,frameViewport.w-timelineLabelWidth()*uiScale);}
+    auto headerViewport=frameViewport;
+    if(timelineHidden_)headerViewport.h=0;
+    else{headerViewport.y-=timelineHeaderHeight()*uiScale;headerViewport.h=timelineHeaderHeight()*uiScale;}
+    auto material=[&](gfx::Rect box,bool header=false){if(paintMetrics.vertical)box.w+=6*uiScale;if(paintMetrics.horizontal&&!header)box.h+=6*uiScale;return box;};
+    const auto rowMaterial=material(rowViewport),frameMaterial=material(frameViewport),headerMaterial=material(headerViewport,true);
+    if(smoke_ && _wgetenv(L"MOONSPRITE_VIEWPORT_METRICS_REFERENCE") &&
+       (rowMaterial!=timelineMaterialViewport(timelineRowViewport()) || frameMaterial!=timelineMaterialViewport(timelineFrameViewport()) || headerMaterial!=timelineMaterialViewport(timelineFrameViewport(true),true)))throw std::runtime_error("Shared paint metrics differ from live material viewports");
     // All grid primitives are clipped to these viewports. Selection materials
     // extend two physical skin pixels beyond them; retain that overhang.
     auto gridMaterial=rowMaterial|frameMaterial|headerMaterial;
@@ -1252,7 +1264,7 @@ void Editor::paintTimelineGrid(ui::Graphics& g) {InteractionScope interactionSco
     if((!timelineHidden_ && !timelineThumbnailSize()) ||
        (smoke_ && _wgetenv(L"MOONSPRITE_LINK_PASS_REFERENCE"))) {
 
-      g.saveClip();g.clipRect(timelineMaterialViewport(timelineFrameViewport()).offset(-bounds().origin()));
+      g.saveClip();g.clipRect(gfx::Rect(frameMaterial).offset(-bounds().origin()));
 
       {UiPaintScale scale(g,gfx::Point(-frameScrollRemainder_,-layerScrollRemainder_));const auto l=columnLayout(uiLogical(bounds()),2);
 
