@@ -29,6 +29,13 @@ PixelFont::PixelFont(const std::string& path) {
     }
     else if(line=="BITMAP") bitmapRow=0;
     else if(line=="ENDCHAR") {
+      // Immutable BDF metrics: reduce the bitmap once, rather than on every
+      // menu/button/layout query. Whitespace keeps an empty ink rectangle.
+      unsigned columns=0;int top=glyph.height,bottom=0;
+      for(int y=0;y<int(glyph.rows.size());++y)if(const auto row=glyph.rows[y]){columns|=row;top=std::min(top,y);bottom=y+1;}
+      if(columns){unsigned long first=0,last=0;_BitScanForward(&first,columns);_BitScanReverse(&last,columns);
+        glyph.ink={glyph.x+glyph.width-1-int(last),9-glyph.height-glyph.y+top,int(last-first+1),bottom-top};
+      }
       if(bitmapRow!=glyph.height || glyph.advance<1 || glyph.advance>32 || !glyphs_.emplace(code,glyph).second)
         throw std::runtime_error("Invalid Fusion glyph");
       bitmapRow=-1;
@@ -77,6 +84,10 @@ void PixelFont::smokeRasterEquivalent() const {
   const std::u32string sample=U"未命名 颜色板 图层 恢复 Aa09%";std::uint64_t checksum=0;
   auto timing=[&](bool old){const auto start=std::chrono::steady_clock::now();for(int i=0;i<20000;++i)checksum+=(old?reference(sample):inkBounds(sample)).w;return std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-start).count();};
   const auto oldMs=timing(true),newMs=timing(false);std::cout<<"Fusion ink bounds 20000: reference_ms="<<oldMs<<" optimized_ms="<<newMs<<" glyphs="<<glyphs_.size()<<" checksum="<<checksum<<'\n';
+  // Benchmark the immediately preceding row-reduction implementation too.
+  const auto rowStart=std::chrono::steady_clock::now();
+  for(int i=0;i<20000;++i){gfx::Rect ink;int pen=0;for(auto c:sample){const auto it=glyphs_.find(c);const auto& glyph=it==glyphs_.end()?glyphs_.at(65534):it->second;unsigned columns=0;int top=glyph.height,bottom=0;for(int y=0;y<glyph.height;++y)if(const auto row=glyph.rows[y]){columns|=row;top=std::min(top,y);bottom=y+1;}if(columns){unsigned long first=0,last=0;_BitScanForward(&first,columns);_BitScanReverse(&last,columns);const gfx::Rect r(pen+glyph.x+glyph.width-1-int(last),9-glyph.height-glyph.y+top,int(last-first+1),bottom-top);ink=ink.isEmpty()?r:ink.createUnion(r);}pen+=glyph.advance;}checksum+=ink.w;}
+  std::cout<<"Fusion ink row reduction 20000: previous_ms="<<std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-rowStart).count()<<" cached_ms="<<newMs<<" checksum="<<checksum<<'\n';
   const std::u32string text=U"Aa09% 未命名 颜色板 图层 恢复\U0001ffff";
   for(int scale:{1,2}) for(const auto color:{gfx::rgba(220,180,140),gfx::rgba(100,170,250,128),gfx::rgba(100,170,250,1),gfx::rgba(100,170,250,254)}) for(bool narrow:{false,true}) {
     const int w=(measure(text)+20)*scale,h=24*scale;
@@ -112,12 +123,8 @@ gfx::Rect PixelFont::inkBounds(const std::u32string& text) const {
   for(auto c:text) {
     const auto it=glyphs_.find(c);
     const auto& glyph=it==glyphs_.end()?glyphs_.at(65534):it->second;
-    // A bitmap row is at most 32 bits. Reduce its occupied columns with
-    // bit scans, avoiding one rectangle union for every opaque pixel.
-    unsigned columns=0;int top=glyph.height,bottom=0;
-    for(int y=0;y<glyph.height;++y)if(const auto row=glyph.rows[y]){columns|=row;top=std::min(top,y);bottom=y+1;}
-    if(columns){unsigned long first=0,last=0;_BitScanForward(&first,columns);_BitScanReverse(&last,columns);
-      const gfx::Rect bounds(pen+glyph.x+glyph.width-1-int(last),9-glyph.height-glyph.y+top,int(last-first+1),bottom-top);
+    if(!glyph.ink.isEmpty()){
+      const auto bounds=gfx::Rect(glyph.ink).offset(pen,0);
       ink=ink.isEmpty()?bounds:ink.createUnion(bounds);
     }
     pen+=glyph.advance;

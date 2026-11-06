@@ -456,3 +456,11 @@ Aseprite `src/ui/manager.cpp` 的 flushRedraw 和编辑器局部 canvas invalida
 - 正式brush-save-async-build.log exit0。--workspace-check --named-workspace-only --pixel-stroke-only --brush-write-queue-only异步/同步均exit0：40次保存最终size40/opacity39，六文件逐字节一致；阻挡目录失败通知、恢复全六文件、析构40次最终39全六文件、作品/history/revision/dirty保持通过。同步参考MOONSPRITE_BRUSH_SAVE_SYNC_REFERENCE；profile .brush-save.tsv。40次UI序列化/提交总148.775ms/max5.8481→1.4068ms/max0.1657；实际异步磁盘完成时间另计，未声明端到端磁盘提速。
 - tool-property-shortcuts、gradient-shape、palette-gradient、drawing-pan-performance、ui-geometry-performance及完整--workspace-check --named-workspace-only均exit0。误将--pixel-stroke-only单独作为主入口会打开普通窗口，已正常关闭；该次不计测试通过，真正pixel/dither覆盖来自完整named workspace。
 - --workspace-check --named-workspace-only --offcanvas-pattern-create-only在同步参考和异步均exit -1073741571（0xC00000FD栈溢出），未归因于本轮改动也未宣称通过，组合检查缺口待定位。来源625/evidence和diff通过；整体迁移INCOMPLETE。提交源码/来源/记录推送dev，生成物和用户数据保留。
+
+## 2026-11-07：共享 Fusion 字形墨迹边界预计算
+
+- PixelFont::inkBounds 的上一版仍在每次查询时逐行合并字形位图。字形加载后不可变，现将相同的行/位扫描移至 BDF ENDCHAR，缓存每个字形的墨迹矩形；菜单、按钮、布局查询仅平移并合并该矩形。空白、缺字回退、advance、基线及实际绘制路径不变。不缓存任意文本，额外内存仅每字形一个 Rect。
+- 对照 Aseprite MIT ui/graphics.cpp::measureText：其注释同样指出直接文字测量慢，建议缓存 TextBlob。此处保留用户指定 Fusion BDF 实现，只缓存不可变字形几何；不复制 Aseprite app 代码，不改变上游库。现有独立逐像素 oracle 检查全部加载字形、空白、缺字与邻接字符；既有 1×/2×、不透明及三档半透明渲染对照继续保留。增加与紧邻上一版逐行缩减算法的同进程测量。
+- 继承并登记 paintCanvas 七阶段 opt-in profile；未开启环境变量时不读时钟、不写报告。初始 Release 构建及 performance-ui、drawing-pan-performance、hit-testing-performance 3 项通过。ui-geometry-performance-check 在 Floating partial/full framebuffer differs 失败；保留此缺口，不把其它检查通过解释为该项通过。
+- 最终正式 Release font-ink-cache-build.log exit0。font-ink-cache-tests.log 中 performance-ui、drawing-pan-performance、skin-resize-render、window-input-hit-testing 四项全通过；覆盖25,314字形精确墨迹边界及1×/2×透明度像素对照、真实菜单溢出/恢复/展开和命中。20,000次同进程查询，紧邻上一版行缩减10.4668ms→缓存6.1181ms（约减少42%）；最初逐像素参考90.6198ms。此为文字边界微基准，不声明整机或完整窗口帧时缩短42%。来源625文件/evidence与diff检查通过；未执行新一轮人工图像验收。
+- 最终 --native-window-resize-check exit0，完成16次真实 HWND 尺寸变化并核对 surface/client 尺寸；报告 build/test-tmp/native-window-resize.tsv。本轮源码、来源登记与记录提交推送dev，保留工作区原有未跟踪数据及诊断文件。

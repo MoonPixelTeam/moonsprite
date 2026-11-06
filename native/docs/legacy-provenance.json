@@ -4017,6 +4017,7 @@
     },
     {
       "file": "src/pixel_font.h",
+      "inkMetricsCache20261107": "User-defined Fusion10px font adaptation: each immutable BDF glyph stores its exact occupied ink rectangle at load time. PixelFont::inkBounds reuses it without rescanning bitmap rows; original per-pixel oracle checks every loaded glyph, whitespace, missing glyph and adjacent text. UI/laf graphics and raster semantics remain unchanged; no Aseprite app source copied.",
       "classification": "user-design",
       "sources": [
         "native/.cache/aseprite/src/ui/graphics.cpp",
@@ -4026,6 +4027,7 @@
     },
     {
       "file": "src/pixel_font.cpp",
+      "inkMetricsCache20261107": "Compute exact ink bounds once during BDF ENDCHAR with the preceding row/bit-scan algorithm; repeated layout queries union translated immutable rectangles. Existing independent per-pixel oracle covers all loaded glyphs plus empty/whitespace/missing text and 1x/2x opaque/translucent raster equality. Same-process benchmark compares immediately preceding row reduction and cached lookup. Aseprite MIT ui/graphics.cpp and laf Skia surface clipping/colored bitmap paths inspected, preserved unchanged; no app source copied.",
       "translucentRunsPerformance20261106": "Native BDF rendering adaptation: translucent glyph bitmap rows combine contiguous set bits into disjoint horizontal fills instead of one fill per lit pixel. Keeps font, bitmap, advance, baseline, alpha and ordering unchanged; opaque raster path untouched. Original pixel-fill oracle expanded to alpha1/128/254/255, scale1/2, normal/narrow clips with nonzero graphics origin. No clip inference across UiPaintScale. Formal runtime results in performance-20261105.md.",
       "classification": "user-design",
       "sources": [
@@ -13636,6 +13638,7 @@
     },
     {
       "file": "src/editor_canvas.cpp",
+      "canvasPhaseProfile20261107": "Continue existing opt-in MOONSPRITE_INTERACTION_PROFILE diagnostics with bounded seven-phase canvas timing: clip, decoration, composite, instance feedback, grids, brush preview, overlays. Disabled runs do not query the clock or write reports. Existing Graphics/UiPaintScale clipping and canvas rendering unchanged; follows native editor_support InteractionScope and editor_dialogs BackdropProfile adaptation of MIT UI painting.",
       "repaintDuration20261106": "Extends existing bounded MOONSPRITE_REPAINT_TRACE with RAII total/max CPU duration for each actual paint clip, including early returns and advanced notice destruction. Clock reads occur only for retained opt-in trace entries. Aseprite MIT PaintEvent background classification unchanged; diagnostic native adaptation of legacy requestDrawRef performance investigation, no production rendering changes.",
       "parentReplayTrace20261106": "Opt-in MOONSPRITE_REPAINT_TRACE records at most 4096 Editor paint clip/background keys with counts, flushes at process exit. Aseprite MIT PaintEvent::isTransparentBg distinguishes native transparent-child parent replay from direct repaint; source ui/widget.cpp::paintEvent inspected. Diagnostic for native adaptation of legacy requestDrawRef scheduler, no production rendering/state change; disabled runs do not record clips or write files.",
       "emptyCanvasReplay20261106": "Legacy canvas requestDrawRef coalesces visible drawing; necessary native adaptation skips empty Graphics clip after viewport and column occlusion. Preserves preview checkerboard sync and selection animation timer activation; composed content cache remains lazy until actual canvas exposure. MOONSPRITE_CANVAS_EMPTY_REFERENCE restores original full work. Aseprite MIT transparent child parent repaint and Graphics clipping inspected; no app code copied. Existing floating partial/full framebuffer and drawing-pan checks validate visible rendering.",

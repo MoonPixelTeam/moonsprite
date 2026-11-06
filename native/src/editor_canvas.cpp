@@ -1206,6 +1206,20 @@ void Editor::paintCanvasBackdrop(ui::Graphics& g) {
   }
 
 void Editor::paintCanvas(ui::Graphics& g) {InteractionScope interactionScope(9,"canvas-paint");
+    struct CanvasProfile {
+      struct Entry {std::uint64_t calls=0;double ms=0;};std::array<Entry,7> entries{};std::filesystem::path path;
+      CanvasProfile(){if(const auto value=_wgetenv(L"MOONSPRITE_INTERACTION_PROFILE")){path=value;path+=L".canvas.tsv";}}
+      ~CanvasProfile(){if(path.empty())return;try{std::ofstream out(path);out<<"phase\tcalls\ttotal_ms\n";const char* names[]{"clip-setup","decoration","composite","instance-feedback","grids","brush-preview","overlays"};for(int i=0;i<7;++i)out<<names[i]<<'\t'<<entries[i].calls<<'\t'<<entries[i].ms<<'\n';}catch(...){}}
+    };
+    static CanvasProfile profile;
+    struct Phase {
+      int index=0;bool enabled=!profile.path.empty();std::chrono::steady_clock::time_point start;
+      Phase(){if(enabled)start=std::chrono::steady_clock::now();}
+      void finish(){if(enabled){const auto now=std::chrono::steady_clock::now();++profile.entries[index].calls;profile.entries[index].ms+=std::chrono::duration<double,std::milli>(now-start).count();start=now;}}
+      void next(int value){finish();index=value;}
+      ~Phase(){finish();}
+    } phase;
+
 
     auto viewport=canvasViewport();viewport.offset(-bounds().x,-bounds().y);
 
@@ -1229,6 +1243,7 @@ void Editor::paintCanvas(ui::Graphics& g) {InteractionScope interactionScope(9,"
     if(!documentOpen_){g.restoreClip();return;}
     viewport=canvasPaintViewport(viewport);g.save();g.concat(canvasRotationMatrix());
 
+    phase.next(1);
     {
 
       // Decoration remains 2x, but its origin can move by one device pixel.
@@ -1245,8 +1260,10 @@ void Editor::paintCanvas(ui::Graphics& g) {InteractionScope interactionScope(9,"
 
     if(previewPanel_)previewPanel_->checkerboard=checkerboard_;
 
+    phase.next(2);
     ensureContentCache();
     renderer_.draw(g,cv,canvasScale(),checkerboard_.light,checkerboard_.dark,checkerboard_.size);
+    phase.next(3);
     paintFreeTileInstanceFeedback(g,cv);
     // legacy canvas-render-guides.ts: committed composite remains unchanged.
     if(canvasResizePreview_&&canvasResizeIdentity_==document.identity()&&canvasResizeRevision_==document.revision()){
@@ -1266,6 +1283,7 @@ void Editor::paintCanvas(ui::Graphics& g) {InteractionScope interactionScope(9,"
     }
 
 
+    phase.next(4);
     if(document.showCustomGrid()){
 
       Pixel packed=0xffff0000;parsePaletteHex(runtimePreferences_.get("appearance.gridColor"),packed);const auto color=gfx::rgba(packed&255,(packed>>8)&255,(packed>>16)&255,packed>>24);const auto settings=document.customGrid();
@@ -1290,7 +1308,9 @@ void Editor::paintCanvas(ui::Graphics& g) {InteractionScope interactionScope(9,"
 
     }
 
+    phase.next(5);
     paintBrushPreview(g,cv);
+    phase.next(6);
 
     if(symmetryHas(document.symmetryAxes)){
 

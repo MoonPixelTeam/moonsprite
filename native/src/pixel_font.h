@@ -18,7 +18,7 @@ public:
   gfx::Rect inkBounds(const std::u32string& text) const;
   void smokeRasterEquivalent() const;
 private:
-  struct Glyph { int advance=10, width=0, height=0, x=0, y=0; std::vector<unsigned> rows; };
+  struct Glyph { int advance=10, width=0, height=0, x=0, y=0; std::vector<unsigned> rows; gfx::Rect ink; };
   std::map<char32_t, Glyph> glyphs_;
   mutable std::map<char32_t,os::SurfaceRef> rasterGlyphs_;
 };
