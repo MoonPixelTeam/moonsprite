@@ -1163,11 +1163,15 @@ void Editor::layoutPalette(int only) {
       // strips intersecting this scanline. Material/hit testing remains exact.
       std::vector<int> rowEdges;rowEdges.reserve(paletteSelectionEdges_.size());
       const bool compareEdges=smoke_ && std::getenv("MOONSPRITE_PALETTE_EDGE_REFERENCE");
+      // Borders and skin stay fixed during this raster pass. Resolve the
+      // shared material helper once per edge, not for every candidate pixel.
+      std::vector<gfx::Rect> edgeMaterials;edgeMaterials.reserve(paletteSelectionEdges_.size());
+      for(const auto& edge:paletteSelectionEdges_)edgeMaterials.push_back(skin_.selectionMaterialBounds(edge.border));
       auto pickEdge=[&](int x,int y,const std::vector<int>* candidates){
         int winner=-1,best=100000;
         auto consider=[&](int i){const auto& edge=paletteSelectionEdges_[i];if(!edge.clip.contains(gfx::Point(x,y)))return;
           const auto& b=edge.border;const int distance=edge.side==0?b.y-y:edge.side==1?x-(b.x2()-uiScale):edge.side==2?y-(b.y2()-uiScale):b.x-x;
-          if(distance>=0 && distance<best && skin_.selectionContains(skin_.selectionMaterialBounds(b),{x,y})){best=distance;winner=i;}};
+          if(distance>=0 && distance<best && skin_.selectionContains(candidates?edgeMaterials[i]:skin_.selectionMaterialBounds(b),{x,y})){best=distance;winner=i;}};
         if(candidates){for(int i:*candidates)consider(i);}else for(int i=0;i<int(paletteSelectionEdges_.size());++i)consider(i);
         return winner;
       };

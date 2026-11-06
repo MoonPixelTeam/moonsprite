@@ -542,3 +542,9 @@ Aseprite `src/ui/manager.cpp` 的 flushRedraw 和编辑器局部 canvas invalida
 
 - 用既有ctypes Windows调试器运行palette-mouse，日志debug-palette-mouse.log记录caught C++ exception和exit1，实际到达Palette title/button gap；未复现上一轮0xC0000005，仍不能解释其根因。对照用户ui-design-spec.md第4节和既有docking smoke，原断言用标题glyph ink末端到按钮作间距，与共享工具行规范不符。改为核对columnChrome.actions的y/height及停靠工具行到content的2px，悬浮动作位置继续由自身chrome决定。产品代码无变化。
 - palette-chrome-fixture-build.log正式Release构建exit0，--ui-geometry-performance-check exit0，来源625文件/快照及diff通过。带轮廓oracle的palette-mouse此次越过旧断言并继续到新建页签流程，运行未自动结束；仅对本次测试PID25920正常CloseMainWindow，随后exit1并报告New tab creation failed，因此本次受关闭操作影响，不能据此认定新产品故障或组合通过。完整鼠标回归仍未验收。无性能提升声明；源码、来源、记录推送dev，用户数据/缓存/生成物保留。
+
+
+## 2026-11-07：调色盘每轮每边只解析一次选框素材边界
+
+- 逐像素pickEdge原先每个候选点调用Skin::selectionMaterialBounds，重复查selection.normal patch并扩展同一border。现以局部vector在本次raster pass每条边解析一次，仍调用公共helper、不另写公式；无跨轮缓存，皮肤/缩放/选择变化自然重算。selectionContains保持原alpha判定；full-edge oracle故意继续逐点调用原helper，避免对照也共用优化结果。对照legacy PaletteSelectionOutline.tsx按边生成外轮廓及既有Aseprite MIT区域裁剪策略，业务语义不变。
+- palette-edge-material-build.log正式Release构建exit0；开启MOONSPRITE_PALETTE_EDGE_REFERENCE的--palette-manual-check（五尺寸×三形状、逐点winner及alpha/hit、原手动场景）、--palette-growth-check、--ui-geometry-performance-check均exit0。来源625文件/快照与diff检查通过，迁移仍INCOMPLETE。减少的重复patch查询可从源码核对，未量测整体帧率变化，未做人工交互验收。完整鼠标组合及既有剪切回归仍待解决。源码、来源、记录推送dev，用户数据/缓存/生成物保留。
