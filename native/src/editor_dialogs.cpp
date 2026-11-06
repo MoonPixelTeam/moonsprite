@@ -1689,7 +1689,21 @@ void Editor::layoutTopMenu(gfx::Rect bar) {
 
     auto required=[&]{int width=menu->border().width()+menuBar_->border().width();for(auto entry:entries)width+=entry->sizeHint().w;return width+std::max(0,int(entries.size())-1)*menu->childSpacing();};
 
-    for(int reduction=1;required()>bar.w && reduction<=32;++reduction)for(auto entry:entries)entry->barInsetReduction=reduction;
+    const bool reference=smoke_ && _wgetenv(L"MOONSPRITE_MENU_FIT_REFERENCE");
+    if(reference){
+      for(int reduction=1;required()>bar.w && reduction<=32;++reduction)for(auto entry:entries)entry->barInsetReduction=reduction;
+    }else{
+      int previous=required();
+      for(int reduction=1;previous>bar.w && reduction<=32;++reduction){
+        for(auto entry:entries)entry->barInsetReduction=reduction;
+        const int width=required();
+        // menuBarInsets clamps both horizontal sides to uiGap. Once the
+        // complete width stops shrinking, further reductions cannot help.
+        // Preserve the original final reduction when the labels cannot fit.
+        if(width==previous){for(auto entry:entries)entry->barInsetReduction=32;break;}
+        previous=width;
+      }
+    }
 
     menuBar_->setBounds(bar);
 

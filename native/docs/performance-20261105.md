@@ -315,3 +315,10 @@ Aseprite `src/ui/manager.cpp` 的 flushRedraw 和编辑器局部 canvas invalida
 - 定位上一轮preferences-catalog失败，临时Manager命中诊断记录point192,54、picked desktop=true、Editor720x600。该点来自旧fixture的modal.y+25；当前用户规格标题21+正文内边距6，DialogLayout::bodyTop=27，实际位于正文外。生产processPreferencesWheel正确拒绝该点，非滚轮功能回归。移除临时main诊断，fixture改为bodyTop+2的正文空白位置，其他所有滚轮目标、方向、批量delta、数字框不消费、容器外不滚动、上下限和溢出导航断言不变。
 - 唯一正式Release preferences-wheel-final-build.log exit0；修正fixture后的preferences-catalog完整检查exit0，打开MOONSPRITE_DUPLICATE_PREFERENCES_REFERENCE恢复上一轮双pass同样exit0。上一轮去重布局的偏好设置全面检查缺口现补齐。旧native-preferences-catalog-error.txt是失败时留下的历史文件，成功检查不清除此文件；本轮以捕获到的进程exit0为证，保留本地不提交。
 - 来源覆盖625文件/evidence及diff通过。本轮修复验证依据，没有新增生产性能改动或速度声明。生成的14页偏好设置截图与诊断报告不提交。验证后提交推送dev。
+
+
+## 2026-11-06：顶部菜单宽度收缩饱和后停止重复测量
+
+- layoutTopMenu原循环即使menuBarInsets两侧均已clamp到uiGap，仍尝试最多32轮required()，每轮重新查询全部PixelMenuItem文字ink/sizeHint。现保留原有逐步收缩，发现相邻两轮总宽相等后结束；各边距整数单调下降，相等意味着均饱和。溢出情形仍将barInsetReduction设为原最终32，不改变实际inset、布局、文字或命中。MOONSPRITE_MENU_FIT_REFERENCE恢复原loop。对照Aseprite MIT Menu sizeHint/wrap和现有PixelMenuItem实现，无app代码复制。
+- 唯一Release menu-fit-build.log exit0；reference/optimized原生resize各16尺寸surface/client一致、BMP逐字节一致。menu-pointer、ui-geometry-performance含局部/全量framebuffer均exit0。window-input在首个变体命中断言失败（5,8，expected/actual均type15同bounds但widget指针不同）；恢复reference仍同一错误exit1，非本轮引入，尚待定位，不能报告该检查通过。
+- 关闭采集ABBA原生resize全部exit0，变化样本均值reference25.209、optimized28.374、optimized25.606、reference23.193ms，无整体提速证据。只确认最窄/无法fit路径不继续无效32轮测量；当前resize夹具未独立量化该路径收益。来源覆盖625文件/evidence及diff通过。迁移完整性仍INCOMPLETE，整体卡顿仍未全部验收；记录window-input缺口后继续检查。生成物和本地错误报告不提交，验证后推送dev。
