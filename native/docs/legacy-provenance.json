@@ -23251,6 +23251,7 @@
     },
     {
       "file": "src/editor_workspace_presets.cpp",
+      "presetAsyncSave20261107": "Legacy components/app/useAppWorkspaceLayout.ts 320ms autosave serial Promise chain and src-tauri/src/platform_workspaces.rs save_workspace: preserve native existing 800ms timer, preset format, initial snapshot and atomic save/remember. Native timer captures immutable library/id/name/layout and reuses LatestTaskQueue for asynchronous serial latest pending writes; explicit flush and all library reads/mutations wait for in-flight work to prevent old writes racing load/reset/delete/remember. MIT Aseprite ui::Property/Timer reused for owner lifecycle/polling; no app code copied. Queue-only smoke covers latest 40 updates, initial/active, create/switch/reset barriers, failure/recovery, destructor and artwork/history invariants. Sync reference and optional profile compare submission cost.",
       "classification": "legacy-partial",
       "sources": [
         "legacy/src-tauri/src/platform_workspaces.rs",

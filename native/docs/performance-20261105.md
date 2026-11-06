@@ -431,3 +431,11 @@ Aseprite `src/ui/manager.cpp` 的 flushRedraw 和编辑器局部 canvas invalida
 - 正式Release shortcut-sync-dedup-build.log exit0。同一shortcuts-input-check前后均exit0，profile shortcut-sync调用80→64（减少20%），单次采样累计2.9007→2.3500ms、self2.0830→1.6973ms；只证明此fixture调用减少，单次时间不声称稳定整体提速。tool-property-shortcuts、modifier-brush-performance、ui-geometry-performance均exit0。
 - modifiers-check改前已失败Captured brush resize survives modifier release，未将其宣称通过。docking新增诊断且仍exit1：handle=0,cursor=ns-resize,palette=1,picker=1,custom=1,capture=0。说明重置Model后refresh已启用custom布局，旧ColorSplit检查的非custom前提失效；本轮不改产品布局或削弱断言。workspace的Legacy gradient controls缺口保留。
 - 来源625文件/evidence及diff通过，整体迁移仍INCOMPLETE。仅源码/来源/记录提交推送dev；生成物、报告及用户数据保留。整体卡顿目标继续，不将快捷键局部优化等同全软件流畅验收。
+
+
+## 2026-11-07：命名工作区预设定时保存移出UI线程
+
+- 800ms timer原先同步WorkspacePresetLibrary::save+remember，两次原子磁盘落盘，并读回保存结果。现只在UI捕获不可变library/id/name/layout，复用LatestTaskQueue后台串行执行同一save/remember，合并最新pending并抑制相同在途状态。工作线程不访问Editor。复用Aseprite MIT ui::Property/Timer承载poll，16ms主线程报告失败；析构停止回调并等待完成。没有修改预设文件格式、initial语义、原子写入或800ms间隔。
+- 所有workspacePresetLibrary获取先等待既有写入，flush显式等待后保留原同步语义，确保命名保存/读取/切换/重置/删除/active记录不被旧任务覆盖；管理入口可能为一致性等待在途IO，普通拖动/尺寸变更不等待。UI析构先flush，后台任务绝不持有Editor。参考legacy useAppWorkspaceLayout.ts串行Promise自动保存和platform_workspaces.rs save_workspace；不复制Aseprite app代码。
+- Release preset-save-async-build.log exit0。--workspace-check --named-workspace-only --preset-write-queue-only同步参考/异步均exit0：40次timer更新最终layout正确，initial保持，active一致；新建/切换/重置有序；文件阻挡路径失败通知一次，失败后恢复；局部writer析构40次最终39确实落盘；作品/历史/dirty保持。41次timer UI耗时sync402.134ms/max12.3703，async3.1215ms/max0.1929。只测UI提交时间，异步实际磁盘完成另计；同步参考启用MOONSPRITE_PRESET_SAVE_SYNC_REFERENCE，profile输出.preset-save.tsv。
+- 完整--workspace-check --named-workspace-only exit0（真实保存/管理弹窗、800ms自动保存、初始状态重置、切换、坏文件/写入失败、删除、重启恢复及时间轴/工具栏保存）。ui-geometry-performance、native-window-resize均exit0。来源625文件/evidence、diff通过，整体迁移INCOMPLETE。不宣称完整workspace-check或docking-check通过，其既有渐变/旧分隔fixture缺口保留。仅源码/来源/记录推送dev，保留本地生成物和用户数据。
