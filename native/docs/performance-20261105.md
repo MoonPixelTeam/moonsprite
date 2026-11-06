@@ -106,3 +106,10 @@ Aseprite `src/ui/manager.cpp` 的 flushRedraw 和编辑器局部 canvas invalida
 - 同一exe旧/新窗口几何检查均exit0，timeline-paint1913次累计152.871ms/63.113ms，窗口12次590.788ms/423.533ms（单轮环境有波动，不作严格整应用加速比例）。加上插入线保守例外后最终Release构建exit0；最终无profile窗口12次428.012ms、大时间轴滚动10.1197ms。
 - 最终正式程序ui-geometry、large-timeline、group-timeline、playback-floating全部exit0；含浮动move/resize framebuffer、滚动partial/full framebuffer、分组/选择alpha命中和循环节捕获拖动检查。前一构建timeline-density亦exit0，最终差异只放宽插入线手势绘制范围。旧工具轨道退出异常未在此轮解决。
 - 来源覆盖及diff检查通过。修改本地保存，未提交推送；真实Windows拖动和硬件呈现延迟尚未验收。
+
+
+## 2026-11-06：无显式选区时跳过轮廓构造
+
+- timelineOutlines在创建TimelineRows前检查formal Cel、virtual、mask及手势virtual/mask placements，同时扫描原行/帧控件timelineSelected标记。所有来源均空才返回，不把活动背景当显式选区；不缓存状态。
+- MOONSPRITE_EMPTY_SELECTION_REFERENCE对快速返回候选执行旧算法，断言其轮廓确实为空。正式Release构建exit0；开启此oracle的large-timeline、group-timeline、timeline-density、playback-floating全部exit0。无oracle的ui-geometry亦exit0，framebuffer等价通过；窗口12次506.345ms，仍有环境波动，未证明整体提速。
+- 本轮减少无选区时树/视口/轮廓临时对象构造，不宣称特定加速比例。来源覆盖和diff检查通过后提交推送dev。原工具轨道退出访问异常、真实窗口缩放响应仍未解决。
