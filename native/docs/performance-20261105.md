@@ -188,3 +188,10 @@ Aseprite `src/ui/manager.cpp` 的 flushRedraw 和编辑器局部 canvas invalida
 - clipColumn原先为每个可见悬浮栏目构造gfx::Region并求差，即使与当前子控件damage完全不相交。现在先以原damage物理矩形作相交判断，再构造并求差；遮挡顺序、group focus、素材和坐标转换保持。对照Aseprite MIT ui Graphics::clipRegion及LAF gfx Region求差接口，没有复制app代码。
 - MOONSPRITE_OCCLUSION_REFERENCE在同次调用执行原全量求差，与优化结果分别作双向差集，要求均为空。开启对照的ui-geometry-performance、group-timeline、playback-floating均exit0；geometry检查包含悬浮移动/resize局部与全量framebuffer比较。唯一正式Release构建occlusion-damage-build.log exit0，来源覆盖625文件与diff检查通过。
 - 关闭对照的geometry profile exit0：12次窗口resize累计498.296ms，window-layout18次54.638ms，panel-backdrops1901次198.335ms。无配对稳定基准，不把历史运行差值当本轮提速；减少无关region构造/求差已由代码与区域等价对照确认。真实Windows输入至呈现延迟仍未验证，不宣称整应用流畅。验证后提交推送dev。
+
+
+## 2026-11-06：调色盘背景共用遮挡裁剪，延后隐藏栏目布局
+
+- paintPanelBackdrops中palette外框/内容原来连续两次saveClip/clipColumn/restoreClip，二者之间没有几何变更。改用一次裁剪包裹原顺序绘制，减少一次栏目geometry/region循环。palette布局、内容边界仅在实际绘制palette时计算，timeline布局仅在绘制timeline时计算；advanced早退不再构建workspace/三栏目布局，移除未使用picker layout与label闭包。对照Aseprite MIT Graphics的saveClip/restoreClip委托和clipRegion偏移语义，素材与绘制层次不变。
+- 唯一Release构建backdrop-clip-reuse-build.log exit0。开启MOONSPRITE_OCCLUSION_REFERENCE的ui-geometry-performance、advanced-mode、playback-floating全部exit0，包含悬浮移动/resize局部与全量framebuffer一致检查；来源覆盖625文件、diff检查通过。未进行人工UI验收。
+- 关闭对照的profile exit0：panel-backdrops1901次145.469ms，window-layout18次42.929ms，12次窗口resize359.04ms。上一轮相同profile分别198.335/54.638/498.296ms，多个scope同步变化，非配对稳定测量，不将全部差值归因本轮。仍需真实窗口响应延迟证据，不能据此宣称整体卡顿已解决。验证后提交推送dev。

@@ -1712,20 +1712,12 @@ void Editor::paintScrollbarCorner(ui::Graphics& g,gfx::Rect physicalViewport) {
 void Editor::paintPanelBackdrops(ui::Graphics& g,bool includeFloating) {
     InteractionScope backdropScope(15,"panel-backdrops");
 
-    UiPaintScale scale(g);const auto rc=uiLogical(clientBounds());const auto l=workspaceLayout(rc);const auto pl=columnLayout(rc,0),cl=columnLayout(rc,1),ll=columnLayout(rc,2);
+    UiPaintScale scale(g);const auto rc=uiLogical(clientBounds());
     if(advancedActive()){g.fillRect(skin_["background"],rc);if(advancedMode_==1)g.fillRect(skin_["panel"],gfx::Rect(0,0,rc.w,Layout::optionsHeight+Layout::gap));return;}
-
-    auto label=[&](const std::u32string& s,int x,int y,bool muted=false){font_.draw(g,s,x,y,skin_[muted?"muted":"text"]);};
 
     g.fillRect(skin_["background"],rc);
 
     paintWorkLayer(g,rc);
-
-    const int colorPanelTop=pl.tabY;
-
-    const gfx::Rect colorPanel=docking_.custom?columnFrame(0):gfx::Rect(pl.rightX,colorPanelTop,pl.right,pl.paletteBottom(colorPickerOpen_)-colorPanelTop);
-
-    auto colorContent=uiLogical(paletteContentBounds().offset(-bounds().origin()));
 
     auto panel=[&](const gfx::Rect& box,const char* slot,const char* fill) {
       // Panel skin patches are confined to their target rectangle. Avoid
@@ -1737,15 +1729,22 @@ void Editor::paintPanelBackdrops(ui::Graphics& g,bool includeFloating) {
 
     };
 
+    const auto l=workspaceLayout(rc);
     g.saveClip();clipColumn(g,-1,true);panel(l.workspacePanel(),"panel_outer","panel");panel(l.workspaceContent(),"panel_content","background");
 
     if(canvasHorizontal_ && canvasHorizontal_->isVisible() && canvasVertical_->isVisible())paintScrollbarCorner(g,canvasViewport());
 
     g.restoreClip();
 
-    if(columnShown(0) && (includeFloating || !columnFloating(0))){g.saveClip();clipColumn(g,0,true);if(columnFloating(0))FloatingColumnChrome::paint(skin_,g,colorPanel);else panel(colorPanel,"panel_outer","panel");g.restoreClip();}
-
-    if(columnShown(0) && (includeFloating || !columnFloating(0))){g.saveClip();clipColumn(g,0,true);panel(colorContent,"panel_content","background");g.restoreClip();}
+    if(columnShown(0) && (includeFloating || !columnFloating(0))){
+      const auto pl=columnLayout(rc,0);
+      const gfx::Rect colorPanel=docking_.custom?columnFrame(0):gfx::Rect(pl.rightX,pl.tabY,pl.right,pl.paletteBottom(colorPickerOpen_)-pl.tabY);
+      const auto colorContent=uiLogical(paletteContentBounds().offset(-bounds().origin()));
+      // Both palette layers share the same immutable column occlusion.
+      g.saveClip();clipColumn(g,0,true);
+      if(columnFloating(0))FloatingColumnChrome::paint(skin_,g,colorPanel);else panel(colorPanel,"panel_outer","panel");
+      panel(colorContent,"panel_content","background");g.restoreClip();
+    }
 
     for(int id=1;id<panels::columnCount;++id)if(panels::isPicker(id)&&columnShown(id)&&(includeFloating||!columnFloating(id))){const auto pickerLayout=columnLayout(rc,id);g.saveClip();clipColumn(g,id,true);if(columnFloating(id))FloatingColumnChrome::paint(skin_,g,columnFrame(id));else panel(docking_.custom?columnFrame(id):pickerLayout.pickerPanel(),"panel_outer","panel");panel(pickerLayout.pickerGradient(runtimePreferences_.flag("colorLayers.recentColorsVisible")&&!recentColors_.values().empty()),"panel_content","background");g.restoreClip();}
 
@@ -1753,7 +1752,7 @@ void Editor::paintPanelBackdrops(ui::Graphics& g,bool includeFloating) {
     if(columnShown(13)&&documentOpen_&&(includeFloating||!columnFloating(13))){g.saveClip();clipColumn(g,13,true);if(columnFloating(13))FloatingColumnChrome::paint(skin_,g,columnFrame(13));else panel(columnFrame(13),"panel_outer","panel");panel(columnChrome(13).content,"panel_content","background");g.restoreClip();}
     if(columnShown(2) && documentOpen_ && (includeFloating || !columnFloating(2))){
 
-      paintTimelineBackground(g,ll);
+      paintTimelineBackground(g,columnLayout(rc,2));
 
     }
 
