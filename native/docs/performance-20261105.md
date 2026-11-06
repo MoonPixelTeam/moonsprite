@@ -278,3 +278,11 @@ Aseprite `src/ui/manager.cpp` 的 flushRedraw 和编辑器局部 canvas invalida
 - main原生resize诊断新增opt-in MOONSPRITE_RESIZE_FRAMES逐尺寸截图，输出位于本地build/test-tmp不提交。唯一Release paint-chain-final-build.log exit0；同一二进制reference/optimized各16个尺寸BMP全部逐字节一致。启用trace时背景onPaint总调用3449→126，累计253.945→59.803ms；排除热身的窗口resize均值29.691→18.612ms。trace及截图为证据采集，有额外开销。
 - 关闭trace/截图后独占ABBA四轮真实Win32 resize均exit0、surface/client一致：reference32.645ms、optimized23.654ms、optimized23.629ms、reference33.176ms；本夹具均值约下降28%。不包含DWM/输入到显示延迟，不据此宣称全部卡顿消失。
 - ui-geometry-performance（含局部/全量framebuffer及悬浮移动/resize）、playback-floating、advanced-mode、drawing-pan-performance、group-timeline、multi-document均exit0。来源覆盖625文件及diff检查通过；迁移完整性仍INCOMPLETE。只提交源码/来源记录/本文，生成物及既有未跟踪文件保留不提交。验证后推送dev。
+
+
+## 2026-11-06：参数栏相同文本不重复构造字符布局
+
+- 合并背景后最新独占resize profile：tool-options-layout 26次21.775ms，window-layout20次50.976ms，剩余背景38次37.411ms。继续定位参数栏而非假设整体已流畅。
+- 核对Aseprite MIT Widget::setText无条件onSetText，Entry::onSetText无条件recalcCharBoxes；旧版EditorToolOptions.tsx受控NumberInput和brush-size测试保留模型值/即时大小显示。layoutToolOptions内22处数值/文本同步使用当前text比较，相同字符串不再提交setText。原focus/profile条件、格式化、改变值刷新、entry尺寸/viewport修正保持，不修改共享Entry API。MOONSPRITE_TOOL_TEXT_REFERENCE恢复旧setter。
+- 唯一正式Release tool-text-build.log exit0；reference/optimized真实Win32 resize均exit0、surface/client一致，16尺寸BMP逐字节一致。26次options累计20.917/20.512ms，window-layout51.844/50.064ms，差异小且仅一组，不作整体提速结论。确认省去相同字符串的字体塑形/字符box重建，但参数栏主要开销仍需进一步定位。
+- tool-property-shortcuts、modifier-brush-performance、ui-geometry-performance（含局部/全量framebuffer）、tool-rail均exit0。来源覆盖625文件/evidence及diff检查通过，迁移完整性仍INCOMPLETE。验证后提交推送dev；生成物和既有未跟踪文件不提交。
