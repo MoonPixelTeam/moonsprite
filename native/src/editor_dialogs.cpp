@@ -1760,18 +1760,30 @@ void Editor::paintScrollbarCorner(ui::Graphics& g,gfx::Rect physicalViewport) {
 void Editor::paintPanelBackdrops(ui::Graphics& g,bool includeFloating) {
     InteractionScope backdropScope(15,"panel-backdrops");
 
+    // Separate bounded, opt-in backdrop phases without expanding hot-path
+    // profiling state shared by every editor translation unit.
+    struct BackdropProfile {
+      struct Entry {std::uint64_t calls=0;double ms=0;};
+      std::array<Entry,8> entries{};std::filesystem::path path;
+      BackdropProfile(){if(const auto value=_wgetenv(L"MOONSPRITE_INTERACTION_PROFILE")){path=value;path+=L".backdrops.tsv";}}
+      ~BackdropProfile(){if(path.empty())return;try{std::ofstream out(path);out<<"phase\tcalls\ttotal_ms\n";const char* names[]{"base-fill","workspace","palette","pickers","history","instances","timeline","panel-skin"};for(int i=0;i<8;++i)out<<names[i]<<'\t'<<entries[i].calls<<'\t'<<entries[i].ms<<'\n';}catch(...){}}
+    };
+    static BackdropProfile profile;
+    struct Phase {
+      BackdropProfile::Entry* entry=nullptr;std::chrono::steady_clock::time_point start;
+      explicit Phase(int index){if(!profile.path.empty()){entry=&profile.entries[index];start=std::chrono::steady_clock::now();}}
+      ~Phase(){if(entry){++entry->calls;entry->ms+=std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-start).count();}}
+    };
     UiPaintScale scale(g);const auto rc=uiLogical(clientBounds());
     if(advancedActive()){g.fillRect(skin_["background"],rc);if(advancedMode_==1)g.fillRect(skin_["panel"],gfx::Rect(0,0,rc.w,Layout::optionsHeight+Layout::gap));return;}
 
-    g.fillRect(skin_["background"],rc);
-
-    paintWorkLayer(g,rc);
+    {Phase phase(0);g.fillRect(skin_["background"],rc);paintWorkLayer(g,rc);}
 
     auto panel=[&](const gfx::Rect& box,const char* slot,const char* fill) {
       // Panel skin patches are confined to their target rectangle. Avoid
       // preparing nine-slices for unrelated child background damage.
       if(!uiPhysical(box).intersects(g.getClipBounds()) && !(smoke_ && _wgetenv(L"MOONSPRITE_PANEL_DAMAGE_REFERENCE")))return;
-      g.fillRect(skin_[fill],box);
+      Phase phase(7);g.fillRect(skin_[fill],box);
 
       if(!skin_.draw(g,slot,box)) g.drawRect(skin_["border"],box);
 
@@ -1781,14 +1793,14 @@ void Editor::paintPanelBackdrops(ui::Graphics& g,bool includeFloating) {
     const bool referenceColumns=smoke_ && _wgetenv(L"MOONSPRITE_BACKDROP_COLUMNS_REFERENCE");
     auto touches=[&](gfx::Rect outer,gfx::Rect content){return referenceColumns || uiPhysical(outer|content).intersects(damage);};
     const auto l=workspaceLayout(rc);
-    g.saveClip();clipColumn(g,-1,true);panel(l.workspacePanel(),"panel_outer","panel");panel(l.workspaceContent(),"panel_content","background");
+    {Phase phase(1);g.saveClip();clipColumn(g,-1,true);panel(l.workspacePanel(),"panel_outer","panel");panel(l.workspaceContent(),"panel_content","background");
 
     if(canvasHorizontal_ && canvasHorizontal_->isVisible() && canvasVertical_->isVisible())paintScrollbarCorner(g,canvasViewport());
 
-    g.restoreClip();
+    g.restoreClip();}
 
     if(columnShown(0) && (includeFloating || !columnFloating(0))){
-      const auto pl=columnLayout(rc,0);
+      Phase phase(2);const auto pl=columnLayout(rc,0);
       const gfx::Rect colorPanel=docking_.custom?columnFrame(0):gfx::Rect(pl.rightX,pl.tabY,pl.right,pl.paletteBottom(colorPickerOpen_)-pl.tabY);
       const auto colorContent=uiLogical(paletteContentBounds().offset(-bounds().origin()));
       // Both palette layers share the same immutable column occlusion.
@@ -1799,7 +1811,7 @@ void Editor::paintPanelBackdrops(ui::Graphics& g,bool includeFloating) {
       }
     }
 
-    for(int id=1;id<panels::columnCount;++id)if(panels::isPicker(id)&&columnShown(id)&&(includeFloating||!columnFloating(id))){
+    {Phase phase(3);for(int id=1;id<panels::columnCount;++id)if(panels::isPicker(id)&&columnShown(id)&&(includeFloating||!columnFloating(id))){
       const auto pickerLayout=columnLayout(rc,id);
       const auto outer=docking_.custom?columnFrame(id):pickerLayout.pickerPanel();
       const auto content=pickerLayout.pickerGradient(runtimePreferences_.flag("colorLayers.recentColorsVisible")&&!recentColors_.values().empty());
@@ -1809,17 +1821,18 @@ void Editor::paintPanelBackdrops(ui::Graphics& g,bool includeFloating) {
       panel(content,"panel_content","background");g.restoreClip();
     }
 
+    }
     if(columnShown(8)&&documentOpen_&&(includeFloating||!columnFloating(8))){
-      const auto outer=columnFrame(8),content=columnChrome(8).content;
+      Phase phase(4);const auto outer=columnFrame(8),content=columnChrome(8).content;
       if(touches(outer,content)){g.saveClip();clipColumn(g,8,true);if(columnFloating(8))FloatingColumnChrome::paint(skin_,g,outer);else panel(outer,"panel_outer","panel");panel(content,"panel_content","background");g.restoreClip();}
     }
     if(columnShown(13)&&documentOpen_&&(includeFloating||!columnFloating(13))){
-      const auto outer=columnFrame(13),content=columnChrome(13).content;
+      Phase phase(5);const auto outer=columnFrame(13),content=columnChrome(13).content;
       if(touches(outer,content)){g.saveClip();clipColumn(g,13,true);if(columnFloating(13))FloatingColumnChrome::paint(skin_,g,outer);else panel(outer,"panel_outer","panel");panel(content,"panel_content","background");g.restoreClip();}
     }
     if(columnShown(2) && documentOpen_ && (includeFloating || !columnFloating(2))){
 
-      paintTimelineBackground(g,columnLayout(rc,2));
+      Phase phase(6);paintTimelineBackground(g,columnLayout(rc,2));
 
     }
 

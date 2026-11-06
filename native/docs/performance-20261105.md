@@ -351,3 +351,10 @@ Aseprite `src/ui/manager.cpp` 的 flushRedraw 和编辑器局部 canvas invalida
 - 恢复后当前正式版本resize采样：panel-backdrops38次43.823ms、window-layout20次30.384ms，背景仍是可见开销。检查paintPanelBackdrops先全背景再paintWorkLayer覆盖下方，试验限制初始fill到顶部条带；半透明panel保留原完整fill。核对Aseprite MIT Graphics::fillRect直接绘制并更新dirty；不能仅按覆盖面积推断实际CPU收益。
 - 同一试验Release参考开关/优化16张resize BMP逐字节一致，ui-geometry-performance局部/全量及advanced-mode均exit0。最初跨构建截图差异仅位于画布160x160范围，同程序reference/optimized无差异；不将跨构建比较用于验收。profile背景45.560/46.067ms，无收益。关闭profile/截图ABBA原生resize均exit0、变化样本平均reference29.531/optimized25.297/optimized25.587/reference24.258ms，时间漂移大，未证明整体加速。
 - 候选源码与来源登记已撤回，避免加入无实测收益的分支；本轮只提交调查记录。背景/面板绘制仍待进一步细分定位，未声称卡顿解决。正式程序随后从已恢复源码重新构建；本地截图/报告及既有未跟踪文件保留不提交。
+
+
+## 2026-11-06：面板背景分阶段诊断
+
+- 现有InteractionProfile的16槽已满。在paintPanelBackdrops增加本地固定8项统计，沿用MOONSPRITE_INTERACTION_PROFILE，退出时写同路径.backdrops.tsv；关闭时不读时钟、不写文件，不改绘制顺序、参数、裁剪或图形状态。panel-skin嵌套于各栏目phase，不可与phase时间再次相加。
+- 唯一Release backdrop-phases-build.log exit0。原生resize exit0，38次背景总40.037ms：base-fill10.685、workspace9.760、palette2.654、pickers3.401、history8.405、timeline4.829；panel-skin228次22.848ms。证据将下一步定位收敛到工作区/历史皮肤和复杂damage合成，未作性能提升声明。
+- 关闭profile的native-window-resize exit0。ui-geometry-performance首次exit1，报UI geometry cache differs from layout；同一二进制再次运行exit0。此间歇性一致性失败未定位，不能报告稳定通过；绘制参数未变化并不证明与修改无关。来源覆盖625文件/evidence及diff通过。整体卡顿仍未完成验收；仅提交诊断源码/来源/记录并推送dev，生成物与历史错误报告保留。
