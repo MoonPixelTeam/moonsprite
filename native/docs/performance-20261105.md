@@ -121,3 +121,10 @@ Aseprite `src/ui/manager.cpp` 的 flushRedraw 和编辑器局部 canvas invalida
 - layer-panel-tree-tests新增空/单/多/256层、重复ID、孤立groupId、未知collapsed ID与原通用路径逐项对照，exit0；原分组选择与TimelineRows测试也通过。256层2000次构造同进程generic183.892ms、fast26.3628ms，约降低86%，仅表示树构造微基准。
 - 正式Release完整重编译成功；large-timeline、group-timeline、timeline-density回归exit0。该公共头文件引发较大依赖范围重编译，不是应用运行耗时。实际窗口和滚动指标另记录，不将树构造微基准当作整应用提速。
 - 最终ui-geometry exit0：窗口12次333.071ms，framebuffer等价通过。大时间轴滚动6.087ms、同目标拖动2.492ms；较前轮10.120ms有改善，但非同进程新旧对照，不给出严格整应用比例。工具轨道退出异常和真实硬件呈现仍未验收。本轮验证后推送dev。
+
+
+## 2026-11-06：缩略图模式跳过无输出链接圆点扫描
+
+- 原链接run循环仅在!timelineThumbnailSize时绘制圆点，隐藏时间轴也不会访问行；现在将判断移到整个pass外，避免无输出情况下构建树/metrics和逐Cel resolveSurface。可见圆点、缩略图、选择与命中均保持。
+- 同一正式exe用MOONSPRITE_LINK_PASS_REFERENCE恢复旧扫描，旧/新timeline-density均exit0。394次timeline-paint累计59.439ms/43.852ms（约降低26%，单轮软件诊断而非整应用提速）。正式Release构建exit0；large/group回归结果随本轮命令输出记录。全六种密度的现有geometry、selection alpha/hit、缩略图检查通过。
+- 本轮仅移除必然无绘制结果的查询；图层内容缓存仍按需建立。工具轨道退出异常、实际Windows缩放延迟尚未解决。来源覆盖/diff通过后推送dev。

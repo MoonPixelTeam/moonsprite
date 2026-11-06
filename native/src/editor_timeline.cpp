@@ -1247,8 +1247,10 @@ void Editor::paintTimelineGrid(ui::Graphics& g) {InteractionScope interactionSco
     // Adjacent canonical linked slots reuse the user's original ball as a
 
     // 3/1/3 horizontal nine-slice. Only visible content receives a marker.
-
-    {
+    // Thumbnail and hidden timelines never draw these dots. Avoid resolving
+    // every visible linked surface when the entire pass has no output.
+    if((!timelineHidden_ && !timelineThumbnailSize()) ||
+       (smoke_ && _wgetenv(L"MOONSPRITE_LINK_PASS_REFERENCE"))) {
 
       g.saveClip();g.clipRect(timelineMaterialViewport(timelineFrameViewport()).offset(-bounds().origin()));
 
