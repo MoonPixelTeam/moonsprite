@@ -1772,6 +1772,11 @@ void Editor::paintStatusText(ui::Graphics& g) {
 
     const auto rc=uiLogical(clientBounds());
 
+    // Status/zoom text is confined to this existing shared clip band.
+    // Child background replays outside it need no formatting or glyph bounds.
+    const gfx::Rect textBand(uiGap,rc.h-Layout::statusHeight+uiGap,std::max(0,rc.w-2*uiGap),Layout::labelInkHeight);
+    if(!uiPhysical(textBand).intersects(g.getClipBounds()) && !(smoke_ && _wgetenv(L"MOONSPRITE_STATUS_DAMAGE_REFERENCE")))return;
+
     auto label=[&](const std::u32string& s,int x,int y,bool muted=false){font_.draw(g,s,x,y,skin_[muted?"muted":"text"]);};
 
     auto percent=std::to_string(zoom_*100);

@@ -224,3 +224,9 @@ Aseprite `src/ui/manager.cpp` 的 flushRedraw 和编辑器局部 canvas invalida
 - paintCanvas在viewport/column occlusion之后检查实际Graphics空clip；透明子控件父背景重放没有画布像素时，跳过尺寸文字/皮肤/内容缓存/辅助绘制。保留preview checkerboard同步与选区antsTimer启动，下一次实际画布曝光照常ensureContentCache。对照Aseprite MIT Widget::paint透明控件parent重放、Graphics clip语义，无app代码复制。
 - MOONSPRITE_CANVAS_EMPTY_REFERENCE恢复旧完整工作。唯一Release构建canvas-empty-replay-build.log exit0；ui-geometry-performance（含悬浮局部/全量framebuffer）、drawing-pan-performance、playback-floating全部exit0。来源覆盖625文件/diff通过。
 - 同一二进制独占顺序执行reference/optimized真实Win32 resize检查均exit0、surface/client一致。两者canvas-paint均2921次；content-cache2921→234次，canvas-paint累计121.868→43.805ms，panel-backdrops239.246→220.735ms；排除首热身后resize平均42.939→35.944ms。只有一组先旧后新，环境/顺序影响未排除，不宣称稳定百分比；无效画布准备显著减少有调用计数证据。实际输入至显示延迟和整体卡顿仍未验收。验证后提交推送dev。
+
+
+## 2026-11-06：状态栏文字按已有裁剪带排除无关重绘
+
+- 核对Skin::draw发现已复用Aseprite九切片快速路径，未在缺少矩阵证据时增加通用皮肤裁剪。paintStatusText现按原状态/缩放两段clip的并集物理矩形排除无关damage，再格式化percent与计算inkBounds；原clip和文字位置/顺序不变。MOONSPRITE_STATUS_DAMAGE_REFERENCE恢复旧工作。对照Aseprite MIT Graphics getClipBounds与UiPaintScale，未复制app代码。
+- 唯一Release构建status-damage-build.log exit0；ui-geometry-performance局部/全量framebuffer、drawing-pan-performance、advanced-mode均exit0。真实窗口reference/optimized均exit0及surface/client一致；15个变化样本均值51.033/59.279ms，未证明加速且后者更慢，不能据此宣称窗口改善。仅确认无关文字格式化/字形计算减少，整体卡顿未解决。来源覆盖625文件/diff通过，验证后提交推送dev。
