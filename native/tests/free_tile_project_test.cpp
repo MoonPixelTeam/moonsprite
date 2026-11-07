@@ -93,8 +93,8 @@ void mixedRasterRotation(){
  }
 }
 void mixedFreeRasterNudge(){
- for(bool pending:{false,true})for(bool cancel:{false,true}){
-  auto d=fixture(false);const auto special=d->timeline().state();d->addLayer();d->beginStroke({1,1},0xff123456);d->commitStroke();d->clearTimelineSelection();d->previewSelection(SelectionMask{1,1,1,1,{}});const auto original=d->canvasPixels();const auto owner=d->layer().id;const auto h=d->historyPosition();
+ for(bool free:{false,true})for(bool pending:{false,true})for(bool cancel:{false,true}){
+  auto d=free?fixture(false):std::make_unique<Document>(6,5);if(!free)check(d->createTilemapLayer(2,1,U"Unrelated nudge tiles"),"Mixed nudge grid fixture");const auto special=d->timeline().state();d->addLayer();d->beginStroke({1,1},0xff123456);d->commitStroke();d->clearTimelineSelection();d->previewSelection(SelectionMask{1,1,1,1,{}});const auto original=d->canvasPixels();const auto owner=d->layer().id;const auto h=d->historyPosition();
   check(!d->nudgeSelectionContent(1,1,true)&&!d->floating()&&d->historyPosition()==h,"Mixed free nudge rejects all-layer special capture");
   if(pending)check(d->beginSelectionContentMove(true),"Mixed raster copy pending fixture");
   check(d->nudgeSelectionContent(-100,-100,false)&&d->selection()->x==0&&d->selection()->y==0,"Mixed raster nudge clamps initial or pending selection");
@@ -103,7 +103,7 @@ void mixedFreeRasterNudge(){
   check(!d->nudgeSelectionContent(1,1,false),"Mixed raster opposite edge no-op");
   if(cancel){d->cancelFloatingPaste();check(d->canvasPixels()==original&&d->selection()->x==1&&d->selection()->y==1&&d->historyPosition()==h,"Mixed raster nudge cancellation");}
   else{check(d->commitFloatingPaste()&&d->historyPosition()==h+1,"Mixed raster nudges single transaction");const auto pixels=d->canvasPixels();check(pixels[29]==0xff123456&&pixels[7]==(pending?0xff123456:0),"Mixed raster nudges exact move/copy pixels");auto opened=reopen(*d);opened->selectLayer(owner);check(opened->canvasPixels()==pixels,"Mixed raster nudge reopen");d->undo();check(d->canvasPixels()==original&&d->selection()->x==1&&d->selection()->y==1,"Mixed raster nudge Undo");d->redo();check(d->canvasPixels()==pixels,"Mixed raster nudge Redo");}
-  for(const auto& old:special.cels){const auto* c=d->timeline().findCelById(old.id);check(c&&c->surface->pixels==old.surface->pixels&&c->freeTiles==old.freeTiles,"Mixed raster nudge preserves free Cels");}check(d->timeline().state().tilesets.front().pixels==special.tilesets.front().pixels,"Mixed raster nudge preserves source");
+  for(const auto& old:special.cels){const auto* c=d->timeline().findCelById(old.id);check(c&&c->surface->pixels==old.surface->pixels&&c->freeTiles==old.freeTiles&&(!old.tilemap||c->tilemap->cells==old.tilemap->cells),"Mixed raster nudge preserves special Cels");}check(d->timeline().state().tilesets.front().pixels==special.tilesets.front().pixels,"Mixed raster nudge preserves source");
  }
 }
 void mixedFreeRasterMove(){

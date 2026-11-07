@@ -3243,3 +3243,9 @@ pending-tile-center-build.log正式Release及free/tile测试构建exit0，fixtur
 对照legacy workspace-commands-selection-move.ts::centerActiveContent的activePaintLayer静态选区/alpha边界、隐藏层可操作及Math.round偏移，普通活动层不再因无关特殊内容被拒绝。复用现有即时内容移动和选区历史，特殊活动类型保护保持，本阶段不扩展自由源静态居中。
 
 新增free/tile×有/无选区×三个轴十二组，检查半透明精确像素、正向半值取整、隐藏普通层、选区跟随/无选区保持、单历史、重复居中no-op、Undo/Redo、实际保存重开及全部特殊Cel像素/实例/网格和源资源保留。正式Release及free/tile测试构建exit0（mixed-raster-static-center-build.log）；完整free/tile测试exit0（mixed-raster-static-center-free-test.log、mixed-raster-static-center-grid-test.log）；正式工作区drawing-anchor-edit-floating组合exit0；来源检查通过（mixed-raster-static-center-provenance.log），diff通过。未做人工UI验收，全量迁移仍INCOMPLETE。
+
+### 2026-11-07：混合网格瓦片文档普通选区键盘移动
+
+依据legacy workspace-commands-selection-move.ts::moveActiveSelectionWithSelectionHistory的普通目标捕获和键盘边界限制，将已有mixed-free普通首次/pending移动路径扩展到混合tilemap文档；继续复用目标捕获校验与共同浮动事务，特殊活动类型仍走已有适配器。
+
+原四组扩展为free/tile×首次/复制pending×取消/提交八组，检查两端边界no-op、整帧特殊捕获拒绝、精确移动/复制像素、单历史、Undo/Redo、实际保存重开与特殊Cel像素/实例/网格及资源保留。正式Release及free/tile测试构建exit0（mixed-tile-raster-nudge-build.log）；完整free/tile测试exit0（mixed-tile-raster-nudge-free-test.log、mixed-tile-raster-nudge-grid-test.log）；正式工作区drawing-anchor-edit-floating组合exit0；来源检查通过（mixed-tile-raster-nudge-provenance.log），diff通过。未做人工UI验收，全量迁移仍INCOMPLETE。
