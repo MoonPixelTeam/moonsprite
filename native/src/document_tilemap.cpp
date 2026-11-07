@@ -30,7 +30,7 @@ bool Document::createFreeTileLayer(std::u32string name,const std::string& shared
  for(auto& l:next.layers)if(l.id==id){l.kind="free-tile";l.name=name;l.freeTiles=data;l.autoLinkAnimationCels=false;}
  for(auto& c:next.cels)if(c.layerId==id){c.freeTiles=free_tiles::CelData{};c.tilemap.reset();c.text.reset();c.linkedCelId.reset();c.runtimeSharedCelId.reset();timeline::Surface surface;surface.width=width_;surface.height=height_;surface.pixels=free_tiles::render(data,*c.freeTiles,next.tilesets,width_,height_);c.surface=std::move(surface);}
  TilemapSelection selected;selected.mode=tiles::Mode::Edit;selected.tilesetId=data.sources.front().tilesetId;const auto& set=*std::find_if(next.tilesets.begin(),next.tilesets.end(),[&](const auto& s){return s.id==selected.tilesetId;});selected.primary=selected.secondary=set.tileIds.front();
- Edit e{{},state_,nextState_};e.beforeTimeline=timeline_.state();e.afterTimeline=std::move(next);e.beforeActive=activeLayerId_;e.afterActive=id;e.beforeFrame=e.afterFrame=activeFrameId_;e.beforeSelection=selectedFrames_;e.afterSelection=std::vector<std::string>{};e.beforeTimelineSelection=timelineSelection_;e.afterTimelineSelection=placement.timelineSelection_;e.beforeFrameAnchor=frameAnchor_;e.afterFrameAnchor=placement.frameAnchor_;e.beforePalette=palette_;e.afterPalette=palette_;e.maskContext=std::make_shared<Edit::MaskContextHistory>(Edit::MaskContextHistory{activeMaskId_,{},maskIsolated_,false});e.beforeTileSelection=tileSelection_;e.afterTileSelection=selected;e.beforeGroupUi=GroupUiSnapshot{selectedGroupIds_,collapsedGroupIds_,selectedGroupId_};e.afterGroupUi=GroupUiSnapshot{placement.selectedGroupIds_,placement.collapsedGroupIds_,placement.selectedGroupId_};history_.reserve(position_+1);applyEdit(e,true);change_={0,0,width_,height_};publishChange();pushEdit(std::move(e),U"新建自由瓦片图层");return true;
+ Edit e{{},state_,nextState_};e.beforeTimeline=timeline_.state();e.afterTimeline=std::move(next);e.beforeActive=activeLayerId_;e.afterActive=id;e.beforeFrame=e.afterFrame=activeFrameId_;e.beforeSelection=selectedFrames_;e.afterSelection=std::vector<std::string>{};e.beforeTimelineSelection=timelineSelection_;e.afterTimelineSelection=placement.timelineSelection_;e.beforeFrameAnchor=frameAnchor_;e.afterFrameAnchor=placement.frameAnchor_;e.beforePalette=palette_;e.afterPalette=palette_;e.maskContext=std::make_shared<Edit::MaskContextHistory>(Edit::MaskContextHistory{activeMaskId_,{},maskIsolated_,false});e.beforeTileSelection=tileSelection_;e.afterTileSelection=selected;e.beforeGroupUi=GroupUiSnapshot{selectedGroupIds_,collapsedGroupIds_,selectedGroupId_};e.afterGroupUi=GroupUiSnapshot{placement.selectedGroupIds_,placement.collapsedGroupIds_,placement.selectedGroupId_};reserveHistoryEntries();applyEdit(e,true);change_={0,0,width_,height_};publishChange();pushEdit(std::move(e),U"新建自由瓦片图层");return true;
 }
 // Legacy workspace-commands-free-tile add/delete source: collection metadata
 // is shared across layers, but each cel owns its ordered instance references.
@@ -68,7 +68,7 @@ bool Document::previewFreeTileSourceProperties(const FreeTileSourceChanges& patc
 bool Document::commitFreeTileSourceProperties(const FreeTileSourceChanges& patch){
  if(!freeSourceProperties_)return false;const auto before=freeSourceProperties_;const auto after=std::make_shared<FreeTileSourceSnapshot>(freeTileSourceAfterChanges(patch,true));
  if(before->source==after->source&&before->tilesetName==after->tilesetName){cancelFreeTileSourceProperties();return false;}
- Edit edit{{},state_,nextState_};edit.beforeSourceProperties=before;edit.afterSourceProperties=after;history_.reserve(position_+1);applyFreeTileSourceSnapshot(*after);freeSourceProperties_.reset();change_={0,0,width_,height_};publishChange();pushEdit(std::move(edit),U"图层属性");return true;
+ Edit edit{{},state_,nextState_};edit.beforeSourceProperties=before;edit.afterSourceProperties=after;reserveHistoryEntries();applyFreeTileSourceSnapshot(*after);freeSourceProperties_.reset();change_={0,0,width_,height_};publishChange();pushEdit(std::move(edit),U"图层属性");return true;
 }
 void Document::cancelFreeTileSourceProperties(){if(!freeSourceProperties_)return;const auto before=freeSourceProperties_;const bool changed=applyFreeTileSourceSnapshot(*before);freeSourceProperties_.reset();if(changed){change_={0,0,width_,height_};publishChange();}}
 bool Document::setFreeTileSourceProperties(const std::string& id,const FreeTileSourceChanges& patch){if(!beginFreeTileSourceProperties(id))return false;try{return commitFreeTileSourceProperties(patch);}catch(...){cancelFreeTileSourceProperties();throw;}}
@@ -83,7 +83,7 @@ bool Document::reorderFreeTileSource(const std::string& id,const std::string& ta
  const auto index=std::size_t(destination-sources.begin());const auto moving=std::find_if(sources.begin(),sources.end(),[&](const auto& s){return s.id==id;});const auto source=*moving;sources.erase(moving);sources.insert(sources.begin()+index,source);
  auto next=timeline_.state();for(auto& l:next.layers)if(l.kind=="free-tile"&&l.freeTiles&&(l.id==owner->id||(!owner->freeTiles->setId.empty()&&l.freeTiles->setId==owner->freeTiles->setId)))l.freeTiles->sources=sources;
  Edit edit{{},state_,nextState_};edit.beforeTimeline=timeline_.state();edit.afterTimeline=std::move(next);edit.beforeActive=edit.afterActive=activeLayerId_;edit.beforeFrame=edit.afterFrame=activeFrameId_;edit.freeTileSourceReorder=true;
- history_.reserve(position_+1);applyEdit(edit,true);change_={0,0,width_,height_};publishChange();pushEdit(std::move(edit),U"源瓦片");return true;
+ reserveHistoryEntries();applyEdit(edit,true);change_={0,0,width_,height_};publishChange();pushEdit(std::move(edit),U"源瓦片");return true;
 }
 bool Document::addFreeTileSource(){
  if(active()||layer().kind!="free-tile"||!layer().freeTiles||layer().freeTiles->sources.empty())return false;
@@ -96,7 +96,7 @@ bool Document::addFreeTileSource(){
  next.tilesets.push_back(set);timeline::Timeline checked(next);
  auto selection=tileSelection_;selection.tilesetId=set.id;selection.primary=selection.secondary=set.tileIds.front();selection.freePaint=false;
  Edit edit{{},state_,nextState_};edit.beforeTimeline=timeline_.state();edit.afterTimeline=std::move(next);edit.beforeActive=edit.afterActive=activeLayerId_;edit.beforeFrame=edit.afterFrame=activeFrameId_;edit.beforeTileSelection=tileSelection_;edit.afterTileSelection=selection;edit.freeTileSourceAddition=true;
- history_.reserve(position_+1);applyEdit(edit,true);change_={0,0,width_,height_};publishChange();pushEdit(std::move(edit),U"新增瓦片");return true;
+ reserveHistoryEntries();applyEdit(edit,true);change_={0,0,width_,height_};publishChange();pushEdit(std::move(edit),U"新增瓦片");return true;
 }
 bool Document::deleteFreeTileSource(const std::string& id){
  if(active()||layer().kind!="free-tile"||!layer().freeTiles||layer().freeTiles->sources.size()<=1)return false;
@@ -109,7 +109,7 @@ bool Document::deleteFreeTileSource(const std::string& id){
  for(auto& c:next.cels){const auto owner=sourceForLayer.find(c.layerId);if(owner==sourceForLayer.end()||!c.freeTiles)continue;auto& instances=c.freeTiles->instances;const auto before=instances.size();instances.erase(std::remove_if(instances.begin(),instances.end(),[&](const auto& i){return i.sourceId==owner->second||i.sourceId==source.tilesetId||(!tileId.empty()&&i.tileId==tileId);}),instances.end());if(instances.size()!=before&&c.surface){const auto l=std::find_if(next.layers.begin(),next.layers.end(),[&](const auto& v){return v.id==c.layerId;});c.surface->pixels=free_tiles::render(*l->freeTiles,*c.freeTiles,next.tilesets,c.surface->width,c.surface->height);}}
  auto selection=tileSelection_;if(selection.tilesetId==source.tilesetId){const auto& fallback=sources[std::min(index,sources.size()-1)];const auto resource=std::find_if(next.tilesets.begin(),next.tilesets.end(),[&](const auto& s){return s.id==fallback.tilesetId;});if(resource==next.tilesets.end()||resource->tileIds.empty())return false;selection.tilesetId=resource->id;selection.primary=selection.secondary=resource->tileIds.front();}
  timeline::Timeline checked(next);Edit edit{{},state_,nextState_};edit.beforeTimeline=timeline_.state();edit.afterTimeline=std::move(next);edit.beforeActive=edit.afterActive=activeLayerId_;edit.beforeFrame=edit.afterFrame=activeFrameId_;edit.beforeTileSelection=tileSelection_;edit.afterTileSelection=selection;edit.freeTileSourceDeletion=true;
- history_.reserve(position_+1);applyEdit(edit,true);change_={0,0,width_,height_};publishChange();pushEdit(std::move(edit),U"删除瓦片");return true;
+ reserveHistoryEntries();applyEdit(edit,true);change_={0,0,width_,height_};publishChange();pushEdit(std::move(edit),U"删除瓦片");return true;
 }
 bool Document::beginFreeTilePlacement(Point point,bool erase,bool secondary){
  commitFloatingPaste();cancelStroke();cancelLayerOpacity();
@@ -186,7 +186,7 @@ bool Document::updateFreeTilePlacement(Point point){
 bool Document::commitFreeTilePlacement(){
  if(!freeTilePlacement_)return false;const auto& draft=*freeTilePlacement_;const auto* after=timeline_.findCelById(draft.before.id);
  if(!after||after->freeTiles==draft.before.freeTiles){freeTilePlacement_.reset();return false;}
- Edit e{{},state_,nextState_};e.beforeCels.push_back(draft.before);e.afterCels.push_back(*after);e.beforeActive=e.afterActive=activeLayerId_;e.beforeFrame=e.afterFrame=activeFrameId_;const bool erase=draft.erase,moving=draft.moving;const int flag=draft.flagControl;history_.reserve(position_+1);freeTilePlacement_.reset();pushEdit(std::move(e),flag==0?U"显示图层":flag==1?U"图层属性":flag==2?U"自由瓦片实例属性":moving?U"移动自由瓦片实例":erase?U"擦除自由瓦片":U"放置自由瓦片");return true;
+ Edit e{{},state_,nextState_};e.beforeCels.push_back(draft.before);e.afterCels.push_back(*after);e.beforeActive=e.afterActive=activeLayerId_;e.beforeFrame=e.afterFrame=activeFrameId_;const bool erase=draft.erase,moving=draft.moving;const int flag=draft.flagControl;reserveHistoryEntries();freeTilePlacement_.reset();pushEdit(std::move(e),flag==0?U"显示图层":flag==1?U"图层属性":flag==2?U"自由瓦片实例属性":moving?U"移动自由瓦片实例":erase?U"擦除自由瓦片":U"放置自由瓦片");return true;
 }
 void Document::cancelFreeTilePlacement(){
  if(!freeTilePlacement_)return;auto draft=std::move(*freeTilePlacement_);freeTilePlacement_.reset();auto found=timeline_.cels_.find(draft.before.id);if(found==timeline_.cels_.end())return;timeline_.state_.cels[found->second]=std::move(draft.before);change_={0,0,width_,height_};publishChange();
@@ -199,7 +199,7 @@ bool Document::commitTilemapState(timeline::State next,const TilemapSelection& s
  Edit e{{},state_,nextState_};e.beforeTimeline=timeline_.state();e.afterTimeline=std::move(next);e.beforeActive=activeLayerId_;e.afterActive=active.empty()?activeLayerId_:active;e.beforeFrame=e.afterFrame=activeFrameId_;
  e.beforeSelection=e.afterSelection=selectedFrames_;e.beforeTimelineSelection=e.afterTimelineSelection=timelineSelection_;e.beforeFrameAnchor=e.afterFrameAnchor=frameAnchor_;e.beforeGroupUi=e.afterGroupUi=GroupUiSnapshot{selectedGroupIds_,collapsedGroupIds_,selectedGroupId_};
  if(!active.empty()){e.afterTimelineSelection=TimelineSelection{};e.afterTimelineSelection->layerAnchor=active;e.afterSelection=std::vector<std::string>{};e.afterFrameAnchor=std::string{};}
- e.beforeTileSelection=tileSelection_;e.afterTileSelection=selection;if(clearPixelSelection){e.pixelSelectionEdit=true;e.beforePixelsSelection=selection_;e.afterPixelsSelection.reset();}history_.reserve(position_+1);applyEdit(e,true);change_={0,0,width_,height_};publishChange();pushEdit(std::move(e),std::move(label));return true;
+ e.beforeTileSelection=tileSelection_;e.afterTileSelection=selection;if(clearPixelSelection){e.pixelSelectionEdit=true;e.beforePixelsSelection=selection_;e.afterPixelsSelection.reset();}reserveHistoryEntries();applyEdit(e,true);change_={0,0,width_,height_};publishChange();pushEdit(std::move(e),std::move(label));return true;
 }
 bool Document::createTilemapLayer(int tw,int th,std::u32string name,const std::string& shared){
  commitFloatingPaste();cancelStroke();cancelLayerOpacity();
@@ -251,7 +251,7 @@ bool Document::commitTilemapStroke(){
     if(payload.cells.empty()){cancelTilemapStroke();return false;}
     Edit edit{{},state_,nextState_};edit.tilemapPixels=std::make_shared<const TilemapPixelHistory>(std::move(payload));
     edit.beforeTileSelection=edit.afterTileSelection=tileSelection_;edit.beforeActive=edit.afterActive=activeLayerId_;edit.beforeFrame=edit.afterFrame=activeFrameId_;edit.beforeSelection=edit.afterSelection=selectedFrames_;edit.beforeTimelineSelection=edit.afterTimelineSelection=timelineSelection_;edit.beforeFrameAnchor=edit.afterFrameAnchor=frameAnchor_;edit.beforeGroupUi=edit.afterGroupUi=GroupUiSnapshot{selectedGroupIds_,collapsedGroupIds_,selectedGroupId_};
-    std::u32string label=U"绘制瓦片";history_.reserve(position_+1);edit.label.reserve(std::max(label.size(),historyLabelOverride_.size()));applyEdit(edit,true);
+    std::u32string label=U"绘制瓦片";reserveHistoryEntries();edit.label.reserve(std::max(label.size(),historyLabelOverride_.size()));applyEdit(edit,true);
     tileStrokeIncremental_=false;tileStrokeLinked_=false;tileStrokeCells_.clear();active_=false;strokePixels_=nullptr;clearPendingStroke();publishChange();pushEdit(std::move(edit),std::move(label));return true;
    }
    auto canvas=canvasPixels();auto baseline=canvas;for(const auto& delta:pending_)baseline[delta.index]=delta.before;const auto hint=tileEditCell_;
@@ -287,7 +287,7 @@ bool managementSupported(const timeline::State& state){return std::none_of(state
 }
 std::string Document::addTilesetTile(const std::string& id){if(active()||!managementSupported(timeline_.state()))return {};auto next=timeline_.state();auto t=findManagedSet(next,id);if(t==next.tilesets.end())return {};const auto tile=uniqueTileId("tile");tiles::appendTile(*t,tile,std::vector<Pixel>(std::size_t(t->tileWidth)*t->tileHeight));auto selected=tileSelection_;selected.tilesetId=id;selected.primary=tile;commitTilemapState(std::move(next),selected,U"新增瓦片");return tile;}
 bool Document::reorderTilesetTiles(const std::string& id,const std::vector<std::string>& ordered){if(active()||!managementSupported(timeline_.state()))return false;auto next=timeline_.state();auto t=findManagedSet(next,id);if(t==next.tilesets.end()||!tiles::reorder(*t,ordered))return false;return commitTilemapState(std::move(next),tileSelection_,U"调整瓦片顺序");}
-bool Document::setTilesetTileSlots(const std::string& id,const std::vector<std::optional<std::string>>& slots){if(active()||!managementSupported(timeline_.state()))return false;auto t=findManagedSet(timeline_.state_,id);if(t==timeline_.state_.tilesets.end())return false;tiles::Tileset metadata;metadata.id=t->id;metadata.tileIds=t->tileIds;metadata.tileSlots=t->tileSlots;if(!tiles::setSlots(metadata,slots))return false;Edit e{{},state_,nextState_};e.tilesetSlotsId=id;e.beforeTilesetSlots=tiles::compactSlots(*t);e.afterTilesetSlots=metadata.tileSlots;history_.reserve(position_+1);applyEdit(e,true);publishChange();pushEdit(std::move(e),U"调整瓦片顺序");return true;}
+bool Document::setTilesetTileSlots(const std::string& id,const std::vector<std::optional<std::string>>& slots){if(active()||!managementSupported(timeline_.state()))return false;auto t=findManagedSet(timeline_.state_,id);if(t==timeline_.state_.tilesets.end())return false;tiles::Tileset metadata;metadata.id=t->id;metadata.tileIds=t->tileIds;metadata.tileSlots=t->tileSlots;if(!tiles::setSlots(metadata,slots))return false;Edit e{{},state_,nextState_};e.tilesetSlotsId=id;e.beforeTilesetSlots=tiles::compactSlots(*t);e.afterTilesetSlots=metadata.tileSlots;reserveHistoryEntries();applyEdit(e,true);publishChange();pushEdit(std::move(e),U"调整瓦片顺序");return true;}
 bool Document::deleteTilesetTiles(const std::string& id,const std::vector<std::string>& ids){
  if(active()||!managementSupported(timeline_.state()))return false;auto next=timeline_.state();auto t=findManagedSet(next,id);if(t==next.tilesets.end())return false;const auto original=t->tileIds;if(!tiles::removeTiles(*t,ids))return false;tiles::Index retained(*t);std::set<std::string> deleted;std::size_t first=original.size();for(std::size_t i=0;i<original.size();++i)if(!retained.find(original[i])){deleted.insert(original[i]);first=std::min(first,i);}
  for(auto& c:next.cels)if(c.tilemap)for(auto& cell:c.tilemap->cells)if(cell&&cell->tilesetId==id&&deleted.count(cell->tileId))cell.reset();
@@ -317,7 +317,7 @@ bool Document::clearUnusedTilesetTiles(const std::string& id){
   next.tilesets.erase(std::remove_if(next.tilesets.begin(),next.tilesets.end(),[&](const auto& t){return removedResources.count(t.id);}),next.tilesets.end());for(auto& t:next.tilesets)if(t.id==blank)std::fill(t.pixels.begin(),t.pixels.end(),0);
   auto selection=tileSelection_;if(removedResources.count(selection.tilesetId)){const auto fallback=std::find_if(next.tilesets.begin(),next.tilesets.end(),[&](const auto& t){return t.id==sources.front().tilesetId;});if(fallback==next.tilesets.end()||fallback->tileIds.empty())return false;selection.tilesetId=fallback->id;selection.primary=selection.secondary=fallback->tileIds.front();}
   Edit edit{{},state_,nextState_};edit.beforeTimeline=state;edit.afterTimeline=std::move(next);edit.beforeActive=edit.afterActive=activeLayerId_;edit.beforeFrame=edit.afterFrame=activeFrameId_;edit.beforeTileSelection=tileSelection_;edit.afterTileSelection=selection;edit.freeTileSourceReorder=true;
-  history_.reserve(position_+1);applyEdit(edit,true);change_={0,0,width_,height_};publishChange();pushEdit(std::move(edit),U"清空未使用瓦片");return true;
+  reserveHistoryEntries();applyEdit(edit,true);change_={0,0,width_,height_};publishChange();pushEdit(std::move(edit),U"清空未使用瓦片");return true;
  }
  if(active()||!managementSupported(timeline_.state()))return false;auto next=timeline_.state();auto t=findManagedSet(next,id);if(t==next.tilesets.end())return false;std::set<std::string> used;for(const auto& c:next.cels)if(c.tilemap)for(const auto& v:c.tilemap->cells)if(v&&v->tilesetId==id)used.insert(v->tileId);std::vector<std::string> unused;for(const auto& tile:t->tileIds)if(!used.count(tile))unused.push_back(tile);if(unused.empty())return false;const auto original=*t;tiles::removeTiles(*t,unused);if(unused.size()==original.tileIds.size())std::fill(t->pixels.begin(),t->pixels.end(),0);if(t->tileIds==original.tileIds&&t->pixels==original.pixels)return false;auto selected=tileSelection_;if(selected.tilesetId==id){tiles::Index retained(*t);if(!retained.find(selected.primary))selected.primary=t->tileIds.front();if(!retained.find(selected.secondary))selected.secondary=t->tileIds.front();}return commitTilemapState(std::move(next),selected,U"清空未使用瓦片");
 }
@@ -454,7 +454,7 @@ bool Document::commitTilemapPixelCanvas(const std::vector<Pixel>& baseline,const
  Edit edit{{},state_,nextState_};TilemapPixelHistory payload;payload.celId=target->id;payload.linkedCreateSelection=linkedCreateSelection||linkedCreateFloating;payload.linkedEditSelection=linkedEditSelection||linkedEditFloating;payload.linkedHybridSelection=linkedHybridSelection||linkedHybridFloating;payload.beforeSet=*set;payload.afterSet=std::move(nextSet);payload.changedTileIds=std::move(changed);for(const auto i:indexes)if(sourceGrid.cells[i]!=nextGrid.cells[i])payload.cells.push_back({i,sourceGrid.cells[i],std::move(nextGrid.cells[i])});edit.tilemapPixels=std::make_shared<const TilemapPixelHistory>(std::move(payload));
  edit.beforeTileSelection=tileSelection_;edit.afterTileSelection=std::move(selected);edit.beforeActive=edit.afterActive=activeLayerId_;edit.beforeFrame=edit.afterFrame=activeFrameId_;edit.beforeSelection=edit.afterSelection=selectedFrames_;edit.beforeTimelineSelection=edit.afterTimelineSelection=timelineSelection_;edit.beforeFrameAnchor=edit.afterFrameAnchor=frameAnchor_;edit.beforeGroupUi=edit.afterGroupUi=GroupUiSnapshot{selectedGroupIds_,collapsedGroupIds_,selectedGroupId_};
  if(beforePixels&&afterPixels){edit.pixelSelectionEdit=true;edit.beforePixelsSelection=*beforePixels;edit.afterPixelsSelection=*afterPixels;}else if(clearPixelSelection){edit.pixelSelectionEdit=true;edit.beforePixelsSelection=selection_;edit.afterPixelsSelection.reset();}
- history_.reserve(position_+1);edit.label.reserve(std::max(label.size(),historyLabelOverride_.size()));applyEdit(edit,true);ids.applied=true;cancelGradient();publishChange();pushEdit(std::move(edit),std::move(label));return true;
+ reserveHistoryEntries();edit.label.reserve(std::max(label.size(),historyLabelOverride_.size()));applyEdit(edit,true);ids.applied=true;cancelGradient();publishChange();pushEdit(std::move(edit),std::move(label));return true;
 }
 bool Document::tilemapPixelReferenceOwnersSupported(const std::string& tilesetId)const{
  // Preflight every reference before publishing an Edit source tile. No cache normalization.
@@ -662,7 +662,7 @@ bool Document::reorderFreeTileInstance(const std::string& id,const std::string& 
  if(after.freeTiles==before.freeTiles)return false;
  after.surface->pixels=free_tiles::render(*layer().freeTiles,*after.freeTiles,timeline_.state().tilesets,after.surface->width,after.surface->height);
  Edit edit{{},state_,nextState_};edit.beforeCels.push_back(before);edit.afterCels.push_back(std::move(after));edit.beforeActive=edit.afterActive=activeLayerId_;edit.beforeFrame=edit.afterFrame=activeFrameId_;
- history_.reserve(position_+1);applyEdit(edit,true);change_={0,0,width_,height_};publishChange();pushEdit(std::move(edit),U"调整自由瓦片实例顺序");
+ reserveHistoryEntries();applyEdit(edit,true);change_={0,0,width_,height_};publishChange();pushEdit(std::move(edit),U"调整自由瓦片实例顺序");
  const auto selected=selectedFreeTileInstances();if(std::find(selected.begin(),selected.end(),id)==selected.end())selectFreeTileInstance(id);else freeInstancePrimary_=id;
  return true;
 }
@@ -728,7 +728,7 @@ bool Document::pasteFreeTilePixels(const SelectionClipboard& image,Point at){
  timeline::Timeline checked(next);tileSelection.freePaint=false;
  Edit edit{{},state_,nextState_};edit.beforeTimeline=timeline_.state();edit.afterTimeline=std::move(next);edit.beforeActive=edit.afterActive=activeLayerId_;edit.beforeFrame=edit.afterFrame=activeFrameId_;
  edit.beforeTileSelection=tileSelection_;edit.afterTileSelection=tileSelection;edit.beforeFreeTileSelection=FreeTileSelectionSnapshot{freeInstanceSelected_,freeInstancePrimary_,freeInstanceAnchor_,freeInstanceSelectionFrame_,freeInstanceViewLayer_};edit.afterFreeTileSelection=FreeTileSelectionSnapshot{{primary},primary,primary,activeFrameId_,freeInstanceViewLayer_};
- history_.reserve(position_+1);applyEdit(edit,true);nextTileId_=counter;change_={0,0,width_,height_};publishChange();pushEdit(std::move(edit),U"粘贴到图层");return true;
+ reserveHistoryEntries();applyEdit(edit,true);nextTileId_=counter;change_={0,0,width_,height_};publishChange();pushEdit(std::move(edit),U"粘贴到图层");return true;
 }
 bool Document::pasteFreeTileInstances(const FreeTileInstanceClipboardSnapshot& clip){
  // Legacy activeFreeTileCelTarget accepts an ordinary free-tile layer view too.
@@ -765,7 +765,7 @@ bool Document::pasteFreeTileInstances(const FreeTileInstanceClipboardSnapshot& c
  edit.beforeFreeTileSelection=FreeTileSelectionSnapshot{freeInstanceSelected_,freeInstancePrimary_,freeInstanceAnchor_,freeInstanceSelectionFrame_,freeInstanceViewLayer_};
  edit.afterFreeTileSelection=FreeTileSelectionSnapshot{added,added.back(),added.back(),activeFrameId_,freeInstanceViewLayer_};
  edit.pixelSelectionEdit=true;edit.beforePixelsSelection=selection_;edit.afterPixelsSelection.reset();edit.beforeTrimPivot.emplace(selectionPivotHistory_.pivot);edit.afterTrimPivot.emplace(std::nullopt);
- history_.reserve(position_+1);applyEdit(edit,true);nextTileId_=counter;change_={0,0,width_,height_};publishChange();pushEdit(std::move(edit),U"粘贴到图层");return true;
+ reserveHistoryEntries();applyEdit(edit,true);nextTileId_=counter;change_={0,0,width_,height_};publishChange();pushEdit(std::move(edit),U"粘贴到图层");return true;
 }
 bool Document::showOnlyFreeTileInstance(const std::string& id){
  if(active()||!freeTileInstanceView()||!freeTileCel().freeTiles||!freeTileCel().surface)return false;
@@ -776,7 +776,7 @@ bool Document::showOnlyFreeTileInstance(const std::string& id){
  if(after.freeTiles==before.freeTiles)return false;
  after.surface->pixels=free_tiles::render(*layer().freeTiles,*after.freeTiles,timeline_.state().tilesets,after.surface->width,after.surface->height);
  Edit edit{{},state_,nextState_};edit.beforeCels.push_back(before);edit.afterCels.push_back(std::move(after));edit.beforeActive=edit.afterActive=activeLayerId_;edit.beforeFrame=edit.afterFrame=activeFrameId_;
- history_.reserve(position_+1);applyEdit(edit,true);change_={0,0,width_,height_};publishChange();pushEdit(std::move(edit),U"仅显示自由瓦片实例");
+ reserveHistoryEntries();applyEdit(edit,true);change_={0,0,width_,height_};publishChange();pushEdit(std::move(edit),U"仅显示自由瓦片实例");
  selectFreeTileInstance(id);return true;
 }
 bool Document::previewFreeTileInstanceFlags(const std::vector<std::string>& ids,bool value){
@@ -810,7 +810,7 @@ bool Document::deleteFreeTileInstances(const std::vector<std::string>& ids){
  const auto nextPrimary=!primary.empty()&&!requested.count(primary)?primary:fallback;
  after.surface->pixels=free_tiles::render(*layer().freeTiles,*after.freeTiles,timeline_.state().tilesets,after.surface->width,after.surface->height);
  Edit e{{},state_,nextState_};e.beforeCels.push_back(before);e.afterCels.push_back(std::move(after));e.beforeActive=e.afterActive=activeLayerId_;e.beforeFrame=e.afterFrame=activeFrameId_;
- history_.reserve(position_+1);applyEdit(e,true);change_={0,0,width_,height_};publishChange();pushEdit(std::move(e),U"擦除自由瓦片");
+ reserveHistoryEntries();applyEdit(e,true);change_={0,0,width_,height_};publishChange();pushEdit(std::move(e),U"擦除自由瓦片");
  freeInstanceSelected_.clear();for(const auto& id:selected)if(!requested.count(id))freeInstanceSelected_.push_back(id);
  if(!nextPrimary.empty()&&std::find(freeInstanceSelected_.begin(),freeInstanceSelected_.end(),nextPrimary)==freeInstanceSelected_.end())freeInstanceSelected_.push_back(nextPrimary);
  freeInstancePrimary_=nextPrimary;freeInstanceAnchor_=nextPrimary;freeInstanceSelectionFrame_=activeFrameId_;
@@ -1027,7 +1027,7 @@ bool Document::flipFreeTileContent(bool horizontal){
  auto after=freeTileCel();for(auto& i:after.freeTiles->instances)if(!i.locked&&std::find(ids.begin(),ids.end(),i.id)!=ids.end()){if(horizontal)i.flipHorizontal=!i.flipHorizontal;else i.flipVertical=!i.flipVertical;}
  if(after.freeTiles==freeTileCel().freeTiles)return false;
  after.surface->pixels=free_tiles::render(*layer().freeTiles,*after.freeTiles,timeline_.state().tilesets,after.surface->width,after.surface->height);
- Edit edit{{},state_,nextState_};edit.beforeCels={freeTileCel()};edit.afterCels={after};edit.beforeActive=edit.afterActive=activeLayerId_;edit.beforeFrame=edit.afterFrame=activeFrameId_;history_.reserve(position_+1);timeline_.state_.cels[timeline_.cels_.at(after.id)]=std::move(after);change_={0,0,width_,height_};publishChange();pushEdit(std::move(edit),horizontal?U"水平翻转选区":U"垂直翻转选区");return true;
+ Edit edit{{},state_,nextState_};edit.beforeCels={freeTileCel()};edit.afterCels={after};edit.beforeActive=edit.afterActive=activeLayerId_;edit.beforeFrame=edit.afterFrame=activeFrameId_;reserveHistoryEntries();timeline_.state_.cels[timeline_.cels_.at(after.id)]=std::move(after);change_={0,0,width_,height_};publishChange();pushEdit(std::move(edit),horizontal?U"水平翻转选区":U"垂直翻转选区");return true;
 }
 bool Document::freeTileSelectionPlacementMoving()const{return floating_&&floating_->freeTile&&floating_->freeTile->placement;}
 bool Document::beginFreeTileSelectionMove(bool copy,bool allFrames,int dx,int dy){
@@ -1104,12 +1104,12 @@ bool Document::commitFreeTileSelectionMove(){
  Edit e{{},state_,changed?nextState_:state_};e.documentChanged=changed;e.beforeActive=e.afterActive=f.layerId;e.beforeFrame=e.afterFrame=f.frameId;e.pixelSelectionEdit=true;e.beforePixelsSelection=f.beforeSelection;e.afterPixelsSelection=selection_;
  if(changed&&f.freeTile->placement){const auto& original=f.beforeCelTimeline->cels;e.beforeCels.push_back(*std::find_if(original.begin(),original.end(),[&](const auto& c){return c.id==freeTileCel().id;}));e.afterCels.push_back(freeTileCel());}
  else if(changed){e.beforeTimeline=*f.beforeCelTimeline;e.afterTimeline=timeline_.state();e.beforeTimelineSelection=e.afterTimelineSelection=f.beforeTimelineSelection;e.beforeSelection=e.afterSelection=f.beforeSelectedFrames;}
- const auto label=f.copy?U"复制选区内容":f.transform.angle!=0?U"旋转选区内容":f.transform.width!=f.source.width||f.transform.height!=f.source.height||f.transform.shearX!=0||f.transform.shearY!=0||f.transform.flipHorizontal||f.transform.flipVertical||f.transform.quad?U"变换选区内容":U"移动选区内容";history_.reserve(position_+1);floating_.reset();pushEdit(std::move(e),label);return changed;
+ const auto label=f.copy?U"复制选区内容":f.transform.angle!=0?U"旋转选区内容":f.transform.width!=f.source.width||f.transform.height!=f.source.height||f.transform.shearX!=0||f.transform.shearY!=0||f.transform.flipHorizontal||f.transform.flipVertical||f.transform.quad?U"变换选区内容":U"移动选区内容";reserveHistoryEntries();floating_.reset();pushEdit(std::move(e),label);return changed;
 }
 bool Document::commitFreeTileSourceStroke(){
  if(!freeSourceStroke_)return false;auto& d=*freeSourceStroke_;const bool sourceChanged=d.beforeWidth!=d.lastWidth||d.beforeHeight!=d.lastHeight||d.beforeX!=d.lastX||d.beforeY!=d.lastY||d.beforePixels!=d.lastPixels;
  if(!sourceChanged&&!d.placement){cancelFreeTileSourceStroke();return false;}
- Edit e{{},state_,nextState_};e.beforeTimeline=d.before.state();e.afterTimeline=timeline_.state();e.beforeActive=e.afterActive=activeLayerId_;e.beforeFrame=e.afterFrame=activeFrameId_;history_.reserve(position_+1);freeSourceStroke_.reset();pushEdit(std::move(e),U"绘制自由瓦片源");projectInformation_.drawing(std::max<std::int64_t>(1,std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now()-projectStrokeStarted_).count()));return true;
+ Edit e{{},state_,nextState_};e.beforeTimeline=d.before.state();e.afterTimeline=timeline_.state();e.beforeActive=e.afterActive=activeLayerId_;e.beforeFrame=e.afterFrame=activeFrameId_;reserveHistoryEntries();freeSourceStroke_.reset();pushEdit(std::move(e),U"绘制自由瓦片源");projectInformation_.drawing(std::max<std::int64_t>(1,std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now()-projectStrokeStarted_).count()));return true;
 }
 void Document::cancelFreeTileSourceStroke(){if(!freeSourceStroke_)return;auto d=std::move(freeSourceStroke_);if(d->gradientPreview&&gradient_){gradient_.reset();++gradientRevision_;}if(d->mutated){timeline_=d->before;change_={0,0,width_,height_};publishChange();}}
 
@@ -1153,7 +1153,7 @@ bool Document::updateGradient(const GradientSpec& spec,WandOptions options){if(!
 void Document::cancelGradient(){if(freeSourceStroke_&&freeSourceStroke_->gradientPreview)cancelFreeTileSourceStroke();if(gradient_){gradient_.reset();++gradientRevision_;}}
 bool Document::commitGradient(){if(!gradient_)return false;const auto& g=*gradient_;if(g.shape&&!g.mask&&layer().kind=="free-tile"){
  if(g.contentRevision!=contentRevision_||!selectionEqual(g.selection,selection_)||g.layerId!=layer().id||g.frameId!=frame().id||freeTilePaintMode()||layerEffectivelyLocked(layer())||!layerEffectivelyVisible(layer())||!g.region||!g.tilemapDisplay){cancelGradient();return false;}
- Edit edit{{},state_,nextState_};edit.beforeTimeline=timeline_.state();edit.afterTimeline=g.tilemapDisplay->state();edit.beforeActive=edit.afterActive=activeLayerId_;edit.beforeFrame=edit.afterFrame=activeFrameId_;history_.reserve(position_+1);
+ Edit edit{{},state_,nextState_};edit.beforeTimeline=timeline_.state();edit.afterTimeline=g.tilemapDisplay->state();edit.beforeActive=edit.afterActive=activeLayerId_;edit.beforeFrame=edit.afterFrame=activeFrameId_;reserveHistoryEntries();
  timeline_=std::move(*gradient_->tilemapDisplay);gradient_.reset();++gradientRevision_;change_={0,0,width_,height_};publishChange();pushEdit(std::move(edit),U"绘制自由瓦片源");projectInformation_.drawing(std::max<std::int64_t>(1,std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now()-projectStrokeStarted_).count()));return true;
 }if(freeSourceStroke_&&freeSourceStroke_->gradientPreview){
  auto& d=*freeSourceStroke_;
@@ -1172,8 +1172,8 @@ bool Document::commitGradient(){if(!gradient_)return false;const auto& g=*gradie
  const int paintRight=g.shape?dirty.x+dirty.w:int(std::min<std::int64_t>({width_,g.selection?std::int64_t(g.selection->x)+g.selection->width:width_,g.region?std::int64_t(g.region->x)+g.region->width:width_})),paintBottom=g.shape?dirty.y+dirty.h:int(std::min<std::int64_t>({height_,g.selection?std::int64_t(g.selection->y)+g.selection->height:height_,g.region?std::int64_t(g.region->y)+g.region->height:height_}));
  if(paintRight>paintLeft&&paintBottom>paintTop&&std::size_t(paintRight-paintLeft)*(paintBottom-paintTop)>=512*512){DensePixels dense{paintLeft,paintTop,paintRight-paintLeft,paintBottom-paintTop,{},{}};const auto count=std::size_t(dense.width)*dense.height;dense.before.reserve(count);dense.after.reserve(count);for(int y=paintTop;y<paintBottom;++y){const auto start=std::size_t(y)*width_+paintLeft;dense.before.insert(dense.before.end(),baseline.begin()+start,baseline.begin()+start+dense.width);dense.after.insert(dense.after.end(),g.preview.begin()+start,g.preview.begin()+start+dense.width);}edit.dense=std::move(dense);}
  else for(int y=dirty.y;y<dirty.y+dirty.h;++y)for(int x=dirty.x;x<dirty.x+dirty.w;++x){const auto i=std::size_t(y)*width_+x;if(g.preview[i]!=baseline[i])edit.pixels.push_back({i,baseline[i],g.preview[i]});}
- auto candidate=timeline_.state();timeline::Cel created;created.id="cel-"+layer().id+"-"+frame().id;for(std::size_t suffix=1;timeline_.findCelById(created.id);++suffix)created.id="cel-"+layer().id+"-"+frame().id+"-"+std::to_string(suffix);created.layerId=layer().id;created.frameId=frame().id;created.opacity=layer().opacity;created.surface=timeline::Surface{width_,height_,0,0,{},{},timeline::LinkedPixelStorage(g.preview)};edit.targetCelId=created.id;edit.pixelAddress=PixelAddressSpace{width_,height_,0,0};const auto preferredOwner=created.id;candidate.cels.push_back(std::move(created));timeline::Timeline prepared(std::move(candidate),preferredOwner);history_.reserve(position_+1);auto previous=std::move(timeline_);timeline_=std::move(prepared);try{pushEdit(std::move(edit),U"渐变");}catch(...){timeline_=std::move(previous);throw;}gradient_.reset();++gradientRevision_;change_=dirty;publishChange();return true;
- }if(g.mask)return commitMaskPreview();if(g.tilemap)return commitTilemapPreview();if(g.sparse)return g.shape?commitSparseShape():commitSparseGradient();Edit edit{{},state_,nextState_};edit.targetCelId=g.celId;edit.beforeSelection=edit.afterSelection=selectedFrames_;int left=width_,top=height_,right=0,bottom=0;for(int y=0;y<height_;++y)for(int x=0;x<width_;++x){const auto i=std::size_t(y)*width_+x;if(pixels()[i]!=g.preview[i]){left=std::min(left,x);right=std::max(right,x+1);top=std::min(top,y);bottom=std::max(bottom,y+1);}}if(right<=left){cancelGradient();return false;}history_.reserve(position_+1);
+ auto candidate=timeline_.state();timeline::Cel created;created.id="cel-"+layer().id+"-"+frame().id;for(std::size_t suffix=1;timeline_.findCelById(created.id);++suffix)created.id="cel-"+layer().id+"-"+frame().id+"-"+std::to_string(suffix);created.layerId=layer().id;created.frameId=frame().id;created.opacity=layer().opacity;created.surface=timeline::Surface{width_,height_,0,0,{},{},timeline::LinkedPixelStorage(g.preview)};edit.targetCelId=created.id;edit.pixelAddress=PixelAddressSpace{width_,height_,0,0};const auto preferredOwner=created.id;candidate.cels.push_back(std::move(created));timeline::Timeline prepared(std::move(candidate),preferredOwner);reserveHistoryEntries();auto previous=std::move(timeline_);timeline_=std::move(prepared);try{pushEdit(std::move(edit),U"渐变");}catch(...){timeline_=std::move(previous);throw;}gradient_.reset();++gradientRevision_;change_=dirty;publishChange();return true;
+ }if(g.mask)return commitMaskPreview();if(g.tilemap)return commitTilemapPreview();if(g.sparse)return g.shape?commitSparseShape():commitSparseGradient();Edit edit{{},state_,nextState_};edit.targetCelId=g.celId;edit.beforeSelection=edit.afterSelection=selectedFrames_;int left=width_,top=height_,right=0,bottom=0;for(int y=0;y<height_;++y)for(int x=0;x<width_;++x){const auto i=std::size_t(y)*width_+x;if(pixels()[i]!=g.preview[i]){left=std::min(left,x);right=std::max(right,x+1);top=std::min(top,y);bottom=std::max(bottom,y+1);}}if(right<=left){cancelGradient();return false;}reserveHistoryEntries();
  // Gradient dense admission follows legacy paint bounds, independently of
  // changed pixels. Shape preview retains its existing dirty-bounds policy.
  const int denseLeft=g.shape?left:std::max({0,g.selection?g.selection->x:0,g.region?g.region->x:0}),denseTop=g.shape?top:std::max({0,g.selection?g.selection->y:0,g.region?g.region->y:0});

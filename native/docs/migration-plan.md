@@ -3783,3 +3783,13 @@ palette-apply-index-build.log正式Release、工程与核心目标构建通过�
 新增60组真实HistoryStack序列（四种预算×五种限制×三种Undo深度），逐步对照改色／改名、超预算、混合Undo/Redo、分支push、重复设置、清空、最近Redo保留、每条历史标题、位置、字节、revision及全部观察者事件。原生回归另覆盖超过10000条的有限／无限构造与动态限制以及一次大量裁剪。尚未据此声明全量历史迁移或颜色板领域完成。
 
 验证：history-trim-fixtures.log实际旧版生成通过；history-trim-build.log正式Release及工程／核心／偏好历史／历史面板／本地历史预算目标构建通过。history-trim-project-tests.log全部工程矩阵及新增60序列退出0；history-trim-preferences-tests.log超过10000条边界与大量裁剪退出0；history-trim-panel-tests.log、history-trim-local-budget-tests.log、history-trim-core-tests.log均退出0。正式--history-panel-check退出0。来源覆盖627文件通过，strict因既有缺口退出1，diff通过。无人工图像验收或定量性能基准，本阶段性能结论限于移除重复vector头部搬移；全量迁移仍INCOMPLETE。
+
+### 历史提交容量与全命令预检（2026-11-08）
+
+接续a1118220，大记录回归进一步定位所有历史预检入口：此前history_.reserve(position_+1/2)按精确下一条容量增长，导致每次提交搬移全部保留Edit。旧版HistoryStack::push使用JS数组追加；原生必须保留分配先于文档变更的失败保护，故统一Document::reserveHistoryEntries以初始8、1.5倍增长预留，检查max_size与加法上溢，已有空间直接返回。全部15个源码中的预检入口共同迁移，包含普通提交、绘制／填充／形状／渐变、图层／组／蒙版、文字、切片、瓦片、变换、回滚和时间线拖动；双条目选区预检保留additional=2。预留不修改history大小／位置／字节、不提前丢Redo、不改变命令语义。
+
+扩展既有真实10002次提交回归，直接检查历史容量变化少于32次，而非按机器耗时定阈值；覆盖Undo后新分支复用容量、不保留旧Redo以及分支Undo/Redo。仍运行实际旧版60组预算／分支／事件及128组颜色板交错历史矩阵。容量是原生存储适配，不声称全量迁移完成。
+
+已验证：history-capacity-preferences-history-tests.log中10002次实际提交仅18次容量增长，分支提交复用已有容量；有限／无限限制及大量裁剪回归通过。history-capacity-project-tests.log完整工程矩阵（含60组真实历史预算与128交错序列）通过；history-capacity-moon-core-tests.log、history-capacity-history-panel-tests.log、history-capacity-timeline-interaction-tests.log、history-capacity-free-tile-project-tests.log及history-capacity-local-budget-tests.log均退出0。来源覆盖627文件通过，strict因既有缺口退出1，diff通过。正式Release构建及界面检查另行记录，不以已通过的核心测试代替正式程序验收。
+
+正式验收：history-capacity-build.log全部指定目标及唯一正式moonsprite-native.exe构建退出0；正式--history-panel-check、--deselect-check均退出0。未进行人工图像验收；18次扩容是本次实际记录，不外推整机UI流畅度或帧率。全量迁移仍INCOMPLETE。

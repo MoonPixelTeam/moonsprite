@@ -813,6 +813,7 @@ private:
   std::vector<std::pair<std::string,bool>> visibilityGestureBefore_;
   std::vector<std::pair<std::string,bool>> autoLinkGestureBefore_;
   bool fillSymmetryDispatch_=false;
+  void reserveHistoryEntries(std::size_t additional=1);
   void pushEdit(Edit edit,std::u32string label=U"绘制");
   void applySurfaceEdit(const Edit&,bool);
   void capturePixelAddresses(Edit& edit);

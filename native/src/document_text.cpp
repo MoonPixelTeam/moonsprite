@@ -73,7 +73,7 @@ bool Document::rasterizeLayer(const std::string& id){
   Edit e{{},state_,nextState_};e.beforeTimeline=timeline_.state();e.afterTimeline=std::move(staged.timeline_.state_);e.beforeActive=e.afterActive=activeLayerId_;e.beforeFrame=e.afterFrame=activeFrameId_;e.beforeTimelineSelection=e.afterTimelineSelection=timelineSelection_;e.beforeSelection=e.afterSelection=selectedFrames_;e.beforeGroupUi=e.afterGroupUi=GroupUiSnapshot{selectedGroupIds_,collapsedGroupIds_,selectedGroupId_};e.beforeTileSelection=tileSelection_;auto selected=tileSelection_;if(candidates.count(selected.tilesetId))selected={};e.afterTileSelection=selected;
   const auto afterMaskId=std::any_of(e.afterTimeline->masks.begin(),e.afterTimeline->masks.end(),[&](const auto& m){return m.mask.id==activeMaskId_;})?activeMaskId_:std::string{};
   e.maskContext=std::make_shared<Edit::MaskContextHistory>(Edit::MaskContextHistory{activeMaskId_,afterMaskId,maskIsolated_,!afterMaskId.empty()&&maskIsolated_});
-  history_.reserve(position_+1);applyEdit(e,true);publishChange();pushEdit(std::move(e),U"转换为普通图层");return true;
+  reserveHistoryEntries();applyEdit(e,true);publishChange();pushEdit(std::move(e),U"转换为普通图层");return true;
  }
  Edit e{{},state_,nextState_};captureGroupEdit(e,false);captureGroupEdit(e,true);
  const auto original=timeline_.state().layers[timeline_.layerIndex(id)];

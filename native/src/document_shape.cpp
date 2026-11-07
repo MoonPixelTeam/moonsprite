@@ -74,7 +74,7 @@ bool Document::commitSparseShape(){
   edit.targetCelId=g.celId;edit.beforeSelection=edit.afterSelection=selectedFrames_;edit.pixelAddress=PixelAddressSpace{width_,height_,raster::coordinate(std::int64_t(prepared.storageOriginX.value_or(0))-prepared.offsetX),raster::coordinate(std::int64_t(prepared.storageOriginY.value_or(0))-prepared.offsetY)};
   if(std::size_t(dirty.w)*dirty.h>=512*512){DensePixels dense{dirty.x,dirty.y,dirty.w,dirty.h,{},{}};const auto count=std::size_t(dirty.w)*dirty.h;shapePixels(used,count);shapePixels(used,count);dense.before.reserve(count);dense.after.reserve(count);for(int y=dirty.y;y<dirty.y+dirty.h;++y)for(int x=dirty.x;x<dirty.x+dirty.w;++x){dense.before.push_back(beforeAt(x,y));dense.after.push_back(afterAt(x,y));}edit.dense=std::move(dense);}
   else{if(changedCount>(shapeLimit-used)/sizeof(Delta))throw std::length_error("Shape history exceeds document pixel budget");shapeBytes(used,changedCount*sizeof(Delta));edit.pixels.reserve(changedCount);const auto& m=*g.shapePaintMask;for(int y=m.y;y<m.y+m.height;++y)for(int x=m.x;x<m.x+m.width;++x)if(selectionContains(g.shapePaintMask,x,y)){const auto before=beforeAt(x,y),after=afterAt(x,y);if(before!=after)edit.pixels.push_back({std::size_t(y)*width_+x,before,after});}}
-  history_.reserve(position_+1);
+  reserveHistoryEntries();
  }
  auto paint=[&](timeline::Surface& out){if(!g.shapePaintMask)return;const auto& m=*g.shapePaintMask;for(int y=m.y;y<m.y+m.height;++y)for(int x=m.x;x<m.x+m.width;++x)if(selectionContains(g.shapePaintMask,x,y))out.pixels[*raster::worldIndex(out,x,y)]=g.preview[std::size_t(y)*width_+x];};
  if(candidate)paint(*candidate);

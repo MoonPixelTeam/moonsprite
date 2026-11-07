@@ -45,7 +45,7 @@ bool Document::generateCrossfadeTween(const std::string& start,const std::string
  for(const auto& id:ids)for(const auto& layer:validated.state().layers){const auto* c=validated.findCel(layer.id,id);if(!c)throw std::runtime_error("Tween creates an incomplete raster frame");const auto resolved=validated.resolveSurface(c->id);if(!resolved.surface)throw std::runtime_error("Tween creates an unavailable raster surface");}
  for(auto& layer:validated.state_.layers){const auto* c=validated.findCel(layer.id,edit.afterFrame);const auto resolved=validated.resolveSurface(c->id);if(resolved.source&&resolved.source->opacity&&std::isfinite(*resolved.source->opacity))layer.opacity=std::clamp(*resolved.source->opacity,0.,1.);}
  for(const auto& l:validated.state().layers)edit.afterLayerOpacityProjection.push_back({l.id,l.opacity});
- auto activeLayer=edit.afterActive,activeFrame=edit.afterFrame,anchor=*edit.afterFrameAnchor;auto selectionAfter=resized?edit.afterPixelsSelection:selection_;auto selectedAfter=ids;history_.reserve(position_+1);
+ auto activeLayer=edit.afterActive,activeFrame=edit.afterFrame,anchor=*edit.afterFrameAnchor;auto selectionAfter=resized?edit.afterPixelsSelection:selection_;auto selectedAfter=ids;reserveHistoryEntries();
  timeline_=std::move(validated);nextFrameId_=next;activeLayerId_=std::move(activeLayer);activeFrameId_=std::move(activeFrame);frameAnchor_=std::move(anchor);selectedFrames_=std::move(selectedAfter);timelineSelection_={};if(resized){width_=canvas.width;height_=canvas.height;selection_=std::move(selectionAfter);selectionPivotHistory_.pivot=pivot;++selectionPivotHistory_.serial;}
  change_={0,0,width_,height_};publishChange();pushEdit(std::move(edit),U"交叉淡化补间");return true;
 }

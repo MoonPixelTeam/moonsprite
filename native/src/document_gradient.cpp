@@ -71,7 +71,7 @@ bool Document::commitSparseGradient(){
    DensePixels dense{left,top,right-left,bottom-top,{},{}};const auto count=std::size_t(dense.width)*dense.height;account(count);account(count);dense.before.reserve(count);dense.after.reserve(count);
    for(int y=top;y<bottom;++y)for(int x=left;x<right;++x){dense.before.push_back(beforeAt(x,y));dense.after.push_back(afterAt(x,y));}edit.dense=std::move(dense);
   }else for(int y=dirtyTop;y<dirtyBottom;++y)for(int x=dirtyLeft;x<dirtyRight;++x){const auto before=beforeAt(x,y),after=afterAt(x,y);if(before!=after)edit.pixels.push_back({std::size_t(y)*width_+x,before,after});}
-  history_.reserve(position_+1);
+  reserveHistoryEntries();
  }
  if(candidate){
   if(!changed&&placeholder){timeline::Surface restored=source;restored.pixels[0]=0;restored.storageOriginX=0;restored.storageOriginY=0;candidate=std::move(restored);}

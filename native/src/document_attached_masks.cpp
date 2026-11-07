@@ -90,7 +90,7 @@ Document::MaskTransferResult Document::transferAttachedMasks(const std::vector<t
  Edit edit{{},state_,nextState_};edit.beforeMasks=original.masks;edit.afterMasks=after;edit.beforeMaskSelection=selection;edit.afterMaskSelection=std::vector<MaskSlotKey>{};for(const auto& p:placements)edit.afterMaskSelection->push_back(p.target);
  edit.beforeFrame=activeFrameId_;edit.afterFrame=move?target.second:activeFrameId_;edit.beforeActive=activeLayerId_;edit.afterActive=move&&timeline_.hasLayer(target.first)?target.first:activeLayerId_;
  std::string nextActive=move&&ids.count(activeMaskId_)?activeMaskId_:std::string{};edit.maskContext=std::make_shared<Edit::MaskContextHistory>(Edit::MaskContextHistory{activeMaskId_,nextActive,maskIsolated_,!nextActive.empty()&&maskIsolated_});
- history_.reserve(position_+1);timeline_.state_.masks=std::move(after);nextLayerId_=nextId;activeFrameId_=edit.afterFrame;activeLayerId_=edit.afterActive;activeMaskId_=std::move(nextActive);if(activeMaskId_.empty())maskIsolated_=false;
+ reserveHistoryEntries();timeline_.state_.masks=std::move(after);nextLayerId_=nextId;activeFrameId_=edit.afterFrame;activeLayerId_=edit.afterActive;activeMaskId_=std::move(nextActive);if(activeMaskId_.empty())maskIsolated_=false;
  maskSelectionHistory_.slots=*edit.afterMaskSelection;maskSelectionHistory_.anchor.reset();++maskSelectionHistory_.serial;pushEdit(std::move(edit),move?U"移动图层蒙版单元格":U"粘贴图层蒙版单元格");change_={0,0,width_,height_};publishChange();return R::Done;
 }
 bool Document::setMaskMoveWithOwner(const std::string& owner,const std::string& frame,bool enabled){
@@ -141,7 +141,7 @@ bool Document::removeAttachedMasks(const std::vector<std::pair<std::string,std::
   edit.beforeMaskSelection=slots;edit.beforeTimelineSelection=timelineSelection_;
   auto selection=timelineSelection_;selection.maskRows.clear();edit.afterTimelineSelection=selection;
  }
- history_.reserve(position_+1);timeline_.state_.masks=std::move(after);
+ reserveHistoryEntries();timeline_.state_.masks=std::move(after);
  if(edit.maskEditingOnUndo){activeMaskId_.clear();maskIsolated_=false;}
  if(selected){maskSelectionHistory_.slots.clear();maskSelectionHistory_.anchor.reset();++maskSelectionHistory_.serial;}
  if(edit.afterTimelineSelection)timelineSelection_=*edit.afterTimelineSelection;
@@ -160,7 +160,7 @@ bool Document::setAttachedMaskFlags(const std::string& owner,const std::string& 
  if(exitEditing)edit.maskEditingOnUndo=std::make_pair(activeMaskId_,maskIsolated_);
 
  if(locked!=wasLocked)edit.maskContext=std::make_shared<Edit::MaskContextHistory>(Edit::MaskContextHistory{activeMaskId_,exitEditing?std::string{}:activeMaskId_,maskIsolated_,exitEditing?false:maskIsolated_});
- history_.reserve(position_+1);timeline_.state_.masks=std::move(after);if(exitEditing){activeMaskId_.clear();maskIsolated_=false;}
+ reserveHistoryEntries();timeline_.state_.masks=std::move(after);if(exitEditing){activeMaskId_.clear();maskIsolated_=false;}
  pushEdit(std::move(edit),U"蒙版属性");change_={0,0,width_,height_};publishChange();return true;
 }
 bool Document::linkAttachedMasks(const std::vector<std::pair<std::string,std::string>>& slots,bool detach){
@@ -197,7 +197,7 @@ bool Document::linkAttachedMasks(const std::vector<std::pair<std::string,std::st
  if(!edited||edited->id!=activeMaskId_){editOwner.clear();for(const auto& slot:original.masks)if(slot.mask.id==activeMaskId_){editOwner=slot.ownerId;break;}}
  std::string afterActive=activeMaskId_;if(!activeMaskId_.empty()&&!editOwner.empty())if(const auto* m=timeline::resolvedMask(validation,editOwner,activeFrameId_))afterActive=m->id;
  edit.maskContext=std::make_shared<Edit::MaskContextHistory>(Edit::MaskContextHistory{activeMaskId_,afterActive,maskIsolated_,maskIsolated_});
- history_.reserve(position_+1);timeline_.state_.masks=std::move(after);activeMaskId_=afterActive;
+ reserveHistoryEntries();timeline_.state_.masks=std::move(after);activeMaskId_=afterActive;
  maskSelectionHistory_.slots=selected;maskSelectionHistory_.anchor.reset();++maskSelectionHistory_.serial;
  pushEdit(std::move(edit),detach?U"断开蒙版链接":U"连接所选蒙版");change_={0,0,width_,height_};publishChange();return true;
 }
