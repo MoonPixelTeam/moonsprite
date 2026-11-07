@@ -3121,3 +3121,9 @@ mixed-free-linked-frame-build.log正式Release/两核心测试构建exit0；fixt
 对照legacy workspace-commands-selection-transform.ts::beginLayerTransform及workspace-session.ts::selectedTransformLayersForSession（活动蒙版优先），将原生已有蒙版边界分支移到整篇free/tile保护之前。继续使用maskBrushAvailable及逐像素可见画布alpha边界，不改变变换算法与普通特殊层限制。
 
 新增free/tile两组入口回归：明确填入局部灰度蒙版，核对可见边界、无浮动/历史/内容修订、所属Cel像素保留、隐藏/锁定拒绝及恢复后可进入。初始夹具新建蒙版全透明而错误期望全幅选框；拆分断言后补充真实像素，不修改空内容保护。mask-transform-entry-build.log正式Release及两测试构建exit0，fixture-build日志exit0，完整free-tile-project-tests和attached-masks-tests通过（mask-transform-entry-free-test.log、mask-transform-entry-mask-test.log）；正式工作区drawing-anchor-edit-floating组合exit0，来源625文件快照通过（mask-transform-entry-provenance.log），diff通过。未做人工作业或截图验收，全量迁移仍INCOMPLETE。
+
+### 2026-11-07：自由瓦片已有浮动选区键盘微移
+
+依据legacy workspace-commands-selection-move.ts::moveActiveSelectionWithSelectionHistory的pending.freeTile分支：已有自由瓦片浮动事务通过实际限制位移更新源编辑raster及选择。原生nudgeSelectionContent不再用整篇free/tile保护挡住已有freeTile浮动状态，沿用现有键盘坐标限制、四角平移和transformFreeTileSelectionMove。初次键盘创建自由瓦片事务仍保留原保护，待单独核对，不将该缺口标为完成。
+
+新增整实例/局部源×移动/复制四组合，比较连续右/下微移与直接平移的画布、共享源像素及选择，检查预览无历史、取消恢复、单提交、Undo/Redo及实际保存重开。pending-free-nudge-build.log正式Release及free/tile两完整测试构建exit0，两完整测试exit0（pending-free-nudge-free-test.log、pending-free-nudge-grid-test.log），正式工作区drawing-anchor-edit-floating组合exit0；来源625文件快照通过（pending-free-nudge-provenance.log），diff通过。无人工UI验收；全量迁移仍INCOMPLETE。
