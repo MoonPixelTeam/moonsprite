@@ -3861,3 +3861,9 @@ palette-apply-index-build.log正式Release、工程与核心目标构建通过�
 接续70ae7fd0，新增独立Rust原函数生成器，直接执行platform_palette.rs::parse_palette_color／text_imported_colors／act_imported_colors，PAL使用原版文本优先、无色再ACT分支。229组固定输入覆盖颜色串正负号与长度／大小写／Unicode、Rust空白／BOM／CRLF／坏UTF8、u16有效token过滤和alpha默认、随机分隔符、ACT截断／0与超范围count／透明索引及PAL回退。原生逐项核对成功／拒绝和RGBA，颜色串也直接核对原生库文件读取。
 
 初次真实对照在case4发现前导+差异：旧版u32::from_str_radix允许正号，但6／8长度判断发生于移除正号之前。原生文本／通用JSON和原生库JSON此前均拒绝；现保留原长度决定alpha，再去掉一个+解析数字，负号／其它非法字符继续拒绝，规范保存仍输出原来的标准HEX。不自行解释为RGB格式扩展，直接承接已有旧版可观察行为。第二轮在case39发现BOM后的首词差异：旧版trim_start_matches BOM之后，split_whitespace继续跳过前导空白；原生此前选到空词。现只在获取首个HEX词时跳过空白，保留更早的注释判断顺序。验证：palette-text-compat-final-build.log正式Release及库／导入目标构建退出0，palette-text-compat-tests.log229真实对照及全部既有边界退出0，palette-text-compat-library-tests.log退出0；正式--palette-import-check及--palette-library-check退出0。再次生成夹具哈希一致，来源631文件覆盖通过，strict因既有全量缺口退出1，diff通过。未进行人工选择器或长期桌面验收，全量迁移仍INCOMPLETE。
+
+### JSON色板格式识别与真实serde对照（2026-11-08）
+
+接续a6dcc763，新增独立Cargo旧版原函数执行器，提取实际类型／JSON／布局／颜色函数，使用与旧版Cargo.lock一致的serde1.0.229及serde_json1.0.151，通过legacy/.cargo/config.toml复用离线registry。初次默认registry离线缺少itoa，修正为旧版现有源配置后成功，未下载依赖。271组对照比较成功／拒绝、name／RGBA／columns／完整可空slots／可选names，覆盖颜色通道数值与缺失／大小写、normalize及alpha回退、数组优先级、原生结构／版本／布局／可空字段、v1不完整末行、重复字段、转义键、有效／孤立代理项及96组固定随机通用矩阵。
+
+首轮case95暴露WinRT把2.0标准化为整数2，而serde原生u32反序列化失败后转通用颜色数组；原生应丢弃原生布局与名称。重复已知字段、浮点槽／超usize也有同类分支差异。现保留原始token整数写法／范围与已知键重复检测，转义键用既有WinRT字符串解码；不替代DOM语法解析。case167又发现孤立UTF16代理项，增加输入UTF8及字符串代理对严格验证，在所有通用／原生分支前执行；合法代理对与转义保持接受。只修改共享导入入口，不据此声明单独原生库解码器的所有词法规则等价。验证：palette-json-formal-build.log正式Release及导入／库目标构建退出0；palette-json-compat-tests.log271组真实JSON、229组文本及既有全部导入边界退出0，palette-json-compat-library-tests.log退出0；正式--palette-import-check和--palette-library-check退出0。重复生成fixture哈希一致；来源633文件覆盖通过，strict因既有缺口退出1，diff通过。未执行完整旧版Tauri运行或人工系统选择器／长期桌面验收，全量迁移仍INCOMPLETE。
