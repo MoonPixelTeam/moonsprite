@@ -1969,6 +1969,7 @@
     },
     {
       "file": "src/document.cpp",
+      "replacementMaskMetadata20261107": "Legacy tools-fill.ts replaceLayerColor records pixel edits only; workspace-commands-color.ts commitPixelEdit does not restore a baseline mask list. Native mask replacement commit now starts from current mask slots and installs only target surface, preserving current metadata/links and unrelated masks; Undo/Redo masks snapshot captures current metadata on both sides. Existing stale pixels/geometry/context/lock validation retained.",
       "activeMaskReplacement20261107": "Legacy workspace-commands-color.ts layer/selection use workspace-session.ts activePaintLayer (active mask first); tools-fill.ts replaceLayerColor compares exact source, document-model.ts normalizeLayerPackedValue converts maskPacked on write. Native beginColorReplacement accepts explicit active mask ID, uses existing AdjustmentPreview detached masks and normalizedMaskPixel, selection world coordinates, context/revision/lock checks. Commit uses existing before/after mask history plus mask context, preserving linked slots and owner resources. Other replacement scopes retain raster targets.",
       "maskAntiAlias20261107": "Legacy workspace-selection-effects-support.ts::selectedEffectTargets prioritizes selected mask slots then active mask, deduplicates root pixel owners, and workspace-commands-selection-anti-alias.ts rejects locked batches. tools-outline.ts samples the document composite per target frame; document-model.ts::normalizeLayerPackedValue writes maskPacked grayscale coverage. Native adapts existing detached AA worker to mask surfaces, normalizes each simulated write, preserves linked mask bindings, uses existing mask history/context, and exposes previews to canvas/isolated renderer. Snapshot budgets now include mask payloads. Tests cover ordinary/tile/free owner x isolated/normal x cancel/commit, exact coverage, unchanged owner/resources, Undo/Redo/reopen, linked dedup, alpha normalization, stale context and lock rejection. No manual UI acceptance or all-migration claim.",
       "antiAliasHistoryLabel20261107": "Legacy workspace-commands-selection-anti-alias.ts commits workspace.history.antiAlias; locales/zh-CN.ts labels it 自动抗锯齿 and native history_catalog.h already uses that label. Shared surface commit now accepts an internal operation label; AA and convolution retain distinct labels at pushEdit/notification time. Mixed document commit regressions assert both names. Mask target migration is still incomplete.",
@@ -12444,6 +12445,7 @@
     },
     {
       "file": "tests/document_raster_history_test.cpp",
+      "replacementMaskMetadata20261107": "Legacy replacement pixel edit must preserve nonpixel mask metadata. Fixture changes moveWithOwner/autoLinkAnimationCels without content revision during detached preview; commit, Undo and Redo must preserve those live values while replacing exact white pixels with normalized half-alpha black. Direct fixture isolates metadata drift from unrelated history operations.",
       "classification": "legacy-partial",
       "sources": [
         "legacy/src/renderer/src/core/document-model.ts",

@@ -1176,7 +1176,9 @@ bool Document::commitColorAdjustment(){
   const auto* live=adjustmentMask(timeline_,p.maskContext);const auto* before=adjustmentMask(p.baseline,p.maskContext);const auto* after=adjustmentMask(p.preview,p.maskContext);if(!live||!before||!after||adjustmentMaskLocked(timeline_,*live))return false;
   if(before->mask.surface.pixels==after->mask.surface.pixels){cancelColorAdjustment();return false;}
   if(!adjustmentSameGeometry(live->mask.surface,before->mask.surface)||live->mask.surface.pixels!=before->mask.surface.pixels){cancelColorAdjustment();return false;}
-  Edit edit{{},state_,nextState_};edit.beforeMasks=timeline_.state().masks;edit.afterMasks=p.preview.state().masks;edit.maskContext=std::make_shared<Edit::MaskContextHistory>(Edit::MaskContextHistory{activeMaskId_,activeMaskId_,maskIsolated_,maskIsolated_});history_.reserve(position_+1);timeline_.state_.masks=*edit.afterMasks;cancelColorAdjustment();change_={0,0,width_,height_};publishChange();pushEdit(std::move(edit),U"替换颜色");return true;
+  Edit edit{{},state_,nextState_};edit.beforeMasks=timeline_.state().masks;edit.afterMasks=*edit.beforeMasks;
+  for(auto& slot:*edit.afterMasks)if(slot.mask.id==p.maskContext)slot.mask.surface=after->mask.surface;
+  edit.maskContext=std::make_shared<Edit::MaskContextHistory>(Edit::MaskContextHistory{activeMaskId_,activeMaskId_,maskIsolated_,maskIsolated_});history_.reserve(position_+1);timeline_.state_.masks=*edit.afterMasks;cancelColorAdjustment();change_={0,0,width_,height_};publishChange();pushEdit(std::move(edit),U"替换颜色");return true;
  }
  if(p.contentRevision!=contentRevision_ || p.frameId!=frame().id || p.layerId!=layer().id || !selectionEqual(p.selection,selection_)){cancelColorAdjustment();return false;}
  const auto storageBytes=adjustmentStorageBudget(p.baseline,3);
