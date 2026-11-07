@@ -3335,3 +3335,9 @@ pending-tile-center-build.log正式Release及free/tile测试构建exit0，fixtur
 对照legacy document-model.ts::isLayerEffectivelyLocked的组蒙版所属组锁定与子图层继承锁定，workspace-selection-effects-support.ts不因蒙版所属类型改变目标选择。新增取消/提交×普通/隔离四组，同批选择组蒙版和组内图层蒙版，验证半透明黑精确归一化0xff7f7f7f、单历史、取消/Undo/Redo、保存重开、活动蒙版隔离上下文及子Cel像素保留。所属组锁定后两类蒙版入口均拒绝。既有产品实现通过，无产品修改；更深嵌套祖先组合尚未验证。
 
 测试构建exit0（group-mask-aa-build.log），完整free-tile-project-tests通过（group-mask-aa-test.log），来源检查通过（group-mask-aa-provenance.log），diff通过。未重新构建正式程序，未做人工UI验收，全量迁移仍INCOMPLETE。
+
+### 2026-11-07：颜色替换真实多选帧格目标
+
+核对legacy workspace-commands-color.ts::applyColorReplacementTarget枚举selectedAnimationCellKeys。原生cells范围此前只取右键上下文单个层/帧，忽略实际时间轴多选。改为收集timelineSelection.cels，范围启用也使用实际非空选择，清空选择后不回退陈旧上下文；核心替换、锁定过滤、共享源去重和历史不变。
+
+实际Editor对话框新增普通/链接两组，跨层跨帧选取不连续帧格，检查目标集合、独立预览、取消、单批提交、未选格不变、链接传播及Undo/Redo，空选择不使用旧上下文。正式构建exit0（replace-selected-cells-build.log），--workspace-check --named-workspace-only --replace-cell-selection-only退出0，来源检查通过（replace-selected-cells-provenance.log），diff通过。首次遗漏named-workspace-only参数导致目标测试后继续执行通用预览拖动检查并失败“Preview title/resize press did not acquire capture”；该通用问题未在本阶段修复，不用单项通过声称完整workspace通过。未做人工UI验收，全量迁移仍INCOMPLETE。
