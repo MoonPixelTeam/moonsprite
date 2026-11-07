@@ -3063,3 +3063,10 @@ mixed-free-linked-frame-build.log正式Release/两核心测试构建exit0；fixt
 核对legacy workspace-commands-selection-effects.ts::fillForeground、workspace-session.ts::activePaintLayer（activeLayerMask优先于getActiveLayer）及core/tools-fill.ts。原生fillSelectionOrCanvas此前先按文档含tilemap/free-tile拒绝，导致已有蒙版填充事务无法到达；现先路由活动蒙版，再保留普通像素填充的特殊图层保护。算法继续使用fillAttachedMaskSelection，不另造填充方案。
 
 新增tilemap/free-tile×整幅/局部mask四组合，核对逐像素灰度及选区覆盖、原图层像素/网格/实例不变、单历史、同色no-op、Undo/Redo和实际重开。special-mask-fill-build.log正式Release及两测试构建exit0；完整free-tile-project-tests、tilemap-project-tests exit0（special-mask-fill-free-test.log、special-mask-fill-grid-test.log）；正式工作区drawing-anchor-edit-floating组合exit0；来源625文件及diff通过，无人工UI验收。此为活动蒙版入口修复，不代表特殊层原图填充、所有蒙版工具及全量迁移完成。
+
+
+### 2026-11-07：特殊图层活动蒙版翻转旋转
+
+依据legacy workspace-session.ts::activePaintLayer及workspace-commands-selection-transform.ts::transformActiveSelection，选区变换使用活动蒙版栅格。原生flipContent在tilemap Paint及文档特殊类型判断后才处理蒙版，rotateContent也先拒绝特殊文档。调整顺序让活动蒙版优先，沿用transformMaskImmediate与已有浮动蒙版逻辑；原图层变换保护不变。
+
+新增tilemap/free-tile×水平/垂直/180度六组，Paint模式下与普通图层活动蒙版逐像素对照，检查原图层像素/网格/实例保留、单历史、Undo/Redo及保存重开。首次fixture无可见图层内容不能创建蒙版，补齐真实可见像素及非对称灰度后通过，未修改蒙版创建条件。special-mask-transform-build.log正式构建exit0、fixture-build日志exit0，完整free-tile-project-tests及tilemap-project-tests exit0（special-mask-transform-free-test.log、special-mask-transform-grid-test.log），正式工作区drawing-anchor-edit-floating组合exit0；来源625文件与diff通过。无人工UI验收，90度/任意角、其他浮动和剪贴板路径未由本批证明，全量迁移仍INCOMPLETE。
