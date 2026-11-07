@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <iostream>
 #include <stdexcept>
+#include "fixtures/palette_image_legacy.h"
 namespace {
 using Bytes=std::vector<std::uint8_t>;
 void require(bool ok,const char* message){if(!ok)throw std::runtime_error(message);}
@@ -16,6 +17,7 @@ Bytes png(unsigned w,unsigned h,unsigned type,unsigned depth,const Bytes& rows,c
 template<class F>void rejects(F f,const char* message){bool failed=false;try{f();}catch(const std::runtime_error&){failed=true;}require(failed,message);}
 }
 int main(){try{using namespace moon;
+ std::size_t oracleIndex=0;for(const auto& fixture:legacyImagePaletteFixtures){bool accepted=true;std::vector<Pixel> colors;try{colors=decodeImagePaletteColors(fixture.bytes,std::string("oracle.")+fixture.extension);}catch(const std::exception&){accepted=false;}if(accepted!=fixture.accepted||(accepted&&colors!=fixture.colors)){std::cerr<<"case "<<oracleIndex<<" accepted "<<accepted<<" expected "<<fixture.accepted<<"\n";for(auto c:colors)std::cerr<<std::hex<<c<<",";std::cerr<<"\nexpected ";for(auto c:fixture.colors)std::cerr<<std::hex<<c<<",";std::cerr<<"\n";throw std::runtime_error("Actual legacy image mismatch case "+std::to_string(oracleIndex));}++oracleIndex;}
  const auto source=png(2,2,6,8,{0,17,34,51,255,68,85,102,255,0,17,34,51,255,119,136,153,128});
  require(decodeImagePaletteColors(source,"missing/snapshot.png")==std::vector<Pixel>{0xff332211u,0xff665544u,0x80998877u},"Legacy PNG order/dedup/alpha");
  const auto imported=decodeImportedPalette(source,"missing/snapshot.png");require(imported.colors.size()==3&&imported.columns==3&&imported.slots.size()==3,"Image pipeline layout");
@@ -33,5 +35,7 @@ int main(){try{using namespace moon;
  Bytes rgba;std::vector<Pixel> expected;for(unsigned y=0;y<257;++y){rgba.push_back(0);for(unsigned x=0;x<257;++x){unsigned index=(y*257+x)%65536;Pixel color=(index&255)|((index>>8)<<8)|(17u<<16)|((index%3?255u:0u)<<24);rgba.insert(rgba.end(),{std::uint8_t(color),std::uint8_t(color>>8),std::uint8_t(color>>16),std::uint8_t(color>>24)});if(expected.size()<65536)expected.push_back(color);}}require(decodeImagePaletteColors(png(257,257,6,8,rgba),"limit.png")==expected,"65536 unique colors with repeated final row preserves RGBA order");rgba[3+(256*257+256)*4+256]=42;rejects([&]{decodeImagePaletteColors(png(257,257,6,8,rgba),"over-limit.png");},"65537th image color accepted");
  // Tall, low-color image exercises many streamed rows without a full RGBA copy.
  Bytes tall;for(unsigned y=0;y<8192;++y){tall.push_back(0);for(unsigned x=0;x<32;++x)tall.insert(tall.end(),{17,34,51,std::uint8_t(y%2?255:0)});}require(decodeImagePaletteColors(png(32,8192,6,8,tall),"tall.png")==std::vector<Pixel>{0x00332211,0xff332211},"streamed tall image alpha/order");
+ // Wide channels cross multiple bounded bands; values straddle legacy rounding boundaries.
+ Bytes tall16;for(unsigned y=0;y<1025;++y){tall16.push_back(0);for(unsigned x=0;x<17;++x)tall16.insert(tall16.end(),{0,128,1,129,128,0,std::uint8_t(y%2?255:0),std::uint8_t(y%2?255:0)});}require(decodeImagePaletteColors(png(17,1025,6,16,tall16),"tall16.jpg")==std::vector<Pixel>{0x00800100u,0xff800100u},"16bit streamed bands preserve legacy rounding/alpha/order");
  std::cout<<"Image palette fixtures passed\n";return 0;
  }catch(const std::exception& e){std::cerr<<e.what()<<'\n';return 1;}}

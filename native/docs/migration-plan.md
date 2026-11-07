@@ -3879,3 +3879,9 @@ palette-apply-index-build.log正式Release、工程与核心目标构建通过�
 接续cfc7375d，对照旧版json_imported_palette把PaletteDiskFile直接传给stored_palette_from_file／native_imported_palette的路径。原生此前解析DOM后Stringify→UTF8→UTF16→再次Parse／词法检查；现提取已有DOM语义解码为内部适配器，导入复用同一DOM，直接读取仍先执行原始字节词法准入；present继续处理null，无需修改DOM删除null。COM由入口管理，完整身份／颜色／布局校验共享，不跳过旧版失败分支。颜色数组按已知长度reserve；保存HEX使用固定9字符宽缓冲，移除每色字符串流与格式化分配，仍输出大写#RRGGBBAA。
 
 保留542真实serde及229文本矩阵，新增65536色／131072槽稀疏完整导入→直接读取→保存→目录重开，核对RGBA／透明RGB／列数／槽位／全部names（含emoji）和标准HEX。优化结论限于消除重复DOM／文本生成及逐色流对象，不外推整体UI帧率。验证：palette-json-single-dom-final-build.log唯一正式Release及库／导入目标构建退出0；palette-json-single-dom-tests.log含大色板全路径与542／229对照退出0，palette-json-single-dom-library-tests.log实际文件矩阵退出0；正式--palette-import-check及--palette-library-check退出0。来源634文件覆盖通过，strict因既有缺口退出1，diff通过。未测量进程内存峰值／整体帧率或人工系统选择器验收，全量迁移仍INCOMPLETE。
+
+### PNG／GIF图片色板真实旧版解码对照（2026-11-08）
+
+接续2e4ec283，新增独立Cargo执行原始ordered_image_colors／png_imported_colors／image_imported_colors，使用旧版png0.18.1及image0.25.10和既有离线源。113组实际结果覆盖PNG颜色类型／位深在严格.png与通用猜测路径的差异、五种滤波、RGB tRNS／索引alpha，GIF首帧偏移／裁剪／局部色表／透明RGB，代表文件截断及IDAT后chunk／CRC边界。保留既有JPEG／ICO／WebP与大图／色数测试。
+
+case19发现通用16位PNG的WIC8位转换与旧image取整差1：对16Gray／48RGB／64RGBA先转64RGBA，再显式执行旧版FromPrimitive<u16>的(c+128)/257。严格.png的16位拒绝保持。新增尾部矩阵发现png::next_frame会读取完整IDAT及CRC与后续8字节chunk头，但不读取后续体／CRC；现strictPng按此边界校验，不要求完整IEND，也不笼统接受任意截断。113对照已通过，不外推所有codec等价或整个领域完成。16位路径同样采用约64KiB（至少一整行）的批次，避免完整RGBA分配及逐行COM调用；另增17×1025的16位跨批次回归，覆盖取整边界／alpha／顺序。验证：palette-image-compat-final-build.log正式Release及图片／导入目标构建退出0；palette-image-compat-band-build.log跨批次测试重建退出0；首次新增用例手写预期将385/257误算为2，修正为1后，palette-image-compat-final-tests.log图片对照及既有格式／大图用例、palette-image-compat-final-import-tests.log完整导入测试均退出0；正式--palette-import-check退出0。fixture重复生成SHA256一致，来源636文件覆盖通过，strict按既有缺口退出1，diff通过。未进行人工界面验收或整体帧率／峰值内存测量，也未宣称所有codec行为等价，全量迁移仍INCOMPLETE。
