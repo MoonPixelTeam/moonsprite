@@ -2393,6 +2393,7 @@ std::vector<std::string> hiddenStoredPalettes_;
 std::vector<StoredPalette> storedPalettes_;
 std::vector<PixelButton*> storedPaletteRows_;
 std::vector<std::vector<PixelButton*>> storedPaletteSwatches_;
+std::vector<std::vector<Pixel>> storedPalettePreviews_;
 PixelScrollBar* storedPaletteScroll_=nullptr;
 std::vector<PixelButton*> storedPaletteActions_;
 PixelButton *paletteSaveNew_=nullptr,*paletteSaveCurrent_=nullptr;

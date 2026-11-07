@@ -3825,3 +3825,9 @@ palette-apply-index-build.log正式Release、工程与核心目标构建通过�
 原正式extraction-names自动检查新增三模式×初始颜色相同／不同六组真实临时库文件对照，覆盖无操作create、Save Current显示、Undo/Redo、失败和取消；复用原生现有弹窗组件，未改布局。没有据此关闭颜色板真实ID0／索引色等缺口，全量迁移仍INCOMPLETE。
 
 验证：extraction-identity-build.log唯一正式Release构建退出0；正式--extraction-names-check（含新增身份矩阵）、--append-extraction-count-check、--palette-library-check、--palette-clipboard-check均退出0。来源627文件覆盖通过，strict因既有迁移缺口退出1，diff通过。未修改核心提取算法，本批未重跑无关全量核心矩阵；没有人工图像／真实剪贴板跨进程验收。全量迁移仍INCOMPLETE。
+
+### 色板库可见色块控件（2026-11-08）
+
+接续1954d633，对照实际PalettePanel.tsx库预览：空槽只在紧凑预览略去，颜色顺序、重复和透明RGB保留，点击应用完整StoredPalette。原生此前为全部库色块创建PixelButton，布局时遍历全部控件隐藏离屏内容；现单独保留完整预览数据，仅为视口行创建并复用控件，完整数据仍决定滚动高度、布局与应用。保存启用检查和匹配身份时也避免反复生成当前色板颜色。既有布局、命中裁剪和右键删除入口不变。
+
+对照Aseprite app/ui/palette_view.cpp的adapter单控件绘制架构，确认无需每个颜色对应子控件；其绘制循环仍遍历条目，不能声称Aseprite已实现本批可见范围算法。本批未复制其代码。正式现有palette-library检查增加4096颜色／8192稀疏槽、两种宽度各四个滚动位置，与完整布局独立比较可见颜色和矩形，检查控件数量受视口约束、完整应用及撤销重做、刷新与关闭。验证：palette-preview-build.log正式Release及色板库／导入目标构建退出0；正式--palette-library-check、--palette-import-check、--extraction-names-check均退出0，palette-preview-library-tests.log与palette-preview-import-tests.log核心测试退出0。4096色／8192槽、两宽度八滚动组合的整个库色块控件峰值1856，可见颜色／矩形与完整布局一致，完整应用及Undo/Redo通过。来源627文件覆盖通过，strict因既有缺口退出1，diff通过。未进行人工图像或交互帧率验收，不将控件数减少等同于全软件卡顿已解决。全量迁移仍INCOMPLETE。
