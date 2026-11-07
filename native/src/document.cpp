@@ -928,9 +928,9 @@ bool Document::applyFilterPreset(FilterPreset preset,std::optional<double> opaci
 
 bool Document::applyLcdScreenFilter(int width,int height){if(!beginFilterPreview())return false;try{auto task=captureFilterPreviewTask(FilterPreset::CrtSubtle,{},true,width,height);if(!task||!runFilterPreviewTask(*task,{})){cancelFilterPreview();return false;}return commitFilterPreviewTask(std::move(*task));}catch(...){cancelFilterPreview();throw;}}
 
-bool Document::beginColorAdjustment(const std::vector<std::string>& layers){if(hasTilemapContent()||hasFreeTileContent())return false;
+bool Document::beginColorAdjustment(const std::vector<std::string>& layers){
  commitFloatingPaste();cancelStroke();auto ids=selection_ || layers.empty()?std::vector<std::string>{layer().id}:layers;std::vector<std::string> targets;
- for(const auto& id:ids){const auto it=std::find_if(timeline_.state().layers.begin(),timeline_.state().layers.end(),[&](const auto& l){return l.id==id;});if(it==timeline_.state().layers.end() || it->kind=="adjustment" || layerEffectivelyLocked(*it))continue;const auto* c=timeline_.findCel(id,frame().id);if(!c)continue;const auto resolved=timeline_.resolveSurface(c->id);if(!resolved.source || !resolved.surface)continue;if(std::find(targets.begin(),targets.end(),resolved.source->id)==targets.end())targets.push_back(resolved.source->id);}
+ for(const auto& id:ids){const auto it=std::find_if(timeline_.state().layers.begin(),timeline_.state().layers.end(),[&](const auto& l){return l.id==id;});if(it==timeline_.state().layers.end() || !it->kind.empty() || layerEffectivelyLocked(*it))continue;const auto* c=timeline_.findCel(id,frame().id);if(!c)continue;const auto resolved=timeline_.resolveSurface(c->id);if(!resolved.source || !resolved.surface)continue;if(std::find(targets.begin(),targets.end(),resolved.source->id)==targets.end())targets.push_back(resolved.source->id);}
  if(targets.empty())return false;adjustmentStorageBudget(timeline_,3);adjustment_=AdjustmentPreview{timeline_,timeline_,std::move(targets),selection_,layer().id,frame().id,contentRevision_};++gradientRevision_;return true;
 }
 bool Document::beginColorReplacement(const std::vector<std::string>& celIds,bool clipSelection){if(hasTilemapContent()||hasFreeTileContent())return false;if(!activeMaskId_.empty())return false;

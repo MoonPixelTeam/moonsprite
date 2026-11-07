@@ -3249,3 +3249,9 @@ pending-tile-center-build.log正式Release及free/tile测试构建exit0，fixtur
 依据legacy workspace-commands-selection-move.ts::moveActiveSelectionWithSelectionHistory的普通目标捕获和键盘边界限制，将已有mixed-free普通首次/pending移动路径扩展到混合tilemap文档；继续复用目标捕获校验与共同浮动事务，特殊活动类型仍走已有适配器。
 
 原四组扩展为free/tile×首次/复制pending×取消/提交八组，检查两端边界no-op、整帧特殊捕获拒绝、精确移动/复制像素、单历史、Undo/Redo、实际保存重开与特殊Cel像素/实例/网格及资源保留。正式Release及free/tile测试构建exit0（mixed-tile-raster-nudge-build.log）；完整free/tile测试exit0（mixed-tile-raster-nudge-free-test.log、mixed-tile-raster-nudge-grid-test.log）；正式工作区drawing-anchor-edit-floating组合exit0；来源检查通过（mixed-tile-raster-nudge-provenance.log），diff通过。未做人工UI验收，全量迁移仍INCOMPLETE。
+
+### 2026-11-07：混合瓦片文档普通图层颜色调整
+
+依据legacy workspace-commands-layer-adjustment.ts::applyActiveLayerAdjustment的普通目标范围：有选区使用活动层，无选区按选择层，跳过kind特殊层和锁定层。原生移除整篇特殊内容保护，并在预览捕获时跳过所有特殊类型，避免写入派生缓存；继续复用共同调整预览/提交事务。本阶段不扩展特殊源、蒙版或全量调整类型行为验收。
+
+新增free/tile×取消/提交×有/无选区八组，使用已有color_adjustment_test的legacy亮度20/对比度10精确RGBA预期，检查选区外保留、无预览历史/单提交、Undo/Redo、实际保存重开、仅特殊目标拒绝及全部特殊Cel像素/实例/网格/源资源保留。正式Release及free/tile测试构建exit0（mixed-raster-adjustment-build.log）；完整free/tile测试exit0（mixed-raster-adjustment-free-test.log、mixed-raster-adjustment-grid-test.log）；正式工作区drawing-anchor-edit-floating组合exit0；来源检查通过（mixed-raster-adjustment-provenance.log），diff通过。未做人工UI验收，全量迁移仍INCOMPLETE。
