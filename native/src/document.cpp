@@ -2029,7 +2029,7 @@ bool Document::centerActiveContent(bool horizontal,bool vertical){
   const auto dy=vertical?std::int64_t(std::floor(height_/2.0-(bounds.y+bounds.height/2.0)+.5)):0;if(!dx&&!dy)return false;
   auto transform=floating_->transform;transform.x+=dx;transform.y+=dy;if(transform.flipOriginX)*transform.flipOriginX+=dx;if(transform.flipOriginY)*transform.flipOriginY+=dy;if(transform.quad)for(auto& p:*transform.quad){p.x+=dx;p.y+=dy;}transformFloatingPaste(transform,floating_->rotSprite);return true;
  }
- if(activeMaskId_.empty()&&(hasTilemapContent()||hasFreeTileContent()))return false;
+ if(activeMaskId_.empty()&&!layer().kind.empty()&&(hasTilemapContent()||hasFreeTileContent()))return false;
  if(!activeMaskId_.empty()){
   if(!maskBrushAvailable())return false;const auto beforeSelection=selection_;auto bounds=selection_;const auto& surface=mutableActiveMask()->surface;
   if(!bounds){int l=surface.width,t=surface.height,r=-1,b=-1;for(int y=0;y<surface.height;++y)for(int x=0;x<surface.width;++x)if(surface.pixels[std::size_t(y)*surface.width+x]>>24){l=std::min(l,x);t=std::min(t,y);r=std::max(r,x);b=std::max(b,y);}if(r<l)return false;bounds=SelectionMask{raster::coordinate(std::int64_t(surface.offsetX)+l),raster::coordinate(std::int64_t(surface.offsetY)+t),r-l+1,b-t+1,{}};}
