@@ -98,9 +98,29 @@ static ReadManifest readManifestWithClock(std::shared_ptr<const Bytes> bytes,Lim
     ReadManifest out;out.manifestUtf8.assign(json.begin(),json.end());out.sourceArchive=std::move(bytes);
     if(str(root,"app")!="MoonSprite") bad("app");
     out.schemaVersion=integer(root,"schemaVersion",0,1,true);
-    if(out.schemaVersion!=21) throw Error(ErrorKind::Unsupported,"Only project schema 21 is supported by the native manifest reader");
+    if(out.schemaVersion<14||out.schemaVersion>21) throw Error(ErrorKind::Unsupported,"Native manifest migration supports project schemas 14 through 21");
     auto doc=object(root,"document");
     if(integer(doc,"schemaVersion",0,1,true)!=out.schemaVersion) bad("document schemaVersion mismatch");
+    // project-format-manifest.ts migration gates for the free-tile era.
+    // Keep source version for atlas decoding; preserved JSON is normalized so
+    // saving an imported archive cannot restore obsolete version metadata.
+    const auto sourceVersion=out.schemaVersion;
+    if(sourceVersion<21){
+      for(const auto& item:array(doc,"layers")){
+        auto layer=itemObject(item,"layer");
+        if(sourceVersion<17)layer.Remove(L"linkedContentId");
+        if(str(layer,"kind",false)=="free-tile"){
+          if(sourceVersion<15)layer.Remove(L"freeTileSources");else layer.Remove(L"freeTileTilesetId");
+          if(sourceVersion<18)layer.Insert(L"freeTileSetId",JsonValue::CreateStringValue(winrt::to_hstring("import-free-set-"+str(layer,"id"))));
+        }
+      }
+      auto animation=object(doc,"animation");
+      if(sourceVersion<16)animation.Insert(L"loopSections",JsonArray());
+      doc.Insert(L"referenceImages",JsonArray());doc.Insert(L"canvasReferences",JsonArray());
+      if(sourceVersion<20){auto timelapse=value(doc,"timelapse");if(timelapse&&timelapse.ValueType()==JsonValueType::Object){auto snapshots=value(timelapse.GetObject(),"snapshots");if(snapshots&&snapshots.ValueType()==JsonValueType::Array)for(const auto& snapshot:snapshots.GetArray())if(snapshot.ValueType()==JsonValueType::Object)snapshot.GetObject().Remove(L"local");}}
+      root.Insert(L"schemaVersion",JsonValue::CreateNumberValue(21));doc.Insert(L"schemaVersion",JsonValue::CreateNumberValue(21));
+      out.manifestUtf8=winrt::to_string(root.Stringify());out.schemaVersion=21;
+    }
     out.id=str(doc,"id");out.name=str(doc,"name",false);out.width=integer(doc,"width",0,1,true);out.height=integer(doc,"height",0,1,true);
     out.colorMode=str(doc,"colorMode");out.activeLayerId=str(doc,"activeLayerId");
     auto date=[&](const char* name){auto v=value(doc,name);return v&&v.ValueType()==JsonValueType::String&&!v.GetString().empty()?winrt::to_string(v.GetString()):clock();};out.information.createdAt=date("createdAt");out.information.updatedAt=date("updatedAt");
@@ -177,7 +197,7 @@ static ReadManifest readManifestWithClock(std::shared_ptr<const Bytes> bytes,Lim
       if(!layer.kind.empty()&&layer.kind!="text"&&layer.kind!="tilemap"&&layer.kind!="adjustment"&&layer.kind!="free-tile") out.unsupported.emplace_back("layer kind="+layer.kind);
       if(!parseLayerBlendMode(layer.blendMode)) out.unsupported.emplace_back("blendMode="+layer.blendMode);
 
-      if(layer.kind=="free-tile")layer.freeTiles=freejson::decodeLayer(o,layer.id,true);
+      if(layer.kind=="free-tile")layer.freeTiles=freejson::decodeLayer(o,layer.id,sourceVersion>=15);
       layer.clippingMask=boolean(o,"clippingMask",false);
       if(layer.kind=="adjustment"){
        const auto adjustment=textjson::object(o,L"adjustment"),styles=textjson::object(o,L"layerStyles");

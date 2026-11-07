@@ -3501,3 +3501,10 @@ legacy workspace-commands-color.ts::applyColorReplacementTarget的collect先跳�
 追踪legacy free-tile-document.ts::migrateLegacyFreeTileLayer／ensureFreeTileTilesetOwnership，旧版decode/encode均先把历史图集拆为单源纹理并重映射实例。原生补在Document::fromImported候选边界：转换全部图集瓦片（包括当前未引用者），共享集合只转换一次，按旧版图层名＋序号命名，保留所有帧实例变换、自定义载荷及缓存；仅移除无引用旧图集，不产生编辑历史。由此正式文档具备schema21所需现代源元数据，旧式目标进入后续编辑前也会统一升级。
 
 历史帧／Cel剪贴板测试现在先实际保存重开已导入文档，另增双瓦片／共享双层多帧案例检查完整源数量、原像素、旋转／翻转、canonical引用、editable/recovery重开及无历史。多瓦片测试捕获同一表达式移出data后读取setId的缓存键不稳定，改为先固定collectionKey再移动，修复共享集合重复资源。最终正式与测试构建通过（historical-upgrade-verified-build.log），完整free-tile-project-tests通过（historical-upgrade-final-tests.log），正式--cel-clipboard-check退出0；来源覆盖通过（historical-upgrade-provenance.log），diff通过。当前证据为中性历史模型导入后现代保存／恢复，不代表真实各历史schema归档样本全覆盖；原始旧归档版本字段升级仍需针对实际档案检查。无人工视觉验收，全量INCOMPLETE。
+
+
+### 2026-11-07：自由瓦片历史归档 schema14–20 入口迁移
+
+对照 legacy project-format-manifest.ts、manifest-types.ts、timelapse-migration.ts，原生读取入口从仅21扩至14–21，按来源版本处理旧图集／现代源、18前独立集合、17前图层链接、16前循环区段、21前参考图、20前录像快照local字段；保存所用manifest同步升级root与document为21。prepareEditableImport按旧版decode拒绝缺失、与网格共享、多个旧自由层重复占用的历史图集。1–13仍明确不支持，不宣称全部历史格式兼容。
+
+新增真实ZIP版本14–20矩阵，覆盖打开、源规范化、完整实例、源像素一致、editable/recovery重开、当前版本声明、后续属性编辑Undo/Redo，以及14缺失／重复图集拒绝。测试样本裁剪修正活动层与已移除owner的孤立栅格，保持归档准入严格校验。正式构建通过（historical-archive-build.log），完整free-tile-project-tests通过（historical-archive-tests.log），正式--cel-clipboard-check退出0；来源覆盖通过（historical-archive-provenance.log），diff通过。测试WinRT apartment退出需clear_factory_cache，补齐后全套通过。人工旧工程UI验收尚未进行，整体迁移INCOMPLETE。

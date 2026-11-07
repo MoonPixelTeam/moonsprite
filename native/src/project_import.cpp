@@ -87,6 +87,12 @@ PreparedImport prepareEditableImport(const ReadManifest& m) {
  std::map<std::string,std::string> sourceOwners,sheetOwners;
  std::map<std::string,tiles::Tileset*> freeSheets;for(auto& set:state.tilesets)freeSheets.emplace(set.id,&set);
  std::map<std::string,std::vector<timeline::Cel*>> freeCels;for(auto& cel:state.cels)if(cel.freeTiles)freeCels[cel.layerId].push_back(&cel);
+ // Legacy schema14 atlases have exclusive ownership, including empty cels.
+ std::set<std::string> legacyClaims;
+ for(const auto& layer:state.layers)if(layer.kind=="free-tile"&&layer.freeTiles&&layer.freeTiles->sources.empty()){
+  const auto& id=layer.freeTiles->legacyTilesetId;
+  corrupt(id.empty()||!freeSheets.count(id)||gridClaims.count(id)||!legacyClaims.insert(id).second,"Invalid legacy free tile atlas ownership");
+ }
  for(const auto& layer:state.layers)if(layer.kind=="free-tile"&&layer.freeTiles&&!layer.freeTiles->sources.empty()){
   const auto& data=*layer.freeTiles;const auto setName=unicode(data.setId);corrupt(setName.empty()||(setName.front()<=0xffff&&legacyjson::numberSpace(wchar_t(setName.front())))||(setName.back()<=0xffff&&legacyjson::numberSpace(wchar_t(setName.back()))),"Invalid free tile source set ID");
   std::set<std::string> localSources,localSheets;
