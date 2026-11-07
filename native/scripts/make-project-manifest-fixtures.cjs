@@ -310,6 +310,46 @@ registerHooks({
  }
  fs.writeFileSync(path.join(out,'palette-paste-targets-oracle.json'),JSON.stringify(pasteTargetOracle));console.log(`Palette paste targets: ${pasteTargetOracle.length} actual legacy session/Undo/Redo cases`);
 
+ // Preserve raw runtime state (sort may retain duplicate slots until the
+ // next command); archives alone normalize those slots and hide this edge.
+ const rawPaletteOracle=[];
+ const rawOrders=[[1,1,2],[2,2,1],[999,1,2],[1,999,1,2],[-1,1,2],[0,1,2],[999,999],[2,1,2],[3,1,2,1,3],[999,3,2,1,-1,3,0],[],[2147483647,1,2]];
+ const rawOps=['update','rename','reverse','reverse-selected','sort','delete','delete-ghost','move','add','paste','paste-noop','paste-new','gradient','gradient-hue','gradient-new','apply','apply-noop','apply-new','extract','extract-append'];
+ for(let layout=0;layout<rawOrders.length;++layout)for(const columns of [1,3,256])for(const sortedFirst of [false,true])for(const operation of rawOps){
+  const source=createDocument('raw palette',2,2,'rgba');source.palette=[{id:1,name:'one',color:{r:200,g:10,b:20,a:255}},{id:2,name:'two',color:{r:10,g:200,b:30,a:255}},{id:3,name:'three',color:{r:30,g:20,b:200,a:128}},{id:4,name:'hidden',color:{r:90,g:80,b:70,a:255}}];source.nextColorId=5;source.paletteColumns=columns;source.paletteOrder=rawOrders[layout];source.paletteSlots=[2,null,1,3,null,null,null];
+  const d=decodeProject(encodeProject(source,{includePreview:false})),history=[],session={document:d,history:{push:e=>history.push(e)},selectedPaletteIds:[],paletteSelectionId:null,primaryColor:{r:41,g:121,b:255,a:255},secondaryColor:{r:255,g:255,b:255,a:255}};
+  const base=`palette-raw-${rawPaletteOracle.length}`,packed=c=>(c.r|(c.g<<8)|(c.b<<16)|(c.a<<24))>>>0;
+  const state=()=>({entries:d.palette.map(e=>({id:e.id,name:e.name,color:packed(e.color)})),order:[...d.paletteOrder],slots:[...d.paletteSlots],columns:d.paletteColumns,next:d.nextColorId,selected:[...session.selectedPaletteIds],primaryId:session.paletteSelectionId,primary:packed(session.primaryColor)});
+  const row={base,layout,columns,sortedFirst,operation,states:{}};
+  const save=side=>{row.states[side]=state();fs.writeFileSync(path.join(out,`${base}-${side}.moonsprite`),encodeProject(d,{includePreview:false}));};
+  save('import');if(sortedFirst)paletteCommands.sortPaletteColors(session,'red','ascending');history.length=0;
+  const slots=[...d.paletteSlots],first=slots.findIndex(id=>id!==null),last=slots.findLastIndex(id=>id!==null),color={r:20,g:40,b:60,a:255};
+  if(operation==='reverse-selected'){paletteCommands.selectPaletteColors(session,[1,3],3);}
+  save('before');
+  switch(operation){
+   case 'update':paletteCommands.updatePaletteColor(session,1,color);break;
+   case 'rename':paletteCommands.renamePaletteColor(session,1,' renamed ');break;
+   case 'reverse':case 'reverse-selected':paletteCommands.reversePaletteColors(session);break;
+   case 'sort':paletteCommands.sortPaletteColors(session,'red','ascending');break;
+   case 'delete':paletteCommands.deletePaletteColors(session,[1]);break;
+   case 'delete-ghost':paletteCommands.deletePaletteColors(session,[999]);break;
+   case 'move':if(first>=0){const id=slots[first];paletteCommands.reorderPaletteColors(session,[id],repositionPaletteSlots(slots,[id],slots.length+1,id,columns),columns);}break;
+   case 'add':paletteCommands.addPaletteColor(session,color);break;
+   case 'paste':paletteCommands.pastePaletteColors(session,[color,d.palette[3].color],{slots,columns,indices:[0,0,2]});break;
+   case 'paste-new':paletteCommands.pastePaletteColors(session,[color],{slots,columns,indices:[slots.length+1]});break;
+   case 'paste-noop':if(first>=0)paletteCommands.pastePaletteColors(session,[d.palette.find(e=>e.id===slots[first]).color],{slots,columns,indices:[first]});break;
+   case 'gradient':case 'gradient-hue':case 'gradient-new':paletteCommands.gradientPaletteSlots(session,operation==='gradient-new'?[0,2,slots.length+1]:[0,2],slots,columns,operation==='gradient-hue');break;
+   case 'apply':paletteCommands.applyPalette(session,[d.palette[2].color,d.palette[0].color],{columns,slots:[null,0,1]},['THREE','ONE']);break;
+   case 'apply-new':paletteCommands.applyPalette(session,[color]);break;
+   case 'apply-noop':{const visible=d.palette.filter(e=>d.paletteOrder.includes(e.id));paletteCommands.applyPalette(session,visible.map(e=>e.color),{columns,slots:slots.map(id=>id===null?null:visible.findIndex(e=>e.id===id))});break;}
+   case 'extract':paletteCommands.applyPalette(session,[d.palette[2].color,d.palette[0].color]);break;
+   case 'extract-append':paletteCommands.applyPalette(session,mergePaletteColors(d.paletteOrder.flatMap(id=>{const e=d.palette.find(e=>e.id===id);return e?[e.color]:[];}),[d.palette[3].color]));break;
+
+  }
+  if(history.length>1)throw Error('Raw palette command split transaction');row.history=history.length;save('after');if(history.length)history[0].undo();save('undo');if(history.length)history[0].redo();save('redo');rawPaletteOracle.push(row);
+ }
+ fs.writeFileSync(path.join(out,'palette-raw-oracle.json'),JSON.stringify(rawPaletteOracle));console.log(`Raw palette: ${rawPaletteOracle.length} actual legacy runtime/Undo/Redo matrices`);
+
  // decodeProject retains raw safe-integer order, defaults nonarray palettes
  // to [], and evaluates Math.max(1, source.nextColorId ?? 1). Do not invent
  // palette-entry repair or collision avoidance absent from the real legacy.
@@ -326,13 +366,13 @@ registerHooks({
   const m=structuredClone(manifest),r={...files};mutate(m.document);r['manifest.json']=strToU8(JSON.stringify(m));const bytes=zipSync(r),d=decodeProject(bytes),base=`palette-decode-${label}`;
   fs.writeFileSync(path.join(out,`${base}.moonsprite`),bytes);fs.writeFileSync(path.join(out,`${base}-canonical.moonsprite`),encodeProject(d,{includePreview:false}));
   const readable=Number.isInteger(d.nextColorId)&&d.nextColorId>=1&&d.nextColorId<=2147483647&&d.paletteOrder.every(id=>id>=-2147483648&&id<=2147483647);
-  const ids=new Set(d.palette.map(e=>e.id)),editable=readable&&d.palette.every(e=>e.id<d.nextColorId)&&d.paletteOrder.every(id=>ids.has(id))&&new Set(d.paletteOrder).size===d.paletteOrder.length;
-  const row={base,readable,editable,next:String(d.nextColorId),order:d.paletteOrder,slots:d.paletteSlots,columns:d.paletteColumns,operations:[]};
+  const ids=new Set(d.palette.map(e=>e.id)),editable=readable&&d.palette.every(e=>e.id<d.nextColorId);
+  const row={base,readable,editable,next:String(d.nextColorId),order:d.paletteOrder,slots:d.paletteSlots,columns:d.paletteColumns,operations:[],runtimeSlots:{}};
   // Actual commands with actual callback Undo/Redo. Keep cursor-limit tests
   // separate: legacy has a wider numeric ID space than native int entries.
   if(editable&&d.nextColorId<2147483646)for(const operation of ['add','paste','gradient','apply','extract']){
    const current=decodeProject(bytes),history=[],session={document:current,history:{push:e=>history.push(e)},selectedPaletteIds:[],paletteSelectionId:null,primaryColor:{r:41,g:121,b:255,a:255},secondaryColor:{r:255,g:255,b:255,a:255}},color={r:20,g:40,b:60,a:255};
-   const save=side=>fs.writeFileSync(path.join(out,`${base}-${operation}-${side}.moonsprite`),encodeProject(current,{includePreview:false}));
+   const save=side=>{(row.runtimeSlots[operation]??={})[side]=[...current.paletteSlots];fs.writeFileSync(path.join(out,`${base}-${operation}-${side}.moonsprite`),encodeProject(current,{includePreview:false}));};
    save('before');if(operation==='add')paletteCommands.addPaletteColor(session,color);
    else if(operation==='paste')paletteCommands.pastePaletteColors(session,[color],{slots:[...current.paletteSlots],columns:current.paletteColumns,indices:[0]});
    else if(operation==='gradient')paletteCommands.gradientPaletteSlots(session,[0,2],[...current.paletteSlots],current.paletteColumns,false);

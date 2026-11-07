@@ -105,7 +105,7 @@ void Editor::beginPaletteGrowth(const ui::MouseMessage& mouse){
 
     if(paletteManual_||!mouse.left()||pending_!=Pending::None||eyedropperTool_||eyedropperHeld_||mouse.altPressed()||paletteGesture_||paletteGrowth_)return;
 
-    paletteFocused_=true;requestFocus();document.clearPaletteSelection();paletteBoxRange_.reset();paletteFocusedSlot_.reset();const auto base=document.palette().order();paletteGrowth_=PaletteGrowthGesture{document.identity(),base,paletteGrowthPreview(base,paletteColumns_,base.size())};captureMouse();updateNavigationCursor();refresh();
+    paletteFocused_=true;requestFocus();document.clearPaletteSelection();paletteBoxRange_.reset();paletteFocusedSlot_.reset();const auto base=paletteViewSlots();paletteGrowth_=PaletteGrowthGesture{document.identity(),base,paletteGrowthPreview(base,paletteColumns_,base.size())};captureMouse();updateNavigationCursor();refresh();
 
   }
 
@@ -437,7 +437,7 @@ bool Editor::applyPaletteExtraction(){
 
       const auto composite=compositeNormalRegion(document.timeline(),document.frame().id,{0,0,document.width(),document.height()});const auto colors=extractPaletteScanline(composite,extractLimit_);if(colors.empty())throw std::runtime_error("当前图像没有非透明颜色");
 
-      if(extractMode_==0)paletteSaveName_=extractionName();const auto beforeVisible=document.palette().order().size();document.applyExtractedPalette(colors,extractMode_==2,paletteColumns_);paletteScrollPixels_=0;status_=extractMode_==0?U"已创建临时调色板："+extractionName():extractMode_==1?U"已替换调色板":U"已追加提取颜色："+unicodeText(std::to_string(document.palette().order().size()-beforeVisible));return true;
+      if(extractMode_==0)paletteSaveName_=extractionName();const auto beforeVisible=paletteSaveColors().size();document.applyExtractedPalette(colors,extractMode_==2,paletteColumns_);paletteScrollPixels_=0;status_=extractMode_==0?U"已创建临时调色板："+extractionName():extractMode_==1?U"已替换调色板":U"已追加提取颜色："+unicodeText(std::to_string(paletteSaveColors().size()-beforeVisible));return true;
 
     }catch(const std::exception& e){status_=U"提取失败："+unicodeText(e.what());invalidate();return false;}
 
@@ -557,7 +557,7 @@ void Editor::refreshStoredPalettes(){try{auto palettes=paletteLibraryStore().lis
 
 void Editor::importStoredPalette(){wchar_t filename[32768]{};OPENFILENAMEW picker{};picker.lStructSize=sizeof(picker);picker.hwndOwner=GetActiveWindow();picker.lpstrFile=filename;picker.nMaxFile=32768;picker.lpstrFilter=L"支持的色板\0*.json;*.gpl;*.txt;*.hex;*.csv;*.act;*.pal;*.ase;*.aco;*.png;*.jpg;*.jpeg;*.webp;*.bmp;*.gif;*.ico\0MoonSprite JSON\0*.palette.json\0\0";picker.Flags=OFN_EXPLORER|OFN_FILEMUSTEXIST|OFN_NOCHANGEDIR;if(!choosePaletteImportFile_(&picker))return;try{auto saved=paletteLibraryStore().importFile(filename);activeStoredPalette_=saved.id;refreshStoredPalettes();applyStoredPalette(saved);}catch(const std::exception& e){status_=U"色板导入失败："+storedPaletteError(e);refresh();}}
 
-bool Editor::saveStoredPalette(bool current){try{StoredPalette p;const auto name=javascriptTrim(unicodeText(paletteInput_->text()));p.name=utf8Text(name.empty()?extractionDefaultName():std::u32string(name));const auto& state=document.palette();p.columns=state.columns;p.names.emplace();auto ids=state.order();for(int id:ids){auto e=document.paletteEntry(id);p.colors.push_back(e->color);p.names->push_back(utf8Text(e->name));}for(int id:state.slots){auto it=std::find(ids.begin(),ids.end(),id);p.slots.push_back(id&&it!=ids.end()?std::optional<std::size_t>(std::size_t(it-ids.begin())):std::nullopt);}auto saved=paletteLibraryStore().save(std::move(p),current?activeStoredPalette_:std::string());activeStoredPalette_=saved.id;paletteSaveName_=unicodeText(saved.name);persistStoredPalettePreferences();status_=U"色板已保存："+unicodeText(saved.name);return true;}catch(const std::exception& e){status_=U"色板保存失败："+storedPaletteError(e);invalidate();return false;}}
+bool Editor::saveStoredPalette(bool current){try{StoredPalette p;const auto name=javascriptTrim(unicodeText(paletteInput_->text()));p.name=utf8Text(name.empty()?extractionDefaultName():std::u32string(name));const auto& state=document.palette();p.columns=state.columns;p.names.emplace();auto ids=visiblePaletteOrder(state.entries,state.order());for(int id:ids){auto e=document.paletteEntry(id);p.colors.push_back(e->color);p.names->push_back(utf8Text(e->name));}std::unordered_map<int,std::size_t> index;for(std::size_t i=0;i<ids.size();++i)index[ids[i]]=i;for(int id:normalizePaletteSlots(state.entries,state.order(),state.slots,state.columns)){auto it=index.find(id);p.slots.push_back(id&&it!=index.end()?std::optional<std::size_t>(it->second):std::nullopt);}auto saved=paletteLibraryStore().save(std::move(p),current?activeStoredPalette_:std::string());activeStoredPalette_=saved.id;paletteSaveName_=unicodeText(saved.name);persistStoredPalettePreferences();status_=U"色板已保存："+unicodeText(saved.name);return true;}catch(const std::exception& e){status_=U"色板保存失败："+storedPaletteError(e);invalidate();return false;}}
 
 void Editor::openStoredPaletteLibrary(){if(pending_!=Pending::None)return;pending_=Pending::PaletteLibrary;menuBar_->setEnabled(false);discard_->setVisible(false);keep_->caption=U"关闭";keep_->setVisible(true);dialogClose_->setVisible(true);refreshStoredPalettes();}
 

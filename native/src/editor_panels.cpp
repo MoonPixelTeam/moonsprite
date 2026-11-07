@@ -988,13 +988,14 @@ void Editor::layoutPalette(int only) {
 
     int columns=std::max(1,(area.w-padding*2-1)/step);
 
-    if(paletteManual_){const auto fit=fitPaletteSlotsToGrid(document.palette().slots,document.palette().columns,columns);columns=fit.columns;count=int(fit.slots.size());while(count>columns&&!fit.slots[count-1])--count;if(2*padding+columns*step+1>area.w)rows=std::max(1,(area.h-6-padding*2-1)/step);}
+    const auto storedSlots=paletteManual_?normalizePaletteSlots(document.palette().entries,document.palette().order(),document.palette().slots,document.palette().columns):std::vector<int>{};
+    if(paletteManual_){const auto fit=fitPaletteSlotsToGrid(storedSlots,document.palette().columns,columns);columns=fit.columns;count=int(fit.slots.size());while(count>columns&&!fit.slots[count-1])--count;if(2*padding+columns*step+1>area.w)rows=std::max(1,(area.h-6-padding*2-1)/step);}
 
     const bool overflow=(count+columns-1)/columns>rows;
 
     if(overflow){area.w=std::max(1,area.w-6);columns=std::max(1,(area.w-padding*2-1)/step);}
 
-    if(paletteManual_){const auto fitted=fitPaletteSlotsToGrid(document.palette().slots,document.palette().columns,columns);columns=fitted.columns;if(columns!=paletteColumns_){paletteColumns_=columns;syncPaletteButtons();}}
+    if(paletteManual_){const auto fitted=fitPaletteSlotsToGrid(storedSlots,document.palette().columns,columns);columns=fitted.columns;if(columns!=paletteColumns_){paletteColumns_=columns;syncPaletteButtons();}}
 
     if(paletteGrowth_)columns=paletteGrowth_->preview.columns;
 

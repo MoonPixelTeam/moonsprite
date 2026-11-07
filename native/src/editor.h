@@ -857,6 +857,8 @@ private:
   std::optional<std::size_t> paletteFocusedSlot_;
 
   bool paletteLocked_=true,paletteFocused_=false,editingSecondary_=false,paletteManual_=false;
+  struct PaletteLayoutCache {std::uint64_t identity=0,revision=0;int columns=0;bool manual=false;std::vector<int> slots;};
+  mutable PaletteLayoutCache paletteLayoutCache_;
 
   std::uint64_t paletteRestoreIdentity_=0,paletteRestoreSerial_=0;
 

@@ -1,7 +1,23 @@
 #pragma once
 #include <algorithm>
 #include <vector>
+#include <unordered_set>
 namespace moon {
+// Positive native entries; zero remains the existing empty-slot sentinel.
+// Legacy order preserves duplicate real IDs; missing IDs are display-only gaps.
+template<class Entries> std::vector<int> visiblePaletteOrder(const Entries& entries,const std::vector<int>& order){
+ std::unordered_set<int> available;for(const auto& e:entries)available.insert(e.id);std::vector<int> out;out.reserve(order.size());for(int id:order)if(available.count(id))out.push_back(id);return out;
+}
+inline std::vector<int> paletteOrderFromSlots(const std::vector<int>& slots){std::unordered_set<int> seen;std::vector<int> out;for(int id:slots)if(id&&seen.insert(id).second)out.push_back(id);return out;}
+// legacy normalizePaletteSlots: retain valid first placements, fill holes in
+// distinct visible-order sequence, retain trailing rows. A monotonic hole cursor
+// avoids repeated prefix scans without changing the placement result.
+template<class Entries> std::vector<int> normalizePaletteSlots(const Entries& entries,const std::vector<int>& order,const std::vector<int>& source,int columns){
+ columns=std::clamp(columns,1,256);const auto visible=paletteOrderFromSlots(visiblePaletteOrder(entries,order));std::unordered_set<int> allowed(visible.begin(),visible.end()),placed;
+ const auto cols=std::size_t(columns),count=std::max(source.size(),visible.size());std::vector<int> slots(std::max(cols,((count+cols-1)/cols)*cols),0);
+ for(std::size_t i=0;i<source.size();++i)if(source[i]&&allowed.count(source[i])&&placed.insert(source[i]).second)slots[i]=source[i];
+ std::size_t hole=0;for(int id:visible)if(placed.insert(id).second){while(hole<slots.size()&&slots[hole])++hole;if(hole==slots.size())slots.resize(slots.size()+cols,0);slots[hole++]=id;}return slots;
+}
 struct PaletteGridLayout {std::vector<int> slots;int columns=1,rows=1;};
 // legacy core/palette-layout.ts fitPaletteSlotsToGrid: preserve occupied x/y.
 inline PaletteGridLayout fitPaletteSlotsToGrid(const std::vector<int>& source,int sourceColumns,int requestedColumns,int requestedRows=1){

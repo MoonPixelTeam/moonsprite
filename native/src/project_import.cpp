@@ -1,5 +1,6 @@
 #include "project_import.h"
 #include "document.h"
+#include "palette_layout.h"
 #include "tilemap_project_json.h"
 #include "layer_blend.h"
 #include <algorithm>
@@ -86,16 +87,9 @@ ImportPalette prepareEditablePalette(const ReadManifest& m){
   p.entries.push_back({e.id,unicode(e.name),e.color});
  }
  unsupported(!ids.empty()&&p.nextId<=*ids.rbegin(),"Colliding legacy palette allocation cursor is not editable yet");
- for(int id:p.order) unsupported(!ids.count(id)||!visible.insert(id).second,"Dangling or duplicate legacy palette order is not editable yet");
+ for(int id:p.order)if(ids.count(id))visible.insert(id);
  for(int id:p.slots) if(id) corrupt(!visible.count(id)||!placed.insert(id).second,"Invalid palette slot reference");
- // Legacy normalizePaletteSlots: full rows, fill absent visible IDs into holes.
- const auto count=std::max(p.slots.size(),p.order.size()),cols=std::size_t(p.columns);
- p.slots.resize(std::max(cols,((count+cols-1)/cols)*cols),0);
- for(int id:p.order) if(!placed.count(id)) {
-  auto hole=std::find(p.slots.begin(),p.slots.end(),0);
-  if(hole==p.slots.end()) {const auto n=p.slots.size();p.slots.resize(n+cols,0);p.slots[n]=id;}
-  else *hole=id;
- }
+ p.slots=normalizePaletteSlots(p.entries,p.order,p.slots,p.columns);
  return p;
 }
 PreparedImport prepareEditableImport(const ReadManifest& m) {

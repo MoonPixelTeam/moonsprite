@@ -1430,7 +1430,9 @@ void Editor::layoutToolOptions() {
 
   }
 
-std::vector<int> Editor::paletteViewSlots()const{return paletteManual_?fitPaletteSlotsToGrid(document.palette().slots,document.palette().columns,paletteColumns_).slots:document.palette().order();}
+std::vector<int> Editor::paletteViewSlots()const{
+ auto& cache=paletteLayoutCache_;if(cache.identity!=document.identity()||cache.revision!=document.revision()||cache.columns!=paletteColumns_||cache.manual!=paletteManual_){const auto& p=document.palette();auto slots=paletteManual_?fitPaletteSlotsToGrid(normalizePaletteSlots(p.entries,p.order(),p.slots,p.columns),p.columns,paletteColumns_).slots:visiblePaletteOrder(p.entries,p.order());cache.slots=std::move(slots);cache.identity=document.identity();cache.revision=document.revision();cache.columns=paletteColumns_;cache.manual=paletteManual_;}return cache.slots;
+}
 
 PaletteViewSelection Editor::capturePaletteView()const{PaletteViewSelection view;view.columns=paletteColumns_;view.focused=paletteFocusedSlot_;if(paletteBoxRange_&&paletteBoxRange_->identity==document.identity())view.box=std::make_pair(paletteBoxRange_->start,paletteBoxRange_->end);return view;}
 
