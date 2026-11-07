@@ -3291,3 +3291,9 @@ pending-tile-center-build.log正式Release及free/tile测试构建exit0，fixtur
 核对legacy workspace-commands-layer-adjustment.ts::applyFilterPreset改变活动层但不清除activeLayerMaskId，workspace-mutation.ts仅清除已消失蒙版，workspace-history.ts LayerUiSnapshot也不修改蒙版上下文。原生开放活动蒙版下共享滤镜预览，为预设覆盖层历史保存不变的maskContext，确保Undo/Redo不因原生selectLayer副作用丢失编辑目标。
 
 新增普通/tile/free所属蒙版×六预设十八组，检查预览取消保留上下文、单提交、Undo/Redo活动层及蒙版目标、所属Cel像素/实例/网格和蒙版像素不变。正式Release及free/filter测试构建exit0（mask-filter-overlay-build.log）；完整free/filter-presets测试exit0（mask-filter-overlay-free-test.log、mask-filter-overlay-presets-test.log）；正式工作区drawing-anchor-edit-floating组合exit0；来源检查通过（mask-filter-overlay-provenance.log），diff通过。共享入口的LCD蒙版上下文仍待专门核对，本阶段不声明其完成；未做人工UI验收，全量迁移仍INCOMPLETE。
+
+### 2026-11-07：核实LCD活动蒙版编辑上下文
+
+对照legacy workspace-commands-layer-adjustment.ts::applyLcdScreenFilter从selectedLayerIds取源、不清除activeLayerMaskId，restore闭包只恢复层组选择及源显隐；workspace-mutation.ts保留仍存在蒙版。原生既有结构历史已保留该上下文，无需产品修改。
+
+新增普通/tile/free×蒙版普通/隔离显示六组，检查选中所属层后LCD预览/取消、单group提交、活动蒙版及隔离状态在Undo/Redo保留、所属Cel像素/实例/网格及蒙版像素不变。测试构建exit0（mask-lcd-context-build.log），完整free-tile-project-tests通过（mask-lcd-context-test.log），来源检查通过（mask-lcd-context-provenance.log），diff通过。此为明确源选择上下文的自动回归，未做新产品构建或人工UI验收，不扩展到所有蒙版行选择组合；全量迁移仍INCOMPLETE。
