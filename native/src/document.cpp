@@ -1842,13 +1842,16 @@ void Document::renamePaletteColor(int id,const std::u32string& name) {
 }
 // legacy workspace-palette.ts applyPalette: reuse each RGBA entry once; retain hidden IDs.
 void Document::applyStoredPalette(const std::vector<Pixel>& colors,int columns,const std::vector<std::optional<std::size_t>>& slots,const std::vector<std::u32string>* names){
- auto next=palette_;std::vector<int> ids;std::unordered_set<int> used;
- for(std::size_t i=0;i<colors.size();++i){int id=0;for(auto& e:next.entries)if(e.color==colors[i]&&!used.count(e.id)){id=e.id;break;}if(!id){id=allocatePaletteId(next);const auto number=std::to_string(id);next.entries.push_back({id,std::u32string(number.begin(),number.end()),colors[i]});}used.insert(id);ids.push_back(id);if(names&&i<names->size())for(auto& e:next.entries)if(e.id==id)e.name=(*names)[i];}
+ auto next=palette_;std::vector<int> ids;ids.reserve(colors.size());std::unordered_map<Pixel,std::vector<std::size_t>> reusable;std::unordered_map<Pixel,std::size_t> cursors;std::unordered_map<int,std::size_t> positions;positions.reserve(next.entries.size()+colors.size());for(std::size_t i=0;i<next.entries.size();++i){reusable[next.entries[i].color].push_back(i);positions.emplace(next.entries[i].id,i);}
+ // Actual applyPalette reuses matching entries in storage order, once each.
+ // Keep indices rather than pointers across new-entry vector reallocations.
+ for(std::size_t i=0;i<colors.size();++i){auto& cursor=cursors[colors[i]];const auto found=reusable.find(colors[i]);std::size_t entry;if(found!=reusable.end()&&cursor<found->second.size())entry=found->second[cursor++];else{const int id=allocatePaletteId(next);const auto number=std::to_string(id);entry=next.entries.size();positions.emplace(id,entry);next.entries.push_back({id,std::u32string(number.begin(),number.end()),colors[i]});}ids.push_back(next.entries[entry].id);if(names&&i<names->size())next.entries[entry].name=(*names)[i];}
+
  next.columns=columns?std::clamp(columns,1,256):palette_.columns;
  if(columns){next.slots.clear();for(auto cell:slots)next.slots.push_back(cell&&*cell<ids.size()?ids[*cell]:0);}else{next.slots=ids;while(next.slots.size()%next.columns)next.slots.push_back(0);}
  next.slots=normalizePaletteSlots(next.entries,ids,columns?next.slots:std::vector<int>{},next.columns);
- bool same=next.columns==palette_.columns&&next.slots==currentPaletteSlots(palette_);for(auto& e:palette_.entries){auto it=std::find_if(next.entries.begin(),next.entries.end(),[&](auto& n){return e.id==n.id;});same=same&&it!=next.entries.end()&&it->name==e.name;}if(same)return;
- next.independentOrder.reset();next.selected.clear();next.primaryId=0;for(int id:next.order()){auto e=std::find_if(next.entries.begin(),next.entries.end(),[&](auto& e){return e.id==id;});if(e->color==next.primary){next.primaryId=id;next.selected={id};break;}}
+ bool same=next.columns==palette_.columns&&next.slots==currentPaletteSlots(palette_);for(std::size_t i=0;same&&i<palette_.entries.size();++i)same=next.entries[i].name==palette_.entries[i].name;if(same)return;
+ next.independentOrder.reset();next.selected.clear();next.primaryId=0;for(int id:next.order())if(next.entries[positions.at(id)].color==next.primary){next.primaryId=id;next.selected={id};break;}
  cancelStroke();Edit edit{{},state_,nextState_};edit.paletteKind=11;edit.beforePalette=palette_;normalizePaletteSnapshot(*edit.beforePalette,true);edit.afterPalette=next;palette_=std::move(next);pushEdit(std::move(edit),U"切换颜色板");
 }
 void Document::applyExtractedPalette(const std::vector<Pixel>& colors,bool append,int columns){
@@ -1862,7 +1865,7 @@ void Document::applyPaletteEdit(const Edit& edit,bool redo) {
   if(!edit.beforePalette) return;
   const auto& state=redo?*edit.afterPalette:*edit.beforePalette;
   const auto& view=redo?edit.afterPaletteView:edit.beforePaletteView;if(view){paletteViewRestore_=view;++paletteViewRestoreSerial_;}
-  if(edit.paletteKind==11){palette_.independentOrder=state.independentOrder;palette_.slots=state.slots;palette_.columns=state.columns;palette_.selected=state.selected;palette_.primaryId=state.primaryId;for(auto& e:palette_.entries)for(auto& n:state.entries)if(e.id==n.id)e.name=n.name;return;}
+  if(edit.paletteKind==11){palette_.independentOrder=state.independentOrder;palette_.slots=state.slots;palette_.columns=state.columns;palette_.selected=state.selected;palette_.primaryId=state.primaryId;std::unordered_map<int,const std::u32string*> names;names.reserve(state.entries.size());for(const auto& e:state.entries)names[e.id]=&e.name;for(auto& e:palette_.entries)if(const auto found=names.find(e.id);found!=names.end())e.name=*found->second;return;}
   if(edit.paletteKind==10){palette_.entries=state.entries;palette_.independentOrder=state.independentOrder;palette_.slots=state.slots;palette_.columns=state.columns;palette_.nextId=state.nextId;return;}
   if(edit.paletteKind==9){palette_.independentOrder=state.independentOrder;palette_.slots=state.slots;palette_.columns=state.columns;return;}
   if(edit.paletteKind==8){std::unordered_map<int,Pixel> colors;colors.reserve(state.entries.size());for(const auto& source:state.entries)colors[source.id]=source.color;for(auto& entry:palette_.entries)if(auto found=colors.find(entry.id);found!=colors.end())entry.color=found->second;return;}

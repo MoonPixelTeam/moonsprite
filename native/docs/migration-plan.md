@@ -3720,3 +3720,14 @@ palette-sort-cache-final-build.log正式Release和核心目标构建通过；修
 生成器直接从实际PalettePanel.tsx提取完整copySelectedPaletteColors闭包并去除TS，调用真实encodePaletteClipboard；仅替换浏览器clipboard写入端。96组（八种raw order×自动／手工×三种选择×有／无框选）写入tests/fixtures/palette_panel_copy_legacy.h，由实际Editor复制后解析逐项比对颜色／列数／槽位及空操作剪贴板／历史不变。首次生成时把return交给顶层TS解析器导致失败，改为仅转换闭包正文；首次界面对照因测试把3列下编号直接用于较宽原生视图，把3×2范围误设成6×1，按视图列数映射相同矩形后通过，未改期望数据或放宽断言。失败证据在palette-copy-order-fixtures.log和palette-copy-order-initial-fixture-mismatch.log。
 
 现有4096色manual检查扩展为完整剪贴板颜色／索引／列数验证、渐变4096格范围及相同内容粘贴无历史。palette-copy-order-final-tests.log完整工程矩阵（240移动、128排序、1668 raw、192粘贴、158解码／530命令及既有工程检查）与核心事务退出0。正式最终构建palette-copy-order-verified-build.log通过；palette-copy-order-verified-ui.log中--palette-clipboard-check、--palette-manual-check、--palette-gradient-check、--palette-growth-check、--palette-mouse-check全部退出0，包含96组真实闭包与大色板检查。来源覆盖627文件通过，strict按全量已知缺口退出1，diff通过；本批无人工图像验收或整体UI性能测量。全量迁移仍INCOMPLETE。
+
+
+### 调色盘库应用的条目复用与名称历史索引（2026-11-08）
+
+接续2861782c，核对workspace-palette.ts::applyPalette及document-model.ts::findOrAddPaletteColor后，保留实际按存储顺序寻找第一个未使用同RGBA条目、一个条目一次复用、超出数量才创建、隐藏条目保留、名称按输入逐项覆盖、layout-only Undo/Redo及重复应用无增长规则。原生使用RGBA→条目位置队列及游标，一次构造ID→位置索引查找前景角色；新条目只追加，故无操作名称比较可使用原有前缀位置。kind11名称Undo/Redo用ID索引代替前后条目的双循环，维持最后同ID名称覆盖语义。该阶段没有放开原生零哨兵／真实ID0、碰撞身份或索引色门禁，不能把新建全透明色进入保留ID0的旧版分支计为完成。
+
+实际旧版新增48组（八种数据×六种操作），覆盖独立顺序、重复／悬空raw order、隐藏颜色复用、倒序及Unicode名称、同RGBA超额创建、部分名称／空名称、空输入、显式空槽布局、新增重复颜色和4096条目。直接捕获首次应用／Undo／Redo／再次应用的全部条目身份／名称／RGBA、raw order、slots、columns、cursor、选择／前景及真实历史回调；原生逐状态核对，并检查普通／恢复保存重开。样本在当前正ID且新颜色非全透明的准入范围内，不覆盖上述ID0缺口。测试session只收集实际回调，不代表浏览器完整HistoryStack验收。
+
+palette-apply-index-build.log正式Release、工程与核心目标构建通过；palette-apply-index-tests.log中48组新增、240移动、128排序、1668 raw、192粘贴、158解码／530命令及完整既有工程矩阵、核心事务均退出0。palette-apply-index-ui.log正式--palette-library-check、--palette-import-check、--palette-manual-check、--palette-clipboard-check均退出0。来源覆盖627文件通过，strict仍因全量已知缺口退出1，diff通过。
+
+同机Release基准palette-apply-index-benchmark.log以2861782c旧代码的复用／改名部分对照本次完整Document命令，反序颜色并改名，逐条核对身份／RGBA／名称相同：4096色12.5188ms→5.8701ms，16384色222.087ms→29.2912ms。旧侧不计布局／历史，新侧包含完整命令，因此不把两侧当等范围全应用耗时，更不外推整体UI帧率；临时基准源码和程序仅在native/build。本批无人工图像验收。全量迁移仍INCOMPLETE。
