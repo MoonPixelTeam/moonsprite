@@ -3153,3 +3153,9 @@ pending-tile-center-build.log正式Release及free/tile测试构建exit0，fixtur
 依据legacy workspace-commands-selection-move.ts::centerActiveContent对所有pendingPaste几何优先处理，原生将整篇特殊类型保护移到共同floating+selection分支之后。此前虽已放行free/tile自身浮动状态，混合tilemap文档中合法的普通图层剪贴板浮动仍被拒绝。继续保留非浮动特殊文档保护及原浮动锁定/目标校验。
 
 新增水平/垂直/双轴三组普通图层粘贴回归，检查精确中心坐标、预览无历史、单提交、无关瓦片网格/资源不变、Undo/Redo及实际保存重开。mixed-raster-center-build.log正式Release与free/tile测试构建exit0；两完整测试通过（mixed-raster-center-free-test.log、mixed-raster-center-grid-test.log）；正式工作区drawing-anchor-edit-floating组合exit0；来源625文件快照通过（mixed-raster-center-provenance.log），diff通过。未做人工UI验收，全量迁移仍INCOMPLETE。
+
+### 2026-11-07：混合自由瓦片文档普通图层浮动粘贴
+
+对照legacy workspace-commands-clipboard.ts::pasteSelection使用activePaintLayer类型/锁定校验，普通图层不因无关free-tile内容被拒绝。原生beginFloatingPaste移除整篇free拒绝，将原有混合tilemap目标约束统一用于两种特殊内容；活动蒙版仍优先，free目标继续使用专用粘贴入口，不写派生Cel像素。
+
+新增提交/取消两组，检查移动后的精确RGBA及半透明值、预览无历史、单提交、全部自由Cel实例与像素/源资源保留、锁定及free目标拒绝、Undo/Redo和实际重开。mixed-free-raster-paste-build.log正式Release及两核心测试构建exit0；完整free-tile-project-tests、tilemap-project-tests通过（mixed-free-raster-paste-free-test.log、mixed-free-raster-paste-grid-test.log）；正式工作区drawing-anchor-edit-floating组合exit0；来源625文件快照通过（mixed-free-raster-paste-provenance.log），diff通过。未做人工UI验收，全量迁移仍INCOMPLETE。

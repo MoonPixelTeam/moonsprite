@@ -2381,9 +2381,9 @@ bool Document::deleteMaskSelection(){
  if(floating_){if(floating_->clipboard){cancelFloatingPaste();return true;}commitFloatingPaste();}if(!selection_||!maskBrushAvailable())return false;const bool changed=fillAttachedMaskSelection(palette_.secondary);if(changed)selection_.reset();return changed;
 }
 
-bool Document::beginFloatingPaste(const SelectionClipboard& clipboard,int x,int y){if(!activeMaskId_.empty())return beginMaskFloating(clipboard,x,y,true,true);if(hasFreeTileContent())return false;
+bool Document::beginFloatingPaste(const SelectionClipboard& clipboard,int x,int y){if(!activeMaskId_.empty())return beginMaskFloating(clipboard,x,y,true,true);
  // legacy clipboard permits ordinary raster targets in a mixed document.
- if(hasTilemapContent()&&(!activeMaskId_.empty()||!layer().kind.empty()||hasSelectedGroups()||layerEffectivelyLocked(layer())))return false;
+ if((hasTilemapContent()||hasFreeTileContent())&&(!layer().kind.empty()||hasSelectedGroups()||layerEffectivelyLocked(layer())))return false;
  commitFloatingPaste();cancelStroke();
  if(layerEffectivelyLocked(layer()) || clipboard.width<1 || clipboard.height<1 || std::uint64_t(clipboard.width)*clipboard.height!=clipboard.pixels.size() || (!clipboard.mask.empty() && clipboard.mask.size()!=clipboard.pixels.size()))return false;
  if(!clipboard.mask.empty() && std::none_of(clipboard.mask.begin(),clipboard.mask.end(),[](auto value){return value!=0;}))return false;
