@@ -3831,3 +3831,9 @@ palette-apply-index-build.log正式Release、工程与核心目标构建通过�
 接续1954d633，对照实际PalettePanel.tsx库预览：空槽只在紧凑预览略去，颜色顺序、重复和透明RGB保留，点击应用完整StoredPalette。原生此前为全部库色块创建PixelButton，布局时遍历全部控件隐藏离屏内容；现单独保留完整预览数据，仅为视口行创建并复用控件，完整数据仍决定滚动高度、布局与应用。保存启用检查和匹配身份时也避免反复生成当前色板颜色。既有布局、命中裁剪和右键删除入口不变。
 
 对照Aseprite app/ui/palette_view.cpp的adapter单控件绘制架构，确认无需每个颜色对应子控件；其绘制循环仍遍历条目，不能声称Aseprite已实现本批可见范围算法。本批未复制其代码。正式现有palette-library检查增加4096颜色／8192稀疏槽、两种宽度各四个滚动位置，与完整布局独立比较可见颜色和矩形，检查控件数量受视口约束、完整应用及撤销重做、刷新与关闭。验证：palette-preview-build.log正式Release及色板库／导入目标构建退出0；正式--palette-library-check、--palette-import-check、--extraction-names-check均退出0，palette-preview-library-tests.log与palette-preview-import-tests.log核心测试退出0。4096色／8192槽、两宽度八滚动组合的整个库色块控件峰值1856，可见颜色／矩形与完整布局一致，完整应用及Undo/Redo通过。来源627文件覆盖通过，strict因既有缺口退出1，diff通过。未进行人工图像或交互帧率验收，不将控件数减少等同于全软件卡顿已解决。全量迁移仍INCOMPLETE。
+
+### 色板导入收集准入与长行内存（2026-11-08）
+
+接续60fe3cfa，沿platform_palette.rs::text_imported_colors／json_imported_palette／linear_imported_palette／native_imported_palette核对。65536有效色是已有导入上限，但原生文本与通用JSON在完整vector分配后才拒绝；现收集第65537个有效色前立即拒绝，原生形状JSON也先检查颜色数再转换Pixel。文本一行只需前四个有效u16数值，现不保留多余数值，仍逐token解析并保留无效token过滤、RGBA顺序与默认alpha规则。64MiB输入上限、普通库读取超过65536色的既有允许行为不变。JSON DOM仍由WinRT完整解析，本批不声称解决全部输入内存成本。
+
+完整边界覆盖五种文本扩展和通用／原生JSON的65536成功与65537失败、无效行／条目不计颜色、十万额外数值不影响结果，以及失败文件导入不写库。验证：palette-import-admission-build.log正式Release及导入／库目标构建退出0；palette-import-admission-tests.log和palette-import-admission-library-tests.log退出0，正式--palette-import-check及--palette-library-check退出0。来源627文件覆盖通过，strict因既有迁移缺口退出1，diff通过。没有执行完整旧版Rust平台测试或实际内存峰值／人工文件选择器验收；结论限于提前颜色收集准入和避免无用数值vector增长。全量迁移仍INCOMPLETE。
