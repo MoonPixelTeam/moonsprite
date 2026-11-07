@@ -2,6 +2,7 @@
 #include <fstream>
 #include <iostream>
 #include <chrono>
+#include <algorithm>
 #include "fixtures/palette_text_legacy.h"
 #include "fixtures/palette_json_legacy.h"
 using namespace moon;
@@ -31,5 +32,7 @@ int main(){try{
  std::string longLine="bad 17 34 51 128 ";for(int i=0;i<100000;++i)longLine+="255 ";require(decodeImportedPalette(bytes(longLine),"long.csv").colors==std::vector<Pixel>{0x80332211},"numeric tail changes first four valid channels");
  // A failed picker import must leave both valid and malformed library files intact.
  auto overPath=root/"over-limit.txt";std::ofstream(overPath)<<limitText<<"17 34 51\n";auto beforeFailure=library.list();rejected=false;try{library.importFile(overPath);}catch(const std::exception&){rejected=true;}require(rejected&&std::filesystem::exists(overPath)&&library.list().size()==beforeFailure.size(),"oversized import mutated library");
+ // Large sparse native JSON shares the already-parsed DOM and retains names.
+ StoredPalette dense;dense.id="single-dom";dense.name=u8"完整色板";dense.columns=256;dense.names.emplace();for(std::size_t i=0;i<65536;++i){dense.colors.push_back(Pixel(i)|(Pixel(i%3?255:0)<<24));dense.slots.push_back(std::nullopt);dense.slots.push_back(i);dense.names->push_back(i%2?u8"颜色😀":"");}auto encoded=encodeStoredPalette(dense);require(encoded.find("#00000000")!=std::string::npos&&encoded.find("#010000FF")!=std::string::npos,"canonical fixed HEX encoding");auto oneDom=decodeImportedPalette(bytes(encoded),"large.json");require(oneDom.name==dense.name&&oneDom.colors==dense.colors&&oneDom.columns==dense.columns&&oneDom.slots==dense.slots&&oneDom.names==dense.names,"large single-DOM import loses sparse layout/names/RGBA");auto nativeDecoded=decodeStoredPalette(encoded);require(nativeDecoded.colors==oneDom.colors&&nativeDecoded.slots==oneDom.slots&&nativeDecoded.names==oneDom.names,"direct/shared DOM decoder mismatch");auto persisted=library.save(oneDom);auto listedDense=library.list();auto denseFound=std::find_if(listedDense.begin(),listedDense.end(),[&](const auto& p){return p.id==persisted.id;});require(denseFound!=listedDense.end()&&denseFound->colors==dense.colors&&denseFound->slots==dense.slots&&denseFound->names==dense.names,"large import-save-list full payload");
  std::cout<<"palette-import: passed\n";return 0;
  }catch(const std::exception& error){std::cerr<<error.what()<<'\n';return 1;}}

@@ -3873,3 +3873,9 @@ palette-apply-index-build.log正式Release、工程与核心目标构建通过�
 接续d2b3fa93，上一阶段只处理导入；本批原函数生成器增加serde_json::from_slice<PaletteDiskFile>→stored_palette_from_file的直接读取结果，同271输入生成另一组实际旧版结果，总542组。原生直接读取不允许通用数组回退，schema1空颜色／无布局保持原状，不套用导入的线性布局。提取现有词法函数为导入模块共享内部接口，直接库解码也在WinRT标准化前校验UTF8／代理对、整数原写法与已知字段重复；保留导入与读取各自的旧版分支。
 
 除542组完整载荷核对，还把271个直接fixture逐个写入独立owned目录，真实调用PaletteLibrary::list：用户坏文件隔离跳过，内置坏资源返回错误，接受项核对名称／RGBA／列数／槽位／可选names。复用已有代码，无新增生产JSON依赖。验证：palette-json-direct-build.log正式Release及导入／库目标构建退出0；palette-json-direct-tests.log542组JSON及既有完整导入退出0，palette-json-direct-library-build.log及palette-json-direct-library-tests.log实际文件矩阵退出0。正式--palette-import-check及--palette-library-check退出0，重复生成header哈希一致，来源633文件覆盖通过，strict因已知缺口退出1，diff通过。未进行完整Tauri运行或人工系统文件选择器／长期桌面验收，全量迁移仍INCOMPLETE。
+
+### 色板JSON单DOM与批量HEX编码（2026-11-08）
+
+接续cfc7375d，对照旧版json_imported_palette把PaletteDiskFile直接传给stored_palette_from_file／native_imported_palette的路径。原生此前解析DOM后Stringify→UTF8→UTF16→再次Parse／词法检查；现提取已有DOM语义解码为内部适配器，导入复用同一DOM，直接读取仍先执行原始字节词法准入；present继续处理null，无需修改DOM删除null。COM由入口管理，完整身份／颜色／布局校验共享，不跳过旧版失败分支。颜色数组按已知长度reserve；保存HEX使用固定9字符宽缓冲，移除每色字符串流与格式化分配，仍输出大写#RRGGBBAA。
+
+保留542真实serde及229文本矩阵，新增65536色／131072槽稀疏完整导入→直接读取→保存→目录重开，核对RGBA／透明RGB／列数／槽位／全部names（含emoji）和标准HEX。优化结论限于消除重复DOM／文本生成及逐色流对象，不外推整体UI帧率。验证：palette-json-single-dom-final-build.log唯一正式Release及库／导入目标构建退出0；palette-json-single-dom-tests.log含大色板全路径与542／229对照退出0，palette-json-single-dom-library-tests.log实际文件矩阵退出0；正式--palette-import-check及--palette-library-check退出0。来源634文件覆盖通过，strict因既有缺口退出1，diff通过。未测量进程内存峰值／整体帧率或人工系统选择器验收，全量迁移仍INCOMPLETE。
