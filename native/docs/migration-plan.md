@@ -3207,3 +3207,9 @@ pending-tile-center-build.log正式Release及free/tile测试构建exit0，fixtur
 对照legacy workspace-commands-selection-move.ts的普通目标捕获范围，允许混合free文档的普通活动图层进入既有栅格浮动事务；捕获实际目标后逐一拒绝特殊图层，防止整帧范围写入派生缓存。
 
 新增移动/复制×取消/提交四组，核对精确像素、选区恢复、单次提交历史、Undo/Redo、保存重开，以及自由Cel实例/像素和源资源保留。mixed-free-raster-move-build.log正式Release及free/tile测试构建通过；完整free-tile-project-tests、tilemap-project-tests通过；正式工作区drawing-anchor-edit-floating组合通过；来源625文件检查通过（mixed-free-raster-move-provenance.log）。未做人工UI验收，全量迁移仍INCOMPLETE。
+
+### 2026-11-07：混合自由瓦片文档普通选区键盘移动
+
+对照legacy workspace-commands-selection-move.ts::moveActiveSelectionWithSelectionHistory，先将键盘请求限制在画布内，再处理pending或捕获实际目标。原生放行混合free文档中的普通活动目标及已有普通selection来源浮动，复用既有捕获/变换；实际捕获仍拒绝特殊目标，未扩展自由瓦片首次键盘移动。
+
+新增首次移动/已有复制浮动×取消/提交四组，检查两端边界与no-op、整帧特殊目标拒绝、精确移动/复制像素、单次历史、Undo/Redo、实际重开，以及自由Cel像素/实例与源资源保留。mixed-free-raster-nudge-build.log正式Release及free/tile测试构建exit0；完整free-tile-project-tests、tilemap-project-tests均exit0（mixed-free-raster-nudge-free-test.log、mixed-free-raster-nudge-grid-test.log）；正式工作区drawing-anchor-edit-floating组合exit0；来源检查exit0（mixed-free-raster-nudge-provenance.log），diff检查通过。未做人工UI验收，全量迁移仍INCOMPLETE。
