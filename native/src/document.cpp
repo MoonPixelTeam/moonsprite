@@ -2135,7 +2135,7 @@ bool Document::fillSelectionOrCanvas(Pixel color){if(!activeMaskId_.empty()){com
  if(edit.children.empty())return false;
  history_.reserve(position_+1);change_={};applyEdit(edit,true);publishChange();pushEdit(std::move(edit),selection_?U"填充选区前景色":U"填充画布前景色");return true;
 }
-bool Document::deleteSelectedPixels(){if(floating_&&floating_->clipboard){cancelFloatingPaste();return true;}if(!activeMaskId_.empty())return deleteMaskSelection();if(hasFreeTileContent()){
+bool Document::deleteSelectedPixels(){if(floating_&&floating_->clipboard){cancelFloatingPaste();return true;}if(floating_&&floating_->freeTile)commitFloatingPaste();if(!activeMaskId_.empty())return deleteMaskSelection();if(hasFreeTileContent()){
  // Legacy deleteFreeTileSourceSelectionInSession clears the primary shared
  // source in instance world coordinates; never erase a derived Cel cache.
  if(active()||!selection_||!activeMaskId_.empty()||layer().kind!="free-tile"||freeTilePaintMode()||!layer().freeTiles||!cel().freeTiles||!cel().surface||layerEffectivelyLocked(layer()))return false;

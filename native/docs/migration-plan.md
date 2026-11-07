@@ -3189,3 +3189,9 @@ pending-tile-center-build.log正式Release及free/tile测试构建exit0，fixtur
 核对legacy workspace-commands-selection-effects.ts::fillForeground，存在pendingPaste时先commitFloatingPaste再填充activePaintLayer。原生fillSelectionOrCanvas活动蒙版早返回缺少该步骤，可能把填充混入仍可取消的浮动预览。现在先提交，再沿用fillAttachedMaskSelection；无浮动时行为不变。
 
 新增普通/tile/free蒙版×粘贴/选区提起六组，检查两次历史、实际目标灰度、填充后cancel无效、第一次Undo回已提交浮动像素、第二次Undo回原蒙版/选区、两次Redo、所属Cel像素/实例/网格保留及实际重开。mask-floating-fill-build.log正式Release及两核心测试构建exit0；完整free-tile-project-tests、attached-masks-tests通过（mask-floating-fill-free-test.log、mask-floating-fill-mask-test.log）；正式工作区drawing-anchor-edit-floating组合exit0；来源625文件快照通过（mask-floating-fill-provenance.log），diff通过。未做人工UI验收，全量迁移仍INCOMPLETE。
+
+### 2026-11-07：自由瓦片浮动选区Delete提交顺序
+
+依据legacy workspace-commands-selection-effects.ts::deleteSelection对selection来源pending先commitFloatingPaste，再执行deleteFreeTileSourceSelectionInSession。原生已有freeTile浮动先提交，避免active()保护直接拒绝；继续复用源删除适配器，不删除实例或派生缓存。
+
+新增整实例/局部源×移动/复制四组，对照显式提交再删除，核对两步历史、源/画布像素、第一次Undo回已移动状态、第二次Undo回原始源、两次Redo及实际重开。free-floating-delete-build.log正式Release及两核心测试构建exit0；完整free-tile-project-tests、tilemap-project-tests通过（free-floating-delete-free-test.log、free-floating-delete-grid-test.log）；正式工作区drawing-anchor-edit-floating组合exit0；来源625文件快照通过（free-floating-delete-provenance.log），diff通过。未做人工UI验收，全量迁移仍INCOMPLETE。
