@@ -1038,7 +1038,7 @@ bool Document::commitAntiAliasAdjustment(){
  if(!adjustment_)return false;
  // Legacy selected-target command refuses the batch if any selected target locks.
  for(const auto& id:adjustment_->targets){const auto r=timeline_.resolveSurface(id);if(!r.source)throw std::logic_error("Missing anti-alias commit owner");const auto l=std::find_if(timeline_.state().layers.begin(),timeline_.state().layers.end(),[&](const auto& item){return item.id==r.source->layerId;});if(l==timeline_.state().layers.end())throw std::logic_error("Missing anti-alias commit layer");if(layerEffectivelyLocked(*l))return false;}
- return commitConvolutionAdjustment();
+ return commitSurfaceAdjustment(U"自动抗锯齿");
 }
 std::optional<Document::GradientMapTask> Document::captureGradientMapTask()const{
  if(!adjustment_)return {};const auto& p=*adjustment_;
@@ -1104,7 +1104,8 @@ bool Document::publishConvolutionSurfaceTask(ConvolutionSurfaceTask&& task){
  for(std::size_t i=0;i<owners.size();++i)if(owners[i])std::swap(*owners[i],task.results[i]);
  p.preview=std::move(preview);p.convolutionTargets=std::move(targets);task.completed=false;task.results.clear();task.source.targets.clear();++gradientRevision_;return true;
 }
-bool Document::commitConvolutionAdjustment(){
+bool Document::commitConvolutionAdjustment(){return commitSurfaceAdjustment(U"卷积矩阵");}
+bool Document::commitSurfaceAdjustment(const std::u32string& label){
  if(!adjustment_)return false;auto& p=*adjustment_;
  if(p.contentRevision!=contentRevision_||p.frameId!=frame().id||p.layerId!=layer().id||!selectionEqual(p.selection,selection_)){cancelColorAdjustment();return false;}
  if(p.convolutionTargets.empty()){cancelColorAdjustment();return false;}
@@ -1122,7 +1123,7 @@ bool Document::commitConvolutionAdjustment(){
  history_.reserve(position_+1);struct Install{timeline::Surface* live;timeline::Surface* preview;};std::vector<Install> install;install.reserve(targets.size());
  for(const auto& id:targets){auto* live=timeline_.mutableOwnedSurface(id);auto* preview=p.preview.mutableOwnedSurface(id);if(!live||!preview)throw std::logic_error("Missing convolution install owner");install.push_back({live,preview});}
  for(const auto& t:install)std::swap(*t.live,*t.preview);
- cancelColorAdjustment();change_={0,0,width_,height_};publishChange();pushEdit(std::move(e),U"卷积矩阵");return true;
+ cancelColorAdjustment();change_={0,0,width_,height_};publishChange();pushEdit(std::move(e),label);return true;
 }
 std::optional<Document::ConvolutionTask> Document::captureConvolutionTask() const {
  if(!adjustment_)return {};const auto& p=*adjustment_;if(p.contentRevision!=contentRevision_ || p.frameId!=frame().id || p.layerId!=layer().id || !selectionEqual(p.selection,selection_))return {};

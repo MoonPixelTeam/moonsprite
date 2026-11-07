@@ -984,6 +984,7 @@ private:
   std::vector<timeline::Pixel> layerDisplayColors_=defaultLayerDisplayColors();
   std::optional<FilterPreview> filterPreview_;std::uint64_t nextFilterGeneration_=0;
 
+  bool commitSurfaceAdjustment(const std::u32string& label);
   struct AdjustmentPreview {timeline::Timeline baseline,preview;std::vector<std::string> targets;std::optional<SelectionMask> selection;std::string layerId,frameId;std::uint64_t contentRevision;bool clipSelection=true;std::vector<std::string> targetFrames;std::vector<std::string> convolutionTargets;};
   std::optional<AdjustmentPreview> adjustment_;
   struct PaletteReplacementPreview {PaletteState baseline,preview;std::uint64_t contentRevision;std::optional<Pixel> restorePrimary;};

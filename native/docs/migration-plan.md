@@ -3309,3 +3309,9 @@ pending-tile-center-build.log正式Release及free/tile测试构建exit0，fixtur
 对照legacy workspace-selection-effects-support.ts::selectedEffectTargets跳过kind目标、共享像素去重，以及workspace-commands-selection-anti-alias.ts和tools-outline.ts的预览/对角算法。移除原生整文档特殊类型禁用，捕获前跳过实际特殊目标；特殊目标单独选择仍不可用，保留未迁移边界。
 
 新增free/tile×取消/提交×选区/完整八组，混选普通与特殊层验证只捕获一个普通目标、opacity37精确对角像素、预览不改存储/历史、单提交、Undo/Redo、保存重开和特殊Cel/资源保留。初始单透明像素选区没有对角源，修正为包含对角源的2×2选区。正式构建exit0（mixed-raster-aa-build.log），最终测试构建exit0（mixed-raster-aa-test-build.log）、完整free-tile-project-tests通过（mixed-raster-aa-test.log），workspace指定检查exit0，来源检查通过（mixed-raster-aa-provenance.log）。未做人工UI验收，未声明蒙版目标/特殊源抗锯齿或全量迁移完成；全量迁移仍INCOMPLETE。
+
+### 2026-11-07：抗锯齿历史语义
+
+核对legacy workspace-commands-selection-anti-alias.ts及locales/zh-CN.ts，抗锯齿应提交“自动抗锯齿”，原生却复用“卷积矩阵”提交标签，与history_catalog.h的既有分类不符。抽出私有共享surface提交函数，在pushEdit时传入各自标签，确保历史面板及历史变更通知使用实际操作名；不改像素计算或事务内容。混合文档测试同时断言AA及卷积提交标签。蒙版AA捕获/回写仍未迁移，本阶段不声明完成该路径。
+
+验证：正式构建exit0（aa-history-label-build.log），确认新测试程序重链后完整free-tile-project-tests通过（aa-history-label-test.log）；workspace指定检查exit0；来源检查通过（aa-history-label-provenance.log），diff通过。未做人工UI验收，全量迁移仍INCOMPLETE。
