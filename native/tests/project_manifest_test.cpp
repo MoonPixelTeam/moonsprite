@@ -59,6 +59,15 @@ void linkedCacheChecks(const std::filesystem::path& dir){
   d.beginStroke({0,0},0xffabcdef);check(d.commitStroke(),"Edit through imported alias");for(const auto& c:d.timeline().state().cels)check(d.timeline().resolveSurface(c.id).surface->pixels[0]==0xffabcdef,"Alias edit updates shared root");d.undo();verify(d);d.redo();check(d.pixels()[0]==0xffabcdef&&d.frame().id==active,"Linked cache redo frame and pixels");
  }
 }
+void sparseAnimationChecks(const std::filesystem::path& dir){
+ using namespace moon;
+ for(const std::string mode:{"absent","null","empty","invalid","hole-active","hole-inactive"}){
+  const auto m=readProjectManifest(load(dir/("sparse-animation-"+mode+".moonsprite")));auto d=createEditableDocument(prepareEditableImport(m));const bool hole=mode.rfind("hole",0)==0,blank=mode!="hole-inactive";const auto active=d.frame().id;
+  auto verify=[&](const Document& candidate){check(candidate.timeline().state().frames.size()==(hole?2:1)&&candidate.timeline().state().cels.size()==(hole?2:1),"Sparse animation materialized slots");check(candidate.pixels()==std::vector<Pixel>(4,blank?0:0xffffffff),"Sparse active display follows legacy blank projection");check(candidate.timeline().diagnoseLinks().empty(),"Sparse animation links");};
+  verify(d);check(d.historyPosition()==0,"Sparse import no history");for(bool recovery:{false,true}){auto saved=recovery?encodeRecoveryProject(d):encodeEditableProject(d);verify(createEditableDocument(prepareEditableImport(readProjectManifest(saved.bytes))));}
+  d.beginStroke({0,0},0xffabcdef);check(d.commitStroke(),"Sparse imported frame editable");d.undo();verify(d);d.redo();check(d.pixels()[0]==0xffabcdef&&d.frame().id==active,"Sparse frame redo");
+ }
+}
 void inlineMaskChecks(const std::filesystem::path& dir){
  using namespace moon;auto bytes=load(dir/"inline-mask-u8.moonsprite");const auto raw=readProjectManifest(bytes);check(raw.unsupported.empty()&&raw.masks.size()==1&&raw.maskDataFiles.size()==1,"Inline mask was rejected or lost");const auto& mask=raw.masks[0];check(mask.id=="inline-mask"&&mask.surface->offsetX==-1&&mask.surface->offsetY==1&&mask.locked&&mask.autoLink,"Inline mask metadata migration");check(mask.surface->pixels==std::vector<std::uint32_t>({0xff000000,0xff808080,0xffffffff,0xff404040}),"Inline scalar resource decode");
  auto rgba=readProjectManifest(load(dir/"inline-mask-rgba.moonsprite"));check(rgba.masks[0].surface->pixels==std::vector<std::uint32_t>({0,0xff808080,0xff000000,0xffffffff}),"Mask RGBA transparent RGB normalization");
@@ -78,7 +87,7 @@ void inlineMaskChecks(const std::filesystem::path& dir){
 int main(int argc,char** argv) {
  try {
   check(argc==2,"Fixture argument required");const auto dir=std::filesystem::u8path(argv[1]);
-  historicalVersionChecks(dir);activeCacheChecks(dir);linkedCacheChecks(dir);inlineMaskChecks(dir);
+  historicalVersionChecks(dir);activeCacheChecks(dir);linkedCacheChecks(dir);sparseAnimationChecks(dir);inlineMaskChecks(dir);
   auto bytes=load(dir/"valid.moonsprite");auto parsed=readProjectManifest(bytes);
   check(parsed.schemaVersion==21 && parsed.colorMode=="rgba" && parsed.width==2 && parsed.height==2,"Header changed");
   check(parsed.name==u8"原生兼容样本","Unicode name changed");

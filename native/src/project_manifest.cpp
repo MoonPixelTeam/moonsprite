@@ -101,6 +101,9 @@ static ReadManifest readManifestWithClock(std::shared_ptr<const Bytes> bytes,Lim
     if(out.schemaVersion<1||out.schemaVersion>21) throw Error(ErrorKind::Unsupported,"Native manifest migration supports project schemas 1 through 21");
     auto doc=object(root,"document");
     if(integer(doc,"schemaVersion",0,1,true)!=out.schemaVersion) bad("document schemaVersion mismatch");
+    // normalizeAnimationTimeline falls back when animation/frames is absent.
+    auto animationValue=value(doc,"animation");
+    if(!animationValue||animationValue.ValueType()!=JsonValueType::Object){JsonObject a;a.Insert(L"frames",JsonArray());a.Insert(L"cels",JsonArray());doc.Insert(L"animation",a);}
     // project-format-manifest.ts version gates, including pre-animation files.
     // Keep source version for atlas decoding; preserved JSON is normalized so
     // saving an imported archive cannot restore obsolete version metadata.
@@ -227,11 +230,20 @@ static ReadManifest readManifestWithClock(std::shared_ptr<const Bytes> bytes,Lim
     }
     if(out.layers.empty() || !layerIds.count(out.activeLayerId)) bad("activeLayerId");
     std::set<std::string> modernFreeLayers;for(const auto& layer:out.layers)if(layer.kind=="free-tile"&&layer.freeTiles&&!layer.freeTiles->sources.empty())modernFreeLayers.insert(layer.id);
-    const auto animation=object(doc,"animation");out.activeFrameId=textjson::str(animation,L"activeFrameId");const auto loopValue=value(animation,"loop");out.loop=!(loopValue&&loopValue.ValueType()==JsonValueType::Boolean&&!loopValue.GetBoolean());
+    auto animation=object(doc,"animation");out.activeFrameId=textjson::str(animation,L"activeFrameId");const auto loopValue=value(animation,"loop");out.loop=!(loopValue&&loopValue.ValueType()==JsonValueType::Boolean&&!loopValue.GetBoolean());
+    if(!animation.HasKey(L"cels"))animation.Insert(L"cels",JsonArray());
     fields(animation,{"frames","cels","activeFrameId","loop","loopSections","layerMasks","groupMasks"},"animation",out);
     std::size_t frameIndex=0;
-    for(const auto& item:array(animation,"frames")) {const auto index=frameIndex++;if(item.ValueType()!=JsonValueType::Object&&item.ValueType()!=JsonValueType::Array)continue;auto o=item.ValueType()==JsonValueType::Object?item.GetObject():JsonObject{};ManifestFrame frame;frame.id=textjson::str(o,L"id");if(javascriptTrim(std::wstring_convert<std::codecvt_utf8<char32_t>,char32_t>{}.from_bytes(frame.id)).empty())frame.id="frame-"+std::to_string(index+1);if(!frameIds.insert(frame.id).second)continue;frame.duration=100;if(auto duration=value(o,"duration");duration&&duration.ValueType()==JsonValueType::Number&&std::isfinite(duration.GetNumber()))frame.duration=int(std::clamp(std::trunc(duration.GetNumber()),1.,60000.));if(auto disabled=value(o,"disabled");disabled&&disabled.ValueType()==JsonValueType::Boolean)frame.disabled=disabled.GetBoolean();fields(o,{"id","duration","disabled"},"frame",out);out.frames.push_back(std::move(frame));}
-    if(out.frames.empty())bad("empty normalized animation requires default timeline adaptation");if(!frameIds.count(out.activeFrameId))out.activeFrameId=out.frames.front().id;
+    for(const auto& item:array(animation,"frames",false)) {const auto index=frameIndex++;if(item.ValueType()!=JsonValueType::Object&&item.ValueType()!=JsonValueType::Array)continue;auto o=item.ValueType()==JsonValueType::Object?item.GetObject():JsonObject{};ManifestFrame frame;frame.id=textjson::str(o,L"id");if(javascriptTrim(std::wstring_convert<std::codecvt_utf8<char32_t>,char32_t>{}.from_bytes(frame.id)).empty())frame.id="frame-"+std::to_string(index+1);if(!frameIds.insert(frame.id).second)continue;frame.duration=100;if(auto duration=value(o,"duration");duration&&duration.ValueType()==JsonValueType::Number&&std::isfinite(duration.GetNumber()))frame.duration=int(std::clamp(std::trunc(duration.GetNumber()),1.,60000.));if(auto disabled=value(o,"disabled");disabled&&disabled.ValueType()==JsonValueType::Boolean)frame.disabled=disabled.GetBoolean();fields(o,{"id","duration","disabled"},"frame",out);out.frames.push_back(std::move(frame));}
+    if(out.frames.empty()){
+      out.frames.push_back({"frame-1",100,false});frameIds.insert("frame-1");out.loop=true;
+      animation.Insert(L"activeFrameId",JsonValue::CreateStringValue(L"frame-1"));
+      animation.Insert(L"loop",JsonValue::CreateBooleanValue(true));
+      animation.Insert(L"cels",JsonArray());
+      animation.Insert(L"layerMasks",JsonArray());animation.Insert(L"groupMasks",JsonArray());animation.Insert(L"loopSections",JsonArray());
+      JsonObject frame;frame.Insert(L"id",JsonValue::CreateStringValue(L"frame-1"));frame.Insert(L"duration",JsonValue::CreateNumberValue(100));JsonArray frames;frames.Append(frame);animation.Insert(L"frames",frames);
+      doc.Insert(L"animation",animation);out.manifestUtf8=winrt::to_string(root.Stringify());
+    }if(!frameIds.count(out.activeFrameId))out.activeFrameId=out.frames.front().id;
     std::set<std::string> loopIds;
     std::map<std::string,std::size_t> loopFrameIndexes;for(std::size_t i=0;i<out.frames.size();++i)loopFrameIndexes.emplace(out.frames[i].id,i);
     // normalizeAnimationLoopSections filters invalid candidates, preserving the

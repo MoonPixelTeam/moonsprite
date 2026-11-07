@@ -60,6 +60,23 @@ PreparedImport prepareEditableImport(const ReadManifest& m) {
  corrupt(m.id.empty()||m.width<1||m.height<1,"Invalid document identity or dimensions");
  unsupported(m.width>1024||m.height>1024,"Editor currently supports dimensions up to 1024");
  unsupported(m.colorMode!="rgba","Only RGBA projects are editable");
+ // Legacy refreshActiveAnimationFrame clears missing ordinary slots while
+ // preserving displayed geometry; ensureAnimationDocument later materializes
+ // active blank storage and 1x1 inactive storage on editing/saving.
+ std::set<std::pair<std::string,std::string>> importedSlots;std::set<std::string> importedIds;
+ for(const auto& c:m.cels){importedSlots.emplace(c.layerId,c.frameId);importedIds.insert(c.id);}
+ if(!m.layers.empty()&&!m.frames.empty()&&m.cels.size()<m.layers.size()*m.frames.size()){
+  ReadManifest normalized=m;std::size_t serial=0,pixels=0;
+  for(const auto& l:m.layers)for(const auto& f:m.frames)if(!importedSlots.count({l.id,f.id})){
+   unsupported(!l.kind.empty(),"Missing special-layer Cel normalization is not migrated");
+   corrupt(!l.surface,"Missing layer raster for blank slot");ManifestCel c;
+   do{c.id="import-blank-cel-"+std::to_string(++serial);}while(!importedIds.insert(c.id).second);
+   c.layerId=l.id;c.frameId=f.id;c.opacity=l.opacity;auto surface=std::make_shared<ManifestRaster>();
+   if(f.id==m.activeFrameId){surface->width=l.surface->width;surface->height=l.surface->height;surface->offsetX=l.surface->offsetX;surface->offsetY=l.surface->offsetY;}else surface->width=surface->height=1;
+   const auto count=std::size_t(surface->width)*surface->height;corrupt(count>64u*1024*1024-pixels,"Blank slot pixels exceed import budget");pixels+=count;surface->pixels.resize(count);c.surface=surface;normalized.cels.push_back(std::move(c));
+  }
+  return prepareEditableImport(normalized);
+ }
  // Validate identities/slots/links before applying this editor's capability gate.
  timeline::State state;state.canvasWidth=m.width;state.canvasHeight=m.height;state.tilesets=m.tilesets;
  for(const auto& section:m.loopSections)state.loopSections.push_back({section.id,unicode(section.name),section.startFrameId,section.endFrameId,section.direction,section.repeatCount});

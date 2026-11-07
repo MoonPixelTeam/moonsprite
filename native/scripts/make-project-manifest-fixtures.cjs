@@ -104,5 +104,16 @@ registerHooks({
   if(decoded.layers[0].pixels[0]!==10)throw new Error('Linked fallback active projection mismatch');
   fs.writeFileSync(path.join(out,`linked-cache-${mode}-${Number(chain)}.moonsprite`),bytes);
  }
+ for(const mode of ['absent','null','empty','invalid','hole-active','hole-inactive']){
+  const m=structuredClone(manifest),r={...files},l=m.document.layers[0],a=m.document.animation;
+  l.dataEncoding='raw';r[l.dataFile]=new Uint8Array(16).fill(255);
+  if(mode==='absent')delete m.document.animation;else if(mode==='null')m.document.animation=null;else if(mode==='empty')a.frames=[];else if(mode==='invalid')a.frames=[null,7];
+  else{a.frames.push({id:'hole-frame',duration:270});if(mode==='hole-active')a.activeFrameId='hole-frame';}
+  if(!mode.startsWith('hole')){if(m.document.animation)m.document.animation.cels=[];}else{a.cels[0].dataEncoding='raw';r[a.cels[0].dataFile]=new Uint8Array(16).fill(255);}
+  const refs=new Set([l.dataFile,...(mode.startsWith('hole')?a.cels.map(x=>x.dataFile):[])]);for(const k of Object.keys(r))if((k.startsWith('layers/')||k.startsWith('cels/'))&&!refs.has(k))delete r[k];
+  r['manifest.json']=strToU8(JSON.stringify(m));const bytes=zipSync(r),decoded=decodeProject(bytes);
+  const blank=mode!=='hole-inactive';if(decoded.animation.frames.length!==(mode.startsWith('hole')?2:1)||decoded.layers[0].pixels.some(v=>v!==(blank?0:255)))throw new Error('Sparse animation oracle mismatch '+mode);
+  fs.writeFileSync(path.join(out,`sparse-animation-${mode}.moonsprite`),bytes);
+ }
  console.log('Generated project manifest fixtures through legacy encodeProject');
 })().catch(e=>{console.error(e);process.exitCode=1;});

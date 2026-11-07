@@ -3529,3 +3529,10 @@ make-project-manifest-fixtures.cjs通过实际legacy encode/decode生成版本1�
 对照legacy createAnimationCelLookup.resolve与refreshActiveAnimationFrame，合法链接节点自身的fallback不覆盖根Cel权威内容。原生移除过期alias像素／几何不等即拒绝的门禁，各显式栅格资源仍先检查字节与预算，关系缺失／环／跨层错误门禁仍保留。根内容安装与活动帧投影沿用既有Timeline路径，无额外编辑历史。
 
 六组真实legacy decode ZIP样本覆盖旧像素、旧尺寸／偏移、无alias栅格 × 直接链接／两级链，并把活动帧定位alias／tail。原生检查所有成员解析同一根、正确画面、普通／恢复输出的alias缓存更新、重开、导入无历史、从alias笔画编辑和所有成员Undo/Redo。正式构建linked-cache-build.log通过，project-manifest-tests及project-save-tests通过对应linked-cache日志，正式--cel-clipboard-check退出0；完整free-tile-project-tests通过linked-cache-free-tests.log，来源覆盖通过linked-cache-provenance.log，diff通过。空动画／缺失Cel槽仍待迁移，人工UI验收未做，整体迁移INCOMPLETE。
+
+
+### 2026-11-07：空动画默认时间线与普通缺失Cel槽准入
+
+对照legacy normalizeAnimationTimeline、clearLayerSurface、ensureAnimationDocument，缺失／null动画、空／无有效帧回落frame-1、100ms、loop true；普通图层活动槽缺失显示透明但保持图层几何，非活动槽在编辑／保存补为1×1空白。原生读取器保存规范化清单，避免编码时复活旧动画元数据；prepareEditableImport在完整关系准入前补普通空槽，使用唯一标识、图层透明度、受限像素预算，不产生用户历史。原生提前物化空槽是完整Timeline的必要适配，未宣称保留旧版缺失槽身份。特殊图层缺失槽仍明确限制。
+
+六组实际legacy decode ZIP样本覆盖absent/null/empty/invalid animation及active/inactive hole，验证帧结构、透明显示、普通／恢复保存重开和笔画Undo/Redo。最终正式构建sparse-animation-final-build.log、工程测试sparse-animation-manifest-tests.log通过；最终project-save-tests、完整free-tile-project-tests通过sparse-animation-save-tests.log／sparse-animation-free-tests.log，正式--cel-clipboard-check退出0，来源覆盖sparse-animation-provenance.log与diff检查通过。无人工UI验收，特殊空槽及缺失槽身份仍不完整，全量INCOMPLETE。
