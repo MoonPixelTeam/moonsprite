@@ -3341,3 +3341,9 @@ pending-tile-center-build.log正式Release及free/tile测试构建exit0，fixtur
 核对legacy workspace-commands-color.ts::applyColorReplacementTarget枚举selectedAnimationCellKeys。原生cells范围此前只取右键上下文单个层/帧，忽略实际时间轴多选。改为收集timelineSelection.cels，范围启用也使用实际非空选择，清空选择后不回退陈旧上下文；核心替换、锁定过滤、共享源去重和历史不变。
 
 实际Editor对话框新增普通/链接两组，跨层跨帧选取不连续帧格，检查目标集合、独立预览、取消、单批提交、未选格不变、链接传播及Undo/Redo，空选择不使用旧上下文。正式构建exit0（replace-selected-cells-build.log），--workspace-check --named-workspace-only --replace-cell-selection-only退出0，来源检查通过（replace-selected-cells-provenance.log），diff通过。首次遗漏named-workspace-only参数导致目标测试后继续执行通用预览拖动检查并失败“Preview title/resize press did not acquire capture”；该通用问题未在本阶段修复，不用单项通过声称完整workspace通过。未做人工UI验收，全量迁移仍INCOMPLETE。
+
+### 2026-11-07：工作区预览测试状态隔离
+
+继续定位先前完整workspace失败。实际editor_refresh.cpp在历史面板打开时自动initializeDocking并启用custom；旧独立PreviewPanel测试仍直接给控件发鼠标消息，用户已有历史面板/布局配置使其进入另一事件路径。测试在命名预设检查后明确关闭历史面板、恢复standalone模型及固定预览几何，在精确位移和后续测试前恢复对应布局。增加捕获/精确位移失败的步骤、模式、坐标诊断，不修改产品交互、不删除用户配置或缓存。
+
+最终正式构建exit0（preview-capture-build.log）。--workspace-check已越过先前预览标题捕获、拖动、角缩放、关闭重开、9/10物理像素连续位移断言，后续在“Dialog controls did not reflow”失败，完整workspace仍未通过，后续分阶段增量重绘检查尚未执行。本阶段保留这一具体未解决问题，未做人工UI验收。来源检查通过（preview-capture-provenance.log），diff通过；全量迁移仍INCOMPLETE。

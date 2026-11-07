@@ -1552,6 +1552,9 @@ void Editor::smokeWorkspace() {
 
     smoke_=true;dockWidth_=0;paletteShare_=0;timelineHeight_=109;modalGeometry_.clear();
     smokeNamedWorkspacePresets();
+    // Preset restoration can install managed docking; the following legacy
+    // preview fixture dispatches directly to the standalone preview widget.
+    historyPanelOpen_=false;docking_=panels::Model{};previewPanelOpen_=true;palettePanelOpen_=colorPickerOpen_=layersPanelOpen_=true;previewPanel_->setBounds(gfx::Rect(bounds().x+400,bounds().y+180,360,240));refresh();
 
     smokePointerPopup();
 
@@ -1615,11 +1618,12 @@ void Editor::smokeWorkspace() {
 
     if(!previewPanel_->isVisible() || previewPanel_->bounds()!=resized || !swatches_[0]->isVisible())throw std::runtime_error("Preview reopen lost geometry or palette");
 
+    docking_=panels::Model{};previewPanel_->setBounds(resized);refresh();
     const auto preciseStart=previewPanel_->bounds();const gfx::Point preciseHeader(preciseStart.x+20,preciseStart.y+12);
 
     mouse(ui::kMouseDownMessage,preciseHeader);mouse(ui::kMouseMoveMessage,preciseHeader+gfx::Point(9,0));flushPanelGeometry();
 
-    if(previewPanel_->bounds().x!=preciseStart.x+9)throw std::runtime_error("Preview drag quantized device-pixel position");
+    if(previewPanel_->bounds().x!=preciseStart.x+9)throw std::runtime_error("Preview drag quantized device-pixel position before="+std::to_string(preciseStart.x)+","+std::to_string(preciseStart.y)+" after="+std::to_string(previewPanel_->bounds().x)+","+std::to_string(previewPanel_->bounds().y)+" capture="+std::to_string(previewPanel_->hasCapture())+" managed="+std::to_string(previewPanel_->managed));
 
     mouse(ui::kMouseMoveMessage,preciseHeader+gfx::Point(10,0));flushPanelGeometry();
 
@@ -1788,6 +1792,7 @@ void Editor::smokeWorkspace() {
 
       throw std::runtime_error("Workspace interactions changed document or canvas scale");
 
+    docking_=panels::Model{};previewPanelOpen_=true;refresh();
     invalidate();
 
   }
@@ -2178,7 +2183,7 @@ void Editor::smokePreviewRepaintStep(int step) {
 
       previewPanel_->onProcessMessage(&message);
 
-      if(i==0 && !previewPanel_->hasCapture())throw std::runtime_error("Preview title/resize press did not acquire capture");
+      if(i==0 && !previewPanel_->hasCapture())throw std::runtime_error("Preview title/resize press did not acquire capture step="+std::to_string(step)+" managed="+std::to_string(previewPanel_->managed)+" visible="+std::to_string(previewPanel_->isVisible())+" bounds="+std::to_string(r.x)+","+std::to_string(r.y)+","+std::to_string(r.w)+","+std::to_string(r.h));
 
     }
 
