@@ -892,7 +892,7 @@ bool appendLcdScreen(timeline::State& state,const timeline::Surface& surface,con
 }
 
 }
-bool Document::beginFilterPreview(){if(!activeMaskId_.empty())return false;
+bool Document::beginFilterPreview(){
  cancelFilterPreview();commitFloatingPaste();cancelStroke();cancelLayerOpacity();if(active())return false;FilterPreview p;p.revision=revision_;p.contentRevision=contentRevision_;p.generation=++nextFilterGeneration_;filterPreview_=std::move(p);return true;
 }
 std::optional<Document::FilterPreviewTask> Document::captureFilterPreviewTask(FilterPreset preset,std::optional<double> opacity,bool lcd,int lcdWidth,int lcdHeight){
@@ -918,7 +918,7 @@ bool Document::commitFilterPreviewTask(FilterPreviewTask&& task){
  const bool committed=commitGroupEdit(std::move(edit),U"LCD屏幕滤镜");if(committed){cancelFilterPreview();task.completed=false;}return committed;
  }
  const auto& next=task.result->state();if(next.layers.size()!=timeline_.state().layers.size()+1||next.layers.front().id!=task.layerId||next.frames.size()!=timeline_.state().frames.size()||next.cels.size()!=timeline_.state().cels.size()+next.frames.size()||!task.result->diagnoseLinks().empty())throw std::logic_error("Invalid filter result structure");
- Edit edit{{},state_,nextState_};captureLayerOrder(edit,false);edit.beforeFrame=edit.afterFrame=activeFrameId_;edit.beforeTimelineSelection=timelineSelection_;edit.beforeSelection=selectedFrames_;edit.beforeFrameAnchor=frameAnchor_;edit.detachedLayer=next.layers.front();edit.detachedCels.reserve(next.frames.size());for(const auto& c:next.cels)if(c.layerId==task.layerId)edit.detachedCels.push_back(c);if(edit.detachedCels.size()!=next.frames.size())throw std::logic_error("Incomplete filter result frame slots");for(const auto& l:next.layers)edit.afterOrder.push_back(l.id);edit.afterActive=task.layerId;
+ Edit edit{{},state_,nextState_};edit.maskContext=std::make_shared<Edit::MaskContextHistory>(Edit::MaskContextHistory{activeMaskId_,activeMaskId_,maskIsolated_,maskIsolated_});captureLayerOrder(edit,false);edit.beforeFrame=edit.afterFrame=activeFrameId_;edit.beforeTimelineSelection=timelineSelection_;edit.beforeSelection=selectedFrames_;edit.beforeFrameAnchor=frameAnchor_;edit.detachedLayer=next.layers.front();edit.detachedCels.reserve(next.frames.size());for(const auto& c:next.cels)if(c.layerId==task.layerId)edit.detachedCels.push_back(c);if(edit.detachedCels.size()!=next.frames.size())throw std::logic_error("Incomplete filter result frame slots");for(const auto& l:next.layers)edit.afterOrder.push_back(l.id);edit.afterActive=task.layerId;
  auto after=timelineSelection_;after.layers={task.layerId};after.layerAnchor=task.layerId;edit.afterTimelineSelection=after;edit.afterSelection=selectedFrames_;edit.afterFrameAnchor=frameAnchor_;for(const auto& l:timeline_.state().layers)edit.beforeLayerOpacityProjection.push_back({l.id,l.opacity});for(const auto& l:next.layers)edit.afterLayerOpacityProjection.push_back({l.id,l.opacity});
  auto active=task.layerId;history_.reserve(position_+1);timeline_=std::move(*task.result);activeLayerId_=std::move(active);timelineSelection_=std::move(after);cancelFilterPreview();change_={0,0,width_,height_};publishChange();pushEdit(std::move(edit),task.lcd?U"LCD屏幕滤镜":std::u32string(filterPresetDefinition(task.preset).name));return true;
 }

@@ -3285,3 +3285,9 @@ pending-tile-center-build.log正式Release及free/tile测试构建exit0，fixtur
 补齐specialPaletteReplacement阶段明确未覆盖的持久化证据。现有reopen辅助函数使用d.palette构建Document，不能证明归档调色板正确；本阶段八组特殊文档调色板替换用例新增encodeEditableProject/encodeRecoveryProject→readProjectManifest→prepareEditableImport→createEditableDocument真实解码链。
 
 逐项核对实际解码entry的ID/name/RGBA、slots/columns/nextId及蒙版像素，包含取消/提交与free/tile/活动蒙版组合。前景/背景角色属于会话值，本阶段不声明其归档持久化。测试构建exit0（special-palette-persistence-build.log），完整free-tile-project-tests通过（special-palette-persistence-test.log），来源检查通过（special-palette-persistence-provenance.log），diff通过。无产品代码修改、新产品构建或人工UI验收；活动蒙版下新增预设滤镜仍待核对旧版编辑上下文转换，未在本批放行。全量迁移仍INCOMPLETE。
+
+### 2026-11-07：活动蒙版上下文预设滤镜
+
+核对legacy workspace-commands-layer-adjustment.ts::applyFilterPreset改变活动层但不清除activeLayerMaskId，workspace-mutation.ts仅清除已消失蒙版，workspace-history.ts LayerUiSnapshot也不修改蒙版上下文。原生开放活动蒙版下共享滤镜预览，为预设覆盖层历史保存不变的maskContext，确保Undo/Redo不因原生selectLayer副作用丢失编辑目标。
+
+新增普通/tile/free所属蒙版×六预设十八组，检查预览取消保留上下文、单提交、Undo/Redo活动层及蒙版目标、所属Cel像素/实例/网格和蒙版像素不变。正式Release及free/filter测试构建exit0（mask-filter-overlay-build.log）；完整free/filter-presets测试exit0（mask-filter-overlay-free-test.log、mask-filter-overlay-presets-test.log）；正式工作区drawing-anchor-edit-floating组合exit0；来源检查通过（mask-filter-overlay-provenance.log），diff通过。共享入口的LCD蒙版上下文仍待专门核对，本阶段不声明其完成；未做人工UI验收，全量迁移仍INCOMPLETE。
