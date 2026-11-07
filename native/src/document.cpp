@@ -1634,11 +1634,9 @@ const PaletteEntry* Document::paletteEntry(int id) const {
   return nullptr;
 }
 void Document::selectPaletteIds(const std::vector<int>& ids,int primary) {
-  palette_.selected.clear();const auto order=palette_.order();
-  for(int id:ids) if(std::find(order.begin(),order.end(),id)!=order.end() &&
-    std::find(palette_.selected.begin(),palette_.selected.end(),id)==palette_.selected.end()) palette_.selected.push_back(id);
-  palette_.primaryId=std::find(palette_.selected.begin(),palette_.selected.end(),primary)!=palette_.selected.end()?primary:
-    palette_.selected.empty()?0:palette_.selected.back();
+  palette_.selected.clear();const auto& order=palette_.order();const std::unordered_set<int> available(order.begin(),order.end());std::unordered_set<int> chosen;chosen.reserve(std::min(ids.size(),available.size()));
+  for(int id:ids)if(available.count(id)&&chosen.insert(id).second)palette_.selected.push_back(id);
+  palette_.primaryId=chosen.count(primary)?primary:palette_.selected.empty()?0:palette_.selected.back();
   if(const auto entry=paletteEntry(palette_.primaryId)) palette_.primary=entry->color;
 }
 void Document::selectPalette(int id,bool additive) {
@@ -1678,8 +1676,8 @@ void Document::selectPaletteBox(std::size_t start,std::size_t end,int columns,co
  selectPaletteIds(ids,end<slots.size()?slots[end]:0);
 }
 std::vector<int> Document::movedPaletteSlots(const std::vector<int>& slots,const std::vector<int>& ids,int target,int anchor,int columns){
- if(columns<1 || target<0)return slots;
- std::vector<int> sources;for(int i=0;i<int(slots.size());++i)if(slots[i] && std::find(ids.begin(),ids.end(),slots[i])!=ids.end())sources.push_back(i);
+ columns=std::clamp(columns,1,256);target=std::max(0,target);const std::unordered_set<int> selected(ids.begin(),ids.end());
+ std::vector<int> sources;for(int i=0;i<int(slots.size());++i)if(slots[i]&&selected.count(slots[i]))sources.push_back(i);
  if(sources.empty())return slots;int a=sources.front();for(int i:sources)if(slots[i]==anchor){a=i;break;}int minX=columns,maxX=0,minY=int(slots.size());
  for(int i:sources){minX=std::min(minX,i%columns);maxX=std::max(maxX,i%columns);minY=std::min(minY,i/columns);}
  const int dx=std::clamp(target%columns-a%columns,-minX,columns-1-maxX),dy=std::max(-minY,target/columns-a/columns);
@@ -1687,8 +1685,10 @@ std::vector<int> Document::movedPaletteSlots(const std::vector<int>& slots,const
  const int required=*std::max_element(destinations.begin(),destinations.end())+1;next.resize(std::max(int(next.size()),((required+columns-1)/columns)*columns),0);
  for(int i:sources)next[i]=0;std::vector<int> displaced;
  for(std::size_t i=0;i<sources.size();++i){const int dest=destinations[i];if(next[dest])displaced.push_back(next[dest]);next[dest]=slots[sources[i]];}
- for(int id:displaced){int dest=-1;for(int i:sources)if(!next[i] && std::find(destinations.begin(),destinations.end(),i)==destinations.end()){dest=i;break;}
-  if(dest<0){auto it=std::find(next.begin(),next.end(),0);dest=int(it-next.begin());if(it==next.end())next.resize(next.size()+columns,0);}next[dest]=id;}
+ const std::unordered_set<int> destinationSet(destinations.begin(),destinations.end());std::size_t sourceHole=0,hole=0;
+ for(int id:displaced){while(sourceHole<sources.size()&&(next[sources[sourceHole]]||destinationSet.count(sources[sourceHole])))++sourceHole;int dest;
+  if(sourceHole<sources.size())dest=sources[sourceHole++];else{while(hole<next.size()&&(next[hole]||destinationSet.count(int(hole))))++hole;dest=int(hole);if(hole==next.size())next.resize(next.size()+columns,0);++hole;}next[dest]=id;}
+
  return next;
 }
 void Document::repositionPaletteColors(const std::vector<int>& slots,const std::vector<int>& ids,int target,int anchor,int columns,bool storeColumns){

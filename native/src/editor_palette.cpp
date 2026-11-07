@@ -47,13 +47,16 @@ void Editor::syncPaletteButtons() {
 
     const auto& palette=document.palette();
 
+    std::unordered_map<int,const PaletteEntry*> entries,displayEntries;entries.reserve(palette.entries.size());for(const auto& e:palette.entries)entries.emplace(e.id,&e);const auto& shown=document.displayPalette();displayEntries.reserve(shown.entries.size());for(const auto& e:shown.entries)displayEntries.emplace(e.id,&e);
+    const std::unordered_set<int> occupied(palette.slots.begin(),palette.slots.end()),selected(palette.selected.begin(),palette.selected.end());
+    const auto lookup=[](const auto& index,int id)->const PaletteEntry*{const auto found=index.find(id);return found==index.end()?nullptr:found->second;};
     auto roleId=[&](int preferred,Pixel color) {
 
-      const auto chosen=document.paletteEntry(preferred);
+      const auto chosen=lookup(entries,preferred);
 
-      if(chosen && chosen->color==color && std::find(palette.slots.begin(),palette.slots.end(),preferred)!=palette.slots.end()) return preferred;
+      if(chosen && chosen->color==color && occupied.count(preferred)) return preferred;
 
-      for(const int id:palette.slots) if(const auto entry=document.paletteEntry(id)) if(entry->color==color) return id;
+      for(const int id:palette.slots) if(const auto entry=lookup(entries,id)) if(entry->color==color) return id;
 
       return 0;
 
@@ -63,7 +66,7 @@ void Editor::syncPaletteButtons() {
 
     for(std::size_t i=0;i<swatches_.size();++i) {
 
-      const auto entry=document.displayPaletteEntry(paletteButtonIds_[i]);swatches_[i]->swatch=paletteButtonIds_[i]<0?0xff000000:entry?entry->color:0;
+      const auto entry=lookup(displayEntries,paletteButtonIds_[i]);swatches_[i]->swatch=paletteButtonIds_[i]<0?0xff000000:entry?entry->color:0;
 
       swatches_[i]->paletteDisplayName=showPaletteNames_ && entry && std::any_of(entry->name.begin(),entry->name.end(),[](char32_t c){return !javascriptWhitespace(c);})?entry->name:U"";
 
@@ -71,9 +74,7 @@ void Editor::syncPaletteButtons() {
 
       swatches_[i]->backgroundMarker=entry && entry->id==backgroundId;
 
-      const auto& selected=document.palette().selected;
-
-      swatches_[i]->active=std::find(selected.begin(),selected.end(),paletteButtonIds_[i])!=selected.end();
+      swatches_[i]->active=selected.count(paletteButtonIds_[i])!=0;
 
     }
 
@@ -171,7 +172,7 @@ void Editor::finishPalettePointer(bool cancel) {
 
     if(!cancel && !gesture.moving && !gesture.secondary && gesture.active)paletteBoxRange_=PaletteBoxRange{document.identity(),gesture.start,gesture.last,document.palette().selected};
 
-    if(!cancel && gesture.moving){if(gesture.active){const auto history=document.revision();document.repositionPaletteColors(gesture.slots,gesture.ids,int(gesture.last),gesture.anchor,gesture.columns,paletteManual_);if(paletteManual_&&document.revision()!=history)document.annotatePaletteView(gesture.beforeView,capturePaletteView());}else if(gesture.secondary)document.selectSecondaryPalette(gesture.anchor);}
+    if(!cancel && gesture.moving){if(gesture.active){const auto history=document.revision();document.repositionPaletteColors(gesture.slots,gesture.ids,int(gesture.last),gesture.anchor,gesture.columns,true);if(paletteManual_&&document.revision()!=history)document.annotatePaletteView(gesture.beforeView,capturePaletteView());}else if(gesture.secondary)document.selectSecondaryPalette(gesture.anchor);}
 
     refresh();
 

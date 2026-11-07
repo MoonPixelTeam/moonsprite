@@ -3698,3 +3698,16 @@ RGB／HSV插值与现有槽位渐变共用同一个PaletteGradientSampler，沿�
 palette-sort-cache-final-build.log正式Release和核心目标构建通过；修正测试上下文后的palette-sort-cache-test-build.log通过。palette-sort-cache-final-tests.log通过全部128组新排序矩阵及既有1668组raw、192组粘贴、158组解码／530组命令和完整工程矩阵；palette-sort-cache-tests.log中的核心事务退出0（该日志同时保留首次工程测试上下文失败，不当作完整通过日志）。正式--palette-sort-check、--palette-gradient-check、--palette-reverse-check均退出0，见palette-sort-cache-ui.log。来源覆盖626文件通过，strict按已知全量缺口退出1；diff检查通过。
 
 同机Release微基准见palette-sort-cache-benchmark.log：八种排序各重复三次，4096色旧比较器310.018ms、优化后完整Document命令99.946ms；65536色分别7092.76ms和2333.53ms，约3.10／3.04倍。临时基准源码从提交d6ba8c43提取旧比较器，旧侧仅计算顺序，新侧包含槽位归一化与历史，逐次核对两侧输出一致，生成物仅在native/build，不提交、不作为另一应用交付。此范围不代表UI拖动、缩放或整体交互性能，也未进行人工图像验收。全量迁移仍INCOMPLETE。
+
+
+### 调色盘范围选择、拖排预览与自动列数提交（2026-11-08）
+
+接续b3d4038c，直接核对workspace-palette.ts::selectPaletteColors／reorderPaletteColors、palette-layout.ts::paletteRangeIdsBySlots／repositionPaletteSlots、PalettePanel.tsx::finishPaletteDrag。原生选择过滤／去重改为集合，仍按输入首次顺序、原始order可用身份、指定primary或末项回退；悬空引用可选但不能据缺失条目改变前景色。拖排预览用集合处理移动身份／目标槽，用单调游标保留被挤颜色优先填原槽再填全局空槽的真实顺序，避免逐项重复扫描。负目标按旧版限到0，列数按既有1..256规则。没有新增颜色或改变选择轮廓素材／命中几何。
+
+旧版finishPaletteDrag无论自动／手工模式都向reorderPaletteColors提交drag.columns，原生此前自动模式误用旧存储列数再归一化，造成预览和提交位置不一致；现两种模式均提交实际拖动列数，保留现有手工框选视图历史。syncPaletteButtons在每次刷新建立当前／预览条目及占位／选择索引，替代每色卡反复扫描整张色板；保留首条目查找、角色优先身份、重复／悬空与负预览占位、名称及替换预览规则，索引局限本次调用不保留裸指针。
+
+实际旧版新增240组：八种布局×1／3／8列×五目标（含负数）×单／多选，直接记录移动预览、范围选择、reorder命令及真实Undo/Redo回调，覆盖重复／悬空源槽、缺失anchor、挤占优先源槽／全局空槽、扩容、无操作和视图／存储列数不同；原生逐状态核对order／slots／columns／事务数、选择／前景／cursor以及普通和恢复保存重开。首次工程检查因测试另造projectId与来源归档不一致被正确拒绝，改用真实来源身份；首轮失焦检查按未补行预览比较，现对照旧版提交归一化并新增自动列数断言，不削弱产品校验。失败证据保留palette-movement-tests.log和palette-movement-initial-blur-failure.log。
+
+最终palette-movement-verified-tests.log通过240组新增、128组全部排序、1668组raw、192组粘贴、158组解码／530组命令及完整既有工程矩阵；核心事务在palette-movement-final-tests.log退出0。正式Release通过palette-movement-final-build.log及补充大色板检查后的palette-movement-verified-build.log；最终palette-movement-verified-ui.log中--palette-manual-check、--palette-window-blur-check、--palette-mouse-check、--palette-names-check、--palette-gradient-check、--palette-clipboard-check全部退出0。manual新增4096色真实全选／同步，逐卡验证颜色／名称／active／前后景标记、清除选择、替换预览不改原色及取消后无悬空预览索引；原有素材逐像素alpha／命中检查继续执行。来源覆盖626文件通过，strict因现存缺口退出1，diff检查通过。
+
+同机Release微基准palette-movement-benchmark.log从b3d4038c提取旧移动函数，与本次函数核对相同输出，半数槽移动并挤占目标：4096槽1.7573ms→0.3903ms，16384槽26.327ms→1.6738ms，65536槽440.932ms→7.8432ms。仅为单次算法基准，不能推广为整体UI帧率；临时源码／程序仅在native/build，不提交或另作交付。本批没有人工图像验收。全量迁移仍INCOMPLETE。
