@@ -26,6 +26,15 @@ namespace moon {
 namespace {
 std::vector<int> currentPaletteSlots(const PaletteState& p){return normalizePaletteSlots(p.entries,p.order(),p.slots,p.columns);}
 void normalizePaletteSnapshot(PaletteState& p,bool retainOrder){const auto order=p.order();p.slots=currentPaletteSlots(p);p.independentOrder.reset();if(retainOrder)p.setOrder(order);}
+// Legacy HistoryStack::trimOldestUndoEntries: compute the discarded prefix
+// before moving retained native records, so one trim does one vector erase.
+template<class Entries> std::size_t trimHistoryUndo(Entries& entries,std::size_t& position,std::size_t& bytes,std::size_t maxBytes,std::size_t maxEntries){
+ std::size_t count=0;
+ while(bytes>maxBytes&&position-count>1){bytes-=entries[count++].bytes();}
+ while(entries.size()-count>maxEntries&&count<position){bytes-=entries[count++].bytes();}
+ if(count){entries.erase(entries.begin(),entries.begin()+count);position-=count;}return count;
+}
+std::size_t normalizeHistoryLimit(std::size_t limit){return limit==std::numeric_limits<std::size_t>::max()?limit:std::clamp<std::size_t>(limit,1,10000);}
 std::size_t adjustmentStorageBudget(const timeline::Timeline&,std::size_t);}
 std::vector<Pixel> Document::canvasPixels()const{
  const auto* present=activeSurfaceIfPresent();if(!present)return std::vector<Pixel>(std::size_t(width_)*height_);const auto& s=*present;raster::validate(s);if(raster::fullCanvas(s,width_,height_))return s.pixels;
@@ -43,7 +52,7 @@ void PixelRegion::include(int px,int py) {
   x=std::min(x,px);y=std::min(y,py);w=right-x;h=bottom-y;
 }
 Document::Document(int w,int h,std::size_t maxBytes,std::size_t maxEntries)
-  : width_(w),height_(h),maxBytes_(maxBytes),maxEntries_(std::clamp<std::size_t>(maxEntries,1,10000)) {
+  : width_(w),height_(h),maxBytes_(maxBytes),maxEntries_(normalizeHistoryLimit(maxEntries)) {
   static std::atomic<std::uint64_t> nextIdentity{0};identity_=++nextIdentity;
   if (w < 1 || h < 1 || w > 1024 || h > 1024)
     throw std::invalid_argument("Prototype canvas must be 1..1024 pixels per side");
@@ -134,7 +143,7 @@ void Document::selectFrame(const std::string& id) {
 }
 void Document::selectFrameHeader(const std::string& id,int mode,bool preserve){if(!timeline_.hasFrame(id))return;if(freeTileInstanceView())setFreeTileInstanceView(false);const auto maskContext=activeMaskId_;const bool isolated=maskIsolated_;if(!timelineSelection_.maskRows.empty()){selectedGroupIds_.clear();selectedGroupId_.reset();timelineSelection_.layers.clear();timelineSelection_.layerAnchor.clear();}timelineSelection_.cels.clear();timelineSelection_.celAnchor.clear();if(!mode){selectedGroupIds_.clear();selectedGroupId_.reset();timelineSelection_.layers.clear();timelineSelection_.layerAnchor.clear();}const auto& frames=timeline_.state().frames;if(mode==2 && !frameAnchor_.empty()){const int a=timeline_.hasFrame(frameAnchor_)?int(timeline_.frameIndex(frameAnchor_)):-1,b=int(timeline_.frameIndex(id));if(a>=0 && b>=0){selectedFrames_.clear();for(int i=std::min(a,b);i<=std::max(a,b);++i)selectedFrames_.push_back(frames[i].id);}}else if(mode==1){auto it=std::find(selectedFrames_.begin(),selectedFrames_.end(),id);if(it==selectedFrames_.end())selectedFrames_.push_back(id);else selectedFrames_.erase(it);std::sort(selectedFrames_.begin(),selectedFrames_.end(),[&](const auto& a,const auto& b){return timeline_.frameIndex(a)<timeline_.frameIndex(b);});}else selectedFrames_={id};if(mode!=1 || frameAnchor_.empty())frameAnchor_=id;if(!preserve)selectFrame(id);if(!maskContext.empty()){activeMaskId_=maskContext;maskIsolated_=isolated;}}
 void Document::moveSelectedFrames(const std::string& target,bool after){cancelStroke();cancelLayerOpacity();timeline::State previous;previous.frames=timeline_.state().frames;previous.loopSections=timeline_.state().loopSections;auto selected=selectedFrames_.empty()?std::vector<std::string>{frame().id}:selectedFrames_;auto has=[&](const auto& id){return std::find(selected.begin(),selected.end(),id)!=selected.end();};std::vector<DocumentFrame> moving,remaining;std::vector<std::string> movingIds;int targetOriginal=-1,movingStart=100000,movingEnd=-1;for(int i=0;i<int(previous.frames.size());++i){const auto& f=previous.frames[i];if(f.id==target)targetOriginal=i;if(has(f.id)){moving.push_back(f);movingIds.push_back(f.id);movingStart=std::min(movingStart,i);movingEnd=i;}else remaining.push_back(f);}if(targetOriginal<0 || moving.empty())return;auto targetIt=std::find_if(remaining.begin(),remaining.end(),[&](const auto& f){return f.id==target;});int insertion=targetIt!=remaining.end()?int(targetIt-remaining.begin())+(after?1:0):int(std::count_if(previous.frames.begin(),previous.frames.begin()+targetOriginal,[&](const auto& f){return !has(f.id);}));int side=has(target)?(after?1:-1):targetOriginal==movingStart-1 && after?-1:targetOriginal==movingEnd+1 && !after?1:0;auto reordered=remaining;reordered.insert(reordered.begin()+insertion,moving.begin(),moving.end());auto loops=timeline::reconcileLoopsReorder(previous,remaining,reordered,movingIds,insertion,side);bool same=previous.frames.size()==reordered.size() && previous.loopSections.size()==loops.size();for(std::size_t i=0;i<previous.frames.size() && same;++i)same=previous.frames[i].id==reordered[i].id;for(std::size_t i=0;i<loops.size() && same;++i)same=previous.loopSections[i].startFrameId==loops[i].startFrameId && previous.loopSections[i].endFrameId==loops[i].endFrameId;if(same)return;Edit e{{},state_,nextState_};captureFrameOrder(e,false);e.beforeLoops=previous.loopSections;e.beforeSelection=selectedFrames_;timeline_.state_.frames=std::move(reordered);timeline_.state_.loopSections=std::move(loops);selectedFrames_=movingIds;timeline_.buildIndex();projectActiveCelOpacities();captureFrameOrder(e,true);e.afterLoops=timeline_.state().loopSections;e.afterSelection=selectedFrames_;change_={0,0,width_,height_};publishChange();pushEdit(std::move(e),U"移动动画帧");}
-void Document::groupEdits(std::size_t start,const std::vector<std::string>& selection){if(start>=position_)return;if(pendingGroupedProjectOperation_&&!groupingHistory_){projectInformation_.operation();pendingGroupedProjectOperation_=false;}Edit group{{},history_[start].beforeState,history_[position_-1].afterState};group.label=history_[position_-1].label;++historyRevision_;group.beforeSelection=selection;group.afterSelection=selectedFrames_;if(history_[start].beforeFrameAnchor){group.beforeFrameAnchor=history_[start].beforeFrameAnchor;group.afterFrameAnchor=frameAnchor_;group.beforeTimelineSelection=history_[start].beforeTimelineSelection;group.afterTimelineSelection=timelineSelection_;}for(std::size_t i=start;i<position_;++i){historyBytes_-=history_[i].bytes();group.children.push_back(std::move(history_[i]));}history_.resize(start);history_.push_back(std::move(group));position_=history_.size();historyBytes_+=history_.back().bytes();std::size_t discardedUndo=0;while((historyBytes_>maxBytes_ && position_>1) || history_.size()>maxEntries_){historyBytes_-=history_.front().bytes();history_.erase(history_.begin());--position_;++discardedUndo;}if(!groupingHistory_)notifyHistoryChange(HistoryStackChange::Kind::Push,history_.back().label,discardedUndo);if(!groupingHistory_&&history_.back().documentChanged)notifyRecording();}
+void Document::groupEdits(std::size_t start,const std::vector<std::string>& selection){if(start>=position_)return;if(pendingGroupedProjectOperation_&&!groupingHistory_){projectInformation_.operation();pendingGroupedProjectOperation_=false;}Edit group{{},history_[start].beforeState,history_[position_-1].afterState};group.label=history_[position_-1].label;++historyRevision_;group.beforeSelection=selection;group.afterSelection=selectedFrames_;if(history_[start].beforeFrameAnchor){group.beforeFrameAnchor=history_[start].beforeFrameAnchor;group.afterFrameAnchor=frameAnchor_;group.beforeTimelineSelection=history_[start].beforeTimelineSelection;group.afterTimelineSelection=timelineSelection_;}for(std::size_t i=start;i<position_;++i){historyBytes_-=history_[i].bytes();group.children.push_back(std::move(history_[i]));}history_.resize(start);history_.push_back(std::move(group));position_=history_.size();historyBytes_+=history_.back().bytes();const auto discardedUndo=trimHistoryUndo(history_,position_,historyBytes_,maxBytes_,maxEntries_);if(!groupingHistory_)notifyHistoryChange(HistoryStackChange::Kind::Push,history_.back().label,discardedUndo);if(!groupingHistory_&&history_.back().documentChanged)notifyRecording();}
 // Whole RGBA cel snapshot: legacy snapshotLinkedAnimationCels rebase and block anchor.
 bool Document::copySelectedCels(){if((hasTilemapContent()||hasFreeTileContent())&&(active()||selection_||!activeMaskId_.empty()))throw std::runtime_error("Only complete inactive tilemap Cel copy is migrated");
 
@@ -1615,9 +1624,12 @@ void Document::clearHistory(){
  notifyHistoryChange(HistoryStackChange::Kind::Clear);
 }
 void Document::setHistoryEntryLimit(std::size_t limit) {
-  const auto previous=history_.size(),previousPosition=position_;maxEntries_=std::max<std::size_t>(1,limit);
-  while(history_.size()>maxEntries_ && position_>0){historyBytes_-=history_.front().bytes();history_.erase(history_.begin());--position_;}
-  while(history_.size()>maxEntries_){historyBytes_-=history_.back().bytes();history_.pop_back();}
+  const auto next=normalizeHistoryLimit(limit);if(next==maxEntries_)return;
+  const auto previous=history_.size(),previousPosition=position_;maxEntries_=next;
+  trimHistoryUndo(history_,position_,historyBytes_,maxBytes_,maxEntries_);
+  // Redo entries do not contribute to legacy memoryBytes. Keep the nearest
+  // redo step when dropping the far end of the native chronological vector.
+  if(history_.size()>maxEntries_)history_.resize(maxEntries_);
   if(previous!=history_.size()){++historyRevision_;const auto discardedUndo=previousPosition-position_;notifyHistoryChange(HistoryStackChange::Kind::Trim,{},discardedUndo,previous-history_.size()-discardedUndo);}
 }
 void Document::pushEdit(Edit edit,std::u32string label) {
@@ -1627,10 +1639,7 @@ void Document::pushEdit(Edit edit,std::u32string label) {
   capturePixelAddresses(edit);
   history_.reserve(position_+1);history_.resize(position_);
   historyBytes_+=edit.bytes();history_.push_back(std::move(edit));++position_;if(history_.back().documentChanged){if(groupingHistory_)pendingGroupedProjectOperation_=true;else projectInformation_.operation();}if(history_.back().documentChanged){state_=nextState_++;modified_=true;}++revision_;
-  std::size_t discardedUndo=0;
-  while(!groupingHistory_ && ((historyBytes_>maxBytes_ && position_>1) || history_.size()>maxEntries_)) {
-    historyBytes_-=history_.front().bytes();history_.erase(history_.begin());--position_;++discardedUndo;
-  }
+  const auto discardedUndo=groupingHistory_?0:trimHistoryUndo(history_,position_,historyBytes_,maxBytes_,maxEntries_);
   if(!groupingHistory_)notifyHistoryChange(HistoryStackChange::Kind::Push,history_.back().label,discardedUndo);
   if(!groupingHistory_&&history_.back().documentChanged)notifyRecording();
 }

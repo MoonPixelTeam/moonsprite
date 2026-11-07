@@ -418,6 +418,16 @@ registerHooks({
   const before=state();syncCommands.updatePaletteColorWithSynchronization(session,1,replacement);const after=state(),length=history.length;history.undo();const undo=state();history.redo();const redo=state();syncOracle.push({file,dataset,enabled,source:packed(source),replacement:packed(replacement),before,after,undo,redo,history:length});
  }
  if(previousWindow===undefined)delete globalThis.window;else globalThis.window=previousWindow;fs.writeFileSync(path.join(out,'palette-sync-oracle.json'),JSON.stringify(syncOracle));console.log(`Palette synchronization: ${syncOracle.length} actual legacy helper/HistoryStack matrices`);
+ const budgetOracle=[];
+ for(const maxBytes of [0,31,64,256])for(const limit of [0,1,3,10001,null])for(const undoCount of [0,2,5]){
+  const d=createDocument('budget',1,1,'rgba');d.palette=[{id:1,name:'墨黑',color:{r:24,g:27,b:33,a:255}},{id:2,name:'月蓝',color:{r:41,g:121,b:255,a:255}}];d.paletteOrder=[1,2];d.paletteSlots=[1,2,null,null,null,null,null,null];d.paletteColumns=8;d.nextColorId=3;
+  const history=new syncHistory.HistoryStack(maxBytes,Infinity),session={document:d,history,selectedPaletteIds:[],paletteSelectionId:null,primaryColor:{r:41,g:121,b:255,a:255},secondaryColor:{r:255,g:255,b:255,a:255}},events=[];
+  history.setChangeListener(e=>events.push({kind:e.kind,label:e.entry?.label??'',undo:e.discardedUndoEntries??0,redo:e.discardedRedoEntries??0}));
+  const steps=[...Array.from({length:6},(_,i)=>i%2?{kind:'rename',name:'name'+i}:{kind:'update',color:i+1}),...Array.from({length:undoCount},()=>({kind:'undo'})),{kind:'limit',limit},{kind:'limit',limit},{kind:'redo'},{kind:'undo'},{kind:'update',color:91},{kind:'limit',limit:1},{kind:'undo'},{kind:'redo'},{kind:'limit',limit:null},{kind:'rename',name:'final'},{kind:'clear'},{kind:'undo'},{kind:'redo'}],states=[];
+  for(const step of steps){if(step.kind==='update')paletteCommands.updatePaletteColor(session,1,{r:step.color,g:0,b:0,a:255});else if(step.kind==='rename')paletteCommands.renamePaletteColor(session,1,step.name);else if(step.kind==='limit')history.setMaxEntries(step.limit??Infinity);else history[step.kind]();states.push({color:d.palette[0].color.r|(d.palette[0].color.g<<8)|(d.palette[0].color.b<<16)|(d.palette[0].color.a<<24),name:d.palette[0].name,position:history.position,bytes:history.memoryBytes,revision:history.revision,labels:history.timeline.entries.map(e=>e.label),events:structuredClone(events)});}
+  budgetOracle.push({maxBytes,steps,states});
+ }
+ fs.writeFileSync(path.join(out,'palette-budget-oracle.json'),JSON.stringify(budgetOracle));console.log(`Palette budget: ${budgetOracle.length} actual legacy HistoryStack limit/branch sequences`);
  const entryHistoryOracle=[];
  const entryNames=['plain','颜色😀','e\u0301组合','\ufeff\u00a0 \u3000','a\u200bb','\u0085kept\u180e','line\nname','𝄞𠀀'];
  for(let dataset=0;dataset<entryNames.length;++dataset)for(const raw of [false,true])for(let sequence=0;sequence<8;++sequence){

@@ -3775,3 +3775,11 @@ palette-apply-index-build.log正式Release、工程与核心目标构建通过�
 新增128组真实HistoryStack序列（八种Unicode／trim名称×普通／独立raw order×八类连续操作），包括emoji补充平面、组合字符、JS会裁掉的空白、JS不裁掉的U+0085／U+180E／U+200B和换行；覆盖改色／改名后再选择及改背景色、连续三步Undo/Redo、新增／粘贴／删除／应用色板与先前条目历史交错、同色／缺失身份／重复改名无操作。每一步核对全部条目ID／名称／RGBA、布局、cursor、选择、前后景、历史位置／字节／所有标题，最终普通／恢复保存重开核对名称及颜色。1668组既有raw矩阵增加真实回调bytes、Undo为0及Redo恢复的断言，覆盖22种命令分支。真实ID0／碰撞身份／索引色等缺口不因历史测试扩展而关闭。
 
 验证：palette-entry-history-fixtures.log生成成功；palette-entry-history-build.log正式Release、工程与核心构建通过。首次新增预算断言发现palette-raw-4排序多计独立order；对照旧版sortPaletteColors／movePaletteColor／reorderPaletteColors确认三者都只计前后slots，修正kind9后重建，最终palette-entry-history-project-tests.log退出0，覆盖128新增序列及1668 raw与全部既有工程矩阵；palette-entry-history-core-tests.log退出0。正式程序--palette-names-check、--palette-sync-check、--palette-gradient-check、--palette-reverse-check均退出0。来源覆盖627文件通过，strict因既有迁移缺口退出1，diff检查通过。本批无人工图像验收或新性能基准，未开放待决定的未锁定特殊图层颜色同步，全量迁移仍INCOMPLETE。
+
+### 历史限制、分支与批量裁剪（2026-11-08）
+
+接续be458455，按实际core/history.ts的normalizeHistoryEntryLimit／setMaxEntries／trimOldestUndoEntries／push／endCompound迁移运行时整数限制：有限值裁剪到1..10000，size_t最大值适配JS Infinity，构造与动态设置一致。旧原生setter未封顶而constructor不接受无限哨兵；现统一。历史预算先裁超额Undo，再处理总条数，保留最近Redo，字节只统计Undo；同限值立即返回，不产生裁剪事件。共享原生批量裁剪实现用于普通push、组合提交和setter，先计算前缀及预算，再一次erase，避免大幅降低限制时逐条头删反复搬移Edit。无文档内容变化、无新撤销条目，通知仍按旧版discardedUndo／discardedRedo报告。
+
+新增60组真实HistoryStack序列（四种预算×五种限制×三种Undo深度），逐步对照改色／改名、超预算、混合Undo/Redo、分支push、重复设置、清空、最近Redo保留、每条历史标题、位置、字节、revision及全部观察者事件。原生回归另覆盖超过10000条的有限／无限构造与动态限制以及一次大量裁剪。尚未据此声明全量历史迁移或颜色板领域完成。
+
+验证：history-trim-fixtures.log实际旧版生成通过；history-trim-build.log正式Release及工程／核心／偏好历史／历史面板／本地历史预算目标构建通过。history-trim-project-tests.log全部工程矩阵及新增60序列退出0；history-trim-preferences-tests.log超过10000条边界与大量裁剪退出0；history-trim-panel-tests.log、history-trim-local-budget-tests.log、history-trim-core-tests.log均退出0。正式--history-panel-check退出0。来源覆盖627文件通过，strict因既有缺口退出1，diff通过。无人工图像验收或定量性能基准，本阶段性能结论限于移除重复vector头部搬移；全量迁移仍INCOMPLETE。
