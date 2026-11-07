@@ -3508,3 +3508,10 @@ legacy workspace-commands-color.ts::applyColorReplacementTarget的collect先跳�
 对照 legacy project-format-manifest.ts、manifest-types.ts、timelapse-migration.ts，原生读取入口从仅21扩至14–21，按来源版本处理旧图集／现代源、18前独立集合、17前图层链接、16前循环区段、21前参考图、20前录像快照local字段；保存所用manifest同步升级root与document为21。prepareEditableImport按旧版decode拒绝缺失、与网格共享、多个旧自由层重复占用的历史图集。1–13仍明确不支持，不宣称全部历史格式兼容。
 
 新增真实ZIP版本14–20矩阵，覆盖打开、源规范化、完整实例、源像素一致、editable/recovery重开、当前版本声明、后续属性编辑Undo/Redo，以及14缺失／重复图集拒绝。测试样本裁剪修正活动层与已移除owner的孤立栅格，保持归档准入严格校验。正式构建通过（historical-archive-build.log），完整free-tile-project-tests通过（historical-archive-tests.log），正式--cel-clipboard-check退出0；来源覆盖通过（historical-archive-provenance.log），diff通过。测试WinRT apartment退出需clear_factory_cache，补齐后全套通过。人工旧工程UI验收尚未进行，整体迁移INCOMPLETE。
+
+
+### 2026-11-07：schema1–13早期工程迁移及默认动画修复
+
+按legacy migrateProjectManifest补齐1–13读取版本门：4及以前强制raw栅格，11以前移除图层／组样式，12以前移除背景，13以前移除tilesets与Cel.tilemap，14以前移除自由瓦片类型与载荷。schema1构造默认100ms帧及图层对应Cel。真实旧版decode实测schema1在最后refreshActiveAnimationFrame因无Cel清空图层；用户明确批准原生修复为保留像素并创建默认帧／Cel，此处是授权差异，不能称行为等价。schema1原始栅格经保留后仍支持普通编辑与Undo/Redo。
+
+make-project-manifest-fixtures.cjs通过实际legacy encode/decode生成版本1–20归档与oracle，schema1明确核对旧版清空现象，原生测试核对授权保留行为；其余逐版本核对实际旧版像素。另增2–13双帧链接动画样本，核对240ms第二帧、链接根与普通／恢复保存重开。更新旧schema20蒙版测试从拒绝为迁移成功，修正早期样本未引用资源。正式构建通过historical-all-build.log；project-manifest-tests、project-save-tests、完整free-tile-project-tests通过对应historical-all日志，正式--cel-clipboard-check退出0，来源覆盖与diff检查通过。证据覆盖RGBA基础栅格、版本门、历史链接动画及既有自由瓦片路径；不表示各版本全部色彩模式、文字、所有畸形输入及人工打开验收完成，全量迁移INCOMPLETE。

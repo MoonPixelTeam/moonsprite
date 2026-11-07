@@ -18,13 +18,31 @@ void check(bool b,const char* message) {if(!b) throw std::runtime_error(message)
 std::shared_ptr<const Bytes> load(const std::filesystem::path& p) {std::ifstream in(p,std::ios::binary);if(!in)throw std::runtime_error("Missing fixture");return std::make_shared<const Bytes>(std::istreambuf_iterator<char>(in),std::istreambuf_iterator<char>());}
 template<class F> void rejects(F work,ErrorKind kind) {try{work();}catch(const Error& e){check(e.kind==kind,"Wrong failure classification");return;}throw std::runtime_error("Invalid manifest accepted");}
 
+void historicalVersionChecks(const std::filesystem::path& dir){
+ const std::vector<std::uint32_t> pixels{0xff1e140a,0x0046505a,0x80030201,0xfcfdfeff};
+ for(int version=1;version<=20;++version){
+  auto bytes=load(dir/("historical-"+std::to_string(version)+".moonsprite"));auto manifest=readProjectManifest(bytes);
+  check(manifest.schemaVersion==21&&manifest.unsupported.empty(),"Historical manifest not normalized");
+  auto document=moon::project::createEditableDocument(prepareEditableImport(manifest));
+  auto verify=[&](const moon::Document& d){check(d.timeline().state().frames.size()==1&&d.frame().duration==100&&d.timeline().state().layers.size()==1,"Historical default animation");check(d.pixels()==pixels&&d.layer().kind.empty()&&!d.layer().background&&!d.layer().layerStyles,"Historical raster or version gates changed");};
+  verify(document);check(document.historyPosition()==0,"Historical import creates editing history");
+  for(bool recovery:{false,true}){const auto saved=recovery?encodeRecoveryProject(document):encodeEditableProject(document);auto parsed=readProjectManifest(saved.bytes);check(parsed.schemaVersion==21&&parsed.unsupported.empty(),"Historical save format");verify(createEditableDocument(prepareEditableImport(parsed)));}
+  document.beginStroke({0,0},0xffabcdef);check(document.commitStroke(),"Historical document editable");document.undo();verify(document);document.redo();check(document.pixels()[0]==0xffabcdef,"Historical edit redo");
+ }
+ for(int version=2;version<=13;++version){
+  auto d=createEditableDocument(prepareEditableImport(readProjectManifest(load(dir/("historical-animation-"+std::to_string(version)+".moonsprite")))));
+  auto verify=[&](const moon::Document& candidate){const auto& state=candidate.timeline().state();check(state.frames.size()==2&&state.frames[1].duration==240&&state.cels.size()==2&&candidate.timeline().diagnoseLinks().empty(),"Historical animation structure");check(candidate.timeline().resolveSurface(state.cels[0].id).source->id==candidate.timeline().resolveSurface(state.cels[1].id).source->id,"Historical linked animation authority");};
+  verify(d);for(bool recovery:{false,true}){auto saved=recovery?encodeRecoveryProject(d):encodeEditableProject(d);verify(createEditableDocument(prepareEditableImport(readProjectManifest(saved.bytes))));}
+ }
+
+}
 void inlineMaskChecks(const std::filesystem::path& dir){
  using namespace moon;auto bytes=load(dir/"inline-mask-u8.moonsprite");const auto raw=readProjectManifest(bytes);check(raw.unsupported.empty()&&raw.masks.size()==1&&raw.maskDataFiles.size()==1,"Inline mask was rejected or lost");const auto& mask=raw.masks[0];check(mask.id=="inline-mask"&&mask.surface->offsetX==-1&&mask.surface->offsetY==1&&mask.locked&&mask.autoLink,"Inline mask metadata migration");check(mask.surface->pixels==std::vector<std::uint32_t>({0xff000000,0xff808080,0xffffffff,0xff404040}),"Inline scalar resource decode");
  auto rgba=readProjectManifest(load(dir/"inline-mask-rgba.moonsprite"));check(rgba.masks[0].surface->pixels==std::vector<std::uint32_t>({0,0xff808080,0xff000000,0xffffffff}),"Mask RGBA transparent RGB normalization");
  auto priority=readProjectManifest(load(dir/"inline-mask-priority.moonsprite"));check(priority.unsupported.empty()&&priority.masks.size()==2&&priority.masks[0].id=="winner"&&priority.masks[0].linkedMaskId=="group-root"&&priority.maskDataFiles.size()==3,"Explicit slot precedence / registered shadow resources");const auto preparedPriority=prepareEditableImport(priority);check(timeline::resolvedMask(preparedPriority.timeline,priority.activeLayerId,priority.activeFrameId)->id=="group-root","Forward cross-kind linked mask resolution");
  auto shadow=readProjectManifest(load(dir/"inline-mask-missing-shadow.moonsprite"));check(shadow.unsupported.empty()&&shadow.masks.size()==1&&shadow.masks[0].id=="winner","Shadowed missing inline resource must not be decoded");
  for(const auto name:{"inline-mask-bad-rgba","inline-mask-bad-alpha","inline-mask-missing-resource","inline-mask-duplicate-id","inline-mask-broken-link","inline-mask-empty-link","inline-mask-cycle"})rejects([&]{readProjectManifest(load(dir/(std::string(name)+".moonsprite")));},ErrorKind::Corrupt);
- rejects([&]{readProjectManifest(load(dir/"inline-mask-schema20.moonsprite"));},ErrorKind::Unsupported);
+ check(readProjectManifest(load(dir/"inline-mask-schema20.moonsprite")).masks.size()==1,"Schema20 inline mask migration");
  auto document=[&](std::shared_ptr<const Bytes> archive){auto ready=prepareEditableImport(readProjectManifest(archive));PaletteState palette;palette.entries.clear();palette.slots=ready.palette.slots;palette.columns=ready.palette.columns;palette.nextId=ready.palette.nextId;for(const auto& item:ready.palette.entries)palette.entries.push_back({item.id,item.name,item.color});auto d=Document::fromImported(ready.width,ready.height,std::move(ready.timeline),std::move(palette),ready.id,ready.name,ready.sourceArchive);d.selectLayer(ready.activeLayerId);d.selectFrame(ready.activeFrameId);d.setImportedLoop(ready.loop);return d;};
  const auto owned=dir/("inline-mask-owned-"+std::to_string(GetCurrentProcessId())+"-"+std::to_string(GetTickCount64()));std::filesystem::create_directories(owned);{std::ofstream marker(owned/"owner.txt");marker<<"Only inline mask migration regression artifacts belong here.\n";}
  auto d=document(bytes);const auto cel=d.pixels();const auto owner=d.layer().id,frame=d.frame().id;saveDocumentAtomic(d,owned/"saved.moonsprite");const auto saved=readProjectManifest(load(owned/"saved.moonsprite"));check(saved.unsupported.empty()&&saved.masks.size()==1&&saved.masks[0].surface->pixels==mask.surface->pixels&&saved.masks[0].surface->offsetX==-1,"Inline save/reopen canonical mask");check(!Archive(d.sourceArchive()).entries().count("masks/inline.u8"),"Migrated source resource left unmapped after canonical save");check(d.pixels()==cel&&!d.dirty(),"Mask migration save changed cels or save point");
@@ -37,7 +55,7 @@ void inlineMaskChecks(const std::filesystem::path& dir){
 int main(int argc,char** argv) {
  try {
   check(argc==2,"Fixture argument required");const auto dir=std::filesystem::u8path(argv[1]);
-  inlineMaskChecks(dir);
+  historicalVersionChecks(dir);inlineMaskChecks(dir);
   auto bytes=load(dir/"valid.moonsprite");auto parsed=readProjectManifest(bytes);
   check(parsed.schemaVersion==21 && parsed.colorMode=="rgba" && parsed.width==2 && parsed.height==2,"Header changed");
   check(parsed.name==u8"原生兼容样本","Unicode name changed");

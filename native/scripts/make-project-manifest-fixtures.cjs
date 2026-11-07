@@ -59,5 +59,28 @@ registerHooks({
  maskVariant('inline-mask-cycle',(m,r)=>{const alias=linkedInline(m,r);m.document.animation.cels[0].mask.linkedMaskId=alias.mask.id;},null,true);
  maskVariant('inline-mask-schema20',(m,r)=>{inlineMask(m,r);m.schemaVersion=m.document.schemaVersion=20;},d=>d.schemaVersion===21);
 
+ // Exercise actual historical version gates through the legacy decoder.
+ for(let version=1;version<=20;++version){
+  const m=structuredClone(manifest),r={...files};m.schemaVersion=m.document.schemaVersion=version;
+  const expected=new Uint8Array([10,20,30,255,90,80,70,0,1,2,3,128,255,254,253,252]);
+  for(const entry of [...m.document.layers,...m.document.animation.cels]){r[entry.dataFile]=expected;entry.dataEncoding=version<=4?'obsolete-ignored':'raw';}
+  // These future-only fields must be removed by the same migration gates.
+  if(version<11)for(const l of m.document.layers)l.layerStyles={enabled:true,colorOverlay:{enabled:true,color:{r:255,g:0,b:0,a:255}}};
+  if(version<12)for(const l of m.document.layers)l.background={mode:'preset',pattern:'checkerboard'};
+  if(version<14){for(const l of m.document.layers){l.kind='free-tile';l.freeTileTilesetId='absent';l.freeTileSources=[{id:'absent'}];}for(const c of m.document.animation.cels){c.freeTiles={instances:[{}]};if(version<13)c.tilemap={invalid:true};}}
+  if(version===1){for(const l of m.document.layers){delete r[l.dataFile];l.dataFile='layers/historical.rgba';r[l.dataFile]=expected;}delete m.document.animation;for(const key of Object.keys(r))if(key.startsWith('cels/'))delete r[key];}
+  r['manifest.json']=strToU8(JSON.stringify(m));const bytes=zipSync(r),decoded=decodeProject(bytes);
+  const oraclePixels=version===1?new Uint8Array(16):expected;
+  if(decoded.schemaVersion!==21||decoded.layers.length!==1||decoded.animation.frames.length!==1||decoded.animation.frames[0].duration!==100||decoded.layers[0].pixels.some((v,i)=>v!==oraclePixels[i]))throw new Error('Historical decode oracle mismatch '+version+' '+JSON.stringify({schema:decoded.schemaVersion,frames:decoded.animation.frames,pixels:Array.from(decoded.layers[0].pixels)}));
+  fs.writeFileSync(path.join(out,`historical-${version}.moonsprite`),bytes);
+ }
+ for(let version=2;version<=13;++version){
+  const m=structuredClone(manifest),r={...files};m.schemaVersion=m.document.schemaVersion=version;
+  const a=m.document.animation,first=a.cels[0];a.frames.push({id:'historical-second',duration:240});a.cels.push({...first,id:'historical-linked',frameId:'historical-second',linkedCelId:first.id});
+  for(const entry of [...m.document.layers,...a.cels])entry.dataEncoding='raw';
+  r['manifest.json']=strToU8(JSON.stringify(m));const bytes=zipSync(r),decoded=decodeProject(bytes);
+  if(decoded.animation.frames.length!==2||decoded.animation.frames[1].duration!==240||decoded.animation.cels[1].linkedCelId!==decoded.animation.cels[0].id)throw new Error('Historical animation oracle mismatch '+version);
+  fs.writeFileSync(path.join(out,`historical-animation-${version}.moonsprite`),bytes);
+ }
  console.log('Generated project manifest fixtures through legacy encodeProject');
 })().catch(e=>{console.error(e);process.exitCode=1;});

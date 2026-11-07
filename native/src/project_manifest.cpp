@@ -98,23 +98,36 @@ static ReadManifest readManifestWithClock(std::shared_ptr<const Bytes> bytes,Lim
     ReadManifest out;out.manifestUtf8.assign(json.begin(),json.end());out.sourceArchive=std::move(bytes);
     if(str(root,"app")!="MoonSprite") bad("app");
     out.schemaVersion=integer(root,"schemaVersion",0,1,true);
-    if(out.schemaVersion<14||out.schemaVersion>21) throw Error(ErrorKind::Unsupported,"Native manifest migration supports project schemas 14 through 21");
+    if(out.schemaVersion<1||out.schemaVersion>21) throw Error(ErrorKind::Unsupported,"Native manifest migration supports project schemas 1 through 21");
     auto doc=object(root,"document");
     if(integer(doc,"schemaVersion",0,1,true)!=out.schemaVersion) bad("document schemaVersion mismatch");
-    // project-format-manifest.ts migration gates for the free-tile era.
+    // project-format-manifest.ts version gates, including pre-animation files.
     // Keep source version for atlas decoding; preserved JSON is normalized so
     // saving an imported archive cannot restore obsolete version metadata.
     const auto sourceVersion=out.schemaVersion;
     if(sourceVersion<21){
       for(const auto& item:array(doc,"layers")){
         auto layer=itemObject(item,"layer");
+        if(sourceVersion<=4)layer.Insert(L"dataEncoding",JsonValue::CreateStringValue(L"raw"));
+        if(sourceVersion<11)layer.Remove(L"layerStyles");
+        if(sourceVersion<12)layer.Remove(L"background");
         if(sourceVersion<17)layer.Remove(L"linkedContentId");
+        if(sourceVersion<14){if(str(layer,"kind",false)=="free-tile")layer.Remove(L"kind");layer.Remove(L"freeTileTilesetId");layer.Remove(L"freeTileSources");}
         if(str(layer,"kind",false)=="free-tile"){
           if(sourceVersion<15)layer.Remove(L"freeTileSources");else layer.Remove(L"freeTileTilesetId");
           if(sourceVersion<18)layer.Insert(L"freeTileSetId",JsonValue::CreateStringValue(winrt::to_hstring("import-free-set-"+str(layer,"id"))));
         }
       }
+      if(sourceVersion<11)for(const auto& item:array(doc,"groups",false))if(item.ValueType()==JsonValueType::Object)item.GetObject().Remove(L"layerStyles");
+      if(sourceVersion<13)doc.Insert(L"tilesets",JsonArray());
+      if(sourceVersion==1){
+        JsonObject animation,frame;frame.Insert(L"id",JsonValue::CreateStringValue(L"frame-1"));frame.Insert(L"duration",JsonValue::CreateNumberValue(100));JsonArray frames;frames.Append(frame);animation.Insert(L"frames",frames);animation.Insert(L"activeFrameId",JsonValue::CreateStringValue(L"frame-1"));animation.Insert(L"loop",JsonValue::CreateBooleanValue(true));
+        // User-approved schema1 repair: retain the imported layer surface.
+        // Legacy refreshActiveAnimationFrame otherwise clears it without a Cel.
+        JsonArray cels;unsigned serial=0;for(const auto& item:array(doc,"layers")){auto layer=item.GetObject();JsonObject cel;for(const auto* name:{L"width",L"height",L"offsetX",L"offsetY",L"dataFile",L"dataEncoding",L"opacity"})if(layer.HasKey(name))cel.Insert(name,layer.GetNamedValue(name));cel.Insert(L"id",JsonValue::CreateStringValue(winrt::to_hstring("cel-"+std::to_string(++serial))));cel.Insert(L"layerId",layer.GetNamedValue(L"id"));cel.Insert(L"frameId",JsonValue::CreateStringValue(L"frame-1"));cel.Insert(L"format",JsonValue::CreateStringValue(L"rgba"));cels.Append(cel);}animation.Insert(L"cels",cels);doc.Insert(L"animation",animation);
+      }
       auto animation=object(doc,"animation");
+      for(const auto& item:array(animation,"cels")){if(item.ValueType()!=JsonValueType::Object)continue;auto cel=item.GetObject();if(sourceVersion<=4&&present(cel,"dataFile"))cel.Insert(L"dataEncoding",JsonValue::CreateStringValue(L"raw"));if(sourceVersion<13)cel.Remove(L"tilemap");if(sourceVersion<14)cel.Remove(L"freeTiles");}
       if(sourceVersion<16)animation.Insert(L"loopSections",JsonArray());
       doc.Insert(L"referenceImages",JsonArray());doc.Insert(L"canvasReferences",JsonArray());
       if(sourceVersion<20){auto timelapse=value(doc,"timelapse");if(timelapse&&timelapse.ValueType()==JsonValueType::Object){auto snapshots=value(timelapse.GetObject(),"snapshots");if(snapshots&&snapshots.ValueType()==JsonValueType::Array)for(const auto& snapshot:snapshots.GetArray())if(snapshot.ValueType()==JsonValueType::Object)snapshot.GetObject().Remove(L"local");}}
