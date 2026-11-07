@@ -10,7 +10,7 @@
 #include <limits>
 namespace moon::project {
 Document createEditableDocument(PreparedImport imported){
- PaletteState palette;palette.entries.clear();palette.slots=std::move(imported.palette.slots);palette.nextId=imported.palette.nextId;palette.columns=imported.palette.columns;
+ PaletteState palette;palette.entries.clear();palette.slots=std::move(imported.palette.slots);palette.setOrder(std::move(imported.palette.order));palette.nextId=imported.palette.nextId;palette.columns=imported.palette.columns;
  for(auto& e:imported.palette.entries)palette.entries.push_back({e.id,std::move(e.name),e.color});
  auto candidate=Document::fromImported(imported.width,imported.height,std::move(imported.timeline),std::move(palette),std::move(imported.id),std::move(imported.name),std::move(imported.sourceArchive),imported.activeFrameId);
  candidate.setImportedProjectInformation(std::move(imported.information));candidate.setImportedReferenceImages(std::move(imported.referenceImages));candidate.setImportedSlices(std::move(imported.slices));candidate.setImportedTimelapse(std::move(imported.timelapse));candidate.setImportedProjectBrushes(std::move(imported.customBrushes));
@@ -96,8 +96,6 @@ ImportPalette prepareEditablePalette(const ReadManifest& m){
   if(hole==p.slots.end()) {const auto n=p.slots.size();p.slots.resize(n+cols,0);p.slots[n]=id;}
   else *hole=id;
  }
- std::vector<int> actual;for(int id:p.slots) if(id) actual.push_back(id);
- unsupported(actual!=p.order,"Separate palette order and slot order are not editable yet");
  return p;
 }
 PreparedImport prepareEditableImport(const ReadManifest& m) {

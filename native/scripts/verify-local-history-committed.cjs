@@ -35,12 +35,23 @@ registerHooks({
  const {hydrateLocalHistoryDelta,cloneHistoryDocument,prepareHistoryDocument,compileLocalHistoryDelta}=await source('local-history-delta.ts');
  const {captureCommittedHistoryDelta,localHistoryDocumentShape}=await source('local-history-committed-delta.ts');
  const {commitPixelEdit}=await source('history.ts');
- const {resolveAnimationCel}=await source('animation.ts');
+ const {resolveAnimationCel,projectHistoryAnimationFrame,syncActiveAnimationLayers}=await source('animation.ts');
  const normalize=patch=>({path:patch.path,aliases:patch.aliases,offset:patch.offset,before:[...patch.before],after:[...patch.after]});
  const rasterState=document=>document.animation.cels.map(cel=>{
   const owner=resolveAnimationCel(document.animation,cel),s=owner.surface;
   return [cel.id,cel.layerId,cel.frameId,cel.linkedCelId,s.format,s.width,s.height,s.offsetX,s.offsetY,[...s.pixels]];
  });
+ const prepareDenseFixture=document=>{
+  prepareHistoryDocument(document);
+  // Archive entries may be disjoint views of one ZIP buffer. Native owns
+  // separate dense allocations; retain exact aliases but separate unrelated
+  // views before comparing in-session committed capture eligibility.
+  const buffers=new Map(),surfaces=new Set([...document.layers,...document.animation.cels.map(c=>c.surface).filter(Boolean)]);
+  for(const surface of surfaces){const pixels=surface.pixels;let views=buffers.get(pixels.buffer);if(!views)buffers.set(pixels.buffer,views=new Map());const key=pixels.byteOffset+':'+pixels.byteLength+':'+pixels.constructor.name;if(!views.has(key))views.set(key,pixels.slice());surface.pixels=views.get(key);}
+  projectHistoryAnimationFrame(document);
+  // Restore the active alias surface using the real committed-edit sync.
+  syncActiveAnimationLayers(document);
+ };
  for(const name of ['point','run','dense','sparse','linked','inactive','overlap','overlap-mapped']){
   const directory=path.join(out,name);
   const before=decodeProject(new Uint8Array(fs.readFileSync(path.join(directory,'before.moonsprite'))));
@@ -49,7 +60,7 @@ registerHooks({
   // Native surfaces in this adapter are already dense. Project encoding can
   // choose sparse tiles; use legacy's dense preparation for like-for-like
   // in-memory shape eligibility, confined to these tiny test projects.
-  prepareHistoryDocument(before);prepareHistoryDocument(after);
+  prepareDenseFixture(before);prepareDenseFixture(after);
   // Separate project ZIPs place raw array views at different byte offsets.
   // Eligibility is an in-session comparison, so compare the same live target
   // before/after applying the captured edit, as the legacy service does.

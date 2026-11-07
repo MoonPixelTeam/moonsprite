@@ -3622,3 +3622,18 @@ layer-metadata-final-build.log正式与四类工程目标Release构建通过；�
 生成器使用未经策略适配的实际 legacy decode→encode 输出生成 60 组原始／canonical ZIP：15 组列数、22 组槽位、12 组列数×稀疏布局、10 组顺序容器／元素类型与一组隐藏颜色。原生直接比较两份读取结果的列数、顺序与槽位。54 组满足当前文档模型约束的样本验证可编辑导入、原始颜色身份／名称／RGBA 与画面不变、无导入历史、普通／恢复保存重开，以及颜色修改／移除／新增 Undo/Redo。另六组归一化后产生独立 paletteOrder／槽位遍历顺序，原始和 canonical 均验证为明确 Unsupported；它们只通过解码对照，不计为可编辑迁移完成，不静默重排。原有无效 safe-integer 顺序引用、重复顺序、palette entry 身份／颜色及 nextColorId 准入仍有未迁移边界；索引色不在本阶段范围。
 
 失败基线 `native/build/palette-layout-baseline-tests.log` 为旧版可归一化列数被原生拒绝。修复后完整 project-manifest-tests 通过 `palette-layout-tests.log`（含本批60组、既有558组坏链接及图层元数据等）；正式程序和工程／历史目标 Release 构建通过 `palette-layout-final-build.log`；project-import-tests、project-save-tests、完整 free-tile-project-tests、local-history-cost-tests 均通过对应 `palette-layout-*-tests.log`；正式 `--cel-clipboard-check` 退出0。来源覆盖626文件通过 `palette-layout-provenance.log`，严格检查按仍有迁移缺口返回1，git diff检查通过。未进行人工UI验收；整个调色盘领域和全量迁移仍 INCOMPLETE。
+
+
+### 调色盘独立顺序的模型／事务／存档迁移（2026-11-08）
+
+承接上一阶段六组明确拦截的合法旧工程，本阶段移除“paletteOrder 必须等于槽位遍历顺序”的可编辑限制。按实际 legacy 解码后的两个独立字段承接：原生 PaletteState 仅在序列不同时保存独立 order，普通状态沿用槽位派生，避免重复分配。导入传递 order；普通／恢复存档分别校验和编码 order 与 slots，要求可见身份集合一致。历史解码适配器除原有槽位／颜色校验外，也检查 order 是否与来源一致，失效来源不应因顺序同长度而混过。快照、回档持有完整状态；新增顺序存储计入编辑／回档保留字节。
+
+先核对 `workspace-palette.ts` 的真实事务区别，再适配现有原生事务，不把所有操作强行归一化：改色／重命名／反转保留独立顺序；删除、应用色板、槽位渐变在 Undo 时恢复原 order；添加／粘贴的 recordPaletteEdit 以及拖动／排序的 applyPaletteSlots 在 Undo 时也从槽位重建 order。无变化粘贴可能只归一化 order 而不增加历史，无变化应用色板则不改变 order；两者均按实际旧版回调测试。另核对真实 mutateDocumentSession／completeDocumentChange 发布边界：仅 order 改变的粘贴也须标记 dirty、推进 revision／操作计数并通知录制，不创建虚构撤销条目；新增原生断言。其它已有无变化命令的通用记账差异不据此声称全部对齐。提取颜色的替换／追加沿 PalettePanel 的 applyPalette 语义验证。顺带修复对照发现的已有差异：满行添加按当前列数扩行，向外粘贴补齐整行，排序撤销保留原列数；新增色卡默认名称按真实本地化键 `{id}`，不添加原生自造的“颜色”前缀，已有名称保持原值。边界样本同时固定槽位渐变与提取应用的旧版1–256列范围，移除这两处已有的64列截断；没有更改面板布局规则。
+
+真实旧版命令矩阵为六种独立顺序布局（1／2／3／4／256列、稀疏与满行）×19操作＝114组，每组输出 before／after／undo／redo 四份未经策略适配的实际编码归档。测试会调用真实旧版命令与其实际 Undo/Redo 回调；session 的 history 仅收集回调，不声称验证浏览器 HistoryStack 或 UI。覆盖单项改色／重命名、全部／多选反转、排序、移除、拖动、添加、覆盖／空位／无变化粘贴、RGB／HSV／新增颜色渐变、显式布局／默认／无变化色板应用与提取替换／追加。原生逐阶段核对精确身份、名称、RGBA、next ID、order、slots、columns、画面不变和事务数；每个阶段普通／恢复保存重开；另检查 DocumentSnapshot、实际 encodeJournalSnapshot→PixelHistory::materialize 检查点路径、回档 Undo/Redo。既有60组布局样本全部可编辑，其中六组原拦截样本新增了按真实添加Undo行为归一化的断言。实际旧版 local-history-delta 编译器再增加三组图对象对照：仅独立 order 变化、仅 slots 变化、独立 order 下改色；覆盖图遍历与编译结果，不将其当成所有非像素历史条目已可恢复的证明。
+
+本阶段仍要求既有合法正数唯一颜色身份、有效唯一 order 引用及安全 nextColorId；畸形 palette entry 的旧版默认值、未知／重复 order 身份、索引色、任意 live 可选元数据和非像素历史条目恢复仍有迁移边界。没有将本批通过等同整个调色盘领域或全量软件迁移完成。
+
+最终回归补正两处历史测试前置条件，未改生产历史保护：原 linked 样本对空源新建链接帧，按实际 legacy linkAnimationFrameCels 不会链接，随后笔画将1×1空Cel扩到8×5；样本现先画非空源并显式断言真实链接，形状断言失败时输出样本与两侧令牌。独立legacy验证器中，归档各资源可能是同一ZIP buffer的不同视图，不能当作原生独立dense分配；仅在这八组微型测试准备阶段按buffer范围复制，保留精确alias、分离无关视图，再调用实际projectHistoryAnimationFrame／syncActiveAnimationLayers恢复活动投影与alias surface。生产捕获器的形状、字节视图与稀疏保护不变，精确patch及实际Undo/Redo对照未删减。
+
+正式程序及核心／工程／历史目标Release构建通过palette-independent-final-build.log、palette-independent-final-link-build.log；完整project-manifest-tests通过palette-independent-final-manifest-tests.log（本批114组四阶段矩阵、既有60组布局、558组坏链接等）。核心、快照、工程导入／保存、完整自由瓦片、历史成本检查通过对应palette-independent日志。历史捕获重建与检查通过palette-independent-committed-final-build.log／palette-independent-committed-final-tests.log；实际legacy八组捕获／hydrate及其独立编译样本生成通过palette-independent-committed-legacy-tests.log；原生hydration与budget使用本次新生成compiled-latest重新检查，通过palette-independent-hydration-final-tests.log／palette-independent-budget-final-tests.log。正式程序七项palette检查及--cel-clipboard-check均退出0，见palette-independent-ui-smoke.log；自动检查不等于人工UI验收。本阶段未进行人工旧工程UI验收，全量仍INCOMPLETE。

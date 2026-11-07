@@ -339,7 +339,7 @@ HistoryComparePaletteRoots appendDecodedHistoryPaletteValues(HistoryCompareDocum
   // Reuse import's actual normalization/admission for independent order/slots;
   // do not derive legacy paletteOrder by walking native slot positions.
   const auto expected=project::prepareEditablePalette(manifest);const auto& palette=document.palette();
-  if(manifest.sourceArchive!=document.sourceArchive()||manifest.id!=document.projectId()||palette.columns!=expected.columns||palette.nextId!=expected.nextId||palette.slots!=expected.slots||palette.entries.size()!=expected.entries.size())throw std::invalid_argument("Stale decoded history palette");
+  if(manifest.sourceArchive!=document.sourceArchive()||manifest.id!=document.projectId()||palette.columns!=expected.columns||palette.nextId!=expected.nextId||palette.order()!=expected.order||palette.slots!=expected.slots||palette.entries.size()!=expected.entries.size())throw std::invalid_argument("Stale decoded history palette");
   for(std::size_t i=0;i<palette.entries.size();++i){const auto& a=palette.entries[i];const auto& e=expected.entries[i];if(a.id!=e.id||a.name!=e.name||a.color!=e.color)throw std::invalid_argument("Changed decoded history palette entry");}
   struct Apartment {HRESULT status=RoInitialize(RO_INIT_MULTITHREADED);Apartment(){if(FAILED(status)&&status!=RPC_E_CHANGED_MODE)throw std::runtime_error("Cannot initialize history palette parser");}~Apartment(){if(status==S_OK)winrt::clear_factory_cache();if(SUCCEEDED(status))RoUninitialize();}} apartment;
   using namespace winrt::Windows::Data::Json;

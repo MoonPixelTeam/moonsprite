@@ -74,7 +74,7 @@ int main(int argc,char** argv) {try {
  {auto locked=sample();locked.layers[0].locked=true;auto document=createEditableDocument(prepareEditableImport(locked));check(document.timeline().state().layers[0].locked);const auto original=document.pixels();document.beginStroke({0,0},0xff123456);check(!document.commitStroke()&&document.pixels()==original&&!document.canUndo());}
  rejects([](auto& m){m.paletteSlots={2};},corrupt);
  rejects([](auto& m){m.paletteSlots={1,1};},corrupt);
- rejects([](auto& m){m.paletteOrder={1,7};m.paletteSlots={7,1};},unsupported);
+ {auto m=sample();m.paletteOrder={1,7};m.paletteSlots={7,1};auto d=createEditableDocument(prepareEditableImport(m));check(d.palette().order()==m.paletteOrder&&d.palette().slots==std::vector<int>({7,1,0,0}));check(m.paletteSlots==std::vector<int>({7,1}));}
  rejects([](auto& m){m.nextColorId=7;},corrupt);
  for(int mode=0;mode<3;++mode){auto m=sample();auto layer=m.layers[0];layer.id="linked-color-two";layer.linkedContentId="colors";m.layers[0].linkedContentId="colors";if(mode!=0)m.layers[0].displayColor=0xff302010;if(mode!=1)layer.displayColor=0xff708090;else layer.displayColor.reset();m.layers.push_back(layer);auto c=m.cels[0];c.id="linked-color-cel-two";c.layerId=layer.id;m.cels.push_back(c);auto prepared=prepareEditableImport(m);for(const auto& l:prepared.timeline.layers){const auto& source=l.id==layer.id?m.layers[1]:m.layers[0];check(l.displayColor==source.displayColor);}auto d=createEditableDocument(std::move(prepared));for(const auto& l:d.timeline().state().layers){const auto& source=l.id==layer.id?m.layers[1]:m.layers[0];check(l.displayColor==source.displayColor);}}
  std::cout<<"project import contract passed\n";return 0;

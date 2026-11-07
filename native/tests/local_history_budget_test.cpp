@@ -518,7 +518,7 @@ void paletteValueSafetyChecks(const std::filesystem::path& directory){
  HistoryCompareDocument graph;const auto revision=document.revision();appendDecodedHistoryPaletteValues(graph,document,manifest);CHECK(document.revision()==revision);const auto count=graph.values.size();
  auto tiny=project::Limits{};tiny.maxEntries=count+2;reject([&]{appendDecodedHistoryPaletteValues(graph,document,manifest,tiny);});CHECK(graph.values.size()==count);
  tiny=project::Limits{};tiny.manifestBytes=1;reject([&]{appendDecodedHistoryPaletteValues(graph,document,manifest,tiny);});CHECK(graph.values.size()==count);
- auto changed=manifest;changed.paletteOrder={2,1};reject([&]{project::prepareEditablePalette(changed);});
+ auto changed=manifest;changed.paletteOrder={2,1};CHECK(project::prepareEditablePalette(changed).order==changed.paletteOrder);reject([&]{appendDecodedHistoryPaletteValues(graph,document,changed);});CHECK(graph.values.size()==count);
  changed=manifest;changed.sourceArchive=std::make_shared<const Bytes>(*manifest.sourceArchive);reject([&]{appendDecodedHistoryPaletteValues(graph,document,changed);});CHECK(graph.values.size()==count);
  changed=manifest;const auto token=changed.manifestUtf8.find("\"color\":{");CHECK(token!=std::string::npos);changed.manifestUtf8.insert(token+9,"\"extra\":1,");reject([&]{appendDecodedHistoryPaletteValues(graph,document,changed);});CHECK(graph.values.size()==count);
  document.renamePaletteColor(1,U"changed");reject([&]{appendDecodedHistoryPaletteValues(graph,document,manifest);});CHECK(graph.values.size()==count);

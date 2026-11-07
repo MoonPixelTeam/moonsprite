@@ -241,7 +241,9 @@ static EncodedProject encodeProject(const Document& d,Limits limits,bool recover
       if(source)for(const auto& old:doc.GetNamedArray(L"palette")){const auto o=old.GetObject();if(o.GetNamedNumber(L"id")==entry.id){item=o;break;}}
       number(item,L"id",entry.id);text(item,L"name",utf8(entry.name));int shift=0;for(const auto key:{L"r",L"g",L"b",L"a"}){number(color,key,(entry.color>>shift)&255);shift+=8;}item.Insert(L"color",color);palette.Append(item);
     }
-    for(const auto slot:d.palette().slots){if(slot==0){slots.Append(JsonValue::CreateNullValue());continue;}if(!ids.count(slot)||!visible.insert(slot).second)throw Error(ErrorKind::Corrupt,"Invalid save palette slot");slots.Append(JsonValue::CreateNumberValue(slot));order.Append(JsonValue::CreateNumberValue(slot));}
+    for(const int id:d.palette().order()){if(!ids.count(id)||!visible.insert(id).second)throw Error(ErrorKind::Corrupt,"Invalid save palette order");order.Append(JsonValue::CreateNumberValue(id));}
+    std::set<int> placed;for(const auto slot:d.palette().slots){if(slot==0){slots.Append(JsonValue::CreateNullValue());continue;}if(!visible.count(slot)||!placed.insert(slot).second)throw Error(ErrorKind::Corrupt,"Invalid save palette slot");slots.Append(JsonValue::CreateNumberValue(slot));}
+    if(placed!=visible)throw Error(ErrorKind::Corrupt,"Missing save palette slot");
     number(doc,L"paletteColumns",d.palette().columns);doc.Insert(L"palette",palette);doc.Insert(L"paletteOrder",order);doc.Insert(L"paletteSlots",slots);number(doc,L"nextColorId",d.palette().nextId);
     if(source)for(auto it=files.begin();it!=files.end();){const auto& name=it->first;if(name.rfind("timelapse/",0)==0&&name.size()>14&&name.substr(name.size()-4)==".png")it=files.erase(it);else ++it;}
     doc.Insert(L"timelapse",timelapsejson::encode(d.timelapseSettings(),files));

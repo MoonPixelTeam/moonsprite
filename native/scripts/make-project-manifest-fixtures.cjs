@@ -247,7 +247,7 @@ registerHooks({
  fs.writeFileSync(path.join(out,'layer-metadata-oracle.json'),JSON.stringify(layerMetadataOracle,null,2));console.log(`Layer metadata: ${layerMetadataOracle.length} actual legacy cases plus seven linked-kind rejections`);
 
  // Actual decoder/encoder oracle: column coercion and sparse-slot repair.
- // Independent paletteOrder remains a separately gated native model gap.
+ // Independent paletteOrder is checked separately through actual commands.
  const paletteLayoutCases=[];
  const paletteLayoutValues=[undefined,null,false,true,0,1,-2,257,3,2.5,'4',[],{},9007199254740991,9007199254740992];
  for(let i=0;i<paletteLayoutValues.length;++i)paletteLayoutCases.push([`columns-${i}`,d=>{d.paletteColumns=paletteLayoutValues[i];}]);
@@ -259,5 +259,40 @@ registerHooks({
  const paletteLayoutOracle=[];
  for(const [label,mutate] of paletteLayoutCases){const m=structuredClone(manifest),r={...files};mutate(m.document);r['manifest.json']=strToU8(JSON.stringify(m));const bytes=zipSync(r),decoded=decodeProject(bytes),canonical=encodeProject(decoded,{includePreview:false});const file=`palette-layout-${label}.moonsprite`;fs.writeFileSync(path.join(out,file),bytes);fs.writeFileSync(path.join(out,file.replace('.moonsprite','-canonical.moonsprite')),canonical);paletteLayoutOracle.push({file,columns:decoded.paletteColumns,order:decoded.paletteOrder,slots:decoded.paletteSlots});}
  fs.writeFileSync(path.join(out,'palette-layout-oracle.json'),JSON.stringify(paletteLayoutOracle,null,2));console.log(`Palette layout: ${paletteLayoutOracle.length} actual legacy cases`);
+
+ const paletteCommands=await import(pathToFileURL(path.join(legacy,'src/renderer/src/store/workspace-palette.ts')));
+ const {mergePaletteColors}=await import(pathToFileURL(path.join(legacy,'src/renderer/src/core/palette.ts')));
+ const {repositionPaletteSlots}=await import(pathToFileURL(path.join(legacy,'src/renderer/src/core/palette-layout.ts')));
+ const paletteOrderOracle=[];
+ const paletteOperations=['update','rename','reverse','reverse-selected','sort','delete','move','add','paste','paste-noop','paste-new','gradient','gradient-hue','gradient-new','apply','apply-noop','apply-new','extract','extract-append'];
+ for(let layout=0;layout<6;++layout)for(const operation of paletteOperations){
+  const source=createDocument('independent palette',2,2,'rgba');source.palette=[{id:1,name:'one',color:{r:200,g:10,b:20,a:255}},{id:2,name:'two',color:{r:10,g:200,b:30,a:255}},{id:3,name:'three',color:{r:30,g:20,b:200,a:128}},{id:4,name:'hidden',color:{r:90,g:80,b:70,a:255}}];source.nextColorId=5;source.paletteColumns=[2,3,4,3,256,1][layout];source.paletteOrder=[[3,1,2],[2,3,1],[1,3,2],[2,3,1],[2,1,3],[3,1,2]][layout];source.paletteSlots=[[1,2,3,null],[null,3,1,2,null,null],[2,null,1,3,null,null,null,null],[1,2,3],[1,...Array(253).fill(null),2,3],[1,2,3]][layout];
+  const d=decodeProject(encodeProject(source,{includePreview:false})),history=[];
+  const session={document:d,history:{push:e=>history.push(e)},selectedPaletteIds:[],paletteSelectionId:null,primaryColor:{r:41,g:121,b:255,a:255},secondaryColor:{r:255,g:255,b:255,a:255}};
+  const base=`palette-independent-${layout}-${operation}`,save=side=>fs.writeFileSync(path.join(out,`${base}-${side}.moonsprite`),encodeProject(d,{includePreview:false}));save('before');
+  const slots=[...d.paletteSlots],columns=d.paletteColumns,first=slots.findIndex(id=>id!==null),last=slots.findLastIndex(id=>id!==null),color={r:20,g:40,b:60,a:255};
+  switch(operation){
+   case 'update':paletteCommands.updatePaletteColor(session,1,color);break;
+   case 'rename':paletteCommands.renamePaletteColor(session,1,' renamed ');break;
+   case 'reverse':paletteCommands.reversePaletteColors(session);break;
+   case 'reverse-selected':session.selectedPaletteIds=[d.paletteOrder[0],d.paletteOrder[2]];paletteCommands.reversePaletteColors(session);break;
+   case 'sort':paletteCommands.sortPaletteColors(session,'red','ascending');break;
+   case 'delete':paletteCommands.deletePaletteColors(session,[1]);break;
+   case 'move':{const id=slots[first],target=slots.length+1;paletteCommands.reorderPaletteColors(session,[id],repositionPaletteSlots(slots,[id],target,id,columns),columns);break;}
+   case 'add':paletteCommands.addPaletteColor(session,color);break;
+   case 'paste':paletteCommands.pastePaletteColors(session,[color],{slots,columns,indices:[first]});break;
+   case 'paste-new':{const hole=slots.indexOf(null);paletteCommands.pastePaletteColors(session,[color],{slots,columns,indices:[hole<0?slots.length+1:hole]});break;}
+   case 'paste-noop':paletteCommands.pastePaletteColors(session,[d.palette.find(e=>e.id===slots[first]).color],{slots,columns,indices:[first]});break;
+   case 'gradient-new':paletteCommands.gradientPaletteSlots(session,[first,last,slots.length+1],slots,columns,false);break;
+   case 'gradient':case 'gradient-hue':paletteCommands.gradientPaletteSlots(session,[first,last],slots,columns,operation==='gradient-hue');break;
+   case 'apply-new':paletteCommands.applyPalette(session,[color]);break;
+   case 'apply':paletteCommands.applyPalette(session,[d.palette[2].color,d.palette[0].color],{columns,slots:[null,0,1,...Array(Math.max(0,columns*2-3)).fill(null)]},['THREE','ONE']);break;
+   case 'extract':paletteCommands.applyPalette(session,[d.palette[2].color,d.palette[0].color]);break;
+   case 'extract-append':paletteCommands.applyPalette(session,mergePaletteColors(d.paletteOrder.map(id=>d.palette.find(e=>e.id===id).color),[d.palette[3].color]));break;
+   case 'apply-noop':{const visible=d.palette.filter(e=>d.paletteOrder.includes(e.id));paletteCommands.applyPalette(session,visible.map(e=>e.color),{columns,slots:slots.map(id=>id===null?null:visible.findIndex(e=>e.id===id))});break;}
+  }
+  if(history.length>1)throw new Error(`Palette operation split history ${base}`);save('after');if(history.length)history[0].undo();save('undo');if(history.length)history[0].redo();save('redo');paletteOrderOracle.push({base,layout,operation,history:history.length});
+ }
+ fs.writeFileSync(path.join(out,'palette-independent-oracle.json'),JSON.stringify(paletteOrderOracle,null,2));console.log(`Independent palette order: ${paletteOrderOracle.length} actual legacy command/Undo/Redo cases`);
  console.log('Generated project manifest fixtures through legacy encodeProject');
 })().catch(e=>{console.error(e);process.exitCode=1;});

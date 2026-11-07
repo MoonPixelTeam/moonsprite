@@ -60,7 +60,11 @@ struct PaletteState {
   int nextId=3, primaryId=0, secondaryId=0;
   Pixel primary=0xffff7929, secondary=0xffffffff;
   int columns=8; // Stored legacy palette layout; independent from the viewport auto grid.
-  std::vector<int> order() const {std::vector<int> ids;for(int id:slots) if(id) ids.push_back(id);return ids;}
+  // Legacy stores paletteOrder independently. Ordinary slot-based states need
+  // no duplicate allocation; imported independent order survives color edits.
+  std::optional<std::vector<int>> independentOrder;
+  std::vector<int> order() const {if(independentOrder)return *independentOrder;std::vector<int> ids;for(int id:slots) if(id) ids.push_back(id);return ids;}
+  void setOrder(std::vector<int> ids){independentOrder.reset();if(ids!=order())independentOrder=std::move(ids);}
 };
 using DocumentLayer=timeline::Layer;
 using DocumentFrame=timeline::Frame;

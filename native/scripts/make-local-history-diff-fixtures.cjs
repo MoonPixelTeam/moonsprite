@@ -275,6 +275,9 @@ registerHooks({
  palettePair('palette-key-reorder',d=>{const e=d.palette[0];d.palette[0]={color:{a:e.color.a,b:e.color.b,g:e.color.g,r:e.color.r},id:e.id,name:e.name};});
  palettePair('palette-escaped-name',d=>{d.palette[0].name='\"id\": 7, \"color\": 🚀';});
  palettePair('palette-order',d=>{d.paletteOrder=[2,1];d.paletteSlots=[2,1];});
+ palettePair('palette-independent-order',d=>{d.paletteOrder=[2,1];});
+ palettePair('palette-independent-slots',d=>{d.paletteSlots=[2,1];});
+ palettePair('palette-independent-color',d=>{d.paletteOrder=[2,1];d.palette[0].color.r=73;},d=>{d.paletteOrder=[2,1];});
  palettePair('palette-columns-gaps',d=>{d.paletteColumns=3;d.paletteSlots=[null,1,null,2];d.nextColorId=100;});
  palettePair('palette-remove',d=>{d.palette.pop();d.paletteOrder=[1];d.paletteSlots=[1,null];});
  palettePair('palette-add',d=>{d.palette.push({id:3,color:{r:255,g:0,b:1,a:255}});d.paletteOrder.push(3);d.paletteSlots.push(3);d.nextColorId=4;});

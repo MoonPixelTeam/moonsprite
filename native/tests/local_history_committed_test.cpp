@@ -22,7 +22,7 @@ void write(const std::filesystem::path& path,const local_history::Data& data){st
 std::vector<Pixel> allPixels(const Document& d){std::vector<Pixel> result;for(const auto& cel:d.timeline().state().cels){const auto& pixels=d.timeline().resolveSurface(cel.id).surface->pixels;result.insert(result.end(),pixels.begin(),pixels.end());}return result;}
 template<class F> void sample(const std::filesystem::path& root,const char* name,Document& d,F edit){
  const auto directory=root/name;std::filesystem::create_directories(directory);const auto before=project::encodeEditableProject(d).bytes;const auto beforePixels=allPixels(d);local_history::CommittedCapture ticket(d);const auto oldShape=local_history::documentShape(d);
- edit();CHECK(local_history::documentShape(d)==oldShape);const auto revision=d.historyRevision(),pixelRevision=d.contentRevision(),bytes=d.historyBytes();const auto* storage=d.timeline().resolveSurface(d.cel().id).surface->pixels.identity();
+ edit();if(local_history::documentShape(d)!=oldShape)throw std::runtime_error(std::string("Committed shape changed: ")+name+"\nbefore: "+oldShape+"\nafter: "+local_history::documentShape(d));const auto revision=d.historyRevision(),pixelRevision=d.contentRevision(),bytes=d.historyBytes();const auto* storage=d.timeline().resolveSurface(d.cel().id).surface->pixels.identity();
  auto delta=ticket.capture(d);CHECK(delta);
  const auto settled=local_history::CommittedCapture::latest(d,revision);CHECK(settled&&settled->json==delta->json&&settled->buffers.size()==delta->buffers.size());for(std::size_t i=0;i<delta->buffers.size();++i)CHECK(*settled->buffers[i].bytes==*delta->buffers[i].bytes);
  CHECK(!local_history::CommittedCapture::latest(d,revision-1));CHECK(d.historyRevision()==revision&&d.contentRevision()==pixelRevision&&d.historyBytes()==bytes&&d.timeline().resolveSurface(d.cel().id).surface->pixels.identity()==storage);
@@ -53,7 +53,9 @@ int wmain(int argc,wchar_t** argv){try{
  Document run(5,4);sample(root,"run",run,[&]{RasterHistoryFixture::run(run);});
  Document dense(5,4);sample(root,"dense",dense,[&]{RasterHistoryFixture::dense(dense);});
  Document sparse(8,8);RasterHistoryFixture::installSparse(sparse);sample(root,"sparse",sparse,[&]{RasterHistoryFixture::sparse(sparse);});
- Document linked(8,5);linked.addLinkedFrame(true);sample(root,"linked",linked,[&]{linked.beginStroke({3,2},0xff112233);CHECK(linked.commitStroke());});
+ // Legacy does not link an empty source. Seed it so this fixture exercises
+ // actual shared pixels without expanding a blank 1x1 Cel during capture.
+ Document linked(8,5);linked.beginStroke({0,0},0xffabcdef);CHECK(linked.commitStroke());const auto linkedSource=linked.cel().id;linked.addLinkedFrame(true);CHECK(linked.cel().linkedCelId==linkedSource);sample(root,"linked",linked,[&]{linked.beginStroke({3,2},0xff112233);CHECK(linked.commitStroke());});
  Document inactive(8,5);inactive.addFrame();const auto viewed=inactive.frame().id;sample(root,"inactive",inactive,[&]{RasterHistoryFixture::inactive(inactive);CHECK(inactive.frame().id==viewed);});
  Document overlap(5,4);sample(root,"overlap",overlap,[&]{RasterHistoryFixture::overlap(overlap);});
  Document mapped(5,4);sample(root,"overlap-mapped",mapped,[&]{RasterHistoryFixture::overlap(mapped,true);});

@@ -3,6 +3,11 @@
 #endif
 #include <windows.h>
 #include "document.h"
+#include "document_snapshot.h"
+#include "local_history_diff.h"
+#include "local_history_resource_cost.h"
+#include "local_history_generation.h"
+#include "local_history_hydration.h"
 #include "project_encode.h"
 #include "project_file.h"
 #include "recovery_store.h"
@@ -24,19 +29,53 @@ template<class F> void rejects(F work,ErrorKind kind) {try{work();}catch(const E
 
 void paletteLayoutChecks(const std::filesystem::path& dir){
  using namespace moon;
- std::size_t count=0,gated=0;
+ std::size_t count=0,independent=0;
  for(const auto& file:std::filesystem::directory_iterator(dir)){
   const auto name=file.path().filename().string();if(name.rfind("palette-layout-",0)!=0||file.path().extension()!=".moonsprite"||name.find("-canonical.")!=std::string::npos)continue;
   auto m=readProjectManifest(load(file.path()));check(m.unsupported.empty(),(name+" unexpectedly unsupported").c_str());auto canonical=readProjectManifest(load(dir/(file.path().stem().string()+"-canonical.moonsprite")));check(m.paletteColumns==canonical.paletteColumns&&m.paletteOrder==canonical.paletteOrder&&m.paletteSlots==canonical.paletteSlots&&m.palette.size()==canonical.palette.size(),(name+" raw decoder differs from legacy").c_str());
-  std::vector<int> slotOrder;for(int id:canonical.paletteSlots)if(id)slotOrder.push_back(id);if(slotOrder!=canonical.paletteOrder){rejects([&]{prepareEditableImport(m);},ErrorKind::Unsupported);rejects([&]{prepareEditableImport(canonical);},ErrorKind::Unsupported);++count;++gated;continue;}
+  std::vector<int> slotOrder;for(int id:canonical.paletteSlots)if(id)slotOrder.push_back(id);if(slotOrder!=canonical.paletteOrder)++independent;
   auto expected=createEditableDocument(prepareEditableImport(canonical));
-  const auto verify=[&](const Document& d){const auto& p=d.palette();const auto& q=expected.palette();check(p.columns==q.columns&&p.nextId==q.nextId&&p.slots==q.slots&&p.order()==q.order()&&p.entries.size()==q.entries.size(),(name+" normalized palette layout").c_str());for(std::size_t i=0;i<p.entries.size();++i){const auto& a=p.entries[i];const auto& b=q.entries[i];check(a.id==b.id&&a.color==b.color&&a.name==b.name,(name+" palette entry retained").c_str());}check(d.pixels()==expected.pixels(),(name+" untouched raster").c_str());};
+  const auto verify=[&](const Document& d,bool slotBased=false){const auto& p=d.palette();const auto& q=expected.palette();check(p.columns==q.columns&&p.nextId==q.nextId&&p.slots==q.slots&&p.order()==(slotBased?slotOrder:q.order())&&p.entries.size()==q.entries.size(),(name+" normalized palette layout").c_str());for(std::size_t i=0;i<p.entries.size();++i){const auto& a=p.entries[i];const auto& b=q.entries[i];check(a.id==b.id&&a.color==b.color&&a.name==b.name,(name+" palette entry retained").c_str());}check(d.pixels()==expected.pixels(),(name+" untouched raster").c_str());};
   auto d=createEditableDocument(prepareEditableImport(m));verify(d);check(d.historyPosition()==0,"Palette normalization must not create history");
-  const auto roundTrip=[&]{for(bool recovery:{false,true}){auto bytes=recovery?encodeRecoveryProject(d):encodeEditableProject(d);verify(createEditableDocument(prepareEditableImport(readProjectManifest(bytes.bytes))));}};roundTrip();
+  const auto roundTrip=[&](bool slotBased=false){for(bool recovery:{false,true}){auto bytes=recovery?encodeRecoveryProject(d):encodeEditableProject(d);verify(createEditableDocument(prepareEditableImport(readProjectManifest(bytes.bytes))),slotBased);}};roundTrip();
   if(!d.palette().order().empty()){const auto id=d.palette().order().front();const auto color=d.paletteEntry(id)->color;d.updatePaletteColor(id,color^0x00010101);check(d.paletteEntry(id)->color!=color,"Normalized palette color edit");d.undo();verify(d);d.redo();check(d.paletteEntry(id)->color!=color,"Normalized palette color redo");d.undo();d.deletePaletteColors({id});check(std::find(d.palette().slots.begin(),d.palette().slots.end(),id)==d.palette().slots.end(),"Normalized palette removal");d.undo();verify(d);d.redo();d.undo();}
-  const auto next=d.palette().nextId;check(d.addPaletteColor(0xff123456)==next,"Normalized palette next ID");d.undo();verify(d);d.redo();check(d.paletteEntry(next)&&d.paletteEntry(next)->color==0xff123456,"Normalized palette addition redo");d.undo();roundTrip();++count;
+  const auto next=d.palette().nextId;check(d.addPaletteColor(0xff123456)==next,"Normalized palette next ID");d.undo();verify(d,true);d.redo();check(d.paletteEntry(next)&&d.paletteEntry(next)->color==0xff123456,"Normalized palette addition redo");d.undo();roundTrip(true);++count;
  }
- check(count==60&&gated==6,"Missing palette layout fixtures or independent-order gates");
+ check(count==60&&independent==6,"Missing palette layout or independent-order fixtures");
+}
+
+void independentPaletteChecks(const std::filesystem::path& dir){
+ using namespace moon;using namespace moon::local_history;
+ using namespace winrt::Windows::Data::Json;
+ const auto oracle=load(dir/"palette-independent-oracle.json");const auto rows=JsonArray::Parse(winrt::to_hstring(std::string(oracle->begin(),oracle->end())));check(rows.Size()==114,"Independent palette command fixtures missing");
+ for(const auto& item:rows){const auto row=item.GetObject();const auto base=winrt::to_string(row.GetNamedString(L"base")),operation=winrt::to_string(row.GetNamedString(L"operation"));const auto manifest=readProjectManifest(load(dir/(base+"-before.moonsprite")));auto d=createEditableDocument(prepareEditableImport(manifest));check(d.historyPosition()==0&&d.palette().independentOrder.has_value(),"Independent order import must be lossless without edit history");
+  const auto verify=[&](const Document& candidate,const std::string& side){const auto expected=createEditableDocument(prepareEditableImport(readProjectManifest(load(dir/(base+"-"+side+".moonsprite")))));const auto& a=candidate.palette();const auto& b=expected.palette();check(a.columns==b.columns&&a.nextId==b.nextId&&a.order()==b.order()&&a.slots==b.slots&&a.entries.size()==b.entries.size(),(base+" "+side+" layout/IDs").c_str());for(std::size_t i=0;i<a.entries.size();++i)check(a.entries[i].id==b.entries[i].id&&a.entries[i].name==b.entries[i].name&&a.entries[i].color==b.entries[i].color,(base+" "+side+" palette entry").c_str());check(candidate.pixels()==expected.pixels(),"Palette command changed raster pixels");};
+  const auto verifySaved=[&](const std::string& side){verify(d,side);for(bool recovery:{false,true}){const auto bytes=recovery?encodeRecoveryProject(d):encodeEditableProject(d);const auto parsed=readProjectManifest(bytes.bytes);check(parsed.paletteOrder==d.palette().order()&&parsed.paletteSlots==d.palette().slots,"Independent palette save discarded order");verify(createEditableDocument(prepareEditableImport(parsed)),side);}};
+  verifySaved("before");DocumentSnapshot snapshot(d);while(!snapshot.advance(d,std::chrono::steady_clock::now()+std::chrono::seconds(1))){}auto backup=snapshot.finish();verify(backup,"before");const auto checkpoint=JournalSnapshot::document(std::move(backup),[](const Document&){return 1.;});backup=PixelHistory::materialize(JournalSnapshot::archive(encodeJournalSnapshot(checkpoint)));verify(backup,"before");
+  HistoryCompareDocument graph;const auto roots=appendDecodedHistoryPaletteValues(graph,d,manifest);const auto order=d.palette().order();check(graph.values[roots.paletteOrder].properties.size()==order.size(),"Decoded history independent order length");for(std::size_t i=0;i<order.size();++i)check(graph.values[graph.values[roots.paletteOrder].properties[i].second].number==order[i],"Decoded history inferred order from slots");HistoryCostGraph cost;const auto resource=appendDecodedHistoryResources(cost,d);check(cost[resource.paletteOrder].children.size()==order.size(),"Decoded resource cost order missing");
+  const auto beforeRevision=d.revision();const auto beforeOperations=d.projectInformation().operationCount;const auto slots=d.palette().slots;const int columns=d.palette().columns;const auto first=std::size_t(std::find_if(slots.begin(),slots.end(),[](int id){return id!=0;})-slots.begin()),last=slots.size()-1-std::size_t(std::find_if(slots.rbegin(),slots.rend(),[](int id){return id!=0;})-slots.rbegin());
+  if(operation=="update")d.updatePaletteColor(1,0xff3c2814);
+  else if(operation=="rename")d.renamePaletteColor(1,U" renamed ");
+  else if(operation=="reverse")d.reversePaletteColors();
+  else if(operation=="reverse-selected"){d.selectPalette(order[0]);d.selectPalette(order[2],true);d.reversePaletteColors();}
+  else if(operation=="sort")d.sortPaletteColors(Document::PaletteSortMode::Red,false);
+  else if(operation=="delete")d.deletePaletteColors({1});
+  else if(operation=="move")d.repositionPaletteColors(slots,{slots[first]},int(slots.size()+1),slots[first],columns,true);
+  else if(operation=="add")d.addPaletteColor(0xff3c2814);
+  else if(operation=="paste"||operation=="paste-noop")d.pastePaletteColors({operation=="paste"?0xff3c2814:d.paletteEntry(slots[first])->color},{first},true,&slots,columns);
+  else if(operation=="paste-new"){const auto hole=std::find(slots.begin(),slots.end(),0);d.pastePaletteColors({0xff3c2814},{hole==slots.end()?slots.size()+1:std::size_t(hole-slots.begin())},true,&slots,columns);}
+  else if(operation=="gradient-new")d.gradientPaletteSlots({first,last,slots.size()+1},columns,false,&slots);
+  else if(operation=="gradient"||operation=="gradient-hue")d.gradientPaletteSlots({first,last},columns,operation=="gradient-hue",&slots);
+  else if(operation=="apply-new")d.applyStoredPalette({0xff3c2814});
+  else if(operation=="apply"){std::vector<std::optional<std::size_t>> layout(std::max(columns*2,3));layout[1]=0;layout[2]=1;const std::vector<std::u32string> names{U"THREE",U"ONE"};d.applyStoredPalette({d.paletteEntry(3)->color,d.paletteEntry(1)->color},columns,layout,&names);}
+  else if(operation=="extract")d.applyExtractedPalette({d.paletteEntry(3)->color,d.paletteEntry(1)->color},false,columns);
+  else if(operation=="extract-append")d.applyExtractedPalette({d.paletteEntry(4)->color},true,columns);
+  else if(operation=="apply-noop"){std::vector<Pixel> colors;std::vector<int> ids;for(const auto& e:d.palette().entries)if(std::find(order.begin(),order.end(),e.id)!=order.end()){ids.push_back(e.id);colors.push_back(e.color);}std::vector<std::optional<std::size_t>> layout;for(int id:slots)layout.push_back(id?std::optional<std::size_t>(std::find(ids.begin(),ids.end(),id)-ids.begin()):std::nullopt);d.applyStoredPalette(colors,columns,layout);}
+  else throw std::runtime_error("Unknown independent palette fixture operation");
+  if(operation=="paste-noop")check(d.dirty()&&d.revision()>beforeRevision&&d.projectInformation().operationCount==beforeOperations+1,"Order-only paste must publish the persistent change without an undo entry");
+  const auto edits=std::size_t(row.GetNamedNumber(L"history"));check(d.historyPosition()==edits,(base+" transaction count").c_str());verifySaved("after");if(edits)d.undo();verifySaved("undo");if(edits)d.redo();verifySaved("redo");verify(backup,"before");
+  check(d.rollbackProject(backup),"Independent palette backup rollback");verifySaved("before");d.undo();verifySaved("redo");d.redo();verifySaved("before");
+ }
 }
 
 void layerMetadataChecks(const std::filesystem::path& dir){
@@ -194,7 +233,7 @@ void inlineMaskChecks(const std::filesystem::path& dir){
 int main(int argc,char** argv) {
  try {
   check(argc==2,"Fixture argument required");const auto dir=std::filesystem::u8path(argv[1]);
-  paletteLayoutChecks(dir);layerMetadataChecks(dir);historicalVersionChecks(dir);activeCacheChecks(dir);linkedCacheChecks(dir);sparseAnimationChecks(dir);specialSlotChecks(dir);animationArrayChecks(dir);noGridTemplateChecks(dir);importedOpacityChecks(dir);droppedRasterChecks(dir);corruptLinkResourceChecks(dir);malformedLinkChecks(dir);inlineMaskChecks(dir);
+  independentPaletteChecks(dir);paletteLayoutChecks(dir);layerMetadataChecks(dir);historicalVersionChecks(dir);activeCacheChecks(dir);linkedCacheChecks(dir);sparseAnimationChecks(dir);specialSlotChecks(dir);animationArrayChecks(dir);noGridTemplateChecks(dir);importedOpacityChecks(dir);droppedRasterChecks(dir);corruptLinkResourceChecks(dir);malformedLinkChecks(dir);inlineMaskChecks(dir);
   auto bytes=load(dir/"valid.moonsprite");auto parsed=readProjectManifest(bytes);
   check(parsed.schemaVersion==21 && parsed.colorMode=="rgba" && parsed.width==2 && parsed.height==2,"Header changed");
   check(parsed.name==u8"原生兼容样本","Unicode name changed");
