@@ -3413,3 +3413,14 @@ legacy core/layer-merge.ts::mergeVisibleLayers复用compositeDocument渲染全�
 对照legacy core/layer-merge.ts::mergeVisibleLayers使用compositeDocument逐帧烘焙及removeEmptyGroups、installMergedFrames移除原所属蒙版。新增瓦片/自由瓦片×图层蒙版/组蒙版，配合颜色叠加样式，遍历样本已有帧，检查精确合成外观、一次历史、合并后废弃蒙版/空组移除、保存重开、Undo恢复原所属图层/组/蒙版、Redo外观。既有实现通过，无产品修改。
 
 测试构建exit0（masked-special-merge-build.log），完整free-tile-project-tests通过（masked-special-merge-tests.log），来源检查通过（masked-special-merge-provenance.log），diff通过。未重建正式程序（产品代码未变），未人工UI验收；仅覆盖颜色叠加与半覆盖蒙版组合，不代表所有样式/混合模式已穷举。自由Cel链接等仍未迁移，全量INCOMPLETE。
+
+
+### 2026-11-07：瓦片／自由瓦片图层合并入口与蒙版状态闭环
+
+完整对照 legacy core/layer-merge.ts 的 mergeRasterLayers、mergeLayerDown、mergeLayerGroup、mergeVisibleLayers，以及 workspace-commands-layer-structure.ts::commitLayerMergeWithOwnedTilesets。此前仅可见合并开放特殊目标，所选／向下合并仍按整个文档静默返回、组合并拒绝自由瓦片，菜单另有整文档包装限制。现移除三种合并的旧限制；所选／向下／组临时合成 Timeline 带入实际瓦片资源，逐帧烘焙为普通栅格并保留既有组／顺序／属性语义。四种合并共用资源归属检查，只清理已移除自由层的无引用源，保留普通瓦片目录、隐藏共享所属层及存活网格引用；资源纳入原有结构历史。
+
+另对照 workspace-mutation.ts 和 workspace-commands-history.ts：只在 activeLayerMaskId 已不存在时清空。workspace-history.ts 的 LayerUiSnapshot 不保存蒙版编辑上下文，因此合并移除蒙版后，Undo恢复蒙版本体但不重新进入编辑。原生结构安装补上失效引用清理并退出隔离；存活的隐藏蒙版保持编辑／隔离状态。未改变旧版为“自动恢复蒙版编辑”的新行为。
+
+新增32组核心矩阵：tile/free × 独占/隐藏共享源 × 普通/隔离蒙版编辑 × 所选/向下/组/可见合并，包含样式、多帧、组/图层蒙版、继承锁定拒绝且无历史、精确合成、单次历史、资源归属、隐藏载荷、可编辑工程与恢复工程重开、Undo/Redo。另4组检查存活隐藏蒙版上下文。实际菜单增加tile/free × 四种合并共8组 Click，验证入口可用、像素、历史、蒙版退出和Undo/Redo。
+
+正式程序及两个测试目标构建通过（complete-special-merge-build.log）；最终完整free-tile-project-tests通过（complete-special-merge-tests.log），document-layer-groups-tests通过（complete-special-merge-groups-tests.log），正式程序 --cel-clipboard-check 退出0，包含新增8组真实菜单合并回归及既有剪贴板/时间轴检查。来源覆盖检查通过（complete-special-merge-provenance.log），diff检查通过。未做人工视觉验收，不宣称穷举所有样式／混合模式。自由瓦片Cel链接、其他登记迁移缺口及全量人工验收仍未完成，整体INCOMPLETE。

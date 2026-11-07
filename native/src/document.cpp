@@ -641,13 +641,13 @@ bool Document::canMergeSelectedLayers() const {
  const auto& s=timeline_.state();const auto& layers=s.layers;std::size_t count=0,first=layers.size(),last=0;std::optional<std::string> parent;
  for(std::size_t i=0;i<layers.size();++i)if(std::find(timelineSelection_.layers.begin(),timelineSelection_.layers.end(),layers[i].id)!=timelineSelection_.layers.end()){if(timeline::isLayerEffectivelyLocked(s,layers[i])||!layers[i].visible)return false;if(count&&layers[i].groupId!=parent)return false;parent=layers[i].groupId;first=std::min(first,i);last=i;++count;}return count>=2&&last-first+1==count;
 }
-void Document::mergeSelectedLayers(){if(hasTilemapContent()||hasFreeTileContent())return;
+void Document::mergeSelectedLayers(){
  commitFloatingPaste();cancelStroke();cancelLayerOpacity();if(!canMergeSelectedLayers())throw std::runtime_error("Merge requires consecutive visible unlocked selected layers");
  const auto& layers=timeline_.state().layers;std::vector<std::string> ids;std::size_t first=layers.size();
  for(std::size_t i=0;i<layers.size();++i)if(std::find(timelineSelection_.layers.begin(),timelineSelection_.layers.end(),layers[i].id)!=timelineSelection_.layers.end()){first=std::min(first,i);ids.push_back(layers[i].id);}
  mergeRasterLayers(ids,first);
 }
-void Document::mergeLayerDown(){if(hasTilemapContent()||hasFreeTileContent())return;
+void Document::mergeLayerDown(){
  commitFloatingPaste();cancelStroke();cancelLayerOpacity();if(!canMergeLayerDown())throw std::runtime_error("Merge requires a visible unlocked layer below");
  const auto index=activeLayerIndex();const auto& layers=timeline_.state().layers;mergeRasterLayers({layers[index].id,layers[index+1].id},index);
 }
