@@ -3801,3 +3801,11 @@ palette-apply-index-build.log正式Release、工程与核心目标构建通过�
 回归包括schema1／2 null、透明RGB、纯空白及缺失必需字段拒绝、Unicode trim／slug／重名后缀、BOM保留、65537色合法读取／保存拒绝及目录坏文件隔离。首轮palette-import-tests失败于原测试仍认为png／bmp／gif未迁移，实际源码及旧版IMPORTABLE_PALETTE_EXTENSIONS均已支持；同步测试已实现的完整图片扩展清单，未知md／svg／exe仍拒绝。未改变删除策略／长名称slug边界／覆盖身份准入等其它语义，不宣称整个色板库或全量迁移完成。
 
 验证：palette-library-compat-build.log正式Release／色板库／导入目标构建通过，palette-library-compat-final-build.log扩展Unicode矩阵构建通过；palette-library-compat-tests.log及palette-library-compat-import-tests.log均退出0，正式--palette-library-check、--palette-import-check均退出0。补充13种Rust空白的保存trim／空名拒绝和U+180E／U+200B／BOM非空白保留矩阵。来源627文件覆盖通过，strict因既有迁移缺口退出1，diff通过。没有运行旧版Rust完整平台测试或人工文件选择器／图像验收，本批证据为实际Rust源码契约核对与原生执行回归。全量迁移仍INCOMPLETE。
+
+### 色板库规范路径身份与损坏文件操作（2026-11-08）
+
+接续8a588b61，直接按platform_palette.rs::save_palette／delete_palette／list_palettes／is_built_in_palette_id迁移：显式合法非内置ID写入id.palette.json，不要求存在于可解码列表；新建碰撞依据保留内置ID及规范路径是否存在，不以任意文件内嵌ID作为文件名占用；删除优先规范原生路径（即使损坏），没有原生文件才按外部路径稳定hash查找，删除不依赖解码成功。内置身份以assets/palettes资源文件名适配旧版DEFAULT_PALETTES静态表；用户列表排除保留身份。保存／删除不再为找身份解码整个目录的全部色板与图片。
+
+新增规范路径缺失／损坏覆盖、损坏删除、文件名与内嵌ID不符、规范文件优先且不删别名原文件、新建路径碰撞、内置保留与用户冒用过滤、损坏外部文件删除以及非法路径ID拒绝。测试只操作本轮独立创建的owned fixture；用户文件未删除。长slug边界、损坏内置资源报告等仍有差异，本批不宣称色板库或全量迁移完成。
+
+验证：palette-library-identity-build.log唯一正式Release与色板库／导入目标构建退出0；palette-library-identity-tests.log、palette-library-identity-import-tests.log退出0，正式--palette-library-check及--palette-import-check退出0。补充目录同名拒绝检查，std::filesystem::remove不可用于删除目录，承接旧版fs::remove_file语义。来源627文件覆盖通过，strict因既有迁移缺口退出1，diff通过。未运行完整旧版Rust平台测试或人工系统选择器验收；全量迁移仍INCOMPLETE。
