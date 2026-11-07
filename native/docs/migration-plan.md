@@ -3389,3 +3389,9 @@ document-raster-history-tests新增直接fixture在预览期间变更moveWithOwn
 继续特殊图层替换保存链路调查，核对legacy tools-fill.ts::replaceLayerColor及tools-pixel-edit.ts::clampSelection发现明确边界差异：带选区替换先裁剪画布，原生此前只检查selectionContains，可能替换选区覆盖的画布外存储像素。原生增加画布边界条件，坐标先用int64相加避免有符号溢出；不带选区仍遍历全部所属表面存储，与旧版一致。特殊图层本体替换尚未开放或宣称完成。
 
 新增宽2画布、存储x=-1..2的四像素表面与覆盖全部存储选区，对照选区/整体两种模式的独立预览、单次提交及Undo/Redo。正式/测试构建exit0（replacement-selection-bounds-build.log），完整document-raster-history-tests通过（replacement-selection-bounds-tests.log），实际颜色替换对话框定向检查退出0，来源检查通过（replacement-selection-bounds-provenance.log），diff通过。未人工UI验收，全量迁移仍INCOMPLETE。
+
+### 2026-11-07：蒙版编辑期间的图层颜色替换
+
+legacy workspace-commands-color.ts仅layer/selection分支使用activePaintLayer；document/layers/frames/cells仍收集animationLayerAtFrame，即使当前编辑蒙版也处理图层像素。原生此前因存在活动蒙版拒绝所有Cel目标。现在仅显式活动mask ID进入蒙版替换，其余合法Cel目标沿用原有图层处理；预览记录蒙版上下文，按实际目标ID判断蒙版或Cel，图层提交保留蒙版/隔离上下文历史。特殊图层本体仍受原有保护。
+
+新增普通/隔离×取消/提交矩阵，验证蒙版编辑期间图层独立预览、原始像素保留、蒙版不变、单次历史及Undo/Redo上下文。正式/测试构建exit0（replacement-raster-mask-context-build.log），完整free-tile-project-tests通过（replacement-raster-mask-context-tests.log），既有实际颜色替换对话框定向检查退出0，来源检查通过（replacement-raster-mask-context-provenance.log），diff通过。未人工UI验收，未完成特殊图层本体替换，全量迁移仍INCOMPLETE。

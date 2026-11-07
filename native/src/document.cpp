@@ -937,14 +937,13 @@ bool Document::beginColorAdjustment(const std::vector<std::string>& layers){
  if(targets.empty())return false;adjustmentStorageBudget(timeline_,3);adjustment_=AdjustmentPreview{timeline_,timeline_,std::move(targets),selection_,layer().id,frame().id,contentRevision_};++gradientRevision_;return true;
 }
 bool Document::beginColorReplacement(const std::vector<std::string>& celIds,bool clipSelection){
- if(!activeMaskId_.empty()){
-  if(celIds!=std::vector<std::string>{activeMaskId_})return false;
+ if(!activeMaskId_.empty()&&celIds==std::vector<std::string>{activeMaskId_}){
   commitFloatingPaste();cancelStroke();if(clipSelection&&!selection_)return false;const auto* mask=adjustmentMask(timeline_,activeMaskId_);if(!mask||adjustmentMaskLocked(timeline_,*mask))return false;
   adjustmentStorageBudget(timeline_,3);adjustment_=AdjustmentPreview{timeline_,timeline_,celIds,selection_,layer().id,frame().id,contentRevision_,clipSelection};adjustment_->maskContext=activeMaskId_;++gradientRevision_;return true;
  }
  commitFloatingPaste();cancelStroke();if(clipSelection && !selection_)return false;std::vector<std::string> targets;
  for(const auto& id:celIds){const auto* c=timeline_.findCelById(id);if(!c)continue;const auto l=std::find_if(timeline_.state().layers.begin(),timeline_.state().layers.end(),[&](const auto& l){return l.id==c->layerId;});if(l!=timeline_.state().layers.end()&&!l->kind.empty())return false;if(l==timeline_.state().layers.end() || l->kind=="adjustment" || layerEffectivelyLocked(*l))continue;const auto r=timeline_.resolveSurface(id);if(r.source && r.surface && std::find(targets.begin(),targets.end(),r.source->id)==targets.end())targets.push_back(r.source->id);}
- if(targets.empty())return false;adjustmentStorageBudget(timeline_,3);adjustment_=AdjustmentPreview{timeline_,timeline_,std::move(targets),selection_,layer().id,frame().id,contentRevision_,clipSelection};++gradientRevision_;return true;
+ if(targets.empty())return false;adjustmentStorageBudget(timeline_,3);adjustment_=AdjustmentPreview{timeline_,timeline_,std::move(targets),selection_,layer().id,frame().id,contentRevision_,clipSelection};adjustment_->maskContext=activeMaskId_;++gradientRevision_;return true;
 }
 bool Document::updateColorReplacement(Pixel source,Pixel replacement,bool enabled){
  if(!adjustment_)return false;auto& p=*adjustment_;
@@ -952,7 +951,7 @@ bool Document::updateColorReplacement(Pixel source,Pixel replacement,bool enable
  if(p.contentRevision!=contentRevision_ || p.frameId!=frame().id || p.layerId!=layer().id || !selectionEqual(p.selection,selection_)){cancelColorAdjustment();return false;}
  adjustmentStorageBudget(p.baseline,4);auto preview=p.baseline;
  if(enabled && source!=replacement)for(const auto& id:p.targets){
-  timeline::Surface* s=nullptr;const bool mask=!p.maskContext.empty();if(mask){for(auto& slot:preview.state_.masks)if(slot.mask.id==id)s=&slot.mask.surface;}else s=preview.mutableOwnedSurface(id);if(!s)throw std::logic_error("Missing replacement owner");
+  timeline::Surface* s=nullptr;const bool mask=adjustmentMask(p.baseline,id)!=nullptr;if(mask){for(auto& slot:preview.state_.masks)if(slot.mask.id==id)s=&slot.mask.surface;}else s=preview.mutableOwnedSurface(id);if(!s)throw std::logic_error("Missing replacement owner");
   for(int y=0;y<s->height;++y)for(int x=0;x<s->width;++x){auto& value=s->pixels[std::size_t(y)*s->width+x];
    const auto wx=std::int64_t(x)+s->offsetX,wy=std::int64_t(y)+s->offsetY;
    if(value==source && (!p.clipSelection || (wx>=0&&wy>=0&&wx<width_&&wy<height_&&selectionContains(p.selection,int(wx),int(wy)))))value=mask?timeline::normalizedMaskPixel(replacement):replacement;
@@ -1172,7 +1171,8 @@ bool Document::publishConvolutionTask(const ConvolutionTask& task,const std::vec
 void Document::cancelColorAdjustment(){if(adjustment_){adjustment_.reset();++gradientRevision_;}}
 bool Document::commitColorAdjustment(){
  if(!adjustment_)return false;auto& p=*adjustment_;
- if(!p.maskContext.empty()){
+ if(!p.maskContext.empty()&&p.maskContext!=activeMaskId_){cancelColorAdjustment();return false;}
+ if(!p.targets.empty()&&adjustmentMask(p.baseline,p.targets.front())){
   if(p.contentRevision!=contentRevision_||p.maskContext!=activeMaskId_||p.frameId!=frame().id||p.layerId!=layer().id||!selectionEqual(p.selection,selection_)){cancelColorAdjustment();return false;}
   const auto* live=adjustmentMask(timeline_,p.maskContext);const auto* before=adjustmentMask(p.baseline,p.maskContext);const auto* after=adjustmentMask(p.preview,p.maskContext);if(!live||!before||!after||adjustmentMaskLocked(timeline_,*live))return false;
   if(before->mask.surface.pixels==after->mask.surface.pixels){cancelColorAdjustment();return false;}
@@ -1185,6 +1185,7 @@ bool Document::commitColorAdjustment(){
  const auto storageBytes=adjustmentStorageBudget(p.baseline,3);
  std::size_t available=adjustmentByteLimit-3*storageBytes;
  Edit e{{},state_,nextState_};e.beforeActive=e.afterActive=layer().id;e.beforeFrame=e.afterFrame=frame().id;e.beforeSelection=e.afterSelection=selectedFrames_;
+ if(!p.maskContext.empty())e.maskContext=std::make_shared<Edit::MaskContextHistory>(Edit::MaskContextHistory{activeMaskId_,activeMaskId_,maskIsolated_,maskIsolated_});
  e.children.reserve(p.targets.size());
  struct Install{timeline::Surface* live;timeline::Surface* preview;};std::vector<Install> install;install.reserve(p.targets.size());
  for(const auto& id:p.targets){
