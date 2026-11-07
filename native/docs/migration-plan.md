@@ -3133,3 +3133,11 @@ mixed-free-linked-frame-build.log正式Release/两核心测试构建exit0；fixt
 对照legacy workspace-commands-selection-move.ts::centerActiveContent先处理pendingPaste选框几何，并通过allowOutsideCanvas=true进入已有pending.freeTile平移路径。原生仅放行已有freeTile浮动事务通过整篇特殊类型保护，复用现有pending中心差值、Math.round同向舍入、四角/翻转原点平移及transformFreeTileSelectionMove。非浮动自由瓦片居中不由本批声称迁移。
 
 新增整实例/局部源×移动/复制×水平/垂直/双轴十二组，比较直接平移的画布、源像素及选区，检查预览无历史、重复居中no-op、单提交、Redo与实际保存重开。pending-free-center-build.log正式Release及free/tile完整测试构建exit0；两完整测试exit0（pending-free-center-free-test.log、pending-free-center-grid-test.log）；正式工作区drawing-anchor-edit-floating组合exit0；来源625文件快照通过（pending-free-center-provenance.log），diff通过。未做人工作业或截图验收，全量迁移仍INCOMPLETE。
+
+### 2026-11-07：瓦片已有浮动选区居中入口
+
+对照legacy workspace-commands-selection-move.ts::centerActiveContent优先处理pendingPaste的几何中心及已有tilemap编辑裁切，允许原生已有tilemap浮动事务进入共同居中分支，复用冻结模式/目标校验和transformFloatingPaste。非浮动瓦片居中及Paint格子移动未在本批扩展。
+
+新增Create/Edit/Hybrid×移动/复制×三个轴十八组合，分别比较直接平移的预览和提交结果、取消恢复网格与资源、单次历史、Undo/Redo及实际重开。初始回归假设预览与提交总是相等，实际既有瓦片资源写回事务会产生差异；拆分后居中与直接平移在两个阶段均一致。本批仅证明入口与既有路径一致，不证明预览提交差异符合legacy，仍需继续核对该差异，不能作为完整行为等价证据。
+
+pending-tile-center-build.log正式Release及free/tile测试构建exit0，fixture-build日志exit0；完整free-tile-project-tests和tilemap-project-tests通过（pending-tile-center-free-test.log、pending-tile-center-grid-test.log）；正式工作区drawing-anchor-edit-floating组合exit0，来源625文件快照通过（pending-tile-center-provenance.log），diff通过。未做人工UI验收，全量迁移仍INCOMPLETE。
