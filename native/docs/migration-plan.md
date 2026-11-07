@@ -3147,3 +3147,9 @@ pending-tile-center-build.log正式Release及free/tile测试构建exit0，fixtur
 解决上阶段登记的“预览提交差异”疑点：canvasPixels直接读取timeline存储，而瓦片浮动编辑的可见资源预览由publishTilemapPreview发布到displayTimeline/displayPixels。先前比较了未提交存储与提交结果，不能据此判断用户可见差异。对照editor_canvas的displayTimeline合成消费、legacy workspace-commands-selection-move pending预览及workspace-tilemap.test.ts mirrored floating commit的可见结果保留，补强现有十八组合回归。
 
 现在明确捕获displayPixels及compositeNormalRegion(displayTimeline)，提交后分别与最终图层像素及合成画面逐像素相等；保留直接变换对照、取消、单历史、Undo/Redo和实际重开检查。完整free-tile-project-tests通过（tile-center-display-test.log），测试构建exit0（tile-center-display-build.log），来源625文件快照通过（tile-center-display-provenance.log），diff通过。本阶段仅增强测试与纠正记录，无产品修改、无新产品构建或人工UI验收。上述十八组合的实际显示一致性疑点已消除，不延伸到全部瓦片变换；全量迁移仍INCOMPLETE。
+
+### 2026-11-07：混合瓦片文档普通浮动粘贴居中
+
+依据legacy workspace-commands-selection-move.ts::centerActiveContent对所有pendingPaste几何优先处理，原生将整篇特殊类型保护移到共同floating+selection分支之后。此前虽已放行free/tile自身浮动状态，混合tilemap文档中合法的普通图层剪贴板浮动仍被拒绝。继续保留非浮动特殊文档保护及原浮动锁定/目标校验。
+
+新增水平/垂直/双轴三组普通图层粘贴回归，检查精确中心坐标、预览无历史、单提交、无关瓦片网格/资源不变、Undo/Redo及实际保存重开。mixed-raster-center-build.log正式Release与free/tile测试构建exit0；两完整测试通过（mixed-raster-center-free-test.log、mixed-raster-center-grid-test.log）；正式工作区drawing-anchor-edit-floating组合exit0；来源625文件快照通过（mixed-raster-center-provenance.log），diff通过。未做人工UI验收，全量迁移仍INCOMPLETE。
