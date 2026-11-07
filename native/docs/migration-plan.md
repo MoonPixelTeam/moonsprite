@@ -3279,3 +3279,9 @@ pending-tile-center-build.log正式Release及free/tile测试构建exit0，fixtur
 对照legacy workspace-commands-layer-adjustment.ts::applyLcdScreenFilter读取所选源原始像素与偏移、生成全部帧四通道、隐藏源层及结构Undo，验证上阶段共享入口开放后的特殊源行为。本阶段只新增回归证据，无产品代码改动；像素算法已有filter_presets_test的legacy精确值覆盖。
 
 新增free/tile×源层可见/隐藏四组，检查预览结构/源显隐不落地、取消恢复、四通道像素及原点、所有帧槽位、单group历史、源隐藏、Undo恢复原始显隐/结构、Redo及保存重开。实时特殊Cel/资源数据逐项不变；自由瓦片往返表示与内存fixture有差异，重开保留断言使用同一未应用滤镜工程的往返基线，避免混同序列化与滤镜变更。最终测试构建exit0（special-lcd-filter-build.log），完整free-tile-project-tests通过（special-lcd-filter-test.log），来源检查通过（special-lcd-filter-provenance.log），diff通过。无新产品构建、无人工UI验收，不宣称所有特殊源/链接/非标准布局已覆盖；全量迁移仍INCOMPLETE。
+
+### 2026-11-07：特殊文档调色板替换实际解码往返
+
+补齐specialPaletteReplacement阶段明确未覆盖的持久化证据。现有reopen辅助函数使用d.palette构建Document，不能证明归档调色板正确；本阶段八组特殊文档调色板替换用例新增encodeEditableProject/encodeRecoveryProject→readProjectManifest→prepareEditableImport→createEditableDocument真实解码链。
+
+逐项核对实际解码entry的ID/name/RGBA、slots/columns/nextId及蒙版像素，包含取消/提交与free/tile/活动蒙版组合。前景/背景角色属于会话值，本阶段不声明其归档持久化。测试构建exit0（special-palette-persistence-build.log），完整free-tile-project-tests通过（special-palette-persistence-test.log），来源检查通过（special-palette-persistence-provenance.log），diff通过。无产品代码修改、新产品构建或人工UI验收；活动蒙版下新增预设滤镜仍待核对旧版编辑上下文转换，未在本批放行。全量迁移仍INCOMPLETE。
