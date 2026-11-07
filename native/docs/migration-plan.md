@@ -3371,3 +3371,9 @@ pending-tile-center-build.log正式Release及free/tile测试构建exit0，fixtur
 核对legacy workspace-commands-color.ts::applyColorReplacementTarget的layer/selection分支，workspace-session.ts::activePaintLayer优先返回activeLayerMask；tools-fill.ts逐像素精确比较来源色，document-model.ts::normalizeLayerPackedValue写入maskPacked。原生此前一律拒绝活动蒙版，现由这两个范围返回活动mask ID，复用AdjustmentPreview独立蒙版副本、normalizedMaskPixel与现有蒙版历史。选区使用世界坐标；提交检查版本、上下文、锁及原始像素，保存活动蒙版/隔离上下文供Undo/Redo。文档、图层、帧、帧格范围仍不改为蒙版批量目标；特殊图层本体替换仍有迁移缺口。
 
 新增普通/瓦片/自由瓦片所属图层×普通/隔离显示×选区/整体×取消/提交矩阵，验证半透明黑精确归一化ff7f7f7f、独立预览、未选像素、单历史、上下文Undo/Redo、保存重开、所属Cel及资源保持，以及无变化、上下文切换和锁定拒绝。首次测试数据使用空图层无法创建蒙版、默认零值蒙版未匹配白色来源，已按真实前置条件修正并重跑。完整free-tile-project-tests通过（mask-replacement-tests.log，最终测试构建mask-replacement-final-build.log）。正式最终构建exit0（mask-replacement-editor-final-build.log），实际对话框--workspace-check --named-workspace-only --replace-cell-selection-only退出0，包含活动蒙版选区预览/取消/提交/Undo/Redo。来源检查通过（mask-replacement-provenance.log），diff通过。未人工UI验收，未宣称完整迁移完成；全量仍INCOMPLETE。
+
+### 2026-11-07：链接与组蒙版颜色替换回归
+
+继续上一阶段活动蒙版替换，核对legacy workspace-session.ts::activePaintLayer、workspace-commands-animation-mask.ts关联mask写linkedMaskId指向源，以及document-model.ts::isLayerEffectivelyLocked对蒙版所属组/图层锁定的判断。新增链接图层蒙版/链接组蒙版×普通/隔离×取消/提交检查，活动第二帧链接槽进行单像素选区替换，验证两帧解析同一源、半透明黑归一化ff7f7f7f、相邻像素保持、独立预览、单次标记为替换颜色的历史、保存重开、Undo/Redo活动蒙版/帧/隔离上下文及所属Cel像素/链接保留。所属图层或组锁定拒绝入口。已有产品代码通过，无产品行为变更。
+
+测试构建exit0（linked-group-replacement-build.log），完整free-tile-project-tests通过（linked-group-replacement-tests.log），来源检查通过（linked-group-replacement-provenance.log），diff通过。未重建正式程序（产品代码未变），未人工UI验收；仍有特殊图层本体替换等缺口，全量迁移仍INCOMPLETE。
