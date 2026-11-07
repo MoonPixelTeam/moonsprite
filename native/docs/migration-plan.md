@@ -3297,3 +3297,9 @@ pending-tile-center-build.log正式Release及free/tile测试构建exit0，fixtur
 对照legacy workspace-commands-layer-adjustment.ts::applyLcdScreenFilter从selectedLayerIds取源、不清除activeLayerMaskId，restore闭包只恢复层组选择及源显隐；workspace-mutation.ts保留仍存在蒙版。原生既有结构历史已保留该上下文，无需产品修改。
 
 新增普通/tile/free×蒙版普通/隔离显示六组，检查选中所属层后LCD预览/取消、单group提交、活动蒙版及隔离状态在Undo/Redo保留、所属Cel像素/实例/网格及蒙版像素不变。测试构建exit0（mask-lcd-context-build.log），完整free-tile-project-tests通过（mask-lcd-context-test.log），来源检查通过（mask-lcd-context-provenance.log），diff通过。此为明确源选择上下文的自动回归，未做新产品构建或人工UI验收，不扩展到所有蒙版行选择组合；全量迁移仍INCOMPLETE。
+
+### 2026-11-07：核实混合文档普通图层卷积预览
+
+对照legacy workspace-convolution-preview.ts::createConvolutionPreview从captureAdjustmentSnapshot跳过kind/锁定目标、全部结果完成后统一发布，原生卷积已复用先前放行的beginColorAdjustment普通目标路径。本阶段补充行为证据，无产品修改。
+
+新增free/tile×取消/提交×选区/完整目标八组，以negative单红通道检查精确packed RGBA、选区外保留、预览不改变存储/历史、单提交、Undo/Redo、实际保存重开及原特殊Cel像素/实例/网格/资源保留。测试构建exit0（mixed-raster-convolution-build.log），完整free-tile-project-tests通过（mixed-raster-convolution-test.log），来源检查通过（mixed-raster-convolution-provenance.log），diff通过。仅证明所测普通目标和通道，未扩展全部卷积核或特殊源/蒙版路径；未做新产品构建或人工UI验收，全量迁移仍INCOMPLETE。
