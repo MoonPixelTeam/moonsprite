@@ -19,7 +19,9 @@ legacy+=region("fn linear_imported_palette(","fn text_imported_colors(")
 driver=r"""
 use serde::{Serialize,Deserialize};
 const MAX_IMPORTED_PALETTE_COLORS:usize=65536;const IMPORTED_PALETTE_COLUMNS:u32=16;
-fn main(){let input=std::fs::read(std::env::args().nth(1).unwrap()).unwrap();let cases:Vec<String>=serde_json::from_slice(&input).unwrap();let output:Vec<_>=cases.iter().map(|s|match json_imported_palette(s.as_bytes(),"Fallback".to_string(),"oracle"){Ok(p)=>serde_json::json!({"name":p.name,"colors":p.colors,"columns":p.columns,"slots":p.slots,"names":p.names}),Err(_)=>serde_json::Value::Null}).collect();println!("{}",serde_json::to_string(&output).unwrap());}
+fn main(){let input=std::fs::read(std::env::args().nth(1).unwrap()).unwrap();let cases:Vec<String>=serde_json::from_slice(&input).unwrap();let direct=std::env::args().nth(2).is_some();let output:Vec<_>=cases.iter().map(|s|{
+let result=if direct {serde_json::from_slice::<PaletteDiskFile>(s.as_bytes()).map_err(|e|e.to_string()).and_then(|f|stored_palette_from_file(f,String::new(),false,"oracle")).map(|p|ImportedPalette{name:p.name,colors:p.colors,columns:p.columns.unwrap_or(0),slots:p.slots.unwrap_or_default(),names:p.names})}else{json_imported_palette(s.as_bytes(),"Fallback".to_string(),"oracle")};
+match result{Ok(p)=>serde_json::json!({"name":p.name,"colors":p.colors,"columns":p.columns,"slots":p.slots,"names":p.names}),Err(_)=>serde_json::Value::Null}}).collect();println!("{}",serde_json::to_string(&output).unwrap());}
 """
 (OWNED/"Cargo.toml").write_text('[package]\nname="palette-json-legacy-oracle"\nversion="0.1.0"\nedition="2021"\n[workspace]\n[dependencies]\nserde={version="=1.0.229",features=["derive"]}\nserde_json="=1.0.151"\n',encoding="utf-8")
 (OWNED/"src/main.rs").write_text(driver+legacy,encoding="utf-8")
@@ -62,13 +64,15 @@ for i in range(96):
 (OWNED/"input.json").write_text(json.dumps(cases),encoding="utf-8")
 subprocess.run(["cargo","--config",str(ROOT/"legacy/.cargo/config.toml"),"build","--offline","--release","--manifest-path",str(OWNED/"Cargo.toml")],check=True)
 results=json.loads(subprocess.run([str(OWNED/"target/release/palette-json-legacy-oracle.exe"),str(OWNED/"input.json")],capture_output=True,check=True).stdout)
+directResults=json.loads(subprocess.run([str(OWNED/"target/release/palette-json-legacy-oracle.exe"),str(OWNED/"input.json"),"direct"],capture_output=True,check=True).stdout)
 rows=[]
-for text,p in zip(cases,results):
+for text,p in zip(cases+cases,results+directResults):
  encoded='{'+','.join(str(b)for b in text.encode())+'}'
  if p is None:rows.append('{'+encoded+',false,"",{},0,{},false,{}}');continue
  colors=[c['r']|(c['g']<<8)|(c['b']<<16)|(c['a']<<24)for c in p['colors']]
  def string(s):return 'std::string({'+','.join('char('+str(b)+')'for b in s.encode())+'})'
  rows.append('{'+encoded+',true,'+string(p['name'])+',{'+','.join(hex(c)+'u'for c in colors)+'},'+str(p['columns'])+',{'+','.join(str(c)if c is not None else '-1'for c in p['slots'])+'},'+('true'if p['names']is not None else 'false')+',{'+','.join(string(s)for s in p['names']or [])+'}}')
 header='#pragma once\n// Generated from actual legacy Rust/serde by make-palette-json-fixtures.py.\n// Source SHA256: '+hashlib.sha256(SOURCE.read_bytes()).hexdigest()+'\nstruct LegacyJsonPaletteFixture{std::vector<std::uint8_t> bytes;bool accepted;std::string name;std::vector<moon::Pixel> colors;int columns;std::vector<int> slots;bool hasNames;std::vector<std::string> names;};\ninline const std::vector<LegacyJsonPaletteFixture> legacyJsonPaletteFixtures={\n'+',\n'.join(rows)+'\n};\n'
+header+='inline constexpr std::size_t legacyJsonImportCaseCount='+str(len(cases))+';\n'
 OUTPUT.write_text(header,encoding="utf-8",newline="\n")
-print(f"Generated {len(cases)} actual legacy JSON cases")
+print(f"Generated {len(cases)} import and {len(cases)} direct legacy JSON cases")

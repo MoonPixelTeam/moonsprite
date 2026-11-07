@@ -6,6 +6,7 @@
 #include <iostream>
 #include <chrono>
 #include <algorithm>
+#include "fixtures/palette_json_legacy.h"
 using namespace moon;
 void require(bool value,const char* message){if(!value)throw std::runtime_error(message);}
 int main(){try{
@@ -50,6 +51,8 @@ int main(){try{
  HANDLE locked=CreateFileW(transaction.path.c_str(),GENERIC_READ,FILE_SHARE_READ,nullptr,OPEN_EXISTING,FILE_ATTRIBUTE_NORMAL,nullptr);require(locked!=INVALID_HANDLE_VALUE,"lock transaction fixture");auto replacement=p;replacement.name="Replacement";replacement.colors[0]=0xffabcdef;bool failed=false;try{library.save(replacement,"transaction");}catch(const std::exception&){failed=true;}CloseHandle(locked);require(failed&&readBytes(transaction.path)==previousBytes&&readBytes(root/"keep-user.tmp")=="owned unrelated sentinel","failed overwrite damaged original or unrelated file");require(std::distance(std::filesystem::directory_iterator(root),std::filesystem::directory_iterator{})==filesBefore,"failed overwrite leaked temporary file");
  auto replaced=library.save(replacement,"transaction");auto reopened=decodeStoredPalette(readBytes(replaced.path));require(reopened.id==transaction.id&&reopened.name==replacement.name&&reopened.colors==replacement.colors&&reopened.slots==replacement.slots&&reopened.names==replacement.names,"successful overwrite changed identity or payload");
  const auto directoryTarget=root/"occupied-directory.palette.json";std::filesystem::create_directories(directoryTarget);std::ofstream(directoryTarget/"kept.txt")<<"owned sentinel";failed=false;try{library.save(replacement,"occupied-directory");}catch(const std::exception&){failed=true;}require(failed&&readBytes(directoryTarget/"kept.txt")=="owned sentinel","failed directory-target save changed directory contents");
+ // Execute every direct serde fixture through actual user/built-in disk listing.
+ for(std::size_t i=legacyJsonImportCaseCount;i<legacyJsonPaletteFixtures.size();++i){const auto& fixture=legacyJsonPaletteFixtures[i];const auto dir=root/("json-direct-"+std::to_string(i));std::filesystem::create_directories(dir);{std::ofstream out(dir/"fixture.palette.json",std::ios::binary);out.write(reinterpret_cast<const char*>(fixture.bytes.data()),std::streamsize(fixture.bytes.size()));}auto listed=PaletteLibrary(dir).list();require(listed.size()==(fixture.accepted?1u:0u),"user file serde admission/isolation mismatch");if(fixture.accepted){const auto& actual=listed.front();std::vector<int> slots;for(auto slot:actual.slots)slots.push_back(slot?int(*slot):-1);require(actual.name==fixture.name&&actual.colors==fixture.colors&&actual.columns==fixture.columns&&slots==fixture.slots&&bool(actual.names)==fixture.hasNames&&(!actual.names||*actual.names==fixture.names),"actual user library file changes direct serde payload");}bool builtinFailed=false;std::vector<StoredPalette> built;try{built=PaletteLibrary({},dir).list();}catch(const std::exception&){builtinFailed=true;}require(builtinFailed!=fixture.accepted&&(!fixture.accepted||(built.size()==1&&built.front().builtIn)),"built-in direct serde error isolation mismatch");}
  // Fixture intentionally retained: no user or existing library files are removed.
  std::cout<<"palette-library: passed\n";return 0;
  }catch(const std::exception& e){std::cerr<<e.what()<<'\n';return 1;}}

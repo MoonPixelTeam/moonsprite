@@ -3867,3 +3867,9 @@ palette-apply-index-build.log正式Release、工程与核心目标构建通过�
 接续a6dcc763，新增独立Cargo旧版原函数执行器，提取实际类型／JSON／布局／颜色函数，使用与旧版Cargo.lock一致的serde1.0.229及serde_json1.0.151，通过legacy/.cargo/config.toml复用离线registry。初次默认registry离线缺少itoa，修正为旧版现有源配置后成功，未下载依赖。271组对照比较成功／拒绝、name／RGBA／columns／完整可空slots／可选names，覆盖颜色通道数值与缺失／大小写、normalize及alpha回退、数组优先级、原生结构／版本／布局／可空字段、v1不完整末行、重复字段、转义键、有效／孤立代理项及96组固定随机通用矩阵。
 
 首轮case95暴露WinRT把2.0标准化为整数2，而serde原生u32反序列化失败后转通用颜色数组；原生应丢弃原生布局与名称。重复已知字段、浮点槽／超usize也有同类分支差异。现保留原始token整数写法／范围与已知键重复检测，转义键用既有WinRT字符串解码；不替代DOM语法解析。case167又发现孤立UTF16代理项，增加输入UTF8及字符串代理对严格验证，在所有通用／原生分支前执行；合法代理对与转义保持接受。只修改共享导入入口，不据此声明单独原生库解码器的所有词法规则等价。验证：palette-json-formal-build.log正式Release及导入／库目标构建退出0；palette-json-compat-tests.log271组真实JSON、229组文本及既有全部导入边界退出0，palette-json-compat-library-tests.log退出0；正式--palette-import-check和--palette-library-check退出0。重复生成fixture哈希一致；来源633文件覆盖通过，strict因既有缺口退出1，diff通过。未执行完整旧版Tauri运行或人工系统选择器／长期桌面验收，全量迁移仍INCOMPLETE。
+
+### 原生色板文件直接读取的serde闭环（2026-11-08）
+
+接续d2b3fa93，上一阶段只处理导入；本批原函数生成器增加serde_json::from_slice<PaletteDiskFile>→stored_palette_from_file的直接读取结果，同271输入生成另一组实际旧版结果，总542组。原生直接读取不允许通用数组回退，schema1空颜色／无布局保持原状，不套用导入的线性布局。提取现有词法函数为导入模块共享内部接口，直接库解码也在WinRT标准化前校验UTF8／代理对、整数原写法与已知字段重复；保留导入与读取各自的旧版分支。
+
+除542组完整载荷核对，还把271个直接fixture逐个写入独立owned目录，真实调用PaletteLibrary::list：用户坏文件隔离跳过，内置坏资源返回错误，接受项核对名称／RGBA／列数／槽位／可选names。复用已有代码，无新增生产JSON依赖。验证：palette-json-direct-build.log正式Release及导入／库目标构建退出0；palette-json-direct-tests.log542组JSON及既有完整导入退出0，palette-json-direct-library-build.log及palette-json-direct-library-tests.log实际文件矩阵退出0。正式--palette-import-check及--palette-library-check退出0，重复生成header哈希一致，来源633文件覆盖通过，strict因已知缺口退出1，diff通过。未进行完整Tauri运行或人工系统文件选择器／长期桌面验收，全量迁移仍INCOMPLETE。
