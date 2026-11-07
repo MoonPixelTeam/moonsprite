@@ -3365,3 +3365,9 @@ pending-tile-center-build.log正式Release及free/tile测试构建exit0，fixtur
 核对legacy workspace-commands-color.ts::applyColorReplacementTarget，layer命令值只作用activePaintLayer所在活动帧，且不使用像素选区裁剪。原生replaceTargets此前不识别layer，现补齐普通图层活动帧目标。旧ColorReplacementDialog.tsx未提供layer选项，因此不新增入口；保留既有命令/配置值的语义。选中图层范围菜单启用改用实际timelineSelection.layers，避免陈旧右键上下文。activePaintLayer还可能返回活动蒙版，原生该路径仍被核心拒绝，本阶段未完成蒙版迁移。
 
 扩展真实颜色替换对话框检查：两帧及另一图层，有单像素选区，确认活动帧整个图层独立预览，其他帧/层不变，取消无历史、提交一次历史及Undo/Redo。正式构建exit0（replacement-layer-scope-build.log），--workspace-check --named-workspace-only --replace-cell-selection-only退出0，来源检查通过（replacement-layer-scope-provenance.log），diff检查通过。未运行本阶段全量workspace、未人工UI验收，全量迁移仍INCOMPLETE。
+
+### 2026-11-07：活动蒙版颜色替换
+
+核对legacy workspace-commands-color.ts::applyColorReplacementTarget的layer/selection分支，workspace-session.ts::activePaintLayer优先返回activeLayerMask；tools-fill.ts逐像素精确比较来源色，document-model.ts::normalizeLayerPackedValue写入maskPacked。原生此前一律拒绝活动蒙版，现由这两个范围返回活动mask ID，复用AdjustmentPreview独立蒙版副本、normalizedMaskPixel与现有蒙版历史。选区使用世界坐标；提交检查版本、上下文、锁及原始像素，保存活动蒙版/隔离上下文供Undo/Redo。文档、图层、帧、帧格范围仍不改为蒙版批量目标；特殊图层本体替换仍有迁移缺口。
+
+新增普通/瓦片/自由瓦片所属图层×普通/隔离显示×选区/整体×取消/提交矩阵，验证半透明黑精确归一化ff7f7f7f、独立预览、未选像素、单历史、上下文Undo/Redo、保存重开、所属Cel及资源保持，以及无变化、上下文切换和锁定拒绝。首次测试数据使用空图层无法创建蒙版、默认零值蒙版未匹配白色来源，已按真实前置条件修正并重跑。完整free-tile-project-tests通过（mask-replacement-tests.log，最终测试构建mask-replacement-final-build.log）。正式最终构建exit0（mask-replacement-editor-final-build.log），实际对话框--workspace-check --named-workspace-only --replace-cell-selection-only退出0，包含活动蒙版选区预览/取消/提交/Undo/Redo。来源检查通过（mask-replacement-provenance.log），diff通过。未人工UI验收，未宣称完整迁移完成；全量仍INCOMPLETE。
