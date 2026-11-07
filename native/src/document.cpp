@@ -2135,7 +2135,7 @@ bool Document::fillSelectionOrCanvas(Pixel color){if(!activeMaskId_.empty()){com
  if(edit.children.empty())return false;
  history_.reserve(position_+1);change_={};applyEdit(edit,true);publishChange();pushEdit(std::move(edit),selection_?U"填充选区前景色":U"填充画布前景色");return true;
 }
-bool Document::deleteSelectedPixels(){if(floating_&&floating_->clipboard){cancelFloatingPaste();return true;}if(floating_&&floating_->freeTile)commitFloatingPaste();if(!activeMaskId_.empty())return deleteMaskSelection();if(hasFreeTileContent()){
+bool Document::deleteSelectedPixels(){if(floating_&&floating_->clipboard){cancelFloatingPaste();return true;}if(floating_&&floating_->freeTile)commitFloatingPaste();if(!activeMaskId_.empty())return deleteMaskSelection();if(layer().kind=="free-tile"){
  // Legacy deleteFreeTileSourceSelectionInSession clears the primary shared
  // source in instance world coordinates; never erase a derived Cel cache.
  if(active()||!selection_||!activeMaskId_.empty()||layer().kind!="free-tile"||freeTilePaintMode()||!layer().freeTiles||!cel().freeTiles||!cel().surface||layerEffectivelyLocked(layer()))return false;
@@ -2218,7 +2218,7 @@ bool Document::deleteSelectedPixels(){if(floating_&&floating_->clipboard){cancel
  if(edit.children.empty())return false;
  history_.reserve(position_+1);change_={};applyEdit(edit,true);publishChange();pushEdit(std::move(edit),U"删除选区");return true;
 }
-bool Document::cutPixels(std::optional<SelectionClipboard>& clipboard){const bool freeSource=layer().kind=="free-tile"&&activeMaskId_.empty(),clipboardFloating=floating_&&floating_->clipboard;if(activeMaskId_.empty()&&!clipboardFloating&&hasFreeTileContent()&&!freeSource)return false;if(activeMaskId_.empty()&&!clipboardFloating&&hasTilemapContent()&&!freeSource&&!tilemapSelectionCutAvailable())return false;if(!selection_)return false;clipboard=copyPixels();const bool deleteOriginal=!floating_ || (!floating_->clipboard && !floating_->copy);if(floating_)cancelFloatingPaste();if(deleteOriginal)deleteSelectedPixels();selection_.reset();return bool(clipboard);}
+bool Document::cutPixels(std::optional<SelectionClipboard>& clipboard){const bool freeSource=layer().kind=="free-tile"&&activeMaskId_.empty(),clipboardFloating=floating_&&floating_->clipboard;if(activeMaskId_.empty()&&!clipboardFloating&&hasFreeTileContent()&&!freeSource&&!layer().kind.empty())return false;if(activeMaskId_.empty()&&!clipboardFloating&&hasTilemapContent()&&!freeSource&&!layer().kind.empty()&&!tilemapSelectionCutAvailable())return false;if(!selection_)return false;clipboard=copyPixels();const bool deleteOriginal=!floating_ || (!floating_->clipboard && !floating_->copy);if(floating_)cancelFloatingPaste();if(deleteOriginal)deleteSelectedPixels();selection_.reset();return bool(clipboard);}
 bool Document::floatingSymmetryRotation(const FloatingPaste& f,const SelectionTransform& t)const{return (f.symmetryRotation||f.symmetryShear)&&f.beforeSelection&&!f.clipboard&&!f.tilemap&&f.maskId.empty()&&symmetryHas(f.symmetryAxes)&&(f.symmetryShear||(t.shearX==0&&t.shearY==0))&&!t.quad;}
 void Document::configureSymmetryContentRotation(FloatingPaste& f){
  f.symmetryShear=false;f.symmetryRotation=false;if(f.clipboard||f.tilemap||!f.maskId.empty()||!f.beforeSelection)return;f.symmetryRotation=symmetryHas(symmetryAxes);f.symmetryScale=false;f.symmetryAxes=symmetryAxes;f.symmetryCenter=symmetryCenter();for(auto& target:f.targets)target.symmetryRotation.reset();
@@ -2448,7 +2448,7 @@ bool Document::prepareTilemapFloating(FloatingPaste& f,std::optional<Point> seed
  for(std::size_t ci=0;ci<state.cels.size();++ci){const auto& c=state.cels[ci];if(c.tilemap&&c.surface)for(std::size_t i=0;i<c.tilemap->cells.size();++i){const auto& cell=c.tilemap->cells[i];if(cell&&cell->tilesetId==set->id)g->tilemapReferences[cell->tileId].push_back({ci,i});}}
  f.tilemapPreview=std::move(g);return true;
 }
-bool Document::beginSelectionContentMove(bool copy,bool allFrameLayers,int initialDx,int initialDy,std::optional<Point> tilemapSeed,bool symmetryTranslation,bool symmetryScale,bool symmetryRotation,bool symmetryShear){if(!activeMaskId_.empty())return beginMaskSelectionMove(copy,allFrameLayers,initialDx,initialDy);if(hasFreeTileContent()){if(layer().kind=="free-tile"&&activeMaskId_.empty()){const bool started=beginFreeTileSelectionMove(copy,allFrameLayers,initialDx,initialDy);if(started&&symmetryTranslation&&tilemapSeed){floating_->symmetryStart=SymmetryPixel{tilemapSeed->x,tilemapSeed->y};floating_->symmetryAxes=symmetryAxes;floating_->symmetryCenter=symmetryCenter();}return started;}if(!layer().kind.empty())return false;}if(hasTilemapContent()){
+bool Document::beginSelectionContentMove(bool copy,bool allFrameLayers,int initialDx,int initialDy,std::optional<Point> tilemapSeed,bool symmetryTranslation,bool symmetryScale,bool symmetryRotation,bool symmetryShear){if(!activeMaskId_.empty())return beginMaskSelectionMove(copy,allFrameLayers,initialDx,initialDy);if(hasFreeTileContent()){if(layer().kind=="free-tile"&&activeMaskId_.empty()){const bool started=beginFreeTileSelectionMove(copy,allFrameLayers,initialDx,initialDy);if(started&&symmetryTranslation&&tilemapSeed){floating_->symmetryStart=SymmetryPixel{tilemapSeed->x,tilemapSeed->y};floating_->symmetryAxes=symmetryAxes;floating_->symmetryCenter=symmetryCenter();}return started;}if(!layer().kind.empty())return false;}if(hasTilemapContent()&&!layer().kind.empty()){
  if(floating_){if(floating_->tilemap){if(tileSelection_.mode!=floating_->tilemapMode||layerEffectivelyLocked(layer())||!layerEffectivelyVisible(layer()))return false;}else if(!(floating_->clipboard&&floating_->maskId.empty()&&layer().kind.empty()&&!layerEffectivelyLocked(layer())))return false;}
  else if(allFrameLayers||!tilemapSelectionTransformAvailable())return false;
  }if(!activeMaskId_.empty())return beginMaskSelectionMove(copy,allFrameLayers,initialDx,initialDy);
@@ -2486,7 +2486,7 @@ bool Document::beginSelectionContentMove(bool copy,bool allFrameLayers,int initi
    if(const auto* target=timeline_.findCel(targetLayer.id,frameId))targets.push_back(target);
   }
  }
- if(hasFreeTileContent())for(const auto* target:targets){const auto& owner=timeline_.state().layers[timeline_.layerIndex(target->layerId)];if(!owner.kind.empty())return false;}
+ if(hasFreeTileContent()||(hasTilemapContent()&&layer().kind.empty()))for(const auto* target:targets){const auto& owner=timeline_.state().layers[timeline_.layerIndex(target->layerId)];if(!owner.kind.empty())return false;}
  const auto count=floatingArea(selection_->width,selection_->height);raster::coordinate(std::int64_t(selection_->x)+selection_->width);raster::coordinate(std::int64_t(selection_->y)+selection_->height);
  if(!selection_->mask.empty()&&selection_->mask.size()!=count)throw std::invalid_argument("Invalid floating selection mask");
  std::vector<std::string> owners;for(const auto* target:targets){const auto r=timeline_.resolveSurface(target->id);if(r.issue!=timeline::LinkIssue::None||!r.source||!r.surface)return false;raster::validate(*r.surface);if(std::find(owners.begin(),owners.end(),r.source->id)==owners.end())owners.push_back(r.source->id);}

@@ -3225,3 +3225,9 @@ pending-tile-center-build.log正式Release及free/tile测试构建exit0，fixtur
 对照legacy workspace-commands-selection-effects.ts::fillForeground的pending提交、activePaintLayer/selectedEffectTargets范围及多目标特殊类型拒绝，移除原生整篇特殊内容保护，在所有实际目标写入前检查owner类型。普通填充复用现有稀疏/整画布及缺失Cel事务，未扩展特殊源填充。
 
 新增free/tile×静态掩码/浮动剪贴板四组，检查精确半透明RGBA、掩码外保留、浮动先提交的两步历史及Undo/Redo、实际保存重开、无关Cel像素/实例/网格和资源保留、所选特殊目标拒绝。mixed-raster-fill-build.log正式Release及free/tile测试构建exit0；完整free-tile-project-tests、tilemap-project-tests均exit0（mixed-raster-fill-free-test.log、mixed-raster-fill-grid-test.log）；正式工作区drawing-anchor-edit-floating组合exit0；来源检查exit0（mixed-raster-fill-provenance.log），diff通过。未做人工UI验收，全量迁移仍INCOMPLETE。
+
+### 2026-11-07：混合瓦片文档普通选区删除与剪切
+
+对照legacy workspace-commands-selection-effects.ts::deleteSelection及workspace-commands-clipboard.ts::cutSelection，Delete先提交selection浮动再删除，Cut先复制并取消预览、仅删除非copy原像素，最后清空选择。原生自由源删除按活动类型分流，普通Cut不再受无关特殊层拒绝。回归同时暴露混合tile文档普通内容提起入口仍被拒绝，已按活动类型放行并校验普通捕获的实际目标；瓦片自身保留专用校验。
+
+新增free/tile×Delete/Cut×静态/移动浮动/复制浮动十二组，检查精确原位及目标像素、剪贴板原点、0/1/2步历史、Undo/Redo、实际保存重开及全部特殊Cel像素/实例/网格/源资源保留。中途完整测试发现通用目标校验误拒瓦片专用浮动，已收窄至普通捕获后重跑。最终正式Release及free/tile测试构建exit0（mixed-raster-delete-cut-build.log）；完整free与tile测试exit0（mixed-raster-delete-cut-free-test.log、mixed-raster-delete-cut-grid-test.log）；正式工作区drawing-anchor-edit-floating组合exit0；来源检查通过（mixed-raster-delete-cut-provenance.log），diff通过。未做人工UI验收，全量迁移仍INCOMPLETE。
