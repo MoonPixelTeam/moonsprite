@@ -3473,3 +3473,10 @@ legacy workspace-commands-color.ts::applyColorReplacementTarget的collect先跳�
 落实用户批准的新行为，复用整层剪贴板的源／纹理复制和LayerTilesetHistory，帧／Cel粘贴在发布前补齐实例实际引用的缺失源。纹理、源标识重新生成，按目标集合／来源集合／原源标识重映射，同一目标共享集合的所有层同步目录。已有同标识目标源仍按目标当前属性渲染；重复粘贴已转入源时，属性与纹理完全相同则复用，避免持续增加纹理目录。帧粘贴缺少所属自由层时创建新集合，原有帧空实例；新层、目录、纹理、实例及链接均在同一结构事务中。缺纹理或非法载荷在发布前拒绝。新增资源纳入既有像素预算。
 
 6组帧／Cel、链接／独立、既有／新增所属层场景，验证真实实例源重映射、源属性／自定义元数据、精确纹理、缓存重建、链接映射、一次历史、原生／恢复重开、Undo恢复目录／移除纹理与新层／扩帧、Redo身份稳定，及重复粘贴不重复资源。旧跨工程拒绝测试改为缺纹理拒绝，普通同工程独立集合限制不变。最终正式与测试构建通过（free-resource-final-build.log），完整free-tile-project-tests通过（free-resource-final-tests.log），正式--cel-clipboard-check退出0；来源覆盖检查通过（free-resource-transfer-provenance.log），diff通过。无人工视觉验收。跨集合Cel拖动资源复制尚待统一接入；特殊正文颜色替换和其他领域登记缺口仍在，全量迁移INCOMPLETE。
+
+
+### 2026-11-07：跨集合自由瓦片Cel拖动资源事务
+
+继续落实用户批准的新行为。将上一阶段portable clipboard的transferFreeCelSources原样提取为公共头，帧／Cel粘贴与拖动共用标识重映射、纹理复制、等价源去重和共享所属层目录同步。拖动预检在独立目录／资源候选上进行，渲染使用转入后的目标源；只有新增资源时才使用完整Timeline＋LayerTilesetHistory原子安装／撤销目录、纹理和实例，普通拖动仍保留既有Cel历史。跨集合移动清空源实例，复制保留原内容，转入块内部链接独立重建，目标既有实例保持原源。
+
+新增4组copy/move × 内存/保存重开的链接块跨独立集合场景，覆盖一次源纹理转入、块内链接、原有目标实例、精确缓存重建、原生／恢复重开、单次历史、Undo资源／目录恢复和Redo身份稳定。首次公共头提取残留DocumentLayer别名导致构建失败，改为timeline::Layer；首次夹具共用不同集合的纹理所有权违反工程约束，修为独立纹理后通过。最终正式与核心测试构建通过（free-drag-transfer-final-build.log），最终夹具测试构建通过（free-drag-transfer-test-build.log），完整free-tile-project-tests通过（free-drag-transfer-tests.log）；正式--cel-clipboard-check退出0，来源覆盖通过（free-drag-transfer-provenance.log），diff通过。无人工拖动视觉验收，全部迁移仍INCOMPLETE。

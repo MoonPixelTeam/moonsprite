@@ -1,4 +1,5 @@
 #include <set>
+#include "free_tile_source_transfer.h"
 #include <codecvt>
 #include <locale>
 #include "document.h"
@@ -17,26 +18,6 @@ std::vector<tiles::Tileset> Document::tilesetsForLayerEdit(const Edit& e,bool fo
  auto result=timeline_.state().tilesets;if(!e.layerTilesets)return result;std::unordered_set<std::string> ids;for(const auto* values:{&e.layerTilesets->before,&e.layerTilesets->after})for(const auto& entry:*values)ids.insert(entry.value.id);result.erase(std::remove_if(result.begin(),result.end(),[&](const auto& set){return ids.count(set.id);}),result.end());for(const auto& entry:forward?e.layerTilesets->after:e.layerTilesets->before)result.insert(result.begin()+std::min(entry.index,result.size()),entry.value);return result;
 }
 namespace {
-// User-approved resource transfer, reusing whole-layer clipboard ownership.
-using FreeSourceTransferMap=std::map<std::tuple<std::string,std::string,std::string>,std::string>;
-template<class Fresh> void transferFreeCelSources(std::vector<DocumentLayer>& layers,std::vector<tiles::Tileset>& sets,const std::string& destination,const DocumentLayer& source,const std::vector<tiles::Tileset>& sourceSets,free_tiles::CelData& cel,FreeSourceTransferMap& mappings,Fresh&& fresh){
- auto owner=std::find_if(layers.begin(),layers.end(),[&](const auto& l){return l.id==destination;});
- if(owner==layers.end()||!owner->freeTiles||!source.freeTiles)throw std::invalid_argument("Missing portable free source authority");
- auto data=*owner->freeTiles;
- for(auto& instance:cel.instances){const auto old=instance.sourceId.empty()?instance.tileId:instance.sourceId;const auto key=std::make_tuple(data.setId,source.freeTiles->setId,old);auto known=mappings.find(key);
-  if(known!=mappings.end()){instance.sourceId=known->second;instance.tileId.clear();continue;}
-  auto existing=std::find_if(data.sources.begin(),data.sources.end(),[&](const auto& v){return v.id==old;});
-  if(existing!=data.sources.end()){mappings.emplace(key,old);instance.sourceId=old;instance.tileId.clear();continue;}
-  const auto original=std::find_if(source.freeTiles->sources.begin(),source.freeTiles->sources.end(),[&](const auto& v){return v.id==old;});if(original==source.freeTiles->sources.end())throw std::invalid_argument("Missing copied free source");
-  const auto texture=std::find_if(sourceSets.begin(),sourceSets.end(),[&](const auto& v){return v.id==original->tilesetId;});if(texture==sourceSets.end())throw std::invalid_argument("Missing copied free texture");
-  auto equivalent=std::find_if(data.sources.begin(),data.sources.end(),[&](const auto& candidate){auto normalized=candidate;normalized.id=original->id;normalized.tilesetId=original->tilesetId;if(normalized!=*original)return false;const auto pixels=std::find_if(sets.begin(),sets.end(),[&](const auto& v){return v.id==candidate.tilesetId;});return pixels!=sets.end()&&pixels->tileWidth==texture->tileWidth&&pixels->tileHeight==texture->tileHeight&&pixels->pixels==texture->pixels&&pixels->tileIds==texture->tileIds;});
-  if(equivalent!=data.sources.end()){mappings.emplace(key,equivalent->id);instance.sourceId=equivalent->id;instance.tileId.clear();continue;}
-  auto copy=*texture;do{copy.id=fresh("tileset-free-transfer-");}while(std::any_of(sets.begin(),sets.end(),[&](const auto& v){return v.id==copy.id;}));
-  auto added=*original;do{added.id=fresh("source-free-transfer-");}while(std::any_of(data.sources.begin(),data.sources.end(),[&](const auto& v){return v.id==added.id;}));added.tilesetId=copy.id;sets.push_back(std::move(copy));mappings.emplace(key,added.id);instance.sourceId=added.id;instance.tileId.clear();data.sources.push_back(std::move(added));
- }
- free_tiles::validate(data,cel,sets);
- for(auto& layer:layers)if(layer.freeTiles&&layer.freeTiles->setId==data.setId)layer.freeTiles=data;
-}
 DocumentCel groupCelHeader(const DocumentCel& c){DocumentCel out;out.id=c.id;out.layerId=c.layerId;out.frameId=c.frameId;out.linkedCelId=c.linkedCelId;out.runtimeSharedCelId=c.runtimeSharedCelId;out.opacity=c.opacity;out.zIndex=c.zIndex;out.text=c.text;out.tilemap=c.tilemap;out.freeTiles=c.freeTiles;return out;}
 std::size_t groupCelStorageBytes(const DocumentCel& c){std::size_t size=sizeof(c)+c.id.size()+c.layerId.size()+c.frameId.size()+(c.linkedCelId?c.linkedCelId->size():0)+(c.runtimeSharedCelId?c.runtimeSharedCelId->size():0)+(c.surface?c.surface->pixels.size()*sizeof(Pixel):0);if(c.tilemap){size+=sizeof(tiles::CelData)+c.tilemap->cells.size()*sizeof(std::optional<tiles::Cell>);for(const auto& cell:c.tilemap->cells)if(cell)size+=cell->tilesetId.size()+cell->tileId.size();}return size;}
 bool groupHas(const std::vector<std::string>& ids,const std::string& id){return std::find(ids.begin(),ids.end(),id)!=ids.end();}
