@@ -3115,3 +3115,9 @@ mixed-free-linked-frame-build.log正式Release/两核心测试构建exit0；fixt
 定位上一阶段完整cel-selection-clipboard-tests失败check4352：旧断言要求GIF追加帧中原图层的空白Cel为画布大小2×1，实际为1×1。对照legacy core/animation.ts::blankSurfaceFromLayer及ensureAnimationDocument（非活动空槽），workspace-commands-animation-frame.ts::importGifAnimationLayer先归一化完整槽再替换导入槽，确认当前产品的稀疏存储符合旧版，不改产品实现。
 
 将该复合断言拆行，保留原像素不变、导入时长/disabled/选择、Undo/Redo等检查，并明确验证空槽1×1、零偏移、单透明像素。gif-sparse-regression-build.log测试构建exit0，完整cel-selection-clipboard-tests exit0（gif-sparse-regression-test.log），来源625文件快照检查通过（gif-sparse-regression-provenance.log），diff通过。本阶段仅修复过时回归预期，没有重新构建产品或做人工作业验收。原失败已解决；全量迁移仍INCOMPLETE。
+
+### 2026-11-07：特殊图层活动蒙版开始变换入口
+
+对照legacy workspace-commands-selection-transform.ts::beginLayerTransform及workspace-session.ts::selectedTransformLayersForSession（活动蒙版优先），将原生已有蒙版边界分支移到整篇free/tile保护之前。继续使用maskBrushAvailable及逐像素可见画布alpha边界，不改变变换算法与普通特殊层限制。
+
+新增free/tile两组入口回归：明确填入局部灰度蒙版，核对可见边界、无浮动/历史/内容修订、所属Cel像素保留、隐藏/锁定拒绝及恢复后可进入。初始夹具新建蒙版全透明而错误期望全幅选框；拆分断言后补充真实像素，不修改空内容保护。mask-transform-entry-build.log正式Release及两测试构建exit0，fixture-build日志exit0，完整free-tile-project-tests和attached-masks-tests通过（mask-transform-entry-free-test.log、mask-transform-entry-mask-test.log）；正式工作区drawing-anchor-edit-floating组合exit0，来源625文件快照通过（mask-transform-entry-provenance.log），diff通过。未做人工作业或截图验收，全量迁移仍INCOMPLETE。
