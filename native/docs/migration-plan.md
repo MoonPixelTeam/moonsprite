@@ -3711,3 +3711,12 @@ palette-sort-cache-final-build.log正式Release和核心目标构建通过；修
 最终palette-movement-verified-tests.log通过240组新增、128组全部排序、1668组raw、192组粘贴、158组解码／530组命令及完整既有工程矩阵；核心事务在palette-movement-final-tests.log退出0。正式Release通过palette-movement-final-build.log及补充大色板检查后的palette-movement-verified-build.log；最终palette-movement-verified-ui.log中--palette-manual-check、--palette-window-blur-check、--palette-mouse-check、--palette-names-check、--palette-gradient-check、--palette-clipboard-check全部退出0。manual新增4096色真实全选／同步，逐卡验证颜色／名称／active／前后景标记、清除选择、替换预览不改原色及取消后无悬空预览索引；原有素材逐像素alpha／命中检查继续执行。来源覆盖626文件通过，strict因现存缺口退出1，diff检查通过。
 
 同机Release微基准palette-movement-benchmark.log从b3d4038c提取旧移动函数，与本次函数核对相同输出，半数槽移动并挤占目标：4096槽1.7573ms→0.3903ms，16384槽26.327ms→1.6738ms，65536槽440.932ms→7.8432ms。仅为单次算法基准，不能推广为整体UI帧率；临时源码／程序仅在native/build，不提交或另作交付。本批没有人工图像验收。全量迁移仍INCOMPLETE。
+
+
+### 调色盘复制顺序、矩形映射与批量粘贴路径（2026-11-08）
+
+接续8ec6db36，直接核对PalettePanel.tsx::copySelectedPaletteColors／pastePaletteColorsFromClipboard及渐变范围派生。旧版复制颜色来自ordered（工程原始paletteOrder过滤有效已选条目），手工布局仅映射颜色索引；原生此前按显示槽位取颜色，在独立原始顺序与槽位顺序不同时改变外部剪贴板颜色排列。现按真实旧版顺序复制，保留重复原始引用，索引映射使用JS Map的最后出现位置，跳过缺失条目；V2空槽／空白边缘、V1自动模式、无色不覆盖剪贴板与内部fallback不变。复制、粘贴目标和渐变范围改用集合／索引，消除逐槽遍历选择与全部条目的二次扫描。核心pastePaletteColors复用条目位置索引覆盖已有颜色，追加采用单调最早空槽游标；目标去重、颜色配对、分配预检、选择／角色、Undo/Redo及原始顺序归一化语义保持不变，ID0与碰撞身份门禁未改变。
+
+生成器直接从实际PalettePanel.tsx提取完整copySelectedPaletteColors闭包并去除TS，调用真实encodePaletteClipboard；仅替换浏览器clipboard写入端。96组（八种raw order×自动／手工×三种选择×有／无框选）写入tests/fixtures/palette_panel_copy_legacy.h，由实际Editor复制后解析逐项比对颜色／列数／槽位及空操作剪贴板／历史不变。首次生成时把return交给顶层TS解析器导致失败，改为仅转换闭包正文；首次界面对照因测试把3列下编号直接用于较宽原生视图，把3×2范围误设成6×1，按视图列数映射相同矩形后通过，未改期望数据或放宽断言。失败证据在palette-copy-order-fixtures.log和palette-copy-order-initial-fixture-mismatch.log。
+
+现有4096色manual检查扩展为完整剪贴板颜色／索引／列数验证、渐变4096格范围及相同内容粘贴无历史。palette-copy-order-final-tests.log完整工程矩阵（240移动、128排序、1668 raw、192粘贴、158解码／530命令及既有工程检查）与核心事务退出0。正式最终构建palette-copy-order-verified-build.log通过；palette-copy-order-verified-ui.log中--palette-clipboard-check、--palette-manual-check、--palette-gradient-check、--palette-growth-check、--palette-mouse-check全部退出0，包含96组真实闭包与大色板检查。来源覆盖627文件通过，strict按全量已知缺口退出1，diff通过；本批无人工图像验收或整体UI性能测量。全量迁移仍INCOMPLETE。

@@ -262,6 +262,20 @@ registerHooks({
 
  const paletteCommands=await import(pathToFileURL(path.join(legacy,'src/renderer/src/store/workspace-palette.ts')));
  const {mergePaletteColors}=await import(pathToFileURL(path.join(legacy,'src/renderer/src/core/palette.ts')));
+ // Execute the actual PalettePanel copy closure with its real clipboard encoder;
+ // only browser clipboard access is substituted, not copy ordering/layout logic.
+ const panelSource=fs.readFileSync(path.join(legacy,'src/renderer/src/components/panels/PalettePanel.tsx'),'utf8');
+ const copyBody=panelSource.slice(panelSource.indexOf('  const copySelectedPaletteColors ='),panelSource.indexOf('  const pastePaletteColorsFromClipboard ='));
+ const runPanelCopy=new Function('session','ordered','boxSelectionRange','selectedSlotRange','paletteLayoutMode','paletteSlots','paletteColumns','navigator','encodePaletteClipboard',stripTypeScriptTypes('let paletteClipboardFallback=null;'+copyBody,{mode:'transform'})+'return copySelectedPaletteColors().then(()=>paletteClipboardFallback);');
+ const {encodePaletteClipboard:encodePanelClipboard}=await import(pathToFileURL(path.join(legacy,'src/renderer/src/components/palette-clipboard.ts')));
+ const {normalizePaletteSlots:normalizeCopySlots,paletteSlotRange:copyRange}=await import(pathToFileURL(path.join(legacy,'src/renderer/src/core/palette-layout.ts')));
+ const copyOracle=[];const copyOrders=[[1,2,3],[3,1,2],[1,999,2,1,3],[],[999],[3,2,1],[2,2,1],[4,1,3,2]];
+ for(const order of copyOrders)for(const manual of [false,true])for(const selected of [[1,2,3],[999,1],[]])for(const box of [false,true]){
+  const palette=[{id:1,color:{r:255,g:0,b:0,a:255}},{id:2,color:{r:0,g:255,b:0,a:255}},{id:3,color:{r:0,g:0,b:255,a:255}},{id:4,color:{r:86,g:52,b:18,a:255}}],byId=new Map(palette.map(e=>[e.id,e])),ordered=order.flatMap(id=>byId.has(id)?[byId.get(id)]:[]),slots=normalizeCopySlots(palette.map(e=>e.id),order,[3,null,1,2,null,null],3);
+  const displayed=manual?slots:ordered.map(e=>e.id),chosen=displayed.flatMap((id,i)=>id!==null&&selected.includes(id)?[i]:[]);let range=null;for(const i of chosen){const point=copyRange(3,i,i);range=range?{left:Math.min(range.left,point.left),right:Math.max(range.right,point.right),top:Math.min(range.top,point.top),bottom:Math.max(range.bottom,point.bottom)}:point;}
+  const clipboard=await runPanelCopy({selectedPaletteIds:selected},ordered,box?copyRange(3,0,5):null,range,manual?'manual':'auto',slots,3,{clipboard:{writeText:async()=>{}}},encodePanelClipboard);copyOracle.push({order,selected,manual,box,clipboard:clipboard?encodePanelClipboard(clipboard):''});
+ }
+ const cppVec=xs=>'{'+xs.join(',')+'}';const copyHeader='#pragma once\n#include <string>\n#include <vector>\nnamespace moon::fixtures {\nstruct PalettePanelCopyCase {std::vector<int> order,selected;bool manual,box;std::string text;};\ninline const std::vector<PalettePanelCopyCase> palettePanelCopyCases={\n'+copyOracle.map(r=>'{'+cppVec(r.order)+','+cppVec(r.selected)+','+r.manual+','+r.box+','+JSON.stringify(r.clipboard)+'}').join(',\n')+'\n};\n}\n';fs.writeFileSync(path.join(out,'palette-panel-copy-legacy.h'),copyHeader);console.log(`PalettePanel copy: ${copyOracle.length} actual closure/encoder cases`);
  // Actual command callbacks cover all sort modes/directions with tie-heavy,
  // achromatic, transparent, duplicate-order, hidden and larger palettes.
  const sortOracle=[];

@@ -180,9 +180,11 @@ void Editor::finishPalettePointer(bool cancel) {
 
 void Editor::copyPaletteColors() {
 
-    PaletteClipboardData data;const auto slots=paletteViewSlots();std::vector<int> ids;for(int id:slots)if(id&&std::find(document.palette().selected.begin(),document.palette().selected.end(),id)!=document.palette().selected.end())if(const auto entry=document.paletteEntry(id)){ids.push_back(id);data.colors.push_back(entry->color);}if(data.colors.empty())return;
-
-    if(paletteManual_){std::optional<PaletteSlotRange> range;if(paletteBoxRange_&&paletteBoxRange_->identity==document.identity())range=paletteSlotRange(paletteColumns_,paletteBoxRange_->start,paletteBoxRange_->end);else for(std::size_t i=0;i<slots.size();++i)if(std::find(ids.begin(),ids.end(),slots[i])!=ids.end()){if(!range)range=PaletteSlotRange{i%paletteColumns_,i/paletteColumns_,i%paletteColumns_,i/paletteColumns_};else{range->left=std::min(range->left,i%paletteColumns_);range->right=std::max(range->right,i%paletteColumns_);range->top=std::min(range->top,i/paletteColumns_);range->bottom=std::max(range->bottom,i/paletteColumns_);}}if(range){data.columns=int(range->right-range->left+1);for(auto y=range->top;y<=range->bottom;++y)for(auto x=range->left;x<=range->right;++x){const auto i=y*paletteColumns_+x;const auto found=i<slots.size()?std::find(ids.begin(),ids.end(),slots[i]):ids.end();data.slots.push_back(found==ids.end()?std::nullopt:std::optional<std::size_t>(found-ids.begin()));}}}
+    PaletteClipboardData data;const auto slots=paletteViewSlots();const auto& palette=document.palette();const std::unordered_set<int> selected(palette.selected.begin(),palette.selected.end());std::unordered_map<int,const PaletteEntry*> entries;for(const auto& e:palette.entries)entries.emplace(e.id,&e);std::unordered_map<int,std::size_t> indices;
+    // PalettePanel copies ordered entries, independently of the manual grid.
+    // Its Map retains the last copied occurrence for duplicate raw references.
+    for(int id:palette.order())if(selected.count(id))if(const auto found=entries.find(id);found!=entries.end()){indices[id]=data.colors.size();data.colors.push_back(found->second->color);}if(data.colors.empty())return;
+    if(paletteManual_){std::optional<PaletteSlotRange> range;if(paletteBoxRange_&&paletteBoxRange_->identity==document.identity())range=paletteSlotRange(paletteColumns_,paletteBoxRange_->start,paletteBoxRange_->end);else for(std::size_t i=0;i<slots.size();++i)if(indices.count(slots[i])){if(!range)range=PaletteSlotRange{i%paletteColumns_,i/paletteColumns_,i%paletteColumns_,i/paletteColumns_};else{range->left=std::min(range->left,i%paletteColumns_);range->right=std::max(range->right,i%paletteColumns_);range->top=std::min(range->top,i/paletteColumns_);range->bottom=std::max(range->bottom,i/paletteColumns_);}}if(range){data.columns=int(range->right-range->left+1);for(auto y=range->top;y<=range->bottom;++y)for(auto x=range->left;x<=range->right;++x){const auto i=y*paletteColumns_+x;const auto found=i<slots.size()?indices.find(slots[i]):indices.end();data.slots.push_back(found==indices.end()?std::nullopt:std::optional<std::size_t>(found->second));}}}
 
     paletteClipboard_=data.colors;paletteClipboardLayout_=data;if(!clip::set_text(encodePaletteClipboard(data)))status_=U"颜色已复制到内部剪贴板，系统剪贴板不可用";refresh();
 
@@ -192,7 +194,7 @@ void Editor::pastePaletteColors() try {
 
     PaletteClipboardData data=paletteClipboardLayout_;if(data.colors!=paletteClipboard_){data={};data.colors=paletteClipboard_;}std::string text;if(clip::get_text(text)&&text.size()<=4*1024*1024)if(auto parsed=parsePaletteClipboard(text))data=std::move(*parsed);if(data.colors.empty())return;
 
-    auto slots=paletteViewSlots();int columns=paletteColumns_;const auto before=capturePaletteView();auto after=before;std::vector<std::size_t> targets;const auto& selected=document.palette().selected;const bool bounded=paletteManual_&&paletteBoxRange_&&paletteBoxRange_->identity==document.identity();if(bounded)targets=paletteGradientSlots();else for(std::size_t i=0;i<slots.size();++i)if(slots[i]&&std::find(selected.begin(),selected.end(),slots[i])!=selected.end())targets.push_back(i);if(targets.empty()&&paletteFocusedSlot_)targets.push_back(*paletteFocusedSlot_);
+    auto slots=paletteViewSlots();int columns=paletteColumns_;const auto before=capturePaletteView();auto after=before;std::vector<std::size_t> targets;const auto& selectedIds=document.palette().selected;const std::unordered_set<int> selected(selectedIds.begin(),selectedIds.end());const bool bounded=paletteManual_&&paletteBoxRange_&&paletteBoxRange_->identity==document.identity();if(bounded)targets=paletteGradientSlots();else for(std::size_t i=0;i<slots.size();++i)if(slots[i]&&selected.count(slots[i]))targets.push_back(i);if(targets.empty()&&paletteFocusedSlot_)targets.push_back(*paletteFocusedSlot_);
 
     auto colors=data.colors;if(targets.size()==1&&!bounded){const auto start=targets.front();targets.clear();for(std::size_t i=0;i<colors.size();++i)targets.push_back(start+i);}
 
@@ -446,7 +448,7 @@ bool Editor::applyPaletteExtraction(){
 
 std::vector<std::size_t> Editor::paletteGradientSlots()const{
 
-    const auto slots=paletteViewSlots();const int columns=paletteColumns_;if(columns<1)return {};std::vector<std::size_t> selected;for(std::size_t i=0;i<slots.size();++i)if(slots[i] && std::find(document.palette().selected.begin(),document.palette().selected.end(),slots[i])!=document.palette().selected.end())selected.push_back(i);
+    const auto slots=paletteViewSlots();const int columns=paletteColumns_;if(columns<1)return {};const auto& selection=document.palette().selected;const std::unordered_set<int> chosen(selection.begin(),selection.end());std::vector<std::size_t> selected;for(std::size_t i=0;i<slots.size();++i)if(slots[i]&&chosen.count(slots[i]))selected.push_back(i);
 
     std::size_t left=columns,right=0,top=65536,bottom=0;auto include=[&](std::size_t i){left=std::min(left,i%columns);right=std::max(right,i%columns);top=std::min(top,i/columns);bottom=std::max(bottom,i/columns);};if(paletteBoxRange_ && paletteBoxRange_->identity==document.identity() && paletteBoxRange_->selected==document.palette().selected){include(paletteBoxRange_->start);include(paletteBoxRange_->end);}else{if(selected.size()<2)return {};for(auto i:selected)include(i);}std::vector<std::size_t> result;for(auto y=top;y<=bottom;++y)for(auto x=left;x<=right;++x){const auto i=y*columns+x;if(paletteManual_||i<slots.size())result.push_back(i);}return result;
 
