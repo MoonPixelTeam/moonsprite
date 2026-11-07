@@ -3141,3 +3141,9 @@ mixed-free-linked-frame-build.log正式Release/两核心测试构建exit0；fixt
 新增Create/Edit/Hybrid×移动/复制×三个轴十八组合，分别比较直接平移的预览和提交结果、取消恢复网格与资源、单次历史、Undo/Redo及实际重开。初始回归假设预览与提交总是相等，实际既有瓦片资源写回事务会产生差异；拆分后居中与直接平移在两个阶段均一致。本批仅证明入口与既有路径一致，不证明预览提交差异符合legacy，仍需继续核对该差异，不能作为完整行为等价证据。
 
 pending-tile-center-build.log正式Release及free/tile测试构建exit0，fixture-build日志exit0；完整free-tile-project-tests和tilemap-project-tests通过（pending-tile-center-free-test.log、pending-tile-center-grid-test.log）；正式工作区drawing-anchor-edit-floating组合exit0，来源625文件快照通过（pending-tile-center-provenance.log），diff通过。未做人工UI验收，全量迁移仍INCOMPLETE。
+
+### 2026-11-07：核实瓦片居中实际显示预览与提交一致
+
+解决上阶段登记的“预览提交差异”疑点：canvasPixels直接读取timeline存储，而瓦片浮动编辑的可见资源预览由publishTilemapPreview发布到displayTimeline/displayPixels。先前比较了未提交存储与提交结果，不能据此判断用户可见差异。对照editor_canvas的displayTimeline合成消费、legacy workspace-commands-selection-move pending预览及workspace-tilemap.test.ts mirrored floating commit的可见结果保留，补强现有十八组合回归。
+
+现在明确捕获displayPixels及compositeNormalRegion(displayTimeline)，提交后分别与最终图层像素及合成画面逐像素相等；保留直接变换对照、取消、单历史、Undo/Redo和实际重开检查。完整free-tile-project-tests通过（tile-center-display-test.log），测试构建exit0（tile-center-display-build.log），来源625文件快照通过（tile-center-display-provenance.log），diff通过。本阶段仅增强测试与纠正记录，无产品修改、无新产品构建或人工UI验收。上述十八组合的实际显示一致性疑点已消除，不延伸到全部瓦片变换；全量迁移仍INCOMPLETE。
