@@ -3303,3 +3303,9 @@ pending-tile-center-build.log正式Release及free/tile测试构建exit0，fixtur
 对照legacy workspace-convolution-preview.ts::createConvolutionPreview从captureAdjustmentSnapshot跳过kind/锁定目标、全部结果完成后统一发布，原生卷积已复用先前放行的beginColorAdjustment普通目标路径。本阶段补充行为证据，无产品修改。
 
 新增free/tile×取消/提交×选区/完整目标八组，以negative单红通道检查精确packed RGBA、选区外保留、预览不改变存储/历史、单提交、Undo/Redo、实际保存重开及原特殊Cel像素/实例/网格/资源保留。测试构建exit0（mixed-raster-convolution-build.log），完整free-tile-project-tests通过（mixed-raster-convolution-test.log），来源检查通过（mixed-raster-convolution-provenance.log），diff通过。仅证明所测普通目标和通道，未扩展全部卷积核或特殊源/蒙版路径；未做新产品构建或人工UI验收，全量迁移仍INCOMPLETE。
+
+### 2026-11-07：混合文档普通图层抗锯齿入口
+
+对照legacy workspace-selection-effects-support.ts::selectedEffectTargets跳过kind目标、共享像素去重，以及workspace-commands-selection-anti-alias.ts和tools-outline.ts的预览/对角算法。移除原生整文档特殊类型禁用，捕获前跳过实际特殊目标；特殊目标单独选择仍不可用，保留未迁移边界。
+
+新增free/tile×取消/提交×选区/完整八组，混选普通与特殊层验证只捕获一个普通目标、opacity37精确对角像素、预览不改存储/历史、单提交、Undo/Redo、保存重开和特殊Cel/资源保留。初始单透明像素选区没有对角源，修正为包含对角源的2×2选区。正式构建exit0（mixed-raster-aa-build.log），最终测试构建exit0（mixed-raster-aa-test-build.log）、完整free-tile-project-tests通过（mixed-raster-aa-test.log），workspace指定检查exit0，来源检查通过（mixed-raster-aa-provenance.log）。未做人工UI验收，未声明蒙版目标/特殊源抗锯齿或全量迁移完成；全量迁移仍INCOMPLETE。

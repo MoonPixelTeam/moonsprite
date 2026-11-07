@@ -970,12 +970,12 @@ bool Document::updateColorAdjustment(const ColorAdjustment& a,bool enabled){
  }
  p.preview=std::move(preview);++gradientRevision_;return true;
 }
-bool Document::beginAntiAliasPreview(){if(hasTilemapContent()||hasFreeTileContent())return false;
+bool Document::beginAntiAliasPreview(){
  const auto commandLayers=selectedLayerIdsWithGroups();if(hasSelectedGroups()&&commandLayers.empty())return false;
  commitFloatingPaste();cancelStroke();const auto& state=timeline_.state();std::vector<std::string> selected;
  if(!timelineSelection_.cels.empty())selected=timelineSelection_.cels;
  else{std::vector<std::string> layers=commandLayers;if(layers.empty()){if(!selectedFrames_.empty()){for(const auto& l:state.layers)if(layerEffectivelyVisible(l)&&!layerEffectivelyLocked(l))layers.push_back(l.id);}else layers.push_back(layer().id);}const auto frames=selectedFrames_.empty()?std::vector<std::string>{frame().id}:selectedFrames_;for(const auto& f:frames)for(auto it=state.layers.rbegin();it!=state.layers.rend();++it)if(std::find(layers.begin(),layers.end(),it->id)!=layers.end()){const auto* c=timeline_.findCel(it->id,f);if(c)selected.push_back(c->id);}}
- std::vector<std::string> targets,frames;for(const auto& id:selected){const auto* c=timeline_.findCelById(id);if(!c)continue;auto l=std::find_if(state.layers.begin(),state.layers.end(),[&](const auto& l){return l.id==c->layerId;});if(l==state.layers.end())continue;if(layerEffectivelyLocked(*l))return false;const auto r=timeline_.resolveSurface(id);if(!r.source||!r.surface)continue;if(std::find(targets.begin(),targets.end(),r.source->id)==targets.end()){targets.push_back(r.source->id);frames.push_back(c->frameId);}}
+ std::vector<std::string> targets,frames;for(const auto& id:selected){const auto* c=timeline_.findCelById(id);if(!c)continue;auto l=std::find_if(state.layers.begin(),state.layers.end(),[&](const auto& l){return l.id==c->layerId;});if(l==state.layers.end()||!l->kind.empty())continue;if(layerEffectivelyLocked(*l))return false;const auto r=timeline_.resolveSurface(id);if(!r.source||!r.surface)continue;if(std::find(targets.begin(),targets.end(),r.source->id)==targets.end()){targets.push_back(r.source->id);frames.push_back(c->frameId);}}
  if(targets.empty())return false;adjustmentStorageBudget(timeline_,3);adjustment_=AdjustmentPreview{timeline_,timeline_,std::move(targets),selection_,layer().id,frame().id,contentRevision_,true,std::move(frames)};++gradientRevision_;return true;
 }
 std::optional<Document::AntiAliasTask> Document::captureAntiAliasTask() const {
