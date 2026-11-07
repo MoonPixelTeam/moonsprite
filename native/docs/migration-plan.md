@@ -3101,3 +3101,11 @@ mixed-free-linked-frame-build.log正式Release/两核心测试构建exit0；fixt
 进一步核对legacy workspace-commands-selection-move.ts::moveActiveSelectionWithSelectionHistory开头的requested/next/actual坐标，默认键盘微移使用max(0,min(canvasSize-selectionSize,requested))限制选框；显式居中另传allowOutsideCanvas。补齐活动蒙版nudgeSelectionContent的同一限制，初次与已有浮动预览均先计算实际位移，边缘零位移不创建或更新事务。本批不扩展无蒙版的其他移动分支。
 
 新增普通/tile/free×初次/已有浮动六组回归，检查左上拒绝、超大位移限于右下、连续向外no-op、无表面扩张、单次历史、所属Cel保留、Undo/Redo及保存重开。mask-nudge-bounds-build.log正式Release及两组测试构建exit0；完整free-tile-project-tests与attached-masks-tests exit0（mask-nudge-bounds-free-test.log、mask-nudge-bounds-attached-test.log）；正式工作区drawing-anchor-edit-floating组合exit0，来源625文件快照通过（mask-nudge-bounds-provenance.log）。无人工UI验收。隐藏/锁定语义、越界复杂选区等仍需进一步核对，全量迁移INCOMPLETE。
+
+### 2026-11-07：四角浮动选区方向键平移
+
+核对legacy workspace-commands-selection-move.ts::moveActiveSelectionWithSelectionHistory的nextTransformTarget及translateSelectionQuad，原生共享nudgeSelectionContent只更新x/y而遗漏显式quad，导致内容未跟随。同步平移四角与flipOrigin，沿用已有centerActiveContent的坐标规则及原浮动事务。
+
+新增普通/tile/free活动蒙版三组真实四角浮动回归，检查全部角点、翻转原点、实际源/目标像素、选择位置、单历史、所属Cel像素/网格保留、Undo/Redo与保存重开。初次像素断言误将透明清除写成不透明黑色，按既有normalizedMaskPixel(0)==0修正。quad-nudge-final-build.log正式Release及两测试构建exit0；完整free-tile-project-tests和attached-masks-tests通过（quad-nudge-free-test.log、quad-nudge-mask-test.log）；正式工作区drawing-anchor-edit-floating组合exit0；来源625文件快照通过（quad-nudge-provenance.log）。无人工UI验收。
+
+扩大运行cel-selection-clipboard-tests失败于既有GIF导入断言line5190/check4352。临时移除本次唯一产品变更后重建仍在同一处失败（quad-nudge-baseline-build/test.log），故不报告此完整测试通过，该问题留待后续定位。恢复源码因Copy-Item保留时间导致首次未重编，更新时间并最终重建后上述两完整测试通过。全量迁移仍INCOMPLETE；大于画布及已越界复杂选框未由本批完整验证。
