@@ -3401,3 +3401,9 @@ legacy workspace-commands-color.ts仅layer/selection分支使用activePaintLayer
 调查自由瓦片Cel连接确认timeline_model仍强制独立实例，未通过解除按钮限制冒充迁移。另发现mergeVisibleLayers按整个文档特殊内容直接return，菜单也按整个文档禁用；legacy core/layer-merge.ts只按继承可见性选目标、按继承锁拒绝，隐藏特殊图层应保留。原生核心仅在实际可见目标含tile/free时继续保护；菜单移除整个文档包装，统一使用有效显隐/锁并保留可见特殊目标禁用。现有合成和结构历史复用。
 
 新增tile/free×直接隐藏/组隐藏，合并可见普通图层后检查单历史、外观、特殊Cel身份/实例/网格/像素、资源、保存重开及Undo/Redo。测试首次函数拆分遗漏导致编译失败已修复；自由样本另有第二可见特殊层、重开preservedJson文本规范化造成断言不符，已按真实前置条件隐藏其他特殊层并按实例语义比较，保留像素等断言。最终正式构建exit0（hidden-special-merge-build.log），最终测试构建exit0（hidden-special-merge-final-test-build.log），完整free-tile-project-tests通过（hidden-special-merge-tests.log）；既有颜色替换对话框定向检查退出0，只证明编辑器基础回归，不称为合并菜单验收。来源检查通过（hidden-special-merge-provenance.log），diff通过。无人工UI验收；可见特殊图层合并和自由Cel连接仍未完成，全量迁移仍INCOMPLETE。
+
+### 2026-11-07：可见瓦片与自由瓦片合并为普通图层
+
+legacy core/layer-merge.ts::mergeVisibleLayers复用compositeDocument渲染全部帧；workspace-commands-layer-structure.ts::commitLayerMergeWithOwnedTilesets只对removedFreeTileLayerIds清理不再引用的专属资源，普通瓦片目录保留。原生解除核心与菜单的可见tile/free限制，直接复用现有全帧compositeNormalRegion及结构历史；沿用删除图层的资源归属检查，候选仅自由源，保留隐藏共享所属层/网格引用。合并生成普通图层，每帧独立栅格；隐藏层不变。
+
+新增tile/free×隐藏备用/共享源保留场景，检查全帧合成外观、普通结果、一次历史、资源语义、保存重开、Undo恢复特殊层和资源、Redo。首次构建变量替换误改resource为res已修复；首次测试复制备用层前未选中源导致实际可见目标错误，增加明确选择/复制身份断言后通过。最终正式构建exit0（visible-special-merge-final-build.log），最终测试构建通过（visible-special-merge-test-build.log），完整free-tile-project-tests通过（visible-special-merge-tests.log），既有编辑器颜色替换定向检查退出0，仅基础回归不充当合并菜单验收。来源检查通过（visible-special-merge-provenance.log），diff通过。尚无人工UI验收，蒙版/样式/组组合未在本阶段穷举；自由Cel链接及其他缺口仍在，全量迁移INCOMPLETE。

@@ -443,7 +443,7 @@ menuCommands_.bind("convertLayerToBackground",{[this]{document.setLayerBackgroun
 menuCommands_.bind("convertLayerToRaster",{[this]{document.rasterizeLayer(document.layer().id);refresh();},[this,backgroundTarget]{return backgroundTarget()&&document.canRasterizeLayer(document.layer().id);},{}});
 menuCommands_.bind("newLayer",{[this]{createLayer();},{},{}});
 
-menuCommands_.bind("mergeVisibleLayers",{[this]{try{document.mergeVisibleLayers();refresh();}catch(const std::exception& e){status_=unicodeText(e.what());}},[this]{int count=0;for(const auto& l:document.timeline().state().layers)if(document.layerEffectivelyVisible(l)){if(document.layerEffectivelyLocked(l)||l.kind=="tilemap"||l.kind=="free-tile")return false;++count;}return count>=2;},{}});
+menuCommands_.bind("mergeVisibleLayers",{[this]{try{document.mergeVisibleLayers();refresh();}catch(const std::exception& e){status_=unicodeText(e.what());}},[this]{int count=0;for(const auto& l:document.timeline().state().layers)if(document.layerEffectivelyVisible(l)){if(document.layerEffectivelyLocked(l))return false;++count;}return count>=2;},{}});
 
 menuCommands_.bind("duplicateLayer",{[this]{document.duplicateSelectedLayers();refresh();},[this]{return document.canDuplicateSelectedLayers();},{}});
 
