@@ -3739,3 +3739,11 @@ palette-apply-index-build.log正式Release、工程与核心目标构建通过�
 实际旧版新增240组（八种布局×1／3／8列×五种主选×两个方向），记录初始／执行／Undo／Redo布局及真实历史回调；原有240组移动预览矩阵改为直接提交显式重排命令，旧拖排适配器仍由raw及界面检查覆盖。核心回归补充非法方向、边界／相同布局无操作的revision／dirty／history、精确历史字节和后续选择／前后景保留。正ID准入范围不变；真实ID0、碰撞身份、索引色及全量迁移缺口仍未完成。
 
 验证：palette-order-commands-fixtures.log生成真实旧版矩阵成功；palette-order-commands-build.log正式Release／工程／核心目标构建通过。palette-order-commands-project-tests.log通过新增240组相邻移动及既有48应用、240重排、128排序、1668 raw、192粘贴、158解码／530命令与完整工程检查；palette-order-commands-core-tests.log核心事务退出0。palette-order-commands-ui.log中正式--palette-manual-check、--palette-window-blur-check、--palette-mouse-check均退出0。来源覆盖627文件通过，strict因全量已知缺口退出1；diff通过。本批未做人工图像验收或新的性能测量，全量迁移仍INCOMPLETE。
+
+### 调色盘删除事务与批量移除（2026-11-08）
+
+接续6b0af176，直接核对workspace-palette.ts::deletePaletteColors及zh-CN.ts历史标题。先将请求与原始paletteOrder求交集，再移除槽位及选择中的有效身份；修正先前把请求中不可见选中身份一起清除的差异。隐藏条目实体、名称、颜色和分配器保留，前后景颜色不变；Undo/Redo恢复对应原始order、归一化slots、columns、selected及primaryId，保留之后的角色颜色。历史按实际前后order／slots／selected长度×4+32字节，单色与多色标题分别沿旧版。使用集合求交及批量过滤，避免槽位／选择逐项扫描请求列表。
+
+新增96组实际旧版删除／Undo／Redo矩阵（八种数据×六种请求×两种主选），覆盖空／单／重复／多色请求、隐藏条目、重复及悬空raw order、不可见选中身份、缺失主选、空槽、空操作和4096条目；逐状态验证布局、选择、身份、保留条目及正常／恢复保存重开。只承接现有正ID RGBA范围，真实ID0、碰撞身份及索引色像素remap仍未完成；全量迁移仍INCOMPLETE。
+
+验证：palette-delete-fixtures.log生成成功；palette-delete-build.log正式Release、工程及核心目标构建通过。palette-delete-project-tests.log通过96组新删除矩阵及240相邻移动、48应用、240重排、128排序、1668 raw、192粘贴、158解码／530命令和完整既有工程检查；palette-delete-core-tests.log退出0。palette-delete-ui.log中--palette-manual-check、--palette-growth-check、--palette-mouse-check全部退出0。来源覆盖627文件通过，strict按全量已知缺口退出1，diff通过。本批无人工图像验收或新的性能基准，不把集合扫描改进外推为整体UI帧率。

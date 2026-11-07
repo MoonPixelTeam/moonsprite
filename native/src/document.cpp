@@ -1562,6 +1562,7 @@ std::size_t Document::Edit::bytes() const {
  if(beforeSourceProperties){std::size_t bytes=256;for(const auto* value:{beforeSourceProperties.get(),afterSourceProperties.get()})bytes+=value->source.name.size()+value->source.description.size()+value->source.preservedJson.size()+value->tilesetName.size()*sizeof(char32_t);return bytes;}
  if(beforeRollback)return rollbackBytes;if(beforeSlices)return (beforeSlices->items.size()+afterSlices->items.size())*48;
  if(celProperties)return celProperties->historyBytes();if(layerMetadataBytes)return *layerMetadataBytes;
+  if(paletteKind==2)return (beforePalette->order().size()+afterPalette->order().size()+beforePalette->slots.size()+afterPalette->slots.size()+beforePalette->selected.size()+afterPalette->selected.size())*4+32;
   if(paletteKind==10)return (beforePalette->entries.size()+afterPalette->entries.size())*40+(beforePalette->slots.size()+afterPalette->slots.size()+(beforePalette->independentOrder?beforePalette->independentOrder->size():0)+(afterPalette->independentOrder?afterPalette->independentOrder->size():0))*4;
   if(paletteKind==9)return (beforePalette->slots.size()+afterPalette->slots.size()+(beforePalette->independentOrder?beforePalette->independentOrder->size():0)+(afterPalette->independentOrder?afterPalette->independentOrder->size():0))*sizeof(int);
   std::size_t textBytes=0;for(const auto& t:textChanges)for(const auto* value:{&t.before,&t.after})if(*value){textBytes+=sizeof(TextCelData)+(*value)->text.size()*2+(*value)->styleRuns.size()*sizeof(TextStyleRun)+(*value)->transforms.size()*sizeof(TextTransform);for(const auto& transform:(*value)->transforms)textBytes+=(transform.source.projectProperties.size()+transform.target.projectProperties.size())*sizeof(char16_t);}
@@ -1758,12 +1759,14 @@ int Document::addPaletteColor(Pixel color,bool selectAdded,std::optional<std::si
   edit.afterPalette=capturePaletteEdit(edit.paletteKind,edit.colorId);pushEdit(std::move(edit),U"调整颜色板颜色");return id;
 }
 void Document::deletePaletteColors(const std::vector<int>& ids) {
-  const auto order=palette_.order();if(std::none_of(ids.begin(),ids.end(),[&](int id){return std::find(order.begin(),order.end(),id)!=order.end();}))return;
-  cancelStroke();Edit edit{{},state_,nextState_};edit.beforePalette=capturePaletteEdit(2);edit.beforePalette->slots=currentPaletteSlots(palette_);edit.beforePalette->setOrder(order);edit.paletteKind=2;palette_.slots=currentPaletteSlots(palette_);
-  for(auto& slot:palette_.slots)if(slot&&std::find(ids.begin(),ids.end(),slot)!=ids.end())slot=0;
-  palette_.independentOrder.reset();auto& selected=palette_.selected;selected.erase(std::remove_if(selected.begin(),selected.end(),[&](int id){return std::find(ids.begin(),ids.end(),id)!=ids.end();}),selected.end());
-  if(std::find(selected.begin(),selected.end(),palette_.primaryId)==selected.end()) palette_.primaryId=selected.empty()?0:selected.back();
-  edit.afterPalette=capturePaletteEdit(edit.paletteKind,edit.colorId);pushEdit(std::move(edit),U"从颜色板移除颜色");
+  // Actual workspace-palette::deletePaletteColors removes visible identities
+  // only. Entries remain available for later reuse and earlier color history.
+  const auto order=palette_.order();const std::unordered_set<int> visible(order.begin(),order.end());std::unordered_set<int> removed;removed.reserve(std::min(ids.size(),visible.size()));for(int id:ids)if(visible.count(id))removed.insert(id);if(removed.empty())return;
+  cancelStroke();Edit edit{{},state_,nextState_};edit.beforePalette=capturePaletteEdit(2);edit.beforePalette->slots=currentPaletteSlots(palette_);edit.beforePalette->setOrder(order);edit.paletteKind=2;palette_.slots=edit.beforePalette->slots;
+  for(auto& slot:palette_.slots)if(slot&&removed.count(slot))slot=0;
+  palette_.independentOrder.reset();auto& selected=palette_.selected;selected.erase(std::remove_if(selected.begin(),selected.end(),[&](int id){return removed.count(id);}),selected.end());
+  if(std::find(selected.begin(),selected.end(),palette_.primaryId)==selected.end())palette_.primaryId=selected.empty()?0:selected.back();
+  edit.afterPalette=capturePaletteEdit(2);pushEdit(std::move(edit),removed.size()>1?U"批量移除颜色板颜色":U"从颜色板移除颜色");
 }
 void Document::updatePaletteColor(int id,Pixel color) {
   if((hasTilemapContent()||hasFreeTileContent())&&paletteColorSynchronization_)return;
