@@ -3731,3 +3731,11 @@ palette-sort-cache-final-build.log正式Release和核心目标构建通过；修
 palette-apply-index-build.log正式Release、工程与核心目标构建通过；palette-apply-index-tests.log中48组新增、240移动、128排序、1668 raw、192粘贴、158解码／530命令及完整既有工程矩阵、核心事务均退出0。palette-apply-index-ui.log正式--palette-library-check、--palette-import-check、--palette-manual-check、--palette-clipboard-check均退出0。来源覆盖627文件通过，strict仍因全量已知缺口退出1，diff通过。
 
 同机Release基准palette-apply-index-benchmark.log以2861782c旧代码的复用／改名部分对照本次完整Document命令，反序颜色并改名，逐条核对身份／RGBA／名称相同：4096色12.5188ms→5.8701ms，16384色222.087ms→29.2912ms。旧侧不计布局／历史，新侧包含完整命令，因此不把两侧当等范围全应用耗时，更不外推整体UI帧率；临时基准源码和程序仅在native/build。本批无人工图像验收。全量迁移仍INCOMPLETE。
+
+### 调色盘独立相邻移动与显式重排命令（2026-11-08）
+
+接续f8bb432b，直接核对workspace-palette.ts::movePaletteColor／reorderPaletteColors、workspace-commands-color.ts包装和PalettePanel.tsx::finishPaletteDrag。补齐只交换主选槽位与相邻槽位的独立命令，包含空邻槽、缺失主选和边界无操作；不把多选整体移动。显式重排接收完整预览，再按目标列数归一化；原拖排接口委托同一提交边界，重复移动身份仍按旧版计数，单／多色历史标签使用原有中文。两者只记录布局，Undo/Redo不回滚之后的选择、前后景色或像素；未发现旧版相邻移动的独立界面调用，不新增菜单／快捷键。
+
+实际旧版新增240组（八种布局×1／3／8列×五种主选×两个方向），记录初始／执行／Undo／Redo布局及真实历史回调；原有240组移动预览矩阵改为直接提交显式重排命令，旧拖排适配器仍由raw及界面检查覆盖。核心回归补充非法方向、边界／相同布局无操作的revision／dirty／history、精确历史字节和后续选择／前后景保留。正ID准入范围不变；真实ID0、碰撞身份、索引色及全量迁移缺口仍未完成。
+
+验证：palette-order-commands-fixtures.log生成真实旧版矩阵成功；palette-order-commands-build.log正式Release／工程／核心目标构建通过。palette-order-commands-project-tests.log通过新增240组相邻移动及既有48应用、240重排、128排序、1668 raw、192粘贴、158解码／530命令与完整工程检查；palette-order-commands-core-tests.log核心事务退出0。palette-order-commands-ui.log中正式--palette-manual-check、--palette-window-blur-check、--palette-mouse-check均退出0。来源覆盖627文件通过，strict因全量已知缺口退出1；diff通过。本批未做人工图像验收或新的性能测量，全量迁移仍INCOMPLETE。

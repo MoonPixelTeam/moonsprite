@@ -293,6 +293,8 @@ public:
   void selectPaletteBox(std::size_t start,std::size_t end,int columns,const std::vector<int>* viewSlots=nullptr);
   static std::vector<int> movedPaletteSlots(const std::vector<int>& slots,const std::vector<int>& ids,int target,int anchor,int columns);
   void repositionPaletteColors(const std::vector<int>& slots,const std::vector<int>& ids,int target,int anchor,int columns,bool storeColumns=false);
+  bool movePaletteColor(int direction);
+  bool reorderPaletteColors(const std::vector<int>& ids,const std::vector<int>& targetSlots,int columns);
   void pastePaletteColors(const std::vector<Pixel>& colors,const std::vector<std::size_t>& targets={},bool selectResult=true,const std::vector<int>* viewSlots=nullptr,int viewColumns=0);
   void setPaletteRole(Pixel color,bool secondary,bool locked);
   void renamePaletteColor(int id,const std::u32string& name);

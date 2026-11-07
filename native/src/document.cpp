@@ -1691,8 +1691,20 @@ std::vector<int> Document::movedPaletteSlots(const std::vector<int>& slots,const
 
  return next;
 }
+// Actual workspace-palette::reorderPaletteColors; incoming slots are a
+// completed preview, and normalization belongs to the command boundary.
+bool Document::reorderPaletteColors(const std::vector<int>& ids,const std::vector<int>& targetSlots,int columns){
+ columns=std::clamp(columns,1,256);const auto before=currentPaletteSlots(palette_);auto next=normalizePaletteSlots(palette_.entries,palette_.order(),targetSlots,columns);if(next==before&&palette_.columns==columns)return false;
+ const std::unordered_set<int> occupied(before.begin(),before.end());const auto moving=std::count_if(ids.begin(),ids.end(),[&](int id){return occupied.count(id);});cancelStroke();Edit edit{{},state_,nextState_};edit.paletteKind=9;edit.beforePalette=PaletteState{};edit.afterPalette=PaletteState{};edit.beforePalette->entries.clear();edit.afterPalette->entries.clear();edit.beforePalette->slots=before;edit.beforePalette->columns=palette_.columns;edit.afterPalette->slots=next;edit.afterPalette->columns=columns;palette_.columns=columns;palette_.slots=std::move(next);palette_.independentOrder.reset();pushEdit(std::move(edit),moving>1?U"批量调整颜色板顺序":U"调整颜色板顺序");return true;
+}
+// Actual movePaletteColor swaps only the primary slot with its neighbor,
+// including an empty neighbor. It never moves the entire selected group.
+bool Document::movePaletteColor(int direction){
+ if(direction!=-1&&direction!=1)return false;auto before=currentPaletteSlots(palette_);const auto current=std::find(before.begin(),before.end(),palette_.primaryId?palette_.primaryId:-1);if(current==before.end())return false;const auto target=std::ptrdiff_t(current-before.begin())+direction;if(target<0||std::size_t(target)>=before.size())return false;auto after=before;std::swap(after[std::size_t(current-before.begin())],after[std::size_t(target)]);
+ cancelStroke();Edit edit{{},state_,nextState_};edit.paletteKind=9;edit.beforePalette=PaletteState{};edit.afterPalette=PaletteState{};edit.beforePalette->entries.clear();edit.afterPalette->entries.clear();edit.beforePalette->slots=std::move(before);edit.beforePalette->columns=palette_.columns;edit.afterPalette->slots=after;edit.afterPalette->columns=palette_.columns;palette_.slots=std::move(after);palette_.independentOrder.reset();pushEdit(std::move(edit),U"调整颜色板顺序");return true;
+}
 void Document::repositionPaletteColors(const std::vector<int>& slots,const std::vector<int>& ids,int target,int anchor,int columns,bool storeColumns){
- const auto before=currentPaletteSlots(palette_);auto next=normalizePaletteSlots(palette_.entries,palette_.order(),movedPaletteSlots(slots,ids,target,anchor,columns),storeColumns?columns:palette_.columns);if(next==before&&(!storeColumns||palette_.columns==columns))return;cancelStroke();Edit edit{{},state_,nextState_};edit.paletteKind=9;edit.beforePalette=PaletteState{};edit.afterPalette=PaletteState{};edit.beforePalette->entries.clear();edit.afterPalette->entries.clear();edit.beforePalette->slots=before;edit.beforePalette->columns=palette_.columns;edit.afterPalette->slots=next;edit.afterPalette->columns=storeColumns?columns:palette_.columns;palette_.columns=edit.afterPalette->columns;palette_.slots=std::move(next);palette_.independentOrder.reset();pushEdit(std::move(edit),U"调整颜色板顺序");
+ reorderPaletteColors(ids,movedPaletteSlots(slots,ids,target,anchor,columns),storeColumns?columns:palette_.columns);
 }
 // legacy workspace-palette::pastePaletteColors: overwrite selected slots, otherwise append.
 // recordPaletteEdit restores layout through applyPaletteSlots, so its Undo

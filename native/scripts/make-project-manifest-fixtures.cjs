@@ -404,6 +404,12 @@ registerHooks({
   const before=state();paletteCommands.applyPalette(session,colors,layout,names);const after=state();if(history.length)history[0].undo();const undo=state();if(history.length)history[0].redo();const redo=state();const firstHistory=history.length;paletteCommands.applyPalette(session,colors,layout,names);const repeated=state();applyOracle.push({dataset,operation,colors:colors.map(packed),names,layout,before,after,undo,redo,repeated,history:firstHistory,repeatHistory:history.length});
  }
  fs.writeFileSync(path.join(out,'palette-apply-oracle.json'),JSON.stringify(applyOracle));console.log(`Palette apply: ${applyOracle.length} actual legacy apply/reapply/Undo/Redo matrices`);
+ const adjacentOracle=[];
+ for(let layout=0;layout<8;++layout)for(const columns of [1,3,8])for(const primary of [null,1,2,3,99999])for(const direction of [-1,1]){
+  const d=createDocument('adjacent',1,1,'rgba');d.palette=Array.from({length:4},(_,i)=>({id:i+1,name:`name${i}`,color:{r:i*51,g:i*17,b:i*7,a:255}}));d.nextColorId=5;d.paletteColumns=columns;d.paletteOrder=layout===0?[]:layout===1?[1]:layout===2?[1,99999,2,1,3]:layout===3?[99999]:[1,2,3,4];d.paletteSlots=normalizeMoveSlots(d.palette.map(e=>e.id),d.paletteOrder,layout===4?[null,1,null,2,3,4]:layout===5?[4,3,2,1,null,null]:layout===6?[1,2,3,null,null,4]:[1,2,3,4],columns);
+  const history=[],session={document:d,history:{push:e=>history.push(e)},selectedPaletteIds:[1,2,3],paletteSelectionId:primary,primaryColor:{r:1,g:2,b:3,a:255},secondaryColor:{r:4,g:5,b:6,a:255}};const state=()=>({order:[...d.paletteOrder],slots:[...d.paletteSlots],columns:d.paletteColumns});const before=state();paletteCommands.movePaletteColor(session,direction);const after=state();if(history.length)history[0].undo();const undo=state();if(history.length)history[0].redo();const redo=state();adjacentOracle.push({columns,primary,direction,before,after,undo,redo,history:history.length});
+ }
+ fs.writeFileSync(path.join(out,'palette-adjacent-oracle.json'),JSON.stringify(adjacentOracle));console.log(`Palette adjacent: ${adjacentOracle.length} actual legacy move/Undo/Redo matrices`);
  // decodeProject retains raw safe-integer order, defaults nonarray palettes
  // to [], and evaluates Math.max(1, source.nextColorId ?? 1). Do not invent
  // palette-entry repair or collision avoidance absent from the real legacy.

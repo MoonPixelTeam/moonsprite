@@ -548,6 +548,26 @@ int main() {
       p.undo();CHECK(p.paletteEntry(1)->color==old&&p.palette().primaryId==1&&p.palette().secondaryId==2&&p.palette().secondary==background);p.redo();CHECK(p.paletteEntry(1)->color==0xff010203&&p.palette().primaryId==1&&p.palette().secondaryId==2&&p.palette().secondary==background);p.setPaletteRole(0x7f563412,true,true);p.undo();CHECK(p.palette().secondaryId==0&&p.palette().secondary==0x7f563412);p.redo();CHECK(p.palette().secondaryId==0&&p.palette().secondary==0x7f563412&&p.pixels()==pixels&&p.contentRevision()==content&&p.historySize()==history);
       Document q(1,1);q.selectPalette(1);q.pastePaletteColors({0x00563412},{2});const int added=q.palette().slots[2];q.selectSecondaryPalette(added);q.undo();CHECK(!q.paletteEntry(added)&&q.palette().secondaryId==added&&q.palette().secondary==0x00563412);q.redo();CHECK(q.paletteEntry(added)&&q.palette().slots[2]==added&&q.palette().secondaryId==added&&q.palette().secondary==0x00563412);
     }
+    { // workspace-palette::movePaletteColor / reorderPaletteColors: layout-only history.
+      Document p(1,1);p.markSaved();p.selectPalette(1);const auto before=p.palette().slots;
+      const auto history=p.historySize(),revision=p.revision(),bytes=p.historyBytes(),content=p.contentRevision();const auto pixels=p.pixels();
+      CHECK(!p.movePaletteColor(-1)&&!p.movePaletteColor(0)&&!p.movePaletteColor(2));
+      CHECK(!p.reorderPaletteColors({1},before,p.palette().columns));
+      CHECK(p.historySize()==history&&p.revision()==revision&&p.historyBytes()==bytes&&!p.dirty());
+      p.clearPaletteSelection();CHECK(!p.movePaletteColor(1));p.selectPalette(1);
+      CHECK(p.movePaletteColor(1));auto adjacent=before;std::swap(adjacent[0],adjacent[1]);
+      CHECK(p.palette().slots==adjacent&&p.historySize()==history+1&&p.historyBytes()==bytes+before.size()*8);
+      p.selectPalette(2);p.selectSecondaryPalette(1);const auto later=p.palette();
+      const auto checkSession=[&](){CHECK(p.palette().selected==later.selected&&p.palette().primaryId==later.primaryId&&p.palette().secondaryId==later.secondaryId&&p.palette().primary==later.primary&&p.palette().secondary==later.secondary&&p.pixels()==pixels&&p.contentRevision()==content);};
+      p.undo();CHECK(p.palette().slots==before);checkSession();p.redo();CHECK(p.palette().slots==adjacent);checkSession();
+      const auto reorderHistory=p.historySize(),reorderBytes=p.historyBytes();
+      CHECK(p.reorderPaletteColors({1,1,99999},before,p.palette().columns));
+      CHECK(p.historySize()==reorderHistory+1&&p.historyBytes()==reorderBytes+before.size()*8);checkSession();
+      p.setPaletteRole(0x7f123456,true,true);const auto background=p.palette().secondary;
+      p.undo();CHECK(p.palette().slots==adjacent&&p.palette().secondaryId==0&&p.palette().secondary==background);
+      p.redo();CHECK(p.palette().slots==before&&p.palette().secondaryId==0&&p.palette().secondary==background);
+      CHECK(p.pixels()==pixels&&p.contentRevision()==content);
+    }
     { // workspace-magic-eraser.test.ts: noncontiguous default, preview/cancel, one history, selection.
       Document d(3,1);d.beginStroke({0,0},0xff0000ff);d.commitStroke();d.beginStroke({1,0},0xffff0000);d.commitStroke();d.beginStroke({2,0},0xff0000fa);d.commitStroke();const auto source=d.pixels();WandOptions o;o.contiguous=false;o.tolerance=5;const auto start=d.historySize();
       CHECK(d.eraseMatchingColor({0,0},o,true)&&d.strokeActive()&&d.historySize()==start&&d.pixels()[0]==0&&d.pixels()[2]==0);d.cancelStroke();CHECK(d.pixels()==source&&d.historySize()==start);
