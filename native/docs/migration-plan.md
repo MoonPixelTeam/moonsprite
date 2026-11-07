@@ -3171,3 +3171,9 @@ pending-tile-center-build.log正式Release及free/tile测试构建exit0，fixtur
 核对legacy workspace-commands-selection-flip.ts::flipActiveSelection优先处理pendingPaste来源，原生flipContent静态特殊类型保护此前先于共同floating分支，阻断混合文档普通粘贴翻转。将该保护限定为无浮动状态，复用原有逐源翻转、取消恢复和transformFloatingPaste目标校验，专用free/Paint路径仍保留。
 
 新增tile/free×水平/垂直×取消/提交八组合，检查浮动剪贴板精确RGBA/半透明次序、实际提交像素、单历史、无关特殊Cel像素/实例/网格及资源保留、Undo/Redo和实际保存重开。mixed-clipboard-flip-build.log正式Release及两核心测试构建exit0；完整free-tile-project-tests、tilemap-project-tests通过（mixed-clipboard-flip-free-test.log、mixed-clipboard-flip-grid-test.log）；正式工作区drawing-anchor-edit-floating组合exit0；来源625文件快照通过（mixed-clipboard-flip-provenance.log），diff通过。未做人工UI验收，全量迁移仍INCOMPLETE。
+
+### 2026-11-07：混合文档浮动剪贴板剪切
+
+对照legacy workspace-commands-clipboard.ts::cutSelection，先复制pending结果，再cancelFloatingPaste恢复目标；clipboard来源不删除原像素，最后完成选择。原生cutPixels允许已有clipboard浮动事务通过整篇free/tile剪切保护，复用既有copy/cancel路径，不扩展静态特殊层删除。
+
+新增tile/free两组，使用覆盖既有目标像素且水平翻转的半透明剪贴板，核对复制像素及原点、目标恢复、选择/浮动清理、无新增历史、所有Cel像素/实例/网格和源资源不变。mixed-floating-cut-build.log正式Release及两核心测试构建exit0；完整free-tile-project-tests、tilemap-project-tests通过（mixed-floating-cut-free-test.log、mixed-floating-cut-grid-test.log）；正式工作区drawing-anchor-edit-floating组合exit0；来源625文件快照通过（mixed-floating-cut-provenance.log），diff通过。此操作无持久化变更，未新增往返测试；无人工UI验收，全量迁移仍INCOMPLETE。
