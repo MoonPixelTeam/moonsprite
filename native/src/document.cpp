@@ -1562,10 +1562,13 @@ std::size_t Document::Edit::bytes() const {
  if(beforeSourceProperties){std::size_t bytes=256;for(const auto* value:{beforeSourceProperties.get(),afterSourceProperties.get()})bytes+=value->source.name.size()+value->source.description.size()+value->source.preservedJson.size()+value->tilesetName.size()*sizeof(char32_t);return bytes;}
  if(beforeRollback)return rollbackBytes;if(beforeSlices)return (beforeSlices->items.size()+afterSlices->items.size())*48;
  if(celProperties)return celProperties->historyBytes();if(layerMetadataBytes)return *layerMetadataBytes;
-  if(paletteKind==1)return (beforePalette->entries.size()+afterPalette->entries.size())*40+(beforePalette->slots.size()+afterPalette->slots.size())*4+64;
-  if(paletteKind==2)return (beforePalette->order().size()+afterPalette->order().size()+beforePalette->slots.size()+afterPalette->slots.size()+beforePalette->selected.size()+afterPalette->selected.size())*4+32;
-  if(paletteKind==10)return (beforePalette->entries.size()+afterPalette->entries.size())*40+(beforePalette->slots.size()+afterPalette->slots.size()+(beforePalette->independentOrder?beforePalette->independentOrder->size():0)+(afterPalette->independentOrder?afterPalette->independentOrder->size():0))*4;
-  if(paletteKind==9)return (beforePalette->slots.size()+afterPalette->slots.size()+(beforePalette->independentOrder?beforePalette->independentOrder->size():0)+(afterPalette->independentOrder?afterPalette->independentOrder->size():0))*sizeof(int);
+  if(paletteKind==3)return 32;
+  if(paletteKind==4){const auto units=[](const std::u32string& name){return name.size()+std::count_if(name.begin(),name.end(),[](char32_t c){return c>0xffff;});};return (units(beforePalette->entries.front().name)+units(afterPalette->entries.front().name))*2+16;}
+  if(paletteKind==8)return beforePalette->entries.size()*40;
+  if(paletteKind==1||paletteKind==7)return (beforePalette->entries.size()+afterPalette->entries.size())*40+(beforePalette->slots.size()+afterPalette->slots.size())*4+64;
+  if(paletteKind==2||paletteKind==11)return (beforePalette->order().size()+afterPalette->order().size()+beforePalette->slots.size()+afterPalette->slots.size()+beforePalette->selected.size()+afterPalette->selected.size())*4+32;
+  if(paletteKind==10)return (beforePalette->entries.size()+afterPalette->entries.size())*40+(beforePalette->slots.size()+afterPalette->slots.size())*4;
+  if(paletteKind==9)return (beforePalette->slots.size()+afterPalette->slots.size())*4;
   std::size_t textBytes=0;for(const auto& t:textChanges)for(const auto* value:{&t.before,&t.after})if(*value){textBytes+=sizeof(TextCelData)+(*value)->text.size()*2+(*value)->styleRuns.size()*sizeof(TextStyleRun)+(*value)->transforms.size()*sizeof(TextTransform);for(const auto& transform:(*value)->transforms)textBytes+=(transform.source.projectProperties.size()+transform.target.projectProperties.size())*sizeof(char16_t);}
     std::size_t size=(layerTilesets?layerTilesets->bytes():0)+(tilemapPixels?tilemapPixels->bytes():0)+textBytes+restoredClipboardBytes+(pixelAddress?sizeof(PixelAddressSpace):0)+(beforeName?beforeName->size()*sizeof(char32_t):0)+(afterName?afterName->size()*sizeof(char32_t):0)+pixels.size()*sizeof(Delta)+runs.size()*sizeof(PixelRun)+targetCelId.size()+((beforeVisible||beforeOpacity||beforeBlendMode)?32:0);
   for(const auto* selection:{&beforeMaskSelection,&afterMaskSelection})if(*selection)for(const auto& key:**selection)size+=sizeof(key)+key.first.size()+key.second.size();

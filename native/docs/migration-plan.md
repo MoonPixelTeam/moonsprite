@@ -3767,3 +3767,11 @@ palette-apply-index-build.log正式Release、工程与核心目标构建通过�
 未锁定特殊图层的旧版只改派生像素、下次重渲染恢复旧色，与修改真实源资源会影响全部引用的行为不同；已向用户提出明确选择，在决定前保留这部分准入保护，未自行改源资源，未宣称特殊同步或全量迁移完成。
 
 最终验证：palette-sync-identity-build.log正式Release／工程／特殊项目／核心目标构建通过。palette-sync-identity-project-tests.log通过64真实旧版同步及既有144新增、96删除、240相邻、48应用、240重排、128排序、1668 raw、192粘贴、158解码／530命令和完整工程矩阵；palette-sync-identity-special-tests.log完整特殊项目测试退出0，包含16组新增混合锁定范围；palette-sync-identity-core-tests.log退出0。palette-sync-identity-ui.log正式--palette-sync-check、--palette-mouse-check均退出0。来源覆盖627文件通过，strict按已知全量缺口退出1，diff通过。没有人工图像验收或本批性能微基准，不将复杂度改进等同整体UI帧率改善。全量迁移仍INCOMPLETE。
+
+### 颜色板跨命令历史与精确预算（2026-11-08）
+
+接续a165d869，核对workspace-palette.ts的updatePaletteColor／renamePaletteColor／recordPaletteEdit／applyPaletteColors／applyPalette／gradientPaletteSlots及core/history.ts::HistoryStack。颜色板kind3改色按32字节，kind4改名按前后UTF-16单元长度×2+16，kind8反向／选色渐变按变化项数×40，kind1／7新增／粘贴按前后条目×40+前后槽×4+64，kind11应用按前后order／slots／selected总数×4+32；kind10槽渐变去掉旧版未计入的独立order；kind9排序／相邻移动／重排统一只计前后槽×4，去掉排序写入独立order造成的额外计费。继续使用已迁移删除计费。原生快照结构不变，预算权重承接旧版历史裁剪规则，并不宣称这些数值是实际堆内存测量。
+
+新增128组真实HistoryStack序列（八种Unicode／trim名称×普通／独立raw order×八类连续操作），包括emoji补充平面、组合字符、JS会裁掉的空白、JS不裁掉的U+0085／U+180E／U+200B和换行；覆盖改色／改名后再选择及改背景色、连续三步Undo/Redo、新增／粘贴／删除／应用色板与先前条目历史交错、同色／缺失身份／重复改名无操作。每一步核对全部条目ID／名称／RGBA、布局、cursor、选择、前后景、历史位置／字节／所有标题，最终普通／恢复保存重开核对名称及颜色。1668组既有raw矩阵增加真实回调bytes、Undo为0及Redo恢复的断言，覆盖22种命令分支。真实ID0／碰撞身份／索引色等缺口不因历史测试扩展而关闭。
+
+验证：palette-entry-history-fixtures.log生成成功；palette-entry-history-build.log正式Release、工程与核心构建通过。首次新增预算断言发现palette-raw-4排序多计独立order；对照旧版sortPaletteColors／movePaletteColor／reorderPaletteColors确认三者都只计前后slots，修正kind9后重建，最终palette-entry-history-project-tests.log退出0，覆盖128新增序列及1668 raw与全部既有工程矩阵；palette-entry-history-core-tests.log退出0。正式程序--palette-names-check、--palette-sync-check、--palette-gradient-check、--palette-reverse-check均退出0。来源覆盖627文件通过，strict因既有迁移缺口退出1，diff检查通过。本批无人工图像验收或新性能基准，未开放待决定的未锁定特殊图层颜色同步，全量迁移仍INCOMPLETE。
