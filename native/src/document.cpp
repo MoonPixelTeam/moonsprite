@@ -1,3 +1,4 @@
+#include "free_tile_source_transfer.h"
 #include "local_history_edit.h"
 #include "free_tile_selection_target.h"
 #include "relative_luminance.h"
@@ -87,7 +88,7 @@ Document Document::fromImported(int width,int height,timeline::State state,Palet
   if(projectId.empty() || !sourceArchive || state.layers.empty() || state.frames.empty() || state.cels.size()!=state.layers.size()*state.frames.size())
     throw std::invalid_argument("Unsupported imported document structure");
   if(palette.columns<1||palette.columns>256)throw std::invalid_argument("Invalid imported palette columns");
-  state.canvasWidth=width;state.canvasHeight=height;timeline::Timeline validated(std::move(state));
+  normalizeHistoricalFreeSources(state);state.canvasWidth=width;state.canvasHeight=height;timeline::Timeline validated(std::move(state));
   if(!validated.diagnoseLinks().empty())throw std::invalid_argument("Invalid imported cel link");
 
   for(const auto& cel:validated.state().cels){const auto resolved=validated.resolveSurface(cel.id);const auto* surface=resolved.surface;

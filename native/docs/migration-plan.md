@@ -3494,3 +3494,10 @@ legacy workspace-commands-color.ts::applyColorReplacementTarget的collect先跳�
 对照free_tile_data历史legacyTilesetId/tileId路径及legacy project-format-decode的旧图集支持，修复帧／Cel剪贴板未捕获legacyTilesetId纹理的问题。共享转移函数将实际引用的旧图集瓦片拆为单瓦片源纹理，再复用已授权的源重映射／目录历史；保留实例坐标、旋转、翻转和覆盖属性。同旧图集目标仍保留原引用；其它旧图集目标明确拒绝，不能只追加现代源而改变原实例解释。
 
 两个内存历史输入的帧／Cel转移案例检查捕获纹理、单源转换、变换、重建像素、现代原生／恢复工程重开和Undo/Redo。初始测试试图保存原始历史模型，发现编码器仍按现代schema声明、读取器要求现代源而拒绝“Missing modern free tile collection metadata”，因此该输入未宣称重开通过，原历史持久化缺口保留后续处理。最终正式／测试构建通过（historical-free-final-build.log），完整free-tile-project-tests通过（historical-free-transfer-tests.log），正式--cel-clipboard-check退出0，来源覆盖通过（historical-free-transfer-provenance.log），diff通过。无人工视觉验收；历史目标整体转换／原历史保存仍待完成，整体INCOMPLETE。
+
+
+### 2026-11-07：历史自由图集导入升级及保存恢复
+
+追踪legacy free-tile-document.ts::migrateLegacyFreeTileLayer／ensureFreeTileTilesetOwnership，旧版decode/encode均先把历史图集拆为单源纹理并重映射实例。原生补在Document::fromImported候选边界：转换全部图集瓦片（包括当前未引用者），共享集合只转换一次，按旧版图层名＋序号命名，保留所有帧实例变换、自定义载荷及缓存；仅移除无引用旧图集，不产生编辑历史。由此正式文档具备schema21所需现代源元数据，旧式目标进入后续编辑前也会统一升级。
+
+历史帧／Cel剪贴板测试现在先实际保存重开已导入文档，另增双瓦片／共享双层多帧案例检查完整源数量、原像素、旋转／翻转、canonical引用、editable/recovery重开及无历史。多瓦片测试捕获同一表达式移出data后读取setId的缓存键不稳定，改为先固定collectionKey再移动，修复共享集合重复资源。最终正式与测试构建通过（historical-upgrade-verified-build.log），完整free-tile-project-tests通过（historical-upgrade-final-tests.log），正式--cel-clipboard-check退出0；来源覆盖通过（historical-upgrade-provenance.log），diff通过。当前证据为中性历史模型导入后现代保存／恢复，不代表真实各历史schema归档样本全覆盖；原始旧归档版本字段升级仍需针对实际档案检查。无人工视觉验收，全量INCOMPLETE。

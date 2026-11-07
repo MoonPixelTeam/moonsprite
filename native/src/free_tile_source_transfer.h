@@ -5,8 +5,24 @@
 #include <tuple>
 #include <set>
 #include <utility>
+#include <codecvt>
+#include <locale>
 
 namespace moon {
+// legacy free-tile-document.ts::migrateLegacyFreeTileLayer.
+inline void normalizeHistoricalFreeSources(timeline::State& state){
+ std::size_t serial=0;auto fresh=[&](const std::string& prefix){std::string id;do{id=prefix+std::to_string(++serial);}while(std::any_of(state.tilesets.begin(),state.tilesets.end(),[&](const auto& t){return t.id==id;})||std::any_of(state.layers.begin(),state.layers.end(),[&](const auto& l){return l.freeTiles&&std::any_of(l.freeTiles->sources.begin(),l.freeTiles->sources.end(),[&](const auto& s){return s.id==id;});}));return id;};
+ std::map<std::pair<std::string,std::string>,std::pair<free_tiles::LayerData,std::map<std::string,std::string>>> converted;std::set<std::string> obsolete;
+ for(auto& layer:state.layers)if(layer.kind=="free-tile"&&layer.freeTiles&&layer.freeTiles->sources.empty()&&!layer.freeTiles->legacyTilesetId.empty()){
+  const auto old=layer.freeTiles->legacyTilesetId;auto found=converted.find({layer.freeTiles->setId,old});
+  if(found==converted.end()){const auto atlasIt=std::find_if(state.tilesets.begin(),state.tilesets.end(),[&](const auto& t){return t.id==old;});if(atlasIt==state.tilesets.end())throw std::invalid_argument("Missing historical free atlas");const auto atlas=*atlasIt;auto data=*layer.freeTiles;data.legacyTilesetId.clear();std::map<std::string,std::string> mapping;
+   for(std::size_t i=0;i<atlas.tileIds.size();++i){const auto ordinal=std::to_string(i+1);const auto name=layer.name+U" "+std::u32string(ordinal.begin(),ordinal.end());auto texture=tiles::blankTileset(fresh("tileset-free-upgrade-"),name,atlas.tileWidth,atlas.tileHeight,fresh("tile-free-upgrade-"),1);tiles::writeTile(texture,texture.tileIds.front(),tiles::readTile(atlas,i));free_tiles::Source source;source.id=fresh("source-free-upgrade-");source.name=std::wstring_convert<std::codecvt_utf8<char32_t>,char32_t>{}.to_bytes(name);source.tilesetId=texture.id;mapping.emplace(atlas.tileIds[i],source.id);data.sources.push_back(std::move(source));state.tilesets.push_back(std::move(texture));}
+   if(data.sources.empty())throw std::invalid_argument("Empty historical free atlas");const auto collectionKey=std::make_pair(data.setId,old);found=converted.emplace(collectionKey,std::make_pair(std::move(data),std::move(mapping))).first;obsolete.insert(old);
+  }
+  layer.freeTiles=found->second.first;for(auto& cel:state.cels)if(cel.layerId==layer.id&&cel.freeTiles)for(auto& instance:cel.freeTiles->instances){const auto key=!instance.tileId.empty()?instance.tileId:instance.sourceId;auto mapped=found->second.second.find(key);if(mapped==found->second.second.end())throw std::invalid_argument("Missing historical free instance tile");instance.sourceId=mapped->second;instance.tileId.clear();}
+ }
+ state.tilesets.erase(std::remove_if(state.tilesets.begin(),state.tilesets.end(),[&](const auto& t){if(!obsolete.count(t.id))return false;for(const auto& l:state.layers){if(l.tilemapTilesetId==t.id)return false;if(l.freeTiles){if(l.freeTiles->legacyTilesetId==t.id)return false;for(const auto& source:l.freeTiles->sources)if(source.tilesetId==t.id)return false;}}for(const auto& c:state.cels)if(c.tilemap)for(const auto& cell:c.tilemap->cells)if(cell&&cell->tilesetId==t.id)return false;return true;}),state.tilesets.end());
+}
 // User-approved resource transfer, reusing whole-layer clipboard ownership.
 using FreeSourceTransferMap=std::map<std::tuple<std::string,std::string,std::string>,std::string>;
 template<class Fresh> void transferFreeCelSources(std::vector<timeline::Layer>& layers,std::vector<tiles::Tileset>& sets,const std::string& destination,const timeline::Layer& source,const std::vector<tiles::Tileset>& sourceSets,free_tiles::CelData& cel,FreeSourceTransferMap& mappings,Fresh&& fresh){
