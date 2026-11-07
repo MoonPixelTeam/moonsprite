@@ -20,7 +20,7 @@ registerHooks({
   }
  },
  load(url,context,nextLoad) {
-  if(url.startsWith('file:')&&url.endsWith('.ts')) return {format:'module',source:stripTypeScriptTypes(fs.readFileSync(fileURLToPath(url),'utf8'),{mode:'transform'}),shortCircuit:true};
+  if(url.startsWith('file:')&&url.endsWith('.ts')) {let source=stripTypeScriptTypes(fs.readFileSync(fileURLToPath(url),'utf8'),{mode:'transform'});if(url.endsWith('/store/workspace-commands-color.ts'))source+='\nexport { updatePaletteColorWithSynchronization };';return {format:'module',source,shortCircuit:true};}
   return nextLoad(url,context);
  }
 });
@@ -404,6 +404,20 @@ registerHooks({
   const before=state();paletteCommands.applyPalette(session,colors,layout,names);const after=state();if(history.length)history[0].undo();const undo=state();if(history.length)history[0].redo();const redo=state();const firstHistory=history.length;paletteCommands.applyPalette(session,colors,layout,names);const repeated=state();applyOracle.push({dataset,operation,colors:colors.map(packed),names,layout,before,after,undo,redo,repeated,history:firstHistory,repeatHistory:history.length});
  }
  fs.writeFileSync(path.join(out,'palette-apply-oracle.json'),JSON.stringify(applyOracle));console.log(`Palette apply: ${applyOracle.length} actual legacy apply/reapply/Undo/Redo matrices`);
+ // Expose the original private helper without changing its implementation.
+ const syncCommands=await import(pathToFileURL(path.join(legacy,'src/renderer/src/store/workspace-commands-color.ts'))),syncAnimation=await import(pathToFileURL(path.join(legacy,'src/renderer/src/core/animation.ts'))),syncModel=await import(pathToFileURL(path.join(legacy,'src/renderer/src/core/document-model.ts'))),syncHistory=await import(pathToFileURL(path.join(legacy,'src/renderer/src/core/history.ts')));
+ const syncOracle=[];const previousWindow=globalThis.window;
+ for(let dataset=0;dataset<8;++dataset)for(const enabled of [false,true])for(const firstLocked of [false,true])for(const transparent of [false,true]){
+  const source={r:51,g:34,b:17,a:transparent?0:128},replacement={r:119,g:102,b:85,a:64},d=createDocument('palette sync',3,2,'rgba');d.palette=[{id:1,name:'source',color:{...source}}];d.paletteOrder=[1];d.paletteSlots=[1,...Array(7).fill(null)];d.nextColorId=2;d.layers=Array.from({length:dataset===7?32:4},(_,i)=>{const l=syncModel.createLayer('sync '+i,3,2,'rgba');l.id='sync-layer-'+i;l.visible=i%2===0;l.locked=i===0?firstLocked:dataset===2&&i===1;return l;});d.activeLayerId=d.layers.at(-1).id;d.animation.frames=Array.from({length:dataset===7?64:6},(_,i)=>({id:'sync-frame-'+i,duration:100+i}));d.animation.activeFrameId=d.animation.frames[0].id;d.animation.cels=[];
+  if(dataset===3){d.groups=[{id:'sync-lock-group',name:'locked',visible:true,locked:true,opacity:1,blendMode:'normal'}];d.layers[1].groupId='sync-lock-group';}
+  for(let f=0;f<d.animation.frames.length;++f)for(let l=0;l<d.layers.length;++l){if(dataset===7?(f*7+l)%31!==0:dataset>=4&&f>0&&(f+l)%3!==0)continue;const frame=d.animation.frames[f],layer=d.layers[l],c={id:`sync-cel-${f}-${l}`,layerId:layer.id,frameId:frame.id,opacity:1};const root=d.animation.cels.find(x=>x.layerId===layer.id);if(dataset===1&&root)c.linkedCelId=root.id;else {const colors=[source,{...source,a:255},source,{r:9,g:8,b:7,a:255},source,{r:0,g:0,b:0,a:0}],pixels=new Uint8ClampedArray(colors.flatMap(c=>[c.r,c.g,c.b,c.a]));c.surface={format:'rgba',width:3,height:2,offsetX:dataset===5?-2:0,offsetY:dataset===5?1:0,pixels};}d.animation.cels.push(c);}
+  if(dataset===6){d.layers[0].linkedContentId='sync-shared';d.layers[1].linkedContentId='sync-shared';}
+  syncAnimation.refreshActiveAnimationFrame(d);const file=`palette-sync-${syncOracle.length}.moonsprite`,encoded=encodeProject(d,{includePreview:false});fs.writeFileSync(path.join(out,file),encoded);const actual=decodeProject(encoded),history=new syncHistory.HistoryStack(),session={document:actual,history,selectedPaletteIds:[],paletteSelectionId:null,primaryColor:{...source},secondaryColor:{...source},selection:{x:2,y:0,width:1,height:1}};
+  globalThis.window={localStorage:{getItem:key=>key==='moonsprite.palette-sync-colors'&&enabled?'true':null}};
+  const packed=c=>(c.r|(c.g<<8)|(c.b<<16)|(c.a<<24))>>>0,state=()=>({color:packed(actual.palette[0].color),primary:packed(session.primaryColor),secondary:packed(session.secondaryColor),cels:actual.animation.cels.map(c=>{const l=syncAnimation.animationLayerAtFrame(actual,c.layerId,c.frameId);return {id:c.id,width:l.width,height:l.height,offsetX:l.offsetX,offsetY:l.offsetY,pixels:Array.from({length:l.width*l.height},(_,i)=>syncModel.readLayerPacked(actual,l,i)>>>0)};})});
+  const before=state();syncCommands.updatePaletteColorWithSynchronization(session,1,replacement);const after=state(),length=history.length;history.undo();const undo=state();history.redo();const redo=state();syncOracle.push({file,dataset,enabled,source:packed(source),replacement:packed(replacement),before,after,undo,redo,history:length});
+ }
+ if(previousWindow===undefined)delete globalThis.window;else globalThis.window=previousWindow;fs.writeFileSync(path.join(out,'palette-sync-oracle.json'),JSON.stringify(syncOracle));console.log(`Palette synchronization: ${syncOracle.length} actual legacy helper/HistoryStack matrices`);
  const addOracle=[];
  for(let dataset=0;dataset<6;++dataset)for(const columns of [1,3,8])for(const targetIndex of [null,0,2,19])for(const selectAdded of [false,true]){
   const d=createDocument('add',1,1,'rgba');d.palette=Array.from({length:5},(_,i)=>({id:i+1,name:String(i+1),color:{r:i*41,g:17,b:31,a:255}}));d.nextColorId=6;d.paletteColumns=dataset%2?3:8;d.paletteOrder=dataset===0?[]:dataset===1?[1]:dataset===2?[1,99999,2,1,4]:d.palette.map(e=>e.id).reverse();d.paletteSlots=normalizeMoveSlots(d.palette.map(e=>e.id),d.paletteOrder,[null,2,1,null,4],d.paletteColumns);const slots=normalizeMoveSlots(d.palette.map(e=>e.id),d.paletteOrder,[null,2,1,null,4],columns);

@@ -3755,3 +3755,15 @@ palette-apply-index-build.log正式Release、工程与核心目标构建通过�
 新增144组真实旧版矩阵（六种数据×三种视图列数×四种目标×两种选择模式），逐状态核对全部条目ID／名称／RGBA、order／slots／columns、选择、主选、cursor、执行／Undo／Redo及普通／恢复保存重开；覆盖独立／重复／悬空顺序、稀疏槽、非空目标、跨末尾插入、同RGBA及透明RGB。另补无viewSlots的非空存储槽插入；编号耗尽及65536位置越界在修改前拒绝，保留活动笔画、像素、色板、cursor、revision与history。原生int／65536槽范围与真实ID0／碰撞／索引色缺口未放开。
 
 验证：palette-add-fixtures.log生成成功；palette-add-build.log正式Release／工程／核心构建通过；palette-add-final-build.log补充测试串行重链接通过。初次补充链接与上一轮测试运行重叠造成LNK1104，占用证据保留palette-add-verified-build.log；等待原测试正常完成后再构建，未结束用户程序。最终palette-add-project-tests.log通过144组新增、96删除、240相邻、48应用、240重排、128排序、1668 raw、192粘贴、158解码／530命令与全部工程矩阵，包含失败保护及存储槽插入检查；palette-add-core-tests.log退出0。palette-add-ui.log正式--palette-manual-check、--palette-growth-check、--palette-mouse-check均退出0。来源覆盖627文件通过，strict因全量缺口退出1，diff通过。本批无人工图像验收或新性能基准；全量迁移仍INCOMPLETE。
+
+### 颜色板同步的稀疏时间线与混合锁定范围（2026-11-08）
+
+接续56952a43，核对workspace-commands-color.ts::updatePaletteColorWithSynchronization／applyColorReplacementTarget、workspace-palette.ts::updatePaletteColor及真实HistoryStack。原生此前只要存在瓦片／自由瓦片层就阻止整个同步；现所有这些层有效锁定时允许同步普通层，含直接锁及组继承锁。同步仍按帧先后、图层底到顶顺序，先共享存储去重再检查锁，隐藏层也同步，忽略像素选区，比较包含透明RGB的完整RGBA并访问画布外存储像素。稀疏时间线只收集实际Cel并排序，密集时间线保留按槽访问；有效锁每层计算一次。共享去重直接用LinkedPixelStorage::identity，对齐旧版Set(layer.pixels)，移除每个目标调用linkedStorageKey扫描全部Cel的二次路径。
+
+64组实际旧版矩阵通过加载器仅导出原始私有同步函数，函数正文及其依赖未修改，使用真实HistoryStack复合／Undo／Redo；包含开启／关闭、透明RGB、直接／组继承锁、隐藏层、同层链接、跨层共享、偏移存储、稀疏缺失槽及32层×64帧稀疏时间线，逐Cel几何／像素、色板、前后景及保存／恢复核对。另16组瓦片／自由瓦片×直接／组锁×同步开关×普通层显隐，验证普通链接源、特殊实例／网格／纹理不变、一次历史及重开／Undo／Redo。
+
+首轮生成器误从raster导入readLayerPacked，按真实tools-fill依赖改从document-model读取，失败证据palette-sync-fixtures.log。界面旧检查直接替换Document却遗漏applyDocumentPreferences，而实际替换／激活入口会调用；补齐测试设置，保留共享owner锁与新建文档偏好断言。特殊范围首轮把保存重建的派生缓存与手造初始缓存直接比较；现先保存重开建立合法缓存基线，再检查同步前后及后续重开保持相同权威数据。相关初始失败保留palette-sync-ui-initial-error.txt和palette-sync-special-tests.log。
+
+未锁定特殊图层的旧版只改派生像素、下次重渲染恢复旧色，与修改真实源资源会影响全部引用的行为不同；已向用户提出明确选择，在决定前保留这部分准入保护，未自行改源资源，未宣称特殊同步或全量迁移完成。
+
+最终验证：palette-sync-identity-build.log正式Release／工程／特殊项目／核心目标构建通过。palette-sync-identity-project-tests.log通过64真实旧版同步及既有144新增、96删除、240相邻、48应用、240重排、128排序、1668 raw、192粘贴、158解码／530命令和完整工程矩阵；palette-sync-identity-special-tests.log完整特殊项目测试退出0，包含16组新增混合锁定范围；palette-sync-identity-core-tests.log退出0。palette-sync-identity-ui.log正式--palette-sync-check、--palette-mouse-check均退出0。来源覆盖627文件通过，strict按已知全量缺口退出1，diff通过。没有人工图像验收或本批性能微基准，不将复杂度改进等同整体UI帧率改善。全量迁移仍INCOMPLETE。
