@@ -3445,3 +3445,10 @@ legacy core/layer-merge.ts::mergeVisibleLayers复用compositeDocument渲染全�
 新增8组：未保存／保存重开后的链接 × 删除Cel／剪切Cel／其他帧粘贴覆盖源／批量删除源帧。每组两个存活别名，核对同一新源、完整实例元数据、精确缓存像素、原生／恢复工程再开、一次历史、Undo恢复旧源链接、Redo及再次保存。正式程序和完整自由瓦片测试构建通过（free-survivor-build.log）；完整free-tile-project-tests通过（free-survivor-tests.log）；正式程序 --cel-clipboard-check 退出0；来源覆盖检查通过（free-survivor-provenance.log），diff通过。无人工视觉验收。
 
 跨工程剪贴板核对发现：legacy animationCelForTarget仅按目标种类保留实例载荷，跨工程帧／Cel粘贴未转移自由源目录。不能把“自动转移资源”认作现有旧版功能而直接实现；本阶段保留原生明确限制，跨工程自由源策略仍未闭环，全量迁移INCOMPLETE。
+
+
+### 2026-11-07：兼容目标源的跨工程自由瓦片帧／Cel粘贴
+
+继续核对 legacy workspace-commands-animation-frame-clipboard.ts::pasteCrossDocumentAnimationFrames、workspace-commands-animation-cel-clipboard.ts::pasteCrossDocumentAnimationCels 及 workspace-animation-cel-target.ts::animationCelForTarget：跨工程粘贴按目标种类保留freeTiles，映射复制范围内链接，不导入自由源目录。此前原生一律拒绝跨工程自由载荷过宽；现允许目标已有匹配源标识的完整帧／Cel粘贴，以目标当前源属性重新渲染，复用原有事务、蒙版映射及扩帧逻辑。整帧资源导入限制为普通网格实际引用的资源，避免把未引用自由源纹理复制为孤立目录。缺少自由目标层或无法解析实例源时在事务发布前拒绝；不自行设计源迁移或缺失源降级行为。
+
+新增8组跨工程帧／Cel × 链接／独立 × 目标源显隐差异，覆盖实例保留、链接映射、目标属性重渲染、资源目录不增加、单次结构历史、Undo/Redo、原生／恢复工程重开。原有跨工程拒绝用例改为独立源集合不兼容目标，继续验证原子拒绝。正式程序及完整测试构建通过（compatible-free-clipboard-build.log）；完整free-tile-project-tests通过（compatible-free-clipboard-tests.log）；正式程序 --cel-clipboard-check退出0；来源覆盖检查通过（compatible-free-clipboard-provenance.log），diff通过。未人工视觉验收。任意跨工程缺失源和新增自由所属层仍未闭环；自由Cel拖动旧版未转移实例，需要明确行为后处理。全量迁移仍INCOMPLETE。
