@@ -68,10 +68,17 @@ PreparedImport prepareEditableImport(const ReadManifest& m) {
  if(!m.layers.empty()&&!m.frames.empty()&&m.cels.size()<m.layers.size()*m.frames.size()){
   ReadManifest normalized=m;std::size_t serial=0,pixels=0;
   for(const auto& l:m.layers)for(const auto& f:m.frames)if(!importedSlots.count({l.id,f.id})){
-   unsupported(!l.kind.empty(),"Missing special-layer Cel normalization is not migrated");
+   unsupported(!l.kind.empty()&&l.kind!="text"&&l.kind!="adjustment"&&l.kind!="tilemap"&&l.kind!="free-tile","Unsupported missing Cel owner kind");
    corrupt(!l.surface,"Missing layer raster for blank slot");ManifestCel c;
    do{c.id="import-blank-cel-"+std::to_string(++serial);}while(!importedIds.insert(c.id).second);
-   c.layerId=l.id;c.frameId=f.id;c.opacity=l.opacity;auto surface=std::make_shared<ManifestRaster>();
+   c.layerId=l.id;c.frameId=f.id;c.opacity=l.opacity;
+   if(l.kind=="free-tile")c.freeTiles=free_tiles::CelData{};
+   if(l.kind=="tilemap"){
+    const auto model=std::find_if(m.cels.begin(),m.cels.end(),[&](const auto& existing){return existing.layerId==l.id&&existing.tilemap;});
+    unsupported(model==m.cels.end(),"Missing tilemap Cel without a grid template is not migrated");
+    c.tilemap=*model->tilemap;c.tilemap->cells.assign(c.tilemap->cells.size(),std::nullopt);
+   }
+   auto surface=std::make_shared<ManifestRaster>();
    if(f.id==m.activeFrameId){surface->width=l.surface->width;surface->height=l.surface->height;surface->offsetX=l.surface->offsetX;surface->offsetY=l.surface->offsetY;}else surface->width=surface->height=1;
    const auto count=std::size_t(surface->width)*surface->height;corrupt(count>64u*1024*1024-pixels,"Blank slot pixels exceed import budget");pixels+=count;surface->pixels.resize(count);c.surface=surface;normalized.cels.push_back(std::move(c));
   }

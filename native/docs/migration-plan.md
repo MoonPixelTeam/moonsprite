@@ -3536,3 +3536,10 @@ make-project-manifest-fixtures.cjs通过实际legacy encode/decode生成版本1�
 对照legacy normalizeAnimationTimeline、clearLayerSurface、ensureAnimationDocument，缺失／null动画、空／无有效帧回落frame-1、100ms、loop true；普通图层活动槽缺失显示透明但保持图层几何，非活动槽在编辑／保存补为1×1空白。原生读取器保存规范化清单，避免编码时复活旧动画元数据；prepareEditableImport在完整关系准入前补普通空槽，使用唯一标识、图层透明度、受限像素预算，不产生用户历史。原生提前物化空槽是完整Timeline的必要适配，未宣称保留旧版缺失槽身份。特殊图层缺失槽仍明确限制。
 
 六组实际legacy decode ZIP样本覆盖absent/null/empty/invalid animation及active/inactive hole，验证帧结构、透明显示、普通／恢复保存重开和笔画Undo/Redo。最终正式构建sparse-animation-final-build.log、工程测试sparse-animation-manifest-tests.log通过；最终project-save-tests、完整free-tile-project-tests通过sparse-animation-save-tests.log／sparse-animation-free-tests.log，正式--cel-clipboard-check退出0，来源覆盖sparse-animation-provenance.log与diff检查通过。无人工UI验收，特殊空槽及缺失槽身份仍不完整，全量INCOMPLETE。
+
+
+### 2026-11-07：文字／调整／瓦片特殊缺失Cel槽补齐
+
+按legacy ensureAnimationDocument、blankAnimationTilemap／blankAnimationFreeTiles补齐缺失槽：文字空槽不带旧文字，调整设置留在owner，自由瓦片为空实例，网格瓦片沿用该层第一个现有Cel的网格尺寸并将cells全部置空。使用既有原生空槽适配与单候选准入，保留目录、纹理、原有帧内容；不产生导入历史。没有任何网格模板时仍明确限制，不凭空设计尺寸；原生提前物化与legacy缺失槽身份不等价仍待后续。
+
+八组实际legacy decode+ensureAnimationDocument ZIP oracle覆盖四种kind × 活动／非活动缺失槽；原生验证空权威载荷、资源精确像素、已有Cel按权威格子／实例重渲染像素、无损普通／恢复重开、复制空帧及Undo/Redo。额外检查发现fixture网格缓存不是权威数据，修正预期使用tiles::render而非旧fallback。正式构建special-slots-build.log、工程测试special-slots-manifest-tests.log、保存special-slots-save-tests.log、完整free-tile-project-tests special-slots-free-tests.log通过，正式--cel-clipboard-check退出0，来源覆盖special-slots-provenance.log与diff通过。无人工UI验收，全量迁移INCOMPLETE。

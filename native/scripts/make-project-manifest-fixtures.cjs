@@ -115,5 +115,17 @@ registerHooks({
   const blank=mode!=='hole-inactive';if(decoded.animation.frames.length!==(mode.startsWith('hole')?2:1)||decoded.layers[0].pixels.some(v=>v!==(blank?0:255)))throw new Error('Sparse animation oracle mismatch '+mode);
   fs.writeFileSync(path.join(out,`sparse-animation-${mode}.moonsprite`),bytes);
  }
+ const tileModule=await import(pathToFileURL(path.join(legacy,'src/renderer/src/core/tilemap.ts')));
+ const freeModule=await import(pathToFileURL(path.join(legacy,'src/renderer/src/core/free-tile.ts')));
+ const {ensureAnimationDocument}=await import(pathToFileURL(path.join(legacy,'src/renderer/src/core/animation.ts')));
+ for(const kind of ['text','adjustment','tilemap','free-tile'])for(const active of [false,true]){
+  const d=createDocument('Special missing slot',4,4,'rgba');ensureAnimationDocument(d);const l=d.layers[0],c=d.animation.cels[0];l.kind=kind;
+  if(kind==='tilemap'){d.tilesets=[tileModule.createSolidTileset('hole-sheet','Tiles',2,2,{r:10,g:20,b:30,a:255},'hole-tile')];l.tilemapTilesetId='hole-sheet';c.tilemap=tileModule.createTilemapCelData(4,4,2,2);c.tilemap.cells[0]={tilesetId:'hole-sheet',tileId:'hole-tile'};c.surface=tileModule.renderTilemapSurface(c.tilemap,d.tilesets,'rgba');}
+  if(kind==='free-tile'){d.tilesets=[tileModule.createSolidTileset('hole-sheet','Source',2,1,{r:10,g:20,b:30,a:255},'hole-tile')];l.freeTileSetId='hole-set';l.freeTileSources=[{id:'hole-source',name:'Source',tilesetId:'hole-sheet',visible:true,locked:false,opacity:1,blendMode:'normal',offsetX:0,offsetY:0}];c.freeTiles={instances:[{id:'hole-instance',sourceId:'hole-source',x:0,y:1}]};c.surface=freeModule.renderFreeTileSurface(c.freeTiles,freeModule.freeTileSourceRefs(l.freeTileSources,d.tilesets),'rgba',4,4);}
+  const r=unzipSync(encodeProject(d,{includePreview:false})),m=JSON.parse(strFromU8(r['manifest.json']));m.document.animation.frames.push({id:'missing-special',duration:260});if(active)m.document.animation.activeFrameId='missing-special';r['manifest.json']=strToU8(JSON.stringify(m));const bytes=zipSync(r),decoded=decodeProject(bytes);ensureAnimationDocument(decoded);
+  const blank=decoded.animation.cels.find(x=>x.frameId==='missing-special');if(!blank||blank.text||blank.freeTiles?.instances.length||blank.tilemap?.cells.some(Boolean))throw new Error('Special blank oracle mismatch '+kind);
+  if(kind==='tilemap'&&(!blank.tilemap||blank.tilemap.columns!==2))throw new Error('Special grid template oracle mismatch');
+  fs.writeFileSync(path.join(out,`special-hole-${kind}-${Number(active)}.moonsprite`),bytes);
+ }
  console.log('Generated project manifest fixtures through legacy encodeProject');
 })().catch(e=>{console.error(e);process.exitCode=1;});

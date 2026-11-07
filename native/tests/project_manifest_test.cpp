@@ -68,6 +68,15 @@ void sparseAnimationChecks(const std::filesystem::path& dir){
   d.beginStroke({0,0},0xffabcdef);check(d.commitStroke(),"Sparse imported frame editable");d.undo();verify(d);d.redo();check(d.pixels()[0]==0xffabcdef&&d.frame().id==active,"Sparse frame redo");
  }
 }
+void specialSlotChecks(const std::filesystem::path& dir){
+ using namespace moon;
+ for(const std::string kind:{"text","adjustment","tilemap","free-tile"})for(bool active:{false,true}){
+  const auto manifest=readProjectManifest(load(dir/("special-hole-"+kind+"-"+std::to_string(active)+".moonsprite")));auto d=createEditableDocument(prepareEditableImport(manifest));const auto resources=d.timeline().state().tilesets;
+  auto verify=[&](const Document& candidate){const auto* c=candidate.timeline().findCel(candidate.layer().id,"missing-special");check(c&&c->surface&&!c->text&&!c->linkedCelId,"Special missing slot independent blank");const auto& s=*c->surface;check(std::all_of(s.pixels.begin(),s.pixels.end(),[](Pixel p){return !p;}),"Special missing slot pixels blank");if(kind=="free-tile")check(c->freeTiles&&c->freeTiles->instances.empty(),"Free missing slot empty instance authority");if(kind=="tilemap")check(c->tilemap&&c->tilemap->columns==2&&c->tilemap->rows==2&&std::none_of(c->tilemap->cells.begin(),c->tilemap->cells.end(),[](const auto& cell){return bool(cell);}),"Tile missing slot uses empty grid template");check(candidate.layer().kind==kind&&candidate.timeline().state().tilesets.size()==resources.size()&&candidate.timeline().diagnoseLinks().empty(),"Special missing slot keeps owner resources");for(const auto& old:manifest.cels){const auto* kept=candidate.timeline().findCelById(old.id);const auto resolved=candidate.timeline().resolveSurface(kept->id);const auto expected=old.tilemap?tiles::render(*old.tilemap,manifest.tilesets):old.freeTiles?free_tiles::render(*manifest.layers.front().freeTiles,*old.freeTiles,manifest.tilesets,old.surface->width,old.surface->height):old.surface->pixels;check(resolved.source->freeTiles==old.freeTiles&&bool(resolved.source->tilemap)==bool(old.tilemap)&&resolved.surface->pixels==expected,(std::string("Special missing slot preserves existing Cel payload and raster ")+kind+" active="+std::to_string(active)+" free="+std::to_string(resolved.source->freeTiles==old.freeTiles)+" pixels="+std::to_string(resolved.surface->pixels==expected)).c_str());}for(std::size_t n=0;n<resources.size();++n)check(candidate.timeline().state().tilesets[n].pixels==resources[n].pixels,"Special missing slot keeps exact resource pixels");};
+  verify(d);check(d.historyPosition()==0,"Special slot import no history");for(bool recovery:{false,true}){auto saved=recovery?encodeRecoveryProject(d):encodeEditableProject(d);verify(createEditableDocument(prepareEditableImport(readProjectManifest(saved.bytes))));}
+  d.selectFrame("missing-special");d.addFrame(true);check(d.timeline().state().frames.size()==3,"Special blank frame duplicable");d.undo();verify(d);d.redo();check(d.timeline().state().frames.size()==3,"Special blank duplicate redo");
+ }
+}
 void inlineMaskChecks(const std::filesystem::path& dir){
  using namespace moon;auto bytes=load(dir/"inline-mask-u8.moonsprite");const auto raw=readProjectManifest(bytes);check(raw.unsupported.empty()&&raw.masks.size()==1&&raw.maskDataFiles.size()==1,"Inline mask was rejected or lost");const auto& mask=raw.masks[0];check(mask.id=="inline-mask"&&mask.surface->offsetX==-1&&mask.surface->offsetY==1&&mask.locked&&mask.autoLink,"Inline mask metadata migration");check(mask.surface->pixels==std::vector<std::uint32_t>({0xff000000,0xff808080,0xffffffff,0xff404040}),"Inline scalar resource decode");
  auto rgba=readProjectManifest(load(dir/"inline-mask-rgba.moonsprite"));check(rgba.masks[0].surface->pixels==std::vector<std::uint32_t>({0,0xff808080,0xff000000,0xffffffff}),"Mask RGBA transparent RGB normalization");
@@ -87,7 +96,7 @@ void inlineMaskChecks(const std::filesystem::path& dir){
 int main(int argc,char** argv) {
  try {
   check(argc==2,"Fixture argument required");const auto dir=std::filesystem::u8path(argv[1]);
-  historicalVersionChecks(dir);activeCacheChecks(dir);linkedCacheChecks(dir);sparseAnimationChecks(dir);inlineMaskChecks(dir);
+  historicalVersionChecks(dir);activeCacheChecks(dir);linkedCacheChecks(dir);sparseAnimationChecks(dir);specialSlotChecks(dir);inlineMaskChecks(dir);
   auto bytes=load(dir/"valid.moonsprite");auto parsed=readProjectManifest(bytes);
   check(parsed.schemaVersion==21 && parsed.colorMode=="rgba" && parsed.width==2 && parsed.height==2,"Header changed");
   check(parsed.name==u8"原生兼容样本","Unicode name changed");
