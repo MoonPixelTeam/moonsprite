@@ -451,7 +451,7 @@ std::vector<std::size_t> Editor::paletteGradientSlots()const{
 
   }
 
-void Editor::applyPaletteGradient(bool hue){try{const auto slots=paletteViewSlots();document.gradientPaletteSlots(paletteGradientSlots(),paletteColumns_,hue,&slots);}catch(const std::length_error&){status_=U"颜色编号超出当前支持范围";}refresh();}
+void Editor::applyPaletteGradient(bool hue){try{const auto indices=paletteGradientSlots();if(indices.size()>=2){const auto slots=paletteViewSlots();document.gradientPaletteSlots(indices,paletteColumns_,hue,&slots);}else document.gradientPaletteColors(hue);}catch(const std::length_error&){status_=U"颜色编号超出当前支持范围";}refresh();}
 
 void Editor::showPaletteActions() {
 

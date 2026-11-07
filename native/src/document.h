@@ -310,6 +310,7 @@ public:
   bool sortPaletteColors(PaletteSortMode mode,bool descending=false);
   void gradientPaletteSlots(std::vector<std::size_t> indices,int columns,bool byHue=false,const std::vector<int>* viewSlots=nullptr);
   bool reversePaletteColors();
+  bool gradientPaletteColors(bool byHue=false);
   std::size_t activeLayerIndex() const;
   void selectLayer(const std::string& id);
   std::size_t activeFrameIndex() const;

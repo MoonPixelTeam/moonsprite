@@ -4642,6 +4642,10 @@ void Editor::smokePaletteGradient(){
     document.gradientPaletteSlots({5,6,7},3);
     require(document.paletteEntry(document.palette().slots[5])->color==0xff0000ff && document.paletteEntry(document.palette().slots[6])->color==0xff800080 && document.paletteEntry(document.palette().slots[7])->color==0xffff0000,"Palette gradient empty endpoints use foreground/background");
     const auto h=document.historySize();document.gradientPaletteSlots({1},3);require(document.historySize()==h,"Palette gradient short range noop");
+    // Actual PalettePanel apply function falls back to selected raw-order
+    // colors when a supplied view range has fewer than two cells; shortcuts
+    // and menu enablement retain their existing range gate.
+    for(bool hue:{false,true}){document=Document(1,1);document.applyStoredPalette({0xff0000ff,0xff00ff00,0xffff0000});const auto ids=document.palette().order();for(int id:ids)document.selectPalette(id,true);paletteManual_=false;refresh();paletteBoxRange_=PaletteBoxRange{document.identity(),0,0,document.palette().selected};require(paletteGradientSlots().size()==1,"Selected color gradient fallback range");const auto slots=document.palette().slots;const auto h=document.historySize();applyPaletteGradient(hue);require(document.paletteEntry(ids[1])->color==(hue?0xffff00ffu:0xff800080u)&&document.palette().slots==slots&&document.historySize()==h+1,"Selected color gradient fallback one edit without slot mutation");document.selectPalette(ids[0]);const auto selected=document.palette().selected;document.undo();require(document.paletteEntry(ids[1])->color==0xff00ff00&&document.palette().selected==selected,"Selected color gradient Undo preserves later selection");document.redo();require(document.paletteEntry(ids[1])->color==(hue?0xffff00ffu:0xff800080u),"Selected color gradient Redo");}
     paletteManual_=previousManual;paletteBoxRange_.reset();document=Document();refresh();
 
   }

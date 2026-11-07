@@ -1777,15 +1777,35 @@ bool Document::sortPaletteColors(PaletteSortMode mode,bool descending){
  if(!d)d=hue(a,b);return descending?d>0:d<0;});
  const auto before=currentPaletteSlots(palette_);ids.resize(std::max(ids.size(),before.size()),0);if(ids==before)return false;cancelStroke();Edit e{{},state_,nextState_};e.paletteKind=9;e.beforePalette=PaletteState{};e.afterPalette=PaletteState{};e.beforePalette->entries.clear();e.afterPalette->entries.clear();e.beforePalette->slots=before;e.beforePalette->columns=palette_.columns;e.afterPalette->slots=ids;e.afterPalette->setOrder(paletteOrderFromSlots(ids));e.afterPalette->columns=palette_.columns;palette_.slots=std::move(ids);palette_.setOrder(paletteOrderFromSlots(palette_.slots));pushEdit(std::move(e),U"排序颜色板颜色");return true;
 }
+namespace {
+struct PaletteGradientSampler {
+ struct Hsv{double h,s,v;};Pixel start,end;bool byHue;Hsv a{},b{};double hueDelta=0;
+ static Hsv hsv(Pixel c){double r=(c&255)/255.0,g=((c>>8)&255)/255.0,bl=((c>>16)&255)/255.0,max=std::max({r,g,bl}),min=std::min({r,g,bl}),d=max-min,h=0;if(d>0){if(max==r)h=60*std::fmod((g-bl)/d,6);else if(max==g)h=60*((bl-r)/d+2);else h=60*((r-g)/d+4);}if(h<0)h+=360;return {h,max==0?0:d/max,max};}
+ PaletteGradientSampler(Pixel first,Pixel last,bool hue):start(first),end(last),byHue(hue){if(byHue){a=hsv(start);b=hsv(end);hueDelta=b.h-a.h;if(hueDelta>180)hueDelta-=360;else if(hueDelta< -180)hueDelta+=360;}}
+ Pixel operator()(std::size_t index,std::size_t count)const{
+  if(count==1)return start;const double t=double(index)/(count-1);auto byte=[](double v){return Pixel(std::clamp(std::floor(v+.5),0.0,255.0));};Pixel color=0;
+  if(byHue){double h=std::fmod(std::fmod(a.h+hueDelta*t,360)+360,360),s=a.s+(b.s-a.s)*t,v=a.v+(b.v-a.v)*t,c=v*s,x=c*(1-std::abs(std::fmod(h/60,2)-1)),m=v-c;double r=0,g=0,bl=0;switch(int(std::floor(h/60))){case 0:r=c;g=x;break;case 1:r=x;g=c;break;case 2:g=c;bl=x;break;case 3:g=x;bl=c;break;case 4:r=x;bl=c;break;default:r=c;bl=x;}color=byte((r+m)*255)|(byte((g+m)*255)<<8)|(byte((bl+m)*255)<<16)|(byte(double(start>>24)+(double(end>>24)-double(start>>24))*t)<<24);}else for(int shift:{0,8,16,24})color|=byte(double((start>>shift)&255)+(double((end>>shift)&255)-double((start>>shift)&255))*t)<<shift;
+  return color;
+ }
+};
+}
 // legacy paletteGradient/raster HSV and workspace-palette gradientPaletteSlots.
 void Document::gradientPaletteSlots(std::vector<std::size_t> indices,int columns,bool byHue,const std::vector<int>* viewSlots){
  indices.erase(std::remove_if(indices.begin(),indices.end(),[](auto i){return i>=65536;}),indices.end());std::sort(indices.begin(),indices.end());indices.erase(std::unique(indices.begin(),indices.end()),indices.end());if(indices.size()<2)return;columns=std::clamp(columns,1,256);
  auto next=palette_;next.slots=normalizePaletteSlots(next.entries,next.order(),viewSlots?*viewSlots:next.slots,columns);next.columns=columns;const auto required=indices.back()+1;while(next.slots.size()<required)next.slots.resize(next.slots.size()+columns,0);std::unordered_map<int,std::size_t> positions;for(std::size_t i=0;i<next.entries.size();++i)positions.emplace(next.entries[i].id,i);
  auto endpoint=[&](std::size_t slot,Pixel fallback){auto found=positions.find(next.slots[slot]);return found==positions.end()?fallback:next.entries[found->second].color;};const auto start=endpoint(indices.front(),palette_.primary),end=endpoint(indices.back(),palette_.secondary);
- struct Hsv{double h,s,v;};auto hsv=[](Pixel c){double r=(c&255)/255.0,g=((c>>8)&255)/255.0,b=((c>>16)&255)/255.0,max=std::max({r,g,b}),min=std::min({r,g,b}),d=max-min,h=0;if(d>0){if(max==r)h=60*std::fmod((g-b)/d,6);else if(max==g)h=60*((b-r)/d+2);else h=60*((r-g)/d+4);}if(h<0)h+=360;return Hsv{h,max==0?0:d/max,max};};const auto a=hsv(start),b=hsv(end);double hueDelta=b.h-a.h;if(hueDelta>180)hueDelta-=360;else if(hueDelta< -180)hueDelta+=360;
- auto byte=[](double v){return Pixel(std::clamp(std::floor(v+.5),0.0,255.0));};for(std::size_t i=0;i<indices.size();++i){const double t=double(i)/(indices.size()-1);Pixel color=0;if(byHue){double h=std::fmod(std::fmod(a.h+hueDelta*t,360)+360,360),s=a.s+(b.s-a.s)*t,v=a.v+(b.v-a.v)*t,c=v*s,x=c*(1-std::abs(std::fmod(h/60,2)-1)),m=v-c;double r=0,g=0,bl=0;switch(int(std::floor(h/60))){case 0:r=c;g=x;break;case 1:r=x;g=c;break;case 2:g=c;bl=x;break;case 3:g=x;bl=c;break;case 4:r=x;bl=c;break;default:r=c;bl=x;}color=byte((r+m)*255)|(byte((g+m)*255)<<8)|(byte((bl+m)*255)<<16)|(byte(double(start>>24)+(double(end>>24)-double(start>>24))*t)<<24);}else for(int shift:{0,8,16,24})color|=byte(double((start>>shift)&255)+(double((end>>shift)&255)-double((start>>shift)&255))*t)<<shift;
+ const PaletteGradientSampler sample(start,end,byHue);for(std::size_t i=0;i<indices.size();++i){const Pixel color=sample(i,indices.size());
  const auto slot=indices[i];auto found=positions.find(next.slots[slot]);if(found!=positions.end())next.entries[found->second].color=color;else{const int id=allocatePaletteId(next);const auto number=std::to_string(id);positions.emplace(id,next.entries.size());next.entries.push_back({id,std::u32string(number.begin(),number.end()),color});next.slots[slot]=id;}}
  cancelStroke();Edit e{{},state_,nextState_};e.paletteKind=10;e.beforePalette=palette_;normalizePaletteSnapshot(*e.beforePalette,true);next.independentOrder.reset();e.afterPalette=next;history_.reserve(position_+1);palette_=std::move(next);pushEdit(std::move(e),U"生成颜色板渐变");
+}
+// legacy workspace-palette::gradientPaletteColors: only selected IDs in
+// raw order, no slot creation/reordering and no role/selection changes.
+bool Document::gradientPaletteColors(bool byHue){
+ const std::unordered_set<int> selected(palette_.selected.begin(),palette_.selected.end());std::vector<int> ids;for(int id:palette_.order())if(selected.count(id))ids.push_back(id);if(ids.size()<2)return false;
+ std::unordered_map<int,const PaletteEntry*> entries;for(const auto& e:palette_.entries)entries[e.id]=&e;const auto first=entries.find(ids.front()),last=entries.find(ids.back());if(first==entries.end()||last==entries.end())return false;const auto start=first->second->color,end=last->second->color;
+ Edit edit{{},state_,nextState_};edit.paletteKind=8;edit.beforePalette=PaletteState{};edit.afterPalette=PaletteState{};edit.beforePalette->entries.clear();edit.beforePalette->slots.clear();edit.afterPalette->entries.clear();edit.afterPalette->slots.clear();
+ const PaletteGradientSampler sample(start,end,byHue);for(std::size_t i=0;i<ids.size();++i)if(const auto found=entries.find(ids[i]);found!=entries.end()){const Pixel before=found->second->color,after=sample(i,ids.size());if(before!=after){edit.beforePalette->entries.push_back({ids[i],U"",before});edit.afterPalette->entries.push_back({ids[i],U"",after});}}
+ if(edit.beforePalette->entries.empty())return false;cancelStroke();history_.reserve(position_+1);applyPaletteEdit(edit,true);pushEdit(std::move(edit),byHue?U"生成颜色板色调渐变":U"生成颜色板渐变");return true;
 }
 // legacy workspace-palette.ts paletteOperationIds/applyPaletteColors/reversePaletteColors.
 bool Document::reversePaletteColors(){

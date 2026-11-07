@@ -313,10 +313,12 @@ registerHooks({
  // Preserve raw runtime state (sort may retain duplicate slots until the
  // next command); archives alone normalize those slots and hide this edge.
  const rawPaletteOracle=[];
- const rawOrders=[[1,1,2],[2,2,1],[999,1,2],[1,999,1,2],[-1,1,2],[0,1,2],[999,999],[2,1,2],[3,1,2,1,3],[999,3,2,1,-1,3,0],[],[2147483647,1,2]];
- const rawOps=['update','rename','reverse','reverse-selected','sort','delete','delete-ghost','move','add','paste','paste-noop','paste-new','gradient','gradient-hue','gradient-new','apply','apply-noop','apply-new','extract','extract-append'];
+ const rawOrders=[[1,1,2],[2,2,1],[999,1,2],[1,999,1,2],[-1,1,2],[0,1,2],[999,999],[2,1,2],[3,1,2,1,3],[999,3,2,1,-1,3,0],[],[2147483647,1,2],[1,2,3],[3,2,1],[1,2,3],[1,3,2],[999,1,2],[1,2,999],[1,999,2,3]];
+ const rawOps=['update','rename','reverse','reverse-selected','sort','delete','delete-ghost','move','add','paste','paste-noop','paste-new','gradient','gradient-hue','gradient-new','apply','apply-noop','apply-new','extract','extract-append','gradient-colors','gradient-colors-hue'];
  for(let layout=0;layout<rawOrders.length;++layout)for(const columns of [1,3,256])for(const sortedFirst of [false,true])for(const operation of rawOps){
+  if(layout>=12&&!operation.startsWith('gradient-colors'))continue;
   const source=createDocument('raw palette',2,2,'rgba');source.palette=[{id:1,name:'one',color:{r:200,g:10,b:20,a:255}},{id:2,name:'two',color:{r:10,g:200,b:30,a:255}},{id:3,name:'three',color:{r:30,g:20,b:200,a:128}},{id:4,name:'hidden',color:{r:90,g:80,b:70,a:255}}];source.nextColorId=5;source.paletteColumns=columns;source.paletteOrder=rawOrders[layout];source.paletteSlots=[2,null,1,3,null,null,null];
+  if(operation.startsWith('gradient-colors')){const endpoints=[[{r:255,g:0,b:0,a:32},{r:0,g:0,b:255,a:224}],[{r:255,g:128,b:0,a:255},{r:255,g:0,b:128,a:0}],[{r:153,g:153,b:153,a:255},{r:0,g:0,b:0,a:0}],[{r:1,g:254,b:127,a:1},{r:254,g:1,b:128,a:254}]][layout%4];source.palette[0].color=endpoints[0];source.palette[1].color={r:11,g:81,b:17,a:119};source.palette[2].color=endpoints[1];}
   const d=decodeProject(encodeProject(source,{includePreview:false})),history=[],session={document:d,history:{push:e=>history.push(e)},selectedPaletteIds:[],paletteSelectionId:null,primaryColor:{r:41,g:121,b:255,a:255},secondaryColor:{r:255,g:255,b:255,a:255}};
   const base=`palette-raw-${rawPaletteOracle.length}`,packed=c=>(c.r|(c.g<<8)|(c.b<<16)|(c.a<<24))>>>0;
   const state=()=>({entries:d.palette.map(e=>({id:e.id,name:e.name,color:packed(e.color)})),order:[...d.paletteOrder],slots:[...d.paletteSlots],columns:d.paletteColumns,next:d.nextColorId,selected:[...session.selectedPaletteIds],primaryId:session.paletteSelectionId,primary:packed(session.primaryColor)});
@@ -325,8 +327,10 @@ registerHooks({
   save('import');if(sortedFirst)paletteCommands.sortPaletteColors(session,'red','ascending');history.length=0;
   const slots=[...d.paletteSlots],first=slots.findIndex(id=>id!==null),last=slots.findLastIndex(id=>id!==null),color={r:20,g:40,b:60,a:255};
   if(operation==='reverse-selected'){paletteCommands.selectPaletteColors(session,[1,3],3);}
+  if(operation.startsWith('gradient-colors'))paletteCommands.selectPaletteColors(session,layout>=12?[1,2,3,999]:layout%4===0?[1]:layout%4===1?[]:layout%4===2?[1,2,3]:[1,2,3,999],3);
   save('before');
   switch(operation){
+   case 'gradient-colors':case 'gradient-colors-hue':paletteCommands.gradientPaletteColors(session,operation==='gradient-colors-hue');break;
    case 'update':paletteCommands.updatePaletteColor(session,1,color);break;
    case 'rename':paletteCommands.renamePaletteColor(session,1,' renamed ');break;
    case 'reverse':case 'reverse-selected':paletteCommands.reversePaletteColors(session);break;
