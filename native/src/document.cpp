@@ -1979,7 +1979,7 @@ bool Document::flipContent(bool horizontal){
  history_.reserve(position_+1);change_={};applyEdit(edit,true);publishChange();pushEdit(std::move(edit),horizontal?U"水平翻转选区":U"垂直翻转选区");return true;
 }
 bool Document::rotateContent180(){return rotateContent(180);}
-bool Document::rotateContent(int angle){if(!activeMaskId_.empty())return transformMaskImmediate(false,false,angle);if(hasTilemapContent()||hasFreeTileContent())return false;
+bool Document::rotateContent(int angle){if(!activeMaskId_.empty())return transformMaskImmediate(false,false,angle);
  const auto commandLayers=selectedLayerIdsWithGroups();
  if(angle!=180 && angle!=90 && angle!=-90)return false;
  // legacy rotateWorkspaceContent rotates the selected owning layers at the
@@ -1988,7 +1988,7 @@ bool Document::rotateContent(int angle){if(!activeMaskId_.empty())return transfo
  for(const auto& id:timelineSelection_.cels)if(const auto* target=timeline_.findCelById(id))selected.insert(target->layerId);
  const bool implicitFrames=!selectedFrames_.empty() && commandLayers.empty();if(selected.empty() && !implicitFrames)selected.insert(activeLayerId_);
  std::vector<const DocumentCel*> targets;
- for(const auto& l:timeline_.state().layers){if(implicitFrames){if(layerEffectivelyLocked(l) || !layerEffectivelyVisible(l))continue;}else if(!selected.count(l.id))continue;if(layerEffectivelyLocked(l) || !layerEffectivelyVisible(l))return false;if(const auto* target=timeline_.findCel(l.id,activeFrameId_))targets.push_back(target);}
+ for(const auto& l:timeline_.state().layers){if(implicitFrames){if(layerEffectivelyLocked(l) || !layerEffectivelyVisible(l))continue;}else if(!selected.count(l.id))continue;if(!l.kind.empty() || layerEffectivelyLocked(l) || !layerEffectivelyVisible(l))return false;if(const auto* target=timeline_.findCel(l.id,activeFrameId_))targets.push_back(target);}
  if(targets.empty())return false;
  auto bounds=selection_;if(!bounds){int left=std::numeric_limits<int>::max(),top=left,right=std::numeric_limits<int>::min(),bottom=right;
   for(const auto* target:targets){const auto r=timeline_.resolveSurface(target->id);if(!r.surface)continue;const auto& source=*r.surface;raster::validate(source);for(int y=0;y<source.height;++y)for(int x=0;x<source.width;++x){if(!(source.pixels[std::size_t(y)*source.width+x]>>24))continue;const int wx=raster::coordinate(std::int64_t(source.offsetX)+x),wy=raster::coordinate(std::int64_t(source.offsetY)+y);left=std::min(left,wx);top=std::min(top,wy);right=std::max(right,wx);bottom=std::max(bottom,wy);}}
