@@ -404,7 +404,9 @@ void Editor::openPaletteSave(){
 
     if(pending_!=Pending::None)return;
 
-    refreshStoredPalettes();if(paletteSaveName_.empty())paletteSaveName_=extractionDefaultName();
+    // Opening Save is not legacy refreshPalettes: preserve a deliberately
+    // temporary palette even when its colors match a library file.
+    const auto active=activeStoredPalette_;refreshStoredPalettes();activeStoredPalette_=active;persistStoredPalettePreferences();if(paletteSaveName_.empty())paletteSaveName_=extractionDefaultName();
 
     openPaletteEditor(0,false);pending_=Pending::PaletteSave;paletteInput_->numeric=false;paletteInput_->suffix.clear();paletteInput_->setText(utf8Text(paletteSaveName_));discard_->caption=U"保存为 PNG";keep_->caption=U"关闭";discard_->setVisible(true);refresh();paletteInput_->requestFocus();paletteInput_->selectAllText();
 
@@ -440,7 +442,7 @@ bool Editor::applyPaletteExtraction(){
 
       const auto composite=compositeNormalRegion(document.timeline(),document.frame().id,{0,0,document.width(),document.height()});const auto colors=extractPaletteScanline(composite,extractLimit_);if(colors.empty())throw std::runtime_error("当前图像没有非透明颜色");
 
-      if(extractMode_==0)paletteSaveName_=extractionName();const auto beforeVisible=paletteSaveColors().size();document.applyExtractedPalette(colors,extractMode_==2,paletteColumns_);paletteScrollPixels_=0;status_=extractMode_==0?U"已创建临时调色板："+extractionName():extractMode_==1?U"已替换调色板":U"已追加提取颜色："+unicodeText(std::to_string(paletteSaveColors().size()-beforeVisible));return true;
+      const auto beforeVisible=paletteSaveColors().size();document.applyExtractedPalette(colors,extractMode_==2,paletteColumns_);if(extractMode_==0){paletteSaveName_=extractionName();activeStoredPalette_.clear();persistStoredPalettePreferences();}paletteScrollPixels_=0;status_=extractMode_==0?U"已创建临时调色板："+extractionName():extractMode_==1?U"已替换调色板":U"已追加提取颜色："+unicodeText(std::to_string(paletteSaveColors().size()-beforeVisible));return true;
 
     }catch(const std::exception& e){status_=U"提取失败："+unicodeText(e.what());invalidate();return false;}
 

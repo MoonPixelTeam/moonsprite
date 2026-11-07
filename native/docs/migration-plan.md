@@ -3817,3 +3817,11 @@ palette-apply-index-build.log正式Release、工程与核心目标构建通过�
 回归覆盖有效内置和用户并存、坏JSON／未知版本／坏布局内置报错与用户隔离、坏内置修复后用户保留身份过滤，以及64MiB+1文件的预检拒绝／内置路径错误。大文件由owned fixture resize生成，不读取其全部内容。内存上限是既有原生适配，并非旧版无条件格式等价；全量迁移仍INCOMPLETE。
 
 验证：palette-library-resource-build.log正式Release／色板库／导入构建退出0；palette-library-resource-tests.log与palette-library-resource-import-tests.log退出0，正式--palette-library-check及--palette-import-check退出0。来源627文件覆盖通过，strict因全量缺口退出1，diff通过。未执行完整旧版Rust运行或人工图像验收，错误通道验证范围为库异常及正式现有界面回归；全量迁移仍INCOMPLETE。
+
+### 色板提取模式与活动库身份（2026-11-08）
+
+接续d579c71e，先核对实际components/palette-clipboard.ts与PalettePanel复制／粘贴映射，未发现需要新增格式或名称载荷的差异；继续沿工作区状态定位extractFromImage／openSaveDialog。成功create必须清除activePaletteId及其偏好，设置trim后的临时saveName，即使applyPalette颜色完全相同、没有新增文档历史也如此；replace／append保留原身份与名称。原生此前遗漏清除，并且打开保存时refreshStoredPalettes会按匹配颜色重新绑定临时色板。现create只在应用成功后更新会话状态；保存专用刷新保留显式会话身份，真正打开库／刷新仍保留现有匹配行为。取消／空画面失败保留原身份和名称，Undo/Redo只恢复文档，不回退会话身份。
+
+原正式extraction-names自动检查新增三模式×初始颜色相同／不同六组真实临时库文件对照，覆盖无操作create、Save Current显示、Undo/Redo、失败和取消；复用原生现有弹窗组件，未改布局。没有据此关闭颜色板真实ID0／索引色等缺口，全量迁移仍INCOMPLETE。
+
+验证：extraction-identity-build.log唯一正式Release构建退出0；正式--extraction-names-check（含新增身份矩阵）、--append-extraction-count-check、--palette-library-check、--palette-clipboard-check均退出0。来源627文件覆盖通过，strict因既有迁移缺口退出1，diff通过。未修改核心提取算法，本批未重跑无关全量核心矩阵；没有人工图像／真实剪贴板跨进程验收。全量迁移仍INCOMPLETE。
