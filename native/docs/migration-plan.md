@@ -3165,3 +3165,9 @@ pending-tile-center-build.log正式Release及free/tile测试构建exit0，fixtur
 对照legacy workspace-commands-selection-move.ts::moveActiveSelectionWithSelectionHistory先限制键盘requested位置，再按pendingLayer锁定校验处理已有浮动，不按文档中无关特殊层拒绝。原生识别合法普通图层clipboard浮动状态，放行整篇free保护，复用共同坐标平移并补齐该状态的画布边界限制。其他初次选区捕获仍按已有路径判断。
 
 新增普通/tile/free×取消/提交六组，检查左上及右下边缘no-op、大位移限制、半透明RGBA精确值、预览无历史/单提交、无关Cel像素/实例/网格及资源不变、Undo/Redo和实际重开。raster-clipboard-nudge-build.log正式Release及两核心测试构建exit0；完整free-tile-project-tests、tilemap-project-tests通过（raster-clipboard-nudge-free-test.log、raster-clipboard-nudge-grid-test.log）；正式工作区drawing-anchor-edit-floating组合exit0；来源625文件快照通过（raster-clipboard-nudge-provenance.log），diff通过。未做人工UI验收，全量迁移仍INCOMPLETE。
+
+### 2026-11-07：混合特殊图层文档普通浮动粘贴翻转
+
+核对legacy workspace-commands-selection-flip.ts::flipActiveSelection优先处理pendingPaste来源，原生flipContent静态特殊类型保护此前先于共同floating分支，阻断混合文档普通粘贴翻转。将该保护限定为无浮动状态，复用原有逐源翻转、取消恢复和transformFloatingPaste目标校验，专用free/Paint路径仍保留。
+
+新增tile/free×水平/垂直×取消/提交八组合，检查浮动剪贴板精确RGBA/半透明次序、实际提交像素、单历史、无关特殊Cel像素/实例/网格及资源保留、Undo/Redo和实际保存重开。mixed-clipboard-flip-build.log正式Release及两核心测试构建exit0；完整free-tile-project-tests、tilemap-project-tests通过（mixed-clipboard-flip-free-test.log、mixed-clipboard-flip-grid-test.log）；正式工作区drawing-anchor-edit-floating组合exit0；来源625文件快照通过（mixed-clipboard-flip-provenance.log），diff通过。未做人工UI验收，全量迁移仍INCOMPLETE。

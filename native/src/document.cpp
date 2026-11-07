@@ -1932,7 +1932,7 @@ bool Document::flipContent(bool horizontal){
   }
   if(edit.children.empty())return false;history_.reserve(position_+1);capturePixelAddresses(edit);change_={};try{applyEdit(edit,true);}catch(...){applyEdit(edit,false);throw;}change_={0,0,width_,height_};publishChange();pushEdit(std::move(edit),horizontal?U"水平翻转选区":U"垂直翻转选区");return true;
  }
- if(layer().kind=="free-tile"&&activeMaskId_.empty())return flipFreeTileContent(horizontal);if(!activeMaskId_.empty()&&!floating_)return selection_?transformMaskImmediate(true,horizontal,0):false;if(layer().kind=="tilemap"&&activeMaskId_.empty()&&tileSelection_.mode==tiles::Mode::Paint)return flipPaintCellSelection(horizontal);if(activeMaskId_.empty()&&(hasTilemapContent()||hasFreeTileContent()))return false;
+ if(layer().kind=="free-tile"&&activeMaskId_.empty())return flipFreeTileContent(horizontal);if(!activeMaskId_.empty()&&!floating_)return selection_?transformMaskImmediate(true,horizontal,0):false;if(layer().kind=="tilemap"&&activeMaskId_.empty()&&tileSelection_.mode==tiles::Mode::Paint)return flipPaintCellSelection(horizontal);if(activeMaskId_.empty()&&!floating_&&(hasTilemapContent()||hasFreeTileContent()))return false;
  const auto commandLayers=selectedLayerIdsWithGroups();
  if(floating_){
   auto& f=*floating_;std::size_t extra=0;for(const auto& target:f.targets){floatingAddBytes(extra,std::uint64_t(target.source.pixels.size())*5);if(!target.originalSource)floatingAddBytes(extra,std::uint64_t(target.source.pixels.size())*5);}floatingAddBytes(extra,std::uint64_t(f.source.pixels.size())*5);checkFloatingBudget(f,extra);
