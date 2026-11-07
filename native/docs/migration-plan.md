@@ -3395,3 +3395,9 @@ document-raster-history-tests新增直接fixture在预览期间变更moveWithOwn
 legacy workspace-commands-color.ts仅layer/selection分支使用activePaintLayer；document/layers/frames/cells仍收集animationLayerAtFrame，即使当前编辑蒙版也处理图层像素。原生此前因存在活动蒙版拒绝所有Cel目标。现在仅显式活动mask ID进入蒙版替换，其余合法Cel目标沿用原有图层处理；预览记录蒙版上下文，按实际目标ID判断蒙版或Cel，图层提交保留蒙版/隔离上下文历史。特殊图层本体仍受原有保护。
 
 新增普通/隔离×取消/提交矩阵，验证蒙版编辑期间图层独立预览、原始像素保留、蒙版不变、单次历史及Undo/Redo上下文。正式/测试构建exit0（replacement-raster-mask-context-build.log），完整free-tile-project-tests通过（replacement-raster-mask-context-tests.log），既有实际颜色替换对话框定向检查退出0，来源检查通过（replacement-raster-mask-context-provenance.log），diff通过。未人工UI验收，未完成特殊图层本体替换，全量迁移仍INCOMPLETE。
+
+### 2026-11-07：隐藏特殊图层不阻挡可见普通图层合并
+
+调查自由瓦片Cel连接确认timeline_model仍强制独立实例，未通过解除按钮限制冒充迁移。另发现mergeVisibleLayers按整个文档特殊内容直接return，菜单也按整个文档禁用；legacy core/layer-merge.ts只按继承可见性选目标、按继承锁拒绝，隐藏特殊图层应保留。原生核心仅在实际可见目标含tile/free时继续保护；菜单移除整个文档包装，统一使用有效显隐/锁并保留可见特殊目标禁用。现有合成和结构历史复用。
+
+新增tile/free×直接隐藏/组隐藏，合并可见普通图层后检查单历史、外观、特殊Cel身份/实例/网格/像素、资源、保存重开及Undo/Redo。测试首次函数拆分遗漏导致编译失败已修复；自由样本另有第二可见特殊层、重开preservedJson文本规范化造成断言不符，已按真实前置条件隐藏其他特殊层并按实例语义比较，保留像素等断言。最终正式构建exit0（hidden-special-merge-build.log），最终测试构建exit0（hidden-special-merge-final-test-build.log），完整free-tile-project-tests通过（hidden-special-merge-tests.log）；既有颜色替换对话框定向检查退出0，只证明编辑器基础回归，不称为合并菜单验收。来源检查通过（hidden-special-merge-provenance.log），diff通过。无人工UI验收；可见特殊图层合并和自由Cel连接仍未完成，全量迁移仍INCOMPLETE。
