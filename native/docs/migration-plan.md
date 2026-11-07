@@ -3407,3 +3407,9 @@ legacy workspace-commands-color.ts仅layer/selection分支使用activePaintLayer
 legacy core/layer-merge.ts::mergeVisibleLayers复用compositeDocument渲染全部帧；workspace-commands-layer-structure.ts::commitLayerMergeWithOwnedTilesets只对removedFreeTileLayerIds清理不再引用的专属资源，普通瓦片目录保留。原生解除核心与菜单的可见tile/free限制，直接复用现有全帧compositeNormalRegion及结构历史；沿用删除图层的资源归属检查，候选仅自由源，保留隐藏共享所属层/网格引用。合并生成普通图层，每帧独立栅格；隐藏层不变。
 
 新增tile/free×隐藏备用/共享源保留场景，检查全帧合成外观、普通结果、一次历史、资源语义、保存重开、Undo恢复特殊层和资源、Redo。首次构建变量替换误改resource为res已修复；首次测试复制备用层前未选中源导致实际可见目标错误，增加明确选择/复制身份断言后通过。最终正式构建exit0（visible-special-merge-final-build.log），最终测试构建通过（visible-special-merge-test-build.log），完整free-tile-project-tests通过（visible-special-merge-tests.log），既有编辑器颜色替换定向检查退出0，仅基础回归不充当合并菜单验收。来源检查通过（visible-special-merge-provenance.log），diff通过。尚无人工UI验收，蒙版/样式/组组合未在本阶段穷举；自由Cel链接及其他缺口仍在，全量迁移INCOMPLETE。
+
+### 2026-11-07：样式与蒙版特殊图层合并验证
+
+对照legacy core/layer-merge.ts::mergeVisibleLayers使用compositeDocument逐帧烘焙及removeEmptyGroups、installMergedFrames移除原所属蒙版。新增瓦片/自由瓦片×图层蒙版/组蒙版，配合颜色叠加样式，遍历样本已有帧，检查精确合成外观、一次历史、合并后废弃蒙版/空组移除、保存重开、Undo恢复原所属图层/组/蒙版、Redo外观。既有实现通过，无产品修改。
+
+测试构建exit0（masked-special-merge-build.log），完整free-tile-project-tests通过（masked-special-merge-tests.log），来源检查通过（masked-special-merge-provenance.log），diff通过。未重建正式程序（产品代码未变），未人工UI验收；仅覆盖颜色叠加与半覆盖蒙版组合，不代表所有样式/混合模式已穷举。自由Cel链接等仍未迁移，全量INCOMPLETE。
