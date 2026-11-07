@@ -1,6 +1,8 @@
 #include "palette_library.h"
 #include "palette_import.h"
+#include <windows.h>
 #include <fstream>
+#include <iterator>
 #include <iostream>
 #include <chrono>
 #include <algorithm>
@@ -41,6 +43,13 @@ int main(){try{
  // Sparse resize creates a large test file without allocating its contents.
  const auto oversized=root/"oversized.palette.json";std::ofstream(oversized)<<"{";std::filesystem::resize_file(oversized,64u*1024*1024+1);require(!library.list().empty(),"oversized user blocks library");bool tooLarge=false;try{readPaletteImportBytes(oversized);}catch(const std::exception& e){tooLarge=std::string(e.what()).find("64 MiB")!=std::string::npos;}require(tooLarge,"oversized file not rejected before decoding");
  std::filesystem::resize_file(resourceRoot/"bad.palette.json",64u*1024*1024+1);rejected=false;try{resources.list();}catch(const std::exception& e){const std::string message=e.what();rejected=message.find("bad.palette.json")!=std::string::npos&&message.find("64 MiB")!=std::string::npos;}require(rejected,"oversized built-in missing observable error");
+ // Save validates before any directory side effect, matching save_palette.
+ const auto invalidDirectory=root/"invalid-save-must-not-create";PaletteLibrary invalidLibrary(invalidDirectory);for(int mode=0;mode<5;++mode){auto invalid=p;if(mode==0)invalid.columns=0;if(mode==1)invalid.slots[0]=2;if(mode==2)invalid.slots[1]=999;if(mode==3)invalid.slots.pop_back();if(mode==4)invalid.slots[1]=std::nullopt;bool failed=false;try{invalidLibrary.save(invalid);}catch(const std::exception&){failed=true;}require(failed&&!std::filesystem::exists(invalidDirectory),"invalid save created directory before layout validation");}
+ // Atomic replacement failure preserves exact bytes and cleans only its temp.
+ auto transaction=library.save(p,"transaction");auto readBytes=[](const auto& path){std::ifstream in(path,std::ios::binary);return std::string(std::istreambuf_iterator<char>(in),{});};const auto previousBytes=readBytes(transaction.path);std::ofstream(root/"keep-user.tmp")<<"owned unrelated sentinel";auto filesBefore=std::distance(std::filesystem::directory_iterator(root),std::filesystem::directory_iterator{});
+ HANDLE locked=CreateFileW(transaction.path.c_str(),GENERIC_READ,FILE_SHARE_READ,nullptr,OPEN_EXISTING,FILE_ATTRIBUTE_NORMAL,nullptr);require(locked!=INVALID_HANDLE_VALUE,"lock transaction fixture");auto replacement=p;replacement.name="Replacement";replacement.colors[0]=0xffabcdef;bool failed=false;try{library.save(replacement,"transaction");}catch(const std::exception&){failed=true;}CloseHandle(locked);require(failed&&readBytes(transaction.path)==previousBytes&&readBytes(root/"keep-user.tmp")=="owned unrelated sentinel","failed overwrite damaged original or unrelated file");require(std::distance(std::filesystem::directory_iterator(root),std::filesystem::directory_iterator{})==filesBefore,"failed overwrite leaked temporary file");
+ auto replaced=library.save(replacement,"transaction");auto reopened=decodeStoredPalette(readBytes(replaced.path));require(reopened.id==transaction.id&&reopened.name==replacement.name&&reopened.colors==replacement.colors&&reopened.slots==replacement.slots&&reopened.names==replacement.names,"successful overwrite changed identity or payload");
+ const auto directoryTarget=root/"occupied-directory.palette.json";std::filesystem::create_directories(directoryTarget);std::ofstream(directoryTarget/"kept.txt")<<"owned sentinel";failed=false;try{library.save(replacement,"occupied-directory");}catch(const std::exception&){failed=true;}require(failed&&readBytes(directoryTarget/"kept.txt")=="owned sentinel","failed directory-target save changed directory contents");
  // Fixture intentionally retained: no user or existing library files are removed.
  std::cout<<"palette-library: passed\n";return 0;
  }catch(const std::exception& e){std::cerr<<e.what()<<'\n';return 1;}}

@@ -3837,3 +3837,9 @@ palette-apply-index-build.log正式Release、工程与核心目标构建通过�
 接续60fe3cfa，沿platform_palette.rs::text_imported_colors／json_imported_palette／linear_imported_palette／native_imported_palette核对。65536有效色是已有导入上限，但原生文本与通用JSON在完整vector分配后才拒绝；现收集第65537个有效色前立即拒绝，原生形状JSON也先检查颜色数再转换Pixel。文本一行只需前四个有效u16数值，现不保留多余数值，仍逐token解析并保留无效token过滤、RGBA顺序与默认alpha规则。64MiB输入上限、普通库读取超过65536色的既有允许行为不变。JSON DOM仍由WinRT完整解析，本批不声称解决全部输入内存成本。
 
 完整边界覆盖五种文本扩展和通用／原生JSON的65536成功与65537失败、无效行／条目不计颜色、十万额外数值不影响结果，以及失败文件导入不写库。验证：palette-import-admission-build.log正式Release及导入／库目标构建退出0；palette-import-admission-tests.log和palette-import-admission-library-tests.log退出0，正式--palette-import-check及--palette-library-check退出0。来源627文件覆盖通过，strict因既有迁移缺口退出1，diff通过。没有执行完整旧版Rust平台测试或实际内存峰值／人工文件选择器验收；结论限于提前颜色收集准入和避免无用数值vector增长。全量迁移仍INCOMPLETE。
+
+### 色板保存事务与失败隔离（2026-11-08）
+
+接续f31dfa86，对照platform_palette.rs::save_palette，布局验证应在palette_dir之前。原生此前直到编码才验证布局，已创建目录并扫描资源；现提取共享布局验证，保存先拒绝缺少schema2布局、重复／越界／缺失颜色和非整行槽位，再访问目录。编码和读取仍使用同一验证，未改变色板身份规则或原子写入器。
+
+新增真实Windows文件锁覆盖失败，逐字节核对原文件、无关.tmp及目录文件数；解除锁后保存重开，核对身份／名称／RGBA／槽位／名称数组；目标为目录时拒绝覆盖并保留子文件。夹具均为本次独立owned目录。长名称ID截断与旧版写入后读取失败的差异已询问用户，未以本批覆盖其决定。验证：palette-save-transaction-build.log正式Release和库／导入目标构建退出0；palette-save-transaction-tests.log及palette-save-transaction-import-tests.log退出0，正式--palette-library-check及--palette-import-check退出0。来源627文件覆盖通过，strict因既有迁移缺口退出1，diff通过。实际文件锁与目录目标均为原生测试执行，不等同于磁盘断电或人工系统选择器验收。全量迁移仍INCOMPLETE。
