@@ -3329,3 +3329,9 @@ pending-tile-center-build.log正式Release及free/tile测试构建exit0，fixtur
 沿用legacy workspace-selection-effects-support.ts::selectedEffectTargets显式蒙版格顺序/帧绑定及workspace-commands-selection-anti-alias.ts整批锁定拒绝。新增取消/提交×选区/完整四组，以不同帧黑色/灰色所属层验证automatic opacity37经蒙版覆盖归一化分别精确为0xffa1a1a1/0xffd0d0d0；检查双目标顺序、预览不改存储、双蒙版取消/Undo/Redo/保存重开、单历史、活动第二帧隔离上下文及所属Cel像素保留。特意把锁定蒙版放在请求列表后面，验证整批拒绝而不启动预览。既有产品实现通过，无产品代码修改。
 
 测试构建exit0（multi-mask-aa-build.log），完整free-tile-project-tests通过（multi-mask-aa-test.log），来源检查通过（multi-mask-aa-provenance.log），diff通过。未重新构建正式程序，未做人工UI验收；组选区组合与全量迁移仍未完成，整体INCOMPLETE。
+
+### 2026-11-07：组与图层蒙版混合抗锯齿回归
+
+对照legacy document-model.ts::isLayerEffectivelyLocked的组蒙版所属组锁定与子图层继承锁定，workspace-selection-effects-support.ts不因蒙版所属类型改变目标选择。新增取消/提交×普通/隔离四组，同批选择组蒙版和组内图层蒙版，验证半透明黑精确归一化0xff7f7f7f、单历史、取消/Undo/Redo、保存重开、活动蒙版隔离上下文及子Cel像素保留。所属组锁定后两类蒙版入口均拒绝。既有产品实现通过，无产品修改；更深嵌套祖先组合尚未验证。
+
+测试构建exit0（group-mask-aa-build.log），完整free-tile-project-tests通过（group-mask-aa-test.log），来源检查通过（group-mask-aa-provenance.log），diff通过。未重新构建正式程序，未做人工UI验收，全量迁移仍INCOMPLETE。
