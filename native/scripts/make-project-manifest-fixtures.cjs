@@ -127,5 +127,21 @@ registerHooks({
   if(kind==='tilemap'&&(!blank.tilemap||blank.tilemap.columns!==2))throw new Error('Special grid template oracle mismatch');
   fs.writeFileSync(path.join(out,`special-hole-${kind}-${Number(active)}.moonsprite`),bytes);
  }
+ // A tile layer can have no serialized Cel from which to copy grid dimensions.
+ for(const [width,height,tw,th] of [[4,4,2,2],[5,3,2,2],[3,5,1,2]])for(const multiple of [false,true]){
+  const d=createDocument('No tile grid template',width,height,'rgba');ensureAnimationDocument(d);const l=d.layers[0],c=d.animation.cels[0];l.kind='tilemap';l.tilemapTilesetId='no-template-sheet';d.tilesets=[tileModule.createSolidTileset('no-template-sheet','Tiles',tw,th,{r:10,g:20,b:30,a:255},'no-template-tile')];c.tilemap=tileModule.createTilemapCelData(width,height,tw,th);c.surface=tileModule.renderTilemapSurface(c.tilemap,d.tilesets,'rgba');
+  const r=unzipSync(encodeProject(d,{includePreview:false})),m=JSON.parse(strFromU8(r['manifest.json']));m.document.animation.cels=[];if(multiple){m.document.animation.frames.push({id:'no-template-second',duration:280});m.document.animation.activeFrameId='no-template-second';}const keep=new Set(m.document.layers.map(x=>x.dataFile));for(const k of Object.keys(r))if(k.startsWith('cels/')&&!keep.has(k))delete r[k];r['manifest.json']=strToU8(JSON.stringify(m));const bytes=zipSync(r),decoded=decodeProject(bytes);ensureAnimationDocument(decoded);
+  const missing=decoded.animation.cels[0];if(missing.tilemap)throw new Error('No-template legacy unexpectedly inferred grid');let rejected=false;try{decodeProject(encodeProject(decoded,{includePreview:false}));}catch{rejected=true;}if(!rejected)throw new Error('No-template legacy reopen unexpectedly succeeds');
+  fs.writeFileSync(path.join(out,`tile-no-template-${width}-${height}-${Number(multiple)}.moonsprite`),bytes);console.log('Legacy no-grid-template: open succeeds, materialized Cel has no grid, saved reopen rejects');
+ }
+ for(const version of [2,13,21])for(const field of ['frames','cels'])for(const malformed of ['absent','null','object','number']){
+  const m=structuredClone(manifest),r={...files};m.schemaVersion=m.document.schemaVersion=version;const a=m.document.animation;
+  if(malformed==='absent')delete a[field];else a[field]=malformed==='null'?null:malformed==='object'?{}:7;
+  // Resources that normalize away are omitted; layer display still has a valid source.
+  const l=m.document.layers[0];l.dataFile='layers/normalized-array.rgba';l.dataEncoding='raw';r[l.dataFile]=new Uint8Array(16).fill(255);a.cels=field==='cels'?a.cels:[];
+  for(const k of Object.keys(r))if((k.startsWith('layers/')||k.startsWith('cels/'))&&k!==l.dataFile)delete r[k];r['manifest.json']=strToU8(JSON.stringify(m));const bytes=zipSync(r),decoded=decodeProject(bytes);
+  if(decoded.animation.frames.length!==1||decoded.animation.cels.length!==0||decoded.layers[0].pixels.some(Boolean))throw new Error('Malformed animation array oracle mismatch');
+  fs.writeFileSync(path.join(out,`animation-array-${version}-${field}-${malformed}.moonsprite`),bytes);
+ }
  console.log('Generated project manifest fixtures through legacy encodeProject');
 })().catch(e=>{console.error(e);process.exitCode=1;});

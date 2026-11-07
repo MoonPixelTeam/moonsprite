@@ -3543,3 +3543,10 @@ make-project-manifest-fixtures.cjs通过实际legacy encode/decode生成版本1�
 按legacy ensureAnimationDocument、blankAnimationTilemap／blankAnimationFreeTiles补齐缺失槽：文字空槽不带旧文字，调整设置留在owner，自由瓦片为空实例，网格瓦片沿用该层第一个现有Cel的网格尺寸并将cells全部置空。使用既有原生空槽适配与单候选准入，保留目录、纹理、原有帧内容；不产生导入历史。没有任何网格模板时仍明确限制，不凭空设计尺寸；原生提前物化与legacy缺失槽身份不等价仍待后续。
 
 八组实际legacy decode+ensureAnimationDocument ZIP oracle覆盖四种kind × 活动／非活动缺失槽；原生验证空权威载荷、资源精确像素、已有Cel按权威格子／实例重渲染像素、无损普通／恢复重开、复制空帧及Undo/Redo。额外检查发现fixture网格缓存不是权威数据，修正预期使用tiles::render而非旧fallback。正式构建special-slots-build.log、工程测试special-slots-manifest-tests.log、保存special-slots-save-tests.log、完整free-tile-project-tests special-slots-free-tests.log通过，正式--cel-clipboard-check退出0，来源覆盖special-slots-provenance.log与diff通过。无人工UI验收，全量迁移INCOMPLETE。
+
+
+### 2026-11-07：无网格模板层的授权修复及动画数组归一化
+
+实测旧版：网格瓦片层完全没有Cel时decode成功，ensureAnimationDocument生成没有tilemap元数据的Cel，encode后decode拒绝。用户明确批准原生修复为使用owner瓦片集tileWidth/tileHeight与画布创建覆盖画布的空网格，保留资源、帧与透明度，不产生导入历史。此为授权新行为，不称旧版等价。已有网格模板仍按旧版复制网格尺寸并清空，不覆盖原模板。六组ZIP样本覆盖方形／非方形／非整除尺寸 × 单帧／多帧缺失，检查空网格、资源像素、普通／恢复重开、保留瓦片的Paint绘制、Undo/Redo及绘后重开。
+
+同时按normalizeAnimationTimeline／normalizeCels修复迁移前frames/cels不存在或非数组就抛错的问题，写回规范化清单避免编码恢复异常原字段。24组实际legacy decode对照覆盖schema2/13/21 × frames/cels × absent/null/object/number，核对默认帧时长、空显示、导入无历史及普通／恢复保存重开。正式构建grid-fallback-build.log、工程测试grid-fallback-manifest-tests.log、保存grid-fallback-save-tests.log通过，正式--cel-clipboard-check退出0；完整自由瓦片回归grid-fallback-free-tests.log与来源覆盖grid-fallback-provenance.log通过，diff通过。缺失槽身份保留、全色彩模式和人工UI验收仍不完整，全量迁移INCOMPLETE。

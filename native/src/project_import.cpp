@@ -75,8 +75,13 @@ PreparedImport prepareEditableImport(const ReadManifest& m) {
    if(l.kind=="free-tile")c.freeTiles=free_tiles::CelData{};
    if(l.kind=="tilemap"){
     const auto model=std::find_if(m.cels.begin(),m.cels.end(),[&](const auto& existing){return existing.layerId==l.id&&existing.tilemap;});
-    unsupported(model==m.cels.end(),"Missing tilemap Cel without a grid template is not migrated");
-    c.tilemap=*model->tilemap;c.tilemap->cells.assign(c.tilemap->cells.size(),std::nullopt);
+    if(model!=m.cels.end()){c.tilemap=*model->tilemap;c.tilemap->cells.assign(c.tilemap->cells.size(),std::nullopt);}
+    else{
+     // User-approved repair of legacy save/reopen failure without any template.
+     const auto owner=std::find_if(m.tilesets.begin(),m.tilesets.end(),[&](const auto& sheet){return sheet.id==l.tilemapTilesetId;});
+     corrupt(owner==m.tilesets.end(),"Missing layer tileset for empty grid");
+     c.tilemap=tiles::blankCel(m.width,m.height,owner->tileWidth,owner->tileHeight);
+    }
    }
    auto surface=std::make_shared<ManifestRaster>();
    if(f.id==m.activeFrameId){surface->width=l.surface->width;surface->height=l.surface->height;surface->offsetX=l.surface->offsetX;surface->offsetY=l.surface->offsetY;}else surface->width=surface->height=1;

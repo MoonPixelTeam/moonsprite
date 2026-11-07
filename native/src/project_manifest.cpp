@@ -104,6 +104,8 @@ static ReadManifest readManifestWithClock(std::shared_ptr<const Bytes> bytes,Lim
     // normalizeAnimationTimeline falls back when animation/frames is absent.
     auto animationValue=value(doc,"animation");
     if(!animationValue||animationValue.ValueType()!=JsonValueType::Object){JsonObject a;a.Insert(L"frames",JsonArray());a.Insert(L"cels",JsonArray());doc.Insert(L"animation",a);}
+    bool normalizedAnimationArrays=false;
+    {auto a=object(doc,"animation");for(const auto* name:{L"frames",L"cels"}){auto list=a.TryLookup(name);if(!list||list.ValueType()!=JsonValueType::Array){a.Insert(name,JsonArray());normalizedAnimationArrays=true;}}}
     // project-format-manifest.ts version gates, including pre-animation files.
     // Keep source version for atlas decoding; preserved JSON is normalized so
     // saving an imported archive cannot restore obsolete version metadata.
@@ -325,6 +327,7 @@ static ReadManifest readManifestWithClock(std::shared_ptr<const Bytes> bytes,Lim
     // including payloads whose declared snapshot metadata was unusable.
     for(const auto& entry:archive.entries())if(entry.first.rfind("timelapse/",0)==0&&entry.first.size()>14&&entry.first.substr(entry.first.size()-4)==".png")consumedFiles.insert(entry.first);
     for(const auto& entry:archive.entries()) if(!consumedFiles.count(entry.first)) out.unsupported.emplace_back("unmapped archive resource "+entry.first);
+    if(normalizedAnimationArrays)out.manifestUtf8=winrt::to_string(root.Stringify());
     return out;
   } catch(const winrt::hresult_error& error) {
     throw Error(error.code().value==E_OUTOFMEMORY?ErrorKind::Limit:ErrorKind::Corrupt,"System JSON failure; HRESULT="+std::to_string(error.code().value)+": "+winrt::to_string(error.message()));

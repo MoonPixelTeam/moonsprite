@@ -77,6 +77,24 @@ void specialSlotChecks(const std::filesystem::path& dir){
   d.selectFrame("missing-special");d.addFrame(true);check(d.timeline().state().frames.size()==3,"Special blank frame duplicable");d.undo();verify(d);d.redo();check(d.timeline().state().frames.size()==3,"Special blank duplicate redo");
  }
 }
+void animationArrayChecks(const std::filesystem::path& dir){
+ using namespace moon;
+ for(int version:{2,13,21})for(const std::string field:{"frames","cels"})for(const std::string malformed:{"absent","null","object","number"}){
+  auto m=readProjectManifest(load(dir/("animation-array-"+std::to_string(version)+"-"+field+"-"+malformed+".moonsprite")));auto d=createEditableDocument(prepareEditableImport(m));
+  auto verify=[&](const Document& candidate){check(candidate.timeline().state().frames.size()==1&&candidate.frame().duration==100&&candidate.pixels()==std::vector<Pixel>(4),"Malformed animation arrays normalize to blank default");};
+  verify(d);check(d.historyPosition()==0,"Array normalization no import history");for(bool recovery:{false,true}){auto saved=recovery?encodeRecoveryProject(d):encodeEditableProject(d);verify(createEditableDocument(prepareEditableImport(readProjectManifest(saved.bytes))));}
+ }
+}
+void noGridTemplateChecks(const std::filesystem::path& dir){
+ using namespace moon;
+ for(const auto geometry:{std::array<int,4>{4,4,2,2},std::array<int,4>{5,3,2,2},std::array<int,4>{3,5,1,2}})for(bool multiple:{false,true}){
+  const int w=geometry[0],h=geometry[1],tw=geometry[2],th=geometry[3];const auto manifest=readProjectManifest(load(dir/("tile-no-template-"+std::to_string(w)+"-"+std::to_string(h)+"-"+std::to_string(multiple)+".moonsprite")));auto d=createEditableDocument(prepareEditableImport(manifest));const auto baseline=d.timeline().state().tilesets.front().pixels;const auto active=d.frame().id;
+  auto verify=[&](const Document& candidate){check(candidate.timeline().state().cels.size()==(multiple?2:1)&&candidate.layer().kind=="tilemap"&&candidate.timeline().diagnoseLinks().empty(),"Template-less grid structure");for(const auto& c:candidate.timeline().state().cels){check(c.tilemap&&c.tilemap->tileWidth==tw&&c.tilemap->tileHeight==th&&c.tilemap->columns==(w+tw-1)/tw&&c.tilemap->rows==(h+th-1)/th&&std::none_of(c.tilemap->cells.begin(),c.tilemap->cells.end(),[](const auto& cell){return bool(cell);}),"Template-less grid covers canvas with empty cells");check(c.surface&&std::all_of(c.surface->pixels.begin(),c.surface->pixels.end(),[](Pixel p){return !p;}),"Template-less grid raster blank");}check(candidate.timeline().state().tilesets.front().pixels==baseline,"Template-less grid keeps tile resources");};
+  verify(d);check(d.historyPosition()==0&&manifest.cels.empty(),"Template-less import no history or source mutation");for(bool recovery:{false,true}){auto saved=recovery?encodeRecoveryProject(d):encodeEditableProject(d);verify(createEditableDocument(prepareEditableImport(readProjectManifest(saved.bytes))));}
+  d.setTilemapMode(tiles::Mode::Paint);d.setSelectedTile("no-template-sheet","no-template-tile");d.beginStroke({0,0},0xffabcdef);check(d.commitStroke(),"Template-less grid editable");check(d.cel().tilemap->cells.front()&&d.timeline().state().tilesets.front().pixels==baseline,"Template-less paint places retained tile without changing texture");d.undo();verify(d);d.redo();check(d.cel().tilemap->cells.front()&&d.frame().id==active,"Template-less paint redo");
+  auto saved=encodeEditableProject(d);auto reopened=createEditableDocument(prepareEditableImport(readProjectManifest(saved.bytes)));check(reopened.cel().tilemap->cells.front()&&reopened.timeline().state().tilesets.front().pixels==baseline,"Painted template-less grid reopen");
+ }
+}
 void inlineMaskChecks(const std::filesystem::path& dir){
  using namespace moon;auto bytes=load(dir/"inline-mask-u8.moonsprite");const auto raw=readProjectManifest(bytes);check(raw.unsupported.empty()&&raw.masks.size()==1&&raw.maskDataFiles.size()==1,"Inline mask was rejected or lost");const auto& mask=raw.masks[0];check(mask.id=="inline-mask"&&mask.surface->offsetX==-1&&mask.surface->offsetY==1&&mask.locked&&mask.autoLink,"Inline mask metadata migration");check(mask.surface->pixels==std::vector<std::uint32_t>({0xff000000,0xff808080,0xffffffff,0xff404040}),"Inline scalar resource decode");
  auto rgba=readProjectManifest(load(dir/"inline-mask-rgba.moonsprite"));check(rgba.masks[0].surface->pixels==std::vector<std::uint32_t>({0,0xff808080,0xff000000,0xffffffff}),"Mask RGBA transparent RGB normalization");
@@ -96,7 +114,7 @@ void inlineMaskChecks(const std::filesystem::path& dir){
 int main(int argc,char** argv) {
  try {
   check(argc==2,"Fixture argument required");const auto dir=std::filesystem::u8path(argv[1]);
-  historicalVersionChecks(dir);activeCacheChecks(dir);linkedCacheChecks(dir);sparseAnimationChecks(dir);specialSlotChecks(dir);inlineMaskChecks(dir);
+  historicalVersionChecks(dir);activeCacheChecks(dir);linkedCacheChecks(dir);sparseAnimationChecks(dir);specialSlotChecks(dir);animationArrayChecks(dir);noGridTemplateChecks(dir);inlineMaskChecks(dir);
   auto bytes=load(dir/"valid.moonsprite");auto parsed=readProjectManifest(bytes);
   check(parsed.schemaVersion==21 && parsed.colorMode=="rgba" && parsed.width==2 && parsed.height==2,"Header changed");
   check(parsed.name==u8"原生兼容样本","Unicode name changed");
