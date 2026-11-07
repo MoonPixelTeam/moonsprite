@@ -3070,3 +3070,10 @@ mixed-free-linked-frame-build.log正式Release/两核心测试构建exit0；fixt
 依据legacy workspace-session.ts::activePaintLayer及workspace-commands-selection-transform.ts::transformActiveSelection，选区变换使用活动蒙版栅格。原生flipContent在tilemap Paint及文档特殊类型判断后才处理蒙版，rotateContent也先拒绝特殊文档。调整顺序让活动蒙版优先，沿用transformMaskImmediate与已有浮动蒙版逻辑；原图层变换保护不变。
 
 新增tilemap/free-tile×水平/垂直/180度六组，Paint模式下与普通图层活动蒙版逐像素对照，检查原图层像素/网格/实例保留、单历史、Undo/Redo及保存重开。首次fixture无可见图层内容不能创建蒙版，补齐真实可见像素及非对称灰度后通过，未修改蒙版创建条件。special-mask-transform-build.log正式构建exit0、fixture-build日志exit0，完整free-tile-project-tests及tilemap-project-tests exit0（special-mask-transform-free-test.log、special-mask-transform-grid-test.log），正式工作区drawing-anchor-edit-floating组合exit0；来源625文件与diff通过。无人工UI验收，90度/任意角、其他浮动和剪贴板路径未由本批证明，全量迁移仍INCOMPLETE。
+
+
+### 2026-11-07：特殊图层蒙版浮动粘贴与移动
+
+核对legacy workspace-commands-clipboard.ts::pasteSelection使用activePaintLayer，workspace-session.ts活动蒙版优先，以及selection-transform的活动栅格路径。原生beginFloatingPaste与beginSelectionContentMove此前在蒙版路由前按文档含free/tilemap拒绝；现活动蒙版优先调用已存在beginMaskFloating/beginMaskSelectionMove，继续保留其单目标、权限与选区约束。
+
+新增tilemap/free-tile×RGB粘贴/选区移动/复制移动六组，与普通图层蒙版逐像素对照，检查取消恢复无历史、单次提交、原Cel像素/网格保留、Undo/Redo和实际保存重开。special-mask-floating-build.log正式Release和两核心测试构建exit0；完整free-tile-project-tests/tilemap-project-tests exit0（special-mask-floating-free-test.log、special-mask-floating-grid-test.log）；正式工作区drawing-anchor-edit-floating组合exit0；来源625文件和diff通过，无人工UI验收。蒙版剪切及多目标、链接/非标准布局等未由本阶段全面验证，全量迁移仍INCOMPLETE。

@@ -2371,10 +2371,9 @@ bool Document::deleteMaskSelection(){
  if(floating_){if(floating_->clipboard){cancelFloatingPaste();return true;}commitFloatingPaste();}if(!selection_||!maskBrushAvailable())return false;const bool changed=fillAttachedMaskSelection(palette_.secondary);if(changed)selection_.reset();return changed;
 }
 
-bool Document::beginFloatingPaste(const SelectionClipboard& clipboard,int x,int y){if(hasFreeTileContent())return false;
+bool Document::beginFloatingPaste(const SelectionClipboard& clipboard,int x,int y){if(!activeMaskId_.empty())return beginMaskFloating(clipboard,x,y,true,true);if(hasFreeTileContent())return false;
  // legacy clipboard permits ordinary raster targets in a mixed document.
  if(hasTilemapContent()&&(!activeMaskId_.empty()||!layer().kind.empty()||hasSelectedGroups()||layerEffectivelyLocked(layer())))return false;
- if(!activeMaskId_.empty())return beginMaskFloating(clipboard,x,y,true,true);
  commitFloatingPaste();cancelStroke();
  if(layerEffectivelyLocked(layer()) || clipboard.width<1 || clipboard.height<1 || std::uint64_t(clipboard.width)*clipboard.height!=clipboard.pixels.size() || (!clipboard.mask.empty() && clipboard.mask.size()!=clipboard.pixels.size()))return false;
  if(!clipboard.mask.empty() && std::none_of(clipboard.mask.begin(),clipboard.mask.end(),[](auto value){return value!=0;}))return false;
@@ -2438,7 +2437,7 @@ bool Document::prepareTilemapFloating(FloatingPaste& f,std::optional<Point> seed
  for(std::size_t ci=0;ci<state.cels.size();++ci){const auto& c=state.cels[ci];if(c.tilemap&&c.surface)for(std::size_t i=0;i<c.tilemap->cells.size();++i){const auto& cell=c.tilemap->cells[i];if(cell&&cell->tilesetId==set->id)g->tilemapReferences[cell->tileId].push_back({ci,i});}}
  f.tilemapPreview=std::move(g);return true;
 }
-bool Document::beginSelectionContentMove(bool copy,bool allFrameLayers,int initialDx,int initialDy,std::optional<Point> tilemapSeed,bool symmetryTranslation,bool symmetryScale,bool symmetryRotation,bool symmetryShear){if(hasFreeTileContent()){if(layer().kind=="free-tile"&&activeMaskId_.empty()){const bool started=beginFreeTileSelectionMove(copy,allFrameLayers,initialDx,initialDy);if(started&&symmetryTranslation&&tilemapSeed){floating_->symmetryStart=SymmetryPixel{tilemapSeed->x,tilemapSeed->y};floating_->symmetryAxes=symmetryAxes;floating_->symmetryCenter=symmetryCenter();}return started;}return false;}if(hasTilemapContent()){
+bool Document::beginSelectionContentMove(bool copy,bool allFrameLayers,int initialDx,int initialDy,std::optional<Point> tilemapSeed,bool symmetryTranslation,bool symmetryScale,bool symmetryRotation,bool symmetryShear){if(!activeMaskId_.empty())return beginMaskSelectionMove(copy,allFrameLayers,initialDx,initialDy);if(hasFreeTileContent()){if(layer().kind=="free-tile"&&activeMaskId_.empty()){const bool started=beginFreeTileSelectionMove(copy,allFrameLayers,initialDx,initialDy);if(started&&symmetryTranslation&&tilemapSeed){floating_->symmetryStart=SymmetryPixel{tilemapSeed->x,tilemapSeed->y};floating_->symmetryAxes=symmetryAxes;floating_->symmetryCenter=symmetryCenter();}return started;}return false;}if(hasTilemapContent()){
  if(floating_){if(floating_->tilemap){if(tileSelection_.mode!=floating_->tilemapMode||layerEffectivelyLocked(layer())||!layerEffectivelyVisible(layer()))return false;}else if(!(floating_->clipboard&&floating_->maskId.empty()&&layer().kind.empty()&&!layerEffectivelyLocked(layer())))return false;}
  else if(allFrameLayers||!tilemapSelectionTransformAvailable())return false;
  }if(!activeMaskId_.empty())return beginMaskSelectionMove(copy,allFrameLayers,initialDx,initialDy);
