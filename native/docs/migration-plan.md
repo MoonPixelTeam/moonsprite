@@ -3109,3 +3109,9 @@ mixed-free-linked-frame-build.log正式Release/两核心测试构建exit0；fixt
 新增普通/tile/free活动蒙版三组真实四角浮动回归，检查全部角点、翻转原点、实际源/目标像素、选择位置、单历史、所属Cel像素/网格保留、Undo/Redo与保存重开。初次像素断言误将透明清除写成不透明黑色，按既有normalizedMaskPixel(0)==0修正。quad-nudge-final-build.log正式Release及两测试构建exit0；完整free-tile-project-tests和attached-masks-tests通过（quad-nudge-free-test.log、quad-nudge-mask-test.log）；正式工作区drawing-anchor-edit-floating组合exit0；来源625文件快照通过（quad-nudge-provenance.log）。无人工UI验收。
 
 扩大运行cel-selection-clipboard-tests失败于既有GIF导入断言line5190/check4352。临时移除本次唯一产品变更后重建仍在同一处失败（quad-nudge-baseline-build/test.log），故不报告此完整测试通过，该问题留待后续定位。恢复源码因Copy-Item保留时间导致首次未重编，更新时间并最终重建后上述两完整测试通过。全量迁移仍INCOMPLETE；大于画布及已越界复杂选框未由本批完整验证。
+
+### 2026-11-07：GIF导入稀疏空白槽回归预期
+
+定位上一阶段完整cel-selection-clipboard-tests失败check4352：旧断言要求GIF追加帧中原图层的空白Cel为画布大小2×1，实际为1×1。对照legacy core/animation.ts::blankSurfaceFromLayer及ensureAnimationDocument（非活动空槽），workspace-commands-animation-frame.ts::importGifAnimationLayer先归一化完整槽再替换导入槽，确认当前产品的稀疏存储符合旧版，不改产品实现。
+
+将该复合断言拆行，保留原像素不变、导入时长/disabled/选择、Undo/Redo等检查，并明确验证空槽1×1、零偏移、单透明像素。gif-sparse-regression-build.log测试构建exit0，完整cel-selection-clipboard-tests exit0（gif-sparse-regression-test.log），来源625文件快照检查通过（gif-sparse-regression-provenance.log），diff通过。本阶段仅修复过时回归预期，没有重新构建产品或做人工作业验收。原失败已解决；全量迁移仍INCOMPLETE。
