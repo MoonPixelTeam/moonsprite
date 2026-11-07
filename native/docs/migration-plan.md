@@ -3261,3 +3261,9 @@ pending-tile-center-build.log正式Release及free/tile测试构建exit0，fixtur
 对照legacy workspace-commands-color.ts::applyColorReplacementTarget明确目标收集及tools-fill.ts::replaceLayerColor完整packed RGBA匹配/可选选区，普通Cel替换不再受文档无关特殊内容拒绝。继续复用既有预览、精确匹配和历史事务。显式请求特殊Cel的源替换仍未迁移，本阶段保留拒绝，不将其称为旧版等价完成。
 
 新增free/tile×取消/提交×选区/完整目标八组，沿用color_replacement_test的精确颜色，检查选区外保留、单提交历史、Undo/Redo、实际重开及所有特殊Cel像素/实例/网格/资源保留。初次特殊拒绝断言误选fixture首个普通Cel，已改为明确特殊活动Cel并重跑。正式Release及free/tile测试构建exit0（mixed-raster-replacement-build.log），最终fixture构建exit0（mixed-raster-replacement-fixture-build.log）；完整free/tile测试exit0（mixed-raster-replacement-free-test.log、mixed-raster-replacement-grid-test.log）；正式工作区drawing-anchor-edit-floating组合exit0；来源检查通过（mixed-raster-replacement-provenance.log），diff通过。未做人工UI验收，全量迁移仍INCOMPLETE。
+
+### 2026-11-07：特殊文档及蒙版上下文调色板颜色替换
+
+依据legacy workspace-commands-color.ts::applyColorReplacementTarget的palette分支，仅替换非零条目的完整RGBA和前景/背景角色，不依赖活动图层或蒙版类型。原生移除整篇瓦片及活动蒙版限制，复用palette-only预览和历史；不修改源像素。
+
+新增free/tile×所属层/蒙版×取消/提交八组，检查完整alpha匹配、角色颜色、槽位/nextId保留、无预览历史/单提交、Undo/Redo及特殊Cel像素/实例/网格/资源/蒙版保留。网格蒙版夹具初始缺少有效像素，已先建立内容再创建蒙版。正式Release及free/tile测试构建exit0（special-palette-replacement-build.log），fixture构建exit0（special-palette-replacement-fixture-build.log）；完整free/tile测试exit0（special-palette-replacement-free-test.log、special-palette-replacement-grid-test.log）；正式工作区drawing-anchor-edit-floating组合exit0；来源检查通过（special-palette-replacement-provenance.log），diff通过。本阶段未新增调色板序列化往返覆盖，未做人工UI验收，全量迁移仍INCOMPLETE。

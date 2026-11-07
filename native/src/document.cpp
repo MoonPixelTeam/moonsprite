@@ -1811,7 +1811,7 @@ void Document::applyPaletteEdit(const Edit& edit,bool redo) {
   if(edit.paletteKind==1) {palette_.entries=state.entries;palette_.nextId=state.nextId;palette_.primary=state.primary;}
 }
 const PaletteEntry* Document::displayPaletteEntry(int id) const {for(const auto& entry:displayPalette().entries)if(entry.id==id)return &entry;return nullptr;}
-bool Document::beginPaletteReplacement(std::optional<Pixel> restorePrimary){if(hasTilemapContent()||hasFreeTileContent())return false;if(!activeMaskId_.empty())return false;
+bool Document::beginPaletteReplacement(std::optional<Pixel> restorePrimary){
  commitFloatingPaste();cancelStroke();if(std::none_of(palette_.entries.begin(),palette_.entries.end(),[](const auto& entry){return entry.id!=0;}))return false;
  paletteReplacement_=PaletteReplacementPreview{palette_,palette_,contentRevision_,restorePrimary};return true;
 }
