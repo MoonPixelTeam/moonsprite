@@ -3077,3 +3077,9 @@ mixed-free-linked-frame-build.log正式Release/两核心测试构建exit0；fixt
 核对legacy workspace-commands-clipboard.ts::pasteSelection使用activePaintLayer，workspace-session.ts活动蒙版优先，以及selection-transform的活动栅格路径。原生beginFloatingPaste与beginSelectionContentMove此前在蒙版路由前按文档含free/tilemap拒绝；现活动蒙版优先调用已存在beginMaskFloating/beginMaskSelectionMove，继续保留其单目标、权限与选区约束。
 
 新增tilemap/free-tile×RGB粘贴/选区移动/复制移动六组，与普通图层蒙版逐像素对照，检查取消恢复无历史、单次提交、原Cel像素/网格保留、Undo/Redo和实际保存重开。special-mask-floating-build.log正式Release和两核心测试构建exit0；完整free-tile-project-tests/tilemap-project-tests exit0（special-mask-floating-free-test.log、special-mask-floating-grid-test.log）；正式工作区drawing-anchor-edit-floating组合exit0；来源625文件和diff通过，无人工UI验收。蒙版剪切及多目标、链接/非标准布局等未由本阶段全面验证，全量迁移仍INCOMPLETE。
+
+### 2026-11-07：特殊图层活动蒙版剪切与删除
+
+对照legacy workspace-commands-selection-effects.ts::deleteSelection与workspace-commands-clipboard.ts::copySelection：删除以背景色清除活动蒙版，静态复制仍读取所属图层。原生deleteSelectedPixels提前路由活动蒙版，cutPixels仅在未编辑蒙版时应用整篇特殊图层保护；复用已有蒙版事务，保留旧版静态剪贴板语义。
+
+新增tilemap/free-tile×剪切/删除四组回归，检查背景色清除、原Cel像素与网格保留、剪贴板所属图层像素、单次历史、选择清理、Undo/Redo和实际保存重开。special-mask-cut-build.log正式Release与free-tile-project-tests、attached-masks-tests构建通过；两个完整测试通过（special-mask-cut-free-test.log、special-mask-cut-attached-test.log）；正式工作区drawing-anchor-edit-floating组合exit0，来源检查625文件通过（special-mask-cut-provenance.log）。无人工UI验收，全量迁移仍INCOMPLETE。

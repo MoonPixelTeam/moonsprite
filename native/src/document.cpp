@@ -2125,7 +2125,7 @@ bool Document::fillSelectionOrCanvas(Pixel color){if(!activeMaskId_.empty())retu
  if(edit.children.empty())return false;
  history_.reserve(position_+1);change_={};applyEdit(edit,true);publishChange();pushEdit(std::move(edit),selection_?U"填充选区前景色":U"填充画布前景色");return true;
 }
-bool Document::deleteSelectedPixels(){if(hasFreeTileContent()){
+bool Document::deleteSelectedPixels(){if(!activeMaskId_.empty())return deleteMaskSelection();if(hasFreeTileContent()){
  // Legacy deleteFreeTileSourceSelectionInSession clears the primary shared
  // source in instance world coordinates; never erase a derived Cel cache.
  if(active()||!selection_||!activeMaskId_.empty()||layer().kind!="free-tile"||freeTilePaintMode()||!layer().freeTiles||!cel().freeTiles||!cel().surface||layerEffectivelyLocked(layer()))return false;
@@ -2208,7 +2208,7 @@ bool Document::deleteSelectedPixels(){if(hasFreeTileContent()){
  if(edit.children.empty())return false;
  history_.reserve(position_+1);change_={};applyEdit(edit,true);publishChange();pushEdit(std::move(edit),U"删除选区");return true;
 }
-bool Document::cutPixels(std::optional<SelectionClipboard>& clipboard){const bool freeSource=layer().kind=="free-tile"&&activeMaskId_.empty();if(hasFreeTileContent()&&!freeSource)return false;if(hasTilemapContent()&&!freeSource&&!tilemapSelectionCutAvailable())return false;if(!selection_)return false;clipboard=copyPixels();const bool deleteOriginal=!floating_ || (!floating_->clipboard && !floating_->copy);if(floating_)cancelFloatingPaste();if(deleteOriginal)deleteSelectedPixels();selection_.reset();return bool(clipboard);}
+bool Document::cutPixels(std::optional<SelectionClipboard>& clipboard){const bool freeSource=layer().kind=="free-tile"&&activeMaskId_.empty();if(activeMaskId_.empty()&&hasFreeTileContent()&&!freeSource)return false;if(activeMaskId_.empty()&&hasTilemapContent()&&!freeSource&&!tilemapSelectionCutAvailable())return false;if(!selection_)return false;clipboard=copyPixels();const bool deleteOriginal=!floating_ || (!floating_->clipboard && !floating_->copy);if(floating_)cancelFloatingPaste();if(deleteOriginal)deleteSelectedPixels();selection_.reset();return bool(clipboard);}
 bool Document::floatingSymmetryRotation(const FloatingPaste& f,const SelectionTransform& t)const{return (f.symmetryRotation||f.symmetryShear)&&f.beforeSelection&&!f.clipboard&&!f.tilemap&&f.maskId.empty()&&symmetryHas(f.symmetryAxes)&&(f.symmetryShear||(t.shearX==0&&t.shearY==0))&&!t.quad;}
 void Document::configureSymmetryContentRotation(FloatingPaste& f){
  f.symmetryShear=false;f.symmetryRotation=false;if(f.clipboard||f.tilemap||!f.maskId.empty()||!f.beforeSelection)return;f.symmetryRotation=symmetryHas(symmetryAxes);f.symmetryScale=false;f.symmetryAxes=symmetryAxes;f.symmetryCenter=symmetryCenter();for(auto& target:f.targets)target.symmetryRotation.reset();
