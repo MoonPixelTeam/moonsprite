@@ -1705,21 +1705,25 @@ int allocatePaletteId(PaletteState& palette){
 }
 void Document::pastePaletteColors(const std::vector<Pixel>& colors,const std::vector<std::size_t>& targets,bool selectResult,const std::vector<int>* viewSlots,int viewColumns){
  if(colors.empty())return;
- const auto count=targets.empty()?colors.size():std::min(colors.size(),targets.size());
- // Count actual new IDs before touching live colors, including repeated
- // targets and overwrite-only paste at exhaustion. Avoid another full
+ // Legacy deduplicates indices before pairing them with colors. Keep first
+ // occurrence order: [a,a,b] consumes colors[0] at a and colors[1] at b.
+ std::vector<std::size_t> indices;indices.reserve(std::min(targets.size(),colors.size()));std::unordered_set<std::size_t> seen;
+ for(auto target:targets)if(seen.insert(target).second){indices.push_back(target);if(indices.size()==colors.size())break;}
+ const auto count=targets.empty()?colors.size():indices.size();
+ // Count actual new IDs before touching live colors, including
+ // overwrite-only paste at exhaustion. Avoid another full
  // PaletteState copy for the ordinary paste path.
  const auto& sourceSlots=viewSlots?*viewSlots:palette_.slots;std::size_t allocations=0;
  if(targets.empty()){const auto end=std::min<std::size_t>(sourceSlots.size(),65536);const auto available=std::count(sourceSlots.begin(),sourceSlots.begin()+end,0)+(65536-end);allocations=std::min<std::size_t>(count,available);}
- else{std::set<std::size_t> empty;for(std::size_t i=0;i<count;++i)if(targets[i]<65536&&(targets[i]>=sourceSlots.size()||!sourceSlots[targets[i]]))empty.insert(targets[i]);allocations=empty.size();}
+ else{for(auto slot:indices)if(slot<65536&&(slot>=sourceSlots.size()||!sourceSlots[slot]))++allocations;}
  requirePaletteIds(palette_,allocations);const bool independentOrder=palette_.independentOrder.has_value();cancelStroke();Edit edit{{},state_,nextState_};edit.paletteKind=7;edit.beforePalette=palette_;edit.beforePalette->independentOrder.reset();if(viewSlots)palette_.slots=*viewSlots;if(viewColumns>0)palette_.columns=std::clamp(viewColumns,1,256);std::vector<int> ids;
- for(std::size_t i=0;i<count;++i){auto slot=targets.empty()?std::size_t(std::find(palette_.slots.begin(),palette_.slots.end(),0)-palette_.slots.begin()):targets[i];
+ for(std::size_t i=0;i<count;++i){auto slot=targets.empty()?std::size_t(std::find(palette_.slots.begin(),palette_.slots.end(),0)-palette_.slots.begin()):indices[i];
   if(slot>=65536)continue;if(slot>=palette_.slots.size())palette_.slots.resize(slot+1,0);int id=palette_.slots[slot];
   if(id){for(auto& entry:palette_.entries)if(entry.id==id)entry.color=colors[i];}
   else{id=allocatePaletteId(palette_);const auto number=std::to_string(id);palette_.entries.push_back({id,std::u32string(number.begin(),number.end()),colors[i]});palette_.slots[slot]=id;}ids.push_back(id);
  }
  const auto columns=std::size_t(palette_.columns);palette_.slots.resize(std::max(columns,((palette_.slots.size()+columns-1)/columns)*columns),0);
- palette_.independentOrder.reset();if(selectResult)selectPaletteIds(ids,ids.empty()?0:ids.back());const auto& before=*edit.beforePalette;if(before.columns==palette_.columns && before.slots==palette_.slots && before.entries.size()==palette_.entries.size() && std::equal(before.entries.begin(),before.entries.end(),palette_.entries.begin(),[](const auto& a,const auto& b){return a.id==b.id&&a.name==b.name&&a.color==b.color;})){if(independentOrder){modified_=true;state_=nextState_++;++revision_;projectInformation_.operation();notifyRecording();}return;}edit.afterPalette=palette_;pushEdit(std::move(edit),U"调整颜色板颜色");
+ palette_.independentOrder.reset();if(selectResult)selectPaletteIds(ids,ids.empty()?0:ids.back());else clearPaletteSelection();const auto& before=*edit.beforePalette;if(before.columns==palette_.columns && before.slots==palette_.slots && before.entries.size()==palette_.entries.size() && std::equal(before.entries.begin(),before.entries.end(),palette_.entries.begin(),[](const auto& a,const auto& b){return a.id==b.id&&a.name==b.name&&a.color==b.color;})){if(independentOrder){modified_=true;state_=nextState_++;++revision_;projectInformation_.operation();notifyRecording();}return;}edit.afterPalette=palette_;pushEdit(std::move(edit),U"调整颜色板颜色");
 }
 
 int Document::addPaletteColor(Pixel color,bool selectAdded,std::optional<std::size_t> targetSlot,const std::vector<int>* viewSlots,int viewColumns) {

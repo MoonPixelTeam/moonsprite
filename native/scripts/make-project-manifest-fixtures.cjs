@@ -295,6 +295,21 @@ registerHooks({
  }
  fs.writeFileSync(path.join(out,'palette-independent-oracle.json'),JSON.stringify(paletteOrderOracle,null,2));console.log(`Independent palette order: ${paletteOrderOracle.length} actual legacy command/Undo/Redo cases`);
 
+ // Keep the actual session state as well as encoded archives: serialization
+ // cannot prove selection/foreground or callback Undo/Redo behavior.
+ const pasteTargetOracle=[];
+ for(let layout=0;layout<4;++layout)for(const targets of [[0],[0,0],[0,0,2],[2,0,2],[5,5,1,0],[31,31,0],[2,2,2,2],[]])for(const count of [0,1,3])for(const selectResult of [false,true]){
+  const source=createDocument('paste targets',2,2,'rgba');source.palette=[{id:1,name:'one',color:{r:200,g:10,b:20,a:255}},{id:2,name:'two',color:{r:10,g:200,b:30,a:255}},{id:3,name:'hidden',color:{r:30,g:20,b:200,a:128}}];source.nextColorId=4;source.paletteColumns=[1,3,3,256][layout];source.paletteOrder=layout===2?[2,1]:[1,2];source.paletteSlots=layout===0?[1,2]:[1,null,2];
+  const d=decodeProject(encodeProject(source,{includePreview:false})),history=[],session={document:d,history:{push:e=>history.push(e)},selectedPaletteIds:[2],paletteSelectionId:2,primaryColor:{...d.palette[1].color},secondaryColor:{r:255,g:255,b:255,a:255}};
+  const colors=[{r:20,g:40,b:60,a:255},{r:80,g:100,b:120,a:128},{r:140,g:160,b:180,a:0}].slice(0,count),base=`palette-paste-targets-${pasteTargetOracle.length}`;
+  const packed=c=>(c.r|(c.g<<8)|(c.b<<16)|(c.a<<24))>>>0;
+  const state=()=>({entries:d.palette.map(e=>({id:e.id,name:e.name,color:packed(e.color)})),order:[...d.paletteOrder],slots:[...d.paletteSlots],columns:d.paletteColumns,next:d.nextColorId,selected:[...session.selectedPaletteIds],primaryId:session.paletteSelectionId,primary:packed(session.primaryColor)});
+  const row={base,targets,colors:colors.map(packed),selectResult,states:{}};
+  const save=side=>{row.states[side]=state();fs.writeFileSync(path.join(out,`${base}-${side}.moonsprite`),encodeProject(d,{includePreview:false}));};
+  save('before');paletteCommands.pastePaletteColors(session,colors,{slots:[...d.paletteSlots],columns:d.paletteColumns,indices:targets,selectResult});save('after');row.history=history.length;if(history.length>1)throw Error('Paste targets split transaction');if(history.length)history[0].undo();save('undo');if(history.length)history[0].redo();save('redo');pasteTargetOracle.push(row);
+ }
+ fs.writeFileSync(path.join(out,'palette-paste-targets-oracle.json'),JSON.stringify(pasteTargetOracle));console.log(`Palette paste targets: ${pasteTargetOracle.length} actual legacy session/Undo/Redo cases`);
+
  // decodeProject retains raw safe-integer order, defaults nonarray palettes
  // to [], and evaluates Math.max(1, source.nextColorId ?? 1). Do not invent
  // palette-entry repair or collision avoidance absent from the real legacy.

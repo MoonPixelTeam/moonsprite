@@ -3652,3 +3652,14 @@ nextColorId按真实Math.max(1, source.nextColorId ?? 1)，复用已有、经过
 实际旧版decode→encode生成158组：九种空容器×三种列数×空／悬空顺序，44种cursor×空／非空色板，15种原始顺序及一组4096条目。128组可按原生表示读取，其中73组可编辑；另30组表示门禁和55组可读但不可编辑门禁单独断言，不计为可编辑完成。73组中的非上限样本再执行实际workspace-palette命令及其真实Undo/Redo回调，得到345组添加／粘贴／渐变／应用／提取四阶段矩阵；测试session仅收集回调，不声称浏览器HistoryStack／UI验收。原生各阶段核对精确身份、名称、RGBA、cursor、order、slots、columns、整个画布世界像素、单事务及普通／恢复保存重开。失败基线palette-decode-baseline-tests.log复现非数组palette误拒绝；最终整矩阵通过palette-decode-final-tests.log。本批不含人工旧工程UI验收，全量仍INCOMPLETE。
 
 正式与核心／工程／历史目标Release构建通过palette-decode-final-build.log；入口错误反馈与正式自动验收补充构建通过palette-decode-ui-build.log，最终正式目标及边界断言校验构建通过palette-decode-verified-build.log。完整project-manifest-tests（含上述新样本与既有114组独立顺序、60组布局、558组坏链接等）通过palette-decode-final-tests.log；核心、DocumentSnapshot、完整project-import-tests／project-save-tests、完整自由瓦片与历史成本通过对应palette-decode日志。首次直接运行save／cost时遗漏其必需fixture参数，返回用法错误；按CTest定义补齐目录后分别退出0，不属于产品回归。历史捕获palette-decode-committed-tests.log、实际legacy八组捕获及独立编译palette-decode-committed-legacy-tests.log通过，再用本次生成的compiled-latest重跑hydration／budget通过对应日志。正式--palette-growth-check覆盖四项耗尽后的真实Editor路径及释放捕获，其余六项palette检查和--cel-clipboard-check均退出0，见palette-decode-ui-smoke.log；仅为自动界面逻辑检查，未进行人工图像验收。来源覆盖626文件通过，strict仍按全量INCOMPLETE退出1，diff检查通过。
+
+
+### 调色盘重复粘贴目标与选择状态修正（2026-11-08）
+
+接续调色盘原始引用兼容性核对时，发现上一轮边界测试错误地把重复粘贴目标解释为连续覆盖。直接核对 workspace-palette.ts::pastePaletteColors：先对合法目标索引按首次出现顺序去重，再与颜色逐项配对；例如目标[a,a,b]对应颜色[A,B,C]，结果是a=A、b=B，不是a=B、b=C。原生现以同一去重序列执行整数分配预检与实际写入，避免消耗无用ID或把后续颜色错配到槽位；收集到颜色数量即停止扫描剩余目标，沿用现有65536槽位表示限制。上一阶段INT_MAX边界断言也据真实旧版改为首个颜色，耗尽时纯覆盖、最后一个可分配ID和整笔失败的既有保证继续检查。
+
+同一实际命令还表明selectResult=false必须清空selectedPaletteIds及paletteSelectionId，同时保留前景色。原生此前只跳过新选择，残留旧选择；本次修正并通过实际Undo/Redo检查前景色与选择恢复。空颜色输入仍立即返回，不修改选择、文档或历史。本阶段没有放开重复／悬空原始paletteOrder的可编辑导入：其排序后原始运行时槽位、各命令不同的归一化与Undo边界、UI及保存需一起承接；原来的明确Unsupported门禁继续保留，不能把本批粘贴修正计为该项完成。用户已确认的无像素缓存坏链接自由瓦片保留实例并恢复显示此前已实现，本批未改变该决定。
+
+生成器调用实际旧版命令及真实历史回调，新增192组（四种布局×八种目标序列×三种颜色数量×两种selectResult）。除编码工程外，直接捕获before/after/undo/redo的条目身份／名称／RGBA、原始顺序、槽位、列数、cursor、选择和前景色，避免只对照归档漏检会话状态。覆盖重复占用槽、重复空槽、非单调目标、连续重复、隐藏颜色、独立顺序、1／3／256列、透明色和空操作。原生逐状态核对，并检查普通／恢复保存及未修改画布。测试session仅收集真实回调，不声明浏览器HistoryStack或人工UI验收。
+
+验证：palette-targets-baseline-tests.log先复现残留选择问题；首次新增测试构建因测试名称转换调用不匹配编译失败，修正测试后才取得该失败基线。最终palette-targets-tests.log全部192组及既有158组decode、345组command和其他工程矩阵通过；palette-targets-core-tests.log核心事务通过；palette-targets-save-tests.log及palette-targets-snapshot-tests.log通过。正式Release构建通过palette-targets-formal-build.log，源码／测试构建通过palette-targets-core-build.log。正式--palette-growth-check、--palette-clipboard-check实际运行均退出0；首次PowerShell输出重定向语法失败发生在检查全部完成后，退出码由工具标准输出取得并另行记录在palette-targets-ui-smoke.log，没有把日志捕获失败解释为产品失败。未执行人工图像验收；全量迁移仍INCOMPLETE。
