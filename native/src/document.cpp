@@ -287,7 +287,7 @@ Document::FrameClipboardSnapshot Document::exportFrameClipboard()const{
  for(auto& item:out.items)for(auto& slot:item.masks)if(!copiedMaskIds.count(slot.mask.linkedMaskId))slot.mask.linkedMaskId.clear();
  if(!frameClipboardMetadata_)out.groups=timeline_.state().groups;
  std::unordered_set<std::string> referenced;
- for(const auto& l:out.layers){if(l.kind=="tilemap")referenced.insert(l.tilemapTilesetId);if(l.freeTiles)for(const auto& src:l.freeTiles->sources)referenced.insert(src.tilesetId);}
+ for(const auto& l:out.layers){if(l.kind=="tilemap")referenced.insert(l.tilemapTilesetId);if(l.freeTiles){if(!l.freeTiles->legacyTilesetId.empty())referenced.insert(l.freeTiles->legacyTilesetId);for(const auto& src:l.freeTiles->sources)referenced.insert(src.tilesetId);}}
  for(const auto& item:out.items)for(const auto& c:item.cels)if(c.tilemap)for(const auto& cell:c.tilemap->cells)if(cell)referenced.insert(cell->tilesetId);
  std::size_t pixels=0;for(const auto& item:out.items)for(const auto& c:item.cels)if(c.surface){if(c.surface->pixels.size()>64*1024*1024-pixels)throw std::length_error("Frame clipboard memory limit");pixels+=c.surface->pixels.size();}
  for(const auto& set:timeline_.state().tilesets)if(referenced.erase(set.id)){if(set.pixels.size()>64*1024*1024-pixels)throw std::length_error("Frame clipboard memory limit");pixels+=set.pixels.size();out.tilesets.push_back(set);}

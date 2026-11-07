@@ -3487,3 +3487,10 @@ legacy workspace-commands-color.ts::applyColorReplacementTarget的collect先跳�
 用户已批准的完整实例／资源迁移统一应用于同工程跨集合Cel剪贴板，不再保留同工程缺失sourceId直接拒绝。复用共享transferFreeCelSources，已有同标识源保持目标属性，等价源复用而不新增纹理，缺失源进入既有Timeline／LayerTilesetHistory事务。检查确认当前源复制分支始终新增纹理、等价分支不改目录，因此拖动按资源数量选择历史模式不会漏掉仅目录变更。
 
 将跨集合矩阵从4组扩至12组：移动／复制／Cel粘贴 × 内存／保存重开 × 等价源复用／新增源。检查实例重映射、内部链接、原有目标实例、纹理数量、缓存、原生／恢复工程重开、单次历史、Undo目录资源恢复、Redo稳定标识；原先同工程独立集合拒绝用例改为成功与持久化验证。正式与测试构建通过（local-free-transfer-build.log），完整free-tile-project-tests通过（local-free-transfer-tests.log），正式--cel-clipboard-check退出0；来源覆盖通过（local-free-transfer-provenance.log），diff通过。无人工视觉验收，整体迁移INCOMPLETE。
+
+
+### 2026-11-07：历史自由图集剪贴板向现代源的转换
+
+对照free_tile_data历史legacyTilesetId/tileId路径及legacy project-format-decode的旧图集支持，修复帧／Cel剪贴板未捕获legacyTilesetId纹理的问题。共享转移函数将实际引用的旧图集瓦片拆为单瓦片源纹理，再复用已授权的源重映射／目录历史；保留实例坐标、旋转、翻转和覆盖属性。同旧图集目标仍保留原引用；其它旧图集目标明确拒绝，不能只追加现代源而改变原实例解释。
+
+两个内存历史输入的帧／Cel转移案例检查捕获纹理、单源转换、变换、重建像素、现代原生／恢复工程重开和Undo/Redo。初始测试试图保存原始历史模型，发现编码器仍按现代schema声明、读取器要求现代源而拒绝“Missing modern free tile collection metadata”，因此该输入未宣称重开通过，原历史持久化缺口保留后续处理。最终正式／测试构建通过（historical-free-final-build.log），完整free-tile-project-tests通过（historical-free-transfer-tests.log），正式--cel-clipboard-check退出0，来源覆盖通过（historical-free-transfer-provenance.log），diff通过。无人工视觉验收；历史目标整体转换／原历史保存仍待完成，整体INCOMPLETE。
