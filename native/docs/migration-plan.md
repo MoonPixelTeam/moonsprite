@@ -3095,3 +3095,9 @@ mixed-free-linked-frame-build.log正式Release/两核心测试构建exit0；fixt
 对照legacy workspace-commands-selection-move.ts::centerActiveContent，待提交选区先按几何居中，静态操作使用activePaintLayer及alpha内容边界。原生此前特殊文档先拒绝，普通蒙版亦落入所属Cel路径；新增活动蒙版分支，复用beginMaskFloating/transformMaskFloating/commitMaskFloating完成捕获、平移、取消及单次历史，无选区时保留无选区状态。锁定及隐藏等可编辑性继续沿用现有maskBrushAvailable约束，本阶段未证明这些约束与legacy所有情况等价。
 
 回归覆盖普通/tile/free蒙版×水平/垂直/双轴×静态选区/待提交选区/整幅不透明蒙版no-op；检查精确标记位置、历史数、选区有无、所属Cel像素/网格保留、Undo/Redo及实际保存重开。黑色不透明蒙版按alpha计入内容边界，不改作透明。special-mask-center-build.log正式Release及两测试构建exit0，完整free-tile-project-tests、attached-masks-tests通过（special-mask-center-free-test.log、special-mask-center-attached-test.log），正式drawing-anchor-edit-floating工作区组合exit0；来源625文件快照检查通过（special-mask-center-provenance.log）。未做人工UI验收；稀疏/越界蒙版边界等未由这些回归完整覆盖，全量迁移仍INCOMPLETE。
+
+### 2026-11-07：活动蒙版键盘微移画布边界
+
+进一步核对legacy workspace-commands-selection-move.ts::moveActiveSelectionWithSelectionHistory开头的requested/next/actual坐标，默认键盘微移使用max(0,min(canvasSize-selectionSize,requested))限制选框；显式居中另传allowOutsideCanvas。补齐活动蒙版nudgeSelectionContent的同一限制，初次与已有浮动预览均先计算实际位移，边缘零位移不创建或更新事务。本批不扩展无蒙版的其他移动分支。
+
+新增普通/tile/free×初次/已有浮动六组回归，检查左上拒绝、超大位移限于右下、连续向外no-op、无表面扩张、单次历史、所属Cel保留、Undo/Redo及保存重开。mask-nudge-bounds-build.log正式Release及两组测试构建exit0；完整free-tile-project-tests与attached-masks-tests exit0（mask-nudge-bounds-free-test.log、mask-nudge-bounds-attached-test.log）；正式工作区drawing-anchor-edit-floating组合exit0，来源625文件快照通过（mask-nudge-bounds-provenance.log）。无人工UI验收。隐藏/锁定语义、越界复杂选区等仍需进一步核对，全量迁移INCOMPLETE。
