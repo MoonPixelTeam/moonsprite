@@ -102,6 +102,7 @@ bool Document::setMaskMoveWithOwner(const std::string& owner,const std::string& 
  for(auto& slot:timeline_.state_.masks)if(slot.mask.id==id){slot.mask.moveWithOwner=enabled;return commitMasks(std::move(before),U"切换图层蒙版绑定移动");}
  return false;
 }
+const timeline::AttachedMask* Document::maskPreview()const{if(gradient_&&gradient_->mask)return &gradient_->mask->display;if(adjustment_)for(const auto& slot:adjustment_->preview.state().masks)if(slot.mask.id==activeMaskId_)return &slot.mask;return nullptr;}
 std::vector<Pixel> Document::maskDisplayRegion(PixelRegion r)const{std::vector<Pixel> out(std::size_t(r.w)*r.h,0xffffffff);const timeline::AttachedMask* mask=nullptr;for(const auto& m:timeline_.state().masks)if(m.mask.id==activeMaskId_)mask=&m.mask;if(const auto* preview=maskPreview())mask=preview;if(!mask)return out;for(int y=0;y<r.h;++y)for(int x=0;x<r.w;++x){const auto n=timeline::maskCoverage(raster::readWorld(mask->surface,r.x+x,r.y+y));out[std::size_t(y)*r.w+x]=0xff000000|n|(n<<8)|(n<<16);}return out;}
 
 timeline::AttachedMask* Document::mutableActiveMask(){for(auto& v:timeline_.state_.masks)if(v.mask.id==activeMaskId_)return &v.mask;return nullptr;}

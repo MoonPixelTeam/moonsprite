@@ -104,7 +104,7 @@ void Editor::antiAliasTick(){
     else if(!result.error.empty()){status_=U"抗锯齿失败："+unicodeText(result.error);aaCommit_=false;}
     else if(std::none_of(result.task.surfaces.produced.begin(),result.task.surfaces.produced.end(),[](auto b){return b!=0;})){status_=U"没有可处理的内容";aaCommit_=false;}
     else if(document.publishAntiAliasSurfaceTask(std::move(result.task))){
-     if(aaCommit_){aaCommit_=false;if(document.commitAntiAliasAdjustment()){resolve(false);return;}status_=U"没有可处理的内容";if(!document.colorAdjustmentActive())document.beginAntiAliasPreview();}
+     if(aaCommit_){aaCommit_=false;if(document.commitAntiAliasAdjustment()){resolve(false);return;}status_=U"没有可处理的内容";if(!document.colorAdjustmentActive())document.beginAntiAliasPreview(selectedMaskSlots_);}
     }else{status_=U"抗锯齿结果已失效";aaCommit_=false;}
     refresh();
    }
@@ -115,7 +115,7 @@ void Editor::antiAliasTick(){
 
 void Editor::openAntiAlias(){
  if(pending_!=Pending::None||document.active())return;
- try{if(!document.beginAntiAliasPreview()){status_=U"目标图层已锁定或没有可处理的内容";invalidate();return;}}
+ try{if(!document.beginAntiAliasPreview(selectedMaskSlots_)){status_=U"目标图层已锁定或没有可处理的内容";invalidate();return;}}
  catch(const std::exception& e){status_=U"抗锯齿失败："+unicodeText(e.what());invalidate();return;}
  playing_=false;aaSpec_={};aaAuto_=aaLive_=true;aaCustom_=document.palette().primary;aaPicker_->syncColors(aaCustom_,aaCustom_);aaColorEntry_->setText(paletteHex(aaCustom_));aaOpacity_->setText("50");aaSource_->setSelectedIndex(0);pending_=Pending::AntiAlias;menuBar_->setEnabled(false);discard_->caption=U"应用";keep_->caption=U"取消";changeAntiAlias();
 }

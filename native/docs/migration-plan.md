@@ -3315,3 +3315,11 @@ pending-tile-center-build.log正式Release及free/tile测试构建exit0，fixtur
 核对legacy workspace-commands-selection-anti-alias.ts及locales/zh-CN.ts，抗锯齿应提交“自动抗锯齿”，原生却复用“卷积矩阵”提交标签，与history_catalog.h的既有分类不符。抽出私有共享surface提交函数，在pushEdit时传入各自标签，确保历史面板及历史变更通知使用实际操作名；不改像素计算或事务内容。混合文档测试同时断言AA及卷积提交标签。蒙版AA捕获/回写仍未迁移，本阶段不声明完成该路径。
 
 验证：正式构建exit0（aa-history-label-build.log），确认新测试程序重链后完整free-tile-project-tests通过（aa-history-label-test.log）；workspace指定检查exit0；来源检查通过（aa-history-label-provenance.log），diff通过。未做人工UI验收，全量迁移仍INCOMPLETE。
+
+### 2026-11-07：蒙版抗锯齿目标迁移
+
+对照legacy workspace-selection-effects-support.ts::selectedEffectTargets的选中蒙版格优先、活动蒙版次之及共享像素去重，workspace-commands-selection-anti-alias.ts锁定批次拒绝，tools-outline.ts逐目标帧合成采样，以及document-model.ts::normalizeLayerPackedValue蒙版灰度覆盖。原生既有异步AA任务接入蒙版源/回写，模拟写入逐像素归一化，保持链接根与所属层像素；Editor传入实际蒙版格选择，复用现有预览、取消及单次蒙版历史。快照预算计入蒙版字节，发布验证蒙版元数据/像素及活动上下文。maskPreview统一实现读取调整预览，供隔离画布/缩略图使用。
+
+新增ordinary/tile/free×普通/隔离×取消/提交12组，检查精确黑色覆盖、预览不改存储、单历史、上下文Undo/Redo、保存重开及所属Cel/资源不变；额外检查显式双格链接根去重、半透明黑转0xff7f7f7f、不解除链接、切换蒙版后旧任务拒绝及锁定拒绝。首轮构建中变更内联头文件导致隔离预览测试失败，停止该构建，将读取实现统一移至cpp，固定源码后重新构建；新测试程序完整通过（mask-aa-test.log）。
+
+最终验证：固定源码后的正式构建exit0（mask-aa-final-build.log），新测试程序完整free-tile-project-tests通过（mask-aa-test.log），workspace指定检查exit0，来源检查通过（mask-aa-provenance.log），diff通过。未做人工UI验收；多目标独立帧/组选区组合尚未全部验证，全量迁移仍INCOMPLETE。

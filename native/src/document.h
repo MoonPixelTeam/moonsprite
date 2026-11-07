@@ -548,14 +548,14 @@ public:
   struct AntiAliasSurfaceTask {
     ConvolutionSurfaceTask surfaces;timeline::Timeline simulation;
     std::vector<std::string> frames;std::vector<Pixel> palette;AntiAliasOptions options;
-    std::size_t simulationBytes=0,scratchBytes=0;
+    std::size_t simulationBytes=0,scratchBytes=0;std::string maskContext;
   };
   std::optional<AntiAliasSurfaceTask> captureAntiAliasSurfaceTask(const AntiAliasOptions&)const;
   static bool runAntiAliasSurfaceTask(AntiAliasSurfaceTask&,const std::function<bool()>&);
   bool publishAntiAliasSurfaceTask(AntiAliasSurfaceTask&&);
   bool commitAntiAliasAdjustment();
   struct AntiAliasTask {ConvolutionTask captured;timeline::Timeline timeline;std::vector<std::string> frames;std::vector<Pixel> palette;};
-  bool beginAntiAliasPreview();
+  bool beginAntiAliasPreview(const std::vector<MaskSlotKey>& masks={});
   static std::optional<std::vector<std::vector<Pixel>>> runAntiAliasTask(AntiAliasTask task,const AntiAliasOptions& options,const std::function<bool()>& cancelled);
   std::optional<AntiAliasTask> captureAntiAliasTask() const;
   std::optional<ConvolutionTask> captureConvolutionTask() const;
@@ -591,7 +591,7 @@ public:
   const std::vector<Pixel>& displayPixels()const{if(floating_&&floating_->tilemapPreview)return floating_->tilemapPreview->tilemapDisplay->resolveSurface(cel().id).surface->pixels;if(adjustment_)return adjustment_->preview.resolveSurface(cel().id).surface->pixels;if(gradient_){if(gradient_->tilemapDisplay)return gradient_->tilemapDisplay->resolveSurface(cel().id).surface->pixels;return gradient_->preview;}return pixels();}
   const std::vector<PixelRegion>* tilemapPreviewRegions()const{return floating_&&floating_->tilemapPreview?&floating_->tilemapPreview->tilemapRegions:gradient_&&gradient_->tilemapDisplay?&gradient_->tilemapRegions:nullptr;}
   PixelRegion gradientBounds()const{if(floating_&&floating_->tilemapPreview){PixelRegion bounds;for(const auto& r:floating_->tilemapPreview->tilemapRegions){bounds.include(r.x,r.y);bounds.include(r.x+r.w-1,r.y+r.h-1);}return bounds;}if(gradient_&&gradient_->tilemapDisplay){PixelRegion bounds;for(const auto& r:gradient_->tilemapRegions){bounds.include(r.x,r.y);bounds.include(r.x+r.w-1,r.y+r.h-1);}return bounds;}if(adjustment_)return {0,0,width_,height_};if(!gradient_ || !gradient_->region)return {};const auto& r=*gradient_->region;return {r.x,r.y,r.width,r.height};}
-  const timeline::AttachedMask* maskPreview()const{return gradient_&&gradient_->mask?&gradient_->mask->display:nullptr;}
+  const timeline::AttachedMask* maskPreview()const;
   const std::vector<Pixel>* gradientPreviewPixels()const{return gradient_&&!gradient_->mask&&!gradient_->tilemapDisplay?&gradient_->preview:nullptr;}
   bool fillPixels(Point point,Pixel color,WandOptions options={});
   bool fillPatternPixels(Point point,Pixel color,const PatternFillOptions& pattern,WandOptions options={});
@@ -985,7 +985,7 @@ private:
   std::optional<FilterPreview> filterPreview_;std::uint64_t nextFilterGeneration_=0;
 
   bool commitSurfaceAdjustment(const std::u32string& label);
-  struct AdjustmentPreview {timeline::Timeline baseline,preview;std::vector<std::string> targets;std::optional<SelectionMask> selection;std::string layerId,frameId;std::uint64_t contentRevision;bool clipSelection=true;std::vector<std::string> targetFrames;std::vector<std::string> convolutionTargets;};
+  struct AdjustmentPreview {timeline::Timeline baseline,preview;std::vector<std::string> targets;std::optional<SelectionMask> selection;std::string layerId,frameId;std::uint64_t contentRevision;bool clipSelection=true;std::vector<std::string> targetFrames;std::vector<std::string> convolutionTargets;std::string maskContext;};
   std::optional<AdjustmentPreview> adjustment_;
   struct PaletteReplacementPreview {PaletteState baseline,preview;std::uint64_t contentRevision;std::optional<Pixel> restorePrimary;};
   std::optional<PaletteReplacementPreview> paletteReplacement_;

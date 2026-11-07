@@ -759,9 +759,12 @@ std::size_t adjustmentStorageBudget(const timeline::Timeline& timeline,std::size
   if(s.pixels.size()>64*1024*1024 || s.pixels.size()>(adjustmentByteLimit-bytes)/sizeof(Pixel))throw std::length_error("Adjustment exceeds pixel budget");
   bytes+=s.pixels.size()*sizeof(Pixel);
  }
+ for(const auto& m:timeline.state().masks){const auto& surface=m.mask.surface;raster::validate(surface);if(surface.pixels.size()>(adjustmentByteLimit-bytes)/sizeof(Pixel))throw std::length_error("Adjustment mask snapshots exceed pixel budget");bytes+=surface.pixels.size()*sizeof(Pixel);}
  if(!copies || bytes>adjustmentByteLimit/copies)throw std::length_error("Adjustment snapshots exceed pixel budget");
  return bytes;
 }
+const timeline::MaskSlot* adjustmentMask(const timeline::Timeline& t,const std::string& id){for(const auto& m:t.state().masks)if(m.mask.id==id)return &m;return nullptr;}
+bool adjustmentMaskLocked(const timeline::Timeline& t,const timeline::MaskSlot& m){if(m.mask.locked)return true;if(m.group){for(const auto& g:t.state().groups)if(g.id==m.ownerId)return timeline::isGroupEffectivelyLocked(t.state(),g);return true;}if(!t.hasLayer(m.ownerId))return true;return timeline::isLayerEffectivelyLocked(t.state(),t.state().layers[t.layerIndex(m.ownerId)]);}
 bool adjustmentSameGeometry(const timeline::Surface& a,const timeline::Surface& b){return a.width==b.width&&a.height==b.height&&a.offsetX==b.offsetX&&a.offsetY==b.offsetY&&a.storageOriginX==b.storageOriginX&&a.storageOriginY==b.storageOriginY;}
 void gradientMapTaskStorage(const Document::GradientMapTask& task){
  if(task.documentBytes>adjustmentByteLimit/4)throw std::length_error("Gradient map snapshots exceed pixel budget");
@@ -970,7 +973,14 @@ bool Document::updateColorAdjustment(const ColorAdjustment& a,bool enabled){
  }
  p.preview=std::move(preview);++gradientRevision_;return true;
 }
-bool Document::beginAntiAliasPreview(){
+bool Document::beginAntiAliasPreview(const std::vector<MaskSlotKey>& maskSlots){
+ if(!maskSlots.empty()||!activeMaskId_.empty()){
+  commitFloatingPaste();cancelStroke();const auto& state=timeline_.state();std::vector<std::string> targets,frames;
+  auto collect=[&](const timeline::AttachedMask* mask,const std::string& frame){if(!mask)return true;const auto* slot=adjustmentMask(timeline_,mask->id);if(!slot||adjustmentMaskLocked(timeline_,*slot))return false;if(std::find(targets.begin(),targets.end(),mask->id)==targets.end()){targets.push_back(mask->id);frames.push_back(frame);}return true;};
+  if(!maskSlots.empty()){for(const auto& key:maskSlots)if(!collect(timeline::resolvedMask(state,key.first,key.second),key.second))return false;}
+  else if(!collect(mutableActiveMask(),activeFrameId_))return false;
+  if(targets.empty())return false;adjustmentStorageBudget(timeline_,3);adjustment_=AdjustmentPreview{timeline_,timeline_,std::move(targets),selection_,layer().id,frame().id,contentRevision_,true,std::move(frames)};adjustment_->maskContext=activeMaskId_;++gradientRevision_;return true;
+ }
  const auto commandLayers=selectedLayerIdsWithGroups();if(hasSelectedGroups()&&commandLayers.empty())return false;
  commitFloatingPaste();cancelStroke();const auto& state=timeline_.state();std::vector<std::string> selected;
  if(!timelineSelection_.cels.empty())selected=timelineSelection_.cels;
@@ -989,12 +999,15 @@ std::optional<std::vector<std::vector<Pixel>>> Document::runAntiAliasTask(AntiAl
 std::optional<Document::AntiAliasSurfaceTask> Document::captureAntiAliasSurfaceTask(const AntiAliasOptions& options)const{
  if(!adjustment_)return {};const auto& p=*adjustment_;
  if(p.contentRevision!=contentRevision_||p.frameId!=frame().id||p.layerId!=layer().id||!selectionEqual(p.selection,selection_))return {};
- AntiAliasSurfaceTask task;task.options=options;task.surfaces.baseBytes=convolutionSnapshotBytes(timeline_,p.baseline,p.preview);task.simulationBytes=adjustmentStorageBudget(p.baseline,1);
+ AntiAliasSurfaceTask task;task.maskContext=p.maskContext;if(task.maskContext!=activeMaskId_)return {};task.options=options;task.surfaces.baseBytes=convolutionSnapshotBytes(timeline_,p.baseline,p.preview);task.simulationBytes=adjustmentStorageBudget(p.baseline,1);
  const auto minimum=std::uint64_t(antiAliasCanvasCount(width_,height_))*(options.colorSource==1?80:24);std::size_t used=task.surfaces.baseBytes;
  if(task.simulationBytes>adjustmentByteLimit-used)throw std::length_error("Anti-alias capture exceeds pixel budget");used+=task.simulationBytes;
  if(minimum>adjustmentByteLimit-used)throw std::length_error("Anti-alias capture exceeds pixel budget");used+=std::size_t(minimum);
- for(const auto& id:p.targets){const auto r=p.baseline.resolveSurface(id);if(r.issue!=timeline::LinkIssue::None||!r.source||!r.surface||r.source->id!=id)throw std::logic_error("Invalid anti-alias owner");const auto bytes=convolutionSurfaceBytes(*r.surface);if(bytes>adjustmentByteLimit-used)throw std::length_error("Anti-alias capture exceeds pixel budget");used+=bytes;}
- auto source=captureGradientMapTask();if(!source)return {};task.surfaces.source=std::move(*source);task.simulation=p.baseline;task.frames=p.targetFrames;
+ const bool masks=!p.targets.empty()&&adjustmentMask(p.baseline,p.targets.front());
+ for(const auto& id:p.targets){const auto r=p.baseline.resolveSurface(id);const auto* m=masks?adjustmentMask(p.baseline,id):nullptr;const auto* surface=m?&m->mask.surface:r.surface;if(!surface||(!m&&(!r.source||r.source->id!=id)))throw std::logic_error("Invalid anti-alias owner");const auto bytes=convolutionSurfaceBytes(*surface);if(bytes>adjustmentByteLimit-used)throw std::length_error("Anti-alias capture exceeds pixel budget");used+=bytes;}
+ if(masks){auto& source=task.surfaces.source;source.width=width_;source.height=height_;source.identity=identity_;source.revision=contentRevision_;source.previewRevision=gradientRevision_;source.layerId=p.layerId;source.frameId=p.frameId;source.selection=p.selection;source.documentBytes=adjustmentStorageBudget(p.baseline,4);for(const auto& id:p.targets)source.targets.push_back({id,adjustmentMask(p.baseline,id)->mask.surface});}
+ else{auto source=captureGradientMapTask();if(!source)return {};task.surfaces.source=std::move(*source);}
+ task.simulation=p.baseline;task.frames=p.targetFrames;
  if(task.frames.size()!=p.targets.size())throw std::logic_error("Missing anti-alias target frames");
  for(int id:palette_.order()){const auto* entry=paletteEntry(id);if(entry&&entry->id&&(entry->color>>24))task.palette.push_back(entry->color);}return task;
 }
@@ -1007,7 +1020,7 @@ bool Document::runAntiAliasSurfaceTask(AntiAliasSurfaceTask& task,const std::fun
   const auto scratch=antiAliasScratch(target.surface,width,height,captured.selection,task.options,stop);if(stop())return false;task.scratchBytes=std::max(task.scratchBytes,scratch);
  }
  antiAliasTaskStorage(task);s.results.resize(captured.targets.size());s.produced.assign(captured.targets.size(),0);
- for(std::size_t i=0;i<captured.targets.size();++i){if(stop())return false;const auto& target=captured.targets[i];auto* surface=task.simulation.mutableOwnedSurface(target.ownerId);if(!surface)throw std::logic_error("Missing anti-alias simulation owner");
+ for(std::size_t i=0;i<captured.targets.size();++i){if(stop())return false;const auto& target=captured.targets[i];const bool mask=adjustmentMask(task.simulation,target.ownerId)!=nullptr;timeline::Surface* surface=nullptr;if(mask){for(auto& slot:task.simulation.state_.masks)if(slot.mask.id==target.ownerId)surface=&slot.mask.surface;}else surface=task.simulation.mutableOwnedSurface(target.ownerId);if(!surface)throw std::logic_error("Missing anti-alias simulation owner");
   // Detached union preserves all raw outside bytes, including hidden RGB.
   if(!adjustmentSameGeometry(*surface,s.plans[i].geometry)||(surface->width==1&&surface->height==1&&!(surface->pixels[0]>>24))){
    auto expanded=s.plans[i].geometry;expanded.pixels.assign(std::size_t(expanded.width)*expanded.height,0);
@@ -1018,7 +1031,7 @@ bool Document::runAntiAliasSurfaceTask(AntiAliasSurfaceTask& task,const std::fun
   for(int y=0;y<height;++y){if(stop())return false;for(int x=0;x<width;++x)input[std::size_t(y)*width+x]=raster::readWorld(*surface,x,y);auto row=compositeNormalRegion(task.simulation,task.frames[i],{0,y,width,1});std::copy(row.begin(),row.end(),composite.begin()+std::size_t(y)*width);}
   auto canvas=task.options.colorSource==1?composite:std::vector<Pixel>{};bool changed=false;
   auto sample=[&](int x,int y){return x<0||y<0||x>=width||y>=height?Pixel(0):composite[std::size_t(y)*width+x];};
-  auto write=[&](std::size_t index,Pixel value){if(index>=input.size())throw std::logic_error("Invalid anti-alias pixel");const int x=int(index%width),y=int(index/width);auto local=raster::worldIndex(*surface,x,y);if(!local)throw std::logic_error("Anti-alias target outside union");changed=changed||input[index]!=value;surface->pixels[*local]=value;composite[index]=compositeNormalRegion(task.simulation,task.frames[i],{x,y,1,1})[0];};
+  auto write=[&](std::size_t index,Pixel value){if(index>=input.size())throw std::logic_error("Invalid anti-alias pixel");const int x=int(index%width),y=int(index/width);auto local=raster::worldIndex(*surface,x,y);if(!local)throw std::logic_error("Anti-alias target outside union");changed=changed||input[index]!=(mask?timeline::normalizedMaskPixel(value):value);surface->pixels[*local]=mask?timeline::normalizedMaskPixel(value):value;composite[index]=compositeNormalRegion(task.simulation,task.frames[i],{x,y,1,1})[0];};
   auto output=antiAliasPixels(input,width,height,captured.selection,task.options,task.palette,canvas,sample,write,stop);if(!output||stop())return false;
   // Legacy recordPixel rejects unchanged packed values: geometry alone is no edit.
   if(changed){s.results[i]=*surface;s.produced[i]=1;}
@@ -1026,16 +1039,29 @@ bool Document::runAntiAliasSurfaceTask(AntiAliasSurfaceTask& task,const std::fun
  if(stop())return false;s.completed=true;return true;
 }
 bool Document::publishAntiAliasSurfaceTask(AntiAliasSurfaceTask&& task){
- if(!adjustment_||!task.surfaces.completed)return false;auto& p=*adjustment_;
+ if(!adjustment_||!task.surfaces.completed)return false;auto& p=*adjustment_;if(task.maskContext!=p.maskContext||task.maskContext!=activeMaskId_)return false;
  if(task.frames!=p.targetFrames||!antiAliasCompositeContextEqual(timeline_,task.simulation))return false;
  std::vector<Pixel> palette;for(int id:palette_.order()){const auto* entry=paletteEntry(id);if(entry&&entry->id&&(entry->color>>24))palette.push_back(entry->color);}if(palette!=task.palette)return false;
  for(const auto& c:p.baseline.state().cels)if(c.surface){const auto live=timeline_.resolveSurface(c.id);if(live.issue!=timeline::LinkIssue::None||!live.surface||!adjustmentSameGeometry(*c.surface,*live.surface)||c.surface->pixels!=live.surface->pixels)return false;}
+ if(timeline_.state().masks.size()!=p.baseline.state().masks.size())return false;
+ for(const auto& old:p.baseline.state().masks){const auto* now=adjustmentMask(timeline_,old.mask.id);if(!now||now->ownerId!=old.ownerId||now->frameId!=old.frameId||now->group!=old.group||now->mask.linkedMaskId!=old.mask.linkedMaskId||now->mask.visible!=old.mask.visible||now->mask.locked!=old.mask.locked||now->mask.autoLinkAnimationCels!=old.mask.autoLinkAnimationCels||now->mask.moveWithOwner!=old.mask.moveWithOwner||!adjustmentSameGeometry(now->mask.surface,old.mask.surface)||now->mask.surface.pixels!=old.mask.surface.pixels)return false;}
+ if(!p.targets.empty()&&adjustmentMask(p.baseline,p.targets.front())){
+  const auto& source=task.surfaces.source;if(source.identity!=identity_||source.revision!=contentRevision_||source.previewRevision!=gradientRevision_||source.layerId!=layer().id||source.frameId!=frame().id||!selectionEqual(source.selection,selection_)||source.targets.size()!=p.targets.size()||task.surfaces.results.size()!=p.targets.size()||task.surfaces.produced.size()!=p.targets.size())return false;
+  antiAliasTaskStorage(task);auto preview=p.baseline;std::vector<std::string> changed;
+  for(std::size_t i=0;i<p.targets.size();++i){if(source.targets[i].ownerId!=p.targets[i]||!adjustmentSameGeometry(source.targets[i].surface,adjustmentMask(p.baseline,p.targets[i])->mask.surface)||source.targets[i].surface.pixels!=adjustmentMask(p.baseline,p.targets[i])->mask.surface.pixels)return false;if(task.surfaces.produced[i]){raster::validate(task.surfaces.results[i]);if(!adjustmentSameGeometry(task.surfaces.results[i],task.surfaces.plans[i].geometry))return false;for(auto& slot:preview.state_.masks)if(slot.mask.id==p.targets[i])slot.mask.surface=std::move(task.surfaces.results[i]);changed.push_back(p.targets[i]);}}
+  if(changed.empty())return false;timeline::validateMasks(preview.state());p.preview=std::move(preview);p.convolutionTargets=std::move(changed);++gradientRevision_;return true;
+ }
  antiAliasTaskStorage(task);
  task.simulation=timeline::Timeline{};
  return publishConvolutionSurfaceTask(std::move(task.surfaces));
 }
 bool Document::commitAntiAliasAdjustment(){
  if(!adjustment_)return false;
+ if(!adjustment_->targets.empty()&&adjustmentMask(adjustment_->baseline,adjustment_->targets.front())){
+  auto& p=*adjustment_;if(p.contentRevision!=contentRevision_||p.maskContext!=activeMaskId_||p.layerId!=layer().id||p.frameId!=frame().id||!selectionEqual(p.selection,selection_)){cancelColorAdjustment();return false;}if(p.convolutionTargets.empty()){cancelColorAdjustment();return false;}
+  for(const auto& id:p.targets){const auto* slot=adjustmentMask(timeline_,id);if(!slot||adjustmentMaskLocked(timeline_,*slot))return false;}
+  Edit edit{{},state_,nextState_};edit.beforeMasks=timeline_.state().masks;edit.afterMasks=p.preview.state().masks;edit.maskContext=std::make_shared<Edit::MaskContextHistory>(Edit::MaskContextHistory{activeMaskId_,activeMaskId_,maskIsolated_,maskIsolated_});history_.reserve(position_+1);timeline_.state_.masks=*edit.afterMasks;cancelColorAdjustment();change_={0,0,width_,height_};publishChange();pushEdit(std::move(edit),U"自动抗锯齿");return true;
+ }
  // Legacy selected-target command refuses the batch if any selected target locks.
  for(const auto& id:adjustment_->targets){const auto r=timeline_.resolveSurface(id);if(!r.source)throw std::logic_error("Missing anti-alias commit owner");const auto l=std::find_if(timeline_.state().layers.begin(),timeline_.state().layers.end(),[&](const auto& item){return item.id==r.source->layerId;});if(l==timeline_.state().layers.end())throw std::logic_error("Missing anti-alias commit layer");if(layerEffectivelyLocked(*l))return false;}
  return commitSurfaceAdjustment(U"自动抗锯齿");
