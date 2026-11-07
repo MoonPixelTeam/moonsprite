@@ -3359,3 +3359,9 @@ pending-tile-center-build.log正式Release及free/tile测试构建exit0，fixtur
 用户明确窄窗口放不下的菜单收进“更多”。现有实现已包含这一行为，本轮保留入口、顺序、尺寸测量和菜单对象。核对Aseprite MIT ui/menu.cpp的MenuBox::cancelMenuLoop、Menu::closeAll和MenuItem::closeSubmenu，关闭通过消息队列完成；原生因此需要延迟重排，但此前连续resize每次都追加回调并携带过时宽度。现在同一关闭期间只保留一个CallbackMessage，更新最新目标矩形，关闭完成后一次重排。未改动依赖代码。
 
 扩展真实smokeWindowInput：更多菜单打开后连续提交中间、窄、宽三个尺寸再dispatch，验证最终宽度、原菜单顺序和捕获释放。正式构建exit0（menu-resize-coalesce-build.log），--window-input-check退出0，完整--workspace-check退出0，来源检查通过（menu-resize-coalesce-provenance.log），diff检查通过。此前Named reset retains initial hidden mode本轮修改前后均未复现，未据此宣称已修复该间歇问题，也未修改其产品逻辑。无人工图像验收或性能计时，不能量化总体卡顿改善；全量迁移仍INCOMPLETE。
+
+### 2026-11-07：颜色替换活动帧图层命令范围
+
+核对legacy workspace-commands-color.ts::applyColorReplacementTarget，layer命令值只作用activePaintLayer所在活动帧，且不使用像素选区裁剪。原生replaceTargets此前不识别layer，现补齐普通图层活动帧目标。旧ColorReplacementDialog.tsx未提供layer选项，因此不新增入口；保留既有命令/配置值的语义。选中图层范围菜单启用改用实际timelineSelection.layers，避免陈旧右键上下文。activePaintLayer还可能返回活动蒙版，原生该路径仍被核心拒绝，本阶段未完成蒙版迁移。
+
+扩展真实颜色替换对话框检查：两帧及另一图层，有单像素选区，确认活动帧整个图层独立预览，其他帧/层不变，取消无历史、提交一次历史及Undo/Redo。正式构建exit0（replacement-layer-scope-build.log），--workspace-check --named-workspace-only --replace-cell-selection-only退出0，来源检查通过（replacement-layer-scope-provenance.log），diff检查通过。未运行本阶段全量workspace、未人工UI验收，全量迁移仍INCOMPLETE。
