@@ -3843,3 +3843,9 @@ palette-apply-index-build.log正式Release、工程与核心目标构建通过�
 接续f31dfa86，对照platform_palette.rs::save_palette，布局验证应在palette_dir之前。原生此前直到编码才验证布局，已创建目录并扫描资源；现提取共享布局验证，保存先拒绝缺少schema2布局、重复／越界／缺失颜色和非整行槽位，再访问目录。编码和读取仍使用同一验证，未改变色板身份规则或原子写入器。
 
 新增真实Windows文件锁覆盖失败，逐字节核对原文件、无关.tmp及目录文件数；解除锁后保存重开，核对身份／名称／RGBA／槽位／名称数组；目标为目录时拒绝覆盖并保留子文件。夹具均为本次独立owned目录。长名称ID截断与旧版写入后读取失败的差异已询问用户，未以本批覆盖其决定。验证：palette-save-transaction-build.log正式Release和库／导入目标构建退出0；palette-save-transaction-tests.log及palette-save-transaction-import-tests.log退出0，正式--palette-library-check及--palette-import-check退出0。来源627文件覆盖通过，strict因既有迁移缺口退出1，diff通过。实际文件锁与目录目标均为原生测试执行，不等同于磁盘断电或人工系统选择器验收。全量迁移仍INCOMPLETE。
+
+### 图片色板有界条带收集（2026-11-08）
+
+接续11c2d5ac，核对实际platform_palette.rs::ordered_image_colors／png_imported_colors／image_imported_colors。PNG／JPEG／BMP／ICO原生WIC路径此前显式分配width×height RGBA，再全图去重；现按至多16384像素或至少一整行的有界条带转换，立即按行优先收集首现RGBA，保留透明RGB、重复、尺寸及65536种颜色上限。窄高图按多行批次调用WIC，避免每行一次COM调用。GIF仍按完整逻辑画布处理，WebP仍用既有Skia首帧解码；不声称这两条路径或WIC内部缓存也已流式化。
+
+完整格式回归扩展索引PNG1／2／4／8位跨行打包、透明RGB及顺序，65536唯一色成功／65537失败、8192行低色数图；保留既有BMP／JPEG／ICO／GIF／WebP、CRC／灰度／16位PNG及尺寸拒绝。验证：palette-image-bands-build.log唯一正式Release和图片／通用导入目标构建退出0；palette-image-bands-tests.log全部图片格式夹具及新增边界通过，palette-image-bands-import-tests.log退出0，正式--palette-import-check退出0。来源627文件覆盖通过，strict因既有缺口退出1，diff通过。32×8192夹具自身RGBA缓冲从1048576字节降为65536字节（按实际分配表达式核算），未测量WIC内部峰值或人工文件选择器／图像验收。全量迁移仍INCOMPLETE。
