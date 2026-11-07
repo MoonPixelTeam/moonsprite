@@ -54,10 +54,10 @@ int main(int argc,char** argv) {try {
  rejects([](auto& m){m.cels[0].linkedCelId="missing";},corrupt);
  rejects([](auto& m){m.cels[0].linkedCelId=m.cels[0].id;},corrupt);
  rejects([](auto& m){m.activeFrameId="missing";},corrupt);
- rejects([](auto& m){m.frames.push_back({"other",100});},unsupported);
- rejects([](auto& m){auto s=std::make_shared<ManifestRaster>(*m.cels[0].surface);s->offsetX=1;m.cels[0].surface=s;},unsupported);
+ {auto m=sample();m.frames.push_back({"other",100});const auto ready=prepareEditableImport(m);check(ready.timeline.cels.size()==2&&ready.timeline.cels.back().surface->width==1&&ready.timeline.cels.back().surface->pixels==std::vector<std::uint32_t>{0});check(m.cels.size()==1);}
+ {auto m=sample();auto s=std::make_shared<ManifestRaster>(*m.cels[0].surface);s->offsetX=1;m.cels[0].surface=s;auto d=createEditableDocument(prepareEditableImport(m));check(d.activeSurfaceIfPresent()->offsetX==1&&d.pixels()==s->pixels&&d.historyPosition()==0);}
  rejects([](auto& m){auto s=std::make_shared<ManifestRaster>(*m.cels[0].surface);s->pixels.pop_back();m.cels[0].surface=s;},corrupt);
- rejects([](auto& m){auto s=std::make_shared<ManifestRaster>(*m.layers[0].surface);s->pixels[0]=5;m.layers[0].surface=s;},unsupported);
+ {auto m=sample();auto s=std::make_shared<ManifestRaster>(*m.layers[0].surface);s->pixels[0]=5;m.layers[0].surface=s;auto d=createEditableDocument(prepareEditableImport(m));check(d.pixels()==m.cels[0].surface->pixels&&d.historyPosition()==0);}
  rejects([](auto& m){m.cels[0].surface.reset();},unsupported);
  rejects([](auto& m){m.unsupported.push_back("referenceImages");},unsupported);
  rejects([](auto& m){m.colorMode="indexed";},unsupported);

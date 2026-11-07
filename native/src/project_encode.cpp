@@ -198,10 +198,11 @@ static EncodedProject encodeProject(const Document& d,Limits limits,bool recover
     // Prune only known original raster resources absent from the new plan.
     if(source){
       std::set<std::string> retained;
+      const auto sourceDocument=JsonObject::Parse(winrt::to_hstring(source->manifestUtf8)).GetNamedObject(L"document");
       for(const auto& value:savedLayers)retained.insert(winrt::to_string(value.GetObject().GetNamedString(L"dataFile")));
       for(const auto& value:savedCels)retained.insert(winrt::to_string(value.GetObject().GetNamedString(L"dataFile")));
       for(const auto& set:d.timeline().state().tilesets)retained.insert("tilesets/"+set.id+".rgba");
-      for(const auto& old:JsonObject::Parse(winrt::to_hstring(source->manifestUtf8)).GetNamedObject(L"document").GetNamedArray(L"tilesets",JsonArray{})){const auto file=winrt::to_string(old.GetObject().GetNamedString(L"dataFile"));if(!retained.count(file))files.erase(file);}
+      for(const auto& old:sourceDocument.GetNamedArray(L"tilesets",JsonArray{})){const auto file=winrt::to_string(old.GetObject().GetNamedString(L"dataFile"));if(!retained.count(file))files.erase(file);}
       for(const auto& m:d.timeline().state().masks)retained.insert("masks/"+m.mask.id+".rgba");
 
       for(const auto& resource:d.projectBrushes()){retained.insert(resource.metadata.dataFile);retained.insert(resource.metadata.colorsFile);}
@@ -210,6 +211,9 @@ static EncodedProject encodeProject(const Document& d,Limits limits,bool recover
       for(const auto& m:source->masks)if(m.surface&&!retained.count(m.surface->dataFile))files.erase(m.surface->dataFile);
       for(const auto& layer:source->layers)if(layer.surface && !retained.count(layer.surface->dataFile))files.erase(layer.surface->dataFile);
       for(const auto& cel:source->cels)if(cel.surface && !retained.count(cel.surface->dataFile))files.erase(cel.surface->dataFile);
+      // Dropped Cels have no DTO surface, but their recognized original path
+      // must also leave the new resource plan. Never prune retained/shared data.
+      for(const auto& old:sourceDocument.GetNamedObject(L"animation").GetNamedArray(L"cels")){if(old.ValueType()!=JsonValueType::Object)continue;const auto file=textjson::str(old.GetObject(),L"dataFile");if(!file.empty()&&!retained.count(file))files.erase(file);}
     }
 
     JsonObject display;if(doc.HasKey(L"displaySettings"))display=doc.GetNamedObject(L"displaySettings");JsonObject center;number(center,L"x",d.symmetryCenter().x);number(center,L"y",d.symmetryCenter().y);display.Insert(L"symmetryCenter",center);display.Insert(L"showPixelGrid",JsonValue::CreateBooleanValue(d.showPixelGrid()));display.Insert(L"showGrid",JsonValue::CreateBooleanValue(d.showCustomGrid()));JsonObject grid;const auto settings=d.customGrid();number(grid,L"x",settings.x);number(grid,L"y",settings.y);number(grid,L"width",settings.width);number(grid,L"height",settings.height);display.Insert(L"grid",grid);doc.Insert(L"displaySettings",display);

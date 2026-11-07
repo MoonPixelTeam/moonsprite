@@ -64,7 +64,8 @@ PreparedImport prepareEditableImport(const ReadManifest& m) {
  // preserving displayed geometry; ensureAnimationDocument later materializes
  // active blank storage and 1x1 inactive storage on editing/saving.
  std::set<std::pair<std::string,std::string>> importedSlots;std::set<std::string> importedIds;
- for(const auto& c:m.cels){importedSlots.emplace(c.layerId,c.frameId);importedIds.insert(c.id);}
+ std::set<std::string> layerIds,frameIds;for(const auto& l:m.layers)corrupt(l.id.empty()||!layerIds.insert(l.id).second,"Duplicate or empty imported layer ID");for(const auto& f:m.frames)corrupt(f.id.empty()||!frameIds.insert(f.id).second,"Duplicate or empty imported frame ID");
+ for(const auto& c:m.cels){corrupt(c.id.empty()||!layerIds.count(c.layerId)||!frameIds.count(c.frameId),"Invalid imported Cel identity/owner");corrupt(!importedSlots.emplace(c.layerId,c.frameId).second||!importedIds.insert(c.id).second,"Duplicate imported Cel ID or slot");}
  if(!m.layers.empty()&&!m.frames.empty()&&m.cels.size()<m.layers.size()*m.frames.size()){
   ReadManifest normalized=m;std::size_t serial=0,pixels=0;
   for(const auto& l:m.layers)for(const auto& f:m.frames)if(!importedSlots.count({l.id,f.id})){

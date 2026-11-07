@@ -110,6 +110,9 @@ static ReadManifest readManifestWithClock(std::shared_ptr<const Bytes> bytes,Lim
     // Keep source version for atlas decoding; preserved JSON is normalized so
     // saving an imported archive cannot restore obsolete version metadata.
     const auto sourceVersion=out.schemaVersion;
+    // Legacy rejects unknown raster codecs before slot filtering. Even a Cel
+    // that is later discarded cannot hide an encoding from a future format.
+    if(sourceVersion>=5){auto checkEncodings=[&](const JsonArray& entries){for(const auto& item:entries){if(item.ValueType()!=JsonValueType::Object)continue;const auto entry=item.GetObject();if(!entry.HasKey(L"dataEncoding"))continue;const auto encoding=entry.GetNamedValue(L"dataEncoding");if(encoding.ValueType()!=JsonValueType::String||(encoding.GetString()!=L"raw"&&encoding.GetString()!=L"sparse-tiles-v1"))throw Error(ErrorKind::Unsupported,"Unknown project raster encoding");}};checkEncodings(array(doc,"layers"));checkEncodings(array(object(doc,"animation"),"cels"));}
     if(sourceVersion<21){
       for(const auto& item:array(doc,"layers")){
         auto layer=itemObject(item,"layer");
@@ -140,7 +143,7 @@ static ReadManifest readManifestWithClock(std::shared_ptr<const Bytes> bytes,Lim
       out.manifestUtf8=winrt::to_string(root.Stringify());out.schemaVersion=21;
     }
     out.id=str(doc,"id");out.name=str(doc,"name",false);out.width=integer(doc,"width",0,1,true);out.height=integer(doc,"height",0,1,true);
-    out.colorMode=str(doc,"colorMode");out.activeLayerId=str(doc,"activeLayerId");
+    out.colorMode=str(doc,"colorMode");out.activeLayerId=textjson::str(doc,L"activeLayerId");
     auto date=[&](const char* name){auto v=value(doc,name);return v&&v.ValueType()==JsonValueType::String&&!v.GetString().empty()?winrt::to_string(v.GetString()):clock();};out.information.createdAt=date("createdAt");out.information.updatedAt=date("updatedAt");
     if(auto v=value(doc,"statistics");v&&v.ValueType()==JsonValueType::Object){const auto statistics=v.GetObject();auto counter=[&](const char* name){const auto n=value(statistics,name);return n&&n.ValueType()==JsonValueType::Number?projectCounter(n.GetNumber()):std::uint64_t(0);};out.information.strokeCount=counter("strokeCount");out.information.operationCount=counter("operationCount");out.information.drawingTimeMs=counter("drawingTimeMs");}
 
@@ -230,8 +233,8 @@ static ReadManifest readManifestWithClock(std::shared_ptr<const Bytes> bytes,Lim
       if(auto v=value(o,"background");v&&v.ValueType()==JsonValueType::Object){auto b=v.GetObject();timeline::BackgroundSettings settings;settings.mode=textjson::str(b,L"mode");if(settings.mode=="canvas"){auto w=value(b,"repeatWidth"),h=value(b,"repeatHeight");if(w&&h&&w.ValueType()==JsonValueType::Number&&h.ValueType()==JsonValueType::Number){double x=w.GetNumber(),y=h.GetNumber();if(std::floor(x)==x&&std::floor(y)==y&&x>0&&y>0&&x<=65536&&y<=65536&&x*y<=268435456){settings.repeatWidth=int(x);settings.repeatHeight=int(y);}}layer.background=settings;}else if(settings.mode=="preset"){settings.pattern=textjson::str(b,L"pattern");if(isBackgroundPattern(settings.pattern))layer.background=settings;}}
       layer.surface=raster(o);if(!layer.surface && out.colorMode=="rgba" && layer.kind.empty()) bad("missing layer raster");out.layers.push_back(std::move(layer));
     }
-    if(out.layers.empty() || !layerIds.count(out.activeLayerId)) bad("activeLayerId");
-    std::set<std::string> modernFreeLayers;for(const auto& layer:out.layers)if(layer.kind=="free-tile"&&layer.freeTiles&&!layer.freeTiles->sources.empty())modernFreeLayers.insert(layer.id);
+    if(out.layers.empty())bad("missing layers");if(!layerIds.count(out.activeLayerId))out.activeLayerId=out.layers.front().id;
+    std::set<std::string> modernFreeLayers;std::map<std::string,const ManifestLayer*> celOwners;for(const auto& layer:out.layers){celOwners.emplace(layer.id,&layer);if(layer.kind=="free-tile"&&layer.freeTiles&&!layer.freeTiles->sources.empty())modernFreeLayers.insert(layer.id);}
     auto animation=object(doc,"animation");out.activeFrameId=textjson::str(animation,L"activeFrameId");const auto loopValue=value(animation,"loop");out.loop=!(loopValue&&loopValue.ValueType()==JsonValueType::Boolean&&!loopValue.GetBoolean());
     if(!animation.HasKey(L"cels"))animation.Insert(L"cels",JsonArray());
     fields(animation,{"frames","cels","activeFrameId","loop","loopSections","layerMasks","groupMasks"},"animation",out);
@@ -281,6 +284,14 @@ static ReadManifest readManifestWithClock(std::shared_ptr<const Bytes> bytes,Lim
       // Resource metadata comes from the first raw ID match, while slot,
       // link and zIndex come from the accepted normalized candidate.
       JsonObject rasterMetadata;for(const auto& field:firstRawCels.at(cel.id))rasterMetadata.Insert(field.Key(),field.Value());
+      const auto& owner=*celOwners.at(cel.layerId);if(owner.kind=="tilemap"){if(cel.text||cel.freeTiles||(cel.linkedCelId.empty()&&!cel.tilemap))bad("tilemap cel payload");}else if(owner.kind=="free-tile"){if(cel.text||cel.tilemap||(cel.linkedCelId.empty()&&!cel.freeTiles))bad("free tile cel payload");}else if(cel.tilemap||cel.freeTiles)bad("raster cel payload");
+      // normalizeManifestAnimation keeps only string paths and safe integer
+      // dimensions. decodeProject drops unlinked Cels without a path, and all
+      // Cels with a path but unusable geometry; empty-slot adaptation happens
+      // later, after the remaining valid grid templates have been collected.
+      const auto path=value(rasterMetadata,"dataFile");const bool hasPath=path&&path.ValueType()==JsonValueType::String&&!path.GetString().empty();
+      if(!hasPath){rasterMetadata.Remove(L"dataFile");if(cel.linkedCelId.empty())continue;}
+      else {const auto format=value(rasterMetadata,"format");if(!format||format.ValueType()!=JsonValueType::String||(format.GetString()!=L"rgba"&&format.GetString()!=L"indexed"))bad("cel raster format");auto validDimension=[&](const char* name){const auto n=value(rasterMetadata,name);if(!n||n.ValueType()!=JsonValueType::Number)return false;const auto d=n.GetNumber();return std::isfinite(d)&&std::floor(d)==d&&d>=1&&d<=9007199254740991.;};if(!validDimension("width")||!validDimension("height")){consumedFiles.insert(winrt::to_string(path.GetString()));continue;}}
       for(const auto* name:{L"offsetX",L"offsetY"}){const auto raw=rasterMetadata.TryLookup(name);double n=0;if(raw&&raw.ValueType()==JsonValueType::Number&&std::isfinite(raw.GetNumber()))n=std::trunc(raw.GetNumber());if(n<std::numeric_limits<int>::min()||n>std::numeric_limits<int>::max())throw Error(ErrorKind::Limit,"Cel offset exceeds native coordinates");rasterMetadata.Insert(name,JsonValue::CreateNumberValue(n));}
       cel.surface=raster(rasterMetadata);if(!cel.surface && cel.linkedCelId.empty() && out.colorMode=="rgba") bad("missing cel raster");out.cels.push_back(std::move(cel));
     }

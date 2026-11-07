@@ -3558,3 +3558,12 @@ make-project-manifest-fixtures.cjs通过实际legacy encode/decode生成版本1�
 样本包含不透明白色像素、图层0.6、第一帧0.2；原生核对初始活动帧、无导入历史、合法链接、合成Alpha153、普通／恢复保存重开、保存后切换首帧再切回及透明度编辑Undo/Redo。直接调用真实recent::readPreview（无磁盘缓存与内嵌预览）逐像素核对2×2白色与Alpha153。该独立预览调用暴露WinRT factory在自有COM apartment释放后仍被缓存，退出访问异常0xC0000005（import-opacity-preview-baseline.log）；按既有project_manifest.cpp适配方式仅由S_OK apartment所有者在RoUninitialize前清理factory cache，六次预览及后续全部工程读取通过。首次新增预览测试传空取消回调的测试调用错误已修正，不把该次失败归为软件缺陷。
 
 正式完整构建import-opacity-build.log、最终正式／测试目标构建import-opacity-final-build.log及预览修复重建import-opacity-preview-rebuild.log通过；project-manifest-tests、project-save-tests、完整free-tile-project-tests、cel-properties-tests、editor-recovery-tests均通过对应import-opacity日志，正式--cel-clipboard-check退出0，来源覆盖import-opacity-provenance.log与diff检查通过。此处恢复证据为恢复归档往返与恢复模块自动测试，未做恢复对话框／最近工程面板人工UI验收。缺失槽身份、全色彩模式等既有缺口仍在，全量迁移INCOMPLETE。
+
+
+### 2026-11-07：退化Cel栅格与活动图层回落的工程恢复迁移
+
+对照实际legacy migrateProjectManifest／normalizeManifestAnimation、decodeProject及ensureAnimationDocument：无有效字符串dataFile的独立Cel被丢弃，有路径但缺失／非正／非安全整数尺寸的Cel也被丢弃；之后按既有缺槽适配生成空白。先核对特殊owner载荷，不能用无路径绕过瓦片／自由瓦片必需数据或普通层禁用载荷。失效活动图层（缺失、null、空、非字符串、未知ID）按旧版底到顶顺序回落首个图层，不能选反转后原生栈首项。schema5起在Cel过滤之前拒绝所有未知dataEncoding，含null／非字符串与最终会被丢弃的Cel；schema4及以前保留强制raw版本门。明确格式错误、资源缺失与字节不足仍拒绝，不把损坏像素当成空白。
+
+新增161组真实legacy decode ZIP oracle：130组五种owner×活动／非活动×13种路径／几何退化、7种活动图层选择、6种Cel编码、9组版本／owner编码门禁、4组栅格损坏、5组特殊载荷错误。原生核对空白像素、空结构载荷、既有帧、瓦片资源精确像素、来自被丢弃Cel的蒙版及标志、普通／恢复保存重开、空帧复制Undo/Redo、回落图层笔画Undo/Redo。原生失败基线dropped-cel-baseline-tests.log为missing cel raster。往返测试进一步发现丢弃Cel的旧路径未被保存资源清理器处理，导致新归档unmapped resource；编码器现在仅清理新资源计划未保留的原Cel路径，共享资源按retained集合保留。
+
+完整直接导入契约测试同时暴露重复图层／帧ID在补空槽前导致递归栈溢出（退出0xC00000FD）；补槽前校验非空唯一图层／帧／Cel标识、有效owner和唯一槽，重复输入返回Corrupt。更新三项此前已迁移却仍期望Unsupported的旧测试，实际断言缺槽补齐与活动Cel覆盖过期层缓存，未降低像素／坐标／输入不变校验。dropped-cel-final-build.log正式及工程目标构建、dropped-cel-import-build.log定向重建通过；project-manifest-tests、完整project-import-tests、project-save-tests、完整free-tile-project-tests通过对应dropped-cel日志，正式--cel-clipboard-check退出0，来源覆盖与diff通过。未做人工旧工程UI验收；缺失槽身份、畸形链接回落、全色彩模式及其余迁移领域仍未完成，整体INCOMPLETE。

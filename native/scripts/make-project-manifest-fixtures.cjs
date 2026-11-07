@@ -154,5 +154,36 @@ registerHooks({
   const persisted=decodeProject(encodeProject(decoded,{includePreview:false}));if(persisted.layers[0].opacity!==.6)throw new Error('Imported active Cel saved opacity oracle mismatch');
   fs.writeFileSync(path.join(out,`import-opacity-${opacity}-${Number(linked)}.moonsprite`),bytes);
  }
+ // decodeProject drops Cels with no raster path or unusable dimensions before
+ // ensureAnimationDocument fills the slot. Keep a valid grid template/resource.
+ const droppedModes=['file-absent','file-null','file-empty','file-number','width-absent','width-null','width-string','width-zero','width-negative','width-fraction','width-unsafe','height-zero','height-string'];
+ for(const kind of ['raster','text','adjustment','tilemap','free-tile'])for(const active of [false,true])for(const mode of droppedModes){
+  let r;if(kind==='raster'){const d=createDocument('Dropped raster Cel',4,4,'rgba');ensureAnimationDocument(d);r=unzipSync(encodeProject(d,{includePreview:false}));}else r=unzipSync(fs.readFileSync(path.join(out,`special-hole-${kind}-0.moonsprite`)));
+  const m=JSON.parse(strFromU8(r['manifest.json'])),a=m.document.animation,l=m.document.layers[0],first=a.cels[0];
+  if(a.frames.length===1)a.frames.push({id:'missing-special',duration:260});const dropped={...first,id:'dropped-raster',frameId:'missing-special',dataFile:'cels/dropped-raster.rgba',dataEncoding:'raw'};r[dropped.dataFile]=new Uint8Array(64).fill(255);a.cels.push(dropped);a.activeFrameId=active?'missing-special':a.frames[0].id;
+  const [field,type]=mode.split('-');if(type==='absent')delete dropped[field==='file'?'dataFile':field];else dropped[field==='file'?'dataFile':field]=type==='null'?null:type==='empty'?'':type==='number'?7:type==='string'?'4':type==='zero'?0:type==='negative'?-1:type==='fraction'?1.5:9007199254740992;
+  // Missing/non-string paths are not resource references in the legacy manifest.
+  if(field==='file')delete r['cels/dropped-raster.rgba'];if(kind==='raster'&&active&&mode==='file-absent'){dropped.mask={id:'dropped-cel-mask',width:2,height:2,offsetX:0,offsetY:0,dataFile:'masks/dropped-cel.u8',locked:true,autoLinkAnimationCels:false};r[dropped.mask.dataFile]=new Uint8Array([255,128,64,0]);}r['manifest.json']=strToU8(JSON.stringify(m));const bytes=zipSync(r),decoded=decodeProject(bytes);
+  if(decoded.animation.cels.length!==1||decoded.animation.cels.some(c=>c.id===dropped.id)||(active&&decoded.layers[0].pixels.some(Boolean)))throw new Error('Dropped raster decode oracle mismatch '+kind+' '+mode);
+  ensureAnimationDocument(decoded);const blank=decoded.animation.cels.find(c=>c.frameId==='missing-special');if(!blank||blank.text||blank.freeTiles?.instances.length||blank.tilemap?.cells.some(Boolean))throw new Error('Dropped raster materialization oracle mismatch');
+  decodeProject(encodeProject(decoded,{includePreview:false}));fs.writeFileSync(path.join(out,`dropped-raster-${kind}-${Number(active)}-${mode}.moonsprite`),bytes);
+ }
+ for(const mode of ['absent','null','empty','number','object','unknown','valid']){
+  const m=structuredClone(manifest),r={...files},a=m.document.animation,l=m.document.layers[0];const second={...l,id:'fallback-second',name:'Second',dataFile:'layers/fallback-second.rgba',dataEncoding:'raw'};m.document.layers.push(second);r[second.dataFile]=new Uint8Array(16).fill(255);a.cels.push({...a.cels[0],id:'fallback-second-cel',layerId:second.id,dataFile:second.dataFile,dataEncoding:'raw'});
+  if(mode==='absent')delete m.document.activeLayerId;else m.document.activeLayerId=mode==='null'?null:mode==='empty'?'':mode==='number'?7:mode==='object'?{}:mode==='unknown'?'not-a-layer':second.id;
+  r['manifest.json']=strToU8(JSON.stringify(m));const bytes=zipSync(r),decoded=decodeProject(bytes);if(decoded.activeLayerId!==(mode==='valid'?second.id:l.id))throw new Error('Active layer fallback oracle mismatch');fs.writeFileSync(path.join(out,`active-layer-fallback-${mode}.moonsprite`),bytes);
+ }
+ for(const mode of ['absent','null','number','object','array','unknown']){
+  const m=structuredClone(manifest),r={...files},c=m.document.animation.cels[0];if(mode==='absent')delete c.dataEncoding;else c.dataEncoding=mode==='null'?null:mode==='number'?7:mode==='object'?{}:mode==='array'?[]:'future-codec';r[c.dataFile]=new Uint8Array(16).fill(255);r['manifest.json']=strToU8(JSON.stringify(m));const bytes=zipSync(r);if(mode==='absent'){const decoded=decodeProject(bytes);if(decoded.layers[0].pixels.some(v=>v!==255))throw new Error('Cel raw encoding fallback oracle mismatch');}else {let rejected=false;try{decodeProject(bytes);}catch{rejected=true;}if(!rejected)throw new Error('Unknown Cel encoding accepted by legacy');}fs.writeFileSync(path.join(out,`cel-encoding-${mode==='absent'?'fallback':'reject'}-${mode}.moonsprite`),bytes);
+ }
+ for(const version of [4,5,21])for(const owner of ['layer','cel','dropped']){
+  const m=structuredClone(manifest),r={...files};m.schemaVersion=m.document.schemaVersion=version;const target=owner==='layer'?m.document.layers[0]:m.document.animation.cels[0];target.dataEncoding=null;r[target.dataFile]=new Uint8Array(16);if(owner==='dropped')target.frameId='unknown-frame';r['manifest.json']=strToU8(JSON.stringify(m));const bytes=zipSync(r);let accepted=true;try{decodeProject(bytes);}catch{accepted=false;}if(accepted!==(version===4))throw new Error('Raster encoding version gate oracle mismatch');fs.writeFileSync(path.join(out,`encoding-gate-${version}-${owner}.moonsprite`),bytes);
+ }
+ for(const mode of ['format-absent','format-invalid','missing-resource','truncated-resource']){
+  const m=structuredClone(manifest),r={...files},c=m.document.animation.cels[0];if(mode==='format-absent')delete c.format;else if(mode==='format-invalid')c.format='future';else if(mode==='missing-resource'){c.dataFile='cels/missing.rgba';}else {c.dataFile='cels/truncated.rgba';c.dataEncoding='raw';r[c.dataFile]=new Uint8Array(3);}r['manifest.json']=strToU8(JSON.stringify(m));const bytes=zipSync(r);let rejected=false;try{decodeProject(bytes);}catch{rejected=true;}if(!rejected)throw new Error('Corrupt raster unexpectedly accepted by legacy');fs.writeFileSync(path.join(out,`cel-raster-reject-${mode}.moonsprite`),bytes);
+ }
+ for(const mode of ['tilemap-no-payload','tilemap-text','free-no-payload','raster-tilemap','raster-free']){
+  const source=mode.startsWith('free')||mode==='raster-free'?'free-tile':'tilemap';const r=unzipSync(fs.readFileSync(path.join(out,`special-hole-${source}-0.moonsprite`))),m=JSON.parse(strFromU8(r['manifest.json'])),c=m.document.animation.cels[0];delete c.dataFile;if(mode==='tilemap-no-payload')delete c.tilemap;else if(mode==='free-no-payload')delete c.freeTiles;else if(mode==='tilemap-text')c.text={text:'invalid'};else {delete m.document.layers[0].kind;delete m.document.layers[0].tilemapTilesetId;delete m.document.layers[0].freeTileSources;delete m.document.layers[0].freeTileSetId;}r['manifest.json']=strToU8(JSON.stringify(m));const bytes=zipSync(r);let rejected=false;try{decodeProject(bytes);}catch{rejected=true;}if(!rejected)throw new Error('Dropped raster invalid payload accepted by legacy');fs.writeFileSync(path.join(out,`cel-payload-reject-${mode}.moonsprite`),bytes);
+ }
  console.log('Generated project manifest fixtures through legacy encodeProject');
 })().catch(e=>{console.error(e);process.exitCode=1;});
