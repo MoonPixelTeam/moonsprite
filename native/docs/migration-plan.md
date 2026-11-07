@@ -3459,3 +3459,10 @@ legacy core/layer-merge.ts::mergeVisibleLayers复用compositeDocument渲染全�
 legacy workspace-commands-color.ts::applyColorReplacementTarget的collect先跳过isLayerEffectivelyLocked，再replaceLayerColor。原生beginColorReplacement此前先拒绝特殊kind，使文档／所选范围内锁定特殊层也取消可编辑普通层的替换。现按旧版调整准入顺序，先跳过缺失／调整／有效锁定层，再检查未迁移特殊正文；不扩大特殊正文的源编辑行为。继续追踪tools-fill.ts::replaceLayerColor、history.ts::recordPixelKnownCurrent／commitPixelEdit：旧版直接写派生像素，未同步自由源／网格资源，此差异仍需闭环，不能把解禁当作迁移完成。
 
 16组瓦片／自由瓦片×直接／组继承锁×取消／提交×目标顺序回归，包含普通链接源／别名去重、 detached预览、一次历史、原生／恢复重开、Undo/Redo、特殊实例／网格及像素不变和仅锁定范围无操作。正式程序与完整测试构建通过（locked-replacement-build.log）；完整free-tile-project-tests通过（locked-replacement-tests.log）；正式 --cel-clipboard-check退出0。首次误用不存在的--replace-color-check启动空白实例，已结束该测试进程；颜色定向检查经--workspace-check --replace-cell-selection-only运行后，后续通用预览窗口检查因隐藏窗口无捕获失败（native-workspace-error.txt）；使用已有--named-workspace-only提前退出通用工作区阶段，实际smokeColorReplacement退出0。来源覆盖检查通过（locked-replacement-provenance.log），diff通过。未人工视觉验收，全量迁移INCOMPLETE。
+
+
+### 2026-11-07：用户确认后的自由瓦片Cel完整拖动
+
+用户明确采用“拖动完整移动／复制实例并保留存活链接；跨工程自动复制缺失源、重映射并撤销”的新行为。本阶段完成Cel拖动，复用timeline_interaction.cpp既有重叠暂存、链接幸存者接管和Cel历史；沿用legacy workspace-commands-animation-cel-clipboard.ts::moveSelectedAnimationCels的选区／锚点及目标映射。源内容通过canonical解析实例；移动清空源实例；目标用当前所属自由源验证并渲染；转移块按目标层和原解析源重建内部链接，副本与原组独立，块外链接保有原实例和缓存。跨源集合资源转移后续完成，目前共享源行可拖动，未匹配源仍在发布前拒绝。
+
+16组copy/move × 链接/独立 × 内存/保存重开 × 同行重叠/共享源跨行覆盖实例元数据、内部链接、外部存活链接、源清空、目标选择/锚点、资源不变、一次历史、原生/恢复重开与Undo/Redo。首次发现重开别名没有本地freeTiles，清空必须根据解析源写空CelData，已修复。最终正式与测试构建通过（free-cel-drag-final-build.log），完整free-tile-project-tests通过（free-cel-drag-tests.log），正式--cel-clipboard-check退出0，来源覆盖检查通过（free-cel-drag-provenance.log），diff通过。未人工拖动视觉验收；已授权的缺失源复制尚未完成，全量迁移INCOMPLETE。
