@@ -29,7 +29,7 @@ void Editor::syncPaletteButtons() {
 
         const int id=paletteButtonIds_[index];cancelStroke();
 
-        if(!id) {if(paletteManual_)addManualPaletteColor(index);else {document.addPaletteColor(ink_,paletteLocked_,index<document.palette().slots.size()?std::optional<std::size_t>(index):std::nullopt);refresh();}}
+        if(!id) {if(paletteManual_)addManualPaletteColor(index);else {try{document.addPaletteColor(ink_,paletteLocked_,index<document.palette().slots.size()?std::optional<std::size_t>(index):std::nullopt);}catch(const std::length_error&){status_=U"颜色编号超出当前支持范围";}refresh();}}
 
         else openPaletteEditor(id,false);
 
@@ -111,7 +111,7 @@ void Editor::beginPaletteGrowth(const ui::MouseMessage& mouse){
 
 void Editor::updatePaletteGrowth(gfx::Point point){if(!paletteGrowth_)return;auto& g=*paletteGrowth_;g.preview=paletteGrowthPreview(g.base,g.preview.columns,paletteSlotAt(point));refresh();updateNavigationCursor();}
 
-void Editor::finishPaletteGrowth(bool cancel){if(!paletteGrowth_)return;const auto g=std::move(*paletteGrowth_);paletteGrowth_.reset();if(hasCapture())releaseMouse();if(!cancel&&g.identity==document.identity()){if(!g.preview.removedIds.empty())document.deletePaletteColors(g.preview.removedIds);else if(g.preview.added){std::vector<std::size_t> indices;for(std::size_t i=g.base.size();i<g.preview.handleSlot;++i)indices.push_back(i);document.pastePaletteColors(std::vector<Pixel>(g.preview.added,0xff000000),indices,false,&g.base);}}updateNavigationCursor();refresh();}
+void Editor::finishPaletteGrowth(bool cancel){if(!paletteGrowth_)return;const auto g=std::move(*paletteGrowth_);paletteGrowth_.reset();if(hasCapture())releaseMouse();if(!cancel&&g.identity==document.identity()){if(!g.preview.removedIds.empty())document.deletePaletteColors(g.preview.removedIds);else if(g.preview.added){std::vector<std::size_t> indices;for(std::size_t i=g.base.size();i<g.preview.handleSlot;++i)indices.push_back(i);try{document.pastePaletteColors(std::vector<Pixel>(g.preview.added,0xff000000),indices,false,&g.base);}catch(const std::length_error&){status_=U"颜色编号超出当前支持范围";}}}updateNavigationCursor();refresh();}
 
 void Editor::beginPalettePointer(std::size_t index,const ui::MouseMessage& mouse) {
 
@@ -187,7 +187,7 @@ void Editor::copyPaletteColors() {
 
   }
 
-void Editor::pastePaletteColors() {
+void Editor::pastePaletteColors() try {
 
     PaletteClipboardData data=paletteClipboardLayout_;if(data.colors!=paletteClipboard_){data={};data.colors=paletteClipboard_;}std::string text;if(clip::get_text(text)&&text.size()<=4*1024*1024)if(auto parsed=parsePaletteClipboard(text))data=std::move(*parsed);if(data.colors.empty())return;
 
@@ -199,7 +199,7 @@ void Editor::pastePaletteColors() {
 
     const auto revision=document.revision();document.pastePaletteColors(colors,targets,true,&slots,paletteManual_?columns:0);if(document.revision()!=revision&&paletteManual_)document.annotatePaletteView(before,after);if(!paletteManual_)paletteBoxRange_.reset();refresh();
 
-  }
+  }catch(const std::length_error&){status_=U"颜色编号超出当前支持范围";refresh();}
 
 void Editor::selectSwatch(std::size_t index,bool ctrl,bool shift,bool secondary) {
 
@@ -451,7 +451,7 @@ std::vector<std::size_t> Editor::paletteGradientSlots()const{
 
   }
 
-void Editor::applyPaletteGradient(bool hue){const auto slots=paletteViewSlots();document.gradientPaletteSlots(paletteGradientSlots(),paletteColumns_,hue,&slots);refresh();}
+void Editor::applyPaletteGradient(bool hue){try{const auto slots=paletteViewSlots();document.gradientPaletteSlots(paletteGradientSlots(),paletteColumns_,hue,&slots);}catch(const std::length_error&){status_=U"颜色编号超出当前支持范围";}refresh();}
 
 void Editor::showPaletteActions() {
 

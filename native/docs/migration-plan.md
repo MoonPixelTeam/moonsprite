@@ -3637,3 +3637,18 @@ layer-metadata-final-build.log正式与四类工程目标Release构建通过；�
 最终回归补正两处历史测试前置条件，未改生产历史保护：原 linked 样本对空源新建链接帧，按实际 legacy linkAnimationFrameCels 不会链接，随后笔画将1×1空Cel扩到8×5；样本现先画非空源并显式断言真实链接，形状断言失败时输出样本与两侧令牌。独立legacy验证器中，归档各资源可能是同一ZIP buffer的不同视图，不能当作原生独立dense分配；仅在这八组微型测试准备阶段按buffer范围复制，保留精确alias、分离无关视图，再调用实际projectHistoryAnimationFrame／syncActiveAnimationLayers恢复活动投影与alias surface。生产捕获器的形状、字节视图与稀疏保护不变，精确patch及实际Undo/Redo对照未删减。
 
 正式程序及核心／工程／历史目标Release构建通过palette-independent-final-build.log、palette-independent-final-link-build.log；完整project-manifest-tests通过palette-independent-final-manifest-tests.log（本批114组四阶段矩阵、既有60组布局、558组坏链接等）。核心、快照、工程导入／保存、完整自由瓦片、历史成本检查通过对应palette-independent日志。历史捕获重建与检查通过palette-independent-committed-final-build.log／palette-independent-committed-final-tests.log；实际legacy八组捕获／hydrate及其独立编译样本生成通过palette-independent-committed-legacy-tests.log；原生hydration与budget使用本次新生成compiled-latest重新检查，通过palette-independent-hydration-final-tests.log／palette-independent-budget-final-tests.log。正式程序七项palette检查及--cel-clipboard-check均退出0，见palette-independent-ui-smoke.log；自动检查不等于人工UI验收。本阶段未进行人工旧工程UI验收，全量仍INCOMPLETE。
+
+
+### 调色盘容器默认值、原始引用与整数分配边界（2026-11-08）
+
+上一目标轮已实质完成独立顺序并提交推送ea24fffe；本轮沿现有调色盘缺口继续，不另开工程或Agent。直接检查实际project-format-decode.ts：palette只在非数组／缺失时成为空数组，旧版没有逐条修复畸形颜色；paletteOrder仅过滤非safe-integer值，其重复／悬空引用保留；normalizePaletteSlots另行使用存在且去重的可见身份。原生读取现按这些规则处理，在原生int范围内保留原始顺序，空槽仍使用现有零哨兵。超过int的原始顺序明确Unsupported；可读的重复／悬空顺序在可编辑导入处单独Unsupported，不能先悄悄重排或将旧版可读输入说成Corrupt。调色盘真实零ID、畸形条目与更宽ID空间仍未迁移。
+
+nextColorId按真实Math.max(1, source.nextColorId ?? 1)，复用已有、经过独立对照的legacyjson::number处理JSON数值转换，包括空值、布尔、字符串、数制前缀、Unicode空白及嵌套单元素数组；负值含负无穷先限幅到1。有限整数且在原生int范围内时准确承接；NaN／正无穷／限幅后小数／过宽数字明确Unsupported，不截断或自行变成max(existing ID)+1。已占用身份之前的cursor仍在可编辑边界Unsupported；旧版会允许随后制造重复身份，未借本阶段擅自改变这项产品语义。直接DTO的同一准入测试从Corrupt改为明确未支持。
+
+非数组原始palette经空色板导入、添加后保存时，编码器也不能强取原始GetNamedArray；现仅索引原始数组条目。每次保存建立一次ID→原始元数据索引，替代逐张色卡反复扫描全部来源条目的二次复杂度；保留原有按身份复用元数据与显式未知字段门禁。4096条含中文／Emoji／两侧空白名称、隐藏颜色、反序及稀疏布局的真实旧版样本参与相同四阶段检查，不以小样本通过代替这一分支。
+
+整数上限属于必要原生表示适配：五类分配入口均检查ID与递增后的cursor同时可表示，允许分配INT_MAX-1并保存cursor INT_MAX，耗尽后明确失败，消除原有nextId++的有符号溢出。渐变／应用／提取已有临时palette，失败不发布；粘贴在修改活色卡前按真实目标预检所需新ID，重复目标只分配一次、纯覆盖不消耗ID，自动槽位沿用65536边界，避免为预检再复制整个PaletteState。新增测试检查晚一步耗尽时整笔失败、混合覆盖／新增不留下被覆盖颜色、最后一次分配保存与Undo/Redo、耗尽后重复目标纯覆盖仍成功。添加、双击、拾色面板、手工槽、取色器、粘贴、扩容与渐变的原生UI入口接住该限制并沿现有status反馈；扩容清理捕获，取色器继续既有收尾。应用／提取沿用已有异常反馈，不重设计UI或素材。
+
+实际旧版decode→encode生成158组：九种空容器×三种列数×空／悬空顺序，44种cursor×空／非空色板，15种原始顺序及一组4096条目。128组可按原生表示读取，其中73组可编辑；另30组表示门禁和55组可读但不可编辑门禁单独断言，不计为可编辑完成。73组中的非上限样本再执行实际workspace-palette命令及其真实Undo/Redo回调，得到345组添加／粘贴／渐变／应用／提取四阶段矩阵；测试session仅收集回调，不声称浏览器HistoryStack／UI验收。原生各阶段核对精确身份、名称、RGBA、cursor、order、slots、columns、整个画布世界像素、单事务及普通／恢复保存重开。失败基线palette-decode-baseline-tests.log复现非数组palette误拒绝；最终整矩阵通过palette-decode-final-tests.log。本批不含人工旧工程UI验收，全量仍INCOMPLETE。
+
+正式与核心／工程／历史目标Release构建通过palette-decode-final-build.log；入口错误反馈与正式自动验收补充构建通过palette-decode-ui-build.log，最终正式目标及边界断言校验构建通过palette-decode-verified-build.log。完整project-manifest-tests（含上述新样本与既有114组独立顺序、60组布局、558组坏链接等）通过palette-decode-final-tests.log；核心、DocumentSnapshot、完整project-import-tests／project-save-tests、完整自由瓦片与历史成本通过对应palette-decode日志。首次直接运行save／cost时遗漏其必需fixture参数，返回用法错误；按CTest定义补齐目录后分别退出0，不属于产品回归。历史捕获palette-decode-committed-tests.log、实际legacy八组捕获及独立编译palette-decode-committed-legacy-tests.log通过，再用本次生成的compiled-latest重跑hydration／budget通过对应日志。正式--palette-growth-check覆盖四项耗尽后的真实Editor路径及释放捕获，其余六项palette检查和--cel-clipboard-check均退出0，见palette-decode-ui-smoke.log；仅为自动界面逻辑检查，未进行人工图像验收。来源覆盖626文件通过，strict仍按全量INCOMPLETE退出1，diff检查通过。

@@ -512,7 +512,7 @@ bool Editor::onProcessMessage(ui::Message* msg) {
 
       columnShown(0) && paletteViewportBounds().contains(static_cast<ui::MouseMessage*>(msg)->position())&&(!paletteManual_||static_cast<ui::MouseMessage*>(msg)->left())) {
 
-      cancelStroke();if(paletteManual_)addManualPaletteColor(paletteSlotAt(static_cast<ui::MouseMessage*>(msg)->position()));else document.addPaletteColor(ink_,paletteLocked_);paletteFocused_=true;refresh();return true;
+      cancelStroke();if(paletteManual_)addManualPaletteColor(paletteSlotAt(static_cast<ui::MouseMessage*>(msg)->position()));else try{document.addPaletteColor(ink_,paletteLocked_);}catch(const std::length_error&){status_=U"颜色编号超出当前支持范围";}paletteFocused_=true;refresh();return true;
 
     }
 

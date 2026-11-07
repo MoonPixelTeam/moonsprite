@@ -85,8 +85,8 @@ ImportPalette prepareEditablePalette(const ReadManifest& m){
   corrupt(e.id<1||!ids.insert(e.id).second,"Duplicate or invalid palette ID");
   p.entries.push_back({e.id,unicode(e.name),e.color});
  }
- corrupt(!ids.empty()&&p.nextId<=*ids.rbegin(),"Palette next ID would overwrite existing entry");
- for(int id:p.order) corrupt(!ids.count(id)||!visible.insert(id).second,"Invalid palette order reference");
+ unsupported(!ids.empty()&&p.nextId<=*ids.rbegin(),"Colliding legacy palette allocation cursor is not editable yet");
+ for(int id:p.order) unsupported(!ids.count(id)||!visible.insert(id).second,"Dangling or duplicate legacy palette order is not editable yet");
  for(int id:p.slots) if(id) corrupt(!visible.count(id)||!placed.insert(id).second,"Invalid palette slot reference");
  // Legacy normalizePaletteSlots: full rows, fill absent visible IDs into holes.
  const auto count=std::max(p.slots.size(),p.order.size()),cols=std::size_t(p.columns);

@@ -21,6 +21,7 @@
 #include <codecvt>
 #include <locale>
 #include <set>
+#include <map>
 #include <algorithm>
 #include <limits>
 namespace moon::project {
@@ -234,11 +235,14 @@ static EncodedProject encodeProject(const Document& d,Limits limits,bool recover
     // Remove only archive payloads belonging to explicitly deleted brush resources,
     // preserving shared raster/live brush resources and all unrelated original files.
     if(source){std::set<std::string> retained;for(const auto& resource:d.projectBrushes()){retained.insert(resource.metadata.dataFile);retained.insert(resource.metadata.colorsFile);}for(const auto& layer:source->layers)if(layer.surface)retained.insert(layer.surface->dataFile);for(const auto& cel:source->cels)if(cel.surface)retained.insert(cel.surface->dataFile);for(const auto& resource:source->customBrushes)if(std::none_of(d.projectBrushes().begin(),d.projectBrushes().end(),[&](const auto& current){return current.metadata.id==resource.metadata.id;})){if(!retained.count(resource.metadata.dataFile))files.erase(resource.metadata.dataFile);if(!retained.count(resource.metadata.colorsFile))files.erase(resource.metadata.colorsFile);}}
-    if(d.palette().columns<1||d.palette().columns>256)throw Error(ErrorKind::Corrupt,"Invalid save palette columns");
+    if(d.palette().columns<1||d.palette().columns>256||d.palette().nextId<1)throw Error(ErrorKind::Corrupt,"Invalid save palette columns or cursor");
+    // Legacy nonarray palette decodes to []. Index surviving source entries
+    // once; do not rescan all old entries for every swatch on a large save.
+    std::map<int,JsonObject> originalPalette;if(source){const auto original=doc.TryLookup(L"palette");if(original&&original.ValueType()==JsonValueType::Array)for(const auto& old:original.GetArray()){const auto o=old.GetObject();originalPalette.emplace(int(o.GetNamedNumber(L"id")),o);}}
     JsonArray palette,order,slots;std::set<int> ids,visible;
     for(const auto& entry:d.palette().entries){if(entry.id<1||!ids.insert(entry.id).second||entry.id>=d.palette().nextId)throw Error(ErrorKind::Corrupt,"Invalid save palette ID");JsonObject item,color;
       // Preserve original palette-entry metadata where present.
-      if(source)for(const auto& old:doc.GetNamedArray(L"palette")){const auto o=old.GetObject();if(o.GetNamedNumber(L"id")==entry.id){item=o;break;}}
+      if(const auto original=originalPalette.find(entry.id);original!=originalPalette.end())item=original->second;
       number(item,L"id",entry.id);text(item,L"name",utf8(entry.name));int shift=0;for(const auto key:{L"r",L"g",L"b",L"a"}){number(color,key,(entry.color>>shift)&255);shift+=8;}item.Insert(L"color",color);palette.Append(item);
     }
     for(const int id:d.palette().order()){if(!ids.count(id)||!visible.insert(id).second)throw Error(ErrorKind::Corrupt,"Invalid save palette order");order.Append(JsonValue::CreateNumberValue(id));}

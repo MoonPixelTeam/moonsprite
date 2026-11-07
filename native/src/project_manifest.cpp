@@ -345,7 +345,8 @@ static ReadManifest readManifestWithClock(std::shared_ptr<const Bytes> bytes,Lim
     std::map<std::string,const ManifestMask*> masksById;for(const auto& mask:out.masks)masksById.emplace(mask.id,&mask);for(const auto& mask:out.masks){std::set<std::string> visited;const auto* current=&mask;while(!current->linkedMaskId.empty()){if(!visited.insert(current->id).second)bad("cyclic mask link");const auto next=masksById.find(current->linkedMaskId);if(next==masksById.end()||next->second==current)bad("missing or self mask link");current=next->second;}}
 
     std::set<int> paletteIds;
-    for(const auto& item:array(doc,"palette")) {
+    const auto rawPalette=value(doc,"palette");const auto paletteEntries=rawPalette&&rawPalette.ValueType()==JsonValueType::Array?rawPalette.GetArray():JsonArray{};
+    for(const auto& item:paletteEntries) {
       auto o=itemObject(item,"palette entry");ManifestPaletteEntry entry;entry.id=integer(o,"id",0,1,true);entry.name=str(o,"name",false);
       if(!paletteIds.insert(entry.id).second) bad("duplicate palette ID");const auto c=object(o,"color");
       int shift=0;for(const auto channel:{"r","g","b","a"}) {const auto n=integer(c,channel,0,0,true);if(n>255) bad("palette channel");entry.color|=std::uint32_t(n)<<shift;shift+=8;}
@@ -354,18 +355,20 @@ static ReadManifest readManifestWithClock(std::shared_ptr<const Bytes> bytes,Lim
     // project-format-decode / palette-layout: only safe numeric integers
     // participate; columns clamp, while invalid/missing layout values default.
     const auto safeInteger=[](const IJsonValue& v){if(!v||v.ValueType()!=JsonValueType::Number)return false;const auto n=v.GetNumber();return std::isfinite(n)&&std::floor(n)==n&&std::abs(n)<=9007199254740991.0;};
-    const auto rawOrder=value(doc,"paletteOrder");if(rawOrder&&rawOrder.ValueType()==JsonValueType::Array)for(const auto& item:rawOrder.GetArray())if(safeInteger(item)){auto id=integerValue(item,"paletteOrder",1);if(!paletteIds.count(id))bad("paletteOrder reference");out.paletteOrder.push_back(id);}
+    const auto rawOrder=value(doc,"paletteOrder");if(rawOrder&&rawOrder.ValueType()==JsonValueType::Array)for(const auto& item:rawOrder.GetArray())if(safeInteger(item)){const auto n=item.GetNumber();if(n<std::numeric_limits<int>::min()||n>std::numeric_limits<int>::max())throw Error(ErrorKind::Unsupported,"Palette order ID exceeds native integer range");out.paletteOrder.push_back(int(n));}
     const auto rawColumns=value(doc,"paletteColumns");out.paletteColumns=safeInteger(rawColumns)?int(std::clamp(rawColumns.GetNumber(),1.0,256.0)):8;
     const auto rawSlots=value(doc,"paletteSlots");const auto sourceSlots=rawSlots&&rawSlots.ValueType()==JsonValueType::Array?rawSlots.GetArray():JsonArray{};
-    std::set<int> visible(out.paletteOrder.begin(),out.paletteOrder.end()),placed;const auto columns=std::size_t(out.paletteColumns);
+    std::set<int> visible,placed;std::vector<int> visibleIds;for(int id:out.paletteOrder)if(paletteIds.count(id)&&visible.insert(id).second)visibleIds.push_back(id);const auto columns=std::size_t(out.paletteColumns);
     const auto count=std::max(std::size_t(sourceSlots.Size()),visible.size());const auto slotCount=std::max(columns,((count+columns-1)/columns)*columns);
     if(slotCount>limits.expandedBytes/sizeof(int))throw Error(ErrorKind::Limit,"Palette layout exceeds decoded byte budget");out.paletteSlots.assign(slotCount,0);
     std::size_t index=0;for(const auto& item:sourceSlots){if(safeInteger(item)){const auto n=item.GetNumber();if(n>=1&&n<=std::numeric_limits<int>::max()){const int id=int(n);if(visible.count(id)&&placed.insert(id).second)out.paletteSlots[index]=id;}}++index;}
     // A monotonic hole cursor produces the same first-null filling as legacy
     // without repeatedly scanning an occupied prefix for large palettes.
-    std::size_t hole=0;for(int id:out.paletteOrder)if(placed.insert(id).second){while(hole<out.paletteSlots.size()&&out.paletteSlots[hole])++hole;out.paletteSlots[hole++]=id;}
-    out.nextColorId=integer(doc,"nextColorId",1,1,true);
-    for(const auto id:paletteIds) if(id>=out.nextColorId) bad("nextColorId");
+    std::size_t hole=0;for(int id:visibleIds)if(placed.insert(id).second){while(hole<out.paletteSlots.size()&&out.paletteSlots[hole])++hole;out.paletteSlots[hole++]=id;}
+    // Actual decodeProject: Math.max(1, source.nextColorId ?? 1). Do not
+    // fabricate max(existing ID)+1; collision remains an editable gate.
+    const auto rawNext=value(doc,"nextColorId");const auto converted=!rawNext||rawNext.ValueType()==JsonValueType::Null?1.:legacyjson::number(rawNext);
+    const auto next=converted<1?1.:converted;if(!std::isfinite(next)||std::floor(next)!=next||next>std::numeric_limits<int>::max())throw Error(ErrorKind::Unsupported,"Palette allocation cursor is outside native integer representation");out.nextColorId=int(next);
     // Legacy storedTimelapseEntryViews accounts for every recording PNG,
     // including payloads whose declared snapshot metadata was unusable.
     for(const auto& entry:archive.entries())if(entry.first.rfind("timelapse/",0)==0&&entry.first.size()>14&&entry.first.substr(entry.first.size()-4)==".png")consumedFiles.insert(entry.first);

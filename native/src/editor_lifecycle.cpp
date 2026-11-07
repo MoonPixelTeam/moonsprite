@@ -302,7 +302,7 @@ Editor::Editor(const PixelFont& font,Skin& skin,std::filesystem::path assets,std
 
     pickerSecondary_=button(U"",[this]{showRoleColorEditor(true);});pickerSecondary_->colorRole=true;
 
-    pickerAdd_=button(U"",[this]{document.addPaletteColor(document.palette().primary,paletteLocked_);refresh();});
+    pickerAdd_=button(U"",[this]{try{document.addPaletteColor(document.palette().primary,paletteLocked_);}catch(const std::length_error&){status_=U"颜色编号超出当前支持范围";}refresh();});
 
     pickerAdd_->iconSkin=&toolIcons_;pickerAdd_->icon="plus";
 

@@ -294,5 +294,38 @@ registerHooks({
   if(history.length>1)throw new Error(`Palette operation split history ${base}`);save('after');if(history.length)history[0].undo();save('undo');if(history.length)history[0].redo();save('redo');paletteOrderOracle.push({base,layout,operation,history:history.length});
  }
  fs.writeFileSync(path.join(out,'palette-independent-oracle.json'),JSON.stringify(paletteOrderOracle,null,2));console.log(`Independent palette order: ${paletteOrderOracle.length} actual legacy command/Undo/Redo cases`);
+
+ // decodeProject retains raw safe-integer order, defaults nonarray palettes
+ // to [], and evaluates Math.max(1, source.nextColorId ?? 1). Do not invent
+ // palette-entry repair or collision avoidance absent from the real legacy.
+ const paletteDecodeCases=[];
+ const containers=[undefined,null,false,true,0,1,'palette',{},[]];
+ for(let i=0;i<containers.length;++i)for(const columns of [1,3,256])for(const ghosts of [false,true])paletteDecodeCases.push([`container-${i}-${columns}-${ghosts}`,d=>{d.palette=containers[i];d.paletteColumns=columns;d.paletteOrder=ghosts?[1,2]:[];d.paletteSlots=[null,1,2,null,null];d.nextColorId=1;}]);
+ const cursors=[undefined,null,false,true,0,-1,-2.5,.25,1,2,3,5,3.5,2147483646,2147483647,2147483648,9007199254740991,9007199254740992,'','  ','5','\u30005\ufeff','0x10','0b101','0o7','1e2','-.5','3.5','Infinity','-Infinity','NaN','5x','inf','+0x10',[],[5],[null],[[5]],[[[null]]],[true],[1,2],{},'1e309','-1e309'];
+ for(let i=0;i<cursors.length;++i)for(const empty of [false,true])paletteDecodeCases.push([`cursor-${i}-${empty}`,d=>{if(empty){d.palette=[];d.paletteOrder=[];}d.nextColorId=cursors[i];}]);
+ const orders=[[1,1,2],[2,2,1],[999,1,2],[1,999,1,2],[-1,1,2],[0,1,2],[2147483647,1,2],[-2147483648,1,2],[9007199254740991,1,2],[-9007199254740991,1,2],[9007199254740992,1,2],[1,'2',null,true,2],[2,1,2],[],[999,999]];
+ for(let i=0;i<orders.length;++i)paletteDecodeCases.push([`order-${i}`,d=>{d.paletteOrder=orders[i];d.paletteSlots=[2,1,999,2,null,null,null];}]);
+ paletteDecodeCases.push(['large-entry-index',d=>{d.palette=Array.from({length:4096},(_,i)=>({id:i+1,name:` 色卡 ${i+1} 😀 `,color:{r:i%256,g:i*7%256,b:i*11%256,a:255}}));d.paletteOrder=d.palette.map(e=>e.id).filter(id=>id%3!==0).reverse();d.paletteColumns=256;d.paletteSlots=d.paletteOrder.flatMap(id=>[null,id]);d.nextColorId=4097;}]);
+ const paletteDecodeOracle=[];
+ for(const [label,mutate] of paletteDecodeCases){
+  const m=structuredClone(manifest),r={...files};mutate(m.document);r['manifest.json']=strToU8(JSON.stringify(m));const bytes=zipSync(r),d=decodeProject(bytes),base=`palette-decode-${label}`;
+  fs.writeFileSync(path.join(out,`${base}.moonsprite`),bytes);fs.writeFileSync(path.join(out,`${base}-canonical.moonsprite`),encodeProject(d,{includePreview:false}));
+  const readable=Number.isInteger(d.nextColorId)&&d.nextColorId>=1&&d.nextColorId<=2147483647&&d.paletteOrder.every(id=>id>=-2147483648&&id<=2147483647);
+  const ids=new Set(d.palette.map(e=>e.id)),editable=readable&&d.palette.every(e=>e.id<d.nextColorId)&&d.paletteOrder.every(id=>ids.has(id))&&new Set(d.paletteOrder).size===d.paletteOrder.length;
+  const row={base,readable,editable,next:String(d.nextColorId),order:d.paletteOrder,slots:d.paletteSlots,columns:d.paletteColumns,operations:[]};
+  // Actual commands with actual callback Undo/Redo. Keep cursor-limit tests
+  // separate: legacy has a wider numeric ID space than native int entries.
+  if(editable&&d.nextColorId<2147483646)for(const operation of ['add','paste','gradient','apply','extract']){
+   const current=decodeProject(bytes),history=[],session={document:current,history:{push:e=>history.push(e)},selectedPaletteIds:[],paletteSelectionId:null,primaryColor:{r:41,g:121,b:255,a:255},secondaryColor:{r:255,g:255,b:255,a:255}},color={r:20,g:40,b:60,a:255};
+   const save=side=>fs.writeFileSync(path.join(out,`${base}-${operation}-${side}.moonsprite`),encodeProject(current,{includePreview:false}));
+   save('before');if(operation==='add')paletteCommands.addPaletteColor(session,color);
+   else if(operation==='paste')paletteCommands.pastePaletteColors(session,[color],{slots:[...current.paletteSlots],columns:current.paletteColumns,indices:[0]});
+   else if(operation==='gradient')paletteCommands.gradientPaletteSlots(session,[0,2],[...current.paletteSlots],current.paletteColumns,false);
+   else paletteCommands.applyPalette(session,[color]);
+   if(history.length!==1)throw Error('Unexpected palette decoder command history '+base+' '+operation);save('after');history[0].undo();save('undo');history[0].redo();save('redo');row.operations.push(operation);
+  }
+  paletteDecodeOracle.push(row);
+ }
+ fs.writeFileSync(path.join(out,'palette-decode-oracle.json'),JSON.stringify(paletteDecodeOracle,null,2));console.log(`Palette decoder: ${paletteDecodeOracle.length} actual legacy cases; ${paletteDecodeOracle.reduce((n,r)=>n+r.operations.length,0)} command/Undo/Redo matrices`);
  console.log('Generated project manifest fixtures through legacy encodeProject');
 })().catch(e=>{console.error(e);process.exitCode=1;});

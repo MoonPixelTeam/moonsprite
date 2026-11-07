@@ -4915,6 +4915,15 @@ void Editor::smokePaletteGrowth(){
 
     begin();move(grown.size()+1);document=Document(1,1);const auto replacementHistory=document.historySize();finishPaletteGrowth();require(document.historySize()==replacementHistory,"Growth cannot commit to another document");refresh();
 
+    // An imported, exhausted native cursor must fail through real editor
+    // paths while retaining the project and releasing pointer capture.
+    const auto seed=document;auto palette=seed.palette();palette.nextId=std::numeric_limits<int>::max();document=Document::fromImported(1,1,seed.timeline().state(),palette,"palette-limit",U"palette limit",std::make_shared<const std::vector<std::uint8_t>>());refresh();const auto limitHistory=document.historySize(),limitRevision=document.revision();const auto limitSlots=document.palette().slots;
+    auto unchanged=[&]{require(document.historySize()==limitHistory&&document.revision()==limitRevision&&document.palette().slots==limitSlots&&document.palette().entries.size()==palette.entries.size()&&!document.dirty(),"Palette limit partially changed editor document");require(status_==U"颜色编号超出当前支持范围","Palette limit error was not shown");};
+    status_.clear();addManualPaletteColor(limitSlots.size());unchanged();
+    paletteClipboard_={0xff123456};paletteClipboardLayout_={};require(clip::set_text("MOONSPRITE_PALETTE_V1:[{\"r\":86,\"g\":52,\"b\":18,\"a\":255}]"),"Palette limit clipboard setup");paletteFocusedSlot_.reset();paletteBoxRange_.reset();document.clearPaletteSelection();status_.clear();pastePaletteColors();unchanged();
+    paletteManual_=true;paletteBoxRange_=PaletteBoxRange{document.identity(),limitSlots.size(),limitSlots.size()+1,{}};status_.clear();applyPaletteGradient(false);unchanged();paletteBoxRange_.reset();paletteManual_=false;refresh();
+    paletteGrowth_=PaletteGrowthGesture{document.identity(),paletteViewSlots(),{}};paletteGrowth_->preview.added=2;paletteGrowth_->preview.handleSlot=paletteGrowth_->base.size()+2;captureMouse();status_.clear();finishPaletteGrowth();unchanged();require(!paletteGrowth_&&!hasCapture(),"Palette limit growth leaked capture");document=Document(1,1);refresh();
+
   }
 
 void Editor::preparePaletteGrowthBlur(){smokePaletteGrowth();paletteBlurSlots_=document.palette().slots;paletteBlurHistory_=document.historySize();ui::MouseMessage down(ui::kMouseDownMessage,os::PointerType::Mouse,ui::kButtonLeft,ui::kKeyNoneModifier,paletteGrowthHandle_->bounds().center());beginPaletteGrowth(down);const auto origin=swatches_.front()->paletteColorBounds().origin();const int pitch=(swatchPixels_[swatchSize_]/uiScale-1)*uiScale;updatePaletteGrowth(origin+gfx::Point(uiScale,2*paletteColumns_*pitch));if(!paletteGrowth_||!hasCapture())throw std::runtime_error("Growth real blur setup");}

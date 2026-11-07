@@ -21,6 +21,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <limits>
 using namespace moon::project;
 namespace {
 void check(bool b,const char* message) {if(!b) throw std::runtime_error(message);}
@@ -42,6 +43,44 @@ void paletteLayoutChecks(const std::filesystem::path& dir){
   const auto next=d.palette().nextId;check(d.addPaletteColor(0xff123456)==next,"Normalized palette next ID");d.undo();verify(d,true);d.redo();check(d.paletteEntry(next)&&d.paletteEntry(next)->color==0xff123456,"Normalized palette addition redo");d.undo();roundTrip(true);++count;
  }
  check(count==60&&independent==6,"Missing palette layout or independent-order fixtures");
+}
+
+void paletteDecodeChecks(const std::filesystem::path& dir){
+ using namespace moon;using namespace winrt::Windows::Data::Json;
+ const auto bytes=load(dir/"palette-decode-oracle.json");const auto rows=JsonArray::Parse(winrt::to_hstring(std::string(bytes->begin(),bytes->end())));check(rows.Size()==158,"Palette decode fixtures missing");std::size_t editable=0,matrices=0;
+ const auto same=[](const Document& a,const Document& b,const std::string& label){const auto& x=a.palette();const auto& y=b.palette();check(x.nextId==y.nextId&&x.columns==y.columns&&x.order()==y.order()&&x.slots==y.slots&&x.entries.size()==y.entries.size(),(label+" palette layout/cursor").c_str());for(std::size_t i=0;i<x.entries.size();++i)check(x.entries[i].id==y.entries[i].id&&x.entries[i].name==y.entries[i].name&&x.entries[i].color==y.entries[i].color,(label+" palette entries").c_str());check(a.canvasPixels()==b.canvasPixels(),(label+" changed pixels").c_str());};
+ for(const auto& item:rows){const auto row=item.GetObject();const auto base=winrt::to_string(row.GetNamedString(L"base"));const auto raw=load(dir/(base+".moonsprite"));
+  if(!row.GetNamedBoolean(L"readable")){rejects([&]{readProjectManifest(raw);},ErrorKind::Unsupported);continue;}
+  const auto m=readProjectManifest(raw);check(m.unsupported.empty(),(base+" unexpected unsupported field").c_str());check(m.nextColorId==std::stoi(winrt::to_string(row.GetNamedString(L"next")))&&m.paletteColumns==row.GetNamedNumber(L"columns"),(base+" decoded cursor/columns").c_str());
+  std::vector<int> order,slots;for(const auto& id:row.GetNamedArray(L"order"))order.push_back(int(id.GetNumber()));for(const auto& id:row.GetNamedArray(L"slots"))slots.push_back(id.ValueType()==JsonValueType::Null?0:int(id.GetNumber()));check(m.paletteOrder==order&&m.paletteSlots==slots,(base+" raw order or normalized slots differ from legacy").c_str());
+  if(!row.GetNamedBoolean(L"editable")){rejects([&]{prepareEditableImport(m);},ErrorKind::Unsupported);continue;}
+  auto d=createEditableDocument(prepareEditableImport(m));const auto expected=createEditableDocument(prepareEditableImport(readProjectManifest(load(dir/(base+"-canonical.moonsprite")))));same(d,expected,base);check(d.historyPosition()==0&&!d.dirty(),"Palette defaults created import history/dirty state");++editable;
+  const auto saved=[&](const Document& candidate,const Document& reference,const std::string& label){same(candidate,reference,label);for(bool recovery:{false,true}){const auto encoded=recovery?encodeRecoveryProject(candidate):encodeEditableProject(candidate);same(createEditableDocument(prepareEditableImport(readProjectManifest(encoded.bytes))),reference,label+" saved");}};saved(d,expected,base);
+  for(const auto& operationValue:row.GetNamedArray(L"operations")){const auto operation=winrt::to_string(operationValue.GetString());auto current=createEditableDocument(prepareEditableImport(m));
+   const auto side=[&](const std::string& name){const auto reference=createEditableDocument(prepareEditableImport(readProjectManifest(load(dir/(base+"-"+operation+"-"+name+".moonsprite")))));saved(current,reference,base+" "+operation+" "+name);};side("before");
+   if(operation=="add")current.addPaletteColor(0xff3c2814);
+   else if(operation=="paste"){const auto view=current.palette().slots;current.pastePaletteColors({0xff3c2814},{0},true,&view,current.palette().columns);}
+   else if(operation=="gradient"){const auto view=current.palette().slots;current.gradientPaletteSlots({0,2},current.palette().columns,false,&view);}
+   else if(operation=="apply")current.applyStoredPalette({0xff3c2814});
+   else if(operation=="extract")current.applyExtractedPalette({0xff3c2814},false,current.palette().columns);
+   else throw std::runtime_error("Unknown decoder command");
+   check(current.historyPosition()==1,"Decoded palette command did not create one transaction");side("after");current.undo();side("undo");current.redo();side("redo");++matrices;
+  }
+  if(d.palette().entries.empty()&&d.palette().nextId>=std::numeric_limits<int>::max()-1){
+   // Native int entry IDs cannot advance past INT_MAX. Reject an entire
+   // multi-allocation before publishing any colors, layout or history.
+   for(int operation=0;operation<5;++operation){auto current=createEditableDocument(prepareEditableImport(m));const auto revision=current.revision(),operations=current.projectInformation().operationCount;bool rejected=false;try{if(operation==0)current.addPaletteColor(0xff123456);else if(operation==1)current.pastePaletteColors({0xff123456,0xffabcdef},{0,1});else if(operation==2)current.gradientPaletteSlots({0,1},current.palette().columns,false);else if(operation==3)current.applyStoredPalette({0xff123456,0xffabcdef});else current.applyExtractedPalette({0xff123456,0xffabcdef},false,current.palette().columns);}catch(const std::length_error&){rejected=true;}
+    if(operation==0&&d.palette().nextId<std::numeric_limits<int>::max()){check(!rejected&&current.palette().nextId==std::numeric_limits<int>::max()&&current.palette().entries.front().id==d.palette().nextId,"Last native allocatable palette ID");const auto encoded=encodeEditableProject(current);same(createEditableDocument(prepareEditableImport(readProjectManifest(encoded.bytes))),current,"Last native palette ID save");current.undo();same(current,d,"Last ID Undo");current.redo();check(current.palette().nextId==std::numeric_limits<int>::max(),"Last ID Redo");}
+    else{check(rejected,"Native palette allocation limit was not enforced");same(current,d,"Rejected palette allocation");check(current.revision()==revision&&current.projectInformation().operationCount==operations&&current.historyPosition()==0&&!current.dirty(),"Rejected allocation partially published state/history");}
+   }
+   if(d.palette().nextId==std::numeric_limits<int>::max()-1){auto repeated=createEditableDocument(prepareEditableImport(m));repeated.pastePaletteColors({0xff123456,0xffabcdef},{0,0});check(repeated.palette().entries.size()==1&&repeated.palette().entries.front().color==0xffabcdef&&repeated.palette().nextId==std::numeric_limits<int>::max(),"Repeated empty target must allocate only once");repeated.undo();same(repeated,d,"Repeated empty target Undo");repeated.redo();check(repeated.palette().entries.front().color==0xffabcdef,"Repeated empty target Redo");auto automatic=createEditableDocument(prepareEditableImport(m));automatic.pastePaletteColors({0xff123456});check(automatic.palette().entries.size()==1&&automatic.palette().nextId==std::numeric_limits<int>::max(),"Automatic paste last available ID");automatic.undo();same(automatic,d,"Automatic last ID Undo");}
+  }
+  if(!d.palette().entries.empty()&&d.palette().nextId==std::numeric_limits<int>::max()){
+   auto current=createEditableDocument(prepareEditableImport(m));bool rejected=false;try{current.pastePaletteColors({0xff123456,0xffabcdef},{0,current.palette().slots.size()});}catch(const std::length_error&){rejected=true;}check(rejected,"Mixed overwrite/new paste did not enforce cursor limit");same(current,d,"Mixed paste failure must retain overwritten color too");check(current.historyPosition()==0&&!current.dirty(),"Mixed paste published partial history");
+   const auto view=current.palette().slots;current.pastePaletteColors({0xff123456,0xffabcdef},{0,0},true,&view,current.palette().columns);check(current.paletteEntry(view[0])->color==0xffabcdef&&current.palette().nextId==std::numeric_limits<int>::max()&&current.historyPosition()==1,"Overwrite-only repeated-target paste incorrectly consumed an ID");current.undo();same(current,d,"Exhausted cursor overwrite Undo");current.redo();check(current.paletteEntry(view[0])->color==0xffabcdef,"Exhausted cursor overwrite Redo");
+  }
+ }
+ check(editable>50&&matrices>250,"Palette defaults edit matrices unexpectedly incomplete");std::cout<<"Actual legacy palette decode: "<<rows.Size()<<" cases, "<<editable<<" editable, "<<matrices<<" command matrices\n";
 }
 
 void independentPaletteChecks(const std::filesystem::path& dir){
@@ -233,7 +272,7 @@ void inlineMaskChecks(const std::filesystem::path& dir){
 int main(int argc,char** argv) {
  try {
   check(argc==2,"Fixture argument required");const auto dir=std::filesystem::u8path(argv[1]);
-  independentPaletteChecks(dir);paletteLayoutChecks(dir);layerMetadataChecks(dir);historicalVersionChecks(dir);activeCacheChecks(dir);linkedCacheChecks(dir);sparseAnimationChecks(dir);specialSlotChecks(dir);animationArrayChecks(dir);noGridTemplateChecks(dir);importedOpacityChecks(dir);droppedRasterChecks(dir);corruptLinkResourceChecks(dir);malformedLinkChecks(dir);inlineMaskChecks(dir);
+  paletteDecodeChecks(dir);independentPaletteChecks(dir);paletteLayoutChecks(dir);layerMetadataChecks(dir);historicalVersionChecks(dir);activeCacheChecks(dir);linkedCacheChecks(dir);sparseAnimationChecks(dir);specialSlotChecks(dir);animationArrayChecks(dir);noGridTemplateChecks(dir);importedOpacityChecks(dir);droppedRasterChecks(dir);corruptLinkResourceChecks(dir);malformedLinkChecks(dir);inlineMaskChecks(dir);
   auto bytes=load(dir/"valid.moonsprite");auto parsed=readProjectManifest(bytes);
   check(parsed.schemaVersion==21 && parsed.colorMode=="rgba" && parsed.width==2 && parsed.height==2,"Header changed");
   check(parsed.name==u8"原生兼容样本","Unicode name changed");
