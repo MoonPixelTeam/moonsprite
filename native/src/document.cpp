@@ -1932,7 +1932,7 @@ bool Document::flipContent(bool horizontal){
   }
   if(edit.children.empty())return false;history_.reserve(position_+1);capturePixelAddresses(edit);change_={};try{applyEdit(edit,true);}catch(...){applyEdit(edit,false);throw;}change_={0,0,width_,height_};publishChange();pushEdit(std::move(edit),horizontal?U"水平翻转选区":U"垂直翻转选区");return true;
  }
- if(layer().kind=="free-tile"&&activeMaskId_.empty())return flipFreeTileContent(horizontal);if(!activeMaskId_.empty()&&!floating_)return selection_?transformMaskImmediate(true,horizontal,0):false;if(layer().kind=="tilemap"&&activeMaskId_.empty()&&tileSelection_.mode==tiles::Mode::Paint)return flipPaintCellSelection(horizontal);if(activeMaskId_.empty()&&!floating_&&(hasTilemapContent()||hasFreeTileContent()))return false;
+ if(layer().kind=="free-tile"&&activeMaskId_.empty())return flipFreeTileContent(horizontal);if(!activeMaskId_.empty()&&!floating_)return selection_?transformMaskImmediate(true,horizontal,0):false;if(layer().kind=="tilemap"&&activeMaskId_.empty()&&tileSelection_.mode==tiles::Mode::Paint)return flipPaintCellSelection(horizontal);if(activeMaskId_.empty()&&!floating_&&!layer().kind.empty()&&(hasTilemapContent()||hasFreeTileContent()))return false;
  const auto commandLayers=selectedLayerIdsWithGroups();
  if(floating_){
   auto& f=*floating_;std::size_t extra=0;for(const auto& target:f.targets){floatingAddBytes(extra,std::uint64_t(target.source.pixels.size())*5);if(!target.originalSource)floatingAddBytes(extra,std::uint64_t(target.source.pixels.size())*5);}floatingAddBytes(extra,std::uint64_t(f.source.pixels.size())*5);checkFloatingBudget(f,extra);
@@ -1958,6 +1958,7 @@ bool Document::flipContent(bool horizontal){
   for(const auto& l:timeline_.state().layers){if(!commandLayers.empty()){if(std::find(commandLayers.begin(),commandLayers.end(),l.id)==commandLayers.end())continue;}else if(selectedFrames_.empty() && l.id!=activeLayerId_)continue;else if(!selectedFrames_.empty() && (layerEffectivelyLocked(l) || !layerEffectivelyVisible(l)))continue;for(const auto& id:frames)if(const auto* c=timeline_.findCel(l.id,id))targets.push_back(c);}
  }
  auto owner=[&](const auto* c)->const DocumentLayer&{return *std::find_if(timeline_.state().layers.begin(),timeline_.state().layers.end(),[&](const auto& l){return l.id==c->layerId;});};
+ if(!whole)for(const auto* c:targets)if(!owner(c).kind.empty())return false;
  if(animationSelection&&targets.empty())return false;
  if(!whole && explicitTimeline)for(const auto* c:targets)if(layerEffectivelyLocked(owner(c)) || !layerEffectivelyVisible(owner(c)))return false;
  auto bounds=selection_.value_or(SelectionMask{0,0,width_,height_,{}});const auto count=floatingArea(bounds.width,bounds.height);raster::coordinate(std::int64_t(bounds.x)+bounds.width);raster::coordinate(std::int64_t(bounds.y)+bounds.height);if(!bounds.mask.empty()&&bounds.mask.size()!=count)throw std::invalid_argument("Invalid flip selection");auto afterMask=selection_;

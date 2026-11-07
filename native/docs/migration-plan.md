@@ -3231,3 +3231,9 @@ pending-tile-center-build.log正式Release及free/tile测试构建exit0，fixtur
 对照legacy workspace-commands-selection-effects.ts::deleteSelection及workspace-commands-clipboard.ts::cutSelection，Delete先提交selection浮动再删除，Cut先复制并取消预览、仅删除非copy原像素，最后清空选择。原生自由源删除按活动类型分流，普通Cut不再受无关特殊层拒绝。回归同时暴露混合tile文档普通内容提起入口仍被拒绝，已按活动类型放行并校验普通捕获的实际目标；瓦片自身保留专用校验。
 
 新增free/tile×Delete/Cut×静态/移动浮动/复制浮动十二组，检查精确原位及目标像素、剪贴板原点、0/1/2步历史、Undo/Redo、实际保存重开及全部特殊Cel像素/实例/网格/源资源保留。中途完整测试发现通用目标校验误拒瓦片专用浮动，已收窄至普通捕获后重跑。最终正式Release及free/tile测试构建exit0（mixed-raster-delete-cut-build.log）；完整free与tile测试exit0（mixed-raster-delete-cut-free-test.log、mixed-raster-delete-cut-grid-test.log）；正式工作区drawing-anchor-edit-floating组合exit0；来源检查通过（mixed-raster-delete-cut-provenance.log），diff通过。未做人工UI验收，全量迁移仍INCOMPLETE。
+
+### 2026-11-07：混合瓦片文档普通静态选区翻转
+
+依据legacy workspace-commands-selection-flip.ts::flipActiveSelection对selectedTransformLayersForSession的静态选区范围，普通目标不因无关特殊内容被拒绝；特殊多目标仍拒绝。原生放行普通活动层静态选区，并在捕获后检查所有所选owner类型。保留已有whole-Cel时间轴、free源及Paint适配器，本阶段不扩展无时间轴选择的整层翻转。
+
+新增free/tile×水平/垂直×矩形/掩码八组，检查精确半透明RGBA、掩码镜像、单历史、Undo/Redo、实际重开、所选特殊目标拒绝以及无关Cel像素/实例/网格和源资源保留。正式Release及free/tile测试构建exit0（mixed-raster-static-flip-build.log）；完整free/tile测试exit0（mixed-raster-static-flip-free-test.log、mixed-raster-static-flip-grid-test.log）；正式工作区drawing-anchor-edit-floating组合exit0；来源检查通过（mixed-raster-static-flip-provenance.log），diff通过。未做人工UI验收，全量迁移仍INCOMPLETE。
