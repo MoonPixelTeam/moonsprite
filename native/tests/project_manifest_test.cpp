@@ -125,6 +125,9 @@ void droppedRasterChecks(const std::filesystem::path& dir){
  for(const std::string mode:{"format-absent","format-invalid","missing-resource","truncated-resource"})rejects([&]{readProjectManifest(load(dir/("cel-raster-reject-"+mode+".moonsprite")));},ErrorKind::Corrupt);
  for(const std::string mode:{"tilemap-no-payload","tilemap-text","free-no-payload","raster-tilemap","raster-free"})rejects([&]{readProjectManifest(load(dir/("cel-payload-reject-"+mode+".moonsprite")));},ErrorKind::Corrupt);
 }
+void corruptLinkResourceChecks(const std::filesystem::path& dir){
+ for(const std::string kind:{"tilemap","free-tile"})for(const std::string defect:{"missing","self","cycle2"})for(bool fallback:{false,true})for(const std::string problem:{"missing-resource","bad-item"})rejects([&]{readProjectManifest(load(dir/("malformed-link-resource-"+kind+"-"+defect+"-"+std::to_string(fallback)+"-"+problem+".moonsprite")));},ErrorKind::Corrupt);
+}
 void inlineMaskChecks(const std::filesystem::path& dir){
  using namespace moon;auto bytes=load(dir/"inline-mask-u8.moonsprite");const auto raw=readProjectManifest(bytes);check(raw.unsupported.empty()&&raw.masks.size()==1&&raw.maskDataFiles.size()==1,"Inline mask was rejected or lost");const auto& mask=raw.masks[0];check(mask.id=="inline-mask"&&mask.surface->offsetX==-1&&mask.surface->offsetY==1&&mask.locked&&mask.autoLink,"Inline mask metadata migration");check(mask.surface->pixels==std::vector<std::uint32_t>({0xff000000,0xff808080,0xffffffff,0xff404040}),"Inline scalar resource decode");
  auto rgba=readProjectManifest(load(dir/"inline-mask-rgba.moonsprite"));check(rgba.masks[0].surface->pixels==std::vector<std::uint32_t>({0,0xff808080,0xff000000,0xffffffff}),"Mask RGBA transparent RGB normalization");
@@ -144,7 +147,7 @@ void inlineMaskChecks(const std::filesystem::path& dir){
 int main(int argc,char** argv) {
  try {
   check(argc==2,"Fixture argument required");const auto dir=std::filesystem::u8path(argv[1]);
-  historicalVersionChecks(dir);activeCacheChecks(dir);linkedCacheChecks(dir);sparseAnimationChecks(dir);specialSlotChecks(dir);animationArrayChecks(dir);noGridTemplateChecks(dir);importedOpacityChecks(dir);droppedRasterChecks(dir);inlineMaskChecks(dir);
+  historicalVersionChecks(dir);activeCacheChecks(dir);linkedCacheChecks(dir);sparseAnimationChecks(dir);specialSlotChecks(dir);animationArrayChecks(dir);noGridTemplateChecks(dir);importedOpacityChecks(dir);droppedRasterChecks(dir);corruptLinkResourceChecks(dir);inlineMaskChecks(dir);
   auto bytes=load(dir/"valid.moonsprite");auto parsed=readProjectManifest(bytes);
   check(parsed.schemaVersion==21 && parsed.colorMode=="rgba" && parsed.width==2 && parsed.height==2,"Header changed");
   check(parsed.name==u8"原生兼容样本","Unicode name changed");

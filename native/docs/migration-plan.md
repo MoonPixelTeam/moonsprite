@@ -3567,3 +3567,12 @@ make-project-manifest-fixtures.cjs通过实际legacy encode/decode生成版本1�
 新增161组真实legacy decode ZIP oracle：130组五种owner×活动／非活动×13种路径／几何退化、7种活动图层选择、6种Cel编码、9组版本／owner编码门禁、4组栅格损坏、5组特殊载荷错误。原生核对空白像素、空结构载荷、既有帧、瓦片资源精确像素、来自被丢弃Cel的蒙版及标志、普通／恢复保存重开、空帧复制Undo/Redo、回落图层笔画Undo/Redo。原生失败基线dropped-cel-baseline-tests.log为missing cel raster。往返测试进一步发现丢弃Cel的旧路径未被保存资源清理器处理，导致新归档unmapped resource；编码器现在仅清理新资源计划未保留的原Cel路径，共享资源按retained集合保留。
 
 完整直接导入契约测试同时暴露重复图层／帧ID在补空槽前导致递归栈溢出（退出0xC00000FD）；补槽前校验非空唯一图层／帧／Cel标识、有效owner和唯一槽，重复输入返回Corrupt。更新三项此前已迁移却仍期望Unsupported的旧测试，实际断言缺槽补齐与活动Cel覆盖过期层缓存，未降低像素／坐标／输入不变校验。dropped-cel-final-build.log正式及工程目标构建、dropped-cel-import-build.log定向重建通过；project-manifest-tests、完整project-import-tests、project-save-tests、完整free-tile-project-tests通过对应dropped-cel日志，正式--cel-clipboard-check退出0，来源覆盖与diff通过。未做人工旧工程UI验收；缺失槽身份、畸形链接回落、全色彩模式及其余迁移领域仍未完成，整体INCOMPLETE。
+
+
+### 2026-11-08：显式Cel资源校验独立阶段
+
+对照实际legacy decodeManifestTilemap／decodeManifestFreeTiles，在解析链接、丢弃无栅格运行时元数据之前校验每个显式载荷。原生读取器此前将网格资源ID、自由瓦片来源及重复实例检查推迟到可编辑导入；坏链接归一化可能覆盖这些载荷并掩盖损坏。现在读取边界直接检查网格tile／tileset引用及尺寸，对临时自由Cel副本按source／tileset／tile别名归一化后校验实例唯一性、引用与范围，原解析DTO不变；资源索引和别名表每次读取建立一次，不逐格重建。
+
+24组真实legacy拒绝ZIP从既有special-hole样本独立生成，覆盖网格／自由瓦片×missing／self／cycle2链接×fallback有无×两种错误；测试直接调用readProjectManifest，独立于待定的坏链接提前修复及自由瓦片显示策略。失败基线link-resource-baseline-tests.log复现Invalid manifest accepted；最终读取器边界检查及全部现有工程样本、直接导入／保存／完整自由瓦片回归通过link-resource对应日志；正式构建link-resource-final-build.log与补充测试构建link-resource-test-build.log通过，正式--cel-clipboard-check退出0。没有人工UI验收；坏链接立即修复的特殊自由瓦片显示决定仍待用户，全量迁移INCOMPLETE。该资源校验作为独立完成阶段提交推送，不夹带未确认的显示策略。
+
+额外独立验证：临时安装待提交读取器／测试／生成器，导入器使用未修改的HEAD版本；在唯一native/build构建并运行独立生成的全部样本，link-resource-independent-build.log及link-resource-independent-tests.log通过。随后逐字节校验并恢复所有待定修改，不依赖未提交修复获得绿灯。

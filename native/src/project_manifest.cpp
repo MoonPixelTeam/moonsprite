@@ -235,6 +235,11 @@ static ReadManifest readManifestWithClock(std::shared_ptr<const Bytes> bytes,Lim
     }
     if(out.layers.empty())bad("missing layers");if(!layerIds.count(out.activeLayerId))out.activeLayerId=out.layers.front().id;
     std::set<std::string> modernFreeLayers;std::map<std::string,const ManifestLayer*> celOwners;for(const auto& layer:out.layers){celOwners.emplace(layer.id,&layer);if(layer.kind=="free-tile"&&layer.freeTiles&&!layer.freeTiles->sources.empty())modernFreeLayers.insert(layer.id);}
+    // Legacy decodes every explicit special payload before resolving links or
+    // discarding no-raster runtime metadata. Index resources once for all Cels.
+    const tiles::Catalog celResources(out.tilesets);
+    std::map<std::string,std::map<std::string,std::string>> freeAliases;
+    for(const auto& layer:out.layers)if(layer.freeTiles)for(const auto& source:layer.freeTiles->sources){auto& aliases=freeAliases[layer.id];aliases.emplace(source.id,source.id);aliases.emplace(source.tilesetId,source.id);if(const auto set=celResources.sets.find(source.tilesetId);set!=celResources.sets.end())for(const auto& tile:set->second->tileIds)aliases.emplace(tile,source.id);}
     auto animation=object(doc,"animation");out.activeFrameId=textjson::str(animation,L"activeFrameId");const auto loopValue=value(animation,"loop");out.loop=!(loopValue&&loopValue.ValueType()==JsonValueType::Boolean&&!loopValue.GetBoolean());
     if(!animation.HasKey(L"cels"))animation.Insert(L"cels",JsonArray());
     fields(animation,{"frames","cels","activeFrameId","loop","loopSections","layerMasks","groupMasks"},"animation",out);
@@ -285,6 +290,8 @@ static ReadManifest readManifestWithClock(std::shared_ptr<const Bytes> bytes,Lim
       // link and zIndex come from the accepted normalized candidate.
       JsonObject rasterMetadata;for(const auto& field:firstRawCels.at(cel.id))rasterMetadata.Insert(field.Key(),field.Value());
       const auto& owner=*celOwners.at(cel.layerId);if(owner.kind=="tilemap"){if(cel.text||cel.freeTiles||(cel.linkedCelId.empty()&&!cel.tilemap))bad("tilemap cel payload");}else if(owner.kind=="free-tile"){if(cel.text||cel.tilemap||(cel.linkedCelId.empty()&&!cel.freeTiles))bad("free tile cel payload");}else if(cel.tilemap||cel.freeTiles)bad("raster cel payload");
+      if(cel.tilemap)for(const auto& cell:cel.tilemap->cells)if(cell){const auto set=celResources.sets.find(cell->tilesetId);if(set==celResources.sets.end()||set->second->tileWidth!=cel.tilemap->tileWidth||set->second->tileHeight!=cel.tilemap->tileHeight||!celResources.indexes.at(cell->tilesetId).find(cell->tileId))bad("cel tile reference");}
+      if(cel.freeTiles){if(!owner.freeTiles)bad("cel free tile owner");auto canonical=*cel.freeTiles;if(!owner.freeTiles->sources.empty())for(auto& instance:canonical.instances){const auto& aliases=freeAliases.at(owner.id);const auto source=aliases.find(instance.sourceId);if(source==aliases.end())bad("cel free tile source");instance.sourceId=source->second;}try{free_tiles::validate(*owner.freeTiles,canonical,out.tilesets);}catch(const std::exception& e){bad(e.what());}}
       // normalizeManifestAnimation keeps only string paths and safe integer
       // dimensions. decodeProject drops unlinked Cels without a path, and all
       // Cels with a path but unusable geometry; empty-slot adaptation happens
