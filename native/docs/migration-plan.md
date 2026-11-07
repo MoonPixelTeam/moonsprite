@@ -3083,3 +3083,9 @@ mixed-free-linked-frame-build.log正式Release/两核心测试构建exit0；fixt
 对照legacy workspace-commands-selection-effects.ts::deleteSelection与workspace-commands-clipboard.ts::copySelection：删除以背景色清除活动蒙版，静态复制仍读取所属图层。原生deleteSelectedPixels提前路由活动蒙版，cutPixels仅在未编辑蒙版时应用整篇特殊图层保护；复用已有蒙版事务，保留旧版静态剪贴板语义。
 
 新增tilemap/free-tile×剪切/删除四组回归，检查背景色清除、原Cel像素与网格保留、剪贴板所属图层像素、单次历史、选择清理、Undo/Redo和实际保存重开。special-mask-cut-build.log正式Release与free-tile-project-tests、attached-masks-tests构建通过；两个完整测试通过（special-mask-cut-free-test.log、special-mask-cut-attached-test.log）；正式工作区drawing-anchor-edit-floating组合exit0，来源检查625文件通过（special-mask-cut-provenance.log）。无人工UI验收，全量迁移仍INCOMPLETE。
+
+### 2026-11-07：特殊图层活动蒙版方向键微移
+
+核对legacy workspace-commands-selection-move.ts::moveActiveSelectionWithSelectionHistory及moveActiveSelection使用activePaintLayer。原生nudgeSelectionContent此前按整篇free-tile拒绝，tilemap Paint分支亦先于活动蒙版；现只在无活动蒙版时应用这些特殊图层保护，蒙版沿用beginMaskSelectionMove与transformMaskFloating，连续微移共享浮动预览。editor_input已有activeMaskId条件，蒙版方向键保持像素步长。
+
+新增free/tile两组合与普通蒙版逐像素对照，检查零位移及跨帧保护、重复微移、取消恢复选择与像素、单次提交、原Cel像素/网格/自由实例不变、Undo/Redo和实际保存重开。special-mask-nudge-build.log正式Release及两测试构建exit0；完整free-tile-project-tests和attached-masks-tests exit0（special-mask-nudge-free-test.log、special-mask-nudge-attached-test.log）；正式工作区drawing-anchor-edit-floating组合exit0；来源625文件快照检查通过（special-mask-nudge-provenance.log）。无人工UI验收，全量迁移仍INCOMPLETE。
