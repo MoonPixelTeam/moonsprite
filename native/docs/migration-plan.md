@@ -3255,3 +3255,9 @@ pending-tile-center-build.log正式Release及free/tile测试构建exit0，fixtur
 依据legacy workspace-commands-layer-adjustment.ts::applyActiveLayerAdjustment的普通目标范围：有选区使用活动层，无选区按选择层，跳过kind特殊层和锁定层。原生移除整篇特殊内容保护，并在预览捕获时跳过所有特殊类型，避免写入派生缓存；继续复用共同调整预览/提交事务。本阶段不扩展特殊源、蒙版或全量调整类型行为验收。
 
 新增free/tile×取消/提交×有/无选区八组，使用已有color_adjustment_test的legacy亮度20/对比度10精确RGBA预期，检查选区外保留、无预览历史/单提交、Undo/Redo、实际保存重开、仅特殊目标拒绝及全部特殊Cel像素/实例/网格/源资源保留。正式Release及free/tile测试构建exit0（mixed-raster-adjustment-build.log）；完整free/tile测试exit0（mixed-raster-adjustment-free-test.log、mixed-raster-adjustment-grid-test.log）；正式工作区drawing-anchor-edit-floating组合exit0；来源检查通过（mixed-raster-adjustment-provenance.log），diff通过。未做人工UI验收，全量迁移仍INCOMPLETE。
+
+### 2026-11-07：混合瓦片文档普通Cel颜色替换
+
+对照legacy workspace-commands-color.ts::applyColorReplacementTarget明确目标收集及tools-fill.ts::replaceLayerColor完整packed RGBA匹配/可选选区，普通Cel替换不再受文档无关特殊内容拒绝。继续复用既有预览、精确匹配和历史事务。显式请求特殊Cel的源替换仍未迁移，本阶段保留拒绝，不将其称为旧版等价完成。
+
+新增free/tile×取消/提交×选区/完整目标八组，沿用color_replacement_test的精确颜色，检查选区外保留、单提交历史、Undo/Redo、实际重开及所有特殊Cel像素/实例/网格/资源保留。初次特殊拒绝断言误选fixture首个普通Cel，已改为明确特殊活动Cel并重跑。正式Release及free/tile测试构建exit0（mixed-raster-replacement-build.log），最终fixture构建exit0（mixed-raster-replacement-fixture-build.log）；完整free/tile测试exit0（mixed-raster-replacement-free-test.log、mixed-raster-replacement-grid-test.log）；正式工作区drawing-anchor-edit-floating组合exit0；来源检查通过（mixed-raster-replacement-provenance.log），diff通过。未做人工UI验收，全量迁移仍INCOMPLETE。
