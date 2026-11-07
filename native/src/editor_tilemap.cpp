@@ -14,15 +14,15 @@ void Editor::showFreeTileInstanceFeedback(const std::string& id){
  freeTileFlashInstance_=id;freeTileFlashCel_=document.cel().id;freeTileFlashIdentity_=document.identity();freeTileFlashStarted_=GetTickCount64();freeTileFlashTimer_.start();invalidateRect(canvasViewport());
 }
 void Editor::paintFreeTileInstanceFeedback(ui::Graphics& g,const gfx::Rect& cv){
- if(freeTileFlashInstance_.empty()||freeTileFlashIdentity_!=document.identity()||freeTileFlashCel_!=document.cel().id||document.layer().kind!="free-tile"||!document.layer().freeTiles||!document.cel().freeTiles||!document.cel().surface)return;
+ if(freeTileFlashInstance_.empty()||freeTileFlashIdentity_!=document.identity()||freeTileFlashCel_!=document.cel().id||document.layer().kind!="free-tile"||!document.layer().freeTiles||!document.freeTileCel().freeTiles||!document.freeTileCel().surface)return;
  if(GetTickCount64()-freeTileFlashStarted_>=std::uint64_t(freeTileFlashTimer_.interval()))return;
- const auto& instances=document.cel().freeTiles->instances;const auto found=std::find_if(instances.begin(),instances.end(),[this](const auto& i){return i.id==freeTileFlashInstance_;});if(found==instances.end())return;const auto& instance=*found;
+ const auto& instances=document.freeTileCel().freeTiles->instances;const auto found=std::find_if(instances.begin(),instances.end(),[this](const auto& i){return i.id==freeTileFlashInstance_;});if(found==instances.end())return;const auto& instance=*found;
  const auto& sources=document.layer().freeTiles->sources;const auto source=std::find_if(sources.begin(),sources.end(),[&](const auto& s){return s.id==(instance.sourceId.empty()?instance.tileId:instance.sourceId)||s.tilesetId==(instance.sourceId.empty()?instance.tileId:instance.sourceId);});if(source==sources.end()||!source->visible)return;
  const auto& sets=document.timeline().state().tilesets;const auto set=std::find_if(sets.begin(),sets.end(),[&](const auto& s){return s.id==source->tilesetId;});const auto bounds=document.freeTileInstanceBounds(instance.id);if(set==sets.end()||!bounds)return;
  const int left=std::max(0,bounds->x),top=std::max(0,bounds->y),right=std::min(document.width(),bounds->x+bounds->w),bottom=std::min(document.height(),bounds->y+bounds->h);if(right<=left||bottom<=top)return;
  const int w=right-left,h=bottom-top;
  if(!freeTileFlashSurface_||freeTileFlashRevision_!=document.revision()){const auto pixels=tiles::readTile(*set,0);std::vector<Pixel> overlay(std::size_t(w)*h);
-  for(int y=0;y<h;++y)for(int x=0;x<w;++x){int sx=left+x-document.cel().surface->offsetX-instance.x,sy=top+y-document.cel().surface->offsetY-instance.y;if(instance.flipHorizontal)sx=-sx-1;if(instance.flipVertical)sy=-sy-1;const int a=sx,b=sy;switch(instance.rotation){case 1:sx=b;sy=-a-1;break;case 2:sx=-a-1;sy=-b-1;break;case 3:sx=-b-1;sy=a;break;}sx-=source->offsetX;sy-=source->offsetY;if(sx<0||sy<0||sx>=set->tileWidth||sy>=set->tileHeight)continue;const Pixel p=pixels[std::size_t(sy)*set->tileWidth+sx];const Pixel value=((p&255)*.2126+((p>>8)&255)*.7152+((p>>16)&255)*.0722)>145?0:0xffffff;overlay[std::size_t(y)*w+x]=(p&0xff000000)|value;}
+  for(int y=0;y<h;++y)for(int x=0;x<w;++x){int sx=left+x-document.freeTileCel().surface->offsetX-instance.x,sy=top+y-document.freeTileCel().surface->offsetY-instance.y;if(instance.flipHorizontal)sx=-sx-1;if(instance.flipVertical)sy=-sy-1;const int a=sx,b=sy;switch(instance.rotation){case 1:sx=b;sy=-a-1;break;case 2:sx=-a-1;sy=-b-1;break;case 3:sx=-b-1;sy=a;break;}sx-=source->offsetX;sy-=source->offsetY;if(sx<0||sy<0||sx>=set->tileWidth||sy>=set->tileHeight)continue;const Pixel p=pixels[std::size_t(sy)*set->tileWidth+sx];const Pixel value=((p&255)*.2126+((p>>8)&255)*.7152+((p>>16)&255)*.0722)>145?0:0xffffff;overlay[std::size_t(y)*w+x]=(p&0xff000000)|value;}
   freeTileFlashSurface_=os::instance()->makeRgbaSurface(w,h);if(!freeTileFlashSurface_)return;uploadRgbaRegion(*freeTileFlashSurface_,overlay.data(),w,h,w);freeTileFlashRevision_=document.revision();freeTileFlashBounds_={left,top,w,h};}
  const auto edge=[](double n){return int(std::clamp(std::floor(n+.5),-10000000.,10000000.));};const double z=canvasScale();const int x=edge(cv.x+left*z),y=edge(cv.y+top*z);ui::Paint paint;paint.blendMode(os::BlendMode::SrcOver);g.drawSurface(freeTileFlashSurface_.get(),{0,0,w,h},{x,y,edge(cv.x+right*z)-x,edge(cv.y+bottom*z)-y},os::Sampling(os::Sampling::Filter::Nearest),&paint);
 }
@@ -49,7 +49,7 @@ void Editor::createTilesetPanel(){
  tilesetPanel_->sourceColors=[this]{return runtimePreferences_.layerDisplayColors;};tilesetPanel_->sourceColorPresets=runtimePreferences_.layerDisplayColors;tilesetPanel_->sourceColorStorage=smoke_?assets_.parent_path()/"color-editor-smoke-size.txt":palettePreferencePath().parent_path()/"color-editor-free-source-size.txt";
  menuCommands_.bind("openFreeTileSourceProperties",{[this]{tilesetPanel_->sourceColorPresets=runtimePreferences_.layerDisplayColors;tilesetPanel_->openSelectedSourceProperties();},[this]{return documentOpen_&&!homeOpen_&&pending_==Pending::None&&tilesetPanel_->canAddSource();},{}});
 
- const char* blocked[]{"resizeImage","resizeCanvas","cropCanvas","trimCanvas","trimCurrentFrame","createLinkedLayer","connectCels","disconnectCels","addLinkedFrame","deleteFrame","pasteFrames","pasteCels","flipHorizontal","flipVertical","rotate90","rotate180","rotate270","centerContent","delete","openColorAdjustment","openColorReplacement","generateTransformTween","generateCrossfadeTween"};
+ const char* blocked[]{"resizeImage","resizeCanvas","cropCanvas","trimCanvas","trimCurrentFrame","createLinkedLayer","deleteFrame","pasteFrames","pasteCels","flipHorizontal","flipVertical","rotate90","rotate180","rotate270","centerContent","delete","openColorAdjustment","openColorReplacement","generateTransformTween","generateCrossfadeTween"};
  for(auto id:blocked){auto it=menuItems_.find(id);if(it==menuItems_.end())continue;auto previous=it->second->available;const bool paintFlip=std::string(id)=="flipHorizontal"||std::string(id)=="flipVertical";it->second->available=[this,previous,paintFlip]{return (!document.hasTilemapContent()||(paintFlip&&document.paintCellFlipAvailable()))&&(!previous||previous());};}
  // Keep unsupported free-instance operations visibly disabled, using existing entries.
  const std::set<std::string> freeBlocked{"imageResize","canvasResize","cropCanvas","trimCanvas","trimCurrentFrame","rotateContent180","rotateContentCounterClockwise","rotateContentClockwise","centerContentBoth","centerContentHorizontal","centerContentVertical","fillForeground","invertColors","replaceColor","quickAntiAlias","adjustmentColorBalance","adjustmentBrightnessContrast","adjustmentHueSaturation","adjustmentCurves","gradientMap","convolution","lcdScreen","splitLayerStyles","pasteToCurrentCell"};
@@ -69,7 +69,7 @@ void Editor::createTilesetPanel(){
   if(!documentOpen_||homeOpen_||pending_!=Pending::None||historyGestureBusy()||document.layer().kind!="free-tile"||!document.activeMaskId().empty()||document.hasSelectedGroups()||document.layerEffectivelyLocked(document.layer())||!document.layerEffectivelyVisible(document.layer()))return false;
   if(auto target=document.floatingTransform())return !target->quad&&bool(freeTileSelectionTargetBounds(document));
   if(document.selection())return bool(freeTileSelectionTargetBounds(document));
-  const auto ids=document.selectedFreeTileInstances();if(!document.cel().freeTiles)return false;for(const auto& i:document.cel().freeTiles->instances)if(!i.locked&&std::find(ids.begin(),ids.end(),i.id)!=ids.end())return true;return false;
+  const auto ids=document.selectedFreeTileInstances();if(!document.freeTileCel().freeTiles)return false;for(const auto& i:document.freeTileCel().freeTiles->instances)if(!i.locked&&std::find(ids.begin(),ids.end(),i.id)!=ids.end())return true;return false;
  };}
  // Image and instance paste both use the legacy free-tile transactions.
  // Paste targets any editable free-tile cel, independent of the instance view.
@@ -87,7 +87,7 @@ void Editor::createTilesetPanel(){
    if(paste){if(!hasApplicationCelClipboard()||applicationCelSelectionOnly())return false;if(celClipboardSnapshot_.sourceIdentity!=document.identity()&&std::any_of(celClipboardSnapshot_.items.begin(),celClipboardSnapshot_.items.end(),[](const auto& item){return item.cel.freeTiles.has_value();}))return false;}
    return !previous||previous();
   }
-  if(paste){if(document.layer().kind!="free-tile"||!document.layer().freeTiles||!document.cel().freeTiles||!document.activeMaskId().empty()||document.layerEffectivelyLocked(document.layer()))return false;}
+  if(paste){if(document.layer().kind!="free-tile"||!document.layer().freeTiles||!document.freeTileCel().freeTiles||!document.activeMaskId().empty()||document.layerEffectivelyLocked(document.layer()))return false;}
   else if(document.selection()&&!freeTileInstancesPanel_->clipboardScope()){if(document.layer().kind!="free-tile"||!document.activeMaskId().empty()||!pixelClipboardContext())return false;}
   else if(!document.freeTileInstanceView()||document.selectedFreeTileInstances().empty()){if(document.freeTileInstanceView()||celClipboardContext()||frameSelectionExplicit_||!document.activeMaskId().empty())return false;}
   return !previous||previous();
@@ -108,9 +108,9 @@ void Editor::showFreeTileInstancePanelSettings(bool verify){
 }
 void Editor::syncFreeTileInstancePanel(){
  if(!freeTileInstancesPanel_)return;
- const bool target=documentOpen_&&!homeOpen_&&document.activeMaskId().empty()&&document.layer().kind=="free-tile"&&document.layer().freeTiles&&document.cel().freeTiles;
+ const bool target=documentOpen_&&!homeOpen_&&document.activeMaskId().empty()&&document.layer().kind=="free-tile"&&document.layer().freeTiles&&document.freeTileCel().freeTiles;
  const std::string key=std::to_string(document.identity())+"/"+(target?document.layer().id+"/"+document.frame().id:"none");
- const int count=target?int(document.cel().freeTiles->instances.size()):0;
+ const int count=target?int(document.freeTileCel().freeTiles->instances.size()):0;
  const bool open=freeTileInstancesSeparate_&&count>0&&(!freeTileInstanceAutoSeparate_||key!=freeTileInstanceAutoKey_||freeTileInstanceAutoCount_==0||count>freeTileInstanceAutoCount_);
  if(!freeTileInstancesSeparate_||count==0)freeTileInstancesOpen_=false;
  else if(open){freeTileInstancesOpen_=true;initializeDocking();docking_.custom=true;docking_.select(13);}

@@ -233,6 +233,7 @@ public:
   bool rasterToolsAvailable() const {return activeMaskId_.empty() && layer().kind!="text" && layer().kind!="tilemap" && layer().kind!="adjustment" && layer().kind!="free-tile" && !hasSelectedGroups() && !layerEffectivelyLocked(layer()) && layerEffectivelyVisible(layer());}
   const DocumentFrame& frame() const {return timeline_.state().frames.at(activeFrameIndex());}
   const DocumentCel& cel() const {return *timeline_.findCel(layer().id,frame().id);}
+  const DocumentCel& freeTileCel() const {const auto resolved=timeline_.resolveSurface(cel().id);if(!resolved.source||resolved.issue!=timeline::LinkIssue::None)throw std::logic_error("Invalid free tile Cel link");return *resolved.source;}
   SymmetryAxes symmetryAxes;
   SymmetryCenter symmetryCenter() const{return symmetryCenter_.value_or(defaultSymmetryCenter(width_,height_));}
   void setSymmetryCenter(SymmetryCenter c,bool metadata=true){if(!std::isfinite(c.x) || !std::isfinite(c.y))throw std::invalid_argument("Invalid symmetry center");symmetryCenter_=moveSymmetryCenter(symmetryCenter(),SymmetryAxis::Center,c,width_,height_);if(metadata){modified_=true;projectInformation_.operation();}}

@@ -139,7 +139,7 @@ PreparedImport prepareEditableImport(const ReadManifest& m) {
  for(const auto& f:m.frames) {
  const auto index=slotIndex(l.id,f.id);const auto& c=m.cels[index];
 
- unsupported(l.kind=="free-tile"&&!c.linkedCelId.empty(),"Linked free tile cels require independent instance migration");
+
  const auto* root=rootCel(c);
  unsupported(!root->surface||!l.surface,"Missing owned raster is not editable yet");const auto& s=*root->surface;const auto& ls=*l.surface;
  if(l.kind!="tilemap"&&c.surface && c.linkedCelId.size())unsupported(c.surface->pixels!=s.pixels||c.surface->width!=s.width||c.surface->height!=s.height||c.surface->offsetX!=s.offsetX||c.surface->offsetY!=s.offsetY,"Linked cel fallback differs from source; refusing to discard content");
@@ -150,7 +150,7 @@ PreparedImport prepareEditableImport(const ReadManifest& m) {
  }
  }
 
- try{tilejson::validateAndRender(state);for(const auto& l:state.layers)if(l.kind=="free-tile"){if(!l.freeTiles)throw std::invalid_argument("Missing free tile sources");for(auto& c:state.cels)if(c.layerId==l.id){if(!c.freeTiles||!c.surface)throw std::invalid_argument("Missing free tile instance surface");c.surface->pixels=free_tiles::render(*l.freeTiles,*c.freeTiles,state.tilesets,c.surface->width,c.surface->height);}}}catch(const std::exception& e){throw Error(ErrorKind::Corrupt,e.what());}
+ try{tilejson::validateAndRender(state);for(const auto& l:state.layers)if(l.kind=="free-tile"){if(!l.freeTiles)throw std::invalid_argument("Missing free tile sources");for(auto& c:state.cels)if(c.layerId==l.id&&!c.linkedCelId&&!c.runtimeSharedCelId){if(!c.freeTiles||!c.surface)throw std::invalid_argument("Missing free tile instance surface");c.surface->pixels=free_tiles::render(*l.freeTiles,*c.freeTiles,state.tilesets,c.surface->width,c.surface->height);}}}catch(const std::exception& e){throw Error(ErrorKind::Corrupt,e.what());}
  std::map<std::pair<std::string,std::string>,const ManifestRaster*> linkedRasters;
  for(const auto& layer:m.layers)if(!layer.linkedContentId.empty())for(const auto& frame:m.frames){const auto* root=rootCel(m.cels[slotIndex(layer.id,frame.id)]);corrupt(!root->surface,"Missing associated raster");const auto& raster=*root->surface;const auto key=std::make_pair(layer.linkedContentId,frame.id);const auto found=linkedRasters.emplace(key,&raster);if(!found.second){const auto& previous=*found.first->second;corrupt(previous.width!=raster.width||previous.height!=raster.height||previous.pixels!=raster.pixels,"Linked layer raster content mismatch");}}
  // Legacy document.layers is bottom-to-top; native compositor is top-to-bottom.

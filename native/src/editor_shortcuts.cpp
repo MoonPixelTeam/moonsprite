@@ -107,9 +107,9 @@ if(id=="tilemapModeEdit"||id=="tilemapModeCreate"||id=="tilemapModeHybrid"||id==
 // entry for transforms/solo and the selected range for delete, just like its
 // context menu. Reuse Document property/delete transactions and lock guards.
 if(id=="showOnlyFreeTileInstance"||id=="rotateFreeTileInstance90"||id=="mirrorFreeTileInstanceHorizontal"||id=="mirrorFreeTileInstanceVertical"||id=="deleteFreeTileInstances"){
- if(!freeTileInstancesPanel_||!freeTileInstancesPanel_->isVisible()||document.active()||!document.freeTileInstanceView()||!document.cel().freeTiles)return true;
+ if(!freeTileInstancesPanel_||!freeTileInstancesPanel_->isVisible()||document.active()||!document.freeTileInstanceView()||!document.freeTileCel().freeTiles)return true;
  const auto selected=document.selectedFreeTileInstances();auto target=document.primaryFreeTileInstance();if(target.empty()&&!selected.empty())target=selected.front();
- const auto& instances=document.cel().freeTiles->instances;const auto found=std::find_if(instances.begin(),instances.end(),[&](const auto& instance){return instance.id==target;});if(found==instances.end())return true;
+ const auto& instances=document.freeTileCel().freeTiles->instances;const auto found=std::find_if(instances.begin(),instances.end(),[&](const auto& instance){return instance.id==target;});if(found==instances.end())return true;
  if(id=="showOnlyFreeTileInstance")document.showOnlyFreeTileInstance(target);
  else if(id=="deleteFreeTileInstances")document.deleteFreeTileInstances(std::find(selected.begin(),selected.end(),target)!=selected.end()?selected:std::vector<std::string>{target});
  else if(!found->locked){Document::FreeTileInstanceChanges changes;if(id=="rotateFreeTileInstance90")changes.rotation=(found->rotation+1)%4;else if(id=="mirrorFreeTileInstanceHorizontal")changes.flipHorizontal=!found->flipHorizontal;else changes.flipVertical=!found->flipVertical;document.setFreeTileInstanceProperties(target,changes);}

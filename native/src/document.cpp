@@ -445,14 +445,6 @@ void Document::normalizeFrameDeletionSelection(){
 }
 void Document::captureFrameOrder(Edit& e,bool after) const {if(after)e.afterMasks=timeline_.state().masks;else e.beforeMasks=timeline_.state().masks;auto& order=after?e.afterFrames:e.beforeFrames;for(const auto& f:timeline_.state().frames)order.push_back(f.id);(after?e.afterFrame:e.beforeFrame)=activeFrameId_;(after?e.afterFrameAnchor:e.beforeFrameAnchor)=frameAnchor_;(after?e.afterTimelineSelection:e.beforeTimelineSelection)=timelineSelection_;(after?e.afterActive:e.beforeActive)=activeLayerId_;}
 void Document::addFrame(bool duplicate) {
- // Legacy leaves empty independent sources unlinked even with auto-link on.
- // Actual free Cel links still require a model migration; reject those before
- // committing previews or allocating frame/history objects.
- for(const auto& l:timeline_.state().layers)if(l.kind=="free-tile"&&l.autoLinkAnimationCels){
-  const auto* slot=timeline_.findCel(l.id,activeFrameId_);
-  const auto source=slot?timeline_.resolveSurface(slot->id):timeline::Resolution{};
-  if(slot && (slot->linkedCelId || (source.surface && std::any_of(source.surface->pixels.begin(),source.surface->pixels.end(),[](Pixel p){return (p>>24)!=0;}))))throw std::runtime_error("Linked free tile frame creation is not migrated");
- }
  commitFloatingPaste();
  cancelStroke();cancelLayerOpacity();if(timeline_.state().frames.size()>=10000)throw std::runtime_error("Frame limit reached");
  constexpr std::uint64_t frameByteLimit=256ull*1024*1024;
@@ -481,7 +473,7 @@ void Document::addFrame(bool duplicate) {
   else{if(!source.source||!source.source->tilemap)throw std::runtime_error("Missing frame tilemap template");c.tilemap=source.source->tilemap;std::fill(c.tilemap->cells.begin(),c.tilemap->cells.end(),std::nullopt);}
  }
  surface.pixels.resize(std::size_t(surface.width)*surface.height);c.surface=std::move(surface);}if(l.autoLinkAnimationCels&&sourceSlot){const auto* slot=sourceSlot;const auto source=timeline_.resolveSurface(slot->id);
- if(source.source && source.surface && (slot->linkedCelId || std::any_of(source.surface->pixels.begin(),source.surface->pixels.end(),[](Pixel p){return (p>>24)!=0;}))){c.linkedCelId=source.source->id;c.runtimeSharedCelId.reset();c.surface.reset();c.opacity=source.source->opacity;c.zIndex=source.source->zIndex;c.tilemap=source.source->tilemap;c.text=source.source->text;}}
+ if(source.source && source.surface && (slot->linkedCelId || std::any_of(source.surface->pixels.begin(),source.surface->pixels.end(),[](Pixel p){return (p>>24)!=0;}))){c.linkedCelId=source.source->id;c.runtimeSharedCelId.reset();c.surface.reset();c.opacity=source.source->opacity;c.zIndex=source.source->zIndex;c.tilemap=source.source->tilemap;c.freeTiles=source.source->freeTiles;c.text=source.source->text;}}
  c.id="cel-"+l.id+"-"+f.id;c.layerId=l.id;c.frameId=f.id;e.detachedCels.push_back(std::move(c));}
  {const auto masks=timeline_.state().masks;for(const auto& slot:masks)if(slot.frameId==activeFrameId_&&(duplicate||(!slot.group&&slot.mask.autoLinkAnimationCels))){auto copy=slot;copy.frameId=f.id;copy.mask.id="mask-native-"+std::to_string(identity_)+"-"+std::to_string(++nextLayerId_);const auto* root=timeline::resolvedMask(timeline_.state(),slot.ownerId,slot.frameId);copy.mask.surface=root->surface;copy.mask.linkedMaskId=slot.mask.autoLinkAnimationCels?root->id:std::string{};timeline_.state_.masks.push_back(std::move(copy));}}
  e.detachedFrame=f;for(auto& section:timeline_.state_.loopSections){timeline::State old;old.frames=previousFrames;const auto r=timeline::loopRange(old,section);if(r.end>=0 && previousFrames[r.end].id==frame().id){if(section.endFrameId==frame().id)section.endFrameId=f.id;else if(section.startFrameId==frame().id)section.startFrameId=f.id;}}e.afterLoops=timeline_.state().loopSections;const auto index=activeFrameIndex()+1;timeline_.state_.frames.insert(timeline_.state_.frames.begin()+index,f);timeline_.state_.cels.insert(timeline_.state_.cels.end(),e.detachedCels.begin(),e.detachedCels.end());timeline_.buildIndex();activeFrameId_=f.id;projectActiveCelOpacities();selection_.reset();clearFrameSelection();timelineSelection_.cels.clear();timelineSelection_.celAnchor.clear();e.beforeTimelineSelection=timelineSelection_;e.beforeFrameAnchor=frameAnchor_;e.beforeSelection=e.afterSelection=selectedFrames_;captureFrameOrder(e,true);change_={0,0,width_,height_};publishChange();pushEdit(std::move(e),U"新建动画帧");
@@ -529,12 +521,6 @@ void Document::addLinkedFrame(bool allLayers){
  auto sourceFrame=selected?selected->frameId:activeFrameId_;const auto sourceLayer=selected?selected->layerId:activeLayerId_;
  if(!selected&&!selectedFrames_.empty()){const auto id=std::find(selectedFrames_.begin(),selectedFrames_.end(),frameAnchor_)!=selectedFrames_.end()?frameAnchor_:selectedFrames_.back();if(timeline_.hasFrame(id))sourceFrame=id;}
  const bool linkAll=!selected&&(allLayers||!selectedFrames_.empty());const bool copyGroupMasks=!selected;
- // Only visible free-tile sources in this command's scope need unsupported links.
- for(const auto& l:timeline_.state().layers)if(l.kind=="free-tile"&&(linkAll||l.id==sourceLayer)){
-  const auto* slot=timeline_.findCel(l.id,sourceFrame);const auto source=slot?timeline_.resolveSurface(slot->id):timeline::Resolution{};
-  if(source.surface&&std::any_of(source.surface->pixels.begin(),source.surface->pixels.end(),[](Pixel p){return (p>>24)!=0;}))throw std::runtime_error("Linked free tile frames are not migrated");
- }
-
  const auto index=timeline_.frameIndex(sourceFrame);const bool inserted=index+1==timeline_.state().frames.size();
  Edit e{{},state_,nextState_};e.beforeFrame=previousFrame;e.beforeActive=e.afterActive=previousLayer;e.beforeSelection=selectedFrames_;e.beforeTimelineSelection=timelineSelection_;e.beforeFrameAnchor=frameAnchor_;
  e.maskContext=std::make_shared<Edit::MaskContextHistory>(Edit::MaskContextHistory{inserted?std::string{}:activeMaskId_,{},inserted?false:maskIsolated_,false});
@@ -569,11 +555,6 @@ bool Document::canConnectSelectedCels()const{
  for(const auto& l:timeline_.state().layers){int count=0;bool content=false;for(const auto& c:timeline_.state().cels){if(c.layerId!=l.id || std::find(timelineSelection_.cels.begin(),timelineSelection_.cels.end(),c.id)==timelineSelection_.cels.end())continue;++count;const auto r=timeline_.resolveSurface(c.id);content|=r.surface && std::any_of(r.surface->pixels.begin(),r.surface->pixels.end(),[](Pixel p){return (p>>24)!=0;});}if(count>1 && content)return true;}return false;
 }
 bool Document::connectSelectedCels(){
- // Free instance links still need model support. Check before any mutation.
- for(const auto& l:timeline_.state().layers)if(l.kind=="free-tile"){
-  int count=0;bool content=false;for(const auto& c:timeline_.state().cels)if(c.layerId==l.id&&std::find(timelineSelection_.cels.begin(),timelineSelection_.cels.end(),c.id)!=timelineSelection_.cels.end()){++count;const auto r=timeline_.resolveSurface(c.id);content|=r.surface&&std::any_of(r.surface->pixels.begin(),r.surface->pixels.end(),[](Pixel p){return (p>>24)!=0;});}
-  if(count>1&&content)throw std::runtime_error("Linked free tile cels are not migrated");
- }
  commitFloatingPaste();cancelStroke();cancelLayerOpacity();Edit e{{},state_,nextState_};e.beforeFrame=e.afterFrame=activeFrameId_;
  for(const auto& l:timeline_.state().layers){std::vector<const DocumentCel*> slots;int first=-1,last=-1;const auto& frames=timeline_.state().frames;
  auto content=[&](const DocumentCel* c){const auto r=timeline_.resolveSurface(c->id);return r.surface && std::any_of(r.surface->pixels.begin(),r.surface->pixels.end(),[](Pixel p){return (p>>24)!=0;});};
@@ -2183,11 +2164,11 @@ bool Document::fillSelectionOrCanvas(Pixel color){if(!activeMaskId_.empty()){com
 bool Document::deleteSelectedPixels(){if(floating_&&floating_->clipboard){cancelFloatingPaste();return true;}if(floating_&&floating_->freeTile)commitFloatingPaste();if(!activeMaskId_.empty())return deleteMaskSelection();if(layer().kind=="free-tile"){
  // Legacy deleteFreeTileSourceSelectionInSession clears the primary shared
  // source in instance world coordinates; never erase a derived Cel cache.
- if(active()||!selection_||!activeMaskId_.empty()||layer().kind!="free-tile"||freeTilePaintMode()||!layer().freeTiles||!cel().freeTiles||!cel().surface||layerEffectivelyLocked(layer()))return false;
- const auto primary=primaryFreeTileInstance();const auto instance=std::find_if(cel().freeTiles->instances.begin(),cel().freeTiles->instances.end(),[&](const auto& i){return i.id==primary;});if(instance==cel().freeTiles->instances.end()||!instance->visible||instance->locked)return false;
+ if(active()||!selection_||!activeMaskId_.empty()||layer().kind!="free-tile"||freeTilePaintMode()||!layer().freeTiles||!freeTileCel().freeTiles||!freeTileCel().surface||layerEffectivelyLocked(layer()))return false;
+ const auto primary=primaryFreeTileInstance();const auto instance=std::find_if(freeTileCel().freeTiles->instances.begin(),freeTileCel().freeTiles->instances.end(),[&](const auto& i){return i.id==primary;});if(instance==freeTileCel().freeTiles->instances.end()||!instance->visible||instance->locked)return false;
  const auto& sourceId=instance->sourceId.empty()?instance->tileId:instance->sourceId;const auto source=std::find_if(layer().freeTiles->sources.begin(),layer().freeTiles->sources.end(),[&](const auto& s){return s.id==sourceId||s.tilesetId==sourceId;});if(source==layer().freeTiles->sources.end()||!source->visible||source->locked)return false;
  const auto resource=std::find_if(timeline_.state().tilesets.begin(),timeline_.state().tilesets.end(),[&](const auto& t){return t.id==source->tilesetId;});if(resource==timeline_.state().tilesets.end())return false;
- const auto pixels=tiles::readTile(*resource,0);const Point anchor{cel().surface->offsetX+instance->x,cel().surface->offsetY+instance->y};PixelRegion content;
+ const auto pixels=tiles::readTile(*resource,0);const Point anchor{freeTileCel().surface->offsetX+instance->x,freeTileCel().surface->offsetY+instance->y};PixelRegion content;
  for(int y=0;y<resource->tileHeight;++y)for(int x=0;x<resource->tileWidth;++x)if(pixels[std::size_t(y)*resource->tileWidth+x]>>24){auto q=free_tiles::transform(*instance,x+source->offsetX,y+source->offsetY);content.include(q.first+anchor.x,q.second+anchor.y);}if(content.empty())return false;
  SelectionClipboard clear;clear.width=content.w;clear.height=content.h;clear.pixels.resize(std::size_t(content.w)*content.h);clear.mask.resize(clear.pixels.size());bool changed=false;
  for(int y=0;y<resource->tileHeight;++y)for(int x=0;x<resource->tileWidth;++x){auto q=free_tiles::transform(*instance,x+source->offsetX,y+source->offsetY);const int px=q.first+anchor.x,py=q.second+anchor.y;if(px<content.x||py<content.y||px>=content.x+content.w||py>=content.y+content.h||!selectionContains(selection_,px,py))continue;clear.mask[std::size_t(py-content.y)*content.w+px-content.x]=1;changed=changed||pixels[std::size_t(y)*resource->tileWidth+x]!=0;}if(!changed)return false;

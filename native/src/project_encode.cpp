@@ -161,7 +161,7 @@ static EncodedProject encodeProject(const Document& d,Limits limits,bool recover
         if(!owned || !owned->surface)throw Error(ErrorKind::Unsupported,"Missing owned frame raster");
         const auto& surface=*owned->surface;
         JsonObject outCel;if(source)for(const auto& old:animation.GetNamedArray(L"cels")){if(old.ValueType()!=JsonValueType::Object)continue;const auto o=old.GetObject();if(textjson::str(o,L"id")==slot->id){outCel=o;break;}}
-        if(slot->freeTiles)outCel.Insert(L"freeTiles",freejson::encodeCel(*slot->freeTiles));else outCel.Remove(L"freeTiles");
+        if(owned->freeTiles&&!slot->linkedCelId)outCel.Insert(L"freeTiles",freejson::encodeCel(*owned->freeTiles));else outCel.Remove(L"freeTiles");
         outCel.Remove(L"mask"); // Canonical independent slots supersede inline metadata.
         if(owned->tilemap&&!slot->linkedCelId)outCel.Insert(L"tilemap",tilejson::encode(*owned->tilemap));else outCel.Remove(L"tilemap");if(owned->text)outCel.Insert(L"text",encodeTextCel(*owned->text));else outCel.Remove(L"text");text(outCel,L"id",slot->id);text(outCel,L"layerId",item.id);text(outCel,L"frameId",current.id);text(outCel,L"format","rgba");number(outCel,L"opacity",owned->opacity.value_or(item.opacity));if(owned->zIndex)number(outCel,L"zIndex",normalizeCelZIndex(owned->zIndex));else outCel.Remove(L"zIndex");
         if(slot->linkedCelId)text(outCel,L"linkedCelId",*slot->linkedCelId);else outCel.Remove(L"linkedCelId");

@@ -3424,3 +3424,15 @@ legacy core/layer-merge.ts::mergeVisibleLayers复用compositeDocument渲染全�
 新增32组核心矩阵：tile/free × 独占/隐藏共享源 × 普通/隔离蒙版编辑 × 所选/向下/组/可见合并，包含样式、多帧、组/图层蒙版、继承锁定拒绝且无历史、精确合成、单次历史、资源归属、隐藏载荷、可编辑工程与恢复工程重开、Undo/Redo。另4组检查存活隐藏蒙版上下文。实际菜单增加tile/free × 四种合并共8组 Click，验证入口可用、像素、历史、蒙版退出和Undo/Redo。
 
 正式程序及两个测试目标构建通过（complete-special-merge-build.log）；最终完整free-tile-project-tests通过（complete-special-merge-tests.log），document-layer-groups-tests通过（complete-special-merge-groups-tests.log），正式程序 --cel-clipboard-check 退出0，包含新增8组真实菜单合并回归及既有剪贴板/时间轴检查。来源覆盖检查通过（complete-special-merge-provenance.log），diff检查通过。未做人工视觉验收，不宣称穷举所有样式／混合模式。自由瓦片Cel链接、其他登记迁移缺口及全量人工验收仍未完成，整体INCOMPLETE。
+
+
+### 2026-11-07：自由瓦片Cel链接与编辑生命周期迁移
+
+旧版证据：animation.ts::connectAnimationCels按时间顺序找首个有内容的解析源，并让目标共享surface/freeTiles；linkAnimationFrameCels、inheritAnimationFrameCelLinks延续显式／自动链接；disconnectAnimationCels在选中源时断开该源的关联组，解链保留当前实例载荷。workspace-animation-cel-links扩展选区间空槽；project-format-encode仅为非链接Cel写实例数据。原生复用已有Timeline::resolveSurface和Cel／结构历史，无另建共享存储系统。
+
+新增freeTileCel内容访问边界，保留cel()当前槽身份；实例属性／标志／移动／放置／删除／翻转、源画笔与填充／渐变／形状、实例／像素剪贴板、选区变换和实例面板／源面板／画布反馈读取改为解析源。编辑历史保存被修改的源Cel，保持当前播放帧；删除源帧沿用既有存活引用物化。模型允许同层显式／运行时链接，按解析源验证实例；工程导入按源渲染，保存只在非显式链接Cel写解析实例数据。解除连接、新建链接帧、自动新建／复制、同工程帧／Cel／图层剪贴板扩帧的旧保护；既有资源和失败预检继续沿用，跨工程自由帧／Cel源转移限制未在本阶段扩展。
+
+新增生命周期测试覆盖连接首个时间源、解链源／别名、独立修改、移动预览取消、源／别名帧删除、显式新建链接帧、自动新建／复制、同工程帧粘贴、保存与恢复工程重开及Undo/Redo；十二类链接帧编辑覆盖属性、实例放置、删除、实例剪贴板、源画笔、翻转、整实例选区移动、源像素粘贴、显隐标志、源填充／渐变／形状，比较共享像素和实际实例参数。既有拒绝自由链接的测试更新为可观察行为与循环拒绝；混合文档帧范围链接现在检查自由图层实际链接。真实编辑器增加源／别名右键连接／解链及链接帧快捷指令回归。
+
+
+验证结果：首次全依赖构建通过（linked-free-build.log）；生命周期夹具保留旧Cel选择导致显式链接帧按已选源而非播放帧执行，已清空夹具选择；Paint放置夹具误用普通beginStroke导致无历史，已改用真实beginFreeTilePlacement/commitFreeTilePlacement。最终测试构建通过（linked-free-final-test-build.log），完整free-tile-project-tests通过（linked-free-final-tests.log），十二类操作的实例语义／像素／原生与恢复重开／Undo/Redo均通过。正式全依赖构建通过（linked-free-official-build.log），最终增量确认通过（linked-free-final-official-build.log）；最终正式程序 --cel-clipboard-check 退出0，包含真实右键连接／解链、链接帧指令及上一阶段八组合并菜单和既有剪贴板检查。document-layer-groups-tests通过（linked-free-groups-tests.log）；来源覆盖检查通过（linked-free-provenance.log）、diff通过。未人工视觉验收，未宣称所有组合穷举或其他迁移缺口完成，整体仍INCOMPLETE。

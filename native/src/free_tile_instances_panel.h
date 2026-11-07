@@ -40,7 +40,7 @@ class FreeTileInstancesPanel final:public ui::Widget {
  int rowHeight()const{return std::array<int,6>{13,21,27,36,48,64}[density_];}
  int iconTop()const{return (rowHeight()-11)/2;}
  int propertySize()const{return density_==0?11:15;}
- bool available()const{return doc_.layer().kind=="free-tile"&&doc_.activeMaskId().empty()&&doc_.layer().freeTiles&&doc_.cel().freeTiles&&!doc_.layer().freeTiles->sources.empty();}
+ bool available()const{return doc_.layer().kind=="free-tile"&&doc_.activeMaskId().empty()&&doc_.layer().freeTiles&&doc_.freeTileCel().freeTiles&&!doc_.layer().freeTiles->sources.empty();}
  bool activate(){return available()&&(doc_.freeTileInstanceView()||doc_.setFreeTileInstanceView(true));}
  PixelButton* back_;PixelScrollBar* bar_;int scroll_=0;std::string target_;
  struct Toggle {int control,start;bool value;std::uint64_t identity;std::string cel;};
@@ -63,7 +63,7 @@ class FreeTileInstancesPanel final:public ui::Widget {
  }
 
  std::vector<PixelButton*> properties_;
- std::vector<std::string> ids()const{std::vector<std::string> out;if(available()&&(separate_||doc_.freeTileInstanceView()))for(auto i=doc_.cel().freeTiles->instances.rbegin();i!=doc_.cel().freeTiles->instances.rend();++i)out.push_back(i->id);return out;}
+ std::vector<std::string> ids()const{std::vector<std::string> out;if(available()&&(separate_||doc_.freeTileInstanceView()))for(auto i=doc_.freeTileCel().freeTiles->instances.rbegin();i!=doc_.freeTileCel().freeTiles->instances.rend();++i)out.push_back(i->id);return out;}
  gfx::Rect viewport()const{const auto b=bounds();return {b.x,b.y+(separate_?0:22)*uiScale,std::max(1,b.w-7*uiScale),std::max(1,b.h-(separate_?0:22)*uiScale)};}
  gfx::Rect rowBounds(int row)const{auto v=viewport();return {v.x,v.y+row*rowHeight()*uiScale-scroll_,v.w,rowHeight()*uiScale};}
  int rowAt(gfx::Point p)const{const auto v=viewport();if(!v.contains(p))return -1;const int row=(p.y-v.y+scroll_)/(rowHeight()*uiScale);return row<int(ids().size())?row:-1;}
@@ -74,11 +74,11 @@ class FreeTileInstancesPanel final:public ui::Widget {
  std::vector<std::string> deleteTargets(const std::string& id)const{auto selected=doc_.selectedFreeTileInstances();return std::find(selected.begin(),selected.end(),id)!=selected.end()?selected:std::vector<std::string>{id};}
  void deleteSelection(){if(doc_.deleteFreeTileInstances(doc_.selectedFreeTileInstances()))notify();}
  void showOnly(const std::string& id){if(doc_.showOnlyFreeTileInstance(id))notify();}
- void rotateClockwise(const std::string& id){const auto& all=doc_.cel().freeTiles->instances;const auto it=std::find_if(all.begin(),all.end(),[&](const auto& instance){return instance.id==id;});if(it==all.end()||it->locked)return;Document::FreeTileInstanceChanges changes;changes.rotation=(it->rotation+1)%4;if(doc_.setFreeTileInstanceProperties(id,changes))notify();}
- void mirror(const std::string& id,bool horizontal){const auto& all=doc_.cel().freeTiles->instances;const auto it=std::find_if(all.begin(),all.end(),[&](const auto& instance){return instance.id==id;});if(it==all.end()||it->locked)return;Document::FreeTileInstanceChanges changes;if(horizontal)changes.flipHorizontal=!it->flipHorizontal;else changes.flipVertical=!it->flipVertical;if(doc_.setFreeTileInstanceProperties(id,changes))notify();}
+ void rotateClockwise(const std::string& id){const auto& all=doc_.freeTileCel().freeTiles->instances;const auto it=std::find_if(all.begin(),all.end(),[&](const auto& instance){return instance.id==id;});if(it==all.end()||it->locked)return;Document::FreeTileInstanceChanges changes;changes.rotation=(it->rotation+1)%4;if(doc_.setFreeTileInstanceProperties(id,changes))notify();}
+ void mirror(const std::string& id,bool horizontal){const auto& all=doc_.freeTileCel().freeTiles->instances;const auto it=std::find_if(all.begin(),all.end(),[&](const auto& instance){return instance.id==id;});if(it==all.end()||it->locked)return;Document::FreeTileInstanceChanges changes;if(horizontal)changes.flipHorizontal=!it->flipHorizontal;else changes.flipVertical=!it->flipVertical;if(doc_.setFreeTileInstanceProperties(id,changes))notify();}
  void showProperties(const std::string& id,bool verify=false){
   if(!activate())return;
-  const auto& instances=doc_.cel().freeTiles->instances;const auto found=std::find_if(instances.begin(),instances.end(),[&](const auto& i){return i.id==id;});
+  const auto& instances=doc_.freeTileCel().freeTiles->instances;const auto found=std::find_if(instances.begin(),instances.end(),[&](const auto& i){return i.id==id;});
   if(found==instances.end())return;const auto instance=*found;const auto& sources=doc_.layer().freeTiles->sources;const auto sourceId=instance.sourceId.empty()?instance.tileId:instance.sourceId;
   const auto source=std::find_if(sources.begin(),sources.end(),[&](const auto& s){return s.id==sourceId||s.tilesetId==sourceId;});const auto rect=doc_.freeTileInstanceBounds(id);if(source==sources.end()||!rect)return;
   const auto initialSource=*source;const auto targets=deleteTargets(id);if(targets.size()==1&&doc_.selectedFreeTileInstances()!=targets){doc_.selectFreeTileInstance(id);if(flashInstance)flashInstance(id);notify();}const auto identity=doc_.identity();
@@ -90,7 +90,7 @@ class FreeTileInstancesPanel final:public ui::Widget {
  void buildContextMenu(PixelMenu& menu,const std::string& id){
   if(!activate())return;
   const auto selected=doc_.selectedFreeTileInstances();if(std::find(selected.begin(),selected.end(),id)==selected.end()){doc_.selectFreeTileInstance(id);if(flashInstance)flashInstance(id);notify();}
-  const auto targets=deleteTargets(id);const auto& all=doc_.cel().freeTiles->instances;const auto instance=std::find_if(all.begin(),all.end(),[&](const auto& value){return value.id==id;});if(instance==all.end())return;const bool transformable=!instance->locked;
+  const auto targets=deleteTargets(id);const auto& all=doc_.freeTileCel().freeTiles->instances;const auto instance=std::find_if(all.begin(),all.end(),[&](const auto& value){return value.id==id;});if(instance==all.end())return;const bool transformable=!instance->locked;
   auto add=[&](std::u32string label,const char* icon,std::function<void()> action,bool enabled=true){auto item=new PixelMenuItem(font_,skin_,std::move(label));item->iconSkin=&icons_;item->icon=icon;item->setEnabled(enabled);item->Click.connect(std::move(action));menu.addChild(item);return item;};
   add(U"仅显示此实例","eye",[this,id]{showOnly(id);});
   add(U"属性","properties",[this,id]{showProperties(id);});menu.addChild(new PixelMenuSeparator(skin_));
@@ -146,15 +146,15 @@ public:
     if(!isEnabled()||doc_.active())return true;
     const int index=rowAt(m->position());const auto order=ids();
     if(index<0||controlAt(m->position(),index)>=0||m->position().x>=rowBounds(index).x2()-(propertySize()+2)*uiScale)return true;
-    const auto& all=doc_.cel().freeTiles->instances;const auto instance=std::find_if(all.begin(),all.end(),[&](const auto& i){return i.id==order[index];});
+    const auto& all=doc_.freeTileCel().freeTiles->instances;const auto instance=std::find_if(all.begin(),all.end(),[&](const auto& i){return i.id==order[index];});
     if(instance==all.end()||instance->locked)return true;
     cancelDrag();if(activate()&&doc_.selectFreeTileInstance(order[index])){requestFocus();notify();}return true;
    }
    if(msg->type()==ui::kMouseWheelMessage){scroll_+=m->wheelDelta().y*rowHeight()*uiScale;layout();invalidate();return true;}
-   if(msg->type()==ui::kMouseDownMessage){if(!isEnabled())return true;requestFocus();const int index=rowAt(m->position());const auto order=ids();if(index>=0){if(!activate())return true;if(m->right()){showContext(order[index],m->position());return true;}if(m->left()){const int control=controlAt(m->position(),index);if(control>=0){const auto& all=doc_.cel().freeTiles->instances;const auto it=std::find_if(all.begin(),all.end(),[&](const auto& i){return i.id==order[index];});const bool value=!(control==1?it->locked:it->visible);if(doc_.beginFreeTileInstanceFlags(control==1)){toggle_=Toggle{control,index,value,doc_.identity(),doc_.cel().id};manager()->setCapture(this,true);updateToggle(index);}return true;}const auto id=order[index];const auto selected=doc_.selectedFreeTileInstances();const bool modified=m->shiftPressed()||m->ctrlPressed()||m->cmdPressed();
+   if(msg->type()==ui::kMouseDownMessage){if(!isEnabled())return true;requestFocus();const int index=rowAt(m->position());const auto order=ids();if(index>=0){if(!activate())return true;if(m->right()){showContext(order[index],m->position());return true;}if(m->left()){const int control=controlAt(m->position(),index);if(control>=0){const auto& all=doc_.freeTileCel().freeTiles->instances;const auto it=std::find_if(all.begin(),all.end(),[&](const auto& i){return i.id==order[index];});const bool value=!(control==1?it->locked:it->visible);if(doc_.beginFreeTileInstanceFlags(control==1)){toggle_=Toggle{control,index,value,doc_.identity(),doc_.cel().id};manager()->setCapture(this,true);updateToggle(index);}return true;}const auto id=order[index];const auto selected=doc_.selectedFreeTileInstances();const bool modified=m->shiftPressed()||m->ctrlPressed()||m->cmdPressed();
    const bool alreadySelected=std::find(selected.begin(),selected.end(),id)!=selected.end();
    if(modified||!alreadySelected){doc_.selectFreeTileInstance(id,(m->ctrlPressed()||m->cmdPressed())?1:m->shiftPressed()?2:0);if(flashInstance)flashInstance(id);}
-   if(!modified){const auto& all=doc_.cel().freeTiles->instances;const auto it=std::find_if(all.begin(),all.end(),[&](const auto& i){return i.id==id;});if(it!=all.end()&&!it->locked){drag_=Drag{id,{},m->position(),doc_.identity(),doc_.cel().id};drag_->flashOnClick=alreadySelected;manager()->setCapture(this,true);}else if(alreadySelected&&flashInstance)flashInstance(id);}
+   if(!modified){const auto& all=doc_.freeTileCel().freeTiles->instances;const auto it=std::find_if(all.begin(),all.end(),[&](const auto& i){return i.id==id;});if(it!=all.end()&&!it->locked){drag_=Drag{id,{},m->position(),doc_.identity(),doc_.cel().id};drag_->flashOnClick=alreadySelected;manager()->setCapture(this,true);}else if(alreadySelected&&flashInstance)flashInstance(id);}
    notify();}}return true;}
   }return ui::Widget::onProcessMessage(msg);
  }
@@ -165,7 +165,7 @@ public:
   const auto order=ids(),selected=doc_.selectedFreeTileInstances();const auto v=viewport().offset(-bounds().origin());g.saveClip();g.clipRect(v);
   if(order.empty()){UiPaintScale scale(g);font_.draw(g,U"暂无实例",2,24,skin_["text"]);}
   for(int n=0;n<int(order.size());++n){const auto physical=rowBounds(n).offset(-bounds().origin());if(!physical.intersects(v))continue;
-   const auto& instances=doc_.cel().freeTiles->instances;const auto it=instances.begin()+std::ptrdiff_t(instances.size()-1-std::size_t(n));
+   const auto& instances=doc_.freeTileCel().freeTiles->instances;const auto it=instances.begin()+std::ptrdiff_t(instances.size()-1-std::size_t(n));
    const auto& sources=doc_.layer().freeTiles->sources;const auto source=std::find_if(sources.begin(),sources.end(),[&](const auto& s){return s.id==(it->sourceId.empty()?it->tileId:it->sourceId)||s.tilesetId==(it->sourceId.empty()?it->tileId:it->sourceId);});
    auto& row=painter_;row.caption.clear();row.skinStyle="timeline-row";row.active=std::find(selected.begin(),selected.end(),it->id)!=selected.end();row.timelineDisplayColor=source==sources.end()?std::nullopt:source->displayColor;row.timelineCaptionPadding=26;
    const auto name=source==sources.end()?std::string{}:source->name;std::u32string label=caption?caption(name):U"";const auto number=std::to_string(instances.size()-std::size_t(n));label+=U" 实例"+std::u32string(number.begin(),number.end());
@@ -192,26 +192,26 @@ public:
   scroll_=0;layout();
  }
  void smokeReorder(){
-  const auto order=ids();if(order.size()<3)throw std::runtime_error("Reorder fixture");const auto before=*doc_.cel().freeTiles;const auto history=doc_.historyPosition();const auto from=rowBounds(0).center(),to=rowBounds(2).center();
+  const auto order=ids();if(order.size()<3)throw std::runtime_error("Reorder fixture");const auto before=*doc_.freeTileCel().freeTiles;const auto history=doc_.historyPosition();const auto from=rowBounds(0).center(),to=rowBounds(2).center();
   ui::MouseMessage down(ui::kMouseDownMessage,os::PointerType::Mouse,ui::kButtonLeft,ui::kKeyNoneModifier,from);onProcessMessage(&down);
   ui::MouseMessage move(ui::kMouseMoveMessage,os::PointerType::Mouse,ui::kButtonLeft,ui::kKeyNoneModifier,to);onProcessMessage(&move);
   if(!drag_||!drag_->moved||drag_->target!=order[2])throw std::runtime_error("Actual instance drag target");
   ui::MouseMessage up(ui::kMouseUpMessage,os::PointerType::Mouse,ui::kButtonLeft,ui::kKeyNoneModifier,to);onProcessMessage(&up);
-  const auto after=ids();if(doc_.historyPosition()!=history+1||after.size()!=order.size()||after[0]!=order[1]||after[1]!=order[2]||after[2]!=order[0])throw std::runtime_error("Actual instance row reorder");doc_.undo();if(*doc_.cel().freeTiles!=before)throw std::runtime_error("Actual instance row reorder Undo");notify();
+  const auto after=ids();if(doc_.historyPosition()!=history+1||after.size()!=order.size()||after[0]!=order[1]||after[1]!=order[2]||after[2]!=order[0])throw std::runtime_error("Actual instance row reorder");doc_.undo();if(*doc_.freeTileCel().freeTiles!=before)throw std::runtime_error("Actual instance row reorder Undo");notify();
  }
  void smokeContext(){
-  const auto order=ids();if(order.empty())throw std::runtime_error("Context menu fixture");const auto before=*doc_.cel().freeTiles;
+  const auto order=ids();if(order.empty())throw std::runtime_error("Context menu fixture");const auto before=*doc_.freeTileCel().freeTiles;
   for(const auto icon:{"eye","rotateClockwise90","selectionFlipHorizontal","selectionFlipVertical"}){
    PixelMenu menu(skin_);buildContextMenu(menu,order.front());PixelMenuItem* action=nullptr;for(auto child:menu.children())if(auto item=dynamic_cast<PixelMenuItem*>(child);item&&item->icon==icon)action=item;
-   if(!action||!action->isEnabled())throw std::runtime_error("Instance context action absent or disabled");const auto h=doc_.historyPosition();action->Click();if(doc_.historyPosition()!=h+1)throw std::runtime_error("Instance context action disconnected");doc_.undo();if(*doc_.cel().freeTiles!=before)throw std::runtime_error("Instance context action undo");notify();
+   if(!action||!action->isEnabled())throw std::runtime_error("Instance context action absent or disabled");const auto h=doc_.historyPosition();action->Click();if(doc_.historyPosition()!=h+1)throw std::runtime_error("Instance context action disconnected");doc_.undo();if(*doc_.freeTileCel().freeTiles!=before)throw std::runtime_error("Instance context action undo");notify();
   }
  }
- void smokeProperties(){const auto order=ids();if(order.empty())throw std::runtime_error("Instance properties fixture");const auto before=*doc_.cel().freeTiles;const auto h=doc_.historyPosition();doc_.selectFreeTileInstance(order.front());showProperties(order.front(),true);if(doc_.active()||doc_.historyPosition()!=h+1)throw std::runtime_error("Instance properties Esc commits once");const auto& all=doc_.cel().freeTiles->instances;const auto it=std::find_if(all.begin(),all.end(),[&](const auto& i){return i.id==order.front();});if(it==all.end()||it->opacity!=.37||it->rotation!=1||!it->flipHorizontal||it->blendMode!=std::optional<std::string>{"multiply"}||doc_.freeTileInstanceBounds(it->id)->x!=3)throw std::runtime_error("Instance properties controls not connected");doc_.undo();if(*doc_.cel().freeTiles!=before)throw std::runtime_error("Instance properties Undo");notify();}
+ void smokeProperties(){const auto order=ids();if(order.empty())throw std::runtime_error("Instance properties fixture");const auto before=*doc_.freeTileCel().freeTiles;const auto h=doc_.historyPosition();doc_.selectFreeTileInstance(order.front());showProperties(order.front(),true);if(doc_.active()||doc_.historyPosition()!=h+1)throw std::runtime_error("Instance properties Esc commits once");const auto& all=doc_.freeTileCel().freeTiles->instances;const auto it=std::find_if(all.begin(),all.end(),[&](const auto& i){return i.id==order.front();});if(it==all.end()||it->opacity!=.37||it->rotation!=1||!it->flipHorizontal||it->blendMode!=std::optional<std::string>{"multiply"}||doc_.freeTileInstanceBounds(it->id)->x!=3)throw std::runtime_error("Instance properties controls not connected");doc_.undo();if(*doc_.freeTileCel().freeTiles!=before)throw std::runtime_error("Instance properties Undo");notify();}
  void smokeFlagsAndDelete(const std::function<void(ui::Message*)>& route){
   const auto order=ids();if(order.size()<3)throw std::runtime_error("Free instance flags fixture needs three rows");
-  const auto before=*doc_.cel().freeTiles;const auto selection=doc_.selectedFreeTileInstances();const auto h=doc_.historyPosition();
+  const auto before=*doc_.freeTileCel().freeTiles;const auto selection=doc_.selectedFreeTileInstances();const auto h=doc_.historyPosition();
   const auto send=[&](ui::MessageType type,int row,int control){auto b=rowBounds(row);ui::MouseMessage m(type,os::PointerType::Mouse,ui::kButtonLeft,ui::kKeyNoneModifier,{b.x+(6+control*12)*uiScale,b.y+(iconTop()+5)*uiScale});onProcessMessage(&m);};
-  const auto flag=[&](const std::string& id,bool lock){const auto& all=doc_.cel().freeTiles->instances;const auto it=std::find_if(all.begin(),all.end(),[&](const auto& i){return i.id==id;});return lock?it->locked:it->visible;};
+  const auto flag=[&](const std::string& id,bool lock){const auto& all=doc_.freeTileCel().freeTiles->instances;const auto it=std::find_if(all.begin(),all.end(),[&](const auto& i){return i.id==id;});return lock?it->locked:it->visible;};
   send(ui::kMouseDownMessage,0,0);if(!hasCapture()||!doc_.freeTileInstanceFlagsActive())throw std::runtime_error("Instance eye captures gesture");
   ui::MouseMessage observed(ui::kMouseMoveMessage,os::PointerType::Mouse,ui::kButtonLeft,ui::kKeyNoneModifier,rowBounds(0).center());route(&observed);if(!doc_.freeTileInstanceFlagsActive())throw std::runtime_error("Editor stole panel flag gesture");
   send(ui::kMouseMoveMessage,2,0);if(flag(order[0],false)||flag(order[1],false)||flag(order[2],false))throw std::runtime_error("Actual eye range sweep");
@@ -219,18 +219,18 @@ public:
   if(doc_.active()||hasCapture()||doc_.historyPosition()!=h+1||doc_.selectedFreeTileInstances()!=selection)throw std::runtime_error("Actual eye commit history and selection");doc_.undo();notify();
   send(ui::kMouseDownMessage,0,1);send(ui::kMouseMoveMessage,1,1);ui::Message blur(ui::kFocusLeaveMessage);onProcessMessage(&blur);if(doc_.active()||!flag(order[0],true)||!flag(order[1],true))throw std::runtime_error("Flag focus loss commits once");doc_.undo();notify();
   doc_.selectFreeTileInstance(order[0]);notify();requestFocus();ui::KeyMessage del(ui::kKeyDownMessage,ui::kKeyDel,ui::kKeyNoneModifier,0,0);route(&del);
-  if(doc_.cel().freeTiles->instances.size()+1!=before.instances.size())throw std::runtime_error("Focused instance Delete routes before canvas shortcuts");doc_.undo();notify();
-  if(*doc_.cel().freeTiles!=before)throw std::runtime_error("Actual panel flags delete Undo restores content");
+  if(doc_.freeTileCel().freeTiles->instances.size()+1!=before.instances.size())throw std::runtime_error("Focused instance Delete routes before canvas shortcuts");doc_.undo();notify();
+  if(*doc_.freeTileCel().freeTiles!=before)throw std::runtime_error("Actual panel flags delete Undo restores content");
  }
  void smokeRowSelection(){
   const auto order=ids();if(order.size()<3)throw std::runtime_error("Free instance selection fixture needs three rows");
   const auto click=[&](int n,ui::KeyModifiers mods){const auto point=rowBounds(n).center();ui::MouseMessage down(ui::kMouseDownMessage,os::PointerType::Mouse,ui::kButtonLeft,mods,point);onProcessMessage(&down);ui::MouseMessage up(ui::kMouseUpMessage,os::PointerType::Mouse,ui::kButtonLeft,mods,point);onProcessMessage(&up);};
   click(0,ui::kKeyNoneModifier);click(2,ui::kKeyShiftModifier);if(doc_.selectedFreeTileInstances()!=std::vector<std::string>({order[0],order[1],order[2]}))throw std::runtime_error("Free instance actual Shift row range");smokeSelectionMaterial();
   click(1,ui::kKeyCtrlModifier);if(doc_.selectedFreeTileInstances()!=std::vector<std::string>({order[0],order[2]}))throw std::runtime_error("Free instance actual Ctrl row toggle");smokeSelectionMaterial();
-  const auto history=doc_.historyPosition(),revision=doc_.revision();const auto before=*doc_.cel().freeTiles;
+  const auto history=doc_.historyPosition(),revision=doc_.revision();const auto before=*doc_.freeTileCel().freeTiles;
   const auto twice=[&](int row,int x){const auto b=rowBounds(row);ui::MouseMessage message(ui::kDoubleClickMessage,os::PointerType::Mouse,ui::kButtonLeft,ui::kKeyNoneModifier,{b.x+x*uiScale,b.center().y});onProcessMessage(&message);};
   twice(1,6);if(doc_.selectedFreeTileInstances()!=std::vector<std::string>({order[0],order[2]}))throw std::runtime_error("Double-click eye must not enter source editing");
-  twice(1,28);if(doc_.selectedFreeTileInstances()!=std::vector<std::string>{order[1]}||doc_.primaryFreeTileInstance()!=order[1]||doc_.freeTilePaintMode()||hasCapture()||doc_.historyPosition()!=history||doc_.revision()!=revision||*doc_.cel().freeTiles!=before)throw std::runtime_error("Double-click selects one source-edit target without document history");
+  twice(1,28);if(doc_.selectedFreeTileInstances()!=std::vector<std::string>{order[1]}||doc_.primaryFreeTileInstance()!=order[1]||doc_.freeTilePaintMode()||hasCapture()||doc_.historyPosition()!=history||doc_.revision()!=revision||*doc_.freeTileCel().freeTiles!=before)throw std::runtime_error("Double-click selects one source-edit target without document history");
   if(!doc_.beginFreeTileInstanceFlags(true)||!doc_.previewFreeTileInstanceFlags({order[2]},true)||!doc_.commitFreeTilePlacement())throw std::runtime_error("Locked source entry fixture");notify();
   twice(2,28);if(doc_.primaryFreeTileInstance()!=order[1])throw std::runtime_error("Locked instance double-click must preserve selected target");doc_.undo();notify();
  }

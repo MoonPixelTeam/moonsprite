@@ -54,16 +54,17 @@ void validateTilemapState(const State& s){
 }
 }
 namespace {
-void validateFreeTileState(const State& s){
+void validateFreeTileState(const Timeline& timeline){
+ const auto& s=timeline.state();
  std::map<std::string,const free_tiles::LayerData*> shared;
  for(const auto& l:s.layers){
   if(l.kind!="free-tile"){if(l.freeTiles)throw std::invalid_argument("Free tile sources on another layer kind");}
   else {if(!l.freeTiles||l.freeTiles->setId.empty())throw std::invalid_argument("Missing free tile source set");free_tiles::validate(*l.freeTiles,{},s.tilesets);auto found=shared.emplace(l.freeTiles->setId,&*l.freeTiles);if(!found.second&&([&]{auto a=*found.first->second,b=*l.freeTiles;for(auto& v:a.sources)v.preservedJson.clear();for(auto& v:b.sources)v.preservedJson.clear();return a!=b;})())throw std::invalid_argument("Inconsistent shared free tile source set");}
-  for(const auto& c:s.cels)if(c.layerId==l.id){if(l.kind!="free-tile"){if(c.freeTiles)throw std::invalid_argument("Free tile instances on another layer kind");continue;}if(!c.freeTiles||c.linkedCelId||c.runtimeSharedCelId||c.text||c.tilemap)throw std::invalid_argument("Free tile cels must own independent instances");free_tiles::validate(*l.freeTiles,*c.freeTiles,s.tilesets);}
+  for(const auto& c:s.cels)if(c.layerId==l.id){if(l.kind!="free-tile"){if(c.freeTiles)throw std::invalid_argument("Free tile instances on another layer kind");continue;}const auto resolved=timeline.resolveSurface(c.id);if(resolved.issue!=LinkIssue::None||!resolved.source||!resolved.source->freeTiles||c.text||c.tilemap)throw std::invalid_argument("Invalid free tile Cel authority");free_tiles::validate(*l.freeTiles,*resolved.source->freeTiles,s.tilesets);}
  }
 }
 }
-Timeline::Timeline(State state,std::string preferredOwner):linkedDirtyOwner_(std::move(preferredOwner)),state_(std::move(state)) {buildIndex();validateMasks(state_);validateTilemapState(state_);validateFreeTileState(state_);}
+Timeline::Timeline(State state,std::string preferredOwner):linkedDirtyOwner_(std::move(preferredOwner)),state_(std::move(state)) {buildIndex();validateMasks(state_);validateTilemapState(state_);validateFreeTileState(*this);}
 State Timeline::takeState() && {auto result=std::move(state_);*this=Timeline{};return result;}
 namespace {
 bool inheritedGroupFlag(const State& state,std::optional<std::string> id,bool visibility){std::size_t visited=0;while(id){if(++visited>state.groups.size())throw std::invalid_argument("Cyclic group ancestry");const auto found=std::find_if(state.groups.begin(),state.groups.end(),[&](const auto& g){return g.id==*id;});if(found==state.groups.end())throw std::invalid_argument("Unknown group ancestry");if(visibility&&!found->visible)return false;if(!visibility&&found->locked)return true;id=found->parentGroupId;}return visibility;}

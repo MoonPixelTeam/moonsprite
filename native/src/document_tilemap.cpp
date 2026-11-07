@@ -117,7 +117,7 @@ bool Document::beginFreeTilePlacement(Point point,bool erase,bool secondary){
  const auto& owner=layer();
  if(owner.kind!="free-tile"||!owner.freeTiles||layerEffectivelyLocked(owner)||!layerEffectivelyVisible(owner)||hasSelectedGroups()||!activeMaskId_.empty())return false;
  if(!erase&&selection_&&!selectionContains(selection_,point.x,point.y))return false;
- const auto* slot=timeline_.findCel(activeLayerId_,activeFrameId_);
+ const auto* slot=timeline_.resolveSurface(cel().id).source;
  if(!slot||!slot->freeTiles||!slot->surface)return false;
  FreeTilePlacement draft{*slot,point,erase};
  if(erase){freeTilePlacement_=std::move(draft);try{updateFreeTilePlacement(point);}catch(...){cancelFreeTilePlacement();throw;}return true;}
@@ -154,7 +154,7 @@ bool Document::updateFreeTilePlacement(Point point){
  // Legacy placement is a click action; only erasing interpolates a drag path.
  if(!draft.erase)return false;
  if(draft.sampled&&point.x==draft.last.x&&point.y==draft.last.y)return false;
- if(activeLayerId_!=draft.before.layerId||activeFrameId_!=draft.before.frameId||!free_tiles::coordinate(point.x)||!free_tiles::coordinate(point.y))return false;
+ if(activeLayerId_!=draft.before.layerId||freeTileCel().id!=draft.before.id||!free_tiles::coordinate(point.x)||!free_tiles::coordinate(point.y))return false;
  const auto* slot=timeline_.findCelById(draft.before.id);if(!slot||!slot->freeTiles||!slot->surface)return false;
  auto after=*slot;const auto& data=*layer().freeTiles;bool changed=false;
  auto eraseAt=[&](Point at){
@@ -560,7 +560,7 @@ void Document::setFreeTilePaintMode(bool paint){
  if(paint){clear();return;}
  // workspace-commands-free-tile.setFreeTileMode: retain an editable primary,
  // then prefer the selected source, then the first editable stored instance.
- const auto* slot=timeline_.findCel(activeLayerId_,activeFrameId_);
+ const auto* slot=timeline_.resolveSurface(cel().id).source;
  if(!activeMaskId_.empty()||layer().kind!="free-tile"||!layer().freeTiles||!slot||!slot->freeTiles){clear();return;}
  const auto& data=*layer().freeTiles;const auto& instances=slot->freeTiles->instances;
  const auto editable=[&](const auto& i){const auto* s=freeSourceFor(data,i);return i.visible&&!i.locked&&s&&s->visible&&!s->locked;};
@@ -578,7 +578,7 @@ bool Document::freeTileInstanceView()const{
 }
 bool Document::setFreeTileInstanceView(bool open){
  cancelStroke();
- if(open&&(layer().kind!="free-tile"||!layer().freeTiles||layer().freeTiles->sources.empty()||!cel().freeTiles))return false;
+ if(open&&(layer().kind!="free-tile"||!layer().freeTiles||layer().freeTiles->sources.empty()||!freeTileCel().freeTiles))return false;
  freeInstanceViewLayer_=open?activeLayerId_:std::string{};
  freeInstanceSelected_.clear();freeInstancePrimary_.clear();freeInstanceAnchor_.clear();freeInstanceSelectionFrame_=activeFrameId_;
  if(open){exitAttachedMask();clearTimelineSelection();selectedGroupIds_.clear();selectedGroupId_.reset();}
@@ -586,8 +586,8 @@ bool Document::setFreeTileInstanceView(bool open){
 }
 std::vector<std::string> Document::selectedFreeTileInstances()const{
  // Source Edit mode also owns a selection without opening the instance list.
- std::vector<std::string> result;if(!activeMaskId_.empty()||layer().kind!="free-tile"||!layer().freeTiles||freeInstanceSelectionFrame_!=activeFrameId_||!cel().freeTiles)return result;
- std::unordered_set<std::string> valid;for(const auto& i:cel().freeTiles->instances)valid.insert(i.id);
+ std::vector<std::string> result;if(!activeMaskId_.empty()||layer().kind!="free-tile"||!layer().freeTiles||freeInstanceSelectionFrame_!=activeFrameId_||!freeTileCel().freeTiles)return result;
+ std::unordered_set<std::string> valid;for(const auto& i:freeTileCel().freeTiles->instances)valid.insert(i.id);
  for(const auto& id:freeInstanceSelected_)if(valid.count(id))result.push_back(id);
  return result;
 }
@@ -595,8 +595,8 @@ std::string Document::primaryFreeTileInstance()const{
  const auto ids=selectedFreeTileInstances();return std::find(ids.begin(),ids.end(),freeInstancePrimary_)!=ids.end()?freeInstancePrimary_:ids.empty()?std::string{}:ids.back();
 }
 bool Document::selectFreeTileInstance(const std::string& id,int mode){
- if(active()||!freeTileInstanceView()||!cel().freeTiles)return false;
- const auto& instances=cel().freeTiles->instances;auto item=std::find_if(instances.begin(),instances.end(),[&](const auto& i){return i.id==id;});if(item==instances.end())return false;
+ if(active()||!freeTileInstanceView()||!freeTileCel().freeTiles)return false;
+ const auto& instances=freeTileCel().freeTiles->instances;auto item=std::find_if(instances.begin(),instances.end(),[&](const auto& i){return i.id==id;});if(item==instances.end())return false;
  auto selected=selectedFreeTileInstances();std::string primary=id,anchor=id;
  if(mode==2){
   anchor=freeInstanceSelectionFrame_==activeFrameId_?freeInstanceAnchor_:std::string{};
@@ -608,18 +608,18 @@ bool Document::selectFreeTileInstance(const std::string& id,int mode){
  const auto chosen=std::find_if(instances.begin(),instances.end(),[&](const auto& i){return i.id==primary;});const auto source=freeSourceFor(*layer().freeTiles,*chosen);if(source)setSelectedTileset(source->tilesetId);tileSelection_.freePaint=false;return true;
 }
 bool Document::beginFreeTileInstanceFlags(bool locked){
- if(active()||!freeTileInstanceView()||!cel().freeTiles||!cel().surface)return false;
- FreeTilePlacement draft{cel(),{}};draft.flagControl=locked?1:0;freeTilePlacement_=std::move(draft);return true;
+ if(active()||!freeTileInstanceView()||!freeTileCel().freeTiles||!freeTileCel().surface)return false;
+ FreeTilePlacement draft{freeTileCel(),{}};draft.flagControl=locked?1:0;freeTilePlacement_=std::move(draft);return true;
 }
 bool Document::beginFreeTileInstanceProperties(const std::vector<std::string>& ids){
- if(active()||!freeTileInstanceView()||!cel().freeTiles||!cel().surface)return false;
- FreeTilePlacement draft{cel(),{}};draft.flagControl=2;
+ if(active()||!freeTileInstanceView()||!freeTileCel().freeTiles||!freeTileCel().surface)return false;
+ FreeTilePlacement draft{freeTileCel(),{}};draft.flagControl=2;
  for(const auto& id:ids)if(std::find(draft.movingIds.begin(),draft.movingIds.end(),id)==draft.movingIds.end()&&std::any_of(draft.before.freeTiles->instances.begin(),draft.before.freeTiles->instances.end(),[&](const auto& i){return i.id==id;}))draft.movingIds.push_back(id);
  if(draft.movingIds.empty())return false;freeTilePlacement_=std::move(draft);return true;
 }
 bool Document::previewFreeTileInstanceProperties(const FreeTileInstanceChanges& changes){
  if(!freeTileInstancePropertiesActive())return false;const auto& draft=*freeTilePlacement_;
- if(activeLayerId_!=draft.before.layerId||activeFrameId_!=draft.before.frameId)return false;
+ if(activeLayerId_!=draft.before.layerId||freeTileCel().id!=draft.before.id)return false;
  auto after=draft.before;const auto& data=*layer().freeTiles;
  // Legacy instanceAfterChanges always rebuilds the cumulative patch from the
  // transaction baseline. Position fields refer to transformed world bounds,
@@ -653,8 +653,8 @@ bool Document::setFreeTileInstanceProperties(const std::string& id,const FreeTil
 // Legacy workspace-commands-free-tile.reorderFreeTileInstance: display order
 // is the reverse of the authoritative back-to-front instance array.
 bool Document::reorderFreeTileInstance(const std::string& id,const std::string& target,bool beforeTarget){
- if(active()||!freeTileInstanceView()||!cel().freeTiles||!cel().surface||id==target)return false;
- const auto before=cel();auto after=before;auto& instances=after.freeTiles->instances;
+ if(active()||!freeTileInstanceView()||!freeTileCel().freeTiles||!freeTileCel().surface||id==target)return false;
+ const auto before=freeTileCel();auto after=before;auto& instances=after.freeTiles->instances;
  const auto from=std::find_if(instances.begin(),instances.end(),[&](const auto& i){return i.id==id;});
  if(from==instances.end()||from->locked||std::none_of(instances.begin(),instances.end(),[&](const auto& i){return i.id==target;}))return false;
  const auto moved=*from;instances.erase(from);
@@ -668,11 +668,11 @@ bool Document::reorderFreeTileInstance(const std::string& id,const std::string& 
 }
 // Legacy workspace-free-tile-instance-clipboard.ts capture/paste semantics.
 std::optional<Document::FreeTileInstanceClipboardSnapshot> Document::copyFreeTileInstances()const{
- if(active()||!freeTileInstanceView()||!cel().surface||!cel().freeTiles||!layer().freeTiles)return {};
+ if(active()||!freeTileInstanceView()||!freeTileCel().surface||!freeTileCel().freeTiles||!layer().freeTiles)return {};
  const auto selected=selectedFreeTileInstances();if(selected.empty())return {};
- FreeTileInstanceClipboardSnapshot clip;clip.sourceProjectId=projectId_;clip.sourceIdentity=identity_;clip.setId=layer().freeTiles->setId;clip.offsetX=cel().surface->offsetX;clip.offsetY=cel().surface->offsetY;
+ FreeTileInstanceClipboardSnapshot clip;clip.sourceProjectId=projectId_;clip.sourceIdentity=identity_;clip.setId=layer().freeTiles->setId;clip.offsetX=freeTileCel().surface->offsetX;clip.offsetY=freeTileCel().surface->offsetY;
  std::unordered_set<std::string> sourceIds;
- for(const auto& instance:cel().freeTiles->instances)if(std::find(selected.begin(),selected.end(),instance.id)!=selected.end()){
+ for(const auto& instance:freeTileCel().freeTiles->instances)if(std::find(selected.begin(),selected.end(),instance.id)!=selected.end()){
   const auto* source=freeSourceFor(*layer().freeTiles,instance);if(!source)return {};
   auto copy=instance;copy.sourceId=source->id;clip.instances.push_back(std::move(copy));sourceIds.insert(source->id);
  }
@@ -684,18 +684,18 @@ std::optional<Document::FreeTileInstanceClipboardSnapshot> Document::copyFreeTil
 }
 // Legacy workspace-commands-clipboard: selected-instance overwrite or raster chunks.
 bool Document::pasteFreeTilePixels(const SelectionClipboard& image,Point at){
- if(active()||!activeMaskId_.empty()||layer().kind!="free-tile"||!layer().freeTiles||!cel().freeTiles||!cel().surface||layerEffectivelyLocked(layer()))return false;
+ if(active()||!activeMaskId_.empty()||layer().kind!="free-tile"||!layer().freeTiles||!freeTileCel().freeTiles||!freeTileCel().surface||layerEffectivelyLocked(layer()))return false;
  if(!free_tiles::coordinate(at.x)||!free_tiles::coordinate(at.y)||image.width<1||image.height<1||image.width>8192||image.height>8192||std::uint64_t(image.width)*image.height>16*1024*1024||image.pixels.size()!=std::size_t(image.width)*image.height||(!image.mask.empty()&&image.mask.size()!=image.pixels.size()))throw std::invalid_argument("Invalid free-tile clipboard image");
- const auto selected=primaryFreeTileInstance();const auto& instances=cel().freeTiles->instances;const auto chosen=std::find_if(instances.begin(),instances.end(),[&](const auto& i){return i.id==selected;});
+ const auto selected=primaryFreeTileInstance();const auto& instances=freeTileCel().freeTiles->instances;const auto chosen=std::find_if(instances.begin(),instances.end(),[&](const auto& i){return i.id==selected;});
  auto next=timeline_.state();auto tileSelection=tileSelection_;auto counter=nextTileId_;std::vector<std::string> added;std::string primary;
  std::set<std::string> affectedOwners,used;for(const auto& set:next.tilesets)used.insert(set.id);for(const auto& l:next.layers)if(l.freeTiles)for(const auto& source:l.freeTiles->sources)used.insert(source.id);for(const auto& c:next.cels)if(c.freeTiles)for(const auto& i:c.freeTiles->instances)used.insert(i.id);
  auto newId=[&](const char* prefix){std::string id;do{id=std::string(prefix)+"-native-"+std::to_string(identity_)+"-"+std::to_string(++counter);}while(!used.insert(id).second);return id;};
  auto selectedPixel=[&](int x,int y){const auto i=std::size_t(y)*image.width+x;return image.mask.empty()||image.mask[i]==1;};
- auto target=std::find_if(next.cels.begin(),next.cels.end(),[&](const auto& c){return c.id==cel().id;});
+ auto target=std::find_if(next.cels.begin(),next.cels.end(),[&](const auto& c){return c.id==freeTileCel().id;});
  if(chosen!=instances.end()){
   const auto* source=freeSourceFor(*layer().freeTiles,*chosen);if(!source||!source->visible||source->locked||!chosen->visible||chosen->locked)return false;
   auto resource=std::find_if(next.tilesets.begin(),next.tilesets.end(),[&](const auto& t){return t.id==source->tilesetId;});if(resource==next.tilesets.end())return false;
-  const auto old=tiles::readTile(*resource,0);const Point anchor{cel().surface->offsetX+chosen->x,cel().surface->offsetY+chosen->y};PixelRegion world;
+  const auto old=tiles::readTile(*resource,0);const Point anchor{freeTileCel().surface->offsetX+chosen->x,freeTileCel().surface->offsetY+chosen->y};PixelRegion world;
   for(int y:{0,resource->tileHeight-1})for(int x:{0,resource->tileWidth-1}){auto q=free_tiles::transform(*chosen,x+source->offsetX,y+source->offsetY);world.include(q.first+anchor.x,q.second+anchor.y);}
   const int padding=std::clamp(std::max(width_,height_),16,128);const int left=std::min({0,world.x,at.x})-padding,top=std::min({0,world.y,at.y})-padding;
   const int right=std::max({width_,world.x+world.w,at.x+1})+padding,bottom=std::max({height_,world.y+world.h,at.y+1})+padding,w=right-left,h=bottom-top;
@@ -732,8 +732,8 @@ bool Document::pasteFreeTilePixels(const SelectionClipboard& image,Point at){
 }
 bool Document::pasteFreeTileInstances(const FreeTileInstanceClipboardSnapshot& clip){
  // Legacy activeFreeTileCelTarget accepts an ordinary free-tile layer view too.
- if(active()||layer().kind!="free-tile"||!layer().freeTiles||!cel().freeTiles||!cel().surface||layerEffectivelyLocked(layer())||!activeMaskId_.empty()||clip.instances.empty())return false;
- if(clip.instances.size()>free_tiles::MaxInstances-cel().freeTiles->instances.size())return false;
+ if(active()||layer().kind!="free-tile"||!layer().freeTiles||!freeTileCel().freeTiles||!freeTileCel().surface||layerEffectivelyLocked(layer())||!activeMaskId_.empty()||clip.instances.empty())return false;
+ if(clip.instances.size()>free_tiles::MaxInstances-freeTileCel().freeTiles->instances.size())return false;
  auto next=timeline_.state();const auto original=*layer().freeTiles;auto sources=original.sources;std::unordered_map<std::string,std::string> sourceIds;
  const bool shared=clip.sourceIdentity==identity_&&clip.setId==original.setId;
  auto counter=nextTileId_;std::unordered_set<std::string> used;
@@ -748,7 +748,7 @@ bool Document::pasteFreeTileInstances(const FreeTileInstanceClipboardSnapshot& c
   auto set=*sourceSet;set.id=newId("tileset");auto imported=source;imported.id=newId("free-tile-source");imported.tilesetId=set.id;
   sourceIds.emplace(source.id,imported.id);sources.push_back(std::move(imported));next.tilesets.push_back(std::move(set));
  }
- auto target=std::find_if(next.cels.begin(),next.cels.end(),[&](const auto& item){return item.id==cel().id;});if(target==next.cels.end())return false;
+ auto target=std::find_if(next.cels.begin(),next.cels.end(),[&](const auto& item){return item.id==freeTileCel().id;});if(target==next.cels.end())return false;
  std::vector<std::string> added;added.reserve(clip.instances.size());
  for(const auto& instance:clip.instances){
   const auto source=sourceIds.find(instance.sourceId);if(source==sourceIds.end())return false;
@@ -768,10 +768,10 @@ bool Document::pasteFreeTileInstances(const FreeTileInstanceClipboardSnapshot& c
  history_.reserve(position_+1);applyEdit(edit,true);nextTileId_=counter;change_={0,0,width_,height_};publishChange();pushEdit(std::move(edit),U"粘贴到图层");return true;
 }
 bool Document::showOnlyFreeTileInstance(const std::string& id){
- if(active()||!freeTileInstanceView()||!cel().freeTiles||!cel().surface)return false;
- const auto& instances=cel().freeTiles->instances;
+ if(active()||!freeTileInstanceView()||!freeTileCel().freeTiles||!freeTileCel().surface)return false;
+ const auto& instances=freeTileCel().freeTiles->instances;
  if(std::none_of(instances.begin(),instances.end(),[&](const auto& instance){return instance.id==id;}))return false;
- const auto before=cel();auto after=before;
+ const auto before=freeTileCel();auto after=before;
  for(auto& instance:after.freeTiles->instances)instance.visible=instance.id==id;
  if(after.freeTiles==before.freeTiles)return false;
  after.surface->pixels=free_tiles::render(*layer().freeTiles,*after.freeTiles,timeline_.state().tilesets,after.surface->width,after.surface->height);
@@ -781,7 +781,7 @@ bool Document::showOnlyFreeTileInstance(const std::string& id){
 }
 bool Document::previewFreeTileInstanceFlags(const std::vector<std::string>& ids,bool value){
  if(!freeTileInstanceFlagsActive())return false;const auto& draft=*freeTilePlacement_;
- if(activeLayerId_!=draft.before.layerId||activeFrameId_!=draft.before.frameId)return false;
+ if(activeLayerId_!=draft.before.layerId||freeTileCel().id!=draft.before.id)return false;
  // Legacy useLayerRowToggleGesture restores every row outside the current
  // inclusive range to its original value when the pointer sweeps back.
  const std::unordered_set<std::string> targets(ids.begin(),ids.end());auto after=draft.before;
@@ -793,14 +793,14 @@ bool Document::previewFreeTileInstanceFlags(const std::vector<std::string>& ids,
  timeline_.state_.cels[timeline_.cels_.at(after.id)]=std::move(after);change_={0,0,width_,height_};publishChange();return true;
 }
 bool Document::canDeleteFreeTileInstances(const std::vector<std::string>& ids)const{
- if(active()||!freeTileInstanceView()||!cel().freeTiles||!cel().surface)return false;
+ if(active()||!freeTileInstanceView()||!freeTileCel().freeTiles||!freeTileCel().surface)return false;
  const std::unordered_set<std::string> requested(ids.begin(),ids.end());bool found=false;
- for(const auto& i:cel().freeTiles->instances)if(requested.count(i.id)){if(i.locked)return false;found=true;}
+ for(const auto& i:freeTileCel().freeTiles->instances)if(requested.count(i.id)){if(i.locked)return false;found=true;}
  return found;
 }
 bool Document::deleteFreeTileInstances(const std::vector<std::string>& ids){
  if(!canDeleteFreeTileInstances(ids))return false;
- const auto before=cel();auto after=before;const std::unordered_set<std::string> requested(ids.begin(),ids.end());
+ const auto before=freeTileCel();auto after=before;const std::unordered_set<std::string> requested(ids.begin(),ids.end());
  const auto selected=selectedFreeTileInstances();const auto primary=primaryFreeTileInstance();
  const auto firstRemoved=std::find_if(before.freeTiles->instances.begin(),before.freeTiles->instances.end(),[&](const auto& i){return requested.count(i.id);});
  const auto removedPrimary=requested.count(primary)?primary:firstRemoved->id;
@@ -814,20 +814,20 @@ bool Document::deleteFreeTileInstances(const std::vector<std::string>& ids){
  freeInstanceSelected_.clear();for(const auto& id:selected)if(!requested.count(id))freeInstanceSelected_.push_back(id);
  if(!nextPrimary.empty()&&std::find(freeInstanceSelected_.begin(),freeInstanceSelected_.end(),nextPrimary)==freeInstanceSelected_.end())freeInstanceSelected_.push_back(nextPrimary);
  freeInstancePrimary_=nextPrimary;freeInstanceAnchor_=nextPrimary;freeInstanceSelectionFrame_=activeFrameId_;
- if(!nextPrimary.empty()){const auto& all=cel().freeTiles->instances;const auto at=std::find_if(all.begin(),all.end(),[&](const auto& i){return i.id==nextPrimary;});if(at!=all.end())if(const auto source=freeSourceFor(*layer().freeTiles,*at))setSelectedTileset(source->tilesetId);}
- else if(cel().freeTiles->instances.empty())tileSelection_.freePaint=true;
+ if(!nextPrimary.empty()){const auto& all=freeTileCel().freeTiles->instances;const auto at=std::find_if(all.begin(),all.end(),[&](const auto& i){return i.id==nextPrimary;});if(at!=all.end())if(const auto source=freeSourceFor(*layer().freeTiles,*at))setSelectedTileset(source->tilesetId);}
+ else if(freeTileCel().freeTiles->instances.empty())tileSelection_.freePaint=true;
  return true;
 }
 std::optional<PixelRegion> Document::freeTileInstanceBounds(const std::string& id)const{
- if(layer().kind!="free-tile"||!layer().freeTiles||!cel().freeTiles||!cel().surface)return {};
- const auto& instances=cel().freeTiles->instances;const auto it=std::find_if(instances.begin(),instances.end(),[&](const auto& i){return i.id==id;});if(it==instances.end())return {};
+ if(layer().kind!="free-tile"||!layer().freeTiles||!freeTileCel().freeTiles||!freeTileCel().surface)return {};
+ const auto& instances=freeTileCel().freeTiles->instances;const auto it=std::find_if(instances.begin(),instances.end(),[&](const auto& i){return i.id==id;});if(it==instances.end())return {};
  const auto source=freeSourceFor(*layer().freeTiles,*it);const auto set=source?freeSourceSet(timeline_.state(),source->tilesetId):nullptr;if(!set)return {};
- PixelRegion result;for(const int y:{source->offsetY,source->offsetY+set->tileHeight-1})for(const int x:{source->offsetX,source->offsetX+set->tileWidth-1}){const auto p=free_tiles::transform(*it,x,y);result.include(cel().surface->offsetX+it->x+p.first,cel().surface->offsetY+it->y+p.second);}return result;
+ PixelRegion result;for(const int y:{source->offsetY,source->offsetY+set->tileHeight-1})for(const int x:{source->offsetX,source->offsetX+set->tileWidth-1}){const auto p=free_tiles::transform(*it,x,y);result.include(freeTileCel().surface->offsetX+it->x+p.first,freeTileCel().surface->offsetY+it->y+p.second);}return result;
 }
 bool Document::beginFreeTileInstanceMove(Point point){
  commitFloatingPaste();cancelStroke();cancelLayerOpacity();
  if(active()||!freeTileInstanceView()||layerEffectivelyLocked(layer())||!layerEffectivelyVisible(layer())||hasSelectedGroups()||!free_tiles::coordinate(point.x)||!free_tiles::coordinate(point.y))return false;
- const auto& slot=cel();if(!slot.freeTiles||!slot.surface)return false;const auto& instances=slot.freeTiles->instances;
+ const auto& slot=freeTileCel();if(!slot.freeTiles||!slot.surface)return false;const auto& instances=slot.freeTiles->instances;
  const auto primary=primaryFreeTileInstance();const auto* hit=freeSourceHit(timeline_.state(),layer(),slot,point);
  // The selected primary rectangle wins over a later overlapping instance.
  if(const auto bounds=freeTileInstanceBounds(primary);bounds&&point.x>=bounds->x&&point.y>=bounds->y&&point.x<bounds->x+bounds->w&&point.y<bounds->y+bounds->h){const auto selected=std::find_if(instances.begin(),instances.end(),[&](const auto& i){return i.id==primary&&i.visible;});if(selected!=instances.end())hit=&*selected;}
@@ -841,7 +841,7 @@ bool Document::beginFreeTileInstanceMove(Point point){
 }
 bool Document::previewFreeTileInstanceMove(int dx,int dy){
  if(!freeTileInstanceMoving())return false;const auto& draft=*freeTilePlacement_;
- if(activeLayerId_!=draft.before.layerId||activeFrameId_!=draft.before.frameId){cancelFreeTilePlacement();return false;}
+ if(activeLayerId_!=draft.before.layerId||freeTileCel().id!=draft.before.id){cancelFreeTilePlacement();return false;}
  auto after=draft.before;for(auto& i:after.freeTiles->instances)if(std::find(draft.movingIds.begin(),draft.movingIds.end(),i.id)!=draft.movingIds.end()){
   const auto x=std::int64_t(i.x)+dx,y=std::int64_t(i.y)+dy;if(std::abs(x)>free_tiles::MaxCoordinate||std::abs(y)>free_tiles::MaxCoordinate)throw std::out_of_range("Free tile instance move exceeds coordinate limit");i.x=int(x);i.y=int(y);
  }
@@ -891,9 +891,9 @@ Point Document::freeTileSourceStrokePoint(Point point)const{return freeSourceStr
 bool Document::beginFreeTileSourceStroke(Point point,Pixel color,BrushOptions brush,const PatternBrush* image,double angle,const std::unordered_map<std::size_t,Pixel>* baseline,bool initial,bool replaceColor){
  commitFloatingPaste();cancelStroke();cancelLayerOpacity();
  if(active()||freeTilePaintMode()||!activeMaskId_.empty()||layer().kind!="free-tile"||!layer().freeTiles||layer().freeTiles->sources.empty()||hasSelectedGroups()||layerEffectivelyLocked(layer())||!layerEffectivelyVisible(layer()))return false;
- const auto& state=timeline_.state();const DocumentLayer* target=&layer();const DocumentCel* slot=timeline_.findCel(activeLayerId_,activeFrameId_);
+ const auto& state=timeline_.state();const DocumentLayer* target=&layer();const DocumentCel* slot=timeline_.resolveSurface(cel().id).source;
  // Legacy checks other free layers first, without changing the active drawing layer.
- for(const auto& candidate:state.layers)if(candidate.kind=="free-tile"&&candidate.id!=activeLayerId_){const auto* c=timeline_.findCel(candidate.id,activeFrameId_);if(c&&freeSourceHit(state,candidate,*c,point)){target=&candidate;slot=c;break;}}
+ for(const auto& candidate:state.layers)if(candidate.kind=="free-tile"&&candidate.id!=activeLayerId_){const auto* candidateSlot=timeline_.findCel(candidate.id,activeFrameId_);const auto* c=candidateSlot?timeline_.resolveSurface(candidateSlot->id).source:nullptr;if(c&&freeSourceHit(state,candidate,*c,point)){target=&candidate;slot=c;break;}}
  if(!slot||!slot->freeTiles||!slot->surface||!target->freeTiles||target->freeTiles->sources.empty()||layerEffectivelyLocked(*target)||!layerEffectivelyVisible(*target))return false;
  const auto* hit=freeSourceHit(state,*target,*slot,point);const auto& data=*target->freeTiles;
  const free_tiles::Source* source=hit?freeSourceFor(data,*hit):nullptr;
@@ -1023,18 +1023,18 @@ bool Document::flipFreeTileContent(bool horizontal){
  // Instance picks are more specific than a lingering Cel selection. Frame
  // selection clears picks in the existing selection model; batch timeline
  // flipping is left to its separate migration.
- const auto ids=selectedFreeTileInstances();if(ids.empty()||!cel().freeTiles||!cel().surface)return false;
- auto after=cel();for(auto& i:after.freeTiles->instances)if(!i.locked&&std::find(ids.begin(),ids.end(),i.id)!=ids.end()){if(horizontal)i.flipHorizontal=!i.flipHorizontal;else i.flipVertical=!i.flipVertical;}
- if(after.freeTiles==cel().freeTiles)return false;
+ const auto ids=selectedFreeTileInstances();if(ids.empty()||!freeTileCel().freeTiles||!freeTileCel().surface)return false;
+ auto after=freeTileCel();for(auto& i:after.freeTiles->instances)if(!i.locked&&std::find(ids.begin(),ids.end(),i.id)!=ids.end()){if(horizontal)i.flipHorizontal=!i.flipHorizontal;else i.flipVertical=!i.flipVertical;}
+ if(after.freeTiles==freeTileCel().freeTiles)return false;
  after.surface->pixels=free_tiles::render(*layer().freeTiles,*after.freeTiles,timeline_.state().tilesets,after.surface->width,after.surface->height);
- Edit edit{{},state_,nextState_};edit.beforeCels={cel()};edit.afterCels={after};edit.beforeActive=edit.afterActive=activeLayerId_;edit.beforeFrame=edit.afterFrame=activeFrameId_;history_.reserve(position_+1);timeline_.state_.cels[timeline_.cels_.at(after.id)]=std::move(after);change_={0,0,width_,height_};publishChange();pushEdit(std::move(edit),horizontal?U"水平翻转选区":U"垂直翻转选区");return true;
+ Edit edit{{},state_,nextState_};edit.beforeCels={freeTileCel()};edit.afterCels={after};edit.beforeActive=edit.afterActive=activeLayerId_;edit.beforeFrame=edit.afterFrame=activeFrameId_;history_.reserve(position_+1);timeline_.state_.cels[timeline_.cels_.at(after.id)]=std::move(after);change_={0,0,width_,height_};publishChange();pushEdit(std::move(edit),horizontal?U"水平翻转选区":U"垂直翻转选区");return true;
 }
 bool Document::freeTileSelectionPlacementMoving()const{return floating_&&floating_->freeTile&&floating_->freeTile->placement;}
 bool Document::beginFreeTileSelectionMove(bool copy,bool allFrames,int dx,int dy){
  if(floating_){if(!floating_->freeTile)return false;if(copy&&!floating_->copy)commitFloatingPaste();else return true;}
  if(active()||allFrames||!selection_||!freeTileSelectionTargetBounds(*this))return false;
  auto state=std::make_shared<FreeTileSelectionMove>();FloatingPaste f;f.freeTile=state;f.clipboard=false;f.copy=copy;f.beforeSelection=selection_;f.sourceX=selection_->x;f.sourceY=selection_->y;f.layerId=activeLayerId_;f.frameId=activeFrameId_;f.beforeCelTimeline=timeline_.state();f.beforeTimelineSelection=timelineSelection_;f.beforeSelectedFrames=selectedFrames_;
- const auto bounds=*freeTileSelectionTargetBounds(*this);const auto primary=primaryFreeTileInstance();const auto& instances=cel().freeTiles->instances;const auto& chosen=*std::find_if(instances.begin(),instances.end(),[&](const auto& i){return i.id==primary;});
+ const auto bounds=*freeTileSelectionTargetBounds(*this);const auto primary=primaryFreeTileInstance();const auto& instances=freeTileCel().freeTiles->instances;const auto& chosen=*std::find_if(instances.begin(),instances.end(),[&](const auto& i){return i.id==primary;});
  auto selected=selectedFreeTileInstances();if(selected.empty())selected={primary};PixelRegion unionBounds;
  for(const auto& id:selected){const auto i=std::find_if(instances.begin(),instances.end(),[&](const auto& v){return v.id==id&&v.visible&&!v.locked;});if(i==instances.end())continue;const auto b=freeTileInstanceBounds(id);if(!b)continue;state->instances.push_back(id);unionBounds.include(b->x,b->y);unionBounds.include(b->x+b->w-1,b->y+b->h-1);}
  bool covers=!copy&&!state->instances.empty()&&std::find(selected.begin(),selected.end(),primary)!=selected.end()&&selection_->x<=unionBounds.x&&selection_->y<=unionBounds.y&&selection_->x+selection_->width>=unionBounds.x+unionBounds.w&&selection_->y+selection_->height>=unionBounds.y+unionBounds.h;
@@ -1044,7 +1044,7 @@ bool Document::beginFreeTileSelectionMove(bool copy,bool allFrames,int dx,int dy
  const auto count=std::uint64_t(selection_->width)*selection_->height;if(selection_->width<1||selection_->height<1||count>16*1024*1024)throw std::length_error("自由瓦片选区超出原生内存预算");
  f.source.width=selection_->width;f.source.height=selection_->height;f.source.mask=selection_->mask;if(f.source.mask.empty())f.source.mask.assign(std::size_t(count),1);f.source.pixels.resize(std::size_t(count));
  {
-  const auto& source=*freeSourceFor(*layer().freeTiles,chosen);const auto& set=*freeSourceSet(timeline_.state(),source.tilesetId);auto d=std::make_shared<FreeTileSourceStroke>();d->sourceId=source.id;d->tilesetId=set.id;d->targetCel=cel().id;d->instance=chosen;d->anchor={cel().surface->offsetX+chosen.x,cel().surface->offsetY+chosen.y};d->beforeWidth=set.tileWidth;d->beforeHeight=set.tileHeight;d->beforeX=source.offsetX;d->beforeY=source.offsetY;d->beforePixels=tiles::readTile(set,0);state->source=d;
+  const auto& source=*freeSourceFor(*layer().freeTiles,chosen);const auto& set=*freeSourceSet(timeline_.state(),source.tilesetId);auto d=std::make_shared<FreeTileSourceStroke>();d->sourceId=source.id;d->tilesetId=set.id;d->targetCel=freeTileCel().id;d->instance=chosen;d->anchor={freeTileCel().surface->offsetX+chosen.x,freeTileCel().surface->offsetY+chosen.y};d->beforeWidth=set.tileWidth;d->beforeHeight=set.tileHeight;d->beforeX=source.offsetX;d->beforeY=source.offsetY;d->beforePixels=tiles::readTile(set,0);state->source=d;
   for(int y=0;y<set.tileHeight;++y)for(int x=0;x<set.tileWidth;++x){const auto q=free_tiles::transform(chosen,source.offsetX+x,source.offsetY+y);const int px=q.first+d->anchor.x-selection_->x,py=q.second+d->anchor.y-selection_->y;if(px>=0&&py>=0&&px<selection_->width&&py<selection_->height)f.source.pixels[std::size_t(py)*selection_->width+px]=d->beforePixels[std::size_t(y)*set.tileWidth+x];}
  }
  f.transform={double(selection_->x),double(selection_->y),double(selection_->width),double(selection_->height)};f.x=selection_->x;f.y=selection_->y;floating_=std::move(f);
@@ -1072,9 +1072,9 @@ void Document::transformFreeTileSelectionMove(const SelectionTransform& transfor
  selected=combineSelection(selected,SelectionMask{0,0,width_,height_,{}},3);
  if(move.placement&&translation){
   // Same single-Cel preview strategy as previewFreeTileInstanceMove.
-  const auto& original=f.beforeCelTimeline->cels;auto after=*std::find_if(original.begin(),original.end(),[&](const auto& c){return c.id==cel().id;});
+  const auto& original=f.beforeCelTimeline->cels;auto after=*std::find_if(original.begin(),original.end(),[&](const auto& c){return c.id==freeTileCel().id;});
   for(auto& instance:after.freeTiles->instances)if(std::find(move.instances.begin(),move.instances.end(),instance.id)!=move.instances.end()){const auto x=std::int64_t(instance.x)+dx,y=std::int64_t(instance.y)+dy;if(std::abs(x)>free_tiles::MaxCoordinate||std::abs(y)>free_tiles::MaxCoordinate)throw std::length_error("自由瓦片实例位置超出限制");instance.x=int(x);instance.y=int(y);}
-  if(after.freeTiles!=cel().freeTiles){after.surface->pixels=free_tiles::render(*layer().freeTiles,*after.freeTiles,timeline_.state().tilesets,after.surface->width,after.surface->height);timeline_.state_.cels[timeline_.cels_.at(after.id)]=std::move(after);}move.changed=dx||dy;
+  if(after.freeTiles!=freeTileCel().freeTiles){after.surface->pixels=free_tiles::render(*layer().freeTiles,*after.freeTiles,timeline_.state().tilesets,after.surface->width,after.surface->height);timeline_.state_.cels[timeline_.cels_.at(after.id)]=std::move(after);}move.changed=dx||dy;
  }else{
   auto& d=*move.source;PixelRegion sourceBounds;for(int y:{0,d.beforeHeight-1})for(int x:{0,d.beforeWidth-1}){const auto q=free_tiles::transform(d.instance,d.beforeX+x,d.beforeY+y);sourceBounds.include(q.first+d.anchor.x,q.second+d.anchor.y);}
   const int padding=std::clamp(std::max(width_,height_),16,128),left=std::min({0,sourceBounds.x,destination.x,f.sourceX})-padding,top=std::min({0,sourceBounds.y,destination.y,f.sourceY})-padding;
@@ -1093,7 +1093,7 @@ void Document::transformFreeTileSelectionMove(const SelectionTransform& transfor
   else {for(int y=0;y<f.source.height;++y)for(int x=0;x<f.source.width;++x){const auto i=std::size_t(y)*f.source.width+x;if(f.source.mask[i])pixels[std::size_t(f.sourceY+y-top)*w+f.sourceX+x-left]=f.source.pixels[i];}}
   raster->timeline_=timeline::Timeline(std::move(data));d.raster=std::move(raster);d.origin={left,top};d.scan={0,0,int(w),int(h)};// A handle transform edits the primary source even when the mask covers whole instances.
   // Restore a preceding placement preview only for this Cel; failed publication is atomic.
-  std::optional<DocumentCel> previous;if(move.placement){previous=cel();const auto& original=f.beforeCelTimeline->cels;timeline_.state_.cels[timeline_.cels_.at(previous->id)]=*std::find_if(original.begin(),original.end(),[&](const auto& c){return c.id==previous->id;});}
+  std::optional<DocumentCel> previous;if(move.placement){previous=freeTileCel();const auto& original=f.beforeCelTimeline->cels;timeline_.state_.cels[timeline_.cels_.at(previous->id)]=*std::find_if(original.begin(),original.end(),[&](const auto& c){return c.id==previous->id;});}
   try{publishFreeTileSourceStroke(d);}catch(...){if(previous)timeline_.state_.cels[timeline_.cels_.at(previous->id)]=std::move(*previous);throw;}
   move.placement=false;move.changed=d.beforeWidth!=d.lastWidth||d.beforeHeight!=d.lastHeight||d.beforeX!=d.lastX||d.beforeY!=d.lastY||d.beforePixels!=d.lastPixels;
  }
@@ -1102,7 +1102,7 @@ void Document::transformFreeTileSelectionMove(const SelectionTransform& transfor
 bool Document::commitFreeTileSelectionMove(){
  if(!floating_||!floating_->freeTile)return false;auto& f=*floating_;const bool changed=f.freeTile->changed,selectionChanged=!selectionEqual(f.beforeSelection,selection_);if(!changed&&!selectionChanged){floating_.reset();return false;}
  Edit e{{},state_,changed?nextState_:state_};e.documentChanged=changed;e.beforeActive=e.afterActive=f.layerId;e.beforeFrame=e.afterFrame=f.frameId;e.pixelSelectionEdit=true;e.beforePixelsSelection=f.beforeSelection;e.afterPixelsSelection=selection_;
- if(changed&&f.freeTile->placement){const auto& original=f.beforeCelTimeline->cels;e.beforeCels.push_back(*std::find_if(original.begin(),original.end(),[&](const auto& c){return c.id==cel().id;}));e.afterCels.push_back(cel());}
+ if(changed&&f.freeTile->placement){const auto& original=f.beforeCelTimeline->cels;e.beforeCels.push_back(*std::find_if(original.begin(),original.end(),[&](const auto& c){return c.id==freeTileCel().id;}));e.afterCels.push_back(freeTileCel());}
  else if(changed){e.beforeTimeline=*f.beforeCelTimeline;e.afterTimeline=timeline_.state();e.beforeTimelineSelection=e.afterTimelineSelection=f.beforeTimelineSelection;e.beforeSelection=e.afterSelection=f.beforeSelectedFrames;}
  const auto label=f.copy?U"复制选区内容":f.transform.angle!=0?U"旋转选区内容":f.transform.width!=f.source.width||f.transform.height!=f.source.height||f.transform.shearX!=0||f.transform.shearY!=0||f.transform.flipHorizontal||f.transform.flipVertical||f.transform.quad?U"变换选区内容":U"移动选区内容";history_.reserve(position_+1);floating_.reset();pushEdit(std::move(e),label);return changed;
 }
