@@ -2073,7 +2073,7 @@ bool Document::centerActiveContent(bool horizontal,bool vertical){
  edit.beforeActive=edit.afterActive=activeLayerId_;edit.beforeFrame=edit.afterFrame=activeFrameId_;edit.beforeTimelineSelection=edit.afterTimelineSelection=timelineSelection_;edit.beforeSelection=edit.afterSelection=selectedFrames_;edit.pixelSelectionEdit=true;edit.beforePixelsSelection=selection_;edit.afterPixelsSelection=selection_;if(edit.afterPixelsSelection){edit.afterPixelsSelection->x+=dx;edit.afterPixelsSelection->y+=dy;}
  history_.reserve(position_+1);change_={};applyEdit(edit,true);publishChange();pushEdit(std::move(edit),U"移动图层内容");return true;
 }
-bool Document::fillSelectionOrCanvas(Pixel color){if(!activeMaskId_.empty()){commitFloatingPaste();return fillAttachedMaskSelection(color);}if(hasTilemapContent()||hasFreeTileContent())return false;
+bool Document::fillSelectionOrCanvas(Pixel color){if(!activeMaskId_.empty()){commitFloatingPaste();return fillAttachedMaskSelection(color);}
  const auto commandLayers=selectedLayerIdsWithGroups();
  commitFloatingPaste();cancelStroke();
  // Legacy single-target fillForeground edits the active display raster, then
@@ -2106,7 +2106,7 @@ bool Document::fillSelectionOrCanvas(Pixel color){if(!activeMaskId_.empty()){com
   }
  }
  // legacy fillForeground rejects the entire operation for hidden/locked targets.
- for(const auto* target:targets){const auto owner=std::find_if(timeline_.state().layers.begin(),timeline_.state().layers.end(),[&](const auto& l){return l.id==target->layerId;});if(owner==timeline_.state().layers.end() || layerEffectivelyLocked(*owner) || !layerEffectivelyVisible(*owner))return false;}
+ for(const auto* target:targets){const auto owner=std::find_if(timeline_.state().layers.begin(),timeline_.state().layers.end(),[&](const auto& l){return l.id==target->layerId;});if(owner==timeline_.state().layers.end() || !owner->kind.empty() || layerEffectivelyLocked(*owner) || !layerEffectivelyVisible(*owner))return false;}
  const auto bounds=selection_?rectangleSelection(selection_->x,selection_->y,selection_->width,selection_->height,width_,height_):std::optional<SelectionMask>{SelectionMask{0,0,width_,height_,{}}};if(!bounds)return false;
  const auto area=std::size_t(bounds->width)*bounds->height;bool dense=area>=512*512;
  if(dense && selection_ && !selection_->mask.empty()){std::size_t count=0;for(int y=bounds->y;y<bounds->y+bounds->height;++y)for(int x=bounds->x;x<bounds->x+bounds->width;++x)count+=selectionContains(selection_,x,y);dense=count*3>=area;}

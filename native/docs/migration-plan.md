@@ -3219,3 +3219,9 @@ pending-tile-center-build.log正式Release及free/tile测试构建exit0，fixtur
 依据legacy workspace-edit-actions.ts::rotateWorkspaceContent及workspace-edit-actions.test.ts的90/-90/180方形选区示例，旋转按实际选中图层检查类型，不因文档存在无关特殊层拒绝。原生移除整篇特殊内容保护，并在捕获目标前拒绝所选特殊类型，复用现有共同旋转与历史路径。自由瓦片首次键盘移动仍待核对旧版源编辑语义，未在本阶段放行。
 
 新增free/tile×三个角度六组，检查精确目标像素、单历史、Undo/Redo、实际重开、无关Cel像素/实例/网格及源资源保留、选中特殊目标拒绝。初次回归错误地在多选改变活动层后读取普通层像素，已明确切回普通层再核对。正式Release及free/tile测试构建exit0（mixed-raster-rotation-build.log），修正测试构建exit0（mixed-raster-rotation-fixture-build.log）；完整free及tile测试exit0（mixed-raster-rotation-free-test.log、mixed-raster-rotation-grid-test.log）；正式工作区drawing-anchor-edit-floating组合exit0；来源检查通过（mixed-raster-rotation-provenance.log），diff通过。未做人工UI验收，全量迁移仍INCOMPLETE。
+
+### 2026-11-07：混合瓦片文档普通图层填充
+
+对照legacy workspace-commands-selection-effects.ts::fillForeground的pending提交、activePaintLayer/selectedEffectTargets范围及多目标特殊类型拒绝，移除原生整篇特殊内容保护，在所有实际目标写入前检查owner类型。普通填充复用现有稀疏/整画布及缺失Cel事务，未扩展特殊源填充。
+
+新增free/tile×静态掩码/浮动剪贴板四组，检查精确半透明RGBA、掩码外保留、浮动先提交的两步历史及Undo/Redo、实际保存重开、无关Cel像素/实例/网格和资源保留、所选特殊目标拒绝。mixed-raster-fill-build.log正式Release及free/tile测试构建exit0；完整free-tile-project-tests、tilemap-project-tests均exit0（mixed-raster-fill-free-test.log、mixed-raster-fill-grid-test.log）；正式工作区drawing-anchor-edit-floating组合exit0；来源检查exit0（mixed-raster-fill-provenance.log），diff通过。未做人工UI验收，全量迁移仍INCOMPLETE。
