@@ -3177,3 +3177,9 @@ pending-tile-center-build.log正式Release及free/tile测试构建exit0，fixtur
 对照legacy workspace-commands-clipboard.ts::cutSelection，先复制pending结果，再cancelFloatingPaste恢复目标；clipboard来源不删除原像素，最后完成选择。原生cutPixels允许已有clipboard浮动事务通过整篇free/tile剪切保护，复用既有copy/cancel路径，不扩展静态特殊层删除。
 
 新增tile/free两组，使用覆盖既有目标像素且水平翻转的半透明剪贴板，核对复制像素及原点、目标恢复、选择/浮动清理、无新增历史、所有Cel像素/实例/网格和源资源不变。mixed-floating-cut-build.log正式Release及两核心测试构建exit0；完整free-tile-project-tests、tilemap-project-tests通过（mixed-floating-cut-free-test.log、mixed-floating-cut-grid-test.log）；正式工作区drawing-anchor-edit-floating组合exit0；来源625文件快照通过（mixed-floating-cut-provenance.log），diff通过。此操作无持久化变更，未新增往返测试；无人工UI验收，全量迁移仍INCOMPLETE。
+
+### 2026-11-07：Delete取消剪贴板浮动优先级
+
+核对legacy workspace-commands-selection-effects.ts::deleteSelection：clipboard来源pending先cancelFloatingPaste并直接返回，保留取消恢复的原选区。原生提前执行这一分支，避免混合free文档提前拒绝，以及蒙版删除路由处理恢复后的原选区。复用原取消事务，不增加删除历史。
+
+新增普通/tile/free×普通图层/蒙版六组，检查翻转后浮动取消、原选区精确保留、无历史、全部Cel像素/实例/网格、蒙版及资源像素恢复。clipboard-delete-build.log正式Release及两核心测试构建exit0；完整free-tile-project-tests、attached-masks-tests通过（clipboard-delete-free-test.log、clipboard-delete-mask-test.log）；正式工作区drawing-anchor-edit-floating组合exit0；来源625文件快照通过（clipboard-delete-provenance.log），diff通过。无持久化变更，未新增往返测试；未做人工UI验收，全量迁移仍INCOMPLETE。
