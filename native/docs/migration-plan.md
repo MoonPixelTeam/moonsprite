@@ -3201,3 +3201,9 @@ pending-tile-center-build.log正式Release及free/tile测试构建exit0，fixtur
 依据legacy workspace-commands-selection-transform.ts::beginLayerTransform及selectedTransformLayersForSession，边界按实际目标计算，不按文档无关特殊层拒绝。原生free入口限定活动free类型；共同静态选框路径按选中普通目标运行，仍保护所选特殊目标。此为开始变换的可见范围选择迁移，后续普通内容移动在混合free文档仍有独立保护，不宣称整个交互链完成。
 
 新增tile/free×隐式/显式普通目标四组，检查精确alpha范围、无浮动/历史/内容修订、全部Cel像素保留、锁定/隐藏拒绝、包含特殊层的多目标拒绝。mixed-transform-entry-build.log正式Release及两核心测试构建exit0；完整free-tile-project-tests、tilemap-project-tests通过（mixed-transform-entry-free-test.log、mixed-transform-entry-grid-test.log）；正式工作区drawing-anchor-edit-floating组合exit0；来源625文件快照通过（mixed-transform-entry-provenance.log），diff通过。未做人工作业或截图验收，全量迁移仍INCOMPLETE。
+
+### 2026-11-07：混合自由瓦片文档普通选区移动与复制
+
+对照legacy workspace-commands-selection-move.ts的普通目标捕获范围，允许混合free文档的普通活动图层进入既有栅格浮动事务；捕获实际目标后逐一拒绝特殊图层，防止整帧范围写入派生缓存。
+
+新增移动/复制×取消/提交四组，核对精确像素、选区恢复、单次提交历史、Undo/Redo、保存重开，以及自由Cel实例/像素和源资源保留。mixed-free-raster-move-build.log正式Release及free/tile测试构建通过；完整free-tile-project-tests、tilemap-project-tests通过；正式工作区drawing-anchor-edit-floating组合通过；来源625文件检查通过（mixed-free-raster-move-provenance.log）。未做人工UI验收，全量迁移仍INCOMPLETE。
