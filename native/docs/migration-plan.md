@@ -3793,3 +3793,11 @@ palette-apply-index-build.log正式Release、工程与核心目标构建通过�
 已验证：history-capacity-preferences-history-tests.log中10002次实际提交仅18次容量增长，分支提交复用已有容量；有限／无限限制及大量裁剪回归通过。history-capacity-project-tests.log完整工程矩阵（含60组真实历史预算与128交错序列）通过；history-capacity-moon-core-tests.log、history-capacity-history-panel-tests.log、history-capacity-timeline-interaction-tests.log、history-capacity-free-tile-project-tests.log及history-capacity-local-budget-tests.log均退出0。来源覆盖627文件通过，strict因既有缺口退出1，diff通过。正式Release构建及界面检查另行记录，不以已通过的核心测试代替正式程序验收。
 
 正式验收：history-capacity-build.log全部指定目标及唯一正式moonsprite-native.exe构建退出0；正式--history-panel-check、--deselect-check均退出0。未进行人工图像验收；18次扩容是本次实际记录，不外推整机UI流畅度或帧率。全量迁移仍INCOMPLETE。
+
+### 色板库文件可选值与Unicode名称兼容（2026-11-08）
+
+接续4892070d，直接对照platform_palette.rs::PaletteDiskFile／stored_palette_from_file／validate_palette_layout／save_palette／palette_slug。serde Option显式null按无值读取，schema1的columns／slots为null允许，schema2仍要求非null布局；names:null不再误当数组。读取保留有效名称原文，按Rust Unicode White_Space拒绝纯空白；保存先trim再生成slug，Unicode空格可形成分隔符，BOM不是Rust空白。槽位索引不再硬限65535，按现有1048576槽总上限允许合法高索引；保存仍限制65536种颜色，读取不凭保存限制拒绝旧版合法大文件。
+
+回归包括schema1／2 null、透明RGB、纯空白及缺失必需字段拒绝、Unicode trim／slug／重名后缀、BOM保留、65537色合法读取／保存拒绝及目录坏文件隔离。首轮palette-import-tests失败于原测试仍认为png／bmp／gif未迁移，实际源码及旧版IMPORTABLE_PALETTE_EXTENSIONS均已支持；同步测试已实现的完整图片扩展清单，未知md／svg／exe仍拒绝。未改变删除策略／长名称slug边界／覆盖身份准入等其它语义，不宣称整个色板库或全量迁移完成。
+
+验证：palette-library-compat-build.log正式Release／色板库／导入目标构建通过，palette-library-compat-final-build.log扩展Unicode矩阵构建通过；palette-library-compat-tests.log及palette-library-compat-import-tests.log均退出0，正式--palette-library-check、--palette-import-check均退出0。补充13种Rust空白的保存trim／空名拒绝和U+180E／U+200B／BOM非空白保留矩阵。来源627文件覆盖通过，strict因既有迁移缺口退出1，diff通过。没有运行旧版Rust完整平台测试或人工文件选择器／图像验收，本批证据为实际Rust源码契约核对与原生执行回归。全量迁移仍INCOMPLETE。
