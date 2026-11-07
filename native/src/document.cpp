@@ -892,7 +892,7 @@ bool appendLcdScreen(timeline::State& state,const timeline::Surface& surface,con
 }
 
 }
-bool Document::beginFilterPreview(){if(hasTilemapContent()||hasFreeTileContent())return false;if(!activeMaskId_.empty())return false;
+bool Document::beginFilterPreview(){if(!activeMaskId_.empty())return false;
  cancelFilterPreview();commitFloatingPaste();cancelStroke();cancelLayerOpacity();if(active())return false;FilterPreview p;p.revision=revision_;p.contentRevision=contentRevision_;p.generation=++nextFilterGeneration_;filterPreview_=std::move(p);return true;
 }
 std::optional<Document::FilterPreviewTask> Document::captureFilterPreviewTask(FilterPreset preset,std::optional<double> opacity,bool lcd,int lcdWidth,int lcdHeight){
@@ -922,7 +922,7 @@ bool Document::commitFilterPreviewTask(FilterPreviewTask&& task){
  auto after=timelineSelection_;after.layers={task.layerId};after.layerAnchor=task.layerId;edit.afterTimelineSelection=after;edit.afterSelection=selectedFrames_;edit.afterFrameAnchor=frameAnchor_;for(const auto& l:timeline_.state().layers)edit.beforeLayerOpacityProjection.push_back({l.id,l.opacity});for(const auto& l:next.layers)edit.afterLayerOpacityProjection.push_back({l.id,l.opacity});
  auto active=task.layerId;history_.reserve(position_+1);timeline_=std::move(*task.result);activeLayerId_=std::move(active);timelineSelection_=std::move(after);cancelFilterPreview();change_={0,0,width_,height_};publishChange();pushEdit(std::move(edit),task.lcd?U"LCD屏幕滤镜":std::u32string(filterPresetDefinition(task.preset).name));return true;
 }
-bool Document::applyFilterPreset(FilterPreset preset,std::optional<double> opacity){if(hasTilemapContent()||hasFreeTileContent())return false;
+bool Document::applyFilterPreset(FilterPreset preset,std::optional<double> opacity){
  if(!beginFilterPreview())return false;try{auto task=captureFilterPreviewTask(preset,opacity);if(!task||!runFilterPreviewTask(*task,{})){cancelFilterPreview();return false;}return commitFilterPreviewTask(std::move(*task));}catch(...){cancelFilterPreview();throw;}
 }
 

@@ -3267,3 +3267,9 @@ pending-tile-center-build.log正式Release及free/tile测试构建exit0，fixtur
 依据legacy workspace-commands-color.ts::applyColorReplacementTarget的palette分支，仅替换非零条目的完整RGBA和前景/背景角色，不依赖活动图层或蒙版类型。原生移除整篇瓦片及活动蒙版限制，复用palette-only预览和历史；不修改源像素。
 
 新增free/tile×所属层/蒙版×取消/提交八组，检查完整alpha匹配、角色颜色、槽位/nextId保留、无预览历史/单提交、Undo/Redo及特殊Cel像素/实例/网格/资源/蒙版保留。网格蒙版夹具初始缺少有效像素，已先建立内容再创建蒙版。正式Release及free/tile测试构建exit0（special-palette-replacement-build.log），fixture构建exit0（special-palette-replacement-fixture-build.log）；完整free/tile测试exit0（special-palette-replacement-free-test.log、special-palette-replacement-grid-test.log）；正式工作区drawing-anchor-edit-floating组合exit0；来源检查通过（special-palette-replacement-provenance.log），diff通过。本阶段未新增调色板序列化往返覆盖，未做人工UI验收，全量迁移仍INCOMPLETE。
+
+### 2026-11-07：特殊文档预设滤镜覆盖层
+
+对照legacy workspace-commands-layer-adjustment.ts::applyFilterPreset生成独立覆盖层及全部帧Cel的逻辑，移除beginFilterPreview/applyFilterPreset整篇特殊类型拒绝，复用现有覆盖层生成、异步generation校验、预览和结构历史。活动蒙版限制仍保留；共享预览入口也供LCD使用，本阶段未宣称特殊源LCD行为验收完成。
+
+新增free/tile×全部六预设十二组，检查显示预览增加覆盖层而存储/历史不变、取消恢复、单提交、Undo/Redo、实际保存重开的像素/混合模式/不透明度及原特殊Cel像素/实例/网格/资源保留。正式Release及free/tile/filter测试构建exit0（special-filter-overlay-build.log）；完整free、tile、filter-presets测试exit0（special-filter-overlay-free-test.log、special-filter-overlay-grid-test.log、special-filter-overlay-presets-test.log），后者覆盖六滤镜像素、快照、恢复及LCD既有事务；正式工作区drawing-anchor-edit-floating组合exit0；来源检查通过（special-filter-overlay-provenance.log），diff通过。未做人工UI验收，全量迁移仍INCOMPLETE。
