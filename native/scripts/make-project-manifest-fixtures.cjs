@@ -245,5 +245,19 @@ registerHooks({
   const m=structuredClone(manifest),r={...files},l=m.document.layers[0];l.linkedContentId='shared';if(kind!==undefined)l.kind=kind;if(background)l.background=background;r['manifest.json']=strToU8(JSON.stringify(m));const bytes=zipSync(r);let rejected=false;try{decodeProject(bytes);}catch{rejected=true;}if(!rejected)throw new Error('Legacy linked layer kind gate mismatch');fs.writeFileSync(path.join(out,`layer-linked-kind-reject-${label}.moonsprite`),bytes);
  }
  fs.writeFileSync(path.join(out,'layer-metadata-oracle.json'),JSON.stringify(layerMetadataOracle,null,2));console.log(`Layer metadata: ${layerMetadataOracle.length} actual legacy cases plus seven linked-kind rejections`);
+
+ // Actual decoder/encoder oracle: column coercion and sparse-slot repair.
+ // Independent paletteOrder remains a separately gated native model gap.
+ const paletteLayoutCases=[];
+ const paletteLayoutValues=[undefined,null,false,true,0,1,-2,257,3,2.5,'4',[],{},9007199254740991,9007199254740992];
+ for(let i=0;i<paletteLayoutValues.length;++i)paletteLayoutCases.push([`columns-${i}`,d=>{d.paletteColumns=paletteLayoutValues[i];}]);
+ const paletteSlotValues=[undefined,null,false,true,0,'slots',{},[],[1],[null,1],[1,1,2],[1,999,2],[1,'2',2],[1,false,2],[1,{},2],[1,[],2],[1,1.5,2],[1,9007199254740991,2],[1,-1,2],[1,0,2],[1,2,null,null,null,null,null,null,null],[null,null,null,null,null,null,null,1]];
+ for(let i=0;i<paletteSlotValues.length;++i)paletteLayoutCases.push([`slots-${i}`,d=>{d.paletteSlots=paletteSlotValues[i];}]);
+ for(const columns of [1,3,8,256])for(const [layout,slots] of [['holes',[null,1,null,2,null]],['missing',[null,1]],['trailing',[1,2,...Array(17).fill(null)]]])paletteLayoutCases.push([`grid-${columns}-${layout}`,d=>{d.paletteColumns=columns;d.paletteSlots=slots;}]);
+ for(const order of [undefined,null,false,{},'order',[],[1,'2',2],[1,1.5,2],[1,true,2],[1,9007199254740992,2]])paletteLayoutCases.push([`order-${paletteLayoutCases.length}`,d=>{d.paletteOrder=order;}]);
+ paletteLayoutCases.push(['hidden-entry',d=>{d.paletteOrder=[1];d.paletteSlots=[1,2,null];}]);
+ const paletteLayoutOracle=[];
+ for(const [label,mutate] of paletteLayoutCases){const m=structuredClone(manifest),r={...files};mutate(m.document);r['manifest.json']=strToU8(JSON.stringify(m));const bytes=zipSync(r),decoded=decodeProject(bytes),canonical=encodeProject(decoded,{includePreview:false});const file=`palette-layout-${label}.moonsprite`;fs.writeFileSync(path.join(out,file),bytes);fs.writeFileSync(path.join(out,file.replace('.moonsprite','-canonical.moonsprite')),canonical);paletteLayoutOracle.push({file,columns:decoded.paletteColumns,order:decoded.paletteOrder,slots:decoded.paletteSlots});}
+ fs.writeFileSync(path.join(out,'palette-layout-oracle.json'),JSON.stringify(paletteLayoutOracle,null,2));console.log(`Palette layout: ${paletteLayoutOracle.length} actual legacy cases`);
  console.log('Generated project manifest fixtures through legacy encodeProject');
 })().catch(e=>{console.error(e);process.exitCode=1;});

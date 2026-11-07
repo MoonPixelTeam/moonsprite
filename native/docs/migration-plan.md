@@ -3613,3 +3613,12 @@ malformed-links-final-build.log正式程序及工程目标构建、malformed-lin
 新增270组实际legacy decode→encode canonical ZIP对照（其中六组非法linked身份），另七组kind／background共享层组合拒绝：15字段×15种值、全部24种混合模式与未知值、普通／文字／调整kind、颜色限幅／舍入、中文／Emoji及带空白描述、linked身份。canonical未加原生策略适配，是真实旧版输出。原生逐组比较属性、结构、尺寸／偏移／精确像素和合成，普通／恢复保存重开、无导入历史、属性编辑Undo/Redo；几何样本不带Cel以显露原图层几何，特殊opacity样本移除Cel opacity以防活动帧覆盖掩盖默认值。失败基线layer-metadata-baseline-tests.log为visible:null被原生拒绝；没有把不经过读取路径的model测试算成迁移完成。
 
 layer-metadata-final-build.log正式与四类工程目标Release构建通过；包含新样本及既有558组坏链接等完整project-manifest-tests通过layer-metadata-final-manifest-tests.log；project-import-tests、project-save-tests、完整free-tile-project-tests通过对应layer-metadata日志，正式--cel-clipboard-check退出0。来源覆盖626文件通过layer-metadata-provenance.log，git diff检查通过。未进行人工旧工程UI打开验收；索引色、原生尺寸上限及其它迁移领域仍未完成，全量INCOMPLETE。
+
+
+### 工程调色盘布局读取归一化（2026-11-08）
+
+本阶段迁移实际 legacy `project-format-decode.ts`／`palette-layout.ts` 的列数与槽位归一化。数字 safe integer 列数限幅到 1–256，其余值回落 8；非数组／缺失顺序回落空数组，顺序中的非 safe integer 项过滤。非数组／缺失槽位回落空布局；仅将可见颜色的有效数字身份放回原槽位，忽略重复、隐藏、失效及非整数引用，再按顺序填补首个空位，保留整行与末尾空行。填洞采用单向游标，避免每次从头扫描已占用前缀；保留原生分配预算。
+
+生成器使用未经策略适配的实际 legacy decode→encode 输出生成 60 组原始／canonical ZIP：15 组列数、22 组槽位、12 组列数×稀疏布局、10 组顺序容器／元素类型与一组隐藏颜色。原生直接比较两份读取结果的列数、顺序与槽位。54 组满足当前文档模型约束的样本验证可编辑导入、原始颜色身份／名称／RGBA 与画面不变、无导入历史、普通／恢复保存重开，以及颜色修改／移除／新增 Undo/Redo。另六组归一化后产生独立 paletteOrder／槽位遍历顺序，原始和 canonical 均验证为明确 Unsupported；它们只通过解码对照，不计为可编辑迁移完成，不静默重排。原有无效 safe-integer 顺序引用、重复顺序、palette entry 身份／颜色及 nextColorId 准入仍有未迁移边界；索引色不在本阶段范围。
+
+失败基线 `native/build/palette-layout-baseline-tests.log` 为旧版可归一化列数被原生拒绝。修复后完整 project-manifest-tests 通过 `palette-layout-tests.log`（含本批60组、既有558组坏链接及图层元数据等）；正式程序和工程／历史目标 Release 构建通过 `palette-layout-final-build.log`；project-import-tests、project-save-tests、完整 free-tile-project-tests、local-history-cost-tests 均通过对应 `palette-layout-*-tests.log`；正式 `--cel-clipboard-check` 退出0。来源覆盖626文件通过 `palette-layout-provenance.log`，严格检查按仍有迁移缺口返回1，git diff检查通过。未进行人工UI验收；整个调色盘领域和全量迁移仍 INCOMPLETE。
