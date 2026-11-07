@@ -36,6 +36,19 @@ void historicalVersionChecks(const std::filesystem::path& dir){
  }
 
 }
+void activeCacheChecks(const std::filesystem::path& dir){
+ using namespace moon;
+ for(bool multiple:{false,true})for(bool geometry:{false,true}){
+  const auto bytes=load(dir/("active-cache-"+std::to_string(multiple)+"-"+std::to_string(geometry)+".moonsprite"));auto manifest=readProjectManifest(bytes);const auto originalCache=manifest.layers.front().surface->pixels;
+  auto d=createEditableDocument(prepareEditableImport(manifest));const auto first=d.frame().id;
+  const std::vector<Pixel> expected{0xff1e140a,0x0046505a,0x80030201,0xfcfdfeff};
+  auto verify=[&](const Document& doc){const auto& surface=*doc.cel().surface;check(doc.pixels()==expected&&surface.width==2&&surface.height==2&&surface.offsetX==0&&surface.offsetY==0,"Active Cel replaces stale layer pixels and geometry");check(doc.timeline().state().frames.size()==(multiple?2:1),"Cache migration frame structure");};
+  verify(d);check(d.historyPosition()==0&&manifest.layers.front().surface->pixels==originalCache,"Cache import atomic and without history");
+  if(multiple){d.selectFrame("cache-second");check(d.pixels()==std::vector<Pixel>(4),"Cache migration preserves other frame");d.selectFrame(first);verify(d);}
+  for(bool recovery:{false,true}){auto saved=recovery?encodeRecoveryProject(d):encodeEditableProject(d);auto parsed=readProjectManifest(saved.bytes);check(parsed.layers.front().surface->pixels==expected,"Stale cache resurrected during save");verify(createEditableDocument(prepareEditableImport(parsed)));}
+  d.beginStroke({0,0},0xffabcdef);check(d.commitStroke(),"Migrated cache document editable");d.undo();verify(d);d.redo();check(d.pixels()[0]==0xffabcdef,"Cache migration redo");
+ }
+}
 void inlineMaskChecks(const std::filesystem::path& dir){
  using namespace moon;auto bytes=load(dir/"inline-mask-u8.moonsprite");const auto raw=readProjectManifest(bytes);check(raw.unsupported.empty()&&raw.masks.size()==1&&raw.maskDataFiles.size()==1,"Inline mask was rejected or lost");const auto& mask=raw.masks[0];check(mask.id=="inline-mask"&&mask.surface->offsetX==-1&&mask.surface->offsetY==1&&mask.locked&&mask.autoLink,"Inline mask metadata migration");check(mask.surface->pixels==std::vector<std::uint32_t>({0xff000000,0xff808080,0xffffffff,0xff404040}),"Inline scalar resource decode");
  auto rgba=readProjectManifest(load(dir/"inline-mask-rgba.moonsprite"));check(rgba.masks[0].surface->pixels==std::vector<std::uint32_t>({0,0xff808080,0xff000000,0xffffffff}),"Mask RGBA transparent RGB normalization");
@@ -55,7 +68,7 @@ void inlineMaskChecks(const std::filesystem::path& dir){
 int main(int argc,char** argv) {
  try {
   check(argc==2,"Fixture argument required");const auto dir=std::filesystem::u8path(argv[1]);
-  historicalVersionChecks(dir);inlineMaskChecks(dir);
+  historicalVersionChecks(dir);activeCacheChecks(dir);inlineMaskChecks(dir);
   auto bytes=load(dir/"valid.moonsprite");auto parsed=readProjectManifest(bytes);
   check(parsed.schemaVersion==21 && parsed.colorMode=="rgba" && parsed.width==2 && parsed.height==2,"Header changed");
   check(parsed.name==u8"原生兼容样本","Unicode name changed");

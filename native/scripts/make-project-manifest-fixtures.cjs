@@ -82,5 +82,17 @@ registerHooks({
   if(decoded.animation.frames.length!==2||decoded.animation.frames[1].duration!==240||decoded.animation.cels[1].linkedCelId!==decoded.animation.cels[0].id)throw new Error('Historical animation oracle mismatch '+version);
   fs.writeFileSync(path.join(out,`historical-animation-${version}.moonsprite`),bytes);
  }
+ for(const multiple of [false,true])for(const geometry of [false,true]){
+  const m=structuredClone(manifest),r={...files},a=m.document.animation,l=m.document.layers[0],c=a.cels[0];
+  l.dataFile='layers/stale-cache.rgba';l.dataEncoding='raw';r[l.dataFile]=new Uint8Array(geometry?4:16).fill(255);
+  if(geometry){l.width=l.height=1;l.offsetX=-3;l.offsetY=4;}
+  c.dataEncoding='raw';r[c.dataFile]=new Uint8Array([10,20,30,255,90,80,70,0,1,2,3,128,255,254,253,252]);
+  if(multiple){a.frames.push({id:'cache-second',duration:220});a.cels.push({...c,id:'cache-second-cel',frameId:'cache-second',dataFile:'cels/cache-second.rgba'});r['cels/cache-second.rgba']=new Uint8Array(16);}
+  // No unrelated resource is needed to test the cache precedence.
+  const refs=new Set([l.dataFile,...a.cels.map(x=>x.dataFile)]);for(const k of Object.keys(r))if((k.startsWith('layers/')||k.startsWith('cels/'))&&!refs.has(k))delete r[k];
+  r['manifest.json']=strToU8(JSON.stringify(m));const bytes=zipSync(r),decoded=decodeProject(bytes);
+  if(decoded.layers[0].width!==2||decoded.layers[0].height!==2||decoded.layers[0].offsetX!==0||decoded.layers[0].pixels[0]!==10)throw new Error('Active Cel cache precedence oracle mismatch');
+  fs.writeFileSync(path.join(out,`active-cache-${Number(multiple)}-${Number(geometry)}.moonsprite`),bytes);
+ }
  console.log('Generated project manifest fixtures through legacy encodeProject');
 })().catch(e=>{console.error(e);process.exitCode=1;});

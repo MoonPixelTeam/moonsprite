@@ -3515,3 +3515,10 @@ legacy workspace-commands-color.ts::applyColorReplacementTarget的collect先跳�
 按legacy migrateProjectManifest补齐1–13读取版本门：4及以前强制raw栅格，11以前移除图层／组样式，12以前移除背景，13以前移除tilesets与Cel.tilemap，14以前移除自由瓦片类型与载荷。schema1构造默认100ms帧及图层对应Cel。真实旧版decode实测schema1在最后refreshActiveAnimationFrame因无Cel清空图层；用户明确批准原生修复为保留像素并创建默认帧／Cel，此处是授权差异，不能称行为等价。schema1原始栅格经保留后仍支持普通编辑与Undo/Redo。
 
 make-project-manifest-fixtures.cjs通过实际legacy encode/decode生成版本1–20归档与oracle，schema1明确核对旧版清空现象，原生测试核对授权保留行为；其余逐版本核对实际旧版像素。另增2–13双帧链接动画样本，核对240ms第二帧、链接根与普通／恢复保存重开。更新旧schema20蒙版测试从拒绝为迁移成功，修正早期样本未引用资源。正式构建通过historical-all-build.log；project-manifest-tests、project-save-tests、完整free-tile-project-tests通过对应historical-all日志，正式--cel-clipboard-check退出0，来源覆盖与diff检查通过。证据覆盖RGBA基础栅格、版本门、历史链接动画及既有自由瓦片路径；不表示各版本全部色彩模式、文字、所有畸形输入及人工打开验收完成，全量迁移INCOMPLETE。
+
+
+### 2026-11-07：活动Cel覆盖旧图层缓存的工程准入闭环
+
+对照legacy decodeProject最后refreshActiveAnimationFrame／applyFrameSurfaces，以及directActiveCelDataFiles单帧优化，旧图层缓存和活动Cel不同时应投影活动Cel。原生移除该差异即拒绝打开的门禁，保留两个资源本身的尺寸／字节／预算校验与链接Cel fallback一致性门禁。该行为沿用旧版，未引入新的优先级选择。
+
+真实legacy decode生成四组single/multi frame × stale pixels/stale geometry ZIP样本，核对2×2活动Cel像素和偏移、第二帧、输入manifest不变、导入无编辑历史、editable/recovery保存重开、输出层缓存更新、后续笔画Undo/Redo。正式与测试构建active-cache-build.log通过；project-manifest-tests、project-save-tests、完整free-tile-project-tests通过active-cache日志；正式--cel-clipboard-check退出0，来源覆盖与diff通过。开始检查的空动画／缺失Cel槽归一化仍未迁移，不以本阶段缓存修复代替完成声明。人工UI打开验收未做，整体迁移INCOMPLETE。

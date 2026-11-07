@@ -147,9 +147,10 @@ PreparedImport prepareEditableImport(const ReadManifest& m) {
 
 
  const auto* root=rootCel(c);
- unsupported(!root->surface||!l.surface,"Missing owned raster is not editable yet");const auto& s=*root->surface;const auto& ls=*l.surface;
+ unsupported(!root->surface||!l.surface,"Missing owned raster is not editable yet");const auto& s=*root->surface;
  if(l.kind!="tilemap"&&c.surface && c.linkedCelId.size())unsupported(c.surface->pixels!=s.pixels||c.surface->width!=s.width||c.surface->height!=s.height||c.surface->offsetX!=s.offsetX||c.surface->offsetY!=s.offsetY,"Linked cel fallback differs from source; refusing to discard content");
- if(l.kind!="tilemap"&&l.kind!="free-tile"&&f.id==m.activeFrameId)unsupported(ls.width!=s.width||ls.height!=s.height||ls.offsetX!=s.offsetX||ls.offsetY!=s.offsetY||ls.pixels!=s.pixels,"Layer and active cel raster differ; refusing to discard either");
+ // Legacy refreshActiveAnimationFrame projects the active Cel over the layer
+ // fallback. Both resources were validated above; stale caches are not artwork.
  auto out=state.cels.begin()+index;
  if(c.linkedCelId.empty()){timeline::Surface owned;owned.width=s.width;owned.height=s.height;owned.offsetX=s.offsetX;owned.offsetY=s.offsetY;owned.pixels=s.pixels;out->surface=std::move(owned);}
 
