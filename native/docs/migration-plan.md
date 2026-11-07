@@ -3436,3 +3436,12 @@ legacy core/layer-merge.ts::mergeVisibleLayers复用compositeDocument渲染全�
 
 
 验证结果：首次全依赖构建通过（linked-free-build.log）；生命周期夹具保留旧Cel选择导致显式链接帧按已选源而非播放帧执行，已清空夹具选择；Paint放置夹具误用普通beginStroke导致无历史，已改用真实beginFreeTilePlacement/commitFreeTilePlacement。最终测试构建通过（linked-free-final-test-build.log），完整free-tile-project-tests通过（linked-free-final-tests.log），十二类操作的实例语义／像素／原生与恢复重开／Undo/Redo均通过。正式全依赖构建通过（linked-free-official-build.log），最终增量确认通过（linked-free-final-official-build.log）；最终正式程序 --cel-clipboard-check 退出0，包含真实右键连接／解链、链接帧指令及上一阶段八组合并菜单和既有剪贴板检查。document-layer-groups-tests通过（linked-free-groups-tests.log）；来源覆盖检查通过（linked-free-provenance.log）、diff通过。未人工视觉验收，未宣称所有组合穷举或其他迁移缺口完成，整体仍INCOMPLETE。
+
+
+### 2026-11-07：自由瓦片链接源覆盖与删除的存活帧接管
+
+对照 legacy workspace-animation-cel-links.ts::detachAnimationPasteTargets，存活Cel必须接管source.freeTiles；animation.ts在链接时共享实例数据，删除帧后存活槽仍保有该数据。原生保存省略显式别名的实例载荷，重开后别名没有本地副本，因此不能只转移渲染surface。补齐共享detach路径（整Cel粘贴覆盖、删除、剪切）及批量帧删除路径的解析实例接管；沿用现有链接提升、事务和资源历史，不引入另一套资源系统。
+
+新增8组：未保存／保存重开后的链接 × 删除Cel／剪切Cel／其他帧粘贴覆盖源／批量删除源帧。每组两个存活别名，核对同一新源、完整实例元数据、精确缓存像素、原生／恢复工程再开、一次历史、Undo恢复旧源链接、Redo及再次保存。正式程序和完整自由瓦片测试构建通过（free-survivor-build.log）；完整free-tile-project-tests通过（free-survivor-tests.log）；正式程序 --cel-clipboard-check 退出0；来源覆盖检查通过（free-survivor-provenance.log），diff通过。无人工视觉验收。
+
+跨工程剪贴板核对发现：legacy animationCelForTarget仅按目标种类保留实例载荷，跨工程帧／Cel粘贴未转移自由源目录。不能把“自动转移资源”认作现有旧版功能而直接实现；本阶段保留原生明确限制，跨工程自由源策略仍未闭环，全量迁移INCOMPLETE。
