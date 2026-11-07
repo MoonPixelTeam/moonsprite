@@ -3159,3 +3159,9 @@ pending-tile-center-build.log正式Release及free/tile测试构建exit0，fixtur
 对照legacy workspace-commands-clipboard.ts::pasteSelection使用activePaintLayer类型/锁定校验，普通图层不因无关free-tile内容被拒绝。原生beginFloatingPaste移除整篇free拒绝，将原有混合tilemap目标约束统一用于两种特殊内容；活动蒙版仍优先，free目标继续使用专用粘贴入口，不写派生Cel像素。
 
 新增提交/取消两组，检查移动后的精确RGBA及半透明值、预览无历史、单提交、全部自由Cel实例与像素/源资源保留、锁定及free目标拒绝、Undo/Redo和实际重开。mixed-free-raster-paste-build.log正式Release及两核心测试构建exit0；完整free-tile-project-tests、tilemap-project-tests通过（mixed-free-raster-paste-free-test.log、mixed-free-raster-paste-grid-test.log）；正式工作区drawing-anchor-edit-floating组合exit0；来源625文件快照通过（mixed-free-raster-paste-provenance.log），diff通过。未做人工UI验收，全量迁移仍INCOMPLETE。
+
+### 2026-11-07：混合自由瓦片文档普通剪贴板浮动键盘移动
+
+对照legacy workspace-commands-selection-move.ts::moveActiveSelectionWithSelectionHistory先限制键盘requested位置，再按pendingLayer锁定校验处理已有浮动，不按文档中无关特殊层拒绝。原生识别合法普通图层clipboard浮动状态，放行整篇free保护，复用共同坐标平移并补齐该状态的画布边界限制。其他初次选区捕获仍按已有路径判断。
+
+新增普通/tile/free×取消/提交六组，检查左上及右下边缘no-op、大位移限制、半透明RGBA精确值、预览无历史/单提交、无关Cel像素/实例/网格及资源不变、Undo/Redo和实际重开。raster-clipboard-nudge-build.log正式Release及两核心测试构建exit0；完整free-tile-project-tests、tilemap-project-tests通过（raster-clipboard-nudge-free-test.log、raster-clipboard-nudge-grid-test.log）；正式工作区drawing-anchor-edit-floating组合exit0；来源625文件快照通过（raster-clipboard-nudge-provenance.log），diff通过。未做人工UI验收，全量迁移仍INCOMPLETE。
