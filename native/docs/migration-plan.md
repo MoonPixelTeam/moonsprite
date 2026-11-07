@@ -3809,3 +3809,11 @@ palette-apply-index-build.log正式Release、工程与核心目标构建通过�
 新增规范路径缺失／损坏覆盖、损坏删除、文件名与内嵌ID不符、规范文件优先且不删别名原文件、新建路径碰撞、内置保留与用户冒用过滤、损坏外部文件删除以及非法路径ID拒绝。测试只操作本轮独立创建的owned fixture；用户文件未删除。长slug边界、损坏内置资源报告等仍有差异，本批不宣称色板库或全量迁移完成。
 
 验证：palette-library-identity-build.log唯一正式Release与色板库／导入目标构建退出0；palette-library-identity-tests.log、palette-library-identity-import-tests.log退出0，正式--palette-library-check及--palette-import-check退出0。补充目录同名拒绝检查，std::filesystem::remove不可用于删除目录，承接旧版fs::remove_file语义。来源627文件覆盖通过，strict因既有迁移缺口退出1，diff通过。未运行完整旧版Rust平台测试或人工系统选择器验收；全量迁移仍INCOMPLETE。
+
+### 色板库资源失败与有界读取（2026-11-08）
+
+接续99f33e86，对照platform_palette.rs::read_built_in_palette／list_palettes：内置资源collect<Result>遇坏资源整体返回错误，用户单文件读取失败才隔离跳过。原生此前两者都吞掉，现在内置解析／版本／布局／读取失败报告实际资源路径，用户坏文件继续隔离；assets目录承接旧版嵌入资源，不引入旧版启动清理行为。原生JSON读取原有64MiB限制此前全量分配后才检查，现复用readPaletteImportBytes同句柄大小预检及分块增长限制；直接decode在UTF16转换前检查文本字节，槽位在分配vector前检查既有1048576上限。
+
+回归覆盖有效内置和用户并存、坏JSON／未知版本／坏布局内置报错与用户隔离、坏内置修复后用户保留身份过滤，以及64MiB+1文件的预检拒绝／内置路径错误。大文件由owned fixture resize生成，不读取其全部内容。内存上限是既有原生适配，并非旧版无条件格式等价；全量迁移仍INCOMPLETE。
+
+验证：palette-library-resource-build.log正式Release／色板库／导入构建退出0；palette-library-resource-tests.log与palette-library-resource-import-tests.log退出0，正式--palette-library-check及--palette-import-check退出0。来源627文件覆盖通过，strict因全量缺口退出1，diff通过。未执行完整旧版Rust运行或人工图像验收，错误通道验证范围为库异常及正式现有界面回归；全量迁移仍INCOMPLETE。
