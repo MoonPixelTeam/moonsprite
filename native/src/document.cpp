@@ -2400,7 +2400,7 @@ bool Document::beginLayerTransform(){
  commitFloatingPaste();cancelStroke();cancelGradient();if(!maskBrushAvailable())return false;const auto& surface=mutableActiveMask()->surface;int l=width_,t=height_,r=-1,b=-1;
  for(int y=0;y<height_;++y)for(int x=0;x<width_;++x)if(raster::readWorld(surface,x,y)>>24){l=std::min(l,x);t=std::min(t,y);r=std::max(r,x);b=std::max(b,y);}if(r<l)return false;selection_=SelectionMask{l,t,r-l+1,b-t+1,{}};return true;
  }
- if(hasFreeTileContent()){
+ if(layer().kind=="free-tile"){
   if(layer().kind!="free-tile"||!activeMaskId_.empty()||hasSelectedGroups()||!selectedFrames_.empty())return false;
   for(const auto& id:timelineSelection_.layers)if(id!=activeLayerId_)return false;
   for(const auto& id:timelineSelection_.cels){const auto* c=timeline_.findCelById(id);if(!c||c->layerId!=activeLayerId_||c->frameId!=activeFrameId_)return false;}
@@ -2408,9 +2408,10 @@ bool Document::beginLayerTransform(){
   auto visible=combineSelection(SelectionMask{bounds->x,bounds->y,bounds->w,bounds->h,{}},SelectionMask{0,0,width_,height_,{}},3);if(!visible)return false;
   selection_=std::move(visible);return true;
  }
- if(hasTilemapContent())return false; const auto commandLayers=selectedLayerIdsWithGroups();if(hasSelectedGroups()&&commandLayers.empty())return false;
+ const auto commandLayers=selectedLayerIdsWithGroups();if(hasSelectedGroups()&&commandLayers.empty())return false;
  commitFloatingPaste();cancelStroke();std::unordered_set<std::string> selected(commandLayers.begin(),commandLayers.end());for(const auto& id:timelineSelection_.cels)if(const auto* target=timeline_.findCelById(id))selected.insert(target->layerId);
  const bool implicitFrames=!selectedFrames_.empty() && commandLayers.empty();if(selected.empty() && !implicitFrames)selected.insert(activeLayerId_);
+ if(hasFreeTileContent()||hasTilemapContent())for(const auto& target:timeline_.state().layers)if((implicitFrames||selected.count(target.id))&&!target.kind.empty())return false;
  if(selected.size()==1){const auto* target=timeline_.findCel(*selected.begin(),activeFrameId_);if(target){const auto source=timeline_.resolveSurface(target->id);if(source.source&&source.source->text&&source.source->text->boxed)return false;}}
 
  int left=width_,top=height_,right=-1,bottom=-1;

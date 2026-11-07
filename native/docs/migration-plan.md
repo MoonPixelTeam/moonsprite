@@ -3195,3 +3195,9 @@ pending-tile-center-build.log正式Release及free/tile测试构建exit0，fixtur
 依据legacy workspace-commands-selection-effects.ts::deleteSelection对selection来源pending先commitFloatingPaste，再执行deleteFreeTileSourceSelectionInSession。原生已有freeTile浮动先提交，避免active()保护直接拒绝；继续复用源删除适配器，不删除实例或派生缓存。
 
 新增整实例/局部源×移动/复制四组，对照显式提交再删除，核对两步历史、源/画布像素、第一次Undo回已移动状态、第二次Undo回原始源、两次Redo及实际重开。free-floating-delete-build.log正式Release及两核心测试构建exit0；完整free-tile-project-tests、tilemap-project-tests通过（free-floating-delete-free-test.log、free-floating-delete-grid-test.log）；正式工作区drawing-anchor-edit-floating组合exit0；来源625文件快照通过（free-floating-delete-provenance.log），diff通过。未做人工UI验收，全量迁移仍INCOMPLETE。
+
+### 2026-11-07：混合文档普通图层开始变换范围
+
+依据legacy workspace-commands-selection-transform.ts::beginLayerTransform及selectedTransformLayersForSession，边界按实际目标计算，不按文档无关特殊层拒绝。原生free入口限定活动free类型；共同静态选框路径按选中普通目标运行，仍保护所选特殊目标。此为开始变换的可见范围选择迁移，后续普通内容移动在混合free文档仍有独立保护，不宣称整个交互链完成。
+
+新增tile/free×隐式/显式普通目标四组，检查精确alpha范围、无浮动/历史/内容修订、全部Cel像素保留、锁定/隐藏拒绝、包含特殊层的多目标拒绝。mixed-transform-entry-build.log正式Release及两核心测试构建exit0；完整free-tile-project-tests、tilemap-project-tests通过（mixed-transform-entry-free-test.log、mixed-transform-entry-grid-test.log）；正式工作区drawing-anchor-edit-floating组合exit0；来源625文件快照通过（mixed-transform-entry-provenance.log），diff通过。未做人工作业或截图验收，全量迁移仍INCOMPLETE。
