@@ -94,5 +94,15 @@ registerHooks({
   if(decoded.layers[0].width!==2||decoded.layers[0].height!==2||decoded.layers[0].offsetX!==0||decoded.layers[0].pixels[0]!==10)throw new Error('Active Cel cache precedence oracle mismatch');
   fs.writeFileSync(path.join(out,`active-cache-${Number(multiple)}-${Number(geometry)}.moonsprite`),bytes);
  }
+ for(const mode of ['pixels','geometry','absent'])for(const chain of [false,true]){
+  const m=structuredClone(manifest),r={...files},a=m.document.animation,c=a.cels[0];c.dataEncoding='raw';r[c.dataFile]=new Uint8Array([10,20,30,255,90,80,70,0,1,2,3,128,255,254,253,252]);
+  const alias={...c,id:'stale-alias',frameId:'alias-frame',linkedCelId:c.id,dataFile:'cels/stale-alias.rgba'};a.frames.push({id:alias.frameId,duration:230});a.cels.push(alias);
+  if(mode==='absent'){delete alias.dataFile;delete alias.dataEncoding;}else{if(mode==='geometry'){alias.width=alias.height=1;alias.offsetX=-3;alias.offsetY=5;}r[alias.dataFile]=new Uint8Array(mode==='geometry'?4:16).fill(255);}
+  if(chain){const tail={...alias,id:'stale-tail',frameId:'tail-frame',linkedCelId:alias.id};a.frames.push({id:tail.frameId,duration:310});a.cels.push(tail);a.activeFrameId=tail.frameId;}else a.activeFrameId=alias.frameId;
+  r['manifest.json']=strToU8(JSON.stringify(m));const bytes=zipSync(r),decoded=decodeProject(bytes);const {createAnimationCelLookup}=await import(pathToFileURL(path.join(legacy,'src/renderer/src/core/animation.ts')));const lookup=createAnimationCelLookup(decoded.animation);
+  for(const cel of decoded.animation.cels){const root=lookup.resolve(cel);if(root.id!==c.id||root.surface.width!==2||root.surface.offsetX!==0||root.surface.pixels[0]!==10)throw new Error('Linked fallback oracle mismatch');}
+  if(decoded.layers[0].pixels[0]!==10)throw new Error('Linked fallback active projection mismatch');
+  fs.writeFileSync(path.join(out,`linked-cache-${mode}-${Number(chain)}.moonsprite`),bytes);
+ }
  console.log('Generated project manifest fixtures through legacy encodeProject');
 })().catch(e=>{console.error(e);process.exitCode=1;});

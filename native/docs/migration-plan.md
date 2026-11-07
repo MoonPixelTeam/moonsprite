@@ -3522,3 +3522,10 @@ make-project-manifest-fixtures.cjs通过实际legacy encode/decode生成版本1�
 对照legacy decodeProject最后refreshActiveAnimationFrame／applyFrameSurfaces，以及directActiveCelDataFiles单帧优化，旧图层缓存和活动Cel不同时应投影活动Cel。原生移除该差异即拒绝打开的门禁，保留两个资源本身的尺寸／字节／预算校验与链接Cel fallback一致性门禁。该行为沿用旧版，未引入新的优先级选择。
 
 真实legacy decode生成四组single/multi frame × stale pixels/stale geometry ZIP样本，核对2×2活动Cel像素和偏移、第二帧、输入manifest不变、导入无编辑历史、editable/recovery保存重开、输出层缓存更新、后续笔画Undo/Redo。正式与测试构建active-cache-build.log通过；project-manifest-tests、project-save-tests、完整free-tile-project-tests通过active-cache日志；正式--cel-clipboard-check退出0，来源覆盖与diff通过。开始检查的空动画／缺失Cel槽归一化仍未迁移，不以本阶段缓存修复代替完成声明。人工UI打开验收未做，整体迁移INCOMPLETE。
+
+
+### 2026-11-07：有效链接Cel的过期fallback缓存兼容
+
+对照legacy createAnimationCelLookup.resolve与refreshActiveAnimationFrame，合法链接节点自身的fallback不覆盖根Cel权威内容。原生移除过期alias像素／几何不等即拒绝的门禁，各显式栅格资源仍先检查字节与预算，关系缺失／环／跨层错误门禁仍保留。根内容安装与活动帧投影沿用既有Timeline路径，无额外编辑历史。
+
+六组真实legacy decode ZIP样本覆盖旧像素、旧尺寸／偏移、无alias栅格 × 直接链接／两级链，并把活动帧定位alias／tail。原生检查所有成员解析同一根、正确画面、普通／恢复输出的alias缓存更新、重开、导入无历史、从alias笔画编辑和所有成员Undo/Redo。正式构建linked-cache-build.log通过，project-manifest-tests及project-save-tests通过对应linked-cache日志，正式--cel-clipboard-check退出0；完整free-tile-project-tests通过linked-cache-free-tests.log，来源覆盖通过linked-cache-provenance.log，diff通过。空动画／缺失Cel槽仍待迁移，人工UI验收未做，整体迁移INCOMPLETE。

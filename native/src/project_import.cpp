@@ -148,7 +148,8 @@ PreparedImport prepareEditableImport(const ReadManifest& m) {
 
  const auto* root=rootCel(c);
  unsupported(!root->surface||!l.surface,"Missing owned raster is not editable yet");const auto& s=*root->surface;
- if(l.kind!="tilemap"&&c.surface && c.linkedCelId.size())unsupported(c.surface->pixels!=s.pixels||c.surface->width!=s.width||c.surface->height!=s.height||c.surface->offsetX!=s.offsetX||c.surface->offsetY!=s.offsetY,"Linked cel fallback differs from source; refusing to discard content");
+ // Legacy resolveAnimationCel follows valid links to the root. Serialized
+ // alias fallbacks may be stale; validate their storage without making it authoritative.
  // Legacy refreshActiveAnimationFrame projects the active Cel over the layer
  // fallback. Both resources were validated above; stale caches are not artwork.
  auto out=state.cels.begin()+index;

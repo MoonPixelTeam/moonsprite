@@ -49,6 +49,16 @@ void activeCacheChecks(const std::filesystem::path& dir){
   d.beginStroke({0,0},0xffabcdef);check(d.commitStroke(),"Migrated cache document editable");d.undo();verify(d);d.redo();check(d.pixels()[0]==0xffabcdef,"Cache migration redo");
  }
 }
+void linkedCacheChecks(const std::filesystem::path& dir){
+ using namespace moon;const std::vector<Pixel> pixels{0xff1e140a,0x0046505a,0x80030201,0xfcfdfeff};
+ for(const auto* mode:{"pixels","geometry","absent"})for(bool chain:{false,true}){
+  auto manifest=readProjectManifest(load(dir/(std::string("linked-cache-")+mode+"-"+std::to_string(chain)+".moonsprite")));auto d=createEditableDocument(prepareEditableImport(manifest));const auto active=d.frame().id;
+  auto verify=[&](const Document& candidate){const auto& state=candidate.timeline().state();check(state.cels.size()==(chain?3:2)&&candidate.timeline().diagnoseLinks().empty(),"Linked fallback structure");const auto root=candidate.timeline().resolveSurface(state.cels.front().id).source->id;for(const auto& c:state.cels){const auto resolved=candidate.timeline().resolveSurface(c.id);check(resolved.source->id==root&&resolved.surface->pixels==pixels&&resolved.surface->width==2&&resolved.surface->offsetX==0&&resolved.surface->offsetY==0,"Linked root overrides stale alias pixels and geometry");}check(candidate.pixels()==pixels,"Linked active frame projection");};
+  verify(d);check(d.historyPosition()==0,"Linked cache normalization no history");
+  for(bool recovery:{false,true}){auto saved=recovery?encodeRecoveryProject(d):encodeEditableProject(d);auto parsed=readProjectManifest(saved.bytes);for(const auto& c:parsed.cels)check(c.surface&&c.surface->pixels==pixels&&c.surface->width==2&&c.surface->offsetX==0,"Saved alias cache canonical");verify(createEditableDocument(prepareEditableImport(parsed)));}
+  d.beginStroke({0,0},0xffabcdef);check(d.commitStroke(),"Edit through imported alias");for(const auto& c:d.timeline().state().cels)check(d.timeline().resolveSurface(c.id).surface->pixels[0]==0xffabcdef,"Alias edit updates shared root");d.undo();verify(d);d.redo();check(d.pixels()[0]==0xffabcdef&&d.frame().id==active,"Linked cache redo frame and pixels");
+ }
+}
 void inlineMaskChecks(const std::filesystem::path& dir){
  using namespace moon;auto bytes=load(dir/"inline-mask-u8.moonsprite");const auto raw=readProjectManifest(bytes);check(raw.unsupported.empty()&&raw.masks.size()==1&&raw.maskDataFiles.size()==1,"Inline mask was rejected or lost");const auto& mask=raw.masks[0];check(mask.id=="inline-mask"&&mask.surface->offsetX==-1&&mask.surface->offsetY==1&&mask.locked&&mask.autoLink,"Inline mask metadata migration");check(mask.surface->pixels==std::vector<std::uint32_t>({0xff000000,0xff808080,0xffffffff,0xff404040}),"Inline scalar resource decode");
  auto rgba=readProjectManifest(load(dir/"inline-mask-rgba.moonsprite"));check(rgba.masks[0].surface->pixels==std::vector<std::uint32_t>({0,0xff808080,0xff000000,0xffffffff}),"Mask RGBA transparent RGB normalization");
@@ -68,7 +78,7 @@ void inlineMaskChecks(const std::filesystem::path& dir){
 int main(int argc,char** argv) {
  try {
   check(argc==2,"Fixture argument required");const auto dir=std::filesystem::u8path(argv[1]);
-  historicalVersionChecks(dir);activeCacheChecks(dir);inlineMaskChecks(dir);
+  historicalVersionChecks(dir);activeCacheChecks(dir);linkedCacheChecks(dir);inlineMaskChecks(dir);
   auto bytes=load(dir/"valid.moonsprite");auto parsed=readProjectManifest(bytes);
   check(parsed.schemaVersion==21 && parsed.colorMode=="rgba" && parsed.width==2 && parsed.height==2,"Header changed");
   check(parsed.name==u8"原生兼容样本","Unicode name changed");
