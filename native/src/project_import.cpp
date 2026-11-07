@@ -31,6 +31,51 @@ void raster(const ManifestRaster& s) {
  corrupt(w>std::numeric_limits<std::size_t>::max()/h||w*h!=s.pixels.size(),"Raster pixel count mismatch");
  corrupt(std::int64_t(s.offsetX)+s.width>std::numeric_limits<int>::max()||std::int64_t(s.offsetY)+s.height>std::numeric_limits<int>::max(),"Raster world bounds exceed native coordinates");
 }
+struct BlankImportedPayloads{
+ const ReadManifest& manifest;std::map<std::string,const tiles::CelData*> grids;std::map<std::string,const tiles::Tileset*> sheets;
+ explicit BlankImportedPayloads(const ReadManifest& m):manifest(m){for(const auto& c:m.cels)if(c.tilemap)grids.emplace(c.layerId,&*c.tilemap);for(const auto& s:m.tilesets)sheets.emplace(s.id,&s);}
+ void assign(ManifestCel& c,const ManifestLayer& layer)const{if(layer.kind=="free-tile")c.freeTiles=free_tiles::CelData{};if(layer.kind=="tilemap"){const auto model=grids.find(layer.id);if(model!=grids.end()){const auto& grid=*model->second;c.tilemap=tiles::CelData{grid.tileWidth,grid.tileHeight,grid.columns,grid.rows,std::vector<std::optional<tiles::Cell>>(grid.cells.size())};}else{const auto owner=sheets.find(layer.tilemapTilesetId);corrupt(owner==sheets.end(),"Missing layer tileset for empty grid");c.tilemap=tiles::blankCel(manifest.width,manifest.height,owner->second->tileWidth,owner->second->tileHeight);}}}
+};
+std::optional<ReadManifest> repairImportedLinks(const ReadManifest& m){
+ // User-approved import repair: legacy ensureAnimationDocument followed by
+ // syncing the original displayed active surfaces, without edit history.
+ // Reverse edges resolve each node once, preserving legacy's input-order
+ // cycle breaks without repeatedly walking long invalid chains.
+ if(std::none_of(m.cels.begin(),m.cels.end(),[](const auto& c){return !c.linkedCelId.empty();}))return {};
+ const auto count=m.cels.size(),none=std::numeric_limits<std::size_t>::max();
+ std::map<std::string,std::size_t> ids,owners;for(std::size_t i=0;i<count;++i)ids.emplace(m.cels[i].id,i);for(std::size_t i=0;i<m.layers.size();++i)owners.emplace(m.layers[i].id,i);
+ std::vector<std::vector<std::size_t>> incoming(count);std::vector<std::size_t> roots(count,none),queue;std::vector<bool> invalid(count,false);bool changed=false;
+ for(std::size_t i=0;i<count;++i){const auto& c=m.cels[i];if(c.linkedCelId.empty()){roots[i]=i;queue.push_back(i);continue;}const auto target=ids.find(c.linkedCelId);if(target==ids.end()||target->second==i||m.cels[target->second].layerId!=c.layerId){invalid[i]=true;changed=true;}else incoming[target->second].push_back(i);}
+ const auto spread=[&]{for(std::size_t head=0;head<queue.size();++head){const auto index=queue[head];for(const auto predecessor:incoming[index])if(roots[predecessor]==none){roots[predecessor]=roots[index];queue.push_back(predecessor);}}queue.clear();};
+ spread();const auto initialRoots=roots;
+ for(std::size_t i=0;i<count;++i)if(invalid[i]){roots[i]=i;queue.push_back(i);}spread();
+ for(std::size_t i=0;i<count;++i)if(roots[i]==none){changed=true;roots[i]=i;queue.push_back(i);spread();}
+ if(!changed)return {};
+ // Repair cannot hide a corrupt fallback supplied through the direct DTO API.
+ // Archive callers have already passed decodeProject's per-resource boundary.
+ const tiles::Catalog resources(m.tilesets);std::map<std::string,std::map<std::string,std::string>> aliases;
+ for(const auto& layer:m.layers)if(layer.freeTiles)for(const auto& source:layer.freeTiles->sources){auto& names=aliases[layer.id];names.emplace(source.id,source.id);names.emplace(source.tilesetId,source.id);if(const auto set=resources.sets.find(source.tilesetId);set!=resources.sets.end())for(const auto& tile:set->second->tileIds)names.emplace(tile,source.id);}
+ for(const auto& c:m.cels){if(c.surface)raster(*c.surface);const auto& layer=m.layers[owners.at(c.layerId)];corrupt((c.text&&(layer.kind=="tilemap"||layer.kind=="free-tile"))||(c.tilemap&&layer.kind!="tilemap")||(c.freeTiles&&layer.kind!="free-tile"),"Invalid fallback payload kind");
+  if(c.tilemap){const auto& grid=*c.tilemap;try{tiles::sizeCheck(grid.tileWidth,grid.tileHeight,grid.columns,grid.rows);}catch(const std::exception& e){throw Error(ErrorKind::Corrupt,e.what());}corrupt(grid.cells.size()!=std::size_t(grid.columns)*grid.rows,"Invalid fallback grid size");for(const auto& cell:grid.cells)if(cell){const auto set=resources.sets.find(cell->tilesetId);corrupt(set==resources.sets.end()||set->second->tileWidth!=grid.tileWidth||set->second->tileHeight!=grid.tileHeight||!resources.indexes.at(cell->tilesetId).find(cell->tileId),"Invalid fallback grid resource");}}
+  if(c.freeTiles){corrupt(!layer.freeTiles,"Missing fallback source owner");auto canonical=*c.freeTiles;if(!layer.freeTiles->sources.empty())for(auto& instance:canonical.instances){const auto& names=aliases.at(layer.id);const auto source=names.find(instance.sourceId);corrupt(source==names.end(),"Missing fallback instance resource");instance.sourceId=source->second;}try{free_tiles::validate(*layer.freeTiles,canonical,m.tilesets);}catch(const std::exception& e){throw Error(ErrorKind::Corrupt,e.what());}}
+ }
+ ReadManifest fixed=m;
+ std::vector<std::size_t> activeSlots(m.layers.size(),none);for(std::size_t i=0;i<count;++i)if(m.cels[i].frameId==m.activeFrameId)activeSlots[owners.at(m.cels[i].layerId)]=i;
+ struct Displayed{std::shared_ptr<const ManifestRaster> surface;double opacity=1;const ManifestCel* payload=nullptr;};std::vector<Displayed> displayed(m.layers.size());
+ for(std::size_t owner=0;owner<m.layers.size();++owner){const auto& layer=m.layers[owner];corrupt(!layer.surface,"Missing layer raster during linked Cel repair");displayed[owner].opacity=layer.opacity;const auto index=activeSlots[owner];if(index!=none){const auto& source=m.cels[initialRoots[index]==none?index:initialRoots[index]];displayed[owner].payload=&source;if(source.surface){displayed[owner].surface=source.surface;displayed[owner].opacity=source.opacity.value_or(layer.opacity);}}
+  if(!displayed[owner].surface){auto blank=std::make_shared<ManifestRaster>();blank->width=layer.surface->width;blank->height=layer.surface->height;blank->offsetX=layer.surface->offsetX;blank->offsetY=layer.surface->offsetY;blank->pixels.assign(layer.surface->pixels.size(),0);displayed[owner].surface=std::move(blank);}fixed.layers[owner].surface=displayed[owner].surface;fixed.layers[owner].opacity=displayed[owner].opacity;
+ }
+ const BlankImportedPayloads blanks(m);
+ for(std::size_t i=0;i<count;++i)if(roots[i]==i){auto& c=fixed.cels[i];const auto owner=owners.at(c.layerId);if(!c.surface){if(c.frameId==m.activeFrameId)c.surface=displayed[owner].surface;else{auto blank=std::make_shared<ManifestRaster>();blank->width=blank->height=1;blank->pixels={0};c.surface=std::move(blank);}}if(!c.opacity)c.opacity=displayed[owner].opacity;const auto& layer=m.layers[owner];if((layer.kind=="tilemap"&&!c.tilemap)||(layer.kind=="free-tile"&&!c.freeTiles))blanks.assign(c,layer);}
+ // Root metadata is immutable while aliases are flattened; direct invalid
+ // links and input-order cycle roots retain their own fallback payload.
+ for(std::size_t i=0;i<count;++i){auto& c=fixed.cels[i];if(roots[i]==i)c.linkedCelId.clear();else{const auto& root=fixed.cels[roots[i]];c.linkedCelId=root.id;c.zIndex=root.zIndex;c.opacity=root.opacity;c.text=root.text;c.tilemap=root.tilemap;c.freeTiles=root.freeTiles;c.surface=root.surface;}}
+ // User confirmed: a no-raster free Cel retains all instances; the final
+ // import renderer restores their display instead of freezing an empty cache.
+ for(std::size_t i=0;i<count;++i)if(fixed.cels[i].frameId==m.activeFrameId){const auto owner=owners.at(fixed.cels[i].layerId);auto& root=fixed.cels[roots[i]];root.surface=displayed[owner].surface;root.opacity=displayed[owner].opacity;if(const auto* payload=displayed[owner].payload){root.zIndex=payload->zIndex;root.text=payload->text;root.tilemap=payload->tilemap;root.freeTiles=payload->freeTiles;}const auto& layer=m.layers[owner];if((layer.kind=="tilemap"&&!root.tilemap)||(layer.kind=="free-tile"&&!root.freeTiles))blanks.assign(root,layer);}
+ for(std::size_t i=0;i<count;++i)if(roots[i]!=i){auto& c=fixed.cels[i];const auto& root=fixed.cels[roots[i]];c.surface=root.surface;c.opacity=root.opacity;c.zIndex=root.zIndex;c.text=root.text;c.tilemap=root.tilemap;c.freeTiles=root.freeTiles;}
+ return fixed;
+}
 }
 ImportPalette prepareEditablePalette(const ReadManifest& m){
  ImportPalette p;p.columns=m.paletteColumns;p.nextId=m.nextColorId;p.order=m.paletteOrder;p.slots=m.paletteSlots;
@@ -66,26 +111,17 @@ PreparedImport prepareEditableImport(const ReadManifest& m) {
  std::set<std::pair<std::string,std::string>> importedSlots;std::set<std::string> importedIds;
  std::set<std::string> layerIds,frameIds;for(const auto& l:m.layers)corrupt(l.id.empty()||!layerIds.insert(l.id).second,"Duplicate or empty imported layer ID");for(const auto& f:m.frames)corrupt(f.id.empty()||!frameIds.insert(f.id).second,"Duplicate or empty imported frame ID");
  for(const auto& c:m.cels){corrupt(c.id.empty()||!layerIds.count(c.layerId)||!frameIds.count(c.frameId),"Invalid imported Cel identity/owner");corrupt(!importedSlots.emplace(c.layerId,c.frameId).second||!importedIds.insert(c.id).second,"Duplicate imported Cel ID or slot");}
+ if(auto repaired=repairImportedLinks(m))return prepareEditableImport(*repaired);
  if(!m.layers.empty()&&!m.frames.empty()&&m.cels.size()<m.layers.size()*m.frames.size()){
-  ReadManifest normalized=m;std::size_t serial=0,pixels=0;
+  ReadManifest normalized=m;std::size_t serial=0,pixels=0;const BlankImportedPayloads blanks(m);
   for(const auto& l:m.layers)for(const auto& f:m.frames)if(!importedSlots.count({l.id,f.id})){
    unsupported(!l.kind.empty()&&l.kind!="text"&&l.kind!="adjustment"&&l.kind!="tilemap"&&l.kind!="free-tile","Unsupported missing Cel owner kind");
    corrupt(!l.surface,"Missing layer raster for blank slot");ManifestCel c;
    do{c.id="import-blank-cel-"+std::to_string(++serial);}while(!importedIds.insert(c.id).second);
    c.layerId=l.id;c.frameId=f.id;c.opacity=l.opacity;
-   if(l.kind=="free-tile")c.freeTiles=free_tiles::CelData{};
-   if(l.kind=="tilemap"){
-    const auto model=std::find_if(m.cels.begin(),m.cels.end(),[&](const auto& existing){return existing.layerId==l.id&&existing.tilemap;});
-    if(model!=m.cels.end()){c.tilemap=*model->tilemap;c.tilemap->cells.assign(c.tilemap->cells.size(),std::nullopt);}
-    else{
-     // User-approved repair of legacy save/reopen failure without any template.
-     const auto owner=std::find_if(m.tilesets.begin(),m.tilesets.end(),[&](const auto& sheet){return sheet.id==l.tilemapTilesetId;});
-     corrupt(owner==m.tilesets.end(),"Missing layer tileset for empty grid");
-     c.tilemap=tiles::blankCel(m.width,m.height,owner->tileWidth,owner->tileHeight);
-    }
-   }
+   blanks.assign(c,l);
    auto surface=std::make_shared<ManifestRaster>();
-   if(f.id==m.activeFrameId){surface->width=l.surface->width;surface->height=l.surface->height;surface->offsetX=l.surface->offsetX;surface->offsetY=l.surface->offsetY;}else surface->width=surface->height=1;
+   if(f.id==m.activeFrameId){surface->width=l.surface->width;surface->height=l.surface->height;surface->offsetX=l.surface->offsetX;surface->offsetY=l.surface->offsetY;}else if(l.kind=="free-tile"){surface->width=m.width;surface->height=m.height;}else surface->width=surface->height=1;
    const auto count=std::size_t(surface->width)*surface->height;corrupt(count>64u*1024*1024-pixels,"Blank slot pixels exceed import budget");pixels+=count;surface->pixels.resize(count);c.surface=surface;normalized.cels.push_back(std::move(c));
   }
   return prepareEditableImport(normalized);

@@ -3569,6 +3569,24 @@ make-project-manifest-fixtures.cjs通过实际legacy encode/decode生成版本1�
 完整直接导入契约测试同时暴露重复图层／帧ID在补空槽前导致递归栈溢出（退出0xC00000FD）；补槽前校验非空唯一图层／帧／Cel标识、有效owner和唯一槽，重复输入返回Corrupt。更新三项此前已迁移却仍期望Unsupported的旧测试，实际断言缺槽补齐与活动Cel覆盖过期层缓存，未降低像素／坐标／输入不变校验。dropped-cel-final-build.log正式及工程目标构建、dropped-cel-import-build.log定向重建通过；project-manifest-tests、完整project-import-tests、project-save-tests、完整free-tile-project-tests通过对应dropped-cel日志，正式--cel-clipboard-check退出0，来源覆盖与diff通过。未做人工旧工程UI验收；缺失槽身份、畸形链接回落、全色彩模式及其余迁移领域仍未完成，整体INCOMPLETE。
 
 
+### 2026-11-08：畸形Cel链接立即修复（特殊自由瓦片策略已获用户确认）
+
+用户批准在打开时提前修复缺失／自指／跨层／循环Cel链接，保留当前画面；这比legacy normalizeAnimationCelLinks在ensureAnimationDocument时才修复更早，属于明确授权差异。原生按实际createAnimationCelLookup回落、normalizeAnimationCelLinks先断直接无效边再按序断环的结果，用反向边队列每个节点传播一次，索引查找为log复杂度，避免重复追踪长链。只在存在畸形组件时改写候选，输入DTO及用户历史不变；当前帧的像素、透明度、Z和结构载荷在归一化后恢复到最终根。缺槽网格模板／瓦片集索引预先构造，避免每个空槽反复扫描和复制再清空已有格子。
+
+540组真实legacy解码ZIP覆盖五种owner、六种缺陷、三个活动帧、alias fallback有／无和normal／reverse／tail-first存储顺序。canonical oracle运行实际legacy ensure/encode/decode，另外恢复当前结构载荷与Z，应用已授权空网格修复和实际source-aware自由瓦片归一化；不是未经修改的legacy输出，不据此声称严格等价。检查所有帧的根身份、精确像素／几何、透明度／Z／文字／格子／实例、普通与恢复保存重开、无导入历史、笔画或复制帧Undo/Redo。笔画撤销按既有稳定存储机制保留透明扩容，检查整个两表面并集的世界像素；导入和重开仍精确检查尺寸／偏移／字节。四组192节点正逆序坏链／环检查迭代归一化与输入不变。
+
+实际对照补正两个相关细节：无栅格alias走legacy normalizeCels运行时网格分支，稀疏清单cells长度不等于columns*rows时不保留该网格；非活动缺失自由瓦片槽按ensureAnimationDocument用画布尺寸空渲染，而非1×1。完整回归发现两项陈旧测试：自由瓦片自指期望拒绝改为断链且保留实例；空白帧测试越界读取1×1稀疏存储的第二像素改为检查整个canvasPixels，不修改应用帧行为。
+
+malformed-links-final-build.log正式程序及工程目标构建、malformed-links-import-build.log和malformed-links-regression-build.log通过；project-manifest-tests、project-import-tests、project-save-tests、完整free-tile-project-tests通过对应malformed-links日志；正式--cel-clipboard-check退出0，来源覆盖626文件与git diff检查通过。尚无人工UI验收，全量迁移INCOMPLETE。
+
+已获用户确认的精确例外：其中36组自由瓦片活动alias没有栅格fallback，但仍有实例。legacy初始像素缓存为空，保留实例并重渲染会显示瓦片；用户明确选择“保留全部实例并恢复显示（推荐，避免丢失实例）”。最终实现保留实例身份、坐标与来源，并在导入最终渲染阶段恢复显示；测试逐组检查实例非空、恢复后像素非空，不能宣称保持这些样本旧版的初始空白缓存。新增完整数组网格样本的三组缓存差异沿用既有“格子为权威数据、导入重渲染”规则，单独记录，不归为自由瓦片用户授权。
+
+
+#### 同阶段补查：坏链接不能掩盖资源损坏（2026-11-08）
+
+上一目标轮有实质进展（完成修复与回归），本轮从现有差异继续，不另开Agent或工程。新增18组完整cells数组／反序index／重复Cel原始ID对照，558组legacy兼容样本仍一致。另新增24组实际legacy拒绝ZIP（网格／自由瓦片×missing/self/cycle2×fallback有无×无效资源／无效项目），以及八组直接DTO破坏fallback检查；基线link-resource-baseline-tests.log表明原生会在修复覆盖tail载荷后接受损坏输入。读取边界现在按decodeManifestTilemap／decodeManifestFreeTiles在解析链接与丢弃无栅格运行时元数据前校验显式资源引用、重复实例和实例范围，直接DTO修复也在改写前校验。资源／tile索引及source别名表按每次操作构造一次，避免逐格重建索引。自由瓦片初始空白缓存与保留实例的取舍仍等用户，未将该决定推定为批准。
+
+
 ### 2026-11-08：显式Cel资源校验独立阶段
 
 对照实际legacy decodeManifestTilemap／decodeManifestFreeTiles，在解析链接、丢弃无栅格运行时元数据之前校验每个显式载荷。原生读取器此前将网格资源ID、自由瓦片来源及重复实例检查推迟到可编辑导入；坏链接归一化可能覆盖这些载荷并掩盖损坏。现在读取边界直接检查网格tile／tileset引用及尺寸，对临时自由Cel副本按source／tileset／tile别名归一化后校验实例唯一性、引用与范围，原解析DTO不变；资源索引和别名表每次读取建立一次，不逐格重建。
@@ -3576,3 +3594,11 @@ make-project-manifest-fixtures.cjs通过实际legacy encode/decode生成版本1�
 24组真实legacy拒绝ZIP从既有special-hole样本独立生成，覆盖网格／自由瓦片×missing／self／cycle2链接×fallback有无×两种错误；测试直接调用readProjectManifest，独立于待定的坏链接提前修复及自由瓦片显示策略。失败基线link-resource-baseline-tests.log复现Invalid manifest accepted；最终读取器边界检查及全部现有工程样本、直接导入／保存／完整自由瓦片回归通过link-resource对应日志；正式构建link-resource-final-build.log与补充测试构建link-resource-test-build.log通过，正式--cel-clipboard-check退出0。没有人工UI验收；坏链接立即修复的特殊自由瓦片显示决定仍待用户，全量迁移INCOMPLETE。该资源校验作为独立完成阶段提交推送，不夹带未确认的显示策略。
 
 额外独立验证：临时安装待提交读取器／测试／生成器，导入器使用未修改的HEAD版本；在唯一native/build构建并运行独立生成的全部样本，link-resource-independent-build.log及link-resource-independent-tests.log通过。随后逐字节校验并恢复所有待定修改，不依赖未提交修复获得绿灯。
+
+
+#### 本阶段最终裁定与交付证据（2026-11-08）
+
+资源校验独立阶段已提交46840489并推送origin/dev，HEAD与远端跟踪一致。用户随后明确批准无像素fallback自由瓦片保留全部实例并恢复显示，解除本阶段显示策略待定；原生算法无需删减实例，补充注释与显式回归断言。最终矩阵558组（原540加18完整网格／重复原始ID对照），覆盖全帧根、精确几何／像素／类型载荷、瓦片集身份／tileID／精确纹理、普通／恢复保存重开、编辑Undo/Redo；另24组坏资源拒绝与八组直接DTO坏fallback检查保留。严格区分36组授权自由瓦片缓存变化、三组既有权威网格重渲染缓存变化，以及导入／保存／历史检查，不用oracle适配后的通过声称未经修改legacy完全等价。
+
+
+最终正式构建malformed-links-approved-build.log、558组工程矩阵与拒绝检查malformed-links-approved-manifest-tests.log、完整project-import-tests／project-save-tests通过malformed-links-approved-import-tests.log／malformed-links-approved-save-tests.log；正式--cel-clipboard-check退出0。来源覆盖通过malformed-links-approved-provenance.log，diff检查通过。完整自由瓦片检查malformed-links-approved-free-tests.log退出0。严格来源门禁--strict退出1，符合全量仍INCOMPLETE的预期，不将覆盖通过等同于完成。没有人工旧工程UI验收，不据此关闭全量迁移目标。

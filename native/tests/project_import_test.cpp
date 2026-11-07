@@ -28,8 +28,19 @@ static void indexedImportOrder(){
  for(std::size_t i=0;i<m.cels.size();++i){const auto& source=m.cels[i];const auto& target=imported.timeline.cels[i];check(source.id==target.id&&source.frameId==target.frameId&&source.layerId==target.layerId);if(source.linkedCelId.empty())check(target.surface&&target.surface->pixels==raster->pixels);else check(!target.surface&&target.linkedCelId==source.linkedCelId);}
  moon::timeline::Timeline timeline(imported.timeline);check(timeline.diagnoseLinks().empty());for(int l=0;l<layers;++l){const auto resolved=timeline.resolveSurface("cel:"+std::to_string(l)+":"+std::to_string(frames-1));check(resolved.source&&resolved.source->id=="cel:"+std::to_string(l)+":0"&&resolved.surface->pixels==raster->pixels);}
 }
+static void malformedIndexedImport(){
+ // A reverse-serialized invalid chain/cycle must flatten without recursive
+ // traversal, preserve the active fallback and leave input DTOs untouched.
+ for(bool cycle:{false,true})for(bool reverse:{false,true}){
+  auto m=sample();m.frames.clear();m.cels.clear();constexpr int count=192;
+  for(int i=0;i<count;++i){const auto frame="broken-frame-"+std::to_string(i);m.frames.push_back({frame,100});ManifestCel c;c.id="broken-cel-"+std::to_string(i);c.layerId=m.activeLayerId;c.frameId=frame;c.surface=m.layers.front().surface;c.opacity=.25;c.zIndex=i%9;c.linkedCelId=i?"broken-cel-"+std::to_string(i-1):cycle?"broken-cel-"+std::to_string(count-1):"missing-root";m.cels.push_back(std::move(c));}
+  m.activeFrameId=m.frames.back().id;if(reverse)std::reverse(m.cels.begin(),m.cels.end());const auto original=m.cels;const auto prepared=prepareEditableImport(m);moon::timeline::Timeline timeline(prepared.timeline);check(timeline.diagnoseLinks().empty()&&timeline.state().cels.size()==count);
+  const auto expectedRoot=cycle&&reverse?"broken-cel-"+std::to_string(count-1):"broken-cel-0";
+  for(std::size_t i=0;i<m.cels.size();++i){check(m.cels[i].linkedCelId==original[i].linkedCelId&&m.cels[i].surface==original[i].surface);const auto r=timeline.resolveSurface(m.cels[i].id);check(r.source&&r.source->id==expectedRoot&&r.source->zIndex==(count-1)%9&&r.source->opacity==.25&&r.surface->pixels==m.layers.front().surface->pixels);}
+ }
+}
 int main(int argc,char** argv) {try {
- indexedImportOrder();
+ indexedImportOrder();malformedIndexedImport();
  {auto source=sample();source.layers[0].groupId="absent-group";auto ready=prepareEditableImport(source);check(!ready.timeline.layers[0].groupId);auto d=createEditableDocument(std::move(ready));check(!d.layer().groupId);check(source.layers[0].groupId=="absent-group");}
  auto m=sample();auto out=prepareEditableImport(m);
  check(out.id==m.id&&out.timeline.layers[0].id==m.activeLayerId&&out.timeline.frames[0].duration==130&&out.timeline.cels[0].id=="cel:|");
@@ -51,8 +62,7 @@ int main(int argc,char** argv) {try {
  rejects([](auto& m){m.frames.push_back(m.frames[0]);},corrupt);
  rejects([](auto& m){auto c=m.cels[0];c.id="other";m.cels.push_back(c);},corrupt);
  rejects([](auto& m){m.cels[0].layerId="missing";},corrupt);
- rejects([](auto& m){m.cels[0].linkedCelId="missing";},corrupt);
- rejects([](auto& m){m.cels[0].linkedCelId=m.cels[0].id;},corrupt);
+ for(bool self:{false,true}){auto m=sample();m.cels[0].linkedCelId=self?m.cels[0].id:"missing";const auto ready=prepareEditableImport(m);check(ready.timeline.cels[0].linkedCelId==std::nullopt);auto d=createEditableDocument(ready);check(d.pixels()==m.cels[0].surface->pixels&&d.historyPosition()==0&&d.timeline().diagnoseLinks().empty());check(!m.cels[0].linkedCelId.empty());}
  rejects([](auto& m){m.activeFrameId="missing";},corrupt);
  {auto m=sample();m.frames.push_back({"other",100});const auto ready=prepareEditableImport(m);check(ready.timeline.cels.size()==2&&ready.timeline.cels.back().surface->width==1&&ready.timeline.cels.back().surface->pixels==std::vector<std::uint32_t>{0});check(m.cels.size()==1);}
  {auto m=sample();auto s=std::make_shared<ManifestRaster>(*m.cels[0].surface);s->offsetX=1;m.cels[0].surface=s;auto d=createEditableDocument(prepareEditableImport(m));check(d.activeSurfaceIfPresent()->offsetX==1&&d.pixels()==s->pixels&&d.historyPosition()==0);}

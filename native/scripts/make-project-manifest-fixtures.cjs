@@ -185,6 +185,42 @@ registerHooks({
  for(const mode of ['tilemap-no-payload','tilemap-text','free-no-payload','raster-tilemap','raster-free']){
   const source=mode.startsWith('free')||mode==='raster-free'?'free-tile':'tilemap';const r=unzipSync(fs.readFileSync(path.join(out,`special-hole-${source}-0.moonsprite`))),m=JSON.parse(strFromU8(r['manifest.json'])),c=m.document.animation.cels[0];delete c.dataFile;if(mode==='tilemap-no-payload')delete c.tilemap;else if(mode==='free-no-payload')delete c.freeTiles;else if(mode==='tilemap-text')c.text={text:'invalid'};else {delete m.document.layers[0].kind;delete m.document.layers[0].tilemapTilesetId;delete m.document.layers[0].freeTileSources;delete m.document.layers[0].freeTileSetId;}r['manifest.json']=strToU8(JSON.stringify(m));const bytes=zipSync(r);let rejected=false;try{decodeProject(bytes);}catch{rejected=true;}if(!rejected)throw new Error('Dropped raster invalid payload accepted by legacy');fs.writeFileSync(path.join(out,`cel-payload-reject-${mode}.moonsprite`),bytes);
  }
+ const malformedLinkOracle=[];
+ for(const kind of ['raster','text','adjustment','tilemap','free-tile'])for(const mode of ['missing','self','cross','cycle2','cycle3','dropped-root','runtime-grid-order','runtime-grid-duplicate'])for(const active of [0,1,2])for(const fallback of [false,true])for(const order of ['normal','reverse','tail-first']){
+  if(mode.startsWith('runtime-grid')&&(kind!=='tilemap'||fallback))continue;
+  const r=kind==='raster'?{...files}:unzipSync(fs.readFileSync(path.join(out,`special-hole-${kind}-0.moonsprite`))),m=kind==='raster'?structuredClone(manifest):JSON.parse(strFromU8(r['manifest.json'])),a=m.document.animation,l=m.document.layers[0],template=a.cels[0];a.frames=[0,1,2].map(i=>({id:`bad-link-frame-${i}`,duration:100+i*50}));a.cels=[];a.activeFrameId=a.frames[active].id;l.opacity=.6;
+  for(let i=0;i<3;i++){const c={...template,id:`bad-link-${i}`,frameId:a.frames[i].id,dataFile:`cels/bad-link-${i}.rgba`,dataEncoding:'raw',opacity:.2+i*.3,zIndex:i*3-2};const pixels=new Uint8Array(m.document.width*m.document.height*4);for(let p=0;p<pixels.length;p+=4)pixels.set([10+i*40,20,30,255],p);
+   if(kind==='raster'){c.offsetX=i-1;c.offsetY=1-i;}
+   if(kind==='text')c.text={text:`Frame ${i}`,fontSize:10+i,lineSpacing:i,letterSpacing:i,color:{r:10+i*40,g:20,b:30,a:255}};
+   if(kind==='tilemap'){c.tilemap={...structuredClone(template.tilemap),cells:[{index:i,tilesetId:'hole-sheet',tileId:'hole-tile'}]};pixels.fill(0);for(let y=0;y<2;y++)for(let x=0;x<2;x++)pixels.set([10,20,30,255],(((i>>1)*2+y)*4+(i%2)*2+x)*4);}
+   if(kind==='free-tile'){c.freeTiles={instances:[{id:`bad-instance-${i}`,sourceId:'hole-source',x:i,y:1}]};pixels.fill(0);for(let x=i;x<i+2;x++)pixels.set([10,20,30,255],(4+x)*4);}
+   r[c.dataFile]=pixels;a.cels.push(c);}
+  const [root,alias,tail]=a.cels;alias.linkedCelId=(mode==='missing'||mode.startsWith('runtime-grid'))?'missing-cel':mode==='self'?alias.id:mode==='cross'?'other-layer-cel':root.id;tail.linkedCelId=mode==='cycle3'?root.id:alias.id;
+  if(mode==='cycle2'||mode==='cycle3')root.linkedCelId=alias.id;if(mode==='cycle3')alias.linkedCelId=tail.id;
+  if(mode==='cross'){const other={...l,id:'other-link-layer'};m.document.layers.push(other);for(let i=0;i<3;i++)a.cels.push({...template,id:i===0?'other-layer-cel':`other-link-${i}`,layerId:other.id,frameId:a.frames[i].id});}
+  if(mode==='dropped-root'){delete r[root.dataFile];delete root.dataFile;}
+  if(!fallback)for(const c of [alias,tail]){delete r[c.dataFile];delete c.dataFile;}
+  if(order==='reverse')a.cels.reverse();else if(order==='tail-first')a.cels=[tail,root,alias,...a.cels.slice(3)];
+  if(mode.startsWith('runtime-grid')){alias.tilemap={...alias.tilemap,cells:[3,2,1,0].map(index=>({index,tilesetId:'hole-sheet',tileId:'hole-tile',flipHorizontal:index>1,rotation:index}))};if(mode==='runtime-grid-duplicate')a.cels.unshift({...alias,frameId:'absent-frame',tilemap:structuredClone(template.tilemap)});}
+  const keep=new Set([l.dataFile,...a.cels.map(c=>c.dataFile).filter(Boolean)]);for(const k of Object.keys(r))if(k.startsWith('cels/')&&!keep.has(k))delete r[k];r['manifest.json']=strToU8(JSON.stringify(m));const bytes=zipSync(r),decoded=decodeProject(bytes);
+  const {createAnimationCelLookup}=await import(pathToFileURL(path.join(legacy,'src/renderer/src/core/animation.ts')));
+  const snapshot=d=>{const lookup=createAnimationCelLookup(d.animation);return {active:Array.from(d.layers[0].pixels),cels:d.animation.cels.map(c=>{const source=lookup.resolve(c);return {id:c.id,frame:c.frameId,link:c.linkedCelId??null,source:source.id,width:source.surface?.width??0,height:source.surface?.height??0,pixels:source.surface?Array.from(source.surface.pixels):[]};})};};
+  const before=snapshot(decoded);let directSaved,directSavedError;try{directSaved=snapshot(decodeProject(encodeProject(decodeProject(bytes),{includePreview:false})));}catch(e){directSavedError=e.message;}
+  // Approved policy keeps active typed payload and Z as well as its pixels.
+  // User additionally confirmed retaining no-raster free instances and
+  // restoring their display, rather than discarding them to keep a blank cache.
+  // Legacy alone can lose these when a cycle is broken or an alias lacks data.
+  const initialLookup=createAnimationCelLookup(decoded.animation),activePayload=new Map(decoded.layers.map(layer=>{const source=initialLookup.resolve(initialLookup.at(layer.id,a.activeFrameId));return [layer.id,source?{text:source.text,tilemap:source.tilemap,freeTiles:source.freeTiles,zIndex:source.zIndex}:undefined];}));
+  ensureAnimationDocument(decoded);const lookup=createAnimationCelLookup(decoded.animation);let blankGridRepairs=0;
+  const blankGrid=layer=>{const model=decoded.animation.cels.find(c=>c.layerId===layer.id&&c.tilemap)?.tilemap;if(model)return {...model,cells:model.cells.map(()=>null)};const sheet=decoded.tilesets.find(s=>s.id===layer.tilemapTilesetId);return tileModule.createTilemapCelData(decoded.width,decoded.height,sheet.tileWidth,sheet.tileHeight);};
+  for(const c of decoded.animation.cels){if(c.linkedCelId)continue;const owner=decoded.layers.find(layer=>layer.id===c.layerId);if(owner.kind==='tilemap'&&!c.tilemap){c.tilemap=blankGrid(owner);c.surface=tileModule.renderTilemapSurface(c.tilemap,decoded.tilesets,'rgba');blankGridRepairs++;}if(owner.kind==='free-tile'&&!c.freeTiles)c.freeTiles={instances:[]};}
+  for(const layer of decoded.layers){const root=lookup.resolve(lookup.at(layer.id,a.activeFrameId)),payload=activePayload.get(layer.id);if(payload){root.text=payload.text;root.tilemap=payload.tilemap;root.freeTiles=payload.freeTiles;root.zIndex=payload.zIndex;}if(layer.kind==='tilemap'&&!root.tilemap){root.tilemap=blankGrid(layer);blankGridRepairs++;}if(layer.kind==='free-tile'&&!root.freeTiles)root.freeTiles={instances:[]};}
+  // A no-raster modern alias passes through legacy normalization without its
+  // source collection, accidentally producing legacy tileId fields. Preserve
+  // every instance while using the actual source-aware normalizer to repair it.
+  if(kind==='free-tile')for(const c of decoded.animation.cels)if(c.freeTiles){const owner=decoded.layers.find(layer=>layer.id===c.layerId);c.freeTiles=freeModule.normalizeFreeTileCelData(c.freeTiles,freeModule.freeTileSourceRefs(owner.freeTileSources,decoded.tilesets),true);if(!c.freeTiles)throw new Error('Cannot preserve malformed-link free tile instances');}
+  const ensured=snapshot(decoded),canonical=encodeProject(decoded,{includePreview:false}),reopened=snapshot(decodeProject(canonical));const file=`malformed-links-${kind}-${mode}-${active}-${Number(fallback)}${order==='normal'?'':`-${order}`}.moonsprite`;fs.writeFileSync(path.join(out,file),bytes);fs.writeFileSync(path.join(out,file.replace('.moonsprite','-canonical.moonsprite')),canonical);malformedLinkOracle.push({file,kind,mode,active,fallback,order,before,ensured,directSaved,directSavedError,blankGridRepairs,reopened});
+ }
  const corruptLinkFixtures=[];
  for(const kind of ['tilemap','free-tile'])for(const defect of ['missing','self','cycle2'])for(const fallback of [false,true])for(const problem of ['missing-resource','bad-item']){
   const r=unzipSync(fs.readFileSync(path.join(out,`special-hole-${kind}-0.moonsprite`))),m=JSON.parse(strFromU8(r['manifest.json'])),a=m.document.animation,root=a.cels[0],c={...structuredClone(root),id:'corrupt-linked-payload',frameId:a.frames[1].id};c.linkedCelId=defect==='missing'?'absent-cel':defect==='self'?c.id:root.id;if(defect==='cycle2')root.linkedCelId=c.id;if(!fallback)delete c.dataFile;a.cels.push(c);
@@ -192,5 +228,7 @@ registerHooks({
   r['manifest.json']=strToU8(JSON.stringify(m));const bytes=zipSync(r);let rejected=false;try{decodeProject(bytes);}catch{rejected=true;}if(!rejected)throw new Error('Legacy unexpectedly accepted corrupt linked payload');const file=`malformed-link-resource-${kind}-${defect}-${Number(fallback)}-${problem}.moonsprite`;fs.writeFileSync(path.join(out,file),bytes);corruptLinkFixtures.push(file);
  }
  fs.writeFileSync(path.join(out,'malformed-link-resource-fixtures.json'),JSON.stringify(corruptLinkFixtures,null,2));
+ fs.writeFileSync(path.join(out,'malformed-links-oracle.json'),JSON.stringify(malformedLinkOracle,null,2));
+ const changed=malformedLinkOracle.filter(x=>JSON.stringify(x.before.active)!==JSON.stringify(x.reopened.active));console.log(`Malformed links: ${malformedLinkOracle.length} legacy cases, ${changed.length} change displayed pixels after ensure/save`);
  console.log('Generated project manifest fixtures through legacy encodeProject');
 })().catch(e=>{console.error(e);process.exitCode=1;});

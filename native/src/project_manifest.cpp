@@ -297,12 +297,18 @@ static ReadManifest readManifestWithClock(std::shared_ptr<const Bytes> bytes,Lim
       // Cels with a path but unusable geometry; empty-slot adaptation happens
       // later, after the remaining valid grid templates have been collected.
       const auto path=value(rasterMetadata,"dataFile");const bool hasPath=path&&path.ValueType()==JsonValueType::String&&!path.GetString().empty();
-      if(!hasPath){rasterMetadata.Remove(L"dataFile");if(cel.linkedCelId.empty())continue;}
+      if(!hasPath){rasterMetadata.Remove(L"dataFile");if(cel.linkedCelId.empty())continue;
+       // decodeProject keeps normalizeCels' runtime grid in this branch,
+       // not the sparse manifest grid decoded above. A sparse cells array
+       // shorter than columns*rows has no runtime payload to retain.
+       if(cel.tilemap){const auto cells=textSource.GetNamedObject(L"tilemap").GetNamedArray(L"cells");if(cells.Size()!=cel.tilemap->cells.size())cel.tilemap.reset();else{auto ordered=cel.tilemap->cells;for(unsigned i=0;i<cells.Size();++i)ordered[i]=cel.tilemap->cells[std::size_t(cells.GetObjectAt(i).GetNamedNumber(L"index"))];cel.tilemap->cells=std::move(ordered);}}
+      }
       else {const auto format=value(rasterMetadata,"format");if(!format||format.ValueType()!=JsonValueType::String||(format.GetString()!=L"rgba"&&format.GetString()!=L"indexed"))bad("cel raster format");auto validDimension=[&](const char* name){const auto n=value(rasterMetadata,name);if(!n||n.ValueType()!=JsonValueType::Number)return false;const auto d=n.GetNumber();return std::isfinite(d)&&std::floor(d)==d&&d>=1&&d<=9007199254740991.;};if(!validDimension("width")||!validDimension("height")){consumedFiles.insert(winrt::to_string(path.GetString()));continue;}}
       for(const auto* name:{L"offsetX",L"offsetY"}){const auto raw=rasterMetadata.TryLookup(name);double n=0;if(raw&&raw.ValueType()==JsonValueType::Number&&std::isfinite(raw.GetNumber()))n=std::trunc(raw.GetNumber());if(n<std::numeric_limits<int>::min()||n>std::numeric_limits<int>::max())throw Error(ErrorKind::Limit,"Cel offset exceeds native coordinates");rasterMetadata.Insert(name,JsonValue::CreateNumberValue(n));}
       cel.surface=raster(rasterMetadata);if(!cel.surface && cel.linkedCelId.empty() && out.colorMode=="rgba") bad("missing cel raster");out.cels.push_back(std::move(cel));
     }
-    for(const auto& cel:out.cels) if(!cel.linkedCelId.empty() && !celIds.count(cel.linkedCelId)) bad("missing linkedCelId");
+    // Broken targets are retained for the explicitly approved editable-import
+    // repair; every explicit fallback raster was validated above.
 
     // Manifest normalization drops invalid slot candidates before decodeProject
     // validates owner existence and duplicate semantics.
