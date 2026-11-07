@@ -1547,11 +1547,12 @@ void Editor::smokeModalComponents() {
   }
 
 void Editor::smokeWorkspace() {
+    const bool modalLayoutOnly=std::wstring(GetCommandLineW()).find(L"--workspace-modal-layout-only")!=std::wstring::npos;
     if(std::wstring(GetCommandLineW()).find(L"--replace-cell-selection-only")!=std::wstring::npos){smokeColorReplacement();return;}
-    if(std::wstring(GetCommandLineW()).find(L"--named-workspace-only")!=std::wstring::npos){smoke_=true;homeOpen_=false;documentOpen_=true;smokeNamedWorkspacePresets();return;}
+    if(!modalLayoutOnly&&std::wstring(GetCommandLineW()).find(L"--named-workspace-only")!=std::wstring::npos){smoke_=true;homeOpen_=false;documentOpen_=true;smokeNamedWorkspacePresets();return;}
 
     smoke_=true;dockWidth_=0;paletteShare_=0;timelineHeight_=109;modalGeometry_.clear();
-    smokeNamedWorkspacePresets();
+    if(!modalLayoutOnly)smokeNamedWorkspacePresets();
     // Preset restoration can install managed docking; the following legacy
     // preview fixture dispatches directly to the standalone preview widget.
     historyPanelOpen_=false;docking_=panels::Model{};previewPanelOpen_=true;palettePanelOpen_=colorPickerOpen_=layersPanelOpen_=true;previewPanel_->setBounds(gfx::Rect(bounds().x+400,bounds().y+180,360,240));refresh();
@@ -1728,11 +1729,11 @@ void Editor::smokeWorkspace() {
 
     if(modalBounds(uiLogical(bounds())).w!=modalMinimumSize().w)throw std::runtime_error("Modal content width floor");
 
-    const auto footer=keep_->bounds();modal=dialogDisplayBounds();
+    const auto footer=keep_->bounds(),opacityBefore=layerOpacityRange_->bounds();modal=dialogDisplayBounds();
 
     drag(gfx::Point(modal.x2()-2,modal.y2()-2),gfx::Point(40,40));
 
-    if(keep_->bounds().y!=footer.y+40 || layerOpacityRange_->bounds().w!=modal.w-8*uiScale+40)throw std::runtime_error("Dialog controls did not reflow");
+    if(keep_->bounds().y!=footer.y+40 || layerOpacityRange_->bounds().w!=opacityBefore.w+40 || layerOpacityRange_->bounds().x-dialogDisplayBounds().x!=6*uiScale || dialogDisplayBounds().x2()-layerOpacityRange_->bounds().x2()!=6*uiScale)throw std::runtime_error("Dialog controls did not reflow");
 
     const auto savedModals=modalGeometry_;const auto savedPreview=previewPanel_->bounds();
 
@@ -1744,7 +1745,7 @@ void Editor::smokeWorkspace() {
 
     if(dockWidth_!=savedWidth || timelineHeight_!=savedHeight || paletteShare_!=savedShare || modalGeometry_!=savedModals || previewPanel_->bounds()!=savedPreview)
 
-      throw std::runtime_error("Workspace size preferences roundtrip failed");
+      throw std::runtime_error("Workspace size preferences roundtrip failed dock="+std::to_string(dockWidth_==savedWidth)+" height="+std::to_string(timelineHeight_==savedHeight)+" share="+std::to_string(paletteShare_==savedShare)+" modals="+std::to_string(modalGeometry_==savedModals)+" preview="+std::to_string(previewPanel_->bounds()==savedPreview)+" encoded="+preferences.str());
 
     std::istringstream invalid("moonsprite-workspace-sizes-v1\ndock -1 2 -1\nmodal layer-opacity 0 0 -1 -1\n");readWorkspaceSizes(invalid);
 

@@ -3347,3 +3347,9 @@ pending-tile-center-build.log正式Release及free/tile测试构建exit0，fixtur
 继续定位先前完整workspace失败。实际editor_refresh.cpp在历史面板打开时自动initializeDocking并启用custom；旧独立PreviewPanel测试仍直接给控件发鼠标消息，用户已有历史面板/布局配置使其进入另一事件路径。测试在命名预设检查后明确关闭历史面板、恢复standalone模型及固定预览几何，在精确位移和后续测试前恢复对应布局。增加捕获/精确位移失败的步骤、模式、坐标诊断，不修改产品交互、不删除用户配置或缓存。
 
 最终正式构建exit0（preview-capture-build.log）。--workspace-check已越过先前预览标题捕获、拖动、角缩放、关闭重开、9/10物理像素连续位移断言，后续在“Dialog controls did not reflow”失败，完整workspace仍未通过，后续分阶段增量重绘检查尚未执行。本阶段保留这一具体未解决问题，未做人工UI验收。来源检查通过（preview-capture-provenance.log），diff通过；全量迁移仍INCOMPLETE。
+
+### 2026-11-07：对话框缩放与紧凑尺寸读回
+
+工作区检查的控件排版断言仍使用旧4px左右留白，实际图层属性为6px；改为验证宽度随40物理像素增量及左右6×uiScale留白，同时保留footer位移检查。随后实际发现配置读回缺陷：有效layer-opacity宽132被readWorkspaceSizes统一width>=240拒绝。读取改为接受正数且既有8192上限内的几何，打开时仍由modalBounds/modalMinimumSize按对话框限制；负尺寸仍拒绝。
+
+增加--workspace-modal-layout-only定向入口，运行现有完整对话框/工作区布局断言并跳过命名预设测试；需同时--workspace-check --named-workspace-only退出。正式构建exit0（modal-reflow-final-build.log），该定向运行exit0，验证边缩放、排版、尺寸原样读回、非法尺寸拒绝及小窗口适应。完整--workspace-check本轮先在“Named reset retains initial hidden mode”失败，未宣称完整通过，后续增量重绘未执行。来源检查通过（modal-reflow-check-provenance.log），diff通过；无人工UI验收，全量迁移仍INCOMPLETE。

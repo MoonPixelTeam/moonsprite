@@ -345,7 +345,7 @@ void Editor::readWorkspaceSizes(std::istream& in) {
 
         if(kind=="preview" && r.w>=180 && r.h>=120 && previewPanel_)previewPanel_->setBounds(r);
 
-        if(kind=="modal" && r.w>=240 && r.h>=67)for(int i=1;i<=int(Pending::Preferences);++i)
+        if(kind=="modal" && r.w>0 && r.h>0)for(int i=1;i<=int(Pending::Preferences);++i)
 
           if(key==modalSizeKey(Pending(i)))modalGeometry_[Pending(i)]=r;
 
