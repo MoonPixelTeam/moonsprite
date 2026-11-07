@@ -3383,3 +3383,9 @@ pending-tile-center-build.log正式Release及free/tile测试构建exit0，fixtur
 继续特殊图层替换语义核对时，发现上一阶段蒙版提交从预览快照整份安装mask slots，可能回退不推进contentRevision的元数据变化。legacy tools-fill.ts替换记录像素edit，workspace-commands-color.ts提交pixel edit，不回滚整份蒙版列表。原生改为从当前mask列表构造after，只安装目标mask surface，保留当前属性、链接及其他蒙版。沿用上下文/锁/版本/原始表面检查；Undo/Redo两侧都捕获当前元数据。
 
 document-raster-history-tests新增直接fixture在预览期间变更moveWithOwner和autoLinkAnimationCels，验证提交、Undo、Redo保留元数据且只变化目标像素。正式及测试构建exit0（mask-replacement-metadata-build.log），完整document-raster-history-tests和free-tile-project-tests通过（mask-replacement-metadata-history-tests.log、mask-replacement-metadata-free-tests.log），实际颜色替换对话框定向检查退出0。来源检查通过（mask-replacement-metadata-provenance.log），diff通过。无人工UI验收，特殊图层本体替换语义仍待进一步核对，全量迁移仍INCOMPLETE。
+
+### 2026-11-07：颜色替换选区裁剪画布边界
+
+继续特殊图层替换保存链路调查，核对legacy tools-fill.ts::replaceLayerColor及tools-pixel-edit.ts::clampSelection发现明确边界差异：带选区替换先裁剪画布，原生此前只检查selectionContains，可能替换选区覆盖的画布外存储像素。原生增加画布边界条件，坐标先用int64相加避免有符号溢出；不带选区仍遍历全部所属表面存储，与旧版一致。特殊图层本体替换尚未开放或宣称完成。
+
+新增宽2画布、存储x=-1..2的四像素表面与覆盖全部存储选区，对照选区/整体两种模式的独立预览、单次提交及Undo/Redo。正式/测试构建exit0（replacement-selection-bounds-build.log），完整document-raster-history-tests通过（replacement-selection-bounds-tests.log），实际颜色替换对话框定向检查退出0，来源检查通过（replacement-selection-bounds-provenance.log），diff通过。未人工UI验收，全量迁移仍INCOMPLETE。

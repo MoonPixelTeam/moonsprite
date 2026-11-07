@@ -954,7 +954,8 @@ bool Document::updateColorReplacement(Pixel source,Pixel replacement,bool enable
  if(enabled && source!=replacement)for(const auto& id:p.targets){
   timeline::Surface* s=nullptr;const bool mask=!p.maskContext.empty();if(mask){for(auto& slot:preview.state_.masks)if(slot.mask.id==id)s=&slot.mask.surface;}else s=preview.mutableOwnedSurface(id);if(!s)throw std::logic_error("Missing replacement owner");
   for(int y=0;y<s->height;++y)for(int x=0;x<s->width;++x){auto& value=s->pixels[std::size_t(y)*s->width+x];
-   if(value==source && (!p.clipSelection || selectionContains(p.selection,x+s->offsetX,y+s->offsetY)))value=mask?timeline::normalizedMaskPixel(replacement):replacement;
+   const auto wx=std::int64_t(x)+s->offsetX,wy=std::int64_t(y)+s->offsetY;
+   if(value==source && (!p.clipSelection || (wx>=0&&wy>=0&&wx<width_&&wy<height_&&selectionContains(p.selection,int(wx),int(wy)))))value=mask?timeline::normalizedMaskPixel(replacement):replacement;
   }
  }
  p.preview=std::move(preview);++gradientRevision_;return true;
