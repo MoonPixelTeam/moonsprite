@@ -3849,3 +3849,9 @@ palette-apply-index-build.log正式Release、工程与核心目标构建通过�
 接续11c2d5ac，核对实际platform_palette.rs::ordered_image_colors／png_imported_colors／image_imported_colors。PNG／JPEG／BMP／ICO原生WIC路径此前显式分配width×height RGBA，再全图去重；现按至多16384像素或至少一整行的有界条带转换，立即按行优先收集首现RGBA，保留透明RGB、重复、尺寸及65536种颜色上限。窄高图按多行批次调用WIC，避免每行一次COM调用。GIF仍按完整逻辑画布处理，WebP仍用既有Skia首帧解码；不声称这两条路径或WIC内部缓存也已流式化。
 
 完整格式回归扩展索引PNG1／2／4／8位跨行打包、透明RGB及顺序，65536唯一色成功／65537失败、8192行低色数图；保留既有BMP／JPEG／ICO／GIF／WebP、CRC／灰度／16位PNG及尺寸拒绝。验证：palette-image-bands-build.log唯一正式Release和图片／通用导入目标构建退出0；palette-image-bands-tests.log全部图片格式夹具及新增边界通过，palette-image-bands-import-tests.log退出0，正式--palette-import-check退出0。来源627文件覆盖通过，strict因既有缺口退出1，diff通过。32×8192夹具自身RGBA缓冲从1048576字节降为65536字节（按实际分配表达式核算），未测量WIC内部峰值或人工文件选择器／图像验收。全量迁移仍INCOMPLETE。
+
+### ASE／ACO真实旧版解析回归（2026-11-08）
+
+接续0635a732，本批不凭少量手写预期宣称Adobe格式等价。新增make-palette-adobe-fixtures.py，直接截取platform_palette.rs的read_u16_be至aco_imported_colors原函数，rustc独立编译执行；只增加PaletteColor数据形状和二进制传输驱动，算法未经改写。固定输入生成718组实际Rust成功／拒绝及RGBA结果，保存源码SHA256；原生逐项比较解析器和通用导入入口，成功时也核对未自行恢复旧版跳过的名称。
+
+覆盖256个8位半步浮点取整、越界／NaN／无穷、RGB／GRAY／CMYK、固定种子96组ASE混合分组与96组ACO模型、12色相边界×3饱和度×3明度、UTF16代理对名称跳过、v1/v2／首段选择、未知模型、原版忽略的ASE版本、代表文件每字节截断、长度上溢／条目上限／空文件。本批718组均未发现解析算法差异，因此保留生产实现，新增可再生兼容证据；不以测试通过关闭全域或长期桌面验收。验证：palette-adobe-oracle-build.log定向Adobe目标构建退出0，palette-adobe-oracle-tests.log718组对照与既有夹具退出0，palette-adobe-oracle-import-tests.log通用导入回归退出0。再次生成header哈希完全相同。来源629文件覆盖通过，strict因已知全量缺口退出1，diff通过。本批只新增测试与生成器，未改生产源码，因此未重建无关正式UI目标或重复人工界面验收。全量迁移仍INCOMPLETE。
