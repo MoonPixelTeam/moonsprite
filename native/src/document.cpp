@@ -1562,6 +1562,7 @@ std::size_t Document::Edit::bytes() const {
  if(beforeSourceProperties){std::size_t bytes=256;for(const auto* value:{beforeSourceProperties.get(),afterSourceProperties.get()})bytes+=value->source.name.size()+value->source.description.size()+value->source.preservedJson.size()+value->tilesetName.size()*sizeof(char32_t);return bytes;}
  if(beforeRollback)return rollbackBytes;if(beforeSlices)return (beforeSlices->items.size()+afterSlices->items.size())*48;
  if(celProperties)return celProperties->historyBytes();if(layerMetadataBytes)return *layerMetadataBytes;
+  if(paletteKind==1)return (beforePalette->entries.size()+afterPalette->entries.size())*40+(beforePalette->slots.size()+afterPalette->slots.size())*4+64;
   if(paletteKind==2)return (beforePalette->order().size()+afterPalette->order().size()+beforePalette->slots.size()+afterPalette->slots.size()+beforePalette->selected.size()+afterPalette->selected.size())*4+32;
   if(paletteKind==10)return (beforePalette->entries.size()+afterPalette->entries.size())*40+(beforePalette->slots.size()+afterPalette->slots.size()+(beforePalette->independentOrder?beforePalette->independentOrder->size():0)+(afterPalette->independentOrder?afterPalette->independentOrder->size():0))*4;
   if(paletteKind==9)return (beforePalette->slots.size()+afterPalette->slots.size()+(beforePalette->independentOrder?beforePalette->independentOrder->size():0)+(afterPalette->independentOrder?afterPalette->independentOrder->size():0))*sizeof(int);
@@ -1748,15 +1749,14 @@ void Document::pastePaletteColors(const std::vector<Pixel>& colors,const std::ve
 }
 
 int Document::addPaletteColor(Pixel color,bool selectAdded,std::optional<std::size_t> targetSlot,const std::vector<int>* viewSlots,int viewColumns) {
-  if(!viewSlots && targetSlot && (*targetSlot>=palette_.slots.size() || palette_.slots[*targetSlot]))
-    throw std::invalid_argument("Palette target must be an existing empty slot");
-  cancelStroke();Edit edit{{},state_,nextState_};edit.beforePalette=palette_;normalizePaletteSnapshot(*edit.beforePalette,false);edit.paletteKind=1;const int id=allocatePaletteId(palette_);palette_.slots=currentPaletteSlots(palette_);if(viewSlots){palette_.slots=normalizePaletteSlots(palette_.entries,palette_.order(),*viewSlots,viewColumns>0?viewColumns:palette_.columns);if(targetSlot&&*targetSlot>=palette_.slots.size())palette_.slots.resize(*targetSlot+1,0);if(viewColumns>0)palette_.columns=std::clamp(viewColumns,1,256);}
-  const auto name=std::to_string(id);
-  palette_.entries.push_back({id,std::u32string(name.begin(),name.end()),color});
-  auto slot=targetSlot?palette_.slots.begin()+*targetSlot:std::find(palette_.slots.begin(),palette_.slots.end(),0);
-  if(slot==palette_.slots.end()) {const auto n=palette_.slots.size();palette_.slots.resize(n+palette_.columns);palette_.slots[n]=id;} else *slot=id;
+  requirePaletteIds(palette_,1);if(targetSlot&&*targetSlot>=65536)throw std::length_error("Palette target exceeds native slot range");
+  cancelStroke();Edit edit{{},state_,nextState_};edit.beforePalette=palette_;normalizePaletteSnapshot(*edit.beforePalette,false);edit.paletteKind=1;const int id=allocatePaletteId(palette_);auto slots=currentPaletteSlots(palette_);
+  const auto append=[&](std::vector<int>& into,int columns){const auto hole=std::find(into.begin(),into.end(),0);if(hole!=into.end())*hole=id;else{const auto n=into.size();into.resize(n+columns,0);into[n]=id;}};
+  append(slots,palette_.columns);
+  if(targetSlot){slots=viewSlots?*viewSlots:edit.beforePalette->slots;const int columns=viewColumns>0?std::clamp(viewColumns,1,256):palette_.columns;append(slots,columns);slots=movedPaletteSlots(slots,{id},int(*targetSlot),id,columns);palette_.columns=columns;}
+  const auto name=std::to_string(id);palette_.entries.push_back({id,std::u32string(name.begin(),name.end()),color});palette_.slots=std::move(slots);
   palette_.independentOrder.reset();palette_.selected=selectAdded?std::vector<int>{id}:std::vector<int>{};palette_.primaryId=selectAdded?id:0;
-  edit.afterPalette=capturePaletteEdit(edit.paletteKind,edit.colorId);pushEdit(std::move(edit),U"调整颜色板颜色");return id;
+  edit.afterPalette=capturePaletteEdit(1);pushEdit(std::move(edit),U"调整颜色板颜色");return id;
 }
 void Document::deletePaletteColors(const std::vector<int>& ids) {
   // Actual workspace-palette::deletePaletteColors removes visible identities

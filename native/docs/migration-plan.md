@@ -3747,3 +3747,11 @@ palette-apply-index-build.log正式Release、工程与核心目标构建通过�
 新增96组实际旧版删除／Undo／Redo矩阵（八种数据×六种请求×两种主选），覆盖空／单／重复／多色请求、隐藏条目、重复及悬空raw order、不可见选中身份、缺失主选、空槽、空操作和4096条目；逐状态验证布局、选择、身份、保留条目及正常／恢复保存重开。只承接现有正ID RGBA范围，真实ID0、碰撞身份及索引色像素remap仍未完成；全量迁移仍INCOMPLETE。
 
 验证：palette-delete-fixtures.log生成成功；palette-delete-build.log正式Release、工程及核心目标构建通过。palette-delete-project-tests.log通过96组新删除矩阵及240相邻移动、48应用、240重排、128排序、1668 raw、192粘贴、158解码／530命令和完整既有工程检查；palette-delete-core-tests.log退出0。palette-delete-ui.log中--palette-manual-check、--palette-growth-check、--palette-mouse-check全部退出0。来源覆盖627文件通过，strict按全量已知缺口退出1，diff通过。本批无人工图像验收或新的性能基准，不把集合扫描改进外推为整体UI帧率。
+
+### 调色盘新增颜色的目标插入与事务（2026-11-08）
+
+接续0d291152，核对workspace-palette.ts::addPaletteColor／createPaletteColor／recordPaletteEdit、palette-layout.ts::addPaletteIdToSlots／repositionPaletteSlots。原生指定目标此前直接覆盖槽位（无viewSlots时还拒绝非空槽），会把原颜色移出可见顺序；现复用已迁移的真实拖排算法，把新身份先放空槽，再移动到目标，保留被挤颜色。目标视图列数按旧版保存，无目标按存储布局首空槽追加；同RGBA及透明色保持新建独立身份。selectAdded只改选中身份，不改前景色；撤销／重做沿旧版归一化布局、全部条目及分配器，并保留后续背景角色。历史按前后条目数×40、前后槽数×4+64计算。
+
+新增144组真实旧版矩阵（六种数据×三种视图列数×四种目标×两种选择模式），逐状态核对全部条目ID／名称／RGBA、order／slots／columns、选择、主选、cursor、执行／Undo／Redo及普通／恢复保存重开；覆盖独立／重复／悬空顺序、稀疏槽、非空目标、跨末尾插入、同RGBA及透明RGB。另补无viewSlots的非空存储槽插入；编号耗尽及65536位置越界在修改前拒绝，保留活动笔画、像素、色板、cursor、revision与history。原生int／65536槽范围与真实ID0／碰撞／索引色缺口未放开。
+
+验证：palette-add-fixtures.log生成成功；palette-add-build.log正式Release／工程／核心构建通过；palette-add-final-build.log补充测试串行重链接通过。初次补充链接与上一轮测试运行重叠造成LNK1104，占用证据保留palette-add-verified-build.log；等待原测试正常完成后再构建，未结束用户程序。最终palette-add-project-tests.log通过144组新增、96删除、240相邻、48应用、240重排、128排序、1668 raw、192粘贴、158解码／530命令与全部工程矩阵，包含失败保护及存储槽插入检查；palette-add-core-tests.log退出0。palette-add-ui.log正式--palette-manual-check、--palette-growth-check、--palette-mouse-check均退出0。来源覆盖627文件通过，strict因全量缺口退出1，diff通过。本批无人工图像验收或新性能基准；全量迁移仍INCOMPLETE。
