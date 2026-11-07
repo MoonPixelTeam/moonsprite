@@ -2019,7 +2019,7 @@ bool Document::rotateContent(int angle){if(!activeMaskId_.empty())return transfo
  }
  if(edit.children.empty())return false;history_.reserve(position_+1);change_={};applyEdit(edit,true);publishChange();pushEdit(std::move(edit),U"旋转选区内容");return true;
 }
-bool Document::centerActiveContent(bool horizontal,bool vertical){if(activeMaskId_.empty()&&(hasTilemapContent()||hasFreeTileContent()))return false;
+bool Document::centerActiveContent(bool horizontal,bool vertical){if(activeMaskId_.empty()&&!(floating_&&floating_->freeTile)&&(hasTilemapContent()||hasFreeTileContent()))return false;
  if(!horizontal && !vertical)return false;
  // Legacy centers pending selection geometry before consulting layer pixels.
  if(floating_&&selection_){

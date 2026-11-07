@@ -3127,3 +3127,9 @@ mixed-free-linked-frame-build.log正式Release/两核心测试构建exit0；fixt
 依据legacy workspace-commands-selection-move.ts::moveActiveSelectionWithSelectionHistory的pending.freeTile分支：已有自由瓦片浮动事务通过实际限制位移更新源编辑raster及选择。原生nudgeSelectionContent不再用整篇free/tile保护挡住已有freeTile浮动状态，沿用现有键盘坐标限制、四角平移和transformFreeTileSelectionMove。初次键盘创建自由瓦片事务仍保留原保护，待单独核对，不将该缺口标为完成。
 
 新增整实例/局部源×移动/复制四组合，比较连续右/下微移与直接平移的画布、共享源像素及选择，检查预览无历史、取消恢复、单提交、Undo/Redo及实际保存重开。pending-free-nudge-build.log正式Release及free/tile两完整测试构建exit0，两完整测试exit0（pending-free-nudge-free-test.log、pending-free-nudge-grid-test.log），正式工作区drawing-anchor-edit-floating组合exit0；来源625文件快照通过（pending-free-nudge-provenance.log），diff通过。无人工UI验收；全量迁移仍INCOMPLETE。
+
+### 2026-11-07：自由瓦片已有浮动选区居中
+
+对照legacy workspace-commands-selection-move.ts::centerActiveContent先处理pendingPaste选框几何，并通过allowOutsideCanvas=true进入已有pending.freeTile平移路径。原生仅放行已有freeTile浮动事务通过整篇特殊类型保护，复用现有pending中心差值、Math.round同向舍入、四角/翻转原点平移及transformFreeTileSelectionMove。非浮动自由瓦片居中不由本批声称迁移。
+
+新增整实例/局部源×移动/复制×水平/垂直/双轴十二组，比较直接平移的画布、源像素及选区，检查预览无历史、重复居中no-op、单提交、Redo与实际保存重开。pending-free-center-build.log正式Release及free/tile完整测试构建exit0；两完整测试exit0（pending-free-center-free-test.log、pending-free-center-grid-test.log）；正式工作区drawing-anchor-edit-floating组合exit0；来源625文件快照通过（pending-free-center-provenance.log），diff通过。未做人工作业或截图验收，全量迁移仍INCOMPLETE。
