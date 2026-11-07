@@ -3602,3 +3602,14 @@ malformed-links-final-build.log正式程序及工程目标构建、malformed-lin
 
 
 最终正式构建malformed-links-approved-build.log、558组工程矩阵与拒绝检查malformed-links-approved-manifest-tests.log、完整project-import-tests／project-save-tests通过malformed-links-approved-import-tests.log／malformed-links-approved-save-tests.log；正式--cel-clipboard-check退出0。来源覆盖通过malformed-links-approved-provenance.log，diff检查通过。完整自由瓦片检查malformed-links-approved-free-tests.log退出0。严格来源门禁--strict退出1，符合全量仍INCOMPLETE的预期，不将覆盖通过等同于完成。没有人工旧工程UI验收，不据此关闭全量迁移目标。
+
+
+### 2026-11-08：图层公共元数据与几何默认值迁移
+
+直接核对legacy project-format-decode.ts的layer common与几何构造，以及project-format-manifest.ts normalizeBlendMode／normalizeDisplayColor：visible仅字面false关闭；locked／autoLinkAnimationCels／clippingMask仅字面true开启；opacity仅有限数字限幅0..1，其余回落1。未知／非字符串blendMode回落normal；仅四种已知kind存活，其余成为普通栅格层，tilemapTilesetId仅为网格kind读取字符串。description／groupId／displayColor延用旧版已实现的类型与颜色归一化路径，本批用完整对照固定其边界。全局未知字段／归档资源门禁保留，不将已知kind字段的旧版回落推广成任意未来字段丢弃。
+
+明确linkedContentId存在时必须为字符串且ECMAScript trim非空；任何truthy原始kind（包括未知字符串、非零数字、对象与数组）或已归一化background均不能与之共存。不能先忽略未知kind再错误接受特殊共享层；原字符串内外空白在非全空白时保留。图层width／height各自按正safe integer准入，否则独立回落画布尺寸；有限数字offset截断，其余回落0。该图层规则不改变Cel无效尺寸过滤／蒙版Number规则；原生坐标范围和解码字节预算仍保留。
+
+新增270组实际legacy decode→encode canonical ZIP对照（其中六组非法linked身份），另七组kind／background共享层组合拒绝：15字段×15种值、全部24种混合模式与未知值、普通／文字／调整kind、颜色限幅／舍入、中文／Emoji及带空白描述、linked身份。canonical未加原生策略适配，是真实旧版输出。原生逐组比较属性、结构、尺寸／偏移／精确像素和合成，普通／恢复保存重开、无导入历史、属性编辑Undo/Redo；几何样本不带Cel以显露原图层几何，特殊opacity样本移除Cel opacity以防活动帧覆盖掩盖默认值。失败基线layer-metadata-baseline-tests.log为visible:null被原生拒绝；没有把不经过读取路径的model测试算成迁移完成。
+
+layer-metadata-final-build.log正式与四类工程目标Release构建通过；包含新样本及既有558组坏链接等完整project-manifest-tests通过layer-metadata-final-manifest-tests.log；project-import-tests、project-save-tests、完整free-tile-project-tests通过对应layer-metadata日志，正式--cel-clipboard-check退出0。来源覆盖626文件通过layer-metadata-provenance.log，git diff检查通过。未进行人工旧工程UI打开验收；索引色、原生尺寸上限及其它迁移领域仍未完成，全量INCOMPLETE。

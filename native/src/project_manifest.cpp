@@ -212,14 +212,16 @@ static ReadManifest readManifestWithClock(std::shared_ptr<const Bytes> bytes,Lim
     for(const auto& item:array(doc,"layers")) {
       const auto o=itemObject(item,"layer");ManifestLayer layer;
       layer.id=str(o,"id");unique(layerIds,layer.id,"layer");layer.name=str(o,"name",false);
-      layer.visible=boolean(o,"visible",true);layer.locked=boolean(o,"locked",false);layer.opacity=opacity(o,"opacity");layer.autoLinkAnimationCels=boolean(o,"autoLinkAnimationCels",false);
+      // decodeProject uses literal booleans and finite numeric opacity here,
+      // not general JSON coercion or the stricter native model validators.
+      const auto literal=[&](const char* name,bool expected){const auto v=value(o,name);return v&&v.ValueType()==JsonValueType::Boolean&&v.GetBoolean()==expected;};
+      layer.visible=!literal("visible",false);layer.locked=literal("locked",true);layer.autoLinkAnimationCels=literal("autoLinkAnimationCels",true);layer.opacity=1;
+      if(const auto alpha=value(o,"opacity");alpha&&alpha.ValueType()==JsonValueType::Number&&std::isfinite(alpha.GetNumber()))layer.opacity=std::clamp(alpha.GetNumber(),0.,1.);
       if(auto v=value(o,"displayColor");v&&v.ValueType()==JsonValueType::Object){auto color=v.GetObject();double rgba[4];bool valid=true;const char* keys[]={"r","g","b","a"};for(int i=0;i<4;++i){auto c=value(color,keys[i]);if(!c||c.ValueType()!=JsonValueType::Number){valid=false;break;}rgba[i]=c.GetNumber();}if(valid)layer.displayColor=normalizeLayerDisplayColor(rgba[0],rgba[1],rgba[2],rgba[3]);}if(auto v=value(o,"description");v&&v.ValueType()==JsonValueType::String)layer.description=winrt::to_string(v.GetString());
-      layer.blendMode=str(o,"blendMode",false,"normal");layer.kind=str(o,"kind",false);layer.tilemapTilesetId=str(o,"tilemapTilesetId",false);if(auto group=value(o,"groupId");group&&group.ValueType()==JsonValueType::String){layer.groupId=winrt::to_string(group.GetString());if(!layer.groupId.empty()&&!groupIds.count(layer.groupId))layer.groupId.clear();}layer.linkedContentId=str(o,"linkedContentId",false);
-      if(!layer.kind.empty()&&layer.kind!="text"&&layer.kind!="tilemap"&&layer.kind!="adjustment"&&layer.kind!="free-tile") out.unsupported.emplace_back("layer kind="+layer.kind);
-      if(!parseLayerBlendMode(layer.blendMode)) out.unsupported.emplace_back("blendMode="+layer.blendMode);
+      layer.blendMode=textjson::str(o,L"blendMode");if(!parseLayerBlendMode(layer.blendMode))layer.blendMode="normal";layer.kind=textjson::str(o,L"kind");if(layer.kind!="text"&&layer.kind!="adjustment"&&layer.kind!="tilemap"&&layer.kind!="free-tile")layer.kind.clear();if(layer.kind=="tilemap")layer.tilemapTilesetId=textjson::str(o,L"tilemapTilesetId");if(auto group=value(o,"groupId");group&&group.ValueType()==JsonValueType::String){layer.groupId=winrt::to_string(group.GetString());if(!layer.groupId.empty()&&!groupIds.count(layer.groupId))layer.groupId.clear();}if(const auto linked=value(o,"linkedContentId")){if(linked.ValueType()!=JsonValueType::String||textjson::truthy(o,L"kind"))bad("linked layer identity/kind");std::u16string units;for(const auto c:linked.GetString())units+=char16_t(c);if(javascriptTrim(textUtf32(units)).empty())bad("empty linked layer identity");layer.linkedContentId=winrt::to_string(linked.GetString());}
 
       if(layer.kind=="free-tile")layer.freeTiles=freejson::decodeLayer(o,layer.id,sourceVersion>=15);
-      layer.clippingMask=boolean(o,"clippingMask",false);
+      layer.clippingMask=literal("clippingMask",true);
       if(layer.kind=="adjustment"){
        const auto adjustment=textjson::object(o,L"adjustment"),styles=textjson::object(o,L"layerStyles");
        const auto falseValue=[](const JsonObject& source,const wchar_t* field){return source.HasKey(field)&&source.GetNamedValue(field).ValueType()==JsonValueType::Boolean&&!source.GetNamedBoolean(field);};
@@ -231,7 +233,13 @@ static ReadManifest readManifestWithClock(std::shared_ptr<const Bytes> bytes,Lim
       }else {layer.layerStyles=readColorOverlay(o,out,layer.id);if(present(o,"adjustment"))out.unsupported.emplace_back("layer effects "+layer.id);}
       fields(o,{"id","name","linkedContentId","autoLinkAnimationCels","displayColor","description","kind","tilemapTilesetId","freeTileTilesetId","freeTileSetId","freeTileSources","visible","locked","opacity","blendMode","clippingMask","layerStyles","adjustment","background","groupId","width","height","offsetX","offsetY","dataFile","dataEncoding"},"layer",out);
       if(auto v=value(o,"background");v&&v.ValueType()==JsonValueType::Object){auto b=v.GetObject();timeline::BackgroundSettings settings;settings.mode=textjson::str(b,L"mode");if(settings.mode=="canvas"){auto w=value(b,"repeatWidth"),h=value(b,"repeatHeight");if(w&&h&&w.ValueType()==JsonValueType::Number&&h.ValueType()==JsonValueType::Number){double x=w.GetNumber(),y=h.GetNumber();if(std::floor(x)==x&&std::floor(y)==y&&x>0&&y>0&&x<=65536&&y<=65536&&x*y<=268435456){settings.repeatWidth=int(x);settings.repeatHeight=int(y);}}layer.background=settings;}else if(settings.mode=="preset"){settings.pattern=textjson::str(b,L"pattern");if(isBackgroundPattern(settings.pattern))layer.background=settings;}}
-      layer.surface=raster(o);if(!layer.surface && out.colorMode=="rgba" && layer.kind.empty()) bad("missing layer raster");out.layers.push_back(std::move(layer));
+      if(!layer.linkedContentId.empty()&&layer.background)bad("linked background layer");
+      // Layer geometry has different legacy defaults from Cel geometry:
+      // invalid dimensions use canvas size; nonnumeric offsets use zero.
+      JsonObject layerRaster;for(const auto& field:o)layerRaster.Insert(field.Key(),field.Value());
+      for(const auto* name:{"width","height"}){const auto raw=value(o,name);double n=std::string_view(name)=="width"?out.width:out.height;if(raw&&raw.ValueType()==JsonValueType::Number){const auto d=raw.GetNumber();if(std::isfinite(d)&&std::floor(d)==d&&d>0&&d<=9007199254740991.)n=d;}layerRaster.Insert(key(name),JsonValue::CreateNumberValue(n));}
+      for(const auto* name:{"offsetX","offsetY"}){const auto raw=value(o,name);double n=0;if(raw&&raw.ValueType()==JsonValueType::Number&&std::isfinite(raw.GetNumber()))n=std::trunc(raw.GetNumber());if(n<std::numeric_limits<int>::min()||n>std::numeric_limits<int>::max())throw Error(ErrorKind::Limit,"Layer offset exceeds native coordinates");layerRaster.Insert(key(name),JsonValue::CreateNumberValue(n));}
+      layer.surface=raster(layerRaster);if(!layer.surface && out.colorMode=="rgba" && layer.kind.empty()) bad("missing layer raster");out.layers.push_back(std::move(layer));
     }
     if(out.layers.empty())bad("missing layers");if(!layerIds.count(out.activeLayerId))out.activeLayerId=out.layers.front().id;
     std::set<std::string> modernFreeLayers;std::map<std::string,const ManifestLayer*> celOwners;for(const auto& layer:out.layers){celOwners.emplace(layer.id,&layer);if(layer.kind=="free-tile"&&layer.freeTiles&&!layer.freeTiles->sources.empty())modernFreeLayers.insert(layer.id);}
