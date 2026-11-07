@@ -3353,3 +3353,9 @@ pending-tile-center-build.log正式Release及free/tile测试构建exit0，fixtur
 工作区检查的控件排版断言仍使用旧4px左右留白，实际图层属性为6px；改为验证宽度随40物理像素增量及左右6×uiScale留白，同时保留footer位移检查。随后实际发现配置读回缺陷：有效layer-opacity宽132被readWorkspaceSizes统一width>=240拒绝。读取改为接受正数且既有8192上限内的几何，打开时仍由modalBounds/modalMinimumSize按对话框限制；负尺寸仍拒绝。
 
 增加--workspace-modal-layout-only定向入口，运行现有完整对话框/工作区布局断言并跳过命名预设测试；需同时--workspace-check --named-workspace-only退出。正式构建exit0（modal-reflow-final-build.log），该定向运行exit0，验证边缩放、排版、尺寸原样读回、非法尺寸拒绝及小窗口适应。完整--workspace-check本轮先在“Named reset retains initial hidden mode”失败，未宣称完整通过，后续增量重绘未执行。来源检查通过（modal-reflow-check-provenance.log），diff通过；无人工UI验收，全量迁移仍INCOMPLETE。
+
+### 2026-11-07：顶部更多菜单缩放回调合并
+
+用户明确窄窗口放不下的菜单收进“更多”。现有实现已包含这一行为，本轮保留入口、顺序、尺寸测量和菜单对象。核对Aseprite MIT ui/menu.cpp的MenuBox::cancelMenuLoop、Menu::closeAll和MenuItem::closeSubmenu，关闭通过消息队列完成；原生因此需要延迟重排，但此前连续resize每次都追加回调并携带过时宽度。现在同一关闭期间只保留一个CallbackMessage，更新最新目标矩形，关闭完成后一次重排。未改动依赖代码。
+
+扩展真实smokeWindowInput：更多菜单打开后连续提交中间、窄、宽三个尺寸再dispatch，验证最终宽度、原菜单顺序和捕获释放。正式构建exit0（menu-resize-coalesce-build.log），--window-input-check退出0，完整--workspace-check退出0，来源检查通过（menu-resize-coalesce-provenance.log），diff检查通过。此前Named reset retains initial hidden mode本轮修改前后均未复现，未据此宣称已修复该间歇问题，也未修改其产品逻辑。无人工图像验收或性能计时，不能量化总体卡顿改善；全量迁移仍INCOMPLETE。

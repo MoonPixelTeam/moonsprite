@@ -1683,11 +1683,15 @@ void Editor::layoutTopMenu(gfx::Rect bar) {
     struct OverflowState final:ui::Property {
       std::vector<PixelMenuItem*> entries;
       PixelMenuItem* more=nullptr;
+      bool layoutQueued=false;
+      gfx::Rect queuedBar;
       OverflowState():ui::Property("moonsprite.top-menu-overflow"){}
     };
     auto state=std::dynamic_pointer_cast<OverflowState>(menu->getProperty("moonsprite.top-menu-overflow"));
     if(!state){state=std::make_shared<OverflowState>();for(auto child:menu->children())if(auto entry=dynamic_cast<PixelMenuItem*>(child))state->entries.push_back(entry);menu->setProperty(state);}
     const auto& entries=state->entries;
+    auto originalBar=bar;if(workspaceMenuButton_)originalBar.w+=(UiSpacing::iconSize+UiSpacing::related)*uiScale;
+    if(state->layoutQueued){state->queuedBar=originalBar;return;}
     // Aseprite closes popup windows through queued messages. Reparent only
     // after those messages have detached their MenuBox from the old owner.
     bool opened=state->more && state->more->hasSubmenuOpened();
@@ -1695,8 +1699,8 @@ void Editor::layoutTopMenu(gfx::Rect bar) {
     if(opened && menuBar_->bounds()==bar)return;
     if(opened){
       menuBar_->cancelMenuLoop();
-      auto originalBar=bar;if(workspaceMenuButton_)originalBar.w+=(UiSpacing::iconSize+UiSpacing::related)*uiScale;
-      auto callback=new ui::CallbackMessage([this,originalBar]{layoutTopMenu(originalBar);});
+      state->layoutQueued=true;state->queuedBar=originalBar;
+      auto callback=new ui::CallbackMessage([this,state]{state->layoutQueued=false;layoutTopMenu(state->queuedBar);});
       callback->setRecipient(this);manager()->enqueueMessage(callback);
       return;
     }

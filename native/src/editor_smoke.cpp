@@ -7363,8 +7363,11 @@ void Editor::smokeWindowInput(const LegacyCursors& cursors) {
       more->openSubmenu();manager()->dispatchMessages();
       layoutTopMenu(narrow);manager()->dispatchMessages();
       if(!more->hasSubmenuOpened())throw std::runtime_error("Unchanged layout closed overflow popup");
-      layoutTopMenu(wide);manager()->dispatchMessages();
+      auto intermediate=narrow;intermediate.w+=80;
+      layoutTopMenu(intermediate);layoutTopMenu(narrow);layoutTopMenu(wide);manager()->dispatchMessages();
       if(menu->children()!=original || manager()->getCapture())throw std::runtime_error("Open overflow resize did not restore order/capture");
+      auto expectedWide=wide;if(workspaceMenuButton_)expectedWide.w-=(UiSpacing::iconSize+UiSpacing::related)*uiScale;
+      if(menuBar_->bounds()!=expectedWide)throw std::runtime_error("Queued overflow resize did not use latest bounds");
       layoutTopMenu(narrow);layoutTopMenu(wide);
       if(menu->children()!=original)throw std::runtime_error("Repeated overflow transition changed menu order");
       layoutTopMenu(inputBar);manager()->dispatchMessages();
