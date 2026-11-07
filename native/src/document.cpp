@@ -83,7 +83,7 @@ Document Document::fromSpriteSheetRaster(int width,int height,std::vector<Pixel>
   return result;
 }
 Document Document::fromImported(int width,int height,timeline::State state,PaletteState palette,
-  std::string projectId,std::u32string name,std::shared_ptr<const std::vector<std::uint8_t>> sourceArchive) {
+  std::string projectId,std::u32string name,std::shared_ptr<const std::vector<std::uint8_t>> sourceArchive,std::string activeFrameId) {
   // Build and validate a candidate before the caller replaces its active session.
   if(projectId.empty() || !sourceArchive || state.layers.empty() || state.frames.empty() || state.cels.size()!=state.layers.size()*state.frames.size())
     throw std::invalid_argument("Unsupported imported document structure");
@@ -93,7 +93,8 @@ Document Document::fromImported(int width,int height,timeline::State state,Palet
 
   for(const auto& cel:validated.state().cels){const auto resolved=validated.resolveSurface(cel.id);const auto* surface=resolved.surface;
     if(!surface)throw std::invalid_argument("Missing imported surface");raster::validate(*surface);raster::coordinate(std::int64_t(surface->offsetX)+surface->width);raster::coordinate(std::int64_t(surface->offsetY)+surface->height);}
-  Document result(width,height);result.timeline_=std::move(validated);result.activeLayerId_=result.timeline_.state().layers.front().id;result.activeFrameId_=result.timeline_.state().frames.front().id;result.palette_=std::move(palette);
+  if(!activeFrameId.empty()&&std::none_of(validated.state().frames.begin(),validated.state().frames.end(),[&](const auto& f){return f.id==activeFrameId;}))throw std::invalid_argument("Unknown imported active frame");
+  Document result(width,height);result.timeline_=std::move(validated);result.activeLayerId_=result.timeline_.state().layers.front().id;result.activeFrameId_=activeFrameId.empty()?result.timeline_.state().frames.front().id:std::move(activeFrameId);result.palette_=std::move(palette);
   result.projectId_=std::move(projectId);result.name_=std::move(name);result.sourceArchive_=std::move(sourceArchive);result.projectActiveCelOpacities();
   return result;
 }

@@ -3550,3 +3550,11 @@ make-project-manifest-fixtures.cjs通过实际legacy encode/decode生成版本1�
 实测旧版：网格瓦片层完全没有Cel时decode成功，ensureAnimationDocument生成没有tilemap元数据的Cel，encode后decode拒绝。用户明确批准原生修复为使用owner瓦片集tileWidth/tileHeight与画布创建覆盖画布的空网格，保留资源、帧与透明度，不产生导入历史。此为授权新行为，不称旧版等价。已有网格模板仍按旧版复制网格尺寸并清空，不覆盖原模板。六组ZIP样本覆盖方形／非方形／非整除尺寸 × 单帧／多帧缺失，检查空网格、资源像素、普通／恢复重开、保留瓦片的Paint绘制、Undo/Redo及绘后重开。
 
 同时按normalizeAnimationTimeline／normalizeCels修复迁移前frames/cels不存在或非数组就抛错的问题，写回规范化清单避免编码恢复异常原字段。24组实际legacy decode对照覆盖schema2/13/21 × frames/cels × absent/null/object/number，核对默认帧时长、空显示、导入无历史及普通／恢复保存重开。正式构建grid-fallback-build.log、工程测试grid-fallback-manifest-tests.log、保存grid-fallback-save-tests.log通过，正式--cel-clipboard-check退出0；完整自由瓦片回归grid-fallback-free-tests.log与来源覆盖grid-fallback-provenance.log通过，diff通过。缺失槽身份保留、全色彩模式和人工UI验收仍不完整，全量迁移INCOMPLETE。
+
+### 2026-11-07：工程初始活动帧透明度及预览生命周期闭环
+
+实际legacy decodeProject在refreshActiveAnimationFrame时直接投影保存的活动帧，根Cel透明度缺失／null／非数字时保留原图层透明度。原生fromImported此前先投影第一帧，再selectFrame保存帧，使第一帧透明度污染回落值。六组真实ZIP对照（absent/null/string × 独立／链接活动帧）建立原生失败基线import-opacity-baseline-tests.log；修复为构造时先校验并选择保存的活动帧，随后只投影该帧，未指定活动帧的图像导入API保持原默认行为。恢复入口与最近工程无内嵌预览时复用createEditableDocument，避免重复构造步骤遗漏几何、对称中心等已迁移元数据。
+
+样本包含不透明白色像素、图层0.6、第一帧0.2；原生核对初始活动帧、无导入历史、合法链接、合成Alpha153、普通／恢复保存重开、保存后切换首帧再切回及透明度编辑Undo/Redo。直接调用真实recent::readPreview（无磁盘缓存与内嵌预览）逐像素核对2×2白色与Alpha153。该独立预览调用暴露WinRT factory在自有COM apartment释放后仍被缓存，退出访问异常0xC0000005（import-opacity-preview-baseline.log）；按既有project_manifest.cpp适配方式仅由S_OK apartment所有者在RoUninitialize前清理factory cache，六次预览及后续全部工程读取通过。首次新增预览测试传空取消回调的测试调用错误已修正，不把该次失败归为软件缺陷。
+
+正式完整构建import-opacity-build.log、最终正式／测试目标构建import-opacity-final-build.log及预览修复重建import-opacity-preview-rebuild.log通过；project-manifest-tests、project-save-tests、完整free-tile-project-tests、cel-properties-tests、editor-recovery-tests均通过对应import-opacity日志，正式--cel-clipboard-check退出0，来源覆盖import-opacity-provenance.log与diff检查通过。此处恢复证据为恢复归档往返与恢复模块自动测试，未做恢复对话框／最近工程面板人工UI验收。缺失槽身份、全色彩模式等既有缺口仍在，全量迁移INCOMPLETE。

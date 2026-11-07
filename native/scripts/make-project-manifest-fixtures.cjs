@@ -143,5 +143,16 @@ registerHooks({
   if(decoded.animation.frames.length!==1||decoded.animation.cels.length!==0||decoded.layers[0].pixels.some(Boolean))throw new Error('Malformed animation array oracle mismatch');
   fs.writeFileSync(path.join(out,`animation-array-${version}-${field}-${malformed}.moonsprite`),bytes);
  }
+ for(const opacity of ['absent','null','string'])for(const linked of [false,true]){
+  const m=structuredClone(manifest),r={...files},l=m.document.layers[0],a=m.document.animation,first=a.cels[0];l.opacity=.6;first.opacity=.2;
+  for(const raster of [l,first]){raster.dataEncoding='raw';r[raster.dataFile]=new Uint8Array(16).fill(255);}
+  const second={...first,id:'opacity-second',frameId:'opacity-frame',opacity:undefined};if(opacity==='null')second.opacity=null;if(opacity==='string')second.opacity='0.8';a.frames.push({id:second.frameId,duration:210});a.cels.push(second);a.activeFrameId=second.frameId;
+  if(linked){a.frames.push({id:'opacity-tail-frame',duration:290});a.cels.push({...second,id:'opacity-tail',frameId:'opacity-tail-frame',linkedCelId:second.id,opacity:.9});a.activeFrameId='opacity-tail-frame';}
+  r['manifest.json']=strToU8(JSON.stringify(m));const bytes=zipSync(r),decoded=decodeProject(bytes);if(decoded.layers[0].opacity!==.6||decoded.layers[0].pixels.some(v=>v!==255))throw new Error('Imported active Cel opacity oracle mismatch');
+  // Saving while the original active frame is displayed fixes omitted opacity
+  // from that layer's original .6, before any frame-switch side effects.
+  const persisted=decodeProject(encodeProject(decoded,{includePreview:false}));if(persisted.layers[0].opacity!==.6)throw new Error('Imported active Cel saved opacity oracle mismatch');
+  fs.writeFileSync(path.join(out,`import-opacity-${opacity}-${Number(linked)}.moonsprite`),bytes);
+ }
  console.log('Generated project manifest fixtures through legacy encodeProject');
 })().catch(e=>{console.error(e);process.exitCode=1;});

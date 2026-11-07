@@ -9,6 +9,8 @@
 #include "raster_geometry.h"
 #include "project_manifest.h"
 #include "project_import.h"
+#include "layer_compositor.h"
+#include "recent_project_preview.h"
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -95,6 +97,16 @@ void noGridTemplateChecks(const std::filesystem::path& dir){
   auto saved=encodeEditableProject(d);auto reopened=createEditableDocument(prepareEditableImport(readProjectManifest(saved.bytes)));check(reopened.cel().tilemap->cells.front()&&reopened.timeline().state().tilesets.front().pixels==baseline,"Painted template-less grid reopen");
  }
 }
+void importedOpacityChecks(const std::filesystem::path& dir){
+ using namespace moon;
+ for(const std::string alpha:{"absent","null","string"})for(bool linked:{false,true}){
+  const auto file=dir/("import-opacity-"+alpha+"-"+std::to_string(linked)+".moonsprite");auto m=readProjectManifest(load(file));auto d=createEditableDocument(prepareEditableImport(m));const auto active=d.frame().id;
+  auto verify=[&](const Document& candidate){check(candidate.layer().opacity==.6&&candidate.frame().id==active,"Imported active frame retains original fallback opacity");check(candidate.timeline().diagnoseLinks().empty(),"Opacity import valid links");check(compositeNormalRegion(candidate.timeline(),active,{0,0,2,2})==std::vector<timeline::Pixel>(4,0x99ffffffu),"Imported active frame visible composite alpha");};
+  verify(d);check(d.historyPosition()==0,"Opacity restoration no history");for(bool recovery:{false,true}){auto saved=recovery?encodeRecoveryProject(d):encodeEditableProject(d);auto reopened=createEditableDocument(prepareEditableImport(readProjectManifest(saved.bytes)));verify(reopened);reopened.selectFrame(m.frames.front().id);check(reopened.layer().opacity==.2,"First frame opacity preserved");reopened.selectFrame(active);verify(reopened);}
+  const auto preview=recent::readPreview({std::filesystem::absolute(file).u8string()},{},[]{return false;});check(preview.previewWidth==2&&preview.previewHeight==2&&preview.pixels==std::vector<std::uint32_t>(4,0x99ffffffu),"Recent project fallback preview retains active alpha");
+  d.setLayerOpacity(.4);check(d.layer().opacity==.4,"Imported opacity remains editable");d.undo();verify(d);d.redo();check(d.layer().opacity==.4,"Imported opacity redo");d.undo();verify(d);
+ }
+}
 void inlineMaskChecks(const std::filesystem::path& dir){
  using namespace moon;auto bytes=load(dir/"inline-mask-u8.moonsprite");const auto raw=readProjectManifest(bytes);check(raw.unsupported.empty()&&raw.masks.size()==1&&raw.maskDataFiles.size()==1,"Inline mask was rejected or lost");const auto& mask=raw.masks[0];check(mask.id=="inline-mask"&&mask.surface->offsetX==-1&&mask.surface->offsetY==1&&mask.locked&&mask.autoLink,"Inline mask metadata migration");check(mask.surface->pixels==std::vector<std::uint32_t>({0xff000000,0xff808080,0xffffffff,0xff404040}),"Inline scalar resource decode");
  auto rgba=readProjectManifest(load(dir/"inline-mask-rgba.moonsprite"));check(rgba.masks[0].surface->pixels==std::vector<std::uint32_t>({0,0xff808080,0xff000000,0xffffffff}),"Mask RGBA transparent RGB normalization");
@@ -114,7 +126,7 @@ void inlineMaskChecks(const std::filesystem::path& dir){
 int main(int argc,char** argv) {
  try {
   check(argc==2,"Fixture argument required");const auto dir=std::filesystem::u8path(argv[1]);
-  historicalVersionChecks(dir);activeCacheChecks(dir);linkedCacheChecks(dir);sparseAnimationChecks(dir);specialSlotChecks(dir);animationArrayChecks(dir);noGridTemplateChecks(dir);inlineMaskChecks(dir);
+  historicalVersionChecks(dir);activeCacheChecks(dir);linkedCacheChecks(dir);sparseAnimationChecks(dir);specialSlotChecks(dir);animationArrayChecks(dir);noGridTemplateChecks(dir);importedOpacityChecks(dir);inlineMaskChecks(dir);
   auto bytes=load(dir/"valid.moonsprite");auto parsed=readProjectManifest(bytes);
   check(parsed.schemaVersion==21 && parsed.colorMode=="rgba" && parsed.width==2 && parsed.height==2,"Header changed");
   check(parsed.name==u8"原生兼容样本","Unicode name changed");

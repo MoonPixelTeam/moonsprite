@@ -174,7 +174,7 @@ public:
   static Document fromClipboardRaster(const SelectionClipboard& source);
   static Document fromSpriteSheetRaster(int width,int height,std::vector<Pixel> pixels,std::u32string name);
   static Document fromImported(int width,int height,timeline::State state,PaletteState palette,
-    std::string projectId,std::u32string name,std::shared_ptr<const std::vector<std::uint8_t>> sourceArchive);
+    std::string projectId,std::u32string name,std::shared_ptr<const std::vector<std::uint8_t>> sourceArchive,std::string activeFrameId={});
   std::array<int,4> displayedLayerGeometry(const std::string&) const;
   void setImportedLayerGeometry(std::unordered_map<std::string,std::array<int,4>>);
   bool rollbackProject(const Document& backup);
