@@ -3323,3 +3323,9 @@ pending-tile-center-build.log正式Release及free/tile测试构建exit0，fixtur
 新增ordinary/tile/free×普通/隔离×取消/提交12组，检查精确黑色覆盖、预览不改存储、单历史、上下文Undo/Redo、保存重开及所属Cel/资源不变；额外检查显式双格链接根去重、半透明黑转0xff7f7f7f、不解除链接、切换蒙版后旧任务拒绝及锁定拒绝。首轮构建中变更内联头文件导致隔离预览测试失败，停止该构建，将读取实现统一移至cpp，固定源码后重新构建；新测试程序完整通过（mask-aa-test.log）。
 
 最终验证：固定源码后的正式构建exit0（mask-aa-final-build.log），新测试程序完整free-tile-project-tests通过（mask-aa-test.log），workspace指定检查exit0，来源检查通过（mask-aa-provenance.log），diff通过。未做人工UI验收；多目标独立帧/组选区组合尚未全部验证，全量迁移仍INCOMPLETE。
+
+### 2026-11-07：跨帧独立蒙版抗锯齿验收证据
+
+沿用legacy workspace-selection-effects-support.ts::selectedEffectTargets显式蒙版格顺序/帧绑定及workspace-commands-selection-anti-alias.ts整批锁定拒绝。新增取消/提交×选区/完整四组，以不同帧黑色/灰色所属层验证automatic opacity37经蒙版覆盖归一化分别精确为0xffa1a1a1/0xffd0d0d0；检查双目标顺序、预览不改存储、双蒙版取消/Undo/Redo/保存重开、单历史、活动第二帧隔离上下文及所属Cel像素保留。特意把锁定蒙版放在请求列表后面，验证整批拒绝而不启动预览。既有产品实现通过，无产品代码修改。
+
+测试构建exit0（multi-mask-aa-build.log），完整free-tile-project-tests通过（multi-mask-aa-test.log），来源检查通过（multi-mask-aa-provenance.log），diff通过。未重新构建正式程序，未做人工UI验收；组选区组合与全量迁移仍未完成，整体INCOMPLETE。
