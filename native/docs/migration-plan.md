@@ -3452,3 +3452,10 @@ legacy core/layer-merge.ts::mergeVisibleLayers复用compositeDocument渲染全�
 继续核对 legacy workspace-commands-animation-frame-clipboard.ts::pasteCrossDocumentAnimationFrames、workspace-commands-animation-cel-clipboard.ts::pasteCrossDocumentAnimationCels 及 workspace-animation-cel-target.ts::animationCelForTarget：跨工程粘贴按目标种类保留freeTiles，映射复制范围内链接，不导入自由源目录。此前原生一律拒绝跨工程自由载荷过宽；现允许目标已有匹配源标识的完整帧／Cel粘贴，以目标当前源属性重新渲染，复用原有事务、蒙版映射及扩帧逻辑。整帧资源导入限制为普通网格实际引用的资源，避免把未引用自由源纹理复制为孤立目录。缺少自由目标层或无法解析实例源时在事务发布前拒绝；不自行设计源迁移或缺失源降级行为。
 
 新增8组跨工程帧／Cel × 链接／独立 × 目标源显隐差异，覆盖实例保留、链接映射、目标属性重渲染、资源目录不增加、单次结构历史、Undo/Redo、原生／恢复工程重开。原有跨工程拒绝用例改为独立源集合不兼容目标，继续验证原子拒绝。正式程序及完整测试构建通过（compatible-free-clipboard-build.log）；完整free-tile-project-tests通过（compatible-free-clipboard-tests.log）；正式程序 --cel-clipboard-check退出0；来源覆盖检查通过（compatible-free-clipboard-provenance.log），diff通过。未人工视觉验收。任意跨工程缺失源和新增自由所属层仍未闭环；自由Cel拖动旧版未转移实例，需要明确行为后处理。全量迁移仍INCOMPLETE。
+
+
+### 2026-11-07：颜色替换混合范围的锁定目标准入
+
+legacy workspace-commands-color.ts::applyColorReplacementTarget的collect先跳过isLayerEffectivelyLocked，再replaceLayerColor。原生beginColorReplacement此前先拒绝特殊kind，使文档／所选范围内锁定特殊层也取消可编辑普通层的替换。现按旧版调整准入顺序，先跳过缺失／调整／有效锁定层，再检查未迁移特殊正文；不扩大特殊正文的源编辑行为。继续追踪tools-fill.ts::replaceLayerColor、history.ts::recordPixelKnownCurrent／commitPixelEdit：旧版直接写派生像素，未同步自由源／网格资源，此差异仍需闭环，不能把解禁当作迁移完成。
+
+16组瓦片／自由瓦片×直接／组继承锁×取消／提交×目标顺序回归，包含普通链接源／别名去重、 detached预览、一次历史、原生／恢复重开、Undo/Redo、特殊实例／网格及像素不变和仅锁定范围无操作。正式程序与完整测试构建通过（locked-replacement-build.log）；完整free-tile-project-tests通过（locked-replacement-tests.log）；正式 --cel-clipboard-check退出0。首次误用不存在的--replace-color-check启动空白实例，已结束该测试进程；颜色定向检查经--workspace-check --replace-cell-selection-only运行后，后续通用预览窗口检查因隐藏窗口无捕获失败（native-workspace-error.txt）；使用已有--named-workspace-only提前退出通用工作区阶段，实际smokeColorReplacement退出0。来源覆盖检查通过（locked-replacement-provenance.log），diff通过。未人工视觉验收，全量迁移INCOMPLETE。
