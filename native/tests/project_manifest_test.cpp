@@ -58,6 +58,17 @@ void palettePasteTargetChecks(const std::filesystem::path& dir){
  }
  std::cout<<"Actual legacy paste targets: "<<rows.Size()<<" state/Undo/Redo matrices\n";
 }
+void paletteSortChecks(const std::filesystem::path& dir){
+ using namespace moon;using namespace winrt::Windows::Data::Json;
+ const auto bytes=load(dir/"palette-sort-oracle.json");const auto rows=JsonArray::Parse(winrt::to_hstring(std::string(bytes->begin(),bytes->end())));check(rows.Size()==128,"Sort oracle missing");
+ const auto integers=[](const JsonArray& a){std::vector<int> out;for(const auto& v:a)out.push_back(v.ValueType()==JsonValueType::Null?0:int(v.GetNumber()));return out;};
+ for(const auto& v:rows){const auto row=v.GetObject(),before=row.GetNamedObject(L"before");auto base=createEditableDocument(prepareEditableImport(readProjectManifest(load(dir/"valid.moonsprite"))));auto p=base.palette();p.entries.clear();for(const auto& item:row.GetNamedArray(L"palette")){const auto e=item.GetObject(),c=e.GetNamedObject(L"color");p.entries.push_back({int(e.GetNamedNumber(L"id")),U"sort",Pixel(c.GetNamedNumber(L"r"))|(Pixel(c.GetNamedNumber(L"g"))<<8)|(Pixel(c.GetNamedNumber(L"b"))<<16)|(Pixel(c.GetNamedNumber(L"a"))<<24)});}p.slots=integers(before.GetNamedArray(L"slots"));p.setOrder(integers(before.GetNamedArray(L"order")));p.columns=int(before.GetNamedNumber(L"columns"));p.nextId=int(p.entries.size())+1;p.selected={2,1};p.primaryId=2;
+  auto d=Document::fromImported(base.width(),base.height(),base.timeline().state(),p,"sort-test",U"sort",base.sourceArchive());const auto roles=d.palette();const auto mode=winrt::to_string(row.GetNamedString(L"mode"));const auto sortMode=mode=="hue"?Document::PaletteSortMode::Hue:mode=="saturation"?Document::PaletteSortMode::Saturation:mode=="brightness"?Document::PaletteSortMode::Brightness:mode=="luminance"?Document::PaletteSortMode::Luminance:mode=="red"?Document::PaletteSortMode::Red:mode=="green"?Document::PaletteSortMode::Green:mode=="blue"?Document::PaletteSortMode::Blue:Document::PaletteSortMode::Alpha;
+  const auto verify=[&](const wchar_t* side){const auto w=row.GetNamedObject(side);const auto& q=d.palette();check(q.order()==integers(w.GetNamedArray(L"order"))&&q.slots==integers(w.GetNamedArray(L"slots"))&&q.columns==w.GetNamedNumber(L"columns"),"Actual legacy sort state mismatch");check(q.entries.size()==roles.entries.size()&&std::equal(q.entries.begin(),q.entries.end(),roles.entries.begin(),[](const auto& a,const auto& b){return a.id==b.id&&a.color==b.color&&a.name==b.name;})&&q.nextId==roles.nextId&&q.selected==roles.selected&&q.primaryId==roles.primaryId&&q.primary==roles.primary&&q.secondary==roles.secondary,"Sort mutated colors or session roles");};
+  d.sortPaletteColors(sortMode,row.GetNamedBoolean(L"descending"));check(d.historyPosition()==row.GetNamedNumber(L"history"),"Sort transaction mismatch");verify(L"after");if(d.canUndo())d.undo();verify(L"undo");if(d.canRedo())d.redo();verify(L"redo");
+ }
+ std::cout<<"Actual legacy sort: 128 all-mode/direction command/Undo/Redo matrices\n";
+}
 void rawPaletteChecks(const std::filesystem::path& dir){
  using namespace moon;using namespace winrt::Windows::Data::Json;
  const auto bytes=load(dir/"palette-raw-oracle.json");const auto rows=JsonArray::Parse(winrt::to_hstring(std::string(bytes->begin(),bytes->end())));check(rows.Size()==1668,"Missing raw palette matrices");
@@ -317,7 +328,7 @@ void inlineMaskChecks(const std::filesystem::path& dir){
 int main(int argc,char** argv) {
  try {
   check(argc==2,"Fixture argument required");const auto dir=std::filesystem::u8path(argv[1]);
-  rawPaletteChecks(dir);palettePasteTargetChecks(dir);paletteDecodeChecks(dir);independentPaletteChecks(dir);paletteLayoutChecks(dir);layerMetadataChecks(dir);historicalVersionChecks(dir);activeCacheChecks(dir);linkedCacheChecks(dir);sparseAnimationChecks(dir);specialSlotChecks(dir);animationArrayChecks(dir);noGridTemplateChecks(dir);importedOpacityChecks(dir);droppedRasterChecks(dir);corruptLinkResourceChecks(dir);malformedLinkChecks(dir);inlineMaskChecks(dir);
+  paletteSortChecks(dir);rawPaletteChecks(dir);palettePasteTargetChecks(dir);paletteDecodeChecks(dir);independentPaletteChecks(dir);paletteLayoutChecks(dir);layerMetadataChecks(dir);historicalVersionChecks(dir);activeCacheChecks(dir);linkedCacheChecks(dir);sparseAnimationChecks(dir);specialSlotChecks(dir);animationArrayChecks(dir);noGridTemplateChecks(dir);importedOpacityChecks(dir);droppedRasterChecks(dir);corruptLinkResourceChecks(dir);malformedLinkChecks(dir);inlineMaskChecks(dir);
   auto bytes=load(dir/"valid.moonsprite");auto parsed=readProjectManifest(bytes);
   check(parsed.schemaVersion==21 && parsed.colorMode=="rgba" && parsed.width==2 && parsed.height==2,"Header changed");
   check(parsed.name==u8"原生兼容样本","Unicode name changed");

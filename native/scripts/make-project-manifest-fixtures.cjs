@@ -262,6 +262,19 @@ registerHooks({
 
  const paletteCommands=await import(pathToFileURL(path.join(legacy,'src/renderer/src/store/workspace-palette.ts')));
  const {mergePaletteColors}=await import(pathToFileURL(path.join(legacy,'src/renderer/src/core/palette.ts')));
+ // Actual command callbacks cover all sort modes/directions with tie-heavy,
+ // achromatic, transparent, duplicate-order, hidden and larger palettes.
+ const sortOracle=[];
+ for(let dataset=0;dataset<8;++dataset)for(const mode of ['hue','saturation','brightness','luminance','red','green','blue','alpha'])for(const descending of [false,true]){
+  const d=createDocument('sort oracle',1,1,'rgba'),history=[];
+  const edges=[0,0xff000000,0xffffffff,0xff808080,0xff888080,0xff898080,0x00ffffff,0x7f0000ff,0xff0000ff,0xffff0000,0xff00ff00,0xff0100ff];
+  const count=dataset===7?4096:64;let seed=dataset+37;
+  d.palette=Array.from({length:count},(_,i)=>{seed=(Math.imul(seed,1664525)+1013904223)>>>0;const c=i<edges.length?edges[i]:dataset===0?edges[i%edges.length]:dataset===1?(0xff000000|((i*4)<<16)|((i*4)<<8)|(i*4))>>>0:seed;return {id:i+1,name:`sort ${i}`,color:{r:c&255,g:(c>>>8)&255,b:(c>>>16)&255,a:c>>>24}};});
+  d.nextColorId=count+1;d.paletteColumns=[1,3,16,256][dataset%4];d.paletteOrder=d.palette.map(e=>e.id).filter(id=>id%7!==0).reverse();if(dataset>=3)d.paletteOrder.splice(4,0,999999,1,2,1);d.paletteSlots=d.paletteOrder.flatMap(id=>[null,id]);
+  const session={document:d,history:{push:e=>history.push(e)},selectedPaletteIds:[2,1],paletteSelectionId:2,primaryColor:{r:41,g:121,b:255,a:255},secondaryColor:{r:255,g:255,b:255,a:255}};
+  const state=()=>({order:[...d.paletteOrder],slots:[...d.paletteSlots],columns:d.paletteColumns});const before=state();paletteCommands.sortPaletteColors(session,mode,descending?'descending':'ascending');const after=state();if(history.length)history[0].undo();const undo=state();if(history.length)history[0].redo();const redo=state();sortOracle.push({dataset,mode,descending,palette:d.palette,before,after,undo,redo,history:history.length});
+ }
+ fs.writeFileSync(path.join(out,'palette-sort-oracle.json'),JSON.stringify(sortOracle));console.log(`Palette sort: ${sortOracle.length} actual legacy command/Undo/Redo matrices`);
  const {repositionPaletteSlots}=await import(pathToFileURL(path.join(legacy,'src/renderer/src/core/palette-layout.ts')));
  const paletteOrderOracle=[];
  const paletteOperations=['update','rename','reverse','reverse-selected','sort','delete','move','add','paste','paste-noop','paste-new','gradient','gradient-hue','gradient-new','apply','apply-noop','apply-new','extract','extract-append'];

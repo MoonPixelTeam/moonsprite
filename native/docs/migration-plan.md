@@ -3687,3 +3687,14 @@ RGB／HSV插值与现有槽位渐变共用同一个PaletteGradientSampler，沿�
 实际旧版新增228组命令及真实Undo/Redo回调对照（总raw矩阵1668，新增72组事务、156组无操作）：19种order中原12种各RGB／HSV、1／3／256列与sort-first组合，另七种order专用于已选渐变，覆盖none／one／multiple、有效三色、反序、重复身份、首末缺失、中间缺失、alpha变化／全透明RGB、色相跨界与灰阶。测试直接录入真实session选择状态，逐阶段核对条目、布局、角色、选择与普通／恢复保存，保留既有其它命令矩阵。不能把核心方法的完成说成ID0／索引色完成：当前零ID仍与空槽哨兵冲突，需要单独迁移表示及所有消费者；既有准入门禁继续保留。全量迁移仍INCOMPLETE。
 
 最终验证：palette-selected-gradient-verified-build.log中正式Release、工程矩阵、核心、保存和快照目标统一构建通过，确认链接最终采样器源码；palette-selected-gradient-verified-tests.log中完整1668组raw、192组粘贴、158组解码（110可编辑）及530组命令、既有工程矩阵、核心事务、工程保存重开和DocumentSnapshot均退出0。palette-selected-gradient-ui-smoke.log中的正式--palette-gradient-check、--palette-growth-check、--palette-clipboard-check、--palette-reverse-check、--palette-sort-check均退出0，覆盖新增回退及共享槽位算法。来源覆盖626文件通过，strict按已有全量迁移缺口退出1，diff检查通过。本批为源码／实际旧版数据对照与自动界面逻辑检查，未进行人工图像验收，亦未测量整体交互性能。
+
+
+### 调色盘全部排序方式的派生键缓存与旧版对照（2026-11-08）
+
+接续d6ba8c43，对实际core/palette.ts::comparePaletteColors和workspace-palette.ts::sortPaletteColors核对后，保留八种方式、升降序、灰阶8/255边界、alpha／packed RGBA末级比较、稳定重复引用、悬空过滤、原始槽位及现有layout-only历史语义。原生旧比较器在每次比较及色相回退中重复计算HSV／亮度及三次sRGB幂运算，现每个条目每次命令计算一次派生键，比较器只读取键；不改变菜单、快捷键、选择、颜色角色和工程表示。
+
+生成器直接执行实际旧版命令及其Undo/Redo回调，新增128组：八组色板×八种方式×两个方向，覆盖重复颜色、全透明RGB、灰阶／近灰阈值、色相跨界、随机通道、隐藏颜色、重复／悬空原始顺序及4096色；原生逐状态检查order／slots／columns与事务数，并确认颜色条目／名称／cursor／选择／前景背景保持不变。旧版session测试桩只收集真实回调，不代表完整浏览器HistoryStack。首次测试编译漏传归档参数，补齐后首次运行又因空归档指针被导入工厂正确拒绝；测试已复用valid工程建立完整导入上下文，未放宽产品校验。
+
+palette-sort-cache-final-build.log正式Release和核心目标构建通过；修正测试上下文后的palette-sort-cache-test-build.log通过。palette-sort-cache-final-tests.log通过全部128组新排序矩阵及既有1668组raw、192组粘贴、158组解码／530组命令和完整工程矩阵；palette-sort-cache-tests.log中的核心事务退出0（该日志同时保留首次工程测试上下文失败，不当作完整通过日志）。正式--palette-sort-check、--palette-gradient-check、--palette-reverse-check均退出0，见palette-sort-cache-ui.log。来源覆盖626文件通过，strict按已知全量缺口退出1；diff检查通过。
+
+同机Release微基准见palette-sort-cache-benchmark.log：八种排序各重复三次，4096色旧比较器310.018ms、优化后完整Document命令99.946ms；65536色分别7092.76ms和2333.53ms，约3.10／3.04倍。临时基准源码从提交d6ba8c43提取旧比较器，旧侧仅计算顺序，新侧包含槽位归一化与历史，逐次核对两侧输出一致，生成物仅在native/build，不提交、不作为另一应用交付。此范围不代表UI拖动、缩放或整体交互性能，也未进行人工图像验收。全量迁移仍INCOMPLETE。
