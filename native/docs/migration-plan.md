@@ -4503,3 +4503,10 @@ CTest tile-repeat通过，含此前1024旧版几何oracle及直接沿用旧版re
 补齐上一阶段未实测的手柄链路。发现无效副本释放时以gradientSpec.end充当指针，在线性起点/径向中心拖动中会重新计算错误位移。现在无效释放完全跳过几何更新，只结算拖动、保留最后有效几何并释放捕获，承接legacy localPoint无效采样不更新的行为。
 
 新增X/Y/Both线性起点/径向中心实际鼠标诊断：副本命中、本地位移、越界移动及释放保持起终点、待确认无历史、手柄Escape恢复先前几何、Enter一笔提交和像素UndoRedo。首轮径向测试误用start作为径向中心，已改用resolveGradientGeometry的实际中心，生产几何未调整。gradient-handles-repeat-build.log最终正式构建0，显式等待 --tile-repeat-check退出0。三项CTest tile-repeat/tile-repeat-stroke/free-tile-project通过12.06s，随后只修正运行诊断并重建运行通过。无新截图/FPS验收；整体迁移仍INCOMPLETE。用户数据与未跟踪文件保留，阶段提交推送dev。
+
+
+### 2026-11-09：平铺形状与线条副本输入（阶段完成）
+
+核对canvas-input-shape begin/move/end、canvas-input-free-tile-edit及pointer-down/move：形状几何使用有限副本本地指针，之后应用网格/约束；不自行添加矩形等足迹环绕。原生shapeTool路径映射本地点，直线使用映射后的未吸附端点进入既有约束与吸附，其他形状继续drawPoint。无效移动忽略，释放沿用上次shapePointer。Document普通/自由源事务、曲线多阶段、多边形路径和历史保留。
+
+实际鼠标诊断覆盖普通层/自由瓦片源、矩形/矩形轮廓/椭圆/椭圆轮廓/直线/自由形状/多边形/曲线、X/Y/Both主画布和副本完整像素相等、单笔提交、UndoRedo及Escape。多边形和曲线最终调用现有finish方法收尾，不能作为独立结束按键验收。shapes-repeat-build.log正式Release构建0，显式等待 --tile-repeat-check退出0；三项CTest tile-repeat/tile-repeat-stroke/free-tile-project通过12.20s。未新增截图/FPS或越界释放专项检查，全部迁移仍INCOMPLETE。保留用户数据、工程及未跟踪文件，阶段保存推送dev。
