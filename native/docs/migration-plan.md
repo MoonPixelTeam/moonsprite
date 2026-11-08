@@ -4510,3 +4510,10 @@ CTest tile-repeat通过，含此前1024旧版几何oracle及直接沿用旧版re
 核对canvas-input-shape begin/move/end、canvas-input-free-tile-edit及pointer-down/move：形状几何使用有限副本本地指针，之后应用网格/约束；不自行添加矩形等足迹环绕。原生shapeTool路径映射本地点，直线使用映射后的未吸附端点进入既有约束与吸附，其他形状继续drawPoint。无效移动忽略，释放沿用上次shapePointer。Document普通/自由源事务、曲线多阶段、多边形路径和历史保留。
 
 实际鼠标诊断覆盖普通层/自由瓦片源、矩形/矩形轮廓/椭圆/椭圆轮廓/直线/自由形状/多边形/曲线、X/Y/Both主画布和副本完整像素相等、单笔提交、UndoRedo及Escape。多边形和曲线最终调用现有finish方法收尾，不能作为独立结束按键验收。shapes-repeat-build.log正式Release构建0，显式等待 --tile-repeat-check退出0；三项CTest tile-repeat/tile-repeat-stroke/free-tile-project通过12.20s。未新增截图/FPS或越界释放专项检查，全部迁移仍INCOMPLETE。保留用户数据、工程及未跟踪文件，阶段保存推送dev。
+
+
+### 2026-11-09：平铺副本取色与放大镜（阶段完成）
+
+核对canvas-pointer-move、canvas-input-sampling、useCanvasViewportGeometry、useCanvasEyedropperMagnifier和eyedropper-source：采样使用有限相邻副本本地点，越界移动不改变颜色；放大镜以连续本地点为中心，邻域不额外环绕。原生共享sampleEyedropperAt入口完成坐标适配，普通/临时取色、替换色和颜色编辑器采样复用该入口；放大镜同步映射中心及采样色环。未修改取色来源、左右键目标和结束策略。
+
+实际鼠标诊断覆盖X/Y/Both、合成/当前层、前景/背景色、拖动更新、外侧副本忽略、释放捕获、内容及历史不变，并逐像素比较主画布/副本放大镜。首轮自动适配缩放使两次物理鼠标落点有亚像素差异，诊断改用整数像素缩放后通过；生产缩放逻辑未变。eyedropper-repeat-build.log正式Release构建0，显式等待 --tile-repeat-check退出0。三项CTest eyedropper/tile-repeat/tile-repeat-stroke通过0.37s，742文件来源快照检查通过。替换色/颜色编辑器仅核对共享调用链，没有新增其平铺UI专用回归；旧版放大镜逐帧合并性能方案仍未在此阶段迁移，也没有FPS测量。全量迁移仍INCOMPLETE，保留用户及未跟踪数据，阶段提交推送dev。

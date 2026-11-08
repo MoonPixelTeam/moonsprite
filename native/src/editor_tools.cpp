@@ -1551,7 +1551,14 @@ void Editor::updateEyedropperLens(gfx::Point pointer,Pixel sampled) {
 
     eyedropperLensPointer_=pointer;
 
-    const double px=canvasDocumentPoint(pointer).x,py=canvasDocumentPoint(pointer).y;
+    auto at=canvasDocumentPoint(pointer);
+    if(tileRepeatIdentity_==document.identity()&&tileRepeat_!=repeat::Mode::Off){
+      const auto mapped=repeat::map({at.x,at.y},document.width(),document.height(),tileRepeat_);
+      if(!mapped)return;
+      at={mapped->local.x,mapped->local.y};
+      sampled=sampleEyedropper(document.timeline(),document.frame().id,document.layer().id,document.width(),document.height(),int(std::floor(at.x)),int(std::floor(at.y)),eyedropperSource_);
+    }
+    const double px=at.x,py=at.y;
 
     const int sx=int(std::floor(px))-12,sy=int(std::floor(py))-12;
 
@@ -1656,7 +1663,7 @@ bool Editor::processColorEditorCanvasSampling(ui::Message* msg){
   }catch(const std::exception& e){finish();status_=U"渐变色标采色失败："+unicodeText(e.what());invalidate();return true;}
 }
 
-void Editor::sampleEyedropperAt(Point p){try{const auto color=sampleEyedropper(document.timeline(),document.frame().id,document.layer().id,document.width(),document.height(),p.x,p.y,eyedropperSource_);eyedropperGesture_.sample(color);if(colorEditorSampling_&&colorEditorSamplingTarget_)colorEditorSamplingTarget_->sampled(color);else document.setPaletteRole(color,eyedropperGesture_.secondary(),paletteLocked_);if(replaceSampling_>=0)changeReplaceColor(replaceSampling_,color,true);refresh();}catch(const std::exception& e){status_=U"采色失败："+unicodeText(e.what());invalidate();}}
+void Editor::sampleEyedropperAt(Point p){try{if(tileRepeatIdentity_==document.identity()&&tileRepeat_!=repeat::Mode::Off){const auto mapped=repeat::map({double(p.x),double(p.y)},document.width(),document.height(),tileRepeat_);if(!mapped)return;p={int(mapped->local.x),int(mapped->local.y)};}const auto color=sampleEyedropper(document.timeline(),document.frame().id,document.layer().id,document.width(),document.height(),p.x,p.y,eyedropperSource_);eyedropperGesture_.sample(color);if(colorEditorSampling_&&colorEditorSamplingTarget_)colorEditorSamplingTarget_->sampled(color);else document.setPaletteRole(color,eyedropperGesture_.secondary(),paletteLocked_);if(replaceSampling_>=0)changeReplaceColor(replaceSampling_,color,true);refresh();}catch(const std::exception& e){status_=U"采色失败："+unicodeText(e.what());invalidate();}}
 
 void Editor::finishEyedropper(){const bool returnToPencil=eyedropperTool_ && replaceSampling_<0 && !colorEditorSampling_ && runtimePreferences_.flag("tools.eyedropperSwitchToPencil");const bool editorSampling=colorEditorSampling_;const auto added=eyedropperGesture_.finish(paletteSamplingHeld_);if(added)try{document.addPaletteColor(*added);}catch(const std::length_error&){status_=U"颜色编号超出当前支持范围";}eyedropperLensSurface_.reset();if(hasCapture())releaseMouse();if(replaceSampling_>=0)finishReplaceSampling();if(editorSampling&&colorEditorSamplingTarget_)colorEditorSamplingTarget_->finishSampling();if(returnToPencil){eyedropperTool_=false;selectionTool_=shapeTool_=gradientTool_=fillTool_=handTool_=navigation_.zoomTool_=eraser_=false;}updateNavigationCursor();refresh();}
 

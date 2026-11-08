@@ -173,6 +173,20 @@ void Editor::smokeTileRepeat(){
   }
  }
  shapeTool_=false;
+ // Sampling must share bounded local coordinates across foreground/background and lens.
+ for(const auto mode:{repeat::Mode::X,repeat::Mode::Y,repeat::Mode::Both})for(bool current:{false,true})for(bool right:{false,true}){
+  document=Document(16,12);document.fillSelectionOrCanvas(0xff112233);document.addLayer();document.beginStroke({2,3},0x80445566);document.commitStroke();document.beginStroke({5,4},0xff778899);document.commitStroke();
+  useEyedropperTool();eyedropperSource_=current?EyedropperSource::CurrentLayer:EyedropperSource::Composite;eyedropperLensEnabled_=true;setTileRepeat(mode);zoom_=4;{const auto v=canvasViewport();const int w=int(16*canvasScale()),h=int(12*canvasScale());canvas_={v.x+(v.w-w)/2,v.y+(v.h-h)/2,w,h};}refresh();const auto baseline=document.canvasPixels();const auto h=document.historyPosition();const auto other=right?document.palette().primary:document.palette().secondary;const int ox=repeat::includesX(mode)?-16:0,oy=repeat::includesY(mode)?12:0;
+  auto sampleSend=[&](ui::MessageType type,TransformPoint at){ui::MouseMessage m(type,os::PointerType::Mouse,right?ui::kButtonRight:ui::kButtonLeft,ui::kKeyNoneModifier,canvasDocumentToDisplay(at));m.setDisplay(display());onProcessMessage(&m);};
+  auto role=[&]{return right?document.palette().secondary:document.palette().primary;};
+  const auto first=sampleEyedropper(document.timeline(),document.frame().id,document.layer().id,16,12,2,3,eyedropperSource_);
+  sampleSend(ui::kMouseDownMessage,{ox+2.25,oy+3.25});if(!eyedropperGesture_.active()||role()!=first||!eyedropperLensSurface_)throw std::runtime_error("Repeated eyedropper initial sample");
+  const auto lens=eyedropperLensSurface_;updateEyedropperLens(canvasDocumentToDisplay({2.25,3.25}),first);for(int y=0;y<128;++y)for(int x=0;x<128;++x)if(lens->getPixel(x,y)!=eyedropperLensSurface_->getPixel(x,y))throw std::runtime_error("Repeated eyedropper lens differs");
+  sampleSend(ui::kMouseMoveMessage,{ox+5.25,oy+4.25});if(role()!=0xff778899)throw std::runtime_error("Repeated eyedropper drag");
+  sampleSend(ui::kMouseMoveMessage,{repeat::includesX(mode)?32.25:5.25,repeat::includesY(mode)?24.25:4.25});if(role()!=0xff778899)throw std::runtime_error("Repeated eyedropper outside copies changed color");
+  sampleSend(ui::kMouseUpMessage,{ox+5.25,oy+4.25});if(eyedropperGesture_.active()||hasCapture()||eyedropperLensSurface_||document.canvasPixels()!=baseline||document.historyPosition()!=h||(right?document.palette().primary:document.palette().secondary)!=other)throw std::runtime_error("Repeated eyedropper finish/content/other role");
+ }
+ eyedropperTool_=false;
  const auto before=zoom_;menuCommands_.invoke("tileRepeatOff");if(tileRepeat_!=repeat::Mode::Off||zoom_!=before)throw std::runtime_error("Repeat off changed zoom");
  setTileRepeat(repeat::Mode::Y);ensureProjects();storeActiveProject();restoreProject(activeProject_);if(tileRepeat_!=repeat::Mode::Y||tileRepeatIdentity_!=document.identity())throw std::runtime_error("Repeat session restoration");
  document=Document();tileRepeat_=repeat::Mode::Off;tileRepeatIdentity_=document.identity();refresh();
