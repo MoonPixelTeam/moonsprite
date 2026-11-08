@@ -4258,3 +4258,22 @@ make-tile-canvas-fixtures.cjs执行实际未改写的旧版两个生产resize函
 tile-canvas-final-build.log正式Release构建退出0；首轮tile-canvas-ui-tests.log中--canvas-resize-check/--canvas-trim-check退出0。首轮结果截图沿用此前大画布测试的视图和故意触发的错误提示，不能用来验收当前画面；仅修正smoke fixture的fitCanvas与状态隔离，不改变生产视图策略。tile-canvas-ui-framing-build.log最终正式增量构建退出0；tile-canvas-final-ui-tests.log两条正式窗口检查均退出0，运行前后exe SHA256一致（B963DCA8B1D7F9AB08A307F376695F982261F093006B50CFAB7386F6FD827153）。实际PixelDialog取消/提交、两类特殊工程资源身份、单笔Undo/Redo及crop/trim菜单路由通过。
 
 已重新查看最终canvas-resize-grid-result.bmp、canvas-resize-free-result.bmp：默认2×下4×4画布及原像素可见，历史含一笔画布大小，资源层/链接帧保留，底栏无前一失败提示；弹窗截图另核对字段和底部按钮完整无交叠，未据其证明所有overlay刷新或缩放状态。视觉范围限这些窗口状态，不是全部倍率/手工长时操作/全软件FPS验收。来源覆盖704文件通过（tile-canvas-final-provenance.log），strict仍因全局既有缺口退出1；Node语法与diff检查通过。既有未跟踪文件、工程/恢复数据和构建缓存全部保留，本阶段完成后保存推送dev，全量目标继续INCOMPLETE。
+
+
+### 2026-11-08 瓦片与自由瓦片图像大小（已通过定向验证）
+
+接续158da52a，实际对照document-model::resizeDocumentImage、free-tile-document的捕获/验证/调整和free-tile::resizeFreeTileTileset，复用既有结构历史。自由瓦片逐源按Math.round缩放瓦片宽高及源偏移，实例先缩放世界坐标再减新Cel原点；nearest保留透明RGB，smooth按旧版预乘alpha插值，普通位图/蒙版仍走原来的straight RGBA规则。只处理canonical owner，保留链接及runtime共享、源/实例身份、顺序、隐藏/锁定/变换，混合普通层和直接/链接蒙版、live选区共同单笔撤销/重做。
+
+用户本轮明确批准修复旧版网格只调整缓存而不调整资源/网格的问题：同步重采样每个引用瓦片源和网格tileWidth/tileHeight，保持columns/rows、cells及资源ID/槽位；偏移按世界坐标floor。网格每瓦片按原位图straight RGBA插值，重新渲染缓存以确保保存重开一致。原生256px瓦片边长、16Mi源像素、64Mi表面像素和256Mi工作集准入继续有效，超限不提交；更大源尺寸兼容仍未迁移。直接按瓦片行写目标sheet，避免逐瓦片重建ID索引。
+
+make-tile-image-fixtures.cjs执行未改写旧版生产函数生成48组对照（2插值×2链接×2活动帧×6尺寸），完整源RGBA、两帧表面hash/几何/实例坐标；新增原生grid同步、混合隐藏锁定层/链接蒙版、runtime共享、单笔历史及源/输出真实重开检查。实际Editor新增两类源的PixelDialog取消/提交/Undo/Redo与截图，独立--image-resize-check入口。首轮核心构建发现预算常量跨源码不可见，改为同一256Mi数值；尚待执行验收，不能以fixture生成代替测试通过。
+
+本地Aseprite cmd_sprite_size.cpp为EULA源码，仅只读对照每源一次/uniqueCels、网格原点更新和事务worker取消架构，未复制。原生命令目前仍同步计算/安装，不宣称已消除大图像调整的全部卡顿；异步化及索引/灰度等全量迁移缺口仍INCOMPLETE。此前批准的长色板名称修复与覆盖已有，不重复改动。
+
+核心最终tile-image-core-build-fixed.log构建退出0；tile-image-final-core-tests.log六项全部通过（16.96s）：image-resize、tile-image-resize、palette-library、tile-canvas-resize、large-resize、mask-resize。新套件实际执行48组旧版自由瓦片对照及96个源/输出重开、8组用户批准的网格同步（含16个源/输出重开和混合隐藏锁定普通层/链接蒙版）、24组runtime共享。tile-image-legacy-tests.log实际旧版document/free-tile两文件33项通过。来源707文件及证据覆盖通过，strict按全量缺口退出1。正式Release与窗口验收继续进行，尚未用核心通过代替UI证据。
+
+最终tile-image-formal-build.log唯一正式Release构建退出0；tile-image-ui-tests.log的--image-resize-check退出0，实际两类资源PixelDialog取消/提交、资源身份与尺寸、链接owner、单笔Undo/Redo通过。运行前后正式exe SHA256一致：9667167402471B2222C9FF62D447C08C56E81DF7E1BCB10734844FEF5C56E9BA。已实际查看image-resize-grid-dialog.bmp、image-resize-grid-result.bmp、image-resize-free-result.bmp：默认2×下参数、内存提示和应用/取消按钮完整，无相互覆盖；12×8结果像素可见，原资源层/链接帧保留，历史新增一笔图像大小。视觉范围仅上述三个状态，不代表所有倍率、长时手工操作或整机FPS验收。
+
+本轮保留所有既有未跟踪文件、用户工程/恢复数据与构建缓存，仅保存明确列出的源码、测试和来源/迁移记录。原生256px瓦片边长与同步图像计算等限制已明示，全量迁移继续INCOMPLETE；不会把来源检查覆盖或本批通过解释为所有性能问题已消失。
+
+最终tile-image-final-provenance.log覆盖707文件并核对证据快照，退出0；strict仍因已登记全局缺口退出1。Node生成器语法与git diff --check通过。此阶段达到已声明原生限制内的定向验收状态，保存并推送dev；未操作main、版本号或发布产物。

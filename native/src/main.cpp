@@ -417,6 +417,7 @@ int app_main(int argc,char* argv[]) {
     ui::set_use_native_cursors(true); manager.refreshCursor();
 
     const bool canvasResizeCheck=argc>1&&std::string(argv[1])=="--canvas-resize-check";
+    const bool imageResizeCheck=argc>1&&std::string(argv[1])=="--image-resize-check";ui::Timer imageResizeTimer(180,editor);if(imageResizeCheck){imageResizeTimer.Tick.connect([&]{imageResizeTimer.stop();try{editor->smokeImageResize();desktop.approved=true;desktop.closeWindow(editor);}catch(const std::exception& e){std::ofstream("native-image-resize-error.txt")<<e.what();std::exit(1);}});imageResizeTimer.start();}
     const bool layerColorPresetsCheck=argc>1&&std::string(argv[1])=="--layer-color-presets-check";
     ui::Timer layerColorPresetsTimer(180,editor);
     if(layerColorPresetsCheck){layerColorPresetsTimer.Tick.connect([&]{layerColorPresetsTimer.stop();try{editor->smokeLayerColorPresets();desktop.approved=true;desktop.closeWindow(editor);}catch(const std::exception& e){std::ofstream("native-layer-color-presets-error.txt")<<e.what();std::exit(1);}});layerColorPresetsTimer.start();}

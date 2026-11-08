@@ -32,6 +32,24 @@ inline timeline::Surface imageResizedSurface(const timeline::Surface& source,con
  out.pixels=resizeImagePixels(source.pixels,source.width,source.height,p.width,p.height,method,p.scaleX,p.scaleY,double(p.x)/p.scaleX-source.offsetX,double(p.y)/p.scaleY-source.offsetY);
  if(mask)for(auto& pixel:out.pixels)pixel=timeline::normalizedMaskPixel(pixel);return out;
 }
+// free-tile.ts uses premultiplied bilinear samples; ordinary document surfaces
+// deliberately use straight RGBA. Keep their transparent RGB rules separate.
+inline std::vector<std::uint32_t> resizeFreeTileImagePixels(const std::vector<std::uint32_t>& source,int sw,int sh,int tw,int th,ImageInterpolation method){
+ if(sw<1||sh<1||tw<1||th<1||source.size()!=std::size_t(sw)*sh)throw std::invalid_argument("Invalid free tile resize surface");
+ std::vector<std::uint32_t> out(std::size_t(tw)*th);
+ if(method==ImageInterpolation::Nearest){for(int y=0;y<th;++y)for(int x=0;x<tw;++x)out[std::size_t(y)*tw+x]=source[std::size_t(std::min(sh-1,int(std::floor((y+.5)*sh/th))))*sw+std::min(sw-1,int(std::floor((x+.5)*sw/tw)))];return out;}
+ auto sample=[&](int x,int y,int channel){const auto p=source[std::size_t(std::clamp(y,0,sh-1))*sw+std::clamp(x,0,sw-1)];const double alpha=(p>>24)/255.;return channel==3?alpha:((p>>(channel*8))&255)*alpha;};
+ for(int y=0;y<th;++y)for(int x=0;x<tw;++x){const double u=(x+.5)*sw/tw-.5,v=(y+.5)*sh/th-.5;const int l=int(std::floor(u)),t=int(std::floor(v));const double fx=u-l,fy=v-t;
+  auto channel=[&](int n){const auto a=sample(l,t,n),b=sample(l+1,t,n),c=sample(l,t+1,n),d=sample(l+1,t+1,n);const double top=a+(b-a)*fx,bottom=c+(d-c)*fx;return top+(bottom-top)*fy;};
+  const double alpha=channel(3);std::uint32_t p=std::uint32_t(std::clamp(std::floor(alpha*255+.5),0.,255.))<<24;for(int n=0;n<3;++n)if(alpha>0)p|=std::uint32_t(std::clamp(std::floor(channel(n)/alpha+.5),0.,255.))<<(n*8);out[std::size_t(y)*tw+x]=p;
+ }return out;
+}
+inline tiles::Tileset imageResizedTileset(const tiles::Tileset& source,int width,int height,ImageInterpolation method,bool freeTile){
+ tiles::sizeCheck(width,height,source.columns,source.rows,true);if(width==source.tileWidth&&height==source.tileHeight)return source;
+ tiles::Tileset out{source.id,source.name,width,height,source.columns,source.rows,source.tileIds,source.tileSlots,std::vector<tiles::Pixel>(std::size_t(source.columns)*source.rows*width*height)};
+ for(std::size_t i=0;i<source.tileIds.size();++i){const auto tile=tiles::readTile(source,i);const auto pixels=freeTile?resizeFreeTileImagePixels(tile,source.tileWidth,source.tileHeight,width,height,method):resizeImagePixels(tile,source.tileWidth,source.tileHeight,width,height,method);for(int y=0;y<height;++y)std::copy_n(pixels.begin()+std::size_t(y)*width,width,out.pixels.begin()+((i/source.columns*height+y)*source.columns*width+i%source.columns*width));}return out;
+}
+inline int roundedImageResizeCoordinate(double n){const double value=std::floor(n+.5);if(!std::isfinite(value)||value<std::numeric_limits<int>::min()||value>std::numeric_limits<int>::max())throw std::length_error("Image resize coordinate exceeds range");return int(value);}
 inline std::optional<SelectionMask> resizeImageSelection(const std::optional<SelectionMask>& source,int sw,int sh,int tw,int th){
  if(!source)return {};const auto& s=*source;const double sx=double(tw)/sw,sy=double(th)/sh;
  SelectionMask out;out.x=int(std::floor(s.x*sx));out.y=int(std::floor(s.y*sy));out.width=std::max(1,int(std::ceil((s.x+s.width)*sx))-out.x);out.height=std::max(1,int(std::ceil((s.y+s.height)*sy))-out.y);

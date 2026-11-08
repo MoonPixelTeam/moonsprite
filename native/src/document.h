@@ -386,6 +386,7 @@ public:
   bool commitLayerAdjustment(const GradientMapSettings&,bool enabled=true);
   void cancelLayerAdjustment();
   bool createBackgroundLayer(const timeline::Surface&,bool solid=false);bool setLayerBackground(const std::string&,bool);bool resizeBackgroundCanvas(int,int,int,int,bool,std::optional<TransformPoint>);
+  bool resizeResourceImage(int,int,ImageInterpolation);
   bool canDuplicateSelectedLayers() const;
   void duplicateSelectedLayers();
   void duplicateLayer();

@@ -1475,10 +1475,11 @@ bool Document::importSpriteSheet(const SheetImportOptions& options,std::optional
  validateSpriteSheetImportAllocation(*this,options);auto next=buildSpriteSheetImport(*this,options);
  return SheetImportTask::install(*this,options,timeline_.state(),std::move(next),pivot);
 }
-bool Document::resizeImage(int width,int height,ImageInterpolation method){if(hasTilemapContent()||hasFreeTileContent())return false;
+bool Document::resizeImage(int width,int height,ImageInterpolation method){
  validateImportedImageDimensions(width,height);
  if(width==width_&&height==height_)return false;
  cancelStroke();cancelLayerOpacity();if(active())throw std::runtime_error("Finish the active edit before resizing the image");
+ if(hasTilemapContent()||hasFreeTileContent())return resizeResourceImage(width,height,method);
  std::size_t remaining=adjustmentByteLimit;auto reserve=[&](std::uint64_t bytes){if(bytes>remaining)throw std::length_error("Image resize exceeds working pixel budget");remaining-=std::size_t(bytes);};
  for(const auto& c:timeline_.state().cels)if(c.surface){const auto p=planImageResizeSurface(*c.surface,width_,height_,width,height);reserve(3ull*c.surface->pixels.size()*sizeof(Pixel)+2ull*p.bytes);}
  if(selection_)reserve(3ull*(selection_->mask.size()+std::uint64_t(width)*height));
