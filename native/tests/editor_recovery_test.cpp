@@ -59,6 +59,35 @@ int wmain(int argc,wchar_t** argv){try{
  recovered.beginStroke({0,2},0xff654321);CHECK(recovered.commitStroke());CHECK(recovered.historySize()==1&&recovered.dirty());checkOwner(recovered,0xff654321,1);recovered.undo();checkOwner(recovered,0xff123456,1);CHECK(recovered.dirty());recovered.redo();checkOwner(recovered,0xff654321,1);
  const auto recoveredHistory=recovered.historySize();project::saveDocumentAtomic(recovered,root/"local-owner-resaved.moonsprite");CHECK(!recovered.dirty()&&recovered.historySize()==recoveredHistory);auto savedRecovery=reopen("local-owner-resaved.moonsprite");checkOwner(savedRecovery,0xff654321,2);CHECK(!savedRecovery.dirty()&&savedRecovery.historySize()==0&&savedRecovery.name()==recoveredName&&savedRecovery.projectId()==recovered.projectId());
  const auto preserved=project::listRecoveryRecords(root);CHECK(std::any_of(preserved.begin(),preserved.end(),[](const auto& r){return r.id=="local-owner";}));CHECK(std::filesystem::exists(root/"local-owner.moonsprite"));
+ // GAP-015: payload commit survives missing, corrupt or mismatched sidecars.
+ const auto orphans=root/"orphan-discovery";std::filesystem::create_directories(orphans);
+ const auto archive=project::encodeRecoveryProject(first);
+ auto write=[&](const std::filesystem::path& file,const project::Bytes& data){std::ofstream out(file,std::ios::binary);out.write(reinterpret_cast<const char*>(data.data()),std::streamsize(data.size()));CHECK(bool(out));};
+ auto readBytes=[&](const std::filesystem::path& file){std::ifstream in(file,std::ios::binary);return project::Bytes(std::istreambuf_iterator<char>(in),{});};
+ for(const auto id:{"missing","corrupt","mismatch","valid","truncated"})write(orphans/(std::string(id)+".moonsprite"),std::string(id)=="truncated"?project::Bytes{1,2,3}:*archive.bytes);
+ const auto metadata=project::encodeRecoveryRecord({"valid","original name","1700000000000"});
+ write(orphans/"valid.json",project::Bytes(metadata.begin(),metadata.end()));
+ write(orphans/"corrupt.json",{1,2,3});write(orphans/"mismatch.json",project::Bytes(metadata.begin(),metadata.end()));
+ write(orphans/"unsafe name.moonsprite",*archive.bytes);write(orphans/"ignored.moonsprite.tmp",*archive.bytes);std::filesystem::create_directory(orphans/"directory.json");
+ const auto absent=project::encodeRecoveryRecord({"absent","missing payload","1800000000000"});write(orphans/"absent.json",project::Bytes(absent.begin(),absent.end()));
+ const auto rows=project::listRecoveryRecords(orphans);CHECK(rows.size()==6);
+ for(const auto id:{"missing","corrupt","mismatch","valid","truncated","absent"}){
+  const auto row=std::find_if(rows.begin(),rows.end(),[&](const auto& r){return r.id==id;});CHECK(row!=rows.end());
+  if(std::string(id)=="valid"){CHECK(row->name=="original name"&&row->updatedAt=="1700000000000");}
+  else if(std::string(id)!="absent"){CHECK(row->name==id&&std::stoull(row->updatedAt)>1700000000000ULL);}
+ }
+ CHECK(!std::filesystem::exists(orphans/"missing.json")&&readBytes(orphans/"corrupt.json")==project::Bytes({1,2,3})&&readBytes(orphans/"mismatch.json")==project::Bytes(metadata.begin(),metadata.end()));
+ CHECK(readBytes(orphans/"missing.moonsprite")==*archive.bytes);
+ // Normal decoder can reopen the discovered payload, with no synthetic archive.
+ CHECK(project::prepareEditableImport(project::readProjectManifest(std::make_shared<const project::Bytes>(readBytes(orphans/"missing.moonsprite")))).width==first.width());
+ // Force a real second-stage commit failure after the payload is flushed.
+ std::filesystem::create_directory(orphans/"interrupted.json");
+ bool commitFailed=false;try{project::writeRecoveryFiles(orphans,{"interrupted","draft","1900000000000"},*archive.bytes);}catch(const std::exception&){commitFailed=true;}
+ CHECK(commitFailed&&readBytes(orphans/"interrupted.moonsprite")==*archive.bytes);
+ auto interrupted=project::listRecoveryRecords(orphans);CHECK(interrupted.size()==7&&std::any_of(interrupted.begin(),interrupted.end(),[](const auto& r){return r.id=="interrupted";}));
+ std::filesystem::remove(orphans/"interrupted.json");project::removeOwnedRecovery(orphans,"interrupted");
+ project::removeOwnedRecovery(orphans,"missing");CHECK(!std::filesystem::exists(orphans/"missing.moonsprite")&&project::listRecoveryRecords(orphans).size()==5);
+ project::writeRecoveryFiles(orphans,{"corrupt","repaired by autosave","1900000000000"},*archive.bytes);const auto repaired=project::listRecoveryRecords(orphans);CHECK(repaired.size()==5&&std::any_of(repaired.begin(),repaired.end(),[](const auto& r){return r.id=="corrupt"&&r.name=="repaired by autosave";}));
  // Snapshot identity mismatch cancels before a ticket can write a new document.
  editor::RecoverySession stale;stale.identity=first.identity();stale.ownedId="stale";stale.snapshot.emplace(first,"stale");stale.queue.request({"stale","",first.revision(),first.contentRevision(),true,true});stale.ticket=stale.queue.next();settings.enabled=false;
  stale.tick(second,settings,root,false);CHECK(!stale.ticket&&!stale.snapshot&&!stale.worker.valid());

@@ -3940,3 +3940,12 @@ case19发现通用16位PNG的WIC8位转换与旧image取整差1：对16Gray／48
 修复此前失败检查的真实前提：--panel-scroll-check原来未挂入桌面，Aseprite Widget::isVisible要求完整可见父级链及manager，因而即便内容高1068而视口仅204，仍报告滚动条不可见。测试现先挂载可见桌面，明确使用内置32色色板、自适应模式与已打开栏目；手动32列网格验证横向溢出。另将停靠测试陈旧的合并后7组断言改为columnCount-1，并为失败断言报告行号；没有改变产品栏目数量。
 
 验证：初次panel-pan-build.log构建退出0，但面板与停靠检查退出1；panel-pan-final-build.log构建退出0，停靠修正通过，面板诊断确认未挂载导致visibility为0。最终panel-pan-mounted-build.log唯一正式Release及panel-docking-tests构建退出0；panel-pan-ui-tests.log的--panel-scroll-check、--palette-manual-check、panel-docking-tests均退出0。实际编辑器消息覆盖时间轴中键双轴像素偏移、调色盘Space左键纵向、松Space继续拖动、自定义网格中键横向/极限钳制、拖动中窗口resize后边界更新、失焦释放保留偏移、无溢出不捕获，以及revision/撤销位置不变；纯状态机1000次move不重复测量的原有回归继续通过。来源659文件覆盖通过，strict因既有全量迁移缺口仍退出1。未改变视觉布局，未做新截图、人工长期拖动或整体FPS/吞吐测量；结论限于面板平移范围和输入生命周期，不声称全部性能问题已解决。用户文件/缓存/恢复数据未清理，全量迁移仍INCOMPLETE。
+
+
+### 恢复孤儿工程发现、打开与丢弃（2026-11-08）
+
+接续ec7bf972，按FS-006/R05及GAP-015补齐payload已落盘、描述尚未提交后的发现链。实际platform_recovery.rs先atomic_write工程再写JSON，旧list_recoveries仅扫描JSON；原生此前同样漏掉孤儿。现先保留有效同ID描述，再把没有有效描述的直接普通.moonsprite文件加入列表，安全ID作临时显示名、Win32文件修改时间转毫秒；损坏／超预算／ID错配描述均不改写，临时文件、不安全名称及目录不作为工程。缺失payload但描述有效仍保留失败行。扫描不解码全部归档、不创建描述、不删除数据，沿现有后台目录扫描及按需预览／打开预算。
+
+恢复入口在临时显示名等于ID且不存在同ID同名有效描述时，保留归档作品名；有效描述同名仍按旧规则优先。实际打开沿原有DocumentLoadingDialog/prepareEditableImport，无来源路径、dirty及来源ID继续沿既有会话语义；孤儿同样支持放弃，删除不改活文档。未引入新的恢复归档格式、外部目录或自动清理。跨进程两文件原子提交、强杀／断电、未提交tmp恢复及旧描述对应新payload的身份一致性仍是剩余缺口，GAP-015仅部分收敛。
+
+验证：editor-recovery-tests用本次owned目录覆盖缺失／损坏／错配／正常描述、仅描述行、损坏工程、不安全名／tmp／目录过滤，逐字节核对原文件不变，缺失描述不补写；正常解码孤儿并重试写入及丢弃。用目标JSON为目录触发真实第二阶段替换失败，断言已Flush的payload完整且可发现，不冒称真实进程崩溃注入。正式--home-recovery-check新增主页发现→实际打开→原作品名／像素／dirty／无路径／来源ID→丢弃保留活画面。recovery-orphan-build.log正式程序构建成功、测试因read辅助lambda重名编译失败；改名后recovery-orphan-final-build.log全部退出0，核心／UI检查通过；补原名保存后recovery-orphan-name-build.log正式及测试构建退出0，recovery-orphan-final-core-tests.log及-final-ui-tests.log均退出0。来源659覆盖通过，strict仍因已知迁移缺口退出1，diff通过。UI布局未改，本批无新截图或人工验收，不声称全量恢复及全量迁移完成。
