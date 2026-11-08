@@ -862,6 +862,7 @@ struct Document::FreeTileSourceStroke {
  std::string sourceId,tilesetId,targetCel;
  free_tiles::Instance instance;
  Point origin,anchor,start;
+ repeat::Mode repeatMode=repeat::Mode::Off;
  int baseSize=1;std::optional<PatternBrush> image;
  Point local(Point);
  PixelRegion scan;
@@ -894,9 +895,15 @@ Point Document::FreeTileSourceStroke::local(Point point){
  }
  return {point.x-origin.x,point.y-origin.y};
 }
-Point Document::freeTileSourceStrokePoint(Point point)const{return freeSourceStroke_->local(point);}
-bool Document::beginFreeTileSourceStroke(Point point,Pixel color,BrushOptions brush,const PatternBrush* image,double angle,const std::unordered_map<std::size_t,Pixel>* baseline,bool initial,bool replaceColor){
+Point Document::freeTileSourceStrokePoint(Point point,bool pointerSample)const{
+ // Legacy localPointAt maps each pointer sample, never the brush footprint or
+ // temporary raster. A seam therefore connects the two local endpoints.
+ const auto p=repeat::wrap({double(point.x),double(point.y)},width_,height_,pointerSample?freeSourceStroke_->repeatMode:repeat::Mode::Off);
+ return freeSourceStroke_->local({int(p.x),int(p.y)});
+}
+bool Document::beginFreeTileSourceStroke(Point point,Pixel color,BrushOptions brush,const PatternBrush* image,double angle,const std::unordered_map<std::size_t,Pixel>* baseline,bool initial,bool replaceColor,repeat::Mode repeatMode){
  commitFloatingPaste();cancelStroke();cancelLayerOpacity();
+ const auto mapped=repeat::wrap({double(point.x),double(point.y)},width_,height_,repeatMode);point={int(mapped.x),int(mapped.y)};
  if(active()||freeTilePaintMode()||!activeMaskId_.empty()||layer().kind!="free-tile"||!layer().freeTiles||layer().freeTiles->sources.empty()||hasSelectedGroups()||layerEffectivelyLocked(layer())||!layerEffectivelyVisible(layer()))return false;
  const auto& state=timeline_.state();const DocumentLayer* target=&layer();const DocumentCel* slot=timeline_.resolveSurface(cel().id).source;
  // Legacy checks other free layers first, without changing the active drawing layer.
@@ -915,7 +922,7 @@ bool Document::beginFreeTileSourceStroke(Point point,Pixel color,BrushOptions br
  if(!hit)for(auto it=slot->freeTiles->instances.rbegin();it!=slot->freeTiles->instances.rend();++it){const auto* s=freeSourceFor(data,*it);if(it->visible&&s&&s->id==source->id){hit=&*it;break;}}
  if(hit&&(!hit->visible||hit->locked))return false;
  auto d=std::make_shared<FreeTileSourceStroke>();d->before=timeline_;d->sourceId=source->id;d->tilesetId=set->id;d->targetCel=slot->id;
- d->start=point;d->baseSize=brush.size;if(image)d->image=*image;d->beforeWidth=set->tileWidth;d->beforeHeight=set->tileHeight;d->beforeX=source->offsetX;d->beforeY=source->offsetY;d->beforePixels=tiles::readTile(*set,0);
+ d->repeatMode=repeatMode;d->start=point;d->baseSize=brush.size;if(image)d->image=*image;d->beforeWidth=set->tileWidth;d->beforeHeight=set->tileHeight;d->beforeX=source->offsetX;d->beforeY=source->offsetY;d->beforePixels=tiles::readTile(*set,0);
  if(hit)d->instance=*hit;else {d->placement=true;d->instance.id=uniqueTileId("free-tile-instance");d->instance.sourceId=source->id;d->instance.x=point.x-slot->surface->offsetX-set->tileWidth/2-source->offsetX;d->instance.y=point.y-slot->surface->offsetY-set->tileHeight/2-source->offsetY;d->instance.opacity=source->opacity;d->instance.blendMode=source->blendMode;}
  d->anchor={slot->surface->offsetX+d->instance.x,slot->surface->offsetY+d->instance.y};
  PixelRegion transformed;for(int y:{0,set->tileHeight-1})for(int x:{0,set->tileWidth-1}){const auto p=free_tiles::transform(d->instance,source->offsetX+x,source->offsetY+y);transformed.include(p.first+d->anchor.x,p.second+d->anchor.y);}

@@ -27,7 +27,7 @@ void Document::dynamicStamp(BrushPathPoint sample){
  else for(const auto& row:footprint.spans)for(int x=sample.x-footprint.width/2+row.left;x<=sample.x-footprint.width/2+row.right;++x)for(auto q:strokeSymmetryPoints({x,sample.y-footprint.height/2+row.y}))paint(q.x,q.y,255,{});
 }
 void Document::updateDynamicStroke(Point point,BrushPathPoint sample,bool initial){
- if(auto edit=freeTileSourceStrokeDocument()){try{edit->updateDynamicStroke(freeTileSourceStrokePoint(point),sample,initial);publishFreeTileSourceStroke();}catch(...){cancelFreeTileSourceStroke();throw;}return;}
+ if(auto edit=freeTileSourceStrokeDocument()){try{edit->updateDynamicStroke(freeTileSourceStrokePoint(point,true),sample,initial);publishFreeTileSourceStroke();}catch(...){cancelFreeTileSourceStroke();throw;}return;}
  if(!active_||!dynamicStroke_)return;change_={};sample.x=point.x;sample.y=point.y;
  try{
  if(initial){dynamicLast_=sample;perfectPath_.clear();if(dynamicBase_.perfectPixels){perfectPath_.push_back(sample);perfectPendingStart_=pending_.size();capturingPerfectTail_=true;}dynamicStamp(sample);}

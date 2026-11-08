@@ -5,7 +5,28 @@ using namespace moon;
 namespace moon {struct RasterHistoryFixture {static void removeActive(Document& d){auto state=d.timeline_.state();const auto id=d.cel().id;state.cels.erase(std::remove_if(state.cels.begin(),state.cels.end(),[&](const auto& c){return c.id==id;}),state.cels.end());d.timeline_=timeline::Timeline(std::move(state));}};}
 #define CHECK(x) do{if(!(x))throw std::runtime_error(std::string(#x)+" line "+std::to_string(__LINE__));}while(false)
 static void begin(Document& d,Point p,Pixel color,BrushOptions b,repeat::Mode mode,const PatternBrush* image=nullptr){d.beginStroke(p,color,b,image,0,nullptr,true,false,false,mode);}
-int main(){try{
+static void freeSourceRepeat(){
+ for(auto mode:{repeat::Mode::X,repeat::Mode::Y,repeat::Mode::Both})for(bool dynamic:{false,true})for(bool perfect:{false,true}){
+  auto local=std::make_unique<Document>(8,6),copy=std::make_unique<Document>(8,6);
+  SelectionClipboard tile;tile.width=3;tile.height=2;tile.pixels.assign(6,0xff112233);
+  for(auto* d:{local.get(),copy.get()}){CHECK(d->createFreeTileLayer(U"Repeat source"));CHECK(d->pasteFreeTilePixels(tile,{2,2}));d->setFreeTilePaintMode(false);}
+  const auto before=copy->canvasPixels();const auto sourceBefore=copy->timeline().state().tilesets.front().pixels;const auto instances=copy->cel().freeTiles->instances;const auto history=copy->historyPosition();
+  BrushOptions b;b.size=1;b.perfectPixels=perfect;
+  auto paint=[&](Document& d,bool repeated){const int dx=repeated&&repeat::includesX(mode)?8:0,dy=repeated&&repeat::includesY(mode)?-6:0;auto point=[&](Point p){return Point{p.x+dx,p.y+dy};};
+   d.beginStroke(point({2,2}),0xffabcdef,b,nullptr,0,nullptr,!dynamic,false,false,repeated?mode:repeat::Mode::Off);CHECK(d.strokeActive());
+   if(dynamic){d.configureStrokeDynamics(b,nullptr,0xffabcdef,0xffabcdef,0);d.updateDynamicStroke(point({2,2}),{2,2,1,100},true);d.updateDynamicStroke(point({3,3}),{3,3,1,100});}else d.updateStroke(point({3,3}));
+  };
+  paint(*local,false);paint(*copy,true);CHECK(copy->canvasPixels()==local->canvasPixels());CHECK(copy->canvasPixels()!=before);CHECK(copy->commitStroke());CHECK(local->commitStroke());CHECK(copy->historyPosition()==history+1);CHECK(copy->cel().freeTiles->instances==instances);
+  const auto after=copy->canvasPixels();const auto sourceAfter=copy->timeline().state().tilesets.front().pixels;CHECK(sourceAfter==local->timeline().state().tilesets.front().pixels);
+  copy->undo();CHECK(copy->canvasPixels()==before);CHECK(copy->timeline().state().tilesets.front().pixels==sourceBefore);copy->redo();CHECK(copy->canvasPixels()==after);CHECK(copy->timeline().state().tilesets.front().pixels==sourceAfter);
+  copy->undo();paint(*copy,true);copy->cancelStroke();CHECK(copy->canvasPixels()==before);CHECK(copy->historyPosition()==history);CHECK(copy->timeline().state().tilesets.front().pixels==sourceBefore);
+ }
+ // Legacy source painting joins wrapped samples through the interior, whereas
+ // raster painting follows the continuous repeated path across the seam.
+ auto d=std::make_unique<Document>(8,6);CHECK(d->createFreeTileLayer(U"Seam source"));SelectionClipboard tile;tile.width=8;tile.height=1;tile.pixels.assign(8,0xff112233);CHECK(d->pasteFreeTilePixels(tile,{0,2}));d->setFreeTilePaintMode(false);
+ begin(*d,{7,2},0xffabcdef,{},repeat::Mode::X);d->updateStroke({8,2});CHECK(d->commitStroke());for(int x=0;x<8;++x)CHECK(d->canvasPixels()[2*8+x]==0xffabcdef);
+}
+int main(){try{freeSourceRepeat();
  for(auto mode:{repeat::Mode::X,repeat::Mode::Y,repeat::Mode::Both})for(bool perfect:{false,true}){
   Document d(8,6);BrushOptions b;b.perfectPixels=perfect;b.opacity=50;
   const bool x=repeat::includesX(mode);begin(d,x?Point{7,2}:Point{2,5},0xff123456,b,mode);d.updateStroke(x?Point{9,2}:Point{2,7});CHECK(d.commitStroke());CHECK(d.historySize()==1);

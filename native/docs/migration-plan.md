@@ -4433,3 +4433,12 @@ CTest tile-repeat通过，含此前1024旧版几何oracle及直接沿用旧版re
 新增256组直接执行实际旧版tilemapCellLineIndices生成的oracle，原生使用真实Document Paint擦除事务逐项核对目标格、单笔历史及UndoRedo，涵盖off/X/Y/Both、奇数网格与半轴边界。补充绘制/取消不改资源表回归。首次正式鼠标检查发现Paint入口根本没有开启：editor_input仅接受rasterToolsAvailable，该函数排除了tilemap。已接通ordinaryBrushTool下瓦片层，保留mask/组选中/锁定/可见性检查，Document继续执行各模式准入。正式--tile-repeat-check最终退出0，真实跨缝擦除两侧而不清中间、单笔UndoRedo通过。
 
 扩大运行tilemap-document发现三个早期过时断言：整画布宽度粘贴箭头移动按实际旧版应clamp不移动、混合工程普通raster移动已迁移、用户确认的瓦片图像大小已迁移。更新为现有行为和取消/缩放Undo检查，没有回退生产功能以满足旧断言。tile-repeat-paint-core/formal/input/fixture构建最终退出0；四项tile-repeat/tile-repeat-stroke/selection-interactions/tilemap-document通过2.77s；来源742文件和证据快照通过。未新增截图或FPS计量，全工具平铺、自由瓦片等仍INCOMPLETE。保留全部用户数据与既有未跟踪缓存，本阶段提交推送dev。
+
+
+### 2026-11-09：平铺副本自由瓦片源笔刷（阶段完成，整体未完成）
+
+对照 canvas-pointer-down、canvas-input-free-tile-edit 和 canvas-input-stroke：源笔刷起点先映射回主画布，再命中实例、选择源和分配临时画布；捕获本笔平铺模式，普通/动态移动逐样本映射。临时源画布、笔刷覆盖范围、喷枪粒子、填充、形状和渐变不套用该指针映射。保留旧版接缝连接两个本地端点、共享源事务、实例身份、取消及单笔UndoRedo。避免副本坐标被误当作源画布外坐标造成额外扩张；没有FPS或内存计量，不宣称整体性能验收。
+
+新增X/Y/Both、普通/动态、像素完美组合对比主画布与副本的像素/资源，检查实例不变、取消、单笔历史及UndoRedo，另检查旧版接缝穿过内部的语义。正式 --tile-repeat-check 新增实际副本鼠标绘画、像素、实例、历史与UndoRedo，退出0。free-source-repeat-core-build.log、free-source-repeat-formal-build.log、free-source-repeat-project-build.log构建均退出0。三项CTest tile-repeat/tile-repeat-stroke/free-tile-project 全通过11.98s。首次项目回归暴露旧roundtrip仍要求已迁移的自由瓦片图像缩放失败；仅更新为成功缩放及精确Undo，保留无实例目标变换拒绝、无选区删除拒绝和派生缓存保护。中途测试误将无实例目标写为允许变换，已按实际目标条件恢复拒绝；无生产变换调整。
+
+来源登记742文件覆盖及快照通过。其他平铺工具、自由实例路径及全量迁移仍INCOMPLETE；未新增视觉/FPS验收。保留既有未跟踪文件、用户工程、恢复和构建缓存。
