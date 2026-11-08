@@ -1,7 +1,8 @@
 #include "document.h"
 #include <iostream>
 using namespace moon;
-#define CHECK(x) do{if(!(x))throw std::runtime_error(#x);}while(false)
+namespace moon {struct RasterHistoryFixture {static void removeActive(Document& d){auto state=d.timeline_.state();const auto id=d.cel().id;state.cels.erase(std::remove_if(state.cels.begin(),state.cels.end(),[&](const auto& c){return c.id==id;}),state.cels.end());d.timeline_=timeline::Timeline(std::move(state));}};}
+#define CHECK(x) do{if(!(x))throw std::runtime_error(std::string(#x)+" line "+std::to_string(__LINE__));}while(false)
 static void begin(Document& d,Point p,Pixel color,BrushOptions b,repeat::Mode mode,const PatternBrush* image=nullptr){d.beginStroke(p,color,b,image,0,nullptr,true,false,false,mode);}
 int main(){try{
  for(auto mode:{repeat::Mode::X,repeat::Mode::Y,repeat::Mode::Both})for(bool perfect:{false,true}){
@@ -15,4 +16,20 @@ int main(){try{
  {Document d(8,4);PatternBrush image;image.width=3;image.height=1;image.coverage={255,255,255};image.colors={0xff112233,0xff445566,0xff778899};begin(d,{0,1},0xffffffff,{},repeat::Mode::X,&image);CHECK(d.commitStroke());CHECK(d.pixels()[15]==0xff112233&&d.pixels()[8]==0xff445566&&d.pixels()[9]==0xff778899);d.undo();CHECK(!d.pixels()[15]);}
  {Document d(8,4);d.fillSelectionOrCanvas(0xff112233);const auto owner=d.layer().id,frame=d.frame().id;CHECK(d.createAttachedMask(owner,frame));const auto raster=d.pixels();begin(d,{7,1},0xff000000,{},repeat::Mode::X);d.updateStroke({8,1});CHECK(d.commitStroke());CHECK(d.pixels()==raster);d.undo();d.redo();}
  {Document d(8,4);BrushOptions b;b.size=3;b.shape=BrushShape::Square;auto preview=d.brushPreview({0,1},{0,1},0xff112233,b,nullptr,0,nullptr,false,repeat::Mode::X);begin(d,{0,1},0xff112233,b,repeat::Mode::X);d.commitStroke();for(std::size_t i=0;i<d.pixels().size();++i)CHECK(d.pixels()[i]==(preview.count(i)?preview.at(i):0));}
+
+ for(auto mode:{repeat::Mode::X,repeat::Mode::Y,repeat::Mode::Both})for(bool copy:{false,true})for(bool deferred:{false,true}){
+  Document d(deferred?300:8,deferred?300:4);const int w=d.width(),height=d.height();d.setDeferredFloatingDisplaySupported(deferred);d.setFloatingRepeat(mode);const bool x=repeat::includesX(mode);const Point start=x?Point{w-1,1}:Point{2,height-1},to=x?Point{w,1}:Point{2,height};
+  d.beginStroke(start,0x80123456);d.commitStroke();const auto before=d.canvasPixels();d.previewSelection(SelectionMask{start.x,start.y,1,1,{}});const auto h=d.historyPosition();CHECK(d.beginSelectionContentMove(copy));CHECK(d.floatingDeferred()==deferred);d.moveFloatingPaste(to.x,to.y);
+  if(d.floatingDeferred()){const auto overlay=d.floatingOverlayRegion({0,0,w,height});CHECK(overlay[x?w:2]==0x80123456);}
+  CHECK(d.commitFloatingPaste());const auto after=d.canvasPixels();CHECK(after[x?w:2]==0x80123456);CHECK(after[x?w+4:2*w+2]==0);CHECK(after[std::size_t(start.y)*w+start.x]==(copy?0x80123456:0));CHECK(selectionContains(d.selection(),x?0:2,x?1:0));CHECK(d.historyPosition()==h+1);d.undo();CHECK(d.canvasPixels()==before);d.redo();CHECK(d.canvasPixels()==after);
+  CHECK(d.beginSelectionContentMove(false));d.moveFloatingPaste(-9,-5);d.cancelFloatingPaste();CHECK(d.canvasPixels()==after);
+ }
+ {Document d(8,4);d.setFloatingRepeat(repeat::Mode::X);SelectionClipboard source;source.width=3;source.height=1;source.pixels={0xff112233,0xff445566,0xff778899};source.mask={1,1,1};CHECK(d.beginFloatingPaste(source,7,1));CHECK(d.commitFloatingPaste());CHECK(d.pixels()[15]==source.pixels[0]&&d.pixels()[8]==source.pixels[1]&&d.pixels()[9]==source.pixels[2]);d.undo();CHECK(!d.pixels()[8]);d.redo();CHECK(d.pixels()[9]==source.pixels[2]);}
+
+ {Document d(8,4);d.fillSelectionOrCanvas(0xffffffff);const auto owner=d.layer().id,frame=d.frame().id;CHECK(d.createAttachedMask(owner,frame));d.beginStroke({7,1},0xff888888);CHECK(d.commitStroke());d.setFloatingRepeat(repeat::Mode::X);d.previewSelection(SelectionMask{7,1,1,1,{}});CHECK(d.beginSelectionContentMove(false));d.moveFloatingPaste(8,1);const auto before=d.pixels();CHECK(d.commitFloatingPaste());CHECK(d.pixels()==before);CHECK(selectionContains(d.selection(),0,1));d.undo();CHECK(selectionContains(d.selection(),7,1));d.redo();CHECK(selectionContains(d.selection(),0,1));}
+ {Document d(8,4);d.beginStroke({7,1},0xff123456);d.commitStroke();const auto first=d.layer().id;d.addLayer();d.beginStroke({7,1},0xffabcdef);d.commitStroke();const auto second=d.layer().id;d.selectTimelineLayer(first);d.selectTimelineLayer(second,1);d.setFloatingRepeat(repeat::Mode::X);d.previewSelection(SelectionMask{7,1,1,1,{}});CHECK(d.beginSelectionContentMove(false));d.moveFloatingPaste(8,1);CHECK(d.commitFloatingPaste());CHECK(d.pixels()[8]==0xffabcdef&&!d.pixels()[15]);d.selectLayer(first);CHECK(d.pixels()[8]==0xff123456&&!d.pixels()[15]);d.undo();d.selectLayer(first);CHECK(d.pixels()[15]==0xff123456);}
+
+ {Document d(8,4);d.setFloatingRepeat(repeat::Mode::X);d.beginStroke({7,1},0x80112233);d.commitStroke();d.beginStroke({0,1},0x80445566);d.commitStroke();const auto before=d.canvasPixels();d.previewSelection(SelectionMask{7,1,2,1,{}});CHECK(d.beginSelectionContentMove(false));d.moveFloatingPaste(8,1);CHECK(d.commitFloatingPaste());CHECK(d.canvasPixels()[8]==brushComposite(before[8],before[15],100));CHECK(!d.canvasPixels()[15]);d.undo();CHECK(d.canvasPixels()==before);}
+
+ {Document d(8,4);RasterHistoryFixture::removeActive(d);d.setFloatingRepeat(repeat::Mode::X);SelectionClipboard source;source.width=3;source.height=1;source.pixels={0xff112233,0xff445566,0xff778899};source.mask={1,1,1};CHECK(d.beginFloatingPaste(source,7,1));CHECK(d.floatingDeferred());CHECK(d.floatingOverlayRegion({0,0,8,4})[8]==source.pixels[1]);CHECK(d.commitFloatingPaste());const auto after=d.canvasPixels();CHECK(after[8]==source.pixels[1]&&after[15]==source.pixels[0]);d.undo();const auto undone=d.canvasPixels();CHECK(std::all_of(undone.begin(),undone.end(),[](auto p){return !p;}));d.redo();CHECK(d.canvasPixels()==after);}
  std::cout<<"Repeated solid/perfect/dynamic coverage, selection, cancel and undo passed\n";return 0;}catch(const std::exception& e){std::cerr<<e.what()<<'\n';return 1;}}

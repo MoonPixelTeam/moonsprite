@@ -4417,3 +4417,10 @@ make-outline-sample-fixtures.cjs执行实际未改写旧版函数体，RGBA读�
 对照repeated-selection.ts及其测试、smooth-brush.ts collectSmoothBrushArea和canvas-selection-brush-gesture.ts。自由套索逐副本平移路径，在画布范围内栅格化并合并，避免按远距离路径包围框分配遮罩；选择笔刷保持原连续采样与行跨段缓存，逐像素折回，非重复轴裁剪，关闭平铺时原outsidePreview语义保留。套索预览与提交共用折回输入，之后沿用既有对称、模式合并与单笔选区历史；选择笔刷显示与提交使用相同coverage。旧版多边形套索独立逻辑保持不变，没有擅自扩大其平铺行为。
 
 CTest tile-repeat通过，含此前1024旧版几何oracle及直接沿用旧版repeated-selection.test.ts的X/Y/Both远处副本、缝两侧不选中间、整笔刷与非重复轴裁剪、关闭时画布外预览回归。正式程序已增加真实pointer套索/选择笔刷、单笔历史Undo/Redo及取消诊断，tile-repeat-selection-build.log正式Release构建退出0，--tile-repeat-check退出0；真实鼠标套索与选择笔刷跨缝仅选择两侧、单笔历史、Undo/Redo及取消通过。CTest tile-repeat与selection-interactions均通过，共2.59s。来源覆盖742文件及证据快照检查通过。未新增截图或测量FPS，不把窗口断言称为视觉验收；浮动选区移动/提交和其他工具仍INCOMPLETE。
+
+
+### 2026-11-09：浮动选区平铺平移（本阶段验证通过）
+
+实际核对tools-selection-transform-translation.ts与workspace-commands-selection-floating.ts。仅纯平移折回目标像素，沿用不可变目标baseline与先清源后合成次序；旋转/缩放保持既有路径。普通即时/稀疏/多目标、延迟region overlay和脏区已接入；延迟确认避开整表面offset移动捷径，缺失Cel的跨缝历史禁用仅按未折回矩形记录的dense路径；提交后才折回选区，拖动期间保留控制框。蒙版权威表面平移保留原灰度覆盖语义，重复时禁用整表面offset捷径。视图模式由refresh同步，不保存为工程内容。
+
+核心回归包含X/Y/Both、copy/move、300×300实际deferred分支、取消、Undo/Redo、剪贴板跨缝、双图层和蒙版。首轮蒙版fixture为空导致无像素变化，修正先写入灰度；多层Undo恢复活动层，fixture重新选择目标层后读取，两者没有修改生产规则。最终定向测试程序退出0。tile-repeat-floating-formal-build.log正式Release及runtime重编退出0；--tile-repeat-check最终退出0。首轮真实pointer断言失败，详细输出证明两侧像素正确而历史多一笔；核对既有Enter确认后取消选区行为，修正诊断为两次Undo/Redo分别恢复选区与内容，不改变生产交互。关闭测试fixture智能对齐，确保测量指定3px拖动。tile-repeat/tile-repeat-stroke/selection-interactions三项CTest通过2.59s；新增半透明baseline和缺失Cel预览/创建/UndoRedo测试通过。缺失Cel初始fixture用删除命令仍保留空Cel、fromImported拒绝该结构，最终沿用既有RasterHistoryFixture访问构造实际缺失slot。来源742文件覆盖和证据快照通过，未新增截图或FPS验收。自由瓦片实例、paint格子等重复语义仍未完成，全量目标保持active。
