@@ -4323,7 +4323,7 @@ void Editor::smokeSamplingAndZoom(const std::filesystem::path& directory){
 
     require(document.pixels()==pixels && document.historySize()==history && !document.dirty());
 
-    toolRail_[9]->Click();pointer(ui::kMouseDownMessage,ui::kButtonLeft,anchor);require(eyedropperLensSurface_ && eyedropperGesture_.active());
+    eyedropperLensEnabled_=true;toolRail_[9]->Click();pointer(ui::kMouseDownMessage,ui::kButtonLeft,anchor);require(eyedropperLensSurface_ && eyedropperGesture_.active());
 
     auto surface=os::instance()->makeRgbaSurface(bounds().w,bounds().h);{ui::Graphics g(surface);ui::PaintEvent event(this,&g);onPaint(event);}writeSmokeFrame(surface.get(),directory/"sampling-zoom-smoke.bmp");
 

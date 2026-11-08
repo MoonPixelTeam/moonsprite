@@ -7,6 +7,7 @@
 #include <thread>
 #include "ui/property.h"
 namespace moon::editor {
+std::pair<std::uint64_t,std::uint64_t> eyedropperLensWorkCounts(const ui::Widget&);
 namespace {
 struct PanelMemory final:ui::Property {
  std::filesystem::path file;paneljson::JsonObject store;bool loaded=false,failed=false;std::string lastPath;std::optional<LayerPanelState> last;
@@ -181,10 +182,15 @@ void Editor::smokeTileRepeat(){
   auto role=[&]{return right?document.palette().secondary:document.palette().primary;};
   const auto first=sampleEyedropper(document.timeline(),document.frame().id,document.layer().id,16,12,2,3,eyedropperSource_);
   sampleSend(ui::kMouseDownMessage,{ox+2.25,oy+3.25});if(!eyedropperGesture_.active()||role()!=first||!eyedropperLensSurface_)throw std::runtime_error("Repeated eyedropper initial sample");
-  const auto lens=eyedropperLensSurface_;updateEyedropperLens(canvasDocumentToDisplay({2.25,3.25}),first);for(int y=0;y<128;++y)for(int x=0;x<128;++x)if(lens->getPixel(x,y)!=eyedropperLensSurface_->getPixel(x,y))throw std::runtime_error("Repeated eyedropper lens differs");
-  sampleSend(ui::kMouseMoveMessage,{ox+5.25,oy+4.25});if(role()!=0xff778899)throw std::runtime_error("Repeated eyedropper drag");
+  auto flushLens=[&]{auto target=os::instance()->makeRgbaSurface(bounds().w,bounds().h);ui::Graphics g(target);paintEyedropperLens(g);};
+  const auto lens=eyedropperLensSurface_;const auto counts=eyedropperLensWorkCounts(*this);
+  for(int n=0;n<100;++n)updateEyedropperLens(canvasDocumentToDisplay({2.25,3.25}),first);
+  if(eyedropperLensWorkCounts(*this)!=counts)throw std::runtime_error("Eyedropper pointer burst rendered synchronously");
+  flushLens();const auto flushed=eyedropperLensWorkCounts(*this);if(flushed.first!=counts.first+1||flushed.second!=counts.second)throw std::runtime_error("Eyedropper frame coalescing/source cache");
+  for(int y=0;y<128;++y)for(int x=0;x<128;++x)if(lens->getPixel(x,y)!=eyedropperLensSurface_->getPixel(x,y))throw std::runtime_error("Repeated eyedropper lens differs");
+  sampleSend(ui::kMouseMoveMessage,{ox+5.25,oy+4.25});flushLens();const auto movedCounts=eyedropperLensWorkCounts(*this);if(movedCounts.second!=flushed.second+1)throw std::runtime_error("Eyedropper moved region cache invalidation");if(role()!=0xff778899)throw std::runtime_error("Repeated eyedropper drag");
   sampleSend(ui::kMouseMoveMessage,{repeat::includesX(mode)?32.25:5.25,repeat::includesY(mode)?24.25:4.25});if(role()!=0xff778899)throw std::runtime_error("Repeated eyedropper outside copies changed color");
-  sampleSend(ui::kMouseUpMessage,{ox+5.25,oy+4.25});if(eyedropperGesture_.active()||hasCapture()||eyedropperLensSurface_||document.canvasPixels()!=baseline||document.historyPosition()!=h||(right?document.palette().primary:document.palette().secondary)!=other)throw std::runtime_error("Repeated eyedropper finish/content/other role");
+  sampleSend(ui::kMouseUpMessage,{ox+5.25,oy+4.25});const auto endedCounts=eyedropperLensWorkCounts(*this);flushLens();if(eyedropperLensWorkCounts(*this)!=endedCounts)throw std::runtime_error("Eyedropper pending preview survived finish");if(eyedropperGesture_.active()||hasCapture()||eyedropperLensSurface_||document.canvasPixels()!=baseline||document.historyPosition()!=h||(right?document.palette().primary:document.palette().secondary)!=other)throw std::runtime_error("Repeated eyedropper finish/content/other role");
  }
  eyedropperTool_=false;
  const auto before=zoom_;menuCommands_.invoke("tileRepeatOff");if(tileRepeat_!=repeat::Mode::Off||zoom_!=before)throw std::runtime_error("Repeat off changed zoom");

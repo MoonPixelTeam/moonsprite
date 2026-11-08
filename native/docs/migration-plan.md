@@ -4517,3 +4517,10 @@ CTest tile-repeat通过，含此前1024旧版几何oracle及直接沿用旧版re
 核对canvas-pointer-move、canvas-input-sampling、useCanvasViewportGeometry、useCanvasEyedropperMagnifier和eyedropper-source：采样使用有限相邻副本本地点，越界移动不改变颜色；放大镜以连续本地点为中心，邻域不额外环绕。原生共享sampleEyedropperAt入口完成坐标适配，普通/临时取色、替换色和颜色编辑器采样复用该入口；放大镜同步映射中心及采样色环。未修改取色来源、左右键目标和结束策略。
 
 实际鼠标诊断覆盖X/Y/Both、合成/当前层、前景/背景色、拖动更新、外侧副本忽略、释放捕获、内容及历史不变，并逐像素比较主画布/副本放大镜。首轮自动适配缩放使两次物理鼠标落点有亚像素差异，诊断改用整数像素缩放后通过；生产缩放逻辑未变。eyedropper-repeat-build.log正式Release构建0，显式等待 --tile-repeat-check退出0。三项CTest eyedropper/tile-repeat/tile-repeat-stroke通过0.37s，742文件来源快照检查通过。替换色/颜色编辑器仅核对共享调用链，没有新增其平铺UI专用回归；旧版放大镜逐帧合并性能方案仍未在此阶段迁移，也没有FPS测量。全量迁移仍INCOMPLETE，保留用户及未跟踪数据，阶段提交推送dev。
+
+
+### 2026-11-09：取色放大镜绘制合并与区域缓存（阶段完成）
+
+承接useCanvasEyedropperMagnifier的pending RAF与source-region cache。原生首个预览立即生成，后续指针事件只覆盖待绘指针/颜色，在paintEyedropperLens消费一次；越界不覆盖有效请求，结束清除待绘，失去手势/表面时不消费旧请求。编辑器所有的Property保存状态，随编辑器销毁，无额外计时器和全局回调。25×25采样区域按工程identity/revision、帧、图层、取色来源及区域起点缓存。原生颜色提交继续同步，保留当前弹窗消费时序；本阶段没有迁移legacy的延迟颜色提交，不宣称所有采样性能路径完成。
+
+X/Y/Both合成/当前层及左右键实际诊断验证100次preview请求不发生同步渲染，绘制时仅渲染一次，同区域复用采样缓存，移动区域重新读取，主画布/副本逐像素一致，结束后不重放待绘。正式Release构建成功；--tile-repeat-check退出0。--sampling-zoom-check最初依赖用户保存的放大镜关闭偏好，check15失败；诊断显式启用放大镜而不持久化偏好后正式重建、诊断退出0。三项CTest eyedropper/tile-repeat/tile-repeat-stroke通过0.14s，742文件来源登记快照及diff检查通过。未测FPS，修订/帧/层等缓存键仅源码核对，没有新增逐一失效运行场景。全量迁移仍INCOMPLETE；用户数据、构建缓存和未跟踪文件保留，阶段提交推送dev。

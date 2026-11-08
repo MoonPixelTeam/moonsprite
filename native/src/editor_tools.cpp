@@ -8,6 +8,15 @@
 
 namespace moon::editor {
 namespace {
+// Legacy magnifier pending RAF sample and source-region cache, owned by the editor.
+struct EyedropperLensWork final:ui::Property {
+ bool pending=false,rendering=false,cached=false;
+ gfx::Point pointer;Pixel sampled=0;
+ std::uint64_t identity=0,revision=0,renders=0,reads=0;
+ std::string frame,layer;EyedropperSource source=EyedropperSource::Composite;
+ int x=0,y=0;std::vector<Pixel> pixels;
+ EyedropperLensWork():ui::Property("moonsprite.eyedropper-lens-work"){}
+};
 struct BrushWrite {std::filesystem::path root;std::array<std::string,6> text;};
 constexpr const char* brushFiles[]{"image-brush-modes.txt","pixel-stroke-options.txt","fill-pattern-options.txt","brush-dither-options.txt","magic-eraser-options.txt","brush-profiles.txt"};
 void writeBrushBatch(const BrushWrite& value){std::filesystem::create_directories(value.root);for(int i=0;i<6;++i){std::ofstream out(value.root/brushFiles[i]);out<<value.text[i];out.close();if(!out)throw std::runtime_error("Brush preferences write failed");}}
@@ -1543,9 +1552,20 @@ void Editor::finishSymmetryDrag(bool cancel){if(!symmetryDragging_)return;const 
 
 void Editor::useEyedropperTool(){liquifyTool_=false;liquifyResetPosition_.reset();smoothTool_=false;airbrushTool_=false;rotateTool_=false;if((document.active()&&!document.floating()) || selectionDragging_ || floatingDragging_ || shapeDragging_ || gradientDragging_ || gradientPending_ || fillDragging_ || eyedropperGesture_.active() || navigation_.zoomDragging_)return;document.commitFloatingPaste();cancelStroke();liquifyTool_=false;liquifyResetPosition_.reset();smoothTool_=false;airbrushTool_=false;textTool_=false;moveTool_=false;selectionTool_=shapeTool_=gradientTool_=fillTool_=handTool_=eraser_=navigation_.zoomTool_=false;eyedropperTool_=true;playing_=false;layoutToolOptions();refresh();}
 
+std::pair<std::uint64_t,std::uint64_t> eyedropperLensWorkCounts(const ui::Widget& owner){
+ const auto work=std::dynamic_pointer_cast<EyedropperLensWork>(owner.getProperty("moonsprite.eyedropper-lens-work"));
+ return work?std::make_pair(work->renders,work->reads):std::make_pair(std::uint64_t(0),std::uint64_t(0));
+}
+
 void Editor::updateEyedropperLens(gfx::Point pointer,Pixel sampled) {
 
-    if(!eyedropperLensEnabled_){eyedropperLensSurface_.reset();return;}
+    auto work=std::dynamic_pointer_cast<EyedropperLensWork>(getProperty("moonsprite.eyedropper-lens-work"));
+    if(!work){work=std::make_shared<EyedropperLensWork>();setProperty(work);}
+    if(!eyedropperLensEnabled_){work->pending=false;eyedropperLensSurface_.reset();return;}
+    if(tileRepeatIdentity_==document.identity()&&tileRepeat_!=repeat::Mode::Off){const auto at=canvasDocumentPoint(pointer);if(!repeat::map({at.x,at.y},document.width(),document.height(),tileRepeat_))return;}
+    // First preview remains immediate; subsequent pointer bursts render once at paint.
+    if(!work->rendering&&eyedropperLensSurface_){work->pointer=pointer;work->sampled=sampled;work->pending=true;invalidateRect(canvasViewport());return;}
+    work->pending=false;
 
     if(!eyedropperLensSurface_)eyedropperLensPrevious_=eyedropperGesture_.secondary()?document.palette().secondary:document.palette().primary;
 
@@ -1562,9 +1582,12 @@ void Editor::updateEyedropperLens(gfx::Point pointer,Pixel sampled) {
 
     const int sx=int(std::floor(px))-12,sy=int(std::floor(py))-12;
 
-    auto pixels=eyedropperSource_==EyedropperSource::Composite?compositeNormalRegion(document.timeline(),document.frame().id,{sx,sy,25,25}):std::vector<Pixel>(625);
-
-    if(eyedropperSource_==EyedropperSource::CurrentLayer)for(int y=0;y<25;++y)for(int x=0;x<25;++x)pixels[y*25+x]=sampleEyedropper(document.timeline(),document.frame().id,document.layer().id,document.width(),document.height(),sx+x,sy+y,eyedropperSource_);
+    if(!work->cached||work->identity!=document.identity()||work->revision!=document.revision()||work->frame!=document.frame().id||work->layer!=document.layer().id||work->source!=eyedropperSource_||work->x!=sx||work->y!=sy){
+      auto pixels=eyedropperSource_==EyedropperSource::Composite?compositeNormalRegion(document.timeline(),document.frame().id,{sx,sy,25,25}):std::vector<Pixel>(625);
+      if(eyedropperSource_==EyedropperSource::CurrentLayer)for(int y=0;y<25;++y)for(int x=0;x<25;++x)pixels[y*25+x]=sampleEyedropper(document.timeline(),document.frame().id,document.layer().id,document.width(),document.height(),sx+x,sy+y,eyedropperSource_);
+      work->pixels=std::move(pixels);work->identity=document.identity();work->revision=document.revision();work->frame=document.frame().id;work->layer=document.layer().id;work->source=eyedropperSource_;work->x=sx;work->y=sy;work->cached=true;++work->reads;
+    }
+    const auto& pixels=work->pixels;++work->renders;
 
     // Legacy 256px shell / 204px field; adapt CSS pixels to native 2x UI.
 
@@ -1611,6 +1634,11 @@ void Editor::updateEyedropperLens(gfx::Point pointer,Pixel sampled) {
 void Editor::paintEyedropperLens(ui::Graphics& g) {
 
     if(!eyedropperGesture_.active() || !eyedropperLensSurface_)return;
+    if(auto work=std::dynamic_pointer_cast<EyedropperLensWork>(getProperty("moonsprite.eyedropper-lens-work"));work&&work->pending){
+      work->rendering=true;
+      try{updateEyedropperLens(work->pointer,work->sampled);}catch(...){work->rendering=false;throw;}
+      work->rendering=false;
+    }
 
     UiPaintScale scale(g);auto viewport=uiLogical(canvasViewport());viewport.offset(-bounds().x/uiScale,-bounds().y/uiScale);
 
@@ -1665,7 +1693,7 @@ bool Editor::processColorEditorCanvasSampling(ui::Message* msg){
 
 void Editor::sampleEyedropperAt(Point p){try{if(tileRepeatIdentity_==document.identity()&&tileRepeat_!=repeat::Mode::Off){const auto mapped=repeat::map({double(p.x),double(p.y)},document.width(),document.height(),tileRepeat_);if(!mapped)return;p={int(mapped->local.x),int(mapped->local.y)};}const auto color=sampleEyedropper(document.timeline(),document.frame().id,document.layer().id,document.width(),document.height(),p.x,p.y,eyedropperSource_);eyedropperGesture_.sample(color);if(colorEditorSampling_&&colorEditorSamplingTarget_)colorEditorSamplingTarget_->sampled(color);else document.setPaletteRole(color,eyedropperGesture_.secondary(),paletteLocked_);if(replaceSampling_>=0)changeReplaceColor(replaceSampling_,color,true);refresh();}catch(const std::exception& e){status_=U"采色失败："+unicodeText(e.what());invalidate();}}
 
-void Editor::finishEyedropper(){const bool returnToPencil=eyedropperTool_ && replaceSampling_<0 && !colorEditorSampling_ && runtimePreferences_.flag("tools.eyedropperSwitchToPencil");const bool editorSampling=colorEditorSampling_;const auto added=eyedropperGesture_.finish(paletteSamplingHeld_);if(added)try{document.addPaletteColor(*added);}catch(const std::length_error&){status_=U"颜色编号超出当前支持范围";}eyedropperLensSurface_.reset();if(hasCapture())releaseMouse();if(replaceSampling_>=0)finishReplaceSampling();if(editorSampling&&colorEditorSamplingTarget_)colorEditorSamplingTarget_->finishSampling();if(returnToPencil){eyedropperTool_=false;selectionTool_=shapeTool_=gradientTool_=fillTool_=handTool_=navigation_.zoomTool_=eraser_=false;}updateNavigationCursor();refresh();}
+void Editor::finishEyedropper(){if(auto work=std::dynamic_pointer_cast<EyedropperLensWork>(getProperty("moonsprite.eyedropper-lens-work")))work->pending=false;const bool returnToPencil=eyedropperTool_ && replaceSampling_<0 && !colorEditorSampling_ && runtimePreferences_.flag("tools.eyedropperSwitchToPencil");const bool editorSampling=colorEditorSampling_;const auto added=eyedropperGesture_.finish(paletteSamplingHeld_);if(added)try{document.addPaletteColor(*added);}catch(const std::length_error&){status_=U"颜色编号超出当前支持范围";}eyedropperLensSurface_.reset();if(hasCapture())releaseMouse();if(replaceSampling_>=0)finishReplaceSampling();if(editorSampling&&colorEditorSamplingTarget_)colorEditorSamplingTarget_->finishSampling();if(returnToPencil){eyedropperTool_=false;selectionTool_=shapeTool_=gradientTool_=fillTool_=handTool_=navigation_.zoomTool_=eraser_=false;}updateNavigationCursor();refresh();}
 
 std::filesystem::path Editor::fillBrushLibraryDirectory() const {if(brushLibraryTestDirectory_)return *brushLibraryTestDirectory_;
 
