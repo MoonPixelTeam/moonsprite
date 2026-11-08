@@ -1217,10 +1217,10 @@ bool Document::commitColorAdjustment(){
  cancelColorAdjustment();change_={0,0,width_,height_};publishChange();pushEdit(std::move(e),U"亮度/对比度");return true;
 }
 
-void Document::beginStroke(Point p,Pixel color,BrushOptions brush,const PatternBrush* image,double angle,const std::unordered_map<std::size_t,Pixel>* baseline,bool stampInitial,bool tileSecondary,bool tileErase){try{
+void Document::beginStroke(Point p,Pixel color,BrushOptions brush,const PatternBrush* image,double angle,const std::unordered_map<std::size_t,Pixel>* baseline,bool stampInitial,bool tileSecondary,bool tileErase,repeat::Mode repeatMode){try{
  if(activeMaskId_.empty()&&layer().kind=="free-tile"&&!freeTilePaintMode()){beginFreeTileSourceStroke(p,color,brush,image,angle,baseline,stampInitial,tileSecondary&&tileErase);return;}
  strokeColorReplacement_.reset();projectStrokeStarted_=std::chrono::steady_clock::now();
- commitFloatingPaste();cancelStroke();imagePattern_.reset();if(image&&image->intrinsicSize&&brush.imagePaintMode!=PatternPaintMode::Paint)imagePattern_.emplace(*image,brush.imagePaintMode,p.x,p.y);strokeImageAngle_=angle;change_={};if(!activeMaskId_.empty()){if(!maskBrushAvailable())return;auto* mask=mutableActiveMask();maskStrokeBefore_=timeline_.state().masks;auto& source=mask->surface;if(!raster::fullCanvas(source,width_,height_)){auto expanded=raster::expanded(source,{0,0,width_,height_},256*1024*1024);if(expanded)source=std::move(*expanded);}strokePixels_=&static_cast<std::vector<Pixel>&>(source.pixels);strokeCanvasStorage_=raster::fullCanvas(source,width_,height_);strokeStride_=source.width;strokeOffsetX_=source.offsetX;strokeOffsetY_=source.offsetY;strokeAddress_={width_,height_,raster::coordinate(std::int64_t(source.storageOriginX.value_or(0))-source.offsetX),raster::coordinate(std::int64_t(source.storageOriginY.value_or(0))-source.offsetY)};brush.size=std::clamp(brush.size,1,64);brush.opacity=std::clamp(brush.opacity,0,100);stampSpans_=brushSpans(brush);if(pendingLookup_.size()!=std::size_t(width_)*height_)pendingLookup_.assign(std::size_t(width_)*height_,-1);inheritedStrokeBaseline_.clear();imageStamp_=image?std::optional<ImageBrushStamp>{prepareImageBrushStamp(*image,brush.size,angle)}:std::nullopt;imageEraseCoverage_.clear();inkStampCoverage_.clear();active_=true;projectStrokeStarted_=std::chrono::steady_clock::now();last_=p;color_=timeline::normalizedMaskPixel(color);brush_=brush;hasPreviousStamp_=false;if(brush_.perfectPixels){perfectPath_.push_back({p.x,p.y,brush.size,brush.opacity});perfectPendingStart_=pending_.size();capturingPerfectTail_=true;}if(stampInitial)stamp(p.x,p.y);publishChange();return;}if(layer().kind=="tilemap"){if(layerEffectivelyLocked(layer())||!layerEffectivelyVisible(layer())||hasSelectedGroups()||!timeline_.resolveSurface(cel().id).source||!timeline_.resolveSurface(cel().id).source->tilemap)return;if(!cel().tilemap&&!((tileSelection_.mode==tiles::Mode::Paint&&tilemapCellOwnerSupported(cel().id,true,true))||linkedCreateSelectionAvailable(false)||linkedEditSelectionAvailable(false)||linkedHybridSelectionAvailable(false)))return;startTilemapStroke(p,tileSecondary);if(tileErase)tilePaintValue_.reset();if(tileSelection_.mode==tiles::Mode::Paint){active_=true;last_=p;paintTilemapLine(p);return;}}else if(!rasterToolsAvailable())return;
+ commitFloatingPaste();cancelStroke();strokeRepeat_=repeatMode;imagePattern_.reset();if(image&&image->intrinsicSize&&brush.imagePaintMode!=PatternPaintMode::Paint)imagePattern_.emplace(*image,brush.imagePaintMode,p.x,p.y);strokeImageAngle_=angle;change_={};if(!activeMaskId_.empty()){if(!maskBrushAvailable())return;auto* mask=mutableActiveMask();maskStrokeBefore_=timeline_.state().masks;auto& source=mask->surface;if(!raster::fullCanvas(source,width_,height_)){auto expanded=raster::expanded(source,{0,0,width_,height_},256*1024*1024);if(expanded)source=std::move(*expanded);}strokePixels_=&static_cast<std::vector<Pixel>&>(source.pixels);strokeCanvasStorage_=raster::fullCanvas(source,width_,height_);strokeStride_=source.width;strokeOffsetX_=source.offsetX;strokeOffsetY_=source.offsetY;strokeAddress_={width_,height_,raster::coordinate(std::int64_t(source.storageOriginX.value_or(0))-source.offsetX),raster::coordinate(std::int64_t(source.storageOriginY.value_or(0))-source.offsetY)};brush.size=std::clamp(brush.size,1,64);brush.opacity=std::clamp(brush.opacity,0,100);stampSpans_=brushSpans(brush);if(pendingLookup_.size()!=std::size_t(width_)*height_)pendingLookup_.assign(std::size_t(width_)*height_,-1);inheritedStrokeBaseline_.clear();imageStamp_=image?std::optional<ImageBrushStamp>{prepareImageBrushStamp(*image,brush.size,angle)}:std::nullopt;imageEraseCoverage_.clear();inkStampCoverage_.clear();active_=true;projectStrokeStarted_=std::chrono::steady_clock::now();last_=p;color_=timeline::normalizedMaskPixel(color);brush_=brush;hasPreviousStamp_=false;if(brush_.perfectPixels){perfectPath_.push_back({p.x,p.y,brush.size,brush.opacity});perfectPendingStart_=pending_.size();capturingPerfectTail_=true;}if(stampInitial)stamp(p.x,p.y);publishChange();return;}if(layer().kind=="tilemap"){if(layerEffectivelyLocked(layer())||!layerEffectivelyVisible(layer())||hasSelectedGroups()||!timeline_.resolveSurface(cel().id).source||!timeline_.resolveSurface(cel().id).source->tilemap)return;if(!cel().tilemap&&!((tileSelection_.mode==tiles::Mode::Paint&&tilemapCellOwnerSupported(cel().id,true,true))||linkedCreateSelectionAvailable(false)||linkedEditSelectionAvailable(false)||linkedHybridSelectionAvailable(false)))return;startTilemapStroke(p,tileSecondary);if(tileErase)tilePaintValue_.reset();if(tileSelection_.mode==tiles::Mode::Paint){active_=true;last_=p;paintTilemapLine(p);return;}}else if(!rasterToolsAvailable())return;
  const auto* slot=timeline_.findCel(layer().id,frame().id);
  // Legacy recordPixel edits display storage; syncActiveAnimationLayer creates
  // the missing Cel only after a nonempty pixel history entry is committed.
@@ -1296,8 +1296,14 @@ void Document::plot(int x, int y) {
   strokePixel(index)=value;change_.include(x,y);
 
 }
+std::vector<SymmetryPixel> Document::strokeSymmetryPoints(SymmetryPixel p)const{
+ if(strokeRepeat_==repeat::Mode::Off)return symmetryPoints(p,width_,height_,symmetryAxes,symmetryCenter());
+ auto points=symmetryPoints(p,width_,height_,symmetryAxes,symmetryCenter(),false);for(auto& point:points){const auto wrapped=repeat::wrap({double(point.x),double(point.y)},width_,height_,strokeRepeat_);point={int(wrapped.x),int(wrapped.y)};}points.erase(std::remove_if(points.begin(),points.end(),[&](auto q){return q.x<0||q.y<0||q.x>=width_||q.y>=height_;}),points.end());return points;
+}
 void Document::stamp(int x,int y) {
-  if(imageStamp_){const auto& stamp=imagePattern_?imagePattern_->at(x,y,brush_.size,strokeImageAngle_):*imageStamp_;for(const auto& sample:stamp.samples)for(const auto& p:symmetryPoints({x-stamp.width/2+sample.x,y-stamp.height/2+sample.y},width_,height_,symmetryAxes,symmetryCenter())){
+  if(strokeRepeat_!=repeat::Mode::Off){const auto local=repeat::wrap({double(x),double(y)},width_,height_,strokeRepeat_);x=int(local.x);y=int(local.y);hasPreviousStamp_=false;}
+
+  if(imageStamp_){const auto& stamp=imagePattern_?imagePattern_->at(x,y,brush_.size,strokeImageAngle_):*imageStamp_;for(const auto& sample:stamp.samples)for(const auto& p:strokeSymmetryPoints({x-stamp.width/2+sample.x,y-stamp.height/2+sample.y})){
    if(selection_ && !selectionContains(selection_,p.x,p.y))continue;const auto index=std::size_t(p.y)*width_+p.x;if(plotStrokeColorReplacement(index,int(std::floor(sample.coverage*brush_.opacity/100.0+.5))))continue;capturePerfectPixel(index);auto current=strokePixel(index);const int found=pendingLookup_[index];const auto inherited=inheritedStrokeBaseline_.find(index);const auto before=inherited!=inheritedStrokeBaseline_.end()?inherited->second:found<0?current:pending_[found].before;Pixel value;
    if(brush_.ink!=InkMode::Simple){const auto source=sample.color.value_or(color_);const int coverage=brush_.ink==InkMode::CopyAlphaColor?sample.coverage:int(std::floor(sample.coverage*brush_.opacity/100.0+.5));if(!coverage)continue;const auto key=(std::uint64_t(index)<<32)|source;auto seen=inkStampCoverage_.find(key);if(seen!=inkStampCoverage_.end()&&seen->second>=coverage)continue;capturePerfectInkCoverage(key);inkStampCoverage_[key]=coverage;value=applyInkColor(brush_.ink,brush_.ink==InkMode::LockAlpha?before:current,resolveInkStampColor(brush_.ink,source,sample.coverage,brush_.opacity));}
    else if((color_>>24)==0){int coverage=int(std::floor(sample.coverage*brush_.opacity/100.0+.5));if(sample.color)coverage=int(std::floor(coverage*(*sample.color>>24)/255.0+.5));auto seen=imageEraseCoverage_.find(index);if(!coverage || (seen!=imageEraseCoverage_.end() && seen->second>=coverage))continue;imageEraseCoverage_[index]=coverage;value=coverage==255?0:(before&0xffffff)|(Pixel(std::floor((before>>24)*(1-coverage/255.0)+.5))<<24);}
@@ -1308,10 +1314,10 @@ void Document::stamp(int x,int y) {
   const auto anchor=brush_.size/2;
   for(const auto& span:stampSpans_) {
     const auto sourceY=std::int64_t(y)-anchor+span.y;
-    if(sourceY<0 || sourceY>=height_) continue;
-    const auto py=std::int64_t(y)-anchor+span.y;if(py<0 || py>=height_) continue;
-    const auto left=std::max<std::int64_t>(0,std::int64_t(x)-anchor+span.left);
-    const auto right=std::min<std::int64_t>(width_-1,std::int64_t(x)-anchor+span.right);
+    if(!repeat::includesY(strokeRepeat_)&&(sourceY<0 || sourceY>=height_)) continue;
+    const auto py=std::int64_t(y)-anchor+span.y;if(!repeat::includesY(strokeRepeat_)&&(py<0 || py>=height_)) continue;
+    const auto left=repeat::includesX(strokeRepeat_)?std::int64_t(x)-anchor+span.left:std::max<std::int64_t>(0,std::int64_t(x)-anchor+span.left);
+    const auto right=repeat::includesX(strokeRepeat_)?std::int64_t(x)-anchor+span.right:std::min<std::int64_t>(width_-1,std::int64_t(x)-anchor+span.right);
     // legacy solidBrushPreviewRowSpans: subtract the preceding stamp's row.
     // The incremental edit remains the coverage record for all earlier stamps.
     std::int64_t previousLeft=right+1,previousRight=right;
@@ -1322,21 +1328,22 @@ void Document::stamp(int x,int y) {
       else if(row>=0 && row<std::int64_t(stampSpans_.size())) previous=&stampSpans_[std::size_t(row)];
       if(previous) {previousLeft=std::int64_t(previousStamp_.x)-anchor+previous->left;previousRight=std::int64_t(previousStamp_.x)-anchor+previous->right;}
     }
-    for(auto px=left;px<=std::min(right,previousLeft-1);++px){if(!brushDitherContains(brush_,int(px),int(py)))continue;for(auto q:symmetryPoints({int(px),int(py)},width_,height_,symmetryAxes,symmetryCenter()))plot(q.x,q.y);}
-    for(auto px=std::max(left,previousRight+1);px<=right;++px){if(!brushDitherContains(brush_,int(px),int(py)))continue;for(auto q:symmetryPoints({int(px),int(py)},width_,height_,symmetryAxes,symmetryCenter()))plot(q.x,q.y);}
+    for(auto px=left;px<=std::min(right,previousLeft-1);++px){if(!brushDitherContains(brush_,int(px),int(py)))continue;for(auto q:strokeSymmetryPoints({int(px),int(py)}))plot(q.x,q.y);}
+    for(auto px=std::max(left,previousRight+1);px<=right;++px){if(!brushDitherContains(brush_,int(px),int(py)))continue;for(auto q:strokeSymmetryPoints({int(px),int(py)}))plot(q.x,q.y);}
   }
   previousStamp_={x,y};hasPreviousStamp_=true;
 }
 void Document::line(Point a, Point b) {
-  visitBrushLine(a.x,a.y,b.x,b.y,imageStamp_?std::max(imageStamp_->width,imageStamp_->height):brush_.size,bool(imageStamp_),brush_.shape==BrushShape::Line,width_,height_,[&](int x,int y){stamp(x,y);});
+  visitBrushLine(a.x,a.y,b.x,b.y,imageStamp_?std::max(imageStamp_->width,imageStamp_->height):brush_.size,bool(imageStamp_),brush_.shape==BrushShape::Line,width_,height_,[&](int x,int y){stamp(x,y);},strokeRepeat_!=repeat::Mode::Off);
 }
-std::unordered_map<std::size_t,Pixel> Document::brushPreview(Point from,Point to,Pixel color,BrushOptions brush,const PatternBrush* image,double angle,const std::unordered_map<std::size_t,Pixel>* baseline,bool clipSelection) const {
+std::unordered_map<std::size_t,Pixel> Document::brushPreview(Point from,Point to,Pixel color,BrushOptions brush,const PatternBrush* image,double angle,const std::unordered_map<std::size_t,Pixel>* baseline,bool clipSelection,repeat::Mode repeatMode) const {
   std::unordered_map<std::size_t,Pixel> result;std::unordered_map<std::size_t,int> eraseCoverage;std::unordered_map<std::uint64_t,int> inkCoverage;
   brush.size=std::clamp(brush.size,1,64);brush.opacity=std::clamp(brush.opacity,0,100);
   const auto spans=brushSpans(brush);const auto imageStamp=image?std::optional<ImageBrushStamp>{prepareImageBrushStamp(*image,brush.size,angle)}:std::nullopt;
   std::optional<ImageBrushPatternSampler> imagePattern;if(image&&image->intrinsicSize&&brush.imagePaintMode!=PatternPaintMode::Paint)imagePattern.emplace(*image,brush.imagePaintMode,from.x,from.y);
   const auto* previewSurface=activeSurfaceIfPresent();const bool direct=previewSurface&&raster::fullCanvas(*previewSurface,width_,height_);
   auto plot=[&](int x,int y,int coverage,std::optional<Pixel> sample){
+    const auto local=repeat::wrap({double(x),double(y)},width_,height_,repeatMode);x=int(local.x);y=int(local.y);
     if(x<0 || y<0 || x>=width_ || y>=height_ || (clipSelection && selection_ && !selectionContains(selection_,x,y)))return;
     const auto i=std::size_t(y)*width_+x;Pixel base=previewSurface?(direct?previewSurface->pixels[i]:raster::readWorld(*previewSurface,x,y)):Pixel{};if(baseline){auto it=baseline->find(i);if(it!=baseline->end())base=it->second;}
     if(!imageStamp){if(!result.count(i))result.emplace(i,inkBrushComposite(base,color,brush.opacity,brush.ink));return;}
@@ -1344,11 +1351,11 @@ std::unordered_map<std::size_t,Pixel> Document::brushPreview(Point from,Point to
     if(!(color>>24)){int c=int(std::floor(coverage*brush.opacity/100.0+.5));if(sample)c=int(std::floor(c*(*sample>>24)/255.0+.5));if(c<=eraseCoverage[i])return;eraseCoverage[i]=c;result[i]=c==255?0:(base&0xffffff)|(Pixel(std::floor((base>>24)*(1-c/255.0)+.5))<<24);}
     else if(int(std::floor(coverage*brush.opacity/100.0+.5)))result[i]=imageStamp->intrinsicSize&&!imagePattern?imageBrushDirectPixel(sample.value_or(color),coverage,brush.opacity):inkBrushComposite(base,sample.value_or(color),brush.opacity,InkMode::Simple,coverage);
   };
-  auto stamp=[&](int x,int y){
-    if(imageStamp){const auto& active=imagePattern?imagePattern->at(x,y,brush.size,angle):*imageStamp;for(const auto& sample:active.samples)for(auto p:symmetryPoints({x-active.width/2+sample.x,y-active.height/2+sample.y},width_,height_,symmetryAxes,symmetryCenter()))plot(p.x,p.y,sample.coverage,sample.color);}
-    else for(auto row:spans){const int sy=y-brush.size/2+row.y;if(sy<0||sy>=height_)continue;for(int sx=x-brush.size/2+row.left;sx<=x-brush.size/2+row.right;++sx){if(sx<0||sx>=width_||!brushDitherContains(brush,sx,sy))continue;for(auto q:symmetryPoints({sx,sy},width_,height_,symmetryAxes,symmetryCenter()))plot(q.x,q.y,255,{});}}
+  auto stamp=[&](int x,int y){const auto local=repeat::wrap({double(x),double(y)},width_,height_,repeatMode);x=int(local.x);y=int(local.y);
+    if(imageStamp){const auto& active=imagePattern?imagePattern->at(x,y,brush.size,angle):*imageStamp;for(const auto& sample:active.samples)for(auto p:symmetryPoints({x-active.width/2+sample.x,y-active.height/2+sample.y},width_,height_,symmetryAxes,symmetryCenter(),repeatMode==repeat::Mode::Off))plot(p.x,p.y,sample.coverage,sample.color);}
+    else for(auto row:spans){const int sy=y-brush.size/2+row.y;if(!repeat::includesY(repeatMode)&&(sy<0||sy>=height_))continue;for(int sx=x-brush.size/2+row.left;sx<=x-brush.size/2+row.right;++sx){if((!repeat::includesX(repeatMode)&&(sx<0||sx>=width_))||!brushDitherContains(brush,int(repeat::wrap({double(sx),double(sy)},width_,height_,repeatMode).x),int(repeat::wrap({double(sx),double(sy)},width_,height_,repeatMode).y)))continue;for(auto q:symmetryPoints({sx,sy},width_,height_,symmetryAxes,symmetryCenter(),repeatMode==repeat::Mode::Off))plot(q.x,q.y,255,{});}}
   };
-  visitBrushLine(from.x,from.y,to.x,to.y,imageStamp?std::max(imageStamp->width,imageStamp->height):brush.size,bool(imageStamp),brush.shape==BrushShape::Line,width_,height_,stamp);
+  visitBrushLine(from.x,from.y,to.x,to.y,imageStamp?std::max(imageStamp->width,imageStamp->height):brush.size,bool(imageStamp),brush.shape==BrushShape::Line,width_,height_,stamp,repeatMode!=repeat::Mode::Off);
   return result;
 }
 bool Document::updateGeometricBrushPreview(const std::vector<SelectionPoint>& points,Pixel color,BrushOptions brush,const PatternBrush* image,double angle){

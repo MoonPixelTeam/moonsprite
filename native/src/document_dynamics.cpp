@@ -4,6 +4,8 @@
 namespace moon {
 void Document::configureStrokeDynamics(BrushOptions base,const PatternBrush* image,Pixel start,Pixel end,int dither){if(auto edit=freeTileSourceStrokeDocument()){edit->configureStrokeDynamics(base,image,start,end,dither);return;}if(!active_)return;dynamicStroke_=true;dynamicBase_=base;dynamicImage_=image?std::optional<PatternBrush>{*image}:std::nullopt;dynamicGradientStart_=start;dynamicGradientEnd_=end;dynamicDither_=dither;perfectPath_.clear();hasPreviousStamp_=false;}
 void Document::dynamicStamp(BrushPathPoint sample){
+ if(strokeRepeat_!=repeat::Mode::Off){const auto local=repeat::wrap({double(sample.x),double(sample.y)},width_,height_,strokeRepeat_);sample.x=int(local.x);sample.y=int(local.y);}
+
  BrushOptions b=dynamicBase_;b.size=std::clamp(sample.size,1,64);b.opacity=std::clamp(sample.opacity,0,100);const auto footprint=selectionBrushFootprint(b,dynamics::rounded(sample.angle));
  const auto fallback=dynamicImage_&&!imagePattern_?std::optional<ImageBrushStamp>{prepareImageBrushStamp(*dynamicImage_,b.size,sample.angle)}:std::nullopt;const ImageBrushStamp* image=imagePattern_?&imagePattern_->at(sample.x,sample.y,b.size,sample.angle):fallback?&*fallback:nullptr;
  GradientSpec gradient;gradient.first=dynamicGradientStart_;gradient.last=dynamicGradientEnd_;gradient.dither=dynamicDither_;GradientSampler sampler(gradient);
@@ -21,8 +23,8 @@ void Document::dynamicStamp(BrushPathPoint sample){
   else {const auto destination=b.ink==InkMode::LockAlpha?before:transparentGradient||b.ink==InkMode::CopyAlphaColor?current:before;value=inkBrushComposite(destination,source,b.opacity,b.ink,coverage);}
   if(maskStrokeBefore_)value=timeline::normalizedMaskPixel(value);if(current==value)return;if(found<0){pending_.push_back({index,current,value});pendingLookup_[index]=int(pending_.size()-1);}else pending_[found].after=value;strokePixel(index)=value;change_.include(x,y);
  };
- if(image){for(const auto& offset:image->samples)for(auto q:symmetryPoints({sample.x-image->width/2+offset.x,sample.y-image->height/2+offset.y},width_,height_,symmetryAxes,symmetryCenter()))paint(q.x,q.y,offset.coverage,offset.color);}
- else for(const auto& row:footprint.spans)for(int x=sample.x-footprint.width/2+row.left;x<=sample.x-footprint.width/2+row.right;++x)for(auto q:symmetryPoints({x,sample.y-footprint.height/2+row.y},width_,height_,symmetryAxes,symmetryCenter()))paint(q.x,q.y,255,{});
+ if(image){for(const auto& offset:image->samples)for(auto q:strokeSymmetryPoints({sample.x-image->width/2+offset.x,sample.y-image->height/2+offset.y}))paint(q.x,q.y,offset.coverage,offset.color);}
+ else for(const auto& row:footprint.spans)for(int x=sample.x-footprint.width/2+row.left;x<=sample.x-footprint.width/2+row.right;++x)for(auto q:strokeSymmetryPoints({x,sample.y-footprint.height/2+row.y}))paint(q.x,q.y,255,{});
 }
 void Document::updateDynamicStroke(Point point,BrushPathPoint sample,bool initial){
  if(auto edit=freeTileSourceStrokeDocument()){try{edit->updateDynamicStroke(freeTileSourceStrokePoint(point),sample,initial);publishFreeTileSourceStroke();}catch(...){cancelFreeTileSourceStroke();throw;}return;}

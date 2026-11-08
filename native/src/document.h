@@ -5,6 +5,7 @@
 #include "layer_panel_state.h"
 #pragma once
 #include "outline_samples.h"
+#include "tile_repeat.h"
 #include "history_change.h"
 #include <map>
 #include "project_information.h"
@@ -518,7 +519,7 @@ public:
   void transformFloatingPaste(const SelectionTransform& target,bool rotSprite=false);
   std::optional<SelectionTransform> floatingTransform() const {return floating_?std::optional<SelectionTransform>{floating_->transform}:std::optional<SelectionTransform>{};}bool commitFloatingPaste();void cancelFloatingPaste();
   bool beginLiquify(liquify::Point,liquify::Options);bool updateLiquify(liquify::Point);bool holdLiquify();bool commitLiquify();void cancelLiquify();bool liquifyActive()const{return liquifyStroke_.has_value()&&active_;}
-  void beginStroke(Point point, Pixel color,BrushOptions brush={},const PatternBrush* image=nullptr,double angle=0,const std::unordered_map<std::size_t,Pixel>* baseline=nullptr,bool stampInitial=true,bool tileSecondary=false,bool tileErase=false);
+  void beginStroke(Point point, Pixel color,BrushOptions brush={},const PatternBrush* image=nullptr,double angle=0,const std::unordered_map<std::size_t,Pixel>* baseline=nullptr,bool stampInitial=true,bool tileSecondary=false,bool tileErase=false,repeat::Mode repeatMode=repeat::Mode::Off);
   void updateStroke(Point point);
   void configureStrokeDynamics(BrushOptions base,const PatternBrush* image,Pixel gradientStart,Pixel gradientEnd,int dither);
   void updateDynamicStroke(Point point,BrushPathPoint sample,bool initial=false);
@@ -526,7 +527,7 @@ public:
   std::unordered_map<std::size_t,Pixel> strokeBaseline() const;
   std::vector<std::pair<std::size_t,Pixel>> strokeBaselinePoints() const;
   // Transient replacement pixels only; never opens a transaction or changes history.
-  std::unordered_map<std::size_t,Pixel> brushPreview(Point from,Point to,Pixel color,BrushOptions brush,const PatternBrush* image=nullptr,double angle=0,const std::unordered_map<std::size_t,Pixel>* baseline=nullptr,bool clipSelection=true) const;
+  std::unordered_map<std::size_t,Pixel> brushPreview(Point from,Point to,Pixel color,BrushOptions brush,const PatternBrush* image=nullptr,double angle=0,const std::unordered_map<std::size_t,Pixel>* baseline=nullptr,bool clipSelection=true,repeat::Mode repeatMode=repeat::Mode::Off) const;
   void mergeLastStrokeEdits();
   bool commitStroke();
   void cancelStroke();
@@ -876,6 +877,8 @@ private:
   std::optional<timeline::Surface> absentStrokeSurface_;
   bool strokeCanvasStorage_=true;
   int strokeStride_=0,strokeOffsetX_=0,strokeOffsetY_=0;
+  repeat::Mode strokeRepeat_=repeat::Mode::Off;
+  std::vector<SymmetryPixel> strokeSymmetryPoints(SymmetryPixel)const;
   PixelAddressSpace strokeAddress_;
   std::size_t strokeStorageIndex(std::size_t index)const {
     if(strokeCanvasStorage_)return index;
@@ -913,7 +916,7 @@ private:
   liquify::Context liquifyContext();
   std::vector<Delta> pending_;
   std::vector<int> pendingLookup_;
-  void clearPendingStroke(){imagePattern_.reset();dynamicStroke_=false;dynamicImage_.reset();capturingPerfectTail_=false;perfectPath_.clear();perfectTailPixels_.clear();perfectTailErase_.clear();perfectTailInk_.clear();perfectStable_=0;for(const auto& delta:pending_)pendingLookup_[delta.index]=-1;pending_.clear();}
+  void clearPendingStroke(){strokeRepeat_=repeat::Mode::Off;imagePattern_.reset();dynamicStroke_=false;dynamicImage_.reset();capturingPerfectTail_=false;perfectPath_.clear();perfectTailPixels_.clear();perfectTailErase_.clear();perfectTailInk_.clear();perfectStable_=0;for(const auto& delta:pending_)pendingLookup_[delta.index]=-1;pending_.clear();}
   PixelRegion change_;
   PixelRegion recordingDirty_;std::uint64_t recordingDirtyFrom_=0,recordingDirtyTo_=0;bool recordingDirtyValid_=true;
   timelapse::Settings timelapseSettings_;

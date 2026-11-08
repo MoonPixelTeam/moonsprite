@@ -39,13 +39,13 @@ template<class PointLike> inline std::vector<BrushPathPoint> perfectPixelPathPoi
 struct BrushSpan {int y,left,right;};
 // legacy tools-brush / selection raster traversal: keep direction-sensitive ties
 // and stamp spacing identical for the preview and the committed stroke.
-template<class Stamp> inline void visitBrushLine(int ax,int ay,int bx,int by,int reach,bool image,bool lineShape,int width,int height,Stamp stamp) {
+template<class Stamp> inline void visitBrushLine(int ax,int ay,int bx,int by,int reach,bool image,bool lineShape,int width,int height,Stamp stamp,bool unbounded=false) {
   const bool steep=std::abs(std::int64_t(by)-ay)>std::abs(std::int64_t(bx)-ax);
   if(steep){std::swap(ax,ay);std::swap(bx,by);}const bool reversed=ax>bx;
   if(reversed){std::swap(ax,bx);std::swap(ay,by);}
   const std::uint64_t span=std::int64_t(bx)-ax;if(!span){if(steep)stamp(ay,ax);else stamp(ax,ay);return;}
   const auto delta=std::int64_t(by)-ay;const std::uint64_t slope=std::abs(delta);
-  const auto first=std::max<std::int64_t>(-reach,ax),last=std::min<std::int64_t>((steep?height:width)+reach-1,bx);
+  const auto first=unbounded?std::int64_t(ax):std::max<std::int64_t>(-reach,ax),last=unbounded?std::int64_t(bx):std::min<std::int64_t>((steep?height:width)+reach-1,bx);
   for(auto cursor=first;cursor<=last;++cursor){const auto major=image && reversed?last-(cursor-first):cursor;const std::uint64_t offset=major-std::int64_t(ax),index=reversed?span-offset:offset;
     const int spacing=lineShape?1:std::max(1,reach/16);if(index && index!=span && index%spacing)continue;
     const auto step=(offset*slope+(reversed?span/2:(span-1)/2))/span;const int minor=int(std::int64_t(ay)+(delta<0?-std::int64_t(step):std::int64_t(step)));

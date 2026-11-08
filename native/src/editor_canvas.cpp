@@ -68,10 +68,16 @@ void Editor::updateSelectionCreation(Point p,bool constrain,bool center,bool rot
 
     if(selectionKind_==5){selectionBrushStroke_.collect(document.width(),document.height(),selectionBrushLast_,{p.x,p.y},brushFeedback_.brushProfiles_[0],selectionBrushAngle_);selectionBrushLast_={p.x,p.y};return;}
 
+    const auto repeatMode=tileRepeatIdentity_==document.identity()?tileRepeat_:repeat::Mode::Off;
+    auto marquee=[&](SelectionTransform target)->std::optional<SelectionMask>{
+     if(repeatMode==repeat::Mode::Off)return rotatedMarqueeSelection(target,document.width(),document.height(),selectionKind_==1,selectionRounded_?selectionCornerRadius_:0);
+     const auto bounds=transformBounds(target);if(bounds.width<1||bounds.height<1)return {};if(std::uint64_t(bounds.width)*bounds.height>64ull*1024*1024)throw std::length_error("Repeated selection exceeds pixel budget");
+     target.x-=bounds.x;target.y-=bounds.y;auto mask=rotatedMarqueeSelection(target,bounds.width,bounds.height,selectionKind_==1,selectionRounded_?selectionCornerRadius_:0);if(mask){mask->x+=bounds.x;mask->y+=bounds.y;}return repeat::wrapSelection(mask,document.width(),document.height(),repeatMode);
+    };
     std::optional<SelectionMask> incoming;
 
-    if(marqueeDrawingAnchor_){anchoredMarqueeGeometry_.update(anchoredMarqueeSpec_,{double(p.x),double(p.y)},constrain,true,rotate);auto target=anchoredMarqueeSpec_.bounds;if(gridSnapActive()&&target.angle==0){const auto snapped=snapSelectionBoundsToGrid({target.x,target.y,target.width,target.height},document.customGrid());target.x=snapped.x;target.y=snapped.y;target.width=snapped.width;target.height=snapped.height;}target=centerDrawingBounds(target,*marqueeDrawingAnchor_);anchoredMarqueeSpec_.bounds=target;marqueeTarget_=target;selectionPreview_=rotatedMarqueeSelection(target,document.width(),document.height(),selectionKind_==1,selectionRounded_?selectionCornerRadius_:0);selectionLast_=p;return;}
-    if(marqueeSpaceTarget_){auto target=*marqueeSpaceTarget_;target.x+=p.x-marqueeSpacePointer_.x;target.y+=p.y-marqueeSpacePointer_.y;marqueeTarget_=target;selectionPreview_=rotatedMarqueeSelection(target,document.width(),document.height(),selectionKind_==1,selectionRounded_?selectionCornerRadius_:0);selectionLast_=p;return;}
+    if(marqueeDrawingAnchor_){anchoredMarqueeGeometry_.update(anchoredMarqueeSpec_,{double(p.x),double(p.y)},constrain,true,rotate);auto target=anchoredMarqueeSpec_.bounds;if(gridSnapActive()&&target.angle==0){const auto snapped=snapSelectionBoundsToGrid({target.x,target.y,target.width,target.height},document.customGrid());target.x=snapped.x;target.y=snapped.y;target.width=snapped.width;target.height=snapped.height;}target=centerDrawingBounds(target,*marqueeDrawingAnchor_);anchoredMarqueeSpec_.bounds=target;marqueeTarget_=target;selectionPreview_=marquee(target);selectionLast_=p;return;}
+    if(marqueeSpaceTarget_){auto target=*marqueeSpaceTarget_;target.x+=p.x-marqueeSpacePointer_.x;target.y+=p.y-marqueeSpacePointer_.y;marqueeTarget_=target;selectionPreview_=marquee(target);selectionLast_=p;return;}
 
     if(quickSelection_){const auto current=quickSelectionCellAt(p);if(!current)return;selectionPreview_=quickSelectCellDragBounds(quickSelectionCell_,*current);selectionLast_=p;return;}
 
@@ -83,7 +89,7 @@ void Editor::updateSelectionCreation(Point p,bool constrain,bool center,bool rot
 
       if(gridSnapActive()&&marqueeTarget_->angle==0){const auto b=snapSelectionBoundsToGrid({marqueeTarget_->x,marqueeTarget_->y,marqueeTarget_->width,marqueeTarget_->height},document.customGrid());if(std::isfinite(b.x)&&std::isfinite(b.y)&&std::isfinite(b.width)&&std::isfinite(b.height)&&std::abs(b.x)<1000000&&std::abs(b.y)<1000000&&b.width<1000000&&b.height<1000000){marqueeTarget_->x=b.x;marqueeTarget_->y=b.y;marqueeTarget_->width=b.width;marqueeTarget_->height=b.height;}}
 
-      const auto target=*marqueeTarget_;incoming=target.angle==0 && !(selectionKind_==0 && selectionRounded_)?(selectionKind_==1?ellipseSelection(int(target.x),int(target.y),int(target.width),int(target.height),document.width(),document.height()):rectangleSelection(int(target.x),int(target.y),int(target.width),int(target.height),document.width(),document.height())):rotatedMarqueeSelection(target,document.width(),document.height(),selectionKind_==1,selectionRounded_?selectionCornerRadius_:0);}
+      const auto target=*marqueeTarget_;incoming=repeatMode!=repeat::Mode::Off?marquee(target):target.angle==0 && !(selectionKind_==0 && selectionRounded_)?(selectionKind_==1?ellipseSelection(int(target.x),int(target.y),int(target.width),int(target.height),document.width(),document.height()):rectangleSelection(int(target.x),int(target.y),int(target.width),int(target.height),document.width(),document.height())):rotatedMarqueeSelection(target,document.width(),document.height(),selectionKind_==1,selectionRounded_?selectionCornerRadius_:0);}
 
     selectionPreview_=incoming;
 
@@ -1101,7 +1107,7 @@ void Editor::paintBrushPreview(ui::Graphics& g,const gfx::Rect& cv,bool outlineP
 
         if(edges&8)g.fillRect(color,gfx::Rect(r.x,r.y2()-thickness,r.w,thickness));};
 
-      if(!pencilImageBrush_ && brushFeedback_.brushPreviewBatch_){
+      if(!pencilImageBrush_ && brushFeedback_.brushPreviewBatch_ && !(tileRepeatIdentity_==document.identity()&&tileRepeat_!=repeat::Mode::Off)){
 
         // Reuse legacy row-span geometry. Cache only boundary samples, rather
 
@@ -1141,13 +1147,14 @@ void Editor::paintBrushPreview(ui::Graphics& g,const gfx::Rect& cv,bool outlineP
 
       else for(auto span:brushSpans(brush))for(int x=span.left;x<=span.right;++x)mask.emplace(p.x-brush.size/2+x,p.y-brush.size/2+span.y);
 
+      if(tileRepeatIdentity_==document.identity()&&tileRepeat_!=repeat::Mode::Off){std::set<std::pair<int,int>> wrapped;for(auto [x,y]:mask){const auto local=repeat::wrap({double(x),double(y)},document.width(),document.height(),tileRepeat_);if(local.x>=0&&local.y>=0&&local.x<document.width()&&local.y<document.height())wrapped.emplace(int(local.x),int(local.y));}mask=std::move(wrapped);}
       for(auto [x,y]:mask)edge(x,y,(!mask.count({x-1,y})?1:0)|(!mask.count({x+1,y})?2:0)|(!mask.count({x,y-1})?4:0)|(!mask.count({x,y+1})?8:0));
 
       if(eraser_ || previewMode==1)return;
 
     }
 
-    const auto replacements=document.brushPreview(anchor?anchor->point:p,target,eraser_?0:ink_,brush,pencilImageBrush_?&*pencilImageBrush_:nullptr,pencilImageBrushAngle_,brushLineBaseline(anchor),bool(anchor));
+    const auto replacements=document.brushPreview(anchor?anchor->point:p,target,eraser_?0:ink_,brush,pencilImageBrush_?&*pencilImageBrush_:nullptr,pencilImageBrushAngle_,brushLineBaseline(anchor),bool(anchor),tileRepeatIdentity_==document.identity()?tileRepeat_:repeat::Mode::Off);
 
     if(replacements.empty())return;
 

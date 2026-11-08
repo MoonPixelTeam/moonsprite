@@ -4401,3 +4401,12 @@ make-outline-sample-fixtures.cjs执行实际未改写旧版函数体，RGBA读�
 核对旧版tilemap.ts、canvas-render-frame/background/content、workspace-commands-view和QuickCommandBar。固定相邻3/9份，off不改当前缩放，开启按旋转后的整体包围范围fit并居中，快捷栏同项再次点击关闭，菜单直接设置状态；每工程独立且按document identity隔离。所有副本复用一次合成和一次上传的既有CanvasRenderer缓存，棋盘格复用2×2纹理；格线、既有画布overlay按同一副本周期绘制。新增正模坐标映射、选区折叠和fit几何完整port，执行实际旧版函数生成512组坐标/fit及512组矩形/掩码选区oracle，CTest通过。
 
 明确INCOMPLETE：上述输入几何尚未接入全部绘图工具、跨缝笔触、浮动选区及tilemap输入，不将显示副本称作完整无缝编辑。tile-repeat-build/final-build/runtime-build最终均退出0；--tile-repeat-check退出0，覆盖菜单与快捷指令支持、快捷栏再次点击关闭、旋转fit、会话恢复、关闭不改缩放、像素/历史/revision/dirty不变、切换不增加upload，以及九份离屏副本中心像素。最初同步诊断截图黑屏，已改到真实事件循环180ms定时器执行，第二次实际查看tile-repeat-smoke.bmp完整3×3图案，未将首次黑屏记作视觉通过。CTest tile-repeat与quick-command-preferences共2项通过0.44s；来源覆盖741文件通过，strict继续因全局缺口失败。没有进行所有工具跨缝编辑或FPS验收。全量迁移保持INCOMPLETE。
+
+
+### 2026-11-09：平铺跨边笔刷与框选（本阶段验证通过）
+
+沿用tools-brush.ts/canvas-raster-stroke.ts的连续笔触坐标、中心折回、先对称后正模与选区约束次序。普通/图片/动态笔刷与完美像素tail复用同一pending事务，不在缝处提交新历史；visitBrushLine仅重复模式绕开画布范围剪枝，关闭模式保留原路径。预览同样加入重复模式，框选按局部旋转遮罩生成后折回，限制64Mi像素草稿预算。新回归覆盖跨缝不连中间、单笔UndoRedo、透明度、负坐标、取消、蒙版、图片笔刷及预览一致性；正式--tile-repeat-check退出0，真实鼠标跨右缝绘画仅写入两侧对应像素、单笔历史、Undo空白与Redo通过；跨缝框选折回通过。首轮在编译中变更接口导致链接旧符号，已冻结后定向重编；不得将此首轮记为通过。
+
+未完成：瓦片paint、自由源编辑、套索/选择笔刷、浮动粘贴和其余工具跨缝语义。全软件迁移仍INCOMPLETE。
+
+验收：tile-repeat-input-formal-build.log正式Release构建退出0；tile-repeat/tile-repeat-stroke/brush-dynamics/image-brush/symmetry-model五项定向CTest通过0.15s。测试首轮空层无法创建附加蒙版，修正fixture先写入像素后通过，未改变生产规则。来源覆盖742文件通过；strict仍因已登记全量迁移缺口失败。不将此阶段称作全工具跨缝编辑或大作品FPS验收。保留全部既有用户数据与未跟踪缓存，本阶段单独提交推送dev。
