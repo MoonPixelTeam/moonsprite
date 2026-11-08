@@ -3,6 +3,8 @@
 #include "ui_scale.h"
 #include "image_export.h"
 #include "image_import_limits.h"
+#include "new_document_clipboard.h"
+#include "ui/timer.h"
 #include "ui/popup_window.h"
 #include "ui/message.h"
 #include "ui/resize_event.h"
@@ -40,6 +42,9 @@ class NewDocumentDialog final : public PixelDialog {
   struct Preset {std::string name;int width,height;bool record=false;};std::vector<Preset> saved_;
   std::filesystem::path storage_;bool readable_=true,accepted_=false;std::u32string error_;
   std::function<bool(std::u32string,int,int)> createDocument_;
+  bool manualSizeChanged_=false;
+  std::future<std::optional<new_document::Size>> clipboardProbe_;
+  std::unique_ptr<ui::Timer> clipboardTimer_;
   int sizeColumns(int width)const {int cell=0;for(auto b:sizes_)cell=std::max(cell,b->minimumWidth());return std::clamp((width-13)/(cell-1),1,6);}
   static constexpr int sizeY(){return DialogLayout::field(1)+textControlHeight+DialogLayout::gap;}
   int colorY(int width)const {const int rows=(6+sizeColumns(width)-1)/sizeColumns(width);return sizeY()+rows*textControlHeight+(rows-1)*DialogLayout::gap+DialogLayout::group;}
@@ -48,7 +53,7 @@ class NewDocumentDialog final : public PixelDialog {
   PixelButton* button(std::u32string text,std::function<void()> click){auto b=new PixelButton(font_,skin_,std::move(text),std::move(click));addChild(b);return b;}
   PixelEntry* entry(){auto e=new PixelEntry(font_,skin_);addChild(e);return e;}
   int number(PixelEntry* e)const {try{const std::string text=e->text();if(!std::regex_match(text,std::regex("[0-9]+")))return 0;const int n=std::stoi(text);return n>=1&&n<=importedImageMaxSide?n:0;}catch(...){return 0;}}
-  void setSize(int w,int h){width_->setText(std::to_string(w));height_->setText(std::to_string(h));sync();}
+  void setSize(std::int64_t w,std::int64_t h){width_->setText(std::to_string(w));height_->setText(std::to_string(h));sync();}
   void sync(){for(int i=0;i<6;++i){sizes_[i]->active=number(width_)==dimensions_[i][0]&&number(height_)==dimensions_[i][1];sizes_[i]->invalidate();}remove_->setEnabled(readable_&&std::any_of(saved_.begin(),saved_.end(),[&](auto& p){return p.name==presetName_->text();}));}
   void updateOptions(){std::vector<std::u32string> options{U"选择预设"};for(auto& p:saved_)options.push_back(unicodeText(p.name+" · "+std::to_string(p.width)+"×"+std::to_string(p.height)));presets_->setOptions(std::move(options));presets_->setSelectedIndex(0);sync();}
   bool persist(const std::vector<Preset>& next){try{std::ostringstream out;out<<"MoonSprite new-document-presets 1\n";for(auto& p:next)out<<std::quoted(p.name)<<' '<<p.width<<' '<<p.height<<" rgba "<<int(p.record)<<"\n";auto text=out.str();std::filesystem::create_directories(storage_.parent_path());writeExportBytesAtomic(storage_,std::vector<std::uint8_t>(text.begin(),text.end()));return true;}catch(...){error_=U"预设保存失败，请重试";invalidate();return false;}}
@@ -60,6 +65,11 @@ class NewDocumentDialog final : public PixelDialog {
     if(createWithRecording?createWithRecording(u,w,h,recording_->checked()):createDocument_(u,w,h)){accepted_=true;closeWindow(nullptr);}else{error_=U"创建画布失败";relayout();}
   }
 public:
+  void applyClipboardSize(std::optional<new_document::Size> size){if(manualSizeChanged_||!size||size->width<1||size->height<1)return;setSize(size->width,size->height);}
+  void probeClipboard(new_document::SizeReader reader){
+    try{clipboardProbe_=new_document::probe(std::move(reader));clipboardTimer_=std::make_unique<ui::Timer>(25,this);
+    clipboardTimer_->Tick.connect([this]{if(!clipboardProbe_.valid()||clipboardProbe_.wait_for(std::chrono::seconds(0))!=std::future_status::ready)return;clipboardTimer_->stop();try{applyClipboardSize(clipboardProbe_.get());}catch(...){}});clipboardTimer_->start();}catch(...){/* Optional clipboard access retains normal defaults. */}
+  }
   std::function<bool(std::u32string,int,int,bool)> createWithRecording;
   void setRecordingDefault(bool value){recording_->setChecked(value);}
   bool recordingEnabled()const{return recording_->checked();}
@@ -70,20 +80,35 @@ public:
     cancel_=button(U"取消",[this]{closeWindow(nullptr);});create_=button(U"创建画布",[this]{submit();});
     presetControls_=PixelPresetControls::create([this]{return entry();},[this](std::u32string label,std::function<void()> action){return button(std::move(label),std::move(action));},
       [this,&f,&s]{auto dropdown=new PixelDropdown(f,s);addChild(dropdown);return dropdown;},icons_,
-      [this](int i){if(i>0&&i<=int(saved_.size())){const auto p=saved_[i-1];presetName_->setText(p.name);setSize(p.width,p.height);recording_->setChecked(p.record);error_.clear();relayout();}},
+      [this](int i){if(i>0&&i<=int(saved_.size())){manualSizeChanged_=true;const auto p=saved_[i-1];presetName_->setText(p.name);setSize(p.width,p.height);recording_->setChecked(p.record);error_.clear();relayout();}},
       [this]{savePreset();},[this]{deletePreset();});
     presets_=presetControls_.choices;presetName_=presetControls_.name;save_=presetControls_.save;remove_=presetControls_.remove;
     const char32_t* labels[]{U"RGBA",U"索引",U"灰度"};const char* artwork[]{"rgba","indexed","grayscale"};
     for(int i=0;i<3;++i){modes_[i]=new Segment(f,s,labels[i],std::string("new_document.color-mode-")+artwork[i],[]{});addChild(modes_[i]);modes_[i]->active=i==0;modes_[i]->setEnabled(i==0);}
-    for(int i=0;i<6;++i){const auto d=dimensions_[i];sizes_[i]=new Segment(f,s,unicodeText(std::to_string(d[0])+"x"+std::to_string(d[1])),"",[this,d]{setSize(d[0],d[1]);});addChild(sizes_[i]);}
+    for(int i=0;i<6;++i){const auto d=dimensions_[i];sizes_[i]=new Segment(f,s,unicodeText(std::to_string(d[0])+"x"+std::to_string(d[1])),"",[this,d]{manualSizeChanged_=true;setSize(d[0],d[1]);});addChild(sizes_[i]);}
     recording_=new PixelSwitch(f,s,U"记录绘画过程",false,std::function<void(bool)>{});addChild(recording_);recording_->setEnabled(true);recording_->iconSkin=&skin_;recording_->icon="new_document.record-drawing";
     // Keep original colored record artwork and its native pixel dimensions.
-    for(auto e:{width_,height_}){e->numeric=true;e->Change.connect([this]{sync();});}
+    for(auto e:{width_,height_}){e->numeric=true;e->Change.connect([this]{manualSizeChanged_=true;sync();});}
     presetName_->Change.connect([this]{sync();});for(auto e:{name_,width_,height_})e->accept=[this]{submit();};setSize(64,64);
     try{if(std::filesystem::exists(storage_)){std::ifstream in(storage_);std::string header;std::getline(in,header);if(header!="MoonSprite new-document-presets 1")throw std::runtime_error("Preset version");while(in>>std::ws&&!in.eof()){Preset p;std::string mode;int record;if(!(in>>std::quoted(p.name)>>p.width>>p.height>>mode>>record)||p.name.empty()||!editableImageDimensions(p.width,p.height)||mode!="rgba"||(record!=0&&record!=1))throw std::runtime_error("Preset data");p.record=record!=0;saved_.push_back(std::move(p));}}}catch(...){saved_.clear();readable_=false;error_=U"预设文件损坏，保存已禁用";}
     save_->setEnabled(readable_);updateOptions();
   }
   bool accepted()const{return accepted_;}
+  ~NewDocumentDialog(){if(clipboardTimer_)clipboardTimer_->stop();}
+  void stopClipboardProbe(){if(clipboardTimer_)clipboardTimer_->stop();}
+  void smokeClipboard(){
+    if(number(width_)!=23||number(height_)!=17)throw std::runtime_error("Asynchronous clipboard timer did not apply initial size");
+    auto check=[](bool value,const char* why){if(!value)throw std::runtime_error(why);};
+    manualSizeChanged_=false;applyClipboardSize(new_document::Size{32768,1});check(number(width_)==32768&&number(height_)==1,"Clipboard metadata dimensions");
+    manualSizeChanged_=false;applyClipboardSize({});check(number(width_)==32768,"Missing clipboard retains dimensions");
+    width_->setText("71");width_->Change();applyClipboardSize(new_document::Size{12,13});check(number(width_)==71&&number(height_)==1,"Late clipboard overwrote width edit");
+    manualSizeChanged_=false;height_->setText("19");height_->Change();applyClipboardSize(new_document::Size{12,13});check(number(height_)==19,"Late clipboard overwrote height edit");
+    manualSizeChanged_=false;sizes_[0]->Click();applyClipboardSize(new_document::Size{12,13});check(number(width_)==16&&number(height_)==16,"Late clipboard overwrote size preset");
+    presetName_->setText("clipboard-race-owned");savePreset();manualSizeChanged_=false;presets_->setSelectedIndex(int(saved_.size()),true);applyClipboardSize(new_document::Size{12,13});check(number(width_)==16&&number(height_)==16,"Late clipboard overwrote saved preset");deletePreset();
+    manualSizeChanged_=false;applyClipboardSize(new_document::Size{16777216,1});check(width_->text()=="16777216"&&number(width_)==0,"Metadata limit must not silently clamp draft");
+    manualSizeChanged_=false;applyClipboardSize(new_document::Size{4294967296ll,1});check(width_->text()=="4294967296"&&number(width_)==0,"Distant layer union must preserve wide draft");submit();check(!accepted_&&!error_.empty(),"Wide layer union must reject creation");
+    setSize(64,64);manualSizeChanged_=false;error_.clear();relayout();
+  }
   int preferredHeight(int width)const{return DialogLayout::fit(presetY(width)+54+(error_.empty()?0:16));}
   void onResize(ui::ResizeEvent& ev)override {
     setBoundsQuietly(ev.bounds());onLayout();

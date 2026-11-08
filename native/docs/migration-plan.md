@@ -4122,3 +4122,22 @@ large-creation-single-raster-build.log正式Release与九个相关测试目标�
 已实际查看默认2×的new-document-large.bmp（1025×3草稿）和new-document-large-invalid.bmp（8192×8193超预算草稿）：尺寸字段、预设、错误文字和底部按钮完整，没有交叠；窗口仍保留自动几何检查后用户拉大的尺寸，未为截图强制收缩。五位数宽度由字段最小宽度检查及32768两个轴的预设存取／创建菜单回归覆盖，不声称已有五位数草稿截图。此批无全缩放、长时手工拖动或UI帧率基准；单层行拷贝优化不等同于整体卡顿已解决。全量迁移仍INCOMPLETE。
 
 最终来源覆盖679文件通过，strict因全局已知迁移缺口退出1；Node脚本语法及git diff --check通过。全部既有未跟踪诊断、用户／恢复数据与缓存保持原状。
+
+
+### 2026-11-08 新建窗口剪贴板尺寸完整探测链路（已通过定向验证）
+
+对照NewDocumentDialog::useEffect、ClipboardService::latestClipboardSize／layerClipboardSize及platform_clipboard.rs::read_clipboard_image_size。系统读取仅检查DIBV5/DIB前12字节，保持旧版绝对宽高和16Mi像素边界；无图层复制时不读像素。图层复制记录当时活动帧的所有被复制图层栅格范围并求并集，保持系统基线尺寸和图像；新建时先比元数据，仅同尺寸才比完整图像／mask／origin；无系统／访问失败回退图层范围，同尺寸新图片优先。选区／动画复制不作为图层范围，超原生边长的合法剪贴板元数据仅保留草稿，不静默裁切；创建仍沿现有原生准入。
+
+新建窗口异步轮询结果，用户输入任一尺寸、点内置预设、载入用户预设之后不接受迟到结果，关闭后不触碰UI。Windows延迟剪贴板读取使用唯一worker／一个可替换待执行请求，复用native gallery的共享状态生命周期与legacy latest-task合并原则，避免反复开关堆积线程；只捕获不可变数据／共享基线，不捕获Editor，不在打开窗口复制基线大缓冲。图层复制原有同步baseline捕获尚未在本批异步化，不把本批称为全部剪贴板性能完成。
+
+实际ClipboardService执行器生成864组来源／尺寸／图片空、透明、变化／同尺寸／失败及有无图像reader组合，并比较读取次数；核心新套件另覆盖Rust原例320×-180、头长度／INT_MIN／16Mi边界、负坐标／多层并集、源owner销毁后reader有效、慢读取关闭不等待及待执行替换。初次并发测试超时：MSVC packaged_task移动赋值替换后原future未立即完成，显式reset旧pending再emplace新任务后通过，失败日志保留。new-document-clipboard-cancel-core-tests.log三项（新套件／clipboard-document／large-creation）通过；正式UI尚待构建运行，不能把核心通过当作窗口验收。索引／灰度完整编辑仍未迁移，全量目标INCOMPLETE。
+
+初轮正式Release构建new-document-clipboard-app-build.log退出0。复核补齐远距离小图层的并集元数据：宽高使用int64，INT_MIN与INT_MAX坐标的两个1×1图层保留4294967296×1草稿，不回退默认值、不溢出或静默裁切；提交仍由原生创建预算拒绝并保留可编辑状态。new-document-clipboard-wide-build.log正在重新构建最终正式程序及三个相关测试。
+
+Aseprite只读对照：cmd_new_file.cpp::onExecute通过Clipboard::getImageSize填默认宽高；util/clipboard.cpp::getImageSize先读原生bitmap尺寸，再回退内部image宽高，不走getImage完整内容路径。本批同样区分尺寸探测和图片读取，并保留MoonSprite自己的图层基线比较规则；未复制Aseprite业务代码，来源快照记录实际检查版本。
+
+最终wide构建退出0，new-document-clipboard-final-core-tests.log三项全部通过，包含864组实际旧版对照与4294967296×1范围草稿。首轮正式窗口检查在实际层复制用例失败：测试把addFrame(false)生成的1×1空白活动Cel误认为前一帧8×6；对照document.cpp::addFrame和旧版blankSurface语义后仅修正测试，系统基线改为2×3，明确断言复制活动1×1、不采用非活动8×6、切换工程后仍冻结1×1，以及同尺寸外部新图优先2×3。失败日志保留new-document-clipboard-ui-active-cel-failure.log，正式单文件重建验证中。
+
+最终new-document-clipboard-active-cel-build.log正式Release退出0，new-document-clipboard-final-ui-tests.log中--new-document-check、--paste-new-document-check、--sheet-new-document-check全部退出0，运行前后exe SHA256一致（7BA59F4D2DF94D9020243AF3B4CC13613585E2FEE96221121127D99A7589EC27）。实际Editor活动帧复制、切工程冻结、同尺寸外图优先、真实Timer23×17回填、手动宽高／内置与保存预设防迟到覆盖、远坐标宽草稿拒绝均通过。已查看最终new-document-dialog.bmp和new-document-large-invalid.bmp：默认2×的23×17字段、预设、关闭与底部按钮，以及8192×8193超预算提示完整，无交叠。图像验收不代表1×实机、所有倍率或长时交互帧率。
+
+最终核心三项全部通过（new-document-clipboard-final-core-tests.log）；实际旧版clipboard-service九项及864组oracle对照通过。来源覆盖684文件通过，strict因全局已登记缺口仍退出1，Node语法和git diff --check通过。未修改系统剪贴板、未清理用户数据或既有缓存。本批仅完成剪贴板尺寸探测链路；同步复制baseline、索引／灰度编辑及全量迁移仍未完成，整体性能改善未经帧率量化。

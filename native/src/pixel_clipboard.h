@@ -1,6 +1,8 @@
 #pragma once
 #include "selection_model.h"
 #include "image_import_limits.h"
+#include "new_document_clipboard.h"
+#include <memory>
 #include <windows.h>
 #include "clip.h"
 #include <cstring>
@@ -51,24 +53,26 @@ public:
 private:
  std::optional<SelectionClipboard> internal_;
  ImageReader systemImageReaderForSmoke_;
- std::optional<SelectionClipboard> structuredCopyBaseline_;
- std::optional<SelectionClipboard> readSystemImage(bool forNewDocument){
+ std::shared_ptr<const SelectionClipboard> structuredCopyBaseline_;
+ std::optional<new_document::Size> layerCopySize_,layerCopySystemSize_;
+ new_document::SizeReader systemSizeReaderForSmoke_;
+ static std::optional<SelectionClipboard> readSystemImage(bool forNewDocument,bool forSizeProbe=false){
   clip::lock lock;if(!lock.locked())throw std::runtime_error("Clipboard busy");
   if(!lock.is_convertible(clip::image_format()))return {};
   clip::image_spec spec;if(!lock.get_image_spec(spec))throw std::runtime_error("Unsupported clipboard image");
-  auto validate=[&]{validateSystemImage(spec,forNewDocument);};
+  auto validate=[&]{validateSystemImage(spec,forNewDocument,forSizeProbe);};
   validate();clip::image image;if(!lock.get_image(image))throw std::runtime_error("Cannot read clipboard image");
-  return decodeSystemImage(image,forNewDocument);
+  return decodeSystemImage(image,forNewDocument,forSizeProbe);
  }
 public:
- static void validateSystemImage(const clip::image_spec& spec,bool forNewDocument){
-  const bool valid=editableImageDimensions(spec.width,spec.height)&&std::uint64_t(spec.width)<=16ull*1024*1024/spec.height&&(forNewDocument||(spec.width<=8192&&spec.height<=8192));
+ static void validateSystemImage(const clip::image_spec& spec,bool forNewDocument,bool forSizeProbe=false){
+  const bool valid=(forSizeProbe?(spec.width&&spec.height):editableImageDimensions(spec.width,spec.height))&&std::uint64_t(spec.width)<=16ull*1024*1024/spec.height&&(forSizeProbe||forNewDocument||(spec.width<=8192&&spec.height<=8192));
   if(!valid){if(forNewDocument)throw ImageNotAdmitted("剪贴板图像尺寸或读取预算超限；图像未被裁剪");throw std::length_error("Clipboard image exceeds pixel budget");}
   if(spec.bits_per_pixel!=24&&spec.bits_per_pixel!=32){if(forNewDocument)throw ImageNotAdmitted("剪贴板图像格式尚未支持；仅支持 24/32 位 RGBA 图像");throw std::runtime_error("Only 24/32 bit clipboard images supported");}
   if(std::uint64_t(spec.bytes_per_row)<std::uint64_t(spec.width)*(spec.bits_per_pixel/8)||std::uint64_t(spec.bytes_per_row)>256ull*1024*1024/spec.height||spec.red_shift>31||spec.green_shift>31||spec.blue_shift>31||spec.alpha_shift>31)throw ImageNotAdmitted("Invalid clipboard row layout or channel shifts");
  }
- static SelectionClipboard decodeSystemImage(const clip::image& image,bool forNewDocument){
-  const auto spec=image.spec();validateSystemImage(spec,forNewDocument);
+ static SelectionClipboard decodeSystemImage(const clip::image& image,bool forNewDocument,bool forSizeProbe=false){
+  const auto spec=image.spec();validateSystemImage(spec,forNewDocument,forSizeProbe);
   if(!image.is_valid())throw ImageNotAdmitted("Empty clipboard image data");
   SelectionClipboard result;result.width=int(spec.width);result.height=int(spec.height);result.pixels.resize(std::size_t(spec.width)*spec.height);result.mask.resize(result.pixels.size());
   for(unsigned long y=0;y<spec.height;++y)for(unsigned long x=0;x<spec.width;++x){
@@ -80,7 +84,17 @@ public:
  }
  // Legacy ClipboardService: compare image content, not clipboard sequence/size.
  std::optional<SelectionClipboard> readSystemSelection(){try{return readSelectionSource({},[this]{return systemImageReaderForSmoke_?systemImageReaderForSmoke_():readSystemImage(false);});}catch(...){return {};}}
- void captureStructuredCopyBaseline(){structuredCopyBaseline_=readSystemSelection();}
+ void captureStructuredCopyBaseline(){auto image=readSystemSelection();structuredCopyBaseline_=image?std::make_shared<const SelectionClipboard>(std::move(*image)):nullptr;}
+ void captureLayerCopyBaseline(std::optional<new_document::Size> size){
+  std::optional<SelectionClipboard> image;try{image=readNewDocumentSource({},[this]{return systemImageReaderForSmoke_?systemImageReaderForSmoke_():readSystemImage(true,true);});}catch(...){}structuredCopyBaseline_=image?std::make_shared<const SelectionClipboard>(std::move(*image)):nullptr;layerCopySize_=size;layerCopySystemSize_.reset();try{layerCopySystemSize_=systemSizeReaderForSmoke_?systemSizeReaderForSmoke_():new_document::readSystemSize();}catch(...){}
+ }
+ new_document::SizeReader newDocumentSizeReader(bool hasLayers)const{
+  auto imageReader=systemImageReaderForSmoke_;auto sizeReader=systemSizeReaderForSmoke_;
+  return [layers=hasLayers?layerCopySize_:std::optional<new_document::Size>{},baselineSize=layerCopySystemSize_,baseline=structuredCopyBaseline_,imageReader=std::move(imageReader),sizeReader=std::move(sizeReader)]{
+   return new_document::latestSize(layers,baselineSize,baseline.get(),sizeReader?sizeReader:new_document::SizeReader(new_document::readSystemSize),[imageReader]{return readNewDocumentSource({},[&]{return imageReader?imageReader():readSystemImage(true,true);});});
+  };
+ }
+ new_document::SizeReader exchangeSystemSizeReaderForSmoke(new_document::SizeReader next){auto previous=std::move(systemSizeReaderForSmoke_);systemSizeReaderForSmoke_=std::move(next);return previous;}
  bool preferStructuredCopy(const std::optional<SelectionClipboard>& current)const{
   if(!current)return true;if(!structuredCopyBaseline_)return false;
   const auto& before=*structuredCopyBaseline_;const auto& after=*current;

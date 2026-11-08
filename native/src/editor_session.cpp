@@ -729,6 +729,7 @@ void Editor::showNewDocument(bool verify) {
       try{auto created=Document::withBuiltinPalette(width,height,std::move(name));created.mutableTimelapseSettings().enabled=record;addProject(std::move(created));usageStatistics_.recordEvent("newProject");return true;}catch(const std::exception& e){status_=unicodeText(e.what());return false;}
     };
     popup.setDisplay(display(),false);const auto area=bounds();popup.setBounds({area.center().x-160*uiScale,area.center().y-125*uiScale,320*uiScale,popup.preferredHeight(320)*uiScale});
+    popup.probeClipboard(verify?new_document::SizeReader([]{return std::optional<new_document::Size>{{23,17}};}):smoke_?new_document::SizeReader([]{return std::optional<new_document::Size>{};}):pixelClipboard_.newDocumentSizeReader(layerClipboardSnapshot_.has_value()));
 
     int geometryPhase=0;std::vector<gfx::Color> incremental;
 
@@ -748,13 +749,13 @@ void Editor::showNewDocument(bool verify) {
 
       }
 
-      if(geometryPhase==18){writeSmokeFrame(surface.get(),assets_.parent_path()/"new-document-dialog.bmp");popup.smoke(false);popup.smokeLarge(0);++geometryPhase;return;}
+      if(geometryPhase==18){writeSmokeFrame(surface.get(),assets_.parent_path()/"new-document-dialog.bmp");popup.smokeClipboard();popup.smoke(false);popup.smokeLarge(0);++geometryPhase;return;}
       if(geometryPhase==19){writeSmokeFrame(surface.get(),assets_.parent_path()/"new-document-large-invalid.bmp");popup.smokeLarge(1);++geometryPhase;return;}
       if(geometryPhase==20){writeSmokeFrame(surface.get(),assets_.parent_path()/"new-document-large.bmp");popup.smokeLarge(2);++geometryPhase;timer->stop();}
 
     });timer->start();}
 
-    popup.openWindowInForeground();requestFocus();refresh();
+    popup.openWindowInForeground();popup.stopClipboardProbe();requestFocus();refresh();
 
   }
 

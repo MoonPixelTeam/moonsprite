@@ -907,3 +907,12 @@ add_executable(recovery-display-tests tests/recovery_display_test.cpp)
 target_include_directories(recovery-display-tests PRIVATE src)
 target_compile_definitions(recovery-display-tests PRIVATE NOMINMAX)
 add_test(NAME recovery-display COMMAND recovery-display-tests)
+
+# NewDocumentDialog optional clipboard-size probing and legacy selection policy.
+target_sources(moon-core PRIVATE src/new_document_clipboard.cpp)
+target_link_libraries(moon-core PUBLIC user32)
+add_executable(new-document-clipboard-tests tests/new_document_clipboard_test.cpp)
+target_link_libraries(new-document-clipboard-tests PRIVATE moon-core user32)
+add_test(NAME new-document-clipboard COMMAND new-document-clipboard-tests)
+
+set_tests_properties(new-document-clipboard PROPERTIES TIMEOUT 30)

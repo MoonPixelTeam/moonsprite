@@ -38,5 +38,17 @@ int main(){try{
   auto placement=[](int w,int h,int left,int top,int right,int bottom,std::optional<int> ox,std::optional<int> oy,int expectedX,int expectedY){SelectionClipboard clip;clip.width=w;clip.height=h;clip.originX=ox;clip.originY=oy;const auto p=PixelClipboard::resolvePlacement(clip,20,20,left,top,right,bottom);CHECK(p.x==expectedX&&p.y==expectedY);};
   placement(3,3,0,0,8,8,{},{},3,3);placement(3,3,0,0,8,8,1,2,1,2);placement(3,3,0,0,8,8,100,100,3,3);placement(19,2,30,0,34,8,{},{},19,3);placement(19,2,-15,0,-10,8,{},{},-18,3);placement(30,2,0,0,20,20,{},{},0,9);placement(2,30,0,0,20,20,{},{},9,0);placement(3,3,0,0,8,8,1,{},3,3);
  }
+ {
+  clip::image_spec metadataOnly;metadataOnly.width=16777216;metadataOnly.height=1;metadataOnly.bits_per_pixel=32;metadataOnly.bytes_per_row=16777216*4;PixelClipboard::validateSystemImage(metadataOnly,true,true);bool outside=false;try{PixelClipboard::validateSystemImage(metadataOnly,true);}catch(const PixelClipboard::ImageNotAdmitted&){outside=true;}CHECK(outside);
+  using Size=new_document::Size;PixelClipboard clipboard;SelectionClipboard image;image.width=image.height=1;image.pixels={0xff0000ff};
+  clipboard.exchangeSystemImageReaderForSmoke([image]{return std::optional<SelectionClipboard>{image};});clipboard.exchangeSystemSizeReaderForSmoke([]{return std::optional<Size>{{1,1}};});clipboard.captureLayerCopyBaseline(Size{56,38});
+  auto frozen=clipboard.newDocumentSizeReader(true);CHECK(frozen()->width==56&&clipboard.newDocumentSizeReader(false)()->width==1);
+  image.pixels[0]=0xff00ff00;clipboard.exchangeSystemImageReaderForSmoke([image]{return std::optional<SelectionClipboard>{image};});CHECK(clipboard.newDocumentSizeReader(true)()->width==1&&frozen()->width==56);
+  clipboard.exchangeSystemSizeReaderForSmoke([]{return std::optional<Size>{{800,500}};});CHECK(clipboard.newDocumentSizeReader(true)()->width==800);
+  clipboard.exchangeSystemSizeReaderForSmoke([]{return std::optional<Size>{};});CHECK(clipboard.newDocumentSizeReader(true)()->width==56);
+  clipboard.exchangeSystemImageReaderForSmoke([]()->std::optional<SelectionClipboard>{throw std::runtime_error("busy");});clipboard.captureLayerCopyBaseline(Size{9,7});CHECK(clipboard.newDocumentSizeReader(true)()->width==9);
+  // A captured worker reader remains valid after its clipboard owner is gone.
+  new_document::SizeReader owned;{PixelClipboard temporary;temporary.exchangeSystemSizeReaderForSmoke([]{return std::optional<Size>{{23,17}};});owned=temporary.newDocumentSizeReader(false);}CHECK(owned()->height==17);
+ }
  std::cout<<"Clipboard new-document legacy fixtures passed without changing system clipboard\n";return 0;
 }catch(const std::exception& e){std::cerr<<e.what()<<'\n';return 1;}}

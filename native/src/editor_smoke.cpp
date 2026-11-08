@@ -530,7 +530,11 @@ void Editor::smokeMultiDocument(){
 
 void Editor::smokeNewDocument() {
 
-    smoke_=true;const auto identity=document.identity();showNewDocument();if(document.identity()!=identity)throw std::runtime_error("Cancel replaced the document");
+    smoke_=true;homeOpen_=false;documentOpen_=true;paletteFocused_=false;frameSelectionExplicit_=false;selectedMaskSlots_.clear();document=Document(8,6);document.addFrame();document.clearTimelineSelection();
+    SelectionClipboard baseline;baseline.width=2;baseline.height=3;baseline.pixels.assign(6,0xff0000ff);auto oldImage=pixelClipboard_.exchangeSystemImageReaderForSmoke([baseline]{return std::optional<SelectionClipboard>{baseline};});auto oldSize=pixelClipboard_.exchangeSystemSizeReaderForSmoke([]{return std::optional<new_document::Size>{{2,3}};});
+    // The first frame is 8x6, but addFrame(false) creates a 1x1 blank active Cel.
+    try{copyEditorClipboard(false);if(!layerClipboardSnapshot_||pixelClipboard_.newDocumentSizeReader(true)()!=std::optional<new_document::Size>{{1,1}})throw std::runtime_error("Actual layer copy must use active 1x1 Cel, not inactive 8x6 frame");document=Document(2,2);if(pixelClipboard_.newDocumentSizeReader(true)()!=std::optional<new_document::Size>{{1,1}})throw std::runtime_error("Layer clipboard bounds changed with active document");auto changed=baseline;changed.pixels[0]=0xff00ff00;pixelClipboard_.exchangeSystemImageReaderForSmoke([changed]{return std::optional<SelectionClipboard>{changed};});if(pixelClipboard_.newDocumentSizeReader(true)()!=std::optional<new_document::Size>{{2,3}})throw std::runtime_error("Same-size external image must replace layer size");}catch(...){pixelClipboard_.exchangeSystemImageReaderForSmoke(std::move(oldImage));pixelClipboard_.exchangeSystemSizeReaderForSmoke(std::move(oldSize));throw;}pixelClipboard_.exchangeSystemImageReaderForSmoke(std::move(oldImage));pixelClipboard_.exchangeSystemSizeReaderForSmoke(std::move(oldSize));layerClipboardSnapshot_.reset();
+    const auto identity=document.identity();showNewDocument();if(document.identity()!=identity)throw std::runtime_error("Cancel replaced the document");
 
     showNewDocument(true);if(document.width()!=1025||document.height()!=3||document.name()!=U"大画布创建"||document.palette().entries.size()!=32||document.canUndo()||document.historySize()||!documentPath_.empty()||!document.sourceFilePath().empty())throw std::runtime_error("New large canvas metadata or palette");
 
