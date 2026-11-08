@@ -13,6 +13,7 @@
 #include "help_dialog.h"
 #include "home_announcements.h"
 #include "recent_projects_pane.h"
+#include "gallery_projects.h"
 #include "reference_image_window.h"
 #include "editor_timeline_rows.h"
 #include "canvas_renderer.h"
@@ -81,7 +82,7 @@ class Editor : public ui::Widget {
 public:
   void smokeAsepriteSaveLifecycle();
   void smokeMaskSelectionClipboard();
-  void smokeRecentProjects();
+  void smokeRecentProjects();void smokeGallery();void initializeGallery(bool testing){if(!testing)loadGallery();}
 
 public:
   usage::Tracker usageStatistics_;
@@ -134,6 +135,10 @@ private:
   PixelMenu* recentMenu_=nullptr;PixelMenuItem* recentEmpty_=nullptr;std::vector<PixelMenuItem*> recentMenuRows_;
   std::map<std::string,std::string> recentErrors_;bool recentHidden_=false,recentKeepHome_=false;int recentDensity_=1;
   std::filesystem::path recentSettingsOverride_;
+  gallery::ScanQueue galleryQueue_;std::vector<recent::Project> galleryProjects_;std::vector<std::string> galleryPins_;std::string galleryError_;bool galleryLoading_=false;std::uint64_t galleryGeneration_=0;
+  PixelButton* galleryFolder_=nullptr;
+  std::filesystem::path galleryDirectory()const;std::filesystem::path galleryMarker()const;void loadGallery();void galleryTick();void saveGalleryPins();void toggleGalleryPin(const std::string&);void deleteGalleryProject(const std::string&,int verify=0);void openGalleryFolder();
+
 
   std::vector<os::SurfaceRef> homeBanners_;
 

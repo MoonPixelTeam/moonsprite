@@ -538,6 +538,7 @@ void Editor::loadHomeSection() {
 
     homeEntries_.clear();homeScroll_=homeScrollPixels_=0;
 
+    if(homeSection_==1)loadGallery();
     if(homeSection_==0)for(const auto& value:homeRecent_)homeEntries_.push_back({unicodeText(recent::baseName(value.path)),std::filesystem::u8path(value.path),{}});
 
     if(homeSection_==2){loadRecoveries();for(const auto& row:recoveryCatalog_.rows())homeEntries_.push_back({unicodeText(row.name),recoveryDirectory()/std::filesystem::u8path(row.id+".moonsprite"),row.id});}
@@ -565,12 +566,13 @@ void Editor::layoutHome() {
 
     homeReturn_->setEnabled(usable);
 
-    const bool recentToolsWrap=homeSection_==0&&width<280;const int tabWidth=std::min(76,std::max(1,(width-(homeSection_==0&&!recentToolsWrap?53:0))/3));
+    const bool recentToolsWrap=(homeSection_==0||homeSection_==1)&&width<280;const int tabWidth=std::min(76,std::max(1,(width-((homeSection_==0||homeSection_==1)&&!recentToolsWrap?53:0))/3));
 
-    for(int i=0;i<3;++i){homeTabs_[i]->setVisible(shown);homeTabs_[i]->setEnabled(usable && i!=1);homeTabs_[i]->active=homeSection_==i;homeTabs_[i]->setBounds(uiPhysical(gfx::Rect(right+i*tabWidth,top,tabWidth-1,21)));}
+    for(int i=0;i<3;++i){homeTabs_[i]->setVisible(shown);homeTabs_[i]->setEnabled(usable);homeTabs_[i]->active=homeSection_==i;homeTabs_[i]->setBounds(uiPhysical(gfx::Rect(right+i*tabWidth,top,tabWidth-1,21)));}
 
     const int recentToolsY=top+(recentToolsWrap?23:3),listTop=top+(recentToolsWrap?46:28);
-    int toolX=right+width-49;for(auto button:{recentPrivacy_,recentRefresh_,recentClear_})if(button){button->setBounds(uiPhysical({toolX,recentToolsY,15,15}));button->setVisible(shown&&homeSection_==0);button->setEnabled(usable);toolX+=17;}
+    int toolX=right+width-49;for(auto button:{recentPrivacy_,recentRefresh_,recentClear_})if(button){button->setBounds(uiPhysical({toolX,recentToolsY,15,15}));button->setVisible(shown&&(homeSection_==0||(homeSection_==1&&button==recentRefresh_)));button->setEnabled(usable);toolX+=17;}
+    if(galleryFolder_){galleryFolder_->setBounds(uiPhysical({right+width-49,recentToolsY,15,15}));galleryFolder_->setVisible(shown&&homeSection_==1);galleryFolder_->setEnabled(usable);}
     if(recentPrivacy_)recentPrivacy_->icon=recentHidden_?"eyeOff":"eye";
     if(recentClear_)recentClear_->setEnabled(usable&&std::any_of(homeRecent_.begin(),homeRecent_.end(),[](const auto& v){return !v.pinned;}));
     auto viewport=uiPhysical(gfx::Rect(right+6,listTop,std::max(1,width-12),std::max(1,box.y2()-listTop-6)));
@@ -586,7 +588,8 @@ void Editor::layoutHome() {
     while(homeRows_.size()<homeEntries_.size()){const auto slot=homeRows_.size();auto row=button(U"",[this,slot]{if(slot>=homeEntries_.size())return;const auto entry=homeEntries_[slot];if(entry.recoveryId.empty())openPath(entry.path);else restoreRecovery(entry.path,entry.recoveryId,entry.name);});row->iconWithCaption=true;row->iconSkin=&toolIcons_;row->icon="image";homeRows_.push_back(row);}
 
     for(std::size_t i=0;i<homeRows_.size();++i){auto row=homeRows_[i];row->paletteViewport=[viewport]{return viewport;};row->setEnabled(usable);row->setBounds(gfx::Rect(viewport.x,viewport.y+int(i)*28*uiScale-homeScrollPixels_,viewport.w,24*uiScale));row->setVisible(shown && i<homeEntries_.size() && viewport.intersects(row->bounds()));if(i<homeEntries_.size())row->caption=homeEntries_[i].name;}
-    if(recentPane_){recentPane_->setVisible(shown&&homeSection_==0);recentPane_->setEnabled(usable);recentPane_->setBounds(viewport);recentPane_->setCacheDirectory(smoke_&&recentSettingsOverride_.empty()?std::filesystem::path{}:(recentSettingsOverride_.empty()?homeRecentPath().parent_path():recentSettingsOverride_)/"project-preview-cache");recentPane_->setDensity(recentDensity_);recentPane_->setActive(shown&&homeSection_==0);recentPane_->setProjects(homeRecent_,recentErrors_,recentHidden_);if(homeSection_==0){for(auto row:homeRows_)row->setVisible(false);if(homeScrollBar_)homeScrollBar_->setVisible(false);}}
+    if(recentPane_){const bool cards=homeSection_==0||homeSection_==1;recentPane_->setVisible(shown&&cards);recentPane_->setEnabled(usable);recentPane_->setBounds(viewport);recentPane_->setCacheDirectory(smoke_&&recentSettingsOverride_.empty()?std::filesystem::path{}:(recentSettingsOverride_.empty()?homeRecentPath().parent_path():recentSettingsOverride_)/"project-preview-cache");recentPane_->setDensity(recentDensity_);recentPane_->setGallery(homeSection_==1);recentPane_->setActive(shown&&cards);recentPane_->setProjects(homeSection_==1?galleryProjects_:homeRecent_,recentErrors_,homeSection_==0&&recentHidden_);if(cards){for(auto row:homeRows_)row->setVisible(false);if(homeScrollBar_)homeScrollBar_->setVisible(false);}}
+
 
 
   }
@@ -628,14 +631,15 @@ void Editor::createHome() {
 
     action(U"新建精灵","plus",[this]{ask(Pending::New);});action(U"打开精灵","folderOpen",[this]{chooseProject();});action(U"工程备份","save");action(U"使用帮助","info");action(U"使用技巧","info");action(U"Steam 愿望单","link");
 
-    for(int i=0;i<3;++i){const char32_t* titles[]{U"最近文件",U"画廊",U"恢复"};auto b=button(titles[i],[this,i]{homeSection_=i;loadHomeSection();refresh();});if(i==1)b->setEnabled(false);homeTabs_.push_back(b);}
+    for(int i=0;i<3;++i){const char32_t* titles[]{U"最近文件",U"画廊",U"恢复"};auto b=button(titles[i],[this,i]{homeSection_=i;loadHomeSection();refresh();});homeTabs_.push_back(b);}
 
     homeReturn_=button(U"返回当前工程",[this]{showHome(false);});
     recentPane_=new RecentProjectsPane(font_,skin_,toolIcons_);addChild(recentPane_);recentPane_->densityChanged=[this](int value){recentDensity_=value;if(smoke_&&recentSettingsOverride_.empty())return;try{const auto dir=recentSettingsOverride_.empty()?homeRecentPath().parent_path():recentSettingsOverride_;std::filesystem::create_directories(dir);const std::string text=value==0?"small":value==2?"large":"medium";writeExportBytesAtomic(dir/"moonsprite.home-project-layout.v1",{text.begin(),text.end()});}catch(...){}};
-    recentPane_->open=[this](const std::string& path,bool background){openRecentProject(path,background);};recentPane_->pin=[this](const std::string& path){recent::togglePin(homeRecent_,path);recentChanged();};recentPane_->remove=[this](const std::string& path){removeRecentProject(path);};recentPane_->folder=[this](const std::string& path){openRecentFolder(path);};recentPane_->reordered=[this](std::vector<std::string> paths){recent::reorder(homeRecent_,paths);recentChanged();};
+    recentPane_->open=[this](const std::string& path,bool background){openRecentProject(path,background);};recentPane_->pin=[this](const std::string& path){if(homeSection_==1)toggleGalleryPin(path);else{recent::togglePin(homeRecent_,path);recentChanged();}};recentPane_->remove=[this](const std::string& path){if(homeSection_==1)deleteGalleryProject(path);else removeRecentProject(path);};recentPane_->folder=[this](const std::string& path){openRecentFolder(path);};recentPane_->reordered=[this](std::vector<std::string> paths){if(homeSection_==0){recent::reorder(homeRecent_,paths);recentChanged();}};
     auto recentTool=[&](const char* icon,std::function<void()> action){auto b=button(U"",std::move(action));b->iconSkin=&toolIcons_;b->icon=icon;b->skinStyle="icon_button";return b;};
-    recentPrivacy_=recentTool("eye",[this]{toggleRecentPrivacy();});recentRefresh_=recentTool("refresh",[this]{loadRecentProjects();loadHomeSection();refresh();});recentClear_=recentTool("clearRecords",[this]{recent::clear(homeRecent_);recentChanged();});
+    recentPrivacy_=recentTool("eye",[this]{toggleRecentPrivacy();});recentRefresh_=recentTool("refresh",[this]{if(homeSection_==0)loadRecentProjects();loadHomeSection();refresh();});recentClear_=recentTool("clearRecords",[this]{recent::clear(homeRecent_);recentChanged();});
 
+    galleryFolder_=recentTool("folderOpen",[this]{openGalleryFolder();});
     homeAnnouncements_=new HomeAnnouncementsPane(font_,skin_,[this](std::size_t index){showLatestRelease(index,releaseNotesVerify_);},[this]{layoutHome();});addChild(homeAnnouncements_);
 
     layoutHome();
@@ -717,11 +721,11 @@ void Editor::paintHome(ui::Graphics& g) {
 
     if(!compact)text(U"更多入口 · 待迁移",box.x,resourceTop-13,true);
 
-    if(homeEntries_.empty()){
+    if(homeEntries_.empty()&&(homeSection_!=1||galleryProjects_.empty())){
 
-      const std::u32string heading=homeSection_==2?U"没有待恢复的工程":homeSection_==1?U"画廊尚未迁移":U"从一个新作品开始";
+      const std::u32string heading=homeSection_==2?U"没有待恢复的工程":homeSection_==1?(galleryLoading_?U"正在读取画廊":!galleryError_.empty()?U"画廊读取失败":U"画廊中没有工程"):U"从一个新作品开始";
 
-      const std::u32string detail=homeSection_==2?U"恢复工程会显示在这里":U"新建或打开精灵，继续创作";
+      const std::u32string detail=homeSection_==2?U"恢复工程会显示在这里":homeSection_==1?(!galleryError_.empty()?unicodeText(galleryError_):U"工程文件保存在 MoonSprite 根目录的 gallery 文件夹中。"):U"新建或打开精灵，继续创作";
 
       const int y=list.y+std::max(8,(list.h-32)/2);
 

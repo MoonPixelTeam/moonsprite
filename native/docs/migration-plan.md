@@ -3885,3 +3885,13 @@ palette-apply-index-build.log正式Release、工程与核心目标构建通过�
 接续2e4ec283，新增独立Cargo执行原始ordered_image_colors／png_imported_colors／image_imported_colors，使用旧版png0.18.1及image0.25.10和既有离线源。113组实际结果覆盖PNG颜色类型／位深在严格.png与通用猜测路径的差异、五种滤波、RGB tRNS／索引alpha，GIF首帧偏移／裁剪／局部色表／透明RGB，代表文件截断及IDAT后chunk／CRC边界。保留既有JPEG／ICO／WebP与大图／色数测试。
 
 case19发现通用16位PNG的WIC8位转换与旧image取整差1：对16Gray／48RGB／64RGBA先转64RGBA，再显式执行旧版FromPrimitive<u16>的(c+128)/257。严格.png的16位拒绝保持。新增尾部矩阵发现png::next_frame会读取完整IDAT及CRC与后续8字节chunk头，但不读取后续体／CRC；现strictPng按此边界校验，不要求完整IEND，也不笼统接受任意截断。113对照已通过，不外推所有codec等价或整个领域完成。16位路径同样采用约64KiB（至少一整行）的批次，避免完整RGBA分配及逐行COM调用；另增17×1025的16位跨批次回归，覆盖取整边界／alpha／顺序。验证：palette-image-compat-final-build.log正式Release及图片／导入目标构建退出0；palette-image-compat-band-build.log跨批次测试重建退出0；首次新增用例手写预期将385/257误算为2，修正为1后，palette-image-compat-final-tests.log图片对照及既有格式／大图用例、palette-image-compat-final-import-tests.log完整导入测试均退出0；正式--palette-import-check退出0。fixture重复生成SHA256一致，来源636文件覆盖通过，strict按既有缺口退出1，diff通过。未进行人工界面验收或整体帧率／峰值内存测量，也未宣称所有codec行为等价，全量迁移仍INCOMPLETE。
+
+### 主页画廊完整操作链与视口资源（2026-11-08）
+
+接续3f41cc4a，定位禁用画廊页签；直接承接platform_gallery.rs的list_projects_in_directory／ensure_builtin_example／delete_gallery_project及HomeWorkspace的loadSection／pinProject／deleteGalleryProject。画廊只扫描程序目录gallery的直接子文件，大小写不敏感.moonsprite，修改时间降序及名称并列排序；置顶与最近文件独立，无24条截断。目录打开、单击打开／中键后台打开、三种密度和预览复用现有路径。原始示例工程由CMake精确复制，启动后后台安装并加载；自动检查入口跳过真实目录安装，显式测试只用owned目录；版本3保留已修改示例，deleted标记保留用户删除决定。Native独立设置，不读取或覆盖legacy标记；沿legacy启动ensureBuiltinExample，但后台执行，结果回UI时仅在最近记录缺失时新增并置顶；画廊与最近／恢复各自持有列表，切换栏目不取消启动安装，后台结果不替换其它栏目的数据。
+
+原列表为所有记录创建子控件；画廊无24条上限，现改共享列表为视口行池和可见预览请求，滚动条仍按完整数据计高，控件回调通过池索引映射实际记录。目录扫描为单worker合并请求，刷新／删除递增代际，过期结果不落UI；离开栏目只停止可见预览，保留已发起的目录任务及启动示例安装，结果只更新画廊缓存与独立最近记录；不在主线程解码整目录或等待扫描完成。删除复用公共确认框，补通用标题／详情参数和详情换行；取消／Escape／关闭不删，确认后真实remove_file适配，锁住失败保留文件和元数据；成功才清除最近与画廊置顶，示例删除写deleted。测试只删除自建owned工程。
+
+范围：本阶段承接内置画廊操作链；自定义文件夹栏目管理器、主页格式过滤、banner动态工程查找和全部格式预览等价仍未闭环，不以本批证明完整主页或全量迁移完成。
+
+验证：gallery-lifecycle-final-build.log唯一正式Release构建退出0；gallery-final-ui-tests.log中的--gallery-check、--recent-projects-check、--brush-library-panel-check、--home-announcements-check均退出0。gallery-core-tests.log文件系统／示例版本及删除标记／独立置顶／真实Windows锁定删除失败／扫描代际测试通过，gallery-recent-tests.log既有最近工程测试通过。gallery-legacy-tests.log直接编译执行未改写的旧版Rust目录函数，160个文件的扩展名、即时目录及时间／名称排序与原生逐项一致；无符号链接创建权限，该分支未验收。初次核心测试窄字符main未接收Unicode参数，改为wmain后通过，此为测试入口修正。界面自动检查覆盖预览、打开、文件夹入口、置顶持久化、取消／Escape／确认删除、示例删除后不重装，以及一万条内存记录滚到第5000条时少于128组控件且回调映射正确；不声称创建或解码一万个实际工程。实际gallery-smoke.bmp及删除确认截图已查看，默认2倍下文字、警告换行和素材无重叠；截图检查不等于人工交互验收。来源640文件覆盖通过，strict按已知缺口退出1，diff检查通过；未测整体帧率、进程峰值内存或长期桌面交互。全量迁移INCOMPLETE。
