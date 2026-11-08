@@ -6012,6 +6012,11 @@ void Editor::smokeStaticExport(){
   }
 
 void Editor::smokeImageResize(){
+ // Detection fills the draft only; Apply uses the existing background resize.
+ smoke_=true;documentOpen_=true;homeOpen_=false;std::vector<Pixel> repeated(24*16);for(int y=0;y<16;++y)for(int x=0;x<24;++x)repeated[y*24+x]=((x/4+y/4)%2)?0xff0000ff:0xff00ff00;document=Document::fromImage(24,16,repeated,U"倍率识别");refresh();openImageResize();resizeMethodValue_=ImageInterpolation::Smooth;resizeDetect_->Click();waitImageResizeForSmoke();
+ if(pending_!=Pending::ImageResize||resizeWidth_!=6||resizeHeight_!=4||resizeMethodValue_!=ImageInterpolation::Nearest||document.width()!=24||document.historySize())throw std::runtime_error("Scale detection draft/history");
+ refresh();manager()->invalidate();manager()->flushRedraw();manager()->dispatchMessages();manager()->flipAllDisplays();if(!modalControl(resizeDetect_)||!resizeDetect_->isVisible()||resizeDetect_->bounds().w<1||resizeDetectionStatus_.find(U"倍率 4")==std::u32string::npos)throw std::runtime_error("Scale detection visible result");writeSmokeFrame(display()->nativeSurface().get(),assets_.parent_path()/"image-scale-found.bmp");resolve(true);waitImageResizeForSmoke();if(document.width()!=6||document.height()!=4||document.historySize()!=1)throw std::runtime_error("Detected scale apply");document.undo();if(document.pixels()!=repeated)throw std::runtime_error("Detected resize undo");
+ document=Document(8,8);refresh();openImageResize();resizeDetect_->Click();waitImageResizeForSmoke();if(resizeWidth_!=8||resizeHeight_!=8||resizeDetectionStatus_!=U"未识别到像素倍率"||document.historySize())throw std::runtime_error("Uniform detection changed draft");resolve(false);
  // Queue the real modal worker while the actual manager paints/resizes.
  smoke_=true;documentOpen_=true;homeOpen_=false;document=Document(64,32);refresh();
  std::function<void()> held;const auto previous=imageResizeExecutor_;imageResizeExecutor_=[&](std::function<void()> job){if(held)throw std::runtime_error("Duplicate resize worker");held=std::move(job);};

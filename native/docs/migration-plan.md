@@ -4299,3 +4299,15 @@ make-tile-image-fixtures.cjs执行未改写旧版生产函数生成48组对照�
 最终验收（2026-11-09）：image-resize-async-build.log唯一正式Release及定向目标构建退出0；测试夹具首次因缺少fromImported必需归档句柄失败，修正为空但非null归档后image-resize-async-core-rebuild.log和image-resize-async-core.log通过。image-resize-async-tests.log三项image-resize-task/image-resize/tile-image-resize全部通过（4.64s）；覆盖新异步生命周期、9600+16组采样对照和既有实际legacy资源/重开套件。正式新进程PID38324 --image-resize-check退出0，image-resize-async-ui.log记录；实际挂起提交worker时泵窗口消息、移动/调整尺寸/重绘、取消后执行被放弃job不改变文档，后续普通/网格/自由瓦片实际提交、资源身份和Undo/Redo通过。
 
 已实际查看正式image-resize-busy.bmp：默认2×弹窗参数/比例/方法冻结，取消和关闭保留，底栏显示正在调整；窗口尺寸改变后弹窗和操作按钮可见无重叠。截图范围仅该忙碌态，不代表所有倍率和大工程最终安装阶段FPS验收。来源711文件及证据快照通过；strict仍按全局已知缺口退出1；git diff --check通过。保留既有未跟踪数据，提交本阶段13个源码/测试/来源及记录文件并推送dev；全量迁移仍INCOMPLETE。
+
+### 2026-11-09：图像大小弹窗像素倍率识别（验收中）
+
+实际定位legacy ImageResizeDialog.tsx detectScale、useAppDocumentDialogs onDetectScale、core/image-scale-detection.ts以及QuickCommandBar detectImageScale入口。旧版算法忽略全透明隐藏RGB，64行分块合成当前可见帧，边界相位统计+游程因数投票（上限512，支持阈值/平分优先大因子）及精确GCD fallback，不简化为只查整块。按仓库MoonSprite Source-Available License的源码修改/内部构建许可迁移，不复制第三方代码。
+
+新增原生检测核心完整移植上述规则；扩展已有ImageResizeTask为检测模式，复用分段快照、独立worker、取消/stale/销毁保护；检测不提交Document，found只改草稿尺寸Math.round(source/scale)、最近邻与提示，notFound保持草稿，Apply调用既有后台图像大小历史。弹窗沿用原组件/2px与6px规范并复用旧版实际extractColors图标，保持比例与方法语义。单独QuickCommandBar UI整体尚未迁移，该独立入口未在本批伪称完成。
+
+make-image-scale-fixtures.cjs执行未改写旧版导出函数，生成180组含alpha/noise/偏移/不同倍率真实oracle。首轮fixture vector大初始化导致Windows栈溢出exit0xC00000FD，改为constexpr只读像素数组后180组RGBA和64行原生合成均通过；不是修改算法掩盖失败。检测-only异步不写历史验证通过。正式Release及实际弹窗检测/Apply/Undo验收仍在进行，来源覆盖和自动通过不代表UI通过。
+
+最终验收：image-scale-final-tests.log四项image-scale-detection/image-resize-task/image-resize/tile-image-resize全部通过（3.80s），180真实旧版oracle在RGBA和64行合成路径一致，异步检测不写历史、取消/stale拒绝覆盖和既有缩放资源/保存重开回归通过。image-scale-build.log正式Release退出0。首轮窗口诊断PID13764退出0后人工截图发现新按钮未登记modalControl导致不可见/不接鼠标，且失焦回调重置found提示；没有把直接Click回调成功当作UI通过。修复为登记原有模态绘制/输入路由，仅实际数值变化重置提示，完成检测刷新共享布局；扩充窗口断言检查按钮visible/bounds/modalControl及found提示。image-scale-ui-repair-build.log/image-scale-routing-build.log修复构建退出0，image-scale-ui-final.log PID13428退出0。
+
+已实际查看修复后image-scale-found.bmp：默认2×按钮使用原extractColors像素图标可见，found“倍率4→6×4”、宽6/高4/25%、最近邻、应用/取消全显示，无相互覆盖。实际识别仅更新草稿、Apply后台提交一笔历史、Undo恢复完整像素、纯色notFound保持尺寸/历史通过；原有后台窗口移动/resize/paint和取消检查继续通过。来源覆盖716文件和证据快照通过，strict按已登记全量缺口退出1；生成器语法和git diff --check通过。此次未测全软件FPS，未迁移快捷指令栏单独入口；其它领域/索引灰度/扩展等仍INCOMPLETE，目标保持进行中。保留所有用户数据/既有未跟踪文件，仅提交明确本阶段文件并推送dev。

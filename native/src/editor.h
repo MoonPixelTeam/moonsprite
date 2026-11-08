@@ -360,7 +360,8 @@ private:
 
   std::shared_ptr<ImageResizeTask> imageResizeTask_;ui::Timer imageResizeTimer_{16,this};
   std::function<void(std::function<void()>)> imageResizeExecutor_;
-  void beginImageResize();void tickImageResize();void waitImageResizeForSmoke();void setImageResizeBusyControls();
+  bool resizeDetecting_=false;std::u32string resizeDetectionStatus_;PixelButton* resizeDetect_=nullptr;
+  void beginImageScaleDetection();void beginImageResize();void tickImageResize();void waitImageResizeForSmoke();void setImageResizeBusyControls();
   std::array<PixelEntry*,4> resizeInputs_{};
 
   PixelButton *resizeLock_=nullptr,*resizeMethod_=nullptr;
