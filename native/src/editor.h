@@ -1,4 +1,5 @@
 #pragma once
+#include "tile_repeat.h"
 #include "project_backup.h"
 #include "quick_command_bar.h"
 #include "document.h"
@@ -182,7 +183,7 @@ private:
 
     gfx::Rect canvas;
 
-    double zoom=8;view::Rotation rotation;
+    double zoom=8;view::Rotation rotation;repeat::Mode tileRepeat=repeat::Mode::Off;
 
     int layers=0,frames=0,layerRemainder=0,frameRemainder=0,paletteScroll=0;
 
@@ -1944,6 +1945,8 @@ private:
   void createLiquifyOptions();bool layoutLiquifyOptions();void showLiquifyRange(int);
   void loadLiquifyPreferences();void saveLiquifyPreferences();bool processLiquifyInput(ui::Message*);void finishLiquifyGesture(bool);void liquifyTick();
   void smokeLiquify();void paintLiquifyPreview(ui::Graphics&,const gfx::Rect&);
+  repeat::Mode tileRepeat_=repeat::Mode::Off;std::uint64_t tileRepeatIdentity_=0;
+  void setTileRepeat(repeat::Mode);
   double zoom_=8;view::Rotation viewRotation_;bool rotateTool_=false,rotationDragging_=false;double rotationStart_=0,rotationAngle_=0;gfx::Rect rotationCanvas_;view::Point rotationPivot_;
   gfx::Rect canvasPaintViewport(gfx::Rect)const;gfx::Rect canvasDisplayBounds()const;void panCanvasDisplay(double,double);void paintViewRotationIndicator(ui::Graphics&);
   view::Point canvasRotationPivot()const;gfx::Matrix canvasRotationMatrix()const;gfx::Point canvasUnrotatedDisplay(gfx::Point)const;TransformPoint canvasDocumentPoint(gfx::Point)const;gfx::Point canvasDocumentToDisplay(TransformPoint)const;bool canvasDocumentContains(gfx::Point)const;void setViewRotation(double);void initializeViewRotation();bool processViewRotation(ui::Message*);void saveDocumentView();void loadDocumentView();
@@ -3108,7 +3111,7 @@ void smokePaletteLibrary();
 
   void smokeFrameDisabled();
 
-  void smokeRelativeLuminance();
+  void smokeRelativeLuminance();void smokeTileRepeat();
 
   void smokeAnimationSettings();
 

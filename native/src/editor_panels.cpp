@@ -843,7 +843,7 @@ void Editor::invalidateStrokePixels(std::uint64_t before) {
 
     }
 
-    const auto area=changedCanvasPixels();if(!area.isEmpty()) invalidateRect(area);
+    const auto area=changedCanvasPixels();if(tileRepeatIdentity_==document.identity()&&tileRepeat_!=repeat::Mode::Off)invalidateRect(canvasViewport());else if(!area.isEmpty()) invalidateRect(area);
 
     if(previewPanel_ && previewPanel_->isVisible()){previewPanel_->noteContentChange();previewPanel_->invalidate();}
 

@@ -59,7 +59,7 @@ void Editor::settleProjectGesture(){
 
 void Editor::storeActiveProject(){
 
-    auto& slot=*projects_[activeProject_];slot.path=documentPath_;slot.canvas=canvas_;slot.zoom=zoom_;slot.rotation=viewRotation_;saveLayerPanelState();saveDocumentView();
+    auto& slot=*projects_[activeProject_];slot.path=documentPath_;slot.canvas=canvas_;slot.zoom=zoom_;slot.rotation=viewRotation_;slot.tileRepeat=tileRepeatIdentity_==document.identity()?tileRepeat_:repeat::Mode::Off;saveLayerPanelState();saveDocumentView();
 
     slot.layers=layerScroll_;slot.frames=frameScroll_;slot.layerRemainder=layerScrollRemainder_;slot.frameRemainder=frameScrollRemainder_;slot.paletteScroll=paletteScrollPixels_;
 
@@ -76,7 +76,7 @@ void Editor::restoreProject(std::size_t index){
     if(temporaryBrushCapture_||temporaryBrushActive_)exitTemporaryBrushCapture();
     activeProject_=index;auto& slot=*projects_[index];document=std::move(*slot.stored);applyDocumentPreferences(document);slot.stored.reset();documentPath_=slot.path;
 
-    canvas_=slot.canvas;zoom_=slot.zoom;viewRotation_=slot.rotation;layerScroll_=slot.layers;frameScroll_=slot.frames;layerScrollRemainder_=slot.layerRemainder;frameScrollRemainder_=slot.frameRemainder;paletteScrollPixels_=slot.paletteScroll;
+    canvas_=slot.canvas;zoom_=slot.zoom;viewRotation_=slot.rotation;tileRepeat_=slot.tileRepeat;tileRepeatIdentity_=document.identity();layerScroll_=slot.layers;frameScroll_=slot.frames;layerScrollRemainder_=slot.layerRemainder;frameScrollRemainder_=slot.frameRemainder;paletteScrollPixels_=slot.paletteScroll;
 
     frameSelectionExplicit_=slot.frameSelection;timelineSelectionGuidesVisible_=slot.guides;timelineSelectionIdentity_=document.identity();timelineLastActiveFrame_=document.frame().id;
 
@@ -142,7 +142,7 @@ void Editor::addProject(Document next,std::filesystem::path path){
 
     frameSelectionExplicit_=false;timelineSelectionGuidesVisible_=true;ink_=document.palette().primary;
 
-    recovery_.queue.setIntervalMinutes(recoveryPreferences_.minutes);revealProjectTab_=true;viewRotation_={};fitCanvas();loadDocumentView();loadLayerPanelState();refresh();
+    recovery_.queue.setIntervalMinutes(recoveryPreferences_.minutes);revealProjectTab_=true;tileRepeat_=repeat::Mode::Off;tileRepeatIdentity_=document.identity();viewRotation_={};fitCanvas();loadDocumentView();loadLayerPanelState();refresh();
 
   }
 

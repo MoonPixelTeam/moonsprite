@@ -51,6 +51,7 @@ Editor::Editor(const PixelFont& font,Skin& skin,std::filesystem::path assets,std
       if(!showSelectionOutline_ || !document.selection() || !documentOpen_ || homeOpen_ || !isVisible()){antsTimer_.stop();return;}
 
       antsOffset_=(antsOffset_+1)&7;
+      if(tileRepeatIdentity_==document.identity()&&tileRepeat_!=repeat::Mode::Off){invalidateRect(canvasViewport());return;}
 
       const auto& s=*document.selection();const double scale=canvasScale();
 

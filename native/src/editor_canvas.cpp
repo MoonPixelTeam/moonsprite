@@ -548,7 +548,7 @@ void Editor::refreshCanvasPointerFeedback() {if(viewRotation_.active()){invalida
 
 gfx::Rect Editor::brushPreviewDamage(std::optional<gfx::Point> position) {
 
-    if(position && (airbrushTool_||smoothTool_))return canvasViewport();
+    if(position && (airbrushTool_||smoothTool_||(tileRepeatIdentity_==document.identity()&&tileRepeat_!=repeat::Mode::Off)))return canvasViewport();
     if(!position || homeOpen_ || !documentOpen_ || !(ordinaryBrushTool() || (shapeTool_ && shapeSpec_.kind==ShapeKind::Line)) ||
 
        !canvasViewport().contains(*position))return {};
@@ -1286,7 +1286,10 @@ void Editor::paintCanvas(ui::Graphics& g) {InteractionScope interactionScope(9,"
 
     phase.next(2);
     ensureContentCache();
-    renderer_.draw(g,cv,canvasScale(),checkerboard_.light,checkerboard_.dark,checkerboard_.size);
+    // Composite/upload once. Repeated copies share the immutable renderer cache.
+    const auto repeated=repeat::offsets(tileRepeatIdentity_==document.identity()?tileRepeat_:repeat::Mode::Off);
+    for(const auto copy:repeated){const gfx::Rect target(cv.x+copy.x*cv.w,cv.y+copy.y*cv.h,cv.w,cv.h);if(target.intersects(viewport))renderer_.draw(g,target,canvasScale(),checkerboard_.light,checkerboard_.dark,checkerboard_.size);}
+
     phase.next(3);
     paintFreeTileInstanceFeedback(g,cv);
     // legacy canvas-render-guides.ts: committed composite remains unchanged.
@@ -1307,6 +1310,10 @@ void Editor::paintCanvas(ui::Graphics& g) {InteractionScope interactionScope(9,"
     }
 
 
+    const auto baseCanvas=cv;
+    for(const auto copy:repeated){
+    cv=baseCanvas;cv.offset(copy.x*baseCanvas.w,copy.y*baseCanvas.h);
+    if(!cv.intersects(viewport))continue;
     phase.next(4);
     if(document.showCustomGrid()){
 
@@ -1391,6 +1398,8 @@ void Editor::paintCanvas(ui::Graphics& g) {InteractionScope interactionScope(9,"
 
     if((drawingAnchorActive()&&drawingAnchorVisible_) || (document.selection() && selectionPivotVisible_ && !selectionFreeTransform_ && !selectionDragging_)){const auto p=drawingAnchorActive()&&drawingAnchorVisible_?drawingAnchorPoint():selectionPivotPoint();const auto point=gfx::Point(int(std::round(cv.x+p.x*canvasScale())),int(std::round(cv.y+p.y*canvasScale())));UiPaintScale scale(g,point-gfx::Point(9,9));toolIcons_.draw(g,"selection-pivot",gfx::Rect(0,0,9,9),true);}
 
+    }
+    cv=baseCanvas;
     g.restore();
     paintSliceOverlay(g);paintViewRotationIndicator(g);
     g.restoreClip();

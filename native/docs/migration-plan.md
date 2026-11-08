@@ -4393,4 +4393,11 @@ make-outline-sample-fixtures.cjs执行实际未改写旧版函数体，RGBA读�
 
 五项定向测试outline-samples/outline-document/document-snapshot/project-import/attached-masks通过0.26s，涵盖保存重开、snapshot/rollback、蒙版链接、稀疏画布外像素、预览取消/单笔提交/过时结果拒绝。正式Release构建退出0，--outline-check最终退出0。窗口回归覆盖当前前景色快捷描边、预览关闭、取消不改文档、应用一笔历史、Undo/Redo、S边界描边不覆盖保存参数、蒙版不误写图层。验收中先修正测试早于40ms调度的问题，再修复独立S命令被Commands::bind拒绝的实际缺陷。截图已查看，布局无重叠，颜色按钮采用纯色块；共享颜色弹窗交互及大作品耗时尚未全面验收。全软件仍INCOMPLETE，尤其索引/灰度模式等全局缺口。
 
-用户已确认网格瓦片图像大小采用同步缩放修复：同步瓦片源与网格瓦片尺寸，保留单元格、资源ID及撤销；该确认作为后续对应迁移的明确行为依据，本描边阶段不将其冒记为完成。
+用户已确认网格瓦片图像大小采用同步缩放修复：同步瓦片源与网格瓦片尺寸，保留单元格、资源ID及撤销；该行为此前已在2026-11-08瓦片图像大小阶段实现并验收（980f5e84及后续阶段）；本描边阶段没有新增该行为。此前交接中“尚未实现”的表述已纠正。
+
+
+### 2026-11-09：平铺视图与几何迁移（本阶段验证通过，完整编辑仍未完成）
+
+核对旧版tilemap.ts、canvas-render-frame/background/content、workspace-commands-view和QuickCommandBar。固定相邻3/9份，off不改当前缩放，开启按旋转后的整体包围范围fit并居中，快捷栏同项再次点击关闭，菜单直接设置状态；每工程独立且按document identity隔离。所有副本复用一次合成和一次上传的既有CanvasRenderer缓存，棋盘格复用2×2纹理；格线、既有画布overlay按同一副本周期绘制。新增正模坐标映射、选区折叠和fit几何完整port，执行实际旧版函数生成512组坐标/fit及512组矩形/掩码选区oracle，CTest通过。
+
+明确INCOMPLETE：上述输入几何尚未接入全部绘图工具、跨缝笔触、浮动选区及tilemap输入，不将显示副本称作完整无缝编辑。tile-repeat-build/final-build/runtime-build最终均退出0；--tile-repeat-check退出0，覆盖菜单与快捷指令支持、快捷栏再次点击关闭、旋转fit、会话恢复、关闭不改缩放、像素/历史/revision/dirty不变、切换不增加upload，以及九份离屏副本中心像素。最初同步诊断截图黑屏，已改到真实事件循环180ms定时器执行，第二次实际查看tile-repeat-smoke.bmp完整3×3图案，未将首次黑屏记作视觉通过。CTest tile-repeat与quick-command-preferences共2项通过0.44s；来源覆盖741文件通过，strict继续因全局缺口失败。没有进行所有工具跨缝编辑或FPS验收。全量迁移保持INCOMPLETE。

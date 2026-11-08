@@ -44,6 +44,7 @@ void Editor::runQuickCommand(const std::string& id,bool right){
  if(right){if(id=="fillForeground"){if(quickCommandEnabled(id)){document.fillSelectionOrCanvas(document.palette().secondary);refresh();}}else if(id=="customGrid")showCustomGridSettings();else if(id=="pixelGrid"||id=="relativeLuminance"){preferenceSection_=2;showPreferences();}return;}
  paletteFocused_=false;if(!quickCommandEnabled(id))return;
  if(id=="detectImageScale"){try{quickResize_=resizeDetecting_=true;imageResizeTask_=std::make_shared<ImageResizeTask>(document,document.width(),document.height(),ImageInterpolation::Nearest,imageResizeExecutor_,true);imageResizeTimer_.start();status_=U"正在识别像素倍率…";}catch(const std::exception& e){quickResize_=resizeDetecting_=false;status_=unicodeText(e.what());}}
+ else if(id=="tileRepeatX"||id=="tileRepeatY"||id=="tileRepeatBoth"){const auto mode=id=="tileRepeatX"?repeat::Mode::X:id=="tileRepeatY"?repeat::Mode::Y:repeat::Mode::Both;setTileRepeat(tileRepeatIdentity_==document.identity()&&tileRepeat_==mode?repeat::Mode::Off:mode);}
  else if(id=="quickAntiAlias")openAntiAlias();
  else if(id=="swapForegroundBackground"){auto p=document.palette();document.setPaletteRole(p.secondary,false,paletteLocked_);document.setPaletteRole(p.primary,true,paletteLocked_);}
  else if(id=="deleteSelection")document.deleteSelectedPixels();

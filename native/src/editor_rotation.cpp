@@ -57,11 +57,36 @@ gfx::Point Editor::canvasUnrotatedDisplay(gfx::Point p)const{const auto q=viewRo
 bool Editor::canvasDocumentContains(gfx::Point p)const{const auto q=canvasDocumentPoint(p);return q.x>=0&&q.y>=0&&q.x<document.width()&&q.y<document.height();}
 gfx::Matrix Editor::canvasRotationMatrix()const{const auto origin=bounds().origin();const auto pivot=canvasRotationPivot();const view::Point local{pivot.x-origin.x,pivot.y-origin.y};const auto o=viewRotation_.forward({0,0},local),x=viewRotation_.forward({1,0},local),y=viewRotation_.forward({0,1},local);return gfx::Matrix::MakeAll(float(x.x-o.x),float(y.x-o.x),float(o.x),float(x.y-o.y),float(y.y-o.y),float(o.y),0,0,1);}
 void Editor::setViewRotation(double degrees){if(!std::isfinite(degrees))return;viewRotation_.degrees=view::Rotation::normalize(degrees);constrainCanvas();saveDocumentView();refresh();}
+void Editor::setTileRepeat(repeat::Mode mode){
+ tileRepeat_=mode;tileRepeatIdentity_=document.identity();
+ if(mode!=repeat::Mode::Off){const auto r=canvasViewport();zoom_=repeat::fit(double(r.w)/uiScale,double(r.h)/uiScale,document.width(),document.height(),mode,viewRotation_.degrees);const int w=int(std::lround(document.width()*canvasScale())),h=int(std::lround(document.height()*canvasScale()));canvas_={r.x+(r.w-w)/2,r.y+(r.h-h)/2,w,h};}
+ layoutCanvasScrollBars();invalidateRect(canvasViewport());refresh();
+}
 void Editor::initializeViewRotation(){
  auto available=[this]{return documentOpen_&&!homeOpen_&&pending_==Pending::None&&!historyGestureBusy();};
+ for(const auto& entry:std::vector<std::pair<std::string,repeat::Mode>>{{"tileRepeatOff",repeat::Mode::Off},{"tileRepeatX",repeat::Mode::X},{"tileRepeatY",repeat::Mode::Y},{"tileRepeatBoth",repeat::Mode::Both}}){const auto mode=entry.second;menuCommands_.bind(entry.first,{[this,mode]{setTileRepeat(mode);},available,[this,mode]{return (tileRepeatIdentity_==document.identity()?tileRepeat_:repeat::Mode::Off)==mode;}});}
+
  menuCommands_.bind("rotateViewClockwise90",{[this]{setViewRotation(viewRotation_.degrees+90);},available,{}});menuCommands_.bind("rotateViewCounterClockwise90",{[this]{setViewRotation(viewRotation_.degrees+270);},available,{}});
  menuCommands_.bind("mirrorView",{[this]{viewRotation_.mirrorX=!viewRotation_.mirrorX;saveDocumentView();refresh();},available,[this]{return viewRotation_.mirrorX;}});menuCommands_.bind("mirrorViewVertical",{[this]{viewRotation_.mirrorY=!viewRotation_.mirrorY;saveDocumentView();refresh();},available,[this]{return viewRotation_.mirrorY;}});
  menuCommands_.bind("resetView",{[this]{viewRotation_={};zoom_=16;const auto r=canvasViewport();canvas_={r.x+(r.w-int(document.width()*canvasScale()))/2,r.y+(r.h-int(document.height()*canvasScale()))/2,int(document.width()*canvasScale()),int(document.height()*canvasScale())};saveDocumentView();refresh();},available,{}});
+}
+void Editor::smokeTileRepeat(){
+ smoke_=true;documentOpen_=true;homeOpen_=false;pending_=Pending::None;playing_=false;viewRotation_={};
+ document=Document(6,4);document.fillSelectionOrCanvas(0xff3366aa);document.beginStroke({0,0},0xff112233);document.commitStroke();document.markSaved();fitCanvas();refresh();ensureContentCache();
+ const auto pixels=document.pixels();const auto revision=document.revision(),history=document.historySize();const auto uploads=renderer_.uploads();
+ for(const auto entry:std::vector<std::pair<std::string,repeat::Mode>>{{"tileRepeatX",repeat::Mode::X},{"tileRepeatY",repeat::Mode::Y},{"tileRepeatBoth",repeat::Mode::Both}}){
+  if(!shortcutSupported(entry.first)||!menuCommands_.invoke(entry.first)||tileRepeat_!=entry.second||!menuCommands_.checked(entry.first))throw std::runtime_error("Repeat menu/shortcut/state");
+  const auto viewport=canvasViewport();const double expected=repeat::fit(double(viewport.w)/uiScale,double(viewport.h)/uiScale,6,4,entry.second,0);if(std::abs(zoom_-expected)>1e-12)throw std::runtime_error("Repeat fit geometry");
+  runQuickCommand(entry.first,false);if(tileRepeat_!=repeat::Mode::Off)throw std::runtime_error("Repeat quick toggle off");runQuickCommand(entry.first,false);if(tileRepeat_!=entry.second)throw std::runtime_error("Repeat quick toggle on");
+ }
+ viewRotation_.degrees=37;menuCommands_.invoke("tileRepeatBoth");const auto viewport=canvasViewport();if(std::abs(zoom_-repeat::fit(double(viewport.w)/uiScale,double(viewport.h)/uiScale,6,4,repeat::Mode::Both,37))>1e-12)throw std::runtime_error("Rotated repeat fit");
+ viewRotation_={};setTileRepeat(repeat::Mode::Both);manager()->invalidate();manager()->flushRedraw();manager()->dispatchMessages();manager()->flipAllDisplays();writeSmokeFrame(display()->nativeSurface().get(),assets_.parent_path()/"tile-repeat-smoke.bmp");ensureContentCache();
+ if(renderer_.uploads()!=uploads||document.pixels()!=pixels||document.revision()!=revision||document.historySize()!=history||document.dirty())throw std::runtime_error("Repeat rebuilt upload or edited content/history");
+ const auto image=os::instance()->makeRgbaSurface(canvas_.w*3,canvas_.h*3);ui::Graphics graphics(image);for(auto copy:repeat::offsets(repeat::Mode::Both))renderer_.draw(graphics,{(copy.x+1)*canvas_.w,(copy.y+1)*canvas_.h,canvas_.w,canvas_.h},canvasScale(),checkerboard_.light,checkerboard_.dark,checkerboard_.size);
+ for(int y=0;y<3;++y)for(int x=0;x<3;++x){const auto color=image->getPixel(x*canvas_.w+canvas_.w/2,y*canvas_.h+canvas_.h/2);if(gfx::getr(color)!=0xaa||gfx::getg(color)!=0x66||gfx::getb(color)!=0x33)throw std::runtime_error("Repeat rendered copy pixel");}
+ const auto before=zoom_;menuCommands_.invoke("tileRepeatOff");if(tileRepeat_!=repeat::Mode::Off||zoom_!=before)throw std::runtime_error("Repeat off changed zoom");
+ setTileRepeat(repeat::Mode::Y);ensureProjects();storeActiveProject();restoreProject(activeProject_);if(tileRepeat_!=repeat::Mode::Y||tileRepeatIdentity_!=document.identity())throw std::runtime_error("Repeat session restoration");
+ document=Document();tileRepeat_=repeat::Mode::Off;tileRepeatIdentity_=document.identity();refresh();
 }
 void Editor::saveLayerPanelState(bool flush){
  const auto testRoot=smoke_?_wgetenv(L"MOONSPRITE_PANEL_STATE_TEST_ROOT"):nullptr;if(smoke_&&!testRoot)return;
