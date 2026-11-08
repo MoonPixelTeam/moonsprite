@@ -4410,3 +4410,10 @@ make-outline-sample-fixtures.cjs执行实际未改写旧版函数体，RGBA读�
 未完成：瓦片paint、自由源编辑、套索/选择笔刷、浮动粘贴和其余工具跨缝语义。全软件迁移仍INCOMPLETE。
 
 验收：tile-repeat-input-formal-build.log正式Release构建退出0；tile-repeat/tile-repeat-stroke/brush-dynamics/image-brush/symmetry-model五项定向CTest通过0.15s。测试首轮空层无法创建附加蒙版，修正fixture先写入像素后通过，未改变生产规则。来源覆盖742文件通过；strict仍因已登记全量迁移缺口失败。不将此阶段称作全工具跨缝编辑或大作品FPS验收。保留全部既有用户数据与未跟踪缓存，本阶段单独提交推送dev。
+
+
+### 2026-11-09：平铺自由套索与选择笔刷（本阶段验证通过）
+
+对照repeated-selection.ts及其测试、smooth-brush.ts collectSmoothBrushArea和canvas-selection-brush-gesture.ts。自由套索逐副本平移路径，在画布范围内栅格化并合并，避免按远距离路径包围框分配遮罩；选择笔刷保持原连续采样与行跨段缓存，逐像素折回，非重复轴裁剪，关闭平铺时原outsidePreview语义保留。套索预览与提交共用折回输入，之后沿用既有对称、模式合并与单笔选区历史；选择笔刷显示与提交使用相同coverage。旧版多边形套索独立逻辑保持不变，没有擅自扩大其平铺行为。
+
+CTest tile-repeat通过，含此前1024旧版几何oracle及直接沿用旧版repeated-selection.test.ts的X/Y/Both远处副本、缝两侧不选中间、整笔刷与非重复轴裁剪、关闭时画布外预览回归。正式程序已增加真实pointer套索/选择笔刷、单笔历史Undo/Redo及取消诊断，tile-repeat-selection-build.log正式Release构建退出0，--tile-repeat-check退出0；真实鼠标套索与选择笔刷跨缝仅选择两侧、单笔历史、Undo/Redo及取消通过。CTest tile-repeat与selection-interactions均通过，共2.59s。来源覆盖742文件及证据快照检查通过。未新增截图或测量FPS，不把窗口断言称为视觉验收；浮动选区移动/提交和其他工具仍INCOMPLETE。

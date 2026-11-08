@@ -42,6 +42,7 @@ ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 POSSIBILITY OF SUCH DAMAGE.
 */
 #include "selection_model.h"
+#include "tile_repeat.h"
 #include <map>
 #include <set>
 #include <functional>
@@ -67,9 +68,9 @@ struct SelectionBrushStroke {
  std::unordered_set<std::size_t> visited;
  std::set<std::pair<int,int>> outsidePreview;
  // Direct collectSmoothBrushArea port: no selection clipping or opacity.
- void collect(int width,int height,SelectionPoint from,SelectionPoint to,BrushOptions brush,int angle=0){
+ void collect(int width,int height,SelectionPoint from,SelectionPoint to,BrushOptions brush,int angle=0,repeat::Mode repeatMode=repeat::Mode::Off){
   brush.size=std::clamp(brush.size,1,64);const auto footprint=selectionBrushFootprint(brush,angle);const int ax=footprint.width/2,ay=footprint.height/2;
-  auto stamp=[&](SelectionPoint center){for(auto span:footprint.spans)for(int x=center.x-ax+span.left;x<=center.x-ax+span.right;++x){const int y=center.y-ay+span.y;if(x<0 || y<0 || x>=width || y>=height)outsidePreview.emplace(x,y);else visited.insert(std::size_t(y)*width+x);}};
+  auto stamp=[&](SelectionPoint center){for(auto span:footprint.spans)for(int x=center.x-ax+span.left;x<=center.x-ax+span.right;++x){const int y=center.y-ay+span.y;if(repeatMode==repeat::Mode::Off){if(x<0 || y<0 || x>=width || y>=height)outsidePreview.emplace(x,y);else visited.insert(std::size_t(y)*width+x);}else{const auto local=repeat::wrap({double(x),double(y)},width,height,repeatMode);if(local.x>=0&&local.y>=0&&local.x<width&&local.y<height)visited.insert(std::size_t(local.y)*width+int(local.x));}}};
   if(brush.shape==BrushShape::Line && brush.size>1 && std::abs(angle%180)>=.0001){for(auto p:selectionContinuousLine(from,to,true))stamp(p);return;}
   const double radius=std::max(.5,std::min(64.0,brush.size/2.0)),maxStep=brush.shape==BrushShape::Line?1:std::max(1.0,radius/4);const int steps=std::max(1,int(std::ceil(std::hypot(double(to.x)-from.x,double(to.y)-from.y)/maxStep)));for(int step=0;step<=steps;++step)stamp({int(std::floor(from.x+(double(to.x)-from.x)*step/steps+.5)),int(std::floor(from.y+(double(to.y)-from.y)*step/steps+.5))});
  }
@@ -93,6 +94,18 @@ inline std::optional<SelectionMask> lassoSelection(const std::vector<SelectionPo
  for(std::size_t i=0;i<path.size();++i){auto a=path[i],b=path[(i+1)%path.size()];select(a.x,a.y);if(polygon)for(auto p:selectionLine(a,b,balanced))select(p.x,p.y);if(a.y==b.y){for(int x=std::max(s.x,std::min(a.x,b.x));x<=std::min(s.x+s.width-1,std::max(a.x,b.x));++x)select(x,a.y);continue;}if(a.y>b.y)std::swap(a,b);Edge e{a.y,b.y,double(a.x),double(b.x-a.x)/(b.y-a.y)};if(e.low<s.y && e.high>s.y)active.push_back(e);else starts[e.low].push_back(e);}
  std::vector<double> intersections;for(int y=s.y;y<s.y+s.height;++y){const auto it=starts.find(y);if(it!=starts.end())active.insert(active.end(),it->second.begin(),it->second.end());active.erase(std::remove_if(active.begin(),active.end(),[&](auto e){return e.high<=y;}),active.end());intersections.clear();for(auto e:active){const double x=e.x+(y-e.low)*e.slope;intersections.push_back(x);const int rounded=int(std::floor(x+.5));if(std::abs(x-rounded)<1e-9)select(rounded,y);}std::sort(intersections.begin(),intersections.end());for(std::size_t i=0;i+1<intersections.size();i+=2)for(int x=std::max(s.x,int(std::floor(intersections[i]))+1);x<=std::min(s.x+s.width-1,int(std::ceil(intersections[i+1]))-1);++x)select(x,y);}
  return trimSelection(std::move(s));
+}
+// legacy repeated-selection.ts: clip each intersected copy before union.
+inline std::optional<SelectionMask> repeatedLassoSelection(const std::vector<SelectionPoint>& path,int width,int height,repeat::Mode mode){
+ if(mode==repeat::Mode::Off||path.empty())return lassoSelection(path,width,height);
+ if(width<=0||height<=0)return {};
+ int minX=path.front().x,maxX=minX,minY=path.front().y,maxY=minY;
+ for(auto p:path){minX=std::min(minX,p.x);maxX=std::max(maxX,p.x);minY=std::min(minY,p.y);maxY=std::max(maxY,p.y);}
+ const auto left=repeat::includesX(mode)?std::int64_t(std::floor(double(minX)/width)):0,right=repeat::includesX(mode)?std::int64_t(std::floor(double(maxX)/width)):0;
+ const auto top=repeat::includesY(mode)?std::int64_t(std::floor(double(minY)/height)):0,bottom=repeat::includesY(mode)?std::int64_t(std::floor(double(maxY)/height)):0;
+ std::optional<SelectionMask> result;std::vector<SelectionPoint> local;local.reserve(path.size());
+ for(auto y=top;y<=bottom;++y)for(auto x=left;x<=right;++x){local.clear();for(auto p:path)local.push_back({int(std::int64_t(p.x)-x*width),int(std::int64_t(p.y)-y*height)});result=combineSelection(result,lassoSelection(local,width,height),1);}
+ return result;
 }
 namespace selection_detail {
 using Mask=std::vector<unsigned char>;

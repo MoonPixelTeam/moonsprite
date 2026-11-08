@@ -66,7 +66,7 @@ void Editor::updateSelectionCreation(Point p,bool constrain,bool center,bool rot
 
     if(selectionKind_==4){requestWand(p);return;}
 
-    if(selectionKind_==5){selectionBrushStroke_.collect(document.width(),document.height(),selectionBrushLast_,{p.x,p.y},brushFeedback_.brushProfiles_[0],selectionBrushAngle_);selectionBrushLast_={p.x,p.y};return;}
+    if(selectionKind_==5){selectionBrushStroke_.collect(document.width(),document.height(),selectionBrushLast_,{p.x,p.y},brushFeedback_.brushProfiles_[0],selectionBrushAngle_,tileRepeatIdentity_==document.identity()?tileRepeat_:repeat::Mode::Off);selectionBrushLast_={p.x,p.y};return;}
 
     const auto repeatMode=tileRepeatIdentity_==document.identity()?tileRepeat_:repeat::Mode::Off;
     auto marquee=[&](SelectionTransform target)->std::optional<SelectionMask>{
@@ -81,7 +81,7 @@ void Editor::updateSelectionCreation(Point p,bool constrain,bool center,bool rot
 
     if(quickSelection_){const auto current=quickSelectionCellAt(p);if(!current)return;selectionPreview_=quickSelectCellDragBounds(quickSelectionCell_,*current);selectionLast_=p;return;}
 
-    if(selectionKind_==2 || selectionKind_==3){SelectionPoint point{p.x,p.y};if(selectionKind_==2 && (selectionPath_.empty() || selectionPath_.back().x!=p.x || selectionPath_.back().y!=p.y)){selectionPath_.push_back(point);selectionPathRedo_.clear();}auto path=selectionPath_;if(selectionKind_==3 && (path.empty() || path.back().x!=p.x || path.back().y!=p.y))path.push_back(point);incoming=lassoSelection(path,document.width(),document.height(),selectionKind_==3,runtimePreferences_.flag("tools.balancedShiftLineEnabled"));}
+    if(selectionKind_==2 || selectionKind_==3){SelectionPoint point{p.x,p.y};if(selectionKind_==2 && (selectionPath_.empty() || selectionPath_.back().x!=p.x || selectionPath_.back().y!=p.y)){selectionPath_.push_back(point);selectionPathRedo_.clear();}auto path=selectionPath_;if(selectionKind_==3 && (path.empty() || path.back().x!=p.x || path.back().y!=p.y))path.push_back(point);incoming=selectionKind_==2?repeatedLassoSelection(path,document.width(),document.height(),repeatMode):lassoSelection(path,document.width(),document.height(),true,runtimePreferences_.flag("tools.balancedShiftLineEnabled"));}
 
     else {const TransformPoint pointer{double(p.x),double(p.y)};if(rotate && marqueeTarget_){if(!marqueeRotationStart_){marqueeRotationStart_=marqueeTarget_;marqueePointerStart_=pointer;}auto target=*marqueeRotationStart_;const double cx=target.x+target.width/2,cy=target.y+target.height/2;target.angle+=(std::atan2(pointer.y-cy,pointer.x-cx)-std::atan2(marqueePointerStart_.y-cy,marqueePointerStart_.x-cx))*180/3.141592653589793;marqueeTarget_=target;marqueePointerLast_=pointer;}
 
@@ -1029,7 +1029,7 @@ void Editor::paintSelectionFeedback(ui::Graphics& g,const gfx::Rect& cv,const gf
 
     auto pixelBox=[&](int x,int y){const int left=int(std::round(cv.x+x*scale)),top=int(std::round(cv.y+y*scale));return gfx::Rect(left,top,std::max(1,int(std::round(cv.x+(x+1)*scale))-left),std::max(1,int(std::round(cv.y+(y+1)*scale))-top));};
 
-    auto pixel=[&](int x,int y){if(x<0 || y<0 || x>=document.width() || y>=document.height())return;const auto box=pixelBox(x,y);if(box.intersects(viewport))g.fillRect(selectionPreviewColor(x,y),box);};
+    auto pixel=[&](int x,int y){if(selectionKind_==2&&tileRepeatIdentity_==document.identity()&&tileRepeat_!=repeat::Mode::Off){const auto local=repeat::wrap({double(x),double(y)},document.width(),document.height(),tileRepeat_);x=int(local.x);y=int(local.y);}if(x<0 || y<0 || x>=document.width() || y>=document.height())return;const auto box=pixelBox(x,y);if(box.intersects(viewport))g.fillRect(selectionPreviewColor(x,y),box);};
 
     const bool creating=selectionDragging_ && !selectionBoxDragging_;
 
@@ -1374,7 +1374,7 @@ void Editor::paintCanvas(ui::Graphics& g) {InteractionScope interactionScope(9,"
 
     }
 
-    if(selectionTool_ && selectionKind_==5 && selectionBrushPointer_ && canvasOwnsPointer(*selectionBrushPointer_) && !eyedropperTool_ && !eyedropperHeld_ && !eyedropperGesture_.active() && !spaceHeld_ && !handTool_ && ((selectionDragging_ && !selectionBoxDragging_) || transformHit(*selectionBrushPointer_).empty())){const auto pointer=*selectionBrushPointer_;if((selectionDragging_ && !selectionBoxDragging_) || selectionHit(pointer)==0){auto coverage=selectionBrushStroke_;const auto p=canvasPoint(pointer);coverage.collect(document.width(),document.height(),{p.x,p.y},{p.x,p.y},brushFeedback_.brushProfiles_[0],selectionBrushAngle_);const double scale=canvasScale();auto draw=[&](int x,int y){const int left=int(std::round(cv.x+x*scale)),top=int(std::round(cv.y+y*scale)),right=int(std::round(cv.x+(x+1)*scale)),bottom=int(std::round(cv.y+(y+1)*scale));g.fillRect(gfx::rgba(41,121,255,89),gfx::Rect(left,top,std::max(1,right-left),std::max(1,bottom-top)));};for(auto key:coverage.visited)draw(int(key%document.width()),int(key/document.width()));for(auto p:coverage.outsidePreview)draw(p.first,p.second);}}
+    if(selectionTool_ && selectionKind_==5 && selectionBrushPointer_ && canvasOwnsPointer(*selectionBrushPointer_) && !eyedropperTool_ && !eyedropperHeld_ && !eyedropperGesture_.active() && !spaceHeld_ && !handTool_ && ((selectionDragging_ && !selectionBoxDragging_) || transformHit(*selectionBrushPointer_).empty())){const auto pointer=*selectionBrushPointer_;if((selectionDragging_ && !selectionBoxDragging_) || selectionHit(pointer)==0){auto coverage=selectionBrushStroke_;const auto p=canvasPoint(pointer);coverage.collect(document.width(),document.height(),{p.x,p.y},{p.x,p.y},brushFeedback_.brushProfiles_[0],selectionBrushAngle_,tileRepeatIdentity_==document.identity()?tileRepeat_:repeat::Mode::Off);const double scale=canvasScale();auto draw=[&](int x,int y){const int left=int(std::round(cv.x+x*scale)),top=int(std::round(cv.y+y*scale)),right=int(std::round(cv.x+(x+1)*scale)),bottom=int(std::round(cv.y+(y+1)*scale));g.fillRect(gfx::rgba(41,121,255,89),gfx::Rect(left,top,std::max(1,right-left),std::max(1,bottom-top)));};for(auto key:coverage.visited)draw(int(key%document.width()),int(key/document.width()));for(auto p:coverage.outsidePreview)draw(p.first,p.second);}}
 
     paintAirbrushPreview(g,cv);paintLiquifyPreview(g,cv);
     paintSmoothCoverage(g,cv);

@@ -91,6 +91,15 @@ void Editor::smokeTileRepeat(){
  if(document.active()||document.historySize()!=strokeHistory+1||document.pixels()[15]!=ink_||document.pixels()[8]!=ink_||document.pixels()[9]!=ink_||document.pixels()[12])throw std::runtime_error("Repeated pointer seam stroke/history");document.undo();if(std::any_of(document.pixels().begin(),document.pixels().end(),[](auto p){return p!=0;}))throw std::runtime_error("Repeated pointer undo");document.redo();
  document.deselectPixels();useSelectionTool(0);selectionRounded_=false;selectionMode_=0;selectionDragging_=true;selectionBoxDragging_=false;quickSelection_=false;selectionBefore_.reset();selectionStart_={7,1};selectionMoved_=true;marqueeViewAngle_=0;updateSelectionCreation({9,2});endSelectionGesture(false);
  if(!selectionContains(document.selection(),7,1)||!selectionContains(document.selection(),0,1)||!selectionContains(document.selection(),1,2)||selectionContains(document.selection(),4,1))throw std::runtime_error("Repeated marquee folds seam");
+ for(int kind:{2,5}){
+  document.deselectPixels();useSelectionTool(kind);const auto h=document.historyPosition();
+  send(ui::kMouseDownMessage,{7.25,1.25});send(ui::kMouseMoveMessage,{9.25,1.25});
+  if(kind==2){send(ui::kMouseMoveMessage,{9.25,2.25});send(ui::kMouseMoveMessage,{7.25,2.25});}
+  send(ui::kMouseUpMessage,{7.25,2.25});
+  const auto selected=document.selection();if(!selectionContains(selected,7,1)||!selectionContains(selected,0,1)||selectionContains(selected,4,1)||document.historyPosition()!=h+1)throw std::runtime_error("Repeated lasso/brush pointer selection");
+  document.undo();if(document.selection())throw std::runtime_error("Repeated selection undo");document.redo();if(!selectionEqual(document.selection(),selected))throw std::runtime_error("Repeated selection redo");
+  document.deselectPixels();send(ui::kMouseDownMessage,{7.25,1.25});send(ui::kMouseMoveMessage,{9.25,1.25});endSelectionGesture(true);if(document.selection())throw std::runtime_error("Repeated selection cancel");
+ }
  const auto before=zoom_;menuCommands_.invoke("tileRepeatOff");if(tileRepeat_!=repeat::Mode::Off||zoom_!=before)throw std::runtime_error("Repeat off changed zoom");
  setTileRepeat(repeat::Mode::Y);ensureProjects();storeActiveProject();restoreProject(activeProject_);if(tileRepeat_!=repeat::Mode::Y||tileRepeatIdentity_!=document.identity())throw std::runtime_error("Repeat session restoration");
  document=Document();tileRepeat_=repeat::Mode::Off;tileRepeatIdentity_=document.identity();refresh();
