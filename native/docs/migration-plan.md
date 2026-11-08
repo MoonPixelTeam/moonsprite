@@ -4442,3 +4442,12 @@ CTest tile-repeat通过，含此前1024旧版几何oracle及直接沿用旧版re
 新增X/Y/Both、普通/动态、像素完美组合对比主画布与副本的像素/资源，检查实例不变、取消、单笔历史及UndoRedo，另检查旧版接缝穿过内部的语义。正式 --tile-repeat-check 新增实际副本鼠标绘画、像素、实例、历史与UndoRedo，退出0。free-source-repeat-core-build.log、free-source-repeat-formal-build.log、free-source-repeat-project-build.log构建均退出0。三项CTest tile-repeat/tile-repeat-stroke/free-tile-project 全通过11.98s。首次项目回归暴露旧roundtrip仍要求已迁移的自由瓦片图像缩放失败；仅更新为成功缩放及精确Undo，保留无实例目标变换拒绝、无选区删除拒绝和派生缓存保护。中途测试误将无实例目标写为允许变换，已按实际目标条件恢复拒绝；无生产变换调整。
 
 来源登记742文件覆盖及快照通过。其他平铺工具、自由实例路径及全量迁移仍INCOMPLETE；未新增视觉/FPS验收。保留既有未跟踪文件、用户工程、恢复和构建缓存。
+
+
+### 2026-11-09：平铺自由瓦片放置与实例擦除（阶段完成）
+
+对照 canvas-input-free-tile.ts beginFreeTile/moveFreeTileDraw/endFreeTileDraw 和 canvas-pointer-down 本地点：放置是单击事务，不因拖动追加实例；擦除逐事件使用localPointAt(...,true)，插值连接两个本地端点。原生processFreeTileInput起点和擦除移动改用现有repeat::map，保留文档identity检查、非平铺轴越界跳过；仅映射指针，实例位置/尺寸、选区、对称及Document缓存/历史事务保持原路径。无平铺继续保留世界坐标，实例移动仍走已有独立路径。
+
+正式鼠标诊断覆盖X/Y/Both副本单击、拖动不连续盖章、正确本地实例位置与像素、Escape恢复、擦除单笔历史和UndoRedo；额外8实例接缝擦除检查旧版内部连线、Escape及UndoRedo。free-placement-repeat-build.log正式Release构建退出0；Start-Process等待正式exe --tile-repeat-check并读取ExitCode为0。三项CTest tile-repeat/tile-repeat-stroke/free-tile-project通过12.41s。此前PowerShell直接调用GUI程序不能可靠取得退出码，未将该次调用作为验收，改以明确进程句柄等待结果。
+
+未进行新视觉/FPS验收，不宣称实例移动/全部平铺工具或整体迁移完成。保留所有既有未跟踪文件和用户数据；阶段保存并推送dev。

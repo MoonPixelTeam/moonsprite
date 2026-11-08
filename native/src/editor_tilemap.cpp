@@ -145,16 +145,19 @@ bool Editor::processFreeTileInput(ui::Message* msg){
  if(dragging&&(msg->type()==ui::kFocusLeaveMessage||!hasCapture()||pending_!=Pending::None||homeOpen_)){document.cancelFreeTilePlacement();if(hasCapture())releaseMouse();refresh();return false;}
  if(dragging&&(msg->type()==ui::kKeyDownMessage||msg->type()==ui::kKeyUpMessage)){const auto key=static_cast<ui::KeyMessage*>(msg);if(key->scancode()==ui::kKeyEsc){document.cancelFreeTilePlacement();if(hasCapture())releaseMouse();refresh();}else if(document.freeTileInstanceMoving()){ui::MouseMessage move(ui::kMouseMoveMessage,os::PointerType::Mouse,ui::kButtonLeft,key->modifiers(),movePointer_);processFreeTileInput(&move);}return true;}
  auto mouse=dynamic_cast<ui::MouseMessage*>(msg);if(!mouse)return false;
+ // Legacy placement uses localPoint; eraser move uses localPointAt(...,true).
+ // Map pointer endpoints only: instance geometry and symmetry stay unchanged.
+ auto placementPoint=[&]()->std::optional<Point>{const auto p=canvasDocumentPoint(mouse->position());const auto mode=tileRepeatIdentity_==document.identity()?tileRepeat_:repeat::Mode::Off;const auto mapped=repeat::map({p.x,p.y},document.width(),document.height(),mode,true);if(!mapped)return {};return Point{int(std::floor(mapped->local.x)),int(std::floor(mapped->local.y))};};
  if(dragging){try{
   if(msg->type()==ui::kMouseUpMessage&&mouse->button()==ui::kButtonNone){document.cancelFreeTilePlacement();if(hasCapture())releaseMouse();refresh();return true;}
   if(msg->type()==ui::kMouseMoveMessage||(msg->type()==ui::kMouseUpMessage&&mouse->button()==strokeButton_)){
-   const auto p=canvasPoint(mouse->position());if(document.freeTileInstanceMoving()){movePointer_=mouse->position();const auto delta=constrainedSelectionDelta({p.x-moveStart_.x,p.y-moveStart_.y},moveModifierHeld("constrainAxis",*mouse));document.previewFreeTileInstanceMove(delta.x,delta.y);}else document.updateFreeTilePlacement(p);
+   const auto p=canvasPoint(mouse->position());if(document.freeTileInstanceMoving()){movePointer_=mouse->position();const auto delta=constrainedSelectionDelta({p.x-moveStart_.x,p.y-moveStart_.y},moveModifierHeld("constrainAxis",*mouse));document.previewFreeTileInstanceMove(delta.x,delta.y);}else if(const auto local=placementPoint())document.updateFreeTilePlacement(*local);
    if(msg->type()==ui::kMouseUpMessage){document.commitFreeTilePlacement();if(hasCapture())releaseMouse();refresh();}
   }
   if(previewPanel_&&previewPanel_->isVisible())previewPanel_->invalidate();invalidateRect(canvasViewport());
  }catch(const std::exception& e){document.cancelFreeTilePlacement();if(hasCapture())releaseMouse();status_=unicodeText(e.what());refresh();}return true;}
  if(!documentOpen_||homeOpen_||pending_!=Pending::None||document.layer().kind!="free-tile"||!document.activeMaskId().empty()||!ordinaryBrushTool()||!document.freeTilePaintMode()||handTool_||spaceHeld_||msg->type()!=ui::kMouseDownMessage||!(mouse->left()||mouse->right())||!canvasViewport().contains(mouse->position())||!canvasDocumentContains(mouse->position()))return false;
- try{hideTimelineSelectionGuides();paletteFocused_=false;document.clearPaletteSelection();requestFocus();playing_=false;strokeButton_=mouse->button();if(document.beginFreeTilePlacement(canvasPoint(mouse->position()),eraser_,mouse->right())){captureMouse();invalidateRect(canvasViewport());}}catch(const std::exception& e){document.cancelFreeTilePlacement();status_=unicodeText(e.what());refresh();}return true;
+ try{hideTimelineSelectionGuides();paletteFocused_=false;document.clearPaletteSelection();requestFocus();playing_=false;strokeButton_=mouse->button();const auto local=placementPoint();if(local&&document.beginFreeTilePlacement(*local,eraser_,mouse->right())){captureMouse();invalidateRect(canvasViewport());}}catch(const std::exception& e){document.cancelFreeTilePlacement();status_=unicodeText(e.what());refresh();}return true;
 }
 
 }
