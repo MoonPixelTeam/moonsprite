@@ -2,6 +2,8 @@
 #include "sheet_import_storage.h"
 #include "project_encode.h"
 #include "sprite_sheet_import.h"
+#include "sheet_import_task.h"
+#include <thread>
 #include "image_decode.h"
 #include "image_export.h"
 #include "project_file.h"
@@ -13,6 +15,12 @@
 using namespace moon;
 void check(bool x){if(!x)throw std::runtime_error("sprite sheet import regression");}
 std::uint32_t pixelHash(const std::vector<Pixel>& pixels){std::uint32_t h=2166136261u;for(auto p:pixels)for(int s=0;s<32;s+=8){h^=(p>>s)&255;h*=16777619u;}return h;}
+bool importAsync(Document& d,const SheetImportOptions& options,std::optional<TransformPoint> pivot={}){
+ SheetImportTask task(d,options);const auto until=std::chrono::steady_clock::now()+std::chrono::seconds(20);
+ while(task.busy()&&std::chrono::steady_clock::now()<until){task.tick(d);std::this_thread::sleep_for(std::chrono::milliseconds(1));}
+ if(task.phase()!=SheetImportTask::Phase::Ready)throw std::runtime_error("Async oracle import: "+task.error());
+ const auto result=task.commit(d,pivot);check(result&&task.phase()==SheetImportTask::Phase::Applied&&!task.commit(d,pivot));return result;
+}
 void selectionImports(const std::filesystem::path& root){
  std::filesystem::create_directories(root);int sample=0;
  for(const auto& f:sheetImportSelectionOracle){
@@ -24,7 +32,7 @@ void selectionImports(const std::filesystem::path& root){
   const auto beforeSelection=d.selection();const auto identity=d.identity(),history=d.historySize();const auto frame=d.frame().id,layer=d.layer().id;
   const auto pivot=f.mutation==0?std::optional<TransformPoint>{}:std::optional<TransformPoint>{TransformPoint{-2.5,3.75}};
   auto built=buildSpriteSheetImport(d,options);check(built.cels.size()==f.hashes.size());for(std::size_t i=0;i<f.hashes.size();++i)check(pixelHash(built.cels[i].surface->pixels)==f.hashes[i]);
-  check(d.importSpriteSheet(options,pivot)&&d.identity()==identity&&d.historySize()==history+1&&!d.selection()&&!d.selectionPivotHistory().pivot&&d.selectionPivotHistory().serial==1);
+  check(importAsync(d,options,pivot)&&d.identity()==identity&&d.historySize()==history+1&&!d.selection()&&!d.selectionPivotHistory().pivot&&d.selectionPivotHistory().serial==1);
   d.undo();check(d.width()==6&&d.height()==2&&d.pixels()==pixels&&d.frame().id==frame&&d.layer().id==layer&&selectionEqual(d.selection(),beforeSelection)&&d.selectionPivotHistory().serial==2);
   check(bool(d.selectionPivotHistory().pivot)==bool(pivot));if(pivot)check(d.selectionPivotHistory().pivot->x==pivot->x&&d.selectionPivotHistory().pivot->y==pivot->y);
   d.redo();check(!d.selection()&&!d.selectionPivotHistory().pivot&&d.selectionPivotHistory().serial==3);
@@ -48,7 +56,7 @@ void resourceImports(const std::filesystem::path& root){
   SheetImportOptions options;options.layout=f.layout;options.x=-1;options.width=options.height=2;options.paddingX=1;options.partialTiles=true;options.selection=f.selected;
   const auto before=d.timeline().state();const auto oldLayer=d.layer().id,oldFrame=d.frame().id;const auto selection=d.selection();const auto identity=d.identity(),history=d.historySize();
   auto built=buildSpriteSheetImport(d,options);check(built.cels.size()==f.hashes.size());for(std::size_t i=0;i<f.hashes.size();++i)if(pixelHash(built.cels[i].surface->pixels)!=f.hashes[i])throw std::runtime_error("Actual legacy resource sheet mismatch case="+std::to_string(sample)+" frame="+std::to_string(i));
-  check(d.importSpriteSheet(options,TransformPoint{2.25,-1.5})&&d.historySize()==history+1&&d.identity()==identity&&!d.hasTilemapContent()&&!d.hasFreeTileContent()&&d.timeline().state().tilesets.empty()&&!d.selection()&&d.tileSelection().tilesetId.empty()&&d.selectedFreeTileInstances().empty()&&!d.freeTileInstanceView()&&d.timelineSelection().layers==std::vector<std::string>{d.layer().id});
+  check(importAsync(d,options,TransformPoint{2.25,-1.5})&&d.historySize()==history+1&&d.identity()==identity&&!d.hasTilemapContent()&&!d.hasFreeTileContent()&&d.timeline().state().tilesets.empty()&&!d.selection()&&d.tileSelection().tilesetId.empty()&&d.selectedFreeTileInstances().empty()&&!d.freeTileInstanceView()&&d.timelineSelection().layers==std::vector<std::string>{d.layer().id});
   auto verify=[&](const Document& value){check(value.timeline().state().cels.size()==f.hashes.size()&&value.timeline().state().tilesets.empty());for(std::size_t i=0;i<f.hashes.size();++i){const auto& c=value.timeline().state().cels[i];check(!c.tilemap&&!c.freeTiles&&!c.linkedCelId&&pixelHash(c.surface->pixels)==f.hashes[i]&&value.timeline().state().frames[i].duration==(i?137:73));}};verify(d);
   d.undo();check(d.layer().id==oldLayer&&d.frame().id==oldFrame&&d.timeline().state().tilesets.front().pixels==set.pixels&&d.layer().kind==before.layers.front().kind&&d.layer().freeTiles==before.layers.front().freeTiles&&selectionEqual(d.selection(),selection)&&d.selectionPivotHistory().pivot->x==2.25&&d.tileSelection().tilesetId==set.id&&(!f.kind||(d.freeTileInstanceView()&&d.selectedFreeTileInstances()==std::vector<std::string>{"one"})));
   for(std::size_t i=0;i<before.cels.size();++i){const auto& a=before.cels[i];const auto& b=d.timeline().state().cels[i];check(a.linkedCelId==b.linkedCelId&&a.freeTiles==b.freeTiles&&bool(a.tilemap)==bool(b.tilemap));if(a.tilemap)check(a.tilemap->cells==b.tilemap->cells);if(a.surface)check(a.surface->pixels==b.surface->pixels);}
@@ -74,7 +82,7 @@ void largeImports(const std::filesystem::path& root){
   const auto plan=planSpriteSheetImport(f.selection?2044:f.sw,f.selection?5:f.sh,o);check(plan.columns==f.columns&&plan.rows==f.rows);
   auto result=buildSpriteSheetImport(d,o);check(result.cels.size()==f.hashes.size()&&d.revision()==revision&&d.pixels()==pixels);
   for(std::size_t i=0;i<result.cels.size();++i){if(pixelHash(result.cels[i].surface->pixels)!=f.hashes[i]){std::ofstream raw(root/("native-case-"+std::to_string(sample)+"-"+std::to_string(i)+".rgba"),std::ios::binary);const auto& p=result.cels[i].surface->pixels;raw.write(reinterpret_cast<const char*>(p.data()),std::streamsize(p.size()*4));throw std::runtime_error("Actual legacy large sheet pixel mismatch case="+std::to_string(sample)+" frame="+std::to_string(i));}check(result.frames[i].duration==(i?137:73));}
-  check(d.importSpriteSheet(o)&&d.identity()==identity&&d.width()==f.width&&d.height()==f.height&&d.historySize()==history+1&&!d.selection()&&!d.animationLoop()&&d.layer().name==U"导入的精灵表");
+  check(importAsync(d,o)&&d.identity()==identity&&d.width()==f.width&&d.height()==f.height&&d.historySize()==history+1&&!d.selection()&&!d.animationLoop()&&d.layer().name==U"导入的精灵表");
   d.undo();check(d.width()==f.sw&&d.height()==f.sh&&d.frame().id==first&&d.layer().id==layer&&d.pixels()==pixels&&selectionEqual(d.selection(),selection));d.redo();check(d.timeline().state().frames.size()==f.hashes.size());
   const auto path=root/("large-sheet-"+std::to_string(sample++)+".moonsprite");project::saveDocumentAtomic(d,path);std::ifstream in(path,std::ios::binary);auto bytes=std::make_shared<const project::Bytes>(std::istreambuf_iterator<char>(in),std::istreambuf_iterator<char>());auto reopened=project::createEditableDocument(project::prepareEditableImport(project::readProjectManifest(bytes)));check(reopened.width()==f.width&&reopened.height()==f.height&&!reopened.animationLoop()&&reopened.timeline().state().frames.size()==f.hashes.size());
   for(std::size_t i=0;i<f.hashes.size();++i){reopened.selectFrame(reopened.timeline().state().frames[i].id);check(pixelHash(reopened.pixels())==f.hashes[i]&&reopened.frame().duration==(i?137:73));}

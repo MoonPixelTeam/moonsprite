@@ -1102,6 +1102,8 @@ bool Editor::processPreferencesWheel(ui::MouseMessage& mouse){
 
 void Editor::ask(Pending action) {
 
+    if(pending_==Pending::SheetImport&&importSheetTask_)return;
+
     if(colorEditorPopup_&&colorEditorPopup_->isVisible())colorEditorPopup_->closeWindow(nullptr);
 
     if(action==Pending::New){showNewDocument();return;}
@@ -1149,6 +1151,8 @@ void Editor::ask(Pending action) {
 
 void Editor::resolve(bool discard) {
 
+    if(pending_==Pending::SheetImport&&importSheetTask_)return;
+
     if((pending_==Pending::StaticExport||pending_==Pending::GifExport)&&framePngBusy()){if(!discard)framePngJob_->cancel=true;return;}
 
     if(pending_==Pending::Saving)return;
@@ -1183,7 +1187,7 @@ void Editor::resolve(bool discard) {
 
     if(action==Pending::BrushFolderName){if(discard){try{PatternBrushLibrary library(fillBrushLibraryDirectory());auto result=fillFolderRename_?library.renameFolder(fillFolderEditing_,paletteInput_->text()):library.createFolder(paletteInput_->text(),fillFolderEditing_);fillFolder_=result.id;applyFillLibrarySelection();}catch(const std::exception& e){status_=U"文件夹操作失败："+unicodeText(e.what());refresh();return;}}paletteInput_->setVisible(false);discard_->caption=U"丢弃";keep_->caption=U"取消";discard=false;}
 
-    if(action==Pending::SheetImport){if(importSheetPreview_)importSheetPreview_->finishDraft();if(discard){try{if(!document.importSpriteSheet(effectiveSheetImportOptions(),selectionPivot_))throw std::runtime_error("当前文档内容尚不支持精灵表导入");if(!importSheetOptions_.selection){auto& slot=*projects_[activeProject_];slot.sheetImportIdentity=document.identity();slot.sheetImportRemembered=importSheetOptions_;}brushFeedback_.brushLineAnchors_[0].reset();brushFeedback_.brushLineAnchors_[1].reset();fitCanvas();}catch(const std::exception& e){status_=U"精灵表导入失败："+unicodeText(e.what());invalidate();return;}}if(importSheetPreview_)importSheetPreview_->close();importSheetChoose_->setVisible(false);importSheetFit_->setVisible(false);for(auto input:importSheetInputs_)input->setVisible(false);importSheetLayout_->setVisible(false);importSheetPartial_->setVisible(false);importSheetPadding_->setVisible(false);importSheetOptions_.selectionSnapshot.reset();discard_->setEnabled(true);discard_->caption=U"丢弃";keep_->caption=U"取消";discard=false;}
+    if(action==Pending::SheetImport){if(importSheetTask_)return;if(importSheetPreview_)importSheetPreview_->finishDraft();if(discard){beginSheetImport();return;}if(importSheetPreview_)importSheetPreview_->close();importSheetChoose_->setVisible(false);importSheetFit_->setVisible(false);for(auto input:importSheetInputs_)input->setVisible(false);importSheetLayout_->setVisible(false);importSheetPartial_->setVisible(false);importSheetPadding_->setVisible(false);importSheetOptions_.selectionSnapshot.reset();discard_->setEnabled(true);discard_->caption=U"丢弃";keep_->caption=U"取消";discard=false;}
 
     if(action==Pending::GifExport){if(discard&&!saveGifExport())return;discard_->setEnabled(true);for(auto input:gifInputs_)input->setVisible(false);for(auto b:{gifRange_,gifDirection_,gifTrim_})b->setVisible(false);discard_->caption=U"丢弃";keep_->caption=U"取消";discard=false;}
 

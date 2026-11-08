@@ -759,6 +759,6 @@ void Editor::showNewDocument(bool verify) {
 
   }
 
-void Editor::requestClose() {if(gradientIoDialogOpen_)return;if(DocumentLoadingDialog::deferClose([this]{requestClose();}))return;if(!resolveGradientForIo())return;flushBrushSizePreferences();if(!backgroundSaves_.empty()||!queuedSaves_.empty()){closeAfterBackgroundSaves_=true;return;}if(pending_==Pending::Saving){closeAfterSave_=true;return;}ask(Pending::Close);}
+void Editor::requestClose() {if(importSheetTask_)return;if(gradientIoDialogOpen_)return;if(DocumentLoadingDialog::deferClose([this]{requestClose();}))return;if(!resolveGradientForIo())return;flushBrushSizePreferences();if(!backgroundSaves_.empty()||!queuedSaves_.empty()){closeAfterBackgroundSaves_=true;return;}if(pending_==Pending::Saving){closeAfterSave_=true;return;}ask(Pending::Close);}
 
 }

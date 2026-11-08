@@ -87,6 +87,7 @@ private:
  SliceState sliceState_;std::uint64_t nextSliceId_=0;bool commitSlices(SliceState,std::u32string);
 
   friend class DocumentSnapshot;
+  friend class SheetImportTask;
   friend struct RasterHistoryFixture;
 public:
   const timelapse::Settings& timelapseSettings()const{return timelapseSettings_;}

@@ -9,5 +9,7 @@ SheetImportOptions initialSheetImportOptions(GridSettings grid,const std::option
 int sheetImportFrameSizeFromCount(int extent,int origin,int padding,int count);
 const SelectionMask* sheetImportSelection(const Document&,const SheetImportOptions&);
 SheetImportPlan planSpriteSheetImport(int width,int height,const SheetImportOptions& options);
-timeline::State buildSpriteSheetImport(const Document& source,const SheetImportOptions& options);
+void validateSpriteSheetImportAllocation(const Document&,const SheetImportOptions&);
+struct SheetImportCancelled:std::runtime_error {SheetImportCancelled():std::runtime_error("Sprite sheet import cancelled"){};};
+timeline::State buildSpriteSheetImport(const Document& source,const SheetImportOptions& options,const std::function<bool()>& cancelled={},const std::function<void(std::size_t)>& progress={});
 }

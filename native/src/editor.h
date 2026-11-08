@@ -64,7 +64,7 @@
 #include "menu_catalog.h"
 #include "project_encode.h"
 #include "cel_thumbnail_pipeline.h"
-namespace moon {class HomeBannerPane;class PixelTextArea;class LegacyCursors;class FreeTileInstancesPanel;}
+namespace moon {class HomeBannerPane;class PixelTextArea;class LegacyCursors;class FreeTileInstancesPanel;class SheetImportTask;}
 
 namespace moon::home {struct Banner;}
 namespace moon::editor {
@@ -343,6 +343,9 @@ private:
   bool replacePreview_=false,replaceRemember_=true,replaceLoaded_=false;
 
   SheetImportPreview* importSheetPreview_=nullptr;PixelButton *importSheetChoose_=nullptr,*importSheetFit_=nullptr;
+  std::shared_ptr<SheetImportTask> importSheetTask_;ui::Timer importSheetTimer_{16,this};
+  std::function<void(std::function<void()>)> importSheetExecutor_;
+  void beginSheetImport();void tickSheetImport();void setSheetImportBusyControls();void waitSheetImportForSmoke();
   std::function<bool(OPENFILENAMEW*)> chooseSheetFile_=[](OPENFILENAMEW* dialog){return GetOpenFileNameW(dialog)!=FALSE;};
   void layoutSheetImport(gfx::Rect);void paintSheetImport(ui::Graphics&,gfx::Rect);void smokeSheetImportPreview();
   SheetImportOptions importSheetOptions_;std::array<PixelEntry*,8> importSheetInputs_{};PixelButton *importSheetLayout_=nullptr,*importSheetPartial_=nullptr,*importSheetPadding_=nullptr;bool importAfterOpen_=false,importSheetUpdating_=false,importSheetPaddingEnabled_=false;

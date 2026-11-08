@@ -66,6 +66,7 @@ public:
  bool onProcessMessage(ui::Message* msg)override{
   if(msg->type()==ui::kTimerMessage&&static_cast<ui::TimerMessage*>(msg)->timer()==&timer_){tick();return true;}
   if(msg->type()==ui::kFocusLeaveMessage){space_=false;finish(true);}
+  if(!isEnabled())return ui::Widget::onProcessMessage(msg);
   if(msg->type()==ui::kKeyDownMessage||msg->type()==ui::kKeyUpMessage){const auto k=static_cast<ui::KeyMessage*>(msg);if(k->scancode()==ui::kKeySpace){space_=msg->type()==ui::kKeyDownMessage;return true;}if(k->scancode()==ui::kKeyEsc&&drag_){finish(true);return true;}}
   if(!active_)return ui::Widget::onProcessMessage(msg);
   if(msg->type()==ui::kMouseWheelMessage){const auto m=static_cast<ui::MouseMessage*>(msg);if(!drag_&&m->wheelDelta().y)view_.wheel(width_,height_,double(bounds().w)/uiScale,double(bounds().h)/uiScale,local(m->position()),m->wheelDelta().y<0);invalidate();if(viewChanged)viewChanged();return true;}

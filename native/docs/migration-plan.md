@@ -4221,3 +4221,24 @@ make-sheet-import-preview-fixtures.cjs运行实际未改写TSX事件处理器生
 实际旧版执行器生成96组2资源类型×2链接状态×3隐藏/不透明度状态×2选区范围×4排列的完整像素hash，并调用实际workspace提交/undo/redo验证原资源身份、palette及切片结果。首轮原生96组及原有导入套件通过；后续补齐资源选择历史／128MiB源资源预算拒绝与实际Editor两类预览/提交/撤销/重做，正在最终构建。执行器首轮workspace桥接缺少commitFloatingPaste空事务入口导致测试失败，补齐无浮动对象的传输桩后实际旧版96组通过，未改写产品函数。索引/灰度完整编辑及实际切片提交的异步化/取消仍未完成，不以本批宣称全部导入/全软件迁移完成。
 
 最终resource-sheet-import-final-build.log正式Release与sprite-sheet-import-tests构建退出0；resource-sheet-import-final-core-tests.log导入套件退出0（12.45s），包含新增96组完整RGBA对照、source/output真实重开、source资源/链接/实例/选择历史和128MiB源瓦片表的提前预算拒绝，既有大尺寸/选区快照测试继续通过。resource-sheet-import-ui-tests.log的--sheet-import-check、--sheet-new-document-check、--new-document-check均退出0，运行前后正式exe SHA256一致（8048A75B9686509CFC3227D9CA21E2248A60B05A752B9E81DAF27A6201149F13）。实际Editor两类特殊源的缓存预览、模态提交为6个2×2 Cel、一笔撤销恢复源资源与像素、redo重新合成均通过。已查看本次sheet-import-grid-resource.bmp及sheet-import-free-resource.bmp，默认2×下源像素、棋盘、6帧编号/边框/首格手柄与字段按钮完整无交叠；未声明全缩放/长时性能量化。来源覆盖697文件通过，strict因全局既有缺口仍退出1；Node语法及git diff --check通过。无删除原工程/恢复/缓存或另建产物。本阶段完成后保存推送dev；全量迁移仍INCOMPLETE，实际切片提交异步化与索引/灰度等继续登记未完成。
+
+
+### 2026-11-08 精灵表导入异步计算与提交保护（已通过定向验证）
+
+接续f496beec，实际核对旧版SpriteSheetImportDialog的busyRef、全部disabled入口与关闭守卫，workspace命令的身份/内容revision/活动帧检查、提交时选区与pivot捕获及异步builder。原生复用RasterSnapshot按2ms期限/1MiB上限协作捕获；独立后台线程持有完整快照，按最多65536像素的行块合成并检查内部取消。16ms原生UI定时器轮询及最终检查后应用原有单笔结构历史；界面不会等待线程join。文档失效/销毁取消内部结果；旧版处理中取消/关闭/参数/换源/预览禁用语义不变。原生已有Timeline::takeState可直接复用，首轮编译发现重复声明后移除新增版本，无另造状态转移方法。
+
+核心新增确定性队列测试覆盖捕获/处理中/结果就绪三个阶段的身份替换、像素修改、切帧，取消、销毁、调度失败、冻结选区与提交时live选区/pivot、仅色板元数据变化和真实分离线程。既有80大尺寸+36选区+96资源旧版对照的实际事务改用后台任务，原同步builder哈希与保存重开仍验证。正式Editor检查新增真实计时器提交/锁定/重复回调、禁用预览wheel、调整预览布局与绘制、过期结果失败后恢复编辑。
+
+本阶段只处理实际导入提交的捕获与切片阻塞；不表示所有UI性能问题、索引/灰度完整编辑或全量迁移完成。正式构建、定向运行和图像验收尚待完成。此前用户批准的长色板名称修复已存在，src/palette_library.cpp按96字符及实际后缀生成ID，保留完整显示名称；tests/palette_library_test.cpp已有86/87/95/96/97/256/2048长度、两位/三位碰撞后缀、内置冲突、覆盖与中文名称重开检查，本阶段不重复修改其行为。
+
+async-sheet-core-build.log修正重复takeState后核心构建退出0。async-sheet-test-build.log新增任务测试及四个既有定向测试目标构建退出0；async-sheet-core-tests.log五项全部通过（21.49s）：sheet-import-task0.33s、raster-snapshot0.05s、sprite-sheet-import14.81s、palette-library6.13s、sheet-import-preview0.11s。212组旧版构建/选区/资源事务使用真实后台任务提交并继续验证完整RGBA、撤销/重做与原工程/输出实际重开；跨65536像素分块边界的透明RGB也符合原有source-over清零语义。全量来源覆盖700文件通过，strict仍因全局已知缺口退出1。正式Release界面目标正在构建，尚未以核心通过替代窗口验收。
+
+正式界面首轮低并行构建在editor_gallery.cpp遇到C1060编译器堆空间不足，已停止该构建并确认cl/MSBuild退出；当前可用物理约1.9GiB、可提交约5.3GiB，未结束无关应用或删除数据。改为单并行且显式PreferredToolArchitecture=x64继续相同Release目标，不降低产物优化等级、不另建产物。补回取消分支原有finishDraft调用，保留既有关闭草稿生命周期。
+
+后续显式HostX64构建在home recovery、逐文件构建在attached masks再次遇到C1060；只停止已确认属于本批的失败构建进程树，未关闭无关Node/Vite应用或清理缓存。最终清除本次CL环境覆盖，使用--parallel 1及PreferredToolArchitecture=x64、CLToolArchitecture=Native64Bit、UseMultiToolTask=true、CL_MPCount=1、EnforceProcessCountAcrossBuilds=true，保持正式Release优化与唯一产物路径；async-sheet-final-build.log记录最终构建退出0。
+
+最终async-sheet-final-core-tests.log五项全部通过（16.05s）：sheet-import-task、raster-snapshot、sprite-sheet-import、palette-library、sheet-import-preview。212组实际旧版大尺寸/选区/资源事务继续核对完整RGBA、单笔撤销/重做及源/输出真实保存重开。长色板完整显示名称、96字符ID边界和碰撞后缀修复再次通过，未重复改动。async-sheet-ui-tests.log的--sheet-import-check、--sheet-new-document-check、--new-document-check全部退出0；运行前后正式exe SHA256一致（D53146B06AEDE87ECC3A94CFF1D2C32307E4BA845BEA753BDC297F03C820FB9D）。真实原生Timer完成、持有后台任务期间的Windows SetWindowPos移动/调整尺寸、禁用控件/重复提交/关闭守卫、过期失败后重试及单笔历史断言通过。
+
+已查看本轮sheet-import-busy.bmp和sheet-import-preview.bmp：默认2×下源像素、棋盘、切片编号/边框/手柄可见，忙碌控件禁用，参数和底部操作完整无交叠。仅验收这两个渲染状态及上述自动窗口路径，不声明全倍率、长时操作或全软件帧率。最终安装仍使用原有同步结构历史应用，未声称提交零延迟；索引/灰度完整编辑等全局迁移缺口保持INCOMPLETE。
+
+最终async-sheet-final-provenance.log来源覆盖700文件并验证证据快照，退出0；strict因全局既有缺口退出1，符合尚未全量迁移的状态。git diff --check退出0。保留既有未跟踪文件、工程/恢复数据与构建缓存；本批只提交明确列出的源码、测试和迁移记录。
