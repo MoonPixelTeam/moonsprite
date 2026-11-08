@@ -474,6 +474,7 @@ public:
   bool rotateContent(int angle);
   bool centerActiveContent(bool horizontal=true,bool vertical=true);
   bool fillSelectionOrCanvas(Pixel color);
+  bool outlinePixels(const struct OutlineSampling&,Pixel color,bool smartHue=false,double darkness=45,bool followOpacity=false,bool boundary=false);
   bool deleteSelectedPixels();bool cutPixels(std::optional<SelectionClipboard>& clipboard);
   bool beginFloatingPaste(const SelectionClipboard& clipboard,int x,int y);
   bool beginLayerTransform();

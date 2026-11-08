@@ -4374,3 +4374,12 @@ special-paste-interaction-final-build.log唯一正式Release与定向目标构�
 定向读取tools-outline.ts outlinePixelSamples/outlineSelectionBoundary、outline-settings.ts及selection-effects实际调用。完整移植内容采样的inside/outside/both、round/square/horizontal/vertical、8方向、透明/背景/指定源匹配、选区内候选优先及无空间时外侧回退、距离/扫描rank参考色选择、Map插入顺序；另移植选区自身边界采样、智能颜色暗度与跟随透明度。默认圆核/正交方向承接legacy。原生使用Surface世界坐标读取，保留稀疏偏移存储，不使用不同语义的LayerStyleSampler替代。尚未进入Document提交、批量目标、参数持久化、弹窗或菜单执行，所有描边按钮继续原状态，不能称整项描边迁移完成。
 
 make-outline-sample-fixtures.cjs执行实际未改写旧版函数体，RGBA读取/选区/历史写入以独立适配器提供，生成768内容采样+120边界+120颜色oracle。原生逐项比较像素索引、顺序和参考颜色，并将同一图像移入负偏移稀疏Surface再次比较。首轮测试夹具因using namespace位于include之后编译失败，已修正，无生产行为变更。outline-samples-final-build.log独立Release目标构建0，CTest outline-samples通过0.17s；不涉及正式exe更新、窗口或视觉/FPS验收。该批是有测试证据的算法基础阶段，全功能迁移仍INCOMPLETE；后续必须接通历史与运行入口，不用核心通过代替整项完成。保留既有用户数据及未跟踪缓存，阶段保存推送dev。
+
+
+### 2026-11-09：描边文档事务与批量目标（整项仍未完成）
+
+在采样核心基础上对照 tools-outline.ts、workspace-commands-selection-effects.ts、workspace-selection-effects-support.ts 和 workspace-session.ts 接入 Document::outlinePixels。选中 Cel 优先，显式层/组按现有层选择展开；只选帧时处理全部可见未锁普通层。显式隐藏层允许处理，非普通层先排除，锁定目标整笔拒绝；共享链接存储只处理一次。候选与表面扩展在提交前构造，保留画布外像素，最终复用 surfaceChanges 一笔历史。增加保守256MiB工作集准入；未计时，不代表交互性能已验收。透明描边直接保留隐藏RGB，其他颜色沿用既有 brushComposite。
+
+首次增量构建因误用C++20 erase_if失败，已改为仓库C++17支持的remove_if/erase。outline-document-final-build.log最终两个Release测试目标构建退出0；outline-document与outline-samples均通过，总0.08s。新增回归覆盖两层一笔UndoRedo、锁定整笔拒绝、显式隐藏层、帧选择所有可编辑层、空操作、部分透明度、透明RGB；原有链接帧与空白选区边界回归继续通过。未构建正式exe，未接UI或进行窗口/视觉/FPS验收。
+
+明确INCOMPLETE：活动蒙版及maskRows当前拒绝以免修改派生像素，蒙版权威适配、缺失活动Cel创建、完整组/蒙版组合、描边设置持久化、弹窗、菜单/快捷指令、索引/灰度模式仍待迁移。该阶段仅完成普通像素事务基础，不宣称描边或全量迁移完成。保留原有未跟踪文件、恢复数据与缓存；本阶段提交推送dev。

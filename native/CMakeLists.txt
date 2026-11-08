@@ -946,3 +946,8 @@ add_test(NAME sheet-import-preview COMMAND sheet-import-preview-tests)
 add_executable(outline-samples-tests tests/outline_samples_test.cpp src/outline_samples.cpp)
 target_include_directories(outline-samples-tests PRIVATE src)
 add_test(NAME outline-samples COMMAND outline-samples-tests)
+
+target_sources(moon-core PRIVATE src/outline_samples.cpp src/document_outline.cpp)
+add_executable(outline-document-tests tests/outline_document_test.cpp)
+target_link_libraries(outline-document-tests PRIVATE moon-core)
+add_test(NAME outline-document COMMAND outline-document-tests)
