@@ -1,5 +1,6 @@
 #pragma once
 #include "selection_model.h"
+#include "image_import_limits.h"
 #include <windows.h>
 #include "clip.h"
 #include <cstring>
@@ -55,13 +56,20 @@ private:
   clip::lock lock;if(!lock.locked())throw std::runtime_error("Clipboard busy");
   if(!lock.is_convertible(clip::image_format()))return {};
   clip::image_spec spec;if(!lock.get_image_spec(spec))throw std::runtime_error("Unsupported clipboard image");
-  auto validate=[&]{
-   if(forNewDocument){
-    if(spec.width<1||spec.height<1||spec.width>1024||spec.height>1024)throw ImageNotAdmitted("粘贴为新项目仅支持每边 1..1024 像素；剪贴板图像未被裁剪");
-   }else if(spec.width<1||spec.height<1||spec.width>8192||spec.height>8192||std::uint64_t(spec.width)*spec.height>16*1024*1024)throw std::runtime_error("Clipboard image exceeds pixel budget");
-  };
-  validate();clip::image image;if(!lock.get_image(image))throw std::runtime_error("Cannot read clipboard image");spec=image.spec();validate();
+  auto validate=[&]{validateSystemImage(spec,forNewDocument);};
+  validate();clip::image image;if(!lock.get_image(image))throw std::runtime_error("Cannot read clipboard image");
+  return decodeSystemImage(image,forNewDocument);
+ }
+public:
+ static void validateSystemImage(const clip::image_spec& spec,bool forNewDocument){
+  const bool valid=editableImageDimensions(spec.width,spec.height)&&std::uint64_t(spec.width)<=16ull*1024*1024/spec.height&&(forNewDocument||(spec.width<=8192&&spec.height<=8192));
+  if(!valid){if(forNewDocument)throw ImageNotAdmitted("剪贴板图像尺寸或读取预算超限；图像未被裁剪");throw std::length_error("Clipboard image exceeds pixel budget");}
   if(spec.bits_per_pixel!=24&&spec.bits_per_pixel!=32){if(forNewDocument)throw ImageNotAdmitted("剪贴板图像格式尚未支持；仅支持 24/32 位 RGBA 图像");throw std::runtime_error("Only 24/32 bit clipboard images supported");}
+  if(std::uint64_t(spec.bytes_per_row)<std::uint64_t(spec.width)*(spec.bits_per_pixel/8)||std::uint64_t(spec.bytes_per_row)>256ull*1024*1024/spec.height||spec.red_shift>31||spec.green_shift>31||spec.blue_shift>31||spec.alpha_shift>31)throw ImageNotAdmitted("Invalid clipboard row layout or channel shifts");
+ }
+ static SelectionClipboard decodeSystemImage(const clip::image& image,bool forNewDocument){
+  const auto spec=image.spec();validateSystemImage(spec,forNewDocument);
+  if(!image.is_valid())throw ImageNotAdmitted("Empty clipboard image data");
   SelectionClipboard result;result.width=int(spec.width);result.height=int(spec.height);result.pixels.resize(std::size_t(spec.width)*spec.height);result.mask.resize(result.pixels.size());
   for(unsigned long y=0;y<spec.height;++y)for(unsigned long x=0;x<spec.width;++x){
    std::uint32_t value=0;std::memcpy(&value,image.data()+y*spec.bytes_per_row+x*(spec.bits_per_pixel/8),spec.bits_per_pixel/8);
@@ -70,7 +78,6 @@ private:
   }
   return result;
  }
-public:
  // Legacy ClipboardService: compare image content, not clipboard sequence/size.
  std::optional<SelectionClipboard> readSystemSelection(){try{return readSelectionSource({},[this]{return systemImageReaderForSmoke_?systemImageReaderForSmoke_():readSystemImage(false);});}catch(...){return {};}}
  void captureStructuredCopyBaseline(){structuredCopyBaseline_=readSystemSelection();}

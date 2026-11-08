@@ -85,8 +85,7 @@ Document Document::withBuiltinPalette(int width,int height,std::u32string name) 
 Document Document::fromSpriteSheetRaster(int width,int height,std::vector<Pixel> pixels,std::u32string name) {
   // legacy sprite-sheet create/stack -> createDocument(..., 'rgba'), then dirty=true.
   // Validate editable dimensions before creating a session; never clamp sheet data.
-  if(width<1 || height<1 || width>1024 || height>1024)
-    throw std::invalid_argument("精灵表新建文档仅支持每边 1..1024 像素；请改用导出 PNG 文件");
+  validateImportedImageDimensions(width,height);
   if(pixels.size()!=std::size_t(width)*height)throw std::invalid_argument("Invalid sprite sheet raster length");
   Document result(width,height);auto state=result.timeline_.state();
   state.layers.front().name=U"精灵表";
@@ -1455,8 +1454,7 @@ void Document::cancelStroke() {
 }
 Document Document::fromClipboardRaster(const SelectionClipboard& source) {
   // Legacy pasteAsNewDocument creates RGBA with the default two-color palette.
-  if(source.width<1 || source.height<1 || source.width>1024 || source.height>1024)
-    throw std::invalid_argument("粘贴为新项目仅支持每边 1..1024 像素；剪贴板图像未被裁剪");
+  validateImportedImageDimensions(source.width,source.height);
   const auto count=std::size_t(source.width)*source.height;
   if(source.pixels.size()!=count || (!source.mask.empty() && source.mask.size()!=count))
     throw std::invalid_argument("剪贴板像素或蒙版长度无效");

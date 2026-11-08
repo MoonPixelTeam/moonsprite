@@ -2,6 +2,7 @@
 #include "native_widgets.h"
 #include "ui_scale.h"
 #include "image_export.h"
+#include "image_import_limits.h"
 #include "ui/popup_window.h"
 #include "ui/message.h"
 #include "ui/resize_event.h"
@@ -46,16 +47,16 @@ class NewDocumentDialog final : public PixelDialog {
   void relayout(){if(!bounds().isEmpty()){setBounds(bounds());onLayout();}invalidate();}
   PixelButton* button(std::u32string text,std::function<void()> click){auto b=new PixelButton(font_,skin_,std::move(text),std::move(click));addChild(b);return b;}
   PixelEntry* entry(){auto e=new PixelEntry(font_,skin_);addChild(e);return e;}
-  int number(PixelEntry* e)const {try{const std::string text=e->text();if(!std::regex_match(text,std::regex("[0-9]+")))return 0;const int n=std::stoi(text);return n>=1&&n<=1024?n:0;}catch(...){return 0;}}
+  int number(PixelEntry* e)const {try{const std::string text=e->text();if(!std::regex_match(text,std::regex("[0-9]+")))return 0;const int n=std::stoi(text);return n>=1&&n<=importedImageMaxSide?n:0;}catch(...){return 0;}}
   void setSize(int w,int h){width_->setText(std::to_string(w));height_->setText(std::to_string(h));sync();}
   void sync(){for(int i=0;i<6;++i){sizes_[i]->active=number(width_)==dimensions_[i][0]&&number(height_)==dimensions_[i][1];sizes_[i]->invalidate();}remove_->setEnabled(readable_&&std::any_of(saved_.begin(),saved_.end(),[&](auto& p){return p.name==presetName_->text();}));}
   void updateOptions(){std::vector<std::u32string> options{U"选择预设"};for(auto& p:saved_)options.push_back(unicodeText(p.name+" · "+std::to_string(p.width)+"×"+std::to_string(p.height)));presets_->setOptions(std::move(options));presets_->setSelectedIndex(0);sync();}
   bool persist(const std::vector<Preset>& next){try{std::ostringstream out;out<<"MoonSprite new-document-presets 1\n";for(auto& p:next)out<<std::quoted(p.name)<<' '<<p.width<<' '<<p.height<<" rgba "<<int(p.record)<<"\n";auto text=out.str();std::filesystem::create_directories(storage_.parent_path());writeExportBytesAtomic(storage_,std::vector<std::uint8_t>(text.begin(),text.end()));return true;}catch(...){error_=U"预设保存失败，请重试";invalidate();return false;}}
-  void savePreset(){auto name=presetName_->text();const auto first=name.find_first_not_of(" \t\r\n"),last=name.find_last_not_of(" \t\r\n");if(first==std::string::npos){error_=U"请输入预设名称";relayout();return;}name=name.substr(first,last-first+1);const int w=number(width_),h=number(height_);if(!w||!h){error_=U"宽高须为 1–1024 的整数";relayout();return;}auto next=saved_;next.erase(std::remove_if(next.begin(),next.end(),[&](auto& p){return p.name==name;}),next.end());next.push_back({name,w,h,recording_->checked()});if(persist(next)){saved_=std::move(next);presetName_->setText(name);error_=U"预设已保存";updateOptions();relayout();}}
+  void savePreset(){auto name=presetName_->text();const auto first=name.find_first_not_of(" \t\r\n"),last=name.find_last_not_of(" \t\r\n");if(first==std::string::npos){error_=U"请输入预设名称";relayout();return;}name=name.substr(first,last-first+1);const int w=number(width_),h=number(height_);if(!editableImageDimensions(w,h)){error_=U"画布尺寸或像素预算超限";relayout();return;}auto next=saved_;next.erase(std::remove_if(next.begin(),next.end(),[&](auto& p){return p.name==name;}),next.end());next.push_back({name,w,h,recording_->checked()});if(persist(next)){saved_=std::move(next);presetName_->setText(name);error_=U"预设已保存";updateOptions();relayout();}}
   void deletePreset(){auto next=saved_;const auto name=presetName_->text();next.erase(std::remove_if(next.begin(),next.end(),[&](auto& p){return p.name==name;}),next.end());if(persist(next)){saved_=std::move(next);presetName_->setText("");error_.clear();updateOptions();relayout();}}
   void submit(){auto name=name_->text();if(name.empty())name=utf8Text(U"未命名作品");const auto u=unicodeText(name);std::string stem=name.substr(0,name.find('.'));std::transform(stem.begin(),stem.end(),stem.begin(),[](unsigned char c){return char(std::toupper(c));});
     if(u.size()>255||name.find_first_of("<>:\"/\\|?*")!=std::string::npos||std::any_of(name.begin(),name.end(),[](unsigned char c){return c<32;})||name.back()=='.'||name.back()==' '||std::regex_match(stem,std::regex("CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9]"))){error_=U"工程名称无效，请检查文件名";relayout();return;}
-    const int w=number(width_),h=number(height_);if(!w||!h){error_=U"宽高须为 1–1024 的整数";relayout();return;}
+    const int w=number(width_),h=number(height_);if(!editableImageDimensions(w,h)){error_=U"画布尺寸或像素预算超限";relayout();return;}
     if(createWithRecording?createWithRecording(u,w,h,recording_->checked()):createDocument_(u,w,h)){accepted_=true;closeWindow(nullptr);}else{error_=U"创建画布失败";relayout();}
   }
 public:
@@ -79,7 +80,7 @@ public:
     // Keep original colored record artwork and its native pixel dimensions.
     for(auto e:{width_,height_}){e->numeric=true;e->Change.connect([this]{sync();});}
     presetName_->Change.connect([this]{sync();});for(auto e:{name_,width_,height_})e->accept=[this]{submit();};setSize(64,64);
-    try{if(std::filesystem::exists(storage_)){std::ifstream in(storage_);std::string header;std::getline(in,header);if(header!="MoonSprite new-document-presets 1")throw std::runtime_error("Preset version");while(in>>std::ws&&!in.eof()){Preset p;std::string mode;int record;if(!(in>>std::quoted(p.name)>>p.width>>p.height>>mode>>record)||p.name.empty()||p.width<1||p.width>1024||p.height<1||p.height>1024||mode!="rgba"||(record!=0&&record!=1))throw std::runtime_error("Preset data");p.record=record!=0;saved_.push_back(std::move(p));}}}catch(...){saved_.clear();readable_=false;error_=U"预设文件损坏，保存已禁用";}
+    try{if(std::filesystem::exists(storage_)){std::ifstream in(storage_);std::string header;std::getline(in,header);if(header!="MoonSprite new-document-presets 1")throw std::runtime_error("Preset version");while(in>>std::ws&&!in.eof()){Preset p;std::string mode;int record;if(!(in>>std::quoted(p.name)>>p.width>>p.height>>mode>>record)||p.name.empty()||!editableImageDimensions(p.width,p.height)||mode!="rgba"||(record!=0&&record!=1))throw std::runtime_error("Preset data");p.record=record!=0;saved_.push_back(std::move(p));}}}catch(...){saved_.clear();readable_=false;error_=U"预设文件损坏，保存已禁用";}
     save_->setEnabled(readable_);updateOptions();
   }
   bool accepted()const{return accepted_;}
@@ -99,7 +100,7 @@ public:
   }
   gfx::Size minimumDialogSize(int width)const override {
     int modes=-2;for(auto b:modes_)modes+=b->minimumWidth();
-    const int w=std::max({146,modes+12,2*width_->widthForValue(U"1024")+14,font_.measure(recording_->caption)+44});
+    const int w=std::max({146,modes+12,2*width_->widthForValue(U"32768")+14,font_.measure(recording_->caption)+44});
     return {w*uiScale,preferredHeight(std::max(w,width/uiScale))*uiScale};
   }
   void paintDialogContents(ui::PaintEvent& ev)override {
@@ -122,7 +123,7 @@ public:
     if(step==2&&bounds().w!=minimumDialogSize(bounds().w).w)throw std::runtime_error("Popup content width floor");
     if(step==3&&bounds().h!=minimumDialogSize(bounds().w).h)throw std::runtime_error("Popup responsive height floor");
   }
-  void smoke(){
+  void smoke(bool create=true){
     auto check=[](bool b,const char* why){if(!b)throw std::runtime_error(why);};check(close_->columnHeaderAction && close_->bounds().size()==gfx::Size(15*uiScale,15*uiScale),"New dialog must use shared 15px header button");check(number(width_)==64&&number(height_)==64,"New dialog defaults");check(modes_[0]->active&&!recording_->checked(),"RGBA/recording defaults");
     const auto restored=bounds();
     check(name_->bounds().y-bounds().y==(DialogLayout::bodyTop+12)*uiScale,"New canvas body boundary");
@@ -138,7 +139,16 @@ public:
     sizes_[5]->Click();check(number(width_)==320&&number(height_)==180,"Legacy size preset");
     presetName_->setText("smoke-layout-owned");savePreset();check(std::any_of(saved_.begin(),saved_.end(),[](auto& p){return p.name=="smoke-layout-owned"&&p.width==320&&p.height==180;}),"Preset save");
     {NewDocumentDialog loaded(font_,skin_,icons_,storage_,createDocument_);check(std::any_of(loaded.saved_.begin(),loaded.saved_.end(),[](auto& p){return p.name=="smoke-layout-owned";}),"Preset reload");}
-    deletePreset();check(std::none_of(saved_.begin(),saved_.end(),[](auto& p){return p.name=="smoke-layout-owned";}),"Preset delete");name_->setText("CON");submit();check(!accepted_,"Invalid filename accepted");name_->setText(utf8Text(U"布局测试"));setSize(72,48);submit();check(accepted_,"Create callback failed");
+    deletePreset();check(std::none_of(saved_.begin(),saved_.end(),[](auto& p){return p.name=="smoke-layout-owned";}),"Preset delete");name_->setText("CON");submit();check(!accepted_,"Invalid filename accepted");name_->setText(utf8Text(U"布局测试"));setSize(72,48);if(create){submit();check(accepted_,"Create callback failed");}else setSize(64,64);
+  }
+  void smokeLarge(int phase){
+    auto check=[](bool value,const char* why){if(!value)throw std::runtime_error(why);};
+    if(phase==0){
+      check(number(width_)==64&&number(height_)==64,"Large creation defaults changed");
+      for(auto size:{std::pair<int,int>{1025,3},{3,1031},{32768,1},{1,32768}}){setSize(size.first,size.second);presetName_->setText("large-"+std::to_string(size.first)+"x"+std::to_string(size.second));savePreset();check(error_==U"预设已保存","Large preset save");NewDocumentDialog loaded(font_,skin_,icons_,storage_,createDocument_);check(loaded.readable_&&std::any_of(loaded.saved_.begin(),loaded.saved_.end(),[&](const auto& p){return p.name==presetName_->text()&&p.width==size.first&&p.height==size.second;}),"Large preset reload");deletePreset();}
+      for(auto size:{std::pair<int,int>{32769,1},{1,32769},{8192,8193},{0,1}}){setSize(size.first,size.second);submit();check(!accepted_&&!error_.empty(),"Invalid large creation accepted");}
+      setSize(8192,8193);submit();
+    }else{setSize(1025,3);name_->setText(utf8Text(U"大画布创建"));recording_->setChecked(false);error_.clear();relayout();if(phase==2){submit();check(accepted_,"Large creation callback failed");}}
   }
 };
 }

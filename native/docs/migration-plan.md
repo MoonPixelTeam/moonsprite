@@ -4105,3 +4105,20 @@ large-resize-build.log 首次正式Release及四个核心目标构建退出0；l
 large-resize-final-build.log 正式Release退出0，large-resize-final-ui-tests.log 中 --canvas-resize-check、--mask-resize-check、--large-image-io-check 全部退出0。实际UI新增8192×8192合法面积但变换工作内存超预算的失败检查通过，保留像素／尺寸／历史／修订和可编辑弹窗。刷新后的2049×6画布草稿、8192×8193超预算说明均已查看：字段／锚点／四边／错误／底部按钮完整，无交叠。图像尺寸2049×6截图发现旧“1–1024 px”说明残留，改为实际“尺寸受像素及工作内存预算限制”，正在正式重建；待重新捕获核实后才结束本批。
 
 最终large-resize-caption-build.log 正式Release退出0，large-resize-caption-ui-tests.log 的完整 --canvas-resize-check 再次退出0。最终image-resize-large-smoke.bmp已重新查看：2049×6／200%字段、原比例锁／最近邻、预算说明、应用／取消均完整，无旧1024误导说明或交叠。图像验收仅覆盖这次默认2×窗口的画布有效／超预算及图像有效三个状态，不代表全缩放、长时手工拖动或UI性能量化。来源覆盖676文件通过，strict因全局既有迁移缺口仍退出1；diff检查通过。索引／灰度完整编辑、瓦片专属尺寸语义、新建／剪贴板／其它操作的独立门禁仍未在本批完成；全量迁移保持INCOMPLETE。
+
+### 2026-11-08 大尺寸新建／剪贴板新项目／精灵表新文档（已通过定向验证）
+
+接续a8d90801，对照NewDocumentDialog／new-document-presets、workspace-commands-clipboard::pasteAsNewDocument及sprite-sheet::createSpriteSheetDocument，移除三条既有创建链路的1024原型门禁，采用现有每边32768／64Mi像素文档边界。新建预设的写入／重读采用同边界，五位数宽度纳入字段内容下限，超边长／超总像素拒绝留在原弹窗。保留用户既定新建32色卡；粘贴及精灵表仍用旧版两色默认色板、单100ms帧、无来源身份、dirty且空历史，不能沿用fromImage的导入调色板。精灵表超文档边长仍可作为文件光栅输出，不截断为新工程。
+
+系统剪贴板保留实际clipboard-service.ts的16Mi像素读取预算，新增项目侧边长准入不扩大读取总量；普通选区／参考图的8192边长适配未在本批扩张。clip后端元数据分配前及读取后复核共用同一策略，校验24／32位、行长度／读取预算及移位范围；转换器提取成可用独立clip::image缓冲测试的原生产函数，不往系统剪贴板写测试数据。原有系统优先／内部回退及原生超预算拒绝策略保留；新建窗口默认探测剪贴板尺寸、索引／灰度完整编辑、其它工具门禁仍是独立未完迁移。
+
+新增5组尺寸1025×3／3×1031／32768×1／1×32768／2049×7；实际旧版createDocument／writeLayerColor、selectionClipboardFromImage和createSpriteSheetDocument执行器生成23个完整RGBA哈希，涵盖内部蒙版、24位不透明／32位透明及横／纵精灵表。原生测试覆盖边缘编辑undo／redo、三种新项目身份／色板、真实原子保存重开、源工程不变，测试缓冲含逐行填充；实际Editor覆盖新建大尺寸／预设存取／非法参数恢复及粘贴菜单、精灵表新页签、越界失败保护。初轮未加旧版哈希断言的四项核心检查通过（large-creation-initial-core-tests.log）；三个旧版测试文件17项通过（large-creation-legacy-tests.log）。最终含23哈希的核心及正式UI验证尚待运行，不把初轮检查当作最终通过。
+
+
+最终含旧版哈希的首轮核心测试暴露单层精灵表透明RGB差异（large-creation-core-final-tests.log，失败夹具37536-115316218保留）；独立RGBA转储逐像素证明1528处差异均是alpha=0时RGB被原生合成清零。实际legacy document-composite-region::compositeRegion在单层／全不透明度／无效果／无有效蒙版时按行复制原始RGBA。已把该快速路径的普通normal RGBA、无组／效果／蒙版／预览子集接入共享compositeNormalRegion，保留透明RGB并减少逐像素混合工作；其他资源、混合、裁剪组及预览仍走原路径，不宣称已迁移该旧版快路径的所有分支。新增负偏移／边界补零／链接owner／隐藏／Cel不透明度及多层回退回归；未调整旧版oracle预期哈希来消除失败。
+
+large-creation-single-raster-build.log正式Release与九个相关测试目标构建退出0；large-creation-single-raster-core-tests.log的large-creation、clipboard-document、sheet-new-document、sprite-sheet、layer-compositor、layer-blend、layer-group-compositor、image-save、large-image-import全部通过。五组大尺寸的23个实际旧版完整RGBA哈希全部一致，原子保存／重开／来源保护通过。large-creation-final-ui-tests.log中正式--new-document-check、--paste-new-document-check、--sheet-new-document-check、--large-image-io-check全部退出0，运行前后同一正式exe SHA256一致。
+
+已实际查看默认2×的new-document-large.bmp（1025×3草稿）和new-document-large-invalid.bmp（8192×8193超预算草稿）：尺寸字段、预设、错误文字和底部按钮完整，没有交叠；窗口仍保留自动几何检查后用户拉大的尺寸，未为截图强制收缩。五位数宽度由字段最小宽度检查及32768两个轴的预设存取／创建菜单回归覆盖，不声称已有五位数草稿截图。此批无全缩放、长时手工拖动或UI帧率基准；单层行拷贝优化不等同于整体卡顿已解决。全量迁移仍INCOMPLETE。
+
+最终来源覆盖679文件通过，strict因全局已知迁移缺口退出1；Node脚本语法及git diff --check通过。全部既有未跟踪诊断、用户／恢复数据与缓存保持原状。

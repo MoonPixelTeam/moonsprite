@@ -38,6 +38,23 @@ std::vector<Pixel> compositeNormalRegion(const timeline::Timeline& timeline,cons
 
  if(!timeline.hasFrame(frameId))throw std::invalid_argument("Unknown composite frame");
  if(r.width<0 || r.height<0 || std::int64_t(r.x)+r.width>std::numeric_limits<int>::max() || std::int64_t(r.y)+r.height>std::numeric_limits<int>::max() || std::uint64_t(r.width)*r.height>64*1024*1024)throw std::invalid_argument("Invalid composite region");
+ // legacy document-composite-region::compositeRegion copies a sole full-opacity
+ // RGBA raster by rows, including RGB under zero alpha. Keep previews and all
+ // effect/mask/resource paths on their existing compositor.
+ if(!preview&&!maskPreview&&state.groups.empty()&&state.layers.size()==1){
+  const auto& layer=state.layers.front();
+  if(layer.kind.empty()&&layer.visible&&layer.blendMode=="normal"&&!layer.clippingMask&&!timeline::styleVisible(layer.layerStyles)&&frameCelOpacity(timeline,layer,frameId)==1&&!timeline::resolvedMask(state,layer.id,frameId)&&(targetLayerId.empty()||targetLayerId==layer.id)){
+   const auto* cel=timeline.findCel(layer.id,frameId);
+   const auto resolved=cel?timeline.resolveSurface(cel->id):timeline::Resolution{};
+   if(resolved.issue!=timeline::LinkIssue::None)throw std::invalid_argument("Invalid composite cel link");
+   std::vector<Pixel> output(std::size_t(r.width)*r.height,0);
+   if(resolved.surface){const auto& s=*resolved.surface;
+    const auto left=std::max<std::int64_t>(r.x,s.offsetX),top=std::max<std::int64_t>(r.y,s.offsetY),right=std::min<std::int64_t>(std::int64_t(r.x)+r.width,std::int64_t(s.offsetX)+s.width),bottom=std::min<std::int64_t>(std::int64_t(r.y)+r.height,std::int64_t(s.offsetY)+s.height);
+    if(right>left)for(auto y=top;y<bottom;++y)std::copy_n(s.pixels.data()+std::size_t(y-s.offsetY)*s.width+std::size_t(left-s.offsetX),std::size_t(right-left),output.data()+std::size_t(y-r.y)*r.width+std::size_t(left-r.x));
+   }
+   return output;
+  }
+ }
  // Storage origins identify stable history coordinates; world rendering uses
  // surface offsets only, including after an owner expands without cropping.
  auto renderLayer=[&](std::size_t index,CompositeRegion r,std::vector<Pixel>& out,bool raw=false){

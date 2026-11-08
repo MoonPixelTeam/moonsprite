@@ -9,6 +9,12 @@ int main(int argc,char**argv){try{
  auto state=scene();auto result=compositeNormalRegion(Timeline(state),"a",{0,0,3,2});CHECK(result[0]==0xffff0000 && result[1]==0xff7f0080 && result[2]==0xff00ff00);CHECK(result[4]==0xffff0000);
  CHECK(compositeNormalRegion(Timeline(state),"b",{0,0,3,2})==std::vector<Pixel>(6,0));
  auto partial=compositeNormalRegion(Timeline(state),"a",{1,0,1,1});CHECK(partial.size()==1 && partial[0]==result[1]);
+ // Actual legacy single-RGBA row-copy path retains transparent RGB, offsets,
+ // linked owners and zero padding. Multi-layer/effect paths still composite.
+ {State s;s.layers={{"only",U"Only"}};s.frames={{"a",100},{"b",100}};Cel c;c.id="owner";c.layerId="only";c.frameId="a";c.surface=Surface{3,1,-1,2,{},{},{0x00112233,0x80776655,0xffabcdef}};s.cels.push_back(c);c.id="linked";c.frameId="b";c.surface.reset();c.linkedCelId="owner";s.cels.push_back(c);
+  const std::vector<Pixel> expected{0,0x00112233,0x80776655,0xffabcdef,0};CHECK(compositeNormalRegion(Timeline(s),"a",{-2,2,5,1})==expected);CHECK(compositeNormalRegion(Timeline(s),"b",{-2,2,5,1})==expected);CHECK(compositeNormalRegion(Timeline(s),"a",{-2,1,5,1})==std::vector<Pixel>(5));CHECK(compositeNormalRegion(Timeline(s),"a",{-2,2,0,0}).empty());
+  s.layers[0].visible=false;CHECK(compositeNormalRegion(Timeline(s),"a",{-2,2,5,1})==std::vector<Pixel>(5));s.layers[0].visible=true;s.cels[0].opacity=.5;CHECK(compositeNormalRegion(Timeline(s),"a",{-1,2,1,1})[0]==0);s.cels[0].opacity=1;s.layers.push_back({"empty",U"Empty"});CHECK(compositeNormalRegion(Timeline(s),"a",{-1,2,1,1})[0]==0);
+ }
  // A staged owner in another frame is visible through its linked active Cel before installation.
  {auto linked=state;auto owner=linked.cels[1];owner.id="top-b";owner.frameId="b";linked.cels.push_back(owner);linked.cels[1].surface.reset();linked.cels[1].linkedCelId="top-b";linked.layers[1].visible=false;std::vector<Pixel> staged(6,0x800000ff);CHECK(compositeNormalRegion(Timeline(linked),"a",{0,0,1,1},{},&staged,3,0,0,false,{},"top-b")[0]==0x800000ff);}
  // Legacy storage-origin metadata is independent from world-space rendering.

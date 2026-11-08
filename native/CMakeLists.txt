@@ -668,6 +668,9 @@ if(TARGET clip)
   add_executable(clipboard-document-tests tests/clipboard_document_test.cpp)
   target_link_libraries(clipboard-document-tests PRIVATE moon-core clip)
   add_test(NAME clipboard-document COMMAND clipboard-document-tests)
+  add_executable(large-creation-tests tests/large_creation_test.cpp)
+  target_link_libraries(large-creation-tests PRIVATE moon-project-reader clip)
+  add_test(NAME large-creation COMMAND large-creation-tests "${CMAKE_CURRENT_BINARY_DIR}/large-creation-test-owned")
 endif()
 
 # Recovery session is widget-free and can be exercised without the desktop host.

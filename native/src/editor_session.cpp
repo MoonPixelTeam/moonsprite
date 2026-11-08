@@ -748,7 +748,9 @@ void Editor::showNewDocument(bool verify) {
 
       }
 
-      timer->stop();writeSmokeFrame(surface.get(),assets_.parent_path()/"new-document-dialog.bmp");popup.smoke();
+      if(geometryPhase==18){writeSmokeFrame(surface.get(),assets_.parent_path()/"new-document-dialog.bmp");popup.smoke(false);popup.smokeLarge(0);++geometryPhase;return;}
+      if(geometryPhase==19){writeSmokeFrame(surface.get(),assets_.parent_path()/"new-document-large-invalid.bmp");popup.smokeLarge(1);++geometryPhase;return;}
+      if(geometryPhase==20){writeSmokeFrame(surface.get(),assets_.parent_path()/"new-document-large.bmp");popup.smokeLarge(2);++geometryPhase;timer->stop();}
 
     });timer->start();}
 
