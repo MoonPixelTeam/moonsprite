@@ -848,7 +848,7 @@ bool Editor::onProcessMessage(ui::Message* msg) {
       if(processSmoothInput(msg))return true;
       if(processAirbrushInput(msg))return true;
       const bool freeTileSourceEdit=ordinaryBrushTool()&&document.layer().kind=="free-tile"&&!document.freeTilePaintMode()&&document.activeMaskId().empty()&&document.layer().freeTiles&&!document.layer().freeTiles->sources.empty();
-      if(msg->type()==ui::kMouseDownMessage && !document.active() && (mouse->left() || mouse->right()) && !spaceHeld_ && !handTool_ && canvasViewport().contains(mouse->position()) && canvasDocumentContains(mouse->position()) && (document.rasterToolsAvailable()||freeTileSourceEdit)) {
+      if(msg->type()==ui::kMouseDownMessage && !document.active() && (mouse->left() || mouse->right()) && !spaceHeld_ && !handTool_ && canvasViewport().contains(mouse->position()) && canvasDocumentContains(mouse->position()) && (document.rasterToolsAvailable()||freeTileSourceEdit||(ordinaryBrushTool()&&document.activeMaskId().empty()&&document.layer().kind=="tilemap"&&!document.hasSelectedGroups()&&!document.layerEffectivelyLocked(document.layer())&&document.layerEffectivelyVisible(document.layer())))) {
 
         hideTimelineSelectionGuides();paletteFocused_=false;const bool hadSelection=!document.palette().selected.empty();document.clearPaletteSelection();requestFocus(); captureMouse(); strokeButton_=mouse->button();
 

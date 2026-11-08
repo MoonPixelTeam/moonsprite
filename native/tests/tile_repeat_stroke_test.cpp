@@ -1,6 +1,7 @@
 #include "document.h"
 #include <iostream>
 using namespace moon;
+#include "fixtures/tile_repeat_legacy.h"
 namespace moon {struct RasterHistoryFixture {static void removeActive(Document& d){auto state=d.timeline_.state();const auto id=d.cel().id;state.cels.erase(std::remove_if(state.cels.begin(),state.cels.end(),[&](const auto& c){return c.id==id;}),state.cels.end());d.timeline_=timeline::Timeline(std::move(state));}};}
 #define CHECK(x) do{if(!(x))throw std::runtime_error(std::string(#x)+" line "+std::to_string(__LINE__));}while(false)
 static void begin(Document& d,Point p,Pixel color,BrushOptions b,repeat::Mode mode,const PatternBrush* image=nullptr){d.beginStroke(p,color,b,image,0,nullptr,true,false,false,mode);}
@@ -32,4 +33,15 @@ int main(){try{
  {Document d(8,4);d.setFloatingRepeat(repeat::Mode::X);d.beginStroke({7,1},0x80112233);d.commitStroke();d.beginStroke({0,1},0x80445566);d.commitStroke();const auto before=d.canvasPixels();d.previewSelection(SelectionMask{7,1,2,1,{}});CHECK(d.beginSelectionContentMove(false));d.moveFloatingPaste(8,1);CHECK(d.commitFloatingPaste());CHECK(d.canvasPixels()[8]==brushComposite(before[8],before[15],100));CHECK(!d.canvasPixels()[15]);d.undo();CHECK(d.canvasPixels()==before);}
 
  {Document d(8,4);RasterHistoryFixture::removeActive(d);d.setFloatingRepeat(repeat::Mode::X);SelectionClipboard source;source.width=3;source.height=1;source.pixels={0xff112233,0xff445566,0xff778899};source.mask={1,1,1};CHECK(d.beginFloatingPaste(source,7,1));CHECK(d.floatingDeferred());CHECK(d.floatingOverlayRegion({0,0,8,4})[8]==source.pixels[1]);CHECK(d.commitFloatingPaste());const auto after=d.canvasPixels();CHECK(after[8]==source.pixels[1]&&after[15]==source.pixels[0]);d.undo();const auto undone=d.canvasPixels();CHECK(std::all_of(undone.begin(),undone.end(),[](auto p){return !p;}));d.redo();CHECK(d.canvasPixels()==after);}
+
+ for(auto mode:{repeat::Mode::X,repeat::Mode::Y,repeat::Mode::Both})for(bool erase:{false,true}){
+  Document d(10,8);d.beginStroke({0,0},0xff123456);d.commitStroke();CHECK(d.convertLayerToTilemap(2,2,U"Repeat Paint"));d.setTilemapMode(tiles::Mode::Paint);const auto before=d.timeline().resolveSurface(d.cel().id).source->tilemap->cells;const auto sheet=d.timeline().state().tilesets.front().pixels;const auto history=d.historyPosition();const bool x=repeat::includesX(mode);const Point a=x?Point{9,3}:Point{3,7},b=x?Point{11,3}:Point{3,9};
+  d.beginStroke(a,0xff123456,{},nullptr,0,nullptr,true,false,erase,mode);d.updateStroke(b);d.commitStroke();const auto after=d.timeline().resolveSurface(d.cel().id).source->tilemap->cells;
+  const int first=x?9:16,last=x?5:1,middle=x?7:11;
+  if(!erase){CHECK(after[first]&&after[last]);CHECK(after[middle]==before[middle]);CHECK(d.historyPosition()==history+1);d.undo();CHECK(d.timeline().resolveSurface(d.cel().id).source->tilemap->cells==before);d.redo();CHECK(d.timeline().resolveSurface(d.cel().id).source->tilemap->cells==after);}
+  CHECK(d.timeline().state().tilesets.front().pixels==sheet);
+  d.beginStroke(a,0xff123456,{},nullptr,0,nullptr,true,false,!erase,mode);d.updateStroke(b);d.cancelStroke();CHECK(d.timeline().resolveSurface(d.cel().id).source->tilemap->cells==after);
+ }
+
+ for(const auto& c:repeatCellLineCases){Document d(c.columns*2,c.rows*2);d.fillSelectionOrCanvas(0xff123456);CHECK(d.convertLayerToTilemap(2,2,U"Legacy path"));d.setTilemapMode(tiles::Mode::Paint);const auto before=d.cel().tilemap->cells;const auto history=d.historyPosition();auto point=[&](int index){return Point{index%c.columns*2,index/c.columns*2};};d.beginStroke(point(c.from),0,{},nullptr,0,nullptr,true,false,true,repeat::Mode(c.mode));d.updateStroke(point(c.to));CHECK(d.commitStroke());auto expected=before;for(int index:c.expected)expected[index].reset();CHECK(d.cel().tilemap->cells==expected);CHECK(d.historyPosition()==history+1);d.undo();CHECK(d.cel().tilemap->cells==before);d.redo();CHECK(d.cel().tilemap->cells==expected);}
  std::cout<<"Repeated solid/perfect/dynamic coverage, selection, cancel and undo passed\n";return 0;}catch(const std::exception& e){std::cerr<<e.what()<<'\n';return 1;}}
