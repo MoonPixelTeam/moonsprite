@@ -4,6 +4,7 @@
 #include "latest_task_queue.h"
 #include "layer_panel_storage.h"
 #include <fstream>
+#include <thread>
 #include "ui/property.h"
 namespace moon::editor {
 namespace {
@@ -70,6 +71,7 @@ void Editor::saveLayerPanelState(bool flush){
    const auto path=documentPath_.empty()?document.sourceFilePath():documentPath_;
    if(!path.empty()){
     auto memory=std::dynamic_pointer_cast<PanelMemory>(getProperty("moonsprite.panel-memory"));if(!memory){memory=std::make_shared<PanelMemory>();setProperty(memory);}
+    if(!memory->loaded&&writes)writes->poll(true);
     if(!memory->load((testRoot?std::filesystem::path(testRoot):palettePreferencePath().parent_path())/"layer-panel-state-v1.json"))return;
     const auto state=document.layerPanelState();const auto key=paneljson::pathKey(path.u8string());
     if(!memory->last||memory->lastPath!=key||*memory->last!=state){
@@ -86,6 +88,7 @@ void Editor::loadLayerPanelState(){
  const auto testRoot=smoke_?_wgetenv(L"MOONSPRITE_PANEL_STATE_TEST_ROOT"):nullptr;if(smoke_&&!testRoot)return;const auto path=documentPath_.empty()?document.sourceFilePath():documentPath_;if(path.empty())return;
  try{
   auto memory=std::dynamic_pointer_cast<PanelMemory>(getProperty("moonsprite.panel-memory"));if(!memory){memory=std::make_shared<PanelMemory>();setProperty(memory);}
+  if(!memory->loaded)if(auto writes=std::dynamic_pointer_cast<ViewWrites>(getProperty("moonsprite.view-writes")))writes->poll(true);
   if(!memory->load((testRoot?std::filesystem::path(testRoot):palettePreferencePath().parent_path())/"layer-panel-state-v1.json"))return;
   if(const auto state=paneljson::storedState(memory->store,path.u8string()))document.applyLayerPanelState(paneljson::decode(state,document.layer().id));
   memory->lastPath=paneljson::pathKey(path.u8string());memory->last=document.layerPanelState();
@@ -141,6 +144,36 @@ void Editor::smokeViewRotation(){
      ordered.enqueue({path,"A"});const bool latestWins=state->queue.pendingValue()&&state->queue.pendingValue()->text=="A";
      release.set_value();ordered.poll(true);
      if(!duplicateActive||!duplicatePending||!latestWins||seen!=std::vector<std::string>{"A","A"})throw std::runtime_error("View duplicate suppression changed latest state ordering");
+   }
+   // Reload a fresh cache while an immutable local-state generation is still
+   // owned by the worker. A delayed worker deterministically exposes stale reads.
+   {
+    const auto oldSmoke=smoke_,oldOpen=documentOpen_;const auto oldPath=documentPath_;auto oldDocument=std::move(document);
+    struct Restore {Editor& editor;Document& saved;bool smoke,open;std::filesystem::path path;std::wstring environment;bool hadEnvironment=false;
+     Restore(Editor& e,Document& d,bool s,bool o,std::filesystem::path p):editor(e),saved(d),smoke(s),open(o),path(std::move(p)){if(const auto value=_wgetenv(L"MOONSPRITE_PANEL_STATE_TEST_ROOT")){environment=value;hadEnvironment=true;}}
+     ~Restore(){editor.removeProperty("moonsprite.panel-memory");editor.removeProperty("moonsprite.view-writes");editor.document=std::move(saved);editor.documentPath_=path;editor.smoke_=smoke;editor.documentOpen_=open;_wputenv_s(L"MOONSPRITE_PANEL_STATE_TEST_ROOT",hadEnvironment?environment.c_str():L"");}
+    } restore(*this,oldDocument,oldSmoke,oldOpen,oldPath);
+    smoke_=true;documentOpen_=true;document=Document(4,2);document.addLayer();document.createLayerGroup();const auto group=document.timeline().state().groups.front().id;documentPath_=directory/"reload.moonsprite";
+    const auto root=directory/"reload-preferences";std::filesystem::create_directories(root);_wputenv_s(L"MOONSPRITE_PANEL_STATE_TEST_ROOT",root.c_str());
+    removeProperty("moonsprite.panel-memory");removeProperty("moonsprite.view-writes");saveLayerPanelState(true);const auto file=root/"layer-panel-state-v1.json";
+    document.toggleGroupCollapsed(group);const auto expected=document.layerPanelState();
+    auto memory=std::dynamic_pointer_cast<PanelMemory>(getProperty("moonsprite.panel-memory"));paneljson::remember(memory->store,documentPath_.u8string(),expected,1);const auto text=winrt::to_string(memory->store.Stringify());
+    auto pending=std::make_shared<std::promise<void>>();auto gate=pending->get_future().share();auto writes=std::make_shared<ViewWrites>(this,[&](const std::string& message){throw std::runtime_error(message);});
+    auto writer=std::make_unique<ViewWrites::Writer>([gate](auto value){return std::async(std::launch::async,[gate,value]{gate.wait();writeExportBytesAtomic(value->path,{value->text.begin(),value->text.end()});});});
+    writer->acknowledgements.push_back(writer->queue.enqueue(std::make_shared<const ViewWrite>(ViewWrite{file,text})));writes->writers.emplace(file,std::move(writer));setProperty(writes);removeProperty("moonsprite.panel-memory");document.toggleGroupCollapsed(group);
+    auto release=std::async(std::launch::async,[pending]{std::this_thread::sleep_for(std::chrono::milliseconds(40));pending->set_value();});
+    loadLayerPanelState();release.get();if(document.layerPanelState()!=expected)throw std::runtime_error("Local panel reload raced pending immutable write");
+    // Save's fresh-cache read must see the prior generation's new project too;
+    // otherwise the second writer silently removes that entry when it commits.
+    auto staged=std::dynamic_pointer_cast<PanelMemory>(getProperty("moonsprite.panel-memory"))->store;
+    const auto background=directory/"background.moonsprite";paneljson::remember(staged,background.u8string(),expected,2);const auto stagedText=winrt::to_string(staged.Stringify());
+    auto pendingSave=std::make_shared<std::promise<void>>();auto saveGate=pendingSave->get_future().share();
+    auto heldWriter=std::make_unique<ViewWrites::Writer>([saveGate](auto value){return std::async(std::launch::async,[saveGate,value]{saveGate.wait();writeExportBytesAtomic(value->path,{value->text.begin(),value->text.end()});});});
+    heldWriter->acknowledgements.push_back(heldWriter->queue.enqueue(std::make_shared<const ViewWrite>(ViewWrite{file,stagedText})));writes->writers.emplace(file,std::move(heldWriter));
+    documentPath_=directory/"second-reload.moonsprite";removeProperty("moonsprite.panel-memory");
+    auto releaseSave=std::async(std::launch::async,[pendingSave]{std::this_thread::sleep_for(std::chrono::milliseconds(40));pendingSave->set_value();});saveLayerPanelState(true);releaseSave.get();
+    std::ifstream in(file,std::ios::binary);const auto stored=paneljson::JsonObject::Parse(winrt::to_hstring(std::string(std::istreambuf_iterator<char>(in),{})));
+    if(!paneljson::storedState(stored,(directory/"reload.moonsprite").u8string())||!paneljson::storedState(stored,background.u8string())||!paneljson::storedState(stored,documentPath_.u8string()))throw std::runtime_error("Fresh panel writer dropped another document entry");
    }
    int errors=0;ViewWrites writes(this,[&](const std::string&){++errors;});
    const auto first=directory/"queue-first.txt",second=directory/"queue-second.txt";

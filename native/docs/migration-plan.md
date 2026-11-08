@@ -4020,3 +4020,14 @@ recovery-commit-build.log正式程序构建成功、测试因直接编译store�
 定向回归覆盖86/87/95/96/97/256/2048字符名称及各12个重名，跨一/二位后缀；已有畸形文件占位验证-105三位后缀、保留原文件；另验证96字符内置ID保留、1024字符显示名称覆盖和Unicode名称保存重开。具体验证结果待构建完成补全。
 
 验证结果：palette-long-name-build正式程序已构建，测试首次因Windows min宏编译失败；测试显式NOMINMAX后palette-long-name-final-build正式Release和palette-library-tests构建退出0，palette-long-name-tests完整既有色板库套件加上述新样例通过。最终正式程序--native-save-check、--aseprite-save-check及--home-recovery-check均退出0，日志palette-long-name-existing-ui-tests.log。正常来源覆盖666文件通过；strict按全局既有缺口退出1，差异检查通过。未做新UI布局/截图或人工长时间验收，未自动修复/重命名现有旧版不可读色板文件，全量迁移仍INCOMPLETE。上一批A/B/A单次失败继续保留待查，最终trace版本再次通过不构成其根因解释。
+
+
+### 2026-11-08 本地图层状态缓存重建的写后读顺序
+
+接续85e37d00，继续上一批持久化稳定性。legacy/core/layer-panel-state.ts使用同步localStorage读写；原生适配为异步原子文件后，缓存首次载入需要排在已有不可变写出之后。本批在loadLayerPanelState和saveLayerPanelState的PanelMemory首次读取前，等待既有ViewWrites完成；正常已载入缓存的导航仍走非阻塞去重/最新任务队列。没有通过增加盲重试、强制每次导航同步落盘或清理恢复数据处理。
+
+正式--view-rotation-check的受控worker回归：保留旧磁盘状态，阻塞新状态写出40ms，在写出未完成时重建缓存，验证载入应用新折叠状态；第二个受控写出向存储新增background工程条目，此时新工程触发首次缓存读取及保存，最终三个工程条目全部存在，防止基于旧磁盘覆盖其他工程。沿用实际原子写出、ViewWrites及Editor入口，不替换为内存模拟文件。既有队列重复/A/B/A/双路径40次状态写入/错误报告/失败后后续任务/关闭刷新测试一并执行。
+
+上一批--native-save-check在快速A/B/A之间逐步写trace，可能改变调度；本批移除序列中的诊断磁盘IO，全部切换、flush和reload完成后才记录预期、实际状态、写入/载入状态栏及最终磁盘内容。新发现的缓存重建顺序竞态有受控测试证据，但不能据此解释38036-105674921那次显式flush后的失败，其根因仍未证实、现场保留。
+
+验证：panel-reload-order-build、panel-reload-complete-build及panel-reload-final-build正式Release构建退出0；首次受控载入测试通过，最终panel-reload-final-ui-tests中的--view-rotation-check与--native-save-check均退出0。最终受控夹具panel-reload-owned-ff6c410c10e54b43b5cb46bf6d5dc8bf保留于native/build。无UI布局变更、新截图或人工长时间验收；全部迁移仍INCOMPLETE，保存进度关闭后继续编辑、多文档后台保存路由及其余缺口未因此关闭。
