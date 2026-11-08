@@ -591,6 +591,8 @@ int main() {
     dot(countBounded,1,1);dot(countBounded,2,2);dot(countBounded,3,3);CHECK(countBounded.historySize()==2);
     CHECK(nextCanvasScale(0.0625,-1)==0.0625);
     bool rejected=false; try { Document invalid(0,32); } catch(const std::invalid_argument&) { rejected=true; } CHECK(rejected);
+    {auto wide=Document::fromImage(1072,160,std::vector<Pixel>(1072*160,0xff203040),U"hall");CHECK(wide.width()==1072&&wide.height()==160&&wide.pixels().back()==0xff203040);wide.beginStroke({1071,159},ink);wide.commitStroke();CHECK(wide.pixels().back()==ink);wide.undo();CHECK(wide.pixels().back()==0xff203040);wide.redo();CHECK(wide.pixels().back()==ink);}
+    {bool rejected=false;try{Document overBudget(32768,32768);}catch(const std::invalid_argument&){rejected=true;}CHECK(rejected);}
     std::cout << "PASS: transactions, cancel, no-op, corners, clipping, redo branches, saved identities, coordinates\n";
     return 0;
   } catch(const std::exception& e) { std::cerr << e.what() << '\n'; return 1; }

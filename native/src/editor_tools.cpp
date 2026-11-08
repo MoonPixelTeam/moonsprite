@@ -1,3 +1,4 @@
+#include "home_banner_pane.h"
 #include "editor_implementation.h"
 #include "editor.h"
 #include "brush_library_delete_dialog.h"
@@ -554,6 +555,7 @@ void Editor::layoutHome() {
 
     const auto box=homeBounds();const int left=homeLeftWidth(),right=box.x+left+12,width=box.w-left-12;
 
+    if(homeBannerPane_){homeBannerPane_->setBounds(uiPhysical({box.x,box.y+44,box.w,homeBannerHeight()}));homeBannerPane_->setVisible(shown);homeBannerPane_->setEnabled(usable);homeBannerPane_->setActive(shown);if(shown&&(homeBannerInitialized_||!recentSettingsOverride_.empty())&&(!smoke_||!recentSettingsOverride_.empty()))homeBannerPane_->start(galleryDirectory());}
     const bool compact=box.h<340;const int top=homeContentY(),primaryStep=compact?24:34,resourceTop=top+2*primaryStep+(compact?10:22),resourceStep=compact?18:26;
 
     const auto resourceViewport=uiPhysical(gfx::Rect(box.x,resourceTop,left,std::max(1,box.y2()-resourceTop)));
@@ -609,7 +611,7 @@ void Editor::showHome(bool open) {
     if(open && advancedActive())changeAdvancedMode(0);
     playing_=false;
 
-    if(open && !homeOpen_){homeVisibility_.clear();for(auto child:children())homeVisibility_.push_back({child,!child->hasFlags(ui::HIDDEN)});loadHomeSection();homeBannerDue_=std::chrono::steady_clock::now()+std::chrono::seconds(8);}
+    if(open && !homeOpen_){homeVisibility_.clear();for(auto child:children())homeVisibility_.push_back({child,!child->hasFlags(ui::HIDDEN)});loadHomeSection();if(homeBannerPane_&&(homeBannerInitialized_||!recentSettingsOverride_.empty())&&(!smoke_||!recentSettingsOverride_.empty()))homeBannerPane_->start(galleryDirectory(),true);}
 
     homeOpen_=open;refresh();
 
@@ -629,7 +631,7 @@ void Editor::createHome() {
 
     auto image=[&](const std::filesystem::path& path){const auto patch=importSkinPng(path,2048);const auto& b=*patch.bitmap;auto surface=os::instance()->makeRgbaSurface(b.width,b.height);surface->clear();{os::SurfaceLock lock(surface.get());for(int y=0;y<b.height;++y)for(int x=0;x<b.width;++x){const auto p=b.pixels[y*b.width+x];surface->putPixel(gfx::rgba(p&255,(p>>8)&255,(p>>16)&255,p>>24),x,y);}}return surface;};
 
-    homeLogo_=image(assets_/"home/logo.png");for(const auto name:{"fire","crystal","coast","hall","stone-lion","contempt"})homeBanners_.push_back(image(assets_/"home"/(std::string("home-banner-")+name+".png")));
+    homeLogo_=image(assets_/"home/logo.png");homeBannerPane_=new HomeBannerPane(font_,skin_,toolIcons_,assets_);addChild(homeBannerPane_);homeBannerPane_->open=[this](const auto& banner){openHomeBanner(banner);};homeBannerPane_->author=[this](const std::string& url){try{homeBannerAuthorLauncher_(url);}catch(const std::exception& e){status_=unicodeText(e.what());invalidate();}};
 
     loadRecentProjects();
 
@@ -703,18 +705,6 @@ void Editor::paintHome(ui::Graphics& g) {
     text(U"MOONSPRITE",box.x+36,box.y+2);text(U"像素艺术专业编辑器",box.x+36,box.y+17,true);
 
     g.fillRect(skin_["border"],gfx::Rect(box.x,box.y+36,box.w,1));
-
-    const auto& banner=homeBanners_[homeBanner_%homeBanners_.size()];const gfx::Rect frame(box.x,box.y+44,box.w,homeBannerHeight());
-
-    const double factor=std::max(double(frame.w)/banner->width(),double(frame.h)/banner->height());const int sourceW=std::max(1,int(frame.w/factor)),sourceH=std::max(1,int(frame.h/factor));
-
-    g.drawSurface(banner.get(),gfx::Rect((banner->width()-sourceW)/2,(banner->height()-sourceH)/2,sourceW,sourceH),frame,os::Sampling(),nullptr);
-
-    const char32_t* titles[]{U"火焰之境 · 90y",U"月球基底 · 90y",U"沙船 · 90y",U"大厅 · 90y",U"石狮 · 线框",U"蔑视 · 月猫"};
-
-    const int creditWidth=font_.measure(titles[homeBanner_%6])+12;
-
-    g.fillRect(skin_["background"],gfx::Rect(frame.x2()-creditWidth-4,frame.y2()-17,creditWidth,13));text(titles[homeBanner_%6],frame.x2()-creditWidth+2,frame.y2()-15,true);
 
     const int left=homeLeftWidth(),right=box.x+left+12,width=box.w-left-12;
 

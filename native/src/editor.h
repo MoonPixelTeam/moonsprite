@@ -64,8 +64,9 @@
 #include "menu_catalog.h"
 #include "project_encode.h"
 #include "cel_thumbnail_pipeline.h"
-namespace moon {class PixelTextArea;class LegacyCursors;class FreeTileInstancesPanel;}
+namespace moon {class HomeBannerPane;class PixelTextArea;class LegacyCursors;class FreeTileInstancesPanel;}
 
+namespace moon::home {struct Banner;}
 namespace moon::editor {
 template<class Base> class DialogBackground;
 class PreviewPanel;
@@ -143,7 +144,13 @@ private:
   std::filesystem::path galleryDirectory()const;std::filesystem::path galleryMarker()const;void loadGallery();void galleryTick();void saveGalleryPins();void toggleGalleryPin(const std::string&);void deleteGalleryProject(const std::string&,int verify=0);void openGalleryFolder();
 
 
-  std::vector<os::SurfaceRef> homeBanners_;
+  HomeBannerPane* homeBannerPane_=nullptr;bool homeBannerInitialized_=false;
+  std::function<void(const std::string&)> homeBannerAuthorLauncher_=[](const std::string& url){if(url.rfind("https://",0)!=0&&url.rfind("http://",0)!=0)throw std::runtime_error("Only HTTP/HTTPS author links are supported");const auto target=std::filesystem::u8path(url).wstring();SHELLEXECUTEINFOW action{};action.cbSize=sizeof(action);action.fMask=SEE_MASK_FLAG_NO_UI;action.lpVerb=L"open";action.lpFile=target.c_str();action.nShow=SW_SHOWNORMAL;if(!ShellExecuteExW(&action))throw std::runtime_error("Cannot open author link; Windows="+std::to_string(GetLastError()));};
+  void openHomeBanner(const home::Banner&);
+public:
+  void smokeHomeBanner();
+  void initializeHomeBanner(bool testing);
+private:
 
   os::SurfaceRef homeLogo_;
 

@@ -54,8 +54,8 @@ void PixelRegion::include(int px,int py) {
 Document::Document(int w,int h,std::size_t maxBytes,std::size_t maxEntries)
   : width_(w),height_(h),maxBytes_(maxBytes),maxEntries_(normalizeHistoryLimit(maxEntries)) {
   static std::atomic<std::uint64_t> nextIdentity{0};identity_=++nextIdentity;
-  if (w < 1 || h < 1 || w > 1024 || h > 1024)
-    throw std::invalid_argument("Prototype canvas must be 1..1024 pixels per side");
+  if (w < 1 || h < 1 || w > 32768 || h > 32768 || std::uint64_t(w)*h > 64ull*1024*1024)
+    throw std::invalid_argument("Canvas exceeds native coordinate or 256 MiB pixel budget");
   timeline::State initial;
   initial.layers.push_back({"layer-"+std::to_string(identity_),U"图层 1"});
   initial.frames.push_back({"frame-1",100});
@@ -1466,7 +1466,7 @@ Document Document::fromClipboardRaster(const SelectionClipboard& source) {
   result.name_=U"粘贴的图像";result.modified_=true;
   return result;
 }
-Document Document::fromImage(int width,int height,std::vector<Pixel> pixels,std::u32string name){if(width<1||height<1||width>1024||height>1024||pixels.size()!=std::size_t(width)*height)throw std::invalid_argument("Native images must be 1..1024 pixels");Document d(width,height);d.timeline_.mutableOwnedSurface(d.cel().id)->pixels=std::move(pixels);// legacy imported-palette.ts: sparse rare colors must survive large low-color images.
+Document Document::fromImage(int width,int height,std::vector<Pixel> pixels,std::u32string name){if(width<1||height<1||width>32768||height>32768||std::uint64_t(width)*height>64ull*1024*1024||pixels.size()!=std::size_t(width)*height)throw std::invalid_argument("Image exceeds native coordinate or 256 MiB pixel budget");Document d(width,height);d.timeline_.mutableOwnedSurface(d.cel().id)->pixels=std::move(pixels);// legacy imported-palette.ts: sparse rare colors must survive large low-color images.
 std::unordered_set<Pixel> exact;for(const auto color:d.pixels())if(color>>24){exact.insert(color);if(exact.size()>4096)break;}
 auto colors=extractImportedPalette({d.pixels()},256,exact.size()<=4096?d.pixels().size():262144);d.palette_.entries.clear();d.palette_.slots.clear();int id=1;for(auto c:colors){{auto text=std::to_string(id);d.palette_.entries.push_back({id,std::u32string(text.begin(),text.end()),c});}d.palette_.slots.push_back(id++);}d.palette_.slots.resize((d.palette_.slots.size()+7)/8*8);d.palette_.nextId=id;d.name_=std::move(name);d.markSaved();return d;}
 bool Document::importSpriteSheet(const SheetImportOptions& options){if(hasTilemapContent()||hasFreeTileContent())return false;commitFloatingPaste();cancelStroke();auto next=buildSpriteSheetImport(*this,options);Edit e{{},state_,nextState_};e.beforeDimensions={{width_,height_}};e.afterDimensions={{options.width,options.height}};e.beforeTimeline=timeline_.state();e.afterTimeline=std::move(next);e.beforeActive=activeLayerId_;e.beforeFrame=activeFrameId_;e.afterActive=e.afterTimeline->layers.front().id;e.afterFrame=e.afterTimeline->frames.front().id;e.pixelSelectionEdit=true;e.beforePixelsSelection=selection_;e.beforeSelection=selectedFrames_;e.afterSelection=std::vector<std::string>{};reserveHistoryEntries();applyEdit(e,true);publishChange();pushEdit(std::move(e),U"导入精灵表");return true;}

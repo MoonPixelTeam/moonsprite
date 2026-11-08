@@ -504,7 +504,6 @@ std::filesystem::path Editor::recoveryDirectory() {
   }
 
 void Editor::recoveryTick(bool force) {
-    if(homeOpen_ && !homeBanners_.empty() && std::chrono::steady_clock::now()>=homeBannerDue_){homeBanner_=(homeBanner_+1)%int(homeBanners_.size());homeBannerDue_=std::chrono::steady_clock::now()+std::chrono::seconds(8);invalidate();}
     activeRecoveryTick(force);
     if(projects_.size()<2 || pending_==Pending::Saving || (smoke_ && !force))return;
     const auto count=force?projects_.size():std::size_t(1);

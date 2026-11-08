@@ -95,7 +95,7 @@ ImportPalette prepareEditablePalette(const ReadManifest& m){
 PreparedImport prepareEditableImport(const ReadManifest& m) {
  if(!m.unsupported.empty()) throw Error(ErrorKind::Unsupported,"Unsupported project content: "+m.unsupported.front());
  corrupt(m.id.empty()||m.width<1||m.height<1,"Invalid document identity or dimensions");
- unsupported(m.width>1024||m.height>1024,"Editor currently supports dimensions up to 1024");
+ unsupported(m.width>32768||m.height>32768||std::uint64_t(m.width)*m.height>64ull*1024*1024,"Canvas exceeds native coordinate or 256 MiB pixel budget");
  unsupported(m.colorMode!="rgba","Only RGBA projects are editable");
  // Legacy refreshActiveAnimationFrame clears missing ordinary slots while
  // preserving displayed geometry; ensureAnimationDocument later materializes

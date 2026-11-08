@@ -101,7 +101,7 @@ Bytes encodeResourceArchive(const std::map<std::string,Bytes>& files,Limits limi
 }
 static EncodedProject encodeProject(const Document& d,Limits limits,bool recovery,int compression=0){
   if(d.active())throw Error(ErrorKind::Unsupported,"Commit or cancel the active stroke before saving");
-  if(d.width()<1||d.height()<1||d.width()>1024||d.height()>1024)
+  if(d.width()<1||d.height()<1||d.width()>32768||d.height()>32768||std::uint64_t(d.width())*d.height()>64ull*1024*1024)
     throw Error(ErrorKind::Unsupported,"Unsupported document canvas dimensions");
   // Format encoding accepts independent RGBA owners. This does not admit
   // sparse external editing. Formal save separately validates reopen admission.
