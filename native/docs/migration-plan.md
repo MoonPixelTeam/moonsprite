@@ -4196,3 +4196,20 @@ sheet-import-parameters-build.log首次正式Release构建退出0，sheet-import
 最终sheet-import-selection-build.log正式Release及sprite-sheet-import-tests构建退出0；sheet-import-selection-ui-tests.log的--sheet-import-check、--sheet-new-document-check、--new-document-check全部退出0，运行前后正式exe SHA256一致（011DF0F8E02AB7A7DFDD1B89DACF2E594C774313DEDE54A00545B709B0BC3707）。实际Editor覆盖三种live选区变化后的冻结切片、基于冻结尺寸的列数反算、提交清除选区／可见旋转中心／两种画笔锚点、undo恢复live选区／旋转中心、redo清除、取消释放快照、超预算失败保留快照／状态以及普通导入旋转中心恢复。
 
 重新查看此次运行生成的sheet-import-padding-on.bmp／off.bmp：默认2×下既有字段、间距开关、说明和底部按钮完整、无交叠；这些截图仅证明既有参数布局，旋转中心生命周期由实际Editor状态断言覆盖，不宣称有旋转中心叠加图像验收、全缩放或全软件UI性能量化。来源覆盖688文件通过，strict因全局既有缺口仍退出1；Node语法与git diff --check通过。保留所有既有未跟踪诊断、工程／恢复数据和缓存，全量迁移保持INCOMPLETE。
+
+
+### 2026-11-08 精灵表导入实时预览、交互与弹窗换源（已通过定向验证）
+
+继续关闭同一导入链路的已登记缺口。逐项核对实际SpriteSheetImportPreview和父级useAppDocumentDialogs的document-id key：首格移动／绘制、四边、间距、命中优先级、取消／blur、空格或中键平移、鼠标锚定1.2缩放和自动适合窗口；普通模式弹窗内选源，新文档身份重置默认值，取消／失败保留旧来源／草稿／视图，选区模式不提供换源。复用原生openPath读取器和来源身份／页签处理，不另造解码器。
+
+预览独立原生控件保留旧版只在来源内容变化时合成的处理：已有RasterSnapshot以2ms／1MiB批次捕获，后台独立timeline合成分块检查取消；完成后以1MiB批次上传，关闭不等待线程，过期来源／revision／frame结果不发布。参数／视图只更新缓存tile规划与叠加绘制，不复制undo，不全刷新Editor。保留原生256MiB工作预算，先检查快照／输出／表面后分配，失败不阻止继续改草稿。使用现有像素字体、checkerboard和皮肤；增加必要预览区、适合窗口和换源入口。
+
+make-sheet-import-preview-fixtures.cjs运行实际未改写TSX事件处理器生成216组拖动／取消和2组锚定wheel，hook／DOM只是传输桥接；native模型测试及既有sprite-sheet-import核心通过（sheet-import-preview-core-tests.log），旧版四个测试文件21项通过（sheet-import-preview-legacy-tests.log）。首轮正式构建发现Windows near宏与局部变量同名，已停止构建、确认编译进程结束再改为nearEdge；固定版本仍待正式构建与窗口运行。
+
+对照本地Aseprite cmd_import_sprite_sheet.cpp的SelectBoxDelegate只更新字段与独立editor预览处理；该模块头部明确EULA，仅阅读比较，未复制实现。旧版MoonSprite交互仍为权威，未采用Aseprite销毁此前文件或不同span算法。索引／灰度完整编辑、瓦片／自由瓦片专属导入事务及其他全局迁移仍未完成，不以本批宣称整体UI卡顿已解决。
+
+固定版本构建在editor_background.cpp遇到C1060编译器堆空间不足；已主动停止并确认无cl／MSBuild存活后改用较低编译并行度。现场系统约3.6GiB可用物理内存／4.3GiB可提交空间，未删除缓存或用户数据。补齐CSS crosshair到既有03-Slice-3.png游标映射、footer使用缓存帧数及zoom输出局部重绘，再继续正式构建。
+
+低并行正式构建退出0，初轮三条窗口检查也退出0，但实际查看sheet-import-preview.bmp及sheet-import-selection-preview.bmp发现预览为空：panel_content九宫格含不透明中心，最后绘制覆盖了源图和叠加。初轮截图不作为视觉通过证据。已改为先绘既有皮肤底图、内容裁切在内边框，并新增最终窗口framebuffer源RGB断言；增量构建后重做窗口及截图验收。色板库定向测试本轮退出0，确认此前用户批准的96字符长名称/重名后缀/保存重开修复。
+
+最终sheet-import-preview-paint-build.log正式Release增量构建退出0；sheet-import-preview-paint-ui-tests.log的--sheet-import-check、--sheet-new-document-check、--new-document-check均退出0，运行前后同一正式exe SHA256一致（DFEF4908573BAF2FC3244F1970A78AA212C529E407C751D2DC09A710C76C7AF4）。新增最终framebuffer RGB断言通过，重新实际查看普通及冻结选区预览截图，源像素、透明棋盘、切片编号/边框/手柄已可见，字段、提示、适合窗口和底部操作无交叠。视觉仅覆盖默认2×的这两个状态，不代表全缩放、长时手工交互或全软件帧率测量。既有核心两套与旧版21项结果保留；本轮palette-library定向测试通过。来源覆盖694文件通过，strict因全局已知迁移缺口保持退出1；此次未将该结果解释为全量迁移完成。

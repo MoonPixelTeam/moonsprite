@@ -6,6 +6,7 @@
 #include "editor.h"
 #include "color_overlay_dialog.h"
 #include "timelapse_session.h"
+#include "sheet_import_preview.h"
 
 namespace moon::editor {
 void Editor::openFilterPreset(FilterPreset preset,int verify,bool initialLcd){
@@ -306,16 +307,6 @@ void Editor::createGifExportControls(){for(int i=0;i<3;++i){auto input=new Pixel
     gifDirection_=button(U"正向",[this]{PixelMenu menu(skin_);const char32_t* names[]{U"正向",U"反向",U"正向往返",U"反向往返"};for(int i=0;i<4;++i){auto item=new PixelMenuItem(font_,skin_,names[i]);item->Click.connect([this,i]{gifOptions_.direction=GifDirection(i);refresh();});menu.addChild(item);}auto at=gifDirection_->bounds();menu.showPopup({at.x,at.y2()},display());requestFocus();});gifTrim_=button(U"裁切透明边",[this]{gifOptions_.trim=!gifOptions_.trim;refresh();});gifTrim_->iconSkin=&toolIcons_;gifTrim_->bareIconWithCaption=true;for(auto b:{gifRange_,gifDirection_,gifTrim_})b->setVisible(false);
 
   }
-
-SheetImportOptions Editor::effectiveSheetImportOptions()const{auto options=importSheetOptions_;if(!importSheetPaddingEnabled_)options.paddingX=options.paddingY=0;return options;}
-
-void Editor::updateSheetImportFields(){if(importSheetUpdating_)return;if(status_.rfind(U"精灵表导入失败：",0)==0){status_.clear();invalidate();}importSheetUpdating_=true;int counts[2]{};bool hasFrames=false;try{const auto* selection=sheetImportSelection(document,importSheetOptions_);int sw=selection?selection->width:document.width(),sh=selection?selection->height:document.height();auto plan=planSpriteSheetImport(sw,sh,effectiveSheetImportOptions());counts[0]=plan.columns;counts[1]=plan.rows;hasFrames=!plan.tiles.empty();}catch(...){}discard_->setEnabled(hasFrames);for(int i=0;i<8;++i)if(!importSheetInputs_[i]->hasFocus()){int values[]{importSheetOptions_.x,importSheetOptions_.y,importSheetOptions_.width,importSheetOptions_.height,importSheetOptions_.paddingX,importSheetOptions_.paddingY,counts[0],counts[1]};importSheetInputs_[i]->setText(std::to_string(values[i]));}importSheetUpdating_=false;}
-
-void Editor::openSheetImport(bool selected){if(pending_!=Pending::None||document.active())return;if(selected&&!document.selection())return;ensureProjects();auto& slot=*projects_[activeProject_];if(slot.sheetImportIdentity!=document.identity()){slot.sheetImportRemembered.reset();slot.sheetImportIdentity=document.identity();}try{importSheetOptions_=selected?initialSheetImportOptions(document.customGrid(),slot.sheetImportRemembered,document.selection()):initialSheetImportOptions(document.customGrid(),slot.sheetImportRemembered);}catch(const std::exception& error){status_=U"精灵表导入失败："+unicodeText(error.what());refresh();return;}importSheetPaddingEnabled_=importSheetOptions_.paddingX!=0||importSheetOptions_.paddingY!=0;pending_=Pending::SheetImport;menuBar_->setEnabled(false);discard_->caption=U"导入";keep_->caption=U"取消";discard_->setVisible(true);keep_->setVisible(true);dialogClose_->setVisible(true);updateSheetImportFields();refresh();}
-
-void Editor::chooseSheetSource(){importAfterOpen_=true;chooseProject();if(pending_!=Pending::Open&&pending_!=Pending::SheetImport)importAfterOpen_=false;}
-
-void Editor::createSheetImportControls(){for(int i=0;i<8;++i){auto input=new PixelEntry(font_,skin_);input->numeric=true;addChild(input);input->setVisible(false);importSheetInputs_[i]=input;auto change=[this,input,i]{if(importSheetUpdating_||pending_!=Pending::SheetImport)return;try{std::size_t used=0;double v=std::stod(input->text(),&used);if(used!=input->text().size()||!std::isfinite(v))return;int n=int(std::floor(std::clamp(v,i<2?-262144.0:i<6?0.0:1.0,262144.0)+.5));auto& o=importSheetOptions_;if(i<6){int* fields[]{&o.x,&o.y,&o.width,&o.height,&o.paddingX,&o.paddingY};*fields[i]=i==2||i==3?std::max(1,n):n;}else{bool horizontal=i==6;const auto* selection=sheetImportSelection(document,o);int extent=selection?(horizontal?selection->width:selection->height):(horizontal?document.width():document.height());int origin=horizontal?o.x:o.y,gap=importSheetPaddingEnabled_?(horizontal?o.paddingX:o.paddingY):0,count=std::clamp(n,1,10000);(horizontal?o.width:o.height)=sheetImportFrameSizeFromCount(extent,origin,gap,count);}updateSheetImportFields();}catch(...){} };input->Change.connect(change);input->blur=change;input->accept=[this]{if(pending_==Pending::SheetImport&&discard_->isEnabled())resolve(true);};input->cancel=[this]{resolve(false);};}importSheetLayout_=button(U"排列",[this]{PixelMenu menu(skin_);const char32_t* names[]{U"横向",U"纵向",U"按行",U"按列"};for(int i=0;i<4;++i){auto item=new PixelMenuItem(font_,skin_,names[i]);item->Click.connect([this,i]{importSheetOptions_.layout=i;updateSheetImportFields();refresh();});menu.addChild(item);}auto at=importSheetLayout_->bounds();menu.showPopup({at.x,at.y2()},display());requestFocus();});importSheetPadding_=button(U"间距",[this]{importSheetPaddingEnabled_=!importSheetPaddingEnabled_;updateSheetImportFields();refresh();});importSheetPadding_->iconSkin=&toolIcons_;importSheetPadding_->bareIconWithCaption=true;importSheetPadding_->setVisible(false);importSheetPartial_=button(U"包含不完整单元格",[this]{importSheetOptions_.partialTiles=!importSheetOptions_.partialTiles;updateSheetImportFields();refresh();});importSheetPartial_->iconSkin=&toolIcons_;importSheetPartial_->bareIconWithCaption=true;importSheetLayout_->setVisible(false);importSheetPartial_->setVisible(false);}
 
 void Editor::openSpriteSheet(){if(pending_!=Pending::None||!resolveGradientForIo())return;sheetOutputFile_=false;sheetOpenAfterExport_=false;sheetExportedPath_.clear();if(pending_!=Pending::None||document.active())return;sheetOptions_={};sheetOptions_.fixedWidth=document.width()*4;sheetOptions_.fixedHeight=document.height()*4;sheetOptions_.selectedLayerIds=document.timelineSelection().layers;sheetValue_->setText("4");try{if(sheetPreview_) {sheetPreview_->setImage(buildSpriteSheetImage(document,sheetOptions_));sheetPreview_->setVisible(true);}}catch(...){} pending_=Pending::SpriteSheet;menuBar_->setEnabled(false);discard_->caption=U"新建文档";keep_->caption=U"取消";discard_->setVisible(true);keep_->setVisible(true);dialogClose_->setVisible(true);refresh();}
 
@@ -1192,7 +1183,7 @@ void Editor::resolve(bool discard) {
 
     if(action==Pending::BrushFolderName){if(discard){try{PatternBrushLibrary library(fillBrushLibraryDirectory());auto result=fillFolderRename_?library.renameFolder(fillFolderEditing_,paletteInput_->text()):library.createFolder(paletteInput_->text(),fillFolderEditing_);fillFolder_=result.id;applyFillLibrarySelection();}catch(const std::exception& e){status_=U"文件夹操作失败："+unicodeText(e.what());refresh();return;}}paletteInput_->setVisible(false);discard_->caption=U"丢弃";keep_->caption=U"取消";discard=false;}
 
-    if(action==Pending::SheetImport){if(discard){try{if(!document.importSpriteSheet(effectiveSheetImportOptions(),selectionPivot_))throw std::runtime_error("当前文档内容尚不支持精灵表导入");if(!importSheetOptions_.selection){auto& slot=*projects_[activeProject_];slot.sheetImportIdentity=document.identity();slot.sheetImportRemembered=importSheetOptions_;}brushFeedback_.brushLineAnchors_[0].reset();brushFeedback_.brushLineAnchors_[1].reset();fitCanvas();}catch(const std::exception& e){status_=U"精灵表导入失败："+unicodeText(e.what());invalidate();return;}}for(auto input:importSheetInputs_)input->setVisible(false);importSheetLayout_->setVisible(false);importSheetPartial_->setVisible(false);importSheetPadding_->setVisible(false);importSheetOptions_.selectionSnapshot.reset();discard_->setEnabled(true);discard_->caption=U"丢弃";keep_->caption=U"取消";discard=false;}
+    if(action==Pending::SheetImport){if(importSheetPreview_)importSheetPreview_->finishDraft();if(discard){try{if(!document.importSpriteSheet(effectiveSheetImportOptions(),selectionPivot_))throw std::runtime_error("当前文档内容尚不支持精灵表导入");if(!importSheetOptions_.selection){auto& slot=*projects_[activeProject_];slot.sheetImportIdentity=document.identity();slot.sheetImportRemembered=importSheetOptions_;}brushFeedback_.brushLineAnchors_[0].reset();brushFeedback_.brushLineAnchors_[1].reset();fitCanvas();}catch(const std::exception& e){status_=U"精灵表导入失败："+unicodeText(e.what());invalidate();return;}}if(importSheetPreview_)importSheetPreview_->close();importSheetChoose_->setVisible(false);importSheetFit_->setVisible(false);for(auto input:importSheetInputs_)input->setVisible(false);importSheetLayout_->setVisible(false);importSheetPartial_->setVisible(false);importSheetPadding_->setVisible(false);importSheetOptions_.selectionSnapshot.reset();discard_->setEnabled(true);discard_->caption=U"丢弃";keep_->caption=U"取消";discard=false;}
 
     if(action==Pending::GifExport){if(discard&&!saveGifExport())return;discard_->setEnabled(true);for(auto input:gifInputs_)input->setVisible(false);for(auto b:{gifRange_,gifDirection_,gifTrim_})b->setVisible(false);discard_->caption=U"丢弃";keep_->caption=U"取消";discard=false;}
 
@@ -1300,6 +1291,7 @@ int Editor::paletteSaveDialogWidth()const{return std::any_of(storedPalettes_.beg
 
 int Editor::modalPreferredWidth() const {
 
+    if(pending_==Pending::SheetImport)return 540;
     if(pending_==Pending::PaletteLibrary)return 320;
     if(pending_==Pending::PaletteSave)return paletteSaveDialogWidth();
 
@@ -1362,7 +1354,7 @@ if(pending_==Pending::ColorAdjustment && adjustmentSpec_.kind!=ColorAdjustmentKi
     if(pending_==Pending::LayerOpacity)return DialogLayout::fit(213+52);
     if(pending_==Pending::LoopSection)return 218;
     if(pending_==Pending::ReplaceColor)return 127;
-    if(pending_==Pending::SheetImport)return 213+(importSheetPaddingEnabled_?DialogLayout::rowStep:0);
+    if(pending_==Pending::SheetImport)return 370;
     if(pending_==Pending::PaletteName||pending_==Pending::ColorRole||pending_==Pending::FrameDuration||pending_==Pending::OnionValue||pending_==Pending::BrushFolderName)return DialogLayout::fit(DialogLayout::field()+textControlHeight);
     return compactModalPreferredHeight()+6;}
 
@@ -1375,6 +1367,7 @@ gfx::Size Editor::modalMinimumSize() const {
     else if(pending_==Pending::PaletteSave)width=paletteSaveDialogWidth();
     else if(pending_==Pending::AntiAlias||pending_==Pending::Convolution)width=260;
     else if(pending_==Pending::OpenError){width=214;height=99;}
+    else if(pending_==Pending::SheetImport){width=480;height=315;}
     else if(pending_==Pending::LoopSection)width=240;
     else if(pending_==Pending::BrushFolderName || (pending_==Pending::PaletteName && renameId_!=0))width=146;
     return {width,height};
@@ -1612,7 +1605,7 @@ void Editor::layoutModal() {const auto rc=uiLogical(clientBounds());
 
     if(replaceScopeButton_){bool show=pending_==Pending::ReplaceColor;for(int i=0;i<2;++i){replaceInputs_[i]->setVisible(show);replaceInputs_[i]->setBounds(toDisplay(gfx::Rect(modal.x+65,modal.y+DialogLayout::bodyTop+i*DialogLayout::rowStep,modal.w-81,textControlHeight)));replaceSample_[i]->setVisible(show);replaceSample_[i]->setBounds(toDisplay(gfx::Rect(modal.x+modal.w-21,modal.y+DialogLayout::bodyTop+i*DialogLayout::rowStep,15,20)));}replaceScopeButton_->setVisible(show);replaceScopeButton_->setBounds(toDisplay(gfx::Rect(modal.x+6,modal.y+53,modal.w-12,textControlHeight)));replacePreviewButton_->setVisible(show);replaceRememberButton_->setVisible(show);replacePreviewButton_->setBounds(toDisplay(gfx::Rect(modal.x+6,modal.y+75,78,textControlHeight)));replaceRememberButton_->setBounds(toDisplay(gfx::Rect(modal.x+86,modal.y+75,78,textControlHeight)));}
 
-    if(importSheetLayout_){const bool show=pending_==Pending::SheetImport;const char32_t* layouts[]{U"横向",U"纵向",U"按行",U"按列"};importSheetLayout_->setVisible(show);importSheetLayout_->caption=layouts[importSheetOptions_.layout];importSheetLayout_->setBounds(toDisplay(gfx::Rect(modal.x+6,modal.y+DialogLayout::bodyTop,modal.w-12,textControlHeight)));for(int i=0;i<8;++i){importSheetInputs_[i]->setVisible(show&&(i!=4&&i!=5||importSheetPaddingEnabled_));const int row=i<4?i/2:i<6?4:2;importSheetInputs_[i]->setBounds(toDisplay(gfx::Rect(modal.x+48+(i%2)*(modal.w/2),modal.y+53+row*DialogLayout::rowStep,modal.w/2-54,textControlHeight)));importSheetInputs_[i]->setEnabled(i!=6&&i!=7||(i==6?importSheetOptions_.layout!=1:importSheetOptions_.layout!=0));}importSheetPadding_->setVisible(show);importSheetPadding_->icon=importSheetPaddingEnabled_?"check":"checkboxUnchecked";importSheetPadding_->setBounds(toDisplay(gfx::Rect(modal.x+6,modal.y+119,modal.w-12,textControlHeight)));importSheetPartial_->setVisible(show);importSheetPartial_->icon=importSheetOptions_.partialTiles?"check":"checkboxUnchecked";importSheetPartial_->setBounds(toDisplay(gfx::Rect(modal.x+6,modal.y+145+(importSheetPaddingEnabled_?DialogLayout::rowStep:0),modal.w-12,textControlHeight)));}
+    layoutSheetImport(modal);
 
     if(gifRange_){bool show=pending_==Pending::GifExport;gifInputs_[0]->setVisible(show);gifInputs_[0]->setBounds(toDisplay(gfx::Rect(modal.x+70,modal.y+DialogLayout::bodyTop,modal.w-76,textControlHeight)));for(int i=1;i<3;++i){gifInputs_[i]->setVisible(show && gifExplicitRange_);gifInputs_[i]->setBounds(toDisplay(gfx::Rect(modal.x+(i==1?6:modal.w/2),modal.y+71,modal.w/2-10,textControlHeight)));}gifRange_->setVisible(show);gifRange_->caption=gifExplicitRange_?U"指定帧范围":gifOptions_.loopSectionId.empty()?U"全部帧":U"循环段";gifRange_->setBounds(toDisplay(gfx::Rect(modal.x+6,modal.y+48,modal.w-12,textControlHeight)));const char32_t* names[]{U"正向",U"反向",U"正向往返",U"反向往返"};gifDirection_->caption=names[int(gifOptions_.direction)];gifDirection_->setVisible(show);gifDirection_->setBounds(toDisplay(gfx::Rect(modal.x+6,modal.y+94,modal.w-12,textControlHeight)));gifTrim_->setVisible(show);gifTrim_->icon=gifOptions_.trim?"check":"checkboxUnchecked";gifTrim_->setBounds(toDisplay(gfx::Rect(modal.x+6,modal.y+117,110,textControlHeight)));if(show&&(framePngMode_||animationLayerJob_)){const bool ready=!framePngBusy();for(auto input:gifInputs_)input->setEnabled(ready);for(auto b:{gifRange_,gifDirection_,gifTrim_})b->setEnabled(ready);discard_->setEnabled(ready);keep_->setEnabled(true);dialogClose_->setEnabled(true);}else if(show){for(auto input:gifInputs_)input->setEnabled(true);for(auto b:{gifRange_,gifDirection_,gifTrim_})b->setEnabled(true);}}
 
@@ -1952,7 +1945,7 @@ void Editor::paintDialog(ui::Graphics& g) {
 
       }
 
-      if(pending_==Pending::SheetImport){label(U"导入精灵表 · RGBA",modal.x+6,modal.y+(FloatingColumnChrome::headerHeight-PixelFont::cell)/2);const char32_t* names[]{U"X",U"Y",U"宽",U"高",U"间距X",U"间距Y",U"列数",U"行数"};for(int i=0;i<8;++i){if((i==4||i==5)&&!importSheetPaddingEnabled_)continue;const int row=i<4?i/2:i<6?4:2;label(names[i],modal.x+6+(i%2)*(modal.w/2),modal.y+58+row*DialogLayout::rowStep);}label(U"尺寸受像素预算限制；独立 Cel / 可撤销",modal.x+6,modal.y+171+(importSheetPaddingEnabled_?DialogLayout::rowStep:0));return;}
+      if(pending_==Pending::SheetImport){paintSheetImport(g,modal);return;}
 
       if(pending_==Pending::GifExport){
 

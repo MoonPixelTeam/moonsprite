@@ -1,3 +1,4 @@
+#include "sheet_import_preview.h"
 #include "free_tile_selection_target.h"
 #include "raster_geometry.h"
 #include "editor_implementation.h"
@@ -756,6 +757,7 @@ const char* Editor::cursorAt(gfx::Point position) const {InteractionScope intera
       return bucket==0?"ew-resize":bucket==1?"nwse-resize":bucket==2?"ns-resize":"nesw-resize";
     };
     if(referenceSamplingCursor_)return "eyedropper";
+    if(pending_==Pending::SheetImport&&importSheetPreview_&&importSheetPreview_->isVisible()){const auto capture=ui::Manager::getDefault()->getCapture();if(capture==importSheetPreview_||(!capture&&importSheetPreview_->bounds().contains(position)))return "crosshair";}
 
     if(const auto capture=ui::Manager::getDefault()->getCapture();capture && capture!=this){
 
