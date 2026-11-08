@@ -1,3 +1,4 @@
+#include "quick_command_drag_handle.h"
 #include "sheet_import_preview.h"
 #include "editor_implementation.h"
 #include "editor.h"
@@ -1039,6 +1040,7 @@ void Editor::layoutLayers() {InteractionScope interactionScope(1,"timeline-layou
 double Editor::canvasScale() const {return zoom_*uiScale;}
 
 bool Editor::modalControl(ui::Widget* w) const {
+    if(dynamic_cast<QuickCommandDragHandle*>(w))return true;
 
     if(storedPaletteModalControl(w))return true;
 

@@ -10,6 +10,7 @@ void sameBars(const std::vector<Bar>& a,const std::vector<Bar>& b){require(a.siz
 int main(){try{winrt::init_apartment();unsigned n=0;
  for(auto& c:quickBarOracle){try{auto bars=parseBars(c.input);sameBars(bars,parseBars(c.expected));sameBars(bars,parseBars(encodeBars(bars)));}catch(...){std::cerr<<"bar fixture "<<n<<'\n';throw;}++n;}
  for(auto& c:quickCommandOracle)sameCommands(parseCommands(c.input),parseCommands(c.expected));
+ for(auto& c:reorderOracle){std::vector<Command> commands{{"cut",true},{"copy",false},{"paste",true}};reorderCommands(commands,c.source,c.target,c.after);auto expected=parseCommands(c.expected);expected.resize(3);sameCommands(commands,expected);}
  auto fallback=defaultCommands(1);auto b=parseBars("[{\"name\":\"custom\"}]",fallback);sameCommands(b[0].commands,fallback);
  // Actual legacy moveBar examples: edge ties, axis changes, grab offset,
  // snap distance, oversized bars, track origins and clamping.

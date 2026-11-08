@@ -4329,3 +4329,12 @@ make-quick-command-fixtures.cjs执行旧文件未改写的独立配置段（仅�
 验收：quick-command-ui-build.log首轮Release构建0；其间公共头变更造成首轮对象可能不一致，两次启动早期异常0xC0000409/0xC0000374，未认定通过。冻结头文件后quick-command-ui-final-build.log增量重编受影响对象并链接0。正式最终exe --quick-command-check PID42976=0、正常显示PID46192=0，覆盖鼠标消息展开、四边bounds、配置字段路由、镜像保持像素历史/选区、24x16倍率4直接6x4/单笔历史/Undo、挂起worker后Esc取消及执行废弃job无污染。--image-resize-check PID37568=0。四项quick-command-preferences/editor-preferences/image-scale-detection/image-resize-task全通过0.57s，360偏好目录检查通过。隐藏启动截图全黑已拒作视觉证据；实际查看正常显示Release/quick-command-bar.bmp：顶部展开16控件可见、旧图标/设置/移动无重叠。该截图只覆盖当前尺寸顶部栏，不代表所有屏幕/多栏/FPS验收。
 
 尚未完成：命令排序拖柄、快捷键/完整描述tooltip、部分描边/粘贴/平铺底层命令、全多窗格活动文档与捕获丢失/取消边界完整审计；当前禁用项不算完成。完整快捷栏及全软件迁移仍INCOMPLETE，目标active。本批提交保存已验证运行接入阶段，后续优先补上述缺口，不重新全仓扫描。所有用户数据、恢复与原有未跟踪缓存保留。
+
+
+### 2026-11-09：快捷指令排序拖柄与释放边界
+
+承接40f22c15，移植PreferencesDialog实际reorderPreferenceItems并执行未改写TypeScript函数生成32组oracle。原生独立move素材拖柄与启用开关分离；只允许同栏、同enabled组排序，保持旧版分组边界；draft顺序统一驱动测量、布局与绘制。复用共享偏好滚动视口，16..32逻辑px边缘、每16ms滚动12逻辑px；这是旧版每栏滚动容器到原生共享视口的技术适配。松开、失焦、捕获丢失检查及Esc结束拖动；取消整个偏好丢弃草稿。关闭停靠时折叠指令列表，选择停靠边时展开。快捷栏mouseup立即清逻辑按下状态，100ms仅保留视觉反馈，避免重复释放再次执行。38条完整description沿用registry和zh-CN文案；shortcut身份已记录，当前用户绑定tooltip仍未接入。
+
+验收：quick-command-order-build.log和quick-command-order-final-build.log正式Release/定向测试构建均退出0；四项quick-command-preferences/editor-preferences/image-scale-detection/image-resize-task通过（0.53s），包括112配置/6指令配置/32排序oracle。正式正常显示新进程PID6804 --quick-command-check退出0，覆盖实际MouseMessage拖动、顺序/行位置、capture释放、边缘滚动、偏好取消不持久化、重复mouseup不重复切换和既有后台识别/撤销/取消检查。实际查看Release/quick-command-preferences.bmp：默认2×拖柄/开关可见，垂直镜像已移动到水平镜像之前，无重叠，底部裁剪遵循共享视口。该图不代表1×、全部窗口尺寸或全软件FPS；自动滚动停顿/焦点切换等手动长时间交互尚未全面验收。来源覆盖726文件和偏好360项检查通过；strict仍须按全量缺口失败。
+
+仍INCOMPLETE：当前用户快捷键tooltip、outline/quickOutline、部分paste/tileRepeat底层命令、多窗格活动文档语义及完整快捷栏交互审计。用户确认的网格瓦片同步缩放决定继续有效，既有image-resize回归记录已含同步网格资源路径；本批不另称完成新缩放功能。保留所有用户数据和原有未跟踪文件，只提交本阶段源码/测试/来源记录并推送dev。

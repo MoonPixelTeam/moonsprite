@@ -22,6 +22,7 @@ std::vector<Command> parseCommands(const std::string& json);
 std::vector<Bar> parseBars(const std::string& json,
                          const std::vector<Command>& fallback=defaultCommands());
 std::string encodeBars(const std::vector<Bar>& bars);
+bool reorderCommands(std::vector<Command>&,const std::string& source,const std::string& target,bool after);
 struct Rect { double x,y,width,height; };
 struct Drag { Edge startEdge; double grabOffset; };
 struct Position { Edge edge; double position; };

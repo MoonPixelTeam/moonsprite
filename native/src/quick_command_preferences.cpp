@@ -36,6 +36,15 @@ bool oldName(const std::u16string& name){
 constexpr const wchar_t* edges[]={L"top",L"right",L"bottom",L"left",L"none"};
 }
 const std::vector<std::string>& commandIds(){return ids;}
+bool reorderCommands(std::vector<Command>& items,const std::string& source,const std::string& target,bool after){
+ auto from=std::find_if(items.begin(),items.end(),[&](auto& c){return c.id==source;});
+ auto to=std::find_if(items.begin(),items.end(),[&](auto& c){return c.id==target;});
+ if(from==items.end()||to==items.end()||source==target)return false;
+ auto next=items;auto item=next[std::size_t(from-items.begin())];next.erase(next.begin()+(from-items.begin()));
+ auto at=std::find_if(next.begin(),next.end(),[&](auto& c){return c.id==target;});next.insert(at+(after?1:0),item);
+ bool same=true;for(unsigned i=0;i<items.size();++i)same=same&&items[i].id==next[i].id;
+ if(same)return false;items=std::move(next);return true;
+}
 std::vector<Command> defaultCommands(unsigned group){return create(DEFAULT.at(group));}
 std::vector<Bar> defaultBars(){std::vector<Bar> out;for(unsigned i=0;i<4;++i)out.push_back({"quick-command-bar-"+std::to_string(i+1),names[i],i?Edge::None:Edge::Top,.5,false,defaultCommands(i)});return out;}
 std::vector<Command> parseCommands(const std::string& json){try{return commands(JsonValue::Parse(winrt::to_hstring(json)));}catch(const winrt::hresult_error&){return defaultCommands();}}

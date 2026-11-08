@@ -2,6 +2,7 @@
 #include "image_resize_task.h"
 #include "editor_implementation.h"
 #include "quick_command_metadata.h"
+#include "quick_command_drag_handle.h"
 #include <winrt/base.h>
 namespace moon::editor {
 namespace {
@@ -12,6 +13,7 @@ std::u16string utf16(const std::string& value){auto s=winrt::to_hstring(value);r
 void Editor::initializeQuickCommands(){
  auto it=runtimePreferences_.values.find("quickCommands.bars.json");if(it!=runtimePreferences_.values.end())quickBarsConfig_=quick::parseBars(it->second);
  quickBarsDraft_=quickBarsConfig_;
+ for(unsigned i=0;i<4;++i)quickPreferenceCollapsed_[i]=quickBarsDraft_[i].edge==quick::Edge::None;
  for(auto& m:quick::metadata)for(auto suffix:{"","-disabled"}){const auto name=std::string(m.icon)+suffix;if(!toolIcons_.assets.patches.count(name))toolIcons_.assets.patches[name]=importSkinPng(assets_/"utility-icons"/(name+".png"),32);}
  for(unsigned i=0;i<4;++i){auto b=new QuickCommandBar(font_,skin_,toolIcons_);addChild(b);quickBars_[i]=b;
   b->changed=[this,i](const quick::Bar& bar){quickBarsConfig_[i]=bar;saveQuickCommands();syncQuickCommands();};
@@ -51,10 +53,10 @@ void Editor::syncQuickPreferenceValues(){
 }
 void Editor::quickPreferenceChanged(const std::string& key,const std::string& value){
  if(key.rfind("quickCommands.bar",0)!=0||key.size()<20)return;const int i=key[17]-'0';if(i<0||i>=4)return;auto& b=quickBarsDraft_[i];auto part=key.substr(19);
- if(part=="name"){b.name=utf16(value);if(b.name.size()>32)b.name.resize(32);}else if(part=="edge")b.edge=quick::Edge(std::stoi(value));else if(part.rfind("command.",0)==0){const auto id=part.substr(8);auto found=std::find_if(b.commands.begin(),b.commands.end(),[&](auto& c){return c.id==id;});if(found==b.commands.end())return;const bool enabled=value=="true";if(!enabled&&found->enabled&&std::count_if(b.commands.begin(),b.commands.end(),[](auto& c){return c.enabled;})==1)return;auto item=*found;item.enabled=enabled;std::vector<quick::Command> next;for(auto c:b.commands)if(c.id!=id&&c.enabled)next.push_back(c);next.push_back(item);for(auto c:b.commands)if(c.id!=id&&!c.enabled)next.push_back(c);b.commands=std::move(next);}
+ if(part=="name"){b.name=utf16(value);if(b.name.size()>32)b.name.resize(32);}else if(part=="edge"){b.edge=quick::Edge(std::stoi(value));quickPreferenceCollapsed_[i]=b.edge==quick::Edge::None;}else if(part.rfind("command.",0)==0){const auto id=part.substr(8);auto found=std::find_if(b.commands.begin(),b.commands.end(),[&](auto& c){return c.id==id;});if(found==b.commands.end())return;const bool enabled=value=="true";if(!enabled&&found->enabled&&std::count_if(b.commands.begin(),b.commands.end(),[](auto& c){return c.enabled;})==1)return;auto item=*found;item.enabled=enabled;std::vector<quick::Command> next;for(auto c:b.commands)if(c.id!=id&&c.enabled)next.push_back(c);next.push_back(item);for(auto c:b.commands)if(c.id!=id&&!c.enabled)next.push_back(c);b.commands=std::move(next);}
 }
 bool Editor::quickPreferenceHidden(const std::string& key)const{return key.rfind("quickCommands.bar",0)==0&&key.size()>19&&key.substr(19).rfind("command.",0)==0&&quickPreferenceCollapsed_[key[17]-'0'];}
-void Editor::quickPreferenceAction(const std::string& key){const int i=key[17]-'0';if(i<0||i>=4)return;quickPreferenceCollapsed_[i]=!quickPreferenceCollapsed_[i];layoutModal();invalidate();}
+void Editor::quickPreferenceAction(const std::string& key){const int i=key[17]-'0';if(i<0||i>=4)return;quickPreferenceCollapsed_[i]=!quickPreferenceCollapsed_[i];syncPreferenceCatalog();layoutModal();invalidate();}
 void Editor::smokeQuickCommands(){
  smoke_=true;homeOpen_=false;documentOpen_=true;runtimePreferences_.values["quickCommands.quickCommandBarEnabled"]="true";const auto saved=quickBarsConfig_;const auto revision=document.revision();quickBarsConfig_=quick::defaultBars();refresh();if(!quickBars_[0]->isVisible())throw std::runtime_error("Quick bar invisible");quickBars_[0]->smoke();if(!quickBarsConfig_[0].expanded||document.revision()!=revision)throw std::runtime_error("Quick bar toggle/history");
  for(auto edge:{quick::Edge::Top,quick::Edge::Right,quick::Edge::Bottom,quick::Edge::Left}){quickBarsConfig_[0].edge=edge;syncQuickCommands();if(!canvasViewport().contains(quickBars_[0]->bounds()))throw std::runtime_error("Quick bar outside viewport");}
@@ -65,5 +67,17 @@ void Editor::smokeQuickCommands(){
 
  std::function<void()> held;imageResizeExecutor_=[&](std::function<void()> work){held=std::move(work);};runQuickCommand("detectImageScale",false);for(int i=0;i<1000&&!held;++i)tickImageResize();if(!held)throw std::runtime_error("Quick detection worker not queued");const auto beforeCancel=document.historySize();ui::KeyMessage escape(ui::kKeyDownMessage,ui::kKeyEsc,ui::kKeyNoneModifier,0,0);onProcessMessage(&escape);held();if(imageResizeTask_||quickResize_||document.historySize()!=beforeCancel)throw std::runtime_error("Quick detection cancel history");imageResizeExecutor_={};
  quickBarsConfig_[0].edge=quick::Edge::Top;refresh();manager()->invalidate();manager()->flushRedraw();manager()->dispatchMessages();manager()->flipAllDisplays();writeSmokeFrame(display()->nativeSurface().get(),assets_.parent_path()/"quick-command-bar.bmp");quickBarsConfig_=saved;refresh();
+ preferenceSection_=1;showPreferences();quickBarsDraft_=quick::defaultBars();quickPreferenceCollapsed_.fill(true);quickPreferenceCollapsed_[0]=false;syncQuickPreferenceValues();syncPreferenceCatalog();layoutModal();
+ auto row=[&](const std::string& id)->ui::Widget*{const auto key="quickCommands.bar0.command."+id;for(unsigned i=0;i<preferences::catalog().size();++i)if(key==preferences::catalog()[i].id)return preferenceRows_[i];return nullptr;};
+ const auto first=quickBarsDraft_[0].commands[0].id,second=quickBarsDraft_[0].commands[1].id;auto a=row(first),b=row(second);if(!a||!b||a->bounds().y>=b->bounds().y)throw std::runtime_error("Quick preference display order");
+ QuickCommandDragHandle* handle=nullptr;for(auto child:children())if(auto h=dynamic_cast<QuickCommandDragHandle*>(child);h&&h->isVisible()&&h->bounds().center().y>=a->bounds().y&&h->bounds().center().y<a->bounds().y2())handle=h;
+ if(!handle||!modalControl(handle))throw std::runtime_error("Quick preference handle/modal route");
+ auto from=handle->bounds().center();auto target=b->bounds().center();target.y+=uiScale;
+ ui::MouseMessage down(ui::kMouseDownMessage,os::PointerType::Mouse,ui::kButtonLeft,ui::kKeyNoneModifier,from),move(ui::kMouseMoveMessage,os::PointerType::Mouse,ui::kButtonLeft,ui::kKeyNoneModifier,target),up(ui::kMouseUpMessage,os::PointerType::Mouse,ui::kButtonLeft,ui::kKeyNoneModifier,target);
+ handle->onProcessMessage(&down);handle->onProcessMessage(&move);handle->onProcessMessage(&up);
+ if(quickBarsDraft_[0].commands[0].id!=second||row(second)->bounds().y>=row(first)->bounds().y||handle->hasCapture())throw std::runtime_error("Quick preference actual drag order/release");
+ const int scrollBefore=preferenceContentPixels_;handle->move({preferenceViewport_.center().x,preferenceViewport_.y2()-1},true);if(preferenceContentPixels_<=scrollBefore)throw std::runtime_error("Quick preference edge autoscroll");
+ preferenceContentPixels_=0;layoutModal();manager()->invalidate();manager()->flushRedraw();manager()->dispatchMessages();manager()->flipAllDisplays();writeSmokeFrame(display()->nativeSurface().get(),assets_.parent_path()/"quick-command-preferences.bmp");
+ resolve(false);if(quickBarsConfig_[0].commands[0].id!=saved[0].commands[0].id)throw std::runtime_error("Cancelled preferences persisted order");refresh();
 }
 }

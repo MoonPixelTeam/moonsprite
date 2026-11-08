@@ -19,3 +19,11 @@ const rows=inputs.map(input=>'{'+literal(input)+','+literal(JSON.stringify(a.par
 const commandInputs=['','null','{}','[]','[false,{}, {"id":"copy","enabled":true},{"id":"copy","enabled":false}]',JSON.stringify(a.QUICK_COMMAND_IDS.map(id=>({id,enabled:false})))];
 fs.writeFileSync('native/tests/fixtures/quick_command_legacy.h','// Unchanged legacy preference section SHA256 '+crypto.createHash('sha256').update(full).digest('hex')+'\n#pragma once\nstruct QuickOracle {const char* input;const char* expected;};\ninline const QuickOracle quickBarOracle[]={\n'+rows.join(',\n')+'\n};\ninline const QuickOracle quickCommandOracle[]={\n'+commandInputs.map(input=>'{'+literal(input)+','+literal(JSON.stringify(a.parseQuickCommandPreferences(input)))+'}').join(',\n')+'\n};\n');
 console.log(inputs.length+' bar / '+commandInputs.length+' command cases');
+
+const dialog=fs.readFileSync('legacy/src/renderer/src/components/dialogs/PreferencesDialog.tsx','utf8');
+const reorderSource=dialog.slice(dialog.indexOf('function reorderPreferenceItems<'),dialog.indexOf('\n}',dialog.indexOf('function reorderPreferenceItems<'))+2);
+vm.runInContext(stripTypeScriptTypes(reorderSource,{mode:'transform'})+'\nglobalThis.reorder=reorderPreferenceItems;',context);
+const reorderCases=[];
+for(const source of ['cut','copy','paste','unknown'])for(const target of ['cut','copy','paste','unknown'])for(const after of [false,true]){const items=[{id:'cut',enabled:true},{id:'copy',enabled:false},{id:'paste',enabled:true}];const next=context.reorder(items,source,target,after,item=>item.id);reorderCases.push('{"'+source+'","'+target+'",'+after+','+literal(JSON.stringify(next))+'}');}
+fs.appendFileSync('native/tests/fixtures/quick_command_legacy.h','struct ReorderOracle {const char* source;const char* target;bool after;const char* expected;};\ninline const ReorderOracle reorderOracle[]={\n'+reorderCases.join(',\n')+'\n};\n');
+console.log(reorderCases.length+' unchanged legacy reorder cases');

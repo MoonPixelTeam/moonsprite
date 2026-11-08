@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <stdexcept>
 namespace moon {
+
 class QuickCommandBar::Control : public PixelButton {
  QuickCommandBar& owner_;std::string id_;bool down_=false;ui::Timer release_{100,this};
 public:
@@ -13,7 +14,7 @@ public:
   release_.Tick.connect([this]{release_.stop();down_=false;setSelected(false);invalidate();});
  }
  bool onProcessMessage(ui::Message* message) override {
-  if(down_&&!hasCapture()&&owner_.moving_){owner_.moving_=false;down_=false;setSelected(false);if(owner_.changed)owner_.changed(owner_.bar_);}
+  if(down_&&!hasCapture()){const bool moving=owner_.moving_;owner_.moving_=false;down_=false;setSelected(false);if(moving&&owner_.changed)owner_.changed(owner_.bar_);}
   if(!isEnabled())return PixelButton::onProcessMessage(message);
   const auto type=message->type();if(type==ui::kMouseEnterMessage||type==ui::kMouseLeaveMessage){owner_.invalidate();for(auto b:owner_.controls_)b->invalidate();}
   if(type==ui::kMouseDownMessage){auto m=static_cast<ui::MouseMessage*>(message);if(m->right()){if(owner_.execute)owner_.execute(id_,true);return true;}if(!m->left())return false;
@@ -24,9 +25,9 @@ public:
    auto result=quick::moveBar(owner_.drag_,{0,0,double(v.w)/uiScale,double(v.h)/uiScale},{0,0,double(r.w)/uiScale,double(r.h)/uiScale},double(m->position().x-v.x)/uiScale,double(m->position().y-v.y)/uiScale,unsigned(std::count_if(owner_.bar_.commands.begin(),owner_.bar_.commands.end(),[](auto& c){return c.enabled;})));
    owner_.bar_.edge=result.edge;owner_.bar_.position=result.position;owner_.layoutControls();return true;
   }
-  if(type==ui::kMouseUpMessage&&down_){bool activate=bounds().contains(static_cast<ui::MouseMessage*>(message)->position());if(hasCapture())releaseMouse();
+  if(type==ui::kMouseUpMessage&&down_){down_=false;bool activate=bounds().contains(static_cast<ui::MouseMessage*>(message)->position());if(hasCapture())releaseMouse();
    if(owner_.moving_){owner_.moving_=false;if(owner_.changed)owner_.changed(owner_.bar_);}else if(activate){if(id_=="toggle"){owner_.bar_.expanded=!owner_.bar_.expanded;if(owner_.changed)owner_.changed(owner_.bar_);}else if(id_=="settings"){if(owner_.settings)owner_.settings();}else if(owner_.execute)owner_.execute(id_,false);}
-   release_.start();return true;
+   if(id_=="toggle"){setSelected(false);invalidate();}else release_.start();return true;
   }
   if(type==ui::kFocusLeaveMessage&&down_){if(hasCapture())releaseMouse();down_=false;setSelected(false);if(owner_.moving_){owner_.moving_=false;if(owner_.changed)owner_.changed(owner_.bar_);}}
   return PixelButton::onProcessMessage(message);
@@ -35,7 +36,7 @@ public:
   auto& g=*event.graphics();UiPaintScale scale(g);const auto r=uiLogical(clientBounds());
   bool hover=owner_.hasMouse()||hasMouse();for(auto b:owner_.controls_)hover=hover||b->hasMouse();
   const int opacity=owner_.translucent_&&!hover&&!owner_.moving_?51:255;
-  const char* state=!isEnabled()?"disabled":down_?"pressed":active?"selected":hasMouse()?"hover":"normal";
+  const char* state=!isEnabled()?"disabled":(down_||isSelected())?"pressed":active?"selected":hasMouse()?"hover":"normal";
   owner_.skin_.draw(g,std::string("icon_button.")+state,r,false,opacity);
   owner_.icons_.draw(g,icon+(isEnabled()?"":"-disabled"),{r.x+(r.w-11)/2,r.y+(r.h-11)/2,11,11},true,opacity);
  }
@@ -48,7 +49,7 @@ void QuickCommandBar::sync(const quick::Bar& bar,gfx::Rect viewport,bool translu
   add("toggle","down",U"展开／折叠快捷指令栏");for(auto& m:quick::metadata)add(m.id,m.icon,m.label);add("settings","properties",U"快捷指令栏设置");add("move","move",U"拖动快捷指令栏");
  }
  const std::string toggleIcon=bar_.expanded?"up":"down";if(controls_[0]->icon!=toggleIcon){controls_[0]->icon=toggleIcon;controls_[0]->invalidate();}
- for(unsigned i=0;i<std::size(quick::metadata);++i){const auto& m=quick::metadata[i];auto b=controls_[i+1];const bool available=enabled&&enabled(m.id);b->setEnabled(interactive&&available);const bool active=checked&&checked(m.id);if(b->active!=active){b->active=active;b->invalidate();}auto label=std::u32string(m.label);if(!available)label+=U" · 当前不可用／尚未迁移";const auto text=utf8Text(label);if(tips_->getTooltipFor(b)!=text){tips_->removeTooltipFor(b);tips_->addTooltipFor(b,text);}}
+ for(unsigned i=0;i<std::size(quick::metadata);++i){const auto& m=quick::metadata[i];auto b=controls_[i+1];const bool available=enabled&&enabled(m.id);b->setEnabled(interactive&&available);const bool active=checked&&checked(m.id);if(b->active!=active){b->active=active;b->invalidate();}auto label=std::u32string(m.label);if(m.description&&*m.description)label+=U"\n"+std::u32string(m.description);if(!available)label+=U" · 当前不可用／尚未迁移";const auto text=utf8Text(label);if(tips_->getTooltipFor(b)!=text){tips_->removeTooltipFor(b);tips_->addTooltipFor(b,text);}}
  controls_[0]->setEnabled(interactive);controls_[controls_.size()-2]->setEnabled(interactive);controls_.back()->setEnabled(interactive);layoutControls();
 }
 void QuickCommandBar::layoutControls(){
@@ -62,5 +63,5 @@ void QuickCommandBar::layoutControls(){
  for(auto c:controls_)if(std::find(visible.begin(),visible.end(),c)==visible.end()&&c->isVisible())c->setVisible(false);int offset=pad;for(auto c:visible){auto r=vertical?gfx::Rect(next.x+pad,next.y+offset,cell,cell):gfx::Rect(next.x+offset,next.y+pad,cell,cell);if(c->bounds()!=r)c->setBounds(r);const bool show=next.contains(r);if(c->isVisible()!=show)c->setVisible(show);offset+=cell+gap;}
 }
 void QuickCommandBar::onPaint(ui::PaintEvent& event){auto& g=*event.graphics();UiPaintScale scale(g);const auto r=uiLogical(clientBounds());bool hover=hasMouse();for(auto b:controls_)hover=hover||b->hasMouse();skin_.draw(g,"panel_outer",r,false,translucent_&&!hover&&!moving_?51:255);}
-void QuickCommandBar::smoke(){if(controls_.size()!=41)throw std::runtime_error("Quick command controls missing");auto toggle=controls_[0];auto r=toggle->bounds();ui::MouseMessage down(ui::kMouseDownMessage,os::PointerType::Mouse,ui::kButtonLeft,ui::kKeyNoneModifier,r.center()),up(ui::kMouseUpMessage,os::PointerType::Mouse,ui::kButtonLeft,ui::kKeyNoneModifier,r.center());toggle->onProcessMessage(&down);toggle->onProcessMessage(&up);}
+void QuickCommandBar::smoke(){if(controls_.size()!=41)throw std::runtime_error("Quick command controls missing");auto toggle=controls_[0];auto r=toggle->bounds();ui::MouseMessage down(ui::kMouseDownMessage,os::PointerType::Mouse,ui::kButtonLeft,ui::kKeyNoneModifier,r.center()),up(ui::kMouseUpMessage,os::PointerType::Mouse,ui::kButtonLeft,ui::kKeyNoneModifier,r.center());const bool before=bar_.expanded;toggle->onProcessMessage(&down);toggle->onProcessMessage(&up);toggle->onProcessMessage(&up);if(bar_.expanded==before)throw std::runtime_error("Duplicate release toggled quick bar twice");}
 }

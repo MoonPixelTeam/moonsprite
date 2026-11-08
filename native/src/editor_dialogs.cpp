@@ -1,4 +1,5 @@
 #include "image_resize_task.h"
+#include "quick_command_drag_handle.h"
 #include "ui/property.h"
 #include "layer_compositor.h"
 #include "canvas_resize_dialog.h"
@@ -10,6 +11,20 @@
 #include "sheet_import_preview.h"
 
 namespace moon::editor {
+namespace {
+struct QuickPreferenceHandle : ui::Property {
+ QuickCommandDragHandle* handle;
+ explicit QuickPreferenceHandle(QuickCommandDragHandle* h):ui::Property("moonsprite.quick-preference-handle"),handle(h){}
+};
+std::vector<std::size_t> quickPreferenceOrder(const std::vector<quick::Bar>& bars){
+ std::vector<std::size_t> order;const auto& rows=preferences::catalog();
+ static const auto commandRows=[] {std::map<std::string,std::size_t> result;const auto& catalog=preferences::catalog();for(std::size_t i=0;i<catalog.size();++i)result[catalog[i].id]=i;return result;}();
+ for(std::size_t i=0;i<rows.size();++i){const std::string key=rows[i].id;if(key.rfind("quickCommands.bar",0)==0&&key.find(".command.")!=std::string::npos)continue;order.push_back(i);
+  if(key.rfind("quickCommands.bar",0)==0&&key.find(".collapse")!=std::string::npos){const auto b=key[17]-'0';for(auto& c:bars[b].commands){const auto id="quickCommands.bar"+std::to_string(b)+".command."+c.id;if(auto at=commandRows.find(id);at!=commandRows.end())order.push_back(at->second);}}}
+ return order;
+}
+}
+
 void Editor::openFilterPreset(FilterPreset preset,int verify,bool initialLcd){
  if(initialLcd&&smoke_&&!verify)verify=2;
  if(!documentOpen_||homeOpen_||pending_!=Pending::None||(document.active()&&!document.floating()))return;
@@ -849,6 +864,19 @@ void Editor::createPreferenceCatalogControls(){
 
       }
 
+      const std::string quickKey=item.id;
+      if(quickKey.rfind("quickCommands.bar",0)==0&&quickKey.find(".command.")!=std::string::npos){
+        auto handle=new DialogBackground<QuickCommandDragHandle>(font_,skin_,toolIcons_);configureDialogBackground(handle);addChild(handle);handle->setVisible(false);widget->setProperty(std::make_shared<QuickPreferenceHandle>(handle));
+        handle->viewport=[this]{return preferenceViewport_;};
+        handle->move=[this,quickKey](gfx::Point point,bool scroll){
+          if(pending_!=Pending::Preferences||preferenceSection_!=1)return;const int bar=quickKey[17]-'0';const auto view=preferenceViewport_;
+          if(scroll){const int edge=std::clamp(view.h/4,16*uiScale,32*uiScale);const int direction=point.x>=view.x&&point.x<=view.x2()?(point.y<=view.y+edge?-1:point.y>=view.y2()-edge?1:0):0;if(direction){const int old=preferenceContentPixels_;preferenceContentPixels_+=direction*12*uiScale;layoutModal();if(old!=preferenceContentPixels_)invalidateRect(dialogDisplayBounds());}return;}
+          if(!view.contains(point))return;
+          for(std::size_t i=0;i<preferenceRows_.size();++i){const std::string target=preferences::catalog()[i].id;if(target.rfind("quickCommands.bar",0)!=0||target.find(".command.")==std::string::npos||target[17]-'0'!=bar||!preferenceRows_[i]->isVisible())continue;const auto r=preferenceRows_[i]->bounds();if(point.y<r.y||point.y>=r.y2())continue;
+            const auto& commands=quickBarsDraft_[bar].commands;const auto source=std::find_if(commands.begin(),commands.end(),[&](const auto& c){return c.id==quickKey.substr(27);});const auto destination=std::find_if(commands.begin(),commands.end(),[&](const auto& c){return c.id==target.substr(27);});if(source==commands.end()||destination==commands.end()||source->enabled!=destination->enabled)break;
+            if(quick::reorderCommands(quickBarsDraft_[bar].commands,quickKey.substr(27),target.substr(27),point.y>=r.center().y)){syncQuickPreferenceValues();layoutModal();invalidateRect(dialogDisplayBounds());}break;}
+        };
+      }
       widget->setVisible(false);widget->setEnabled(false);preferenceRows_.push_back(widget);
 
     }
@@ -871,6 +899,7 @@ void Editor::syncPreferenceCatalog(){
 
       }
 
+      if(std::string(item.id).rfind("quickCommands.bar",0)==0&&std::string(item.id).find(".collapse")!=std::string::npos){if(auto b=dynamic_cast<PixelButton*>(preferenceRows_[i]))b->caption=quickPreferenceCollapsed_[item.id[17]-'0']?U"展开指令列表":U"折叠指令列表";}
       if(auto toggle=dynamic_cast<PixelSwitch*>(preferenceRows_[i])){if(item.binding==2)toggle->setChecked(preferenceDraft_.lens);if(item.binding==5)toggle->setChecked(preferenceDraft_.returnStart);}
 
       if(item.binding==12){int selected=0;if(preferenceDraft_.recovery.enabled){const double minutes[]{.5,1,2,5,10};selected=4;for(int j=0;j<5;++j)if(minutes[j]==preferenceDraft_.recovery.minutes)selected=j+1;}static_cast<PixelDropdown*>(preferenceRows_[i])->setSelectedIndex(selected);}
@@ -883,7 +912,7 @@ int Editor::preferenceCatalogHeight(){
 
     std::u32string group;int y=0;
 
-    for(std::size_t i=0;i<preferenceRows_.size();++i){const auto& item=preferences::catalog()[i];if(item.section!=preferenceSection_||fixedExportScaleRow(item)||quickPreferenceHidden(item.id))continue;
+    for(auto i:quickPreferenceOrder(quickBarsDraft_)){const auto& item=preferences::catalog()[i];if(item.section!=preferenceSection_||fixedExportScaleRow(item)||quickPreferenceHidden(item.id))continue;
 
       if(group!=item.group){if(y)y+=preferenceGroupGap;group=item.group;y+=preferenceGroupTitleHeight+preferenceOptionGap;}
 
@@ -905,7 +934,7 @@ void Editor::paintPreferenceCatalog(ui::Graphics& g,gfx::Rect modal){
 
     const int labelWidth=std::max(50,(view.w-10)*55/100);
 
-    for(std::size_t i=0;i<preferenceRows_.size();++i){const auto& item=preferences::catalog()[i];if(item.section!=preferenceSection_||fixedExportScaleRow(item)||quickPreferenceHidden(item.id))continue;
+    for(auto i:quickPreferenceOrder(quickBarsDraft_)){const auto& item=preferences::catalog()[i];if(item.section!=preferenceSection_||fixedExportScaleRow(item)||quickPreferenceHidden(item.id))continue;
 
       const int y=view.y+preferenceRowY_[i]-preferenceContentPixels_/uiScale;
 
@@ -1052,7 +1081,7 @@ void Editor::layoutPreferences(gfx::Rect modal){
 
     for(std::size_t i=0;i<preferenceRows_.size();++i){auto field=preferenceRows_[i];const auto& item=preferences::catalog()[i];
 
-      if(item.section!=preferenceSection_||fixedExportScaleRow(item)||quickPreferenceHidden(item.id)){field->setVisible(false);continue;}
+      if(item.section!=preferenceSection_||fixedExportScaleRow(item)||quickPreferenceHidden(item.id)){field->setVisible(false);if(auto handle=std::dynamic_pointer_cast<QuickPreferenceHandle>(field->getProperty("moonsprite.quick-preference-handle")))handle->handle->setVisible(false);continue;}
 
       const int x=content.x+(labelWidth+4)*uiScale,y=content.y+preferenceRowY_[i]*uiScale-preferenceContentPixels_;
 
@@ -1060,6 +1089,7 @@ void Editor::layoutPreferences(gfx::Rect modal){
 
       if(item.kind==preferences::Kind::Action || item.kind==preferences::Kind::Toggle)rect=gfx::Rect(content.x+2*uiScale,y,content.w-6*uiScale,textControlHeight*uiScale);
 
+      if(auto handle=std::dynamic_pointer_cast<QuickPreferenceHandle>(field->getProperty("moonsprite.quick-preference-handle"))){auto h=handle->handle;h->setBounds({rect.x,rect.y+(textControlHeight-15)*uiScale/2,15*uiScale,15*uiScale});h->setVisible(show&&content.intersects(h->bounds()));h->setEnabled(show);h->paletteViewport=[content]{return content;};rect.x+=17*uiScale;rect.w-=17*uiScale;}
       field->setBounds(rect);field->setEnabled(show && preferenceRowEnabled(item));
 
       if(auto button=dynamic_cast<PixelButton*>(field))button->paletteViewport=[content]{return content;};
