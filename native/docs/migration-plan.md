@@ -4213,3 +4213,11 @@ make-sheet-import-preview-fixtures.cjs运行实际未改写TSX事件处理器生
 低并行正式构建退出0，初轮三条窗口检查也退出0，但实际查看sheet-import-preview.bmp及sheet-import-selection-preview.bmp发现预览为空：panel_content九宫格含不透明中心，最后绘制覆盖了源图和叠加。初轮截图不作为视觉通过证据。已改为先绘既有皮肤底图、内容裁切在内边框，并新增最终窗口framebuffer源RGB断言；增量构建后重做窗口及截图验收。色板库定向测试本轮退出0，确认此前用户批准的96字符长名称/重名后缀/保存重开修复。
 
 最终sheet-import-preview-paint-build.log正式Release增量构建退出0；sheet-import-preview-paint-ui-tests.log的--sheet-import-check、--sheet-new-document-check、--new-document-check均退出0，运行前后同一正式exe SHA256一致（DFEF4908573BAF2FC3244F1970A78AA212C529E407C751D2DC09A710C76C7AF4）。新增最终framebuffer RGB断言通过，重新实际查看普通及冻结选区预览截图，源像素、透明棋盘、切片编号/边框/手柄已可见，字段、提示、适合窗口和底部操作无交叠。视觉仅覆盖默认2×的这两个状态，不代表全缩放、长时手工交互或全软件帧率测量。既有核心两套与旧版21项结果保留；本轮palette-library定向测试通过。来源覆盖694文件通过，strict因全局已知迁移缺口保持退出1；此次未将该结果解释为全量迁移完成。
+
+### 2026-11-08 瓦片与自由瓦片精灵表导入事务（已通过定向验证）
+
+上一阶段bad1ae0f已推送dev。实际legacy buildImportedSpriteSheet不拒绝特殊图层，按当前可见帧合成为普通RGBA Cel并清除输出资源；workspace命令用结构快照恢复原始源／实例／链接。已移除原生特殊工程门禁，复用既有compositor与完整timeline历史，增加资源表／网格单元／源与实例元数据的快照准入以及free源/实例Undo计费；参数和预览继续缓存而不全刷。按legacy mutateDocumentSession正常化失效资源／mask／group／时间轴上下文，原生沿既有结构历史保留撤销前编辑目标。
+
+实际旧版执行器生成96组2资源类型×2链接状态×3隐藏/不透明度状态×2选区范围×4排列的完整像素hash，并调用实际workspace提交/undo/redo验证原资源身份、palette及切片结果。首轮原生96组及原有导入套件通过；后续补齐资源选择历史／128MiB源资源预算拒绝与实际Editor两类预览/提交/撤销/重做，正在最终构建。执行器首轮workspace桥接缺少commitFloatingPaste空事务入口导致测试失败，补齐无浮动对象的传输桩后实际旧版96组通过，未改写产品函数。索引/灰度完整编辑及实际切片提交的异步化/取消仍未完成，不以本批宣称全部导入/全软件迁移完成。
+
+最终resource-sheet-import-final-build.log正式Release与sprite-sheet-import-tests构建退出0；resource-sheet-import-final-core-tests.log导入套件退出0（12.45s），包含新增96组完整RGBA对照、source/output真实重开、source资源/链接/实例/选择历史和128MiB源瓦片表的提前预算拒绝，既有大尺寸/选区快照测试继续通过。resource-sheet-import-ui-tests.log的--sheet-import-check、--sheet-new-document-check、--new-document-check均退出0，运行前后正式exe SHA256一致（8048A75B9686509CFC3227D9CA21E2248A60B05A752B9E81DAF27A6201149F13）。实际Editor两类特殊源的缓存预览、模态提交为6个2×2 Cel、一笔撤销恢复源资源与像素、redo重新合成均通过。已查看本次sheet-import-grid-resource.bmp及sheet-import-free-resource.bmp，默认2×下源像素、棋盘、6帧编号/边框/首格手柄与字段按钮完整无交叠；未声明全缩放/长时性能量化。来源覆盖697文件通过，strict因全局既有缺口仍退出1；Node语法及git diff --check通过。无删除原工程/恢复/缓存或另建产物。本阶段完成后保存推送dev；全量迁移仍INCOMPLETE，实际切片提交异步化与索引/灰度等继续登记未完成。

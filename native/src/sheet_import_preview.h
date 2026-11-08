@@ -1,6 +1,7 @@
 #pragma once
 #include "native_widgets.h"
 #include "sheet_import_preview_model.h"
+#include "sheet_import_storage.h"
 #include "raster_snapshot.h"
 #include "canvas_renderer.h"
 #include "layer_compositor.h"
@@ -30,7 +31,7 @@ class SheetImportPreview final:public ui::Widget {
    std::uint64_t bytes=std::uint64_t(width_)*height_*sizeof(Pixel)*3;if(s)bytes+=s->mask.size();
    for(const auto& c:d.timeline().state().cels)if(c.surface)bytes+=c.surface->pixels.size()*sizeof(Pixel);
    for(const auto& m:d.timeline().state().masks)bytes+=m.mask.surface.pixels.size()*sizeof(Pixel);
-   for(const auto& t:d.timeline().state().tilesets)bytes+=t.pixels.size()*sizeof(Pixel);
+   bytes+=sheetImportResourceBytes(d.timeline().state());
    if(width_<1||height_<1||width_>32768||height_>32768||bytes>256ull*1024*1024)throw std::length_error("Preview exceeds native working pixel budget");
    capture_=std::make_unique<RasterSnapshot>(d.timeline().state());
   }catch(const std::exception& e){error_=unicodeText(e.what());}replan();invalidate();

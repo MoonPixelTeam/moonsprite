@@ -85,6 +85,15 @@ void Editor::smokeSheetImportPreview(){
  document=Document::fromImage(2049,3,std::vector<Pixel>(2049*3,0xff112233),U"Cancelled preview");openSheetImport(false);importSheetPreview_->tick();resolve(false);document=Document::fromImage(4,2,std::vector<Pixel>(8,0xffabcdef),U"New preview generation");openSheetImport(false);wait();check(gfx::getr(importSheetPreview_->imagePixel(0,0))==0xef,"Cancelled preview published into new source");
  const auto rendered=importSheetPreview_->composites;document.beginStroke({0,0},0xff123456);document.commitStroke();importSheetPreview_->tick();wait();check(importSheetPreview_->composites>rendered&&gfx::getr(importSheetPreview_->imagePixel(0,0))==0x56,"Preview did not refresh on content revision");resolve(false);
  document=Document(2,2);document.previewSelection(SelectionMask{0,0,8192,8192,{}});openSheetImport(true);check(!importSheetPreview_->error().empty()&&!importSheetPreview_->imageReady(),"Preview budget did not reject before allocation");resolve(false);
+ // Exercise the actual modal transaction with special resource documents.
+ for(bool free:{false,true}){
+  document=Document(6,4);if(free)check(document.createFreeTileLayer(U"导入实例源"),"Free import fixture layer");document.beginStroke({1,1},0xff123456);document.commitStroke();if(!free)check(document.convertLayerToTilemap(2,2,U"导入瓦片源"),"Grid import fixture conversion");
+  const auto before=document.timeline().state();const auto layer=document.layer().id;const auto original= document.canvasPixels();const auto h=document.historyPosition();document.setCustomGrid(false,{0,0,2,2},false);openSheetImport(false);wait();
+  check(importSheetPreview_->imageReady()&&gfx::getr(importSheetPreview_->imagePixel(1,1))==0x56,"Special source preview lost actual source pixels");
+  if(manager()&&display()){manager()->invalidate();manager()->flushRedraw();manager()->dispatchMessages();writeSmokeFrame(display()->nativeSurface().get(),assets_.parent_path()/(free?"sheet-import-free-resource.bmp":"sheet-import-grid-resource.bmp"));}
+  discard_->Click();check(pending_==Pending::None&&!document.hasTilemapContent()&&!document.hasFreeTileContent()&&document.timeline().state().tilesets.empty()&&document.timeline().state().frames.size()==6&&document.historyPosition()==h+1&&document.pixels()[3]==0xff123456,"Actual special import modal transaction");
+  document.undo();refresh();check(document.layer().id==layer&&document.canvasPixels()==original&&document.timeline().state().tilesets.size()==before.tilesets.size()&&(free?document.hasFreeTileContent():document.hasTilemapContent()),"Special import UI Undo resource authority");document.redo();refresh();check(!document.hasTilemapContent()&&!document.hasFreeTileContent()&&document.pixels()[3]==0xff123456,"Special import UI Redo");
+ }
  chooseSheetFile_=oldChooser;selectionPivot_=pivot;selectionPivotMask_=pivotMask;selectionPivotIdentity_=pivotIdentity;
 }
 
