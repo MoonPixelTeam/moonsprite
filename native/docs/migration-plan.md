@@ -3908,3 +3908,13 @@ case19发现通用16位PNG的WIC8位转换与旧image取整差1：对16Gray／48
 后台扫描复用单worker合并请求，预览复用三worker队列，只使横幅失效，隐藏时停止定时器；相同分页悬停不重复布局重绘。原始大厅1072×160暴露原生1024准入残留，文档构造/fromImage、工程编码及重开准入统一为每边32768且总计64Mi像素/256MiB，保留既有资源预算。其它操作专属1024限制仍是明确迁移缺口，本批不声称大画布全操作闭环。六张原图均不透明，逐像素/原尺寸打开→保存→真实读取重开通过；1072边缘绘画撤销重做及超预算拒绝通过。
 
 验证：直接执行未改写旧版函数生成49组解析和40组洗牌结果，全字段对照通过，重复生成SHA256一致；home-banner-core-tests.log、home-banner-document-tests.log、home-banner-project-tests.log退出0。唯一正式Release构建home-banner-build/final-build/save-build/settled-build/error-build.log通过。首次运行在大厅保存暴露project_encode残留限制，修正后六图保存重开通过；轮播测试需等重挂载扫描落地，增加代际完成等待；缺失图的filesystem_error本地编码导致UTF8转换异常，增加稳定中文提示及Windows错误码回退后通过。home-banner-final-ui-tests.log的--home-banner-check、--home-sections-check、--gallery-check、--recent-projects-check、--home-announcements-check全部退出0。横幅检查覆盖作者精确URL及失败、动态工程预览与打开、独立图片文档/最近记录不变、按钮实际命中与消息、轮播边界、缺失图保持当前作品。默认2倍home-banner-smoke.bmp已查看，作品/标题/作者/分页无重叠；非人工桌面交互、外部浏览器、长期帧率或峰值内存验收。来源652文件覆盖通过，strict因既有缺口退出1。全量迁移仍INCOMPLETE。
+
+### 主页缩略图解码、缓存与后台队列实证（2026-11-08）
+
+接续73f58df5，现有recent-preview-test仅构造模型，不能证明真实解码。新增生成器直接执行未改写legacy raster-image.ts的createRasterImagePreview，在本机Chromium157中运行121组输入，83接受：PNG颜色类型/位深/五种滤波/透明RGB、GIF首帧偏移与越界裁剪、截断/CRC、512边界及1072横幅；核对准入、原尺寸、预览尺寸与完整RGBA哈希，重复生成SHA256一致。对照发现GPU与CPU浏览器drawImage在极窄图选择不同相邻像素，固定--disable-gpu对应原生CPU路径；不宣称GPU像素等价。生成器不下载浏览器，使用已安装Chrome或Edge；缓存及生成数据留owned目录。
+
+原生复用已有BSD许可Skia静态库解码GIF/WebP/JPEG/BMP及16位PNG，8位/索引PNG复用WIC保留Skia旧版本未承接的索引alpha；PNG校验IDAT及其之前CRC，要求下一8字节头，忽略其后载荷并补规范IEND，以实际浏览器截断/尾CRC行为为准。CPU像素路径一次整数预乘、Skia最近邻缩放和readPixels，最近邻边界用朝1的相邻浮点值承接旧软件canvas，1072×160→512×76的边界行由case120验证。SkData引用当前函数存活的字节，移除解码输入完整复制；不引入WebView或新codec依赖。磁盘缓存升级v2，旧算法缓存按需重建，不批量删除；既有后台三worker、串行fallback、24项/32MiB LRU语义保留。
+
+新增真实文件测试：冷/热缓存像素一致、损坏PNG/旧版本重建、源大小与时间失效、缓存目录为文件的写失败不隐藏有效预览、取消拒绝；工程内置preview与缺失preview完整fallback，ASE/ASEPRITE、既有PSD merged fixture、BMP/JPEG/WebP实际入口；队列三worker上限、24项LRU命中、32MiB字节淘汰、取消代际只发布当前结果。首次大fixture静态初始化造成测试栈溢出，测试PE栈调整8MiB；实际产品栈未改。完整格式色彩配置/EXIF方向/所有畸形codec、非RGBA无preview工程以及GPU采样尚未逐项验收，不能标记全部预览格式等价。16Mi像素解码预算仍是原生限制。
+
+验证：recent-preview-oracle.log及-repeat.log生成121组，recent-preview-full-tests.log真实浏览器矩阵和上述文件/队列均退出0；recent-preview-final-build.log唯一正式Release和测试构建退出0。recent-preview-final-ui-tests.log中--recent-projects-check、--gallery-check、--home-sections-check、--home-banner-check均退出0。本批无UI布局改动，不以回调/消息检查声明人工交互或长期帧率/内存峰值验收。来源654文件覆盖通过，strict因已知全量缺口退出1，diff检查通过；全量迁移仍INCOMPLETE。
