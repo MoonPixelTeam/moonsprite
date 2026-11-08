@@ -1,3 +1,4 @@
+#include "recovery_commit.h"
 #include "recent_project_preview.h"
 #include "image_file_signature.h"
 #include "project_preview.h"
@@ -92,7 +93,7 @@ std::mutex& diskMutex(){static std::mutex mutex;return mutex;}
 std::string cacheName(const std::string& path){std::uint64_t value=14695981039346656037ull;for(unsigned char c:path){value^=c;value*=1099511628211ull;}std::ostringstream out;out<<std::hex<<value;return out.str();}
 }
 Preview readPreview(const Project& record,const std::filesystem::path& cacheDirectory,const std::function<bool()>& canceled){
- auto checkCanceled=[&]{if(canceled())throw std::runtime_error("Project preview canceled");};checkCanceled();Apartment apartment;const auto file=std::filesystem::u8path(record.path);const auto sourceSize=std::filesystem::file_size(file);const auto sourceTime=std::filesystem::last_write_time(file).time_since_epoch().count();const auto base=cacheDirectory/cacheName(record.path);auto metadata=base;metadata+=".txt";auto pngFile=base;pngFile+=".png";
+ auto checkCanceled=[&]{if(canceled())throw std::runtime_error("Project preview canceled");};checkCanceled();Apartment apartment;const auto logical=std::filesystem::u8path(record.path);const auto file=record.previewIdentity.compare(0,9,std::string("recovery\0",9))==0?project::resolveRecoveryPayload(logical.parent_path(),logical.stem().u8string()):logical;const auto sourceSize=std::filesystem::file_size(file);const auto sourceTime=std::filesystem::last_write_time(file).time_since_epoch().count();const auto base=cacheDirectory/cacheName(record.path);auto metadata=base;metadata+=".txt";auto pngFile=base;pngFile+=".png";
  Preview result;
  // Keep only paired file IO under the shared lock; independent image decodes
  // must not serialize all three preview workers on a warm disk cache.
@@ -104,7 +105,7 @@ Preview readPreview(const Project& record,const std::filesystem::path& cacheDire
   checkCanceled();checkSource();
   if(!result.png.empty())return result;
  }
- auto extension=file.extension().u8string();std::transform(extension.begin(),extension.end(),extension.begin(),[](unsigned char c){return char(std::tolower(c));});const auto source=readBytes(file,project::Limits{}.archiveBytes);checkCanceled();
+ auto extension=logical.extension().u8string();std::transform(extension.begin(),extension.end(),extension.begin(),[](unsigned char c){return char(std::tolower(c));});const auto source=readBytes(file,project::Limits{}.archiveBytes);checkCanceled();
  if(hasGifSignature(source.data(),source.size())){decode(result,source);encode(result);}
  else if(extension==".moonsprite"||(extension==".bak"&&[&]{auto suffix=file.stem().extension().u8string();std::transform(suffix.begin(),suffix.end(),suffix.begin(),[](unsigned char c){return char(std::tolower(c));});return suffix==".moonsprite";}())){
   auto bytes=std::make_shared<const Bytes>(source);project::Archive archive(bytes);auto manifest=archive.read("manifest.json",project::Limits{}.manifestBytes);using namespace winrt::Windows::Data::Json;JsonObject root;need(JsonObject::TryParse(winrt::to_hstring(std::string(manifest.begin(),manifest.end())),root),"Cannot read project preview metadata");auto document=root.GetNamedObject(L"document");auto dimension=[&](const wchar_t* name){double value=document.GetNamedNumber(name);need(std::isfinite(value)&&value>=1&&std::floor(value)==value&&value<=2147483647,"Invalid project preview dimensions");return int(value);};result.width=dimension(L"width");result.height=dimension(L"height");result.colorMode=winrt::to_string(document.GetNamedString(L"colorMode"));need(result.colorMode=="rgba"||result.colorMode=="indexed"||result.colorMode=="grayscale","Invalid project preview color mode");

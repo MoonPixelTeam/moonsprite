@@ -3971,3 +3971,14 @@ case19发现通用16位PNG的WIC8位转换与旧image取整差1：对16Gray／48
 验证：测试目标直接编译同一recovery_store.cpp，MOONSPRITE_RECOVERY_COMMIT_TEST只在该目标启用；三处ExitProcess检查点只在测试编译存在，正式程序没有环境或运行期开关。六个真实子进程覆盖descriptor/payload/metadata三提交点×新建/覆盖，另一次连续descriptor退出；父进程检查精确归档字节、描述名称/时间、扫描不改文件、CRC不符拒绝、正常工程解码像素及重试/丢弃。正式主页另用独立位运算CRC构造描述夹具，覆盖旧JSON+权威pending name==ID、实际恢复像素/名称/来源ID、后续自动保存补齐并清描述、丢弃保留活画面。原32次四进程竞争、弃锁、Windows真实文件占用失败/重试及稀疏历史回归继续通过。
 
 recovery-commit-build.log正式程序构建成功、测试因直接编译store缺zlib头失败；显式链接已有zlibstatic后-final-build.log退出0，core-tests.log退出0。增加重复退出重放后recovery-commit-replay-build.log/-core-tests.log退出0；补主页独立描述夹具及复用已编码JSON后recovery-commit-ui-build.log正式/测试全构建退出0，recovery-commit-final-core-tests.log与-final-ui-tests.log退出0。来源660文件覆盖通过，strict因已知迁移缺口退出1，diff通过。无UI布局改动，无新截图或人工验收；硬件断电、提交前完整/半写临时工程恢复、跨会话及旧二进制协作仍未完成，GAP-015保持部分完成，全量迁移仍INCOMPLETE。
+
+
+### 未提交完整临时工程的发现、预览、恢复与处置（2026-11-08）
+
+接续882b3085，按FS-006/R05/GAP-015延伸原生已登记的待提交描述，不修改legacy归档/JSON格式。此前进程在完整payload临时文件Flush并关闭后、MoveFileEx前退出时，列表仍只能看到旧payload或空目录。本批复用同一只读选择器：优先选择与描述匹配的正式payload，否则仅接受<safe-id>.moonsprite.PID.tick.sequence.tmp形式且长度与完整CRC32匹配的普通文件。描述只解析一次，目录发现一次分组候选，64KiB缓冲校验；半写、CRC不符、其它ID、非数字/旧PID-only命名不采用，不猜测删除。扫描不改名/覆盖/补写。CRC仍仅用于意外损坏匹配，不作为安全认证。
+
+恢复列表/菜单/控件仍持有稳定逻辑<id>.moonsprite路径和既有回调，后台工程预览与恢复加载才解析实际源文件。预览按逻辑扩展名选工程解码，避免实际.tmp被当成普通图片；尺寸/时间变动检查针对实际源，恢复预览仍不写磁盘缓存。重试写入先把已校验临时副本转为正式payload，再提交其描述，随后才开始新事务，确保下一次早退不让唯一副本失去描述。显式丢弃先处理同ID且完整匹配的临时副本，任何占用失败反馈且保留描述/可恢复副本；不匹配与不完整残留保持原字节。不是通用清理缓存或删除用户数据的授权。
+
+新增真实测试构建检查点仅在editor-recovery-tests：写满首个1MiB但未写完，以及payload Flush/关闭后Move前ExitProcess；768×512随机RGBA实际归档超过1MiB，四个退出覆盖两位置×新建/覆盖，另一次重试在descriptor阶段退出。检查源/描述逐字节不变、旧正式工程保留、完整temp真实工程解码/预览RGBA与独立正式文件一致、半写不采用、Windows锁定temp导致写入/删除失败后仍可恢复、重试保住前次temp、显式丢弃保留无关/旧PID-only/其它ID/CRC不符文件。既有七次提交中断、32次四进程竞争及稀疏历史/来源回归继续通过。主页独立描述夹具改为只有完整temp，核对实际上传图像（hasPreview表示已创建RGBA surface）、恢复像素/名称/来源ID、后续自动保存转正并清描述、丢弃后活文档像素不变。
+
+验证：recovery-temp-build.log正式Release/editor-recovery/recent-preview目标构建退出0，recovery-temp-core-tests.log退出0；补主页测试时recovery-temp-ui-build.log因误把smokePreview的bool当对象编译失败，修正后recovery-temp-final-build.log全目标退出0。recovery-temp-final-core-tests.log退出0；预览测试首次以相对owned根调用被拒绝，改绝对路径后recovery-temp-preview-tests.log的121真实浏览器样本、缓存/格式/取消/三worker/LRU全部退出0；recovery-temp-ui-tests.log正式--home-recovery-check退出0。来源660覆盖通过，strict按其余既有缺口退出1，diff通过。无UI布局变更，无新截图/人工验收；未验证硬件断电、无描述的旧临时文件、跨会话/旧程序协作及所有文件系统，GAP-015不因这些进程退出测试标为完全关闭，全量迁移仍INCOMPLETE。

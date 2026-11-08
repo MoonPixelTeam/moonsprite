@@ -526,14 +526,15 @@ void Editor::restoreRecovery(const std::filesystem::path& archive,const std::str
     try {
       auto report=std::make_shared<project::TimelapseRestoreReport>();
       DocumentLoadingDialog loading(font_,skin_,[archive,id,name,report]{
-        auto file=std::ifstream(archive,std::ios::binary|std::ios::ate);if(!file)throw std::runtime_error("Cannot read recovery");const auto length=file.tellg();if(length<0||std::uint64_t(length)>project::Limits{}.archiveBytes)throw std::runtime_error("Recovery size exceeds budget");
+        const auto source=archive.filename()==std::filesystem::u8path(id+".moonsprite")?project::resolveRecoveryPayload(archive.parent_path(),id):archive;
+        auto file=std::ifstream(source,std::ios::binary|std::ios::ate);if(!file)throw std::runtime_error("Cannot read recovery");const auto length=file.tellg();if(length<0||std::uint64_t(length)>project::Limits{}.archiveBytes)throw std::runtime_error("Recovery size exceeds budget");
         auto bytes=std::make_shared<project::Bytes>(std::size_t(length));file.seekg(0);if(!file.read(reinterpret_cast<char*>(bytes->data()),std::streamsize(bytes->size())))throw std::runtime_error("Incomplete recovery read");
         auto imported=project::prepareEditableImport(project::readProjectManifest(bytes,{},report.get()));
         // Payload-only discovery uses its safe filename as a display fallback.
         // Keep the archive name when metadata is unavailable, without decoding
         // every archive during startup. A valid name equal to its ID still wins.
         bool fallback=name==std::u32string(id.begin(),id.end());
-        if(fallback){try{if(const auto pending=project::readPendingRecoveryRecord(archive,id))fallback=pending->name!=id;}catch(const std::exception&) {}}
+        if(fallback){try{if(const auto pending=project::readPendingRecoveryRecord(source,id))fallback=pending->name!=id;}catch(const std::exception&) {}}
         if(fallback){try{auto sidecar=archive;sidecar.replace_extension(L".json");std::ifstream meta(sidecar,std::ios::binary|std::ios::ate);if(meta&&meta.tellg()>=0&&meta.tellg()<=1024*1024){std::string text(std::size_t(meta.tellg()),'\0');meta.seekg(0);if(meta.read(text.data(),std::streamsize(text.size()))){const auto record=project::decodeRecoveryRecord(text);fallback=record.id!=id||record.name!=id;}}}catch(const std::exception&) {}}
         if(!fallback||imported.name.empty())imported.name=name;return project::createEditableDocument(std::move(imported));
       },U"恢复工程",&toolIcons_);

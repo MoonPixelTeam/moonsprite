@@ -1,3 +1,4 @@
+#include "recent_project_preview.h"
 #include "recovery_commit.h"
 #include "project_file.h"
 #include "raster_geometry.h"
@@ -13,6 +14,7 @@
 #include <thread>
 #include <windows.h>
 namespace moon {struct RasterHistoryFixture {
+ static void noise(Document& d){auto state=d.timeline_.state();std::uint32_t value=0x12345678;for(auto& pixel:state.cels.front().surface->pixels){value^=value<<13;value^=value>>17;value^=value<<5;pixel=value;}d.timeline_=timeline::Timeline(std::move(state));}
  static void local(Document& d){auto state=d.timeline_.state();auto& s=*state.cels.front().surface;s.width=2;s.height=1;s.offsetX=-1;s.offsetY=2;s.storageOriginX=9;s.storageOriginY=-7;s.pixels={0x00030201,0xff123456};d.timeline_=timeline::Timeline(std::move(state));}
 };}
 using namespace moon;
@@ -120,6 +122,38 @@ void storeCrashes(const std::filesystem::path& root,const std::wstring& exe){
   project::writeRecoveryFiles(directory,{"crash","retry","2000000000000"},*newBytes);CHECK(!std::filesystem::exists(directory/"crash.recovery-pending"));CHECK(project::listRecoveryRecords(directory).front().name=="retry");project::removeOwnedRecovery(directory,"crash");CHECK(project::listRecoveryRecords(directory).empty());
  }
  std::cout<<"Six real process exits at descriptor/payload/metadata commits, byte-preserving discovery, mismatch rejection, reopen/retry/discard passed\n";
+
+}
+void storeTemporaryCrashes(const std::filesystem::path& root,const std::wstring& exe){
+ auto read=[](const std::filesystem::path& path){std::ifstream file(path,std::ios::binary);return project::Bytes(std::istreambuf_iterator<char>(file),{});};
+ auto write=[](const std::filesystem::path& path,const project::Bytes& bytes){std::ofstream file(path,std::ios::binary);file.write(reinterpret_cast<const char*>(bytes.data()),std::streamsize(bytes.size()));CHECK(bool(file));};
+ Document before(3,2),after(768,512);before.beginStroke({0,0},0xff0000ff);before.commitStroke();RasterHistoryFixture::noise(after);const auto oldBytes=project::encodeRecoveryProject(before).bytes,newBytes=project::encodeRecoveryProject(after).bytes;CHECK(newBytes->size()>1024*1024);
+ const auto expectedPath=root/"expected-preview"/"new.moonsprite";std::filesystem::create_directories(expectedPath.parent_path());write(expectedPath,*newBytes);const auto expectedPreview=recent::readPreview({expectedPath.u8string(),0,false},{},[]{return false;});
+ for(const auto stage:{L"payload-partial",L"payload-temp"})for(const bool existing:{false,true}){
+  const auto directory=std::filesystem::absolute(root/(std::wstring(stage)+(existing?L"-existing":L"-new")));std::filesystem::create_directories(directory);const auto logical=directory/"crash.moonsprite";
+  if(existing)project::writeRecoveryFiles(directory,{"crash","old name","1700000000000"},*oldBytes);write(directory/"next.bin",*newBytes);
+  {Child child(exe,L"--crash-commit \""+directory.wstring()+L"\" "+stage);child.completed(73);}
+  std::filesystem::path temporary;for(const auto& file:std::filesystem::directory_iterator(directory))if(file.path().extension()==L".tmp")temporary=file.path();CHECK(!temporary.empty());
+  const auto originalTemp=read(temporary),descriptor=read(directory/"crash.recovery-pending");const bool complete=std::wstring(stage)==L"payload-temp";
+  CHECK(complete?originalTemp==*newBytes:originalTemp.size()==1024*1024);CHECK(existing?read(logical)==*oldBytes:!std::filesystem::exists(logical));
+  auto wrong=*newBytes;wrong[0]^=1;const auto unrelated=directory/"crash.moonsprite.9.9.9.tmp",oldPid=directory/"crash.moonsprite.99.tmp",other=directory/"crash-extra.moonsprite.1.2.3.tmp",malformed=directory/"crash.moonsprite.a.2.3.tmp";
+  write(unrelated,wrong);write(oldPid,*newBytes);write(other,*newBytes);write(malformed,*newBytes);
+  auto rows=project::listRecoveryRecords(directory);CHECK(rows.size()==(complete||existing?1:0));const auto resolved=project::resolveRecoveryPayload(directory,"crash");CHECK(resolved==(complete?temporary:logical));CHECK(read(temporary)==originalTemp&&read(directory/"crash.recovery-pending")==descriptor);
+  if(complete){
+   CHECK(rows.front().name=="new name"&&project::readPendingRecoveryRecord(resolved,"crash")->name=="new name");auto imported=project::prepareEditableImport(project::readProjectManifest(std::make_shared<const project::Bytes>(read(resolved))));CHECK(imported.width==768&&imported.height==512);
+   recent::Project record{logical.u8string(),0,false,std::string("recovery\0",9)+"crash"};const auto preview=recent::readPreview(record,{},[]{return false;});CHECK(preview.pixels==expectedPreview.pixels&&preview.width==768&&preview.height==512);
+   HANDLE locked=CreateFileW(temporary.c_str(),GENERIC_READ,FILE_SHARE_READ,nullptr,OPEN_EXISTING,FILE_ATTRIBUTE_NORMAL,nullptr);CHECK(locked!=INVALID_HANDLE_VALUE);bool deleteFailed=false,writeFailed=false;
+   try{project::removeOwnedRecovery(directory,"crash");}catch(const std::exception&){deleteFailed=true;}try{project::writeRecoveryFiles(directory,{"crash","retry","2000000000000"},*newBytes);}catch(const std::exception&){writeFailed=true;}CloseHandle(locked);CHECK(deleteFailed&&writeFailed&&read(temporary)==originalTemp&&read(directory/"crash.recovery-pending")==descriptor);
+   if(existing){
+    write(directory/"next.bin",*oldBytes);{Child child(exe,L"--crash-commit \""+directory.wstring()+L"\" descriptor");child.completed(73);}
+    CHECK(!std::filesystem::exists(temporary)&&read(logical)==*newBytes&&project::listRecoveryRecords(directory).front().name=="new name");
+    project::writeRecoveryFiles(directory,{"crash","retry","2000000000000"},*newBytes);CHECK(project::resolveRecoveryPayload(directory,"crash")==logical&&!std::filesystem::exists(directory/"crash.recovery-pending"));
+   }
+  }else if(existing)CHECK(rows.front().name=="old name");
+  project::removeOwnedRecovery(directory,"crash");CHECK(project::listRecoveryRecords(directory).empty());CHECK(complete?!std::filesystem::exists(temporary):read(temporary)==originalTemp);
+  CHECK(read(unrelated)==wrong&&read(oldPid)==*newBytes&&read(other)==*newBytes&&read(malformed)==*newBytes);
+ }
+ std::cout<<"Four partial/full-temp process exits, read-only discovery/preview, locked retry/discard, repeated-exit preservation and unrelated evidence passed\n";
 }
 }
 
@@ -129,6 +163,7 @@ int wmain(int argc,wchar_t** argv){try{
  const std::filesystem::path root=std::filesystem::path(argv[1])/("run-"+std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));std::filesystem::create_directories(root);
  storeProcesses(root,std::filesystem::absolute(argv[0]).wstring());
  storeCrashes(root,std::filesystem::absolute(argv[0]).wstring());
+ storeTemporaryCrashes(root,std::filesystem::absolute(argv[0]).wstring());
  Document first(3,2),second(2,3);first.beginStroke({1,1},0xff123456);first.commitStroke();second.beginStroke({0,2},0xff654321);second.commitStroke();
  const auto identity=first.identity(),revision=first.revision(),history=first.historySize();const auto pixels=first.pixels();
  editor::RecoverySession a,b;recovery::Preferences settings;
