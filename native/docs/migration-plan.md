@@ -4487,3 +4487,12 @@ CTest tile-repeat通过，含此前1024旧版几何oracle及直接沿用旧版re
 实际鼠标诊断逐项比较普通像素层与自由瓦片源、纯色与Cracks纹理、连续/非连续、X/Y/Both副本和本地输入的完整像素；检查选区限制、连续填充不跨分隔区域、单笔历史、UndoRedo及Escape。bucket-repeat-build.log正式Release构建0，显式等待 --tile-repeat-check进程退出0；三项CTest tile-repeat/tile-repeat-stroke/free-tile-project通过12.11s。742文件来源登记快照和diff检查通过。未做新截图/FPS验收。
 
 其余平铺工具、渐变/形状及选区副本命中和全量迁移仍需继续。保留未跟踪文件、工程和缓存；阶段提交推送dev。
+
+
+### 2026-11-09：平铺渐变副本输入（阶段完成）
+
+对照canvas-pointer-down/move的localPoint和canvas-input-fill moveGradient、自由源渐变入口，渐变起点、拖动及待确认手柄使用本地坐标后网格吸附。原生仅gradientTool路径映射有限副本坐标，避免改变形状等未迁移工具；无效移动不更新几何，外侧释放保留现有终点并结算。现有区域识别、选区限制、自由源事务、线性/径向几何、确认、取消和历史复用。
+
+实际鼠标诊断比较普通层/自由瓦片源、线性/径向、直接应用/Enter确认、X/Y/Both主画布和副本的完整像素，验证待确认无历史、应用一笔、UndoRedo及Escape。gradient-repeat-build.log正式Release构建0，显式等待 --tile-repeat-check ExitCode0；三项CTest tile-repeat/tile-repeat-stroke/free-tile-project通过12.09s。来源登记742文件快照及diff检查通过。手柄坐标复用同一映射，但本轮没有新增手柄拖动或越界释放专门运行回归，也没有新截图/FPS测量。
+
+其余平铺工具与全部迁移仍未完成。保留用户数据及未跟踪文件；阶段提交推送dev。

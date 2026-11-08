@@ -741,7 +741,10 @@ bool Editor::onProcessMessage(ui::Message* msg) {
 
       }
 
-      const auto drawPoint=gridSnapPoint(p);
+      Point toolPoint=p;
+      // Legacy gradient geometry receives localPoint, before grid snapping.
+      if(gradientTool_&&tileRepeatIdentity_==document.identity()&&tileRepeat_!=repeat::Mode::Off){const auto mapped=repeat::map({double(p.x),double(p.y)},document.width(),document.height(),tileRepeat_);if(mapped)toolPoint={int(mapped->local.x),int(mapped->local.y)};else if(msg->type()==ui::kMouseMoveMessage)return true;else if(gradientDragging_&&msg->type()==ui::kMouseUpMessage)toolPoint={int(gradientSpec_.end.x),int(gradientSpec_.end.y)};}
+      const auto drawPoint=gridSnapPoint(toolPoint);
 
       if(shapeDragging_&&shapeSpec_.kind==ShapeKind::Curve){
         try{
