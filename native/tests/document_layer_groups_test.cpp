@@ -1,5 +1,6 @@
 #include "document.h"
 #include "layer_compositor.h"
+#include "raster_geometry.h"
 #include "layer_style_sampler.h"
 #include <filesystem>
 #include <fstream>
@@ -91,7 +92,16 @@ void imageLayerPasteCheck(){
  d.undo();CHECK(d.selectionPivotHistory().pivot&&d.selectionPivotHistory().pivot->x==2&&d.selectionPivotHistory().pivot->y==3);CHECK(d.layer().id==original&&!d.timeline().hasLayer(pasted)&&d.selection()&&d.selection()->x==before->x);d.redo();CHECK(d.layer().id==pasted&&d.selection()->y==9);
  const auto unchanged=d.historySize();auto bad=clip;bad.mask.resize(1);bool failed=false;try{d.pastePixelsAsNewLayer(bad,{0,0});}catch(const std::invalid_argument&){failed=true;}CHECK(failed&&d.historySize()==unchanged&&d.layer().id==pasted);
 }
-int main(){try{imageLayerPasteCheck();specialStyleOwnerCheck();styleEnabledCheck();styleSplitCheck();groupMergeClipboardCheck();groupOrdinaryMergeCheck();groupVisibleMergeCheck();
+void imageLayerPasteInteractionCheck(){
+ Document d(8,8);const auto owner=d.layer().id,frame=d.frame().id;d.previewSelection(SelectionMask{0,0,2,2,{}});
+ SelectionClipboard clip;clip.width=clip.height=1;clip.pixels={0xff0000ff};CHECK(d.pastePixelsAsNewLayer(clip,{3,3}));const auto pasted=d.layer().id;
+ CHECK(d.beginSelectionContentMove(false));d.transformFloatingPaste(SelectionTransform{1,1,2,2});CHECK(d.commitFloatingPaste());
+ CHECK(raster::readWorld(*d.timeline().resolveSurface(d.cel().id).surface,1,1)==0xff0000ff);CHECK(raster::readWorld(*d.timeline().resolveSurface(d.cel().id).surface,2,2)==0xff0000ff);
+ d.undo();CHECK(d.layer().id==pasted&&raster::readWorld(*d.timeline().resolveSurface(d.cel().id).surface,3,3)==0xff0000ff);d.undo();CHECK(d.layer().id==owner&&d.selection()&&d.selection()->width==2);d.redo();d.redo();CHECK(d.layer().id==pasted&&raster::readWorld(*d.timeline().resolveSurface(d.cel().id).surface,2,2)==0xff0000ff);
+ d.undo();d.undo();d.previewSelection({});CHECK(d.fillSelectionOrCanvas(0xffffffff));CHECK(d.createAttachedMask(owner,frame));CHECK(d.selectAttachedMask(owner,frame,true));const auto mask=d.activeMaskId();const auto masks=d.timeline().state().masks;const auto history=d.historyPosition();
+ CHECK(d.pastePixelsAsNewLayer(clip,{2,2}));CHECK(d.activeMaskId().empty()&&!d.maskIsolated());d.undo();CHECK(d.layer().id==owner&&d.activeMaskId()==mask&&d.maskIsolated()&&d.timeline().state().masks.size()==masks.size());d.redo();CHECK(d.activeMaskId().empty()&&d.historyPosition()==history+1);
+}
+int main(){try{imageLayerPasteInteractionCheck();imageLayerPasteCheck();specialStyleOwnerCheck();styleEnabledCheck();styleSplitCheck();groupMergeClipboardCheck();groupOrdinaryMergeCheck();groupVisibleMergeCheck();
  Document d(256,256);d.beginStroke({0,0},0xff0000ff);d.commitStroke();const auto bottom=d.layer().id;d.addLinkedFrame();d.addLayer();const auto top=d.layer().id;d.beginStroke({0,0},0xff00ff00);d.commitStroke();d.selectTimelineLayer(top);d.selectTimelineLayer(bottom,1);
  const auto sourceCel=d.timeline().findCel(bottom,d.frame().id)->id;const auto beforeOwner=d.timeline().resolveSurface(sourceCel).source->id;const auto* beforePixels=d.timeline().resolveSurface(sourceCel).surface->pixels.data();const auto previousHistory=d.historySize(),previousBytes=d.historyBytes();const auto explicitLayers=d.timelineSelection().layers;
  CHECK(d.createLayerGroup());CHECK(d.timeline().state().groups.size()==1);const auto outer=d.selectedGroupId();CHECK(outer.has_value());CHECK(d.selectedGroupIds()==std::vector<std::string>{*outer});CHECK(d.timelineSelection().layers==explicitLayers);CHECK(d.historySize()==previousHistory+1);CHECK(d.historyBytes()-previousBytes<65536);for(const auto& layer:d.timeline().state().layers)CHECK(layer.groupId==outer);CHECK(d.timeline().resolveSurface(sourceCel).source->id==beforeOwner);CHECK(d.timeline().resolveSurface(sourceCel).surface->pixels.data()==beforePixels);

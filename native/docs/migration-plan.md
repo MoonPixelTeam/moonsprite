@@ -4358,3 +4358,12 @@ make-quick-command-fixtures.cjs执行旧文件未改写的独立配置段（仅�
 验收：首轮special-paste-ui-build.log链接失败LNK2001，原因构建时新枢轴接口与旧核心对象不一致；未运行该产物。冻结接口后special-paste-final-build.log正式Release与核心/偏好目标构建0。document-layer-groups/editor-preferences/quick-command-preferences三项通过0.43s，包含新增组继承/上方插入/画布外像素/mask/其他帧空白/单笔UndoRedo/枢轴/非法payload不变更与偏好存储往返。正式正常显示--quick-command-check PID2996退出0，实际菜单Click验证色板和帧选择状态下特殊粘贴、新层一笔历史、当前格浮动目标、内部整层优先、更新外部像素优先以及默认目标new-layer。既有排序/快捷键提示/后台检测撤销取消诊断一并通过。没有新增布局，未新增截图验收，不把此次运行称为全部剪贴板/全软件FPS验收。
 
 边界：索引/灰度色彩模式全局仍未迁移；默认new-project分支复用现有独立新项目入口，未另测该偏好组合；完整变换后双重Undo、全部自由瓦片/蒙版特殊粘贴组合仍需扩大验收。平铺、描边、多窗格等继续INCOMPLETE，目标active。来源727文件与证据快照通过，strict按已知全量缺口失败。保留所有既有未跟踪文件和用户数据，只提交本阶段文件并推送dev。
+
+
+### 2026-11-09：特殊粘贴变换、蒙版与新项目路由验收
+
+承接1a39a3be，沿用旧版workspace.test.ts“transforms a newly pasted layer immediately and restores its placement through undo”输入链路补齐原生回归：1px新层粘贴立即变为2×2，连续撤销恢复原层与原选区，再连续重做恢复变换像素。新增隔离附加蒙版编辑态中新层粘贴、退出编辑、撤销恢复原蒙版身份/隔离状态、重做再退出；初始fixture原层没有像素，createAttachedMask按既有规则拒绝，修正为有像素owner后通过，未改变生产语义。
+
+检查发现新层粘贴为保存蒙版编辑上下文额外设置beforeMasks/afterMasks，重复复制整套蒙版；改用已有MaskContextHistory仅保存身份/隔离状态。通用GroupEdit结构快照仍含蒙版，未声称消除所有复制或全应用卡顿。默认粘贴目标new-project实际窗口诊断补齐，检查新增标签、2×1尺寸、全新项目无可撤销历史；复用既有new-document剪贴板reader，不访问用户系统剪贴板。
+
+special-paste-interaction-final-build.log唯一正式Release与定向目标构建0；document-layer-groups/editor-preferences/quick-command-preferences全通过0.42s。正式正常显示--quick-command-check PID48924退出0，包括new-project偏好路由和既有新层/当前格、内外剪贴板优先级、快捷栏排序/提示及后台检测回归。未改UI布局，无新增截图或耗时计量，不宣称全部模式/组合验收完成。来源覆盖与strict结果见本次检查，全量依然INCOMPLETE；保留用户数据及所有既有未跟踪文件，本阶段提交推送dev。

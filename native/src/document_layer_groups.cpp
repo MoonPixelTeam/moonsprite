@@ -209,7 +209,7 @@ bool Document::pastePixelsAsNewLayer(const SelectionClipboard& clip,Point positi
  }
  e.afterActive=added.id;e.afterTimelineSelection=TimelineSelection{};e.afterTimelineSelection->layers={added.id};e.afterTimelineSelection->layerAnchor=added.id;e.afterSelection=std::vector<std::string>{};e.afterFrameAnchor=std::string{};e.afterGroupUi->selected.clear();e.afterGroupUi->focus.reset();
  e.pixelSelectionEdit=true;e.beforePixelsSelection=selection_;e.afterPixelsSelection=SelectionMask{position.x,position.y,clip.width,clip.height,{}};e.beforeTrimPivot.emplace(pivot);e.afterTrimPivot.emplace(std::nullopt);
- if(!activeMaskId_.empty()){e.beforeMasks=timeline_.state().masks;e.afterMasks=timeline_.state().masks;e.maskEditingOnUndo={{activeMaskId_,maskIsolated_}};e.maskToActivateOnRedo=std::string{};}
+ if(!activeMaskId_.empty())e.maskContext=std::make_shared<Edit::MaskContextHistory>(Edit::MaskContextHistory{activeMaskId_,std::string{},maskIsolated_,false});
  if(!commitGroupEdit(std::move(e),U"粘贴为新图层"))return false;nextLayerId_=counter;activeMaskId_.clear();maskIsolated_=false;return true;
 }
 bool Document::pasteLayerClipboard(const LayerClipboardSnapshot& clip){
