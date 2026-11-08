@@ -212,6 +212,17 @@ void Editor::smokeTileRepeat(){
   document.createFreeTileLayer(U"Smooth rejected source");setTileRepeat(mode);refresh();const auto h=document.historyPosition();send(ui::kMouseDownMessage,{1.25,1.25});send(ui::kMouseUpMessage,{1.25,1.25});if(smoothDragging_||document.historyPosition()!=h)throw std::runtime_error("Smooth must reject free tile layer");
  }
  smoothTool_=false;
+ // Continuous local liquid deformation must be identical on every adjacent copy.
+ for(const auto mode:{repeat::Mode::X,repeat::Mode::Y,repeat::Mode::Both})for(const auto kind:{liquify::Mode::Push,liquify::Mode::Inflate,liquify::Mode::Deflate,liquify::Mode::TwistClockwise,liquify::Mode::TwistCounterClockwise})for(bool smoothing:{false,true}){
+  std::vector<Pixel> expected;
+  for(bool copy:{false,true}){
+   std::vector<Pixel> source;for(int y=0;y<24;++y)for(int x=0;x<32;++x)source.push_back(0xff000000u|unsigned(x*7)|(unsigned(y*9)<<8));
+   document=Document::fromSpriteSheetRaster(32,24,source,U"Repeated liquify");document.previewSelection(SelectionMask{1,1,29,21,{}});paletteFocused_=false;runShortcutCommand("tool.liquify");liquifyOptions_={kind,5,100,smoothing,70};setTileRepeat(mode);zoom_=2;{const auto v=canvasViewport();const int w=int(32*canvasScale()),h=int(24*canvasScale());canvas_={v.x+(v.w-w)/2,v.y+(v.h-h)/2,w,h};}refresh();const auto h=document.historyPosition();const int ox=copy&&repeat::includesX(mode)?-32:0,oy=copy&&repeat::includesY(mode)?24:0;const TransformPoint start{ox+10.25,oy+9.25},end{ox+15.25,oy+12.25};
+   send(ui::kMouseDownMessage,start);if(!liquifyDragging_||!document.liquifyActive())throw std::runtime_error("Repeated liquify begins");send(ui::kMouseMoveMessage,end);if(kind!=liquify::Mode::Push){liquifyNextTick_=std::chrono::steady_clock::now()-std::chrono::milliseconds(25);liquifyTick();}const auto preview=document.canvasPixels();send(ui::kMouseMoveMessage,{repeat::includesX(mode)?64.25:15.25,repeat::includesY(mode)?48.25:12.25});if(document.canvasPixels()!=preview)throw std::runtime_error("Liquify invalid copy move");send(ui::kMouseUpMessage,end);
+   const auto after=document.canvasPixels();if(after==source||document.historyPosition()!=h+1||liquifyDragging_||document.liquifyActive()||hasCapture())throw std::runtime_error("Repeated liquify commit");if(!copy)expected=after;else if(after!=expected)throw std::runtime_error("Repeated liquify local/copy mismatch");document.undo();if(document.canvasPixels()!=source)throw std::runtime_error("Repeated liquify undo");document.redo();if(document.canvasPixels()!=after)throw std::runtime_error("Repeated liquify redo");document.undo();send(ui::kMouseDownMessage,start);send(ui::kMouseMoveMessage,end);ui::KeyMessage escape(ui::kKeyDownMessage,ui::kKeyEsc,ui::kKeyNoneModifier,0,0);onProcessMessage(&escape);if(document.canvasPixels()!=source||document.historyPosition()!=h||liquifyDragging_||hasCapture())throw std::runtime_error("Repeated liquify Escape");
+  }
+ }
+ liquifyTool_=false;
  const auto before=zoom_;menuCommands_.invoke("tileRepeatOff");if(tileRepeat_!=repeat::Mode::Off||zoom_!=before)throw std::runtime_error("Repeat off changed zoom");
  setTileRepeat(repeat::Mode::Y);ensureProjects();storeActiveProject();restoreProject(activeProject_);if(tileRepeat_!=repeat::Mode::Y||tileRepeatIdentity_!=document.identity())throw std::runtime_error("Repeat session restoration");
  document=Document();tileRepeat_=repeat::Mode::Off;tileRepeatIdentity_=document.identity();refresh();

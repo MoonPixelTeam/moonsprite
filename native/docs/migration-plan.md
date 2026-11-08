@@ -4531,3 +4531,10 @@ X/Y/Both合成/当前层及左右键实际诊断验证100次preview请求不发�
 对照canvas-input-stroke begin/move/endSmooth、pointer-move/up及smooth-brush collect实际调用：平滑入口使用有限相邻副本localPoint，collect未传repeat参数，因此笔刷范围裁剪、跨接缝连接本地端点，不擅自添加环绕足迹/邻域。free-tile专用入口不支持smooth，通用入口拒绝kind图层，原生继续拒绝自由/网格瓦片层。原生映射按下与拖动本地点，忽略越界移动，越界释放按最后本地点结算已有收集；覆盖预览映射本地点并在各副本裁剪绘制。既有选区、动态参数、延迟应用及Document算法保持。
 
 正式Release构建成功，显式等待 --tile-repeat-check退出0。实际鼠标覆盖X/Y/Both、Round/Square/Line35度、选区、收集期像素/历史不变、越界移动与释放、单笔提交、UndoRedo、Escape、跨缝visited顺序符合本地端点路径及自由瓦片层拒绝。三项CTest document-transactions/tile-repeat/tile-repeat-stroke通过0.85s；之后只新增两项运行断言，重新构建诊断通过。742文件来源快照与diff检查通过。预览仅源码核对，没有逐像素截图验收或FPS测量；全量迁移仍INCOMPLETE。保留用户数据和未跟踪文件，阶段提交推送dev。
+
+
+### 2026-11-09：平铺液化连续坐标与事务（阶段完成）
+
+核对canvas-input-stroke begin/move/endLiquify、useCanvasViewportGeometry localContinuousPointAt和useCanvasBrushOverlay：液化按下与移动必须采用同一连续本地空间，有限相邻副本映射保持小数，越界移动忽略；释放不重新计算端点，提交最后有效预览。原生补齐begin/update映射，继续使用既有液化复合事务、推移路径重采样、持续作用、选区/蒙版限制及提交/取消。液化预览映射本地中心；actual legacy液化overlay只绘制主文档区域，未自行添加副本预览循环。瓦片层继续由rasterToolsAvailable拒绝。
+
+正式Release构建成功，显式等待 --tile-repeat-check退出0。实际鼠标诊断覆盖X/Y/Both×五种模式×平滑开关×主画布/副本，整数显示缩放保留1/4像素坐标；比较完整像素，验证选区、手动持续作用批次、无效副本移动不变、一笔历史、UndoRedo及Escape。三项CTest liquify/tile-repeat/tile-repeat-stroke通过0.47s。742文件来源快照与diff检查通过。新增场景未专门测Shift/右键、重置按钮、跨缝位移或预览截图；这些既有语义未改动，不声称已完成新增平铺运行验收。没有FPS测量，全量迁移仍INCOMPLETE。保留用户数据、缓存与未跟踪文件，阶段提交推送dev。
