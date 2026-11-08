@@ -4181,3 +4181,18 @@ sheet-import-parameters-build.log首次正式Release构建退出0，sheet-import
 最终sheet-import-parameters-routing-build.log正式Release构建退出0；sheet-import-parameters-final-ui-tests.log的--sheet-import-check、--sheet-new-document-check、--new-document-check全部退出0，运行前后同一正式exe SHA256一致（5C84AB98C1FE8D4E3213C3A554B56B6B890A14A1A7D38FB5591BAEDF70CAB345）。实际指针触发间距开关、空规划Enter、关闭后回调、panelFullRefreshes不增、取消／失败／选区不覆盖、undo及实际页签切换均通过。已重新查看最终sheet-import-padding-on.bmp及sheet-import-padding-off.bmp：默认2×下间距开关可见、字段随开关显示／隐藏，启用时3/2间距及4列、关闭时有效零间距及5列；局部原点、其余参数、说明和底部按钮无交叠。仅验收这两个状态，不代表全缩放／长时间手工操作或全软件UI帧率。
 
 最终来源覆盖688文件通过，strict因全局已登记缺口仍退出1（sheet-import-parameters-final-provenance*.log）；Node语法及git diff --check通过。保留既有未跟踪诊断、工程／恢复数据和构建缓存。实时导入预览／拖动、弹窗内重新选择源、索引／灰度完整编辑、选区snapshot／pivot完整恢复仍为明确缺口，本阶段仅关闭上述参数生命周期迁移，全量目标保持INCOMPLETE。
+
+
+### 2026-11-08 精灵表导入选区快照与旋转中心历史（已通过定向验证）
+
+对照实际SpriteSheetImportDialog的打开时cloneSelection与workspace-sprite-sheet-import的提交前selection／selectionPivot捕获，拆分切片范围与撤销恢复范围。原生共享不可变选区只复制一次，规划、行列反算与切片共用；取消／成功关闭释放，失败保留。普通导入也恢复提交前旋转中心，复用既有selectionPivotHistory serial与Editor刷新，无新增历史事务；成功提交清除画笔／橡皮直线锚点。保留工作内存预算，增加快照预算与坐标端点检查，短蒙版缺失字节按旧版视为未选中。
+
+实际旧版TSX回调、构建、workspace命令与history共36组对照已生成，覆盖4种布局、3种弹窗后选区变化、完整／短蒙版／部分画布外矩形；只桥接hook／元素、资源查询与未调用文件选择模块，未重写导入或历史。原生加入同输入完整像素hash、一次undo／redo、36次原子保存重开、失败保护及实际Editor选区／旋转中心同步检查。旧版三个测试文件18项通过（sheet-import-selection-legacy-tests.log），原生正式构建及运行待完成。
+
+此批不改变布局。实时预览／拖动、弹窗内换源、索引／灰度完整编辑及其他全局迁移缺口仍未完成，不宣称全软件卡顿已解决。
+
+原生sheet-import-selection-core-tests.log的sprite-sheet-import套件通过（6.73s），含新增36组选区快照／真实原子保存重开、历史旋转中心和失败状态保护，以及既有18默认值／180反算／80构建／40规划。正式程序仍在构建，核心结果不计作窗口验收。
+
+最终sheet-import-selection-build.log正式Release及sprite-sheet-import-tests构建退出0；sheet-import-selection-ui-tests.log的--sheet-import-check、--sheet-new-document-check、--new-document-check全部退出0，运行前后正式exe SHA256一致（011DF0F8E02AB7A7DFDD1B89DACF2E594C774313DEDE54A00545B709B0BC3707）。实际Editor覆盖三种live选区变化后的冻结切片、基于冻结尺寸的列数反算、提交清除选区／可见旋转中心／两种画笔锚点、undo恢复live选区／旋转中心、redo清除、取消释放快照、超预算失败保留快照／状态以及普通导入旋转中心恢复。
+
+重新查看此次运行生成的sheet-import-padding-on.bmp／off.bmp：默认2×下既有字段、间距开关、说明和底部按钮完整、无交叠；这些截图仅证明既有参数布局，旋转中心生命周期由实际Editor状态断言覆盖，不宣称有旋转中心叠加图像验收、全缩放或全软件UI性能量化。来源覆盖688文件通过，strict因全局既有缺口仍退出1；Node语法与git diff --check通过。保留所有既有未跟踪诊断、工程／恢复数据和缓存，全量迁移保持INCOMPLETE。

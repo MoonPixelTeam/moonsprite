@@ -10,6 +10,29 @@
 using namespace moon;
 void check(bool x){if(!x)throw std::runtime_error("sprite sheet import regression");}
 std::uint32_t pixelHash(const std::vector<Pixel>& pixels){std::uint32_t h=2166136261u;for(auto p:pixels)for(int s=0;s<32;s+=8){h^=(p>>s)&255;h*=16777619u;}return h;}
+void selectionImports(const std::filesystem::path& root){
+ std::filesystem::create_directories(root);int sample=0;
+ for(const auto& f:sheetImportSelectionOracle){
+  std::vector<Pixel> pixels(12);for(int i=0;i<12;++i)pixels[i]=Pixel(i+1)|(Pixel(i*3)<<8)|(Pixel(i*7)<<16)|(i==4?0:0xff000000u);
+  auto d=Document::fromImage(6,2,pixels,U"Frozen selection");SelectionMask mask{f.maskKind==2?-1:1,0,3,2,{}};if(f.maskKind==0)mask.mask={1,0,1,0,1,1};else if(f.maskKind==1)mask.mask={1,0};d.previewSelection(mask);
+  auto options=initialSheetImportOptions({2,1,2,1},{},d.selection());options.width=options.height=1;options.layout=f.layout;const auto frozen=options.selectionSnapshot;check(frozen&&frozen->x==mask.x&&frozen->width==3);
+  auto copied=options;check(copied.selectionSnapshot.get()==frozen.get());std::fill(mask.mask.begin(),mask.mask.end(),0);mask.x=4;mask.width=1;
+  if(f.mutation==0)d.previewSelection({});else if(f.mutation==1)d.previewSelection(SelectionMask{0,0,1,1,{}});else d.previewSelection(mask);
+  const auto beforeSelection=d.selection();const auto identity=d.identity(),history=d.historySize();const auto frame=d.frame().id,layer=d.layer().id;
+  const auto pivot=f.mutation==0?std::optional<TransformPoint>{}:std::optional<TransformPoint>{TransformPoint{-2.5,3.75}};
+  auto built=buildSpriteSheetImport(d,options);check(built.cels.size()==f.hashes.size());for(std::size_t i=0;i<f.hashes.size();++i)check(pixelHash(built.cels[i].surface->pixels)==f.hashes[i]);
+  check(d.importSpriteSheet(options,pivot)&&d.identity()==identity&&d.historySize()==history+1&&!d.selection()&&!d.selectionPivotHistory().pivot&&d.selectionPivotHistory().serial==1);
+  d.undo();check(d.width()==6&&d.height()==2&&d.pixels()==pixels&&d.frame().id==frame&&d.layer().id==layer&&selectionEqual(d.selection(),beforeSelection)&&d.selectionPivotHistory().serial==2);
+  check(bool(d.selectionPivotHistory().pivot)==bool(pivot));if(pivot)check(d.selectionPivotHistory().pivot->x==pivot->x&&d.selectionPivotHistory().pivot->y==pivot->y);
+  d.redo();check(!d.selection()&&!d.selectionPivotHistory().pivot&&d.selectionPivotHistory().serial==3);
+  const auto path=root/("selection-"+std::to_string(sample++)+".moonsprite");project::saveDocumentAtomic(d,path);std::ifstream in(path,std::ios::binary);auto bytes=std::make_shared<const project::Bytes>(std::istreambuf_iterator<char>(in),std::istreambuf_iterator<char>());auto reopened=project::createEditableDocument(project::prepareEditableImport(project::readProjectManifest(bytes)));check(!reopened.selection()&&reopened.historySize()==0&&reopened.width()==1&&reopened.height()==1);
+  for(std::size_t i=0;i<f.hashes.size();++i){reopened.selectFrame(reopened.timeline().state().frames[i].id);check(pixelHash(reopened.pixels())==f.hashes[i]);}
+ }
+ // Ordinary imports also clear/restore the pre-submit selection pivot.
+ auto d=Document(4,2);d.previewSelection(SelectionMask{1,0,2,1,{1,0}});SheetImportOptions options;options.width=2;options.height=2;check(d.importSpriteSheet(options,TransformPoint{100.25,-70.5}));d.undo();check(d.selectionPivotHistory().pivot&&d.selectionPivotHistory().pivot->x==100.25);
+ const auto beforeSelection=d.selection();const auto pixels=d.pixels();const auto serial=d.selectionPivotHistory().serial,revision=d.revision(),history=d.historySize();
+ for(int failure=0;failure<3;++failure){auto invalid=initialSheetImportOptions({0,0,1,1},{},d.selection());std::optional<TransformPoint> pivot=TransformPoint{100.25,-70.5};if(failure==0){invalid.width=4096;invalid.height=4096;invalid.partialTiles=true;}if(failure==1)pivot->x=std::numeric_limits<double>::infinity();if(failure==2){auto mask=std::make_shared<SelectionMask>(*invalid.selectionSnapshot);mask->x=INT32_MAX;invalid.selectionSnapshot=std::move(mask);}bool rejected=false;try{d.importSpriteSheet(invalid,pivot);}catch(...){rejected=true;}check(rejected&&d.width()==4&&d.height()==2&&d.pixels()==pixels&&selectionEqual(d.selection(),beforeSelection)&&d.selectionPivotHistory().serial==serial&&d.selectionPivotHistory().pivot->x==100.25&&d.revision()==revision&&d.historySize()==history);}
+}
 void largeImports(const std::filesystem::path& root){
  for(const auto& f:sheetImportPlanOracle){SheetImportOptions o;o.layout=f.layout;o.x=f.x;o.y=f.y;o.width=f.width;o.height=f.height;o.paddingX=f.px;o.paddingY=f.py;o.partialTiles=f.partial;bool valid=true;SheetImportPlan p;try{p=planSpriteSheetImport(f.sw,f.sh,o);}catch(...){valid=false;}check(valid==bool(f.valid));if(valid)check(p.columns==f.columns&&p.rows==f.rows&&p.tiles.size()==f.count);}
  int sample=0;for(const auto& f:largeSheetImportOracle){
@@ -46,6 +69,6 @@ int wmain(int argc,wchar_t** argv){try{
  o={};o.layout=0;o.x=-1;o.width=3;o.height=3;result=buildSpriteSheetImport(d,o);check(result.cels[0].surface->pixels[0]==0&&result.cels[0].surface->pixels[1]==original[0]&&result.cels[0].surface->pixels[6]==0);
  o={};o.width=0;bool rejected=false;try{d.importSpriteSheet(o);}catch(...){rejected=true;}check(rejected&&d.width()==4&&d.pixels()==original);
  if(argc>1){auto dir=std::filesystem::path(argv[1]);std::filesystem::create_directories(dir);auto path=dir/"rgba-import.png";auto image=encodeRgbaImagePng(2,1,{0xff010203,0x00112233});writeStaticImagePngAtomic(path,image);auto opened=openRasterImage(path);check(opened.width()==2&&opened.height()==1&&opened.pixels()==image.pixels&&!opened.dirty()&&opened.historySize()==0);}
- if(argc>1){auto root=std::filesystem::path(argv[1])/"large-sheet-import-owned";std::filesystem::create_directories(root);largeImports(root);}
+ if(argc>1){auto root=std::filesystem::path(argv[1])/"large-sheet-import-owned";std::filesystem::create_directories(root);largeImports(root);selectionImports(root/"selection-snapshots");}
  std::cout<<"sprite sheet import checks passed: 80 actual legacy builds, 40 plans, large undo/redo/save-reopen and budget protection\n";return 0;
  }catch(const std::exception& e){std::cerr<<e.what()<<"\n";return 1;}}

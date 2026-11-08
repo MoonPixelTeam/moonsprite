@@ -520,7 +520,7 @@ public:
   void redo();
   void acceptSaved(std::string projectId,std::shared_ptr<const std::vector<std::uint8_t>> sourceArchive,bool exact=true);
   static Document fromImage(int width,int height,std::vector<Pixel> pixels,std::u32string name);
-  bool importSpriteSheet(const SheetImportOptions& options);
+  bool importSpriteSheet(const SheetImportOptions& options,std::optional<TransformPoint> pivot={});
   bool resizeImage(int width,int height,ImageInterpolation method=ImageInterpolation::Nearest);
   bool resizeCanvas(int width,int height,CanvasAnchor anchor=CanvasAnchor::Center,std::optional<int> offsetX={},std::optional<int> offsetY={},bool trimOutside=false,std::optional<TransformPoint> pivot={});
   std::optional<PixelRegion> visibleContentBounds(bool allFrames) const;
