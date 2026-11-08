@@ -298,6 +298,7 @@ void Editor::raiseDockWidgets() {
 
     };
 
+    for(auto bar:quickBars_)raise(bar);
     const auto visibility=columnVisibility();std::vector<int> overlays;
 
     for(const auto& group:docking_.groups)for(int id:group.tabs)if(docking_.shown(id,visibility)){if(group.dock==panels::Dock::Floating && (docking_.custom || id==3))overlays.push_back(id);else column(id);}

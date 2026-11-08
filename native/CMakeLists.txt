@@ -907,6 +907,7 @@ target_sources(moonsprite-native PRIVATE src/editor_symmetry_rotation.cpp)
 add_executable(symmetry-shear-tests tests/symmetry_shear_test.cpp)
 target_link_libraries(symmetry-shear-tests PRIVATE moon-core)
 target_sources(moonsprite-native PRIVATE src/editor_symmetry_shear.cpp)
+target_sources(moonsprite-native PRIVATE src/quick_command_preferences.cpp src/quick_command_bar.cpp src/editor_quick_commands.cpp)
 
 add_executable(symmetry-alpha-tests tests/symmetry_alpha_test.cpp)
 target_link_libraries(symmetry-alpha-tests PRIVATE moon-core)

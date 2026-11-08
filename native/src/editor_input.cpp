@@ -1,3 +1,4 @@
+#include "image_resize_task.h"
 #include "image_sequence_dialog.h"
 #include "free_tile_selection_target.h"
 #include "editor_implementation.h"
@@ -62,6 +63,8 @@ void Editor::observeModifierRelease(ui::Message* msg){
   }
 
 bool Editor::onProcessMessage(ui::Message* msg) {
+    if(quickResize_&&imageResizeTask_&&msg->type()==ui::kKeyDownMessage&&static_cast<ui::KeyMessage*>(msg)->scancode()==ui::kKeyEsc){imageResizeTask_->cancel();imageResizeTask_.reset();imageResizeTimer_.stop();quickResize_=resizeDetecting_=false;status_=U"倍率识别／缩放已取消";refresh();return true;}
+
     // Aseprite Widget::flushRedraw queues all rectangles for a widget together,
     // with count()==0 ending the chain. Keep their exact union (including holes)
     // and run the editor background once, before the queued children are drawn.

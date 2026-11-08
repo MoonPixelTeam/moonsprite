@@ -12,6 +12,7 @@ namespace moon::preferences {
 // Actual consumers are in Editor. Entries without consumers stay unavailable.
 // Legacy: file-preferences.ts parsers/defaults and PreferencesDialog.persist.
 inline bool runtimeSetting(const std::string& key) {
+  if(key.rfind("quickCommands.",0)==0)return key!="quickCommands.bars.json"&&key!="quickCommands.restore"&&key.find(".collapse")==std::string::npos;
   static const std::vector<std::string> keys{
     "general.timelapseRecordingEnabled", "general.diagnostics.mode", "general.preferences.usageStatisticsEnabled", "appearance.pixelGridColor", "appearance.gridColor", "editing.brushSizeWheelReversed", "editing.canvasViewScrollbarsEnabled",
     "editing.wheelZoomEnabled", "editing.wheelZoomMode.Select",
@@ -42,6 +43,7 @@ struct RuntimeSettings {
   std::string get(const std::string& key) const {
     auto found=values.find(key);if(found!=values.end())return found->second;
     static const auto defaults=[] {std::map<std::string,std::string> result;for(const auto& entry:catalog())result[entry.id]=entry.kind==Kind::Select?std::to_string(entry.selected):entry.kind==Kind::Text?std::string():std::string(entry.value);return result;}();
+    if(key.rfind("quickCommands.bar",0)==0&&key.find(".name")!=std::string::npos)return item(key).value;
     return defaults.at(key);
   }
   bool flag(const std::string& key) const {return get(key)=="true";}

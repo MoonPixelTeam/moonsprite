@@ -1,5 +1,6 @@
 #pragma once
 #include "project_backup.h"
+#include "quick_command_bar.h"
 #include "document.h"
 #include "airbrush.h"
 #include <random>
@@ -358,7 +359,7 @@ private:
 
   PixelEntry* exportScaleInput_=nullptr;PixelButton *exportTrimButton_=nullptr,*exportSelectionButton_=nullptr,*exportLayerButton_=nullptr;StaticImageExportOptions exportOptions_;
 
-  std::shared_ptr<ImageResizeTask> imageResizeTask_;ui::Timer imageResizeTimer_{16,this};
+  bool quickResize_=false;std::shared_ptr<ImageResizeTask> imageResizeTask_;ui::Timer imageResizeTimer_{16,this};
   std::function<void(std::function<void()>)> imageResizeExecutor_;
   bool resizeDetecting_=false;std::u32string resizeDetectionStatus_;PixelButton* resizeDetect_=nullptr;
   void beginImageScaleDetection();void beginImageResize();void tickImageResize();void waitImageResizeForSmoke();void setImageResizeBusyControls();
@@ -469,6 +470,16 @@ private:
   bool eyedropperLensEnabled_=true;int eyedropperLensSize_=2;
 
   preferences::RuntimeSettings runtimePreferences_,runtimePreferenceDraft_;
+  std::array<QuickCommandBar*,4> quickBars_{};
+  std::vector<quick::Bar> quickBarsConfig_=quick::defaultBars(),quickBarsDraft_=quick::defaultBars();
+  void initializeQuickCommands();void syncQuickCommands();void saveQuickCommands();
+  bool quickCommandEnabled(const std::string&)const;void runQuickCommand(const std::string&,bool);
+  void quickPreferenceChanged(const std::string&,const std::string&);void syncQuickPreferenceValues();
+  std::array<bool,4> quickPreferenceCollapsed_{};
+  bool quickPreferenceHidden(const std::string&)const;void quickPreferenceAction(const std::string&);
+public:
+  void smokeQuickCommands();
+private:
 
   bool runtimePreferencesReadable_=true;
 

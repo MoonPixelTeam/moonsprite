@@ -124,6 +124,7 @@ void Editor::refresh(RefreshScope scope){
   if(needs(RefreshScope::Palette))layoutPalette();
   if(needs(RefreshScope::Tools))layoutToolOptions();
   if(needs(RefreshScope::Timeline))layoutLayers();
+  syncQuickCommands();
   if(needs(RefreshScope::Layout))raiseDockWidgets();
   if(needs(RefreshScope::Commands))updateCommandStates();
   if(needs(RefreshScope::Layout)){

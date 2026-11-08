@@ -4319,3 +4319,13 @@ make-image-scale-fixtures.cjs执行未改写旧版导出函数，生成180组含
 make-quick-command-fixtures.cjs执行旧文件未改写的独立配置段（仅去export与TypeScript类型），生成112组栏配置和6组命令配置oracle。首次测试捕获重复ID候选先规范化再去重的差异：旧版在索引越界默认名时即使候选重复也会全局回退，已调整顺序保留这一边界。最终Release独立目标构建退出0，CTest quick-command-preferences通过0.39s，配置对照/JSON往返/定制fallback和拖动边界检查通过。生成脚本语法、diff检查通过；来源覆盖721文件及证据快照通过，strict仍因已登记全局缺口退出1。
 
 范围明确：本批是独立核心阶段，未接入运行偏好、实际栏体、38命令执行与状态、右键、焦点/文档路由、透明绘制及梯度遮挡；这些继续INCOMPLETE。没有更改正式exe，没有UI/截图/FPS验收，也不声称本批改善全软件卡顿。下一阶段从此核心接入完整原生栏体和现有命令，不重复扫描仓库。保留全部既有未跟踪用户数据及构建缓存，只提交本阶段源码、fixture、脚本和记录并推送dev。
+
+### 2026-11-09：快捷指令栏原生运行接入（部分迁移）
+
+承接78381727配置核心，新增实际四栏原生Widget及38条legacy metadata/图标映射；缺失图标从对应PixelUtilityIcon路径或quick-command SVG精确转换，来源登记。默认第一栏顶部折叠，其余关闭；展开、四边拖动、指针捕获与保留画布焦点、100ms按压反馈、半透明、隐藏、设置、右键填背景色/网格设置/外观偏好、层级与渐变确认控件重叠隐藏接入。原生15px公共图标按钮/2px关联间距，位置计算沿用上阶段旧版边缘算法，坐标先减物理视口原点再换逻辑空间；变化才更新几何/可见性/状态，不在拖动每步保存。栏体变更保存现有editor-preferences.txt中的独立JSON记录，不改作品历史。偏好接入全局显示/透明、四栏名称/位置、命令启用、默认恢复与偏好列表折叠；最后启用项不可关闭，开关命令按legacy启用项/切换项/关闭项重排。
+
+复用已有菜单命令执行及available校验，缺失底层命令禁用并给出不可用提示，不冒充迁移完成。detectImageScale独立入口后台识别成功直接nearest缩放、不打开尺寸弹窗，仍复用已有分段快照/worker/stale保护与一笔历史；Esc取消，未找到倍率保持作品，直接检查Undo恢复。修复reserved quickCommands.bars.json误进catalog setter导致无法重开风险，并加实际RuntimeSettings往返测试。偏好名称最终提交重新同步JSON，避免失焦时序丢值。
+
+验收：quick-command-ui-build.log首轮Release构建0；其间公共头变更造成首轮对象可能不一致，两次启动早期异常0xC0000409/0xC0000374，未认定通过。冻结头文件后quick-command-ui-final-build.log增量重编受影响对象并链接0。正式最终exe --quick-command-check PID42976=0、正常显示PID46192=0，覆盖鼠标消息展开、四边bounds、配置字段路由、镜像保持像素历史/选区、24x16倍率4直接6x4/单笔历史/Undo、挂起worker后Esc取消及执行废弃job无污染。--image-resize-check PID37568=0。四项quick-command-preferences/editor-preferences/image-scale-detection/image-resize-task全通过0.57s，360偏好目录检查通过。隐藏启动截图全黑已拒作视觉证据；实际查看正常显示Release/quick-command-bar.bmp：顶部展开16控件可见、旧图标/设置/移动无重叠。该截图只覆盖当前尺寸顶部栏，不代表所有屏幕/多栏/FPS验收。
+
+尚未完成：命令排序拖柄、快捷键/完整描述tooltip、部分描边/粘贴/平铺底层命令、全多窗格活动文档与捕获丢失/取消边界完整审计；当前禁用项不算完成。完整快捷栏及全软件迁移仍INCOMPLETE，目标active。本批提交保存已验证运行接入阶段，后续优先补上述缺口，不重新全仓扫描。所有用户数据、恢复与原有未跟踪缓存保留。

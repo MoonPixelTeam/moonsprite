@@ -618,7 +618,7 @@ for(const auto& e:menus::catalog())if(!*e.parent){if(std::string(e.id)=="help"){
 
     initializeReferencePanel();initializeProjectRollback();
     createHistoryPanel();
-    createTabletPanel();createTilesetPanel();createBrushLibraryPanel();initializeViewRotation();
+    createTabletPanel();createTilesetPanel();createBrushLibraryPanel();initializeViewRotation();initializeQuickCommands();
     previewPanel_->configurePreviewSource([this]{const auto middle=canvasViewport().center();const auto at=canvasDocumentPoint(middle);return preview::Point{at.x,at.y};});
     previewPanel_->sampled=[this](timeline::Pixel color,bool secondary){document.setPaletteRole(color,secondary,paletteLocked_);refresh();};
     previewPanel_->context=[this]{showColumnContextMenu(Column::Preview);};

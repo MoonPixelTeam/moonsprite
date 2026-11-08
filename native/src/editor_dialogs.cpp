@@ -705,7 +705,7 @@ void Editor::createPreferencesControls(){
 
     catch(const std::exception& e){runtimePreferencesReadable_=false;status_=U"首选项读取失败，保留原文件："+unicodeText(e.what());}
 
-    runtimePreferenceDraft_=runtimePreferences_;syncPreferenceScales();syncPreferenceColors();gradientConfirm_=runtimePreferences_.index("tools.gradientApplicationMode.Select")==1;
+    runtimePreferenceDraft_=runtimePreferences_;quickBarsDraft_=quickBarsConfig_;syncQuickPreferenceValues();syncPreferenceScales();syncPreferenceColors();gradientConfirm_=runtimePreferences_.index("tools.gradientApplicationMode.Select")==1;
 
     createPreferenceCatalogControls();
 
@@ -766,10 +766,11 @@ void Editor::addPreferenceScale(){try{readPreferenceScales();runtimePreferenceDr
 
 bool Editor::preferenceRowEnabled(const preferences::Item& item) const {
 
-    if(std::string(item.id)=="presets.addColor")return runtimePreferenceDraft_.layerDisplayColors.size()<12;if(std::string(item.id)=="presets.restoreColors")return true;if(std::string(item.id)=="presets.addScale")return true;if(item.binding<0 && !preferences::runtimeSetting(item.id) && !preferenceDirectoryAction(item.id))return false;
+    if(std::string(item.id)=="quickCommands.restore"||(std::string(item.id).rfind("quickCommands.bar",0)==0&&std::string(item.id).find(".collapse")!=std::string::npos))return true;if(std::string(item.id)=="presets.addColor")return runtimePreferenceDraft_.layerDisplayColors.size()<12;if(std::string(item.id)=="presets.restoreColors")return true;if(std::string(item.id)=="presets.addScale")return true;if(item.binding<0 && !preferences::runtimeSetting(item.id) && !preferenceDirectoryAction(item.id))return false;
 
     const std::string key=item.id;
 
+    if(key.rfind("quickCommands.bar",0)==0&&key.find(".command.")!=std::string::npos){const auto& commands=quickBarsDraft_[key[17]-'0'].commands;for(auto& c:commands)if(c.id==key.substr(27)&&c.enabled&&std::count_if(commands.begin(),commands.end(),[](auto& c){return c.enabled;})==1)return false;}
     if(key.find("files.saveDirectory")==0 && runtimePreferenceDraft_.index("files.saveLocationMode.Select")!=1)return false;
 
     if(key.find("files.exportDirectory")==0 && runtimePreferenceDraft_.index("files.exportLocationMode.Select")!=1)return false;
@@ -816,7 +817,7 @@ void Editor::createPreferenceCatalogControls(){
 
         if(item.binding==12){field->changed=[this](int value){const double minutes[]{.5,1,2,5,10};preferenceDraft_.recovery.enabled=value!=0;if(value>0)preferenceDraft_.recovery.minutes=minutes[std::clamp(value-1,0,4)];layoutModal();invalidate();};}
 
-      }else if(item.kind==preferences::Kind::Action){const std::string key=item.id;auto field=new DialogBackground<PixelButton>(font_,skin_,item.label,[this,key]{if(key=="presets.addColor"||key=="presets.restoreColors"){preferenceColorAction(key);return;}if(key=="presets.addScale"){addPreferenceScale();return;}if(preferenceDirectoryAction(key))preferenceDirectoryActionRun(key);});configureDialogBackground(field);addChild(field);if(key=="presets.addColor"||key=="presets.restoreColors"){field->iconSkin=&toolIcons_;field->icon=key=="presets.addColor"?"plus":"restore";}widget=field;}
+      }else if(item.kind==preferences::Kind::Action){const std::string key=item.id;auto field=new DialogBackground<PixelButton>(font_,skin_,item.label,[this,key]{if(key.rfind("quickCommands.bar",0)==0&&key.find(".collapse")!=std::string::npos){quickPreferenceAction(key);return;}if(key=="quickCommands.restore"){quickBarsDraft_=quick::defaultBars();syncQuickPreferenceValues();syncPreferenceCatalog();layoutModal();invalidate();return;}if(key=="presets.addColor"||key=="presets.restoreColors"){preferenceColorAction(key);return;}if(key=="presets.addScale"){addPreferenceScale();return;}if(preferenceDirectoryAction(key))preferenceDirectoryActionRun(key);});configureDialogBackground(field);addChild(field);if(key=="presets.addColor"||key=="presets.restoreColors"){field->iconSkin=&toolIcons_;field->icon=key=="presets.addColor"?"plus":"restore";}widget=field;}
 
       else if(item.kind==preferences::Kind::Color){
 
@@ -832,7 +833,7 @@ void Editor::createPreferenceCatalogControls(){
 
         const std::string key=item.id;
 
-        auto change=[this,key](std::string value){try{if(key=="general.preferences.usageStatisticsEnabled")setUsageStatisticsEnabled(value=="true");runtimePreferenceDraft_.set(key,std::move(value));preferenceFeedback_.clear();}catch(const std::exception& e){preferenceFeedback_=unicodeText(e.what());}layoutModal();invalidateRect(dialogDisplayBounds());};
+        auto change=[this,key](std::string value){try{if(key=="general.preferences.usageStatisticsEnabled")setUsageStatisticsEnabled(value=="true");quickPreferenceChanged(key,value);runtimePreferenceDraft_.set(key,std::move(value));if(key.rfind("quickCommands.bar",0)==0)syncQuickPreferenceValues();preferenceFeedback_.clear();}catch(const std::exception& e){preferenceFeedback_=unicodeText(e.what());}layoutModal();invalidateRect(dialogDisplayBounds());};
 
         if(auto toggle=dynamic_cast<PixelSwitch*>(widget))toggle->Click.connect([change,toggle]{if(toggle->isEnabled())change(toggle->checked()?"true":"false");});
 
@@ -882,7 +883,7 @@ int Editor::preferenceCatalogHeight(){
 
     std::u32string group;int y=0;
 
-    for(std::size_t i=0;i<preferenceRows_.size();++i){const auto& item=preferences::catalog()[i];if(item.section!=preferenceSection_||fixedExportScaleRow(item))continue;
+    for(std::size_t i=0;i<preferenceRows_.size();++i){const auto& item=preferences::catalog()[i];if(item.section!=preferenceSection_||fixedExportScaleRow(item)||quickPreferenceHidden(item.id))continue;
 
       if(group!=item.group){if(y)y+=preferenceGroupGap;group=item.group;y+=preferenceGroupTitleHeight+preferenceOptionGap;}
 
@@ -904,7 +905,7 @@ void Editor::paintPreferenceCatalog(ui::Graphics& g,gfx::Rect modal){
 
     const int labelWidth=std::max(50,(view.w-10)*55/100);
 
-    for(std::size_t i=0;i<preferenceRows_.size();++i){const auto& item=preferences::catalog()[i];if(item.section!=preferenceSection_||fixedExportScaleRow(item))continue;
+    for(std::size_t i=0;i<preferenceRows_.size();++i){const auto& item=preferences::catalog()[i];if(item.section!=preferenceSection_||fixedExportScaleRow(item)||quickPreferenceHidden(item.id))continue;
 
       const int y=view.y+preferenceRowY_[i]-preferenceContentPixels_/uiScale;
 
@@ -940,7 +941,7 @@ void Editor::showPreferences(){preferenceNavPixels_=preferenceContentPixels_=0;
 
     for(int i=0;i<9;++i)preferenceFields_[i]->setSelectedIndex(selected[i]);
 
-    runtimePreferenceDraft_=runtimePreferences_;syncPreferenceScales();syncPreferenceColors();
+    runtimePreferenceDraft_=runtimePreferences_;quickBarsDraft_=quickBarsConfig_;syncQuickPreferenceValues();syncPreferenceScales();syncPreferenceColors();
 
     runtimePreferenceDraft_.set("tools.gradientApplicationMode.Select",gradientConfirm_?"1":"0");
 
@@ -962,16 +963,17 @@ bool Editor::applyPreferences(){
 
       if(!runtimePreferencesReadable_)throw std::runtime_error("首选项文件读取失败，请先修复 editor-preferences.txt，原文件未被覆盖");
 
-      readPreferenceScales(true);syncPreferenceScales();runtimePreferenceDraft_.layerDisplayColors=normalizeLayerDisplayColors(runtimePreferenceDraft_.layerDisplayColors);syncPreferenceColors();auto next=runtimePreferenceDraft_;
+      readPreferenceScales(true);syncPreferenceScales();runtimePreferenceDraft_.layerDisplayColors=normalizeLayerDisplayColors(runtimePreferenceDraft_.layerDisplayColors);syncPreferenceColors();auto next=runtimePreferenceDraft_;next.values["quickCommands.bars.json"]=quick::encodeBars(quickBarsDraft_);
 
       for(std::size_t i=0;i<preferenceRows_.size();++i)if(preferences::runtimeSetting(preferences::catalog()[i].id))if(auto field=dynamic_cast<PixelEntry*>(preferenceRows_[i])){
 
         const auto& item=preferences::catalog()[i];
 
-        try{next.set(item.id,field->text());}catch(const std::exception& e){throw std::runtime_error(utf8Text(item.label)+": "+e.what());}
+        try{quickPreferenceChanged(item.id,field->text());next.set(item.id,field->text());}catch(const std::exception& e){throw std::runtime_error(utf8Text(item.label)+": "+e.what());}
 
       }
 
+      next.values["quickCommands.bars.json"]=quick::encodeBars(quickBarsDraft_);
       auto d=preferenceDraft_;d.recovery=recovery::normalizePreferences(d.recovery);
 
       for(auto field:checkerboardFields_)if(field->blur)field->blur();
@@ -988,7 +990,7 @@ bool Editor::applyPreferences(){
 
       }
 
-      runtimePreferences_=std::move(next);applyWorkspacePreferences();runtimePreferenceDraft_=runtimePreferences_;gradientConfirm_=runtimePreferences_.index("tools.gradientApplicationMode.Select")==1;
+      runtimePreferences_=std::move(next);quickBarsConfig_=quickBarsDraft_;applyWorkspacePreferences();runtimePreferenceDraft_=runtimePreferences_;gradientConfirm_=runtimePreferences_.index("tools.gradientApplicationMode.Select")==1;
 
       for(auto& slot:projects_){slot->recovery.queue.setIntervalMinutes(d.recovery.minutes);slot->recovery.due=std::chrono::steady_clock::now()+std::chrono::milliseconds(static_cast<long long>(d.recovery.minutes*60000));}
 
@@ -1050,7 +1052,7 @@ void Editor::layoutPreferences(gfx::Rect modal){
 
     for(std::size_t i=0;i<preferenceRows_.size();++i){auto field=preferenceRows_[i];const auto& item=preferences::catalog()[i];
 
-      if(item.section!=preferenceSection_||fixedExportScaleRow(item)){field->setVisible(false);continue;}
+      if(item.section!=preferenceSection_||fixedExportScaleRow(item)||quickPreferenceHidden(item.id)){field->setVisible(false);continue;}
 
       const int x=content.x+(labelWidth+4)*uiScale,y=content.y+preferenceRowY_[i]*uiScale-preferenceContentPixels_;
 
@@ -2135,8 +2137,15 @@ void Editor::beginImageResize(){
  catch(const std::exception& error){status_=U"调整尺寸失败："+unicodeText(error.what());invalidate();}
 }
 void Editor::tickImageResize(){
- if(!imageResizeTask_){imageResizeTimer_.stop();return;}if(pending_!=Pending::ImageResize){imageResizeTask_->cancel();imageResizeTask_.reset();imageResizeTimer_.stop();return;}
+ if(!imageResizeTask_){imageResizeTimer_.stop();return;}if(pending_!=Pending::ImageResize&&!quickResize_){imageResizeTask_->cancel();imageResizeTask_.reset();imageResizeTimer_.stop();return;}
  auto task=imageResizeTask_;task->tick(document);if(task->busy())return;
+ if(quickResize_){
+  imageResizeTask_.reset();
+  if(resizeDetecting_&&task->phase()==ImageResizeTask::Phase::Ready&&task->detectedScale()>1){const int scale=task->detectedScale();resizeDetecting_=false;try{imageResizeTask_=std::make_shared<ImageResizeTask>(document,std::max(1,int(std::floor(double(document.width())/scale+.5))),std::max(1,int(std::floor(double(document.height())/scale+.5))),ImageInterpolation::Nearest,imageResizeExecutor_);status_=U"正在按识别倍率缩放…";return;}catch(const std::exception& e){status_=unicodeText(e.what());}}
+  else if(resizeDetecting_)status_=task->phase()==ImageResizeTask::Phase::Ready?U"未识别到像素倍率":U"像素倍率识别已取消或失败";
+  else if(task->phase()==ImageResizeTask::Phase::Ready&&task->commit(document)){status_.clear();fitCanvas();}else status_=U"倍率缩放已取消或失败";
+  quickResize_=resizeDetecting_=false;imageResizeTimer_.stop();setImageResizeBusyControls();refresh();return;
+ }
  if(resizeDetecting_){imageResizeTimer_.stop();imageResizeTask_.reset();resizeDetecting_=false;setImageResizeBusyControls();if(task->phase()!=ImageResizeTask::Phase::Ready)resizeDetectionStatus_=U"像素倍率识别失败";else if(task->detectedScale()<=1)resizeDetectionStatus_=U"未识别到像素倍率";else{const int scale=task->detectedScale();resizeWidth_=std::max(1,int(std::floor(double(document.width())/scale+.5)));resizeHeight_=std::max(1,int(std::floor(double(document.height())/scale+.5)));resizeMethodValue_=ImageInterpolation::Nearest;resizeUpdating_=true;requestFocus();resizeUpdating_=false;updateResizeFields();resizeDetectionStatus_=U"倍率 "+unicodeText(std::to_string(scale))+U" → "+unicodeText(std::to_string(resizeWidth_))+U" × "+unicodeText(std::to_string(resizeHeight_));}refresh();return;}
  const bool applied=task->phase()==ImageResizeTask::Phase::Ready&&task->commit(document);
  imageResizeTimer_.stop();imageResizeTask_.reset();setImageResizeBusyControls();if(applied){status_.clear();fitCanvas();resolve(false);}else{status_=U"调整尺寸失败："+unicodeText(task->error().empty()?"Image resize cancelled":task->error());invalidate();}
