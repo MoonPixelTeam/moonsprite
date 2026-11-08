@@ -652,7 +652,7 @@ bool Editor::onProcessMessage(ui::Message* msg) {
       if(!canvasOwnsPointer(mouse->position()) && !(canvasGesture && hasCapture()))return ui::Widget::onProcessMessage(msg);
 
       if(msg->type()==ui::kMouseMoveMessage && !selectionSyntheticMove_)selectionAutoPan(mouse->position());selectionPointerPosition_=mouse->position();brushFeedback_.brushPreviewShift_=mouse->shiftPressed();brushFeedback_.modifierCtrl_=mouse->ctrlPressed() || mouse->cmdPressed(); auto p=canvasPoint(mouse->position());
-      if(selectionTool_&&selectionKind_==4&&!floatingDragging_&&tileRepeatIdentity_==document.identity()&&tileRepeat_!=repeat::Mode::Off){const auto mapped=repeat::map({double(p.x),double(p.y)},document.width(),document.height(),tileRepeat_);if(mapped)p={int(mapped->local.x),int(mapped->local.y)};else if(msg->type()==ui::kMouseDownMessage||msg->type()==ui::kMouseMoveMessage)return true;}
+      if(selectionTool_&&(selectionKind_==4||selectionKind_==3)&&!floatingDragging_&&tileRepeatIdentity_==document.identity()&&tileRepeat_!=repeat::Mode::Off){const auto mapped=repeat::map({double(p.x),double(p.y)},document.width(),document.height(),tileRepeat_);if(mapped)p={int(mapped->local.x),int(mapped->local.y)};else if(msg->type()==ui::kMouseDownMessage||msg->type()==ui::kMouseMoveMessage)return true;}
 
       if(brushFeedback_.modifierBrushSize_ && brushFeedback_.modifierBrushSize_->pressed){
 

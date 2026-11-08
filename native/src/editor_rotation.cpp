@@ -248,6 +248,20 @@ void Editor::smokeTileRepeat(){
   }
  }
  selectionTool_=false;
+ // Polygon lasso uses local vertices, not the continuous repeated lasso path.
+ for(const auto mode:{repeat::Mode::X,repeat::Mode::Y,repeat::Mode::Both})for(int combine:{0,1,2,3})for(bool doubleClick:{false,true}){
+  std::optional<SelectionMask> expected;
+  for(bool copy:{false,true}){
+   document=Document(32,24);document.previewSelection(SelectionMask{1,1,7,7,{}});useSelectionTool(3);selectionMode_=combine;selectionPivotVisible_=false;setTileRepeat(mode);refresh();const auto beforeSelection=document.selection();const auto pixels=document.canvasPixels();const auto h=document.historyPosition();const int ox=copy&&repeat::includesX(mode)?32:0,oy=copy&&repeat::includesY(mode)?-24:0;
+   auto point=[&](double x,double y){return TransformPoint{ox+x,oy+y};};auto click=[&](TransformPoint at){send(ui::kMouseDownMessage,at);send(ui::kMouseUpMessage,at);};
+   click(point(16.25,10.25));click(point(23.25,10.25));click(point(23.25,17.25));if(!polygonPending_||selectionPath_.size()!=3||document.historyPosition()!=h)throw std::runtime_error("Repeated polygon lasso vertices");
+   ui::MouseMessage back(ui::kMouseDownMessage,os::PointerType::Mouse,ui::kButtonRight,ui::kKeyNoneModifier,canvasDocumentToDisplay(point(23.25,17.25)));back.setDisplay(display());onProcessMessage(&back);if(selectionPath_.size()!=2)throw std::runtime_error("Polygon right click undo");ui::KeyMessage redo(ui::kKeyDownMessage,ui::kKeyZ,ui::KeyModifiers(ui::kKeyCtrlModifier|ui::kKeyShiftModifier),0,0);onProcessMessage(&redo);if(selectionPath_.size()!=3)throw std::runtime_error("Polygon pending redo");click(point(16.25,17.25));send(ui::kMouseMoveMessage,point(18.25,14.25));const auto preview=selectionPreview_;send(ui::kMouseMoveMessage,{repeat::includesX(mode)?64.25:18.25,repeat::includesY(mode)?48.25:14.25});if(!selectionEqual(selectionPreview_,preview))throw std::runtime_error("Polygon invalid copy preview");
+   if(doubleClick)send(ui::kDoubleClickMessage,point(16.25,10.25));else{ui::KeyMessage enter(ui::kKeyDownMessage,ui::kKeyEnter,ui::kKeyNoneModifier,0,0);onProcessMessage(&enter);}
+   const auto after=document.selection();if(polygonPending_||selectionDragging_||hasCapture()||document.canvasPixels()!=pixels||document.historyPosition()>h+1)throw std::runtime_error("Polygon lasso finish");if(!copy)expected=after;else if(!selectionEqual(after,expected))throw std::runtime_error("Polygon repeated copy differs");if(document.historyPosition()==h+1){document.undo();if(!selectionEqual(document.selection(),beforeSelection))throw std::runtime_error("Polygon lasso undo");document.redo();if(!selectionEqual(document.selection(),after))throw std::runtime_error("Polygon lasso redo");document.undo();}
+   click(point(16.25,10.25));click(point(23.25,10.25));ui::KeyMessage escape(ui::kKeyDownMessage,ui::kKeyEsc,ui::kKeyNoneModifier,0,0);onProcessMessage(&escape);if(polygonPending_||selectionDragging_||hasCapture()||!selectionEqual(document.selection(),beforeSelection)||document.historyPosition()!=h)throw std::runtime_error("Polygon lasso Escape");
+  }
+ }
+ selectionTool_=false;
  const auto before=zoom_;menuCommands_.invoke("tileRepeatOff");if(tileRepeat_!=repeat::Mode::Off||zoom_!=before)throw std::runtime_error("Repeat off changed zoom");
  setTileRepeat(repeat::Mode::Y);ensureProjects();storeActiveProject();restoreProject(activeProject_);if(tileRepeat_!=repeat::Mode::Y||tileRepeatIdentity_!=document.identity())throw std::runtime_error("Repeat session restoration");
  document=Document();tileRepeat_=repeat::Mode::Off;tileRepeatIdentity_=document.identity();refresh();

@@ -4552,3 +4552,10 @@ X/Y/Both合成/当前层及左右键实际诊断验证100次preview请求不发�
 对照canvas-input-selection-begin magicRequest/Release、canvas-input-selection moveMagic及pointer-move：按下和拖动使用有限相邻副本本地点，改变位置更新异步预览，越界移动保留最后有效请求。原生仅魔棒指针路径在源边界检查/开始/更新前映射，不改其他选区工具、异步工作队列及组合算法。释放沿用既有latest-request完成后提交；取消沿用generation丢弃过期结果。
 
 正式Release构建成功，显式等待 --tile-repeat-check退出0。实际鼠标矩阵覆盖普通层/自由瓦片源、X/Y/Both、替换/相加/相减/相交、连续/非连续；比较主画布与副本选区，验证拖动请求、无效移动忽略、工作线程结算、内容不变、最多一笔历史、UndoRedo及Escape后旧worker完成不回写。三项CTest document-transactions/tile-repeat/tile-repeat-stroke通过0.39s；扩展自由源矩阵后重新正式构建诊断通过。742文件来源快照和diff检查通过。未新增蒙版/网格瓦片/可见多层来源的平铺专门回归，未做预览截图/FPS；全量迁移仍INCOMPLETE。保留用户数据和未跟踪文件，阶段提交推送dev。
+
+
+### 2026-11-09：平铺多边形套索完整手势（阶段完成）
+
+核对canvas-input-selection begin/extend/move、useCanvasShapeCommit commitPolygonLasso、canvas-input-path和canvas-polygon-interaction测试：多边形顶点使用有限副本本地点，普通polygonSelection闭合；不能套用连续lasso的repeatedLassoSelection。原生把多边形套索纳入局部指针映射，覆盖首次按下、后续顶点及悬停，越界移动/按下忽略；既有路径回退、重做和闭合算法保留。
+
+正式Release构建成功，显式等待 --tile-repeat-check退出0。新增实际鼠标X/Y/Both×四种组合×Enter/双击完成，比较主画布/副本选区，验证待确认无历史、右键回退、默认CtrlShiftZ重做、无效副本移动预览不变、UndoRedo、Escape及像素不变。首次诊断误用CtrlY重做，默认路由拦截；核对shortcut_catalog后改用实际默认CtrlShiftZ，未更改产品快捷键，重新构建诊断通过。三项CTest document-transactions/tile-repeat/tile-repeat-stroke通过0.40s。742文件来源快照及diff检查通过。未新增自由瓦片/网格瓦片多边形套索、跨缝混合副本顶点或预览截图回归；全量迁移仍INCOMPLETE。保留用户数据及未跟踪文件，阶段提交推送dev。
