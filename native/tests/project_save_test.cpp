@@ -46,6 +46,18 @@ void same(const Document& d,const ReadManifest& m) {
  for(std::size_t i=0;i<m.palette.size();++i)check(d.palette().entries[i].id==m.palette[i].id&&d.palette().entries[i].color==m.palette[i].color,"Palette hidden entry or RGBA changed");
 }
 void dot(Document& d,int x,int y,Pixel color) {d.beginStroke({x,y},color);d.commitStroke();}
+void checkOlderSaveBaseline(){
+ Document live(4,2);dot(live,0,0,0xff123456);const auto captured=encodeEditableProject(live);
+ dot(live,1,0,0xffabcdef);const auto pixels=live.pixels();const auto identity=live.identity(),revision=live.revision(),content=live.contentRevision(),history=live.historySize();
+ live.acceptSaved(captured.projectId,captured.bytes,false);
+ check(live.dirty()&&live.sourceArchive()==captured.bytes&&live.projectId()==captured.projectId,"Older save did not accept disk identity while keeping dirty");
+ check(live.pixels()==pixels&&live.identity()==identity&&live.revision()==revision&&live.contentRevision()==content&&live.historySize()==history,"Older save changed live pixels/history/revisions");
+ live.beginStroke({2,0},0xff998877);live.acceptSaved(captured.projectId,captured.bytes,false);check(live.active()&&live.dirty(),"Older save consumed live preview");
+ bool rejected=false;try{live.acceptSaved(captured.projectId,captured.bytes);}catch(const std::logic_error&){rejected=true;}check(rejected&&live.active(),"Exact save accepted uncommitted preview");live.cancelStroke();
+ rejected=false;try{live.acceptSaved("",{},false);}catch(const std::invalid_argument&){rejected=true;}check(rejected&&live.sourceArchive()==captured.bytes&&live.projectId()==captured.projectId&&live.dirty(),"Invalid acknowledgement changed disk baseline");
+ live.undo();check(live.pixels()[1]==0&&live.dirty(),"Older baseline broke undo");live.redo();check(live.pixels()==pixels&&live.dirty(),"Older baseline broke redo");
+ const auto latest=encodeEditableProject(live);live.acceptSaved(latest.projectId,latest.bytes);check(!live.dirty()&&live.historySize()==history&&live.sourceArchive()==latest.bytes,"Exact follow-up save did not clear only dirty");
+}
 void checkSparseFormatEncoding(){
  for(const bool tiled:{false,true})for(const bool withSource:{false,true}){
   Document d=withSource?imported(encodeEditableProject(Document(8,8)).bytes):Document(8,8);
@@ -326,6 +338,7 @@ auto legacyParsed=readProjectManifest(legacyEncoded.bytes);same(legacy,legacyPar
 }
 
 int main(int argc,char** argv) {try {
+ checkOlderSaveBaseline();
  if(argc==2&&std::string(argv[1])=="--project-rollback-check"){projectRollbackOwnedCheck();std::cout<<"Committed backup/decoded rollback/history/failure checks passed\n";return 0;}
  checkAbsentSlotEncoding();
  checkRasterResourcePlan();

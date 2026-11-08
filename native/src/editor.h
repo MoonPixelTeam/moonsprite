@@ -82,6 +82,7 @@ class LayerLabelSeparator;
 class Editor : public ui::Widget {
 public:
   void smokeAsepriteSaveLifecycle();
+  void smokeNativeSaveLifecycle();
   void smokeMaskSelectionClipboard();
   void smokeRecentProjects();void smokeHomeRecoveries();void discardHomeRecovery(const std::string&);void smokeGallery();void smokeHomeSections();void initializeGallery(bool testing){if(!testing){loadHomeSections();loadGallery();loadHomeSection();}}
 
@@ -1335,6 +1336,7 @@ public:
 
   std::filesystem::path savingPath_;
   bool savingAseprite_=false,savingSourceOnly_=false;
+  bool asyncSaveForSmoke_=false;
   struct QueuedSave {std::uint64_t identity;bool saveAs;};
   std::vector<QueuedSave> queuedSaves_;
   Pending queuedSaveResume_=Pending::None;bool queuedSaveClose_=false;
@@ -1344,6 +1346,7 @@ public:
 
 
   std::uint64_t savingIdentity_=0,savingRevision_=0,savingContentRevision_=0;
+  SymmetryCenter savingSymmetryCenter_;
 
   std::vector<std::pair<ui::Widget*,bool>> savingControlStates_;
 

@@ -1952,12 +1952,13 @@ bool Document::commitPaletteReplacement(){
  auto before=p.baseline;if(p.restorePrimary)before.primary=*p.restorePrimary;auto after=p.preview;paletteReplacement_.reset();
  if(!changed){palette_=std::move(after);return false;}Edit edit{{},state_,nextState_};edit.paletteKind=6;edit.beforePalette=std::move(before);edit.afterPalette=after;reserveHistoryEntries();palette_=std::move(after);change_={0,0,width_,height_};publishChange();pushEdit(std::move(edit),U"替换颜色板颜色");return true;
 }
-void Document::acceptSaved(std::string projectId,std::shared_ptr<const std::vector<std::uint8_t>> sourceArchive) {
-  if(active()) throw std::logic_error("Cannot accept a saved uncommitted preview");
+void Document::acceptSaved(std::string projectId,std::shared_ptr<const std::vector<std::uint8_t>> sourceArchive,bool exact) {
+  if(exact&&active()) throw std::logic_error("Cannot accept a saved uncommitted preview");
   if(projectId.empty() || !sourceArchive || sourceArchive->empty()) throw std::invalid_argument("Missing saved project identity or archive");
-  // Caller must verify the exact current generation has been persisted before
-  // accepting a worker result; detached snapshots never mark the live document.
-  projectId_=std::move(projectId);sourceArchive_=std::move(sourceArchive);markSaved();
+  // A successful older write still owns the disk baseline and target identity.
+  // Only an exact generation may clear dirty; never replace live edits/history.
+  projectId_=std::move(projectId);sourceArchive_=std::move(sourceArchive);
+  if(exact)markSaved();else modified_=true;
 }
 void Document::markSaved() {
   if (active()) throw std::logic_error("Cannot mark an uncommitted preview saved");

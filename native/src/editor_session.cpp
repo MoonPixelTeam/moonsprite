@@ -381,9 +381,10 @@ void Editor::saveTick(){
   }
   if(!saveWorker_.valid()||saveWorker_.wait_for(std::chrono::milliseconds(0))!=std::future_status::ready)return;
   auto result=saveWorker_.get();if(document.identity()!=savingIdentity_)throw std::runtime_error("Document changed during save");
-  const bool exact=document.revision()==savingRevision_&&document.contentRevision()==savingContentRevision_&&!document.active();
+  const auto center=document.symmetryCenter();
+  const bool exact=document.revision()==savingRevision_&&document.contentRevision()==savingContentRevision_&&center.x==savingSymmetryCenter_.x&&center.y==savingSymmetryCenter_.y&&!document.active();
   if(savingAseprite_){acceptAsepriteSaved(document,savingPath_,savingSourceOnly_,exact);if(!savingSourceOnly_)documentPath_=savingPath_;}
-  else{if(!exact)throw std::runtime_error("Document changed during save");document.acceptSaved(std::move(result.projectId),std::move(result.bytes));documentPath_=savingPath_;}
+  else{document.acceptSaved(std::move(result.projectId),std::move(result.bytes),exact);documentPath_=savingPath_;}
   status_=exact?U"工程已保存":U"已保存先前版本；当前修改尚未保存";recordHomeRecent(savingPath_);usageStatistics_.recordEvent("save");
   if(!smoke_)try{auto bytes=savingPath_.parent_path().u8string();if(!bytes.empty())writeExportBytesAtomic(palettePreferencePath().parent_path()/"last-save-directory.txt",{bytes.begin(),bytes.end()});}catch(const std::exception& e){status_+=U"；保存位置偏好记录失败："+unicodeText(e.what());}
   if(exact)queuedSaves_.erase(std::remove_if(queuedSaves_.begin(),queuedSaves_.end(),[&](const auto& q){return q.identity==document.identity()&&!q.saveAs;}),queuedSaves_.end());
@@ -403,7 +404,7 @@ bool Editor::savePath(const std::filesystem::path& path,bool background,bool sou
 
     for(std::size_t i=0;i<projects_.size();++i)if(i!=activeProject_ && (sameProjectPath(path,projects_[i]->path)||sameProjectPath(path,projectDocument(i).sourceFilePath()))){showSaveError(std::runtime_error("该路径已由另一个打开的工程使用，请选择其它名称"));return false;}
 
-    if(!smoke_ || background || ase || portableTimelapseSave_){
+    if(!smoke_ || background || ase || portableTimelapseSave_ || asyncSaveForSmoke_){
 
       if(pending_==Pending::Saving)return false;
 
@@ -411,7 +412,7 @@ bool Editor::savePath(const std::filesystem::path& path,bool background,bool sou
 
         document.commitFloatingPaste();if(!flushTimelapse())return false;savingPortableTimelapse_=portableTimelapseSave_;portableTimelapseSave_=false;saveResume_=pending_;savingPath_=path;savingAseprite_=ase;savingSourceOnly_=ase&&sourceOnly;savingIdentity_=document.identity();savingRevision_=document.revision();savingContentRevision_=document.contentRevision();
 
-        saveSnapshot_.emplace(document);savingControlStates_.clear();for(auto child:children())savingControlStates_.push_back({child,child->isEnabled()});pending_=Pending::Saving;refresh();
+        savingSymmetryCenter_=document.symmetryCenter();saveSnapshot_.emplace(document);savingControlStates_.clear();for(auto child:children())savingControlStates_.push_back({child,child->isEnabled()});pending_=Pending::Saving;refresh();
 
         for(auto child:children())child->setEnabled(false);
 

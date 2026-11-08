@@ -240,7 +240,7 @@ public:
   const DocumentCel& freeTileCel() const {const auto resolved=timeline_.resolveSurface(cel().id);if(!resolved.source||resolved.issue!=timeline::LinkIssue::None)throw std::logic_error("Invalid free tile Cel link");return *resolved.source;}
   SymmetryAxes symmetryAxes;
   SymmetryCenter symmetryCenter() const{return symmetryCenter_.value_or(defaultSymmetryCenter(width_,height_));}
-  void setSymmetryCenter(SymmetryCenter c,bool metadata=true){if(!std::isfinite(c.x) || !std::isfinite(c.y))throw std::invalid_argument("Invalid symmetry center");symmetryCenter_=moveSymmetryCenter(symmetryCenter(),SymmetryAxis::Center,c,width_,height_);if(metadata){modified_=true;projectInformation_.operation();}}
+  void setSymmetryCenter(SymmetryCenter c,bool metadata=true){if(!std::isfinite(c.x) || !std::isfinite(c.y))throw std::invalid_argument("Invalid symmetry center");symmetryCenter_=moveSymmetryCenter(symmetryCenter(),SymmetryAxis::Center,c,width_,height_);if(metadata){modified_=true;projectInformation_.operation();++revision_;}}
   // Project decode preserves finite source coordinates; tool dragging quantizes separately.
   void setImportedSymmetryCenter(SymmetryCenter c){if(!std::isfinite(c.x)||!std::isfinite(c.y))throw std::invalid_argument("Invalid imported symmetry center");symmetryCenter_=c;}
   bool showCustomGrid() const{return showCustomGrid_;}
@@ -515,7 +515,7 @@ public:
   void cancelStroke();
   void undo();
   void redo();
-  void acceptSaved(std::string projectId,std::shared_ptr<const std::vector<std::uint8_t>> sourceArchive);
+  void acceptSaved(std::string projectId,std::shared_ptr<const std::vector<std::uint8_t>> sourceArchive,bool exact=true);
   static Document fromImage(int width,int height,std::vector<Pixel> pixels,std::u32string name);
   bool importSpriteSheet(const SheetImportOptions& options);
   bool resizeImage(int width,int height,ImageInterpolation method=ImageInterpolation::Nearest);

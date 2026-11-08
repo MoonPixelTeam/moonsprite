@@ -9,6 +9,13 @@ using namespace moon;
 static void require(bool p,const char* m){if(!p)throw std::runtime_error(m);}
 int main(){try{
   {
+    Document metadata(4,2);metadata.setImportedSymmetryCenter({1.25,-2.75});metadata.markSaved();
+    const auto revision=metadata.revision(),content=metadata.contentRevision(),history=metadata.historySize();
+    DocumentSnapshot snapshot(metadata);while(!snapshot.advance(metadata,std::chrono::steady_clock::now()+std::chrono::seconds(1))){}
+    auto captured=snapshot.finish();require(captured.symmetryCenter().x==1.25&&captured.symmetryCenter().y==-2.75,"Snapshot quantized/clamped finite imported symmetry metadata");
+    metadata.setSymmetryCenter({3,.5});require(metadata.dirty()&&metadata.revision()==revision+1&&metadata.contentRevision()==content&&metadata.historySize()==history,"Symmetry metadata did not advance persistence generation without a pixel/history edit");
+  }
+  {
     Document local(8,8);local.addLinkedFrame(true);
     timeline::Surface surface;surface.width=2;surface.height=1;surface.offsetX=-1;surface.offsetY=2;surface.storageOriginX=7;surface.storageOriginY=-9;surface.pixels={0x00030201,0xffabcdef};
     RasterHistoryFixture::install(local,surface);

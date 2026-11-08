@@ -46,6 +46,6 @@ Document DocumentSnapshot::finish(){
   result.activeLayerId_=layer_;result.activeFrameId_=frame_;result.projectActiveCelOpacities();
   result.setImportedProjectInformation(std::move(information_));result.setImportedTimelapse(std::move(timelapse_));
   result.projectId_=std::move(projectId_);result.sourceArchive_=std::move(archive_);
-  result.setImportedReferenceImages(std::move(references_));result.setImportedSlices(std::move(slices_));result.setImportedProjectBrushes(std::move(brushes_));result.setSymmetryCenter(symmetry_,false);result.selectLayer(layer_);result.selectFrame(frame_);result.setImportedLoop(loop_);result.setPixelGrid(showPixelGrid_,false);result.setCustomGrid(showCustomGrid_,customGrid_,false);return result;
+  result.setImportedReferenceImages(std::move(references_));result.setImportedSlices(std::move(slices_));result.setImportedProjectBrushes(std::move(brushes_));result.setImportedSymmetryCenter(symmetry_);result.selectLayer(layer_);result.selectFrame(frame_);result.setImportedLoop(loop_);result.setPixelGrid(showPixelGrid_,false);result.setCustomGrid(showCustomGrid_,customGrid_,false);return result;
 }
 }

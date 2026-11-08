@@ -3982,3 +3982,19 @@ recovery-commit-build.log正式程序构建成功、测试因直接编译store�
 新增真实测试构建检查点仅在editor-recovery-tests：写满首个1MiB但未写完，以及payload Flush/关闭后Move前ExitProcess；768×512随机RGBA实际归档超过1MiB，四个退出覆盖两位置×新建/覆盖，另一次重试在descriptor阶段退出。检查源/描述逐字节不变、旧正式工程保留、完整temp真实工程解码/预览RGBA与独立正式文件一致、半写不采用、Windows锁定temp导致写入/删除失败后仍可恢复、重试保住前次temp、显式丢弃保留无关/旧PID-only/其它ID/CRC不符文件。既有七次提交中断、32次四进程竞争及稀疏历史/来源回归继续通过。主页独立描述夹具改为只有完整temp，核对实际上传图像（hasPreview表示已创建RGBA surface）、恢复像素/名称/来源ID、后续自动保存转正并清描述、丢弃后活文档像素不变。
 
 验证：recovery-temp-build.log正式Release/editor-recovery/recent-preview目标构建退出0，recovery-temp-core-tests.log退出0；补主页测试时recovery-temp-ui-build.log因误把smokePreview的bool当对象编译失败，修正后recovery-temp-final-build.log全目标退出0。recovery-temp-final-core-tests.log退出0；预览测试首次以相对owned根调用被拒绝，改绝对路径后recovery-temp-preview-tests.log的121真实浏览器样本、缓存/格式/取消/三worker/LRU全部退出0；recovery-temp-ui-tests.log正式--home-recovery-check退出0。来源660覆盖通过，strict按其余既有缺口退出1，diff通过。无UI布局变更，无新截图/人工验收；未验证硬件断电、无描述的旧临时文件、跨会话/旧程序协作及所有文件系统，GAP-015不因这些进程退出测试标为完全关闭，全量迁移仍INCOMPLETE。
+
+### 原生异步保存代际、元数据与关闭续接（2026-11-08）
+
+接续01b5b7e3，按FS-003及GAP-016核对document-file-service::saveMetadata/savedGenerations、document-save-queue六项原测试和workspace-commands-document-io的fullySaved/恢复清理。原生此前对异步保存期间的新修订直接抛错，即使文件已成功提交，也中断排队保存与关闭续接。本批让成功的旧修订写出接纳磁盘归档/工程ID和目标路径，但保留活文档像素、历史、修订及dirty；仅精确代际可清dirty/合并普通保存/移除来源恢复。SaveAs继续独立排队，关闭前有更新继续排队保存后才关闭。写入失败仍不接纳基线/清理恢复并保留重试。
+
+对称中心提交原先仅设置dirty/统计、不增加revision，恢复调度可能把新元数据当成已写修订。本批推进revision但不产生像素revision/历史；异步保存完成额外核对未提交的对称中心预览。DocumentSnapshot::finish改用已有setImportedSymmetryCenter，保留工程中合法有限小数/画布外坐标，避免按鼠标拖动规则半像素量化/钳制。
+
+新增独立--native-save-check沿正式Editor/snapshot/encoder/原子写出/导入链，测试仅延迟UI确认、不替换worker/编码器/写入器，覆盖旧/新代际、八类元数据和统计、恢复保留/精确清理、分数坐标、预览竞争、排队SaveAs、失败重试及关闭续接。既有保存期间全局输入抑制保持，未把后台直接修改回归称为用户可在保存时交互编辑；FS-003交互并发和全部元数据矩阵仍未完整关闭。旧版元数据最终fullySaved核对不足作为GAP-016保留，不复制潜在假清dirty缺陷。无UI布局改动，不声称整体性能或人工视觉验收通过。
+
+本批核对范围：对称中心、像素网格、自定义网格、动画循环、色卡名称、录像配置、参考图资源和切片均以生产Document修改入口推进revision；统计随原操作捕获，不由保存新增操作/绘画计数。普通内容、图层/帧/蒙版/资源结构继续沿既有历史/修订边界；导入专用setter只用于建立候选/后台副本，不作为用户编辑入口；名称、路径和新会话身份/全部扩展API元数据不是本批并发矩阵覆盖声明。未额外编码整个工程做UI线程相等比较，也没有复制第二份像素快照用于完成判定。
+
+验证：native-save-legacy-queue-tests.log运行未修改旧版生产模块，6项原保存队列测试通过。native-save-generation-build.log首次因RecoverySession{}聚合初始化碰到explicit Scheduler构造失败；仅修改已结束编译的新测试文件为默认构造后move，并补全关闭续接等待，native-save-generation-final-build.log正式Release、document-snapshot/project-save/editor-recovery目标全构建退出0。snapshot-tests.log、project-tests.log退出0，包含旧保存基线/预览/撤销重做/失败校验与原有完整工程往返；ui-tests.log正式--native-save-check退出0，实际result.txt确认全链执行。existing-ui-tests.log的--aseprite-save-check与--home-recovery-check均退出0。核心恢复补对称中心先写后仅改元数据的两次真实归档，保留有限小数/画布外原坐标并确认不会被revision去重漏掉。
+
+第一次恢复检查在32次四进程矩阵的子进程退出码断言失败；原断言未记录实际退出码/子进程错误，首次原因尚未证实，不归因为目录形式、编译或应用修复。保留原测试目录/日志，增加子进程PID/实际退出码及owned目录内最佳努力错误文件后，recovery-diagnostic-build.log退出0；recovery-diagnostic-tests.log新绝对owned根及recovery-original-conditions.log原工作目录/相对参数/TMP条件均退出0，完整跨进程/中断/稀疏恢复及新增元数据回归通过。此未复现故障仍是待观察证据，不把两次通过当成根因闭环。未新增盲目重试、放宽断言或删除失败证据。
+
+来源661文件覆盖通过，strict因其余全量缺口仍退出1；差异检查通过。本批没有UI布局变更、截图或人工长时间交互验收，亦不声称全部文件/恢复或迁移完成。所有上述日志前缀均为native/build/native-save-generation-，旧版队列日志为native/build/native-save-legacy-queue-tests.log；用户工程、恢复、缓存及原有未跟踪诊断保持。

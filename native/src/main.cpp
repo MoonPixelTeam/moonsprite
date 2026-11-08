@@ -765,6 +765,9 @@ int app_main(int argc,char* argv[]) {
     const bool maskSelectionClipboardCheck=argc>1&&std::string(argv[1])=="--mask-selection-clipboard-check";
     ui::Timer maskSelectionClipboardTimer(180,editor);
     if(maskSelectionClipboardCheck){maskSelectionClipboardTimer.Tick.connect([&]{maskSelectionClipboardTimer.stop();try{editor->smokeMaskSelectionClipboard();desktop.approved=true;desktop.closeWindow(editor);}catch(const std::exception& e){std::ofstream("native-mask-selection-clipboard-error.txt")<<e.what();std::exit(1);}});maskSelectionClipboardTimer.start();}
+    const bool nativeSaveCheck=argc>1&&std::string(argv[1])=="--native-save-check";
+    ui::Timer nativeSaveTimer(180,editor);
+    if(nativeSaveCheck){nativeSaveTimer.Tick.connect([&]{nativeSaveTimer.stop();try{editor->smokeNativeSaveLifecycle();desktop.approved=true;desktop.closeWindow(editor);}catch(const std::exception& e){std::ofstream("native/build/native-save-error.txt")<<e.what();std::exit(1);}});nativeSaveTimer.start();}
     const bool asepriteSaveCheck=argc>1&&std::string(argv[1])=="--aseprite-save-check";
     ui::Timer asepriteSaveTimer(180,editor);
     if(asepriteSaveCheck){asepriteSaveTimer.Tick.connect([&]{asepriteSaveTimer.stop();try{editor->smokeAsepriteSaveLifecycle();desktop.approved=true;desktop.closeWindow(editor);}catch(const std::exception& e){std::ofstream("native-aseprite-save-error.txt")<<e.what();std::exit(1);}});asepriteSaveTimer.start();}

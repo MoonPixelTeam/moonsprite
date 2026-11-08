@@ -32,14 +32,15 @@ std::wstring storeLockName(const std::filesystem::path& directory){
 }
 struct Child {
  HANDLE process=nullptr;
+ DWORD pid=0;
  Child(const std::wstring& exe,const std::wstring& arguments){
   auto command=L"\""+exe+L"\" "+arguments;STARTUPINFOW startup{};startup.cb=sizeof(startup);PROCESS_INFORMATION info{};
-  CHECK(CreateProcessW(exe.c_str(),command.data(),nullptr,nullptr,FALSE,CREATE_NO_WINDOW,nullptr,nullptr,&startup,&info));process=info.hProcess;CloseHandle(info.hThread);
+  CHECK(CreateProcessW(exe.c_str(),command.data(),nullptr,nullptr,FALSE,CREATE_NO_WINDOW,nullptr,nullptr,&startup,&info));process=info.hProcess;pid=info.dwProcessId;CloseHandle(info.hThread);
  }
  Child(const Child&)=delete;Child& operator=(const Child&)=delete;
- Child(Child&& other)noexcept:process(other.process){other.process=nullptr;}
+ Child(Child&& other)noexcept:process(other.process),pid(other.pid){other.process=nullptr;}
  ~Child(){if(process){if(WaitForSingleObject(process,0)==WAIT_TIMEOUT){TerminateProcess(process,91);WaitForSingleObject(process,5000);}CloseHandle(process);}}
- void completed(DWORD expected=0){CHECK(WaitForSingleObject(process,15000)==WAIT_OBJECT_0);DWORD status=0;CHECK(GetExitCodeProcess(process,&status)&&status==expected);}
+ void completed(DWORD expected=0){CHECK(WaitForSingleObject(process,15000)==WAIT_OBJECT_0);DWORD status=0;CHECK(GetExitCodeProcess(process,&status));if(status!=expected)throw std::runtime_error("Recovery child "+std::to_string(pid)+" exited "+std::to_string(status)+"; expected "+std::to_string(expected));}
 };
 int storeChild(int argc,wchar_t** argv){
  if(argc==4&&std::wstring(argv[1])==L"--abandon-store"){
@@ -234,8 +235,14 @@ int wmain(int argc,wchar_t** argv){try{
  std::filesystem::remove(orphans/"interrupted.json");project::removeOwnedRecovery(orphans,"interrupted");
  project::removeOwnedRecovery(orphans,"missing");CHECK(!std::filesystem::exists(orphans/"missing.moonsprite")&&project::listRecoveryRecords(orphans).size()==5);
  project::writeRecoveryFiles(orphans,{"corrupt","repaired by autosave","1900000000000"},*archive.bytes);const auto repaired=project::listRecoveryRecords(orphans);CHECK(repaired.size()==5&&std::any_of(repaired.begin(),repaired.end(),[](const auto& r){return r.id=="corrupt"&&r.name=="repaired by autosave";}));
+ // Metadata-only symmetry commits must invalidate the recovery dedup baseline.
+ {Document symmetry(4,2);symmetry.setImportedSymmetryCenter({1.25,-2.75});symmetry.beginStroke({0,0},0xff123456);symmetry.commitStroke();editor::RecoverySession session;session.ownedId="symmetry-metadata";session.ownedIdentity=symmetry.identity();settle(session,symmetry);
+  auto before=read("symmetry-metadata.moonsprite");CHECK(before.symmetryCenter&&before.symmetryCenter->first==1.25&&before.symmetryCenter->second==-2.75);
+  const auto content=symmetry.contentRevision(),h=symmetry.historySize(),r=symmetry.revision();symmetry.setSymmetryCenter({3,.5});CHECK(symmetry.revision()==r+1&&symmetry.contentRevision()==content&&symmetry.historySize()==h);settle(session,symmetry);
+  auto after=read("symmetry-metadata.moonsprite");CHECK(after.symmetryCenter&&after.symmetryCenter->first==3&&after.symmetryCenter->second==.5&&after.timeline.cels[0].surface->pixels==before.timeline.cels[0].surface->pixels);CHECK(session.queue.hasSavedRevision({session.ownedId,"",symmetry.revision(),symmetry.contentRevision(),true,true}));project::removeOwnedRecovery(root,session.ownedId);
+ }
  // Snapshot identity mismatch cancels before a ticket can write a new document.
  editor::RecoverySession stale;stale.identity=first.identity();stale.ownedId="stale";stale.snapshot.emplace(first,"stale");stale.queue.request({"stale","",first.revision(),first.contentRevision(),true,true});stale.ticket=stale.queue.next();settings.enabled=false;
  stale.tick(second,settings,root,false);CHECK(!stale.ticket&&!stale.snapshot&&!stale.worker.valid());
  std::cout<<"Independent document recovery, persisted pixels and stale snapshot cancellation passed\n";return 0;
-}catch(const std::exception& e){std::cerr<<e.what()<<'\n';return 1;}}
+}catch(const std::exception& e){if(argc>=3&&(std::wstring(argv[1])==L"--store-child"||std::wstring(argv[1])==L"--crash-commit")){try{std::ofstream(std::filesystem::path(argv[2])/("child-error-"+std::to_string(GetCurrentProcessId())+".txt"))<<e.what();}catch(...) {}}std::cerr<<e.what()<<'\n';return 1;}}
