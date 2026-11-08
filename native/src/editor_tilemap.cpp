@@ -151,7 +151,7 @@ bool Editor::processFreeTileInput(ui::Message* msg){
  if(dragging){try{
   if(msg->type()==ui::kMouseUpMessage&&mouse->button()==ui::kButtonNone){document.cancelFreeTilePlacement();if(hasCapture())releaseMouse();refresh();return true;}
   if(msg->type()==ui::kMouseMoveMessage||(msg->type()==ui::kMouseUpMessage&&mouse->button()==strokeButton_)){
-   const auto p=canvasPoint(mouse->position());if(document.freeTileInstanceMoving()){movePointer_=mouse->position();const auto delta=constrainedSelectionDelta({p.x-moveStart_.x,p.y-moveStart_.y},moveModifierHeld("constrainAxis",*mouse));document.previewFreeTileInstanceMove(delta.x,delta.y);}else if(const auto local=placementPoint())document.updateFreeTilePlacement(*local);
+   if(document.freeTileInstanceMoving()){movePointer_=mouse->position();const auto raw=canvasDocumentPoint(mouse->position());const auto mode=tileRepeatIdentity_==document.identity()?tileRepeat_:repeat::Mode::Off;const auto mapped=repeat::map({raw.x,raw.y},document.width(),document.height(),mode);if(mapped){const Point p{int(std::floor(mapped->local.x)),int(std::floor(mapped->local.y))};const auto delta=constrainedSelectionDelta({p.x-moveStart_.x,p.y-moveStart_.y},moveModifierHeld("constrainAxis",*mouse));document.previewFreeTileInstanceMove(delta.x,delta.y);}}else if(const auto local=placementPoint())document.updateFreeTilePlacement(*local);
    if(msg->type()==ui::kMouseUpMessage){document.commitFreeTilePlacement();if(hasCapture())releaseMouse();refresh();}
   }
   if(previewPanel_&&previewPanel_->isVisible())previewPanel_->invalidate();invalidateRect(canvasViewport());

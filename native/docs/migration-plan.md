@@ -4451,3 +4451,12 @@ CTest tile-repeat通过，含此前1024旧版几何oracle及直接沿用旧版re
 正式鼠标诊断覆盖X/Y/Both副本单击、拖动不连续盖章、正确本地实例位置与像素、Escape恢复、擦除单笔历史和UndoRedo；额外8实例接缝擦除检查旧版内部连线、Escape及UndoRedo。free-placement-repeat-build.log正式Release构建退出0；Start-Process等待正式exe --tile-repeat-check并读取ExitCode为0。三项CTest tile-repeat/tile-repeat-stroke/free-tile-project通过12.41s。此前PowerShell直接调用GUI程序不能可靠取得退出码，未将该次调用作为验收，改以明确进程句柄等待结果。
 
 未进行新视觉/FPS验收，不宣称实例移动/全部平铺工具或整体迁移完成。保留所有既有未跟踪文件和用户数据；阶段保存并推送dev。
+
+
+### 2026-11-09：平铺副本自由瓦片实例移动（阶段完成）
+
+定向核对canvas-pointer-down localPoint、canvas-pointer-move allowOutsideCopies及canvas-input-free-tile beginInstanceMove/moveInstance。独立实例移动使用有限相邻副本的本地坐标差，不使用选区内容移动的连续副本坐标。原生副本起点先映射后命中并记录本地moveStart；移动/约束键刷新映射有限副本本地点，复用既有多实例事务和constrainedSelectionDelta。越出副本或非平铺轴时不更新预览，松开仍结算并释放捕获；保留无平铺坐标、源资源及现有锁/隐藏筛选。
+
+运行诊断覆盖X/Y/Both副本命中、跨接缝本地跳变、资源不变、实例/像素UndoRedo、Escape恢复、单击无历史、外层副本越界忽略并释放捕获、Shift轴约束及Undo。首轮诊断错误地从最右副本越到允许范围外却期待移动，实际保持原位正确；更正为相邻副本接缝，并新增越界无操作检查。free-instance-repeat-build.log最终正式Release构建0；Start-Process明确等待 --tile-repeat-check ExitCode0。三项CTest tile-repeat/tile-repeat-stroke/free-tile-project 通过12.20s；随后只扩充运行诊断并再次构建/运行通过。742来源登记快照通过，git diff --check通过。
+
+未新增视觉/FPS测量；选区内容实例移动、其他平铺工具及整体迁移仍需继续，不能以本阶段代替全量完成。保留既有用户数据与缓存，失败诊断文本留在未跟踪文件中，不提交生成物。阶段提交推送dev。
