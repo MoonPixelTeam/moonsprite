@@ -7,7 +7,7 @@
 #include <mutex>
 #include <thread>
 namespace moon::recent {
-inline std::string previewKey(const Project& record){return record.path+std::string(1,'\0')+std::to_string(record.lastOpened);}
+inline std::string previewKey(const Project& record){return record.previewIdentity.empty()?record.path+std::string(1,'\0')+std::to_string(record.lastOpened):record.previewIdentity;}
 class PreviewQueue {
 public:
  using Value=std::shared_ptr<const Preview>;

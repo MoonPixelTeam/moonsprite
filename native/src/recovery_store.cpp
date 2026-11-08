@@ -2,8 +2,10 @@
 #include <windows.h>
 #include <fstream>
 #include <algorithm>
+#include <mutex>
 namespace moon::project {
 namespace {
+std::mutex& recoveryFilesMutex(){static std::mutex value;return value;}
 void atomic(const std::filesystem::path& target,const Bytes& data){
  auto temp=target;temp+=L"."+std::to_wstring(GetCurrentProcessId())+L".tmp";
  HANDLE file=CreateFileW(temp.c_str(),GENERIC_WRITE,0,nullptr,CREATE_NEW,FILE_ATTRIBUTE_NORMAL,nullptr);
@@ -22,10 +24,12 @@ std::vector<RecoveryRecord> listRecoveryRecords(const std::filesystem::path& dir
  std::sort(result.begin(),result.end(),[](const auto&a,const auto&b){return a.updatedAt>b.updatedAt;});return result;
 }
 void writeRecoveryFiles(const std::filesystem::path& directory,const RecoveryRecord& record,const Bytes& data){
+ std::lock_guard<std::mutex> lock(recoveryFilesMutex());
  const auto json=encodeRecoveryRecord(record);std::filesystem::create_directories(directory);
  atomic(directory/std::filesystem::u8path(record.id+".moonsprite"),data);atomic(directory/std::filesystem::u8path(record.id+".json"),Bytes(json.begin(),json.end()));
 }
 void removeOwnedRecovery(const std::filesystem::path& directory,const std::string& id){
+ std::lock_guard<std::mutex> lock(recoveryFilesMutex());
  if(!isSafeRecoveryId(id))throw std::invalid_argument("Invalid recovery ID");
  // Match legacy's payload-before-sidecar order. If a payload is locked, its
  // discovery metadata must survive so the recovery remains visible.

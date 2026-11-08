@@ -179,9 +179,9 @@ void Editor::closeDocumentTab() {
 
     // Complete only this session's recovery before removing its owned record.
 
-    try{if(recovery_.worker.valid())recovery_.worker.get();if(!recovery_.ownedId.empty())project::removeOwnedRecovery(recoveryDirectory(),recovery_.ownedId);}catch(const std::exception& e){closingWorkspace_=false;showSaveError(e);return;}
+    try{if(recovery_.worker.valid())recovery_.worker.get();if(recovery_.originId.empty()&&!recovery_.ownedId.empty())project::removeOwnedRecovery(recoveryDirectory(),recovery_.ownedId);}catch(const std::exception& e){closingWorkspace_=false;showSaveError(e);return;}
 
-    recovery_.snapshot.reset();recovery_.ticket.reset();recovery_.cleanup.reset();recovery_.queue=recovery::Scheduler(recoveryPreferences_.minutes);recovery_.ownedId.clear();recovery_.ownedIdentity=recovery_.identity=0;
+    recovery_.snapshot.reset();recovery_.ticket.reset();recovery_.cleanup.reset();recovery_.queue=recovery::Scheduler(recoveryPreferences_.minutes);recovery_.ownedId.clear();recovery_.originId.clear();recovery_.suppressed=false;recovery_.ownedIdentity=recovery_.identity=0;
 
     projects_.erase(projects_.begin()+activeProject_);
 
@@ -277,7 +277,8 @@ void Editor::acceptOpen() {
 
     if(!candidateRecovery_ && !openCandidate_->projectId().empty()){for(std::size_t i=0;i<projects_.size();++i)if(projectDocument(i).projectId()==openCandidate_->projectId()){openCandidate_.reset();activateProject(i);return;}}
 
-    auto next=std::move(*openCandidate_);if(candidateRecovery_)next.markRecovered(next.name()+U"（恢复）");const auto path=candidateRecovery_?std::filesystem::path():candidatePath_;candidateRecovery_=false;openCandidate_.reset();addProject(std::move(next),path);
+    auto next=std::move(*openCandidate_);if(candidateRecovery_)next.markRecovered(next.name()+U"（恢复）");const auto origin=candidateRecovery_?candidateRecoveryId_:std::string{};const auto path=candidateRecovery_?std::filesystem::path():candidatePath_;candidateRecovery_=false;candidateRecoveryId_.clear();openCandidate_.reset();addProject(std::move(next),path);
+    if(!origin.empty()){recovery_.originId=origin;recovery_.ownedId=origin;recovery_.ownedIdentity=document.identity();}
 
     recordHomeRecent(documentPath_.empty()?document.sourceFilePath():documentPath_);
 
@@ -429,7 +430,7 @@ bool Editor::savePath(const std::filesystem::path& path,bool background,bool sou
 
         try {if(recovery_.worker.valid()){recovery_.worker.get();if(recovery_.ticket)recovery_.queue.complete(*recovery_.ticket,true);recovery_.ticket.reset();}
 
-          project::removeOwnedRecovery(recoveryDirectory(),recovery_.ownedId);recovery_.ownedId.clear();
+          project::removeOwnedRecovery(recoveryDirectory(),recovery_.ownedId);if(recovery_.originId==recovery_.ownedId)recovery_.originId.clear();recovery_.ownedId.clear();
 
         } catch(const std::exception&e){status_=U"工程已保存；恢复清理失败："+unicodeText(e.what());}
 
@@ -520,7 +521,19 @@ void Editor::activeRecoveryTick(bool force) {
 
 void Editor::restoreRecovery(const std::filesystem::path& archive,const std::string& id,const std::u32string& name) {
 
-    try {auto file=std::ifstream(archive,std::ios::binary|std::ios::ate);if(!file)throw std::runtime_error("Cannot read recovery");const auto length=file.tellg();if(length<0 || std::uint64_t(length)>project::Limits{}.archiveBytes)throw std::runtime_error("Recovery size exceeds budget");auto bytes=std::make_shared<project::Bytes>(std::size_t(length));file.seekg(0);file.read(reinterpret_cast<char*>(bytes->data()),std::streamsize(bytes->size()));project::TimelapseRestoreReport restoreReport;auto imported=project::prepareEditableImport(project::readProjectManifest(bytes,{},&restoreReport));imported.name=name;openCandidate_=project::createEditableDocument(std::move(imported));candidateRecovery_=true;ask(Pending::Open);if(restoreReport.droppedTimelapseFrames){status_=timelapseRestoreWarning(restoreReport);refresh();}}catch(const std::exception&e){showSaveError(e);errorTitle_=U"无法恢复工程";}}
+    if(!project::isSafeRecoveryId(id)||recoveryDiscardId_==id)return;
+    try {
+      auto report=std::make_shared<project::TimelapseRestoreReport>();
+      DocumentLoadingDialog loading(font_,skin_,[archive,name,report]{
+        auto file=std::ifstream(archive,std::ios::binary|std::ios::ate);if(!file)throw std::runtime_error("Cannot read recovery");const auto length=file.tellg();if(length<0||std::uint64_t(length)>project::Limits{}.archiveBytes)throw std::runtime_error("Recovery size exceeds budget");
+        auto bytes=std::make_shared<project::Bytes>(std::size_t(length));file.seekg(0);if(!file.read(reinterpret_cast<char*>(bytes->data()),std::streamsize(bytes->size())))throw std::runtime_error("Incomplete recovery read");
+        auto imported=project::prepareEditableImport(project::readProjectManifest(bytes,{},report.get()));imported.name=name;return project::createEditableDocument(std::move(imported));
+      },U"恢复工程",&toolIcons_);
+      loading.setDisplay(display(),false);const auto size=loading.minimumDialogSize(bounds().w);loading.setBounds({bounds().center().x-size.w/2,bounds().center().y-size.h/2,size.w,size.h});
+      openCandidate_=loading.run([this]{return pending_==Pending::None&&!document.strokeActive()&&!ui::Manager::getDefault()->getCapture();});candidateRecovery_=true;candidateRecoveryId_=id;ask(Pending::Open);
+      if(report->droppedTimelapseFrames){status_=timelapseRestoreWarning(*report);refresh();}
+    }catch(const std::exception& e){showSaveError(e);errorTitle_=U"无法恢复工程";}
+}
 
 void Editor::setRecoveryPreferences(recovery::Preferences preferences) {
 
@@ -532,11 +545,12 @@ void Editor::setRecoveryPreferences(recovery::Preferences preferences) {
 
 void Editor::loadRecoveries(bool startup) {
 
+    if(recoveryDiscardWorker_.valid())return;
+    if(smoke_&&recoveryCatalogWorker_.valid()){recoveryCatalogWorker_.wait();homeRecoveryTick();}
     if(!recoveryCatalog_.beginLoad(startup))return;
 
-    try {recoveryCatalog_.loaded(project::listRecoveryRecords(recoveryDirectory()));if(recoveryCatalog_.visible())status_=U"发现可恢复工程 · 文件 → 恢复工程";}
-
-    catch(const std::exception&e){recoveryCatalog_.loadFailed(e.what());status_=U"读取恢复记录失败："+unicodeText(e.what());}
+    const auto directory=recoveryDirectory();recoveryCatalogWorker_=std::async(std::launch::async,[directory]{return project::listRecoveryRecords(directory);});
+    if(smoke_){recoveryCatalogWorker_.wait();homeRecoveryTick();}
 
     refresh();
 
@@ -544,7 +558,7 @@ void Editor::loadRecoveries(bool startup) {
 
 void Editor::chooseRecovery() {
 
-    loadRecoveries();const auto dir=recoveryDirectory();auto records=recoveryCatalog_.rows();if(records.empty()){status_=U"没有可恢复工程";refresh();return;}PixelMenu popup(skin_);for(const auto& r:records){bool stale=false;try{const auto now=std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count();stale=recovery::retentionStale(std::stoll(r.updatedAt),now,recoveryPreferences_.retentionDays);}catch(const std::exception&){}auto item=new PixelMenuItem(font_,skin_,unicodeText(r.name)+(stale?U" · 超过保留期":U""));item->Click.connect([this,dir,r]{restoreRecovery(dir/std::filesystem::u8path(r.id+".moonsprite"),r.id,unicodeText(r.name));});popup.addChild(item);}popup.showPopup(gfx::Point(bounds().x+8,bounds().y+36),display());
+    homeRecoveryTick();if(recoveryCatalog_.status()==recovery::CatalogStatus::Unloaded)loadRecoveries();const auto dir=recoveryDirectory();auto records=recoveryCatalog_.rows();if(records.empty()){status_=recoveryCatalog_.status()==recovery::CatalogStatus::Loading?U"正在读取恢复工程":U"没有可恢复工程";refresh();return;}PixelMenu popup(skin_);for(const auto& r:records){bool stale=false;try{const auto now=std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count();stale=recovery::retentionStale(std::stoll(r.updatedAt),now,recoveryPreferences_.retentionDays);}catch(const std::exception&){}auto item=new PixelMenuItem(font_,skin_,unicodeText(r.name)+(stale?U" · 超过保留期":U""));item->Click.connect([this,dir,r]{restoreRecovery(dir/std::filesystem::u8path(r.id+".moonsprite"),r.id,unicodeText(r.name));});popup.addChild(item);}popup.showPopup(gfx::Point(bounds().x+8,bounds().y+36),display());
 
   }
 

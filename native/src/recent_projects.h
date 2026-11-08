@@ -9,7 +9,7 @@
 #include <string>
 #include <vector>
 namespace moon::recent {
-struct Project {std::string path;std::int64_t lastOpened=0;bool pinned=false;};
+struct Project {std::string path;std::int64_t lastOpened=0;bool pinned=false;std::string previewIdentity;};
 inline std::string baseName(const std::string& path){const auto at=path.find_last_of("/\\");return at==std::string::npos?path:path.substr(at+1);}
 inline bool supported(const std::string& path){const auto dot=path.find_last_of('.');if(dot==std::string::npos)return false;auto extension=path.substr(dot+1);for(auto& c:extension)c=char(std::tolower(static_cast<unsigned char>(c)));for(const auto* allowed:{"moonsprite","ase","aseprite","psd","png","jpg","jpeg","webp","bmp","gif"})if(extension==allowed)return true;return false;}
 inline void normalize(std::vector<Project>& values,bool cap=true){std::stable_partition(values.begin(),values.end(),[](const auto& item){return item.pinned;});if(cap&&values.size()>24)values.resize(24);}

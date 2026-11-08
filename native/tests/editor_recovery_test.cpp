@@ -5,6 +5,7 @@
 #include "recovery_store.h"
 #include "project_manifest.h"
 #include "project_import.h"
+#include "project_encode.h"
 #include <fstream>
 #include <iostream>
 #include <stdexcept>
@@ -31,10 +32,12 @@ int wmain(int argc,wchar_t** argv){try{
  settle(a,first);settle(b,second);
  CHECK(first.identity()==identity&&first.revision()==revision&&first.historySize()==history&&first.pixels()==pixels);
  auto records=project::listRecoveryRecords(root);CHECK(records.size()==2);
+ {const auto payload=project::encodeRecoveryProject(first);std::vector<std::future<void>> writers;for(int i=0;i<8;++i)writers.push_back(std::async(std::launch::async,[&,i]{project::writeRecoveryFiles(root,{"shared-origin","shared",std::to_string(i)},*payload.bytes);}));for(auto& writer:writers)writer.get();CHECK(std::filesystem::exists(root/"shared-origin.moonsprite")&&std::filesystem::exists(root/"shared-origin.json"));project::removeOwnedRecovery(root,"shared-origin");}
  auto read=[&](const char* name){std::ifstream in(root/name,std::ios::binary);auto bytes=std::make_shared<project::Bytes>(std::istreambuf_iterator<char>(in),std::istreambuf_iterator<char>());return project::prepareEditableImport(project::readProjectManifest(bytes));};
  const auto savedFirst=read("first.moonsprite"),savedSecond=read("second.moonsprite");
  CHECK(savedFirst.width==3&&savedFirst.height==2&&savedFirst.timeline.cels[0].surface->pixels[4]==0xff123456);
  CHECK(savedSecond.width==2&&savedSecond.height==3&&savedSecond.timeline.cels[0].surface->pixels[4]==0xff654321);
+ editor::RecoverySession restored;restored.originId="source-recovery";restored.ownedId="source-recovery";restored.ownedIdentity=first.identity();settle(restored,first);CHECK(project::listRecoveryRecords(root).size()==3&&std::filesystem::exists(root/"source-recovery.moonsprite"));restored.suppressed=true;project::removeOwnedRecovery(root,"source-recovery");first.beginStroke({0,0},0xffabcdef);first.commitStroke();settle(restored,first);CHECK(!std::filesystem::exists(root/"source-recovery.moonsprite")&&!restored.worker.valid());
  // Production recovery round trip retains local owners and links before editing.
  Document sparse(3,3);sparse.beginStroke({0,0},0xffabcdef);sparse.commitStroke();const auto sparseOwner=sparse.cel().id;sparse.addLinkedFrame(true);const auto sparseAlias=sparse.cel().id,sparseFrame=sparse.frame().id,sparseLayer=sparse.layer().id;RasterHistoryFixture::local(sparse);
  const auto sparseRevision=sparse.revision(),sparseContent=sparse.contentRevision(),sparseHistory=sparse.historySize();const auto sparsePixels=sparse.pixels();

@@ -83,7 +83,7 @@ class Editor : public ui::Widget {
 public:
   void smokeAsepriteSaveLifecycle();
   void smokeMaskSelectionClipboard();
-  void smokeRecentProjects();void smokeGallery();void smokeHomeSections();void initializeGallery(bool testing){if(!testing){loadHomeSections();loadGallery();loadHomeSection();}}
+  void smokeRecentProjects();void smokeHomeRecoveries();void discardHomeRecovery(const std::string&);void smokeGallery();void smokeHomeSections();void initializeGallery(bool testing){if(!testing){loadHomeSections();loadGallery();loadHomeSection();}}
 
 public:
   usage::Tracker usageStatistics_;
@@ -1286,10 +1286,14 @@ public:
   std::filesystem::path documentPath_,candidatePath_,recoveryDirectory_;
 
   bool candidateRecovery_=false;
+  std::string candidateRecoveryId_;
 
 
   RecoverySession recovery_;
   recovery::RecoveryCatalog recoveryCatalog_;
+  std::future<void> recoveryDiscardWorker_;std::string recoveryDiscardId_;
+  std::future<std::vector<project::RecoveryRecord>> recoveryCatalogWorker_;
+  void homeRecoveryTick();
 
   recovery::Preferences recoveryPreferences_;
 

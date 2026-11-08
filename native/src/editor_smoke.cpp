@@ -908,7 +908,7 @@ void Editor::smokeAllScrollBars() {
 
     setBounds(gfx::Rect(17,23,640,360));refresh();railScrollPixels_=0;layoutToolRail();drag(railScrollBar_,true);check(railScrollPixels_>0,"Small window tool rail scrollbar failed");
 
-    setBounds(gfx::Rect(17,23,800,600));refresh();homeOpen_=true;homeSection_=2;homeEntries_.clear();for(int i=0;i<24;++i)homeEntries_.push_back({U"滚动回归",{}, {}});homeScrollPixels_=0;layoutHome();drag(homeScrollBar_,true);check(homeScrollPixels_>0 && homeScrollPixels_%(28*uiScale)!=0,"Home list drag still snaps to whole items");homeOpen_=false;
+    setBounds(gfx::Rect(17,23,800,600));refresh();homeOpen_=true;homeSection_=2;recoveryCatalog_.beginLoad();{std::vector<project::RecoveryRecord> rows;for(int i=0;i<24;++i)rows.push_back({"scroll-"+std::to_string(i),"滚动回归","0"});recoveryCatalog_.loaded(std::move(rows));}layoutHome();drag(recentPane_->smokeScrollBar(),true);check(recentPane_->smokeScroll()>0 && recentPane_->smokeScroll()%(92*uiScale)!=0,"Home list drag still snaps to whole items");homeOpen_=false;
 
     setBounds(gfx::Rect(17,23,800,600));openError_=U"";for(int i=0;i<80;++i)openError_+=U"较长的错误信息\n";pending_=Pending::OpenError;errorScrollPixels_=0;layoutModal();drag(errorScrollBar_,true);check(errorScrollPixels_>0,"Error text scrollbar failed");
 

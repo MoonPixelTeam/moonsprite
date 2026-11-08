@@ -15,7 +15,7 @@ RecoverySession::Result RecoverySession::tick(Document& document,const recovery:
 
       bool success=true;try{worker.get();}catch(const std::exception&e){success=false;result.error=e.what();result.cleanupFailure=cleanup.has_value();}
 
-      if(success && cleanup && ownedIdentity==cleanup->first && ownedId==cleanup->second)ownedId.clear();
+      if(success && cleanup && ownedIdentity==cleanup->first && ownedId==cleanup->second){if(originId==ownedId)originId.clear();ownedId.clear();}
 
       cleanup.reset();
 
@@ -23,6 +23,7 @@ RecoverySession::Result RecoverySession::tick(Document& document,const recovery:
 
     }
 
+    if(suppressed){snapshot.reset();if(ticket)queue.complete(*ticket,false);ticket.reset();return result;}
     const auto now=std::chrono::steady_clock::now();
 
     if(force || now>=due) {
@@ -33,7 +34,7 @@ RecoverySession::Result RecoverySession::tick(Document& document,const recovery:
 
         if(ownedIdentity!=document.identity()){ownedId.clear();ownedIdentity=document.identity();}
 
-        if(ownedId.empty())ownedId="native-"+std::to_string(GetCurrentProcessId())+"-"+std::to_string(GetTickCount64())+"-"+std::to_string(document.identity());
+        if(ownedId.empty())ownedId=originId.empty()?"native-"+std::to_string(GetCurrentProcessId())+"-"+std::to_string(GetTickCount64())+"-"+std::to_string(document.identity()):originId;
 
         queue.request({ownedId,"",document.revision(),document.contentRevision(),true,true});
 

@@ -264,7 +264,7 @@ bool Editor::onProcessMessage(ui::Message* msg) {
         if(mouse->left() && uiPhysical(gfx::Rect(rc.x+Layout::edge,rc.y+Layout::documentY,documentTabWidth(l)-Layout::inset-11,Layout::projectTabHeight)).contains(mouse->position())){showHome(false);return true;}}
 
       if(homeOpen_ && msg->type()==ui::kMouseWheelMessage && homeAnnouncements_ && homeAnnouncements_->bounds().contains(static_cast<ui::MouseMessage*>(msg)->position())){homeAnnouncements_->scrollWheel(static_cast<ui::MouseMessage*>(msg)->wheelDelta().y);return true;}
-      if(homeOpen_&&homeSection_==0&&msg->type()==ui::kMouseWheelMessage&&recentPane_&&recentPane_->bounds().contains(static_cast<ui::MouseMessage*>(msg)->position()))return recentPane_->onProcessMessage(msg);
+      if(homeOpen_&&msg->type()==ui::kMouseWheelMessage&&recentPane_&&recentPane_->bounds().contains(static_cast<ui::MouseMessage*>(msg)->position()))return recentPane_->onProcessMessage(msg);
       if(homeOpen_ && msg->type()==ui::kMouseWheelMessage){homeScrollPixels_+=static_cast<ui::MouseMessage*>(msg)->wheelDelta().y*28*uiScale;layoutHome();invalidate();return true;}
 
       if(homeOpen_ && msg->type()==ui::kKeyDownMessage && static_cast<ui::KeyMessage*>(msg)->scancode()==ui::kKeyEsc && documentOpen_){showHome(false);return true;}

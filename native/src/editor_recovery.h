@@ -19,6 +19,8 @@ struct RecoverySession {
   std::optional<DocumentSnapshot> snapshot;
   std::uint64_t identity=0,ownedIdentity=0;
   std::string ownedId;
+  std::string originId;
+  bool suppressed=false;
   std::chrono::steady_clock::time_point due=std::chrono::steady_clock::now()+std::chrono::minutes(5);
   struct Result {std::string error;bool cleanupFailure=false;};
   Result tick(Document& document,const recovery::Preferences& preferences,
