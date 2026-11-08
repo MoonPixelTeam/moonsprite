@@ -4338,3 +4338,12 @@ make-quick-command-fixtures.cjs执行旧文件未改写的独立配置段（仅�
 验收：quick-command-order-build.log和quick-command-order-final-build.log正式Release/定向测试构建均退出0；四项quick-command-preferences/editor-preferences/image-scale-detection/image-resize-task通过（0.53s），包括112配置/6指令配置/32排序oracle。正式正常显示新进程PID6804 --quick-command-check退出0，覆盖实际MouseMessage拖动、顺序/行位置、capture释放、边缘滚动、偏好取消不持久化、重复mouseup不重复切换和既有后台识别/撤销/取消检查。实际查看Release/quick-command-preferences.bmp：默认2×拖柄/开关可见，垂直镜像已移动到水平镜像之前，无重叠，底部裁剪遵循共享视口。该图不代表1×、全部窗口尺寸或全软件FPS；自动滚动停顿/焦点切换等手动长时间交互尚未全面验收。来源覆盖726文件和偏好360项检查通过；strict仍须按全量缺口失败。
 
 仍INCOMPLETE：当前用户快捷键tooltip、outline/quickOutline、部分paste/tileRepeat底层命令、多窗格活动文档语义及完整快捷栏交互审计。用户确认的网格瓦片同步缩放决定继续有效，既有image-resize回归记录已含同步网格资源路径；本批不另称完成新缩放功能。保留所有用户数据和原有未跟踪文件，只提交本阶段源码/测试/来源记录并推送dev。
+
+
+### 2026-11-09：快捷栏完整说明与当前快捷键提示
+
+实际对照QuickCommandBar commands tooltip、useAppShortcutSettings shortcutFor、shortcuts.ts shortcutPrimary/shortcutDisplayText及zh-CN：显示标题、完整说明和当前第一个绑定，空绑定不显示，鼠标/滚轮部分使用旧版中文名称，不擅自显示全部备用绑定。复用现有快捷键模型默认/覆盖/显式清空规则；Widget Property持有绑定查询回调，不复制绑定、不改变Editor布局。展开/折叠提示随状态更新，设置/移动说明使用旧版原文。复用Aseprite UI MIT许可Property/TooltipManager公开接口，未复制EULA业务代码；与既有提示一样仅内容变化时替换，避免每次refresh重建注册。
+
+验收：quick-command-tooltip-build.log与quick-command-tooltip-final-build.log正式唯一Release构建0。quick-command-preferences/editor-preferences/shortcuts三项通过1.10s；正式正常显示进程PID41176 --quick-command-check退出0，实际TooltipManager内容覆盖自定义Ctrl+MouseBack中文显示、首项而非第二F8、显式清空、默认恢复和既有排序/捕获/后台识别撤销取消回归。来源覆盖727文件和证据快照通过。未捕获真实hover弹出窗口截图，不把字符串检查称为字体/布局视觉验收。
+
+本轮定向核对平铺发现它同时影响跨边界绘制、选区提交、瓦片命中和合成缓存；不能只绘制副本就标完整。平铺完整链路、outline/quickOutline、特殊粘贴、多窗格等仍INCOMPLETE，目标保持active。所有原有未跟踪用户数据和缓存保留；本提示链路阶段单独提交推送dev。

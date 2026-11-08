@@ -2,6 +2,7 @@
 #include "image_resize_task.h"
 #include "editor_implementation.h"
 #include "quick_command_metadata.h"
+#include "quick_command_tooltip.h"
 #include "quick_command_drag_handle.h"
 #include <winrt/base.h>
 namespace moon::editor {
@@ -16,6 +17,7 @@ void Editor::initializeQuickCommands(){
  for(unsigned i=0;i<4;++i)quickPreferenceCollapsed_[i]=quickBarsDraft_[i].edge==quick::Edge::None;
  for(auto& m:quick::metadata)for(auto suffix:{"","-disabled"}){const auto name=std::string(m.icon)+suffix;if(!toolIcons_.assets.patches.count(name))toolIcons_.assets.patches[name]=importSkinPng(assets_/"utility-icons"/(name+".png"),32);}
  for(unsigned i=0;i<4;++i){auto b=new QuickCommandBar(font_,skin_,toolIcons_);addChild(b);quickBars_[i]=b;
+  b->setProperty(std::make_shared<quick::ShortcutTooltip>([this](const std::string& id){return quick::primaryShortcut(shortcutBindings_,id);}));
   b->changed=[this,i](const quick::Bar& bar){quickBarsConfig_[i]=bar;saveQuickCommands();syncQuickCommands();};
   b->enabled=[this](const std::string& id){return quickCommandEnabled(id);};b->checked=[this](const std::string& id){auto m=metadata(id);if(id=="selectionOutline")return bool(document.selection())&&showSelectionOutline_;return m&&menuCommands_.checked(m->command);};
   b->execute=[this](const std::string& id,bool right){runQuickCommand(id,right);};b->settings=[this]{preferenceSection_=1;showPreferences();};
@@ -59,6 +61,12 @@ bool Editor::quickPreferenceHidden(const std::string& key)const{return key.rfind
 void Editor::quickPreferenceAction(const std::string& key){const int i=key[17]-'0';if(i<0||i>=4)return;quickPreferenceCollapsed_[i]=!quickPreferenceCollapsed_[i];syncPreferenceCatalog();layoutModal();invalidate();}
 void Editor::smokeQuickCommands(){
  smoke_=true;homeOpen_=false;documentOpen_=true;runtimePreferences_.values["quickCommands.quickCommandBarEnabled"]="true";const auto saved=quickBarsConfig_;const auto revision=document.revision();quickBarsConfig_=quick::defaultBars();refresh();if(!quickBars_[0]->isVisible())throw std::runtime_error("Quick bar invisible");quickBars_[0]->smoke();if(!quickBarsConfig_[0].expanded||document.revision()!=revision)throw std::runtime_error("Quick bar toggle/history");
+ const auto savedBindings=shortcutBindings_;
+ auto tooltip=[&](const std::string& icon){ui::TooltipManager* tips=nullptr;PixelButton* button=nullptr;for(auto child:quickBars_[0]->children()){if(auto t=dynamic_cast<ui::TooltipManager*>(child))tips=t;if(auto b=dynamic_cast<PixelButton*>(child);b&&b->icon==icon)button=b;}if(!tips||!button)throw std::runtime_error("Quick tooltip widget missing");return tips->getTooltipFor(button);};
+ shortcutBindings_["flipHorizontal"]={"Ctrl+MouseBack","F8"};syncQuickCommands();if(tooltip("selectionFlipHorizontal").find("Ctrl+鼠标侧键 1")==std::string::npos||tooltip("selectionFlipHorizontal").find("F8")!=std::string::npos)throw std::runtime_error("Quick tooltip primary/localized binding");
+ shortcutBindings_["flipHorizontal"]={};syncQuickCommands();if(tooltip("selectionFlipHorizontal").find("鼠标侧键")!=std::string::npos)throw std::runtime_error("Quick tooltip retained removed binding");
+ shortcutBindings_.erase("flipHorizontal");syncQuickCommands();const auto primary=quick::primaryShortcut(shortcutBindings_,"flipHorizontal");if(!primary.empty()&&tooltip("selectionFlipHorizontal").find(primary)==std::string::npos)throw std::runtime_error("Quick tooltip default binding");
+ shortcutBindings_=savedBindings;syncQuickCommands();
  for(auto edge:{quick::Edge::Top,quick::Edge::Right,quick::Edge::Bottom,quick::Edge::Left}){quickBarsConfig_[0].edge=edge;syncQuickCommands();if(!canvasViewport().contains(quickBars_[0]->bounds()))throw std::runtime_error("Quick bar outside viewport");}
  quickBarsDraft_=quickBarsConfig_;syncQuickPreferenceValues();quickPreferenceChanged("quickCommands.bar0.name","Custom");quickPreferenceChanged("quickCommands.bar0.edge","2");if(quickBarsDraft_[0].name!=u"Custom"||quickBarsDraft_[0].edge!=quick::Edge::Bottom)throw std::runtime_error("Quick preference wiring");
 

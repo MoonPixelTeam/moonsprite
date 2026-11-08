@@ -1047,7 +1047,8 @@
     "legacy/src/renderer/src/assets/pixel-icons/quick-command-outline.svg": "b2f9a0770c56b413fda2b00d78afe7024655685fac64286d69750a8c5f899b38",
     "legacy/src/renderer/src/assets/pixel-icons/quick-command-paste-as-new-layer.svg": "605e7b20f30f9ef881566057f714df8d282371d52e74bf77c7dcbbcd81ab782a",
     "legacy/src/renderer/src/assets/pixel-icons/quick-command-paste-to-current-cell.svg": "ba5f41ff7ab65637962c7f36f67f7c813e296fa3a6699be6b1dba88cacb0591c",
-    "legacy/src/renderer/src/assets/pixel-icons/quick-command-quick-outline.svg": "507243e18e1cf792e1f92665e8f89d8408bdc7c512d49cc97d85ec375075d042"
+    "legacy/src/renderer/src/assets/pixel-icons/quick-command-quick-outline.svg": "507243e18e1cf792e1f92665e8f89d8408bdc7c512d49cc97d85ec375075d042",
+    "native/.cache/aseprite/src/ui/tooltips.h": "5a38b07c2d1573b6d646b6d4b90cd4d537edf2daad21c8ff53d1c10388203a39"
   },
   "files": [
     {
@@ -28701,12 +28702,16 @@
         "legacy/src/renderer/src/components/app/edit-command-icons.ts",
         "legacy/src/renderer/src/components/dialogs/PreferencesDialog.tsx",
         "legacy/src/renderer/src/components/app/useQuickCommandGradientOcclusion.ts",
-        "legacy/src/renderer/src/core/file-preferences.ts"
+        "legacy/src/renderer/src/core/file-preferences.ts",
+        "legacy/src/renderer/src/components/app/useAppShortcutSettings.ts",
+        "legacy/src/renderer/src/core/shortcuts.ts",
+        "legacy/src/renderer/src/locales/zh-CN.ts"
       ],
       "scope": "Native QuickCommandBar initial runtime integration: four bars, exact legacy metadata/icon assets, existing menu commands and explicit disabled missing commands, pointer-capture focus-preserving toggle/move, four-edge math, persisted JSON, preference name/edge/enabled/restore/collapse, opacity and pending-gradient control overlap. Direct detect-and-resize reuses existing bounded ImageResizeTask and one undo transaction. Still PARTIAL: missing outline/paste/tile commands and preference ordering, shortcut descriptions, active-only multi-pane semantics, cancellation/lost-capture and visual validation pending. Do not claim full quick-command or workspace migration.",
       "verification20261109": "Final consistent Release build0. Core four tests0. Official quick check PID42976=0; visible PID46192=0, actual Release/quick-command-bar.bmp inspected: expanded top icons/settings/move visible no overlap. Image-resize regression PID37568=0. First build executed while headers changed gave early0xC0000409/0xC0000374; superseded after final incremental recompilation by two successful runs. Hidden-window screenshot black rejected as visual evidence. Still partial: command reorder handles, missing outline/paste/tile underlying commands, shortcut description/tooltips, full multi-pane active document and cancellation/capture edge audit.",
       "quickCommandOrder20261109": "PreferencesDialog reorderPreferenceItems exact source/remove/target/insertAfter/no-op port; pointer drag same-bar and same-enabled-group row midpoint,16..32 edge zone and12 per16ms autoscroll adapted to existing shared preference viewport; captured move handle separate from enable control so last-enabled remains draggable. Draft order drives measured row positions and painting; preference cancel discards draft. QuickCommandBar pointer release clears down immediately to prevent duplicated mouseup execution while preserving100ms visual feedback.32 oracle cases execute unchanged TS generic reorder function. UI/build verification pending; missing other quick commands remain INCOMPLETE.",
-      "quickCommandOrderVerification20261109": "Release initial and final builds exit0;32 unchanged legacy reorder oracle cases plus existing configuration suite passed;four core tests passed0.53s. Visible official exe --quick-command-check PID6804 exit0 with actual pointer reorder/geometry/capture release/autoscroll/cancel and duplicate-mouseup assertions. Release/quick-command-preferences.bmp inspected at default2x: handles and switches visible, reordered rows correct, no overlap. Shared viewport adaptation recorded;1x/all window sizes/long focus/capture audit and shortcut binding tooltip remain incomplete."
+      "quickCommandOrderVerification20261109": "Release initial and final builds exit0;32 unchanged legacy reorder oracle cases plus existing configuration suite passed;four core tests passed0.53s. Visible official exe --quick-command-check PID6804 exit0 with actual pointer reorder/geometry/capture release/autoscroll/cancel and duplicate-mouseup assertions. Release/quick-command-preferences.bmp inspected at default2x: handles and switches visible, reordered rows correct, no overlap. Shared viewport adaptation recorded;1x/all window sizes/long focus/capture audit and shortcut binding tooltip remain incomplete.",
+      "shortcutTooltip20261109": "Current primary binding live resolver, localized mouse/wheel labels, no binding omits line, all three utility control descriptions and expanded/collapsed toggle text match zh-CN. Runtime checks cover custom multi-binding first-only, removal and default restoration; official visible Release --quick-command-check PID41176 exit0. Existing pointer/reorder/detection checks also passed. Actual hover popup visual not captured."
     },
     {
       "file": "src/quick_command_metadata.h",
@@ -28733,12 +28738,16 @@
         "legacy/src/renderer/src/components/app/edit-command-icons.ts",
         "legacy/src/renderer/src/components/dialogs/PreferencesDialog.tsx",
         "legacy/src/renderer/src/components/app/useQuickCommandGradientOcclusion.ts",
-        "legacy/src/renderer/src/core/file-preferences.ts"
+        "legacy/src/renderer/src/core/file-preferences.ts",
+        "legacy/src/renderer/src/components/app/useAppShortcutSettings.ts",
+        "legacy/src/renderer/src/core/shortcuts.ts",
+        "legacy/src/renderer/src/locales/zh-CN.ts"
       ],
       "scope": "Native QuickCommandBar initial runtime integration: four bars, exact legacy metadata/icon assets, existing menu commands and explicit disabled missing commands, pointer-capture focus-preserving toggle/move, four-edge math, persisted JSON, preference name/edge/enabled/restore/collapse, opacity and pending-gradient control overlap. Direct detect-and-resize reuses existing bounded ImageResizeTask and one undo transaction. Still PARTIAL: missing outline/paste/tile commands and preference ordering, shortcut descriptions, active-only multi-pane semantics, cancellation/lost-capture and visual validation pending. Do not claim full quick-command or workspace migration.",
       "verification20261109": "Final consistent Release build0. Core four tests0. Official quick check PID42976=0; visible PID46192=0, actual Release/quick-command-bar.bmp inspected: expanded top icons/settings/move visible no overlap. Image-resize regression PID37568=0. First build executed while headers changed gave early0xC0000409/0xC0000374; superseded after final incremental recompilation by two successful runs. Hidden-window screenshot black rejected as visual evidence. Still partial: command reorder handles, missing outline/paste/tile underlying commands, shortcut description/tooltips, full multi-pane active document and cancellation/capture edge audit.",
       "quickCommandOrder20261109": "PreferencesDialog reorderPreferenceItems exact source/remove/target/insertAfter/no-op port; pointer drag same-bar and same-enabled-group row midpoint,16..32 edge zone and12 per16ms autoscroll adapted to existing shared preference viewport; captured move handle separate from enable control so last-enabled remains draggable. Draft order drives measured row positions and painting; preference cancel discards draft. QuickCommandBar pointer release clears down immediately to prevent duplicated mouseup execution while preserving100ms visual feedback.32 oracle cases execute unchanged TS generic reorder function. UI/build verification pending; missing other quick commands remain INCOMPLETE.",
-      "quickCommandOrderVerification20261109": "Release initial and final builds exit0;32 unchanged legacy reorder oracle cases plus existing configuration suite passed;four core tests passed0.53s. Visible official exe --quick-command-check PID6804 exit0 with actual pointer reorder/geometry/capture release/autoscroll/cancel and duplicate-mouseup assertions. Release/quick-command-preferences.bmp inspected at default2x: handles and switches visible, reordered rows correct, no overlap. Shared viewport adaptation recorded;1x/all window sizes/long focus/capture audit and shortcut binding tooltip remain incomplete."
+      "quickCommandOrderVerification20261109": "Release initial and final builds exit0;32 unchanged legacy reorder oracle cases plus existing configuration suite passed;four core tests passed0.53s. Visible official exe --quick-command-check PID6804 exit0 with actual pointer reorder/geometry/capture release/autoscroll/cancel and duplicate-mouseup assertions. Release/quick-command-preferences.bmp inspected at default2x: handles and switches visible, reordered rows correct, no overlap. Shared viewport adaptation recorded;1x/all window sizes/long focus/capture audit and shortcut binding tooltip remain incomplete.",
+      "shortcutTooltip20261109": "Current primary binding live resolver, localized mouse/wheel labels, no binding omits line, all three utility control descriptions and expanded/collapsed toggle text match zh-CN. Runtime checks cover custom multi-binding first-only, removal and default restoration; official visible Release --quick-command-check PID41176 exit0. Existing pointer/reorder/detection checks also passed. Actual hover popup visual not captured."
     },
     {
       "file": "src/quick_command_drag_handle.h",
@@ -28748,6 +28757,19 @@
         "legacy/src/renderer/src/components/app/QuickCommandBar.tsx"
       ],
       "scope": "PreferencesDialog reorderPreferenceItems exact source/remove/target/insertAfter/no-op port; pointer drag same-bar row midpoint,16..32 edge zone and12 per16ms autoscroll adapted to existing shared preference viewport; captured move handle separate from enable control so last-enabled remains draggable. Draft order drives measured row positions and painting; preference cancel discards draft. QuickCommandBar pointer release clears down immediately to prevent duplicated mouseup execution while preserving100ms visual feedback.32 oracle cases execute unchanged TS generic reorder function. UI/build verification pending; missing other quick commands remain INCOMPLETE."
+    },
+    {
+      "file": "src/quick_command_tooltip.h",
+      "classification": "legacy-adapted",
+      "sources": [
+        "legacy/src/renderer/src/components/app/QuickCommandBar.tsx",
+        "legacy/src/renderer/src/components/app/useAppShortcutSettings.ts",
+        "legacy/src/renderer/src/core/shortcuts.ts",
+        "legacy/src/renderer/src/locales/zh-CN.ts",
+        "native/.cache/aseprite/src/ui/property.h",
+        "native/.cache/aseprite/src/ui/tooltips.h"
+      ],
+      "scope": "QuickCommandBar shortcutFor -> useAppShortcutSettings shortcutPrimary + shortcutDisplayText: first current binding only, empty suppresses, zh-CN mouse/wheel part labels. Reuses MIT Aseprite UI Property ownership as editor binding resolver adapter; no new Editor layout fields or copied bindings. Native tooltip uses existing TooltipManager; pixel font/theme remains existing adapter. Official Release build0; visible --quick-command-check PID41176 exit0 asserts actual TooltipManager strings for custom primary localized binding, ignores second binding, removal and default restoration. Actual hover popup visual not captured; no typography/all-size claim."
     }
   ],
   "assetTransfers": [

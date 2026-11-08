@@ -1,5 +1,6 @@
 #include "quick_command_bar.h"
 #include "quick_command_metadata.h"
+#include "quick_command_tooltip.h"
 #include "ui/message.h"
 #include "ui_scale.h"
 #include <algorithm>
@@ -48,8 +49,12 @@ void QuickCommandBar::sync(const quick::Bar& bar,gfx::Rect viewport,bool translu
   auto add=[&](const std::string& id,const std::string& icon,const std::u32string& label){auto b=new Control(*this,id,icon);addChild(b);controls_.push_back(b);tips_->addTooltipFor(b,utf8Text(label));};
   add("toggle","down",U"展开／折叠快捷指令栏");for(auto& m:quick::metadata)add(m.id,m.icon,m.label);add("settings","properties",U"快捷指令栏设置");add("move","move",U"拖动快捷指令栏");
  }
+ auto updateTip=[&](ui::Widget* widget,const std::string& text){if(tips_->getTooltipFor(widget)!=text){tips_->removeTooltipFor(widget);tips_->addTooltipFor(widget,text);}};
+ updateTip(controls_[0],utf8Text(std::u32string(bar_.expanded?U"折叠快捷指令栏":U"展开快捷指令栏")+U"\n显示或收起常用的画布与选区指令。"));
+ updateTip(controls_[controls_.size()-2],utf8Text(U"设置快捷指令栏\n打开首选项中的快捷指令栏设置，选择按钮并调整显示顺序。"));
+ updateTip(controls_.back(),utf8Text(U"移动快捷指令栏\n按住并拖动到画布边缘，可将快捷指令栏停靠在上、下、左、右任意一侧。"));
  const std::string toggleIcon=bar_.expanded?"up":"down";if(controls_[0]->icon!=toggleIcon){controls_[0]->icon=toggleIcon;controls_[0]->invalidate();}
- for(unsigned i=0;i<std::size(quick::metadata);++i){const auto& m=quick::metadata[i];auto b=controls_[i+1];const bool available=enabled&&enabled(m.id);b->setEnabled(interactive&&available);const bool active=checked&&checked(m.id);if(b->active!=active){b->active=active;b->invalidate();}auto label=std::u32string(m.label);if(m.description&&*m.description)label+=U"\n"+std::u32string(m.description);if(!available)label+=U" · 当前不可用／尚未迁移";const auto text=utf8Text(label);if(tips_->getTooltipFor(b)!=text){tips_->removeTooltipFor(b);tips_->addTooltipFor(b,text);}}
+ for(unsigned i=0;i<std::size(quick::metadata);++i){const auto& m=quick::metadata[i];auto b=controls_[i+1];const bool available=enabled&&enabled(m.id);b->setEnabled(interactive&&available);const bool active=checked&&checked(m.id);if(b->active!=active){b->active=active;b->invalidate();}auto label=std::u32string(m.label);if(m.description&&*m.description)label+=U"\n"+std::u32string(m.description);if(!available)label+=U" · 当前不可用／尚未迁移";auto text=utf8Text(label);if(m.shortcut&&*m.shortcut)if(auto provider=std::dynamic_pointer_cast<quick::ShortcutTooltip>(getProperty(quick::ShortcutTooltip::key))){const auto binding=provider->resolve(m.shortcut);if(!binding.empty())text+="\n"+binding;}if(tips_->getTooltipFor(b)!=text){tips_->removeTooltipFor(b);tips_->addTooltipFor(b,text);}}
  controls_[0]->setEnabled(interactive);controls_[controls_.size()-2]->setEnabled(interactive);controls_.back()->setEnabled(interactive);layoutControls();
 }
 void QuickCommandBar::layoutControls(){
