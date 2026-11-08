@@ -4573,3 +4573,10 @@ X/Y/Both合成/当前层及左右键实际诊断验证100次preview请求不发�
 追补上一阶段用户要求的选中素材一致性验收。发现副本已能命中却没有绘制文字框边框；现在paintTextBox对所有相邻副本复用Skin::drawSelectionBorder，创建预览及已选文字框共用路径。逐像素检查进一步发现奇数物理起点经绘制uiLogical取整后与命中起点错1px，已让文字框绘制、输入边框及光标helper统一uiPhysical(uiLogical(border))，仍使用selectionMaterialBounds/selectionContains，不以矩形中心作为边框命中。
 
 正式Release构建成功，--tile-repeat-check显式等待退出0。实际paintTextBox透明表面逐像素alpha比较覆盖X/Y/Both全部相邻副本、透明中心及边框外1px；既有移动/尺寸回归继续通过。新增拖出相邻副本的连续原始坐标回退及Escape恢复断言通过。三项CTest text-document/tile-repeat/tile-repeat-stroke通过0.22s；742文件来源登记快照和diff检查通过。旋转/镜像、分数缩放下素材alpha/hit尚未新增矩阵验证，文字弹窗创建确认及Alt复制仍未在平铺下完成，整体迁移INCOMPLETE。无FPS测量，保留用户数据、缓存和未跟踪文件，阶段保存推送dev。
+
+
+### 2026-11-09：文字平铺Alt复制与共享图层移动坐标（阶段完成）
+
+对照canvas-pointer-down textCopyTarget与canvas-input-layer-move begin/move：Alt文字命中以本地点识别，复制复用图层移动，位移使用本地端点差；超出有限副本的移动不更新，释放结算最后有效预览。原生processMoveInput共享入口映射命中、开始和更新坐标，文字入口对映射后Alt命中让路，继续复用既有懒复制事务、对齐及取消。共享普通图层移动路径同步采用该坐标适配。
+
+正式Release构建成功，显式等待 --tile-repeat-check退出0。实际Alt鼠标X/Y/Both主画布/副本比较完整像素，验证复制新增一层/一笔历史、UndoRedo、Escape移除预览复制层且恢复像素/层数。三项CTest text-document/tile-repeat/tile-repeat-stroke通过0.21s，742文件来源快照及diff检查通过。新增矩阵不包含普通像素/多层移动、跨缝Alt复制、复制后文字弹窗编辑，也未新增截图/FPS验证；文字创建弹窗确认及旋转/分数缩放素材矩阵仍待继续。全量迁移INCOMPLETE。保留用户数据、缓存与未跟踪文件，阶段保存推送dev。

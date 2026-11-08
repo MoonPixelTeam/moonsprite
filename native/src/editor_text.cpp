@@ -111,7 +111,7 @@ bool Editor::processTextInput(ui::Message* msg){
  auto mouse=dynamic_cast<ui::MouseMessage*>(msg);if(!mouse)return false;
  // Legacy temporary movement precedes text edit/create and owns its continuation.
  if(moveDragging_||(textTool_&&moveModifierHeld("tool.move.quick",*mouse)))return false;
- if(textTool_&&mouse->altPressed()&&mouse->left()&&msg->type()==ui::kMouseDownMessage&&!spaceHeld_&&!moveModifierHeld("tool.move.quick",*mouse)&&!textLayerAtPoint(document,canvasPoint(mouse->position())).empty())return false;
+ if(textTool_&&mouse->altPressed()&&mouse->left()&&msg->type()==ui::kMouseDownMessage&&!spaceHeld_&&!moveModifierHeld("tool.move.quick",*mouse)&&textPoint(mouse->position(),false)&&!textLayerAtPoint(document,*textPoint(mouse->position(),false)).empty())return false;
  if(!textTool_||spaceHeld_||pending_!=Pending::None||homeOpen_||!documentOpen_||msg->type()!=ui::kMouseDownMessage||!mouse->left()||!canvasOwnsPointer(mouse->position())||!canvasViewport().contains(mouse->position())||document.active())return false;const auto mappedPoint=textPoint(mouse->position(),false);if(!mappedPoint)return true;auto p=*mappedPoint;const auto editHit=textLayerAtPoint(document,p);auto order=timeline::compositeLayerOrder(document.timeline(),document.frame().id);
  // The selected box gesture precedes stack hit testing in canvas-pointer-down.ts.
  const auto selectedSource=document.timeline().resolveSurface(document.cel().id);
