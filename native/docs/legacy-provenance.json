@@ -28796,6 +28796,61 @@
         "native/.cache/aseprite/src/ui/tooltips.h"
       ],
       "scope": "QuickCommandBar shortcutFor -> useAppShortcutSettings shortcutPrimary + shortcutDisplayText: first current binding only, empty suppresses, zh-CN mouse/wheel part labels. Reuses MIT Aseprite UI Property ownership as editor binding resolver adapter; no new Editor layout fields or copied bindings. Native tooltip uses existing TooltipManager; pixel font/theme remains existing adapter. Official Release build0; visible --quick-command-check PID41176 exit0 asserts actual TooltipManager strings for custom primary localized binding, ignores second binding, removal and default restoration. Actual hover popup visual not captured; no typography/all-size claim."
+    },
+    {
+      "file": "src/outline_samples.h",
+      "classification": "legacy-partial",
+      "sources": [
+        "legacy/src/renderer/src/core/tools-outline.ts",
+        "legacy/src/renderer/src/core/outline-settings.ts",
+        "legacy/src/renderer/src/core/tools.test.ts",
+        "legacy/src/renderer/src/store/workspace-commands-selection-effects.ts"
+      ],
+      "scope": "Full outlinePixelSamples ordering/reference-color semantics (inside/outside/both,4 kernels,8 directions,selection clipped candidate fallback,distance/rank ties,background/source matching), outlineSelectionBoundary geometry and resolveOutlineStrokeColor smart hue/followOpacity port. Sparse native Surface readWorld adapter. Generator executes unchanged actual legacy function bodies with RGBA document/history read/write adapters;768 sample +120 boundary +120 color cases and sparse mapping comparisons. Standalone core only: no Document history/multi-target/settings/dialog/commands or indexed/grayscale integration; outline feature remains INCOMPLETE. Final test passed0.15s; no runtime UI or performance evidence."
+    },
+    {
+      "file": "src/outline_samples.cpp",
+      "classification": "legacy-partial",
+      "sources": [
+        "legacy/src/renderer/src/core/tools-outline.ts",
+        "legacy/src/renderer/src/core/outline-settings.ts",
+        "legacy/src/renderer/src/core/tools.test.ts",
+        "legacy/src/renderer/src/store/workspace-commands-selection-effects.ts"
+      ],
+      "scope": "Full outlinePixelSamples ordering/reference-color semantics (inside/outside/both,4 kernels,8 directions,selection clipped candidate fallback,distance/rank ties,background/source matching), outlineSelectionBoundary geometry and resolveOutlineStrokeColor smart hue/followOpacity port. Sparse native Surface readWorld adapter. Generator executes unchanged actual legacy function bodies with RGBA document/history read/write adapters;768 sample +120 boundary +120 color cases and sparse mapping comparisons. Standalone core only: no Document history/multi-target/settings/dialog/commands or indexed/grayscale integration; outline feature remains INCOMPLETE. Final test passed0.15s; no runtime UI or performance evidence."
+    },
+    {
+      "file": "tests/outline_samples_test.cpp",
+      "classification": "legacy-partial",
+      "sources": [
+        "legacy/src/renderer/src/core/tools-outline.ts",
+        "legacy/src/renderer/src/core/outline-settings.ts",
+        "legacy/src/renderer/src/core/tools.test.ts",
+        "legacy/src/renderer/src/store/workspace-commands-selection-effects.ts"
+      ],
+      "scope": "Full outlinePixelSamples ordering/reference-color semantics (inside/outside/both,4 kernels,8 directions,selection clipped candidate fallback,distance/rank ties,background/source matching), outlineSelectionBoundary geometry and resolveOutlineStrokeColor smart hue/followOpacity port. Sparse native Surface readWorld adapter. Generator executes unchanged actual legacy function bodies with RGBA document/history read/write adapters;768 sample +120 boundary +120 color cases and sparse mapping comparisons. Standalone core only: no Document history/multi-target/settings/dialog/commands or indexed/grayscale integration; outline feature remains INCOMPLETE. Final test passed0.15s; no runtime UI or performance evidence."
+    },
+    {
+      "file": "tests/fixtures/outline_samples_legacy.h",
+      "classification": "legacy-partial",
+      "sources": [
+        "legacy/src/renderer/src/core/tools-outline.ts",
+        "legacy/src/renderer/src/core/outline-settings.ts",
+        "legacy/src/renderer/src/core/tools.test.ts",
+        "legacy/src/renderer/src/store/workspace-commands-selection-effects.ts"
+      ],
+      "scope": "Full outlinePixelSamples ordering/reference-color semantics (inside/outside/both,4 kernels,8 directions,selection clipped candidate fallback,distance/rank ties,background/source matching), outlineSelectionBoundary geometry and resolveOutlineStrokeColor smart hue/followOpacity port. Sparse native Surface readWorld adapter. Generator executes unchanged actual legacy function bodies with RGBA document/history read/write adapters;768 sample +120 boundary +120 color cases and sparse mapping comparisons. Standalone core only: no Document history/multi-target/settings/dialog/commands or indexed/grayscale integration; outline feature remains INCOMPLETE. Final test passed0.15s; no runtime UI or performance evidence."
+    },
+    {
+      "file": "scripts/make-outline-sample-fixtures.cjs",
+      "classification": "legacy-partial",
+      "sources": [
+        "legacy/src/renderer/src/core/tools-outline.ts",
+        "legacy/src/renderer/src/core/outline-settings.ts",
+        "legacy/src/renderer/src/core/tools.test.ts",
+        "legacy/src/renderer/src/store/workspace-commands-selection-effects.ts"
+      ],
+      "scope": "Full outlinePixelSamples ordering/reference-color semantics (inside/outside/both,4 kernels,8 directions,selection clipped candidate fallback,distance/rank ties,background/source matching), outlineSelectionBoundary geometry and resolveOutlineStrokeColor smart hue/followOpacity port. Sparse native Surface readWorld adapter. Generator executes unchanged actual legacy function bodies with RGBA document/history read/write adapters;768 sample +120 boundary +120 color cases and sparse mapping comparisons. Standalone core only: no Document history/multi-target/settings/dialog/commands or indexed/grayscale integration; outline feature remains INCOMPLETE. Final test passed0.15s; no runtime UI or performance evidence."
     }
   ],
   "assetTransfers": [

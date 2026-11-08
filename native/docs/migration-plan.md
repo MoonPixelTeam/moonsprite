@@ -4367,3 +4367,10 @@ make-quick-command-fixtures.cjs执行旧文件未改写的独立配置段（仅�
 检查发现新层粘贴为保存蒙版编辑上下文额外设置beforeMasks/afterMasks，重复复制整套蒙版；改用已有MaskContextHistory仅保存身份/隔离状态。通用GroupEdit结构快照仍含蒙版，未声称消除所有复制或全应用卡顿。默认粘贴目标new-project实际窗口诊断补齐，检查新增标签、2×1尺寸、全新项目无可撤销历史；复用既有new-document剪贴板reader，不访问用户系统剪贴板。
 
 special-paste-interaction-final-build.log唯一正式Release与定向目标构建0；document-layer-groups/editor-preferences/quick-command-preferences全通过0.42s。正式正常显示--quick-command-check PID48924退出0，包括new-project偏好路由和既有新层/当前格、内外剪贴板优先级、快捷栏排序/提示及后台检测回归。未改UI布局，无新增截图或耗时计量，不宣称全部模式/组合验收完成。来源覆盖与strict结果见本次检查，全量依然INCOMPLETE；保留用户数据及所有既有未跟踪文件，本阶段提交推送dev。
+
+
+### 2026-11-09：描边采样核心与旧版精确对照（整项未完成）
+
+定向读取tools-outline.ts outlinePixelSamples/outlineSelectionBoundary、outline-settings.ts及selection-effects实际调用。完整移植内容采样的inside/outside/both、round/square/horizontal/vertical、8方向、透明/背景/指定源匹配、选区内候选优先及无空间时外侧回退、距离/扫描rank参考色选择、Map插入顺序；另移植选区自身边界采样、智能颜色暗度与跟随透明度。默认圆核/正交方向承接legacy。原生使用Surface世界坐标读取，保留稀疏偏移存储，不使用不同语义的LayerStyleSampler替代。尚未进入Document提交、批量目标、参数持久化、弹窗或菜单执行，所有描边按钮继续原状态，不能称整项描边迁移完成。
+
+make-outline-sample-fixtures.cjs执行实际未改写旧版函数体，RGBA读取/选区/历史写入以独立适配器提供，生成768内容采样+120边界+120颜色oracle。原生逐项比较像素索引、顺序和参考颜色，并将同一图像移入负偏移稀疏Surface再次比较。首轮测试夹具因using namespace位于include之后编译失败，已修正，无生产行为变更。outline-samples-final-build.log独立Release目标构建0，CTest outline-samples通过0.17s；不涉及正式exe更新、窗口或视觉/FPS验收。该批是有测试证据的算法基础阶段，全功能迁移仍INCOMPLETE；后续必须接通历史与运行入口，不用核心通过代替整项完成。保留既有用户数据及未跟踪缓存，阶段保存推送dev。

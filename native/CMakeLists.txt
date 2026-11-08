@@ -942,3 +942,7 @@ set_tests_properties(new-document-clipboard PROPERTIES TIMEOUT 30)
 add_executable(sheet-import-preview-tests tests/sheet_import_preview_test.cpp)
 target_link_libraries(sheet-import-preview-tests PRIVATE moon-core)
 add_test(NAME sheet-import-preview COMMAND sheet-import-preview-tests)
+
+add_executable(outline-samples-tests tests/outline_samples_test.cpp src/outline_samples.cpp)
+target_include_directories(outline-samples-tests PRIVATE src)
+add_test(NAME outline-samples COMMAND outline-samples-tests)
