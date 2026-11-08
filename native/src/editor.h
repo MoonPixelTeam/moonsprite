@@ -82,7 +82,7 @@ class Editor : public ui::Widget {
 public:
   void smokeAsepriteSaveLifecycle();
   void smokeMaskSelectionClipboard();
-  void smokeRecentProjects();void smokeGallery();void initializeGallery(bool testing){if(!testing)loadGallery();}
+  void smokeRecentProjects();void smokeGallery();void smokeHomeSections();void initializeGallery(bool testing){if(!testing){loadHomeSections();loadGallery();loadHomeSection();}}
 
 public:
   usage::Tracker usageStatistics_;
@@ -137,6 +137,9 @@ private:
   std::filesystem::path recentSettingsOverride_;
   gallery::ScanQueue galleryQueue_;std::vector<recent::Project> galleryProjects_;std::vector<std::string> galleryPins_;std::string galleryError_;bool galleryLoading_=false;std::uint64_t galleryGeneration_=0;
   PixelButton* galleryFolder_=nullptr;
+  std::vector<home::Section> homeSections_=home::normalize({});std::string homeSectionId_="recent";unsigned homeFormats_=63;bool homeFilesHidden_=false;
+  gallery::ScanQueue folderQueue_;std::vector<recent::Project> folderProjects_;std::string folderError_;bool folderLoading_=false;std::uint64_t folderGeneration_=0;PixelButton *homeManage_=nullptr,*homeMore_=nullptr;
+  void loadHomeSections();void saveHomeSections();void selectHomeSection(const std::string&);void addHomeFolder(const std::string&);void removeHomeFolder(const std::string&);void showHomeSectionManager(int verify=0);void showHomeOverflow();void loadHomeFolder();void homeFolderTick();const home::Section* activeHomeFolder()const;
   std::filesystem::path galleryDirectory()const;std::filesystem::path galleryMarker()const;void loadGallery();void galleryTick();void saveGalleryPins();void toggleGalleryPin(const std::string&);void deleteGalleryProject(const std::string&,int verify=0);void openGalleryFolder();
 
 

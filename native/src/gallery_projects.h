@@ -1,6 +1,7 @@
 #pragma once
 // Native filesystem adapter of platform_gallery.rs and home-history.ts.
 #include "recent_projects.h"
+#include "home_sections.h"
 #include <windows.h>
 #include <filesystem>
 #include <fstream>
@@ -17,15 +18,16 @@ using Writer=std::function<void(const Path&,const std::vector<std::uint8_t>&)>;
 inline const Path exampleName=std::filesystem::u8path(u8"示例.moonsprite");
 inline std::string read(const Path& path){std::ifstream in(path,std::ios::binary);if(!in)throw std::runtime_error("Cannot read gallery resource: "+path.u8string());return {std::istreambuf_iterator<char>(in),{}};}
 inline bool projectFile(const Path& path){auto ext=path.extension().u8string();for(auto& c:ext)c=char(std::tolower(static_cast<unsigned char>(c)));return ext==".moonsprite";}
-inline void sort(std::vector<recent::Project>& projects){std::stable_sort(projects.begin(),projects.end(),[](const auto& a,const auto& b){return a.lastOpened!=b.lastOpened?a.lastOpened>b.lastOpened:Path(std::filesystem::u8path(a.path)).stem().u8string()<Path(std::filesystem::u8path(b.path)).stem().u8string();});std::stable_partition(projects.begin(),projects.end(),[](const auto& p){return p.pinned;});}
-inline std::vector<recent::Project> list(const Path& directory,const std::vector<std::string>& pins={},const std::function<bool()>& canceled={}){
+inline bool folderFile(const Path& path){auto ext=path.extension().u8string();for(auto& c:ext)c=char(std::tolower(static_cast<unsigned char>(c)));return ext==".moonsprite"||ext==".ase"||ext==".aseprite"||ext==".psd"||ext==".png"||ext==".jpg"||ext==".jpeg"||ext==".webp"||ext==".bmp"||ext==".gif";}
+inline void sort(std::vector<recent::Project>& projects,bool folder=false){std::stable_sort(projects.begin(),projects.end(),[folder](const auto& a,const auto& b){const auto pa=std::filesystem::u8path(a.path),pb=std::filesystem::u8path(b.path);return a.lastOpened!=b.lastOpened?a.lastOpened>b.lastOpened:(folder?pa.filename():pa.stem()).u8string()<(folder?pb.filename():pb.stem()).u8string();});std::stable_partition(projects.begin(),projects.end(),[](const auto& p){return p.pinned;});}
+inline std::vector<recent::Project> list(const Path& directory,const std::vector<std::string>& pins={},const std::function<bool()>& canceled={},bool folder=false){
  std::vector<recent::Project> result;std::set<std::string> pinned(pins.begin(),pins.end());
  for(const auto& entry:std::filesystem::directory_iterator(directory)){
-  if(canceled&&canceled())return {};const auto path=entry.path();std::error_code fileError;if(!std::filesystem::is_regular_file(path,fileError)||!projectFile(path))continue;
+  if(canceled&&canceled())return {};const auto path=entry.path();std::error_code fileError;if(!std::filesystem::is_regular_file(path,fileError)||!(folder?folderFile(path):projectFile(path)))continue;
   HANDLE file=CreateFileW(path.c_str(),FILE_READ_ATTRIBUTES,FILE_SHARE_READ|FILE_SHARE_WRITE|FILE_SHARE_DELETE,nullptr,OPEN_EXISTING,0,nullptr);if(file==INVALID_HANDLE_VALUE)throw std::runtime_error("Cannot read gallery project metadata: "+path.u8string());FILETIME modified{};const bool valid=GetFileTime(file,nullptr,nullptr,&modified)!=0;CloseHandle(file);if(!valid)throw std::runtime_error("Cannot read gallery project metadata: "+path.u8string());
   const std::uint64_t ticks=(std::uint64_t(modified.dwHighDateTime)<<32)|modified.dwLowDateTime;constexpr std::uint64_t epoch=116444736000000000ULL;
   const auto name=path.u8string();result.push_back({name,ticks<epoch?0:std::int64_t((ticks-epoch)/10000),pinned.count(name)!=0});
- }sort(result);return result;
+ }sort(result,folder);return result;
 }
 inline std::optional<Path> ensureExample(const Path& directory,const Path& marker,const Path& resource,const Writer& write){
  std::string state;try{state=read(marker);}catch(...){}const auto start=state.find_first_not_of(" \t\r\n"),end=state.find_last_not_of(" \t\r\n");state=start==std::string::npos?std::string{}:state.substr(start,end-start+1);

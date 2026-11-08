@@ -452,12 +452,12 @@ if(MOONSPRITE_BUILD_APP)
   get_target_property(MOON_UI_SOURCES ui-lib SOURCES)
   list(REMOVE_ITEM MOON_UI_SOURCES menu.cpp entry.cpp)
   set_property(TARGET ui-lib PROPERTY SOURCES ${MOON_UI_SOURCES} "${CMAKE_CURRENT_BINARY_DIR}/menu-hover.cpp" "${CMAKE_CURRENT_BINARY_DIR}/generated/moonsprite_entry.cpp")
-  add_executable(moonsprite-native WIN32 src/main.cpp src/editor_canvas.cpp src/editor_dialogs.cpp src/editor_reference.cpp src/editor_history.cpp src/editor_tablet.cpp src/editor_help.cpp src/editor_project_information.cpp src/editor_release_notes.cpp src/editor_recent_projects.cpp src/editor_gallery.cpp src/editor_diagnostics.cpp src/runtime_diagnostics.cpp src/editor_rotation.cpp src/editor_slices.cpp src/editor_background.cpp src/editor_project_rollback.cpp src/editor_text.cpp
+  add_executable(moonsprite-native WIN32 src/main.cpp src/editor_canvas.cpp src/editor_dialogs.cpp src/editor_reference.cpp src/editor_history.cpp src/editor_tablet.cpp src/editor_help.cpp src/editor_project_information.cpp src/editor_release_notes.cpp src/editor_recent_projects.cpp src/editor_gallery.cpp src/editor_home_sections.cpp src/editor_diagnostics.cpp src/runtime_diagnostics.cpp src/editor_rotation.cpp src/editor_slices.cpp src/editor_background.cpp src/editor_project_rollback.cpp src/editor_text.cpp
   src/editor_layer_move.cpp src/editor_shortcuts.cpp src/editor_shortcut_inputs.cpp src/editor_usage.cpp src/editor_frame_capture.cpp src/editor_input.cpp src/editor_lifecycle.cpp src/editor_palette.cpp src/editor_panels.cpp src/editor_refresh.cpp src/editor_recovery.cpp src/editor_session.cpp src/editor_smoke.cpp src/editor_timeline.cpp src/editor_tools.cpp src/timeline_button.cpp src/canvas_renderer.cpp src/legacy_cursors.cpp src/pixel_font.cpp src/pixel_text_area.cpp src/native_widgets.cpp src/native_color_picker.cpp)
   target_link_libraries(moonsprite-native PRIVATE moon-usage-statistics moon-gif-export moon-core moon-pattern-import moon-skin moon-project-reader ui-lib clip comdlg32 comctl32 shell32 winmm)
   target_include_directories(moonsprite-native PRIVATE src)
   target_compile_definitions(moonsprite-native PRIVATE NOMINMAX)
-  set_property(SOURCE src/main.cpp src/editor_canvas.cpp src/editor_dialogs.cpp src/editor_reference.cpp src/editor_history.cpp src/editor_tablet.cpp src/editor_help.cpp src/editor_project_information.cpp src/editor_release_notes.cpp src/editor_recent_projects.cpp src/editor_gallery.cpp src/editor_diagnostics.cpp src/runtime_diagnostics.cpp src/editor_rotation.cpp src/editor_slices.cpp src/editor_background.cpp src/editor_project_rollback.cpp src/editor_text.cpp
+  set_property(SOURCE src/main.cpp src/editor_canvas.cpp src/editor_dialogs.cpp src/editor_reference.cpp src/editor_history.cpp src/editor_tablet.cpp src/editor_help.cpp src/editor_project_information.cpp src/editor_release_notes.cpp src/editor_recent_projects.cpp src/editor_gallery.cpp src/editor_home_sections.cpp src/editor_diagnostics.cpp src/runtime_diagnostics.cpp src/editor_rotation.cpp src/editor_slices.cpp src/editor_background.cpp src/editor_project_rollback.cpp src/editor_text.cpp
   src/editor_layer_move.cpp src/editor_shortcuts.cpp src/editor_shortcut_inputs.cpp src/editor_usage.cpp src/editor_frame_capture.cpp src/editor_input.cpp src/editor_lifecycle.cpp src/editor_palette.cpp src/editor_panels.cpp src/editor_refresh.cpp src/editor_recovery.cpp src/editor_session.cpp src/editor_smoke.cpp src/editor_timeline.cpp src/editor_tools.cpp APPEND PROPERTY COMPILE_OPTIONS /bigobj)
   target_link_options(moonsprite-native PRIVATE /ENTRY:wWinMainCRTStartup)
   # Keep an address map matching the sole Release binary for crash/perf diagnosis.
@@ -875,3 +875,7 @@ add_test(NAME symmetry-alpha COMMAND symmetry-alpha-tests)
 add_executable(gallery-projects-tests tests/gallery_projects_test.cpp)
 target_include_directories(gallery-projects-tests PRIVATE src)
 add_test(NAME gallery-projects COMMAND gallery-projects-tests "${CMAKE_CURRENT_BINARY_DIR}/gallery-test-owned" "${CMAKE_CURRENT_SOURCE_DIR}/../legacy/src-tauri/resources/示例.moonsprite")
+
+add_executable(home-sections-tests tests/home_sections_test.cpp)
+target_include_directories(home-sections-tests PRIVATE src)
+add_test(NAME home-sections COMMAND home-sections-tests)
