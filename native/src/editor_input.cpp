@@ -165,7 +165,7 @@ bool Editor::onProcessMessage(ui::Message* msg) {
 
     if(msg->type()==ui::kDragLeaveMessage){clearTimelineGifDrop();if(brushLibraryPanel_)brushLibraryPanel_->setExternalDrop(false);return true;}
 
-    if(pending_==Pending::Saving && (dynamic_cast<ui::MouseMessage*>(msg) || dynamic_cast<ui::KeyMessage*>(msg) || dynamic_cast<ui::DndMessage*>(msg)))return true;
+    if(pending_==Pending::Saving){if(msg->type()==ui::kMouseDownMessage&&static_cast<ui::MouseMessage*>(msg)->left()&&dialogClose_->isVisible()&&dialogClose_->bounds().contains(static_cast<ui::MouseMessage*>(msg)->position())){dismissSaveProgress();return true;}if(dynamic_cast<ui::MouseMessage*>(msg)||dynamic_cast<ui::KeyMessage*>(msg)||dynamic_cast<ui::DndMessage*>(msg))return true;}
 
     if(msg->type()==ui::kDragEnterMessage || msg->type()==ui::kDragMessage || msg->type()==ui::kDropMessage){
       auto& original=static_cast<ui::DndMessage*>(msg)->event();const bool drop=msg->type()==ui::kDropMessage;

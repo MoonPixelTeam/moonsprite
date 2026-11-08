@@ -294,6 +294,7 @@ bool Editor::sameProjectPath(const std::filesystem::path& a,const std::filesyste
 void Editor::openPath(const std::filesystem::path& path) {
 
     try {
+      for(const auto& job:backgroundSaves_)if(sameProjectPath(path,job.path)){if(const auto owner=saveProjectIndex(job.identity))activateProject(*owner);return;}
 
       ensureProjects();for(std::size_t i=0;i<projects_.size();++i){const auto& saved=i==activeProject_?documentPath_:projects_[i]->path;if(sameProjectPath(path,saved) || sameProjectPath(path,projectDocument(i).sourceFilePath())){activateProject(i);recordHomeRecent(path);return;}}
 
@@ -366,20 +367,101 @@ void Editor::showSaveError(const std::exception& error) {
 
   }
 
+std::optional<std::size_t> Editor::saveProjectIndex(std::uint64_t identity)const{
+ for(std::size_t i=0;i<projects_.size();++i)if((i==activeProject_?document.identity():projects_[i]->stored?projects_[i]->stored->identity():0)==identity)return i;
+ return {};
+}
+
+bool Editor::backgroundSaveBusy(std::uint64_t identity)const{
+ return std::any_of(backgroundSaves_.begin(),backgroundSaves_.end(),[&](const auto& job){return job.identity==identity;});
+}
+
+void Editor::dismissSaveProgress(){
+ if(pending_!=Pending::Saving)return;
+ saveDismissRequested_=true;
+ // Snapshot capture reads live storage in bounded ticks. Release editing only
+ // after ownership has moved to the encoder; never race capture with a stroke.
+ if(!saveWorker_.valid())return;
+ BackgroundSave job;job.worker=std::move(saveWorker_);job.path=savingPath_;job.identity=savingIdentity_;job.revision=savingRevision_;job.contentRevision=savingContentRevision_;job.symmetry=savingSymmetryCenter_;job.panel=savingLayerPanelState_;job.ase=savingAseprite_;job.sourceOnly=savingSourceOnly_;job.resume=saveResume_;job.close=closeAfterSave_;backgroundSaves_.push_back(std::move(job));
+ closeAfterSave_=false;saveResume_=Pending::None;pending_=Pending::None;restoreSaveControls();
+ // A save started from the unsaved-changes prompt captured disabled controls.
+ menuBar_->setEnabled(true);paletteActions_->setEnabled(true);for(auto b:commands_)b->setEnabled(true);for(auto b:swatches_)b->setEnabled(true);for(auto b:panelTabs_)b->setEnabled(true);
+ discard_->setEnabled(true);keep_->setEnabled(true);dialogClose_->setEnabled(true);dialogClose_->setVisible(false);saveBeforeClose_->setVisible(false);discard_->setVisible(false);keep_->setVisible(false);requestFocus();refresh();
+}
+
+void Editor::backgroundSaveTick(){
+ // Modal previews and gestures may own live state. Publish at a safe UI boundary.
+ if(pending_!=Pending::None||document.active()||document.strokeActive()||ui::Manager::getDefault()->getCapture())return;
+ for(std::size_t i=0;i<backgroundSaves_.size();){
+  if(backgroundSaves_[i].worker.wait_for(std::chrono::milliseconds(0))!=std::future_status::ready){++i;continue;}
+  auto job=std::move(backgroundSaves_[i]);backgroundSaves_.erase(backgroundSaves_.begin()+i);
+  try{
+   auto result=job.worker.get();const auto owner=saveProjectIndex(job.identity);if(!owner)throw std::runtime_error("Saving project no longer exists");
+   auto& value=*owner==activeProject_?document:*projects_[*owner]->stored;
+   auto& path=*owner==activeProject_?documentPath_:projects_[*owner]->path;
+   auto& recovery=*owner==activeProject_?recovery_:projects_[*owner]->recovery;
+   const auto center=value.symmetryCenter();const bool exact=value.revision()==job.revision&&value.contentRevision()==job.contentRevision&&center.x==job.symmetry.x&&center.y==job.symmetry.y&&value.layerPanelState()==job.panel&&!value.active();
+   if(job.ase){acceptAsepriteSaved(value,job.path,job.sourceOnly,exact);if(!job.sourceOnly)path=job.path;}
+   else{value.acceptSaved(std::move(result.projectId),std::move(result.bytes),exact);path=job.path;}
+   status_=value.name()+(exact?U"：工程已保存":U"：已保存先前版本；当前修改尚未保存");recordHomeRecent(job.path);usageStatistics_.recordEvent("save");
+   if(!smoke_)try{auto bytes=job.path.parent_path().u8string();if(!bytes.empty())writeExportBytesAtomic(palettePreferencePath().parent_path()/"last-save-directory.txt",{bytes.begin(),bytes.end()});}catch(const std::exception& e){status_+=U"；保存位置偏好记录失败："+unicodeText(e.what());}
+   if(exact){
+    queuedSaves_.erase(std::remove_if(queuedSaves_.begin(),queuedSaves_.end(),[&](const auto& q){return q.identity==job.identity&&!q.saveAs;}),queuedSaves_.end());
+    if(recovery.ownedIdentity==job.identity&&!recovery.ownedId.empty()){
+     const auto directory=recoveryDirectory();const auto id=recovery.ownedId;
+     recovery.worker=std::async(std::launch::async,[previous=std::move(recovery.worker),directory,id]()mutable{if(previous.valid())previous.get();project::removeOwnedRecovery(directory,id);});recovery.snapshot.reset();recovery.cleanup=std::make_pair(job.identity,id);
+    }
+   }
+   if(job.resume!=Pending::None)deferredSaveCloses_.push_back({job.identity,job.resume,true});
+   if(job.close)closeAfterBackgroundSaves_=true;
+   refresh();
+  }catch(const std::exception& error){
+   closeAfterBackgroundSaves_=false;closingWorkspace_=false;deferredSaveCloses_.erase(std::remove_if(deferredSaveCloses_.begin(),deferredSaveCloses_.end(),[&](const auto& c){return c.identity==job.identity;}),deferredSaveCloses_.end());
+   const auto context=job.path.u8string()+": "+error.what();showSaveError(std::runtime_error(context));return;
+  }
+ }
+ for(auto it=deferredSaveCloses_.begin();it!=deferredSaveCloses_.end();){
+  const auto owner=saveProjectIndex(it->identity);if(!owner){it=deferredSaveCloses_.erase(it);continue;}
+  if(backgroundSaveBusy(it->identity)||std::any_of(queuedSaves_.begin(),queuedSaves_.end(),[&](const auto& q){return q.identity==it->identity;})){++it;continue;}
+  auto& recovery=*owner==activeProject_?recovery_:projects_[*owner]->recovery;
+  if(recovery.worker.valid()&&recovery.worker.wait_for(std::chrono::milliseconds(0))!=std::future_status::ready){++it;continue;}
+  const auto intent=*it;deferredSaveCloses_.erase(it);
+  if(*owner!=activeProject_&&!projectDocument(*owner).dirty()&&intent.action==Pending::CloseDocument){
+   try{if(recovery.worker.valid())recovery.worker.get();if(recovery.originId.empty()&&!recovery.ownedId.empty())project::removeOwnedRecovery(recoveryDirectory(),recovery.ownedId);}catch(const std::exception& e){showSaveError(e);return;}
+   projects_.erase(projects_.begin()+*owner);if(*owner<activeProject_)--activeProject_;refresh();return;
+  }
+  activateProject(*owner);
+  if(intent.saveChanges&&document.dirty()){pending_=intent.action;saveProject(false);}
+  else ask(intent.action);
+  return;
+ }
+ if(closeAfterBackgroundSaves_&&backgroundSaves_.empty()&&queuedSaves_.empty()&&deferredSaveCloses_.empty()){closeAfterBackgroundSaves_=false;requestClose();}
+}
+
 void Editor::saveTick(){
+ backgroundSaveTick();
  if(pending_!=Pending::Saving){
   if(pending_!=Pending::None)return;
-  while(!queuedSaves_.empty()){auto next=queuedSaves_.front();queuedSaves_.erase(queuedSaves_.begin());if(next.identity!=document.identity())continue;saveProject(next.saveAs);if(pending_!=Pending::None)return;}
+  if(document.active()||document.strokeActive()||ui::Manager::getDefault()->getCapture())return;
+  // One bounded pass: a deferred owner must not spin by re-enqueuing itself.
+  const auto count=queuedSaves_.size();
+  for(std::size_t n=0;n<count&&!queuedSaves_.empty();++n){auto next=queuedSaves_.front();queuedSaves_.erase(queuedSaves_.begin());const auto owner=saveProjectIndex(next.identity);if(!owner)continue;if(backgroundSaveBusy(next.identity)||projectDocument(*owner).active()||projectDocument(*owner).strokeActive()){queuedSaves_.push_back(next);continue;}if(*owner!=activeProject_){if(auto recording=projects_[*owner]->stored->recordingSession()){try{recording->beginFlush(*projects_[*owner]->stored);if(!recording->flushReady(*projects_[*owner]->stored)){queuedSaves_.push_back(next);continue;}}catch(const std::exception& error){queuedSaves_.insert(queuedSaves_.begin(),next);closeAfterBackgroundSaves_=false;showSaveError(error);return;}}}saveProject(next.saveAs,next.identity);if(pending_!=Pending::None)return;}
+  if(!queuedSaves_.empty()||!backgroundSaves_.empty())return;
   if(queuedSaveResume_!=Pending::None||queuedSaveClose_){auto resume=queuedSaveResume_;bool close=queuedSaveClose_;queuedSaveResume_=Pending::None;queuedSaveClose_=false;pending_=resume;if(pending_!=Pending::None)resolve(true);if(close)requestClose();}
   return;
  }
  try{
+  const auto owner=saveProjectIndex(savingIdentity_);if(!owner)throw std::runtime_error("Saving project no longer exists");
+  auto& document=*owner==activeProject_?this->document:*projects_[*owner]->stored;
+  auto& documentPath_=*owner==activeProject_?this->documentPath_:projects_[*owner]->path;
+  auto& recovery_=*owner==activeProject_?this->recovery_:projects_[*owner]->recovery;
   if(saveSnapshot_){
    if(!saveSnapshot_->advance(document,std::chrono::steady_clock::now()+std::chrono::milliseconds(2)))return;
    auto snapshot=std::move(*saveSnapshot_);saveSnapshot_.reset();const auto path=savingPath_;const auto backup=projectBackupPolicy();const bool ase=savingAseprite_;const bool portable=savingPortableTimelapse_;const auto recordingReader=document.recordingSession()?document.recordingSession()->reader():timelapse::Reader{};
-   saveWorker_=std::async(std::launch::async,[snapshot=std::move(snapshot),path,backup,ase,portable,recordingReader]()mutable{auto copy=snapshot.finish();if(portable){auto settings=copy.timelapseSettings();for(auto& frame:settings.snapshots){if(recordingReader){frame.data=recordingReader(frame);frame.historyDataBacking.reset();}else if(frame.data.empty())throw std::runtime_error("Cannot carry unavailable recording frames");frame.local.reset();}copy.setImportedTimelapse(std::move(settings));}if(ase){auto bytes=encodeSaveImage(copy,saveImageFormat(path));writeExportBytesAtomic(path,bytes);return project::EncodedProject{};}project::saveDocumentAtomic(copy,path,backup);return project::EncodedProject{copy.sourceArchive(),copy.projectId()};});return;
+   saveWorker_=std::async(std::launch::async,[snapshot=std::move(snapshot),path,backup,ase,portable,recordingReader]()mutable{auto copy=snapshot.finish();if(portable){auto settings=copy.timelapseSettings();for(auto& frame:settings.snapshots){if(recordingReader){frame.data=recordingReader(frame);frame.historyDataBacking.reset();}else if(frame.data.empty())throw std::runtime_error("Cannot carry unavailable recording frames");frame.local.reset();}copy.setImportedTimelapse(std::move(settings));}if(ase){auto bytes=encodeSaveImage(copy,saveImageFormat(path));writeExportBytesAtomic(path,bytes);return project::EncodedProject{};}project::saveDocumentAtomic(copy,path,backup);return project::EncodedProject{copy.sourceArchive(),copy.projectId()};});if(saveDismissRequested_)dismissSaveProgress();return;
   }
   if(!saveWorker_.valid()||saveWorker_.wait_for(std::chrono::milliseconds(0))!=std::future_status::ready)return;
+  if(!saveDismissRequested_&&std::chrono::steady_clock::now()-saveStarted_<std::chrono::milliseconds(100))return;
   auto result=saveWorker_.get();if(document.identity()!=savingIdentity_)throw std::runtime_error("Document changed during save");
   const auto center=document.symmetryCenter();
   const bool exact=document.revision()==savingRevision_&&document.contentRevision()==savingContentRevision_&&center.x==savingSymmetryCenter_.x&&center.y==savingSymmetryCenter_.y&&savingLayerPanelState_==document.layerPanelState()&&!document.active();
@@ -392,17 +474,25 @@ void Editor::saveTick(){
    const auto directory=recoveryDirectory();const auto id=recovery_.ownedId;
    recovery_.worker=std::async(std::launch::async,[previous=std::move(recovery_.worker),directory,id]()mutable{if(previous.valid())previous.get();project::removeOwnedRecovery(directory,id);});recovery_.snapshot.reset();recovery_.cleanup=std::make_pair(document.identity(),id);
   }
-  pending_=saveResume_;restoreSaveControls();discard_->setEnabled(true);keep_->setEnabled(true);dialogClose_->setEnabled(true);const bool close=closeAfterSave_;closeAfterSave_=false;
-  if(!exact&&(pending_!=Pending::None||close)){queuedSaveClose_=queuedSaveClose_||close;queuedSaveResume_=pending_;pending_=Pending::None;queuedSaves_.push_back({document.identity(),false});}
-  if(!queuedSaves_.empty()){if(pending_!=Pending::None)queuedSaveResume_=pending_;queuedSaveClose_=queuedSaveClose_||close;pending_=Pending::None;refresh();return;}
-  if(pending_!=Pending::None)resolve(true);else refresh();if(close)requestClose();
- }catch(const std::exception& e){saveSnapshot_.reset();closeAfterSave_=false;restoreSaveControls();discard_->setEnabled(true);keep_->setEnabled(true);dialogClose_->setEnabled(true);showSaveError(e);}
+  const auto resume=saveResume_;const bool close=closeAfterSave_;saveResume_=Pending::None;closeAfterSave_=false;
+  pending_=Pending::None;restoreSaveControls();discard_->setEnabled(true);keep_->setEnabled(true);dialogClose_->setEnabled(true);
+  if(resume!=Pending::None){menuBar_->setEnabled(true);paletteActions_->setEnabled(true);for(auto b:commands_)b->setEnabled(true);for(auto b:swatches_)b->setEnabled(true);for(auto b:panelTabs_)b->setEnabled(true);deferredSaveCloses_.push_back({document.identity(),resume,true});}
+  if(!exact&&(resume!=Pending::None||close))queuedSaves_.push_back({document.identity(),false});
+  if(close)closeAfterBackgroundSaves_=true;
+  refresh();
+ }catch(const std::exception& e){saveSnapshot_.reset();closeAfterSave_=false;closeAfterBackgroundSaves_=false;closingWorkspace_=false;deferredSaveCloses_.erase(std::remove_if(deferredSaveCloses_.begin(),deferredSaveCloses_.end(),[&](const auto& c){return c.identity==savingIdentity_;}),deferredSaveCloses_.end());restoreSaveControls();discard_->setEnabled(true);keep_->setEnabled(true);dialogClose_->setEnabled(true);showSaveError(e);}
 }
 
-bool Editor::savePath(const std::filesystem::path& path,bool background,bool sourceOnly) {
+bool Editor::savePath(const std::filesystem::path& path,bool background,bool sourceOnly,std::uint64_t identity) {
+ ensureProjects();const auto owner=saveProjectIndex(identity?identity:document.identity());if(!owner)return false;
+ auto& document=*owner==activeProject_?this->document:*projects_[*owner]->stored;
+ auto& documentPath_=*owner==activeProject_?this->documentPath_:projects_[*owner]->path;
+ auto& recovery_=*owner==activeProject_?this->recovery_:projects_[*owner]->recovery;
  const bool ase=saveImageFormat(path)!=SaveImageFormat::Native;
 
-    for(std::size_t i=0;i<projects_.size();++i)if(i!=activeProject_ && (sameProjectPath(path,projects_[i]->path)||sameProjectPath(path,projectDocument(i).sourceFilePath()))){showSaveError(std::runtime_error("该路径已由另一个打开的工程使用，请选择其它名称"));return false;}
+    for(std::size_t i=0;i<projects_.size();++i)if(i!=*owner && (sameProjectPath(path,i==activeProject_?this->documentPath_:projects_[i]->path)||sameProjectPath(path,projectDocument(i).sourceFilePath()))){showSaveError(std::runtime_error("该路径已由另一个打开的工程使用，请选择其它名称"));return false;}
+
+    for(const auto& job:backgroundSaves_)if(job.identity!=document.identity()&&sameProjectPath(path,job.path)){showSaveError(std::runtime_error("该路径正在由另一个工程保存，请选择其它名称"));return false;}
 
     if(!smoke_ || background || ase || portableTimelapseSave_ || asyncSaveForSmoke_){
 
@@ -410,13 +500,13 @@ bool Editor::savePath(const std::filesystem::path& path,bool background,bool sou
 
       try{
 
-        document.commitFloatingPaste();if(!flushTimelapse())return false;savingPortableTimelapse_=portableTimelapseSave_;portableTimelapseSave_=false;saveResume_=pending_;savingPath_=path;savingAseprite_=ase;savingSourceOnly_=ase&&sourceOnly;savingIdentity_=document.identity();savingRevision_=document.revision();savingContentRevision_=document.contentRevision();
+        document.commitFloatingPaste();if(*owner==activeProject_){if(!flushTimelapse())return false;}else if(auto session=document.recordingSession())session->flush(document);savingPortableTimelapse_=portableTimelapseSave_;portableTimelapseSave_=false;saveResume_=pending_;savingPath_=path;savingAseprite_=ase;savingSourceOnly_=ase&&sourceOnly;savingIdentity_=document.identity();savingRevision_=document.revision();savingContentRevision_=document.contentRevision();
 
-        savingSymmetryCenter_=document.symmetryCenter();savingLayerPanelState_=document.layerPanelState();saveSnapshot_.emplace(document);savingControlStates_.clear();for(auto child:children())savingControlStates_.push_back({child,child->isEnabled()});pending_=Pending::Saving;refresh();
+        saveStarted_=std::chrono::steady_clock::now();saveDismissRequested_=*owner!=activeProject_;savingSymmetryCenter_=document.symmetryCenter();savingLayerPanelState_=document.layerPanelState();saveSnapshot_.emplace(document);savingControlStates_.clear();for(auto child:children())savingControlStates_.push_back({child,child->isEnabled()});pending_=Pending::Saving;refresh();
 
         for(auto child:children())child->setEnabled(false);
 
-        for(auto child:{discard_,keep_,dialogClose_,saveBeforeClose_})child->setVisible(false);
+        for(auto child:{discard_,keep_,saveBeforeClose_})child->setVisible(false);dialogClose_->setEnabled(true);dialogClose_->setVisible(true);
 
         invalidate();saveTick();
 
@@ -444,10 +534,14 @@ bool Editor::savePath(const std::filesystem::path& path,bool background,bool sou
 
   }
 
-bool Editor::saveProject(bool saveAs) {
- if(pending_==Pending::Saving){queuedSaves_.push_back({document.identity(),saveAs});return false;}
- if(!documentOpen_)return false;
- for(auto& picker:pickerColumns_)if(picker.picker)picker.picker->finishInteraction();cancelStroke();document.commitFloatingPaste();if(!flushTimelapse())return false;portableTimelapseSave_=false;
+bool Editor::saveProject(bool saveAs,std::uint64_t identity) {
+ if(!documentOpen_)return false;ensureProjects();const auto owner=saveProjectIndex(identity?identity:document.identity());if(!owner)return false;
+ auto& document=*owner==activeProject_?this->document:*projects_[*owner]->stored;
+ auto& documentPath_=*owner==activeProject_?this->documentPath_:projects_[*owner]->path;
+ if(pending_==Pending::Saving||backgroundSaveBusy(document.identity())){queuedSaves_.push_back({document.identity(),saveAs});return false;}
+ if(document.active()||document.strokeActive()){if(*owner!=activeProject_){queuedSaves_.push_back({document.identity(),saveAs});return false;}}
+ if(*owner==activeProject_){for(auto& picker:pickerColumns_)if(picker.picker)picker.picker->finishInteraction();cancelStroke();}
+ document.commitFloatingPaste();if(*owner==activeProject_){if(!flushTimelapse())return false;}else if(auto session=document.recordingSession())session->flush(document);portableTimelapseSave_=false;
  auto target=documentPath_.empty()?document.sourceFilePath():documentPath_;
  auto format=saveImageFormat(target);const bool sourceImage=format!=SaveImageFormat::Native;
  const bool original=runtimePreferences_.flag("files.saveOriginalFormat");
@@ -463,8 +557,8 @@ bool Editor::saveProject(bool saveAs) {
  std::vector<std::string> approved;
  auto confirm=[&]()->int{approved=imageSaveIssues(document,format);if(approved.empty())return 2;auto identity=document.identity();int choice=decide(false,approved);if(document.identity()!=identity||!asepriteApprovalCovers(approved,imageSaveIssues(document,format)))throw std::runtime_error("工程在格式确认期间发生变化，请重新保存。");return choice;};
  try{
-  if(!saveAs&&sourceImage&&!forceProject){int choice=confirm();if(!choice)return false;if(choice==2){if(target!=(documentPath_.empty()?document.sourceFilePath():documentPath_))throw std::runtime_error("保存目标在确认期间发生变化，请重试。");return savePath(target,false,documentPath_.empty());}forceProject=true;}
-  if(!saveAs&&!forceProject&&!documentPath_.empty())return savePath(documentPath_);
+  if(!saveAs&&sourceImage&&!forceProject){int choice=confirm();if(!choice)return false;if(choice==2){if(target!=(documentPath_.empty()?document.sourceFilePath():documentPath_))throw std::runtime_error("保存目标在确认期间发生变化，请重试。");return savePath(target,false,documentPath_.empty(),document.identity());}forceProject=true;}
+  if(!saveAs&&!forceProject&&!documentPath_.empty())return savePath(documentPath_,false,false,document.identity());
   if(forceProject)format=SaveImageFormat::Native;
   else if(target.empty())format=preferredSaveImageFormat(runtimePreferences_.index("files.saveFormat.Select"));
   std::filesystem::path initial=target.empty()?std::filesystem::path(document.name()):target;
@@ -489,9 +583,9 @@ bool Editor::saveProject(bool saveAs) {
    if(selected!=SaveImageFormat::Native)path=normalizedImageSavePath(path,selected);
    else {auto lower=path.extension().wstring();for(auto& c:lower)c=std::towlower(c);if(lower!=L".moonsprite")path.replace_extension(L".moonsprite");}
    if(path!=requested&&std::filesystem::exists(path)){showSaveError(std::runtime_error("请选择完整文件名以确认覆盖目标。"));return false;}
-   if(selected!=SaveImageFormat::Native){bool changedFormat=format!=selected;format=selected;if(changedFormat||!asepriteApprovalCovers(approved,imageSaveIssues(document,format))){int choice=confirm();if(!choice)return false;if(choice==1){format=SaveImageFormat::Native;initial=path;initial.replace_extension(L".moonsprite");continue;}}return savePath(path,false,false);}
+   if(selected!=SaveImageFormat::Native){bool changedFormat=format!=selected;format=selected;if(changedFormat||!asepriteApprovalCovers(approved,imageSaveIssues(document,format))){int choice=confirm();if(!choice)return false;if(choice==1){format=SaveImageFormat::Native;initial=path;initial.replace_extension(L".moonsprite");continue;}}return savePath(path,false,false,document.identity());}
    if(saveAs&&!document.timelapseSettings().snapshots.empty()){const int choice=chooseTimelapsePortability();if(!choice)return false;portableTimelapseSave_=choice==2;}
-   return savePath(path);
+   return savePath(path,false,false,document.identity());
   }
  }catch(const std::exception& e){showSaveError(e);return false;}
 }
@@ -654,6 +748,6 @@ void Editor::showNewDocument(bool verify) {
 
   }
 
-void Editor::requestClose() {if(DocumentLoadingDialog::deferClose([this]{requestClose();}))return;flushBrushSizePreferences();if(pending_==Pending::Saving){closeAfterSave_=true;return;}ask(Pending::Close);}
+void Editor::requestClose() {if(DocumentLoadingDialog::deferClose([this]{requestClose();}))return;flushBrushSizePreferences();if(!backgroundSaves_.empty()||!queuedSaves_.empty()){closeAfterBackgroundSaves_=true;return;}if(pending_==Pending::Saving){closeAfterSave_=true;return;}ask(Pending::Close);}
 
 }

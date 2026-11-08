@@ -406,7 +406,7 @@ bool Editor::commitFrameDurationDraft(){
 
   }
 
-void Editor::closePaletteModal(){if(pending_==Pending::FrameDuration)commitFrameDurationDraft();resolve(false);}
+void Editor::closePaletteModal(){if(pending_==Pending::Saving){dismissSaveProgress();return;}if(pending_==Pending::FrameDuration)commitFrameDurationDraft();resolve(false);}
 
 void Editor::showFrameDuration() {playing_=false;cancelStroke();document.beginFrameDuration();pending_=Pending::FrameDuration;static_cast<FrameDurationPaletteEntry*>(paletteInput_)->durationMode=true;paletteInput_->numeric=false;paletteInput_->setText(std::to_string(document.frame().duration));paletteInput_->suffix=U"ms";menuBar_->setEnabled(false);discard_->setVisible(false);keep_->caption=U"关闭";keep_->setVisible(true);dialogClose_->setVisible(true);paletteInput_->setVisible(true);refresh();paletteInput_->requestFocus();paletteInput_->selectAllText();}
 

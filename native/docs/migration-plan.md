@@ -4031,3 +4031,18 @@ recovery-commit-build.log正式程序构建成功、测试因直接编译store�
 上一批--native-save-check在快速A/B/A之间逐步写trace，可能改变调度；本批移除序列中的诊断磁盘IO，全部切换、flush和reload完成后才记录预期、实际状态、写入/载入状态栏及最终磁盘内容。新发现的缓存重建顺序竞态有受控测试证据，但不能据此解释38036-105674921那次显式flush后的失败，其根因仍未证实、现场保留。
 
 验证：panel-reload-order-build、panel-reload-complete-build及panel-reload-final-build正式Release构建退出0；首次受控载入测试通过，最终panel-reload-final-ui-tests中的--view-rotation-check与--native-save-check均退出0。最终受控夹具panel-reload-owned-ff6c410c10e54b43b5cb46bf6d5dc8bf保留于native/build。无UI布局变更、新截图或人工长时间验收；全部迁移仍INCOMPLETE，保存进度关闭后继续编辑、多文档后台保存路由及其余缺口未因此关闭。
+
+
+### 2026-11-08 保存提示关闭后的多工程后台保存（本阶段验证中）
+
+依据 legacy SaveProgressOverlay/save-progress 的关闭只隐藏提示、任务继续语义，以及 document-file-service 的按工程串行、同代普通保存合并、SaveAs独立排队和失败后重试；关闭按 workspace-commands-document-io 等待所属工程保存。原生保留现有每tick 2ms分块快照，关闭提示时若快照尚未脱离活文档则先记关闭请求、继续阻止编辑，worker接管不可变副本后才恢复交互。这是可变原生文档的必要技术适配，避免同步复制大工程或捕获期间发生数据竞争。
+
+后台worker的结果按Document稳定identity找到当前或stored工程，分别更新磁盘基线、路径、dirty、恢复清理；精确代际才合并普通请求/清dirty，旧代际保留更新后的像素和历史。不同工程可并行保存，同工程继续排队，非活动工程的录像准备复用poll/flushReady等待，不在UI线程循环等录像worker。保存中的另存目标也保留占用，防止另一工程覆盖或重复打开；失败弹窗带源路径，保留所属恢复与重试，取消关闭续接。异步结果只在无其它模态、预览或捕获手势的边界发布。
+
+关闭工程等待自己的后台任务及队列；干净非活动工程可移除而不切换当前工程，较新未保存修改仍进入原确认。应用关闭等待全部任务/排队保存，保存失败取消退出。新增实际Editor回归使用真实encoder/原子写出，仅以gate延迟结果确认，覆盖关闭提示、编辑/切换、倒序完成、非活动队列/SaveAs、失败/恢复/重试、关闭等待、独立工程不互相阻塞、脏确认、目标占用和分块快照关闭。没有宣称全量迁移或全部文件生命周期已完成；原A/B/A单次失败证据仍保留。
+
+旧版document-save-queue/document-save-tasks共8项通过（background-save-legacy-queue-tasks.log）；此前误以名称过滤document-file-service的执行全部skip，不计通过。正式Release构建与新增原生场景、视觉检查结果待补全。
+
+验证结果：background-save-build与background-save-final-build正式Release构建均退出0；新增--native-save-check退出0（38104-107857281），实际文件证明全部新场景通过，真实worker/编码器/原子文件未替换。background-save-core-tests中raster-snapshot/document-snapshot/project-save/project-save-raster-resources四项通过；background-save-existing-ui-tests中--aseprite-save-check、--home-recovery-check、--window-input-check全部退出0。
+
+首次隐藏窗口保存的nativeSurface截图全黑，不作为视觉通过证据；为此使用可见正式程序重做同一完整--native-save-check，background-save-visible-ui退出0，夹具12664-107920875/save-progress.png已人工查看：标题、正文和共用关闭图标完整、无重叠。检查范围为此保存提示默认窗口截图，未进行所有缩放/分辨率或长时间人工绘制验收。来源覆盖666通过，strict因其它迁移缺口仍1；diff检查通过。全部迁移仍INCOMPLETE，未把既有A/B/A未明单次失败当作本批修复。

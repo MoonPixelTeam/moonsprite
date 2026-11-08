@@ -1336,7 +1336,20 @@ public:
 
   std::filesystem::path savingPath_;
   bool savingAseprite_=false,savingSourceOnly_=false;
-  bool asyncSaveForSmoke_=false;
+  bool asyncSaveForSmoke_=false,saveDismissRequested_=false,closeAfterBackgroundSaves_=false;
+  struct BackgroundSave {
+   std::future<project::EncodedProject> worker;std::filesystem::path path;
+   std::uint64_t identity=0,revision=0,contentRevision=0;SymmetryCenter symmetry;LayerPanelState panel;
+   bool ase=false,sourceOnly=false;Pending resume=Pending::None;bool close=false;
+  };
+  std::vector<BackgroundSave> backgroundSaves_;
+  struct DeferredSaveClose {std::uint64_t identity;Pending action;bool saveChanges=false;};
+  std::vector<DeferredSaveClose> deferredSaveCloses_;
+  std::optional<std::size_t> saveProjectIndex(std::uint64_t)const;
+  bool backgroundSaveBusy(std::uint64_t)const;
+  void dismissSaveProgress();void backgroundSaveTick();
+  std::chrono::steady_clock::time_point saveStarted_;
+
   struct QueuedSave {std::uint64_t identity;bool saveAs;};
   std::vector<QueuedSave> queuedSaves_;
   Pending queuedSaveResume_=Pending::None;bool queuedSaveClose_=false;
@@ -2490,9 +2503,9 @@ void layoutStoredPaletteControls(const gfx::Rect& modal);
 
   void saveTick();
 
-  bool savePath(const std::filesystem::path& path,bool background=false,bool sourceOnly=false);
+  bool savePath(const std::filesystem::path& path,bool background=false,bool sourceOnly=false,std::uint64_t identity=0);
 
-  bool saveProject(bool saveAs);
+  bool saveProject(bool saveAs,std::uint64_t identity=0);
 
   std::filesystem::path recoveryDirectory();
 

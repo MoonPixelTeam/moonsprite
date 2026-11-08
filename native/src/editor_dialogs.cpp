@@ -1118,6 +1118,7 @@ void Editor::ask(Pending action) {
     if(action==Pending::Close){closingWorkspace_=true;if(!documentOpen_){closingWorkspace_=false;closeRequested();return;}}
 
     if(action==Pending::CloseDocument && !documentOpen_)return;
+    if((action==Pending::Close||action==Pending::CloseDocument)&&(backgroundSaveBusy(document.identity())||std::any_of(queuedSaves_.begin(),queuedSaves_.end(),[&](const auto& q){return q.identity==document.identity();}))){if(std::none_of(deferredSaveCloses_.begin(),deferredSaveCloses_.end(),[&](const auto& c){return c.identity==document.identity();}))deferredSaveCloses_.push_back({document.identity(),action});return;}
 
     document.commitFloatingPaste();if(!flushTimelapse()){closingWorkspace_=false;return;}
 
@@ -1243,7 +1244,7 @@ void Editor::resolve(bool discard) {
 
     if(discard) { if(action==Pending::New) {showNewDocument();} else if(action==Pending::Open) acceptOpen(); else if(action==Pending::Close){closeDocumentTab();if(closingWorkspace_)ask(Pending::Close);} else if(action==Pending::CloseDocument)closeDocumentTab(); }
 
-    if(action==Pending::Close && !discard)closingWorkspace_=false;
+    if((action==Pending::Close||action==Pending::CloseDocument)&&!discard){closingWorkspace_=false;closeAfterBackgroundSaves_=false;}
 
     if(action==Pending::Open&&!discard)importAfterOpen_=false;
 
@@ -1921,7 +1922,7 @@ void Editor::paintDialog(ui::Graphics& g) {
 
       skin_.drawDialogBackground(g,modal);
 
-      if(pending_==Pending::Saving){label(U"正在保存工程…",modal.x+6,modal.y+(FloatingColumnChrome::headerHeight-PixelFont::cell)/2);label(U"保存完成后继续",modal.x+6,modal.y+DialogLayout::bodyTop);return;}
+      if(pending_==Pending::Saving){label(U"正在保存工程…",modal.x+6,modal.y+(FloatingColumnChrome::headerHeight-PixelFont::cell)/2);label(U"可关闭提示后继续编辑",modal.x+6,modal.y+DialogLayout::bodyTop);return;}
 
       if(pending_==Pending::ReplaceColor){label(U"替换颜色",modal.x+6,modal.y+(FloatingColumnChrome::headerHeight-PixelFont::cell)/2);label(U"源 HEX",modal.x+6,modal.y+32);label(U"目标 HEX",modal.x+6,modal.y+54);return;}
 
