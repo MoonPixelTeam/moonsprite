@@ -4161,3 +4161,23 @@ large-sheet-import-app-build.log正式Release及large-sheet-import-ui-tests.log�
 已查看最终large-sheet-import.bmp：默认2×下1025×3草稿、两列一行、不完整单元格、预算说明和导入／取消均完整，无交叠，底部未残留失败状态。图像验收仅覆盖该窗口状态，不代表全缩放、长时交互或整体UI帧率改善。80组完整RGBA哈希及真实保存重开、40组规划边界、旧版15项测试与正式UI三条检查通过；来源覆盖与最终diff检查另行记录。索引／灰度、记忆／grid默认、实时导入预览和selection pivot完整恢复仍未完成，全量迁移保持INCOMPLETE。
 
 最终来源覆盖686文件通过（large-sheet-import-recovery-final-provenance.log），strict因全局已登记迁移缺口仍退出1；生成脚本Node语法与git diff --check通过。全部既有未跟踪诊断、工程／恢复数据与构建缓存保持原状。
+
+### 2026-11-08 精灵表导入参数生命周期（已通过定向验证）
+
+接续39d77cd7，直接核对SpriteSheetImportDialog及测试、spriteSheetFrameSizeFromCount、workspace会话。首次普通导入采用工程网格原点／尺寸，即使网格隐藏；只有成功的普通导入记忆原始参数，取消／失败／选区导入不覆盖。原生按ProjectSession拥有参数并核对Document identity，切换页签和撤销不丢失，同槽替换文档不继承；不写工程／配置，关闭会话自然释放。选区首次草稿忽略普通记忆，采用局部原点0和min(grid,selection)尺寸。本批不声称完成选区snapshot／pivot恢复。
+
+补上实际旧版间距开关：关掉时隐藏间距字段但保留草稿值，规划／实际导入／列行数反算使用有效零间距；普通成功后记住原始值，重开根据非零原始间距重新勾选，保持旧版这个可观察行为。字段和按钮按既有共享模态布局增加条件行，不引入新素材。空／非法规划禁用导入；取消恢复共享确认按钮。列行数反算先以64位乘间距再计算，避免262144×9999溢出。原生网格double超int范围时饱和为仍然非法的边界草稿，由规划拒绝，不回绕成有效参数；可表示的超规划范围仍保留供编辑。
+
+make-sheet-import-dialog-fixtures.cjs通过已安装Vite/Oxc执行实际旧版TSX，不重写其初始化、update、submit或WeakMap；只替换顶层import，适配React hook／元素传输、翻译和workspace异步完成。18组实际组件默认值、180组实际核心反算输出生成原生夹具，并执行成功／失败／取消／间距开关／选区／对象身份回调断言。最初尝试无法解析已安装的TypeScript包入口，改用项目Vite转换；初版未锚定import正则误匹配事件字符串，修正为仅处理行首顶层import后通过。最终转换与适配代码转储在build，完整组件仍有原始async submit与事件逻辑。该夹具不是DOM布局或NumberInput内部交互证明。
+
+旧版组件／核心／workspace三个文件18项通过（sheet-import-parameters-legacy-tests.log）；原生扩展既有导入测试与正式Editor检查覆盖相同默认值／反算、失败不覆盖、有效零间距、实际页签切换、替换文档和UI开关截图。正式构建与原生运行待完成。实时导入预览／拖动、弹窗内重新选择源、索引／灰度完整编辑、选区snapshot／pivot完整恢复仍未迁移，全量迁移保持INCOMPLETE。
+
+sheet-import-parameters-core-tests.log扩展后的sprite-sheet-import套件通过：18组件默认值、180反算结果、参数优先级／局部选区／不可表示网格草稿，以及上一阶段80组完整RGBA哈希、40组规划和80个实际保存重开均通过。正式程序构建仍在进行，核心通过不作为界面验收。
+
+sheet-import-parameters-build.log首次正式Release构建退出0，sheet-import-parameters-initial-ui-tests.log的--sheet-import-check退出0，实际控件／文件导入／页签切换完整链路通过。收尾复核补齐空规划Enter不提交、弹窗关闭后迟到Change不污染共享确认按钮；参数字段Change只更新对应控件及规划，不调用全编辑器refresh，清除既有错误时单独请求重绘。新增panelFullRefreshes计数断言及两个输入生命周期回归。正在增量构建与最终运行，尚未以首轮窗口结果替代最终检查。
+
+首轮间距开／关截图揭示新增按钮未加入modalControl白名单，导致逻辑Click回归虽通过、实际控件却被模态路由屏蔽；该截图不作为最终通过证据。补齐共享模态控件注册，新增可见／可用／modalControl断言及真实MouseDown/MouseUp触发开关，避免只验证直接回调。sheet-import-parameters-final-build.log输入收尾版本构建退出0；正在routing构建后重做全部窗口检查和两种截图。
+
+最终sheet-import-parameters-routing-build.log正式Release构建退出0；sheet-import-parameters-final-ui-tests.log的--sheet-import-check、--sheet-new-document-check、--new-document-check全部退出0，运行前后同一正式exe SHA256一致（5C84AB98C1FE8D4E3213C3A554B56B6B890A14A1A7D38FB5591BAEDF70CAB345）。实际指针触发间距开关、空规划Enter、关闭后回调、panelFullRefreshes不增、取消／失败／选区不覆盖、undo及实际页签切换均通过。已重新查看最终sheet-import-padding-on.bmp及sheet-import-padding-off.bmp：默认2×下间距开关可见、字段随开关显示／隐藏，启用时3/2间距及4列、关闭时有效零间距及5列；局部原点、其余参数、说明和底部按钮无交叠。仅验收这两个状态，不代表全缩放／长时间手工操作或全软件UI帧率。
+
+最终来源覆盖688文件通过，strict因全局已登记缺口仍退出1（sheet-import-parameters-final-provenance*.log）；Node语法及git diff --check通过。保留既有未跟踪诊断、工程／恢复数据和构建缓存。实时导入预览／拖动、弹窗内重新选择源、索引／灰度完整编辑、选区snapshot／pivot完整恢复仍为明确缺口，本阶段仅关闭上述参数生命周期迁移，全量目标保持INCOMPLETE。

@@ -3,6 +3,21 @@
 #include "image_import_limits.h"
 #include <limits>
 namespace moon {
+SheetImportOptions initialSheetImportOptions(GridSettings grid,const std::optional<SheetImportOptions>& remembered,const std::optional<SelectionMask>& selection){
+ // Grid metadata uses doubles. Retain representable out-of-plan-range drafts;
+ // unrepresentable native integers stay invalid rather than wrapping to valid.
+ auto integer=[](double v){return int(std::clamp(v,double(INT32_MIN),double(INT32_MAX)));};
+ grid=normalizeGridSettings(grid);SheetImportOptions options;
+ if(selection){options.selection=true;options.width=integer(std::min(double(selection->width),grid.width));options.height=integer(std::min(double(selection->height),grid.height));}
+ else if(remembered){options=*remembered;options.selection=false;}
+ else{options.x=integer(grid.x);options.y=integer(grid.y);options.width=integer(grid.width);options.height=integer(grid.height);}
+ return options;
+}
+int sheetImportFrameSizeFromCount(int extent,int origin,int padding,int count){
+ const auto divisor=std::max(1,count);
+ const auto value=std::floor(double(std::int64_t(extent)-origin-std::int64_t(padding)*(divisor-1))/divisor);
+ return int(std::clamp(value,1.,double(INT32_MAX)));
+}
 SheetImportPlan planSpriteSheetImport(int sw,int sh,const SheetImportOptions& o){
  if(sw<1||sh<1||o.layout<0||o.layout>3||o.width<1||o.height<1||o.width>262144||o.height>262144||std::abs(std::int64_t(o.x))>262144||std::abs(std::int64_t(o.y))>262144||o.paddingX<0||o.paddingY<0||o.paddingX>262144||o.paddingY>262144)throw std::invalid_argument("Invalid native sprite sheet import parameters");
  // Legacy plan is geometric: output allocation admission belongs to build.

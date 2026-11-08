@@ -171,6 +171,11 @@ private:
 
     std::optional<Document> stored;
 
+    // Legacy WeakMap<Document, options>: session-owned, never saved to project
+    // or preferences; identity prevents a replacement document inheriting it.
+    std::optional<SheetImportOptions> sheetImportRemembered;
+    std::uint64_t sheetImportIdentity=0;
+
     std::filesystem::path path;
 
     gfx::Rect canvas;
@@ -336,7 +341,7 @@ private:
 
   bool replacePreview_=false,replaceRemember_=true,replaceLoaded_=false;
 
-  SheetImportOptions importSheetOptions_;std::array<PixelEntry*,8> importSheetInputs_{};PixelButton *importSheetLayout_=nullptr,*importSheetPartial_=nullptr;bool importAfterOpen_=false,importSheetUpdating_=false;
+  SheetImportOptions importSheetOptions_;std::array<PixelEntry*,8> importSheetInputs_{};PixelButton *importSheetLayout_=nullptr,*importSheetPartial_=nullptr,*importSheetPadding_=nullptr;bool importAfterOpen_=false,importSheetUpdating_=false,importSheetPaddingEnabled_=false;
 
   bool sheetOutputFile_=false,sheetOpenAfterExport_=false;std::filesystem::path sheetExportedPath_;
 
@@ -2333,6 +2338,7 @@ private:
   void createGifExportControls();
 
   void updateSheetImportFields();
+  SheetImportOptions effectiveSheetImportOptions()const;
 
   void openSheetImport(bool selected);
 

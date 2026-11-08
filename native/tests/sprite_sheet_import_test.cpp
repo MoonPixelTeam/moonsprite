@@ -4,6 +4,7 @@
 #include "project_file.h"
 #include "project_import.h"
 #include "fixtures/large_sheet_import_legacy.h"
+#include "fixtures/sheet_import_dialog_legacy.h"
 #include <fstream>
 #include <iostream>
 using namespace moon;
@@ -30,6 +31,12 @@ void largeImports(const std::filesystem::path& root){
  for(const auto size:{std::pair<int,int>{32769,1},{1,32769},{8192,8193},{4096,4096}}){SheetImportOptions o;o.width=size.first;o.height=size.second;o.partialTiles=true;bool rejected=false;try{d.importSpriteSheet(o);}catch(...){rejected=true;}check(rejected&&d.width()==2&&d.height()==2&&d.pixels()==pixels&&d.historySize()==history&&d.revision()==revision);}
 }
 int wmain(int argc,wchar_t** argv){try{
+ for(const auto& f:sheetImportDefaultOracle){auto selected=f.selected?std::optional<SelectionMask>{SelectionMask{10,8,f.sw,f.sh,{}}}:std::optional<SelectionMask>{};const auto o=initialSheetImportOptions({double(f.gx),double(f.gy),double(f.gw),double(f.gh)},{},selected);check(o.x==f.x&&o.y==f.y&&o.width==f.width&&o.height==f.height&&o.selection==bool(f.selected)&&o.layout==2&&!o.partialTiles&&o.paddingX==0&&o.paddingY==0);}
+ for(const auto& f:sheetImportCountOracle)check(sheetImportFrameSizeFromCount(f.extent,f.origin,f.gap,f.count)==f.size);
+ SheetImportOptions remembered;remembered.x=-3;remembered.y=5;remembered.width=8;remembered.height=9;remembered.paddingX=3;remembered.paddingY=2;remembered.partialTiles=true;
+ auto recalled=initialSheetImportOptions({1,2,4,4},remembered);check(recalled.x==-3&&recalled.width==8&&recalled.paddingX==3&&recalled.partialTiles&&!recalled.selection);
+ auto local=initialSheetImportOptions({1,2,4,4},remembered,SelectionMask{10,8,2,1,{1,0}});check(local.selection&&local.x==0&&local.y==0&&local.width==2&&local.height==1&&local.paddingX==0&&!local.partialTiles);
+ check(initialSheetImportOptions({1e30,-1e30,1e30,16}).x==INT32_MAX&&initialSheetImportOptions({1e30,-1e30,1e30,16}).y==INT32_MIN);
  SheetImportOptions o;o.x=1;o.y=2;o.width=2;o.height=2;o.paddingX=o.paddingY=1;
  const std::vector<std::vector<Point>> expected={{{1,2},{4,2},{7,2}},{{1,2},{1,5}},{{1,2},{4,2},{7,2},{1,5},{4,5},{7,5}},{{1,2},{1,5},{4,2},{4,5},{7,2},{7,5}}};
  for(int layout=0;layout<4;++layout){o.layout=layout;auto p=planSpriteSheetImport(9,7,o);check(p.tiles.size()==expected[layout].size());for(std::size_t i=0;i<p.tiles.size();++i)check(p.tiles[i].x==expected[layout][i].x&&p.tiles[i].y==expected[layout][i].y);}
