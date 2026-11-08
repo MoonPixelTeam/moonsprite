@@ -193,6 +193,25 @@ void Editor::smokeTileRepeat(){
   sampleSend(ui::kMouseUpMessage,{ox+5.25,oy+4.25});const auto endedCounts=eyedropperLensWorkCounts(*this);flushLens();if(eyedropperLensWorkCounts(*this)!=endedCounts)throw std::runtime_error("Eyedropper pending preview survived finish");if(eyedropperGesture_.active()||hasCapture()||eyedropperLensSurface_||document.canvasPixels()!=baseline||document.historyPosition()!=h||(right?document.palette().primary:document.palette().secondary)!=other)throw std::runtime_error("Repeated eyedropper finish/content/other role");
  }
  eyedropperTool_=false;
+ // Smooth uses mapped local samples; legacy clips its footprint and rejects tile layers.
+ for(const auto mode:{repeat::Mode::X,repeat::Mode::Y,repeat::Mode::Both})for(const auto shape:{BrushShape::Round,BrushShape::Square,BrushShape::Line}){
+  std::vector<Pixel> expected;
+  for(bool copy:{false,true}){
+   document=Document(16,12);for(const auto at:{Point{2,3},Point{3,3},Point{5,4},Point{6,4}}){document.beginStroke(at,0xff112233);document.commitStroke();}
+   document.previewSelection(SelectionMask{1,1,12,9,{}});useSmoothTool();smoothBrush_={};smoothBrush_.size=5;smoothBrush_.shape=shape;smoothAngle_=35;smoothStrength_=100;brushDynamics_={};setTileRepeat(mode);refresh();const auto baseline=document.canvasPixels();const auto h=document.historyPosition();const int ox=copy&&repeat::includesX(mode)?16:0,oy=copy&&repeat::includesY(mode)?-12:0;const TransformPoint start{ox+2.25,oy+3.25},end{ox+6.25,oy+4.25};
+   send(ui::kMouseDownMessage,start);if(!smoothDragging_)throw std::runtime_error("Repeated smooth begins");send(ui::kMouseMoveMessage,end);if(document.canvasPixels()!=baseline||document.historyPosition()!=h)throw std::runtime_error("Smooth collection mutated before release");
+   send(ui::kMouseMoveMessage,{repeat::includesX(mode)?32.25:6.25,repeat::includesY(mode)?24.25:4.25});send(ui::kMouseUpMessage,{repeat::includesX(mode)?32.25:6.25,repeat::includesY(mode)?24.25:4.25});
+   const auto after=document.canvasPixels();if(after==baseline||document.historyPosition()!=h+1||smoothDragging_||hasCapture())throw std::runtime_error("Repeated smooth commit");if(!copy)expected=after;else if(after!=expected)throw std::runtime_error("Repeated smooth copy differs");document.undo();if(document.canvasPixels()!=baseline)throw std::runtime_error("Repeated smooth undo");document.redo();if(document.canvasPixels()!=after)throw std::runtime_error("Repeated smooth redo");document.undo();send(ui::kMouseDownMessage,start);send(ui::kMouseMoveMessage,end);ui::KeyMessage escape(ui::kKeyDownMessage,ui::kKeyEsc,ui::kKeyNoneModifier,0,0);onProcessMessage(&escape);if(smoothDragging_||hasCapture()||document.canvasPixels()!=baseline||document.historyPosition()!=h)throw std::runtime_error("Repeated smooth Escape");
+  }
+ }
+ // Crossing the seam joins local endpoints through the interior, as legacy moveSmooth.
+ for(const auto mode:{repeat::Mode::X,repeat::Mode::Y,repeat::Mode::Both}){
+  document=Document(16,12);useSmoothTool();smoothBrush_={};smoothBrush_.size=1;setTileRepeat(mode);refresh();
+  const TransformPoint start{repeat::includesX(mode)?15.25:4.25,repeat::includesY(mode)?11.25:4.25},end{repeat::includesX(mode)?16.25:4.25,repeat::includesY(mode)?12.25:4.25};
+  send(ui::kMouseDownMessage,start);send(ui::kMouseMoveMessage,end);SmoothBrushArea expectedArea;const SelectionPoint localStart{int(start.x),int(start.y)},localEnd{repeat::includesX(mode)?0:4,repeat::includesY(mode)?0:4};expectedArea.collect(16,12,localStart,localStart,smoothBrush_,smoothAngle_,{});expectedArea.collect(16,12,localStart,localEnd,smoothBrush_,smoothAngle_,{});if(smoothArea_.visited!=expectedArea.visited)throw std::runtime_error("Repeated smooth seam local path");cancelStroke();if(hasCapture())releaseMouse();
+  document.createFreeTileLayer(U"Smooth rejected source");setTileRepeat(mode);refresh();const auto h=document.historyPosition();send(ui::kMouseDownMessage,{1.25,1.25});send(ui::kMouseUpMessage,{1.25,1.25});if(smoothDragging_||document.historyPosition()!=h)throw std::runtime_error("Smooth must reject free tile layer");
+ }
+ smoothTool_=false;
  const auto before=zoom_;menuCommands_.invoke("tileRepeatOff");if(tileRepeat_!=repeat::Mode::Off||zoom_!=before)throw std::runtime_error("Repeat off changed zoom");
  setTileRepeat(repeat::Mode::Y);ensureProjects();storeActiveProject();restoreProject(activeProject_);if(tileRepeat_!=repeat::Mode::Y||tileRepeatIdentity_!=document.identity())throw std::runtime_error("Repeat session restoration");
  document=Document();tileRepeat_=repeat::Mode::Off;tileRepeatIdentity_=document.identity();refresh();

@@ -1537,7 +1537,13 @@ void Editor::useSmoothTool(){
 bool Editor::processSmoothInput(ui::Message* msg){
  if(!smoothTool_)return false;
  if(msg->type()!=ui::kMouseDownMessage&&msg->type()!=ui::kMouseMoveMessage&&msg->type()!=ui::kMouseUpMessage)return false;
- auto* m=static_cast<ui::MouseMessage*>(msg);const auto point=canvasPoint(m->position());
+ auto* m=static_cast<ui::MouseMessage*>(msg);auto point=canvasPoint(m->position());
+ if(tileRepeatIdentity_==document.identity()&&tileRepeat_!=repeat::Mode::Off){
+  const auto mapped=repeat::map({double(point.x),double(point.y)},document.width(),document.height(),tileRepeat_);
+  if(mapped)point={int(mapped->local.x),int(mapped->local.y)};
+  else if(smoothDragging_&&msg->type()==ui::kMouseUpMessage)point={smoothLast_.x,smoothLast_.y};
+  else return canvasViewport().contains(m->position())||smoothDragging_;
+ }
  if(spaceHeld_||handTool_||eyedropperHeld_||eyedropperGesture_.active()){if(smoothDragging_){cancelStroke();return true;}return false;}
  if(canvasViewport().contains(m->position()))smoothPointer_=m->position();else if(!smoothDragging_)smoothPointer_.reset();
  if(smoothDragging_){
@@ -1556,9 +1562,16 @@ bool Editor::processSmoothInput(ui::Message* msg){
 }
 void Editor::paintSmoothCoverage(ui::Graphics& g,const gfx::Rect& cv){
  if(!smoothTool_||!smoothPointer_||playing_||document.active()||!document.rasterToolsAvailable()||!document.layer().kind.empty()||!document.activeMaskId().empty()||spaceHeld_||handTool_||eyedropperHeld_||eyedropperGesture_.active()||!canvasOwnsPointer(*smoothPointer_))return;
- auto coverage=smoothArea_;const auto p=canvasPoint(*smoothPointer_);coverage.collect(document.width(),document.height(),{p.x,p.y},{p.x,p.y},smoothBrush_,smoothAngle_,document.selection(),true);const double scale=canvasScale();
+ auto coverage=smoothArea_;auto p=canvasPoint(*smoothPointer_);const auto mode=tileRepeatIdentity_==document.identity()?tileRepeat_:repeat::Mode::Off;
+ if(mode!=repeat::Mode::Off){const auto mapped=repeat::map({double(p.x),double(p.y)},document.width(),document.height(),mode);if(!mapped)return;p={int(mapped->local.x),int(mapped->local.y)};}
+ coverage.collect(document.width(),document.height(),{p.x,p.y},{p.x,p.y},smoothBrush_,smoothAngle_,document.selection(),true);const double scale=canvasScale();
  auto draw=[&](int x,int y){const int l=int(std::round(cv.x+x*scale)),t=int(std::round(cv.y+y*scale)),r=int(std::round(cv.x+(x+1)*scale)),b=int(std::round(cv.y+(y+1)*scale));g.fillRect(gfx::rgba(230,0,255,89),gfx::Rect(l,t,std::max(1,r-l),std::max(1,b-t)));};
- for(auto key:coverage.visited)draw(int(key%document.width()),int(key/document.width()));for(auto [x,y]:coverage.outsidePreview)draw(x,y);
+ for(const auto copy:repeat::offsets(mode)){
+  g.saveClip();if(mode!=repeat::Mode::Off)g.clipRect(gfx::Rect(cv.x+copy.x*cv.w,cv.y+copy.y*cv.h,cv.w,cv.h));
+  for(auto key:coverage.visited)draw(int(key%document.width())+copy.x*document.width(),int(key/document.width())+copy.y*document.height());
+  if(mode==repeat::Mode::Off)for(auto [x,y]:coverage.outsidePreview)draw(x,y);
+  g.restoreClip();
+ }
 }
 
 

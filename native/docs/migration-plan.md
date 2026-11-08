@@ -4524,3 +4524,10 @@ CTest tile-repeat通过，含此前1024旧版几何oracle及直接沿用旧版re
 承接useCanvasEyedropperMagnifier的pending RAF与source-region cache。原生首个预览立即生成，后续指针事件只覆盖待绘指针/颜色，在paintEyedropperLens消费一次；越界不覆盖有效请求，结束清除待绘，失去手势/表面时不消费旧请求。编辑器所有的Property保存状态，随编辑器销毁，无额外计时器和全局回调。25×25采样区域按工程identity/revision、帧、图层、取色来源及区域起点缓存。原生颜色提交继续同步，保留当前弹窗消费时序；本阶段没有迁移legacy的延迟颜色提交，不宣称所有采样性能路径完成。
 
 X/Y/Both合成/当前层及左右键实际诊断验证100次preview请求不发生同步渲染，绘制时仅渲染一次，同区域复用采样缓存，移动区域重新读取，主画布/副本逐像素一致，结束后不重放待绘。正式Release构建成功；--tile-repeat-check退出0。--sampling-zoom-check最初依赖用户保存的放大镜关闭偏好，check15失败；诊断显式启用放大镜而不持久化偏好后正式重建、诊断退出0。三项CTest eyedropper/tile-repeat/tile-repeat-stroke通过0.14s，742文件来源登记快照及diff检查通过。未测FPS，修订/帧/层等缓存键仅源码核对，没有新增逐一失效运行场景。全量迁移仍INCOMPLETE；用户数据、构建缓存和未跟踪文件保留，阶段提交推送dev。
+
+
+### 2026-11-09：平铺平滑工具输入、预览与事务（阶段完成）
+
+对照canvas-input-stroke begin/move/endSmooth、pointer-move/up及smooth-brush collect实际调用：平滑入口使用有限相邻副本localPoint，collect未传repeat参数，因此笔刷范围裁剪、跨接缝连接本地端点，不擅自添加环绕足迹/邻域。free-tile专用入口不支持smooth，通用入口拒绝kind图层，原生继续拒绝自由/网格瓦片层。原生映射按下与拖动本地点，忽略越界移动，越界释放按最后本地点结算已有收集；覆盖预览映射本地点并在各副本裁剪绘制。既有选区、动态参数、延迟应用及Document算法保持。
+
+正式Release构建成功，显式等待 --tile-repeat-check退出0。实际鼠标覆盖X/Y/Both、Round/Square/Line35度、选区、收集期像素/历史不变、越界移动与释放、单笔提交、UndoRedo、Escape、跨缝visited顺序符合本地端点路径及自由瓦片层拒绝。三项CTest document-transactions/tile-repeat/tile-repeat-stroke通过0.85s；之后只新增两项运行断言，重新构建诊断通过。742文件来源快照与diff检查通过。预览仅源码核对，没有逐像素截图验收或FPS测量；全量迁移仍INCOMPLETE。保留用户数据和未跟踪文件，阶段提交推送dev。
