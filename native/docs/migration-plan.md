@@ -4062,3 +4062,17 @@ recovery-commit-build.log正式程序构建成功、测试因直接编译store�
 pending-gradient-io-core-tests的project-save及project-save-raster-resources两项通过；pending-gradient-io-existing-ui-tests中正式--native-save-check、--aseprite-save-check、--gradient-shape-check和--window-input-check均退出0。实际原子保存/工程重开、PNG解码、单步撤销重做、干净/已有脏修改关闭、应用后保存再关闭、所有导出入口取消及继续已覆盖。受控上下文失效/替换不是实际内存分配失败证明；未宣称故障分配器或全部资源类型的失败恢复等价。
 
 可见正式程序最终夹具pending-gradient.png已查看：共享标题/关闭图标、换行说明、旧版顺序的三个按钮完整，无交叠；只验收默认2×窗口截图，未做全缩放/分辨率及长时间人工操作矩阵。未更改用户数据、恢复数据、缓存或版本号。来源覆盖668通过、strict按全局已有缺口仍1，差异检查通过；全量迁移继续INCOMPLETE，原A/B/A单次失败未明现场保留。
+
+
+### 2026-11-08 备份打开身份与普通保存目标保护（已通过定向验证）
+
+对照 legacy/core/document-save-policy.ts、document-files.ts 和 store/document-file-service.ts：普通保存优先已保存路径，仅无已保存路径才考虑来源；任何 .bak 或不支持的后缀都不是直接写回目标，不因保存身份无效而退回覆盖来源。打开 .moonsprite.bak 时使用文件名去掉最后 .bak，清空已保存／来源路径，保留干净状态与原有空撤销栈；不伪造恢复事务改名。内容实际是 GIF 时仍按签名导入完整动画，再应用同一备份身份。保留 projectId 重复打开复用逻辑，并记录备份最近路径。
+
+原生必要适配为小型共享目标策略、GIF 构造时可选名称和实际 Editor 定向回归。--backup-save-check 沿用现有正式保存生命周期入口，使用真实加载、编码、异步原子写入，只替换已有文件选择器回调。回归逐次核对原备份字节，覆盖干净取消、Ctrl+S／菜单、编辑保存、后续直接保存、另存为、失败重试、关闭前保存取消／成功、默认格式组合、无效保存身份优先级，以及 GIF 签名备份。核心 image-save-tests 增加支持后缀／大小写／空路径／全部 .bak／未知后缀／保存路径优先矩阵。不禁止底层显式备份写出，也不改备份创建机制。
+
+旧版 document-files.test.ts 与 document-save-format.test.ts 本次 38 项通过（backup-save-legacy.log）。正式 Release 构建、实际 Editor 与核心检查待补全；全量迁移仍 INCOMPLETE，既有 A/B/A 单次失败不在本批宣称修复。
+
+
+本阶段验证结果：backup-save-build.log 正式 Release 与 image-save-tests 构建退出0；核心 image-save CTest 通过（backup-save-core-tests.log），包含新增直接目标后缀／优先级矩阵及既有全部图片编码保存回读。首次 --backup-save-check 在新夹具开始打开备份时以 Windows 栈溢出码退出，现场6328-111635984保留。将新场景封装到独立 std::function 调用帧，避免与原大型通用保存套件累积栈上临时对象；未调整产品栈上限或复制新生产保存流程。backup-save-fixture-build.log 正式程序重建退出0，--backup-save-check 完整通过（11396-111754281，backup-result.txt），真实编码／原子写入／重开及原备份逐字节不变均通过，系统文件选择器通过既有回调注入，未做人工选择器操作验收。
+
+backup-save-existing-ui-tests.log 中正式 --native-save-check、--aseprite-save-check、--pending-gradient-io-check 均退出0。未修改界面布局，未新增截图／全缩放人工验收；图像验收不借用旧截图冒充本批结果。来源覆盖669通过，strict按全局既有迁移缺口仍预期退出1；最终差异检查通过。未修改／删除用户工程、恢复文件、缓存或既有诊断，既有 A/B/A 单次失败现场继续保留，全量迁移仍 INCOMPLETE。

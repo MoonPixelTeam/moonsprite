@@ -7,6 +7,7 @@
 #include "editor_implementation.h"
 #include "editor.h"
 #include "image_save.h"
+#include "document_save_policy.h"
 #include "image_file_signature.h"
 #include "save_format_dialog.h"
 #include "timelapse_session.h"
@@ -300,12 +301,13 @@ void Editor::openPath(const std::filesystem::path& path) {
 
       auto ext=path.extension().wstring();std::transform(ext.begin(),ext.end(),ext.begin(),[](wchar_t c){return ::towlower(c);});
 
+      const bool backup=isMoonSpriteBackupPath(path);
       const bool ase=ext==L".ase"||ext==L".aseprite";
       const bool raster=ext==L".gif"||ext==L".png"||ext==L".jpg"||ext==L".jpeg"||ext==L".bmp"||ext==L".webp";
       auto restoreReport=std::make_shared<project::TimelapseRestoreReport>();
       auto detectedGif=std::make_shared<bool>(false);
-      DocumentLoadingDialog loading(font_,skin_,[path,ext,ase,raster,restoreReport,detectedGif]() -> Document {
-        if(!raster&&hasGifFileSignature(path)){*detectedGif=true;return openGifAnimation(path);}
+      DocumentLoadingDialog loading(font_,skin_,[path,ext,backup,ase,raster,restoreReport,detectedGif]() -> Document {
+        if(!raster&&hasGifFileSignature(path)){*detectedGif=true;auto candidate=openGifAnimation(path,backup?path.stem().u32string():path.filename().u32string());if(backup)candidate.setSourceFilePath({});return candidate;}
         if(ext==L".psd")return openPsd(path);
         if(ase){auto candidate=openAseprite(path);candidate.setSourceFilePath(path);return candidate;}
         if(raster){auto candidate=ext==L".gif"?openGifAnimation(path):openRasterImage(path);candidate.setSourceFilePath(path);return candidate;}
@@ -325,17 +327,19 @@ void Editor::openPath(const std::filesystem::path& path) {
 
         auto imported=project::prepareEditableImport(project::readProjectManifest(bytes,limits,restoreReport.get()));
 
+        if(backup)imported.name=path.stem().u32string();
         auto candidate=project::createEditableDocument(std::move(imported));
 
-        candidate.setSourceFilePath(path);return candidate;
+        if(!backup)candidate.setSourceFilePath(path);return candidate;
       },U"打开文件",&toolIcons_);
       loading.setDisplay(display(),false);const auto size=loading.minimumDialogSize(bounds().w);
       loading.setBounds({bounds().center().x-size.w/2,bounds().center().y-size.h/2,size.w,size.h});
       auto loaded=loading.run([this]{return pending_==Pending::None&&!document.strokeActive()&&!ui::Manager::getDefault()->getCapture();});
       // Another open may finish while this progress overlay is dismissed.
       ensureProjects();for(std::size_t i=0;i<projects_.size();++i){const auto& saved=i==activeProject_?documentPath_:projects_[i]->path;if(sameProjectPath(path,saved)||sameProjectPath(path,projectDocument(i).sourceFilePath())){activateProject(i);recordHomeRecent(path);return;}}
-      openCandidate_=std::move(loaded);candidatePath_=ase||raster||ext==L".psd"||(*detectedGif&&ext!=L".moonsprite"&&ext!=L".bak")?std::filesystem::path{}:path;
+      openCandidate_=std::move(loaded);candidatePath_=backup||ase||raster||ext==L".psd"||(*detectedGif&&ext!=L".moonsprite"&&ext!=L".bak")?std::filesystem::path{}:path;
       candidateRecovery_=false;ask(Pending::Open);
+      if(backup&&pending_==Pending::None)recordHomeRecent(path);
       if(ase&&!*detectedGif)status_=U"已打开 ASE；沿用原格式保存时将保存回源文件。";
       if(restoreReport->droppedTimelapseFrames){status_=timelapseRestoreWarning(*restoreReport);refresh();}
 
@@ -545,8 +549,9 @@ bool Editor::saveProject(bool saveAs,std::uint64_t identity) {
  if(document.active()||document.strokeActive()){if(*owner!=activeProject_){queuedSaves_.push_back({document.identity(),saveAs});return false;}}
  if(*owner==activeProject_){for(auto& picker:pickerColumns_)if(picker.picker)picker.picker->finishInteraction();cancelStroke();}
  document.commitFloatingPaste();if(*owner==activeProject_){if(!flushTimelapse())return false;}else if(auto session=document.recordingSession())session->flush(document);portableTimelapseSave_=false;
- auto target=documentPath_.empty()?document.sourceFilePath():documentPath_;
- auto format=saveImageFormat(target);const bool sourceImage=format!=SaveImageFormat::Native;
+ const auto targetPolicy=documentSaveTarget(documentPath_,document.sourceFilePath());
+ auto target=targetPolicy?targetPolicy->path:std::filesystem::path{};
+ auto format=targetPolicy?targetPolicy->format:SaveImageFormat::Native;const bool sourceImage=format!=SaveImageFormat::Native;
  const bool original=runtimePreferences_.flag("files.saveOriginalFormat");
  if(!saveAs&&!document.dirty()&&!target.empty()&&(sourceImage?original:!documentPath_.empty())){status_=U"工程已保存";refresh();return true;}
  auto decide=[&](bool preferred,const std::vector<std::string>& issues){
@@ -556,12 +561,12 @@ bool Editor::saveProject(bool saveAs,std::uint64_t identity) {
   popup.openWindowInForeground();requestFocus();refresh();return popup.result();
  };
  bool forceProject=!original&&(sourceImage||target.empty());
- if(forceProject&&!saveAs){if(decide(true,{})!=1)return false;}
+ if(forceProject&&targetPolicy&&!saveAs){if(decide(true,{})!=1)return false;}
  std::vector<std::string> approved;
  auto confirm=[&]()->int{approved=imageSaveIssues(document,format);if(approved.empty())return 2;auto identity=document.identity();int choice=decide(false,approved);if(document.identity()!=identity||!asepriteApprovalCovers(approved,imageSaveIssues(document,format)))throw std::runtime_error("工程在格式确认期间发生变化，请重新保存。");return choice;};
  try{
-  if(!saveAs&&sourceImage&&!forceProject){int choice=confirm();if(!choice)return false;if(choice==2){if(target!=(documentPath_.empty()?document.sourceFilePath():documentPath_))throw std::runtime_error("保存目标在确认期间发生变化，请重试。");return savePath(target,false,documentPath_.empty(),document.identity());}forceProject=true;}
-  if(!saveAs&&!forceProject&&!documentPath_.empty())return savePath(documentPath_,false,false,document.identity());
+  if(!saveAs&&sourceImage&&!forceProject){int choice=confirm();if(!choice)return false;if(choice==2){if(const auto current=documentSaveTarget(documentPath_,document.sourceFilePath());!current||current->path!=target||current->format!=format)throw std::runtime_error("保存目标在确认期间发生变化，请重试。");return savePath(target,false,documentPath_.empty(),document.identity());}forceProject=true;}
+  if(!saveAs&&!forceProject&&targetPolicy&&!documentPath_.empty())return savePath(target,false,false,document.identity());
   if(forceProject)format=SaveImageFormat::Native;
   else if(target.empty())format=preferredSaveImageFormat(runtimePreferences_.index("files.saveFormat.Select"));
   std::filesystem::path initial=target.empty()?std::filesystem::path(document.name()):target;

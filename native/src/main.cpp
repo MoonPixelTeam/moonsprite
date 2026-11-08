@@ -768,7 +768,7 @@ int app_main(int argc,char* argv[]) {
     const bool pendingGradientIoCheck=argc>1&&std::string(argv[1])=="--pending-gradient-io-check";
     ui::Timer pendingGradientIoTimer(180,editor);
     if(pendingGradientIoCheck){pendingGradientIoTimer.Tick.connect([&]{pendingGradientIoTimer.stop();try{editor->smokePendingGradientIo();desktop.approved=true;desktop.closeWindow(editor);}catch(const std::exception& e){std::ofstream("native/build/pending-gradient-io-error.txt")<<e.what();std::exit(1);}});pendingGradientIoTimer.start();}
-    const bool nativeSaveCheck=argc>1&&std::string(argv[1])=="--native-save-check";
+    const bool nativeSaveCheck=argc>1&&(std::string(argv[1])=="--native-save-check"||std::string(argv[1])=="--backup-save-check");
     ui::Timer nativeSaveTimer(180,editor);
     if(nativeSaveCheck){nativeSaveTimer.Tick.connect([&]{nativeSaveTimer.stop();try{editor->smokeNativeSaveLifecycle();desktop.approved=true;desktop.closeWindow(editor);}catch(const std::exception& e){std::ofstream("native/build/native-save-error.txt")<<e.what();std::exit(1);}});nativeSaveTimer.start();}
     const bool asepriteSaveCheck=argc>1&&std::string(argv[1])=="--aseprite-save-check";

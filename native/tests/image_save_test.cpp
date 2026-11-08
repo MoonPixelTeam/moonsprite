@@ -1,4 +1,5 @@
 #include "image_save.h"
+#include "document_save_policy.h"
 #include "image_export.h"
 #include "image_decode.h"
 #include "gif_import.h"
@@ -9,6 +10,17 @@ using namespace moon;
 void check(bool value,const char* message){if(!value)throw std::runtime_error(message);}
 bool has(const std::vector<std::string>& issues,const char* key){return std::find(issues.begin(),issues.end(),key)!=issues.end();}
 int main(){try{
+ // The saved identity wins even when it is not a writable direct target.
+ check(!documentSaveTarget({},{}),"Empty save target");
+ for(const auto* name:{L"x.moonsprite",L"x.MOONSPRITE",L"x.png",L"x.PNG",L"x.jpg",L"x.JPEG",L"x.webp",L"x.svg",L"x.ico",L"x.bmp",L"x.gif",L"x.psd",L"x.ase",L"x.ASEPRITE"}){
+  const std::filesystem::path path=name;auto saved=documentSaveTarget(path,L"source.png"),source=documentSaveTarget({},path);
+  check(saved&&source&&saved->path==path&&source->path==path&&saved->format==saveImageFormat(path)&&source->format==saved->format,"Supported direct target or saved priority");
+ }
+ for(const auto* name:{L"x.bak",L"x.BAK",L"x.png.bak",L"x.moonsprite.bak",L"x.MOONSPRITE.BAK",L"x.unknown",L"x"}){
+  check(!documentSaveTarget(name,{})&&!documentSaveTarget({},name)&&!documentSaveTarget(name,L"valid.png")&&!documentSaveTarget(name,L"valid.moonsprite"),"Invalid saved identity fell back to source");
+ }
+ check(documentSaveTarget(L"saved.png",L"invalid.bak")->path==L"saved.png","Valid saved identity rejected by source");
+ check(isMoonSpriteBackupPath(L"x.moonsprite.bak")&&isMoonSpriteBackupPath(L"x.MOONSPRITE.BAK")&&!isMoonSpriteBackupPath(L"x.bak")&&!isMoonSpriteBackupPath(L"x.png.bak")&&!isMoonSpriteBackupPath(L"x.moonsprite.bak.png"),"Project backup recognition");
  const auto root=std::filesystem::path("image-save-test-owned")/(std::to_string(GetCurrentProcessId())+"-"+std::to_string(GetTickCount64()));std::filesystem::create_directories(root);
  for(auto extension:{L".png",L".jpg",L".jpeg",L".webp",L".bmp",L".gif",L".svg",L".ico"}){
   const auto path=root/(std::wstring(L"original")+extension);const auto format=saveImageFormat(path);

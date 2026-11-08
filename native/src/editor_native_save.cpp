@@ -4,6 +4,9 @@
 #include "project_encode.h"
 #include "recovery_store.h"
 #include "layer_panel_state_json.h"
+#include "document_save_policy.h"
+#include "image_decode.h"
+#include "image_export.h"
 #include <fstream>
 namespace moon::editor {
 void Editor::smokeNativeSaveLifecycle(){
@@ -23,7 +26,53 @@ void Editor::smokeNativeSaveLifecycle(){
  auto recovery=[&]{recovery_.ownedId="native-save-owned";recovery_.originId=recovery_.ownedId;recovery_.ownedIdentity=document.identity();project::writeRecoveryFiles(recoveryDirectory_,{recovery_.ownedId,"Native save","1"},*project::encodeRecoveryProject(document).bytes);};
  auto drainRecovery=[&]{if(recovery_.worker.valid())recovery_.worker.wait();auto preferences=recoveryPreferences_;preferences.enabled=false;const auto result=recovery_.tick(document,preferences,recoveryDirectory_,false);check(result.error.empty(),"Native save recovery cleanup failed");};
  auto originalChooser=chooseSaveFile_;
+ auto originalDecision=asepriteSaveDecisionForSmoke_;
  try{
+  if(std::wstring(GetCommandLineW()).find(L"--backup-save-check")!=std::wstring::npos){
+   // Keep this independent fixture frame off the already large general suite.
+   std::function<void()> backupCheck=[&]{
+   runtimePreferences_.set("files.saveOriginalFormat","true");runtimePreferences_.set("files.saveFormat.Select","0");
+   int choices=0,confirmations=0;asepriteSaveDecisionForSmoke_=[&](bool,const auto&){++confirmations;return 2;};
+   auto choose=[&](const std::filesystem::path& path,unsigned filter=1){chooseSaveFile_=[&,path,filter](OPENFILENAMEW* chooser){++choices;wcsncpy_s(chooser->lpstrFile,chooser->nMaxFile,path.c_str(),_TRUNCATE);chooser->nFilterIndex=filter;return true;};};
+   auto cancel=[&]{chooseSaveFile_=[&](OPENFILENAMEW*){++choices;return false;};};
+   Document original=Document::withBuiltinPalette(4,2,U"Archive internal name");original.beginStroke({0,0},0xff123456);original.commitStroke();original.setFrameDuration(43);original.addFrame(true);original.setFrameDuration(217);original.setImportedSymmetryCenter({1.25,-2.75});original.addReferenceImage({"backup-reference",1,1,std::make_shared<const std::vector<Pixel>>(1,0x00123456)});
+   const auto encoded=project::encodeEditableProject(original);const auto backup=root/"Recovered.MOONSPRITE.BAK";writeExportBytesAtomic(backup,*encoded.bytes);const auto originalBytes=*read(backup);
+   auto unchanged=[&]{check(*read(backup)==originalBytes,"Ordinary save changed original backup bytes");};
+   auto loadBackup=[&]{seed("backup-sentinel.moonsprite");document.markSaved();openPath(backup);check(pending_==Pending::None&&documentPath_.empty()&&document.sourceFilePath().empty()&&!document.dirty()&&!document.canUndo()&&document.name()==U"Recovered.MOONSPRITE","Backup open path/name/clean history");check(document.pixels()==original.pixels()&&document.timeline().state().frames.size()==2&&document.timeline().state().frames.back().duration==217&&document.referenceImages().size()==1&&document.referenceImages()[0].pixels->at(0)==0x00123456,"Backup open lost pixels, frames or reference resource");unchanged();};
+   loadBackup();const auto openedId=document.identity();const auto tabs=projects_.size();openPath(backup);check(document.identity()==openedId&&projects_.size()==tabs,"Backup project ID did not deduplicate open");
+   const auto history=document.historySize();cancel();check(!saveProject(false)&&choices==1&&confirmations==0&&documentPath_.empty()&&document.sourceFilePath().empty()&&!document.dirty()&&document.historySize()==history,"Clean backup Save skipped chooser or mutated identity/history");unchanged();
+   // The actual Save menu and shortcut enter the same guarded target policy.
+   requestFocus();ui::KeyMessage saveKey(ui::kKeyDownMessage,ui::kKeyS,ui::kKeyCtrlModifier,0,0);check(routeShortcutMessage(&saveKey)==1&&choices==2,"Backup Ctrl+S bypassed target chooser");
+   dot(1,0xffabcdef);const auto edited=document.pixels();const auto destination=root/"backup-saved.moonsprite";choose(destination);menuItems_.at("save")->Click();finish();
+   check(pending_==Pending::None&&!document.dirty()&&documentPath_==destination&&open(destination).pixels()==edited&&open(destination).referenceImages().size()==1&&open(destination).symmetryCenter().y==-2.75,"Backup native save/reopen lost document data");unchanged();
+   const int afterSave=choices;dot(2,0xff998877);const auto latest=document.pixels();cancel();saveProject(false);finish();check(choices==afterSave&&!document.dirty()&&open(destination).pixels()==latest,"Saved backup copy still requested target chooser");unchanged();
+   // Save As preserves the first saved copy and does not return to the backup.
+   const auto copy=root/"backup-copy.moonsprite";choose(copy);saveProject(true);finish();check(documentPath_==copy&&open(copy).pixels()==latest&&open(destination).pixels()==latest,"Backup Save As identity or original copy");unchanged();
+   loadBackup();dot(2,0xff556677);const auto identity=document.identity();const auto failedPixels=document.pixels();const auto failed=root/"blocked.moonsprite";std::filesystem::create_directory(failed);choose(failed);saveProject(false);finish();check(pending_==Pending::OpenError&&document.identity()==identity&&document.dirty()&&documentPath_.empty()&&document.sourceFilePath().empty()&&document.pixels()==failedPixels&&std::filesystem::is_directory(failed),"Failed backup save changed identity/savepoint");unchanged();resolve(false);
+   choose(root/"backup-retry.moonsprite");saveProject(false);finish();check(pending_==Pending::None&&!document.dirty()&&open(documentPath_).pixels()==failedPixels,"Backup failed save retry");unchanged();
+   loadBackup();dot(3,0xff778899);const auto closeIdentity=document.identity();const auto closePixels=document.pixels();ask(Pending::CloseDocument);check(pending_==Pending::CloseDocument,"Dirty backup close omitted confirmation");cancel();saveBeforeClose_->Click();check(pending_==Pending::CloseDocument&&document.identity()==closeIdentity&&document.dirty()&&saveProjectIndex(closeIdentity).has_value(),"Canceled save-before-close discarded backup document");unchanged();
+   const auto closing=root/"backup-close.moonsprite";choose(closing);saveBeforeClose_->Click();finish();check(pending_==Pending::None&&!saveProjectIndex(closeIdentity)&&open(closing).pixels()==closePixels,"Save-before-close did not await actual backup write");unchanged();
+   // With no valid direct target, original-format preference uses the configured
+   // default; disabling it requests native directly without a redundant prompt.
+   for(bool originalFormat:{true,false})for(int preferred:{0,1,8}){
+    loadBackup();runtimePreferences_.set("files.saveOriginalFormat",originalFormat?"true":"false");runtimePreferences_.set("files.saveFormat.Select",std::to_string(preferred));
+    const auto expected=originalFormat?preferredSaveImageFormat(preferred):SaveImageFormat::Native;const auto before=confirmations;
+    chooseSaveFile_=[&](OPENFILENAMEW* chooser){++choices;check(chooser->nFilterIndex==(expected==SaveImageFormat::Png?4u:expected==SaveImageFormat::Aseprite?2u:1u),"Backup default format chooser mismatch");check(std::filesystem::path(chooser->lpstrFile).extension()==saveImageExtension(expected),"Backup initial name has wrong format suffix");return false;};
+    check(!saveProject(false)&&documentPath_.empty()&&document.sourceFilePath().empty()&&!document.dirty(),"Canceled backup preferred-format save changed state");check(originalFormat||confirmations==before,"No-target save showed redundant project confirmation");unchanged();
+   }
+   runtimePreferences_.set("files.saveOriginalFormat","true");runtimePreferences_.set("files.saveFormat.Select","0");
+   // Save As to another encoder still changes the saved identity, never backup.
+   loadBackup();const auto png=root/"backup-export.png";choose(png,4);saveProject(true);finish();check(pending_==Pending::None&&!document.dirty()&&documentPath_==png&&openRasterImage(png).pixels()==original.pixels(),"Backup PNG Save As path/pixels");unchanged();
+   for(const auto* invalid:{L"synthetic.unknown",L"synthetic.moonsprite.bak"}){loadBackup();documentPath_=root/invalid;document.setSourceFilePath(destination);cancel();const int before=choices;check(!saveProject(false)&&choices==before+1,"Invalid saved target fell back to source");check(open(destination).pixels()==latest,"Invalid saved target overwrote original source");unchanged();}
+   // GIF signature has priority over the project-backup extension. Opening it
+   // still clears both paths and uses the filename without only the final .bak.
+   seed("gif-sentinel.moonsprite");document.markSaved();const auto gifBackup=root/"Animation.moonsprite.bak";const auto gifBytes=encodeSaveImage(original,SaveImageFormat::Gif);writeExportBytesAtomic(gifBackup,gifBytes);openPath(gifBackup);
+   check(pending_==Pending::None&&documentPath_.empty()&&document.sourceFilePath().empty()&&document.name()==U"Animation.moonsprite"&&!document.dirty()&&!document.canUndo()&&document.timeline().state().frames.size()==2&&document.timeline().state().frames.back().duration==220,"GIF-signature backup identity/timing");
+   const auto gifPixels=document.pixels();choose(root/"gif-backup-saved.moonsprite");saveProject(false);finish();check(pending_==Pending::None&&!document.dirty()&&open(documentPath_).pixels()==gifPixels&&open(documentPath_).timeline().state().frames.size()==2&&*read(gifBackup)==gifBytes,"GIF backup native save/reopen mutated source");unchanged();
+   chooseSaveFile_=std::move(originalChooser);asepriteSaveDecisionForSmoke_=std::move(originalDecision);asyncSaveForSmoke_=false;
+   std::ofstream(root/"backup-result.txt")<<"Backup archive/GIF signature identity, clean history, duplicate open, clean cancel/CtrlS/menu, native/PNG SaveAs/reopen, ordinary save after copy, failure/retry, close cancel/save completion, default format matrix and invalid saved priority passed. Original backup bytes unchanged. Real editor/loader/encoder/atomic writer; chooser callback injected.\n";
+   };backupCheck();return;
+  }
   seed("older.moonsprite");recovery();const auto path=documentPath_;const auto firstPixels=document.pixels();saveProject(false);auto gate=hold();dot(1,0xffabcdef);const auto currentPixels=document.pixels();const auto history=document.historySize(),revision=document.revision();gate.reset();finish();
   check(pending_==Pending::None&&document.dirty()&&documentPath_==path&&document.sourceArchive()&&*document.sourceArchive()==*read(path),"Older native write was reported failed or lost disk baseline");
   check(document.pixels()==currentPixels&&document.historySize()==history&&document.revision()==revision&&open(path).pixels()==firstPixels,"Older native acknowledgement replaced live edits/history");
@@ -124,6 +173,6 @@ void Editor::smokeNativeSaveLifecycle(){
   seed("background-app-close.moonsprite");saveProject(false);gate=hold();closePaletteModal();auto priorClose=closeRequested;bool exited=false;closeRequested=[&]{exited=true;};requestClose();check(!exited&&documentOpen_,"Application close bypassed background worker");gate.reset();finish();check(exited&&!documentOpen_&&projects_.empty(),"Application close did not resume after background save");closeRequested=std::move(priorClose);
   chooseSaveFile_=std::move(originalChooser);asyncSaveForSmoke_=false;
   std::ofstream(root/"result.txt")<<"Native async old/exact generations, disk baseline, eight metadata families/statistics, fractional symmetry, preview race, queue/SaveAs/failure retry/recovery cleanup, complete layer-panel metadata/local override/latest queue, dismiss/edit/switch, reverse concurrent completion, inactive queue/SaveAs/failure/retry, capture dismiss, deferred tab/application close passed. Real editor state, workers and atomic files; acknowledgement gated; visual acceptance separate.\n";
- }catch(...){chooseSaveFile_=std::move(originalChooser);asyncSaveForSmoke_=false;throw;}
+ }catch(...){chooseSaveFile_=std::move(originalChooser);asepriteSaveDecisionForSmoke_=std::move(originalDecision);asyncSaveForSmoke_=false;throw;}
 }
 }

@@ -25,7 +25,7 @@ Document openRasterImage(const std::filesystem::path& path){
  }
  auto out=Document::fromImage(w,h,std::move(pixels),path.stem().u32string());out.setSourceFilePath(path);return out;
 }
-Document openGifAnimation(const std::filesystem::path& path){
+Document openGifAnimation(const std::filesystem::path& path,std::u32string name){
  std::ifstream input(path,std::ios::binary|std::ios::ate);if(!input)throw std::runtime_error("Cannot read GIF image");const auto size=input.tellg();if(size<0||std::uint64_t(size)>gif_import::workingBudget)throw std::length_error("GIF exceeds the native read budget");
  std::vector<std::uint8_t> bytes(static_cast<std::size_t>(size));input.seekg(0);if(!input.read(reinterpret_cast<char*>(bytes.data()),std::streamsize(bytes.size())))throw std::runtime_error("Incomplete GIF file");
  const auto metadata=gif_import::metadata(bytes);gif_import::validateBudget(metadata);
@@ -45,7 +45,7 @@ Document openGifAnimation(const std::filesystem::path& path){
  GUID guid{};require(CoCreateGuid(&guid));wchar_t text[40]{};if(!StringFromGUID2(guid,text,40))throw std::runtime_error("Cannot create GIF project identity");
  // A source GIF is not a MoonSprite ZIP archive. The new editable document must
  // use the normal new-project encoder when saved to the native project format.
- auto out=Document::fromImported(metadata.width,metadata.height,std::move(state),std::move(palette),"gif-native-"+std::filesystem::path(text).u8string(),path.filename().u32string(),std::make_shared<const std::vector<std::uint8_t>>());out.clearSourceArchiveForNewSnapshot();out.setImportedLoop(metadata.loop);out.setSourceFilePath(path);out.markSaved();return out;
+ auto out=Document::fromImported(metadata.width,metadata.height,std::move(state),std::move(palette),"gif-native-"+std::filesystem::path(text).u8string(),name.empty()?path.filename().u32string():std::move(name),std::make_shared<const std::vector<std::uint8_t>>());out.clearSourceArchiveForNewSnapshot();out.setImportedLoop(metadata.loop);out.setSourceFilePath(path);out.markSaved();return out;
 }
 
 }
