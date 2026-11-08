@@ -1395,7 +1395,7 @@ void Document::sprayStroke(const std::vector<SelectionPoint>& particles,BrushOpt
   return;
  }
  if(!active_)return;change_={};const auto footprint=selectionBrushFootprint(brush,angle);const auto saved=brush_;brush_=brush;brush_.opacity=100;brush_.ink=InkMode::Simple;brush_.dither=false;brush_.perfectPixels=false;
- try{for(auto particle:particles)for(auto row:footprint.spans)for(int x=particle.x-footprint.width/2+row.left;x<=particle.x-footprint.width/2+row.right;++x)for(auto q:symmetryPoints({x,particle.y-footprint.height/2+row.y},width_,height_,symmetryAxes,symmetryCenter()))plot(q.x,q.y);brush_=saved;publishChange();}catch(...){brush_=saved;cancelStroke();throw;}
+ try{for(auto particle:particles)for(auto row:footprint.spans)for(int x=particle.x-footprint.width/2+row.left;x<=particle.x-footprint.width/2+row.right;++x)for(auto q:strokeSymmetryPoints({x,particle.y-footprint.height/2+row.y}))plot(q.x,q.y);brush_=saved;publishChange();}catch(...){brush_=saved;cancelStroke();throw;}
 }
 void Document::updateStroke(Point point) {
  if(auto edit=freeTileSourceStrokeDocument()){try{edit->updateStroke(freeTileSourceStrokePoint(point,true));publishFreeTileSourceStroke();}catch(...){cancelFreeTileSourceStroke();throw;}return;}

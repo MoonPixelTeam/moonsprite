@@ -4469,3 +4469,12 @@ CTest tile-repeat通过，含此前1024旧版几何oracle及直接沿用旧版re
 运行诊断以主画布选区开始，分别X/Y/Both跨接缝，比较实际本地实例位移、裁剪mask、释放一笔历史、像素/实例/选区UndoRedo与Escape。free-selection-repeat-build.log正式Release构建0；显式等待 --tile-repeat-check进程ExitCode0。三项CTest tile-repeat/tile-repeat-stroke/free-tile-project通过12.37s，742文件来源快照覆盖通过，diff检查通过。未新增视觉/FPS验收。
 
 明确边界：副本起点的选区命中、部分源变换及其他工具尚需继续核对；不能将这条完成的拖动事务称全部平铺或整体迁移完成。保留用户文件及未跟踪数据。阶段保存推送dev。
+
+
+### 2026-11-09：平铺喷枪输入、粒子覆盖与预览（阶段完成）
+
+对照canvas-input-stroke beginAirbrush/moveAirbrush、canvas-pointer-move、canvas-input-free-tile-edit和useCanvasStrokeClock。普通与源编辑喷枪中心使用有限相邻副本的本地点，移到无效采样处保留上一中心；普通层paintBrush使用repeat mode，粒子覆盖先对称再映射；自由瓦片源只映射中心，临时源画布、粒子和足迹不环绕。原生通过beginStroke传入identity匹配的模式，普通sprayStroke复用strokeSymmetryPoints；源编辑继续复用无平铺临时Document。计时器追赶上限、变化时才发布共享源、单笔历史与取消链路保留。
+
+喷枪预览按canvas-render-airbrush使用本地中心/覆盖映射，并在各可见副本裁剪绘制。已有预览样式和源显示采样方式沿用；没有截图或逐像素预览验收，不宣称完整视觉等价。核心回归增加X/Y/Both方形粒子边缘覆盖及UndoRedo。实际鼠标诊断固定随机种子，比较普通层/自由源主画布与X/Y/Both副本的完整像素，手动执行持续喷绘批次，验证释放单笔历史、UndoRedo、Escape恢复。airbrush-repeat-build.log及airbrush-repeat-preview-build.log正式Release构建0，显式等待 --tile-repeat-check退出0。三项CTest tile-repeat/tile-repeat-stroke/free-tile-project通过12.17s。没有FPS/内存测量。
+
+其余平铺工具、选区副本命中及全量迁移仍INCOMPLETE；本阶段只验收以上喷枪路径。来源登记和快照检查继续执行，保留所有用户文件与未跟踪数据，阶段保存推送dev。

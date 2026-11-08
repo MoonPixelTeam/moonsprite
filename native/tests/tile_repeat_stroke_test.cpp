@@ -27,6 +27,8 @@ static void freeSourceRepeat(){
  begin(*d,{7,2},0xffabcdef,{},repeat::Mode::X);d->updateStroke({8,2});CHECK(d->commitStroke());for(int x=0;x<8;++x)CHECK(d->canvasPixels()[2*8+x]==0xffabcdef);
 }
 int main(){try{freeSourceRepeat();
+ for(auto mode:{repeat::Mode::X,repeat::Mode::Y,repeat::Mode::Both}){Document d(8,6);BrushOptions b;b.size=3;b.shape=BrushShape::Square;d.beginStroke({0,0},0xffabcdef,{},nullptr,0,nullptr,false,false,false,mode);d.sprayStroke({{0,0}},b,0);CHECK(d.commitStroke());const auto painted=d.canvasPixels();CHECK(painted[0]);CHECK(bool(painted[7])==repeat::includesX(mode));CHECK(bool(painted[5*8])==repeat::includesY(mode));d.undo();CHECK(!d.canvasPixels()[0]);d.redo();CHECK(d.canvasPixels()==painted);}
+
  for(auto mode:{repeat::Mode::X,repeat::Mode::Y,repeat::Mode::Both})for(bool perfect:{false,true}){
   Document d(8,6);BrushOptions b;b.perfectPixels=perfect;b.opacity=50;
   const bool x=repeat::includesX(mode);begin(d,x?Point{7,2}:Point{2,5},0xff123456,b,mode);d.updateStroke(x?Point{9,2}:Point{2,7});CHECK(d.commitStroke());CHECK(d.historySize()==1);
