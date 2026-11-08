@@ -4566,3 +4566,10 @@ X/Y/Both合成/当前层及左右键实际诊断验证100次preview请求不发�
 核对canvas-input-text begin/move/end、pointer-down/move和useCanvasViewportGeometry：初始命中使用有限副本本地点，创建/变换拖动在有效副本内使用本地点，离开副本回退连续文档坐标。原生文字入口统一该映射，选中文字框的Skin selectionMaterialBounds/selectionContains与resize handle使用相应本地显示物理指针，保留既有文字事务与链接源处理。未引入新的边框素材或通用矩形命中替代。
 
 正式Release构建成功，显式等待 --tile-repeat-check退出0。X/Y/Both主画布/副本、链接文字框移动/尺寸调整，比较完整像素及宽度，验证一笔提交、UndoRedo和Escape；新增框验证本地几何与取消。首轮固定缩放2使右副本新建点离开视口，诊断改用整数缩放1后通过，生产缩放不变。三项CTest text-document/tile-repeat/tile-repeat-stroke通过0.56s。742文件来源快照及diff检查通过。文字编辑弹窗新建确认、Alt复制、离开副本连续回退及选中素材逐像素alpha命中一致性尚未新增专门验收，本阶段不宣称完整文字平铺迁移/视觉等价；全量迁移仍INCOMPLETE。保留用户数据及未跟踪文件，阶段保存推送dev。
+
+
+### 2026-11-09：文字平铺边框alpha/命中与越界回退（阶段完成）
+
+追补上一阶段用户要求的选中素材一致性验收。发现副本已能命中却没有绘制文字框边框；现在paintTextBox对所有相邻副本复用Skin::drawSelectionBorder，创建预览及已选文字框共用路径。逐像素检查进一步发现奇数物理起点经绘制uiLogical取整后与命中起点错1px，已让文字框绘制、输入边框及光标helper统一uiPhysical(uiLogical(border))，仍使用selectionMaterialBounds/selectionContains，不以矩形中心作为边框命中。
+
+正式Release构建成功，--tile-repeat-check显式等待退出0。实际paintTextBox透明表面逐像素alpha比较覆盖X/Y/Both全部相邻副本、透明中心及边框外1px；既有移动/尺寸回归继续通过。新增拖出相邻副本的连续原始坐标回退及Escape恢复断言通过。三项CTest text-document/tile-repeat/tile-repeat-stroke通过0.22s；742文件来源登记快照和diff检查通过。旋转/镜像、分数缩放下素材alpha/hit尚未新增矩阵验证，文字弹窗创建确认及Alt复制仍未在平铺下完成，整体迁移INCOMPLETE。无FPS测量，保留用户数据、缓存和未跟踪文件，阶段保存推送dev。
