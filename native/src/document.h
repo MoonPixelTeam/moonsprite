@@ -88,6 +88,7 @@ private:
 
   friend class DocumentSnapshot;
   friend class SheetImportTask;
+  friend class ImageResizeTask;
   friend struct RasterHistoryFixture;
 public:
   const timelapse::Settings& timelapseSettings()const{return timelapseSettings_;}

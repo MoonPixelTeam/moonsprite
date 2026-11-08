@@ -4287,3 +4287,15 @@ make-tile-image-fixtures.cjs执行未改写旧版生产函数生成48组对照�
 最终验收：resample-performance-build.log正式Release及四个定向目标构建退出0。resample-performance-core-tests.log四项全通过（image-resize、tile-image-resize、large-resize、mask-resize，5.61s）；包含实际旧版48组自由瓦片oracle、源/输出重开、网格同步、runtime共享和Undo/Redo既有套件。resample-performance-legacy.log旧版document/free-tile两文件33项通过。正式exe新进程PID51684 --image-resize-check退出0，两类资源原生弹窗取消/提交及历史链路通过；本轮未修改UI布局，未新增人工视觉验收，不把自动窗口诊断当成完整交互FPS测试。
 
 构建完成后的resample-performance-kernel-final.log：1024×768→1537×1153每种三次平均，普通nearest9.013→2.934ms（3.07×）、普通smooth44.116→24.472ms（1.80×）、free nearest7.605→2.733ms（2.78×）、free smooth227.532→38.888ms（5.85×）。这些是分配输出及重采样内核实测，不能换算成全应用FPS或消除全部卡顿。精确9600+16组像素对照与既有文档历史检查通过。来源覆盖708文件/证据快照通过；strict退出1符合已知全量迁移缺口；git diff --check通过。保留所有既有未跟踪用户数据/构建文件，仅提交本阶段五个文件并推送dev，不发布生成物。
+
+### 2026-11-08：图像大小后台任务完整链路（验收中）
+
+承接上一轮采样内核优化，实际legacy resizeActiveImage/default参数/快照历史及free-tile source语义不变。复用原生SheetImportTask/RasterSnapshot模式新增ImageResizeTask：快照按2ms/1MiB UI tick采集，选区同样分段复制，worker只持独立timeline、选区与最小Document并运行既有resizeImage；取消按采样行/源瓦片边界检查，销毁不join。身份、revision/content、活动层/帧及选区几何/缓冲区身份变化拒绝提交；选区检查不在UI tick逐像素扫描。源数据256MiB快照准入先于采集；既有完整目标工作集预算在worker事务内执行。完成时转移worker产生的单笔Edit并使用live历史身份及live时间轴上下文。
+
+实际原生应用“应用”启动timer，参数和重复提交冻结，取消/标题关闭保持可用并保留原文档，后台计算不占UI消息循环。旧同步核心入口继续供算法与工程测试复用。新增确定性队列/真实线程测试覆盖普通/网格/自由瓦片/蒙版、选区、取消各阶段、stale/销毁/dispatch失败、超限无变更与Undo/Redo；实际窗口诊断挂起真实提交任务、泵消息、移动/调整窗口并绘制，再取消和执行旧任务验证无污染。正在构建验收，不能称阶段已通过。
+
+边界：快照构造仍复制时间轴、网格/实例等非像素元数据；提交复用同步applyEdit和历史存储，仍有表面复制/校验的耗时。取消不打断单次分配、元数据验证或渲染内部；不承诺所有主线程停顿消失。所有迁移仍INCOMPLETE。没有复制Aseprite EULA命令实现，沿用上一阶段只读架构对照。用户数据和所有既有未跟踪文件保留。
+
+最终验收（2026-11-09）：image-resize-async-build.log唯一正式Release及定向目标构建退出0；测试夹具首次因缺少fromImported必需归档句柄失败，修正为空但非null归档后image-resize-async-core-rebuild.log和image-resize-async-core.log通过。image-resize-async-tests.log三项image-resize-task/image-resize/tile-image-resize全部通过（4.64s）；覆盖新异步生命周期、9600+16组采样对照和既有实际legacy资源/重开套件。正式新进程PID38324 --image-resize-check退出0，image-resize-async-ui.log记录；实际挂起提交worker时泵窗口消息、移动/调整尺寸/重绘、取消后执行被放弃job不改变文档，后续普通/网格/自由瓦片实际提交、资源身份和Undo/Redo通过。
+
+已实际查看正式image-resize-busy.bmp：默认2×弹窗参数/比例/方法冻结，取消和关闭保留，底栏显示正在调整；窗口尺寸改变后弹窗和操作按钮可见无重叠。截图范围仅该忙碌态，不代表所有倍率和大工程最终安装阶段FPS验收。来源711文件及证据快照通过；strict仍按全局已知缺口退出1；git diff --check通过。保留既有未跟踪数据，提交本阶段13个源码/测试/来源及记录文件并推送dev；全量迁移仍INCOMPLETE。

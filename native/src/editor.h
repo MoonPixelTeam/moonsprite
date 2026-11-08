@@ -64,7 +64,7 @@
 #include "menu_catalog.h"
 #include "project_encode.h"
 #include "cel_thumbnail_pipeline.h"
-namespace moon {class HomeBannerPane;class PixelTextArea;class LegacyCursors;class FreeTileInstancesPanel;class SheetImportTask;}
+namespace moon {class HomeBannerPane;class PixelTextArea;class LegacyCursors;class FreeTileInstancesPanel;class SheetImportTask;class ImageResizeTask;}
 
 namespace moon::home {struct Banner;}
 namespace moon::editor {
@@ -358,6 +358,9 @@ private:
 
   PixelEntry* exportScaleInput_=nullptr;PixelButton *exportTrimButton_=nullptr,*exportSelectionButton_=nullptr,*exportLayerButton_=nullptr;StaticImageExportOptions exportOptions_;
 
+  std::shared_ptr<ImageResizeTask> imageResizeTask_;ui::Timer imageResizeTimer_{16,this};
+  std::function<void(std::function<void()>)> imageResizeExecutor_;
+  void beginImageResize();void tickImageResize();void waitImageResizeForSmoke();void setImageResizeBusyControls();
   std::array<PixelEntry*,4> resizeInputs_{};
 
   PixelButton *resizeLock_=nullptr,*resizeMethod_=nullptr;
