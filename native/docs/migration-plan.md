@@ -3933,3 +3933,10 @@ case19发现通用16位PNG的WIC8位转换与旧image取整差1：对16Gray／48
 验证：home-recovery-final-build.log唯一正式Release、editor-recovery/recovery-display/recent-preview目标退出0；home-recovery-final-core-tests.log包含八个真实并发写同一ID、来源复用/抑制及既有稀疏资源回归退出0；home-recovery-display-tests.log539组时间/天数退出0，home-recovery-final-preview-tests.log121真实浏览器矩阵及缓存/队列退出0。home-recovery-final-ui-tests.log的--home-recovery-check、--recent-projects-check、--gallery-check、--home-sections-check、--home-banner-check全部退出0；恢复检查覆盖损坏读取、实际预览上传/打开、原ID自动保存、Windows真实锁定删除失败/重试、丢弃保持活文档且不复活、成功保存清理、关闭保留来源、10000条虚拟记录控件池少于128。home-recovery-scroll-build.log补充单文件正式构建退出0，-scroll-ui-tests.log真实滚动条按下/拖动/释放退出0；不是创建/解码一万个工程。额外--panel-scroll-check在调色盘Space pan not captured失败，未到恢复列表，不宣称该检查通过；保留native-panel-scroll-error.txt诊断。首次编译期间继续修改共享头造成ABI布局不一致，首次UI访问异常；稳定源码完整重编译后通过，不能使用首次产物。随后并发测试缺project_encode.h导致测试构建失败，补包含后最终全目标通过。
 
 默认2倍home-recovery-smoke.bmp已查看，四行文字、预览和删除按钮无重叠。无1倍实机/人工长期交互或整体帧率验收；来源659文件覆盖通过，strict按既有全量缺口退出1，diff通过。本批只删除测试自建owned恢复文件，没有清理用户数据。全量迁移仍INCOMPLETE。
+### 调色盘与时间轴面板平移闭环（2026-11-08）
+
+接续aeb6a7f6，对照实际useSpaceDragScroll.ts/test.ts及PalettePanel的滚动入口。原生调色盘适配此前固定横向位置/上限为0，并用旧色块公式估算纵向范围，未承接自定义网格的横向溢出。现读取既有PixelScrollBar配置后的内容尺寸和实际视口，两轴位置统一交给已有SpaceDragScroll，保留位置未变立即返回、只更新调色盘布局及内容失效区域。拖动仍沿旧版缓存最大范围，已有onResize在布局后刷新缓存；没有为每个移动事件重新计算全部滚动几何。核对本地Aseprite的MIT许可ui/scroll_bar.h::size、ui/view.cpp::setScrollableSize/onSetViewScroll，沿用既有滚动条/视口范围和无变化早返回，没有复制新模块或新增依赖。
+
+修复此前失败检查的真实前提：--panel-scroll-check原来未挂入桌面，Aseprite Widget::isVisible要求完整可见父级链及manager，因而即便内容高1068而视口仅204，仍报告滚动条不可见。测试现先挂载可见桌面，明确使用内置32色色板、自适应模式与已打开栏目；手动32列网格验证横向溢出。另将停靠测试陈旧的合并后7组断言改为columnCount-1，并为失败断言报告行号；没有改变产品栏目数量。
+
+验证：初次panel-pan-build.log构建退出0，但面板与停靠检查退出1；panel-pan-final-build.log构建退出0，停靠修正通过，面板诊断确认未挂载导致visibility为0。最终panel-pan-mounted-build.log唯一正式Release及panel-docking-tests构建退出0；panel-pan-ui-tests.log的--panel-scroll-check、--palette-manual-check、panel-docking-tests均退出0。实际编辑器消息覆盖时间轴中键双轴像素偏移、调色盘Space左键纵向、松Space继续拖动、自定义网格中键横向/极限钳制、拖动中窗口resize后边界更新、失焦释放保留偏移、无溢出不捕获，以及revision/撤销位置不变；纯状态机1000次move不重复测量的原有回归继续通过。来源659文件覆盖通过，strict因既有全量迁移缺口仍退出1。未改变视觉布局，未做新截图、人工长期拖动或整体FPS/吞吐测量；结论限于面板平移范围和输入生命周期，不声称全部性能问题已解决。用户文件/缓存/恢复数据未清理，全量迁移仍INCOMPLETE。

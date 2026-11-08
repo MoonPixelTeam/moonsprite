@@ -181,7 +181,7 @@ int app_main(int argc,char* argv[]) {
 
     if(argc>1 && std::string(argv[1])=="--preferences-check") {try{editor->smokePreferences(std::filesystem::u8path(argv[0]).parent_path());}catch(const std::exception& e){std::ofstream("native-preferences-error.txt")<<e.what();delete editor;desktop.editor=nullptr;return 1;}delete editor;desktop.editor=nullptr;return 0;}
 
-    if(argc>1 && std::string(argv[1])=="--panel-scroll-check") {try{editor->smokePanelScroll();}catch(const std::exception& e){std::ofstream("native-panel-scroll-error.txt")<<e.what();delete editor;desktop.editor=nullptr;return 1;}delete editor;desktop.editor=nullptr;return 0;}
+    if(argc>1 && std::string(argv[1])=="--panel-scroll-check") {desktop.addChild(editor);desktop.setBounds(manager.bounds());desktop.openWindow();try{editor->smokePanelScroll();}catch(const std::exception& e){std::ofstream("native-panel-scroll-error.txt")<<e.what();delete editor;desktop.editor=nullptr;return 1;}delete editor;desktop.editor=nullptr;return 0;}
 
     if(argc>1 && std::string(argv[1])=="--brush-preview-check") {try{editor->smokeBrushPreview();}catch(const std::exception& e){std::ofstream("native-brush-preview-error.txt")<<e.what();delete editor;desktop.editor=nullptr;return 1;}delete editor;desktop.editor=nullptr;return 0;}
 

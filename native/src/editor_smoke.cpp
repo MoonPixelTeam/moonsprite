@@ -3964,11 +3964,26 @@ void Editor::smokePanelScroll(){
 
     if(panelScrollDrag_.active() || document.historySize()!=history || document.timelineSelection().layers!=selection.layers)throw std::runtime_error("Panel pan changed selection/history");
 
-    dockColumn(0,panels::Dock::Floating);auto& group=docking_.groups[docking_.groupOf(0)];group.floating={220,100,100,130};group.floatingArea=floatingArea(uiLogical(bounds()));swatchSize_=4;refresh();paletteScrollPixels_=0;layoutPalette(0);at=paletteViewportBounds().center();panelScrollSpace_=true;
+    document=Document::withBuiltinPalette();paletteManual_=false;palettePanelOpen_=true;dockColumn(0,panels::Dock::Floating);auto& group=docking_.groups[docking_.groupOf(0)];group.floating={220,100,100,130};group.floatingArea=floatingArea(uiLogical(bounds()));swatchSize_=4;refresh();paletteScrollPixels_=0;layoutPalette(0);at=paletteViewportBounds().center();panelScrollSpace_=true;
 
-    if(!send(ui::kMouseDownMessage,at,ui::kButtonLeft))throw std::runtime_error("Palette Space pan not captured");enableFlags(ui::HAS_CAPTURE);panelScrollSpace_=false;
+    if(!send(ui::kMouseDownMessage,at,ui::kButtonLeft))throw std::runtime_error("Palette Space pan not captured: viewport="+std::to_string(paletteViewportBounds().w)+"x"+std::to_string(paletteViewportBounds().h)+", vertical="+std::to_string(paletteScrollBar_->isVisible())+", total="+std::to_string(paletteScrollBar_->size())+", capture="+std::to_string(hasCapture())+", floating="+std::to_string(topFloatingColumnAt(at)));enableFlags(ui::HAS_CAPTURE);panelScrollSpace_=false;
 
     send(ui::kMouseMoveMessage,at-gfx::Point(0,31),ui::kButtonLeft);if(paletteScrollPixels_!=31)throw std::runtime_error("Palette pan interrupted on Space release");send(ui::kMouseUpMessage,at,ui::kButtonLeft);disableFlags(ui::HAS_CAPTURE);
+
+    // A manual grid retains occupied columns beyond a narrow viewport.
+    std::vector<Pixel> colors;for(const auto& entry:document.palette().entries)colors.push_back(entry.color);document.applyStoredPalette(colors,32);paletteManual_=true;refresh();paletteScrollXPixels_=paletteScrollPixels_=0;layoutPalette(0);at=paletteViewportBounds().center();
+    if(!paletteHorizontalBar_->isVisible()||!send(ui::kMouseDownMessage,at,ui::kButtonMiddle))throw std::runtime_error("Manual palette horizontal pan unavailable");enableFlags(ui::HAS_CAPTURE);const auto revision=document.revision(),position=document.historyPosition();send(ui::kMouseMoveMessage,at-gfx::Point(37,0),ui::kButtonMiddle);if(paletteScrollXPixels_!=37)throw std::runtime_error("Manual palette pan horizontal offset");send(ui::kMouseMoveMessage,at-gfx::Point(100000,100000),ui::kButtonMiddle);if(paletteScrollXPixels_!=paletteHorizontalBar_->size()-paletteViewportBounds().w||paletteScrollPixels_!=0)throw std::runtime_error("Manual palette pan limits disagree with scrollbar");send(ui::kMouseUpMessage,at,ui::kButtonMiddle);disableFlags(ui::HAS_CAPTURE);if(document.revision()!=revision||document.historyPosition()!=position)throw std::runtime_error("Palette pan modified document");
+    // Resize during capture refreshes cached limits, as legacy ResizeObserver does.
+    paletteScrollXPixels_=0;layoutPalette(0);at=paletteViewportBounds().center();
+    if(!send(ui::kMouseDownMessage,at,ui::kButtonMiddle))throw std::runtime_error("Palette resize pan not captured");enableFlags(ui::HAS_CAPTURE);
+    ui::ResizeEvent resize(this,gfx::Rect(0,0,1100,740));onResize(resize);
+    send(ui::kMouseMoveMessage,at-gfx::Point(100000,0),ui::kButtonMiddle);
+    if(paletteScrollXPixels_!=paletteHorizontalBar_->size()-paletteViewportBounds().w)throw std::runtime_error("Palette resize pan stale limit");
+    const int retained=paletteScrollXPixels_;ui::Message blur(ui::kFocusLeaveMessage);processScrollDrag(&blur);disableFlags(ui::HAS_CAPTURE);
+    if(panelScrollDrag_.active()||paletteScrollXPixels_!=retained||panelScrollSpace_)throw std::runtime_error("Palette blur did not retain offset and release drag");
+    document=Document();paletteManual_=false;refresh();at=paletteViewportBounds().center();
+    if(send(ui::kMouseDownMessage,at,ui::kButtonMiddle)||panelScrollDrag_.active())throw std::runtime_error("Nonoverflow palette captured pan");
+
 
   }
 

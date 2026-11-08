@@ -4,7 +4,8 @@
 #include <stdexcept>
 #include <iostream>
 using namespace moon::panels;
-static void check(bool value){if(!value)throw std::runtime_error("Panel docking regression");}
+static void checkAt(bool value,int line){if(!value)throw std::runtime_error("Panel docking regression at line "+std::to_string(line));}
+#define check(...) checkAt((__VA_ARGS__),__LINE__)
 int main(){
  try{
   // Exact legacy useSpaceDragScroll.test.ts inputs and expected results.
@@ -30,7 +31,7 @@ int main(){
   responsive.resizeFloating({0,0,1000,600},{0,0,180,90});responsive.resizeFloating({0,0,180,90},{0,0,1000,600});check(responsive.groups[responsive.groupOf(0)].floating==Rect{0,0,200,100});
   Model m;Visibility visible{true,true,true,true};Rect area{20,38,820,429};
   auto initial=m.layout(area,visible);check(initial.panel[0].x==20&&initial.panel[2].y+initial.panel[2].h==467);
-  m.place(1,Dock::Left,m.groupOf(0),true,true);check(m.groups.size()==7&&m.groupOf(0)==m.groupOf(1));check(!m.shown(0,visible)&&m.shown(1,visible));
+  m.place(1,Dock::Left,m.groupOf(0),true,true);check(m.groups.size()==columnCount-1&&m.groupOf(0)==m.groupOf(1));check(!m.shown(0,visible)&&m.shown(1,visible));
   auto grouped=m.layout(area,visible);check(grouped.panel[0]==grouped.panel[1]);m.select(0);check(m.shown(0,visible)&&!m.shown(1,visible));
   visible[0]=false;check(m.shown(1,visible));visible[0]=true;
   m.place(1,Dock::Right);check(m.groupOf(0)!=m.groupOf(1));check(m.layout(area,visible).canvas.w<grouped.canvas.w);

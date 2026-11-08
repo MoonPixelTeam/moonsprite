@@ -93,11 +93,11 @@ Editor::Editor(const PixelFont& font,Skin& skin,std::filesystem::path assets,std
 
     registerScrollDrag([this]{return columnShown(0)?paletteViewportBounds():gfx::Rect();},{
 
-      [this]{return SpaceDragScroll::Position{0,paletteScrollPixels_};},
+      [this]{return SpaceDragScroll::Position{paletteScrollXPixels_,paletteScrollPixels_};},
 
-      [this]{const int step=swatchPixels_[swatchSize_]/uiScale-1,padding=1+uiGap;const int height=(2*padding+((int(swatches_.size())+1+paletteColumns_-1)/paletteColumns_)*step+1)*uiScale;return SpaceDragScroll::Position{0,std::max(0,height-paletteViewportBounds().h)};},
+      [this]{const auto viewport=paletteViewportBounds();return SpaceDragScroll::Position{paletteHorizontalBar_&&paletteHorizontalBar_->isVisible()?std::max(0,paletteHorizontalBar_->size()-viewport.w):0,paletteScrollBar_&&paletteScrollBar_->isVisible()?std::max(0,paletteScrollBar_->size()-viewport.h):0};},
 
-      [this](SpaceDragScroll::Position p){if(paletteScrollPixels_==p.y)return;paletteScrollPixels_=p.y;layoutPalette(0);invalidateRect(paletteContentBounds());}});
+      [this](SpaceDragScroll::Position p){if(paletteScrollXPixels_==p.x&&paletteScrollPixels_==p.y)return;paletteScrollXPixels_=p.x;paletteScrollPixels_=p.y;layoutPalette(0);invalidateRect(paletteContentBounds());}});
 
     registerScrollDrag([this]{return columnShown(2)?timelineRowViewport():gfx::Rect();},{
 
