@@ -574,6 +574,21 @@ menuCommands_.bind("openProjectInfo",{[this]{showProjectInformation(projectInfor
 menuCommands_.bind("openLatestRelease",{[this]{showLatestRelease(0,releaseNotesVerify_);},[this]{return pending_==Pending::None;},{}});
 menuCommands_.bind("openAbout",{[this]{showAbout();},[this]{return pending_==Pending::None;},{}});
 menuCommands_.bind("pasteAsNewDocument",{[this]{pasteAsNewDocument();},[this]{return pending_==Pending::None;},{}});
+// Explicit paste targets bypass palette/frame routing while preserving the
+// clipboard service's external-image versus structured-layer precedence.
+menuCommands_.bind("pasteToCurrentCell",{[this]{
+ const bool palette=paletteFocused_,frames=frameSelectionExplicit_;paletteFocused_=false;frameSelectionExplicit_=false;
+ try{const auto payload=pixelClipboard_.read();if(!payload&&layerClipboardSnapshot_)document.pasteLayerClipboard(*layerClipboardSnapshot_);else pasteSelectionPixels();}catch(...){paletteFocused_=palette;frameSelectionExplicit_=frames;throw;}
+ paletteFocused_=palette;frameSelectionExplicit_=frames;refresh();
+},[this]{return !historyGestureBusy()&&(document.layer().kind.empty()||document.layer().kind=="free-tile"||!document.activeMaskId().empty());},{}});
+menuCommands_.bind("pasteAsNewLayer",{[this]{
+ const auto system=pixelClipboard_.readSystemSelection();
+ if(layerClipboardSnapshot_&&pixelClipboard_.preferStructuredCopy(system)){document.pasteLayerClipboard(*layerClipboardSnapshot_);virtualSlots_.clear();virtualAnchor_.reset();refresh();return;}
+ const auto payload=pixelClipboard_.read();if(!payload){if(layerClipboardSnapshot_)document.pasteLayerClipboard(*layerClipboardSnapshot_);else status_=U"剪贴板没有可粘贴内容";refresh();return;}
+ const auto viewport=canvasViewport();const double scale=canvasScale();
+ const auto placement=PixelClipboard::resolvePlacement(*payload,document.width(),document.height(),int(std::floor((viewport.x-canvas_.x)/scale)),int(std::floor((viewport.y-canvas_.y)/scale)),int(std::ceil((viewport.x2()-canvas_.x)/scale)),int(std::ceil((viewport.y2()-canvas_.y)/scale)));
+ if(document.pastePixelsAsNewLayer(*payload,placement,selectionPivot_)){playing_=false;liquifyTool_=smoothTool_=airbrushTool_=textTool_=moveTool_=shapeTool_=gradientTool_=fillTool_=eraser_=eyedropperTool_=handTool_=false;navigation_.zoomTool_=false;selectionTool_=true;selectionKind_=selectionMode_=0;selectionPropertiesActive_=selectionFreeTransform_=false;selectionPivot_.reset();selectionPivotMask_.reset();selectedMaskSlots_.clear();virtualSlots_.clear();virtualAnchor_.reset();frameSelectionExplicit_=false;paletteFocused_=false;status_=U"已粘贴为新图层。";}refresh();
+},[this]{return !historyGestureBusy();},{}});
 menuCommands_.bind("paste",{[this]{pasteEditorClipboard();},[this]{if(!paletteFocused_&&!document.selection()&&document.hasMaskClipboard()&&(!selectedMaskSlots_.empty()||celClipboardContext()))return true;if(mixedPixelPasteContext())return true;if(!paletteFocused_&&document.layer().kind=="free-tile"&&document.layer().freeTiles&&document.freeTileCel().freeTiles&&document.activeMaskId().empty()&&!document.layerEffectivelyLocked(document.layer())&&!document.active()&&!frameSelectionExplicit_)return true;if(document.hasTilemapContent()&&!paletteFocused_)return document.activeMaskId().empty()&&(layerClipboardSnapshot_||(celClipboardContext()?!document.active()&&!document.selection()&&hasApplicationCelClipboard()&&!applicationCelSelectionOnly():frameSelectionExplicit_&&hasApplicationFrameClipboard()));return bool(layerClipboardSnapshot_)||paletteFocused_||(celClipboardContext()?hasApplicationCelClipboard()&&(applicationCelSelectionOnly()||!document.selection()):frameSelectionExplicit_?hasApplicationFrameClipboard():pixelClipboardContext());},{}});
 
 // Existing item(...) helper owns pending/dialog checks and cancelStroke.

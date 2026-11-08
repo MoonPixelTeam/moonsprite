@@ -14,7 +14,7 @@ namespace moon::preferences {
 inline bool runtimeSetting(const std::string& key) {
   if(key.rfind("quickCommands.",0)==0)return key!="quickCommands.bars.json"&&key!="quickCommands.restore"&&key.find(".collapse")==std::string::npos;
   static const std::vector<std::string> keys{
-    "general.timelapseRecordingEnabled", "general.diagnostics.mode", "general.preferences.usageStatisticsEnabled", "appearance.pixelGridColor", "appearance.gridColor", "editing.brushSizeWheelReversed", "editing.canvasViewScrollbarsEnabled",
+    "general.timelapseRecordingEnabled", "general.diagnostics.mode", "general.preferences.usageStatisticsEnabled", "appearance.pixelGridColor", "appearance.gridColor", "editing.pasteTarget.Select", "editing.brushSizeWheelReversed", "editing.canvasViewScrollbarsEnabled",
     "editing.wheelZoomEnabled", "editing.wheelZoomMode.Select",
     "editing.rotationIndicatorPosition.Select", "editing.viewDragSensitivity.Select", "tools.gradientApplicationMode.Select",
     "tools.moveLayerContentPreviewEnabled", "tools.moveLayerClickFlashEnabled", "tools.moveLayerClickFlashDuration.Select", "tablet.assistPanel", "tablet.tablet.pressureEnabled", "tools.gridAlignmentEnabled", "tools.smartAlignmentEnabled", "tools.alignmentGuidesVisible", "tools.alignmentThreshold.Number", "tools.shiftLinePreviewEnabled", "tools.balancedShiftLineEnabled", "tools.lineDirectionStep.Number", "tools.lassoPreviewClosed",

@@ -433,6 +433,7 @@ public:
   struct LayerClipboardSnapshot {std::vector<timeline::MaskSlot> masks;std::vector<DocumentLayer> layers;std::vector<timeline::Group> groups;std::vector<DocumentFrame> frames;std::vector<DocumentCel> cels;std::vector<std::string> collapsed;std::uint64_t sourceIdentity=0;std::vector<tiles::Tileset> tilesets;};
   std::optional<LayerClipboardSnapshot> copyLayerClipboard();
   bool pasteLayerClipboard(const LayerClipboardSnapshot&);
+  bool pastePixelsAsNewLayer(const SelectionClipboard&,Point,std::optional<TransformPoint> pivot={});
   bool canToggleClippingMask()const;bool toggleClippingMask();bool activeClippingMask()const;
   void setGroupVisible(const std::string&,bool);void setGroupLocked(const std::string&,bool);
   void clearTimelineSelection(){timelineSelection_={};selectedGroupIds_.clear();selectedGroupId_.reset();clearFrameSelection();}

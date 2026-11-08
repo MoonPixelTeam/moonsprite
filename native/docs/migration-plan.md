@@ -4347,3 +4347,14 @@ make-quick-command-fixtures.cjs执行旧文件未改写的独立配置段（仅�
 验收：quick-command-tooltip-build.log与quick-command-tooltip-final-build.log正式唯一Release构建0。quick-command-preferences/editor-preferences/shortcuts三项通过1.10s；正式正常显示进程PID41176 --quick-command-check退出0，实际TooltipManager内容覆盖自定义Ctrl+MouseBack中文显示、首项而非第二F8、显式清空、默认恢复和既有排序/捕获/后台识别撤销取消回归。来源覆盖727文件和证据快照通过。未捕获真实hover弹出窗口截图，不把字符串检查称为字体/布局视觉验收。
 
 本轮定向核对平铺发现它同时影响跨边界绘制、选区提交、瓦片命中和合成缓存；不能只绘制副本就标完整。平铺完整链路、outline/quickOutline、特殊粘贴、多窗格等仍INCOMPLETE，目标保持active。所有原有未跟踪用户数据和缓存保留；本提示链路阶段单独提交推送dev。
+
+
+### 2026-11-09：特殊粘贴原生事务与入口
+
+实际读取workspace-commands-clipboard.ts pasteSelection/pasteAsNewLayer/pasteClipboard、workspace.test.ts新层置于活动层上方和粘贴后立即变换用例、AppMenuBar/QuickCommandBar入口。新增pastePixelsAsNewLayer复用现有GroupEdit结构事务：原生top-first顺序插在活动层前，继承group，保留剪贴板尺寸/偏移及画布外像素，mask非1像素清零，其他帧使用1px空表面，选中新层与矩形选区并进入选择工具。单笔历史恢复层、帧/组选择、像素选区和枢轴、附加蒙版编辑上下文；256MiB工作集在修改前准入。新层不使用新建层+普通粘贴多笔历史组合。
+
+显式当前单元格命令绕过色板/帧剪贴板路由，复用既有浮动粘贴/自由瓦片像素路径，无像素时回退整层剪贴板。新层命令复用结构剪贴板外部图像baseline优先级，保留内部层/组/资源迁移。菜单、快捷栏和既有Ctrl+Shift+V目录自动接通；默认粘贴目标偏好新增实际consumer与存储启用，普通粘贴按0/1/2分流当前单元格/新层/新项目，色板scope沿用原生既有路由。没有引入新UI或新图标。
+
+验收：首轮special-paste-ui-build.log链接失败LNK2001，原因构建时新枢轴接口与旧核心对象不一致；未运行该产物。冻结接口后special-paste-final-build.log正式Release与核心/偏好目标构建0。document-layer-groups/editor-preferences/quick-command-preferences三项通过0.43s，包含新增组继承/上方插入/画布外像素/mask/其他帧空白/单笔UndoRedo/枢轴/非法payload不变更与偏好存储往返。正式正常显示--quick-command-check PID2996退出0，实际菜单Click验证色板和帧选择状态下特殊粘贴、新层一笔历史、当前格浮动目标、内部整层优先、更新外部像素优先以及默认目标new-layer。既有排序/快捷键提示/后台检测撤销取消诊断一并通过。没有新增布局，未新增截图验收，不把此次运行称为全部剪贴板/全软件FPS验收。
+
+边界：索引/灰度色彩模式全局仍未迁移；默认new-project分支复用现有独立新项目入口，未另测该偏好组合；完整变换后双重Undo、全部自由瓦片/蒙版特殊粘贴组合仍需扩大验收。平铺、描边、多窗格等继续INCOMPLETE，目标active。来源727文件与证据快照通过，strict按已知全量缺口失败。保留所有既有未跟踪文件和用户数据，只提交本阶段文件并推送dev。
