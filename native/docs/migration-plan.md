@@ -4586,4 +4586,4 @@ X/Y/Both合成/当前层及左右键实际诊断验证100次preview请求不发�
 
 对照canvas-input-text endTextCreation：点击按起点创建自由文字，拖动以previewTarget位置/尺寸创建文字框；实际释放打开文字弹窗。新增仅smoke模式的局部环境选择器，复用editText现有TextToolDialog编辑/确认控件，不改变产品确认逻辑。诊断作用域恢复环境值。
 
-正式Release构建成功，--tile-repeat-check显式等待进程退出0。X/Y/Both×自由/框×确认/取消×主画布/副本共48个真实弹窗场景，验证位置、尺寸、一次新增层/历史、完整像素一致、UndoRedo、取消恢复层数/像素及无草稿/捕获残留。每个弹窗同时执行既有完整文本编辑回归，因此整次运行耗时数分钟，持续产物更新后正常完成；没有因观察超时重启。三项CTest text-document/tile-repeat/tile-repeat-stroke通过0.21s，742文件来源快照与diff检查通过。生产路径未发现新缺陷，不将本次验收称为性能提升。文字旋转/镜像/分数缩放素材矩阵及全量迁移仍INCOMPLETE。保留用户数据、缓存及未跟踪文件，阶段保存推送dev。
+正式Release构建成功，--tile-repeat-check显式等待进程退出0。X/Y/Both×自由/框×确认/取消×主画布/副本共24个真实弹窗场景，验证位置、尺寸、一次新增层/历史、完整像素一致、UndoRedo、取消恢复层数/像素及无草稿/捕获残留。每个弹窗同时执行既有完整文本编辑回归，因此整次运行耗时数分钟，持续产物更新后正常完成；没有因观察超时重启。三项CTest text-document/tile-repeat/tile-repeat-stroke通过0.21s，742文件来源快照与diff检查通过。生产路径未发现新缺陷，不将本次验收称为性能提升。文字旋转/镜像/分数缩放素材矩阵及全量迁移仍INCOMPLETE。保留用户数据、缓存及未跟踪文件，阶段保存推送dev。
