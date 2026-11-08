@@ -4000,7 +4000,7 @@ recovery-commit-build.log正式程序构建成功、测试因直接编译store�
 来源661文件覆盖通过，strict因其余全量缺口仍退出1；差异检查通过。本批没有UI布局变更、截图或人工长时间交互验收，亦不声称全部文件/恢复或迁移完成。所有上述日志前缀均为native/build/native-save-generation-，旧版队列日志为native/build/native-save-legacy-queue-tests.log；用户工程、恢复、缓存及原有未跟踪诊断保持。
 
 
-### 2026-11-08 图层面板持久状态完整链路（验证中）
+### 2026-11-08 图层面板持久状态读写链路（已接入，稳定性待继续核对）
 
 接续e56456b7，核对legacy/core/layer-panel-state.ts、project-format-decode及workspace-session。此前manifest虽将layerPanelState列为已识别字段，原生并未解析或应用；保存复用归档时还会留下旧值。本批承接activeLayerId、selectedLayerIds、selectedGroupIds、selectedGroupId、layerSelectionAnchorId及collapsedGroupIds六字段，过滤无效/重复ID并保留顺序、显式空组焦点和未选中但有效的锚点。规范化按legacy自底向上图层顺序执行，原生Document捕获时明确反转内部自顶向下顺序。组焦点不从选择数量重新猜测。
 
@@ -4011,3 +4011,12 @@ recovery-commit-build.log正式程序构建成功、测试因直接编译store�
 新增真实legacy函数执行器及定向回归；具体验证结果待本轮构建/运行后补全。保存提示关闭后继续编辑仍需多文档后台保存路由，未实现；全部迁移目标仍INCOMPLETE，不以本批通过关闭FS-003、GAP-015/016及全局缺口。
 
 验证：layer-panel-state-error-path-build及queue-trace-build正式Release/新增测试构建退出0；最终CTest两个用例通过，160规范化/108写入/6查询包含Unicode扩展小写及trim。document-snapshot/project-save定向套件通过。正式--native-save-check初版通过；加入坏JSON用例后暴露WinRT异常未转std异常，已修正并由同一用例通过。测试入口从窄argv改wmain修复中文绝对路径。第一次链接系统ICU与Skia静态符号冲突，改显式加载系统icu.dll接口后通过。另一次正式检查在A/B/A重载断言失败，保留38036-105674921夹具；加入纯内存状态trace后通过，各步及磁盘重载均为最终A，但单次失败根因未证实，不能称已修复。后续需关注异步本地写入稳定性。来源666覆盖通过、strict仍1。未进行截图/人工交互验收。
+
+
+### 2026-11-08 用户确认的色板长名称修复（已通过定向验证）
+
+用户明确选择“采用可重开的长名称修复”。legacy/platform_palette.rs的palette_slug不限制长度，save_palette先写出再read_palette，后者因valid_palette_id的96字符上限而拒绝；原生此前固定截86字符也提前改变87..96字符身份。本批显示名称保留既有trim后的完整值，新ID首选完整slug的前96字符，重名时按实际“-数字”长度动态缩短基部，保持最终ID不超96字符。已有ID覆盖不改变身份，保留内置ID/已有路径保护、原子写出及错误报告。用户现有文件不重命名、不删除；不复刻旧版不可重开的缺陷。
+
+定向回归覆盖86/87/95/96/97/256/2048字符名称及各12个重名，跨一/二位后缀；已有畸形文件占位验证-105三位后缀、保留原文件；另验证96字符内置ID保留、1024字符显示名称覆盖和Unicode名称保存重开。具体验证结果待构建完成补全。
+
+验证结果：palette-long-name-build正式程序已构建，测试首次因Windows min宏编译失败；测试显式NOMINMAX后palette-long-name-final-build正式Release和palette-library-tests构建退出0，palette-long-name-tests完整既有色板库套件加上述新样例通过。最终正式程序--native-save-check、--aseprite-save-check及--home-recovery-check均退出0，日志palette-long-name-existing-ui-tests.log。正常来源覆盖666文件通过；strict按全局既有缺口退出1，差异检查通过。未做新UI布局/截图或人工长时间验收，未自动修复/重命名现有旧版不可读色板文件，全量迁移仍INCOMPLETE。上一批A/B/A单次失败继续保留待查，最终trace版本再次通过不构成其根因解释。

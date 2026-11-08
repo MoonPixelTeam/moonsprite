@@ -1,3 +1,4 @@
+#define NOMINMAX
 #include "palette_library.h"
 #include "palette_import.h"
 #include <windows.h>
@@ -53,6 +54,20 @@ int main(){try{
  const auto directoryTarget=root/"occupied-directory.palette.json";std::filesystem::create_directories(directoryTarget);std::ofstream(directoryTarget/"kept.txt")<<"owned sentinel";failed=false;try{library.save(replacement,"occupied-directory");}catch(const std::exception&){failed=true;}require(failed&&readBytes(directoryTarget/"kept.txt")=="owned sentinel","failed directory-target save changed directory contents");
  // Execute every direct serde fixture through actual user/built-in disk listing.
  for(std::size_t i=legacyJsonImportCaseCount;i<legacyJsonPaletteFixtures.size();++i){const auto& fixture=legacyJsonPaletteFixtures[i];const auto dir=root/("json-direct-"+std::to_string(i));std::filesystem::create_directories(dir);{std::ofstream out(dir/"fixture.palette.json",std::ios::binary);out.write(reinterpret_cast<const char*>(fixture.bytes.data()),std::streamsize(fixture.bytes.size()));}auto listed=PaletteLibrary(dir).list();require(listed.size()==(fixture.accepted?1u:0u),"user file serde admission/isolation mismatch");if(fixture.accepted){const auto& actual=listed.front();std::vector<int> slots;for(auto slot:actual.slots)slots.push_back(slot?int(*slot):-1);require(actual.name==fixture.name&&actual.colors==fixture.colors&&actual.columns==fixture.columns&&slots==fixture.slots&&bool(actual.names)==fixture.hasNames&&(!actual.names||*actual.names==fixture.names),"actual user library file changes direct serde payload");}bool builtinFailed=false;std::vector<StoredPalette> built;try{built=PaletteLibrary({},dir).list();}catch(const std::exception&){builtinFailed=true;}require(builtinFailed!=fixture.accepted&&(!fixture.accepted||(built.size()==1&&built.front().builtIn)),"built-in direct serde error isolation mismatch");}
+ // User-approved correction of legacy save_palette: display names stay whole,
+ // new IDs use all 96 available ASCII characters and reserve the actual suffix.
+ for(const std::size_t length:{86u,87u,95u,96u,97u,256u,2048u}){
+  const auto dir=root/("long-"+std::to_string(length));PaletteLibrary longNames(dir);auto value=p;value.name=std::string(length,'A');
+  for(unsigned index=1;index<=12;++index){const auto saved=longNames.save(value);const auto tail=index==1?std::string{}:"-"+std::to_string(index);const auto expected=std::string(std::min(length,96-tail.size()),'a')+tail;require(saved.id==expected&&saved.id.size()<=96&&saved.name==value.name,"long palette identity/name/suffix changed");const auto restored=decodeStoredPalette(readBytes(saved.path));require(restored.id==saved.id&&restored.name==value.name&&restored.colors==value.colors&&restored.slots==value.slots&&restored.names==value.names,"saved long palette cannot reopen losslessly");}
+  require(longNames.list().size()==12,"long-name saved palettes disappeared from listing");
+ }
+ {const auto dir=root/"long-suffix";std::filesystem::create_directories(dir);auto value=p;value.name=std::string(96,'X');const auto base=std::string(96,'x');
+  {std::ofstream(dir/(base+".palette.json"))<<"{";}for(unsigned suffix=2;suffix<=104;++suffix){const auto tail="-"+std::to_string(suffix);std::ofstream(dir/(base.substr(0,96-tail.size())+tail+".palette.json"))<<"{";}
+  PaletteLibrary names(dir);const auto saved=names.save(value);require(saved.id==base.substr(0,92)+"-105"&&saved.id.size()==96,"three-digit collision suffix exceeded ID budget");require(readBytes(dir/(base+".palette.json"))=="{","long-name collision overwrote unrelated existing file");
+  value.name=std::string(1024,'N');value.colors[0]=0xff123456;const auto updated=names.save(value,saved.id);const auto restored=decodeStoredPalette(readBytes(updated.path));require(updated.id==saved.id&&restored.id==saved.id&&restored.name==value.name&&restored.colors==value.colors,"long-name overwrite changed identity or truncated display name");
+ }
+ {const auto dir=root/"long-reserved",builtins=root/"long-builtins";std::filesystem::create_directories(builtins);auto value=p;value.id=std::string(96,'r');value.name=std::string(96,'R');std::ofstream(builtins/(value.id+".palette.json"))<<encodeStoredPalette(value);PaletteLibrary names(dir,builtins);const auto saved=names.save(value);require(saved.id==std::string(94,'r')+"-2","long built-in identity was overwritten");}
+ {auto value=p;value.name="中文色板 "+std::string(97,'Z');PaletteLibrary names(root/"long-unicode");const auto saved=names.save(value);const auto restored=decodeStoredPalette(readBytes(saved.path));require(saved.id==std::string(96,'z')&&restored.name==value.name,"Unicode display name was truncated for an ASCII ID");}
  // Fixture intentionally retained: no user or existing library files are removed.
  std::cout<<"palette-library: passed\n";return 0;
  }catch(const std::exception& e){std::cerr<<e.what()<<'\n';return 1;}}
