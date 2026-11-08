@@ -1,3 +1,4 @@
+#include "recovery_commit.h"
 #include "project_file.h"
 #include "raster_geometry.h"
 #include <algorithm>
@@ -17,6 +18,10 @@ namespace moon {struct RasterHistoryFixture {
 using namespace moon;
 #define CHECK(x) do{if(!(x))throw std::runtime_error(#x);}while(false)
 
+namespace moon::project {
+std::string crashCommitStage;
+void commitCheckpoint(const char* stage){if(crashCommitStage==stage)ExitProcess(73);}
+}
 namespace {
 std::wstring storeLockName(const std::filesystem::path& directory){
  HANDLE dir=CreateFileW(directory.c_str(),FILE_READ_ATTRIBUTES,FILE_SHARE_READ|FILE_SHARE_WRITE|FILE_SHARE_DELETE,nullptr,OPEN_EXISTING,FILE_FLAG_BACKUP_SEMANTICS,nullptr);CHECK(dir!=INVALID_HANDLE_VALUE);
@@ -32,12 +37,16 @@ struct Child {
  Child(const Child&)=delete;Child& operator=(const Child&)=delete;
  Child(Child&& other)noexcept:process(other.process){other.process=nullptr;}
  ~Child(){if(process){if(WaitForSingleObject(process,0)==WAIT_TIMEOUT){TerminateProcess(process,91);WaitForSingleObject(process,5000);}CloseHandle(process);}}
- void completed(){CHECK(WaitForSingleObject(process,15000)==WAIT_OBJECT_0);DWORD status=0;CHECK(GetExitCodeProcess(process,&status)&&status==0);}
+ void completed(DWORD expected=0){CHECK(WaitForSingleObject(process,15000)==WAIT_OBJECT_0);DWORD status=0;CHECK(GetExitCodeProcess(process,&status)&&status==expected);}
 };
 int storeChild(int argc,wchar_t** argv){
  if(argc==4&&std::wstring(argv[1])==L"--abandon-store"){
   HANDLE mutex=CreateMutexW(nullptr,FALSE,argv[2]);CHECK(mutex&&WaitForSingleObject(mutex,5000)==WAIT_OBJECT_0);
   HANDLE ready=OpenEventW(EVENT_MODIFY_STATE,FALSE,argv[3]);CHECK(ready&&SetEvent(ready));ExitProcess(0); // Intentionally abandon this test-owned lock.
+ }
+ if(argc==4&&std::wstring(argv[1])==L"--crash-commit"){
+  const std::filesystem::path directory=argv[2];const std::wstring stage=argv[3];project::crashCommitStage=std::string(stage.begin(),stage.end());
+  std::ifstream in(directory/"next.bin",std::ios::binary);project::Bytes bytes(std::istreambuf_iterator<char>(in),{});CHECK(!bytes.empty());project::writeRecoveryFiles(directory,{"crash","new name","1900000000000"},bytes);throw std::runtime_error("Crash checkpoint not reached");
  }
  if(argc!=5||std::wstring(argv[1])!=L"--store-child")return -1;
  const std::filesystem::path directory=argv[2];const std::wstring action=argv[4];
@@ -83,6 +92,34 @@ void storeProcesses(const std::filesystem::path& root,const std::wstring& exe){
  project::writeRecoveryFiles(directory,{"retry","replacement","3"},{9,8,7});const auto retried=project::listRecoveryRecords(directory);CHECK(std::any_of(retried.begin(),retried.end(),[](const auto& row){return row.id=="retry"&&row.name=="replacement";}));
  for(const auto& file:std::filesystem::directory_iterator(directory))if(file.path().extension()==L".tmp")CHECK(file.path()==leftover);
  std::cout<<"Cross-process write/delete/list serialization, independent roots, abandoned lock,32 paired commits and stale-temp retry passed\n";
+ }
+void storeCrashes(const std::filesystem::path& root,const std::wstring& exe){
+ auto read=[](const std::filesystem::path& path){std::ifstream file(path,std::ios::binary);return project::Bytes(std::istreambuf_iterator<char>(file),{});};
+ auto write=[](const std::filesystem::path& path,const project::Bytes& bytes){std::ofstream file(path,std::ios::binary);file.write(reinterpret_cast<const char*>(bytes.data()),std::streamsize(bytes.size()));CHECK(bool(file));};
+ Document before(3,2),after(3,2);before.beginStroke({0,0},0xff0000ff);before.commitStroke();after.beginStroke({2,1},0xff00ff00);after.commitStroke();const auto oldBytes=project::encodeRecoveryProject(before).bytes,newBytes=project::encodeRecoveryProject(after).bytes;
+ for(const auto stage:{L"descriptor",L"payload",L"metadata"})for(const bool existing:{false,true}){
+  const auto directory=std::filesystem::absolute(root/(std::wstring(stage)+(existing?L"-existing":L"-new")));std::filesystem::create_directories(directory);
+  if(existing)project::writeRecoveryFiles(directory,{"crash","old name","1700000000000"},*oldBytes);write(directory/"next.bin",*newBytes);
+  {Child child(exe,L"--crash-commit \""+directory.wstring()+L"\" "+stage);child.completed(73);}
+  const auto descriptor=read(directory/"crash.recovery-pending");CHECK(!descriptor.empty());const auto rows=project::listRecoveryRecords(directory);CHECK(read(directory/"crash.recovery-pending")==descriptor);
+  if(std::wstring(stage)==L"descriptor"){
+   CHECK(rows.size()==(existing?1:0));if(existing)CHECK(rows.front().name=="old name"&&read(directory/"crash.moonsprite")==*oldBytes);CHECK(!project::readPendingRecoveryRecord(directory/"crash.moonsprite","crash"));
+  }else{
+   CHECK(rows.size()==1&&rows.front().name=="new name"&&rows.front().updatedAt=="1900000000000");CHECK(read(directory/"crash.moonsprite")==*newBytes);
+   const auto imported=project::prepareEditableImport(project::readProjectManifest(std::make_shared<const project::Bytes>(read(directory/"crash.moonsprite"))));CHECK(imported.timeline.cels[0].surface->pixels[5]==0xff00ff00);
+   CHECK(project::readPendingRecoveryRecord(directory/"crash.moonsprite","crash")->name=="new name");
+   auto invalid=descriptor;invalid[16]^=1;write(directory/"crash.recovery-pending",invalid);CHECK(!project::readPendingRecoveryRecord(directory/"crash.moonsprite","crash"));CHECK(read(directory/"crash.recovery-pending")==invalid);write(directory/"crash.recovery-pending",descriptor);
+  }
+  if(existing&&std::wstring(stage)==L"payload"){
+   // A second crash before the next payload must not erase the first crash's
+   // only matching new description. Replay reconciles it before replacing it.
+   write(directory/"next.bin",*oldBytes);{Child child(exe,L"--crash-commit \""+directory.wstring()+L"\" descriptor");child.completed(73);}
+   const auto again=project::listRecoveryRecords(directory);CHECK(again.size()==1&&again.front().name=="new name"&&read(directory/"crash.moonsprite")==*newBytes);CHECK(!project::readPendingRecoveryRecord(directory/"crash.moonsprite","crash"));
+   const auto metadata=read(directory/"crash.json");CHECK(project::decodeRecoveryRecord(std::string(metadata.begin(),metadata.end())).name=="new name");
+  }
+  project::writeRecoveryFiles(directory,{"crash","retry","2000000000000"},*newBytes);CHECK(!std::filesystem::exists(directory/"crash.recovery-pending"));CHECK(project::listRecoveryRecords(directory).front().name=="retry");project::removeOwnedRecovery(directory,"crash");CHECK(project::listRecoveryRecords(directory).empty());
+ }
+ std::cout<<"Six real process exits at descriptor/payload/metadata commits, byte-preserving discovery, mismatch rejection, reopen/retry/discard passed\n";
 }
 }
 
@@ -91,6 +128,7 @@ int wmain(int argc,wchar_t** argv){try{
  if(argc!=2)throw std::runtime_error("Owned fixture directory required");
  const std::filesystem::path root=std::filesystem::path(argv[1])/("run-"+std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));std::filesystem::create_directories(root);
  storeProcesses(root,std::filesystem::absolute(argv[0]).wstring());
+ storeCrashes(root,std::filesystem::absolute(argv[0]).wstring());
  Document first(3,2),second(2,3);first.beginStroke({1,1},0xff123456);first.commitStroke();second.beginStroke({0,2},0xff654321);second.commitStroke();
  const auto identity=first.identity(),revision=first.revision(),history=first.historySize();const auto pixels=first.pixels();
  editor::RecoverySession a,b;recovery::Preferences settings;

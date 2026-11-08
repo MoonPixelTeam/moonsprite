@@ -3960,3 +3960,14 @@ case19发现通用16位PNG的WIC8位转换与旧image取整差1：对16Gray／48
 验证：recovery-concurrency-build.log及-final-build.log正式Release/editor-recovery-tests全部构建退出0；recovery-concurrency-core-tests.log与-final-core-tests.log退出0。真实CreateProcess测试逐项持有生产同名锁，独立子进程write/remove/list在./目录别名上等待、释放后成功；独立目录写入无需等待，持锁子进程ExitProcess后正常写入接管；四进程各八次竞争同ID，最终256KiB每个字节与对应metadata.name一致。真实Windows共享占用导致payload替换失败，旧描述/字节保持，释放后重试成功；遗留旧临时文件字节保持，失败私有临时文件无残留。原有八并发线程、孤儿第二阶段失败、稀疏像素/链接、源会话与抑制回归继续通过。recovery-concurrency-ui-tests.log正式--home-recovery-check退出0。来源659文件覆盖通过，strict因已知全量缺口退出1，diff通过。
 
 本批无UI布局改变，无新截图/人工验收；未执行30秒超时注入、跨Windows会话/旧版本程序协作、网络文件系统、硬件断电或两文件中间强杀，不能把32次正常竞争提交称为崩溃原子事务。GAP-015的完整成对提交/临时文件恢复仍未关闭，全量迁移仍INCOMPLETE；用户工程、恢复及缓存未清理。
+
+
+### 恢复中断提交描述与重复退出重放（2026-11-08）
+
+接续e157725b，按FS-006/R05与GAP-015解决payload已提交而JSON仍旧时的新旧名称/时间错配。旧platform_recovery明确分两次atomic_write，RecoveryService按描述名称恢复；原生用必要的文件事务适配补充<safe-id>.recovery-pending，不修改原.moonsprite/.json格式和入口。描述最多1MiB+20，固定MSREC01版本头、8字节payload长度、4字节CRC32及原RecoveryRecord JSON；先原子写描述、再payload、再正式JSON，成功后删除本次同ID描述。CRC32仅匹配意外损坏，不是身份认证或密码学完整性。发现时在既有目录进程锁内，用64KiB缓冲核对已提交payload长度/CRC，再采用新描述；不匹配或损坏描述保持原样，正常已完成记录不额外哈希归档。只描述无已提交payload不会凭空创建可打开行，旧payload存在时继续可恢复。
+
+连续中断需要额外顺序：开始下一次写入前，先把上一份与payload匹配的待提交描述落入正式JSON，然后才替换待提交描述，否则第二次在新payload前退出会退回更旧名称。恢复入口复用私有recovery_commit.h校验读者，处理名称恰等于safe-id但实际有权威待提交描述的分支；保留既有孤儿原作品名回退。重试会完成事务，显式丢弃按payload→待提交描述→JSON删除，仍反馈失败。未在扫描时补写/删除文件；没有自动清理用户数据或引入WebView/新codec。
+
+验证：测试目标直接编译同一recovery_store.cpp，MOONSPRITE_RECOVERY_COMMIT_TEST只在该目标启用；三处ExitProcess检查点只在测试编译存在，正式程序没有环境或运行期开关。六个真实子进程覆盖descriptor/payload/metadata三提交点×新建/覆盖，另一次连续descriptor退出；父进程检查精确归档字节、描述名称/时间、扫描不改文件、CRC不符拒绝、正常工程解码像素及重试/丢弃。正式主页另用独立位运算CRC构造描述夹具，覆盖旧JSON+权威pending name==ID、实际恢复像素/名称/来源ID、后续自动保存补齐并清描述、丢弃保留活画面。原32次四进程竞争、弃锁、Windows真实文件占用失败/重试及稀疏历史回归继续通过。
+
+recovery-commit-build.log正式程序构建成功、测试因直接编译store缺zlib头失败；显式链接已有zlibstatic后-final-build.log退出0，core-tests.log退出0。增加重复退出重放后recovery-commit-replay-build.log/-core-tests.log退出0；补主页独立描述夹具及复用已编码JSON后recovery-commit-ui-build.log正式/测试全构建退出0，recovery-commit-final-core-tests.log与-final-ui-tests.log退出0。来源660文件覆盖通过，strict因已知迁移缺口退出1，diff通过。无UI布局改动，无新截图或人工验收；硬件断电、提交前完整/半写临时工程恢复、跨会话及旧二进制协作仍未完成，GAP-015保持部分完成，全量迁移仍INCOMPLETE。

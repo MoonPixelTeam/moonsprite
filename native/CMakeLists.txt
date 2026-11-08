@@ -662,9 +662,9 @@ endif()
 
 # Recovery session is widget-free and can be exercised without the desktop host.
 if(MOONSPRITE_BUILD_APP)
-  add_executable(editor-recovery-tests tests/editor_recovery_test.cpp src/editor_recovery.cpp)
-  target_link_libraries(editor-recovery-tests PRIVATE moon-project-reader)
-  target_compile_definitions(editor-recovery-tests PRIVATE NOMINMAX)
+  add_executable(editor-recovery-tests tests/editor_recovery_test.cpp src/editor_recovery.cpp src/recovery_store.cpp)
+  target_link_libraries(editor-recovery-tests PRIVATE moon-project-reader zlibstatic)
+  target_compile_definitions(editor-recovery-tests PRIVATE NOMINMAX MOONSPRITE_RECOVERY_COMMIT_TEST)
   add_test(NAME editor-recovery COMMAND editor-recovery-tests "${CMAKE_CURRENT_BINARY_DIR}/test-tmp/editor-recovery-owned")
   set_tests_properties(editor-recovery PROPERTIES TIMEOUT 30 RUN_SERIAL TRUE)
 endif()

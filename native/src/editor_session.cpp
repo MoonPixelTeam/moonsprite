@@ -1,3 +1,4 @@
+#include "recovery_commit.h"
 #include "image_sequence_dialog.h"
 #include "aseprite_save_policy.h"
 #include "aseprite_io.h"
@@ -532,6 +533,7 @@ void Editor::restoreRecovery(const std::filesystem::path& archive,const std::str
         // Keep the archive name when metadata is unavailable, without decoding
         // every archive during startup. A valid name equal to its ID still wins.
         bool fallback=name==std::u32string(id.begin(),id.end());
+        if(fallback){try{if(const auto pending=project::readPendingRecoveryRecord(archive,id))fallback=pending->name!=id;}catch(const std::exception&) {}}
         if(fallback){try{auto sidecar=archive;sidecar.replace_extension(L".json");std::ifstream meta(sidecar,std::ios::binary|std::ios::ate);if(meta&&meta.tellg()>=0&&meta.tellg()<=1024*1024){std::string text(std::size_t(meta.tellg()),'\0');meta.seekg(0);if(meta.read(text.data(),std::streamsize(text.size()))){const auto record=project::decodeRecoveryRecord(text);fallback=record.id!=id||record.name!=id;}}}catch(const std::exception&) {}}
         if(!fallback||imported.name.empty())imported.name=name;return project::createEditableDocument(std::move(imported));
       },U"恢复工程",&toolIcons_);
