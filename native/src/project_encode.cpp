@@ -10,6 +10,7 @@
 #include "document.h"
 #include "palette_layout.h"
 #include "project_manifest.h"
+#include "outline_settings_json.h"
 #include "project_import.h"
 #include "project_preview.h"
 #include <winrt/Windows.Foundation.Collections.h>
@@ -220,6 +221,7 @@ static EncodedProject encodeProject(const Document& d,Limits limits,bool recover
       for(const auto& old:sourceDocument.GetNamedObject(L"animation").GetNamedArray(L"cels")){if(old.ValueType()!=JsonValueType::Object)continue;const auto file=textjson::str(old.GetObject(),L"dataFile");if(!file.empty()&&!retained.count(file))files.erase(file);}
     }
 
+    if(d.outlineSettings())doc.Insert(L"outlineSettings",encodeOutlineSettings(*d.outlineSettings()));else if(doc.HasKey(L"outlineSettings"))doc.Remove(L"outlineSettings");
     JsonObject display;if(doc.HasKey(L"displaySettings"))display=doc.GetNamedObject(L"displaySettings");JsonObject center;number(center,L"x",d.symmetryCenter().x);number(center,L"y",d.symmetryCenter().y);display.Insert(L"symmetryCenter",center);display.Insert(L"showPixelGrid",JsonValue::CreateBooleanValue(d.showPixelGrid()));display.Insert(L"showGrid",JsonValue::CreateBooleanValue(d.showCustomGrid()));JsonObject grid;const auto settings=d.customGrid();number(grid,L"x",settings.x);number(grid,L"y",settings.y);number(grid,L"width",settings.width);number(grid,L"height",settings.height);display.Insert(L"grid",grid);doc.Insert(L"displaySettings",display);
     JsonArray brushes;
     for(const auto& resource:d.projectBrushes()){

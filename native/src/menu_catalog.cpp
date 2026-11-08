@@ -190,7 +190,9 @@ bool Commands::bind(const std::string& id,Binding binding){
  // Legacy source toolbar actions are also configurable shortcut commands.
  const bool sourceAction=id=="addFreeTileSource"||id=="deleteTilesetSelection"||id=="openFreeTileSourceProperties";
  const bool brushAction=id=="importBrushImage"||id=="createBrushFolder"||id=="openBrushFolder"||id=="refreshBrushLibrary"||id=="brushLibraryParentFolder"||id=="brushSwatchSmall"||id=="brushSwatchMedium"||id=="brushSwatchLarge"||id=="deleteBrushSelection";
- if((it==rows.end()&&!workspaceAction&&!sourceAction&&!brushAction)||!binding.run)return false;bindings_[id]=std::move(binding);return true;
+ // Legacy selection-boundary outline is an independent shortcut, without a menu row.
+ const bool selectionEffectAction=id=="outlineSelectionInside";
+ if((it==rows.end()&&!workspaceAction&&!sourceAction&&!brushAction&&!selectionEffectAction)||!binding.run)return false;bindings_[id]=std::move(binding);return true;
 }
 bool Commands::connected(const std::string& id)const{return bindings_.find(id)!=bindings_.end();}
 bool Commands::enabled(const std::string& id)const{auto it=bindings_.find(id);return it!=bindings_.end()&&(!it->second.enabled||it->second.enabled());}

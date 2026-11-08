@@ -4,6 +4,7 @@
 #include "layer_panel_tree.h"
 #include "layer_panel_state.h"
 #pragma once
+#include "outline_samples.h"
 #include "history_change.h"
 #include <map>
 #include "project_information.h"
@@ -474,7 +475,15 @@ public:
   bool rotateContent(int angle);
   bool centerActiveContent(bool horizontal=true,bool vertical=true);
   bool fillSelectionOrCanvas(Pixel color);
-  bool outlinePixels(const struct OutlineSampling&,Pixel color,bool smartHue=false,double darkness=45,bool followOpacity=false,bool boundary=false);
+  const std::optional<OutlineSettings>& outlineSettings()const{return outlineSettings_;}
+  void setImportedOutlineSettings(std::optional<OutlineSettings> value){outlineSettings_=std::move(value);}
+  struct OutlineTask {std::shared_ptr<Document> draft;std::uint64_t identity=0,revision=0;OutlineSettings settings;std::vector<MaskSlotKey> masks;bool boundary=false,changed=false;};
+  OutlineTask captureOutlineTask(const OutlineSettings&,const std::vector<MaskSlotKey>& masks={},bool boundary=false);
+  static bool runOutlineTask(OutlineTask&,const std::function<bool()>& cancelled);
+  bool publishOutlineTask(const OutlineTask&);
+  bool commitOutlineTask(OutlineTask&&);
+  bool applyOutline(const OutlineSettings&,const std::vector<MaskSlotKey>& masks={},bool boundary=false);
+  bool outlinePixels(const struct OutlineSampling&,Pixel color,bool smartHue=false,double darkness=45,bool followOpacity=false,bool boundary=false,const std::vector<MaskSlotKey>& masks={},const std::function<bool()>& cancelled={});
   bool deleteSelectedPixels();bool cutPixels(std::optional<SelectionClipboard>& clipboard);
   bool beginFloatingPaste(const SelectionClipboard& clipboard,int x,int y);
   bool beginLayerTransform();
@@ -676,11 +685,12 @@ private:
   struct GroupUiSnapshot {std::vector<std::string> selected,collapsed;std::optional<std::string> focus;};
   struct FreeTileSelectionSnapshot {std::vector<std::string> selected;std::string primary,anchor,frame,viewLayer;};
   struct RollbackPayload {
- int width=0,height=0;timeline::State timeline;std::unordered_map<std::string,std::array<int,4>> displayedLayerGeometry;PaletteState palette;std::vector<ProjectBrushResource> brushes;ReferenceLibrary references;SliceState slices;std::optional<SymmetryCenter> symmetry;bool loop=true,pixelGrid=false,customGridVisible=false;GridSettings grid;std::string activeLayer,activeFrame;std::vector<std::string> collapsed;std::shared_ptr<const std::vector<std::uint8_t>> archive;ProjectInformation information;timelapse::Settings timelapse;
+ std::optional<OutlineSettings> outline;int width=0,height=0;timeline::State timeline;std::unordered_map<std::string,std::array<int,4>> displayedLayerGeometry;PaletteState palette;std::vector<ProjectBrushResource> brushes;ReferenceLibrary references;SliceState slices;std::optional<SymmetryCenter> symmetry;bool loop=true,pixelGrid=false,customGridVisible=false;GridSettings grid;std::string activeLayer,activeFrame;std::vector<std::string> collapsed;std::shared_ptr<const std::vector<std::uint8_t>> archive;ProjectInformation information;timelapse::Settings timelapse;
  };
  std::shared_ptr<const RollbackPayload> captureRollbackPayload()const;
  std::shared_ptr<const RollbackPayload> takeRollbackPayload()&&;
  void applyRollbackPayload(const RollbackPayload&,bool preserveRecording=false,const std::string* viewedFrame=nullptr);
+  std::optional<OutlineSettings> outlineSettings_;
   std::string activeMaskId_;bool maskIsolated_=false;
   std::optional<std::vector<timeline::MaskSlot>> maskStrokeBefore_;
   std::vector<timeline::MaskSlot> maskClipboard_;

@@ -417,6 +417,7 @@ int app_main(int argc,char* argv[]) {
     ui::set_use_native_cursors(true); manager.refreshCursor();
 
     const bool canvasResizeCheck=argc>1&&std::string(argv[1])=="--canvas-resize-check";
+    const bool outlineCheck=argc>1&&std::string(argv[1])=="--outline-check";ui::Timer outlineTimer(180,editor);if(outlineCheck){outlineTimer.Tick.connect([&]{outlineTimer.stop();try{editor->smokeOutline();desktop.approved=true;desktop.closeWindow(editor);}catch(const std::exception& e){std::ofstream("native-outline-error.txt")<<e.what();std::exit(1);}});outlineTimer.start();}
     const bool quickCommandCheck=argc>1&&std::string(argv[1])=="--quick-command-check";ui::Timer quickCommandTimer(180,editor);if(quickCommandCheck){quickCommandTimer.Tick.connect([&]{quickCommandTimer.stop();try{editor->smokeQuickCommands();desktop.approved=true;desktop.closeWindow(editor);}catch(const std::exception& e){std::ofstream("native-quick-command-error.txt")<<e.what();std::exit(1);}});quickCommandTimer.start();}
     const bool imageResizeCheck=argc>1&&std::string(argv[1])=="--image-resize-check";ui::Timer imageResizeTimer(180,editor);if(imageResizeCheck){imageResizeTimer.Tick.connect([&]{imageResizeTimer.stop();try{editor->smokeImageResize();desktop.approved=true;desktop.closeWindow(editor);}catch(const std::exception& e){std::ofstream("native-image-resize-error.txt")<<e.what();std::exit(1);}});imageResizeTimer.start();}
     const bool layerColorPresetsCheck=argc>1&&std::string(argv[1])=="--layer-color-presets-check";

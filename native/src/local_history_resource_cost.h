@@ -66,7 +66,7 @@ struct HistoryDocumentMetadataRoots {
  std::optional<std::size_t> outlineSettings;
 };
 // Initial decode metadata, including persisted layerPanelState (independent of
-// native current selection) and outline settings not yet represented on Document.
+// native current selection) and the imported outline settings.
 // Those shapes are normalized from retained validated metadata, not UI state.
 // Bound to one Document/revision/frame/active layer; not a live weigher.
 class InitialHistoryDocumentMetadata {

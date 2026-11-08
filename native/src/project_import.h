@@ -1,4 +1,5 @@
 #pragma once
+#include "outline_samples.h"
 #include "timelapse.h"
 #include "project_information.h"
 #include "project_manifest.h"
@@ -10,6 +11,7 @@ namespace moon::project {
 struct ImportPaletteEntry {int id;std::u32string name;std::uint32_t color;};
 struct ImportPalette {std::vector<ImportPaletteEntry> entries;std::vector<int> order,slots;int columns=8,nextId=1;};
 struct PreparedImport {
+ std::optional<OutlineSettings> outline;
  LayerPanelState layerPanelState;
  int width=0,height=0;std::string id,activeLayerId,activeFrameId;bool loop=true,showPixelGrid=false,showCustomGrid=false;GridSettings customGrid;std::u32string name;
  timeline::State timeline;ImportPalette palette;

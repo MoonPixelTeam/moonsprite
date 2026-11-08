@@ -949,5 +949,7 @@ add_test(NAME outline-samples COMMAND outline-samples-tests)
 
 target_sources(moon-core PRIVATE src/outline_samples.cpp src/document_outline.cpp)
 add_executable(outline-document-tests tests/outline_document_test.cpp)
-target_link_libraries(outline-document-tests PRIVATE moon-core)
+target_link_libraries(outline-document-tests PRIVATE moon-project-reader)
 add_test(NAME outline-document COMMAND outline-document-tests)
+
+target_sources(moonsprite-native PRIVATE src/editor_outline.cpp)

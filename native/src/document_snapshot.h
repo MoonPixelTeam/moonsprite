@@ -5,6 +5,7 @@ namespace moon {
 // Captures one stable document generation without copying undo history. The
 // UI advances bounded payload copies; finish() validates on the worker thread.
 class DocumentSnapshot {
+  std::optional<OutlineSettings> outline_;
   RasterSnapshot raster_;
   std::uint64_t identity_,revision_,contentRevision_;
   int width_,height_;bool loop_,complete_=false,showPixelGrid_=false;

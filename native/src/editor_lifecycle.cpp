@@ -417,6 +417,9 @@ menuCommands_.bind("invertColors",{[this]{try{if(document.beginColorAdjustment()
 
 menuCommands_.bind("gradientMap",{[this]{openGradientMap();},{},{}});
 
+menuCommands_.bind("outline",{[this]{openOutline();},{},{}});
+menuCommands_.bind("quickOutline",{[this]{quickOutline();},{},{}});
+menuCommands_.bind("outlineSelectionInside",{[this]{quickOutline(true);},[this]{return bool(document.selection());},{}});
 menuCommands_.bind("quickAntiAlias",{[this]{openAntiAlias();},{},{}});
 
 menuCommands_.bind("cropCanvas",{[this]{cropCanvas();},[this]{return document.selection().has_value();},{}});

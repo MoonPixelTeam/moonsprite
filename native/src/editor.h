@@ -479,6 +479,7 @@ private:
   bool quickPreferenceHidden(const std::string&)const;void quickPreferenceAction(const std::string&);
 public:
   void smokeQuickCommands();
+  void smokeOutline();
 private:
 
   bool runtimePreferencesReadable_=true;
@@ -2689,6 +2690,10 @@ private:
 
 public:
 private:
+  void openOutline(int verify=0);
+  OutlineSettings savedOutlineSettings()const;
+  void saveOutlineDefaults(const OutlineSettings&);
+  void quickOutline(bool boundary=false);
   void openCanvasResize(int verify=0);
   void openFilterPreset(FilterPreset preset,int verify=0,bool initialLcd=false);
   std::optional<std::array<int,4>> canvasResizePreview_;

@@ -14,7 +14,7 @@ Document createEditableDocument(PreparedImport imported){
  PaletteState palette;palette.entries.clear();palette.slots=std::move(imported.palette.slots);palette.setOrder(std::move(imported.palette.order));palette.nextId=imported.palette.nextId;palette.columns=imported.palette.columns;
  for(auto& e:imported.palette.entries)palette.entries.push_back({e.id,std::move(e.name),e.color});
  auto candidate=Document::fromImported(imported.width,imported.height,std::move(imported.timeline),std::move(palette),std::move(imported.id),std::move(imported.name),std::move(imported.sourceArchive),imported.activeFrameId);
- candidate.setImportedProjectInformation(std::move(imported.information));candidate.setImportedReferenceImages(std::move(imported.referenceImages));candidate.setImportedSlices(std::move(imported.slices));candidate.setImportedTimelapse(std::move(imported.timelapse));candidate.setImportedProjectBrushes(std::move(imported.customBrushes));
+ candidate.setImportedOutlineSettings(std::move(imported.outline));candidate.setImportedProjectInformation(std::move(imported.information));candidate.setImportedReferenceImages(std::move(imported.referenceImages));candidate.setImportedSlices(std::move(imported.slices));candidate.setImportedTimelapse(std::move(imported.timelapse));candidate.setImportedProjectBrushes(std::move(imported.customBrushes));
  candidate.selectLayer(imported.activeLayerId);candidate.selectFrame(imported.activeFrameId);candidate.setImportedLoop(imported.loop);candidate.setPixelGrid(imported.showPixelGrid,false);candidate.setCustomGrid(imported.showCustomGrid,imported.customGrid,false);
  candidate.applyLayerPanelState(std::move(imported.layerPanelState));
  candidate.setImportedLayerGeometry(std::move(imported.layerGeometry));
@@ -228,7 +228,7 @@ PreparedImport prepareEditableImport(const ReadManifest& m) {
  result.information=m.information;result.timelapse=m.timelapse;
  result.customBrushes=m.customBrushes;
  result.referenceImages=m.referenceImages;result.slices=m.slices;
- result.symmetryCenter=m.symmetryCenter;result.showPixelGrid=m.showPixelGrid;result.showCustomGrid=m.showCustomGrid;result.customGrid=m.customGrid;
+ result.outline=m.outline;result.symmetryCenter=m.symmetryCenter;result.showPixelGrid=m.showPixelGrid;result.showCustomGrid=m.showCustomGrid;result.customGrid=m.customGrid;
  return result;
 }
 }

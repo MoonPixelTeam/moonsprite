@@ -4383,3 +4383,14 @@ make-outline-sample-fixtures.cjs执行实际未改写旧版函数体，RGBA读�
 首次增量构建因误用C++20 erase_if失败，已改为仓库C++17支持的remove_if/erase。outline-document-final-build.log最终两个Release测试目标构建退出0；outline-document与outline-samples均通过，总0.08s。新增回归覆盖两层一笔UndoRedo、锁定整笔拒绝、显式隐藏层、帧选择所有可编辑层、空操作、部分透明度、透明RGB；原有链接帧与空白选区边界回归继续通过。未构建正式exe，未接UI或进行窗口/视觉/FPS验收。
 
 明确INCOMPLETE：活动蒙版及maskRows当前拒绝以免修改派生像素，蒙版权威适配、缺失活动Cel创建、完整组/蒙版组合、描边设置持久化、弹窗、菜单/快捷指令、索引/灰度模式仍待迁移。该阶段仅完成普通像素事务基础，不宣称描边或全量迁移完成。保留原有未跟踪文件、恢复数据与缓存；本阶段提交推送dev。
+
+
+### 2026-11-09：描边入口集成与持久化（本阶段已验收）
+
+承接216ca915，继续补齐活动与所选蒙版的权威灰度资源写入、链接根去重、整笔锁定预检、缺失活动Cel的边界描边。missing Cel撤销沿用普通绘制保留空Cel身份的语义。接入工程outlineSettings解码/编码、DocumentSnapshot、回档payload以及软件默认参数，普通像素Undo保留参数。菜单outline/quickOutline、快捷栏及S独立内部边界描边已接入；快捷描边用当前前景色并关闭智能色相，S不覆盖保存的位置。原生PixelDialog复用共享标题与颜色弹窗，旧版6个形状/方向SVG经现有转换脚本保留像素形状及alpha；没有新图标。
+
+预览采用隔离文档和后台任务，40ms合并参数变化、取消标记及文档身份/版本/选择校验，预览不入历史，应用复用一笔原生事务；关闭取消计算并恢复显示。仍有捕获时元数据与surface快照复制成本，未做大作品FPS计量，不能宣称消除全部卡顿。
+
+五项定向测试outline-samples/outline-document/document-snapshot/project-import/attached-masks通过0.26s，涵盖保存重开、snapshot/rollback、蒙版链接、稀疏画布外像素、预览取消/单笔提交/过时结果拒绝。正式Release构建退出0，--outline-check最终退出0。窗口回归覆盖当前前景色快捷描边、预览关闭、取消不改文档、应用一笔历史、Undo/Redo、S边界描边不覆盖保存参数、蒙版不误写图层。验收中先修正测试早于40ms调度的问题，再修复独立S命令被Commands::bind拒绝的实际缺陷。截图已查看，布局无重叠，颜色按钮采用纯色块；共享颜色弹窗交互及大作品耗时尚未全面验收。全软件仍INCOMPLETE，尤其索引/灰度模式等全局缺口。
+
+用户已确认网格瓦片图像大小采用同步缩放修复：同步瓦片源与网格瓦片尺寸，保留单元格、资源ID及撤销；该确认作为后续对应迁移的明确行为依据，本描边阶段不将其冒记为完成。
