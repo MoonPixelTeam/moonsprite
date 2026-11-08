@@ -2,6 +2,7 @@
 #include "raster_geometry.h"
 #include "editor_implementation.h"
 #include "editor.h"
+#include "pending_gradient_dialog.h"
 #include "free_tile_instances_panel.h"
 
 namespace moon::editor {
@@ -138,13 +139,34 @@ void Editor::useShapeTool(ShapeKind kind){if(document.activeMaskId().empty()&&do
 
 void Editor::gradientColors(){gradientSpec_.first=gradientRight_?document.palette().secondary:ink_;gradientSpec_.last=gradientRight_?ink_:document.palette().secondary;gradientSpec_.stops=gradientFreeform_?gradientStops_:std::vector<GradientStop>{};if(gradientRight_)for(auto& stop:gradientSpec_.stops)stop.position=1-stop.position;}
 
+bool Editor::resolveGradientForIo(){
+ if(gradientIoDialogOpen_)return false;
+ if(!document.gradientActive())return true;
+ if(!gradientPending_||gradientDragging_)return false;
+ if(playing_||!document.gradientContextValid()){cancelGradientGesture();status_=U"绘制目标或选区已变化，未应用的渐变已取消。";return false;}
+ gradientTick();if(!document.gradientActive())return false;
+ const auto identity=document.identity(),preview=document.gradientRevision();const auto mask=document.activeMaskId();
+ PendingGradientDialog popup(font_,skin_,toolIcons_);popup.setDisplay(display(),false);const auto size=popup.initialSize();const auto center=bounds().center();popup.setBounds({center.x-size.w/2,center.y-size.h/2,size.w,size.h});
+ struct OpenScope{bool& value;OpenScope(bool& v):value(v){value=true;}~OpenScope(){value=false;}} open(gradientIoDialogOpen_);ui::Timer check(40,&popup);
+ if(smoke_&&gradientIoDialogForSmoke_){check.Tick.connect([&]{check.stop();gradientIoDialogForSmoke_(popup);});check.start();}
+ popup.openWindowInForeground();
+ requestFocus();
+ // A stale choice may never authorize a replacement preview or another project.
+ if(document.identity()!=identity||!document.gradientActive()||document.gradientRevision()!=preview){refresh();return false;}
+ if(playing_||!document.gradientContextValid()||document.activeMaskId()!=mask){cancelGradientGesture();status_=U"绘制目标或选区已变化，未应用的渐变已取消。";return false;}
+ if(popup.result()==1){cancelGradientGesture();return !document.gradientActive();}
+ if(popup.result()!=2){refresh();return false;}
+ try{return applyGradientGesture();}
+ catch(const std::exception& error){status_=U"渐变应用失败："+unicodeText(error.what());refresh();return false;}
+}
+
 void Editor::gradientTick(){if(!document.gradientActive()){gradientDragging_=gradientPending_=gradientRequest_=false;return;}if(document.identity()!=gradientIdentity_ || document.contentRevision()!=gradientContent_ || document.layer().id!=gradientLayer_ || document.frame().id!=gradientFrame_){cancelGradientGesture();return;}if(gradientPending_ && (gradientSpec_.first!=(gradientRight_?document.palette().secondary:document.palette().primary) || gradientSpec_.last!=(gradientRight_?document.palette().primary:document.palette().secondary))){ink_=document.palette().primary;gradientRequest_=true;}if(!gradientRequest_)return;gradientRequest_=false;gradientColors();document.updateGradient(gradientSpec_,gradientOptions_);invalidateRect(canvasViewport());}
 
 void Editor::gradientChanged(){saveBrushPreferences();gradientRequest_=document.gradientActive();gradientTick();layoutToolOptions();invalidate();}
 
 void Editor::cancelGradientGesture(){gradientDragging_=gradientPending_=gradientRequest_=false;gradientHandle_=-1;document.cancelGradient();if(hasCapture())releaseMouse();refresh();}
 
-void Editor::applyGradientGesture(){gradientRequest_=true;gradientTick();document.commitGradient();gradientDragging_=gradientPending_=gradientRequest_=false;gradientHandle_=-1;if(hasCapture())releaseMouse();refresh();}
+bool Editor::applyGradientGesture(){gradientRequest_=true;gradientTick();if(!document.gradientActive())return false;document.commitGradient();gradientDragging_=gradientPending_=gradientRequest_=false;gradientHandle_=-1;if(hasCapture())releaseMouse();refresh();return true;}
 
 void Editor::useFillTool(){magicEraserTool_=false;if(document.activeMaskId().empty()&&document.layer().kind=="tilemap"&&document.tilemapMode()==tiles::Mode::Paint){status_=U"瓦片绘制模式不支持填充，请切换像素模式";refresh();return;}if(shapeDragging_ || selectionDragging_ || floatingDragging_ || gradientPending_)return;document.commitFloatingPaste();cancelStroke();liquifyTool_=false;liquifyResetPosition_.reset();smoothTool_=false;airbrushTool_=false;textTool_=false;moveTool_=false;shapeTool_=false;rememberGradientTool_=false;gradientTool_=false;fillTool_=true;selectionTool_=false;handTool_=eraser_=false;eyedropperTool_=false;navigation_.zoomTool_=false;refresh();}
 

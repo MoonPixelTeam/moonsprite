@@ -4,6 +4,11 @@
 #include <algorithm>
 #include <stdexcept>
 namespace moon {
+// Reuse the live preview's captured context instead of cloning/hash-scanning a
+// second selection at the file dialog. IO decisions cannot authorize a new target.
+bool Document::gradientContextValid()const{
+ return gradientActive()&&gradient_->contentRevision==contentRevision_&&gradient_->layerId==layer().id&&gradient_->frameId==frame().id&&selectionEqual(gradient_->selection,selection_)&&(gradient_->mask?maskPreviewValid():activeMaskId_.empty())&&!layerEffectivelyLocked(layer());
+}
 // Preserve literal packed-color barriers without applying the user's paint mask to traversal.
 static std::optional<SelectionMask> sparseGradientRegion(const std::vector<Pixel>& pixels,int w,int h,Point seed,WandOptions options){
  std::optional<SelectionMask> domain;

@@ -591,6 +591,7 @@ public:
   bool beginGradient(Point seed,WandOptions options={});
   bool updateGradient(const GradientSpec& spec,WandOptions options);
   bool commitGradient();void cancelGradient();
+  bool gradientContextValid()const;
   bool gradientActive()const{return gradient_ && !gradient_->shape;}
   bool shapeActive()const{return gradient_ && gradient_->shape;}
   bool beginShapePreview(std::optional<Point> sourceSeed={});bool updateShapePreview(const ShapeSpec& spec,Pixel color);

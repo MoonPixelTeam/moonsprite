@@ -186,7 +186,7 @@ const std::vector<Entry>& catalog(){static const std::vector<Entry> rows={
 bool Commands::bind(const std::string& id,Binding binding){
  const auto& rows=catalog();auto it=std::find_if(rows.begin(),rows.end(),[&](const Entry& e){return id==e.id&&!e.group;});
  // The independent top workspace dropdown uses these same shortcut commands.
- const bool workspaceAction=id=="saveWorkspaceLayout"||id=="openWorkspaceManager"||id=="resetWorkspaceLayout";
+ const bool workspaceAction=id=="closeDocument"||id=="saveWorkspaceLayout"||id=="openWorkspaceManager"||id=="resetWorkspaceLayout";
  // Legacy source toolbar actions are also configurable shortcut commands.
  const bool sourceAction=id=="addFreeTileSource"||id=="deleteTilesetSelection"||id=="openFreeTileSourceProperties";
  const bool brushAction=id=="importBrushImage"||id=="createBrushFolder"||id=="openBrushFolder"||id=="refreshBrushLibrary"||id=="brushLibraryParentFolder"||id=="brushSwatchSmall"||id=="brushSwatchMedium"||id=="brushSwatchLarge"||id=="deleteBrushSelection";

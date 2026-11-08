@@ -383,7 +383,7 @@ Editor::Editor(const PixelFont& font,Skin& skin,std::filesystem::path assets,std
 
       entry->checked=std::move(checked);
 
-      entry->Click.connect([this,entry,action,id]{if(entry->available()) {if(id!="pasteAsNewDocument"&&id!="openAbout"&&id!="openLatestRelease"&&id!="userGuide"&&id!="tips")cancelStroke();const auto started=std::chrono::steady_clock::now();diagnostics::recordGlobal("operation-start","menu."+id);try{action();}catch(const std::exception& e){diagnostics::recordGlobal("error","menu."+id,{{"message",std::string(e.what())}});throw;}catch(...){diagnostics::recordGlobal("error","menu."+id,{{"message",std::string("non-standard exception")}});throw;}const double duration=std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-started).count();diagnostics::recordGlobal("operation-end","menu."+id,{{"outcome",std::string("ok")},{"durationMs",duration}});if(duration>=5000)diagnostics::recordGlobal("operation-slow","menu."+id,{{"durationMs",duration}});refresh();}});
+      entry->Click.connect([this,entry,action,id]{if(entry->available()) {if(id!="pasteAsNewDocument"&&id!="openAbout"&&id!="openLatestRelease"&&id!="userGuide"&&id!="tips"&&!gradientIoCommand(id))cancelStroke();const auto started=std::chrono::steady_clock::now();diagnostics::recordGlobal("operation-start","menu."+id);try{action();}catch(const std::exception& e){diagnostics::recordGlobal("error","menu."+id,{{"message",std::string(e.what())}});throw;}catch(...){diagnostics::recordGlobal("error","menu."+id,{{"message",std::string("non-standard exception")}});throw;}const double duration=std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-started).count();diagnostics::recordGlobal("operation-end","menu."+id,{{"outcome",std::string("ok")},{"durationMs",duration}});if(duration>=5000)diagnostics::recordGlobal("operation-slow","menu."+id,{{"durationMs",duration}});refresh();}});
 
       menu->addChild(entry);menuItems_[id]=entry;
 
@@ -460,6 +460,7 @@ menuCommands_.bind("newDocument",{[this]{ask(Pending::New);},{},{}});
 menuCommands_.bind("openDocument",{[this]{chooseProject();},{},{}});
 
 menuCommands_.bind("openTimelapse",{[this]{showTimelapse();},[this]{return documentOpen_&&!homeOpen_&&pending_==Pending::None;},{}});
+menuCommands_.bind("closeDocument",{[this]{ask(Pending::CloseDocument);},[this]{return documentOpen_&&!homeOpen_&&pending_==Pending::None;},{}});
 menuCommands_.bind("save",{[this]{saveProject(false);},{},{}});
 
 menuCommands_.bind("saveAs",{[this]{saveProject(true);},{},{}});

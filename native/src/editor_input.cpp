@@ -322,10 +322,12 @@ bool Editor::onProcessMessage(ui::Message* msg) {
     const auto inOwner=[&](ui::Widget* owner){return owner&&stopsFocus&&(stopsFocus==owner||stopsFocus->hasAncestor(owner));};
     // Owned native color windows preserve the pending gradient during focus transfer.
     const bool enteringGradientStops=gradientStopsFocusOwner_&&(inOwner(gradientStopsFocusOwner_)||inOwner(gradientStopsColorFocusOwner_)||inOwner(this));
-    if(msg->type()==ui::kFocusLeaveMessage && !enteringAbout && !enteringGradientStops) {
+    if(msg->type()==ui::kFocusLeaveMessage && !enteringAbout && !enteringGradientStops && !gradientIoDialogOpen_) {
 
       if(symmetryDragging_)finishSymmetryDrag(true);eyedropperHeld_=false;paletteSamplingHeld_=false;if(eyedropperGesture_.active())finishEyedropper();spaceHeld_=false;if(drawingAnchorDragging_){drawingAnchor_=drawingAnchorDragBefore_;drawingAnchorDragging_=false;if(hasCapture())releaseMouse();}if(selectionPivotDragging_){selectionPivot_=selectionPivotStart_;selectionPivotDragging_=false;if(hasCapture())releaseMouse();}if(selectionDragging_ || floatingDragging_)endSelectionGesture(true);// Owned free-tile property dialogs keep previews until their normal close.
-      if(!document.freeTileInstancePropertiesActive()&&!document.freeTileSourcePropertiesActive())cancelStroke();updateNavigationCursor();
+      // A released confirmation gradient is not an in-progress pointer stroke.
+      // Legacy keeps it registered through menu/window focus changes until a choice/context invalidates it.
+      if(!(gradientPending_&&!gradientDragging_&&document.gradientActive())&&!document.freeTileInstancePropertiesActive()&&!document.freeTileSourcePropertiesActive())cancelStroke();updateNavigationCursor();
 
     }
 

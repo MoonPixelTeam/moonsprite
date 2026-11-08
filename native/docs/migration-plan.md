@@ -4046,3 +4046,19 @@ recovery-commit-build.log正式程序构建成功、测试因直接编译store�
 验证结果：background-save-build与background-save-final-build正式Release构建均退出0；新增--native-save-check退出0（38104-107857281），实际文件证明全部新场景通过，真实worker/编码器/原子文件未替换。background-save-core-tests中raster-snapshot/document-snapshot/project-save/project-save-raster-resources四项通过；background-save-existing-ui-tests中--aseprite-save-check、--home-recovery-check、--window-input-check全部退出0。
 
 首次隐藏窗口保存的nativeSurface截图全黑，不作为视觉通过证据；为此使用可见正式程序重做同一完整--native-save-check，background-save-visible-ui退出0，夹具12664-107920875/save-progress.png已人工查看：标题、正文和共用关闭图标完整、无重叠。检查范围为此保存提示默认窗口截图，未进行所有缩放/分辨率或长时间人工绘制验收。来源覆盖666通过，strict因其它迁移缺口仍1；diff检查通过。全部迁移仍INCOMPLETE，未把既有A/B/A未明单次失败当作本批修复。
+
+
+### 2026-11-08 待应用渐变的保存／导出／关闭决策（本阶段验证中）
+
+依据 legacy/store/pending-gradient-io、pending-gradient-session、useCanvasGradientConfirmation 和实际文件命令，保存、另存为、导出、工程/应用关闭在干净文档也先显示“继续编辑／放弃渐变并继续／应用”。关闭图标和 Escape 继续编辑，应用先完成同一渐变事务再进入文件边界；无变化应用不伪造撤销条目。原生复用 PixelDialog、公共标题/正文/底部布局和既有关闭图标。菜单/快捷键不再在决策前 cancelStroke；已有 closeDocument 快捷键接入独立命令，不新增菜单项。
+
+原生适配使用 Document identity、预览修订及已有渐变捕获的内容/图层/帧/选区/蒙版上下文验证，避免在文件入口复制大型选区。失效/替换的预览不能授权新目标；嵌套窗口期间阻止重入保存/关闭和后台确认。导出取消不修改下一导出弹窗状态。实际Editor回归覆盖各入口三选择、真实保存/重开及PNG解码、干净/已有脏修改关闭、撤销重做、无变化、替换/选区/锁定和重入；不把受控上下文失效当成真实内存分配失败验收。
+
+旧版 pending-gradient-io.test.ts 共8项通过（pending-gradient-io-legacy.log）。原生正式构建、运行及图像验收待补全。全量迁移仍 INCOMPLETE，既有A/B/A单次失败保留，不在本批宣称修复。
+
+
+本阶段验证结果：pending-gradient-io-build正式Release及project-save-tests构建退出0；首次实际Editor检查发现确认弹窗焦点转移触发通用cancelStroke，继续编辑时预览丢失，诊断夹具37772-109805031/首轮及后续cancel-state保留。pending-gradient-io-focus-build修复自有确认窗口焦点后，完整场景通过（33876-110098625，61次提示）；再对照legacy useCanvasInteractionCancel只重置活动指针、不删除已注册待确认渐变，保留释放后的待确认预览穿过菜单/窗口焦点变化，显式非IO命令和目标失效仍取消。最终pending-gradient-io-final-build退出0，实际展开文件菜单、菜单返回、默认Ctrl+S/E/W及完整回归全部通过（11280-110242546，65次提示）。三个后台保存场景证明继续编辑不会遗留保存队列、关闭续接或应用退出意图；必要原生适配是在可能等待该预览结束的后台队列之前先询问，避免互相等待。
+
+pending-gradient-io-core-tests的project-save及project-save-raster-resources两项通过；pending-gradient-io-existing-ui-tests中正式--native-save-check、--aseprite-save-check、--gradient-shape-check和--window-input-check均退出0。实际原子保存/工程重开、PNG解码、单步撤销重做、干净/已有脏修改关闭、应用后保存再关闭、所有导出入口取消及继续已覆盖。受控上下文失效/替换不是实际内存分配失败证明；未宣称故障分配器或全部资源类型的失败恢复等价。
+
+可见正式程序最终夹具pending-gradient.png已查看：共享标题/关闭图标、换行说明、旧版顺序的三个按钮完整，无交叠；只验收默认2×窗口截图，未做全缩放/分辨率及长时间人工操作矩阵。未更改用户数据、恢复数据、缓存或版本号。来源覆盖668通过、strict按全局已有缺口仍1，差异检查通过；全量迁移继续INCOMPLETE，原A/B/A单次失败未明现场保留。

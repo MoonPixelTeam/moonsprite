@@ -439,6 +439,7 @@ void Editor::backgroundSaveTick(){
 }
 
 void Editor::saveTick(){
+ if(gradientIoDialogOpen_)return;
  backgroundSaveTick();
  if(pending_!=Pending::Saving){
   if(pending_!=Pending::None)return;
@@ -488,6 +489,7 @@ bool Editor::savePath(const std::filesystem::path& path,bool background,bool sou
  auto& document=*owner==activeProject_?this->document:*projects_[*owner]->stored;
  auto& documentPath_=*owner==activeProject_?this->documentPath_:projects_[*owner]->path;
  auto& recovery_=*owner==activeProject_?this->recovery_:projects_[*owner]->recovery;
+ if(document.gradientActive()&&(*owner!=activeProject_||!resolveGradientForIo()))return false;
  const bool ase=saveImageFormat(path)!=SaveImageFormat::Native;
 
     for(std::size_t i=0;i<projects_.size();++i)if(i!=*owner && (sameProjectPath(path,i==activeProject_?this->documentPath_:projects_[i]->path)||sameProjectPath(path,projectDocument(i).sourceFilePath()))){showSaveError(std::runtime_error("该路径已由另一个打开的工程使用，请选择其它名称"));return false;}
@@ -538,6 +540,7 @@ bool Editor::saveProject(bool saveAs,std::uint64_t identity) {
  if(!documentOpen_)return false;ensureProjects();const auto owner=saveProjectIndex(identity?identity:document.identity());if(!owner)return false;
  auto& document=*owner==activeProject_?this->document:*projects_[*owner]->stored;
  auto& documentPath_=*owner==activeProject_?this->documentPath_:projects_[*owner]->path;
+ if(*owner==activeProject_&&!resolveGradientForIo())return false;
  if(pending_==Pending::Saving||backgroundSaveBusy(document.identity())){queuedSaves_.push_back({document.identity(),saveAs});return false;}
  if(document.active()||document.strokeActive()){if(*owner!=activeProject_){queuedSaves_.push_back({document.identity(),saveAs});return false;}}
  if(*owner==activeProject_){for(auto& picker:pickerColumns_)if(picker.picker)picker.picker->finishInteraction();cancelStroke();}
@@ -748,6 +751,6 @@ void Editor::showNewDocument(bool verify) {
 
   }
 
-void Editor::requestClose() {if(DocumentLoadingDialog::deferClose([this]{requestClose();}))return;flushBrushSizePreferences();if(!backgroundSaves_.empty()||!queuedSaves_.empty()){closeAfterBackgroundSaves_=true;return;}if(pending_==Pending::Saving){closeAfterSave_=true;return;}ask(Pending::Close);}
+void Editor::requestClose() {if(gradientIoDialogOpen_)return;if(DocumentLoadingDialog::deferClose([this]{requestClose();}))return;if(!resolveGradientForIo())return;flushBrushSizePreferences();if(!backgroundSaves_.empty()||!queuedSaves_.empty()){closeAfterBackgroundSaves_=true;return;}if(pending_==Pending::Saving){closeAfterSave_=true;return;}ask(Pending::Close);}
 
 }

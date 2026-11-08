@@ -664,6 +664,7 @@ private:
   bool isToolAvailableForSession(const char* id) const;
 public:
   void smokeToolRailMatrix();
+  void smokePendingGradientIo();
 private:
 
   bool fillTool_=false,fillDragging_=false,fillCommitted_=false;
@@ -724,8 +725,12 @@ private:
   void gradientChanged();
 
   void cancelGradientGesture();
+  bool resolveGradientForIo();
+  bool gradientIoDialogOpen_=false;
+  std::function<void(ui::Window&)> gradientIoDialogForSmoke_;
 
-  void applyGradientGesture();
+  bool applyGradientGesture();
+  static bool gradientIoCommand(const std::string& id){return id=="save"||id=="saveAs"||id=="exportDocument"||id=="exportAllFrames"||id=="exportSpriteSheet"||id=="closeDocument"||id=="closeWindow";}
 
   void useFillTool();
 
