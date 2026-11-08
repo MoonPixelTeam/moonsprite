@@ -124,7 +124,7 @@ bool Editor::processMagicEraserInput(ui::Message* msg){
  if(msg->type()==ui::kMouseDownMessage&&canvasViewport().contains(mouse->position())){
   if(!mouse->left()||!canvasDocumentContains(mouse->position()))return true;
   hideTimelineSelectionGuides();paletteFocused_=false;document.clearPaletteSelection();requestFocus();playing_=false;strokeButton_=mouse->button();auto options=wandOptions_;options.contiguous=magicEraserContiguous_;options.gapClosing=options.contiguous&&options.gapClosing;
-  try{magicEraserDragging_=document.eraseMatchingColor(canvasPoint(mouse->position()),options,true);if(magicEraserDragging_)captureMouse();}catch(const std::exception& e){document.cancelStroke();status_=U"魔术橡皮擦失败："+unicodeText(e.what());}refresh();return true;
+  try{auto point=canvasPoint(mouse->position());if(tileRepeatIdentity_==document.identity()&&tileRepeat_!=repeat::Mode::Off){const auto mapped=repeat::map({double(point.x),double(point.y)},document.width(),document.height(),tileRepeat_);if(!mapped)return true;point={int(mapped->local.x),int(mapped->local.y)};}magicEraserDragging_=document.eraseMatchingColor(point,options,true);if(magicEraserDragging_)captureMouse();}catch(const std::exception& e){document.cancelStroke();status_=U"魔术橡皮擦失败："+unicodeText(e.what());}refresh();return true;
  }return canvasViewport().contains(mouse->position());
 }
 namespace { int ditherSmokeChoice=-1; }

@@ -4538,3 +4538,10 @@ X/Y/Both合成/当前层及左右键实际诊断验证100次preview请求不发�
 核对canvas-input-stroke begin/move/endLiquify、useCanvasViewportGeometry localContinuousPointAt和useCanvasBrushOverlay：液化按下与移动必须采用同一连续本地空间，有限相邻副本映射保持小数，越界移动忽略；释放不重新计算端点，提交最后有效预览。原生补齐begin/update映射，继续使用既有液化复合事务、推移路径重采样、持续作用、选区/蒙版限制及提交/取消。液化预览映射本地中心；actual legacy液化overlay只绘制主文档区域，未自行添加副本预览循环。瓦片层继续由rasterToolsAvailable拒绝。
 
 正式Release构建成功，显式等待 --tile-repeat-check退出0。实际鼠标诊断覆盖X/Y/Both×五种模式×平滑开关×主画布/副本，整数显示缩放保留1/4像素坐标；比较完整像素，验证选区、手动持续作用批次、无效副本移动不变、一笔历史、UndoRedo及Escape。三项CTest liquify/tile-repeat/tile-repeat-stroke通过0.47s。742文件来源快照与diff检查通过。新增场景未专门测Shift/右键、重置按钮、跨缝位移或预览截图；这些既有语义未改动，不声称已完成新增平铺运行验收。没有FPS测量，全量迁移仍INCOMPLETE。保留用户数据、缓存与未跟踪文件，阶段提交推送dev。
+
+
+### 2026-11-09：平铺魔术橡皮种子与完整手势（阶段完成）
+
+对照canvas-input-fill beginMagicEraser、pointer-down/up及workspace-magic-eraser：按下以localPoint作为唯一种子，不做网格吸附；立即预览，拖动不换种子，释放一笔提交。原生映射有限相邻副本种子后复用既有匹配算法、选区交集、蒙版和历史事务，未添加环绕连通邻接。
+
+正式Release构建成功，显式等待 --tile-repeat-check退出0。实际鼠标X/Y/Both×连续/非连续×当前层/可见层选项，比较副本/主画布完整像素，验证分隔区域、选区外不变、按下预览无历史、拖动不重采样、外侧释放一笔提交、UndoRedo、Escape和右键取消。可见层新增场景只有单层；多层采样与蒙版沿用既有document-transactions回归。三项CTest document-transactions/tile-repeat/tile-repeat-stroke通过0.39s；742文件来源快照及diff检查通过。未新增截图/FPS测量，全部迁移仍INCOMPLETE。保留所有用户文件、缓存和未跟踪数据，阶段提交推送dev。

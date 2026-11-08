@@ -223,6 +223,18 @@ void Editor::smokeTileRepeat(){
   }
  }
  liquifyTool_=false;
+ // Magic erase uses one local seed, live press preview, and release-only history.
+ for(const auto mode:{repeat::Mode::X,repeat::Mode::Y,repeat::Mode::Both})for(bool contiguous:{false,true})for(bool visible:{false,true}){
+  std::vector<Pixel> expected;
+  for(bool copy:{false,true}){
+   document=Document(16,12);document.fillSelectionOrCanvas(0xff112233);document.beginStroke({7,0},0xff998877);document.updateStroke({7,11});document.commitStroke();document.previewSelection(SelectionMask{1,1,13,9,{}});useMagicEraserTool();wandOptions_={};wandOptions_.visibleLayers=visible;wandOptions_.connectivity=8;magicEraserContiguous_=contiguous;setTileRepeat(mode);refresh();const auto baseline=document.canvasPixels();const auto h=document.historyPosition();const int ox=copy&&repeat::includesX(mode)?16:0,oy=copy&&repeat::includesY(mode)?-12:0;const TransformPoint seed{ox+3.25,oy+4.25};
+   send(ui::kMouseDownMessage,seed);if(!magicEraserDragging_||!document.strokeActive()||document.historyPosition()!=h)throw std::runtime_error("Repeated magic erase preview");const auto preview=document.canvasPixels();if(preview==baseline||preview[4*16+3]!=0||preview[4*16+10]!=(contiguous?baseline[4*16+10]:0)||preview[0]!=baseline[0])throw std::runtime_error("Repeated magic erase selection/region");
+   send(ui::kMouseMoveMessage,{ox+7.25,oy+4.25});if(document.canvasPixels()!=preview)throw std::runtime_error("Magic erase drag must not reseed");send(ui::kMouseUpMessage,{repeat::includesX(mode)?32.25:3.25,repeat::includesY(mode)?24.25:4.25});const auto after=document.canvasPixels();if(magicEraserDragging_||hasCapture()||document.strokeActive()||document.historyPosition()!=h+1)throw std::runtime_error("Repeated magic erase release");if(!copy)expected=after;else if(after!=expected)throw std::runtime_error("Repeated magic erase copy differs");document.undo();if(document.canvasPixels()!=baseline)throw std::runtime_error("Repeated magic erase undo");document.redo();if(document.canvasPixels()!=after)throw std::runtime_error("Repeated magic erase redo");document.undo();
+   send(ui::kMouseDownMessage,seed);ui::KeyMessage escape(ui::kKeyDownMessage,ui::kKeyEsc,ui::kKeyNoneModifier,0,0);onProcessMessage(&escape);if(document.canvasPixels()!=baseline||document.historyPosition()!=h||magicEraserDragging_||hasCapture())throw std::runtime_error("Repeated magic erase Escape");
+   send(ui::kMouseDownMessage,seed);ui::MouseMessage cancel(ui::kMouseDownMessage,os::PointerType::Mouse,ui::kButtonRight,ui::kKeyNoneModifier,canvasDocumentToDisplay(seed));cancel.setDisplay(display());onProcessMessage(&cancel);if(document.canvasPixels()!=baseline||document.historyPosition()!=h||magicEraserDragging_||hasCapture())throw std::runtime_error("Repeated magic erase right cancel");
+  }
+ }
+ fillTool_=magicEraserTool_=false;
  const auto before=zoom_;menuCommands_.invoke("tileRepeatOff");if(tileRepeat_!=repeat::Mode::Off||zoom_!=before)throw std::runtime_error("Repeat off changed zoom");
  setTileRepeat(repeat::Mode::Y);ensureProjects();storeActiveProject();restoreProject(activeProject_);if(tileRepeat_!=repeat::Mode::Y||tileRepeatIdentity_!=document.identity())throw std::runtime_error("Repeat session restoration");
  document=Document();tileRepeat_=repeat::Mode::Off;tileRepeatIdentity_=document.identity();refresh();
