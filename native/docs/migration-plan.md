@@ -3998,3 +3998,16 @@ recovery-commit-build.log正式程序构建成功、测试因直接编译store�
 第一次恢复检查在32次四进程矩阵的子进程退出码断言失败；原断言未记录实际退出码/子进程错误，首次原因尚未证实，不归因为目录形式、编译或应用修复。保留原测试目录/日志，增加子进程PID/实际退出码及owned目录内最佳努力错误文件后，recovery-diagnostic-build.log退出0；recovery-diagnostic-tests.log新绝对owned根及recovery-original-conditions.log原工作目录/相对参数/TMP条件均退出0，完整跨进程/中断/稀疏恢复及新增元数据回归通过。此未复现故障仍是待观察证据，不把两次通过当成根因闭环。未新增盲目重试、放宽断言或删除失败证据。
 
 来源661文件覆盖通过，strict因其余全量缺口仍退出1；差异检查通过。本批没有UI布局变更、截图或人工长时间交互验收，亦不声称全部文件/恢复或迁移完成。所有上述日志前缀均为native/build/native-save-generation-，旧版队列日志为native/build/native-save-legacy-queue-tests.log；用户工程、恢复、缓存及原有未跟踪诊断保持。
+
+
+### 2026-11-08 图层面板持久状态完整链路（验证中）
+
+接续e56456b7，核对legacy/core/layer-panel-state.ts、project-format-decode及workspace-session。此前manifest虽将layerPanelState列为已识别字段，原生并未解析或应用；保存复用归档时还会留下旧值。本批承接activeLayerId、selectedLayerIds、selectedGroupIds、selectedGroupId、layerSelectionAnchorId及collapsedGroupIds六字段，过滤无效/重复ID并保留顺序、显式空组焦点和未选中但有效的锚点。规范化按legacy自底向上图层顺序执行，原生Document捕获时明确反转内部自顶向下顺序。组焦点不从选择数量重新猜测。
+
+数据经过manifest→PreparedImport→Document→后台DocumentSnapshot→工程/恢复/历史归档编码，写出实时规范化状态以替代源归档旧字段。快照及异步保存完成核对包含没有内容revision的面板变化；导航本身不改变dirty、内容修订或撤销历史。原有历史差量/成本适配器继续读取历史归档字段，不用实时UI状态替代历史基线。
+
+本地按filePath优先、sourceFilePath回退；以trim、斜杠统一、en-US Unicode小写匹配路径，替换同路径条目并最多保留100项，打开时优先于归档状态。ICU大小写复用既有本地历史适配方式；native独立layer-panel-state-v1.json不读写legacy浏览器设置。仅状态/路径变化才记录，磁盘写复用既有LatestTaskQueue及原子写出，A/B/A保留最后一次，切项目/关闭处理最终记录。读取/写出错误进入状态栏。未改布局，未新增WebView，未清理用户文件。
+
+新增真实legacy函数执行器及定向回归；具体验证结果待本轮构建/运行后补全。保存提示关闭后继续编辑仍需多文档后台保存路由，未实现；全部迁移目标仍INCOMPLETE，不以本批通过关闭FS-003、GAP-015/016及全局缺口。
+
+验证：layer-panel-state-error-path-build及queue-trace-build正式Release/新增测试构建退出0；最终CTest两个用例通过，160规范化/108写入/6查询包含Unicode扩展小写及trim。document-snapshot/project-save定向套件通过。正式--native-save-check初版通过；加入坏JSON用例后暴露WinRT异常未转std异常，已修正并由同一用例通过。测试入口从窄argv改wmain修复中文绝对路径。第一次链接系统ICU与Skia静态符号冲突，改显式加载系统icu.dll接口后通过。另一次正式检查在A/B/A重载断言失败，保留38036-105674921夹具；加入纯内存状态trace后通过，各步及磁盘重载均为最终A，但单次失败根因未证实，不能称已修复。后续需关注异步本地写入稳定性。来源666覆盖通过、strict仍1。未进行截图/人工交互验收。

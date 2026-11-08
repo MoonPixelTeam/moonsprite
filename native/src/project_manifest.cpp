@@ -8,6 +8,7 @@
 #include "layer_metadata.h"
 #include "javascript_text.h"
 #include "project_manifest.h"
+#include "layer_panel_state_json.h"
 #include "timelapse_project_json.h"
 #include "legacy_json_number.h"
 #include "project_restore_report.h"
@@ -374,6 +375,7 @@ static ReadManifest readManifestWithClock(std::shared_ptr<const Bytes> bytes,Lim
     for(const auto& entry:archive.entries())if(entry.first.rfind("timelapse/",0)==0&&entry.first.size()>14&&entry.first.substr(entry.first.size()-4)==".png")consumedFiles.insert(entry.first);
     for(const auto& entry:archive.entries()) if(!consumedFiles.count(entry.first)) out.unsupported.emplace_back("unmapped archive resource "+entry.first);
     if(normalizedAnimationArrays)out.manifestUtf8=winrt::to_string(root.Stringify());
+    {std::vector<std::string> layers,groups;for(const auto& l:out.layers)layers.push_back(l.id);for(const auto& g:out.groups)groups.push_back(g.id);out.layerPanelState=normalizeLayerPanelState(layers,groups,out.activeLayerId,paneljson::decode(value(doc,"layerPanelState"),out.activeLayerId));}
     return out;
   } catch(const winrt::hresult_error& error) {
     throw Error(error.code().value==E_OUTOFMEMORY?ErrorKind::Limit:ErrorKind::Corrupt,"System JSON failure; HRESULT="+std::to_string(error.code().value)+": "+winrt::to_string(error.message()));

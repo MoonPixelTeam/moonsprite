@@ -1347,6 +1347,8 @@ public:
 
   std::uint64_t savingIdentity_=0,savingRevision_=0,savingContentRevision_=0;
   SymmetryCenter savingSymmetryCenter_;
+  LayerPanelState savingLayerPanelState_;
+  void saveLayerPanelState(bool flush=false);void loadLayerPanelState();
 
   std::vector<std::pair<ui::Widget*,bool>> savingControlStates_;
 

@@ -16,6 +16,7 @@ Document createEditableDocument(PreparedImport imported){
  auto candidate=Document::fromImported(imported.width,imported.height,std::move(imported.timeline),std::move(palette),std::move(imported.id),std::move(imported.name),std::move(imported.sourceArchive),imported.activeFrameId);
  candidate.setImportedProjectInformation(std::move(imported.information));candidate.setImportedReferenceImages(std::move(imported.referenceImages));candidate.setImportedSlices(std::move(imported.slices));candidate.setImportedTimelapse(std::move(imported.timelapse));candidate.setImportedProjectBrushes(std::move(imported.customBrushes));
  candidate.selectLayer(imported.activeLayerId);candidate.selectFrame(imported.activeFrameId);candidate.setImportedLoop(imported.loop);candidate.setPixelGrid(imported.showPixelGrid,false);candidate.setCustomGrid(imported.showCustomGrid,imported.customGrid,false);
+ candidate.applyLayerPanelState(std::move(imported.layerPanelState));
  candidate.setImportedLayerGeometry(std::move(imported.layerGeometry));
  if(imported.symmetryCenter)candidate.setImportedSymmetryCenter({imported.symmetryCenter->first,imported.symmetryCenter->second});return candidate;
 }
@@ -223,7 +224,7 @@ PreparedImport prepareEditableImport(const ReadManifest& m) {
  std::reverse(state.layers.begin(),state.layers.end());
  PreparedImport result;result.width=m.width;result.height=m.height;result.activeLayerId=m.activeLayerId;result.activeFrameId=m.activeFrameId;result.loop=m.loop;result.id=m.id;result.name=unicode(m.name);result.timeline=std::move(state);result.sourceArchive=m.sourceArchive;
  for(const auto& layer:m.layers)if(layer.surface){const auto& g=*layer.surface;result.layerGeometry.emplace(layer.id,std::array<int,4>{g.width,g.height,g.offsetX,g.offsetY});}
- result.palette=prepareEditablePalette(m);
+ result.layerPanelState=m.layerPanelState;result.palette=prepareEditablePalette(m);
  result.information=m.information;result.timelapse=m.timelapse;
  result.customBrushes=m.customBrushes;
  result.referenceImages=m.referenceImages;result.slices=m.slices;

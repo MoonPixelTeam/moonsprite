@@ -3,6 +3,7 @@
 #include "project_import.h"
 #include "project_encode.h"
 #include "recovery_store.h"
+#include "layer_panel_state_json.h"
 #include <fstream>
 namespace moon::editor {
 void Editor::smokeNativeSaveLifecycle(){
@@ -50,6 +51,16 @@ void Editor::smokeNativeSaveLifecycle(){
   seed("preview.moonsprite");saveProject(false);gate=hold();const auto previewRevision=document.revision();document.setSymmetryCenter({2,1},false);check(document.revision()==previewRevision,"Symmetry preview unexpectedly committed metadata");gate.reset();finish();
   check(pending_==Pending::None&&document.dirty()&&open(documentPath_).symmetryCenter().x==1.25,"Unrevisioned symmetry preview falsely accepted savepoint");saveProject(false);finish();check(!document.dirty()&&open(documentPath_).symmetryCenter().x==2,"Symmetry preview retry was not persisted");
 
+  seed("panel-state.moonsprite");document.addLayer();check(document.createLayerGroup(),"Panel fixture group missing");const auto group=document.timeline().state().groups.front().id;auto panel=document.layerPanelState();panel.selectedLayerIds.clear();for(const auto& layer:document.timeline().state().layers)panel.selectedLayerIds.push_back(layer.id);panel.selectedGroupIds={group};panel.selectedGroupId=group;panel.layerSelectionAnchorId=group;panel.collapsedGroupIds={group};document.applyLayerPanelState(panel);panel=document.layerPanelState();
+  saveProject(false);gate=hold();const auto navigationRevision=document.revision(),navigationHistory=document.historySize();document.toggleGroupCollapsed(group);const auto newerPanel=document.layerPanelState();check(document.revision()==navigationRevision&&document.historySize()==navigationHistory,"Panel navigation created an edit");saveProject(false);gate.reset();finish();check(!document.dirty()&&open(documentPath_).layerPanelState()==newerPanel,"Queued native save lost unrevisioned panel metadata");
+  struct PanelRoot {std::wstring previous;bool existed=false;PanelRoot(const std::filesystem::path& path){if(const auto p=_wgetenv(L"MOONSPRITE_PANEL_STATE_TEST_ROOT")){previous=p;existed=true;}_wputenv_s(L"MOONSPRITE_PANEL_STATE_TEST_ROOT",path.c_str());}~PanelRoot(){_wputenv_s(L"MOONSPRITE_PANEL_STATE_TEST_ROOT",existed?previous.c_str():L"");}};
+  {PanelRoot isolated(root/"panel-preferences");removeProperty("moonsprite.panel-memory");saveLayerPanelState(true);const auto stored=root/"panel-preferences"/"layer-panel-state-v1.json";check(std::filesystem::exists(stored),"Local panel writer did not persist");const auto stamp=std::filesystem::last_write_time(stored);saveLayerPanelState(true);check(std::filesystem::last_write_time(stored)==stamp,"Unchanged panel state rewrote local preferences");
+   document.applyLayerPanelState(panel);removeProperty("moonsprite.panel-memory");loadLayerPanelState();check(document.layerPanelState()==newerPanel,"Disk local state did not override archive panel state");
+   auto tracePanel=[&](const char* event){std::ofstream trace(root/"panel-local-trace.txt",std::ios::app);trace<<event<<" "<<winrt::to_string(paneljson::encode(document.layerPanelState()).Stringify())<<" status="<<winrt::to_string(std::wstring(status_.begin(),status_.end()))<<'\n';};
+   document.applyLayerPanelState(panel);refresh();tracePanel("A");document.applyLayerPanelState(newerPanel);refresh();tracePanel("B");document.applyLayerPanelState(panel);refresh();tracePanel("A-final");saveLayerPanelState(true);tracePanel("flushed");removeProperty("moonsprite.panel-memory");document.applyLayerPanelState(newerPanel);loadLayerPanelState();tracePanel("reloaded");check(document.layerPanelState()==panel,"A/B/A latest queue lost final panel state");
+   const auto priorPath=documentPath_;documentPath_=root/"panel-save-as.moonsprite";document.applyLayerPanelState(newerPanel);saveLayerPanelState(true);documentPath_=priorPath;loadLayerPanelState();check(document.layerPanelState()==panel,"Save As local panel state overwrote old path");removeProperty("moonsprite.panel-memory");
+   {std::ofstream broken(stored,std::ios::binary|std::ios::trunc);broken<<"{";}loadLayerPanelState();check(status_.find(U"本地面板状态读取失败")!=std::u32string::npos,"Corrupt local panel file failed silently");status_=U"panel-error-observed";document.applyLayerPanelState(newerPanel);saveLayerPanelState(true);check(status_==U"panel-error-observed","Corrupt local panel file was repeatedly retried");{std::ifstream kept(stored,std::ios::binary);check(std::string(std::istreambuf_iterator<char>(kept),{})=="{","Corrupt local panel file was overwritten");}removeProperty("moonsprite.panel-memory");}
+
   seed("save-as-source.moonsprite");const auto source=documentPath_,copy=root/"save-as-copy.moonsprite";saveProject(false);gate=hold();dot(2,0xff998877);saveProject(true);int choices=0;
   chooseSaveFile_=[&](OPENFILENAMEW* chooser){++choices;wcsncpy_s(chooser->lpstrFile,chooser->nMaxFile,copy.c_str(),_TRUNCATE);chooser->nFilterIndex=1;return true;};gate.reset();finish();
   check(pending_==Pending::None&&choices==1&&documentPath_==copy&&!document.dirty()&&open(source).pixels()[2]==0&&open(copy).pixels()==document.pixels(),"Queued native Save As was coalesced or captured the older generation");
@@ -61,7 +72,7 @@ void Editor::smokeNativeSaveLifecycle(){
   seed("close.moonsprite");const auto closing=documentPath_;pending_=Pending::CloseDocument;savePath(closing,true);gate=hold();dot(3,0xffaabbcc);const auto closePixels=document.pixels();gate.reset();finish();
   check(pending_==Pending::None&&!documentOpen_&&projects_.empty()&&open(closing).pixels()==closePixels,"Close resumed before the newer native generation was saved");
   chooseSaveFile_=std::move(originalChooser);asyncSaveForSmoke_=false;
-  std::ofstream(root/"result.txt")<<"Native async old/exact generations, disk baseline, eight metadata families/statistics, fractional symmetry, preview race, queue/SaveAs/failure retry/recovery cleanup and close continuation passed. Real workers and atomic files; acknowledgement gated; no visual or live-edit-during-save UI acceptance claimed.\n";
+  std::ofstream(root/"result.txt")<<"Native async old/exact generations, disk baseline, eight metadata families/statistics, fractional symmetry, preview race, queue/SaveAs/failure retry/recovery cleanup, complete layer-panel metadata/local override/latest queue, and close continuation passed. Real workers and atomic files; acknowledgement gated; no visual or live-edit-during-save UI acceptance claimed.\n";
  }catch(...){chooseSaveFile_=std::move(originalChooser);asyncSaveForSmoke_=false;throw;}
 }
 }

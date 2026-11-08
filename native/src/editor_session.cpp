@@ -58,7 +58,7 @@ void Editor::settleProjectGesture(){
 
 void Editor::storeActiveProject(){
 
-    auto& slot=*projects_[activeProject_];slot.path=documentPath_;slot.canvas=canvas_;slot.zoom=zoom_;slot.rotation=viewRotation_;saveDocumentView();
+    auto& slot=*projects_[activeProject_];slot.path=documentPath_;slot.canvas=canvas_;slot.zoom=zoom_;slot.rotation=viewRotation_;saveLayerPanelState();saveDocumentView();
 
     slot.layers=layerScroll_;slot.frames=frameScroll_;slot.layerRemainder=layerScrollRemainder_;slot.frameRemainder=frameScrollRemainder_;slot.paletteScroll=paletteScrollPixels_;
 
@@ -141,7 +141,7 @@ void Editor::addProject(Document next,std::filesystem::path path){
 
     frameSelectionExplicit_=false;timelineSelectionGuidesVisible_=true;ink_=document.palette().primary;
 
-    recovery_.queue.setIntervalMinutes(recoveryPreferences_.minutes);revealProjectTab_=true;viewRotation_={};fitCanvas();loadDocumentView();refresh();
+    recovery_.queue.setIntervalMinutes(recoveryPreferences_.minutes);revealProjectTab_=true;viewRotation_={};fitCanvas();loadDocumentView();loadLayerPanelState();refresh();
 
   }
 
@@ -382,7 +382,7 @@ void Editor::saveTick(){
   if(!saveWorker_.valid()||saveWorker_.wait_for(std::chrono::milliseconds(0))!=std::future_status::ready)return;
   auto result=saveWorker_.get();if(document.identity()!=savingIdentity_)throw std::runtime_error("Document changed during save");
   const auto center=document.symmetryCenter();
-  const bool exact=document.revision()==savingRevision_&&document.contentRevision()==savingContentRevision_&&center.x==savingSymmetryCenter_.x&&center.y==savingSymmetryCenter_.y&&!document.active();
+  const bool exact=document.revision()==savingRevision_&&document.contentRevision()==savingContentRevision_&&center.x==savingSymmetryCenter_.x&&center.y==savingSymmetryCenter_.y&&savingLayerPanelState_==document.layerPanelState()&&!document.active();
   if(savingAseprite_){acceptAsepriteSaved(document,savingPath_,savingSourceOnly_,exact);if(!savingSourceOnly_)documentPath_=savingPath_;}
   else{document.acceptSaved(std::move(result.projectId),std::move(result.bytes),exact);documentPath_=savingPath_;}
   status_=exact?U"工程已保存":U"已保存先前版本；当前修改尚未保存";recordHomeRecent(savingPath_);usageStatistics_.recordEvent("save");
@@ -412,7 +412,7 @@ bool Editor::savePath(const std::filesystem::path& path,bool background,bool sou
 
         document.commitFloatingPaste();if(!flushTimelapse())return false;savingPortableTimelapse_=portableTimelapseSave_;portableTimelapseSave_=false;saveResume_=pending_;savingPath_=path;savingAseprite_=ase;savingSourceOnly_=ase&&sourceOnly;savingIdentity_=document.identity();savingRevision_=document.revision();savingContentRevision_=document.contentRevision();
 
-        savingSymmetryCenter_=document.symmetryCenter();saveSnapshot_.emplace(document);savingControlStates_.clear();for(auto child:children())savingControlStates_.push_back({child,child->isEnabled()});pending_=Pending::Saving;refresh();
+        savingSymmetryCenter_=document.symmetryCenter();savingLayerPanelState_=document.layerPanelState();saveSnapshot_.emplace(document);savingControlStates_.clear();for(auto child:children())savingControlStates_.push_back({child,child->isEnabled()});pending_=Pending::Saving;refresh();
 
         for(auto child:children())child->setEnabled(false);
 

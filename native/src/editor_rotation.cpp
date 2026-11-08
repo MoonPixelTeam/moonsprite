@@ -2,9 +2,19 @@
 #include "editor.h"
 #include <iomanip>
 #include "latest_task_queue.h"
+#include "layer_panel_storage.h"
+#include <fstream>
 #include "ui/property.h"
 namespace moon::editor {
 namespace {
+struct PanelMemory final:ui::Property {
+ std::filesystem::path file;paneljson::JsonObject store;bool loaded=false,failed=false;std::string lastPath;std::optional<LayerPanelState> last;
+ PanelMemory():ui::Property("moonsprite.panel-memory"){}
+ bool load(const std::filesystem::path& path){
+  if(loaded)return !failed;loaded=true;file=path;
+  try{if(std::filesystem::exists(file)){std::ifstream in(file,std::ios::binary);if(!in)throw std::runtime_error("Cannot read layer-panel state");store=paneljson::JsonObject::Parse(winrt::to_hstring(std::string(std::istreambuf_iterator<char>(in),{})));}return true;}catch(const winrt::hresult_error& e){failed=true;throw std::runtime_error("Cannot parse local layer-panel state; HRESULT="+std::to_string(e.code().value));}catch(...){failed=true;throw;}
+ }
+};
 struct ViewWrite {std::filesystem::path path;std::string text;};
 // One ordered queue per document, reusing the legacy latest-task adapter.
 // Workers receive only immutable bytes and paths, never an Editor pointer.
@@ -51,6 +61,35 @@ void Editor::initializeViewRotation(){
  menuCommands_.bind("rotateViewClockwise90",{[this]{setViewRotation(viewRotation_.degrees+90);},available,{}});menuCommands_.bind("rotateViewCounterClockwise90",{[this]{setViewRotation(viewRotation_.degrees+270);},available,{}});
  menuCommands_.bind("mirrorView",{[this]{viewRotation_.mirrorX=!viewRotation_.mirrorX;saveDocumentView();refresh();},available,[this]{return viewRotation_.mirrorX;}});menuCommands_.bind("mirrorViewVertical",{[this]{viewRotation_.mirrorY=!viewRotation_.mirrorY;saveDocumentView();refresh();},available,[this]{return viewRotation_.mirrorY;}});
  menuCommands_.bind("resetView",{[this]{viewRotation_={};zoom_=16;const auto r=canvasViewport();canvas_={r.x+(r.w-int(document.width()*canvasScale()))/2,r.y+(r.h-int(document.height()*canvasScale()))/2,int(document.width()*canvasScale()),int(document.height()*canvasScale())};saveDocumentView();refresh();},available,{}});
+}
+void Editor::saveLayerPanelState(bool flush){
+ const auto testRoot=smoke_?_wgetenv(L"MOONSPRITE_PANEL_STATE_TEST_ROOT"):nullptr;if(smoke_&&!testRoot)return;
+ try{
+  auto writes=std::dynamic_pointer_cast<ViewWrites>(getProperty("moonsprite.view-writes"));
+  if(documentOpen_){
+   const auto path=documentPath_.empty()?document.sourceFilePath():documentPath_;
+   if(!path.empty()){
+    auto memory=std::dynamic_pointer_cast<PanelMemory>(getProperty("moonsprite.panel-memory"));if(!memory){memory=std::make_shared<PanelMemory>();setProperty(memory);}
+    if(!memory->load((testRoot?std::filesystem::path(testRoot):palettePreferencePath().parent_path())/"layer-panel-state-v1.json"))return;
+    const auto state=document.layerPanelState();const auto key=paneljson::pathKey(path.u8string());
+    if(!memory->last||memory->lastPath!=key||*memory->last!=state){
+     paneljson::remember(memory->store,path.u8string(),state,double(std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count()));
+     if(!writes){writes=std::make_shared<ViewWrites>(this,[this](const std::string& message){status_=U"本地面板状态保存失败："+unicodeText(message);invalidateRect(statusBounds());});setProperty(writes);}
+     writes->enqueue({memory->file,winrt::to_string(memory->store.Stringify())});memory->lastPath=key;memory->last=state;
+    }
+   }
+  }
+  if(flush&&writes)writes->poll(true);
+ }catch(const std::exception& e){status_=U"本地面板状态保存失败："+unicodeText(e.what());}
+}
+void Editor::loadLayerPanelState(){
+ const auto testRoot=smoke_?_wgetenv(L"MOONSPRITE_PANEL_STATE_TEST_ROOT"):nullptr;if(smoke_&&!testRoot)return;const auto path=documentPath_.empty()?document.sourceFilePath():documentPath_;if(path.empty())return;
+ try{
+  auto memory=std::dynamic_pointer_cast<PanelMemory>(getProperty("moonsprite.panel-memory"));if(!memory){memory=std::make_shared<PanelMemory>();setProperty(memory);}
+  if(!memory->load((testRoot?std::filesystem::path(testRoot):palettePreferencePath().parent_path())/"layer-panel-state-v1.json"))return;
+  if(const auto state=paneljson::storedState(memory->store,path.u8string()))document.applyLayerPanelState(paneljson::decode(state,document.layer().id));
+  memory->lastPath=paneljson::pathKey(path.u8string());memory->last=document.layerPanelState();
+ }catch(const std::exception& e){status_=U"本地面板状态读取失败："+unicodeText(e.what());}
 }
 void Editor::saveDocumentView(){
  // Explicit smoke-only storage root exercises the real durable writer without

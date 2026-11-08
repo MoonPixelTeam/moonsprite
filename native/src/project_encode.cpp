@@ -3,6 +3,7 @@
 #include "tilemap_project_json.h"
 #include "free_tile_project_json.h"
 #include "project_encode.h"
+#include "layer_panel_state_json.h"
 #include "cel_properties.h"
 #include "project_zip_writer.h"
 #include "timelapse_project_json.h"
@@ -141,6 +142,7 @@ static EncodedProject encodeProject(const Document& d,Limits limits,bool recover
     const auto id=d.projectId().empty()?newId(d.identity()):d.projectId();text(doc,L"id",id);text(doc,L"name",utf8(d.name()));number(doc,L"width",d.width());number(doc,L"height",d.height());text(doc,L"createdAt",d.projectInformation().createdAt);text(doc,L"updatedAt",d.projectInformation().updatedAt);text(doc,L"activeLayerId",l.id);text(animation,L"activeFrameId",f.id);
       JsonArray sections;for(const auto& section:d.timeline().state().loopSections){JsonObject o;text(o,L"id",section.id);text(o,L"name",utf8(section.name));text(o,L"startFrameId",section.startFrameId);text(o,L"endFrameId",section.endFrameId);text(o,L"direction",section.direction);o.Insert(L"repeatCount",section.repeatCount?JsonValue::CreateNumberValue(*section.repeatCount):JsonValue::CreateNullValue());sections.Append(o);}animation.Insert(L"loopSections",sections);
     {const auto& information=d.projectInformation();JsonObject statistics;number(statistics,L"strokeCount",double(information.strokeCount));number(statistics,L"operationCount",double(information.operationCount));number(statistics,L"drawingTimeMs",double(information.drawingTimeMs));doc.Insert(L"statistics",statistics);}
+    doc.Insert(L"layerPanelState",paneljson::encode(d.layerPanelState()));
     std::map<const void*,std::string> linkedFiles;
     JsonArray savedLayers,savedCels,savedFrames,savedGroups;
     // Legacy encodeProject ensures the animation document, normalizing linked

@@ -10,6 +10,7 @@ class DocumentSnapshot {
   int width_,height_;bool loop_,complete_=false,showPixelGrid_=false;
   bool showCustomGrid_=false;GridSettings customGrid_;
   std::string projectId_,layer_,frame_;
+  LayerPanelState panel_;
   std::u32string name_;PaletteState palette_;SymmetryCenter symmetry_;
   ProjectInformation information_;timelapse::Settings timelapse_;
   std::shared_ptr<const std::vector<std::uint8_t>> archive_;

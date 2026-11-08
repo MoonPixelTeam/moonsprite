@@ -2,6 +2,7 @@
 #include <functional>
 #include "layer_metadata.h"
 #include "layer_panel_tree.h"
+#include "layer_panel_state.h"
 #pragma once
 #include "history_change.h"
 #include <map>
@@ -416,6 +417,8 @@ public:
   bool setMaskMoveWithOwner(const std::string& owner,const std::string& frame,bool enabled);
   std::vector<std::string> selectedDirectLayerIds()const{return timelineSelection_.layers;}
   std::vector<std::string> selectedLayerIdsWithGroups()const;
+  LayerPanelState layerPanelState()const;
+  void applyLayerPanelState(LayerPanelState);
   const std::vector<std::string>& collapsedGroupIds()const{return collapsedGroupIds_;}
   const timeline::Group* findGroup(const std::string&)const;
   void selectTimelineRow(const LayerPanelNode&,int mode=0);

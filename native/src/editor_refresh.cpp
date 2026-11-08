@@ -98,6 +98,7 @@ void Editor::updateControlVisibility(){
 
 }
 void Editor::refresh(RefreshScope scope){
+  saveLayerPanelState();
   InteractionScope interactionScope(2,"refresh");document.setDeferredFloatingDisplaySupported(!renderer_.relativeLuminance());
   const auto needs=[scope](RefreshScope part){return (unsigned(scope)&unsigned(part))!=0;};
   if(needs(RefreshScope::Layout)){

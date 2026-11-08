@@ -1,5 +1,6 @@
 #pragma once
 #include "timelapse.h"
+#include "layer_panel_state.h"
 #include "project_information.h"
 #include "document_slices.h"
 #include "timeline_model.h"
@@ -54,6 +55,7 @@ struct ManifestCel {
 struct ManifestMask {std::string ownerId,frameId,id,linkedMaskId;bool group=false,locked=false,autoLink=false;std::shared_ptr<const ManifestRaster> surface;};
 struct ManifestPaletteEntry {int id=0;std::string name;std::uint32_t color=0;};
 struct ReadManifest {
+  LayerPanelState layerPanelState;
   int schemaVersion=0,width=0,height=0,paletteColumns=0,nextColorId=0;
   std::string id,name,activeLayerId,activeFrameId,colorMode;
  ProjectInformation information=ProjectInformation::fresh();timelapse::Settings timelapse;
