@@ -235,6 +235,19 @@ void Editor::smokeTileRepeat(){
   }
  }
  fillTool_=magicEraserTool_=false;
+ // Wand requests are asynchronous; release must settle the latest local seed.
+ for(const auto mode:{repeat::Mode::X,repeat::Mode::Y,repeat::Mode::Both})for(int combine:{0,1,2,3})for(bool contiguous:{false,true})for(bool freeSource:{false,true}){
+  std::optional<SelectionMask> expected;
+  for(bool copy:{false,true}){
+   document=Document(24,18);document.fillSelectionOrCanvas(0xff112233);document.beginStroke({12,0},0xff998877);document.updateStroke({12,17});document.commitStroke();if(freeSource){SelectionClipboard tile;tile.width=24;tile.height=18;tile.pixels=document.canvasPixels();document.createFreeTileLayer(U"Repeated wand source");document.pasteFreeTilePixels(tile,{0,0});document.setFreeTilePaintMode(false);}document.previewSelection(SelectionMask{1,1,8,8,{}});useSelectionTool(4);selectionMode_=combine;selectionPivotVisible_=false;wandOptions_={};wandOptions_.contiguous=contiguous;setTileRepeat(mode);refresh();const auto baseline=document.canvasPixels();const auto beforeSelection=document.selection();const auto h=document.historyPosition();const int ox=copy&&repeat::includesX(mode)?24:0,oy=copy&&repeat::includesY(mode)?-18:0;const TransformPoint start{ox+17.25,oy+10.25},end{ox+18.25,oy+11.25};
+   auto settle=[&]{for(int step=0;selectionDragging_&&step<8;++step){if(wandWorker_.valid())wandWorker_.wait();wandTick();}if(selectionDragging_)throw std::runtime_error("Wand worker failed to settle");};
+   send(ui::kMouseDownMessage,start);if(!selectionDragging_||selectionBoxDragging_||floatingDragging_)throw std::runtime_error("Repeated wand begins");send(ui::kMouseMoveMessage,end);send(ui::kMouseMoveMessage,{repeat::includesX(mode)?48.25:18.25,repeat::includesY(mode)?36.25:11.25});send(ui::kMouseUpMessage,end);settle();
+   if(document.canvasPixels()!=baseline||hasCapture()||document.historyPosition()>h+1)throw std::runtime_error("Repeated wand content/history");if(!copy)expected=document.selection();else if(!selectionEqual(expected,document.selection()))throw std::runtime_error("Repeated wand copy differs");
+   const auto after=document.selection();if(document.historyPosition()==h+1){document.undo();if(!selectionEqual(document.selection(),beforeSelection))throw std::runtime_error("Repeated wand undo");document.redo();if(!selectionEqual(document.selection(),after))throw std::runtime_error("Repeated wand redo");document.undo();}
+   send(ui::kMouseDownMessage,start);ui::KeyMessage escape(ui::kKeyDownMessage,ui::kKeyEsc,ui::kKeyNoneModifier,0,0);onProcessMessage(&escape);if(wandWorker_.valid())wandWorker_.wait();wandTick();if(selectionDragging_||hasCapture()||!selectionEqual(document.selection(),beforeSelection)||document.canvasPixels()!=baseline)throw std::runtime_error("Repeated wand stale completion after Escape");
+  }
+ }
+ selectionTool_=false;
  const auto before=zoom_;menuCommands_.invoke("tileRepeatOff");if(tileRepeat_!=repeat::Mode::Off||zoom_!=before)throw std::runtime_error("Repeat off changed zoom");
  setTileRepeat(repeat::Mode::Y);ensureProjects();storeActiveProject();restoreProject(activeProject_);if(tileRepeat_!=repeat::Mode::Y||tileRepeatIdentity_!=document.identity())throw std::runtime_error("Repeat session restoration");
  document=Document();tileRepeat_=repeat::Mode::Off;tileRepeatIdentity_=document.identity();refresh();

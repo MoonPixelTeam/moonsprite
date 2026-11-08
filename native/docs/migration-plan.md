@@ -4545,3 +4545,10 @@ X/Y/Both合成/当前层及左右键实际诊断验证100次preview请求不发�
 对照canvas-input-fill beginMagicEraser、pointer-down/up及workspace-magic-eraser：按下以localPoint作为唯一种子，不做网格吸附；立即预览，拖动不换种子，释放一笔提交。原生映射有限相邻副本种子后复用既有匹配算法、选区交集、蒙版和历史事务，未添加环绕连通邻接。
 
 正式Release构建成功，显式等待 --tile-repeat-check退出0。实际鼠标X/Y/Both×连续/非连续×当前层/可见层选项，比较副本/主画布完整像素，验证分隔区域、选区外不变、按下预览无历史、拖动不重采样、外侧释放一笔提交、UndoRedo、Escape和右键取消。可见层新增场景只有单层；多层采样与蒙版沿用既有document-transactions回归。三项CTest document-transactions/tile-repeat/tile-repeat-stroke通过0.39s；742文件来源快照及diff检查通过。未新增截图/FPS测量，全部迁移仍INCOMPLETE。保留所有用户文件、缓存和未跟踪数据，阶段提交推送dev。
+
+
+### 2026-11-09：平铺魔棒选区与异步手势（阶段完成）
+
+对照canvas-input-selection-begin magicRequest/Release、canvas-input-selection moveMagic及pointer-move：按下和拖动使用有限相邻副本本地点，改变位置更新异步预览，越界移动保留最后有效请求。原生仅魔棒指针路径在源边界检查/开始/更新前映射，不改其他选区工具、异步工作队列及组合算法。释放沿用既有latest-request完成后提交；取消沿用generation丢弃过期结果。
+
+正式Release构建成功，显式等待 --tile-repeat-check退出0。实际鼠标矩阵覆盖普通层/自由瓦片源、X/Y/Both、替换/相加/相减/相交、连续/非连续；比较主画布与副本选区，验证拖动请求、无效移动忽略、工作线程结算、内容不变、最多一笔历史、UndoRedo及Escape后旧worker完成不回写。三项CTest document-transactions/tile-repeat/tile-repeat-stroke通过0.39s；扩展自由源矩阵后重新正式构建诊断通过。742文件来源快照和diff检查通过。未新增蒙版/网格瓦片/可见多层来源的平铺专门回归，未做预览截图/FPS；全量迁移仍INCOMPLETE。保留用户数据和未跟踪文件，阶段提交推送dev。
