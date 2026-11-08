@@ -4478,3 +4478,12 @@ CTest tile-repeat通过，含此前1024旧版几何oracle及直接沿用旧版re
 喷枪预览按canvas-render-airbrush使用本地中心/覆盖映射，并在各可见副本裁剪绘制。已有预览样式和源显示采样方式沿用；没有截图或逐像素预览验收，不宣称完整视觉等价。核心回归增加X/Y/Both方形粒子边缘覆盖及UndoRedo。实际鼠标诊断固定随机种子，比较普通层/自由源主画布与X/Y/Both副本的完整像素，手动执行持续喷绘批次，验证释放单笔历史、UndoRedo、Escape恢复。airbrush-repeat-build.log及airbrush-repeat-preview-build.log正式Release构建0，显式等待 --tile-repeat-check退出0。三项CTest tile-repeat/tile-repeat-stroke/free-tile-project通过12.17s。没有FPS/内存测量。
 
 其余平铺工具、选区副本命中及全量迁移仍INCOMPLETE；本阶段只验收以上喷枪路径。来源登记和快照检查继续执行，保留所有用户文件与未跟踪数据，阶段保存推送dev。
+
+
+### 2026-11-09：平铺副本桶填充输入（阶段完成）
+
+对照canvas-pointer-down localPoint、canvas-input-fill beginFill和canvas-input-free-tile-edit：桶填充种子先映射到有限相邻副本的本地点，再进行网格吸附；连通区域不添加首尾环绕邻接。原生入口映射种子后直接复用既有fillPatternPixels，保留纯色/纹理原点、连续/非连续、选区、自由源资源提交及按下提交/Escape撤销行为。未修改填充算法或扩展其他工具语义。
+
+实际鼠标诊断逐项比较普通像素层与自由瓦片源、纯色与Cracks纹理、连续/非连续、X/Y/Both副本和本地输入的完整像素；检查选区限制、连续填充不跨分隔区域、单笔历史、UndoRedo及Escape。bucket-repeat-build.log正式Release构建0，显式等待 --tile-repeat-check进程退出0；三项CTest tile-repeat/tile-repeat-stroke/free-tile-project通过12.11s。742文件来源登记快照和diff检查通过。未做新截图/FPS验收。
+
+其余平铺工具、渐变/形状及选区副本命中和全量迁移仍需继续。保留未跟踪文件、工程和缓存；阶段提交推送dev。

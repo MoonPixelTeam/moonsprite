@@ -143,6 +143,14 @@ void Editor::smokeTileRepeat(){
   }
  }
  airbrushTool_=false;
+ // Bucket connectivity remains document-local; copies only change the seed.
+ for(bool freeSource:{false,true})for(bool pattern:{false,true})for(bool contiguous:{false,true})for(auto mode:{repeat::Mode::X,repeat::Mode::Y,repeat::Mode::Both}){
+  std::vector<Pixel> expected;for(bool copy:{false,true}){
+   document=Document(16,12);if(freeSource){document.createFreeTileLayer(U"Repeated bucket source");SelectionClipboard tile;tile.width=8;tile.height=6;tile.pixels.assign(48,0xff112233);document.pasteFreeTilePixels(tile,{2,2});document.setFreeTilePaintMode(false);}else{document.fillSelectionOrCanvas(0xff112233);document.beginStroke({7,0},0xff445566);document.updateStroke({7,11});document.commitStroke();}document.previewSelection(SelectionMask{1,1,13,9,{}});useFillTool();setTileRepeat(mode);fillOptions_={};fillOptions_.contiguous=contiguous;fillPattern_={};if(pattern)fillPattern_.texture=FillTexture::Cracks;refresh();const auto beforePixels=document.canvasPixels();const auto h=document.historyPosition();const int ox=copy&&repeat::includesX(mode)?16:0,oy=copy&&repeat::includesY(mode)?-12:0;const TransformPoint at{ox+3.25,oy+3.25};
+   send(ui::kMouseDownMessage,at);send(ui::kMouseUpMessage,at);const auto after=document.canvasPixels();if(after==beforePixels||document.historyPosition()!=h+1||fillDragging_||hasCapture())throw std::runtime_error("Repeated bucket commit/history");if(!copy)expected=after;else if(after!=expected)throw std::runtime_error("Repeated bucket copy differs");if(!freeSource&&contiguous&&after[3*16+9]!=beforePixels[3*16+9])throw std::runtime_error("Repeated bucket must not join opposite regions");document.undo();if(document.canvasPixels()!=beforePixels)throw std::runtime_error("Repeated bucket undo");document.redo();if(document.canvasPixels()!=after)throw std::runtime_error("Repeated bucket redo");document.undo();send(ui::kMouseDownMessage,at);ui::KeyMessage escape(ui::kKeyDownMessage,ui::kKeyEsc,ui::kKeyNoneModifier,0,0);onProcessMessage(&escape);if(document.canvasPixels()!=beforePixels||document.historyPosition()!=h||fillDragging_||hasCapture())throw std::runtime_error("Repeated bucket Escape");
+  }
+ }
+ fillTool_=false;fillPattern_={};
  const auto before=zoom_;menuCommands_.invoke("tileRepeatOff");if(tileRepeat_!=repeat::Mode::Off||zoom_!=before)throw std::runtime_error("Repeat off changed zoom");
  setTileRepeat(repeat::Mode::Y);ensureProjects();storeActiveProject();restoreProject(activeProject_);if(tileRepeat_!=repeat::Mode::Y||tileRepeatIdentity_!=document.identity())throw std::runtime_error("Repeat session restoration");
  document=Document();tileRepeat_=repeat::Mode::Off;tileRepeatIdentity_=document.identity();refresh();
