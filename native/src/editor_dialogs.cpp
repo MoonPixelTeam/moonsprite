@@ -307,7 +307,7 @@ void Editor::createGifExportControls(){for(int i=0;i<3;++i){auto input=new Pixel
 
   }
 
-void Editor::updateSheetImportFields(){if(importSheetUpdating_)return;importSheetUpdating_=true;int sw=importSheetOptions_.selection&&document.selection()?document.selection()->width:document.width(),sh=importSheetOptions_.selection&&document.selection()?document.selection()->height:document.height();int counts[2]{};try{auto plan=planSpriteSheetImport(sw,sh,importSheetOptions_);counts[0]=plan.columns;counts[1]=plan.rows;}catch(...){}for(int i=0;i<8;++i)if(!importSheetInputs_[i]->hasFocus()){int values[]{importSheetOptions_.x,importSheetOptions_.y,importSheetOptions_.width,importSheetOptions_.height,importSheetOptions_.paddingX,importSheetOptions_.paddingY,counts[0],counts[1]};importSheetInputs_[i]->setText(std::to_string(values[i]));}importSheetUpdating_=false;}
+void Editor::updateSheetImportFields(){if(importSheetUpdating_)return;if(status_.rfind(U"精灵表导入失败：",0)==0)status_.clear();importSheetUpdating_=true;int sw=importSheetOptions_.selection&&document.selection()?document.selection()->width:document.width(),sh=importSheetOptions_.selection&&document.selection()?document.selection()->height:document.height();int counts[2]{};try{auto plan=planSpriteSheetImport(sw,sh,importSheetOptions_);counts[0]=plan.columns;counts[1]=plan.rows;}catch(...){}for(int i=0;i<8;++i)if(!importSheetInputs_[i]->hasFocus()){int values[]{importSheetOptions_.x,importSheetOptions_.y,importSheetOptions_.width,importSheetOptions_.height,importSheetOptions_.paddingX,importSheetOptions_.paddingY,counts[0],counts[1]};importSheetInputs_[i]->setText(std::to_string(values[i]));}importSheetUpdating_=false;}
 
 void Editor::openSheetImport(bool selected){if(pending_!=Pending::None||document.active())return;if(selected&&!document.selection())return;importSheetOptions_={};importSheetOptions_.selection=selected;if(selected){importSheetOptions_.width=std::min(16,document.selection()->width);importSheetOptions_.height=std::min(16,document.selection()->height);}pending_=Pending::SheetImport;menuBar_->setEnabled(false);discard_->caption=U"导入";keep_->caption=U"取消";discard_->setVisible(true);keep_->setVisible(true);dialogClose_->setVisible(true);updateSheetImportFields();refresh();}
 
@@ -1190,7 +1190,7 @@ void Editor::resolve(bool discard) {
 
     if(action==Pending::BrushFolderName){if(discard){try{PatternBrushLibrary library(fillBrushLibraryDirectory());auto result=fillFolderRename_?library.renameFolder(fillFolderEditing_,paletteInput_->text()):library.createFolder(paletteInput_->text(),fillFolderEditing_);fillFolder_=result.id;applyFillLibrarySelection();}catch(const std::exception& e){status_=U"文件夹操作失败："+unicodeText(e.what());refresh();return;}}paletteInput_->setVisible(false);discard_->caption=U"丢弃";keep_->caption=U"取消";discard=false;}
 
-    if(action==Pending::SheetImport){if(discard){try{document.importSpriteSheet(importSheetOptions_);fitCanvas();}catch(const std::exception& e){status_=U"精灵表导入失败："+unicodeText(e.what());invalidate();return;}}for(auto input:importSheetInputs_)input->setVisible(false);importSheetLayout_->setVisible(false);importSheetPartial_->setVisible(false);discard_->caption=U"丢弃";keep_->caption=U"取消";discard=false;}
+    if(action==Pending::SheetImport){if(discard){try{if(!document.importSpriteSheet(importSheetOptions_))throw std::runtime_error("当前文档内容尚不支持精灵表导入");fitCanvas();}catch(const std::exception& e){status_=U"精灵表导入失败："+unicodeText(e.what());invalidate();return;}}for(auto input:importSheetInputs_)input->setVisible(false);importSheetLayout_->setVisible(false);importSheetPartial_->setVisible(false);discard_->caption=U"丢弃";keep_->caption=U"取消";discard=false;}
 
     if(action==Pending::GifExport){if(discard&&!saveGifExport())return;discard_->setEnabled(true);for(auto input:gifInputs_)input->setVisible(false);for(auto b:{gifRange_,gifDirection_,gifTrim_})b->setVisible(false);discard_->caption=U"丢弃";keep_->caption=U"取消";discard=false;}
 
@@ -1950,7 +1950,7 @@ void Editor::paintDialog(ui::Graphics& g) {
 
       }
 
-      if(pending_==Pending::SheetImport){label(U"导入精灵表 · RGBA",modal.x+6,modal.y+(FloatingColumnChrome::headerHeight-PixelFont::cell)/2);const char32_t* names[]{U"X",U"Y",U"宽",U"高",U"间距X",U"间距Y",U"列数",U"行数"};for(int i=0;i<8;++i)label(names[i],modal.x+6+(i%2)*(modal.w/2),modal.y+58+(i/2)*DialogLayout::rowStep);label(U"单帧 1–1024 px；独立 Cel / 可撤销",modal.x+6,modal.y+171);return;}
+      if(pending_==Pending::SheetImport){label(U"导入精灵表 · RGBA",modal.x+6,modal.y+(FloatingColumnChrome::headerHeight-PixelFont::cell)/2);const char32_t* names[]{U"X",U"Y",U"宽",U"高",U"间距X",U"间距Y",U"列数",U"行数"};for(int i=0;i<8;++i)label(names[i],modal.x+6+(i%2)*(modal.w/2),modal.y+58+(i/2)*DialogLayout::rowStep);label(U"尺寸受像素预算限制；独立 Cel / 可撤销",modal.x+6,modal.y+171);return;}
 
       if(pending_==Pending::GifExport){
 

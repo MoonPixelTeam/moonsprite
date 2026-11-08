@@ -4141,3 +4141,23 @@ Aseprite只读对照：cmd_new_file.cpp::onExecute通过Clipboard::getImageSize�
 最终new-document-clipboard-active-cel-build.log正式Release退出0，new-document-clipboard-final-ui-tests.log中--new-document-check、--paste-new-document-check、--sheet-new-document-check全部退出0，运行前后exe SHA256一致（7BA59F4D2DF94D9020243AF3B4CC13613585E2FEE96221121127D99A7589EC27）。实际Editor活动帧复制、切工程冻结、同尺寸外图优先、真实Timer23×17回填、手动宽高／内置与保存预设防迟到覆盖、远坐标宽草稿拒绝均通过。已查看最终new-document-dialog.bmp和new-document-large-invalid.bmp：默认2×的23×17字段、预设、关闭与底部按钮，以及8192×8193超预算提示完整，无交叠。图像验收不代表1×实机、所有倍率或长时交互帧率。
 
 最终核心三项全部通过（new-document-clipboard-final-core-tests.log）；实际旧版clipboard-service九项及864组oracle对照通过。来源覆盖684文件通过，strict因全局已登记缺口仍退出1，Node语法和git diff --check通过。未修改系统剪贴板、未清理用户数据或既有缓存。本批仅完成剪贴板尺寸探测链路；同步复制baseline、索引／灰度编辑及全量迁移仍未完成，整体性能改善未经帧率量化。
+
+### 2026-11-08 大尺寸精灵表导入完整操作链路（已通过定向验证）
+
+接续e8eb33bd，对照sprite-sheet-import::spriteSheetImportPlan/buildImportedSpriteSheet、workspace-sprite-sheet-import及实际Dialog。几何规划承接262144参数范围，移除1024原型门禁和规划阶段混入的分配预算，保留四排列、原点、间距、不完整单元格及10000帧；构建与Document实际提交分别检查现有32768边长／64Mi总像素／256Mi工作集。Document在构建前计实际源与历史快照、selection mask及旧版三份结果加scratch，避免切片完成后才因撤销快照爆内存；计算先转64位再减原点和乘行列，拒绝不可表示的原生坐标。预算失败保留工程／历史／参数，特殊资源原有拒绝不再由UI误报成功。界面移除过期1024说明，没有重新设计布局。
+
+实际legacy执行器生成80组大尺寸切片及40组规划边界，对照五组源尺寸1025×3／3×1031／32768×1／1×32768／2049×7、四排列、partial开关、负原点与间距，2049源含非原点局部蒙版；比较每帧完整RGBA哈希、73/137ms与末帧回退。原生核心加一笔结构undo/redo、身份／源像素／mask恢复、真实保存重开及边长／总像素／工作集失败保护；实际Editor新增普通／选区菜单、输入框与partial按钮、失败后恢复、大尺寸文件打开后导入路由及截图。
+
+索引／灰度、记忆／grid默认、可操作导入预览与selection pivot完整恢复仍为既有未完迁移，本批不称整个精灵表导入功能或全软件迁移完成。验证与正式构建待补全。
+
+旧版sprite-sheet-import及workspace-sprite-sheet-import共15项通过（large-sheet-import-legacy-tests.log）。核心首次编译测试误用了不存在的readProject，修正为readProjectManifest；随后中文argv路径触发编码失败，改为本仓库已有wmain／wide路径入口。首次完整像素对照case0发现254处差异，独立RGBA转储证明全为alpha=0隐藏RGB：legacy实际build使用compositeRegionAsync点采样source-over清零，而同步compositeRegion存在保留RGB的row-copy。仅导入输出按真实异步合成归零，未修改共享compositor或oracle期望。失败日志与原始转储保留。
+
+large-sheet-import-alpha-build.log构建退出0，large-sheet-import-alpha-tests.log套件通过：80实际旧版构建完整像素哈希、40规划边界、一笔Undo/Redo与80个实际文件保存重开、源／mask／身份／73/137ms／loop不变以及边长／总像素／工作集失败保护均通过。正式Release构建与实际Editor验收待完成。
+
+large-sheet-import-app-build.log正式Release及large-sheet-import-ui-tests.log三条检查首次退出0。复核补强UI预算路径：先开启partial确保大单元格至少产生一帧，并断言实际边长／working pixel budget错误，不能用“No complete tiles”误替代内存拒绝。首张直接入口nativeSurface截图全黑，不作为视觉通过证据；改为正常窗口消息循环内的200ms检查入口，截图前invalidate整个manager。文件打开回归保存并恢复原会话容器、active/recovery索引、工程路径和恢复状态，避免污染综合smoke的后续用例。最终单文件重建与可见窗口复验中。
+
+最终large-sheet-import-recovery-final-build.log正式Release构建退出0；large-sheet-import-recovery-final-ui-tests.log中--sheet-import-check、--sheet-new-document-check、--new-document-check全部退出0，运行前后正式exe SHA256一致（4E0F9258C84DA1BD9E765AC614CD758F2B3F9A37D6B703214DDF28CBA60FBCD6）。隔离恢复状态的测试初次以空花括号赋值触发Scheduler显式构造编译错误，改为具名RecoverySession默认实例后通过，未改变恢复数据或生产会话策略。实际有效参数修改会按旧版清除本次导入错误；新增断言与最终可见截图共同验证，不再残留预算错误。
+
+已查看最终large-sheet-import.bmp：默认2×下1025×3草稿、两列一行、不完整单元格、预算说明和导入／取消均完整，无交叠，底部未残留失败状态。图像验收仅覆盖该窗口状态，不代表全缩放、长时交互或整体UI帧率改善。80组完整RGBA哈希及真实保存重开、40组规划边界、旧版15项测试与正式UI三条检查通过；来源覆盖与最终diff检查另行记录。索引／灰度、记忆／grid默认、实时导入预览和selection pivot完整恢复仍未完成，全量迁移保持INCOMPLETE。
+
+最终来源覆盖686文件通过（large-sheet-import-recovery-final-provenance.log），strict因全局已登记迁移缺口仍退出1；生成脚本Node语法与git diff --check通过。全部既有未跟踪诊断、工程／恢复数据与构建缓存保持原状。
