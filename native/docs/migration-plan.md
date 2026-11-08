@@ -4460,3 +4460,12 @@ CTest tile-repeat通过，含此前1024旧版几何oracle及直接沿用旧版re
 运行诊断覆盖X/Y/Both副本命中、跨接缝本地跳变、资源不变、实例/像素UndoRedo、Escape恢复、单击无历史、外层副本越界忽略并释放捕获、Shift轴约束及Undo。首轮诊断错误地从最右副本越到允许范围外却期待移动，实际保持原位正确；更正为相邻副本接缝，并新增越界无操作检查。free-instance-repeat-build.log最终正式Release构建0；Start-Process明确等待 --tile-repeat-check ExitCode0。三项CTest tile-repeat/tile-repeat-stroke/free-tile-project 通过12.20s；随后只扩充运行诊断并再次构建/运行通过。742来源登记快照通过，git diff --check通过。
 
 未新增视觉/FPS测量；选区内容实例移动、其他平铺工具及整体迁移仍需继续，不能以本阶段代替全量完成。保留既有用户数据与缓存，失败诊断文本留在未跟踪文件中，不提交生成物。阶段提交推送dev。
+
+
+### 2026-11-09：整实例选区拖动的平铺接缝语义（阶段验证完成）
+
+核对canvas-input-selection-begin发现onlySelectedFreeTileInstance分支在登记tileRepeatStart前提前返回。故canvas-input-free-tile moveFreeTileSelection虽支持重复连续起点，整实例分支实际仍使用localPoint差；不能因通用move-content有连续坐标便自行更改旧行为。原生只对freeTileSelectionPlacementMoving的移动端点做repeat::map(...,true)，再复用现有对称、轴约束、对齐及Document整实例事务。普通像素和部分源编辑保持既有路径。选区按画布裁剪，松开自动提交，取消及UndoRedo恢复选区和实例。
+
+运行诊断以主画布选区开始，分别X/Y/Both跨接缝，比较实际本地实例位移、裁剪mask、释放一笔历史、像素/实例/选区UndoRedo与Escape。free-selection-repeat-build.log正式Release构建0；显式等待 --tile-repeat-check进程ExitCode0。三项CTest tile-repeat/tile-repeat-stroke/free-tile-project通过12.37s，742文件来源快照覆盖通过，diff检查通过。未新增视觉/FPS验收。
+
+明确边界：副本起点的选区命中、部分源变换及其他工具尚需继续核对；不能将这条完成的拖动事务称全部平铺或整体迁移完成。保留用户文件及未跟踪数据。阶段保存推送dev。
