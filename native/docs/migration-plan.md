@@ -4559,3 +4559,10 @@ X/Y/Both合成/当前层及左右键实际诊断验证100次preview请求不发�
 核对canvas-input-selection begin/extend/move、useCanvasShapeCommit commitPolygonLasso、canvas-input-path和canvas-polygon-interaction测试：多边形顶点使用有限副本本地点，普通polygonSelection闭合；不能套用连续lasso的repeatedLassoSelection。原生把多边形套索纳入局部指针映射，覆盖首次按下、后续顶点及悬停，越界移动/按下忽略；既有路径回退、重做和闭合算法保留。
 
 正式Release构建成功，显式等待 --tile-repeat-check退出0。新增实际鼠标X/Y/Both×四种组合×Enter/双击完成，比较主画布/副本选区，验证待确认无历史、右键回退、默认CtrlShiftZ重做、无效副本移动预览不变、UndoRedo、Escape及像素不变。首次诊断误用CtrlY重做，默认路由拦截；核对shortcut_catalog后改用实际默认CtrlShiftZ，未更改产品快捷键，重新构建诊断通过。三项CTest document-transactions/tile-repeat/tile-repeat-stroke通过0.40s。742文件来源快照及diff检查通过。未新增自由瓦片/网格瓦片多边形套索、跨缝混合副本顶点或预览截图回归；全量迁移仍INCOMPLETE。保留用户数据及未跟踪文件，阶段提交推送dev。
+
+
+### 2026-11-09：平铺文字框命中与手势坐标（阶段完成）
+
+核对canvas-input-text begin/move/end、pointer-down/move和useCanvasViewportGeometry：初始命中使用有限副本本地点，创建/变换拖动在有效副本内使用本地点，离开副本回退连续文档坐标。原生文字入口统一该映射，选中文字框的Skin selectionMaterialBounds/selectionContains与resize handle使用相应本地显示物理指针，保留既有文字事务与链接源处理。未引入新的边框素材或通用矩形命中替代。
+
+正式Release构建成功，显式等待 --tile-repeat-check退出0。X/Y/Both主画布/副本、链接文字框移动/尺寸调整，比较完整像素及宽度，验证一笔提交、UndoRedo和Escape；新增框验证本地几何与取消。首轮固定缩放2使右副本新建点离开视口，诊断改用整数缩放1后通过，生产缩放不变。三项CTest text-document/tile-repeat/tile-repeat-stroke通过0.56s。742文件来源快照及diff检查通过。文字编辑弹窗新建确认、Alt复制、离开副本连续回退及选中素材逐像素alpha命中一致性尚未新增专门验收，本阶段不宣称完整文字平铺迁移/视觉等价；全量迁移仍INCOMPLETE。保留用户数据及未跟踪文件，阶段保存推送dev。
