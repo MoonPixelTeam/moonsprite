@@ -4277,3 +4277,13 @@ make-tile-image-fixtures.cjs执行未改写旧版生产函数生成48组对照�
 本轮保留所有既有未跟踪文件、用户工程/恢复数据与构建缓存，仅保存明确列出的源码、测试和来源/迁移记录。原生256px瓦片边长与同步图像计算等限制已明示，全量迁移继续INCOMPLETE；不会把来源检查覆盖或本批通过解释为所有性能问题已消失。
 
 最终tile-image-final-provenance.log覆盖707文件并核对证据快照，退出0；strict仍因已登记全局缺口退出1。Node生成器语法与git diff --check通过。此阶段达到已声明原生限制内的定向验收状态，保存并推送dev；未操作main、版本号或发布产物。
+
+### 2026-11-08：图像缩放采样性能阶段
+
+延续980f5e84已完成的资源感知图像大小行为，本轮只优化原生重采样内核。实际核对legacy document-model.ts resizeSurfacePixels（已有坐标表）及free-tile.ts resizeFreeTilePixels；复用横轴预计算、逐行取样，普通RGBA保留原除法/加法顺序、straight RGBA及透明RGB，自由瓦片保留乘除顺序和预乘alpha插值，四个采样像素及alpha只读取/转换一次。4096列分段将额外临时表限制为最多64KiB，避免极宽矮表面产生随宽度扩张的大表。所有事务、资源身份、历史及用户批准的网格同步行为沿用上一阶段。
+
+本地Aseprite src/doc/algorithm/resize_image.cpp头部MIT，仅只读对照按行采样及nearest/bilinear规则；其左上采样和边缘插值不同于MoonSprite旧版，不替换行为、不复制源码。冻结980f5e84优化前两个循环作为独立回归oracle，1600随机表面×2插值×3调用方式=9600组完整像素精确比较，包含自定义缩放/负偏移；另16组4095/4096/4097/8193列边界对照。计时只报告不设机器相关阈值。首轮内核、旧版33项和来源覆盖708文件已通过；完整核心/正式程序验收结果见下文，不以当前首轮结果替代整机流畅度验收。图像大小命令仍同步，工作线程取消及更大资源准入、索引/灰度等仍INCOMPLETE。
+
+最终验收：resample-performance-build.log正式Release及四个定向目标构建退出0。resample-performance-core-tests.log四项全通过（image-resize、tile-image-resize、large-resize、mask-resize，5.61s）；包含实际旧版48组自由瓦片oracle、源/输出重开、网格同步、runtime共享和Undo/Redo既有套件。resample-performance-legacy.log旧版document/free-tile两文件33项通过。正式exe新进程PID51684 --image-resize-check退出0，两类资源原生弹窗取消/提交及历史链路通过；本轮未修改UI布局，未新增人工视觉验收，不把自动窗口诊断当成完整交互FPS测试。
+
+构建完成后的resample-performance-kernel-final.log：1024×768→1537×1153每种三次平均，普通nearest9.013→2.934ms（3.07×）、普通smooth44.116→24.472ms（1.80×）、free nearest7.605→2.733ms（2.78×）、free smooth227.532→38.888ms（5.85×）。这些是分配输出及重采样内核实测，不能换算成全应用FPS或消除全部卡顿。精确9600+16组像素对照与既有文档历史检查通过。来源覆盖708文件/证据快照通过；strict退出1符合已知全量迁移缺口；git diff --check通过。保留所有既有未跟踪用户数据/构建文件，仅提交本阶段五个文件并推送dev，不发布生成物。

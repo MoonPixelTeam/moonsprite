@@ -9,14 +9,19 @@ enum class ImageInterpolation {Nearest,Smooth};
 inline std::vector<std::uint32_t> resizeImagePixels(const std::vector<std::uint32_t>& pixels,int sw,int sh,int tw,int th,ImageInterpolation method,double scaleX=0,double scaleY=0,double originX=0,double originY=0){
  if(sw<1||sh<1||tw<1||th<1||pixels.size()!=std::size_t(sw)*sh)throw std::invalid_argument("Invalid resize surface");
  std::vector<std::uint32_t> out(std::size_t(tw)*th);const double sx=scaleX?scaleX:double(tw)/sw,sy=scaleY?scaleY:double(th)/sh;
- auto at=[&](int x,int y){return pixels[std::size_t(std::clamp(y,0,sh-1))*sw+std::clamp(x,0,sw-1)];};
- for(int y=0;y<th;++y)for(int x=0;x<tw;++x){
-  if(method==ImageInterpolation::Nearest){out[std::size_t(y)*tw+x]=at(int(std::floor((x+.5)/sx+originX)),int(std::floor((y+.5)/sy+originY)));continue;}
-  const double u=(x+.5)/sx+originX-.5,v=(y+.5)/sy+originY-.5;const int l=int(std::floor(u)),t=int(std::floor(v));const double fx=u-l,fy=v-t;
-  const auto a=at(l,t),b=at(l+1,t),c=at(l,t+1),d=at(l+1,t+1);std::uint32_t value=0;
-  for(int channel=0;channel<4;++channel){const int shift=channel*8;const double top=((a>>shift)&255)*(1-fx)+((b>>shift)&255)*fx,bottom=((c>>shift)&255)*(1-fx)+((d>>shift)&255)*fx;value|=std::uint32_t(std::floor(top*(1-fy)+bottom*fy+.5))<<shift;}
-  out[std::size_t(y)*tw+x]=value;
- }return out;
+ // Reuse legacy's axis-table approach without changing native sampling arithmetic.
+ if(method==ImageInterpolation::Nearest){
+  std::vector<int> columns(std::min(tw,4096));for(int begin=0;begin<tw;begin+=int(columns.size())){const int end=std::min(tw-begin,int(columns.size()));for(int i=0;i<end;++i){const int x=begin+i;columns[i]=std::clamp(int(std::floor((x+.5)/sx+originX)),0,sw-1);}
+  for(int y=0;y<th;++y){const auto* row=pixels.data()+std::size_t(std::clamp(int(std::floor((y+.5)/sy+originY)),0,sh-1))*sw;auto* target=out.data()+std::size_t(y)*tw;for(int i=0;i<end;++i)target[begin+i]=row[columns[i]];}}return out;
+ }
+ struct Column{int left,right;double fraction;};std::vector<Column> columns(std::min(tw,4096));
+ for(int begin=0;begin<tw;begin+=int(columns.size())){const int end=std::min(tw-begin,int(columns.size()));
+ for(int i=0;i<end;++i){const int x=begin+i;const double u=(x+.5)/sx+originX-.5;const int l=int(std::floor(u));columns[i]={std::clamp(l,0,sw-1),std::clamp(l+1,0,sw-1),u-l};}
+ for(int y=0;y<th;++y){const double v=(y+.5)/sy+originY-.5;const int t=int(std::floor(v));const double fy=v-t;const auto* topRow=pixels.data()+std::size_t(std::clamp(t,0,sh-1))*sw;const auto* bottomRow=pixels.data()+std::size_t(std::clamp(t+1,0,sh-1))*sw;auto* target=out.data()+std::size_t(y)*tw;
+  for(int i=0;i<end;++i){const int x=begin+i;const auto& col=columns[i];const double fx=col.fraction;const auto a=topRow[col.left],b=topRow[col.right],c=bottomRow[col.left],d=bottomRow[col.right];std::uint32_t value=0;
+   for(int channel=0;channel<4;++channel){const int shift=channel*8;const double top=((a>>shift)&255)*(1-fx)+((b>>shift)&255)*fx,bottom=((c>>shift)&255)*(1-fx)+((d>>shift)&255)*fx;value|=std::uint32_t(std::floor(top*(1-fy)+bottom*fy+.5))<<shift;}target[x]=value;
+  }
+ }}return out;
 }
 // Legacy document-model.ts resizeDocumentImage: scale local bounds in world
 // coordinates, then sample through the document scale (including fractional edges).
@@ -37,12 +42,17 @@ inline timeline::Surface imageResizedSurface(const timeline::Surface& source,con
 inline std::vector<std::uint32_t> resizeFreeTileImagePixels(const std::vector<std::uint32_t>& source,int sw,int sh,int tw,int th,ImageInterpolation method){
  if(sw<1||sh<1||tw<1||th<1||source.size()!=std::size_t(sw)*sh)throw std::invalid_argument("Invalid free tile resize surface");
  std::vector<std::uint32_t> out(std::size_t(tw)*th);
- if(method==ImageInterpolation::Nearest){for(int y=0;y<th;++y)for(int x=0;x<tw;++x)out[std::size_t(y)*tw+x]=source[std::size_t(std::min(sh-1,int(std::floor((y+.5)*sh/th))))*sw+std::min(sw-1,int(std::floor((x+.5)*sw/tw)))];return out;}
- auto sample=[&](int x,int y,int channel){const auto p=source[std::size_t(std::clamp(y,0,sh-1))*sw+std::clamp(x,0,sw-1)];const double alpha=(p>>24)/255.;return channel==3?alpha:((p>>(channel*8))&255)*alpha;};
- for(int y=0;y<th;++y)for(int x=0;x<tw;++x){const double u=(x+.5)*sw/tw-.5,v=(y+.5)*sh/th-.5;const int l=int(std::floor(u)),t=int(std::floor(v));const double fx=u-l,fy=v-t;
-  auto channel=[&](int n){const auto a=sample(l,t,n),b=sample(l+1,t,n),c=sample(l,t+1,n),d=sample(l+1,t+1,n);const double top=a+(b-a)*fx,bottom=c+(d-c)*fx;return top+(bottom-top)*fy;};
-  const double alpha=channel(3);std::uint32_t p=std::uint32_t(std::clamp(std::floor(alpha*255+.5),0.,255.))<<24;for(int n=0;n<3;++n)if(alpha>0)p|=std::uint32_t(std::clamp(std::floor(channel(n)/alpha+.5),0.,255.))<<(n*8);out[std::size_t(y)*tw+x]=p;
- }return out;
+ if(method==ImageInterpolation::Nearest){std::vector<int> columns(std::min(tw,4096));for(int begin=0;begin<tw;begin+=int(columns.size())){const int end=std::min(tw-begin,int(columns.size()));for(int i=0;i<end;++i){const int x=begin+i;columns[i]=std::min(sw-1,int(std::floor((x+.5)*sw/tw)));}for(int y=0;y<th;++y){const auto* row=source.data()+std::size_t(std::min(sh-1,int(std::floor((y+.5)*sh/th))))*sw;auto* target=out.data()+std::size_t(y)*tw;for(int i=0;i<end;++i)target[begin+i]=row[columns[i]];}}return out;}
+ struct Column{int left,right;double fraction;};std::vector<Column> columns(std::min(tw,4096));
+ for(int begin=0;begin<tw;begin+=int(columns.size())){const int end=std::min(tw-begin,int(columns.size()));
+ for(int i=0;i<end;++i){const int x=begin+i;const double u=(x+.5)*sw/tw-.5;const int l=int(std::floor(u));columns[i]={std::clamp(l,0,sw-1),std::clamp(l+1,0,sw-1),u-l};}
+ for(int y=0;y<th;++y){const double v=(y+.5)*sh/th-.5;const int t=int(std::floor(v));const double fy=v-t;const auto* top=source.data()+std::size_t(std::clamp(t,0,sh-1))*sw;const auto* bottom=source.data()+std::size_t(std::clamp(t+1,0,sh-1))*sw;auto* target=out.data()+std::size_t(y)*tw;
+  for(int i=0;i<end;++i){const int x=begin+i;const auto& col=columns[i];const double fx=col.fraction;const auto a=top[col.left],b=top[col.right],c=bottom[col.left],d=bottom[col.right];const double aa=(a>>24)/255.,ab=(b>>24)/255.,ac=(c>>24)/255.,ad=(d>>24)/255.;
+   auto interpolate=[&](double a,double b,double c,double d){const double upper=a+(b-a)*fx,lower=c+(d-c)*fx;return upper+(lower-upper)*fy;};
+   const double alpha=interpolate(aa,ab,ac,ad);std::uint32_t p=std::uint32_t(std::clamp(std::floor(alpha*255+.5),0.,255.))<<24;
+   if(alpha>0)for(int n=0;n<3;++n){const int shift=n*8;const double channel=interpolate(((a>>shift)&255)*aa,((b>>shift)&255)*ab,((c>>shift)&255)*ac,((d>>shift)&255)*ad);p|=std::uint32_t(std::clamp(std::floor(channel/alpha+.5),0.,255.))<<shift;}target[x]=p;
+  }
+ }}return out;
 }
 inline tiles::Tileset imageResizedTileset(const tiles::Tileset& source,int width,int height,ImageInterpolation method,bool freeTile){
  tiles::sizeCheck(width,height,source.columns,source.rows,true);if(width==source.tileWidth&&height==source.tileHeight)return source;
