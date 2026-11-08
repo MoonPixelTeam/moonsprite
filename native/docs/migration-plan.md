@@ -4076,3 +4076,16 @@ pending-gradient-io-core-tests的project-save及project-save-raster-resources两
 本阶段验证结果：backup-save-build.log 正式 Release 与 image-save-tests 构建退出0；核心 image-save CTest 通过（backup-save-core-tests.log），包含新增直接目标后缀／优先级矩阵及既有全部图片编码保存回读。首次 --backup-save-check 在新夹具开始打开备份时以 Windows 栈溢出码退出，现场6328-111635984保留。将新场景封装到独立 std::function 调用帧，避免与原大型通用保存套件累积栈上临时对象；未调整产品栈上限或复制新生产保存流程。backup-save-fixture-build.log 正式程序重建退出0，--backup-save-check 完整通过（11396-111754281，backup-result.txt），真实编码／原子写入／重开及原备份逐字节不变均通过，系统文件选择器通过既有回调注入，未做人工选择器操作验收。
 
 backup-save-existing-ui-tests.log 中正式 --native-save-check、--aseprite-save-check、--pending-gradient-io-check 均退出0。未修改界面布局，未新增截图／全缩放人工验收；图像验收不借用旧截图冒充本批结果。来源覆盖669通过，strict按全局既有迁移缺口仍预期退出1；最终差异检查通过。未修改／删除用户工程、恢复文件、缓存或既有诊断，既有 A/B/A 单次失败现场继续保留，全量迁移仍 INCOMPLETE。
+
+
+### 2026-11-08 已支持图片格式的大尺寸打开与保存闭环（已通过定向验证）
+
+继承既有 Document／工程准入的每边32768、总64Mi RGBA像素边界，移除PNG/JPEG/WebP/BMP、GIF、ASE/ASEPRITE、PSD打开器残留的1024画布门禁。对照legacy document-model、png、gif-import、aseprite、psd和document-files实际创建／导入流程，不改变像素／调色板／帧／来源语义；GIF多帧展开、ASE解码累计和PSD通道累计预算保持原有256MiB约束，不把画布合法当成全部资源必可加载。按实际legacy aseprite.ts MAX_DIMENSION=16384和ag-psd的PSDv1最大30000进一步约束各自格式，不能把原生32768上限扩张成旧格式的新行为。共享unsigned除法比较避免非法维度乘法溢出。WebP先检查压缩文件长度，并直接读入SkData，避免整个压缩数据vector再MakeWithCopy的双份峰值；保留首帧、透明像素归零和实际GIF签名优先。
+
+新增60组真实格式／尺寸输入（1025×2、3×1031、2048×16、32768×1、1×32768、16384×1、30000×1、16383×1；逐格式保留旧版上限／现有静态WebP编码器边界），覆盖九个扩展名的打开、边缘绘制／Undo／Redo、原生保存重开及源文件字节不变；另覆盖大GIF动画／签名、实际图片文件序列、尺寸和aggregate预算、畸形PNG/ASE/PSD头、空／截断WebP、稀疏超大WebP长度的分配前拒绝。核心测试单独增加测试栈以容纳独立大型Document夹具，不更改正式程序栈。--large-image-io-check以正常产品栈运行实际Editor文件加载／菜单保存／异步worker与原子文件，只注入既有选择器回调，覆盖全部九个扩展名、最大长边和坏文件保留现有作品。实际legacy TypeScript decoder/composite核对32个PNG/GIF/ASE/PSD完整像素hash，JPEG/WebP/BMP的浏览器解码差异不冒充由该Node oracle覆盖。
+
+验证结果：large-image-import-final-build.log 正式 Release 构建退出0；large-image-import-core-final-tests.log 中 image-save、large-image-import、psd-import、gif-import、aseprite-io 五项全部通过。新增核心夹具31064-113224187的60组格式／尺寸全部通过，large-image-import-legacy-oracle.log 证明实际旧版 decodeDocumentFile／compositeDocument 对32个完整像素哈希一致。Node加载器只桥接实际UPNG动态CommonJS导出以匹配Vite具名导入，未改写旧解码算法。旧版png、gif-import、aseprite、psd四个测试文件共63项通过（large-image-import-legacy-tests.log）。
+
+正式 --large-image-io-check 退出0（43616-113045062），以正常产品栈执行九个扩展名及32768边长、真实异步原子保存和失败状态保护；--aseprite-save-check、--backup-save-check 均退出0（large-image-import-existing-ui-tests.log）。初次核心检查暴露的是测试夹具假设错误：核心ASE不设置Editor来源身份、GIF默认显示第一帧、空文件不能使用拒绝空输出的原子写入器；已修正对应断言／夹具。既有GIF测试使用窄字符入口导致中文CTest路径转换失败，改用Windows宽字符入口后通过。保留失败现场，不把这些夹具修正当作产品缺陷修复。
+
+未修改布局，本批没有新增图像／全缩放人工验收。图片以外的操作专属1024限制（新建UI、剪贴板、缩放、补间等）、全量工程颜色模式、全部特殊资源和所有迁移仍INCOMPLETE，不宣称大画布全功能支持。

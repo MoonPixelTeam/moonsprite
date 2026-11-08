@@ -771,6 +771,9 @@ int app_main(int argc,char* argv[]) {
     const bool nativeSaveCheck=argc>1&&(std::string(argv[1])=="--native-save-check"||std::string(argv[1])=="--backup-save-check");
     ui::Timer nativeSaveTimer(180,editor);
     if(nativeSaveCheck){nativeSaveTimer.Tick.connect([&]{nativeSaveTimer.stop();try{editor->smokeNativeSaveLifecycle();desktop.approved=true;desktop.closeWindow(editor);}catch(const std::exception& e){std::ofstream("native/build/native-save-error.txt")<<e.what();std::exit(1);}});nativeSaveTimer.start();}
+    const bool largeImageIoCheck=argc>1&&std::string(argv[1])=="--large-image-io-check";
+    ui::Timer largeImageIoTimer(180,editor);
+    if(largeImageIoCheck){largeImageIoTimer.Tick.connect([&]{largeImageIoTimer.stop();try{editor->smokeLargeImageIo();desktop.approved=true;desktop.closeWindow(editor);}catch(const std::exception& e){std::ofstream("native/build/large-image-io-error.txt")<<e.what();std::exit(1);}});largeImageIoTimer.start();}
     const bool asepriteSaveCheck=argc>1&&std::string(argv[1])=="--aseprite-save-check";
     ui::Timer asepriteSaveTimer(180,editor);
     if(asepriteSaveCheck){asepriteSaveTimer.Tick.connect([&]{asepriteSaveTimer.stop();try{editor->smokeAsepriteSaveLifecycle();desktop.approved=true;desktop.closeWindow(editor);}catch(const std::exception& e){std::ofstream("native-aseprite-save-error.txt")<<e.what();std::exit(1);}});asepriteSaveTimer.start();}

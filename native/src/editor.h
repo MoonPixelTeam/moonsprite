@@ -82,6 +82,7 @@ class LayerLabelSeparator;
 class Editor : public ui::Widget {
 public:
   void smokeAsepriteSaveLifecycle();
+  void smokeLargeImageIo();
   void smokeNativeSaveLifecycle();
   void smokeMaskSelectionClipboard();
   void smokeRecentProjects();void smokeHomeRecoveries();void discardHomeRecovery(const std::string&);void smokeGallery();void smokeHomeSections();void initializeGallery(bool testing){if(!testing){loadHomeSections();loadGallery();loadHomeSection();}}

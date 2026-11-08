@@ -1,4 +1,5 @@
 #include "aseprite_io.h"
+#include "image_import_limits.h"
 #include "aseprite_binary.h"
 #include "palette_extraction.h"
 #include <array>
@@ -16,7 +17,7 @@ std::vector<timeline::Pixel> pixels(const Bytes& data,unsigned w,unsigned h,unsi
 }
 AsepriteImport decodeAseprite(const std::vector<std::uint8_t>& bytes,std::u32string fallbackName){
  using namespace ase;
- if(bytes.size()<128||bytes.size()>Budget)bad("ASE 文件大小无效。");Reader header(bytes);auto size=header.u32();if(size!=bytes.size()||header.u16()!=0xa5e0)bad("ASE 文件头无效。");unsigned frames=header.u16(),width=header.u16(),height=header.u16(),depth=header.u16(),headerFlags=header.u32();header.skip(10);unsigned transparent=header.u8();if(!frames||!width||!height||width>1024||height>1024)bad("原生版 ASE 画布尺寸须在 1–1024 像素内。");if(depth!=8&&depth!=16&&depth!=32)bad("ASE 色深不受支持。");
+ if(bytes.size()<128||bytes.size()>Budget)bad("ASE 文件大小无效。");Reader header(bytes);auto size=header.u32();if(size!=bytes.size()||header.u16()!=0xa5e0)bad("ASE 文件头无效。");unsigned frames=header.u16(),width=header.u16(),height=header.u16(),depth=header.u16(),headerFlags=header.u32();header.skip(10);unsigned transparent=header.u8();if(!frames||width>16384||height>16384||!editableImageDimensions(width,height))bad("ASE 画布超出旧版16384边长或原生256MiB像素预算。");if(depth!=8&&depth!=16&&depth!=32)bad("ASE 色深不受支持。");
  AsepriteImport out;out.width=int(width);out.height=int(height);out.name=std::move(fallbackName);std::vector<Spec> specs;std::vector<TileSet> sets;std::vector<RawCel> raw;std::vector<std::vector<timeline::Pixel>> palettes;std::vector<timeline::Pixel> palette;std::vector<std::string> groupStack;std::map<std::pair<unsigned,unsigned>,std::size_t> slots;std::size_t stored=0,pos=128;auto allocate=[&](std::size_t n){if(n>Budget-stored)bad("ASE 解码内存预算超限。");stored+=n;};
  for(unsigned fi=0;fi<frames;fi++){
  Reader frame(bytes,pos,bytes.size());auto length=frame.u32();if(length<16||length>bytes.size()-pos)bad("ASE 帧长度无效。");auto end=pos+length;frame.end=end;if(frame.u16()!=0xf1fa)bad("ASE 帧标识无效。");unsigned oldCount=frame.u16(),duration=frame.u16();frame.skip(2);auto newCount=frame.u32();unsigned count=oldCount==65535?newCount:oldCount;if(count>(end-frame.p)/6)bad("ASE 区块数量无效。");out.timeline.frames.push_back({"ase-frame-"+std::to_string(fi),int(duration?duration:100),false});

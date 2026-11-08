@@ -1,5 +1,6 @@
 #pragma once
 #include "document.h"
+#include "image_import_limits.h"
 #include <algorithm>
 #include <limits>
 #include <optional>
@@ -34,7 +35,7 @@ inline Metadata metadata(const std::vector<std::uint8_t>& bytes){
  if(result.frames.empty())throw std::runtime_error("GIF contains no image frames");return result;
 }
 inline void validateBudget(const Metadata& source){
- if(source.width<1||source.height<1||source.width>1024||source.height>1024)throw std::length_error("Native editable images support 1..1024 pixels");
+ validateImportedImageDimensions(source.width,source.height);
  std::uint64_t patchPixels=0;for(const auto& frame:source.frames)patchPixels=std::max(patchPixels,std::uint64_t(frame.width)*frame.height);
  if(std::uint64_t(source.width)*source.height*(source.frames.size()+3)*sizeof(Pixel)+patchPixels*sizeof(Pixel)>workingBudget)throw std::length_error("GIF exceeds the native pixel working budget");
 }
