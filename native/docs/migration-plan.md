@@ -4496,3 +4496,10 @@ CTest tile-repeat通过，含此前1024旧版几何oracle及直接沿用旧版re
 实际鼠标诊断比较普通层/自由瓦片源、线性/径向、直接应用/Enter确认、X/Y/Both主画布和副本的完整像素，验证待确认无历史、应用一笔、UndoRedo及Escape。gradient-repeat-build.log正式Release构建0，显式等待 --tile-repeat-check ExitCode0；三项CTest tile-repeat/tile-repeat-stroke/free-tile-project通过12.09s。来源登记742文件快照及diff检查通过。手柄坐标复用同一映射，但本轮没有新增手柄拖动或越界释放专门运行回归，也没有新截图/FPS测量。
 
 其余平铺工具与全部迁移仍未完成。保留用户数据及未跟踪文件；阶段提交推送dev。
+
+
+### 2026-11-09：渐变待确认手柄与越界释放（阶段完成）
+
+补齐上一阶段未实测的手柄链路。发现无效副本释放时以gradientSpec.end充当指针，在线性起点/径向中心拖动中会重新计算错误位移。现在无效释放完全跳过几何更新，只结算拖动、保留最后有效几何并释放捕获，承接legacy localPoint无效采样不更新的行为。
+
+新增X/Y/Both线性起点/径向中心实际鼠标诊断：副本命中、本地位移、越界移动及释放保持起终点、待确认无历史、手柄Escape恢复先前几何、Enter一笔提交和像素UndoRedo。首轮径向测试误用start作为径向中心，已改用resolveGradientGeometry的实际中心，生产几何未调整。gradient-handles-repeat-build.log最终正式构建0，显式等待 --tile-repeat-check退出0。三项CTest tile-repeat/tile-repeat-stroke/free-tile-project通过12.06s，随后只修正运行诊断并重建运行通过。无新截图/FPS验收；整体迁移仍INCOMPLETE。用户数据与未跟踪文件保留，阶段提交推送dev。
