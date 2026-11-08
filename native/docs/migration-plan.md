@@ -4242,3 +4242,19 @@ async-sheet-core-build.log修正重复takeState后核心构建退出0。async-sh
 已查看本轮sheet-import-busy.bmp和sheet-import-preview.bmp：默认2×下源像素、棋盘、切片编号/边框/手柄可见，忙碌控件禁用，参数和底部操作完整无交叠。仅验收这两个渲染状态及上述自动窗口路径，不声明全倍率、长时操作或全软件帧率。最终安装仍使用原有同步结构历史应用，未声称提交零延迟；索引/灰度完整编辑等全局迁移缺口保持INCOMPLETE。
 
 最终async-sheet-final-provenance.log来源覆盖700文件并验证证据快照，退出0；strict因全局既有缺口退出1，符合尚未全量迁移的状态。git diff --check退出0。保留既有未跟踪文件、工程/恢复数据与构建缓存；本批只提交明确列出的源码、测试和迁移记录。
+
+### 2026-11-08 瓦片/自由瓦片画布尺寸、裁切与修整（已通过定向验证）
+
+接续c0e25ee2，逐项对照document-model::resizeDocumentAt/cropLayersToCanvas、animation::resizeAnimationCelsAt、tilemap::resizeTilemapCelDataToCanvas、free-tile及workspace画布结构历史。移除特殊工程resizeCanvas/cropCanvasRegion直接拒绝，复用已有background结构事务与PixelDialog，不改变UI布局。网格按负坐标floor/ceil扩展覆盖或裁切单元格；自由瓦片仅移动局部实例、必要时扩大/裁切表面，trim沿旧版源的未旋转宽高判定，部分露出保留、完全越界移除，保留隐藏/锁定/变换及资源身份。链接与runtime共享仅处理canonical owner一次；空资源自由Cel不合成新来源。普通隐藏锁定层、背景重复单元、直接/链接蒙版、live选区/pivot与单笔Undo/Redo共同处理。浮动粘贴仍沿既有独立提交生命周期，不合并旧事务。
+
+预分配阶段计完整资源/实例元数据、原表面/新表面、蒙版、选区及实际背景重复覆盖，保留原生256MiB工作集与32768边长/64Mi画布像素准入；所有源端点/网格起点/实例局部位移先用64位计算，不回绕。背景模运算与source采样中间坐标改为64位，避免极端负原点取反溢出。复用原有tiles/free renderer和结构历史，不另造资源格式；网格/实例结果直接构建，避免先复制整份旧数组再清空。
+
+make-tile-canvas-fixtures.cjs执行实际未改写的旧版两个生产resize函数，生成128组2资源类型×2链接×2活动帧×8尺寸/偏移×2trim，核对两帧完整RGBA哈希、网格cells与实例顺序/坐标；包含非方形源、源偏移、隐藏/锁定实例及部分越界。原生测试通过实际Document事务及256个源/输出文件保存重开，并追加runtime共享、混合普通层/背景/链接蒙版、selection/pivot、crop/trim、预算与坐标拒绝。首轮唯一失败为额外空来源fixture漏填必需setId，修正测试输入后tile-canvas-core-tests.log四项全部通过（7.21s）；未放宽产品准入或期望。旧版tilemap/free-tile/animation三个文件52项通过（tile-canvas-legacy-tests.log）。来源覆盖704文件通过，最终正式构建/窗口验收进行中，未用核心通过代替UI证据。
+
+本地Aseprite cmd_canvas_size.cpp/DocApi::cropSprite仅只读比较事务与图层裁切入口，头部EULA，未复制代码；MoonSprite旧版仍为行为权威，未引入Aseprite切片移动等额外语义。特殊图层图像大小重采样、索引/灰度完整编辑及全局迁移仍INCOMPLETE；当前画布提交/重绘仍同步，不声明全软件卡顿或帧率优化已完成。
+
+收尾补充执行实际documentVisibleContentBounds/documentAnimationVisibleContentBounds，新增16组当前帧/所有帧trim结果，包含禁用帧、链接和无可见像素分支。生成器初次假定所有输入都有可见像素而报错，按实际旧版输出登记empty/no-op分支后通过，未改写产品函数或忽略空画面。tile-canvas-trim-core-tests.log明确输出128 canvas+16 trim全部通过；另有64组runtime共享事务对照。最终tile-canvas-final-core-tests.log五项全部通过（7.96s）：tile-canvas-resize、canvas-resize、large-resize、document-background、mask-resize。
+
+tile-canvas-final-build.log正式Release构建退出0；首轮tile-canvas-ui-tests.log中--canvas-resize-check/--canvas-trim-check退出0。首轮结果截图沿用此前大画布测试的视图和故意触发的错误提示，不能用来验收当前画面；仅修正smoke fixture的fitCanvas与状态隔离，不改变生产视图策略。tile-canvas-ui-framing-build.log最终正式增量构建退出0；tile-canvas-final-ui-tests.log两条正式窗口检查均退出0，运行前后exe SHA256一致（B963DCA8B1D7F9AB08A307F376695F982261F093006B50CFAB7386F6FD827153）。实际PixelDialog取消/提交、两类特殊工程资源身份、单笔Undo/Redo及crop/trim菜单路由通过。
+
+已重新查看最终canvas-resize-grid-result.bmp、canvas-resize-free-result.bmp：默认2×下4×4画布及原像素可见，历史含一笔画布大小，资源层/链接帧保留，底栏无前一失败提示；弹窗截图另核对字段和底部按钮完整无交叠，未据其证明所有overlay刷新或缩放状态。视觉范围限这些窗口状态，不是全部倍率/手工长时操作/全软件FPS验收。来源覆盖704文件通过（tile-canvas-final-provenance.log），strict仍因全局既有缺口退出1；Node语法与diff检查通过。既有未跟踪文件、工程/恢复数据和构建缓存全部保留，本阶段完成后保存推送dev，全量目标继续INCOMPLETE。

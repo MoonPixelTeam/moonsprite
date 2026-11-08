@@ -3700,6 +3700,16 @@ void Editor::smokeCanvasResize(){
    document.undo();const auto failureHistory=document.historySize(),failureRevision=document.revision();openImageResize();resizeLock_->Click();resizeInputs_[0]->setText("8192");resizeInputs_[0]->Change();resizeInputs_[1]->setText("8192");resizeInputs_[1]->Change();resolve(true);if(pending_!=Pending::ImageResize||document.width()!=1025||document.pixels()!=baseline||document.historySize()!=failureHistory||document.revision()!=failureRevision)throw std::runtime_error("Large image failed resize lost editable dialog/state");resolve(false);
    std::ofstream(assets_.parent_path()/"large-resize-ui-result.txt")<<"Actual canvas/image size dialogs: large input, ratio/center, local undo/redo, side/area rejection and valid recovery, cancel/apply/document undo/redo and image allocation-budget failure state passed.\n";
   };large();
+ for(bool free:{false,true}){
+  document=Document(2,2);if(free&&!document.createFreeTileLayer(U"画布自由瓦片"))throw std::runtime_error("Canvas free fixture");document.beginStroke({1,1},0xff123456);document.commitStroke();if(!free&&!document.convertLayerToTilemap(1,1,U"画布瓦片"))throw std::runtime_error("Canvas grid fixture");document.addLinkedFrame(true);document.markSaved();status_.clear();fitCanvas();refresh();
+  const auto identity=document.identity(),h=document.historySize(),revision=document.revision();const auto layer=document.layer().id,frame=document.frame().id;const auto original=document.canvasPixels();const auto source=document.timeline().state().tilesets;
+  openCanvasResize(1);if(document.width()!=2||document.historySize()!=h||document.revision()!=revision||document.dirty()||canvasResizePreview_)throw std::runtime_error("Special canvas dialog cancel");
+  openCanvasResize(2);if(document.identity()!=identity||document.width()!=4||document.height()!=4||document.historySize()!=h+1||document.layer().id!=layer||document.frame().id!=frame||canvasResizePreview_||document.timeline().state().tilesets[0].pixels!=source[0].pixels)throw std::runtime_error("Special canvas dialog apply/resources");
+  document.undo();refresh();if(document.width()!=2||document.canvasPixels()!=original)throw std::runtime_error("Special canvas dialog Undo");document.redo();refresh();if(document.width()!=4)throw std::runtime_error("Special canvas dialog Redo");
+  fitCanvas();refresh();manager()->invalidate();manager()->flushRedraw();manager()->dispatchMessages();writeSmokeFrame(display()->nativeSurface().get(),assets_.parent_path()/(free?"canvas-resize-free-result.bmp":"canvas-resize-grid-result.bmp"));
+  document.undo();refresh();document.previewSelection(SelectionMask{1,1,1,1,{}});if(!menuCommands_.invoke("cropCanvas")||document.width()!=1||document.historySize()!=h+1)throw std::runtime_error("Special crop actual menu");document.undo();refresh();if(document.width()!=2||document.canvasPixels()!=original)throw std::runtime_error("Special crop undo");
+  if(!menuCommands_.invoke("trimCurrentFrame")||document.width()!=1||document.height()!=1)throw std::runtime_error("Special trim actual menu");document.undo();refresh();if(document.width()!=2||document.canvasPixels()!=original)throw std::runtime_error("Special trim undo");
+ }
  document=Document();refresh();
 }
 void Editor::smokeFilterPresets(){
