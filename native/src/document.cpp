@@ -4,6 +4,7 @@
 #include "relative_luminance.h"
 #include "symmetry_content_translation.h"
 #include "mask_resize.h"
+#include "image_import_limits.h"
 #include <unordered_set>
 #include <iterator>
 #include "document.h"
@@ -1471,7 +1472,7 @@ std::unordered_set<Pixel> exact;for(const auto color:d.pixels())if(color>>24){ex
 auto colors=extractImportedPalette({d.pixels()},256,exact.size()<=4096?d.pixels().size():262144);d.palette_.entries.clear();d.palette_.slots.clear();int id=1;for(auto c:colors){{auto text=std::to_string(id);d.palette_.entries.push_back({id,std::u32string(text.begin(),text.end()),c});}d.palette_.slots.push_back(id++);}d.palette_.slots.resize((d.palette_.slots.size()+7)/8*8);d.palette_.nextId=id;d.name_=std::move(name);d.markSaved();return d;}
 bool Document::importSpriteSheet(const SheetImportOptions& options){if(hasTilemapContent()||hasFreeTileContent())return false;commitFloatingPaste();cancelStroke();auto next=buildSpriteSheetImport(*this,options);Edit e{{},state_,nextState_};e.beforeDimensions={{width_,height_}};e.afterDimensions={{options.width,options.height}};e.beforeTimeline=timeline_.state();e.afterTimeline=std::move(next);e.beforeActive=activeLayerId_;e.beforeFrame=activeFrameId_;e.afterActive=e.afterTimeline->layers.front().id;e.afterFrame=e.afterTimeline->frames.front().id;e.pixelSelectionEdit=true;e.beforePixelsSelection=selection_;e.beforeSelection=selectedFrames_;e.afterSelection=std::vector<std::string>{};reserveHistoryEntries();applyEdit(e,true);publishChange();pushEdit(std::move(e),U"导入精灵表");return true;}
 bool Document::resizeImage(int width,int height,ImageInterpolation method){if(hasTilemapContent()||hasFreeTileContent())return false;
- if(width<1||height<1||width>1024||height>1024)throw std::invalid_argument("Native editable images support 1..1024 pixels");
+ validateImportedImageDimensions(width,height);
  if(width==width_&&height==height_)return false;
  cancelStroke();cancelLayerOpacity();if(active())throw std::runtime_error("Finish the active edit before resizing the image");
  std::size_t remaining=adjustmentByteLimit;auto reserve=[&](std::uint64_t bytes){if(bytes>remaining)throw std::length_error("Image resize exceeds working pixel budget");remaining-=std::size_t(bytes);};
@@ -1512,7 +1513,7 @@ bool Document::cropCanvas(std::optional<TransformPoint> pivot){
  return cropCanvasRegion({bounds->x,bounds->y,bounds->width,bounds->height},pivot);
 }
 bool Document::resizeCanvas(int width,int height,CanvasAnchor anchor,std::optional<int> offsetX,std::optional<int> offsetY,bool trimOutside,std::optional<TransformPoint> pivot){if(hasTilemapContent()||hasFreeTileContent())return false;
- if(width<1||height<1||width>1024||height>1024)throw std::invalid_argument("Native editable canvases support 1..1024 pixels");
+ validateImportedImageDimensions(width,height);
  const auto shift=canvasResizeOffset(width_,height_,width,height,anchor,offsetX,offsetY);if(pivot&&(!std::isfinite(pivot->x)||!std::isfinite(pivot->y)))throw std::invalid_argument("Invalid canvas selection pivot");
  commitFloatingPaste();cancelStroke();cancelLayerOpacity();if(active())throw std::runtime_error("Finish the active edit before resizing the canvas");
  if(std::any_of(timeline_.state().layers.begin(),timeline_.state().layers.end(),[](const auto& l){return l.background.has_value();}))return resizeBackgroundCanvas(width,height,shift.x,shift.y,trimOutside,pivot);

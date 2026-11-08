@@ -39,7 +39,7 @@ void Editor::openCanvasResize(int verify){
  CanvasResizeDialog* activePopup=nullptr;
  CanvasResizeDialog popup(font_,skin_,toolIcons_,document.width(),document.height(),[&](std::optional<CanvasResizeDraftValue> v){if(!v||!valid()){clear();return;}canvasResizePreview_=std::array<int,4>{v->width,v->height,v->offsetX,v->offsetY};canvasResizeIdentity_=identity;canvasResizeRevision_=revision;invalidateRect(canvasViewport());if(verify&&(document.historySize()!=history||document.dirty()!=dirty))throw std::runtime_error("Canvas resize preview edited document");},[&](const CanvasResizeDraft& d){if(!valid())return false;const auto v=d.value;const bool applied=document.resizeCanvas(v.width,v.height,d.anchor,v.offsetX,v.offsetY,d.trimOutside,selectionPivot_);if(applied){clear();refresh();}return applied;},[&](gfx::Point p)->std::optional<gfx::Point>{if(!valid()||(!canvasViewport().contains(p)&&!(activePopup&&activePopup->hasCapture())))return {};const auto q=transformCanvasPoint(p);return gfx::Point(int(std::clamp(std::floor(q.x),-10000000.,10000000.)),int(std::clamp(std::floor(q.y),-10000000.,10000000.)));},rect);
  activePopup=&popup;popup.setDisplay(display(),false);const auto view=canvasViewport();popup.setBounds({std::max(bounds().x,view.x2()-200*uiScale),std::max(bounds().y,view.y),200*uiScale,313*uiScale});
- ui::Timer timer(50,&popup);if(verify){timer.Tick.connect([&]{timer.stop();popup.smoke(verify==2,[&]{writeSmokeFrame(popup.display()->nativeSurface().get(),assets_.parent_path()/"canvas-resize-smoke.bmp");});});timer.start();}
+  ui::Timer timer(50,&popup);if(verify){timer.Tick.connect([&]{timer.stop();if(verify>=3){unsigned images=0;popup.smokeLarge(verify==4,[&]{manager()->flushRedraw();manager()->dispatchMessages();manager()->flipAllDisplays();writeSmokeFrame(popup.display()->nativeSurface().get(),assets_.parent_path()/(images++?"canvas-resize-large-smoke.bmp":"canvas-resize-large-invalid-smoke.bmp"));});}else popup.smoke(verify==2,[&]{writeSmokeFrame(popup.display()->nativeSurface().get(),assets_.parent_path()/"canvas-resize-smoke.bmp");});});timer.start();}
  try{popup.openWindowInForeground();}catch(...){clear();throw;}clear();requestFocus();
 }
 
@@ -1992,7 +1992,7 @@ void Editor::paintDialog(ui::Graphics& g) {
 
       }
 
-      if(pending_==Pending::ImageResize){label(U"调整图像尺寸",modal.x+6,modal.y+(FloatingColumnChrome::headerHeight-PixelFont::cell)/2);label(U"宽度",modal.x+6,modal.y+32);label(U"高度",modal.x+6,modal.y+54);label(U"当前原生可编辑范围 1–1024 px",modal.x+6,modal.y+101);return;}
+      if(pending_==Pending::ImageResize){label(U"调整图像尺寸",modal.x+6,modal.y+(FloatingColumnChrome::headerHeight-PixelFont::cell)/2);label(U"宽度",modal.x+6,modal.y+32);label(U"高度",modal.x+6,modal.y+54);label(U"尺寸受像素及工作内存预算限制",modal.x+6,modal.y+101);return;}
 
       if(pending_==Pending::AntiAlias){label(U"自动抗锯齿",modal.x+6,modal.y+(FloatingColumnChrome::headerHeight-PixelFont::cell)/2);if(aaAuto_&&aaSpec_.colorSource==0)label(U"不透明度",modal.x+6,modal.y+76);if(aaWorker_.valid()||aaScheduled_)label(U"处理中…",modal.x+6,modal.y+(aaAuto_?125:221));return;}
 

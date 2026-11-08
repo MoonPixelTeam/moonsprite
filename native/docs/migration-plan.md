@@ -4089,3 +4089,19 @@ backup-save-existing-ui-tests.log 中正式 --native-save-check、--aseprite-sav
 正式 --large-image-io-check 退出0（43616-113045062），以正常产品栈执行九个扩展名及32768边长、真实异步原子保存和失败状态保护；--aseprite-save-check、--backup-save-check 均退出0（large-image-import-existing-ui-tests.log）。初次核心检查暴露的是测试夹具假设错误：核心ASE不设置Editor来源身份、GIF默认显示第一帧、空文件不能使用拒绝空输出的原子写入器；已修正对应断言／夹具。既有GIF测试使用窄字符入口导致中文CTest路径转换失败，改用Windows宽字符入口后通过。保留失败现场，不把这些夹具修正当作产品缺陷修复。
 
 未修改布局，本批没有新增图像／全缩放人工验收。图片以外的操作专属1024限制（新建UI、剪贴板、缩放、补间等）、全量工程颜色模式、全部特殊资源和所有迁移仍INCOMPLETE，不宣称大画布全功能支持。
+
+### 2026-11-08 大尺寸图像／画布调整事务（已通过定向验证）
+
+接续50b3d7b7，对照document-model::resizeDocumentImage／resizeDocumentAt、CanvasResizeDialog及workspace-commands-document-io，移除两个生产Document入口的1024原型门禁，采用已登记每边32768／64Mi RGBA像素准入。现有逐表面、历史、选区和蒙版工作预算保留；保留链接／runtime共享owner、隐藏锁定层、禁用帧、时长、循环段和单步撤销。画布尺寸输入按实际旧版只限制最小值，不再把大数悄悄截成1024；预算外草稿保留编辑并禁用应用。图像大小现有16384直接输入／6400% UI范围沿旧版保留，不因核心可容纳32768就扩张界面语义。瓦片／自由瓦片在这两个入口的既有未迁移拒绝仍明确保留，不将本批称为全部尺寸功能等价。
+
+新增make-large-resize-fixtures.cjs直接执行实际旧版函数生成36组geometry／完整RGBA哈希，涵盖1025与1031两轴、32768长边、局部／负偏移／画布外存储、透明RGB、最近邻、straight RGBA平滑、画布裁切／保留。large-resize-tests经生产Document执行同输入，检查link／runtime shared在编辑中保留、旧归档语义的重开、隐藏锁定／禁用／loop元数据、单次undo／redo，尺寸及工作预算拒绝保持现场、最大面积无全画布表面分配、选区缩放。现有图像／画布测试把旧1025拒绝断言改为真实32769越界；实际Editor套件扩展两种大尺寸对话框、比例／中心、局部历史、非法草稿恢复、取消／应用／文档历史和失败后继续编辑。尚待构建与运行，不以来源覆盖替代行为证明。
+
+旧版document.test.ts、canvas-resize-resources.test.ts、CanvasResizeDialog.test.tsx三个文件22项通过（large-resize-legacy-tests.log）；实际legacy夹具生成器退出0、输出36组（large-resize-legacy-oracle.log）。正式程序及原生测试构建仍在进行，未计作通过。
+
+large-resize-build.log 首次正式Release及四个核心目标构建退出0；large-resize-core-tests.log 中新套件首次保存失败为新夹具把空字节当成原ZIP，Missing ZIP directory现场44388-113825984保留。夹具改为clearSourceArchiveForNewSnapshot，和既有非原生来源文档一致，不更改生产保存器。large-resize-fixture-build.log 退出0，large-resize-core-final-tests.log 的image-resize、canvas-resize、large-resize、mask-resize全部通过；36组真实文件结果4928-113859859，完整几何／像素hash、编辑中链接／共享、元数据、undo／redo及重开通过。runtimeShared是进程内关联，磁盘重开按现有归档语义检查有效像素及显式linkedCelId，不伪称保留内部runtime字段。
+
+首轮正式 --canvas-resize-check 退出0；首次捕获仍显示初始草稿，只有初始界面可作为图像证据，不能当成2049草稿刷新已验收。补充刷新后截图及实际UI合法画布／变换工作内存超预算场景，正在重建正式程序；不改变产品栈上限、布局、采样算法、用户文件或缓存。
+
+large-resize-final-build.log 正式Release退出0，large-resize-final-ui-tests.log 中 --canvas-resize-check、--mask-resize-check、--large-image-io-check 全部退出0。实际UI新增8192×8192合法面积但变换工作内存超预算的失败检查通过，保留像素／尺寸／历史／修订和可编辑弹窗。刷新后的2049×6画布草稿、8192×8193超预算说明均已查看：字段／锚点／四边／错误／底部按钮完整，无交叠。图像尺寸2049×6截图发现旧“1–1024 px”说明残留，改为实际“尺寸受像素及工作内存预算限制”，正在正式重建；待重新捕获核实后才结束本批。
+
+最终large-resize-caption-build.log 正式Release退出0，large-resize-caption-ui-tests.log 的完整 --canvas-resize-check 再次退出0。最终image-resize-large-smoke.bmp已重新查看：2049×6／200%字段、原比例锁／最近邻、预算说明、应用／取消均完整，无旧1024误导说明或交叠。图像验收仅覆盖这次默认2×窗口的画布有效／超预算及图像有效三个状态，不代表全缩放、长时手工拖动或UI性能量化。来源覆盖676文件通过，strict因全局既有迁移缺口仍退出1；diff检查通过。索引／灰度完整编辑、瓦片专属尺寸语义、新建／剪贴板／其它操作的独立门禁仍未在本批完成；全量迁移保持INCOMPLETE。
