@@ -94,10 +94,19 @@ std::string cacheName(const std::string& path){std::uint64_t value=1469598103934
 Preview readPreview(const Project& record,const std::filesystem::path& cacheDirectory,const std::function<bool()>& canceled){
  auto checkCanceled=[&]{if(canceled())throw std::runtime_error("Project preview canceled");};checkCanceled();Apartment apartment;const auto file=std::filesystem::u8path(record.path);const auto sourceSize=std::filesystem::file_size(file);const auto sourceTime=std::filesystem::last_write_time(file).time_since_epoch().count();const auto base=cacheDirectory/cacheName(record.path);auto metadata=base;metadata+=".txt";auto pngFile=base;pngFile+=".png";
  Preview result;
- if(!cacheDirectory.empty())try{std::lock_guard<std::mutex> lock(diskMutex());std::ifstream in(metadata,std::ios::binary);std::string version,path,mode;std::uintmax_t size=0;long long time=0;int width=0,height=0;if(in>>version>>std::quoted(path)>>size>>time>>width>>height>>mode&&version=="moon-preview-v2"&&path==record.path&&size==sourceSize&&time==sourceTime&&width>0&&height>0&&(mode=="rgba"||mode=="indexed"||mode=="grayscale")){result.width=width;result.height=height;result.colorMode=mode;result.png=readBytes(pngFile,32u*1024u*1024u);decode(result,result.png);checkCanceled();return result;}}catch(...){result={};}
+ // Keep only paired file IO under the shared lock; independent image decodes
+ // must not serialize all three preview workers on a warm disk cache.
+ if(!cacheDirectory.empty())try{std::lock_guard<std::mutex> lock(diskMutex());std::ifstream in(metadata,std::ios::binary);std::string version,path,mode;std::uintmax_t size=0;long long time=0;int width=0,height=0;if(in>>version>>std::quoted(path)>>size>>time>>width>>height>>mode&&version=="moon-preview-v2"&&path==record.path&&size==sourceSize&&time==sourceTime&&width>0&&height>0&&(mode=="rgba"||mode=="indexed"||mode=="grayscale")){result.width=width;result.height=height;result.colorMode=mode;result.png=readBytes(pngFile,32u*1024u*1024u);}}catch(...){result={};}
+ checkCanceled();
+ auto checkSource=[&]{need(std::filesystem::file_size(file)==sourceSize&&std::filesystem::last_write_time(file).time_since_epoch().count()==sourceTime,"Preview source changed during read");};
+ if(!result.png.empty()){
+  try{decode(result,result.png);}catch(...){result={};}
+  checkCanceled();checkSource();
+  if(!result.png.empty())return result;
+ }
  auto extension=file.extension().u8string();std::transform(extension.begin(),extension.end(),extension.begin(),[](unsigned char c){return char(std::tolower(c));});const auto source=readBytes(file,project::Limits{}.archiveBytes);checkCanceled();
  if(hasGifSignature(source.data(),source.size())){decode(result,source);encode(result);}
- else if(extension==".moonsprite"){
+ else if(extension==".moonsprite"||(extension==".bak"&&[&]{auto suffix=file.stem().extension().u8string();std::transform(suffix.begin(),suffix.end(),suffix.begin(),[](unsigned char c){return char(std::tolower(c));});return suffix==".moonsprite";}())){
   auto bytes=std::make_shared<const Bytes>(source);project::Archive archive(bytes);auto manifest=archive.read("manifest.json",project::Limits{}.manifestBytes);using namespace winrt::Windows::Data::Json;JsonObject root;need(JsonObject::TryParse(winrt::to_hstring(std::string(manifest.begin(),manifest.end())),root),"Cannot read project preview metadata");auto document=root.GetNamedObject(L"document");auto dimension=[&](const wchar_t* name){double value=document.GetNamedNumber(name);need(std::isfinite(value)&&value>=1&&std::floor(value)==value&&value<=2147483647,"Invalid project preview dimensions");return int(value);};result.width=dimension(L"width");result.height=dimension(L"height");result.colorMode=winrt::to_string(document.GetNamedString(L"colorMode"));need(result.colorMode=="rgba"||result.colorMode=="indexed"||result.colorMode=="grayscale","Invalid project preview color mode");
   if(archive.entries().count("preview.png")){result.png=archive.read("preview.png",32u*1024u*1024u);need(!result.png.empty(),"Project preview is empty");decode(result,result.png);}
   else{std::lock_guard<std::mutex> lock(fallbackMutex());checkCanceled();auto imported=project::prepareEditableImport(project::readProjectManifest(bytes));auto document=project::createEditableDocument(std::move(imported));result.png=project::encodeProjectPreview(document);decode(result,result.png);}
@@ -106,8 +115,12 @@ Preview readPreview(const Project& record,const std::filesystem::path& cacheDire
   if(extension==".ase"||extension==".aseprite"||extension==".psd"){auto document=extension==".psd"?decodePsd(source,file.stem().u32string()):documentFromAseprite(decodeAseprite(source,file.stem().u32string()));result.width=document.width();result.height=document.height();result.png=project::encodeProjectPreview(document);decode(result,result.png);}
   else{decode(result,source,extension==".webp"&&!hasGifSignature(source.data(),source.size()));encode(result);}
  }
- checkCanceled();need(std::filesystem::file_size(file)==sourceSize&&std::filesystem::last_write_time(file).time_since_epoch().count()==sourceTime,"Preview source changed during read");
- if(!cacheDirectory.empty())try{std::lock_guard<std::mutex> lock(diskMutex());checkCanceled();std::filesystem::create_directories(cacheDirectory);writeExportBytesAtomic(pngFile,result.png);std::ostringstream text;text<<"moon-preview-v2\n"<<std::quoted(record.path)<<' '<<sourceSize<<' '<<sourceTime<<' '<<result.width<<' '<<result.height<<' '<<result.colorMode<<'\n';const auto value=text.str();writeExportBytesAtomic(metadata,{value.begin(),value.end()});}catch(...){}
+ checkCanceled();checkSource();
+ if(!cacheDirectory.empty()){
+  std::lock_guard<std::mutex> lock(diskMutex());checkCanceled();
+  try{std::filesystem::create_directories(cacheDirectory);writeExportBytesAtomic(pngFile,result.png);std::ostringstream text;text<<"moon-preview-v2\n"<<std::quoted(record.path)<<' '<<sourceSize<<' '<<sourceTime<<' '<<result.width<<' '<<result.height<<' '<<result.colorMode<<'\n';const auto value=text.str();writeExportBytesAtomic(metadata,{value.begin(),value.end()});}catch(...){}
+ }
+ checkCanceled();checkSource();
  return result;
 }
 }

@@ -3918,3 +3918,9 @@ case19发现通用16位PNG的WIC8位转换与旧image取整差1：对16Gray／48
 新增真实文件测试：冷/热缓存像素一致、损坏PNG/旧版本重建、源大小与时间失效、缓存目录为文件的写失败不隐藏有效预览、取消拒绝；工程内置preview与缺失preview完整fallback，ASE/ASEPRITE、既有PSD merged fixture、BMP/JPEG/WebP实际入口；队列三worker上限、24项LRU命中、32MiB字节淘汰、取消代际只发布当前结果。首次大fixture静态初始化造成测试栈溢出，测试PE栈调整8MiB；实际产品栈未改。完整格式色彩配置/EXIF方向/所有畸形codec、非RGBA无preview工程以及GPU采样尚未逐项验收，不能标记全部预览格式等价。16Mi像素解码预算仍是原生限制。
 
 验证：recent-preview-oracle.log及-repeat.log生成121组，recent-preview-full-tests.log真实浏览器矩阵和上述文件/队列均退出0；recent-preview-final-build.log唯一正式Release和测试构建退出0。recent-preview-final-ui-tests.log中--recent-projects-check、--gallery-check、--home-sections-check、--home-banner-check均退出0。本批无UI布局改动，不以回调/消息检查声明人工交互或长期帧率/内存峰值验收。来源654文件覆盖通过，strict因已知全量缺口退出1，diff检查通过；全量迁移仍INCOMPLETE。
+
+### 缩略图缓存锁范围、取消与备份分派（2026-11-08）
+
+接续b0e0ab1e，对照platform_files.rs::read_project_preview与document-files.ts::isMoonSpriteProjectPath。磁盘缓存原先持有全局锁进行完整图片解码，使三worker在热缓存路径串行；现锁仅保护元数据及PNG配对读取，解码在锁外进行。缓存读写的可选IO异常处理不再吞掉取消；热命中与最终返回前复核源大小及修改时间，避免读取中源变化仍发布旧图。大小写不敏感.moonsprite.bak复用工程预览及无preview完整读取；目录扫描和最近记录仍承接旧版排除备份的规则，没有扩大列表准入。
+
+新增真实文件回归覆盖备份内置/缺失preview的冷/热路径、缓存读取及写入阶段取消、热命中期间源时间改变。65536组alpha/通道组合反复热读取未观察到像素漂移，故保留已有颜色转换，没有把怀疑记为已证实缺陷。已有121组真实旧版浏览器结果及队列/LRU等继续通过。preview-cache-lifecycle-build.log正式Release构建退出0；补充最后取消用例后的preview-cache-lifecycle-final-build.log及-final-tests.log退出0。preview-cache-lifecycle-ui-tests.log四项--recent-projects-check/--gallery-check/--home-sections-check/--home-banner-check全部退出0。来源654文件覆盖通过，strict仍因已知迁移缺口退出1，diff通过。本批未改变UI布局，未测整体帧率或线程吞吐增幅，不声称全部性能问题解决；全量迁移仍INCOMPLETE。
