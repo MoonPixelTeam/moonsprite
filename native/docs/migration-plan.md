@@ -3949,3 +3949,14 @@ case19发现通用16位PNG的WIC8位转换与旧image取整差1：对16Gray／48
 恢复入口在临时显示名等于ID且不存在同ID同名有效描述时，保留归档作品名；有效描述同名仍按旧规则优先。实际打开沿原有DocumentLoadingDialog/prepareEditableImport，无来源路径、dirty及来源ID继续沿既有会话语义；孤儿同样支持放弃，删除不改活文档。未引入新的恢复归档格式、外部目录或自动清理。跨进程两文件原子提交、强杀／断电、未提交tmp恢复及旧描述对应新payload的身份一致性仍是剩余缺口，GAP-015仅部分收敛。
 
 验证：editor-recovery-tests用本次owned目录覆盖缺失／损坏／错配／正常描述、仅描述行、损坏工程、不安全名／tmp／目录过滤，逐字节核对原文件不变，缺失描述不补写；正常解码孤儿并重试写入及丢弃。用目标JSON为目录触发真实第二阶段替换失败，断言已Flush的payload完整且可发现，不冒称真实进程崩溃注入。正式--home-recovery-check新增主页发现→实际打开→原作品名／像素／dirty／无路径／来源ID→丢弃保留活画面。recovery-orphan-build.log正式程序构建成功、测试因read辅助lambda重名编译失败；改名后recovery-orphan-final-build.log全部退出0，核心／UI检查通过；补原名保存后recovery-orphan-name-build.log正式及测试构建退出0，recovery-orphan-final-core-tests.log及-final-ui-tests.log均退出0。来源659覆盖通过，strict仍因已知迁移缺口退出1，diff通过。UI布局未改，本批无新截图或人工验收，不声称全量恢复及全量迁移完成。
+
+
+### 恢复目录跨进程串行与写入失败重试（2026-11-08）
+
+接续58386d95，对照RecoveryService::enqueue的串行边界，以及platform_recovery::write_recovery与platform_storage::temporary_suffix/atomic_write。原生之前仅有同进程全局mutex，两个进程可在payload与sidecar间交叉提交；PID-only临时名还可能被旧崩溃文件占住。现按目录的Windows卷序列号/文件索引建立Local命名mutex，同Windows会话的新版进程对同目录write/remove/list串行，目录别名使用同一身份，不同目录不互相等待。不创建锁文件；最多等待30秒并明确失败，正常路径由既有后台worker调用。持锁进程退出后的WAIT_ABANDONED按当前磁盘重新处理，沿已完成孤儿发现保留有效payload，不宣称两文件跨崩溃原子性。
+
+临时文件改为PID+tick+原子序号、CREATE_NEW独占，分1MiB块写入并FlushFileBuffers后原子替换；只删除本次创建且失败的私有临时文件。旧PID-only残留保持原字节且不阻塞新写入。元数据读取按已观察且不超过1MiB的尺寸分配，读取失败或长度变化拒绝，避免文件增长时istream迭代器无界收集。删除失败反馈及源会话抑制规则不变；此锁不授权删除数据，不阻止另一进程日后主动发起新的自动保存。
+
+验证：recovery-concurrency-build.log及-final-build.log正式Release/editor-recovery-tests全部构建退出0；recovery-concurrency-core-tests.log与-final-core-tests.log退出0。真实CreateProcess测试逐项持有生产同名锁，独立子进程write/remove/list在./目录别名上等待、释放后成功；独立目录写入无需等待，持锁子进程ExitProcess后正常写入接管；四进程各八次竞争同ID，最终256KiB每个字节与对应metadata.name一致。真实Windows共享占用导致payload替换失败，旧描述/字节保持，释放后重试成功；遗留旧临时文件字节保持，失败私有临时文件无残留。原有八并发线程、孤儿第二阶段失败、稀疏像素/链接、源会话与抑制回归继续通过。recovery-concurrency-ui-tests.log正式--home-recovery-check退出0。来源659文件覆盖通过，strict因已知全量缺口退出1，diff通过。
+
+本批无UI布局改变，无新截图/人工验收；未执行30秒超时注入、跨Windows会话/旧版本程序协作、网络文件系统、硬件断电或两文件中间强杀，不能把32次正常竞争提交称为崩溃原子事务。GAP-015的完整成对提交/临时文件恢复仍未关闭，全量迁移仍INCOMPLETE；用户工程、恢复及缓存未清理。

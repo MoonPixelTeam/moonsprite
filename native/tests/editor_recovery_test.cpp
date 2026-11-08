@@ -10,14 +10,87 @@
 #include <iostream>
 #include <stdexcept>
 #include <thread>
+#include <windows.h>
 namespace moon {struct RasterHistoryFixture {
  static void local(Document& d){auto state=d.timeline_.state();auto& s=*state.cels.front().surface;s.width=2;s.height=1;s.offsetX=-1;s.offsetY=2;s.storageOriginX=9;s.storageOriginY=-7;s.pixels={0x00030201,0xff123456};d.timeline_=timeline::Timeline(std::move(state));}
 };}
 using namespace moon;
 #define CHECK(x) do{if(!(x))throw std::runtime_error(#x);}while(false)
+
+namespace {
+std::wstring storeLockName(const std::filesystem::path& directory){
+ HANDLE dir=CreateFileW(directory.c_str(),FILE_READ_ATTRIBUTES,FILE_SHARE_READ|FILE_SHARE_WRITE|FILE_SHARE_DELETE,nullptr,OPEN_EXISTING,FILE_FLAG_BACKUP_SEMANTICS,nullptr);CHECK(dir!=INVALID_HANDLE_VALUE);
+ BY_HANDLE_FILE_INFORMATION info{};const auto ok=GetFileInformationByHandle(dir,&info);CloseHandle(dir);CHECK(ok);
+ return L"Local\\MoonSprite.Recovery.v1-"+std::to_wstring(info.dwVolumeSerialNumber)+L"-"+std::to_wstring(info.nFileIndexHigh)+L"-"+std::to_wstring(info.nFileIndexLow);
+}
+struct Child {
+ HANDLE process=nullptr;
+ Child(const std::wstring& exe,const std::wstring& arguments){
+  auto command=L"\""+exe+L"\" "+arguments;STARTUPINFOW startup{};startup.cb=sizeof(startup);PROCESS_INFORMATION info{};
+  CHECK(CreateProcessW(exe.c_str(),command.data(),nullptr,nullptr,FALSE,CREATE_NO_WINDOW,nullptr,nullptr,&startup,&info));process=info.hProcess;CloseHandle(info.hThread);
+ }
+ Child(const Child&)=delete;Child& operator=(const Child&)=delete;
+ Child(Child&& other)noexcept:process(other.process){other.process=nullptr;}
+ ~Child(){if(process){if(WaitForSingleObject(process,0)==WAIT_TIMEOUT){TerminateProcess(process,91);WaitForSingleObject(process,5000);}CloseHandle(process);}}
+ void completed(){CHECK(WaitForSingleObject(process,15000)==WAIT_OBJECT_0);DWORD status=0;CHECK(GetExitCodeProcess(process,&status)&&status==0);}
+};
+int storeChild(int argc,wchar_t** argv){
+ if(argc==4&&std::wstring(argv[1])==L"--abandon-store"){
+  HANDLE mutex=CreateMutexW(nullptr,FALSE,argv[2]);CHECK(mutex&&WaitForSingleObject(mutex,5000)==WAIT_OBJECT_0);
+  HANDLE ready=OpenEventW(EVENT_MODIFY_STATE,FALSE,argv[3]);CHECK(ready&&SetEvent(ready));ExitProcess(0); // Intentionally abandon this test-owned lock.
+ }
+ if(argc!=5||std::wstring(argv[1])!=L"--store-child")return -1;
+ const std::filesystem::path directory=argv[2];const std::wstring action=argv[4];
+ HANDLE ready=OpenEventW(EVENT_MODIFY_STATE,FALSE,argv[3]);CHECK(ready&&SetEvent(ready));CloseHandle(ready);
+ if(action==L"write")project::writeRecoveryFiles(directory,{"shared","child","1"},{1,2,3});
+ else if(action==L"remove")project::removeOwnedRecovery(directory,"shared");
+ else if(action==L"list"){const auto rows=project::listRecoveryRecords(directory);CHECK(rows.size()==1&&rows.front().name=="parent");}
+ else {
+  const auto worker=std::stoi(action);for(int i=0;i<8;++i){const auto name="worker-"+std::to_string(worker)+"-"+std::to_string(i);project::Bytes data(256*1024);for(std::size_t j=0;j<data.size();++j)data[j]=name[j%name.size()];project::writeRecoveryFiles(directory,{"shared",name,std::to_string(i)},data);}
+ }
+ return 0;
+}
+void storeProcesses(const std::filesystem::path& root,const std::wstring& exe){
+ const auto directory=std::filesystem::absolute(root/"cross-process");std::filesystem::create_directories(directory);
+ const auto mutexName=storeLockName(directory);HANDLE mutex=CreateMutexW(nullptr,FALSE,mutexName.c_str());CHECK(mutex);
+ struct Close {HANDLE value;~Close(){CloseHandle(value);}} closeMutex{mutex};
+ const auto eventName=L"Local\\MoonSprite.Recovery.Test-"+std::to_wstring(GetCurrentProcessId())+L"-"+std::to_wstring(GetTickCount64());
+ HANDLE ready=CreateEventW(nullptr,TRUE,FALSE,eventName.c_str());CHECK(ready);Close closeEvent{ready};
+ auto arguments=[&](const wchar_t* action){return L"--store-child \""+(directory/L".").wstring()+L"\" \""+eventName+L"\" "+action;};
+ // Hold the exact production directory lock; each independent API must wait.
+ for(const auto action:{L"write",L"remove",L"list"}){
+  project::writeRecoveryFiles(directory,{"shared","parent","0"},{4,5,6});CHECK(WaitForSingleObject(mutex,5000)==WAIT_OBJECT_0);ResetEvent(ready);
+  Child child(exe,arguments(action));CHECK(WaitForSingleObject(ready,5000)==WAIT_OBJECT_0);
+  const auto blocked=WaitForSingleObject(child.process,120);ReleaseMutex(mutex);CHECK(blocked==WAIT_TIMEOUT);child.completed();
+ }
+ // Separate directories are independent, even while the original lock is held.
+ CHECK(WaitForSingleObject(mutex,5000)==WAIT_OBJECT_0);auto independent=std::async(std::launch::async,[&]{project::writeRecoveryFiles(root/"independent-root",{"other","other","1"},{7});});const auto independentStatus=independent.wait_for(std::chrono::seconds(2));ReleaseMutex(mutex);independent.get();CHECK(independentStatus==std::future_status::ready);
+ // Exiting process abandons ownership. Keep our handle alive so the next real
+ // production operation observes WAIT_ABANDONED instead of a newly created lock.
+ ResetEvent(ready);{Child child(exe,L"--abandon-store \""+mutexName+L"\" \""+eventName+L"\"");CHECK(WaitForSingleObject(ready,5000)==WAIT_OBJECT_0);child.completed();}
+ project::writeRecoveryFiles(directory,{"shared","after-abandon","1"},{8,9});
+ std::vector<Child> children;for(int i=0;i<4;++i)children.emplace_back(exe,arguments(std::to_wstring(i).c_str()));for(auto& child:children)child.completed();
+ const auto rows=project::listRecoveryRecords(directory);CHECK(rows.size()==1);std::ifstream input(directory/"shared.moonsprite",std::ios::binary);project::Bytes data(std::istreambuf_iterator<char>(input),{});CHECK(data.size()==256*1024);for(std::size_t i=0;i<data.size();++i)CHECK(data[i]==rows.front().name[i%rows.front().name.size()]);
+ // Old PID-only crash leftovers never block retry and must remain untouched.
+ const auto leftover=directory/(L"retry.moonsprite."+std::to_wstring(GetCurrentProcessId())+L".tmp");{std::ofstream file(leftover,std::ios::binary);file<<"user evidence";}
+ project::writeRecoveryFiles(directory,{"retry","retry","2"},{3,2,1});std::ifstream old(leftover,std::ios::binary);CHECK(std::string(std::istreambuf_iterator<char>(old),{})=="user evidence");
+ // Actual sharing violation must keep the old committed pair and release the
+ // process lock. Retrying after releasing the file uses a new private temp.
+ HANDLE locked=CreateFileW((directory/"retry.moonsprite").c_str(),GENERIC_READ,FILE_SHARE_READ,nullptr,OPEN_EXISTING,FILE_ATTRIBUTE_NORMAL,nullptr);CHECK(locked!=INVALID_HANDLE_VALUE);
+ bool rejected=false;try{project::writeRecoveryFiles(directory,{"retry","replacement","3"},{9,8,7});}catch(const std::exception&){rejected=true;}CloseHandle(locked);CHECK(rejected);
+ const auto failed=project::listRecoveryRecords(directory);CHECK(std::any_of(failed.begin(),failed.end(),[](const auto& row){return row.id=="retry"&&row.name=="retry";}));
+ {std::ifstream file(directory/"retry.moonsprite",std::ios::binary);CHECK(project::Bytes(std::istreambuf_iterator<char>(file),{})==project::Bytes({3,2,1}));}
+ project::writeRecoveryFiles(directory,{"retry","replacement","3"},{9,8,7});const auto retried=project::listRecoveryRecords(directory);CHECK(std::any_of(retried.begin(),retried.end(),[](const auto& row){return row.id=="retry"&&row.name=="replacement";}));
+ for(const auto& file:std::filesystem::directory_iterator(directory))if(file.path().extension()==L".tmp")CHECK(file.path()==leftover);
+ std::cout<<"Cross-process write/delete/list serialization, independent roots, abandoned lock,32 paired commits and stale-temp retry passed\n";
+}
+}
+
 int wmain(int argc,wchar_t** argv){try{
+ const auto childResult=storeChild(argc,argv);if(childResult>=0)return childResult;
  if(argc!=2)throw std::runtime_error("Owned fixture directory required");
  const std::filesystem::path root=std::filesystem::path(argv[1])/("run-"+std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));std::filesystem::create_directories(root);
+ storeProcesses(root,std::filesystem::absolute(argv[0]).wstring());
  Document first(3,2),second(2,3);first.beginStroke({1,1},0xff123456);first.commitStroke();second.beginStroke({0,2},0xff654321);second.commitStroke();
  const auto identity=first.identity(),revision=first.revision(),history=first.historySize();const auto pixels=first.pixels();
  editor::RecoverySession a,b;recovery::Preferences settings;
