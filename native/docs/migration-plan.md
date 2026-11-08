@@ -4311,3 +4311,11 @@ make-image-scale-fixtures.cjs执行未改写旧版导出函数，生成180组含
 最终验收：image-scale-final-tests.log四项image-scale-detection/image-resize-task/image-resize/tile-image-resize全部通过（3.80s），180真实旧版oracle在RGBA和64行合成路径一致，异步检测不写历史、取消/stale拒绝覆盖和既有缩放资源/保存重开回归通过。image-scale-build.log正式Release退出0。首轮窗口诊断PID13764退出0后人工截图发现新按钮未登记modalControl导致不可见/不接鼠标，且失焦回调重置found提示；没有把直接Click回调成功当作UI通过。修复为登记原有模态绘制/输入路由，仅实际数值变化重置提示，完成检测刷新共享布局；扩充窗口断言检查按钮visible/bounds/modalControl及found提示。image-scale-ui-repair-build.log/image-scale-routing-build.log修复构建退出0，image-scale-ui-final.log PID13428退出0。
 
 已实际查看修复后image-scale-found.bmp：默认2×按钮使用原extractColors像素图标可见，found“倍率4→6×4”、宽6/高4/25%、最近邻、应用/取消全显示，无相互覆盖。实际识别仅更新草稿、Apply后台提交一笔历史、Undo恢复完整像素、纯色notFound保持尺寸/历史通过；原有后台窗口移动/resize/paint和取消检查继续通过。来源覆盖716文件和证据快照通过，strict按已登记全量缺口退出1；生成器语法和git diff --check通过。此次未测全软件FPS，未迁移快捷指令栏单独入口；其它领域/索引灰度/扩展等仍INCOMPLETE，目标保持进行中。保留所有用户数据/既有未跟踪文件，仅提交明确本阶段文件并推送dev。
+
+### 2026-11-09：快捷指令栏配置与停靠规则核心
+
+定向承接上一阶段，实际读取file-preferences.ts完整快捷指令段、QuickCommandBar.tsx、edit.test.tsx及梯度遮挡hook。原生只有未启用的偏好目录，没有栏体；没有把单独detect入口冒充整栏迁移。新增独立quick_command_preferences核心，迁移38条命令身份与顺序、四组默认值、严格布尔/非法项/重复处理、UTF16名称trim及32单元截断、旧名称和四代默认组升级、ID避冲突及JSON保存往返；使用已有WinRT JSON适配。停靠计算承接最近边严格比较优先级、8边距、12中心吸附、28命令尺寸、同轴抓取偏移与换轴清偏移、空间不足居中。不激活偏好项，不改作品历史。
+
+make-quick-command-fixtures.cjs执行旧文件未改写的独立配置段（仅去export与TypeScript类型），生成112组栏配置和6组命令配置oracle。首次测试捕获重复ID候选先规范化再去重的差异：旧版在索引越界默认名时即使候选重复也会全局回退，已调整顺序保留这一边界。最终Release独立目标构建退出0，CTest quick-command-preferences通过0.39s，配置对照/JSON往返/定制fallback和拖动边界检查通过。生成脚本语法、diff检查通过；来源覆盖721文件及证据快照通过，strict仍因已登记全局缺口退出1。
+
+范围明确：本批是独立核心阶段，未接入运行偏好、实际栏体、38命令执行与状态、右键、焦点/文档路由、透明绘制及梯度遮挡；这些继续INCOMPLETE。没有更改正式exe，没有UI/截图/FPS验收，也不声称本批改善全软件卡顿。下一阶段从此核心接入完整原生栏体和现有命令，不重复扫描仓库。保留全部既有未跟踪用户数据及构建缓存，只提交本阶段源码、fixture、脚本和记录并推送dev。

@@ -1032,7 +1032,8 @@
     "native/.cache/aseprite/src/app/commands/cmd_sprite_size.cpp": "6486e1de02431155067d0f204d8ea9a36d7a38c95f6ddcedbd489a615b18f7e4",
     "native/.cache/aseprite/src/doc/algorithm/resize_image.cpp": "1817564537e2616312bc779f72aa460e0df6af74c1c8cb03a4a60ca676b0285d",
     "legacy/src/renderer/src/core/image-scale-detection.ts": "2200ec6f6df3d9cdc6f2fc0d2e65172556f315872bd096e6e1a9fcc6c84b3300",
-    "legacy/src/renderer/src/store/memory-lifecycle.test.tsx": "6de6bb6e7cf43acf5accd0c01ec51f226f7f1b34d4c0b6ffac90e9e6a72373da"
+    "legacy/src/renderer/src/store/memory-lifecycle.test.tsx": "6de6bb6e7cf43acf5accd0c01ec51f226f7f1b34d4c0b6ffac90e9e6a72373da",
+    "legacy/src/renderer/src/components/app/QuickCommandBar.tsx": "c8ae8ef9e59e16054c494aa831c5dbcdc5e175c9c30089348e23bc4a15d1d371"
   },
   "files": [
     {
@@ -5300,7 +5301,8 @@
       "tileCanvasResize20261108": "Actual legacy resizeDocumentAt + resizeAnimationCelsAt: tilemap floor/ceil coverage with optional clipping, free surface expansion/local instance translation and exact unrotated-source trim predicate; transform canonical linked/runtime storage once, retain resources/identities and mixed hidden/locked raster/background/masks. Reuse existing native structural canvas transaction, preflight native256MiB working budget including resource metadata, selection and actual background repeat coverage; 64-bit geometry rejects overflow without publishing. Preserve commit-before-command floating paste, single Undo/Redo, live selection/pivot and existing PixelDialog entry.128 canvas and16 current/all-frame trim unchanged actual legacy two-frame cases (including empty/no-op) compare complete stored RGBA hashes/cells/instances and source/output reopens; runtime-shared cases, mixed masks/background, empty-source free Cel and overflow/budget guards; actual window evidence in migration-plan. Local Aseprite canvas command/DocApi read-only comparison: transaction/canonical owner/sprite crop, EULA modules not copied. Special image resize, indexed/grayscale full editing and other global migration remain incomplete.",
       "tileImageResize20261108": "Actual legacy image resize surface floor/ceil bounds, JS Math.round source/instance world positions and per-tile nearest/premultiplied bilinear free source resampling. Native staged full Timeline history preserves source IDs, cell/instance payloads, links/runtime sharing, masks and live selection with 256MiB preflight. User explicitly approved synchronized grid source/tile-dimension resize on2026-11-08 instead of legacy bitmap-only stale-grid behavior; cell counts/IDs/layout remain intact, grid interpolation follows legacy straight RGBA raster sampling. Canonical storage is rendered once; direct target row copies avoid per-tile ID-map rebuild. Existing native256px tile-edge cap retained and rejected before mutation; larger-source compatibility and asynchronous image computation remain incomplete. Aseprite EULA cmd_sprite_size read-only comparison: source tiles once, uniqueCels, grid origin-only update, transactional worker cancellation; no code copied and no claim native command is asynchronous.48 generated unchanged legacy free resize cases plus native grid/mixed/runtime/history/reopen checks; execution results recorded in migration-plan.",
       "asyncImageResize20261108": "Image resize async native adaptation reuses RasterSnapshot bounded2ms/1MiB ticks and SheetImportTask detached executor pattern; isolated worker invokes existing Document.resizeImage for ordinary/grid/free/mask semantics and transfers its single history edit only after identity/revision/content/frame/layer/selection guards. Worker never references live Document; destructor/cancel never join; row and tile cancellation checks stop sampling. UI Apply starts timer, freezes draft, keeps Cancel/close active, queued worker smoke pumps real move/resize/paint and rejects cancelled output. Source legacy synchronous resizeActiveImage/defaults/snapshot history preserved; new cancellation is necessary native responsiveness adaptation requested by user. Timeline installation/history apply remains synchronous and can still copy surfaces; no claim all large-image stalls removed.",
-      "scaleDetection20261109": "Actual legacy image-scale-detection.ts boundary histograms/phases, run divisor weights and512 candidate/tie thresholds ported to C++, transparent RGB zeroed,64-row visible composite chunks. Reuse ImageResizeTask bounded snapshot/detached worker/cancel/stale guards in detection-only mode; does not commit history. ImageResizeDialog detection idle/busy/notFound/error/found state fills rounded source/scale dimensions and nearest draft, Apply alone creates resize history. Uses existing original legacy extractColors asset as actual dialog does.180 fixtures execute unchanged legacy exported detector with random RGBA/alpha/noise/phase shifts, direct and visible-composite checks plus async lifecycle/UI smoke. QuickCommandBar entry remains outside currently migrated quick-command-bar UI; no claim full workspace migration."
+      "scaleDetection20261109": "Actual legacy image-scale-detection.ts boundary histograms/phases, run divisor weights and512 candidate/tie thresholds ported to C++, transparent RGB zeroed,64-row visible composite chunks. Reuse ImageResizeTask bounded snapshot/detached worker/cancel/stale guards in detection-only mode; does not commit history. ImageResizeDialog detection idle/busy/notFound/error/found state fills rounded source/scale dimensions and nearest draft, Apply alone creates resize history. Uses existing original legacy extractColors asset as actual dialog does.180 fixtures execute unchanged legacy exported detector with random RGBA/alpha/noise/phase shifts, direct and visible-composite checks plus async lifecycle/UI smoke. QuickCommandBar entry remains outside currently migrated quick-command-bar UI; no claim full workspace migration.",
+      "quickCommandConfiguration20261109": "Quick-command configuration core only: actual file-preferences.ts ordered38 IDs, four defaults, strict bool parsing, duplicate/invalid handling, UTF16 trim/truncation, legacy group/name upgrades, collision suffixes and JSON roundtrip. QuickCommandBar.tsx nearest-edge strict tie order,8 inset,12 center snap,28 command track and grab-offset/axis-change math ported without UI wiring.112 bar and6 command fixtures execute unchanged self-contained legacy preference section; boundary drag checks. No native bar UI, command dispatch, runtime preferences activation or visual acceptance claimed; full migration INCOMPLETE."
     },
     {
       "file": "scripts/bootstrap.ps1",
@@ -28592,6 +28594,51 @@
         "legacy/LICENSE"
       ],
       "scope": "Actual legacy image-scale-detection.ts boundary histograms/phases, run divisor weights and512 candidate/tie thresholds ported to C++, transparent RGB zeroed,64-row visible composite chunks. Reuse ImageResizeTask bounded snapshot/detached worker/cancel/stale guards in detection-only mode; does not commit history. ImageResizeDialog detection idle/busy/notFound/error/found state fills rounded source/scale dimensions and nearest draft, Apply alone creates resize history. Uses existing original legacy extractColors asset as actual dialog does.180 fixtures execute unchanged legacy exported detector with random RGBA/alpha/noise/phase shifts, direct and visible-composite checks plus async lifecycle/UI smoke. QuickCommandBar entry remains outside currently migrated quick-command-bar UI; no claim full workspace migration."
+    },
+    {
+      "file": "src/quick_command_preferences.h",
+      "classification": "legacy-adapted",
+      "sources": [
+        "legacy/src/renderer/src/core/file-preferences.ts",
+        "legacy/src/renderer/src/components/app/QuickCommandBar.tsx"
+      ],
+      "scope": "Quick-command configuration core only: actual file-preferences.ts ordered38 IDs, four defaults, strict bool parsing, duplicate/invalid handling, UTF16 trim/truncation, legacy group/name upgrades, collision suffixes and JSON roundtrip. QuickCommandBar.tsx nearest-edge strict tie order,8 inset,12 center snap,28 command track and grab-offset/axis-change math ported without UI wiring.112 bar and6 command fixtures execute unchanged self-contained legacy preference section; boundary drag checks. No native bar UI, command dispatch, runtime preferences activation or visual acceptance claimed; full migration INCOMPLETE."
+    },
+    {
+      "file": "src/quick_command_preferences.cpp",
+      "classification": "legacy-adapted",
+      "sources": [
+        "legacy/src/renderer/src/core/file-preferences.ts",
+        "legacy/src/renderer/src/components/app/QuickCommandBar.tsx"
+      ],
+      "scope": "Quick-command configuration core only: actual file-preferences.ts ordered38 IDs, four defaults, strict bool parsing, duplicate/invalid handling, UTF16 trim/truncation, legacy group/name upgrades, collision suffixes and JSON roundtrip. QuickCommandBar.tsx nearest-edge strict tie order,8 inset,12 center snap,28 command track and grab-offset/axis-change math ported without UI wiring.112 bar and6 command fixtures execute unchanged self-contained legacy preference section; boundary drag checks. No native bar UI, command dispatch, runtime preferences activation or visual acceptance claimed; full migration INCOMPLETE."
+    },
+    {
+      "file": "tests/quick_command_preferences_test.cpp",
+      "classification": "legacy-adapted",
+      "sources": [
+        "legacy/src/renderer/src/core/file-preferences.ts",
+        "legacy/src/renderer/src/components/app/QuickCommandBar.tsx"
+      ],
+      "scope": "Quick-command configuration core only: actual file-preferences.ts ordered38 IDs, four defaults, strict bool parsing, duplicate/invalid handling, UTF16 trim/truncation, legacy group/name upgrades, collision suffixes and JSON roundtrip. QuickCommandBar.tsx nearest-edge strict tie order,8 inset,12 center snap,28 command track and grab-offset/axis-change math ported without UI wiring.112 bar and6 command fixtures execute unchanged self-contained legacy preference section; boundary drag checks. No native bar UI, command dispatch, runtime preferences activation or visual acceptance claimed; full migration INCOMPLETE."
+    },
+    {
+      "file": "tests/fixtures/quick_command_legacy.h",
+      "classification": "legacy-adapted",
+      "sources": [
+        "legacy/src/renderer/src/core/file-preferences.ts",
+        "legacy/src/renderer/src/components/app/QuickCommandBar.tsx"
+      ],
+      "scope": "Quick-command configuration core only: actual file-preferences.ts ordered38 IDs, four defaults, strict bool parsing, duplicate/invalid handling, UTF16 trim/truncation, legacy group/name upgrades, collision suffixes and JSON roundtrip. QuickCommandBar.tsx nearest-edge strict tie order,8 inset,12 center snap,28 command track and grab-offset/axis-change math ported without UI wiring.112 bar and6 command fixtures execute unchanged self-contained legacy preference section; boundary drag checks. No native bar UI, command dispatch, runtime preferences activation or visual acceptance claimed; full migration INCOMPLETE."
+    },
+    {
+      "file": "scripts/make-quick-command-fixtures.cjs",
+      "classification": "legacy-adapted",
+      "sources": [
+        "legacy/src/renderer/src/core/file-preferences.ts",
+        "legacy/src/renderer/src/components/app/QuickCommandBar.tsx"
+      ],
+      "scope": "Quick-command configuration core only: actual file-preferences.ts ordered38 IDs, four defaults, strict bool parsing, duplicate/invalid handling, UTF16 trim/truncation, legacy group/name upgrades, collision suffixes and JSON roundtrip. QuickCommandBar.tsx nearest-edge strict tie order,8 inset,12 center snap,28 command track and grab-offset/axis-change math ported without UI wiring.112 bar and6 command fixtures execute unchanged self-contained legacy preference section; boundary drag checks. No native bar UI, command dispatch, runtime preferences activation or visual acceptance claimed; full migration INCOMPLETE."
     }
   ],
   "assetTransfers": [
