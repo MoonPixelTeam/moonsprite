@@ -915,13 +915,12 @@ const char* Editor::cursorAt(gfx::Point position) const {InteractionScope intera
     const bool inDocument=point.x>=0 && point.y>=0 && point.x<document.width() && point.y<document.height();
 
     if(textTool_){
-      auto localPoint=point;auto localDisplay=canvasUnrotatedDisplay(position);
+      auto localPoint=point;const auto localDisplay=textBoxDisplayPoint(position);
       if(tileRepeatIdentity_==document.identity()&&tileRepeat_!=repeat::Mode::Off){
         const auto at=canvasDocumentPoint(position);
         const auto mapped=repeat::map({at.x,at.y},document.width(),document.height(),tileRepeat_);
         if(!mapped)return "text";
         localPoint={int(mapped->local.x),int(mapped->local.y)};
-        localDisplay=canvasUnrotatedDisplay(canvasDocumentToDisplay({mapped->local.x,mapped->local.y}));
       }
       const auto hit=textBoxPointerHit(document,skin_,canvas_,canvasScale(),localPoint,localDisplay);
       if(!hit.empty())return textResizeCursor(hit);

@@ -63,9 +63,34 @@ void Editor::editText(TextCelData data,const std::string& id,bool smokeAccept){
  dialog.smokeClearAndRestore([&](bool empty){const auto current=document.timeline().resolveSurface(draftId);if(!document.textDraftActive()||document.cel().id!=draftId||document.timeline().state().layers.size()!=layerCount||!current.source||!current.source->text||current.source->text->text.empty()!=empty||document.historySize()!=localHistory)throw std::runtime_error("New empty text draft must retain layer identity and history");if(empty&&std::any_of(current.surface->pixels.begin(),current.surface->pixels.end(),[](Pixel p){return (p>>24)!=0;}))throw std::runtime_error("Empty text draft retains visible pixels");});
  }if(document.historySize()!=localHistory)throw std::runtime_error("Textarea local history changed document history");if(GetEnvironmentVariableW(L"MOONSPRITE_TEXT_RASTER_SMOKE",nullptr,0)==0){auto frame=dialog.smokeFrame();writeSmokeFrame(frame.get(),assets_.parent_path()/"text-tool-smoke.bmp");}if(GetEnvironmentVariableW(L"MOONSPRITE_TEXT_RASTER_SMOKE",nullptr,0)>0){const auto before=*document.timeline().resolveSurface(document.cel().id).surface;const auto layer=document.layer().id;if(!menuCommands_.enabled("convertLayerToRaster")||!menuCommands_.invoke("convertLayerToRaster"))throw std::runtime_error("Actual text conversion menu unavailable: open="+std::to_string(documentOpen_)+" home="+std::to_string(homeOpen_)+" pending="+std::to_string(int(pending_))+" busy="+std::to_string(historyGestureBusy())+" groups="+std::to_string(document.hasSelectedGroups())+" layers="+std::to_string(document.timelineSelection().layers.size())+" kind="+document.layer().kind);const auto after=document.timeline().resolveSurface(document.cel().id).surface;if(document.layer().id!=layer||!document.layer().kind.empty()||document.cel().text||!after||after->pixels!=before.pixels||after->offsetX!=before.offsetX||after->offsetY!=before.offsetY)throw std::runtime_error("Actual text conversion lost raster pixels or position");document.cancelTextDraft();}if(smokeAccept)dialog.smokeAccept();else dialog.closeWindow(nullptr);});verifyTimer.start();}try{preview(data,true);dialog.openWindowInForeground();verifyTimer.stop();if(dialog.accepted()&&!retired()){auto [value,surface]=render(dialog.value());if(document.textDraftActive())document.previewTextDraft(value,std::move(surface));else document.beginTextDraft(value,std::move(surface),id);document.commitTextDraft();textFonts_->recordUsage(value.fontFamily);}else document.cancelTextDraft();}catch(...){document.cancelTextDraft();refresh();throw;}refresh();requestFocus();
 }
+// Rotated image edge coverage is defined by the renderer, including its
+// nearest-neighbor corner rules. Cache the actual overlay alpha until geometry changes.
+gfx::Point Editor::textBoxDisplayPoint(gfx::Point pointer)const{
+ auto at=viewRotation_.inverse({pointer.x+.5,pointer.y+.5},canvasRotationPivot());
+ if(tileRepeatIdentity_==document.identity()&&tileRepeat_!=repeat::Mode::Off){const auto mapped=repeat::map({(at.x-canvas_.x)/canvasScale(),(at.y-canvas_.y)/canvasScale()},document.width(),document.height(),tileRepeat_);if(mapped){at.x-=mapped->offset.x*canvas_.w;at.y-=mapped->offset.y*canvas_.h;}}
+ gfx::Point local{int(std::floor(at.x)),int(std::floor(at.y))};
+ if(!viewRotation_.active())return local;
+ const auto resolved=document.timeline().resolveSurface(document.cel().id);if(!resolved.source||!resolved.source->text)return local;
+ const auto& d=*resolved.source->text;const SelectionTransform box=textCreating_?textTransformStart_:SelectionTransform{double(d.originX.value_or(0)),double(d.originY.value_or(0)),double(d.boxWidth),double(d.boxHeight)};
+ const auto border=uiPhysical(uiLogical(gfx::Rect(canvas_.x+int(box.x*canvasScale()),canvas_.y+int(box.y*canvasScale()),std::max(1,int(box.width*canvasScale())),std::max(1,int(box.height*canvasScale())))));
+ const auto material=skin_.selectionMaterialBounds(border);const auto patch=skin_.assets.patches.find("selection.normal");if(patch==skin_.assets.patches.end())return local;
+ const auto v=canvasViewport();const std::array<double,22> key{double(canvas_.x),double(canvas_.y),double(canvas_.w),double(canvas_.h),double(v.x),double(v.y),double(v.w),double(v.h),double(bounds().x),double(bounds().y),double(border.x),double(border.y),double(border.w),double(border.h),viewRotation_.degrees,double(viewRotation_.mirrorX),double(viewRotation_.mirrorY),double(int(tileRepeatIdentity_==document.identity()?tileRepeat_:repeat::Mode::Off)),canvasScale(),double(runtimePreferences_.index("editing.rotationIndicatorPosition.Select")),double(patch->second.left),double(patch->second.top)};
+ struct AlphaCache{std::array<double,22> key{};std::shared_ptr<const SkinBitmap> bitmap;os::SurfaceRef image;};static AlphaCache cache;
+ if(!cache.image||cache.key!=key||cache.bitmap!=patch->second.bitmap){
+  auto image=os::instance()->makeRgbaSurface(std::max(bounds().x2(),v.x2()),std::max(bounds().y2(),v.y2()));image->clear();
+  {ui::Graphics g(image);g.concat(canvasRotationMatrix());const_cast<Editor*>(this)->paintTextBox(g,canvas_);}
+  cache={key,patch->second.bitmap,std::move(image)};
+ }
+ bool visible=false;if(pointer.x>=0&&pointer.y>=0&&pointer.x<cache.image->width()&&pointer.y<cache.image->height()){os::SurfaceLock lock(cache.image.get());visible=gfx::geta(cache.image->getPixel(pointer.x,pointer.y))!=0;}
+ if(!visible)return {material.x-1,material.y-1};
+ if(skin_.selectionContains(material,local))return local;
+ // Only renderer boundary pixels differ; retain the nearest material handle.
+ for(int radius=1;radius<=uiScale*2;++radius)for(int y=-radius;y<=radius;++y)for(int x=-radius;x<=radius;++x){const auto candidate=local+gfx::Point(x,y);if(skin_.selectionContains(material,candidate))return candidate;}
+ return local;
+}
 bool Editor::processTextInput(ui::Message* msg){
  auto textPoint=[&](gfx::Point pointer,bool outside){auto at=canvasPoint(pointer);if(tileRepeatIdentity_==document.identity()&&tileRepeat_!=repeat::Mode::Off){const auto mapped=repeat::map({double(at.x),double(at.y)},document.width(),document.height(),tileRepeat_);if(mapped)return std::optional<Point>{{int(mapped->local.x),int(mapped->local.y)}};if(!outside)return std::optional<Point>{};}return std::optional<Point>{at};};
- auto textDisplayPoint=[&](gfx::Point pointer){const auto at=canvasDocumentPoint(pointer);if(tileRepeatIdentity_==document.identity()&&tileRepeat_!=repeat::Mode::Off){const auto mapped=repeat::map({at.x,at.y},document.width(),document.height(),tileRepeat_);if(mapped)return canvasUnrotatedDisplay(canvasDocumentToDisplay({mapped->local.x,mapped->local.y}));}return canvasUnrotatedDisplay(pointer);};
+ auto textDisplayPoint=[&](gfx::Point pointer){return textBoxDisplayPoint(pointer);};
  if(textTransforming_){
   auto mouse=dynamic_cast<ui::MouseMessage*>(msg);
   const bool cancel=msg->type()==ui::kFocusLeaveMessage||!hasCapture()||(msg->type()==ui::kKeyDownMessage&&static_cast<ui::KeyMessage*>(msg)->scancode()==ui::kKeyEsc);

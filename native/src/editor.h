@@ -1949,7 +1949,7 @@ private:
   void setTileRepeat(repeat::Mode);
   double zoom_=8;view::Rotation viewRotation_;bool rotateTool_=false,rotationDragging_=false;double rotationStart_=0,rotationAngle_=0;gfx::Rect rotationCanvas_;view::Point rotationPivot_;
   gfx::Rect canvasPaintViewport(gfx::Rect)const;gfx::Rect canvasDisplayBounds()const;void panCanvasDisplay(double,double);void paintViewRotationIndicator(ui::Graphics&);
-  view::Point canvasRotationPivot()const;gfx::Matrix canvasRotationMatrix()const;gfx::Point canvasUnrotatedDisplay(gfx::Point)const;TransformPoint canvasDocumentPoint(gfx::Point)const;gfx::Point canvasDocumentToDisplay(TransformPoint)const;bool canvasDocumentContains(gfx::Point)const;void setViewRotation(double);void initializeViewRotation();bool processViewRotation(ui::Message*);void saveDocumentView();void loadDocumentView();
+  view::Point canvasRotationPivot()const;gfx::Matrix canvasRotationMatrix()const;gfx::Point canvasUnrotatedDisplay(gfx::Point)const;gfx::Point textBoxDisplayPoint(gfx::Point)const;TransformPoint canvasDocumentPoint(gfx::Point)const;gfx::Point canvasDocumentToDisplay(TransformPoint)const;bool canvasDocumentContains(gfx::Point)const;void setViewRotation(double);void initializeViewRotation();bool processViewRotation(ui::Message*);void saveDocumentView();void loadDocumentView();
 
   double canvasScale() const;
 

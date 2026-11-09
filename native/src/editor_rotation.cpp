@@ -295,12 +295,23 @@ void Editor::smokeTileRepeat(){
  for(const auto mode:{repeat::Mode::X,repeat::Mode::Y,repeat::Mode::Both})for(double angle:{0.,37.,90.,180.})for(int mirrors=0;mirrors<4;++mirrors)for(double zoom:{.75,1.25}){
   viewRotation_={angle,(mirrors&1)!=0,(mirrors&2)!=0};setTileRepeat(mode);zoom_=zoom;
   const auto v=canvasViewport();const int w=int(64*canvasScale()),h=int(48*canvasScale());canvas_={v.x+(v.w-w)/2,v.y+(v.h-h)/2,w,h};refresh();
+  {
+   const int iw=std::max(bounds().x2(),v.x2()),ih=std::max(bounds().y2(),v.y2());auto overlay=os::instance()->makeRgbaSurface(iw,ih);overlay->clear();
+   {ui::Graphics g(overlay);g.concat(canvasRotationMatrix());paintTextBox(g,canvas_);}
+   const auto border=uiPhysical(uiLogical(gfx::Rect(canvas_.x+int(12*canvasScale()),canvas_.y+int(12*canvasScale()),int(24*canvasScale()),int(20*canvasScale()))));
+   os::SurfaceLock lock(overlay.get());
+   for(int y=v.y;y<v.y2();++y)for(int x=v.x;x<v.x2();++x){
+    const auto at=canvasDocumentPoint({x,y});const auto mapped=repeat::map({at.x,at.y},64,48,mode);bool hit=false;
+    if(mapped){const auto local=textBoxDisplayPoint({x,y});hit=skin_.selectionContains(skin_.selectionMaterialBounds(border),local);}
+    if(hit!=(gfx::geta(overlay->getPixel(x,y))!=0))throw std::runtime_error("Rotated text alpha/hit mismatch angle="+std::to_string(angle)+" mirrors="+std::to_string(mirrors)+" zoom="+std::to_string(zoom)+" x="+std::to_string(x)+" y="+std::to_string(y)+" local="+std::to_string(textBoxDisplayPoint({x,y}).x)+","+std::to_string(textBoxDisplayPoint({x,y}).y)+" border="+std::to_string(border.x)+","+std::to_string(border.y)+","+std::to_string(border.w)+","+std::to_string(border.h)+" hit="+std::to_string(hit)+" alpha="+std::to_string(gfx::geta(overlay->getPixel(x,y))));
+   }
+  }
   for(bool copy:{false,true})for(bool resize:{false,true}){
    const TransformPoint at{(copy&&repeat::includesX(mode)?-64:0)+(resize?36.:24.),(copy&&repeat::includesY(mode)?-48:0)+22.};
    const auto pointer=canvasDocumentToDisplay(at);if(!canvasViewport().contains(pointer))throw std::runtime_error("Text cursor matrix outside viewport");
    const std::string hover=cursorAt(pointer);const auto history=document.historyPosition();
    send(ui::kMouseDownMessage,at);
-   if(!textTransforming_||textHandle_!=(resize?"e":"")||hover!=cursorAt(pointer)||hover==(resize?"text":"text")||(!resize&&hover!="move"))throw std::runtime_error("Text hover/capture mismatch angle="+std::to_string(angle)+" mirrors="+std::to_string(mirrors)+" zoom="+std::to_string(zoom)+" copy="+std::to_string(copy)+" resize="+std::to_string(resize)+" hover="+hover+" handle="+textHandle_);
+   if(!textTransforming_||textHandle_!=(resize?"e":"")||hover!=cursorAt(pointer)||hover=="text"||(!resize&&hover!="move"))throw std::runtime_error("Text hover/capture mismatch angle="+std::to_string(angle)+" mirrors="+std::to_string(mirrors)+" zoom="+std::to_string(zoom)+" copy="+std::to_string(copy)+" resize="+std::to_string(resize)+" hover="+hover+" handle="+textHandle_);
    ui::KeyMessage escape(ui::kKeyDownMessage,ui::kKeyEsc,ui::kKeyNoneModifier,0,0);onProcessMessage(&escape);
    if(textTransforming_||hasCapture()||document.historyPosition()!=history||document.textDraftActive())throw std::runtime_error("Text cursor cancellation");
   }

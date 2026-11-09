@@ -4593,3 +4593,9 @@ X/Y/Both合成/当前层及左右键实际诊断验证100次preview请求不发�
 对照legacy canvas-pointer-move的localPoint及canvas-input-text的displayedResizeCursorForHandle，修复原生文字悬停仍使用未映射副本文档点/显示点的问题。cursorAt现按有限相邻副本映射本地整数点和本地显示物理点，与processTextInput共用既有textBoxPointerHit和Skin素材命中，不改文字事务。用户确认的网格瓦片同步缩放此前已实现并验收，本阶段未重复修改。
 
 正式Release构建成功；--tile-repeat-check显式等待完整进程退出0，包含新增384组真实鼠标悬停/按下/Escape：X/Y/Both、0/37/90/180度、四种镜像组合、.75/1.25缩放、主画布/负向副本、东边框/内部。断言悬停与捕获光标一致、实际手柄正确、取消后无捕获/草稿/历史残留。原有24个真实创建弹窗等完整诊断继续通过。三项CTest text-document/tile-repeat/tile-repeat-stroke通过0.21s；742文件来源快照及diff检查通过。新增矩阵证明输入/光标一致性，不代替旋转渲染逐像素alpha验收，也无新增FPS测量；全量迁移仍INCOMPLETE。保留原有未跟踪文件、用户数据及缓存，阶段保存推送dev。
+
+### 2026-11-09：旋转文字边框完整alpha命中验收（阶段完成）
+
+新增96组配置的全视口逐像素透明渲染比较：X/Y/Both、0/37/90/180度、四镜像组合、.75/1.25缩放，并继续384组真实悬停/捕获/Escape。发现镜像像素角点与37度九宫格外角取样差异，简单反变换及同矩阵逆变换均不能完全复现Skia lattice边界。最终保留原Skin::drawSelectionBorder渲染，旋转命中缓存实际paintTextBox透明alpha，以Skin::selectionContains校验/定位最近素材像素，再用既有handle优先级。透明像素不命中；主框/副本共用同一helper。非旋转直接素材命中。缓存随视图/框/视口/素材变化更新，固定字段比较避免每次鼠标格式化字符串，保留位图身份。核对本项目MIT Aseprite UI graphics.cpp和LAF Skia默认最近邻绘制路径；未复制其他许可模块。
+
+正式Release最终构建退出0；最终--tile-repeat-check显式等待退出0，全视口alpha比较、384交互及既有24真实文字创建弹窗全部通过。中间版本错误有明确像素证据且已修复，最终重复回归通过。三项CTest text-document/tile-repeat/tile-repeat-stroke通过0.21s，742文件来源快照与diff检查通过。验收范围是所列配置与当前皮肤；无整体FPS、任意角度穷举或长时手工验收。整体迁移仍INCOMPLETE，保留用户数据/未跟踪文件/缓存，阶段保存推送dev。
