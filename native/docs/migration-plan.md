@@ -5246,3 +5246,10 @@ legacy canvas-render-selection-preview.ts对两种套索的每个栅格路径点
 沿用legacy tools-selection-transform-translation.ts平铺源按row-major写入、始终与不可变目标基线合成的规则，regional预览对每个请求目标逆推所有周期源位置，逆序寻找最后一个mask==1且非透明的贡献。由此超画布剪贴板也只检查区域对应源，保留透明/未选中后续源不覆盖此前有效源的语义；未平铺轴保持裁剪，非regional提交仍走原源遍历，形成独立对照。
 
 原36组边界矩阵扩为45组，新增523×522源对260×260画布的多周期碰撞，加入透明隐藏RGB和mask2，覆盖局部/越界/负位置、取消重开事务、完整预览与源遍历提交一致及UndoRedo。正式Release构建成功；document-raster-history/tilemap-document通过2.19s，完整--tileset-management-check实际退出0。744来源/证据和diff通过。新超尺寸场景为核心回归，没有新增窗口夹具/截图/FPS量测；整体迁移仍INCOMPLETE，本阶段保存推送dev。
+
+
+### 2026-11-10：平铺采样按工作量选择遍历方向
+
+接续regional反采样，检查发现小浮动源在大region仍会遍历整个目标。参考legacy tools-selection-transform-translation.ts对repeatCandidateCount与visiblePixels的区分，原生比较源面积和请求区域面积×最大周期贡献数，选择最坏遍历量较小的路径；源遍历在读基线/合成前按region裁剪，完全画布外region直接结束。无额外缓存或分配，mask、透明、不可变基线及碰撞顺序不变。
+
+现有45组剪贴板矩阵覆盖大region源遍历、小region反采样及多周期碰撞；Hybrid核心矩阵含小源全region、跨格region及取消/UndoRedo。正式Release构建成功，document-raster-history/tilemap-document通过2.24s，完整--tileset-management-check实际退出0。744来源/证据和diff通过；未增加镜像实现测试、截图或FPS量测，工作量上界由源码核对，整体迁移仍INCOMPLETE。本阶段保存推送dev。

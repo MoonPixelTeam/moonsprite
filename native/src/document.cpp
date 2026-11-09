@@ -827,9 +827,13 @@ bool floatingTranslation(const SelectionTransform& t,const SelectionClipboard& s
 template<class Read,class Write> void repeatedFloatingTranslation(const SelectionClipboard& source,const SelectionClipboard& original,int sourceX,int sourceY,const SelectionTransform& t,int width,int height,repeat::Mode mode,bool copy,Read read,Write write,const PixelRegion* clip=nullptr){
  // Visit only contributors to the requested region. The last opaque masked
  // source in row-major order wins; every write blends against the same baseline.
- if(clip){
-  const auto left=std::max<std::int64_t>(0,clip->x),top=std::max<std::int64_t>(0,clip->y),right=std::min<std::int64_t>(width,std::int64_t(clip->x)+clip->w),bottom=std::min<std::int64_t>(height,std::int64_t(clip->y)+clip->h);
-  const bool wrapX=repeat::includesX(mode),wrapY=repeat::includesY(mode);
+ const bool wrapX=repeat::includesX(mode),wrapY=repeat::includesY(mode);
+ const auto left=clip?std::max<std::int64_t>(0,clip->x):0,top=clip?std::max<std::int64_t>(0,clip->y):0,right=clip?std::min<std::int64_t>(width,std::int64_t(clip->x)+clip->w):width,bottom=clip?std::min<std::int64_t>(height,std::int64_t(clip->y)+clip->h):height;
+ if(clip&&(right<=left||bottom<=top))return;
+ const auto sourceWork=std::uint64_t(source.width)*source.height;
+ const auto contributorsX=wrapX?(std::uint64_t(source.width)+width-1)/width:1,contributorsY=wrapY?(std::uint64_t(source.height)+height-1)/height:1;
+ const auto regionalWork=std::uint64_t(std::max<std::int64_t>(0,right-left))*std::uint64_t(std::max<std::int64_t>(0,bottom-top))*contributorsX*contributorsY;
+ if(clip&&regionalWork<sourceWork){
   for(auto y=top;y<bottom;++y)for(auto x=left;x<right;++x){auto sx=x-std::int64_t(t.x),sy=y-std::int64_t(t.y);if(wrapX)sx=(sx%width+width)%width;if(wrapY)sy=(sy%height+height)%height;if(sx<0||sy<0||sx>=source.width||sy>=source.height)continue;
    if(wrapX)sx+=(source.width-1-sx)/width*width;if(wrapY)sy+=(source.height-1-sy)/height*height;bool found=false;
    for(auto yy=sy;yy>=0&&!found;yy-=wrapY?height:source.height)for(auto xx=sx;xx>=0;xx-=wrapX?width:source.width){const auto i=std::size_t(yy)*source.width+std::size_t(xx);if(source.mask[i]!=1||!(source.pixels[i]>>24))continue;const auto ox=x-sourceX,oy=y-sourceY;const bool cleared=!copy&&ox>=0&&oy>=0&&ox<original.width&&oy<original.height&&original.mask[std::size_t(oy)*original.width+std::size_t(ox)]==1;write(int(x),int(y),brushComposite(cleared?0:read(int(x),int(y)),source.pixels[i],100));found=true;break;}
@@ -837,7 +841,7 @@ template<class Read,class Write> void repeatedFloatingTranslation(const Selectio
   return;
  }
  for(int y=0;y<source.height;++y)for(int x=0;x<source.width;++x){const auto i=std::size_t(y)*source.width+x;if(source.mask[i]!=1||!(source.pixels[i]>>24))continue;
-  const auto p=repeat::wrap({t.x+x,t.y+y},width,height,mode);if(p.x<0||p.y<0||p.x>=width||p.y>=height)continue;const int wx=int(p.x),wy=int(p.y),sx=wx-sourceX,sy=wy-sourceY;
+  const auto p=repeat::wrap({t.x+x,t.y+y},width,height,mode);if(p.x<0||p.y<0||p.x>=width||p.y>=height)continue;const int wx=int(p.x),wy=int(p.y),sx=wx-sourceX,sy=wy-sourceY;if(clip&&(wx<left||wy<top||wx>=right||wy>=bottom))continue;
   const bool cleared=!copy&&sx>=0&&sy>=0&&sx<original.width&&sy<original.height&&original.mask[std::size_t(sy)*original.width+sx]==1;
   write(wx,wy,brushComposite(cleared?0:read(wx,wy),source.pixels[i],100));
  }
