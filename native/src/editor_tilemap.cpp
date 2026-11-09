@@ -56,7 +56,7 @@ void Editor::createTilesetPanel(){
  for(auto& [id,item]:menuItems_)if(freeBlocked.count(id)||id.rfind("filter:",0)==0){auto previous=item->available;item->available=[this,previous]{return !document.hasFreeTileContent()&&(!previous||previous());};}
  // Legacy beginLayerTransform/beginFreeTransform: single editable source target.
  for(const auto* id:{"transform","freeTransform"}){auto found=menuItems_.find(id);if(found==menuItems_.end())continue;auto previous=found->second->available;const bool free=std::string(id)=="freeTransform";found->second->available=[this,previous,free]{
-  if(!document.hasFreeTileContent())return !previous||previous();
+  if(!document.hasFreeTileContent()||document.layer().kind=="tilemap")return !previous||previous();
   if(!documentOpen_||homeOpen_||pending_!=Pending::None||historyGestureBusy()||frameSelectionExplicit_||!freeTileSelectionTargetBounds(document)||document.hasSelectedGroups())return false;
   for(const auto& layer:document.timelineSelection().layers)if(layer!=document.layer().id)return false;
   for(const auto& id:document.timelineSelection().cels){const auto* c=document.timeline().findCelById(id);if(!c||c->layerId!=document.layer().id||c->frameId!=document.frame().id)return false;}
@@ -65,7 +65,7 @@ void Editor::createTilesetPanel(){
  };}
  for(const auto* id:{"flipHorizontal","flipVertical"}){auto it=menuItems_.find(id);if(it==menuItems_.end())continue;auto previous=it->second->available;it->second->available=[this,previous]{
   if((document.hasTilemapContent()||document.hasFreeTileContent())&&!document.selection()&&!document.floating()&&!(document.layer().kind=="free-tile"&&!document.selectedFreeTileInstances().empty()))return documentOpen_&&!homeOpen_&&pending_==Pending::None&&!historyGestureBusy()&&!timelineContentFlipTargets(document).empty();
-  if(!document.hasFreeTileContent())return !previous||previous();
+  if(!document.hasFreeTileContent()||document.layer().kind=="tilemap")return !previous||previous();
   if(!documentOpen_||homeOpen_||pending_!=Pending::None||historyGestureBusy()||document.layer().kind!="free-tile"||!document.activeMaskId().empty()||document.hasSelectedGroups()||document.layerEffectivelyLocked(document.layer())||!document.layerEffectivelyVisible(document.layer()))return false;
   if(auto target=document.floatingTransform())return !target->quad&&bool(freeTileSelectionTargetBounds(document));
   if(document.selection())return bool(freeTileSelectionTargetBounds(document));

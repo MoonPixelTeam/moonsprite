@@ -4888,3 +4888,14 @@ smokeWorkspace布局交互完成后切至已有移动工具，固定后续画布
 窗口首轮在初始化报Missing tilemap metadata：runtime别名按既有Timeline规则需要保留tilemap元数据，只有显式linkedCelId可省略。调整窗口夹具保留runtime元数据，与核心夹具和现有生命周期一致，不修改生产校验规则。
 
 最终正式Release构建成功，完整 --tileset-management-check 实际退出0（含显式和runtime混合链）。最小相关三项核心检查、来源覆盖及diff检查均通过；保留用户文件、缓存和editor_support.h既有状态，本阶段提交推送dev。
+
+
+### 2026-11-09：混合文档 Create/Edit/Hybrid 选区事务阶段
+
+依据 legacy workspace-session.ts::selectedTransformLayersForSession/selectedTransformLayersAreEditable 和 tilemap-document.ts 的目标源事务，单网格操作不因无关自由瓦片层拒绝。移除捕获、方向键、Cut/Delete与Create/Edit/Hybrid适配器的文档级free门控，独立owner也复用同一目标检查，仍校验几何、锁定、模式、资源引用、规范链与所选范围。菜单transform/freeTransform及翻转包装器对网格委托既有谓词，free本身保持原规则。
+
+既有runtimeGridTransactions扩展为96组：四模式×六操作（移动、浮动翻转、删除、复制缩放、绘制、剪切）×root/leaf×纯网格/混合free，比较显式链和runtime链、一次事务/取消/UndoRedo、所有帧native/recovery及未选free实例/cache/offset。真实Create/Paint显式/runtime完整鼠标夹具加入无关free层。首轮混合导入夹具因新增帧缺少free Cel不满足现有完整timeline规则，补齐对应槽位而不修改导入校验。
+
+CTest document-transactions/free-tile-project/tilemap-document全部通过33.39s，744文件来源覆盖与证据快照及diff检查通过。渐变/形状preview、资源管理仍有独立门控，本阶段不宣称整个网格域迁移完成；整体INCOMPLETE，多目标和非Paint偏移等保留，无新增FPS及人工截图验收。正式构建和实际窗口最终结果补充如下。
+
+最终正式Release构建成功；完整 --tileset-management-check 实际退出0，包含混合free的Create/Paint显式/runtime链鼠标、菜单、快捷键和结算。保留用户数据、缓存与editor_support.h既有状态，本阶段提交推送dev。
