@@ -5630,3 +5630,10 @@ Release lua-script-directory目标及专项通过0.12s，验证真实示例嵌�
 对照AppMenuBar.tsx的onOpenLuaScriptFolder及platform_scripts.rs目录服务，把正式菜单已有openScriptFolder绑定到Service::openFolder。无工程/首页仍可打开，目录准备与原始示例seed沿已有Service，失败显示状态栏；未增加脚本执行假入口。正式目标加入generated头目录。已有smokeInteraction补注入回调检查无工程可用、派发和错误状态，不弹Explorer。用户再次确认Hybrid预览与提交一致并保留大画布延迟优化，沿此前已实现资源patch/区域输出方案。
 
 正式Release构建成功，唯一exe更新；lua-script-directory/tilemap-document/canvas-tilemap-preview三项通过0.97s。实际--smoke退出1，先在既有Preview hide failed断言失败，尚未到新增脚本菜单断言；未声称新菜单实际运行验收或Explorer打开通过，保留失败现场，未盲目重试。来源覆盖781文件及diff检查通过。Lua执行引擎、正式扩展宿主仍待接入，整体INCOMPLETE。保留用户差异、数据与缓存；本阶段保存推送dev。
+
+
+### 2026-11-10：正式脚本菜单无工程可用性与回归障碍核验
+
+实际--smoke揭示前阶段Service已绑定但公共菜单available仍要求工程的缺陷。对照AppMenuBar.tsx无session禁用条件的open-folder入口，公共门禁允许openScriptFolder在首页/无工程时使用，保留pending互斥。真实PixelMenuItem validate/Click检查已执行通过，包括无工程enabled、服务派发、错误状态；Explorer仍使用注入回调，未宣称实际Explorer验收或Lua执行完成。
+
+清理同条验收路径三个过期假设：面板可能由已保存工作区恢复为隐藏，改为显式开关往返、勾选核对并恢复完整布局；菜单数量沿现行独立测试为145；RGBA缓存白底oracle不再依赖棋盘格默认尺寸。均保留实质行为断言。每次仅在具体修正后重建复测，无盲目重试。正式Release成功；canvas-performance/canvas-checkerboard/menu-catalog/lua-script-directory四项通过8.90s。最新--smoke通过上述菜单/面板/缓存检查，随后仍在editor_smoke.cpp工具栏旧几何断言失败（当时8347行），需后续按现行UI规范单独核验；不宣称完整冒烟通过。来源覆盖781及diff检查通过。整体INCOMPLETE，保留用户差异、数据、缓存和失败现场，本阶段保存推送dev。

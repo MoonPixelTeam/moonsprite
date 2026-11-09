@@ -8236,11 +8236,22 @@ void Editor::smokeInteraction() {
 
     {auto previous=std::move(document);document=Document(1,1);const auto first=document.layer().id;document.setLayerOpacity(.3);document.addLayer();const auto second=document.layer().id;document.setLayerOpacity(.7);document.selectTimelineLayer(first);document.selectTimelineLayer(second,1);refresh();const auto history=document.historySize();menuCommands_.invoke("openLayerProperties");paletteInput_->setText("  renamed  ");paletteInput_->Change();if(document.layer().name!=U"  renamed  ")throw std::runtime_error("Layer name live preview");layerOpacityRange_->changed(50);if(document.timeline().state().layers[0].opacity!=.5 || document.timeline().state().layers[1].opacity!=.5 || document.historySize()!=history)throw std::runtime_error("Multi opacity preview");resolve(false);if(document.historySize()!=history+1 || pending_!=Pending::None || document.layer().name!=U"renamed")throw std::runtime_error("Multi property close history/name");document.undo();if(document.timeline().state().layers[0].opacity!=.7 || document.timeline().state().layers[1].opacity!=.3 || document.layer().name==U"renamed")throw std::runtime_error("Multi property undo originals");document=std::move(previous);refresh();}
 
-    {menuCommands_.invoke("toggleLayersPanel");if(layerRow_->isVisible())throw std::runtime_error("Layer panel hide failed");menuCommands_.invoke("toggleLayersPanel");
+    {const auto workspace=captureWorkspacePreset();
+      struct PanelCase {const char* command;bool* open;ui::Widget* content;};
+      const PanelCase cases[]{{"toggleLayersPanel",&layersPanelOpen_,layerRow_},{"togglePalettePanel",&palettePanelOpen_,panelTabs_[0]},{"togglePreviewPanel",&previewPanelOpen_,previewPanel_}};
+      // Restored workspaces can start with any panel hidden. Exercise both
+      // directions through the real commands, then restore the complete layout.
+      for(const auto& panel:cases){
+        *panel.open=true;refresh();
+        for(bool expected:{false,true,false,true}){
+          if(!menuCommands_.invoke(panel.command)||*panel.open!=expected||menuCommands_.checked(panel.command)!=expected)
+            throw std::runtime_error(std::string("Panel toggle state/check failed: ")+panel.command);
+          if(!expected&&panel.content->isVisible())throw std::runtime_error(std::string("Panel hide failed: ")+panel.command);
+        }
+      }
+      applyWorkspacePresetLayout(workspace);
+      if(captureWorkspacePreset()!=workspace)throw std::runtime_error("Panel command smoke did not restore workspace");}
 
-     menuCommands_.invoke("togglePalettePanel");if(panelTabs_[0]->isVisible())throw std::runtime_error("Palette hide failed");menuCommands_.invoke("togglePalettePanel");
-
-     menuCommands_.invoke("togglePreviewPanel");if(previewPanel_->isVisible())throw std::runtime_error("Preview hide failed");menuCommands_.invoke("togglePreviewPanel");refresh();}
 
     {auto previous=std::move(document);document=Document();refresh();const auto raw=document.pixels();
 
@@ -8269,7 +8280,7 @@ void Editor::smokeInteraction() {
 
       for(const auto& e:menus::catalog())if(!e.group){++leaves;auto item=menuItems_.at(e.id);item->validateItem();if(!menuCommands_.connected(e.id)){if(item->isEnabled())throw std::runtime_error("Unmigrated menu enabled");item->Click();}}
 
-      if(leaves!=142 || document.pixels()!=raw || document.historySize()!=count)throw std::runtime_error("Full disabled menu contract failed");
+      if(leaves!=145 || document.pixels()!=raw || document.historySize()!=count)throw std::runtime_error("Full disabled menu contract failed");
 
       const auto l=workspaceLayout(uiLogical(bounds()));if(l.workspacePanel().y2()+uiGap!=l.layerTop)throw std::runtime_error("Timeline overlaps canvas");}
 
@@ -8281,7 +8292,7 @@ void Editor::smokeInteraction() {
 
       const auto target=os::instance()->makeRgbaSurface(4,4);
 
-      auto render=[&] {cache.sync(source);ui::Graphics g(target);cache.draw(g,gfx::Rect(0,0,4,4),1,gfx::rgba(0,0,0),gfx::rgba(255,255,255));};
+      auto render=[&] {cache.sync(source);ui::Graphics g(target);cache.draw(g,gfx::Rect(0,0,4,4),1,gfx::rgba(255,255,255),gfx::rgba(255,255,255));};
 
       render();const auto initial=cache.uploads();render();
 

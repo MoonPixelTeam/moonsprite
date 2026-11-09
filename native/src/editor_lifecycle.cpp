@@ -382,7 +382,7 @@ Editor::Editor(const PixelFont& font,Skin& skin,std::filesystem::path assets,std
 
       entry->menuMarks=&toolIcons_;
 
-      entry->available=[this,enabled,id]{return pending_==Pending::None && (documentOpen_ && !homeOpen_ || id=="diagnostics" || id=="userGuide" || id=="tips" || id=="usageStatistics" || id=="openShortcutSettings" || id=="newDocument" || id=="openDocument" || id=="pasteAsNewDocument" || id=="openAbout" || id=="openLatestRelease" || id=="closeWindow" || id.find("toggle")==0) && (!enabled || enabled());};
+      entry->available=[this,enabled,id]{return pending_==Pending::None && (documentOpen_ && !homeOpen_ || id=="openScriptFolder" || id=="diagnostics" || id=="userGuide" || id=="tips" || id=="usageStatistics" || id=="openShortcutSettings" || id=="newDocument" || id=="openDocument" || id=="pasteAsNewDocument" || id=="openAbout" || id=="openLatestRelease" || id=="closeWindow" || id.find("toggle")==0) && (!enabled || enabled());};
 
       entry->checked=std::move(checked);
 
