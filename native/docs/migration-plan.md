@@ -4775,3 +4775,11 @@ X/Y/Both合成/当前层及左右键实际诊断验证100次preview请求不发�
 新增16组grid/free×copy/move×linked/independent×binding矩阵：多次绝对预览、取消、单历史、Undo/Redo、native及recovery重开、精确资源/格引用/实例局部坐标/像素保留、非复制存储身份及锁定/隐藏拒绝；已有混合多目标admission回归同步开放后取消。初始storage断言取深复制快照身份，改为取live storage；蒙版断言改用各帧实际继承的moveWithOwner，不把夹具误差作为产品缺陷。实际鼠标新增8组两类层×Alt/移动×auto-select开关，检查capture/placement/history/UndoRedo/Escape，既有普通/平铺/组诊断保留。
 
 正式Release、free-tile-project-tests、attached-masks-tests构建退出0；最终--layer-move-check退出0，四项CTest free-tile-project/attached-masks/alignment/move-click-flash通过15.61s。744来源快照与diff检查通过；无人工截图或FPS新增测量，未重跑全套。不宣称特殊层所有编辑已完成：Paint选区自由变换/多目标、独立蒙版canvas语义及原生扩展兼容仍有缺口，整体INCOMPLETE。保留用户文件、缓存和未跟踪数据，阶段保存推送dev。
+
+### 2026-11-09：混合图层多选／组／帧移动完整组合验收阶段
+
+对照legacy canvas-move-selection.ts resolveCanvasMoveLayerIds/resolveCanvasMoveAnimationCellKeys和canvas-input-layer-move.ts具体过滤：显式多层/组扩展全帧，帧选择扩展可编辑层，按canonical source去重；Alt仅一个层且一个Cel可复制。核心新增18组普通/网格/自由瓦片混合目标×层/组/帧×linked/independent×网格正常/锁定/隐藏，验证每个实际源位置、零像素复制存储身份、格引用/实例/资源字节不变、用户批准的仅显式组选中才传播组蒙版、像素选区平移、取消、单历史、Undo/Redo、native/recovery重开。
+
+真实窗口新增9组混合选择scope/filter鼠标回归，验证目标数量、Alt不复制多目标、capture释放、精确实际源位置、Undo/Redo画面和Escape。两次初始断言把新增linked frame误当全部旧帧已链接，或把各图层第二帧假定全部共享first；改为在按下时捕获实际resolved owner，并同时保留目标数量与scope检查。未修改生产帧创建/移动语义，未把测试夹具差异当产品缺陷。
+
+正式Release及free-tile-project-tests构建成功；最终--layer-move-check退出0；四项CTest free-tile-project/attached-masks/alignment/move-click-flash通过21.58s。744来源快照及diff检查通过。本阶段为上一阶段特殊层移动迁移的完整组合验收，没有新增生产逻辑修复或性能提升声明；无人工截图/FPS测量，未重跑全套。Paint自由变换/多目标、活动蒙版单独canvas语义及扩展兼容仍有已登记缺口，全量迁移INCOMPLETE。保留所有用户数据/缓存，阶段保存推送dev。
