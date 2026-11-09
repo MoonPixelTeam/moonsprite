@@ -5190,3 +5190,10 @@ legacy canvas-render-selection-preview.ts对两种套索的每个栅格路径点
 接续对称边界，按legacy shape-preview.ts在旋转extent外扩2px并平移到局部域生成完整轮廓，原生复用既有rotatedMarqueeSelection后提取边界再投回世界坐标；只在普通非重复、非quick、非Paint选框采用。绘制可以超出画布但仍受viewport限制，画布裁剪不再制造矩形封口边；提交仍使用原selectionPreview裁剪mask，不把外部轮廓写入选区/作品。沿用64Mi像素临时域上限；当前仍分配局部完整mask，未承接旧版row-span边界计算的全部性能路径，不宣称大画布性能完成或全tools-shapes逐像素等价。
 
 窗口新增矩形/椭圆、0/35/90度离屏检查，验证负坐标轮廓alpha，矩形x=-4实际左边和x=0无虚假封口，再执行裁剪提交/UndoRedo/clean保存点检查；既有五工具对称创建/取消/历史回归继续通过。正式Release构建成功（首次变量名编译错误修正后重建），tile-repeat/selection-interactions通过3.38s；--workspace-check --named-workspace-only --selection-symmetry-hybrid-edit-only实际退出0。744来源/证据与diff通过，无新增截图/FPS量测；整体INCOMPLETE，本阶段保存推送dev。
+
+
+### 2026-11-10：普通选框逐行轮廓预览优化
+
+接续画布外完整轮廓，按legacy tools-shapes.ts的findShapeBoundarySpan/collectShapeBoundaryPoints及shape-preview.ts，普通矩形/椭圆预览改为逐行定位凸形区间，二分左右端点并输出相邻行差集；保留旋转矩形孤立尖端修正、圆角、画布外坐标、对称与原有裁剪提交。每次绘制不再分配整个选框面积的局部蒙版，只保存行区间与轮廓点；种子未命中时仍可能逐点搜索该行，不宣称所有输入时间复杂度均为周长。
+
+20组矩形/椭圆、圆角0/3、角度0/35/90/135/270与原完整栅格蒙版边界逐点一致，并验证负坐标平移；32768×32768选框输出131068个周长点。正式Release构建成功；实际--workspace-check --named-workspace-only --selection-symmetry-hybrid-edit-only退出0，包含生产绘制离屏alpha、真实指针创建/取消/提交/UndoRedo及既有Hybrid回归；tile-repeat/selection-interactions两项通过2.78s。未执行独立JS几何oracle、未新增截图或量测整体FPS/峰值内存；整体迁移仍INCOMPLETE，本阶段保存推送dev。
