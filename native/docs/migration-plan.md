@@ -5666,3 +5666,9 @@ Release实际C++加载执行测试覆盖本地事务、连续请求错误隔离�
 新增Target检查文档运行identity（防同projectId替换）、活动层/帧、mask/kind/锁、revision及完整原像素；分块中另验owner/storage identity/revision/geometry，避免捕捉变化中的像素。整结果预检包括所有batch顺序前值、重复索引/范围/安全整数、JS unsigned转换、surface互斥/前值、完整MSE操作白名单和每batch 16Mi UTF16 JSON长度、创建层/工程尺寸/格式/ID重复。预算沿已有native local_history_diff的ECMAScript数值长度适配及字符串转义处理。空操作结果不复制baseline，首次像素变化才复制。结果坐标超native int32时明确拒绝，不截断；旧JS安全整数更宽的必要技术差异保留记录。
 
 Release构建成功；lua-script-runtime/lua-script-invocation两项通过0.45s。覆盖真实Lua读取/事务返回、源Document销毁后执行、Unicode/保存路径/选区/颜色角色、链接预算边界和超过预算、deadline/tick、空Cel、活动编辑/锁/切帧/同ID另工程/无Document revision像素变更、连续/非法晚批次、整面替换、创建结构、16Mi参数恰好允许与超限拒绝。编译缺WinRT Collections头已修正；首次fixture误用fromImported空archive门禁已修正，不改变产品导入规则。来源与diff检查后阶段保存推送dev。正式Editor调用方、真实MSE工作区捕获、结果应用/撤销重做、动态菜单及原生对话框仍未接入；无正式exe/GUI/完整冒烟验收，橡皮擦旧smoke失败未处理，整体INCOMPLETE。保留用户原差异、数据和缓存。
+
+### 2026-11-10：Lua栅格结果应用与原生历史阶段
+
+对照lua-script-service.ts commitSurfaceChange/commitPixelEdit/applyResult及history/animation，新增Document::commitScriptRasterBatch与applyRasterResult。完整结果先预检，再核对活动Target；逐批写原生owner-local Delta/SurfaceChange历史，普通像素修改保留storageOrigin，整面替换设为0。前值/重复索引/尺寸/工作内存预算在写入前核对，预分配历史和替换表面；普通已有Cel路径不复制整个工程。空Cel沿commitStroke创建候选并保留撤销后存活Cel语义，预算计入候选复制成本。无变化像素不产历史，整面/仅偏移变化产历史；像素统计和最终活动帧/层选择沿旧版，未把最终切帧当成dialog新目标。所有MSE操作和created对象在第一笔修改前明确拒绝，等待完整工作区执行器，不静默丢弃。
+
+Release构建成功，lua-script-invocation/lua-script-runtime/document-raster-history三项通过2.27s。专项包含真实Lua执行→文档写入→撤销重做、链接Cel与跨图层共享内容、原点恢复、连续批次/无操作、整面替换/仅偏移计数、空槽写入和存活Cel、非法晚批次/未接入操作与创建对象全量预拒绝、原生工作预算失败不改revision/content/history、最终活动帧及过期target。额外验证history observer抛异常后已提交像素/历史保持一致并可撤销；这沿现有原生通知异常语义，不等同旧版compound abort，完整混合MSE批次回滚仍待接入。来源覆盖796及diff检查通过后保存推送dev。正式Editor/future调度、真实MSE工作区快照、MSE混合事务/创建层工程/跨文档回滚、动态菜单/原生对话框仍未完成；无正式exe更新/GUI/完整smoke，橡皮擦旧smoke失败保留，整体INCOMPLETE。保留用户差异、数据、缓存和现场。

@@ -55,3 +55,13 @@ rather than truncate JavaScript safe integers. Indexed native context, actual
 workspace MSE capture, result history/application and Editor scheduling/menu/
 dialog integration are still pending. CTest lua-script-invocation covers
 actual Document captures, budgets, stale guards and real worker execution.
+
+The raster application stage is now available as applyRasterResult and
+Document::commitScriptRasterBatch. It prevalidates the complete result, checks
+the active Target, then commits each ordinary pixel/surface batch to native
+undo history. Pixel deltas preserve owner storage origins; surface replacement
+resets them to zero. Linked Cels/layers follow existing native propagation.
+No-op pixel batches add no history; surface batches always do. Unsupported
+MSE operations and created layers/documents cause a pre-write rejection: this
+stage does not substitute for the complete workspace executor. Formal UI
+scheduling, compound MSE rollback and created-object application remain pending.

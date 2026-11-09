@@ -82,4 +82,36 @@ SurfaceSnapshot validateResult(const Target& target,const std::string& json){
  for(const auto& item:result.GetNamedArray(L"createdDocuments")){const auto doc=item.GetObject();const auto w=integer(doc.GetNamedNumber(L"width")),h=integer(doc.GetNamedNumber(L"height"));const auto mode=doc.GetNamedString(L"colorMode");const auto list=doc.GetNamedArray(L"layers");if(blank(doc.GetNamedString(L"name"))||w<1||h<1||w*h>InvocationCapture::maxImagePixels||(mode!=L"rgba"&&mode!=L"indexed"&&mode!=L"grayscale")||!list.Size())invalid();layers(list,mode==L"indexed"?L"indexed":L"rgba");}
  return expected;
 }
+namespace {
+std::u32string unicode(const winrt::hstring& s){std::u32string out;for(std::size_t i=0;i<s.size();++i){char32_t c=s[i];if(c>=0xd800&&c<=0xdbff&&i+1<s.size()&&s[i+1]>=0xdc00&&s[i+1]<=0xdfff)c=0x10000+((c-0xd800)<<10)+(s[++i]-0xdc00);out.push_back(c);}return out;}
+}
+RasterSummary applyRasterResult(Document& d,Target& target,const std::string& json){
+ (void)validateResult(target,json);if(d.active()||!target.matches(d))throw std::logic_error("Lua script target changed");
+ const auto result=JsonObject::Parse(winrt::to_hstring(json));
+ // This stage is deliberately closed to operations requiring workspace state.
+ // The full executor will route these explicitly; no data may be dropped.
+ if(result.GetNamedArray(L"createdLayers").Size()||result.GetNamedArray(L"createdDocuments").Size())throw std::logic_error("Lua created objects require the workspace result executor");
+ for(const auto& item:result.GetNamedArray(L"batches")){const auto batch=item.GetObject();if(batch.HasKey(L"operations")&&batch.GetNamedArray(L"operations").Size())throw std::logic_error("Lua MSE operations require the workspace result executor");}
+ RasterSummary summary;
+ for(const auto& item:result.GetNamedArray(L"batches")){
+  const auto wire=item.GetObject();RasterBatch batch;batch.before=target.expected;
+  auto label=wire.GetNamedString(L"label",L"");if(label.empty())label=result.GetNamedString(L"fileName",L"");batch.label=label.empty()?U"脚本":unicode(label);
+  auto next=target.expected;std::size_t count=0;
+  if(wire.HasKey(L"surfaceChange")&&wire.GetNamedValue(L"surfaceChange").ValueType()!=JsonValueType::Null){
+   batch.after=surface(wire.GetNamedObject(L"surfaceChange").GetNamedObject(L"after"),L"rgba");next=*batch.after;
+   if(next.width!=batch.before.width||next.height!=batch.before.height)count=std::max(next.pixels->size(),batch.before.pixels->size());
+   else for(std::size_t i=0;i<next.pixels->size();++i)count+=(*next.pixels)[i]!=(*batch.before.pixels)[i];
+  }else{
+   const auto changes=wire.GetNamedArray(L"changes");batch.changes.reserve(changes.Size());std::shared_ptr<std::vector<Pixel>> values;
+   for(const auto& entry:changes){const auto c=entry.GetObject();const auto i=std::size_t(c.GetNamedNumber(L"index"));const auto before=packed(c.GetNamedNumber(L"before")),after=packed(c.GetNamedNumber(L"after"));batch.changes.push_back({i,before,after});if(before!=after){if(!values)values=std::make_shared<std::vector<Pixel>>(*next.pixels);(*values)[i]=after;++count;}}
+   if(values)next.pixels=values;
+  }
+  if(d.commitScriptRasterBatch(batch)){++summary.transactionCount;summary.changedPixelCount+=count;target.expected=std::move(next);target.revision=d.revision();}
+ }
+ // Legacy applies a final requested layer/frame after all batches. It does not
+ // retarget the dialog: a later callback on a different slot must be rejected.
+ if(result.HasKey(L"activeLayerId")&&result.GetNamedValue(L"activeLayerId").ValueType()==JsonValueType::String){const auto id=winrt::to_string(result.GetNamedString(L"activeLayerId"));if(d.timeline().hasLayer(id))d.selectLayer(id);}
+ if(result.HasKey(L"activeFrameNumber")&&result.GetNamedValue(L"activeFrameNumber").ValueType()==JsonValueType::Number){const auto n=result.GetNamedNumber(L"activeFrameNumber");const auto& frames=d.timeline().state().frames;if(n>=1&&n<=frames.size()&&std::floor(n)==n)d.selectFrame(frames[std::size_t(n)-1].id);}
+ return summary;
+}
 }
