@@ -5302,3 +5302,12 @@ legacy canvas-render-selection-preview.ts对两种套索的每个栅格路径点
 对照legacy core/tilemap.ts的cellPixels空引用返回透明与renderCell清空后跳过规则，原生deferred regional输出利用已初始化透明的结果缓冲，在完成整格移动引用重映射及local patch查询后，跳过没有引用且没有patch的格。减少每个空白格的透明缓冲分配、清零和行复制；原空格上的局部绘画、选中空格覆盖目标与移动源清空仍保留。
 
 正式Release构建成功；tilemap-document/canvas-tilemap-preview通过0.80s，覆盖区域裁剪、空格与局部patch、整格移动/复制、变换/平铺和实际Skia缓存对照；完整--tileset-management-check实际退出0。未新增镜像实现测试、截图或分配/FPS量测；整体迁移仍INCOMPLETE。本阶段保存推送dev。
+
+
+### 2026-11-10：完整回归验收与特殊图层批量变换契约复核
+
+在e2ffcf0c正式构建及现有测试产物上执行完整 `ctest --test-dir native/build -C Release --output-on-failure -j 2`，211/211通过，总用时237.50s。包括project-manifest（136.50s）、free-tile-project（32.50s）、workspace-layout（38.03s）、工程保存/恢复、动画、导入导出、实际窗口交互与各性能专项。关闭此前“未在连续迁移后重新执行全套”的验收缺口；这些时间为本机单次回归耗时，不是产品交互延迟或FPS，既有测试通过也不证明未接入功能完成。本阶段无生产代码修改、无新构建或人工截图。
+
+纠正此前把“瓦片多目标”笼统登记为迁移缺口的说法：legacy workspace-session.ts::selectedTransformLayersAreEditable要求多个目标图层全部为普通栅格；core/selection-transform-targets.ts::captureAnimationFrameSelectionTransformStates在捕获和应用时均跳过带kind的特殊图层；workspace-commands-selection-move.ts动画分支明确拒绝特殊层，useCanvasSelectionTransform.ts批量指针分支复用相同捕获。现有native/tests/tilemap_document_test.cpp::checkTilemapTransformEntry覆盖混合显式多层拒绝和隐式帧选择只取普通栅格，本轮随完整tilemap-document实际通过。因此不能未经新需求决定开放特殊图层批量变换，也不能以移除单目标门控充当迁移。此结论仅覆盖上述批量分支，不推断所有单目标/菜单组合完全等价。
+
+需求静态门禁通过：57条需求、756入口候选、671原始证据、31来源；来源覆盖744文件和快照通过，--strict仍按已知partial记录退出1。扩展现状核对：native/src/extension_contract_session.h是独立契约模型，不能把三项extension测试通过解释为实际脚本宿主、原生扩展窗口或宠物迁移完成。全量迁移继续INCOMPLETE，后续应按具体入口和真实接线关闭缺口。保留全部用户数据、构建缓存、未跟踪文件及editor_support.h既有状态；本验收阶段保存推送dev。
