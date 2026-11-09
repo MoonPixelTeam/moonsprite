@@ -10,12 +10,13 @@ data = json.loads((native / 'docs/legacy-provenance.json').read_text(encoding='u
 actual = set()
 for directory in ['src', 'tests', 'scripts', 'docs/requirements-baseline/tools']:
     for path in (native / directory).rglob('*'):
-        if path.suffix in {'.h', '.cpp', '.py', '.ps1', '.mjs', '.cjs'}:
+        if path.suffix in {'.h', '.cpp', '.py', '.ps1', '.mjs', '.cjs', '.rs'}:
             actual.add(path.relative_to(native).as_posix())
 actual.update(p.name for p in native.glob('*.bat'))
 for path in (native / 'tests/fixtures/pattern-extra-formats').glob('*'):
     if path.is_file(): actual.add(path.relative_to(native).as_posix())
 actual.add('CMakeLists.txt')
+actual.update(path.relative_to(native).as_posix() for path in (native / 'src/lua_runtime').glob('Cargo.*'))
 recorded = [entry['file'] for entry in data['files']]
 errors = []
 if len(recorded) != len(set(recorded)): errors.append('Duplicate file registration')

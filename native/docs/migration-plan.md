@@ -5644,3 +5644,10 @@ Release lua-script-directory目标及专项通过0.12s，验证真实示例嵌�
 核对现行UI规范及placePropertyControl，旧测试的上下偏移改为20px输入框/16px专用图标的高度与中心线关系；阶梯控件沿已迁移EditorToolOptions.tsx 1-16输入契约验证可编辑，工具轨道重叠检查兼容横排/竖排。真实运行发现前阶段脚本菜单fixture临时无工程点击触发refresh，禁用全部子控件却只恢复工程标志；现在保存各子控件自身DISABLED位，恢复后刷新原工程，避免污染后续交互。诊断确认不是产品阶梯恢复缺陷，曾尝试的生产代码修改已撤回，无生产布局改动。
 
 正式Release成功，实际--tool-rail-check退出0；--smoke现通过脚本菜单、面板往返、缓存、属性栏几何和阶梯可编辑检查，随后在橡皮擦指针旧断言失败（当时8414行），后续需单独核验指针语义，未宣称完整smoke通过。来源781及diff检查通过，无新人工图像验收。整体迁移INCOMPLETE，保留用户数据、缓存与原差异，阶段提交推送dev。
+
+
+### 2026-11-10：完整旧版Lua/MSE执行核心原生库阶段
+
+复核MoonSprite/MLua/Lua许可和依赖边界，直接编译legacy platform_scripts/lua_api.rs及mse_api.rs（不复制改写API），build.rs提取原serde上下文/结果与预算常量，排除Tauri命令及已迁移C++文件服务。Rust staticlib提供线程归属C ABI和JSON start/dispatch/close，保留原会话仅在存在对话框时存活、回调前rebase、执行失败删除、close幂等；结果原样包含事务/创建对象/对话框。错误包及allocator free、错误线程拒绝均明确，仍要求调用方有效指针与串行所有权。没有WebView/Tauri依赖，也没有把脚本结果直接写进Document。
+
+沿用mlua0.10.5 Lua54 vendored与锁定依赖，CMake独立目标/CTest、构建脚本均在native，Rust输出和MSVC TEMP固定native/build；调试记录/系统TEMP占用构建错误分别用无debug构建和专用TEMP适配，保留原缓存。C++实际链接暴露动态/静态CRT不匹配后，统一原生MT编译并成功。原16项Lua/MSE测试全部复用，包括真实月相示例、事务回滚、跨帧Cel、modeless/blocking对话框、指令预算与危险库剔除；新增2项Rust FFI及实际C++链接调用检查。Release CTest lua-runtime/lua-runtime-ffi两项通过11.81s（内部18项），无正式exe更改/GUI验收；cargo fmt格式化新Rust文件。来源门禁增加Rust/Cargo元数据覆盖，788文件通过。正式Editor快照、事务结果应用、异步工作线程调用方、动态脚本菜单及原生对话框仍待接入，不能宣称用户可运行脚本；整体INCOMPLETE。橡皮擦旧冒烟失败仍保留，用户差异/数据/缓存保留，阶段保存推送dev。

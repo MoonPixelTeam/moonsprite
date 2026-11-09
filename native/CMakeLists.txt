@@ -996,3 +996,21 @@ target_link_libraries(outline-document-tests PRIVATE moon-project-reader)
 add_test(NAME outline-document COMMAND outline-document-tests)
 
 target_sources(moonsprite-native PRIVATE src/editor_outline.cpp)
+
+# Compile the original Rust Lua/MSE core without Tauri/WebView. The native
+# application will link this library when document/result/UI adapters are ready.
+find_program(MOON_CARGO_EXECUTABLE cargo)
+if(WIN32 AND MOON_CARGO_EXECUTABLE)
+  add_custom_target(lua-runtime
+    COMMAND powershell -NoProfile -ExecutionPolicy Bypass -File "${CMAKE_CURRENT_SOURCE_DIR}/scripts/build-lua-runtime.ps1" -Action Build
+    WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
+    VERBATIM)
+  add_library(moon-lua-runtime STATIC IMPORTED)
+  set_target_properties(moon-lua-runtime PROPERTIES IMPORTED_LOCATION "${CMAKE_CURRENT_BINARY_DIR}/lua-runtime/release/moonsprite_lua_runtime.lib")
+  add_dependencies(moon-lua-runtime lua-runtime)
+  add_executable(lua-runtime-ffi-tests tests/lua_runtime_ffi_test.cpp)
+  target_include_directories(lua-runtime-ffi-tests PRIVATE src)
+  target_link_libraries(lua-runtime-ffi-tests PRIVATE moon-lua-runtime ws2_32 userenv bcrypt ntdll advapi32)
+  add_test(NAME lua-runtime-ffi COMMAND lua-runtime-ffi-tests)
+  add_test(NAME lua-runtime COMMAND powershell -NoProfile -ExecutionPolicy Bypass -File "${CMAKE_CURRENT_SOURCE_DIR}/scripts/build-lua-runtime.ps1" -Action Test -Offline)
+endif()
