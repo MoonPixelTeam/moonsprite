@@ -4817,3 +4817,16 @@ smokeWorkspace布局交互完成后切至已有移动工具，固定后续画布
 承接上一阶段完整 --tileset-management-check 在填充canvasOwnsPointer前置条件失败。增加命中类型/所属栏目/边界/捕获诊断，实测point702,434命中TilesetPanel::Grid、column11、bounds590,270,420,426、capture0：前一个管理夹具打开的悬浮瓦片集面板覆盖了后续画布原点。曾先推测预览面板，关闭后失败完全相同，已撤回该无效修改；最终仅在填充/形状渐变指针夹具显式关闭瓦片集面板，保留真实命中和所有事务断言，产品填充、窗口命中、默认布局均未改。
 
 正式Release构建成功；完整 --tileset-management-check实际退出0，依次运行瓦片集管理/剪贴板、填充、形状渐变预览、四模式变换菜单及CtrlT、既有链接Create/Edit/Hybrid与选区删除等诊断。关闭上一阶段该项GUI验收缺口；744来源覆盖与证据快照及diff检查通过。未重跑全套CTest，无新增FPS/人工图像验收，不以诊断修复宣称功能迁移完成。Paint浮动自由变换/多目标、活动蒙版移动语义选择及扩展兼容仍有缺口，整体INCOMPLETE。保留用户数据/缓存/未跟踪文件及editor_support.h原状态，阶段保存推送dev。
+
+
+### 2026-11-09：Paint 浮动变换资源事务修复阶段
+
+用户明确批准修复 legacy Paint 浮动提交只改像素缓存、转换瓦片与像素历史均被排除的缺陷（workspace-commands-selection-floating.ts）；普通拖动继续整格移动。单个标准零原点、画布等大网格的 Paint 自由变换现复用 Create 转换与增量资源历史，保留已有瓦片、显式同层链接及独立帧。键盘移动待提交内容不再错误进入整格移动分支；大图继续使用既有延迟预览。
+
+核心回归扩展小图/大图、移动/复制、重复调整、取消、完全画布外提交及 Undo/Redo；工程/恢复格式新增缩放翻转、旋转倾斜、四角变换的缓存与引用一致性和重开检查。现有链接 Create 界面诊断也扩展到 Paint 自由变换的鼠标、Escape、Ctrl复制与 Enter。
+
+范围仍有明确缺口：偏移/非整画布网格、多目标、runtime shared 别名与混合自由瓦片文档尚未在本事务开放；Paint 待提交 Cut/Delete 也保留既有门控。本阶段不代表完整 Paint 迁移完成，不新增 FPS 改善结论。
+
+本阶段核心验证：正式目标的核心依赖与两项测试构建成功；CTest document-transactions/free-tile-project/tilemap-document 三项通过21.85s。首次瓦片测试停在旧 Paint 拒绝断言，按批准的新行为更新后通过；744文件来源及证据快照检查通过，整体对齐仍 INCOMPLETE。
+
+正式 Release 构建成功，完整 --tileset-management-check 实际退出0。首轮新增 Paint GUI 夹具只设置自由变换标志，被刷新按既有规则清除，未进入真实自由变换事务；修正夹具调用 startFreeSelectionTransform 后通过，未修改刷新规则。未重跑全套210项，无新增FPS或人工截图验收。保留用户数据、缓存、未跟踪文件与 editor_support.h 既有状态，阶段提交推送 dev。

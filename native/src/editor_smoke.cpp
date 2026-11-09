@@ -9007,7 +9007,7 @@ __declspec(noinline)
 #else
 __attribute__((noinline))
 #endif
-void Editor::smokeLinkedCreateFloating(){auto check=[](bool value,const char* why){if(!value)throw std::runtime_error(why);};smoke_=true;homeOpen_=false;documentOpen_=true;pending_=Pending::None;playing_=false;paletteFocused_=false;frameSelectionExplicit_=false;spaceHeld_=eyedropperHeld_=false;const int size=8;
+void Editor::smokeLinkedCreateFloating(){auto check=[](bool value,const char* why){if(!value)throw std::runtime_error(why);};smoke_=true;homeOpen_=false;documentOpen_=true;pending_=Pending::None;playing_=false;paletteFocused_=false;frameSelectionExplicit_=false;spaceHeld_=eyedropperHeld_=false;for(auto mode:{tiles::Mode::Create,tiles::Mode::Paint}){const int size=8;
 std::unique_ptr<Document> seedOwned(new Document(size,size==8?4:258));auto& seed=*seedOwned;seed.beginStroke({0,0},0xff123456);seed.commitStroke();seed.convertLayerToTilemap(2,2,U"Linked Create floating");
 auto state=seed.timeline().state();const auto owner=seed.cel().id,layer=seed.layer().id,tile=seed.cel().tilemap->cells[0]->tileId,first=seed.frame().id;
 tiles::writeTile(state.tilesets.front(),tile,{0xff123456,0xffabcdef,0xff445566,0xff778899});for(auto& c:state.cels)if(c.tilemap){c.tilemap->cells[3]=c.tilemap->cells[0];c.surface->pixels=tiles::render(*c.tilemap,state.tilesets);}
@@ -9015,7 +9015,7 @@ auto other=state.cels.front();other.id="cf-independent";other.frameId="cf-indepe
 
 auto middle=state.cels.front();middle.id="cf-middle";middle.frameId="cf-middle-frame";middle.linkedCelId=owner;middle.surface.reset();middle.tilemap.reset();auto leaf=middle;leaf.id="cf-leaf";leaf.frameId="cf-leaf-frame";leaf.linkedCelId=middle.id;for(const auto& c:{middle,leaf}){state.frames.push_back({c.frameId,100});state.cels.push_back(c);}
 std::unique_ptr<Document> docOwned(new Document(Document::fromImported(size,size==8?4:258,state,seed.palette(),"linked-create-floating",U"Linked Create",std::make_shared<const std::vector<std::uint8_t>>())));document=std::move(*docOwned);auto& d=document;
-d.selectLayer(layer);d.selectFrame(leaf.frameId);d.clearTimelineSelection();d.setTilemapMode(tiles::Mode::Create);const SelectionMask selected{0,0,2,2,{1,1,0,1}};d.previewSelection(selected);
+d.selectLayer(layer);d.selectFrame(leaf.frameId);d.clearTimelineSelection();d.setTilemapMode(mode);const SelectionMask selected{0,0,2,2,{1,1,0,1}};d.previewSelection(selected);
 const auto refs=d.timeline().findCelById(owner)->tilemap->cells;const auto oldSet=d.timeline().state().tilesets.front();const auto before=d.canvasPixels(),independent=static_cast<const std::vector<Pixel>&>(d.timeline().resolveSurface(other.id).surface->pixels);const auto h=d.historyPosition();
 
 auto verify=[&](const std::vector<Pixel>& pixels,bool canonical){
@@ -9027,8 +9027,11 @@ auto verify=[&](const std::vector<Pixel>& pixels,bool canonical){
 
 useSelectionTool(0);selectionMode_=0;selectionPropertiesActive_=selectionFreeTransform_=selectionPivotVisible_=false;selectionPivot_.reset();selectionPivotMask_.reset();clearTimelineRowSelection();d.previewSelection(SelectionMask{0,0,2,2,{}});requestFocus();fitCanvas();zoom_=24;refresh();
 auto key=[&](ui::KeyScancode scan,ui::KeyModifiers mods=ui::kKeyNoneModifier){ui::KeyMessage msg(ui::kKeyDownMessage,scan,mods,0,0);onProcessMessage(&msg);};auto pointer=[&](ui::MessageType type,double x,double y,bool copy=false){ui::MouseMessage msg(type,os::PointerType::Mouse,ui::kButtonLeft,copy?ui::kKeyCtrlModifier:ui::kKeyNoneModifier,canvasDocumentToDisplay({x,y}));msg.setDisplay(display());onProcessMessage(&msg);if(type==ui::kMouseDownMessage&&floatingDragging_)enableFlags(ui::HAS_CAPTURE);else if(type==ui::kMouseUpMessage)disableFlags(ui::HAS_CAPTURE);};
+if(mode==tiles::Mode::Paint){startFreeSelectionTransform();check(d.floating()&&selectionFreeTransform_,"Paint actual free-transform command captures resource transaction");}
 quickSelectionPress_.reset();quickSelectionExplicitDouble_=false;check(selectionHit(canvasDocumentToDisplay({1,1}))==2,"linked Create UI selection interior");pointer(ui::kMouseDownMessage,1,1);pointer(ui::kMouseMoveMessage,4,2);pointer(ui::kMouseUpMessage,4,2);check(d.floating()&&d.historyPosition()==h&&d.timeline().findCelById(owner)->tilemap->cells==refs&&d.timeline().state().tilesets.front().pixels==oldSet.pixels,"actual linked Create mouse drag leaves authority frozen in pending floating");verify(d.canvasPixels(),false);key(ui::kKeyEsc);check(!d.floating()&&d.canvasPixels()==before&&d.historyPosition()==h,"actual linked Create Escape rolls canonical preview back without history");verify(before,true);d.previewSelection(SelectionMask{0,0,2,2,{}});requestFocus();refresh();
+if(mode==tiles::Mode::Paint){check(d.beginSelectionContentMove(true),"Paint free-transform copy capture");startFreeSelectionTransform();}
 quickSelectionPress_.reset();quickSelectionExplicitDouble_=false;pointer(ui::kMouseDownMessage,1,1,true);pointer(ui::kMouseMoveMessage,4,2,true);pointer(ui::kMouseUpMessage,4,2,true);check(d.floating(),"actual linked Ctrl-drag creates a copy floating selection");key(ui::kKeyEnter);check(!d.floating()&&!d.selection()&&d.historyPosition()==h+2&&d.canvasPixels()[0]==before[0]&&d.canvasPixels()[3+d.width()]==before[0],"actual linked Create Enter commits one authority edit then the existing selection completion edit");const auto after=d.canvasPixels();verify(after,true);d.undo();verify(after,true);d.undo();verify(before,true);d.redo();verify(after,true);d.redo();verify(after,true);document=Document();refresh();
+}
 }
 
 namespace {
