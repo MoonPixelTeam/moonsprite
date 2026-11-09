@@ -123,7 +123,7 @@ if(id=="connectAnimationCels"||id=="disconnectAnimationCels"){if(id=="connectAni
 if(id=="enableAnimationFrames"||id=="disableAnimationFrames"||id=="toggleAnimationFramesDisabled"){updateFramesDisabled(id=="disableAnimationFrames",id=="toggleAnimationFramesDisabled");return true;}
 if(id=="createAnimationLoopSection"){openLoopEditor();return true;}
 if(id=="openAnimationFrameProperties"){openFramePropertiesFor(document.activeFrameIndex());return true;}
-if(id=="openAnimationCelProperties"){std::string target=document.cel().id;if(!document.timelineSelection().cels.empty())target=document.timelineSelection().cels.front();showCelProperties(target);return true;}
+if(id=="openAnimationCelProperties"){const auto& selected=document.timelineSelection().cels;const auto* target=selected.empty()?document.timeline().findCel(document.layer().id,document.frame().id):document.timeline().findCelById(selected.front());if(target)showCelProperties(target->id);return true;}
 if(id=="playAnimationLoopSection"||id=="openAnimationLoopSectionProperties"||id=="deleteAnimationLoopSection"){
  // Legacy shortcutLoopSection: exact selected range takes precedence over playhead.
  const auto& state=document.timeline().state();const auto& selected=document.selectedFrames();

@@ -606,7 +606,7 @@ void Editor::buildLayerContextMenu(PixelMenu* menu,int kind) {
 
     const auto* contextCel=contextCelIdentity_==document.identity()?document.timeline().findCelById(contextCelId_):nullptr;
 
-    add(menu,U"删除单元格","delete",U"",[this]{deleteTimelineItems();},celHasContent(contextCel?contextCel:&document.cel()));
+    add(menu,U"删除单元格","delete",U"",[this]{deleteTimelineItems();},celHasContent(contextCel?contextCel:document.timeline().findCel(document.layer().id,document.frame().id)));
 
   }
 

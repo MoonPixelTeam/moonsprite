@@ -74,6 +74,14 @@ void Editor::smokeAsepriteIo(){
   try{saveProject(true);finishSave();chooseSaveFile_=std::move(saveChooser);}catch(...){chooseSaveFile_=std::move(saveChooser);throw;}
   require(std::filesystem::is_regular_file(nativeTarget)&&!document.dirty(),"Sparse actual native Save As failed");openPath(nativeTarget);require(pending_==Pending::None&&document.canvasPixels()==std::vector<timeline::Pixel>(12,0),"Sparse actual native reopen failed");
  }
+ // Active empty slot with populated sibling frames exercises thumbnail binding and commands.
+ {
+  Document seed(4,3);seed.beginStroke({1,1},0xff123456);seed.commitStroke();seed.addFrame();seed.beginStroke({2,1},0xffabcdef);seed.commitStroke();seed.addLinkedFrame();auto sparse=decodeAseprite(encodeAseprite(seed));const auto missing=sparse.timeline.frames.front().id;sparse.timeline.cels.erase(std::remove_if(sparse.timeline.cels.begin(),sparse.timeline.cels.end(),[&](const auto& c){return c.frameId==missing;}),sparse.timeline.cels.end());document=documentFromAseprite(std::move(sparse));documentPath_.clear();refresh();
+  require(runShortcutCommand("openAnimationCelProperties"),"Empty slot properties shortcut handled");PixelMenu emptyMenu(skin_);buildLayerContextMenu(&emptyMenu,3);require(document.timeline().state().cels.size()==2&&!document.dirty(),"Empty slot menu and shortcut preserve timeline");
+  const auto target=owned/"partial-sparse.aseprite";auto chooser=chooseExportFile_;chooseExportFile_=[&](OPENFILENAMEW* dialog){auto path=target.wstring();std::copy(path.begin(),path.end(),dialog->lpstrFile);dialog->lpstrFile[path.size()]=0;return true;};
+  try{asepriteIoSmoke=true;openAsepriteExport();asepriteIoSmoke=false;chooseExportFile_=std::move(chooser);}catch(...){asepriteIoSmoke=false;chooseExportFile_=std::move(chooser);throw;}
+  auto opened=openAseprite(target);require(opened.timeline().state().cels.size()==2,"Partial sparse actual export retains absent first cel");for(std::size_t i=0;i<3;++i)require(compositeNormalRegion(document.timeline(),document.timeline().state().frames[i].id,{0,0,4,3})==compositeNormalRegion(opened.timeline(),opened.timeline().state().frames[i].id,{0,0,4,3}),"Partial sparse window frame appearance");
+ }
  // Real export dialog/worker/write for migrated special layers.
  for(bool psdSpecial:{false,true})for(bool free:{false,true}){
   document=Document(8,6);document.beginStroke({1,1},0xff123456);document.commitStroke();if(free){document.createFreeTileLayer(U"Free ASE window");SelectionClipboard tile;tile.width=tile.height=2;tile.pixels.assign(4,0xffabcdef);document.pasteFreeTilePixels(tile,{2,2});}else document.convertLayerToTilemap(2,2,U"Grid ASE window");document.addFrame(true);document.markSaved();refresh();
