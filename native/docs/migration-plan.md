@@ -5295,3 +5295,10 @@ legacy canvas-render-selection-preview.ts对两种套索的每个栅格路径点
 沿用legacy tilemap-document.ts资源patch及tilemap.ts源坐标语义，原生输出优先直接读不可变local patch、无翻转旋转的modified源；只有变换引用才分配单格scratch并调用既有sourcePoint映射，其他格保留cellPixels。消除先渲染原瓦片再全量覆盖/复制patch的无效操作，不改变资源或事务。
 
 正式Release构建成功，tilemap-document/canvas-tilemap-preview通过0.88s，含区域裁剪、空/外部/翻转旋转引用、共享源、变换/平铺及实际Skia缓存与全新绘制逐点对照；完整--tileset-management-check实际退出0。744来源/证据及diff通过。未新增镜像实现测试、截图或实际分配/FPS量测；整体迁移仍INCOMPLETE，本阶段保存推送dev。
+
+
+### 2026-11-10：Hybrid空白格输出跳过
+
+对照legacy core/tilemap.ts的cellPixels空引用返回透明与renderCell清空后跳过规则，原生deferred regional输出利用已初始化透明的结果缓冲，在完成整格移动引用重映射及local patch查询后，跳过没有引用且没有patch的格。减少每个空白格的透明缓冲分配、清零和行复制；原空格上的局部绘画、选中空格覆盖目标与移动源清空仍保留。
+
+正式Release构建成功；tilemap-document/canvas-tilemap-preview通过0.80s，覆盖区域裁剪、空格与局部patch、整格移动/复制、变换/平铺和实际Skia缓存对照；完整--tileset-management-check实际退出0。未新增镜像实现测试、截图或分配/FPS量测；整体迁移仍INCOMPLETE。本阶段保存推送dev。
