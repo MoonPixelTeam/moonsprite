@@ -4733,3 +4733,9 @@ X/Y/Both合成/当前层及左右键实际诊断验证100次preview请求不发�
 承接剩四项失败，核对当前HomeWorkspace已迁移的栏目溢出和资源公告滚动。旧首页resize断言要求全部隐藏/屏外按钮位于窗口内，改为只检查可见按钮按paletteViewport裁剪后的非空范围、可见标签、公告视口和滚到底后的资源裁剪；不改生产布局。对照legacy workspace-commands-clipboard.ts与已迁移普通自由瓦片完整图层资源复制，旧断言仍称Copy/Cut未迁移：现检查Copy实际可用并执行菜单，断言layerClipboardSnapshot生成、实例clipboard清空、实例内容/历史不变，恢复测试内部clipboard后继续完整Paste/UndoRedo/锁定/快捷键流程；Cut仍遵守canDeleteSelectedLayers的显式选择准入。
 
 正式Release构建退出0，home-workspace与layer-context-menu两项完整CTest通过8.23s；来源和diff检查通过。工作区复查仍失败于Preview move/resize phase4全画面像素对照，保留为真实待定位渲染差异；wheel-performance的额外chrome绘制/初始化像素差异也保留，已产生本地repaint trace，不删除断言、不据此声称性能问题解决。原全套失败剩两项，未重跑全套；无新增人工截图/FPS验收，整体迁移INCOMPLETE。保留用户数据/缓存，保存推送dev。
+
+### 2026-11-09：用户确认的组蒙版随组移动回归阶段
+
+落实用户决定：组蒙版随选中组移动，遵守解析后蒙版的moveWithOwner开关。核对legacy workspace-layer-move.ts的绝对基线偏移与链接根去重；组传播属于用户明确批准的原生扩展，现有生产实现无需修改。新增两层嵌套组、两个链接帧、开关开/关、连续绝对预览、取消、提交、Undo/Redo及像素存储身份不变检查。首次用例将默认true的无变化setter误作成功写入，修正为只切换false后，attached-masks正式Release目标构建成功，完整CTest通过0.43s。
+
+预览残留调查沿用既有正式程序构建，Release构建退出0；workspace-layout再次失败，尚未解决。临时位置记录确认预览位于602,166,380,260，重叠顶部控件位于784,150,38,38；没有据此提交猜测性产品修改，临时硬编码记录已从源码移除。此前兄弟遮挡排除方案无改善且已撤回。wheel-performance仍待修复；整体迁移INCOMPLETE，无新增FPS或人工图像验收，保留所有用户数据、缓存与未跟踪文件。
