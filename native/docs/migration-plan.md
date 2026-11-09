@@ -5204,3 +5204,10 @@ legacy canvas-render-selection-preview.ts对两种套索的每个栅格路径点
 对照legacy tilemap.ts::tilemapCellIndexesForSelection和tilemap-document.ts::captureTilemapSelectionMove/previewTilemapSelectionMove，原生Hybrid对齐整格提交从两次全网格扫描改为裁剪选区行列范围；先清源再赋目标，仍复制null、外部瓦片集及翻转旋转引用，重叠按不可变原网格读取。临时更新预算按选中格最多两份更新估算，不再按整个网格估算；现有浮动捕获、资源、链接、历史和固定网格裁剪不变。
 
 260×260显式链接夹具新增14组move/copy，覆盖四方向、重叠、右下部分越界、完全越界、原位no-op；逐项验证取消、authority冻结、精确格引用、资源不变、preview=commit及UndoRedo，并沿用共享源和链接缓存核对。tilemap-document通过0.37s；正式Release构建成功，完整--tileset-management-check实际退出0，包含既有大画布真实指针移动/复制/取消/Enter。744来源/证据与diff检查通过。新增14组为核心事务检查，没有新增实际指针夹具、截图或FPS量测；其他Hybrid预览资源patch缓存仍未完成，整体INCOMPLETE。本阶段保存推送dev。
+
+
+### 2026-11-10：Hybrid延迟预览资源修改缓存阶段
+
+接续用户批准的preview=commit，保留从legacy tilemap-document.ts局部格修改及共享源引用逻辑适配的有序资源patch；同一浮动状态的多次regional绘制复用不可变源瓦片/局部格修改，不再每次重建候选格采样和资源差异。缓存归属浮动事务，按overlay revision、content revision及repeat模式验证，变换通知释放，取消/提交随事务释放；计入现有floating内存预算，不缓存整幅像素或复制timeline。整格移动仍走直接引用路径。
+
+已有260×260链接Hybrid核心矩阵增加构建计数断言：首个region一次构建，跨格/负坐标/越界regional读取复用，变换后重建，恢复变换逐像素一致，X/Y/Both切换Off及恢复均重建并保持预览一致；保留提交/UndoRedo、资源/链接及dirty逐点检查。tilemap-document通过0.33s；公共头文件触发大范围重编译后正式Release构建成功，完整--tileset-management-check实际退出0，含既有大画布真实鼠标移动/复制/Escape/Enter检查。744来源/证据及diff通过。无新增截图或实际FPS量测；引用脏区扫描等后续性能项及整体迁移仍INCOMPLETE。本阶段保存推送dev。

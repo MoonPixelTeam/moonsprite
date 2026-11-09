@@ -513,6 +513,7 @@ public:
   bool freeTileSelectionPlacementMoving()const;
   bool floatingDeferred()const{return floating_&&floating_->deferred&&!floating_->restoredFromDeselect;}
   std::uint64_t floatingOverlayRevision()const{return floatingOverlayRevision_;}
+  std::uint64_t floatingHybridPatchBuilds()const{return floatingHybridPatchBuilds_;}
   PixelRegion floatingOverlayChange()const{return floatingOverlayChange_;}
   std::vector<Pixel> floatingOverlayRegion(PixelRegion region)const;
   void setDeferredFloatingDisplaySupported(bool enabled){deferredFloatingDisplaySupported_=enabled;}
@@ -975,7 +976,8 @@ private:
   struct PaintCellMove {std::string layerId,frameId,celId;SelectionMask expanded;std::optional<SelectionMask> beforeSelection;std::vector<TilemapPixelHistory::CellChange> sources;std::shared_ptr<Edit> preview;bool copy=false;int columns=0,rows=0;};
   std::optional<PaintCellMove> paintCellMove_;std::optional<SelectionMask> expandedPaintCellSelection(bool discreteFlip=false)const;
   repeat::Mode floatingRepeat_=repeat::Mode::Off;
-  struct FloatingPaste {std::shared_ptr<FreeTileSelectionMove> freeTile;bool linkedCreate=false,linkedEdit=false,linkedHybrid=false;bool symmetryRotation=false;bool symmetryShear=false;bool symmetryScale=false;std::optional<SymmetryPixel> symmetryStart;SymmetryAxes symmetryAxes;SymmetryCenter symmetryCenter;std::string maskId;std::optional<std::vector<timeline::MaskSlot>> beforeMasks;SelectionClipboard source;SelectionTransform transform;int x=0,y=0;std::optional<SelectionMask> beforeSelection;bool clipboard=true,copy=true,rotSprite=false,tilemap=false;int sourceX=0,sourceY=0;std::vector<FloatingTarget> targets;std::string layerId,frameId;std::optional<timeline::State> beforeCelTimeline;TimelineSelection beforeTimelineSelection;std::vector<std::string> beforeSelectedFrames;bool sparse=false,restoredFromDeselect=false;std::size_t transientBytes=0;bool deferred=false;tiles::Mode tilemapMode=tiles::Mode::Create;std::optional<std::size_t> tilemapEditCell;std::shared_ptr<GradientPreview> tilemapPreview;};
+  struct HybridFloatingPatch {std::uint64_t overlayRevision=0,contentRevision=0;repeat::Mode repeat=repeat::Mode::Off;std::map<std::string,std::vector<Pixel>> modified;std::map<std::size_t,std::vector<Pixel>> local;std::size_t bytes=0;};
+  struct FloatingPaste {mutable std::shared_ptr<const HybridFloatingPatch> hybridPatch;std::shared_ptr<FreeTileSelectionMove> freeTile;bool linkedCreate=false,linkedEdit=false,linkedHybrid=false;bool symmetryRotation=false;bool symmetryShear=false;bool symmetryScale=false;std::optional<SymmetryPixel> symmetryStart;SymmetryAxes symmetryAxes;SymmetryCenter symmetryCenter;std::string maskId;std::optional<std::vector<timeline::MaskSlot>> beforeMasks;SelectionClipboard source;SelectionTransform transform;int x=0,y=0;std::optional<SelectionMask> beforeSelection;bool clipboard=true,copy=true,rotSprite=false,tilemap=false;int sourceX=0,sourceY=0;std::vector<FloatingTarget> targets;std::string layerId,frameId;std::optional<timeline::State> beforeCelTimeline;TimelineSelection beforeTimelineSelection;std::vector<std::string> beforeSelectedFrames;bool sparse=false,restoredFromDeselect=false;std::size_t transientBytes=0;bool deferred=false;tiles::Mode tilemapMode=tiles::Mode::Create;std::optional<std::size_t> tilemapEditCell;std::shared_ptr<GradientPreview> tilemapPreview;};
   bool beginMaskFloating(const SelectionClipboard&,int,int,bool,bool);
   bool beginMaskSelectionMove(bool,bool,int,int);
   void transformMaskFloating(const SelectionTransform&,bool);
@@ -986,6 +988,7 @@ private:
   std::optional<FloatingPaste> floating_;
   bool deferredFloatingDisplaySupported_=true;
   std::uint64_t floatingOverlayRevision_=0;
+  mutable std::uint64_t floatingHybridPatchBuilds_=0;
   PixelRegion floatingOverlayChange_;
   bool supportsDeferredFloating(const FloatingPaste&)const;
   bool floatingSymmetryTranslation(const FloatingPaste&,const SelectionTransform&)const;
