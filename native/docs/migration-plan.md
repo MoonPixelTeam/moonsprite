@@ -4647,3 +4647,9 @@ X/Y/Both合成/当前层及左右键实际诊断验证100次preview请求不发�
 对照canvas-render-guides selectedSliceIds Set与slicePreviewTargets按ID索引。原生此前对每个切片线性扫描所有选中ID及拖动预览，多选拖动为O(N*(S+P))；现每次paint建立选中集合和预览指针映射，循环预期O(N+S+P)，保持文档绘制顺序、预览覆盖、复制预览与单选手柄。核对paintCanvas外层viewport/column clip仍覆盖paintSliceOverlay，未改裁剪范围。smoke-only局部环境参考分支保留旧线性查找作为像素对照并恢复调用前环境。
 
 正式Release构建退出0；--slice-check显式等待退出0。192全选切片×0/37/90度×静止/移动/复制预览共9组完整表面RGBA逐像素对照完全一致；既有切片交互、128光标矩阵及800无变化样本检查继续通过。三项CTest document-slices/tile-repeat/tile-repeat-stroke通过0.17s；742来源快照与diff检查通过。复杂度下降是代码证据，未新增实测FPS或整软件性能结论。组蒙版行为问题仍待用户答复，全量迁移INCOMPLETE。保留原有用户数据、缓存、未跟踪文件，阶段保存推送dev。
+
+### 2026-11-09：待确认渐变手柄有限副本入口修复阶段
+
+继续核对已有渐变平铺迁移，canvas-pointer-down/move localPoint与canvas-input-fill以有限副本为有效输入。发现原生映射失败时仅active gradient mouseup设置gradientPointerValid=false，pending handle down仍用raw坐标；现映射失败的渐变事件统一标无效，并在pending handle press校验。保持无效move忽略、释放最后有效几何结算与原有确认事务。
+
+正式Release最终构建退出0，--gradient-shape-check显式等待退出0。六组X/Y/Both×线性/径向把待确认端点置于有限副本之外，断言按下不捕获/不提交，再验证有效副本endpoint编辑、release pending和Escape恢复像素/历史；首轮诊断明确暴露上游标记遗漏，最终修复后通过。原有渐变/形状窗口诊断继续通过。四项CTest document-transactions/raster-geometry/tile-repeat/tile-repeat-stroke通过0.55s；742来源快照与diff检查通过。未新增全平铺长诊断/截图/FPS测量，不据窄检查宣称完整渐变迁移完成；组蒙版选择仍等待答复，整体INCOMPLETE。保留原有用户数据、缓存与未跟踪文件，阶段保存推送dev。
