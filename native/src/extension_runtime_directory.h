@@ -37,6 +37,21 @@ class RuntimeDirectory {
  static std::string sortName(const std::string& name){auto wide=winrt::to_hstring(name);int n=LCMapStringEx(LOCALE_NAME_INVARIANT,LCMAP_LOWERCASE,wide.c_str(),int(wide.size()),nullptr,0,nullptr,nullptr,0);if(!n)throw std::runtime_error("Cannot lowercase extension name");std::wstring lowered(n,L' ');if(!LCMapStringEx(LOCALE_NAME_INVARIANT,LCMAP_LOWERCASE,wide.c_str(),int(wide.size()),lowered.data(),n,nullptr,nullptr,0))throw std::runtime_error("Cannot lowercase extension name");return winrt::to_string(lowered);}
  static bool validId(const std::string& id){return !id.empty()&&id.size()<=80&&id.front()!='.'&&id.back()!='.'&&id.find("..")==std::string::npos&&std::all_of(id.begin(),id.end(),[](unsigned char c){return (c>='a'&&c<='z')||(c>='A'&&c<='Z')||(c>='0'&&c<='9')||c=='.'||c=='-'||c=='_';});}
 public:
+ static void uninstall(const std::filesystem::path& directory,const std::string& id){
+  // inspect validates ID, ordinary directory, manifest identity and full state
+  // before any state mutation or recursive removal.
+  inspect(directory,id,false);const auto target=directory/ResourceCatalog::packagePath(id);
+  const auto absoluteRoot=std::filesystem::absolute(directory).lexically_normal();
+  if(std::filesystem::absolute(target).lexically_normal().parent_path()!=absoluteRoot)throw std::logic_error("Invalid extension uninstall path");
+  const auto previous=readFullState(directory);auto next=previous;next.enabled.erase(id);
+  auto save=[&](const ExtensionState& state){const auto bytes=state.encode();writeBinaryFileAtomic(directory/".state.json",std::vector<std::uint8_t>(bytes.begin(),bytes.end()));};
+  save(next);
+  try{std::filesystem::remove_all(target);}catch(...){
+   // Legacy attempts to restore state after deletion failure. The directory
+   // may already be partially removed; keep the original deletion error.
+   try{save(previous);}catch(...){}throw;
+  }
+ }
  static RuntimeCandidate setEnabled(const std::filesystem::path& directory,const std::string& id,bool enabled){
   using namespace winrt::Windows::Data::Json;
   auto candidate=inspect(directory,id,false);auto state=readFullState(directory);state.enabled[id]=enabled;const auto bytes=state.encode();

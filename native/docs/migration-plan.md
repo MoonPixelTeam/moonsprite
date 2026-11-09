@@ -5466,3 +5466,10 @@ Release专项构建与10项extension验证通过，来源/diff检查后保存推
 承接legacy extract_archive/install_extension_at：独占创建staging、路径校验、CRC/大小验证、CREATE_NEW写入并Flush、重新校验解压清单、读取完整状态、旧目录backup、staging替换、保持原enabled、状态原子保存，失败移除新目录并恢复旧版本，成功清理backup。检查与解压共享同一不可变Archive快照，避免旧版重新打开源文件的变更竞态；所有递归清理先确认路径是指定安装根的直接子项。安装根由调用方提供，尚无默认目录/正式UI接线。
 
 真实测试目录验证首次安装和Lua解析、保留停用状态的更新/移除旧文件、状态锁导致发布失败后旧脚本与状态字节恢复、文件/目录冲突导致解压失败后旧版不变、事务目录清理。Release构建、11项extension/project-reader测试通过1.69s，来源/diff后保存推送dev。清理/恢复失败按旧版best effort尚无故障注入验收；压缩格式兼容缺口仍在，不宣称完整包支持。无用户扩展目录修改、正式exe/GUI/全套验收；整体INCOMPLETE，实际运行时与安装入口仍待完成，保留用户数据/缓存/editor_support.h原状态。
+
+
+### 2026-11-10：扩展卸载事务与管理核心闭环阶段
+
+直接迁移 platform_extensions.rs::uninstall_extension_at：校验普通目录、清单身份与完整状态；先移除enabled登记并原子保存，再递归删除扩展目录；删除失败尽力写回原状态并保留原删除错误。清理前确认目标绝对路径为指定安装根的直接子目录，拒绝路径越界。保留旧版删除失败可能部分删除文件的行为，未将状态恢复称为完整目录回滚。
+
+测试目录内执行安装→停用→更新→卸载组合。状态文件无删除共享锁验证保存失败前不删文件；目录句柄无删除共享锁验证删除失败后恢复停用状态；成功卸载验证目录与enabled项移除，其他扩展状态、seededBuiltin和u64最大revision完整保持。缺失目标、无效ID、坏清单拒绝且保留坏清单。Release构建与11项extension/project-reader测试通过1.64s，来源/diff检查后保存推送dev。安装/更新/启停/卸载核心已组合验证，但正式管理UI、默认目录、运行中会话及脚本引擎未接入；压缩兼容和先前JSON/Unicode缺口仍在，整体INCOMPLETE。无用户目录修改、正式exe/GUI/全套验收，保留用户数据/缓存/editor_support.h原状态。
