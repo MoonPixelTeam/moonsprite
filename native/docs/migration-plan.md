@@ -4998,3 +4998,10 @@ CTest document-transactions/free-tile-project/tilemap-document全部通过33.39s
 按用户批准的新行为，保持floatingDeferred及既有transform局部采样，按候选source/destination单元格计算共享源texel修改；整格平移直接映射最终引用。请求region按单瓦片临时buffer渲染，不安装timeline副本或在move执行全画布变换。共享引用可能位于任意位置，因此Hybrid延迟预览dirty使用全画布范围，正确性优先，未宣称FPS提升。既有260×260混合外部/空/翻转旋转引用fixture增加整格preview=commit及8组move/copy translation/affine/rotation/quad，局部region与全幅一致、authority冻结、UndoRedo。初次核心通过，最终复验待补。整体INCOMPLETE。
 
 最终三项CTest document-transactions/free-tile-project/tilemap-document全部通过36.60s，free-tile-project36.02s；正式Release构建成功，完整 --tileset-management-check实际退出0。新增大画布延迟一致性为核心事务验收，窗口沿用既有检查，未新增大作品鼠标夹具、FPS或截图。保留floatingDeferred和不写authority契约，但Hybrid共享源变化当前使用全画布dirty并扫描网格候选；仍需性能量测与引用级dirty优化，不能把延迟路径标志等同已证明性能无回退。744来源/证据及diff检查通过，整体INCOMPLETE，本阶段推送dev。
+
+
+### 2026-11-10：Hybrid延迟预览候选格与输出遍历优化
+
+复用legacy tilemap-document.ts::tilemapCellIndexesForEdit世界边界转单元格范围，源/目标候选格取有序并集，取消每次overlay全网格遍历。输出按请求范围逐瓦片渲染一次并逐行copy span，代替逐像素索引及每行重复cellPixels；仍只保留单格临时像素。8组变换新增负坐标、右下越界、完全画布外及跨格region与整幅逐像素对照。全画布dirty尚保留；不据此声称FPS提升，最终验证待补。整体INCOMPLETE。
+
+最终三项CTest全部通过39.39s，free-tile-project38.83s，tilemap-document0.26s。正式Release构建成功，完整 --tileset-management-check实际退出0；744来源覆盖/证据及diff检查通过。新增regional裁剪为核心验收，无新增大作品真实指针、截图或FPS测量。全画布dirty与每次重建候选资源patch仍为性能后续项，整体INCOMPLETE。本阶段推送dev。
