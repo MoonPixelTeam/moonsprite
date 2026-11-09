@@ -5421,7 +5421,8 @@
       "tileRepeatInput20261109": "Repeated raster input migration: continuous raw pointer stroke, wrap center before symmetry/coverage, unclipped symmetry destinations then positive modulo and selection test; existing pending/coverage/perfect-tail transaction retained. Solid/image/dynamic strokes, preview and marquee folding verified: five targeted CTests passed; formal Release build and --tile-repeat-check exited 0, including real pointer seam drawing, one history entry, Undo/Redo and folded marquee. No full-tool or FPS claim. Tilemap paint/free-source special editing, lasso/selection brush/floating commit and other tools remain incomplete.",
       "compileBoundaries20261109": "Native build adaptation only: compile document_slices.cpp as its own core translation unit; Editor lifecycle compiles its declaration first; extract the unchanged migrated GradientStopsTrack into a shared widget header and use existing moon::unicodeText directly. No legacy behavior, widget geometry or raster algorithms changed.",
       "unicodeTestEntrypoint20261109": "Link sequence import regression to existing moon-pattern-import for the production PNG decoder, exercising real Unicode disk paths instead of mocked reads. No additional decoder implementation or runtime behavior change.",
-      "extensionRuntime20261110": "Register extension-runtime executable and CTest against legacy core/extension-runtime.ts behavior. Four extension tests pass0.09s; no product target update."
+      "extensionRuntime20261110": "Register extension-runtime executable and CTest against legacy core/extension-runtime.ts behavior. Four extension tests pass0.09s; no product target update.",
+      "extensionStorage20261110": "Register Windows extension-storage test with existing moon-project-reader atomic binary writer and windowsapp JSON. Source legacy core/extension-runtime.ts extensionStorage; product runtime integration pending."
     },
     {
       "file": "scripts/bootstrap.ps1",
@@ -29703,6 +29704,46 @@
       ],
       "scope": "Actual legacy runtime semantics and permission comparison",
       "adaptation": "Execute original TypeScript via stripTypeScriptTypes; compare all 34 permission rows with native executable and assert original replacement, live Map traversal and command priority against the same expected traces used by native regression."
+    },
+    {
+      "file": "src/extension_storage.h",
+      "classification": "legacy-partial",
+      "sources": [
+        "legacy/src/renderer/src/core/extension-runtime.ts",
+        "legacy/src/renderer/src/core/extension-runtime.test.ts"
+      ],
+      "scope": "EX-004 extensionStorage API and persistent native adapter",
+      "adaptation": "UTF16 keys preserve JavaScript sort order; setEncoded accepts already JSON.stringify encoded bridge payload, not arbitrary native serialization. No executable request bridge connected."
+    },
+    {
+      "file": "src/extension_storage.cpp",
+      "classification": "legacy-partial",
+      "sources": [
+        "legacy/src/renderer/src/core/extension-runtime.ts",
+        "legacy/src/renderer/src/core/extension-runtime.test.ts"
+      ],
+      "scope": "EX-004 namespaced get/set/remove/list and quotas",
+      "adaptation": "Retain legacy prefix, UTF8 160 byte/control-free keys, 256KiB encoded value and 1MiB namespace quota excluding overwritten value, invalid stored JSON returns null and UTF16 sort. Reuse existing writeBinaryFileAtomic image_export.cpp, publish memory only after disk replacement. Native JSON array of key/raw-value pairs replaces browser localStorage; one event-thread store instance expected, no concurrent writer merge."
+    },
+    {
+      "file": "tests/extension_storage_test.cpp",
+      "classification": "legacy-partial",
+      "sources": [
+        "legacy/src/renderer/src/core/extension-runtime.ts",
+        "legacy/src/renderer/src/core/extension-runtime.test.ts"
+      ],
+      "scope": "Extension storage disk and failure regression",
+      "adaptation": "Namespaced/reopened JSON, missing/corrupt get null, UTF8 key limits/UTF16 sort, exact value and namespace limits, overwrite/remove capacity, locked target write/remove failure preserves memory and disk. Isolated build owned test artifacts retained."
+    },
+    {
+      "file": "scripts/verify-extension-storage.cjs",
+      "classification": "legacy-partial",
+      "sources": [
+        "legacy/src/renderer/src/core/extension-runtime.ts",
+        "legacy/src/renderer/src/core/extension-runtime.test.ts"
+      ],
+      "scope": "Actual legacy/native extensionStorage comparison",
+      "adaptation": "Execute original TypeScript extensionStorage with injected Map-backed Storage; compare namespace, exact quota/overwrite/remove, key rejection and UTF16 ordering traces to native disk-backed executable."
     }
   ],
   "assetTransfers": [

@@ -5329,3 +5329,12 @@ legacy canvas-render-selection-preview.ts对两种套索的每个栅格路径点
 将FileDropRouter实际组合到RuntimeRegistry::filesDropped，按原事件type/files/name/bytes构造有值载荷。回归验证正常投递及读取过程中运行时注销后错误消费、不投递且不回到工程路径；保留注册对象独立于文件后缀注册的旧版行为。native事件线程接口用typed envelope，尚未迁移全部事件payload的JSON类型、安装器/脚本引擎、窗口与OS拖放。原SessionRegistry/HostLifecycle模型未冒充正式宿主。
 
 Release专项构建成功，四项extension CTest全通过0.09s。verify-extension-runtime.cjs执行原TypeScript，34项权限与native输出逐行一致，替换清理/动态广播/命令优先级旧版实测与原生断言一致；verify-extension-file-drop.cjs继续保留上一阶段独立对照。新增文件与CMake来源登记、diff检查后保存推送dev。未更新正式exe、未做窗口/人工截图/FPS或全套重跑；全量迁移INCOMPLETE，保留用户数据、缓存及editor_support.h既有状态。
+
+
+### 2026-11-10：扩展存储与原生磁盘持久化阶段
+
+迁移legacy core/extension-runtime.ts::extensionStorage的get/set/remove/list：原命名空间前缀、键非空/无U+0000–001F/UTF8最多160字节、编码JSON值最多256KiB、同前缀值合计最多1MiB（覆盖时排除旧值）、缺失/坏JSON读null及UTF16键排序。保留旧版前缀匹配规则，未自行更改扩展ID语义。setEncoded接收未来runtime桥接已执行JSON.stringify的文本，原字节用于额度，避免WinRT重排/数字格式导致额度偏差；当前无脚本value到JSON.stringify的实际桥接，不宣称任意JS值兼容已完成。
+
+浏览器localStorage必要适配为独立原生JSON键值对文件，复用已有atomic_file.h/image_export.cpp的同目录临时文件、Flush及原子替换，成功后才发布内存；失败保留旧磁盘和内存。调用方提供隔离存储路径，同一事件线程单实例持有，尚未接入正式exe默认路径或多进程合并。读取坏外层存储明确报错、不自动清理；坏单值按legacy返回null，后续无关写入保留该值。
+
+Release专项构建通过，五项extension CTest通过；真实磁盘重开、中文/emoji键、UTF16排序、4×256KiB满额/覆盖/删除、锁定文件写入及删除失败保留、坏值fallback均验证。verify-extension-storage.cjs执行原TypeScript并与native磁盘exe输出对照命名空间/额度/拒绝/排序一致。来源及diff检查后本阶段保存推送dev。未重建正式程序、未接入真实扩展安装/请求或UI，不宣称全量扩展迁移完成；用户文件、缓存与editor_support.h既有状态保留。
