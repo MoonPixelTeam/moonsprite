@@ -5546,3 +5546,10 @@ Release三个相关目标成功，extension-request-host/session-host/resources�
 逐段承接AppMenuBar::renderExtensionCommandButton/renderExtensionTopMenusAt/renderExistingMenuContributions/fileLuaScripts。提供绘制无关节点：动态标题覆盖，动态项先于静态且同ID抑制静态，动态checked优先于命令状态，visible过滤，Lua无工程/运行中禁用，缺失扩展禁用，描述或名称tooltip，动态/组间/内置位置分隔线，隐藏项仍保留旧版独立分隔线，命名子菜单即使全隐藏仍保留。已由panel/menu/top贡献放置的Lua命令从文件脚本入口去重，根脚本与停用扩展放置不误过滤。动作复用executeCommand，拒绝分隔线/子菜单/禁用节点，覆盖runtime、Lua和settings。
 
 Release extension-contributions目标及独立测试通过0.05s，验证动态覆盖/顺序/勾选优先、静态恢复、隐藏与空子菜单、Lua工程/运行门控、三种动作实际分发、停止/禁用拒绝、位置分隔线、脚本去重；来源774文件及diff检查通过。此阶段完成菜单数据及动作适配，尚未接入正式原生菜单控件/关闭交互/扩展目录启动链路，不能宣称用户可见菜单或扩展运行完成。无正式exe/GUI/全套验收，整体INCOMPLETE；保留用户差异/缓存与安装失败现场。保存推送dev。
+
+
+### 2026-11-10：运行时提示、设置与文本剪贴板宿主服务阶段
+
+核对ExtensionRuntimeHost::handleRequest与stringParam后承接ui.notify/notifications.show（分别ui/notifications权限，message必需字符串，500 UTF16单元截断）、ui.openSettings（必须hasSettings，固定当前扩展ID）、clipboard.readText/writeText（clipboard权限，写入text必需字符串，内容不额外截断）。HostServices由实际应用注入通知及剪贴板，设置复用既有CommandHandlers；缺失连接和服务异常显式失败，不虚报成功。SessionHost只允许当前generation设置服务，替换会话不继承旧回调。
+
+Release三个相关目标构建与extension-request-host/session-host/resources三项通过0.28s，覆盖精确Unicode/内嵌NUL往返、通知截断落在代理对中间的JS行为、权限及参数失败无副作用、设置归属/不可用、缺失/抛错服务、旧token不能污染新会话。来源与diff检查后保存推送dev。本阶段是完整请求/会话服务适配，尚无真实系统剪贴板/正式消息区和设置窗口调用方；诊断日志的JS String转换副作用语义仍需单独核对，未加入本阶段，不宣称已支持。无正式exe/GUI/全套验收，整体INCOMPLETE，保留用户差异/缓存及原安装失败现场。

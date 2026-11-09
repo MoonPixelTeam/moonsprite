@@ -28,6 +28,7 @@ public:
  MenuState::Stop subscribePresentation(const Token& token,std::function<void()> callback){if(auto s=find(token.extensionId,token.generation))return s->requests.subscribePresentation(std::move(callback));return []{};}
  std::optional<MenuState> menus(const Token& token)const{if(auto s=find(token.extensionId,token.generation))return s->requests.menus();return {};}
  bool reportCommandState(const Token& token,const winrt::Windows::Data::Json::JsonObject& params){if(auto s=find(token.extensionId,token.generation))return s->requests.reportCommandState(params,true);return false;}
+ void setServices(const Token& token,HostServices services){if(auto s=find(token.extensionId,token.generation))s->requests.setServices(std::move(services));}
  void setResourceReader(const Token& token,std::function<FileDropRouter::Bytes(const std::string&)> reader){if(auto s=find(token.extensionId,token.generation))s->requests.setResourceReader(std::move(reader));}
  void close(const std::string& id){auto it=sessions_.find(id);if(it==sessions_.end())return;auto session=it->second;sessions_.erase(it);session->stop();}
  void close(const Token& token){if(find(token.extensionId,token.generation))close(token.extensionId);}

@@ -9,7 +9,14 @@ namespace moon::extension {
 // Native transport supplies authenticated session ownership and, for set,
 // the script engine's exact JSON.stringify(value) result. Never infer identity
 // or a storage namespace from untrusted request params.
+struct HostServices {
+ std::function<void(const winrt::hstring&)> notify;
+ std::function<winrt::hstring()> readClipboard;
+ std::function<void(const winrt::hstring&)> writeClipboard;
+};
 class RequestHost {
+ HostServices services_;
+
  MenuState menus_;
  RuntimeExtension extension_;std::vector<std::string> permissions_;Storage& storage_;FileDropRouter& drops_;RuntimeRegistry& registry_;CommandHandlers handlers_;std::vector<RuntimeCommand> commands_;bool active_=true;std::function<FileDropRouter::Bytes(const std::string&)> readResource_;
  static std::u16string units(const winrt::hstring& s){return {reinterpret_cast<const char16_t*>(s.data()),s.size()};}
@@ -29,6 +36,7 @@ public:
   CommandState next;auto field=[&](const wchar_t* key,std::optional<bool>& target){if(!state.HasKey(key))return;if(state.GetNamedValue(key).ValueType()!=JsonValueType::Boolean)throw std::invalid_argument("命令显示状态无效。");target=state.GetNamedBoolean(key);};
   field(L"checked",next.checked);field(L"visible",next.visible);menus_.setCommand(id,next);return true;
  }
+ void setServices(HostServices services){services_=std::move(services);}
  void setResourceReader(std::function<FileDropRouter::Bytes(const std::string&)> reader){readResource_=std::move(reader);}
  void deactivate(){active_=false;menus_.clear();drops_.clear(extension_.id);}
  std::optional<winrt::Windows::Data::Json::JsonObject> handle(const winrt::Windows::Data::Json::IJsonValue& raw,bool ownsSession,const std::string& locale,std::optional<std::string> encodedValue={}){
@@ -50,6 +58,15 @@ public:
    }
    else if(method=="menus.setItems"){if(std::find(permissions_.begin(),permissions_.end(),"commands")==permissions_.end())throw std::runtime_error("菜单操作需要 commands 权限。");menus_.set(params);}
    else if(method=="resources.read"){if(!params.HasKey(L"resourceId")||params.GetNamedValue(L"resourceId").ValueType()!=JsonValueType::String||!readResource_)throw std::invalid_argument("扩展运行时资源不存在。");JsonArray bytes;for(auto byte:readResource_(winrt::to_string(params.GetNamedString(L"resourceId"))))bytes.Append(JsonValue::CreateNumberValue(byte));result=bytes;}
+   else if(method=="ui.notify"||method=="notifications.show"){
+    if(!params.HasKey(L"message")||params.GetNamedValue(L"message").ValueType()!=JsonValueType::String)throw std::invalid_argument("参数 message 必须是字符串。");
+    if(!services_.notify)throw std::runtime_error("Native extension notifications are not connected");const auto message=params.GetNamedString(L"message");services_.notify(winrt::hstring(message.data(),std::min<std::uint32_t>(message.size(),500)));
+   }
+   else if(method=="ui.openSettings"){if(!extension_.hasSettings)throw std::invalid_argument("扩展未提供设置页面。");if(!handlers_.openSettings)throw std::runtime_error("Native extension settings are not connected");handlers_.openSettings(extension_.id);}
+   else if(method=="clipboard.readText"){if(!services_.readClipboard)throw std::runtime_error("Native clipboard is not connected");result=JsonValue::CreateStringValue(services_.readClipboard());}
+   else if(method=="clipboard.writeText"){
+    if(!params.HasKey(L"text")||params.GetNamedValue(L"text").ValueType()!=JsonValueType::String)throw std::invalid_argument("参数 text 必须是字符串。");if(!services_.writeClipboard)throw std::runtime_error("Native clipboard is not connected");services_.writeClipboard(params.GetNamedString(L"text"));
+   }
    else if(method=="storage.get")result=storage_.get(owner,key());
    else if(method=="storage.set"){const auto resolved=key();if(!encodedValue)throw std::invalid_argument("扩展存储值超过大小限制。");storage_.setEncoded(owner,resolved,*encodedValue);}
    else if(method=="storage.remove")storage_.remove(owner,key());
