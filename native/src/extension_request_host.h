@@ -4,6 +4,7 @@
 #include "extension_storage.h"
 #include "javascript_text.h"
 #include <optional>
+#include <cmath>
 #include <winrt/Windows.Foundation.Collections.h>
 namespace moon::extension {
 // Native transport supplies authenticated session ownership and, for set,
@@ -14,6 +15,13 @@ struct ProjectSummary {
 };
 struct LayerSummary {winrt::hstring id,name,blendMode;bool visible=true;double opacity=1;};
 struct FrameSummary {winrt::hstring id;int duration=100;};
+struct RuntimeColor {int r=0,g=0,b=0,a=255;};
+struct RuntimeColors {RuntimeColor primary,secondary;};
+inline constexpr const char* runtimeToolIds[]={"pencil","airbrush","eraser","fill","eyedropper","selection","shape","line","text","move","hand","zoom","rotate","liquify","smooth"};
+inline RuntimeColor colorParam(const winrt::Windows::Data::Json::IJsonValue& value){
+ using namespace winrt::Windows::Data::Json;if(!value||value.ValueType()!=JsonValueType::Object)throw std::invalid_argument("颜色参数无效。");auto object=value.GetObject();auto channel=[&](const wchar_t* key){if(!object.HasKey(key)||object.GetNamedValue(key).ValueType()!=JsonValueType::Number)throw std::invalid_argument("颜色参数无效。");auto number=object.GetNamedNumber(key);if(!std::isfinite(number))throw std::invalid_argument("颜色参数无效。");return int(std::clamp(std::floor(number+.5),0.,255.));};return {channel(L"r"),channel(L"g"),channel(L"b"),channel(L"a")};
+}
+inline winrt::Windows::Data::Json::JsonObject colorSnapshot(const RuntimeColor& color){using namespace winrt::Windows::Data::Json;JsonObject result;result.Insert(L"r",JsonValue::CreateNumberValue(color.r));result.Insert(L"g",JsonValue::CreateNumberValue(color.g));result.Insert(L"b",JsonValue::CreateNumberValue(color.b));result.Insert(L"a",JsonValue::CreateNumberValue(color.a));return result;}
 struct WorkspaceServices {
  std::function<std::vector<ProjectSummary>()> projects;
  std::function<std::optional<ProjectSummary>()> active;
@@ -21,6 +29,10 @@ struct WorkspaceServices {
  std::function<std::vector<LayerSummary>()> layers;
  std::function<std::vector<FrameSummary>()> frames;
  std::function<void()> undo,redo;
+ std::function<std::optional<winrt::hstring>()> tool;
+ std::function<void(const winrt::hstring&)> setTool;
+ std::function<std::optional<RuntimeColors>()> colors;
+ std::function<void(RuntimeColor)> setPrimary,setSecondary;
 };
 inline winrt::Windows::Data::Json::JsonObject projectSnapshot(const ProjectSummary& value){
  using namespace winrt::Windows::Data::Json;JsonObject result;
@@ -101,6 +113,14 @@ public:
     if(method=="document.getLayers"){if(!workspace_.layers)throw std::runtime_error("Native layer query is not connected");JsonArray layers;for(const auto& layer:workspace_.layers()){JsonObject item;item.Insert(L"id",JsonValue::CreateStringValue(layer.id));item.Insert(L"name",JsonValue::CreateStringValue(layer.name));item.Insert(L"visible",JsonValue::CreateBooleanValue(layer.visible));item.Insert(L"opacity",JsonValue::CreateNumberValue(layer.opacity));item.Insert(L"blendMode",JsonValue::CreateStringValue(layer.blendMode));layers.Append(item);}result=layers;}
     else if(method=="document.getFrames"){if(!workspace_.frames)throw std::runtime_error("Native frame query is not connected");JsonArray frames;std::size_t index=0;for(const auto& frame:workspace_.frames()){JsonObject item;item.Insert(L"id",JsonValue::CreateStringValue(frame.id));item.Insert(L"index",JsonValue::CreateNumberValue(double(index++)));item.Insert(L"duration",JsonValue::CreateNumberValue(frame.duration));frames.Append(item);}result=frames;}
     else {const auto action=method=="document.undo"?workspace_.undo:workspace_.redo;if(!action)throw std::runtime_error("Native document history is not connected");action();}
+   }
+   else if(method=="tools.getActive"){if(!workspace_.tool)throw std::runtime_error("Native tool query is not connected");auto tool=workspace_.tool();if(tool)result=JsonValue::CreateStringValue(*tool);}
+   else if(method=="tools.setActive"){
+    if(!params.HasKey(L"tool")||params.GetNamedValue(L"tool").ValueType()!=JsonValueType::String)throw std::invalid_argument("参数 tool 必须是字符串。");const auto tool=params.GetNamedString(L"tool");const auto id=winrt::to_string(tool);if(std::none_of(std::begin(runtimeToolIds),std::end(runtimeToolIds),[&](const auto* candidate){return id==candidate;}))throw std::invalid_argument("工具 ID 无效。");if(!workspace_.setTool)throw std::runtime_error("Native tool selection is not connected");workspace_.setTool(tool);
+   }
+   else if(method=="colors.get"){if(!workspace_.colors)throw std::runtime_error("Native color query is not connected");auto colors=workspace_.colors();if(colors){JsonObject object;object.Insert(L"primary",colorSnapshot(colors->primary));object.Insert(L"secondary",colorSnapshot(colors->secondary));result=object;}}
+   else if(method=="colors.setPrimary"||method=="colors.setSecondary"){
+    const auto color=colorParam(params.HasKey(L"color")?params.GetNamedValue(L"color"):JsonValue::CreateNullValue());const auto action=method=="colors.setPrimary"?workspace_.setPrimary:workspace_.setSecondary;if(!action)throw std::runtime_error("Native color selection is not connected");action(color);
    }
    else if(method=="storage.get")result=storage_.get(owner,key());
    else if(method=="storage.set"){const auto resolved=key();if(!encodedValue)throw std::invalid_argument("扩展存储值超过大小限制。");storage_.setEncoded(owner,resolved,*encodedValue);}

@@ -5560,3 +5560,10 @@ Release三个相关目标构建与extension-request-host/session-host/resources�
 迁移ExtensionRuntimeHost::projectSnapshot与workspace.listProjects/getActiveProject/activateProject、document.getSummary/getLayers/getFrames/undo/redo。类型化服务输出旧版9字段工程摘要、5字段图层、按序index帧；无活动工程摘要null，层/帧/历史报错，激活先验证工程存在。各方法沿原权限；缺失服务显式失败，会话generation绑定配置，不继承过期回调。查询不取像素或复制文档，历史动作委托领域事务。
 
 Release三个相关目标构建成功；session/resources通过，实际Document笔画经会话撤销为空、重做恢复，查询保持contentRevision。request检查首次在既有storage.remove失败（此前新增请求断言均已通过），保留运行现场；增加具体error及fixture路径诊断后重建单项通过0.08s。未把该复测称为外部存储占用根因已修复，也不宣称整组一次通过。首轮编译测试变量snapshot重名已修正。来源覆盖与diff检查后保存推送dev。正式编辑器工作区绑定、对应编辑器事件、引擎传输尚未接入，无正式exe/GUI/全套验收，整体INCOMPLETE；保留用户差异/缓存和先前安装失败现场。
+
+
+### 2026-11-10：Runtime工具与颜色请求阶段
+
+对照ExtensionRuntimeHost TOOL_IDS/colorParam/handleRequest，补齐tools.getActive/setActive、colors.get/setPrimary/setSecondary，沿原tools/document.read/document.write权限。只允许旧版15工具ID，不擅自扩展gradient等ID；颜色四通道必须有限数字，按JS Math.round后clamp到0–255，缺字段/非数字原子拒绝。查询无工程null；设置仍委托工作区，保留旧版共享颜色偏好在无工程时更新的入口。核对workspace-commands-tool/color的手势锁、浮动提交及跨会话色板同步，回调边界保留这些领域职责，不用直接改Document色板替代。
+
+Release三个相关目标构建成功，request/session/resources三项通过0.28s；覆盖15ID逐一往返、大小写/未知ID、缺失类型、半值四舍五入、越界夹取、透明alpha、结果字段、无工程查询/设置、权限和未连接服务。来源/diff检查后保存推送dev。此次仅请求与服务边界完整迁移；正式Editor工具映射和共享色板调用方仍未接入，未声称真实工具切换/色板同步已验收。无正式exe/GUI/全套验收，整体INCOMPLETE，保留既有差异/用户文件/缓存及失败现场。
