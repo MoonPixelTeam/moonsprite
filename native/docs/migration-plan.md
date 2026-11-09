@@ -4623,3 +4623,9 @@ X/Y/Both合成/当前层及左右键实际诊断验证100次preview请求不发�
 对照canvas-move-selection resolveCanvasMoveLayerIds/getLayerIdsInGroup与canvas-input-layer-move有效visible/locked过滤；复用已有document_layer_group_structure_test的导入夹具构建方式。新增36组X/Y/Both×父/子组选择×子组正常/锁定/隐藏×主/负副本，两帧链接Cel及组外层。实际鼠标检查目标数/拒绝、每帧解析owner不变、偏移仅加一次、同级/组外不动、一笔历史、UndoRedo、Escape及无捕获残留。
 
 正式Release构建退出0；--layer-move-check显式等待退出0（累计168组，含既有整组拒绝检查）；六项CTest layer-panel-tree/document-layer-groups/document-layer-group-structure/alignment/move-click-flash/attached-masks通过0.45s；742来源快照与diff检查通过。无生产逻辑修改，无新增截图/FPS测量。组蒙版跟随选中组的行为与旧版layer-mask-only移动不同，已通过异步问题请用户选择；本矩阵无组蒙版，不将通过结果用作该语义批准。活动蒙版单独移动仍待核对，全量迁移INCOMPLETE。保留用户数据、缓存及未跟踪文件，阶段保存推送dev。
+
+### 2026-11-09：平铺切片创建/移动/复制/尺寸手势迁移阶段
+
+核对canvas-input-slice begin/move/end、canvas-pointer-down/move localPoint、useCanvasTextPreview sliceHandleAt和canvas-render-guides：创建/移动以有限副本本地点计算，未映射move忽略；释放提交现存preview，移动阈值可由release client坐标满足；切片轮廓/手柄只在主画布，不增加副本手柄。原生切片输入及悬停映射本地点，拖出副本保留最后预览，释放不再用释放点重新计算几何，保留无按钮取消。保留既有clamp、多选相对偏移、Alt复制和历史事务。
+
+正式Release构建退出0，--slice-check显式等待退出0。新增24组X/Y/Both×主/负副本×创建/单移/多移/Alt复制，精确几何/预览不提交/无效移动忽略/无效释放结算/像素不变/UndoRedo/无按钮取消；另三组主画布东边尺寸手柄验证最后预览结算与UndoRedo/Escape，原有slice回归继续通过。三项CTest document-slices/tile-repeat/tile-repeat-stroke通过0.72s；742来源快照与diff检查通过。未新增副本轮廓或尺寸手柄，未新增旋转全矩阵/截图/FPS测量。组蒙版行为选择仍等待用户答复，未把等待解释为批准；全量迁移INCOMPLETE。保留用户数据、缓存和未跟踪文件，阶段保存推送dev。

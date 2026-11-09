@@ -906,7 +906,7 @@ const char* Editor::cursorAt(gfx::Point position) const {InteractionScope intera
 
     if(selectionTool_ && !selectionShift_ && !selectionCtrl_ && selectionPivotHit(position))return "default";
 
-    if(sliceTool()){const auto p=canvasPoint(position);if(sliceAtPoint(document.slices(),p.x,p.y))return "move";return "crosshair";}
+    if(sliceTool()){auto p=canvasPoint(position);if(tileRepeatIdentity_==document.identity()&&tileRepeat_!=repeat::Mode::Off){const auto mapped=repeat::map({double(p.x),double(p.y)},document.width(),document.height(),tileRepeat_);if(!mapped)return "crosshair";p={int(mapped->local.x),int(mapped->local.y)};}if(sliceAtPoint(document.slices(),p.x,p.y))return "move";return "crosshair";}
     if(moveTool_)return "move";
     if(selectionTool_ || document.floating())return selectionCursorAt(position);
 
