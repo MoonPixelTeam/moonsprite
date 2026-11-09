@@ -5176,3 +5176,10 @@ legacy aseprite.ts只在name后仍有四字节时读取tilesetIndex，并在构�
 legacy canvas-render-selection-preview.ts对两种套索的每个栅格路径点调用symmetryPoints(...,false)，再进入普通/重复坐标显示。原生此前只在提交symmetrySelection时对称，路径预览没有镜像；现复用既有symmetryPoints在预览显示前扩展路径，保留上一阶段raw重复坐标与canonical背景取色。balanced线、闭合路径设置和最终选区事务不变。
 
 实际选区创建诊断新增调用生产paintSelectionFeedback的离屏alpha检查，覆盖套索/多边形套索原位置及水平/垂直镜像；沿用五种选区工具的真实指针创建、提交一条视图历史、UndoRedo、Escape及无作品像素修改检查。正式Release成功；tile-repeat/selection-interactions两项通过2.75s；--workspace-check --named-workspace-only --selection-symmetry-hybrid-edit-only实际退出0（含既有Hybrid相关回归）。744来源/证据与diff通过，无新增截图/FPS量测；对角/旋转轴没有新增专门UI像素矩阵，整体INCOMPLETE，本阶段保存推送dev。
+
+
+### 2026-11-10：普通矩形/椭圆选区对称边界预览
+
+按legacy canvas-render-selection-preview.ts普通marquee previewTarget分支，在repeat Off、非quick、非tilemap Paint下对边界应用symmetryPoints。原生此前矩形/椭圆提交有对称而边界预览没有；现将既有mask边界映射到对称位置。tilemap Create/Edit仍可使用此普通规则，Paint/quick/repeat各自显示路径保持现状。核对useCanvasBrushOverlay证实选区画笔覆盖预览没有对称扩展；魔棒有独立预览语义，未为统一显示擅改两者。此改动仍使用已有裁剪mask，旧版完整unboundedShapePreview离画布轮廓路径尚未承接，不宣称本组迁移全部完成。
+
+生产paintSelectionFeedback离屏alpha检查扩展到矩形/椭圆，对原边界及水平/垂直镜像采样；同一实际窗口场景继续五工具提交/UndoRedo/Escape及无作品像素改动断言。正式Release成功，tile-repeat/selection-interactions通过2.78s；--workspace-check --named-workspace-only --selection-symmetry-hybrid-edit-only实际退出0。744来源/证据与diff检查通过，无新增截图/FPS量测；整体INCOMPLETE，本阶段保存推送dev。
