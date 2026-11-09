@@ -6998,6 +6998,24 @@ void Editor::smokeGradientShape(){
     }
     tileRepeat_=repeat::Mode::Off;gradientConfirm_=false;
 
+    // Basic shapes retain modifier geometry updates while avoiding identical rasters.
+    for(const auto mode:{repeat::Mode::X,repeat::Mode::Y,repeat::Mode::Both})for(const auto kind:{ShapeKind::Line,ShapeKind::Rectangle,ShapeKind::RectangleOutline,ShapeKind::Ellipse,ShapeKind::EllipseOutline})for(bool right:{false,true}){
+      cancelStroke();document=Document(32,24);useShapeTool(kind);setTileRepeat(mode);shapeRounded_=shapeRatio_=false;zoom_=1;{const auto v=canvasViewport();canvas_={v.x+(v.w-64)/2,v.y+(v.h-48)/2,64,48};}refresh();
+      pointer(ui::kMouseDownMessage,4,4,right);pointer(ui::kMouseMoveMessage,20,16,right);shapeTick();if(!shapeDragging_||!document.shapeActive()||!document.gradientPreviewPixels())throw std::runtime_error("Shape duplicate preview fixture");
+      const auto revision=document.gradientRevision(),history=document.historyPosition();const auto preview=*document.gradientPreviewPixels();const auto before=shapeSpec_.bounds;
+      auto& damage=const_cast<gfx::Region&>(getUpdateRegion());damage.clear();
+      for(int n=0;n<100;++n){pointer(ui::kMouseMoveMessage,20,16,right);shapeTick();}
+      const int ox=repeat::includesX(mode)?32:0,oy=repeat::includesY(mode)?-24:0;
+      for(int n=0;n<100;++n){pointer(ui::kMouseMoveMessage,ox+20,oy+16,right);shapeTick();}
+      if(document.gradientRevision()!=revision||*document.gradientPreviewPixels()!=preview||document.historyPosition()!=history||!getUpdateRegion().isEmpty())throw std::runtime_error("Duplicate shape regenerated raster/damage");
+      pointer(ui::kMouseMoveMessage,ox+22,oy+17,right);shapeTick();if(document.gradientRevision()==revision)throw std::runtime_error("Changed shape geometry skipped");
+      const auto changedPreview=*document.gradientPreviewPixels();pointer(ui::kMouseUpMessage,ox+22,oy+17,right);
+      if(shapeDragging_||document.shapeActive()||hasCapture()||document.historyPosition()!=history+1||document.canvasPixels()!=changedPreview)throw std::runtime_error("Shape duplicate release commit");
+      const auto after=document.canvasPixels();document.undo();if(document.canvasPixels()!=std::vector<Pixel>(32*24,0))throw std::runtime_error("Shape duplicate undo");document.redo();if(document.canvasPixels()!=after)throw std::runtime_error("Shape duplicate redo");
+      pointer(ui::kMouseDownMessage,4,4,right);pointer(ui::kMouseMoveMessage,20,16,right);shapeTick();key(ui::kKeyEsc);if(shapeDragging_||document.shapeActive()||hasCapture()||document.canvasPixels()!=after)throw std::runtime_error("Shape duplicate cancel");
+    }
+    setTileRepeat(repeat::Mode::Off);
+
     document=Document(8,6);shapeSpec_={};fitCanvas();refresh();shapeRounded_=shapeRatio_=false;brushFeedback_.brushProfiles_[0]={1,100,BrushShape::Round};document.setPaletteRole(0xff0000ff,false,true);document.setPaletteRole(0xff00ff00,true,true);refresh();key(ui::kKeyU);if(!shapeTool_ || !shapeModeButton_->hasFlags(ui::HIDDEN) || !brushOpacityInput_->hasFlags(ui::HIDDEN))throw std::runtime_error("Shape tool properties");pointer(ui::kMouseDownMessage,1,1);pointer(ui::kMouseMoveMessage,3,3);shapeTick();if(document.dirty() || document.historySize()!=0 || (*document.gradientPreviewPixels())[2*8+2]!=0xff0000ff)throw std::runtime_error("Shape independent preview UI");key(ui::kKeyEsc);if(document.shapeActive() || document.dirty())throw std::runtime_error("Shape Escape UI");pointer(ui::kMouseDownMessage,1,1,true);pointer(ui::kMouseMoveMessage,3,3,true);pointer(ui::kMouseUpMessage,3,3,true);if(document.historySize()!=1 || document.pixels()[2*8+2]!=0xff0000ff)throw std::runtime_error("Shape actual legacy right-button fallback");document.undo();useShapeTool(ShapeKind::Line);pointer(ui::kMouseDownMessage,0,0,true);pointer(ui::kMouseMoveMessage,7,2,true);pointer(ui::kMouseUpMessage,7,2,true);if(document.pixels()[0]!=0xff00ff00 || document.pixels()[2*8+7]!=0xff00ff00 || document.historySize()!=1)throw std::runtime_error("Line right-button/one history UI");document.undo();useShapeTool(ShapeKind::RectangleOutline);brushSizeInput_->setText("2");brushSizeInput_->Change();if(brushFeedback_.brushProfiles_[0].size!=2 || brushSizeInput_->hasFlags(ui::HIDDEN))throw std::runtime_error("Shape outline width property");key(ui::kKeyB);if(shapeTool_)throw std::runtime_error("Shape tool exit");brushFeedback_.brushProfiles_[0]={};shapeSpec_={};shapeRounded_=shapeRatio_=false;
 
   }

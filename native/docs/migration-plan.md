@@ -4665,3 +4665,9 @@ X/Y/Both合成/当前层及左右键实际诊断验证100次preview请求不发�
 沿用legacy canvas-input-fill/useCanvasGradientConfirmation的几何状态机、调度合并，以及canvas-render-gradient覆盖/合成缓存的无变化复用原则。原生每次move均请求Document整幅渐变重算并invalidate视口；现几何更新前后比较start/end/radial/fromCenter/proportional/angle/显式椭圆存在性及中心/半径，仅变化时追加请求/脏区。不跳过状态机，不复制色标向量，已有参数改变、pending颜色刷新和释放结算继续执行。
 
 正式Release构建及--gradient-shape-check退出0。七种线性创建/起点/终点/整体移动和径向创建/终点/中心各100重复坐标+100等价相邻副本，共1400事件；明确清空并断言初始脏区为空，验证gradientRevision、完整preview像素、history及脏区不变，随后检查真实几何变化、颜色改变、确认单历史与Undo。手柄测试拉开端点避免命中范围重叠，全部明确assert实际handle。前阶段32中断恢复与六有限副本等既有诊断继续通过。四项CTest document-transactions/raster-geometry/tile-repeat/tile-repeat-stroke通过0.41s，742来源检查和diff通过。未测全软件FPS，不据此宣称全部迁移完成；整体INCOMPLETE。保留用户数据/缓存，阶段保存推送dev。
+
+### 2026-11-09：基础形状无变化输入与平铺事务验证阶段
+
+对照canvas-input-shape moveShape/moveLine与canvas-input-view-shape几何状态机。原生五种基础形状每次move均请求整幅像素预览；现保留状态机更新，以start/end及bounds位置/尺寸/角度变化决定新增请求和脏区。绘图锚点bounds在比较前统一归中，避免shapeTick归中后下一相同输入误判；释放仍结算既有请求。未改多边形/自由形状/曲线分支。
+
+正式Release构建、--gradient-shape-check及--grid-snap-quick-check退出0。新增五种基础形状×左右键×X/Y/Both共30场景，每种100相同坐标+100等价副本共6000事件，验证gradientRevision/完整preview/history/空脏区无变化，再验证移动刷新、释放像素等于预览、单事务、Undo/Redo及Escape像素保留；既有渐变和形状窗口诊断继续通过。四项CTest document-transactions/raster-geometry/tile-repeat/tile-repeat-stroke通过0.40s。额外--modifiers-check退出1，在Captured brush resize survives modifier release断言失败，未到相关形状验证；未确定该画笔失败原因，不能把通用修饰键验收称通过，保留该待查项。742来源检查及diff通过。未测全软件FPS，整体迁移INCOMPLETE；保留用户数据和缓存，阶段保存推送dev。
