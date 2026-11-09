@@ -2,6 +2,7 @@
 #include "extension_resources.h"
 #include "extension_manifest_metadata.h"
 #include <limits>
+#include <tuple>
 #include "extension_runtime.h"
 #include <winrt/Windows.Data.Json.h>
 #include <winrt/Windows.Foundation.Collections.h>
@@ -29,8 +30,28 @@ class RuntimeDirectory {
   const auto status=std::filesystem::symlink_status(path);if(!std::filesystem::is_regular_file(status)||std::filesystem::is_symlink(status))throw std::runtime_error("扩展清单或状态文件必须是普通文件。");
   std::ifstream input(path,std::ios::binary);if(!input)throw std::runtime_error("Cannot read extension metadata");std::string bytes;char chunk[65536];while(input){input.read(chunk,sizeof(chunk));const auto count=std::size_t(input.gcount());if(count>limit-bytes.size())throw std::length_error("Extension metadata exceeds size limit");bytes.append(chunk,count);}if(input.bad())throw std::runtime_error("Cannot finish extension metadata read");return bytes;
  }
+ static std::map<std::string,bool> readState(const std::filesystem::path& directory){
+  using namespace winrt::Windows::Data::Json;std::map<std::string,bool> result;auto path=directory/".state.json";std::error_code error;auto status=std::filesystem::symlink_status(path,error);if(error&&error!=std::errc::no_such_file_or_directory)throw std::system_error(error);if(std::filesystem::exists(status)){auto state=JsonObject::Parse(winrt::to_hstring(read(path,std::numeric_limits<std::size_t>::max())));if(state.HasKey(L"enabled"))for(auto item:state.GetNamedObject(L"enabled"))result.emplace(winrt::to_string(item.Key()),item.Value().GetBoolean());}return result;
+ }
+ static std::string sortName(const std::string& name){auto wide=winrt::to_hstring(name);int n=LCMapStringEx(LOCALE_NAME_INVARIANT,LCMAP_LOWERCASE,wide.c_str(),int(wide.size()),nullptr,0,nullptr,nullptr,0);if(!n)throw std::runtime_error("Cannot lowercase extension name");std::wstring lowered(n,L' ');if(!LCMapStringEx(LOCALE_NAME_INVARIANT,LCMAP_LOWERCASE,wide.c_str(),int(wide.size()),lowered.data(),n,nullptr,nullptr,0))throw std::runtime_error("Cannot lowercase extension name");return winrt::to_string(lowered);}
  static bool validId(const std::string& id){return !id.empty()&&id.size()<=80&&id.front()!='.'&&id.back()!='.'&&id.find("..")==std::string::npos&&std::all_of(id.begin(),id.end(),[](unsigned char c){return (c>='a'&&c<='z')||(c>='A'&&c<='Z')||(c>='0'&&c<='9')||c=='.'||c=='-'||c=='_';});}
 public:
+ static std::vector<RuntimeCandidate> list(const std::filesystem::path& directory){
+  // State errors and enumeration errors fail the operation; individual damaged
+  // manifests are skipped, matching list_installed_extensions.
+  const auto state=readState(directory);std::vector<RuntimeCandidate> result;
+  for(const auto& item:std::filesystem::directory_iterator(directory)){const auto status=item.symlink_status();if(!std::filesystem::is_directory(status)||std::filesystem::is_symlink(status))continue;const auto id=winrt::to_string(item.path().filename().wstring());if(!validId(id))continue;
+   try{auto c=inspect(directory,id,false);c.enabled=state.count(id)?state.at(id):true;c.extension.enabled=c.enabled;result.push_back(std::move(c));}catch(const std::exception&){}catch(const winrt::hresult_error&){}
+  }
+  std::sort(result.begin(),result.end(),[](const auto& a,const auto& b){return std::make_pair(sortName(a.metadata.name),a.extension.id)<std::make_pair(sortName(b.metadata.name),b.extension.id);});return result;
+ }
+ static std::vector<LuaEntry> listLua(const std::filesystem::path& directory){
+  std::vector<LuaEntry> result;for(const auto& extension:list(directory)){if(!extension.enabled)continue;
+   auto append=[&](std::optional<std::string> command){try{result.push_back(resolveLua(directory,extension.extension.id,std::move(command)));}catch(const std::exception&){}catch(const winrt::hresult_error&){} };
+   if(extension.metadata.entry)append({});for(const auto& command:extension.commands)if(command.luaEntry)append(command.runtime.id);
+  }
+  std::sort(result.begin(),result.end(),[](const auto& a,const auto& b){return std::make_tuple(sortName(a.extensionName),a.commandName,a.extensionId,a.commandId)<std::make_tuple(sortName(b.extensionName),b.commandName,b.extensionId,b.commandId);});return result;
+ }
  static LuaEntry resolveLua(const std::filesystem::path& directory,const std::string& id,std::optional<std::string> commandId={}){
   auto candidate=inspect(directory,id,false);if(!candidate.enabled)throw std::runtime_error("扩展已停用。");
   LuaEntry result;result.extensionId=id;result.extensionName=candidate.metadata.name;result.commandId=commandId;std::optional<std::string> entry;
@@ -82,10 +103,7 @@ public:
   std::set<std::string> seen;if(runtime.HasKey(L"permissions"))for(const auto& value:runtime.GetNamedArray(L"permissions")){const auto permission=winrt::to_string(value.GetString());if(std::find(known.begin(),known.end(),permission)==known.end()||!seen.insert(permission).second)throw std::invalid_argument("扩展权限无效或重复。");candidate.permissions.push_back(permission);}if(!seen.count("runtime"))throw std::invalid_argument("Extension Runtime 必须声明 runtime 权限。");
   std::map<std::string,std::string> resources;if(runtime.HasKey(L"resources"))for(const auto& item:runtime.GetNamedObject(L"resources"))resources.emplace(winrt::to_string(item.Key()),winrt::to_string(item.Value().GetString()));candidate.resources=std::make_shared<ResourceCatalog>(root,candidate.entry,std::move(resources));
   }
-  const auto statePath=directory/".state.json";std::error_code error;const auto stateStatus=std::filesystem::symlink_status(statePath,error);if(error&&error!=std::errc::no_such_file_or_directory)throw std::system_error(error);if(std::filesystem::exists(stateStatus)){
-   // Rust read_state has no metadata-size cap. Preserve that contract here.
-   const auto state=JsonObject::Parse(winrt::to_hstring(read(statePath,std::numeric_limits<std::size_t>::max())));if(state.HasKey(L"enabled")){const auto enabled=state.GetNamedObject(L"enabled");for(const auto& item:enabled){const bool value=item.Value().GetBoolean();if(item.Key()==winrt::to_hstring(id))candidate.enabled=value;}}
-  }
+  const auto state=readState(directory);if(auto found=state.find(id);found!=state.end())candidate.enabled=found->second;
   candidate.commands=inspectCommands(manifest,candidate.permissions);
   candidate.settings=inspectSettings(manifest,candidate.commands);
   candidate.metadata=inspectMetadata(manifest,candidate.commands);

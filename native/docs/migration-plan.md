@@ -5431,3 +5431,10 @@ RuntimeDirectory候选现接入完整设置数据检查。抽取上一阶段命�
 依据 platform_extensions.rs::resolve_enabled_lua_entry_for_manifest_at 完成resolveLua目录接口：重新校验清单及enabled、主entry/命令entry选择、精确命令ID、名称/描述与空描述省略、普通非symlink Lua文件、canonical路径按组件检查目录包含关系，返回原入口路径与basename。补齐schema1/2纯Lua清单检查，默认runtime候选检查仍要求runtime。解析不读取/执行脚本，不宣称Lua引擎或正式菜单已接入；list_enabled_lua_entries枚举/排序仍待迁移。
 
 Release专项构建通过，目录测试验证schema1纯Lua、主入口/嵌套中文命令路径、元数据/空描述、ID大小写、无主入口、缺失文件、目录伪装Lua、非Lua命令、停用。符号链接文件与中间目录越界fixture在本机均因缺少Windows权限不能创建，明确跳过；canonical分支有源码实现但无本机链接行为验收证据，不把测试通过当作链接越界已实测。10项extension复验、来源/diff通过后保存推送dev；无正式exe/GUI/全套回归，整体INCOMPLETE，保留用户数据/缓存/editor_support.h既有状态。
+
+
+### 2026-11-10：扩展目录枚举与Lua入口列表整合阶段
+
+对照 platform_extensions.rs::list_installed_extensions/list_enabled_lua_entries，组合清单、状态和入口解析：枚举普通有效ID目录，跳过坏清单/ID不匹配/隐藏临时目录/普通文件，保留停用扩展的管理数据，Lua列表仅收集启用且能解析的主入口/命令，单入口失败不影响其他入口。状态读取抽取复用；状态及目录枚举失败明确传播。列表按名称小写后ID排序，Lua按名称小写、可选命令名、扩展ID、可选命令ID排序，主入口在无命令名位置。
+
+原生使用Windows invariant Unicode小写，ASCII大小写与同名排序已验证；Rust完整Unicode小写规则与Windows版本差异尚无等价证据，保留已知验收缺口，不宣称全Unicode排序等价。首次集成回归发现测试把扩展ID排在命令名之前，核对旧版元组顺序后修正预期，保留实现。多目录真实fixture覆盖坏清单/缺失入口/停用/过滤/排序/坏状态和不存在目录。Release专项、10项extension复验、来源/diff通过后保存推送dev。仍无正式扩展管理UI、安装、Lua执行或正式exe更新，整体INCOMPLETE；用户数据/缓存/editor_support.h原状态保留。
