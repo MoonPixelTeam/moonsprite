@@ -5211,3 +5211,10 @@ legacy canvas-render-selection-preview.ts对两种套索的每个栅格路径点
 接续用户批准的preview=commit，保留从legacy tilemap-document.ts局部格修改及共享源引用逻辑适配的有序资源patch；同一浮动状态的多次regional绘制复用不可变源瓦片/局部格修改，不再每次重建候选格采样和资源差异。缓存归属浮动事务，按overlay revision、content revision及repeat模式验证，变换通知释放，取消/提交随事务释放；计入现有floating内存预算，不缓存整幅像素或复制timeline。整格移动仍走直接引用路径。
 
 已有260×260链接Hybrid核心矩阵增加构建计数断言：首个region一次构建，跨格/负坐标/越界regional读取复用，变换后重建，恢复变换逐像素一致，X/Y/Both切换Off及恢复均重建并保持预览一致；保留提交/UndoRedo、资源/链接及dirty逐点检查。tilemap-document通过0.33s；公共头文件触发大范围重编译后正式Release构建成功，完整--tileset-management-check实际退出0，含既有大画布真实鼠标移动/复制/Escape/Enter检查。744来源/证据及diff通过。无新增截图或实际FPS量测；引用脏区扫描等后续性能项及整体迁移仍INCOMPLETE。本阶段保存推送dev。
+
+
+### 2026-11-10：Hybrid预览预算提前检查与拒绝恢复
+
+沿用legacy tilemap-document.ts::tilemapCellIndexesForEdit候选格范围和原生256MiB浮动预算适配，补齐上一阶段缓存的分配前检查：regional输出先检查再分配；候选索引插入和每个源瓦片/局部格缓存保留前检查输出、候选记账及已有缓存累计量，成功后才发布不可变缓存。缓存命中输出也检查总预算，超限请求不会写入作品或发布半成品缓存。
+
+14组现有move/copy×变换/平铺夹具加入8192×8192输出请求（恰为64Mi像素面积上限），确认抛出length_error、浮动事务及缓存构建次数不变、作品像素冻结，随后正常区域继续复用缓存并逐像素等于原预览。tilemap-document通过0.36s；正式Release构建成功，完整--tileset-management-check实际退出0。744来源/证据和diff通过。候选/源缓存分配前检查为源码核对，未注入候选分配失败或量测峰值内存/FPS；整体迁移仍INCOMPLETE。本阶段保存推送dev。
