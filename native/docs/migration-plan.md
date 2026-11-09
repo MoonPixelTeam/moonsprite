@@ -5424,3 +5424,10 @@ RuntimeDirectory候选现接入完整设置数据检查。抽取上一阶段命�
 以 platform_extensions.rs::read_extension_runtime_entry/read_extension_settings_entry/read_enabled_runtime_resource 为依据，补齐RuntimeDirectory三个读取接口。每次重读清单和enabled状态，资源要求resources权限，settingsEntry必须声明；运行时页面1MiB、设置页512KiB含边界，严格UTF8并保留原始字节（含空页面）。分块限额替代旧fs::read先分配全部文件；页面与资源按旧版跟随链接，未把词法路径校验宣称为真实路径隔离。HTML仅作为包数据，不创建WebView或脚本运行时。
 
 专项测试覆盖中文/emoji、过长/代理区/超Unicode范围/孤立续字节/截断/非法续字节编码、空页面、两类页面精确与超限、缺失入口、未声明设置、停用后拒绝全部读取及资源权限/ID失败。Lua入口另有canonical路径和普通文件约束，尚未迁移，本阶段不宣称完成Lua读取；正式exe和实际引擎仍未接线。Release专项构建、10项extension CTest、来源/diff检查后保存推送dev；无GUI/FPS或全套回归，整体INCOMPLETE，保留用户文件/缓存/editor_support.h原状态。
+
+
+### 2026-11-10：Lua扩展主入口与命令入口解析阶段
+
+依据 platform_extensions.rs::resolve_enabled_lua_entry_for_manifest_at 完成resolveLua目录接口：重新校验清单及enabled、主entry/命令entry选择、精确命令ID、名称/描述与空描述省略、普通非symlink Lua文件、canonical路径按组件检查目录包含关系，返回原入口路径与basename。补齐schema1/2纯Lua清单检查，默认runtime候选检查仍要求runtime。解析不读取/执行脚本，不宣称Lua引擎或正式菜单已接入；list_enabled_lua_entries枚举/排序仍待迁移。
+
+Release专项构建通过，目录测试验证schema1纯Lua、主入口/嵌套中文命令路径、元数据/空描述、ID大小写、无主入口、缺失文件、目录伪装Lua、非Lua命令、停用。符号链接文件与中间目录越界fixture在本机均因缺少Windows权限不能创建，明确跳过；canonical分支有源码实现但无本机链接行为验收证据，不把测试通过当作链接越界已实测。10项extension复验、来源/diff通过后保存推送dev；无正式exe/GUI/全套回归，整体INCOMPLETE，保留用户数据/缓存/editor_support.h既有状态。
