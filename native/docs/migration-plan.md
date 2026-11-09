@@ -5253,3 +5253,10 @@ legacy canvas-render-selection-preview.ts对两种套索的每个栅格路径点
 接续regional反采样，检查发现小浮动源在大region仍会遍历整个目标。参考legacy tools-selection-transform-translation.ts对repeatCandidateCount与visiblePixels的区分，原生比较源面积和请求区域面积×最大周期贡献数，选择最坏遍历量较小的路径；源遍历在读基线/合成前按region裁剪，完全画布外region直接结束。无额外缓存或分配，mask、透明、不可变基线及碰撞顺序不变。
 
 现有45组剪贴板矩阵覆盖大region源遍历、小region反采样及多周期碰撞；Hybrid核心矩阵含小源全region、跨格region及取消/UndoRedo。正式Release构建成功，document-raster-history/tilemap-document通过2.24s，完整--tileset-management-check实际退出0。744来源/证据和diff通过；未增加镜像实现测试、截图或FPS量测，工作量上界由源码核对，整体迁移仍INCOMPLETE。本阶段保存推送dev。
+
+
+### 2026-11-10：Hybrid整格预览局部脏区
+
+对照legacy tilemap-document.ts::previewTilemapSelectionMove只rerenderTilemapCells而像素资源修改才rerenderTilesetTileReferences，Hybrid连续整格引用移动不再扫描/扩展所有共享源位置。仅当旧、新变换均为矩形原选区的精确整格移动且无变换后源时启用；整格与采样互转继续包含共享源引用，确保恢复此前远处像素patch。
+
+260×260链接夹具新增(200,200)同源远处引用，move/copy均检查：整格dirty局部、切到采样覆盖远处、切回整格预览精确恢复且逐点dirty覆盖所有变化、再次整格移动回到局部dirty及取消authority不变。既有资源/链接/preview=commit与UndoRedo矩阵继续通过。正式Release成功；tilemap-document通过0.35s，完整--tileset-management-check实际退出0。744来源/证据和diff通过。新远处引用转换为核心验收，未新增窗口夹具/截图或FPS量测；整体迁移仍INCOMPLETE，本阶段保存推送dev。
