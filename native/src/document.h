@@ -669,7 +669,7 @@ private:
   struct TilemapStrokeCell {std::optional<tiles::Cell> before;std::vector<Pixel> beforePixels;};
   bool tileStrokeIncremental_=false,tileStrokeLinked_=false;std::map<std::size_t,TilemapStrokeCell> tileStrokeCells_;std::string tileStrokeCel_;Point tileStrokePoint_{};std::optional<std::size_t> tileEditCell_;std::optional<tiles::Cell> tilePaintValue_;
   std::string uniqueTileId(const std::string&);
-  bool commitTilemapState(timeline::State,const TilemapSelection&,std::u32string,const std::string& active={},bool clearPixelSelection=false);
+  bool commitTilemapState(timeline::State,const TilemapSelection&,std::u32string,const std::string& active={},bool clearPixelSelection=false,bool preserveTilemapOwners=false);
   bool fillTilemapPixels(Point,Pixel,WandOptions,const PatternFillOptions*);
   bool commitTilemapPixelCanvas(const std::vector<Pixel>& baseline,const std::vector<Pixel>& canvas,std::u32string label,std::optional<std::size_t> editCell={},bool clearPixelSelection=false,const std::optional<SelectionMask>* beforePixels=nullptr,const std::optional<SelectionMask>* afterPixels=nullptr,bool linkedCreateSelection=false,bool linkedEditSelection=false,bool linkedHybridSelection=false,bool linkedCreateFloating=false,bool linkedEditFloating=false,bool linkedHybridFloating=false,bool paintFloating=false);
   bool tilemapSelectionTransformAvailable()const;bool commitTilemapFloating();std::optional<bool> commitHybridCellFloating();

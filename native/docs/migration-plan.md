@@ -4908,3 +4908,15 @@ CTest document-transactions/free-tile-project/tilemap-document全部通过33.39s
 既有矩阵扩展为128组，新增渐变与矩形预览的源资源/缓存/历史隔离、取消/重启、一次提交、预览与结果一致、显式/runtime源、root/leaf、混合free、Undo/Redo及所有帧native/recovery。旧补边、同瓦片多帧/多层预览测试继续通过。真实Create鼠标形状release/Escape与渐变Enter/Escape夹具扩展混合free独立/linked帧。CTest三项document-transactions/free-tile-project/tilemap-document全部通过35.41s；744来源覆盖及证据快照与diff检查通过。正式窗口结果补充如下。整体INCOMPLETE，资源管理、多目标和offset等尚未完成，无新增FPS及人工截图验收。
 
 最终正式Release构建成功，完整 --tileset-management-check 实际退出0，包含新增混合free独立/linked渐变及形状真实鼠标交互。保留用户数据、缓存及editor_support.h既有状态，本阶段保存推送dev。
+
+
+### 2026-11-09：混合文档瓦片资源管理阶段（验证中）
+
+对照 workspace-commands-tilemap.ts 的add/reorder/slots/delete/commitTilesetTileEdit、workspace-unused-tiles.ts 和 free-tile-document.ts::captureFreeTileReferences/applyFreeTileReferences，移除文档级free管理禁用并复用既有资源事务。管理提交单独保留规范Cel链、surface尺寸及世界偏移，仅重绘变化资源和引用涉及的grid/free源，不再通过旧rebuildTilemapCaches重置所有网格。删除瓦片按旧版sourceId或tileId匹配清理free实例；清理未使用须计入free引用。Panel按资源存在和active状态判断，free源自身管理入口保留。
+
+新增12组shared/unrelated×六项资源操作检查，含带偏移linked grid、free实例保留/移除、UndoRedo和native/recovery；实际panel管理夹具增加无关free。首轮声明替换误匹配deleteSelectedFrames导致编译错误，已还原该声明，只给私有commitTilemapState增加管理模式参数；停止该次具体构建树后重新构建。744来源覆盖与证据快照、diff检查通过；最终构建和运行结果待补。整体INCOMPLETE，无新增性能或人工截图结论。
+
+
+本阶段验证修正：重排夹具漏传透明占位ID而无效，改用完整列表；共享夹具误用layers.back访问错误层，改为ID定位。进一步保存验收确认project_import禁止free源多瓦片表及grid/free共用表，故保留按资源的free-owned保护，当前只开放混合文档的独立网格资源，跨类型共用表继续登记格式缺口。最终新增六项混合管理回归和free表拒绝检查，free-tile-project完整通过33.59s。前述12组共享资源验收不成立，以本段为准；不得据此宣称跨类型资源管理迁移完成。
+
+最终正式Release构建成功，完整 --tileset-management-check 实际退出0，含混合文档真实panel布局/删除/右键clear-unused。free-tile-project通过33.59s，document-transactions及tilemap-document本轮通过；744来源覆盖及diff检查通过。保留用户数据、缓存与editor_support.h既有状态，本阶段保存推送dev。
