@@ -4689,3 +4689,9 @@ X/Y/Both合成/当前层及左右键实际诊断验证100次preview请求不发�
 对照canvas-pointer-move modifierSizing对airbrushScatterRadius/liquifyRadius/brushSize的选择，以及canvas-brush-size-update queueCanvasBrushSize待保存尺寸相等不调度。原生喷枪/平滑/液化setter每次重复值或夹紧到相同1/64仍保存偏好、layout与invalidate；现统一夹紧后比较各自参数，相同直接返回，变化时保存格式/入口保持。
 
 正式Release构建、--modifiers-check、--gradient-shape-check退出0。新增喷枪/平滑/液化/直线四类捕获调尺寸与无按钮结束，验证各自参数由12到15、值15/下限1/上限64、各100重复共1200 setter事件不产生脏区，作品像素/历史/dirty不变。既有铅笔/橡皮中断和全部修饰键诊断继续通过。四项CTest document-transactions/raster-geometry/tile-repeat/tile-repeat-stroke通过0.42s，742来源与diff检查通过。无全软件FPS或截图验收，整体迁移INCOMPLETE；保留用户数据/缓存，阶段保存推送dev。
+
+### 2026-11-09：Paint瓦片选区对称拖动语义补齐阶段
+
+核对当前显式缺口和legacy canvas-input-tile moveTileSelection：在constrainedTranslation/整格取整前调用symmetrySelectionDragDelta(...,true)。原生Paint移动直接使用指针差，遗漏按所按对称区域映射方向。现开始时保留扩展后的源选区快照，移动时调用既有symmetry_model算法再做轴约束，复用Document完整格引用移动事务；不把像素缓存作为权威，不改Tileset源。
+
+正式Release构建、--modifiers-check完整退出0。新增五种对称轴×移动/复制十场景，实际按下/move/release/Escape对照既有Document映射后cell move参考，验证完整格引用、选区、画面、资源、历史、取消与Undo/Redo。四项CTest tilemap-document/document-transactions/tile-repeat/tile-repeat-stroke通过0.59s；742来源与diff检查通过。Paint自由变换/多目标仍明确缺口，本轮未据此宣称整个瓦片迁移完成；无截图/FPS验收，整体INCOMPLETE。保留用户文件/缓存，阶段保存推送dev。

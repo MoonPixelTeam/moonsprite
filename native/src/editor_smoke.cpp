@@ -4266,6 +4266,20 @@ void Editor::smokeModifiers(){
 
     key(ui::kKeyDownMessage,ui::kKeyB);brushFeedback_.brushProfiles_[0].size=4;const auto origin=point(8,8);const auto before=document.pixels();const auto history=document.historySize();const double zoom=zoom_;
 
+    // Paint selection movement uses the same pressed-region symmetry mapping as legacy.
+    {const auto savedAxes=document.symmetryAxes;
+      for(const auto axes:std::vector<SymmetryAxes>{{true,false,false,false,false},{false,true,false,false,false},{false,false,true,false,false},{false,false,false,true,false},{false,false,false,false,true}})for(bool copy:{false,true}){
+        cancelStroke();disableFlags(ui::HAS_CAPTURE);document=Document(32,24);document.fillSelectionOrCanvas(0xff123456);document.convertLayerToTilemap(8,8,U"Symmetry Paint move");document.setTilemapMode(tiles::Mode::Paint);useSelectionTool(0);document.clearTimelineSelection();clearTimelineRowSelection();frameSelectionExplicit_=false;selectionMode_=0;selectionFreeTransform_=selectionPropertiesActive_=selectionPivotVisible_=false;selectionPivot_.reset();quickSelectionPress_.reset();quickSelectionExplicitDouble_=false;document.symmetryAxes=axes;document.setSymmetryCenter({16,12},false);document.previewSelection(SelectionMask{0,0,32,24,{}});fitCanvas();refresh();requestFocus();
+        const auto initial=document.canvasPixels(),sheet=document.timeline().state().tilesets.front().pixels;const auto refs=document.cel().tilemap->cells;const auto h=document.historyPosition();
+        auto at=[&](int x,int y){return canvasDocumentToDisplay({x+.25,y+.25});};
+        auto expected=document;check(expected.beginPaintCellMove(copy),"Paint symmetry reference admission");const auto selected=*expected.selection();const auto delta=symmetrySelectionDragDelta(selected,{24,16},{8,0},32,24,axes,{16,12});expected.updatePaintCellMove(delta.x,delta.y);const auto expectedCells=expected.cel().tilemap->cells;const auto expectedSelection=expected.selection();const auto expectedPixels=expected.canvasPixels();expected.finishPaintCellMove();
+        auto begin=[&]{quickSelectionPress_.reset();pointer(ui::kMouseDownMessage,at(24,16),copy?ui::kKeyCtrlModifier:ui::kKeyNoneModifier);check(document.paintCellMoving(),"Paint symmetry pointer admission");pointer(ui::kMouseMoveMessage,at(32,16));};
+        begin();check(document.cel().tilemap->cells==expectedCells&&selectionEqual(document.selection(),expectedSelection)&&document.canvasPixels()==expectedPixels&&document.historyPosition()==h&&document.timeline().state().tilesets.front().pixels==sheet,"Paint symmetry preview canonical refs selection pixels");key(ui::kKeyDownMessage,ui::kKeyEsc);disableFlags(ui::HAS_CAPTURE);check(document.cel().tilemap->cells==refs&&document.canvasPixels()==initial&&document.historyPosition()==h&&!document.active(),"Paint symmetry cancel");
+        begin();pointer(ui::kMouseUpMessage,at(32,16));check(!document.active()&&!hasCapture()&&document.cel().tilemap->cells==expectedCells&&selectionEqual(document.selection(),expectedSelection)&&document.historyPosition()==expected.historyPosition(),"Paint symmetry release");document.undo();check(document.cel().tilemap->cells==refs&&document.canvasPixels()==initial,"Paint symmetry Undo");document.redo();check(document.cel().tilemap->cells==expectedCells&&document.canvasPixels()==expectedPixels&&document.timeline().state().tilesets.front().pixels==sheet,"Paint symmetry Redo resources");
+      }
+      cancelStroke();disableFlags(ui::HAS_CAPTURE);document=Document(32,24);document.symmetryAxes=savedAxes;key(ui::kKeyDownMessage,ui::kKeyB);brushFeedback_.brushProfiles_[0].size=4;fitCanvas();refresh();
+    }
+
     // Legacy quick-tool arbitration also applies after user rebinding.
     {const auto bindings=shortcutBindings_;for(const auto modifier:{ui::kKeyAltModifier,ui::kKeyShiftModifier}){
       shortcutBindings_["tool.move.quick"]={"Ctrl"};shortcutBindings_["brushSizeAdjust"]={modifier==ui::kKeyAltModifier?"Ctrl+Alt":"Ctrl+Shift"};
