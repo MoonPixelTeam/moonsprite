@@ -4765,3 +4765,13 @@ X/Y/Both合成/当前层及左右键实际诊断验证100次preview请求不发�
 完整mixed free/grid/raster工程回归覆盖四组复制/移动×提交/取消，连续绝对预览、链接帧共享根、绑定蒙版帧作用域、单历史、Undo/Redo、保存重开、已有资源/实例/网格/缓存不变及锁定/隐藏拒绝。原夹具含legacy规范化会舍弃的自定义扩展字段，先保存重开建立规范化基线再比对；没有修改生产导入规则。蒙版断言先误认为独立蒙版随链接像素跨帧移动，已按旧版目标帧语义校正。
 
 正式Release及free-tile-project-tests/attached-masks-tests构建退出0；实际--layer-move-check退出0，新增混合文档鼠标移动/Alt复制、捕获释放、Escape和Undo/Redo，原168组平铺/组移动继续运行。四项CTest free-tile-project/attached-masks/alignment/move-click-flash通过14.28s；744来源快照与diff检查通过。无新人工截图/FPS验收，未重跑全套；特殊图层本体移动、Paint自由变换/多目标、扩展兼容等仍未完整迁移，整体INCOMPLETE。保留用户文件、缓存和未跟踪数据，阶段保存推送dev。
+
+### 2026-11-09：网格与自由瓦片整层移动事务阶段
+
+对照legacy animation.ts animationCelOffsetsForKeys/setAnimationCelOffsetsForKeys：所有Cel类型均以resolved surface offset作为整层placement，网格和自由实例坐标保持局部；原生tilejson::validateAndRender/free_tiles::render重建缓存时保留offset。因此删除beginLayerMove特殊目标总拒绝，复用已有canonical owner去重/偏移/历史/延迟Alt复制，不栅格化也不改源资源。Editor关闭自动选择时接纳visible/unlocked的tilemap/free-tile整层；已打开实例视图继续原实例移动路径。
+
+复制蒙版进一步核对canvas-input-layer-move.ts duplicate.animationMaskOffsets仅按current frame重置且过滤moveWithOwner。原生首次复制无条件移全部蒙版，后续也移非当前帧；现两处均只移当前帧绑定蒙版，保留其它帧及关闭绑定原点。普通复制回归同步为相同旧版语义。独立活动蒙版画布移动仍未开放。
+
+新增16组grid/free×copy/move×linked/independent×binding矩阵：多次绝对预览、取消、单历史、Undo/Redo、native及recovery重开、精确资源/格引用/实例局部坐标/像素保留、非复制存储身份及锁定/隐藏拒绝；已有混合多目标admission回归同步开放后取消。初始storage断言取深复制快照身份，改为取live storage；蒙版断言改用各帧实际继承的moveWithOwner，不把夹具误差作为产品缺陷。实际鼠标新增8组两类层×Alt/移动×auto-select开关，检查capture/placement/history/UndoRedo/Escape，既有普通/平铺/组诊断保留。
+
+正式Release、free-tile-project-tests、attached-masks-tests构建退出0；最终--layer-move-check退出0，四项CTest free-tile-project/attached-masks/alignment/move-click-flash通过15.61s。744来源快照与diff检查通过；无人工截图或FPS新增测量，未重跑全套。不宣称特殊层所有编辑已完成：Paint选区自由变换/多目标、独立蒙版canvas语义及原生扩展兼容仍有缺口，整体INCOMPLETE。保留用户文件、缓存和未跟踪数据，阶段保存推送dev。
