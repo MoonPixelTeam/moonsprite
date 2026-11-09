@@ -4810,3 +4810,10 @@ smokeWorkspace布局交互完成后切至已有移动工具，固定后续画布
 核心24组四模式×linked/independent×原点/部分移位/全部画布外场景，附带隐藏、锁定、混合普通层、特殊多层拒绝及纯帧普通层选择，检查历史/revision/画面/links/cell references不变；三项CTest document-transactions/free-tile-project/tilemap-document通过26.95s。正式Release构建成功；四模式实际菜单与Ctrl+T及锁定拒绝通过 --tileset-management-check --grid-transform-entry-only，退出0。完整tileset-management诊断在既有fill fixture的canvasOwnsPointer前置条件失败，尚未跑到新场景；新增专用参数仅隔离入口场景，不宣称完整瓦片GUI诊断通过。未修改填充规则。
 
 744来源覆盖与证据快照检查及diff检查通过，无新增FPS或人工图像验收，未重跑全套。Paint浮动自由变换/多目标、待用户选择的活动蒙版移动语义与扩展兼容仍未完成，整体INCOMPLETE。保留全部用户数据、构建缓存、未跟踪文件及editor_support.h既有状态，阶段保存推送dev。
+
+
+### 2026-11-09：完整瓦片窗口诊断前置隔离修复
+
+承接上一阶段完整 --tileset-management-check 在填充canvasOwnsPointer前置条件失败。增加命中类型/所属栏目/边界/捕获诊断，实测point702,434命中TilesetPanel::Grid、column11、bounds590,270,420,426、capture0：前一个管理夹具打开的悬浮瓦片集面板覆盖了后续画布原点。曾先推测预览面板，关闭后失败完全相同，已撤回该无效修改；最终仅在填充/形状渐变指针夹具显式关闭瓦片集面板，保留真实命中和所有事务断言，产品填充、窗口命中、默认布局均未改。
+
+正式Release构建成功；完整 --tileset-management-check实际退出0，依次运行瓦片集管理/剪贴板、填充、形状渐变预览、四模式变换菜单及CtrlT、既有链接Create/Edit/Hybrid与选区删除等诊断。关闭上一阶段该项GUI验收缺口；744来源覆盖与证据快照及diff检查通过。未重跑全套CTest，无新增FPS/人工图像验收，不以诊断修复宣称功能迁移完成。Paint浮动自由变换/多目标、活动蒙版移动语义选择及扩展兼容仍有缺口，整体INCOMPLETE。保留用户数据/缓存/未跟踪文件及editor_support.h原状态，阶段保存推送dev。
