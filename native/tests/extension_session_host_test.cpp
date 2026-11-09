@@ -4,6 +4,7 @@
 #include <windows.h>
 #include <roapi.h>
 #include "extension_session_host.h"
+#include "extension_manifest_commands.h"
 #include <iostream>
 using namespace moon::extension;using namespace winrt::Windows::Data::Json;
 void check(bool b,const char* m){if(!b)throw std::runtime_error(m);}
@@ -19,6 +20,9 @@ int main(int argc,char** argv){RoInitialize(RO_INIT_MULTITHREADED);try{
  host.localeChanged("zh-CN");host.localeChanged("zh-CN");check(second.back().locale=="zh-CN"&&host.request(newer,raw("runtime.getLocale"))->GetNamedObject(L"result").GetNamedString(L"locale")==L"zh-CN","Session locale/request out of sync");
  remaining=host.routeFiles({"pet.custom","art.png"},[&](const auto&){host.close(newer);return FileDropRouter::Bytes{3};},[&](const auto&){++errors;});check(errors==1&&remaining==std::vector<std::string>{"art.png"}&&second.back().type=="deactivate"&&!registry.command("ext","late","go"),"Read completed after session close");
  std::vector<RuntimeEvent> failed;auto failing=host.open({"failed",true,false},{"commands"},"en-US",[&](const auto& e){failed.push_back(e);});registry.command("failed","queued","go");host.loadFailed(failing);registry.command("failed","late","go");host.close(failing);check(failed.empty()&&!registry.command("failed","late","go"),"Failed load retained events or registration");
+ auto declaration=JsonObject::Parse(L"{\"runtime\":{},\"settingsUi\":{},\"commands\":[{\"id\":\"run\",\"name\":\"Run\",\"runtimeEvent\":\"go\"},{\"id\":\"lua\",\"name\":\"Lua\",\"entry\":\"run.lua\"},{\"id\":\"settings\",\"name\":\"Settings\",\"opensSettings\":true}]}");std::vector<RuntimeCommand> parsed;for(const auto& c:inspectCommands(declaration,{"commands"}))parsed.push_back(c.runtime);std::vector<RuntimeEvent> commandEvents;std::string luaAction,settingsAction;
+ auto commandSession=host.open({"parsed",true,true},{"runtime","commands"},"en-US",[&](const auto& e){commandEvents.push_back(e);},{[&](const auto& a){luaAction=a;},[&](const auto& a){settingsAction=a;}},parsed);host.loaded(commandSession,project);
+ for(const auto& id:{"run","lua","settings"})check(host.request(commandSession,raw("commands.execute",std::string("{\"commandId\":\"")+id+"\"}"))->GetNamedBoolean(L"ok"),"Parsed command request");check(commandEvents.back().commandId=="run"&&commandEvents.back().event=="go"&&luaAction=="extension:parsed:lua"&&settingsAction=="parsed","Manifest to session handlers");
  host.loaded(another,project);
  }
  check(other.back().type=="deactivate"&&!registry.dispatch("other",{})&&!drops.accepts("pet.custom"),"Host destruction left registry or drops");check(Storage(std::filesystem::path(argv[1])/("missing-session.json")).list(u"ext").empty(),"Missing storage");

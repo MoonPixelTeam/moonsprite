@@ -1,5 +1,6 @@
 #pragma once
 #include "extension_resources.h"
+#include "extension_manifest_commands.h"
 #include <limits>
 #include "extension_runtime.h"
 #include <winrt/Windows.Data.Json.h>
@@ -12,6 +13,7 @@ struct RuntimeCandidate {
  RuntimeExtension extension;
  std::string entry;
  std::vector<std::string> permissions;
+ std::vector<ManifestCommand> commands;
  std::shared_ptr<ResourceCatalog> resources;
  bool enabled=true;
 };
@@ -39,7 +41,8 @@ public:
    // Rust read_state has no metadata-size cap. Preserve that contract here.
    const auto state=JsonObject::Parse(winrt::to_hstring(read(statePath,std::numeric_limits<std::size_t>::max())));if(state.HasKey(L"enabled")){const auto enabled=state.GetNamedObject(L"enabled");for(const auto& item:enabled){const bool value=item.Value().GetBoolean();if(item.Key()==winrt::to_hstring(id))candidate.enabled=value;}}
   }
-  candidate.extension={id,candidate.enabled,manifest.HasKey(L"settingsEntry")||manifest.HasKey(L"settingsUi")};return candidate;
+  candidate.commands=inspectCommands(manifest,candidate.permissions);
+  candidate.extension={id,candidate.enabled,(manifest.HasKey(L"settingsEntry")&&manifest.GetNamedValue(L"settingsEntry").ValueType()!=JsonValueType::Null)||(manifest.HasKey(L"settingsUi")&&manifest.GetNamedValue(L"settingsUi").ValueType()!=JsonValueType::Null)};return candidate;
  }
 };
 }

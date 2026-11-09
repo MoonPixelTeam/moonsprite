@@ -5392,3 +5392,12 @@ Release三个相关目标构建成功，九项extension CTest全部通过1.32s�
 明确为候选检查，不能作为完整validated package直接启用：旧版名称/版本/翻译/commands/settings/menus/panels等全清单校验、entry实际读取/引擎、目录枚举、安装/更新、默认路径和正式会话接线仍未迁移。本阶段没有用部分校验打开正式程序入口；开头拟迁移命令与session加载的范围因此仍未完成，保留在后续工作，不宣称完整扩展加载链路完成。
 
 Release专项两个目标构建成功，十项extension CTest全部通过1.35s。新增真实目录fixture验证有效清单/资源、未知字段、缺省/显式停用/错误状态、ID/版本/入口/权限失败与清单超限。来源764文件和diff通过后保存推送dev，无正式exe/实际脚本/窗口/截图/FPS验收。整体迁移INCOMPLETE，保留用户文件、缓存及editor_support.h原状态。
+
+
+### 2026-11-10：扩展命令清单校验与会话分发阶段
+
+依据 legacy platform_extensions.rs 的 ExtensionCommandManifest、validate_manifest 命令分支、validate_lua_entry_path 和 stored_extension，迁移命令缺省值、Option null、最多64条、ASCII ID/大小写去重、UTF8名称160字节/描述4096字节及控制字符限制。每条只能声明 Lua entry、runtimeEvent 或 opensSettings 一种处理；核对运行时/commands权限、事件ID、设置存在约束。保留名称、描述与Lua路径，并映射既有RuntimeCommand。原生使用宽字符检查Lua后缀，避免中文路径经系统代码页转换失败；空设置字段不再误报hasSettings。
+
+真实目录候选新增命令检查；集成测试把解析后的命令交给SessionHost，验证请求分别分发运行时事件、Lua动作标识和设置动作。此为内部核心接线，没有真实Lua/JS引擎、安装启用流程或正式UI。设置按钮的命令引用约束仍随完整settings校验待迁移，候选仍不能作为完整validated package启用。
+
+Release两个相关目标构建成功，10项extension CTest全部通过1.34s，包含中文.LUA、缺省/null/错误类型、文本/ID/路径边界、处理方式冲突、权限/设置缺失及64/65上限。未重建正式exe、未执行GUI/FPS或全套回归；整体迁移INCOMPLETE。来源登记和diff检查通过后保存并推送dev；用户数据、缓存与editor_support.h既有状态保留。

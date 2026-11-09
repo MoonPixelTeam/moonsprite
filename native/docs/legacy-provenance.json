@@ -29832,7 +29832,7 @@
         "legacy/src/renderer/src/core/extension-file-drop.ts"
       ],
       "scope": "Integrated session open/load/requests/storage/drop/replacement/deactivate",
-      "adaptation": "Actual disk-backed storage, two namespaces, queued command/activation order, stored data across session replacement, stale callbacks and pending reads, locale/request agreement, close during file read, load failure and host destruction. Core-only, no real engine or desktop window."
+      "adaptation": "Actual disk-backed storage, two namespaces, queued command/activation order, stored data across session replacement, stale callbacks and pending reads, locale/request agreement, close during file read, load failure and host destruction. Core-only, no real engine or desktop window. Command migration regression: three handlers/defaults/nulls, UTF8 text limits, invalid declarations, duplicate IDs,64/65 cap,Unicode Lua path; parsed commands composed with session request dispatch."
     },
     {
       "file": "src/extension_resources.h",
@@ -29856,13 +29856,23 @@
       "adaptation": "Unsafe path/ID/reserved/protected/duplicate/count cases,Unicode raw binary,missing/case mismatch,16MiB and overflow,session resource request byte array,permission and close. No actual package install/engine/UI."
     },
     {
+      "file": "src/extension_manifest_commands.h",
+      "classification": "legacy-partial",
+      "sources": [
+        "legacy/src-tauri/src/platform_extensions.rs",
+        "legacy/src/renderer/src/core/extension-runtime.ts"
+      ],
+      "scope": "EX-004 manifest command parsing and validation",
+      "adaptation": "ExtensionCommandManifest serde defaults/null optional entries, validate_manifest command count/ID/casefold duplicate/UTF8 text limits/exactly one handler/Lua package path/runtime permission/event/settings presence. Preserve metadata and map stored_extension runtime handler. Native UTF16 path extension avoids locale conversion. Full manifest/settings button references and actual engine remain pending."
+    },
+    {
       "file": "src/extension_runtime_directory.h",
       "classification": "legacy-partial",
       "sources": [
         "legacy/src-tauri/src/platform_extensions.rs"
       ],
       "scope": "EX-004 installed runtime candidate inspection",
-      "adaptation": "Partial manifest_from_directory/read_state/installed_extension_path/runtime validation migration: ordinary directory and manifest/state files,256KiB manifest,exact ID/schema2/api1,HTML entry path,known unique permissions/runtime mandatory,resource catalog,state bool/default enabled. Preserve complete JsonObject. Candidate only: full name/version/translations/commands/settings/menus/panels validators and actual entry loading not migrated, cannot enable as validated package."
+      "adaptation": "Partial manifest_from_directory/read_state/installed_extension_path/runtime validation migration: ordinary directory and manifest/state files,256KiB manifest,exact ID/schema2/api1,HTML entry path,known unique permissions/runtime mandatory,resource catalog,state bool/default enabled; command metadata/handlers validated by inspectCommands; null settings absent. Preserve complete JsonObject. Candidate only: full name/version/translations/settings/menus/panels validators and actual entry loading not migrated, cannot enable as validated package."
     },
     {
       "file": "tests/extension_runtime_directory_test.cpp",
@@ -29871,7 +29881,7 @@
         "legacy/src-tauri/src/platform_extensions.rs"
       ],
       "scope": "Runtime directory candidate disk regression",
-      "adaptation": "Real isolated directory manifest/resource/state,unknown field preservation,default/disabled/invalid state,ID and schema/API/path/permission failures,manifest limit. No engine or full package validation claim."
+      "adaptation": "Real isolated directory manifest/resource/state,unknown field preservation,default/disabled/invalid state,ID and schema/API/path/permission failures,manifest limit. No engine or full package validation claim. Command migration regression: three handlers/defaults/nulls, UTF8 text limits, invalid declarations, duplicate IDs,64/65 cap,Unicode Lua path; parsed commands composed with session request dispatch."
     }
   ],
   "assetTransfers": [
