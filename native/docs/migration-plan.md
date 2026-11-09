@@ -5218,3 +5218,10 @@ legacy canvas-render-selection-preview.ts对两种套索的每个栅格路径点
 沿用legacy tilemap-document.ts::tilemapCellIndexesForEdit候选格范围和原生256MiB浮动预算适配，补齐上一阶段缓存的分配前检查：regional输出先检查再分配；候选索引插入和每个源瓦片/局部格缓存保留前检查输出、候选记账及已有缓存累计量，成功后才发布不可变缓存。缓存命中输出也检查总预算，超限请求不会写入作品或发布半成品缓存。
 
 14组现有move/copy×变换/平铺夹具加入8192×8192输出请求（恰为64Mi像素面积上限），确认抛出length_error、浮动事务及缓存构建次数不变、作品像素冻结，随后正常区域继续复用缓存并逐像素等于原预览。tilemap-document通过0.36s；正式Release构建成功，完整--tileset-management-check实际退出0。744来源/证据和diff通过。候选/源缓存分配前检查为源码核对，未注入候选分配失败或量测峰值内存/FPS；整体迁移仍INCOMPLETE。本阶段保存推送dev。
+
+
+### 2026-11-10：Hybrid预算统计移出候选循环
+
+复核上一阶段分配前检查发现，每个候选格/缓存条目调用checkFloatingBudget都会遍历工程Cel、蒙版及浮动载荷。提取原有不变的存储记账为floatingStorageBudget，在构建候选patch前取本次同步调用的存储快照；循环只执行溢出安全的整数预算累计。原checkFloatingBudget复用同一记账函数，保持其他浮动路径规则。legacy tilemap-document.ts候选格/资源修改语义不变；补计当前采样格的两份临时像素，保留分配前拒绝和成功后缓存发布。
+
+正式Release构建成功，tilemap-document通过0.33s，含已有14组变换/平铺缓存复用、超限输出拒绝后恢复、preview=commit、资源/链接及UndoRedo检查；完整--tileset-management-check实际退出0。744来源/证据和diff通过。本阶段没有新增镜像实现的单元测试，循环内不再扫描工程由源码核对，未量测FPS/峰值内存或新增截图。整体迁移仍INCOMPLETE，本阶段保存推送dev。

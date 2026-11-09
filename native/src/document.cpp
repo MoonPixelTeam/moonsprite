@@ -2405,6 +2405,19 @@ void Document::noteFloatingOverlayChange(const FloatingPaste& f,const SelectionT
  }
  ++floatingOverlayRevision_;
 }
+namespace {
+// Snapshot immutable floating storage once per regional render, outside candidate loops.
+template<class Floating> std::size_t floatingStorageBudget(const timeline::Timeline& timeline,const Floating& f,const std::optional<SelectionMask>& selection){
+ std::size_t used=adjustmentStorageBudget(timeline,1);if(f.hybridPatch)floatingAddBytes(used,f.hybridPatch->bytes);
+ auto clipboard=[&](const SelectionClipboard& c){const auto count=floatingArea(c.width,c.height);if(c.pixels.size()!=count||c.mask.size()!=count)throw std::invalid_argument("Invalid floating payload");floatingAddBytes(used,std::uint64_t(count)*5);};
+ if(f.source.width>0&&f.source.height>0&&!f.source.pixels.empty())clipboard(f.source);
+ if(f.beforeSelection)floatingAddBytes(used,f.beforeSelection->mask.size());if(selection)floatingAddBytes(used,selection->mask.size());
+ for(const auto& target:f.targets){clipboard(target.source);if(target.originalSource)clipboard(*target.originalSource);if(target.baseline){raster::validate(*target.baseline);floatingAddBytes(used,convolutionSurfaceBytes(*target.baseline));}floatingAddBytes(used,std::uint64_t(target.preview.size())*128);if(target.symmetryRotation)floatingAddBytes(used,target.symmetryRotation->bytes());if(target.rotSprite)floatingAddBytes(used,std::uint64_t(target.source.pixels.size())*5+12*1024*1024);}
+ if(f.beforeCelTimeline)for(const auto& cel:f.beforeCelTimeline->cels)if(cel.surface){raster::validate(*cel.surface);floatingAddBytes(used,convolutionSurfaceBytes(*cel.surface));}
+ if(f.beforeMasks)for(const auto& m:*f.beforeMasks)floatingAddBytes(used,convolutionSurfaceBytes(m.mask.surface));
+ floatingAddBytes(used,f.transientBytes);return used;
+}
+}
 std::vector<Pixel> Document::floatingOverlayRegion(PixelRegion region)const{
  if(!floatingDeferred())return {};const auto& f=*floating_;const auto& target=f.targets.front();const auto r=timeline_.resolveSurface(target.celId);if(!target.celId.empty()&&(!r.surface||!r.source||(!target.ownerId.empty()&&r.source->id!=target.ownerId)))throw std::logic_error("Floating overlay owner changed");
  auto raw=[&](PixelRegion region){
@@ -2429,12 +2442,12 @@ std::vector<Pixel> Document::floatingOverlayRegion(PixelRegion region)const{
  const bool cellMove=sel.mask.empty()&&!target.originalSource&&floatingTranslation(tr,target.source)&&(std::int64_t(sel.x)-ox)%grid.tileWidth==0&&(std::int64_t(sel.y)-oy)%grid.tileHeight==0&&sel.width%grid.tileWidth==0&&sel.height%grid.tileHeight==0&&(std::int64_t(tr.x)-ox)%grid.tileWidth==0&&(std::int64_t(tr.y)-oy)%grid.tileHeight==0;
  auto patch=f.hybridPatch;
  if(!cellMove&&(!patch||patch->overlayRevision!=floatingOverlayRevision_||patch->contentRevision!=contentRevision_||patch->repeat!=floatingRepeat_)){
-  f.hybridPatch.reset();patch.reset();auto candidate=std::make_shared<HybridFloatingPatch>();candidate->overlayRevision=floatingOverlayRevision_;candidate->contentRevision=contentRevision_;candidate->repeat=floatingRepeat_;auto& modified=candidate->modified;auto& local=candidate->local;const tiles::Index index(*set);const auto bounds=checkedFloatingBounds(tr);std::set<std::size_t> candidates;
-  auto admit=[&](std::uint64_t retained){std::size_t extra=0;floatingAddBytes(extra,outputBytes);floatingAddBytes(extra,std::uint64_t(candidates.size())*64);floatingAddBytes(extra,retained);checkFloatingBudget(f,extra);};
+  f.hybridPatch.reset();patch.reset();auto candidate=std::make_shared<HybridFloatingPatch>();candidate->overlayRevision=floatingOverlayRevision_;candidate->contentRevision=contentRevision_;candidate->repeat=floatingRepeat_;auto& modified=candidate->modified;auto& local=candidate->local;const tiles::Index index(*set);const auto bounds=checkedFloatingBounds(tr);std::set<std::size_t> candidates;const auto storageBytes=floatingStorageBudget(timeline_,f,selection_);
+  auto admit=[&](std::uint64_t retained,std::uint64_t scratch=0){auto used=storageBytes;floatingAddBytes(used,scratch);floatingAddBytes(used,outputBytes);floatingAddBytes(used,std::uint64_t(candidates.size())*64);floatingAddBytes(used,retained);};
   auto include=[&](PixelRegion area){const auto left=std::max<std::int64_t>(0,std::max<std::int64_t>(0,area.x)-ox),top=std::max<std::int64_t>(0,std::max<std::int64_t>(0,area.y)-oy),right=std::min<std::int64_t>(std::int64_t(grid.columns)*grid.tileWidth,std::min<std::int64_t>(width_,std::int64_t(area.x)+area.w)-ox),bottom=std::min<std::int64_t>(std::int64_t(grid.rows)*grid.tileHeight,std::min<std::int64_t>(height_,std::int64_t(area.y)+area.h)-oy);if(right<=left||bottom<=top)return;for(auto row=top/grid.tileHeight;row<(bottom+grid.tileHeight-1)/grid.tileHeight;++row)for(auto col=left/grid.tileWidth;col<(right+grid.tileWidth-1)/grid.tileWidth;++col){const auto i=std::size_t(row)*grid.columns+std::size_t(col);if(!candidates.count(i)){admit(64);candidates.insert(i);}}};
   include({bounds.x,bounds.y,bounds.width,bounds.height});if(floatingRepeat_!=repeat::Mode::Off&&floatingTranslation(tr,target.source))if(auto wrapped=repeat::wrapSelection(bounds,width_,height_,floatingRepeat_))include({wrapped->x,wrapped->y,wrapped->width,wrapped->height});if(!f.copy)include({f.sourceX,f.sourceY,target.source.width,target.source.height});
-  for(const auto i:candidates){const PixelRegion cell{ox+int(i%grid.columns)*grid.tileWidth,oy+int(i/grid.columns)*grid.tileHeight,grid.tileWidth,grid.tileHeight};auto pixels=raw(cell);const auto before=tiles::cellPixels(grid.cells[i],grid.tileWidth,grid.tileHeight,catalog);bool changed=false;for(int y=0;y<cell.h;++y)for(int x=0;x<cell.w;++x){const auto at=std::size_t(y)*cell.w+x;if(cell.x+x<0||cell.y+y<0||cell.x+x>=width_||cell.y+y>=height_)pixels[at]=before[at];changed|=pixels[at]!=before[at];}if(!changed)continue;const auto& ref=grid.cells[i];if(ref&&ref->tilesetId==set->id&&index.find(ref->tileId)){auto it=modified.find(ref->tileId);if(it==modified.end()){std::size_t retained=candidate->bytes;floatingAddBytes(retained,std::uint64_t(grid.tileWidth)*grid.tileHeight*sizeof(Pixel)+ref->tileId.size()+128);admit(retained);it=modified.emplace(ref->tileId,tiles::readTile(*set,*index.find(ref->tileId))).first;candidate->bytes=retained;}for(int y=0;y<cell.h;++y)for(int x=0;x<cell.w;++x){const auto at=std::size_t(y)*cell.w+x;if(pixels[at]!=before[at]){const auto p=tiles::sourcePoint(x,y,cell.w,cell.h,*ref);it->second[std::size_t(p.second)*cell.w+p.first]=pixels[at];}}}else{std::size_t retained=candidate->bytes;floatingAddBytes(retained,std::uint64_t(pixels.size())*sizeof(Pixel)+128);admit(retained);local.emplace(i,std::move(pixels));candidate->bytes=retained;}}
-  checkFloatingBudget(f,candidate->bytes+outputBytes);patch=std::move(candidate);f.hybridPatch=patch;++floatingHybridPatchBuilds_;
+  for(const auto i:candidates){const PixelRegion cell{ox+int(i%grid.columns)*grid.tileWidth,oy+int(i/grid.columns)*grid.tileHeight,grid.tileWidth,grid.tileHeight};admit(candidate->bytes+std::uint64_t(cell.w)*cell.h*sizeof(Pixel)*2);auto pixels=raw(cell);const auto before=tiles::cellPixels(grid.cells[i],grid.tileWidth,grid.tileHeight,catalog);bool changed=false;for(int y=0;y<cell.h;++y)for(int x=0;x<cell.w;++x){const auto at=std::size_t(y)*cell.w+x;if(cell.x+x<0||cell.y+y<0||cell.x+x>=width_||cell.y+y>=height_)pixels[at]=before[at];changed|=pixels[at]!=before[at];}if(!changed)continue;const auto& ref=grid.cells[i];if(ref&&ref->tilesetId==set->id&&index.find(ref->tileId)){auto it=modified.find(ref->tileId);if(it==modified.end()){std::size_t retained=candidate->bytes;floatingAddBytes(retained,std::uint64_t(grid.tileWidth)*grid.tileHeight*sizeof(Pixel)+ref->tileId.size()+128);admit(retained,std::uint64_t(cell.w)*cell.h*sizeof(Pixel)*2);it=modified.emplace(ref->tileId,tiles::readTile(*set,*index.find(ref->tileId))).first;candidate->bytes=retained;}for(int y=0;y<cell.h;++y)for(int x=0;x<cell.w;++x){const auto at=std::size_t(y)*cell.w+x;if(pixels[at]!=before[at]){const auto p=tiles::sourcePoint(x,y,cell.w,cell.h,*ref);it->second[std::size_t(p.second)*cell.w+p.first]=pixels[at];}}}else{std::size_t retained=candidate->bytes;floatingAddBytes(retained,std::uint64_t(pixels.size())*sizeof(Pixel)+128);admit(retained,std::uint64_t(cell.w)*cell.h*sizeof(Pixel)*2);local.emplace(i,std::move(pixels));candidate->bytes=retained;}}
+  admit(candidate->bytes);patch=std::move(candidate);f.hybridPatch=patch;++floatingHybridPatchBuilds_;
 
  }
  static const std::map<std::string,std::vector<Pixel>> emptyModified;static const std::map<std::size_t,std::vector<Pixel>> emptyLocal;const auto& modified=patch?patch->modified:emptyModified;const auto& local=patch?patch->local:emptyLocal;
@@ -2445,15 +2458,9 @@ std::vector<Pixel> Document::floatingOverlayRegion(PixelRegion region)const{
  return result;
 }
 void Document::checkFloatingBudget(const FloatingPaste& f,std::size_t extra)const{
- std::size_t used=adjustmentStorageBudget(timeline_,1);if(f.hybridPatch)floatingAddBytes(used,f.hybridPatch->bytes);
- auto clipboard=[&](const SelectionClipboard& c){const auto count=floatingArea(c.width,c.height);if(c.pixels.size()!=count||c.mask.size()!=count)throw std::invalid_argument("Invalid floating payload");floatingAddBytes(used,std::uint64_t(count)*5);};
- if(f.source.width>0&&f.source.height>0&&!f.source.pixels.empty())clipboard(f.source);
- if(f.beforeSelection)floatingAddBytes(used,f.beforeSelection->mask.size());if(selection_)floatingAddBytes(used,selection_->mask.size());
- for(const auto& target:f.targets){clipboard(target.source);if(target.originalSource)clipboard(*target.originalSource);if(target.baseline){raster::validate(*target.baseline);floatingAddBytes(used,convolutionSurfaceBytes(*target.baseline));}floatingAddBytes(used,std::uint64_t(target.preview.size())*128);if(target.symmetryRotation)floatingAddBytes(used,target.symmetryRotation->bytes());if(target.rotSprite)floatingAddBytes(used,std::uint64_t(target.source.pixels.size())*5+12*1024*1024);}
- if(f.beforeCelTimeline)for(const auto& cel:f.beforeCelTimeline->cels)if(cel.surface){raster::validate(*cel.surface);floatingAddBytes(used,convolutionSurfaceBytes(*cel.surface));}
- if(f.beforeMasks)for(const auto& m:*f.beforeMasks)floatingAddBytes(used,convolutionSurfaceBytes(m.mask.surface));
- floatingAddBytes(used,f.transientBytes);floatingAddBytes(used,extra);
+ auto used=floatingStorageBudget(timeline_,f,selection_);floatingAddBytes(used,extra);
 }
+
 std::optional<SelectionMask> Document::floatingSelectionMask(const FloatingPaste& f,const SelectionTransform& transform)const{
  if(floatingSymmetryRotation(f,transform))return symmetryRotationSelection(f.source,*f.beforeSelection,transform,width_,height_,f.symmetryAxes,f.symmetryCenter);
  if(floatingSymmetryScale(f,transform))return symmetryScaleSelection(f.source,*f.beforeSelection,transform,width_,height_,f.symmetryAxes,f.symmetryCenter);
