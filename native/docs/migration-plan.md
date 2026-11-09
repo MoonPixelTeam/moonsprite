@@ -4605,3 +4605,9 @@ X/Y/Both合成/当前层及左右键实际诊断验证100次preview请求不发�
 对照canvas-input-layer-move begin/move及canvas-pointer-move localPoint，沿用局部端点位移、无效副本点忽略及最后有效预览提交。发现原生无效点分支先于既有kButtonNone取消分支，导致副本外无按钮释放遗留捕获；现统一取消事务，恢复位置/复制层且释放捕获。旧版duplicateOnDrag仅单层且<=1 Cel，多层Alt仍普通移动；首轮诊断误期望复制，核实源码后修正预期，没有改变产品语义。
 
 最终正式Release构建退出0，--layer-move-check显式等待退出0，48组X/Y/Both×单/多层×Alt/普通×跨缝/普通×主/负副本实际鼠标场景通过。含链接帧、显式多层所有Cel目标、主副本完整像素一致、局部跨缝delta、无变化预览不发布revision/history、无效移动保留预览、越界左释放单笔提交、UndoRedo、越界无按钮释放取消。逐目标检查源身份/像素存储地址保留及偏移只加一次；单Cel复制不移动原源。四项CTest alignment/move-click-flash/tile-repeat/tile-repeat-stroke通过0.50s；742来源快照与diff检查通过。无新增旋转移动截图/全软件FPS声明；蒙版/分组/帧选择等完整跨工具矩阵仍需后续核对，整体迁移INCOMPLETE。保留用户数据、缓存及原有未跟踪文件，阶段保存推送dev。
+
+### 2026-11-09：平铺帧选择与绑定蒙版移动验收阶段
+
+核对workspace-layer-move animationMaskOffsetsForLayerMove/setAnimationMaskOffsets和canvas-input-layer-move帧键目标：解析蒙版自身moveWithOwner为准，链接根按ID去重；独立蒙版分别沿用各自开关。新增48组真实鼠标X/Y/Both×当前Cel/两帧显式选择×链接/独立蒙版×第二帧绑定开关×主/负副本，逐帧检查蒙版ID/链接/像素/偏移、Cel像素/偏移，单笔历史、UndoRedo、Escape及无捕获残留。初次误用第二帧开关推断第一帧独立蒙版行为，核对源码后修正预期，产品未更改。
+
+正式Release构建退出0，--layer-move-check显式等待退出0（含前阶段48组共96组）。五项CTest attached-masks/alignment/move-click-flash/tile-repeat/tile-repeat-stroke通过0.24s，742来源快照与diff检查通过。本轮没有生产修复、截图或FPS证据，不称性能提升。发现原生活动蒙版单独移动被画布target筛选排除，虽然底层beginLayerMove具有该能力，但旧版canvas入口使用所属层而非activePaintLayer，尚不能证明应开放；保留为待核对语义，不擅自新增。组蒙版/组选择等仍待进一步验收，全量迁移INCOMPLETE。保留原有用户数据、缓存、未跟踪文件，阶段保存推送dev。
