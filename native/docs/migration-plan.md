@@ -4783,3 +4783,12 @@ X/Y/Both合成/当前层及左右键实际诊断验证100次preview请求不发�
 真实窗口新增9组混合选择scope/filter鼠标回归，验证目标数量、Alt不复制多目标、capture释放、精确实际源位置、Undo/Redo画面和Escape。两次初始断言把新增linked frame误当全部旧帧已链接，或把各图层第二帧假定全部共享first；改为在按下时捕获实际resolved owner，并同时保留目标数量与scope检查。未修改生产帧创建/移动语义，未把测试夹具差异当产品缺陷。
 
 正式Release及free-tile-project-tests构建成功；最终--layer-move-check退出0；四项CTest free-tile-project/attached-masks/alignment/move-click-flash通过21.58s。744来源快照及diff检查通过。本阶段为上一阶段特殊层移动迁移的完整组合验收，没有新增生产逻辑修复或性能提升声明；无人工截图/FPS测量，未重跑全套。Paint自由变换/多目标、活动蒙版单独canvas语义及扩展兼容仍有已登记缺口，全量迁移INCOMPLETE。保留所有用户数据/缓存，阶段保存推送dev。
+
+
+### 2026-11-09：Alt 图层复制逐帧独立性修复阶段
+
+对照 legacy animation.ts cloneAnimationCelsForLayer，原生延迟 Alt 拖动复制现在逐帧解析并深复制 surface/text/tilemap/freeTiles，不继承 Cel 链接、runtime shared 链接和 zIndex；opacity 取直接槽位值并回退图层值，缺失槽位补 1×1 透明内容。关联图层继续通过既有 linkedContentId 同步共享像素。复制前内存预算按每帧解析后的实际尺寸计费，避免链接帧展开后绕过既有 256MiB 限制。蒙版按 cloneAnimationLayerMask 复制直接条目像素并清链接，位移仍仅当前帧且遵守 moveWithOwner。
+
+新增普通层 linked/runtime-shared/blank × linkedContentId 回归，以及既有 grid/free 复制逐帧存储独立、进一步移动单帧不影响其它帧检查，覆盖撤销重做与 native/recovery 重开。初始 opacity 断言忽略导入时已有活动帧投影，改为记录复制前实际槽位值；缺失槽位夹具被 fromImported 的完整矩阵要求拒绝，改用导入补齐后的空白帧，不修改导入规则。未新增文本专用回归或缺失槽位内部状态注入。
+
+正式 Release 与 free-tile-project-tests 构建成功；实际 --layer-move-check 退出0；四项 CTest free-tile-project/attached-masks/alignment/move-click-flash 全部通过21.86s。744文件来源覆盖与证据快照检查通过，整体迁移仍 INCOMPLETE；未重跑全套，无新增 FPS 或人工截图验收。保留用户文件、缓存及未跟踪数据，阶段提交推送 dev。
