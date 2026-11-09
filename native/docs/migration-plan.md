@@ -5040,3 +5040,10 @@ CTest document-transactions/free-tile-project/tilemap-document全部通过33.39s
 沿用smokeLinkedHybridFloating原16×4夹具，增加260×260共享源、外部资源、空单元格、独立源及两级显式链接；画布原点放入可见区域，隔离持久化快捷栏。新增四组move/copy×aligned/sampled，实际down/move/up确认floatingDeferred、canonical像素/资源/历史冻结，Escape取消后重复手势得到相同预览；Enter结果逐像素等于deferred overlay，dirty小于画布，双Undo/Redo恢复引用、资源、缓存与链接拓扑。该行为依据用户批准“预览与提交一致，保留大画布延迟优化”，不声明与旧Hybrid局部预览等价。
 
 正式Release构建成功，完整--tileset-management-check实际退出0；document-transactions/tilemap-document通过0.62s。新增覆盖为大画布平移实际输入，平铺/affine/quad仍沿用核心验收；没有新增FPS量测。整体INCOMPLETE，本阶段保存推送dev。
+
+
+### 2026-11-10：Paint选区捕获候选范围性能迁移
+
+核对legacy workspace-session.ts selectedTransformLayersAreEditable对多个特殊层的拒绝，未擅自开放Paint多目标。复用tilemap-document.ts tilemapCellIndexesForEdit的世界边界减offset、裁剪后转格坐标，expandedPaintCellSelection与beginPaintCellMove改按候选矩形行优先枚举，替代两次全网格扫描。逐像素mask判断、完整格扩展、离散翻转画布外格、空格、偏移与预算准入保持。独立全网格oracle覆盖30组正/负/零offset×矩形/稀疏mask×负/内/边缘/外侧选区，比较准入、扩展选区及取消后的引用与缓存。
+
+正式Release构建成功，完整--tileset-management-check实际退出0；document-transactions/tilemap-project/tilemap-document全部通过1.13s，含已有链接、移动复制、翻转及保存重开回归。744来源/证据及diff检查通过。此处只取消候选全网格扫描，其它资源验证与提交代价保留，未做FPS/耗时量测。整体INCOMPLETE，本阶段保存推送dev。

@@ -556,4 +556,14 @@ static void checkTilemapTransformEntry(){
   d.clearTimelineSelection();d.clearFrameSelection();d.selectFrameHeader(frame);d.previewSelection({});check(d.beginLayerTransform()&&d.selection()->x==5&&d.selection()->y==4&&d.selection()->width==1&&d.selection()->height==1,"Implicit frame transform selects editable raster layers only");
  }
 }
-int main(){try{checkTilemapTransformEntry();checkLinkedHybridDeferred();checkLinkedHybridFloatingRefusal();checkLinkedHybridFloating();checkLinkedEditFloating();checkLinkedCreateFloating();checkLinkedHybridStatic();checkLinkedEditStatic();checkLinkedCreateStatic();checkLinkedPaintMove();}catch(const std::exception& e){std::cerr<<e.what()<<"\n";return 1;}return runExistingTilemapDocumentTests();}
+static void checkPaintSelectionRanges(){
+ for(Point origin:std::vector<Point>{{0,0},{-1,-1},{1,1}})for(bool masked:{false,true})for(Point start:std::vector<Point>{{-3,-2},{0,0},{3,2},{10,7},{20,20}}){
+  Document seed(11,8);seed.beginStroke({3,2},0xff123456);seed.commitStroke();seed.convertLayerToTilemap(3,2,U"Range capture");auto state=seed.timeline().state();for(auto& c:state.cels)if(c.surface){c.surface->offsetX=origin.x;c.surface->offsetY=origin.y;}
+  auto d=Document::fromImported(11,8,state,seed.palette(),"paint-range",U"Range",std::make_shared<const std::vector<std::uint8_t>>());d.setTilemapMode(tiles::Mode::Paint);SelectionMask selected{start.x,start.y,5,4,{}};if(masked){selected.mask.resize(20);for(int i=0;i<20;++i)selected.mask[i]=(i%3)==0;}d.previewSelection(selected);
+  const auto before=d.canvasPixels();const auto refs=d.cel().tilemap->cells;const auto& g=*d.cel().tilemap;std::vector<unsigned char> expected(88);bool any=false;
+  // Independent full-grid oracle preserves the old capture semantics.
+  for(std::size_t i=0;i<g.cells.size();++i){const int x=origin.x+int(i%g.columns)*g.tileWidth,y=origin.y+int(i/g.columns)*g.tileHeight;bool hit=false;for(int py=std::max(0,y);py<std::min(8,y+g.tileHeight);++py)for(int px=std::max(0,x);px<std::min(11,x+g.tileWidth);++px)hit|=selectionContains(std::optional<SelectionMask>{selected},px,py);if(hit){any=true;for(int py=std::max(0,y);py<std::min(8,y+g.tileHeight);++py)for(int px=std::max(0,x);px<std::min(11,x+g.tileWidth);++px)expected[py*11+px]=1;}}
+  check(d.beginPaintCellMove(true)==any,"bounded Paint capture agrees with full-grid oracle admission");if(!any)continue;for(int y=0;y<8;++y)for(int x=0;x<11;++x)check(selectionContains(d.selection(),x,y)==bool(expected[y*11+x]),"bounded Paint expanded mask agrees with full-grid oracle");d.updatePaintCellMove(3,0);d.finishPaintCellMove(true);check(d.canvasPixels()==before&&d.cel().tilemap->cells==refs,"bounded capture cancel retains offset cells and cache");
+ }
+}
+int main(){try{checkPaintSelectionRanges();checkTilemapTransformEntry();checkLinkedHybridDeferred();checkLinkedHybridFloatingRefusal();checkLinkedHybridFloating();checkLinkedEditFloating();checkLinkedCreateFloating();checkLinkedHybridStatic();checkLinkedEditStatic();checkLinkedCreateStatic();checkLinkedPaintMove();}catch(const std::exception& e){std::cerr<<e.what()<<"\n";return 1;}return runExistingTilemapDocumentTests();}
