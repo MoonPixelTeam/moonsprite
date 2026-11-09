@@ -5595,3 +5595,10 @@ Release session/resources两个相关目标成功，session/event-lifecycle/runt
 对照types-extension-runtime完整13类联合及ExtensionRuntimeHost send包装，新增eventJson/eventEnvelope。仅输出当前事件字段，补kind/windowId/format/homeOpen，project空值与设置/window任意JSON，files无符号字节数组，editor详情四种标量/时间和可选projectId；缺省format省略。JSON不执行代码，畸形payload/未知事件/缺必需projectId/未知interaction明确失败，非有限详情数字按JS JSON转null。保持原生core与WinRT序列化适配分开。
 
 Release六个相关目标成功，contributions/resources/session/request/event-lifecycle/runtime六项通过0.33s，新增覆盖13类型、字段数量/可选省略、嵌套值、孤立代理字符、255字节及详情标量/异常。来源776文件与diff检查后保存推送dev。事件出口尚未挂接真正JS/Lua引擎或正式Editor，不能称为可运行扩展/GUI验收；无正式exe/全套验收，整体INCOMPLETE，用户差异/数据/缓存及失败现场保留。
+
+
+### 2026-11-10：工程快照与保存事件会话链路阶段
+
+对照ExtensionRuntimeHost工程effect，新增ProjectEventSubscription并接入SessionHost generation生命周期；projectEvent复用查询projectSnapshot，避免两套字段漂移。按id/name/contentRevision/dirty/homeOpen依赖触发，首次通知、无变化去重；先project再document-saved，前者workspace.read后者events权限。保留旧版跨活动工程dirty→clean也向新工程发saved的实际行为，关闭工程只发null，不自行重设计保存判定。基线先更新再同步回调以支持重入，stop释放。
+
+Release session/resources两个相关目标成功，session专项通过0.11s。覆盖加载前丢弃但更新基线、相同值抑制、查询一致摘要、权限独立、尺寸变化仅在revision改变后发布、重命名/首页、dirty跨工程、关闭null、旧token与替换新基线。来源777文件及diff检查后保存推送dev。正式Editor工作区观察器和真实脚本引擎仍待接入，无正式exe/GUI/全套验收，整体INCOMPLETE，保留用户差异/数据/缓存和失败现场。
