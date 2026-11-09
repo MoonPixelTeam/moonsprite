@@ -29691,7 +29691,7 @@
         "legacy/src/shared/types-extension-runtime.ts"
       ],
       "scope": "EX-004 runtime registration, event/command dispatch and method permissions",
-      "adaptation": "Legacy Map identity cleanup, insertion-order live broadcast including callback registration/removal, propagated exceptions, command priority lua/runtime/settings and exact 34-method permission table. Typed native event envelope; arbitrary payload remains opaque pending actual host JSON wiring. Files dropped adapter composes FileDropRouter with registry. Event-thread calls only; no JS engine or UI host.",
+      "adaptation": "Legacy Map identity cleanup, insertion-order live broadcast including callback registration/removal, propagated exceptions, command priority lua/runtime/settings and exact 34-method permission table. Typed native event envelope; arbitrary payload remains opaque pending actual host JSON wiring. Files dropped adapter composes FileDropRouter with registry. Event-thread calls only; no JS engine or UI host. SettingsValues integration:key on settings event,load normalization,hidden value preservation,unknown keys retained on disk,reset,button close and stopped runtime error.",
       "lifecycleFields20261110": "Typed locale, extensionId and apiVersion fields for legacy onLoad locale-changed/activate events; existing opaque payload and registry behavior unchanged."
     },
     {
@@ -29834,7 +29834,7 @@
         "legacy/src/renderer/src/core/extension-file-drop.ts"
       ],
       "scope": "Integrated session open/load/requests/storage/drop/replacement/deactivate",
-      "adaptation": "Actual disk-backed storage, two namespaces, queued command/activation order, stored data across session replacement, stale callbacks and pending reads, locale/request agreement, close during file read, load failure and host destruction. Core-only, no real engine or desktop window. Command migration regression: three handlers/defaults/nulls, UTF8 text limits, invalid declarations, duplicate IDs,64/65 cap,Unicode Lua path; five settings controls/defaults/Unicode scalar counts,23 invalid settings cases,64/65 controls/options,HTML metadata; parsed commands composed with session request dispatch."
+      "adaptation": "Actual disk-backed storage, two namespaces, queued command/activation order, stored data across session replacement, stale callbacks and pending reads, locale/request agreement, close during file read, load failure and host destruction. Core-only, no real engine or desktop window. Command migration regression: three handlers/defaults/nulls, UTF8 text limits, invalid declarations, duplicate IDs,64/65 cap,Unicode Lua path; five settings controls/defaults/Unicode scalar counts,23 invalid settings cases,64/65 controls/options,HTML metadata; parsed commands composed with session request dispatch. SettingsValues integration:key on settings event,load normalization,hidden value preservation,unknown keys retained on disk,reset,button close and stopped runtime error."
     },
     {
       "file": "src/extension_resources.h",
@@ -29893,6 +29893,16 @@
       ],
       "scope": "EX-004 msext inspection",
       "adaptation": "Migrate inspect_archive with existing native Archive:package/path/count/size/Unix symlink/manifest/declared entry/resource checks. ZIP64,other compression,CP437 names and directory size accounting parity pending. No install/UI. installPackage migrates extract_archive/install_extension_at staging,revalidate,backup/swap,state publication and rollback. Immutable inspected Archive snapshot replaces reopen race. CREATE_NEW/FlushFileBuffers,CRC and size validation; cleanup paths checked as immediate children of installation root. Tests:first install,disabled update,old tree replacement,locked state rollback,extraction path conflict and transaction cleanup. No actual product install UI/engine. Cleanup/restore errors remain best effort as legacy; format gaps above remain. Builtin migration:ensure_builtin_extension_at seed marker,CRC/size sorted revision,same revision skip,same-version changed-content install,disabled preservation,uninstalled seeded absent skip,identity check. Reuse same immutable inspection for revision/install; native bundle path adapter only,no actual embedded companion/startup integration. Tests verify initial/same/local-edit/updated/disabled/uninstalled/mismatch."
+    },
+    {
+      "file": "src/extension_settings_values.h",
+      "classification": "legacy-partial",
+      "sources": [
+        "legacy/src/renderer/src/components/dialogs/ExtensionSettingsDialog.tsx",
+        "legacy/src/renderer/src/components/dialogs/ExtensionSettingsDialog.test.tsx"
+      ],
+      "scope": "HostExtensionSettings values and interactions",
+      "adaptation": "Migrate defaults/stored normalization,number clamp,UTF16 slice,text/select fallback,object spread preservation,update/reset/persist-before-state/event,visibleWhen,button command/close semantics. Reuse Storage and RuntimeRegistry;settings event key plus JSON payload adapter,no native UI. Full JS number JSON.stringify formatting equivalence not established."
     },
     {
       "file": "src/extension_state.h",

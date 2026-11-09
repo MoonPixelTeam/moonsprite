@@ -5480,3 +5480,10 @@ Release专项构建与10项extension验证通过，来源/diff检查后保存推
 迁移legacy ensure_builtin_extension_at：首次安装后登记seededBuiltin与按文件名排序的CRC/解压大小修订；相同修订保留本地文件，内容变化即使版本号相同也走安装更新并保持enabled；已初始化但目录缺失视为用户卸载，不重装也不读取包。检查包ID与预期身份，复用同一不可变inspection进行修订计算和安装，避免源包变化造成修订记录与安装内容不符。提取installInspectedPackage以复用现有事务，RuntimeDirectory提供完整typed状态读取保存。
 
 测试覆盖首次初始化、相同修订不覆盖本地修改、同版本内容更新与停用保留、卸载后缺包也不重装、错误ID不安装。该阶段为路径包适配，实际pet-companion包嵌入和正式启动调用未接入；内置HTML能力迁移原生仍待完成，不能称内置宠物已可运行。安装成功后seed状态保存失败的旧版重试语义保留，未新增自动循环。Release及11项相关测试、来源/diff检查后保存推送dev；整体INCOMPLETE，无正式exe/GUI/全套验收，保留用户数据/缓存/editor_support.h既有状态。
+
+
+### 2026-11-10：宿主设置值与事件交互阶段
+
+对照ExtensionSettingsDialog.tsx::HostExtensionSettings及其显示条件测试迁移SettingsValues：加载checkbox类型/number钳制/text UTF16 slice/select精确选项归一化，update合并存储与当前值、commit保留未知键且成功保存后更新状态/发settings-changed、reset默认值保留磁盘未知键、显示条件保留隐藏值、runtime按钮与closeOnRun。复用javascriptJsonUtf8保留孤立代理转义，事件增加key并用payload适配JSON value；原生控件渲染仍未接线，完整JS数字序列化格式等价尚未验证。
+
+四相关Release目标构建成功，extension-session-host含设置组合通过0.08s，其余八项通过；整组10项有1项失败：extension-runtime-directory安装用例在staging-16252-27578453-6→test重命名ERROR_ACCESS_DENIED，现场保留，未定位持有者、未重试掩盖。该结果不能标绿整组，也不能宣称安装已稳定。设置阶段最小相关测试通过，来源/diff检查后保存推送dev，后续优先检查该安装失败。无正式exe/UI/全套验收，整体INCOMPLETE；保留用户数据/缓存/editor_support.h原状态。
