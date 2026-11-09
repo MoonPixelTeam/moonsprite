@@ -4599,3 +4599,9 @@ X/Y/Both合成/当前层及左右键实际诊断验证100次preview请求不发�
 新增96组配置的全视口逐像素透明渲染比较：X/Y/Both、0/37/90/180度、四镜像组合、.75/1.25缩放，并继续384组真实悬停/捕获/Escape。发现镜像像素角点与37度九宫格外角取样差异，简单反变换及同矩阵逆变换均不能完全复现Skia lattice边界。最终保留原Skin::drawSelectionBorder渲染，旋转命中缓存实际paintTextBox透明alpha，以Skin::selectionContains校验/定位最近素材像素，再用既有handle优先级。透明像素不命中；主框/副本共用同一helper。非旋转直接素材命中。缓存随视图/框/视口/素材变化更新，固定字段比较避免每次鼠标格式化字符串，保留位图身份。核对本项目MIT Aseprite UI graphics.cpp和LAF Skia默认最近邻绘制路径；未复制其他许可模块。
 
 正式Release最终构建退出0；最终--tile-repeat-check显式等待退出0，全视口alpha比较、384交互及既有24真实文字创建弹窗全部通过。中间版本错误有明确像素证据且已修复，最终重复回归通过。三项CTest text-document/tile-repeat/tile-repeat-stroke通过0.21s，742文件来源快照与diff检查通过。验收范围是所列配置与当前皮肤；无整体FPS、任意角度穷举或长时手工验收。整体迁移仍INCOMPLETE，保留用户数据/未跟踪文件/缓存，阶段保存推送dev。
+
+### 2026-11-09：平铺普通/多图层移动完整交互阶段
+
+对照canvas-input-layer-move begin/move及canvas-pointer-move localPoint，沿用局部端点位移、无效副本点忽略及最后有效预览提交。发现原生无效点分支先于既有kButtonNone取消分支，导致副本外无按钮释放遗留捕获；现统一取消事务，恢复位置/复制层且释放捕获。旧版duplicateOnDrag仅单层且<=1 Cel，多层Alt仍普通移动；首轮诊断误期望复制，核实源码后修正预期，没有改变产品语义。
+
+最终正式Release构建退出0，--layer-move-check显式等待退出0，48组X/Y/Both×单/多层×Alt/普通×跨缝/普通×主/负副本实际鼠标场景通过。含链接帧、显式多层所有Cel目标、主副本完整像素一致、局部跨缝delta、无变化预览不发布revision/history、无效移动保留预览、越界左释放单笔提交、UndoRedo、越界无按钮释放取消。逐目标检查源身份/像素存储地址保留及偏移只加一次；单Cel复制不移动原源。四项CTest alignment/move-click-flash/tile-repeat/tile-repeat-stroke通过0.50s；742来源快照与diff检查通过。无新增旋转移动截图/全软件FPS声明；蒙版/分组/帧选择等完整跨工具矩阵仍需后续核对，整体迁移INCOMPLETE。保留用户数据、缓存及原有未跟踪文件，阶段保存推送dev。

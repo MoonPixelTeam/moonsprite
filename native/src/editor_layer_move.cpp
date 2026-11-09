@@ -23,7 +23,7 @@ bool Editor::processMoveInput(ui::Message* msg){
  const auto* mouse=dynamic_cast<ui::MouseMessage*>(msg);if(!mouse||pending_!=Pending::None||homeOpen_||!documentOpen_)return false;
  auto local=canvasPoint(mouse->position());bool validPoint=true;
  if(tileRepeatIdentity_==document.identity()&&tileRepeat_!=repeat::Mode::Off){const auto mapped=repeat::map({double(local.x),double(local.y)},document.width(),document.height(),tileRepeat_);validPoint=bool(mapped);if(mapped)local={int(mapped->local.x),int(mapped->local.y)};}
- if(!validPoint){if(moveDragging_){if(msg->type()==ui::kMouseUpMessage&&mouse->left())finishMoveGesture(false);return true;}if(moveTool_||textTool_)return false;}
+ if(!validPoint){if(moveDragging_){if(msg->type()==ui::kMouseUpMessage){if(mouse->button()==ui::kButtonNone)finishMoveGesture(true);else if(mouse->left())finishMoveGesture(false);}return true;}if(moveTool_||textTool_)return false;}
 
  if(moveDragging_){if(msg->type()==ui::kMouseUpMessage&&mouse->button()==ui::kButtonNone){finishMoveGesture(true);return true;}if(msg->type()==ui::kMouseMoveMessage||(msg->type()==ui::kMouseUpMessage&&mouse->left())){movePointer_=mouse->position();const auto p=local;const auto delta=constrainedSelectionDelta({p.x-moveStart_.x,p.y-moveStart_.y},moveModifierHeld("constrainAxis",*mouse));const auto aligned=resolveAlignment(moveMovingBounds_,moveAlignmentTargets_,{double(delta.x),double(delta.y)},document.width(),document.height(),document.customGrid(),gridMoveEnabled_&&document.showCustomGrid(),smartMoveEnabled_,alignmentThresholdForZoom(moveAlignmentThreshold_,zoom_),selectionAxis_==1?'x':selectionAxis_==2?'y':0);const Point distance{int(aligned.offset.x),int(aligned.offset.y)};alignmentGuides_=aligned.guides;try{if(document.previewLayerMove(distance.x,distance.y)){moveMoved_|=distance.x!=0||distance.y!=0;if(movePivotStart_)selectionPivot_=TransformPoint{movePivotStart_->x+distance.x,movePivotStart_->y+distance.y};renderer_.noteChange(document);if(previewPanel_)previewPanel_->noteContentChange();invalidateRect(canvasViewport());if(previewPanel_)previewPanel_->invalidate();}}catch(const std::exception& e){finishMoveGesture(true);status_=unicodeText(e.what());}if(msg->type()==ui::kMouseUpMessage&&moveDragging_)finishMoveGesture(false);return true;}return true;}
  // legacy temporaryMoveToolAllowed: selection/shape own Ctrl interactions.
@@ -65,6 +65,38 @@ void Editor::smokeLayerMove(){
  document=Document(16,16);document.beginStroke({1,1},0xff336699);document.commitStroke();const auto bottom=document.layer().id,bottomCel=document.cel().id;document.addLayer();document.beginStroke({5,5},0xff774422);document.commitStroke();const auto top=document.layer().id;document.selectLayer(bottom);document.clearTimelineSelection();document.selectTimelineLayer(bottom);refresh();send(ui::kMouseDownMessage,1,1,ui::kKeyShiftModifier);check(document.selectedLayerIdsWithGroups()==std::vector<std::string>{bottom}&&!moveDragging_&&moveFlashBounds_,"Move Shift retains last selected layer and feedback");send(ui::kMouseDownMessage,5,5,ui::kKeyShiftModifier);check(document.selectedLayerIdsWithGroups().size()==2&&moveFeedbackCel_==document.timeline().findCel(top,document.frame().id)->id,"Move Shift adds layer with hit feedback");send(ui::kMouseDownMessage,5,5,ui::kKeyShiftModifier);check(document.selectedLayerIdsWithGroups()==std::vector<std::string>{bottom}&&!moveFlashBounds_,"Move Shift removes layer and hides feedback");
  document.selectLayer(bottom);document.clearTimelineSelection();moveAutoSelect_=false;moveTool_=false;refresh();const auto bindings=shortcutBindings_;shortcutBindings_["tool.move.quick"]={"Ctrl"};send(ui::kMouseDownMessage,5,5,ui::kKeyCtrlModifier);check(moveDragging_&&document.layerMoveTargets()==std::vector<std::string>{bottomCel}&&document.layer().id==bottom,"Quick move obeys auto-select disabled");finishMoveGesture(true);shortcutBindings_=bindings;moveTool_=true;runtimePreferences_.set("tools.moveLayerContentPreviewEnabled","true");showMoveFeedback(bottom);send(ui::kMouseDownMessage,1,1);send(ui::kMouseUpMessage,1,1);check(moveContentPreview_&&movePreviewExpires_>GetTickCount64()&&movePreviewExpires_<=GetTickCount64()+220,"Move edges survive release for legacy 220ms");
  moveFlashTimer_.stop();moveFlashBounds_.reset();moveFlashSurface_.reset();
+ // Exercise the shared raster/multi-layer route independently of the text route.
+ for(const auto mode:{repeat::Mode::X,repeat::Mode::Y,repeat::Mode::Both})for(bool multi:{false,true})for(bool duplicate:{false,true})for(bool seam:{false,true}){
+  std::vector<Pixel> expected;
+  for(bool copy:{false,true}){
+   document=Document(32,24);document.beginStroke({8,8},0xff336699);document.commitStroke();const auto bottom=document.layer().id;
+   document.addLayer();document.beginStroke({12,10},0xff884422);document.commitStroke();const auto top=document.layer().id;
+   document.addLinkedFrame(true);document.selectLayer(bottom);document.clearTimelineSelection();document.clearFrameSelection();frameSelectionExplicit_=false;
+   if(multi){document.selectTimelineLayer(bottom);document.selectTimelineLayer(top,1);}
+   moveAutoSelect_=false;useMoveTool();viewRotation_={};setTileRepeat(mode);zoom_=1;{const auto v=canvasViewport();canvas_={v.x+(v.w-64)/2,v.y+(v.h-48)/2,64,48};}refresh();
+   const auto baseline=document.canvasPixels();const auto h=document.historyPosition(),layers=document.timeline().state().layers.size();
+   const int ox=copy&&repeat::includesX(mode)?-32:0,oy=copy&&repeat::includesY(mode)?-24:0;
+   const TransformPoint start{ox+(seam&&repeat::includesX(mode)?30.25:8.25),oy+(seam&&repeat::includesY(mode)?22.25:8.25)};
+   const TransformPoint end{start.x+(seam&&repeat::includesX(mode)?4:3),start.y+(seam&&repeat::includesY(mode)?4:2)};
+   const int dx=seam&&repeat::includesX(mode)?-28:3,dy=seam&&repeat::includesY(mode)?-20:2;
+   auto pointer=[&](ui::MessageType type,TransformPoint at,ui::MouseButton button=ui::kButtonLeft){ui::MouseMessage event(type,os::PointerType::Mouse,button,duplicate?ui::kKeyAltModifier:ui::kKeyNoneModifier,canvasDocumentToDisplay(at));event.setDisplay(display());onProcessMessage(&event);};
+   pointer(ui::kMouseDownMessage,start);check(moveDragging_&&document.layerMoveActive(),"Repeated raster move begins");
+   const auto targets=document.layerMoveTargets();check(targets.size()==(multi?4:1),"Repeated explicit layer scope");
+   struct Owner{std::string cel,owner;const Pixel* pixels;int x,y;};std::vector<Owner> owners;
+   for(const auto& id:targets){const auto r=document.timeline().resolveSurface(id);owners.push_back({id,r.source->id,r.surface->pixels.data(),r.surface->offsetX,r.surface->offsetY});}
+   pointer(ui::kMouseMoveMessage,end);const auto preview=document.canvasPixels();const auto revision=document.revision();pointer(ui::kMouseMoveMessage,end);check(document.revision()==revision&&document.historyPosition()==h,"Repeated unchanged move skips publication/history");
+   const TransformPoint outside{repeat::includesX(mode)?96.:end.x,repeat::includesY(mode)?72.:end.y};pointer(ui::kMouseMoveMessage,outside);check(document.canvasPixels()==preview,"Repeated outside move preserves preview");pointer(ui::kMouseUpMessage,outside);
+   check(!moveDragging_&&!hasCapture()&&document.historyPosition()==h+1&&document.timeline().state().layers.size()==layers+(duplicate&&!multi?1:0),("Repeated raster commit mode="+std::to_string(int(mode))+" multi="+std::to_string(multi)+" duplicate="+std::to_string(duplicate)+" seam="+std::to_string(seam)+" copy="+std::to_string(copy)+" history="+std::to_string(document.historyPosition())+" before="+std::to_string(h)+" layers="+std::to_string(document.timeline().state().layers.size())+" beforeLayers="+std::to_string(layers)+" dragging="+std::to_string(moveDragging_)).c_str());
+   const auto after=document.canvasPixels();if(!copy)expected=after;else check(after==expected,"Repeated raster main/copy pixels differ");
+   for(const auto& owner:owners){const auto r=document.timeline().resolveSurface(owner.cel);const bool copied=duplicate&&!multi;check(r.source->id==owner.owner&&r.surface->pixels.data()==owner.pixels&&r.surface->offsetX==owner.x+(copied?0:dx)&&r.surface->offsetY==owner.y+(copied?0:dy),"Repeated move preserves owner/storage and translates every target exactly once");}
+   const auto resolved=document.timeline().resolveSurface(document.cel().id);check(resolved.surface&&resolved.surface->offsetX==dx&&resolved.surface->offsetY==dy,"Repeated local endpoint delta");
+   document.undo();check(document.canvasPixels()==baseline&&document.timeline().state().layers.size()==layers,"Repeated raster move undo");document.redo();check(document.canvasPixels()==after,"Repeated raster move redo");document.undo();
+   document.selectLayer(bottom);document.clearTimelineSelection();if(multi){document.selectTimelineLayer(bottom);document.selectTimelineLayer(top,1);}refresh();
+   pointer(ui::kMouseDownMessage,start);pointer(ui::kMouseMoveMessage,end);pointer(ui::kMouseUpMessage,outside,ui::kButtonNone);
+   check(!moveDragging_&&!hasCapture()&&!document.layerMoveActive()&&document.canvasPixels()==baseline&&document.timeline().state().layers.size()==layers&&document.historyPosition()==h,"Repeated lost-button release outside cancels");
+  }
+ }
+ tileRepeat_=repeat::Mode::Off;moveFlashTimer_.stop();moveFlashBounds_.reset();moveFlashSurface_.reset();
 }
 }
 namespace moon::editor {
