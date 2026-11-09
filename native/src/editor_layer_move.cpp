@@ -147,7 +147,13 @@ namespace moon::editor {
 bool Editor::moveModifierHeld(const std::string& id,const ui::Message& event)const{
  if(tabletAssist_.modifier(document.identity(),0)&&(id=="constrainAxis"||id=="proportionalSelectionTransform"||id=="snapSelectionRotation"))return true;
  if(shortcutInputBlocked())return false;const auto held=shortcutHeldParts(event);
- if(id=="tool.move.quick")return shortcuts::quickToolMatch(shortcutBindings_,held,[this](const std::string& value){return shortcutSupported(value);})==id;
+ if(id=="tool.move.quick"){
+  // useCanvasToolSession brushLineConnectionHasPriority: Shift connects the last stamp.
+  if(ordinaryBrushTool()&&brushLineAnchor())for(const auto& binding:shortcuts::forId(shortcutBindings_,"lineConnectionMode"))if(shortcuts::blockedBy(shortcutBindings_,"lineConnectionMode",binding).empty()&&shortcuts::heldPartsMatch(binding,held))return false;
+  // useCanvasToolSession: brush sizing takes precedence over quick tools.
+  if(modifierBrushSupported())for(const auto& binding:shortcuts::forId(shortcutBindings_,"brushSizeAdjust"))if(shortcuts::blockedBy(shortcutBindings_,"brushSizeAdjust",binding).empty()&&shortcuts::heldPartsMatch(binding,held))return false;
+  return shortcuts::quickToolMatch(shortcutBindings_,held,[this](const std::string& value){return shortcutSupported(value);})==id;
+ }
  for(const auto& binding:shortcuts::forId(shortcutBindings_,id))if(shortcuts::blockedBy(shortcutBindings_,id,binding).empty()&&shortcuts::heldPartsMatch(binding,held))return true;return false;
 }
 }

@@ -4266,11 +4266,18 @@ void Editor::smokeModifiers(){
 
     key(ui::kKeyDownMessage,ui::kKeyB);brushFeedback_.brushProfiles_[0].size=4;const auto origin=point(8,8);const auto before=document.pixels();const auto history=document.historySize();const double zoom=zoom_;
 
+    // Legacy quick-tool arbitration also applies after user rebinding.
+    {const auto bindings=shortcutBindings_;for(const auto modifier:{ui::kKeyAltModifier,ui::kKeyShiftModifier}){
+      shortcutBindings_["tool.move.quick"]={"Ctrl"};shortcutBindings_["brushSizeAdjust"]={modifier==ui::kKeyAltModifier?"Ctrl+Alt":"Ctrl+Shift"};
+      ui::MouseMessage press(ui::kMouseDownMessage,os::PointerType::Mouse,ui::kButtonLeft,ui::KeyModifiers(ui::kKeyCtrlModifier|modifier),origin);
+      check(moveModifierHeld("brushSizeAdjust",press)&&!moveModifierHeld("tool.move.quick",press),"Sizing binding must outrank quick move");
+    }shortcutBindings_=bindings;}
+
     pointer(ui::kMouseMoveMessage,origin,ca);pointer(ui::kMouseMoveMessage,origin+gfx::Point(16*uiScale,0),ca);check(brushFeedback_.brushProfiles_[0].size==8 && !document.active() && !eyedropperGesture_.active(),"CtrlAlt hover resize must not paint or sample");
 
     key(ui::kKeyUpMessage,ui::kKeyAlt,ui::kKeyCtrlModifier);check(!brushFeedback_.modifierBrushSize_ && !eyedropperHeld_,"CtrlAlt release clears sizing and sampling");
 
-    pointer(ui::kMouseDownMessage,origin,ca);pointer(ui::kMouseMoveMessage,origin+gfx::Point(-8*uiScale,0));pointer(ui::kMouseUpMessage,origin+gfx::Point(-8*uiScale,0));check(brushFeedback_.brushProfiles_[0].size==6 && !brushFeedback_.modifierBrushSize_,"Captured brush resize survives modifier release");
+    pointer(ui::kMouseDownMessage,origin,ca);check(brushFeedback_.modifierBrushSize_&&brushFeedback_.modifierBrushSize_->pressed,"Captured sizing down did not start");pointer(ui::kMouseMoveMessage,origin+gfx::Point(-8*uiScale,0));pointer(ui::kMouseUpMessage,origin+gfx::Point(-8*uiScale,0));check(brushFeedback_.brushProfiles_[0].size==6 && !brushFeedback_.modifierBrushSize_,("Captured brush resize survives modifier release: size="+std::to_string(brushFeedback_.brushProfiles_[0].size)+" active="+std::to_string(bool(brushFeedback_.modifierBrushSize_))+" capture="+std::to_string(hasCapture())).c_str());
 
     ui::MouseMessage wheel(ui::kMouseWheelMessage,os::PointerType::Mouse,ui::kButtonNone,ui::kKeyCtrlModifier,origin,gfx::Point(0,-1));onProcessMessage(&wheel);check(brushFeedback_.brushProfiles_[0].size==7 && zoom_==zoom,"Ctrl wheel must resize without zoom");
 
@@ -4278,7 +4285,7 @@ void Editor::smokeModifiers(){
 
     key(ui::kKeyDownMessage,ui::kKeyE,ui::kKeyAltModifier);check(!eraser_,"Modified tool key must not switch tool");
 
-    pointer(ui::kMouseMoveMessage,origin,ca);ui::Message blur(ui::kFocusLeaveMessage);onProcessMessage(&blur);check(!brushFeedback_.modifierBrushSize_ && !spaceHeld_ && !eyedropperHeld_,"Blur must release modifiers");requestFocus();
+    pointer(ui::kMouseMoveMessage,origin,ca);ui::FocusMessage blur(ui::kFocusLeaveMessage,this,nullptr);onProcessMessage(&blur);check(!brushFeedback_.modifierBrushSize_ && !spaceHeld_ && !eyedropperHeld_,"Blur must release modifiers");requestFocus();
 
     key(ui::kKeyDownMessage,ui::kKey3,ui::kKeyCtrlModifier);check(brushFeedback_.brushProfiles_[0].shape==BrushShape::Line,"Ctrl3 must set pencil brush shape");key(ui::kKeyDownMessage,ui::kKeyClosebrace);check(brushFeedback_.brushProfiles_[0].size==8,"Pencil bracket size shortcut");
 
@@ -4296,7 +4303,7 @@ void Editor::smokeModifiers(){
 
     document=Document(32,24);useGradientTool();gradientSpec_={};gradientSpec_.radial=false;gradientConfirm_=true;pointer(ui::kMouseDownMessage,point(2,2));pointer(ui::kMouseMoveMessage,point(9,5));key(ui::kKeyDownMessage,ui::kKeyLShift,ui::kKeyShiftModifier);const auto constrained=constrainGradientEndpoint({2,2},{9,5});check(std::abs(gradientSpec_.end.x-constrained.x)<1e-8 && std::abs(gradientSpec_.end.y-constrained.y)<1e-8,"Gradient Shift updates without mouse movement");key(ui::kKeyUpMessage,ui::kKeyLShift);check(gradientSpec_.end.y==5,"Gradient release restores unconstrained endpoint");key(ui::kKeyDownMessage,ui::kKeyEsc);check(!gradientDragging_ && !document.dirty(),"Gradient modifier preview Escape cancels");
 
-    document=Document(8,8);useSelectionTool(0);document.commitSelection({},SelectionMask{1,1,2,2,{}});refresh();key(ui::kKeyDownMessage,ui::kKeyI,cs);check(pending_==Pending::None && document.selection() && !selectionContains(document.selection(),1,1) && selectionContains(document.selection(),0,0),"CtrlShiftI must invert selection instead of importing");
+    cancelStroke();disableFlags(ui::HAS_CAPTURE);deferredShortcuts_.clear();shortcutDeferredTimer_.stop();document=Document(8,8);useSelectionTool(0);document.commitSelection({},SelectionMask{1,1,2,2,{}});refresh();key(ui::kKeyDownMessage,ui::kKeyI,cs);check(pending_==Pending::None && document.selection() && !selectionContains(document.selection(),1,1) && selectionContains(document.selection(),0,0),("CtrlShiftI must invert selection instead of importing: busy="+std::to_string(historyGestureBusy())+" deferred="+std::to_string(deferredShortcuts_.size())+" capture="+std::to_string(hasCapture())+" gradient="+std::to_string(gradientDragging_)).c_str());
 
     document=Document();brushFeedback_.brushProfiles_[0]={};gradientConfirm_=false;selectionTool_=false;refresh();
 
