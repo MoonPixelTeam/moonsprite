@@ -1076,7 +1076,9 @@
     "legacy/src-tauri/src/platform_extensions.rs": "6ab9600a25a712080504a4420f7280e7192e7b292c508a9aa9fa31352bb49dbd",
     "legacy/src/renderer/src/core/extension-editor-events.ts": "5b0a48bbfb8d07fd60543a503f56fff8426bb72450f8ac36c147fa585956639f",
     "legacy/src/renderer/src/store/workspace-extension-events.ts": "815096a2b6a5f3bd92812a5ec71858adea50a028a9b2059672591bb26d469c37",
-    "legacy/src/renderer/src/store/workspace-extension-events.test.ts": "9bc77e1a250e4130cf4e6f7960beff7853098dd8b81f7972bd869cbf6ef709b0"
+    "legacy/src/renderer/src/store/workspace-extension-events.test.ts": "9bc77e1a250e4130cf4e6f7960beff7853098dd8b81f7972bd869cbf6ef709b0",
+    "legacy/src-tauri/src/platform_scripts.rs": "2d0b72d3d73a88e8902fd2578b0bf3c927b4d1355e7e5bc5ed107b9797e5c5ad",
+    "legacy/src-tauri/resources/scripts/moon-phase.lua": "b0692d308f91d094b3df94f47ac018a91096421e654e42063f5ef7b8699f21c6"
   },
   "files": [
     {
@@ -5433,7 +5435,8 @@
       "extensionEvents20261110": "Register extension-event-lifecycle-tests from legacy ExtensionRuntimeHost.tsx send/sendAuthorized/onLoad; product integration pending.",
       "extensionSession20261110": "Add extension-session-host CTest composing actual native runtime/request/event/storage/drop components; product integration remains pending.",
       "resourceRead20261110": "Add extension-resources executable/CTest, disk-backed and session request integration from platform_extensions.rs and ExtensionRuntimeHost.tsx.",
-      "runtimeDirectory20261110": "Add independent extension-contributions executable/CTest; add extension-runtime-directory executable and CTest for real directory candidate inspection; link moon-project-reader for existing atomic state writer; no product target integration."
+      "runtimeDirectory20261110": "Add independent extension-contributions executable/CTest; add extension-runtime-directory executable and CTest for real directory candidate inspection; link moon-project-reader for existing atomic state writer; no product target integration.",
+      "luaDirectory20261110": "Add independent Release lua-script-directory target using existing project reader atomic IO and windowsapp; no new engine/runtime dependency."
     },
     {
       "file": "scripts/bootstrap.ps1",
@@ -30084,6 +30087,26 @@
       ],
       "scope": "Runtime pointer keyboard and clock callback semantics",
       "adaptation": "Port events effect lastPointer=0/Date.now difference500ms, keyboard unthrottled, clock timestamp and30000ms period. Event-thread callback source only, no actual native listener/timer registration. Long double subtraction avoids signed overflow while preserving wall-clock backwards behavior. Per-session source only with events permission, generation-bound calls, weak delivery and retained shared source during callbacks."
+    },
+    {
+      "file": "src/lua_script_directory.h",
+      "classification": "legacy-partial",
+      "sources": [
+        "legacy/src-tauri/src/platform_scripts.rs",
+        "legacy/src-tauri/resources/scripts/moon-phase.lua"
+      ],
+      "scope": "Lua local and extension script listing source loading deletion and example seeding",
+      "adaptation": "Port platform_scripts list_lua_scripts_in/script_entry/extension_script_entry/sort_script_entries/resolve_lua_script_path/load_lua_script_file/load_lua_script/delete_lua_script/seed_builtin_scripts. Reuse RuntimeDirectory enabled resolver; regular nonsymlink top-level local files, opaque extension IDs and metadata, merged sorting, bounded1MiB strict UTF8 source, extension deletion rejected, atomic example/marker preserves user copy and deletion. Windows invariant lowercase approximation of Rust Unicode lowercase; full Unicode parity unproven. Native caller supplies script/extension roots and unchanged bundled example bytes; executable-directory setup, shell folder opening, actual asset embedding/UI and Lua execution not connected. Regression uses owned preserved real disk fixtures."
+    },
+    {
+      "file": "tests/lua_script_directory_test.cpp",
+      "classification": "legacy-partial",
+      "sources": [
+        "legacy/src-tauri/src/platform_scripts.rs",
+        "legacy/src-tauri/resources/scripts/moon-phase.lua"
+      ],
+      "scope": "Lua local and extension script listing source loading deletion and example seeding",
+      "adaptation": "Port platform_scripts list_lua_scripts_in/script_entry/extension_script_entry/sort_script_entries/resolve_lua_script_path/load_lua_script_file/load_lua_script/delete_lua_script/seed_builtin_scripts. Reuse RuntimeDirectory enabled resolver; regular nonsymlink top-level local files, opaque extension IDs and metadata, merged sorting, bounded1MiB strict UTF8 source, extension deletion rejected, atomic example/marker preserves user copy and deletion. Windows invariant lowercase approximation of Rust Unicode lowercase; full Unicode parity unproven. Native caller supplies script/extension roots and unchanged bundled example bytes; executable-directory setup, shell folder opening, actual asset embedding/UI and Lua execution not connected. Regression uses owned preserved real disk fixtures."
     }
   ],
   "assetTransfers": [

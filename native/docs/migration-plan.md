@@ -5609,3 +5609,10 @@ Release session/resources两个相关目标成功，session专项通过0.11s。�
 承接ExtensionRuntimeHost events effect：pointerdown/pointermove/wheel共享lastPointer节流500ms，keydown即时发送，clock回调携带当前epoch毫秒，旧周期30000ms明确常量。新增InteractionEvents并接入SessionHost当前generation；仅events权限创建，预加载丢事件但更新pointer基线，关闭释放，替换从新基线开始，旧回调无效。时间倒退按旧差值逻辑保留节流，不新增补发循环或后台线程。
 
 Release session/resources相关目标成功，session/resources/event-lifecycle三项通过0.24s，覆盖500ms边界、键盘不节流、clock时间、时钟倒退、权限、加载前、关闭和替换。来源778文件与diff检查后保存推送dev。本阶段为完整回调语义与会话处理；正式窗口输入监听注册/解除及实际30000ms定时器仍未接入，未宣称正式应用已有交互计时事件，无正式exe/GUI/全套验收。整体INCOMPLETE，保留用户差异/数据/缓存及失败现场。
+
+
+### 2026-11-10：Lua脚本目录与源码加载阶段
+
+复核platform_scripts.rs及mlua宿主；当前完整Lua文档API仍是Rust实现，未用简单解释器替代。迁移脚本来源闭环：顶层普通Lua文件列表（后缀大小写不敏感）、名称/稳定排序、扩展主入口与命令opaque ID/元数据及合并列表、安全本地标识解析、复用启用扩展入口解析、共用源码加载、1MiB含边界、严格UTF8、普通非symlink限制。删除只允许本地脚本；首次示例/marker走已有原子writer，不覆盖用户副本，marker阻止恢复已删除示例。测试仅删除自己本次fixture内的示例，保留fixture目录，不触碰用户脚本。
+
+Release独立lua-script-directory目标及真实磁盘专项通过0.11s，覆盖旧版列表/路径/示例用例及边界大小、空源码、非法编码、扩展命令/主入口加载、停用拒绝、扩展禁止删除。来源780文件/diff检查后保存推送dev。Windows invariant小写排序沿既有适配，完整Rust Unicode小写一致性未证明；目录由调用方注入，正式应用路径、示例素材嵌入、打开文件夹入口和真正Lua引擎/文档API尚未接入。无正式exe/GUI/全套验收，整体INCOMPLETE，保留用户差异/数据/缓存及失败现场。
