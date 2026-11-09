@@ -5134,3 +5134,10 @@ CTest document-transactions/free-tile-project/tilemap-document全部通过33.39s
 对照legacy aseprite.ts readPalette/readOldPalette与framePalettes逐帧语义，将未变化的调色板快照改为不可变共享，保留独立工作缓冲；重复相同区块不再复制，帧内多次修改后恢复原值也复用上一快照。工作缓冲只对增长部分计费，各实际保留快照计费一次；栅格转换结束即释放调色板与对应预算。索引瓦片缓存先比较快照身份，再按需比较颜色。只读核对Aseprite decoder的countDiff/setPalette差异保留方式，未复制代码，未改变旧palette格式转换或native RGBA编辑模式。
 
 两组1000帧/百万条目稀疏调色板夹具分别覆盖省略后续palette区块、每帧重复相同区块，中途改色后逐帧结果正确；原实现两组均会因重复快照或重复工作预算超256MiB而拒绝。正式Release构建成功；aseprite-io/save-policy通过0.46s；完整--aseprite-io-check实际退出0。新增压力场景为核心测试，未新增窗口截图或实测峰值内存/FPS；整体INCOMPLETE。本阶段保存推送dev。
+
+
+### 2026-11-10：ASE保存直接压缩与生命周期复核
+
+当前源码证实ASE原格式CtrlS/Save As、兼容损失取消/继续/保留原生、后台快照/队列/savepoint及失败重试早已实现；修正来源清单中过期的当前scope，保留历史日期记录。按legacy aseprite.ts scaledLayerPixels的scale1直接像素视图路径，原生100%输出在little-endian平台直接压缩const像素字节，消除整Cel逐像素重采样副本；其他端序及缩放继续原采样器，压缩级别/几何/链接语义不变。C++17使用运行时字节序探测，未提高项目语言标准。
+
+新增三组正负偏移、33/100/200比例，逐像素核对半透明/透明隐藏RGB和缩放边界，并验证源像素identity/revision、内容与历史不变。正式Release成功，aseprite-io/save-policy通过0.37s，完整--aseprite-io-check及--aseprite-save-check实际退出0（含来源保存/另存/队列/损失确认/取消/原生保留/失败重试）。未新增截图或量测峰值内存/FPS，整体INCOMPLETE；本阶段保存推送dev。
