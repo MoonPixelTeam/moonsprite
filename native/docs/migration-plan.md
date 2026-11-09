@@ -5005,3 +5005,10 @@ CTest document-transactions/free-tile-project/tilemap-document全部通过33.39s
 复用legacy tilemap-document.ts::tilemapCellIndexesForEdit世界边界转单元格范围，源/目标候选格取有序并集，取消每次overlay全网格遍历。输出按请求范围逐瓦片渲染一次并逐行copy span，代替逐像素索引及每行重复cellPixels；仍只保留单格临时像素。8组变换新增负坐标、右下越界、完全画布外及跨格region与整幅逐像素对照。全画布dirty尚保留；不据此声称FPS提升，最终验证待补。整体INCOMPLETE。
 
 最终三项CTest全部通过39.39s，free-tile-project38.83s，tilemap-document0.26s。正式Release构建成功，完整 --tileset-management-check实际退出0；744来源覆盖/证据及diff检查通过。新增regional裁剪为核心验收，无新增大作品真实指针、截图或FPS测量。全画布dirty与每次重建候选资源patch仍为性能后续项，整体INCOMPLETE。本阶段推送dev。
+
+
+### 2026-11-10：Hybrid延迟预览引用脏区迁移阶段
+
+对照legacy tilemap-document.ts局部rerenderTilemapCells与rerenderTilesetTileReferences，脏区合并旧/新目标及移动源，扩为完整候选格，再包含活动canonical网格所有同源引用。渲染器revision跳跃fallback保持；取消/提交使用既有通知。8组move/copy变换检查初次预览及连续移动全部变化像素落在dirty内，同时局部作品dirty小于画布。仍扫描引用列表，资源patch未缓存；不宣称FPS提升。最终验证待补，整体INCOMPLETE。
+
+最终三项CTest全部通过38.65s，free-tile-project38.09s、tilemap-document0.25s；正式Release构建及完整 --tileset-management-check实际退出0。744来源/证据及diff通过。新增dirty逐像素覆盖为核心验收，窗口仍为既有夹具；未新增FPS/大作品真实指针测量。引用扫描和候选资源patch缓存仍待优化，不把局部dirty声明为整体迁移完成，整体INCOMPLETE。本阶段推送dev。
