@@ -9032,6 +9032,17 @@ namespace {
 __declspec(noinline) void runSelectionSmokeCase(const std::function<void()>& run){run();}
 }
 void Editor::smokeTilemapSelectionDelete(){
+ for(auto mode:{tiles::Mode::Paint,tiles::Mode::Create,tiles::Mode::Edit,tiles::Mode::Hybrid})runSelectionSmokeCase([this,mode]{
+  auto require=[](bool value,const char* why){if(!value)throw std::runtime_error(why);};
+  smoke_=true;homeOpen_=false;documentOpen_=true;pending_=Pending::None;playing_=false;paletteFocused_=false;frameSelectionExplicit_=false;
+  document=Document(8,6);document.beginStroke({1,2},0xff123456);document.commitStroke();document.beginStroke({4,3},0xffabcdef);document.commitStroke();require(document.convertLayerToTilemap(2,2,U"Transform entry UI"),"Grid transform UI fixture");document.setTilemapMode(mode);document.addLinkedFrame();document.clearTimelineSelection();document.clearFrameSelection();
+  const auto before=document.canvasPixels();const auto h=document.historyPosition(),revision=document.contentRevision();fitCanvas();refresh();requestFocus();
+  require(menuCommands_.enabled("transform")&&menuCommands_.invoke("transform"),"Grid transform menu enabled");
+  auto verify=[&]{require(selectionTool_&&!selectionFreeTransform_&&document.selection()&&document.selection()->x==1&&document.selection()->y==2&&document.selection()->width==4&&document.selection()->height==2&&!document.floating()&&document.historyPosition()==h&&document.contentRevision()==revision&&document.canvasPixels()==before,"Grid transform UI selects exact bounds without content mutation");};verify();
+  document.previewSelection({});useMoveTool();ui::KeyMessage key(ui::kKeyDownMessage,ui::kKeyT,ui::kKeyCtrlModifier,0,0);onProcessMessage(&key);verify();
+  document.previewSelection({});document.setLayerLocked(true);beginLayerTransform();require(!document.selection()&&!document.floating(),"Grid transform UI locked rejection");document=Document();refresh();
+ });
+ if(std::wstring(GetCommandLineW()).find(L"--grid-transform-entry-only")!=std::wstring::npos)return;
  smokeLinkedHybridFloating();
  smokeLinkedEditFloating();
  smokeLinkedCreateFloating();

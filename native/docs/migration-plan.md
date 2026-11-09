@@ -4801,3 +4801,12 @@ X/Y/Both合成/当前层及左右键实际诊断验证100次preview请求不发�
 smokeWorkspace布局交互完成后切至已有移动工具，固定后续画布覆盖层，仍比较全部帧像素，不跳过任何差异区域、不降低move_region/批次计数断言。产品绘制、笔刷和面板移动逻辑未改；笔刷仍由独立brush-preview/brush-preview-performance验收。正式Release构建成功；workspace-layout通过39.01s、panel-docking-interactions通过2.82s、brush-preview通过0.80s、brush-preview-performance通过4.38s。744文件来源与证据快照检查通过；未在调整后重跑全套210，不宣称同一次全套全绿，无新增软件FPS或人工交互验收。
 
 活动蒙版的移动工具语义仍等用户选择（旧版移动图层与绑定蒙版；原生既有核心只移动活动蒙版），未默认替用户决定；其它Paint自由变换/多目标与扩展兼容等缺口继续保留，整体迁移INCOMPLETE。保留用户数据、缓存、未跟踪文件和既有editor_support.h状态，阶段保存推送dev。
+
+
+### 2026-11-09：网格图层变换入口与目标解析阶段
+
+核对legacy workspace-commands-selection-transform.ts beginLayerTransform及workspace-session.ts selectedTransformLayersForSession：单个显式网格层可选取当前帧非透明内容与画布交集；特殊层混合多选拒绝；纯帧选择只包含可见未锁普通层。原生移除单网格入口总拒绝，并修正纯帧选择把特殊层一并拒绝的问题。入口仅建立选区，不创建像素事务、浮动内容或内容历史；Paint/Create/Edit/Hybrid使用相同边界语义。未开放Paint自由变换后续预览/提交，不把派生像素缓存修改当作瓦片迁移。
+
+核心24组四模式×linked/independent×原点/部分移位/全部画布外场景，附带隐藏、锁定、混合普通层、特殊多层拒绝及纯帧普通层选择，检查历史/revision/画面/links/cell references不变；三项CTest document-transactions/free-tile-project/tilemap-document通过26.95s。正式Release构建成功；四模式实际菜单与Ctrl+T及锁定拒绝通过 --tileset-management-check --grid-transform-entry-only，退出0。完整tileset-management诊断在既有fill fixture的canvasOwnsPointer前置条件失败，尚未跑到新场景；新增专用参数仅隔离入口场景，不宣称完整瓦片GUI诊断通过。未修改填充规则。
+
+744来源覆盖与证据快照检查及diff检查通过，无新增FPS或人工图像验收，未重跑全套。Paint浮动自由变换/多目标、待用户选择的活动蒙版移动语义与扩展兼容仍未完成，整体INCOMPLETE。保留全部用户数据、构建缓存、未跟踪文件及editor_support.h既有状态，阶段保存推送dev。
