@@ -5026,3 +5026,10 @@ CTest document-transactions/free-tile-project/tilemap-document全部通过33.39s
 旧版workspace-magic-eraser.ts明确拒绝特殊图层，核对原生门控一致，未擅自开放。复验wheel-performance/workspace-layout均通过40.48s，台账后续已有修复记录。转查延迟Hybrid平铺：raw采样沿用repeatedFloatingTranslation，但candidate只含原始目标，目标离开画布时漏掉wrapped目的地；现复用repeat::wrapSelection加入候选范围。260×260夹具增加X/Y/Both各move/copy，验证资源预览与提交、dirty覆盖、regional裁剪、UndoRedo。最终结果待补，整体INCOMPLETE。
 
 最终三项核心CTest全部通过41.03s，free-tile-project40.37s、tilemap-document0.31s；正式Release构建成功，--tileset-management-check实际退出0。补充--tile-repeat-check实际退出1，错误为Repeated airbrush begins，位于喷枪mouse down入口检查，未通过，不归入成功验收；该入口未调用本轮修改的floatingOverlayRegion，但失败根因尚未确认，登记为后续待查。新增6组平铺为核心事务覆盖，未新增大画布真实指针夹具或FPS量测。整体INCOMPLETE。
+
+
+### 2026-11-10：完整平铺窗口验收与持久化快捷栏隔离
+
+接续上阶段Repeated airbrush begins失败，诊断确认free=0、Y平铺、copy=1，点击在画布视口内，但frontWidgetAt为QuickCommandBar(228,150,544,38)，canvasOwnsPointer正确拒绝。旧版styles.css快捷栏绝对定位覆盖画布，canvas-input-stroke.ts及canvas-input-free-tile-edit.ts喷枪事务核对不需改变产品。平铺诊断入口关闭内存中的快捷栏显示配置，保留实际输入所有权门控，错误补充free/mode/copy上下文；不写用户偏好。
+
+正式Release构建成功；完整--tile-repeat-check实际退出0，包含全工具平铺指针、UndoRedo/Escape以及旋转/镜像/缩放文字素材alpha与命中逐像素比对；独立--quick-command-check实际退出0。三项CTest tile-repeat/tile-repeat-stroke/tilemap-document通过1.29s。该结果关闭上阶段喷枪入口验收失败，不声称新增大画布Hybrid真实指针覆盖或FPS提升。整体INCOMPLETE，本阶段保存推送dev。
