@@ -4695,3 +4695,11 @@ X/Y/Both合成/当前层及左右键实际诊断验证100次preview请求不发�
 核对当前显式缺口和legacy canvas-input-tile moveTileSelection：在constrainedTranslation/整格取整前调用symmetrySelectionDragDelta(...,true)。原生Paint移动直接使用指针差，遗漏按所按对称区域映射方向。现开始时保留扩展后的源选区快照，移动时调用既有symmetry_model算法再做轴约束，复用Document完整格引用移动事务；不把像素缓存作为权威，不改Tileset源。
 
 正式Release构建、--modifiers-check完整退出0。新增五种对称轴×移动/复制十场景，实际按下/move/release/Escape对照既有Document映射后cell move参考，验证完整格引用、选区、画面、资源、历史、取消与Undo/Redo。四项CTest tilemap-document/document-transactions/tile-repeat/tile-repeat-stroke通过0.59s；742来源与diff检查通过。Paint自由变换/多目标仍明确缺口，本轮未据此宣称整个瓦片迁移完成；无截图/FPS验收，整体INCOMPLETE。保留用户文件/缓存，阶段保存推送dev。
+
+### 2026-11-09：全套回归审计与编译依赖边界修复阶段
+
+210项CTest完成：195通过、15失败。失败包括theme-atlas、image-sequence-import、preferences-catalog、wheel-performance、layers-render、multi-document、layer-context-menu、workspace-layout、panel-docking-interactions、palette-mouse-startup、home-workspace、menu-catalog、color-picker-normal-map、editor-boundaries、runtime-diagnostics；完整日志在本地build/migration-full-ctest.log。尚未逐项归因，不把全套审计称为全绿。已确认正常贴图尺寸/拾色器枚举的部分旧测试预期与后续代码存在差异，中文路径两项出现编码异常；后续独立阶段处理。
+
+修复明确的编译边界违规：document_slices.cpp由CMake编译独立翻译单元，不再被document.cpp包含；editor_lifecycle.cpp首个头为editor.h；将GradientStopsTrack原实现逐字提取到共享gradient_stops_track.h，保留已有命名空间/前置声明，ColorOverlayDialog直接依赖共享控件及moon::unicodeText，避免反向依赖Editor支持头。没有改变渐变绘制、交互或UI布局。
+
+最终正式Release构建退出0；显式等待--gradient-map-check/--color-overlay-check/--gradient-shape-check/--slice-check全部退出0。document-slices/editor-boundaries/tile-image-resize三项CTest再次通过。743文件来源快照检查与diff检查通过。提取实现与HEAD原类逐字比较一致；无截图或FPS验收，不声称运行时卡顿已解决。其余全套失败待处理，整体迁移INCOMPLETE。保留用户数据、缓存和未跟踪文件，阶段保存推送dev。

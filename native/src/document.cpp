@@ -2905,5 +2905,3 @@ void moon::Document::previewLayerDescription(const std::u32string& text){if(!opa
 void moon::Document::setImportedReferenceImages(ReferenceLibrary images){validateReferenceLibrary(images);referenceImages_=std::move(images);}
 bool moon::Document::addReferenceImage(ReferenceImage image){validateReferenceImage(image);if(std::any_of(referenceImages_.begin(),referenceImages_.end(),[&](const auto& i){return i.id==image.id;}))throw std::invalid_argument("Duplicate reference image");referenceImages_.push_back(std::move(image));modified_=true;state_=nextState_++;++revision_;return true;}
 bool moon::Document::removeReferenceImage(const std::string& id){const auto it=std::find_if(referenceImages_.begin(),referenceImages_.end(),[&](const auto& i){return i.id==id;});if(it==referenceImages_.end())return false;referenceImages_.erase(it);modified_=true;state_=nextState_++;++revision_;return true;}
-
-#include "document_slices.cpp"

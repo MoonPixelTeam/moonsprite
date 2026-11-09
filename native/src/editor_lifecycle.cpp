@@ -1,5 +1,5 @@
-#include "image_resize_task.h"
 #include "editor.h"
+#include "image_resize_task.h"
 #include "editor_implementation.h"
 
 namespace moon::editor {

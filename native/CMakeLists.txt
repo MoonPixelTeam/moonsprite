@@ -24,7 +24,7 @@ add_executable(relative-luminance-tests tests/relative_luminance_test.cpp)
 target_include_directories(relative-luminance-tests PRIVATE src)
 add_test(NAME relative-luminance COMMAND relative-luminance-tests)
 add_library(moon-core src/project_information.cpp src/document_local_history.cpp src/document_tilemap.cpp src/document_layer_move.cpp src/document_layer_groups.cpp src/document_transform.cpp src/animation_transform.cpp src/animation_morph.cpp src/animation_crossfade.cpp src/document_crossfade.cpp src/layer_metadata.cpp src/layer_blend.cpp src/cel_properties.cpp src/cel_thumbnail_pipeline.cpp src/cel_thumbnail.cpp src/document_text.cpp
-  src/document.cpp src/document_gradient.cpp src/document_shape.cpp src/document_fill.cpp src/document_raster_edit.cpp src/timeline_interaction.cpp src/sprite_sheet_import.cpp src/sheet_import_task.cpp src/image_resize_task.cpp src/image_scale_detection.cpp src/timeline_model.cpp src/recent_colors.cpp src/layer_compositor.cpp src/menu_catalog.cpp src/raster_snapshot.cpp src/document_snapshot.cpp)
+  src/document.cpp src/document_slices.cpp src/document_gradient.cpp src/document_shape.cpp src/document_fill.cpp src/document_raster_edit.cpp src/timeline_interaction.cpp src/sprite_sheet_import.cpp src/sheet_import_task.cpp src/image_resize_task.cpp src/image_scale_detection.cpp src/timeline_model.cpp src/recent_colors.cpp src/layer_compositor.cpp src/menu_catalog.cpp src/raster_snapshot.cpp src/document_snapshot.cpp)
 add_executable(tile-repeat-stroke-tests tests/tile_repeat_stroke_test.cpp)
 target_link_libraries(tile-repeat-stroke-tests PRIVATE moon-core)
 add_test(NAME tile-repeat-stroke COMMAND tile-repeat-stroke-tests)
