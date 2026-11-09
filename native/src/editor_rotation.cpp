@@ -286,6 +286,26 @@ void Editor::smokeTileRepeat(){
    altSend(ui::kMouseDownMessage,start);if(!moveDragging_||textTransforming_||textCreating_)throw std::runtime_error("Repeated Alt text copy begins");altSend(ui::kMouseMoveMessage,end);altSend(ui::kMouseUpMessage,end);if(moveDragging_||hasCapture()||document.historyPosition()!=h+1||document.timeline().state().layers.size()!=layers+1)throw std::runtime_error("Repeated Alt copy commit");const auto after=document.canvasPixels();if(!copy)expected=after;else if(after!=expected)throw std::runtime_error("Repeated Alt text copy differs");document.undo();if(document.canvasPixels()!=baseline||document.timeline().state().layers.size()!=layers)throw std::runtime_error("Repeated Alt copy undo");document.redo();if(document.canvasPixels()!=after)throw std::runtime_error("Repeated Alt copy redo");document.undo();document.selectLayer(originalLayer);refresh();altSend(ui::kMouseDownMessage,start);altSend(ui::kMouseMoveMessage,end);ui::KeyMessage escape(ui::kKeyDownMessage,ui::kKeyEsc,ui::kKeyNoneModifier,0,0);onProcessMessage(&escape);if(moveDragging_||hasCapture()||document.canvasPixels()!=baseline||document.timeline().state().layers.size()!=layers||document.historyPosition()!=h)throw std::runtime_error("Repeated Alt copy Escape");
   }
  }
+ // Hover must agree with the actual captured text gesture after view transforms.
+ document=Document(64,48);{
+  auto data=newTextToolData(0xff113355);data.text=u"Cursor";data.boxed=true;data.originX=12;data.originY=12;data.boxWidth=24;data.boxHeight=20;
+  if(!document.beginTextDraft(data,rasterizeText(data,12,12,textFonts_->provider()))||!document.commitTextDraft())throw std::runtime_error("Text cursor fixture");
+ }
+ useTextTool();
+ for(const auto mode:{repeat::Mode::X,repeat::Mode::Y,repeat::Mode::Both})for(double angle:{0.,37.,90.,180.})for(int mirrors=0;mirrors<4;++mirrors)for(double zoom:{.75,1.25}){
+  viewRotation_={angle,(mirrors&1)!=0,(mirrors&2)!=0};setTileRepeat(mode);zoom_=zoom;
+  const auto v=canvasViewport();const int w=int(64*canvasScale()),h=int(48*canvasScale());canvas_={v.x+(v.w-w)/2,v.y+(v.h-h)/2,w,h};refresh();
+  for(bool copy:{false,true})for(bool resize:{false,true}){
+   const TransformPoint at{(copy&&repeat::includesX(mode)?-64:0)+(resize?36.:24.),(copy&&repeat::includesY(mode)?-48:0)+22.};
+   const auto pointer=canvasDocumentToDisplay(at);if(!canvasViewport().contains(pointer))throw std::runtime_error("Text cursor matrix outside viewport");
+   const std::string hover=cursorAt(pointer);const auto history=document.historyPosition();
+   send(ui::kMouseDownMessage,at);
+   if(!textTransforming_||textHandle_!=(resize?"e":"")||hover!=cursorAt(pointer)||hover==(resize?"text":"text")||(!resize&&hover!="move"))throw std::runtime_error("Text hover/capture mismatch angle="+std::to_string(angle)+" mirrors="+std::to_string(mirrors)+" zoom="+std::to_string(zoom)+" copy="+std::to_string(copy)+" resize="+std::to_string(resize)+" hover="+hover+" handle="+textHandle_);
+   ui::KeyMessage escape(ui::kKeyDownMessage,ui::kKeyEsc,ui::kKeyNoneModifier,0,0);onProcessMessage(&escape);
+   if(textTransforming_||hasCapture()||document.historyPosition()!=history||document.textDraftActive())throw std::runtime_error("Text cursor cancellation");
+  }
+ }
+ viewRotation_={};setTileRepeat(repeat::Mode::Both);zoom_=1;{const auto v=canvasViewport();canvas_={v.x+(v.w-int(64*canvasScale()))/2,v.y+(v.h-int(48*canvasScale()))/2,int(64*canvasScale()),int(48*canvasScale())};}refresh();
  // Actual pointer release opens the real text dialog; its existing smoke controls confirm/cancel.
  for(const auto mode:{repeat::Mode::X,repeat::Mode::Y,repeat::Mode::Both})for(bool boxed:{false,true})for(bool accept:{false,true}){
   std::vector<Pixel> expected;
