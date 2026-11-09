@@ -5281,3 +5281,10 @@ legacy canvas-render-selection-preview.ts对两种套索的每个栅格路径点
 补齐deferred大画布变换持久化：260×260、远处旋转同源格、两级显式Cel链，14组move/copy×整格/翻转缩放/RotSprite旋转倾斜/四角/X/Y/Both。在commit、Undo、Redo三个状态分别通过生产encodeEditableProject/encodeRecoveryProject与manifest/import重开（共84次归档检查），核对画面、active frame/layer、格引用、瓦片集ID/tile ID/资源像素及完整链接拓扑。沿用legacy tilemap资源事务与原工程schema；用户批准preview=commit为行为依据，未改产品逻辑。
 
 首次夹具强制commit有像素修改而失败，改为按实际preview与原像素差异核对结果，后续全部归档与历史断言通过。重建测试目标成功，完整free-tile-project通过31.23s；744来源/证据和diff通过。新证据为内存生产归档往返，不等于磁盘失败恢复、窗口或截图验收；未重复产品构建/既有窗口诊断，无FPS量测。整体迁移仍INCOMPLETE，本阶段保存推送dev。
+
+
+### 2026-11-10：Hybrid分离源目标足迹的资源脏区
+
+按legacy tilemap-document.ts::tilemapCellIndexesForEdit实际范围映射及rerenderTilesetTileReferences共享资源规则，dirty先保留源、旧目标、新目标和wrapped范围各自足迹，分别检查所触及的格/资源，再形成既有单一dirty矩形。消除长距离拖动时扫描源目标之间无关格并扩展其远处引用的额外刷新；只收集Hybrid初始足迹，格扩展及资源引用扩展不再重复入列表。
+
+新增无关资源在(40,40)且其引用在(240,240)，move/copy目标(81,81)，断言dirty不被无关远处引用扩到244，同时逐点覆盖实际像素变化；沿用(200,200)真正共享源和全部变换/缓存/历史检查。正式Release成功；tilemap-document/canvas-tilemap-preview通过0.85s，完整--tileset-management-check实际退出0。744来源/证据与diff通过。无新增截图或FPS量测；整体迁移仍INCOMPLETE，本阶段保存推送dev。
