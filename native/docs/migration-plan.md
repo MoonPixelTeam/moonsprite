@@ -5061,3 +5061,10 @@ CTest document-transactions/free-tile-project/tilemap-document全部通过33.39s
 对照legacy core/aseprite.ts encodeAseprite/scaledLayerPixels，旧版按动画帧图层的栅格缓存写普通ASE图层，不写MoonSprite瓦片资源/实例编辑语义。原生解除已迁移tilemap/free-tile两类的过时拒绝，保留未知kind拒绝、图层/帧/标签/链接写法、蒙版合成回退与editable损失保存确认；导出提示明确网格/自由瓦片以栅格保存。核心八组grid/free×有无mask×100/200%对照逐帧画面、图层数量、向后链接及导出不改authority。实际窗口增加两类的导出弹窗、worker、原子写入和重开对照。
 
 正式Release构建成功，完整--aseprite-io-check实际退出0，包含已有ASE/PSD保存生命周期及新增特殊层；aseprite-io/aseprite-save-policy通过0.09s。系统文件选择器使用注入路径，未自动点击系统弹窗；不宣称ASE可编辑瓦片payload或实例编辑信息保留。整体INCOMPLETE，本阶段保存推送dev。
+
+
+### 2026-11-10：网格与自由瓦片PSD导出闭环迁移
+
+对照legacy core/psd.ts psdChildren/psdRasterLayer/encodePsd，特殊层按当前帧栅格写出，保留分层和蒙版。原生解除tilemap/free-tile过时kind拒绝，沿用resolved surface、缩放、裁切和现有蒙版/组/效果编码，保留未知kind拒绝及editable/resources损失确认；提示明确瓦片栅格化。新增八组grid/free×mask/no-mask×100/200%往返，检查逐像素画面、层/蒙版数、当前帧与原文档authority不变；窗口增加两类PSD实际弹窗/worker/原子写入/重开，沿用注入文件路径。
+
+正式Release构建成功，psd-export CTest通过0.15s，完整--aseprite-io-check实际退出0。旧版实际ag-psd独立读取全部原有文件及八个特殊层文件通过，验证层/蒙版/缩放尺寸和合成像素。最初独立脚本错误假定convertLayerToTilemap会重命名图层，已按实际保留原名称修正验证。未宣称PSD保留动画或瓦片可编辑资源；整体INCOMPLETE。本阶段保存推送dev。
