@@ -4968,3 +4968,12 @@ CTest document-transactions/free-tile-project/tilemap-document全部通过33.39s
 对照legacy core/tilemap-document.ts的rgbaCellPixelsFromSurface、tilemapCellIndexesForEdit及已有指针Edit锚点语义，Create/Edit/Hybrid规范网格画笔入口移除等画布限制，锚点按canonical surface世界原点定位。偏移/补边笔画使用既有临时画布surface与合成器overlay，不扩张规范网格；取消丢弃缓冲，提交复用完整源瓦片/引用/history事务，维持链接几何。共享资源夹具从72组扩展到99组，新增三模式×三链接×三原点的笔画取消/提交/UndoRedo/native/recovery。Create渐变/形状不套用共享源preview断言，其原专用测试保持。验证进行中，整体INCOMPLETE。
 
 最终核心document-transactions/tilemap-document通过0.86s，free-tile-project通过55.40s；正式Release完整重编成功，既有完整 --tileset-management-check 实际退出0。新增27组偏移笔画为核心事务验收，本轮未新增真实指针专用夹具或人工截图/FPS，不将既有窗口检查等同新增场景覆盖。744来源覆盖及证据快照通过，整体INCOMPLETE。本阶段保存推送dev。
+
+
+### 2026-11-09：Hybrid 即时浮动预览迁移阶段
+
+依据legacy tilemapEditPreviewTilePixels及canvas-render-tile-preview.ts共享资源预览、workspace-commands-selection-floating.ts整格引用事务，将等画布Hybrid接入已迁移的detached资源预览路径。取消保持authority，非整格变换预览共享源，整格预览移动引用，不改变提交资源语义。去除零原点preview豁免及窗口跳过；核心矩阵增加8×4精确等画布布局，与7×3补边布局共144组。此前记录的零原点预览限制待本阶段复验消除，整体INCOMPLETE。
+
+首轮144组free-tile-project通过43.98s，document-transactions通过；tilemap-document发现大画布deferred优化被覆盖，按已有supportsDeferredFloating保留等画布大作品延迟路径，新增shared preview仅替换原即时dense分支。保留性能契约，最终复验待补；不宣称大画布deferred共享源预览已统一。
+
+最终free-tile-project完整通过38.78s（144组合），document-transactions通过0.28s；tilemap-document最终单独复验通过，保留大画布deferred断言并将旧“display资源不变”检查改为authority资源不变及sampled preview=commit。正式Release重编成功，完整 --tileset-management-check 实际退出0，Edit/Hybrid三个原点真实鼠标drag/Escape/Ctrl-copy/Enter/UndoRedo通过，之前零原点即时preview差异已消除。大画布deferred共享源preview仍不宣称统一；无FPS/人工截图结论，整体INCOMPLETE。744来源/证据及diff通过，本阶段保存推送dev。

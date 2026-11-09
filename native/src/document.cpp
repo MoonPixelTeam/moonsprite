@@ -2590,11 +2590,11 @@ bool Document::linkedHybridFloatingSupported(const FloatingPaste& f)const{
  const auto r=timeline_.resolveSurface(cel().id);return !f.targets.front().ownerId.empty()&&r.source&&r.source->id==f.targets.front().ownerId;
 }
 bool Document::prepareTilemapFloating(FloatingPaste& f,std::optional<Point> seed){
- f.tilemapMode=tileSelection_.mode;const bool offsetHybrid=f.tilemapMode==tiles::Mode::Hybrid&&!raster::fullCanvas(activeSurface(),width_,height_);if(f.tilemapMode!=tiles::Mode::Edit&&!offsetHybrid)return true;
+ f.tilemapMode=tileSelection_.mode;const bool hybrid=f.tilemapMode==tiles::Mode::Hybrid;if(f.tilemapMode!=tiles::Mode::Edit&&!hybrid)return true;if(hybrid&&raster::fullCanvas(activeSurface(),width_,height_)){auto deferred=f;deferred.clipboard=false;deferred.targets.push_back({{},cel().id,{}});if(supportsDeferredFloating(deferred))return true;}
  const auto resolved=timeline_.resolveSurface(cel().id);if(!resolved.source||!resolved.source->tilemap)return false;const auto& grid=*resolved.source->tilemap;
  auto cellAt=[&](Point p)->std::optional<std::size_t>{if(p.x<0||p.y<0||p.x>=width_||p.y>=height_)return {};const auto lx=std::int64_t(p.x)-resolved.surface->offsetX,ly=std::int64_t(p.y)-resolved.surface->offsetY;if(lx<0||ly<0||lx>=std::int64_t(grid.columns)*grid.tileWidth||ly>=std::int64_t(grid.rows)*grid.tileHeight)return {};const auto index=std::size_t(ly/grid.tileHeight)*grid.columns+std::size_t(lx/grid.tileWidth);return index<grid.cells.size()&&grid.cells[index]?std::optional<std::size_t>{index}:std::nullopt;};
- if(!offsetHybrid&&seed)f.tilemapEditCell=cellAt(*seed);else if(!offsetHybrid&&selection_){for(int y=std::max(0,selection_->y);y<std::min(height_,selection_->y+selection_->height)&&!f.tilemapEditCell;++y)for(int x=std::max(0,selection_->x);x<std::min(width_,selection_->x+selection_->width);++x)if(selectionContains(selection_,x,y)){f.tilemapEditCell=cellAt({x,y});if(f.tilemapEditCell)break;}}
- if(!offsetHybrid&&!f.tilemapEditCell)return false;
+ if(!hybrid&&seed)f.tilemapEditCell=cellAt(*seed);else if(!hybrid&&selection_){for(int y=std::max(0,selection_->y);y<std::min(height_,selection_->y+selection_->height)&&!f.tilemapEditCell;++y)for(int x=std::max(0,selection_->x);x<std::min(width_,selection_->x+selection_->width);++x)if(selectionContains(selection_,x,y)){f.tilemapEditCell=cellAt({x,y});if(f.tilemapEditCell)break;}}
+ if(!hybrid&&!f.tilemapEditCell)return false;
  const auto& state=timeline_.state();const auto set=std::find_if(state.tilesets.begin(),state.tilesets.end(),[&](const auto& t){return t.id==layer().tilemapTilesetId;});if(set==state.tilesets.end())return false;
  std::size_t refs=0;for(const auto& c:state.cels)if(c.tilemap)for(const auto& cell:c.tilemap->cells)if(cell&&cell->tilesetId==set->id)++refs;
  // Retained baseline/raw canvas, detached display, reference index and one transactional COW publish.
@@ -2602,7 +2602,7 @@ bool Document::prepareTilemapFloating(FloatingPaste& f,std::optional<Point> seed
  checkFloatingBudget(f,retained+adjustmentStorageBudget(timeline_,1)+std::uint64_t(width_)*height_*4);f.transientBytes=retained;
  auto g=std::make_shared<GradientPreview>();g->tilemap=true;g->tilemapMode=f.tilemapMode;g->celId=resolved.source->id;g->layerId=layer().id;g->frameId=frame().id;g->contentRevision=contentRevision_;g->tilemapBaseline=canvasPixels();g->preview=g->tilemapBaseline;g->tilemapDisplay=timeline::Timeline(state);
  const auto index=f.tilemapEditCell.value_or(0);g->region=SelectionMask{resolved.surface->offsetX+int(index%grid.columns)*grid.tileWidth,resolved.surface->offsetY+int(index/grid.columns)*grid.tileHeight,grid.tileWidth,grid.tileHeight,{}};
- if(offsetHybrid)g->region=SelectionMask{0,0,width_,height_,{}};
+ if(hybrid)g->region=SelectionMask{0,0,width_,height_,{}};
  for(std::size_t ci=0;ci<state.cels.size();++ci){const auto& c=state.cels[ci];if(c.tilemap&&c.surface)for(std::size_t i=0;i<c.tilemap->cells.size();++i){const auto& cell=c.tilemap->cells[i];if(cell&&cell->tilesetId==set->id)g->tilemapReferences[cell->tileId].push_back({ci,i});}}
  f.tilemapPreview=std::move(g);return true;
 }

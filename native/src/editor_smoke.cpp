@@ -8974,7 +8974,7 @@ __declspec(noinline)
 #else
 __attribute__((noinline))
 #endif
-void Editor::smokeLinkedEditFloating(){auto check=[](bool value,const char* why){if(!value)throw std::runtime_error(why);};smoke_=true;homeOpen_=false;documentOpen_=true;pending_=Pending::None;playing_=false;paletteFocused_=false;frameSelectionExplicit_=false;spaceHeld_=eyedropperHeld_=false;for(auto mode:{tiles::Mode::Edit,tiles::Mode::Hybrid})for(Point offset:std::vector<Point>{{0,0},{-1,-1},{1,1}}){if(mode==tiles::Mode::Hybrid&&offset.x==0)continue;
+void Editor::smokeLinkedEditFloating(){auto check=[](bool value,const char* why){if(!value)throw std::runtime_error(why);};smoke_=true;homeOpen_=false;documentOpen_=true;pending_=Pending::None;playing_=false;paletteFocused_=false;frameSelectionExplicit_=false;spaceHeld_=eyedropperHeld_=false;for(auto mode:{tiles::Mode::Edit,tiles::Mode::Hybrid})for(Point offset:std::vector<Point>{{0,0},{-1,-1},{1,1}}){
 
 auto seedOwned=std::make_unique<Document>(8,4);auto& seed=*seedOwned;seed.beginStroke({0,0},0xff123456);seed.commitStroke();check(seed.convertLayerToTilemap(4,4,U"Linked Edit floating"),"Edit floating fixture conversion");
 auto state=seed.timeline().state();const auto owner=seed.cel().id,layer=seed.layer().id,first=seed.frame().id,tile=seed.cel().tilemap->cells[0]->tileId;
