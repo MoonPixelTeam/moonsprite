@@ -1,8 +1,13 @@
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <windows.h>
 #include "extension_storage.h"
 #include "atomic_file.h"
 #include "javascript_text.h"
 #include <algorithm>
-#include <fstream>
+#include <system_error>
+#include <atomic>
 #include <stdexcept>
 #include <winrt/Windows.Foundation.Collections.h>
 namespace moon::extension {
@@ -16,13 +21,30 @@ bool starts(const std::u16string& s,const std::u16string& prefix){return s.size(
 std::u16string Storage::prefix(const std::u16string& id){return u"moonsprite.extension-runtime.v1."+id+u".";}
 void Storage::validateKey(const std::u16string& key){if(key.empty()||utf8Bytes(key)>160||std::any_of(key.begin(),key.end(),[](char16_t c){return c<32;}))throw std::invalid_argument("扩展存储键无效。");}
 Storage::Storage(std::filesystem::path path):path_(std::move(path)){
- std::error_code ec;if(!std::filesystem::exists(path_,ec)){if(ec)throw std::runtime_error("Cannot inspect extension storage");return;}
- std::ifstream input(path_,std::ios::binary);if(!input)throw std::runtime_error("Cannot read extension storage");const std::string json((std::istreambuf_iterator<char>(input)),{});if(input.bad())throw std::runtime_error("Cannot finish reading extension storage");
+ // A snapshot reader must permit atomic replacement by a writer. Opening
+ // directly also avoids treating a missing file between exists/open as corrupt.
+ HANDLE handle=CreateFileW(path_.c_str(),GENERIC_READ,FILE_SHARE_READ|FILE_SHARE_WRITE|FILE_SHARE_DELETE,nullptr,OPEN_EXISTING,FILE_ATTRIBUTE_NORMAL,nullptr);
+ if(handle==INVALID_HANDLE_VALUE){const auto error=GetLastError();if(error==ERROR_FILE_NOT_FOUND||error==ERROR_PATH_NOT_FOUND)return;throw std::system_error(int(error),std::system_category(),"Cannot read extension storage");}
+ struct Close{HANDLE handle;~Close(){CloseHandle(handle);}} close{handle};
+ std::string json;char block[65536];
+ for(;;){DWORD count=0;if(!ReadFile(handle,block,sizeof(block),&count,nullptr))throw std::system_error(int(GetLastError()),std::system_category(),"Cannot finish reading extension storage");if(!count)break;json.append(block,count);}
+
  const auto rows=JsonArray::Parse(winrt::to_hstring(json));for(const auto& value:rows){const auto row=value.GetArray();if(row.Size()!=2)throw std::runtime_error("Invalid extension storage entry");auto key=units(row.GetStringAt(0));auto bytes=winrt::to_string(row.GetStringAt(1));if(std::any_of(values_.begin(),values_.end(),[&](const auto& p){return p.first==key;}))throw std::runtime_error("Duplicate extension storage entry");values_.push_back({std::move(key),std::move(bytes)});}
 }
 void Storage::publish(std::vector<std::pair<std::u16string,std::string>> next){
  JsonArray rows;for(const auto& p:next){JsonArray row;row.Append(JsonValue::CreateStringValue(wide(p.first)));row.Append(JsonValue::CreateStringValue(winrt::to_hstring(p.second)));rows.Append(row);}
- const auto json=javascriptJsonUtf8(rows.Stringify().c_str());if(!path_.parent_path().empty())std::filesystem::create_directories(path_.parent_path());writeBinaryFileAtomic(path_,{json.begin(),json.end()});values_.swap(next);
+ const auto json=javascriptJsonUtf8(rows.Stringify().c_str());if(!path_.parent_path().empty())std::filesystem::create_directories(path_.parent_path());// ReplaceFile supports replacing an existing file while cooperating readers
+ // retain the previous snapshot. Keep the common writer for flushed staging.
+ static std::atomic<unsigned> serial{0};
+ const auto staging=path_.parent_path()/(path_.filename().wstring()+L".storage-"+std::to_wstring(GetCurrentProcessId())+L"-"+std::to_wstring(GetTickCount64())+L"-"+std::to_wstring(++serial)+L".tmp");
+ writeBinaryFileAtomic(staging,{json.begin(),json.end()});
+ bool published=false;
+ try{
+  if(ReplaceFileW(path_.c_str(),staging.c_str(),nullptr,0,nullptr,nullptr))published=true;
+  else {const auto error=GetLastError();if(error!=ERROR_FILE_NOT_FOUND)throw std::system_error(int(error),std::system_category(),"Cannot replace extension storage");
+   if(!MoveFileExW(staging.c_str(),path_.c_str(),MOVEFILE_WRITE_THROUGH))throw std::system_error(int(GetLastError()),std::system_category(),"Cannot publish extension storage");published=true;}
+ }catch(...){if(!published)DeleteFileW(staging.c_str());throw;}
+ values_.swap(next);
 }
 IJsonValue Storage::get(const std::u16string& extension,const std::u16string& key)const{
  validateKey(key);const auto name=prefix(extension)+key;for(const auto& p:values_)if(p.first==name){try{return JsonValue::Parse(winrt::to_hstring(p.second));}catch(...){return JsonValue::CreateNullValue();}}return JsonValue::CreateNullValue();

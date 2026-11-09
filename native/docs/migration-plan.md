@@ -5365,3 +5365,12 @@ Release相关三个目标重编成功，七项extension CTest全部通过0.37s�
 集成回归真实执行：双扩展注册、加载前命令队列、locale/activate/project/command顺序、请求写磁盘与跨宿主隔离、文件事件name/bytes、替换后旧callback/close/读取失效、数据保持、locale同步、读取中关闭、加载失败与整体销毁注销。Release专项构建成功；八项extension CTest初次全部通过0.40s，最终含加载失败追加检查复验见实际结果。此前单组件通过不能替代本次组合证据，但本次仍是核心流程，尚无实际包安装、Lua/JS执行、OS拖入、正式界面或窗口。未更新正式exe、不新增FPS/截图结论，全部迁移继续INCOMPLETE。本阶段来源/diff检查通过后保存推送dev，用户数据、缓存及editor_support.h既有状态保留。
 
 最终复验：extension-session-host通过0.26s，其余六项通过；extension-storage再次在第四次替换ERROR_ACCESS_DENIED失败（storage-38760-25015250.json），八项7通过1失败，总0.45s。未重试掩盖，保留失败目标与现有原子写入错误规则。该复现推翻仅偶发且后续已稳定的推断；原因仍未定位，扩展整组验收不能标绿，后续优先诊断读取/替换共享方式及外部持有者。本阶段集成会话最小相关验收通过，不表示存储问题解决。来源760文件与快照、diff通过。
+
+
+### 2026-11-10：扩展存储快照读取与文件替换修复
+
+检查前次失败文件仍为Archive普通文件、原值存在；无可用句柄诊断工具，未识别外部持有者。原ifstream读取改为CreateFileW显式READ/WRITE/DELETE共享，直接处理路径缺失，避免exists/open竞态。新增受控保持旧snapshot读取句柄同时发布新值的检查；仅改共享后原MoveFileExW在第17次写入仍ERROR_ACCESS_DENIED，明确证明旧替换方式无法通过该受控场景，而非靠再次运行掩盖。
+
+扩展存储复用公共atomic writer写入并Flush唯一staging，再以ReplaceFileW替换已有文件；目标缺失时使用不覆盖MoveFileExW发布，避免缺失判断后覆盖其它写入。失败删除本次staging、内存不发布，不重试、不清理用户文件。共享读取保留旧文件快照，新路径为完整新值；不开放多写者合并，不修改公共导出writer或工程保存行为。此为浏览器localStorage到Windows文件所必需的原生适配，legacy命名空间/JSON额度/键排序不变。
+
+Release三个相关目标构建成功，八项extension CTest全部通过1.18s，storage0.98s包含受控读句柄、32次连续写入重开及原no-delete-sharing锁定写/删拒绝与旧值保持。实际旧版存储对照继续通过。来源与diff通过后保存推送dev。之前两次第4次替换失败的外部持有者仍未知；本阶段只关闭受控snapshot替换缺陷，不能宣称所有ERROR_ACCESS_DENIED根因消除。无正式exe更新或GUI/FPS验收，整体迁移INCOMPLETE，用户数据/缓存/editor_support.h原状态保留。
