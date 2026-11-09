@@ -4930,3 +4930,12 @@ CTest document-transactions/free-tile-project/tilemap-document全部通过33.39s
 最终核心复验：正式依赖与测试重编后，CTest document-transactions/free-tile-project/tilemap-document全部通过49.97s，含逐像素画布外texels和全部既有源瓦片不变断言；744来源覆盖及证据快照通过。正式程序首轮完成后核对editor_smoke对象时间，确认新增窗口夹具尚未纳入，因此追加该文件重编，窗口结果以后续为准。
 
 正式Release最终构建成功，完整 --tileset-management-check 实际退出0，包含三个偏移/补边布局的Create自由变换命令、Escape、Enter与完整Undo/Redo。窗口夹具首轮只改rect未改quad，导致实际未变换，修正同步quad；后续按实际内容变化、预览一致和全部历史撤销重做验证，保留既有可选选区完成历史，不修改产品历史逻辑。无人工截图或FPS验收，未重跑全套。保留用户文件、缓存、未跟踪数据与editor_support.h既有状态，本阶段提交推送dev。
+
+
+### 2026-11-09：偏移网格共享资源与预览事务阶段
+
+对照 legacy tilemap-document.ts::applyTilemapTilesetDocumentEdit、tilemapCellIndexesForEdit、rgbaCellPixelsFromSurface，补齐Edit/Hybrid静态Cut/Delete与Create/Edit/Hybrid渐变/形状的偏移及补边网格。共享预览按世界region减canonical surface offset枚举单元格，在局部sourcePoint映射写源像素；所有引用继续按自身局部格位置修补完整缓存，dirty region使用各自世界偏移。Hybrid空/外部引用单元格raw preview同样区分世界采样与局部存储，保留画布外texels。静态增量历史允许偏移canonical owners，保留拓扑、资源引用和几何；原画笔及活动Edit/Hybrid偏移浮动入口限制仍保留，不把这部分算作迁移完成。
+
+新增72组合：Edit/Hybrid×独立/显式/runtime链接×零/正/负偏移×渐变/矩形/Delete/Cut，混合free隔离、取消重启、preview/commit、UndoRedo、native/recovery一致。更新其他reference owner偏移的旧拒绝断言为操作与取消/Undo检查。free-tile-project通过58.74s，document-transactions/tilemap-document通过1.02s；744来源及证据快照通过。正式窗口夹具扩展三种模式×linked/independent×三个偏移，鼠标形状release/Escape及渐变Enter/Escape；最终构建与窗口结果待补。整体INCOMPLETE，无新增性能结论。
+
+正式Release最终构建成功，完整 --tileset-management-check 实际退出0，覆盖18种模式/链接/偏移组合的真实鼠标形状与渐变提交/取消。首轮正偏移渐变从网格外透明点开始，按既有规则无资源修改，夹具错误要求新增历史；改为所有布局均有内容的(1,1)起点后通过，未改变产品填充规则。未新增人工截图/FPS或全套验收。保留用户数据、缓存及editor_support.h既有状态，本阶段提交推送dev。
