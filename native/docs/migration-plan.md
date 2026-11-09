@@ -5267,3 +5267,10 @@ legacy canvas-render-selection-preview.ts对两种套索的每个栅格路径点
 补齐上一阶段局部脏区在CanvasRenderer缓存中的证据：260×260 Hybrid、半透明源及(200,200)翻转同源引用，移动/复制两组调用正式Skia离屏绘制，将持续缓存与每次新建renderer完整结果逐像素比较。覆盖整格→采样→整格、连续整格、跳过中间revision的fallback、Escape对应cancel、commit、UndoRedo，检查整格移动上传像素少于全画布。legacy tilemap-document.ts的引用局部重绘与资源引用刷新仍为语义依据，未改变产品逻辑。
 
 重建canvas-performance-tests成功，实际--tilemap-preview退出0，既有tilemap shape/gradient当前及其他帧oracle与新增Hybrid浮动oracle全部执行通过。744来源/证据和diff通过；本阶段仅渲染核心验收，未重复产品构建/窗口诊断，没有人工截图或输入/显示FPS量测。整体迁移仍INCOMPLETE，本阶段保存推送dev。
+
+
+### 2026-11-10：Hybrid仿射和平铺缓存绘制矩阵接入CTest
+
+扩展上一阶段生产CanvasRenderer/Skia缓存与全新renderer逐点对照，新增14组move/copy×采样平移/翻转缩放/RotSprite旋转倾斜/四角/X/Y/Both，检查连续变换、恢复原变换、预览提交、UndoRedo及远处共享源位置。参考legacy工具变换和tilemap资源语义，用户批准preview=commit为差异依据，没有改产品。将既有--tilemap-preview注册为canvas-tilemap-preview，常规CTest可执行shape/gradient及Hybrid整格/仿射/平铺全部oracle。
+
+首轮失败于夹具强制每次commit返回true；改为按raw preview与canonical像素差异判断返回值后，全部像素及历史断言通过，未修改产品以迎合测试。重建测试目标成功，canvas-tilemap-preview通过0.51s；744来源/证据和diff通过。仅新增渲染核心验收与CTest注册，未重复产品构建或窗口检查，没有新增截图/FPS量测；整体迁移仍INCOMPLETE。本阶段保存推送dev。
