@@ -6972,6 +6972,30 @@ void Editor::smokeGradientShape(){
         key(ui::kKeyEnter);if(document.gradientActive()||gradientPending_||document.historyPosition()!=history+1)throw std::runtime_error("Recovered gradient cannot commit");document.undo();if(document.canvasPixels()!=baseline)throw std::runtime_error("Recovered gradient undo");
       }else if(gradientPending_||document.gradientActive())throw std::runtime_error("New gradient interruption left preview");
     }
+    // Repeated local coordinates must not regenerate the raster preview.
+    for(bool radial:{false,true})for(int handle=-1;handle<3;++handle){
+      if(radial&&handle==0)continue;
+      cancelStroke();document=Document(32,24);useGradientTool();setTileRepeat(repeat::Mode::Both);zoom_=1;{const auto v=canvasViewport();canvas_={v.x+(v.w-64)/2,v.y+(v.h-48)/2,64,48};}refresh();gradientConfirm_=true;gradientSpec_={};gradientSpec_.radial=radial;gradientOptions_={};
+      pointer(ui::kMouseDownMessage,2,2);pointer(ui::kMouseMoveMessage,28,20);gradientTick();
+      int x=28,y=20;
+      if(handle>=0){
+        pointer(ui::kMouseUpMessage,28,20);
+        const auto center=resolveGradientGeometry(gradientSpec_).center;
+        if(handle==0){x=radial?int(center.x):2;y=radial?int(center.y):2;}
+        else if(handle==2){x=radial?int(center.x):15;y=radial?int(center.y):11;}
+        pointer(ui::kMouseDownMessage,x,y);if(!gradientDragging_||gradientHandle_!=handle)throw std::runtime_error("Gradient duplicate handle fixture radial="+std::to_string(radial)+" expected="+std::to_string(handle)+" actual="+std::to_string(gradientHandle_)+" dragging="+std::to_string(gradientDragging_));
+        x+=2;y+=1;pointer(ui::kMouseMoveMessage,x,y);gradientTick();
+      }
+      const auto revision=document.gradientRevision(),history=document.historyPosition();const auto preview=*document.gradientPreviewPixels();
+      auto& damage=const_cast<gfx::Region&>(getUpdateRegion());damage.clear();if(!getUpdateRegion().isEmpty())throw std::runtime_error("Gradient duplicate damage fixture");
+      for(int n=0;n<100;++n){pointer(ui::kMouseMoveMessage,x,y);gradientTick();}
+      for(int n=0;n<100;++n){pointer(ui::kMouseMoveMessage,x+32,y-24);gradientTick();}
+      if(document.gradientRevision()!=revision||*document.gradientPreviewPixels()!=preview||document.historyPosition()!=history||!getUpdateRegion().isEmpty())throw std::runtime_error("Duplicate gradient regenerated preview/damage");
+      pointer(ui::kMouseMoveMessage,x+1,y+1);gradientTick();if(document.gradientRevision()==revision)throw std::runtime_error("Changed gradient geometry skipped");
+      pointer(ui::kMouseUpMessage,x+1,y+1);if(!gradientPending_)throw std::runtime_error("Gradient duplicate release settlement");
+      const auto pendingRevision=document.gradientRevision();document.setPaletteRole(document.palette().secondary==0xff556677?0xff778899:0xff556677,true,true);gradientTick();if(document.gradientRevision()==pendingRevision)throw std::runtime_error("Gradient duplicate guard suppressed color change");
+      key(ui::kKeyEnter);if(document.historyPosition()!=history+1)throw std::runtime_error("Gradient duplicate commit history");document.undo();if(document.canvasPixels()!=std::vector<Pixel>(32*24,0))throw std::runtime_error("Gradient duplicate undo");
+    }
     tileRepeat_=repeat::Mode::Off;gradientConfirm_=false;
 
     document=Document(8,6);shapeSpec_={};fitCanvas();refresh();shapeRounded_=shapeRatio_=false;brushFeedback_.brushProfiles_[0]={1,100,BrushShape::Round};document.setPaletteRole(0xff0000ff,false,true);document.setPaletteRole(0xff00ff00,true,true);refresh();key(ui::kKeyU);if(!shapeTool_ || !shapeModeButton_->hasFlags(ui::HIDDEN) || !brushOpacityInput_->hasFlags(ui::HIDDEN))throw std::runtime_error("Shape tool properties");pointer(ui::kMouseDownMessage,1,1);pointer(ui::kMouseMoveMessage,3,3);shapeTick();if(document.dirty() || document.historySize()!=0 || (*document.gradientPreviewPixels())[2*8+2]!=0xff0000ff)throw std::runtime_error("Shape independent preview UI");key(ui::kKeyEsc);if(document.shapeActive() || document.dirty())throw std::runtime_error("Shape Escape UI");pointer(ui::kMouseDownMessage,1,1,true);pointer(ui::kMouseMoveMessage,3,3,true);pointer(ui::kMouseUpMessage,3,3,true);if(document.historySize()!=1 || document.pixels()[2*8+2]!=0xff0000ff)throw std::runtime_error("Shape actual legacy right-button fallback");document.undo();useShapeTool(ShapeKind::Line);pointer(ui::kMouseDownMessage,0,0,true);pointer(ui::kMouseMoveMessage,7,2,true);pointer(ui::kMouseUpMessage,7,2,true);if(document.pixels()[0]!=0xff00ff00 || document.pixels()[2*8+7]!=0xff00ff00 || document.historySize()!=1)throw std::runtime_error("Line right-button/one history UI");document.undo();useShapeTool(ShapeKind::RectangleOutline);brushSizeInput_->setText("2");brushSizeInput_->Change();if(brushFeedback_.brushProfiles_[0].size!=2 || brushSizeInput_->hasFlags(ui::HIDDEN))throw std::runtime_error("Shape outline width property");key(ui::kKeyB);if(shapeTool_)throw std::runtime_error("Shape tool exit");brushFeedback_.brushProfiles_[0]={};shapeSpec_={};shapeRounded_=shapeRatio_=false;

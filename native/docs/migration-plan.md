@@ -4659,3 +4659,9 @@ X/Y/Both合成/当前层及左右键实际诊断验证100次preview请求不发�
 对照useCanvasGradientConfirmation.ts cancelPendingGradientEdit的editSnapshot恢复和useCanvasInteractionCancel新建手势取消。原生捕获丢失/Escape原已恢复待确认手柄，但失焦与无按钮释放取消整个待确认预览；现共用局部恢复路径，保留确认状态，恢复编辑前几何及预览。新建渐变仍取消，已释放待确认渐变保留。核对Aseprite ui/manager.cpp MouseUp按钮重置，未修改框架输入语义。
 
 正式Release构建退出0，--gradient-shape-check退出0，新增32组线性/径向×主/副色来源×新建/待确认手柄×捕获丢失/无按钮释放/失焦/Escape；验证像素、预览、历史、捕获与恢复后Enter/Undo。测试准备曾因只清控件捕获标志而残留manager capture，最终改为真实release后通过；未把早期失败当验收。四项CTest document-transactions/raster-geometry/tile-repeat/tile-repeat-stroke通过0.39s，742来源快照和diff检查通过。无新增截图/FPS测试，整体迁移仍INCOMPLETE。保留用户文件与缓存，阶段保存推送dev。
+
+### 2026-11-09：渐变无变化输入重算优化阶段
+
+沿用legacy canvas-input-fill/useCanvasGradientConfirmation的几何状态机、调度合并，以及canvas-render-gradient覆盖/合成缓存的无变化复用原则。原生每次move均请求Document整幅渐变重算并invalidate视口；现几何更新前后比较start/end/radial/fromCenter/proportional/angle/显式椭圆存在性及中心/半径，仅变化时追加请求/脏区。不跳过状态机，不复制色标向量，已有参数改变、pending颜色刷新和释放结算继续执行。
+
+正式Release构建及--gradient-shape-check退出0。七种线性创建/起点/终点/整体移动和径向创建/终点/中心各100重复坐标+100等价相邻副本，共1400事件；明确清空并断言初始脏区为空，验证gradientRevision、完整preview像素、history及脏区不变，随后检查真实几何变化、颜色改变、确认单历史与Undo。手柄测试拉开端点避免命中范围重叠，全部明确assert实际handle。前阶段32中断恢复与六有限副本等既有诊断继续通过。四项CTest document-transactions/raster-geometry/tile-repeat/tile-repeat-stroke通过0.41s，742来源检查和diff通过。未测全软件FPS，不据此宣称全部迁移完成；整体INCOMPLETE。保留用户数据/缓存，阶段保存推送dev。
