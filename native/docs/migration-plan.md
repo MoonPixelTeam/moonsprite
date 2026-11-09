@@ -5445,3 +5445,10 @@ Release专项构建通过，目录测试验证schema1纯Lua、主入口/嵌套�
 迁移 platform_extensions.rs::set_extension_enabled_at：校验目录/清单/身份，读取状态，更新单个enabled，复用公共writeBinaryFileAtomic保存，成功后返回更新候选。保留其他enabled条目及seededBuiltin/builtinRevisions；未知状态字段按旧serde忽略。测试覆盖切换/重开、其他条目保持、无效目录/坏清单、坏状态不覆盖、无删除共享锁导致保存失败保留原字节及内置标记保持。未调用实际用户扩展目录，fixture均在构建测试目录。
 
 Release专项构建与10项extension验证通过，来源/diff检查后保存推送dev。仍有明确差异：WinRT JSON数值用double，builtinRevisions的u64文件大小超过2^53时存在精度风险，完整状态格式等价尚未完成，后续需无损整数解析；当前未接正式扩展管理UI/运行中会话切换或安装。无正式exe/GUI/全套回归，整体INCOMPLETE；用户数据/缓存/editor_support.h既有状态保留。
+
+
+### 2026-11-10：扩展状态无损整数与统一校验阶段
+
+关闭上一阶段builtinRevisions大整数精度缺口。按legacy ExtensionState的BTreeMap/HashSet/(u32,u64)完整类型迁移独立ExtensionState：数字token先保留十进制文本，再from_chars解析，类型形状区分真正数字与字符串；序列化直接输出整数token，避免WinRT double。seededBuiltin去重，缺省字段为空，未知字段忽略。目录读取、枚举、切换统一完整状态检查，删除切换路径重复且有损的JSON转换。
+
+回归u32/u64最大值、2^53+1精确保存和切换重开，拒绝溢出/负数/小数/指数/数字字符串/null/错误元组/前导零与非字符串seed。仍未建立重复顶层字段的serde拒绝规则及JSON递归上限等价证据，保持partial登记；不宣称所有JSON解析边界一致。Release专项与10项extension测试、来源/diff通过后保存推送dev；无正式exe/GUI/全套回归，实际安装/引擎仍待接线，整体INCOMPLETE。保留用户数据/缓存/editor_support.h原状态。

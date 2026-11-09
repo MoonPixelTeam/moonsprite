@@ -1,6 +1,7 @@
 #pragma once
 #include "extension_resources.h"
 #include "atomic_file.h"
+#include "extension_state.h"
 #include "extension_manifest_metadata.h"
 #include <limits>
 #include <tuple>
@@ -31,20 +32,14 @@ class RuntimeDirectory {
   const auto status=std::filesystem::symlink_status(path);if(!std::filesystem::is_regular_file(status)||std::filesystem::is_symlink(status))throw std::runtime_error("扩展清单或状态文件必须是普通文件。");
   std::ifstream input(path,std::ios::binary);if(!input)throw std::runtime_error("Cannot read extension metadata");std::string bytes;char chunk[65536];while(input){input.read(chunk,sizeof(chunk));const auto count=std::size_t(input.gcount());if(count>limit-bytes.size())throw std::length_error("Extension metadata exceeds size limit");bytes.append(chunk,count);}if(input.bad())throw std::runtime_error("Cannot finish extension metadata read");return bytes;
  }
- static std::map<std::string,bool> readState(const std::filesystem::path& directory){
-  using namespace winrt::Windows::Data::Json;std::map<std::string,bool> result;auto path=directory/".state.json";std::error_code error;auto status=std::filesystem::symlink_status(path,error);if(error&&error!=std::errc::no_such_file_or_directory)throw std::system_error(error);if(std::filesystem::exists(status)){auto state=JsonObject::Parse(winrt::to_hstring(read(path,std::numeric_limits<std::size_t>::max())));if(state.HasKey(L"enabled"))for(auto item:state.GetNamedObject(L"enabled"))result.emplace(winrt::to_string(item.Key()),item.Value().GetBoolean());}return result;
- }
+ static ExtensionState readFullState(const std::filesystem::path& directory){auto path=directory/".state.json";std::error_code error;auto status=std::filesystem::symlink_status(path,error);if(error&&error!=std::errc::no_such_file_or_directory)throw std::system_error(error);return std::filesystem::exists(status)?ExtensionState::parse(read(path,std::numeric_limits<std::size_t>::max())):ExtensionState{};}
+ static std::map<std::string,bool> readState(const std::filesystem::path& directory){return readFullState(directory).enabled;}
  static std::string sortName(const std::string& name){auto wide=winrt::to_hstring(name);int n=LCMapStringEx(LOCALE_NAME_INVARIANT,LCMAP_LOWERCASE,wide.c_str(),int(wide.size()),nullptr,0,nullptr,nullptr,0);if(!n)throw std::runtime_error("Cannot lowercase extension name");std::wstring lowered(n,L' ');if(!LCMapStringEx(LOCALE_NAME_INVARIANT,LCMAP_LOWERCASE,wide.c_str(),int(wide.size()),lowered.data(),n,nullptr,nullptr,0))throw std::runtime_error("Cannot lowercase extension name");return winrt::to_string(lowered);}
  static bool validId(const std::string& id){return !id.empty()&&id.size()<=80&&id.front()!='.'&&id.back()!='.'&&id.find("..")==std::string::npos&&std::all_of(id.begin(),id.end(),[](unsigned char c){return (c>='a'&&c<='z')||(c>='A'&&c<='Z')||(c>='0'&&c<='9')||c=='.'||c=='-'||c=='_';});}
 public:
  static RuntimeCandidate setEnabled(const std::filesystem::path& directory,const std::string& id,bool enabled){
   using namespace winrt::Windows::Data::Json;
-  auto candidate=inspect(directory,id,false);auto state=readState(directory);state[id]=enabled;
-  JsonObject values;for(const auto& item:state)values.Insert(winrt::to_hstring(item.first),JsonValue::CreateBooleanValue(item.second));JsonObject root;root.Insert(L"enabled",values);
-  // These fields track bundled package seeding/revisions; toggling must not
-  // erase them even though installation is not wired into the native product.
-  auto statePath=directory/".state.json";if(std::filesystem::exists(statePath)){auto previous=JsonObject::Parse(winrt::to_hstring(read(statePath,std::numeric_limits<std::size_t>::max())));if(previous.HasKey(L"seededBuiltin")){auto seeded=previous.GetNamedArray(L"seededBuiltin");for(auto value:seeded)value.GetString();root.Insert(L"seededBuiltin",seeded);}if(previous.HasKey(L"builtinRevisions")){auto revisions=previous.GetNamedObject(L"builtinRevisions");for(auto extension:revisions)for(auto revision:extension.Value().GetObject()){auto pair=revision.Value().GetArray();if(pair.Size()!=2)throw std::invalid_argument("Invalid builtin revision");auto crc=pair.GetNumberAt(0),size=pair.GetNumberAt(1);if(!std::isfinite(crc)||crc<0||crc>UINT32_MAX||std::floor(crc)!=crc||!std::isfinite(size)||size<0||size>=18446744073709551616.0||std::floor(size)!=size)throw std::invalid_argument("Invalid builtin revision");}root.Insert(L"builtinRevisions",revisions);}}
-  const auto bytes=winrt::to_string(root.Stringify());
+  auto candidate=inspect(directory,id,false);auto state=readFullState(directory);state.enabled[id]=enabled;const auto bytes=state.encode();
   // Same flushed atomic writer used by native project/export persistence.
   // Publish the returned state only after disk publication succeeds.
   writeBinaryFileAtomic(directory/".state.json",std::vector<std::uint8_t>(bytes.begin(),bytes.end()));candidate.enabled=enabled;candidate.extension.enabled=enabled;return candidate;
