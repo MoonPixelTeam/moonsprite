@@ -5408,3 +5408,12 @@ Release两个相关目标构建成功，10项extension CTest全部通过1.34s，
 直接迁移 platform_extensions.rs 的 ExtensionSettingsUiManifest/ControlManifest/OptionManifest、validate_settings_entry_path、validate_settings_ui 及设置按钮命令引用校验。保留 checkbox/number/text/select/button 五类控件、所有可选字段和缺省值；校验控件/选项各64上限、大小写重复、UTF8文案、数值范围/步长、文本Unicode标量数量及maxLength、精确选项默认值、visibleWhen对其他checkbox的大小写精确引用、button样式/布局和本扩展runtime命令引用。所有字段先按旧serde类型读取，即使字段未用于当前控件类型也拒绝错误类型。settingsEntry只保留HTML路径元数据，拒绝与settingsUi共存；未引入WebView。
 
 RuntimeDirectory候选现接入完整设置数据检查。抽取上一阶段命令ID/文本/可选字符串助手供设置复用。回归验证五类控件/缺省/emoji长度、23类错误、64/65控件与选项、路径及实际目录组合。Release相关目标和10项extension专项通过；来源与diff检查后保存推送dev。设置窗口渲染、设置值持久化/事件及实际引擎仍待接线，未更新正式exe或执行GUI/全套验收；整体INCOMPLETE，保留用户数据/缓存/editor_support.h既有状态。
+
+
+### 2026-11-10：扩展元数据／翻译／栏目菜单清单阶段
+
+核对 legacy platform_extensions.rs::ExtensionManifest 的 deny_unknown_fields、元数据/翻译/entry验证和 ExtensionPanelManifest、ExtensionMenuItemManifest、ExtensionTopMenuManifest 的serde默认值与完整校验分支。迁移名称/版本/描述/作者/API文案额度，64语言/512条翻译及文案约束，Lua主入口路径；栏目16、现有菜单贡献32、顶层菜单16与每项最多32命令，精确引用/大小写去重、内置菜单和start/end/before/after位置。栏目允许空命令，菜单必须非空；贡献各域ID独立、可选name/description null及defaultVisible false保留。
+
+修正早期候选读取保留未知顶层字段的暂缺校验：旧serde明确deny_unknown_fields，现按其完整字段集合拒绝。原始JsonObject继续保留已声明数据；目录候选接入本阶段typed metadata。包内容存在性/安装/实际引擎和正式菜单栏目UI仍未接入，不把清单通过称为扩展可运行。
+
+专项Release构建与10项extension CTest通过；新增20类拒绝场景、三类声明默认值与实际目录组合、16/17与32/33及64/65语言、512/513翻译边界检查。来源和diff检查后阶段保存推送dev。无正式exe更新、GUI/FPS/全套验收；整体INCOMPLETE，用户文件/缓存/editor_support.h原状态保留。

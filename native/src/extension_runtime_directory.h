@@ -1,13 +1,13 @@
 #pragma once
 #include "extension_resources.h"
-#include "extension_manifest_settings.h"
+#include "extension_manifest_metadata.h"
 #include <limits>
 #include "extension_runtime.h"
 #include <winrt/Windows.Data.Json.h>
 #include <winrt/Windows.Foundation.Collections.h>
 namespace moon::extension {
 // A lossless inspected candidate, NOT an installed/validated executable package.
-// Other manifest domains remain preserved until their validators are migrated.
+// Manifest domains are validated; package contents and engine loading are separate.
 struct RuntimeCandidate {
  winrt::Windows::Data::Json::JsonObject manifest;
  RuntimeExtension extension;
@@ -15,6 +15,7 @@ struct RuntimeCandidate {
  std::vector<std::string> permissions;
  std::vector<ManifestCommand> commands;
  ManifestSettings settings;
+ ManifestMetadata metadata;
  std::shared_ptr<ResourceCatalog> resources;
  bool enabled=true;
 };
@@ -44,6 +45,7 @@ public:
   }
   candidate.commands=inspectCommands(manifest,candidate.permissions);
   candidate.settings=inspectSettings(manifest,candidate.commands);
+  candidate.metadata=inspectMetadata(manifest,candidate.commands);
   candidate.extension={id,candidate.enabled,(manifest.HasKey(L"settingsEntry")&&manifest.GetNamedValue(L"settingsEntry").ValueType()!=JsonValueType::Null)||(manifest.HasKey(L"settingsUi")&&manifest.GetNamedValue(L"settingsUi").ValueType()!=JsonValueType::Null)};return candidate;
  }
 };

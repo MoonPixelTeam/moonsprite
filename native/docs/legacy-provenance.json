@@ -29856,6 +29856,15 @@
       "adaptation": "Unsafe path/ID/reserved/protected/duplicate/count cases,Unicode raw binary,missing/case mismatch,16MiB and overflow,session resource request byte array,permission and close. No actual package install/engine/UI."
     },
     {
+      "file": "src/extension_manifest_metadata.h",
+      "classification": "legacy-partial",
+      "sources": [
+        "legacy/src-tauri/src/platform_extensions.rs"
+      ],
+      "scope": "EX-004 remaining manifest metadata and contribution validation",
+      "adaptation": "ExtensionManifest deny_unknown_fields and metadata/translations/Lua entry constraints; ExtensionPanel/MenuItem/TopMenuManifest typed defaults and validate_manifest count/ID/text/position/command reference rules. Preserve explicit optional/null contribution fields, exact command identity, casefold duplicate checks, per-domain IDs. Data only; no product menus/panels/install/engine."
+    },
+    {
       "file": "src/extension_manifest_settings.h",
       "classification": "legacy-partial",
       "sources": [
@@ -29881,7 +29890,7 @@
         "legacy/src-tauri/src/platform_extensions.rs"
       ],
       "scope": "EX-004 installed runtime candidate inspection",
-      "adaptation": "Partial manifest_from_directory/read_state/installed_extension_path/runtime validation migration: ordinary directory and manifest/state files,256KiB manifest,exact ID/schema2/api1,HTML entry path,known unique permissions/runtime mandatory,resource catalog,state bool/default enabled; command metadata/handlers validated by inspectCommands; complete settings definition and button references by inspectSettings; null settings absent. Preserve complete JsonObject. Candidate only: full name/version/translations/menus/panels validators and actual entry loading not migrated, cannot enable as validated package."
+      "adaptation": "Partial manifest_from_directory/read_state/installed_extension_path/runtime validation migration: ordinary directory and manifest/state files,256KiB manifest,exact ID/schema2/api1,HTML entry path,known unique permissions/runtime mandatory,resource catalog,state bool/default enabled; command metadata/handlers validated by inspectCommands; complete settings definition and button references by inspectSettings; null settings absent. Preserve complete JsonObject for declared fields; inspectMetadata now rejects unknown top-level fields per serde deny_unknown_fields and validates name/version/translations/Lua entry/panels/menus. Candidate only: actual package contents and entry loading not migrated, cannot enable as executable package."
     },
     {
       "file": "tests/extension_runtime_directory_test.cpp",
@@ -29890,7 +29899,7 @@
         "legacy/src-tauri/src/platform_extensions.rs"
       ],
       "scope": "Runtime directory candidate disk regression",
-      "adaptation": "Real isolated directory manifest/resource/state,unknown field preservation,default/disabled/invalid state,ID and schema/API/path/permission failures,manifest limit. No engine or full package validation claim. Command migration regression: three handlers/defaults/nulls, UTF8 text limits, invalid declarations, duplicate IDs,64/65 cap,Unicode Lua path; five settings controls/defaults/Unicode scalar counts,23 invalid settings cases,64/65 controls/options,HTML metadata; parsed commands composed with session request dispatch."
+      "adaptation": "Real isolated directory manifest/resource/state,unknown top-level field rejection (completed metadata validator),default/disabled/invalid state,ID and schema/API/path/permission failures,manifest limit. No engine or full package validation claim. Command migration regression: three handlers/defaults/nulls, UTF8 text limits, invalid declarations, duplicate IDs,64/65 cap,Unicode Lua path; five settings controls/defaults/Unicode scalar counts,23 invalid settings cases,64/65 controls/options,HTML metadata; parsed commands composed with session request dispatch. Metadata/defaults/translations and all three contribution types;20 invalid scenarios;16/17 panels/top menus,32/33 menu items/references,64/65 locales,512/513 translation entries. No GUI or executable package acceptance."
     }
   ],
   "assetTransfers": [
