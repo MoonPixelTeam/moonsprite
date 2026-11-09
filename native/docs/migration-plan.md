@@ -4617,3 +4617,9 @@ X/Y/Both合成/当前层及左右键实际诊断验证100次preview请求不发�
 对照canvas-move-selection resolveCanvasMoveLayerIds与canvas-input-layer-move：选中组展开后代层，再按有效visible/locked过滤；显式层目标扩展所有帧，Alt仅单层单Cel可复制。新增36组X/Y/Both×全可编辑/一个锁定/一个隐藏成员×Alt/普通×主/负副本，实际鼠标验证链接帧各目标offset、组Alt不复制、单历史、UndoRedo、Escape；每组再验证整组锁定/隐藏时无移动、捕获或新增历史。既有96组帧/蒙版/普通移动继续执行。
 
 正式Release构建退出0；--layer-move-check显式等待退出0（累计132组及整组拒绝检查）；六项CTest layer-panel-tree/document-layer-groups/document-layer-group-structure/alignment/move-click-flash/attached-masks通过1.10s，742来源快照与diff检查通过。生产逻辑无新增改动，不称性能提升。初始计划中的嵌套组和组蒙版未在本矩阵覆盖：旧版animationMaskOffsetsForLayerMove仅取layer mask，原生已有随选中组移动group mask分支，仍需查证或用户语义决定；活动蒙版单独移动入口同样待核对。未新增截图/FPS证据，全量迁移INCOMPLETE。保留原有用户数据、缓存与未跟踪文件，阶段保存推送dev。
+
+### 2026-11-09：平铺嵌套组移动完整范围验收阶段
+
+对照canvas-move-selection resolveCanvasMoveLayerIds/getLayerIdsInGroup与canvas-input-layer-move有效visible/locked过滤；复用已有document_layer_group_structure_test的导入夹具构建方式。新增36组X/Y/Both×父/子组选择×子组正常/锁定/隐藏×主/负副本，两帧链接Cel及组外层。实际鼠标检查目标数/拒绝、每帧解析owner不变、偏移仅加一次、同级/组外不动、一笔历史、UndoRedo、Escape及无捕获残留。
+
+正式Release构建退出0；--layer-move-check显式等待退出0（累计168组，含既有整组拒绝检查）；六项CTest layer-panel-tree/document-layer-groups/document-layer-group-structure/alignment/move-click-flash/attached-masks通过0.45s；742来源快照与diff检查通过。无生产逻辑修改，无新增截图/FPS测量。组蒙版跟随选中组的行为与旧版layer-mask-only移动不同，已通过异步问题请用户选择；本矩阵无组蒙版，不将通过结果用作该语义批准。活动蒙版单独移动仍待核对，全量迁移INCOMPLETE。保留用户数据、缓存及未跟踪文件，阶段保存推送dev。
