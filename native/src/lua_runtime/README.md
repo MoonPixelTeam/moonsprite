@@ -52,7 +52,7 @@ dialog rebase. validateResult checks all batches/created structures without
 mutating Document. Its returned surface is a validation baseline, not a
 replacement transaction executor. Native coordinates outside int32 reject
 rather than truncate JavaScript safe integers. Indexed native context, actual
-workspace MSE capture, result history/application and Editor scheduling/menu/
+workspace MSE capture, complete workspace result application and Editor scheduling/menu/
 dialog integration are still pending. CTest lua-script-invocation covers
 actual Document captures, budgets, stale guards and real worker execution.
 
@@ -62,6 +62,13 @@ the active Target, then commits each ordinary pixel/surface batch to native
 undo history. Pixel deltas preserve owner storage origins; surface replacement
 resets them to zero. Linked Cels/layers follow existing native propagation.
 No-op pixel batches add no history; surface batches always do. Unsupported
-MSE operations and created layers/documents cause a pre-write rejection: this
+MSE operations and created documents cause a pre-write rejection: this
 stage does not substitute for the complete workspace executor. Formal UI
-scheduling, compound MSE rollback and created-object application remain pending.
+scheduling, compound MSE rollback and created-document application remain pending.
+
+Script-created layers now apply through commitScriptCreatedLayer and the same
+result executor. Layer IDs, metadata, requested stack index/frame/parent group
+and sparse Cel placement are retained; each layer has its own undo record.
+The executor refocuses the original script target before each layer, and
+updates the target revision. Created documents and MSE operations still require
+the pending workspace executor. The formal Editor remains unconnected.

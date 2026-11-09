@@ -45,7 +45,7 @@
 #include <filesystem>
 
 namespace moon {
-namespace script {struct RasterBatch;}
+namespace script {struct RasterBatch;struct CreatedLayer;}
 namespace local_history {class CommittedCapture;class PixelHistory;struct PixelHistoryEdit;}
 struct SymmetryRotationRaster;
 namespace timelapse {class Session;}
@@ -192,6 +192,7 @@ public:
   // Validated Lua raster batch -> ordinary owner-aware undo history.
   // Other script operations are applied by the workspace adapter separately.
   bool commitScriptRasterBatch(const script::RasterBatch&);
+  void commitScriptCreatedLayer(const script::CreatedLayer&,std::u32string label);
   void clearSourceArchiveForNewSnapshot() {sourceArchive_.reset();}
   void markRecovered(std::u32string name) {name_=std::move(name);modified_=true;}
   const std::u32string& name() const {return name_;}

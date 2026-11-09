@@ -90,7 +90,8 @@ RasterSummary applyRasterResult(Document& d,Target& target,const std::string& js
  const auto result=JsonObject::Parse(winrt::to_hstring(json));
  // This stage is deliberately closed to operations requiring workspace state.
  // The full executor will route these explicitly; no data may be dropped.
- if(result.GetNamedArray(L"createdLayers").Size()||result.GetNamedArray(L"createdDocuments").Size())throw std::logic_error("Lua created objects require the workspace result executor");
+ if(result.GetNamedArray(L"createdDocuments").Size())throw std::logic_error("Lua created documents require the workspace result executor");
+ for(const auto& item:result.GetNamedArray(L"createdLayers")){const auto layer=item.GetObject();(void)layer.GetNamedBoolean(L"visible");(void)layer.GetNamedBoolean(L"locked");if(d.timeline().hasLayer(winrt::to_string(layer.GetNamedString(L"id"))))throw std::invalid_argument("Lua layer id already exists");}
  for(const auto& item:result.GetNamedArray(L"batches")){const auto batch=item.GetObject();if(batch.HasKey(L"operations")&&batch.GetNamedArray(L"operations").Size())throw std::logic_error("Lua MSE operations require the workspace result executor");}
  RasterSummary summary;
  for(const auto& item:result.GetNamedArray(L"batches")){
@@ -107,6 +108,16 @@ RasterSummary applyRasterResult(Document& d,Target& target,const std::string& js
    if(values)next.pixels=values;
   }
   if(d.commitScriptRasterBatch(batch)){++summary.transactionCount;summary.changedPixelCount+=count;target.expected=std::move(next);target.revision=d.revision();}
+ }
+ for(const auto& item:result.GetNamedArray(L"createdLayers")){
+  // Legacy refocuses the original target before each layer, so undo of each
+  // creation returns there rather than the previously created layer.
+  d.selectLayer(target.layerId);d.selectFrame(target.frameId);const auto wire=item.GetObject();CreatedLayer layer;
+  layer.id=winrt::to_string(wire.GetNamedString(L"id"));layer.name=unicode(wire.GetNamedString(L"name"));layer.opacity=int(wire.GetNamedNumber(L"opacity"));layer.visible=wire.GetNamedBoolean(L"visible");layer.locked=wire.GetNamedBoolean(L"locked");layer.frameNumber=wire.GetNamedNumber(L"frameNumber");
+  if(wire.HasKey(L"stackIndex"))layer.stackIndex=std::size_t(wire.GetNamedNumber(L"stackIndex"));
+  if(wire.HasKey(L"parentGroupId")&&wire.GetNamedValue(L"parentGroupId").ValueType()==JsonValueType::String)layer.parentGroupId=winrt::to_string(wire.GetNamedString(L"parentGroupId"));
+  layer.surface=surface(wire.GetNamedObject(L"surface"),L"rgba");const auto count=std::count_if(layer.surface.pixels->begin(),layer.surface.pixels->end(),[](Pixel p){return (p>>24)!=0;});
+  auto label=result.GetNamedString(L"fileName",L"");d.commitScriptCreatedLayer(layer,label.empty()?U"脚本":unicode(label));++summary.transactionCount;summary.changedPixelCount+=count;target.revision=d.revision();
  }
  // Legacy applies a final requested layer/frame after all batches. It does not
  // retarget the dialog: a later callback on a different slot must be rejected.

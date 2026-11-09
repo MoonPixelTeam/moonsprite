@@ -5672,3 +5672,9 @@ Release构建成功；lua-script-runtime/lua-script-invocation两项通过0.45s�
 对照lua-script-service.ts commitSurfaceChange/commitPixelEdit/applyResult及history/animation，新增Document::commitScriptRasterBatch与applyRasterResult。完整结果先预检，再核对活动Target；逐批写原生owner-local Delta/SurfaceChange历史，普通像素修改保留storageOrigin，整面替换设为0。前值/重复索引/尺寸/工作内存预算在写入前核对，预分配历史和替换表面；普通已有Cel路径不复制整个工程。空Cel沿commitStroke创建候选并保留撤销后存活Cel语义，预算计入候选复制成本。无变化像素不产历史，整面/仅偏移变化产历史；像素统计和最终活动帧/层选择沿旧版，未把最终切帧当成dialog新目标。所有MSE操作和created对象在第一笔修改前明确拒绝，等待完整工作区执行器，不静默丢弃。
 
 Release构建成功，lua-script-invocation/lua-script-runtime/document-raster-history三项通过2.27s。专项包含真实Lua执行→文档写入→撤销重做、链接Cel与跨图层共享内容、原点恢复、连续批次/无操作、整面替换/仅偏移计数、空槽写入和存活Cel、非法晚批次/未接入操作与创建对象全量预拒绝、原生工作预算失败不改revision/content/history、最终活动帧及过期target。额外验证history observer抛异常后已提交像素/历史保持一致并可撤销；这沿现有原生通知异常语义，不等同旧版compound abort，完整混合MSE批次回滚仍待接入。来源覆盖796及diff检查通过后保存推送dev。正式Editor/future调度、真实MSE工作区快照、MSE混合事务/创建层工程/跨文档回滚、动态菜单/原生对话框仍未完成；无正式exe更新/GUI/完整smoke，橡皮擦旧smoke失败保留，整体INCOMPLETE。保留用户差异、数据、缓存和现场。
+
+### 2026-11-10：Lua创建图层结果与历史阶段
+
+沿lua-script-service.ts commitCreatedLayer/rasterLayerFromScript，把createdLayers接入既有结果执行器和Document::commitScriptCreatedLayer。保留脚本ID、Unicode名称、opacity/visible/locked、parentGroupId、stackIndex钳制/省略追加、frameNumber越界回首帧；每层只创建指定帧Cel，其他帧保持缺失，表面存储原点归零。每次创建前refocus原目标，故独立撤销返回原图层/帧；detachedLayer/detachedCels/order记录复用原生历史，重做保留Cel身份。新层选中并清除组选中，预算在候选时间轴复制前检查；原生结构事务仍复制时间轴，属于已记录性能成本，不声称大工程创建优化完成。
+
+Release构建和lua-script-invocation专项通过0.38s，覆盖真实Lua app.activeSprite:newLayer→像素→原生创建/撤销、单帧稀疏Cel、名字/标志/偏移/alpha统计、插入位置/多次创建/原目标恢复/越界帧回退、组归属/重复ID拒绝及前阶段栅格回归。来源覆盖796和diff检查通过；未更新正式exe，无GUI/完整smoke验收。createdDocuments、新建会话、MSE混合事务和正式Editor/future/原生对话框接入仍待完成，整体INCOMPLETE。保留用户差异、数据、缓存及失败现场，阶段保存推送dev。

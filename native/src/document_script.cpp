@@ -3,7 +3,37 @@
 #include <unordered_set>
 #include <set>
 #include <stdexcept>
+#include <cmath>
 namespace moon {
+void Document::commitScriptCreatedLayer(const script::CreatedLayer& value,std::u32string label){
+ if(active())throw std::logic_error("Finish active edit before script layer creation");
+ const auto& s=value.surface;
+ if(value.id.empty()||value.name.empty()||timeline_.hasLayer(value.id)||value.opacity<0||value.opacity>255||(value.stackIndex&&!*value.stackIndex)||!std::isfinite(value.frameNumber)||value.frameNumber<1||std::floor(value.frameNumber)!=value.frameNumber||!s.pixels||s.width<1||s.height<1||std::uint64_t(s.width)*s.height!=s.pixels->size()||s.pixels->size()>script::InvocationCapture::maxImagePixels)throw std::invalid_argument("Invalid Lua created layer");
+ raster::coordinate(std::int64_t(s.x)+s.width);raster::coordinate(std::int64_t(s.y)+s.height);
+ // Candidate construction uses the existing native structural transaction.
+ // Admit live+candidate+history surface before making any full-state copy.
+ constexpr std::uint64_t limit=256ull*1024*1024;std::uint64_t used=0;
+ auto admit=[&](std::uint64_t bytes){if(bytes>limit-used)throw std::length_error("Lua layer creation exceeds native working budget");used+=bytes;};
+ for(const auto& c:timeline_.state().cels)if(c.surface)admit(c.surface->pixels.size()*sizeof(Pixel)*2ull);
+ for(const auto& m:timeline_.state().masks)admit(m.mask.surface.pixels.size()*sizeof(Pixel)*2ull);
+ for(const auto& set:timeline_.state().tilesets)admit(set.pixels.size()*sizeof(Pixel)*2ull);
+ admit(s.pixels->size()*sizeof(Pixel)*3ull);
+ const auto& frames=timeline_.state().frames;const auto frameIndex=value.frameNumber<=frames.size()?std::size_t(value.frameNumber)-1:0;
+ const auto frameId=frames.at(frameIndex).id;
+ const auto index=value.stackIndex?std::min(*value.stackIndex-1,timeline_.state().layers.size()):timeline_.state().layers.size();
+ DocumentLayer layer;layer.id=value.id;layer.name=value.name;layer.opacity=value.opacity/255.;layer.visible=value.visible;layer.locked=value.locked;layer.groupId=value.parentGroupId;
+ timeline::Surface surface;surface.width=s.width;surface.height=s.height;surface.offsetX=s.x;surface.offsetY=s.y;surface.storageOriginX=surface.storageOriginY=0;surface.pixels=*s.pixels;
+ DocumentCel c;c.id="cel-"+value.id+"-"+frameId;for(std::size_t suffix=1;timeline_.findCelById(c.id);++suffix)c.id="cel-"+value.id+"-"+frameId+"-"+std::to_string(suffix);c.layerId=layer.id;c.frameId=frameId;c.opacity=layer.opacity;c.surface=std::move(surface);
+ Edit edit{{},state_,nextState_};edit.beforeFrame=activeFrameId_;edit.afterFrame=frameId;edit.beforeActive=activeLayerId_;edit.afterActive=layer.id;for(const auto& l:timeline_.state().layers)edit.beforeOrder.push_back(l.id);edit.afterOrder=edit.beforeOrder;edit.afterOrder.insert(edit.afterOrder.begin()+index,layer.id);edit.detachedLayer=layer;edit.detachedCels.push_back(c);
+ edit.beforeGroupUi=GroupUiSnapshot{selectedGroupIds_,collapsedGroupIds_,selectedGroupId_};edit.afterGroupUi=GroupUiSnapshot{{},collapsedGroupIds_,{}};
+ edit.beforeTimelineSelection=timelineSelection_;auto selected=timelineSelection_;selected.layers={layer.id};selected.layerAnchor=layer.id;edit.afterTimelineSelection=selected;
+ auto next=timeline_.state();next.layers.insert(next.layers.begin()+index,std::move(layer));next.cels.push_back(std::move(c));timeline::Timeline prepared(std::move(next));
+ reserveHistoryEntries();auto beforeLayer=activeLayerId_,beforeFrame=activeFrameId_;auto oldSelection=timelineSelection_;auto oldGroups=selectedGroupIds_;auto oldGroup=selectedGroupId_;auto nextLayer=edit.afterActive,nextFrame=edit.afterFrame;std::swap(timeline_,prepared);activeLayerId_=std::move(nextLayer);activeFrameId_=std::move(nextFrame);selectedGroupIds_.clear();selectedGroupId_.reset();timelineSelection_=std::move(selected);
+ const auto oldRevision=revision_;
+ try{pushEdit(std::move(edit),label.empty()?U"脚本":std::move(label));}
+ catch(...){if(revision_==oldRevision){std::swap(timeline_,prepared);activeLayerId_=std::move(beforeLayer);activeFrameId_=std::move(beforeFrame);timelineSelection_=std::move(oldSelection);selectedGroupIds_=std::move(oldGroups);selectedGroupId_=std::move(oldGroup);}change_={0,0,width_,height_};publishChange();throw;}
+ change_={0,0,width_,height_};publishChange();
+}
 bool Document::commitScriptRasterBatch(const script::RasterBatch& batch){
  if(active()||!activeMaskId_.empty()||!layer().kind.empty()||layerEffectivelyLocked(layer()))throw std::logic_error("Lua raster target is not editable");
  const auto& expected=batch.before;
