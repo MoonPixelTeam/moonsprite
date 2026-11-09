@@ -1065,7 +1065,9 @@
     "legacy/src/renderer/src/core/repeated-selection.ts": "9236937386650ba282f6e9a448522e054c0accfc1b9694e6d8c098f480be05cd",
     "legacy/src/renderer/src/core/repeated-selection.test.ts": "aa018d005d03eb94eb8c3f1060ee2788bc2726451c371a96f2696c8cb11daed3",
     "legacy/src/renderer/src/components/canvas-render-free-tile-brush.ts": "39588e93ba87951139f7940e9f7d84346843c89df2595b1d146e827861814ceb",
-    "legacy/src/renderer/src/components/useCanvasViewportGeometry.ts": "a48fdfd06d7a6b684eea4f91ae47faa53eccf71b910eb9962d61548dbea919cd"
+    "legacy/src/renderer/src/components/useCanvasViewportGeometry.ts": "a48fdfd06d7a6b684eea4f91ae47faa53eccf71b910eb9962d61548dbea919cd",
+    "legacy/src/renderer/src/core/extension-file-drop.ts": "ff54ee21fa329f11cb3960ef225b797956ec30020a531a06cd8f9f4e3320859f",
+    "legacy/src/renderer/src/core/extension-file-drop.test.ts": "f9dc9e941c9b7f63a3cc95018c1ac67a2dc802719569c564adcebe64b164ad55"
   },
   "files": [
     {
@@ -25618,13 +25620,14 @@
     },
     {
       "file": "tests/extension_locale_filedrop_test.cpp",
-      "classification": "native",
+      "classification": "legacy-partial",
       "sources": [
         "legacy/src/renderer/src/core/extension-runtime.ts",
-        "legacy/src/renderer/src/core/extension-file-drop.ts"
+        "legacy/src/renderer/src/core/extension-file-drop.ts",
+        "legacy/src/renderer/src/core/extension-file-drop.test.ts"
       ],
-      "scope": "EX-004 locale/file-drop policy",
-      "adaptation": "Native policy test for locale de-duplication and bounded file-drop cancellation."
+      "scope": "EX-004 locale and complete file-drop routing core regression",
+      "adaptation": "Legacy/native seven-scenario executable comparison plus registration invalid input/atomic failure, first owner order, same-type replacement, removal/recreation, empty types, mixed paths, Unicode basename, error consumption and 12 MiB inclusive boundary; host/UI remains unconnected."
     },
     {
       "file": "tests/extension_host_lifecycle_test.cpp",
@@ -29643,6 +29646,26 @@
         "native/.cache/aseprite/src/ui/LICENSE.txt"
       ],
       "scope": "Native Widget-owned property adapter for existing Editor compositeControl floating-column/modal clipping of legacy QuickCommandBar and its controls; no new interaction or drawing semantics."
+    },
+    {
+      "file": "src/extension_file_drop.h",
+      "classification": "legacy-partial",
+      "sources": [
+        "legacy/src/renderer/src/core/extension-file-drop.ts",
+        "legacy/src/renderer/src/core/extension-file-drop.test.ts"
+      ],
+      "scope": "EX-004 complete file-drop registration and routing core",
+      "adaptation": "C++ event-thread begin/complete token retains registration object identity across asynchronous reads; synchronous adapter exposes injected read/report/dispatch. ASCII suffix validation, insertion-order ownership, replacement invalidation, basename/bytes only, 12 MiB and consumed failures mirror legacy. No runtime or desktop drop integration yet."
+    },
+    {
+      "file": "scripts/verify-extension-file-drop.cjs",
+      "classification": "legacy-partial",
+      "sources": [
+        "legacy/src/renderer/src/core/extension-file-drop.ts",
+        "legacy/src/renderer/src/core/extension-file-drop.test.ts"
+      ],
+      "scope": "Actual legacy/native file-drop routing comparison",
+      "adaptation": "Execute unchanged legacy TypeScript body with dispatcher stub and compare seven scenario outputs against native test executable; no real runtime or OS drop asserted."
     }
   ],
   "assetTransfers": [

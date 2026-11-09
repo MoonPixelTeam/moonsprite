@@ -5311,3 +5311,12 @@ legacy canvas-render-selection-preview.ts对两种套索的每个栅格路径点
 纠正此前把“瓦片多目标”笼统登记为迁移缺口的说法：legacy workspace-session.ts::selectedTransformLayersAreEditable要求多个目标图层全部为普通栅格；core/selection-transform-targets.ts::captureAnimationFrameSelectionTransformStates在捕获和应用时均跳过带kind的特殊图层；workspace-commands-selection-move.ts动画分支明确拒绝特殊层，useCanvasSelectionTransform.ts批量指针分支复用相同捕获。现有native/tests/tilemap_document_test.cpp::checkTilemapTransformEntry覆盖混合显式多层拒绝和隐式帧选择只取普通栅格，本轮随完整tilemap-document实际通过。因此不能未经新需求决定开放特殊图层批量变换，也不能以移除单目标门控充当迁移。此结论仅覆盖上述批量分支，不推断所有单目标/菜单组合完全等价。
 
 需求静态门禁通过：57条需求、756入口候选、671原始证据、31来源；来源覆盖744文件和快照通过，--strict仍按已知partial记录退出1。扩展现状核对：native/src/extension_contract_session.h是独立契约模型，不能把三项extension测试通过解释为实际脚本宿主、原生扩展窗口或宠物迁移完成。全量迁移继续INCOMPLETE，后续应按具体入口和真实接线关闭缺口。保留全部用户数据、构建缓存、未跟踪文件及editor_support.h既有状态；本验收阶段保存推送dev。
+
+
+### 2026-11-10：扩展文件拖放完整路由核心
+
+以legacy core/extension-file-drop.ts及其测试为依据，迁移完整注册与逐文件路由：最多16个点号开头的1–16位ASCII字母数字后缀、先完整验证再替换、大小写归一、首个注册扩展优先、替换保留顺序/删除重建移到末尾、空列表不匹配。待投递token持有注册对象身份，读取期间替换/移除/重建后不向任何备用扩展投递；只交付basename与bytes，12 MiB包含上限，匹配后读取/超限/投递失败报告并消费，不落回工程打开。未匹配路径保留输入顺序。原生将异步await拆成事件线程begin/complete，提供注入读取/投递/报告的顺序adapter，不从worker访问live注册表。
+
+新增边界回归，并执行未经改写逻辑的旧版TypeScript（dispatcher受控stub）对照原生--oracle七组合：成功、等价替换、移除、删除重建、读取失败、超限、runtime不可用；输出中的remaining、owner/name/bytes、错误次数完全一致。扩展三项CTest通过，Release专项构建成功。首次编译因注册查询仅有const iterator失败，增加非const重载后构建通过。新增代码沿用MoonSprite Source-Available License 1.0内部修改依据。
+
+范围是完整路由核心，尚未接入正式exe的OS拖入、真实扩展注册/权限和事件宿主；原有FileDropPolicy/HostLifecycle仍是契约模型，不将本阶段称为可安装或可运行扩展。无正式程序重建、人工窗口/截图/FPS结论。来源与diff检查后阶段保存推送dev；全量目标继续INCOMPLETE，保留全部用户数据、缓存及editor_support.h既有状态。
