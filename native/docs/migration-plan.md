@@ -5075,3 +5075,10 @@ CTest document-transactions/free-tile-project/tilemap-document全部通过33.39s
 对照legacy core/aseprite.ts encodeAseprite needsComposite及aseprite.test.ts clipping回归，原生旧门控漏掉layer/group clippingMask及启用layerStyles，可能成功导出却丢失画面效果。新增共用asepriteNeedsComposite，统一编码、导出说明、保存effects损失确认，保留蒙版/cumulative规则；禁用样式不触发。八组图层/组×剪贴/样式×启用/禁用验证全部帧合成画面、层数量、effects提示与authority不变。
 
 正式Release构建成功；aseprite-io/aseprite-save-policy通过0.10s；完整既有--aseprite-io-check、--aseprite-save-check实际退出0。新增效果组合为核心覆盖，窗口沿用已有生命周期夹具，未声明新增效果真实控件组合或截图验收。744来源/证据与diff通过；整体INCOMPLETE，本阶段保存推送dev。
+
+
+### 2026-11-10：ASE稀疏时间轴读写迁移
+
+核对legacy core/aseprite.ts decodeAseprite的缺失槽跳过与encodeAseprite的非合成缺失Cel跳过。原生此前按图层×帧补透明Cel，现读写两端均保留空槽，减少稀疏动画额外对象与区块；显式透明Cel仍保留，效果合成仍逐帧写出。五帧双层二进制检查覆盖首帧缺槽、整帧空白、前向链接栅格化、后向链接、opacity/z、显式透明Cel、重复保存重开及authority不变；另覆盖全空动画和稀疏效果合成逐像素对照。
+
+正式Release构建与既有完整--aseprite-io-check实际退出0；新增稀疏场景为核心测试，未新增窗口夹具或FPS量测。整体INCOMPLETE，本阶段保存推送dev。
