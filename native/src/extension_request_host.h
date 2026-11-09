@@ -15,8 +15,19 @@ class RequestHost {
  static std::u16string units(const winrt::hstring& s){return {reinterpret_cast<const char16_t*>(s.data()),s.size()};}
 public:
  RequestHost(RuntimeExtension extension,std::vector<std::string> permissions,Storage& storage,FileDropRouter& drops,RuntimeRegistry& registry,CommandHandlers handlers={},std::vector<RuntimeCommand> commands={}):extension_(std::move(extension)),permissions_(std::move(permissions)),storage_(storage),drops_(drops),registry_(registry),handlers_(std::move(handlers)),commands_(std::move(commands)){}
- void setDeclaredMenus(std::vector<std::string> ids){menus_.clear();menus_=MenuState(std::move(ids));}
+ void setDeclaredMenus(std::vector<std::string> ids){menus_.setDeclared(std::move(ids));}
  const MenuState& menus()const{return menus_;}
+ // Authenticated window-message bridge, separate from runtime method permissions.
+ bool reportCommandState(const winrt::Windows::Data::Json::JsonObject& params,bool ownsSession){
+  using namespace winrt::Windows::Data::Json;
+  if(!ownsSession||!active_||!extension_.enabled)return false;
+  if(!params.HasKey(L"commandId")||params.GetNamedValue(L"commandId").ValueType()!=JsonValueType::String)throw std::invalid_argument("命令 ID 无效。");
+  auto value=params.GetNamedString(L"commandId");if(value.empty()||value.size()>80)throw std::invalid_argument("命令 ID 无效。");auto id=winrt::to_string(value);
+  if(std::none_of(commands_.begin(),commands_.end(),[&](const auto& c){return c.id==id;}))return false;
+  JsonObject state;if(params.HasKey(L"state")&&params.GetNamedValue(L"state").ValueType()==JsonValueType::Object)state=params.GetNamedObject(L"state");
+  CommandState next;auto field=[&](const wchar_t* key,std::optional<bool>& target){if(!state.HasKey(key))return;if(state.GetNamedValue(key).ValueType()!=JsonValueType::Boolean)throw std::invalid_argument("命令显示状态无效。");target=state.GetNamedBoolean(key);};
+  field(L"checked",next.checked);field(L"visible",next.visible);menus_.setCommand(id,next);return true;
+ }
  void setResourceReader(std::function<FileDropRouter::Bytes(const std::string&)> reader){readResource_=std::move(reader);}
  void deactivate(){active_=false;menus_.clear();drops_.clear(extension_.id);}
  std::optional<winrt::Windows::Data::Json::JsonObject> handle(const winrt::Windows::Data::Json::IJsonValue& raw,bool ownsSession,const std::string& locale,std::optional<std::string> encodedValue={}){

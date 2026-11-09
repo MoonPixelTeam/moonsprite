@@ -5525,3 +5525,10 @@ Release三个相关目标成功，10项extension通过1.74s。覆盖动态请求
 复用已验证的extension Storage适配方案，状态保存从公共MoveFileEx覆盖改为：公共writer写入并Flush唯一staging，已有目标ReplaceFileW，缺失目标不覆盖MoveFileEx发布，失败清本次staging，不自动重试。元数据读取明确READ/WRITE/DELETE共享，安装状态读取改复用RuntimeDirectory，启停/卸载/内置标记均走同一saveState，拒绝非普通状态文件。公共工程导出writer不变。
 
 受控旧快照句柄持续打开时32次保存/重开全部通过，u64修订与enabled一致、旧句柄仍读原值；既有无delete-sharing锁定写入失败及旧值保留继续验证。Release两个相关目标成功，12项extension/project-reader全部通过2.16s。此证据只证明本次快照协议，未建立此前状态替换外部持有者根因；staging目录重命名拒绝访问仍独立未定位，原现场保留。来源/diff后保存推送dev；无正式exe/GUI/全套验收，整体INCOMPLETE，保留用户数据/缓存/editor_support.h既有状态。
+
+
+### 2026-11-10：扩展命令显示状态与会话归属阶段
+
+承接extension-command-state.ts及其测试：未知命令默认未勾选且可见，checked/visible部分更新保留省略字段，false作为有效值，相同值或空补丁不增加修订号；停用统一清空命令与菜单状态。MenuState声明更新保留命令状态并保持revision单调。核对ExtensionWindow::window.setCommandState和ExtensionRuntimeHost的command-state消息，只提供内部已认证会话上报桥，校验命令ID/布尔类型和本扩展声明命令归属；不新增运行时权限方法。SessionHost拒绝关闭/替换后的旧token。
+
+Release三个相关目标构建成功，extension-request-host/session-host/resources三项检查通过0.26s；覆盖默认值、部分false更新、重复与空更新、无效输入原子性、跨宿主归属、声明更新保留、停用清空和旧token拒绝。来源774文件覆盖及diff检查通过。原生窗口消息传输、订阅Set与正式菜单渲染仍未接入，本阶段仅核心状态链路，不宣称扩展可运行或性能收益；无正式exe/GUI/全套验收，整体INCOMPLETE。保留安装失败现场、用户数据/缓存和editor_support.h既有状态。

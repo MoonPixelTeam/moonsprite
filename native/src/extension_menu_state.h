@@ -8,14 +8,21 @@
 #include <winrt/Windows.Foundation.Collections.h>
 namespace moon::extension {
 struct DynamicMenuItem {std::string id,event;std::wstring name;bool checked=false,dividerBefore=false;bool operator==(const DynamicMenuItem& other)const{return id==other.id&&event==other.event&&name==other.name&&checked==other.checked&&dividerBefore==other.dividerBefore;}};
+struct CommandState {std::optional<bool> checked,visible;bool operator==(const CommandState& other)const{return checked==other.checked&&visible==other.visible;}};
 class MenuState {
+ std::map<std::string,CommandState> commands_;
  std::vector<std::string> declared_;std::map<std::string,std::vector<DynamicMenuItem>> items_;std::map<std::string,std::wstring> names_;std::uint64_t revision_=0;
 public:
  explicit MenuState(std::vector<std::string> declared={}):declared_(std::move(declared)){}
+ void setDeclared(std::vector<std::string> ids){declared_=std::move(ids);if(items_.empty()&&names_.empty())return;items_.clear();names_.clear();++revision_;}
  std::uint64_t revision()const{return revision_;}
  std::vector<DynamicMenuItem> items(const std::string& menu)const{auto it=items_.find(menu);return it==items_.end()?std::vector<DynamicMenuItem>{}:it->second;}
  std::optional<std::wstring> name(const std::string& menu)const{auto it=names_.find(menu);return it==names_.end()?std::optional<std::wstring>{}:it->second;}
- void clear(){if(items_.empty()&&names_.empty())return;items_.clear();names_.clear();++revision_;}
+ CommandState command(const std::string& id)const{auto it=commands_.find(id);return it==commands_.end()?CommandState{}:it->second;}
+ bool checked(const std::string& id)const{return command(id).checked.value_or(false);}
+ bool visible(const std::string& id)const{return command(id).visible.value_or(true);}
+ void setCommand(const std::string& id,CommandState next){const auto previous=command(id);if(!next.checked)next.checked=previous.checked;if(!next.visible)next.visible=previous.visible;if(next==previous)return;commands_[id]=next;++revision_;}
+ void clear(){if(items_.empty()&&names_.empty()&&commands_.empty())return;items_.clear();names_.clear();commands_.clear();++revision_;}
  void set(const winrt::Windows::Data::Json::JsonObject& params){
   using namespace winrt::Windows::Data::Json;
   auto menu=winrt::to_string(params.GetNamedString(L"menuId"));if(std::find(declared_.begin(),declared_.end(),menu)==declared_.end())throw std::invalid_argument("扩展菜单不存在。");
