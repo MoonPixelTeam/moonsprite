@@ -5438,3 +5438,10 @@ Release专项构建通过，目录测试验证schema1纯Lua、主入口/嵌套�
 对照 platform_extensions.rs::list_installed_extensions/list_enabled_lua_entries，组合清单、状态和入口解析：枚举普通有效ID目录，跳过坏清单/ID不匹配/隐藏临时目录/普通文件，保留停用扩展的管理数据，Lua列表仅收集启用且能解析的主入口/命令，单入口失败不影响其他入口。状态读取抽取复用；状态及目录枚举失败明确传播。列表按名称小写后ID排序，Lua按名称小写、可选命令名、扩展ID、可选命令ID排序，主入口在无命令名位置。
 
 原生使用Windows invariant Unicode小写，ASCII大小写与同名排序已验证；Rust完整Unicode小写规则与Windows版本差异尚无等价证据，保留已知验收缺口，不宣称全Unicode排序等价。首次集成回归发现测试把扩展ID排在命令名之前，核对旧版元组顺序后修正预期，保留实现。多目录真实fixture覆盖坏清单/缺失入口/停用/过滤/排序/坏状态和不存在目录。Release专项、10项extension复验、来源/diff通过后保存推送dev。仍无正式扩展管理UI、安装、Lua执行或正式exe更新，整体INCOMPLETE；用户数据/缓存/editor_support.h原状态保留。
+
+
+### 2026-11-10：扩展启用状态持久化阶段
+
+迁移 platform_extensions.rs::set_extension_enabled_at：校验目录/清单/身份，读取状态，更新单个enabled，复用公共writeBinaryFileAtomic保存，成功后返回更新候选。保留其他enabled条目及seededBuiltin/builtinRevisions；未知状态字段按旧serde忽略。测试覆盖切换/重开、其他条目保持、无效目录/坏清单、坏状态不覆盖、无删除共享锁导致保存失败保留原字节及内置标记保持。未调用实际用户扩展目录，fixture均在构建测试目录。
+
+Release专项构建与10项extension验证通过，来源/diff检查后保存推送dev。仍有明确差异：WinRT JSON数值用double，builtinRevisions的u64文件大小超过2^53时存在精度风险，完整状态格式等价尚未完成，后续需无损整数解析；当前未接正式扩展管理UI/运行中会话切换或安装。无正式exe/GUI/全套回归，整体INCOMPLETE；用户数据/缓存/editor_support.h既有状态保留。
