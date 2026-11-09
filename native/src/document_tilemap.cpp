@@ -499,7 +499,7 @@ bool Document::tilemapSelectionTransformAvailable()const{
 bool Document::tilemapSelectionCutAvailable()const{
  // Already supported mixed-document clipboard paste keeps legacy copy/cancel-only Cut.
  if(selection_&&activeMaskId_.empty()&&floating_&&floating_->clipboard&&!floating_->tilemap&&floating_->maskId.empty()&&layer().kind.empty())return true;
- const bool createPending=floating_&&floating_->tilemap&&tileSelection_.mode==floating_->tilemapMode&&(floating_->tilemapMode==tiles::Mode::Create||floating_->tilemapMode==tiles::Mode::Edit||floating_->tilemapMode==tiles::Mode::Hybrid);
+ const bool createPending=floating_&&floating_->tilemap&&tileSelection_.mode==floating_->tilemapMode&&(floating_->tilemapMode==tiles::Mode::Create||floating_->tilemapMode==tiles::Mode::Edit||floating_->tilemapMode==tiles::Mode::Hybrid||floating_->tilemapMode==tiles::Mode::Paint);
  // Paint Cut only copies the resolved source and completes selection; its
  // pixel deletion is rejected by legacy. Explicit same-layer chains are read-only here.
  const bool paintCopyOnly=tileSelection_.mode==tiles::Mode::Paint&&!active()&&tilemapCellOwnerSupported(cel().id,true,true);

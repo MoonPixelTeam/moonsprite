@@ -4839,3 +4839,12 @@ smokeWorkspace布局交互完成后切至已有移动工具，固定后续画布
 工程/恢复回归扩展为移动与复制 × linked/independent × native/recovery × 缩放翻转/旋转倾斜/四角变换 × 零/正/负偏移，共72组合；使用7×3画布与2×2瓦片同时覆盖补边。核对取消无历史、待提交键盘按像素移动、预览与提交一致、完整网格原点不变、画布外像素不变、保存重开及Undo/Redo。最初新一致性断言失败于未重编裁剪处理的旧对象，显式重编后全部通过；补边/偏移旧拒绝断言按新增支持更新。
 
 正式Release构建成功；CTest document-transactions/free-tile-project/tilemap-document三项全部通过29.27s；完整 --tileset-management-check 实际退出0。来源覆盖与快照及diff检查通过。窗口诊断覆盖既有完整瓦片交互，新增偏移矩阵为核心/持久化验收，未新增偏移专用鼠标或人工截图验收，无新增FPS结论，未重跑全套。多目标、runtime shared别名、混合free文档及Paint待提交Cut/Delete等仍有迁移缺口，整体INCOMPLETE。保留用户数据、缓存、未跟踪文件与editor_support.h既有状态，阶段保存推送dev。
+
+
+### 2026-11-09：Paint 浮动后续剪切／删除与四角复制阶段
+
+对照 workspace-commands-clipboard.ts cutSelection、workspace-commands-selection-effects.ts deleteSelection 及 workspace-floating-clipboard.test.ts，补齐 Paint pending 的已有路由：Cut复制变换源、取消目标、尝试原位置删除并完成选区；静态Paint像素删除继续按legacy拒绝，因此不误删背景/源。Delete先提交选区来源浮动事务，再按legacy拒绝静态像素删除，保留选区；用户已批准的完整瓦片事务确保这次提交可保存和撤销。模式漂移仍在修改前拒绝。
+
+同时发现共用copyPixels没有平移quad角点到局部目标，导致四角浮动复制为空或错位。按workspace-floating-clipboard.ts的translateSelectionQuad修复，沿用旧版旋转quad的精确输入/像素/mask预期，验证不复制背景、不提交。Paint72组合新增pending Cut/Delete、原资源/目标恢复、历史与native/recovery检查；真实窗口新增CtrlX和Delete结算、Undo/Redo。初始新断言把无采样内容一概当成成功复制，改为核对既有空返回与选区完成行为；GUI失败则由quad复制坐标修复解决。
+
+正式Release构建成功，CTest document-transactions/free-tile-project/tilemap-document全部通过17.22s；完整--tileset-management-check实际退出0；744文件来源覆盖、证据快照和diff检查通过。未重跑全套或新增FPS/人工截图验收。多目标、runtime shared别名、混合free文档等仍未迁移，整体INCOMPLETE。保留用户数据、缓存、未跟踪文件及editor_support.h既有状态，阶段保存推送dev。
