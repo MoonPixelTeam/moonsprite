@@ -5120,3 +5120,10 @@ CTest document-transactions/free-tile-project/tilemap-document全部通过33.39s
 按legacy aseprite.ts resolveCel type3及aseprite.test.ts已有内嵌瓦片夹具，补齐原生八种H/V/diagonal组合、旧0xffffffff与新id0空格、无内嵌资源/越界索引拒绝、编辑与UndoRedo、ASE及原生保存。原生此前每个Cel重复转换整张tileset，并累加已释放临时转换成本；改为每tileset一个RGBA缓存，RGBA/gray直接复用，indexed仅palette实际变化时刷新，替换峰值计入预算，输出栅格与翻转顺序不变。未复制Aseprite代码，不声明editable ASE tile资源迁移。
 
 1000帧共用20000个2x2瓦片验证不再累计重复临时预算，逐Cel像素一致；四帧索引palette变动验证cache刷新。正式Release与既有完整--aseprite-io-check实际退出0；新增瓦片组合为核心覆盖，未新增窗口夹具/截图或FPS量测。744来源/证据及diff检查通过，整体INCOMPLETE。本阶段保存推送dev。
+
+
+### 2026-11-10：ASE导入像素所有权与临时内存优化
+
+按legacy sourceSurfaces/createCelSurface的canonical共享与属性不同独立复制语义，保留原生逻辑关系，调整临时所有权。palette提取前把root像素swap入sample数组，沿原root顺序和量化器提取后归还，消除整幅sample复制；统计每个root实际独立Cel使用次数，前面的独立用户仍复制，最后用户接管root缓冲。rasterization后立即释放raw/tileset解压输入及decoded sheet缓存，并回收对应预算，避免把不再存活临时数据计为永久资源。未改变调色板排序/采样规则、链接判定或RGBA编辑模式。
+
+新增前后向属性不同导入的编辑/UndoRedo独立性，以及canonical链接编辑传播/UndoRedo；既有长链、稀疏、索引palette、tile、原生/ASE往返继续通过。正式Release成功，aseprite-io/save-policy通过0.35s；完整--aseprite-io-check实际退出0。744来源/证据与diff检查通过；未量测峰值内存或FPS，不宣称所有导入临时分配消除。整体INCOMPLETE，本阶段保存推送dev。
