@@ -5162,3 +5162,10 @@ legacy aseprite.ts只在name后仍有四字节时读取tilesetIndex，并在构�
 对照legacy useCanvasBrushOverlay.ts与canvas-brush-coverage-overlay.ts以及canvas-repeated-selection-preview.test.ts：选区画笔canonical覆盖在Off/X/Y/Both的全部可见副本渲染，outsidePreview只在Off显示。原生此前提交已正确折回，但蓝色预览只画中央画布；现抽出生产覆盖绘制函数并按副本偏移绘制，沿用物理像素round和原蓝色alpha。已有采集/对称/合并/提交/取消/UndoRedo事务不变。
 
 正式窗口诊断新增直接调用生产renderer的透明离屏surface逐像素alpha检查，覆盖四种模式和Off独有的画布外预览；既有真实指针跨缝套索/选区画笔提交、取消和UndoRedo继续执行。tile-repeat核心通过0.05s；正式Release构建成功。完整--tile-repeat-check实际退出0，包含新增离屏alpha和既有真实指针/文字旋转命中矩阵；后者运行较慢，未量测或声明交互FPS提升。来源744覆盖/证据与diff检查通过，整体INCOMPLETE，本阶段保存推送dev。
+
+
+### 2026-11-10：重复画布套索实际路径预览
+
+按legacy canvas-render-selection-preview.ts repeatedCoordinates与canvas-repeated-selection-preview.test.ts明确的x19不折为x3断言：套索创建预览保留实际跨画布路径，只对取样背景折回以保持黑白对比色；提交仍沿repeatedLassoSelection折回canonical选区。原生此前把预览像素位置也折回，导致指针所处副本看不到路径。
+
+正式窗口夹具调用生产paintSelectionFeedback在Off以外X/Y/Both离屏绘制，检查实际跨界位置有alpha、中央折回位置无误画，然后取消；既有真实指针提交/取消/UndoRedo保留。首次失败因夹具未固定canvasScale，设置2物理像素后越过新增断言；正式Release成功，tile-repeat核心0.05s、来源覆盖与diff通过。完整--tile-repeat-check最终实际退出0，包含新增raw位置alpha与既有提交/取消/UndoRedo及耗时文字命中矩阵。无新增截图或FPS量测，整体INCOMPLETE，本阶段保存推送dev。

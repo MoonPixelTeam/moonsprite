@@ -1049,7 +1049,7 @@ void Editor::paintSelectionFeedback(ui::Graphics& g,const gfx::Rect& cv,const gf
 
     auto pixelBox=[&](int x,int y){const int left=int(std::round(cv.x+x*scale)),top=int(std::round(cv.y+y*scale));return gfx::Rect(left,top,std::max(1,int(std::round(cv.x+(x+1)*scale))-left),std::max(1,int(std::round(cv.y+(y+1)*scale))-top));};
 
-    auto pixel=[&](int x,int y){if(selectionKind_==2&&tileRepeatIdentity_==document.identity()&&tileRepeat_!=repeat::Mode::Off){const auto local=repeat::wrap({double(x),double(y)},document.width(),document.height(),tileRepeat_);x=int(local.x);y=int(local.y);}if(x<0 || y<0 || x>=document.width() || y>=document.height())return;const auto box=pixelBox(x,y);if(box.intersects(viewport))g.fillRect(selectionPreviewColor(x,y),box);};
+    auto pixel=[&](int x,int y){const bool repeatedPath=selectionKind_==2&&tileRepeatIdentity_==document.identity()&&tileRepeat_!=repeat::Mode::Off;if(!repeatedPath&&(x<0 || y<0 || x>=document.width() || y>=document.height()))return;const auto box=pixelBox(x,y);if(box.intersects(viewport)){const auto sample=repeatedPath?repeat::wrap({double(x),double(y)},document.width(),document.height(),tileRepeat_):repeat::Point{double(x),double(y)};g.fillRect(selectionPreviewColor(int(sample.x),int(sample.y)),box);}};
 
     const bool creating=selectionDragging_ && !selectionBoxDragging_;
 
