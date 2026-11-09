@@ -1082,7 +1082,9 @@
     "legacy/src-tauri/src/platform_scripts/lua_api.rs": "864fc6e2d3022173fb6a8349a7b0c1c70ade63224e66cd2494a3de793f16c50e",
     "legacy/src-tauri/src/platform_scripts/mse_api.rs": "4d78b2a27b570c6f562a1109e0c2cded4e02b99ec3f435fad36a4d37576aaa8e",
     "legacy/src-tauri/Cargo.toml": "5754ca464156e51e1bf77561d4b15b8d8ed0a7bffc2fff8bb6365bdbcda92842",
-    "legacy/.cargo/config.toml": "ac045a5771931473187ada48f5ab1ffd35d0dc11b7fdfd31e769d9f61ce49c5d"
+    "legacy/.cargo/config.toml": "ac045a5771931473187ada48f5ab1ffd35d0dc11b7fdfd31e769d9f61ce49c5d",
+    "legacy/src/renderer/src/store/lua-script-service.ts": "37781ab666a0a34cb874dcdf4922085d498f87a8aa95c610336266fe0077dfe8",
+    "legacy/src/renderer/src/store/lua-script-budget.test.ts": "099c64f8b8eb080c94b52fca3a60e0655857dd80933d71a753c6d6dda8fb198b"
   },
   "files": [
     {
@@ -30229,7 +30231,7 @@
         "legacy/src-tauri/src/platform_scripts/lua_api.rs",
         "legacy/src-tauri/src/platform_scripts/mse_api.rs"
       ],
-      "scope": "Connect existing C++ Service source loading to Rust LuaSession C ABI on one dedicated owner thread. FIFO packaged tasks return futures, isolate script/path/JSON/budget errors per request, retain dialog sessions for rebase/dispatch, close idempotently and drain accepted work on shutdown/destruction. Real disk and engine tests cover transactions, original seeded example, enabled extension entries/commands, disabled source rejection, callback VM state and shutdown. Editor snapshots/result application/dialog widgets not yet connected.",
+      "scope": "Connect existing C++ Service source loading to Rust LuaSession C ABI on one dedicated owner thread. FIFO packaged tasks return futures, isolate script/path/JSON/budget errors per request, retain dialog sessions for rebase/dispatch, close idempotently and drain accepted work on shutdown/destruction. Real disk and engine tests cover transactions, original seeded example, enabled extension entries/commands, disabled source rejection, callback VM state and shutdown. Editor snapshots/result application/dialog widgets not yet connected. Completed detached Document captures can now be encoded inside startInvocation/dispatchInvocation worker tasks; formal Editor still not connected.",
       "adaptation": "Native std::thread/mutex/condition_variable/future replace old Rust mpsc and Tauri spawn_blocking boundary. Worker owns COM MTA and VM, transports immutable UTF8 JSON strings only; caller must collect futures without blocking UI and shut down when idle. No new UI or synchronous UI Lua execution."
     },
     {
@@ -30242,6 +30244,71 @@
       ],
       "scope": "Connect existing C++ Service source loading to Rust LuaSession C ABI on one dedicated owner thread. FIFO packaged tasks return futures, isolate script/path/JSON/budget errors per request, retain dialog sessions for rebase/dispatch, close idempotently and drain accepted work on shutdown/destruction. Real disk and engine tests cover transactions, original seeded example, enabled extension entries/commands, disabled source rejection, callback VM state and shutdown. Editor snapshots/result application/dialog widgets not yet connected.",
       "adaptation": "Native std::thread/mutex/condition_variable/future replace old Rust mpsc and Tauri spawn_blocking boundary. Worker owns COM MTA and VM, transports immutable UTF8 JSON strings only; caller must collect futures without blocking UI and shut down when idle. No new UI or synchronous UI Lua execution."
+    },
+    {
+      "file": "src/lua_script_invocation.h",
+      "classification": "legacy-partial",
+      "sources": [
+        "legacy/src/renderer/src/store/lua-script-service.ts",
+        "legacy/src/renderer/src/store/lua-script-budget.test.ts",
+        "legacy/src/renderer/src/core/runtime-raster.ts",
+        "legacy/src/renderer/src/core/local-history-delta.ts",
+        "legacy/src-tauri/src/platform_scripts.rs"
+      ],
+      "scope": "Native Document Lua invocation capture with full pre-copy active/per-frame budget planning including linked-frame payload, bounded deadline/1MiB capture ticks, absent-Cel transparent reads, immutable detached snapshots and worker JSON encoding. Target identity/layer/frame/lock/mask/revision/original-raster checks support stale-result rejection and dialog rebase. Whole-result validator checks sequential batches, duplicate indices, before values, unsigned pixels, surface replacements, MSE operation allowlist/UTF16 budget and created layers/documents before application. Real engine/capture and invalid-result/budget tests. Native edited Document is RGBA only; workspace MSE snapshot is required caller input. Result application/history, formal Editor caller, native dialogs and indexed document capture remain unimplemented.",
+      "adaptation": "Uses existing RasterSnapshot chunk/tick constants and native packed RGBA owner storage. Captures no live pixel pointers across worker boundary; target expected baseline is shared immutable storage. JSON encoding/validation use WinRT on caller-owned COM apartment, per-pixel arrays encoded directly without per-pixel WinRT allocation. ECMAScript string/number length adapts existing native local_history_diff scalarLength. Native result coordinates reject outside int32 rather than truncate old JS safe integers; documented required admission difference."
+    },
+    {
+      "file": "src/lua_script_invocation.cpp",
+      "classification": "legacy-partial",
+      "sources": [
+        "legacy/src/renderer/src/store/lua-script-service.ts",
+        "legacy/src/renderer/src/store/lua-script-budget.test.ts",
+        "legacy/src/renderer/src/core/runtime-raster.ts",
+        "legacy/src/renderer/src/core/local-history-delta.ts",
+        "legacy/src-tauri/src/platform_scripts.rs"
+      ],
+      "scope": "Native Document Lua invocation capture with full pre-copy active/per-frame budget planning including linked-frame payload, bounded deadline/1MiB capture ticks, absent-Cel transparent reads, immutable detached snapshots and worker JSON encoding. Target identity/layer/frame/lock/mask/revision/original-raster checks support stale-result rejection and dialog rebase. Whole-result validator checks sequential batches, duplicate indices, before values, unsigned pixels, surface replacements, MSE operation allowlist/UTF16 budget and created layers/documents before application. Real engine/capture and invalid-result/budget tests. Native edited Document is RGBA only; workspace MSE snapshot is required caller input. Result application/history, formal Editor caller, native dialogs and indexed document capture remain unimplemented.",
+      "adaptation": "Uses existing RasterSnapshot chunk/tick constants and native packed RGBA owner storage. Captures no live pixel pointers across worker boundary; target expected baseline is shared immutable storage. JSON encoding/validation use WinRT on caller-owned COM apartment, per-pixel arrays encoded directly without per-pixel WinRT allocation. ECMAScript string/number length adapts existing native local_history_diff scalarLength. Native result coordinates reject outside int32 rather than truncate old JS safe integers; documented required admission difference."
+    },
+    {
+      "file": "src/lua_script_result.h",
+      "classification": "legacy-partial",
+      "sources": [
+        "legacy/src/renderer/src/store/lua-script-service.ts",
+        "legacy/src/renderer/src/store/lua-script-budget.test.ts",
+        "legacy/src/renderer/src/core/runtime-raster.ts",
+        "legacy/src/renderer/src/core/local-history-delta.ts",
+        "legacy/src-tauri/src/platform_scripts.rs"
+      ],
+      "scope": "Native Document Lua invocation capture with full pre-copy active/per-frame budget planning including linked-frame payload, bounded deadline/1MiB capture ticks, absent-Cel transparent reads, immutable detached snapshots and worker JSON encoding. Target identity/layer/frame/lock/mask/revision/original-raster checks support stale-result rejection and dialog rebase. Whole-result validator checks sequential batches, duplicate indices, before values, unsigned pixels, surface replacements, MSE operation allowlist/UTF16 budget and created layers/documents before application. Real engine/capture and invalid-result/budget tests. Native edited Document is RGBA only; workspace MSE snapshot is required caller input. Result application/history, formal Editor caller, native dialogs and indexed document capture remain unimplemented.",
+      "adaptation": "Uses existing RasterSnapshot chunk/tick constants and native packed RGBA owner storage. Captures no live pixel pointers across worker boundary; target expected baseline is shared immutable storage. JSON encoding/validation use WinRT on caller-owned COM apartment, per-pixel arrays encoded directly without per-pixel WinRT allocation. ECMAScript string/number length adapts existing native local_history_diff scalarLength. Native result coordinates reject outside int32 rather than truncate old JS safe integers; documented required admission difference."
+    },
+    {
+      "file": "src/lua_script_result.cpp",
+      "classification": "legacy-partial",
+      "sources": [
+        "legacy/src/renderer/src/store/lua-script-service.ts",
+        "legacy/src/renderer/src/store/lua-script-budget.test.ts",
+        "legacy/src/renderer/src/core/runtime-raster.ts",
+        "legacy/src/renderer/src/core/local-history-delta.ts",
+        "legacy/src-tauri/src/platform_scripts.rs"
+      ],
+      "scope": "Native Document Lua invocation capture with full pre-copy active/per-frame budget planning including linked-frame payload, bounded deadline/1MiB capture ticks, absent-Cel transparent reads, immutable detached snapshots and worker JSON encoding. Target identity/layer/frame/lock/mask/revision/original-raster checks support stale-result rejection and dialog rebase. Whole-result validator checks sequential batches, duplicate indices, before values, unsigned pixels, surface replacements, MSE operation allowlist/UTF16 budget and created layers/documents before application. Real engine/capture and invalid-result/budget tests. Native edited Document is RGBA only; workspace MSE snapshot is required caller input. Result application/history, formal Editor caller, native dialogs and indexed document capture remain unimplemented.",
+      "adaptation": "Uses existing RasterSnapshot chunk/tick constants and native packed RGBA owner storage. Captures no live pixel pointers across worker boundary; target expected baseline is shared immutable storage. JSON encoding/validation use WinRT on caller-owned COM apartment, per-pixel arrays encoded directly without per-pixel WinRT allocation. ECMAScript string/number length adapts existing native local_history_diff scalarLength. Native result coordinates reject outside int32 rather than truncate old JS safe integers; documented required admission difference."
+    },
+    {
+      "file": "tests/lua_script_invocation_test.cpp",
+      "classification": "legacy-partial",
+      "sources": [
+        "legacy/src/renderer/src/store/lua-script-service.ts",
+        "legacy/src/renderer/src/store/lua-script-budget.test.ts",
+        "legacy/src/renderer/src/core/runtime-raster.ts",
+        "legacy/src/renderer/src/core/local-history-delta.ts",
+        "legacy/src-tauri/src/platform_scripts.rs"
+      ],
+      "scope": "Native Document Lua invocation capture with full pre-copy active/per-frame budget planning including linked-frame payload, bounded deadline/1MiB capture ticks, absent-Cel transparent reads, immutable detached snapshots and worker JSON encoding. Target identity/layer/frame/lock/mask/revision/original-raster checks support stale-result rejection and dialog rebase. Whole-result validator checks sequential batches, duplicate indices, before values, unsigned pixels, surface replacements, MSE operation allowlist/UTF16 budget and created layers/documents before application. Real engine/capture and invalid-result/budget tests. Native edited Document is RGBA only; workspace MSE snapshot is required caller input. Result application/history, formal Editor caller, native dialogs and indexed document capture remain unimplemented.",
+      "adaptation": "Uses existing RasterSnapshot chunk/tick constants and native packed RGBA owner storage. Captures no live pixel pointers across worker boundary; target expected baseline is shared immutable storage. JSON encoding/validation use WinRT on caller-owned COM apartment, per-pixel arrays encoded directly without per-pixel WinRT allocation. ECMAScript string/number length adapts existing native local_history_diff scalarLength. Native result coordinates reject outside int32 rather than truncate old JS safe integers; documented required admission difference."
     }
   ],
   "assetTransfers": [

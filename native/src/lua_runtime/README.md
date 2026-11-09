@@ -41,3 +41,17 @@ arrange application teardown after work has finished. Methods may enqueue from
 multiple producers; shutdown/destruction itself belongs to one owner and must
 not race object lifetime. CTest `lua-script-runtime` exercises real sources,
 extension enable checks, dialog rebase/callbacks, error isolation and drain.
+
+Document execution preparation: moon-lua-invocation provides InvocationCapture,
+Target and validateResult. Planning checks all raster budgets before copying;
+advance uses existing RasterSnapshot limits/deadlines on the document thread.
+A finished Invocation owns immutable RGBA values and a caller-supplied real
+MSE snapshot JSON; startInvocation/dispatchInvocation encode it on the worker.
+Target::matches receives the *active* Document before result application or
+dialog rebase. validateResult checks all batches/created structures without
+mutating Document. Its returned surface is a validation baseline, not a
+replacement transaction executor. Native coordinates outside int32 reject
+rather than truncate JavaScript safe integers. Indexed native context, actual
+workspace MSE capture, result history/application and Editor scheduling/menu/
+dialog integration are still pending. CTest lua-script-invocation covers
+actual Document captures, budgets, stale guards and real worker execution.

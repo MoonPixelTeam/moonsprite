@@ -5658,3 +5658,11 @@ Release lua-script-directory目标及专项通过0.12s，验证真实示例嵌�
 沿platform_scripts.rs RuntimeRequest/runtime_loop/send_runtime_request，把既有C++ Service安全源码加载与Rust LuaSession完整引擎接在一个专用线程。start/dispatch/close通过FIFO packaged_task/future传递独立UTF8 JSON，worker拥有COM MTA、VM及会话；调用者不携带WinRT对象跨线程。启动异常回传并join；shutdown/析构停止接收，处理已入队请求，再于owner线程释放会话/COM。脚本/路径/JSON/预算错误由本次future接收，不杀死worker。线程返回原始事务结果，不擅自写入Document。
 
 Release实际C++加载执行测试覆盖本地事务、连续请求错误隔离、路径穿越/坏JSON/指令预算拒绝、真实moon-phase.lua首次seed后执行、扩展主入口/命令/停用后拒绝、modeless对话框同VM连续计数回调与上下文rebase、关闭后失效、显式shutdown及析构drain、关闭幂等/停止后拒绝。首轮暴露既有扩展头依赖Windows声明，新增runtime入口显式包含Windows/NOMINMAX后构建成功。lua-script-directory/runtime-ffi/script-runtime/runtime四项通过12.46s（Rust内部18项）；最后启动清理修正后script-runtime再通过0.19s。来源790文件及diff检查通过。无正式exe更改、GUI/完整冒烟验收，未解决橡皮擦旧断言。正式Editor快照、结果事务应用、动态脚本菜单/原生对话框和future轮询调用方仍待接入；整体INCOMPLETE。保留原差异/用户数据/缓存，本阶段保存推送dev。
+
+### 2026-11-10：Lua真实文档分块快照与完整结果预检阶段
+
+对照lua-script-service.ts buildInvocation/findActiveTargetSession/validateResult及预算测试，新增真实Document快照适配：先完整核对活动层4M/每帧合计12M预算，链接帧按帧计入，再沿现有RasterSnapshot每块16384/每轮262144像素和deadline分块复制。活动层expected与对应Cel共享不可变快照，避免额外活动层副本；RGBA逐字保留透明RGB、局部偏移，不把storageOrigin当显示位置。空Cel只生成透明快照，不创建Cel/历史。完成快照可脱离原Document，startInvocation/dispatchInvocation在Lua worker编码JSON，UI不逐像素分配WinRT对象。实际MSE快照由调用方明确提供，不伪造空资源模型；现有原生Document为RGBA，未声称indexed上下文已迁移。
+
+新增Target检查文档运行identity（防同projectId替换）、活动层/帧、mask/kind/锁、revision及完整原像素；分块中另验owner/storage identity/revision/geometry，避免捕捉变化中的像素。整结果预检包括所有batch顺序前值、重复索引/范围/安全整数、JS unsigned转换、surface互斥/前值、完整MSE操作白名单和每batch 16Mi UTF16 JSON长度、创建层/工程尺寸/格式/ID重复。预算沿已有native local_history_diff的ECMAScript数值长度适配及字符串转义处理。空操作结果不复制baseline，首次像素变化才复制。结果坐标超native int32时明确拒绝，不截断；旧JS安全整数更宽的必要技术差异保留记录。
+
+Release构建成功；lua-script-runtime/lua-script-invocation两项通过0.45s。覆盖真实Lua读取/事务返回、源Document销毁后执行、Unicode/保存路径/选区/颜色角色、链接预算边界和超过预算、deadline/tick、空Cel、活动编辑/锁/切帧/同ID另工程/无Document revision像素变更、连续/非法晚批次、整面替换、创建结构、16Mi参数恰好允许与超限拒绝。编译缺WinRT Collections头已修正；首次fixture误用fromImported空archive门禁已修正，不改变产品导入规则。来源与diff检查后阶段保存推送dev。正式Editor调用方、真实MSE工作区捕获、结果应用/撤销重做、动态菜单及原生对话框仍未接入；无正式exe/GUI/完整冒烟验收，橡皮擦旧smoke失败未处理，整体INCOMPLETE。保留用户原差异、数据和缓存。

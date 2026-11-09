@@ -999,6 +999,10 @@ target_sources(moonsprite-native PRIVATE src/editor_outline.cpp)
 
 # Compile the original Rust Lua/MSE core without Tauri/WebView. The native
 # application will link this library when document/result/UI adapters are ready.
+if(WIN32)
+  add_library(moon-lua-invocation STATIC src/lua_script_invocation.cpp src/lua_script_result.cpp)
+  target_link_libraries(moon-lua-invocation PUBLIC moon-core windowsapp)
+endif()
 find_program(MOON_CARGO_EXECUTABLE cargo)
 if(WIN32 AND MOON_CARGO_EXECUTABLE)
   add_custom_target(lua-runtime
@@ -1016,6 +1020,10 @@ if(WIN32 AND MOON_CARGO_EXECUTABLE)
   target_include_directories(lua-script-runtime-tests PRIVATE src "${CMAKE_CURRENT_BINARY_DIR}/generated")
   target_link_libraries(lua-script-runtime-tests PRIVATE moon-lua-runtime moon-project-reader windowsapp shell32 ws2_32 userenv bcrypt ntdll advapi32)
   add_test(NAME lua-script-runtime COMMAND lua-script-runtime-tests "${CMAKE_CURRENT_BINARY_DIR}/lua-script-runtime-test-owned")
+  add_executable(lua-script-invocation-tests tests/lua_script_invocation_test.cpp)
+  target_include_directories(lua-script-invocation-tests PRIVATE src "${CMAKE_CURRENT_BINARY_DIR}/generated")
+  target_link_libraries(lua-script-invocation-tests PRIVATE moon-lua-invocation moon-lua-runtime moon-project-reader windowsapp shell32 ws2_32 userenv bcrypt ntdll advapi32)
+  add_test(NAME lua-script-invocation COMMAND lua-script-invocation-tests "${CMAKE_CURRENT_BINARY_DIR}/lua-script-invocation-test-owned")
 
   add_test(NAME lua-runtime COMMAND powershell -NoProfile -ExecutionPolicy Bypass -File "${CMAKE_CURRENT_SOURCE_DIR}/scripts/build-lua-runtime.ps1" -Action Test -Offline)
 endif()

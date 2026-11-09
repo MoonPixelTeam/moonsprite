@@ -5,6 +5,7 @@
 #include <windows.h>
 #include "lua_script_service.h"
 #include "lua_runtime_ffi.h"
+#include "lua_script_invocation.h"
 #include <condition_variable>
 #include <deque>
 #include <future>
@@ -49,5 +50,11 @@ public:
  });}
  std::future<std::string> dispatch(std::string session,std::string action,std::string context){return enqueue([session=std::move(session),action=std::move(action),context=std::move(context)](auto* handle,Service&){using namespace winrt::Windows::Data::Json;auto next=request(L"dispatch");next.Insert(L"sessionId",JsonValue::CreateStringValue(winrt::to_hstring(session)));next.Insert(L"action",JsonObject::Parse(winrt::to_hstring(action)));next.Insert(L"context",JsonObject::Parse(winrt::to_hstring(context)));return invoke(handle,next);});}
  std::future<std::string> close(std::string session){return enqueue([session=std::move(session)](auto* handle,Service&){using namespace winrt::Windows::Data::Json;auto next=request(L"close");next.Insert(L"sessionId",JsonValue::CreateStringValue(winrt::to_hstring(session)));return invoke(handle,next);});}
+ // A completed detached capture may cross threads. JSON encoding stays here,
+ // not in the UI's bounded capture tick. The caller retains/checks its Target.
+ std::future<std::string> startInvocation(std::string id,Invocation captured){return enqueue([id=std::move(id),captured=std::move(captured)](auto* handle,Service& service){
+  using namespace winrt::Windows::Data::Json;const auto source=service.load(id);auto next=request(L"start");next.Insert(L"source",JsonValue::CreateStringValue(winrt::to_hstring(source.text)));next.Insert(L"filePath",JsonValue::CreateStringValue(source.path.wstring()));next.Insert(L"fileName",JsonValue::CreateStringValue(winrt::to_hstring(source.name)));next.Insert(L"context",JsonObject::Parse(winrt::to_hstring(captured.contextJson())));return invoke(handle,next);
+ });}
+ std::future<std::string> dispatchInvocation(std::string session,std::string action,Invocation captured){return enqueue([session=std::move(session),action=std::move(action),captured=std::move(captured)](auto* handle,Service&){using namespace winrt::Windows::Data::Json;auto next=request(L"dispatch");next.Insert(L"sessionId",JsonValue::CreateStringValue(winrt::to_hstring(session)));next.Insert(L"action",JsonObject::Parse(winrt::to_hstring(action)));next.Insert(L"context",JsonObject::Parse(winrt::to_hstring(captured.contextJson())));return invoke(handle,next);});}
 };
 }
