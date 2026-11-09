@@ -4977,3 +4977,8 @@ CTest document-transactions/free-tile-project/tilemap-document全部通过33.39s
 首轮144组free-tile-project通过43.98s，document-transactions通过；tilemap-document发现大画布deferred优化被覆盖，按已有supportsDeferredFloating保留等画布大作品延迟路径，新增shared preview仅替换原即时dense分支。保留性能契约，最终复验待补；不宣称大画布deferred共享源预览已统一。
 
 最终free-tile-project完整通过38.78s（144组合），document-transactions通过0.28s；tilemap-document最终单独复验通过，保留大画布deferred断言并将旧“display资源不变”检查改为authority资源不变及sampled preview=commit。正式Release重编成功，完整 --tileset-management-check 实际退出0，Edit/Hybrid三个原点真实鼠标drag/Escape/Ctrl-copy/Enter/UndoRedo通过，之前零原点即时preview差异已消除。大画布deferred共享源preview仍不宣称统一；无FPS/人工截图结论，整体INCOMPLETE。744来源/证据及diff通过，本阶段保存推送dev。
+
+
+### 2026-11-09：Hybrid浮动预览旧版差异复核（等待用户语义决定）
+
+精确复核legacy/src/renderer/src/components/canvas-render-tile-preview.ts:140-147发现hybridSelectionVariantPreview明确识别selection来源，并通过!hybridSelectionVariantPreview排除共享源tilemapEditPreviewTilePixels显示。此前即时预览阶段仅记录共享源预览入口，遗漏这个排除条件，因此“等同旧版预览”的来源结论不成立；原生e1a9db49改变了Hybrid选区浮动显示语义，虽保留提交事务，但需要用户决定。已询问采用预览/提交一致并继续大画布优化，或恢复旧版局部像素预览。等待回答前不修改业务路径，不将此项算作完成迁移。上一阶段测试证明原生新预览一致，不能证明旧版行为等价。整体INCOMPLETE。
