@@ -4948,3 +4948,16 @@ CTest document-transactions/free-tile-project/tilemap-document全部通过33.39s
 新增54组合：move/copy×independent/explicit/runtime×零/正/负偏移×translation/affine/quad，验证无关free、refs/geometry、取消、预览等于提交、UndoRedo和native/recovery。负偏移quad可能不改冻结锚点的源像素，保留selection-only历史并验证资源/像素完全不变。窗口linked Edit真实drag/Escape/Ctrl-copy/Enter/UndoRedo扩展三个原点；首轮比较误用局部displayPixels，改为世界canvas composite。最终结果待补，整体INCOMPLETE。
 
 最终正式Release构建成功，完整 --tileset-management-check 实际退出0，三个原点Edit真实鼠标与结算/UndoRedo通过。free-tile-project完整通过61.82s；document-transactions及tilemap-document本轮通过；744来源与快照及diff检查通过。未新增FPS/人工截图或全套验收。保留用户文件、缓存、未跟踪数据与editor_support.h既有状态，本阶段提交推送dev。
+
+
+### 2026-11-09：Hybrid 偏移网格浮动事务阶段
+
+依据 legacy workspace-commands-selection-floating.ts 的 hybridCellTranslation 与 tilemap.ts::tilemapCellTranslationForSelection，Hybrid整格对齐以surface世界原点为准，完整移动/复制单元格引用；非对齐与非平移变换复用Hybrid资源事务。偏移/补边布局捕获独立shared preview canvas，不走可扩展sparse surface路径；取消不改authority，提交保留canonical topology/geometry及历史。整格preview单独按冻结refs构造detached移动结果，不把平移像素写入共享源。原零原点等画布dense preview保留既有路径。
+
+新增72组合：move/copy×独立/显式/runtime×零/正/负偏移×像素平移/仿射/quad/整格平移；检查mixed free隔离、取消、源/history、UndoRedo及native/recovery。首次新增整格一致性失败揭示shared pixel preview与cell move语义冲突，已修复偏移preview并新增精确cell refs断言；零原点既有dense整格preview不据此宣称等同commit。实际linked Edit夹具扩展Hybrid与三个原点，最终验收待补。整体INCOMPLETE。
+
+核心最终复验三项document-transactions/free-tile-project/tilemap-document全部通过70.66s，free-tile-project68.38s。真实窗口首轮复用Edit冻结authority断言不适用于既有等画布Hybrid即时缓存预览，按原有两种预览所有权区分断言，取消/资源保持仍精确检查。正式窗口重编验收待补。
+
+窗口第二轮发现等画布Hybrid既有共享源提交与dense raw preview并不逐像素相同，此差异不属于本阶段偏移路径；实际窗口新增Hybrid验证收敛到正/负偏移，Edit仍覆盖三个原点。零原点Hybrid继续由核心事务测试验证资源、取消、历史与持久化，不宣称预览等价。窗口最终结果待补。
+
+最终正式Release重编成功，完整 --tileset-management-check 实际退出0，包含Edit三个原点及Hybrid正/负偏移的实际鼠标drag/Escape/Ctrl-copy/Enter/UndoRedo。核心三项通过70.66s，744来源覆盖/证据快照及diff检查通过。保留零原点Hybrid既有preview差异为已知限制；无新增FPS或人工截图验收，整体INCOMPLETE。本阶段提交推送dev，用户文件、缓存及editor_support.h既有状态保留。
