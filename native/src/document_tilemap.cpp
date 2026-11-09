@@ -389,14 +389,15 @@ bool Document::tilemapCellOwnerSupported(const std::string& celId,bool allowOffs
  const auto resolved=timeline_.resolveSurface(celId);if(resolved.issue!=timeline::LinkIssue::None||!resolved.source||!resolved.surface)return false;
  const auto* owner=allowLinkedCels?resolved.source:selected;
  if(!owner->tilemap||!owner->surface||owner->linkedCelId||owner->runtimeSharedCelId)return false;
- if(selected->layerId!=owner->layerId||selected->runtimeSharedCelId)return false;
+ if(selected->layerId!=owner->layerId)return false;
  const auto& l=timeline_.state().layers[timeline_.layerIndex(owner->layerId)];if(l.kind!="tilemap"||!l.linkedContentId.empty())return false;
  const auto& g=*owner->tilemap;const auto& surface=*owner->surface;
  if((!allowOffset&&(surface.offsetX||surface.offsetY))||surface.width!=g.columns*g.tileWidth||surface.height!=g.rows*g.tileHeight||surface.pixels.size()!=std::size_t(surface.width)*surface.height)return false;
  for(const auto& other:timeline_.state().cels)if(other.id!=owner->id){const auto r=timeline_.resolveSurface(other.id);if(r.source&&r.source->id==owner->id){
-  // Only explicit same-layer links without private cache/runtime aliases share this owner.
-  if(!allowLinkedCels||r.issue!=timeline::LinkIssue::None||other.layerId!=owner->layerId||!other.linkedCelId||other.runtimeSharedCelId||other.surface)return false;
-  auto* cursor=&other;std::size_t steps=0;while(cursor->id!=owner->id){if(++steps>timeline_.state().cels.size()||cursor->layerId!=owner->layerId||cursor->runtimeSharedCelId||!cursor->linkedCelId||cursor->surface)return false;cursor=timeline_.findCelById(*cursor->linkedCelId);if(!cursor)return false;}
+  // Same-layer explicit and runtime links resolve one canonical grid.
+  // Runtime links are serialized as independent snapshots by the existing encoder.
+  if(!allowLinkedCels||r.issue!=timeline::LinkIssue::None||other.layerId!=owner->layerId||(!other.linkedCelId&&!other.runtimeSharedCelId)||other.surface||(other.linkedCelId&&other.runtimeSharedCelId))return false;
+  auto* cursor=&other;std::size_t steps=0;while(cursor->id!=owner->id){if(++steps>timeline_.state().cels.size()||cursor->layerId!=owner->layerId||(!cursor->linkedCelId&&!cursor->runtimeSharedCelId)||(cursor->linkedCelId&&cursor->runtimeSharedCelId)||cursor->surface)return false;cursor=timeline_.findCelById(cursor->runtimeSharedCelId?*cursor->runtimeSharedCelId:*cursor->linkedCelId);if(!cursor)return false;}
  }else if(r.surface&&r.surface->pixels.identity()==surface.pixels.identity())return false;}
  return true;
 }
@@ -474,14 +475,14 @@ bool Document::linkedHybridSelectionAvailable(bool requireSelection)const{
  if((requireSelection&&!selection_)||active()||!activeMaskId_.empty()||layer().kind!="tilemap"||tileSelection_.mode!=tiles::Mode::Hybrid||hasSelectedGroups()||!tilemapCellOwnerSupported(cel().id,false,true)||!raster::fullCanvas(activeSurface(),width_,height_)||!tilemapPixelReferenceOwnersSupported(layer().tilemapTilesetId))return false;
  if(std::any_of(timeline_.state().layers.begin(),timeline_.state().layers.end(),[](const auto& l){return l.kind=="free-tile";}))return false;
  const auto layers=selectedLayerIdsWithGroups();if(layers.size()>1||(!layers.empty()&&layers.front()!=activeLayerId_)||!selectedFrames_.empty()||timelineSelection_.cels.size()>1||(!timelineSelection_.cels.empty()&&timelineSelection_.cels.front()!=cel().id))return false;
- const auto owner=timeline_.resolveSurface(cel().id).source->id;for(const auto& c:timeline_.state().cels)if(c.id!=owner&&c.linkedCelId){const auto r=timeline_.resolveSurface(c.id);if(r.source&&r.source->id==owner)return true;}return false;
+ const auto owner=timeline_.resolveSurface(cel().id).source->id;for(const auto& c:timeline_.state().cels)if(c.id!=owner&&(c.linkedCelId||c.runtimeSharedCelId)){const auto r=timeline_.resolveSurface(c.id);if(r.source&&r.source->id==owner)return true;}return false;
 }
 bool Document::linkedEditSelectionAvailable(bool requireSelection)const{
  // Static Delete/Cut use all changed cells; the pointer Edit anchor is not involved.
  if((requireSelection&&!selection_)||active()||!activeMaskId_.empty()||layer().kind!="tilemap"||tileSelection_.mode!=tiles::Mode::Edit||hasSelectedGroups()||!tilemapCellOwnerSupported(cel().id,false,true)||!raster::fullCanvas(activeSurface(),width_,height_)||!tilemapPixelReferenceOwnersSupported(layer().tilemapTilesetId))return false;
  if(std::any_of(timeline_.state().layers.begin(),timeline_.state().layers.end(),[](const auto& l){return l.kind=="free-tile";}))return false;
  const auto layers=selectedLayerIdsWithGroups();if(layers.size()>1||(!layers.empty()&&layers.front()!=activeLayerId_)||!selectedFrames_.empty()||timelineSelection_.cels.size()>1||(!timelineSelection_.cels.empty()&&timelineSelection_.cels.front()!=cel().id))return false;
- const auto owner=timeline_.resolveSurface(cel().id).source->id;for(const auto& c:timeline_.state().cels)if(c.id!=owner&&c.linkedCelId){const auto r=timeline_.resolveSurface(c.id);if(r.source&&r.source->id==owner)return true;}return false;
+ const auto owner=timeline_.resolveSurface(cel().id).source->id;for(const auto& c:timeline_.state().cels)if(c.id!=owner&&(c.linkedCelId||c.runtimeSharedCelId)){const auto r=timeline_.resolveSurface(c.id);if(r.source&&r.source->id==owner)return true;}return false;
 }
 bool Document::linkedCreateSelectionAvailable(bool requireSelection,bool paintTransform)const{
  // Create uses a full canvas; Paint also retains fixed grids with world offsets/padding.
@@ -489,7 +490,7 @@ bool Document::linkedCreateSelectionAvailable(bool requireSelection,bool paintTr
  if(!paintTransform&&std::any_of(timeline_.state().layers.begin(),timeline_.state().layers.end(),[](const auto& l){return l.kind=="free-tile";}))return false;
  const auto layers=selectedLayerIdsWithGroups();if(layers.size()>1||(!layers.empty()&&layers.front()!=activeLayerId_)||!selectedFrames_.empty()||timelineSelection_.cels.size()>1||(!timelineSelection_.cels.empty()&&timelineSelection_.cels.front()!=cel().id))return false;
  const auto owner=timeline_.resolveSurface(cel().id).source->id;
- for(const auto& c:timeline_.state().cels)if(c.id!=owner&&c.linkedCelId){const auto r=timeline_.resolveSurface(c.id);if(r.source&&r.source->id==owner)return true;}
+ for(const auto& c:timeline_.state().cels)if(c.id!=owner&&(c.linkedCelId||c.runtimeSharedCelId)){const auto r=timeline_.resolveSurface(c.id);if(r.source&&r.source->id==owner)return true;}
  return paintTransform;
 }
 bool Document::tilemapSelectionTransformAvailable()const{

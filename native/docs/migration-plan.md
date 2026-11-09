@@ -4875,3 +4875,16 @@ smokeWorkspace布局交互完成后切至已有移动工具，固定后续画布
 新增两个方向×移动/复制×链接/独立×零/正/负偏移24组检查，覆盖精确像素/mask反射、双翻恢复、取消、一次提交、保留旧资源、Undo/Redo及native/recovery持久化。首轮夹具在部分偏移下没有选到有色像素，补充不同色源像素确保每组有有效内容；核心三项全部通过34.39s。扩展真实菜单水平翻转和ShiftV检查，窗口首轮翻转通过，但提交比较误用只支持deferred的overlay接口，改为按实际预览模式取像素。最终窗口验收结果见下。
 
 正式Release构建成功；完整 --tileset-management-check 实际退出0，744文件来源覆盖与证据快照及diff检查通过。未重跑全套、未新增FPS或人工截图验收。多目标/runtime shared别名等仍有迁移缺口，整体INCOMPLETE。保留用户数据、缓存、未跟踪文件及editor_support.h既有状态，本阶段保存推送dev。
+
+
+### 2026-11-09：网格运行时共享 Cel 事务阶段
+
+核对 legacy tilemap-document.ts::tilemapCelTargetAt/captureTilemapSelectionMove/flipTilemapSelection/applyTilemapDocumentEdit 与 animation.ts 的源解析，以及原生既有 runtimeSharedCelId 和 project_encode.cpp 的保存展开机制。同层无私有surface的显式/运行时混合链统一解析到规范源；不把runtime关系变为持久新链接。原生特殊图层原本禁止linkedContentId，因此保留该模型约束，不推广普通关联图层语义。
+
+扩展统一owner前置检查与Create/Edit/Hybrid共享探测，复用既有Paint整格/画笔、静态删除及四种模式浮动事务；保留跨层、双重链接、私有缓存、仅物理像素缓冲共享及不支持几何布局的拒绝。新增40组模式×操作×活动root/leaf对照显式链，检查取消、源资源、历史、Undo/Redo、规范缓存和所有帧native/recovery持久化；旧runtime Paint拒绝测试更新为真实移动/翻转验收。窗口Create/Paint既有完整鼠标、Escape、Ctrl-copy、Enter、Cut/Delete及待提交翻转夹具增加runtime混合链。首轮编译因测试调用private探测接口失败，改用公开beginSelectionContentMove入口，未放宽API。
+
+核心free-tile-project通过25.64s，document-transactions与tilemap-document通过0.64s；744来源覆盖与证据快照、diff检查通过。正式构建和窗口最终结果补充如下。整体INCOMPLETE，多目标/非Paint偏移等未宣称迁移，无新增FPS或人工截图验收。
+
+窗口首轮在初始化报Missing tilemap metadata：runtime别名按既有Timeline规则需要保留tilemap元数据，只有显式linkedCelId可省略。调整窗口夹具保留runtime元数据，与核心夹具和现有生命周期一致，不修改生产校验规则。
+
+最终正式Release构建成功，完整 --tileset-management-check 实际退出0（含显式和runtime混合链）。最小相关三项核心检查、来源覆盖及diff检查均通过；保留用户文件、缓存和editor_support.h既有状态，本阶段提交推送dev。
