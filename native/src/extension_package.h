@@ -1,0 +1,17 @@
+#pragma once
+#include "extension_runtime_directory.h"
+#include "project_reader.h"
+namespace moon::extension {
+struct PackageEntry {std::string name;bool directory;std::uint64_t size;};
+struct PackageInspection {RuntimeCandidate candidate;std::vector<PackageEntry> entries;};
+inline PackageInspection inspectPackage(const std::filesystem::path& path){
+ auto extension=path.extension().wstring();for(auto& c:extension)if(c>=L'A'&&c<=L'Z')c=wchar_t(c-L'A'+L'a');if(extension!=L".msext")throw std::invalid_argument("只能预览 .msext 扩展包。");auto status=std::filesystem::symlink_status(path);if(!std::filesystem::is_regular_file(status)||std::filesystem::is_symlink(status))throw std::invalid_argument("扩展包必须是普通文件。");
+ auto bytes=std::make_shared<project::Bytes>();std::ifstream input(path,std::ios::binary);if(!input)throw std::runtime_error("无法打开扩展包。");char chunk[65536];while(input){input.read(chunk,sizeof(chunk));auto count=std::size_t(input.gcount());if(count>50u*1024u*1024u-bytes->size())throw std::length_error("扩展包不能超过 50 MiB。");bytes->insert(bytes->end(),chunk,chunk+count);}if(input.bad())throw std::runtime_error("无法读取扩展包。");
+ project::Limits limits;limits.archiveBytes=50u*1024u*1024u;limits.expandedBytes=256u*1024u*1024u;limits.maxEntries=256;project::Archive archive(bytes,limits);if(archive.entries().empty())throw std::invalid_argument("扩展包为空。");PackageInspection result;std::set<std::string> seen;
+ for(const auto& item:archive.entries()){auto name=item.first;bool directory=name.back()=='/';if(directory)name.pop_back();ResourceCatalog::packagePath(name);if(!seen.insert(manifest_detail::lower(name)).second)throw std::invalid_argument("扩展包包含重复路径。");if((item.second.madeBy>>8)==3&&((item.second.externalAttributes>>16)&0170000)==0120000)throw std::invalid_argument("扩展包不允许符号链接。");if(name=="manifest.json"&&directory)throw std::invalid_argument("manifest.json 必须是文件。");result.entries.push_back({name,directory,directory?0:item.second.size});}
+ auto manifestBytes=archive.read("manifest.json",256u*1024u);auto manifest=winrt::Windows::Data::Json::JsonObject::Parse(winrt::to_hstring(std::string(manifestBytes.begin(),manifestBytes.end())));auto id=winrt::to_string(manifest.GetNamedString(L"id"));result.candidate=RuntimeDirectory::parseManifest(manifest,{},id);
+ auto require=[&](const std::string& name,std::uint64_t limit=UINT64_MAX){auto found=std::find_if(result.entries.begin(),result.entries.end(),[&](const auto& e){return !e.directory&&e.name==name;});if(found==result.entries.end()||found->size>limit)throw std::invalid_argument("扩展包声明的入口或资源缺失／超限。");};
+ if(result.candidate.metadata.entry)require(*result.candidate.metadata.entry);if(result.candidate.settings.entry)require(*result.candidate.settings.entry);if(!result.candidate.entry.empty())require(result.candidate.entry);for(auto& command:result.candidate.commands)if(command.luaEntry)require(*command.luaEntry);
+ if(manifest.HasKey(L"runtime")&&manifest.GetNamedValue(L"runtime").ValueType()!=winrt::Windows::Data::Json::JsonValueType::Null){auto runtime=manifest.GetNamedObject(L"runtime");if(runtime.HasKey(L"resources"))for(auto item:runtime.GetNamedObject(L"resources"))require(winrt::to_string(item.Value().GetString()),16u*1024u*1024u);}return result;
+}
+}

@@ -5452,3 +5452,10 @@ Release专项构建与10项extension验证通过，来源/diff检查后保存推
 关闭上一阶段builtinRevisions大整数精度缺口。按legacy ExtensionState的BTreeMap/HashSet/(u32,u64)完整类型迁移独立ExtensionState：数字token先保留十进制文本，再from_chars解析，类型形状区分真正数字与字符串；序列化直接输出整数token，避免WinRT double。seededBuiltin去重，缺省字段为空，未知字段忽略。目录读取、枚举、切换统一完整状态检查，删除切换路径重复且有损的JSON转换。
 
 回归u32/u64最大值、2^53+1精确保存和切换重开，拒绝溢出/负数/小数/指数/数字字符串/null/错误元组/前导零与非字符串seed。仍未建立重复顶层字段的serde拒绝规则及JSON递归上限等价证据，保持partial登记；不宣称所有JSON解析边界一致。Release专项与10项extension测试、来源/diff通过后保存推送dev；无正式exe/GUI/全套回归，实际安装/引擎仍待接线，整体INCOMPLETE。保留用户数据/缓存/editor_support.h原状态。
+
+
+### 2026-11-10：msext压缩包检查阶段
+
+依据legacy inspect_extension_package/inspect_archive，复用project::Archive迁移普通.msext文件50MiB、1至256条、累计256MiB、路径/大小写重复/Unix符号链接、根manifest256KiB、共享完整清单校验和声明入口/资源存在性。ZIP新增读取madeBy/externalAttributes；parseManifest独立于目录状态IO，检查不解压到磁盘。真实stored ZIP fixture覆盖正常预览、空包、缺入口、清单大小写、重复路径、越界、符号链接、清单超限和257条。
+
+仍partial：Archive不支持ZIP64及stored/deflate之外压缩，CP437名称及目录size按零累计的旧版语义尚待迁移。无安装/提取/UI/引擎接线，不能称完整扩展包迁移。相关Release构建与专项测试、来源/diff检查后阶段保存推送dev；无正式exe/GUI/全套验收，整体INCOMPLETE，保留用户数据/缓存/editor_support.h原状态。

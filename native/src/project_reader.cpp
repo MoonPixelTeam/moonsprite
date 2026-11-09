@@ -32,7 +32,7 @@ Archive::Archive(std::shared_ptr<const Bytes> bytes,Limits limits):bytes_(std::m
   std::size_t at=centralOffset_,expanded=0;
   for(unsigned i=0;i<count;++i) {
     span(b,at,46);if(u32(b,at)!=0x02014b50) corrupt("Invalid ZIP directory entry");
-    ZipEntry e;e.flags=u16(b,at+8);e.method=u16(b,at+10);e.crc=u32(b,at+16);e.compressed=u32(b,at+20);e.size=u32(b,at+24);e.offset=u32(b,at+42);
+    ZipEntry e;e.madeBy=u16(b,at+4);e.externalAttributes=u32(b,at+38);e.flags=u16(b,at+8);e.method=u16(b,at+10);e.crc=u32(b,at+16);e.compressed=u32(b,at+20);e.size=u32(b,at+24);e.offset=u32(b,at+42);
     const auto nameLen=u16(b,at+28),extra=u16(b,at+30),comment=u16(b,at+32);
     if(u16(b,at+34)!=0 || e.size==0xffffffff || e.compressed==0xffffffff || e.offset==0xffffffff) throw Error(ErrorKind::Unsupported,"ZIP64 or split entries are unsupported");
     if(e.flags&1) throw Error(ErrorKind::Unsupported,"Encrypted project archives are unsupported");

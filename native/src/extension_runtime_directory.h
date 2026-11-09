@@ -99,6 +99,11 @@ public:
   if(!validId(id))throw std::invalid_argument("无效的扩展 ID。");
   const auto root=directory/std::filesystem::path(winrt::to_hstring(id).c_str());const auto status=std::filesystem::symlink_status(root);if(!std::filesystem::is_directory(status)||std::filesystem::is_symlink(status))throw std::runtime_error("扩展目录必须是普通目录。");
   RuntimeCandidate candidate;candidate.manifest=JsonObject::Parse(winrt::to_hstring(read(root/"manifest.json",256u*1024u)));const auto& manifest=candidate.manifest;
+  candidate=parseManifest(candidate.manifest,root,id,requireRuntime);
+  const auto state=readState(directory);if(auto found=state.find(id);found!=state.end())candidate.enabled=found->second;candidate.extension.enabled=candidate.enabled;return candidate;
+ }
+ static RuntimeCandidate parseManifest(const winrt::Windows::Data::Json::JsonObject& manifest,const std::filesystem::path& root,const std::string& id,bool requireRuntime=false){
+  using namespace winrt::Windows::Data::Json;RuntimeCandidate candidate;candidate.manifest=manifest;
   if(manifest.GetNamedString(L"id")!=winrt::to_hstring(id))throw std::invalid_argument("扩展清单与扩展 ID 不一致。");
   const bool hasRuntime=manifest.HasKey(L"runtime")&&manifest.GetNamedValue(L"runtime").ValueType()!=JsonValueType::Null;
   if(requireRuntime&&!hasRuntime)throw std::invalid_argument("该扩展未提供运行时页面。");
@@ -111,7 +116,6 @@ public:
   std::set<std::string> seen;if(runtime.HasKey(L"permissions"))for(const auto& value:runtime.GetNamedArray(L"permissions")){const auto permission=winrt::to_string(value.GetString());if(std::find(known.begin(),known.end(),permission)==known.end()||!seen.insert(permission).second)throw std::invalid_argument("扩展权限无效或重复。");candidate.permissions.push_back(permission);}if(!seen.count("runtime"))throw std::invalid_argument("Extension Runtime 必须声明 runtime 权限。");
   std::map<std::string,std::string> resources;if(runtime.HasKey(L"resources"))for(const auto& item:runtime.GetNamedObject(L"resources"))resources.emplace(winrt::to_string(item.Key()),winrt::to_string(item.Value().GetString()));candidate.resources=std::make_shared<ResourceCatalog>(root,candidate.entry,std::move(resources));
   }
-  const auto state=readState(directory);if(auto found=state.find(id);found!=state.end())candidate.enabled=found->second;
   candidate.commands=inspectCommands(manifest,candidate.permissions);
   candidate.settings=inspectSettings(manifest,candidate.commands);
   candidate.metadata=inspectMetadata(manifest,candidate.commands);
