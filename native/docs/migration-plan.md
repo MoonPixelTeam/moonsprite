@@ -5169,3 +5169,10 @@ legacy aseprite.ts只在name后仍有四字节时读取tilesetIndex，并在构�
 按legacy canvas-render-selection-preview.ts repeatedCoordinates与canvas-repeated-selection-preview.test.ts明确的x19不折为x3断言：套索创建预览保留实际跨画布路径，只对取样背景折回以保持黑白对比色；提交仍沿repeatedLassoSelection折回canonical选区。原生此前把预览像素位置也折回，导致指针所处副本看不到路径。
 
 正式窗口夹具调用生产paintSelectionFeedback在Off以外X/Y/Both离屏绘制，检查实际跨界位置有alpha、中央折回位置无误画，然后取消；既有真实指针提交/取消/UndoRedo保留。首次失败因夹具未固定canvasScale，设置2物理像素后越过新增断言；正式Release成功，tile-repeat核心0.05s、来源覆盖与diff通过。完整--tile-repeat-check最终实际退出0，包含新增raw位置alpha与既有提交/取消/UndoRedo及耗时文字命中矩阵。无新增截图或FPS量测，整体INCOMPLETE，本阶段保存推送dev。
+
+
+### 2026-11-10：套索与多边形套索对称预览迁移
+
+legacy canvas-render-selection-preview.ts对两种套索的每个栅格路径点调用symmetryPoints(...,false)，再进入普通/重复坐标显示。原生此前只在提交symmetrySelection时对称，路径预览没有镜像；现复用既有symmetryPoints在预览显示前扩展路径，保留上一阶段raw重复坐标与canonical背景取色。balanced线、闭合路径设置和最终选区事务不变。
+
+实际选区创建诊断新增调用生产paintSelectionFeedback的离屏alpha检查，覆盖套索/多边形套索原位置及水平/垂直镜像；沿用五种选区工具的真实指针创建、提交一条视图历史、UndoRedo、Escape及无作品像素修改检查。正式Release成功；tile-repeat/selection-interactions两项通过2.75s；--workspace-check --named-workspace-only --selection-symmetry-hybrid-edit-only实际退出0（含既有Hybrid相关回归）。744来源/证据与diff通过，无新增截图/FPS量测；对角/旋转轴没有新增专门UI像素矩阵，整体INCOMPLETE，本阶段保存推送dev。
