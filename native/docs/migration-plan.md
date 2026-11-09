@@ -5602,3 +5602,10 @@ Release六个相关目标成功，contributions/resources/session/request/event-
 对照ExtensionRuntimeHost工程effect，新增ProjectEventSubscription并接入SessionHost generation生命周期；projectEvent复用查询projectSnapshot，避免两套字段漂移。按id/name/contentRevision/dirty/homeOpen依赖触发，首次通知、无变化去重；先project再document-saved，前者workspace.read后者events权限。保留旧版跨活动工程dirty→clean也向新工程发saved的实际行为，关闭工程只发null，不自行重设计保存判定。基线先更新再同步回调以支持重入，stop释放。
 
 Release session/resources两个相关目标成功，session专项通过0.11s。覆盖加载前丢弃但更新基线、相同值抑制、查询一致摘要、权限独立、尺寸变化仅在revision改变后发布、重命名/首页、dirty跨工程、关闭null、旧token与替换新基线。来源777文件及diff检查后保存推送dev。正式Editor工作区观察器和真实脚本引擎仍待接入，无正式exe/GUI/全套验收，整体INCOMPLETE，保留用户差异/数据/缓存和失败现场。
+
+
+### 2026-11-10：交互与时钟事件回调阶段
+
+承接ExtensionRuntimeHost events effect：pointerdown/pointermove/wheel共享lastPointer节流500ms，keydown即时发送，clock回调携带当前epoch毫秒，旧周期30000ms明确常量。新增InteractionEvents并接入SessionHost当前generation；仅events权限创建，预加载丢事件但更新pointer基线，关闭释放，替换从新基线开始，旧回调无效。时间倒退按旧差值逻辑保留节流，不新增补发循环或后台线程。
+
+Release session/resources相关目标成功，session/resources/event-lifecycle三项通过0.24s，覆盖500ms边界、键盘不节流、clock时间、时钟倒退、权限、加载前、关闭和替换。来源778文件与diff检查后保存推送dev。本阶段为完整回调语义与会话处理；正式窗口输入监听注册/解除及实际30000ms定时器仍未接入，未宣称正式应用已有交互计时事件，无正式exe/GUI/全套验收。整体INCOMPLETE，保留用户差异/数据/缓存及失败现场。
