@@ -5197,3 +5197,10 @@ legacy canvas-render-selection-preview.ts对两种套索的每个栅格路径点
 接续画布外完整轮廓，按legacy tools-shapes.ts的findShapeBoundarySpan/collectShapeBoundaryPoints及shape-preview.ts，普通矩形/椭圆预览改为逐行定位凸形区间，二分左右端点并输出相邻行差集；保留旋转矩形孤立尖端修正、圆角、画布外坐标、对称与原有裁剪提交。每次绘制不再分配整个选框面积的局部蒙版，只保存行区间与轮廓点；种子未命中时仍可能逐点搜索该行，不宣称所有输入时间复杂度均为周长。
 
 20组矩形/椭圆、圆角0/3、角度0/35/90/135/270与原完整栅格蒙版边界逐点一致，并验证负坐标平移；32768×32768选框输出131068个周长点。正式Release构建成功；实际--workspace-check --named-workspace-only --selection-symmetry-hybrid-edit-only退出0，包含生产绘制离屏alpha、真实指针创建/取消/提交/UndoRedo及既有Hybrid回归；tile-repeat/selection-interactions两项通过2.78s。未执行独立JS几何oracle、未新增截图或量测整体FPS/峰值内存；整体迁移仍INCOMPLETE，本阶段保存推送dev。
+
+
+### 2026-11-10：Hybrid整格提交局部范围迁移
+
+对照legacy tilemap.ts::tilemapCellIndexesForSelection和tilemap-document.ts::captureTilemapSelectionMove/previewTilemapSelectionMove，原生Hybrid对齐整格提交从两次全网格扫描改为裁剪选区行列范围；先清源再赋目标，仍复制null、外部瓦片集及翻转旋转引用，重叠按不可变原网格读取。临时更新预算按选中格最多两份更新估算，不再按整个网格估算；现有浮动捕获、资源、链接、历史和固定网格裁剪不变。
+
+260×260显式链接夹具新增14组move/copy，覆盖四方向、重叠、右下部分越界、完全越界、原位no-op；逐项验证取消、authority冻结、精确格引用、资源不变、preview=commit及UndoRedo，并沿用共享源和链接缓存核对。tilemap-document通过0.37s；正式Release构建成功，完整--tileset-management-check实际退出0，包含既有大画布真实指针移动/复制/取消/Enter。744来源/证据与diff检查通过。新增14组为核心事务检查，没有新增实际指针夹具、截图或FPS量测；其他Hybrid预览资源patch缓存仍未完成，整体INCOMPLETE。本阶段保存推送dev。

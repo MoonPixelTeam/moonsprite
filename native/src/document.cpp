@@ -2854,11 +2854,15 @@ std::optional<bool> Document::commitHybridCellFloating(){
  const int originX=resolvedOwner.surface->offsetX,originY=resolvedOwner.surface->offsetY;
  if((std::int64_t(selected.x)-originX)%grid.tileWidth||(std::int64_t(selected.y)-originY)%grid.tileHeight||selected.width%grid.tileWidth||selected.height%grid.tileHeight||(std::int64_t(t.x)-originX)%grid.tileWidth||(std::int64_t(t.y)-originY)%grid.tileHeight)return {};
  const auto dc=(std::int64_t(t.x)-selected.x)/grid.tileWidth,dr=(std::int64_t(t.y)-selected.y)/grid.tileHeight;
- checkFloatingBudget(f,std::uint64_t(grid.cells.size())*(sizeof(tiles::Cell)+256));
- // Legacy captureTilemapSelectionMove snapshots null cells and transformed refs.
+ // Legacy captureTilemapSelectionMove / previewTilemapSelectionMove: visit selected cells only.
+ const auto left=std::max<std::int64_t>(0,(std::int64_t(selected.x)-originX)/grid.tileWidth),top=std::max<std::int64_t>(0,(std::int64_t(selected.y)-originY)/grid.tileHeight);
+ const auto right=std::min<std::int64_t>(grid.columns,(std::int64_t(selected.x)+selected.width-originX)/grid.tileWidth),bottom=std::min<std::int64_t>(grid.rows,(std::int64_t(selected.y)+selected.height-originY)/grid.tileHeight);
+ const auto selectedCount=right>left&&bottom>top?std::uint64_t(right-left)*std::uint64_t(bottom-top):0;
+ checkFloatingBudget(f,selectedCount*2*(sizeof(tiles::Cell)+256));
+ // Clear all sources before assigning destinations, including null cells and overlapping moves.
  std::map<std::size_t,std::optional<tiles::Cell>> updates;
- for(std::size_t i=0;i<grid.cells.size();++i){const int x=originX+int(i%grid.columns)*grid.tileWidth,y=originY+int(i/grid.columns)*grid.tileHeight;if(x<selected.x||y<selected.y||std::int64_t(x)>=std::int64_t(selected.x)+selected.width||std::int64_t(y)>=std::int64_t(selected.y)+selected.height)continue;if(!f.copy)updates[i]=std::nullopt;}
- for(std::size_t i=0;i<grid.cells.size();++i){const int x=originX+int(i%grid.columns)*grid.tileWidth,y=originY+int(i/grid.columns)*grid.tileHeight;if(x<selected.x||y<selected.y||std::int64_t(x)>=std::int64_t(selected.x)+selected.width||std::int64_t(y)>=std::int64_t(selected.y)+selected.height)continue;const auto col=std::int64_t(i%grid.columns)+dc,row=std::int64_t(i/grid.columns)+dr;if(col>=0&&row>=0&&col<grid.columns&&row<grid.rows)updates[std::size_t(row)*grid.columns+std::size_t(col)]=grid.cells[i];}
+ if(!f.copy)for(auto row=top;row<bottom;++row)for(auto col=left;col<right;++col)updates[std::size_t(row)*grid.columns+std::size_t(col)]=std::nullopt;
+ for(auto row=top;row<bottom;++row)for(auto col=left;col<right;++col){const auto destCol=col+dc,destRow=row+dr;if(destCol>=0&&destRow>=0&&destCol<grid.columns&&destRow<grid.rows)updates[std::size_t(destRow)*grid.columns+std::size_t(destCol)]=grid.cells[std::size_t(row)*grid.columns+std::size_t(col)];}
  bool changed=false;TilemapPixelHistory payload;payload.celId=resolvedOwner.source->id;payload.tilesetEdit=false;payload.independentCellOwner=f.linkedHybrid;payload.linkedCellOwner=f.linkedHybrid;payload.cellOffsetLayout=true;payload.beforeSet.id=layer().tilemapTilesetId;
  // Include equal refs in the apply set to replace transient RGBA pixels with exact rendered cells.
  for(const auto& entry:updates){changed=changed||grid.cells[entry.first]!=entry.second;payload.cells.push_back({entry.first,grid.cells[entry.first],entry.second});}
