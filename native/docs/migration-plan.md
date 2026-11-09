@@ -5494,3 +5494,10 @@ Release专项构建与10项extension验证通过，来源/diff检查后保存推
 复查上轮directory-16252-27578218/install-owned现场，旧test目录与状态存在、无遗留staging/backup，未定位当时外部句柄。没有依据宣称ERROR_ACCESS_DENIED根因已修复。新增受控installed目录无delete-sharing句柄，验证更新在重命名旧目录阶段拒绝、错误携带源/目标路径，原脚本和状态字节不变。修正安装catch忽略回滚错误的问题：清理/恢复失败时追加路径与备份保留位置；成功回滚仍抛原始失败，不加重试循环或改为忽略错误。此为原生错误诊断适配，事务成功路径不变。
 
 Release专项构建，11项extension/project-reader检查通过1.80s，含设置会话0.08s和新增锁定场景。此次绿灯不替代原偶发重命名失败根因证据；双故障回滚诊断分支尚未故障注入验证。来源/diff后保存推送dev，无正式exe/UI/全套验收，整体INCOMPLETE；保留原失败现场、用户数据/缓存/editor_support.h既有状态。
+
+
+### 2026-11-10：扩展显示字段本地化阶段
+
+完整承接core/extension-localization.ts递归访问规则：仅精确locale目录，缺失直接保留原对象，不做语言前缀/英语回退；翻译name/description/label/suffix/placeholder，跳过translations子树，数组递归。新增typed候选显示副本适配，覆盖扩展/命令/栏目/菜单/设置控件/选项文案，ID/路径/默认值/选项值/存储键/命令引用保持；翻译后不再按源字段长度校验，避免合法翻译被错误拒绝。
+
+复用旧测试输入及预期验证原始数据不变、ID/默认值/选项值/存储键不翻译、缺失locale对象身份不变；另验证typed候选实际命令与五类设置显示字段。Release专项构建及11项extension/project-reader通过1.75s，来源/diff后保存推送dev。正式界面调用方尚未接入，不把数据副本称作用户可见本地化完成；整体INCOMPLETE，无正式exe/GUI/全套验收。原安装偶发拒绝访问根因仍未定位，保留现场和用户数据/缓存/editor_support.h既有状态。
