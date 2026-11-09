@@ -5508,3 +5508,13 @@ Release专项构建，11项extension/project-reader检查通过1.80s，含设置
 核对extension-command-state.ts::setExtensionMenuItems和ExtensionRuntimeHost::menus.setItems：只允许本扩展声明的topMenus ID，menus与commands权限同时满足，最多64项，ID/event沿旧ASCII正则（允许点开头及双点），重复ID按大小写精确拒绝，名称UTF16最多80/JS trim，checked必填、dividerBefore可选布尔。整组验证后原子发布，相同内容不增长revision，省略name保留旧标题，空items清空选项。RequestHost/SessionHost接入声明设置与状态读取，停用/替换清理，旧token不能读新状态。
 
 Release三个相关目标成功，10项extension通过1.74s。覆盖动态请求、权限、归属、大小写ID/特殊事件、失败保留、无变化更新、空项保留名称、停止清理与会话替换。首轮编译因C++17不支持默认比较运算符失败，已改显式比较。正式菜单渲染/点击事件和旧订阅Set尚未迁移，当前为宿主数据链路，不宣称完整可见动态菜单完成。来源/diff后保存推送dev，无正式exe/GUI/全套验收；整体INCOMPLETE，原安装偶发拒绝访问根因仍未知，保留用户文件/缓存/editor_support.h既有状态。
+
+
+### 2026-11-10：栏目菜单贡献组装与可见性阶段
+
+直接迁移core/extension-contributions.ts全部函数对应数据流程：脚本/栏目/菜单/顶层菜单key，启用过滤、Map最后命令优先、引用顺序与缺失跳过，内置菜单位置过滤、顶层start/before/after/end插入与首次去重，栏目当前状态优先于存储再取defaultVisible，只识别字符串true，移除不再贡献的栏目键。存储读写沿旧共享storage边界以回调适配，未挪入扩展私有Storage命名空间。
+
+构建及专项测试验证三类贡献、停用、顺序/缺失、key、插入去重和可见性优先级/过期清理/精确字符串。旧同名.test.ts文件不存在，来源为实际实现而非虚构测试；本阶段新增原生回归。正式绘制/点击和共享持久化调用方仍待接入，不能将数据组装视为UI迁移完成。来源/diff后保存推送dev；无正式exe/GUI/全套验收，整体INCOMPLETE，保留用户文件/缓存/editor_support.h原状态及安装失败现场。
+
+
+本阶段实际验收补充：整组11项10通过1失败，目录安装再次在第6次staging→test重命名拒绝访问（directory-32916-28086484）。调整新用例顺序后另一次目录运行在状态原子替换拒绝访问（directory-13900-28124890），未改动writer/增加重试，保留现场。贡献验证抽出独立无磁盘CTest，避免被无关目录事务提前中断；独立Release构建与extension-contributions通过。整组不能标绿；安装/状态文件偶发占用问题仍未定位。本阶段只以独立贡献检查作为最小相关验收。
