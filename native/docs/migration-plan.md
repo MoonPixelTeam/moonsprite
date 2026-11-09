@@ -5239,3 +5239,10 @@ legacy canvas-render-selection-preview.ts对两种套索的每个栅格路径点
 对照legacy tools-selection-transform-translation.ts的forEachOpaqueSource/targetCanvasIndex源顺序及不可变基线合成，补齐上阶段区域反采样的尺寸边界：36组X/Y/Both×等画布/宽超1/高超1/双轴超1×正位置/负位置/负多周期位置；mask和半透明像素使超尺寸输入发生目标碰撞，对照关闭deferred的原源遍历路径。逐像素检查完整/负坐标/越界/局部区域、作品和历史冻结、取消后再次粘贴、提交及UndoRedo，保留非重复轴完全裁剪无变化场景。
 
 首次测试误要求所有场景commit返回true；具体诊断确认X平铺负多周期Y完全画布外，两个路径均无像素变化且预览一致。修正为返回值等于实际像素变化，并增加部分可见负坐标组合，没有改产品行为。最终document-raster-history通过1.42s；744来源/证据与diff通过。本阶段仅新增核心回归，未重复产品构建或已有窗口诊断，没有新增截图/FPS量测；整体迁移仍INCOMPLETE。本阶段保存推送dev。
+
+
+### 2026-11-10：超尺寸平铺剪贴板区域采样
+
+沿用legacy tools-selection-transform-translation.ts平铺源按row-major写入、始终与不可变目标基线合成的规则，regional预览对每个请求目标逆推所有周期源位置，逆序寻找最后一个mask==1且非透明的贡献。由此超画布剪贴板也只检查区域对应源，保留透明/未选中后续源不覆盖此前有效源的语义；未平铺轴保持裁剪，非regional提交仍走原源遍历，形成独立对照。
+
+原36组边界矩阵扩为45组，新增523×522源对260×260画布的多周期碰撞，加入透明隐藏RGB和mask2，覆盖局部/越界/负位置、取消重开事务、完整预览与源遍历提交一致及UndoRedo。正式Release构建成功；document-raster-history/tilemap-document通过2.19s，完整--tileset-management-check实际退出0。744来源/证据和diff通过。新超尺寸场景为核心回归，没有新增窗口夹具/截图/FPS量测；整体迁移仍INCOMPLETE，本阶段保存推送dev。

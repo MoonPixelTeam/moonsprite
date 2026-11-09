@@ -825,11 +825,15 @@ bool floatingTranslation(const SelectionTransform& t,const SelectionClipboard& s
 // legacy tools-selection-transform-translation.ts: repeated targets read the
 // immutable destination baseline; overlapping source pixels are cleared first.
 template<class Read,class Write> void repeatedFloatingTranslation(const SelectionClipboard& source,const SelectionClipboard& original,int sourceX,int sourceY,const SelectionTransform& t,int width,int height,repeat::Mode mode,bool copy,Read read,Write write,const PixelRegion* clip=nullptr){
- // A canvas-sized source has at most one contributor per wrapped destination.
- // Larger clipboard payloads retain source traversal and last-writer ordering.
- if(clip&&source.width<=width&&source.height<=height){
+ // Visit only contributors to the requested region. The last opaque masked
+ // source in row-major order wins; every write blends against the same baseline.
+ if(clip){
   const auto left=std::max<std::int64_t>(0,clip->x),top=std::max<std::int64_t>(0,clip->y),right=std::min<std::int64_t>(width,std::int64_t(clip->x)+clip->w),bottom=std::min<std::int64_t>(height,std::int64_t(clip->y)+clip->h);
-  for(auto y=top;y<bottom;++y)for(auto x=left;x<right;++x){auto sx=x-std::int64_t(t.x),sy=y-std::int64_t(t.y);if(repeat::includesX(mode))sx=(sx%width+width)%width;if(repeat::includesY(mode))sy=(sy%height+height)%height;if(sx<0||sy<0||sx>=source.width||sy>=source.height)continue;const auto i=std::size_t(sy)*source.width+std::size_t(sx);if(source.mask[i]!=1||!(source.pixels[i]>>24))continue;const auto ox=x-sourceX,oy=y-sourceY;const bool cleared=!copy&&ox>=0&&oy>=0&&ox<original.width&&oy<original.height&&original.mask[std::size_t(oy)*original.width+std::size_t(ox)]==1;write(int(x),int(y),brushComposite(cleared?0:read(int(x),int(y)),source.pixels[i],100));}
+  const bool wrapX=repeat::includesX(mode),wrapY=repeat::includesY(mode);
+  for(auto y=top;y<bottom;++y)for(auto x=left;x<right;++x){auto sx=x-std::int64_t(t.x),sy=y-std::int64_t(t.y);if(wrapX)sx=(sx%width+width)%width;if(wrapY)sy=(sy%height+height)%height;if(sx<0||sy<0||sx>=source.width||sy>=source.height)continue;
+   if(wrapX)sx+=(source.width-1-sx)/width*width;if(wrapY)sy+=(source.height-1-sy)/height*height;bool found=false;
+   for(auto yy=sy;yy>=0&&!found;yy-=wrapY?height:source.height)for(auto xx=sx;xx>=0;xx-=wrapX?width:source.width){const auto i=std::size_t(yy)*source.width+std::size_t(xx);if(source.mask[i]!=1||!(source.pixels[i]>>24))continue;const auto ox=x-sourceX,oy=y-sourceY;const bool cleared=!copy&&ox>=0&&oy>=0&&ox<original.width&&oy<original.height&&original.mask[std::size_t(oy)*original.width+std::size_t(ox)]==1;write(int(x),int(y),brushComposite(cleared?0:read(int(x),int(y)),source.pixels[i],100));found=true;break;}
+  }
   return;
  }
  for(int y=0;y<source.height;++y)for(int x=0;x<source.width;++x){const auto i=std::size_t(y)*source.width+x;if(source.mask[i]!=1||!(source.pixels[i]>>24))continue;
