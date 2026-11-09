@@ -5089,3 +5089,13 @@ CTest document-transactions/free-tile-project/tilemap-document全部通过33.39s
 接续稀疏时间轴读写，按legacy core/aseprite.ts resolveCel的缓存解析及逐帧位置/opacity/z覆盖规则，将原生递归root解析改为迭代路径缓存，消除合法长链接链的C++栈深依赖。保留已有循环/缺失目标拒绝与属性不同则复制栅格规则。只读核对Aseprite dio/aseprite_decoder.cpp readCelChunk：位置或透明度不同会MakeCopy、Z单独设置；未复制其源码，也不以其顺序读取限制取代legacy的前向链接支持。原生对畸形链接的严格拒绝仍是已有差异，未宣称完全等价。
 
 前向/后向各12000帧分别验证单一canonical像素源、所有alias、深层循环和缺失目标拒绝；四帧不同offset/opacity/z逐项检查并导出重开逐像素对照。正式Release构建成功；aseprite-io/save-policy通过0.20s，完整--aseprite-io-check实际退出0。744来源覆盖与证据检查通过；新增长链为核心覆盖，无FPS/截图验收。本阶段保存推送dev，整体INCOMPLETE。
+
+
+### 2026-11-10：ASE空槽编辑到原生保存闭环
+
+在稀疏ASE实际首次编辑/保存回归中发现：首帧无Cel的图层未初始化display geometry，直接或后台转存原生工程会报Missing layer display geometry。按legacy aseprite.ts createLayer(name,1,1)初始化全部层fallback再投影活动Cel；DocumentSnapshot携带全部层显示geometry，在finish恢复，并使同generation下的geometry变动失效快照。沿用animation.ts syncActiveAnimationLayer只创建编辑活动槽的语义；取消不创建，首次提交只增一个Cel，撤销清像素但保留已创建空Cel与dirty（既有行为，未改保存点规则）。
+
+核心覆盖部分/全空时间轴、未编辑worker快照与原生序列化、非默认偏移/尺寸、快照geometry失效、首次绘制取消/提交/UndoRedo和原生保存重开逐帧画面。原生prepareEditableImport现有补齐空槽行为保留，不把原生重开声明为仍然稀疏。窗口新增全空ASE实际导出worker/write及原生Save As/openPath；系统文件选择器注入路径，无截图验收。整体INCOMPLETE，完成验证后保存推送dev。
+
+
+本阶段实际窗口回归首次暴露时间轴连接线绘制对缺失left/next Cel的空指针访问；按legacy deriveTimelineLinks实际成员分组，空槽跳过，缩略图绑定也改为可选活动Cel解析。修复后正式Release构建成功，完整--aseprite-io-check实际退出0，含新增全空导出与原生另存重开。aseprite-io/document-snapshot通过0.26s；744来源与证据检查通过，diff检查通过。未把首次失败计为通过；未新增截图或FPS量测。最终保存推送dev。

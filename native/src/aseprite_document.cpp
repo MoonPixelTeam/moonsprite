@@ -8,7 +8,7 @@ struct AsepriteDocumentBuilder {
  static Document build(AsepriteImport value){
   timeline::Timeline checked(std::move(value.timeline));
   if(checked.state().layers.empty()||checked.state().frames.empty()||!checked.hasLayer(value.activeLayer)||!checked.hasFrame(value.activeFrame)||!checked.diagnoseLinks().empty())throw std::invalid_argument("Invalid Aseprite import relationships");
-  Document d(value.width,value.height);d.timeline_=std::move(checked);d.palette_=std::move(value.palette);d.name_=std::move(value.name);d.activeLayerId_=std::move(value.activeLayer);d.activeFrameId_=std::move(value.activeFrame);d.projectActiveCelOpacities();d.selectLayer(d.activeLayerId_);d.selectFrame(d.activeFrameId_);d.markSaved();return d;
+  Document d(value.width,value.height);d.timeline_=std::move(checked);d.palette_=std::move(value.palette);d.name_=std::move(value.name);d.activeLayerId_=std::move(value.activeLayer);d.activeFrameId_=std::move(value.activeFrame);std::unordered_map<std::string,std::array<int,4>> geometry;for(const auto& layer:d.timeline_.state().layers)geometry.emplace(layer.id,std::array<int,4>{1,1,0,0});d.setImportedLayerGeometry(std::move(geometry));d.projectActiveCelOpacities();d.selectLayer(d.activeLayerId_);d.selectFrame(d.activeFrameId_);d.markSaved();return d;
  }
 };
 void acceptAsepriteSaved(Document& d,const std::filesystem::path& path,bool sourceOnly,bool exactGeneration){AsepriteDocumentBuilder::acceptSaved(d,path,sourceOnly,exactGeneration);}

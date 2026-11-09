@@ -11,8 +11,9 @@ DocumentSnapshot::DocumentSnapshot(const Document& d,std::string newProjectId)
     ProjectBrushResource copy;copy.metadata=resource.metadata;const auto& b=resource.brush;
     copy.brush.width=b.width;copy.brush.height=b.height;copy.brush.sourceX=b.sourceX;copy.brush.sourceY=b.sourceY;copy.brush.intrinsicSize=b.intrinsicSize;brushes_.push_back(std::move(copy));
   }
+  for(const auto& layer:d.timeline().state().layers)layerGeometry_.emplace(layer.id,d.displayedLayerGeometry(layer.id));
 }
-bool DocumentSnapshot::matches(const Document& d)const{const auto center=d.symmetryCenter();return !d.active() && identity_==d.identity() && revision_==d.revision() && contentRevision_==d.contentRevision() && symmetry_.x==center.x && symmetry_.y==center.y && loop_==d.animationLoop() && showPixelGrid_==d.showPixelGrid() && showCustomGrid_==d.showCustomGrid() && customGrid_==d.customGrid() && panel_==d.layerPanelState() && raster_.matches(d.timeline().state());}
+bool DocumentSnapshot::matches(const Document& d)const{for(const auto& layer:d.timeline().state().layers){const auto found=layerGeometry_.find(layer.id);if(found==layerGeometry_.end()||found->second!=d.displayedLayerGeometry(layer.id))return false;}const auto center=d.symmetryCenter();return !d.active() && identity_==d.identity() && revision_==d.revision() && contentRevision_==d.contentRevision() && symmetry_.x==center.x && symmetry_.y==center.y && loop_==d.animationLoop() && showPixelGrid_==d.showPixelGrid() && showCustomGrid_==d.showCustomGrid() && customGrid_==d.customGrid() && panel_==d.layerPanelState() && raster_.matches(d.timeline().state());}
 bool DocumentSnapshot::advance(const Document& d,std::chrono::steady_clock::time_point deadline){
   if(!matches(d))throw std::logic_error("Document changed during snapshot");
   if(complete_)return true;
@@ -43,7 +44,7 @@ Document DocumentSnapshot::finish(){
   if(!captured.diagnoseLinks().empty())throw std::invalid_argument("Invalid snapshot cel link");
   for(const auto& cel:captured.state().cels){const auto resolved=captured.resolveSurface(cel.id);if(!resolved.surface)throw std::invalid_argument("Missing snapshot owner");raster::validate(*resolved.surface);}
   Document result(width_,height_);result.timeline_=std::move(captured);result.palette_=std::move(palette_);result.name_=std::move(name_);
-  result.setImportedOutlineSettings(std::move(outline_));result.activeLayerId_=layer_;result.activeFrameId_=frame_;result.projectActiveCelOpacities();
+  result.setImportedOutlineSettings(std::move(outline_));result.activeLayerId_=layer_;result.activeFrameId_=frame_;result.setImportedLayerGeometry(std::move(layerGeometry_));result.projectActiveCelOpacities();
   result.setImportedProjectInformation(std::move(information_));result.setImportedTimelapse(std::move(timelapse_));
   result.projectId_=std::move(projectId_);result.sourceArchive_=std::move(archive_);
   result.setImportedReferenceImages(std::move(references_));result.setImportedSlices(std::move(slices_));result.setImportedProjectBrushes(std::move(brushes_));result.setImportedSymmetryCenter(symmetry_);result.selectLayer(layer_);result.selectFrame(frame_);result.applyLayerPanelState(std::move(panel_));result.setImportedLoop(loop_);result.setPixelGrid(showPixelGrid_,false);result.setCustomGrid(showCustomGrid_,customGrid_,false);return result;

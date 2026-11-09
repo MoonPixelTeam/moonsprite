@@ -64,6 +64,16 @@ void Editor::smokeAsepriteIo(){
   document.beginStroke({0,0},0xff778899);document.commitStroke();const auto preserved=owned/"psd-preserved.moonsprite";asepriteSaveDecisionForSmoke_=[&](bool,const auto&){return 1;};chooseSaveFile_=[&](OPENFILENAMEW* chooser){const auto name=preserved.wstring();std::copy(name.begin(),name.end(),chooser->lpstrFile);chooser->lpstrFile[name.size()]=0;chooser->nFilterIndex=1;return true;};saveProject(false);finishSave();require(documentPath_==preserved&&document.sourceArchive()&&!document.dirty()&&document.timeline().state().frames.size()==2,"PSD preserve as native project");
   chooseSaveFile_=std::move(savedChooser);asepriteSaveDecisionForSmoke_=std::move(savedDecision);runtimePreferences_.set("files.saveOriginalFormat",oldOriginal);
  }catch(...){chooseSaveFile_=std::move(savedChooser);asepriteSaveDecisionForSmoke_=std::move(savedDecision);runtimePreferences_.set("files.saveOriginalFormat",oldOriginal);throw;}
+ // Empty active ASE slots must survive the real worker/export path and native save.
+ {
+  Document seed(4,3);seed.addLayer();seed.addFrame();auto sparse=decodeAseprite(encodeAseprite(seed));sparse.timeline.cels.clear();document=documentFromAseprite(std::move(sparse));documentPath_.clear();refresh();
+  const auto target=owned/"sparse.aseprite";auto chooser=chooseExportFile_;chooseExportFile_=[&](OPENFILENAMEW* dialog){auto path=target.wstring();std::copy(path.begin(),path.end(),dialog->lpstrFile);dialog->lpstrFile[path.size()]=0;return true;};
+  try{asepriteIoSmoke=true;openAsepriteExport();asepriteIoSmoke=false;chooseExportFile_=std::move(chooser);}catch(...){asepriteIoSmoke=false;chooseExportFile_=std::move(chooser);throw;}
+  require(openAseprite(target).timeline().state().cels.empty()&&document.timeline().state().cels.empty()&&!document.dirty(),"Sparse actual export materialized slots");
+  const auto nativeTarget=owned/"sparse.moonsprite";auto saveChooser=chooseSaveFile_;chooseSaveFile_=[&](OPENFILENAMEW* dialog){auto path=nativeTarget.wstring();std::copy(path.begin(),path.end(),dialog->lpstrFile);dialog->lpstrFile[path.size()]=0;dialog->nFilterIndex=1;return true;};
+  try{saveProject(true);finishSave();chooseSaveFile_=std::move(saveChooser);}catch(...){chooseSaveFile_=std::move(saveChooser);throw;}
+  require(std::filesystem::is_regular_file(nativeTarget)&&!document.dirty(),"Sparse actual native Save As failed");openPath(nativeTarget);require(pending_==Pending::None&&document.canvasPixels()==std::vector<timeline::Pixel>(12,0),"Sparse actual native reopen failed");
+ }
  // Real export dialog/worker/write for migrated special layers.
  for(bool psdSpecial:{false,true})for(bool free:{false,true}){
   document=Document(8,6);document.beginStroke({1,1},0xff123456);document.commitStroke();if(free){document.createFreeTileLayer(U"Free ASE window");SelectionClipboard tile;tile.width=tile.height=2;tile.pixels.assign(4,0xffabcdef);document.pasteFreeTilePixels(tile,{2,2});}else document.convertLayerToTilemap(2,2,U"Grid ASE window");document.addFrame(true);document.markSaved();refresh();

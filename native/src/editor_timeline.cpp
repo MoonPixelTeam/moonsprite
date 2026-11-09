@@ -841,7 +841,7 @@ void Editor::bindTimelineThumbnail(std::size_t slot,const timeline::Cel* cel){
 
     if(!resolved.surface || !stamp.owner){if(binding.cancel)binding.cancel();binding={};return;}
 
-    const auto activeOwner=document.timeline().resolveSurface(document.cel().id);const bool live=document.active() && activeOwner.source && resolved.source && activeOwner.source->id==resolved.source->id;const int size=timelineThumbnailSize()*uiScale;
+    const auto* activeCel=document.timeline().findCel(document.layer().id,document.frame().id);const auto activeOwner=activeCel?document.timeline().resolveSurface(activeCel->id):timeline::Resolution{};const bool live=document.active() && activeOwner.source && resolved.source && activeOwner.source->id==resolved.source->id;const int size=timelineThumbnailSize()*uiScale;
 
     std::ostringstream key;key<<document.width()<<':'<<document.height()<<':'<<size<<':'<<resolved.surface->width<<':'<<resolved.surface->height<<':'<<resolved.surface->offsetX<<':'<<resolved.surface->offsetY<<':'<<std::setprecision(17)<<cel->opacity.value_or(1)<<":checker:content:rgba";
 
@@ -1306,6 +1306,7 @@ void Editor::paintTimelineGrid(ui::Graphics& g) {InteractionScope interactionSco
 
         const auto* left=document.timeline().findCel(layer.id,frames[frameScroll_+col].id);
 
+        if(!left){++col;continue;}
         const auto a=document.timeline().resolveSurface(left->id);
 
         const int first=col++;
@@ -1316,6 +1317,7 @@ void Editor::paintTimelineGrid(ui::Graphics& g) {InteractionScope interactionSco
 
           const auto* next=document.timeline().findCel(layer.id,frames[frameScroll_+col].id);
 
+          if(!next)break;
           const auto b=document.timeline().resolveSurface(next->id);
 
           if(!b.source || a.source->id!=b.source->id)break;
