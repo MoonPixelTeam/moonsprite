@@ -5623,3 +5623,10 @@ Release独立lua-script-directory目标及真实磁盘专项通过0.11s，覆盖
 承接platform_scripts::script_directory/list_lua_scripts/open_lua_script_folder及platform_paths程序目录规则，新增Service统一准备scripts、合并extensions、返回camelCase列表及省略可选字段、加载/删除/打开目录。CMake从原moon-phase.lua逐字节生成构建目录头文件，不复制改写示例，不提交生成物；示例变更触发重新配置。Win32程序路径与ShellExecuteEx适配旧current_exe/Command，提供测试root/opener注入。扩展脚本加载沿旧版无需创建本地scripts，扩展删除在准备目录前拒绝。
 
 Release lua-script-directory目标及专项通过0.12s，验证真实示例嵌入/首次写入/加载与原文件字节一致、列表字段/可选省略、目录启动参数/失败传播、用户删除后不恢复和程序目录解析。来源781文件及diff检查后保存推送dev。实际Explorer启动仅接口实现，未弹窗验收；正式菜单与Lua执行引擎尚未调用Service，无正式exe/GUI/全套验收，整体INCOMPLETE，保留用户差异/数据/缓存与失败现场。
+
+
+### 2026-11-10：正式脚本目录菜单接入阶段
+
+对照AppMenuBar.tsx的onOpenLuaScriptFolder及platform_scripts.rs目录服务，把正式菜单已有openScriptFolder绑定到Service::openFolder。无工程/首页仍可打开，目录准备与原始示例seed沿已有Service，失败显示状态栏；未增加脚本执行假入口。正式目标加入generated头目录。已有smokeInteraction补注入回调检查无工程可用、派发和错误状态，不弹Explorer。用户再次确认Hybrid预览与提交一致并保留大画布延迟优化，沿此前已实现资源patch/区域输出方案。
+
+正式Release构建成功，唯一exe更新；lua-script-directory/tilemap-document/canvas-tilemap-preview三项通过0.97s。实际--smoke退出1，先在既有Preview hide failed断言失败，尚未到新增脚本菜单断言；未声称新菜单实际运行验收或Explorer打开通过，保留失败现场，未盲目重试。来源覆盖781文件及diff检查通过。Lua执行引擎、正式扩展宿主仍待接入，整体INCOMPLETE。保留用户差异、数据与缓存；本阶段保存推送dev。

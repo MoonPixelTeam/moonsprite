@@ -8256,6 +8256,15 @@ void Editor::smokeInteraction() {
 
       document=std::move(previous);refresh();}
 
+    {auto original=std::move(openScriptFolder_);const auto previousStatus=status_;const auto previousHome=homeOpen_;const auto previousOpen=documentOpen_;int opened=0;
+      openScriptFolder_=[&]{++opened;};homeOpen_=true;documentOpen_=false;
+      auto item=menuItems_.at("openScriptFolder");item->validateItem();
+      if(!item->isEnabled()||!menuCommands_.connected("openScriptFolder"))throw std::runtime_error("Script folder menu unavailable without document");
+      item->Click();if(opened!=1)throw std::runtime_error("Script folder menu did not call service");
+      openScriptFolder_=[] {throw std::runtime_error("script-folder-test-failure");};item->Click();
+      if(status_.find(U"script-folder-test-failure")==std::u32string::npos)throw std::runtime_error("Script folder failure not reported");
+      openScriptFolder_=std::move(original);status_=previousStatus;homeOpen_=previousHome;documentOpen_=previousOpen;}
+
     {const auto raw=document.pixels();const auto count=document.historySize();std::size_t leaves=0;
 
       for(const auto& e:menus::catalog())if(!e.group){++leaves;auto item=menuItems_.at(e.id);item->validateItem();if(!menuCommands_.connected(e.id)){if(item->isEnabled())throw std::runtime_error("Unmigrated menu enabled");item->Click();}}

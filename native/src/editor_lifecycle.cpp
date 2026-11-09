@@ -1,5 +1,6 @@
 #include "editor.h"
 #include "image_resize_task.h"
+#include "lua_script_service.h"
 #include "editor_implementation.h"
 
 namespace moon::editor {
@@ -572,6 +573,8 @@ menuCommands_.bind("copy",{[this]{copyEditorClipboard();},[this]{if(!paletteFocu
 
 menuCommands_.bind("cut",{[this]{copyEditorClipboard(true);},[this]{if(!paletteFocused_&&document.selection()&&document.layer().kind=="free-tile"&&document.activeMaskId().empty())return pixelClipboardContext();if(!paletteFocused_&&!document.selection()&&!selectedMaskSlots_.empty())return true;if(!paletteFocused_&&document.freeTileInstanceView()&&!document.selectedFreeTileInstances().empty())return true;if(mixedPixelCopyContext(true))return true;if(document.hasTilemapContent())return !paletteFocused_&&!document.selection()&&document.activeMaskId().empty()&&(!celClipboardContext()||!document.active())&&(celClipboardContext()||frameSelectionExplicit_||document.canDeleteSelectedLayers());return !paletteFocused_&&(document.selection()||celClipboardContext()||frameSelectionExplicit_||document.canDeleteSelectedLayers());},{}});
 
+openScriptFolder_=[] {script::Service().openFolder();};
+menuCommands_.bind("openScriptFolder",{[this]{try{openScriptFolder_();}catch(const std::exception& e){status_=U"打开脚本文件夹失败："+unicodeText(e.what());invalidate();}},{},{}});
 menuCommands_.bind("userGuide",{[this]{showHelp(false,helpVerify_);},[this]{return pending_==Pending::None;},{}});
 menuCommands_.bind("tips",{[this]{showHelp(true,helpVerify_);},[this]{return pending_==Pending::None;},{}});
 menuCommands_.bind("openProjectInfo",{[this]{showProjectInformation(projectInformationVerify_);},[this]{return pending_==Pending::None&&documentOpen_&&!homeOpen_;},{}});

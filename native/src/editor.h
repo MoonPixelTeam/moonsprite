@@ -2516,6 +2516,7 @@ void layoutStoredPaletteControls(const gfx::Rect& modal);
   void cancelStroke();
 
   std::function<void(const std::filesystem::path&)> projectFolderLauncher_;
+  std::function<void()> openScriptFolder_;
 
   std::filesystem::path projectFolderSource()const;
 
