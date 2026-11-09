@@ -5567,3 +5567,10 @@ Release三个相关目标构建成功；session/resources通过，实际Document
 对照ExtensionRuntimeHost TOOL_IDS/colorParam/handleRequest，补齐tools.getActive/setActive、colors.get/setPrimary/setSecondary，沿原tools/document.read/document.write权限。只允许旧版15工具ID，不擅自扩展gradient等ID；颜色四通道必须有限数字，按JS Math.round后clamp到0–255，缺字段/非数字原子拒绝。查询无工程null；设置仍委托工作区，保留旧版共享颜色偏好在无工程时更新的入口。核对workspace-commands-tool/color的手势锁、浮动提交及跨会话色板同步，回调边界保留这些领域职责，不用直接改Document色板替代。
 
 Release三个相关目标构建成功，request/session/resources三项通过0.28s；覆盖15ID逐一往返、大小写/未知ID、缺失类型、半值四舍五入、越界夹取、透明alpha、结果字段、无工程查询/设置、权限和未连接服务。来源/diff检查后保存推送dev。此次仅请求与服务边界完整迁移；正式Editor工具映射和共享色板调用方仍未接入，未声称真实工具切换/色板同步已验收。无正式exe/GUI/全套验收，整体INCOMPLETE，保留既有差异/用户文件/缓存及失败现场。
+
+
+### 2026-11-10：扩展停用异常与重入清理阶段
+
+核对旧版ExtensionRuntimeHost独立React effects的file-drop/runtime注册释放及postMessage异步停用后，修复原生同步回调适配缺陷：状态订阅抛错会跳过拖放与停用、停用抛错会遗留EventLifecycle活动态。现在先使session/event失效，注销runtime、清拖放/呈现、发送停用均执行，最后重抛首个错误；停用重入和重复关闭幂等，宿主析构继续清理其他会话。保留旧版加载失败重载语义，未自行把loadFailed改为永久关闭。
+
+Release四个相关目标及resources/session/request/event-lifecycle四项通过0.30s；新增析构多会话故障用例后重建session并通过0.12s。覆盖呈现和停用同时抛错仍清注册/拖放/旧token、替换空状态、回调内重入停用、析构一会话抛错不阻断另一会话。来源/diff检查后保存推送dev。此阶段完成已有核心会话的异常清理，不宣称尚未接入的窗口/网络/引擎任务已经被释放，无正式exe/GUI/全套验收，整体INCOMPLETE，用户差异/缓存与安装失败现场保留。

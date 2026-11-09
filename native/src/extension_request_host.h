@@ -69,7 +69,7 @@ public:
  void setWorkspaceServices(WorkspaceServices services){workspace_=std::move(services);}
  void setServices(HostServices services){services_=std::move(services);}
  void setResourceReader(std::function<FileDropRouter::Bytes(const std::string&)> reader){readResource_=std::move(reader);}
- void deactivate(){active_=false;menus_.clear();drops_.clear(extension_.id);}
+ void deactivate(){if(!active_)return;active_=false;drops_.clear(extension_.id);menus_.clear();}
  std::optional<winrt::Windows::Data::Json::JsonObject> handle(const winrt::Windows::Data::Json::IJsonValue& raw,bool ownsSession,const std::string& locale,std::optional<std::string> encodedValue={}){
   using namespace winrt::Windows::Data::Json;
   if(!ownsSession||!active_||!extension_.enabled||!raw||raw.ValueType()!=JsonValueType::Object)return {};

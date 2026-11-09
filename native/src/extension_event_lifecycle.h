@@ -26,7 +26,7 @@ public:
   auto pending=std::move(pending_);pending_.clear();for(const auto& value:pending)event(value);
  }
  void localeChanged(const std::string& locale){if(locale==locale_)return;locale_=locale;RuntimeEvent value;value.type="locale-changed";value.locale=locale;event(value);}
- void deactivate(){if(!active_)return;RuntimeEvent value;value.type="deactivate";send(value);loaded_=false;pending_.clear();active_=false;}
+ void deactivate(){if(!active_)return;const bool deliver=loaded_;active_=false;loaded_=false;pending_.clear();if(deliver){RuntimeEvent value;value.type="deactivate";deliver_(value);}}
  std::size_t pendingCount()const{return pending_.size();}
 };
 }

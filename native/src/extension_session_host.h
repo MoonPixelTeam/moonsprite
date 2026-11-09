@@ -2,6 +2,7 @@
 #include "extension_event_lifecycle.h"
 #include "extension_request_host.h"
 #include <map>
+#include <exception>
 namespace moon::extension {
 // Own one event-thread session per extension. Stop the previous session before
 // publishing its replacement so its cleanup cannot erase new file-drop types.
@@ -10,7 +11,7 @@ class SessionHost {
   std::string id,locale;std::uint64_t generation;bool active=true;
   EventLifecycle events;RequestHost requests;RuntimeRegistry::Stop unregister;
   Session(std::string identity,std::uint64_t value,RuntimeExtension extension,const std::vector<std::string>& permissions,std::string language,Storage& storage,FileDropRouter& drops,RuntimeRegistry& registry,std::function<void(const RuntimeEvent&)> deliver,CommandHandlers handlers,std::vector<RuntimeCommand> commands):id(std::move(identity)),locale(std::move(language)),generation(value),events(permissions,locale,std::move(deliver)),requests(std::move(extension),permissions,storage,drops,registry,std::move(handlers),std::move(commands)){}
-  void stop(){if(!active)return;active=false;unregister();requests.deactivate();events.deactivate();}
+  void stop(){if(!active)return;active=false;std::exception_ptr failure;auto cleanup=[&](auto&& action){try{action();}catch(...){if(!failure)failure=std::current_exception();}};cleanup([&]{unregister();});cleanup([&]{requests.deactivate();});cleanup([&]{events.deactivate();});if(failure)std::rethrow_exception(failure);}
  };
  Storage& storage_;FileDropRouter& drops_;RuntimeRegistry& registry_;std::map<std::string,std::shared_ptr<Session>> sessions_;std::uint64_t next_=0;
  std::shared_ptr<Session> find(const std::string& id,std::uint64_t generation)const{auto it=sessions_.find(id);return it!=sessions_.end()&&it->second->generation==generation&&it->second->active?it->second:nullptr;}
