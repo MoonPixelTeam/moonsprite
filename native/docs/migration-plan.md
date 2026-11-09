@@ -5141,3 +5141,10 @@ CTest document-transactions/free-tile-project/tilemap-document全部通过33.39s
 当前源码证实ASE原格式CtrlS/Save As、兼容损失取消/继续/保留原生、后台快照/队列/savepoint及失败重试早已实现；修正来源清单中过期的当前scope，保留历史日期记录。按legacy aseprite.ts scaledLayerPixels的scale1直接像素视图路径，原生100%输出在little-endian平台直接压缩const像素字节，消除整Cel逐像素重采样副本；其他端序及缩放继续原采样器，压缩级别/几何/链接语义不变。C++17使用运行时字节序探测，未提高项目语言标准。
 
 新增三组正负偏移、33/100/200比例，逐像素核对半透明/透明隐藏RGB和缩放边界，并验证源像素identity/revision、内容与历史不变。正式Release成功，aseprite-io/save-policy通过0.37s，完整--aseprite-io-check及--aseprite-save-check实际退出0（含来源保存/另存/队列/损失确认/取消/原生保留/失败重试）。未新增截图或量测峰值内存/FPS，整体INCOMPLETE；本阶段保存推送dev。
+
+
+### 2026-11-10：早期ASE无瓦片集索引图层的完整打开链路
+
+legacy aseprite.ts只在name后仍有四字节时读取tilesetIndex，并在构造document层时跳过无该字段的tilemap层；已有aseprite.test.ts明确要求混合文件仍导入Paint。原生此前强制读取索引而拒绝整个文件，现改为独立记录字段存在性，只跳过无字段层及其Cel，回收对应raw预算并重建slot下标，保留文件原layer索引。显式索引值（含越界值）不与缺失混同；内嵌瓦片及外部资源验证保持原路径。
+
+四组二进制夹具覆盖有/无Paint、有/无被忽略Cel；仅剩忽略层时拒绝，无损保留Paint时验证像素、绘制、UndoRedo、ASE重开及原生保存重开。正式Release构建成功，aseprite-io/save-policy通过0.43s，完整--aseprite-io-check实际退出0。新增兼容场景为核心测试，无新增窗口夹具/截图或性能量测；整体INCOMPLETE，本阶段保存推送dev。
