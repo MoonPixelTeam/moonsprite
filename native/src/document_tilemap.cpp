@@ -486,7 +486,7 @@ bool Document::linkedEditSelectionAvailable(bool requireSelection)const{
 bool Document::linkedCreateSelectionAvailable(bool requireSelection,bool paintTransform)const{
  // Create uses a full canvas; Paint also retains fixed grids with world offsets/padding.
  if((requireSelection&&!selection_)||active()||!activeMaskId_.empty()||layer().kind!="tilemap"||tileSelection_.mode!=(paintTransform?tiles::Mode::Paint:tiles::Mode::Create)||hasSelectedGroups()||!tilemapCellOwnerSupported(cel().id,paintTransform,true)||(!paintTransform&&!raster::fullCanvas(activeSurface(),width_,height_)))return false;
- if(std::any_of(timeline_.state().layers.begin(),timeline_.state().layers.end(),[](const auto& l){return l.kind=="free-tile";}))return false;
+ if(!paintTransform&&std::any_of(timeline_.state().layers.begin(),timeline_.state().layers.end(),[](const auto& l){return l.kind=="free-tile";}))return false;
  const auto layers=selectedLayerIdsWithGroups();if(layers.size()>1||(!layers.empty()&&layers.front()!=activeLayerId_)||!selectedFrames_.empty()||timelineSelection_.cels.size()>1||(!timelineSelection_.cels.empty()&&timelineSelection_.cels.front()!=cel().id))return false;
  const auto owner=timeline_.resolveSurface(cel().id).source->id;
  for(const auto& c:timeline_.state().cels)if(c.id!=owner&&c.linkedCelId){const auto r=timeline_.resolveSurface(c.id);if(r.source&&r.source->id==owner)return true;}
@@ -504,7 +504,7 @@ bool Document::tilemapSelectionCutAvailable()const{
  // pixel deletion is rejected by legacy. Explicit same-layer chains are read-only here.
  const bool paintCopyOnly=tileSelection_.mode==tiles::Mode::Paint&&!active()&&tilemapCellOwnerSupported(cel().id,true,true);
  if(!selection_||(active()&&!createPending)||!activeMaskId_.empty()||layer().kind!="tilemap"||hasSelectedGroups()||!(paintCopyOnly||(floating_&&(linkedCreateFloatingSupported(*floating_)||linkedEditFloatingSupported(*floating_)||linkedHybridFloatingSupported(*floating_)))||linkedCreateSelectionAvailable()||linkedEditSelectionAvailable()||linkedHybridSelectionAvailable()||tilemapDeltaSupported()))return false;
- if(std::any_of(timeline_.state().layers.begin(),timeline_.state().layers.end(),[](const auto& l){return l.kind=="free-tile";}))return false;
+ if(tileSelection_.mode!=tiles::Mode::Paint&&std::any_of(timeline_.state().layers.begin(),timeline_.state().layers.end(),[](const auto& l){return l.kind=="free-tile";}))return false;
  const auto layers=selectedLayerIdsWithGroups();if(layers.size()>1||(!layers.empty()&&layers.front()!=activeLayerId_))return false;
  if(!selectedFrames_.empty())return false;
  if(timelineSelection_.cels.size()>1||(!timelineSelection_.cels.empty()&&timelineSelection_.cels.front()!=cel().id))return false;

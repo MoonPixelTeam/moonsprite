@@ -4848,3 +4848,12 @@ smokeWorkspace布局交互完成后切至已有移动工具，固定后续画布
 同时发现共用copyPixels没有平移quad角点到局部目标，导致四角浮动复制为空或错位。按workspace-floating-clipboard.ts的translateSelectionQuad修复，沿用旧版旋转quad的精确输入/像素/mask预期，验证不复制背景、不提交。Paint72组合新增pending Cut/Delete、原资源/目标恢复、历史与native/recovery检查；真实窗口新增CtrlX和Delete结算、Undo/Redo。初始新断言把无采样内容一概当成成功复制，改为核对既有空返回与选区完成行为；GUI失败则由quad复制坐标修复解决。
 
 正式Release构建成功，CTest document-transactions/free-tile-project/tilemap-document全部通过17.22s；完整--tileset-management-check实际退出0；744文件来源覆盖、证据快照和diff检查通过。未重跑全套或新增FPS/人工截图验收。多目标、runtime shared别名、混合free文档等仍未迁移，整体INCOMPLETE。保留用户数据、缓存、未跟踪文件及editor_support.h既有状态，阶段保存推送dev。
+
+
+### 2026-11-09：混合自由瓦片文档的 Paint 网格变换阶段
+
+对照 legacy workspace-session.ts selectedTransformLayersForSession/selectedTransformLayersAreEditable，单个显式网格目标不因文档含无关自由瓦片层而拒绝。原生仅为已支持的单Paint网格解除文档级free门控，覆盖浮动捕获、待提交像素方向键、Cut及资源提交；保留目标owner、几何、链接和资源前置检查，其它模式/多目标/runtime别名限制未泛化放开。
+
+新增linked/independent × move/copy ×零/负偏移八组混合文档回归，检查变换预览、取消、提交、Undo/Redo、native/recovery重开和pending Cut/Delete；逐项比较未选free层的实例、源元数据、缓存、位置及所有既有瓦片像素。初始重开比较因preservedJson规范化与运行对象不同失败，改为与同一未变换基线经相同保存重开后的对象比较；运行阶段仍保持原对象精确比较，不修改序列化规则。
+
+正式Release构建成功；CTest document-transactions/free-tile-project/tilemap-document全部通过19.27s，完整--tileset-management-check实际退出0；744来源覆盖及证据快照和diff检查通过。新增混合场景为核心/持久化检查，未新增混合场景鼠标专项或人工截图、FPS验收，未重跑全套。普通Paint整格移动在含free文档仍有独立门控，本文不宣称该路径迁移；多目标/runtime shared等缺口继续保留，整体INCOMPLETE。保留用户数据、缓存、未跟踪文件和editor_support.h既有状态，阶段保存推送dev。
