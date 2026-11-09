@@ -1073,7 +1073,10 @@
     "legacy/src/shared/types-extension-runtime.ts": "64130e6851ca468f7e47f6bcd6a06ca07d33a92e5d07f44849dcc60513d78957",
     "legacy/src/renderer/src/components/extensions/ExtensionRuntimeHost.tsx": "875fff36317df785984d8ff0c3e3d9f7b04b76139c711e116e3039191c2ab2ed",
     "legacy/src/renderer/src/components/extensions/ExtensionRuntimeHost.test.tsx": "a9dda9be867dcf277346994346a8a73573c7373bb7ed31a3e65bd00967e7c4eb",
-    "legacy/src-tauri/src/platform_extensions.rs": "6ab9600a25a712080504a4420f7280e7192e7b292c508a9aa9fa31352bb49dbd"
+    "legacy/src-tauri/src/platform_extensions.rs": "6ab9600a25a712080504a4420f7280e7192e7b292c508a9aa9fa31352bb49dbd",
+    "legacy/src/renderer/src/core/extension-editor-events.ts": "5b0a48bbfb8d07fd60543a503f56fff8426bb72450f8ac36c147fa585956639f",
+    "legacy/src/renderer/src/store/workspace-extension-events.ts": "815096a2b6a5f3bd92812a5ec71858adea50a028a9b2059672591bb26d469c37",
+    "legacy/src/renderer/src/store/workspace-extension-events.test.ts": "9bc77e1a250e4130cf4e6f7960beff7853098dd8b81f7972bd869cbf6ef709b0"
   },
   "files": [
     {
@@ -29688,11 +29691,16 @@
       "sources": [
         "legacy/src/renderer/src/core/extension-runtime.ts",
         "legacy/src/renderer/src/core/extension-runtime.test.ts",
-        "legacy/src/shared/types-extension-runtime.ts"
+        "legacy/src/shared/types-extension-runtime.ts",
+        "legacy/src/renderer/src/core/extension-editor-events.ts",
+        "legacy/src/renderer/src/store/workspace-extension-events.ts",
+        "legacy/src/renderer/src/store/workspace-extension-events.test.ts",
+        "legacy/src/renderer/src/components/extensions/ExtensionRuntimeHost.tsx"
       ],
       "scope": "EX-004 runtime registration, event/command dispatch and method permissions",
       "adaptation": "Legacy Map identity cleanup, insertion-order live broadcast including callback registration/removal, propagated exceptions, command priority lua/runtime/settings and exact 34-method permission table. Typed native event envelope; arbitrary payload remains opaque pending actual host JSON wiring. Files dropped adapter composes FileDropRouter with registry. Event-thread calls only; no JS engine or UI host. SettingsValues integration:key on settings event,load normalization,hidden value preservation,unknown keys retained on disk,reset,button close and stopped runtime error.",
-      "lifecycleFields20261110": "Typed locale, extensionId and apiVersion fields for legacy onLoad locale-changed/activate events; existing opaque payload and registry behavior unchanged."
+      "lifecycleFields20261110": "Typed locale, extensionId and apiVersion fields for legacy onLoad locale-changed/activate events; existing opaque payload and registry behavior unchanged.",
+      "editorEvents20261110": "Typed name/projectId/detail variant/timestamp fields appended to RuntimeEvent. Test every snapshot transition in exact order, details/time, null/created/opened/closed/activation, selection identity changes, animation stop, independent snapshots/no duplicates, lifecycle preload/drop/stop and operation registry broadcast. Formal editor events not wired."
     },
     {
       "file": "tests/extension_runtime_test.cpp",
@@ -29700,10 +29708,15 @@
       "sources": [
         "legacy/src/renderer/src/core/extension-runtime.ts",
         "legacy/src/renderer/src/core/extension-runtime.test.ts",
-        "legacy/src/shared/types-extension-runtime.ts"
+        "legacy/src/shared/types-extension-runtime.ts",
+        "legacy/src/renderer/src/core/extension-editor-events.ts",
+        "legacy/src/renderer/src/store/workspace-extension-events.ts",
+        "legacy/src/renderer/src/store/workspace-extension-events.test.ts",
+        "legacy/src/renderer/src/components/extensions/ExtensionRuntimeHost.tsx"
       ],
       "scope": "Runtime dispatch lifecycle, command and file-drop integration regression",
-      "adaptation": "Legacy replacement cleanup, missing/prototype-like names, broadcast mutation and callback exception, command priority/disable/missing receiver, all permissions, 12MiB router integration with stopped runtime, cleanup after registry destruction."
+      "adaptation": "Legacy replacement cleanup, missing/prototype-like names, broadcast mutation and callback exception, command priority/disable/missing receiver, all permissions, 12MiB router integration with stopped runtime, cleanup after registry destruction.",
+      "editorEvents20261110": "Typed name/projectId/detail variant/timestamp fields appended to RuntimeEvent. Test every snapshot transition in exact order, details/time, null/created/opened/closed/activation, selection identity changes, animation stop, independent snapshots/no duplicates, lifecycle preload/drop/stop and operation registry broadcast. Formal editor events not wired."
     },
     {
       "file": "scripts/verify-extension-runtime.cjs",
@@ -30015,6 +30028,19 @@
       ],
       "scope": "Runtime directory candidate disk regression",
       "adaptation": "Real isolated directory manifest/resource/state,unknown top-level field rejection (completed metadata validator),default/disabled/invalid state,ID and schema/API/path/permission failures,manifest limit. No engine or full package validation claim. Command migration regression: three handlers/defaults/nulls, UTF8 text limits, invalid declarations, duplicate IDs,64/65 cap,Unicode Lua path; five settings controls/defaults/Unicode scalar counts,23 invalid settings cases,64/65 controls/options,HTML metadata; parsed commands composed with session request dispatch. Metadata/defaults/translations and all three contribution types;20 invalid scenarios;16/17 panels/top menus,32/33 menu items/references,64/65 locales,512/513 translation entries. No GUI or executable package acceptance. Directory page/resource endpoint tests:UTF8 Chinese/emoji,empty,multiple malformed byte sequences,exact and over1MiB/512KiB,missing entries,disabled and missing resources permission. Lua primary/command/schema1-only,Unicode filename,optional description,case mismatch,disabled,missing/non-file/non-Lua cases. Symlink-file and intermediate outside-root link fixtures attempted but Windows privilege unavailable; canonical symlink branch not exercised on this machine. Multi-directory list regression:ASCII case/name ties ordered by command name before extension ID,disabled metadata vs Lua exclusion,broken manifest/entry/dot directory/ordinary file filtering,malformed state and missing directory fail. Toggle/reopen/preserve other entries,builtin metadata,unknown state fields ignored,invalid target and malformed state rejection,locked publication keeps old bytes. Exact u32/u64 maxima and2^53+1 across toggle/reopen,set dedup,overflow/negative/fraction/exponent/string/null/tuple/leading-zero failures,invalid seed type. Extension package inspection reuses Archive madeBy/externalAttributes and shared parseManifest; stored ZIP fixture validates preview and empty/missing/duplicate/traversal/link/count/manifest failures. installPackage migrates extract_archive/install_extension_at staging,revalidate,backup/swap,state publication and rollback. Immutable inspected Archive snapshot replaces reopen race. CREATE_NEW/FlushFileBuffers,CRC and size validation; cleanup paths checked as immediate children of installation root. Tests:first install,disabled update,old tree replacement,locked state rollback,extraction path conflict and transaction cleanup. No actual product install UI/engine. Cleanup/restore errors remain best effort as legacy; format gaps above remain. Uninstall migrates platform_extensions.rs::uninstall_extension_at:validate ordinary directory/manifest identity,save state without ID before removal,restore prior typed state best-effort on removal error;root-child cleanup boundary. Tests:locked state prevents deletion,locked directory deletion failure restores disabled state,successful uninstall preserves unrelated enabled/seed/u64 revisions,missing/invalid/bad manifest retained. Partial tree deletion on failure matches legacy; no live runtime/UI integration. Builtin migration:ensure_builtin_extension_at seed marker,CRC/size sorted revision,same revision skip,same-version changed-content install,disabled preservation,uninstalled seeded absent skip,identity check. Reuse same immutable inspection for revision/install; native bundle path adapter only,no actual embedded companion/startup integration. Tests verify initial/same/local-edit/updated/disabled/uninstalled/mismatch. Recovery diagnostics now include cleanup/restore errors and retained backup path instead of silently discarding failures;native adaptation preserves original error if recovery succeeds. Controlled no-delete-sharing directory replacement fails with paths and retains old tree/state. Previous unexplained staging rename access denial remains unresolved. Legacy extension-localization fixture translated labels while preserving identifiers/settings/defaults/source;exact missing locale identity;typed candidate command/settings/options display copy. Contributions regression:disabled filtering,keys/ordered references/missing skip,builtin matching,top insertion/dedup,panel visibility precedence/removed keys/exact true. State snapshot publication adaptation:metadata reader uses explicit read/write/delete sharing;all state saves reuse flushed staging plus ReplaceFileW or non-overwriting first rename,failed staging cleaned,no retries. Installer reuses common state reader. Regression keeps old shared handle across32 save/reopen cycles,checks exact revision and old snapshot;existing no-delete-sharing failure tests retained. Original unexplained directory rename failures not resolved."
+    },
+    {
+      "file": "src/extension_editor_events.h",
+      "classification": "legacy-partial",
+      "sources": [
+        "legacy/src/renderer/src/core/extension-editor-events.ts",
+        "legacy/src/renderer/src/store/workspace-extension-events.ts",
+        "legacy/src/renderer/src/store/workspace-extension-events.test.ts",
+        "legacy/src/renderer/src/components/extensions/ExtensionRuntimeHost.tsx",
+        "legacy/src/shared/types-extension-runtime.ts"
+      ],
+      "scope": "EX-004 typed editor event payload, snapshot diff and subscription",
+      "adaptation": "Port exact scalar snapshot comparison/event order and publishEditorEvent registry broadcast. Native snapshot values exclude pixels/paths; selectionIdentity explicitly represents JS reference identity, view retains serialized signature. Injectable clock for per-event epoch milliseconds. Baseline advances before synchronous dispatch as legacy; lifecycle permission/preload/stop compose. Actual Editor capture and operation call sites/JSON transport pending."
     }
   ],
   "assetTransfers": [

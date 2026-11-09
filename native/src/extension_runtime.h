@@ -5,6 +5,9 @@
 #include <string>
 #include <utility>
 #include <vector>
+#include <map>
+#include <variant>
+#include <optional>
 
 namespace moon::extension {
 struct RuntimeEvent {
@@ -12,6 +15,9 @@ struct RuntimeEvent {
  std::string locale, extensionId, apiVersion;
  struct File {std::string name;FileDropRouter::Bytes bytes;};
  std::vector<File> files;
+ using DetailValue=std::variant<std::nullptr_t,std::string,double,bool>;
+ std::string name;std::optional<std::string> projectId;
+ std::map<std::string,DetailValue> detail;std::int64_t timestamp=0;
 };
 // All calls belong to the host event thread, like the legacy JS Map. A live
 // traversal observes callback registrations/removals rather than a snapshot.

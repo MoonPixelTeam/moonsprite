@@ -5574,3 +5574,10 @@ Release三个相关目标构建成功，request/session/resources三项通过0.2
 核对旧版ExtensionRuntimeHost独立React effects的file-drop/runtime注册释放及postMessage异步停用后，修复原生同步回调适配缺陷：状态订阅抛错会跳过拖放与停用、停用抛错会遗留EventLifecycle活动态。现在先使session/event失效，注销runtime、清拖放/呈现、发送停用均执行，最后重抛首个错误；停用重入和重复关闭幂等，宿主析构继续清理其他会话。保留旧版加载失败重载语义，未自行把loadFailed改为永久关闭。
 
 Release四个相关目标及resources/session/request/event-lifecycle四项通过0.30s；新增析构多会话故障用例后重建session并通过0.12s。覆盖呈现和停用同时抛错仍清注册/拖放/旧token、替换空状态、回调内重入停用、析构一会话抛错不阻断另一会话。来源/diff检查后保存推送dev。此阶段完成已有核心会话的异常清理，不宣称尚未接入的窗口/网络/引擎任务已经被释放，无正式exe/GUI/全套验收，整体INCOMPLETE，用户差异/缓存与安装失败现场保留。
+
+
+### 2026-11-10：编辑器事件载荷与快照差分阶段
+
+完整承接workspace-extension-events::changedEditorEvents与extension-editor-events::publishEditorEvent：23名称目录、typed name/projectId/detail/timestamp，激活→关闭→逐工程状态事件的固定顺序，新增工程只报created/opened不补状态；revision/tool/layer/增删层/frame/playing/selection/前后景/view差分。快照只保留值，不带像素或路径；selectionIdentity明确是旧JS对象身份而非矩形相等，view由调用方提供旧JSON签名。订阅先更新基线后发送，沿现有EventLifecycle权限、加载前丢弃和停用边界；操作事件复用RuntimeRegistry广播。
+
+Release六个相关目标成功，contributions/resources/session/request/event-lifecycle/runtime六项通过0.33s。覆盖全部差分顺序/详情/时间、创建打开关闭激活、选区对象替换/清除、动画停止、快照独立和重复抑制、加载前丢弃及停止、发布与注销。首轮时钟回调默认参数编译错误已修正。来源覆盖775文件及diff检查后保存推送dev。正式Editor快照捕获、成功操作调用点和JSON引擎传输未接入；未声称撤销/填充等正式程序事件已可用，也未做GUI/正式exe/全套验收。整体INCOMPLETE，保留用户差异/数据/缓存和安装失败现场。
