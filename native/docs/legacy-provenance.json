@@ -29932,19 +29932,23 @@
       "file": "tests/extension_contributions_test.cpp",
       "classification": "legacy-partial",
       "sources": [
-        "legacy/src/renderer/src/core/extension-contributions.ts"
+        "legacy/src/renderer/src/core/extension-contributions.ts",
+        "legacy/src/renderer/src/components/app/AppMenuBar.tsx"
       ],
       "scope": "Contribution assembly independent regression",
-      "adaptation": "Independent disk-free test validates disabled/order/missing references/keys/builtin positions/top dedup/panel visibility precedence. Isolated from known directory transaction failures."
+      "adaptation": "Independent disk-free test validates disabled/order/missing references/keys/builtin positions/top dedup/panel visibility precedence. Isolated from known directory transaction failures.",
+      "menuPresentation20261110": "Migrate AppMenuBar renderExtensionCommandButton/renderExtensionTopMenusAt/renderExistingMenuContributions/fileLuaScripts to render-neutral typed nodes. Exact dynamic-first override/static ID suppression, checked override, visibility, Lua session/running disabling, labels/tooltips/keys, standalone separator preservation, named empty submenus, contribution positioning and placed-script filtering. Node activation composes existing executeCommand for runtime/Lua/settings. Native pixels/widgets/menu close and actual host wiring remain pending; no GUI equivalence claim."
     },
     {
       "file": "src/extension_contributions.h",
       "classification": "legacy-partial",
       "sources": [
-        "legacy/src/renderer/src/core/extension-contributions.ts"
+        "legacy/src/renderer/src/core/extension-contributions.ts",
+        "legacy/src/renderer/src/components/app/AppMenuBar.tsx"
       ],
       "scope": "Extension contribution assembly and panel visibility",
-      "adaptation": "Migrate panel/menu/top contribution keys,enabled filtering,last Map command identity,ordered references/missing skip,builtin filtering,start/before/after/end dedup arrangement,panel current>stored>default precedence and exact true encoding. Storage callbacks adapt legacy shared storage;formal menu/panel UI and disk adapter not connected."
+      "adaptation": "Migrate panel/menu/top contribution keys,enabled filtering,last Map command identity,ordered references/missing skip,builtin filtering,start/before/after/end dedup arrangement,panel current>stored>default precedence and exact true encoding. Storage callbacks adapt legacy shared storage;formal menu/panel UI and disk adapter not connected.",
+      "menuPresentation20261110": "Migrate AppMenuBar renderExtensionCommandButton/renderExtensionTopMenusAt/renderExistingMenuContributions/fileLuaScripts to render-neutral typed nodes. Exact dynamic-first override/static ID suppression, checked override, visibility, Lua session/running disabling, labels/tooltips/keys, standalone separator preservation, named empty submenus, contribution positioning and placed-script filtering. Node activation composes existing executeCommand for runtime/Lua/settings. Native pixels/widgets/menu close and actual host wiring remain pending; no GUI equivalence claim."
     },
     {
       "file": "src/extension_localization.h",

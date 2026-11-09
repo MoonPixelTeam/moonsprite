@@ -5539,3 +5539,10 @@ Release三个相关目标构建成功，extension-request-host/session-host/reso
 迁移extension-command-state.ts::subscribeExtensionCommandState/notify的实时遍历：先发布状态及revision后通知，移除尚未执行的监听器会跳过，通知期间追加的监听器参与本次遍历；取消幂等，销毁后取消安全，监听器异常后遍历计数仍恢复。命令/菜单/声明变化与停用清空复用同一通知路径，无变化不通知，联合清空只通知一次。RequestHost与SessionHost提供订阅桥，旧token订阅为空操作；MenuState读取快照仅复制值，不共享宿主订阅。原生std::function没有JS函数对象身份，每次注册使用独立身份，不宣称同一JS函数Set去重已经接入；未来引擎桥须保持其函数身份。
 
 Release三个相关目标成功，extension-request-host/session-host/resources三项通过0.28s，含实时增删、重复更新抑制、快照隔离、重复/销毁后取消、异常恢复、会话更新与关闭通知。来源覆盖及diff检查后保存推送dev。此阶段完整交付核心订阅生命周期；正式UI消费者、全局聚合状态与引擎窗口仍待接入，无正式exe/GUI/全套验收，整体INCOMPLETE。保留既有用户差异、缓存和安装失败现场。
+
+
+### 2026-11-10：扩展菜单呈现数据与动作分发阶段
+
+逐段承接AppMenuBar::renderExtensionCommandButton/renderExtensionTopMenusAt/renderExistingMenuContributions/fileLuaScripts。提供绘制无关节点：动态标题覆盖，动态项先于静态且同ID抑制静态，动态checked优先于命令状态，visible过滤，Lua无工程/运行中禁用，缺失扩展禁用，描述或名称tooltip，动态/组间/内置位置分隔线，隐藏项仍保留旧版独立分隔线，命名子菜单即使全隐藏仍保留。已由panel/menu/top贡献放置的Lua命令从文件脚本入口去重，根脚本与停用扩展放置不误过滤。动作复用executeCommand，拒绝分隔线/子菜单/禁用节点，覆盖runtime、Lua和settings。
+
+Release extension-contributions目标及独立测试通过0.05s，验证动态覆盖/顺序/勾选优先、静态恢复、隐藏与空子菜单、Lua工程/运行门控、三种动作实际分发、停止/禁用拒绝、位置分隔线、脚本去重；来源774文件及diff检查通过。此阶段完成菜单数据及动作适配，尚未接入正式原生菜单控件/关闭交互/扩展目录启动链路，不能宣称用户可见菜单或扩展运行完成。无正式exe/GUI/全套验收，整体INCOMPLETE；保留用户差异/缓存与安装失败现场。保存推送dev。
