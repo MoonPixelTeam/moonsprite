@@ -5616,3 +5616,10 @@ Release session/resources相关目标成功，session/resources/event-lifecycle�
 复核platform_scripts.rs及mlua宿主；当前完整Lua文档API仍是Rust实现，未用简单解释器替代。迁移脚本来源闭环：顶层普通Lua文件列表（后缀大小写不敏感）、名称/稳定排序、扩展主入口与命令opaque ID/元数据及合并列表、安全本地标识解析、复用启用扩展入口解析、共用源码加载、1MiB含边界、严格UTF8、普通非symlink限制。删除只允许本地脚本；首次示例/marker走已有原子writer，不覆盖用户副本，marker阻止恢复已删除示例。测试仅删除自己本次fixture内的示例，保留fixture目录，不触碰用户脚本。
 
 Release独立lua-script-directory目标及真实磁盘专项通过0.11s，覆盖旧版列表/路径/示例用例及边界大小、空源码、非法编码、扩展命令/主入口加载、停用拒绝、扩展禁止删除。来源780文件/diff检查后保存推送dev。Windows invariant小写排序沿既有适配，完整Rust Unicode小写一致性未证明；目录由调用方注入，正式应用路径、示例素材嵌入、打开文件夹入口和真正Lua引擎/文档API尚未接入。无正式exe/GUI/全套验收，整体INCOMPLETE，保留用户差异/数据/缓存及失败现场。
+
+
+### 2026-11-10：Lua脚本来源服务与真实示例嵌入阶段
+
+承接platform_scripts::script_directory/list_lua_scripts/open_lua_script_folder及platform_paths程序目录规则，新增Service统一准备scripts、合并extensions、返回camelCase列表及省略可选字段、加载/删除/打开目录。CMake从原moon-phase.lua逐字节生成构建目录头文件，不复制改写示例，不提交生成物；示例变更触发重新配置。Win32程序路径与ShellExecuteEx适配旧current_exe/Command，提供测试root/opener注入。扩展脚本加载沿旧版无需创建本地scripts，扩展删除在准备目录前拒绝。
+
+Release lua-script-directory目标及专项通过0.12s，验证真实示例嵌入/首次写入/加载与原文件字节一致、列表字段/可选省略、目录启动参数/失败传播、用户删除后不恢复和程序目录解析。来源781文件及diff检查后保存推送dev。实际Explorer启动仅接口实现，未弹窗验收；正式菜单与Lua执行引擎尚未调用Service，无正式exe/GUI/全套验收，整体INCOMPLETE，保留用户差异/数据/缓存与失败现场。
