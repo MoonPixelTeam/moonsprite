@@ -1,5 +1,6 @@
 #include "pattern_brush_library.h"
 #include <algorithm>
+#include <atomic>
 #include <chrono>
 #include <fstream>
 #include <set>
@@ -9,7 +10,29 @@
 #include <exception>
 namespace moon {namespace {
 constexpr const char* orderFile=".brush-order.json";
-void atomicBytes(const std::filesystem::path& p,const std::vector<std::uint8_t>& b){auto t=p;t+=L".tmp";{std::ofstream f(t,std::ios::binary|std::ios::trunc);if(!f)throw std::runtime_error("Cannot write brush file");f.write((const char*)b.data(),std::streamsize(b.size()));if(!f)throw std::runtime_error("Cannot write brush file");}std::error_code e;if(!MoveFileExW(t.c_str(),p.c_str(),MOVEFILE_REPLACE_EXISTING|MOVEFILE_WRITE_THROUGH)){std::filesystem::remove(t);throw std::runtime_error("Cannot replace brush file");}}
+void atomicBytes(const std::filesystem::path& p,const std::vector<std::uint8_t>& b){
+ static std::atomic<std::uint64_t> nextTemporary{0};
+ auto t=p;HANDLE file=INVALID_HANDLE_VALUE;
+ for(unsigned attempt=0;attempt<32;++attempt){
+  t=p;t+=L".tmp."+std::to_wstring(GetCurrentProcessId())+L"-"+std::to_wstring(std::chrono::high_resolution_clock::now().time_since_epoch().count())+L"-"+std::to_wstring(nextTemporary.fetch_add(1,std::memory_order_relaxed));
+  file=CreateFileW(t.c_str(),GENERIC_WRITE,0,nullptr,CREATE_NEW,FILE_ATTRIBUTE_NORMAL,nullptr);
+  if(file!=INVALID_HANDLE_VALUE)break;
+  const auto error=GetLastError();
+  if(error!=ERROR_FILE_EXISTS&&error!=ERROR_ALREADY_EXISTS)throw std::runtime_error("Cannot write brush file (Windows error "+std::to_string(error)+")");
+ }
+ if(file==INVALID_HANDLE_VALUE)throw std::runtime_error("Cannot reserve unique brush temporary file");
+ try{
+  const auto* data=b.data();auto remaining=b.size();
+  while(remaining){const auto chunk=static_cast<DWORD>(std::min<std::size_t>(remaining,1U<<30));DWORD written=0;
+   if(!WriteFile(file,data,chunk,&written,nullptr)||written==0)throw std::runtime_error("Cannot write brush file (Windows error "+std::to_string(GetLastError())+")");
+   data+=written;remaining-=written;
+  }
+  if(!FlushFileBuffers(file))throw std::runtime_error("Cannot flush brush file (Windows error "+std::to_string(GetLastError())+")");
+  if(!CloseHandle(file)){file=INVALID_HANDLE_VALUE;throw std::runtime_error("Cannot close brush file (Windows error "+std::to_string(GetLastError())+")");}
+  file=INVALID_HANDLE_VALUE;
+  if(!MoveFileExW(t.c_str(),p.c_str(),MOVEFILE_REPLACE_EXISTING|MOVEFILE_WRITE_THROUGH))throw std::runtime_error("Cannot replace brush file (Windows error "+std::to_string(GetLastError())+")");
+ }catch(...){if(file!=INVALID_HANDLE_VALUE)CloseHandle(file);std::error_code ignored;std::filesystem::remove(t,ignored);throw;}
+}
 std::filesystem::path pathFor(const std::filesystem::path& d,const std::string& id){if(!PatternBrushLibrary::safeId(id))throw std::invalid_argument("Invalid brush file ID");for(auto& e:std::filesystem::recursive_directory_iterator(d))if((GetFileAttributesW(e.path().c_str())&FILE_ATTRIBUTE_REPARSE_POINT)!=0)throw std::runtime_error("Linked brush paths are not supported");else if(e.is_regular_file()&&e.path().filename().u8string()==id)return e.path();throw std::runtime_error("Brush file does not exist");}
 std::string folderName(std::string value){std::string result;for(unsigned char c:value)if(std::string("/\\:*?\"<>|").find(char(c))==std::string::npos)result+=char(c);auto a=result.find_first_not_of(" \t\r\n"),b=result.find_last_not_of(" \t\r\n");if(a==std::string::npos)throw std::invalid_argument("Brush folder name cannot be empty");result=result.substr(a,b-a+1);if(result=="."||result.find("..")!=std::string::npos||result.back()=='.')throw std::invalid_argument("Invalid brush folder name");return result;}
 std::filesystem::path folderPath(const std::filesystem::path& root,const std::string& id,bool allowRoot=false){

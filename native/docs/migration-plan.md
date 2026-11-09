@@ -4751,3 +4751,9 @@ X/Y/Both合成/当前层及左右键实际诊断验证100次preview请求不发�
 定位wheel-performance额外chrome：setCanvasZoom正确请求画布408,144,638,598与状态栏0,940,1294,26；既有PaintChain合并精确Region后，onPaint按外接矩形0,144,1294,822判断路径，误走完整chrome。保留精确批处理与子控件孔洞，在损伤完全属于画布/状态栏且无首页/模态/高级模式时，将交集分别交给已有onPaint局部路径；其他损伤继续原fallback，透明背景回放不变。核对legacy CanvasStage/useCanvasRenderEngine的view-only scheduleDraw及Aseprite MIT Widget::flushRedraw和Manager::sendMessageToWidget的count/clip边界；无上游实现复制。临时chrome/damage日志已移除。
 
 正式Release构建退出0。wheel-performance完整通过1.86s，普通full7.95599ms/local4.3287ms、对称轴full12.7144ms/local4.95084ms，两个local场景20次缩放chrome均0；完整帧序列、半透明/叠加对称轴像素、content/history/uploads不变均通过，未降低断言。workspace-layout通过43.14s、panel-docking-interactions通过2.68s；modifier-brush-performance/drawing-pan-performance两项通过4.94s。744来源与diff检查通过。原全套210项15失败均已逐项重新通过，但本阶段未重新执行完整210项，不声称当前全套全绿；整体迁移INCOMPLETE，Paint瓦片自由变换/多目标、扩展兼容等显式缺口继续保留。无全软件FPS/人工图像验收；保留用户数据/缓存/未跟踪文件，阶段保存推送dev。
+
+### 2026-11-09：全套回归与画笔库唯一临时文件修复阶段
+
+串行执行Release CTest全部210项，209项通过；第25项pattern-brush-library旧二进制偶发“Cannot replace brush file”，其余209项均通过，记录于build/migration-full-ctest-current.log。单独复测旧用例通过，不能据此断言原因已被唯一确定。对照legacy/src-tauri/src/platform_storage.rs的唯一同目录临时文件、同步写入和原子替换语义，修复native画笔库原固定 .tmp：Windows CREATE_NEW独占预留进程号/时间/序列临时名，写入并FlushFileBuffers后MoveFileExW替换；失败保留GetLastError且只清理由本次创建的临时文件，不触碰原目标或已有 .tmp。测试在写入前创建旧固定 .brush-order.json.tmp，连续保存和重排后检查原内容不变。
+
+正式Release程序及pattern-brush-library-tests构建退出0；修复后专项CTest连续5次通过。744文件来源快照及diff检查通过。没有在修复后二次运行整套210项，因此不能宣称当前全套全绿；没有新增GUI截图或全软件FPS验收。性能与迁移仍有已登记缺口，整体迁移INCOMPLETE；保留用户数据、构建缓存及未跟踪文件。
