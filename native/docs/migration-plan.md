@@ -5501,3 +5501,10 @@ Release专项构建，11项extension/project-reader检查通过1.80s，含设置
 完整承接core/extension-localization.ts递归访问规则：仅精确locale目录，缺失直接保留原对象，不做语言前缀/英语回退；翻译name/description/label/suffix/placeholder，跳过translations子树，数组递归。新增typed候选显示副本适配，覆盖扩展/命令/栏目/菜单/设置控件/选项文案，ID/路径/默认值/选项值/存储键/命令引用保持；翻译后不再按源字段长度校验，避免合法翻译被错误拒绝。
 
 复用旧测试输入及预期验证原始数据不变、ID/默认值/选项值/存储键不翻译、缺失locale对象身份不变；另验证typed候选实际命令与五类设置显示字段。Release专项构建及11项extension/project-reader通过1.75s，来源/diff后保存推送dev。正式界面调用方尚未接入，不把数据副本称作用户可见本地化完成；整体INCOMPLETE，无正式exe/GUI/全套验收。原安装偶发拒绝访问根因仍未定位，保留现场和用户数据/缓存/editor_support.h既有状态。
+
+
+### 2026-11-10：运行时动态菜单请求与会话状态阶段
+
+核对extension-command-state.ts::setExtensionMenuItems和ExtensionRuntimeHost::menus.setItems：只允许本扩展声明的topMenus ID，menus与commands权限同时满足，最多64项，ID/event沿旧ASCII正则（允许点开头及双点），重复ID按大小写精确拒绝，名称UTF16最多80/JS trim，checked必填、dividerBefore可选布尔。整组验证后原子发布，相同内容不增长revision，省略name保留旧标题，空items清空选项。RequestHost/SessionHost接入声明设置与状态读取，停用/替换清理，旧token不能读新状态。
+
+Release三个相关目标成功，10项extension通过1.74s。覆盖动态请求、权限、归属、大小写ID/特殊事件、失败保留、无变化更新、空项保留名称、停止清理与会话替换。首轮编译因C++17不支持默认比较运算符失败，已改显式比较。正式菜单渲染/点击事件和旧订阅Set尚未迁移，当前为宿主数据链路，不宣称完整可见动态菜单完成。来源/diff后保存推送dev，无正式exe/GUI/全套验收；整体INCOMPLETE，原安装偶发拒绝访问根因仍未知，保留用户文件/缓存/editor_support.h既有状态。

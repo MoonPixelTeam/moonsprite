@@ -29767,7 +29767,7 @@
         "legacy/src/renderer/src/core/extension-runtime.ts"
       ],
       "scope": "EX-004 authenticated native request dispatch for connected methods",
-      "adaptation": "Legacy onMessage envelope/type/string requestId <=80 UTF16 units/method gate and handleRequest permission-first semantics; connect locale, drop types, storage get/set/remove/list and commands.execute. Identity comes from native transport ownership bool and host object, not params. set uses trusted exact encoded JSON sideband pending actual engine. Unsupported authorized methods explicitly error. No actual transport/UI/installation yet.",
+      "adaptation": "Legacy onMessage envelope/type/string requestId <=80 UTF16 units/method gate and handleRequest permission-first semantics; connect locale, drop types, storage get/set/remove/list and commands.execute. Identity comes from native transport ownership bool and host object, not params. set uses trusted exact encoded JSON sideband pending actual engine. Unsupported authorized methods explicitly error. No actual transport/UI/installation yet. Dynamic menu request/session integration:declared IDs,menus+commands permissions,atomic validation,name persistence,no-change revision,per-session cleanup/stale replacement. Tests include case-sensitive IDs and dot event syntax matching legacy regex.",
       "resourceRead20261110": "resources.read invokes trusted per-host reader after permission and resourceId type validation; returns numeric byte array, error through existing envelope. Legacy ExtensionRuntimeHost handleRequest resources.read; catalog enforces declarations."
     },
     {
@@ -29779,7 +29779,7 @@
         "legacy/src/renderer/src/core/extension-runtime.ts"
       ],
       "scope": "Request dispatch with actual atomic disk storage and registry",
-      "adaptation": "Two host namespaces, spoofed params, permission errors, malformed/foreign/id boundary/disabled and deactivated request suppression, successful/error envelopes, disk reopen, drop registration atomicity, command priority and stopped runtime false. No browser/OS transport asserted."
+      "adaptation": "Two host namespaces, spoofed params, permission errors, malformed/foreign/id boundary/disabled and deactivated request suppression, successful/error envelopes, disk reopen, drop registration atomicity, command priority and stopped runtime false. No browser/OS transport asserted. Dynamic menu request/session integration:declared IDs,menus+commands permissions,atomic validation,name persistence,no-change revision,per-session cleanup/stale replacement. Tests include case-sensitive IDs and dot event syntax matching legacy regex."
     },
     {
       "file": "src/extension_event_lifecycle.h",
@@ -29821,7 +29821,7 @@
         "legacy/src/renderer/src/core/extension-file-drop.ts"
       ],
       "scope": "EX-004 integrated native event-thread session ownership",
-      "adaptation": "Compose legacy runtime registration, onLoad event queue, request dispatch, file drop and cleanup with persistent Storage. Per-extension replacement stops previous session before publishing new one; generation tokens discard stale native load/request/close callbacks. Tokens are internal handles, not public authentication credentials. No script engine/UI/OS transport. Owners must outlive SessionHost.",
+      "adaptation": "Compose legacy runtime registration, onLoad event queue, request dispatch, file drop and cleanup with persistent Storage. Per-extension replacement stops previous session before publishing new one; generation tokens discard stale native load/request/close callbacks. Tokens are internal handles, not public authentication credentials. No script engine/UI/OS transport. Owners must outlive SessionHost. Dynamic menu request/session integration:declared IDs,menus+commands permissions,atomic validation,name persistence,no-change revision,per-session cleanup/stale replacement. Tests include case-sensitive IDs and dot event syntax matching legacy regex.",
       "resourceRead20261110": "Generation-bound setResourceReader attaches host resource catalog to correct live session; stale token cannot install reader on replacement."
     },
     {
@@ -29834,7 +29834,7 @@
         "legacy/src/renderer/src/core/extension-file-drop.ts"
       ],
       "scope": "Integrated session open/load/requests/storage/drop/replacement/deactivate",
-      "adaptation": "Actual disk-backed storage, two namespaces, queued command/activation order, stored data across session replacement, stale callbacks and pending reads, locale/request agreement, close during file read, load failure and host destruction. Core-only, no real engine or desktop window. Command migration regression: three handlers/defaults/nulls, UTF8 text limits, invalid declarations, duplicate IDs,64/65 cap,Unicode Lua path; five settings controls/defaults/Unicode scalar counts,23 invalid settings cases,64/65 controls/options,HTML metadata; parsed commands composed with session request dispatch. SettingsValues integration:key on settings event,load normalization,hidden value preservation,unknown keys retained on disk,reset,button close and stopped runtime error."
+      "adaptation": "Actual disk-backed storage, two namespaces, queued command/activation order, stored data across session replacement, stale callbacks and pending reads, locale/request agreement, close during file read, load failure and host destruction. Core-only, no real engine or desktop window. Command migration regression: three handlers/defaults/nulls, UTF8 text limits, invalid declarations, duplicate IDs,64/65 cap,Unicode Lua path; five settings controls/defaults/Unicode scalar counts,23 invalid settings cases,64/65 controls/options,HTML metadata; parsed commands composed with session request dispatch. SettingsValues integration:key on settings event,load normalization,hidden value preservation,unknown keys retained on disk,reset,button close and stopped runtime error. Dynamic menu request/session integration:declared IDs,menus+commands permissions,atomic validation,name persistence,no-change revision,per-session cleanup/stale replacement. Tests include case-sensitive IDs and dot event syntax matching legacy regex."
     },
     {
       "file": "src/extension_resources.h",
@@ -29893,6 +29893,17 @@
       ],
       "scope": "EX-004 msext inspection",
       "adaptation": "Migrate inspect_archive with existing native Archive:package/path/count/size/Unix symlink/manifest/declared entry/resource checks. ZIP64,other compression,CP437 names and directory size accounting parity pending. No install/UI. installPackage migrates extract_archive/install_extension_at staging,revalidate,backup/swap,state publication and rollback. Immutable inspected Archive snapshot replaces reopen race. CREATE_NEW/FlushFileBuffers,CRC and size validation; cleanup paths checked as immediate children of installation root. Tests:first install,disabled update,old tree replacement,locked state rollback,extraction path conflict and transaction cleanup. No actual product install UI/engine. Cleanup/restore errors remain best effort as legacy; format gaps above remain. Builtin migration:ensure_builtin_extension_at seed marker,CRC/size sorted revision,same revision skip,same-version changed-content install,disabled preservation,uninstalled seeded absent skip,identity check. Reuse same immutable inspection for revision/install; native bundle path adapter only,no actual embedded companion/startup integration. Tests verify initial/same/local-edit/updated/disabled/uninstalled/mismatch. Recovery diagnostics now include cleanup/restore errors and retained backup path instead of silently discarding failures;native adaptation preserves original error if recovery succeeds. Controlled no-delete-sharing directory replacement fails with paths and retains old tree/state. Previous unexplained staging rename access denial remains unresolved."
+    },
+    {
+      "file": "src/extension_menu_state.h",
+      "classification": "legacy-partial",
+      "sources": [
+        "legacy/src/renderer/src/core/extension-command-state.ts",
+        "legacy/src/renderer/src/components/extensions/ExtensionRuntimeHost.tsx",
+        "legacy/src/renderer/src/core/extension-command-state.test.ts"
+      ],
+      "scope": "Dynamic runtime menu items",
+      "adaptation": "setExtensionMenuItems validation/atomic replacement/name persistence/revision no-churn,UTF16 text80/JS trim,ASCII regex IDs with exact duplicates,64 max,checked/divider;declared top-menu ownership. Request requires menus+commands,per-session state clears on stop/replacement. No subscriber Set or formal menu renderer/click integration yet."
     },
     {
       "file": "src/extension_localization.h",
