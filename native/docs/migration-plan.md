@@ -4739,3 +4739,9 @@ X/Y/Both合成/当前层及左右键实际诊断验证100次preview请求不发�
 落实用户决定：组蒙版随选中组移动，遵守解析后蒙版的moveWithOwner开关。核对legacy workspace-layer-move.ts的绝对基线偏移与链接根去重；组传播属于用户明确批准的原生扩展，现有生产实现无需修改。新增两层嵌套组、两个链接帧、开关开/关、连续绝对预览、取消、提交、Undo/Redo及像素存储身份不变检查。首次用例将默认true的无变化setter误作成功写入，修正为只切换false后，attached-masks正式Release目标构建成功，完整CTest通过0.43s。
 
 预览残留调查沿用既有正式程序构建，Release构建退出0；workspace-layout再次失败，尚未解决。临时位置记录确认预览位于602,166,380,260，重叠顶部控件位于784,150,38,38；没有据此提交猜测性产品修改，临时硬编码记录已从源码移除。此前兄弟遮挡排除方案无改善且已撤回。wheel-performance仍待修复；整体迁移INCOMPLETE，无新增FPS或人工图像验收，保留所有用户数据、缓存与未跟踪文件。
+
+### 2026-11-09：快捷指令栏与预览面板重叠绘制修复阶段
+
+定位workspace-layout phase4的524个差异像素：重叠控件是QuickCommandBar（784,150,38,38），其折叠按钮在全量重绘时覆盖预览标题，而软件搬移结果保留预览。Aseprite Widget::paint的透明背景重绘按广度优先遍历后代，后代绘制顺序不能仅由Editor直属兄弟顺序保证；指令栏及Control此前未接入已有compositeControl的悬浮栏目/模态遮挡裁剪。通过Widget-owned Property向两类绘制复用既有裁剪，保留legacy QuickCommandBar素材、透明度、尺寸、展开/移动和动作；不复制第三方算法，读取ui/property.h/widget.cpp的MIT许可说明。临时位置/类型诊断已移除。
+
+正式Release构建退出0。workspace-layout完整通过41.02s，六组预览移动/缩放的整帧像素对照及后续悬浮栏目检查全部执行；四组软件平移各200指针样本只应用一次几何并复用一次blit，两组尺寸调整各一次几何。panel-docking-interactions通过2.60s，quick-command-preferences通过0.85s，显式等待--quick-command-check退出0。744文件来源覆盖及diff检查通过。wheel-performance仍失败（本轮full 7.95ms/40 chrome，local 4.75ms/20 chrome），没有降低断言或声称全套全绿。原失败剩该一项，未重新执行210项全套；整体迁移INCOMPLETE，无全软件FPS/人工视觉验收。保留所有用户数据和未跟踪文件，阶段保存推送dev。

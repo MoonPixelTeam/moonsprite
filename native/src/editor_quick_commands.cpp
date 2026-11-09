@@ -3,6 +3,7 @@
 #include "editor_implementation.h"
 #include "quick_command_metadata.h"
 #include "quick_command_tooltip.h"
+#include "quick_command_composite.h"
 #include "quick_command_drag_handle.h"
 #include <winrt/base.h>
 namespace moon::editor {
@@ -17,6 +18,7 @@ void Editor::initializeQuickCommands(){
  for(unsigned i=0;i<4;++i)quickPreferenceCollapsed_[i]=quickBarsDraft_[i].edge==quick::Edge::None;
  for(auto& m:quick::metadata)for(auto suffix:{"","-disabled"}){const auto name=std::string(m.icon)+suffix;if(!toolIcons_.assets.patches.count(name))toolIcons_.assets.patches[name]=importSkinPng(assets_/"utility-icons"/(name+".png"),32);}
  for(unsigned i=0;i<4;++i){auto b=new QuickCommandBar(font_,skin_,toolIcons_);addChild(b);quickBars_[i]=b;
+  b->setProperty(std::make_shared<quick::Composite>([this](ui::Widget& widget,ui::PaintEvent& event,const quick::Composite::Paint& paint){compositeControl(widget,event,paint);}));
   b->setProperty(std::make_shared<quick::ShortcutTooltip>([this](const std::string& id){return quick::primaryShortcut(shortcutBindings_,id);}));
   b->changed=[this,i](const quick::Bar& bar){quickBarsConfig_[i]=bar;saveQuickCommands();syncQuickCommands();};
   b->enabled=[this](const std::string& id){return quickCommandEnabled(id);};b->checked=[this](const std::string& id){auto m=metadata(id);if(id=="selectionOutline")return bool(document.selection())&&showSelectionOutline_;return m&&menuCommands_.checked(m->command);};

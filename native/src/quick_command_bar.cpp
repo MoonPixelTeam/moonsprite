@@ -1,6 +1,7 @@
 #include "quick_command_bar.h"
 #include "quick_command_metadata.h"
 #include "quick_command_tooltip.h"
+#include "quick_command_composite.h"
 #include "ui/message.h"
 #include "ui_scale.h"
 #include <algorithm>
@@ -34,12 +35,15 @@ public:
   return PixelButton::onProcessMessage(message);
  }
  void onPaint(ui::PaintEvent& event) override {
+  auto paint=[&]{
   auto& g=*event.graphics();UiPaintScale scale(g);const auto r=uiLogical(clientBounds());
   bool hover=owner_.hasMouse()||hasMouse();for(auto b:owner_.controls_)hover=hover||b->hasMouse();
   const int opacity=owner_.translucent_&&!hover&&!owner_.moving_?51:255;
   const char* state=!isEnabled()?"disabled":(down_||isSelected())?"pressed":active?"selected":hasMouse()?"hover":"normal";
   owner_.skin_.draw(g,std::string("icon_button.")+state,r,false,opacity);
   owner_.icons_.draw(g,icon+(isEnabled()?"":"-disabled"),{r.x+(r.w-11)/2,r.y+(r.h-11)/2,11,11},true,opacity);
+  };
+  if(auto composite=std::dynamic_pointer_cast<quick::Composite>(owner_.getProperty(quick::Composite::key)))composite->paint(*this,event,paint);else paint();
  }
 };
 QuickCommandBar::QuickCommandBar(const PixelFont& f,const Skin& s,const Skin& icons):font_(f),skin_(s),icons_(icons){tips_=new ui::TooltipManager;addChild(tips_);}
@@ -67,6 +71,6 @@ void QuickCommandBar::layoutControls(){
  const auto old=bounds();if(old!=next){if(parent())parent()->invalidateRect(old);setBounds(next);if(parent())parent()->invalidateRect(next);}
  for(auto c:controls_)if(std::find(visible.begin(),visible.end(),c)==visible.end()&&c->isVisible())c->setVisible(false);int offset=pad;for(auto c:visible){auto r=vertical?gfx::Rect(next.x+pad,next.y+offset,cell,cell):gfx::Rect(next.x+offset,next.y+pad,cell,cell);if(c->bounds()!=r)c->setBounds(r);const bool show=next.contains(r);if(c->isVisible()!=show)c->setVisible(show);offset+=cell+gap;}
 }
-void QuickCommandBar::onPaint(ui::PaintEvent& event){auto& g=*event.graphics();UiPaintScale scale(g);const auto r=uiLogical(clientBounds());bool hover=hasMouse();for(auto b:controls_)hover=hover||b->hasMouse();skin_.draw(g,"panel_outer",r,false,translucent_&&!hover&&!moving_?51:255);}
+void QuickCommandBar::onPaint(ui::PaintEvent& event){auto paint=[&]{auto& g=*event.graphics();UiPaintScale scale(g);const auto r=uiLogical(clientBounds());bool hover=hasMouse();for(auto b:controls_)hover=hover||b->hasMouse();skin_.draw(g,"panel_outer",r,false,translucent_&&!hover&&!moving_?51:255);};if(auto composite=std::dynamic_pointer_cast<quick::Composite>(getProperty(quick::Composite::key)))composite->paint(*this,event,paint);else paint();}
 void QuickCommandBar::smoke(){if(controls_.size()!=41)throw std::runtime_error("Quick command controls missing");auto toggle=controls_[0];auto r=toggle->bounds();ui::MouseMessage down(ui::kMouseDownMessage,os::PointerType::Mouse,ui::kButtonLeft,ui::kKeyNoneModifier,r.center()),up(ui::kMouseUpMessage,os::PointerType::Mouse,ui::kButtonLeft,ui::kKeyNoneModifier,r.center());const bool before=bar_.expanded;toggle->onProcessMessage(&down);toggle->onProcessMessage(&up);toggle->onProcessMessage(&up);if(bar_.expanded==before)throw std::runtime_error("Duplicate release toggled quick bar twice");}
 }
