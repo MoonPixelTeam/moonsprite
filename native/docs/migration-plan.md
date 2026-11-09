@@ -5054,3 +5054,10 @@ CTest document-transactions/free-tile-project/tilemap-document全部通过33.39s
 接续候选范围迁移，对照legacy tilemap-document.ts rerenderTilemapCells。原生reference-only增量历史在活动层/帧不变时合并实际cache patch完整格世界边界并裁到画布；共享资源编辑、活动视图变化维持全幅，publishChange的linked-layer fallback保留。Paint连续move与取消不再覆盖applyEdit脏区为整画布，先清除上次change再发布。六组零/正/负offset×move/copy逐像素检查初次及连续预览、取消、UndoRedo所有变化均被dirty覆盖，局部移动dirty小于画布。
 
 正式Release构建成功，完整--tileset-management-check实际退出0。document-transactions/tilemap-project/free-tile-project/tilemap-document四项通过39.90s，混合free、链接、资源及保存重开回归通过；744来源/证据与diff检查通过。无FPS量测，资源编辑与linked-layer仍可全幅失效，整体INCOMPLETE。本阶段保存推送dev。
+
+
+### 2026-11-10：特殊图层ASE栅格导出闭环迁移
+
+对照legacy core/aseprite.ts encodeAseprite/scaledLayerPixels，旧版按动画帧图层的栅格缓存写普通ASE图层，不写MoonSprite瓦片资源/实例编辑语义。原生解除已迁移tilemap/free-tile两类的过时拒绝，保留未知kind拒绝、图层/帧/标签/链接写法、蒙版合成回退与editable损失保存确认；导出提示明确网格/自由瓦片以栅格保存。核心八组grid/free×有无mask×100/200%对照逐帧画面、图层数量、向后链接及导出不改authority。实际窗口增加两类的导出弹窗、worker、原子写入和重开对照。
+
+正式Release构建成功，完整--aseprite-io-check实际退出0，包含已有ASE/PSD保存生命周期及新增特殊层；aseprite-io/aseprite-save-policy通过0.09s。系统文件选择器使用注入路径，未自动点击系统弹窗；不宣称ASE可编辑瓦片payload或实例编辑信息保留。整体INCOMPLETE，本阶段保存推送dev。
