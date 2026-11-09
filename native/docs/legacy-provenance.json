@@ -1070,7 +1070,9 @@
     "legacy/src/renderer/src/core/extension-file-drop.test.ts": "f9dc9e941c9b7f63a3cc95018c1ac67a2dc802719569c564adcebe64b164ad55",
     "legacy/src/renderer/src/core/extension-runtime.ts": "40f57337de1fe15722fc3bfb48cde49cb872e1d6b05dc27d543104855d2e363d",
     "legacy/src/renderer/src/core/extension-runtime.test.ts": "f9bffe8ef2a1b6b24a8ed612dc4153dddde1b8c3dfbdfbd48bdad048a3098dcc",
-    "legacy/src/shared/types-extension-runtime.ts": "64130e6851ca468f7e47f6bcd6a06ca07d33a92e5d07f44849dcc60513d78957"
+    "legacy/src/shared/types-extension-runtime.ts": "64130e6851ca468f7e47f6bcd6a06ca07d33a92e5d07f44849dcc60513d78957",
+    "legacy/src/renderer/src/components/extensions/ExtensionRuntimeHost.tsx": "875fff36317df785984d8ff0c3e3d9f7b04b76139c711e116e3039191c2ab2ed",
+    "legacy/src/renderer/src/components/extensions/ExtensionRuntimeHost.test.tsx": "a9dda9be867dcf277346994346a8a73573c7373bb7ed31a3e65bd00967e7c4eb"
   },
   "files": [
     {
@@ -5422,7 +5424,8 @@
       "compileBoundaries20261109": "Native build adaptation only: compile document_slices.cpp as its own core translation unit; Editor lifecycle compiles its declaration first; extract the unchanged migrated GradientStopsTrack into a shared widget header and use existing moon::unicodeText directly. No legacy behavior, widget geometry or raster algorithms changed.",
       "unicodeTestEntrypoint20261109": "Link sequence import regression to existing moon-pattern-import for the production PNG decoder, exercising real Unicode disk paths instead of mocked reads. No additional decoder implementation or runtime behavior change.",
       "extensionRuntime20261110": "Register extension-runtime executable and CTest against legacy core/extension-runtime.ts behavior. Four extension tests pass0.09s; no product target update.",
-      "extensionStorage20261110": "Register Windows extension-storage test with existing moon-project-reader atomic binary writer and windowsapp JSON. Source legacy core/extension-runtime.ts extensionStorage; product runtime integration pending."
+      "extensionStorage20261110": "Register Windows extension-storage test with existing moon-project-reader atomic binary writer and windowsapp JSON. Source legacy core/extension-runtime.ts extensionStorage; product runtime integration pending.",
+      "extensionRequest20261110": "Add extension-request-host CTest/executable using actual Storage and native RuntimeRegistry/FileDropRouter; legacy ExtensionRuntimeHost.tsx onMessage/handleRequest partial migration."
     },
     {
       "file": "scripts/bootstrap.ps1",
@@ -29744,6 +29747,28 @@
       ],
       "scope": "Actual legacy/native extensionStorage comparison",
       "adaptation": "Execute original TypeScript extensionStorage with injected Map-backed Storage; compare namespace, exact quota/overwrite/remove, key rejection and UTF16 ordering traces to native disk-backed executable."
+    },
+    {
+      "file": "src/extension_request_host.h",
+      "classification": "legacy-partial",
+      "sources": [
+        "legacy/src/renderer/src/components/extensions/ExtensionRuntimeHost.tsx",
+        "legacy/src/renderer/src/components/extensions/ExtensionRuntimeHost.test.tsx",
+        "legacy/src/renderer/src/core/extension-runtime.ts"
+      ],
+      "scope": "EX-004 authenticated native request dispatch for connected methods",
+      "adaptation": "Legacy onMessage envelope/type/string requestId <=80 UTF16 units/method gate and handleRequest permission-first semantics; connect locale, drop types, storage get/set/remove/list and commands.execute. Identity comes from native transport ownership bool and host object, not params. set uses trusted exact encoded JSON sideband pending actual engine. Unsupported authorized methods explicitly error. No actual transport/UI/installation yet."
+    },
+    {
+      "file": "tests/extension_request_host_test.cpp",
+      "classification": "legacy-partial",
+      "sources": [
+        "legacy/src/renderer/src/components/extensions/ExtensionRuntimeHost.tsx",
+        "legacy/src/renderer/src/components/extensions/ExtensionRuntimeHost.test.tsx",
+        "legacy/src/renderer/src/core/extension-runtime.ts"
+      ],
+      "scope": "Request dispatch with actual atomic disk storage and registry",
+      "adaptation": "Two host namespaces, spoofed params, permission errors, malformed/foreign/id boundary/disabled and deactivated request suppression, successful/error envelopes, disk reopen, drop registration atomicity, command priority and stopped runtime false. No browser/OS transport asserted."
     }
   ],
   "assetTransfers": [

@@ -1,0 +1,49 @@
+#pragma once
+#include "extension_runtime.h"
+#include "extension_storage.h"
+#include "javascript_text.h"
+#include <optional>
+#include <winrt/Windows.Foundation.Collections.h>
+namespace moon::extension {
+// Native transport supplies authenticated session ownership and, for set,
+// the script engine's exact JSON.stringify(value) result. Never infer identity
+// or a storage namespace from untrusted request params.
+class RequestHost {
+ RuntimeExtension extension_;std::vector<std::string> permissions_;Storage& storage_;FileDropRouter& drops_;RuntimeRegistry& registry_;CommandHandlers handlers_;std::vector<RuntimeCommand> commands_;bool active_=true;
+ static std::u16string units(const winrt::hstring& s){return {reinterpret_cast<const char16_t*>(s.data()),s.size()};}
+public:
+ RequestHost(RuntimeExtension extension,std::vector<std::string> permissions,Storage& storage,FileDropRouter& drops,RuntimeRegistry& registry,CommandHandlers handlers={},std::vector<RuntimeCommand> commands={}):extension_(std::move(extension)),permissions_(std::move(permissions)),storage_(storage),drops_(drops),registry_(registry),handlers_(std::move(handlers)),commands_(std::move(commands)){}
+ void deactivate(){active_=false;drops_.clear(extension_.id);}
+ std::optional<winrt::Windows::Data::Json::JsonObject> handle(const winrt::Windows::Data::Json::IJsonValue& raw,bool ownsSession,const std::string& locale,std::optional<std::string> encodedValue={}){
+  using namespace winrt::Windows::Data::Json;
+  if(!ownsSession||!active_||!extension_.enabled||!raw||raw.ValueType()!=JsonValueType::Object)return {};
+  const auto request=raw.GetObject();auto field=[&](const wchar_t* key){return request.HasKey(key)?request.GetNamedValue(key):JsonValue::CreateNullValue();};
+  auto type=field(L"type"),id=field(L"requestId"),methodValue=field(L"method");
+  if(type.ValueType()!=JsonValueType::String||type.GetString()!=L"moonsprite-extension-request"||id.ValueType()!=JsonValueType::String||id.GetString().size()>80||methodValue.ValueType()!=JsonValueType::String)return {};
+  JsonObject response;response.Insert(L"type",JsonValue::CreateStringValue(L"moonsprite-extension-response"));response.Insert(L"requestId",id);
+  try{
+   const auto method=winrt::to_string(methodValue.GetString());if(!runtimeAllows(permissions_,method))throw std::runtime_error("扩展未获准调用 "+method+"。");
+   auto value=field(L"params");JsonObject params=value.ValueType()==JsonValueType::Object?value.GetObject():JsonObject{};
+   auto key=[&](){if(!params.HasKey(L"key")||params.GetNamedValue(L"key").ValueType()!=JsonValueType::String)throw std::invalid_argument("扩展存储键无效。");return units(params.GetNamedString(L"key"));};
+   const auto owner=units(winrt::to_hstring(extension_.id));IJsonValue result=JsonValue::CreateNullValue();
+   if(method=="runtime.getLocale"){JsonObject object;object.Insert(L"locale",JsonValue::CreateStringValue(winrt::to_hstring(locale)));result=object;}
+   else if(method=="runtime.setFileDropTypes"){
+    if(!params.HasKey(L"extensions")||params.GetNamedValue(L"extensions").ValueType()!=JsonValueType::Array)throw std::invalid_argument("Invalid extension file-drop suffixes");
+    std::vector<std::string> types;for(const auto& item:params.GetNamedArray(L"extensions")){if(item.ValueType()!=JsonValueType::String)throw std::invalid_argument("Invalid extension file-drop suffixes");types.push_back(winrt::to_string(item.GetString()));}drops_.setTypes(extension_.id,std::move(types));
+   }
+   else if(method=="storage.get")result=storage_.get(owner,key());
+   else if(method=="storage.set"){const auto resolved=key();if(!encodedValue)throw std::invalid_argument("扩展存储值超过大小限制。");storage_.setEncoded(owner,resolved,*encodedValue);}
+   else if(method=="storage.remove")storage_.remove(owner,key());
+   else if(method=="storage.list"){JsonArray keys;for(const auto& name:storage_.list(owner))keys.Append(JsonValue::CreateStringValue(winrt::hstring(reinterpret_cast<const wchar_t*>(name.data()),std::uint32_t(name.size()))));result=keys;}
+   else if(method=="commands.execute"){
+    const auto commandId=params.HasKey(L"commandId")&&params.GetNamedValue(L"commandId").ValueType()==JsonValueType::String?winrt::to_string(params.GetNamedString(L"commandId")):std::string{};
+    const auto found=std::find_if(commands_.begin(),commands_.end(),[&](const auto& c){return c.id==commandId;});if(found==commands_.end())throw std::invalid_argument("扩展命令不存在。");result=JsonValue::CreateBooleanValue(executeCommand(registry_,extension_,*found,handlers_));
+   }
+   else throw std::runtime_error("Native extension method is not connected: "+method);
+   response.Insert(L"ok",JsonValue::CreateBooleanValue(true));response.Insert(L"result",result);
+  }catch(const winrt::hresult_error& e){response.Insert(L"ok",JsonValue::CreateBooleanValue(false));response.Insert(L"error",JsonValue::CreateStringValue(e.message()));}
+  catch(const std::exception& e){response.Insert(L"ok",JsonValue::CreateBooleanValue(false));response.Insert(L"error",JsonValue::CreateStringValue(winrt::to_hstring(e.what())));}
+  return response;
+ }
+};
+}

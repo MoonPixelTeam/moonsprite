@@ -5338,3 +5338,14 @@ Release专项构建成功，四项extension CTest全通过0.09s。verify-extensi
 浏览器localStorage必要适配为独立原生JSON键值对文件，复用已有atomic_file.h/image_export.cpp的同目录临时文件、Flush及原子替换，成功后才发布内存；失败保留旧磁盘和内存。调用方提供隔离存储路径，同一事件线程单实例持有，尚未接入正式exe默认路径或多进程合并。读取坏外层存储明确报错、不自动清理；坏单值按legacy返回null，后续无关写入保留该值。
 
 Release专项构建通过，五项extension CTest通过；真实磁盘重开、中文/emoji键、UTF16排序、4×256KiB满额/覆盖/删除、锁定文件写入及删除失败保留、坏值fallback均验证。verify-extension-storage.cjs执行原TypeScript并与native磁盘exe输出对照命名空间/额度/拒绝/排序一致。来源及diff检查后本阶段保存推送dev。未重建正式程序、未接入真实扩展安装/请求或UI，不宣称全量扩展迁移完成；用户文件、缓存与editor_support.h既有状态保留。
+
+
+### 2026-11-10：扩展请求分发与存储／命令接线阶段
+
+以legacy components/extensions/ExtensionRuntimeHost.tsx::onMessage/handleRequest为依据，连接前几阶段的Storage、RuntimeRegistry和FileDropRouter。沿用request/response type、string requestId最多80个UTF16单位、string method及权限先行；错误返回ok:false/error，成功返回ok:true/result。原生传输提供宿主身份，参数不能指定其它扩展存储；非本会话、畸形消息、禁用/停用不响应。存储get/set/remove/list实际落盘，locale返回指定当前语言，后缀注册沿用完整校验，commands.execute只查本扩展命令并调用既有优先级；停止runtime返回false。停用清除该宿主后缀注册。
+
+set接收可信脚本桥已JSON.stringify的独立编码载荷；目前并无实际脚本引擎/传输因此不把此侧通道当成已支持直接JSON网络请求。runtime.getCapabilities以及菜单、窗口、资源、工作区、文档等尚未连接的方法明确返回失败，不能因34项权限表存在而虚报可用。未将HTML/WebView2带回原生。宿主完整activation/locale事件和正式exe入口仍待迁移。
+
+Release专项构建成功，六项extension CTest通过（首次0.57s）；核对真实磁盘重开、两个宿主隔离与参数伪造、权限/参数失败、注册原子性、命令与运行时停止、非所属会话/畸形/ID边界/禁用/停用。首次编译修正WinRT字符串工厂显式hstring构造。新增两文件与CMake来源登记，diff检查后保存推送dev。无正式exe更新、实际传输/窗口/截图/FPS验收；全量目标继续INCOMPLETE，保留用户数据、缓存及editor_support.h既有状态。
+
+本阶段最终复验曾出现一次extension-storage第四次原子替换ERROR_ACCESS_DENIED，失败目标保留，未改变原子写入错误规则、未增加重试。随后存储定向复验0.24s与旧版存储对照通过，再执行完整六项extension全部通过0.34s。未定位首次外部拒绝来源，不能声称已修复偶发Windows替换失败；生产仍明确报错并保留旧状态。
