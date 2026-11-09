@@ -782,6 +782,7 @@ const char* Editor::cursorAt(gfx::Point position) const {InteractionScope intera
       if(hasCapture() && sizeDrag_==SizeDrag::ModalMove)return "move";
       return panelResizeCursor(panelResizeEdges(dialogDisplayBounds(),position));
     }
+    if(sliceDrag_)return sliceDrag_==3?textResizeCursor(sliceHandle_):sliceDrag_==2?(sliceCopy_?"copy":"move"):"crosshair";
     if(textTransforming_)return textResizeCursor(textHandle_);
     if(textCreating_)return "text";
     if(panelScrollDrag_.active())return "grabbing";
@@ -906,7 +907,7 @@ const char* Editor::cursorAt(gfx::Point position) const {InteractionScope intera
 
     if(selectionTool_ && !selectionShift_ && !selectionCtrl_ && selectionPivotHit(position))return "default";
 
-    if(sliceTool()){auto p=canvasPoint(position);if(tileRepeatIdentity_==document.identity()&&tileRepeat_!=repeat::Mode::Off){const auto mapped=repeat::map({double(p.x),double(p.y)},document.width(),document.height(),tileRepeat_);if(!mapped)return "crosshair";p={int(mapped->local.x),int(mapped->local.y)};}if(sliceAtPoint(document.slices(),p.x,p.y))return "move";return "crosshair";}
+    if(sliceTool()){if(document.selectedSliceIds().size()==1&&!selectionShift_&&!sliceAlt_){const auto it=std::find_if(document.slices().begin(),document.slices().end(),[&](const auto& value){return value.id==document.selectedSliceId();});if(it!=document.slices().end()){const auto handle=sliceHandleAt(position,it->rect);if(!handle.empty())return textResizeCursor(handle);}}auto p=canvasPoint(position);if(tileRepeatIdentity_==document.identity()&&tileRepeat_!=repeat::Mode::Off){const auto mapped=repeat::map({double(p.x),double(p.y)},document.width(),document.height(),tileRepeat_);if(!mapped)return "crosshair";p={int(mapped->local.x),int(mapped->local.y)};}if(sliceAtPoint(document.slices(),p.x,p.y))return "move";return "crosshair";}
     if(moveTool_)return "move";
     if(selectionTool_ || document.floating())return selectionCursorAt(position);
 

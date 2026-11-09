@@ -4629,3 +4629,9 @@ X/Y/Both合成/当前层及左右键实际诊断验证100次preview请求不发�
 核对canvas-input-slice begin/move/end、canvas-pointer-down/move localPoint、useCanvasTextPreview sliceHandleAt和canvas-render-guides：创建/移动以有限副本本地点计算，未映射move忽略；释放提交现存preview，移动阈值可由release client坐标满足；切片轮廓/手柄只在主画布，不增加副本手柄。原生切片输入及悬停映射本地点，拖出副本保留最后预览，释放不再用释放点重新计算几何，保留无按钮取消。保留既有clamp、多选相对偏移、Alt复制和历史事务。
 
 正式Release构建退出0，--slice-check显式等待退出0。新增24组X/Y/Both×主/负副本×创建/单移/多移/Alt复制，精确几何/预览不提交/无效移动忽略/无效释放结算/像素不变/UndoRedo/无按钮取消；另三组主画布东边尺寸手柄验证最后预览结算与UndoRedo/Escape，原有slice回归继续通过。三项CTest document-slices/tile-repeat/tile-repeat-stroke通过0.72s；742来源快照与diff检查通过。未新增副本轮廓或尺寸手柄，未新增旋转全矩阵/截图/FPS测量。组蒙版行为选择仍等待用户答复，未把等待解释为批准；全量迁移INCOMPLETE。保留用户数据、缓存和未跟踪文件，阶段保存推送dev。
+
+### 2026-11-09：切片尺寸及捕获光标完整迁移阶段
+
+对照useCanvasCursor捕获create-slice/move-slice/resize-slice优先级及displayedResizeCursorForHandle、useCanvasTextPreview sliceHandleAt。原生此前尺寸手柄悬停只有move/crosshair，捕获离开视口回default；现选中单切片手柄使用既有旋转/镜像方向计算，捕获期间保持resize/move/copy/crosshair。复用既有图标/方向函数，不改切片手柄几何或主画布显示语义。
+
+正式Release最终构建退出0，--slice-check显式等待退出0。新增128组八手柄×四角度×四镜像，zoom1.25，实际hover/down/越界cursor/Escape及无历史/捕获残留；前阶段24平铺创建/移动/Alt复制场景补捕获越界光标断言，另三尺寸提交与既有回归继续通过。三项CTest document-slices/tile-repeat/tile-repeat-stroke通过0.19s，742来源快照和diff检查通过。无新增全软件FPS/素材alpha/截图验收，组蒙版选择仍等待答复，全量迁移INCOMPLETE。保留原有用户数据/缓存/未跟踪文件，阶段保存推送dev。
