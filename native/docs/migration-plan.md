@@ -5019,3 +5019,10 @@ CTest document-transactions/free-tile-project/tilemap-document全部通过33.39s
 对照legacy canvas-input-fill.ts按下commit与释放/Escape事务，扩展正式窗口smokeTilemapFill为54组：三模式×独立/显式/runtime链接×三个原点×纯色连续/图案不连续，文档含无关free层并带像素选区。真实tool.fill、mouse down/up和Escape检查单笔提交、取消、UndoRedo、规范源身份、缓存几何、链接与free隔离。未改产品填充算法或交互，补齐b8550232缺失的新组合窗口验收，结果待补；整体INCOMPLETE。
 
 最终正式Release构建成功，完整 --tileset-management-check实际退出0，包含新增54组真实工具/鼠标/Escape/UndoRedo验收。产品源码未改，本轮未重复核心CTest，沿用b8550232核心证据并明确补齐窗口范围；无人工截图或FPS结论。整体INCOMPLETE，本阶段保存推送dev。
+
+
+### 2026-11-10：Hybrid延迟平铺变换候选范围阶段
+
+旧版workspace-magic-eraser.ts明确拒绝特殊图层，核对原生门控一致，未擅自开放。复验wheel-performance/workspace-layout均通过40.48s，台账后续已有修复记录。转查延迟Hybrid平铺：raw采样沿用repeatedFloatingTranslation，但candidate只含原始目标，目标离开画布时漏掉wrapped目的地；现复用repeat::wrapSelection加入候选范围。260×260夹具增加X/Y/Both各move/copy，验证资源预览与提交、dirty覆盖、regional裁剪、UndoRedo。最终结果待补，整体INCOMPLETE。
+
+最终三项核心CTest全部通过41.03s，free-tile-project40.37s、tilemap-document0.31s；正式Release构建成功，--tileset-management-check实际退出0。补充--tile-repeat-check实际退出1，错误为Repeated airbrush begins，位于喷枪mouse down入口检查，未通过，不归入成功验收；该入口未调用本轮修改的floatingOverlayRegion，但失败根因尚未确认，登记为后续待查。新增6组平铺为核心事务覆盖，未新增大画布真实指针夹具或FPS量测。整体INCOMPLETE。
