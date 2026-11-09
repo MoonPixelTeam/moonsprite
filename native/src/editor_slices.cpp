@@ -25,7 +25,16 @@ bool Editor::processSliceInput(ui::Message* msg){
  else{document.selectSlice({});sliceDrag_=1;slicePreviews_={{"",{},clampSliceRect({point.x,point.y,1,1},document.width(),document.height())}};}captureMouse();refresh();return true;
 }
 void Editor::paintSliceOverlay(ui::Graphics& g){if(!documentOpen_||homeOpen_||(!sliceTool()&&!sliceOutlinesVisible_&&autoSlicePreview_.empty()))return;Pixel packed=0xffff0000;parsePaletteHex(runtimePreferences_.get("appearance.sliceColor"),packed);const auto color=gfx::rgba(packed&255,(packed>>8)&255,(packed>>16)&255,packed>>24);auto display=[&](double x,double y){return canvasDocumentToDisplay({x,y})-bounds().origin();};auto draw=[&](const SliceRect& r,bool selected,bool handles){const std::array<gfx::Point,4> points={display(r.x,r.y),display(r.x+r.width,r.y),display(r.x+r.width,r.y+r.height),display(r.x,r.y+r.height)};for(int i=0;i<4;++i){auto a=points[i],b=points[(i+1)%4];g.drawLine(color,a,b);if(selected){const int dx=b.x-a.x,dy=b.y-a.y;const double length=std::max(1.,std::hypot(double(dx),double(dy)));const gfx::Point offset(int(std::round(-dy/length)),int(std::round(dx/length)));g.drawLine(color,a+offset,b+offset);}}if(handles){const TransformPoint positions[]={{double(r.x),double(r.y)},{r.x+r.width/2.,double(r.y)},{double(r.x+r.width),double(r.y)},{double(r.x),r.y+r.height/2.},{double(r.x+r.width),r.y+r.height/2.},{double(r.x),double(r.y+r.height)},{r.x+r.width/2.,double(r.y+r.height)},{double(r.x+r.width),double(r.y+r.height)}};for(auto p:positions){auto at=display(p.x,p.y);g.fillRect(color,{at.x-3*uiScale,at.y-3*uiScale,7*uiScale,7*uiScale});}}};
- for(const auto& slice:document.slices()){const bool selected=sliceTool()&&std::find(document.selectedSliceIds().begin(),document.selectedSliceIds().end(),slice.id)!=document.selectedSliceIds().end();auto rect=slice.rect;if(sliceDrag_&&!sliceCopy_)for(const auto& preview:slicePreviews_)if(preview.id==slice.id)rect=preview.rect;draw(rect,selected,selected&&document.selectedSliceIds().size()==1);}
+ // Match legacy Set membership and keyed preview lookup: linear in slice count.
+ const std::unordered_set<std::string> selectedIds(sliceTool()?document.selectedSliceIds().begin():document.selectedSliceIds().end(),document.selectedSliceIds().end());
+ std::unordered_map<std::string,const SliceRect*> previews;if(sliceDrag_&&!sliceCopy_)for(const auto& preview:slicePreviews_)previews[preview.id]=&preview.rect;
+ const bool reference=smoke_&&GetEnvironmentVariableW(L"MOONSPRITE_SLICE_LINEAR_REFERENCE",nullptr,0)>0;
+ for(const auto& slice:document.slices()){
+  bool selected=selectedIds.count(slice.id)!=0;auto rect=slice.rect;
+  if(reference){selected=sliceTool()&&std::find(document.selectedSliceIds().begin(),document.selectedSliceIds().end(),slice.id)!=document.selectedSliceIds().end();if(sliceDrag_&&!sliceCopy_)for(const auto& preview:slicePreviews_)if(preview.id==slice.id)rect=preview.rect;}
+  else if(const auto preview=previews.find(slice.id);preview!=previews.end())rect=*preview->second;
+  draw(rect,selected,selected&&selectedIds.size()==1);
+ }
  if(sliceDrag_&&((sliceDrag_==1&&sliceMoved_)||(sliceDrag_==2&&sliceCopy_)))for(const auto& s:slicePreviews_)draw(s.rect,true,false);for(const auto& r:autoSlicePreview_)draw(r,true,false);
 }
 
@@ -72,6 +81,16 @@ void Editor::smokeSlices(){auto check=[](bool ok,const char* why){if(!ok)throw s
   for(int i=0;i<100;++i)pointer(ui::kMouseMoveMessage,x+4,y+4);check(getUpdateRegion().bounds()==dirty.bounds()&&slicePreviews_==preview&&document.revision()==revision&&document.historyPosition()==history,"Duplicate slice samples schedule no redraw/publication");
   pointer(ui::kMouseMoveMessage,200,200);manager()->flushRedraw();manager()->dispatchMessages();manager()->flushRedraw();const auto clampedDirty=getUpdateRegion();check(clampedDirty.isEmpty(),"Slice clamped probe begins with clean paint region");const auto clamped=slicePreviews_;for(int i=0;i<100;++i)pointer(ui::kMouseMoveMessage,201+i,201+i);check(getUpdateRegion().bounds()==clampedDirty.bounds()&&slicePreviews_==clamped&&document.revision()==revision,"Clamped slice samples schedule no redraw");ui::KeyMessage cancel(ui::kKeyDownMessage,ui::kKeyEsc,ui::kKeyNoneModifier,0,0);processSliceInput(&cancel);
  }
+ // Compare optimized Set/keyed rendering with the prior linear searches pixelwise.
+ document=Document(64,48);{std::vector<SliceRect> rects;for(int y=0;y<12;++y)for(int x=0;x<16;++x)rects.push_back({x*4,y*4,3,3});document.createSlices(rects);}document.selectAllSlices();useSliceTool();tileRepeat_=repeat::Mode::Off;zoom_=1;refresh();
+ for(double angle:{0.,37.,90.})for(int kind:{0,1,2}){
+  viewRotation_={angle,false,false};sliceDrag_=kind?2:0;sliceCopy_=kind==2;sliceStarts_=document.slices();slicePreviews_=sliceStarts_;for(auto& value:slicePreviews_){++value.rect.x;++value.rect.y;}
+  const int w=bounds().x2(),h=bounds().y2();auto actual=os::instance()->makeRgbaSurface(w,h),reference=os::instance()->makeRgbaSurface(w,h);actual->clear();reference->clear();
+  wchar_t prior[32768]{};const auto priorSize=GetEnvironmentVariableW(L"MOONSPRITE_SLICE_LINEAR_REFERENCE",prior,32768);struct RestoreSliceFlag{const wchar_t* value;~RestoreSliceFlag(){SetEnvironmentVariableW(L"MOONSPRITE_SLICE_LINEAR_REFERENCE",value);}}restore{priorSize?prior:nullptr};
+  SetEnvironmentVariableW(L"MOONSPRITE_SLICE_LINEAR_REFERENCE",nullptr);{ui::Graphics g(actual);paintSliceOverlay(g);}SetEnvironmentVariableW(L"MOONSPRITE_SLICE_LINEAR_REFERENCE",L"1");{ui::Graphics g(reference);paintSliceOverlay(g);}
+  os::SurfaceLock a(actual.get()),b(reference.get());for(int y=0;y<h;++y)for(int x=0;x<w;++x)check(actual->getPixel(x,y)==reference->getPixel(x,y),"Indexed slice overlay differs from linear reference");
+ }
+ sliceDrag_=0;sliceStarts_.clear();slicePreviews_.clear();sliceCopy_=false;viewRotation_={};
  // Resize cursors follow the actual handle and remain stable outside the viewport.
  for(double angle:{0.,37.,90.,180.})for(int mirrors=0;mirrors<4;++mirrors){
   document=Document(64,48);document.createSlices({{8,8,28,24}});useSliceTool();viewRotation_={angle,(mirrors&1)!=0,(mirrors&2)!=0};setTileRepeat(repeat::Mode::Both);zoom_=1.25;{const auto v=canvasViewport();canvas_={v.x+(v.w-160)/2,v.y+(v.h-120)/2,160,120};}sliceAlt_=false;selectionShift_=false;refresh();const auto h=document.historyPosition();

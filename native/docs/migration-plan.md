@@ -4641,3 +4641,9 @@ X/Y/Both合成/当前层及左右键实际诊断验证100次preview请求不发�
 直接沿用canvas-input-slice三个move分支sameBoxPreview与canvas-box-drag.test.ts的metadata-only/no-op语义。原生此前每个拖动事件均invalidate整画布，现各目标rect变化才赋值并标记changed，仅变化时刷新；创建预览从未显示到超过拖动阈值仍刷新，即便clamp几何相同，保留可观察行为。不复制全部预览向量作比较，避免多选额外拷贝。清理释放前已return后的不可达判断。
 
 正式Release最终构建退出0；--slice-check显式等待退出0，四类创建/单移/尺寸/多移分别100重复和100不同坐标夹紧样本，共800无变化事件，测试前明确assert脏区为空，之后仍为空，预览/revision/history不变。既有27切片交互与128方向光标矩阵继续通过。三项CTest document-slices/tile-repeat/tile-repeat-stroke通过0.19s；742来源快照和diff检查通过。证明省去这些事件的重绘请求，不等于全软件FPS或所有输入路径优化完成。组蒙版语义选择仍待答复，全量迁移INCOMPLETE。保留原有用户数据、缓存及未跟踪文件，阶段保存推送dev。
+
+### 2026-11-09：大量切片覆盖层索引查找优化迁移阶段
+
+对照canvas-render-guides selectedSliceIds Set与slicePreviewTargets按ID索引。原生此前对每个切片线性扫描所有选中ID及拖动预览，多选拖动为O(N*(S+P))；现每次paint建立选中集合和预览指针映射，循环预期O(N+S+P)，保持文档绘制顺序、预览覆盖、复制预览与单选手柄。核对paintCanvas外层viewport/column clip仍覆盖paintSliceOverlay，未改裁剪范围。smoke-only局部环境参考分支保留旧线性查找作为像素对照并恢复调用前环境。
+
+正式Release构建退出0；--slice-check显式等待退出0。192全选切片×0/37/90度×静止/移动/复制预览共9组完整表面RGBA逐像素对照完全一致；既有切片交互、128光标矩阵及800无变化样本检查继续通过。三项CTest document-slices/tile-repeat/tile-repeat-stroke通过0.17s；742来源快照与diff检查通过。复杂度下降是代码证据，未新增实测FPS或整软件性能结论。组蒙版行为问题仍待用户答复，全量迁移INCOMPLETE。保留原有用户数据、缓存、未跟踪文件，阶段保存推送dev。
