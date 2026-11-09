@@ -5401,3 +5401,10 @@ Release专项两个目标构建成功，十项extension CTest全部通过1.35s�
 真实目录候选新增命令检查；集成测试把解析后的命令交给SessionHost，验证请求分别分发运行时事件、Lua动作标识和设置动作。此为内部核心接线，没有真实Lua/JS引擎、安装启用流程或正式UI。设置按钮的命令引用约束仍随完整settings校验待迁移，候选仍不能作为完整validated package启用。
 
 Release两个相关目标构建成功，10项extension CTest全部通过1.34s，包含中文.LUA、缺省/null/错误类型、文本/ID/路径边界、处理方式冲突、权限/设置缺失及64/65上限。未重建正式exe、未执行GUI/FPS或全套回归；整体迁移INCOMPLETE。来源登记和diff检查通过后保存并推送dev；用户数据、缓存与editor_support.h既有状态保留。
+
+
+### 2026-11-10：扩展设置清单完整数据定义阶段
+
+直接迁移 platform_extensions.rs 的 ExtensionSettingsUiManifest/ControlManifest/OptionManifest、validate_settings_entry_path、validate_settings_ui 及设置按钮命令引用校验。保留 checkbox/number/text/select/button 五类控件、所有可选字段和缺省值；校验控件/选项各64上限、大小写重复、UTF8文案、数值范围/步长、文本Unicode标量数量及maxLength、精确选项默认值、visibleWhen对其他checkbox的大小写精确引用、button样式/布局和本扩展runtime命令引用。所有字段先按旧serde类型读取，即使字段未用于当前控件类型也拒绝错误类型。settingsEntry只保留HTML路径元数据，拒绝与settingsUi共存；未引入WebView。
+
+RuntimeDirectory候选现接入完整设置数据检查。抽取上一阶段命令ID/文本/可选字符串助手供设置复用。回归验证五类控件/缺省/emoji长度、23类错误、64/65控件与选项、路径及实际目录组合。Release相关目标和10项extension专项通过；来源与diff检查后保存推送dev。设置窗口渲染、设置值持久化/事件及实际引擎仍待接线，未更新正式exe或执行GUI/全套验收；整体INCOMPLETE，保留用户数据/缓存/editor_support.h既有状态。
