@@ -5225,3 +5225,10 @@ legacy canvas-render-selection-preview.ts对两种套索的每个栅格路径点
 复核上一阶段分配前检查发现，每个候选格/缓存条目调用checkFloatingBudget都会遍历工程Cel、蒙版及浮动载荷。提取原有不变的存储记账为floatingStorageBudget，在构建候选patch前取本次同步调用的存储快照；循环只执行溢出安全的整数预算累计。原checkFloatingBudget复用同一记账函数，保持其他浮动路径规则。legacy tilemap-document.ts候选格/资源修改语义不变；补计当前采样格的两份临时像素，保留分配前拒绝和成功后缓存发布。
 
 正式Release构建成功，tilemap-document通过0.33s，含已有14组变换/平铺缓存复用、超限输出拒绝后恢复、preview=commit、资源/链接及UndoRedo检查；完整--tileset-management-check实际退出0。744来源/证据和diff通过。本阶段没有新增镜像实现的单元测试，循环内不再扫描工程由源码核对，未量测FPS/峰值内存或新增截图。整体迁移仍INCOMPLETE，本阶段保存推送dev。
+
+
+### 2026-11-10：平铺浮动预览局部反向采样
+
+按legacy tools-selection-transform-translation.ts的不可变目标基线合成、先清源、mask/alpha及wrap规则，原生regional预览在源宽高不超过画布时遍历请求区域并反推源坐标，避免每个候选瓦片都重新扫描整个浮动源。每个wrapped目标至多有一个源贡献；超过画布尺寸的剪贴板继续旧的源顺序遍历，保留重复目标最后写入顺序。提交路径仍沿用原源遍历，作为独立结果对照。
+
+260×260显式链接Hybrid夹具增加12组X/Y/Both×move/copy×正负跨缝位置，12×4多格掩码含半透明源，检查负坐标/越界/跨格区域与全幅一致、preview=commit、链接/资源缓存及UndoRedo。既有14组变换/平铺缓存和超限恢复继续通过；tilemap-document通过0.35s。正式Release构建成功，完整--tileset-management-check实际退出0。744来源/证据与diff通过；未新增截图、FPS量测或超大剪贴板碰撞专门夹具，整体迁移仍INCOMPLETE。本阶段保存推送dev。
