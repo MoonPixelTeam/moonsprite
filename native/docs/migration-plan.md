@@ -5113,3 +5113,10 @@ CTest document-transactions/free-tile-project/tilemap-document全部通过33.39s
 对照legacy aseprite.ts decodePixelData/readPalette：透明索引保留调色板RGB只清alpha，后帧较小count的局部palette更新不截断既有高索引。原生此前透明索引直接置0，palette.resize(n)截断旧颜色；现修复这两项。RGBA导入路线不变，不声明新增原生索引色编辑模式。新旧palette各四帧夹具覆盖非零透明索引、局部更新/高索引继承、raw与zlib cel、链接保留源帧颜色、ASE转RGBA重开和原生保存像素，含透明RGB。
 
 正式Release构建成功，既有完整--aseprite-io-check实际退出0；新增颜色场景为核心夹具，未新增窗口截图。来源744覆盖/证据与diff检查通过，整体INCOMPLETE。本阶段保存推送dev。
+
+
+### 2026-11-10：ASE内嵌瓦片栅格导入与共享源性能闭环
+
+按legacy aseprite.ts resolveCel type3及aseprite.test.ts已有内嵌瓦片夹具，补齐原生八种H/V/diagonal组合、旧0xffffffff与新id0空格、无内嵌资源/越界索引拒绝、编辑与UndoRedo、ASE及原生保存。原生此前每个Cel重复转换整张tileset，并累加已释放临时转换成本；改为每tileset一个RGBA缓存，RGBA/gray直接复用，indexed仅palette实际变化时刷新，替换峰值计入预算，输出栅格与翻转顺序不变。未复制Aseprite代码，不声明editable ASE tile资源迁移。
+
+1000帧共用20000个2x2瓦片验证不再累计重复临时预算，逐Cel像素一致；四帧索引palette变动验证cache刷新。正式Release与既有完整--aseprite-io-check实际退出0；新增瓦片组合为核心覆盖，未新增窗口夹具/截图或FPS量测。744来源/证据及diff检查通过，整体INCOMPLETE。本阶段保存推送dev。
