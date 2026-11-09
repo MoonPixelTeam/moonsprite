@@ -5518,3 +5518,10 @@ Release三个相关目标成功，10项extension通过1.74s。覆盖动态请求
 
 
 本阶段实际验收补充：整组11项10通过1失败，目录安装再次在第6次staging→test重命名拒绝访问（directory-32916-28086484）。调整新用例顺序后另一次目录运行在状态原子替换拒绝访问（directory-13900-28124890），未改动writer/增加重试，保留现场。贡献验证抽出独立无磁盘CTest，避免被无关目录事务提前中断；独立Release构建与extension-contributions通过。整组不能标绿；安装/状态文件偶发占用问题仍未定位。本阶段只以独立贡献检查作为最小相关验收。
+
+
+### 2026-11-10：扩展状态快照读取与统一替换阶段
+
+复用已验证的extension Storage适配方案，状态保存从公共MoveFileEx覆盖改为：公共writer写入并Flush唯一staging，已有目标ReplaceFileW，缺失目标不覆盖MoveFileEx发布，失败清本次staging，不自动重试。元数据读取明确READ/WRITE/DELETE共享，安装状态读取改复用RuntimeDirectory，启停/卸载/内置标记均走同一saveState，拒绝非普通状态文件。公共工程导出writer不变。
+
+受控旧快照句柄持续打开时32次保存/重开全部通过，u64修订与enabled一致、旧句柄仍读原值；既有无delete-sharing锁定写入失败及旧值保留继续验证。Release两个相关目标成功，12项extension/project-reader全部通过2.16s。此证据只证明本次快照协议，未建立此前状态替换外部持有者根因；staging目录重命名拒绝访问仍独立未定位，原现场保留。来源/diff后保存推送dev；无正式exe/GUI/全套验收，整体INCOMPLETE，保留用户数据/缓存/editor_support.h既有状态。

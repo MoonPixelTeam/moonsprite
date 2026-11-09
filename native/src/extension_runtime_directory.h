@@ -5,6 +5,7 @@
 #include "extension_manifest_metadata.h"
 #include <limits>
 #include <tuple>
+#include <atomic>
 #include "extension_runtime.h"
 #include <winrt/Windows.Data.Json.h>
 #include <winrt/Windows.Foundation.Collections.h>
@@ -30,7 +31,7 @@ struct LuaEntry {
 class RuntimeDirectory {
  static std::string read(const std::filesystem::path& path,std::size_t limit){
   const auto status=std::filesystem::symlink_status(path);if(!std::filesystem::is_regular_file(status)||std::filesystem::is_symlink(status))throw std::runtime_error("扩展清单或状态文件必须是普通文件。");
-  std::ifstream input(path,std::ios::binary);if(!input)throw std::runtime_error("Cannot read extension metadata");std::string bytes;char chunk[65536];while(input){input.read(chunk,sizeof(chunk));const auto count=std::size_t(input.gcount());if(count>limit-bytes.size())throw std::length_error("Extension metadata exceeds size limit");bytes.append(chunk,count);}if(input.bad())throw std::runtime_error("Cannot finish extension metadata read");return bytes;
+  HANDLE handle=CreateFileW(path.c_str(),GENERIC_READ,FILE_SHARE_READ|FILE_SHARE_WRITE|FILE_SHARE_DELETE,nullptr,OPEN_EXISTING,FILE_ATTRIBUTE_NORMAL,nullptr);if(handle==INVALID_HANDLE_VALUE)throw std::system_error(int(GetLastError()),std::system_category(),"Cannot read extension metadata");struct Close{HANDLE handle;~Close(){CloseHandle(handle);}}close{handle};std::string bytes;char chunk[65536];for(;;){DWORD count=0;if(!ReadFile(handle,chunk,sizeof(chunk),&count,nullptr))throw std::system_error(int(GetLastError()),std::system_category(),"Cannot finish extension metadata read");if(!count)break;if(count>limit-bytes.size())throw std::length_error("Extension metadata exceeds size limit");bytes.append(chunk,count);}return bytes;
  }
  static ExtensionState readFullState(const std::filesystem::path& directory){auto path=directory/".state.json";std::error_code error;auto status=std::filesystem::symlink_status(path,error);if(error&&error!=std::errc::no_such_file_or_directory)throw std::system_error(error);return std::filesystem::exists(status)?ExtensionState::parse(read(path,std::numeric_limits<std::size_t>::max())):ExtensionState{};}
  static std::map<std::string,bool> readState(const std::filesystem::path& directory){return readFullState(directory).enabled;}
@@ -38,7 +39,15 @@ class RuntimeDirectory {
  static bool validId(const std::string& id){return !id.empty()&&id.size()<=80&&id.front()!='.'&&id.back()!='.'&&id.find("..")==std::string::npos&&std::all_of(id.begin(),id.end(),[](unsigned char c){return (c>='a'&&c<='z')||(c>='A'&&c<='Z')||(c>='0'&&c<='9')||c=='.'||c=='-'||c=='_';});}
 public:
  static ExtensionState state(const std::filesystem::path& directory){return readFullState(directory);}
- static void saveState(const std::filesystem::path& directory,const ExtensionState& state){const auto bytes=state.encode();writeBinaryFileAtomic(directory/".state.json",std::vector<std::uint8_t>(bytes.begin(),bytes.end()));}
+ static void saveState(const std::filesystem::path& directory,const ExtensionState& state){
+  const auto bytes=state.encode();const auto path=directory/".state.json";
+  std::error_code error;auto status=std::filesystem::symlink_status(path,error);if(error&&error!=std::errc::no_such_file_or_directory)throw std::system_error(error);if(std::filesystem::exists(status)&&(!std::filesystem::is_regular_file(status)||std::filesystem::is_symlink(status)))throw std::runtime_error("扩展状态文件必须是普通文件。");
+  // Same snapshot publication protocol as extension Storage: flushed staging,
+  // ReplaceFile for existing targets, non-overwriting rename for first write.
+  static std::atomic<unsigned> serial{0};const auto staging=directory/(L".state-"+std::to_wstring(GetCurrentProcessId())+L"-"+std::to_wstring(GetTickCount64())+L"-"+std::to_wstring(++serial)+L".tmp");writeBinaryFileAtomic(staging,{bytes.begin(),bytes.end()});
+  try{if(!ReplaceFileW(path.c_str(),staging.c_str(),nullptr,0,nullptr,nullptr)){auto code=GetLastError();if(code!=ERROR_FILE_NOT_FOUND)throw std::system_error(int(code),std::system_category(),"Cannot replace extension state");if(!MoveFileExW(staging.c_str(),path.c_str(),MOVEFILE_WRITE_THROUGH))throw std::system_error(int(GetLastError()),std::system_category(),"Cannot publish extension state");}}catch(...){DeleteFileW(staging.c_str());throw;}
+ }
+
  static void uninstall(const std::filesystem::path& directory,const std::string& id){
   // inspect validates ID, ordinary directory, manifest identity and full state
   // before any state mutation or recursive removal.
@@ -46,7 +55,7 @@ public:
   const auto absoluteRoot=std::filesystem::absolute(directory).lexically_normal();
   if(std::filesystem::absolute(target).lexically_normal().parent_path()!=absoluteRoot)throw std::logic_error("Invalid extension uninstall path");
   const auto previous=readFullState(directory);auto next=previous;next.enabled.erase(id);
-  auto save=[&](const ExtensionState& state){const auto bytes=state.encode();writeBinaryFileAtomic(directory/".state.json",std::vector<std::uint8_t>(bytes.begin(),bytes.end()));};
+  auto save=[&](const ExtensionState& state){saveState(directory,state);};
   save(next);
   try{std::filesystem::remove_all(target);}catch(...){
    // Legacy attempts to restore state after deletion failure. The directory
@@ -56,10 +65,10 @@ public:
  }
  static RuntimeCandidate setEnabled(const std::filesystem::path& directory,const std::string& id,bool enabled){
   using namespace winrt::Windows::Data::Json;
-  auto candidate=inspect(directory,id,false);auto state=readFullState(directory);state.enabled[id]=enabled;const auto bytes=state.encode();
+  auto candidate=inspect(directory,id,false);auto state=readFullState(directory);state.enabled[id]=enabled;
   // Same flushed atomic writer used by native project/export persistence.
   // Publish the returned state only after disk publication succeeds.
-  writeBinaryFileAtomic(directory/".state.json",std::vector<std::uint8_t>(bytes.begin(),bytes.end()));candidate.enabled=enabled;candidate.extension.enabled=enabled;return candidate;
+  saveState(directory,state);candidate.enabled=enabled;candidate.extension.enabled=enabled;return candidate;
  }
  static std::vector<RuntimeCandidate> list(const std::filesystem::path& directory){
   // State errors and enumeration errors fail the operation; individual damaged
