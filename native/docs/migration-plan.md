@@ -5288,3 +5288,10 @@ legacy canvas-render-selection-preview.ts对两种套索的每个栅格路径点
 按legacy tilemap-document.ts::tilemapCellIndexesForEdit实际范围映射及rerenderTilesetTileReferences共享资源规则，dirty先保留源、旧目标、新目标和wrapped范围各自足迹，分别检查所触及的格/资源，再形成既有单一dirty矩形。消除长距离拖动时扫描源目标之间无关格并扩展其远处引用的额外刷新；只收集Hybrid初始足迹，格扩展及资源引用扩展不再重复入列表。
 
 新增无关资源在(40,40)且其引用在(240,240)，move/copy目标(81,81)，断言dirty不被无关远处引用扩到244，同时逐点覆盖实际像素变化；沿用(200,200)真正共享源和全部变换/缓存/历史检查。正式Release成功；tilemap-document/canvas-tilemap-preview通过0.85s，完整--tileset-management-check实际退出0。744来源/证据与diff通过。无新增截图或FPS量测；整体迁移仍INCOMPLETE，本阶段保存推送dev。
+
+
+### 2026-11-10：Hybrid预览输出直接读取资源patch
+
+沿用legacy tilemap-document.ts资源patch及tilemap.ts源坐标语义，原生输出优先直接读不可变local patch、无翻转旋转的modified源；只有变换引用才分配单格scratch并调用既有sourcePoint映射，其他格保留cellPixels。消除先渲染原瓦片再全量覆盖/复制patch的无效操作，不改变资源或事务。
+
+正式Release构建成功，tilemap-document/canvas-tilemap-preview通过0.88s，含区域裁剪、空/外部/翻转旋转引用、共享源、变换/平铺及实际Skia缓存与全新绘制逐点对照；完整--tileset-management-check实际退出0。744来源/证据及diff通过。未新增镜像实现测试、截图或实际分配/FPS量测；整体迁移仍INCOMPLETE，本阶段保存推送dev。
