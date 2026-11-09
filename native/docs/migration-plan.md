@@ -4857,3 +4857,12 @@ smokeWorkspace布局交互完成后切至已有移动工具，固定后续画布
 新增linked/independent × move/copy ×零/负偏移八组混合文档回归，检查变换预览、取消、提交、Undo/Redo、native/recovery重开和pending Cut/Delete；逐项比较未选free层的实例、源元数据、缓存、位置及所有既有瓦片像素。初始重开比较因preservedJson规范化与运行对象不同失败，改为与同一未变换基线经相同保存重开后的对象比较；运行阶段仍保持原对象精确比较，不修改序列化规则。
 
 正式Release构建成功；CTest document-transactions/free-tile-project/tilemap-document全部通过19.27s，完整--tileset-management-check实际退出0；744来源覆盖及证据快照和diff检查通过。新增混合场景为核心/持久化检查，未新增混合场景鼠标专项或人工截图、FPS验收，未重跑全套。普通Paint整格移动在含free文档仍有独立门控，本文不宣称该路径迁移；多目标/runtime shared等缺口继续保留，整体INCOMPLETE。保留用户数据、缓存、未跟踪文件和editor_support.h既有状态，阶段保存推送dev。
+
+
+### 2026-11-09：混合自由瓦片文档的 Paint 整格操作阶段
+
+对照 legacy tilemap-document.ts captureTilemapSelectionMove/flipTilemapSelection 及 workspace-commands-selection-move/flip，移除 expandedPaintCellSelection 与键盘分发对无关free层的文档级拒绝，复用既有canonical owner整格移动/复制/翻转事务，保留所有目标、链接、锁定、可见性、选区及几何前置检查。
+
+新增linked/independent × move/copy ×零/正/负偏移12组混合核心检查，覆盖预览、取消、一次提交、Undo/Redo、键盘、水平翻转和native/recovery画面重开，核对无关free实例、缓存、位置及全部瓦片源像素不变。扩展现有真实鼠标Paint移动夹具，加入无关free层，覆盖拖动/Escape/方向键/Ctrl复制及无关数据。首轮窗口断言失败因创建free层改变瓦片模式，夹具返回目标层时显式恢复Paint后通过，未修改产品模式切换逻辑。
+
+正式Release构建成功；CTest document-transactions/free-tile-project/tilemap-document全部通过27.79s；完整--tileset-management-check实际退出0；744文件来源和证据快照及diff检查通过。未重跑全套、未新增FPS或人工截图验收。多目标/runtime shared别名等仍有迁移缺口，整体INCOMPLETE。保留用户数据、缓存、未跟踪文件及editor_support.h既有状态，阶段保存推送dev。
