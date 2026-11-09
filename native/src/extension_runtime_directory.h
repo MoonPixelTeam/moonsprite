@@ -26,6 +26,30 @@ class RuntimeDirectory {
  }
  static bool validId(const std::string& id){return !id.empty()&&id.size()<=80&&id.front()!='.'&&id.back()!='.'&&id.find("..")==std::string::npos&&std::all_of(id.begin(),id.end(),[](unsigned char c){return (c>='a'&&c<='z')||(c>='A'&&c<='Z')||(c>='0'&&c<='9')||c=='.'||c=='-'||c=='_';});}
 public:
+ // Read HTML as legacy package metadata only; no browser/runtime is created.
+ // Inspect anew for each operation so disabled state and modified manifests are
+ // checked at the same boundary as the old host commands.
+ static std::string readRuntimeEntry(const std::filesystem::path& directory,const std::string& id){
+  auto candidate=inspect(directory,id);if(!candidate.enabled)throw std::runtime_error("扩展已停用。");
+  return readText(directory/std::filesystem::path(winrt::to_hstring(id).c_str())/ResourceCatalog::packagePath(candidate.entry),1024u*1024u);
+ }
+ static std::string readSettingsEntry(const std::filesystem::path& directory,const std::string& id){
+  auto candidate=inspect(directory,id);if(!candidate.enabled)throw std::runtime_error("扩展已停用。");if(!candidate.settings.entry)throw std::runtime_error("该扩展未提供设置页面。");
+  return readText(directory/std::filesystem::path(winrt::to_hstring(id).c_str())/ResourceCatalog::packagePath(*candidate.settings.entry),512u*1024u);
+ }
+ static FileDropRouter::Bytes readResource(const std::filesystem::path& directory,const std::string& id,const std::string& resource){
+  auto candidate=inspect(directory,id);if(!candidate.enabled)throw std::runtime_error("扩展已停用。");if(std::find(candidate.permissions.begin(),candidate.permissions.end(),"resources")==candidate.permissions.end())throw std::runtime_error("扩展未获准使用 resources。");return candidate.resources->read(resource);
+ }
+private:
+ static std::string readText(const std::filesystem::path& path,std::size_t limit){
+  // Legacy fs::read follows links here (unlike manifest.json). Retain that
+  // contract; bounded streaming avoids allocating the entire oversized file.
+  std::ifstream input(path,std::ios::binary);if(!input)throw std::runtime_error("无法读取扩展入口。");std::string bytes;char chunk[65536];while(input){input.read(chunk,sizeof(chunk));auto count=std::size_t(input.gcount());if(count>limit-bytes.size())throw std::length_error("扩展入口超过大小限制。");bytes.append(chunk,count);}if(input.bad())throw std::runtime_error("无法完成扩展入口读取。");
+  // Rust String::from_utf8 rejects overlong sequences, surrogate codepoints,
+  // stray continuations and values beyond U+10FFFF. Keep the original bytes.
+  for(std::size_t i=0;i<bytes.size();){auto first=static_cast<unsigned char>(bytes[i++]);if(first<0x80)continue;unsigned remaining=0;std::uint32_t code=0,minimum=0;if(first>=0xc2&&first<=0xdf){remaining=1;code=first&31;minimum=0x80;}else if(first>=0xe0&&first<=0xef){remaining=2;code=first&15;minimum=0x800;}else if(first>=0xf0&&first<=0xf4){remaining=3;code=first&7;minimum=0x10000;}else throw std::invalid_argument("扩展入口必须是 UTF-8 编码。");if(remaining>bytes.size()-i)throw std::invalid_argument("扩展入口必须是 UTF-8 编码。");while(remaining--){auto next=static_cast<unsigned char>(bytes[i++]);if((next&0xc0)!=0x80)throw std::invalid_argument("扩展入口必须是 UTF-8 编码。");code=(code<<6)|(next&63);}if(code<minimum||code>0x10ffff||(code>=0xd800&&code<=0xdfff))throw std::invalid_argument("扩展入口必须是 UTF-8 编码。");}return bytes;
+ }
+public:
  static RuntimeCandidate inspect(const std::filesystem::path& directory,const std::string& id){
   using namespace winrt::Windows::Data::Json;
   if(!validId(id))throw std::invalid_argument("无效的扩展 ID。");

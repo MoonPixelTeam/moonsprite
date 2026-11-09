@@ -5417,3 +5417,10 @@ RuntimeDirectory候选现接入完整设置数据检查。抽取上一阶段命�
 修正早期候选读取保留未知顶层字段的暂缺校验：旧serde明确deny_unknown_fields，现按其完整字段集合拒绝。原始JsonObject继续保留已声明数据；目录候选接入本阶段typed metadata。包内容存在性/安装/实际引擎和正式菜单栏目UI仍未接入，不把清单通过称为扩展可运行。
 
 专项Release构建与10项extension CTest通过；新增20类拒绝场景、三类声明默认值与实际目录组合、16/17与32/33及64/65语言、512/513翻译边界检查。来源和diff检查后阶段保存推送dev。无正式exe更新、GUI/FPS/全套验收；整体INCOMPLETE，用户文件/缓存/editor_support.h原状态保留。
+
+
+### 2026-11-10：扩展目录页面与资源读取接口阶段
+
+以 platform_extensions.rs::read_extension_runtime_entry/read_extension_settings_entry/read_enabled_runtime_resource 为依据，补齐RuntimeDirectory三个读取接口。每次重读清单和enabled状态，资源要求resources权限，settingsEntry必须声明；运行时页面1MiB、设置页512KiB含边界，严格UTF8并保留原始字节（含空页面）。分块限额替代旧fs::read先分配全部文件；页面与资源按旧版跟随链接，未把词法路径校验宣称为真实路径隔离。HTML仅作为包数据，不创建WebView或脚本运行时。
+
+专项测试覆盖中文/emoji、过长/代理区/超Unicode范围/孤立续字节/截断/非法续字节编码、空页面、两类页面精确与超限、缺失入口、未声明设置、停用后拒绝全部读取及资源权限/ID失败。Lua入口另有canonical路径和普通文件约束，尚未迁移，本阶段不宣称完成Lua读取；正式exe和实际引擎仍未接线。Release专项构建、10项extension CTest、来源/diff检查后保存推送dev；无GUI/FPS或全套回归，整体INCOMPLETE，保留用户文件/缓存/editor_support.h原状态。
