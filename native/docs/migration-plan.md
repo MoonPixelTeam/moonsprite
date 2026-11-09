@@ -5374,3 +5374,12 @@ Release相关三个目标重编成功，七项extension CTest全部通过0.37s�
 扩展存储复用公共atomic writer写入并Flush唯一staging，再以ReplaceFileW替换已有文件；目标缺失时使用不覆盖MoveFileExW发布，避免缺失判断后覆盖其它写入。失败删除本次staging、内存不发布，不重试、不清理用户文件。共享读取保留旧文件快照，新路径为完整新值；不开放多写者合并，不修改公共导出writer或工程保存行为。此为浏览器localStorage到Windows文件所必需的原生适配，legacy命名空间/JSON额度/键排序不变。
 
 Release三个相关目标构建成功，八项extension CTest全部通过1.18s，storage0.98s包含受控读句柄、32次连续写入重开及原no-delete-sharing锁定写/删拒绝与旧值保持。实际旧版存储对照继续通过。来源与diff通过后保存推送dev。之前两次第4次替换失败的外部持有者仍未知；本阶段只关闭受控snapshot替换缺陷，不能宣称所有ERROR_ACCESS_DENIED根因消除。无正式exe更新或GUI/FPS验收，整体迁移INCOMPLETE，用户数据/缓存/editor_support.h原状态保留。
+
+
+### 2026-11-10：扩展资源目录与请求读取阶段
+
+对照legacy platform_extensions.rs::valid_extension_id/validate_package_component/validate_package_relative_path、runtime.resources清单校验及read_enabled_runtime_resource，迁移声明目录：最多64资源、ID最多80字节/ASCII字符/大小写去重、路径最多240字节、相对斜线分段、拒绝dot/parent/空段/反斜线/控制字符/Windows保留名、manifest.json及runtime entry保护，读取按大小写精确ID。读取每64KiB检查累计，最多16MiB包含上限，避免旧fs::read先分配超限资源。资源root和映射由可信宿主注入，未接入安装目录/manifest/enabled状态扫描，不虚报完整安装读取链路。
+
+RequestHost resources.read复用权限先行和错误响应，返回实际number[]字节；SessionHost按当前generation安装读取器。回归覆盖声明/缺失/路径/ID/数量/重复/中文文件/0与255字节/16MiB/超限、请求资源读取及无权限/会话关闭。旧版文件读取沿路径跟随链接，本阶段未新增symlink/reparse隔离，不把词法路径校验称作全部文件系统边界保护。
+
+Release三个相关目标构建成功，九项extension CTest全部通过1.32s（资源0.12s、storage0.99s）；来源与diff检查后阶段保存推送dev。无正式exe更新、实际安装包/脚本引擎/窗口/截图/FPS验收；整体迁移继续INCOMPLETE，保留用户数据、缓存及editor_support.h既有状态。

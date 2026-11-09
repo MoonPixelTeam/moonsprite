@@ -1072,7 +1072,8 @@
     "legacy/src/renderer/src/core/extension-runtime.test.ts": "f9bffe8ef2a1b6b24a8ed612dc4153dddde1b8c3dfbdfbd48bdad048a3098dcc",
     "legacy/src/shared/types-extension-runtime.ts": "64130e6851ca468f7e47f6bcd6a06ca07d33a92e5d07f44849dcc60513d78957",
     "legacy/src/renderer/src/components/extensions/ExtensionRuntimeHost.tsx": "875fff36317df785984d8ff0c3e3d9f7b04b76139c711e116e3039191c2ab2ed",
-    "legacy/src/renderer/src/components/extensions/ExtensionRuntimeHost.test.tsx": "a9dda9be867dcf277346994346a8a73573c7373bb7ed31a3e65bd00967e7c4eb"
+    "legacy/src/renderer/src/components/extensions/ExtensionRuntimeHost.test.tsx": "a9dda9be867dcf277346994346a8a73573c7373bb7ed31a3e65bd00967e7c4eb",
+    "legacy/src-tauri/src/platform_extensions.rs": "6ab9600a25a712080504a4420f7280e7192e7b292c508a9aa9fa31352bb49dbd"
   },
   "files": [
     {
@@ -5427,7 +5428,8 @@
       "extensionStorage20261110": "Register Windows extension-storage test with existing moon-project-reader atomic binary writer and windowsapp JSON. Source legacy core/extension-runtime.ts extensionStorage; product runtime integration pending.",
       "extensionRequest20261110": "Add extension-request-host CTest/executable using actual Storage and native RuntimeRegistry/FileDropRouter; legacy ExtensionRuntimeHost.tsx onMessage/handleRequest partial migration.",
       "extensionEvents20261110": "Register extension-event-lifecycle-tests from legacy ExtensionRuntimeHost.tsx send/sendAuthorized/onLoad; product integration pending.",
-      "extensionSession20261110": "Add extension-session-host CTest composing actual native runtime/request/event/storage/drop components; product integration remains pending."
+      "extensionSession20261110": "Add extension-session-host CTest composing actual native runtime/request/event/storage/drop components; product integration remains pending.",
+      "resourceRead20261110": "Add extension-resources executable/CTest, disk-backed and session request integration from platform_extensions.rs and ExtensionRuntimeHost.tsx."
     },
     {
       "file": "scripts/bootstrap.ps1",
@@ -29762,7 +29764,8 @@
         "legacy/src/renderer/src/core/extension-runtime.ts"
       ],
       "scope": "EX-004 authenticated native request dispatch for connected methods",
-      "adaptation": "Legacy onMessage envelope/type/string requestId <=80 UTF16 units/method gate and handleRequest permission-first semantics; connect locale, drop types, storage get/set/remove/list and commands.execute. Identity comes from native transport ownership bool and host object, not params. set uses trusted exact encoded JSON sideband pending actual engine. Unsupported authorized methods explicitly error. No actual transport/UI/installation yet."
+      "adaptation": "Legacy onMessage envelope/type/string requestId <=80 UTF16 units/method gate and handleRequest permission-first semantics; connect locale, drop types, storage get/set/remove/list and commands.execute. Identity comes from native transport ownership bool and host object, not params. set uses trusted exact encoded JSON sideband pending actual engine. Unsupported authorized methods explicitly error. No actual transport/UI/installation yet.",
+      "resourceRead20261110": "resources.read invokes trusted per-host reader after permission and resourceId type validation; returns numeric byte array, error through existing envelope. Legacy ExtensionRuntimeHost handleRequest resources.read; catalog enforces declarations."
     },
     {
       "file": "tests/extension_request_host_test.cpp",
@@ -29815,7 +29818,8 @@
         "legacy/src/renderer/src/core/extension-file-drop.ts"
       ],
       "scope": "EX-004 integrated native event-thread session ownership",
-      "adaptation": "Compose legacy runtime registration, onLoad event queue, request dispatch, file drop and cleanup with persistent Storage. Per-extension replacement stops previous session before publishing new one; generation tokens discard stale native load/request/close callbacks. Tokens are internal handles, not public authentication credentials. No script engine/UI/OS transport. Owners must outlive SessionHost."
+      "adaptation": "Compose legacy runtime registration, onLoad event queue, request dispatch, file drop and cleanup with persistent Storage. Per-extension replacement stops previous session before publishing new one; generation tokens discard stale native load/request/close callbacks. Tokens are internal handles, not public authentication credentials. No script engine/UI/OS transport. Owners must outlive SessionHost.",
+      "resourceRead20261110": "Generation-bound setResourceReader attaches host resource catalog to correct live session; stale token cannot install reader on replacement."
     },
     {
       "file": "tests/extension_session_host_test.cpp",
@@ -29828,6 +29832,26 @@
       ],
       "scope": "Integrated session open/load/requests/storage/drop/replacement/deactivate",
       "adaptation": "Actual disk-backed storage, two namespaces, queued command/activation order, stored data across session replacement, stale callbacks and pending reads, locale/request agreement, close during file read, load failure and host destruction. Core-only, no real engine or desktop window."
+    },
+    {
+      "file": "src/extension_resources.h",
+      "classification": "legacy-partial",
+      "sources": [
+        "legacy/src-tauri/src/platform_extensions.rs",
+        "legacy/src/renderer/src/components/extensions/ExtensionRuntimeHost.tsx"
+      ],
+      "scope": "EX-004 resource catalog validation and bounded file reads",
+      "adaptation": "Adapt platform_extensions.rs valid_extension_id, validate_package_component/relative_path, runtime manifest resource validation and read_enabled_runtime_resource:64 max,80-byte IDs casefold uniqueness,240-byte path,Windows reserved/control/unsafe names,protected entry,case-sensitive lookup,16MiB inclusive. Bound reads before oversized allocation. Root/catalog provided by trusted host, installed manifest/enabled state loading not migrated. No symlink/reparse confinement claim; legacy read follows filesystem paths."
+    },
+    {
+      "file": "tests/extension_resources_test.cpp",
+      "classification": "legacy-partial",
+      "sources": [
+        "legacy/src-tauri/src/platform_extensions.rs",
+        "legacy/src/renderer/src/components/extensions/ExtensionRuntimeHost.tsx"
+      ],
+      "scope": "Resource disk/catalog/request integration",
+      "adaptation": "Unsafe path/ID/reserved/protected/duplicate/count cases,Unicode raw binary,missing/case mismatch,16MiB and overflow,session resource request byte array,permission and close. No actual package install/engine/UI."
     }
   ],
   "assetTransfers": [

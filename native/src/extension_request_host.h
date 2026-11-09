@@ -9,10 +9,11 @@ namespace moon::extension {
 // the script engine's exact JSON.stringify(value) result. Never infer identity
 // or a storage namespace from untrusted request params.
 class RequestHost {
- RuntimeExtension extension_;std::vector<std::string> permissions_;Storage& storage_;FileDropRouter& drops_;RuntimeRegistry& registry_;CommandHandlers handlers_;std::vector<RuntimeCommand> commands_;bool active_=true;
+ RuntimeExtension extension_;std::vector<std::string> permissions_;Storage& storage_;FileDropRouter& drops_;RuntimeRegistry& registry_;CommandHandlers handlers_;std::vector<RuntimeCommand> commands_;bool active_=true;std::function<FileDropRouter::Bytes(const std::string&)> readResource_;
  static std::u16string units(const winrt::hstring& s){return {reinterpret_cast<const char16_t*>(s.data()),s.size()};}
 public:
  RequestHost(RuntimeExtension extension,std::vector<std::string> permissions,Storage& storage,FileDropRouter& drops,RuntimeRegistry& registry,CommandHandlers handlers={},std::vector<RuntimeCommand> commands={}):extension_(std::move(extension)),permissions_(std::move(permissions)),storage_(storage),drops_(drops),registry_(registry),handlers_(std::move(handlers)),commands_(std::move(commands)){}
+ void setResourceReader(std::function<FileDropRouter::Bytes(const std::string&)> reader){readResource_=std::move(reader);}
  void deactivate(){active_=false;drops_.clear(extension_.id);}
  std::optional<winrt::Windows::Data::Json::JsonObject> handle(const winrt::Windows::Data::Json::IJsonValue& raw,bool ownsSession,const std::string& locale,std::optional<std::string> encodedValue={}){
   using namespace winrt::Windows::Data::Json;
@@ -31,6 +32,7 @@ public:
     if(!params.HasKey(L"extensions")||params.GetNamedValue(L"extensions").ValueType()!=JsonValueType::Array)throw std::invalid_argument("Invalid extension file-drop suffixes");
     std::vector<std::string> types;for(const auto& item:params.GetNamedArray(L"extensions")){if(item.ValueType()!=JsonValueType::String)throw std::invalid_argument("Invalid extension file-drop suffixes");types.push_back(winrt::to_string(item.GetString()));}drops_.setTypes(extension_.id,std::move(types));
    }
+   else if(method=="resources.read"){if(!params.HasKey(L"resourceId")||params.GetNamedValue(L"resourceId").ValueType()!=JsonValueType::String||!readResource_)throw std::invalid_argument("扩展运行时资源不存在。");JsonArray bytes;for(auto byte:readResource_(winrt::to_string(params.GetNamedString(L"resourceId"))))bytes.Append(JsonValue::CreateNumberValue(byte));result=bytes;}
    else if(method=="storage.get")result=storage_.get(owner,key());
    else if(method=="storage.set"){const auto resolved=key();if(!encodedValue)throw std::invalid_argument("扩展存储值超过大小限制。");storage_.setEncoded(owner,resolved,*encodedValue);}
    else if(method=="storage.remove")storage_.remove(owner,key());
