@@ -10584,6 +10584,7 @@
     },
     {
       "file": "tests/canvas_performance_test.cpp",
+      "hybridDeferredRenderOracle20261110": "Legacy core/tilemap-document.ts previewTilemapSelectionMove local cell rerender vs rerenderTilesetTileReferences source changes; user-approved Hybrid preview=commit remains basis. Add production CanvasRenderer Skia offscreen oracle on260-square Hybrid with half-alpha and flipped remote shared ref. Move/copy cached draw equals fresh full renderer across aligned/sample transitions, skipped revision, cancel, commit, UndoRedo; aligned uploadedPixels below full canvas. canvas-performance-tests --tilemap-preview actually exit0 after rebuilding target. No product changes/new window screenshot or measured FPS; core renderer coverage only.",
       "classification": "legacy-native-adapter",
       "sources": [
         "legacy/src/renderer/src/components/canvas-composite-cache-chunked-upload.test.ts",

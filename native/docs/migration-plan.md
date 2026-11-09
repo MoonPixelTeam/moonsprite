@@ -5260,3 +5260,10 @@ legacy canvas-render-selection-preview.ts对两种套索的每个栅格路径点
 对照legacy tilemap-document.ts::previewTilemapSelectionMove只rerenderTilemapCells而像素资源修改才rerenderTilesetTileReferences，Hybrid连续整格引用移动不再扫描/扩展所有共享源位置。仅当旧、新变换均为矩形原选区的精确整格移动且无变换后源时启用；整格与采样互转继续包含共享源引用，确保恢复此前远处像素patch。
 
 260×260链接夹具新增(200,200)同源远处引用，move/copy均检查：整格dirty局部、切到采样覆盖远处、切回整格预览精确恢复且逐点dirty覆盖所有变化、再次整格移动回到局部dirty及取消authority不变。既有资源/链接/preview=commit与UndoRedo矩阵继续通过。正式Release成功；tilemap-document通过0.35s，完整--tileset-management-check实际退出0。744来源/证据和diff通过。新远处引用转换为核心验收，未新增窗口夹具/截图或FPS量测；整体迁移仍INCOMPLETE，本阶段保存推送dev。
+
+
+### 2026-11-10：Hybrid局部刷新实际渲染器验收
+
+补齐上一阶段局部脏区在CanvasRenderer缓存中的证据：260×260 Hybrid、半透明源及(200,200)翻转同源引用，移动/复制两组调用正式Skia离屏绘制，将持续缓存与每次新建renderer完整结果逐像素比较。覆盖整格→采样→整格、连续整格、跳过中间revision的fallback、Escape对应cancel、commit、UndoRedo，检查整格移动上传像素少于全画布。legacy tilemap-document.ts的引用局部重绘与资源引用刷新仍为语义依据，未改变产品逻辑。
+
+重建canvas-performance-tests成功，实际--tilemap-preview退出0，既有tilemap shape/gradient当前及其他帧oracle与新增Hybrid浮动oracle全部执行通过。744来源/证据和diff通过；本阶段仅渲染核心验收，未重复产品构建/窗口诊断，没有人工截图或输入/显示FPS量测。整体迁移仍INCOMPLETE，本阶段保存推送dev。

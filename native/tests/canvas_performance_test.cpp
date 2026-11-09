@@ -196,9 +196,21 @@ static void tilemapPreviewOracle(){
  require(doc.beginShapePreview(),"Skipped shape begin");shape.bounds={2,2,1,1};doc.updateShapePreview(shape,0xff556677);sync();shape.bounds={8,8,1,1};doc.updateShapePreview(shape,0xff778899);shape.bounds={10,10,1,1};doc.updateShapePreview(shape,0xff99aabb);sync();doc.cancelShapePreview();sync();
  std::cout<<"Tile preview local upload and actual canvas/frame pixel oracle passed\n";
 }
+static void hybridFloatingRenderOracle(){
+ for(bool copy:{false,true}){
+  auto seed=std::make_unique<Document>(260,260);seed->beginStroke({0,0},0x80123456);seed->commitStroke();require(seed->convertLayerToTilemap(4,4,U"Hybrid render"),"Hybrid render conversion");auto state=seed->timeline().state();const auto layer=seed->layer().id,frame=seed->frame().id;auto& cel=state.cels.front();auto& grid=*cel.tilemap;grid.cells[std::size_t(50)*grid.columns+50]=grid.cells[0];grid.cells[std::size_t(50)*grid.columns+50]->flipHorizontal=true;cel.surface->pixels=tiles::render(grid,state.tilesets);
+  auto owned=std::make_unique<Document>(Document::fromImported(260,260,state,seed->palette(),"hybrid-render",U"Hybrid render",std::make_shared<const std::vector<std::uint8_t>>()));auto& doc=*owned;doc.selectLayer(layer);doc.selectFrame(frame);doc.setTilemapMode(tiles::Mode::Hybrid);CanvasRenderer cache;
+  auto pixels=[&](CanvasRenderer& renderer){renderer.sync(doc);auto output=os::instance()->makeRgbaSurface(260,260);output->clear();ui::Graphics g(output);renderer.draw(g,{0,0,260,260},1,gfx::rgba(43,73,111),gfx::rgba(43,73,111));std::vector<gfx::Color> result;result.reserve(260*260);for(int y=0;y<260;++y)for(int x=0;x<260;++x)result.push_back(output->getPixel(x,y));return result;};
+  auto verify=[&]{CanvasRenderer fresh;require(pixels(cache)==pixels(fresh),"Hybrid cached floating draw differs from fresh full render");};const auto baseline=pixels(cache);doc.previewSelection(SelectionMask{0,0,4,4,{}});require(doc.beginSelectionContentMove(copy)&&doc.floatingDeferred(),"Hybrid render deferred capture");verify();
+  auto local=[&](int x){const auto uploads=cache.uploadedPixels();doc.moveFloatingPaste(x,0);verify();require(cache.uploadedPixels()-uploads<260*260,"Hybrid aligned move uploaded entire canvas");};local(8);doc.moveFloatingPaste(1,0);verify();local(8);local(12);
+  // Skip a revision: renderer must fall back rather than lose the remote restore.
+  doc.moveFloatingPaste(1,0);doc.moveFloatingPaste(8,0);verify();doc.cancelFloatingPaste();verify();require(pixels(cache)==baseline,"Hybrid render cancel residue");
+  require(doc.beginSelectionContentMove(copy),"Hybrid render recapture");doc.moveFloatingPaste(8,0);verify();const auto preview=pixels(cache);require(doc.commitFloatingPaste(),"Hybrid render commit");verify();require(pixels(cache)==preview,"Hybrid render preview differs from commit");doc.undo();cache.noteChange(doc);verify();require(pixels(cache)==baseline,"Hybrid render Undo residue");doc.redo();cache.noteChange(doc);verify();require(pixels(cache)==preview,"Hybrid render Redo residue");
+ }
+}
 int main(int argc,char* argv[]){try{
   auto system=os::System::make();system->setAppMode(os::AppMode::GUI);
-  if(argc>1&&std::string(argv[1])=="--tilemap-preview"){tilemapPreviewOracle();return 0;}
+  if(argc>1&&std::string(argv[1])=="--tilemap-preview"){tilemapPreviewOracle();hybridFloatingRenderOracle();return 0;}
   checkerboardOracle();if(argc>1 && std::string(argv[1])=="--checkerboard")return 0;
   absentPasteRenderOracle();absentStrokeRenderOracle();absentEffectRenderOracle();absentGradientRenderOracle();spatialDirtyOracle();floatingEffectDirtyOracle();clipboardPreviewAdmissionOracle();clipboardStackParityOracle();strokeRecorderOracle();pixelOracle();largeTimeline();
   for(int size:{32,256,512,1024})benchmark(size,1,1);
