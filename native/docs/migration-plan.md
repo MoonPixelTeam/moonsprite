@@ -5349,3 +5349,10 @@ set接收可信脚本桥已JSON.stringify的独立编码载荷；目前并无实
 Release专项构建成功，六项extension CTest通过（首次0.57s）；核对真实磁盘重开、两个宿主隔离与参数伪造、权限/参数失败、注册原子性、命令与运行时停止、非所属会话/畸形/ID边界/禁用/停用。首次编译修正WinRT字符串工厂显式hstring构造。新增两文件与CMake来源登记，diff检查后保存推送dev。无正式exe更新、实际传输/窗口/截图/FPS验收；全量目标继续INCOMPLETE，保留用户数据、缓存及editor_support.h既有状态。
 
 本阶段最终复验曾出现一次extension-storage第四次原子替换ERROR_ACCESS_DENIED，失败目标保留，未改变原子写入错误规则、未增加重试。随后存储定向复验0.24s与旧版存储对照通过，再执行完整六项extension全部通过0.34s。未定位首次外部拒绝来源，不能声称已修复偶发Windows替换失败；生产仍明确报错并保留旧状态。
+
+
+### 2026-11-10：扩展加载前事件与激活生命周期阶段
+
+迁移legacy ExtensionRuntimeHost.tsx::send/sendAuthorized/onLoad及语言变化/失败清理。加载前仅排队command/settings-changed，最多256条；settings事件先去除旧设置再追加，保留旧版容量判断顺序。加载失败清队列并拒绝后续排队；加载成功按locale-changed（runtime权限）、activate、project（workspace.read权限）、原排队事件顺序投递。按旧版十余类事件权限过滤，locale偏好变化去重；停用仅发送一次deactivate并清空队列/阻止后续投递。增加locale/extensionId/apiVersion真实typed字段，注册表命令与生命周期已在核心回归组合运行。
+
+Release相关三个目标重编成功，七项extension CTest全部通过0.37s；verify-extension-events.cjs直接抽取旧send/sendAuthorized执行，预加载合并、初始化顺序、权限及256队列上限与原生断言一致；34项权限与旧注册/命令对照继续通过。本阶段尚未接入实际脚本加载失败回调、正式编辑器locale订阅/clock定时器/窗口释放或OS传输；不将核心生命周期称为可运行扩展。runtime.getCapabilities继续明确未接线，待完整公开子集定义后实现，未擅自改变旧版全权限方法枚举行为。来源/diff通过后阶段保存推送dev；无正式exe更新、截图/FPS/全套验收。整体INCOMPLETE，保留所有用户数据、缓存和editor_support.h既有状态。

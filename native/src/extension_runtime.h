@@ -9,6 +9,7 @@
 namespace moon::extension {
 struct RuntimeEvent {
  std::string type, commandId, event, payload;
+ std::string locale, extensionId, apiVersion;
  struct File {std::string name;FileDropRouter::Bytes bytes;};
  std::vector<File> files;
 };

@@ -5425,7 +5425,8 @@
       "unicodeTestEntrypoint20261109": "Link sequence import regression to existing moon-pattern-import for the production PNG decoder, exercising real Unicode disk paths instead of mocked reads. No additional decoder implementation or runtime behavior change.",
       "extensionRuntime20261110": "Register extension-runtime executable and CTest against legacy core/extension-runtime.ts behavior. Four extension tests pass0.09s; no product target update.",
       "extensionStorage20261110": "Register Windows extension-storage test with existing moon-project-reader atomic binary writer and windowsapp JSON. Source legacy core/extension-runtime.ts extensionStorage; product runtime integration pending.",
-      "extensionRequest20261110": "Add extension-request-host CTest/executable using actual Storage and native RuntimeRegistry/FileDropRouter; legacy ExtensionRuntimeHost.tsx onMessage/handleRequest partial migration."
+      "extensionRequest20261110": "Add extension-request-host CTest/executable using actual Storage and native RuntimeRegistry/FileDropRouter; legacy ExtensionRuntimeHost.tsx onMessage/handleRequest partial migration.",
+      "extensionEvents20261110": "Register extension-event-lifecycle-tests from legacy ExtensionRuntimeHost.tsx send/sendAuthorized/onLoad; product integration pending."
     },
     {
       "file": "scripts/bootstrap.ps1",
@@ -29684,7 +29685,8 @@
         "legacy/src/shared/types-extension-runtime.ts"
       ],
       "scope": "EX-004 runtime registration, event/command dispatch and method permissions",
-      "adaptation": "Legacy Map identity cleanup, insertion-order live broadcast including callback registration/removal, propagated exceptions, command priority lua/runtime/settings and exact 34-method permission table. Typed native event envelope; arbitrary payload remains opaque pending actual host JSON wiring. Files dropped adapter composes FileDropRouter with registry. Event-thread calls only; no JS engine or UI host."
+      "adaptation": "Legacy Map identity cleanup, insertion-order live broadcast including callback registration/removal, propagated exceptions, command priority lua/runtime/settings and exact 34-method permission table. Typed native event envelope; arbitrary payload remains opaque pending actual host JSON wiring. Files dropped adapter composes FileDropRouter with registry. Event-thread calls only; no JS engine or UI host.",
+      "lifecycleFields20261110": "Typed locale, extensionId and apiVersion fields for legacy onLoad locale-changed/activate events; existing opaque payload and registry behavior unchanged."
     },
     {
       "file": "tests/extension_runtime_test.cpp",
@@ -29769,6 +29771,36 @@
       ],
       "scope": "Request dispatch with actual atomic disk storage and registry",
       "adaptation": "Two host namespaces, spoofed params, permission errors, malformed/foreign/id boundary/disabled and deactivated request suppression, successful/error envelopes, disk reopen, drop registration atomicity, command priority and stopped runtime false. No browser/OS transport asserted."
+    },
+    {
+      "file": "src/extension_event_lifecycle.h",
+      "classification": "legacy-partial",
+      "sources": [
+        "legacy/src/renderer/src/components/extensions/ExtensionRuntimeHost.tsx",
+        "legacy/src/renderer/src/components/extensions/ExtensionRuntimeHost.test.tsx"
+      ],
+      "scope": "EX-004 send/sendAuthorized/onLoad event lifecycle",
+      "adaptation": "Legacy permission families, load-only command/settings queue256, settings coalesce before capacity, failure clear, locale-before-activate-before-project-before-pending, locale dedup and teardown. Native callback transport on event thread; actual engine loading/timer/editor subscription/window cleanup not integrated."
+    },
+    {
+      "file": "tests/extension_event_lifecycle_test.cpp",
+      "classification": "legacy-partial",
+      "sources": [
+        "legacy/src/renderer/src/components/extensions/ExtensionRuntimeHost.tsx",
+        "legacy/src/renderer/src/components/extensions/ExtensionRuntimeHost.test.tsx"
+      ],
+      "scope": "Event lifecycle and registry composition regression",
+      "adaptation": "Registered runtime commands enter queued lifecycle; assert exact order/typed fields, settings latest, permission denial and all allowed families, full queue, load failure, duplicate locale and idempotent deactivate."
+    },
+    {
+      "file": "scripts/verify-extension-events.cjs",
+      "classification": "legacy-partial",
+      "sources": [
+        "legacy/src/renderer/src/components/extensions/ExtensionRuntimeHost.tsx",
+        "legacy/src/renderer/src/components/extensions/ExtensionRuntimeHost.test.tsx"
+      ],
+      "scope": "Actual legacy event sending functions execution",
+      "adaptation": "Extract unchanged send/sendAuthorized function block, strip TypeScript types, inject controlled refs/frame and compare preload coalescing/load order/permission/queue limit with native regression expectations; no browser engine tested."
     }
   ],
   "assetTransfers": [
