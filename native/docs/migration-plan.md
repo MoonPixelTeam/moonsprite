@@ -4866,3 +4866,12 @@ smokeWorkspace布局交互完成后切至已有移动工具，固定后续画布
 新增linked/independent × move/copy ×零/正/负偏移12组混合核心检查，覆盖预览、取消、一次提交、Undo/Redo、键盘、水平翻转和native/recovery画面重开，核对无关free实例、缓存、位置及全部瓦片源像素不变。扩展现有真实鼠标Paint移动夹具，加入无关free层，覆盖拖动/Escape/方向键/Ctrl复制及无关数据。首轮窗口断言失败因创建free层改变瓦片模式，夹具返回目标层时显式恢复Paint后通过，未修改产品模式切换逻辑。
 
 正式Release构建成功；CTest document-transactions/free-tile-project/tilemap-document全部通过27.79s；完整--tileset-management-check实际退出0；744文件来源和证据快照及diff检查通过。未重跑全套、未新增FPS或人工截图验收。多目标/runtime shared别名等仍有迁移缺口，整体INCOMPLETE。保留用户数据、缓存、未跟踪文件及editor_support.h既有状态，阶段保存推送dev。
+
+
+### 2026-11-09：Paint 待提交选区翻转阶段
+
+依据 legacy workspace-commands-selection-flip.ts::flipActiveSelection 的 pendingPaste 优先级，修复原生 Paint 浮动选区提前进入静态整格翻转而拒绝操作的问题。浮动继续复用既有源像素/不规则mask翻转，保持几何与待提交状态，不增加预览历史、不修改资源；静态Paint继续整格翻转。菜单门控放行已经捕获的浮动，提交沿用用户批准的Create瓦片事务。
+
+新增两个方向×移动/复制×链接/独立×零/正/负偏移24组检查，覆盖精确像素/mask反射、双翻恢复、取消、一次提交、保留旧资源、Undo/Redo及native/recovery持久化。首轮夹具在部分偏移下没有选到有色像素，补充不同色源像素确保每组有有效内容；核心三项全部通过34.39s。扩展真实菜单水平翻转和ShiftV检查，窗口首轮翻转通过，但提交比较误用只支持deferred的overlay接口，改为按实际预览模式取像素。最终窗口验收结果见下。
+
+正式Release构建成功；完整 --tileset-management-check 实际退出0，744文件来源覆盖与证据快照及diff检查通过。未重跑全套、未新增FPS或人工截图验收。多目标/runtime shared别名等仍有迁移缺口，整体INCOMPLETE。保留用户数据、缓存、未跟踪文件及editor_support.h既有状态，本阶段保存推送dev。
