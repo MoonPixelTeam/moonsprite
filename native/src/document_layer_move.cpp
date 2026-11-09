@@ -18,7 +18,11 @@ bool Document::nudgeTextLayer(int dx,int dy){
  reserveHistoryEntries();applyEdit(edit,true);publishChange();pushEdit(std::move(edit),U"移动图层");return true;
 }
 std::vector<std::string> Document::layerMoveTargets()const{return layerMove_?layerMove_->celIds:std::vector<std::string>{};}
-bool Document::beginLayerMove(const std::vector<std::string>& ids,bool duplicate,std::optional<TransformPoint> pivot,LayerMoveScope scope){if(hasTilemapContent()||hasFreeTileContent())return false;
+bool Document::beginLayerMove(const std::vector<std::string>& ids,bool duplicate,std::optional<TransformPoint> pivot,LayerMoveScope scope){
+ // Unrelated special layers must not block ordinary raster/text owners.
+ // Keep special placements gated until their authoritative metadata move is ported.
+ if(!activeMaskId_.empty()&&(hasTilemapContent()||hasFreeTileContent()))return false;
+ for(const auto& id:ids)if(const auto* c=timeline_.findCelById(id)){const auto& l=timeline_.state().layers[timeline_.layerIndex(c->layerId)];if(l.kind=="tilemap"||l.kind=="free-tile")return false;}
  const bool textBoxOnly=scope==LayerMoveScope::TextBox;
  if(textBoxOnly){if(duplicate||hasSelectedGroups()||layer().kind!="text"||ids.size()!=1||ids.front()!=cel().id)return false;const auto selected=selectedLayerIdsWithGroups();if(selected.size()>1||(selected.size()==1&&selected.front()!=layer().id))return false;const auto source=timeline_.resolveSurface(cel().id);if(!source.source||!source.source->text||!source.source->text->boxed)return false;}
 

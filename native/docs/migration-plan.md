@@ -4757,3 +4757,11 @@ X/Y/Both合成/当前层及左右键实际诊断验证100次preview请求不发�
 串行执行Release CTest全部210项，209项通过；第25项pattern-brush-library旧二进制偶发“Cannot replace brush file”，其余209项均通过，记录于build/migration-full-ctest-current.log。单独复测旧用例通过，不能据此断言原因已被唯一确定。对照legacy/src-tauri/src/platform_storage.rs的唯一同目录临时文件、同步写入和原子替换语义，修复native画笔库原固定 .tmp：Windows CREATE_NEW独占预留进程号/时间/序列临时名，写入并FlushFileBuffers后MoveFileExW替换；失败保留GetLastError且只清理由本次创建的临时文件，不触碰原目标或已有 .tmp。测试在写入前创建旧固定 .brush-order.json.tmp，连续保存和重排后检查原内容不变。
 
 正式Release程序及pattern-brush-library-tests构建退出0；修复后专项CTest连续5次通过。744文件来源快照及diff检查通过。没有在修复后二次运行整套210项，因此不能宣称当前全套全绿；没有新增GUI截图或全软件FPS验收。性能与迁移仍有已登记缺口，整体迁移INCOMPLETE；保留用户数据、构建缓存及未跟踪文件。
+
+### 2026-11-09：混合工程普通图层移动完整事务阶段
+
+对照legacy canvas-input-layer-move.ts具体目标解析、workspace-layer-move.ts的resolved Cel偏移/延迟Alt复制，修复原生beginLayerMove因文档包含任意tilemap/free-tile而拒绝普通目标的问题。普通栅格/文字沿现有零像素重采样事务执行；明确包含特殊目标时仍在变更前拒绝，不通过移动派生缓存冒充特殊图层迁移。活动蒙版单独画布移动语义仍待核对，未在此开放。
+
+完整mixed free/grid/raster工程回归覆盖四组复制/移动×提交/取消，连续绝对预览、链接帧共享根、绑定蒙版帧作用域、单历史、Undo/Redo、保存重开、已有资源/实例/网格/缓存不变及锁定/隐藏拒绝。原夹具含legacy规范化会舍弃的自定义扩展字段，先保存重开建立规范化基线再比对；没有修改生产导入规则。蒙版断言先误认为独立蒙版随链接像素跨帧移动，已按旧版目标帧语义校正。
+
+正式Release及free-tile-project-tests/attached-masks-tests构建退出0；实际--layer-move-check退出0，新增混合文档鼠标移动/Alt复制、捕获释放、Escape和Undo/Redo，原168组平铺/组移动继续运行。四项CTest free-tile-project/attached-masks/alignment/move-click-flash通过14.28s；744来源快照与diff检查通过。无新人工截图/FPS验收，未重跑全套；特殊图层本体移动、Paint自由变换/多目标、扩展兼容等仍未完整迁移，整体INCOMPLETE。保留用户文件、缓存和未跟踪数据，阶段保存推送dev。
