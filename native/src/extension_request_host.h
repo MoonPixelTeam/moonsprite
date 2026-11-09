@@ -16,6 +16,7 @@ class RequestHost {
 public:
  RequestHost(RuntimeExtension extension,std::vector<std::string> permissions,Storage& storage,FileDropRouter& drops,RuntimeRegistry& registry,CommandHandlers handlers={},std::vector<RuntimeCommand> commands={}):extension_(std::move(extension)),permissions_(std::move(permissions)),storage_(storage),drops_(drops),registry_(registry),handlers_(std::move(handlers)),commands_(std::move(commands)){}
  void setDeclaredMenus(std::vector<std::string> ids){menus_.setDeclared(std::move(ids));}
+ MenuState::Stop subscribePresentation(std::function<void()> callback){return menus_.subscribe(std::move(callback));}
  const MenuState& menus()const{return menus_;}
  // Authenticated window-message bridge, separate from runtime method permissions.
  bool reportCommandState(const winrt::Windows::Data::Json::JsonObject& params,bool ownsSession){

@@ -27,6 +27,16 @@ int main(int argc,char** argv){RoInitialize(RO_INIT_MULTITHREADED);try{
  revision=one.menus().revision();bool invalid=false;try{one.reportCommandState(JsonObject::Parse(LR"({"commandId":"go","state":{"checked":true,"visible":null}})"),true);}catch(...){invalid=true;}check(invalid&&one.menus().revision()==revision&&!one.menus().checked("go"),"Invalid command state atomic");
  check(!two.reportCommandState(state,true)&&!two.menus().checked("go")&&!one.reportCommandState(JsonObject::Parse(LR"({"commandId":"missing","state":{"checked":true}})"),true),"Undeclared command isolation");
  one.reportCommandState(JsonObject::Parse(LR"({"commandId":"go","state":{}})"),true);check(one.menus().revision()==revision,"Empty command patch churn");
+
+ // Legacy Set live traversal: removal skips a pending callback, insertion runs
+ // in this notification; snapshot copies must not retain live subscriptions.
+ MenuState observed({"top"});std::vector<int> order;MenuState::Stop removeSecond,removeAdded;
+ auto removeFirst=observed.subscribe([&]{order.push_back(1);removeSecond();if(!removeAdded)removeAdded=observed.subscribe([&]{order.push_back(3);});});removeSecond=observed.subscribe([&]{order.push_back(2);});
+ observed.setCommand("a",{true,{}});check(order==std::vector<int>({1,3}),"Live subscriber traversal");order.clear();observed.setCommand("a",{true,{}});check(order.empty(),"Duplicate update notifies subscribers");
+ MenuState snapshot(observed);snapshot.setCommand("a",{false,{}});check(order.empty()&&observed.checked("a"),"Snapshot subscription/value isolation");removeFirst();removeFirst();observed.setCommand("a",{false,{}});check(order==std::vector<int>({3}),"Unsubscribe idempotence");removeAdded();
+ int changes=0;auto unsubscribe=observed.subscribe([&]{++changes;check(!observed.checked("a"),"Published state before notification");});observed.set(JsonObject::Parse(LR"({"menuId":"top","name":"Top","items":[]})"));check(changes==1,"Menu title notifies");observed.clear();observed.clear();check(changes==2,"Combined clear notifies once");unsubscribe();
+ MenuState::Stop afterDestruction;{MenuState temporary;afterDestruction=temporary.subscribe([]{});}afterDestruction();
+ MenuState throws;auto removeThrow=throws.subscribe([]{throw std::runtime_error("listener");});bool threw=false;try{throws.setCommand("a",{true,{}});}catch(...){threw=true;}removeThrow();int recovered=0;auto stopRecovered=throws.subscribe([&]{++recovered;});throws.setCommand("a",{false,{}});check(threw&&recovered==1&&throws.revision()==2,"Listener failure leaves published state/traversal usable");stopRecovered();
  check(!call(one,"unknown.method").GetNamedBoolean(L"ok")&&!call(one,"runtime.getCapabilities").GetNamedBoolean(L"ok"),"Unsupported false success");
  check(call(one,"storage.remove","{\"key\":\"value\"}").GetNamedBoolean(L"ok")&&Storage(path).list(u"one").empty(),"Remove request");
  auto raw=JsonValue::Parse(L"{\"type\":\"moonsprite-extension-request\",\"requestId\":\"x\",\"method\":\"storage.list\"}");check(!one.handle(raw,false,"en-US")&&!one.handle(JsonValue::Parse(L"{}"),true,"en-US"),"Untrusted/malformed request responded");one.deactivate();check(!drops.accepts("pet.custom")&&!one.handle(raw,true,"en-US"),"Deactivate requests");

@@ -5532,3 +5532,10 @@ Release三个相关目标成功，10项extension通过1.74s。覆盖动态请求
 承接extension-command-state.ts及其测试：未知命令默认未勾选且可见，checked/visible部分更新保留省略字段，false作为有效值，相同值或空补丁不增加修订号；停用统一清空命令与菜单状态。MenuState声明更新保留命令状态并保持revision单调。核对ExtensionWindow::window.setCommandState和ExtensionRuntimeHost的command-state消息，只提供内部已认证会话上报桥，校验命令ID/布尔类型和本扩展声明命令归属；不新增运行时权限方法。SessionHost拒绝关闭/替换后的旧token。
 
 Release三个相关目标构建成功，extension-request-host/session-host/resources三项检查通过0.26s；覆盖默认值、部分false更新、重复与空更新、无效输入原子性、跨宿主归属、声明更新保留、停用清空和旧token拒绝。来源774文件覆盖及diff检查通过。原生窗口消息传输、订阅Set与正式菜单渲染仍未接入，本阶段仅核心状态链路，不宣称扩展可运行或性能收益；无正式exe/GUI/全套验收，整体INCOMPLETE。保留安装失败现场、用户数据/缓存和editor_support.h既有状态。
+
+
+### 2026-11-10：扩展呈现状态订阅生命周期阶段
+
+迁移extension-command-state.ts::subscribeExtensionCommandState/notify的实时遍历：先发布状态及revision后通知，移除尚未执行的监听器会跳过，通知期间追加的监听器参与本次遍历；取消幂等，销毁后取消安全，监听器异常后遍历计数仍恢复。命令/菜单/声明变化与停用清空复用同一通知路径，无变化不通知，联合清空只通知一次。RequestHost与SessionHost提供订阅桥，旧token订阅为空操作；MenuState读取快照仅复制值，不共享宿主订阅。原生std::function没有JS函数对象身份，每次注册使用独立身份，不宣称同一JS函数Set去重已经接入；未来引擎桥须保持其函数身份。
+
+Release三个相关目标成功，extension-request-host/session-host/resources三项通过0.28s，含实时增删、重复更新抑制、快照隔离、重复/销毁后取消、异常恢复、会话更新与关闭通知。来源覆盖及diff检查后保存推送dev。此阶段完整交付核心订阅生命周期；正式UI消费者、全局聚合状态与引擎窗口仍待接入，无正式exe/GUI/全套验收，整体INCOMPLETE。保留既有用户差异、缓存和安装失败现场。
