@@ -1067,7 +1067,10 @@
     "legacy/src/renderer/src/components/canvas-render-free-tile-brush.ts": "39588e93ba87951139f7940e9f7d84346843c89df2595b1d146e827861814ceb",
     "legacy/src/renderer/src/components/useCanvasViewportGeometry.ts": "a48fdfd06d7a6b684eea4f91ae47faa53eccf71b910eb9962d61548dbea919cd",
     "legacy/src/renderer/src/core/extension-file-drop.ts": "ff54ee21fa329f11cb3960ef225b797956ec30020a531a06cd8f9f4e3320859f",
-    "legacy/src/renderer/src/core/extension-file-drop.test.ts": "f9dc9e941c9b7f63a3cc95018c1ac67a2dc802719569c564adcebe64b164ad55"
+    "legacy/src/renderer/src/core/extension-file-drop.test.ts": "f9dc9e941c9b7f63a3cc95018c1ac67a2dc802719569c564adcebe64b164ad55",
+    "legacy/src/renderer/src/core/extension-runtime.ts": "40f57337de1fe15722fc3bfb48cde49cb872e1d6b05dc27d543104855d2e363d",
+    "legacy/src/renderer/src/core/extension-runtime.test.ts": "f9bffe8ef2a1b6b24a8ed612dc4153dddde1b8c3dfbdfbd48bdad048a3098dcc",
+    "legacy/src/shared/types-extension-runtime.ts": "64130e6851ca468f7e47f6bcd6a06ca07d33a92e5d07f44849dcc60513d78957"
   },
   "files": [
     {
@@ -5417,7 +5420,8 @@
       "tileRepeat20261109": "Legacy fixed 3/9 adjacent-copy preview, positive-modulo point mapping, rectangle/masked selection folding and rotation-aware fit port. Native menu/shortcut state and quick-bar toggle, session-owned identity guard; one existing composite/upload shared by repeated draws, checker and existing guides/overlays. 1024 actual legacy mapping/fit/selection oracle cases passed. Formal Release build exit 0, --tile-repeat-check exit 0; menu/shortcut/quick toggle/rotation fit/session restore/content-history invariants, nine offscreen copy center pixels and unchanged upload count verified. Window screenshot reviewed after correcting premature black capture by dispatching smoke from the live event loop. Repeated input seam editing, floating selections and all-tool wrap integration remain INCOMPLETE; do not claim complete tile-repeat migration.",
       "tileRepeatInput20261109": "Repeated raster input migration: continuous raw pointer stroke, wrap center before symmetry/coverage, unclipped symmetry destinations then positive modulo and selection test; existing pending/coverage/perfect-tail transaction retained. Solid/image/dynamic strokes, preview and marquee folding verified: five targeted CTests passed; formal Release build and --tile-repeat-check exited 0, including real pointer seam drawing, one history entry, Undo/Redo and folded marquee. No full-tool or FPS claim. Tilemap paint/free-source special editing, lasso/selection brush/floating commit and other tools remain incomplete.",
       "compileBoundaries20261109": "Native build adaptation only: compile document_slices.cpp as its own core translation unit; Editor lifecycle compiles its declaration first; extract the unchanged migrated GradientStopsTrack into a shared widget header and use existing moon::unicodeText directly. No legacy behavior, widget geometry or raster algorithms changed.",
-      "unicodeTestEntrypoint20261109": "Link sequence import regression to existing moon-pattern-import for the production PNG decoder, exercising real Unicode disk paths instead of mocked reads. No additional decoder implementation or runtime behavior change."
+      "unicodeTestEntrypoint20261109": "Link sequence import regression to existing moon-pattern-import for the production PNG decoder, exercising real Unicode disk paths instead of mocked reads. No additional decoder implementation or runtime behavior change.",
+      "extensionRuntime20261110": "Register extension-runtime executable and CTest against legacy core/extension-runtime.ts behavior. Four extension tests pass0.09s; no product target update."
     },
     {
       "file": "scripts/bootstrap.ps1",
@@ -29666,6 +29670,39 @@
       ],
       "scope": "Actual legacy/native file-drop routing comparison",
       "adaptation": "Execute unchanged legacy TypeScript body with dispatcher stub and compare seven scenario outputs against native test executable; no real runtime or OS drop asserted."
+    },
+    {
+      "file": "src/extension_runtime.h",
+      "classification": "legacy-partial",
+      "sources": [
+        "legacy/src/renderer/src/core/extension-runtime.ts",
+        "legacy/src/renderer/src/core/extension-runtime.test.ts",
+        "legacy/src/shared/types-extension-runtime.ts"
+      ],
+      "scope": "EX-004 runtime registration, event/command dispatch and method permissions",
+      "adaptation": "Legacy Map identity cleanup, insertion-order live broadcast including callback registration/removal, propagated exceptions, command priority lua/runtime/settings and exact 34-method permission table. Typed native event envelope; arbitrary payload remains opaque pending actual host JSON wiring. Files dropped adapter composes FileDropRouter with registry. Event-thread calls only; no JS engine or UI host."
+    },
+    {
+      "file": "tests/extension_runtime_test.cpp",
+      "classification": "legacy-partial",
+      "sources": [
+        "legacy/src/renderer/src/core/extension-runtime.ts",
+        "legacy/src/renderer/src/core/extension-runtime.test.ts",
+        "legacy/src/shared/types-extension-runtime.ts"
+      ],
+      "scope": "Runtime dispatch lifecycle, command and file-drop integration regression",
+      "adaptation": "Legacy replacement cleanup, missing/prototype-like names, broadcast mutation and callback exception, command priority/disable/missing receiver, all permissions, 12MiB router integration with stopped runtime, cleanup after registry destruction."
+    },
+    {
+      "file": "scripts/verify-extension-runtime.cjs",
+      "classification": "legacy-partial",
+      "sources": [
+        "legacy/src/renderer/src/core/extension-runtime.ts",
+        "legacy/src/renderer/src/core/extension-runtime.test.ts",
+        "legacy/src/shared/types-extension-runtime.ts"
+      ],
+      "scope": "Actual legacy runtime semantics and permission comparison",
+      "adaptation": "Execute original TypeScript via stripTypeScriptTypes; compare all 34 permission rows with native executable and assert original replacement, live Map traversal and command priority against the same expected traces used by native regression."
     }
   ],
   "assetTransfers": [

@@ -5320,3 +5320,12 @@ legacy canvas-render-selection-preview.ts对两种套索的每个栅格路径点
 新增边界回归，并执行未经改写逻辑的旧版TypeScript（dispatcher受控stub）对照原生--oracle七组合：成功、等价替换、移除、删除重建、读取失败、超限、runtime不可用；输出中的remaining、owner/name/bytes、错误次数完全一致。扩展三项CTest通过，Release专项构建成功。首次编译因注册查询仅有const iterator失败，增加非const重载后构建通过。新增代码沿用MoonSprite Source-Available License 1.0内部修改依据。
 
 范围是完整路由核心，尚未接入正式exe的OS拖入、真实扩展注册/权限和事件宿主；原有FileDropPolicy/HostLifecycle仍是契约模型，不将本阶段称为可安装或可运行扩展。无正式程序重建、人工窗口/截图/FPS结论。来源与diff检查后阶段保存推送dev；全量目标继续INCOMPLETE，保留全部用户数据、缓存及editor_support.h既有状态。
+
+
+### 2026-11-10：运行时注册／命令与拖放宿主边界阶段
+
+直接迁移legacy core/extension-runtime.ts的registerExtensionRuntime、dispatchExtensionRuntimeCommand/Event、broadcastExtensionRuntimeEvent、executeExtensionCommand和完整34项method权限表。注册替换保留插入顺序，旧cleanup不移除新实例，cleanup可重复且宿主销毁后安全；广播保留JS Map动态遍历，回调删除未到达接收者后跳过、追加接收者本轮可见，回调异常继续传播并恢复遍历计数。命令严格按disabled拒绝→lua→runtimeEvent→settings优先级，runtime缺失不会退到settings；未知方法拒绝，权限表存在不代表该方法已经接线。
+
+将FileDropRouter实际组合到RuntimeRegistry::filesDropped，按原事件type/files/name/bytes构造有值载荷。回归验证正常投递及读取过程中运行时注销后错误消费、不投递且不回到工程路径；保留注册对象独立于文件后缀注册的旧版行为。native事件线程接口用typed envelope，尚未迁移全部事件payload的JSON类型、安装器/脚本引擎、窗口与OS拖放。原SessionRegistry/HostLifecycle模型未冒充正式宿主。
+
+Release专项构建成功，四项extension CTest全通过0.09s。verify-extension-runtime.cjs执行原TypeScript，34项权限与native输出逐行一致，替换清理/动态广播/命令优先级旧版实测与原生断言一致；verify-extension-file-drop.cjs继续保留上一阶段独立对照。新增文件与CMake来源登记、diff检查后保存推送dev。未更新正式exe、未做窗口/人工截图/FPS或全套重跑；全量迁移INCOMPLETE，保留用户数据、缓存及editor_support.h既有状态。

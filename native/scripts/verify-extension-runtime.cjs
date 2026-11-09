@@ -1,0 +1,13 @@
+const fs=require('fs'),vm=require('vm'),{execFileSync}=require('child_process');const {stripTypeScriptTypes}=require('node:module');
+const source=fs.readFileSync('legacy/src/renderer/src/core/extension-runtime.ts','utf8');
+const context=vm.createContext({});vm.runInContext(stripTypeScriptTypes(source.replace(/^import .*$/gm,'').replace(/^export /gm,''),{mode:'transform'})+';globalThis.api={permissions:EXTENSION_RUNTIME_METHOD_PERMISSIONS,register:registerExtensionRuntime,dispatch:dispatchExtensionRuntimeEvent,broadcast:broadcastExtensionRuntimeEvent,execute:executeExtensionCommand,allows:extensionRuntimeAllows}',context);
+const a=context.api;const expected=Object.entries(a.permissions).map(([m,p])=>m+'|'+p).join('\n');
+const actual=execFileSync('native/build/Release/extension-runtime-tests.exe',['--permissions'],{encoding:'utf8'}).trim().replace(/\r/g,'');if(actual!==expected)throw Error('Method permissions differ');
+const rows=[];
+let old=a.register('one',e=>rows.push('old:'+e.type)),stop=a.register('one',e=>rows.push('one:'+e.type)),other=a.register('two',e=>rows.push('two:'+e.type));old();a.dispatch('one',{type:'window-message'});a.broadcast({type:'clock'});stop();other();
+if(rows.join('|')!=='one:window-message|one:clock|two:clock')throw Error('Replacement oracle');
+let first=true,second,third;const remove=a.register('first',()=>{rows.push('first');if(first){first=false;second();third=a.register('third',()=>rows.push('third'));}});second=a.register('second',()=>rows.push('second'));rows.length=0;a.broadcast({type:'clock'});if(rows.join('|')!=='first|third')throw Error('Live traversal oracle');remove();third();
+const trace=[];const ext={id:'ext',enabled:true,hasSettings:true};const command={id:'run',handler:'runtime',runtimeEvent:'event',opensSettings:true};const handlers={runLua:id=>trace.push('lua:'+id),openSettings:id=>trace.push('settings:'+id)};const unregister=a.register('ext',e=>trace.push(e.type+':'+e.commandId+':'+e.event));
+if(!a.execute(ext,command,handlers))throw Error('Registered command failed');unregister();if(a.execute(ext,command,handlers))throw Error('Missing runtime fell through');command.handler='lua';a.execute(ext,command,handlers);ext.enabled=false;if(a.execute(ext,command,handlers))throw Error('Disabled command');ext.enabled=true;command.handler='runtime';command.runtimeEvent='';a.execute(ext,command,handlers);
+if(trace.join('|')!=='command:run:event|lua:extension:ext:run|settings:ext')throw Error('Command priority oracle');
+console.log(Object.keys(a.permissions).length+' method permission entries match native; actual legacy replacement/live broadcast/command priority assertions match native regression expectations');
