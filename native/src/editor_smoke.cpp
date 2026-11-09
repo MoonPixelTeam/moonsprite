@@ -513,7 +513,7 @@ void Editor::smokeMultiDocument(){
 
     check(pending_==Pending::Saving,"Close save did not start asynchronous save");const auto savingDocument=document.identity();activateProject(0);check(document.identity()==savingDocument,"Switched document during save");
 
-    const auto saveDeadline=std::chrono::steady_clock::now()+std::chrono::seconds(10);while(pending_==Pending::Saving && std::chrono::steady_clock::now()<saveDeadline){saveTick();std::this_thread::sleep_for(std::chrono::milliseconds(5));}
+    const auto saveDeadline=std::chrono::steady_clock::now()+std::chrono::seconds(10);while((pending_==Pending::Saving || !deferredSaveCloses_.empty() || !backgroundSaves_.empty() || !queuedSaves_.empty()) && std::chrono::steady_clock::now()<saveDeadline){saveTick();std::this_thread::sleep_for(std::chrono::milliseconds(5));}
 
     check(pending_==Pending::None && projects_.size()==count-1 && document.width()==5,"Saved close did not activate last remaining tab");
 

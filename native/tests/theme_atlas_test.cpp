@@ -66,8 +66,8 @@ int wmain(int argc,wchar_t** argv) {
     CHECK(!dark.assets.patches.count("close_button.normal"));
     for(const auto& part:dark.parts) CHECK(part.id!="dialog_close_normal" && part.id!="dialog_close_hot" && part.id!="tool_pencil" && part.id!="tool_eraser");
     const auto& inputNormal=dark.assets.patches.at("entry.normal");
-    CHECK(inputNormal.bitmap->width==5 && inputNormal.bitmap->height==14);
-    CHECK(inputNormal.top==2 && inputNormal.bottom==1);
+    CHECK(inputNormal.bitmap->width==5 && inputNormal.bitmap->height==16);
+    CHECK(inputNormal.top==3 && inputNormal.bottom==2);
     CHECK(!dark.assets.patches.count("entry.focus"));
     const auto& slider=dark.assets.patches.at("slider.normal");
     CHECK(slider.bitmap->width==5 && slider.bitmap->height==15);

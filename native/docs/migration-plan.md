@@ -4719,3 +4719,11 @@ X/Y/Both合成/当前层及左右键实际诊断验证100次preview请求不发�
 对照legacy useLayerSelectionGuides的list blank语义及当前时间轴viewport，空白点击改用实时可视区域并断言不覆盖真实Cel，保留其他栏目/眼睛按钮不清选择、三种选择类型清空、右键继续及像素/历史上下文不变。接着暴露旧链接球采样以单元格center推算相差1逻辑像素；按实际整数素材对齐起点采样，仍逐像素校验7行/三链接Cel拉伸中段无接缝与独立Cel不连线。产品绘制/命中/业务逻辑无变化；用户素材约束依据layers-ui-correction.md。
 
 正式Release构建退出0，preferences-catalog/layers-render/panel-docking-interactions三项完整CTest通过7.46s；来源与diff检查通过。无新增截图人工验收或FPS测量，未重新执行全套；原全套失败剩9项待复核，整体迁移INCOMPLETE。保留用户数据、缓存和未跟踪文件，阶段保存推送dev。
+
+### 2026-11-09：菜单目录、图集、法线拾色器与多文档关闭回归阶段
+
+原剩9项串行复查：palette-mouse-startup直接通过，其他8项仍失败。对照实际legacy AppMenuBar.tsx select菜单确认freeTransform前分隔线被原生漏标，恢复separatorBefore=true；保留原分隔线完整字典，菜单测试叶子计数同步现有145条，异常明确报告而非Windows未捕获fast-fail。图集测试对照现有用户输入框素材entry_normal 5×16、上3/下2，修正旧5×14预期，其余像素/替换重载/畸形输入检查不删减。法线拾色器保持完整像素/alpha检查，moon-ring按已迁移MoonRing识别，新增future-normal-map继续检查未知值回退SV。
+
+多文档测试旧等待只看Pending::Saving，生产保存已在完成后排队等待恢复清理才关闭。等待条件加入既有deferredSaveCloses/backgroundSaves/queuedSaves，保留10秒期限；验证恢复后保存、关闭选择剩余页、取消/丢弃、退出逐文档提示完整路径通过，未修改产品保存生命周期。正式Release及三个测试目标构建成功（图集目标名moon-theme-tests，首次命令误写目标名后纠正）；四项CTest通过1.40s。来源与diff检查通过；无新增GUI截图/FPS结论。
+
+用户本轮明确决定：组蒙版随选中组移动并遵守随层移动开关；已登记document_layer_move.cpp来源，后续完成对应开关/嵌套/链接回归审核，不再等待该决定。原失败剩wheel-performance/layer-context-menu/workspace-layout/home-workspace四项待处理；未重跑全套，整体迁移INCOMPLETE。保留用户数据/缓存，阶段保存推送dev。

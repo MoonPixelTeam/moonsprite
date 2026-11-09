@@ -75,7 +75,7 @@ const std::vector<Entry>& catalog(){static const std::vector<Entry> rows={
 {"selectAll","select",U"全选","selectAll","Ctrl+A",false},
 {"deselect","select",U"取消选择","deselect","Ctrl+D",false},
 {"invertSelection","select",U"反选","invertSelection","Ctrl+Shift+I",false},
-{"freeTransform","select",U"自由变换","freeTransform","",false,false},
+{"freeTransform","select",U"自由变换","freeTransform","",false,true},
 {"toggleSelectionOutline","select",U"隐藏蚂蚁线","toggleSelectionOutline","Ctrl+H",false},
 {"selectionConvert","select",U"转换为","","",true,true},
 {"createBrushFromSelection","selectionConvert",U"图案笔刷","createBrushFromSelection","Ctrl+B",false},
