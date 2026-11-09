@@ -5459,3 +5459,10 @@ Release专项构建与10项extension验证通过，来源/diff检查后保存推
 依据legacy inspect_extension_package/inspect_archive，复用project::Archive迁移普通.msext文件50MiB、1至256条、累计256MiB、路径/大小写重复/Unix符号链接、根manifest256KiB、共享完整清单校验和声明入口/资源存在性。ZIP新增读取madeBy/externalAttributes；parseManifest独立于目录状态IO，检查不解压到磁盘。真实stored ZIP fixture覆盖正常预览、空包、缺入口、清单大小写、重复路径、越界、符号链接、清单超限和257条。
 
 仍partial：Archive不支持ZIP64及stored/deflate之外压缩，CP437名称及目录size按零累计的旧版语义尚待迁移。无安装/提取/UI/引擎接线，不能称完整扩展包迁移。相关Release构建与专项测试、来源/diff检查后阶段保存推送dev；无正式exe/GUI/全套验收，整体INCOMPLETE，保留用户数据/缓存/editor_support.h原状态。
+
+
+### 2026-11-10：msext安装更新事务阶段
+
+承接legacy extract_archive/install_extension_at：独占创建staging、路径校验、CRC/大小验证、CREATE_NEW写入并Flush、重新校验解压清单、读取完整状态、旧目录backup、staging替换、保持原enabled、状态原子保存，失败移除新目录并恢复旧版本，成功清理backup。检查与解压共享同一不可变Archive快照，避免旧版重新打开源文件的变更竞态；所有递归清理先确认路径是指定安装根的直接子项。安装根由调用方提供，尚无默认目录/正式UI接线。
+
+真实测试目录验证首次安装和Lua解析、保留停用状态的更新/移除旧文件、状态锁导致发布失败后旧脚本与状态字节恢复、文件/目录冲突导致解压失败后旧版不变、事务目录清理。Release构建、11项extension/project-reader测试通过1.69s，来源/diff后保存推送dev。清理/恢复失败按旧版best effort尚无故障注入验收；压缩格式兼容缺口仍在，不宣称完整包支持。无用户扩展目录修改、正式exe/GUI/全套验收；整体INCOMPLETE，实际运行时与安装入口仍待完成，保留用户数据/缓存/editor_support.h原状态。
