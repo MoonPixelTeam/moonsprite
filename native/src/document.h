@@ -620,7 +620,7 @@ public:
   const std::vector<PixelRegion>* tilemapPreviewRegions()const{return floating_&&floating_->tilemapPreview?&floating_->tilemapPreview->tilemapRegions:gradient_&&gradient_->tilemapDisplay?&gradient_->tilemapRegions:nullptr;}
   PixelRegion gradientBounds()const{if(floating_&&floating_->tilemapPreview){PixelRegion bounds;for(const auto& r:floating_->tilemapPreview->tilemapRegions){bounds.include(r.x,r.y);bounds.include(r.x+r.w-1,r.y+r.h-1);}return bounds;}if(gradient_&&gradient_->tilemapDisplay){PixelRegion bounds;for(const auto& r:gradient_->tilemapRegions){bounds.include(r.x,r.y);bounds.include(r.x+r.w-1,r.y+r.h-1);}return bounds;}if(adjustment_)return {0,0,width_,height_};if(!gradient_ || !gradient_->region)return {};const auto& r=*gradient_->region;return {r.x,r.y,r.width,r.height};}
   const timeline::AttachedMask* maskPreview()const;
-  const std::vector<Pixel>* gradientPreviewPixels()const{return gradient_&&!gradient_->mask&&!gradient_->tilemapDisplay?&gradient_->preview:nullptr;}
+  const std::vector<Pixel>* gradientPreviewPixels()const{if(active_&&tileStrokeIncremental_&&absentStrokeSurface_)return &static_cast<const std::vector<Pixel>&>(absentStrokeSurface_->pixels);return gradient_&&!gradient_->mask&&!gradient_->tilemapDisplay?&gradient_->preview:nullptr;}
   bool fillPixels(Point point,Pixel color,WandOptions options={});
   bool fillPatternPixels(Point point,Pixel color,const PatternFillOptions& pattern,WandOptions options={});
   // Legacy magic eraser: clear pixels matching the sampled color, honoring

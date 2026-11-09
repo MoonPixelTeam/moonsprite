@@ -225,7 +225,7 @@ bool Document::convertLayerToTilemap(int tw,int th,std::u32string name){
 }
 void Document::startTilemapStroke(Point p,bool secondary){
  if(strokeRepeat_!=repeat::Mode::Off){const auto local=repeat::wrap({double(p.x),double(p.y)},width_,height_,strokeRepeat_);p={int(local.x),int(local.y)};}
- tileStrokeCells_.clear();tileStrokeLinked_=(tileSelection_.mode==tiles::Mode::Paint&&tilemapCellOwnerSupported(cel().id,true,true))||(linkedCreateSelectionAvailable(false)&&raster::fullCanvas(activeSurface(),width_,height_))||(linkedEditSelectionAvailable(false)&&raster::fullCanvas(activeSurface(),width_,height_))||(linkedHybridSelectionAvailable(false)&&raster::fullCanvas(activeSurface(),width_,height_));tileStrokeIncremental_=tileStrokeLinked_||tilemapDeltaSupported();tileStrokeBefore_.reset();if(!tileStrokeIncremental_)tileStrokeBefore_=timeline_.state();tileStrokeCel_=tileStrokeLinked_&&tileSelection_.mode==tiles::Mode::Paint?timeline_.resolveSurface(cel().id).source->id:cel().id;tileStrokePoint_=p;const auto& c=tileStrokeLinked_?*timeline_.resolveSurface(cel().id).source:cel();tileEditCell_.reset();if(c.tilemap&&p.x>=0&&p.y>=0&&p.x<c.tilemap->columns*c.tilemap->tileWidth&&p.y<c.tilemap->rows*c.tilemap->tileHeight)tileEditCell_=std::size_t(p.y/c.tilemap->tileHeight)*c.tilemap->columns+p.x/c.tilemap->tileWidth;
+ tileStrokeCells_.clear();tileStrokeLinked_=(tileSelection_.mode==tiles::Mode::Paint&&tilemapCellOwnerSupported(cel().id,true,true))||linkedCreateSelectionAvailable(false)||linkedEditSelectionAvailable(false)||linkedHybridSelectionAvailable(false);tileStrokeIncremental_=tileStrokeLinked_||tilemapDeltaSupported();tileStrokeBefore_.reset();if(!tileStrokeIncremental_)tileStrokeBefore_=timeline_.state();tileStrokeCel_=tileStrokeLinked_?timeline_.resolveSurface(cel().id).source->id:cel().id;tileStrokePoint_=p;const auto& c=tileStrokeLinked_?*timeline_.resolveSurface(cel().id).source:cel();tileEditCell_.reset();const auto lx=std::int64_t(p.x)-c.surface->offsetX,ly=std::int64_t(p.y)-c.surface->offsetY;if(c.tilemap&&lx>=0&&ly>=0&&lx<std::int64_t(c.tilemap->columns)*c.tilemap->tileWidth&&ly<std::int64_t(c.tilemap->rows)*c.tilemap->tileHeight)tileEditCell_=std::size_t(ly/c.tilemap->tileHeight)*c.tilemap->columns+std::size_t(lx/c.tilemap->tileWidth);
  tilePaintValue_.reset();const auto& id=secondary?tileSelection_.secondary:tileSelection_.primary;if(!id.empty()){auto t=std::find_if(timeline_.state().tilesets.begin(),timeline_.state().tilesets.end(),[&](const auto& s){return s.id==tileSelection_.tilesetId;});if(t!=timeline_.state().tilesets.end()&&t->tileWidth==c.tilemap->tileWidth&&t->tileHeight==c.tilemap->tileHeight&&tiles::Index(*t).find(id))tilePaintValue_=tiles::Cell{t->id,id};}
 }
 void Document::paintTilemapLine(Point p){
@@ -269,6 +269,7 @@ bool Document::commitTilemapStroke(){
    auto canvas=canvasPixels();auto baseline=canvas;for(const auto& delta:pending_)baseline[delta.index]=delta.before;const auto hint=tileEditCell_;
    // Revert only raster preview pixels; source tile authority has not changed.
    for(const auto& delta:pending_)strokePixel(delta.index)=delta.before;
+   absentStrokeSurface_.reset();
    tileStrokeIncremental_=false;tileStrokeCells_.clear();active_=false;strokePixels_=nullptr;clearPendingStroke();
    const bool linked=tileStrokeLinked_;tileStrokeLinked_=false;
    const bool committed=linked?commitTilemapPixelCanvas(baseline,canvas,U"绘制瓦片",hint,false,&selection_,&selection_,false,false,false,tileSelection_.mode==tiles::Mode::Create,tileSelection_.mode==tiles::Mode::Edit,tileSelection_.mode==tiles::Mode::Hybrid):commitTilemapPixelCanvas(baseline,canvas,U"绘制瓦片",hint);if(!committed){change_={0,0,width_,height_};publishChange();}return committed;
@@ -287,6 +288,7 @@ void Document::cancelTilemapStroke(){
     if(!tileStrokeCells_.empty()){timeline_.selectionContent_.erase(c.id);timeline_.visibleContent_.erase(c.id);auto stamp=timeline_.thumbnailStorage_.find(c.id);if(stamp!=timeline_.thumbnailStorage_.end())++stamp->second.revision;}
    }}
   }else if(strokePixels_)for(const auto& delta:pending_)strokePixel(delta.index)=delta.before;
+  absentStrokeSurface_.reset();
   tileStrokeIncremental_=false;tileStrokeCells_.clear();active_=false;strokePixels_=nullptr;clearPendingStroke();change_={0,0,width_,height_};publishChange();return;
  }
 if(!tileStrokeBefore_)return;auto before=std::move(*tileStrokeBefore_);tileStrokeBefore_.reset();active_=false;strokePixels_=nullptr;clearPendingStroke();timeline_=timeline::Timeline(std::move(before));change_={0,0,width_,height_};publishChange();}

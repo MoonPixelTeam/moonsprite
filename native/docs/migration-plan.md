@@ -4961,3 +4961,10 @@ CTest document-transactions/free-tile-project/tilemap-document全部通过33.39s
 窗口第二轮发现等画布Hybrid既有共享源提交与dense raw preview并不逐像素相同，此差异不属于本阶段偏移路径；实际窗口新增Hybrid验证收敛到正/负偏移，Edit仍覆盖三个原点。零原点Hybrid继续由核心事务测试验证资源、取消、历史与持久化，不宣称预览等价。窗口最终结果待补。
 
 最终正式Release重编成功，完整 --tileset-management-check 实际退出0，包含Edit三个原点及Hybrid正/负偏移的实际鼠标drag/Escape/Ctrl-copy/Enter/UndoRedo。核心三项通过70.66s，744来源覆盖/证据快照及diff检查通过。保留零原点Hybrid既有preview差异为已知限制；无新增FPS或人工截图验收，整体INCOMPLETE。本阶段提交推送dev，用户文件、缓存及editor_support.h既有状态保留。
+
+
+### 2026-11-09：偏移网格像素画笔事务阶段
+
+对照legacy core/tilemap-document.ts的rgbaCellPixelsFromSurface、tilemapCellIndexesForEdit及已有指针Edit锚点语义，Create/Edit/Hybrid规范网格画笔入口移除等画布限制，锚点按canonical surface世界原点定位。偏移/补边笔画使用既有临时画布surface与合成器overlay，不扩张规范网格；取消丢弃缓冲，提交复用完整源瓦片/引用/history事务，维持链接几何。共享资源夹具从72组扩展到99组，新增三模式×三链接×三原点的笔画取消/提交/UndoRedo/native/recovery。Create渐变/形状不套用共享源preview断言，其原专用测试保持。验证进行中，整体INCOMPLETE。
+
+最终核心document-transactions/tilemap-document通过0.86s，free-tile-project通过55.40s；正式Release完整重编成功，既有完整 --tileset-management-check 实际退出0。新增27组偏移笔画为核心事务验收，本轮未新增真实指针专用夹具或人工截图/FPS，不将既有窗口检查等同新增场景覆盖。744来源覆盖及证据快照通过，整体INCOMPLETE。本阶段保存推送dev。
