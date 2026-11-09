@@ -5274,3 +5274,10 @@ legacy canvas-render-selection-preview.ts对两种套索的每个栅格路径点
 扩展上一阶段生产CanvasRenderer/Skia缓存与全新renderer逐点对照，新增14组move/copy×采样平移/翻转缩放/RotSprite旋转倾斜/四角/X/Y/Both，检查连续变换、恢复原变换、预览提交、UndoRedo及远处共享源位置。参考legacy工具变换和tilemap资源语义，用户批准preview=commit为差异依据，没有改产品。将既有--tilemap-preview注册为canvas-tilemap-preview，常规CTest可执行shape/gradient及Hybrid整格/仿射/平铺全部oracle。
 
 首轮失败于夹具强制每次commit返回true；改为按raw preview与canonical像素差异判断返回值后，全部像素及历史断言通过，未修改产品以迎合测试。重建测试目标成功，canvas-tilemap-preview通过0.51s；744来源/证据和diff通过。仅新增渲染核心验收与CTest注册，未重复产品构建或窗口检查，没有新增截图/FPS量测；整体迁移仍INCOMPLETE。本阶段保存推送dev。
+
+
+### 2026-11-10：大画布Hybrid提交历史与归档重开
+
+补齐deferred大画布变换持久化：260×260、远处旋转同源格、两级显式Cel链，14组move/copy×整格/翻转缩放/RotSprite旋转倾斜/四角/X/Y/Both。在commit、Undo、Redo三个状态分别通过生产encodeEditableProject/encodeRecoveryProject与manifest/import重开（共84次归档检查），核对画面、active frame/layer、格引用、瓦片集ID/tile ID/资源像素及完整链接拓扑。沿用legacy tilemap资源事务与原工程schema；用户批准preview=commit为行为依据，未改产品逻辑。
+
+首次夹具强制commit有像素修改而失败，改为按实际preview与原像素差异核对结果，后续全部归档与历史断言通过。重建测试目标成功，完整free-tile-project通过31.23s；744来源/证据和diff通过。新证据为内存生产归档往返，不等于磁盘失败恢复、窗口或截图验收；未重复产品构建/既有窗口诊断，无FPS量测。整体迁移仍INCOMPLETE，本阶段保存推送dev。
