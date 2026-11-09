@@ -102,6 +102,22 @@ bool Editor::onProcessMessage(ui::Message* msg) {
         // still restores the original surface state after this handler returns.
         surface->restoreClip();surface->saveClip();surface->clipRegion(damage);
         auto graphics=getGraphics(clientBounds());
+        // A disjoint canvas/status union has a window-wide bounding rectangle.
+        // Keep the exact union, but dispatch its two existing paint domains
+        // separately so onPaint can select their bounded drawing paths.
+        if(!homeOpen_ && pending_==Pending::None && !advancedActive()){
+          auto canvas=canvasFullViewport();canvas.enlarge(uiScale);
+          const auto status=statusBounds();
+          gfx::Region remainder=damage;remainder-=gfx::Region(canvas);remainder-=gfx::Region(status);
+          if(remainder.isEmpty()){
+            for(const auto& area:{canvas,status}){
+              gfx::Region part=damage;part&=gfx::Region(area);if(part.isEmpty())continue;
+              part.offset(-bounds().origin());graphics->saveClip();graphics->clipRegion(part);
+              ui::PaintEvent event(this,graphics.get());onPaint(event);graphics->restoreClip();
+            }
+            return true;
+          }
+        }
         ui::PaintEvent event(this,graphics.get());onPaint(event);
         return true;
       }

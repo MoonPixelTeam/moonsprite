@@ -4745,3 +4745,9 @@ X/Y/Both合成/当前层及左右键实际诊断验证100次preview请求不发�
 定位workspace-layout phase4的524个差异像素：重叠控件是QuickCommandBar（784,150,38,38），其折叠按钮在全量重绘时覆盖预览标题，而软件搬移结果保留预览。Aseprite Widget::paint的透明背景重绘按广度优先遍历后代，后代绘制顺序不能仅由Editor直属兄弟顺序保证；指令栏及Control此前未接入已有compositeControl的悬浮栏目/模态遮挡裁剪。通过Widget-owned Property向两类绘制复用既有裁剪，保留legacy QuickCommandBar素材、透明度、尺寸、展开/移动和动作；不复制第三方算法，读取ui/property.h/widget.cpp的MIT许可说明。临时位置/类型诊断已移除。
 
 正式Release构建退出0。workspace-layout完整通过41.02s，六组预览移动/缩放的整帧像素对照及后续悬浮栏目检查全部执行；四组软件平移各200指针样本只应用一次几何并复用一次blit，两组尺寸调整各一次几何。panel-docking-interactions通过2.60s，quick-command-preferences通过0.85s，显式等待--quick-command-check退出0。744文件来源覆盖及diff检查通过。wheel-performance仍失败（本轮full 7.95ms/40 chrome，local 4.75ms/20 chrome），没有降低断言或声称全套全绿。原失败剩该一项，未重新执行210项全套；整体迁移INCOMPLETE，无全软件FPS/人工视觉验收。保留所有用户数据和未跟踪文件，阶段保存推送dev。
+
+### 2026-11-09：缩放脏区批处理与局部绘制路径修复阶段
+
+定位wheel-performance额外chrome：setCanvasZoom正确请求画布408,144,638,598与状态栏0,940,1294,26；既有PaintChain合并精确Region后，onPaint按外接矩形0,144,1294,822判断路径，误走完整chrome。保留精确批处理与子控件孔洞，在损伤完全属于画布/状态栏且无首页/模态/高级模式时，将交集分别交给已有onPaint局部路径；其他损伤继续原fallback，透明背景回放不变。核对legacy CanvasStage/useCanvasRenderEngine的view-only scheduleDraw及Aseprite MIT Widget::flushRedraw和Manager::sendMessageToWidget的count/clip边界；无上游实现复制。临时chrome/damage日志已移除。
+
+正式Release构建退出0。wheel-performance完整通过1.86s，普通full7.95599ms/local4.3287ms、对称轴full12.7144ms/local4.95084ms，两个local场景20次缩放chrome均0；完整帧序列、半透明/叠加对称轴像素、content/history/uploads不变均通过，未降低断言。workspace-layout通过43.14s、panel-docking-interactions通过2.68s；modifier-brush-performance/drawing-pan-performance两项通过4.94s。744来源与diff检查通过。原全套210项15失败均已逐项重新通过，但本阶段未重新执行完整210项，不声称当前全套全绿；整体迁移INCOMPLETE，Paint瓦片自由变换/多目标、扩展兼容等显式缺口继续保留。无全软件FPS/人工图像验收；保留用户数据/缓存/未跟踪文件，阶段保存推送dev。
