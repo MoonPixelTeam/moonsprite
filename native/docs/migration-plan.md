@@ -4792,3 +4792,12 @@ X/Y/Both合成/当前层及左右键实际诊断验证100次preview请求不发�
 新增普通层 linked/runtime-shared/blank × linkedContentId 回归，以及既有 grid/free 复制逐帧存储独立、进一步移动单帧不影响其它帧检查，覆盖撤销重做与 native/recovery 重开。初始 opacity 断言忽略导入时已有活动帧投影，改为记录复制前实际槽位值；缺失槽位夹具被 fromImported 的完整矩阵要求拒绝，改用导入补齐后的空白帧，不修改导入规则。未新增文本专用回归或缺失槽位内部状态注入。
 
 正式 Release 与 free-tile-project-tests 构建成功；实际 --layer-move-check 退出0；四项 CTest free-tile-project/attached-masks/alignment/move-click-flash 全部通过21.86s。744文件来源覆盖与证据快照检查通过，整体迁移仍 INCOMPLETE；未重跑全套，无新增 FPS 或人工截图验收。保留用户文件、缓存及未跟踪数据，阶段提交推送 dev。
+
+
+### 2026-11-09：完整回归与工作区画布覆盖层隔离验收
+
+在3011b400基础运行全部210项CTest（parallel 2），209通过，workspace-layout失败，238.99s；已修复的pattern-brush-library及所有独立性能检查通过。workspace-layout首次phase4差异448像素，范围858,546..905,565；单独复现又在phase35差异352像素，范围840,454..857,501。两组BMP逐像素定位并查看完整图确认均是笔刷预览十字，非预览面板边界。测试用真实OS hover/capture，synthetic panel move与全量刷新期间canvasOwnsPointer改变瞬态笔刷覆盖层，无法据此宣称面板搬移错误。
+
+smokeWorkspace布局交互完成后切至已有移动工具，固定后续画布覆盖层，仍比较全部帧像素，不跳过任何差异区域、不降低move_region/批次计数断言。产品绘制、笔刷和面板移动逻辑未改；笔刷仍由独立brush-preview/brush-preview-performance验收。正式Release构建成功；workspace-layout通过39.01s、panel-docking-interactions通过2.82s、brush-preview通过0.80s、brush-preview-performance通过4.38s。744文件来源与证据快照检查通过；未在调整后重跑全套210，不宣称同一次全套全绿，无新增软件FPS或人工交互验收。
+
+活动蒙版的移动工具语义仍等用户选择（旧版移动图层与绑定蒙版；原生既有核心只移动活动蒙版），未默认替用户决定；其它Paint自由变换/多目标与扩展兼容等缺口继续保留，整体迁移INCOMPLETE。保留用户数据、缓存、未跟踪文件和既有editor_support.h状态，阶段保存推送dev。

@@ -1805,6 +1805,11 @@ void Editor::smokeWorkspace() {
 
       throw std::runtime_error("Workspace interactions changed document or canvas scale");
 
+    // Geometry framebuffer comparisons require stable canvas overlays. The
+    // brush preview depends on live OS hover/capture even when the synthetic
+    // panel gesture leaves the document unchanged; brush overlays are checked
+    // independently by smokeBrushPreview/brush-preview-performance.
+    useMoveTool();
     docking_=panels::Model{};previewPanelOpen_=true;refresh();
     invalidate();
 
