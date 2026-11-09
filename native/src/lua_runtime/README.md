@@ -31,3 +31,13 @@ retains only invocations with open dialogs; failed execution/rebase removes
 that session, matching the old runtime loop. Bad transport JSON is rejected
 before touching session storage. No live UI, script menu execution or native
 script dialog adapter is implemented by this library.
+
+
+C++ source/executor adapter: `native/src/lua_script_runtime.h` combines Service
+with a dedicated owner thread. Its start/dispatch/close return futures holding
+result JSON or an exception. Poll readiness in the UI; do not call get() while
+pending. shutdown/destruction drains accepted tasks and joins the worker, so
+arrange application teardown after work has finished. Methods may enqueue from
+multiple producers; shutdown/destruction itself belongs to one owner and must
+not race object lifetime. CTest `lua-script-runtime` exercises real sources,
+extension enable checks, dialog rebase/callbacks, error isolation and drain.

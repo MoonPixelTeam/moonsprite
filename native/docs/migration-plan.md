@@ -5651,3 +5651,10 @@ Release lua-script-directory目标及专项通过0.12s，验证真实示例嵌�
 复核MoonSprite/MLua/Lua许可和依赖边界，直接编译legacy platform_scripts/lua_api.rs及mse_api.rs（不复制改写API），build.rs提取原serde上下文/结果与预算常量，排除Tauri命令及已迁移C++文件服务。Rust staticlib提供线程归属C ABI和JSON start/dispatch/close，保留原会话仅在存在对话框时存活、回调前rebase、执行失败删除、close幂等；结果原样包含事务/创建对象/对话框。错误包及allocator free、错误线程拒绝均明确，仍要求调用方有效指针与串行所有权。没有WebView/Tauri依赖，也没有把脚本结果直接写进Document。
 
 沿用mlua0.10.5 Lua54 vendored与锁定依赖，CMake独立目标/CTest、构建脚本均在native，Rust输出和MSVC TEMP固定native/build；调试记录/系统TEMP占用构建错误分别用无debug构建和专用TEMP适配，保留原缓存。C++实际链接暴露动态/静态CRT不匹配后，统一原生MT编译并成功。原16项Lua/MSE测试全部复用，包括真实月相示例、事务回滚、跨帧Cel、modeless/blocking对话框、指令预算与危险库剔除；新增2项Rust FFI及实际C++链接调用检查。Release CTest lua-runtime/lua-runtime-ffi两项通过11.81s（内部18项），无正式exe更改/GUI验收；cargo fmt格式化新Rust文件。来源门禁增加Rust/Cargo元数据覆盖，788文件通过。正式Editor快照、事务结果应用、异步工作线程调用方、动态脚本菜单及原生对话框仍待接入，不能宣称用户可运行脚本；整体INCOMPLETE。橡皮擦旧冒烟失败仍保留，用户差异/数据/缓存保留，阶段保存推送dev。
+
+
+### 2026-11-10：Lua源码到后台执行与会话生命周期阶段
+
+沿platform_scripts.rs RuntimeRequest/runtime_loop/send_runtime_request，把既有C++ Service安全源码加载与Rust LuaSession完整引擎接在一个专用线程。start/dispatch/close通过FIFO packaged_task/future传递独立UTF8 JSON，worker拥有COM MTA、VM及会话；调用者不携带WinRT对象跨线程。启动异常回传并join；shutdown/析构停止接收，处理已入队请求，再于owner线程释放会话/COM。脚本/路径/JSON/预算错误由本次future接收，不杀死worker。线程返回原始事务结果，不擅自写入Document。
+
+Release实际C++加载执行测试覆盖本地事务、连续请求错误隔离、路径穿越/坏JSON/指令预算拒绝、真实moon-phase.lua首次seed后执行、扩展主入口/命令/停用后拒绝、modeless对话框同VM连续计数回调与上下文rebase、关闭后失效、显式shutdown及析构drain、关闭幂等/停止后拒绝。首轮暴露既有扩展头依赖Windows声明，新增runtime入口显式包含Windows/NOMINMAX后构建成功。lua-script-directory/runtime-ffi/script-runtime/runtime四项通过12.46s（Rust内部18项）；最后启动清理修正后script-runtime再通过0.19s。来源790文件及diff检查通过。无正式exe更改、GUI/完整冒烟验收，未解决橡皮擦旧断言。正式Editor快照、结果事务应用、动态脚本菜单/原生对话框和future轮询调用方仍待接入；整体INCOMPLETE。保留原差异/用户数据/缓存，本阶段保存推送dev。
