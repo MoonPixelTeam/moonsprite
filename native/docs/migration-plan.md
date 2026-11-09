@@ -5082,3 +5082,10 @@ CTest document-transactions/free-tile-project/tilemap-document全部通过33.39s
 核对legacy core/aseprite.ts decodeAseprite的缺失槽跳过与encodeAseprite的非合成缺失Cel跳过。原生此前按图层×帧补透明Cel，现读写两端均保留空槽，减少稀疏动画额外对象与区块；显式透明Cel仍保留，效果合成仍逐帧写出。五帧双层二进制检查覆盖首帧缺槽、整帧空白、前向链接栅格化、后向链接、opacity/z、显式透明Cel、重复保存重开及authority不变；另覆盖全空动画和稀疏效果合成逐像素对照。
 
 正式Release构建与既有完整--aseprite-io-check实际退出0；新增稀疏场景为核心测试，未新增窗口夹具或FPS量测。整体INCOMPLETE，本阶段保存推送dev。
+
+
+### 2026-11-10：ASE长链解析与链接属性完整验证
+
+接续稀疏时间轴读写，按legacy core/aseprite.ts resolveCel的缓存解析及逐帧位置/opacity/z覆盖规则，将原生递归root解析改为迭代路径缓存，消除合法长链接链的C++栈深依赖。保留已有循环/缺失目标拒绝与属性不同则复制栅格规则。只读核对Aseprite dio/aseprite_decoder.cpp readCelChunk：位置或透明度不同会MakeCopy、Z单独设置；未复制其源码，也不以其顺序读取限制取代legacy的前向链接支持。原生对畸形链接的严格拒绝仍是已有差异，未宣称完全等价。
+
+前向/后向各12000帧分别验证单一canonical像素源、所有alias、深层循环和缺失目标拒绝；四帧不同offset/opacity/z逐项检查并导出重开逐像素对照。正式Release构建成功；aseprite-io/save-policy通过0.20s，完整--aseprite-io-check实际退出0。744来源覆盖与证据检查通过；新增长链为核心覆盖，无FPS/截图验收。本阶段保存推送dev，整体INCOMPLETE。
