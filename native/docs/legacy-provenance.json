@@ -5426,7 +5426,8 @@
       "extensionRuntime20261110": "Register extension-runtime executable and CTest against legacy core/extension-runtime.ts behavior. Four extension tests pass0.09s; no product target update.",
       "extensionStorage20261110": "Register Windows extension-storage test with existing moon-project-reader atomic binary writer and windowsapp JSON. Source legacy core/extension-runtime.ts extensionStorage; product runtime integration pending.",
       "extensionRequest20261110": "Add extension-request-host CTest/executable using actual Storage and native RuntimeRegistry/FileDropRouter; legacy ExtensionRuntimeHost.tsx onMessage/handleRequest partial migration.",
-      "extensionEvents20261110": "Register extension-event-lifecycle-tests from legacy ExtensionRuntimeHost.tsx send/sendAuthorized/onLoad; product integration pending."
+      "extensionEvents20261110": "Register extension-event-lifecycle-tests from legacy ExtensionRuntimeHost.tsx send/sendAuthorized/onLoad; product integration pending.",
+      "extensionSession20261110": "Add extension-session-host CTest composing actual native runtime/request/event/storage/drop components; product integration remains pending."
     },
     {
       "file": "scripts/bootstrap.ps1",
@@ -29801,6 +29802,30 @@
       ],
       "scope": "Actual legacy event sending functions execution",
       "adaptation": "Extract unchanged send/sendAuthorized function block, strip TypeScript types, inject controlled refs/frame and compare preload coalescing/load order/permission/queue limit with native regression expectations; no browser engine tested."
+    },
+    {
+      "file": "src/extension_session_host.h",
+      "classification": "legacy-partial",
+      "sources": [
+        "legacy/src/renderer/src/components/extensions/ExtensionRuntimeHost.tsx",
+        "legacy/src/renderer/src/components/extensions/ExtensionRuntimeHost.test.tsx",
+        "legacy/src/renderer/src/core/extension-runtime.ts",
+        "legacy/src/renderer/src/core/extension-file-drop.ts"
+      ],
+      "scope": "EX-004 integrated native event-thread session ownership",
+      "adaptation": "Compose legacy runtime registration, onLoad event queue, request dispatch, file drop and cleanup with persistent Storage. Per-extension replacement stops previous session before publishing new one; generation tokens discard stale native load/request/close callbacks. Tokens are internal handles, not public authentication credentials. No script engine/UI/OS transport. Owners must outlive SessionHost."
+    },
+    {
+      "file": "tests/extension_session_host_test.cpp",
+      "classification": "legacy-partial",
+      "sources": [
+        "legacy/src/renderer/src/components/extensions/ExtensionRuntimeHost.tsx",
+        "legacy/src/renderer/src/components/extensions/ExtensionRuntimeHost.test.tsx",
+        "legacy/src/renderer/src/core/extension-runtime.ts",
+        "legacy/src/renderer/src/core/extension-file-drop.ts"
+      ],
+      "scope": "Integrated session open/load/requests/storage/drop/replacement/deactivate",
+      "adaptation": "Actual disk-backed storage, two namespaces, queued command/activation order, stored data across session replacement, stale callbacks and pending reads, locale/request agreement, close during file read, load failure and host destruction. Core-only, no real engine or desktop window."
     }
   ],
   "assetTransfers": [

@@ -5356,3 +5356,12 @@ Release专项构建成功，六项extension CTest通过（首次0.57s）；核�
 迁移legacy ExtensionRuntimeHost.tsx::send/sendAuthorized/onLoad及语言变化/失败清理。加载前仅排队command/settings-changed，最多256条；settings事件先去除旧设置再追加，保留旧版容量判断顺序。加载失败清队列并拒绝后续排队；加载成功按locale-changed（runtime权限）、activate、project（workspace.read权限）、原排队事件顺序投递。按旧版十余类事件权限过滤，locale偏好变化去重；停用仅发送一次deactivate并清空队列/阻止后续投递。增加locale/extensionId/apiVersion真实typed字段，注册表命令与生命周期已在核心回归组合运行。
 
 Release相关三个目标重编成功，七项extension CTest全部通过0.37s；verify-extension-events.cjs直接抽取旧send/sendAuthorized执行，预加载合并、初始化顺序、权限及256队列上限与原生断言一致；34项权限与旧注册/命令对照继续通过。本阶段尚未接入实际脚本加载失败回调、正式编辑器locale订阅/clock定时器/窗口释放或OS传输；不将核心生命周期称为可运行扩展。runtime.getCapabilities继续明确未接线，待完整公开子集定义后实现，未擅自改变旧版全权限方法枚举行为。来源/diff通过后阶段保存推送dev；无正式exe更新、截图/FPS/全套验收。整体INCOMPLETE，保留所有用户数据、缓存和editor_support.h既有状态。
+
+
+### 2026-11-10：扩展会话宿主完整内部流程整合阶段
+
+将既有RuntimeRegistry、EventLifecycle、RequestHost、Storage与FileDropRouter组合为SessionHost，统一open/loadFailed/loaded/request/localeChanged/routeFiles/close及析构。依据旧ExtensionRuntimeHost effect生命周期，替换前先停旧会话，注册表注销、请求停用与后缀清理在新会话发布前完成；generation token隔离原生异步load/request/close回调，旧token不影响新实例。内部token是调用句柄，不是对外身份验证凭据，实际进程/脚本传输仍需验证来源。
+
+集成回归真实执行：双扩展注册、加载前命令队列、locale/activate/project/command顺序、请求写磁盘与跨宿主隔离、文件事件name/bytes、替换后旧callback/close/读取失效、数据保持、locale同步、读取中关闭、加载失败与整体销毁注销。Release专项构建成功；八项extension CTest初次全部通过0.40s，最终含加载失败追加检查复验见实际结果。此前单组件通过不能替代本次组合证据，但本次仍是核心流程，尚无实际包安装、Lua/JS执行、OS拖入、正式界面或窗口。未更新正式exe、不新增FPS/截图结论，全部迁移继续INCOMPLETE。本阶段来源/diff检查通过后保存推送dev，用户数据、缓存及editor_support.h既有状态保留。
+
+最终复验：extension-session-host通过0.26s，其余六项通过；extension-storage再次在第四次替换ERROR_ACCESS_DENIED失败（storage-38760-25015250.json），八项7通过1失败，总0.45s。未重试掩盖，保留失败目标与现有原子写入错误规则。该复现推翻仅偶发且后续已稳定的推断；原因仍未定位，扩展整组验收不能标绿，后续优先诊断读取/替换共享方式及外部持有者。本阶段集成会话最小相关验收通过，不表示存储问题解决。来源760文件与快照、diff通过。
