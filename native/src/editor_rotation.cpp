@@ -8,6 +8,7 @@
 #include "ui/property.h"
 namespace moon::editor {
 std::pair<std::uint64_t,std::uint64_t> eyedropperLensWorkCounts(const ui::Widget&);
+void drawSelectionBrushCoverage(ui::Graphics&,const SelectionBrushStroke&,int,int,repeat::Mode,const gfx::Rect&,double);
 namespace {
 struct PanelMemory final:ui::Property {
  std::filesystem::path file;paneljson::JsonObject store;bool loaded=false,failed=false;std::string lastPath;std::optional<LayerPanelState> last;
@@ -88,6 +89,12 @@ void Editor::smokeTileRepeat(){
  if(renderer_.uploads()!=uploads||document.pixels()!=pixels||document.revision()!=revision||document.historySize()!=history||document.dirty())throw std::runtime_error("Repeat rebuilt upload or edited content/history");
  const auto image=os::instance()->makeRgbaSurface(canvas_.w*3,canvas_.h*3);ui::Graphics graphics(image);for(auto copy:repeat::offsets(repeat::Mode::Both))renderer_.draw(graphics,{(copy.x+1)*canvas_.w,(copy.y+1)*canvas_.h,canvas_.w,canvas_.h},canvasScale(),checkerboard_.light,checkerboard_.dark,checkerboard_.size);
  for(int y=0;y<3;++y)for(int x=0;x<3;++x){const auto color=image->getPixel(x*canvas_.w+canvas_.w/2,y*canvas_.h+canvas_.h/2);if(gfx::getr(color)!=0xaa||gfx::getg(color)!=0x66||gfx::getb(color)!=0x33)throw std::runtime_error("Repeat rendered copy pixel");}
+ // Pixel regression for the same renderer used by the selection brush overlay.
+ for(auto mode:{repeat::Mode::Off,repeat::Mode::X,repeat::Mode::Y,repeat::Mode::Both}){
+  auto overlay=os::instance()->makeRgbaSurface(96,96);overlay->clear();ui::Graphics painter(overlay);SelectionBrushStroke coverage;coverage.visited.insert(3*16+1);coverage.outsidePreview.emplace(-1,3);drawSelectionBrushCoverage(painter,coverage,16,16,mode,{32,32,32,32},2);
+  for(auto copy:repeat::offsets(mode)){const int x=34+copy.x*32,y=38+copy.y*32;for(int dy=0;dy<2;++dy)for(int dx=0;dx<2;++dx)if(gfx::geta(overlay->getPixel(x+dx,y+dy))!=89)throw std::runtime_error("Repeated selection brush preview copy alpha");}
+  if((gfx::geta(overlay->getPixel(30,38))!=0)!=(mode==repeat::Mode::Off))throw std::runtime_error("Selection brush outside preview mode");
+ }
  // Real pointer dispatch across the right seam must paint only the seam pixels.
  document=Document(8,4);viewRotation_={};setTileRepeat(repeat::Mode::X);selectionTool_=shapeTool_=eyedropperTool_=gradientTool_=fillTool_=handTool_=eraser_=smoothTool_=airbrushTool_=moveTool_=textTool_=rotateTool_=false;navigation_.zoomTool_=false;brushDynamics_={};pencilImageBrush_.reset();brushFeedback_.brushProfiles_[0]={};brushFeedback_.brushProfiles_[0].size=1;brushFeedback_.brushProfiles_[0].opacity=100;ink_=0xff123456;refresh();const auto strokeHistory=document.historySize();
  auto send=[&](ui::MessageType type,TransformPoint at){ui::MouseMessage m(type,os::PointerType::Mouse,ui::kButtonLeft,ui::kKeyNoneModifier,canvasDocumentToDisplay(at));m.setDisplay(display());onProcessMessage(&m);};

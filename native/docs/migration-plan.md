@@ -5155,3 +5155,10 @@ legacy aseprite.ts只在name后仍有四字节时读取tilesetIndex，并在构�
 对照legacy aseprite.test.ts nested group ownership、named loop ranges/direction/repeat、editable Cel opacity、linked Cel及duration，以及aseprite.ts文件头validity/groupPropertiesValid与orderedAseItems实际规则，补齐四种header flag组合的二进制夹具：两级组/隐藏锁定空组/中文名称、组字段无效时忽略非法blend、层与Cel opacity组合、两帧链接/时长、四种tag方向与空/有限repeat。连续三次ASE保存重开逐项检查关系/名称/标志/链接和每帧画面，再验证导入后编辑/UndoRedo/ASE保存及原生重开元数据。
 
 现有产品逻辑通过组合检查，本阶段只增加回归证据，不宣称新实现功能。aseprite-io/save-policy通过0.36s；无产品源码变动，未重复正式程序构建和既有窗口测试；新增场景尚无窗口夹具或截图验收。来源覆盖/证据与diff检查通过，整体INCOMPLETE，本阶段保存推送dev。
+
+
+### 2026-11-10：重复画布选区画笔预览迁移
+
+对照legacy useCanvasBrushOverlay.ts与canvas-brush-coverage-overlay.ts以及canvas-repeated-selection-preview.test.ts：选区画笔canonical覆盖在Off/X/Y/Both的全部可见副本渲染，outsidePreview只在Off显示。原生此前提交已正确折回，但蓝色预览只画中央画布；现抽出生产覆盖绘制函数并按副本偏移绘制，沿用物理像素round和原蓝色alpha。已有采集/对称/合并/提交/取消/UndoRedo事务不变。
+
+正式窗口诊断新增直接调用生产renderer的透明离屏surface逐像素alpha检查，覆盖四种模式和Off独有的画布外预览；既有真实指针跨缝套索/选区画笔提交、取消和UndoRedo继续执行。tile-repeat核心通过0.05s；正式Release构建成功。完整--tile-repeat-check实际退出0，包含新增离屏alpha和既有真实指针/文字旋转命中矩阵；后者运行较慢，未量测或声明交互FPS提升。来源744覆盖/证据与diff检查通过，整体INCOMPLETE，本阶段保存推送dev。

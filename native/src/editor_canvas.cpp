@@ -9,6 +9,13 @@
 namespace moon::editor {
 std::string textBoxPointerHit(const Document&,const Skin&,const gfx::Rect&,double,Point,gfx::Point);
 std::string textLayerAtPoint(const Document&,Point);
+// Legacy canvas-brush-coverage-overlay.ts: canonical coverage in every copy.
+void drawSelectionBrushCoverage(ui::Graphics& g,const SelectionBrushStroke& coverage,int width,int height,repeat::Mode mode,const gfx::Rect& canvas,double scale){
+ auto draw=[&](int x,int y){const int left=int(std::round(canvas.x+x*scale)),top=int(std::round(canvas.y+y*scale)),right=int(std::round(canvas.x+(x+1)*scale)),bottom=int(std::round(canvas.y+(y+1)*scale));g.fillRect(gfx::rgba(41,121,255,89),gfx::Rect(left,top,std::max(1,right-left),std::max(1,bottom-top)));};
+ for(const auto copy:repeat::offsets(mode))for(auto key:coverage.visited)draw(int(key%width)+copy.x*width,int(key/width)+copy.y*height);
+ if(mode==repeat::Mode::Off)for(auto point:coverage.outsidePreview)draw(point.first,point.second);
+}
+
 bool Editor::processAirbrushInput(ui::Message* msg){
  if(!airbrushTool_)return false;
  if(msg->type()!=ui::kMouseDownMessage&&msg->type()!=ui::kMouseMoveMessage&&msg->type()!=ui::kMouseUpMessage)return false;
@@ -1387,7 +1394,7 @@ void Editor::paintCanvas(ui::Graphics& g) {InteractionScope interactionScope(9,"
 
     }
 
-    if(selectionTool_ && selectionKind_==5 && selectionBrushPointer_ && canvasOwnsPointer(*selectionBrushPointer_) && !eyedropperTool_ && !eyedropperHeld_ && !eyedropperGesture_.active() && !spaceHeld_ && !handTool_ && ((selectionDragging_ && !selectionBoxDragging_) || transformHit(*selectionBrushPointer_).empty())){const auto pointer=*selectionBrushPointer_;if((selectionDragging_ && !selectionBoxDragging_) || selectionHit(pointer)==0){auto coverage=selectionBrushStroke_;const auto p=canvasPoint(pointer);coverage.collect(document.width(),document.height(),{p.x,p.y},{p.x,p.y},brushFeedback_.brushProfiles_[0],selectionBrushAngle_,tileRepeatIdentity_==document.identity()?tileRepeat_:repeat::Mode::Off);const double scale=canvasScale();auto draw=[&](int x,int y){const int left=int(std::round(cv.x+x*scale)),top=int(std::round(cv.y+y*scale)),right=int(std::round(cv.x+(x+1)*scale)),bottom=int(std::round(cv.y+(y+1)*scale));g.fillRect(gfx::rgba(41,121,255,89),gfx::Rect(left,top,std::max(1,right-left),std::max(1,bottom-top)));};for(auto key:coverage.visited)draw(int(key%document.width()),int(key/document.width()));for(auto p:coverage.outsidePreview)draw(p.first,p.second);}}
+    if(selectionTool_ && selectionKind_==5 && selectionBrushPointer_ && canvasOwnsPointer(*selectionBrushPointer_) && !eyedropperTool_ && !eyedropperHeld_ && !eyedropperGesture_.active() && !spaceHeld_ && !handTool_ && ((selectionDragging_ && !selectionBoxDragging_) || transformHit(*selectionBrushPointer_).empty())){const auto pointer=*selectionBrushPointer_;if((selectionDragging_ && !selectionBoxDragging_) || selectionHit(pointer)==0){auto coverage=selectionBrushStroke_;const auto p=canvasPoint(pointer);coverage.collect(document.width(),document.height(),{p.x,p.y},{p.x,p.y},brushFeedback_.brushProfiles_[0],selectionBrushAngle_,tileRepeatIdentity_==document.identity()?tileRepeat_:repeat::Mode::Off);drawSelectionBrushCoverage(g,coverage,document.width(),document.height(),tileRepeatIdentity_==document.identity()?tileRepeat_:repeat::Mode::Off,cv,canvasScale());}}
 
     for(const auto copy:repeated){const gfx::Rect target(cv.x+copy.x*cv.w,cv.y+copy.y*cv.h,cv.w,cv.h);g.saveClip();g.clipRect(target);paintAirbrushPreview(g,target);g.restoreClip();}paintLiquifyPreview(g,cv);
     paintSmoothCoverage(g,cv);
