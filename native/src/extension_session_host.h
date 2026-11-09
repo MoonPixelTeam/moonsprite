@@ -1,5 +1,6 @@
 #pragma once
 #include "extension_event_lifecycle.h"
+#include "extension_editor_events.h"
 #include "extension_request_host.h"
 #include <map>
 #include <exception>
@@ -9,9 +10,10 @@ namespace moon::extension {
 class SessionHost {
  struct Session {
   std::string id,locale;std::uint64_t generation;bool active=true;
+  bool editorEventsAllowed=false;std::shared_ptr<EditorEventSubscription> editorSubscription;
   EventLifecycle events;RequestHost requests;RuntimeRegistry::Stop unregister;
-  Session(std::string identity,std::uint64_t value,RuntimeExtension extension,const std::vector<std::string>& permissions,std::string language,Storage& storage,FileDropRouter& drops,RuntimeRegistry& registry,std::function<void(const RuntimeEvent&)> deliver,CommandHandlers handlers,std::vector<RuntimeCommand> commands):id(std::move(identity)),locale(std::move(language)),generation(value),events(permissions,locale,std::move(deliver)),requests(std::move(extension),permissions,storage,drops,registry,std::move(handlers),std::move(commands)){}
-  void stop(){if(!active)return;active=false;std::exception_ptr failure;auto cleanup=[&](auto&& action){try{action();}catch(...){if(!failure)failure=std::current_exception();}};cleanup([&]{unregister();});cleanup([&]{requests.deactivate();});cleanup([&]{events.deactivate();});if(failure)std::rethrow_exception(failure);}
+  Session(std::string identity,std::uint64_t value,RuntimeExtension extension,const std::vector<std::string>& permissions,std::string language,Storage& storage,FileDropRouter& drops,RuntimeRegistry& registry,std::function<void(const RuntimeEvent&)> deliver,CommandHandlers handlers,std::vector<RuntimeCommand> commands):id(std::move(identity)),locale(std::move(language)),generation(value),editorEventsAllowed(std::find(permissions.begin(),permissions.end(),"events")!=permissions.end()),events(permissions,locale,std::move(deliver)),requests(std::move(extension),permissions,storage,drops,registry,std::move(handlers),std::move(commands)){}
+  void stop(){if(!active)return;active=false;editorSubscription.reset();std::exception_ptr failure;auto cleanup=[&](auto&& action){try{action();}catch(...){if(!failure)failure=std::current_exception();}};cleanup([&]{unregister();});cleanup([&]{requests.deactivate();});cleanup([&]{events.deactivate();});if(failure)std::rethrow_exception(failure);}
  };
  Storage& storage_;FileDropRouter& drops_;RuntimeRegistry& registry_;std::map<std::string,std::shared_ptr<Session>> sessions_;std::uint64_t next_=0;
  std::shared_ptr<Session> find(const std::string& id,std::uint64_t generation)const{auto it=sessions_.find(id);return it!=sessions_.end()&&it->second->generation==generation&&it->second->active?it->second:nullptr;}
@@ -25,6 +27,10 @@ public:
   close(id);auto session=std::make_shared<Session>(id,++next_,std::move(extension),permissions,std::move(locale),storage_,drops_,registry_,std::move(deliver),std::move(handlers),std::move(commands));
   session->unregister=registry_.registerRuntime(id,[weak=std::weak_ptr<Session>(session)](const auto& event){if(auto live=weak.lock();live&&live->active)live->events.event(event);});sessions_[id]=session;return {id,session->generation};
  }
+ // The application captures the initial scalar snapshot at subscription time.
+ bool subscribeEditor(const Token& token,EditorSnapshot baseline){auto s=find(token.extensionId,token.generation);if(!s||!s->editorEventsAllowed)return false;s->editorSubscription=std::make_shared<EditorEventSubscription>(std::move(baseline),[weak=std::weak_ptr<Session>(s)](const auto& event){if(auto live=weak.lock();live&&live->active)live->events.event(event);});return true;}
+ void editorChanged(const Token& token,EditorSnapshot next,const std::function<std::int64_t()>& now=editorEventTime){if(auto s=find(token.extensionId,token.generation)){auto subscription=s->editorSubscription;if(subscription)subscription->changed(std::move(next),now);}}
+ void colorSampled(const Token& token,std::optional<std::string> projectId={},std::int64_t timestamp=editorEventTime()){if(auto s=find(token.extensionId,token.generation);s&&s->editorEventsAllowed)s->events.event(editorEvent("color.sampled",std::move(projectId),{},timestamp));}
  void setDeclaredMenus(const Token& token,std::vector<std::string> ids){if(auto s=find(token.extensionId,token.generation))s->requests.setDeclaredMenus(std::move(ids));}
  MenuState::Stop subscribePresentation(const Token& token,std::function<void()> callback){if(auto s=find(token.extensionId,token.generation))return s->requests.subscribePresentation(std::move(callback));return []{};}
  std::optional<MenuState> menus(const Token& token)const{if(auto s=find(token.extensionId,token.generation))return s->requests.menus();return {};}

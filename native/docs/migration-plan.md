@@ -5581,3 +5581,10 @@ Release四个相关目标及resources/session/request/event-lifecycle四项通�
 完整承接workspace-extension-events::changedEditorEvents与extension-editor-events::publishEditorEvent：23名称目录、typed name/projectId/detail/timestamp，激活→关闭→逐工程状态事件的固定顺序，新增工程只报created/opened不补状态；revision/tool/layer/增删层/frame/playing/selection/前后景/view差分。快照只保留值，不带像素或路径；selectionIdentity明确是旧JS对象身份而非矩形相等，view由调用方提供旧JSON签名。订阅先更新基线后发送，沿现有EventLifecycle权限、加载前丢弃和停用边界；操作事件复用RuntimeRegistry广播。
 
 Release六个相关目标成功，contributions/resources/session/request/event-lifecycle/runtime六项通过0.33s。覆盖全部差分顺序/详情/时间、创建打开关闭激活、选区对象替换/清除、动画停止、快照独立和重复抑制、加载前丢弃及停止、发布与注销。首轮时钟回调默认参数编译错误已修正。来源覆盖775文件及diff检查后保存推送dev。正式Editor快照捕获、成功操作调用点和JSON引擎传输未接入；未声称撤销/填充等正式程序事件已可用，也未做GUI/正式exe/全套验收。整体INCOMPLETE，保留用户差异/数据/缓存和安装失败现场。
+
+
+### 2026-11-10：编辑器事件会话订阅与采色桥阶段
+
+承接ExtensionRuntimeHost events权限限定的workspace订阅与CANVAS_COLOR_SAMPLING_COMPLETED_EVENT桥，SessionHost提供generation绑定的subscribeEditor/editorChanged/colorSampled。基线由应用订阅瞬间捕获，不把已打开作品补报为新建；加载前更新基线但不补发事件。每个会话独立订阅，无events权限不创建；替换不继承，旧token不可配置/更新/采色。派发保留订阅对象并弱引用会话，回调内关闭自身不会销毁正在执行的对象，后续同批事件被活动态拦截；stop释放基线。
+
+Release session/resources两个相关目标成功，session/event-lifecycle/runtime三项通过0.14s。覆盖权限、无初始/重复/加载前事件、详情与时间、采色隔离、替换无继承、首事件关闭后同批中断。来源775文件及diff检查后保存推送dev。此阶段完整接通核心会话与事件差分，正式Editor工作区观察器、画布采色信号、引擎传输仍待接入，无正式exe/GUI/全套验收，整体INCOMPLETE，保留用户差异/缓存及失败现场。
