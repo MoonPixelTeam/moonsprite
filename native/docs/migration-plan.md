@@ -5127,3 +5127,10 @@ CTest document-transactions/free-tile-project/tilemap-document全部通过33.39s
 按legacy sourceSurfaces/createCelSurface的canonical共享与属性不同独立复制语义，保留原生逻辑关系，调整临时所有权。palette提取前把root像素swap入sample数组，沿原root顺序和量化器提取后归还，消除整幅sample复制；统计每个root实际独立Cel使用次数，前面的独立用户仍复制，最后用户接管root缓冲。rasterization后立即释放raw/tileset解压输入及decoded sheet缓存，并回收对应预算，避免把不再存活临时数据计为永久资源。未改变调色板排序/采样规则、链接判定或RGBA编辑模式。
 
 新增前后向属性不同导入的编辑/UndoRedo独立性，以及canonical链接编辑传播/UndoRedo；既有长链、稀疏、索引palette、tile、原生/ASE往返继续通过。正式Release成功，aseprite-io/save-policy通过0.35s；完整--aseprite-io-check实际退出0。744来源/证据与diff检查通过；未量测峰值内存或FPS，不宣称所有导入临时分配消除。整体INCOMPLETE，本阶段保存推送dev。
+
+
+### 2026-11-10：ASE逐帧调色板快照与预算优化
+
+对照legacy aseprite.ts readPalette/readOldPalette与framePalettes逐帧语义，将未变化的调色板快照改为不可变共享，保留独立工作缓冲；重复相同区块不再复制，帧内多次修改后恢复原值也复用上一快照。工作缓冲只对增长部分计费，各实际保留快照计费一次；栅格转换结束即释放调色板与对应预算。索引瓦片缓存先比较快照身份，再按需比较颜色。只读核对Aseprite decoder的countDiff/setPalette差异保留方式，未复制代码，未改变旧palette格式转换或native RGBA编辑模式。
+
+两组1000帧/百万条目稀疏调色板夹具分别覆盖省略后续palette区块、每帧重复相同区块，中途改色后逐帧结果正确；原实现两组均会因重复快照或重复工作预算超256MiB而拒绝。正式Release构建成功；aseprite-io/save-policy通过0.46s；完整--aseprite-io-check实际退出0。新增压力场景为核心测试，未新增窗口截图或实测峰值内存/FPS；整体INCOMPLETE。本阶段保存推送dev。
