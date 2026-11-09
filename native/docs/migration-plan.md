@@ -4611,3 +4611,9 @@ X/Y/Both合成/当前层及左右键实际诊断验证100次preview请求不发�
 核对workspace-layer-move animationMaskOffsetsForLayerMove/setAnimationMaskOffsets和canvas-input-layer-move帧键目标：解析蒙版自身moveWithOwner为准，链接根按ID去重；独立蒙版分别沿用各自开关。新增48组真实鼠标X/Y/Both×当前Cel/两帧显式选择×链接/独立蒙版×第二帧绑定开关×主/负副本，逐帧检查蒙版ID/链接/像素/偏移、Cel像素/偏移，单笔历史、UndoRedo、Escape及无捕获残留。初次误用第二帧开关推断第一帧独立蒙版行为，核对源码后修正预期，产品未更改。
 
 正式Release构建退出0，--layer-move-check显式等待退出0（含前阶段48组共96组）。五项CTest attached-masks/alignment/move-click-flash/tile-repeat/tile-repeat-stroke通过0.24s，742来源快照与diff检查通过。本轮没有生产修复、截图或FPS证据，不称性能提升。发现原生活动蒙版单独移动被画布target筛选排除，虽然底层beginLayerMove具有该能力，但旧版canvas入口使用所属层而非activePaintLayer，尚不能证明应开放；保留为待核对语义，不擅自新增。组蒙版/组选择等仍待进一步验收，全量迁移INCOMPLETE。保留原有用户数据、缓存、未跟踪文件，阶段保存推送dev。
+
+### 2026-11-09：平铺组选择移动及锁定/隐藏过滤阶段
+
+对照canvas-move-selection resolveCanvasMoveLayerIds与canvas-input-layer-move：选中组展开后代层，再按有效visible/locked过滤；显式层目标扩展所有帧，Alt仅单层单Cel可复制。新增36组X/Y/Both×全可编辑/一个锁定/一个隐藏成员×Alt/普通×主/负副本，实际鼠标验证链接帧各目标offset、组Alt不复制、单历史、UndoRedo、Escape；每组再验证整组锁定/隐藏时无移动、捕获或新增历史。既有96组帧/蒙版/普通移动继续执行。
+
+正式Release构建退出0；--layer-move-check显式等待退出0（累计132组及整组拒绝检查）；六项CTest layer-panel-tree/document-layer-groups/document-layer-group-structure/alignment/move-click-flash/attached-masks通过1.10s，742来源快照与diff检查通过。生产逻辑无新增改动，不称性能提升。初始计划中的嵌套组和组蒙版未在本矩阵覆盖：旧版animationMaskOffsetsForLayerMove仅取layer mask，原生已有随选中组移动group mask分支，仍需查证或用户语义决定；活动蒙版单独移动入口同样待核对。未新增截图/FPS证据，全量迁移INCOMPLETE。保留原有用户数据、缓存与未跟踪文件，阶段保存推送dev。
