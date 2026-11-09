@@ -4,6 +4,7 @@
 #include <windows.h>
 #include <roapi.h>
 #include "extension_session_host.h"
+#include "document.h"
 #include "extension_manifest_commands.h"
 #include "extension_settings_values.h"
 #include <iostream>
@@ -30,6 +31,12 @@ int main(int argc,char** argv){RoInitialize(RO_INIT_MULTITHREADED);try{
  auto menuToken=host.open({"menus",true,false},{"menus","commands"},"en-US",[](const auto&){});host.setDeclaredMenus(menuToken,{"top"});check(host.request(menuToken,raw("menus.setItems","{\"menuId\":\"top\",\"items\":[{\"id\":\"one\",\"name\":\"One\",\"event\":\"select\",\"checked\":true}]}"))->GetNamedBoolean(L"ok")&&host.menus(menuToken)->items("top").size()==1,"Session menu update");auto replacementMenu=host.open({"menus",true,false},{"menus","commands"},"en-US",[](const auto&){});check(!host.menus(menuToken)&&host.menus(replacementMenu)->items("top").empty(),"Menu replacement invalidates stale state");
 
  int notices=0;auto serviceToken=host.open({"service",true,false},{"ui"},"en-US",[](const auto&){});host.setServices(serviceToken,{[&](const auto&){++notices;},{},{}});check(host.request(serviceToken,raw("ui.notify",R"({"message":"live"})"))->GetNamedBoolean(L"ok")&&notices==1,"Session notification service");auto nextService=host.open({"service",true,false},{"ui"},"en-US",[](const auto&){});host.setServices(serviceToken,{[&](const auto&){++notices;},{},{}});check(!host.request(serviceToken,raw("ui.notify",R"({"message":"old"})"))&&!host.request(nextService,raw("ui.notify",R"({"message":"new"})"))->GetNamedBoolean(L"ok")&&notices==1,"Stale service configuration cannot affect replacement");
+
+ moon::Document document(3,2);document.beginStroke({1,1},0xff123456);check(document.commitStroke(),"History fixture stroke");const auto painted=document.pixels();auto docToken=host.open({"document",true,false},{"document.read","document.write","workspace.read"},"en-US",[](const auto&){});WorkspaceServices workspace;
+ workspace.active=[&]()->std::optional<ProjectSummary>{return ProjectSummary{winrt::to_hstring(document.projectId()),L"Document",L"rgba",document.width(),document.height(),document.timeline().state().layers.size(),document.timeline().state().frames.size(),document.dirty(),document.contentRevision()};};
+ workspace.layers=[&]{std::vector<LayerSummary> result;for(const auto& layer:document.timeline().state().layers)result.push_back({winrt::to_hstring(layer.id),L"Layer",winrt::to_hstring(layer.blendMode),layer.visible,layer.opacity});return result;};workspace.frames=[&]{std::vector<FrameSummary> result;for(const auto& frame:document.timeline().state().frames)result.push_back({winrt::to_hstring(frame.id),frame.duration});return result;};workspace.undo=[&]{document.undo();};workspace.redo=[&]{document.redo();};host.setWorkspaceServices(docToken,workspace);
+ const auto beforeQuery=document.contentRevision();check(host.request(docToken,raw("document.getSummary"))->GetNamedObject(L"result").GetNamedNumber(L"width")==3&&host.request(docToken,raw("document.getLayers"))->GetNamedArray(L"result").Size()==1&&host.request(docToken,raw("document.getFrames"))->GetNamedArray(L"result").Size()==1&&document.contentRevision()==beforeQuery,"Document queries do not mutate content");
+ check(host.request(docToken,raw("document.undo"))->GetNamedBoolean(L"ok")&&document.pixels()==std::vector<moon::Pixel>(6),"Actual document undo via session");check(host.request(docToken,raw("document.redo"))->GetNamedBoolean(L"ok")&&document.pixels()==painted,"Actual document redo via session");auto nextDoc=host.open({"document",true,false},{"document.read","document.write"},"en-US",[](const auto&){});host.setWorkspaceServices(docToken,workspace);check(!host.request(docToken,raw("document.undo"))&&!host.request(nextDoc,raw("document.undo"))->GetNamedBoolean(L"ok")&&document.pixels()==painted,"Stale workspace service cannot mutate replacement");
  host.loaded(another,project);
  }
  check(other.back().type=="deactivate"&&!registry.dispatch("other",{})&&!drops.accepts("pet.custom"),"Host destruction left registry or drops");check(Storage(std::filesystem::path(argv[1])/("missing-session.json")).list(u"ext").empty(),"Missing storage");

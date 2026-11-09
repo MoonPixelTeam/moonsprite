@@ -9,13 +9,31 @@ namespace moon::extension {
 // Native transport supplies authenticated session ownership and, for set,
 // the script engine's exact JSON.stringify(value) result. Never infer identity
 // or a storage namespace from untrusted request params.
+struct ProjectSummary {
+ winrt::hstring id,name,colorMode;int width=0,height=0;std::size_t layerCount=0,frameCount=1;bool dirty=false;std::uint64_t contentRevision=0;
+};
+struct LayerSummary {winrt::hstring id,name,blendMode;bool visible=true;double opacity=1;};
+struct FrameSummary {winrt::hstring id;int duration=100;};
+struct WorkspaceServices {
+ std::function<std::vector<ProjectSummary>()> projects;
+ std::function<std::optional<ProjectSummary>()> active;
+ std::function<void(const winrt::hstring&)> activate;
+ std::function<std::vector<LayerSummary>()> layers;
+ std::function<std::vector<FrameSummary>()> frames;
+ std::function<void()> undo,redo;
+};
+inline winrt::Windows::Data::Json::JsonObject projectSnapshot(const ProjectSummary& value){
+ using namespace winrt::Windows::Data::Json;JsonObject result;
+ result.Insert(L"id",JsonValue::CreateStringValue(value.id));result.Insert(L"name",JsonValue::CreateStringValue(value.name));result.Insert(L"colorMode",JsonValue::CreateStringValue(value.colorMode));
+ result.Insert(L"width",JsonValue::CreateNumberValue(value.width));result.Insert(L"height",JsonValue::CreateNumberValue(value.height));result.Insert(L"layerCount",JsonValue::CreateNumberValue(double(value.layerCount)));result.Insert(L"frameCount",JsonValue::CreateNumberValue(double(value.frameCount)));result.Insert(L"dirty",JsonValue::CreateBooleanValue(value.dirty));result.Insert(L"contentRevision",JsonValue::CreateNumberValue(double(value.contentRevision)));return result;
+}
 struct HostServices {
  std::function<void(const winrt::hstring&)> notify;
  std::function<winrt::hstring()> readClipboard;
  std::function<void(const winrt::hstring&)> writeClipboard;
 };
 class RequestHost {
- HostServices services_;
+ HostServices services_;WorkspaceServices workspace_;
 
  MenuState menus_;
  RuntimeExtension extension_;std::vector<std::string> permissions_;Storage& storage_;FileDropRouter& drops_;RuntimeRegistry& registry_;CommandHandlers handlers_;std::vector<RuntimeCommand> commands_;bool active_=true;std::function<FileDropRouter::Bytes(const std::string&)> readResource_;
@@ -36,6 +54,7 @@ public:
   CommandState next;auto field=[&](const wchar_t* key,std::optional<bool>& target){if(!state.HasKey(key))return;if(state.GetNamedValue(key).ValueType()!=JsonValueType::Boolean)throw std::invalid_argument("命令显示状态无效。");target=state.GetNamedBoolean(key);};
   field(L"checked",next.checked);field(L"visible",next.visible);menus_.setCommand(id,next);return true;
  }
+ void setWorkspaceServices(WorkspaceServices services){workspace_=std::move(services);}
  void setServices(HostServices services){services_=std::move(services);}
  void setResourceReader(std::function<FileDropRouter::Bytes(const std::string&)> reader){readResource_=std::move(reader);}
  void deactivate(){active_=false;menus_.clear();drops_.clear(extension_.id);}
@@ -66,6 +85,22 @@ public:
    else if(method=="clipboard.readText"){if(!services_.readClipboard)throw std::runtime_error("Native clipboard is not connected");result=JsonValue::CreateStringValue(services_.readClipboard());}
    else if(method=="clipboard.writeText"){
     if(!params.HasKey(L"text")||params.GetNamedValue(L"text").ValueType()!=JsonValueType::String)throw std::invalid_argument("参数 text 必须是字符串。");if(!services_.writeClipboard)throw std::runtime_error("Native clipboard is not connected");services_.writeClipboard(params.GetNamedString(L"text"));
+   }
+   else if(method=="workspace.listProjects"){
+    if(!workspace_.projects)throw std::runtime_error("Native workspace is not connected");JsonArray projects;for(const auto& project:workspace_.projects())projects.Append(projectSnapshot(project));result=projects;
+   }
+   else if(method=="workspace.getActiveProject"||method=="document.getSummary"){
+    if(!workspace_.active)throw std::runtime_error("Native workspace is not connected");auto active=workspace_.active();if(active)result=projectSnapshot(*active);
+   }
+   else if(method=="workspace.activateProject"){
+    if(!params.HasKey(L"projectId")||params.GetNamedValue(L"projectId").ValueType()!=JsonValueType::String)throw std::invalid_argument("参数 projectId 必须是字符串。");
+    if(!workspace_.projects||!workspace_.activate)throw std::runtime_error("Native workspace activation is not connected");const auto id=params.GetNamedString(L"projectId");const auto projects=workspace_.projects();if(std::none_of(projects.begin(),projects.end(),[&](const auto& p){return p.id==id;}))throw std::invalid_argument("工程不存在。");workspace_.activate(id);
+   }
+   else if(method=="document.getLayers"||method=="document.getFrames"||method=="document.undo"||method=="document.redo"){
+    if(!workspace_.active)throw std::runtime_error("Native workspace is not connected");if(!workspace_.active())throw std::invalid_argument("当前没有打开的工程。");
+    if(method=="document.getLayers"){if(!workspace_.layers)throw std::runtime_error("Native layer query is not connected");JsonArray layers;for(const auto& layer:workspace_.layers()){JsonObject item;item.Insert(L"id",JsonValue::CreateStringValue(layer.id));item.Insert(L"name",JsonValue::CreateStringValue(layer.name));item.Insert(L"visible",JsonValue::CreateBooleanValue(layer.visible));item.Insert(L"opacity",JsonValue::CreateNumberValue(layer.opacity));item.Insert(L"blendMode",JsonValue::CreateStringValue(layer.blendMode));layers.Append(item);}result=layers;}
+    else if(method=="document.getFrames"){if(!workspace_.frames)throw std::runtime_error("Native frame query is not connected");JsonArray frames;std::size_t index=0;for(const auto& frame:workspace_.frames()){JsonObject item;item.Insert(L"id",JsonValue::CreateStringValue(frame.id));item.Insert(L"index",JsonValue::CreateNumberValue(double(index++)));item.Insert(L"duration",JsonValue::CreateNumberValue(frame.duration));frames.Append(item);}result=frames;}
+    else {const auto action=method=="document.undo"?workspace_.undo:workspace_.redo;if(!action)throw std::runtime_error("Native document history is not connected");action();}
    }
    else if(method=="storage.get")result=storage_.get(owner,key());
    else if(method=="storage.set"){const auto resolved=key();if(!encodedValue)throw std::invalid_argument("扩展存储值超过大小限制。");storage_.setEncoded(owner,resolved,*encodedValue);}

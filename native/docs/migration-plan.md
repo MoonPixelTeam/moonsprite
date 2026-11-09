@@ -5553,3 +5553,10 @@ Release extension-contributions目标及独立测试通过0.05s，验证动态�
 核对ExtensionRuntimeHost::handleRequest与stringParam后承接ui.notify/notifications.show（分别ui/notifications权限，message必需字符串，500 UTF16单元截断）、ui.openSettings（必须hasSettings，固定当前扩展ID）、clipboard.readText/writeText（clipboard权限，写入text必需字符串，内容不额外截断）。HostServices由实际应用注入通知及剪贴板，设置复用既有CommandHandlers；缺失连接和服务异常显式失败，不虚报成功。SessionHost只允许当前generation设置服务，替换会话不继承旧回调。
 
 Release三个相关目标构建与extension-request-host/session-host/resources三项通过0.28s，覆盖精确Unicode/内嵌NUL往返、通知截断落在代理对中间的JS行为、权限及参数失败无副作用、设置归属/不可用、缺失/抛错服务、旧token不能污染新会话。来源与diff检查后保存推送dev。本阶段是完整请求/会话服务适配，尚无真实系统剪贴板/正式消息区和设置窗口调用方；诊断日志的JS String转换副作用语义仍需单独核对，未加入本阶段，不宣称已支持。无正式exe/GUI/全套验收，整体INCOMPLETE，保留用户差异/缓存及原安装失败现场。
+
+
+### 2026-11-10：工作区与文档查询／历史请求阶段
+
+迁移ExtensionRuntimeHost::projectSnapshot与workspace.listProjects/getActiveProject/activateProject、document.getSummary/getLayers/getFrames/undo/redo。类型化服务输出旧版9字段工程摘要、5字段图层、按序index帧；无活动工程摘要null，层/帧/历史报错，激活先验证工程存在。各方法沿原权限；缺失服务显式失败，会话generation绑定配置，不继承过期回调。查询不取像素或复制文档，历史动作委托领域事务。
+
+Release三个相关目标构建成功；session/resources通过，实际Document笔画经会话撤销为空、重做恢复，查询保持contentRevision。request检查首次在既有storage.remove失败（此前新增请求断言均已通过），保留运行现场；增加具体error及fixture路径诊断后重建单项通过0.08s。未把该复测称为外部存储占用根因已修复，也不宣称整组一次通过。首轮编译测试变量snapshot重名已修正。来源覆盖与diff检查后保存推送dev。正式编辑器工作区绑定、对应编辑器事件、引擎传输尚未接入，无正式exe/GUI/全套验收，整体INCOMPLETE；保留用户差异/缓存和先前安装失败现场。
