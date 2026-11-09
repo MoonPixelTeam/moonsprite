@@ -4830,3 +4830,12 @@ smokeWorkspace布局交互完成后切至已有移动工具，固定后续画布
 本阶段核心验证：正式目标的核心依赖与两项测试构建成功；CTest document-transactions/free-tile-project/tilemap-document 三项通过21.85s。首次瓦片测试停在旧 Paint 拒绝断言，按批准的新行为更新后通过；744文件来源及证据快照检查通过，整体对齐仍 INCOMPLETE。
 
 正式 Release 构建成功，完整 --tileset-management-check 实际退出0。首轮新增 Paint GUI 夹具只设置自由变换标志，被刷新按既有规则清除，未进入真实自由变换事务；修正夹具调用 startFreeSelectionTransform 后通过，未修改刷新规则。未重跑全套210项，无新增FPS或人工截图验收。保留用户数据、缓存、未跟踪文件与 editor_support.h 既有状态，阶段提交推送 dev。
+
+
+### 2026-11-09：Paint 偏移与补边网格浮动事务阶段
+
+承接用户批准的完整瓦片事务修复，对照 legacy tilemap-document.ts tilemapCellIndexesForEdit 的世界坐标减 surface.offset 和 rgbaCellPixelsFromSurface 完整单元格读取，开放 Paint 单个固定网格的正负偏移及画布非整瓦片补边。复用已有 deferred overlay 路径而不扩展/改写派生缓存几何，预览按固定网格范围裁剪；提交将画布修改映射回局部瓦片，保留画布外 texels、原瓦片资源、显式同层链接和单次历史。普通 Paint 整格拖动保持既有路径；Create/Edit/Hybrid 的现有限制保持原状。
+
+工程/恢复回归扩展为移动与复制 × linked/independent × native/recovery × 缩放翻转/旋转倾斜/四角变换 × 零/正/负偏移，共72组合；使用7×3画布与2×2瓦片同时覆盖补边。核对取消无历史、待提交键盘按像素移动、预览与提交一致、完整网格原点不变、画布外像素不变、保存重开及Undo/Redo。最初新一致性断言失败于未重编裁剪处理的旧对象，显式重编后全部通过；补边/偏移旧拒绝断言按新增支持更新。
+
+正式Release构建成功；CTest document-transactions/free-tile-project/tilemap-document三项全部通过29.27s；完整 --tileset-management-check 实际退出0。来源覆盖与快照及diff检查通过。窗口诊断覆盖既有完整瓦片交互，新增偏移矩阵为核心/持久化验收，未新增偏移专用鼠标或人工截图验收，无新增FPS结论，未重跑全套。多目标、runtime shared别名、混合free文档及Paint待提交Cut/Delete等仍有迁移缺口，整体INCOMPLETE。保留用户数据、缓存、未跟踪文件与editor_support.h既有状态，阶段保存推送dev。
