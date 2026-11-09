@@ -29700,7 +29700,8 @@
       "scope": "EX-004 runtime registration, event/command dispatch and method permissions",
       "adaptation": "Legacy Map identity cleanup, insertion-order live broadcast including callback registration/removal, propagated exceptions, command priority lua/runtime/settings and exact 34-method permission table. Typed native event envelope; arbitrary payload remains opaque pending actual host JSON wiring. Files dropped adapter composes FileDropRouter with registry. Event-thread calls only; no JS engine or UI host. SettingsValues integration:key on settings event,load normalization,hidden value preservation,unknown keys retained on disk,reset,button close and stopped runtime error.",
       "lifecycleFields20261110": "Typed locale, extensionId and apiVersion fields for legacy onLoad locale-changed/activate events; existing opaque payload and registry behavior unchanged.",
-      "editorEvents20261110": "Typed name/projectId/detail variant/timestamp fields appended to RuntimeEvent. Test every snapshot transition in exact order, details/time, null/created/opened/closed/activation, selection identity changes, animation stop, independent snapshots/no duplicates, lifecycle preload/drop/stop and operation registry broadcast. Formal editor events not wired."
+      "editorEvents20261110": "Typed name/projectId/detail variant/timestamp fields appended to RuntimeEvent. Test every snapshot transition in exact order, details/time, null/created/opened/closed/activation, selection identity changes, animation stop, independent snapshots/no duplicates, lifecycle preload/drop/stop and operation registry broadcast. Formal editor events not wired.",
+      "eventSerialization20261110": "Append native kind/windowId/optional format/homeOpen fields and verify every legacy event JSON shape, no irrelevant fields, nested arbitrary JSON, missing optionals, lone UTF16 surrogate, dropped bytes255, detail null/bool/string/number/nonfinite and explicit malformed payload/type failure. Core serializer only; no actual engine or UI connection."
     },
     {
       "file": "tests/extension_runtime_test.cpp",
@@ -29883,7 +29884,8 @@
         "legacy/src/renderer/src/core/extension-command-state.test.ts",
         "legacy/src/renderer/src/components/extensions/ExtensionWindow.tsx",
         "legacy/src/renderer/src/store/workspace-extension-events.ts",
-        "legacy/src/renderer/src/store/workspace-extension-events.test.ts"
+        "legacy/src/renderer/src/store/workspace-extension-events.test.ts",
+        "legacy/src/shared/types-extension-runtime.ts"
       ],
       "scope": "Integrated session open/load/requests/storage/drop/replacement/deactivate",
       "adaptation": "Actual disk-backed storage, two namespaces, queued command/activation order, stored data across session replacement, stale callbacks and pending reads, locale/request agreement, close during file read, load failure and host destruction. Core-only, no real engine or desktop window. Command migration regression: three handlers/defaults/nulls, UTF8 text limits, invalid declarations, duplicate IDs,64/65 cap,Unicode Lua path; five settings controls/defaults/Unicode scalar counts,23 invalid settings cases,64/65 controls/options,HTML metadata; parsed commands composed with session request dispatch. SettingsValues integration:key on settings event,load normalization,hidden value preservation,unknown keys retained on disk,reset,button close and stopped runtime error. Dynamic menu request/session integration:declared IDs,menus+commands permissions,atomic validation,name persistence,no-change revision,per-session cleanup/stale replacement. Tests include case-sensitive IDs and dot event syntax matching legacy regex.",
@@ -29892,7 +29894,8 @@
       "hostServices20261110": "ExtensionRuntimeHost handleRequest ui.notify/notifications.show (distinct permissions, typed message, UTF16 slice500), ui.openSettings (availability and authenticated owner), clipboard.readText/writeText (exact hstring, typed text) migrated through injected event-thread HostServices plus existing settings handler. Missing service or callback failure returns explicit error. Session configuration bound to live generation; replacement receives no stale callbacks. Tests cover Unicode/NUL/split-surrogate notification truncation, permissions, malformed params without effects, spoofed settings owner, missing callbacks and thrown service errors. No OS clipboard/editor notification/settings UI wiring or actual engine transport yet; diagnostics/network remain unsupported.",
       "workspaceRequests20261110": "Migrate ExtensionRuntimeHost projectSnapshot and workspace list/getActive/activate, document summary/layers/frames/undo/redo. Typed injected summaries serialize exact legacy fields and ordered frame indexes, null summary vs no-active query/history error, activation validates project ID against current list. Live generation-bound service injection; missing services fail explicitly. Tests cover permissions/fields/order/no-active/no effects plus actual Document stroke undo/redo and read queries preserving contentRevision. Formal editor bindings, events and script transport remain pending. Request regression now includes storage.remove error and fixture path diagnostics after one unexplained intermittent remove failure; single rerun passed, root cause unproven.",
       "teardownExceptions20261110": "Necessary native callback adaptation for legacy independent React effect cleanup and asynchronous postMessage delivery: invalidate session/event state before callbacks, unregister then clear drops/presentation then deactivate, execute all cleanup steps and rethrow first failure. Prevent reentrant/throwing delivery leaving lifecycle active; RequestHost clear drops before presentation observers. Tests inject simultaneous observer/deactivate failures, repeated close, clean replacement, reentrant deactivate and destructor multi-session cleanup. Does not change legacy load-error recovery semantics or claim native windows/tasks cleanup is connected.",
-      "editorSubscription20261110": "Connect ExtensionRuntimeHost events-only workspace subscription and color sampling callback to generation-bound SessionHost. Caller supplies initial scalar baseline; per-session shared subscription retained during reentrant dispatch, weak session delivery, stop releases baseline and blocks remaining batch. Unauthorized subscription rejected, preload diffs advance baseline without replay, replacement does not inherit state, stale token cannot configure/update/sample. Tests include multi-permission sessions, exact payload/timestamp/order, close on first event, no inherited baseline. Actual workspace observer/canvas sampled signal in Editor and engine transport remain unconnected."
+      "editorSubscription20261110": "Connect ExtensionRuntimeHost events-only workspace subscription and color sampling callback to generation-bound SessionHost. Caller supplies initial scalar baseline; per-session shared subscription retained during reentrant dispatch, weak session delivery, stop releases baseline and blocks remaining batch. Unauthorized subscription rejected, preload diffs advance baseline without replay, replacement does not inherit state, stale token cannot configure/update/sample. Tests include multi-permission sessions, exact payload/timestamp/order, close on first event, no inherited baseline. Actual workspace observer/canvas sampled signal in Editor and engine transport remain unconnected.",
+      "eventSerialization20261110": "Append native kind/windowId/optional format/homeOpen fields and verify every legacy event JSON shape, no irrelevant fields, nested arbitrary JSON, missing optionals, lone UTF16 surrogate, dropped bytes255, detail null/bool/string/number/nonfinite and explicit malformed payload/type failure. Core serializer only; no actual engine or UI connection."
     },
     {
       "file": "src/extension_resources.h",
@@ -30047,6 +30050,17 @@
       ],
       "scope": "EX-004 typed editor event payload, snapshot diff and subscription",
       "adaptation": "Port exact scalar snapshot comparison/event order and publishEditorEvent registry broadcast. Native snapshot values exclude pixels/paths; selectionIdentity explicitly represents JS reference identity, view retains serialized signature. Injectable clock for per-event epoch milliseconds. Baseline advances before synchronous dispatch as legacy; lifecycle permission/preload/stop compose. Actual Editor capture and operation call sites/JSON transport pending."
+    },
+    {
+      "file": "src/extension_event_json.h",
+      "classification": "legacy-partial",
+      "sources": [
+        "legacy/src/shared/types-extension-runtime.ts",
+        "legacy/src/renderer/src/components/extensions/ExtensionRuntimeHost.tsx",
+        "legacy/src/renderer/src/core/extension-runtime.ts"
+      ],
+      "scope": "Runtime event transport envelope and all thirteen event variants",
+      "adaptation": "Convert typed native RuntimeEvent into legacy moonsprite-extension-event/event JSON envelope. Type-specific fields only, optional projectId/format omitted, project null/homeOpen, arbitrary serialized JSON settings/window payload, unsigned file byte arrays, detail scalar variants. Nonfinite detail numbers stringify to null as JS JSON. Unknown type, missing required projectId, invalid interaction kind and malformed raw JSON explicitly fail. This adapter is not a script engine transport."
     }
   ],
   "assetTransfers": [

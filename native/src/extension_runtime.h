@@ -18,6 +18,7 @@ struct RuntimeEvent {
  using DetailValue=std::variant<std::nullptr_t,std::string,double,bool>;
  std::string name;std::optional<std::string> projectId;
  std::map<std::string,DetailValue> detail;std::int64_t timestamp=0;
+ std::string kind,windowId;std::optional<std::string> format;bool homeOpen=false;
 };
 // All calls belong to the host event thread, like the legacy JS Map. A live
 // traversal observes callback registrations/removals rather than a snapshot.

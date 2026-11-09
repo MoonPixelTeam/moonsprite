@@ -5588,3 +5588,10 @@ Release六个相关目标成功，contributions/resources/session/request/event-
 承接ExtensionRuntimeHost events权限限定的workspace订阅与CANVAS_COLOR_SAMPLING_COMPLETED_EVENT桥，SessionHost提供generation绑定的subscribeEditor/editorChanged/colorSampled。基线由应用订阅瞬间捕获，不把已打开作品补报为新建；加载前更新基线但不补发事件。每个会话独立订阅，无events权限不创建；替换不继承，旧token不可配置/更新/采色。派发保留订阅对象并弱引用会话，回调内关闭自身不会销毁正在执行的对象，后续同批事件被活动态拦截；stop释放基线。
 
 Release session/resources两个相关目标成功，session/event-lifecycle/runtime三项通过0.14s。覆盖权限、无初始/重复/加载前事件、详情与时间、采色隔离、替换无继承、首事件关闭后同批中断。来源775文件及diff检查后保存推送dev。此阶段完整接通核心会话与事件差分，正式Editor工作区观察器、画布采色信号、引擎传输仍待接入，无正式exe/GUI/全套验收，整体INCOMPLETE，保留用户差异/缓存及失败现场。
+
+
+### 2026-11-10：Runtime事件JSON出口阶段
+
+对照types-extension-runtime完整13类联合及ExtensionRuntimeHost send包装，新增eventJson/eventEnvelope。仅输出当前事件字段，补kind/windowId/format/homeOpen，project空值与设置/window任意JSON，files无符号字节数组，editor详情四种标量/时间和可选projectId；缺省format省略。JSON不执行代码，畸形payload/未知事件/缺必需projectId/未知interaction明确失败，非有限详情数字按JS JSON转null。保持原生core与WinRT序列化适配分开。
+
+Release六个相关目标成功，contributions/resources/session/request/event-lifecycle/runtime六项通过0.33s，新增覆盖13类型、字段数量/可选省略、嵌套值、孤立代理字符、255字节及详情标量/异常。来源776文件与diff检查后保存推送dev。事件出口尚未挂接真正JS/Lua引擎或正式Editor，不能称为可运行扩展/GUI验收；无正式exe/全套验收，整体INCOMPLETE，用户差异/数据/缓存及失败现场保留。
