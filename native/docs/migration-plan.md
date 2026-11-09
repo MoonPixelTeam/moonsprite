@@ -5068,3 +5068,10 @@ CTest document-transactions/free-tile-project/tilemap-document全部通过33.39s
 对照legacy core/psd.ts psdChildren/psdRasterLayer/encodePsd，特殊层按当前帧栅格写出，保留分层和蒙版。原生解除tilemap/free-tile过时kind拒绝，沿用resolved surface、缩放、裁切和现有蒙版/组/效果编码，保留未知kind拒绝及editable/resources损失确认；提示明确瓦片栅格化。新增八组grid/free×mask/no-mask×100/200%往返，检查逐像素画面、层/蒙版数、当前帧与原文档authority不变；窗口增加两类PSD实际弹窗/worker/原子写入/重开，沿用注入文件路径。
 
 正式Release构建成功，psd-export CTest通过0.15s，完整--aseprite-io-check实际退出0。旧版实际ag-psd独立读取全部原有文件及八个特殊层文件通过，验证层/蒙版/缩放尺寸和合成像素。最初独立脚本错误假定convertLayerToTilemap会重命名图层，已按实际保留原名称修正验证。未宣称PSD保留动画或瓦片可编辑资源；整体INCOMPLETE。本阶段保存推送dev。
+
+
+### 2026-11-10：ASE剪贴与图层样式合成语义迁移
+
+对照legacy core/aseprite.ts encodeAseprite needsComposite及aseprite.test.ts clipping回归，原生旧门控漏掉layer/group clippingMask及启用layerStyles，可能成功导出却丢失画面效果。新增共用asepriteNeedsComposite，统一编码、导出说明、保存effects损失确认，保留蒙版/cumulative规则；禁用样式不触发。八组图层/组×剪贴/样式×启用/禁用验证全部帧合成画面、层数量、effects提示与authority不变。
+
+正式Release构建成功；aseprite-io/aseprite-save-policy通过0.10s；完整既有--aseprite-io-check、--aseprite-save-check实际退出0。新增效果组合为核心覆盖，窗口沿用已有生命周期夹具，未声明新增效果真实控件组合或截图验收。744来源/证据与diff通过；整体INCOMPLETE，本阶段保存推送dev。
