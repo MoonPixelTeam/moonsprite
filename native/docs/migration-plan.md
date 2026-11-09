@@ -5033,3 +5033,10 @@ CTest document-transactions/free-tile-project/tilemap-document全部通过33.39s
 接续上阶段Repeated airbrush begins失败，诊断确认free=0、Y平铺、copy=1，点击在画布视口内，但frontWidgetAt为QuickCommandBar(228,150,544,38)，canvasOwnsPointer正确拒绝。旧版styles.css快捷栏绝对定位覆盖画布，canvas-input-stroke.ts及canvas-input-free-tile-edit.ts喷枪事务核对不需改变产品。平铺诊断入口关闭内存中的快捷栏显示配置，保留实际输入所有权门控，错误补充free/mode/copy上下文；不写用户偏好。
 
 正式Release构建成功；完整--tile-repeat-check实际退出0，包含全工具平铺指针、UndoRedo/Escape以及旋转/镜像/缩放文字素材alpha与命中逐像素比对；独立--quick-command-check实际退出0。三项CTest tile-repeat/tile-repeat-stroke/tilemap-document通过1.29s。该结果关闭上阶段喷枪入口验收失败，不声称新增大画布Hybrid真实指针覆盖或FPS提升。整体INCOMPLETE，本阶段保存推送dev。
+
+
+### 2026-11-10：大画布Hybrid延迟预览实际输入验收
+
+沿用smokeLinkedHybridFloating原16×4夹具，增加260×260共享源、外部资源、空单元格、独立源及两级显式链接；画布原点放入可见区域，隔离持久化快捷栏。新增四组move/copy×aligned/sampled，实际down/move/up确认floatingDeferred、canonical像素/资源/历史冻结，Escape取消后重复手势得到相同预览；Enter结果逐像素等于deferred overlay，dirty小于画布，双Undo/Redo恢复引用、资源、缓存与链接拓扑。该行为依据用户批准“预览与提交一致，保留大画布延迟优化”，不声明与旧Hybrid局部预览等价。
+
+正式Release构建成功，完整--tileset-management-check实际退出0；document-transactions/tilemap-document通过0.62s。新增覆盖为大画布平移实际输入，平铺/affine/quad仍沿用核心验收；没有新增FPS量测。整体INCOMPLETE，本阶段保存推送dev。
