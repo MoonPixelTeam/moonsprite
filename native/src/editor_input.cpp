@@ -316,6 +316,8 @@ bool Editor::onProcessMessage(ui::Message* msg) {
 
     if(processSizeDrag(msg))return true;
 
+    if(brushFeedback_.modifierBrushSize_ && brushFeedback_.modifierBrushSize_->pressed && !hasCapture())finishModifierBrushSize();
+
     // Legacy cancelPendingGradientEdit restores the edit snapshot, retaining confirmation.
     const auto restorePendingGradientPointer=[&]{
       if(!gradientPending_ || !document.gradientActive())return false;
@@ -669,7 +671,7 @@ bool Editor::onProcessMessage(ui::Message* msg) {
 
         if(msg->type()==ui::kMouseMoveMessage)setModifierBrushSize(brushFeedback_.modifierBrushSize_->size+int(std::floor(double(mouse->position().x-brushFeedback_.modifierBrushSize_->start.x)/(4*uiScale)+.5)));
 
-        if(msg->type()==ui::kMouseUpMessage && mouse->left())finishModifierBrushSize();return true;
+        if(msg->type()==ui::kMouseUpMessage && (mouse->left() || mouse->button()==ui::kButtonNone))finishModifierBrushSize();return true;
 
       }
 

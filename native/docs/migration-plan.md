@@ -4677,3 +4677,9 @@ X/Y/Both合成/当前层及左右键实际诊断验证100次preview请求不发�
 追查上一阶段--modifiers-check失败，按下检查证明CtrlAlt尺寸拖动未开始。useCanvasToolSession brushSizingHeld明确先于quick tool，且temporaryMoveActive排除brushLineConnectionHasPriority。原生syncShortcutTools已有尺寸优先级，但moveModifierHeld独立解析快速移动，processMoveInput提前抢走CtrlAlt尺寸及CtrlShift已有锚点连线。现快速移动查询对受支持笔刷尺寸绑定和已有笔刷锚点lineConnectionMode绑定分别让出，保留用户改键、blockedBy及其他快速工具匹配。
 
 正式Release构建、--modifiers-check完整退出0（包括尺寸hover/捕获拖动释放修饰键/滚轮/失焦、CtrlShift连线、渐变Shift更新及反选），新增CtrlAlt/CtrlShift自定义尺寸绑定优先级检查。修正诊断普通Message伪造FocusLeave为FocusMessage；反选fixture曾因前场景合成捕获标志残留延后命令，现切文档前显式清理，未改产品延后规则。--gradient-shape-check与--grid-snap-quick-check退出0，四项CTest document-transactions/raster-geometry/tile-repeat/tile-repeat-stroke通过0.71s。742来源及diff检查通过，无截图/FPS验收；整体迁移INCOMPLETE，保留用户文件/缓存，保存推送dev。
+
+### 2026-11-09：画笔尺寸中断收尾补齐阶段
+
+对照canvas-brush-size-update.ts在pointerup/blur/pointercancel清理前flush最新尺寸。原生捕获调尺寸仅left-up结束，遗漏no-button-up和capture loss；现捕获丢失结束尺寸手势，无按钮释放和正常释放共用finish，保留最后尺寸。Escape/失焦路径复用，不改尺寸回退语义或作品历史。
+
+正式Release构建、--modifiers-check完整退出0，新增铅笔/橡皮×正常释放/无按钮释放/捕获丢失/失焦/Escape十场景，最后尺寸15保留，状态/捕获清理、作品像素/历史/dirty不变。独立诊断失焦/Escape在manager已无capture后同步清掉额外合成HAS_CAPTURE标志，未把此fixture残留当产品缺陷。四项CTest document-transactions/raster-geometry/tile-repeat/tile-repeat-stroke通过0.40s，742来源及diff检查通过。无新增截图/FPS验收，整体迁移仍INCOMPLETE，保留用户数据与缓存，阶段保存推送dev。

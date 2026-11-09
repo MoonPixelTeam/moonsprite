@@ -4273,6 +4273,22 @@ void Editor::smokeModifiers(){
       check(moveModifierHeld("brushSizeAdjust",press)&&!moveModifierHeld("tool.move.quick",press),"Sizing binding must outrank quick move");
     }shortcutBindings_=bindings;}
 
+    // Interrupted sizing retains the latest value, but never keeps pointer ownership.
+    for(bool erase:{false,true})for(int end=0;end<5;++end){
+      cancelStroke();disableFlags(ui::HAS_CAPTURE);key(ui::kKeyDownMessage,erase?ui::kKeyE:ui::kKeyB);brushFeedback_.brushProfiles_[erase?1:0].size=12;refresh();
+      pointer(ui::kMouseDownMessage,origin,ca);check(brushFeedback_.modifierBrushSize_&&brushFeedback_.modifierBrushSize_->pressed,"Sizing recovery down");
+      pointer(ui::kMouseMoveMessage,origin+gfx::Point(12*uiScale,0));check(brushFeedback_.brushProfiles_[erase?1:0].size==15,"Sizing recovery preview");
+      if(end==0)pointer(ui::kMouseUpMessage,origin+gfx::Point(12*uiScale,0));
+      else if(end==1)pointer(ui::kMouseUpMessage,origin+gfx::Point(12*uiScale,0),ui::kKeyNoneModifier,ui::kButtonNone);
+      else if(end==2){if(hasCapture())releaseMouse();disableFlags(ui::HAS_CAPTURE);pointer(ui::kMouseMoveMessage,origin+gfx::Point(12*uiScale,0));}
+      else if(end==3){ui::FocusMessage blur(ui::kFocusLeaveMessage,this,nullptr);onProcessMessage(&blur);if(ui::Manager::getDefault()->getCapture()!=this)disableFlags(ui::HAS_CAPTURE);}
+      else {key(ui::kKeyDownMessage,ui::kKeyEsc);if(ui::Manager::getDefault()->getCapture()!=this)disableFlags(ui::HAS_CAPTURE);}
+      check(!brushFeedback_.modifierBrushSize_&&!hasCapture()&&brushFeedback_.brushProfiles_[erase?1:0].size==15,("Sizing interruption state/value end="+std::to_string(end)+" erase="+std::to_string(erase)+" size="+std::to_string(brushFeedback_.brushProfiles_[erase?1:0].size)+" gesture="+std::to_string(bool(brushFeedback_.modifierBrushSize_))+" capture="+std::to_string(hasCapture())).c_str());
+      check(document.pixels()==before&&document.historySize()==history&&!document.active()&&!document.dirty(),"Sizing interruption touched document");
+      requestFocus();
+    }
+    key(ui::kKeyDownMessage,ui::kKeyB);brushFeedback_.brushProfiles_[0].size=4;refresh();
+
     pointer(ui::kMouseMoveMessage,origin,ca);pointer(ui::kMouseMoveMessage,origin+gfx::Point(16*uiScale,0),ca);check(brushFeedback_.brushProfiles_[0].size==8 && !document.active() && !eyedropperGesture_.active(),"CtrlAlt hover resize must not paint or sample");
 
     key(ui::kKeyUpMessage,ui::kKeyAlt,ui::kKeyCtrlModifier);check(!brushFeedback_.modifierBrushSize_ && !eyedropperHeld_,"CtrlAlt release clears sizing and sampling");
