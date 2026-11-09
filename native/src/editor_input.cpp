@@ -316,6 +316,17 @@ bool Editor::onProcessMessage(ui::Message* msg) {
 
     if(processSizeDrag(msg))return true;
 
+    // Legacy cancelPendingGradientEdit restores the edit snapshot, retaining confirmation.
+    const auto restorePendingGradientPointer=[&]{
+      if(!gradientPending_ || !document.gradientActive())return false;
+      if(gradientDragging_){
+        if(gradientHandle_<0)return false;
+        gradientSpec_=gradientHandleBefore_;gradientDragging_=false;gradientHandle_=-1;
+        gradientRequest_=true;if(hasCapture())releaseMouse();gradientTick();refresh();
+      }
+      return true;
+    };
+
     auto aboutFocusTarget=msg->type()==ui::kFocusLeaveMessage?static_cast<ui::FocusMessage*>(msg)->newFocus():nullptr;
     // LAF queues editor -> null before focusing the new popup; real loss leaves current focus null.
     if(msg->type()==ui::kFocusLeaveMessage && !aboutFocusTarget && aboutDialogForFocus_)aboutFocusTarget=ui::Manager::getDefault()->getFocus();
@@ -330,12 +341,12 @@ bool Editor::onProcessMessage(ui::Message* msg) {
       if(symmetryDragging_)finishSymmetryDrag(true);eyedropperHeld_=false;paletteSamplingHeld_=false;if(eyedropperGesture_.active())finishEyedropper();spaceHeld_=false;if(drawingAnchorDragging_){drawingAnchor_=drawingAnchorDragBefore_;drawingAnchorDragging_=false;if(hasCapture())releaseMouse();}if(selectionPivotDragging_){selectionPivot_=selectionPivotStart_;selectionPivotDragging_=false;if(hasCapture())releaseMouse();}if(selectionDragging_ || floatingDragging_)endSelectionGesture(true);// Owned free-tile property dialogs keep previews until their normal close.
       // A released confirmation gradient is not an in-progress pointer stroke.
       // Legacy keeps it registered through menu/window focus changes until a choice/context invalidates it.
-      if(!(gradientPending_&&!gradientDragging_&&document.gradientActive())&&!document.freeTileInstancePropertiesActive()&&!document.freeTileSourcePropertiesActive())cancelStroke();updateNavigationCursor();
+      if(!restorePendingGradientPointer()&&!document.freeTileInstancePropertiesActive()&&!document.freeTileSourcePropertiesActive())cancelStroke();updateNavigationCursor();
 
     }
 
     if(drawingAnchorDragging_&&!hasCapture()){drawingAnchor_=drawingAnchorDragBefore_;drawingAnchorDragging_=false;invalidateRect(canvasViewport());}
-    if(gradientDragging_ && !hasCapture()){if(gradientPending_ && gradientHandle_>=0){gradientSpec_=gradientHandleBefore_;gradientDragging_=false;gradientHandle_=-1;gradientRequest_=true;gradientTick();refresh();}else cancelStroke();}if((magicEraserDragging_ || fillDragging_ || (shapeDragging_&&shapeSpec_.kind!=ShapeKind::Polygon&&!(shapeSpec_.kind==ShapeKind::Curve&&!curveEndpoint_))) && !hasCapture())cancelStroke();
+    if(gradientDragging_ && !hasCapture() && !restorePendingGradientPointer())cancelStroke();if((magicEraserDragging_ || fillDragging_ || (shapeDragging_&&shapeSpec_.kind!=ShapeKind::Polygon&&!(shapeSpec_.kind==ShapeKind::Curve&&!curveEndpoint_))) && !hasCapture())cancelStroke();
 
     if(navigation_.pan_.active && !hasCapture()) finishPan(true);
 
@@ -716,7 +727,7 @@ bool Editor::onProcessMessage(ui::Message* msg) {
 
       if(msg->type()==ui::kMouseUpMessage && mouse->button()==ui::kButtonNone) {
 
-        eyedropperHeld_=false;paletteSamplingHeld_=false;if(eyedropperGesture_.active())finishEyedropper();spaceHeld_=false;if(drawingAnchorDragging_){drawingAnchor_=drawingAnchorDragBefore_;drawingAnchorDragging_=false;if(hasCapture())releaseMouse();}if(selectionPivotDragging_){selectionPivot_=selectionPivotStart_;selectionPivotDragging_=false;if(hasCapture())releaseMouse();}if(selectionDragging_ || floatingDragging_)endSelectionGesture(true);cancelStroke();updateNavigationCursor();return true;
+        eyedropperHeld_=false;paletteSamplingHeld_=false;if(eyedropperGesture_.active())finishEyedropper();spaceHeld_=false;if(drawingAnchorDragging_){drawingAnchor_=drawingAnchorDragBefore_;drawingAnchorDragging_=false;if(hasCapture())releaseMouse();}if(selectionPivotDragging_){selectionPivot_=selectionPivotStart_;selectionPivotDragging_=false;if(hasCapture())releaseMouse();}if(selectionDragging_ || floatingDragging_)endSelectionGesture(true);if(!restorePendingGradientPointer())cancelStroke();updateNavigationCursor();return true;
 
       }
 

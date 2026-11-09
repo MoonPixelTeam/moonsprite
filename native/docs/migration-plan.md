@@ -4653,3 +4653,9 @@ X/Y/Both合成/当前层及左右键实际诊断验证100次preview请求不发�
 继续核对已有渐变平铺迁移，canvas-pointer-down/move localPoint与canvas-input-fill以有限副本为有效输入。发现原生映射失败时仅active gradient mouseup设置gradientPointerValid=false，pending handle down仍用raw坐标；现映射失败的渐变事件统一标无效，并在pending handle press校验。保持无效move忽略、释放最后有效几何结算与原有确认事务。
 
 正式Release最终构建退出0，--gradient-shape-check显式等待退出0。六组X/Y/Both×线性/径向把待确认端点置于有限副本之外，断言按下不捕获/不提交，再验证有效副本endpoint编辑、release pending和Escape恢复像素/历史；首轮诊断明确暴露上游标记遗漏，最终修复后通过。原有渐变/形状窗口诊断继续通过。四项CTest document-transactions/raster-geometry/tile-repeat/tile-repeat-stroke通过0.55s；742来源快照与diff检查通过。未新增全平铺长诊断/截图/FPS测量，不据窄检查宣称完整渐变迁移完成；组蒙版选择仍等待答复，整体INCOMPLETE。保留原有用户数据、缓存与未跟踪文件，阶段保存推送dev。
+
+### 2026-11-09：渐变指针中断恢复一致性阶段
+
+对照useCanvasGradientConfirmation.ts cancelPendingGradientEdit的editSnapshot恢复和useCanvasInteractionCancel新建手势取消。原生捕获丢失/Escape原已恢复待确认手柄，但失焦与无按钮释放取消整个待确认预览；现共用局部恢复路径，保留确认状态，恢复编辑前几何及预览。新建渐变仍取消，已释放待确认渐变保留。核对Aseprite ui/manager.cpp MouseUp按钮重置，未修改框架输入语义。
+
+正式Release构建退出0，--gradient-shape-check退出0，新增32组线性/径向×主/副色来源×新建/待确认手柄×捕获丢失/无按钮释放/失焦/Escape；验证像素、预览、历史、捕获与恢复后Enter/Undo。测试准备曾因只清控件捕获标志而残留manager capture，最终改为真实release后通过；未把早期失败当验收。四项CTest document-transactions/raster-geometry/tile-repeat/tile-repeat-stroke通过0.39s，742来源快照和diff检查通过。无新增截图/FPS测试，整体迁移仍INCOMPLETE。保留用户文件与缓存，阶段保存推送dev。
