@@ -4982,3 +4982,12 @@ CTest document-transactions/free-tile-project/tilemap-document全部通过33.39s
 ### 2026-11-09：Hybrid浮动预览旧版差异复核（等待用户语义决定）
 
 精确复核legacy/src/renderer/src/components/canvas-render-tile-preview.ts:140-147发现hybridSelectionVariantPreview明确识别selection来源，并通过!hybridSelectionVariantPreview排除共享源tilemapEditPreviewTilePixels显示。此前即时预览阶段仅记录共享源预览入口，遗漏这个排除条件，因此“等同旧版预览”的来源结论不成立；原生e1a9db49改变了Hybrid选区浮动显示语义，虽保留提交事务，但需要用户决定。已询问采用预览/提交一致并继续大画布优化，或恢复旧版局部像素预览。等待回答前不修改业务路径，不将此项算作完成迁移。上一阶段测试证明原生新预览一致，不能证明旧版行为等价。整体INCOMPLETE。
+
+
+### 2026-11-10：混合文档与链接网格填充事务阶段
+
+旧版canvas-input-fill.ts beginFill通过floodFillSymmetric提交workspace-commands-history.ts::commitPixelEdit，再转convertTilemapPixelEdit规范源事务；没有文档含free层便拒绝网格填充的规则。原生移除该旧门控和leaf独立tilemap要求，改为canonical固定网格及Edit/Hybrid引用预检，复用偏移采样/填充算法与已有三模式资源history。新增54组：三模式×独立/显式/runtime链接×三原点×连续纯色/不连续图案，检查无关free隔离、缓存几何、单笔历史、UndoRedo及native/recovery。验证待补，整体INCOMPLETE。
+
+用户已明确采用Hybrid“预览与提交一致，保留大画布延迟优化”，此前等待决定解除；e1a9db49即时路径为用户批准的新行为，大画布延迟一致性仍待后续完成。
+
+最终三项CTest document-transactions/free-tile-project/tilemap-document全部通过38.27s，free-tile-project37.72s。正式Release增量构建成功，完整 --tileset-management-check实际退出0。新增54组混合/链接/偏移填充为核心事务验证，未新增这些组合的专用真实鼠标夹具；现有窗口填充检查通过，不能替代新组合窗口验收。744来源覆盖/证据及diff检查通过，整体INCOMPLETE，本阶段保存推送dev。

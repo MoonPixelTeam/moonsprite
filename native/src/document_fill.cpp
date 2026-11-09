@@ -169,8 +169,7 @@ bool Document::eraseMatchingColor(Point point,WandOptions options,bool preview){
 // Reuse the established fill algorithms, then legacy convertTilemapPixelEdit.
 // Raster values below are transaction staging; cells/tilesets remain authority.
 bool Document::fillTilemapPixels(Point point,Pixel color,WandOptions options,const PatternFillOptions* pattern){
- if(active()||!activeMaskId_.empty()||layer().kind!="tilemap"||tileSelection_.mode==tiles::Mode::Paint||hasSelectedGroups()||layerEffectivelyLocked(layer())||!layerEffectivelyVisible(layer())||!cel().tilemap)return false;
- if(std::any_of(timeline_.state().layers.begin(),timeline_.state().layers.end(),[](const auto& l){return l.kind=="free-tile";}))return false;
+ if(active()||!activeMaskId_.empty()||layer().kind!="tilemap"||tileSelection_.mode==tiles::Mode::Paint||hasSelectedGroups()||layerEffectivelyLocked(layer())||!layerEffectivelyVisible(layer())||!tilemapCellOwnerSupported(cel().id,true,true)||(tileSelection_.mode!=tiles::Mode::Create&&!tilemapPixelReferenceOwnersSupported(layer().tilemapTilesetId)))return false;
  if(point.x<0||point.y<0||point.x>=width_||point.y>=height_||(selection_&&!selectionContains(selection_,point.x,point.y)))return false;
  const auto& state=timeline_.state();const auto setId=layer().tilemapTilesetId;auto originalSet=std::find_if(state.tilesets.begin(),state.tilesets.end(),[&](const auto& t){return t.id==setId;});if(originalSet==state.tilesets.end())return false;
  const auto resolved=timeline_.resolveSurface(cel().id);if(resolved.issue!=timeline::LinkIssue::None||!resolved.source||!resolved.surface)return false;
@@ -181,6 +180,6 @@ bool Document::fillTilemapPixels(Point point,Pixel color,WandOptions options,con
  // owner, including prior symmetry seeds, without mutating a live cache.
  SparseFillGeometry geometry;geometry.expanded=true;
  for(auto seed:seeds){Edit ignored{{},state_,nextState_};if(pattern)fillPatternCanvasAt(canvas,seed,color,*pattern,options,ignored,resolved.surface,&geometry);else fillCanvasAt(canvas,seed,color,options,ignored,resolved.surface,&geometry);}
- const bool result=commitTilemapPixelCanvas(baseline,canvas,options.contiguous?U"连续填充":U"不连续填充");restore.committed=result;return result;
+ const bool result=commitTilemapPixelCanvas(baseline,canvas,options.contiguous?U"连续填充":U"不连续填充",{},false,nullptr,nullptr,tileSelection_.mode==tiles::Mode::Create,tileSelection_.mode==tiles::Mode::Edit,tileSelection_.mode==tiles::Mode::Hybrid);restore.committed=result;return result;
 }
 }
