@@ -4910,13 +4910,12 @@ CTest document-transactions/free-tile-project/tilemap-document全部通过33.39s
 最终正式Release构建成功，完整 --tileset-management-check 实际退出0，包含新增混合free独立/linked渐变及形状真实鼠标交互。保留用户数据、缓存及editor_support.h既有状态，本阶段保存推送dev。
 
 
-### 2026-11-09：混合文档瓦片资源管理阶段（验证中）
+### 2026-11-09：混合文档瓦片资源管理阶段
 
-对照 workspace-commands-tilemap.ts 的add/reorder/slots/delete/commitTilesetTileEdit、workspace-unused-tiles.ts 和 free-tile-document.ts::captureFreeTileReferences/applyFreeTileReferences，移除文档级free管理禁用并复用既有资源事务。管理提交单独保留规范Cel链、surface尺寸及世界偏移，仅重绘变化资源和引用涉及的grid/free源，不再通过旧rebuildTilemapCaches重置所有网格。删除瓦片按旧版sourceId或tileId匹配清理free实例；清理未使用须计入free引用。Panel按资源存在和active状态判断，free源自身管理入口保留。
+对照 workspace-commands-tilemap.ts 的 add/reorder/slots/delete/commitTilesetTileEdit 与 workspace-unused-tiles.ts，开放含无关自由瓦片层的独立网格资源管理。提交保留规范 Cel 链、surface 尺寸及世界偏移，仅重绘受影响缓存，避免旧 rebuildTilemapCaches 重置全部网格。自由源继续使用专用管理入口。
 
-新增12组shared/unrelated×六项资源操作检查，含带偏移linked grid、free实例保留/移除、UndoRedo和native/recovery；实际panel管理夹具增加无关free。首轮声明替换误匹配deleteSelectedFrames导致编译错误，已还原该声明，只给私有commitTilemapState增加管理模式参数；停止该次具体构建树后重新构建。744来源覆盖与证据快照、diff检查通过；最终构建和运行结果待补。整体INCOMPLETE，无新增性能或人工截图结论。
+新增六项混合管理回归和自由表拒绝检查，覆盖偏移 linked grid、无关 free 数据保持、Undo/Redo 与 native/recovery；真实 panel 管理夹具增加无关 free。正式 Release 构建成功，完整 --tileset-management-check 退出0；free-tile-project 通过33.59s，document-transactions 及 tilemap-document 通过；744 文件来源覆盖及 diff 检查通过。未新增 FPS 或人工截图结论，整体 INCOMPLETE。本阶段已保存推送 dev。
 
+后续契约核对纠正：legacy/src/renderer/src/core/project-format-decode.ts 的现代自由源校验明确要求 tileIds.length===1、columns===1、rows===1，并禁止 tilemapTilesetIds 拥有该表；native/src/project_import.cpp 的 Invalid free tile source sheet 与之对应。因此跨类型共用表不是格式迁移缺口，不放开既有校验。之前十二组 shared/unrelated 验收的说法不成立，实际有效覆盖为六项独立网格操作。补充现代自由源所有权回归，验证合法共享 free catalog 与独立 grid 可导入，以及多瓦片、非1×1布局、grid共用表在 native/recovery 解析后的导入阶段被精确拒绝。
 
-本阶段验证修正：重排夹具漏传透明占位ID而无效，改用完整列表；共享夹具误用layers.back访问错误层，改为ID定位。进一步保存验收确认project_import禁止free源多瓦片表及grid/free共用表，故保留按资源的free-owned保护，当前只开放混合文档的独立网格资源，跨类型共用表继续登记格式缺口。最终新增六项混合管理回归和free表拒绝检查，free-tile-project完整通过33.59s。前述12组共享资源验收不成立，以本段为准；不得据此宣称跨类型资源管理迁移完成。
-
-最终正式Release构建成功，完整 --tileset-management-check 实际退出0，含混合文档真实panel布局/删除/右键clear-unused。free-tile-project通过33.59s，document-transactions及tilemap-document本轮通过；744来源覆盖及diff检查通过。保留用户数据、缓存与editor_support.h既有状态，本阶段保存推送dev。
+本次契约回归：free-tile-project-tests Release 构建成功；完整 free-tile-project 通过23.51s（CTest总23.56s）；八项拒绝均命中 Invalid free tile source sheet，合法共享自由源目录保持可导入。744来源覆盖及证据快照、git diff --check通过。仅测试与台账变更，无生产代码或正式程序更新，无新增性能结论。
