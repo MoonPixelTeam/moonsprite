@@ -4287,6 +4287,25 @@ void Editor::smokeModifiers(){
       check(document.pixels()==before&&document.historySize()==history&&!document.active()&&!document.dirty(),"Sizing interruption touched document");
       requestFocus();
     }
+    // Specialized tools size their own radius; clamped/repeated values are no-ops.
+    {const auto air=airbrushSettings_;const auto smooth=smoothBrush_;const auto liquify=liquifyOptions_;
+      for(int tool=0;tool<4;++tool){
+        cancelStroke();disableFlags(ui::HAS_CAPTURE);key(ui::kKeyDownMessage,ui::kKeyB);
+        if(tool==0)useAirbrushTool();else if(tool==1)useSmoothTool();else if(tool==2)runShortcutCommand("tool.liquify");else useShapeTool(ShapeKind::Line);
+        auto size=[&]{return tool==0?airbrushSettings_.scatterRadius:tool==1?smoothBrush_.size:tool==2?liquifyOptions_.radius:brushFeedback_.brushProfiles_[0].size;};
+        setModifierBrushSize(12);pointer(ui::kMouseDownMessage,origin,ca);check(brushFeedback_.modifierBrushSize_&&brushFeedback_.modifierBrushSize_->pressed,"Special sizing capture");
+        pointer(ui::kMouseMoveMessage,origin+gfx::Point(12*uiScale,0));check(size()==15&&!document.active(),"Special sizing parameter");
+        pointer(ui::kMouseUpMessage,origin+gfx::Point(12*uiScale,0),ui::kKeyNoneModifier,ui::kButtonNone);check(!brushFeedback_.modifierBrushSize_&&!hasCapture()&&size()==15,"Special sizing interruption");
+        for(int requested:{15,-10,100}){
+          setModifierBrushSize(requested);const int expected=std::clamp(requested,1,64);check(size()==expected,"Special sizing clamp");
+          auto& damage=const_cast<gfx::Region&>(getUpdateRegion());damage.clear();
+          for(int repeat=0;repeat<100;++repeat)setModifierBrushSize(requested);
+          check(size()==expected&&getUpdateRegion().isEmpty(),"Repeated special sizing schedules layout/redraw");
+        }
+        check(document.pixels()==before&&document.historySize()==history&&!document.dirty(),"Special sizing touched artwork");
+      }
+      cancelStroke();key(ui::kKeyDownMessage,ui::kKeyB);airbrushSettings_=air;smoothBrush_=smooth;liquifyOptions_=liquify;
+    }
     key(ui::kKeyDownMessage,ui::kKeyB);brushFeedback_.brushProfiles_[0].size=4;refresh();
 
     pointer(ui::kMouseMoveMessage,origin,ca);pointer(ui::kMouseMoveMessage,origin+gfx::Point(16*uiScale,0),ca);check(brushFeedback_.brushProfiles_[0].size==8 && !document.active() && !eyedropperGesture_.active(),"CtrlAlt hover resize must not paint or sample");

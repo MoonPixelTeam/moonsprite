@@ -4683,3 +4683,9 @@ X/Y/Both合成/当前层及左右键实际诊断验证100次preview请求不发�
 对照canvas-brush-size-update.ts在pointerup/blur/pointercancel清理前flush最新尺寸。原生捕获调尺寸仅left-up结束，遗漏no-button-up和capture loss；现捕获丢失结束尺寸手势，无按钮释放和正常释放共用finish，保留最后尺寸。Escape/失焦路径复用，不改尺寸回退语义或作品历史。
 
 正式Release构建、--modifiers-check完整退出0，新增铅笔/橡皮×正常释放/无按钮释放/捕获丢失/失焦/Escape十场景，最后尺寸15保留，状态/捕获清理、作品像素/历史/dirty不变。独立诊断失焦/Escape在manager已无capture后同步清掉额外合成HAS_CAPTURE标志，未把此fixture残留当产品缺陷。四项CTest document-transactions/raster-geometry/tile-repeat/tile-repeat-stroke通过0.40s，742来源及diff检查通过。无新增截图/FPS验收，整体迁移仍INCOMPLETE，保留用户数据与缓存，阶段保存推送dev。
+
+### 2026-11-09：专用工具尺寸参数无变化优化阶段
+
+对照canvas-pointer-move modifierSizing对airbrushScatterRadius/liquifyRadius/brushSize的选择，以及canvas-brush-size-update queueCanvasBrushSize待保存尺寸相等不调度。原生喷枪/平滑/液化setter每次重复值或夹紧到相同1/64仍保存偏好、layout与invalidate；现统一夹紧后比较各自参数，相同直接返回，变化时保存格式/入口保持。
+
+正式Release构建、--modifiers-check、--gradient-shape-check退出0。新增喷枪/平滑/液化/直线四类捕获调尺寸与无按钮结束，验证各自参数由12到15、值15/下限1/上限64、各100重复共1200 setter事件不产生脏区，作品像素/历史/dirty不变。既有铅笔/橡皮中断和全部修饰键诊断继续通过。四项CTest document-transactions/raster-geometry/tile-repeat/tile-repeat-stroke通过0.42s，742来源与diff检查通过。无全软件FPS或截图验收，整体迁移INCOMPLETE；保留用户数据/缓存，阶段保存推送dev。

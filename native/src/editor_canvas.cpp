@@ -345,8 +345,9 @@ bool Editor::modifierBrushSupported() const {
   }
 
 void Editor::setModifierBrushSize(int value) {
- if(airbrushTool_){airbrushSettings_.scatterRadius=std::clamp(value,1,64);saveAirbrushPreferences();layoutToolOptions();invalidateRect(canvasViewport());return;}if(smoothTool_){smoothBrush_.size=std::clamp(value,1,64);saveSmoothPreferences();layoutToolOptions();invalidateRect(canvasViewport());return;}
- if(liquifyTool_){liquifyOptions_.radius=std::clamp(value,1,64);saveLiquifyPreferences();layoutToolOptions();invalidateRect(canvasViewport());return;}
+ value=std::clamp(value,1,64);
+ if(airbrushTool_){if(airbrushSettings_.scatterRadius==value)return;airbrushSettings_.scatterRadius=value;saveAirbrushPreferences();layoutToolOptions();invalidateRect(canvasViewport());return;}if(smoothTool_){if(smoothBrush_.size==value)return;smoothBrush_.size=value;saveSmoothPreferences();layoutToolOptions();invalidateRect(canvasViewport());return;}
+ if(liquifyTool_){if(liquifyOptions_.radius==value)return;liquifyOptions_.radius=value;saveLiquifyPreferences();layoutToolOptions();invalidateRect(canvasViewport());return;}
 
     auto& brush=brushFeedback_.brushProfiles_[eraser_?1:0];value=std::clamp(value,1,64);
 
