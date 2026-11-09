@@ -5183,3 +5183,10 @@ legacy canvas-render-selection-preview.ts对两种套索的每个栅格路径点
 按legacy canvas-render-selection-preview.ts普通marquee previewTarget分支，在repeat Off、非quick、非tilemap Paint下对边界应用symmetryPoints。原生此前矩形/椭圆提交有对称而边界预览没有；现将既有mask边界映射到对称位置。tilemap Create/Edit仍可使用此普通规则，Paint/quick/repeat各自显示路径保持现状。核对useCanvasBrushOverlay证实选区画笔覆盖预览没有对称扩展；魔棒有独立预览语义，未为统一显示擅改两者。此改动仍使用已有裁剪mask，旧版完整unboundedShapePreview离画布轮廓路径尚未承接，不宣称本组迁移全部完成。
 
 生产paintSelectionFeedback离屏alpha检查扩展到矩形/椭圆，对原边界及水平/垂直镜像采样；同一实际窗口场景继续五工具提交/UndoRedo/Escape及无作品像素改动断言。正式Release成功，tile-repeat/selection-interactions通过2.78s；--workspace-check --named-workspace-only --selection-symmetry-hybrid-edit-only实际退出0。744来源/证据与diff检查通过，无新增截图/FPS量测；整体INCOMPLETE，本阶段保存推送dev。
+
+
+### 2026-11-10：普通选框画布外完整轮廓链路
+
+接续对称边界，按legacy shape-preview.ts在旋转extent外扩2px并平移到局部域生成完整轮廓，原生复用既有rotatedMarqueeSelection后提取边界再投回世界坐标；只在普通非重复、非quick、非Paint选框采用。绘制可以超出画布但仍受viewport限制，画布裁剪不再制造矩形封口边；提交仍使用原selectionPreview裁剪mask，不把外部轮廓写入选区/作品。沿用64Mi像素临时域上限；当前仍分配局部完整mask，未承接旧版row-span边界计算的全部性能路径，不宣称大画布性能完成或全tools-shapes逐像素等价。
+
+窗口新增矩形/椭圆、0/35/90度离屏检查，验证负坐标轮廓alpha，矩形x=-4实际左边和x=0无虚假封口，再执行裁剪提交/UndoRedo/clean保存点检查；既有五工具对称创建/取消/历史回归继续通过。正式Release构建成功（首次变量名编译错误修正后重建），tile-repeat/selection-interactions通过3.38s；--workspace-check --named-workspace-only --selection-symmetry-hybrid-edit-only实际退出0。744来源/证据与diff通过，无新增截图/FPS量测；整体INCOMPLETE，本阶段保存推送dev。
