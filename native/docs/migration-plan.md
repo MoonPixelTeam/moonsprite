@@ -5637,3 +5637,10 @@ Release lua-script-directory目标及专项通过0.12s，验证真实示例嵌�
 实际--smoke揭示前阶段Service已绑定但公共菜单available仍要求工程的缺陷。对照AppMenuBar.tsx无session禁用条件的open-folder入口，公共门禁允许openScriptFolder在首页/无工程时使用，保留pending互斥。真实PixelMenuItem validate/Click检查已执行通过，包括无工程enabled、服务派发、错误状态；Explorer仍使用注入回调，未宣称实际Explorer验收或Lua执行完成。
 
 清理同条验收路径三个过期假设：面板可能由已保存工作区恢复为隐藏，改为显式开关往返、勾选核对并恢复完整布局；菜单数量沿现行独立测试为145；RGBA缓存白底oracle不再依赖棋盘格默认尺寸。均保留实质行为断言。每次仅在具体修正后重建复测，无盲目重试。正式Release成功；canvas-performance/canvas-checkerboard/menu-catalog/lua-script-directory四项通过8.90s。最新--smoke通过上述菜单/面板/缓存检查，随后仍在editor_smoke.cpp工具栏旧几何断言失败（当时8347行），需后续按现行UI规范单独核验；不宣称完整冒烟通过。来源覆盖781及diff检查通过。整体INCOMPLETE，保留用户差异、数据、缓存和失败现场，本阶段保存推送dev。
+
+
+### 2026-11-10：工具栏几何回归与脚本测试现场隔离
+
+核对现行UI规范及placePropertyControl，旧测试的上下偏移改为20px输入框/16px专用图标的高度与中心线关系；阶梯控件沿已迁移EditorToolOptions.tsx 1-16输入契约验证可编辑，工具轨道重叠检查兼容横排/竖排。真实运行发现前阶段脚本菜单fixture临时无工程点击触发refresh，禁用全部子控件却只恢复工程标志；现在保存各子控件自身DISABLED位，恢复后刷新原工程，避免污染后续交互。诊断确认不是产品阶梯恢复缺陷，曾尝试的生产代码修改已撤回，无生产布局改动。
+
+正式Release成功，实际--tool-rail-check退出0；--smoke现通过脚本菜单、面板往返、缓存、属性栏几何和阶梯可编辑检查，随后在橡皮擦指针旧断言失败（当时8414行），后续需单独核验指针语义，未宣称完整smoke通过。来源781及diff检查通过，无新人工图像验收。整体迁移INCOMPLETE，保留用户数据、缓存与原差异，阶段提交推送dev。

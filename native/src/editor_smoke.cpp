@@ -8268,13 +8268,14 @@ void Editor::smokeInteraction() {
       document=std::move(previous);refresh();}
 
     {auto original=std::move(openScriptFolder_);const auto previousStatus=status_;const auto previousHome=homeOpen_;const auto previousOpen=documentOpen_;int opened=0;
+      std::vector<std::pair<ui::Widget*,bool>> enabledBefore;for(auto child:children())enabledBefore.push_back({child,!child->hasFlags(ui::DISABLED)});
       openScriptFolder_=[&]{++opened;};homeOpen_=true;documentOpen_=false;
       auto item=menuItems_.at("openScriptFolder");item->validateItem();
       if(!item->isEnabled()||!menuCommands_.connected("openScriptFolder"))throw std::runtime_error("Script folder menu unavailable without document");
       item->Click();if(opened!=1)throw std::runtime_error("Script folder menu did not call service");
       openScriptFolder_=[] {throw std::runtime_error("script-folder-test-failure");};item->Click();
       if(status_.find(U"script-folder-test-failure")==std::u32string::npos)throw std::runtime_error("Script folder failure not reported");
-      openScriptFolder_=std::move(original);status_=previousStatus;homeOpen_=previousHome;documentOpen_=previousOpen;}
+      openScriptFolder_=std::move(original);status_=previousStatus;homeOpen_=previousHome;documentOpen_=previousOpen;for(auto state:enabledBefore)state.first->setEnabled(state.second);refresh();}
 
     {const auto raw=document.pixels();const auto count=document.historySize();std::size_t leaves=0;
 
@@ -8344,9 +8345,9 @@ void Editor::smokeInteraction() {
 
     require(brushSizeInput_->suffix==U"px" && brushOpacityInput_->suffix==U"%");
 
-    require(brushSizeInput_->bounds().y+2*uiScale==brushShapeButton_->bounds().y+uiScale);
-
-    require(brushSizeInput_->bounds().y2()-3*uiScale==brushShapeButton_->bounds().y2()-3*uiScale);
+    require(brushSizeInput_->bounds().h==textControlHeight*uiScale);
+    require(brushShapeButton_->bounds().h==propertyIconHeight*uiScale);
+    require(brushSizeInput_->bounds().center().y==brushShapeButton_->bounds().center().y);
 
     for(std::size_t i=1;i<toolControls_.size();++i) if(toolControls_[i-1].gap==-1) {
 
@@ -8356,7 +8357,8 @@ void Editor::smokeInteraction() {
 
     }
 
-    require(dynamic_cast<PixelEntry*>(toolControls_[7].first) && !toolControls_[7].first->isEnabled());
+    if(toolControls_[7].first!=lineStepInput_ || !lineStepInput_->isEnabled())
+      throw std::runtime_error("Line step state index="+std::to_string(toolControls_[7].first==lineStepInput_)+" own="+std::to_string(!lineStepInput_->hasFlags(ui::DISABLED))+" editor="+std::to_string(isEnabled())+" active="+std::to_string(document.active())+" pending="+std::to_string(int(pending_)));
 
     require(dialogClose_->icon=="close" && !skin_.assets.patches.count("close_button.normal"));
 
@@ -8368,8 +8370,9 @@ void Editor::smokeInteraction() {
 
     for(std::size_t i=1;i<toolRail_.size();++i)
 
-      if(toolRail_[i]->bounds().y!=toolRail_[i-1]->bounds().y2()+Layout::toolGap*uiScale)
-
+      if(toolRailSide_>=2
+          ? toolRail_[i]->bounds().x!=toolRail_[i-1]->bounds().x2()-uiScale
+          : toolRail_[i]->bounds().y!=toolRail_[i-1]->bounds().y2()+Layout::toolGap*uiScale)
         throw std::runtime_error("Tool rail must overlap by one outer skin pixel");
 
     for(std::size_t i=0;i<legacyToolGroups().size();++i)
