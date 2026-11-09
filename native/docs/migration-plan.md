@@ -4899,3 +4899,12 @@ smokeWorkspace布局交互完成后切至已有移动工具，固定后续画布
 CTest document-transactions/free-tile-project/tilemap-document全部通过33.39s，744文件来源覆盖与证据快照及diff检查通过。渐变/形状preview、资源管理仍有独立门控，本阶段不宣称整个网格域迁移完成；整体INCOMPLETE，多目标和非Paint偏移等保留，无新增FPS及人工截图验收。正式构建和实际窗口最终结果补充如下。
 
 最终正式Release构建成功；完整 --tileset-management-check 实际退出0，包含混合free的Create/Paint显式/runtime链鼠标、菜单、快捷键和结算。保留用户数据、缓存与editor_support.h既有状态，本阶段提交推送dev。
+
+
+### 2026-11-09：混合及共享网格渐变／形状预览阶段
+
+对照 legacy tilemap-document.ts::tilemapCelTargetAt/applyTilemapTilesetDocumentEdit 与 pending-gradient-session.ts 的冻结目标、选区和revision，原生预览改捕获规范源Cel而非要求活动槽位私有网格；统一同层显式/runtime链及无关free混合文档的owner/reference前置检查。预览仍只更新独立display，提交暂移出pending避免active门控后复用Create/Edit/Hybrid既有规范资源事务，异常恢复pending。补边独立网格保留原fallback；Paint拒绝、offset及多目标限制保留。
+
+既有矩阵扩展为128组，新增渐变与矩形预览的源资源/缓存/历史隔离、取消/重启、一次提交、预览与结果一致、显式/runtime源、root/leaf、混合free、Undo/Redo及所有帧native/recovery。旧补边、同瓦片多帧/多层预览测试继续通过。真实Create鼠标形状release/Escape与渐变Enter/Escape夹具扩展混合free独立/linked帧。CTest三项document-transactions/free-tile-project/tilemap-document全部通过35.41s；744来源覆盖及证据快照与diff检查通过。正式窗口结果补充如下。整体INCOMPLETE，资源管理、多目标和offset等尚未完成，无新增FPS及人工截图验收。
+
+最终正式Release构建成功，完整 --tileset-management-check 实际退出0，包含新增混合free独立/linked渐变及形状真实鼠标交互。保留用户数据、缓存及editor_support.h既有状态，本阶段保存推送dev。

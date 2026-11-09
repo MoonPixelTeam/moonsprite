@@ -333,12 +333,11 @@ bool Document::writeTilesetTilePixels(const std::string& id,const std::string& t
 
 namespace moon {
 bool Document::tilemapPreviewValid()const{
- if(!gradient_||!gradient_->tilemap||!activeMaskId_.empty()||layer().kind!="tilemap"||!cel().tilemap||tileSelection_.mode==tiles::Mode::Paint||tileSelection_.mode!=gradient_->tilemapMode||hasSelectedGroups()||layerEffectivelyLocked(layer())||!layerEffectivelyVisible(layer()))return false;
- return std::none_of(timeline_.state().layers.begin(),timeline_.state().layers.end(),[](const auto& l){return l.kind=="free-tile";});
+ if(!gradient_||!gradient_->tilemap||!activeMaskId_.empty()||layer().kind!="tilemap"||tileSelection_.mode==tiles::Mode::Paint||tileSelection_.mode!=gradient_->tilemapMode||hasSelectedGroups()||layerEffectivelyLocked(layer())||!layerEffectivelyVisible(layer())||!tilemapCellOwnerSupported(cel().id,false,true))return false;
+ const auto r=timeline_.resolveSurface(cel().id);return r.source&&r.source->id==gradient_->celId&&(tileSelection_.mode==tiles::Mode::Create||tilemapPixelReferenceOwnersSupported(layer().tilemapTilesetId));
 }
 bool Document::beginTilemapPreview(Point seed,WandOptions options,bool shape){
- if(active()||!activeMaskId_.empty()||layer().kind!="tilemap"||!cel().tilemap||tileSelection_.mode==tiles::Mode::Paint||hasSelectedGroups()||layerEffectivelyLocked(layer())||!layerEffectivelyVisible(layer()))return false;
- if(std::any_of(timeline_.state().layers.begin(),timeline_.state().layers.end(),[](const auto& l){return l.kind=="free-tile";}))return false;
+ if(active()||!activeMaskId_.empty()||layer().kind!="tilemap"||tileSelection_.mode==tiles::Mode::Paint||hasSelectedGroups()||!tilemapCellOwnerSupported(cel().id,false,true)||layerEffectivelyLocked(layer())||!layerEffectivelyVisible(layer())||(tileSelection_.mode!=tiles::Mode::Create&&!tilemapPixelReferenceOwnersSupported(layer().tilemapTilesetId)))return false;
  if(!shape&&(seed.x<0||seed.y<0||seed.x>=width_||seed.y>=height_||(selection_&&!selectionContains(selection_,seed.x,seed.y))))return false;
  const auto& state=timeline_.state();const auto set=std::find_if(state.tilesets.begin(),state.tilesets.end(),[&](const auto& t){return t.id==layer().tilemapTilesetId;});if(set==state.tilesets.end())return false;
  const auto resolved=timeline_.resolveSurface(cel().id);if(resolved.issue!=timeline::LinkIssue::None||!resolved.surface)return false;
@@ -350,7 +349,7 @@ bool Document::beginTilemapPreview(Point seed,WandOptions options,bool shape){
  if(shared){for(const auto& c:state.cels)if(c.surface)account(c.surface->pixels.size());for(const auto& t:state.tilesets)account(t.pixels.size());}
  auto baseline=sparseFillCanvas(*resolved.surface);options.gapClosing=false;std::optional<SelectionMask> region;
  if(!shape){const auto reference=options.visibleLayers?compositeNormalRegion(timeline_,frame().id,{0,0,width_,height_}):std::vector<Pixel>{};region=magicWandSelection(options.visibleLayers?reference:baseline,width_,height_,seed.x,seed.y,options);if(!region)return false;}
- GradientPreview pending{seed,cel().id,layer().id,frame().id,baseline,selection_,std::move(region),options,contentRevision_,shape};pending.tilemap=true;pending.tilemapMode=tileSelection_.mode;pending.tilemapBaseline=std::move(baseline);if(shared){
+ GradientPreview pending{seed,resolved.source->id,layer().id,frame().id,baseline,selection_,std::move(region),options,contentRevision_,shape};pending.tilemap=true;pending.tilemapMode=tileSelection_.mode;pending.tilemapBaseline=std::move(baseline);if(shared){
   // Native gesture-local cache of legacy captureTilesetTileReferences semantics.
   std::size_t references=0;for(const auto& c:state.cels)if(c.tilemap)for(const auto& cell:c.tilemap->cells)if(cell&&cell->tilesetId==set->id)++references;
   account(references*16);
@@ -379,7 +378,10 @@ void Document::publishTilemapPreview(GradientPreview& g){
 }
 bool Document::commitTilemapPreview(){
  if(!gradient_||!tilemapPreviewValid()){cancelGradient();return false;}const auto& g=*gradient_;if(g.contentRevision!=contentRevision_||g.layerId!=layer().id||g.frameId!=frame().id||!selectionEqual(g.selection,selection_)){cancelGradient();return false;}
- const auto result=commitTilemapPixelCanvas(g.tilemapBaseline,g.preview,g.shape?U"绘制形状":U"渐变");if(!result)cancelGradient();return result;
+ // Suspend the preview while admitting the same frozen canonical transaction.
+ auto pending=std::move(gradient_);gradient_.reset();++gradientRevision_;
+ try{const auto mode=pending->tilemapMode;const auto result=commitTilemapPixelCanvas(pending->tilemapBaseline,pending->preview,pending->shape?U"绘制形状":U"渐变",{},false,nullptr,nullptr,mode==tiles::Mode::Create&&linkedCreateSelectionAvailable(false),mode==tiles::Mode::Edit&&linkedEditSelectionAvailable(false),mode==tiles::Mode::Hybrid&&linkedHybridSelectionAvailable(false));if(!result)cancelGradient();return result;}
+ catch(...){gradient_=std::move(pending);++gradientRevision_;throw;}
 }
 }
 
@@ -451,7 +453,7 @@ void Document::applyTilemapPixelHistory(const Edit& edit,bool forward){
 }
 bool Document::commitTilemapPixelCanvas(const std::vector<Pixel>& baseline,const std::vector<Pixel>& canvas,std::u32string label,std::optional<std::size_t> editCell,bool clearPixelSelection,const std::optional<SelectionMask>* beforePixels,const std::optional<SelectionMask>* afterPixels,bool linkedCreateSelection,bool linkedEditSelection,bool linkedHybridSelection,bool linkedCreateFloating,bool linkedEditFloating,bool linkedHybridFloating,bool paintFloating){
  struct TileIdGuard{std::uint64_t& value;std::uint64_t before;bool applied=false;~TileIdGuard(){if(!applied)value=before;}} ids{nextTileId_,nextTileId_};
- if((linkedCreateSelection&&!linkedCreateSelectionAvailable())||(linkedEditSelection&&!linkedEditSelectionAvailable())||(linkedHybridSelection&&!linkedHybridSelectionAvailable())||(linkedCreateFloating&&(!beforePixels||!afterPixels||!linkedCreateSelectionAvailable(false,paintFloating)))||(linkedEditFloating&&(!beforePixels||!afterPixels||!editCell||!linkedEditSelectionAvailable(false)))||(linkedHybridFloating&&(!beforePixels||!afterPixels||!linkedHybridSelectionAvailable(false)))||(int(linkedCreateSelection)+int(linkedEditSelection)+int(linkedHybridSelection)+int(linkedCreateFloating)+int(linkedEditFloating)+int(linkedHybridFloating)>1))return false;const bool linkedPixelSelection=linkedCreateSelection||linkedEditSelection||linkedHybridSelection||linkedCreateFloating||linkedEditFloating||linkedHybridFloating;const auto* target=linkedPixelSelection?timeline_.resolveSurface(cel().id).source:&cel();const auto count=std::size_t(width_)*height_;if(baseline.size()!=count||canvas.size()!=count||!target||!target->tilemap)return false;
+ if((linkedCreateSelection&&!linkedCreateSelectionAvailable(false))||(linkedEditSelection&&!linkedEditSelectionAvailable(false))||(linkedHybridSelection&&!linkedHybridSelectionAvailable(false))||(linkedCreateFloating&&(!beforePixels||!afterPixels||!linkedCreateSelectionAvailable(false,paintFloating)))||(linkedEditFloating&&(!beforePixels||!afterPixels||!editCell||!linkedEditSelectionAvailable(false)))||(linkedHybridFloating&&(!beforePixels||!afterPixels||!linkedHybridSelectionAvailable(false)))||(int(linkedCreateSelection)+int(linkedEditSelection)+int(linkedHybridSelection)+int(linkedCreateFloating)+int(linkedEditFloating)+int(linkedHybridFloating)>1))return false;const bool linkedPixelSelection=linkedCreateSelection||linkedEditSelection||linkedHybridSelection||linkedCreateFloating||linkedEditFloating||linkedHybridFloating;const auto* target=linkedPixelSelection?timeline_.resolveSurface(cel().id).source:&cel();const auto count=std::size_t(width_)*height_;if(baseline.size()!=count||canvas.size()!=count||!target||!target->tilemap)return false;
  const auto& state=timeline_.state();const auto set=std::find_if(state.tilesets.begin(),state.tilesets.end(),[&](const auto& t){return t.id==layer().tilemapTilesetId;});if(set==state.tilesets.end())return false;
  const auto& sourceGrid=*target->tilemap;auto nextGrid=sourceGrid;auto nextSet=*set;auto before=tiles::render(sourceGrid,state.tilesets),after=before;const auto stride=std::size_t(sourceGrid.columns)*sourceGrid.tileWidth;std::vector<std::size_t> indexes;
  const int originX=paintFloating?target->surface->offsetX:0,originY=paintFloating?target->surface->offsetY:0;
