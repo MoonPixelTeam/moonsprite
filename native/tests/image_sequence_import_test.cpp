@@ -1,13 +1,14 @@
 #include "image_sequence_import.h"
 #include "project_encode.h"
 #include "project_import.h"
+#include "image_decode.h"
 #include <iostream>
 #include <chrono>
 using namespace moon;
 using namespace moon::image_sequence;
 static void check(bool value,const char* message){if(!value)throw std::runtime_error(message);}
-int main(int argc,char** argv){try{
- const auto root=std::filesystem::u8path(argc>1?argv[1]:"image-sequence-test-owned")/std::to_string(std::chrono::steady_clock::now().time_since_epoch().count());std::filesystem::create_directories(root);auto pref=root/"settings.txt";
+int wmain(int argc,wchar_t** argv){try{
+ const auto root=std::filesystem::path(argc>1?argv[1]:L"image-sequence-test-owned")/std::to_string(std::chrono::steady_clock::now().time_since_epoch().count());std::filesystem::create_directories(root);auto pref=root/"settings.txt";
  check(batches({"a02.png","other.gif","a01.png","A01.PNG","a04.png"})==std::vector<std::vector<std::string>>{{"a01.png","a02.png"},{"other.gif"},{"a04.png"}},"Detection/order/dedupe");
  check(batches({"C:\\x\\09.PNG","C:/x/10.png","C:/x/11.png"}).size()==1,"Padding transition/slash aliases");
  check(batches({"x1.png","x02.png","x03.png","x5.png"})==std::vector<std::vector<std::string>>{{"x1.png"},{"x02.png","x03.png"},{"x5.png"}},"Mixed padding/gaps");
@@ -33,5 +34,21 @@ int main(int argc,char** argv){try{
  reads=errors=0;host.read=[&](const std::string&)->Document{++reads;throw std::runtime_error("bad source");};check(!open({"a1.png","a2.png"},corrupt,host)&&reads==1&&adds==0&&errors==1,"Decode failure no partial document");
  std::vector<std::string> huge;for(int i=1;i<=64;++i)huge.push_back("big"+std::to_string(i)+".png");reads=errors=0;host.read=[&](const std::string&){++reads;return Document(1024,1024);};check(!open(huge,corrupt,host)&&reads==1&&adds==0&&errors==1,"Resource budget checked after first decode");
  opens=0;host.ask=[](const auto&,Settings&){return Choice::Separate;};host.open=[&](const std::string&){return ++opens!=1;};check(open({"a1.png","a2.png"},corrupt,host)&&opens==2,"Separate failure continues siblings");
+ // Windows command lines are UTF-16; exercise the real UTF-8 host boundary too.
+ const auto unicodeRoot=root/std::filesystem::u8path(u8"序列 É 空格 🌓");std::filesystem::create_directories(unicodeRoot);
+ const auto first=unicodeRoot/std::filesystem::u8path(u8"步行01.png"),second=unicodeRoot/std::filesystem::u8path(u8"步行02.png"),unicodePref=unicodeRoot/std::filesystem::u8path(u8"设置 🌓.txt");
+ const auto firstPixels=std::vector<Pixel>{0x80443322,0xffaabbcc},secondPixels=std::vector<Pixel>{0xff102030,0x00000000};
+ writeStaticImagePngAtomic(first,encodeStaticImagePng(Document::fromImage(2,1,firstPixels,U"一")));
+ writeStaticImagePngAtomic(second,encodeStaticImagePng(Document::fromImage(2,1,secondPixels,U"二")));
+ const auto firstSize=std::filesystem::file_size(first),secondSize=std::filesystem::file_size(second);
+ Host unicodeHost;int unicodeAsks=0;std::optional<Document> unicodeResult;
+ unicodeHost.ask=[&](const auto&,Settings& s){++unicodeAsks;s.remember=true;s.duration=321;return Choice::Animation;};
+ unicodeHost.read=[](const std::string& p){return openRasterImage(std::filesystem::u8path(p));};unicodeHost.open=[](const auto&){return false;};unicodeHost.add=[&](Document d){unicodeResult=std::move(d);};unicodeHost.error=[](const std::string& e){throw std::runtime_error(e);};
+ check(open({second.u8string(),first.u8string()},unicodePref,unicodeHost),"Unicode disk sequence import");
+ check(unicodeResult&&unicodeResult->name()==U"步行"&&unicodeResult->pixels()==firstPixels&&unicodeResult->timeline().state().frames[0].duration==321,"Unicode sequence name/order/pixels/duration");
+ unicodeResult->selectFrame(unicodeResult->timeline().state().frames[1].id);check(unicodeResult->pixels()==secondPixels,"Unicode second PNG pixels");
+ check(load(unicodePref)&&load(unicodePref)->duration==321&&open({first.u8string(),second.u8string()},unicodePref,unicodeHost)&&unicodeAsks==1,"Unicode remembered preference reopen");
+ const auto unicodeEncoded=project::encodeEditableProject(*unicodeResult);const auto unicodeRound=project::prepareEditableImport(project::readProjectManifest(unicodeEncoded.bytes));check(unicodeRound.name==U"步行"&&unicodeRound.timeline.frames.size()==2,"Unicode animation project roundtrip");
+ check(std::filesystem::file_size(first)==firstSize&&std::filesystem::file_size(second)==secondSize&&openRasterImage(first).pixels()==firstPixels&&openRasterImage(second).pixels()==secondPixels,"Unicode sequence source preservation");
  std::cout<<"image-sequence-import: passed\n";return 0;
 }catch(const std::exception& e){std::cerr<<e.what()<<'\n';return 1;}}

@@ -4703,3 +4703,11 @@ X/Y/Both合成/当前层及左右键实际诊断验证100次preview请求不发�
 修复明确的编译边界违规：document_slices.cpp由CMake编译独立翻译单元，不再被document.cpp包含；editor_lifecycle.cpp首个头为editor.h；将GradientStopsTrack原实现逐字提取到共享gradient_stops_track.h，保留已有命名空间/前置声明，ColorOverlayDialog直接依赖共享控件及moon::unicodeText，避免反向依赖Editor支持头。没有改变渐变绘制、交互或UI布局。
 
 最终正式Release构建退出0；显式等待--gradient-map-check/--color-overlay-check/--gradient-shape-check/--slice-check全部退出0。document-slices/editor-boundaries/tile-image-resize三项CTest再次通过。743文件来源快照检查与diff检查通过。提取实现与HEAD原类逐字比较一致；无截图或FPS验收，不声称运行时卡顿已解决。其余全套失败待处理，整体迁移INCOMPLETE。保留用户数据、缓存和未跟踪文件，阶段保存推送dev。
+
+### 2026-11-09：中文工程路径回归入口与真实磁盘链路验证阶段
+
+上一轮全套回归的image-sequence-import/runtime-diagnostics两项独立复现：CRT main的ANSI argv被u8path误当UTF-8，含中文仓库路径在进入业务逻辑前失败。按已有gif-open等原生测试适配统一使用wmain及filesystem::path直接保留UTF-16，未改生产实现。对照legacy core/image-sequence.ts与store/image-sequence-import.ts的字符串路径、序号分批与名称提取，以及runtime-diagnostic-writer.ts的写入/回退语义。
+
+序列测试新增中文/重音/空格/非BMP目录和文件，链接已有生产解码库，真实写PNG并调用openRasterImage，验证逆序输入合成顺序、透明像素、中文名称、帧时长、记忆设置再次读取、原生工程往返及原PNG内容/大小不变。诊断全套已有写入、旋转、8文件保留、4MiB上限、队列压力和回退检查均运行在Unicode根，补验中文/Emoji回退事件跨Recorder重开保留及中文导出路径。
+
+两个测试目标Release构建退出0；对应两项CTest通过0.38s。源码/来源检查通过；本阶段仅测试宿主和依赖接线，无正式程序源码变更，无新增GUI/FPS验收。全套原15失败已修边界与本两项，其余12项仍待复核，未重新执行全套，不声称全绿或完整迁移；保留用户数据与缓存，保存推送dev。
