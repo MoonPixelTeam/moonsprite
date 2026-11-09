@@ -502,7 +502,7 @@ bool Document::linkedCreateSelectionAvailable(bool requireSelection,bool paintTr
 }
 bool Document::tilemapSelectionTransformAvailable()const{
  // Paint transforms use the user-approved Create resource transaction.
- return ((tilemapDeltaSupported()&&tilemapSelectionCutAvailable())||linkedCreateSelectionAvailable()||linkedEditSelectionAvailable()||linkedHybridSelectionAvailable()||linkedCreateSelectionAvailable(true,true))&&(tileSelection_.mode==tiles::Mode::Create||tileSelection_.mode==tiles::Mode::Edit||tileSelection_.mode==tiles::Mode::Hybrid||tileSelection_.mode==tiles::Mode::Paint)&&!layerEffectivelyLocked(layer())&&layerEffectivelyVisible(layer())&&(tileSelection_.mode==tiles::Mode::Paint||tileSelection_.mode==tiles::Mode::Create||raster::fullCanvas(activeSurface(),width_,height_));
+ return ((tilemapDeltaSupported()&&tilemapSelectionCutAvailable())||linkedCreateSelectionAvailable()||linkedEditSelectionAvailable()||linkedHybridSelectionAvailable()||linkedCreateSelectionAvailable(true,true))&&(tileSelection_.mode==tiles::Mode::Create||tileSelection_.mode==tiles::Mode::Edit||tileSelection_.mode==tiles::Mode::Hybrid||tileSelection_.mode==tiles::Mode::Paint)&&!layerEffectivelyLocked(layer())&&layerEffectivelyVisible(layer())&&(tileSelection_.mode==tiles::Mode::Paint||tileSelection_.mode==tiles::Mode::Create||tileSelection_.mode==tiles::Mode::Edit||raster::fullCanvas(activeSurface(),width_,height_));
 }
 bool Document::tilemapSelectionCutAvailable()const{
  // Already supported mixed-document clipboard paste keeps legacy copy/cancel-only Cut.

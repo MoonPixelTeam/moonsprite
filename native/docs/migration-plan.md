@@ -4939,3 +4939,12 @@ CTest document-transactions/free-tile-project/tilemap-document全部通过33.39s
 新增72组合：Edit/Hybrid×独立/显式/runtime链接×零/正/负偏移×渐变/矩形/Delete/Cut，混合free隔离、取消重启、preview/commit、UndoRedo、native/recovery一致。更新其他reference owner偏移的旧拒绝断言为操作与取消/Undo检查。free-tile-project通过58.74s，document-transactions/tilemap-document通过1.02s；744来源及证据快照通过。正式窗口夹具扩展三种模式×linked/independent×三个偏移，鼠标形状release/Escape及渐变Enter/Escape；最终构建与窗口结果待补。整体INCOMPLETE，无新增性能结论。
 
 正式Release最终构建成功，完整 --tileset-management-check 实际退出0，覆盖18种模式/链接/偏移组合的真实鼠标形状与渐变提交/取消。首轮正偏移渐变从网格外透明点开始，按既有规则无资源修改，夹具错误要求新增历史；改为所有布局均有内容的(1,1)起点后通过，未改变产品填充规则。未新增人工截图/FPS或全套验收。保留用户数据、缓存及editor_support.h既有状态，本阶段提交推送dev。
+
+
+### 2026-11-09：Edit 偏移网格浮动变换阶段
+
+依据 legacy tilemap-document.ts 的世界坐标锚点定位、锚定源像素编辑和完整单元格采样，Edit浮动允许偏移/补边canonical网格。prepare冻结规范source Cel与世界anchor region，translation裁剪使用offset，detached preview以canvas baseline读取而非局部缓存，跳过普通sparse变换路由，复用共享源preview和既有incremental提交/history。Hybrid活动偏移浮动仍未迁移。
+
+新增54组合：move/copy×independent/explicit/runtime×零/正/负偏移×translation/affine/quad，验证无关free、refs/geometry、取消、预览等于提交、UndoRedo和native/recovery。负偏移quad可能不改冻结锚点的源像素，保留selection-only历史并验证资源/像素完全不变。窗口linked Edit真实drag/Escape/Ctrl-copy/Enter/UndoRedo扩展三个原点；首轮比较误用局部displayPixels，改为世界canvas composite。最终结果待补，整体INCOMPLETE。
+
+最终正式Release构建成功，完整 --tileset-management-check 实际退出0，三个原点Edit真实鼠标与结算/UndoRedo通过。free-tile-project完整通过61.82s；document-transactions及tilemap-document本轮通过；744来源与快照及diff检查通过。未新增FPS/人工截图或全套验收。保留用户文件、缓存、未跟踪数据与editor_support.h既有状态，本阶段提交推送dev。
