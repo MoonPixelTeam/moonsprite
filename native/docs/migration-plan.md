@@ -5383,3 +5383,12 @@ Release三个相关目标构建成功，八项extension CTest全部通过1.18s�
 RequestHost resources.read复用权限先行和错误响应，返回实际number[]字节；SessionHost按当前generation安装读取器。回归覆盖声明/缺失/路径/ID/数量/重复/中文文件/0与255字节/16MiB/超限、请求资源读取及无权限/会话关闭。旧版文件读取沿路径跟随链接，本阶段未新增symlink/reparse隔离，不把词法路径校验称作全部文件系统边界保护。
 
 Release三个相关目标构建成功，九项extension CTest全部通过1.32s（资源0.12s、storage0.99s）；来源与diff检查后阶段保存推送dev。无正式exe更新、实际安装包/脚本引擎/窗口/截图/FPS验收；整体迁移继续INCOMPLETE，保留用户数据、缓存及editor_support.h既有状态。
+
+
+### 2026-11-10：实际安装目录的运行时候选读取阶段
+
+依据legacy platform_extensions.rs::manifest_from_directory/read_state/installed_extension_path及runtime校验分支，新增RuntimeDirectory::inspect。读取普通目录与普通manifest/state（拒绝symlink），清单256KiB上限、请求ID与manifest ID一致、schema2/api1.0.0、HTML/HTM相对入口路径、权限已知/唯一/runtime必需、资源目录复用既有完整校验；状态缺失或未登记默认enabled true，显式false保留，enabled字段所有条目必须布尔。完整JsonObject保留未知域与元数据，不将未解析域丢弃。状态读取沿legacy无额度上限，未擅自改其语义。
+
+明确为候选检查，不能作为完整validated package直接启用：旧版名称/版本/翻译/commands/settings/menus/panels等全清单校验、entry实际读取/引擎、目录枚举、安装/更新、默认路径和正式会话接线仍未迁移。本阶段没有用部分校验打开正式程序入口；开头拟迁移命令与session加载的范围因此仍未完成，保留在后续工作，不宣称完整扩展加载链路完成。
+
+Release专项两个目标构建成功，十项extension CTest全部通过1.35s。新增真实目录fixture验证有效清单/资源、未知字段、缺省/显式停用/错误状态、ID/版本/入口/权限失败与清单超限。来源764文件和diff通过后保存推送dev，无正式exe/实际脚本/窗口/截图/FPS验收。整体迁移INCOMPLETE，保留用户文件、缓存及editor_support.h原状态。

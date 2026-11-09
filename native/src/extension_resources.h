@@ -20,6 +20,7 @@ class ResourceCatalog {
   }return result;
  }
 public:
+ static std::filesystem::path packagePath(const std::string& text){return relative(text);}
  static constexpr std::size_t maxBytes=16u*1024u*1024u;
  ResourceCatalog(std::filesystem::path root,std::string entry,std::map<std::string,std::string> resources):root_(std::move(root)),resources_(std::move(resources)){
   if(resources_.size()>64)throw std::invalid_argument("扩展运行时资源不能超过 64 个。");std::set<std::string> ids;

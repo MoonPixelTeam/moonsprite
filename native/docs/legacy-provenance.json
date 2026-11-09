@@ -5429,7 +5429,8 @@
       "extensionRequest20261110": "Add extension-request-host CTest/executable using actual Storage and native RuntimeRegistry/FileDropRouter; legacy ExtensionRuntimeHost.tsx onMessage/handleRequest partial migration.",
       "extensionEvents20261110": "Register extension-event-lifecycle-tests from legacy ExtensionRuntimeHost.tsx send/sendAuthorized/onLoad; product integration pending.",
       "extensionSession20261110": "Add extension-session-host CTest composing actual native runtime/request/event/storage/drop components; product integration remains pending.",
-      "resourceRead20261110": "Add extension-resources executable/CTest, disk-backed and session request integration from platform_extensions.rs and ExtensionRuntimeHost.tsx."
+      "resourceRead20261110": "Add extension-resources executable/CTest, disk-backed and session request integration from platform_extensions.rs and ExtensionRuntimeHost.tsx.",
+      "runtimeDirectory20261110": "Add extension-runtime-directory executable and CTest for real directory candidate inspection; no product target integration."
     },
     {
       "file": "scripts/bootstrap.ps1",
@@ -29841,7 +29842,8 @@
         "legacy/src/renderer/src/components/extensions/ExtensionRuntimeHost.tsx"
       ],
       "scope": "EX-004 resource catalog validation and bounded file reads",
-      "adaptation": "Adapt platform_extensions.rs valid_extension_id, validate_package_component/relative_path, runtime manifest resource validation and read_enabled_runtime_resource:64 max,80-byte IDs casefold uniqueness,240-byte path,Windows reserved/control/unsafe names,protected entry,case-sensitive lookup,16MiB inclusive. Bound reads before oversized allocation. Root/catalog provided by trusted host, installed manifest/enabled state loading not migrated. No symlink/reparse confinement claim; legacy read follows filesystem paths."
+      "adaptation": "Adapt platform_extensions.rs valid_extension_id, validate_package_component/relative_path, runtime manifest resource validation and read_enabled_runtime_resource:64 max,80-byte IDs casefold uniqueness,240-byte path,Windows reserved/control/unsafe names,protected entry,case-sensitive lookup,16MiB inclusive. Bound reads before oversized allocation. Root/catalog provided by trusted host, installed manifest/enabled state loading not migrated. No symlink/reparse confinement claim; legacy read follows filesystem paths.",
+      "directoryPath20261110": "Expose existing relative package path validator for runtime entry path; avoids incorrectly applying protected resource restrictions to entry itself. Source platform_extensions.rs validate_runtime_entry_path/validate_package_relative_path."
     },
     {
       "file": "tests/extension_resources_test.cpp",
@@ -29852,6 +29854,24 @@
       ],
       "scope": "Resource disk/catalog/request integration",
       "adaptation": "Unsafe path/ID/reserved/protected/duplicate/count cases,Unicode raw binary,missing/case mismatch,16MiB and overflow,session resource request byte array,permission and close. No actual package install/engine/UI."
+    },
+    {
+      "file": "src/extension_runtime_directory.h",
+      "classification": "legacy-partial",
+      "sources": [
+        "legacy/src-tauri/src/platform_extensions.rs"
+      ],
+      "scope": "EX-004 installed runtime candidate inspection",
+      "adaptation": "Partial manifest_from_directory/read_state/installed_extension_path/runtime validation migration: ordinary directory and manifest/state files,256KiB manifest,exact ID/schema2/api1,HTML entry path,known unique permissions/runtime mandatory,resource catalog,state bool/default enabled. Preserve complete JsonObject. Candidate only: full name/version/translations/commands/settings/menus/panels validators and actual entry loading not migrated, cannot enable as validated package."
+    },
+    {
+      "file": "tests/extension_runtime_directory_test.cpp",
+      "classification": "legacy-partial",
+      "sources": [
+        "legacy/src-tauri/src/platform_extensions.rs"
+      ],
+      "scope": "Runtime directory candidate disk regression",
+      "adaptation": "Real isolated directory manifest/resource/state,unknown field preservation,default/disabled/invalid state,ID and schema/API/path/permission failures,manifest limit. No engine or full package validation claim."
     }
   ],
   "assetTransfers": [
