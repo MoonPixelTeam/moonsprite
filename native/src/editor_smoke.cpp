@@ -117,7 +117,7 @@ void Editor::smokePreferenceCatalog(const std::filesystem::path& directory,const
 
             if(!modalControl(field))throw std::runtime_error("Preference excluded from modal interaction");
 
-            if(item.kind==preferences::Kind::Toggle){const auto toggle=dynamic_cast<PixelSwitch*>(field);if(!toggle || toggle->caption!=item.label || field->bounds().x!=preferenceViewport_.x+2*uiScale || field->bounds().w!=preferenceViewport_.w-6*uiScale)throw std::runtime_error("Preference toggle must contain its own label and span the row");}
+            if(item.kind==preferences::Kind::Toggle){const auto toggle=dynamic_cast<PixelSwitch*>(field);const int handle=field->getProperty("moonsprite.quick-preference-handle")?17*uiScale:0;if(!toggle || toggle->caption!=item.label || field->bounds().x!=preferenceViewport_.x+2*uiScale+handle || field->bounds().w!=preferenceViewport_.w-6*uiScale-handle)throw std::runtime_error("Preference toggle must contain its own label and span the row");}
 
             if(item.binding<0 && dynamic_cast<PixelEntry*>(field) && static_cast<PixelEntry*>(field)->hasFocus())throw std::runtime_error("Unavailable field focused");
 
@@ -167,7 +167,7 @@ void Editor::smokePreferenceCatalog(const std::filesystem::path& directory,const
 
       for(auto point:points){preferenceContentPixels_=0;layoutModal();
 
-        if(!wheel(point,1) || preferenceContentPixels_!=24*uiScale)throw std::runtime_error("Preferences wheel-down/container routing");
+        const bool routed=wheel(point,1);if(!routed || preferenceContentPixels_!=24*uiScale)throw std::runtime_error("Preferences wheel-down/container routing: routed="+std::to_string(routed)+" offset="+std::to_string(preferenceContentPixels_)+" point="+std::to_string(point.x)+","+std::to_string(point.y)+" viewport="+std::to_string(viewport.x)+","+std::to_string(viewport.y)+","+std::to_string(viewport.w)+","+std::to_string(viewport.h)+" total="+std::to_string(preferenceCatalogHeight()*uiScale)+" bounds="+std::to_string(size.w)+","+std::to_string(size.h));
 
         if(!wheel(point,-1) || preferenceContentPixels_!=0)throw std::runtime_error("Preferences wheel-up direction");
 
@@ -2041,7 +2041,7 @@ void Editor::smokeDockResizeMigration(){smoke_=true;homeOpen_=false;documentOpen
 
 void Editor::smokeDockResizeHover(){
 
-    const auto saved=docking_;const bool savedPreview=previewPanelOpen_;previewPanelOpen_=false;
+    const auto saved=docking_;const bool savedPreview=previewPanelOpen_,savedHistory=historyPanelOpen_;previewPanelOpen_=false;historyPanelOpen_=false;
 
     const auto originalBounds=bounds();const auto originalShare=paletteShare_;
 
@@ -2109,7 +2109,7 @@ void Editor::smokeDockResizeHover(){
 
     }
 
-    docking_=saved;previewPanelOpen_=savedPreview;refresh();
+    docking_=saved;previewPanelOpen_=savedPreview;historyPanelOpen_=savedHistory;refresh();
 
   }
 
@@ -3155,8 +3155,6 @@ void Editor::smokeTimelineGestures(const std::filesystem::path& directory) {
 
     const auto header=[&](int c){return frameHeaders_.at(c)->bounds().center();};press(2,-1,0,header(0));send(ui::kMouseMoveMessage,header(2));send(ui::kMouseUpMessage,header(2));require(document.selectedFrames().size()==3,"Frame header drag did not select range");const auto frames=document.selectedFrames();press(2,-1,0,header(0),ui::kKeyAltModifier);send(ui::kMouseMoveMessage,header(3),ui::kKeyAltModifier);send(ui::kMouseUpMessage,header(3),ui::kKeyAltModifier);require(document.timeline().state().frames.size()==7,"Alt frame drag did not copy range");document.undo();refresh();require(document.timeline().state().frames.size()==4 && document.selectedFrames()==frames,"Alt frame drag not atomic undo");
 
-    const auto blankLayout=columnLayout(uiLogical(bounds()),2);
-
     for(int kind=1;kind<=3;++kind){
 
       if(kind==1)selectTimelineLayer(0);else if(kind==2){document.selectFrameHeader(document.timeline().state().frames[0].id);refresh();}else selectTimelineCel(0,0);
@@ -3171,7 +3169,8 @@ void Editor::smokeTimelineGestures(const std::filesystem::path& directory) {
 
       require(!clearTimelineSelectionFromBlank(outside) && !timelineOutlines().empty(),"Other panel dismissed timeline selection");
 
-      const auto blank=gfx::Point((blankLayout.workX+(kind==2?20:300))*uiScale,(blankLayout.layerTop+(kind==2?100:55))*uiScale);
+      const auto view=timelineFrameViewport();const auto blank=gfx::Point(view.x2()-2*uiScale,view.y+view.h/2);
+      for(auto cell:frameCells_)require(!cell->timelineVisible || !cell->bounds().contains(blank),"Blank fixture overlaps a real cel");
 
       send(ui::kMouseDownMessage,blank);
 
@@ -3183,7 +3182,7 @@ void Editor::smokeTimelineGestures(const std::filesystem::path& directory) {
 
     selectTimelineCel(0,0);
 
-    ui::MouseMessage rightBlank(ui::kMouseDownMessage,os::PointerType::Mouse,ui::kButtonRight,ui::kKeyNoneModifier,gfx::Point((blankLayout.workX+300)*uiScale,(blankLayout.layerTop+55)*uiScale));
+    ui::MouseMessage rightBlank(ui::kMouseDownMessage,os::PointerType::Mouse,ui::kButtonRight,ui::kKeyNoneModifier,gfx::Point(timelineFrameViewport().x2()-2*uiScale,timelineFrameViewport().center().y));
 
     require(!clearTimelineSelectionFromBlank(rightBlank) && timelineOutlines().empty(),"Blank right click failed to dismiss selection or consumed create menu");
 
@@ -3273,7 +3272,7 @@ void Editor::smokeLayers(const std::filesystem::path& directory) {
 
     auto linkedImage=renderHover();
 
-    const auto markerCenter=uiLogical(frameCells_[0]->bounds()).center();const int markerX=markerCenter.x-3,markerY=markerCenter.y;
+    const auto markerCell=uiLogical(frameCells_[0]->bounds());const int markerX=markerCell.x+(timelineFrameWidth()-7)/2+1,markerY=markerCell.y+(timelineRowHeight()-7)/2+3;
 
     {
 
