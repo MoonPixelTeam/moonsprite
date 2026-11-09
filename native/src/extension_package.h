@@ -33,7 +33,15 @@ inline RuntimeCandidate installInspectedPackage(const PackageInspection& inspect
   const bool enabled=state.enabled.count(id)?state.enabled.at(id):true;std::error_code targetError;auto status=std::filesystem::symlink_status(target,targetError);if(targetError&&targetError!=std::errc::no_such_file_or_directory)throw std::system_error(targetError);if(std::filesystem::exists(status)){if(!std::filesystem::is_directory(status)||std::filesystem::is_symlink(status))throw std::runtime_error("原有扩展必须是普通目录。");std::filesystem::rename(target,backup);backed=true;}
   std::filesystem::rename(staging,target);published=true;
   auto result=RuntimeDirectory::setEnabled(directory,id,enabled);published=false;if(backed)cleanup(backup);return result;
- }catch(...){if(published)cleanup(target);if(backed){std::error_code ignored;std::filesystem::rename(backup,target,ignored);}cleanup(staging);throw;}
+ }catch(...){
+  auto original=std::current_exception();std::string recoveryErrors;
+  auto remove=[&](const std::filesystem::path& path){if(std::filesystem::absolute(path).lexically_normal().parent_path()!=absoluteRoot)throw std::logic_error("Invalid extension recovery path");std::error_code error;std::filesystem::remove_all(path,error);if(error)recoveryErrors+="; cannot remove "+winrt::to_string(path.wstring())+": "+error.message();};
+  if(published)remove(target);
+  if(backed){std::error_code error;std::filesystem::rename(backup,target,error);if(error)recoveryErrors+="; previous installation retained at "+winrt::to_string(backup.wstring())+", cannot restore: "+error.message();}
+  remove(staging);
+  if(!recoveryErrors.empty()){try{std::rethrow_exception(original);}catch(const std::exception& error){throw std::runtime_error(std::string(error.what())+recoveryErrors);}catch(const winrt::hresult_error& error){throw std::runtime_error(winrt::to_string(error.message())+recoveryErrors);}}
+  std::rethrow_exception(original);
+ }
 }
 inline RuntimeCandidate installPackage(const std::filesystem::path& package,const std::filesystem::path& directory){return installInspectedPackage(inspectPackage(package),directory);}
 inline void ensureBuiltinPackage(const std::filesystem::path& directory,const std::string& id,const std::filesystem::path& package){

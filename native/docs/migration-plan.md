@@ -5487,3 +5487,10 @@ Release专项构建与10项extension验证通过，来源/diff检查后保存推
 对照ExtensionSettingsDialog.tsx::HostExtensionSettings及其显示条件测试迁移SettingsValues：加载checkbox类型/number钳制/text UTF16 slice/select精确选项归一化，update合并存储与当前值、commit保留未知键且成功保存后更新状态/发settings-changed、reset默认值保留磁盘未知键、显示条件保留隐藏值、runtime按钮与closeOnRun。复用javascriptJsonUtf8保留孤立代理转义，事件增加key并用payload适配JSON value；原生控件渲染仍未接线，完整JS数字序列化格式等价尚未验证。
 
 四相关Release目标构建成功，extension-session-host含设置组合通过0.08s，其余八项通过；整组10项有1项失败：extension-runtime-directory安装用例在staging-16252-27578453-6→test重命名ERROR_ACCESS_DENIED，现场保留，未定位持有者、未重试掩盖。该结果不能标绿整组，也不能宣称安装已稳定。设置阶段最小相关测试通过，来源/diff检查后保存推送dev，后续优先检查该安装失败。无正式exe/UI/全套验收，整体INCOMPLETE；保留用户数据/缓存/editor_support.h原状态。
+
+
+### 2026-11-10：安装占用失败与回滚诊断阶段
+
+复查上轮directory-16252-27578218/install-owned现场，旧test目录与状态存在、无遗留staging/backup，未定位当时外部句柄。没有依据宣称ERROR_ACCESS_DENIED根因已修复。新增受控installed目录无delete-sharing句柄，验证更新在重命名旧目录阶段拒绝、错误携带源/目标路径，原脚本和状态字节不变。修正安装catch忽略回滚错误的问题：清理/恢复失败时追加路径与备份保留位置；成功回滚仍抛原始失败，不加重试循环或改为忽略错误。此为原生错误诊断适配，事务成功路径不变。
+
+Release专项构建，11项extension/project-reader检查通过1.80s，含设置会话0.08s和新增锁定场景。此次绿灯不替代原偶发重命名失败根因证据；双故障回滚诊断分支尚未故障注入验证。来源/diff后保存推送dev，无正式exe/UI/全套验收，整体INCOMPLETE；保留原失败现场、用户数据/缓存/editor_support.h既有状态。
