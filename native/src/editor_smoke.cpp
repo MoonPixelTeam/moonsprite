@@ -1289,7 +1289,12 @@ void Editor::smokeHome() {
 
     document=saved;refresh();showHome(true);
 
-    const auto original=bounds();for(const auto size:{gfx::Size(720,600),gfx::Size(1280,960)}){setBounds(gfx::Rect(original.origin(),size));if(std::any_of(homeActions_.begin(),homeActions_.end(),[this](auto action){return !bounds().contains(action->bounds());}) || !bounds().contains(homeTabs_[2]->bounds()) || swatches_[0]->isVisible())throw std::runtime_error("Home resize escaped viewport");}
+    const auto original=bounds();for(const auto size:{gfx::Size(720,600),gfx::Size(1280,960)}){setBounds(gfx::Rect(original.origin(),size));
+      for(auto action:homeActions_)if(action->isVisible()){const auto visible=action->paletteViewport?(action->bounds()&action->paletteViewport()):action->bounds();if(visible.isEmpty()||!bounds().contains(visible))throw std::runtime_error("Home visible action escaped viewport");}
+      for(auto tab:homeTabs_)if(tab->isVisible()&&!bounds().contains(tab->bounds()))throw std::runtime_error("Home visible tab escaped viewport");
+      if(swatches_[0]->isVisible()||!homeAnnouncements_||!bounds().contains(homeAnnouncements_->bounds()))throw std::runtime_error("Home resize escaped viewport");
+      homeAnnouncements_->scrollEnd();for(auto action:homeActions_)if(action->isVisible()&&action->paletteViewport){const auto visible=action->bounds()&action->paletteViewport();if(visible.isEmpty()||!bounds().contains(visible))throw std::runtime_error("Home scrolled action escaped viewport");}
+    }
 
     setBounds(original);refresh();
 
@@ -3068,7 +3073,8 @@ void Editor::smokeLayerContext(const std::filesystem::path& directory) {
       document.undo();require(*document.cel().freeTiles==before&&document.selectedFreeTileInstances()==selected,"Instance paste menu undo restores content and selection");document.redo();document.undo();refresh();
       require(entry("cut")->available(),"Actual instance Cut menu must be enabled");entry("cut")->Click();require(document.cel().freeTiles->instances.size()==before.instances.size()-selected.size()&&document.historyPosition()==history+1&&freeTileInstanceClipboard_->instances.size()==selected.size(),"Actual instance Cut menu copies then deletes once");document.undo();require(*document.cel().freeTiles==before,"Instance Cut menu undo restores instances");
       document.setLayerLocked(true);refresh();require(!entry("paste")->available(),"Locked target disables actual instance Paste menu");const auto lockedHistory=document.historyPosition();entry("paste")->Click();require(document.historyPosition()==lockedHistory&&*document.cel().freeTiles==before,"Disabled Paste menu cannot change locked target");document.undo();
-      document.setFreeTileInstanceView(false);refresh();for(const auto* id:{"copy","cut"})require(!entry(id)->available(),"Ordinary free layer keeps unported copy/cut disabled");
+      document.setFreeTileInstanceView(false);refresh();require(entry("copy")->available()&&entry("cut")->available()==document.canDeleteSelectedLayers(),"Ordinary free layer Copy and selection-dependent Cut availability");
+      {const auto instanceClipboard=freeTileInstanceClipboard_;const auto copyHistory=document.historyPosition();entry("copy")->Click();require(layerClipboardSnapshot_&&!freeTileInstanceClipboard_&&document.historyPosition()==copyHistory&&*document.cel().freeTiles==before,"Ordinary free Copy preserves layer resources without mutation");layerClipboardSnapshot_.reset();freeTileInstanceClipboard_=instanceClipboard;}
       const auto ordinaryHistory=document.historyPosition();const auto ordinaryPixels=document.canvasPixels();
       require(entry("paste")->available(),"Ordinary free layer accepts instance Paste menu");entry("paste")->Click();require(!document.freeTileInstanceView()&&document.cel().freeTiles->instances.size()==before.instances.size()+selected.size()&&document.historyPosition()==ordinaryHistory+1,"Ordinary instance Paste menu commits without changing view");
       document.undo();require(!document.freeTileInstanceView()&&*document.cel().freeTiles==before&&document.canvasPixels()==ordinaryPixels,"Ordinary Paste undo restores content and view");document.redo();require(!document.freeTileInstanceView()&&document.selectedFreeTileInstances().size()==selected.size(),"Ordinary Paste redo restores selected instances");document.undo();

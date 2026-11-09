@@ -4727,3 +4727,9 @@ X/Y/Both合成/当前层及左右键实际诊断验证100次preview请求不发�
 多文档测试旧等待只看Pending::Saving，生产保存已在完成后排队等待恢复清理才关闭。等待条件加入既有deferredSaveCloses/backgroundSaves/queuedSaves，保留10秒期限；验证恢复后保存、关闭选择剩余页、取消/丢弃、退出逐文档提示完整路径通过，未修改产品保存生命周期。正式Release及三个测试目标构建成功（图集目标名moon-theme-tests，首次命令误写目标名后纠正）；四项CTest通过1.40s。来源与diff检查通过；无新增GUI截图/FPS结论。
 
 用户本轮明确决定：组蒙版随选中组移动并遵守随层移动开关；已登记document_layer_move.cpp来源，后续完成对应开关/嵌套/链接回归审核，不再等待该决定。原失败剩wheel-performance/layer-context-menu/workspace-layout/home-workspace四项待处理；未重跑全套，整体迁移INCOMPLETE。保留用户数据/缓存，阶段保存推送dev。
+
+### 2026-11-09：首页滚动裁剪与普通自由瓦片层菜单回归阶段
+
+承接剩四项失败，核对当前HomeWorkspace已迁移的栏目溢出和资源公告滚动。旧首页resize断言要求全部隐藏/屏外按钮位于窗口内，改为只检查可见按钮按paletteViewport裁剪后的非空范围、可见标签、公告视口和滚到底后的资源裁剪；不改生产布局。对照legacy workspace-commands-clipboard.ts与已迁移普通自由瓦片完整图层资源复制，旧断言仍称Copy/Cut未迁移：现检查Copy实际可用并执行菜单，断言layerClipboardSnapshot生成、实例clipboard清空、实例内容/历史不变，恢复测试内部clipboard后继续完整Paste/UndoRedo/锁定/快捷键流程；Cut仍遵守canDeleteSelectedLayers的显式选择准入。
+
+正式Release构建退出0，home-workspace与layer-context-menu两项完整CTest通过8.23s；来源和diff检查通过。工作区复查仍失败于Preview move/resize phase4全画面像素对照，保留为真实待定位渲染差异；wheel-performance的额外chrome绘制/初始化像素差异也保留，已产生本地repaint trace，不删除断言、不据此声称性能问题解决。原全套失败剩两项，未重跑全套；无新增人工截图/FPS验收，整体迁移INCOMPLETE。保留用户数据/缓存，保存推送dev。
