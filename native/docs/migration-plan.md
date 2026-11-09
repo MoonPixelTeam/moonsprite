@@ -5148,3 +5148,10 @@ CTest document-transactions/free-tile-project/tilemap-document全部通过33.39s
 legacy aseprite.ts只在name后仍有四字节时读取tilesetIndex，并在构造document层时跳过无该字段的tilemap层；已有aseprite.test.ts明确要求混合文件仍导入Paint。原生此前强制读取索引而拒绝整个文件，现改为独立记录字段存在性，只跳过无字段层及其Cel，回收对应raw预算并重建slot下标，保留文件原layer索引。显式索引值（含越界值）不与缺失混同；内嵌瓦片及外部资源验证保持原路径。
 
 四组二进制夹具覆盖有/无Paint、有/无被忽略Cel；仅剩忽略层时拒绝，无损保留Paint时验证像素、绘制、UndoRedo、ASE重开及原生保存重开。正式Release构建成功，aseprite-io/save-policy通过0.43s，完整--aseprite-io-check实际退出0。新增兼容场景为核心测试，无新增窗口夹具/截图或性能量测；整体INCOMPLETE，本阶段保存推送dev。
+
+
+### 2026-11-10：ASE嵌套组与标签组合生命周期验收
+
+对照legacy aseprite.test.ts nested group ownership、named loop ranges/direction/repeat、editable Cel opacity、linked Cel及duration，以及aseprite.ts文件头validity/groupPropertiesValid与orderedAseItems实际规则，补齐四种header flag组合的二进制夹具：两级组/隐藏锁定空组/中文名称、组字段无效时忽略非法blend、层与Cel opacity组合、两帧链接/时长、四种tag方向与空/有限repeat。连续三次ASE保存重开逐项检查关系/名称/标志/链接和每帧画面，再验证导入后编辑/UndoRedo/ASE保存及原生重开元数据。
+
+现有产品逻辑通过组合检查，本阶段只增加回归证据，不宣称新实现功能。aseprite-io/save-policy通过0.36s；无产品源码变动，未重复正式程序构建和既有窗口测试；新增场景尚无窗口夹具或截图验收。来源覆盖/证据与diff检查通过，整体INCOMPLETE，本阶段保存推送dev。
