@@ -9039,6 +9039,12 @@ if(mode==tiles::Mode::Paint){
 }
 document=Document();refresh();
 }
+for(Point offset:std::vector<Point>{{0,0},{-1,-1},{1,1}}){
+ auto seed=std::make_unique<Document>(7,3);for(int y=0;y<3;++y)for(int x=0;x<5;++x){seed->beginStroke({x,y},0xff123456+Pixel(x+y*5));seed->commitStroke();}seed->convertLayerToTilemap(2,2,U"Offset Create UI");seed->addLinkedFrame();const auto layer=seed->layer().id,frame=seed->frame().id;auto state=seed->timeline().state();for(auto& c:state.cels)if(c.surface){c.surface->offsetX=offset.x;c.surface->offsetY=offset.y;}auto owned=std::make_unique<Document>(Document::fromImported(7,3,std::move(state),seed->palette(),"offset-create-ui",U"Offset Create",std::make_shared<const std::vector<std::uint8_t>>()));document=std::move(*owned);auto& d=document;d.selectLayer(layer);d.selectFrame(frame);d.clearTimelineSelection();d.clearFrameSelection();d.setTilemapMode(tiles::Mode::Create);useSelectionTool(0);const SelectionMask selected{std::max(0,offset.x),std::max(0,offset.y),2,2,{}};d.previewSelection(selected);requestFocus();fitCanvas();refresh();const auto before=d.canvasPixels();const auto h=d.historyPosition();
+ auto key=[&](ui::KeyScancode scan){ui::KeyMessage msg(ui::kKeyDownMessage,scan,ui::kKeyNoneModifier,0,0);onProcessMessage(&msg);};
+ for(bool cancel:{true,false}){d.previewSelection(selected);startFreeSelectionTransform();check(d.floating()&&d.floatingDeferred(),"Offset Create actual free-transform capture uses deferred grid preview");auto t=*d.floatingTransform();t.x=3;t.y=1;t.width=3;t.height=2;t.quad=std::array<TransformPoint,4>{{{3,1},{6,1},{6,3},{3,3}}};d.transformFloatingPaste(t);const auto preview=d.floatingOverlayRegion({0,0,7,3});refresh();key(cancel?ui::kKeyEsc:ui::kKeyEnter);if(cancel)check(!d.floating()&&d.canvasPixels()==before&&d.historyPosition()==h,"Offset Create actual Escape cancels");else{check(!d.floating(),"Offset Create Enter clears floating");check(d.canvasPixels()==preview,"Offset Create Enter matches preview");check(d.canvasPixels()!=before,"Offset Create Enter changes pixels");const auto entries=d.historyPosition()-h;check(entries>=1&&entries<=2,"Offset Create Enter records content and optional selection completion");for(std::size_t i=0;i<entries;++i)d.undo();check(d.canvasPixels()==before,"Offset Create UI Undo restores");for(std::size_t i=0;i<entries;++i)d.redo();check(d.canvasPixels()==preview,"Offset Create UI Redo restores");}}
+ document=Document();refresh();
+}
 }
 
 namespace {

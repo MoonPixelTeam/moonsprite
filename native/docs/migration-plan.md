@@ -4919,3 +4919,14 @@ CTest document-transactions/free-tile-project/tilemap-document全部通过33.39s
 后续契约核对纠正：legacy/src/renderer/src/core/project-format-decode.ts 的现代自由源校验明确要求 tileIds.length===1、columns===1、rows===1，并禁止 tilemapTilesetIds 拥有该表；native/src/project_import.cpp 的 Invalid free tile source sheet 与之对应。因此跨类型共用表不是格式迁移缺口，不放开既有校验。之前十二组 shared/unrelated 验收的说法不成立，实际有效覆盖为六项独立网格操作。补充现代自由源所有权回归，验证合法共享 free catalog 与独立 grid 可导入，以及多瓦片、非1×1布局、grid共用表在 native/recovery 解析后的导入阶段被精确拒绝。
 
 本次契约回归：free-tile-project-tests Release 构建成功；完整 free-tile-project 通过23.51s（CTest总23.56s）；八项拒绝均命中 Invalid free tile source sheet，合法共享自由源目录保持可导入。744来源覆盖及证据快照、git diff --check通过。仅测试与台账变更，无生产代码或正式程序更新，无新增性能结论。
+
+
+### 2026-11-09：Create 偏移与补边网格选区事务阶段
+
+依据 legacy tilemap-document.ts 的 tilemapCellIndexesForEdit 世界坐标减 surface.offset 与 rgbaCellPixelsFromSurface 完整单元格读取，Create 捕获/提交不再要求零原点且等画布缓存。复用既有 Paint deferred overlay 裁剪与 canonical Create 资源增量历史，固定网格位置、范围及画布外 texels；包括浮动移动/复制、缩放旋转倾斜、四角变换、静态 Cut/Delete、取消、Undo/Redo 与保存。保留画笔原几何前置条件，未泛化开放 Edit/Hybrid 偏移预览或多目标。
+
+新增90组合：移动/复制×独立/显式链接/runtime链接×零/正/负偏移×平移/仿射/四角/Delete/Cut；混合free文档检查无关实例/cache与链接拓扑保持、native/recovery重开。旧Create偏移/补边拒绝断言更新为捕获取消和空区域Cut的旧版完成行为；首次旧测试崩溃源于断言读取已被空Cut清除的optional，修正测试后tilemap-document通过。完整free-tile-project本轮通过31.84s，document-transactions通过0.30s。正式窗口新增三个布局的free-transform入口/Escape/Enter/UndoRedo检查；最终构建与验收结果待补。整体INCOMPLETE，无新增FPS结论。
+
+最终核心复验：正式依赖与测试重编后，CTest document-transactions/free-tile-project/tilemap-document全部通过49.97s，含逐像素画布外texels和全部既有源瓦片不变断言；744来源覆盖及证据快照通过。正式程序首轮完成后核对editor_smoke对象时间，确认新增窗口夹具尚未纳入，因此追加该文件重编，窗口结果以后续为准。
+
+正式Release最终构建成功，完整 --tileset-management-check 实际退出0，包含三个偏移/补边布局的Create自由变换命令、Escape、Enter与完整Undo/Redo。窗口夹具首轮只改rect未改quad，导致实际未变换，修正同步quad；后续按实际内容变化、预览一致和全部历史撤销重做验证，保留既有可选选区完成历史，不修改产品历史逻辑。无人工截图或FPS验收，未重跑全套。保留用户文件、缓存、未跟踪数据与editor_support.h既有状态，本阶段提交推送dev。
