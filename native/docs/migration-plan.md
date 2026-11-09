@@ -4635,3 +4635,9 @@ X/Y/Both合成/当前层及左右键实际诊断验证100次preview请求不发�
 对照useCanvasCursor捕获create-slice/move-slice/resize-slice优先级及displayedResizeCursorForHandle、useCanvasTextPreview sliceHandleAt。原生此前尺寸手柄悬停只有move/crosshair，捕获离开视口回default；现选中单切片手柄使用既有旋转/镜像方向计算，捕获期间保持resize/move/copy/crosshair。复用既有图标/方向函数，不改切片手柄几何或主画布显示语义。
 
 正式Release最终构建退出0，--slice-check显式等待退出0。新增128组八手柄×四角度×四镜像，zoom1.25，实际hover/down/越界cursor/Escape及无历史/捕获残留；前阶段24平铺创建/移动/Alt复制场景补捕获越界光标断言，另三尺寸提交与既有回归继续通过。三项CTest document-slices/tile-repeat/tile-repeat-stroke通过0.19s，742来源快照和diff检查通过。无新增全软件FPS/素材alpha/截图验收，组蒙版选择仍等待答复，全量迁移INCOMPLETE。保留原有用户数据/缓存/未跟踪文件，阶段保存推送dev。
+
+### 2026-11-09：切片预览无变化重绘优化迁移阶段
+
+直接沿用canvas-input-slice三个move分支sameBoxPreview与canvas-box-drag.test.ts的metadata-only/no-op语义。原生此前每个拖动事件均invalidate整画布，现各目标rect变化才赋值并标记changed，仅变化时刷新；创建预览从未显示到超过拖动阈值仍刷新，即便clamp几何相同，保留可观察行为。不复制全部预览向量作比较，避免多选额外拷贝。清理释放前已return后的不可达判断。
+
+正式Release最终构建退出0；--slice-check显式等待退出0，四类创建/单移/尺寸/多移分别100重复和100不同坐标夹紧样本，共800无变化事件，测试前明确assert脏区为空，之后仍为空，预览/revision/history不变。既有27切片交互与128方向光标矩阵继续通过。三项CTest document-slices/tile-repeat/tile-repeat-stroke通过0.19s；742来源快照和diff检查通过。证明省去这些事件的重绘请求，不等于全软件FPS或所有输入路径优化完成。组蒙版语义选择仍待答复，全量迁移INCOMPLETE。保留原有用户数据、缓存及未跟踪文件，阶段保存推送dev。
