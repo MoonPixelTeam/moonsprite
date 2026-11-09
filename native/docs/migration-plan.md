@@ -5106,3 +5106,10 @@ CTest document-transactions/free-tile-project/tilemap-document全部通过33.39s
 接续上一阶段首帧空槽支持，核对legacy useLayerPanelShortcuts.tsx先选中槽后活动槽的属性目标规则及background-preset-images.ts无可见像素返回null。原生单元格属性快捷键不再预先解引用缺失活动Cel，空槽无目标时无动作；时间轴菜单删除内容判断使用可选槽。选区背景预设单层保留透明RGB快速路径允许无Cel并返回空结果，保持原文档不变。
 
 核心回归覆盖空活动槽的完整/越界选区、无新增Cel/dirty/revision、切换有内容帧后实际PNG像素。新增实际窗口场景包含首帧空槽、后两帧有内容且链接，检查缩略图绘制、属性快捷键、Cel菜单、导出弹窗worker/写入/重开及全部帧画面。正式Release构建与完整--aseprite-io-check实际退出0；background-preset/aseprite-io通过0.31s，744来源/证据和diff检查通过。最初背景测试错误选择已删除的首帧作有内容断言，修正夹具为明确复制帧并切换存活帧后通过；不改产品语义。系统选择器注入路径，无截图/FPS量测。整体INCOMPLETE，本阶段保存推送dev。
+
+
+### 2026-11-10：ASE索引色调色板逐帧迁移
+
+对照legacy aseprite.ts decodePixelData/readPalette：透明索引保留调色板RGB只清alpha，后帧较小count的局部palette更新不截断既有高索引。原生此前透明索引直接置0，palette.resize(n)截断旧颜色；现修复这两项。RGBA导入路线不变，不声明新增原生索引色编辑模式。新旧palette各四帧夹具覆盖非零透明索引、局部更新/高索引继承、raw与zlib cel、链接保留源帧颜色、ASE转RGBA重开和原生保存像素，含透明RGB。
+
+正式Release构建成功，既有完整--aseprite-io-check实际退出0；新增颜色场景为核心夹具，未新增窗口截图。来源744覆盖/证据与diff检查通过，整体INCOMPLETE。本阶段保存推送dev。
