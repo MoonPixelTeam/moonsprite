@@ -37,6 +37,8 @@ class RuntimeDirectory {
  static std::string sortName(const std::string& name){auto wide=winrt::to_hstring(name);int n=LCMapStringEx(LOCALE_NAME_INVARIANT,LCMAP_LOWERCASE,wide.c_str(),int(wide.size()),nullptr,0,nullptr,nullptr,0);if(!n)throw std::runtime_error("Cannot lowercase extension name");std::wstring lowered(n,L' ');if(!LCMapStringEx(LOCALE_NAME_INVARIANT,LCMAP_LOWERCASE,wide.c_str(),int(wide.size()),lowered.data(),n,nullptr,nullptr,0))throw std::runtime_error("Cannot lowercase extension name");return winrt::to_string(lowered);}
  static bool validId(const std::string& id){return !id.empty()&&id.size()<=80&&id.front()!='.'&&id.back()!='.'&&id.find("..")==std::string::npos&&std::all_of(id.begin(),id.end(),[](unsigned char c){return (c>='a'&&c<='z')||(c>='A'&&c<='Z')||(c>='0'&&c<='9')||c=='.'||c=='-'||c=='_';});}
 public:
+ static ExtensionState state(const std::filesystem::path& directory){return readFullState(directory);}
+ static void saveState(const std::filesystem::path& directory,const ExtensionState& state){const auto bytes=state.encode();writeBinaryFileAtomic(directory/".state.json",std::vector<std::uint8_t>(bytes.begin(),bytes.end()));}
  static void uninstall(const std::filesystem::path& directory,const std::string& id){
   // inspect validates ID, ordinary directory, manifest identity and full state
   // before any state mutation or recursive removal.

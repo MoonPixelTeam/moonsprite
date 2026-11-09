@@ -5473,3 +5473,10 @@ Release专项构建与10项extension验证通过，来源/diff检查后保存推
 直接迁移 platform_extensions.rs::uninstall_extension_at：校验普通目录、清单身份与完整状态；先移除enabled登记并原子保存，再递归删除扩展目录；删除失败尽力写回原状态并保留原删除错误。清理前确认目标绝对路径为指定安装根的直接子目录，拒绝路径越界。保留旧版删除失败可能部分删除文件的行为，未将状态恢复称为完整目录回滚。
 
 测试目录内执行安装→停用→更新→卸载组合。状态文件无删除共享锁验证保存失败前不删文件；目录句柄无删除共享锁验证删除失败后恢复停用状态；成功卸载验证目录与enabled项移除，其他扩展状态、seededBuiltin和u64最大revision完整保持。缺失目标、无效ID、坏清单拒绝且保留坏清单。Release构建与11项extension/project-reader测试通过1.64s，来源/diff检查后保存推送dev。安装/更新/启停/卸载核心已组合验证，但正式管理UI、默认目录、运行中会话及脚本引擎未接入；压缩兼容和先前JSON/Unicode缺口仍在，整体INCOMPLETE。无用户目录修改、正式exe/GUI/全套验收，保留用户数据/缓存/editor_support.h原状态。
+
+
+### 2026-11-10：内置扩展初始化与内容修订更新阶段
+
+迁移legacy ensure_builtin_extension_at：首次安装后登记seededBuiltin与按文件名排序的CRC/解压大小修订；相同修订保留本地文件，内容变化即使版本号相同也走安装更新并保持enabled；已初始化但目录缺失视为用户卸载，不重装也不读取包。检查包ID与预期身份，复用同一不可变inspection进行修订计算和安装，避免源包变化造成修订记录与安装内容不符。提取installInspectedPackage以复用现有事务，RuntimeDirectory提供完整typed状态读取保存。
+
+测试覆盖首次初始化、相同修订不覆盖本地修改、同版本内容更新与停用保留、卸载后缺包也不重装、错误ID不安装。该阶段为路径包适配，实际pet-companion包嵌入和正式启动调用未接入；内置HTML能力迁移原生仍待完成，不能称内置宠物已可运行。安装成功后seed状态保存失败的旧版重试语义保留，未新增自动循环。Release及11项相关测试、来源/diff检查后保存推送dev；整体INCOMPLETE，无正式exe/GUI/全套验收，保留用户数据/缓存/editor_support.h既有状态。

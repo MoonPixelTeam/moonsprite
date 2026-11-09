@@ -15,8 +15,8 @@ inline PackageInspection inspectPackage(const std::filesystem::path& path){
  if(result.candidate.metadata.entry)require(*result.candidate.metadata.entry);if(result.candidate.settings.entry)require(*result.candidate.settings.entry);if(!result.candidate.entry.empty())require(result.candidate.entry);for(auto& command:result.candidate.commands)if(command.luaEntry)require(*command.luaEntry);
  if(manifest.HasKey(L"runtime")&&manifest.GetNamedValue(L"runtime").ValueType()!=winrt::Windows::Data::Json::JsonValueType::Null){auto runtime=manifest.GetNamedObject(L"runtime");if(runtime.HasKey(L"resources"))for(auto item:runtime.GetNamedObject(L"resources"))require(winrt::to_string(item.Value().GetString()),16u*1024u*1024u);}return result;
 }
-inline RuntimeCandidate installPackage(const std::filesystem::path& package,const std::filesystem::path& directory){
- auto inspection=inspectPackage(package);const auto id=inspection.candidate.extension.id;
+inline RuntimeCandidate installInspectedPackage(const PackageInspection& inspection,const std::filesystem::path& directory){
+ const auto id=inspection.candidate.extension.id;
  const auto directoryStatus=std::filesystem::symlink_status(directory);if(!std::filesystem::is_directory(directoryStatus)||std::filesystem::is_symlink(directoryStatus))throw std::invalid_argument("扩展安装目录必须是普通目录。");
  static std::atomic<unsigned> serial{0};auto suffix=std::to_wstring(GetCurrentProcessId())+L"-"+std::to_wstring(GetTickCount64())+L"-"+std::to_wstring(++serial);auto staging=directory/(L".staging-"+suffix),backup=directory/(L".backup-"+suffix),target=directory/ResourceCatalog::packagePath(id);
  // Only paths immediately beneath this supplied installation root are eligible
@@ -34,5 +34,16 @@ inline RuntimeCandidate installPackage(const std::filesystem::path& package,cons
   std::filesystem::rename(staging,target);published=true;
   auto result=RuntimeDirectory::setEnabled(directory,id,enabled);published=false;if(backed)cleanup(backup);return result;
  }catch(...){if(published)cleanup(target);if(backed){std::error_code ignored;std::filesystem::rename(backup,target,ignored);}cleanup(staging);throw;}
+}
+inline RuntimeCandidate installPackage(const std::filesystem::path& package,const std::filesystem::path& directory){return installInspectedPackage(inspectPackage(package),directory);}
+inline void ensureBuiltinPackage(const std::filesystem::path& directory,const std::string& id,const std::filesystem::path& package){
+ auto state=RuntimeDirectory::state(directory);if(!manifest_detail::validId(id))throw std::invalid_argument("无效的内置扩展 ID。");auto target=directory/ResourceCatalog::packagePath(id);std::error_code error;auto status=std::filesystem::symlink_status(target,error);if(error&&error!=std::errc::no_such_file_or_directory)throw std::system_error(error);const bool installed=std::filesystem::exists(status);if(installed&&(!std::filesystem::is_directory(status)||std::filesystem::is_symlink(status)))throw std::invalid_argument("内置扩展必须是普通目录。");
+ // Seed markers survive uninstall: an absent seeded extension stays absent.
+ if(state.seededBuiltin.count(id)&&!installed)return;
+ auto inspection=inspectPackage(package);if(inspection.candidate.extension.id!=id)throw std::invalid_argument("内置扩展包 ID 与预期不一致。");std::map<std::string,std::pair<std::uint32_t,std::uint64_t>> revision;for(auto& entry:inspection.entries)if(!entry.directory){auto& zip=inspection.archive->entries().at(entry.name);revision.emplace(entry.name,std::make_pair(zip.crc,std::uint64_t(zip.size)));}
+ if(installed){RuntimeDirectory::inspect(directory,id,false);auto previous=state.builtinRevisions.find(id);if(previous!=state.builtinRevisions.end()&&previous->second==revision)return;}
+ // A path-backed bundle is a native adapter for Rust's embedded byte slice.
+ // Reuse the exact inspected snapshot for revision and installation.
+ installInspectedPackage(inspection,directory);state=RuntimeDirectory::state(directory);state.seededBuiltin.insert(id);state.builtinRevisions[id]=std::move(revision);RuntimeDirectory::saveState(directory,state);
 }
 }
