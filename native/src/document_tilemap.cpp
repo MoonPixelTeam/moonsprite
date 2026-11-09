@@ -451,6 +451,7 @@ void Document::applyTilemapPixelHistory(const Edit& edit,bool forward){
  auto pixelsSelection=edit.pixelSelectionEdit?(forward?edit.afterPixelsSelection:edit.beforePixelsSelection):std::optional<SelectionMask>{};
  auto selected=forward?*edit.afterTileSelection:*edit.beforeTileSelection;auto active=forward?edit.afterActive:edit.beforeActive;auto frame=forward?edit.afterFrame:edit.beforeFrame;auto frames=forward?*edit.afterSelection:*edit.beforeSelection;auto selection=forward?*edit.afterTimelineSelection:*edit.beforeTimelineSelection;auto anchor=forward?*edit.afterFrameAnchor:*edit.beforeFrameAnchor;auto groupUi=forward?*edit.afterGroupUi:*edit.beforeGroupUi;
  if(!timeline_.hasLayer(active)||!timeline_.hasFrame(frame))throw std::logic_error("Missing tilemap history activity");
+ const bool sameView=activeLayerId_==active&&activeFrameId_==frame;
  std::vector<double> opacities;opacities.reserve(state.layers.size());for(const auto& layer:state.layers)opacities.push_back(frameCelOpacity(timeline_,layer,frame));
  // Prime only affected cache stamps before the nonthrowing apply phase.
  for(const auto ci:changedCels)timeline_.thumbnailStorage(state.cels[ci].id);
@@ -459,9 +460,11 @@ void Document::applyTilemapPixelHistory(const Edit& edit,bool forward){
  for(const auto ci:changedCels){const auto& id=state.cels[ci].id;timeline_.selectionContent_.erase(id);timeline_.visibleContent_.erase(id);++timeline_.thumbnailStorage_.at(id).revision;}
  tileSelection_=std::move(selected);activeLayerId_=std::move(active);activeFrameId_=std::move(frame);selectedFrames_=std::move(frames);timelineSelection_=std::move(selection);frameAnchor_=std::move(anchor);selectedGroupIds_=std::move(groupUi.selected);collapsedGroupIds_=std::move(groupUi.collapsed);selectedGroupId_=std::move(groupUi.focus);for(std::size_t i=0;i<state.layers.size();++i)state.layers[i].opacity=opacities[i];
  if(edit.pixelSelectionEdit)selection_=std::move(pixelsSelection);
- // Keep the established history/recording invalidation contract. Cache pixels,
- // storage identities and topology are updated locally, without buildIndex.
- change_={0,0,width_,height_};
+ // Reference-only edits affect complete patched cells. Resource edits and
+ // activity changes retain the full-view invalidation contract.
+ if(h.tilesetEdit||!sameView)change_={0,0,width_,height_};
+ else for(const auto& patch:patches){const auto& c=state.cels[patch.cel];const auto& map=*c.tilemap;const auto left=std::max<std::int64_t>(0,std::int64_t(c.surface->offsetX)+std::int64_t(patch.index%map.columns)*map.tileWidth),top=std::max<std::int64_t>(0,std::int64_t(c.surface->offsetY)+std::int64_t(patch.index/map.columns)*map.tileHeight);const auto right=std::min<std::int64_t>(width_,std::int64_t(c.surface->offsetX)+std::int64_t(patch.index%map.columns+1)*map.tileWidth),bottom=std::min<std::int64_t>(height_,std::int64_t(c.surface->offsetY)+std::int64_t(patch.index/map.columns+1)*map.tileHeight);if(right>left&&bottom>top){change_.include(int(left),int(top));change_.include(int(right-1),int(bottom-1));}}
+
 }
 bool Document::commitTilemapPixelCanvas(const std::vector<Pixel>& baseline,const std::vector<Pixel>& canvas,std::u32string label,std::optional<std::size_t> editCell,bool clearPixelSelection,const std::optional<SelectionMask>* beforePixels,const std::optional<SelectionMask>* afterPixels,bool linkedCreateSelection,bool linkedEditSelection,bool linkedHybridSelection,bool linkedCreateFloating,bool linkedEditFloating,bool linkedHybridFloating,bool paintFloating){
  struct TileIdGuard{std::uint64_t& value;std::uint64_t before;bool applied=false;~TileIdGuard(){if(!applied)value=before;}} ids{nextTileId_,nextTileId_};

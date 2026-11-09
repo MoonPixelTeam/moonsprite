@@ -5047,3 +5047,10 @@ CTest document-transactions/free-tile-project/tilemap-document全部通过33.39s
 核对legacy workspace-session.ts selectedTransformLayersAreEditable对多个特殊层的拒绝，未擅自开放Paint多目标。复用tilemap-document.ts tilemapCellIndexesForEdit的世界边界减offset、裁剪后转格坐标，expandedPaintCellSelection与beginPaintCellMove改按候选矩形行优先枚举，替代两次全网格扫描。逐像素mask判断、完整格扩展、离散翻转画布外格、空格、偏移与预算准入保持。独立全网格oracle覆盖30组正/负/零offset×矩形/稀疏mask×负/内/边缘/外侧选区，比较准入、扩展选区及取消后的引用与缓存。
 
 正式Release构建成功，完整--tileset-management-check实际退出0；document-transactions/tilemap-project/tilemap-document全部通过1.13s，含已有链接、移动复制、翻转及保存重开回归。744来源/证据及diff检查通过。此处只取消候选全网格扫描，其它资源验证与提交代价保留，未做FPS/耗时量测。整体INCOMPLETE，本阶段保存推送dev。
+
+
+### 2026-11-10：Paint引用移动局部失效性能迁移
+
+接续候选范围迁移，对照legacy tilemap-document.ts rerenderTilemapCells。原生reference-only增量历史在活动层/帧不变时合并实际cache patch完整格世界边界并裁到画布；共享资源编辑、活动视图变化维持全幅，publishChange的linked-layer fallback保留。Paint连续move与取消不再覆盖applyEdit脏区为整画布，先清除上次change再发布。六组零/正/负offset×move/copy逐像素检查初次及连续预览、取消、UndoRedo所有变化均被dirty覆盖，局部移动dirty小于画布。
+
+正式Release构建成功，完整--tileset-management-check实际退出0。document-transactions/tilemap-project/free-tile-project/tilemap-document四项通过39.90s，混合free、链接、资源及保存重开回归通过；744来源/证据与diff检查通过。无FPS量测，资源编辑与linked-layer仍可全幅失效，整体INCOMPLETE。本阶段保存推送dev。
