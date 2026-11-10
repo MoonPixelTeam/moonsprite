@@ -3,6 +3,8 @@
 #include <optional>
 #include <map>
 #include <chrono>
+#include "javascript_text.h"
+#include <charconv>
 namespace moon::extension {
 // ExtensionDialogForm's state, scoped to one authenticated window generation.
 // Renderer/chooser adapters use these values on the event thread.
@@ -27,6 +29,10 @@ class FormState {
  Object send(const Object& action,const Object& extra){Object message=copy(action);for(const auto& pair:extra)message.Insert(pair.Key(),pair.Value());message.Insert(L"values",copy(values_));pending_=std::to_wstring(++sequence_);message.Insert(L"requestId",Json::CreateStringValue(pending_));busy_=true;return message;}
  static Object action(const Object& node,const wchar_t* key=L"action"){const auto value=property(node,key);return value&&value.ValueType()==Type::Object?value.GetObject():Object{};}
 public:
+ static bool displayBoolean(const Value& value){return truthy(value);}
+ // ExtensionDialogForm Number.isFinite(Number(value)): preserve coercion at
+ // presentation only. Defaults and strict visibleWhen comparisons stay raw.
+ static double displayNumber(const Value& value){if(!value)return 1;if(value.ValueType()==Type::Null)return 0;if(value.ValueType()==Type::Boolean)return value.GetBoolean()?1:0;if(value.ValueType()==Type::Number)return std::isfinite(value.GetNumber())?value.GetNumber():1;if(value.ValueType()==Type::Object)return 1;const auto string=diagnosticString(value);std::u32string units;for(auto c:string)units+=char32_t(c);const auto trimmed=javascriptTrim(units);if(trimmed.empty())return 0;std::string ascii;for(auto c:trimmed){if(c>127)return 1;ascii+=char(c);}if(ascii.size()>2&&ascii[0]=='0'&&(ascii[1]=='x'||ascii[1]=='X'||ascii[1]=='b'||ascii[1]=='B'||ascii[1]=='o'||ascii[1]=='O')){const int base=ascii[1]=='x'||ascii[1]=='X'?16:ascii[1]=='b'||ascii[1]=='B'?2:8;double result=0;for(std::size_t i=2;i<ascii.size();++i){const char c=ascii[i];const int digit=c>='0'&&c<='9'?c-'0':c>='a'&&c<='f'?c-'a'+10:c>='A'&&c<='F'?c-'A'+10:99;if(digit>=base)return 1;result=result*base+digit;}return std::isfinite(result)?result:1;}const char* first=ascii.data();if(*first=='+')++first;if(first==ascii.data()+ascii.size())return 1;double result=0;auto parsed=std::from_chars(first,ascii.data()+ascii.size(),result,std::chars_format::general);return parsed.ec==std::errc{}&&parsed.ptr==ascii.data()+ascii.size()&&std::isfinite(result)?result:1;}
  struct File {std::wstring name,mime;std::vector<std::uint8_t> bytes;};
  using Save=std::function<bool(const File&)>;
  FormState(){view_.Insert(L"nodes",Array{});}

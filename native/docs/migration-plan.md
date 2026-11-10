@@ -6477,3 +6477,10 @@ PNG后台解码完成后保留像素及私有surface，每次pump最多上传262
 对照FormField endScrub/pointercancel及独立ExtensionDialogForm生命周期，数字标签失capture后清除drag状态，宿主关闭先取消其自身/嵌套提示捕获。原pump按任意NumberLabel捕获全局阻挡，现限定同根表单目标，其他host可继续接收模型/构建；独立host关闭不释放他者捕获。
 
 唯一正式Release构建成功，extension-form-ui/image/files/state四项通过1.44秒。实际鼠标检查失capture停止调值与重新开始、拖动期间另一host构建关闭、嵌套prompt拖动中host关闭无捕获/会话/提示残留；来源821文件及diff检查通过。本轮无绘制几何变化或新截图/FPS证据，正式扩展执行器及其他迁移缺口仍INCOMPLETE。用户editor_support.h差异保留，阶段保存推送dev。
+
+
+### 2026-11-11：表单默认值显示转换与禁用一致性
+
+对照ExtensionDialogForm Number.isFinite(Number(value))、Boolean(value)与disabled，数字显示补齐null/bool/字符串/数组转换、空白/radix和非有限回退1；原始defaults不改写，visibleWhen仍严格类型比较。toggle按真值显示，非布尔disabled显示与FormState操作拒绝统一。转换限定显示适配，不将脚本模型默认值擅自规范化。
+
+唯一正式Release与状态目标构建成功，extension-form-ui/image/files/state四项通过1.37秒。状态表格检查undefined/null/bool/空串/科学计数/radix/非法后缀/非有限/数组/对象；实际控件验证字符串数值显示、字符串toggle真值、disabled、raw条件不误显示、编辑后显隐及提交数字草稿。来源821文件与diff检查通过。无绘制几何变化/新截图或FPS测量；完整JavaScript引擎/生产扩展入口仍未完成，不将转换辅助函数视为执行引擎替代。整体INCOMPLETE，用户editor_support.h差异保留，阶段保存推送dev。
