@@ -5914,3 +5914,12 @@ Release正式程序构建成功，--script-window-host-check退出0。两项Lua�
 新增StyleClipboardHost贯通PendingInvocation/Client/ScriptWindowHost，正式Editor使用已有copiedLayerStyle_/layerStyleClipboard_，复制无样式目标不清空原剪贴板，copy不新增历史；同批复制保留操作时样式，即使后续清除/停用。真实Lua测试混合Undo/Redo、五操作及默认值、位置参数、数值转换、非法预检、缺宿主、保存重开、非活动图层、空Cel和异步剪贴板。组合检查补齐同批样式修改后的palette.extract候选合成，确保取色使用新样式；不含样式的脚本不复制样式元数据或读取剪贴板。正式入口新增脚本copy到原生菜单paste、原生copy到脚本paste及混合撤销验收。首轮构建因specFor自动替换误入palette扫描出现编译失败，已移除误插代码；取色回归断言按既有色板语义改查可见顺序中的颜色，保留隐藏资源，不能以entries总数判断提取结果。唯一正式Release重建成功；最终--script-entry-check退出0（含样式事务及原生/脚本剪贴板互通），--script-window-host-check与--script-playback-check退出0，两项Lua专项通过1.18s，来源804文件与diff检查通过。
 
 仍有其他MSE域、扩展贡献菜单、普通播放模式相关取色、非RGBA和Hybrid大画布延迟等缺口，整体INCOMPLETE。沿用宿主回调发生在批次提交后的既有约束，不承诺宿主异常回滚。没有新UI绘制/素材或截图验收。保留用户差异、数据、缓存，阶段保存推送dev。
+
+
+### 2026-11-10：密集像素提交与历史回放修订开销优化
+
+对照旧 lua-script-service.ts 像素批次及 core/history.ts 回放语义，将原生脚本像素提交、失败回退和通用像素历史直接/坐标映射路径改为每次取得一次可写 vector，再执行全部像素/行写入，消除 LinkedPixelStorage 每像素下标或每span begin触发的原子修订更新。共享owner存储与缓存失效仍保留，历史顺序、坐标裁切和脏范围不变。复核 Aseprite src/filters/replace_color_filter.cpp 直接缓冲区遍历，模块头声明EULA，仅审阅方案，未复制源码。
+
+新增真实Lua 128×128密集修改、三链接帧、一项历史、提交/Undo/Redo修订增长上限、原始透明RGB恢复、共享帧以及原生保存重开检查。首次保存回归暴露测试fixture持有空source ZIP（非产品回归），明确清除该虚假源后通过。正式Release重建成功，--script-entry-check退出0；两项Lua专项通过1.82s。通用历史专项结果另附。无UI修改或截图验收，无前后耗时基准，不据此宣称整体卡顿解决。脚本图层结构域仍待完整事务适配，Hybrid大画布延迟及其他迁移继续INCOMPLETE；保留用户既有差异、数据和缓存，本阶段提交推送dev。
+
+最终通用 document-raster-history 专项通过2.00s，来源804文件及diff检查通过。

@@ -23,7 +23,7 @@ void Document::applyPixelEdit(const Edit& e,bool forward){
   for(const auto& d:e.pixels)if(d.index>=size)throw std::logic_error("Pixel history point exceeds capture");
   for(const auto& run:e.runs)if(run.index>size||run.length>size-run.index)throw std::logic_error("Pixel history run exceeds capture");
   if(e.dense){const auto& d=*e.dense;if(d.x<0||d.y<0||d.width<1||d.height<1||std::int64_t(d.x)+d.width>a.width||std::int64_t(d.y)+d.height>a.height||std::uint64_t(d.width)*d.height!=d.before.size()||d.before.size()!=d.after.size())throw std::logic_error("Invalid dense pixel history capture");}
-  auto* owner=timeline_.mutableOwnedSurface(r.source->id);if(!owner)throw std::logic_error("Missing writable history owner");auto& pixels=owner->pixels;
+  auto* owner=timeline_.mutableOwnedSurface(r.source->id);if(!owner)throw std::logic_error("Missing writable history owner");auto& pixels=static_cast<std::vector<Pixel>&>(owner->pixels);
   auto mark=[&](std::int64_t x,std::int64_t y,std::int64_t w,std::int64_t h){const auto left=std::max<std::int64_t>(0,std::int64_t(owner->offsetX)+x),top=std::max<std::int64_t>(0,std::int64_t(owner->offsetY)+y),right=std::min<std::int64_t>(width_,std::int64_t(owner->offsetX)+x+w),bottom=std::min<std::int64_t>(height_,std::int64_t(owner->offsetY)+y+h);if(right>left&&bottom>top){change_.include(int(left),int(top));change_.include(int(right-1),int(bottom-1));}};
   for(const auto& d:e.pixels){pixels[d.index]=forward?d.after:d.before;mark(d.index%std::size_t(a.width),d.index/std::size_t(a.width),1,1);}
   // Legacy history.ts applyRuns(runBefore, true): overlapping writes must
@@ -48,8 +48,8 @@ void Document::applyPixelEdit(const Edit& e,bool forward){
  };
  // Check all spans before invalidating caches or mutating the first pixel.
  walk([&](std::int64_t x,std::int64_t y,std::size_t n,const Pixel*,Pixel){(void)map(x,y,n);});
- auto* owner=timeline_.mutableOwnedSurface(r.source->id);if(!owner)throw std::logic_error("Missing writable history owner");
- walk([&](std::int64_t x,std::int64_t y,std::size_t n,const Pixel* values,Pixel fill){const auto span=map(x,y,n);if(!span.count)return;auto destination=owner->pixels.begin()+span.index;if(values)std::copy_n(values+span.skip,span.count,destination);else std::fill_n(destination,span.count,fill);
+ auto* owner=timeline_.mutableOwnedSurface(r.source->id);if(!owner)throw std::logic_error("Missing writable history owner");auto& pixels=static_cast<std::vector<Pixel>&>(owner->pixels);
+ walk([&](std::int64_t x,std::int64_t y,std::size_t n,const Pixel* values,Pixel fill){const auto span=map(x,y,n);if(!span.count)return;auto destination=pixels.begin()+span.index;if(values)std::copy_n(values+span.skip,span.count,destination);else std::fill_n(destination,span.count,fill);
   const std::int64_t wy=std::int64_t(owner->offsetY)+std::int64_t(span.index/std::size_t(owner->width));
   const std::int64_t wx=std::int64_t(owner->offsetX)+std::int64_t(span.index%std::size_t(owner->width));
   if(wy>=0&&wy<height_){const auto left=std::max<std::int64_t>(0,wx),right=std::min<std::int64_t>(width_,wx+std::int64_t(span.count));if(right>left){change_.include(int(left),int(wy));change_.include(int(right-1),int(wy));}}

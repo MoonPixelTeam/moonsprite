@@ -116,7 +116,9 @@ bool Document::commitScriptRasterBatch(const script::RasterBatch& batch){
  auto previousPalette=paletteChanged?*batch.palette:PaletteState{};auto previousSelection=selectionChanged?*batch.selection:std::optional<SelectionMask>{};
  // All history payloads and replacement pixels are prepared before installation.
  reserveHistoryEntries();for(const auto& o:batch.synchronizedOwners){auto* target=targetTimeline.mutableOwnedSurface(o.ownerId);if(!target)throw std::logic_error("Missing synchronized owner");synchronizedTargets.push_back(target);}auto* live=targetTimeline.mutableOwnedSurface(ownerId);if(!live)throw std::logic_error("Missing Lua writable owner");
- if(batch.after)std::swap(*live,*replacement);else for(const auto& p:edit.pixels)live->pixels[p.index]=p.after;
+ // One storage revision per batch; mutable subscripting touches an atomic
+ // revision counter on every access and is expensive for dense Lua changes.
+ if(batch.after)std::swap(*live,*replacement);else{auto& pixels=static_cast<std::vector<Pixel>&>(live->pixels);for(const auto& p:edit.pixels)pixels[p.index]=p.after;}
  for(std::size_t i=0;i<synchronizedTargets.size();++i)std::swap(*synchronizedTargets[i],synchronizedReplacements[i]);
  if(prepared){std::swap(timeline_,*prepared);styleTargets.clear();for(const auto& [id,value]:styleValues)styleTargets.push_back(&timeline_.state_.layers[timeline_.layerIndex(id)].layerStyles);}
  if(previousSlices)std::swap(sliceState_,*previousSlices);
@@ -134,7 +136,7 @@ bool Document::commitScriptRasterBatch(const script::RasterBatch& batch){
   for(std::size_t i=0;i<synchronizedTargets.size();++i)std::swap(*synchronizedTargets[i],synchronizedReplacements[i]);
   if(prepared)std::swap(timeline_,*prepared);
   else if(batch.after)std::swap(*live,*replacement);
-  else for(const auto& p:batch.changes)live->pixels[p.index]=p.before;
+  else{auto& pixels=static_cast<std::vector<Pixel>&>(live->pixels);for(const auto& p:batch.changes)pixels[p.index]=p.before;}
   throw;
  }
  change_={0,0,width_,height_};publishChange();return true;
