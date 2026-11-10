@@ -444,9 +444,10 @@ static RasterSummary applyRasterResultImpl(Document& d,Target& target,const std:
    });if(d.historyRevision()!=history)++summary.transactionCount;
    }catch(...){rollback();target=beforeTarget;throw;}
   }
-  if(d.layer().id!=target.layerId)d.selectLayer(target.layerId);if(d.frame().id!=target.frameId)d.selectFrame(target.frameId);
-  if(result.GetNamedArray(L"createdLayers").Size())d.commitFloatingPaste();
-  auto tail=JsonObject::Parse(result.Stringify());tail.Remove(L"activeLayerId");tail.Remove(L"activeFrameNumber");tail.Insert(L"batches",JsonArray{});withScriptFloating(d,[&]{refreshScriptTarget(d,target);auto changed=applyRasterResult(d,target,winrt::to_string(tail.Stringify()),selectCreatedPaletteColor,playback,panels,styles,notify,brushes);summary.transactionCount+=changed.transactionCount;summary.changedPixelCount+=changed.changedPixelCount;});refreshScriptTarget(d,target);
+  if(result.GetNamedArray(L"createdLayers").Size()){
+   if(d.layer().id!=target.layerId)d.selectLayer(target.layerId);if(d.frame().id!=target.frameId)d.selectFrame(target.frameId);d.commitFloatingPaste();
+   auto tail=JsonObject::Parse(result.Stringify());tail.Remove(L"activeLayerId");tail.Remove(L"activeFrameNumber");tail.Insert(L"batches",JsonArray{});refreshScriptTarget(d,target);auto changed=applyRasterResult(d,target,winrt::to_string(tail.Stringify()),selectCreatedPaletteColor,playback,panels,styles,notify,brushes);summary.transactionCount+=changed.transactionCount;summary.changedPixelCount+=changed.changedPixelCount;
+  }refreshScriptTarget(d,target);
   if(result.HasKey(L"activeLayerId")&&result.GetNamedValue(L"activeLayerId").ValueType()==JsonValueType::String){auto id=winrt::to_string(result.GetNamedString(L"activeLayerId"));if(d.timeline().hasLayer(id)&&id!=d.layer().id)d.selectLayer(id);}
   if(result.HasKey(L"activeFrameNumber")&&result.GetNamedValue(L"activeFrameNumber").ValueType()==JsonValueType::Number){auto n=result.GetNamedNumber(L"activeFrameNumber");const auto& frames=d.timeline().state().frames;if(n>=1&&n<=frames.size()&&std::floor(n)==n&&frames[std::size_t(n)-1].id!=d.frame().id)d.selectFrame(frames[std::size_t(n)-1].id);}refreshScriptTarget(d,target);return summary;
  }
