@@ -5833,3 +5833,11 @@ Release正式程序构建成功，--script-window-host-check退出0。两项Lua�
 专项首次发现直接在显式事务外写非活动Cel触发原始legacy Rust lua_api.rs:747 RefCell already mutably borrowed panic，登记为未修复引擎缺口；本回归改为显式事务以独立验证原生owner安装，不宣称该panic已解决。唯一正式Release构建成功，窗口专项退出0；无UI视觉修改/截图，无完整smoke。其他迁移与引擎缺口仍INCOMPLETE，保留用户差异和数据。
 
 最终两项Lua专项通过1.08s，来源804文件与diff检查通过。阶段保存推送dev。
+
+### 2026-11-10：原生Lua事务外Cel位置借用冲突修复
+
+定位原lua_api.rs ScriptCel.position setter持有known Cel可变借用后调用ensure_pending，checkpoint又读取同一RefCell，导致事务外panic。原生build.rs生成带精确单片段守卫的适配源码：先短期只读比较并释放，创建检查点，再可变借用写入；显式/隐式事务及无变化no-op语义不变，legacy源码保留原样。生成源码沿用原mse_api与moon-phase测试资源绝对路径，并补Cargo显式rerun依赖。不是重写引擎。
+
+前阶段登记的原生事务外位置panic在本阶段修复，直接像素/位置回归改回无显式事务并通过，Undo/Redo和活动Cel隔离继续通过。生成目录最初使Rust原测试include_str相对路径失效，调整为原资源绝对路径后Rust引擎测试通过14.80s，两项C++ Lua专项通过1.02s；最终正式产物验证另附。无UI视觉修改/截图，无完整smoke。其他迁移仍INCOMPLETE，保留用户差异、数据与缓存。
+
+最终正式Release重建成功，最新窗口专项退出0，两项C++ Lua专项通过1.09s，来源804文件与diff检查通过。阶段保存推送dev。

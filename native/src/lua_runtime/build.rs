@@ -12,9 +12,44 @@ fn main() {
         ..source.find("fn script_directory()").unwrap()];
     let output = PathBuf::from(env::var("OUT_DIR").unwrap()).join("legacy_contract.rs");
     let api = legacy.parent().unwrap().join("platform_scripts/lua_api.rs");
+    println!("cargo:rerun-if-changed={}", api.display());
+    let mse = api.parent().unwrap().join("mse_api.rs");
+    println!("cargo:rerun-if-changed={}", mse.display());
+    let mut adapted = fs::read_to_string(&api).unwrap().replace("\r\n", "\n");
+    // A checkpoint reads every known Cel. Release the setter's borrow first.
+    // Guard the exact legacy fragment so upstream changes cannot silently bypass this fix.
+    let before = r#"                let mut state = state.borrow_mut();
+                if state.offset_x == point.x && state.offset_y == point.y {
+                    return Ok(());
+                }
+                cel.document.borrow_mut().ensure_pending();
+                state.offset_x = point.x;
+                state.offset_y = point.y;"#;
+    let after = r#"                {
+                    let state = state.borrow();
+                    if state.offset_x == point.x && state.offset_y == point.y {
+                        return Ok(());
+                    }
+                }
+                cel.document.borrow_mut().ensure_pending();
+                let mut state = state.borrow_mut();
+                state.offset_x = point.x;
+                state.offset_y = point.y;"#;
+    assert_eq!(adapted.matches(before).count(), 1, "Legacy Cel setter changed; review native borrow adaptation");
+    adapted = adapted.replacen(before, after, 1);
+    let mse_module = "#[path = \"mse_api.rs\"]";
+    assert_eq!(adapted.matches(mse_module).count(), 1);
+    adapted = adapted.replace(mse_module, &format!("#[path = {mse:?}]"));
+    let example = legacy.parent().unwrap().join("../resources/scripts/moon-phase.lua");
+    println!("cargo:rerun-if-changed={}", example.display());
+    let example_include = "include_str!(\"../../resources/scripts/moon-phase.lua\")";
+    assert_eq!(adapted.matches(example_include).count(), 1);
+    adapted = adapted.replace(example_include, &format!("include_str!({example:?})"));
+    let generated_api = PathBuf::from(env::var("OUT_DIR").unwrap()).join("lua_api_native.rs");
+    fs::write(&generated_api, adapted).unwrap();
     fs::write(
         output,
-        format!("{limits}\n{types}\n#[path = {api:?}] mod lua_api;"),
+        format!("{limits}\n{types}\n#[path = {generated_api:?}] mod lua_api;"),
     )
     .unwrap();
 }

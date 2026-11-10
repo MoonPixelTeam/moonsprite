@@ -1,6 +1,6 @@
 mod platform_scripts {
-    // Original MoonSprite Lua/MSE implementation is compiled directly from legacy.
-    // Only the platform transport is adapted; there is no Tauri or WebView dependency.
+    // Original MoonSprite Lua/MSE implementation, with the guarded borrow-lifetime
+    // adaptation in build.rs. Platform transport has no Tauri or WebView dependency.
     use serde::{Deserialize, Serialize};
     use serde_json::{json, Value as JsonValue};
     use std::{
