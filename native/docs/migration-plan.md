@@ -6099,3 +6099,10 @@ selection.transform仍须衔接跨批浮动保留、实际操作次序、后续�
 核对legacy lua-script-service.ts255验证、475 commitSurfaceChange及559 applyResult：Lua图像序列不反映MSE变换像素，替换撤销与计数按wire before/after，而安装发生在MSE已修改的当前目标上。原生顺序适配器仅为安装校验重建当前before，另保留已验证wire before供历史与计数使用；Document复用surfaceChanges安装及撤销，异常回滚仍使用实际现场，历史预算按真实wire像素大小计算。新增真实Lua跨批水平翻转、Image替换、Cel位置、移动/取消及逐次撤销重做回归。完整selection.transform能力保持false；更广稀疏/多目标替换组合与正式验收仍未完成，整体INCOMPLETE。最终验证后附。
 
 最终唯一正式Release构建成功；lua-script-invocation全套2.57s通过，正式--script-entry-check退出0（既有宿主检查，新增替换组合由真实Lua回归覆盖）。来源806文件与diff检查通过。未进行人工图像/FPS验收；更广稀疏/多目标替换组合仍需检查，完整selection.transform能力仍false，整体INCOMPLETE。本阶段保存推送dev。
+
+
+### 2026-11-10：稀疏/多目标替换矩阵与消除整图JSON重建
+
+沿用legacy lua-script-service.ts255/475/559的wire校验与现场安装分离，内部校验直接使用已解析historyBefore，不再逐像素创建WinRT JsonValue并重新编码当前整张图。保留原始wire整体校验和实际Document目标过期检查。真实Lua图像替换矩阵扩大到普通/稀疏×单目标/双图层，覆盖跨批翻转、更换图像/位置、移动取消、撤销重做、工程保存重开及失败后完整几何/像素/选区/历史回滚。现有结果JSON解析、基线复制和同步执行仍存在；无整机FPS改善声明。完整selection.transform能力仍false，剩余交互/正式宿主验收未完成；整体INCOMPLETE。最终验证后附。
+
+最终唯一正式Release构建成功；lua-script-invocation全套2.68s通过，正式--script-entry-check退出0。新增替换矩阵/重开/回滚由真实Lua核心回归覆盖，入口检查为既有正式宿主检查。来源806文件及diff通过。无人工图像/FPS验收；整体INCOMPLETE，完整selection.transform能力保持false。本阶段保存推送dev，用户既有差异与未跟踪数据保留。

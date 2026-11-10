@@ -406,7 +406,8 @@ void refreshScriptTarget(const Document& d,Target& target){
 }
 }
 static RasterSummary applyRasterResultImpl(Document& d,Target& target,const std::string& json,bool selectCreatedPaletteColor,const PlaybackHost& playback,const PanelHost& panels,const StyleClipboardHost& styles,const NotificationHost& notify,const BrushHost& brushes,bool operationsOnly,const std::optional<SurfaceSnapshot>& historyBefore={}){
- (void)validateResult(target,json);if(d.active(false)||!target.matches(d,true,!operationsOnly))throw std::logic_error("Lua script target changed");
+ auto validationTarget=target;if(historyBefore)validationTarget.expected=*historyBefore;
+ (void)validateResult(validationTarget,json);if(d.active(false)||!target.matches(d,true,!operationsOnly))throw std::logic_error("Lua script target changed");
  const auto result=JsonObject::Parse(winrt::to_hstring(json));
  if(operationsOnly)for(const auto& value:result.GetNamedArray(L"batches")){const auto b=value.GetObject();if(b.GetNamedArray(L"changes").Size()||(b.HasKey(L"surfaceChange")&&b.GetNamedValue(L"surfaceChange").ValueType()!=JsonValueType::Null))throw std::invalid_argument("Operation-only Lua adapter cannot write raster pixels");}
  // This stage is deliberately closed to operations requiring workspace state.
@@ -423,7 +424,7 @@ static RasterSummary applyRasterResultImpl(Document& d,Target& target,const std:
    try{orderedBrushBatch(d,label,[&]{
     auto applyPart=[&](JsonObject part,bool original=false){JsonObject message;for(const auto& entry:result)if(entry.Key()!=L"batches"&&entry.Key()!=L"createdLayers"&&entry.Key()!=L"createdDocuments")message.Insert(entry.Key(),entry.Value());JsonArray batches;batches.Append(part);message.Insert(L"batches",batches);message.Insert(L"createdLayers",JsonArray{});message.Insert(L"createdDocuments",JsonArray{});message.Remove(L"activeLayerId");message.Remove(L"activeFrameNumber");
      withScriptFloating(d,[&]{auto operationTarget=target;if(!original){operationTarget.layerId=d.layer().id;operationTarget.frameId=d.frame().id;}refreshScriptTarget(d,operationTarget);std::optional<SurfaceSnapshot> wireBefore;
-      if(original&&part.HasKey(L"surfaceChange")&&part.GetNamedValue(L"surfaceChange").ValueType()!=JsonValueType::Null){auto change=part.GetNamedObject(L"surfaceChange");wireBefore=surface(change.GetNamedObject(L"before"),L"rgba");JsonObject before;before.Insert(L"format",JsonValue::CreateStringValue(L"rgba"));before.Insert(L"width",JsonValue::CreateNumberValue(operationTarget.expected.width));before.Insert(L"height",JsonValue::CreateNumberValue(operationTarget.expected.height));before.Insert(L"offsetX",JsonValue::CreateNumberValue(operationTarget.expected.x));before.Insert(L"offsetY",JsonValue::CreateNumberValue(operationTarget.expected.y));JsonArray pixels;for(auto p:*operationTarget.expected.pixels)pixels.Append(JsonValue::CreateNumberValue(p));before.Insert(L"pixels",pixels);change.Insert(L"before",before);}
+      if(original&&part.HasKey(L"surfaceChange")&&part.GetNamedValue(L"surfaceChange").ValueType()!=JsonValueType::Null)wireBefore=surface(part.GetNamedObject(L"surfaceChange").GetNamedObject(L"before"),L"rgba");
       auto changed=applyRasterResultImpl(d,operationTarget,winrt::to_string(message.Stringify()),selectCreatedPaletteColor,playback,panels,styles,notify,brushes,!original,wireBefore);summary.changedPixelCount+=changed.changedPixelCount;});refreshScriptTarget(d,target);
     };
     JsonObject raster;for(const auto& entry:wire)if(entry.Key()!=L"operations")raster.Insert(entry.Key(),entry.Value());raster.Insert(L"operations",JsonArray{});
