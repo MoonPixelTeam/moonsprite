@@ -5841,3 +5841,10 @@ Release正式程序构建成功，--script-window-host-check退出0。两项Lua�
 前阶段登记的原生事务外位置panic在本阶段修复，直接像素/位置回归改回无显式事务并通过，Undo/Redo和活动Cel隔离继续通过。生成目录最初使Rust原测试include_str相对路径失效，调整为原资源绝对路径后Rust引擎测试通过14.80s，两项C++ Lua专项通过1.02s；最终正式产物验证另附。无UI视觉修改/截图，无完整smoke。其他迁移仍INCOMPLETE，保留用户差异、数据与缓存。
 
 最终正式Release重建成功，最新窗口专项退出0，两项C++ Lua专项通过1.09s，来源804文件与diff检查通过。阶段保存推送dev。
+
+
+### 2026-11-10：脚本色板同步缓冲区与结果转移优化
+
+沿用旧版 lua-script-operations palette.update 的顺序、共享 owner、锁定过滤及事务语义。原生 LinkedPixelStorage 非 const 下标访问每次递增原子修订号，密集替色原路径每个像素重复触发；现在一次取得候选表面的 vector 可变引用后遍历，整次替换只触发一次修订更新。预检完成的 slices/selection/palette/durations/loops 和 owner before/after 表面移动到提交批次，移除额外深拷贝，保持全结果预检后才写入。
+
+对照 Aseprite src/filters/replace_color_filter.cpp 的直接像素缓冲区遍历方式，仅审阅性能方案；该模块为 EULA，不复制代码，继续使用原生既有 vector 接口。新增真实 Lua 128×128、三链接帧、连续两次密集替色回归，检查无关透明像素、全部共享像素、色板元数据、一项历史及 Undo/Redo。两项 Lua 专项通过1.08s，正式 Release 重建成功，最新 --script-window-host-check 退出0，来源804文件和 diff 检查通过。未做前后性能基准，不声称全软件卡顿已解决；同步候选复制、大画布延迟路径及正式 Editor Lua 接线仍有缺口，整体 INCOMPLETE。用户确认的 Hybrid 预览与提交一致及大画布延迟优化继续保留。保留用户差异和数据，本阶段提交推送 dev。

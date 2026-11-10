@@ -162,7 +162,7 @@ std::vector<OperationPlan> planOperations(const Document& d,const JsonArray& bat
       if(synchronized&&d.paletteColorSynchronization()){
        for(const auto& l:d.timeline().state().layers)if((l.kind=="tilemap"||l.kind=="free-tile")&&!d.layerEffectivelyLocked(l))throw std::logic_error("Lua synchronized tile resource replacement adapter is incomplete");
        const auto& state=synchronized->state();struct Visit{std::string cel;std::size_t frame,layer;};std::vector<Visit> visits;std::unordered_map<std::string,std::size_t> frames,layers;for(std::size_t i=0;i<state.frames.size();++i)frames[state.frames[i].id]=i;for(std::size_t i=0;i<state.layers.size();++i)layers[state.layers[i].id]=state.layers.size()-1-i;for(const auto& c:state.cels)visits.push_back({c.id,frames.at(c.frameId),layers.at(c.layerId)});std::sort(visits.begin(),visits.end(),[](const auto& a,const auto& b){return a.frame!=b.frame?a.frame<b.frame:a.layer<b.layer;});std::unordered_set<const void*> seen;
-       for(const auto& v:visits){auto r=synchronized->resolveSurface(v.cel);if(!r.surface||!r.source||!seen.insert(r.surface->pixels.identity()).second||timeline::isLayerEffectivelyLocked(state,state.layers[state.layers.size()-1-v.layer]))continue;bool matches=false;for(auto p:r.surface->pixels)matches|=p==before;if(!matches)continue;auto prior=*r.surface;const auto ownerId=r.source->id;auto after=prior;for(std::size_t i=0;i<after.pixels.size();++i)if(after.pixels[i]==before)after.pixels[i]=color;
+       for(const auto& v:visits){auto r=synchronized->resolveSurface(v.cel);if(!r.surface||!r.source||!seen.insert(r.surface->pixels.identity()).second||timeline::isLayerEffectivelyLocked(state,state.layers[state.layers.size()-1-v.layer]))continue;bool matches=false;for(auto p:r.surface->pixels)matches|=p==before;if(!matches)continue;auto prior=*r.surface;const auto ownerId=r.source->id;auto after=prior;auto& pixels=static_cast<std::vector<Pixel>&>(after.pixels);for(auto& pixel:pixels)if(pixel==before)pixel=color;
         auto existing=std::find_if(synchronizedOwners.begin(),synchronizedOwners.end(),[&](const auto& o){return o.ownerId==ownerId;});if(existing==synchronizedOwners.end())synchronizedOwners.push_back({ownerId,std::move(prior),std::move(after)});else existing->after=std::move(after);syncChanged=true;
        }
        // Install completed owner buffers together. Calling setPixel for each
@@ -200,10 +200,10 @@ RasterSummary applyRasterResult(Document& d,Target& target,const std::string& js
  // The full executor will route these explicitly; no data may be dropped.
  if(result.GetNamedArray(L"createdDocuments").Size())throw std::logic_error("Lua created documents require the workspace result executor");
  for(const auto& item:result.GetNamedArray(L"createdLayers")){const auto layer=item.GetObject();(void)layer.GetNamedBoolean(L"visible");(void)layer.GetNamedBoolean(L"locked");if(d.timeline().hasLayer(winrt::to_string(layer.GetNamedString(L"id"))))throw std::invalid_argument("Lua layer id already exists");}
- const auto plans=planOperations(d,result.GetNamedArray(L"batches"),selectCreatedPaletteColor,target.expected);std::size_t batchIndex=0;
+ auto plans=planOperations(d,result.GetNamedArray(L"batches"),selectCreatedPaletteColor,target.expected);std::size_t batchIndex=0;
  RasterSummary summary;
  for(const auto& item:result.GetNamedArray(L"batches")){
-  const auto wire=item.GetObject();RasterBatch batch;batch.before=target.expected;const auto& plan=plans.at(batchIndex++);batch.slices=plan.slices;batch.selection=plan.selection;batch.palette=plan.palette;batch.durations=plan.durations;batch.loops=plan.loops;
+  const auto wire=item.GetObject();RasterBatch batch;batch.before=target.expected;auto& plan=plans.at(batchIndex++);batch.slices=std::move(plan.slices);batch.selection=std::move(plan.selection);batch.palette=std::move(plan.palette);batch.durations=std::move(plan.durations);batch.loops=std::move(plan.loops);
   auto label=wire.GetNamedString(L"label",L"");if(label.empty())label=result.GetNamedString(L"fileName",L"");batch.label=label.empty()?U"脚本":unicode(label);
   auto next=target.expected;std::size_t count=0;
   if(wire.HasKey(L"surfaceChange")&&wire.GetNamedValue(L"surfaceChange").ValueType()!=JsonValueType::Null){
@@ -215,7 +215,7 @@ RasterSummary applyRasterResult(Document& d,Target& target,const std::string& js
    for(const auto& entry:changes){const auto c=entry.GetObject();const auto i=std::size_t(c.GetNamedNumber(L"index"));const auto before=packed(c.GetNamedNumber(L"before")),after=packed(c.GetNamedNumber(L"after"));batch.changes.push_back({i,before,after});if(before!=after){if(!values)values=std::make_shared<std::vector<Pixel>>(*next.pixels);(*values)[i]=after;++count;}}
    if(values)next.pixels=values;
   }
-  if(plan.synchronizedRaster){next=*plan.synchronizedRaster;batch.after=next;batch.changes.clear();}batch.synchronizedOwners=plan.synchronizedOwners;
+  if(plan.synchronizedRaster){next=*plan.synchronizedRaster;batch.after=next;batch.changes.clear();}batch.synchronizedOwners=std::move(plan.synchronizedOwners);
   if(d.commitScriptRasterBatch(batch)){++summary.transactionCount;summary.changedPixelCount+=count+plan.celChangedPixels;target.expected=std::move(next);target.revision=d.revision();}
  }
  for(const auto& item:result.GetNamedArray(L"createdLayers")){
