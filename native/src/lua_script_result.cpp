@@ -8,6 +8,7 @@
 #include "raster_geometry.h"
 #include "palette_layout.h"
 #include "palette_resource_sync.h"
+#include "composite_palette_extraction.h"
 #include "project_manifest.h"
 #include "layer_compositor.h"
 #include "layer_blend.h"
@@ -342,11 +343,11 @@ std::vector<OperationPlan> planOperations(const Document& d,const JsonArray& bat
    else if(found!=loops.end()&&(found->name!=loop.name||found->startFrameId!=loop.startFrameId||found->endFrameId!=loop.endFrameId||found->direction!=loop.direction||found->repeatCount!=loop.repeatCount)){if(playbackConnected)enqueuePlayback({PlaybackRequest::Kind::LoopChanged,false,id});for(auto& existing:loops)if(existing.id==id)existing=loop;loopsChanged=true;}continue;
   }
   if(path==L"palette.extract"){
-   const auto limit=std::size_t(std::clamp(operationInteger(spec,L"limit",256),1.,4096.));std::vector<Pixel> colors;std::unordered_set<Pixel> seen;
+   const auto limit=std::size_t(std::clamp(operationInteger(spec,L"limit",256),1.,4096.));std::vector<Pixel> colors;
    // Bounded strips retain scanline order without allocating a full composite.
    const auto* slot=d.timeline().findCel(d.layer().id,d.frame().id);const auto resolved=slot?d.timeline().resolveSurface(slot->id):timeline::Resolution{};
    const auto owner=resolved.source?resolved.source->id:std::string{};
-   for(int y=0;y<d.height()&&colors.size()<limit;){const int rows=std::min(d.height()-y,std::max(1,65536/std::max(1,d.width())));auto pixels=compositeNormalRegion(synchronized?*synchronized:d.timeline(),operationFrame,{0,y,d.width(),rows},operationFrame==d.frame().id&&(!synchronized||synchronized->hasLayer(d.layer().id))?d.layer().id:std::string{},raster.pixels.get(),raster.width,raster.x,raster.y,false,{},owner);for(auto color:pixels)if((color>>24)&&seen.insert(color).second){colors.push_back(color);if(colors.size()==limit)break;}y+=rows;}
+   colors=extractTimelinePalette(synchronized?*synchronized:d.timeline(),operationFrame,d.width(),d.height(),limit,operationFrame==d.frame().id&&(!synchronized||synchronized->hasLayer(d.layer().id))?d.layer().id:std::string{},raster.pixels.get(),raster.width,raster.x,raster.y,owner);
    if(spec.HasKey(L"mode")&&spec.GetNamedValue(L"mode").ValueType()==JsonValueType::String&&spec.GetNamedString(L"mode")==L"append"){std::vector<Pixel> combined;for(const auto& e:palette.entries)combined.push_back(e.color);combined.insert(combined.end(),colors.begin(),colors.end());colors=std::move(combined);}
    std::unordered_set<int> used;std::vector<int> ids;
    for(auto color:colors){auto e=std::find_if(palette.entries.begin(),palette.entries.end(),[&](const auto& e){return e.color==color&&!used.count(e.id);});int id;if(e!=palette.entries.end())id=e->id;else{if(palette.nextId<1||palette.nextId==std::numeric_limits<int>::max())throw std::length_error("Palette color ID exceeds native integer range");id=palette.nextId++;auto n=std::to_string(id);palette.entries.push_back({id,U"颜色 "+std::u32string(n.begin(),n.end()),color});}ids.push_back(id);used.insert(id);}

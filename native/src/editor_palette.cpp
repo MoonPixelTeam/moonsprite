@@ -1,3 +1,4 @@
+#include "composite_palette_extraction.h"
 #include "editor_implementation.h"
 #include "editor.h"
 
@@ -440,7 +441,7 @@ bool Editor::applyPaletteExtraction(){
 
     try{std::size_t used=0;const double value=std::stod(paletteInput_->text(),&used);if(used!=paletteInput_->text().size() || !std::isfinite(value))throw std::runtime_error("数量需要1–4096");extractLimit_=int(std::clamp(std::floor(value+.5),1.0,4096.0));
 
-      const auto composite=compositeNormalRegion(document.timeline(),document.frame().id,{0,0,document.width(),document.height()});const auto colors=extractPaletteScanline(composite,extractLimit_);if(colors.empty())throw std::runtime_error("当前图像没有非透明颜色");
+      const auto colors=extractTimelinePalette(document.timeline(),document.frame().id,document.width(),document.height(),extractLimit_);if(colors.empty())throw std::runtime_error("当前图像没有非透明颜色");
 
       const auto beforeVisible=paletteSaveColors().size();document.applyExtractedPalette(colors,extractMode_==2,paletteColumns_);if(extractMode_==0){paletteSaveName_=extractionName();activeStoredPalette_.clear();persistStoredPalettePreferences();}paletteScrollPixels_=0;status_=extractMode_==0?U"已创建临时调色板："+extractionName():extractMode_==1?U"已替换调色板":U"已追加提取颜色："+unicodeText(std::to_string(paletteSaveColors().size()-beforeVisible));return true;
 

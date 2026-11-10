@@ -6053,3 +6053,12 @@ MSE selection.transform仍有跨批次浮动保留、后续结构/像素操作�
 新增实际Lua与普通Document入口回归覆盖连续改色、混合像素、锁定共享引用、隐藏层、自由瓦片、链接帧、仅锁定资源不修改、撤销重做与保存重开。整体迁移仍INCOMPLETE；最终验证后附。
 
 最终唯一正式Release构建成功，lua-script-invocation全套2.26s通过；正式--script-entry-check退出0。来源805文件检查通过。首次夹具将同一sheet同时声明grid/free来源，按现有项目格式限制改为独立合法自由源后保存重开通过；保留产品校验。无人工UI/FPS验收。整体INCOMPLETE，本阶段保存推送dev。
+
+
+### 2026-11-10：普通与脚本色板提取共享区域合成
+
+继续核对selection.transform的浮动操作序列时发现普通色板提取仍创建整张画布临时合成图。抽取公共区域取色路径，普通入口与MSE共用：完全保留palette.ts158–175/247–249的精确RGBA、透明跳过、扫描顺序、先出现去重与上限提前退出；每次输出最多65536像素，超宽画布按行横向拆分，复用既有合成器与脚本preview owner参数。保留新建/替换/追加及撤销语义。新增真实合成比对、透明RGB/半透明、分块边界/顺序/上限/preview，以及百万×百万虚拟输入仅一次读块即可命中上限检查。原生合成器内部特效缓存内存不由此上限覆盖，未宣称全部内存有界或FPS改善。
+
+selection.transform仍须衔接跨批浮动保留、实际操作次序、后续像素与结构命令，未提前开启能力或实现立即提交近似。整体INCOMPLETE，最终验证后附。
+
+最终唯一正式Release构建成功；palette-extraction专项0.05s与lua-script-invocation全套9.40s通过，正式--append-extraction-count-check退出0（真实提取弹窗、重复颜色no-op、隐藏条目复用、撤销重做）。来源806文件与diff检查通过。无人工图像/FPS测量；整体INCOMPLETE，本阶段保存推送dev。

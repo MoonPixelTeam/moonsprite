@@ -1,3 +1,4 @@
+#include "composite_palette_extraction.h"
 #include "palette_extraction.h"
 #include "document.h"
 #include "fixtures/imported_palette_legacy.h"
@@ -8,6 +9,13 @@ void require(bool v){if(!v)throw std::runtime_error("palette extraction regressi
 int main(){
  for(std::size_t index=0;index<importedPaletteFixtures.size();++index){const auto& f=importedPaletteFixtures[index];if(extractImportedPalette(f.surfaces,f.limit,f.samples)!=f.expected){std::cerr<<"Legacy imported palette fixture "<<index<<" differs\n";return 1;}}
 
+ // Regional scan order must match the complete composite even when rows are
+ // split horizontally, and stop requesting regions as soon as the limit is met.
+ for(const auto dimensions:{std::pair{3,9},std::pair{19,3},std::pair{1,23}}){const auto [w,h]=dimensions;std::vector<Pixel> canvas(std::size_t(w)*h);for(std::size_t i=0;i<canvas.size();++i)canvas[i]=i%5?0xff000000|Pixel(i%11):0x00123456;
+  for(std::size_t chunk:{1u,7u,65536u})for(std::size_t limit:{1u,4u,4096u}){std::size_t calls=0,readPixels=0;auto colors=extractCompositePalette(w,h,limit,[&](CompositeRegion r){++calls;require(std::size_t(r.width)*r.height<=chunk);readPixels+=std::size_t(r.width)*r.height;std::vector<Pixel> out;for(int y=r.y;y<r.y+r.height;++y)out.insert(out.end(),canvas.begin()+std::size_t(y)*w+r.x,canvas.begin()+std::size_t(y)*w+r.x+r.width);return out;},chunk);require(colors==extractPaletteScanline(canvas,double(limit)));require(calls>0&&readPixels<=canvas.size());if(limit==1&&chunk==1)require(calls==2);}
+ }
+ {std::size_t calls=0;auto colors=extractCompositePalette(1000000,1000000,1,[&](CompositeRegion r){++calls;require(r.width==65536&&r.height==1);return std::vector<Pixel>(65536,0xffabcdef);});require(colors==std::vector<Pixel>{0xffabcdef}&&calls==1);}
+ {Document image=Document::fromImage(3,2,{0,0xff123456,0x80123456,0xffabcdef,0xff123456,0x00123456},U"Extract");for(auto frame:{image.frame().id})require(extractTimelinePalette(image.timeline(),frame,3,2,4096)==extractPaletteScanline(compositeNormalRegion(image.timeline(),frame,{0,0,3,2}),4096));const std::vector<Pixel> preview{0xff778899};require(extractTimelinePalette(image.timeline(),image.frame().id,3,2,1,image.layer().id,&preview,1,0,0)==std::vector<Pixel>{0xff778899});}
  const std::vector<Pixel> pixels={0xff0000ff,0xff00ff00,0xffff0000,0xff0000ff,0x00ffffff,0xff00ffff};
  require(extractPaletteScanline(pixels,16)==std::vector<Pixel>({0xff0000ff,0xff00ff00,0xffff0000,0xff00ffff}));
  require(extractPaletteScanline(pixels,2)==std::vector<Pixel>({0xff0000ff,0xff00ff00}));
