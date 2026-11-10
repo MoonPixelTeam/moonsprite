@@ -5699,3 +5699,9 @@ Release相关目标成功，lua-script-invocation通过0.44s。未更新正式ex
 沿lua-script-service.ts run/rebaseTarget/dispatch/outcome，把已有分块快照、worker和结果接收接成PendingInvocation。主线程每轮按deadline/像素额度捕获，零超时检查future，仅ready后取结果；捕获和worker之间不保留Document指针。已有任务时拒绝重复启动；对话框dispatch先核对原工程/层/帧资格，再重新捕获当前revision和像素，承接用户在回调之间的编辑。取消捕获直接释放；已提交任务由Runtime在同一VM线程FIFO读取废弃结果并关闭返回session，dispatch失败时使用原session回退。清理异常不阻断后续任务；Runtime必须比协调器存活更久，析构沿现有drain语义，不宣称关机可立即中断脚本。
 
 真实Lua测试覆盖过期deadline不执行、每轮单像素推进、忙碌拒绝、月相工程接纳、modeless回调与中途用户编辑rebase、捕获/提交后取消、无活动工程及捕获中修改拒绝。额外对已知session验证废弃结果清理与失败fallback清理后dispatch确实失效。Release invocation/runtime目标成功，两项相关测试通过；来源覆盖796与diff检查通过。正式Editor消息泵/动态脚本菜单/对话框尚待接线，真实MSE快照和混合事务未完成；未更新正式exe，无GUI/完整smoke验收，整体INCOMPLETE。本阶段保存推送dev，保留用户原差异、数据与缓存。
+
+### 2026-11-10：Lua后台目录服务及接收重入/错误清理阶段
+
+对照useAppScriptRuntime.tsx refreshLuaScripts及PreferencesDialog.tsx deleteLuaScript，Runtime新增异步list/remove，在既有worker复用完整Service，保持首次seed、扩展主入口/命令元数据、扩展脚本禁止单删、安全本地路径规则。删除及随后刷新共用FIFO，目录扫描和首次写入无需放在UI线程；失败通过独立future返回，不杀死worker，shutdown承接已接受列表请求并拒绝新请求。
+
+核验上一阶段协调器发现两处缺口并修正：action/context JSON可在Rust dispatch之前失败，此时VM没有移除原session，future异常路径须主动排队关闭；adopter可能同步泵出嵌套调用，接收期间保持busy并拒绝嵌套start/tick，避免替换target。真实Lua坏action验证清理后session无法dispatch，成功/抛异常adopter验证重入拒绝及最终busy恢复。后台磁盘测试覆盖seed/扩展列表、删除与后续列表FIFO、扩展及穿越删除拒绝、失败隔离和shutdown排空。Release相关目标及invocation/runtime两项专项通过，来源覆盖796和diff检查通过。正式Editor调用方、真实MSE快照/混合事务、动态菜单与原生对话框仍未完成，无正式exe更新/GUI/完整smoke验收，整体INCOMPLETE。保存推送dev，保留用户差异、数据及缓存。

@@ -15,6 +15,12 @@ int main(int argc,char** argv){try{winrt::init_apartment();check(argc==2,"Fixtur
  {std::ofstream manifest(extension/"manifest.json");manifest<<R"({"schemaVersion":1,"id":"com.example","name":"Example","version":"1","entry":"main.lua","commands":[{"id":"run","name":"Run","entry":"command.lua"}]})";}
  {std::ofstream main(extension/"main.lua");main<<"print('extension-main')";std::ofstream command(extension/"command.lua");command<<"print('extension-command')";}
  Runtime runtime(root);
+ auto listed=runtime.list();auto catalog=JsonObject::Parse(winrt::to_hstring(listed.get()));bool mainListed=false,commandListed=false;
+ for(const auto& value:catalog.GetNamedArray(L"scripts")){auto entry=value.GetObject();const auto id=entry.GetNamedString(L"id");mainListed|=id==L"extension:com.example";commandListed|=id==L"extension:com.example:run";}
+ check(mainListed&&commandListed&&std::filesystem::exists(root/"scripts"/"moon-phase.lua"),"Worker listing lost extension/seed");
+ write("remove-owned.lua","print('temporary fixture')");auto removed=runtime.remove("remove-owned.lua");auto afterRemove=runtime.list();check(removed.get()=="null"&&!std::filesystem::exists(root/"scripts"/"remove-owned.lua"),"Worker removal failed");
+ for(const auto& value:JsonObject::Parse(winrt::to_hstring(afterRemove.get())).GetNamedArray(L"scripts"))check(value.GetObject().GetNamedString(L"id")!=L"remove-owned.lua","FIFO listing preceded removal");
+ reject([&]{runtime.remove("extension:com.example").get();});reject([&]{runtime.remove("../outside.lua").get();});check(!runtime.list().get().empty(),"Directory failure killed worker");
  auto draw=runtime.start("draw.lua",context);auto failure=runtime.start("error.lua",context);auto again=runtime.start("draw.lua",context);
  auto output=JsonObject::Parse(winrt::to_hstring(draw.get()));check(output.GetNamedBoolean(L"finished")&&output.GetNamedArray(L"batches").Size()==1,"Real worker transaction missing");reject([&]{failure.get();});check(!again.get().empty(),"Request failure killed worker");
  reject([&]{runtime.start("../draw.lua",context).get();});reject([&]{runtime.start("draw.lua","{").get();});reject([&]{runtime.start("budget.lua",context).get();});
@@ -26,7 +32,7 @@ int main(int argc,char** argv){try{winrt::init_apartment();check(argc==2,"Fixtur
  for(int count=1;count<=2;++count){auto result=JsonObject::Parse(winrt::to_hstring(runtime.dispatch(session,winrt::to_string(action.Stringify()),context).get()));auto change=result.GetNamedArray(L"batches").GetObjectAt(0).GetNamedArray(L"changes").GetObjectAt(0);check(change.GetNamedNumber(L"after")==double(0xff000000u+count),"Callback VM state/rebase lost");}
  check(runtime.close(session).get()=="null","Session close response");reject([&]{runtime.dispatch(session,winrt::to_string(action.Stringify()),context).get();});
  auto builtin=JsonObject::Parse(winrt::to_hstring(runtime.start("moon-phase.lua",context).get()));check(builtin.GetNamedArray(L"createdDocuments").Size()==1,"Original seeded example did not execute");
- auto pending=runtime.start("draw.lua",context);runtime.shutdown();check(!pending.get().empty(),"Shutdown dropped accepted request");runtime.shutdown();reject([&]{runtime.start("draw.lua",context);});
+ auto pending=runtime.start("draw.lua",context);auto pendingList=runtime.list();runtime.shutdown();check(!pending.get().empty()&&!pendingList.get().empty(),"Shutdown dropped accepted request");runtime.shutdown();reject([&]{runtime.start("draw.lua",context);});reject([&]{runtime.list();});reject([&]{runtime.remove("draw.lua");});
  std::future<std::string> drained;{Runtime closing(root);drained=closing.start("draw.lua",context);}check(!drained.get().empty(),"Destructor discarded accepted request");
  std::cout<<"Lua worker source/session/budget/shutdown contracts passed\n";return 0;
  }catch(const std::exception& e){std::cerr<<e.what();return 1;}catch(const winrt::hresult_error& e){std::cerr<<winrt::to_string(e.message());return 1;}}

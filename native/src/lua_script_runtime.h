@@ -46,6 +46,10 @@ public:
  ~Runtime(){shutdown();}
  // Drains accepted requests before destroying sessions on their owner thread.
  void shutdown(){ {std::lock_guard lock(mutex_);stopping_=true;}ready_.notify_one();if(worker_.joinable())worker_.join();}
+ // Menu/preferences source discovery and mutations share the worker queue with
+ // execution, avoiding directory scans and first-run seed writes on the UI.
+ std::future<std::string> list(){return enqueue([](auto*,Service& service){return winrt::to_string(service.list().Stringify());});}
+ std::future<std::string> remove(std::string id){return enqueue([id=std::move(id)](auto*,Service& service){service.remove(id);return std::string("null");});}
  std::future<std::string> start(std::string id,std::string context){return enqueue([id=std::move(id),context=std::move(context)](auto* handle,Service& service){
   using namespace winrt::Windows::Data::Json;const auto source=service.load(id);auto next=request(L"start");next.Insert(L"source",JsonValue::CreateStringValue(winrt::to_hstring(source.text)));next.Insert(L"filePath",JsonValue::CreateStringValue(source.path.wstring()));next.Insert(L"fileName",JsonValue::CreateStringValue(winrt::to_hstring(source.name)));next.Insert(L"context",JsonObject::Parse(winrt::to_hstring(context)));return invoke(handle,next);
  });}
@@ -76,12 +80,13 @@ class PendingInvocation {
  std::future<std::string> response_;Target target_;
  std::string scriptId_,sessionId_,action_;
  std::function<void(Document&&)> adopt_;
+ bool receiving_=false;
 public:
  explicit PendingInvocation(Runtime& runtime):runtime_(runtime){}
  PendingInvocation(const PendingInvocation&)=delete;
  PendingInvocation& operator=(const PendingInvocation&)=delete;
  ~PendingInvocation(){try{cancel();}catch(...){}}
- bool busy()const{return capture_.has_value()||response_.valid();}
+ bool busy()const{return receiving_||capture_.has_value()||response_.valid();}
  void start(const Document& d,std::string scriptId,std::string mseSnapshot,std::function<void(Document&&)> adopt={},std::optional<std::filesystem::path> savePath={}){
   if(busy())throw std::logic_error("Lua invocation is already pending");
   capture_.emplace(d,std::move(mseSnapshot),std::move(savePath));scriptId_=std::move(scriptId);sessionId_.clear();action_.clear();adopt_=std::move(adopt);
@@ -98,6 +103,7 @@ public:
  }
  std::optional<RunOutcome> tick(Document* active,std::chrono::steady_clock::time_point deadline,std::size_t maxPixels=RasterSnapshot::tickPixels){
   if(!busy())return {};
+  if(receiving_)throw std::logic_error("Lua result reception is already active");
   try{
    if(capture_){
     if(!active)throw std::logic_error("Lua script target changed");
@@ -107,12 +113,20 @@ public:
    }
    if(response_.wait_for(std::chrono::seconds(0))!=std::future_status::ready)return {};
    if(!active){cancel();throw std::logic_error("Lua script target changed");}
-   const auto result=response_.get();
-   // Clear local state before adoption: a host may begin another operation in
-   // its callback. No Document reference is retained after receiving the result.
+   std::string result;
+   try{result=response_.get();}catch(...){
+    // Invalid action/context JSON can fail before Rust dispatch sees it, so
+    // the VM has not necessarily removed the original modeless session.
+    if(!sessionId_.empty())try{(void)runtime_.close(sessionId_);}catch(...){}
+    throw;
+   }
+   // Adoption can synchronously pump host callbacks. Keep this coordinator
+   // busy until reception finishes so a nested request cannot replace target_.
    auto adopt=std::move(adopt_);auto session=std::move(sessionId_);scriptId_.clear();action_.clear();
-   return receiveWorkspaceResult(*active,target_,result,adopt,[this](const std::string& id){(void)runtime_.close(id);},session);
-  }catch(...){capture_.reset();adopt_={};scriptId_.clear();action_.clear();sessionId_.clear();throw;}
+   receiving_=true;
+   auto outcome=receiveWorkspaceResult(*active,target_,result,adopt,[this](const std::string& id){(void)runtime_.close(id);},session);
+   receiving_=false;return outcome;
+  }catch(...){receiving_=false;capture_.reset();adopt_={};scriptId_.clear();action_.clear();sessionId_.clear();throw;}
  }
 };
 }

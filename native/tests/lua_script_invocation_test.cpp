@@ -185,5 +185,17 @@ int main(int argc,char** argv){try{winrt::init_apartment();check(argc==2,"Fixtur
   pending.start(*edited,"moon-phase.lua","null");reject([&]{pending.tick(nullptr,deadline());});check(!pending.busy(),"Missing document left capture pending");
   pending.start(*edited,"moon-phase.lua","null");check(!pending.tick(edited.get(),deadline(),1),"Partial capture unexpectedly completed");RasterBatch edit;edit.before=capture(*edited).target.expected;edit.changes={{0,1193046,42}};edited->commitScriptRasterBatch(edit);reject([&]{pending.tick(edited.get(),deadline());});check(!pending.busy(),"Changed capture left task pending");
  }
+ // JSON action decoding fails on the worker before Rust dispatch can remove
+ // the session. The coordinator must close that original session itself.
+ {auto edited=std::make_unique<Document>(fixture(3,1,false));PendingInvocation pending(runtime);pending.start(*edited,"client-dialog.lua","null");std::optional<RunOutcome> done;const auto end=deadline();while(!done&&std::chrono::steady_clock::now()<end){done=pending.tick(edited.get(),deadline());if(!done)std::this_thread::yield();}check(done&&done->session,"Failure fixture lost session");const auto session=*done->session;
+  pending.dispatch(*edited,session,"broken JSON","null");bool failed=false;const auto failEnd=deadline();while(pending.busy()&&std::chrono::steady_clock::now()<failEnd){try{(void)pending.tick(edited.get(),deadline());}catch(...){failed=true;}std::this_thread::yield();}check(failed&&!pending.busy(),"Worker error left coordinator busy");runtime.close("barrier").get();reject([&]{runtime.dispatch(session.sessionId,"{}",capture(*edited).contextJson()).get();});
+ }
+ // A tab adopter may pump synchronous callbacks. Keep reception busy until
+ // it returns, including failure, so nested starts cannot overwrite target.
+ {auto source=std::make_unique<Document>(fixture(3,1,false));PendingInvocation pending(runtime);bool adopted=false;
+  pending.start(*source,"moon-phase.lua","null",[&](Document&&){adopted=true;check(pending.busy(),"Reception appeared idle during adoption");reject([&]{pending.start(*source,"client-dialog.lua","null");});reject([&]{pending.tick(source.get(),deadline());});});
+  std::optional<RunOutcome> done;const auto end=deadline();while(!done&&std::chrono::steady_clock::now()<end){done=pending.tick(source.get(),deadline());if(!done)std::this_thread::yield();}check(adopted&&done&&!pending.busy(),"Adoption reception did not finish");
+  pending.start(*source,"moon-phase.lua","null",[&](Document&&){reject([&]{pending.start(*source,"client-dialog.lua","null");});throw std::runtime_error("adoption failed");});bool failed=false;const auto failEnd=deadline();while(pending.busy()&&std::chrono::steady_clock::now()<failEnd){try{pending.tick(source.get(),deadline());}catch(const std::runtime_error& e){failed=std::string(e.what())=="adoption failed";}std::this_thread::yield();}check(failed&&!pending.busy(),"Failed adoption poisoned coordinator");
+ }
  std::cout<<"Lua document capture, budgets, target guards and worker execution passed\n";return 0;
  }catch(const winrt::hresult_error& e){std::cerr<<winrt::to_string(e.message());return 1;}catch(const std::exception& e){std::cerr<<e.what();return 1;}}
