@@ -9,11 +9,13 @@ namespace moon {
 inline bool synchronizePaletteResources(timeline::State& state,timeline::Pixel before,timeline::Pixel after){
  if(state.tilesets.empty()||before==after)return false;
  std::unordered_map<std::string,const timeline::Layer*> layers;
- for(const auto& l:state.layers)layers.emplace(l.id,&l);
+ std::unordered_map<std::string,bool> locked;
+ layers.reserve(state.layers.size());locked.reserve(state.layers.size());
+ for(const auto& l:state.layers){layers.emplace(l.id,&l);locked.emplace(l.id,timeline::isLayerEffectivelyLocked(state,l));}
  timeline::Timeline resolver(state);
  std::unordered_map<std::string,std::unordered_set<std::string>> selected;
  for(const auto& slot:state.cels){
-  const auto& l=*layers.at(slot.layerId);if(timeline::isLayerEffectivelyLocked(state,l))continue;
+  const auto& l=*layers.at(slot.layerId);if(locked.at(l.id))continue;
   auto resolved=resolver.resolveSurface(slot.id);if(!resolved.source)continue;const auto& c=*resolved.source;
   if(c.tilemap)for(const auto& cell:c.tilemap->cells)if(cell)selected[cell->tilesetId].insert(cell->tileId);
   if(c.freeTiles&&l.freeTiles){const auto& data=*l.freeTiles;
@@ -25,7 +27,13 @@ inline bool synchronizePaletteResources(timeline::State& state,timeline::Pixel b
  }
  std::unordered_map<std::string,std::unordered_set<std::string>> changed;
  for(auto& set:state.tilesets){auto found=selected.find(set.id);if(found==selected.end())continue;const tiles::Index index(set);
-  for(const auto& id:found->second)if(auto at=index.find(id)){auto pixels=tiles::readTile(set,*at);bool dirty=false;for(auto& p:pixels)if(p==before){p=after;dirty=true;}if(dirty){for(int y=0;y<set.tileHeight;++y)std::copy_n(pixels.begin()+std::size_t(y)*set.tileWidth,set.tileWidth,set.pixels.begin()+((*at/set.columns*set.tileHeight+y)*set.columns*set.tileWidth+*at%set.columns*set.tileWidth));changed[set.id].insert(id);}}
+  // Edit atlas rows directly: no per-tile allocation, readback or full-tile copy.
+  for(const auto& id:found->second)if(auto at=index.find(id)){bool dirty=false;
+   for(int y=0;y<set.tileHeight;++y){const auto offset=(*at/set.columns*set.tileHeight+y)*set.columns*set.tileWidth+*at%set.columns*set.tileWidth;
+    for(int x=0;x<set.tileWidth;++x){auto& pixel=set.pixels[offset+x];if(pixel==before){pixel=after;dirty=true;}}
+   }
+   if(dirty)changed[set.id].insert(id);
+  }
  }
  if(changed.empty())return false;
  const tiles::Catalog catalog(state.tilesets);

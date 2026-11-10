@@ -6270,3 +6270,10 @@ selection.transform仍须衔接跨批浮动保留、实际操作次序、后续�
 对照legacy lua-script-service.ts389–436、503–509、613–635，完成真实Lua及正式异步Editor各4组边界验收：创建文档后Lua新建图层尾部返回原工程、取消打开仍保留边界语义、原目标图层删除后尾部提交拒绝、原目标删除后下一批拒绝。检查原目标像素、幸存图层属性、新会话保留、nil最终选择抑制、图层创建与源批次各自撤销重做。生产实现通过上述检查，本阶段没有为迁移另改既有语义。
 
 唯一正式Release构建成功，--script-entry-check退出0，lua-script-invocation 5.72s通过；来源806文件与diff检查通过。旧错误txt保留，采用当次退出码；没有人工图像/FPS验收。本阶段为完整组合验收，非RGBA和扩展生产宿主等仍INCOMPLETE，保存推送dev。
+
+
+### 2026-11-11：色板资源同步逐行替换优化
+
+核对现有2026-11-10资源同步修复与workspace-commands-color精确RGBA语义，保留未锁定引用选择资源、共享锁定引用刷新及既有历史。有效锁状态由每个Cel重复遍历组链改为每层计算一次；目标瓦片直接遍历图集行替换匹配像素，移除逐瓦片readTile分配、整块读回和回写。资源ID、选取范围、透明RGB及缓存重建保持原路径。对照Aseprite filters/replace_color_filter.cpp逐行遍历思路，其文件为EULA，仅阅读方案未复制代码。
+
+唯一正式Release构建通过；lua-script-invocation全套6.63s通过，正式--script-entry-check退出0，包含普通/实际Lua资源同步、锁定共享引用、UndoRedo及保存重开。来源806文件及diff检查通过。未新增镜像实现测试，复用既有行为回归；无CPU/FPS测量，不宣称解决整体UI卡顿，扩展生产宿主等整体迁移仍INCOMPLETE。仅提交本阶段三个文件，保留editor_support.h及用户日志/缓存。
