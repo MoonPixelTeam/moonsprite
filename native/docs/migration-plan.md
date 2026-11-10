@@ -6015,3 +6015,14 @@ layers.update存在时，沿现有候选Timeline预检后，使用原生完整Ti
 外部资源可失败，因此含brush批次建立COW Document checkpoint，保持先提交该批raster再按hostOrder交错调用笔刷/panel/playback；异常恢复文档、历史、revision和Target，保留原生记录/历史observer绑定。旧版非历史资源删除和外部库副作用不撤销，恢复批次dirty/revision基线；createFromSelection仍未迁移，不宣称完整笔刷领域完成。真实Lua覆盖顺序/缺宿主/异步转发/混合失败不提交像素；正式入口覆盖工程brush删除和保存元数据。图片选择器人工交互未验收。最终构建检查后附。
 
 最终唯一正式Release构建通过，18项Rust Lua契约测试通过；lua-script-invocation2.47s与lua-script-runtime0.21s通过，正式--script-entry-check退出0（含工程与本地brush删除、无历史及工程保存资源检查）。来源804文件与diff检查通过。含笔刷批次checkpoint会复制文档历史元数据，像素为COW；外部库操作仍同步，长IO性能及原生选择器人工验收未完成；createFromSelection及其他迁移缺口保留。整体INCOMPLETE，阶段保存推送dev。
+
+
+### 2026-11-10：Hybrid 局部预览按需索引资源
+
+用户明确确认采用预览与提交一致并保留大画布延迟路径。核对旧版tilemap-document.ts beforeByCell/editedTiles顺序与原生floatingOverlayRegion：原生补丁虽已缓存，每次局部绘制仍构建所有资源的Catalog。现按候选单元格及可见单元格需要，延迟创建既有Catalog中的资源索引；已缓存modified/local补丁不索引无关资源。保留单元格顺序、共享源传播、翻转旋转、空格、foreign引用与提交权威路径。
+
+回归加入8192个瓦片的无关资源和变换foreign/空格，覆盖局部读取与整图预览、提交、撤销重做和补丁复用。仅减少重复索引工作，不宣称FPS改善数值。MSE createFromSelection的操作时选区与保存失败顺序仍需完整事务处理，未以近似语义接入；整体迁移INCOMPLETE。最终检查后附。
+
+Aseprite对照：本地缓存doc/tileset.h::findTileIndex/notifyTileContentChange与tileset.cpp::hashTable采用按需索引和内容变更失效；文件头标MIT。本阶段仅核对索引生命周期思路，原生继续复用已有tiles::Catalog，不复制Aseprite代码，也不把像素匹配哈希与原生稳定ID查找视为同一算法。
+
+最终唯一正式Release构建成功；tilemap-document 0.65s、document-raster-history 4.63s通过，正式--tileset-management-check --grid-transform-entry-only退出0。来源804文件与diff检查通过。无人工截图验收及FPS测量；整体仍INCOMPLETE，保留用户差异与全部未跟踪数据，本阶段保存推送dev。

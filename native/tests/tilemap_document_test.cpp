@@ -604,10 +604,19 @@ static void checkPaintMoveDirty(){
  }
 }
 static void checkHybridLargeTileRegions(){
+ for(int referenceKind=0;referenceKind<3;++referenceKind){
  auto model=std::make_unique<Document>(512,256);auto& d=*model;check(d.createTilemapLayer(256,256,U"Large tile regions"),"large tile fixture");auto state=d.timeline().state();const auto id=d.layer().id;auto& set=state.tilesets.front();for(int y=0;y<256;++y)for(int x=0;x<256;++x)set.pixels[std::size_t(y)*set.columns*256+x]=0xff000000u|Pixel(x)|Pixel(y)<<8;
  for(auto& c:state.cels)if(c.layerId==id){c.tilemap->cells[0]=tiles::Cell{set.id,set.tileIds.front()};c.tilemap->cells[1]=tiles::Cell{set.id,set.tileIds.front(),true,true,1};c.surface->pixels=tiles::render(*c.tilemap,state.tilesets);}
+ // Unrelated sheets must not participate in a small regional draw. Also exercise
+ // foreign transformed references and empty cells through the lazy catalog path.
+ auto foreign=set;foreign.id="regional-foreign";foreign.tileIds={"regional-foreign-tile"};foreign.tileSlots={foreign.tileIds.front()};
+ foreign.pixels.assign(foreign.pixels.size(),0xffabc123);state.tilesets.push_back(foreign);
+ tiles::Tileset unused;unused.id="regional-unused";unused.tileWidth=unused.tileHeight=1;unused.columns=128;unused.rows=64;
+ for(int i=0;i<8192;++i)unused.tileIds.push_back("unused-"+std::to_string(i));unused.pixels.assign(8192,0xff112233);state.tilesets.push_back(std::move(unused));
+ for(auto& c:state.cels)if(c.layerId==id){if(referenceKind==1)c.tilemap->cells[1]=tiles::Cell{foreign.id,foreign.tileIds.front(),true,true,1};else if(referenceKind==2)c.tilemap->cells[1].reset();c.surface->pixels=tiles::render(*c.tilemap,state.tilesets);}
  auto imported=std::make_unique<Document>(Document::fromImported(512,256,std::move(state),d.palette(),"hybrid-large-region",U"Regions",std::make_shared<const std::vector<std::uint8_t>>()));auto& doc=*imported;doc.selectLayer(id);doc.clearTimelineSelection();doc.setTilemapMode(tiles::Mode::Hybrid);doc.previewSelection(SelectionMask{1,1,1,1,{}});const auto before=doc.canvasPixels();check(doc.beginSelectionContentMove(true)&&doc.floatingDeferred(),"large tile deferred capture");doc.moveFloatingPaste(2,1);
  const auto preview=doc.floatingOverlayRegion({0,0,512,256});const auto builds=doc.floatingHybridPatchBuilds();for(const auto r:std::vector<PixelRegion>{{257,1,1,1},{255,12,2,3},{510,254,4,4},{-1,-1,3,3}}){const auto part=doc.floatingOverlayRegion(r);for(int y=0;y<r.h;++y)for(int x=0;x<r.w;++x){const int wx=r.x+x,wy=r.y+y;check(part[std::size_t(y)*r.w+x]==(wx>=0&&wy>=0&&wx<512&&wy<256?preview[std::size_t(wy)*512+wx]:Pixel{}),"large transformed tile clipped texels disagree");}}
  check(doc.floatingHybridPatchBuilds()==builds&&doc.canvasPixels()==before,"large regional reads rebuild patch or modify authority");const timeline::LinkedPixelStorage storageRevision;check(doc.commitFloatingPaste()&&doc.canvasPixels()==preview,"large regional preview differs from commit");check(timeline::LinkedPixelStorage{}.revision()-storageRevision.revision()<128,"Hybrid regional commit performs per-pixel authority writes");doc.undo();check(doc.canvasPixels()==before,"large regional undo");doc.redo();check(doc.canvasPixels()==preview,"large regional redo");
+ }
 }
 int main(){try{checkHybridLargeTileRegions();checkPaintMoveDirty();checkPaintSelectionRanges();checkTilemapTransformEntry();checkLinkedHybridDeferred();checkLinkedHybridFloatingRefusal();checkLinkedHybridFloating();checkLinkedEditFloating();checkLinkedCreateFloating();checkLinkedHybridStatic();checkLinkedEditStatic();checkLinkedCreateStatic();checkLinkedPaintMove();}catch(const std::exception& e){std::cerr<<e.what()<<"\n";return 1;}return runExistingTilemapDocumentTests();}
