@@ -1,3 +1,4 @@
+#include "image_sequence_dialog.h"
 #include "editor.h"
 #include "image_resize_task.h"
 #include "lua_script_service.h"
@@ -727,6 +728,17 @@ void Editor::initializeScripts(const std::filesystem::path& root){
    }
    brushLibraryNeedsReload_=true;scripts_->localBrushes=library.list().brushes;refresh();
   });
+  state->host->setSaveHost([this](Document& d,const script::SaveRequest& request){
+   if(&d!=&document||!documentOpen_||homeOpen_)throw std::logic_error("Lua save target changed");
+   scriptSaving_=true;struct SaveGuard{bool& value;~SaveGuard(){value=false;}} savingGuard{scriptSaving_};
+   const auto identity=d.identity();saveProject(request.saveAs,identity,request.optionsJson);
+   // Pump the established bounded snapshot/worker save until it publishes. The
+   // script coordinator remains receiving, so nested timers cannot rerun it.
+   ui::MessageLoop loop(ui::Manager::getDefault());
+   auto queued=[&]{return std::any_of(queuedSaves_.begin(),queuedSaves_.end(),[&](const auto& q){return q.identity==identity;});};
+   while(pending_==Pending::Saving||backgroundSaveBusy(identity)||queued()){if(pending_!=Pending::None&&pending_!=Pending::Saving)break;saveTick();if(pending_==Pending::Saving||backgroundSaveBusy(identity)||queued())loop.pumpMessages();}
+   if(scriptSaveClose_){scriptSaveClose_=false;auto callback=new ui::CallbackMessage([this]{requestClose();});callback->setRecipient(ui::Manager::getDefault());ui::Manager::getDefault()->enqueueMessage(callback);}
+  });
   state->host->setPlaybackHost([this](Document& d,const script::PlaybackRequest& request){applyScriptPlayback(d,request);});
   state->timer.Tick.connect([this]{pumpScripts();});state->client.refresh();state->timer.start();updateScriptsMenu();
  }catch(const std::exception& e){stopScripts();status_=U"脚本初始化失败："+unicodeText(e.what());invalidate();}
@@ -784,6 +796,16 @@ void Editor::smokeScriptEntry(){
   if(!scripts_->queued.empty()||scripts_->client.running()||!document.floating()||!document.selection()||document.selection()->x!=(fail?1:2)||scripts_->client.session()||scripts_->host->windowCount())throw std::runtime_error("Fresh script floating completion wrong");
   if(fail){if(scripts_->client.error().empty()||!scripts_->host->hasReport()||document.historyPosition()!=launchPosition)throw std::runtime_error("Fresh script failure changed history or lost report");document.cancelFloatingPaste();if(document.pixels()[0]!=0xff123456||document.pixels()[1]||document.pixels()[2])throw std::runtime_error("Fresh script failure cancel lost source");if(!escapeScript())throw std::runtime_error("Fresh script failure report Escape refused");pumpScripts();}
   else{if(!scripts_->client.error().empty())throw std::runtime_error("Fresh script transform failed");if(side==257&&(document.contentRevision()!=launchContent||document.historyRevision()!=launchHistory))throw std::runtime_error("Fresh deferred script materialized floating state");document.commitFloatingPaste();if(document.pixels()[0]||document.pixels()[2]!=0xff123456)throw std::runtime_error("Fresh script commit lost source");document.undo();if(document.pixels()[0]!=0xff123456||document.pixels()[2])throw std::runtime_error("Fresh script undo split floating transaction");document.redo();if(document.pixels()[0]||document.pixels()[2]!=0xff123456)throw std::runtime_error("Fresh script redo wrong");}
+ }
+ // Formal save aliases must wait for the existing async save and preserve MSE order.
+ {const auto picker=chooseSaveFile_;const auto savedPath=documentPath_;const auto preferences=runtimePreferences_;const auto async=asyncSaveForSmoke_;const auto decision=asepriteSaveDecisionForSmoke_;struct Restore{std::function<void()> run;~Restore(){run();}} restore{[&]{chooseSaveFile_=picker;documentPath_=savedPath;runtimePreferences_=preferences;asyncSaveForSmoke_=async;asepriteSaveDecisionForSmoke_=decision;}};asyncSaveForSmoke_=true;runtimePreferences_.set("files.saveOriginalFormat","true");asepriteSaveDecisionForSmoke_=[](bool,const auto&){return 2;};
+  auto runSave=[&](const std::string& source){std::ofstream(root/"scripts/save-entry.lua")<<source;runScript("save-entry.lua");const auto until=std::chrono::steady_clock::now()+std::chrono::seconds(20);do{pumpScripts();std::this_thread::yield();}while((!scripts_->queued.empty()||scripts_->client.running())&&std::chrono::steady_clock::now()<until);if(!scripts_->queued.empty()||scripts_->client.running()||!scripts_->client.error().empty())throw std::runtime_error("Formal script save failed: "+scripts_->client.error());};
+  document=Document(3,1);documentPath_.clear();refresh();const auto path=root/"script-saved.moonsprite";chooseSaveFile_=[&](OPENFILENAMEW* chooser){auto text=path.wstring();std::copy(text.begin(),text.end(),chooser->lpstrFile);chooser->lpstrFile[text.size()]=0;chooser->nFilterIndex=1;return true;};
+  runSave("app.transaction(function() app.activeImage:drawPixel(0,0,0xff123456); mse.document.save(); mse.palette.create{r=3,g=4,b=5} end)");auto read=[&](const auto& path){std::ifstream file(path,std::ios::binary);auto bytes=std::make_shared<project::Bytes>();bytes->assign(std::istreambuf_iterator<char>(file),{});return bytes;};auto opened=project::createEditableDocument(project::prepareEditableImport(project::readProjectManifest(read(path))));if(opened.pixels()[0]!=0xff123456||opened.palette().entries.size()+1!=document.palette().entries.size()||!document.dirty()||pending_!=Pending::None)throw std::runtime_error("Formal save did not wait before next operation");document.undo();if(document.pixels()[0]||document.palette().entries.size()!=opened.palette().entries.size())throw std::runtime_error("Formal saved script undo wrong");document.redo();
+  runSave("mse.io.save()");if(document.dirty()||project::createEditableDocument(project::prepareEditableImport(project::readProjectManifest(read(path)))).palette().entries.size()!=document.palette().entries.size())throw std::runtime_error("Formal io save alias failed");
+  JsonObject options;options.Insert(L"directory",JsonValue::CreateStringValue(root.wstring()));const auto encodedDirectory=winrt::to_string(options.GetNamedValue(L"directory").Stringify());
+  runSave("mse.document.save{saveAs=true,options={name='scaled.png',format='png',scalePercent=200,directory="+encodedDirectory+"}}");auto png=openRasterImage(root/"scaled.png");if(png.width()!=6||png.height()!=2||document.width()!=3||document.height()!=1)throw std::runtime_error("Formal script save options scaling wrong");
+  chooseSaveFile_=[](OPENFILENAMEW*){return false;};const auto revision=document.revision();runSave("mse.io.save{saveAs=true}; mse.palette.create{r=7,g=8,b=9}");if(document.revision()==revision||pending_!=Pending::None)throw std::runtime_error("Formal save cancellation stopped later operation");
  }
  document=Document(3,1);refresh();
  // A slow brush listing must not prevent list reception or native report pumping.

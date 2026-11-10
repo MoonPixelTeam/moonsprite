@@ -1134,6 +1134,7 @@ bool Editor::processPreferencesWheel(ui::MouseMessage& mouse){
   }
 
 void Editor::ask(Pending action) {
+    if(scriptSaving_)return;
     if(imageResizeTask_)return;
 
     if(pending_==Pending::SheetImport&&importSheetTask_)return;

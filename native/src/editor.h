@@ -1386,7 +1386,7 @@ public:
   void dismissSaveProgress();void backgroundSaveTick();
   std::chrono::steady_clock::time_point saveStarted_;
 
-  struct QueuedSave {std::uint64_t identity;bool saveAs;};
+  struct QueuedSave {std::uint64_t identity;bool saveAs;std::optional<std::string> optionsJson;};
   std::vector<QueuedSave> queuedSaves_;
   Pending queuedSaveResume_=Pending::None;bool queuedSaveClose_=false;
   std::function<bool(OPENFILENAMEW*)> chooseSaveFile_=[](OPENFILENAMEW* dialog){return GetSaveFileNameW(dialog)!=FALSE;};
@@ -2545,7 +2545,7 @@ void layoutStoredPaletteControls(const gfx::Rect& modal);
 
   bool savePath(const std::filesystem::path& path,bool background=false,bool sourceOnly=false,std::uint64_t identity=0);
 
-  bool saveProject(bool saveAs,std::uint64_t identity=0);
+  bool saveProject(bool saveAs,std::uint64_t identity=0,std::optional<std::string> optionsJson={});
 
   std::filesystem::path recoveryDirectory();
 
@@ -3294,7 +3294,7 @@ void smokePaletteLibrary();
   void showBackgroundLayer(bool verify=false);void smokeBackgroundLayers();
   void showReleaseNoticeOnce();void smokeReleaseNotes();void smokeHomeAnnouncements(int phase=0);void smokeAsepriteIo();void smokeAttachedMasks();
   void timelapseTick();bool flushTimelapse();void showTimelapse();void exportTimelapseImages();int chooseTimelapsePortability();
-  std::string timelapseLastError_;bool portableTimelapseSave_=false,savingPortableTimelapse_=false;
+  std::string timelapseLastError_;bool portableTimelapseSave_=false,savingPortableTimelapse_=false;int requestedSaveScale_=100,savingScale_=100;bool scriptSaving_=false,scriptSaveClose_=false;
   void smokeClippingMask();void smokeMaskResize();void smokeProjectInformation();void smokeSlices();void smokeHelp();void smokeViewRotation();
 
   void smokeDismissDialog();

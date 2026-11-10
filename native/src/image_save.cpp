@@ -72,17 +72,17 @@ std::vector<std::string> imageSaveIssues(const Document& d,SaveImageFormat forma
  if(std::any_of(s.layers.begin(),s.layers.end(),[](const auto& l){return l.opacity<1;})||std::any_of(s.cels.begin(),s.cels.end(),[](const auto& c){return c.opacity.value_or(1)<1;}))add(format==SaveImageFormat::Gif?"gifColors":"transparency");
  return issues;
 }
-std::vector<std::uint8_t> encodeSaveImage(const Document& d,SaveImageFormat format){
- StaticImageExportOptions options;options.automatic=true;
+std::vector<std::uint8_t> encodeSaveImage(const Document& d,SaveImageFormat format,int scalePercent){
+ StaticImageExportOptions options;options.automatic=true;options.scalePercent=scalePercent;
  switch(format){
  case SaveImageFormat::Png:return encodeStaticImagePng(d,options).png;
  case SaveImageFormat::Jpeg:return encodeStaticImageJpeg(d,options).bytes;
  case SaveImageFormat::Svg:return encodeStaticImageSvg(d,options).bytes;
  case SaveImageFormat::Ico:return encodeStaticImageIco(d,options).bytes;
  case SaveImageFormat::Bmp:return encodeStaticImageBmp(d,options).bytes;
- case SaveImageFormat::Gif:{GifExportOptions gif;gif.frameStart=1;gif.frameEnd=int(d.timeline().state().frames.size());return encodeAnimationGif(d,gif).bytes;}
- case SaveImageFormat::Psd:return encodePsd(d);
- case SaveImageFormat::Ase:case SaveImageFormat::Aseprite:return encodeAseprite(d);
+ case SaveImageFormat::Gif:{GifExportOptions gif;gif.scalePercent=scalePercent;gif.frameStart=1;gif.frameEnd=int(d.timeline().state().frames.size());return encodeAnimationGif(d,gif).bytes;}
+ case SaveImageFormat::Psd:return encodePsd(d,scalePercent);
+ case SaveImageFormat::Ase:case SaveImageFormat::Aseprite:return encodeAseprite(d,scalePercent);
  case SaveImageFormat::Webp:{
   // legacy png.ts encodes a single current-frame image at quality .92.
   auto image=prepareStaticImage(d,options);
