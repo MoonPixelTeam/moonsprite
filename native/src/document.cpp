@@ -2478,12 +2478,22 @@ std::vector<Pixel> Document::floatingOverlayRegion(PixelRegion region)const{
  const auto dc=cellMove?(std::int64_t(tr.x)-sel.x)/grid.tileWidth:0,dr=cellMove?(std::int64_t(tr.y)-sel.y)/grid.tileHeight:0;
  auto selectedCell=[&](std::int64_t col,std::int64_t row){const auto x=ox+col*grid.tileWidth,y=oy+row*grid.tileHeight;return col>=0&&row>=0&&col<grid.columns&&row<grid.rows&&x>=sel.x&&y>=sel.y&&x<std::int64_t(sel.x)+sel.width&&y<std::int64_t(sel.y)+sel.height;};
  const auto left=std::max<std::int64_t>(0,std::int64_t(region.x)-ox),top=std::max<std::int64_t>(0,std::int64_t(region.y)-oy),right=std::min<std::int64_t>(std::int64_t(grid.columns)*grid.tileWidth,std::int64_t(region.x)+region.w-ox),bottom=std::min<std::int64_t>(std::int64_t(grid.rows)*grid.tileHeight,std::int64_t(region.y)+region.h-oy);
- for(auto row=top/grid.tileHeight;row<(bottom+grid.tileHeight-1)/grid.tileHeight;++row)for(auto col=left/grid.tileWidth;col<(right+grid.tileWidth-1)/grid.tileWidth;++col){const auto i=std::size_t(row)*grid.columns+std::size_t(col);auto ref=grid.cells[i];if(cellMove){if(selectedCell(col-dc,row-dr))ref=grid.cells[std::size_t(row-dr)*grid.columns+std::size_t(col-dc)];else if(!f.copy&&selectedCell(col,row))ref.reset();}std::vector<Pixel> scratch;const std::vector<Pixel>* pixels=nullptr;
-  if(!cellMove){if(auto patch=local.find(i);patch!=local.end())pixels=&patch->second;else if(ref&&ref->tilesetId==set->id){if(auto patch=modified.find(ref->tileId);patch!=modified.end()){if(!ref->flipHorizontal&&!ref->flipVertical&&ref->rotation==0)pixels=&patch->second;else{scratch.resize(std::size_t(grid.tileWidth)*grid.tileHeight);for(int py=0;py<grid.tileHeight;++py)for(int px=0;px<grid.tileWidth;++px){const auto p=tiles::sourcePoint(px,py,grid.tileWidth,grid.tileHeight,*ref);scratch[std::size_t(py)*grid.tileWidth+px]=patch->second[std::size_t(p.second)*grid.tileWidth+p.first];}pixels=&scratch;}}}}
-  // The output is already transparent; null cells without a local patch need no work.
-  if(!pixels&&!ref)continue;
-  if(!pixels){scratch=tiles::cellPixels(ref,grid.tileWidth,grid.tileHeight,catalog);pixels=&scratch;}
-  const auto cellX=col*grid.tileWidth,cellY=row*grid.tileHeight;for(auto y=std::max(top,cellY);y<std::min(bottom,cellY+grid.tileHeight);++y){const auto from=std::max(left,cellX),to=std::min(right,cellX+grid.tileWidth);if(to>from)std::copy_n(pixels->begin()+std::size_t(y-cellY)*grid.tileWidth+std::size_t(from-cellX),std::size_t(to-from),result.begin()+std::size_t(y+oy-region.y)*region.w+std::size_t(from+ox-region.x));}}
+ // Read only visible texels. A one-pixel viewport must not allocate/rotate a
+ // complete 256x256 tile for every cell; sourcePoint preserves reference transforms.
+ for(auto row=top/grid.tileHeight;row<(bottom+grid.tileHeight-1)/grid.tileHeight;++row)for(auto col=left/grid.tileWidth;col<(right+grid.tileWidth-1)/grid.tileWidth;++col){
+  const auto i=std::size_t(row)*grid.columns+std::size_t(col);auto ref=grid.cells[i];if(cellMove){if(selectedCell(col-dc,row-dr))ref=grid.cells[std::size_t(row-dr)*grid.columns+std::size_t(col-dc)];else if(!f.copy&&selectedCell(col,row))ref.reset();}
+  const std::vector<Pixel>* pixels=nullptr;bool transformed=false;
+  if(!cellMove){if(auto patch=local.find(i);patch!=local.end())pixels=&patch->second;else if(ref&&ref->tilesetId==set->id)if(auto patch=modified.find(ref->tileId);patch!=modified.end()){pixels=&patch->second;transformed=true;}}
+  const tiles::Tileset* source=nullptr;std::optional<std::size_t> tile;
+  if(!pixels&&ref){auto found=catalog.sets.find(ref->tilesetId);if(found!=catalog.sets.end()&&found->second->tileWidth==grid.tileWidth&&found->second->tileHeight==grid.tileHeight){source=found->second;tile=catalog.indexes.at(source->id).find(ref->tileId);}}
+  if(!pixels&&!tile)continue;
+  const auto cellX=col*grid.tileWidth,cellY=row*grid.tileHeight;const auto from=std::max(left,cellX),to=std::min(right,cellX+grid.tileWidth);
+  for(auto y=std::max(top,cellY);y<std::min(bottom,cellY+grid.tileHeight);++y){auto out=result.begin()+std::size_t(y+oy-region.y)*region.w+std::size_t(from+ox-region.x);
+   if(pixels&&!transformed){std::copy_n(pixels->begin()+std::size_t(y-cellY)*grid.tileWidth+std::size_t(from-cellX),std::size_t(to-from),out);continue;}
+   for(auto x=from;x<to;++x){const auto p=tiles::sourcePoint(int(x-cellX),int(y-cellY),grid.tileWidth,grid.tileHeight,*ref);*out++=pixels?(*pixels)[std::size_t(p.second)*grid.tileWidth+p.first]:source->pixels[(*tile/source->columns*grid.tileHeight+p.second)*source->columns*grid.tileWidth+*tile%source->columns*grid.tileWidth+p.first];}
+  }
+ }
+
  return result;
 }
 void Document::checkFloatingBudget(const FloatingPaste& f,std::size_t extra)const{

@@ -5952,3 +5952,12 @@ layers.update存在时，沿现有候选Timeline预检后，使用原生完整Ti
 真实Lua覆盖多通知顺序/参数、像素混合事务/Undo、无宿主或后续非法操作不写像素不发通知、跨文档接管与异步客户端。正式Editor入口检查Unicode状态和清空。选区transform核对已确认旧版移动保留pending浮动内容而后续翻转复用；当前脚本候选仅稳定状态，不能强行提交冒充迁移，本阶段继续登记未完成。无UI布局修改，无截图验收；整体迁移仍INCOMPLETE。最终构建与检查后附。
 
 最终正式Release构建通过，Lua runtime/invocation两项通过2.19s（含跨工程通知），--script-entry-check、--script-window-host-check、--script-playback-check均退出0；来源804文件与diff检查通过。无截图/人工视觉验收，整体INCOMPLETE。
+
+
+### 2026-11-10：Hybrid 延迟预览按可见 texel 读取
+
+对照旧版 workspace-commands-selection-move.ts 的previewDeferred阈值、core/tilemap引用变换语义及用户明确采用的“预览与提交一致”。发现原生每次区域输出仍用cellPixels生成完整瓦片，资源补丁遇旋转/翻转也分配整块scratch，即使视口只显示一个像素。改为局部补丁连续行直接copy，共享源补丁和原始/外部资源按既有sourcePoint只读取可见texel，移除这一路径逐格整块分配/转换；原Catalog索引、候选资源补丁、dirty和提交语义不变。Aseprite缓存src/render/render.cpp头声明MIT，核对clip-before-pixel区域策略，仅审阅方案无源码复制。
+
+新增256×256大瓦片/512×256画布、旋转翻转共享源、1像素视口、跨格/画布边界裁切、补丁复用和预览不写权威、commit等于预览、UndoRedo检查。既有Hybrid链接、多源、空引用、重复模式及采样变换专项一并通过0.34s。该阶段改善拖动区域输出，采样提交仍含dense转换，其他迁移也未完；不声称Hybrid全部大画布延迟或整体卡顿已解决，无前后耗时基准/人工视觉验收。正式构建及最终检查后附。
+
+最终唯一正式Release构建通过，tilemap-document与document-raster-history专项通过2.16s；正式--tileset-management-check --grid-transform-entry-only退出0，来源804文件和diff检查通过。整体仍INCOMPLETE，保留用户差异和数据，阶段保存推送dev。
