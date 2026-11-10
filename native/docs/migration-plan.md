@@ -6379,3 +6379,10 @@ selection.transform仍须衔接跨批浮动保留、实际操作次序、后续�
 PNG后台解码完成后保留像素及私有surface，每次pump最多上传262144像素，整图完成后才发布可绘制surface；同一窗口解码/上传串行，源移除立即丢弃待上传像素，关闭宿主清空暂存。模型重建先于图片发布，避免给已移除节点上传。修复源移除后立即重新加入时旧取消任务异常把新缓存标失败的问题：取消结果全部丢弃，后续正常重新解码。
 
 新增实际1024×1024 RGBA PNG正式窗口回归，验证多pump上传完成与已有小图/表单/嵌套链路；最终唯一Release构建成功，extension-form-ui/image/files/state四项通过（1.36秒），来源821文件及diff检查通过。回归证明上传分片与完成状态，不证明帧率上限或最坏分配耗时；surface分配仍同步，多图总缓存及全局任务预算尚未完成，无新增人工截图验收。正式扩展执行器QuickJS架构选择仍待用户回复，整体INCOMPLETE。阶段保存推送dev，保留用户editor_support.h差异。
+
+
+### 2026-11-11：扩展表单槽位/选项说明与分隔呈现
+
+核对 ExtensionDialogForm 的 slot heading/description、choice label/description/selected、separator 以及 column/sidebar 分支，补齐槽位说明和双行可点击选项按钮、真实分隔线、选择状态和完整提示。ChoiceButton复用PixelButton材质/事件，两行共用同一点击范围，原生28px专用几何在UI规范登记（10px字、2px行间、上下3px）；普通按钮保持20px。column/sidebar不再绘制旧版没有的额外可见标题。绘制标签使用与控件同一布局保存的坐标并逐标签裁切，避免长标签画进相邻控件，说明计入滚动高度。
+
+唯一正式Release构建成功，四项extension-form-ui/image/files/state通过（1.34秒）；实际窗口回归验证槽位文本、选择说明完整提示及selected、分隔节点和既有输入提交。查看extension-form-prompt-smoke.bmp确认双行选项与分隔线可见且未重叠，截图为此前绘制的initial草稿，不作为新草稿证明。来源821文件与diff检查通过。尚缺row align、下拉选项description、持久化几何、全局背景模态及正式执行器，不宣称所有表单排版等价。QuickJS架构选择仍待用户回复，整体INCOMPLETE；阶段保存推送dev，用户editor_support.h差异保留。
