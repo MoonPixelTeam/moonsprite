@@ -4,6 +4,7 @@
 #include "extension_request_host.h"
 #include "extension_project_events.h"
 #include "extension_interaction_events.h"
+#include "extension_network.h"
 #include <map>
 #include <exception>
 namespace moon::extension {
@@ -15,9 +16,10 @@ class SessionHost {
   bool editorEventsAllowed=false;std::shared_ptr<EditorEventSubscription> editorSubscription;
   std::shared_ptr<InteractionEvents> interactions;
   std::shared_ptr<ProjectEventSubscription> projectSubscription;
+  std::vector<NetworkTask> network;
   EventLifecycle events;RequestHost requests;RuntimeRegistry::Stop unregister;
   Session(std::string identity,std::uint64_t value,RuntimeExtension extension,const std::vector<std::string>& permissions,std::string language,Storage& storage,FileDropRouter& drops,RuntimeRegistry& registry,std::function<void(const RuntimeEvent&)> deliver,CommandHandlers handlers,std::vector<RuntimeCommand> commands):id(std::move(identity)),locale(std::move(language)),generation(value),editorEventsAllowed(std::find(permissions.begin(),permissions.end(),"events")!=permissions.end()),events(permissions,locale,std::move(deliver)),requests(std::move(extension),permissions,storage,drops,registry,std::move(handlers),std::move(commands)){}
-  void stop(){if(!active)return;active=false;editorSubscription.reset();projectSubscription.reset();interactions.reset();std::exception_ptr failure;auto cleanup=[&](auto&& action){try{action();}catch(...){if(!failure)failure=std::current_exception();}};cleanup([&]{unregister();});cleanup([&]{requests.deactivate();});cleanup([&]{events.deactivate();});if(failure)std::rethrow_exception(failure);}
+  void stop(){if(!active)return;active=false;for(auto& task:network)task.cancel();network.clear();editorSubscription.reset();projectSubscription.reset();interactions.reset();std::exception_ptr failure;auto cleanup=[&](auto&& action){try{action();}catch(...){if(!failure)failure=std::current_exception();}};cleanup([&]{unregister();});cleanup([&]{requests.deactivate();});cleanup([&]{events.deactivate();});if(failure)std::rethrow_exception(failure);}
  };
  Storage& storage_;FileDropRouter& drops_;RuntimeRegistry& registry_;std::map<std::string,std::shared_ptr<Session>> sessions_;std::uint64_t next_=0;
  std::shared_ptr<Session> find(const std::string& id,std::uint64_t generation)const{auto it=sessions_.find(id);return it!=sessions_.end()&&it->second->generation==generation&&it->second->active?it->second:nullptr;}
@@ -51,7 +53,15 @@ public:
  void loaded(const Token& token,const RuntimeEvent& project){if(auto s=find(token.extensionId,token.generation))s->events.loaded(s->id,s->locale,project);}
  void loadFailed(const Token& token){if(auto s=find(token.extensionId,token.generation))s->events.loadFailed();}
  void localeChanged(const std::string& locale){std::vector<std::shared_ptr<Session>> snapshot;for(const auto& p:sessions_)snapshot.push_back(p.second);for(const auto& s:snapshot)if(s->active){s->locale=locale;s->events.localeChanged(locale);}}
- std::optional<winrt::Windows::Data::Json::JsonObject> request(const Token& token,const winrt::Windows::Data::Json::IJsonValue& request,std::optional<std::string> encoded={}){if(auto s=find(token.extensionId,token.generation))return s->requests.handle(request,true,s->locale,std::move(encoded));return {};}
+ std::optional<winrt::Windows::Data::Json::JsonObject> request(const Token& token,const winrt::Windows::Data::Json::IJsonValue& request,std::optional<std::string> encoded={}){if(auto s=find(token.extensionId,token.generation))return s->requests.handle(request,true,s->locale,std::move(encoded),[s](std::wstring id,std::wstring params){s->network.push_back(startNetworkRequest(std::move(id),std::move(params)));});return {};}
+ // Call on the event thread; stale generations and disabled sessions never publish.
+ std::vector<winrt::Windows::Data::Json::JsonObject> pollResponses(const Token& token){
+  std::vector<winrt::Windows::Data::Json::JsonObject> responses;if(auto s=find(token.extensionId,token.generation)){
+   for(auto it=s->network.begin();it!=s->network.end();){if(it->response.wait_for(std::chrono::seconds(0))!=std::future_status::ready){++it;continue;}
+    responses.push_back(winrt::Windows::Data::Json::JsonObject::Parse(it->response.get()));it=s->network.erase(it);
+   }
+  }return responses;
+ }
  std::vector<std::string> routeFiles(const std::vector<std::string>& paths,const std::function<FileDropRouter::Bytes(const std::string&)>& read,const std::function<void(const std::string&)>& report){return drops_.route(paths,read,[&](const auto& id,const auto& name,const auto& bytes){return registry_.filesDropped(id,name,bytes);},report);}
 };
 }

@@ -6277,3 +6277,10 @@ selection.transform仍须衔接跨批浮动保留、实际操作次序、后续�
 核对现有2026-11-10资源同步修复与workspace-commands-color精确RGBA语义，保留未锁定引用选择资源、共享锁定引用刷新及既有历史。有效锁状态由每个Cel重复遍历组链改为每层计算一次；目标瓦片直接遍历图集行替换匹配像素，移除逐瓦片readTile分配、整块读回和回写。资源ID、选取范围、透明RGB及缓存重建保持原路径。对照Aseprite filters/replace_color_filter.cpp逐行遍历思路，其文件为EULA，仅阅读方案未复制代码。
 
 唯一正式Release构建通过；lua-script-invocation全套6.63s通过，正式--script-entry-check退出0，包含普通/实际Lua资源同步、锁定共享引用、UndoRedo及保存重开。来源806文件及diff检查通过。未新增镜像实现测试，复用既有行为回归；无CPU/FPS测量，不宣称解决整体UI卡顿，扩展生产宿主等整体迁移仍INCOMPLETE。仅提交本阶段三个文件，保留editor_support.h及用户日志/缓存。
+
+
+### 2026-11-11：扩展network.fetch实际异步传输与会话生命周期
+
+对照legacy ExtensionRuntimeHost.tsx472–485及stringParam，补齐RequestHost权限/认证之后的network.fetch异步分支。SessionHost按token generation保存任务，事件线程pollResponses交付带原requestId的响应；禁用、关闭、替换和析构取消任务并丢弃旧结果，future销毁不join后台线程。后台WinRT HttpClient执行HTTP(S)，默认GET，字符串body以UTF8 text/plain发送，GET/HEAD body拒绝；禁用cookie及交互认证UI。15秒总deadline贯穿响应头和流读取，返回status/ok/小写headers/bytes，HTTP404属于成功传输但result.ok=false；隐藏Set-Cookie响应头。流式读取在2MiB之外拒绝，避免先收完整超大body。JSON以UTF16跨线程，不跨线程共享WinRT JsonObject。
+
+新增真实loopback HTTP服务器验收GET、POST body、404、头字段、cookie、刚好2MiB/超1字节、参数/协议/权限拒绝、15秒超时、服务器确认接收后关闭不等待、重载不收旧结果、双扩展并发隔离。首轮缺cwctype导致编译失败已修正；最终extension-network/session-host/request-host三个目标构建与CTest全部通过，network23.53秒，来源808文件检查与diff检查通过。正式Editor尚未引用SessionHost，本阶段没有修改/重新构建正式exe，不宣称扩展已可从UI安装运行、旧HTML兼容或io.export事件闭环完成；生产执行引擎和原生窗口仍是后续迁移缺口。没有引入WebView/外部工程/preview。整体INCOMPLETE，阶段保存推送dev。

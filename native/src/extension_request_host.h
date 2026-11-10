@@ -70,7 +70,7 @@ public:
  void setServices(HostServices services){services_=std::move(services);}
  void setResourceReader(std::function<FileDropRouter::Bytes(const std::string&)> reader){readResource_=std::move(reader);}
  void deactivate(){if(!active_)return;active_=false;drops_.clear(extension_.id);menus_.clear();}
- std::optional<winrt::Windows::Data::Json::JsonObject> handle(const winrt::Windows::Data::Json::IJsonValue& raw,bool ownsSession,const std::string& locale,std::optional<std::string> encodedValue={}){
+ std::optional<winrt::Windows::Data::Json::JsonObject> handle(const winrt::Windows::Data::Json::IJsonValue& raw,bool ownsSession,const std::string& locale,std::optional<std::string> encodedValue={},std::function<void(std::wstring,std::wstring)> deferNetwork={}){
   using namespace winrt::Windows::Data::Json;
   if(!ownsSession||!active_||!extension_.enabled||!raw||raw.ValueType()!=JsonValueType::Object)return {};
   const auto request=raw.GetObject();auto field=[&](const wchar_t* key){return request.HasKey(key)?request.GetNamedValue(key):JsonValue::CreateNullValue();};
@@ -121,6 +121,10 @@ public:
    else if(method=="colors.get"){if(!workspace_.colors)throw std::runtime_error("Native color query is not connected");auto colors=workspace_.colors();if(colors){JsonObject object;object.Insert(L"primary",colorSnapshot(colors->primary));object.Insert(L"secondary",colorSnapshot(colors->secondary));result=object;}}
    else if(method=="colors.setPrimary"||method=="colors.setSecondary"){
     const auto color=colorParam(params.HasKey(L"color")?params.GetNamedValue(L"color"):JsonValue::CreateNullValue());const auto action=method=="colors.setPrimary"?workspace_.setPrimary:workspace_.setSecondary;if(!action)throw std::runtime_error("Native color selection is not connected");action(color);
+   }
+   else if(method=="network.fetch"){
+    if(!deferNetwork)throw std::runtime_error("Native asynchronous network transport is not connected");
+    deferNetwork(std::wstring(id.GetString()),std::wstring(params.Stringify()));return {};
    }
    else if(method=="storage.get")result=storage_.get(owner,key());
    else if(method=="storage.set"){const auto resolved=key();if(!encodedValue)throw std::invalid_argument("扩展存储值超过大小限制。");storage_.setEncoded(owner,resolved,*encodedValue);}
