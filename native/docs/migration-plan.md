@@ -6141,3 +6141,12 @@ selection.transform仍须衔接跨批浮动保留、实际操作次序、后续�
 核对legacy lua-script-service.ts104 buildInvocation与切帧命令：旧版允许pendingPaste上启动新脚本，原生此前只放行模型对话框回调。PendingInvocation.start显式允许已有浮动，复用现有捕获/过期保护与顺序执行器，继续拒绝active(false)的笔画等其他预览。新增真实异步Client小画布物化及大画布延迟浮动的新脚本继续移动、提交/撤销重做和活动笔画拒绝。完整迁移仍INCOMPLETE，最终验证后附。
 
 最终唯一正式Release构建成功；lua-script-invocation全套5.55s通过，正式--script-entry-check退出0。来源806文件及diff检查通过，未进行人工图像/FPS测量。整体INCOMPLETE，完整selection.transform能力保持false；本阶段保存推送dev。
+
+
+### 2026-11-10：浮动选区与图层复制、删除
+
+核对legacy lua-script-operations.ts410–420、workspace-commands-layer-structure.ts185及workspace-commands-layer-selection.ts99：复制保留pending，删除先selectLayer并提交pending。原生顺序执行器补齐layers.remove提交；新增真实Lua 5×5物化与257×257延迟预览的复制/取消/撤销、复制后删除/原源提交/撤销重做、后续失败整批恢复。完整selection.transform仍false，整体INCOMPLETE；实际验证结果后附。
+
+复制历史记录保留当时的物化预览：取消浮动再撤销复制，小画布恢复复制前物化像素，大画布延迟路径恢复稳定像素；回归按旧版同步当前帧、保存结构历史的时机区分断言，不将其改为提前提交。
+
+最终唯一正式Release构建成功；lua-script-invocation全套3.86s通过，正式--script-entry-check退出0。来源806文件与diff检查通过。未进行人工图像/FPS测量；完整selection.transform能力仍false，整体INCOMPLETE。本阶段保存推送dev。
