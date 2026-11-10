@@ -69,6 +69,23 @@ bool Document::commitScriptRasterBatch(const script::RasterBatch& batch){
  else{const auto g=displayedLayerGeometry(layer().id);if(g!=std::array<int,4>{expected.width,expected.height,expected.x,expected.y}||std::any_of(expected.pixels->begin(),expected.pixels->end(),[](Pixel p){return p!=0;}))throw std::logic_error("Lua empty raster baseline changed");}
  if(batch.after&&!batch.changes.empty())throw std::invalid_argument("Lua surface replacement also contains pixel changes");
  Edit edit{{},state_,nextState_};edit.beforeActive=edit.afterActive=layer().id;edit.beforeFrame=edit.afterFrame=frame().id;
+ if(batch.layerUpdateTimeline){
+  // Full layers.update candidate is admitted by the planner before any batch
+  // mutation, retaining native Timeline authority for text/tiles/shared Cels.
+  timeline::Timeline prepared(*batch.layerUpdateTimeline);
+  if(prepared.state().layers.size()!=timeline_.state().layers.size()||prepared.state().frames.size()!=timeline_.state().frames.size()||!prepared.hasLayer(layer().id)||!prepared.hasFrame(frame().id)||!prepared.diagnoseLinks().empty()||!batch.layerUpdateGeometry)throw std::invalid_argument("Invalid Lua layer update candidate");
+  edit.beforeTimeline=timeline_.state();edit.beforeScriptGeometry=displayedLayerGeometry_;edit.afterScriptGeometry=*batch.layerUpdateGeometry;
+  auto geometry=*batch.layerUpdateGeometry;auto nextSlices=batch.slices;auto nextPalette=batch.palette;auto nextSelection=batch.selection;
+  if(nextSlices){edit.beforeSlices=sliceState_;edit.afterSlices=*nextSlices;}
+  if(nextPalette){edit.paletteKind=12;edit.beforePalette=palette_;edit.afterPalette=*nextPalette;}
+  if(nextSelection){edit.pixelSelectionEdit=true;edit.beforePixelsSelection=selection_;edit.afterPixelsSelection=*nextSelection;}
+  if(batch.durations){if(batch.durations->size()!=prepared.state().frames.size())throw std::invalid_argument("Invalid Lua duration count");for(std::size_t i=0;i<batch.durations->size();++i){const auto& [id,duration]=(*batch.durations)[i];if(id!=prepared.state_.frames[i].id||duration<1||duration>60000)throw std::invalid_argument("Invalid Lua duration");prepared.state_.frames[i].duration=duration;}}
+  if(batch.loops)prepared.state_.loopSections=*batch.loops;
+  edit.afterTimeline=prepared.state();reserveHistoryEntries();
+  std::swap(timeline_,prepared);std::swap(displayedLayerGeometry_,geometry);if(nextSlices)std::swap(sliceState_,*nextSlices);if(nextPalette)std::swap(palette_,*nextPalette);if(nextSelection)std::swap(selection_,*nextSelection);
+  const auto beforeRevision=revision_;try{pushEdit(std::move(edit),batch.label);}catch(...){if(revision_==beforeRevision){std::swap(timeline_,prepared);std::swap(displayedLayerGeometry_,geometry);if(nextSlices)std::swap(sliceState_,*nextSlices);if(nextPalette)std::swap(palette_,*nextPalette);if(nextSelection)std::swap(selection_,*nextSelection);}throw;}
+  projectActiveCelOpacities();change_={0,0,width_,height_};publishChange();return true;
+ }
  std::vector<timeline::Surface*> synchronizedTargets;std::vector<timeline::Surface> synchronizedReplacements;std::unordered_set<std::string> synchronizedIds;
  std::size_t synchronizedBytes=0;for(const auto& o:batch.synchronizedOwners){const auto bytes=(o.before.pixels.size()+o.after.pixels.size())*sizeof(Pixel)*2ull;if(bytes>256ull*1024*1024-synchronizedBytes)throw std::length_error("Lua synchronized history exceeds native budget");synchronizedBytes+=bytes;auto r=timeline_.resolveSurface(o.ownerId);if(!r.source||!r.surface||r.source->id!=o.ownerId||!synchronizedIds.insert(o.ownerId).second||(resolved.source&&resolved.source->id==o.ownerId)||r.surface->width!=o.before.width||r.surface->height!=o.before.height||r.surface->offsetX!=o.before.offsetX||r.surface->offsetY!=o.before.offsetY||r.surface->pixels!=o.before.pixels)throw std::logic_error("Lua synchronized owner baseline changed");raster::validate(o.after);edit.surfaceChanges.push_back({o.ownerId,o.before,o.after});synchronizedReplacements.push_back(o.after);}
  std::vector<std::optional<timeline::ColorOverlayStyle>*> styleTargets;auto styleValues=batch.styles;std::unordered_set<std::string> styleIds;

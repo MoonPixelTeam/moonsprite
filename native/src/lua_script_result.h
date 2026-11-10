@@ -15,6 +15,10 @@ struct RasterBatch {
  std::optional<std::vector<timeline::LoopSection>> loops;
  struct OwnerReplacement {std::string ownerId;timeline::Surface before,after;};
  std::vector<OwnerReplacement> synchronizedOwners;
+ // Structural candidate is used only for layers.update batches. It includes
+ // raster writes and sequential MSE effects, preflighted before installation.
+ std::optional<timeline::State> layerUpdateTimeline;
+ std::optional<std::unordered_map<std::string,std::array<int,4>>> layerUpdateGeometry;
 };
 struct CreatedLayer {
  std::string id;std::u32string name;

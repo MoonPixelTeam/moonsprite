@@ -5923,3 +5923,14 @@ Release正式程序构建成功，--script-window-host-check退出0。两项Lua�
 新增真实Lua 128×128密集修改、三链接帧、一项历史、提交/Undo/Redo修订增长上限、原始透明RGB恢复、共享帧以及原生保存重开检查。首次保存回归暴露测试fixture持有空source ZIP（非产品回归），明确清除该虚假源后通过。正式Release重建成功，--script-entry-check退出0；两项Lua专项通过1.82s。通用历史专项结果另附。无UI修改或截图验收，无前后耗时基准，不据此宣称整体卡顿解决。脚本图层结构域仍待完整事务适配，Hybrid大画布延迟及其他迁移继续INCOMPLETE；保留用户既有差异、数据和缓存，本阶段提交推送dev。
 
 最终通用 document-raster-history 专项通过2.00s，来源804文件及diff检查通过。
+
+
+### 2026-11-10：MSE layers.update 完整属性入口迁移阶段
+
+对照 lua-script-operations.ts layers.update/specFor/finiteNumber/stringValue/booleanValue、workspace-commands-layer-properties.ts setLayerPropertiesWithBlend/applyLayerName、workspace-commands-layer-structure.ts moveLayerBy、core/animation.ts syncActiveAnimationLayer、linked-layers.ts 和 lua-script-service.test.ts 混合事务/失败恢复，接入名称、透明度、混合模式、锁定、显隐、标记色、原样说明与位置。名称ECMAScript trim且空名跳过整组属性；own/group锁过滤视觉属性，组锁禁止传入false的整组属性更新，visible与移动继续独立按旧顺序；位置只更新当前操作帧resolved owner及text origin/transform，不移动蒙版/像素选区或独立其他帧。链接层传播标记色，独占网格瓦片集随层改名，共享瓦片集保留名称。
+
+layers.update存在时，沿现有候选Timeline预检后，使用原生完整Timeline历史与显式空槽display geometry端点合并像素/样式/色板/选择/帧时长/循环段，支持多批原目标重聚焦、缺失Cel的内容属性同步、UndoRedo和保存重开；仅元数据/位置不创建缺失Cel。全结果预检仍先于写入，原目标被前批锁定导致后批拒绝。旧版会在前批完成后才报错；原生沿已采用的全结果预检边界提前拒绝，避免部分写入。256MiB保守预算覆盖候选、资源/蒙版和保留计划；不含layers.update的普通脚本保留原增量路径。此处同步完整状态复制仍为性能成本，不冒充大工程延迟路径完成。
+
+真实Lua覆盖位置/对象参数、Unicode名称默认、raw说明、no-op、混合像素、锁定边界、非法色前置拒绝、切帧后属性/时长/色板、多批像素、非活动文本与组锁、链接标记色与独立anchor、独占/共享瓦片集、空Cel geometry、撤销重做和保存重开；新增正式Editor入口属性/像素混合撤销验收。构建首轮UTF16名称转换误用to_hstring导致编译失败，改用hstring构造；测试先修正无变化第二批错误多撤销一次、锁定组传false应拒绝属性的预期。最终正式构建与检查结果后附。无新UI绘制、无截图验收，不宣称其他layers.create/duplicate/remove、笔刷外部宿主和所有迁移完成。用户既有差异/缓存/数据保留，阶段验证后保存推送dev。
+
+最终唯一正式Release构建成功；--script-entry-check（含真实属性/像素混合事务及UndoRedo）、--script-window-host-check、--script-playback-check均退出0。最终两项Lua专项通过2.04s，document-raster-history通过1.79s，来源804文件及diff检查通过。无人工视觉/截图验收，整体仍INCOMPLETE。

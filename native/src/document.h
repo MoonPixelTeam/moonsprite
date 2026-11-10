@@ -741,6 +741,7 @@ private:
   std::optional<SliceState> beforeSlices,afterSlices;
     std::optional<std::pair<int,int>> beforeDimensions,afterDimensions;
     std::optional<timeline::State> beforeTimeline,afterTimeline;
+    std::optional<std::unordered_map<std::string,std::array<int,4>>> beforeScriptGeometry,afterScriptGeometry;
     std::optional<TilemapSelection> beforeTileSelection,afterTileSelection;
     std::shared_ptr<const FreeTileSourceSnapshot> beforeSourceProperties,afterSourceProperties;
     bool freeTileSourceAddition=false,freeTileSourceDeletion=false,freeTileSourceReorder=false;

@@ -763,6 +763,11 @@ void Editor::smokeScriptEntry(){
  if(!menuCommands_.invoke("pasteLayerStyles")||!document.layer().layerStyles||!document.layer().layerStyles->enabled)throw std::runtime_error("Native paste did not use script clipboard");
  if(!menuCommands_.invoke("copyLayerStyles"))throw std::runtime_error("Native copy style refused");runPanelCheck("mse.styles.clear(); mse.styles.paste()");if(!document.layer().layerStyles||document.layer().layerStyles->shadow.offsetX!=-3)throw std::runtime_error("Script paste did not use native clipboard");
  copiedLayerStyle_=savedStyleClipboard;layerStyleClipboard_=savedStyleClipboardValid;
+ const auto propertyHistory=document.historyPosition();const auto propertyName=document.layer().name;const auto propertyPixel=document.pixels()[0];
+ runPanelCheck("app.transaction(function() app.activeImage:drawPixel(0,0,0xffaabbcc); mse.layers.update{name='  Script properties  ',description=' raw ',opacity=128,blendMode='multiply',x=4,y=5,displayColor={r=1,g=2,b=3}} end)");
+ if(document.historyPosition()!=propertyHistory+1||document.layer().name!=U"Script properties"||document.layer().description!=U" raw "||document.layer().opacity!=128./255.||document.activeSurfaceIfPresent()->offsetX!=4||document.pixels()[0]!=0xffaabbcc)throw std::runtime_error("Formal script layer properties failed");
+ document.undo();if(document.layer().name!=propertyName||document.activeSurfaceIfPresent()->offsetX!=0||document.pixels()[0]!=propertyPixel)throw std::runtime_error("Formal script layer properties undo failed");document.redo();if(document.layer().name!=U"Script properties"||document.activeSurfaceIfPresent()->offsetY!=5)throw std::runtime_error("Formal script layer properties redo failed");document.undo();
+
  // Panel requests finish on the original tab before created documents are adopted.
  ensureProjects();const auto sourceIdentity=document.identity();const auto sourceTab=activeProject_,tabs=projects_.size();
  runPanelCheck("mse.workspace.hidePanel('palette'); local s=Sprite(2,2); s.name='Script adopted'; app.activeImage:drawPixel(0,0,0xff556677)");
