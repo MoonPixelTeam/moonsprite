@@ -6,14 +6,18 @@
 #include <cmath>
 namespace moon {
 struct ScriptDocumentBuilder {
- static script::LayerStructureUi ui(const Document& d){return {d.activeLayerId_,d.activeFrameId_,d.frameAnchor_,d.timelineSelection_,d.selectedFrames_,d.selectedGroupIds_,d.collapsedGroupIds_,d.selectedGroupId_,d.tileSelection_};}
- static void restore(Document& d,const script::LayerStructureUi& u){d.activeLayerId_=u.activeLayer;d.activeFrameId_=u.activeFrame;d.frameAnchor_=u.frameAnchor;d.timelineSelection_=u.selection;d.selectedFrames_=u.frames;d.selectedGroupIds_=u.groups;d.collapsedGroupIds_=u.collapsed;d.selectedGroupId_=u.group;d.tileSelection_=u.tiles;}
+ static script::LayerStructureUi ui(const Document& d){return {d.activeLayerId_,d.activeFrameId_,d.frameAnchor_,d.timelineSelection_,d.selectedFrames_,d.selectedGroupIds_,d.collapsedGroupIds_,d.selectedGroupId_,d.tileSelection_,d.freeInstanceSelected_,d.freeInstancePrimary_,d.freeInstanceAnchor_,d.freeInstanceSelectionFrame_,d.freeInstanceViewLayer_};}
+ static void restore(Document& d,const script::LayerStructureUi& u){d.activeLayerId_=u.activeLayer;d.activeFrameId_=u.activeFrame;d.frameAnchor_=u.frameAnchor;d.timelineSelection_=u.selection;d.selectedFrames_=u.frames;d.selectedGroupIds_=u.groups;d.collapsedGroupIds_=u.collapsed;d.selectedGroupId_=u.group;d.tileSelection_=u.tiles;d.freeInstanceSelected_=u.freeSelected;d.freeInstancePrimary_=u.freePrimary;d.freeInstanceAnchor_=u.freeAnchor;d.freeInstanceSelectionFrame_=u.freeFrame;d.freeInstanceViewLayer_=u.freeView;}
  static bool structure(const Document& source,timeline::Timeline& timeline,std::unordered_map<std::string,std::array<int,4>>& geometry,script::LayerStructureUi& context,const std::string& operation,const std::string& id,const std::optional<std::u32string>& name,const std::optional<double>& opacity){
   // A small detached shell runs the established structural algorithms without
   // copying live history, recording callbacks or allocating a canvas bitmap.
-  Document draft(1,1);draft.width_=source.width_;draft.height_=source.height_;draft.timeline_=std::move(timeline);draft.displayedLayerGeometry_=geometry;restore(draft,context);
+  Document draft(1,1);draft.width_=source.width_;draft.height_=source.height_;draft.timeline_=std::move(timeline);draft.displayedLayerGeometry_=geometry;restore(draft,context);draft.layerDisplayColors_=source.layerDisplayColors_;
   bool changed=false;
-  if(operation=="layers.create"){
+  if(operation=="freeTiles.createLayer"){
+   changed=draft.createFreeTileLayer(name.value_or(U"自由瓦片图层"),id);
+  }else if(operation=="freeTiles.createSource"){
+   draft.activeLayerId_=id;changed=draft.addFreeTileSource();if(changed)draft.tileSelection_.mode=tiles::Mode::Edit;if(changed&&name){const auto& sources=draft.layer().freeTiles->sources;Document::FreeTileSourceChanges patch;patch.name=*name;draft.setFreeTileSourceProperties(sources.back().id,patch);}
+  }else if(operation=="layers.create"){
    const auto count=draft.timeline_.state().layers.size();draft.addLayerInGroupContext();changed=draft.timeline_.state().layers.size()!=count;if(!changed)throw std::logic_error("Lua layer creation failed");
    auto state=std::move(draft.timeline_).takeState();for(auto& l:state.layers)if(l.id==draft.activeLayerId_){if(name&&!name->empty())l.name=*name;if(opacity){l.opacity=*opacity;for(auto& c:state.cels)if(c.layerId==l.id&&c.frameId==draft.activeFrameId_)c.opacity=*opacity;}}draft.timeline_=timeline::Timeline(std::move(state));
   }else if(operation=="layers.duplicate"){
@@ -97,7 +101,7 @@ bool Document::commitScriptRasterBatch(const script::RasterBatch& batch){
   // mutation, retaining native Timeline authority for text/tiles/shared Cels.
   timeline::Timeline prepared(*batch.layerUpdateTimeline);
   if(prepared.state().frames.size()!=timeline_.state().frames.size()||!prepared.hasLayer(batch.layerStructureUi?batch.layerStructureUi->activeLayer:layer().id)||!prepared.hasFrame(frame().id)||!prepared.diagnoseLinks().empty()||!batch.layerUpdateGeometry)throw std::invalid_argument("Invalid Lua layer update candidate");
-  if(batch.layerStructureUi){const auto& u=*batch.layerStructureUi;edit.beforeTileSelection=tileSelection_;edit.afterTileSelection=u.tiles;edit.afterActive=u.activeLayer;edit.afterFrame=u.activeFrame;edit.beforeTimelineSelection=timelineSelection_;edit.afterTimelineSelection=u.selection;edit.beforeSelection=selectedFrames_;edit.afterSelection=u.frames;edit.beforeFrameAnchor=frameAnchor_;edit.afterFrameAnchor=u.frameAnchor;edit.beforeGroupUi=GroupUiSnapshot{selectedGroupIds_,collapsedGroupIds_,selectedGroupId_};edit.afterGroupUi=GroupUiSnapshot{u.groups,u.collapsed,u.group};}
+  if(batch.layerStructureUi){const auto& u=*batch.layerStructureUi;edit.beforeFreeTileSelection=FreeTileSelectionSnapshot{freeInstanceSelected_,freeInstancePrimary_,freeInstanceAnchor_,freeInstanceSelectionFrame_,freeInstanceViewLayer_};edit.afterFreeTileSelection=FreeTileSelectionSnapshot{u.freeSelected,u.freePrimary,u.freeAnchor,u.freeFrame,u.freeView};edit.beforeTileSelection=tileSelection_;edit.afterTileSelection=u.tiles;edit.afterActive=u.activeLayer;edit.afterFrame=u.activeFrame;edit.beforeTimelineSelection=timelineSelection_;edit.afterTimelineSelection=u.selection;edit.beforeSelection=selectedFrames_;edit.afterSelection=u.frames;edit.beforeFrameAnchor=frameAnchor_;edit.afterFrameAnchor=u.frameAnchor;edit.beforeGroupUi=GroupUiSnapshot{selectedGroupIds_,collapsedGroupIds_,selectedGroupId_};edit.afterGroupUi=GroupUiSnapshot{u.groups,u.collapsed,u.group};}
   edit.beforeTimeline=timeline_.state();edit.beforeScriptGeometry=displayedLayerGeometry_;edit.afterScriptGeometry=*batch.layerUpdateGeometry;
   auto geometry=*batch.layerUpdateGeometry;auto nextSlices=batch.slices;auto nextPalette=batch.palette;auto nextSelection=batch.selection;
   if(nextSlices){edit.beforeSlices=sliceState_;edit.afterSlices=*nextSlices;}

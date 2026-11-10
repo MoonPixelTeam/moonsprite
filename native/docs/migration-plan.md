@@ -5979,3 +5979,12 @@ layers.update存在时，沿现有候选Timeline预检后，使用原生完整Ti
 真实Lua覆盖资源历史/dirty、混合事务、反向引用、RGBA转换、同值无历史、非法后续操作无部分提交、共享资源、UndoRedo稳定身份及保存重开；正式Editor入口增加生产宿主create/place/edit及UndoRedo。候选采用既有全状态历史，受256MiB工作预算限制，不声称增量资源历史完成；调用入口仍限RGBA栅格目标，selection.transform浮动交接、freeTiles及其他MSE领域仍INCOMPLETE。无截图/人工视觉验收；最终构建及检查后附。
 
 最终唯一正式Release构建通过，真实Lua invocation全套通过2.39s（含链接Cel指定帧放置、共享源、RGBA与save/reopen），正式--script-entry-check退出0；来源804文件和diff检查通过。整体迁移仍INCOMPLETE；阶段保存推送dev，保留原有用户差异与未跟踪数据。
+
+
+### 2026-11-10：MSE 自由瓦片资源与实例事务
+
+直接核对 lua-script-operations.ts freeTiles 四项、layer-creation、workspace-commands-free-tile、free-tile-transaction 与 core/free-tile-document。createLayer/createSource在detached Document复用原生实现，继承已配置的源显示色，源名称沿用属性事务trim和共享资源改名，新增源进入Edit。批历史捕获瓦片选择和自由实例选择UI，取消/UndoRedo恢复。place保持旧版首个拥有者查找（原生逆序）、source/resource别名及共享层放置限制，使用原始x/y和固定opacity1/normal，不套用光标居中或对称绘制；每帧容器独立，缺失slot创建。edit保留资源/首tile ID、同步共享源偏移，刷新相关缓存；同值无历史，RGBA转换沿用网格脚本路径。全结果预检后提交混合像素/资源/实例批次，非法后续操作不留下早期写入。
+
+真实Lua覆盖创建/命名/选择、偏移尺寸编辑、放置默认、共享编辑及首owner拒绝、缺失帧slot和实例隔离、稳定ID UndoRedo、保存重开；正式Editor入口增加生产异步宿主创建源/编辑/放置/UndoRedo。现有原生资源读写及源编辑只支持256×256，旧版free source允许更大，明确作为未完成兼容缺口；本阶段不放宽保存格式/资源验证来冒充完成。坐标/工作预算同样沿用原生边界；整体仍INCOMPLETE，无截图/人工视觉验收。最终检查后附。
+
+最终唯一正式Release构建通过，Lua invocation全套通过3.17s，最新正式--script-entry-check退出0；来源804文件和diff检查通过。无截图/人工视觉验收；整体仍INCOMPLETE，本阶段保存推送dev。

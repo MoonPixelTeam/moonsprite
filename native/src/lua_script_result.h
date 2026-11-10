@@ -7,6 +7,7 @@ struct LayerStructureUi {
  std::vector<std::string> frames,groups,collapsed;
  std::optional<std::string> group;
  TilemapSelection tiles;
+ std::vector<std::string> freeSelected;std::string freePrimary,freeAnchor,freeFrame,freeView;
 };
 LayerStructureUi captureLayerStructureUi(const Document&);
 void restoreLayerStructureUi(Document&,const LayerStructureUi&);
