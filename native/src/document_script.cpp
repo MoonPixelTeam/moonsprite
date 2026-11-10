@@ -71,13 +71,14 @@ bool Document::commitScriptRasterBatch(const script::RasterBatch& batch){
  Edit edit{{},state_,nextState_};edit.beforeActive=edit.afterActive=layer().id;edit.beforeFrame=edit.afterFrame=frame().id;
  std::size_t changed=0;
  const bool slicesChanged=batch.slices.has_value();
- const bool selectionChanged=batch.selection.has_value();
+ const bool selectionChanged=batch.selection.has_value();const bool paletteChanged=batch.palette.has_value();
+ if(paletteChanged){edit.paletteKind=12;edit.beforePalette=palette_;edit.afterPalette=*batch.palette;}
  if(slicesChanged){edit.beforeSlices=sliceState_;edit.afterSlices=*batch.slices;}
  if(selectionChanged){edit.pixelSelectionEdit=true;edit.beforePixelsSelection=selection_;edit.afterPixelsSelection=*batch.selection;}
- if(!batch.after){std::unordered_set<std::size_t> seen;for(const auto& c:batch.changes){if(c.index>=expected.pixels->size()||!seen.insert(c.index).second||(*expected.pixels)[c.index]!=c.before)throw std::invalid_argument("Invalid Lua pixel change");changed+=c.before!=c.after;}if(!changed&&!slicesChanged&&!selectionChanged)return false;}
+ if(!batch.after){std::unordered_set<std::size_t> seen;for(const auto& c:batch.changes){if(c.index>=expected.pixels->size()||!seen.insert(c.index).second||(*expected.pixels)[c.index]!=c.before)throw std::invalid_argument("Invalid Lua pixel change");changed+=c.before!=c.after;}if(!changed&&!slicesChanged&&!selectionChanged&&!paletteChanged)return false;}
  // Slice-only batches reuse the same history entry without materializing an
  // absent raster Cel or copying the document's pixel storage.
- if(!batch.after&&!changed){edit.documentChanged=slicesChanged;edit.afterState=slicesChanged?nextState_:state_;reserveHistoryEntries();auto replacement=slicesChanged?*batch.slices:SliceState{};auto selectionReplacement=selectionChanged?*batch.selection:std::optional<SelectionMask>{};if(slicesChanged)std::swap(sliceState_,replacement);if(selectionChanged)std::swap(selection_,selectionReplacement);const auto beforeRevision=revision_;try{pushEdit(std::move(edit),batch.label);}catch(...){if(revision_==beforeRevision){if(slicesChanged)std::swap(sliceState_,replacement);if(selectionChanged)std::swap(selection_,selectionReplacement);}throw;}change_={0,0,width_,height_};publishChange();return true;}
+ if(!batch.after&&!changed){edit.documentChanged=slicesChanged||paletteChanged;edit.afterState=edit.documentChanged?nextState_:state_;reserveHistoryEntries();auto replacement=slicesChanged?*batch.slices:SliceState{};auto paletteReplacement=paletteChanged?*batch.palette:PaletteState{};auto selectionReplacement=selectionChanged?*batch.selection:std::optional<SelectionMask>{};if(slicesChanged)std::swap(sliceState_,replacement);if(paletteChanged)std::swap(palette_,paletteReplacement);if(selectionChanged)std::swap(selection_,selectionReplacement);const auto beforeRevision=revision_;try{pushEdit(std::move(edit),batch.label);}catch(...){if(revision_==beforeRevision){if(slicesChanged)std::swap(sliceState_,replacement);if(paletteChanged)std::swap(palette_,paletteReplacement);if(selectionChanged)std::swap(selection_,selectionReplacement);}throw;}change_={0,0,width_,height_};publishChange();return true;}
  // Admission before history/owner copies. Match existing surface-edit working
  // budget and deduplicate linked storage; do not copy an entire project.
  constexpr std::size_t limit=256*1024*1024;std::size_t used=0;std::set<std::string> seen;
@@ -102,13 +103,13 @@ bool Document::commitScriptRasterBatch(const script::RasterBatch& batch){
  if(batch.after){edit.surfaceChanges.push_back({ownerId,before,makeSurface(*batch.after)});replacement=edit.surfaceChanges.front().after;}
  else{edit.targetCelId=slot?slot->id:ownerId;edit.pixelAddress=PixelAddressSpace{before.width,before.height,before.storageOriginX.value_or(0),before.storageOriginY.value_or(0)};}
  std::optional<SliceState> previousSlices;if(slicesChanged)previousSlices=*batch.slices;
- auto previousSelection=selectionChanged?*batch.selection:std::optional<SelectionMask>{};
+ auto previousPalette=paletteChanged?*batch.palette:PaletteState{};auto previousSelection=selectionChanged?*batch.selection:std::optional<SelectionMask>{};
  // All history payloads and replacement pixels are prepared before installation.
  reserveHistoryEntries();auto* live=targetTimeline.mutableOwnedSurface(ownerId);if(!live)throw std::logic_error("Missing Lua writable owner");
  if(batch.after)std::swap(*live,*replacement);else for(const auto& p:edit.pixels)live->pixels[p.index]=p.after;
  if(prepared)std::swap(timeline_,*prepared);
  if(previousSlices)std::swap(sliceState_,*previousSlices);
- if(selectionChanged)std::swap(selection_,previousSelection);
+ if(paletteChanged)std::swap(palette_,previousPalette);if(selectionChanged)std::swap(selection_,previousSelection);
  const auto beforeRevision=revision_;
  try{pushEdit(std::move(edit),batch.label.empty()?U"脚本":batch.label);}
  catch(...){
@@ -118,7 +119,7 @@ bool Document::commitScriptRasterBatch(const script::RasterBatch& batch){
   // committed history and its pixels consistent, then propagate the error.
   if(revision_!=beforeRevision){change_={0,0,width_,height_};publishChange();throw;}
   if(previousSlices)std::swap(sliceState_,*previousSlices);
-  if(selectionChanged)std::swap(selection_,previousSelection);
+  if(paletteChanged)std::swap(palette_,previousPalette);if(selectionChanged)std::swap(selection_,previousSelection);
   if(prepared)std::swap(timeline_,*prepared);
   else if(batch.after)std::swap(*live,*replacement);
   else for(const auto& p:batch.changes)live->pixels[p.index]=p.before;

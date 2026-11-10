@@ -6,6 +6,7 @@
 #include <winrt/Windows.Foundation.Collections.h>
 #include "lua_script_result.h"
 #include "raster_geometry.h"
+#include "palette_layout.h"
 #include <cmath>
 #include <charconv>
 #include <unordered_set>
@@ -92,19 +93,31 @@ CreatedLayer createdLayer(const JsonObject& wire,const winrt::hstring& format=L"
 // lua-script-operations specFor: direct tables or positional (id, patch).
 JsonObject operationSpec(const JsonObject& operation){
  const auto args=operation.GetNamedValue(L"arguments");if(args.ValueType()==JsonValueType::Object)return args.GetObject();JsonArray values;if(args.ValueType()==JsonValueType::Array)values=args.GetArray();else values.Append(args);
- JsonObject out;if(values.Size()>1&&values.GetAt(1).ValueType()==JsonValueType::Object){out=JsonObject::Parse(values.GetAt(1).GetObject().Stringify());if(!out.HasKey(L"id")||out.GetNamedValue(L"id").ValueType()==JsonValueType::Null)out.Insert(L"id",values.GetAt(0));}else out.Insert(L"value",values.Size()?values.GetAt(0):JsonValue::CreateNullValue());return out;
+ JsonObject out;if(values.Size()>1&&values.GetAt(1).ValueType()==JsonValueType::Object){out=JsonObject::Parse(values.GetAt(1).GetObject().Stringify());if(operation.GetNamedString(L"path")==L"palette.update"&&out.HasKey(L"r")){JsonObject wrapped;wrapped.Insert(L"id",values.GetAt(0));wrapped.Insert(L"color",out);return wrapped;}if(!out.HasKey(L"id")||out.GetNamedValue(L"id").ValueType()==JsonValueType::Null)out.Insert(L"id",values.GetAt(0));}else out.Insert(L"value",values.Size()?values.GetAt(0):JsonValue::CreateNullValue());return out;
 }
 double operationInteger(const JsonObject& o,const wchar_t* key,double fallback=0){if(!o.HasKey(key)||o.GetNamedValue(key).ValueType()!=JsonValueType::Number)return fallback;const auto n=o.GetNamedNumber(key);return std::isfinite(n)?std::trunc(n):fallback;}
 int sliceCoordinate(double n){return int(std::clamp(n,double(std::numeric_limits<int>::min()),double(std::numeric_limits<int>::max())));}
 SliceRect sliceRect(const JsonObject& o){return {sliceCoordinate(operationInteger(o,L"x")),sliceCoordinate(operationInteger(o,L"y")),sliceCoordinate(std::max(1.,operationInteger(o,L"width"))),sliceCoordinate(std::max(1.,operationInteger(o,L"height")))};}
 void validateSliceMask(const JsonObject& spec){if(spec.HasKey(L"mask")&&spec.GetNamedValue(L"mask").ValueType()==JsonValueType::Array){const auto r=sliceRect(spec);if(std::uint64_t(r.width)*r.height!=spec.GetNamedArray(L"mask").Size())throw std::invalid_argument("selection mask size does not match its bounds");}}
-struct OperationPlan {std::optional<SliceState> slices;std::optional<std::optional<SelectionMask>> selection;};
-std::vector<OperationPlan> planOperations(const Document& d,const JsonArray& batches){
- SliceState state{d.slices(),d.selectedSliceIds()};auto selection=d.selection();std::vector<OperationPlan> plans;std::size_t serial=0;
- for(const auto& item:batches){bool changed=false,selectionChanged=false;const auto batch=item.GetObject();if(batch.HasKey(L"operations"))for(const auto& entry:batch.GetNamedArray(L"operations")){
+Pixel operationColor(const IJsonValue& value,std::optional<Pixel> fallback={}){if(value.ValueType()!=JsonValueType::Object){if(fallback)return *fallback;throw std::invalid_argument("color must be an { r, g, b, a } table");}const auto o=value.GetObject();Pixel p=0;int shift=0;for(auto key:{L"r",L"g",L"b",L"a"}){p|=Pixel(std::clamp(operationInteger(o,key,shift==24?255:0),0.,255.))<<shift;shift+=8;}return p;}
+struct OperationPlan {std::optional<SliceState> slices;std::optional<std::optional<SelectionMask>> selection;std::optional<PaletteState> palette;};
+std::vector<OperationPlan> planOperations(const Document& d,const JsonArray& batches,bool selectCreatedPaletteColor){
+ SliceState state{d.slices(),d.selectedSliceIds()};auto selection=d.selection();auto palette=d.palette();std::vector<OperationPlan> plans;std::size_t serial=0;
+ for(const auto& item:batches){bool changed=false,selectionChanged=false,paletteChanged=false;const auto batch=item.GetObject();if(batch.HasKey(L"operations"))for(const auto& entry:batch.GetNamedArray(L"operations")){
   const auto operation=entry.GetObject();const auto path=operation.GetNamedString(L"path");
-  if(path!=L"slices.create"&&path!=L"slices.update"&&path!=L"slices.remove"&&path!=L"selection.set"&&path!=L"selection.clear"&&path!=L"selection.invert")throw std::logic_error("Lua MSE operation adapter is incomplete: "+winrt::to_string(path));
+  if(path!=L"slices.create"&&path!=L"slices.update"&&path!=L"slices.remove"&&path!=L"selection.set"&&path!=L"selection.clear"&&path!=L"selection.invert"&&path!=L"palette.create"&&path!=L"palette.update"&&path!=L"palette.remove")throw std::logic_error("Lua MSE operation adapter is incomplete: "+winrt::to_string(path));
   auto spec=operationSpec(operation);
+  if(path==L"palette.create"||path==L"palette.update"||path==L"palette.remove"){
+   if(path==L"palette.create"){
+    const auto color=spec.HasKey(L"r")?operationColor(spec):spec.HasKey(L"color")?operationColor(spec.GetNamedValue(L"color")):palette.primary;
+    if(palette.nextId<1||palette.nextId==std::numeric_limits<int>::max())throw std::length_error("Palette color ID exceeds native integer range");const auto id=palette.nextId++;const auto name=std::to_string(id);auto slots=normalizePaletteSlots(palette.entries,palette.order(),palette.slots,palette.columns);palette.entries.push_back({id,U"颜色 "+std::u32string(name.begin(),name.end()),color});auto hole=std::find(slots.begin(),slots.end(),0);if(hole!=slots.end())*hole=id;else{const auto at=slots.size();slots.resize(at+std::clamp(palette.columns,1,256));slots[at]=id;}palette.slots=std::move(slots);palette.independentOrder.reset();palette.selected=selectCreatedPaletteColor?std::vector<int>{id}:std::vector<int>{};palette.primaryId=selectCreatedPaletteColor?id:0;paletteChanged=true;
+   }else{
+    auto raw=spec;if(path==L"palette.remove"&&(!raw.HasKey(L"id")||raw.GetNamedValue(L"id").ValueType()==JsonValueType::Null)&&raw.HasKey(L"value"))raw.Insert(L"id",raw.GetNamedValue(L"value"));const auto id=sliceCoordinate(operationInteger(raw,L"id"));auto found=std::find_if(palette.entries.begin(),palette.entries.end(),[&](const auto& e){return e.id==id;});
+    if(path==L"palette.update"){
+     if(found==palette.entries.end())throw std::invalid_argument("palette color does not exist");if(spec.HasKey(L"color")){const auto color=operationColor(spec.GetNamedValue(L"color"),found->color);if(color!=found->color){if(d.paletteColorSynchronization())throw std::logic_error("Lua synchronized palette pixel replacement adapter is incomplete");const auto before=found->color;found->color=color;if(palette.primary==before)palette.primary=color;if(palette.secondary==before)palette.secondary=color;paletteChanged=true;}}if(spec.HasKey(L"name")&&spec.GetNamedValue(L"name").ValueType()==JsonValueType::String){auto name=unicode(spec.GetNamedString(L"name"));if(name!=found->name){found->name=std::move(name);paletteChanged=true;}}
+    }else{const auto order=palette.order();if(std::find(order.begin(),order.end(),id)!=order.end()){palette.slots=normalizePaletteSlots(palette.entries,order,palette.slots,palette.columns);for(auto& slot:palette.slots)if(slot==id)slot=0;palette.independentOrder.reset();palette.selected.erase(std::remove(palette.selected.begin(),palette.selected.end(),id),palette.selected.end());if(std::find(palette.selected.begin(),palette.selected.end(),palette.primaryId)==palette.selected.end())palette.primaryId=palette.selected.empty()?0:palette.selected.back();paletteChanged=true;}}
+   }continue;
+  }
   if(path==L"selection.set"||path==L"selection.clear"||path==L"selection.invert"){
    auto next=selection;
    if(path==L"selection.clear")next.reset();
@@ -122,20 +135,20 @@ std::vector<OperationPlan> planOperations(const Document& d,const JsonArray& bat
    if(path==L"slices.remove"){state.items.erase(found);state.selected.erase(std::remove(state.selected.begin(),state.selected.end(),id),state.selected.end());changed=true;}
    else{auto next=*found;for(auto [key,target]:{std::pair{L"x",&next.rect.x},{L"y",&next.rect.y},{L"width",&next.rect.width},{L"height",&next.rect.height}})if(spec.HasKey(key))*target=sliceCoordinate(operationInteger(spec,key));next.rect.width=std::max(1,next.rect.width);next.rect.height=std::max(1,next.rect.height);next.rect=clampSliceRect(next.rect,d.width(),d.height());if(spec.HasKey(L"name")&&spec.GetNamedValue(L"name").ValueType()==JsonValueType::String)next.name=sanitizeSliceName(unicode(spec.GetNamedString(L"name")),next.name);if(!(next==*found)){*found=std::move(next);changed=true;}}
   }
- }OperationPlan plan;if(changed)plan.slices=state;if(selectionChanged)plan.selection.emplace(selection);plans.push_back(std::move(plan));}return plans;
+ }OperationPlan plan;if(changed)plan.slices=state;if(selectionChanged)plan.selection.emplace(selection);if(paletteChanged)plan.palette=palette;plans.push_back(std::move(plan));}return plans;
 }
 }
-RasterSummary applyRasterResult(Document& d,Target& target,const std::string& json){
+RasterSummary applyRasterResult(Document& d,Target& target,const std::string& json,bool selectCreatedPaletteColor){
  (void)validateResult(target,json);if(d.active()||!target.matches(d))throw std::logic_error("Lua script target changed");
  const auto result=JsonObject::Parse(winrt::to_hstring(json));
  // This stage is deliberately closed to operations requiring workspace state.
  // The full executor will route these explicitly; no data may be dropped.
  if(result.GetNamedArray(L"createdDocuments").Size())throw std::logic_error("Lua created documents require the workspace result executor");
  for(const auto& item:result.GetNamedArray(L"createdLayers")){const auto layer=item.GetObject();(void)layer.GetNamedBoolean(L"visible");(void)layer.GetNamedBoolean(L"locked");if(d.timeline().hasLayer(winrt::to_string(layer.GetNamedString(L"id"))))throw std::invalid_argument("Lua layer id already exists");}
- const auto plans=planOperations(d,result.GetNamedArray(L"batches"));std::size_t batchIndex=0;
+ const auto plans=planOperations(d,result.GetNamedArray(L"batches"),selectCreatedPaletteColor);std::size_t batchIndex=0;
  RasterSummary summary;
  for(const auto& item:result.GetNamedArray(L"batches")){
-  const auto wire=item.GetObject();RasterBatch batch;batch.before=target.expected;const auto& plan=plans.at(batchIndex++);batch.slices=plan.slices;batch.selection=plan.selection;
+  const auto wire=item.GetObject();RasterBatch batch;batch.before=target.expected;const auto& plan=plans.at(batchIndex++);batch.slices=plan.slices;batch.selection=plan.selection;batch.palette=plan.palette;
   auto label=wire.GetNamedString(L"label",L"");if(label.empty())label=result.GetNamedString(L"fileName",L"");batch.label=label.empty()?U"脚本":unicode(label);
   auto next=target.expected;std::size_t count=0;
   if(wire.HasKey(L"surfaceChange")&&wire.GetNamedValue(L"surfaceChange").ValueType()!=JsonValueType::Null){
@@ -165,11 +178,11 @@ RasterSummary applyRasterResult(Document& d,Target& target,const std::string& js
  if(result.HasKey(L"activeFrameNumber")&&result.GetNamedValue(L"activeFrameNumber").ValueType()==JsonValueType::Number){const auto n=result.GetNamedNumber(L"activeFrameNumber");const auto& frames=d.timeline().state().frames;if(n>=1&&n<=frames.size()&&std::floor(n)==n)d.selectFrame(frames[std::size_t(n)-1].id);}
  return summary;
 }
-WorkspaceSummary applyWorkspaceResult(Document& d,Target& target,const std::string& json,const std::function<void(Document&&)>& addSession){
+WorkspaceSummary applyWorkspaceResult(Document& d,Target& target,const std::string& json,const std::function<void(Document&&)>& addSession,bool selectCreatedPaletteColor){
  (void)validateResult(target,json);if(d.active()||!target.matches(d))throw std::logic_error("Lua script target changed");
  auto result=JsonObject::Parse(winrt::to_hstring(json));const auto documents=result.GetNamedArray(L"createdDocuments");
  if(documents.Size()&&!addSession)throw std::logic_error("Lua created document session adopter is not connected");
- (void)planOperations(d,result.GetNamedArray(L"batches"));
+ (void)planOperations(d,result.GetNamedArray(L"batches"),selectCreatedPaletteColor);
  // Build candidates before changing the source document; unsupported modes and
  // invalid native structures cannot leave earlier raster batches half-applied.
  std::vector<Document> prepared;prepared.reserve(documents.Size());std::size_t pixels=0;
@@ -181,13 +194,13 @@ WorkspaceSummary applyWorkspaceResult(Document& d,Target& target,const std::stri
  result.Insert(L"createdDocuments",JsonArray{});
  // Legacy skips final source layer/frame selection across a document boundary.
  if(!prepared.empty()){if(result.HasKey(L"activeLayerId"))result.Remove(L"activeLayerId");if(result.HasKey(L"activeFrameNumber"))result.Remove(L"activeFrameNumber");}
- const auto raster=applyRasterResult(d,target,winrt::to_string(result.Stringify()));WorkspaceSummary summary{raster.transactionCount,raster.changedPixelCount,false};
+ const auto raster=applyRasterResult(d,target,winrt::to_string(result.Stringify()),selectCreatedPaletteColor);WorkspaceSummary summary{raster.transactionCount,raster.changedPixelCount,false};
  // Do not access d after adoption: adding a tab may move/destroy its wrapper.
  for(auto& document:prepared){addSession(std::move(document));++summary.transactionCount;summary.documentBoundary=true;}
  summary.changedPixelCount+=pixels;return summary;
 }
 RunOutcome receiveWorkspaceResult(Document& d,Target& target,const std::string& json,
- const std::function<void(Document&&)>& addSession,const std::function<void(const std::string&)>& closeSession,const std::string& failureSessionId){
+ const std::function<void(Document&&)>& addSession,const std::function<void(const std::string&)>& closeSession,const std::string& failureSessionId,bool selectCreatedPaletteColor){
  std::string cleanup=failureSessionId;
  try{
   const auto result=JsonObject::Parse(winrt::to_hstring(json));
@@ -202,7 +215,7 @@ RunOutcome receiveWorkspaceResult(Document& d,Target& target,const std::string& 
    const auto id=winrt::to_string(result.GetNamedString(L"sessionId"));
    if(!id.empty())outcome.session=ClientSession{id,summary.fileName,summary.filePath,winrt::to_string(result.GetNamedArray(L"dialogs").Stringify()),target};
   }
-  const auto applied=applyWorkspaceResult(d,target,json,addSession);
+  const auto applied=applyWorkspaceResult(d,target,json,addSession,selectCreatedPaletteColor);
   if(applied.documentBoundary&&!finished)throw std::logic_error("Lua script target changed");
   summary.transactionCount=applied.transactionCount;summary.changedPixelCount=applied.changedPixelCount;
   if(outcome.session)outcome.session->target=target;

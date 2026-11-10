@@ -5771,3 +5771,11 @@ Client统一持有各DialogState，为原生窗口提供edit/click/commit/title-
 原生RasterBatch复用pixelSelectionEdit历史，与像素/切片共享一项原子提交；仅选区documentChanged=false，不改变工程dirty，不创建缺失Cel。准备历史和替换值后再安装，提交前失败恢复选区与其他数据。真实Lua测试覆盖设置/字节钳制、相同值no-op、反选/清除/空选区、timeline context、纯选区dirty及Undo/Redo、像素/选区/切片三者混合一次撤销重做、畸形mask拒绝不改已有批次。测试原先要求混合内容撤销清dirty，与原生现有undo始终标记修改不一致，已改为验证数据恢复，不擅改全局dirty规则。
 
 正式Release构建成功，--script-window-host-check实际退出0，两个Lua专项通过0.84s，来源804及diff检查通过。无UI视觉改动/新截图，无完整smoke。原生Editor选区属性UI重置、selection.transform内容移动、其他MSE操作域、正式菜单/真实宿主供给和大工程分块仍待完成，整体INCOMPLETE。阶段保存推送dev，保留用户差异、数据和缓存。
+
+### 2026-11-10：MSE色板创建、更新和移除批次阶段
+
+对照lua-script-operations specFor/colorValue及palette三操作、workspace-palette、workspace-commands-color和palette-layout。创建保留重复/透明颜色独立ID，填首个空槽，无显式颜色时使用前景色；支持是否选中新颜色的结果API参数。更新承接位置参数颜色、通道截断钳制、原始名称和匹配角色色更新；移除仅隐藏显示槽并清理选择，保留资源。预先计算顺序候选状态，缺失更新ID在任何像素写入前拒绝。PaletteState与像素/切片/选区使用同项历史，Undo/Redo保留身份；纯元数据不创建缺失Cel。修正混合历史遇到切片提前返回造成像素内存漏算，并计入色板元数据。
+
+唯一正式Release构建成功，真实Lua两项专项通过0.86s，--script-window-host-check退出0。覆盖混合一次提交、透明重复颜色、角色色/名称/槽位、无操作、错误ID无部分写入、未锁定创建不选中、Undo/Redo及保存重开。无UI视觉修改/新增截图，无完整smoke。palette.extract与同步像素替换尚未实现且明确拒绝；Client/PendingInvocation仍使用默认选中新色，结果API参数尚待正式Editor偏好接线。全Palette域、正常UI脚本入口与其他迁移仍INCOMPLETE。保留用户差异、数据及缓存。
+
+用户本次明确确认：Hybrid选区浮动采用预览与提交一致，并保留大画布延迟优化。此为后续实现依据，本色板阶段不声称已完成该延迟路径。

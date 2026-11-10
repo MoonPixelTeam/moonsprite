@@ -1607,17 +1607,19 @@ PaletteState Document::capturePaletteEdit(int kind,int id) const {
 std::size_t Document::Edit::bytes() const {
  if(localHistoryPixels)return localHistoryPixels->retainedBytes;
  if(beforeSourceProperties){std::size_t bytes=256;for(const auto* value:{beforeSourceProperties.get(),afterSourceProperties.get()})bytes+=value->source.name.size()+value->source.description.size()+value->source.preservedJson.size()+value->tilesetName.size()*sizeof(char32_t);return bytes;}
- if(beforeRollback)return rollbackBytes;if(beforeSlices)return (beforeSlices->items.size()+afterSlices->items.size())*48;
+ if(beforeRollback)return rollbackBytes;
  if(celProperties)return celProperties->historyBytes();if(layerMetadataBytes)return *layerMetadataBytes;
   if(paletteKind==3)return 32;
   if(paletteKind==4){const auto units=[](const std::u32string& name){return name.size()+std::count_if(name.begin(),name.end(),[](char32_t c){return c>0xffff;});};return (units(beforePalette->entries.front().name)+units(afterPalette->entries.front().name))*2+16;}
   if(paletteKind==8)return beforePalette->entries.size()*40;
   if(paletteKind==1||paletteKind==7)return (beforePalette->entries.size()+afterPalette->entries.size())*40+(beforePalette->slots.size()+afterPalette->slots.size())*4+64;
   if(paletteKind==2||paletteKind==11)return (beforePalette->order().size()+afterPalette->order().size()+beforePalette->slots.size()+afterPalette->slots.size()+beforePalette->selected.size()+afterPalette->selected.size())*4+32;
+
   if(paletteKind==10)return (beforePalette->entries.size()+afterPalette->entries.size())*40+(beforePalette->slots.size()+afterPalette->slots.size())*4;
   if(paletteKind==9)return (beforePalette->slots.size()+afterPalette->slots.size())*4;
   std::size_t textBytes=0;for(const auto& t:textChanges)for(const auto* value:{&t.before,&t.after})if(*value){textBytes+=sizeof(TextCelData)+(*value)->text.size()*2+(*value)->styleRuns.size()*sizeof(TextStyleRun)+(*value)->transforms.size()*sizeof(TextTransform);for(const auto& transform:(*value)->transforms)textBytes+=(transform.source.projectProperties.size()+transform.target.projectProperties.size())*sizeof(char16_t);}
-    std::size_t size=(layerTilesets?layerTilesets->bytes():0)+(tilemapPixels?tilemapPixels->bytes():0)+textBytes+restoredClipboardBytes+(pixelAddress?sizeof(PixelAddressSpace):0)+(beforeName?beforeName->size()*sizeof(char32_t):0)+(afterName?afterName->size()*sizeof(char32_t):0)+pixels.size()*sizeof(Delta)+runs.size()*sizeof(PixelRun)+targetCelId.size()+((beforeVisible||beforeOpacity||beforeBlendMode)?32:0);
+    std::size_t metadataBytes=beforeSlices?(beforeSlices->items.size()+afterSlices->items.size())*48:0;if(paletteKind==12){for(const auto* p:{&*beforePalette,&*afterPalette}){metadataBytes+=p->entries.size()*sizeof(PaletteEntry)+(p->slots.size()+p->selected.size()+p->order().size())*sizeof(int);for(const auto& e:p->entries)metadataBytes+=e.name.size()*sizeof(char32_t);}}
+    std::size_t size=metadataBytes+(layerTilesets?layerTilesets->bytes():0)+(tilemapPixels?tilemapPixels->bytes():0)+textBytes+restoredClipboardBytes+(pixelAddress?sizeof(PixelAddressSpace):0)+(beforeName?beforeName->size()*sizeof(char32_t):0)+(afterName?afterName->size()*sizeof(char32_t):0)+pixels.size()*sizeof(Delta)+runs.size()*sizeof(PixelRun)+targetCelId.size()+((beforeVisible||beforeOpacity||beforeBlendMode)?32:0);
   for(const auto* selection:{&beforeMaskSelection,&afterMaskSelection})if(*selection)for(const auto& key:**selection)size+=sizeof(key)+key.first.size()+key.second.size();
   for(const auto* anchor:{&beforeMaskSelectionAnchor,&afterMaskSelectionAnchor})if(*anchor&&**anchor)size+=(***anchor).first.size()+(***anchor).second.size();
   if(maskEditingOnUndo)size+=sizeof(*maskEditingOnUndo)+maskEditingOnUndo->first.size();
@@ -1947,6 +1949,7 @@ void Document::applyPaletteEdit(const Edit& edit,bool redo) {
   if(!edit.beforePalette) return;
   const auto& state=redo?*edit.afterPalette:*edit.beforePalette;
   const auto& view=redo?edit.afterPaletteView:edit.beforePaletteView;if(view){paletteViewRestore_=view;++paletteViewRestoreSerial_;}
+  if(edit.paletteKind==12){palette_=state;return;}
   if(edit.paletteKind==11){palette_.independentOrder=state.independentOrder;palette_.slots=state.slots;palette_.columns=state.columns;palette_.selected=state.selected;palette_.primaryId=state.primaryId;std::unordered_map<int,const std::u32string*> names;names.reserve(state.entries.size());for(const auto& e:state.entries)names[e.id]=&e.name;for(auto& e:palette_.entries)if(const auto found=names.find(e.id);found!=names.end())e.name=*found->second;return;}
   if(edit.paletteKind==10){palette_.entries=state.entries;palette_.independentOrder=state.independentOrder;palette_.slots=state.slots;palette_.columns=state.columns;palette_.nextId=state.nextId;return;}
   if(edit.paletteKind==9){palette_.independentOrder=state.independentOrder;palette_.slots=state.slots;palette_.columns=state.columns;return;}

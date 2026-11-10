@@ -9,6 +9,7 @@ struct RasterBatch {
  std::u32string label;
  std::optional<SliceState> slices;
  std::optional<std::optional<SelectionMask>> selection;
+ std::optional<PaletteState> palette;
 };
 struct CreatedLayer {
  std::string id;std::u32string name;
@@ -32,11 +33,11 @@ SurfaceSnapshot validateResult(const Target&,const std::string& resultJson);
 struct RasterSummary {std::size_t transactionCount=0,changedPixelCount=0;};
 // Raster/layer stage of the workspace executor. Rejects unsupported workspace
 // operations/created documents before the first edit; never silently drops them.
-RasterSummary applyRasterResult(Document& activeDocument,Target&,const std::string& resultJson);
+RasterSummary applyRasterResult(Document& activeDocument,Target&,const std::string& resultJson,bool selectCreatedPaletteColor=true);
 struct WorkspaceSummary {std::size_t transactionCount=0,changedPixelCount=0;bool documentBoundary=false;};
 // The workspace callback adopts each completed document in result order. It
 // must preserve existing sessions; the last adopted document becomes active.
-WorkspaceSummary applyWorkspaceResult(Document& activeDocument,Target&,const std::string& resultJson,const std::function<void(Document&&)>& addSession);
+WorkspaceSummary applyWorkspaceResult(Document& activeDocument,Target&,const std::string& resultJson,const std::function<void(Document&&)>& addSession,bool selectCreatedPaletteColor=true);
 struct RunSummary {
  std::string fileName,filePath;std::vector<std::string> output;
  std::size_t transactionCount=0,changedPixelCount=0;double elapsedMs=0;
@@ -49,5 +50,5 @@ struct RunOutcome {RunSummary summary;std::optional<ClientSession> session;};
 RunOutcome receiveWorkspaceResult(Document&,Target&,const std::string& resultJson,
  const std::function<void(Document&&)>& addSession,
  const std::function<void(const std::string&)>& closeSession,
- const std::string& failureSessionId={});
+ const std::string& failureSessionId={},bool selectCreatedPaletteColor=true);
 }
