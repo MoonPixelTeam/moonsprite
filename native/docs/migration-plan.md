@@ -6456,3 +6456,10 @@ PNG后台解码完成后保留像素及私有surface，每次pump最多上传262
 依据ExtensionDialogForm dialog storageKey、ModalShell与panel-preferences load/save/remap，增加根表单configurePromptGeometry原生配置入口，按extension/node/compact键隔离嵌套窗口记录；相对显示区域的逻辑位置/尺寸/旧viewport写入JSON，复用已有panel_docking响应映射和atomic_file写入。resize仅标记，根pump合并写盘；关闭/节点移除保存，读取损坏/超1MiB回默认，写入失败保留诊断且允许关闭。正式扩展执行器未接线，不能将此配置入口称作生产扩展宿主已完成。
 
 唯一正式Release构建成功，extension-form-ui/image/files/state四项通过1.41秒；实际窗口写盘后移除/重读/重新创建恢复相同几何，另一扩展身份不复用同记录，原有嵌套/菜单/文件/输入链路通过。来源821文件及diff检查通过。未新增多显示器实机/缩放变更截图和故障注入，首开fitContent、完整屏幕变更通知与正式执行器仍有缺口，整体INCOMPLETE。用户editor_support.h差异保留，阶段保存推送dev。
+
+
+### 2026-11-11：扩展提示内容高度与手动尺寸衔接
+
+依据ModalShell initialModalPosition/fitContent/fitContentKey及floating.clearHeight，嵌套提示初次按实际内容适高，保留标题/正文/底部间距及屏幕上限；手动改变高度后固定，compact子节点模型变化重新清除固定高度并适配。自动高度不写显式height，普通提示保留手动持久化高度，compact重新打开按旧版clearHeight处理。修正普通prompt最小240px、compact120px，统一复用最小尺寸计算。
+
+唯一正式Release构建成功，extension-form-ui/image/files/state四项通过1.35秒，新增实际窗口验证空/短内容最小高度、手动尺寸保持、compact内容增长与移除重算；原有普通提示实际写盘重开及全表单链路通过。查看extension-form-prompt-smoke.bmp，字段/分隔/确认按钮可见无重叠，初始草稿截图不证明后续编辑值。来源821文件及diff检查通过。首开宽度compact ratio、完整屏幕变更通知、正式扩展执行器等仍未完成，不宣称全量迁移；整体INCOMPLETE。用户editor_support.h差异保留，阶段保存推送dev。
