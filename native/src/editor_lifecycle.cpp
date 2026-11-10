@@ -825,6 +825,15 @@ void Editor::smokeScriptWorkspace(const std::filesystem::path& root){
    else if(state.floating()||state.pixels()[1]!=0xff123456||state.pixels()[3]!=0xffabcdef)throw std::runtime_error("Formal open boundary lost committed preview/outside write");
   }
   };checkFloatingBoundary();
+  auto checkLayerTail=[&]() __declspec(noinline) {
+   for(int scenario=0;scenario<4;++scenario){
+    document=std::move(*std::make_unique<Document>(3,1));documentPath_.clear();refresh();const auto id=document.identity();const auto layer=document.layer().id;const auto picker=chooseOpenFile_;chooseOpenFile_=[](OPENFILENAMEW*){return false;};
+    std::string code="app.transaction(function() app.activeImage:drawPixel(0,0,0xff123456); ";if(scenario>=2)code+="mse.layers.create{name='Survivor'}; mse.layers.remove('"+layer+"'); ";code+=scenario==1?"mse.io.open()":"mse.document.create{name='Layer tail boundary',width=2,height=1}";code+="; mse.palette.create{r=101,g=102,b=103} end); ";if(scenario!=3)code+="local l=app.activeSprite:newLayer(); l.name='Tail layer'; app.activeLayer=nil; app.activeFrame=nil";else code+="app.transaction(function() mse.palette.create{r=104,g=105,b=106} end)";
+    runBoundary(code,scenario>=2);chooseOpenFile_=picker;const auto slot=saveProjectIndex(id);if(!slot)throw std::runtime_error("Formal layer tail source lost");const auto& state=projectDocument(*slot);
+    if(scenario>=2){if(state.timeline().hasLayer(layer)||state.timeline().state().layers.size()!=1||state.layer().name!=U"Survivor")throw std::runtime_error("Formal missing source layer tail altered survivor");}
+    else{if(document.identity()!=id||document.layer().name!=U"Tail layer"||document.timeline().state().layers.size()!=2||document.historySize()!=2)throw std::runtime_error("Formal layer tail source/history wrong");document.undo();if(document.layer().id!=layer||document.pixels()[0]!=0xff123456)throw std::runtime_error("Formal layer tail undo failed");document.undo();if(document.pixels()[0])throw std::runtime_error("Formal layer tail source undo failed");document.redo();document.redo();if(document.layer().name!=U"Tail layer")throw std::runtime_error("Formal layer tail redo failed");}
+   }
+  };checkLayerTail();
   if(!saveProjectIndex(createdId))throw std::runtime_error("Earlier created session lost");
  }
 }

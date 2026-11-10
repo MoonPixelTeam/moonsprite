@@ -705,6 +705,17 @@ int main(int argc,char** argv){try{winrt::init_apartment();check(argc==2,"Fixtur
   else if(canceled){check(source->floating()&&source->pixels()[3]==0xffabcdef,"Canceled boundary lost floating/raster edit");source->cancelFloatingPaste();check(source->pixels()[0]==0xff123456&&source->pixels()[3]==0xffabcdef,"Canceled boundary float cancel lost outside write");}
   else check(!source->floating()&&source->pixels()[1]==0xff123456&&source->pixels()[3]==0xffabcdef,"Successful boundary lost committed floating/raster");
  }
+ // Created Lua layers are committed to the original source after MSE has
+ // switched the workspace, and must reject a source layer deleted by MSE.
+ for(int scenario=0;scenario<4;++scenario){
+  auto active=std::make_unique<Document>(3,1);const auto sourceId=active->identity();const auto sourceLayer=active->layer().id;std::vector<std::unique_ptr<Document>> background;
+  WorkspaceHost host;host.current=[&]{return active.get();};host.find=[&](std::uint64_t id)->Document*{if(active->identity()==id)return active.get();for(auto& d:background)if(d->identity()==id)return d.get();return nullptr;};host.focus=[&](std::uint64_t id)->Document*{if(active->identity()==id)return active.get();for(auto& d:background)if(d->identity()==id){std::swap(active,d);return active.get();}return nullptr;};host.execute=[&](const auto&,const auto&){if(scenario==1)return;background.push_back(std::make_unique<Document>(std::move(*active)));active=std::make_unique<Document>(2,1);};
+  std::string code="app.transaction(function() app.activeImage:drawPixel(0,0,0xff123456); ";if(scenario>=2)code+="mse.layers.create{name='Survivor'}; mse.layers.remove('"+sourceLayer+"'); ";code+="mse.document.create{}; mse.palette.create{r=10,g=11,b=12} end); ";
+  if(scenario!=3)code+="local l=app.activeSprite:newLayer(); l.name='Tail layer'; app.activeLayer=nil; app.activeFrame=nil";else code+="app.transaction(function() mse.palette.create{r=13,g=14,b=15} end)";
+  std::ofstream(root/"scripts/workspace-layer-tail.lua")<<code;auto captured=capture(*active);auto target=captured.target;const auto wire=runtime.startInvocation("workspace-layer-tail.lua",std::move(captured)).get();
+  if(scenario>=2){reject([&]{applyWorkspaceResult(*active,target,wire,{},true,{},{},{},{},{},{},{},host);});auto* source=host.find(sourceId);check(!source->timeline().hasLayer(sourceLayer)&&source->layer().name==U"Survivor"&&source->timeline().state().layers.size()==1,"Missing source tail changed survivor");check(background.size()==1,"Missing source tail removed created document");}
+  else{const auto result=applyWorkspaceResult(*active,target,wire,{},true,{},{},{},{},{},{},{},host);check(result.documentBoundary&&active->identity()==sourceId&&active->timeline().state().layers.size()==2&&active->layer().name==U"Tail layer","Created layer tail did not focus source");check(active->pixels()[0]==0&&active->historySize()==2,"Created layer tail history wrong");active->undo();check(active->layer().id==sourceLayer&&active->pixels()[0]==0xff123456,"Created layer tail undo failed");active->undo();check(active->pixels()[0]==0,"Boundary source undo failed");active->redo();active->redo();check(active->layer().name==U"Tail layer","Created layer tail redo failed");}
+ }
  clientDialogTests(runtime,root);
  std::cout<<"Lua document capture, budgets, target guards and worker execution passed\n";return 0;
  }catch(const winrt::hresult_error& e){std::cerr<<winrt::to_string(e.message());return 1;}catch(const std::exception& e){std::cerr<<e.what();return 1;}}
