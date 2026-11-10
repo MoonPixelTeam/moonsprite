@@ -6393,3 +6393,10 @@ PNG后台解码完成后保留像素及私有surface，每次pump最多上传262
 对照ExtensionDialogForm options.filter/slice100和ThemedSelect tooltip/check/moveSelection，过滤非字符串description，保留合法选项的label/value/description索引一致。共享PixelDropdown新增可选optionTooltips与markSelectedOption，默认不改变其他调用方；菜单使用现有MIT TooltipManager和PixelMenuItem checked，勾选图标绑定现有menuMarks并复用legacy utility-icons/check.png，不新增图标。菜单局部提示管理器先于菜单销毁，完整说明为“label — description”。
 
 共享头变更触发正式全量重编译，持续观察同一活跃进程后成功；补齐勾选素材引用后的最终增量Release构建成功。四项extension-form-ui/image/files/state通过（1.36秒），实际控件检查坏description过滤、完整提示内容、键盘选择与draft/依赖显示值对应，既有表单链路通过。来源821文件及diff检查通过；未人工打开/悬停菜单截图验收，不把提示字符串检查称为完整菜单交互验收。完整row align、几何持久化和正式扩展执行器仍待完成，QuickJS选择仍待用户答复；整体INCOMPLETE，阶段保存推送dev，用户editor_support.h差异保留。
+
+
+### 2026-11-11：扩展表单嵌套循环生命周期保护
+
+原生PixelDropdown::showOptions与文件选择器使用嵌套事件循环，表单timer可能重入pump并销毁仍在执行的控件。根窗口记录modal调用深度，菜单popupStateChanged/文件chooser调用期间暂缓重建和动作分发，宿主关闭记为待处理，返回安全pump后执行；文件chooser若关闭已请求不再发送上传。根pump加入RAII重入保护，避免send/save回调内再次pump重建。子prompt共享根门禁，原有busy协议保持。
+
+首轮局部root变量遮蔽成员函数编译失败已改this->root；两次尝试实际showOptions的自动回归未进入popup打开回调，分别失败于未执行检查，保留日志。最终回归调用实际popupStateChanged生命周期函数注入推送与pump，验证持有期不销毁控件，释放后再重建并保留键盘映射；这不是实际菜单嵌套循环验收。最终唯一Release构建成功，extension-form-ui/image/files/state四项通过1.34秒，来源821文件及diff检查通过。真实菜单停留/关闭及chooser期间宿主关闭仍需进一步实机验证，不声称相关生命周期全量完成；整体INCOMPLETE。阶段保存推送dev，用户editor_support.h差异保留。
