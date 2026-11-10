@@ -6326,3 +6326,10 @@ selection.transform仍须衔接跨批浮动保留、实际操作次序、后续�
 对照ExtensionDialogForm file分支、platform/extension-file.ts及platform_dialogs.rs347–390，FormFiles绑定默认Windows打开/保存对话框，FormWindow默认使用该服务。取消打开返回optional空值不发送空上传；默认gif/png/webp、多选开关及accept常见MIME/后缀过滤，读取只交付name/MIME/bytes，16文件/16MiB在元数据和流读取期间双重限制，失败显示form status。导出先校验frontend名称120/12MiB，承接平台UTF8名称240、control字符及1..16 ASCII字母数字扩展名约束；每次让用户选择目的地，复用writeBinaryFileAtomic与覆盖确认，匹配回执一次保存规则不变。
 
 首轮缺cwctype编译错误已修正并保留log。最终唯一正式Release、文件/状态目标构建成功，extension-form-ui0.69s、files0.06s、state0.02s全部通过。文件测试注入chooser结果，实际读取中文文件、多选、空取消、超限/缺失拒绝、名称失败先于chooser、原子写入以及FormState匹配回执/重放不二次写盘；没有人工对话框验收。来源818文件与diff检查通过。文件读取/chooser仍同步，图片/嵌套弹窗/tooltip/context及正式扩展执行器接线未完成，不宣称表单全量完成。正式唯一exe更新，无preview，整体INCOMPLETE，阶段保存推送dev。
+
+
+### 2026-11-11：扩展表单PNG图片实际渲染
+
+对照ExtensionDialogForm image分支和styles.css4561，新增内存PNG data URL解码，显示尺寸默认48/有限数字clamp16..512，contain居中与nearest像素采样。复用已有Skia PNG codec、uploadRgbaRegion和原生SrcOver，不落磁盘或读取外部URL。缓存按source复用，节点移除后释放；失败只设置预览错误，不改变FormState busy/pending。原生显式工作预算32MiB编码及16Mi像素，在解码目标分配前检查。
+
+首轮缺WinRT集合头编译错误已修正，保留失败log。最终唯一正式Release及image测试构建通过；extension-form-ui0.69s/image0.03s/files0.06s/state0.02s四项通过，来源821文件与diff检查通过。生成2x1PNG逐像素验证opaque红/alpha128绿，默认/上下限/小数/非数字尺寸及错误URL/base64/PNG拒绝。实际查看build/Release/extension-form-smoke.bmp，图像显示、最近邻边界及半透明背景叠加可见；busy截图不证明解锁后画面。图片解码与上传仍同步，大图/多图总缓存预算及后台解码尚待完善；嵌套dialog/tooltip/context与正式扩展执行器仍未完成，不声明全量表单或扩展完成。正式唯一exe更新，无preview，整体INCOMPLETE，阶段保存推送dev。
