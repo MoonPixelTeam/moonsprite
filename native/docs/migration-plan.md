@@ -6435,3 +6435,10 @@ PNG后台解码完成后保留像素及私有surface，每次pump最多上传262
 对照ExtensionDialogForm input/number/select与FormField默认stacked，将原横排字段改为10px标签、2px关联间距、20px控件，绘制/tooltip/布局共用保存坐标，滚动高度包含标签。输入复用MIT ui::Entry setMaxTextLength64，局部TextEntry在实际onChange按UTF16单元校验，避免补充平面字符跨64边界被拆开；模型初始化setText保留原值。数字/下拉不错误套文本长度限制。
 
 首轮测试键码名称编译错误已修正；随后UI断言失败因focus已有选区而模拟追加实际替换选区，显式deselect修正测试前置。失败断言exit伴随清理segfault未独立定位，保留日志，不冒称产品崩溃根因已解决。最终唯一正式Release构建成功，extension-form-ui/image/files/state四项通过1.41秒；实际按键验证UTF16上限、补充平面字符边界、满长拒绝与选区替换，已有显隐/焦点/caret/草稿/resize链路通过。查看extension-form-smoke.bmp确认上下字段及槽位无重叠；截图busy阶段不证明解锁。来源821文件及diff检查通过。未人工验证IME/粘贴全路径与性能；数值标签scrub、长文本换行、几何持久化和正式执行器等仍未完成，整体INCOMPLETE。用户editor_support.h差异保留，阶段保存推送dev。
+
+
+### 2026-11-11：扩展文案省略与重排恢复
+
+核对ExtensionDialogForm FormCopy、styles.css4623–4635及complete translated label overflow测试，确认旧版文案为单行ellipsis/full tooltip，未擅自改为自动换行。原生标题/文本/字段标签在build缓存适配宽度copy，局部FormButton在resize缓存，ChoiceButton两行各缓存可见文案；绘制复用PixelButton材质与原事件，完整caption和tooltip保持。避免paint重复UTF转换与长文案省略测量，窗口扩大重新计算并恢复全文。
+
+唯一正式Release构建成功，extension-form-ui/image/files/state四项通过1.39秒。实际窗口回归窄窗德文长标题/文本/按钮省略、显示测宽、完整按钮提示、扩大恢复全文，原有动作草稿/图片/菜单/嵌套链路通过；来源821文件及diff检查通过。无新长文案人工截图/悬停或FPS测量，不能宣称全部性能优化完成。下拉/复选框溢出完整核对、数值标签scrub、几何持久化、全编辑器模态与正式扩展执行器仍待完成，整体INCOMPLETE。用户editor_support.h差异保留，阶段保存推送dev。
