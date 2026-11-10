@@ -5988,3 +5988,12 @@ layers.update存在时，沿现有候选Timeline预检后，使用原生完整Ti
 真实Lua覆盖创建/命名/选择、偏移尺寸编辑、放置默认、共享编辑及首owner拒绝、缺失帧slot和实例隔离、稳定ID UndoRedo、保存重开；正式Editor入口增加生产异步宿主创建源/编辑/放置/UndoRedo。现有原生资源读写及源编辑只支持256×256，旧版free source允许更大，明确作为未完成兼容缺口；本阶段不放宽保存格式/资源验证来冒充完成。坐标/工作预算同样沿用原生边界；整体仍INCOMPLETE，无截图/人工视觉验收。最终检查后附。
 
 最终唯一正式Release构建通过，Lua invocation全套通过3.17s，最新正式--script-entry-check退出0；来源804文件和diff检查通过。无截图/人工视觉验收；整体仍INCOMPLETE，本阶段保存推送dev。
+
+
+### 2026-11-10：自由瓦片大尺寸源贯通
+
+旧版free-tile-edit裁切源、applyFreeTileSourceSnapshot和project-format-decode只限制资源总像素，不把网格MAX_TILE_SIZE256用于自由源。原生sheet与grid共用sizeCheck导致此前脚本/变换/粘贴拒绝大源。现sheet按MaxTilesetPixels准入（除法避免乘积溢出），grid仍256；工程manifest尺寸读取同步资源预算，脚本、选区变换发布和选中源图片粘贴同步采用总像素限制，继续原生临时预算。未选中图片粘贴的256分块是旧版既有语义，保持。
+
+300像素宽源覆盖脚本、变换、选中源粘贴、UndoRedo及保存重开，直接资源覆盖画布外末端像素和恢复工程；预算越界与超大int尺寸无分配失败、grid256边界检查。整体迁移仍INCOMPLETE；最终正式构建及检查后附。
+
+最终唯一正式Release构建通过；free-tile-project完整回归58.62s、Lua invocation2.87s、tilemap-project0.77s、tile-image-resize3.10s均通过，正式--script-entry-check退出0。旧256尺寸失败断言同步改为画笔/喷枪取消恢复与形状隔离预览、提交/撤销检查；大源夹具使用有效原始ZIP，覆盖editable/recovery重开。来源804文件及diff检查通过。无截图/人工视觉验收；整体迁移仍INCOMPLETE，本阶段保存推送dev。
