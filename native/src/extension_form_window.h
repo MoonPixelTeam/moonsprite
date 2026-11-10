@@ -1,0 +1,55 @@
+#pragma once
+#include "extension_form_state.h"
+#include "lua_script_numeric_widgets.h"
+#include "ui/resize_event.h"
+#include "ui/close_event.h"
+#include <deque>
+#include <set>
+namespace moon::extension {
+// Native controls own no extension execution. Messages are queued until pump,
+// preventing returned models from destroying widgets inside their callbacks.
+class FormWindow final:public PixelDialog {
+ using Object=winrt::Windows::Data::Json::JsonObject;using Array=winrt::Windows::Data::Json::JsonArray;using Value=winrt::Windows::Data::Json::IJsonValue;using Json=winrt::Windows::Data::Json::JsonValue;using Type=winrt::Windows::Data::Json::JsonValueType;
+ struct Row{Object node;ui::Widget* widget=nullptr;gfx::Rect logical;};
+ class Viewport final:public ui::Widget{public:Viewport():ui::Widget(ui::kGenericWidget){setTransparent(true);}void onResize(ui::ResizeEvent& e)override{setBoundsQuietly(e.bounds());}};
+ const PixelFont& font_;const Skin &skin_,&icons_;std::u32string title_;FormState state_;std::vector<Row> rows_;Viewport* viewport_;PixelScrollBar* bar_;PixelButton *close_,*done_,*retry_;std::deque<Object> actions_;bool closing_=false,dirty_=false;int scroll_=0,total_=0;
+ std::function<void(Object)> send_;std::function<void()> closed_,restart_;FormState::Save save_;
+ static Value field(const Object& node,const wchar_t* key){return node.HasKey(key)?node.GetNamedValue(key):Value{nullptr};}
+ static std::wstring text(const Object& node,const wchar_t* key){auto v=field(node,key);return v&&v.ValueType()==Type::String?std::wstring(v.GetString()):std::wstring{};}
+ static double number(const Object& node,const wchar_t* key,double fallback){auto v=field(node,key);return v&&v.ValueType()==Type::Number&&std::isfinite(v.GetNumber())?v.GetNumber():fallback;}
+ void queue(std::optional<Object> message){if(message)actions_.push_back(*message);sync();}
+ void requestClose(){if(state_.busy())return;closing_=true;state_.close();closeWindow(nullptr);if(closed_)closed_();}
+ void sync(){close_->setEnabled(!state_.busy());done_->setEnabled(!state_.busy());for(auto& row:rows_)if(row.widget){auto disabled=field(row.node,L"disabled");row.widget->setEnabled(!state_.busy()&&!(disabled&&disabled.ValueType()==Type::Boolean&&disabled.GetBoolean()));}invalidate();}
+ void build(){unsupported_.clear();for(auto& row:rows_)if(row.widget){viewport_->removeChild(row.widget);delete row.widget;}rows_.clear();const auto width=std::max(100,bounds().w/uiScale-27);total_=append(state_.view().GetNamedArray(L"nodes"),6,0,width,0,true);layout();sync();}
+ int append(const Array& nodes,int x,int y,int width,int depth,bool root=false){if(depth>8)return y;for(std::uint32_t i=0;i<std::min(root?200u:100u,nodes.Size());++i){const auto item=nodes.GetAt(i);if(item.ValueType()!=Type::Object)continue;auto node=item.GetObject();const auto id=text(node,L"id"),type=text(node,L"type");if(id.empty()||!state_.shown(id))continue;
+  const auto children=field(node,L"children");
+  if(type==L"split"||type==L"row"){if(children&&children.ValueType()==Type::Array){const auto array=children.GetArray();const auto count=std::min(type==L"split"?2u:100u,array.Size());int bottom=y;for(std::uint32_t j=0;j<count;++j){Array one;one.Append(array.GetAt(j));const int w=std::max(1,(width-int(count-1)*6)/int(std::max(1u,count)));bottom=std::max(bottom,append(one,x+int(j)*(w+6),y,w,depth+1));}y=bottom;}continue;}
+  if(type==L"column"||type==L"sidebar"||type==L"slot"){if(!text(node,L"label").empty()){rows_.push_back({node,nullptr,{x,y,width,20}});y+=22;}if(children&&children.ValueType()==Type::Array){auto array=children.GetArray();Array limited;for(std::uint32_t j=0;j<std::min(type==L"slot"?16u:100u,array.Size());++j)limited.Append(array.GetAt(j));y=append(limited,x,y,width,depth+1);}continue;}
+  auto value=state_.effectiveValue(id);const auto label=unicodeText(winrt::to_string(text(node,L"label")));Row row{node,nullptr,{x,y,width,20}};const int labelWidth=std::min(110,std::max(40,width/3));
+  if(type==L"input"){auto entry=new PixelEntry(font_,skin_);entry->setText(value&&value.ValueType()!=Type::Null?winrt::to_string(diagnosticString(value)):"");entry->Change.connect([this,id,entry]{state_.edit(id,Json::CreateStringValue(winrt::to_hstring(entry->text())));});row.widget=entry;}
+  else if(type==L"number"){const auto n=value&&value.ValueType()==Type::Number?value.GetNumber():1;auto entry=new ScriptNumberEntry(font_,skin_,n,number(node,L"min",-1e100),number(node,L"max",1e100),1);entry->changed=[this,id](double v){state_.edit(id,Json::CreateNumberValue(v));};row.widget=entry;}
+  else if(type==L"select"){auto dropdown=new PixelDropdown(font_,skin_);std::vector<std::u32string> labels;std::vector<winrt::hstring> values;const auto options=field(node,L"options");int selected=-1;if(options&&options.ValueType()==Type::Array)for(const auto& option:options.GetArray()){if(option.ValueType()!=Type::Object)continue;const auto object=option.GetObject();const auto key=field(object,L"value"),name=field(object,L"label");if(!key||!name||key.ValueType()!=Type::String||name.ValueType()!=Type::String)continue;if(labels.size()>=100)break;if(value&&value.ValueType()==Type::String&&value.GetString()==key.GetString())selected=int(labels.size());labels.push_back(unicodeText(winrt::to_string(name.GetString())));values.push_back(key.GetString());}dropdown->setOptions(labels);dropdown->setSelectedIndex(selected);dropdown->changed=[this,id,values](int index){if(index>=0&&index<int(values.size())){state_.edit(id,Json::CreateStringValue(values[index]));dirty_=true;}};row.widget=dropdown;}
+  else if(type==L"toggle"){const bool checked=value&&value.ValueType()==Type::Boolean&&value.GetBoolean();row.widget=new PixelCheckbox(font_,skin_,label,checked,[this,id](bool v){queue(state_.click(id,v));});}
+  else if(type==L"button"||type==L"choice"){row.widget=new PixelButton(font_,skin_,label,[this,id]{queue(state_.click(id));});}
+  else if(type==L"file"){row.widget=new PixelButton(font_,skin_,label.empty()?U"选择文件":label,[this,id,node]{if(!chooseFiles){state_.loadFailed(L"Native extension file chooser is not connected");layout();return;}queue(state_.files(id,chooseFiles(node)));});}
+  else if(type!=L"message"&&type!=L"text"&&type!=L"heading"&&type!=L"separator"){unsupported_.insert(type);continue;}
+  if(row.widget){viewport_->addChild(row.widget);if(type==L"input"||type==L"number"||type==L"select"){row.logical.x+=labelWidth+4;row.logical.w-=labelWidth+4;}}
+  rows_.push_back(row);y+=24;
+ }return y;}
+ void layout(){if(bounds().isEmpty())return;const auto r=bounds();layoutHeaderButton(close_);const int footer=28;viewport_->setBounds({r.x,r.y+DialogLayout::bodyTop*uiScale,r.w,std::max(1,r.h-(DialogLayout::bodyTop+footer)*uiScale)});const auto area=viewport_->bounds();const int page=area.h/uiScale;scroll_=std::clamp(scroll_,0,std::max(0,total_-page));bar_->setBounds({area.x2()-9*uiScale,area.y,7*uiScale,area.h});bar_->setVisible(total_>page);bar_->configure(total_,page,scroll_);for(auto& row:rows_)if(row.widget){const auto box=uiPhysical(row.logical).offset(gfx::Point(area.x,area.y-scroll_*uiScale));row.widget->setBounds(box);row.widget->setVisible(box.y>=area.y&&box.y2()<=area.y2());}done_->setBounds({r.x2()-78*uiScale,r.y2()-24*uiScale,70*uiScale,20*uiScale});retry_->setBounds({r.x+8*uiScale,r.y2()-24*uiScale,70*uiScale,20*uiScale});retry_->setVisible(!state_.loadError().empty());invalidate();}
+ std::set<std::wstring> unsupported_;
+public:
+ std::function<std::vector<FormState::File>(const Object&)> chooseFiles;
+ FormWindow(const PixelFont& font,const Skin& skin,const Skin& icons,std::u32string title,std::function<void(Object)> send,std::function<void()> close,std::function<void()> restart={},FormState::Save save={}):PixelDialog(skin,""),font_(font),skin_(skin),icons_(icons),title_(std::move(title)),send_(std::move(send)),closed_(std::move(close)),restart_(std::move(restart)),save_(std::move(save)){
+  setAutoRemap(false);setWantFocus(true);viewport_=new Viewport;addChild(viewport_);bar_=new PixelScrollBar(skin,true);addChild(bar_);bar_->changed=[this](int n){scroll_=n;layout();};close_=new PixelButton(font,skin,U"",[this]{requestClose();});close_->iconSkin=&icons;close_->icon="close";close_->skinStyle="icon_button";addChild(close_);done_=new PixelButton(font,skin,U"完成",[this]{requestClose();});addChild(done_);retry_=new PixelButton(font,skin,U"重试",[this]{state_.retry();dirty_=true;if(restart_)restart_();});addChild(retry_);layout();}
+ void receive(const Value& view,std::uint64_t generation){if(state_.receive(view,generation,save_))dirty_=true;}
+ void pump(){const auto priorError=state_.loadError();if(dirty_){dirty_=false;build();}state_.tick(std::chrono::steady_clock::now());if(priorError!=state_.loadError())layout();auto messages=std::move(actions_);actions_.clear();for(auto& message:messages)if(state_.active()&&send_)send_(message);}
+ void closeFromHost(){closing_=true;state_.close();closeWindow(nullptr);}
+ void onBeforeClose(ui::CloseEvent& event)override{if(!closing_){event.cancel();requestClose();}}
+ gfx::Size minimumDialogSize(int)const override{return {360*uiScale,180*uiScale};}
+ void onResize(ui::ResizeEvent& event)override{setBoundsQuietly(event.bounds());dirty_=true;layout();}
+ void paintDialogContents(ui::PaintEvent& event)override{auto& g=*event.graphics();UiPaintScale scale(g);const auto r=uiLogical(clientBounds());drawDialogTitle(font_,g,r,title_);const int top=DialogLayout::bodyTop;g.saveClip();g.clipRect({r.x,r.y+top,r.w-12,r.h-top-28});for(const auto& row:rows_){const auto type=text(row.node,L"type");const auto label=unicodeText(winrt::to_string(text(row.node,L"label")));const int x=r.x+row.logical.x,y=r.y+top+row.logical.y-scroll_;if(!row.widget)font_.draw(g,label,x,y+5,skin_["text"]);else if(type==L"input"||type==L"number"||type==L"select")font_.draw(g,label,x-std::min(110,std::max(40,(row.logical.w+110)/3))-4,y+5,skin_["text"]);}g.restoreClip();std::u32string status;if(!state_.loadError().empty())status=unicodeText(winrt::to_string(state_.loadError()));else if(state_.busy()||!state_.loaded())status=U"处理中…";else status=unicodeText(winrt::to_string(text(state_.view(),L"status")));if(!unsupported_.empty())status=U"表单包含尚未迁移的控件";font_.draw(g,status,r.x+84,r.y+r.h-18,skin_["text"]);}
+ bool onProcessMessage(ui::Message* message)override{if(message->type()==ui::kMouseWheelMessage){scroll_+=static_cast<ui::MouseMessage*>(message)->wheelDelta().y*66;layout();return true;}if(message->type()==ui::kKeyDownMessage&&static_cast<ui::KeyMessage*>(message)->scancode()==ui::kKeyEsc){requestClose();return true;}return PixelDialog::onProcessMessage(message);}
+ FormState& stateForCheck(){return state_;}ui::Widget* controlForCheck(const std::wstring& id){for(auto& row:rows_)if(text(row.node,L"id")==id)return row.widget;return nullptr;}
+};
+}

@@ -6312,3 +6312,10 @@ selection.transform仍须衔接跨批浮动保留、实际操作次序、后续�
 沿ExtensionDialogForm.tsx及真实组件测试、platform/extension-file.ts提取并实现FormState：节点默认/草稿/visibleWhen、depth8与各容器子项上限、busy/disabled门禁、action/extra/values/requestId覆盖顺序、toggle与slot context动作、匹配回执清草稿解锁、普通推送不解锁、不重放文件保存。15秒初始化超时、加载错误、retry清pending但保sequence，原生generation阻止旧执行器消息。文件上传保留槽动作/名字/MIME/bytes、single/16项16MiB限制；只有用户动作匹配结果才验证并交付保存服务，名称120/非法字符/12MiB/整数bytes限制，取消和失败更新status并解锁。
 
 回归覆盖旧版已有初始化/编辑提交/数字零/依赖显示/上传槽/导出取消失败及不重放，额外busy、旧generation、重试sequence、UTF16输入64和16文件边界。最终目标构建成功，extension-form-state实际0.02秒通过；来源815文件及diff检查通过。此阶段仅完成表单状态和文件消息协议，没有控件渲染/图片/选择器或扩展执行器接线，未将其声称为完整原生表单迁移。正式exe无变更，整体INCOMPLETE。阶段保存推送dev。
+
+
+### 2026-11-11：扩展表单基础原生控件与正式窗口验收
+
+沿ExtensionDialogForm.tsx与原组件测试，FormWindow复用FormState、PixelDialog、PixelEntry、ScriptNumberEntry、PixelDropdown、PixelCheckbox、PixelButton及滚动条，承接基础文本/数字/下拉/开关/按钮/choice/file服务入口，column/sidebar/slot/row/split布局、状态/超时/重试/关闭，图标直接使用legacy导入close素材。动作队列由pump发送，避免回执重建控件发生在控件回调中；文本/数字按键保留控件，idle pump不重复布局重绘。正式唯一exe增加--extension-form-check，创建实际窗口并检查草稿编辑→点击→busy禁用→匹配回执清草稿解锁→宿主关闭。
+
+首轮矩形offset模板参数编译错误已修正，初次失败log保留；随后唯一正式Release构建通过，extension-form-ui0.70秒及extension-form-state0.02秒通过，来源816文件及diff检查通过。实际查看build/Release/extension-form-smoke.bmp，控件/字体可见，截图捕获在busy绘制阶段，不作为解锁后画面的证明，解锁以实际状态断言为证。图片、嵌套dialog、工具提示、context指针入口、原生文件选择器/保存适配及扩展执行器/正式UI入口仍未完成；未知控件明确显示未迁移状态，不声明完整表单领域完成。正式exe已更新，无preview，整体INCOMPLETE，阶段保存推送dev。

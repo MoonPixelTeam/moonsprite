@@ -7,6 +7,7 @@
 #include "lua_script_numeric_widgets.h"
 #include "lua_script_dialog_window.h"
 #include "lua_script_window_host.h"
+#include "extension_form_window.h"
 
 using namespace moon::editor;
 using namespace moon;
@@ -424,6 +425,19 @@ int app_main(int argc,char* argv[]) {
 
     const bool scriptEntryCheck=argc>1&&std::string(argv[1])=="--script-entry-check";
     ui::Timer scriptEntryTimer(80,editor);if(scriptEntryCheck){scriptEntryTimer.Tick.connect([&]{scriptEntryTimer.stop();try{editor->smokeScriptEntry();desktop.approved=true;desktop.closeWindow(editor);}catch(const std::exception& e){std::ofstream("native-script-entry-error.txt")<<e.what();std::exit(1);}});scriptEntryTimer.start();}else if(!usageTesting)editor->initializeScripts();
+    const bool extensionFormCheck=argc>1&&std::string(argv[1])=="--extension-form-check";
+    std::unique_ptr<extension::FormWindow> extensionForm;Skin extensionFormIcons;ui::Timer extensionFormTimer(50,editor);
+    if(extensionFormCheck){
+      for(const auto suffix:{"","-disabled"})extensionFormIcons.assets.patches[std::string("close")+suffix]=importSkinPng(assets/"utility-icons"/(std::string("close")+suffix+".png"),32);
+      using namespace winrt::Windows::Data::Json;
+      auto model=JsonObject::Parse(LR"({"nodes":[{"id":"name","type":"input","label":"名称","value":"initial"},{"id":"scale","type":"number","label":"缩放","value":0,"min":0,"max":4},{"id":"event","type":"select","label":"条件","value":"idle","options":[{"value":"idle","label":"空闲"},{"value":"tool","label":"工具"}]},{"id":"dependent","type":"text","label":"工具条件","visibleWhen":{"event":"tool"}},{"id":"save","type":"button","label":"保存","action":{"type":"save"}},{"id":"toggle","type":"toggle","label":"显示","value":false,"action":{"type":"toggle"}}]})");
+      extensionForm=std::make_unique<extension::FormWindow>(font,skin,extensionFormIcons,U"扩展表单",[&,model](JsonObject message)mutable{if(message.GetNamedObject(L"values").GetNamedString(L"name")!=L"native draft")throw std::runtime_error("Native form draft lost");JsonObject result;result.Insert(L"requestId",message.GetNamedValue(L"requestId"));model.Insert(L"result",result);extensionForm->receive(model,0);},[]{});
+      extensionForm->setDisplay(editor->display(),false);const auto area=editor->display()->bounds();extensionForm->setBounds({area.x+40,area.y+40,480*uiScale,300*uiScale});extensionForm->receive(model,0);extensionForm->pump();extensionForm->openWindow();
+      extensionFormTimer.Tick.connect([&,phase=0]()mutable{try{
+        extensionForm->pump();if(phase==0){auto* entry=dynamic_cast<PixelEntry*>(extensionForm->controlForCheck(L"name"));auto* save=dynamic_cast<PixelButton*>(extensionForm->controlForCheck(L"save"));if(!entry||!save||!entry->isVisible())throw std::runtime_error("Native form widgets missing");entry->setText("native draft");entry->Change();save->Click();if(!extensionForm->stateForCheck().busy()||save->isEnabled())throw std::runtime_error("Native form busy gating");++phase;return;}
+        if(phase==1){extensionForm->pump();if(extensionForm->stateForCheck().busy()||extensionForm->stateForCheck().drafts().Size())throw std::runtime_error("Native form matched response");writeSmokeFrame(extensionForm->display()->nativeSurface().get(),assets.parent_path()/"extension-form-smoke.bmp");extensionForm->closeFromHost();extensionFormTimer.stop();desktop.approved=true;desktop.closeWindow(editor);}
+      }catch(const std::exception& e){std::ofstream("native-extension-form-error.txt")<<e.what();std::exit(1);}});extensionFormTimer.start();
+    }
     const bool scriptHostCheck=argc>1&&std::string(argv[1])=="--script-window-host-check";
     std::unique_ptr<script::Runtime> scriptHostRuntime;std::unique_ptr<script::Client> scriptHostClient;std::unique_ptr<ScriptWindowHost> scriptHost;std::unique_ptr<Document> scriptHostDocument;Skin scriptHostIcons;ui::Timer scriptHostTimer(30,editor);
     if(scriptHostCheck){
