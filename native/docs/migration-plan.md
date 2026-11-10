@@ -5711,3 +5711,9 @@ Release相关目标成功，lua-script-invocation通过0.44s。未更新正式ex
 直接承接useAppScriptRuntime.tsx，新增Client围绕既有PendingInvocation/Runtime：脚本列表loading/loadFailed与异步刷新；正在运行或有持久session时run不重复启动；真实活动目标观察，切工程/层/帧后移除session并排队关闭；RunSummary输出报告、错误报告及供正式宿主本地化的状态枚举；dispatch失败关闭session，目标已失效则不显示过期错误。Escape先关闭输出/错误报告，再按最后一个dialog及controls dataKey/value构造close action，忙碌时仍消费Escape。析构关闭存活session并沿PendingInvocation清理未完成请求，Runtime必须后析构；调用方仍必须提供真实MSE快照。
 
 真实Lua专项覆盖发现列表、modeless运行与持久会话互斥、输出报告及状态、Escape先报告后dialog完整往返、再次启动、切工程后旧session无法dispatch、缺工程错误与Escape、析构后session失效、坏action错误及恢复、切工程后过期回调错误抑制、停止runtime后的发现失败。Release invocation目标成功，invocation/runtime两项通过0.77s；来源覆盖797文件与diff检查通过。客户端不包含原生窗口/控件，不宣称正式Editor脚本运行已接入；动态菜单、消息泵、报告/对话框控件、真实MSE快照和混合事务仍待完成，无正式exe更新/GUI/完整smoke验收，整体INCOMPLETE。阶段保存推送dev，用户差异、数据与缓存保留。
+
+### 2026-11-10：Lua对话框草稿与控件操作语义阶段
+
+逐项对照LuaScriptDialog.tsx valuesForDialog/valuesRef/ScriptControl，新增DialogState单窗口草稿：dataKey初始化与返回模型重置、完整草稿操作载荷；entry本地修改后Enter/blur发change，number仅blur，slider在pointer-up/blur发release，color/combobox提交change，button/check/radio发click。连续radio范围按原controls列表判断，隐藏/禁用peer也参与互斥更新，separator阻断分组；busy/隐藏/禁用控件无用户操作。close含当前未提交草稿，不把每次键入发送Lua。标签/分隔线没有交互；数值边界与显示fallback仍由未来原生控件承接，不在状态适配层另造钳制。
+
+实际Lua生成多控件dialog并接收原生action，验证未提交文本由按钮回调读到，包含各类commit时机、radio分隔/隐藏peer、颜色/选项、busy/隐藏/禁用拒绝、close载荷与模型reset。首次测试进程崩溃，移出过大的main局部测试栈后通过，未改产品行为或提高产品栈。Release构建、invocation/runtime专项及来源798文件/diff检查通过。仅控件操作状态，不包含原生窗口绘制、正式Editor菜单/消息泵或真实MSE快照/混合事务，无正式exe更新/GUI/完整smoke验收，整体INCOMPLETE。本阶段保存推送dev，保留用户差异、数据与缓存。

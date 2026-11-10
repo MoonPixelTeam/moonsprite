@@ -1,6 +1,7 @@
 #include "lua_script_runtime.h"
 #include "lua_script_result.h"
 #include "lua_script_client.h"
+#include "lua_script_dialog_state.h"
 #include "project_encode.h"
 #include "project_manifest.h"
 #include "project_import.h"
@@ -26,6 +27,19 @@ Document fixture(int size,int frames,bool linked){
   if(linked&&i)cel.linkedCelId="cel-0";else{timeline::Surface s;s.width=s.height=size;s.offsetX=-2;s.offsetY=3;s.storageOriginX=-4;s.storageOriginY=5;s.pixels.resize(std::size_t(size)*size);s.pixels[0]=0x00123456;s.pixels.back()=0xffabcdef;cel.surface=std::move(s);}state.cels.push_back(std::move(cel));
  }
  return Document::fromImported(size,size,std::move(state),PaletteState{},"project",U"工程🌙",std::make_shared<const std::vector<std::uint8_t>>());
+}
+void dialogStateTests(Runtime& runtime,const std::filesystem::path& root){
+ // Native window draft/action state against a dialog produced by real Lua.
+ {std::ofstream file(root/"scripts"/"controls.lua");file<<"local d=Dialog('Controls'); d:entry{id='name',text='old'}; d:number{id='n',text='3'}; d:slider{id='s',min=1,max=10,value=4}; d:check{id='check',selected=false}; d:radio{id='r1',selected=true}; d:radio{id='r2',selected=false}; d:separator{}; d:radio{id='r3',selected=true}; d:combobox{id='choice',options={'a','b'},option='a'}; d:color{id='color',color=Color{r=1,g=2,b=3,a=4}}; d:label{text='hello'}; d:button{id='apply',text='Apply',onclick=function() print(d.data.name) end}; d:show{wait=false}";file.close();auto edited=std::make_unique<Document>(fixture(3,1,false));auto first=JsonObject::Parse(winrt::to_hstring(runtime.startInvocation("controls.lua",capture(*edited)).get()));const auto session=winrt::to_string(first.GetNamedString(L"sessionId"));auto dialog=first.GetNamedArray(L"dialogs").GetObjectAt(0);DialogState state(winrt::to_string(dialog.Stringify()));
+  check(state.edit("name",R"("draft")")&&!state.commit("name",DialogState::Commit::PointerUp)&&state.commit("name",DialogState::Commit::Enter).has_value(),"Entry draft/Enter wrong");check(!state.edit("name","42")&&!state.edit("name",R"("busy")",true),"Entry invalid/busy edit accepted");
+  check(state.edit("n","8")&&!state.commit("n",DialogState::Commit::Enter)&&state.commit("n",DialogState::Commit::Blur).has_value(),"Number commit wrong");check(state.edit("s","7")&&state.commit("s",DialogState::Commit::PointerUp).has_value()&&!state.commit("s",DialogState::Commit::Change),"Slider release wrong");
+  check(state.edit("check","true")&&state.click("check").has_value()&&!state.click("check",true),"Check click/busy wrong");check(state.click("r2").has_value(),"Radio click missing");auto values=JsonObject::Parse(winrt::to_hstring(state.valuesJson()));check(!values.GetNamedBoolean(L"r1")&&values.GetNamedBoolean(L"r2")&&values.GetNamedBoolean(L"r3"),"Radio grouping crossed separator");
+  check(state.edit("choice",R"("b")")&&state.commit("choice",DialogState::Commit::Change).has_value(),"Combobox change wrong");check(state.edit("color",R"({"r":9,"g":8,"b":7,"a":6})")&&!state.edit("color",R"({"r":9})")&&state.commit("color",DialogState::Commit::Change).has_value(),"Color change wrong");
+  auto click=state.click("apply");check(click.has_value(),"Button action missing");auto result=JsonObject::Parse(winrt::to_hstring(runtime.dispatchInvocation(session,*click,capture(*edited)).get()));check(result.GetNamedArray(L"output").GetStringAt(0)==L"draft","Action lost uncommitted draft values");
+  auto close=JsonObject::Parse(winrt::to_hstring(state.close()));check(close.GetNamedValue(L"controlId").ValueType()==JsonValueType::Null&&close.GetNamedObject(L"values").GetNamedString(L"name")==L"draft","Window close lost drafts");state.reset(winrt::to_string(dialog.Stringify()));check(JsonObject::Parse(winrt::to_hstring(state.valuesJson())).GetNamedString(L"name")==L"old","Returned dialog did not reset drafts");
+  auto modified=JsonObject::Parse(dialog.Stringify());for(const auto& item:modified.GetNamedArray(L"controls")){auto c=item.GetObject();if(c.GetNamedString(L"id")==L"r1"){c.Insert(L"visible",JsonValue::CreateBooleanValue(false));c.Insert(L"enabled",JsonValue::CreateBooleanValue(false));}if(c.GetNamedString(L"id")==L"name")c.Insert(L"enabled",JsonValue::CreateBooleanValue(false));}
+  state.reset(winrt::to_string(modified.Stringify()));check(!state.click("r1")&&!state.edit("name",R"("ignored")")&&!state.commit("name",DialogState::Commit::Enter),"Hidden/disabled controls accepted action");check(state.click("r2").has_value()&&!JsonObject::Parse(winrt::to_hstring(state.valuesJson())).GetNamedBoolean(L"r1"),"Hidden radio peer not cleared");runtime.close(session).get();
+ }
 }
 int main(int argc,char** argv){try{winrt::init_apartment();check(argc==2,"Fixture path required");
  // Capture real RGBA bytes, including alpha-zero RGB and nonzero storage origin.
@@ -215,5 +229,6 @@ int main(int argc,char** argv){try{winrt::init_apartment();check(argc==2,"Fixtur
   client.run(edited.get(),"client-dialog.lua","null");const auto restartEnd=deadline();while(client.running()&&std::chrono::steady_clock::now()<restartEnd){client.tick(edited.get(),deadline());std::this_thread::yield();}check(client.session().has_value(),"Failure recovery session missing");client.dispatch(edited.get(),"broken JSON","null");auto other=std::make_unique<Document>(fixture(3,1,false));const auto switchEnd=deadline();while(client.running()&&std::chrono::steady_clock::now()<switchEnd){client.tick(other.get(),deadline());std::this_thread::yield();}check(!client.session()&&client.error().empty(),"Obsolete callback displayed failure after tab switch");
  }
  {Runtime stopped(root);Client client(stopped);stopped.shutdown();client.refresh();check(!client.loading()&&client.loadFailed()&&client.scriptsJson()=="[]","Discovery enqueue failure state wrong");}
+ dialogStateTests(runtime,root);
  std::cout<<"Lua document capture, budgets, target guards and worker execution passed\n";return 0;
  }catch(const winrt::hresult_error& e){std::cerr<<winrt::to_string(e.message());return 1;}catch(const std::exception& e){std::cerr<<e.what();return 1;}}
