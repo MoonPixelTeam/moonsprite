@@ -350,6 +350,8 @@ class PixelDropdown : public PixelButton {
 public:
   std::function<void(int)> changed;
   std::map<int,std::u32string> optionGroups;
+  std::vector<std::string> optionTooltips;
+  bool markSelectedOption=false;
   std::function<void(bool)> popupStateChanged;
   std::function<void()> prepareOptions;
   std::function<bool(int)> optionEnabled;

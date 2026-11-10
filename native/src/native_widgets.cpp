@@ -14,6 +14,7 @@
 #include "ui_scale.h"
 #include "ui/message.h"
 #include "ui/manager.h"
+#include "ui/tooltips.h"
 #include "ui/resize_event.h"
 #include "os/sampling.h"
 #include "include/core/SkShader.h"
@@ -1372,9 +1373,11 @@ void PixelDropdown::showOptions() {
   if(prepareOptions)prepareOptions();
   if(options_.empty())return;
   PixelMenu menu(dropdownSkin_);
+  ui::TooltipManager tips;
   for(int i=0;i<int(options_.size());++i){
     if(auto group=optionGroups.find(i);group!=optionGroups.end()){if(i)menu.addChild(new PixelMenuSeparator(dropdownSkin_));auto heading=new PixelMenuItem(dropdownFont_,dropdownSkin_,group->second);heading->setEnabled(false);menu.addChild(heading);}
     auto item=new PixelMenuItem(dropdownFont_,dropdownSkin_,options_[i]);
+    item->menuMarks=menuMarks;if(markSelectedOption)item->checked=[this,i]{return i==selectedIndex_;};if(i<int(optionTooltips.size())&&!optionTooltips[i].empty())tips.addTooltipFor(item,optionTooltips[i]);
     item->setEnabled(!optionEnabled || optionEnabled(i));item->Click.connect([this,i]{setSelectedIndex(i,true);});menu.addChild(item);
   }
   menu.setMinSize(gfx::Size(bounds().w,0));

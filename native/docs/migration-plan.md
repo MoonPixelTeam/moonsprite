@@ -6386,3 +6386,10 @@ PNG后台解码完成后保留像素及私有surface，每次pump最多上传262
 核对 ExtensionDialogForm 的 slot heading/description、choice label/description/selected、separator 以及 column/sidebar 分支，补齐槽位说明和双行可点击选项按钮、真实分隔线、选择状态和完整提示。ChoiceButton复用PixelButton材质/事件，两行共用同一点击范围，原生28px专用几何在UI规范登记（10px字、2px行间、上下3px）；普通按钮保持20px。column/sidebar不再绘制旧版没有的额外可见标题。绘制标签使用与控件同一布局保存的坐标并逐标签裁切，避免长标签画进相邻控件，说明计入滚动高度。
 
 唯一正式Release构建成功，四项extension-form-ui/image/files/state通过（1.34秒）；实际窗口回归验证槽位文本、选择说明完整提示及selected、分隔节点和既有输入提交。查看extension-form-prompt-smoke.bmp确认双行选项与分隔线可见且未重叠，截图为此前绘制的initial草稿，不作为新草稿证明。来源821文件与diff检查通过。尚缺row align、下拉选项description、持久化几何、全局背景模态及正式执行器，不宣称所有表单排版等价。QuickJS架构选择仍待用户回复，整体INCOMPLETE；阶段保存推送dev，用户editor_support.h差异保留。
+
+
+### 2026-11-11：扩展下拉说明与选项映射
+
+对照ExtensionDialogForm options.filter/slice100和ThemedSelect tooltip/check/moveSelection，过滤非字符串description，保留合法选项的label/value/description索引一致。共享PixelDropdown新增可选optionTooltips与markSelectedOption，默认不改变其他调用方；菜单使用现有MIT TooltipManager和PixelMenuItem checked，勾选图标绑定现有menuMarks并复用legacy utility-icons/check.png，不新增图标。菜单局部提示管理器先于菜单销毁，完整说明为“label — description”。
+
+共享头变更触发正式全量重编译，持续观察同一活跃进程后成功；补齐勾选素材引用后的最终增量Release构建成功。四项extension-form-ui/image/files/state通过（1.36秒），实际控件检查坏description过滤、完整提示内容、键盘选择与draft/依赖显示值对应，既有表单链路通过。来源821文件及diff检查通过；未人工打开/悬停菜单截图验收，不把提示字符串检查称为完整菜单交互验收。完整row align、几何持久化和正式扩展执行器仍待完成，QuickJS选择仍待用户答复；整体INCOMPLETE，阶段保存推送dev，用户editor_support.h差异保留。
