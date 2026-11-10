@@ -5882,3 +5882,10 @@ Release正式程序构建成功，--script-window-host-check退出0。两项Lua�
 新增 --script-entry-check 从实际动态菜单行触发，真实Lua像素修改+print报告+非模态原生Dialog，按钮回调继续改像素并关闭，验证重复运行排除及Undo/Redo。首次构建因验收访问不存在caption字段失败，改按Widget脚本ID定位，增量正式Release成功。新增菜单专项、原有窗口专项、实际Editor播放专项均退出0，两项Lua专项通过1.12s，来源804文件和diff检查通过。尚未新增截图/人工视觉验收，菜单/对话框视觉完整性不据此升级。
 
 普通启动现在可从文件/脚本运行已接入操作；仍非完整Lua兼容声明。扩展贡献命令的菜单位置/过滤、完整控件时序、普通play模式相关同批extract、非RGBA与其他MSE操作继续有缺口；本地笔刷快照读取失败会阻止请求并报告，首次Runtime初始化仍等待worker初始化，目录扫描异步。菜单打开展示已有缓存，后台发现的新项下次打开更新；当前未自动实时替换已打开列表。整体INCOMPLETE，保留用户差异/数据/缓存，阶段保存推送dev。
+
+
+### 2026-11-10：正式脚本入口后台加载隔离及失败恢复
+
+修复上一阶段pumpScripts在笔刷future未ready时整体return，导致独立脚本目录发现/报告/会话窗口也不被接收的问题。移除启动时不必要的笔刷扫描，只在运行时请求；未ready时继续Client/Host泵，仅排队执行等候笔刷元数据。runScript不覆盖未完成future，避免std::async future析构在UI线程隐式join。沿旧useAppScriptRuntime独立列表/报告生命周期，不改变脚本操作语义。
+
+扩展正式--script-entry-check：注入未完成promise，证明列表发现仍完成；排队后替换Document再完成promise，验证不执行到新文档；真实Lua抛错显示报告，Escape清除，再运行脚本成功修改像素。正式Release重建成功，入口专项/窗口专项/Editor播放专项均退出0，来源804文件及diff检查通过。未改变UI外观、未做全软件smoke或全软件性能声明。旧扩展菜单贡献、未迁移MSE域、普通播放后取色模式等缺口仍INCOMPLETE，保留用户差异/数据/缓存，阶段保存推送dev。
