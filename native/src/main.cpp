@@ -422,6 +422,8 @@ int app_main(int argc,char* argv[]) {
 
     ui::set_use_native_cursors(true); manager.refreshCursor();
 
+    const bool scriptEntryCheck=argc>1&&std::string(argv[1])=="--script-entry-check";
+    ui::Timer scriptEntryTimer(80,editor);if(scriptEntryCheck){scriptEntryTimer.Tick.connect([&]{scriptEntryTimer.stop();try{editor->smokeScriptEntry();desktop.approved=true;desktop.closeWindow(editor);}catch(const std::exception& e){std::ofstream("native-script-entry-error.txt")<<e.what();std::exit(1);}});scriptEntryTimer.start();}else if(!usageTesting)editor->initializeScripts();
     const bool scriptHostCheck=argc>1&&std::string(argv[1])=="--script-window-host-check";
     std::unique_ptr<script::Runtime> scriptHostRuntime;std::unique_ptr<script::Client> scriptHostClient;std::unique_ptr<ScriptWindowHost> scriptHost;std::unique_ptr<Document> scriptHostDocument;Skin scriptHostIcons;ui::Timer scriptHostTimer(30,editor);
     if(scriptHostCheck){

@@ -2,10 +2,12 @@
 #include "image_resize_task.h"
 #include "lua_script_service.h"
 #include "editor_implementation.h"
+#include "lua_script_window_host.h"
+#include "lua_mse_snapshot.h"
 
 namespace moon::editor {
 
-Editor::~Editor() {imageResizeTimer_.stop();imageResizeTask_.reset();importSheetTimer_.stop();importSheetTask_.reset();saveLayerPanelState(true);closeParameterRange();if(dynamicsPopup_){dynamicsPopup_->closeWindow(nullptr);dynamicsPopup_.reset();}workspacePresetTimer_.stop();flushWorkspacePresetSave();diagnosticTimer_.stop();if(diagnostics_){diagnostics_->record("session","native.stopped");diagnostics_->flush();diagnostics_.reset();}saveDocumentView();usageStatistics_.flush();persistUsageStatistics();advancedNoticeTimer_.stop();thumbnailQueue_.reset();thumbnailTimer_.stop();if(colorEditorPopup_){colorEditorPopup_->closeWindow(nullptr);colorEditorPopup_.reset();}flushBrushSizePreferences();if(framePngJob_)framePngJob_->cancel=true;floatingViewportSaveTimer_.stop();cancelGradientMapJob();stopAntiAlias();stopConvolution();if(propertyRangePopup_){propertyRangePopup_->closeWindow(nullptr);propertyRangePopup_.reset();}celNavigationTimer_.stop();if(toolFlyout_){toolFlyout_->closeWindow(nullptr);toolFlyout_.reset();}antsTimer_.stop();sizeTimer_.stop();if(recoveryTimer_){recoveryTimer_->stop();delete recoveryTimer_;}if(recovery_.worker.valid())recovery_.worker.wait();}
+Editor::~Editor() {stopScripts();imageResizeTimer_.stop();imageResizeTask_.reset();importSheetTimer_.stop();importSheetTask_.reset();saveLayerPanelState(true);closeParameterRange();if(dynamicsPopup_){dynamicsPopup_->closeWindow(nullptr);dynamicsPopup_.reset();}workspacePresetTimer_.stop();flushWorkspacePresetSave();diagnosticTimer_.stop();if(diagnostics_){diagnostics_->record("session","native.stopped");diagnostics_->flush();diagnostics_.reset();}saveDocumentView();usageStatistics_.flush();persistUsageStatistics();advancedNoticeTimer_.stop();thumbnailQueue_.reset();thumbnailTimer_.stop();if(colorEditorPopup_){colorEditorPopup_->closeWindow(nullptr);colorEditorPopup_.reset();}flushBrushSizePreferences();if(framePngJob_)framePngJob_->cancel=true;floatingViewportSaveTimer_.stop();cancelGradientMapJob();stopAntiAlias();stopConvolution();if(propertyRangePopup_){propertyRangePopup_->closeWindow(nullptr);propertyRangePopup_.reset();}celNavigationTimer_.stop();if(toolFlyout_){toolFlyout_->closeWindow(nullptr);toolFlyout_.reset();}antsTimer_.stop();sizeTimer_.stop();if(recoveryTimer_){recoveryTimer_->stop();delete recoveryTimer_;}if(recovery_.worker.valid())recovery_.worker.wait();}
 
 Editor::Editor(const PixelFont& font,Skin& skin,std::filesystem::path assets,std::function<void()> refreshCursor,std::filesystem::path recoveryRoot,bool skipWorkspaceRestore)
 
@@ -604,7 +606,7 @@ menuCommands_.bind("paste",{[this]{pasteEditorClipboard();},[this]{if(!paletteFo
 
 std::function<void(PixelMenu*,const std::string&)> appendChildren=[&](PixelMenu* parent,const std::string& id){
 
- if(id=="recent"){recentMenu_=parent;updateRecentMenu();}else if(id=="scripts"){auto empty=new PixelMenuItem(font_,skin_,U"没有可用脚本");empty->setEnabled(false);parent->addChild(empty);}
+ if(id=="recent"){recentMenu_=parent;updateRecentMenu();}else if(id=="scripts"){scriptsMenu_=parent;parent->OpenPopup.connect([this]{if(scripts_){updateScriptsMenu();}});auto empty=new PixelMenuItem(font_,skin_,U"没有可用脚本");empty->setEnabled(false);parent->addChild(empty);}
 
  for(const auto& e:menus::catalog())if(id==e.parent){
 
@@ -676,5 +678,50 @@ for(const auto& e:menus::catalog())if(!*e.parent){if(std::string(e.id)=="help"){
     try {recoveryPreferences_=recovery::loadPreferences(recoveryDirectory().parent_path()/"recovery-preferences.txt");recovery_.queue.setIntervalMinutes(recoveryPreferences_.minutes);recovery_.due=std::chrono::steady_clock::now()+std::chrono::milliseconds(static_cast<long long>(recoveryPreferences_.minutes*60000));}catch(const std::exception&e){status_=U"恢复设置读取失败："+unicodeText(e.what());}loadRecoveries(true);createHome();applyWorkspacePreferences();refresh();
 
   }
+
+struct Editor::ScriptState {
+ script::Runtime runtime;script::Client client;std::unique_ptr<ScriptWindowHost> host;ui::Timer timer;std::future<PatternBrushListing> brushes;std::vector<StoredPatternBrush> localBrushes;std::string queued;std::uint64_t queuedIdentity=0;std::string queuedLayer,queuedFrame;bool pumping=false;
+ ScriptState(Editor& editor,const std::filesystem::path& root):runtime(root),client(runtime),timer(30,&editor){}
+};
+void Editor::initializeScripts(const std::filesystem::path& root){
+ if(scripts_)return;try{
+  auto state=std::make_shared<ScriptState>(*this,root.empty()?script::executableDirectory():root);scripts_=state;
+  state->brushes=std::async(std::launch::async,[path=fillBrushLibraryDirectory()]{return PatternBrushLibrary(path).list();});
+  state->host=std::make_unique<ScriptWindowHost>(state->client,font_,skin_,toolIcons_,display(),palettePreferencePath().parent_path()/"color-picker-size.txt",[this](const Document& d){
+   using namespace winrt::Windows::Data::Json;JsonArray entries;const auto visible=columnVisibility();
+   for(const auto& [name,index]:std::initializer_list<std::pair<const wchar_t*,int>>{{L"color",1},{L"palette",0},{L"layers",2},{L"freeTileInstances",13},{L"history",8},{L"preview",3},{L"reference",9},{L"tileset",11},{L"brushes",12},{L"tabletAssist",10}}){JsonObject item;item.Insert(L"id",JsonValue::CreateStringValue(name));item.Insert(L"visible",JsonValue::CreateBooleanValue(visible[index]));const auto group=docking_.groupOf(index);auto dock=group>=0?docking_.groups[group].dock:panels::Dock::Right;if(!docking_.custom){if(index==0||index==1)dock=panels::Dock::Left;else if(index==2)dock=panels::Dock::Bottom;}const wchar_t* docks[]{L"left",L"right",L"bottom",L"floating"};item.Insert(L"dock",JsonValue::CreateStringValue(docks[int(dock)]));entries.Append(item);}
+   return script::buildMseSnapshot(d,scripts_->localBrushes,entries);
+  },[this](Document&& d){addProject(std::move(d));refresh();});
+  state->host->setPlaybackHost([this](Document& d,const script::PlaybackRequest& request){applyScriptPlayback(d,request);});
+  state->timer.Tick.connect([this]{pumpScripts();});state->client.refresh();state->timer.start();updateScriptsMenu();
+ }catch(const std::exception& e){stopScripts();status_=U"脚本初始化失败："+unicodeText(e.what());invalidate();}
+}
+void Editor::stopScripts(){if(!scripts_)return;scripts_->timer.stop();scripts_->host.reset();scripts_.reset();}
+void Editor::runScript(const std::string& id){if(!scripts_||scripts_->client.busy()||!scripts_->queued.empty()||pending_!=Pending::None||!documentOpen_||homeOpen_)return;document.commitFloatingPaste();cancelStroke();scripts_->brushes=std::async(std::launch::async,[path=fillBrushLibraryDirectory()]{return PatternBrushLibrary(path).list();});scripts_->queued=id;scripts_->queuedIdentity=document.identity();scripts_->queuedLayer=document.layer().id;scripts_->queuedFrame=document.frame().id;}
+bool Editor::escapeScript(){if(!scripts_||(!scripts_->client.session()&&!scripts_->host->hasReport()))return false;scripts_->host->queueEscape();return true;}
+void Editor::pumpScripts(){
+ if(!scripts_||scripts_->pumping)return;auto state=scripts_;state->pumping=true;struct Guard{bool& value;~Guard(){value=false;}} guard{state->pumping};
+ if(state->brushes.valid()){if(state->brushes.wait_for(std::chrono::seconds(0))!=std::future_status::ready)return;try{state->localBrushes=state->brushes.get().brushes;}catch(const std::exception& e){state->queued.clear();state->client.failRequest(e.what());}}
+ if(pending_!=Pending::None)return;
+ auto* active=documentOpen_&&!homeOpen_?&document:nullptr;
+ const auto identity=document.identity(),content=document.contentRevision(),history=document.historyRevision();const auto frame=document.frame().id;
+ if(!state->queued.empty()){auto id=std::move(state->queued);state->queued.clear();if(active&&state->queuedIdentity==document.identity()&&state->queuedLayer==document.layer().id&&state->queuedFrame==document.frame().id)state->host->run(active,std::move(id));}
+ state->host->pump(active,std::chrono::steady_clock::now()+std::chrono::milliseconds(3));
+ if(identity!=document.identity()||content!=document.contentRevision()||history!=document.historyRevision()||frame!=document.frame().id)refresh();
+}
+void Editor::updateScriptsMenu(){
+ if(!scriptsMenu_||!scripts_)return;auto& client=scripts_->client;auto folderItem=menuItems_.at("openScriptFolder");auto children=scriptsMenu_->children();for(auto child:children){scriptsMenu_->removeChild(child);if(child!=folderItem)delete child;}
+ using namespace winrt::Windows::Data::Json;const auto list=JsonArray::Parse(winrt::to_hstring(client.scriptsJson()));
+ if(client.loadFailed()||!list.Size()){auto empty=new PixelMenuItem(font_,skin_,client.loading()?U"正在加载脚本…":client.loadFailed()?U"脚本列表读取失败":U"没有可用脚本");empty->setEnabled(false);scriptsMenu_->addChild(empty);}
+ else for(const auto& value:list){auto entry=value.GetObject();const auto id=winrt::to_string(entry.GetNamedString(L"id"));auto row=new PixelMenuItem(font_,skin_,unicodeText(winrt::to_string(entry.GetNamedString(L"name"))));row->available=[this]{return scripts_&&!scripts_->client.busy()&&scripts_->queued.empty()&&documentOpen_&&!homeOpen_&&pending_==Pending::None;};row->setId(id.c_str());row->Click.connect([this,id]{runScript(id);});scriptsMenu_->addChild(row);}
+ scriptsMenu_->addChild(new PixelMenuSeparator(skin_));scriptsMenu_->addChild(folderItem);client.refresh();
+}
+void Editor::smokeScriptEntry(){
+ smoke_=true;homeOpen_=false;documentOpen_=true;pending_=Pending::None;playing_=false;document=Document(3,1);refresh();const auto root=script::executableDirectory()/"script-entry-test-owned";std::filesystem::create_directories(root/"scripts");std::ofstream(root/"test-owned.marker")<<"script entry fixture";std::ofstream(root/"scripts/entry.lua")<<"app.activeImage:drawPixel(1,0,0xff123456); print('entry'); local d=Dialog('Entry'); d:button{id='done',text='Done',onclick=function() app.activeImage:drawPixel(2,0,0xffabcdef); d:close() end}; d:show{wait=false}";
+ initializeScripts(root);if(!scripts_)throw std::runtime_error("Script initialization failed");const auto end=std::chrono::steady_clock::now()+std::chrono::seconds(20);while((scripts_->client.loading()||scripts_->brushes.valid())&&std::chrono::steady_clock::now()<end){pumpScripts();std::this_thread::yield();}updateScriptsMenu();bool found=false;for(auto child:scriptsMenu_->children())if(auto row=dynamic_cast<PixelMenuItem*>(child);row&&row->id()=="entry.lua"){row->Click();found=true;break;}if(!found)throw std::runtime_error("Discovered script missing from menu");
+ while((!scripts_->queued.empty()||scripts_->client.running())&&std::chrono::steady_clock::now()<end){pumpScripts();std::this_thread::yield();}if(document.pixels()[1]!=0xff123456||!scripts_->client.session()||scripts_->host->windowCount()!=1||!scripts_->host->hasReport())throw std::runtime_error("Menu run did not apply/show native dialog");runScript("entry.lua");if(!scripts_->queued.empty())throw std::runtime_error("Modeless session allowed rerun");
+ if(auto manager=ui::Manager::getDefault())manager->invalidate();
+ auto models=winrt::Windows::Data::Json::JsonArray::Parse(winrt::to_hstring(scripts_->client.session()->dialogsJson));auto id=winrt::to_string(models.GetObjectAt(0).GetNamedString(L"id"));scripts_->host->window(id)->clickForCheck("done");do{pumpScripts();std::this_thread::yield();}while(scripts_->client.running()&&std::chrono::steady_clock::now()<end);if(document.pixels()[2]!=0xffabcdef||scripts_->client.session())throw std::runtime_error("Native menu dialog callback failed");document.undo();if(document.pixels()[2])throw std::runtime_error("Menu script undo failed");document.redo();if(document.pixels()[2]!=0xffabcdef)throw std::runtime_error("Menu script redo failed");stopScripts();document=Document();refresh();
+}
 
 }

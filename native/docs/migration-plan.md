@@ -5873,3 +5873,12 @@ Release正式程序构建成功，--script-window-host-check退出0。两项Lua�
 新增正式 --script-playback-check，通过真实Rust Lua结果调用实际Editor适配，检查隐藏时间轴开始且无新增历史、原有timer推进、暂停、reverse循环起点、暂停续播、update停止清理、missing停止和其他Document拒绝。正式Release首次构建因新增include顺序导致Windows GetObject宏与WinRT JSON方法冲突，调整editor_smoke包含顺序后重建成功。新增专项退出0；已有--playback-floating-check（含原有loop/delete路径）、--script-window-host-check均退出0，两项Lua专项通过1.13s，来源804文件和diff检查通过。
 
 适配已在正式exe运行验证，但当前只由专项调用；正式脚本菜单/runtime/provider/pump尚未连接到此适配，不能称用户已能从菜单运行脚本控制播放。普通play的once/tag规划后取色和其他域仍有缺口，整体INCOMPLETE。保留用户差异、数据和缓存，本阶段保存推送dev。
+
+
+### 2026-11-10：正式文件菜单脚本入口及原生宿主贯通
+
+沿旧 AppMenuBar 文件/脚本、useAppScriptRuntime 生命周期，将 Runtime/Client/ScriptWindowHost 接入普通启动。脚本列表后台发现，保留旧文件夹菜单对象，弹出时读取缓存并刷新后台列表；30ms UI timer 每次以3ms capture预算/非阻塞future轮询运行，空闲不做全工作区refresh。后台读取实际本地笔刷目录，快照提供实际面板可见性/dock和工程资源；新文档走addProject，播放走上一阶段实际Editor适配，Escape走原生host队列。菜单点击先提交浮动选区，再排队，捕获文档/图层/帧身份，后台读取期间切换目标不运行到新槽；非模态会话期间拒绝重复启动。退出先停止timer/窗口/Client再销毁Runtime。
+
+新增 --script-entry-check 从实际动态菜单行触发，真实Lua像素修改+print报告+非模态原生Dialog，按钮回调继续改像素并关闭，验证重复运行排除及Undo/Redo。首次构建因验收访问不存在caption字段失败，改按Widget脚本ID定位，增量正式Release成功。新增菜单专项、原有窗口专项、实际Editor播放专项均退出0，两项Lua专项通过1.12s，来源804文件和diff检查通过。尚未新增截图/人工视觉验收，菜单/对话框视觉完整性不据此升级。
+
+普通启动现在可从文件/脚本运行已接入操作；仍非完整Lua兼容声明。扩展贡献命令的菜单位置/过滤、完整控件时序、普通play模式相关同批extract、非RGBA与其他MSE操作继续有缺口；本地笔刷快照读取失败会阻止请求并报告，首次Runtime初始化仍等待worker初始化，目录扫描异步。菜单打开展示已有缓存，后台发现的新项下次打开更新；当前未自动实时替换已打开列表。整体INCOMPLETE，保留用户差异/数据/缓存，阶段保存推送dev。

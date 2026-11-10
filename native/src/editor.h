@@ -3094,6 +3094,8 @@ void smokePaletteLibrary();
 
   void smokeAutoLinkLogicalScope();
 
+  struct ScriptState;std::shared_ptr<ScriptState> scripts_;PixelMenu* scriptsMenu_=nullptr;
+  void initializeScripts(const std::filesystem::path& root={});void stopScripts();void pumpScripts();void updateScriptsMenu();void runScript(const std::string&);bool escapeScript();void smokeScriptEntry();
   void applyScriptPlayback(Document&,const script::PlaybackRequest&);
   void smokeScriptPlayback();
   void smokePlaybackFloating();

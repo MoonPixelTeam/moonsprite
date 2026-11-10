@@ -63,6 +63,7 @@ void Editor::observeModifierRelease(ui::Message* msg){
   }
 
 bool Editor::onProcessMessage(ui::Message* msg) {
+    if(msg->type()==ui::kKeyDownMessage&&static_cast<ui::KeyMessage*>(msg)->scancode()==ui::kKeyEsc&&escapeScript())return true;
     if(quickResize_&&imageResizeTask_&&msg->type()==ui::kKeyDownMessage&&static_cast<ui::KeyMessage*>(msg)->scancode()==ui::kKeyEsc){imageResizeTask_->cancel();imageResizeTask_.reset();imageResizeTimer_.stop();quickResize_=resizeDetecting_=false;status_=U"倍率识别／缩放已取消";refresh();return true;}
 
     // Aseprite Widget::flushRedraw queues all rectangles for a widget together,
