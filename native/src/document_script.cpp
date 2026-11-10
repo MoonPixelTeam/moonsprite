@@ -6,6 +6,25 @@
 #include <cmath>
 namespace moon {
 struct ScriptDocumentBuilder {
+ static script::LayerStructureUi ui(const Document& d){return {d.activeLayerId_,d.activeFrameId_,d.frameAnchor_,d.timelineSelection_,d.selectedFrames_,d.selectedGroupIds_,d.collapsedGroupIds_,d.selectedGroupId_};}
+ static void restore(Document& d,const script::LayerStructureUi& u){d.activeLayerId_=u.activeLayer;d.activeFrameId_=u.activeFrame;d.frameAnchor_=u.frameAnchor;d.timelineSelection_=u.selection;d.selectedFrames_=u.frames;d.selectedGroupIds_=u.groups;d.collapsedGroupIds_=u.collapsed;d.selectedGroupId_=u.group;}
+ static bool structure(const Document& source,timeline::Timeline& timeline,std::unordered_map<std::string,std::array<int,4>>& geometry,script::LayerStructureUi& context,const std::string& operation,const std::string& id,const std::optional<std::u32string>& name,const std::optional<double>& opacity){
+  // A small detached shell runs the established structural algorithms without
+  // copying live history, recording callbacks or allocating a canvas bitmap.
+  Document draft(1,1);draft.width_=source.width_;draft.height_=source.height_;draft.timeline_=std::move(timeline);draft.displayedLayerGeometry_=geometry;restore(draft,context);
+  bool changed=false;
+  if(operation=="layers.create"){
+   const auto count=draft.timeline_.state().layers.size();draft.addLayerInGroupContext();changed=draft.timeline_.state().layers.size()!=count;if(!changed)throw std::logic_error("Lua layer creation failed");
+   auto state=std::move(draft.timeline_).takeState();for(auto& l:state.layers)if(l.id==draft.activeLayerId_){if(name&&!name->empty())l.name=*name;if(opacity){l.opacity=*opacity;for(auto& c:state.cels)if(c.layerId==l.id&&c.frameId==draft.activeFrameId_)c.opacity=*opacity;}}draft.timeline_=timeline::Timeline(std::move(state));
+  }else if(operation=="layers.duplicate"){
+   changed=draft.duplicateLayerRows({id},{},{LayerPanelDropTarget::Kind::Above,LayerPanelKind::Layer,id});if(!changed)throw std::length_error("Lua layer duplication exceeds native limits");
+  }else{
+   draft.selectTimelineLayer(id);changed=draft.deleteLayerRows({id},{});
+  }
+  for(auto it=draft.displayedLayerGeometry_.begin();it!=draft.displayedLayerGeometry_.end();)if(!draft.timeline_.hasLayer(it->first))it=draft.displayedLayerGeometry_.erase(it);else ++it;
+  for(const auto& l:draft.timeline_.state().layers)if(!draft.displayedLayerGeometry_.count(l.id)){const auto* c=draft.timeline_.findCel(l.id,draft.activeFrameId_);const auto r=c?draft.timeline_.resolveSurface(c->id):timeline::Resolution{};draft.displayedLayerGeometry_[l.id]=r.surface?std::array<int,4>{r.surface->width,r.surface->height,r.surface->offsetX,r.surface->offsetY}:std::array<int,4>{1,1,0,0};}
+  context=ui(draft);geometry=std::move(draft.displayedLayerGeometry_);timeline=std::move(draft.timeline_);return changed;
+ }
  static Document build(const script::CreatedDocument& value){
   if(value.colorMode!="rgba")throw std::invalid_argument("Native Lua document color mode is not yet supported");
   if(value.name.empty()||value.width<1||value.height<1||std::uint64_t(value.width)*value.height>script::InvocationCapture::maxImagePixels||value.layers.empty())throw std::invalid_argument("Invalid Lua created document");
@@ -27,7 +46,11 @@ struct ScriptDocumentBuilder {
   timeline::Timeline checked(std::move(state));d.timeline_=std::move(checked);d.activeLayerId_=value.layers.back().id;d.activeFrameId_=d.timeline_.state().frames.front().id;d.name_=value.name;d.projectId_="doc-script-"+std::to_string(d.identity_);d.modified_=true;d.projectActiveCelOpacities();return d;
  }
 };
-namespace script {Document buildCreatedDocument(const CreatedDocument& value){return ScriptDocumentBuilder::build(value);}}
+namespace script {
+LayerStructureUi captureLayerStructureUi(const Document& d){return ScriptDocumentBuilder::ui(d);}
+void restoreLayerStructureUi(Document& d,const LayerStructureUi& u){ScriptDocumentBuilder::restore(d,u);}
+bool planLayerStructure(const Document& d,timeline::Timeline& t,std::unordered_map<std::string,std::array<int,4>>& g,LayerStructureUi& u,const std::string& op,const std::string& id,const std::optional<std::u32string>& name,const std::optional<double>& opacity){return ScriptDocumentBuilder::structure(d,t,g,u,op,id,name,opacity);}
+Document buildCreatedDocument(const CreatedDocument& value){return ScriptDocumentBuilder::build(value);}}
 void Document::commitScriptCreatedLayer(const script::CreatedLayer& value,std::u32string label){
  if(active())throw std::logic_error("Finish active edit before script layer creation");
  const auto& s=value.surface;
@@ -73,7 +96,8 @@ bool Document::commitScriptRasterBatch(const script::RasterBatch& batch){
   // Full layers.update candidate is admitted by the planner before any batch
   // mutation, retaining native Timeline authority for text/tiles/shared Cels.
   timeline::Timeline prepared(*batch.layerUpdateTimeline);
-  if(prepared.state().layers.size()!=timeline_.state().layers.size()||prepared.state().frames.size()!=timeline_.state().frames.size()||!prepared.hasLayer(layer().id)||!prepared.hasFrame(frame().id)||!prepared.diagnoseLinks().empty()||!batch.layerUpdateGeometry)throw std::invalid_argument("Invalid Lua layer update candidate");
+  if(prepared.state().frames.size()!=timeline_.state().frames.size()||!prepared.hasLayer(batch.layerStructureUi?batch.layerStructureUi->activeLayer:layer().id)||!prepared.hasFrame(frame().id)||!prepared.diagnoseLinks().empty()||!batch.layerUpdateGeometry)throw std::invalid_argument("Invalid Lua layer update candidate");
+  if(batch.layerStructureUi){const auto& u=*batch.layerStructureUi;edit.afterActive=u.activeLayer;edit.afterFrame=u.activeFrame;edit.beforeTimelineSelection=timelineSelection_;edit.afterTimelineSelection=u.selection;edit.beforeSelection=selectedFrames_;edit.afterSelection=u.frames;edit.beforeFrameAnchor=frameAnchor_;edit.afterFrameAnchor=u.frameAnchor;edit.beforeGroupUi=GroupUiSnapshot{selectedGroupIds_,collapsedGroupIds_,selectedGroupId_};edit.afterGroupUi=GroupUiSnapshot{u.groups,u.collapsed,u.group};}
   edit.beforeTimeline=timeline_.state();edit.beforeScriptGeometry=displayedLayerGeometry_;edit.afterScriptGeometry=*batch.layerUpdateGeometry;
   auto geometry=*batch.layerUpdateGeometry;auto nextSlices=batch.slices;auto nextPalette=batch.palette;auto nextSelection=batch.selection;
   if(nextSlices){edit.beforeSlices=sliceState_;edit.afterSlices=*nextSlices;}
@@ -82,8 +106,10 @@ bool Document::commitScriptRasterBatch(const script::RasterBatch& batch){
   if(batch.durations){if(batch.durations->size()!=prepared.state().frames.size())throw std::invalid_argument("Invalid Lua duration count");for(std::size_t i=0;i<batch.durations->size();++i){const auto& [id,duration]=(*batch.durations)[i];if(id!=prepared.state_.frames[i].id||duration<1||duration>60000)throw std::invalid_argument("Invalid Lua duration");prepared.state_.frames[i].duration=duration;}}
   if(batch.loops)prepared.state_.loopSections=*batch.loops;
   edit.afterTimeline=prepared.state();reserveHistoryEntries();
+  const auto oldUi=ScriptDocumentBuilder::ui(*this);
   std::swap(timeline_,prepared);std::swap(displayedLayerGeometry_,geometry);if(nextSlices)std::swap(sliceState_,*nextSlices);if(nextPalette)std::swap(palette_,*nextPalette);if(nextSelection)std::swap(selection_,*nextSelection);
-  const auto beforeRevision=revision_;try{pushEdit(std::move(edit),batch.label);}catch(...){if(revision_==beforeRevision){std::swap(timeline_,prepared);std::swap(displayedLayerGeometry_,geometry);if(nextSlices)std::swap(sliceState_,*nextSlices);if(nextPalette)std::swap(palette_,*nextPalette);if(nextSelection)std::swap(selection_,*nextSelection);}throw;}
+  if(batch.layerStructureUi)ScriptDocumentBuilder::restore(*this,*batch.layerStructureUi);
+  const auto beforeRevision=revision_;try{pushEdit(std::move(edit),batch.label);}catch(...){if(revision_==beforeRevision){ScriptDocumentBuilder::restore(*this,oldUi);std::swap(timeline_,prepared);std::swap(displayedLayerGeometry_,geometry);if(nextSlices)std::swap(sliceState_,*nextSlices);if(nextPalette)std::swap(palette_,*nextPalette);if(nextSelection)std::swap(selection_,*nextSelection);}throw;}
   projectActiveCelOpacities();change_={0,0,width_,height_};publishChange();return true;
  }
  std::vector<timeline::Surface*> synchronizedTargets;std::vector<timeline::Surface> synchronizedReplacements;std::unordered_set<std::string> synchronizedIds;

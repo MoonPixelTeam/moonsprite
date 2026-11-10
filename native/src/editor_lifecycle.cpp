@@ -768,6 +768,11 @@ void Editor::smokeScriptEntry(){
  if(document.historyPosition()!=propertyHistory+1||document.layer().name!=U"Script properties"||document.layer().description!=U" raw "||document.layer().opacity!=128./255.||document.activeSurfaceIfPresent()->offsetX!=4||document.pixels()[0]!=0xffaabbcc)throw std::runtime_error("Formal script layer properties failed");
  document.undo();if(document.layer().name!=propertyName||document.activeSurfaceIfPresent()->offsetX!=0||document.pixels()[0]!=propertyPixel)throw std::runtime_error("Formal script layer properties undo failed");document.redo();if(document.layer().name!=U"Script properties"||document.activeSurfaceIfPresent()->offsetY!=5)throw std::runtime_error("Formal script layer properties redo failed");document.undo();
 
+ const auto structureCount=document.timeline().state().layers.size(),structureHistory=document.historyPosition();
+ runPanelCheck("app.transaction(function() mse.layers.create{name='Script created'}; mse.layers.duplicate(); mse.layers.update{name='Script copied'} end)");
+ if(document.timeline().state().layers.size()!=structureCount+2||document.historyPosition()!=structureHistory+1)throw std::runtime_error("Formal script layer structure failed");
+ document.undo();if(document.timeline().state().layers.size()!=structureCount)throw std::runtime_error("Formal script structure undo failed");document.redo();if(document.timeline().state().layers.size()!=structureCount+2)throw std::runtime_error("Formal script structure redo failed");document.undo();
+
  // Panel requests finish on the original tab before created documents are adopted.
  ensureProjects();const auto sourceIdentity=document.identity();const auto sourceTab=activeProject_,tabs=projects_.size();
  runPanelCheck("mse.workspace.hidePanel('palette'); local s=Sprite(2,2); s.name='Script adopted'; app.activeImage:drawPixel(0,0,0xff556677)");

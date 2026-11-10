@@ -5934,3 +5934,12 @@ layers.update存在时，沿现有候选Timeline预检后，使用原生完整Ti
 真实Lua覆盖位置/对象参数、Unicode名称默认、raw说明、no-op、混合像素、锁定边界、非法色前置拒绝、切帧后属性/时长/色板、多批像素、非活动文本与组锁、链接标记色与独立anchor、独占/共享瓦片集、空Cel geometry、撤销重做和保存重开；新增正式Editor入口属性/像素混合撤销验收。构建首轮UTF16名称转换误用to_hstring导致编译失败，改用hstring构造；测试先修正无变化第二批错误多撤销一次、锁定组传false应拒绝属性的预期。最终正式构建与检查结果后附。无新UI绘制、无截图验收，不宣称其他layers.create/duplicate/remove、笔刷外部宿主和所有迁移完成。用户既有差异/缓存/数据保留，阶段验证后保存推送dev。
 
 最终唯一正式Release构建成功；--script-entry-check（含真实属性/像素混合事务及UndoRedo）、--script-window-host-check、--script-playback-check均退出0。最终两项Lua专项通过2.04s，document-raster-history通过1.79s，来源804文件及diff检查通过。无人工视觉/截图验收，整体仍INCOMPLETE。
+
+
+### 2026-11-10：MSE 图层创建／复制／删除结构事务阶段
+
+对照旧版 lua-script-operations.ts 三个入口、workspace-commands-layer-creation.ts 插入位置/激活上下文、workspace-commands-layer-structure.ts duplicateLayers/deleteSelectedLayers、workspace-commands-layer-properties.ts renameLayer/setLayerOpacity。以1×1 detached Document壳承载预检候选，直接运行现有 addLayerInGroupContext/duplicateLayerRows/deleteLayerRows，避免复制真实文档历史或分配整张画布。复用跨帧Cel、链接层、蒙版、网格/自由瓦片资源克隆和删除规则；保留创建名称trim、当前帧透明度、全部帧1×1空Cel、选中行插入、删除锁和最后一层无操作。脚本连续操作使用更新后的活动图层，跨批重聚焦原目标；原目标已删时后续批或app创建层在全结果预检拒绝。删除最后瓦片层后按原顺序隐藏tileset面板；普通图层删除不触发此副作用。
+
+完整Timeline历史补上活动图层/帧、组、时间轴选择/锚点及显示geometry端点，混合像素与属性共用一项事务；普通像素脚本仍保留增量路径。候选/资源/蒙版/保留计划受256MiB保守预算限制，但完整状态同步复制仍有开销，不宣称大工程延迟路径已完成。真实Lua新增连续create→update→duplicate、全部帧稀疏空图、原始链接帧复制、失败原子性、原目标删除后批拒绝、资源/蒙版克隆删除UndoRedo、最后一层no-op和保存重开；正式Editor入口新增结构混合事务及UndoRedo检查。初轮失败为测试误将非目标层当原目标，修正测试前提后专项通过。最终构建和检查结果后附。无新UI绘制/截图验收，其他迁移和整体目标仍INCOMPLETE。保留用户差异、数据及缓存。
+
+最终唯一正式Release构建成功；Lua runtime/invocation与document-raster-history三项通过3.90s，正式--script-entry-check退出0（含新增结构事务），--script-window-host-check/--script-playback-check退出0。来源804文件覆盖及diff检查通过；整体对齐仍INCOMPLETE，无人工图像验收。蒙版fixture先按产品空白层限制拒绝，改为已有蒙版导入；瓦片专项后续脚本显式重新选择raster入口，符合当前脚本启动限制。

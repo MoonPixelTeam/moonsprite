@@ -1,6 +1,15 @@
 #pragma once
 #include "lua_script_invocation.h"
 namespace moon::script {
+struct LayerStructureUi {
+ std::string activeLayer,activeFrame,frameAnchor;
+ Document::TimelineSelection selection;
+ std::vector<std::string> frames,groups,collapsed;
+ std::optional<std::string> group;
+};
+LayerStructureUi captureLayerStructureUi(const Document&);
+void restoreLayerStructureUi(Document&,const LayerStructureUi&);
+bool planLayerStructure(const Document&,timeline::Timeline&,std::unordered_map<std::string,std::array<int,4>>&,LayerStructureUi&,const std::string& operation,const std::string& id,const std::optional<std::u32string>& name,const std::optional<double>& opacity);
 struct RasterBatch {
  struct Change {std::size_t index=0;Pixel before=0,after=0;};
  SurfaceSnapshot before;
@@ -15,8 +24,9 @@ struct RasterBatch {
  std::optional<std::vector<timeline::LoopSection>> loops;
  struct OwnerReplacement {std::string ownerId;timeline::Surface before,after;};
  std::vector<OwnerReplacement> synchronizedOwners;
- // Structural candidate is used only for layers.update batches. It includes
+ // Structural candidate is used for MSE layer batches. It includes
  // raster writes and sequential MSE effects, preflighted before installation.
+ std::optional<LayerStructureUi> layerStructureUi;
  std::optional<timeline::State> layerUpdateTimeline;
  std::optional<std::unordered_map<std::string,std::array<int,4>>> layerUpdateGeometry;
 };
