@@ -5864,3 +5864,12 @@ Release正式程序构建成功，--script-window-host-check退出0。两项Lua�
 真实Lua专项验证默认/暂停/错误类型、无历史、同批创建播放修改再播删除及missing、调用时段快照、切帧播放交错、缺失宿主无部分像素写入、后续非法操作无播放副作用、Client异步失败恢复与转发。两项Lua专项通过1.19s，正式Release重建成功，最新--script-window-host-check退出0，来源804文件及diff检查通过。窗口检查只证明已有对话宿主不回归，并非真实Editor播放验收。
 
 此阶段仅完成回调边界，正式Editor播放计时器/模式/暂停遍历/循环取消仍未接线；普通play按once/tag模式可能改变播放帧，规划时尚无宿主模式状态，故同批普通play之后extract的模式相关取色仍为迁移缺口。后续应接真实Editor状态并补齐该组合，不能把此阶段称为完整animation.play迁移。原生同步提交后执行宿主回调不提供宿主异常回滚。正式脚本菜单/provider/pump与其他域仍INCOMPLETE。保留用户差异、数据及缓存，阶段保存推送dev。
+
+
+### 2026-11-10：真实 Editor 脚本播放适配及运行验收阶段
+
+新增 Editor::applyScriptPlayback，把上一阶段 PlaybackRequest 适配到现有 Editor togglePlayback、playing_/playbackDue_、loopPlayback_ 和 playbackTick。普通播放保留原有 once/all/tag 开始、暂停续播行为，脚本请求不受时间轴隐藏限制。循环播放使用操作时 section 快照和首个 enabled 帧初始化已有循环遍历，不新增计时器；missing/全 disabled 清空播放、起点与tag周期。LoopChanged仅在当前循环或tag周期匹配时停止清理；拒绝其他Document和非活动编辑器。没有新菜单布局/素材。
+
+新增正式 --script-playback-check，通过真实Rust Lua结果调用实际Editor适配，检查隐藏时间轴开始且无新增历史、原有timer推进、暂停、reverse循环起点、暂停续播、update停止清理、missing停止和其他Document拒绝。正式Release首次构建因新增include顺序导致Windows GetObject宏与WinRT JSON方法冲突，调整editor_smoke包含顺序后重建成功。新增专项退出0；已有--playback-floating-check（含原有loop/delete路径）、--script-window-host-check均退出0，两项Lua专项通过1.13s，来源804文件和diff检查通过。
+
+适配已在正式exe运行验证，但当前只由专项调用；正式脚本菜单/runtime/provider/pump尚未连接到此适配，不能称用户已能从菜单运行脚本控制播放。普通play的once/tag规划后取色和其他域仍有缺口，整体INCOMPLETE。保留用户差异、数据和缓存，本阶段保存推送dev。

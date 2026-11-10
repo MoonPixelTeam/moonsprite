@@ -270,6 +270,8 @@ int app_main(int argc,char* argv[]) {
     if(argc>1 && std::string(argv[1])=="--role-hex-check") {try{editor->smokeRoleHex();}catch(const std::exception& e){std::ofstream("native-role-hex-error.txt")<<e.what();delete editor;desktop.editor=nullptr;return 1;}delete editor;desktop.editor=nullptr;return 0;}
 
     if(argc>1 && std::string(argv[1])=="--sparse-project-io-check") {try{editor->smokeSparseProjectIo(std::filesystem::path("build/sparse-project-io-20261019-owned"));}catch(const std::exception& e){std::ofstream("native-sparse-project-io-error.txt")<<e.what();delete editor;desktop.editor=nullptr;return 1;}delete editor;desktop.editor=nullptr;return 0;}
+    if(argc>1 && std::string(argv[1])=="--script-playback-check") {try{editor->smokeScriptPlayback();}catch(const std::exception& e){std::ofstream("native-script-playback-error.txt")<<e.what();delete editor;desktop.editor=nullptr;return 1;}delete editor;desktop.editor=nullptr;return 0;}
+
     if(argc>1 && std::string(argv[1])=="--playback-floating-check") {try{editor->smokePlaybackFloating();editor->smokeSelectionEnter();editor->smokeLoopTrack();editor->smokeDeleteRouting();}catch(const std::exception& e){std::ofstream("native-playback-floating-error.txt")<<e.what();delete editor;desktop.editor=nullptr;return 1;}delete editor;desktop.editor=nullptr;return 0;}
 
     if(argc>1 && std::string(argv[1])=="--palette-rename-trim-check") {try{editor->smokePaletteRenameTrim();}catch(const std::exception& e){std::ofstream("native-palette-rename-trim-error.txt")<<e.what();delete editor;desktop.editor=nullptr;return 1;}delete editor;desktop.editor=nullptr;return 0;}

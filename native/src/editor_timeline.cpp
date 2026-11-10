@@ -4,6 +4,7 @@
 #include "editor.h"
 #include "free_tile_instances_panel.h"
 #include "raster_geometry.h"
+#include "lua_script_result.h"
 
 namespace moon::editor {
 
@@ -371,6 +372,20 @@ void Editor::updateFramesDisabled(bool disabled,bool toggle){
     refresh();
 
   }
+
+void Editor::applyScriptPlayback(Document& target,const script::PlaybackRequest& request){
+ if(&target!=&document||!documentOpen_||homeOpen_)throw std::logic_error("Lua playback document is not active");
+ auto clear=[&]{playing_=false;loopPlayback_={};playbackTagCycle_.clear();playbackStartFrame_.clear();playbackObservedFrame_=document.frame().id;};
+ if(request.kind==script::PlaybackRequest::Kind::LoopChanged){if(loopPlayback_.current.sectionId==request.loopId||playbackTagCycle_==request.loopId){clear();refresh();}return;}
+ if(request.kind==script::PlaybackRequest::Kind::PlayLoop){
+  document.commitFloatingPaste();cancelStroke();
+  if(!request.section||request.firstFrameId.empty()){clear();refresh();return;}
+  const auto& section=*request.section;playbackStartFrame_=document.frame().id;loopPlayback_={{section.id,0,{}},{},!section.repeatCount};playbackTagCycle_=playbackTagMode_&&section.repeatCount?section.id:std::string{};
+  document.clearTimelineSelection();clearTimelineRowSelection();document.clearFrameSelection();frameSelectionExplicit_=false;document.selectFrame(request.firstFrameId);playing_=true;
+  playbackIdentity_=document.identity();playbackRevision_=document.revision();playbackObservedFrame_=document.frame().id;playbackDue_=std::chrono::steady_clock::now()+playbackFrameDelay();refresh();return;
+ }
+ if(request.kind==script::PlaybackRequest::Kind::SetPlaying&&playing_!=request.playing){const bool hidden=timelineHidden_;timelineHidden_=false;try{togglePlayback();}catch(...){timelineHidden_=hidden;throw;}timelineHidden_=hidden;}
+}
 
 void Editor::togglePlayback(){if(timelineHidden_)return;const bool next=!playing_;if(next)document.commitFloatingPaste();cancelStroke();playing_=next;if(playing_ && nextTagFrame(document.frame().id).empty()){playing_=false;loopPlayback_={};playbackTagCycle_.clear();}if(playing_){const bool paused=!loopPlayback_.current.sectionId.empty() && playbackIdentity_==document.identity() && playbackRevision_==document.revision() && playbackSection(loopPlayback_.current.sectionId) && playbackSectionContains(*playbackSection(loopPlayback_.current.sectionId),document.frame().id);if(!paused){playbackStartFrame_=document.frame().id;loopPlayback_={};playbackTagCycle_.clear();if(playbackTagMode_){const auto* section=timeline::loopAtFrame(document.timeline().state(),document.frame().id);if(section){if(!installPlaybackSection(*section,true))playing_=false;else if(section->repeatCount)playbackTagCycle_=section->id;}else if(document.frame().disabled){const auto nextFrame=nextTagFrame(document.frame().id);if(nextFrame.empty())playing_=false;else document.selectFrame(nextFrame);}}else{const auto& frames=document.timeline().state().frames;auto first=std::find_if(frames.begin(),frames.end(),[](const auto& f){return !f.disabled;});if(first==frames.end())playing_=false;else if(playbackSessionMode_=="once")document.selectFrame(first->id);else if(document.frame().disabled)document.selectFrame(nextTagFrame(document.frame().id));}}document.clearTimelineSelection();clearTimelineRowSelection();document.clearFrameSelection();frameSelectionExplicit_=false;playbackIdentity_=document.identity();playbackRevision_=document.revision();playbackDue_=std::chrono::steady_clock::now()+playbackFrameDelay();}playbackObservedFrame_=document.frame().id;refresh();}
 

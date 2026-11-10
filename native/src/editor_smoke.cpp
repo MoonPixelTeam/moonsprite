@@ -10,6 +10,8 @@
 #include "../tests/fixtures/timelapse_preview_check.h"
 #include "editor.h"
 #include "free_tile_instances_panel.h"
+#include "lua_script_runtime.h"
+#include "lua_mse_snapshot.h"
 
 namespace moon::editor {
 
@@ -5614,6 +5616,18 @@ void Editor::smokeSparseProjectIo(const std::filesystem::path& directory){
  auto verify=[&]{const auto& s=document.activeSurface();check(s.width==2&&s.height==1&&s.offsetX==-1&&s.offsetY==2&&s.pixels==std::vector<Pixel>({0x00030201,0xff123456})&&s.storageOriginX.value_or(0)==0&&s.storageOriginY.value_or(0)==0,"Sparse IO surface changed");check(document.cel().linkedCelId.has_value()&&document.timeline().resolveSurface(document.cel().id).source->id!=document.cel().id,"Sparse IO canonical link changed");check(document.historySize()==0,"Sparse IO reopened history");};
  verify();check(!document.dirty(),"Sparse open dirty");ensureContentCache();savePath(output,true);check(pending_==Pending::Saving,"Sparse actual save did not start");const auto deadline=std::chrono::steady_clock::now()+std::chrono::seconds(15);while(pending_==Pending::Saving){check(std::chrono::steady_clock::now()<deadline,"Sparse async save timeout");saveTick();if(saveWorker_.valid())saveWorker_.wait_for(std::chrono::milliseconds(1));}check(pending_==Pending::None&&!document.dirty()&&documentPath_==output,"Sparse async save state");
  restoreRecovery(output,"sparse-io-fixture",U"sparse");check(pending_==Pending::None,"Actual sparse recovery failed");verify();check(document.dirty()&&documentPath_.empty(),"Sparse recovery save state");ensureContentCache();
+}
+
+void Editor::smokeScriptPlayback(){
+ smoke_=true;homeOpen_=false;documentOpen_=true;pending_=Pending::None;playing_=false;document=Document(3,1);document.addFrame();document.addFrame();const auto first=document.timeline().state().frames.front().id;const auto last=document.timeline().state().frames.back().id;document.selectFrame(first);playbackSessionMode_="all";playbackTagMode_=false;loopPlayback_={};refresh();
+ const auto root=std::filesystem::absolute(script::executableDirectory()/"script-playback-test-owned");
+ std::filesystem::create_directories(root/"scripts");std::ofstream(root/"test-owned.marker")<<"script playback fixture";script::Runtime runtime(root);
+ auto run=[&](const char* source){std::ofstream(root/"scripts/play.lua")<<source;script::InvocationCapture capture(document,script::buildMseSnapshot(document,{},winrt::Windows::Data::Json::JsonArray{}));while(!capture.advance(document,std::chrono::steady_clock::now()+std::chrono::seconds(10))){}auto invocation=capture.take();auto target=invocation.target;auto wire=runtime.startInvocation("play.lua",std::move(invocation)).get();script::applyWorkspaceResult(document,target,wire,{},true,[this](Document& doc,const script::PlaybackRequest& request){applyScriptPlayback(doc,request);});};
+ const auto history=document.historySize();timelineHidden_=true;run("mse.animation.play(); app.activeFrame=nil");if(!playing_||!timelineHidden_||document.historySize()!=history)throw std::runtime_error("Script play hidden timeline/history");playbackDue_=std::chrono::steady_clock::now()-std::chrono::milliseconds(1);playbackTick();if(!playing_||document.frame().id==first)throw std::runtime_error("Script timer did not advance");run("mse.animation.play{playing=false}; app.activeFrame=nil");if(playing_)throw std::runtime_error("Script pause failed");
+ run("mse.animation.createLoop{id='script-loop',start=1,['end']=3,direction='reverse'}; mse.animation.play('script-loop'); app.activeFrame=nil");if(!playing_||document.frame().id!=last||loopPlayback_.current.sectionId!="script-loop")throw std::runtime_error("Script reverse loop failed");run("mse.animation.play{playing=false}; app.activeFrame=nil");auto traversal=loopPlayback_.current.sectionId;run("mse.animation.play(); app.activeFrame=nil");if(!playing_||loopPlayback_.current.sectionId!=traversal||document.frame().id!=last)throw std::runtime_error("Script loop pause/resume failed");
+ run("mse.animation.updateLoop('script-loop',{start=1,['end']=2}); app.activeFrame=nil");if(playing_||!loopPlayback_.current.sectionId.empty()||!playbackStartFrame_.empty())throw std::runtime_error("Script loop update did not clear playback");run("mse.animation.play('missing'); app.activeFrame=nil");if(playing_)throw std::runtime_error("Script missing loop did not stop");
+ Document other(3,1);bool rejected=false;try{applyScriptPlayback(other,script::PlaybackRequest{});}catch(const std::logic_error&){rejected=true;}if(!rejected)throw std::runtime_error("Script playback accepted other document");
+ timelineHidden_=false;document=Document();playing_=false;loopPlayback_={};playbackTagCycle_.clear();playbackStartFrame_.clear();refresh();
 }
 
 void Editor::smokePlaybackFloating(){

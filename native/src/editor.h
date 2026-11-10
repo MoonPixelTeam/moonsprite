@@ -66,6 +66,7 @@
 #include "menu_catalog.h"
 #include "project_encode.h"
 #include "cel_thumbnail_pipeline.h"
+namespace moon::script {struct PlaybackRequest;}
 namespace moon {class HomeBannerPane;class PixelTextArea;class LegacyCursors;class FreeTileInstancesPanel;class SheetImportTask;class ImageResizeTask;}
 
 namespace moon::home {struct Banner;}
@@ -3093,6 +3094,8 @@ void smokePaletteLibrary();
 
   void smokeAutoLinkLogicalScope();
 
+  void applyScriptPlayback(Document&,const script::PlaybackRequest&);
+  void smokeScriptPlayback();
   void smokePlaybackFloating();
   void smokeSparseProjectIo(const std::filesystem::path& directory);
 
