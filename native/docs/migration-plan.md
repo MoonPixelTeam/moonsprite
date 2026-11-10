@@ -6428,3 +6428,10 @@ PNG后台解码完成后保留像素及私有surface，每次pump最多上传262
 依据ExtensionDialogForm.tsx slot/sidebar及styles.css4552–4580，槽位增加皮肤panel/border分组、6px内边距、共享标题/右侧说明行（说明35%宽），操作沿已验证row并排和窄窗整项换行；隐藏动作不分配空间，整体context范围覆盖分组并沿既有内层优先。sidebar宽窗纵列和右分隔，窄窗连续choice两列、其他节点整行与底分隔。修复split/sidebar断点取整个表单正文宽，避免宽窗内窄子栏错误触发容器断点。
 
 唯一正式Release构建成功，extension-form-ui/image/files/state四项通过1.41秒；实际控件检查两动作并排、隐藏动作、窄侧栏两列/宽侧栏纵列、resize草稿与slot动作映射，既有右键及嵌套表单链路仍通过。来源821文件及diff检查通过。查看extension-form-smoke.bmp确认槽位标题/说明/按钮分组无重叠；该图仍为busy阶段，不用于证明解锁，未新增侧栏截图或FPS测量。长文本换行、完整输入字段排版、几何持久化、全编辑器模态及正式扩展执行器仍有缺口；QuickJS架构决定待回复，整体INCOMPLETE。用户editor_support.h差异保留，阶段保存推送dev。
+
+
+### 2026-11-11：扩展字段上下排版与文本编辑限制
+
+对照ExtensionDialogForm input/number/select与FormField默认stacked，将原横排字段改为10px标签、2px关联间距、20px控件，绘制/tooltip/布局共用保存坐标，滚动高度包含标签。输入复用MIT ui::Entry setMaxTextLength64，局部TextEntry在实际onChange按UTF16单元校验，避免补充平面字符跨64边界被拆开；模型初始化setText保留原值。数字/下拉不错误套文本长度限制。
+
+首轮测试键码名称编译错误已修正；随后UI断言失败因focus已有选区而模拟追加实际替换选区，显式deselect修正测试前置。失败断言exit伴随清理segfault未独立定位，保留日志，不冒称产品崩溃根因已解决。最终唯一正式Release构建成功，extension-form-ui/image/files/state四项通过1.41秒；实际按键验证UTF16上限、补充平面字符边界、满长拒绝与选区替换，已有显隐/焦点/caret/草稿/resize链路通过。查看extension-form-smoke.bmp确认上下字段及槽位无重叠；截图busy阶段不证明解锁。来源821文件及diff检查通过。未人工验证IME/粘贴全路径与性能；数值标签scrub、长文本换行、几何持久化和正式执行器等仍未完成，整体INCOMPLETE。用户editor_support.h差异保留，阶段保存推送dev。
