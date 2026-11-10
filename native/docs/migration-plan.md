@@ -5737,3 +5737,9 @@ Client统一持有各DialogState，为原生窗口提供edit/click/commit/title-
 核对LuaScriptDialog/NumberInput/RangeField/useSliderWheel/range-step，现有PixelSlider整数域不能保留Lua小数范围，新增ScriptNumberEntry及ScriptRangeSlider复用原生输入/滑块皮肤。数值域double与绘制归一位置分开；输入框沿既有表达式解析、剪贴板和编辑历史，普通数字实时更新草稿，表达式Enter/blur确认，仅blur触发Lua提交。滑块pointer按min/step量化，键盘/滚轮保留小数，Shift沿number步长至少5，wheel沿旧版10位小数修正；pointer-up/blur才release，键盘及wheel不提前派发。普通控件未改行为。
 
 唯一正式Release构建成功，实际Start-Process等待--script-report-check退出0；新增控件检查通过小数live草稿、表达式延迟/确认、blur计数、范围钳制、无效值保留、小数step、滑块键盘小数与终点且无提前release。报告窗口原验收继续通过，来源800文件与diff检查通过。尚未完成脚本窗口布局/所有控件接线；NumberInput完整步进按钮与浏览器range精确边界仍登记partial，不把本适配当完整窗口迁移。无新增控件截图验收；正式脚本菜单、真实MSE快照/混合事务仍未完成，整体INCOMPLETE。阶段保存推送dev，保留用户差异、数据和缓存。
+
+### 2026-11-10：Lua原生控件窗口与实际显示验证阶段
+
+对照LuaScriptDialog.tsx，新增ScriptDialogWindow，复用PixelDialog、原生输入/小数/滑块/复选框/下拉框/颜色弹窗与旧版关闭素材，承接十种控件行、草稿、操作JSON、忙碌禁用、返回模型重建和滚动裁剪。宿主须排队处理操作，不能在同步回调中销毁窗口。此窗口仍未连接正式Client/Editor脚本运行入口；radio暂用复选框外观、separator横线、NumberInput完整步进以及ColorValueControl精确提交时机仍明确登记partial。
+
+实际截图发现通用Widget默认resize将所有子项铺满；核对Aseprite ui/widget.cpp后使用手动排版视口。再次截图发现窗口挂到Manager前isVisible为false使初始几何未设置，改为始终赋予控件行边界，并增加可见控件高度、宽度、不重叠、视口包含断言。唯一正式Release构建成功，--script-report-check退出0，控件草稿提交和既有报告检查通过；最新BMP转PNG人工检查，各控件已正确显示且无行重叠。两项Lua专项通过0.80s，来源覆盖801文件和diff检查通过。没有运行完整smoke，不把专项验收当作全部脚本入口可用。真实MSE快照/混合事务、正式菜单/消息泵/窗口宿主仍待完成，整体INCOMPLETE。本阶段保存推送dev，保留用户差异、数据、缓存与失败现场。
