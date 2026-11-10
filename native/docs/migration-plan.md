@@ -6356,3 +6356,12 @@ selection.transform仍须衔接跨批浮动保留、实际操作次序、后续�
 对照 ExtensionDialogForm 的 modal-backdrop、onPointerDown/onFocusCapture 隔离和 ModalShell 控件焦点规则，原生适配在父控件处理前过滤被覆盖表单的鼠标按下/抬起/双击/滚轮与键盘按下/抬起，重定向至当前最内层提示。活动提示顺序采用模型出现顺序而非 map 的字典序；独立原生下拉/编辑菜单仍走现有菜单事件循环。模型重建按字段ID恢复焦点，不持有销毁后的控件指针；移除提示后恢复父表单焦点。仅重建/被阻挡事件调整焦点，不在空闲pump里重复抢焦点。
 
 唯一正式Release构建成功；extension-form-ui/image/files/state 四项通过（1.07秒）。原生窗口检查验证父表单wheel/key被消费、推送模型保留提示及输入焦点、双层提示阻挡外层输入并聚焦内层字段；此前提交/取消/清理回归一并通过。来源821文件证据验证与diff检查通过。本轮未修改绘制几何，未新增手动悬停/拖动截图验收。仍有整个编辑器背景模态、持久化尺寸/位置、完整表单布局和正式扩展执行器接入缺口；整体INCOMPLETE，阶段提交推送dev。用户editor_support.h差异保留。
+
+
+### 2026-11-11：扩展表单草稿条件即时刷新
+
+核对 ExtensionDialogForm values/defaults/render visibleWhen 后，将文本、数字、下拉草稿更新统一连接实际原生控件。FormState renderedIds 使用实际根200/子100、split2/slot16及depth8上限收集可见结构；编辑前后结构一致不重建，变化时延迟到根pump重建全部关联表单，包含跨主表单/嵌套提示依赖。恢复同文本输入字段的焦点、caret和反向选择，不对每次按键重建控件。异步返回模型仍沿用原有草稿重置规则。
+
+正式Release及状态测试构建成功；四项extension-form-ui/image/files/state全部通过（1.15秒）。真实原生控件回归覆盖嵌套文本条件显示/隐藏、焦点和所选文本保持、普通连续编辑控件身份不变；状态检查覆盖数值条件揭示子树。来源821文件证据和diff检查通过。没有新增性能基准或人工图像验收，不宣称所有表单输入/布局完整。
+
+正式执行器调查确认SessionHost/RuntimeDirectory/WindowRouter未接Editor，旧版使用浏览器JS/HTML。已请求用户决定无浏览器QuickJS与原生界面映射方案，架构决定未回复前不引入新引擎；此选择依据仓库迁移规则，不恢复WebView2。整体迁移INCOMPLETE。当前完成草稿条件链路阶段保存推送dev，用户editor_support.h差异保留。
