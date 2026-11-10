@@ -33,6 +33,7 @@ public:
  Client(const Client&)=delete;Client& operator=(const Client&)=delete;
  ~Client(){closeSession();}
  void setStyleClipboardHost(script::StyleClipboardHost host){pending_.setStyleClipboardHost(std::move(host));}
+ void setWorkspaceHost(script::WorkspaceHost host){pending_.setWorkspaceHost(std::move(host));}
  void setExportHost(script::ExportHost host){pending_.setExportHost(std::move(host));}
  void setSaveHost(script::SaveHost host){pending_.setSaveHost(std::move(host));}
  void setBrushHost(script::BrushHost host){pending_.setBrushHost(std::move(host));}

@@ -81,7 +81,7 @@ class PendingInvocation {
  std::string scriptId_,sessionId_,action_;
  std::function<void(Document&&)> adopt_;
  bool receiving_=false;
- bool selectCreatedPaletteColor_=true;PlaybackHost playback_;PanelHost panels_;NotificationHost notify_;StyleClipboardHost styles_;BrushHost brushes_;SaveHost save_;ExportHost export_;
+ bool selectCreatedPaletteColor_=true;PlaybackHost playback_;PanelHost panels_;NotificationHost notify_;StyleClipboardHost styles_;BrushHost brushes_;SaveHost save_;ExportHost export_;WorkspaceHost workspace_;
 public:
  explicit PendingInvocation(Runtime& runtime):runtime_(runtime){}
  PendingInvocation(const PendingInvocation&)=delete;
@@ -90,6 +90,7 @@ public:
  void setPlaybackHost(PlaybackHost host){if(busy())throw std::logic_error("Cannot replace playback host during invocation");playback_=std::move(host);}
  void setStyleClipboardHost(StyleClipboardHost host){if(busy())throw std::logic_error("Cannot replace style clipboard during invocation");styles_=std::move(host);}
  void setNotificationHost(NotificationHost host){if(busy())throw std::logic_error("Cannot replace notification host during invocation");notify_=std::move(host);}
+ void setWorkspaceHost(WorkspaceHost host){if(busy())throw std::logic_error("Cannot replace workspace host during invocation");workspace_=std::move(host);}
  void setExportHost(ExportHost host){if(busy())throw std::logic_error("Cannot replace export host during invocation");export_=std::move(host);}
  void setSaveHost(SaveHost host){if(busy())throw std::logic_error("Cannot replace save host during invocation");save_=std::move(host);}
  void setBrushHost(BrushHost host){if(busy())throw std::logic_error("Cannot replace brush host during invocation");brushes_=std::move(host);}
@@ -133,7 +134,7 @@ public:
    // busy until reception finishes so a nested request cannot replace target_.
    auto adopt=std::move(adopt_);auto session=std::move(sessionId_);scriptId_.clear();action_.clear();
    receiving_=true;
-   auto outcome=receiveWorkspaceResult(*active,target_,result,adopt,[this](const std::string& id){(void)runtime_.close(id);},session,selectCreatedPaletteColor_,playback_,panels_,styles_,notify_,brushes_,save_,export_);
+   auto outcome=receiveWorkspaceResult(*active,target_,result,adopt,[this](const std::string& id){(void)runtime_.close(id);},session,selectCreatedPaletteColor_,playback_,panels_,styles_,notify_,brushes_,save_,export_,workspace_);
    receiving_=false;return outcome;
   }catch(...){receiving_=false;capture_.reset();adopt_={};scriptId_.clear();action_.clear();sessionId_.clear();throw;}
  }

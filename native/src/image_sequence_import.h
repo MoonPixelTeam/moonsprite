@@ -81,7 +81,8 @@ inline bool open(const std::vector<std::string>& paths,const std::filesystem::pa
    auto name=std::filesystem::u8path(selected.front()).filename().u8string();name=std::regex_replace(name,std::regex(R"([0-9]+\.[^.]+$)"),"");while(!name.empty()&&(name.back()=='-'||name.back()=='_'||name.back()==' '))name.pop_back();if(name.empty())name="Animation";
    GUID guid{};if(FAILED(CoCreateGuid(&guid)))throw std::runtime_error("Cannot create image sequence project ID");wchar_t guidText[40]{};if(!StringFromGUID2(guid,guidText,40))throw std::runtime_error("Cannot format image sequence project ID");std::wstring_convert<std::codecvt_utf8<wchar_t>> guidUtf;
    std::wstring_convert<std::codecvt_utf8<char32_t>,char32_t> utf;auto result=Document::fromImported(width,height,std::move(timeline),std::move(palette),"image-sequence-native-"+guidUtf.to_bytes(guidText),utf.from_bytes(name),std::make_shared<const std::vector<std::uint8_t>>());result.clearSourceArchiveForNewSnapshot();result.markRecovered(utf.from_bytes(name));result.setImportedLoop(true);return result;};
-   host.add(host.work?host.work(assemble):assemble());opened=true;
+   auto candidate=host.work?std::make_unique<Document>(host.work(assemble)):std::make_unique<Document>(assemble());
+   host.add(std::move(*candidate));opened=true;
   }catch(const std::exception& error){host.error(error.what());}
  }
  return opened;

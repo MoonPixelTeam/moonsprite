@@ -2634,6 +2634,9 @@ private:
   void chooseRecovery();
 
   void chooseProject();
+  void smokeScriptWorkspace(const std::filesystem::path& root);
+  void runScriptWorkspace(const std::string& path,const std::string& options);
+  std::function<bool(OPENFILENAMEW*)> chooseOpenFile_=[](OPENFILENAMEW* dialog){return GetOpenFileNameW(dialog)!=FALSE;};
 
   int newDocumentDialogCount_=0;
 

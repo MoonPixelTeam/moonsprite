@@ -652,6 +652,24 @@ int main(int argc,char** argv){try{winrt::init_apartment();check(argc==2,"Fixtur
   }
   std::ofstream(root/"scripts/notify.lua")<<"mse.ui.notify('async')";Client client(runtime);client.setNotificationHost(host);check(client.run(model.get(),"notify.lua",buildMseSnapshot(*model,{},JsonArray{})),"Notify client refused");auto end=deadline();while(client.running()&&std::chrono::steady_clock::now()<end){client.tick(model.get(),deadline());std::this_thread::yield();}check(client.error().empty()&&messages==std::vector<std::u32string>{U"async"},"Async notification host not forwarded");
  }
+ // A boundary moves the original wrapper; later operations stay on the new
+ // session, while later batches refocus the source and rollback only its edits.
+ for(int scenario=0;scenario<7;++scenario){
+  auto active=std::make_unique<Document>(3,1);const auto sourceId=active->identity();std::vector<std::unique_ptr<Document>> background;
+  WorkspaceHost host;host.current=[&]{return active.get();};host.find=[&](std::uint64_t id)->Document*{if(active->identity()==id)return active.get();for(auto& d:background)if(d->identity()==id)return d.get();return nullptr;};
+  host.focus=[&](std::uint64_t id)->Document*{if(active->identity()==id)return active.get();for(auto& d:background)if(d->identity()==id){std::swap(active,d);return active.get();}return nullptr;};
+  int boundaries=0;host.execute=[&](const std::string& path,const std::string&){check(path=="document.create"||path=="document.open"||path=="io.open","Wrong boundary path");++boundaries;if(scenario==3)return;background.push_back(std::make_unique<Document>(std::move(*active)));active=std::make_unique<Document>(2,2);};
+  auto captured=capture(*active);auto target=captured.target;const auto palette=active->palette().entries.size();
+  std::string boundary=scenario==4?"mse.document.open('fixture.png')":scenario==5?"mse.io.open()":"mse.document.create{width=2,height=2}";
+  std::string code="app.transaction('boundary',function() app.activeImage:drawPixel(0,0,0xff123456); "+boundary+"; mse.palette.create{r=10,g=20,b=30}";
+  if(scenario==1)code+="; mse.workspace.showPanel('invalid-panel')";
+  code+=" end)";if(scenario==6)code+="; local d=Dialog('boundary'); d:button{text='Close'}; d:show{wait=false}";
+  if(scenario==2)code+="; app.transaction('next',function() mse.palette.create{r=40,g=50,b=60} end)";
+  std::ofstream(root/"scripts/workspace-boundary.lua")<<code;const auto wire=runtime.startInvocation("workspace-boundary.lua",std::move(captured)).get();
+  if(scenario==6){bool closed=false;reject([&]{receiveWorkspaceResult(*active,target,wire,{},[&](const std::string& id){closed=true;(void)runtime.close(id);},{},true,{},{},{},{},{},{},{},host);});check(closed&&active->identity()!=sourceId&&active->palette().entries.size()==palette+1,"Boundary modeless failure cleanup lost effects/session");}
+  else if(scenario==1){reject([&]{applyWorkspaceResult(*active,target,wire,{},true,{},{},{},{},{},{},{},host);});check(host.find(sourceId)->pixels()[0]==0&&host.find(sourceId)->historySize()==0,"Boundary failure did not restore moved source");check(active->identity()!=sourceId&&active->palette().entries.size()==palette+1&&active->historySize()==1,"Boundary failure rolled back new session");}
+  else{auto result=applyWorkspaceResult(*active,target,wire,{},true,{},{},{},{},{},{},{},host);check(result.documentBoundary&&boundaries==1,"Boundary summary missing");check(host.find(sourceId)->pixels()[0]==0xff123456,"Source raster missing");if(scenario==2){check(active->identity()==sourceId&&active->palette().entries.size()==palette+1,"Next batch did not focus source");check(background.front()->palette().entries.size()==palette+1,"New session operation missing");}else if(scenario==3){check(active->identity()==sourceId&&active->palette().entries.size()==palette+1&&active->historySize()==1,"Canceled boundary broke source compound");}else{check(active->identity()!=sourceId&&active->palette().entries.size()==palette+1&&result.transactionCount==2,"Boundary operation target/count wrong");host.focus(sourceId);active->undo();check(active->pixels()[0]==0,"Moved source compound undo failed");active->redo();check(active->pixels()[0]==0xff123456,"Moved source compound redo failed");}}
+ }
  clientDialogTests(runtime,root);
  std::cout<<"Lua document capture, budgets, target guards and worker execution passed\n";return 0;
  }catch(const winrt::hresult_error& e){std::cerr<<winrt::to_string(e.message());return 1;}catch(const std::exception& e){std::cerr<<e.what();return 1;}}

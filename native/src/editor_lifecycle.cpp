@@ -730,6 +730,12 @@ void Editor::initializeScripts(const std::filesystem::path& root){
    }
    brushLibraryNeedsReload_=true;scripts_->localBrushes=library.list().brushes;refresh();
   });
+  script::WorkspaceHost workspace;
+  workspace.current=[this]()->Document*{return documentOpen_&&!homeOpen_?&document:nullptr;};
+  workspace.find=[this](std::uint64_t id)->Document*{if(documentOpen_&&document.identity()==id)return &document;for(auto& slot:projects_)if(slot->stored&&slot->stored->identity()==id)return &*slot->stored;return nullptr;};
+  workspace.focus=[this](std::uint64_t id)->Document*{ensureProjects();for(std::size_t i=0;i<projects_.size();++i)if(projectDocument(i).identity()==id){activateProject(i);return documentOpen_&&document.identity()==id?&document:nullptr;}return nullptr;};
+  workspace.execute=[this](const std::string& path,const std::string& options){runScriptWorkspace(path,options);};
+  state->host->setWorkspaceHost(std::move(workspace));
   state->host->setExportHost([this](Document& d,const std::string& options){if(&d!=&document||!documentOpen_||homeOpen_)throw std::logic_error("Lua export target changed");runScriptExport(options);});
   state->host->setSaveHost([this](Document& d,const script::SaveRequest& request){
    if(&d!=&document||!documentOpen_||homeOpen_)throw std::logic_error("Lua save target changed");
@@ -767,6 +773,33 @@ void Editor::updateScriptsMenu(){
  if(client.loadFailed()||!list.Size()){auto empty=new PixelMenuItem(font_,skin_,client.loading()?U"正在加载脚本…":client.loadFailed()?U"脚本列表读取失败":U"没有可用脚本");empty->setEnabled(false);scriptsMenu_->addChild(empty);}
  else for(const auto& value:list){auto entry=value.GetObject();const auto id=winrt::to_string(entry.GetNamedString(L"id"));auto row=new PixelMenuItem(font_,skin_,unicodeText(winrt::to_string(entry.GetNamedString(L"name"))));row->available=[this]{return scripts_&&!scripts_->client.busy()&&scripts_->queued.empty()&&documentOpen_&&!homeOpen_&&pending_==Pending::None;};row->setId(id.c_str());row->Click.connect([this,id]{runScript(id);});scriptsMenu_->addChild(row);}
  scriptsMenu_->addChild(new PixelMenuSeparator(skin_));scriptsMenu_->addChild(folderItem);client.refresh();
+}
+void Editor::smokeScriptWorkspace(const std::filesystem::path& root){
+ // Real workspace boundaries through the asynchronous production host.
+ {
+  using namespace winrt::Windows::Data::Json;
+  auto runBoundary=[&](const std::string& code,bool fail=false){std::ofstream(root/"workspace-check-trace.txt",std::ios::app)<<"\n"<<code<<std::endl;std::ofstream(root/"scripts/workspace-entry.lua")<<code;runScript("workspace-entry.lua");const auto until=std::chrono::steady_clock::now()+std::chrono::seconds(30);do{pumpScripts();std::this_thread::yield();}while((!scripts_->queued.empty()||scripts_->client.running())&&std::chrono::steady_clock::now()<until);if(scripts_->client.running()||(!scripts_->client.error().empty())!=fail)throw std::runtime_error("Formal workspace boundary failed: "+scripts_->client.error());if(fail){if(!escapeScript())throw std::runtime_error("Boundary report missing");pumpScripts();}};
+  std::ofstream(root/"workspace-check-trace.txt")<<"start";
+  const auto sourceId=document.identity();const auto originalCount=projects_.size();const auto originalPalette=document.palette().entries.size();const std::size_t freshPalette=32; // native builtin palette contract
+  runBoundary("app.transaction('create boundary',function() app.activeImage:drawPixel(0,0,0xff123456); mse.document.create{name='Script boundary',width=4,height=2}; mse.palette.create{r=14,g=15,b=16} end)");
+  if(document.identity()==sourceId||document.name()!=U"Script boundary"||document.width()!=4||document.height()!=2||projects_.size()!=originalCount+1||document.palette().entries.size()!=freshPalette+1)throw std::runtime_error("Formal create did not switch active session");
+  const auto createdId=document.identity();auto source=saveProjectIndex(sourceId);if(!source)throw std::runtime_error("Formal boundary source lost");activateProject(*source);if(document.pixels()[0]!=0xff123456)throw std::runtime_error("Formal boundary source prefix missing");document.undo();if(document.pixels()[0])throw std::runtime_error("Formal boundary source undo failed");document.redo();
+  runBoundary("app.transaction(function() mse.document.create{name='Next batch',width=2,height=1}; mse.palette.create{r=2,g=3,b=4} end); app.transaction(function() mse.palette.create{r=5,g=6,b=7} end)");
+  if(document.identity()!=sourceId||document.palette().entries.size()!=originalPalette+1)throw std::runtime_error("Formal next batch did not refocus source");
+  const auto beforeFail=document.palette().entries.size(),history=document.historyPosition();runBoundary("app.transaction(function() mse.palette.create{r=21,g=22,b=23}; mse.document.create{name='Survive failure',width=2,height=1}; mse.palette.create{r=24,g=25,b=26}; mse.workspace.showPanel('invalid-panel') end)",true);
+  if(document.name()!=U"Survive failure"||document.palette().entries.size()!=freshPalette+1)throw std::runtime_error("Formal failure lost new session effects");source=saveProjectIndex(sourceId);activateProject(*source);if(document.palette().entries.size()!=beforeFail||document.historyPosition()!=history)throw std::runtime_error("Formal failure did not rollback background source");
+  const auto dir=root/("workspace-"+std::to_string(GetTickCount64()));std::filesystem::create_directories(dir);auto image=std::make_unique<Document>(2,1);image->beginStroke({0,0},0xffabcdef);image->commitStroke();writeExportBytesAtomic(dir/"open.png",encodeStaticImagePng(*image,{}).png);
+  const auto imported=std::make_unique<Document>(openRasterImage(dir/"open.png"));const auto importedPalette=imported->palette().entries.size();
+  auto quote=[](const std::filesystem::path& p){return winrt::to_string(JsonValue::CreateStringValue(winrt::to_hstring(p.u8string())).Stringify());};
+  runBoundary("mse.document.open{path="+quote(dir/"open.png")+"}; mse.palette.create{r=31,g=32,b=33}");if(document.pixels()[0]!=0xffabcdef||document.palette().entries.size()!=importedPalette+1)throw std::runtime_error("Formal explicit open boundary failed");
+  const auto openedId=document.identity();runBoundary("mse.io.open{path="+quote(dir/"open.png")+"}; mse.palette.create{r=34,g=35,b=36}");if(document.identity()!=openedId||document.palette().entries.size()!=importedPalette+2)throw std::runtime_error("Formal open existing tab alias failed");
+  const auto oldChooser=chooseOpenFile_;chooseOpenFile_=[&](OPENFILENAMEW* chooser){const auto path=(dir/L"open.png").wstring();std::copy(path.begin(),path.end(),chooser->lpstrFile);chooser->lpstrFile[path.size()]=0;chooser->lpstrFile[path.size()+1]=0;return true;};runBoundary("mse.io.open(); mse.palette.create{r=46,g=47,b=48}");if(document.identity()!=openedId||document.palette().entries.size()!=importedPalette+3)throw std::runtime_error("Formal chooser success did not use open path");
+  chooseOpenFile_=[](OPENFILENAMEW*){return false;};runBoundary("mse.io.open(); mse.palette.create{r=37,g=38,b=39}");chooseOpenFile_=oldChooser;if(document.identity()!=openedId||document.palette().entries.size()!=importedPalette+4)throw std::runtime_error("Formal chooser cancellation did not continue");
+  runBoundary("mse.document.open{path="+quote(dir/"missing.moonsprite")+"}; mse.palette.create{r=40,g=41,b=42}");if(pending_!=Pending::None||document.identity()!=openedId||document.palette().entries.size()!=importedPalette+5)throw std::runtime_error("Formal failed open did not continue");
+  // Unsupported color modes remain explicit; do not advertise full create.
+  runBoundary("mse.document.create{colorMode='indexed'}; mse.palette.create{r=43,g=44,b=45}");if(document.identity()!=openedId||document.palette().entries.size()!=importedPalette+6)throw std::runtime_error("Formal create rejection did not continue");
+  if(!saveProjectIndex(createdId))throw std::runtime_error("Earlier created session lost");
+ }
 }
 void Editor::smokeScriptEntry(){
  using namespace winrt::Windows::Data::Json;
@@ -865,6 +898,7 @@ void Editor::smokeScriptEntry(){
   count=document.palette().entries.size();run("mse.io.export{format='moonsprite',target='selection',directory="+encodedDirectory+"}; mse.palette.create{r=6,g=5,b=4}");if(document.palette().entries.size()!=count+1)throw std::runtime_error("Export workspace failure aborted script");
  }
  document=std::move(*std::make_unique<Document>(3,1));refresh();
+ smokeScriptWorkspace(root);
  // A slow brush listing must not prevent list reception or native report pumping.
  std::promise<PatternBrushListing> delayed;auto ready=delayed.get_future();scripts_->brushes=std::move(ready);scripts_->client.refresh();const auto listEnd=std::chrono::steady_clock::now()+std::chrono::seconds(5);while(scripts_->client.loading()&&std::chrono::steady_clock::now()<listEnd){pumpScripts();std::this_thread::yield();}if(scripts_->client.loading())throw std::runtime_error("Brush loading blocked script discovery");
  runScript("entry.lua");if(scripts_->queued.empty())throw std::runtime_error("Delayed run was not queued");auto oldIdentity=document.identity();document=Document(3,1);delayed.set_value(PatternBrushListing{});while(!scripts_->queued.empty()&&std::chrono::steady_clock::now()<listEnd){pumpScripts();std::this_thread::yield();}if(!scripts_->queued.empty()||scripts_->client.running()||document.identity()==oldIdentity||document.pixels()[1])throw std::runtime_error("Queued run changed new document");

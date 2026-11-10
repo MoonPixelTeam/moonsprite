@@ -6240,3 +6240,12 @@ selection.transform仍须衔接跨批浮动保留、实际操作次序、后续�
 ### 2026-11-11：导出后台等待避免空转
 
 核对正式程序调用关系：RuntimeRegistry/SessionHost仍仅存在于扩展模型，未接入Editor生产宿主；不能以空注册表冒充导出完成事件集成，io.export能力继续屏蔽。对照legacy exportActive的await后台任务及document-file-service异步让出，修复原生脚本导出零超时轮询加thread yield持续空转，改为消息处理后最多4ms future等待。Aseprite cmd_export_sprite_sheet.cpp::waitGenTaskAndDelete亦使用10ms休眠，仅作方案核对，没有复制源码。首轮把等待放消息处理前暴露快速任务跳过取消消息，已恢复原先先处理消息的顺序。最终唯一正式Release构建成功，--script-entry-check退出0，涵盖真实12格式、执行中取消及取消后脚本继续。来源806文件及diff检查通过；未测整机CPU/FPS，不宣称解决全部UI卡顿。整体迁移INCOMPLETE。
+
+
+### 2026-11-11：脚本跨文档工作区执行与正式宿主
+
+对照legacy lua-script-service.ts503–636、lua-script-operations.ts373–389及workspace-commands-session/document-io：新增WorkspaceHost贯穿结果执行、PendingInvocation、Client、原生窗口host和Editor。document.create/open/io.open按原始操作位置切换会话；同批后续命令作用新文档，下一批及createdLayers尾部重新聚焦原目标；出现边界时跳过最终选择，非模态后续会话按旧版报目标变化并清理。复用addProject/openPath/chooseProject及已有解码、恢复、路径去重、图片序列流程；打开失败/取消和创建失败作为workspace状态，后续MSE继续。事务收尾和COW检查点通过native identity重新查找原文档，避免Document被移入后台后引用错误；失败仅恢复原目标批事务，新会话已经完成的独立修改保留。保存/导出宿主缺失预检仍先于写入。
+
+真实Lua七组回归覆盖原wrapper移动后成功/失败/取消、下一批聚焦、open两种别名及边界后非模态清理；正式入口覆盖RGBA创建尺寸名称、原目标撤销重做、后台回滚、新会话效果保留、PNG路径打开、已有文件复用、chooser成功/取消、文件失败继续、未支持色彩模式拒绝继续。正式嵌套chooser暴露1MiB栈压力：拆分大型smoke函数、创建候选/路径缓冲及序列中间候选堆分配，单文件按旧分支直接打开，多文件保留序列流程。未提高正式程序栈或另发preview。
+
+最终唯一正式Release构建成功，--script-entry-check退出0；lua-script-invocation 5.80s和image-sequence-import 0.16s均通过，来源806文件及diff检查通过。旧native-script-entry-error.txt是早前失败记录，未删除用户数据；结论采用本次实际退出码。非RGBA文档模型/创建、全部跨域组合及扩展生产宿主仍未完成，document.create/open/io.open/io.export完整能力发现继续屏蔽。没有人工图像/FPS验收；本阶段完成工作区边界和RGBA/既有打开路径正式链路，不宣称所有迁移完成。保存推送dev。

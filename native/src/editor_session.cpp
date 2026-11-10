@@ -773,11 +773,29 @@ void Editor::chooseRecovery() {
 
   }
 
+void Editor::runScriptWorkspace(const std::string& path,const std::string& options){
+ using namespace winrt::Windows::Data::Json;
+ const auto spec=JsonObject::Parse(winrt::to_hstring(options));
+ auto text=[&](const wchar_t* key,const std::string& fallback=std::string{}){const auto v=spec.GetNamedValue(key,JsonValue::CreateNullValue());return v.ValueType()==JsonValueType::String?winrt::to_string(v.GetString()):fallback;};
+ if(path=="document.create"){
+  try{
+   auto size=[&](const wchar_t* key){const auto v=spec.GetNamedValue(key,JsonValue::CreateNullValue());const auto n=v.ValueType()==JsonValueType::Number&&std::isfinite(v.GetNumber())?std::max(1.,std::trunc(v.GetNumber())):64.;if(n>32768)throw std::length_error("Canvas dimension exceeds native limit");return int(n);};
+   auto mode=text(L"colorMode","rgba");if(mode=="indexed"||mode=="grayscale")throw std::logic_error("Native non-RGBA document creation is not yet migrated");
+   auto name=text(L"name","Sprite");auto created=std::make_unique<Document>(Document::withBuiltinPalette(size(L"width"),size(L"height"),unicodeText(name)));addProject(std::move(*created));usageStatistics_.recordEvent("newProject");refresh();
+  }catch(const std::exception& e){status_=U"创建工程失败："+unicodeText(e.what());invalidate();}
+ }else{
+  const auto value=spec.GetNamedValue(L"path",JsonValue::CreateNullValue());const auto filename=value.ValueType()==JsonValueType::Null?text(L"value"):text(L"path");
+  if(filename.empty())chooseProject();else openPath(std::filesystem::u8path(filename));
+  // Legacy openPath reports errors in workspace status and returns to MSE.
+  if(pending_==Pending::OpenError){auto failure=openError_;resolve(false);status_=std::move(failure);invalidate();}
+ }
+}
+
 void Editor::chooseProject() {
 
-    wchar_t filename[32768]{};OPENFILENAMEW dialog{};dialog.lStructSize=sizeof(dialog);
+    std::vector<wchar_t> filename(32768);OPENFILENAMEW dialog{};dialog.lStructSize=sizeof(dialog);
 
-    dialog.hwndOwner=GetActiveWindow();dialog.lpstrFile=filename;dialog.nMaxFile=32768;
+    dialog.hwndOwner=GetActiveWindow();dialog.lpstrFile=filename.data();dialog.nMaxFile=32768;
 
     // Legacy platform_dialogs.rs::open_files exposes the existing readers,
     // instead of restricting the chooser to the native project suffix.
@@ -788,8 +806,8 @@ void Editor::chooseProject() {
 
     dialog.Flags=OFN_EXPLORER|OFN_NOCHANGEDIR|OFN_PATHMUSTEXIST|OFN_FILEMUSTEXIST|OFN_ALLOWMULTISELECT;
 
-    if(GetOpenFileNameW(&dialog)){
-      const std::filesystem::path first(filename);const wchar_t* next=filename+wcslen(filename)+1;
+    if(chooseOpenFile_(&dialog)){
+      const std::filesystem::path first(filename.data());const wchar_t* next=filename.data()+wcslen(filename.data())+1;
       std::vector<std::filesystem::path> paths;if(!*next)paths.push_back(first);else for(;*next;next+=wcslen(next)+1)paths.push_back(first/next);
       // The same batch failure policy as desktop drop: successful siblings
       // remain open, and a corrupt file does not discard later selections.
@@ -799,7 +817,10 @@ void Editor::chooseProject() {
       host.add=[this](Document value){addProject(std::move(value));};
       host.error=[&failures](const std::string& error){if(!failures.empty())failures+=U"\n";failures+=unicodeText(error);};
       std::vector<std::string> sequencePaths;for(const auto& path:paths)sequencePaths.push_back(path.u8string());
-      openImageSequenceDocuments(font_,skin_,toolIcons_,display(),bounds(),palettePreferencePath().parent_path()/"image-sequence-v1.txt",sequencePaths,std::move(host),{},[this]{return pending_==Pending::None&&!document.strokeActive()&&!ui::Manager::getDefault()->getCapture();});
+      // A single file never asks for sequence import in legacy. Avoid entering
+      // the large assembly stack when called from an in-flight Lua result.
+      if(sequencePaths.size()==1)host.open(sequencePaths.front());
+      else openImageSequenceDocuments(font_,skin_,toolIcons_,display(),bounds(),palettePreferencePath().parent_path()/"image-sequence-v1.txt",sequencePaths,std::move(host),{},[this]{return pending_==Pending::None&&!document.strokeActive()&&!ui::Manager::getDefault()->getCapture();});
       if(!failures.empty()){showSaveError(std::runtime_error(utf8Text(failures)));errorTitle_=U"无法打开选择的文件";refresh();}
     }
 
