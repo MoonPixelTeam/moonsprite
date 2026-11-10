@@ -6414,3 +6414,10 @@ PNG后台解码完成后保留像素及私有surface，每次pump最多上传262
 追查此前showOptions未进入回调的假象，新增isEnabled断言确认触发器启用，实际原因是外层50ms smoke timer在原生菜单嵌套循环中重入同一phase：第二次showOptions因open_保护返回，第二个局部checkedPopup未执行而误报。测试在真实showOptions期间暂停外层timer，保留独立popup timer关闭菜单；在实际popupStateChanged(open)推送当前模型并pump，断言原下拉实例未销毁，关闭后pump再构建并继续键盘选择/条件显示/提交链路。产品代码未绕过菜单保护，无重复假回调。
 
 最终唯一正式Release构建成功，extension-form-ui/image/files/state四项通过（1.39秒），真实菜单打开/回调/关闭和其余表单链路均执行通过；来源821文件及diff检查通过。本轮补强前阶段缺失证据，不声称人工悬停tooltip截图或OS chooser验收完成。完整软件迁移仍INCOMPLETE，QuickJS架构选择仍待用户回复，阶段保存推送dev；用户editor_support.h差异保留。
+
+
+### 2026-11-11：扩展表单行与分栏自适应
+
+核对ExtensionDialogForm.tsx的row/split与styles.css4544–4579：align=end是底部对齐，非右对齐。原生按可见子项布局，不为隐藏项分宽；end按钮使用文字测宽，默认行居中，按整项换行；含toggle行以180px最小列宽自适应分行。split正文宽480及以下堆叠，宽窗左列至少140px、其余按1:2分配。相关间距采用原生规范2px，分栏6px。统一移动控件、绘制标签、tooltip目标和slot命中区域。
+
+唯一正式Release构建成功，extension-form-ui/image/files/state四项通过1.40秒。新增正式窗口验证隐藏项不占位、不同高度按钮底部对齐、宽窗分栏比例、窄窗分栏/toggle换行、resize后草稿和按钮动作对应。来源821文件与diff检查通过；未新增人工图像验收或FPS数据，不宣称整体卡顿解决。slot完整布局、sidebar响应布局、正式扩展执行器等仍未完成，QuickJS架构选择仍待回复，整体INCOMPLETE。用户editor_support.h差异保留，阶段保存推送dev。

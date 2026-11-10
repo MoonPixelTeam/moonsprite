@@ -51,7 +51,32 @@ std::vector<Row> rows_;Viewport* viewport_;PixelScrollBar* bar_;PixelButton *clo
   const auto children=field(node,L"children");
   if(type==L"dialog"){retainedPrompts_.insert(id);promptOrder_.push_back(id);auto& prompt=prompts_[id];const bool fresh=!prompt;if(fresh){prompt=std::make_unique<FormWindow>(font_,skin_,icons_,unicodeText(winrt::to_string(text(node,L"label"))),nullptr,nullptr);prompt->owner_=this;prompt->setDisplay(display(),false);}prompt->prompt_=node;prompt->promptDepth_=depth;prompt->title_=unicodeText(winrt::to_string(text(node,L"label")));prompt->chooseFiles=chooseFiles;if(fresh){auto compact=field(node,L"compact");const bool small=compact&&compact.ValueType()==Type::Boolean&&compact.GetBoolean();auto area=display()->bounds();const int w=440*uiScale,h=(small?180:440)*uiScale;prompt->setBounds({area.x+(area.w-w)/2,area.y+(area.h-h)/2,w,h});}prompt->build();prompt->dirty_=false;if(fresh){prompt->openWindow();if(auto* nested=prompt->activePrompt())nested->focusBody();else prompt->focusBody();}continue;}
 
-  if(type==L"split"||type==L"row"){if(children&&children.ValueType()==Type::Array){const auto array=children.GetArray();const auto count=std::min(type==L"split"?2u:100u,array.Size());int bottom=y;for(std::uint32_t j=0;j<count;++j){Array one;one.Append(array.GetAt(j));const int w=std::max(1,(width-int(count-1)*6)/int(std::max(1u,count)));bottom=std::max(bottom,append(one,x+int(j)*(w+6),y,w,depth+1));}y=bottom;}continue;}
+  if(type==L"split"||type==L"row"){
+   if(children&&children.ValueType()==Type::Array){
+    std::vector<Object> visible;const auto array=children.GetArray();
+    for(std::uint32_t j=0;j<std::min(type==L"split"?2u:100u,array.Size());++j){auto child=array.GetAt(j);if(child.ValueType()!=Type::Object)continue;auto object=child.GetObject();const auto childId=text(object,L"id");if(!childId.empty()&&state().shown(childId))visible.push_back(object);}
+    if(type==L"split"){
+     if(width<=480||visible.size()<2){for(auto& child:visible){Array one;one.Append(child);y=append(one,x,y,width,depth+1);}}
+     else{const int left=std::max(140,(width-6)/3);Array one,two;one.Append(visible[0]);two.Append(visible[1]);const int bottom=append(one,x,y,left,depth+1);y=std::max(bottom,append(two,x+left+6,y,width-left-6,depth+1));}
+    }else if(!visible.empty()){
+     const bool end=text(node,L"align")==L"end";
+     const bool toggles=std::any_of(visible.begin(),visible.end(),[](const Object& child){return text(child,L"type")==L"toggle";});
+     // The legacy toggle row is an auto-fit grid. Other rows flex; end
+     // buttons keep their measured width. Native narrow rows wrap whole items.
+     std::vector<int> minimum;
+     for(const auto& child:visible){const auto kind=text(child,L"type");const int label=font_.measure(unicodeText(winrt::to_string(text(child,L"label"))));minimum.push_back(toggles?std::min(width,180):std::min(width,(kind==L"button"||kind==L"file"||kind==L"choice")?std::max(40,label+12):120));}
+     std::size_t first=0;
+     while(first<visible.size()){
+      std::size_t last=first;int used=0;while(last<visible.size()&&(last==first||used+2+minimum[last]<=width)){used+=(last==first?0:2)+minimum[last];++last;}
+      int flexible=0;for(auto j=first;j<last;++j){const auto kind=text(visible[j],L"type");if(toggles||!end||(kind!=L"button"&&kind!=L"file"&&kind!=L"choice"))++flexible;}
+      struct Span{std::size_t row,label,slot;int bottom;};std::vector<Span> spans;int px=x,bottom=y,extra=std::max(0,width-used);
+      for(auto j=first;j<last;++j){const auto kind=text(visible[j],L"type");const bool flex=toggles||!end||(kind!=L"button"&&kind!=L"file"&&kind!=L"choice");int w=minimum[j];if(flex&&flexible){const int share=extra/flexible;w+=share;extra-=share;--flexible;}Span span{rows_.size(),labels_.size(),slots_.size(),y};Array one;one.Append(visible[j]);span.bottom=append(one,px,y,w,depth+1);bottom=std::max(bottom,span.bottom);spans.push_back(span);px+=w+2;}
+      for(std::size_t j=0;j<spans.size();++j){const auto& span=spans[j];const int offset=end?bottom-span.bottom:(bottom-span.bottom)/2;const auto rowEnd=j+1<spans.size()?spans[j+1].row:rows_.size(),labelEnd=j+1<spans.size()?spans[j+1].label:labels_.size(),slotEnd=j+1<spans.size()?spans[j+1].slot:slots_.size();for(auto k=span.row;k<rowEnd;++k){rows_[k].logical.y+=offset;if(!rows_[k].label.isEmpty())rows_[k].label.y+=offset;}for(auto k=span.label;k<labelEnd;++k)labels_[k].second.y+=offset;for(auto k=span.slot;k<slotEnd;++k)slots_[k].logical.y+=offset;}
+      y=bottom;first=last;
+     }
+    }
+   }continue;
+  }
   if(type==L"column"||type==L"sidebar"||type==L"slot"){const int start=y;if(type==L"slot"){if(!text(node,L"label").empty()){rows_.push_back({node,nullptr,{x,y,width,10}});labelHint(node,{x,y,width,10});y+=12;}description(node,x,y,width);}if(children&&children.ValueType()==Type::Array){auto array=children.GetArray();Array limited;for(std::uint32_t j=0;j<std::min(type==L"slot"?16u:100u,array.Size());++j)limited.Append(array.GetAt(j));y=append(limited,x,y,width,depth+1);}if(type==L"slot")slots_.push_back({id,{x,start,width,std::max(20,y-start)}});continue;}
   auto value=state().effectiveValue(id);const auto label=unicodeText(winrt::to_string(text(node,L"label")));Row row{node,nullptr,{x,y,width,20}};const int labelWidth=std::min(110,std::max(40,width/3));
   if(type==L"image"){
