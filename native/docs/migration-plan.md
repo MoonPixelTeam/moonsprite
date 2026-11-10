@@ -5896,3 +5896,12 @@ Release正式程序构建成功，--script-window-host-check退出0。两项Lua�
 对照旧 lua-script-service.ts applyResult 最终 activeLayerId 经 workspace.selectLayer 更新界面，修复正式 Editor::pumpScripts 只检测文档身份/content/history/frame 而漏掉 layer 的问题。Document::selectLayer 不增加像素和历史版本，故仅切图层的 Lua 结果也必须按图层身份变化刷新；空闲泵仍不刷新。
 
 正式 --script-entry-check 新增同文档在笔刷延迟期间切图层/帧取消排队、只切活动图层刷新且不增加content/history版本，以及三次菜单重建保留唯一原文件夹命令。测试构造先纠正原生新建层插入前端、Lua快照按旧版底到顶排序两处目标选择错误，并移除对空白1×1 Cel的越界测试读取；均未改变产品层序语义。正式Release重建成功，最终入口专项退出0。两项Lua专项通过1.20s，来源804文件及diff检查通过。没有UI外观调整或截图验收，不代表全软件性能或迁移完成；创建文档的正式入口验收、扩展贡献菜单、其他MSE域和普通播放后取色模式缺口仍待完成。保留用户差异、用户数据及缓存，阶段保存推送dev。
+
+
+### 2026-11-10：MSE 工作区栏目三个操作完整接入阶段
+
+对照旧 lua-script-operations.ts workspace.setPanel/showPanel/hidePanel、specFor 和 useAppWorkspaceLayout.ts setPanel 监听，迁移十个栏目 ID、位置参数/对象参数、show/hide覆盖visible、仅boolean生效、无效dock忽略及未知ID报错。新增 PanelHost，贯通结果全量预检、PendingInvocation、Client、ScriptWindowHost 和正式 Editor；复用栏目菜单命令、dockColumn 与原有偏好/工作区保存，显隐/停靠不创建文档历史。混合播放和栏目请求统一按操作顺序派发，发生在批次内容提交后、创建工程接管前；宿主不可替换/销毁源Document。原有宿主异常不回滚已提交内容的限制仍适用。
+
+自由瓦片实例栏目沿 WorkspacePanels.tsx 自动显隐约束，集成模式或无实例时不强制展示、不改变用户布局模式。普通Lua输入仍要求可编辑栅格活动目标；此阶段不冒充已支持自由瓦片目标脚本。正式入口新增九个可用普通栏目的hide/show和四种dock实际状态检查，以及无实例栏目的可用性；补充脚本改变栏目后创建新文档时原tab/像素保留、新tab激活及新像素验收。Lua专项覆盖全部ID、参数默认/忽略、混合顺序、缺失宿主、非法后续操作无部分写入和异步Client转发。负例先纠正测试fixture透明像素含RGB时错误地与0比较。唯一正式Release构建成功；--script-entry-check（含栏目/新工程接管）、--script-window-host-check、--script-playback-check均退出0；两项Lua专项通过1.15s，来源804文件与diff检查通过。
+
+没有新绘制素材或布局重设计，未进行截图/人工视觉验收。其他MSE域、扩展贡献菜单、播放模式相关取色、非RGBA及Hybrid大画布延迟路径等仍有缺口，整体迁移INCOMPLETE。保留用户差异、数据、缓存，阶段保存推送dev。

@@ -691,6 +691,15 @@ void Editor::initializeScripts(const std::filesystem::path& root){
    for(const auto& [name,index]:std::initializer_list<std::pair<const wchar_t*,int>>{{L"color",1},{L"palette",0},{L"layers",2},{L"freeTileInstances",13},{L"history",8},{L"preview",3},{L"reference",9},{L"tileset",11},{L"brushes",12},{L"tabletAssist",10}}){JsonObject item;item.Insert(L"id",JsonValue::CreateStringValue(name));item.Insert(L"visible",JsonValue::CreateBooleanValue(visible[index]));const auto group=docking_.groupOf(index);auto dock=group>=0?docking_.groups[group].dock:panels::Dock::Right;if(!docking_.custom){if(index==0||index==1)dock=panels::Dock::Left;else if(index==2)dock=panels::Dock::Bottom;}const wchar_t* docks[]{L"left",L"right",L"bottom",L"floating"};item.Insert(L"dock",JsonValue::CreateStringValue(docks[int(dock)]));entries.Append(item);}
    return script::buildMseSnapshot(d,scripts_->localBrushes,entries);
   },[this](Document&& d){addProject(std::move(d));refresh();});
+  state->host->setPanelHost([this](Document& d,const script::PanelRequest& request){
+   if(&d!=&document||!documentOpen_||homeOpen_)return;
+   const std::map<std::string,int> columns{{"color",1},{"palette",0},{"layers",2},{"freeTileInstances",13},{"history",8},{"preview",3},{"reference",9},{"tileset",11},{"brushes",12},{"tabletAssist",10}};const auto id=columns.at(request.id);
+   if(request.visible&&columnVisibility()[id]!=*request.visible){
+    if(id==13){freeTileInstancesOpen_=*request.visible;if(*request.visible){initializeDocking();docking_.custom=true;docking_.select(id);}refresh();saveWorkspaceSizes();}
+    else{const std::map<int,const char*> commands{{0,"togglePalettePanel"},{1,"toggleColorPanel"},{2,"toggleLayersPanel"},{3,"togglePreviewPanel"},{8,"panelHistory"},{9,"panelReference"},{10,"panelTabletAssist"},{11,"toggleTilesetPanel"},{12,"toggleBrushLibraryPanel"}};menuCommands_.invoke(commands.at(id));saveWorkspaceSizes();}
+   }
+   if(request.dock){const std::map<std::string,panels::Dock> docks{{"left",panels::Dock::Left},{"right",panels::Dock::Right},{"bottom",panels::Dock::Bottom},{"floating",panels::Dock::Floating}};dockColumn(id,docks.at(*request.dock));}
+  });
   state->host->setPlaybackHost([this](Document& d,const script::PlaybackRequest& request){applyScriptPlayback(d,request);});
   state->timer.Tick.connect([this]{pumpScripts();});state->client.refresh();state->timer.start();updateScriptsMenu();
  }catch(const std::exception& e){stopScripts();status_=U"脚本初始化失败："+unicodeText(e.what());invalidate();}
@@ -733,6 +742,22 @@ void Editor::smokeScriptEntry(){
  auto folder=menuItems_.at("openScriptFolder");for(int pass=0;pass<3;++pass){updateScriptsMenu();const auto rows=scriptsMenu_->children();if(std::count(rows.begin(),rows.end(),folder)!=1||menuItems_.at("openScriptFolder")!=folder)throw std::runtime_error("Script menu lost original folder command");}
  std::ofstream(root/"scripts/broken.lua")<<"error('entry-failure')";runScript("broken.lua");const auto failureEnd=std::chrono::steady_clock::now()+std::chrono::seconds(10);while((!scripts_->queued.empty()||scripts_->client.running())&&std::chrono::steady_clock::now()<failureEnd){pumpScripts();std::this_thread::yield();}if(scripts_->client.error().empty()||!scripts_->host->hasReport())throw std::runtime_error("Menu script error not shown");if(!escapeScript())throw std::runtime_error("Script report Escape refused");pumpScripts();if(scripts_->host->hasReport())throw std::runtime_error("Script report Escape retained report");
  std::ofstream(root/"scripts/recover.lua")<<"app.activeImage:drawPixel(0,0,0xff112233)";runScript("recover.lua");while((!scripts_->queued.empty()||scripts_->client.running())&&std::chrono::steady_clock::now()<failureEnd){pumpScripts();std::this_thread::yield();}if(document.pixels()[0]!=0xff112233||!scripts_->client.error().empty())throw std::runtime_error("Menu script did not recover after failure");
+ // Exercise the production host for every panel and all four dock destinations.
+ const auto savedDocking=docking_;const auto savedVisible=columnVisibility();const auto panelHistory=document.historyPosition();const auto panelIdentity=document.identity();
+ auto runPanelCheck=[&](const std::string& source){std::ofstream(root/"scripts/workspace-panels.lua")<<source;runScript("workspace-panels.lua");const auto until=std::chrono::steady_clock::now()+std::chrono::seconds(10);while((!scripts_->queued.empty()||scripts_->client.running())&&std::chrono::steady_clock::now()<until){pumpScripts();std::this_thread::yield();}if(!scripts_->queued.empty()||scripts_->client.running()||!scripts_->client.error().empty())throw std::runtime_error("Formal workspace panel script failed: "+scripts_->client.error());};
+ for(const auto& [name,index]:std::initializer_list<std::pair<const char*,int>>{{"color",1},{"palette",0},{"layers",2},{"history",8},{"preview",3},{"reference",9},{"tileset",11},{"brushes",12},{"tabletAssist",10}}){
+  runPanelCheck(std::string("mse.workspace.hidePanel('")+name+"')");if(columnVisibility()[index])throw std::runtime_error("Script hide panel ignored");
+  runPanelCheck(std::string("mse.workspace.showPanel('")+name+"')");if(!columnVisibility()[index])throw std::runtime_error("Script show panel ignored");
+  for(const auto& [dock,expected]:std::initializer_list<std::pair<const char*,panels::Dock>>{{"left",panels::Dock::Left},{"right",panels::Dock::Right},{"bottom",panels::Dock::Bottom},{"floating",panels::Dock::Floating}}){runPanelCheck(std::string("mse.workspace.setPanel('")+name+"',{dock='"+dock+"',visible=true})");if(docking_.groups[docking_.groupOf(index)].dock!=expected)throw std::runtime_error("Script panel docking ignored");}
+ }
+ runPanelCheck("mse.workspace.showPanel('freeTileInstances')");if(freeTileInstancesOpen_)throw std::runtime_error("Empty raster instance panel bypassed existing availability");
+ if(document.identity()!=panelIdentity||document.historyPosition()!=panelHistory||document.pixels()[0]!=0xff112233)throw std::runtime_error("Panel script edited document");
+ palettePanelOpen_=savedVisible[0];colorPickerOpen_=savedVisible[1];layersPanelOpen_=savedVisible[2];previewPanelOpen_=savedVisible[3];historyPanelOpen_=savedVisible[8];referencePanelOpen_=savedVisible[9];tabletVisibility_.visible=savedVisible[10];tilesetPanelOpen_=savedVisible[11];brushLibraryPanelOpen_=savedVisible[12];docking_=savedDocking;
+ // Panel requests finish on the original tab before created documents are adopted.
+ ensureProjects();const auto sourceIdentity=document.identity();const auto sourceTab=activeProject_,tabs=projects_.size();
+ runPanelCheck("mse.workspace.hidePanel('palette'); local s=Sprite(2,2); s.name='Script adopted'; app.activeImage:drawPixel(0,0,0xff556677)");
+ if(projects_.size()!=tabs+1||document.identity()==sourceIdentity||document.width()!=2||document.height()!=2||document.name()!=U"Script adopted"||document.pixels()[0]!=0xff556677||palettePanelOpen_||projectDocument(sourceTab).identity()!=sourceIdentity||projectDocument(sourceTab).pixels()[0]!=0xff112233)throw std::runtime_error("Script panel/document adoption boundary lost original tab or pixels");
+ palettePanelOpen_=savedVisible[0];
  stopScripts();document=Document();refresh();
 }
 
