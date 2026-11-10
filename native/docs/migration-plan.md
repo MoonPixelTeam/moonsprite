@@ -6085,3 +6085,10 @@ selection.transform仍须衔接跨批浮动保留、实际操作次序、后续�
 对照legacy lua-script-service.ts buildInvocation/rebaseTarget/applyResult、workspace-commands-selection-move.ts及workspace-floating-preview.ts：物化预览的脚本捕获读取实际预览像素，操作保留pending源，后续变换按旧预览基线恢复再绘制。接通原生模型对话框的物化浮动捕获与结果执行，复用Document已有preview delta、source和撤销机制。补充contentMutationRevision过期校验，覆盖物化预览未推进历史revision的情况。普通新脚本与其他活动编辑仍维持入口约束。新增真实Client小画布、两图层回调的连续移动、选区外像素/色板写入、提交/取消、撤销重做、捕获过期和失败回滚。完整selection.transform能力仍false；非栅格operation-time目标、几何替换组合与更广正式宿主验收未完成，整体INCOMPLETE。最终验证后附。
 
 最终唯一正式Release构建成功；lua-script-invocation全套2.82s通过，正式--script-entry-check退出0（既有宿主检查；新增小画布/双图层路径由真实Lua Client回归覆盖）。来源806文件及diff检查通过。无人工图像/FPS验收；完整selection.transform能力仍false，整体INCOMPLETE。本阶段保存推送dev，既有用户差异与未跟踪数据保留。
+
+
+### 2026-11-10：选区变换后非栅格操作目标
+
+依据legacy lua-script-service.ts559 applyResult按序执行和lua-script-operations的活动目标语义，修复变换后创建网格/自由瓦片层再执行后续MSE命令被栅格入口误拒的问题。顺序执行器新增内部operations-only通道，入口强制无changes/surfaceChange，保留脚本调用/public结果的栅格要求以及锁/蒙版检查；复用既有规划器生成完整结构/色板候选与Document事务，不允许外部脚本像素载荷借此写入瓦片缓存。新增真实Lua变换/创建网格/放置/属性/色板及变换/创建自由层/源/属性/色板组合，检查整批撤销重做、稳定标识、原始像素和失败回滚。完整selection.transform能力仍false；几何替换组合和更广正式宿主验收仍未完成，整体INCOMPLETE。最终验证后附。
+
+最终唯一正式Release构建成功；lua-script-invocation全套3.02s通过，正式--script-entry-check退出0（既有宿主检查，新增组合由真实Lua核心回归覆盖）。来源806文件与diff检查通过。没有人工图像/FPS验收；几何替换组合尚未完成，selection.transform完整能力仍false，整体INCOMPLETE。本阶段保存推送dev。

@@ -119,7 +119,8 @@ void Document::commitScriptCreatedLayer(const script::CreatedLayer& value,std::u
  change_={0,0,width_,height_};publishChange();
 }
 bool Document::commitScriptRasterBatch(const script::RasterBatch& batch){
- if(active()||!activeMaskId_.empty()||!layer().kind.empty()||layerEffectivelyLocked(layer()))throw std::logic_error("Lua raster target is not editable");
+ if(active()||!activeMaskId_.empty()||(!layer().kind.empty()&&!batch.operationsOnly)||layerEffectivelyLocked(layer()))throw std::logic_error("Lua raster target is not editable");
+ if(batch.operationsOnly&&!batch.changes.empty())throw std::invalid_argument("Operation-only Lua adapter cannot write raster pixels");
  const auto& expected=batch.before;
  auto validate=[](const script::SurfaceSnapshot& s){if(s.width<1||s.height<1||!s.pixels||std::uint64_t(s.width)*s.height!=s.pixels->size()||s.pixels->size()>script::InvocationCapture::maxImagePixels)throw std::invalid_argument("Invalid Lua raster snapshot");raster::coordinate(std::int64_t(s.x)+s.width);raster::coordinate(std::int64_t(s.y)+s.height);};
  validate(expected);if(batch.after)validate(*batch.after);

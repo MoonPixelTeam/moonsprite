@@ -13,8 +13,8 @@ bool SurfaceSnapshot::matches(const timeline::Surface& s)const{
  return width==s.width&&height==s.height&&x==s.offsetX&&y==s.offsetY&&pixels&&s.pixels==*pixels;
 }
 void Target::capturePreview(const Document& d){previewGuard=true;expectedFloating=d.floating();overlayRevision=d.floatingOverlayRevision();contentMutationRevision=d.contentMutationRevision();expectedSelection=d.selection();}
-bool Target::matches(const Document& d,bool requireExpected)const{
- if(identity!=d.identity()||documentId!=d.projectId()||layerId!=d.layer().id||frameId!=d.frame().id||!d.activeMaskId().empty()||!d.layer().kind.empty()||d.layerEffectivelyLocked(d.layer()))return false;
+bool Target::matches(const Document& d,bool requireExpected,bool rasterOnly)const{
+ if(identity!=d.identity()||documentId!=d.projectId()||layerId!=d.layer().id||frameId!=d.frame().id||!d.activeMaskId().empty()||(rasterOnly&&!d.layer().kind.empty())||d.layerEffectivelyLocked(d.layer()))return false;
  if(!requireExpected)return true;
  if(revision!=d.revision())return false;
  if(previewGuard&&(d.contentMutationRevision()!=contentMutationRevision||d.floating()!=expectedFloating||d.floatingOverlayRevision()!=overlayRevision||!selectionEqual(d.selection(),expectedSelection)))return false;

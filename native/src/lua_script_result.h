@@ -14,6 +14,7 @@ void restoreLayerStructureUi(Document&,const LayerStructureUi&);
 bool planLayerStructure(const Document&,timeline::Timeline&,std::unordered_map<std::string,std::array<int,4>>&,LayerStructureUi&,const std::string& operation,const std::string& id,const std::optional<std::u32string>& name,const std::optional<double>& opacity);
 struct RasterBatch {
  struct Change {std::size_t index=0;Pixel before=0,after=0;};
+ bool operationsOnly=false; // Internal MSE adapter; wire raster writes are rejected before planning.
  SurfaceSnapshot before;
  std::optional<SurfaceSnapshot> after;
  std::vector<Change> changes;

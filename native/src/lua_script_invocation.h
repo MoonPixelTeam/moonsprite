@@ -21,7 +21,7 @@ struct Target {
  void capturePreview(const Document&);
  // The caller passes the currently active document, never a background tab.
  // Dialog rebase checks identity/slot eligibility without the old revision.
- bool matches(const Document& activeDocument,bool requireExpected=true)const;
+ bool matches(const Document& activeDocument,bool requireExpected=true,bool rasterOnly=true)const;
 };
 struct Invocation {
  struct Cel {std::string id,frameId;std::size_t frameNumber=1;SurfaceSnapshot surface;};

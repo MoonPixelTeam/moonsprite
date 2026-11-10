@@ -405,9 +405,10 @@ void refreshScriptTarget(const Document& d,Target& target){
  else{const auto g=d.displayedLayerGeometry(target.layerId);target.expected={g[0],g[1],g[2],g[3],std::make_shared<const std::vector<Pixel>>(std::size_t(g[0])*g[1])};}target.revision=d.revision();target.capturePreview(d);
 }
 }
-RasterSummary applyRasterResult(Document& d,Target& target,const std::string& json,bool selectCreatedPaletteColor,const PlaybackHost& playback,const PanelHost& panels,const StyleClipboardHost& styles,const NotificationHost& notify,const BrushHost& brushes){
- (void)validateResult(target,json);if(d.active(false)||!target.matches(d))throw std::logic_error("Lua script target changed");
+static RasterSummary applyRasterResultImpl(Document& d,Target& target,const std::string& json,bool selectCreatedPaletteColor,const PlaybackHost& playback,const PanelHost& panels,const StyleClipboardHost& styles,const NotificationHost& notify,const BrushHost& brushes,bool operationsOnly){
+ (void)validateResult(target,json);if(d.active(false)||!target.matches(d,true,!operationsOnly))throw std::logic_error("Lua script target changed");
  const auto result=JsonObject::Parse(winrt::to_hstring(json));
+ if(operationsOnly)for(const auto& value:result.GetNamedArray(L"batches")){const auto b=value.GetObject();if(b.GetNamedArray(L"changes").Size()||(b.HasKey(L"surfaceChange")&&b.GetNamedValue(L"surfaceChange").ValueType()!=JsonValueType::Null))throw std::invalid_argument("Operation-only Lua adapter cannot write raster pixels");}
  // This stage is deliberately closed to operations requiring workspace state.
  // The full executor will route these explicitly; no data may be dropped.
  if(result.GetNamedArray(L"createdDocuments").Size())throw std::logic_error("Lua created documents require the workspace result executor");
@@ -421,7 +422,7 @@ RasterSummary applyRasterResult(Document& d,Target& target,const std::string& js
    auto rollback=brushBatchRollback(d);const auto beforeTarget=target;const auto history=d.historyRevision();const auto label=unicode(wire.GetNamedString(L"label",result.GetNamedString(L"fileName",L"脚本")));
    try{orderedBrushBatch(d,label,[&]{
     auto applyPart=[&](JsonObject part,bool original=false){JsonObject message;for(const auto& entry:result)if(entry.Key()!=L"batches"&&entry.Key()!=L"createdLayers"&&entry.Key()!=L"createdDocuments")message.Insert(entry.Key(),entry.Value());JsonArray batches;batches.Append(part);message.Insert(L"batches",batches);message.Insert(L"createdLayers",JsonArray{});message.Insert(L"createdDocuments",JsonArray{});message.Remove(L"activeLayerId");message.Remove(L"activeFrameNumber");
-     withScriptFloating(d,[&]{auto operationTarget=target;if(!original){operationTarget.layerId=d.layer().id;operationTarget.frameId=d.frame().id;}refreshScriptTarget(d,operationTarget);auto changed=applyRasterResult(d,operationTarget,winrt::to_string(message.Stringify()),selectCreatedPaletteColor,playback,panels,styles,notify,brushes);summary.changedPixelCount+=changed.changedPixelCount;});refreshScriptTarget(d,target);
+     withScriptFloating(d,[&]{auto operationTarget=target;if(!original){operationTarget.layerId=d.layer().id;operationTarget.frameId=d.frame().id;}refreshScriptTarget(d,operationTarget);auto changed=applyRasterResultImpl(d,operationTarget,winrt::to_string(message.Stringify()),selectCreatedPaletteColor,playback,panels,styles,notify,brushes,!original);summary.changedPixelCount+=changed.changedPixelCount;});refreshScriptTarget(d,target);
     };
     JsonObject raster;for(const auto& entry:wire)if(entry.Key()!=L"operations")raster.Insert(entry.Key(),entry.Value());raster.Insert(L"operations",JsonArray{});
     // Wire before values were validated against the Lua image snapshot above;
@@ -450,7 +451,7 @@ RasterSummary applyRasterResult(Document& d,Target& target,const std::string& js
  for(const auto& item:result.GetNamedArray(L"batches")){
   // Legacy focusScriptTarget resets the destination before each batch.
   if(d.layer().id!=target.layerId)d.selectLayer(target.layerId);if(d.frame().id!=target.frameId)d.selectFrame(target.frameId);
-  const auto wire=item.GetObject();RasterBatch batch;batch.before=target.expected;auto& plan=plans.at(batchIndex++);batch.slices=std::move(plan.slices);batch.selection=std::move(plan.selection);batch.palette=std::move(plan.palette);batch.durations=std::move(plan.durations);batch.loops=std::move(plan.loops);batch.styles=std::move(plan.styles);batch.structureDocumentChanged=plan.structureDocumentChanged;batch.layerStructureUi=plan.layerStructureUi;batch.layerUpdateTimeline=std::move(plan.layerUpdateTimeline);batch.layerUpdateGeometry=std::move(plan.layerUpdateGeometry);
+  const auto wire=item.GetObject();RasterBatch batch;batch.operationsOnly=operationsOnly;batch.before=target.expected;auto& plan=plans.at(batchIndex++);batch.slices=std::move(plan.slices);batch.selection=std::move(plan.selection);batch.palette=std::move(plan.palette);batch.durations=std::move(plan.durations);batch.loops=std::move(plan.loops);batch.styles=std::move(plan.styles);batch.structureDocumentChanged=plan.structureDocumentChanged;batch.layerStructureUi=plan.layerStructureUi;batch.layerUpdateTimeline=std::move(plan.layerUpdateTimeline);batch.layerUpdateGeometry=std::move(plan.layerUpdateGeometry);
   auto label=wire.GetNamedString(L"label",L"");if(label.empty())label=result.GetNamedString(L"fileName",L"");batch.label=label.empty()?U"脚本":unicode(label);
   auto next=target.expected;std::size_t count=0;
   if(wire.HasKey(L"surfaceChange")&&wire.GetNamedValue(L"surfaceChange").ValueType()!=JsonValueType::Null){
@@ -492,6 +493,7 @@ RasterSummary applyRasterResult(Document& d,Target& target,const std::string& js
  target.capturePreview(d);
  return summary;
 }
+RasterSummary applyRasterResult(Document& d,Target& target,const std::string& json,bool selectCreatedPaletteColor,const PlaybackHost& playback,const PanelHost& panels,const StyleClipboardHost& styles,const NotificationHost& notify,const BrushHost& brushes){return applyRasterResultImpl(d,target,json,selectCreatedPaletteColor,playback,panels,styles,notify,brushes,false);}
 WorkspaceSummary applyWorkspaceResult(Document& d,Target& target,const std::string& json,const std::function<void(Document&&)>& addSession,bool selectCreatedPaletteColor,const PlaybackHost& playback,const PanelHost& panels,const StyleClipboardHost& styles,const NotificationHost& notify,const BrushHost& brushes){
  (void)validateResult(target,json);if(d.active(false)||!target.matches(d))throw std::logic_error("Lua script target changed");
  auto result=JsonObject::Parse(winrt::to_hstring(json));const auto documents=result.GetNamedArray(L"createdDocuments");
