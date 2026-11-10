@@ -8,6 +8,7 @@ struct RasterBatch {
  std::vector<Change> changes;
  std::u32string label;
  std::optional<SliceState> slices;
+ std::optional<std::optional<SelectionMask>> selection;
 };
 struct CreatedLayer {
  std::string id;std::u32string name;

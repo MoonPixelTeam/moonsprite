@@ -5,6 +5,7 @@
 #include <winrt/Windows.Data.Json.h>
 #include <winrt/Windows.Foundation.Collections.h>
 #include "lua_script_result.h"
+#include "raster_geometry.h"
 #include <cmath>
 #include <charconv>
 #include <unordered_set>
@@ -97,12 +98,22 @@ double operationInteger(const JsonObject& o,const wchar_t* key,double fallback=0
 int sliceCoordinate(double n){return int(std::clamp(n,double(std::numeric_limits<int>::min()),double(std::numeric_limits<int>::max())));}
 SliceRect sliceRect(const JsonObject& o){return {sliceCoordinate(operationInteger(o,L"x")),sliceCoordinate(operationInteger(o,L"y")),sliceCoordinate(std::max(1.,operationInteger(o,L"width"))),sliceCoordinate(std::max(1.,operationInteger(o,L"height")))};}
 void validateSliceMask(const JsonObject& spec){if(spec.HasKey(L"mask")&&spec.GetNamedValue(L"mask").ValueType()==JsonValueType::Array){const auto r=sliceRect(spec);if(std::uint64_t(r.width)*r.height!=spec.GetNamedArray(L"mask").Size())throw std::invalid_argument("selection mask size does not match its bounds");}}
-std::vector<std::optional<SliceState>> planSliceOperations(const Document& d,const JsonArray& batches){
- SliceState state{d.slices(),d.selectedSliceIds()};std::vector<std::optional<SliceState>> plans;std::size_t serial=0;
- for(const auto& item:batches){bool changed=false;const auto batch=item.GetObject();if(batch.HasKey(L"operations"))for(const auto& entry:batch.GetNamedArray(L"operations")){
+struct OperationPlan {std::optional<SliceState> slices;std::optional<std::optional<SelectionMask>> selection;};
+std::vector<OperationPlan> planOperations(const Document& d,const JsonArray& batches){
+ SliceState state{d.slices(),d.selectedSliceIds()};auto selection=d.selection();std::vector<OperationPlan> plans;std::size_t serial=0;
+ for(const auto& item:batches){bool changed=false,selectionChanged=false;const auto batch=item.GetObject();if(batch.HasKey(L"operations"))for(const auto& entry:batch.GetNamedArray(L"operations")){
   const auto operation=entry.GetObject();const auto path=operation.GetNamedString(L"path");
-  if(path!=L"slices.create"&&path!=L"slices.update"&&path!=L"slices.remove")throw std::logic_error("Lua MSE operation adapter is incomplete: "+winrt::to_string(path));
+  if(path!=L"slices.create"&&path!=L"slices.update"&&path!=L"slices.remove"&&path!=L"selection.set"&&path!=L"selection.clear"&&path!=L"selection.invert")throw std::logic_error("Lua MSE operation adapter is incomplete: "+winrt::to_string(path));
   auto spec=operationSpec(operation);
+  if(path==L"selection.set"||path==L"selection.clear"||path==L"selection.invert"){
+   auto next=selection;
+   if(path==L"selection.clear")next.reset();
+   else if(path==L"selection.invert")next=invertSelection(selection,d.width(),d.height());
+   else{validateSliceMask(spec);const auto r=sliceRect(spec);raster::coordinate(std::int64_t(r.x)+r.width);raster::coordinate(std::int64_t(r.y)+r.height);SelectionMask s{r.x,r.y,r.width,r.height,{}};
+    if(spec.HasKey(L"mask")&&spec.GetNamedValue(L"mask").ValueType()==JsonValueType::Array){const auto values=spec.GetNamedArray(L"mask");if(values.Size()>InvocationCapture::maxImagePixels)throw std::length_error("Lua selection mask exceeds native budget");s.mask.reserve(values.Size());for(const auto& value:values){const auto n=value.ValueType()==JsonValueType::Number?value.GetNumber():0;s.mask.push_back(std::uint8_t(std::clamp(std::isfinite(n)?std::trunc(n):0.,0.,255.)));}}next=std::move(s);
+   }
+   if(!selectionEqual(selection,next)){selection=std::move(next);selectionChanged=true;}continue;
+  }
   if(path==L"slices.create"){
    validateSliceMask(spec);std::string id;do{id="slice-script-"+std::to_string(d.identity())+"-"+std::to_string(++serial);}while(std::any_of(state.items.begin(),state.items.end(),[&](const auto& s){return s.id==id;}));const auto n=std::to_string(state.items.size()+1);state.items.push_back({id,U"切片 "+std::u32string(n.begin(),n.end()),clampSliceRect(sliceRect(spec),d.width(),d.height())});state.selected={id};changed=true;
   }else{
@@ -111,7 +122,7 @@ std::vector<std::optional<SliceState>> planSliceOperations(const Document& d,con
    if(path==L"slices.remove"){state.items.erase(found);state.selected.erase(std::remove(state.selected.begin(),state.selected.end(),id),state.selected.end());changed=true;}
    else{auto next=*found;for(auto [key,target]:{std::pair{L"x",&next.rect.x},{L"y",&next.rect.y},{L"width",&next.rect.width},{L"height",&next.rect.height}})if(spec.HasKey(key))*target=sliceCoordinate(operationInteger(spec,key));next.rect.width=std::max(1,next.rect.width);next.rect.height=std::max(1,next.rect.height);next.rect=clampSliceRect(next.rect,d.width(),d.height());if(spec.HasKey(L"name")&&spec.GetNamedValue(L"name").ValueType()==JsonValueType::String)next.name=sanitizeSliceName(unicode(spec.GetNamedString(L"name")),next.name);if(!(next==*found)){*found=std::move(next);changed=true;}}
   }
- }plans.push_back(changed?std::optional<SliceState>(state):std::nullopt);}return plans;
+ }OperationPlan plan;if(changed)plan.slices=state;if(selectionChanged)plan.selection.emplace(selection);plans.push_back(std::move(plan));}return plans;
 }
 }
 RasterSummary applyRasterResult(Document& d,Target& target,const std::string& json){
@@ -121,10 +132,10 @@ RasterSummary applyRasterResult(Document& d,Target& target,const std::string& js
  // The full executor will route these explicitly; no data may be dropped.
  if(result.GetNamedArray(L"createdDocuments").Size())throw std::logic_error("Lua created documents require the workspace result executor");
  for(const auto& item:result.GetNamedArray(L"createdLayers")){const auto layer=item.GetObject();(void)layer.GetNamedBoolean(L"visible");(void)layer.GetNamedBoolean(L"locked");if(d.timeline().hasLayer(winrt::to_string(layer.GetNamedString(L"id"))))throw std::invalid_argument("Lua layer id already exists");}
- const auto slicePlans=planSliceOperations(d,result.GetNamedArray(L"batches"));std::size_t batchIndex=0;
+ const auto plans=planOperations(d,result.GetNamedArray(L"batches"));std::size_t batchIndex=0;
  RasterSummary summary;
  for(const auto& item:result.GetNamedArray(L"batches")){
-  const auto wire=item.GetObject();RasterBatch batch;batch.before=target.expected;batch.slices=slicePlans.at(batchIndex++);
+  const auto wire=item.GetObject();RasterBatch batch;batch.before=target.expected;const auto& plan=plans.at(batchIndex++);batch.slices=plan.slices;batch.selection=plan.selection;
   auto label=wire.GetNamedString(L"label",L"");if(label.empty())label=result.GetNamedString(L"fileName",L"");batch.label=label.empty()?U"脚本":unicode(label);
   auto next=target.expected;std::size_t count=0;
   if(wire.HasKey(L"surfaceChange")&&wire.GetNamedValue(L"surfaceChange").ValueType()!=JsonValueType::Null){
@@ -158,7 +169,7 @@ WorkspaceSummary applyWorkspaceResult(Document& d,Target& target,const std::stri
  (void)validateResult(target,json);if(d.active()||!target.matches(d))throw std::logic_error("Lua script target changed");
  auto result=JsonObject::Parse(winrt::to_hstring(json));const auto documents=result.GetNamedArray(L"createdDocuments");
  if(documents.Size()&&!addSession)throw std::logic_error("Lua created document session adopter is not connected");
- (void)planSliceOperations(d,result.GetNamedArray(L"batches"));
+ (void)planOperations(d,result.GetNamedArray(L"batches"));
  // Build candidates before changing the source document; unsupported modes and
  // invalid native structures cannot leave earlier raster batches half-applied.
  std::vector<Document> prepared;prepared.reserve(documents.Size());std::size_t pixels=0;

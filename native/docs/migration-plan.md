@@ -5763,3 +5763,11 @@ Client统一持有各DialogState，为原生窗口提供edit/click/commit/title-
 核对lua-script-operations specFor、selectionFromSpec、slices三操作、workspace-commands-slice与applyResult，接入slices.create/update/remove。支持直接表/位置参数、截断数字、缺失字段回退、边界钳制、名称清理、创建选中与删除选择清理、无目标无操作。预先计算所有批次切片候选并拒绝其余未接入路径，任何参数失败均在首次像素写入前发生；RasterBatch carries SliceState，沿Document现有Edit beforeSlices/afterSlices与像素/表面更改同项提交，一次撤销恢复整个batch，重做保留创建ID。纯切片不构造缺失Cel且不复制像素存储。已登记Native observer抛异常仍保留已提交历史的既有差异，不声称完全复刻React外部observer失败回退。
 
 真实Lua app.transaction混合像素及创建/更新/删除，检查一次历史、范围钳制/选中、Undo/Redo、编码后prepareEditableImport/createEditableDocument重开。失败及缺失ID no-op不改像素/切片/history；纯切片缺失Cel额外检查。初次fixture画布高度误判、空sourceArchive占位导致ZIP拒绝，按真实fixture修正而不改生产边界。正式Release构建和--script-window-host-check退出0，两项Lua专项通过；来源804与diff检查通过。本阶段无UI外观修改/新截图，无完整smoke。其他MSE写入域、正式Editor菜单/真实工作区供给、颜色模式和大工程分块仍未完成，整体INCOMPLETE。保存推送dev，保留用户差异、数据和缓存。
+
+### 2026-11-10：MSE选区设置、清除和反选批次阶段
+
+对照lua-script-operations selectionFromSpec/selection.set/clear/invert、workspace-commands-selection-properties commitSelectionChange/invertSelection及core selectionContains/invertSelectionMask，接入三类选区操作。沿原始顺序预计算各批次候选，mask按Uint8规则截断钳制且长度须匹配，保留255等原始字节；反选继续仅把值1视为选中，不把非零统一成选中。空选区反选/清除及相同选区跳过，保留现有时间轴选择。坐标和mask分配沿原生预算校验，未接入selection.transform仍明确拒绝。
+
+原生RasterBatch复用pixelSelectionEdit历史，与像素/切片共享一项原子提交；仅选区documentChanged=false，不改变工程dirty，不创建缺失Cel。准备历史和替换值后再安装，提交前失败恢复选区与其他数据。真实Lua测试覆盖设置/字节钳制、相同值no-op、反选/清除/空选区、timeline context、纯选区dirty及Undo/Redo、像素/选区/切片三者混合一次撤销重做、畸形mask拒绝不改已有批次。测试原先要求混合内容撤销清dirty，与原生现有undo始终标记修改不一致，已改为验证数据恢复，不擅改全局dirty规则。
+
+正式Release构建成功，--script-window-host-check实际退出0，两个Lua专项通过0.84s，来源804及diff检查通过。无UI视觉改动/新截图，无完整smoke。原生Editor选区属性UI重置、selection.transform内容移动、其他MSE操作域、正式菜单/真实宿主供给和大工程分块仍待完成，整体INCOMPLETE。阶段保存推送dev，保留用户差异、数据和缓存。
