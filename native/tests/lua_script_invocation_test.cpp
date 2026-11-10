@@ -42,7 +42,7 @@ void dialogStateTests(Runtime& runtime,const std::filesystem::path& root){
  }
 }
 void clientDialogTests(Runtime& runtime,const std::filesystem::path& root){
- 
+
  std::ofstream file(root/"scripts"/"client-drafts.lua");file<<"local a; a=Dialog{title='First',onclose=function() print('close:'..a.data.name) end}; a:entry{id='name',text='first'}; a:button{id='apply',text='Apply',onclick=function() print(a.data.name); a:modify{id='name',text='reset'} end}; a:show{wait=false}; local b; b=Dialog{title='Second',onclose=function() print('close:'..b.data.name) end}; b:entry{id='name',text='second'}; b:button{id='apply',text='Apply',onclick=function() print(b.data.name) end}; b:show{wait=false}";file.close();
  auto edited=std::make_unique<Document>(fixture(3,1,false));Client client(runtime);
  auto pump=[&]{const auto end=deadline();while(client.running()&&std::chrono::steady_clock::now()<end){client.tick(edited.get(),deadline());std::this_thread::yield();}check(!client.running()&&client.error().empty(),"Client draft operation failed");};
