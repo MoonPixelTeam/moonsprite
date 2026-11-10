@@ -6400,3 +6400,10 @@ PNG后台解码完成后保留像素及私有surface，每次pump最多上传262
 原生PixelDropdown::showOptions与文件选择器使用嵌套事件循环，表单timer可能重入pump并销毁仍在执行的控件。根窗口记录modal调用深度，菜单popupStateChanged/文件chooser调用期间暂缓重建和动作分发，宿主关闭记为待处理，返回安全pump后执行；文件chooser若关闭已请求不再发送上传。根pump加入RAII重入保护，避免send/save回调内再次pump重建。子prompt共享根门禁，原有busy协议保持。
 
 首轮局部root变量遮蔽成员函数编译失败已改this->root；两次尝试实际showOptions的自动回归未进入popup打开回调，分别失败于未执行检查，保留日志。最终回归调用实际popupStateChanged生命周期函数注入推送与pump，验证持有期不销毁控件，释放后再重建并保留键盘映射；这不是实际菜单嵌套循环验收。最终唯一Release构建成功，extension-form-ui/image/files/state四项通过1.34秒，来源821文件及diff检查通过。真实菜单停留/关闭及chooser期间宿主关闭仍需进一步实机验证，不声称相关生命周期全量完成；整体INCOMPLETE。阶段保存推送dev，用户editor_support.h差异保留。
+
+
+### 2026-11-11：扩展文件选择关闭与回执重入链路
+
+接收模型/匹配导出回执也持有根modal深度，覆盖导出save回调中再次pump/关闭的重入；已请求宿主关闭时不再接纳新模型或chooser上传，chooser错误同步控件使能。根pump回调内宿主关闭延后，子prompt在根正常重建时仍允许安全关闭，避免删除子窗口却未关闭原生窗口。
+
+新增实际FormWindow文件按钮回归，chooser结果注入期间推送空模型、pump、宿主关闭并返回真实结构File，验证控件保留到回调结束、关闭延后、无上传/会话残留。初次临时窗口栈分配回归崩溃，改堆分配并修正上述子窗口关闭条件后最终正式Release构建与四项extension-form-ui/image/files/state通过（1.35秒）；未独立定位崩溃栈，不能把推测栈原因当结论。来源821文件与diff检查通过。chooser是注入返回，未人工操作OS对话框；前阶段真实下拉打开未进入回调原因仍未定位，不宣称已完成该验收。整体INCOMPLETE，阶段保存推送dev，用户editor_support.h差异保留。
