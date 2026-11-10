@@ -805,6 +805,17 @@ void Editor::smokeScriptEntry(){
   runSave("mse.io.save()");if(document.dirty()||project::createEditableDocument(project::prepareEditableImport(project::readProjectManifest(read(path)))).palette().entries.size()!=document.palette().entries.size())throw std::runtime_error("Formal io save alias failed");
   JsonObject options;options.Insert(L"directory",JsonValue::CreateStringValue(root.wstring()));const auto encodedDirectory=winrt::to_string(options.GetNamedValue(L"directory").Stringify());
   runSave("mse.document.save{saveAs=true,options={name='scaled.png',format='png',scalePercent=200,directory="+encodedDirectory+"}}");auto png=openRasterImage(root/"scaled.png");if(png.width()!=6||png.height()!=2||document.width()!=3||document.height()!=1)throw std::runtime_error("Formal script save options scaling wrong");
+  for(bool image:{false,true}){
+   document=Document(3,1);documentPath_.clear();document.markSaved();refresh();const auto failurePath=root/(image?"saved-before-error.png":"saved-before-error.moonsprite");
+   chooseSaveFile_=[&](OPENFILENAMEW* chooser){auto text=failurePath.wstring();std::copy(text.begin(),text.end(),chooser->lpstrFile);chooser->lpstrFile[text.size()]=0;chooser->nFilterIndex=image?4:1;return true;};
+   std::ofstream(root/"scripts/save-entry.lua")<<"app.transaction(function() app.activeImage:drawPixel(2,0,0xffabcdef); mse.document.save{saveAs=true,options={format='"<<(image?"png":"moonsprite")<<"'}}; mse.palette.update(999,{name='bad'}) end)";
+   runScript("save-entry.lua");const auto until=std::chrono::steady_clock::now()+std::chrono::seconds(20);do{pumpScripts();std::this_thread::yield();}while((!scripts_->queued.empty()||scripts_->client.running())&&std::chrono::steady_clock::now()<until);
+   if(scripts_->client.running()||!scripts_->queued.empty()||scripts_->client.error().empty()||document.pixels()[2]||document.dirty()||document.historyPosition()!=0)throw std::runtime_error("Formal save failure did not restore batch baseline");
+   if(image){if(documentPath_!=failurePath||document.name()!=failurePath.filename().u32string()||openRasterImage(failurePath).pixels()[2]!=0xffabcdef)throw std::runtime_error("Formal image save failure lost persisted metadata");}
+   else{auto persisted=project::createEditableDocument(project::prepareEditableImport(project::readProjectManifest(read(failurePath))));if(documentPath_!=failurePath||document.projectId().empty()||document.projectId()!=persisted.projectId()||!document.sourceArchive()||persisted.pixels()[2]!=0xffabcdef)throw std::runtime_error("Formal native save failure lost persisted identity");}
+   if(!escapeScript())throw std::runtime_error("Formal save failure report Escape refused");pumpScripts();
+   runSave("app.activeImage:drawPixel(1,0,0xff112233); mse.document.save()");if(document.dirty()||document.pixels()[1]!=0xff112233)throw std::runtime_error("Formal save failed to recover after rollback");
+  }
   chooseSaveFile_=[](OPENFILENAMEW*){return false;};const auto revision=document.revision();runSave("mse.io.save{saveAs=true}; mse.palette.create{r=7,g=8,b=9}");if(document.revision()==revision||pending_!=Pending::None)throw std::runtime_error("Formal save cancellation stopped later operation");
  }
  document=Document(3,1);refresh();

@@ -4,6 +4,7 @@
 #include "lua_script_dialog_state.h"
 #include "lua_mse_snapshot.h"
 #include "project_encode.h"
+#include "aseprite_io.h"
 #include "project_manifest.h"
 #include "project_import.h"
 #include <iostream>
@@ -502,9 +503,22 @@ int main(int argc,char** argv){try{winrt::init_apartment();check(argc==2,"Fixtur
  for(bool alias:{false,true}){auto model=std::make_unique<Document>(5,1);model->beginStroke({0,0},0xff123456);model->commitStroke();model->clearHistory();
   auto run=[&](const std::string& source,const SaveHost& host){std::ofstream(root/"scripts/save-host.lua")<<source;auto invocation=capture(*model,buildMseSnapshot(*model,{},JsonArray{}));auto target=invocation.target;return applyWorkspaceResult(*model,target,runtime.startInvocation("save-host.lua",std::move(invocation)).get(),{},true,{},{},{},{},{},host);};
   const auto path=alias?"mse.io.save":"mse.document.save";const auto source=std::string("app.transaction(function() app.activeImage:drawPixel(4,0,0xffabcdef); mse.selection.set{x=0,y=0,width=1,height=1}; mse.selection.transform{dx=1}; ")+path+"{saveAs=true,options={name='Saved',format='moonsprite',scalePercent=200,directory='folder'}}; mse.selection.set{x=3,y=0,width=1,height=1} end)";
-  reject([&]{run(source,{});});check(model->historyPosition()==0&&model->pixels()[4]==0&&!model->selection(),"Missing save host applied partial edits");std::vector<project::Bytes> saved;int calls=0;SaveHost host=[&](Document& d,const SaveRequest& request){++calls;check(request.saveAs&&request.optionsJson&&JsonObject::Parse(winrt::to_hstring(*request.optionsJson)).GetNamedNumber(L"scalePercent")==200,"Save request options lost");check(!d.floating()&&d.selection()->x==1&&d.pixels()[1]==0xff123456&&d.pixels()[4]==0xffabcdef,"Save host saw wrong operation-time state");saved.push_back(project::encodeEditableProject(d).bytes);};
+  reject([&]{run(source,{});});check(model->historyPosition()==0&&model->pixels()[4]==0&&!model->selection(),"Missing save host applied partial edits");std::vector<std::shared_ptr<const project::Bytes>> saved;int calls=0;SaveHost host=[&](Document& d,const SaveRequest& request){++calls;check(request.saveAs&&request.optionsJson&&JsonObject::Parse(winrt::to_hstring(*request.optionsJson)).GetNamedNumber(L"scalePercent")==200,"Save request options lost");check(!d.floating()&&d.selection()->x==1&&d.pixels()[1]==0xff123456&&d.pixels()[4]==0xffabcdef,"Save host saw wrong operation-time state");saved.push_back(project::encodeEditableProject(d).bytes);};
   auto result=run(source,host);check(calls==1&&result.transactionCount==1&&model->selection()->x==3,"Save host ordering/history failed");auto opened=project::createEditableDocument(project::prepareEditableImport(project::readProjectManifest(saved.front())));check(opened.pixels()[1]==0xff123456&&opened.pixels()[4]==0xffabcdef,"Save snapshot wrong");model->undo();check(model->pixels()[0]==0xff123456&&model->pixels()[1]==0&&model->pixels()[4]==0&&!model->selection(),"Save compound undo wrong");model->redo();check(model->pixels()[1]==0xff123456&&model->selection()->x==3,"Save compound redo wrong");model->undo();
   reject([&]{run(std::string("app.transaction(function() ")+path+"{saveAs='yes',options=false}; mse.palette.update(999,{name='bad'}) end)",[&](Document&,const SaveRequest& request){check(!request.saveAs&&!request.optionsJson,"Save strict coercion changed");++calls;});});check(calls==2&&model->historyPosition()==0&&model->pixels()[0]==0xff123456,"Later failure repeated/lost save side effect");
+ }
+ // A successful save survives later batch failure, including first-save identity.
+ for(bool image:{false,true})for(bool dirty:{false,true}){
+  auto model=std::make_unique<Document>(3,1);if(dirty){model->beginStroke({0,0},0xff123456);model->commitStroke();}else model->markSaved();
+  const auto history=model->historyPosition();const auto initial=model->canvasPixels();const auto originalName=model->name();const auto originalId=model->projectId();
+  const auto file=root/(image?"rollback.png":"rollback.moonsprite");std::shared_ptr<const project::Bytes> persisted;std::string persistedId;int calls=0;
+  auto run=[&](bool fail,const SaveHost& host){std::ofstream(root/"scripts/save-rollback.lua")<<"app.transaction(function() "<<(fail?"app.activeImage:drawPixel(2,0,0xffabcdef); ":"")<<"mse.document.save(); "<<(fail?"mse.palette.update(999,{name='bad'})":"")<<" end)";auto invocation=capture(*model,buildMseSnapshot(*model,{},JsonArray{}));auto target=invocation.target;return applyWorkspaceResult(*model,target,runtime.startInvocation("save-rollback.lua",std::move(invocation)).get(),{},true,{},{},{},{},{},host);};
+  reject([&]{run(true,[&](Document&,const SaveRequest&){throw std::runtime_error("save failed");});});check(model->projectId()==originalId&&!model->sourceArchive()&&model->name()==originalName&&model->dirty()==dirty&&model->historyPosition()==history,"Failed save changed persistence baseline");
+  SaveHost host=[&](Document& d,const SaveRequest&){++calls;if(image){acceptAsepriteSaved(d,file,true,true);}else{auto encoded=project::encodeEditableProject(d);persisted=encoded.bytes;persistedId=encoded.projectId;d.acceptSaved(persistedId,persisted,true);}};
+  reject([&]{run(true,host);});check(calls==1&&model->historyPosition()==history&&model->canvasPixels()==initial&&model->dirty()==dirty,"Save failure did not restore content/history/dirty baseline");
+  if(image)check(model->name()==file.filename().u32string()&&model->sourceFilePath()==file,"Save rollback lost image name/source path");
+  else{check(!persistedId.empty()&&model->projectId()==persistedId&&model->sourceArchive()==persisted,"Save rollback lost persistent ID/archive");auto opened=project::createEditableDocument(project::prepareEditableImport(project::readProjectManifest(persisted)));check(opened.pixels()[2]==0xffabcdef,"Save rollback changed saved prefix");}
+  run(false,host);check(calls==2&&!model->dirty()&&model->canvasPixels()==initial&&model->historyPosition()==history,"Fresh invocation could not save after rollback");
  }
  // Switching from a raster invocation has no picked free instance: a marquee
  // must not turn a source edit into a cache-only write or broaden it to all instances.

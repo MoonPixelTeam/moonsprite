@@ -49,7 +49,14 @@ struct ScriptDocumentBuilder {
    auto recording=std::move(d.recordingBinding_);auto changes=std::move(d.historyChangeBinding_);
    // Legacy non-history resource deletion survives a later operation error;
    // its batch revision/dirty baseline is restored by lua-script-service.
-   auto resources=std::move(d.projectBrushes_);d=std::move(*before);d.projectBrushes_=std::move(resources);
+   auto resources=std::move(d.projectBrushes_);
+   // Successful saves are external effects too. Legacy abortCompound restores
+   // content and batch flags, but keeps the persisted identity/path/baseline.
+   auto projectId=std::move(d.projectId_);auto archive=std::move(d.sourceArchive_);
+   auto path=std::move(d.sourceFilePath_);auto name=std::move(d.name_);
+   d=std::move(*before);d.projectBrushes_=std::move(resources);
+   d.projectId_=std::move(projectId);d.sourceArchive_=std::move(archive);
+   d.sourceFilePath_=std::move(path);d.name_=std::move(name);
    d.recordingBinding_=std::move(recording);d.historyChangeBinding_=std::move(changes);
   };
  }

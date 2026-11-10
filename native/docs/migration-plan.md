@@ -6215,3 +6215,10 @@ selection.transform仍须衔接跨批浮动保留、实际操作次序、后续�
 核对legacy lua-script-operations.ts document.save/io.save、workspace-commands-document-io.ts saveActive与document-file-service.ts SaveAsOptions。新增SaveHost贯穿结果执行、PendingInvocation、Client及正式窗口host，按原始MSE顺序先提交浮动再调用保存，等待现有有界快照/后台编码发布后继续；不将保存挪到结果尾部。主机缺失在文档写入前拒绝。原生正式保存复用保存策略、格式损失确认、原子写入、保存点和恢复处理，补齐name/format/directory/includeTimelapse/scalePercent及队列选项，图像输出缩放不修改源。等待时锁定活跃工程并延后关闭请求，防止消息泵重入使引用失效。新增真实Lua及正式Editor文件前缀/后续修改/别名/取消继续/资源选项/撤销回滚检查和多图像编码缩放检查。实际结果后附；完整迁移INCOMPLETE。
 
 最终正式Release构建成功。首轮正式入口暴露首次保存生成持久projectId后脚本原ID失效，修复为校验同一原生identity后刷新target.documentId；保留跨文档拒绝。最终正式--script-entry-check与--aseprite-save-check均退出0，覆盖真实异步保存前缀、后续修改、别名、选项缩放及取消继续。image-save、lua-script-runtime、lua-script-invocation三项全通过（0.23s、0.20s、6.61s）。开放document.save/io.save能力发现；其余document.create/open、io.open/export四项仍屏蔽。来源806文件及diff检查通过，无人工UI/FPS测量；本阶段保存推送dev，整体迁移仍INCOMPLETE。
+
+
+### 2026-11-11：脚本保存后失败的持久元数据
+
+核对legacy lua-script-service.ts520–610：abortCompound及批次基线恢复仅撤回内容/历史/dirty与修订状态，不撤回成功保存的外部效果。原生整Document检查点原先会丢失首次保存ID、源归档及图像名称/源路径，造成已写入文件与内存身份不一致。回滚保留这四项持久元数据，继续恢复批前dirty等状态。新增dirty/clean×native/image模型检查、保存主机抛错无元数据污染、保存前缀与后续新调用，以及正式Editor真实native/PNG保存后失败和再次保存检查。修正既有save-host测试将共享编码缓冲误声明为值Bytes导致的干净重编译错误。整体迁移INCOMPLETE，实际验证后附。
+
+唯一正式Release构建成功，lua-script-invocation全套6.80s通过，正式--script-entry-check退出0，覆盖真实native/PNG文件前缀、失败后的元数据与后续保存。来源806文件及diff检查通过。未进行人工UI/FPS测量；本阶段为保存失败一致性修复，不宣称性能提升或整体完成。保存推送dev。
