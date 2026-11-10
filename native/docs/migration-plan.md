@@ -6113,3 +6113,10 @@ selection.transform仍须衔接跨批浮动保留、实际操作次序、后续�
 复核legacy lua-script-service.ts applyResult外部操作即时执行、后续失败仅撤销文档事务，保留既有执行顺序，不擅自延迟通知/播放/面板效果。原生refreshScriptTarget原来每项操作复制完整像素；新增目标存储identity/revision及几何校验，捕获时记录原始owner标识，仅真正变更时刷新immutable快照。真实Lua 257×257连续延迟移动/clear断言快照shared_ptr身份不变；同批写像素再变换断言更换基线、结果及撤销正确。仍有既有JSON解析、基线内容比较、事务checkpoint等同步开销，无FPS改善声明。完整selection.transform能力仍false，整体INCOMPLETE。最终验证后附。
 
 最终唯一正式Release构建成功；lua-script-invocation全套2.86s通过，正式--script-entry-check退出0。来源806文件及diff检查通过；新增快照复用/写入刷新断言由真实Lua回归覆盖。未进行人工图像/FPS测量；整体INCOMPLETE，完整selection.transform能力仍false。本阶段保存推送dev。
+
+
+### 2026-11-10：正式异步宿主的浮动选区刷新与验收
+
+对照legacy useAppScriptRuntime与workspace-floating-preview的覆盖层版本刷新，修复Editor::pumpScripts只看内容/历史/活动目标而漏掉延迟浮动移动的问题：加入floatingOverlayRevision判断。正式--script-entry-check新增真实脚本队列、原生对话框按钮回调5×5及257×257路径；检查连续移动后刷新、延迟移动不改内容/历史、关闭保留浮动、提交撤销重做、失败回滚/VM会话及窗口清理/错误报告Escape。完整迁移仍INCOMPLETE，无人工图像/FPS声明；最终实际运行结果后附。
+
+最终唯一正式Release构建成功，新增实际--script-entry-check退出0：小画布/延迟浮动的原生按钮回调、刷新、关闭/提交/撤销重做、失败清理均执行通过。来源806文件与diff检查通过；本次只改Editor宿主刷新和正式验收，核心专项沿用前阶段通过结果，未重复全套。无人工图像/FPS测量；完整selection.transform能力仍false，整体INCOMPLETE。本阶段保存推送dev。
