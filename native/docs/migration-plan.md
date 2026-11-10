@@ -6372,3 +6372,10 @@ selection.transform仍须衔接跨批浮动保留、实际操作次序、后续�
 沿用 ExtensionDialogForm 的PNG data URL/默认尺寸/contain/透明度语义，保留已验证Skia decoder和单图预算；将Base64转换和PNG解码移到不引用widget/surface的后台线程，独立初始化/释放WinRT MTA。promise-backed future不在析构时join，事件线程pump零等待接收结果后上传surface，每窗口同一时间仅一个解码。删除源或宿主关闭取消发布，结果失效不访问销毁窗口；同源缓存和失败缓存保留，等待图像时不误报解码失败、不解锁表单请求。
 
 唯一正式Release及image测试构建成功，四项extension-form-ui/image/files/state全部通过（1.11秒），异步解码逐像素RGBA一致、错误future传递和取消token验证通过，实际窗口包含原图片/输入/动作/嵌套弹窗全链路回归。来源821文件与diff检查通过。本轮没有大图FPS/关闭延迟基准或新截图验收；像素上传仍在UI线程、多图总缓存预算/全局并发上限待完善，不能称所有图片性能问题关闭。QuickJS架构选择仍待用户回复，整体迁移INCOMPLETE；阶段保存推送dev，保留用户editor_support.h差异。
+
+
+### 2026-11-11：扩展表单分片上传与取消结果隔离
+
+PNG后台解码完成后保留像素及私有surface，每次pump最多上传262144像素，整图完成后才发布可绘制surface；同一窗口解码/上传串行，源移除立即丢弃待上传像素，关闭宿主清空暂存。模型重建先于图片发布，避免给已移除节点上传。修复源移除后立即重新加入时旧取消任务异常把新缓存标失败的问题：取消结果全部丢弃，后续正常重新解码。
+
+新增实际1024×1024 RGBA PNG正式窗口回归，验证多pump上传完成与已有小图/表单/嵌套链路；最终唯一Release构建成功，extension-form-ui/image/files/state四项通过（1.36秒），来源821文件及diff检查通过。回归证明上传分片与完成状态，不证明帧率上限或最坏分配耗时；surface分配仍同步，多图总缓存及全局任务预算尚未完成，无新增人工截图验收。正式扩展执行器QuickJS架构选择仍待用户回复，整体INCOMPLETE。阶段保存推送dev，保留用户editor_support.h差异。
