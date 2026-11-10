@@ -6421,3 +6421,10 @@ PNG后台解码完成后保留像素及私有surface，每次pump最多上传262
 核对ExtensionDialogForm.tsx的row/split与styles.css4544–4579：align=end是底部对齐，非右对齐。原生按可见子项布局，不为隐藏项分宽；end按钮使用文字测宽，默认行居中，按整项换行；含toggle行以180px最小列宽自适应分行。split正文宽480及以下堆叠，宽窗左列至少140px、其余按1:2分配。相关间距采用原生规范2px，分栏6px。统一移动控件、绘制标签、tooltip目标和slot命中区域。
 
 唯一正式Release构建成功，extension-form-ui/image/files/state四项通过1.40秒。新增正式窗口验证隐藏项不占位、不同高度按钮底部对齐、宽窗分栏比例、窄窗分栏/toggle换行、resize后草稿和按钮动作对应。来源821文件与diff检查通过；未新增人工图像验收或FPS数据，不宣称整体卡顿解决。slot完整布局、sidebar响应布局、正式扩展执行器等仍未完成，QuickJS架构选择仍待回复，整体INCOMPLETE。用户editor_support.h差异保留，阶段保存推送dev。
+
+
+### 2026-11-11：扩展槽位操作与侧栏响应布局
+
+依据ExtensionDialogForm.tsx slot/sidebar及styles.css4552–4580，槽位增加皮肤panel/border分组、6px内边距、共享标题/右侧说明行（说明35%宽），操作沿已验证row并排和窄窗整项换行；隐藏动作不分配空间，整体context范围覆盖分组并沿既有内层优先。sidebar宽窗纵列和右分隔，窄窗连续choice两列、其他节点整行与底分隔。修复split/sidebar断点取整个表单正文宽，避免宽窗内窄子栏错误触发容器断点。
+
+唯一正式Release构建成功，extension-form-ui/image/files/state四项通过1.41秒；实际控件检查两动作并排、隐藏动作、窄侧栏两列/宽侧栏纵列、resize草稿与slot动作映射，既有右键及嵌套表单链路仍通过。来源821文件及diff检查通过。查看extension-form-smoke.bmp确认槽位标题/说明/按钮分组无重叠；该图仍为busy阶段，不用于证明解锁，未新增侧栏截图或FPS测量。长文本换行、完整输入字段排版、几何持久化、全编辑器模态及正式扩展执行器仍有缺口；QuickJS架构决定待回复，整体INCOMPLETE。用户editor_support.h差异保留，阶段保存推送dev。

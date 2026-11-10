@@ -147,3 +147,5 @@
 现有检查入口可复用：--dialog-geometry-check、--new-document-check、--modal-components-check、--docking-check。新增断言检查布局关系和边界，不仅重复一个写死坐标。验收结论必须区分文档核对、自动检查与真实图像检查。
 
 扩展表单 row：相关子项间2px，正常行垂直居中，align=end为底部对齐，按钮按文字测宽；窄窗整项换行。含toggle行按180px最小列宽自动分行。split在正文宽度480px及以下堆叠，宽窗采用左列至少140px的1:2分配，分栏间6px。隐藏项不占布局空间。
+
+扩展slot复用皮肤panel/border颜色，6px内部留白；标题与右侧说明共享10px行（说明最多35%宽），下接关联动作行，动作间2px，窄窗按整项换行。sidebar断点取整个表单正文宽度：480px及以下连续choice两列、其他节点整行，底部分隔；宽窗纵向排列并保留右分隔与6px内间距。
