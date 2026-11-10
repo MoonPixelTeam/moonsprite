@@ -3,6 +3,7 @@
 #include "extension_menu_state.h"
 #include "extension_storage.h"
 #include "javascript_text.h"
+#include "extension_diagnostics.h"
 #include <optional>
 #include <cmath>
 #include <winrt/Windows.Foundation.Collections.h>
@@ -45,7 +46,7 @@ struct HostServices {
  std::function<void(const winrt::hstring&)> writeClipboard;
 };
 class RequestHost {
- HostServices services_;WorkspaceServices workspace_;
+ HostServices services_;WorkspaceServices workspace_;DiagnosticServices diagnostics_;
 
  MenuState menus_;
  RuntimeExtension extension_;std::vector<std::string> permissions_;Storage& storage_;FileDropRouter& drops_;RuntimeRegistry& registry_;CommandHandlers handlers_;std::vector<RuntimeCommand> commands_;bool active_=true;std::function<FileDropRouter::Bytes(const std::string&)> readResource_;
@@ -67,6 +68,7 @@ public:
   field(L"checked",next.checked);field(L"visible",next.visible);menus_.setCommand(id,next);return true;
  }
  void setWorkspaceServices(WorkspaceServices services){workspace_=std::move(services);}
+ void setDiagnosticServices(DiagnosticServices services){diagnostics_=std::move(services);}
  void setServices(HostServices services){services_=std::move(services);}
  void setResourceReader(std::function<FileDropRouter::Bytes(const std::string&)> reader){readResource_=std::move(reader);}
  void deactivate(){if(!active_)return;active_=false;drops_.clear(extension_.id);menus_.clear();}
@@ -121,6 +123,16 @@ public:
    else if(method=="colors.get"){if(!workspace_.colors)throw std::runtime_error("Native color query is not connected");auto colors=workspace_.colors();if(colors){JsonObject object;object.Insert(L"primary",colorSnapshot(colors->primary));object.Insert(L"secondary",colorSnapshot(colors->secondary));result=object;}}
    else if(method=="colors.setPrimary"||method=="colors.setSecondary"){
     const auto color=colorParam(params.HasKey(L"color")?params.GetNamedValue(L"color"):JsonValue::CreateNullValue());const auto action=method=="colors.setPrimary"?workspace_.setPrimary:workspace_.setSecondary;if(!action)throw std::runtime_error("Native color selection is not connected");action(color);
+   }
+   else if(method=="diagnostics.log"){
+    if(!diagnostics_.record||!diagnostics_.status||!diagnostics_.console)throw std::runtime_error("Native extension diagnostics are not connected");
+    const auto message=params.HasKey(L"message")?params.GetNamedValue(L"message"):IJsonValue{nullptr};
+    const auto level=params.HasKey(L"level")?params.GetNamedValue(L"level"):IJsonValue{nullptr};
+    const bool error=level&&level.ValueType()==JsonValueType::String&&level.GetString()==L"error";
+    const winrt::hstring text(diagnosticString(message));diagnostics_.record(error?"error":"operation-stage",text);if(error)diagnostics_.status(text);
+    const auto levelText=diagnosticString(level);const std::string consoleLevel=levelText==L"debug"||levelText==L"info"||levelText==L"warn"||levelText==L"error"?winrt::to_string(levelText):"info";
+    if(!message||message.ValueType()!=JsonValueType::String)throw std::invalid_argument("参数 message 必须是字符串。");
+    const auto original=message.GetString();diagnostics_.console(consoleLevel,winrt::to_hstring("[Extension "+extension_.id+"] ")+winrt::hstring(original.data(),std::min<std::uint32_t>(original.size(),2000)));
    }
    else if(method=="network.fetch"){
     if(!deferNetwork)throw std::runtime_error("Native asynchronous network transport is not connected");

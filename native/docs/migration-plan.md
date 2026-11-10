@@ -6284,3 +6284,10 @@ selection.transform仍须衔接跨批浮动保留、实际操作次序、后续�
 对照legacy ExtensionRuntimeHost.tsx472–485及stringParam，补齐RequestHost权限/认证之后的network.fetch异步分支。SessionHost按token generation保存任务，事件线程pollResponses交付带原requestId的响应；禁用、关闭、替换和析构取消任务并丢弃旧结果，future销毁不join后台线程。后台WinRT HttpClient执行HTTP(S)，默认GET，字符串body以UTF8 text/plain发送，GET/HEAD body拒绝；禁用cookie及交互认证UI。15秒总deadline贯穿响应头和流读取，返回status/ok/小写headers/bytes，HTTP404属于成功传输但result.ok=false；隐藏Set-Cookie响应头。流式读取在2MiB之外拒绝，避免先收完整超大body。JSON以UTF16跨线程，不跨线程共享WinRT JsonObject。
 
 新增真实loopback HTTP服务器验收GET、POST body、404、头字段、cookie、刚好2MiB/超1字节、参数/协议/权限拒绝、15秒超时、服务器确认接收后关闭不等待、重载不收旧结果、双扩展并发隔离。首轮缺cwctype导致编译失败已修正；最终extension-network/session-host/request-host三个目标构建与CTest全部通过，network23.53秒，来源808文件检查与diff检查通过。正式Editor尚未引用SessionHost，本阶段没有修改/重新构建正式exe，不宣称扩展已可从UI安装运行、旧HTML兼容或io.export事件闭环完成；生产执行引擎和原生窗口仍是后续迁移缺口。没有引入WebView/外部工程/preview。整体INCOMPLETE，阶段保存推送dev。
+
+
+### 2026-11-11：扩展diagnostics.log与实际日志记录器适配
+
+核对ExtensionRuntimeHost.tsx464–471、stringParam及core/runtime-diagnostics。RequestHost新增diagnostics.log，SessionHost按token注入record/status/console服务；权限与存活检查先于调用，缺宿主显式失败。保留旧版先String(message)记录、严格level=error更新状态、再String(level)规范化控制台等级、最后校验message字符串及UTF16 slice2000的可观察顺序。JSON数组采用显式栈join，保留null/undefined/布尔/数值/普通对象字符串语义及toString遮蔽失败，避免深嵌套C++递归栈。recorderDiagnosticServices把宿主固定扩展身份绑定现有异步Recorder，保留记录模式、写盘和错误处理；状态和控制台由宿主服务连接。
+
+实际日志文件测试覆盖中文错误、调用顺序、非法数值/缺失/嵌套数组消息仍产生旧版前置效果、array等级严格与强制转换差异、全部等级/未知等级、补充平面字符UTF16截断、数字指数边界、对象转换失败、权限拒绝、缺服务与关闭会话。最终extension-diagnostics/session-host/request-host/network构建通过，四项CTest通过，diagnostics0.04s/network23.44s；来源810文件和diff检查通过。能力查询旧版会列举尚未接入的windows方法，因此本阶段未伪报支持，runtime.getCapabilities仍缺口。正式Editor未引用SessionHost，本阶段没有修改或重构建正式exe，扩展执行引擎与原生窗口仍待迁移。整体INCOMPLETE；阶段保存推送dev。
