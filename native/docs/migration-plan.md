@@ -6463,3 +6463,10 @@ PNG后台解码完成后保留像素及私有surface，每次pump最多上传262
 依据ModalShell initialModalPosition/fitContent/fitContentKey及floating.clearHeight，嵌套提示初次按实际内容适高，保留标题/正文/底部间距及屏幕上限；手动改变高度后固定，compact子节点模型变化重新清除固定高度并适配。自动高度不写显式height，普通提示保留手动持久化高度，compact重新打开按旧版clearHeight处理。修正普通prompt最小240px、compact120px，统一复用最小尺寸计算。
 
 唯一正式Release构建成功，extension-form-ui/image/files/state四项通过1.35秒，新增实际窗口验证空/短内容最小高度、手动尺寸保持、compact内容增长与移除重算；原有普通提示实际写盘重开及全表单链路通过。查看extension-form-prompt-smoke.bmp，字段/分隔/确认按钮可见无重叠，初始草稿截图不证明后续编辑值。来源821文件及diff检查通过。首开宽度compact ratio、完整屏幕变更通知、正式扩展执行器等仍未完成，不宣称全量迁移；整体INCOMPLETE。用户editor_support.h差异保留，阶段保存推送dev。
+
+
+### 2026-11-11：提示窗口可用区域响应与拖动存储节流
+
+依据ModalShell compactDefaultDimension(.88)、viewport限制与panel-preferences响应映射，首次宽度387px并遵守屏幕留白；prompt pump在display区域变化时复用既有坐标映射、裁剪宽高并限制位置。最小尺寸受可用区域约束，避免极小区域与共享PixelPopupWindow强制尺寸冲突。鼠标capture期间暂缓几何写盘，关闭强制保存最终记录。
+
+首轮UI检查进入启动错误框并超时，读取对话框确认Prompt viewport remap/clamp断言失败；定位共享setBounds强制常规最小尺寸与小viewport冲突后修复，保留低于常规最小尺寸的250×190逻辑像素回归，未放宽断言。最终唯一正式Release构建与extension-form-ui/image/files/state四项通过1.43秒，来源821文件与diff检查通过；检查默认比例宽度、实际布局小viewport可见范围与恢复及原有几何/表单链路。无多显示器实机/FPS测量，不宣称坏记录全部故障注入已完成。正式执行器及其他迁移缺口仍INCOMPLETE。用户editor_support.h差异保留，阶段保存推送dev。
