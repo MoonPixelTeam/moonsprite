@@ -1,4 +1,6 @@
 #include "image_sequence_dialog.h"
+#include "aseprite_io.h"
+#include "psd_import.h"
 #include "editor.h"
 #include "image_resize_task.h"
 #include "lua_script_service.h"
@@ -728,6 +730,7 @@ void Editor::initializeScripts(const std::filesystem::path& root){
    }
    brushLibraryNeedsReload_=true;scripts_->localBrushes=library.list().brushes;refresh();
   });
+  state->host->setExportHost([this](Document& d,const std::string& options){if(&d!=&document||!documentOpen_||homeOpen_)throw std::logic_error("Lua export target changed");runScriptExport(options);});
   state->host->setSaveHost([this](Document& d,const script::SaveRequest& request){
    if(&d!=&document||!documentOpen_||homeOpen_)throw std::logic_error("Lua save target changed");
    scriptSaving_=true;struct SaveGuard{bool& value;~SaveGuard(){value=false;}} savingGuard{scriptSaving_};
@@ -818,7 +821,47 @@ void Editor::smokeScriptEntry(){
   }
   chooseSaveFile_=[](OPENFILENAMEW*){return false;};const auto revision=document.revision();runSave("mse.io.save{saveAs=true}; mse.palette.create{r=7,g=8,b=9}");if(document.revision()==revision||pending_!=Pending::None)throw std::runtime_error("Formal save cancellation stopped later operation");
  }
- document=Document(3,1);refresh();
+ // Full export host uses the production chooser, snapshot, worker and encoders.
+ {const auto picker=chooseExportFile_;const auto originalPath=documentPath_;struct Restore{std::function<void()> run;~Restore(){run();}} restore{[&]{chooseExportFile_=picker;documentPath_=originalPath;}};
+  // Unique fixture destinations avoid prompting over earlier test-owned exports.
+  const auto directory=root/("exports-"+std::to_string(GetTickCount64()));std::filesystem::create_directories(directory);
+  JsonObject value;value.Insert(L"directory",JsonValue::CreateStringValue(directory.wstring()));const auto encodedDirectory=winrt::to_string(value.GetNamedValue(L"directory").Stringify());
+  auto run=[&](const std::string& source,bool fail=false){std::ofstream(root/"scripts/export-entry.lua")<<source;runScript("export-entry.lua");const auto until=std::chrono::steady_clock::now()+std::chrono::seconds(30);do{pumpScripts();std::this_thread::yield();}while((!scripts_->queued.empty()||scripts_->client.running())&&std::chrono::steady_clock::now()<until);if(!scripts_->queued.empty()||scripts_->client.running()||scripts_->client.error().empty()==fail)throw std::runtime_error("Formal script export failed: "+scripts_->client.error());if(fail){if(!escapeScript())throw std::runtime_error("Export error report Escape refused");pumpScripts();}};
+  auto bytes=[&](const auto& path){std::ifstream input(path,std::ios::binary);return std::vector<std::uint8_t>(std::istreambuf_iterator<char>(input),{});};
+  document=std::move(*std::make_unique<Document>(3,2));documentPath_.clear();refresh();
+  for(const std::string format:{"png-rgba","png-auto","bmp","ico","svg","jpeg","gif","webp","psd","ase","aseprite","moonsprite"}){
+   const auto extension=format=="png-rgba"||format=="png-auto"?"png":format=="jpeg"?"jpg":format;
+   const auto name="format-"+format;const auto output=directory/(name+"."+extension);const auto identity=document.identity();const auto projectId=document.projectId();const auto archive=document.sourceArchive();const auto source=document.sourceFilePath();const auto savedName=document.name();
+   run("app.transaction(function() app.activeImage:drawPixel(0,0,0xff123456); mse.io.export{format='"+format+"',name='"+name+"',directory="+encodedDirectory+",scalePercent=200}; mse.palette.create{r=1,g=2,b=3} end)");
+   if(!std::filesystem::is_regular_file(output)||document.identity()!=identity||document.projectId()!=projectId||document.sourceArchive()!=archive||document.sourceFilePath()!=source||document.name()!=savedName||!documentPath_.empty()||!document.dirty()||pending_!=Pending::None)throw std::runtime_error("Export mutated persistence state or omitted file: "+format);
+   if(format=="png-rgba"||format=="png-auto"||format=="bmp"||format=="jpeg"||format=="webp"){auto image=std::make_unique<Document>(openRasterImage(output));if(image->width()!=6||image->height()!=4)throw std::runtime_error("Export format scale wrong: "+format);}
+   if(format=="ico"){auto data=bytes(output);if(data.size()<22||data[2]!=1||data[4]!=1||data[6]!=6||data[7]!=4)throw std::runtime_error("Export ICO dimensions wrong");}
+   if(format=="gif"){auto image=std::make_unique<Document>(openGifAnimation(output));if(image->width()!=6||image->height()!=4)throw std::runtime_error("Export GIF scale wrong");}
+   if(format=="psd"){auto image=std::make_unique<Document>(openPsd(output));if(image->width()!=6||image->height()!=4)throw std::runtime_error("Export PSD scale wrong");}
+   if(format=="ase"||format=="aseprite"){auto image=std::make_unique<Document>(openAseprite(output));if(image->width()!=6||image->height()!=4)throw std::runtime_error("Export ASE scale wrong");}
+   if(format=="moonsprite"){auto file=std::make_shared<project::Bytes>(bytes(output));auto image=std::make_unique<Document>(project::createEditableDocument(project::prepareEditableImport(project::readProjectManifest(file))));if(image->width()!=3||image->height()!=2||image->palette().entries.size()+1!=document.palette().entries.size())throw std::runtime_error("Native export changed dimensions or operation order");}
+  }
+  // Production chooser path is used when no directory is supplied.
+  const auto chosen=directory/"chosen-output";chooseExportFile_=[&](OPENFILENAMEW* chooser){auto text=chosen.wstring();std::copy(text.begin(),text.end(),chooser->lpstrFile);chooser->lpstrFile[text.size()]=0;return true;};run("mse.io.export{format='png-rgba'}");if(!std::filesystem::is_regular_file(directory/"chosen-output.png"))throw std::runtime_error("Export chooser did not normalize extension");
+  // Selection mask and transformed prefix, subsequent failure leaves export on disk.
+  document=std::move(*std::make_unique<Document>(3,1));refresh();run("app.transaction(function() app.activeImage:drawPixel(0,0,0xffabcdef); mse.selection.set{x=0,y=0,width=2,height=1,mask={1,0}}; mse.selection.transform{dx=1}; mse.io.export{format='png-rgba',target='selection',name='masked-prefix',directory="+encodedDirectory+"}; mse.palette.update(999,{name='bad'}) end)",true);
+  auto masked=std::make_unique<Document>(openRasterImage(directory/"masked-prefix.png"));if(masked->width()!=2||masked->height()!=1||masked->pixels()[0]!=0xffabcdef||masked->pixels()[1]||document.pixels()[0]||document.historyPosition()!=0||document.selection())throw std::runtime_error("Export mask/prefix/rollback wrong "+std::to_string(masked->width())+"x"+std::to_string(masked->height())+" p="+std::to_string(masked->pixels()[0])+","+std::to_string(masked->pixels().back())+" live="+std::to_string(document.pixels()[0])+" history="+std::to_string(document.historyPosition())+" selection="+std::to_string(bool(document.selection())));
+  // Layers, invalid requested layer fallback, slices and directed frame range.
+  document=std::move(*std::make_unique<Document>(3,2));document.beginStroke({0,0},0xff123456);document.commitStroke();const auto bottom=document.layer().id;document.addLayer();document.beginStroke({2,1},0xffabcdef);document.commitStroke();document.createSlices({{0,0,1,1}});refresh();
+  run("mse.io.export{format='png-rgba',target='layer',layerId='missing',name='layers',directory="+encodedDirectory+"}");std::size_t layerFiles=0;for(const auto& entry:std::filesystem::directory_iterator(directory))if(entry.path().filename().u8string().rfind("layers-",0)==0)++layerFiles;if(layerFiles!=2)throw std::runtime_error("Export layer fallback omitted layers");
+  run("mse.io.export{format='png-rgba',target='slices',directory="+encodedDirectory+"}");bool sliceFile=false;for(const auto& entry:std::filesystem::directory_iterator(directory))if(entry.path().filename().u8string().rfind("layers-",0)!=0&&entry.path().extension()==L".png"){auto image=std::make_unique<Document>(openRasterImage(entry.path()));sliceFile|=image->width()==1&&image->height()==1;}if(!sliceFile)throw std::runtime_error("Export slice output missing");
+  document=std::move(*std::make_unique<Document>(3,1));document.beginStroke({0,0},0xff112233);document.commitStroke();document.addFrame(true);document.beginStroke({0,0},0xff445566);document.commitStroke();document.addFrame(true);document.beginStroke({0,0},0xff778899);document.commitStroke();refresh();
+  run("mse.io.export{format='png-rgba',target='frames',name='sequence',directory="+encodedDirectory+",gifFrameRange='range',gifFrameStart=2,gifFrameEnd=3,gifDirection='reverse'}");if(openRasterImage(directory/"sequence-001.png").pixels()[0]!=0xff778899||openRasterImage(directory/"sequence-002.png").pixels()[0]!=0xff445566)throw std::runtime_error("Export sequence order/range wrong");
+  run("mse.io.export{format='webp',target='frames',name='frames-webp',directory="+encodedDirectory+"}");if(!std::filesystem::is_regular_file(directory/"frames-webp.webp"))throw std::runtime_error("WebP frames document fallback missing");
+  // Directed GIF range and static crop use the same production option decoding.
+  run("mse.io.export{format='gif',name='reverse-range',directory="+encodedDirectory+",gifFrameRange='range',gifFrameStart=2,gifFrameEnd=3,gifDirection='reverse'}");auto directed=std::make_unique<Document>(openGifAnimation(directory/"reverse-range.gif"));if(directed->timeline().state().frames.size()!=2||directed->pixels()[0]!=0xff778899)throw std::runtime_error("Export GIF directed range wrong");
+  document=std::move(*std::make_unique<Document>(5,4));document.beginStroke({2,1},0xff123456);document.commitStroke();refresh();run("mse.io.export{format='png-rgba',name='trimmed',directory="+encodedDirectory+",trimMode='individual',scalePercent=200}");auto trimmed=std::make_unique<Document>(openRasterImage(directory/"trimmed.png"));if(trimmed->width()!=2||trimmed->height()!=2||trimmed->pixels()[0]!=0xff123456)throw std::runtime_error("Export trim/scale wrong");
+  // Cancel while bounded capture/worker is active; later MSE must still run.
+  document=std::move(*std::make_unique<Document>(257,257));refresh();bool canceled=false;ui::Timer cancelExport(1,this);cancelExport.Tick.connect([&]{if(scriptExporting_){canceled=true;cancelExport.stop();resolve(false);}});cancelExport.start();run("mse.io.export{format='png-rgba',name='canceled',directory="+encodedDirectory+"}; mse.palette.create{r=22,g=33,b=44}");cancelExport.stop();if(!canceled||pending_!=Pending::None||document.palette().entries.back().color!=0xff2c2116)throw std::runtime_error("Export active cancellation did not continue");
+  chooseExportFile_=[](OPENFILENAMEW*){return false;};auto count=document.palette().entries.size();run("mse.io.export{}; mse.palette.create{r=9,g=8,b=7}");if(document.palette().entries.size()!=count+1||pending_!=Pending::None)throw std::runtime_error("Export cancellation stopped script");
+  count=document.palette().entries.size();run("mse.io.export{format='moonsprite',target='selection',directory="+encodedDirectory+"}; mse.palette.create{r=6,g=5,b=4}");if(document.palette().entries.size()!=count+1)throw std::runtime_error("Export workspace failure aborted script");
+ }
+ document=std::move(*std::make_unique<Document>(3,1));refresh();
  // A slow brush listing must not prevent list reception or native report pumping.
  std::promise<PatternBrushListing> delayed;auto ready=delayed.get_future();scripts_->brushes=std::move(ready);scripts_->client.refresh();const auto listEnd=std::chrono::steady_clock::now()+std::chrono::seconds(5);while(scripts_->client.loading()&&std::chrono::steady_clock::now()<listEnd){pumpScripts();std::this_thread::yield();}if(scripts_->client.loading())throw std::runtime_error("Brush loading blocked script discovery");
  runScript("entry.lua");if(scripts_->queued.empty())throw std::runtime_error("Delayed run was not queued");auto oldIdentity=document.identity();document=Document(3,1);delayed.set_value(PatternBrushListing{});while(!scripts_->queued.empty()&&std::chrono::steady_clock::now()<listEnd){pumpScripts();std::this_thread::yield();}if(!scripts_->queued.empty()||scripts_->client.running()||document.identity()==oldIdentity||document.pixels()[1])throw std::runtime_error("Queued run changed new document");

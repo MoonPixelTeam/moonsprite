@@ -6222,3 +6222,10 @@ selection.transform仍须衔接跨批浮动保留、实际操作次序、后续�
 核对legacy lua-script-service.ts520–610：abortCompound及批次基线恢复仅撤回内容/历史/dirty与修订状态，不撤回成功保存的外部效果。原生整Document检查点原先会丢失首次保存ID、源归档及图像名称/源路径，造成已写入文件与内存身份不一致。回滚保留这四项持久元数据，继续恢复批前dirty等状态。新增dirty/clean×native/image模型检查、保存主机抛错无元数据污染、保存前缀与后续新调用，以及正式Editor真实native/PNG保存后失败和再次保存检查。修正既有save-host测试将共享编码缓冲误声明为值Bytes导致的干净重编译错误。整体迁移INCOMPLETE，实际验证后附。
 
 唯一正式Release构建成功，lua-script-invocation全套6.80s通过，正式--script-entry-check退出0，覆盖真实native/PNG文件前缀、失败后的元数据与后续保存。来源806文件及diff检查通过。未进行人工UI/FPS测量；本阶段为保存失败一致性修复，不宣称性能提升或整体完成。保存推送dev。
+
+
+### 2026-11-11：脚本完整导出目标与后台主机
+
+对照legacy lua-script-operations.ts398、workspace-commands-document-io.ts429及document-file-service.ts461–930接入io.export。执行器在操作原始位置提交浮动后调用完整JSON选项主机，缺失主机在修改前拒绝；取消或导出错误按workspace状态处理，后续MSE继续。原生复用DocumentSnapshot分片捕获、后台编码、已有12格式编码器、图层/切片/帧命名与冲突规划，覆盖整工程、选区遮罩、指定/全部图层、切片、帧范围/方向、WebP帧目标回退、缩放/裁边及工程便携缩时。导出不更新保存点。新增真实Lua前缀/浮动/回滚/撤销重做检查；正式入口新增12格式实际输出与目标/失败/取消链路。UI复用现有模态，不另造导出界面。现有导出记忆格式缺少工程格式和切片目标，暂只记录目录，不能伪装PNG；完整io.export发现保持屏蔽，记忆和扩展完成事件仍需后续闭环。本阶段完整实现主机和目标编码链路，整体迁移INCOMPLETE。实际构建验证后附。
+
+最终唯一正式Release构建成功，lua-script-invocation全套7.63s通过，正式--script-entry-check退出0。实际检查12格式输出，PNG/BMP/JPEG/WebP/GIF/PSD/ASE解码尺寸，ICO结构尺寸，native工程重开与后续色板前缀；选区遮罩/浮动提交/失败回滚，图层缺失回退、切片、反向帧序列/GIF范围、WebP帧回退、裁边缩放、chooser扩展名及执行中取消后继续均通过。初轮测试栈溢出改大型Document夹具为堆分配；ICO使用文件结构检查，不能冒称普通导入器支持ICO；遮罩按legacy selectionContains严格值1修正测试夹具。来源806文件及diff检查通过，无人工UI/FPS测量。完整io.export能力发现继续屏蔽，导出记忆工程格式/切片与扩展完成事件尚待闭环。阶段保存推送dev，整体迁移INCOMPLETE。

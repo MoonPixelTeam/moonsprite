@@ -612,6 +612,89 @@ bool Editor::saveProject(bool saveAs,std::uint64_t identity,std::optional<std::s
  }catch(const std::exception& e){showSaveError(e);return false;}
 }
 
+// legacy workspace-commands-document-io.ts exportActive / document-file-service.ts.
+// UI owns location/conflicts and bounded capture; existing encoders run on a worker.
+void Editor::runScriptExport(const std::string& optionsJson){
+ using namespace winrt::Windows::Data::Json;
+ if(pending_!=Pending::None||framePngBusy())return;
+ scriptSaving_=true;
+ struct Guard{std::function<void()> done;~Guard(){done();}} guard{[&]{scriptExporting_=false;scriptSaving_=false;framePngJob_.reset();if(pending_==Pending::StaticExport||pending_==Pending::GifExport)resolve(false);if(scriptSaveClose_){scriptSaveClose_=false;auto message=new ui::CallbackMessage([this]{requestClose();});message->setRecipient(ui::Manager::getDefault());ui::Manager::getDefault()->enqueueMessage(message);}}};
+ try{
+  const auto spec=JsonObject::Parse(winrt::to_hstring(optionsJson));
+  auto string=[&](const wchar_t* key,const std::string& fallback=std::string{}){auto v=spec.GetNamedValue(key,JsonValue::CreateNullValue());return v.ValueType()==JsonValueType::String?winrt::to_string(v.GetString()):fallback;};
+  auto number=[&](const wchar_t* key,int fallback){auto v=spec.GetNamedValue(key,JsonValue::CreateNullValue());return v.ValueType()==JsonValueType::Number&&std::isfinite(v.GetNumber())?int(std::clamp(std::floor(v.GetNumber()+.5),-2147483647.,2147483647.)):fallback;};
+  auto format=string(L"format","png-auto"),target=string(L"target","document");if(format=="webp"&&target=="frames")target="document";
+  const bool native=format=="moonsprite",project=native||format=="psd"||format=="ase"||format=="aseprite";
+  const bool animated=format=="gif"||format=="webp";
+  const int staticFormat=format=="png-rgba"?0:format=="png-auto"?4:format=="bmp"?1:format=="ico"?2:format=="svg"?3:format=="jpeg"?5:-1;
+  if(!project&&!animated&&staticFormat<0)throw std::invalid_argument("Unsupported export format");
+  if(target!="document"&&target!="selection"&&target!="layer"&&target!="slices"&&target!="frames")target="document";
+  if(project&&target!="document")throw std::invalid_argument("Project export requires the document target");
+  if(target=="frames"&&animated)throw std::invalid_argument("GIF frame sequence export is unsupported");
+  if(target=="selection"&&!document.selection())throw std::invalid_argument("No pixel selection to export");
+  const int scale=native?100:std::clamp(number(L"scalePercent",100),1,6400);
+  const auto trimMode=string(L"trimMode");const auto trimValue=spec.GetNamedValue(L"trim",JsonValue::CreateNullValue());
+  const bool trim=(trimMode.empty()&&trimValue.ValueType()==JsonValueType::Boolean&&trimValue.GetBoolean())||trimMode=="individual",common=trimMode=="common";
+  const auto protection=ExportProtection(runtimePreferences_.index("files.exportProtection.Select"));
+  StaticImageExportOptions image;image.scalePercent=scale;image.trim=trim;image.trimCommon=common;image.automatic=format=="png-auto";image.selection=target=="selection";image.protection=protection;
+  GifExportOptions animation;animation.scalePercent=scale;animation.trim=trim;animation.trimCommon=common;animation.selection=image.selection;animation.protection=protection;animation.frameEnd=int(document.timeline().state().frames.size());
+  const auto range=string(L"gifFrameRange");if(range=="range"){animation.frameStart=std::clamp(number(L"gifFrameStart",1),1,animation.frameEnd);animation.frameEnd=std::clamp(number(L"gifFrameEnd",animation.frameEnd),animation.frameStart,animation.frameEnd);}else if(range=="loop-section")animation.loopSectionId=string(L"gifLoopSectionId");
+  const auto direction=string(L"gifDirection");animation.direction=direction=="reverse"?GifDirection::Reverse:direction=="forward-ping-pong"?GifDirection::ForwardPingPong:direction=="reverse-ping-pong"?GifDirection::ReversePingPong:GifDirection::Forward;
+  // Reuse the existing modal's layout/cancel controls and export memory fields.
+  if(animated||target=="frames")openGifExport();else openStaticExport();
+  if(pending_!=Pending::StaticExport&&pending_!=Pending::GifExport)return;
+  animationLayerJob_=target=="layer"||target=="slices";gifWebp_=format=="webp";framePngMode_=target=="frames";framePngAutomatic_=image.automatic;frameBmp_=staticBmp_=format=="bmp";frameIco_=staticIco_=format=="ico";frameSvg_=staticSvg_=format=="svg";frameJpeg_=staticJpeg_=format=="jpeg";
+  exportOptions_=image;gifOptions_=animation;gifExplicitRange_=range=="range";exportAllLayers_=target=="layer"&&(!document.timeline().hasLayer(string(L"layerId")));exportSlices_=target=="slices";exportSliceId_=string(L"sliceId");
+  if(target=="layer"&&!exportAllLayers_)exportOptions_.layerId=gifOptions_.layerId=string(L"layerId");
+  exportScaleInput_->setText(std::to_string(scale));gifInputs_[0]->setText(std::to_string(scale));gifInputs_[1]->setText(std::to_string(animation.frameStart));gifInputs_[2]->setText(std::to_string(animation.frameEnd));
+  const auto fallback=framePngExportStem(document.name());auto stem=framePngExportStem(unicodeText(string(L"name",utf8Text(fallback))),fallback);
+  const auto extension=native?L".moonsprite":format=="psd"?L".psd":format=="ase"?L".ase":format=="aseprite"?L".aseprite":animated?(format=="webp"?L".webp":L".gif"):format=="jpeg"?L".jpg":format=="bmp"?L".bmp":format=="ico"?L".ico":format=="svg"?L".svg":L".png";
+  std::filesystem::path directory;
+  // Trim directory whitespace without altering separators or dots.
+  auto rawDirectory=string(L"directory");auto first=rawDirectory.find_first_not_of(" \t\r\n"),last=rawDirectory.find_last_not_of(" \t\r\n");directory=first==std::string::npos?std::filesystem::path{}:std::filesystem::u8path(rawDirectory.substr(first,last-first+1));
+  auto requested=directory/std::filesystem::path(stem+std::filesystem::path(extension).u32string());
+  if(directory.empty()){
+   wchar_t filename[32768]{};auto initial=(preferredExportDirectory()/requested).wstring();if(initial.size()>=32768)throw std::length_error("Export path too long");std::copy(initial.begin(),initial.end(),filename);
+   OPENFILENAMEW chooser{};chooser.lStructSize=sizeof(chooser);chooser.hwndOwner=GetActiveWindow();chooser.lpstrFile=filename;chooser.nMaxFile=32768;chooser.lpstrFilter=L"导出文件\0*.*\0\0";chooser.lpstrDefExt=extension+1;chooser.Flags=OFN_EXPLORER|OFN_NOCHANGEDIR|OFN_PATHMUSTEXIST;
+   if(!chooseExportFile_(&chooser)){status_=U"已取消导出";return;}requested=filename;auto ext=requested.extension().wstring();for(auto& c:ext)c=std::towlower(c);if(ext!=extension)requested+=extension;directory=requested.parent_path();
+  }
+  if(!std::filesystem::is_directory(directory))throw std::invalid_argument("Export directory does not exist");
+  exportDirectory_=directory;exportFilename_->setText(requested.filename().u8string());
+  auto conflict=[this](const auto& path,const auto& suggested){return framePngConflict(path,suggested);};
+  std::optional<AnimationLayerExportPlan> layers;std::optional<std::vector<std::filesystem::path>> paths;
+  FramePngExportOptions frames{animation,image.automatic,format=="bmp",format=="ico",format=="svg",format=="jpeg"};
+  if(target=="layer")layers=animated?planAnimationLayerExport(document,string(L"layerId"),directory,requested.filename().u32string(),format=="webp",conflict):planStaticLayerExport(document,string(L"layerId"),directory,requested.filename().u32string(),staticFormat,conflict);
+  else if(target=="slices")layers=planSliceExport(document,string(L"sliceId"),directory,std::filesystem::path(extension).u32string(),conflict);
+  else if(target=="frames")paths=planFrameSequencePaths(directory,requested.filename().u32string(),framePngExportFrameIds(document.timeline().state(),frames).size(),conflict,format=="jpeg"?FrameSequenceFormat::Jpeg:format=="bmp"?FrameSequenceFormat::Bmp:format=="ico"?FrameSequenceFormat::Ico:format=="svg"?FrameSequenceFormat::Svg:FrameSequenceFormat::Png);
+  else paths=resolveExportDestinations({requested},conflict);
+  if((target=="layer"||target=="slices")?!layers:!paths){status_=U"已取消导出";return;}
+  if(native&&!flushTimelapse())return;
+  framePngJob_=std::make_shared<FramePngJobState>();auto job=framePngJob_;job->total=layers?layers->paths.size():paths->size();
+  const auto selection=document.selection();const auto reader=document.recordingSession()?document.recordingSession()->reader():timelapse::Reader{};
+  DocumentSnapshot snapshot(document);scriptExporting_=true;refresh();ui::MessageLoop loop(ui::Manager::getDefault());
+  while(!snapshot.advance(document,std::chrono::steady_clock::now()+std::chrono::milliseconds(2))){loop.pumpMessages();if(job->cancel){status_=U"已取消导出";return;}}
+  auto work=std::async(std::launch::async,[snapshot=std::move(snapshot),selection,reader,job,native,project,animated,format,scale,image,animation,frames,layers,paths,target]()mutable{
+   auto copy=snapshot.finish();copy.previewSelection(selection);auto cancelled=[job]{return job->cancel.load();};auto progress=[job](std::size_t n,std::size_t){job->written=n;};
+   if(cancelled())return std::size_t(0);
+   if(layers){AnimationLayerExportOptions options;options.animation=animation;options.webp=format=="webp";options.staticImage=!animated;options.image=image;options.format=format=="jpeg"?5:format=="svg"?3:format=="ico"?2:format=="bmp"?1:format=="png-auto"?4:0;return writeAnimationLayerExport(copy,options,*layers,cancelled,progress);}
+   if(target=="frames")return writeFramePngSequence(copy,frames,*paths,cancelled,progress);
+   std::vector<std::uint8_t> bytes;
+   if(native){auto settings=copy.timelapseSettings();for(auto& frame:settings.snapshots){if(reader){frame.data=reader(frame);frame.historyDataBacking.reset();}else if(frame.data.empty())throw std::runtime_error("Cannot carry unavailable recording frames");frame.local.reset();}copy.setImportedTimelapse(std::move(settings));bytes=*project::encodeEditableProject(copy).bytes;}
+   else if(project)bytes=encodeSaveImage(copy,format=="psd"?SaveImageFormat::Psd:format=="ase"?SaveImageFormat::Ase:SaveImageFormat::Aseprite,scale);
+   else if(animated)bytes=(format=="webp"?encodeAnimationWebp(copy,animation):encodeAnimationGif(copy,animation)).bytes;
+   else if(format=="jpeg")bytes=encodeStaticImageJpeg(copy,image).bytes;
+   else if(format=="svg")bytes=encodeStaticImageSvg(copy,image).bytes;
+   else if(format=="ico")bytes=encodeStaticImageIco(copy,image).bytes;
+   else if(format=="bmp")bytes=encodeStaticImageBmp(copy,image).bytes;
+   else bytes=encodeStaticImagePng(copy,image).png;
+   if(cancelled())return std::size_t(0);writeExportBytesAtomic(paths->front(),bytes);job->written=1;return std::size_t(1);
+  });
+  while(work.wait_for(std::chrono::milliseconds(0))!=std::future_status::ready){loop.pumpMessages();std::this_thread::yield();}
+  const auto written=work.get();if(job->cancel){status_=U"已取消导出，保留已写入的文件";return;}
+  if(written){const auto lastPath=layers?layers->paths.back():paths->back();if(!project&&target!="slices")rememberSuccessfulExport(requested);else rememberExportDirectory(requested);recordRecentExportPath(lastPath);usageStatistics_.recordExport(format);playExportSuccessSound();status_=U"导出完成";}
+ }catch(const std::exception& e){status_=U"导出失败："+unicodeText(e.what());}catch(const winrt::hresult_error& e){status_=U"导出失败："+unicodeText(winrt::to_string(e.message()));}
+}
+
 std::filesystem::path Editor::recoveryDirectory() {
 
     if(!recoveryDirectory_.empty())return recoveryDirectory_;

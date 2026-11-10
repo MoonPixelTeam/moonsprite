@@ -2336,6 +2336,8 @@ private:
 
   std::vector<std::filesystem::path> framePngPaths_;
 
+  bool scriptExporting_=false;
+  void runScriptExport(const std::string& optionsJson);
   bool framePngBusy()const;
 
   bool supportedExportPreference(int index)const;

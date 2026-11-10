@@ -399,6 +399,7 @@ std::vector<OperationPlan> planOperations(const Document& d,const JsonArray& bat
 void withScriptFloating(Document&,const std::function<void()>&);
 namespace {
 bool hasSaveOperation(const JsonObject& result){for(const auto& value:result.GetNamedArray(L"batches")){auto batch=value.GetObject();if(batch.HasKey(L"operations"))for(const auto& op:batch.GetNamedArray(L"operations")){auto path=op.GetObject().GetNamedString(L"path");if(path==L"document.save"||path==L"io.save")return true;}}return false;}
+bool hasExportOperation(const JsonObject& result){for(const auto& value:result.GetNamedArray(L"batches")){auto batch=value.GetObject();if(batch.HasKey(L"operations"))for(const auto& op:batch.GetNamedArray(L"operations")){auto path=op.GetObject().GetNamedString(L"path");if(path==L"io.export")return true;}}return false;}
 bool hasSelectionTransform(const JsonObject& result){for(const auto& value:result.GetNamedArray(L"batches")){auto batch=value.GetObject();if(batch.HasKey(L"operations"))for(const auto& op:batch.GetNamedArray(L"operations"))if(op.GetObject().GetNamedString(L"path")==L"selection.transform")return true;}return false;}
 void refreshScriptTarget(const Document& d,Target& target){
  // Legacy leaves the invocation baseline unchanged when an MSE operation
@@ -413,7 +414,7 @@ void refreshScriptTarget(const Document& d,Target& target){
  }else{const auto g=d.displayedLayerGeometry(target.layerId);if(target.expectedStorage||!target.expected.pixels||g!=std::array<int,4>{target.expected.width,target.expected.height,target.expected.x,target.expected.y})target.expected={g[0],g[1],g[2],g[3],std::make_shared<const std::vector<Pixel>>(std::size_t(g[0])*g[1])};target.expectedStorage=nullptr;target.expectedStorageRevision=0;}target.revision=d.revision();target.capturePreview(d);
 }
 }
-static RasterSummary applyRasterResultImpl(Document& d,Target& target,const std::string& json,bool selectCreatedPaletteColor,const PlaybackHost& playback,const PanelHost& panels,const StyleClipboardHost& styles,const NotificationHost& notify,const BrushHost& brushes,const SaveHost& save,bool operationsOnly,const std::optional<SurfaceSnapshot>& historyBefore={}){
+static RasterSummary applyRasterResultImpl(Document& d,Target& target,const std::string& json,bool selectCreatedPaletteColor,const PlaybackHost& playback,const PanelHost& panels,const StyleClipboardHost& styles,const NotificationHost& notify,const BrushHost& brushes,const SaveHost& save,const ExportHost& exportFile,bool operationsOnly,const std::optional<SurfaceSnapshot>& historyBefore={}){
  auto validationTarget=target;if(historyBefore)validationTarget.expected=*historyBefore;
  (void)validateResult(validationTarget,json);if(d.active(false)||!target.matches(d,true,!operationsOnly))throw std::logic_error("Lua script target changed");
  const auto result=JsonObject::Parse(winrt::to_hstring(json));
@@ -422,8 +423,9 @@ static RasterSummary applyRasterResultImpl(Document& d,Target& target,const std:
  // The full executor will route these explicitly; no data may be dropped.
  if(result.GetNamedArray(L"createdDocuments").Size())throw std::logic_error("Lua created documents require the workspace result executor");
  for(const auto& item:result.GetNamedArray(L"createdLayers")){const auto layer=item.GetObject();(void)layer.GetNamedBoolean(L"visible");(void)layer.GetNamedBoolean(L"locked");if(d.timeline().hasLayer(winrt::to_string(layer.GetNamedString(L"id"))))throw std::invalid_argument("Lua layer id already exists");}
+ if(hasExportOperation(result)&&!exportFile)throw std::logic_error("Lua export host is not connected");
  if(hasSaveOperation(result)&&!save)throw std::logic_error("Lua save host is not connected");
- if(d.floating()||hasSelectionTransform(result)||hasSaveOperation(result)){
+ if(d.floating()||hasSelectionTransform(result)||hasSaveOperation(result)||hasExportOperation(result)){
   RasterSummary summary;
   // Execute the original raster-first / MSE-in-order contract. Reuse the
   // existing adapters one operation at a time under one rollback/undo boundary.
@@ -435,13 +437,14 @@ static RasterSummary applyRasterResultImpl(Document& d,Target& target,const std:
     auto applyPart=[&](JsonObject part,bool original=false){JsonObject message;for(const auto& entry:result)if(entry.Key()!=L"batches"&&entry.Key()!=L"createdLayers"&&entry.Key()!=L"createdDocuments")message.Insert(entry.Key(),entry.Value());JsonArray batches;batches.Append(part);message.Insert(L"batches",batches);message.Insert(L"createdLayers",JsonArray{});message.Insert(L"createdDocuments",JsonArray{});message.Remove(L"activeLayerId");message.Remove(L"activeFrameNumber");
      withScriptFloating(d,[&]{auto operationTarget=target;if(!original){operationTarget.layerId=d.layer().id;operationTarget.frameId=d.frame().id;}refreshScriptTarget(d,operationTarget);std::optional<SurfaceSnapshot> wireBefore;
       if(original&&part.HasKey(L"surfaceChange")&&part.GetNamedValue(L"surfaceChange").ValueType()!=JsonValueType::Null)wireBefore=surface(part.GetNamedObject(L"surfaceChange").GetNamedObject(L"before"),L"rgba");
-      auto changed=applyRasterResultImpl(d,operationTarget,winrt::to_string(message.Stringify()),selectCreatedPaletteColor,playback,panels,styles,notify,brushes,save,!original,wireBefore);summary.changedPixelCount+=changed.changedPixelCount;});refreshScriptTarget(d,target);
+      auto changed=applyRasterResultImpl(d,operationTarget,winrt::to_string(message.Stringify()),selectCreatedPaletteColor,playback,panels,styles,notify,brushes,save,exportFile,!original,wireBefore);summary.changedPixelCount+=changed.changedPixelCount;});refreshScriptTarget(d,target);
     };
     JsonObject raster;for(const auto& entry:wire)if(entry.Key()!=L"operations")raster.Insert(entry.Key(),entry.Value());raster.Insert(L"operations",JsonArray{});
     // Wire before values were validated against the Lua image snapshot above;
     // execution records current stable pixels, as legacy recordPixel does.
     auto changes=JsonArray{};for(const auto& item:wire.GetNamedArray(L"changes")){auto change=JsonObject::Parse(item.GetObject().Stringify());const auto index=std::size_t(change.GetNamedNumber(L"index"));if(index>=target.expected.pixels->size())throw std::invalid_argument("Lua pixel index exceeds transformed surface");change.Insert(L"before",JsonValue::CreateNumberValue((*target.expected.pixels)[index]));changes.Append(change);}raster.Insert(L"changes",changes);applyPart(raster,true);
     if(wire.HasKey(L"operations"))for(const auto& item:wire.GetNamedArray(L"operations")){auto op=item.GetObject();const auto path=op.GetNamedString(L"path");
+     if(path==L"io.export"){d.commitFloatingPaste();const auto identity=d.identity();exportFile(d,winrt::to_string(operationSpec(op).Stringify()));if(d.identity()!=identity)throw std::logic_error("Lua export target changed");refreshScriptTarget(d,target);continue;}
      if(path==L"document.save"||path==L"io.save"){auto spec=operationSpec(op);SaveRequest request;request.saveAs=spec.HasKey(L"saveAs")&&spec.GetNamedValue(L"saveAs").ValueType()==JsonValueType::Boolean&&spec.GetNamedBoolean(L"saveAs");auto options=spec.GetNamedValue(L"options",JsonValue::CreateNullValue());if(options.ValueType()==JsonValueType::Object)request.optionsJson=winrt::to_string(options.Stringify());d.commitFloatingPaste();const auto identity=d.identity();save(d,request);if(d.identity()!=identity)throw std::logic_error("Lua save target changed");target.documentId=d.projectId();refreshScriptTarget(d,target);continue;}
      if(path==L"selection.transform"){const auto spec=operationSpec(op);const auto flip=spec.GetNamedValue(L"flip",JsonValue::CreateNullValue());auto flag=[&](const wchar_t* key){return spec.HasKey(key)&&spec.GetNamedValue(key).ValueType()==JsonValueType::Boolean&&spec.GetNamedBoolean(key);};if((flip.ValueType()==JsonValueType::String&&flip.GetString()==L"horizontal")||flag(L"flipHorizontal"))d.flipContent(true);if((flip.ValueType()==JsonValueType::String&&flip.GetString()==L"vertical")||flag(L"flipVertical"))d.flipContent(false);const auto dx=sliceCoordinate(operationInteger(spec,L"dx")),dy=sliceCoordinate(operationInteger(spec,L"dy"));if(dx||dy)d.nudgeSelectionContent(dx,dy);refreshScriptTarget(d,target);continue;}
      if(path==L"selection.set"||path==L"selection.clear"||path==L"selection.invert"){
@@ -457,7 +460,7 @@ static RasterSummary applyRasterResultImpl(Document& d,Target& target,const std:
   if(result.GetNamedArray(L"createdLayers").Size()){
    if(!d.timeline().hasLayer(target.layerId))throw std::logic_error("Lua script target changed");
    if(d.layer().id!=target.layerId)d.selectLayer(target.layerId);if(d.frame().id!=target.frameId)d.selectFrame(target.frameId);d.commitFloatingPaste();
-   auto tail=JsonObject::Parse(result.Stringify());tail.Remove(L"activeLayerId");tail.Remove(L"activeFrameNumber");tail.Insert(L"batches",JsonArray{});refreshScriptTarget(d,target);auto changed=applyRasterResult(d,target,winrt::to_string(tail.Stringify()),selectCreatedPaletteColor,playback,panels,styles,notify,brushes,save);summary.transactionCount+=changed.transactionCount;summary.changedPixelCount+=changed.changedPixelCount;
+   auto tail=JsonObject::Parse(result.Stringify());tail.Remove(L"activeLayerId");tail.Remove(L"activeFrameNumber");tail.Insert(L"batches",JsonArray{});refreshScriptTarget(d,target);auto changed=applyRasterResult(d,target,winrt::to_string(tail.Stringify()),selectCreatedPaletteColor,playback,panels,styles,notify,brushes,save,exportFile);summary.transactionCount+=changed.transactionCount;summary.changedPixelCount+=changed.changedPixelCount;
   }refreshScriptTarget(d,target);
   if(result.HasKey(L"activeLayerId")&&result.GetNamedValue(L"activeLayerId").ValueType()==JsonValueType::String){auto id=winrt::to_string(result.GetNamedString(L"activeLayerId"));if(d.timeline().hasLayer(id)&&id!=d.layer().id)d.selectLayer(id);}
   if(result.HasKey(L"activeFrameNumber")&&result.GetNamedValue(L"activeFrameNumber").ValueType()==JsonValueType::Number){auto n=result.GetNamedNumber(L"activeFrameNumber");const auto& frames=d.timeline().state().frames;if(n>=1&&n<=frames.size()&&std::floor(n)==n&&frames[std::size_t(n)-1].id!=d.frame().id)d.selectFrame(frames[std::size_t(n)-1].id);}refreshScriptTarget(d,target);return summary;
@@ -511,8 +514,8 @@ static RasterSummary applyRasterResultImpl(Document& d,Target& target,const std:
  target.capturePreview(d);
  return summary;
 }
-RasterSummary applyRasterResult(Document& d,Target& target,const std::string& json,bool selectCreatedPaletteColor,const PlaybackHost& playback,const PanelHost& panels,const StyleClipboardHost& styles,const NotificationHost& notify,const BrushHost& brushes,const SaveHost& save){return applyRasterResultImpl(d,target,json,selectCreatedPaletteColor,playback,panels,styles,notify,brushes,save,false);}
-WorkspaceSummary applyWorkspaceResult(Document& d,Target& target,const std::string& json,const std::function<void(Document&&)>& addSession,bool selectCreatedPaletteColor,const PlaybackHost& playback,const PanelHost& panels,const StyleClipboardHost& styles,const NotificationHost& notify,const BrushHost& brushes,const SaveHost& save){
+RasterSummary applyRasterResult(Document& d,Target& target,const std::string& json,bool selectCreatedPaletteColor,const PlaybackHost& playback,const PanelHost& panels,const StyleClipboardHost& styles,const NotificationHost& notify,const BrushHost& brushes,const SaveHost& save,const ExportHost& exportFile){return applyRasterResultImpl(d,target,json,selectCreatedPaletteColor,playback,panels,styles,notify,brushes,save,exportFile,false);}
+WorkspaceSummary applyWorkspaceResult(Document& d,Target& target,const std::string& json,const std::function<void(Document&&)>& addSession,bool selectCreatedPaletteColor,const PlaybackHost& playback,const PanelHost& panels,const StyleClipboardHost& styles,const NotificationHost& notify,const BrushHost& brushes,const SaveHost& save,const ExportHost& exportFile){
  (void)validateResult(target,json);if(d.active(false)||!target.matches(d))throw std::logic_error("Lua script target changed");
  auto result=JsonObject::Parse(winrt::to_hstring(json));const auto documents=result.GetNamedArray(L"createdDocuments");
  if(documents.Size()&&!addSession)throw std::logic_error("Lua created document session adopter is not connected");
@@ -527,13 +530,13 @@ WorkspaceSummary applyWorkspaceResult(Document& d,Target& target,const std::stri
  result.Insert(L"createdDocuments",JsonArray{});
  // Legacy skips final source layer/frame selection across a document boundary.
  if(!prepared.empty()){if(result.HasKey(L"activeLayerId"))result.Remove(L"activeLayerId");if(result.HasKey(L"activeFrameNumber"))result.Remove(L"activeFrameNumber");}
- const auto raster=applyRasterResult(d,target,winrt::to_string(result.Stringify()),selectCreatedPaletteColor,playback,panels,styles,notify,brushes,save);WorkspaceSummary summary{raster.transactionCount,raster.changedPixelCount,false};
+ const auto raster=applyRasterResult(d,target,winrt::to_string(result.Stringify()),selectCreatedPaletteColor,playback,panels,styles,notify,brushes,save,exportFile);WorkspaceSummary summary{raster.transactionCount,raster.changedPixelCount,false};
  // Do not access d after adoption: adding a tab may move/destroy its wrapper.
  for(auto& document:prepared){addSession(std::move(document));++summary.transactionCount;summary.documentBoundary=true;}
  summary.changedPixelCount+=pixels;return summary;
 }
 RunOutcome receiveWorkspaceResult(Document& d,Target& target,const std::string& json,
- const std::function<void(Document&&)>& addSession,const std::function<void(const std::string&)>& closeSession,const std::string& failureSessionId,bool selectCreatedPaletteColor,const PlaybackHost& playback,const PanelHost& panels,const StyleClipboardHost& styles,const NotificationHost& notify,const BrushHost& brushes,const SaveHost& save){
+ const std::function<void(Document&&)>& addSession,const std::function<void(const std::string&)>& closeSession,const std::string& failureSessionId,bool selectCreatedPaletteColor,const PlaybackHost& playback,const PanelHost& panels,const StyleClipboardHost& styles,const NotificationHost& notify,const BrushHost& brushes,const SaveHost& save,const ExportHost& exportFile){
  std::string cleanup=failureSessionId;
  try{
   const auto result=JsonObject::Parse(winrt::to_hstring(json));
@@ -548,7 +551,7 @@ RunOutcome receiveWorkspaceResult(Document& d,Target& target,const std::string& 
    const auto id=winrt::to_string(result.GetNamedString(L"sessionId"));
    if(!id.empty())outcome.session=ClientSession{id,summary.fileName,summary.filePath,winrt::to_string(result.GetNamedArray(L"dialogs").Stringify()),target};
   }
-  const auto applied=applyWorkspaceResult(d,target,json,addSession,selectCreatedPaletteColor,playback,panels,styles,notify,brushes,save);
+  const auto applied=applyWorkspaceResult(d,target,json,addSession,selectCreatedPaletteColor,playback,panels,styles,notify,brushes,save,exportFile);
   if(applied.documentBoundary&&!finished)throw std::logic_error("Lua script target changed");
   summary.transactionCount=applied.transactionCount;summary.changedPixelCount=applied.changedPixelCount;
   if(outcome.session)outcome.session->target=target;
