@@ -50,6 +50,7 @@ public:
  ~ScriptWindowHost(){clearReport();clearWindows();}
  ScriptWindowHost(const ScriptWindowHost&)=delete;ScriptWindowHost& operator=(const ScriptWindowHost&)=delete;
  void setStyleClipboardHost(script::StyleClipboardHost host){client_.setStyleClipboardHost(std::move(host));}
+ void setBrushHost(script::BrushHost host){client_.setBrushHost(std::move(host));}
  void setNotificationHost(script::NotificationHost host){client_.setNotificationHost(std::move(host));}
  void setPanelHost(script::PanelHost host){client_.setPanelHost(std::move(host));}
  void setPlaybackHost(script::PlaybackHost host){client_.setPlaybackHost(std::move(host));}

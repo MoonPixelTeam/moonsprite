@@ -76,14 +76,20 @@ struct StyleClipboardHost {
 };
 // Enqueue-only status message delivery, deferred until the current UI pump ends.
 using NotificationHost=std::function<void(const std::u32string&)>;
+struct BrushRequest {enum class Kind {ImportImages,Remove};Kind kind=Kind::ImportImages;std::string id;};
+// External library effects execute in MSE order after the batch raster commit. Project
+// brush removal is non-history metadata, as in the legacy workspace.
+using BrushHost=std::function<void(Document&,const BrushRequest&)>;
+// Preserve document/session state if an external brush host fails mid-batch.
+std::function<void()> brushBatchRollback(Document&);
 struct RasterSummary {std::size_t transactionCount=0,changedPixelCount=0;};
 // Raster/layer stage of the workspace executor. Rejects unsupported workspace
 // operations/created documents before the first edit; never silently drops them.
-RasterSummary applyRasterResult(Document& activeDocument,Target&,const std::string& resultJson,bool selectCreatedPaletteColor=true,const PlaybackHost& playback={},const PanelHost& panels={},const StyleClipboardHost& styles={},const NotificationHost& notify={});
+RasterSummary applyRasterResult(Document& activeDocument,Target&,const std::string& resultJson,bool selectCreatedPaletteColor=true,const PlaybackHost& playback={},const PanelHost& panels={},const StyleClipboardHost& styles={},const NotificationHost& notify={},const BrushHost& brushes={});
 struct WorkspaceSummary {std::size_t transactionCount=0,changedPixelCount=0;bool documentBoundary=false;};
 // The workspace callback adopts each completed document in result order. It
 // must preserve existing sessions; the last adopted document becomes active.
-WorkspaceSummary applyWorkspaceResult(Document& activeDocument,Target&,const std::string& resultJson,const std::function<void(Document&&)>& addSession,bool selectCreatedPaletteColor=true,const PlaybackHost& playback={},const PanelHost& panels={},const StyleClipboardHost& styles={},const NotificationHost& notify={});
+WorkspaceSummary applyWorkspaceResult(Document& activeDocument,Target&,const std::string& resultJson,const std::function<void(Document&&)>& addSession,bool selectCreatedPaletteColor=true,const PlaybackHost& playback={},const PanelHost& panels={},const StyleClipboardHost& styles={},const NotificationHost& notify={},const BrushHost& brushes={});
 struct RunSummary {
  std::string fileName,filePath;std::vector<std::string> output;
  std::size_t transactionCount=0,changedPixelCount=0;double elapsedMs=0;
@@ -96,5 +102,5 @@ struct RunOutcome {RunSummary summary;std::optional<ClientSession> session;};
 RunOutcome receiveWorkspaceResult(Document&,Target&,const std::string& resultJson,
  const std::function<void(Document&&)>& addSession,
  const std::function<void(const std::string&)>& closeSession,
- const std::string& failureSessionId={},bool selectCreatedPaletteColor=true,const PlaybackHost& playback={},const PanelHost& panels={},const StyleClipboardHost& styles={},const NotificationHost& notify={});
+ const std::string& failureSessionId={},bool selectCreatedPaletteColor=true,const PlaybackHost& playback={},const PanelHost& panels={},const StyleClipboardHost& styles={},const NotificationHost& notify={},const BrushHost& brushes={});
 }

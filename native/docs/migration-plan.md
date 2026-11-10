@@ -6006,3 +6006,12 @@ layers.update存在时，沿现有候选Timeline预检后，使用原生完整Ti
 真实Lua worker枚举所有模块和方法，覆盖十个已知缺口、已接入方法、mse前缀/空白/未知路径、函数入口保留和只读查询无事务；原版信息测试只适配document模块partial预期。不是笔刷/IO/浮动状态迁移完成；整体INCOMPLETE。最终构建与验证后附。
 
 最终18项Rust原始Lua契约测试全部通过；唯一正式Release重新链接成功；lua-script-runtime全方法发现回归0.29s、lua-script-invocation2.75s通过，正式--script-entry-check退出0，来源804文件及diff检查通过。只证明原生能力发现和已有脚本调用未回退，不能证明未接入操作完成或所有运行条件可用；整体迁移保持INCOMPLETE，无人工视觉验收。阶段保存推送dev。
+
+
+### 2026-11-10：MSE 笔刷导入与删除宿主接入
+
+核对lua-script-operations.ts brushes.importImage/remove、platform/brush-library-service.ts逐文件导入、workspace-commands-tool.ts非历史工程资源删除。新增BrushHost贯通result/PendingInvocation/Client/ScriptWindowHost/Editor，缺宿主整结果预检拒绝。原生图片选择器复用现有格式与多选，逐文件导入本地根目录、保留成功项且不自动激活；工程ID优先删除，否则走本地库安全ID验证和删除；刷新资源列表，保留非历史语义。能力查询同步两项，createFromSelection仍明确未接入。
+
+外部资源可失败，因此含brush批次建立COW Document checkpoint，保持先提交该批raster再按hostOrder交错调用笔刷/panel/playback；异常恢复文档、历史、revision和Target，保留原生记录/历史observer绑定。旧版非历史资源删除和外部库副作用不撤销，恢复批次dirty/revision基线；createFromSelection仍未迁移，不宣称完整笔刷领域完成。真实Lua覆盖顺序/缺宿主/异步转发/混合失败不提交像素；正式入口覆盖工程brush删除和保存元数据。图片选择器人工交互未验收。最终构建检查后附。
+
+最终唯一正式Release构建通过，18项Rust Lua契约测试通过；lua-script-invocation2.47s与lua-script-runtime0.21s通过，正式--script-entry-check退出0（含工程与本地brush删除、无历史及工程保存资源检查）。来源804文件与diff检查通过。含笔刷批次checkpoint会复制文档历史元数据，像素为COW；外部库操作仍同步，长IO性能及原生选择器人工验收未完成；createFromSelection及其他迁移缺口保留。整体INCOMPLETE，阶段保存推送dev。

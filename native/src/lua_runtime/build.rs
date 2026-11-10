@@ -58,7 +58,7 @@ fn native_supported_path(path: &str) -> bool {
     let path = path.trim().strip_prefix("mse.").unwrap_or(path.trim());
     is_supported_path(path) && !matches!(path,
         "document.create" | "document.open" | "document.save" |
-        "brushes.importImage" | "brushes.createFromSelection" | "brushes.remove" |
+        "brushes.createFromSelection" |
         "selection.transform" | "io.export" | "io.save" | "io.open")
 }
 "#);

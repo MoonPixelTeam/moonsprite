@@ -702,6 +702,23 @@ void Editor::initializeScripts(const std::filesystem::path& root){
    }
    if(request.dock){const std::map<std::string,panels::Dock> docks{{"left",panels::Dock::Left},{"right",panels::Dock::Right},{"bottom",panels::Dock::Bottom},{"floating",panels::Dock::Floating}};dockColumn(id,docks.at(*request.dock));}
   });
+  state->host->setBrushHost([this](Document& d,const script::BrushRequest& request){
+   if(&d!=&document||!documentOpen_||homeOpen_)throw std::logic_error("Lua brush target changed");
+   PatternBrushLibrary library(fillBrushLibraryDirectory());
+   if(request.kind==script::BrushRequest::Kind::ImportImages){
+    wchar_t filename[32768]{};OPENFILENAMEW picker{};picker.lStructSize=sizeof(picker);picker.hwndOwner=GetActiveWindow();picker.lpstrFile=filename;picker.nMaxFile=32768;picker.lpstrFilter=L"图案图像\0*.png;*.jpg;*.jpeg;*.bmp;*.gif;*.webp\0\0";picker.Flags=OFN_EXPLORER|OFN_NOCHANGEDIR|OFN_PATHMUSTEXIST|OFN_FILEMUSTEXIST|OFN_ALLOWMULTISELECT;
+    if(!GetOpenFileNameW(&picker))return;
+    std::vector<std::filesystem::path> paths;auto first=std::filesystem::path(filename);auto next=filename+std::wcslen(filename)+1;if(!*next)paths.push_back(first);else for(;*next;next+=std::wcslen(next)+1)paths.push_back(first/next);
+    // Legacy importBrushPaths retains successful files, reports per-file
+    // failures to its caller, and does not activate the imported brush.
+    for(const auto& path:paths)try{auto imported=importPatternBrush(path);library.save(utf8Text(imported.name),encodePatternBrushPng(imported.brush));}catch(const std::exception&){}
+   }else{
+    const auto& id=request.id;const auto project=std::find_if(d.projectBrushes().begin(),d.projectBrushes().end(),[&](const auto& b){return b.metadata.id==id;});
+    if(project!=d.projectBrushes().end()){d.deleteProjectBrush(id);fillLibrarySelection_.removed("project:"+id);if(pencilImageBrushId_=="project:"+id){pencilImageBrushId_.clear();pencilImageBrush_.reset();}applyFillLibrarySelection();}
+    else library.remove(id);
+   }
+   brushLibraryNeedsReload_=true;scripts_->localBrushes=library.list().brushes;refresh();
+  });
   state->host->setPlaybackHost([this](Document& d,const script::PlaybackRequest& request){applyScriptPlayback(d,request);});
   state->timer.Tick.connect([this]{pumpScripts();});state->client.refresh();state->timer.start();updateScriptsMenu();
  }catch(const std::exception& e){stopScripts();status_=U"脚本初始化失败："+unicodeText(e.what());invalidate();}
@@ -771,6 +788,10 @@ void Editor::smokeScriptEntry(){
  if(document.historyPosition()!=propertyHistory+1||document.layer().name!=U"Script properties"||document.layer().description!=U" raw "||document.layer().opacity!=128./255.||document.activeSurfaceIfPresent()->offsetX!=4||document.pixels()[0]!=0xffaabbcc)throw std::runtime_error("Formal script layer properties failed");
  document.undo();if(document.layer().name!=propertyName||document.activeSurfaceIfPresent()->offsetX!=0||document.pixels()[0]!=propertyPixel)throw std::runtime_error("Formal script layer properties undo failed");document.redo();if(document.layer().name!=U"Script properties"||document.activeSurfaceIfPresent()->offsetY!=5)throw std::runtime_error("Formal script layer properties redo failed");document.undo();
 
+ // Project brush removal uses the real script host and persists without history.
+ ProjectBrushResource scriptBrush;scriptBrush.metadata.id="script-owned-brush";scriptBrush.metadata.name="Script brush";scriptBrush.metadata.width=scriptBrush.metadata.height=1;scriptBrush.metadata.dataFile="brushes/script-owned.gray";scriptBrush.brush.width=scriptBrush.brush.height=1;scriptBrush.brush.coverage={255};scriptBrush.brush.colors={0xff123456};document.setImportedProjectBrushes({scriptBrush});const auto brushHistory=document.historyPosition();
+ runPanelCheck("mse.brushes.remove('script-owned-brush')");if(!document.projectBrushes().empty()||document.historyPosition()!=brushHistory||!project::readProjectManifest(project::encodeEditableProject(document).bytes).customBrushes.empty())throw std::runtime_error("Formal script project brush removal failed");
+ PatternBrushLibrary scriptLibrary(fillBrushLibraryDirectory());const auto localScriptBrush=scriptLibrary.save("script-owned-local",encodePatternBrushPng(scriptBrush.brush));const auto localBrushHistory=document.historyPosition();runPanelCheck("mse.brushes.remove('"+localScriptBrush.id+"')");if(std::filesystem::exists(std::filesystem::u8path(localScriptBrush.filePath))||document.historyPosition()!=localBrushHistory)throw std::runtime_error("Formal script local brush deletion failed");
  // Free source and instance mutations use the production async script host.
  const auto freeScriptRaster=document.layer().id,freeScriptFrame=document.frame().id;const auto freeHistory=document.historyPosition();
  runPanelCheck("app.transaction(function() mse.freeTiles.createLayer{name='Script free'}; mse.freeTiles.createSource{name='Script source'} end)");

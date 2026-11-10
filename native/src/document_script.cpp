@@ -29,6 +29,18 @@ struct ScriptDocumentBuilder {
   for(const auto& l:draft.timeline_.state().layers)if(!draft.displayedLayerGeometry_.count(l.id)){const auto* c=draft.timeline_.findCel(l.id,draft.activeFrameId_);const auto r=c?draft.timeline_.resolveSurface(c->id):timeline::Resolution{};draft.displayedLayerGeometry_[l.id]=r.surface?std::array<int,4>{r.surface->width,r.surface->height,r.surface->offsetX,r.surface->offsetY}:std::array<int,4>{1,1,0,0};}
   context=ui(draft);geometry=std::move(draft.displayedLayerGeometry_);timeline=std::move(draft.timeline_);return changed;
  }
+ static std::function<void()> brushRollback(Document& d){
+  // COW pixel buffers and shared immutable history payloads keep this scoped
+  // checkpoint detached from live observers. Only brush batches need it.
+  auto before=std::make_shared<Document>(d);
+  return [&d,before]{
+   auto recording=std::move(d.recordingBinding_);auto changes=std::move(d.historyChangeBinding_);
+   // Legacy non-history resource deletion survives a later operation error;
+   // its batch revision/dirty baseline is restored by lua-script-service.
+   auto resources=std::move(d.projectBrushes_);d=std::move(*before);d.projectBrushes_=std::move(resources);
+   d.recordingBinding_=std::move(recording);d.historyChangeBinding_=std::move(changes);
+  };
+ }
  static Document build(const script::CreatedDocument& value){
   if(value.colorMode!="rgba")throw std::invalid_argument("Native Lua document color mode is not yet supported");
   if(value.name.empty()||value.width<1||value.height<1||std::uint64_t(value.width)*value.height>script::InvocationCapture::maxImagePixels||value.layers.empty())throw std::invalid_argument("Invalid Lua created document");
@@ -51,6 +63,7 @@ struct ScriptDocumentBuilder {
  }
 };
 namespace script {
+std::function<void()> brushBatchRollback(Document& d){return ScriptDocumentBuilder::brushRollback(d);}
 LayerStructureUi captureLayerStructureUi(const Document& d){return ScriptDocumentBuilder::ui(d);}
 void restoreLayerStructureUi(Document& d,const LayerStructureUi& u){ScriptDocumentBuilder::restore(d,u);}
 bool planLayerStructure(const Document& d,timeline::Timeline& t,std::unordered_map<std::string,std::array<int,4>>& g,LayerStructureUi& u,const std::string& op,const std::string& id,const std::optional<std::u32string>& name,const std::optional<double>& opacity){return ScriptDocumentBuilder::structure(d,t,g,u,op,id,name,opacity);}
