@@ -6305,3 +6305,10 @@ selection.transform仍须衔接跨批浮动保留、实际操作次序、后续�
 网络、诊断和窗口路由分支接通后，核对ExtensionRuntimeHost.tsx383–387实际getter、core/extension-runtime.ts方法表、editor-events和shared版本。RequestHost实现五个字段：apiVersion1.0.0、原权限数组、events权限下23事件、windows权限下native/dialog/overlay以及权限先后顺序reduce方法表的34方法；重复权限保留permissions原数组但不重复方法。复用现有editorEventNames，查询不调用业务宿主，权限/认证/会话存活规则不变。这里承接旧版getter的协议权限语义，不表示服务一定已绑定；缺服务方法继续明确失败。
 
 新增测试直接读取legacy真实方法表和事件列表，核对单权限、runtime组合、重复权限、128组固定种子乱序子集、全权限、参数伪造、会话替换权限缩减、失效token/关闭及无storage/drop副作用。三个宿主目标构建通过，extension-capabilities/request-host/session-host三项CTest全部通过0.20秒，来源813文件及diff检查通过。正式Editor的执行引擎、原生窗口/表单实际呈现仍未接线，本阶段不改变正式exe，不把协议查询当成生产扩展迁移完成。整体INCOMPLETE，阶段保存推送dev。
+
+
+### 2026-11-11：扩展表单状态与文件消息链路
+
+沿ExtensionDialogForm.tsx及真实组件测试、platform/extension-file.ts提取并实现FormState：节点默认/草稿/visibleWhen、depth8与各容器子项上限、busy/disabled门禁、action/extra/values/requestId覆盖顺序、toggle与slot context动作、匹配回执清草稿解锁、普通推送不解锁、不重放文件保存。15秒初始化超时、加载错误、retry清pending但保sequence，原生generation阻止旧执行器消息。文件上传保留槽动作/名字/MIME/bytes、single/16项16MiB限制；只有用户动作匹配结果才验证并交付保存服务，名称120/非法字符/12MiB/整数bytes限制，取消和失败更新status并解锁。
+
+回归覆盖旧版已有初始化/编辑提交/数字零/依赖显示/上传槽/导出取消失败及不重放，额外busy、旧generation、重试sequence、UTF16输入64和16文件边界。最终目标构建成功，extension-form-state实际0.02秒通过；来源815文件及diff检查通过。此阶段仅完成表单状态和文件消息协议，没有控件渲染/图片/选择器或扩展执行器接线，未将其声称为完整原生表单迁移。正式exe无变更，整体INCOMPLETE。阶段保存推送dev。
