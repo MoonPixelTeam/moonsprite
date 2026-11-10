@@ -159,5 +159,31 @@ int main(int argc,char** argv){try{winrt::init_apartment();check(argc==2,"Fixtur
  {auto source=std::make_unique<Document>(fixture(3,1,false));auto invocation=capture(*source);auto target=invocation.target;auto response=runtime.startInvocation("moon-phase.lua",std::move(invocation)).get();std::vector<Document> adopted;auto outcome=receiveWorkspaceResult(*source,target,response,[&](Document&& d){adopted.push_back(std::move(d));},[](const std::string&){throw std::runtime_error("Unexpected close");});check(!outcome.session&&outcome.summary.fileName=="moon-phase.lua"&&outcome.summary.transactionCount==1&&adopted.size()==1,"Finished workspace outcome wrong");
   std::string closed;reject([&]{receiveWorkspaceResult(*source,target,"broken",{},[&](const std::string& id){closed=id;throw std::runtime_error("close failed");},"dispatch-session");});check(closed=="dispatch-session","Dispatch parse failure lost cleanup ID");
  }
+ // Drive the same nonblocking state machine that the Editor will poll. An
+ // expired capture deadline must neither execute Lua nor modify the document.
+ {auto edited=std::make_unique<Document>(fixture(3,1,false));PendingInvocation pending(runtime);std::vector<Document> adopted;
+  pending.start(*edited,"moon-phase.lua","null",[&](Document&& d){adopted.push_back(std::move(d));});
+  check(!pending.tick(edited.get(),std::chrono::steady_clock::now()-std::chrono::seconds(1))&&pending.busy()&&adopted.empty(),"Expired pending capture executed");reject([&]{pending.start(*edited,"moon-phase.lua","null");});
+  std::optional<RunOutcome> done;const auto end=deadline();while(!done&&std::chrono::steady_clock::now()<end){done=pending.tick(edited.get(),deadline(),1);if(!done)std::this_thread::yield();}
+  check(done&&!pending.busy()&&adopted.size()==1&&done->summary.transactionCount==1,"Polled invocation did not adopt project");
+  pending.start(*edited,"moon-phase.lua","null");pending.cancel();check(!pending.busy()&&!pending.tick(edited.get(),deadline()),"Capture cancellation retained work");
+ }
+ {auto edited=std::make_unique<Document>(fixture(3,1,false));PendingInvocation pending(runtime);pending.start(*edited,"client-dialog.lua","null");std::optional<RunOutcome> done;const auto end=deadline();while(!done&&std::chrono::steady_clock::now()<end){done=pending.tick(edited.get(),deadline());if(!done)std::this_thread::yield();}check(done&&done->session,"Polled dialog lost client session");auto session=*done->session;
+  // User edits between callbacks are legal; dispatch rebases the original slot.
+  RasterBatch edit;edit.before=session.target.expected;edit.changes={{0,1193046,42}};edited->commitScriptRasterBatch(edit);
+  auto dialogs=JsonArray::Parse(winrt::to_hstring(session.dialogsJson));JsonObject action;action.Insert(L"dialogId",dialogs.GetObjectAt(0).GetNamedValue(L"id"));action.Insert(L"controlId",JsonValue::CreateStringValue(L"apply"));action.Insert(L"event",JsonValue::CreateStringValue(L"click"));action.Insert(L"values",JsonObject{});
+  pending.dispatch(*edited,session,winrt::to_string(action.Stringify()),"null");done.reset();const auto dispatchEnd=deadline();while(!done&&std::chrono::steady_clock::now()<dispatchEnd){done=pending.tick(edited.get(),deadline());if(!done)std::this_thread::yield();}check(done&&done->session&&done->session->target.matches(*edited)&&edited->activeSurface().pixels[0]==0xff090807,"Polled dispatch did not rebase intervening edit");runtime.close(session.sessionId).get();
+ }
+ // Verify disposal against a known live VM session, including a failed
+ // dispatch result whose fallback session still needs closing.
+ {auto edited=std::make_unique<Document>(fixture(3,1,false));auto wire=runtime.startInvocation("client-dialog.lua",capture(*edited)).get();const auto id=winrt::to_string(JsonObject::Parse(winrt::to_hstring(wire)).GetNamedString(L"sessionId"));std::promise<std::string> ready;auto result=ready.get_future();ready.set_value(wire);runtime.discardResult(std::move(result));runtime.close("barrier").get();reject([&]{runtime.dispatch(id,"{}",capture(*edited).contextJson()).get();});
+  wire=runtime.startInvocation("client-dialog.lua",capture(*edited)).get();const auto fallback=winrt::to_string(JsonObject::Parse(winrt::to_hstring(wire)).GetNamedString(L"sessionId"));std::promise<std::string> failure;auto failed=failure.get_future();failure.set_exception(std::make_exception_ptr(std::runtime_error("dispatch failed")));runtime.discardResult(std::move(failed),fallback);runtime.close("barrier").get();reject([&]{runtime.dispatch(fallback,"{}",capture(*edited).contextJson()).get();});
+ }
+ // Cancel after submission; a barrier proves disposal has drained. Missing or
+ // modified documents also release the pending capture without executing Lua.
+ {auto edited=std::make_unique<Document>(fixture(3,1,false));PendingInvocation pending(runtime);pending.start(*edited,"client-dialog.lua","null");(void)pending.tick(edited.get(),deadline());pending.cancel();check(!pending.busy(),"Submitted cancellation retained work");runtime.close("barrier").get();
+  pending.start(*edited,"moon-phase.lua","null");reject([&]{pending.tick(nullptr,deadline());});check(!pending.busy(),"Missing document left capture pending");
+  pending.start(*edited,"moon-phase.lua","null");check(!pending.tick(edited.get(),deadline(),1),"Partial capture unexpectedly completed");RasterBatch edit;edit.before=capture(*edited).target.expected;edit.changes={{0,1193046,42}};edited->commitScriptRasterBatch(edit);reject([&]{pending.tick(edited.get(),deadline());});check(!pending.busy(),"Changed capture left task pending");
+ }
  std::cout<<"Lua document capture, budgets, target guards and worker execution passed\n";return 0;
  }catch(const winrt::hresult_error& e){std::cerr<<winrt::to_string(e.message());return 1;}catch(const std::exception& e){std::cerr<<e.what();return 1;}}

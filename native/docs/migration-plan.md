@@ -5693,3 +5693,9 @@ Release构建和lua-script-invocation专项通过0.38s，覆盖真实Lua app.act
 实际原始moon-phase.lua生成工程编码后调用prepareEditableImport/createEditableDocument，8帧8层画面逐一比较通过。确认导入器原有缺失Cel补齐发生在全槽门禁之前，更正上一阶段的稀疏重开错误诊断，无需改变生产导入逻辑。真实Lua modeless初始输出、回调像素与计数、更新target、过期结果关闭且后续dispatch失效、跨工程adopter销毁源后的安全清理、完成态月相结果及坏JSON的dispatch清理均纳入专项。
 
 Release相关目标成功，lua-script-invocation通过0.44s。未更新正式exe，无GUI/完整smoke验收；MSE混合事务、原生颜色模式和正式Editor异步调度/动态菜单/对话框仍待完成，整体INCOMPLETE。保留用户原差异、数据、缓存及失败现场；本阶段保存推送dev。
+
+### 2026-11-10：Lua异步调用协调与取消清理阶段
+
+沿lua-script-service.ts run/rebaseTarget/dispatch/outcome，把已有分块快照、worker和结果接收接成PendingInvocation。主线程每轮按deadline/像素额度捕获，零超时检查future，仅ready后取结果；捕获和worker之间不保留Document指针。已有任务时拒绝重复启动；对话框dispatch先核对原工程/层/帧资格，再重新捕获当前revision和像素，承接用户在回调之间的编辑。取消捕获直接释放；已提交任务由Runtime在同一VM线程FIFO读取废弃结果并关闭返回session，dispatch失败时使用原session回退。清理异常不阻断后续任务；Runtime必须比协调器存活更久，析构沿现有drain语义，不宣称关机可立即中断脚本。
+
+真实Lua测试覆盖过期deadline不执行、每轮单像素推进、忙碌拒绝、月相工程接纳、modeless回调与中途用户编辑rebase、捕获/提交后取消、无活动工程及捕获中修改拒绝。额外对已知session验证废弃结果清理与失败fallback清理后dispatch确实失效。Release invocation/runtime目标成功，两项相关测试通过；来源覆盖796与diff检查通过。正式Editor消息泵/动态脚本菜单/对话框尚待接线，真实MSE快照和混合事务未完成；未更新正式exe，无GUI/完整smoke验收，整体INCOMPLETE。本阶段保存推送dev，保留用户原差异、数据与缓存。
