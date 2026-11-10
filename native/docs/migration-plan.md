@@ -5799,3 +5799,15 @@ Release正式程序构建成功，--script-window-host-check退出0。两项Lua�
 沿workspace-commands-color共享像素替换及lua-script-service先栅格后MSE语义，将候选每个匹配像素调用Timeline.setPixel改为构造完整owner结果并集中安装，避免反复链接解析和图层缓存失效。仅重命名及非颜色对象fallback不再创建完整同步候选。空活动Cel有实际批次像素/表面变化时才创建临时候选Cel，参与同步后排除临时owner辅助安装，交由Document保留正式身份；无像素的色板操作不创建空槽。新增真实Lua空Cel同批次画色/改色及撤销重做回归。
 
 唯一正式Release构建成功；构建中测试运行占用旧exe导致LNK1104，待测试结束后重新链接成功，随后才运行最终两项Lua专项通过0.97s；窗口宿主专项实际退出0。既有链接、隐藏/锁定、多owner、取色和重开继续通过。无UI视觉变化/新截图，无完整smoke或大工程性能计时，不把移除逐像素重复开销宣称实测提速。完整候选复制、同步预处理、瓦片资源和其他迁移仍INCOMPLETE。来源804文件及diff检查通过，保存推送dev，保留用户差异和数据。
+
+### 2026-11-10：MSE帧时长与循环元数据批次阶段
+
+对照lua-script-operations resolveFrameId/loopOptions和四种动画元数据操作、workspace-animation-loop-editing以及animation-loop-sections。帧支持真实ID和截断的1基序号，未匹配字符串沿旧版回退首帧，duration钳制1..60000且相同不提交。循环支持创建/更新/移除、指定ID和生成ID重做稳定、正反范围规范化、名称trim后64个UTF16单元、repeatCount 1..9999/null。脚本更新沿loopOptions重新应用默认值；缺失更新/删除无操作、空ID拒绝。
+
+新增批次动画候选和原生duration历史载荷，复用beforeLoops/afterLoops与现有applyFrameEdit；与像素/切片/选区/色板同项提交。纯动画元数据不创建缺失Cel或复制像素。安装前准备历史/替换数据，提交前失败回退；历史内存计入帧ID/时长，时长Undo/Redo按已记录帧顺序线性恢复。真实Lua测试覆盖混合批次、反向范围、默认重置、名称和参数钳制、No-op、无效帧拒绝无部分修改、Undo/Redo及编码重开。
+
+仅动画元数据，未接入animation.setFrame/setCelSurface/play；修改正在播放循环时正式Editor停止/清理播放状态仍待接线，不宣称完整动画域完成。无UI视觉变更/截图，无完整smoke；全迁移仍INCOMPLETE。验证完成后保存推送dev，保留用户差异、数据与缓存。
+
+公开API补核：mse_api.rs没有公开mse.animation.setFrameDuration，首次fixture因调用该不存在方法失败。已改用旧lua_api.rs ScriptFrame.duration秒属性（引擎换算毫秒后排队同名内部操作），真实两项Lua专项通过0.94s，Aseprite属性0.25秒→250ms和撤销一并通过；未向Lua新增旧版不存在的方法。
+
+本阶段最终：唯一正式Release构建成功，最新--script-window-host-check退出0，真实Lua两项专项通过0.94s，来源804文件与diff检查通过。

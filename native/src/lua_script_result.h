@@ -10,6 +10,8 @@ struct RasterBatch {
  std::optional<SliceState> slices;
  std::optional<std::optional<SelectionMask>> selection;
  std::optional<PaletteState> palette;
+ std::optional<std::vector<std::pair<std::string,int>>> durations;
+ std::optional<std::vector<timeline::LoopSection>> loops;
  struct OwnerReplacement {std::string ownerId;timeline::Surface before,after;};
  std::vector<OwnerReplacement> synchronizedOwners;
 };

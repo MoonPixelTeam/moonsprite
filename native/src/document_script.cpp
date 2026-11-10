@@ -72,15 +72,20 @@ bool Document::commitScriptRasterBatch(const script::RasterBatch& batch){
  std::vector<timeline::Surface*> synchronizedTargets;std::vector<timeline::Surface> synchronizedReplacements;std::unordered_set<std::string> synchronizedIds;
  std::size_t synchronizedBytes=0;for(const auto& o:batch.synchronizedOwners){const auto bytes=(o.before.pixels.size()+o.after.pixels.size())*sizeof(Pixel)*2ull;if(bytes>256ull*1024*1024-synchronizedBytes)throw std::length_error("Lua synchronized history exceeds native budget");synchronizedBytes+=bytes;auto r=timeline_.resolveSurface(o.ownerId);if(!r.source||!r.surface||r.source->id!=o.ownerId||!synchronizedIds.insert(o.ownerId).second||(resolved.source&&resolved.source->id==o.ownerId)||r.surface->width!=o.before.width||r.surface->height!=o.before.height||r.surface->offsetX!=o.before.offsetX||r.surface->offsetY!=o.before.offsetY||r.surface->pixels!=o.before.pixels)throw std::logic_error("Lua synchronized owner baseline changed");raster::validate(o.after);edit.surfaceChanges.push_back({o.ownerId,o.before,o.after});synchronizedReplacements.push_back(o.after);}
  std::size_t changed=0;
+ const bool animationChanged=batch.durations.has_value()||batch.loops.has_value();
+ std::vector<int> nextDurations;auto nextLoops=batch.loops; // Allocate replacements before installing any data.
+ if(batch.durations){std::vector<std::pair<std::string,int>> before;for(const auto& f:timeline_.state().frames)before.emplace_back(f.id,f.duration);if(before.size()!=batch.durations->size())throw std::invalid_argument("Lua duration frame count changed");for(std::size_t i=0;i<before.size();++i){const auto& f=(*batch.durations)[i];if(f.first!=before[i].first||f.second<1||f.second>60000)throw std::invalid_argument("Invalid Lua duration");nextDurations.push_back(f.second);}edit.beforeScriptDurations=std::move(before);edit.afterScriptDurations=*batch.durations;}
+ if(batch.loops){edit.beforeLoops=timeline_.state().loopSections;edit.afterLoops=*batch.loops;for(const auto& loop:*batch.loops)if(!timeline_.hasFrame(loop.startFrameId)||!timeline_.hasFrame(loop.endFrameId))throw std::invalid_argument("Invalid Lua loop frames");}
+ auto swapAnimation=[&]{if(batch.durations)for(std::size_t i=0;i<nextDurations.size();++i)std::swap(timeline_.state_.frames[i].duration,nextDurations[i]);if(nextLoops)std::swap(timeline_.state_.loopSections,*nextLoops);};
  const bool slicesChanged=batch.slices.has_value();
  const bool selectionChanged=batch.selection.has_value();const bool paletteChanged=batch.palette.has_value();
  if(paletteChanged){edit.paletteKind=12;edit.beforePalette=palette_;edit.afterPalette=*batch.palette;}
  if(slicesChanged){edit.beforeSlices=sliceState_;edit.afterSlices=*batch.slices;}
  if(selectionChanged){edit.pixelSelectionEdit=true;edit.beforePixelsSelection=selection_;edit.afterPixelsSelection=*batch.selection;}
- if(!batch.after){std::unordered_set<std::size_t> seen;for(const auto& c:batch.changes){if(c.index>=expected.pixels->size()||!seen.insert(c.index).second||(*expected.pixels)[c.index]!=c.before)throw std::invalid_argument("Invalid Lua pixel change");changed+=c.before!=c.after;}if(!changed&&!slicesChanged&&!selectionChanged&&!paletteChanged)return false;}
+ if(!batch.after){std::unordered_set<std::size_t> seen;for(const auto& c:batch.changes){if(c.index>=expected.pixels->size()||!seen.insert(c.index).second||(*expected.pixels)[c.index]!=c.before)throw std::invalid_argument("Invalid Lua pixel change");changed+=c.before!=c.after;}if(!changed&&!slicesChanged&&!selectionChanged&&!paletteChanged&&!animationChanged)return false;}
  // Slice-only batches reuse the same history entry without materializing an
  // absent raster Cel or copying the document's pixel storage.
- if(!batch.after&&!changed){edit.documentChanged=slicesChanged||paletteChanged;edit.afterState=edit.documentChanged?nextState_:state_;reserveHistoryEntries();auto replacement=slicesChanged?*batch.slices:SliceState{};auto paletteReplacement=paletteChanged?*batch.palette:PaletteState{};auto selectionReplacement=selectionChanged?*batch.selection:std::optional<SelectionMask>{};if(slicesChanged)std::swap(sliceState_,replacement);if(paletteChanged)std::swap(palette_,paletteReplacement);if(selectionChanged)std::swap(selection_,selectionReplacement);const auto beforeRevision=revision_;try{pushEdit(std::move(edit),batch.label);}catch(...){if(revision_==beforeRevision){if(slicesChanged)std::swap(sliceState_,replacement);if(paletteChanged)std::swap(palette_,paletteReplacement);if(selectionChanged)std::swap(selection_,selectionReplacement);}throw;}change_={0,0,width_,height_};publishChange();return true;}
+ if(!batch.after&&!changed){edit.documentChanged=slicesChanged||paletteChanged||animationChanged;edit.afterState=edit.documentChanged?nextState_:state_;reserveHistoryEntries();auto replacement=slicesChanged?*batch.slices:SliceState{};auto paletteReplacement=paletteChanged?*batch.palette:PaletteState{};auto selectionReplacement=selectionChanged?*batch.selection:std::optional<SelectionMask>{};if(slicesChanged)std::swap(sliceState_,replacement);if(paletteChanged)std::swap(palette_,paletteReplacement);if(selectionChanged)std::swap(selection_,selectionReplacement);swapAnimation();const auto beforeRevision=revision_;try{pushEdit(std::move(edit),batch.label);}catch(...){if(revision_==beforeRevision){swapAnimation();if(slicesChanged)std::swap(sliceState_,replacement);if(paletteChanged)std::swap(palette_,paletteReplacement);if(selectionChanged)std::swap(selection_,selectionReplacement);}throw;}change_={0,0,width_,height_};publishChange();return true;}
  // Admission before history/owner copies. Match existing surface-edit working
  // budget and deduplicate linked storage; do not copy an entire project.
  constexpr std::size_t limit=256*1024*1024;std::size_t used=synchronizedBytes;std::set<std::string> seen;
@@ -112,7 +117,7 @@ bool Document::commitScriptRasterBatch(const script::RasterBatch& batch){
  for(std::size_t i=0;i<synchronizedTargets.size();++i)std::swap(*synchronizedTargets[i],synchronizedReplacements[i]);
  if(prepared)std::swap(timeline_,*prepared);
  if(previousSlices)std::swap(sliceState_,*previousSlices);
- if(paletteChanged)std::swap(palette_,previousPalette);if(selectionChanged)std::swap(selection_,previousSelection);
+ if(paletteChanged)std::swap(palette_,previousPalette);if(selectionChanged)std::swap(selection_,previousSelection);swapAnimation();
  const auto beforeRevision=revision_;
  try{pushEdit(std::move(edit),batch.label.empty()?U"脚本":batch.label);}
  catch(...){
@@ -121,7 +126,7 @@ bool Document::commitScriptRasterBatch(const script::RasterBatch& batch){
   // Observer exceptions happen after a committed history push. Keep that
   // committed history and its pixels consistent, then propagate the error.
   if(revision_!=beforeRevision){change_={0,0,width_,height_};publishChange();throw;}
-  if(previousSlices)std::swap(sliceState_,*previousSlices);
+  swapAnimation();if(previousSlices)std::swap(sliceState_,*previousSlices);
   if(paletteChanged)std::swap(palette_,previousPalette);if(selectionChanged)std::swap(selection_,previousSelection);
   for(std::size_t i=0;i<synchronizedTargets.size();++i)std::swap(*synchronizedTargets[i],synchronizedReplacements[i]);
   if(prepared)std::swap(timeline_,*prepared);

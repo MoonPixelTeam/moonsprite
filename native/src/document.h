@@ -782,6 +782,7 @@ private:
     std::string beforeFrame,afterFrame,targetFrameId;
     std::vector<std::pair<std::string,bool>> beforeDisabled,afterDisabled;
     std::optional<int> beforeDuration,afterDuration;
+    std::optional<std::vector<std::pair<std::string,int>>> beforeScriptDurations,afterScriptDurations;
     std::optional<double> beforeOpacity,afterOpacity;
     std::optional<std::string> beforeBlendMode,afterBlendMode;
     std::optional<std::u32string> beforeName,afterName;
