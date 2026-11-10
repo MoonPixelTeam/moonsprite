@@ -267,7 +267,7 @@ private:
 
   PixelPresetControls exportPresets_;
 
-  struct ExportPreset {std::string name;int kind=0,format=0;bool explicitRange=false;StaticImageExportOptions image;GifExportOptions animation;bool allLayers=false;};
+  struct ExportPreset {std::string name;int kind=0,format=0;bool explicitRange=false;StaticImageExportOptions image;GifExportOptions animation;bool allLayers=false,slices=false;std::string sliceId;};
 
   std::vector<ExportPreset> savedExportPresets_;
 
@@ -277,7 +277,7 @@ private:
 
   std::filesystem::path exportPresetPathOverride_;
 
-  struct RememberedExport {std::string identity,filename;ExportPreset settings;};
+  struct RememberedExport {std::string identity,filename,directory;ExportPreset settings;};
 
   std::filesystem::path exportMemoryPathOverride_;
 
@@ -2382,6 +2382,7 @@ private:
   void createSpriteSheetControls();
 
   bool staticBmp_=false,staticIco_=false,staticSvg_=false,staticJpeg_=false;
+  int exportProjectFormat_=0; // 7 PSD, 8 ASE, 9 ASEPRITE, 10 MoonSprite.
 
   void switchStaticExportFormat(int format);
 

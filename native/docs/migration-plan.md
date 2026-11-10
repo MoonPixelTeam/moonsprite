@@ -6229,3 +6229,10 @@ selection.transform仍须衔接跨批浮动保留、实际操作次序、后续�
 对照legacy lua-script-operations.ts398、workspace-commands-document-io.ts429及document-file-service.ts461–930接入io.export。执行器在操作原始位置提交浮动后调用完整JSON选项主机，缺失主机在修改前拒绝；取消或导出错误按workspace状态处理，后续MSE继续。原生复用DocumentSnapshot分片捕获、后台编码、已有12格式编码器、图层/切片/帧命名与冲突规划，覆盖整工程、选区遮罩、指定/全部图层、切片、帧范围/方向、WebP帧目标回退、缩放/裁边及工程便携缩时。导出不更新保存点。新增真实Lua前缀/浮动/回滚/撤销重做检查；正式入口新增12格式实际输出与目标/失败/取消链路。UI复用现有模态，不另造导出界面。现有导出记忆格式缺少工程格式和切片目标，暂只记录目录，不能伪装PNG；完整io.export发现保持屏蔽，记忆和扩展完成事件仍需后续闭环。本阶段完整实现主机和目标编码链路，整体迁移INCOMPLETE。实际构建验证后附。
 
 最终唯一正式Release构建成功，lua-script-invocation全套7.63s通过，正式--script-entry-check退出0。实际检查12格式输出，PNG/BMP/JPEG/WebP/GIF/PSD/ASE解码尺寸，ICO结构尺寸，native工程重开与后续色板前缀；选区遮罩/浮动提交/失败回滚，图层缺失回退、切片、反向帧序列/GIF范围、WebP帧回退、裁边缩放、chooser扩展名及执行中取消后继续均通过。初轮测试栈溢出改大型Document夹具为堆分配；ICO使用文件结构检查，不能冒称普通导入器支持ICO；遮罩按legacy selectionContains严格值1修正测试夹具。来源806文件及diff检查通过，无人工UI/FPS测量。完整io.export能力发现继续屏蔽，导出记忆工程格式/切片与扩展完成事件尚待闭环。阶段保存推送dev，整体迁移INCOMPLETE。
+
+
+### 2026-11-11：导出设置与预设的完整目标记忆
+
+核对legacy document-file-service.ts205与core/export-settings.ts145，扩展原生document-export-settings v5、export-presets v6，保留旧记录读取，新增PSD/ASE/ASEPRITE/MoonSprite格式、切片目标与ID、每工程实际目录。恢复到已有模态组件，工程格式继续复用上阶段后台主机；MoonSprite缩放固定100且禁止不支持的裁剪目标。脚本成功导出全部记录实际设置与presetName，取消/失败沿用不覆盖。新增实际12格式导出后面板恢复、切片/四工程格式记忆、旧版本1–4默认值与新预设读写应用检查。扩展完成事件仍未接入，完整io.export发现保持屏蔽，整体迁移INCOMPLETE。实际验证后附。
+
+最终唯一正式Release构建成功，--export-memory-check与--script-entry-check均退出0：包含真实12格式成功导出后恢复目录/文件名/格式/缩放，切片目标恢复，旧记忆版本1–4读入，新预设工程格式/切片读写与应用、取消/失败不覆盖及100条MRU既有回归。来源806文件及diff检查通过。没有人工截图/FPS验收；扩展完成事件未接入，io.export完整能力仍屏蔽，整体迁移INCOMPLETE。本阶段保存推送dev。

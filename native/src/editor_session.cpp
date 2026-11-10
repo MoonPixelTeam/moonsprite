@@ -644,7 +644,7 @@ void Editor::runScriptExport(const std::string& optionsJson){
   if(animated||target=="frames")openGifExport();else openStaticExport();
   if(pending_!=Pending::StaticExport&&pending_!=Pending::GifExport)return;
   animationLayerJob_=target=="layer"||target=="slices";gifWebp_=format=="webp";framePngMode_=target=="frames";framePngAutomatic_=image.automatic;frameBmp_=staticBmp_=format=="bmp";frameIco_=staticIco_=format=="ico";frameSvg_=staticSvg_=format=="svg";frameJpeg_=staticJpeg_=format=="jpeg";
-  exportOptions_=image;gifOptions_=animation;gifExplicitRange_=range=="range";exportAllLayers_=target=="layer"&&(!document.timeline().hasLayer(string(L"layerId")));exportSlices_=target=="slices";exportSliceId_=string(L"sliceId");
+  exportProjectFormat_=native?10:format=="psd"?7:format=="ase"?8:format=="aseprite"?9:0;exportPresets_.name->setText(string(L"presetName"));exportOptions_=image;gifOptions_=animation;gifExplicitRange_=range=="range";exportAllLayers_=target=="layer"&&(!document.timeline().hasLayer(string(L"layerId")));exportSlices_=target=="slices";exportSliceId_=string(L"sliceId");
   if(target=="layer"&&!exportAllLayers_)exportOptions_.layerId=gifOptions_.layerId=string(L"layerId");
   exportScaleInput_->setText(std::to_string(scale));gifInputs_[0]->setText(std::to_string(scale));gifInputs_[1]->setText(std::to_string(animation.frameStart));gifInputs_[2]->setText(std::to_string(animation.frameEnd));
   const auto fallback=framePngExportStem(document.name());auto stem=framePngExportStem(unicodeText(string(L"name",utf8Text(fallback))),fallback);
@@ -691,7 +691,7 @@ void Editor::runScriptExport(const std::string& optionsJson){
   });
   while(work.wait_for(std::chrono::milliseconds(0))!=std::future_status::ready){loop.pumpMessages();std::this_thread::yield();}
   const auto written=work.get();if(job->cancel){status_=U"已取消导出，保留已写入的文件";return;}
-  if(written){const auto lastPath=layers?layers->paths.back():paths->back();if(!project&&target!="slices")rememberSuccessfulExport(requested);else rememberExportDirectory(requested);recordRecentExportPath(lastPath);usageStatistics_.recordExport(format);playExportSuccessSound();status_=U"导出完成";}
+  if(written){const auto lastPath=layers?layers->paths.back():paths->back();rememberSuccessfulExport(requested);recordRecentExportPath(lastPath);usageStatistics_.recordExport(format);playExportSuccessSound();status_=U"导出完成";}
  }catch(const std::exception& e){status_=U"导出失败："+unicodeText(e.what());}catch(const winrt::hresult_error& e){status_=U"导出失败："+unicodeText(winrt::to_string(e.message()));}
 }
 

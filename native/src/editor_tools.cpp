@@ -187,15 +187,15 @@ std::vector<Editor::RememberedExport> Editor::readExportMemory()const{
 
     std::vector<RememberedExport> result;
 
-    try{std::ifstream in(exportMemoryPath());std::string header;std::getline(in,header);const bool version4=header=="MoonSprite document-export-settings 4",version3=version4||header=="MoonSprite document-export-settings 3",version2=version3||header=="MoonSprite document-export-settings 2";if(!version2&&header!="MoonSprite document-export-settings 1")return result;
+    try{std::ifstream in(exportMemoryPath());std::string header;std::getline(in,header);const bool version5=header=="MoonSprite document-export-settings 5",version4=version5||header=="MoonSprite document-export-settings 4",version3=version4||header=="MoonSprite document-export-settings 3",version2=version3||header=="MoonSprite document-export-settings 2";if(!version2&&header!="MoonSprite document-export-settings 1")return result;
 
       while(in>>std::ws&&!in.eof()){RememberedExport r;auto& p=r.settings;int direction=0;
 
         if(!(in>>std::quoted(r.identity)>>std::quoted(r.filename)>>std::quoted(p.name)>>p.kind>>p.format>>p.explicitRange>>p.image.scalePercent>>p.image.trim>>p.image.trimCommon>>p.image.selection>>p.image.automatic>>std::quoted(p.image.layerId)>>p.animation.scalePercent>>p.animation.frameStart>>p.animation.frameEnd>>std::quoted(p.animation.loopSectionId)>>direction>>p.animation.trim>>p.animation.trimCommon))return {};
 
-        if(r.identity.empty()||r.filename.empty()||p.kind<0||p.kind>2||p.format<0||p.format>6||(p.kind==1&&p.format==5)||(p.kind!=1&&p.format==6)||p.image.scalePercent<1||p.image.scalePercent>6400||p.animation.scalePercent<1||p.animation.scalePercent>6400||p.animation.frameStart<1||p.animation.frameEnd<1||direction<0||direction>3)return {};
+        if(r.identity.empty()||r.filename.empty()||p.kind<0||p.kind>2||p.format<0||p.format>10||(p.kind==1&&p.format==5)||(p.kind!=1&&p.format==6)||(p.format>6&&p.kind!=0)||p.image.scalePercent<1||p.image.scalePercent>6400||p.animation.scalePercent<1||p.animation.scalePercent>6400||p.animation.frameStart<1||p.animation.frameEnd<1||direction<0||direction>3)return {};
 
-        if(version2&&!(in>>std::quoted(p.animation.layerId)))return {};if(version3&&!(in>>p.animation.selection))return {};if(version4&&!(in>>p.allLayers))return {};p.animation.direction=GifDirection(direction);result.push_back(std::move(r));if(result.size()==100)break;
+        if(version2&&!(in>>std::quoted(p.animation.layerId)))return {};if(version3&&!(in>>p.animation.selection))return {};if(version4&&!(in>>p.allLayers))return {};if(version5&&!(in>>p.slices>>std::quoted(p.sliceId)>>std::quoted(r.directory)))return {};p.animation.direction=GifDirection(direction);result.push_back(std::move(r));if(result.size()==100)break;
 
       }
 
@@ -211,17 +211,17 @@ void Editor::rememberSuccessfulExport(const std::filesystem::path& path){
 
     if(smoke_&&exportMemoryPathOverride_.empty())return;
 
-    try{RememberedExport r;r.identity=exportMemoryIdentity();r.filename=path.filename().u8string();auto& p=r.settings;
+    try{RememberedExport r;r.identity=exportMemoryIdentity();r.filename=path.filename().u8string();r.directory=path.parent_path().u8string();auto& p=r.settings;
 
       p.name=exportPresets_.name->text();p.kind=pending_==Pending::StaticExport?0:framePngMode_?2:1;
 
-      p.format=p.kind==0?(staticJpeg_?5:staticSvg_?3:staticIco_?2:staticBmp_?1:exportOptions_.automatic?4:0):(p.kind==1&&gifWebp_?6:frameJpeg_?5:frameSvg_?3:frameIco_?2:frameBmp_?1:framePngAutomatic_?4:0);
+      p.format=p.kind==0?(exportProjectFormat_?exportProjectFormat_:staticJpeg_?5:staticSvg_?3:staticIco_?2:staticBmp_?1:exportOptions_.automatic?4:0):(p.kind==1&&gifWebp_?6:frameJpeg_?5:frameSvg_?3:frameIco_?2:frameBmp_?1:framePngAutomatic_?4:0);
 
-      p.explicitRange=gifExplicitRange_;p.image=exportOptions_;p.animation=gifOptions_;p.allLayers=p.kind!=2&&exportAllLayers_;
+      p.explicitRange=gifExplicitRange_;p.image=exportOptions_;p.animation=gifOptions_;p.allLayers=p.kind!=2&&exportAllLayers_;p.slices=exportSlices_;p.sliceId=exportSliceId_;
 
       auto entries=readExportMemory();entries.erase(std::remove_if(entries.begin(),entries.end(),[&](const auto& old){return old.identity==r.identity;}),entries.end());entries.insert(entries.begin(),std::move(r));if(entries.size()>100)entries.resize(100);
 
-      std::ostringstream out;out<<"MoonSprite document-export-settings 4\n";for(const auto& item:entries){const auto& v=item.settings;out<<std::quoted(item.identity)<<' '<<std::quoted(item.filename)<<' '<<std::quoted(v.name)<<' '<<v.kind<<' '<<v.format<<' '<<v.explicitRange<<' '<<v.image.scalePercent<<' '<<v.image.trim<<' '<<v.image.trimCommon<<' '<<v.image.selection<<' '<<v.image.automatic<<' '<<std::quoted(v.image.layerId)<<' '<<v.animation.scalePercent<<' '<<v.animation.frameStart<<' '<<v.animation.frameEnd<<' '<<std::quoted(v.animation.loopSectionId)<<' '<<int(v.animation.direction)<<' '<<v.animation.trim<<' '<<v.animation.trimCommon<<' '<<std::quoted(v.animation.layerId)<<' '<<v.animation.selection<<' '<<v.allLayers<<'\n';}
+      std::ostringstream out;out<<"MoonSprite document-export-settings 5\n";for(const auto& item:entries){const auto& v=item.settings;out<<std::quoted(item.identity)<<' '<<std::quoted(item.filename)<<' '<<std::quoted(v.name)<<' '<<v.kind<<' '<<v.format<<' '<<v.explicitRange<<' '<<v.image.scalePercent<<' '<<v.image.trim<<' '<<v.image.trimCommon<<' '<<v.image.selection<<' '<<v.image.automatic<<' '<<std::quoted(v.image.layerId)<<' '<<v.animation.scalePercent<<' '<<v.animation.frameStart<<' '<<v.animation.frameEnd<<' '<<std::quoted(v.animation.loopSectionId)<<' '<<int(v.animation.direction)<<' '<<v.animation.trim<<' '<<v.animation.trimCommon<<' '<<std::quoted(v.animation.layerId)<<' '<<v.animation.selection<<' '<<v.allLayers<<' '<<v.slices<<' '<<std::quoted(v.sliceId)<<' '<<std::quoted(item.directory)<<'\n';}
 
       auto text=out.str();std::filesystem::create_directories(exportMemoryPath().parent_path());writeExportBytesAtomic(exportMemoryPath(),{text.begin(),text.end()});
 
@@ -235,15 +235,15 @@ bool Editor::restoreExportMemory(bool frames){
 
     auto entries=readExportMemory();auto it=std::find_if(entries.begin(),entries.end(),[&](const auto& r){return r.identity==exportMemoryIdentity();});if(it==entries.end())return false;
 
-    auto p=it->settings;if(frames){if(p.kind==1)p.format=4;if(p.kind==0){p.animation.scalePercent=p.image.scalePercent;p.animation.trim=p.image.trim;p.animation.trimCommon=p.image.trimCommon;p.animation.frameEnd=int(document.timeline().state().frames.size());}p.kind=2;p.animation.layerId.clear();p.animation.selection=false;p.allLayers=false;}
+    auto p=it->settings;if(frames){if(p.kind==1||p.format>6)p.format=4;if(p.kind==0){p.animation.scalePercent=p.image.scalePercent;p.animation.trim=p.image.trim;p.animation.trimCommon=p.image.trimCommon;p.animation.frameEnd=int(document.timeline().state().frames.size());}p.kind=2;p.animation.layerId.clear();p.animation.selection=false;p.allLayers=false;p.slices=false;p.sliceId.clear();}
 
     else if(p.kind==2&&document.timeline().state().frames.size()<=1){p.kind=0;p.image.scalePercent=p.animation.scalePercent;p.image.trim=p.animation.trim;p.image.trimCommon=p.animation.trimCommon;p.image.automatic=p.format==4;p.image.selection=false;p.image.layerId.clear();}
 
     restoringExportMemory_=true;try{applyExportPreset(p);}catch(...){restoringExportMemory_=false;throw;}restoringExportMemory_=false;
 
-    exportFilename_->setText(it->filename);auto name=std::filesystem::u8path(it->filename);name.replace_extension(exportExtension());exportFilename_->setText(name.u8string());
+    if(!it->directory.empty())exportDirectory_=std::filesystem::u8path(it->directory);exportFilename_->setText(it->filename);auto name=std::filesystem::u8path(it->filename);name.replace_extension(exportExtension());exportFilename_->setText(name.u8string());
 
-    const bool knownPreset=std::any_of(savedExportPresets_.begin(),savedExportPresets_.end(),[&](const auto& preset){return preset.name==p.name&&preset.kind==p.kind&&preset.format==p.format&&preset.image.selection==p.image.selection&&preset.image.layerId==p.image.layerId&&preset.animation.layerId==p.animation.layerId&&preset.animation.selection==p.animation.selection&&preset.allLayers==p.allLayers;});
+    const bool knownPreset=std::any_of(savedExportPresets_.begin(),savedExportPresets_.end(),[&](const auto& preset){return preset.name==p.name&&preset.kind==p.kind&&preset.format==p.format&&preset.image.selection==p.image.selection&&preset.image.layerId==p.image.layerId&&preset.animation.layerId==p.animation.layerId&&preset.animation.selection==p.animation.selection&&preset.allLayers==p.allLayers&&preset.slices==p.slices&&preset.sliceId==p.sliceId;});
 
     if(!knownPreset)exportPresets_.name->setText("");updateExportPresetOptions();refresh();return true;
 
