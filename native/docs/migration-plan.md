@@ -6256,3 +6256,10 @@ selection.transform仍须衔接跨批浮动保留、实际操作次序、后续�
 沿legacy lua-script-service.ts503–636源会话compound与外部效果语义，补齐真实Lua跨批变换→整图替换→工作区边界成功/失败，以及新文档保存/导出→后续修改/失败组合。确认替换撤销使用已验证wire before，失败恢复上一批变换结果；新会话上的保存点、独立历史及外部效果不被原目标回滚。正式Editor新增实际MoonSprite保存重开及PNG导出，检查保存前缀、之后色板修改、新文档dirty、失败后文件保留和原目标色板恢复。归档解码独立noinline函数控制嵌套验收栈，未提高正式程序栈。
 
 在前阶段路径/别名/chooser成功取消/坏文件继续与本阶段文件组合验收基础上，开放document.open/io.open能力发现；完整document.create因非RGBA模型缺口、io.export因生产扩展完成事件缺口继续屏蔽。runtime发现精确断言剩余两项缺口。最终唯一正式Release构建成功，--script-entry-check退出0；lua-script-invocation 5.17s及lua-script-runtime 0.25s通过，来源806文件及diff检查通过。旧错误txt保留，采用当次退出码。无人工图像/FPS验收；整体迁移INCOMPLETE。本阶段保存推送dev。
+
+
+### 2026-11-11：跨文档脚本与已有浮动预览
+
+核对legacy lua-script-service.ts批次回滚与workspace-commands-session.ts setActive提交浮动，新增真实Lua和正式异步Editor各8组：5×5物化/257×257延迟预览，实际打开/取消，成功/后续失败。验证选区外脚本像素写入、成功切换提交内容、取消保留浮动及取消浮动后像素、失败恢复后台原目标浮动/像素/历史，继续保留新会话已完成效果。真实正式打开暴露acceptOpen栈上Document候选与浮动提交嵌套导致栈溢出；候选改堆分配，workspace执行器与验收lambda明确不内联以限制栈帧累积，未提高程序栈或另发preview。
+
+最终唯一正式Release构建成功，--script-entry-check退出0，含上述8组及既有文件/格式检查；lua-script-invocation 5.54s通过。来源806文件与diff检查通过；旧错误txt保留，采用实际当次退出码。无人工图像/FPS验收；非RGBA与扩展生产宿主等仍INCOMPLETE，本阶段保存推送dev。

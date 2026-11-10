@@ -693,6 +693,18 @@ int main(int argc,char** argv){try{winrt::init_apartment();check(argc==2,"Fixtur
   if(fail)reject([&]{applyWorkspaceResult(*active,target,wire,{},true,{},{},{},{},{},save,exportFile,host);});else applyWorkspaceResult(*active,target,wire,{},true,{},{},{},{},{},save,exportFile,host);
   check(saved==std::vector<Pixel>({0xffabcdef,0})&&exported==saved,"Boundary I/O external effect order wrong");check(host.find(sourceId)->pixels()[0]==(fail?0:0xff123456)&&active->palette().entries.size()==3&&active->dirty(),"Boundary I/O rollback/save point wrong");
  }
+ // Existing materialized/deferred floating previews must survive canceled
+ // boundaries and source rollback, including raster writes outside the float.
+ for(int side:{5,257})for(bool fail:{false,true})for(bool canceled:{false,true}){
+  auto active=std::make_unique<Document>(side,side);active->beginStroke({0,0},0xff123456);active->commitStroke();active->clearHistory();active->previewSelection(SelectionMask{0,0,1,1,{}});active->nudgeSelectionContent(1,0);const auto sourceId=active->identity();const auto before=active->pixels();const auto history=active->historyPosition();std::vector<std::unique_ptr<Document>> background;
+  WorkspaceHost host;host.current=[&]{return active.get();};host.find=[&](std::uint64_t id)->Document*{if(active->identity()==id)return active.get();for(auto& d:background)if(d->identity()==id)return d.get();return nullptr;};host.focus=[&](std::uint64_t id)->Document*{if(active->identity()==id)return active.get();for(auto& d:background)if(d->identity()==id){std::swap(active,d);return active.get();}return nullptr;};host.execute=[&](const auto&,const auto&){if(canceled)return;active->commitFloatingPaste();background.push_back(std::make_unique<Document>(std::move(*active)));active=std::make_unique<Document>(2,1);};
+  std::string code="app.transaction(function() app.activeImage:drawPixel(3,0,0xffabcdef); mse.io.open(); mse.palette.create{r=10,g=11,b=12}";if(fail)code+="; mse.workspace.showPanel('invalid-panel')";code+=" end)";std::ofstream(root/"scripts/workspace-float.lua")<<code;
+  InvocationCapture captureFloat(*active,"null",{},true);while(!captureFloat.advance(*active,deadline())){}auto captured=captureFloat.take();auto target=captured.target;const auto wire=runtime.startInvocation("workspace-float.lua",std::move(captured)).get();
+  if(fail)reject([&]{applyWorkspaceResult(*active,target,wire,{},true,{},{},{},{},{},{},{},host);});else applyWorkspaceResult(*active,target,wire,{},true,{},{},{},{},{},{},{},host);
+  auto* source=host.find(sourceId);if(fail){check(source->floating()&&source->pixels()==before&&source->historyPosition()==history,"Boundary failure lost existing floating source");source->cancelFloatingPaste();check(source->pixels()[0]==0xff123456&&source->pixels()[3]==0,"Boundary failure cancel lost original pixels");}
+  else if(canceled){check(source->floating()&&source->pixels()[3]==0xffabcdef,"Canceled boundary lost floating/raster edit");source->cancelFloatingPaste();check(source->pixels()[0]==0xff123456&&source->pixels()[3]==0xffabcdef,"Canceled boundary float cancel lost outside write");}
+  else check(!source->floating()&&source->pixels()[1]==0xff123456&&source->pixels()[3]==0xffabcdef,"Successful boundary lost committed floating/raster");
+ }
  clientDialogTests(runtime,root);
  std::cout<<"Lua document capture, budgets, target guards and worker execution passed\n";return 0;
  }catch(const winrt::hresult_error& e){std::cerr<<winrt::to_string(e.message());return 1;}catch(const std::exception& e){std::cerr<<e.what();return 1;}}

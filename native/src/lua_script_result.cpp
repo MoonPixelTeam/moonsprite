@@ -517,7 +517,7 @@ static RasterSummary applyRasterResultImpl(Document& d,Target& target,const std:
 }
 RasterSummary applyRasterResult(Document& d,Target& target,const std::string& json,bool selectCreatedPaletteColor,const PlaybackHost& playback,const PanelHost& panels,const StyleClipboardHost& styles,const NotificationHost& notify,const BrushHost& brushes,const SaveHost& save,const ExportHost& exportFile){return applyRasterResultImpl(d,target,json,selectCreatedPaletteColor,playback,panels,styles,notify,brushes,save,exportFile,false);}
 namespace {
-WorkspaceSummary applyWorkspaceOperations(Document& initial,Target& target,const JsonObject& result,bool select,const PlaybackHost& playback,const PanelHost& panels,const StyleClipboardHost& styles,const NotificationHost& notify,const BrushHost& brushes,const SaveHost& save,const ExportHost& exportFile,const WorkspaceHost& workspace){
+__declspec(noinline) WorkspaceSummary applyWorkspaceOperations(Document& initial,Target& target,const JsonObject& result,bool select,const PlaybackHost& playback,const PanelHost& panels,const StyleClipboardHost& styles,const NotificationHost& notify,const BrushHost& brushes,const SaveHost& save,const ExportHost& exportFile,const WorkspaceHost& workspace){
  if(!workspace)throw std::logic_error("Lua workspace host is not connected");
  if(hasSaveOperation(result)&&!save)throw std::logic_error("Lua save host is not connected");
  if(hasExportOperation(result)&&!exportFile)throw std::logic_error("Lua export host is not connected");

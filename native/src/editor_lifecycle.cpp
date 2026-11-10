@@ -812,6 +812,19 @@ void Editor::smokeScriptWorkspace(const std::filesystem::path& root){
   auto failedSaved=readScriptBoundaryProject(dir/"boundary-failed-saved.moonsprite");
   if(document.name()!=U"Boundary failed IO"||document.palette().entries.size()!=freshPalette+2||failedSaved->palette().entries.size()!=freshPalette+1||!std::filesystem::is_regular_file(dir/"boundary-failed-export.png"))throw std::runtime_error("Formal boundary failed I/O lost external effects");
   source=saveProjectIndex(ioSource);activateProject(*source);if(document.palette().entries.size()!=ioSourcePalette)throw std::runtime_error("Formal boundary failed I/O did not rollback source");
+  auto checkFloatingBoundary=[&]() __declspec(noinline) {
+  for(int side:{5,257})for(bool fail:{false,true})for(bool canceled:{false,true}){
+   auto candidate=std::make_unique<Document>(side,side);candidate->beginStroke({0,0},0xff123456);candidate->commitStroke();candidate->clearHistory();document=std::move(*candidate);documentPath_.clear();document.previewSelection(SelectionMask{0,0,1,1,{}});document.nudgeSelectionContent(1,0);refresh();
+   const auto floatingSource=document.identity();const auto floatBefore=document.pixels();const auto floatHistory=document.historyPosition();const auto chooser=chooseOpenFile_;chooseOpenFile_=[](OPENFILENAMEW*){return false;};
+   std::string code="app.transaction(function() app.activeImage:drawPixel(3,0,0xffabcdef); ";code+=canceled?"mse.io.open()":"mse.document.open{path="+quote(dir/"open.png")+"}";code+="; mse.palette.create{r=91,g=92,b=93}";if(fail)code+="; mse.workspace.showPanel('invalid-panel')";code+=" end)";runBoundary(code,fail);chooseOpenFile_=chooser;
+   const auto slot=saveProjectIndex(floatingSource);if(!slot)throw std::runtime_error("Formal floating boundary source lost");
+   // Inspect background state before tab activation commits a pending preview.
+   const auto& state=projectDocument(*slot);
+   if(fail){if(!state.floating()||state.pixels()!=floatBefore||state.historyPosition()!=floatHistory)throw std::runtime_error("Formal floating boundary rollback lost preview/history");}
+   else if(canceled){if(document.identity()!=floatingSource||!state.floating()||state.pixels()[3]!=0xffabcdef)throw std::runtime_error("Formal canceled boundary lost preview/outside write");document.cancelFloatingPaste();if(document.pixels()[0]!=0xff123456||document.pixels()[3]!=0xffabcdef)throw std::runtime_error("Formal canceled boundary cancel lost pixels");}
+   else if(state.floating()||state.pixels()[1]!=0xff123456||state.pixels()[3]!=0xffabcdef)throw std::runtime_error("Formal open boundary lost committed preview/outside write");
+  }
+  };checkFloatingBoundary();
   if(!saveProjectIndex(createdId))throw std::runtime_error("Earlier created session lost");
  }
 }

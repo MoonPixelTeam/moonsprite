@@ -280,7 +280,7 @@ void Editor::acceptOpen() {
 
     if(!candidateRecovery_ && !openCandidate_->projectId().empty()){for(std::size_t i=0;i<projects_.size();++i)if(projectDocument(i).projectId()==openCandidate_->projectId()){openCandidate_.reset();activateProject(i);return;}}
 
-    auto next=std::move(*openCandidate_);if(candidateRecovery_)next.markRecovered(next.name()+U"（恢复）");const auto origin=candidateRecovery_?candidateRecoveryId_:std::string{};const auto path=candidateRecovery_?std::filesystem::path():candidatePath_;candidateRecovery_=false;candidateRecoveryId_.clear();openCandidate_.reset();addProject(std::move(next),path);
+    auto next=std::make_unique<Document>(std::move(*openCandidate_));if(candidateRecovery_)next->markRecovered(next->name()+U"（恢复）");const auto origin=candidateRecovery_?candidateRecoveryId_:std::string{};const auto path=candidateRecovery_?std::filesystem::path():candidatePath_;candidateRecovery_=false;candidateRecoveryId_.clear();openCandidate_.reset();addProject(std::move(*next),path);
     if(!origin.empty()){recovery_.originId=origin;recovery_.ownedId=origin;recovery_.ownedIdentity=document.identity();}
 
     recordHomeRecent(documentPath_.empty()?document.sourceFilePath():documentPath_);
