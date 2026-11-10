@@ -5785,3 +5785,11 @@ Client统一持有各DialogState，为原生窗口提供edit/click/commit/title-
 核对lua-script-service applyResult先像素后MSE操作、lua-script-operations palette.extract及workspace-palette applyPalette。候选栅格逐批应用变化/表面替换，提取当前帧合成画面；扫描线顺序去重并忽略全透明，limit截断钳制1..4096，默认256。按分段合成控制输出临时内存且取满即停。append使用全部资源（含隐藏与重复），每次追加保留要求的颜色出现次数；匹配资源按存储顺序各复用一次，不足时创建独立ID。槽位规范化与匹配前景色的选择随像素共享批次历史，后续坏参数在首次写入前拒绝。移除workspace预检中的重复候选计算，保留实际applyRasterResult写入前预检。Client/PendingInvocation可传递创建选择偏好，正式Editor设置接线仍未完成。
 
 Release正式程序构建成功，--script-window-host-check退出0。两项Lua专项通过0.87s，覆盖混合像素取色、扫描线顺序、隐藏与重复资源append、重复append额外出现、Undo/Redo、错误操作无部分写入以及异步Client未锁定创建。初次测试错误假设重复append无操作，按旧版明确数组拼接语义纠正；构建期间源码修改的旧目标曾被复用，更新测试时间戳并完成重新编译后通过。无新增UI视觉变化/截图，无完整smoke。同步像素替换、非RGBA、正式菜单与宿主供给仍INCOMPLETE；分段合成仅控制临时输出，结果预处理仍同步，不声称大画布UI延迟问题已全部解决。保存推送dev，保留用户差异、数据和缓存。
+
+### 2026-11-10：MSE普通RGBA色板同步替换批次阶段
+
+对照workspace-commands-color updatePaletteColorWithSynchronization/applyColorReplacementTarget，按帧优先、旧图层从底到顶遍历，先共享像素去重再锁定过滤，包含隐藏层且不受像素选区裁剪。批次先栅格再MSE，连续改色候选沿前次结果执行；同步后的extract使用候选Timeline。原生RasterBatch携带其他owner前后表面，Document同项Edit surfaceChanges和色板/选区/切片共同提交，准备历史和替换值后再安装，提交前失败回退。新增256MiB候选资源与历史预算检查，涵盖像素、蒙版与瓦片集；仅实际开启同步且含更新时复制候选，不影响普通色板路径。
+
+真实Lua专项覆盖同批次画像素后改色、连续改色、链接帧、隐藏/锁定层、多owner Undo/Redo、随后取色及保存重开。普通RGBA路径已接入，瓦片/自由瓦片资源同步仍明确拒绝，未以缓存修改冒充资源事务。候选Timeline复制和逐像素规划仍同步，属于待优化成本，不宣称全大画布延迟已解决；正式Editor菜单/偏好接线、非RGBA以及全部迁移仍INCOMPLETE。无UI视觉变更/截图，无完整smoke。保留用户差异、数据与缓存，阶段完成验证后保存推送dev。
+
+本阶段最终验证：唯一正式Release构建成功，两项Lua专项通过0.92s，--script-window-host-check实际退出0，来源覆盖804文件与diff检查通过。

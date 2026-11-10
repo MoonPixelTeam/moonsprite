@@ -69,6 +69,8 @@ bool Document::commitScriptRasterBatch(const script::RasterBatch& batch){
  else{const auto g=displayedLayerGeometry(layer().id);if(g!=std::array<int,4>{expected.width,expected.height,expected.x,expected.y}||std::any_of(expected.pixels->begin(),expected.pixels->end(),[](Pixel p){return p!=0;}))throw std::logic_error("Lua empty raster baseline changed");}
  if(batch.after&&!batch.changes.empty())throw std::invalid_argument("Lua surface replacement also contains pixel changes");
  Edit edit{{},state_,nextState_};edit.beforeActive=edit.afterActive=layer().id;edit.beforeFrame=edit.afterFrame=frame().id;
+ std::vector<timeline::Surface*> synchronizedTargets;std::vector<timeline::Surface> synchronizedReplacements;std::unordered_set<std::string> synchronizedIds;
+ std::size_t synchronizedBytes=0;for(const auto& o:batch.synchronizedOwners){const auto bytes=(o.before.pixels.size()+o.after.pixels.size())*sizeof(Pixel)*2ull;if(bytes>256ull*1024*1024-synchronizedBytes)throw std::length_error("Lua synchronized history exceeds native budget");synchronizedBytes+=bytes;auto r=timeline_.resolveSurface(o.ownerId);if(!r.source||!r.surface||r.source->id!=o.ownerId||!synchronizedIds.insert(o.ownerId).second||(resolved.source&&resolved.source->id==o.ownerId)||r.surface->width!=o.before.width||r.surface->height!=o.before.height||r.surface->offsetX!=o.before.offsetX||r.surface->offsetY!=o.before.offsetY||r.surface->pixels!=o.before.pixels)throw std::logic_error("Lua synchronized owner baseline changed");raster::validate(o.after);edit.surfaceChanges.push_back({o.ownerId,o.before,o.after});synchronizedReplacements.push_back(o.after);}
  std::size_t changed=0;
  const bool slicesChanged=batch.slices.has_value();
  const bool selectionChanged=batch.selection.has_value();const bool paletteChanged=batch.palette.has_value();
@@ -81,7 +83,7 @@ bool Document::commitScriptRasterBatch(const script::RasterBatch& batch){
  if(!batch.after&&!changed){edit.documentChanged=slicesChanged||paletteChanged;edit.afterState=edit.documentChanged?nextState_:state_;reserveHistoryEntries();auto replacement=slicesChanged?*batch.slices:SliceState{};auto paletteReplacement=paletteChanged?*batch.palette:PaletteState{};auto selectionReplacement=selectionChanged?*batch.selection:std::optional<SelectionMask>{};if(slicesChanged)std::swap(sliceState_,replacement);if(paletteChanged)std::swap(palette_,paletteReplacement);if(selectionChanged)std::swap(selection_,selectionReplacement);const auto beforeRevision=revision_;try{pushEdit(std::move(edit),batch.label);}catch(...){if(revision_==beforeRevision){if(slicesChanged)std::swap(sliceState_,replacement);if(paletteChanged)std::swap(palette_,paletteReplacement);if(selectionChanged)std::swap(selection_,selectionReplacement);}throw;}change_={0,0,width_,height_};publishChange();return true;}
  // Admission before history/owner copies. Match existing surface-edit working
  // budget and deduplicate linked storage; do not copy an entire project.
- constexpr std::size_t limit=256*1024*1024;std::size_t used=0;std::set<std::string> seen;
+ constexpr std::size_t limit=256*1024*1024;std::size_t used=synchronizedBytes;std::set<std::string> seen;
  auto admit=[&](std::size_t bytes){if(bytes>limit-used)throw std::length_error("Lua raster transaction exceeds native working budget");used+=bytes;};
  for(const auto& c:timeline_.state().cels)if(c.surface&&seen.insert(timeline_.linkedStorageKey(c.id)).second)admit(c.surface->pixels.size()*sizeof(Pixel));
  for(const auto& m:timeline_.state().masks)admit(m.mask.surface.pixels.size()*sizeof(Pixel));
@@ -100,13 +102,14 @@ bool Document::commitScriptRasterBatch(const script::RasterBatch& batch){
  }else ownerId=resolved.source->id;
  auto& targetTimeline=prepared?*prepared:timeline_;const auto owner=targetTimeline.resolveSurface(ownerId);const auto& before=*owner.surface;
  std::optional<timeline::Surface> replacement;
- if(batch.after){edit.surfaceChanges.push_back({ownerId,before,makeSurface(*batch.after)});replacement=edit.surfaceChanges.front().after;}
+ if(batch.after){edit.surfaceChanges.push_back({ownerId,before,makeSurface(*batch.after)});replacement=edit.surfaceChanges.back().after;}
  else{edit.targetCelId=slot?slot->id:ownerId;edit.pixelAddress=PixelAddressSpace{before.width,before.height,before.storageOriginX.value_or(0),before.storageOriginY.value_or(0)};}
  std::optional<SliceState> previousSlices;if(slicesChanged)previousSlices=*batch.slices;
  auto previousPalette=paletteChanged?*batch.palette:PaletteState{};auto previousSelection=selectionChanged?*batch.selection:std::optional<SelectionMask>{};
  // All history payloads and replacement pixels are prepared before installation.
- reserveHistoryEntries();auto* live=targetTimeline.mutableOwnedSurface(ownerId);if(!live)throw std::logic_error("Missing Lua writable owner");
+ reserveHistoryEntries();for(const auto& o:batch.synchronizedOwners){auto* target=targetTimeline.mutableOwnedSurface(o.ownerId);if(!target)throw std::logic_error("Missing synchronized owner");synchronizedTargets.push_back(target);}auto* live=targetTimeline.mutableOwnedSurface(ownerId);if(!live)throw std::logic_error("Missing Lua writable owner");
  if(batch.after)std::swap(*live,*replacement);else for(const auto& p:edit.pixels)live->pixels[p.index]=p.after;
+ for(std::size_t i=0;i<synchronizedTargets.size();++i)std::swap(*synchronizedTargets[i],synchronizedReplacements[i]);
  if(prepared)std::swap(timeline_,*prepared);
  if(previousSlices)std::swap(sliceState_,*previousSlices);
  if(paletteChanged)std::swap(palette_,previousPalette);if(selectionChanged)std::swap(selection_,previousSelection);
@@ -120,6 +123,7 @@ bool Document::commitScriptRasterBatch(const script::RasterBatch& batch){
   if(revision_!=beforeRevision){change_={0,0,width_,height_};publishChange();throw;}
   if(previousSlices)std::swap(sliceState_,*previousSlices);
   if(paletteChanged)std::swap(palette_,previousPalette);if(selectionChanged)std::swap(selection_,previousSelection);
+  for(std::size_t i=0;i<synchronizedTargets.size();++i)std::swap(*synchronizedTargets[i],synchronizedReplacements[i]);
   if(prepared)std::swap(timeline_,*prepared);
   else if(batch.after)std::swap(*live,*replacement);
   else for(const auto& p:batch.changes)live->pixels[p.index]=p.before;
