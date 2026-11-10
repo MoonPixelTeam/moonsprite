@@ -6180,3 +6180,10 @@ selection.transform仍须衔接跨批浮动保留、实际操作次序、后续�
 自由实例翻转按原点负坐标-1取样，原点在边缘的内容会落出画布；最终样本置于(2,2)并检查相应坐标，不修改旧语义。最终lua-script-invocation全套6.41s通过，包含资源非对称像素及引用保存重开。生产源码未改，使用已构建正式Release执行入口；实际结果后附。
 
 本轮正式--script-entry-check退出1，native/native-script-entry-error.txt记录Cannot replace brush file (Windows error 5)，入口检查未通过；未重试、未删除测试目录。来源806文件与diff检查通过；专项迁移模型证据通过不代替正式入口验收。未进行人工图像/FPS测量，整体INCOMPLETE，本阶段保存推送dev。
+
+
+### 2026-11-11：笔刷排序并发读取与正式验收隔离
+
+前阶段正式入口在原子替换笔刷文件时报Windows error5；现有错误未包含目标路径，不能仅凭该码断定具体原因。核对legacy platform_brushes.rs排序读取/原子写入与原生后台listing，修复原生排序读取普通ifstream未明确允许删除共享的并发风险：CreateFile开启READ/WRITE/DELETE共享，读取持有原文件时允许原子替换；保留读取失败旧回退及写入错误，不加重试或改只读属性。新增后台list并行100次reorder回归。正式脚本入口复用已有brushLibraryTestDirectory_注入到带marker的script-entry-test-owned/brushes，在initializeScripts前设置，避免验收写入日常笔刷库。实际验证后附，整体迁移INCOMPLETE。
+
+最终并发测试确认共享读取单独不足，ReplaceFile试验也出现1175故未采用；保留MoveFileEx，加入进程内list/readOrder/atomicBytes串行锁。修正临时文件消失后INVALID_FILE_ATTRIBUTES被误判reparse，列表只忽略精确排序临时文件前缀。错误包含目标路径，无重试或用户目录清理。唯一正式Release构建成功，pattern-brush-library全套及新增并行100次排序2.56s通过，正式--script-entry-check退出0。来源及diff检查后保存推送，整体INCOMPLETE。

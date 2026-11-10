@@ -2,8 +2,17 @@
 #include <fstream>
 #include <chrono>
 #include <iostream>
+#include <thread>
+#include <atomic>
 #define CHECK(x) do{if(!(x))throw std::runtime_error(#x);}while(false)
 int wmain(int argc,wchar_t** argv){try{using namespace moon;CHECK(argc==2);auto dir=std::filesystem::path(argv[1])/std::to_wstring(std::chrono::high_resolution_clock::now().time_since_epoch().count());PatternBrushLibrary library(dir);auto existingTemp=dir/L".brush-order.json.tmp";{std::ofstream file(existingTemp,std::ios::binary);file<<"preserve-existing-temp";}auto b=createPatternBrushFromRgba(2,1,{1,2,3,0,4,5,6,128});auto bytes=encodePatternBrushPng(b);auto one=library.save("first",bytes,true,-2,7),two=library.save("second",bytes),three=library.save("third",bytes);CHECK(one.id!=two.id);auto list=library.list();CHECK(list.brushes.size()==3&&list.brushes[0].id==one.id&&list.brushes[0].sourceX==-2&&list.brushes[0].sourceY==7);auto decoded=importPatternBrush(std::filesystem::u8path(one.filePath));CHECK(decoded.brush.colors==b.colors);library.reorder({three.id,one.id,two.id});{std::ifstream file(existingTemp,std::ios::binary);std::string contents((std::istreambuf_iterator<char>(file)),{});CHECK(contents=="preserve-existing-temp");}PatternBrushLibrary reopened(dir);CHECK(reopened.list().brushes[0].id==three.id);PatternBrushSelection selected;std::vector<std::string> ids{three.id,one.id,two.id};selected.select(ids,one.id);selected.select(ids,two.id,true);CHECK(selected.ids==std::vector<std::string>({one.id,two.id}));selected.select(ids,three.id,false,true);CHECK(selected.ids==ids);selected.select(ids,one.id);selected.select(ids,one.id);CHECK(selected.ids.empty());library.remove(two.id);CHECK(reopened.list().brushes.size()==2);CHECK(!std::filesystem::exists(std::filesystem::u8path(two.filePath)));bool bad=false;try{library.remove("../first.png");}catch(const std::invalid_argument&){bad=true;}CHECK(bad);auto parent=library.createFolder("Actors"),child=library.createFolder("Child",parent.id);auto duplicate=library.createFolder("Actors");CHECK(duplicate.id=="Actors-2");auto moved=library.move(one.id,child.id);CHECK(moved.id==one.id&&moved.folderId==child.id&&moved.sourceX==-2);auto renamed=library.renameFolder(parent.id,"People");CHECK(renamed.id=="People");PatternBrushLibrary again(dir);CHECK(again.list().folders.size()==3);CHECK(again.list().brushes[0].id==three.id);bool rejected=false;try{library.renameFolder(renamed.id,"Actors-2");}catch(const std::runtime_error&){rejected=true;}CHECK(rejected&&std::filesystem::exists(dir/L"People"/L"Child"));rejected=false;try{library.move(one.id,"../outside");}catch(const std::invalid_argument&){rejected=true;}CHECK(rejected);library.removeFolder(renamed.id);CHECK(again.list().brushes.size()==1&&again.list().brushes[0].id==three.id);CHECK(!std::filesystem::exists(dir/L"People"));
+
+// A background listing may overlap repeated atomic order replacement.
+std::atomic<bool> reading{true};std::exception_ptr readerFailure;
+std::thread reader([&]{try{while(reading.load())(void)reopened.list();}catch(...){readerFailure=std::current_exception();}});
+try{for(int i=0;i<100;++i)library.reorder({three.id});}catch(...){reading=false;reader.join();throw;}
+reading=false;reader.join();if(readerFailure)std::rethrow_exception(readerFailure);
+CHECK(reopened.list().brushes.front().id==three.id);
 
 CHECK(reorderedPatternBrushIds({"a","b","c","d"},{"c","a"},"d",false)==std::vector<std::string>({"b","a","c","d"}));
 CHECK(reorderedPatternBrushIds({"a","b","c","d"},{"c","a"},"b",true)==std::vector<std::string>({"b","a","c","d"}));
