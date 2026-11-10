@@ -5848,3 +5848,10 @@ Release正式程序构建成功，--script-window-host-check退出0。两项Lua�
 沿用旧版 lua-script-operations palette.update 的顺序、共享 owner、锁定过滤及事务语义。原生 LinkedPixelStorage 非 const 下标访问每次递增原子修订号，密集替色原路径每个像素重复触发；现在一次取得候选表面的 vector 可变引用后遍历，整次替换只触发一次修订更新。预检完成的 slices/selection/palette/durations/loops 和 owner before/after 表面移动到提交批次，移除额外深拷贝，保持全结果预检后才写入。
 
 对照 Aseprite src/filters/replace_color_filter.cpp 的直接像素缓冲区遍历方式，仅审阅性能方案；该模块为 EULA，不复制代码，继续使用原生既有 vector 接口。新增真实 Lua 128×128、三链接帧、连续两次密集替色回归，检查无关透明像素、全部共享像素、色板元数据、一项历史及 Undo/Redo。两项 Lua 专项通过1.08s，正式 Release 重建成功，最新 --script-window-host-check 退出0，来源804文件和 diff 检查通过。未做前后性能基准，不声称全软件卡顿已解决；同步候选复制、大画布延迟路径及正式 Editor Lua 接线仍有缺口，整体 INCOMPLETE。用户确认的 Hybrid 预览与提交一致及大画布延迟优化继续保留。保留用户差异和数据，本阶段提交推送 dev。
+
+
+### 2026-11-10：脚本动画切帧与跨帧取色阶段
+
+对照旧 lua-script-operations resolveFrameId/animation.setFrame 和 lua-script-service focusScriptTarget/applyResult，接入 MSE animation.setFrame。全结果预检解析精确帧 ID 或截断的一起始帧序号，非匹配字符串沿旧版回落第一帧，越界先拒绝；切帧不创建历史或 Cel。操作计划保留批次最终选择；每个批次开始恢复脚本原始 layer/frame，栅格仍修改原始目标，后续 palette.extract 使用该批次操作选择的帧，原始暂存像素只对原始帧或同一共享 owner 生效。最终 app.activeFrame 继续覆盖 MSE 选择，创建图层/文档仍沿既有后续顺序。原生只发布批次最终选择，避免同步批次中的无效中间重绘；播放状态接线仍待正式宿主完成。
+
+真实 Lua 验证切帧无历史、app.activeFrame=nil 保留 MSE 选择、显式最终覆盖、两批栅格写入原始目标及其 Undo/Redo、越界预检无部分写入，以及 setFrame{frame=2.9} 后取色不混入原始帧暂存像素并支持重做。两项 Lua 专项通过1.11s，唯一正式 Release 重建成功，--script-window-host-check 退出0，来源804文件及 diff检查通过。本阶段无UI外观调整，无全软件smoke；正式 Editor 菜单/provider/pump、animation.play及其他迁移仍 INCOMPLETE。保留用户差异和数据，阶段提交推送 dev。
