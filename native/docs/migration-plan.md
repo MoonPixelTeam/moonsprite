@@ -6407,3 +6407,10 @@ PNG后台解码完成后保留像素及私有surface，每次pump最多上传262
 接收模型/匹配导出回执也持有根modal深度，覆盖导出save回调中再次pump/关闭的重入；已请求宿主关闭时不再接纳新模型或chooser上传，chooser错误同步控件使能。根pump回调内宿主关闭延后，子prompt在根正常重建时仍允许安全关闭，避免删除子窗口却未关闭原生窗口。
 
 新增实际FormWindow文件按钮回归，chooser结果注入期间推送空模型、pump、宿主关闭并返回真实结构File，验证控件保留到回调结束、关闭延后、无上传/会话残留。初次临时窗口栈分配回归崩溃，改堆分配并修正上述子窗口关闭条件后最终正式Release构建与四项extension-form-ui/image/files/state通过（1.35秒）；未独立定位崩溃栈，不能把推测栈原因当结论。来源821文件与diff检查通过。chooser是注入返回，未人工操作OS对话框；前阶段真实下拉打开未进入回调原因仍未定位，不宣称已完成该验收。整体INCOMPLETE，阶段保存推送dev，用户editor_support.h差异保留。
+
+
+### 2026-11-11：真实下拉菜单生命周期验收闭环
+
+追查此前showOptions未进入回调的假象，新增isEnabled断言确认触发器启用，实际原因是外层50ms smoke timer在原生菜单嵌套循环中重入同一phase：第二次showOptions因open_保护返回，第二个局部checkedPopup未执行而误报。测试在真实showOptions期间暂停外层timer，保留独立popup timer关闭菜单；在实际popupStateChanged(open)推送当前模型并pump，断言原下拉实例未销毁，关闭后pump再构建并继续键盘选择/条件显示/提交链路。产品代码未绕过菜单保护，无重复假回调。
+
+最终唯一正式Release构建成功，extension-form-ui/image/files/state四项通过（1.39秒），真实菜单打开/回调/关闭和其余表单链路均执行通过；来源821文件及diff检查通过。本轮补强前阶段缺失证据，不声称人工悬停tooltip截图或OS chooser验收完成。完整软件迁移仍INCOMPLETE，QuickJS架构选择仍待用户回复，阶段保存推送dev；用户editor_support.h差异保留。
