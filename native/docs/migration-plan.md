@@ -6078,3 +6078,10 @@ selection.transform仍须衔接跨批浮动保留、实际操作次序、后续�
 沿用legacy lua-script-service.ts buildInvocation/rebaseTarget/focusScriptTarget：模型对话框回调重新捕获同一栅格目标，保留pending source。原生只对回调允许延迟浮动，继续拒绝其他活动编辑和物化多目标浮动；普通新脚本入口维持原有编辑结束要求。浮动存在性、overlay revision和选区快照加入分块捕获及结果过期校验，防止稳定像素未变时覆盖用户后续移动。已有浮动而回调不含transform时也复用按序执行器，让像素/色板操作保持稳定像素先写与浮动源保留。新增真实Client对话框连续移动、混合像素/色板、捕获中/执行后过期拒绝及撤销重做检查。完整selection.transform能力仍false，物化多目标与非栅格operation-time目标仍未完成，整体INCOMPLETE。最终验证后附。
 
 最终唯一正式Release构建成功；lua-script-invocation全套3.20s通过，正式--script-entry-check退出0（既有宿主检查；新增延迟回调由真实Lua Client回归覆盖）。测试画布257×257实际启用延迟路径；小画布物化预览及多目标回调仍未接通，不能称作全模式回调完成。来源806文件与diff检查通过，无人工图像/FPS验收。整体INCOMPLETE；本阶段保存推送dev。
+
+
+### 2026-11-10：小画布与多图层物化浮动回调
+
+对照legacy lua-script-service.ts buildInvocation/rebaseTarget/applyResult、workspace-commands-selection-move.ts及workspace-floating-preview.ts：物化预览的脚本捕获读取实际预览像素，操作保留pending源，后续变换按旧预览基线恢复再绘制。接通原生模型对话框的物化浮动捕获与结果执行，复用Document已有preview delta、source和撤销机制。补充contentMutationRevision过期校验，覆盖物化预览未推进历史revision的情况。普通新脚本与其他活动编辑仍维持入口约束。新增真实Client小画布、两图层回调的连续移动、选区外像素/色板写入、提交/取消、撤销重做、捕获过期和失败回滚。完整selection.transform能力仍false；非栅格operation-time目标、几何替换组合与更广正式宿主验收未完成，整体INCOMPLETE。最终验证后附。
+
+最终唯一正式Release构建成功；lua-script-invocation全套2.82s通过，正式--script-entry-check退出0（既有宿主检查；新增小画布/双图层路径由真实Lua Client回归覆盖）。来源806文件及diff检查通过。无人工图像/FPS验收；完整selection.transform能力仍false，整体INCOMPLETE。本阶段保存推送dev，既有用户差异与未跟踪数据保留。

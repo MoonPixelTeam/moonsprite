@@ -406,7 +406,7 @@ void refreshScriptTarget(const Document& d,Target& target){
 }
 }
 RasterSummary applyRasterResult(Document& d,Target& target,const std::string& json,bool selectCreatedPaletteColor,const PlaybackHost& playback,const PanelHost& panels,const StyleClipboardHost& styles,const NotificationHost& notify,const BrushHost& brushes){
- (void)validateResult(target,json);if(d.active(false)||(d.floating()&&!d.floatingDeferred())||!target.matches(d))throw std::logic_error("Lua script target changed");
+ (void)validateResult(target,json);if(d.active(false)||!target.matches(d))throw std::logic_error("Lua script target changed");
  const auto result=JsonObject::Parse(winrt::to_hstring(json));
  // This stage is deliberately closed to operations requiring workspace state.
  // The full executor will route these explicitly; no data may be dropped.
@@ -493,7 +493,7 @@ RasterSummary applyRasterResult(Document& d,Target& target,const std::string& js
  return summary;
 }
 WorkspaceSummary applyWorkspaceResult(Document& d,Target& target,const std::string& json,const std::function<void(Document&&)>& addSession,bool selectCreatedPaletteColor,const PlaybackHost& playback,const PanelHost& panels,const StyleClipboardHost& styles,const NotificationHost& notify,const BrushHost& brushes){
- (void)validateResult(target,json);if(d.active(false)||(d.floating()&&!d.floatingDeferred())||!target.matches(d))throw std::logic_error("Lua script target changed");
+ (void)validateResult(target,json);if(d.active(false)||!target.matches(d))throw std::logic_error("Lua script target changed");
  auto result=JsonObject::Parse(winrt::to_hstring(json));const auto documents=result.GetNamedArray(L"createdDocuments");
  if(documents.Size()&&!addSession)throw std::logic_error("Lua created document session adopter is not connected");
  // Build candidates before changing the source document; unsupported modes and
