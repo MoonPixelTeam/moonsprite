@@ -84,6 +84,10 @@ SurfaceSnapshot validateResult(const Target& target,const std::string& json){
 }
 namespace {
 std::u32string unicode(const winrt::hstring& s){std::u32string out;for(std::size_t i=0;i<s.size();++i){char32_t c=s[i];if(c>=0xd800&&c<=0xdbff&&i+1<s.size()&&s[i+1]>=0xdc00&&s[i+1]<=0xdfff)c=0x10000+((c-0xd800)<<10)+(s[++i]-0xdc00);out.push_back(c);}return out;}
+CreatedLayer createdLayer(const JsonObject& wire,const winrt::hstring& format=L"rgba"){
+ CreatedLayer layer;layer.id=winrt::to_string(wire.GetNamedString(L"id"));layer.name=unicode(wire.GetNamedString(L"name"));layer.opacity=int(wire.GetNamedNumber(L"opacity"));layer.visible=wire.GetNamedBoolean(L"visible");layer.locked=wire.GetNamedBoolean(L"locked");layer.frameNumber=wire.GetNamedNumber(L"frameNumber");
+ if(wire.HasKey(L"stackIndex"))layer.stackIndex=std::size_t(wire.GetNamedNumber(L"stackIndex"));if(wire.HasKey(L"parentGroupId")&&wire.GetNamedValue(L"parentGroupId").ValueType()==JsonValueType::String)layer.parentGroupId=winrt::to_string(wire.GetNamedString(L"parentGroupId"));layer.surface=surface(wire.GetNamedObject(L"surface"),format);return layer;
+}
 }
 RasterSummary applyRasterResult(Document& d,Target& target,const std::string& json){
  (void)validateResult(target,json);if(d.active()||!target.matches(d))throw std::logic_error("Lua script target changed");
@@ -124,5 +128,26 @@ RasterSummary applyRasterResult(Document& d,Target& target,const std::string& js
  if(result.HasKey(L"activeLayerId")&&result.GetNamedValue(L"activeLayerId").ValueType()==JsonValueType::String){const auto id=winrt::to_string(result.GetNamedString(L"activeLayerId"));if(d.timeline().hasLayer(id))d.selectLayer(id);}
  if(result.HasKey(L"activeFrameNumber")&&result.GetNamedValue(L"activeFrameNumber").ValueType()==JsonValueType::Number){const auto n=result.GetNamedNumber(L"activeFrameNumber");const auto& frames=d.timeline().state().frames;if(n>=1&&n<=frames.size()&&std::floor(n)==n)d.selectFrame(frames[std::size_t(n)-1].id);}
  return summary;
+}
+WorkspaceSummary applyWorkspaceResult(Document& d,Target& target,const std::string& json,const std::function<void(Document&&)>& addSession){
+ (void)validateResult(target,json);if(d.active()||!target.matches(d))throw std::logic_error("Lua script target changed");
+ auto result=JsonObject::Parse(winrt::to_hstring(json));const auto documents=result.GetNamedArray(L"createdDocuments");
+ if(documents.Size()&&!addSession)throw std::logic_error("Lua created document session adopter is not connected");
+ for(const auto& item:result.GetNamedArray(L"batches")){const auto batch=item.GetObject();if(batch.HasKey(L"operations")&&batch.GetNamedArray(L"operations").Size())throw std::logic_error("Lua MSE operations require the workspace result executor");}
+ // Build candidates before changing the source document; unsupported modes and
+ // invalid native structures cannot leave earlier raster batches half-applied.
+ std::vector<Document> prepared;prepared.reserve(documents.Size());std::size_t pixels=0;
+ for(const auto& item:documents){const auto wire=item.GetObject();CreatedDocument value;value.name=unicode(wire.GetNamedString(L"name"));value.width=int(wire.GetNamedNumber(L"width"));value.height=int(wire.GetNamedNumber(L"height"));value.colorMode=winrt::to_string(wire.GetNamedString(L"colorMode"));
+  if(value.colorMode!="rgba")throw std::logic_error("Native Lua created document color mode adapter is incomplete");
+  for(const auto& layer:wire.GetNamedArray(L"layers")){value.layers.push_back(createdLayer(layer.GetObject()));for(auto p:*value.layers.back().surface.pixels)pixels+=(p>>24)!=0;}
+  prepared.push_back(buildCreatedDocument(value));
+ }
+ result.Insert(L"createdDocuments",JsonArray{});
+ // Legacy skips final source layer/frame selection across a document boundary.
+ if(!prepared.empty()){if(result.HasKey(L"activeLayerId"))result.Remove(L"activeLayerId");if(result.HasKey(L"activeFrameNumber"))result.Remove(L"activeFrameNumber");}
+ const auto raster=applyRasterResult(d,target,winrt::to_string(result.Stringify()));WorkspaceSummary summary{raster.transactionCount,raster.changedPixelCount,false};
+ // Do not access d after adoption: adding a tab may move/destroy its wrapper.
+ for(auto& document:prepared){addSession(std::move(document));++summary.transactionCount;summary.documentBoundary=true;}
+ summary.changedPixelCount+=pixels;return summary;
 }
 }

@@ -38,7 +38,7 @@ InvocationCapture::InvocationCapture(const Document& d,std::string mse,std::opti
  auto& out=invocation_;out.target={d.identity(),d.revision(),d.projectId(),d.layer().id,d.frame().id,{}};
  out.documentName=d.name();out.layerName=d.layer().name;out.filePath=path.value_or(d.sourceFilePath());out.width=d.width();out.height=d.height();
  out.opacity=int(std::clamp(std::floor(d.layer().opacity*255+.5),0.,255.));out.visible=d.layer().visible;out.locked=d.layer().locked;out.groupId=d.layer().groupId;
- out.stackIndex=std::size_t(std::find_if(state.layers.begin(),state.layers.end(),[&](const auto& l){return l.id==d.layer().id;})-state.layers.begin())+1;
+ out.stackIndex=state.layers.size()-std::size_t(std::find_if(state.layers.begin(),state.layers.end(),[&](const auto& l){return l.id==d.layer().id;})-state.layers.begin());
  out.foreground=d.palette().primary;out.background=d.palette().secondary;out.selection=d.selection();out.mseSnapshotJson=std::move(mse);
  for(std::size_t i=0;i<state.frames.size();++i){const auto& f=state.frames[i];if(f.id==d.frame().id)out.frameNumber=i+1;
   const auto* c=d.timeline().findCel(d.layer().id,f.id);if(!c)continue;const auto r=d.timeline().resolveSurface(c->id);const auto& s=*r.surface;

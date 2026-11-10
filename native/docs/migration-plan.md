@@ -5678,3 +5678,9 @@ Release构建成功，lua-script-invocation/lua-script-runtime/document-raster-h
 沿lua-script-service.ts commitCreatedLayer/rasterLayerFromScript，把createdLayers接入既有结果执行器和Document::commitScriptCreatedLayer。保留脚本ID、Unicode名称、opacity/visible/locked、parentGroupId、stackIndex钳制/省略追加、frameNumber越界回首帧；每层只创建指定帧Cel，其他帧保持缺失，表面存储原点归零。每次创建前refocus原目标，故独立撤销返回原图层/帧；detachedLayer/detachedCels/order记录复用原生历史，重做保留Cel身份。新层选中并清除组选中，预算在候选时间轴复制前检查；原生结构事务仍复制时间轴，属于已记录性能成本，不声称大工程创建优化完成。
 
 Release构建和lua-script-invocation专项通过0.38s，覆盖真实Lua app.activeSprite:newLayer→像素→原生创建/撤销、单帧稀疏Cel、名字/标志/偏移/alpha统计、插入位置/多次创建/原目标恢复/越界帧回退、组归属/重复ID拒绝及前阶段栅格回归。来源覆盖796和diff检查通过；未更新正式exe，无GUI/完整smoke验收。createdDocuments、新建会话、MSE混合事务和正式Editor/future/原生对话框接入仍待完成，整体INCOMPLETE。保留用户差异、数据、缓存及失败现场，阶段保存推送dev。
+
+### 2026-11-10：Lua RGBA创建工程与工作区交接阶段
+
+对照lua-script-service.ts createScriptDocument/applyResult及document-model createDocument，新增buildCreatedDocument、applyWorkspaceResult。RGBA候选保留默认旧色板、100ms帧、按最大frameNumber建帧、每层仅指定帧Cel、显示几何回退、元数据/像素、首帧/末旧版层活动、fresh identity/projectId、dirty和空历史。工作区通过显式adopter按结果顺序接纳，计文档边界/像素与事务数，跳过跨文档后的源最终选择；候选构建前核对预算，候选全建成后才写源。adopter可能移动源对象，调用后不再访问源引用。正式Editor标签接纳尚未接线；indexed/grayscale缺少原生颜色模式状态，明确拒绝，不冒充支持。
+
+审计既有project_import/project_encode证据确认旧版bottom-to-top/原生top-to-bottom，修正前两阶段Lua stackIndex与新层插入边界，并在创建工程反转层数组。首次测试使用构建中途已编译旧对象而失败，增量重建document_script后lua-script-invocation通过0.45s。覆盖原始moon-phase.lua实际执行→候选→回调接纳、保存清单8帧8层顺序、稀疏首帧/显示几何、身份/dirty/history、alpha与属性、元数据预算、缺adopter/不支持模式拒绝、多文档顺序和源引用销毁后安全。保存清单通过不等于重开验收：当前prepareEditableImport仍有全槽Cel门禁，稀疏重开明确未通过。来源覆盖796/diff检查后阶段推送dev，无正式exe/GUI/完整smoke。MSE混合事务、颜色模式、稀疏导入、正式Editor调度/菜单/对话框仍未完成，整体INCOMPLETE；保留用户差异、数据和缓存。

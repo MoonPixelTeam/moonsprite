@@ -72,3 +72,14 @@ and sparse Cel placement are retained; each layer has its own undo record.
 The executor refocuses the original script target before each layer, and
 updates the target revision. Created documents and MSE operations still require
 the pending workspace executor. The formal Editor remains unconnected.
+
+RGBA created documents now use buildCreatedDocument and applyWorkspaceResult.
+The builder installs sparse Cels without creation history, default legacy RGBA
+palette, first active frame and last legacy layer, dirty state and fresh IDs.
+The workspace adopter callback receives candidates in order; it must preserve
+existing sessions and activate each adopted project. The adapter does not use
+the source Document reference after callback adoption. Indexed/grayscale modes
+remain unsupported explicitly; formal Editor adoption is still pending.
+Legacy layer arrays are bottom-to-top; native arrays are top-to-bottom. The
+script stack index, inserted layers and created document order are converted
+at this boundary, matching existing project import/export behavior.

@@ -90,6 +90,7 @@ private:
  SliceState sliceState_;std::uint64_t nextSliceId_=0;bool commitSlices(SliceState,std::u32string);
 
   friend class DocumentSnapshot;
+  friend struct ScriptDocumentBuilder;
   friend class SheetImportTask;
   friend class ImageResizeTask;
   friend struct RasterHistoryFixture;

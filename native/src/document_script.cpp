@@ -5,6 +5,29 @@
 #include <stdexcept>
 #include <cmath>
 namespace moon {
+struct ScriptDocumentBuilder {
+ static Document build(const script::CreatedDocument& value){
+  if(value.colorMode!="rgba")throw std::invalid_argument("Native Lua document color mode is not yet supported");
+  if(value.name.empty()||value.width<1||value.height<1||std::uint64_t(value.width)*value.height>script::InvocationCapture::maxImagePixels||value.layers.empty())throw std::invalid_argument("Invalid Lua created document");
+  constexpr std::uint64_t limit=256ull*1024*1024;std::uint64_t bytes=std::uint64_t(value.width)*value.height*sizeof(Pixel);std::size_t frames=1;std::unordered_set<std::string> ids;
+  for(const auto& l:value.layers){const auto& s=l.surface;if(l.id.empty()||l.name.empty()||!ids.insert(l.id).second||l.opacity<0||l.opacity>255||!std::isfinite(l.frameNumber)||l.frameNumber<1||std::floor(l.frameNumber)!=l.frameNumber||l.frameNumber>double(limit/sizeof(DocumentFrame))||!s.pixels||s.width<1||s.height<1||std::uint64_t(s.width)*s.height!=s.pixels->size()||s.pixels->size()>script::InvocationCapture::maxImagePixels)throw std::invalid_argument("Invalid Lua created document layer");
+   raster::coordinate(std::int64_t(s.x)+s.width);raster::coordinate(std::int64_t(s.y)+s.height);frames=std::max(frames,std::size_t(l.frameNumber));const auto n=s.pixels->size()*sizeof(Pixel);if(n>limit-bytes)throw std::length_error("Lua created document exceeds native budget");bytes+=n;
+  }
+  if(frames>(limit-bytes)/(sizeof(DocumentFrame)+64))throw std::length_error("Lua created document frame metadata exceeds native budget");
+  // Native constructor supplies IDs/statistics/role colors; replace its default
+  // bitmap with the exact sparse per-frame result, no creation undo entries.
+  Document d(value.width,value.height);timeline::State state;state.canvasWidth=value.width;state.canvasHeight=value.height;
+  for(std::size_t i=0;i<frames;++i)state.frames.push_back({"frame-"+std::to_string(i+1),100,false});
+  for(const auto& l:value.layers){DocumentLayer layer;layer.id=l.id;layer.name=l.name;layer.opacity=l.opacity/255.;layer.visible=l.visible;layer.locked=l.locked;layer.groupId=l.parentGroupId;state.layers.push_back(std::move(layer));
+   timeline::Surface s;s.width=l.surface.width;s.height=l.surface.height;s.offsetX=l.surface.x;s.offsetY=l.surface.y;s.storageOriginX=s.storageOriginY=0;s.pixels=*l.surface.pixels;
+   DocumentCel c;c.id="script-cel-"+std::to_string(d.identity_)+"-"+std::to_string(state.cels.size()+1);c.layerId=l.id;c.frameId=state.frames[std::size_t(l.frameNumber)-1].id;c.opacity=l.opacity/255.;c.surface=std::move(s);state.cels.push_back(std::move(c));
+   d.displayedLayerGeometry_[l.id]={l.surface.width,l.surface.height,l.surface.x,l.surface.y};
+  }
+  std::reverse(state.layers.begin(),state.layers.end()); // legacy bottom-to-top -> native top-to-bottom.
+  timeline::Timeline checked(std::move(state));d.timeline_=std::move(checked);d.activeLayerId_=value.layers.back().id;d.activeFrameId_=d.timeline_.state().frames.front().id;d.name_=value.name;d.projectId_="doc-script-"+std::to_string(d.identity_);d.modified_=true;d.projectActiveCelOpacities();return d;
+ }
+};
+namespace script {Document buildCreatedDocument(const CreatedDocument& value){return ScriptDocumentBuilder::build(value);}}
 void Document::commitScriptCreatedLayer(const script::CreatedLayer& value,std::u32string label){
  if(active())throw std::logic_error("Finish active edit before script layer creation");
  const auto& s=value.surface;
@@ -20,7 +43,7 @@ void Document::commitScriptCreatedLayer(const script::CreatedLayer& value,std::u
  admit(s.pixels->size()*sizeof(Pixel)*3ull);
  const auto& frames=timeline_.state().frames;const auto frameIndex=value.frameNumber<=frames.size()?std::size_t(value.frameNumber)-1:0;
  const auto frameId=frames.at(frameIndex).id;
- const auto index=value.stackIndex?std::min(*value.stackIndex-1,timeline_.state().layers.size()):timeline_.state().layers.size();
+ const auto size=timeline_.state().layers.size();const auto legacyIndex=value.stackIndex?std::min(*value.stackIndex-1,size):size;const auto index=size-legacyIndex;
  DocumentLayer layer;layer.id=value.id;layer.name=value.name;layer.opacity=value.opacity/255.;layer.visible=value.visible;layer.locked=value.locked;layer.groupId=value.parentGroupId;
  timeline::Surface surface;surface.width=s.width;surface.height=s.height;surface.offsetX=s.x;surface.offsetY=s.y;surface.storageOriginX=surface.storageOriginY=0;surface.pixels=*s.pixels;
  DocumentCel c;c.id="cel-"+value.id+"-"+frameId;for(std::size_t suffix=1;timeline_.findCelById(c.id);++suffix)c.id="cel-"+value.id+"-"+frameId+"-"+std::to_string(suffix);c.layerId=layer.id;c.frameId=frameId;c.opacity=layer.opacity;c.surface=std::move(surface);
