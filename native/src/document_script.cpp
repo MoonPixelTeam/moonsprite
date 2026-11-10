@@ -30,7 +30,7 @@ struct ScriptDocumentBuilder {
   context=ui(draft);geometry=std::move(draft.displayedLayerGeometry_);timeline=std::move(draft.timeline_);return changed;
  }
  static void orderedBrushes(Document& d,const std::u32string& label,const std::function<void()>& apply){
-  if(d.groupingHistory_)throw std::logic_error("Nested script compound history");
+  if(d.groupingHistory_){apply();return;}
   const auto start=d.position_;const auto selected=d.selectedFrames_;d.groupingHistory_=true;
   try{apply();}catch(...){d.groupingHistory_=false;throw;}
   // Reuse compound child storage without early observer/recording notifications.
@@ -52,6 +52,13 @@ struct ScriptDocumentBuilder {
    auto resources=std::move(d.projectBrushes_);d=std::move(*before);d.projectBrushes_=std::move(resources);
    d.recordingBinding_=std::move(recording);d.historyChangeBinding_=std::move(changes);
   };
+ }
+ static void withFloating(Document& d,const std::function<void()>& apply){
+  // MSE writes stable pixels while deferred selection previews retain their
+  // captured source. Do not route an unchanged target through selectLayer.
+  auto floating=std::move(d.floating_);d.floating_.reset();
+  try{apply();}catch(...){d.floating_=std::move(floating);throw;}
+  d.floating_=std::move(floating);
  }
  static Document build(const script::CreatedDocument& value){
   if(value.colorMode!="rgba")throw std::invalid_argument("Native Lua document color mode is not yet supported");
@@ -75,6 +82,7 @@ struct ScriptDocumentBuilder {
  }
 };
 namespace script {
+void withScriptFloating(Document& d,const std::function<void()>& apply){ScriptDocumentBuilder::withFloating(d,apply);}
 void orderedBrushBatch(Document& d,const std::u32string& label,const std::function<void()>& apply){ScriptDocumentBuilder::orderedBrushes(d,label,apply);}
 std::function<void()> brushBatchRollback(Document& d){return ScriptDocumentBuilder::brushRollback(d);}
 LayerStructureUi captureLayerStructureUi(const Document& d){return ScriptDocumentBuilder::ui(d);}

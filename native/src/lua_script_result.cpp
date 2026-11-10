@@ -396,6 +396,15 @@ std::vector<OperationPlan> planOperations(const Document& d,const JsonArray& bat
  }OperationPlan plan;plan.orderedBrushes=orderedBrushes;plan.orderedSelections=std::move(orderedSelections);plan.brushes=std::move(brushes);plan.structureDocumentChanged=!(onlyResourceCreation&&!batch.GetNamedArray(L"changes").Size()&&(!batch.HasKey(L"surfaceChange")||batch.GetNamedValue(L"surfaceChange").ValueType()==JsonValueType::Null));plan.notifications=std::move(notifications);if(structures){structureUi.activeLayer=operationLayer;structureUi.activeFrame=operationFrame;plan.layerStructureUi=structureUi;}for(const auto& id:changedStyles)plan.styles.emplace_back(id,layerStyles.at(id));if(clipboardChanged)plan.clipboard=clipboard;plan.hostOrder=std::move(hostOrder);plan.panels=std::move(panels);plan.playback=std::move(playback);plan.activeFrame=std::move(selectedFrame);plan.celChangedPixels=celChangedPixels;if(durationChanged)plan.durations=durations;if(loopsChanged)plan.loops=loops;if(changed)plan.slices=state;if(selectionChanged&&!orderedBrushes)plan.selection.emplace(selection);if(paletteChanged)plan.palette=palette;if(syncChanged){const auto& planned=synchronized?*synchronized:d.timeline();const auto* slot=planned.findCel(d.layer().id,d.frame().id);auto active=slot?planned.resolveSurface(slot->id):timeline::Resolution{};for(auto& o:synchronizedOwners)if(active.source&&o.ownerId==active.source->id)plan.synchronizedRaster=raster;else plan.synchronizedOwners.push_back(std::move(o));}if(layerUpdates){const bool pixels=batch.GetNamedArray(L"changes").Size()||(batch.HasKey(L"surfaceChange")&&batch.GetNamedValue(L"surfaceChange").ValueType()!=JsonValueType::Null);if(layerChanged||pixels||syncChanged||!changedStyles.empty()){auto admitPlan=[&](std::size_t count){const auto bytes=count*sizeof(Pixel)*4ull;if(bytes>256ull*1024*1024-synchronizedBudget)throw std::length_error("Lua layer update history exceeds native working budget");synchronizedBudget+=bytes;};for(const auto& c:synchronized->state().cels)if(c.surface)admitPlan(c.surface->pixels.size());for(const auto& m:synchronized->state().masks)admitPlan(m.mask.surface.pixels.size());for(const auto& t:synchronized->state().tilesets)admitPlan(t.pixels.size());plan.layerUpdateTimeline=synchronized->state();for(std::size_t i=0;i<durations.size();++i)plan.layerUpdateTimeline->frames[i].duration=durations[i].second;plan.layerUpdateTimeline->loopSections=loops;plan.layerUpdateGeometry=geometry;plan.synchronizedRaster=raster;}}plans.push_back(std::move(plan));}return plans;
 }
 }
+void withScriptFloating(Document&,const std::function<void()>&);
+namespace {
+bool hasSelectionTransform(const JsonObject& result){for(const auto& value:result.GetNamedArray(L"batches")){auto batch=value.GetObject();if(batch.HasKey(L"operations"))for(const auto& op:batch.GetNamedArray(L"operations"))if(op.GetObject().GetNamedString(L"path")==L"selection.transform")return true;}return false;}
+void refreshScriptTarget(const Document& d,Target& target){
+ const auto* slot=d.timeline().findCel(target.layerId,target.frameId);auto r=slot?d.timeline().resolveSurface(slot->id):timeline::Resolution{};
+ if(r.surface)target.expected={r.surface->width,r.surface->height,r.surface->offsetX,r.surface->offsetY,std::make_shared<const std::vector<Pixel>>(r.surface->pixels.begin(),r.surface->pixels.end())};
+ else{const auto g=d.displayedLayerGeometry(target.layerId);target.expected={g[0],g[1],g[2],g[3],std::make_shared<const std::vector<Pixel>>(std::size_t(g[0])*g[1])};}target.revision=d.revision();
+}
+}
 RasterSummary applyRasterResult(Document& d,Target& target,const std::string& json,bool selectCreatedPaletteColor,const PlaybackHost& playback,const PanelHost& panels,const StyleClipboardHost& styles,const NotificationHost& notify,const BrushHost& brushes){
  (void)validateResult(target,json);if(d.active()||!target.matches(d))throw std::logic_error("Lua script target changed");
  const auto result=JsonObject::Parse(winrt::to_hstring(json));
@@ -403,12 +412,44 @@ RasterSummary applyRasterResult(Document& d,Target& target,const std::string& js
  // The full executor will route these explicitly; no data may be dropped.
  if(result.GetNamedArray(L"createdDocuments").Size())throw std::logic_error("Lua created documents require the workspace result executor");
  for(const auto& item:result.GetNamedArray(L"createdLayers")){const auto layer=item.GetObject();(void)layer.GetNamedBoolean(L"visible");(void)layer.GetNamedBoolean(L"locked");if(d.timeline().hasLayer(winrt::to_string(layer.GetNamedString(L"id"))))throw std::invalid_argument("Lua layer id already exists");}
+ if(hasSelectionTransform(result)){
+  RasterSummary summary;
+  // Execute the original raster-first / MSE-in-order contract. Reuse the
+  // existing adapters one operation at a time under one rollback/undo boundary.
+  for(const auto& value:result.GetNamedArray(L"batches")){
+   const auto wire=value.GetObject();if(d.layer().id!=target.layerId)d.selectLayer(target.layerId);if(d.frame().id!=target.frameId)d.selectFrame(target.frameId);
+   auto rollback=brushBatchRollback(d);const auto beforeTarget=target;const auto history=d.historyRevision();const auto label=unicode(wire.GetNamedString(L"label",result.GetNamedString(L"fileName",L"脚本")));
+   try{orderedBrushBatch(d,label,[&]{
+    auto applyPart=[&](JsonObject part,bool original=false){JsonObject message;for(const auto& entry:result)if(entry.Key()!=L"batches"&&entry.Key()!=L"createdLayers"&&entry.Key()!=L"createdDocuments")message.Insert(entry.Key(),entry.Value());JsonArray batches;batches.Append(part);message.Insert(L"batches",batches);message.Insert(L"createdLayers",JsonArray{});message.Insert(L"createdDocuments",JsonArray{});message.Remove(L"activeLayerId");message.Remove(L"activeFrameNumber");
+     withScriptFloating(d,[&]{auto operationTarget=target;if(!original){operationTarget.layerId=d.layer().id;operationTarget.frameId=d.frame().id;}refreshScriptTarget(d,operationTarget);auto changed=applyRasterResult(d,operationTarget,winrt::to_string(message.Stringify()),selectCreatedPaletteColor,playback,panels,styles,notify,brushes);summary.changedPixelCount+=changed.changedPixelCount;});refreshScriptTarget(d,target);
+    };
+    JsonObject raster;for(const auto& entry:wire)if(entry.Key()!=L"operations")raster.Insert(entry.Key(),entry.Value());raster.Insert(L"operations",JsonArray{});
+    // Wire before values were validated against the Lua image snapshot above;
+    // execution records current stable pixels, as legacy recordPixel does.
+    auto changes=JsonArray{};for(const auto& item:wire.GetNamedArray(L"changes")){auto change=JsonObject::Parse(item.GetObject().Stringify());const auto index=std::size_t(change.GetNamedNumber(L"index"));if(index>=target.expected.pixels->size())throw std::invalid_argument("Lua pixel index exceeds transformed surface");change.Insert(L"before",JsonValue::CreateNumberValue((*target.expected.pixels)[index]));changes.Append(change);}raster.Insert(L"changes",changes);applyPart(raster,true);
+    if(wire.HasKey(L"operations"))for(const auto& item:wire.GetNamedArray(L"operations")){auto op=item.GetObject();const auto path=op.GetNamedString(L"path");
+     if(path==L"selection.transform"){const auto spec=operationSpec(op);const auto flip=spec.GetNamedValue(L"flip",JsonValue::CreateNullValue());auto flag=[&](const wchar_t* key){return spec.HasKey(key)&&spec.GetNamedValue(key).ValueType()==JsonValueType::Boolean&&spec.GetNamedBoolean(key);};if((flip.ValueType()==JsonValueType::String&&flip.GetString()==L"horizontal")||flag(L"flipHorizontal"))d.flipContent(true);if((flip.ValueType()==JsonValueType::String&&flip.GetString()==L"vertical")||flag(L"flipVertical"))d.flipContent(false);const auto dx=sliceCoordinate(operationInteger(spec,L"dx")),dy=sliceCoordinate(operationInteger(spec,L"dy"));if(dx||dy)d.nudgeSelectionContent(dx,dy);refreshScriptTarget(d,target);continue;}
+     if(path==L"selection.set"||path==L"selection.clear"||path==L"selection.invert"){
+      auto spec=operationSpec(op);auto next=d.selection();if(path==L"selection.clear")next.reset();else if(path==L"selection.invert")next=invertSelection(next,d.width(),d.height());else{validateSliceMask(spec);const auto r=sliceRect(spec);raster::coordinate(std::int64_t(r.x)+r.width);raster::coordinate(std::int64_t(r.y)+r.height);SelectionMask value{r.x,r.y,r.width,r.height,{}};if(spec.HasKey(L"mask")&&spec.GetNamedValue(L"mask").ValueType()==JsonValueType::Array){const auto mask=spec.GetNamedArray(L"mask");if(mask.Size()>InvocationCapture::maxImagePixels)throw std::length_error("Lua selection mask exceeds native budget");for(const auto& item:mask){const auto n=item.ValueType()==JsonValueType::Number?item.GetNumber():0;value.mask.push_back(std::uint8_t(std::clamp(std::isfinite(n)?std::trunc(n):0.,0.,255.)));}}next=std::move(value);}if(!selectionEqual(d.selection(),next))withScriptFloating(d,[&]{d.commitSelection(d.selection(),std::move(next));});refreshScriptTarget(d,target);continue;
+     }
+     if(path==L"layers.create"||path==L"tiles.createLayer"||path==L"freeTiles.createLayer"||path==L"animation.setFrame"||path==L"animation.play")d.commitFloatingPaste();
+     JsonObject part;part.Insert(L"label",JsonValue::CreateStringValue(wire.GetNamedString(L"label",L"")));part.Insert(L"changes",JsonArray{});JsonArray operations;operations.Append(op);part.Insert(L"operations",operations);applyPart(part);
+    }
+   });if(d.historyRevision()!=history)++summary.transactionCount;
+   }catch(...){rollback();target=beforeTarget;throw;}
+  }
+  if(d.layer().id!=target.layerId)d.selectLayer(target.layerId);if(d.frame().id!=target.frameId)d.selectFrame(target.frameId);
+  if(result.GetNamedArray(L"createdLayers").Size())d.commitFloatingPaste();
+  auto tail=JsonObject::Parse(result.Stringify());tail.Remove(L"activeLayerId");tail.Remove(L"activeFrameNumber");tail.Insert(L"batches",JsonArray{});withScriptFloating(d,[&]{refreshScriptTarget(d,target);auto changed=applyRasterResult(d,target,winrt::to_string(tail.Stringify()),selectCreatedPaletteColor,playback,panels,styles,notify,brushes);summary.transactionCount+=changed.transactionCount;summary.changedPixelCount+=changed.changedPixelCount;});refreshScriptTarget(d,target);
+  if(result.HasKey(L"activeLayerId")&&result.GetNamedValue(L"activeLayerId").ValueType()==JsonValueType::String){auto id=winrt::to_string(result.GetNamedString(L"activeLayerId"));if(d.timeline().hasLayer(id)&&id!=d.layer().id)d.selectLayer(id);}
+  if(result.HasKey(L"activeFrameNumber")&&result.GetNamedValue(L"activeFrameNumber").ValueType()==JsonValueType::Number){auto n=result.GetNamedNumber(L"activeFrameNumber");const auto& frames=d.timeline().state().frames;if(n>=1&&n<=frames.size()&&std::floor(n)==n&&frames[std::size_t(n)-1].id!=d.frame().id)d.selectFrame(frames[std::size_t(n)-1].id);}refreshScriptTarget(d,target);return summary;
+ }
  auto plans=planOperations(d,result.GetNamedArray(L"batches"),selectCreatedPaletteColor,target.expected,bool(playback),bool(panels),styles,bool(notify),bool(brushes));std::size_t batchIndex=0;
  if(!plans.empty()&&plans.back().layerUpdateTimeline&&result.GetNamedArray(L"createdLayers").Size()!=0){const auto& layers=plans.back().layerUpdateTimeline->layers;if(std::none_of(layers.begin(),layers.end(),[&](const auto& l){return l.id==target.layerId;}))throw std::logic_error("Lua script target changed");}
  RasterSummary summary;
  for(const auto& item:result.GetNamedArray(L"batches")){
   // Legacy focusScriptTarget resets the destination before each batch.
-  d.selectLayer(target.layerId);d.selectFrame(target.frameId);
+  if(d.layer().id!=target.layerId)d.selectLayer(target.layerId);if(d.frame().id!=target.frameId)d.selectFrame(target.frameId);
   const auto wire=item.GetObject();RasterBatch batch;batch.before=target.expected;auto& plan=plans.at(batchIndex++);batch.slices=std::move(plan.slices);batch.selection=std::move(plan.selection);batch.palette=std::move(plan.palette);batch.durations=std::move(plan.durations);batch.loops=std::move(plan.loops);batch.styles=std::move(plan.styles);batch.structureDocumentChanged=plan.structureDocumentChanged;batch.layerStructureUi=plan.layerStructureUi;batch.layerUpdateTimeline=std::move(plan.layerUpdateTimeline);batch.layerUpdateGeometry=std::move(plan.layerUpdateGeometry);
   auto label=wire.GetNamedString(L"label",L"");if(label.empty())label=result.GetNamedString(L"fileName",L"");batch.label=label.empty()?U"脚本":unicode(label);
   auto next=target.expected;std::size_t count=0;
@@ -437,7 +478,7 @@ RasterSummary applyRasterResult(Document& d,Target& target,const std::string& js
  for(const auto& item:result.GetNamedArray(L"createdLayers")){
   // Legacy refocuses the original target before each layer, so undo of each
   // creation returns there rather than the previously created layer.
-  d.selectLayer(target.layerId);d.selectFrame(target.frameId);const auto wire=item.GetObject();CreatedLayer layer;
+  if(d.layer().id!=target.layerId)d.selectLayer(target.layerId);if(d.frame().id!=target.frameId)d.selectFrame(target.frameId);const auto wire=item.GetObject();CreatedLayer layer;
   layer.id=winrt::to_string(wire.GetNamedString(L"id"));layer.name=unicode(wire.GetNamedString(L"name"));layer.opacity=int(wire.GetNamedNumber(L"opacity"));layer.visible=wire.GetNamedBoolean(L"visible");layer.locked=wire.GetNamedBoolean(L"locked");layer.frameNumber=wire.GetNamedNumber(L"frameNumber");
   if(wire.HasKey(L"stackIndex"))layer.stackIndex=std::size_t(wire.GetNamedNumber(L"stackIndex"));
   if(wire.HasKey(L"parentGroupId")&&wire.GetNamedValue(L"parentGroupId").ValueType()==JsonValueType::String)layer.parentGroupId=winrt::to_string(wire.GetNamedString(L"parentGroupId"));
@@ -446,8 +487,8 @@ RasterSummary applyRasterResult(Document& d,Target& target,const std::string& js
  }
  // Legacy applies a final requested layer/frame after all batches. It does not
  // retarget the dialog: a later callback on a different slot must be rejected.
- if(result.HasKey(L"activeLayerId")&&result.GetNamedValue(L"activeLayerId").ValueType()==JsonValueType::String){const auto id=winrt::to_string(result.GetNamedString(L"activeLayerId"));if(d.timeline().hasLayer(id))d.selectLayer(id);}
- if(result.HasKey(L"activeFrameNumber")&&result.GetNamedValue(L"activeFrameNumber").ValueType()==JsonValueType::Number){const auto n=result.GetNamedNumber(L"activeFrameNumber");const auto& frames=d.timeline().state().frames;if(n>=1&&n<=frames.size()&&std::floor(n)==n)d.selectFrame(frames[std::size_t(n)-1].id);}
+ if(result.HasKey(L"activeLayerId")&&result.GetNamedValue(L"activeLayerId").ValueType()==JsonValueType::String){const auto id=winrt::to_string(result.GetNamedString(L"activeLayerId"));if(d.timeline().hasLayer(id)&&d.layer().id!=id)d.selectLayer(id);}
+ if(result.HasKey(L"activeFrameNumber")&&result.GetNamedValue(L"activeFrameNumber").ValueType()==JsonValueType::Number){const auto n=result.GetNamedNumber(L"activeFrameNumber");const auto& frames=d.timeline().state().frames;if(n>=1&&n<=frames.size()&&std::floor(n)==n&&d.frame().id!=frames[std::size_t(n)-1].id)d.selectFrame(frames[std::size_t(n)-1].id);}
  return summary;
 }
 WorkspaceSummary applyWorkspaceResult(Document& d,Target& target,const std::string& json,const std::function<void(Document&&)>& addSession,bool selectCreatedPaletteColor,const PlaybackHost& playback,const PanelHost& panels,const StyleClipboardHost& styles,const NotificationHost& notify,const BrushHost& brushes){

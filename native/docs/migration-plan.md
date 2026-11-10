@@ -6062,3 +6062,12 @@ MSE selection.transform仍有跨批次浮动保留、后续结构/像素操作�
 selection.transform仍须衔接跨批浮动保留、实际操作次序、后续像素与结构命令，未提前开启能力或实现立即提交近似。整体INCOMPLETE，最终验证后附。
 
 最终唯一正式Release构建成功；palette-extraction专项0.05s与lua-script-invocation全套9.40s通过，正式--append-extraction-count-check退出0（真实提取弹窗、重复颜色no-op、隐藏条目复用、撤销重做）。来源806文件与diff检查通过。无人工图像/FPS测量；整体INCOMPLETE，本阶段保存推送dev。
+
+
+### 2026-11-10：MSE选区变换顺序执行与浮动事务
+
+核对lua-script-service.ts applyResult/focusScriptTarget和lua-script-operations.ts729–736，新增含selection.transform结果的按序执行链：批次栅格先写，操作逐项复用既有适配，水平/垂直翻转后整数移动，跨批次仅在活动目标实际变化时切换。复用ScriptDocumentBuilder compound与COW回滚；浮动暂存让稳定像素操作不隐式提交预览，失败恢复整批像素/历史/选区/Target。旧版commitSelectionChange不结束pendingPaste，故脚本set/clear/invert保留捕获源；没有把普通Document提交选区自动结束浮动的语义直接套给脚本。结果最终目标真正变化时才提交浮动并切换。避免每项序列化复制整份结果。
+
+普通栅格跨批浮动、翻转移动、取消、混合像素/色板、失败回滚、创建图层/撤销已纳入真实Lua回归。selection.transform能力发现仍false：非栅格operation-time目标、非延迟多目标预览、对话框回入尚未完整承接，不将当前路径称作完整迁移。整体INCOMPLETE，最终验证后附。
+
+最终唯一正式Release构建成功；lua-script-invocation全套2.77s通过，正式--script-entry-check退出0（既有实际脚本宿主检查，新增变换组合由真实Lua核心回归覆盖，未增加GUI变换断言）。来源806文件与diff通过。selection.transform完整迁移仍未完成且能力标记保持false；本阶段交付按序执行/跨批浮动事务基础，不代表功能验收闭环。保留既有用户差异，无人工图像验收；保存推送dev。
