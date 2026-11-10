@@ -5743,3 +5743,9 @@ Client统一持有各DialogState，为原生窗口提供edit/click/commit/title-
 对照LuaScriptDialog.tsx，新增ScriptDialogWindow，复用PixelDialog、原生输入/小数/滑块/复选框/下拉框/颜色弹窗与旧版关闭素材，承接十种控件行、草稿、操作JSON、忙碌禁用、返回模型重建和滚动裁剪。宿主须排队处理操作，不能在同步回调中销毁窗口。此窗口仍未连接正式Client/Editor脚本运行入口；radio暂用复选框外观、separator横线、NumberInput完整步进以及ColorValueControl精确提交时机仍明确登记partial。
 
 实际截图发现通用Widget默认resize将所有子项铺满；核对Aseprite ui/widget.cpp后使用手动排版视口。再次截图发现窗口挂到Manager前isVisible为false使初始几何未设置，改为始终赋予控件行边界，并增加可见控件高度、宽度、不重叠、视口包含断言。唯一正式Release构建成功，--script-report-check退出0，控件草稿提交和既有报告检查通过；最新BMP转PNG人工检查，各控件已正确显示且无行重叠。两项Lua专项通过0.80s，来源覆盖801文件和diff检查通过。没有运行完整smoke，不把专项验收当作全部脚本入口可用。真实MSE快照/混合事务、正式菜单/消息泵/窗口宿主仍待完成，整体INCOMPLETE。本阶段保存推送dev，保留用户差异、数据、缓存与失败现场。
+
+### 2026-11-10：真实Lua异步会话与非模态窗口宿主阶段
+
+承接useAppScriptRuntime的dialogs/report宿主，新增ScriptWindowHost统一持有实际原生窗口：控件事件仅排队，消息泵校验session/活动目标后派发，所有窗口立即busy；返回结果按revision重建全部草稿，即使模型JSON未变化也重置其他窗口未提交值。idle不重建排版。报告支持关闭/外部点击/报告优先Escape，原生窗口系统关闭先取消并排队Lua title-close，宿主拆除有显式关闭通道；app Escape保留旧版返回模型值，标题关闭保留本地草稿。切换目标、结束会话、宿主析构均关闭实际窗口。快照provider必须显式提供，尚无正式Editor真实MSE provider，不用空模型替代生产快照。
+
+唯一正式exe首次链接既有Rust原始Lua引擎与原生调用库，新增--script-window-host-check真实Lua双窗口流程。首次fixture只Enter输入但输出绑定Apply导致断言失败，改按真实Apply按钮触发后通过退出0。覆盖按钮收到本地草稿、另一窗口相同模型仍重置、回调报告及Escape优先关闭、系统关闭不直接销毁并携带草稿、全局Escape发送返回值、重启以及新Document清理窗口。两项Lua专项通过0.82s；既有--script-report-check重跑通过。无新增宿主截图人工验收，不宣称全软件smoke通过。来源覆盖802文件，diff检查通过。正式菜单/Editor消息泵接线、真实MSE快照及混合事务、部分控件视觉/精确提交时机仍未完成，整体INCOMPLETE。保存推送dev，保留用户差异、数据和缓存。

@@ -58,17 +58,24 @@ class ScriptDialogWindow final:public PixelDialog {
   if(total_)total_-=2;setBusy(busy_);if(!bounds().isEmpty())layout();
  }
 public:
+ std::function<void()> escape;
  ScriptDialogWindow(const PixelFont& font,const Skin& skin,const Skin& icons,std::string model,std::filesystem::path colorStorage,std::function<void(std::string)> send):PixelDialog(skin,"",ClickBehavior::DoNothingOnClick,EnterBehavior::DoNothingOnEnter),font_(font),skin_(skin),icons_(icons),model_(Object::Parse(winrt::to_hstring(model))),state_(model),colorStorage_(std::move(colorStorage)),send_(std::move(send)){
   setAutoRemap(false);setWantFocus(true);viewport_=new Viewport;addChild(viewport_);bar_=new PixelScrollBar(skin,true);addChild(bar_);bar_->changed=[this](int n){scroll_=n;layout();};close_=new PixelButton(font,skin,U"",[this]{requestClose();});close_->iconSkin=&icons;close_->icon="close";close_->skinStyle="icon_button";addChild(close_);build();
  }
  ~ScriptDialogWindow(){closing_=true;if(color_)color_->closeWindow(nullptr);}
+ void closeFromHost(){closing_=true;closeWindow(nullptr);}
+ void onBeforeClose(ui::CloseEvent& ev)override{if(!closing_){ev.cancel();requestClose();}}
+ void editEntryForCheck(const std::string& key,const std::string& text,bool submit=false){for(auto& r:rows_)if(id(r.model)==key){auto e=dynamic_cast<PixelEntry*>(r.widget);if(!e)throw std::runtime_error("Expected script entry");e->setText(text);e->Change();if(submit)e->accept();return;}throw std::runtime_error("Script entry missing");}
+ std::string draftValuesForCheck()const{return state_.valuesJson();}
+ void clickForCheck(const std::string& key){for(auto& r:rows_)if(id(r.model)==key){auto b=dynamic_cast<PixelButton*>(r.widget);if(!b)throw std::runtime_error("Expected script button");b->Click();return;}throw std::runtime_error("Script button missing");}
+ bool busyForCheck()const{return busy_;}
  void setBusy(bool busy){busy_=busy;close_->setEnabled(!busy);for(auto& r:rows_)if(r.widget)r.widget->setEnabled(!busy&&r.model.GetNamedBoolean(L"enabled"));}
  void replace(std::string model){resetting_=true;if(color_)color_->closeWindow(nullptr);model_=Object::Parse(winrt::to_hstring(model));state_.reset(model);build();resetting_=false;}
  gfx::Size minimumDialogSize(int)const override{return {320*uiScale,100*uiScale};}
  int preferredHeight()const{return DialogLayout::bodyTop+std::min(total_,360)+6;}
  void onResize(ui::ResizeEvent& ev)override{setBoundsQuietly(ev.bounds());layout();}
  void paintDialogContents(ui::PaintEvent& ev)override{auto& g=*ev.graphics();UiPaintScale scale(g);const auto r=uiLogical(clientBounds());const auto title=model_.GetNamedString(L"title");drawDialogTitle(font_,g,r,title.empty()?U"Lua Script":unicodeText(winrt::to_string(title)));const int bottom=r.h-6;g.saveClip();g.clipRect({r.x+6,r.y+DialogLayout::bodyTop,r.w-21,std::max(0,bottom-DialogLayout::bodyTop)});for(const auto& row:rows_){if(!row.model.GetNamedBoolean(L"visible"))continue;const int y=r.y+DialogLayout::bodyTop+row.y-scroll_;if(y+20<r.y+DialogLayout::bodyTop||y>=r.y+bottom)continue;const auto kind=row.model.GetNamedString(L"kind");auto label=row.model.GetNamedString(L"label");if(label.empty()&&(kind==L"entry"||kind==L"number"||kind==L"slider"||kind==L"combobox"||kind==L"color"))label=row.model.GetNamedString(L"text");const int labelWidth=std::min(110,std::max(60,(r.w-12-(bar_->isVisible()?9:0))*2/5));g.saveClip();g.clipRect({r.x+6,y,labelWidth,20});font_.draw(g,unicodeText(winrt::to_string(label)),r.x+6,y+5,skin_["text"]);g.restoreClip();if(kind==L"label"||kind==L"separator")font_.draw(g,unicodeText(winrt::to_string(row.model.GetNamedString(L"text"))),r.x+8+labelWidth,y+5,skin_["text"]);}g.restoreClip();}
- bool onProcessMessage(ui::Message* msg)override{if(msg->type()==ui::kMouseWheelMessage){scroll_+=static_cast<ui::MouseMessage*>(msg)->wheelDelta().y*66;layout();return true;}if(msg->type()==ui::kKeyDownMessage&&static_cast<ui::KeyMessage*>(msg)->scancode()==ui::kKeyEsc){requestClose();return true;}return PixelDialog::onProcessMessage(msg);}
+ bool onProcessMessage(ui::Message* msg)override{if(msg->type()==ui::kMouseWheelMessage){scroll_+=static_cast<ui::MouseMessage*>(msg)->wheelDelta().y*66;layout();return true;}if(msg->type()==ui::kKeyDownMessage&&static_cast<ui::KeyMessage*>(msg)->scancode()==ui::kKeyEsc){if(escape)escape();else requestClose();return true;}return PixelDialog::onProcessMessage(msg);}
  void verify(){if(rows_.size()<3)throw std::runtime_error("Script dialog rows missing");int lastBottom=viewport_->bounds().y;for(const auto& row:rows_)if(row.widget&&row.widget->isVisible()){const auto b=row.widget->bounds();if(b.h!=20*uiScale||b.w<=0||b.y<lastBottom||!viewport_->bounds().contains(b))throw std::runtime_error("Script dialog control geometry");lastBottom=b.y2();}for(auto& r:rows_)if(r.widget&&r.model.GetNamedString(L"kind")==L"entry"){auto e=static_cast<PixelEntry*>(r.widget);e->setText("native draft");e->Change();e->accept();return;}throw std::runtime_error("Script dialog entry missing");}
 };
 }

@@ -3391,6 +3391,7 @@
     },
     {
       "file": "src/main.cpp",
+      "scriptWindowHost20261110": "--script-window-host-check uses sole formal executable with real Rust Lua engine and isolated raster fixture Document. Two non-modal native windows: entry draft/button queued dispatch, other unchanged model reset, success report Escape, native title close cancellation and draft callback, app Escape returned-model value, restart and target invalidation. Null MSE only in explicitly isolated fixture; production provider and Editor/menu wiring remain incomplete.",
       "gridTransformDiagnostic20261109": "Native-only diagnostic argument --grid-transform-entry-only routes the existing tileset-management check directly to four grid transform menu/keyboard scenarios, avoiding unrelated fill fixtures; normal diagnostics remain unchanged.",
       "nativeWindowResizeProbe20261106": "Native-only diagnostic adaptation for legacy desktop resize responsiveness: --native-window-resize-check reuses existing smokePrepareDockSplitRepaint and sole native window; 16 Win32 SetWindowPos calls measure synchronous resize versus subsequent LAF message/redraw/flip work and require surface/client dimensions match. Aseprite MIT Manager dontWaitEvents/generateMessages/dispatchMessages/flipAllDisplays and LAF SkiaWindowBase::onResize inspected. Measures CPU submission, not DWM/display latency; no production behavior changed or app code copied.",
       "queuedFocusLifetime20261106": "Necessary native adaptation of legacy useAppCommandScope surface focus: Aseprite MIT ui/manager.cpp setFocus queues raw newFocus; removeMessagesFor removes recipients only and filters still receive payloads. Current-focus equality gate skips obsolete overlay work without dereferencing destroyed widgets. Tool-rail route injects a deleted-target FocusEnter into the actual Manager filter, then runs the existing matrix and exits through the event loop. No legacy business behavior changed.",
@@ -4777,6 +4778,7 @@
     },
     {
       "file": "CMakeLists.txt",
+      "scriptWindowHost20261110": "Link original Rust Lua runtime and existing native invocation/result library into sole formal executable for real non-modal GUI host validation. Original engine source unchanged; system libraries match verified runtime test linkage. Formal user script menu still unconnected.",
       "hybridAffineRenderer20261110": "Extend user-approved Hybrid preview=commit production Skia cached-vs-fresh render oracle to14 move/copy combinations: sampled translation, flipped scaling, RotSprite rotation/shear, quad, X/Y/Both. Verify successive/restored transforms, commit and UndoRedo including remote shared source. Register --tilemap-preview as canvas-tilemap-preview CTest so standard suite runs existing shape/gradient and Hybrid oracles. No product semantic change. Rebuilt target and new canvas-tilemap-preview CTest passed0.51s, including existing aligned/shape/gradient checks. First assertion incorrectly required every commit change pixels; corrected result expectation to raw preview difference. Provenance744/diff passed. No product rebuild/new window fixture/screenshot/FPS measurement.",
       "releaseAddressMap20261106": "Necessary native diagnostic adaptation for user-requested performance/crash investigation: MSVC sole Release executable emits linker /MAP beside normal build artifacts so Windows fault RVA can be matched to the exact linked code without relying on stale PDB. No runtime flags, optimization level, version, alternate executable or distribution changes. Generated map is not committed. Evidence in performance-20261105.md.",
       "singleLineScaledMouse20261101": "2026-11-01 单行长文本横向命中与边缘拖选：legacy TextInput.tsx 交给浏览器 input；实际Edge156采集英文/中文两种长文本、90/180px两种宽度的四组左右拖选最终范围。采样用Home与scrollLeft=0显式建立左端起始视口，不宣称程序赋值后会自动显示行首。原生继续使用MIT Entry getCaretFromMouse扫描和捕获/选择/边缘滚动算法，仅在build生成适配中将scrollX及字符命中宽度乘m_scale.x，与原有已缩放字符位置统一为物理坐标，依赖源码不改。源码契约变更时配置失败。直接调用继承Entry路径的12组1x/2x滚动字符命中检查，避免PixelEntry绘制命中纠正掩盖底层错位；两个宽度检查左右边缘方向与到达端点。生产PixelEntry回放四组浏览器最终选区、释放捕获及内容不变。采样等待时间不定义原生滚动速度；不是逐事件轨迹/定时、部分像素偏移、复杂字形及IME完全等价。",
@@ -30340,6 +30342,7 @@
     },
     {
       "file": "src/lua_script_client.h",
+      "windowHostRevision20261110": "Native host adaptation: monotonic dialog revision changes on each received result, including identical JSON; report revision on dismiss/new output/error. UI windows keep local drafts exactly as legacy React components; Client direct draft API remains available to headless callers. Host snapshot failure reports via failRequest and closes session before display. Formal Editor wiring still pending.",
       "classification": "legacy-partial",
       "sources": [
         "legacy/src/renderer/src/components/app/useAppScriptRuntime.tsx",
@@ -30388,7 +30391,18 @@
         "legacy/src/renderer/src/components/LuaScriptDialog.tsx"
       ],
       "scope": "Native PixelDialog window builds entry/number/slider/button/check/radio/combobox/color/label/separator rows with DialogState drafts and queued action JSON, busy exclusion, model replacement and scrolling. Color uses existing native ColorEditorPopup. Window-host/Client lifecycle formal integration remains pending. Radio temporarily uses checkbox appearance (known gap), separator line and exact native control completeness remain pending; not full dialog equivalence.",
-      "adaptation": "Uses native PixelDialog/PixelEntry/ScriptNumberEntry/ScriptRangeSlider/PixelDropdown/PixelCheckbox and imported close material; no WebView. Host queues callbacks and must not destroy window synchronously. Full visible-row culling in viewport avoids offscreen hit targets; callback model replacement rebuilds rows. Color commits on popup close; exact ColorValueControl commit timing still partial. Manual viewport overrides Aseprite Widget default child-fill resizing; row bounds are assigned before manager attachment without using isVisible as a layout gate. Formal window smoke captures actual painted controls and asserts visible row geometry before draft submission."
+      "adaptation": "Uses native PixelDialog/PixelEntry/ScriptNumberEntry/ScriptRangeSlider/PixelDropdown/PixelCheckbox and imported close material; no WebView. Host queues callbacks and must not destroy window synchronously. Full visible-row culling in viewport avoids offscreen hit targets; callback model replacement rebuilds rows. Native close events are canceled and queued as Lua title-close; host teardown uses explicit bypass and Escape delegates to app-level model-value behavior. Color commits on popup close; exact ColorValueControl commit timing still partial. Manual viewport overrides Aseprite Widget default child-fill resizing; row bounds are assigned before manager attachment without using isVisible as a layout gate. Formal window smoke captures actual painted controls and asserts visible row geometry before draft submission."
+    },
+    {
+      "file": "src/lua_script_window_host.h",
+      "classification": "legacy-partial",
+      "sources": [
+        "legacy/src/renderer/src/components/app/useAppScriptRuntime.tsx",
+        "legacy/src/renderer/src/components/LuaScriptDialog.tsx",
+        "legacy/src/renderer/src/components/LuaScriptResultDialog.tsx"
+      ],
+      "scope": "Native non-modal window owner for Client: queued actions and Escape, all-window busy state, session identity gating, each-return model draft reset including unchanged JSON, report lifecycle, target invalidation and destruction cleanup. Real Lua GUI fixture exercises two windows, draft callbacks, report dismissal, title close and global Escape distinction, restart and tab replacement. Formal Editor menu/message pump wiring and real MSE snapshot provider remain pending.",
+      "adaptation": "Native UI callbacks enqueue only; host pump dispatches and receives outside widget callbacks. Client model and report revision counters avoid reflow on idle ticks while ensuring identical returned models still reset local drafts. Imported close material and existing PixelDialog windows reused. Snapshot provider is mandatory; null occurs solely in isolated raster GUI fixture, never as a production workspace substitute. Runtime and Client outlive host."
     }
   ],
   "assetTransfers": [

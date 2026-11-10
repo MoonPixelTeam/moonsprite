@@ -16,14 +16,16 @@ class Client {
  bool loading_=true,loadFailed_=false;
  bool dispatching_=false;
  std::map<std::string,DialogState> dialogs_;
+ std::uint64_t dialogRevision_=0;
+ std::uint64_t reportRevision_=0;
  void replaceDialogs(){
   std::map<std::string,DialogState> next;
   if(session_)for(const auto& value:winrt::Windows::Data::Json::JsonArray::Parse(winrt::to_hstring(session_->dialogsJson))){auto dialog=value.GetObject();next.emplace(winrt::to_string(dialog.GetNamedString(L"id")),winrt::to_string(dialog.Stringify()));}
-  dialogs_=std::move(next);
+  dialogs_=std::move(next);++dialogRevision_;
  }
  void closeSession(){dialogs_.clear();if(session_){auto id=session_->sessionId;session_.reset();try{(void)runtime_.close(std::move(id));}catch(...){}}}
  static std::string exceptionText(){try{throw;}catch(const winrt::hresult_error& e){return winrt::to_string(e.message());}catch(const std::exception& e){return e.what();}catch(...){return "Lua script failed";}}
- void fail(){error_=exceptionText();report_.reset();}
+ void fail(){error_=exceptionText();report_.reset();++reportRevision_;}
 public:
  enum class Message {None,Running,DialogReady,Completed,CompletedNoChanges,Failed};
  Message message=Message::None;
@@ -32,6 +34,10 @@ public:
  ~Client(){closeSession();}
  bool running()const{return pending_.busy();}
  bool busy()const{return running()||session_.has_value();}
+ std::uint64_t dialogRevision()const{return dialogRevision_;}
+ std::uint64_t reportRevision()const{return reportRevision_;}
+ // Snapshot creation can fail before an invocation is queued by a UI host.
+ void failRequest(std::string error){closeSession();dismissReport();error_=std::move(error);message=Message::Failed;}
  const std::optional<ClientSession>& session()const{return session_;}
  const DialogState* dialog(const std::string& id)const{auto it=dialogs_.find(id);return it==dialogs_.end()?nullptr:&it->second;}
  // Window adapters edit this single draft store. Callback results replace all
@@ -50,7 +56,7 @@ public:
  const std::string& error()const{return error_;}
  const std::string& scriptsJson()const{return scriptsJson_;}
  bool loading()const{return loading_;}bool loadFailed()const{return loadFailed_;}
- void dismissReport(){report_.reset();error_.clear();}
+ void dismissReport(){report_.reset();error_.clear();++reportRevision_;}
  void refresh(){
   if(listing_.valid())return;
   loading_=true;loadFailed_=false;
@@ -87,7 +93,7 @@ public:
   try{auto outcome=pending_.tick(active,deadline,maxPixels);if(!outcome)return;
    session_=std::move(outcome->session);replaceDialogs();auto& summary=outcome->summary;
    message=session_&&summary.changedPixelCount==0?Message::DialogReady:summary.changedPixelCount>0?Message::Completed:Message::CompletedNoChanges;
-   if(!summary.output.empty())report_=std::move(summary);
+   if(!summary.output.empty()){report_=std::move(summary);++reportRevision_;}
    dispatching_=false;
   }catch(...){closeSession();if(!suppress){fail();message=Message::Failed;}dispatching_=false;}
  }
