@@ -5825,3 +5825,11 @@ Release正式程序构建成功，--script-window-host-check退出0。两项Lua�
 真实Lua覆盖非活动Cel像素/位置、活动像素与duration混合一项历史、Undo/Redo、保存重开、后续坏操作拒绝无部分写入、错误Cel ID前置拒绝及链接帧owner/撤销重做。正式Release构建成功，--script-window-host-check退出0；最终专项结果另附。无UI视觉变化/截图，无全软件smoke；候选Timeline仍同步复制，普通正式Lua菜单/provider、播放与其他域仍待完成，整体INCOMPLETE。保留用户差异、数据与缓存，验证后保存推送dev。
 
 最终两项Lua专项通过1.02s，来源804文件及diff检查通过。
+
+### 2026-11-10：仅其他帧Cel修改的活动帧隔离修复
+
+对照旧setCelSurface只针对指定owner的语义，修复候选结果无条件携带活动表面造成空活动Cel被创建/既有storage origin归零的问题。仅活动owner实际更改才提交活动表面，其他owner使用同项Edit表面历史和提交前回退，保持元数据混合批次。新增真实Lua显式事务回归：空活动槽保持不存在、既有活动稀疏存储坐标保留，其他帧像素/位置提交和Undo/Redo正确。
+
+专项首次发现直接在显式事务外写非活动Cel触发原始legacy Rust lua_api.rs:747 RefCell already mutably borrowed panic，登记为未修复引擎缺口；本回归改为显式事务以独立验证原生owner安装，不宣称该panic已解决。唯一正式Release构建成功，窗口专项退出0；无UI视觉修改/截图，无完整smoke。其他迁移与引擎缺口仍INCOMPLETE，保留用户差异和数据。
+
+最终两项Lua专项通过1.08s，来源804文件与diff检查通过。阶段保存推送dev。
