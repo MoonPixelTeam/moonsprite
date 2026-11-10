@@ -29,6 +29,18 @@ struct ScriptDocumentBuilder {
   for(const auto& l:draft.timeline_.state().layers)if(!draft.displayedLayerGeometry_.count(l.id)){const auto* c=draft.timeline_.findCel(l.id,draft.activeFrameId_);const auto r=c?draft.timeline_.resolveSurface(c->id):timeline::Resolution{};draft.displayedLayerGeometry_[l.id]=r.surface?std::array<int,4>{r.surface->width,r.surface->height,r.surface->offsetX,r.surface->offsetY}:std::array<int,4>{1,1,0,0};}
   context=ui(draft);geometry=std::move(draft.displayedLayerGeometry_);timeline=std::move(draft.timeline_);return changed;
  }
+ static void orderedBrushes(Document& d,const std::u32string& label,const std::function<void()>& apply){
+  if(d.groupingHistory_)throw std::logic_error("Nested script compound history");
+  const auto start=d.position_;const auto selected=d.selectedFrames_;d.groupingHistory_=true;
+  try{apply();}catch(...){d.groupingHistory_=false;throw;}
+  // Reuse compound child storage without early observer/recording notifications.
+  if(d.position_>start){bool content=false;for(auto i=start;i<d.position_;++i)content|=d.history_[i].documentChanged;
+   d.groupEdits(start,selected);d.historyBytes_-=d.history_.back().bytes();d.history_.back().label=label;d.history_.back().documentChanged=content;d.historyBytes_+=d.history_.back().bytes();
+   d.groupingHistory_=false;if(d.pendingGroupedProjectOperation_){d.projectInformation_.operation();d.pendingGroupedProjectOperation_=false;}
+   const auto discarded=start+1-d.position_;
+   d.notifyHistoryChange(HistoryStackChange::Kind::Push,d.history_.back().label,discarded);if(content)d.notifyRecording();
+  }else d.groupingHistory_=false;
+ }
  static std::function<void()> brushRollback(Document& d){
   // COW pixel buffers and shared immutable history payloads keep this scoped
   // checkpoint detached from live observers. Only brush batches need it.
@@ -63,6 +75,7 @@ struct ScriptDocumentBuilder {
  }
 };
 namespace script {
+void orderedBrushBatch(Document& d,const std::u32string& label,const std::function<void()>& apply){ScriptDocumentBuilder::orderedBrushes(d,label,apply);}
 std::function<void()> brushBatchRollback(Document& d){return ScriptDocumentBuilder::brushRollback(d);}
 LayerStructureUi captureLayerStructureUi(const Document& d){return ScriptDocumentBuilder::ui(d);}
 void restoreLayerStructureUi(Document& d,const LayerStructureUi& u){ScriptDocumentBuilder::restore(d,u);}

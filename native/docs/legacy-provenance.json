@@ -16274,7 +16274,8 @@
           "legacy/src/renderer/src/store/workspace-commands-tool.ts"
         ],
         "scope": "MSE brushes.importImage/remove forwarding through native async host, existing importer/PatternBrushLibrary, no activation on import; non-history project brush deletion. Brush batches checkpoint COW Document and restore failed batch raster/history/revisions/target while retaining live observer bindings and non-history resource effects as legacy. createFromSelection still incomplete. Real Lua worker/host ordering/failure coverage; formal project deletion save check; manual picker not verified."
-      }
+      },
+      "mseSelectionBrush20261110": "Legacy lua-script-operations.ts brushes.createFromSelection, workspace-commands-tool.ts createBrushFromSelection/setTemporaryBrush and core/brushes.ts selection extraction. Capture operation-time active cel surface via COW; execute selection set/clear/invert and brush effects in order so local save success clears selection and failure retains it. Reuse createSelectionPatternBrush 64px/mask/clipping/empty validation, PNG encoding/library intrinsic source origin, pencil temporary return profile. Ordered batches reuse Document compound children and brush checkpoint rollback, preserve non-history external effects, no unconditional capture selection history. Runtime capability reflects host connection. Tests cover actual Lua mixed raster/mask capture, clear/invert success/failure, layer switch, oversize/empty selection, rollback and formal async host save/history. Native synchronous disk save remains; non-RGBA and selection.transform still incomplete."
     },
     {
       "file": "src/editor_palette.cpp",
@@ -30248,7 +30249,8 @@
           "legacy/src/renderer/src/store/workspace-commands-tool.ts"
         ],
         "scope": "MSE brushes.importImage/remove forwarding through native async host, existing importer/PatternBrushLibrary, no activation on import; non-history project brush deletion. Brush batches checkpoint COW Document and restore failed batch raster/history/revisions/target while retaining live observer bindings and non-history resource effects as legacy. createFromSelection still incomplete. Real Lua worker/host ordering/failure coverage; formal project deletion save check; manual picker not verified."
-      }
+      },
+      "mseSelectionBrush20261110": "Legacy lua-script-operations.ts brushes.createFromSelection, workspace-commands-tool.ts createBrushFromSelection/setTemporaryBrush and core/brushes.ts selection extraction. Capture operation-time active cel surface via COW; execute selection set/clear/invert and brush effects in order so local save success clears selection and failure retains it. Reuse createSelectionPatternBrush 64px/mask/clipping/empty validation, PNG encoding/library intrinsic source origin, pencil temporary return profile. Ordered batches reuse Document compound children and brush checkpoint rollback, preserve non-history external effects, no unconditional capture selection history. Runtime capability reflects host connection. Tests cover actual Lua mixed raster/mask capture, clear/invert success/failure, layer switch, oversize/empty selection, rollback and formal async host save/history. Native synchronous disk save remains; non-RGBA and selection.transform still incomplete."
     },
     {
       "file": "src/lua_runtime/src/lib.rs",
@@ -30356,7 +30358,8 @@
           "legacy/src/renderer/src/store/workspace-commands-tool.ts"
         ],
         "scope": "MSE brushes.importImage/remove forwarding through native async host, existing importer/PatternBrushLibrary, no activation on import; non-history project brush deletion. Brush batches checkpoint COW Document and restore failed batch raster/history/revisions/target while retaining live observer bindings and non-history resource effects as legacy. createFromSelection still incomplete. Real Lua worker/host ordering/failure coverage; formal project deletion save check; manual picker not verified."
-      }
+      },
+      "mseSelectionBrush20261110": "Legacy lua-script-operations.ts brushes.createFromSelection, workspace-commands-tool.ts createBrushFromSelection/setTemporaryBrush and core/brushes.ts selection extraction. Capture operation-time active cel surface via COW; execute selection set/clear/invert and brush effects in order so local save success clears selection and failure retains it. Reuse createSelectionPatternBrush 64px/mask/clipping/empty validation, PNG encoding/library intrinsic source origin, pencil temporary return profile. Ordered batches reuse Document compound children and brush checkpoint rollback, preserve non-history external effects, no unconditional capture selection history. Runtime capability reflects host connection. Tests cover actual Lua mixed raster/mask capture, clear/invert success/failure, layer switch, oversize/empty selection, rollback and formal async host save/history. Native synchronous disk save remains; non-RGBA and selection.transform still incomplete."
     },
     {
       "file": "src/lua_script_invocation.h",
@@ -30442,7 +30445,8 @@
           "legacy/src/renderer/src/store/workspace-commands-tool.ts"
         ],
         "scope": "MSE brushes.importImage/remove forwarding through native async host, existing importer/PatternBrushLibrary, no activation on import; non-history project brush deletion. Brush batches checkpoint COW Document and restore failed batch raster/history/revisions/target while retaining live observer bindings and non-history resource effects as legacy. createFromSelection still incomplete. Real Lua worker/host ordering/failure coverage; formal project deletion save check; manual picker not verified."
-      }
+      },
+      "mseSelectionBrush20261110": "Legacy lua-script-operations.ts brushes.createFromSelection, workspace-commands-tool.ts createBrushFromSelection/setTemporaryBrush and core/brushes.ts selection extraction. Capture operation-time active cel surface via COW; execute selection set/clear/invert and brush effects in order so local save success clears selection and failure retains it. Reuse createSelectionPatternBrush 64px/mask/clipping/empty validation, PNG encoding/library intrinsic source origin, pencil temporary return profile. Ordered batches reuse Document compound children and brush checkpoint rollback, preserve non-history external effects, no unconditional capture selection history. Runtime capability reflects host connection. Tests cover actual Lua mixed raster/mask capture, clear/invert success/failure, layer switch, oversize/empty selection, rollback and formal async host save/history. Native synchronous disk save remains; non-RGBA and selection.transform still incomplete."
     },
     {
       "file": "src/lua_script_result.cpp",
@@ -30510,7 +30514,8 @@
           "legacy/src/renderer/src/store/workspace-commands-tool.ts"
         ],
         "scope": "MSE brushes.importImage/remove forwarding through native async host, existing importer/PatternBrushLibrary, no activation on import; non-history project brush deletion. Brush batches checkpoint COW Document and restore failed batch raster/history/revisions/target while retaining live observer bindings and non-history resource effects as legacy. createFromSelection still incomplete. Real Lua worker/host ordering/failure coverage; formal project deletion save check; manual picker not verified."
-      }
+      },
+      "mseSelectionBrush20261110": "Legacy lua-script-operations.ts brushes.createFromSelection, workspace-commands-tool.ts createBrushFromSelection/setTemporaryBrush and core/brushes.ts selection extraction. Capture operation-time active cel surface via COW; execute selection set/clear/invert and brush effects in order so local save success clears selection and failure retains it. Reuse createSelectionPatternBrush 64px/mask/clipping/empty validation, PNG encoding/library intrinsic source origin, pencil temporary return profile. Ordered batches reuse Document compound children and brush checkpoint rollback, preserve non-history external effects, no unconditional capture selection history. Runtime capability reflects host connection. Tests cover actual Lua mixed raster/mask capture, clear/invert success/failure, layer switch, oversize/empty selection, rollback and formal async host save/history. Native synchronous disk save remains; non-RGBA and selection.transform still incomplete."
     },
     {
       "file": "tests/lua_script_invocation_test.cpp",
@@ -30581,7 +30586,8 @@
           "legacy/src/renderer/src/store/workspace-commands-tool.ts"
         ],
         "scope": "MSE brushes.importImage/remove forwarding through native async host, existing importer/PatternBrushLibrary, no activation on import; non-history project brush deletion. Brush batches checkpoint COW Document and restore failed batch raster/history/revisions/target while retaining live observer bindings and non-history resource effects as legacy. createFromSelection still incomplete. Real Lua worker/host ordering/failure coverage; formal project deletion save check; manual picker not verified."
-      }
+      },
+      "mseSelectionBrush20261110": "Legacy lua-script-operations.ts brushes.createFromSelection, workspace-commands-tool.ts createBrushFromSelection/setTemporaryBrush and core/brushes.ts selection extraction. Capture operation-time active cel surface via COW; execute selection set/clear/invert and brush effects in order so local save success clears selection and failure retains it. Reuse createSelectionPatternBrush 64px/mask/clipping/empty validation, PNG encoding/library intrinsic source origin, pencil temporary return profile. Ordered batches reuse Document compound children and brush checkpoint rollback, preserve non-history external effects, no unconditional capture selection history. Runtime capability reflects host connection. Tests cover actual Lua mixed raster/mask capture, clear/invert success/failure, layer switch, oversize/empty selection, rollback and formal async host save/history. Native synchronous disk save remains; non-RGBA and selection.transform still incomplete."
     },
     {
       "file": "src/document_script.cpp",
@@ -30631,7 +30637,8 @@
       "brushRollback20261110": {
         "source": "legacy/src/renderer/src/store/lua-script-service.ts applyResult/captureLuaBatchSessionBaseline/restoreLuaBatchSessionBaseline",
         "adaptation": "Scoped COW document checkpoint for fallible brush host; restores history and target after host error, preserves non-history brush resources and live observer bindings. Existing histories remain shared immutable payloads; only brush batches clone metadata."
-      }
+      },
+      "mseSelectionBrush20261110": "Legacy lua-script-operations.ts brushes.createFromSelection, workspace-commands-tool.ts createBrushFromSelection/setTemporaryBrush and core/brushes.ts selection extraction. Capture operation-time active cel surface via COW; execute selection set/clear/invert and brush effects in order so local save success clears selection and failure retains it. Reuse createSelectionPatternBrush 64px/mask/clipping/empty validation, PNG encoding/library intrinsic source origin, pencil temporary return profile. Ordered batches reuse Document compound children and brush checkpoint rollback, preserve non-history external effects, no unconditional capture selection history. Runtime capability reflects host connection. Tests cover actual Lua mixed raster/mask capture, clear/invert success/failure, layer switch, oversize/empty selection, rollback and formal async host save/history. Native synchronous disk save remains; non-RGBA and selection.transform still incomplete."
     },
     {
       "file": "src/lua_script_client.h",

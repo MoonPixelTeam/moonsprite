@@ -11,7 +11,6 @@ int main(int argc,char** argv){try{winrt::init_apartment();check(argc==2,"Fixtur
  write("draw.lua","app.transaction('draw',function() app.activeImage:drawPixel(0,0,app.pixelColor.rgba(10,20,30,255)) end)");
  write("capabilities.lua",R"lua(
 local missing={['document.create']=true,['document.open']=true,['document.save']=true,
- ['brushes.createFromSelection']=true,
  ['selection.transform']=true,['io.export']=true,['io.save']=true,['io.open']=true}
 local count=0
 for module,capability in pairs(mse.capabilities) do
@@ -27,7 +26,7 @@ for module,capability in pairs(mse.capabilities) do
  end
  assert(capability.status==(complete and 'stable' or 'partial'),module)
 end
-assert(count==8)
+assert(count==7)
 assert(not mse.isSupported('missing.method'))
 assert(not mse.isSupported('mse.io.missing'))
 assert(mse.isSupported('mse.capabilities'))

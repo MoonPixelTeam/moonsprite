@@ -704,6 +704,14 @@ void Editor::initializeScripts(const std::filesystem::path& root){
   });
   state->host->setBrushHost([this](Document& d,const script::BrushRequest& request){
    if(&d!=&document||!documentOpen_||homeOpen_)throw std::logic_error("Lua brush target changed");
+   if(request.kind==script::BrushRequest::Kind::CreateFromSelection){
+    if(!request.error.empty()){status_=unicodeText(request.error);invalidate();return;}
+    try{if(!request.brush)throw std::logic_error("Missing selection brush");const auto& brush=*request.brush;
+     PatternBrushLibrary captureLibrary(fillBrushLibraryDirectory());auto stored=captureLibrary.save("笔刷",encodePatternBrushPng(brush),true,brush.sourceX,brush.sourceY);
+     if(!temporaryBrushReturnProfile_)temporaryBrushReturnProfile_=brushFeedback_.brushProfiles_[0];temporaryBrushActive_=true;brushFeedback_.brushProfiles_[0].imagePaintMode=PatternPaintMode::Paint;pencilImageBrushAngle_=0;pencilImageBrushId_=stored.id;pencilImageBrush_=brush;fillPattern_.brushes.clear();fillLibrarySelection_={};fillImageName_.clear();d.previewSelection({});selectionPivot_.reset();selectionPropertiesActive_=false;selectionFreeTransform_=false;selectionTool_=shapeTool_=eyedropperTool_=navigation_.zoomTool_=gradientTool_=fillTool_=handTool_=eraser_=false;brushLibraryNeedsReload_=true;
+     status_=U"选区笔刷已保存到本地库";scripts_->localBrushes=captureLibrary.list().brushes;
+    }catch(const std::exception& e){status_=U"创建选区笔刷失败："+unicodeText(e.what());}refresh();return;
+   }
    PatternBrushLibrary library(fillBrushLibraryDirectory());
    if(request.kind==script::BrushRequest::Kind::ImportImages){
     wchar_t filename[32768]{};OPENFILENAMEW picker{};picker.lStructSize=sizeof(picker);picker.hwndOwner=GetActiveWindow();picker.lpstrFile=filename;picker.nMaxFile=32768;picker.lpstrFilter=L"图案图像\0*.png;*.jpg;*.jpeg;*.bmp;*.gif;*.webp\0\0";picker.Flags=OFN_EXPLORER|OFN_NOCHANGEDIR|OFN_PATHMUSTEXIST|OFN_FILEMUSTEXIST|OFN_ALLOWMULTISELECT;
@@ -792,6 +800,12 @@ void Editor::smokeScriptEntry(){
  ProjectBrushResource scriptBrush;scriptBrush.metadata.id="script-owned-brush";scriptBrush.metadata.name="Script brush";scriptBrush.metadata.width=scriptBrush.metadata.height=1;scriptBrush.metadata.dataFile="brushes/script-owned.gray";scriptBrush.brush.width=scriptBrush.brush.height=1;scriptBrush.brush.coverage={255};scriptBrush.brush.colors={0xff123456};document.setImportedProjectBrushes({scriptBrush});const auto brushHistory=document.historyPosition();
  runPanelCheck("mse.brushes.remove('script-owned-brush')");if(!document.projectBrushes().empty()||document.historyPosition()!=brushHistory||!project::readProjectManifest(project::encodeEditableProject(document).bytes).customBrushes.empty())throw std::runtime_error("Formal script project brush removal failed");
  PatternBrushLibrary scriptLibrary(fillBrushLibraryDirectory());const auto localScriptBrush=scriptLibrary.save("script-owned-local",encodePatternBrushPng(scriptBrush.brush));const auto localBrushHistory=document.historyPosition();runPanelCheck("mse.brushes.remove('"+localScriptBrush.id+"')");if(std::filesystem::exists(std::filesystem::u8path(localScriptBrush.filePath))||document.historyPosition()!=localBrushHistory)throw std::runtime_error("Formal script local brush deletion failed");
+ // Selection brush creation uses the operation-time raster and the formal host.
+ document.previewSelection(SelectionMask{0,0,1,1,{}});const auto captureHistory=document.historyPosition();
+ runPanelCheck("app.transaction(function() app.activeImage:drawPixel(0,0,0xff2468ac); mse.brushes.createFromSelection() end)");
+ const auto capturedBrushId=pencilImageBrushId_;const auto captureListing=scriptLibrary.list();if(std::none_of(captureListing.brushes.begin(),captureListing.brushes.end(),[&](const auto& b){return b.id==capturedBrushId&&b.intrinsicSize&&b.sourceX==0&&b.sourceY==0;}))throw std::runtime_error("Formal captured brush metadata missing");
+ if(document.selection()||!pencilImageBrush_||pencilImageBrush_->colors!=std::vector<Pixel>{0xff2468ac}||document.historyPosition()!=captureHistory+1||selectionTool_||eraser_)throw std::runtime_error("Formal selection brush capture failed");
+ document.undo();document.redo();if(document.pixels()[0]!=0xff2468ac)throw std::runtime_error("Formal selection brush history failed");document.undo();scriptLibrary.remove(capturedBrushId);pencilImageBrushId_.clear();pencilImageBrush_.reset();document.previewSelection({});
  // Free source and instance mutations use the production async script host.
  const auto freeScriptRaster=document.layer().id,freeScriptFrame=document.frame().id;const auto freeHistory=document.historyPosition();
  runPanelCheck("app.transaction(function() mse.freeTiles.createLayer{name='Script free'}; mse.freeTiles.createSource{name='Script source'} end)");

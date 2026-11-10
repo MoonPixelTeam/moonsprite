@@ -6026,3 +6026,12 @@ layers.update存在时，沿现有候选Timeline预检后，使用原生完整Ti
 Aseprite对照：本地缓存doc/tileset.h::findTileIndex/notifyTileContentChange与tileset.cpp::hashTable采用按需索引和内容变更失效；文件头标MIT。本阶段仅核对索引生命周期思路，原生继续复用已有tiles::Catalog，不复制Aseprite代码，也不把像素匹配哈希与原生稳定ID查找视为同一算法。
 
 最终唯一正式Release构建成功；tilemap-document 0.65s、document-raster-history 4.63s通过，正式--tileset-management-check --grid-transform-entry-only退出0。来源804文件与diff检查通过。无人工截图验收及FPS测量；整体仍INCOMPLETE，保留用户差异与全部未跟踪数据，本阶段保存推送dev。
+
+
+### 2026-11-10：MSE 选区笔刷完整操作顺序
+
+核对legacy lua-script-operations.ts、workspace-commands-tool.ts createBrushFromSelection/setTemporaryBrush和core/brushes.ts。规划保存操作时活动Cel的COW surface；执行时按顺序应用selection set/clear/invert与笔刷宿主，捕获当时选区。沿用既有64px/裁切/掩码/透明像素采样，缺选区、空像素、过大选区和本地保存失败仅报告消息并继续，失败保留选区。成功保存intrinsic/source origin，启用临时铅笔图像笔刷、保留返回配置、清空选区和填充图案。
+
+含捕获结果沿用Document compound children及brush checkpoint，合并每批撤销并延后历史/录像观察，异常恢复文档/Target而不撤销外部资源。能力发现同步接通createFromSelection；剩余7项方法未迁移。真实Lua覆盖混合像素、mask、成功/失败后反选、图层切换、空选区、过大选区、后续异常回滚；正式入口加入实际库保存及UndoRedo。同步磁盘IO、非RGBA、selection.transform及整体迁移仍INCOMPLETE。最终验证后附。
+
+最终唯一正式Release构建通过；18项Rust契约测试通过，lua-script-invocation全套3.43s、lua-script-runtime0.36s通过；正式--script-entry-check退出0，含实际笔刷PNG/元数据保存、激活/清选区及UndoRedo。来源804文件与diff检查通过。初次新增回归把无选区反选误期望为全选，核对既有invertSelection与旧版路径后修正为保持空选区；未修改该语义。无人工截图验收；本阶段保存推送dev，整体INCOMPLETE。

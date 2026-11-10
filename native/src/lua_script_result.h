@@ -76,12 +76,14 @@ struct StyleClipboardHost {
 };
 // Enqueue-only status message delivery, deferred until the current UI pump ends.
 using NotificationHost=std::function<void(const std::u32string&)>;
-struct BrushRequest {enum class Kind {ImportImages,Remove};Kind kind=Kind::ImportImages;std::string id;};
+struct BrushRequest {enum class Kind {ImportImages,Remove,CreateFromSelection};Kind kind=Kind::ImportImages;std::string id;std::optional<timeline::Surface> source;std::optional<PatternBrush> brush;std::string error;};
 // External library effects execute in MSE order after the batch raster commit. Project
 // brush removal is non-history metadata, as in the legacy workspace.
 using BrushHost=std::function<void(Document&,const BrushRequest&)>;
 // Preserve document/session state if an external brush host fails mid-batch.
 std::function<void()> brushBatchRollback(Document&);
+// Run ordered selection/brush effects inside the batch history boundary.
+void orderedBrushBatch(Document&,const std::u32string&,const std::function<void()>&);
 struct RasterSummary {std::size_t transactionCount=0,changedPixelCount=0;};
 // Raster/layer stage of the workspace executor. Rejects unsupported workspace
 // operations/created documents before the first edit; never silently drops them.
