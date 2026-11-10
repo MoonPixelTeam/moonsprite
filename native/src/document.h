@@ -284,7 +284,7 @@ public:
   PixelRegion lastContentChange() const {return change_;}
   std::size_t historyBytes() const {return historyBytes_;}
   std::uint64_t tilemapCacheCellWrites()const{return tilemapCacheCellWrites_;}
-  bool active() const { return bool(freeSourceProperties_) || bool(freeSourceStroke_) || freeTilePlacement_.has_value() || paintCellMove_.has_value() || layerStyleBaseline_.has_value() || layerAdjustmentBaseline_.has_value() || textDraft_.has_value() || layerMove_.has_value() || filterPreview_.has_value() || paletteReplacement_.has_value() || adjustment_.has_value() || gradient_.has_value() || floating_.has_value() || active_ || opacityBefore_.has_value() || durationBefore_.has_value() || celPropertyPreview_.has_value(); }
+  bool active(bool includeFloating=true) const { return bool(freeSourceProperties_) || bool(freeSourceStroke_) || freeTilePlacement_.has_value() || paintCellMove_.has_value() || layerStyleBaseline_.has_value() || layerAdjustmentBaseline_.has_value() || textDraft_.has_value() || layerMove_.has_value() || filterPreview_.has_value() || paletteReplacement_.has_value() || adjustment_.has_value() || gradient_.has_value() || (includeFloating&&floating_.has_value()) || active_ || opacityBefore_.has_value() || durationBefore_.has_value() || celPropertyPreview_.has_value(); }
   bool canUndo() const { return position_ > 0; }
   bool canRedo() const { return position_ < history_.size(); }
   std::size_t historySize() const { return history_.size(); }

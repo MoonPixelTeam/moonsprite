@@ -15,6 +15,10 @@ struct Target {
  std::uint64_t identity=0,revision=0;
  std::string documentId,layerId,frameId;
  SurfaceSnapshot expected;
+ bool previewGuard=false,expectedFloating=false;
+ std::uint64_t overlayRevision=0;
+ std::optional<SelectionMask> expectedSelection;
+ void capturePreview(const Document&);
  // The caller passes the currently active document, never a background tab.
  // Dialog rebase checks identity/slot eligibility without the old revision.
  bool matches(const Document& activeDocument,bool requireExpected=true)const;
@@ -50,7 +54,7 @@ class InvocationCapture {
 public:
  static constexpr std::size_t maxImagePixels=4194304,maxCelPixels=maxImagePixels*3;
  // Metadata/budget planning only. No raster pixels are copied here.
- InvocationCapture(const Document&,std::string mseSnapshotJson,std::optional<std::filesystem::path> savePath={});
+ InvocationCapture(const Document&,std::string mseSnapshotJson,std::optional<std::filesystem::path> savePath={},bool allowDeferredFloating=false);
  bool advance(const Document&,std::chrono::steady_clock::time_point deadline,std::size_t maxPixels=RasterSnapshot::tickPixels);
  std::size_t copiedPixels()const{return copied_;}
  Invocation take();

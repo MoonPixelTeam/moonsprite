@@ -6071,3 +6071,10 @@ selection.transform仍须衔接跨批浮动保留、实际操作次序、后续�
 普通栅格跨批浮动、翻转移动、取消、混合像素/色板、失败回滚、创建图层/撤销已纳入真实Lua回归。selection.transform能力发现仍false：非栅格operation-time目标、非延迟多目标预览、对话框回入尚未完整承接，不将当前路径称作完整迁移。整体INCOMPLETE，最终验证后附。
 
 最终唯一正式Release构建成功；lua-script-invocation全套2.77s通过，正式--script-entry-check退出0（既有实际脚本宿主检查，新增变换组合由真实Lua核心回归覆盖，未增加GUI变换断言）。来源806文件与diff通过。selection.transform完整迁移仍未完成且能力标记保持false；本阶段交付按序执行/跨批浮动事务基础，不代表功能验收闭环。保留既有用户差异，无人工图像验收；保存推送dev。
+
+
+### 2026-11-10：延迟浮动选区的脚本对话框回调
+
+沿用legacy lua-script-service.ts buildInvocation/rebaseTarget/focusScriptTarget：模型对话框回调重新捕获同一栅格目标，保留pending source。原生只对回调允许延迟浮动，继续拒绝其他活动编辑和物化多目标浮动；普通新脚本入口维持原有编辑结束要求。浮动存在性、overlay revision和选区快照加入分块捕获及结果过期校验，防止稳定像素未变时覆盖用户后续移动。已有浮动而回调不含transform时也复用按序执行器，让像素/色板操作保持稳定像素先写与浮动源保留。新增真实Client对话框连续移动、混合像素/色板、捕获中/执行后过期拒绝及撤销重做检查。完整selection.transform能力仍false，物化多目标与非栅格operation-time目标仍未完成，整体INCOMPLETE。最终验证后附。
+
+最终唯一正式Release构建成功；lua-script-invocation全套3.20s通过，正式--script-entry-check退出0（既有宿主检查；新增延迟回调由真实Lua Client回归覆盖）。测试画布257×257实际启用延迟路径；小画布物化预览及多目标回调仍未接通，不能称作全模式回调完成。来源806文件与diff检查通过，无人工图像/FPS验收。整体INCOMPLETE；本阶段保存推送dev。

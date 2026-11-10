@@ -12,21 +12,23 @@ namespace moon::script {
 bool SurfaceSnapshot::matches(const timeline::Surface& s)const{
  return width==s.width&&height==s.height&&x==s.offsetX&&y==s.offsetY&&pixels&&s.pixels==*pixels;
 }
+void Target::capturePreview(const Document& d){previewGuard=true;expectedFloating=d.floating();overlayRevision=d.floatingOverlayRevision();expectedSelection=d.selection();}
 bool Target::matches(const Document& d,bool requireExpected)const{
  if(identity!=d.identity()||documentId!=d.projectId()||layerId!=d.layer().id||frameId!=d.frame().id||!d.activeMaskId().empty()||!d.layer().kind.empty()||d.layerEffectivelyLocked(d.layer()))return false;
  if(!requireExpected)return true;
  if(revision!=d.revision())return false;
+ if(previewGuard&&(d.floating()!=expectedFloating||d.floatingOverlayRevision()!=overlayRevision||!selectionEqual(d.selection(),expectedSelection)))return false;
  const auto* s=d.activeSurfaceIfPresent();
  if(s)return expected.matches(*s);
  // Reading an absent Cel is transparent, without materializing it or history.
  const auto g=d.displayedLayerGeometry(layerId);
  return expected.pixels&&g==std::array<int,4>{expected.width,expected.height,expected.x,expected.y}&&std::all_of(expected.pixels->begin(),expected.pixels->end(),[](Pixel p){return p==0;});
 }
-InvocationCapture::InvocationCapture(const Document& d,std::string mse,std::optional<std::filesystem::path> path){
+InvocationCapture::InvocationCapture(const Document& d,std::string mse,std::optional<std::filesystem::path> path,bool allowDeferredFloating){
  if(!d.activeMaskId().empty())throw std::invalid_argument("Lua scripts cannot edit a layer mask");
  if(!d.layer().kind.empty())throw std::invalid_argument("Lua scripts require a raster layer");
  if(d.layerEffectivelyLocked(d.layer()))throw std::invalid_argument("Lua script layer is locked");
- if(d.active())throw std::logic_error("Finish the active edit before running a Lua script");
+ if(d.active(false)||(d.floating()&&(!allowDeferredFloating||!d.floatingDeferred())))throw std::logic_error("Finish the active edit before running a Lua script");
  auto budget=[](int w,int h,std::size_t remaining){if(w<1||h<1||std::uint64_t(w)*h>remaining)throw std::length_error("Lua image pixel budget exceeded");};
  const auto g=d.displayedLayerGeometry(d.layer().id);budget(g[0],g[1],maxImagePixels);
  const auto& state=d.timeline().state();std::size_t total=0;
@@ -36,6 +38,7 @@ InvocationCapture::InvocationCapture(const Document& d,std::string mse,std::opti
   budget(r.surface->width,r.surface->height,maxCelPixels-total);raster::validate(*r.surface);total+=std::size_t(r.surface->width)*r.surface->height;
  }
  auto& out=invocation_;out.target={d.identity(),d.revision(),d.projectId(),d.layer().id,d.frame().id,{}};
+ out.target.capturePreview(d);
  out.documentName=d.name();out.layerName=d.layer().name;out.filePath=path.value_or(d.sourceFilePath());out.width=d.width();out.height=d.height();
  out.opacity=int(std::clamp(std::floor(d.layer().opacity*255+.5),0.,255.));out.visible=d.layer().visible;out.locked=d.layer().locked;out.groupId=d.layer().groupId;
  out.stackIndex=state.layers.size()-std::size_t(std::find_if(state.layers.begin(),state.layers.end(),[&](const auto& l){return l.id==d.layer().id;})-state.layers.begin());
@@ -49,7 +52,7 @@ InvocationCapture::InvocationCapture(const Document& d,std::string mse,std::opti
  if(!out.target.expected.pixels){auto pixels=std::make_shared<std::vector<Pixel>>();out.target.expected={g[0],g[1],g[2],g[3],pixels};sources_.push_back({{},g[0],g[1],g[2],g[3],nullptr,0,pixels});}
 }
 bool InvocationCapture::unchanged(const Document& d)const{
- if(d.active()||!invocation_.target.matches(d,false)||d.revision()!=invocation_.target.revision)return false;
+ if(d.active(false)||!invocation_.target.matches(d,false)||d.revision()!=invocation_.target.revision||d.floating()!=invocation_.target.expectedFloating||d.floatingOverlayRevision()!=invocation_.target.overlayRevision||!selectionEqual(d.selection(),invocation_.target.expectedSelection))return false;
  for(const auto& p:sources_){if(p.owner.empty()){if(d.activeSurfaceIfPresent()||d.displayedLayerGeometry(d.layer().id)!=std::array<int,4>{p.width,p.height,p.x,p.y})return false;continue;}
   const auto r=d.timeline().resolveSurface(p.owner);const auto* s=r.surface;if(r.issue!=timeline::LinkIssue::None||!s||s->width!=p.width||s->height!=p.height||s->offsetX!=p.x||s->offsetY!=p.y||s->pixels.size()!=std::uint64_t(p.width)*p.height||s->pixels.identity()!=p.storage||s->pixels.revision()!=p.revision)return false;
  }

@@ -101,7 +101,7 @@ public:
  void dispatch(const Document& d,const ClientSession& session,std::string action,std::string mseSnapshot,std::function<void(Document&&)> adopt={}){
   if(busy())throw std::logic_error("Lua invocation is already pending");
   if(!session.target.matches(d,false))throw std::logic_error("Lua script target changed");
-  capture_.emplace(d,std::move(mseSnapshot));scriptId_.clear();sessionId_=session.sessionId;action_=std::move(action);adopt_=std::move(adopt);
+  capture_.emplace(d,std::move(mseSnapshot),std::nullopt,true);scriptId_.clear();sessionId_=session.sessionId;action_=std::move(action);adopt_=std::move(adopt);
  }
  void cancel(){
   capture_.reset();

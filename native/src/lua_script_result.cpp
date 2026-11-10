@@ -402,17 +402,17 @@ bool hasSelectionTransform(const JsonObject& result){for(const auto& value:resul
 void refreshScriptTarget(const Document& d,Target& target){
  const auto* slot=d.timeline().findCel(target.layerId,target.frameId);auto r=slot?d.timeline().resolveSurface(slot->id):timeline::Resolution{};
  if(r.surface)target.expected={r.surface->width,r.surface->height,r.surface->offsetX,r.surface->offsetY,std::make_shared<const std::vector<Pixel>>(r.surface->pixels.begin(),r.surface->pixels.end())};
- else{const auto g=d.displayedLayerGeometry(target.layerId);target.expected={g[0],g[1],g[2],g[3],std::make_shared<const std::vector<Pixel>>(std::size_t(g[0])*g[1])};}target.revision=d.revision();
+ else{const auto g=d.displayedLayerGeometry(target.layerId);target.expected={g[0],g[1],g[2],g[3],std::make_shared<const std::vector<Pixel>>(std::size_t(g[0])*g[1])};}target.revision=d.revision();target.capturePreview(d);
 }
 }
 RasterSummary applyRasterResult(Document& d,Target& target,const std::string& json,bool selectCreatedPaletteColor,const PlaybackHost& playback,const PanelHost& panels,const StyleClipboardHost& styles,const NotificationHost& notify,const BrushHost& brushes){
- (void)validateResult(target,json);if(d.active()||!target.matches(d))throw std::logic_error("Lua script target changed");
+ (void)validateResult(target,json);if(d.active(false)||(d.floating()&&!d.floatingDeferred())||!target.matches(d))throw std::logic_error("Lua script target changed");
  const auto result=JsonObject::Parse(winrt::to_hstring(json));
  // This stage is deliberately closed to operations requiring workspace state.
  // The full executor will route these explicitly; no data may be dropped.
  if(result.GetNamedArray(L"createdDocuments").Size())throw std::logic_error("Lua created documents require the workspace result executor");
  for(const auto& item:result.GetNamedArray(L"createdLayers")){const auto layer=item.GetObject();(void)layer.GetNamedBoolean(L"visible");(void)layer.GetNamedBoolean(L"locked");if(d.timeline().hasLayer(winrt::to_string(layer.GetNamedString(L"id"))))throw std::invalid_argument("Lua layer id already exists");}
- if(hasSelectionTransform(result)){
+ if(d.floating()||hasSelectionTransform(result)){
   RasterSummary summary;
   // Execute the original raster-first / MSE-in-order contract. Reuse the
   // existing adapters one operation at a time under one rollback/undo boundary.
@@ -489,10 +489,11 @@ RasterSummary applyRasterResult(Document& d,Target& target,const std::string& js
  // retarget the dialog: a later callback on a different slot must be rejected.
  if(result.HasKey(L"activeLayerId")&&result.GetNamedValue(L"activeLayerId").ValueType()==JsonValueType::String){const auto id=winrt::to_string(result.GetNamedString(L"activeLayerId"));if(d.timeline().hasLayer(id)&&d.layer().id!=id)d.selectLayer(id);}
  if(result.HasKey(L"activeFrameNumber")&&result.GetNamedValue(L"activeFrameNumber").ValueType()==JsonValueType::Number){const auto n=result.GetNamedNumber(L"activeFrameNumber");const auto& frames=d.timeline().state().frames;if(n>=1&&n<=frames.size()&&std::floor(n)==n&&d.frame().id!=frames[std::size_t(n)-1].id)d.selectFrame(frames[std::size_t(n)-1].id);}
+ target.capturePreview(d);
  return summary;
 }
 WorkspaceSummary applyWorkspaceResult(Document& d,Target& target,const std::string& json,const std::function<void(Document&&)>& addSession,bool selectCreatedPaletteColor,const PlaybackHost& playback,const PanelHost& panels,const StyleClipboardHost& styles,const NotificationHost& notify,const BrushHost& brushes){
- (void)validateResult(target,json);if(d.active()||!target.matches(d))throw std::logic_error("Lua script target changed");
+ (void)validateResult(target,json);if(d.active(false)||(d.floating()&&!d.floatingDeferred())||!target.matches(d))throw std::logic_error("Lua script target changed");
  auto result=JsonObject::Parse(winrt::to_hstring(json));const auto documents=result.GetNamedArray(L"createdDocuments");
  if(documents.Size()&&!addSession)throw std::logic_error("Lua created document session adopter is not connected");
  // Build candidates before changing the source document; unsupported modes and
