@@ -17,6 +17,7 @@ struct Target {
  SurfaceSnapshot expected;
  const void* expectedStorage=nullptr;
  std::uint64_t expectedStorageRevision=0;
+ std::weak_ptr<const std::vector<Pixel>> expectedStoragePixels;
  bool previewGuard=false,expectedFloating=false;
  std::uint64_t overlayRevision=0,contentMutationRevision=0;
  std::optional<SelectionMask> expectedSelection;

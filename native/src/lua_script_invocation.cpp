@@ -19,7 +19,12 @@ bool Target::matches(const Document& d,bool requireExpected,bool rasterOnly)cons
  if(revision!=d.revision())return false;
  if(previewGuard&&(d.contentMutationRevision()!=contentMutationRevision||d.floating()!=expectedFloating||d.floatingOverlayRevision()!=overlayRevision||!selectionEqual(d.selection(),expectedSelection)))return false;
  const auto* s=d.activeSurfaceIfPresent();
- if(s)return expected.matches(*s);
+ if(s){
+  // Captured/refreshed immutable pixels are already verified against this
+  // storage generation. Geometry remains independent of pixel revisions.
+  if(expected.pixels&&expectedStoragePixels.lock()==expected.pixels&&expectedStorage==s->pixels.identity()&&expectedStorageRevision==s->pixels.revision()&&expected.width==s->width&&expected.height==s->height&&expected.x==s->offsetX&&expected.y==s->offsetY&&expected.pixels->size()==s->pixels.size())return true;
+  return expected.matches(*s);
+ }
  // Reading an absent Cel is transparent, without materializing it or history.
  const auto g=d.displayedLayerGeometry(layerId);
  return expected.pixels&&g==std::array<int,4>{expected.width,expected.height,expected.x,expected.y}&&std::all_of(expected.pixels->begin(),expected.pixels->end(),[](Pixel p){return p==0;});
@@ -73,7 +78,7 @@ bool InvocationCapture::advance(const Document& d,std::chrono::steady_clock::tim
  }
  return true;
 }
-Invocation InvocationCapture::take(){if(taken_||source_!=sources_.size())throw std::logic_error("Lua invocation capture is incomplete or consumed");taken_=true;return std::move(invocation_);}
+Invocation InvocationCapture::take(){if(taken_||source_!=sources_.size())throw std::logic_error("Lua invocation capture is incomplete or consumed");taken_=true;invocation_.target.expectedStoragePixels=invocation_.target.expected.pixels;return std::move(invocation_);}
 namespace {
 std::string utf8(const std::u32string& text){std::wstring wide;for(auto c:text){if(c>0x10ffff||(c>=0xd800&&c<=0xdfff))c=0xfffd;if(c<=0xffff)wide.push_back(wchar_t(c));else{c-=0x10000;wide.push_back(wchar_t(0xd800+(c>>10)));wide.push_back(wchar_t(0xdc00+(c&1023)));}}return winrt::to_string(wide);}
 std::string quote(const std::string& s){return winrt::to_string(winrt::Windows::Data::Json::JsonValue::CreateStringValue(winrt::to_hstring(s)).Stringify());}

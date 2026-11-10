@@ -408,6 +408,7 @@ void refreshScriptTarget(const Document& d,Target& target){
  if(r.surface){const auto& s=*r.surface;
   if(!target.expected.pixels||target.expectedStorage!=s.pixels.identity()||target.expectedStorageRevision!=s.pixels.revision()||target.expected.width!=s.width||target.expected.height!=s.height||target.expected.x!=s.offsetX||target.expected.y!=s.offsetY)target.expected={s.width,s.height,s.offsetX,s.offsetY,std::make_shared<const std::vector<Pixel>>(s.pixels.begin(),s.pixels.end())};
   target.expectedStorage=s.pixels.identity();target.expectedStorageRevision=s.pixels.revision();
+  target.expectedStoragePixels=target.expected.pixels;
  }else{const auto g=d.displayedLayerGeometry(target.layerId);if(target.expectedStorage||!target.expected.pixels||g!=std::array<int,4>{target.expected.width,target.expected.height,target.expected.x,target.expected.y})target.expected={g[0],g[1],g[2],g[3],std::make_shared<const std::vector<Pixel>>(std::size_t(g[0])*g[1])};target.expectedStorage=nullptr;target.expectedStorageRevision=0;}target.revision=d.revision();target.capturePreview(d);
 }
 }

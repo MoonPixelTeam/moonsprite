@@ -6157,3 +6157,10 @@ selection.transform仍须衔接跨批浮动保留、实际操作次序、后续�
 对照legacy lua-script-service.ts566、607–611：MSE删除原图层后，同批剩余操作仍作用于当前幸存图层，原捕获基线不重绑定；下一批次或回调才拒绝缺失目标。原生refreshScriptTarget此前在删除后立即读取缺失图层几何并异常，导致合法同批删除整体回滚；现保留原基线与目标身份。真实Lua覆盖小画布/延迟预览、原目标删除后的图层属性与色板、同批撤销重做、后续失败恢复与下一批次拒绝。完整迁移仍INCOMPLETE，实际验证后附。
 
 补齐明确的下一批次与createdLayers尾部缺失原目标检查，避免Document::selectLayer缺失ID静默返回后误用幸存图层。新增真实模型对话框结果接收检查：会话保留原目标身份，后续匹配拒绝；不重绑定幸存者。最终唯一正式Release构建成功，lua-script-invocation全套6.69s通过，正式--script-entry-check退出0；来源806文件和diff检查通过。未进行人工图像/FPS测量，整体INCOMPLETE；本阶段保存推送dev。
+
+
+### 2026-11-11：脚本顺序执行的未变像素校验
+
+核对document.create实际调用链：legacy在批次中途切换workspace，newDocument捕获创建失败并只报状态，同批后续操作作用于新文档；现有createdDocuments尾部采用接口不足以保持语义。本阶段未伪装接通或开放该能力。继续完成现有脚本迁移链路的性能处理：Target::matches此前每项顺序操作重复全缓冲比较；复用原生存储identity/revision及几何，绑定完成捕获/刷新时的immutable像素快照weak_ptr令牌，未变路径常量时间检查；任一令牌、几何、存储变化回退精确比较，不把外部替换expected误认为可信。新增512×512重复检查耗时诊断及快照替换、几何、存储替换/写入回归。整体INCOMPLETE，实际验证后附。
+
+最终唯一正式Release构建成功；lua-script-invocation全套8.12s通过，512×512未变目标2000次检查466微秒（单次本机诊断，无跨版本FPS结论）。正式--script-entry-check退出0；来源806文件与diff检查通过。document.create工作区切换等迁移仍未完成；本阶段保存推送dev。
