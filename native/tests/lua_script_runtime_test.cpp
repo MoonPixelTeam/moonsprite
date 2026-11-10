@@ -10,8 +10,7 @@ int main(int argc,char** argv){try{winrt::init_apartment();check(argc==2,"Fixtur
  const std::string context=R"({"documentId":"doc","documentName":"Test","documentWidth":2,"documentHeight":2,"documentFilePath":"","colorMode":"rgba","layerId":"layer","layerName":"Layer","layerWidth":2,"layerHeight":2,"layerOffsetX":0,"layerOffsetY":0,"layerOpacity":255,"layerVisible":true,"layerLocked":false,"layerFormat":"rgba","layerGroupId":null,"layerStackIndex":1,"frameNumber":1,"pixels":[0,0,0,0],"selection":null,"transparentColor":0,"foreground":4294967295,"background":4278190080})";
  write("draw.lua","app.transaction('draw',function() app.activeImage:drawPixel(0,0,app.pixelColor.rgba(10,20,30,255)) end)");
  write("capabilities.lua",R"lua(
-local missing={['document.create']=true,['document.open']=true,
- ['io.export']=true,['io.open']=true}
+local missing={['document.create']=true,['io.export']=true}
 local count=0
 for module,capability in pairs(mse.capabilities) do
  local complete=true
@@ -26,7 +25,7 @@ for module,capability in pairs(mse.capabilities) do
  end
  assert(capability.status==(complete and 'stable' or 'partial'),module)
 end
-assert(count==4)
+assert(count==2)
 assert(mse.isSupported("document.save") and mse.isSupported("io.save"))
 assert(mse.isSupported("selection.transform"))
 assert(mse.capabilities.selection.status=="stable")

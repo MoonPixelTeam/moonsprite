@@ -774,6 +774,11 @@ void Editor::updateScriptsMenu(){
  else for(const auto& value:list){auto entry=value.GetObject();const auto id=winrt::to_string(entry.GetNamedString(L"id"));auto row=new PixelMenuItem(font_,skin_,unicodeText(winrt::to_string(entry.GetNamedString(L"name"))));row->available=[this]{return scripts_&&!scripts_->client.busy()&&scripts_->queued.empty()&&documentOpen_&&!homeOpen_&&pending_==Pending::None;};row->setId(id.c_str());row->Click.connect([this,id]{runScript(id);});scriptsMenu_->addChild(row);}
  scriptsMenu_->addChild(new PixelMenuSeparator(skin_));scriptsMenu_->addChild(folderItem);client.refresh();
 }
+// Keep archive decoding temporaries off the nested UI/script verification stack.
+__declspec(noinline) static std::unique_ptr<Document> readScriptBoundaryProject(const std::filesystem::path& path){
+ std::ifstream file(path,std::ios::binary|std::ios::ate);if(!file)throw std::runtime_error("Boundary output missing");auto bytes=std::make_shared<project::Bytes>(std::size_t(file.tellg()));file.seekg(0);if(!file.read(reinterpret_cast<char*>(bytes->data()),std::streamsize(bytes->size())))throw std::runtime_error("Boundary output read failed");
+ return std::make_unique<Document>(project::createEditableDocument(project::prepareEditableImport(project::readProjectManifest(bytes))));
+}
 void Editor::smokeScriptWorkspace(const std::filesystem::path& root){
  // Real workspace boundaries through the asynchronous production host.
  {
@@ -798,6 +803,15 @@ void Editor::smokeScriptWorkspace(const std::filesystem::path& root){
   runBoundary("mse.document.open{path="+quote(dir/"missing.moonsprite")+"}; mse.palette.create{r=40,g=41,b=42}");if(pending_!=Pending::None||document.identity()!=openedId||document.palette().entries.size()!=importedPalette+5)throw std::runtime_error("Formal failed open did not continue");
   // Unsupported color modes remain explicit; do not advertise full create.
   runBoundary("mse.document.create{colorMode='indexed'}; mse.palette.create{r=43,g=44,b=45}");if(document.identity()!=openedId||document.palette().entries.size()!=importedPalette+6)throw std::runtime_error("Formal create rejection did not continue");
+  const auto ioSource=document.identity();const auto ioSourcePalette=document.palette().entries.size();
+  runBoundary("assert(mse.isSupported('document.open') and mse.isSupported('io.open')); app.transaction(function() mse.document.create{name='Boundary IO',width=2,height=1}; mse.palette.create{r=70,g=71,b=72}; mse.document.save{saveAs=true,options={name='boundary-saved',format='moonsprite',directory="+quote(dir)+"}}; mse.io.export{format='png-rgba',name='boundary-export',directory="+quote(dir)+"}; mse.palette.create{r=73,g=74,b=75} end)");
+  const auto ioId=document.identity();auto saved=readScriptBoundaryProject(dir/"boundary-saved.moonsprite");
+  if(ioId==ioSource||saved->name()!=U"Boundary IO"||saved->palette().entries.size()!=freshPalette+1||document.palette().entries.size()!=freshPalette+2||!document.dirty()||!std::filesystem::is_regular_file(dir/"boundary-export.png"))throw std::runtime_error("Formal boundary save/export prefix wrong");
+  source=saveProjectIndex(ioSource);activateProject(*source);if(document.palette().entries.size()!=ioSourcePalette)throw std::runtime_error("Formal boundary I/O modified original palette");
+  runBoundary("app.transaction(function() mse.palette.create{r=80,g=81,b=82}; mse.document.create{name='Boundary failed IO',width=2,height=1}; mse.palette.create{r=83,g=84,b=85}; mse.io.save{saveAs=true,options={name='boundary-failed-saved',format='moonsprite',directory="+quote(dir)+"}}; mse.io.export{format='png-rgba',name='boundary-failed-export',directory="+quote(dir)+"}; mse.palette.create{r=86,g=87,b=88}; mse.workspace.showPanel('invalid-panel') end)",true);
+  auto failedSaved=readScriptBoundaryProject(dir/"boundary-failed-saved.moonsprite");
+  if(document.name()!=U"Boundary failed IO"||document.palette().entries.size()!=freshPalette+2||failedSaved->palette().entries.size()!=freshPalette+1||!std::filesystem::is_regular_file(dir/"boundary-failed-export.png"))throw std::runtime_error("Formal boundary failed I/O lost external effects");
+  source=saveProjectIndex(ioSource);activateProject(*source);if(document.palette().entries.size()!=ioSourcePalette)throw std::runtime_error("Formal boundary failed I/O did not rollback source");
   if(!saveProjectIndex(createdId))throw std::runtime_error("Earlier created session lost");
  }
 }

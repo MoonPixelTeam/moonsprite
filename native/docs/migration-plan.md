@@ -6249,3 +6249,10 @@ selection.transform仍须衔接跨批浮动保留、实际操作次序、后续�
 真实Lua七组回归覆盖原wrapper移动后成功/失败/取消、下一批聚焦、open两种别名及边界后非模态清理；正式入口覆盖RGBA创建尺寸名称、原目标撤销重做、后台回滚、新会话效果保留、PNG路径打开、已有文件复用、chooser成功/取消、文件失败继续、未支持色彩模式拒绝继续。正式嵌套chooser暴露1MiB栈压力：拆分大型smoke函数、创建候选/路径缓冲及序列中间候选堆分配，单文件按旧分支直接打开，多文件保留序列流程。未提高正式程序栈或另发preview。
 
 最终唯一正式Release构建成功，--script-entry-check退出0；lua-script-invocation 5.80s和image-sequence-import 0.16s均通过，来源806文件及diff检查通过。旧native-script-entry-error.txt是早前失败记录，未删除用户数据；结论采用本次实际退出码。非RGBA文档模型/创建、全部跨域组合及扩展生产宿主仍未完成，document.create/open/io.open/io.export完整能力发现继续屏蔽。没有人工图像/FPS验收；本阶段完成工作区边界和RGBA/既有打开路径正式链路，不宣称所有迁移完成。保存推送dev。
+
+
+### 2026-11-11：跨文档脚本文件效果与打开能力闭环
+
+沿legacy lua-script-service.ts503–636源会话compound与外部效果语义，补齐真实Lua跨批变换→整图替换→工作区边界成功/失败，以及新文档保存/导出→后续修改/失败组合。确认替换撤销使用已验证wire before，失败恢复上一批变换结果；新会话上的保存点、独立历史及外部效果不被原目标回滚。正式Editor新增实际MoonSprite保存重开及PNG导出，检查保存前缀、之后色板修改、新文档dirty、失败后文件保留和原目标色板恢复。归档解码独立noinline函数控制嵌套验收栈，未提高正式程序栈。
+
+在前阶段路径/别名/chooser成功取消/坏文件继续与本阶段文件组合验收基础上，开放document.open/io.open能力发现；完整document.create因非RGBA模型缺口、io.export因生产扩展完成事件缺口继续屏蔽。runtime发现精确断言剩余两项缺口。最终唯一正式Release构建成功，--script-entry-check退出0；lua-script-invocation 5.17s及lua-script-runtime 0.25s通过，来源806文件及diff检查通过。旧错误txt保留，采用当次退出码。无人工图像/FPS验收；整体迁移INCOMPLETE。本阶段保存推送dev。
