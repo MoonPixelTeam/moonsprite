@@ -6127,3 +6127,10 @@ selection.transform仍须衔接跨批浮动保留、实际操作次序、后续�
 核对legacy lua-script-service.ts609–636：最后批次后保留MSE活动图层/帧，只有后续批次、创建图层和明确最终app选择才重新聚焦。删除顺序执行器没有createdLayers时无条件执行空tail并切回原目标的行为，避免覆盖app.activeLayer=nil/activeFrame=nil语义及额外浮动提交；有创建图层时继续复用原目标tail。新增真实Lua no-op变换/setFrame/nil、变换/创建图层/nil及历史撤销重做回归。整体INCOMPLETE，完整selection.transform能力保持false；最终验证后附。
 
 最终唯一正式Release构建成功；lua-script-invocation全套5.44s通过，正式--script-entry-check退出0，包含前阶段新增真实浮动回调验收。来源806文件和diff检查通过，无人工图像/FPS测量；整体INCOMPLETE，完整selection.transform能力保持false。本阶段保存推送dev。
+
+
+### 2026-11-10：停止播放保留脚本浮动选区
+
+对照legacy lua-script-operations.ts528及workspace-commands-animation-playback.ts49：只有playing=true才先提交pending，停止播放保留浮动；指定非空循环调用也先提交。修复顺序执行器对所有animation.play无条件提交的问题，沿用严格布尔参数默认与循环分支。真实Lua小画布/延迟预览覆盖停止、非布尔playing、开始、取消及整批撤销。整体INCOMPLETE，完整selection.transform能力仍false；最终验证后附。
+
+最终唯一正式Release构建成功；lua-script-invocation全套5.27s通过，正式--script-entry-check退出0（含既有原生浮动回调检查）。来源806文件及diff检查通过。无人工图像/FPS测量；整体INCOMPLETE，完整selection.transform能力仍false。本阶段保存推送dev。
