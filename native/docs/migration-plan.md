@@ -5811,3 +5811,9 @@ Release正式程序构建成功，--script-window-host-check退出0。两项Lua�
 公开API补核：mse_api.rs没有公开mse.animation.setFrameDuration，首次fixture因调用该不存在方法失败。已改用旧lua_api.rs ScriptFrame.duration秒属性（引擎换算毫秒后排队同名内部操作），真实两项Lua专项通过0.94s，Aseprite属性0.25秒→250ms和撤销一并通过；未向Lua新增旧版不存在的方法。
 
 本阶段最终：唯一正式Release构建成功，最新--script-window-host-check退出0，真实Lua两项专项通过0.94s，来源804文件与diff检查通过。
+
+### 2026-11-10：脚本多帧解析性能与稀疏时间轴回归
+
+沿lua-script-operations resolveFrameId语义，一次建立帧ID索引，替代每项duration操作从首帧扫描，保留真实ID匹配、数字序号和未匹配字符串回退。新增真实Rust Lua 1024帧同事务时长修改及反向输入循环范围，活动帧和全部时间轴均无Cel，验证一项历史、零像素修改、无Cel创建、全部值/范围、Undo/Redo。唯一正式Release构建成功，两项Lua专项通过0.99s；本机单次结果应用42ms，不含快照和Lua执行，无前后基准对比，不据此宣称整体延迟解决。无UI变化/截图，无完整smoke；其他迁移继续INCOMPLETE。阶段验证后保存推送dev，保留原用户差异、数据和缓存。
+
+最新正式--script-window-host-check实际退出0，来源804文件和diff检查通过。
