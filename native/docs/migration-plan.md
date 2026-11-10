@@ -6340,3 +6340,12 @@ selection.transform仍须衔接跨批浮动保留、实际操作次序、后续�
 按 ExtensionDialogForm 的 slot/onContextMenu、FormCopy 与 labelHint 接入原生鼠标过滤器：仅处理当前窗口可见视口中的右键，子控件事件也能触发所属槽位，嵌套槽位优先内层；FormState 保持忙碌/禁用校验、发送旧草稿快照后清空草稿的既有语义。复用现有 MIT Aseprite ui/tooltips API，按钮、字段及绘制标签提供完整名称和 tooltip，表单重建先销毁提示管理器以取消悬挂目标/计时器，再释放旧控件。无逐鼠标移动重建。
 
 唯一正式 Release 构建通过；extension-form-ui/image/files/state 四项全部通过（0.87秒），实际窗口回归验证子按钮目标右键、草稿清空、busy拒绝以及组合提示文本。来源覆盖821文件、diff检查通过。实际查看 extension-form-smoke.bmp：控件/图片可见，截图仍捕获busy绘制阶段，解锁以状态断言为证；尚未通过真实悬停截图验收提示窗口，也未完成所有1×/2×边界布局。嵌套dialog、槽位描述排版和正式扩展执行器接入仍未完成，整体INCOMPLETE。
+
+
+### 2026-11-11：扩展嵌套表单原生窗口链路
+
+对照 ExtensionDialogForm dialog/createPortal、共享 values/send、标题取消以及 generic condition dialog 测试，dialog 节点创建独立 PixelDialog，全部层级共享根 FormState 和延迟消息队列，不启动额外扩展会话。子表单输入/选择/提交、文件和槽位动作沿用同一控件实现；compact/default 初始尺寸、滚动、标题、关闭图标复用现有原生组件。模型保留同 ID 窗口位置/尺寸，移除节点时关闭窗口；宿主关闭递归清理子窗口。父表单有 prompt 时禁用其字段与关闭/完成按钮；子窗口关闭发送 dialog.action，不立即删除窗口，匹配返回模型后移除。子窗口 resize 由根 pump 递归处理。
+
+首轮正式 Release 构建与 extension-form-ui/image/files/state 全部通过（1.02秒），实际查看 extension-form-prompt-smoke.bmp，紧凑弹窗标题/字段/确定可见；截图捕获编辑前绘制，不作为草稿文本证明，草稿以消息断言为证。新增递归双层窗口与宿主关闭验证后再次构建检查，结果见后续记录。仍欠几何持久化、完整 backdrop/焦点阻挡、所有表单排版及正式扩展执行器接入，不把本阶段声明为全量扩展迁移完成。
+
+最终唯一正式 Release 构建成功；双层嵌套/递归宿主关闭、输入提交、标题取消、匹配回复移除及原表单场景全部通过；四项 CTest 共1.09秒。来源覆盖821文件且证据快照校验通过，diff检查通过。用户 editor_support.h 差异保持未提交。阶段提交推送dev，整体INCOMPLETE。
