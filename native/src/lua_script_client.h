@@ -33,6 +33,7 @@ public:
  Client(const Client&)=delete;Client& operator=(const Client&)=delete;
  ~Client(){closeSession();}
  void setStyleClipboardHost(script::StyleClipboardHost host){pending_.setStyleClipboardHost(std::move(host));}
+ void setNotificationHost(script::NotificationHost host){pending_.setNotificationHost(std::move(host));}
  void setPanelHost(script::PanelHost host){pending_.setPanelHost(std::move(host));}
  void setPlaybackHost(PlaybackHost host){pending_.setPlaybackHost(std::move(host));}
  void setSelectCreatedPaletteColor(bool value){pending_.setSelectCreatedPaletteColor(value);}

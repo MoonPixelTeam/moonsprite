@@ -5943,3 +5943,12 @@ layers.update存在时，沿现有候选Timeline预检后，使用原生完整Ti
 完整Timeline历史补上活动图层/帧、组、时间轴选择/锚点及显示geometry端点，混合像素与属性共用一项事务；普通像素脚本仍保留增量路径。候选/资源/蒙版/保留计划受256MiB保守预算限制，但完整状态同步复制仍有开销，不宣称大工程延迟路径已完成。真实Lua新增连续create→update→duplicate、全部帧稀疏空图、原始链接帧复制、失败原子性、原目标删除后批拒绝、资源/蒙版克隆删除UndoRedo、最后一层no-op和保存重开；正式Editor入口新增结构混合事务及UndoRedo检查。初轮失败为测试误将非目标层当原目标，修正测试前提后专项通过。最终构建和检查结果后附。无新UI绘制/截图验收，其他迁移和整体目标仍INCOMPLETE。保留用户差异、数据及缓存。
 
 最终唯一正式Release构建成功；Lua runtime/invocation与document-raster-history三项通过3.90s，正式--script-entry-check退出0（含新增结构事务），--script-window-host-check/--script-playback-check退出0。来源804文件覆盖及diff检查通过；整体对齐仍INCOMPLETE，无人工图像验收。蒙版fixture先按产品空白层限制拒绝，改为已有蒙版导入；瓦片专项后续脚本显式重新选择raster入口，符合当前脚本启动限制。
+
+
+### 2026-11-10：MSE ui.notify 原生宿主完整链路
+
+对照 lua-script-operations.ts ui.notify/specFor/stringValue 及 platform_scripts/mse_api.rs 实际公开方法，接入对象和位置参数、message/text/value首个非null值、仅字符串（false/空字符串阻止后备且清空状态）、Unicode与原始空白。不引入Toast或模态弹窗，复用原生status；消息宿主在全结果预检时验证，按批排队，不进入文档历史或撤销重做。PendingInvocation→Client→ScriptWindowHost→Editor完整透传，Editor使用弱引用入队，在本轮pump完成结果处理和新工程接管后交付最后一条消息，适配旧版setTimeout(0)，不阻塞事件循环。
+
+真实Lua覆盖多通知顺序/参数、像素混合事务/Undo、无宿主或后续非法操作不写像素不发通知、跨文档接管与异步客户端。正式Editor入口检查Unicode状态和清空。选区transform核对已确认旧版移动保留pending浮动内容而后续翻转复用；当前脚本候选仅稳定状态，不能强行提交冒充迁移，本阶段继续登记未完成。无UI布局修改，无截图验收；整体迁移仍INCOMPLETE。最终构建与检查后附。
+
+最终正式Release构建通过，Lua runtime/invocation两项通过2.19s（含跨工程通知），--script-entry-check、--script-window-host-check、--script-playback-check均退出0；来源804文件与diff检查通过。无截图/人工视觉验收，整体INCOMPLETE。

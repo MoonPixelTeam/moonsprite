@@ -680,7 +680,7 @@ for(const auto& e:menus::catalog())if(!*e.parent){if(std::string(e.id)=="help"){
   }
 
 struct Editor::ScriptState {
- script::Runtime runtime;script::Client client;std::unique_ptr<ScriptWindowHost> host;ui::Timer timer;std::future<PatternBrushListing> brushes;std::vector<StoredPatternBrush> localBrushes;std::string queued;std::uint64_t queuedIdentity=0;std::string queuedLayer,queuedFrame;bool pumping=false;
+ script::Runtime runtime;script::Client client;std::unique_ptr<ScriptWindowHost> host;ui::Timer timer;std::future<PatternBrushListing> brushes;std::vector<StoredPatternBrush> localBrushes;std::vector<std::u32string> notifications;std::string queued;std::uint64_t queuedIdentity=0;std::string queuedLayer,queuedFrame;bool pumping=false;
  ScriptState(Editor& editor,const std::filesystem::path& root):runtime(root),client(runtime),timer(30,&editor){}
 };
 void Editor::initializeScripts(const std::filesystem::path& root){
@@ -691,6 +691,7 @@ void Editor::initializeScripts(const std::filesystem::path& root){
    for(const auto& [name,index]:std::initializer_list<std::pair<const wchar_t*,int>>{{L"color",1},{L"palette",0},{L"layers",2},{L"freeTileInstances",13},{L"history",8},{L"preview",3},{L"reference",9},{L"tileset",11},{L"brushes",12},{L"tabletAssist",10}}){JsonObject item;item.Insert(L"id",JsonValue::CreateStringValue(name));item.Insert(L"visible",JsonValue::CreateBooleanValue(visible[index]));const auto group=docking_.groupOf(index);auto dock=group>=0?docking_.groups[group].dock:panels::Dock::Right;if(!docking_.custom){if(index==0||index==1)dock=panels::Dock::Left;else if(index==2)dock=panels::Dock::Bottom;}const wchar_t* docks[]{L"left",L"right",L"bottom",L"floating"};item.Insert(L"dock",JsonValue::CreateStringValue(docks[int(dock)]));entries.Append(item);}
    return script::buildMseSnapshot(d,scripts_->localBrushes,entries);
   },[this](Document&& d){addProject(std::move(d));refresh();});
+  state->host->setNotificationHost([weak=std::weak_ptr<ScriptState>(state)](const std::u32string& message){if(auto active=weak.lock())active->notifications.push_back(message);});
   state->host->setStyleClipboardHost({[this]{return layerStyleClipboard_?copiedLayerStyle_:std::optional<timeline::ColorOverlayStyle>{};},[this](const auto& style){copiedLayerStyle_=style;layerStyleClipboard_=true;}});
   state->host->setPanelHost([this](Document& d,const script::PanelRequest& request){
    if(&d!=&document||!documentOpen_||homeOpen_)return;
@@ -716,6 +717,8 @@ void Editor::pumpScripts(){
  const auto identity=document.identity(),content=document.contentRevision(),history=document.historyRevision();const auto frame=document.frame().id,layer=document.layer().id;
  if(!state->queued.empty()&&!state->brushes.valid()){auto id=std::move(state->queued);state->queued.clear();if(active&&state->queuedIdentity==document.identity()&&state->queuedLayer==document.layer().id&&state->queuedFrame==document.frame().id)state->host->run(active,std::move(id));}
  state->host->pump(active,std::chrono::steady_clock::now()+std::chrono::milliseconds(3));
+ // Legacy setTimeout(0): deliver after result handling and any tab adoption.
+ if(!state->notifications.empty()){status_=std::move(state->notifications.back());state->notifications.clear();invalidate();}
  if(identity!=document.identity()||content!=document.contentRevision()||history!=document.historyRevision()||frame!=document.frame().id||layer!=document.layer().id)refresh();
 }
 void Editor::updateScriptsMenu(){
@@ -772,6 +775,9 @@ void Editor::smokeScriptEntry(){
  runPanelCheck("app.transaction(function() mse.layers.create{name='Script created'}; mse.layers.duplicate(); mse.layers.update{name='Script copied'} end)");
  if(document.timeline().state().layers.size()!=structureCount+2||document.historyPosition()!=structureHistory+1)throw std::runtime_error("Formal script layer structure failed");
  document.undo();if(document.timeline().state().layers.size()!=structureCount)throw std::runtime_error("Formal script structure undo failed");document.redo();if(document.timeline().state().layers.size()!=structureCount+2)throw std::runtime_error("Formal script structure redo failed");document.undo();
+
+ runPanelCheck("mse.ui.notify{message='Native notification 🌙'}");if(status_!=U"Native notification 🌙")throw std::runtime_error("Formal script notification failed");
+ runPanelCheck("mse.ui.notify{message=false,text='ignored'}");if(!status_.empty())throw std::runtime_error("Formal script empty notification failed");
 
  // Panel requests finish on the original tab before created documents are adopted.
  ensureProjects();const auto sourceIdentity=document.identity();const auto sourceTab=activeProject_,tabs=projects_.size();

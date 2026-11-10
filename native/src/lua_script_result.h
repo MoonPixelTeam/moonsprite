@@ -71,14 +71,16 @@ struct StyleClipboardHost {
  std::function<void(const timeline::ColorOverlayStyle&)> write;
  explicit operator bool()const{return bool(read)&&bool(write);}
 };
+// Enqueue-only status message delivery, deferred until the current UI pump ends.
+using NotificationHost=std::function<void(const std::u32string&)>;
 struct RasterSummary {std::size_t transactionCount=0,changedPixelCount=0;};
 // Raster/layer stage of the workspace executor. Rejects unsupported workspace
 // operations/created documents before the first edit; never silently drops them.
-RasterSummary applyRasterResult(Document& activeDocument,Target&,const std::string& resultJson,bool selectCreatedPaletteColor=true,const PlaybackHost& playback={},const PanelHost& panels={},const StyleClipboardHost& styles={});
+RasterSummary applyRasterResult(Document& activeDocument,Target&,const std::string& resultJson,bool selectCreatedPaletteColor=true,const PlaybackHost& playback={},const PanelHost& panels={},const StyleClipboardHost& styles={},const NotificationHost& notify={});
 struct WorkspaceSummary {std::size_t transactionCount=0,changedPixelCount=0;bool documentBoundary=false;};
 // The workspace callback adopts each completed document in result order. It
 // must preserve existing sessions; the last adopted document becomes active.
-WorkspaceSummary applyWorkspaceResult(Document& activeDocument,Target&,const std::string& resultJson,const std::function<void(Document&&)>& addSession,bool selectCreatedPaletteColor=true,const PlaybackHost& playback={},const PanelHost& panels={},const StyleClipboardHost& styles={});
+WorkspaceSummary applyWorkspaceResult(Document& activeDocument,Target&,const std::string& resultJson,const std::function<void(Document&&)>& addSession,bool selectCreatedPaletteColor=true,const PlaybackHost& playback={},const PanelHost& panels={},const StyleClipboardHost& styles={},const NotificationHost& notify={});
 struct RunSummary {
  std::string fileName,filePath;std::vector<std::string> output;
  std::size_t transactionCount=0,changedPixelCount=0;double elapsedMs=0;
@@ -91,5 +93,5 @@ struct RunOutcome {RunSummary summary;std::optional<ClientSession> session;};
 RunOutcome receiveWorkspaceResult(Document&,Target&,const std::string& resultJson,
  const std::function<void(Document&&)>& addSession,
  const std::function<void(const std::string&)>& closeSession,
- const std::string& failureSessionId={},bool selectCreatedPaletteColor=true,const PlaybackHost& playback={},const PanelHost& panels={},const StyleClipboardHost& styles={});
+ const std::string& failureSessionId={},bool selectCreatedPaletteColor=true,const PlaybackHost& playback={},const PanelHost& panels={},const StyleClipboardHost& styles={},const NotificationHost& notify={});
 }
