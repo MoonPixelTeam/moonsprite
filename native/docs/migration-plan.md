@@ -6236,3 +6236,7 @@ selection.transform仍须衔接跨批浮动保留、实际操作次序、后续�
 核对legacy document-file-service.ts205与core/export-settings.ts145，扩展原生document-export-settings v5、export-presets v6，保留旧记录读取，新增PSD/ASE/ASEPRITE/MoonSprite格式、切片目标与ID、每工程实际目录。恢复到已有模态组件，工程格式继续复用上阶段后台主机；MoonSprite缩放固定100且禁止不支持的裁剪目标。脚本成功导出全部记录实际设置与presetName，取消/失败沿用不覆盖。新增实际12格式导出后面板恢复、切片/四工程格式记忆、旧版本1–4默认值与新预设读写应用检查。扩展完成事件仍未接入，完整io.export发现保持屏蔽，整体迁移INCOMPLETE。实际验证后附。
 
 最终唯一正式Release构建成功，--export-memory-check与--script-entry-check均退出0：包含真实12格式成功导出后恢复目录/文件名/格式/缩放，切片目标恢复，旧记忆版本1–4读入，新预设工程格式/切片读写与应用、取消/失败不覆盖及100条MRU既有回归。来源806文件及diff检查通过。没有人工截图/FPS验收；扩展完成事件未接入，io.export完整能力仍屏蔽，整体迁移INCOMPLETE。本阶段保存推送dev。
+
+### 2026-11-11：导出后台等待避免空转
+
+核对正式程序调用关系：RuntimeRegistry/SessionHost仍仅存在于扩展模型，未接入Editor生产宿主；不能以空注册表冒充导出完成事件集成，io.export能力继续屏蔽。对照legacy exportActive的await后台任务及document-file-service异步让出，修复原生脚本导出零超时轮询加thread yield持续空转，改为消息处理后最多4ms future等待。Aseprite cmd_export_sprite_sheet.cpp::waitGenTaskAndDelete亦使用10ms休眠，仅作方案核对，没有复制源码。首轮把等待放消息处理前暴露快速任务跳过取消消息，已恢复原先先处理消息的顺序。最终唯一正式Release构建成功，--script-entry-check退出0，涵盖真实12格式、执行中取消及取消后脚本继续。来源806文件及diff检查通过；未测整机CPU/FPS，不宣称解决全部UI卡顿。整体迁移INCOMPLETE。

@@ -689,7 +689,9 @@ void Editor::runScriptExport(const std::string& optionsJson){
    else bytes=encodeStaticImagePng(copy,image).png;
    if(cancelled())return std::size_t(0);writeExportBytesAtomic(paths->front(),bytes);job->written=1;return std::size_t(1);
   });
-  while(work.wait_for(std::chrono::milliseconds(0))!=std::future_status::ready){loop.pumpMessages();std::this_thread::yield();}
+  // Await encoding without consuming a UI core. Keep pumping between bounded
+  // waits so progress, cancellation and deferred close remain responsive.
+  while(work.wait_for(std::chrono::milliseconds(0))!=std::future_status::ready){loop.pumpMessages();work.wait_for(std::chrono::milliseconds(4));}
   const auto written=work.get();if(job->cancel){status_=U"已取消导出，保留已写入的文件";return;}
   if(written){const auto lastPath=layers?layers->paths.back():paths->back();rememberSuccessfulExport(requested);recordRecentExportPath(lastPath);usageStatistics_.recordExport(format);playExportSuccessSound();status_=U"导出完成";}
  }catch(const std::exception& e){status_=U"导出失败："+unicodeText(e.what());}catch(const winrt::hresult_error& e){status_=U"导出失败："+unicodeText(winrt::to_string(e.message()));}
