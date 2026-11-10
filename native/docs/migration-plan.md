@@ -6187,3 +6187,10 @@ selection.transform仍须衔接跨批浮动保留、实际操作次序、后续�
 前阶段正式入口在原子替换笔刷文件时报Windows error5；现有错误未包含目标路径，不能仅凭该码断定具体原因。核对legacy platform_brushes.rs排序读取/原子写入与原生后台listing，修复原生排序读取普通ifstream未明确允许删除共享的并发风险：CreateFile开启READ/WRITE/DELETE共享，读取持有原文件时允许原子替换；保留读取失败旧回退及写入错误，不加重试或改只读属性。新增后台list并行100次reorder回归。正式脚本入口复用已有brushLibraryTestDirectory_注入到带marker的script-entry-test-owned/brushes，在initializeScripts前设置，避免验收写入日常笔刷库。实际验证后附，整体迁移INCOMPLETE。
 
 最终并发测试确认共享读取单独不足，ReplaceFile试验也出现1175故未采用；保留MoveFileEx，加入进程内list/readOrder/atomicBytes串行锁。修正临时文件消失后INVALID_FILE_ATTRIBUTES被误判reparse，列表只忽略精确排序临时文件前缀。错误包含目标路径，无重试或用户目录清理。唯一正式Release构建成功，pattern-brush-library全套及新增并行100次排序2.56s通过，正式--script-entry-check退出0。来源及diff检查后保存推送，整体INCOMPLETE。
+
+
+### 2026-11-11：正式脚本入口保留浮动事务
+
+核对legacy useAppScriptRuntime.tsx runLuaScript及lua-script-service.ts runLuaScriptForActiveDocument：等待笔刷列表后捕获调用，不提前提交浮动选区。移除原生Editor::runScript的提前提交，保留原有cancelStroke手势清理。正式入口新增5/257画布及延迟笔刷列表回归，检查启动无内容/历史/浮动版本变化、等待保留、继续变换、一次撤销恢复原像素、重做、失败回滚及取消/错误报告清理。整体迁移INCOMPLETE；实际验证后附。用户已明确批准色板同步修改真实瓦片资源及全部引用，包括共享资源影响锁定图层，后续实现依此，不将确认当作已完成。
+
+最终唯一正式Release构建成功，lua-script-invocation全套5.77s通过，正式--script-entry-check退出0（包含新增异步浮动入口检查）。来源806文件与diff检查通过。未进行人工图像/FPS测量，整体迁移仍INCOMPLETE；本阶段保存推送dev。
