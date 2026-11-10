@@ -771,6 +771,14 @@ void Editor::smokeScriptEntry(){
  if(document.historyPosition()!=propertyHistory+1||document.layer().name!=U"Script properties"||document.layer().description!=U" raw "||document.layer().opacity!=128./255.||document.activeSurfaceIfPresent()->offsetX!=4||document.pixels()[0]!=0xffaabbcc)throw std::runtime_error("Formal script layer properties failed");
  document.undo();if(document.layer().name!=propertyName||document.activeSurfaceIfPresent()->offsetX!=0||document.pixels()[0]!=propertyPixel)throw std::runtime_error("Formal script layer properties undo failed");document.redo();if(document.layer().name!=U"Script properties"||document.activeSurfaceIfPresent()->offsetY!=5)throw std::runtime_error("Formal script layer properties redo failed");document.undo();
 
+ // Grid-tile script operations enter the same production host and history.
+ const auto tileScriptRaster=document.layer().id;const auto tileScriptHistory=document.historyPosition();
+ runPanelCheck("app.transaction(function() mse.tiles.createLayer{name='Script tiles',tileWidth=1,tileHeight=1}; mse.tiles.place{x=0,y=0} end)");
+ auto scriptTile=std::find_if(document.timeline().state().layers.begin(),document.timeline().state().layers.end(),[](const auto& l){return l.name==U"Script tiles";});
+ if(scriptTile==document.timeline().state().layers.end()||document.historyPosition()!=tileScriptHistory+1||!tilesetPanelOpen_)throw std::runtime_error("Formal grid script create/place failed");
+ const auto scriptTileLayer=scriptTile->id,scriptSet=scriptTile->tilemapTilesetId;auto scriptSetIt=std::find_if(document.timeline().state().tilesets.begin(),document.timeline().state().tilesets.end(),[&](const auto& t){return t.id==scriptSet;});const auto scriptTileId=scriptSetIt->tileIds.front();
+ document.selectLayer(tileScriptRaster);runPanelCheck("mse.tiles.edit{tilesetId='"+scriptSet+"',tileId='"+scriptTileId+"',pixels={4279383126}}");document.selectLayer(scriptTileLayer);if(document.pixels()[0]!=0xff123456)throw std::runtime_error("Formal grid source edit failed");
+ document.undo();document.selectLayer(scriptTileLayer);if(document.pixels()[0])throw std::runtime_error("Formal grid source undo failed");document.redo();document.selectLayer(scriptTileLayer);if(document.pixels()[0]!=0xff123456)throw std::runtime_error("Formal grid source redo failed");document.undo();document.undo();document.selectLayer(tileScriptRaster);
  const auto structureCount=document.timeline().state().layers.size(),structureHistory=document.historyPosition();
  runPanelCheck("app.transaction(function() mse.layers.create{name='Script created'}; mse.layers.duplicate(); mse.layers.update{name='Script copied'} end)");
  if(document.timeline().state().layers.size()!=structureCount+2||document.historyPosition()!=structureHistory+1)throw std::runtime_error("Formal script layer structure failed");

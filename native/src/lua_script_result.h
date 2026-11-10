@@ -6,6 +6,7 @@ struct LayerStructureUi {
  Document::TimelineSelection selection;
  std::vector<std::string> frames,groups,collapsed;
  std::optional<std::string> group;
+ TilemapSelection tiles;
 };
 LayerStructureUi captureLayerStructureUi(const Document&);
 void restoreLayerStructureUi(Document&,const LayerStructureUi&);
@@ -26,6 +27,7 @@ struct RasterBatch {
  std::vector<OwnerReplacement> synchronizedOwners;
  // Structural candidate is used for MSE layer batches. It includes
  // raster writes and sequential MSE effects, preflighted before installation.
+ bool structureDocumentChanged=true;
  std::optional<LayerStructureUi> layerStructureUi;
  std::optional<timeline::State> layerUpdateTimeline;
  std::optional<std::unordered_map<std::string,std::array<int,4>>> layerUpdateGeometry;

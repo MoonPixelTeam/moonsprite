@@ -5970,3 +5970,12 @@ layers.update存在时，沿现有候选Timeline预检后，使用原生完整Ti
 256×256共享源测试补充提交存储revision增长上限，以防回退到逐像素权威修改。现有Hybrid mask/scale/rotation/shear/quad/repeat、foreign/null/ref-only/链接/取消/资源与历史回归继续使用。资源完整快照、grid元数据复制及共享源所有受影响cache patches仍存在，不宣称提交全零分配或整体迁移完成。无人工视觉/截图验收，最终构建与检查后附。
 
 最终正式Release构建通过（公共头变化触发较长全量编译）；tilemap-document及document-raster-history两项通过2.06s，正式--tileset-management-check --grid-transform-entry-only退出0，来源804文件和diff检查通过。整体INCOMPLETE，无截图/人工视觉验收；本阶段保存推送dev。
+
+
+### 2026-11-10：MSE 网格瓦片事务
+
+依据旧版 lua-script-operations.ts 四个 tiles 操作、workspace-commands-layer-creation.ts、workspace-commands-tilemap.ts 与 core/tilemap-document.ts，接入 createSet/createLayer/place/edit。完整结果先规划 detached Timeline；混合像素、资源和图层创建共用批历史，失败不留下早期写入。独立资源 columns=1、非内容历史；图层创建沿用原生分组插入，设置 Hybrid 与瓦片选择并请求已有面板宿主显示；不可共享的未绑定资源按旧版捕获创建失败。放置解析显式层/帧、foreign引用、翻转旋转、clear前资源校验、链接owner；编辑沿用瓦片采样/写入并更新共享网格及自由瓦片缓存，接受packed/结构色/RGBA字节（Uint8ClampedArray ties-to-even）。保持旧版结果最终app焦点覆盖，测试显式选回瓦片层读取，避免把恢复后的栅格层误当网格。
+
+真实Lua覆盖资源历史/dirty、混合事务、反向引用、RGBA转换、同值无历史、非法后续操作无部分提交、共享资源、UndoRedo稳定身份及保存重开；正式Editor入口增加生产宿主create/place/edit及UndoRedo。候选采用既有全状态历史，受256MiB工作预算限制，不声称增量资源历史完成；调用入口仍限RGBA栅格目标，selection.transform浮动交接、freeTiles及其他MSE领域仍INCOMPLETE。无截图/人工视觉验收；最终构建及检查后附。
+
+最终唯一正式Release构建通过，真实Lua invocation全套通过2.39s（含链接Cel指定帧放置、共享源、RGBA与save/reopen），正式--script-entry-check退出0；来源804文件和diff检查通过。整体迁移仍INCOMPLETE；阶段保存推送dev，保留原有用户差异与未跟踪数据。
