@@ -6365,3 +6365,10 @@ selection.transform仍须衔接跨批浮动保留、实际操作次序、后续�
 正式Release及状态测试构建成功；四项extension-form-ui/image/files/state全部通过（1.15秒）。真实原生控件回归覆盖嵌套文本条件显示/隐藏、焦点和所选文本保持、普通连续编辑控件身份不变；状态检查覆盖数值条件揭示子树。来源821文件证据和diff检查通过。没有新增性能基准或人工图像验收，不宣称所有表单输入/布局完整。
 
 正式执行器调查确认SessionHost/RuntimeDirectory/WindowRouter未接Editor，旧版使用浏览器JS/HTML。已请求用户决定无浏览器QuickJS与原生界面映射方案，架构决定未回复前不引入新引擎；此选择依据仓库迁移规则，不恢复WebView2。整体迁移INCOMPLETE。当前完成草稿条件链路阶段保存推送dev，用户editor_support.h差异保留。
+
+
+### 2026-11-11：扩展表单PNG后台解码
+
+沿用 ExtensionDialogForm 的PNG data URL/默认尺寸/contain/透明度语义，保留已验证Skia decoder和单图预算；将Base64转换和PNG解码移到不引用widget/surface的后台线程，独立初始化/释放WinRT MTA。promise-backed future不在析构时join，事件线程pump零等待接收结果后上传surface，每窗口同一时间仅一个解码。删除源或宿主关闭取消发布，结果失效不访问销毁窗口；同源缓存和失败缓存保留，等待图像时不误报解码失败、不解锁表单请求。
+
+唯一正式Release及image测试构建成功，四项extension-form-ui/image/files/state全部通过（1.11秒），异步解码逐像素RGBA一致、错误future传递和取消token验证通过，实际窗口包含原图片/输入/动作/嵌套弹窗全链路回归。来源821文件与diff检查通过。本轮没有大图FPS/关闭延迟基准或新截图验收；像素上传仍在UI线程、多图总缓存预算/全局并发上限待完善，不能称所有图片性能问题关闭。QuickJS架构选择仍待用户回复，整体迁移INCOMPLETE；阶段保存推送dev，保留用户editor_support.h差异。
