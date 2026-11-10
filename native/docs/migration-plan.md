@@ -6035,3 +6035,12 @@ Aseprite对照：本地缓存doc/tileset.h::findTileIndex/notifyTileContentChang
 含捕获结果沿用Document compound children及brush checkpoint，合并每批撤销并延后历史/录像观察，异常恢复文档/Target而不撤销外部资源。能力发现同步接通createFromSelection；剩余7项方法未迁移。真实Lua覆盖混合像素、mask、成功/失败后反选、图层切换、空选区、过大选区、后续异常回滚；正式入口加入实际库保存及UndoRedo。同步磁盘IO、非RGBA、selection.transform及整体迁移仍INCOMPLETE。最终验证后附。
 
 最终唯一正式Release构建通过；18项Rust契约测试通过，lua-script-invocation全套3.43s、lua-script-runtime0.36s通过；正式--script-entry-check退出0，含实际笔刷PNG/元数据保存、激活/清选区及UndoRedo。来源804文件与diff检查通过。初次新增回归把无选区反选误期望为全选，核对既有invertSelection与旧版路径后修正为保持空选区；未修改该语义。无人工截图验收；本阶段保存推送dev，整体INCOMPLETE。
+
+
+### 2026-11-10：普通栅格选区键盘边界语义
+
+继续核对MSE selection.transform时发现共用命令缺口：旧版workspace-commands-selection-move.ts moveActiveSelectionWithSelectionHistory默认allowOutsideCanvas=false，普通栅格选区的原生nudge此前遗漏边界限制，仅蒙版/混合工程/free/clipboard已有。现复用同一64位边界计算覆盖普通栅格工程，不改变鼠标自由拖动与独立居中路径。静止/浮动/延迟、掩码与矩形、外部剪贴板、超大选区及int极值覆盖提交/取消/撤销重做；正式入口增加实际方向键连续重复至边界和预览一致性检查。
+
+MSE selection.transform仍有跨批次浮动保留、后续结构/像素操作与活动目标重定位语义未完成；未把立即提交近似行为作为已迁移入口，也未修改能力发现。整体INCOMPLETE，最终检查后附。
+
+最终唯一正式Release构建成功；document-transactions全套0.33s通过（16组及超大选区），正式--playback-floating-check退出0（含新增真实方向键与原有播放/完成选区/删除路由）。来源804文件与diff检查通过。新增测试分别保留粘贴前、粘贴后选区作为撤销/边界断言依据；未改变clipboard选区语义。无人工截图或FPS测量；整体INCOMPLETE，本阶段保存推送dev。

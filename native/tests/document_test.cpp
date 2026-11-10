@@ -8,8 +8,25 @@
 using namespace moon;
 constexpr Pixel ink = 0xff3379ff;
 void dot(Document& d, int x, int y, Pixel p = ink) { d.beginStroke({x,y},p); d.commitStroke(); }
+static void checkRasterNudgeBounds(){
+ for(bool deferred:{false,true})for(bool pending:{false,true})for(bool clipboard:{false,true})for(bool irregular:{false,true}){
+  auto model=std::make_unique<Document>(deferred?320:6,deferred?320:5);auto& d=*model;dot(d,0,0);d.previewSelection(SelectionMask{0,0,2,2,irregular?std::vector<unsigned char>{1,0,0,1}:std::vector<unsigned char>{}});d.setDeferredFloatingDisplaySupported(deferred);
+  const auto originalSelection=d.selection();auto selected=originalSelection;const auto before=d.canvasPixels();const auto history=d.historyPosition();d.markSaved();
+  if(clipboard){auto source=d.copyPixels();CHECK(source&&d.beginFloatingPaste(*source,0,0));selected=d.selection();}
+  CHECK(!d.nudgeSelectionContent(-1,-1)&&d.historyPosition()==history&&selectionEqual(d.selection(),selected));
+  if(pending)CHECK(d.nudgeSelectionContent(1,1));
+  CHECK(d.nudgeSelectionContent(std::numeric_limits<int>::max(),std::numeric_limits<int>::max()));CHECK(d.selection()->x==d.width()-2&&d.selection()->y==d.height()-2&&d.floating());
+  CHECK(!d.nudgeSelectionContent(1,1)&&d.historyPosition()==history&&!d.dirty());
+  auto preview=d.floatingDeferred()?d.floatingOverlayRegion({0,0,d.width(),d.height()}):d.canvasPixels();CHECK(d.commitFloatingPaste()&&d.historyPosition()==history+1&&d.canvasPixels()==preview);
+  CHECK(d.canvasPixels()[std::size_t(d.height()-2)*d.width()+d.width()-2]==ink);d.undo();CHECK(d.canvasPixels()==before&&selectionEqual(d.selection(),originalSelection));d.redo();CHECK(d.canvasPixels()==preview);
+  d.undo();d.previewSelection(selected);CHECK(d.nudgeSelectionContent(1,1));CHECK(d.nudgeSelectionContent(std::numeric_limits<int>::min(),std::numeric_limits<int>::min()));CHECK(d.selection()->x==0&&d.selection()->y==0);d.cancelFloatingPaste();CHECK(d.canvasPixels()==before&&selectionEqual(d.selection(),selected));
+ }
+ // A marquee larger than the canvas follows legacy max(0,min(extent-size,pos)).
+ auto oversized=std::make_unique<Document>(6,5);auto& d=*oversized;dot(d,0,0);d.previewSelection(SelectionMask{-1,-1,8,7,{}});CHECK(d.nudgeSelectionContent(-10,-10)&&d.selection()->x==0&&d.selection()->y==0);CHECK(!d.nudgeSelectionContent(10,10));d.cancelFloatingPaste();CHECK(d.selection()->x==-1&&d.selection()->y==-1);
+}
 int main() {
   try {
+    checkRasterNudgeBounds();
     // legacy workspace-floating-clipboard.test.ts rotated quad copies source without background.
     {Document d(8,4);dot(d,0,0,0xff123456);d.previewSelection(SelectionMask{0,0,2,1,{1,0}});const auto before=d.canvasPixels();const auto at=d.historyPosition();CHECK(d.beginSelectionContentMove(true));auto t=*d.floatingTransform();t.x=4;t.y=0;t.width=1;t.height=2;t.quad=std::array<TransformPoint,4>{{{5,0},{5,2},{4,2},{4,0}}};d.transformFloatingPaste(t);auto clip=d.copyPixels();CHECK(clip&&clip->originX==4&&clip->originY==0&&clip->width==1&&clip->height==2&&clip->pixels==std::vector<Pixel>({0xff123456,0})&&clip->mask==std::vector<unsigned char>({1,0})&&d.floating()&&d.historyPosition()==at);d.cancelFloatingPaste();CHECK(d.canvasPixels()==before);}
     {CHECK(shapeViewAlignedAngle(30,false,false)==-30&&shapeViewAlignedAngle(30,true,false)==30&&shapeViewAlignedAngle(30,true,true)==-30&&shapeViewAlignedAngle(180,false,false)==-180);ShapeSpec spec;spec.start={10,10};ShapeDragGeometry geometry;geometry.viewAngle=90;geometry.update(spec,{14,12},false,false,false);CHECK(std::abs(spec.bounds.x-11)<1e-9&&std::abs(spec.bounds.y-9)<1e-9&&spec.bounds.width==3&&spec.bounds.height==5&&spec.bounds.angle==90&&geometry.directionX==1&&geometry.directionY==-1);geometry.update(spec,{14,12},true,false,false);CHECK(spec.bounds.width==5&&spec.bounds.height==5&&spec.bounds.angle==90);geometry.update(spec,{14,12},false,true,false);CHECK(spec.bounds.width==5&&spec.bounds.height==9);CHECK(std::abs(spec.bounds.x+spec.bounds.width/2-10.5)<1e-9&&std::abs(spec.bounds.y+spec.bounds.height/2-10.5)<1e-9);geometry.update(spec,{14,12},false,false,true);geometry.update(spec,{16,11},false,false,true);CHECK(std::isfinite(spec.bounds.angle));geometry.update(spec,{17,13},false,false,false);CHECK(std::isfinite(spec.bounds.x)&&geometry.resize.has_value());}
