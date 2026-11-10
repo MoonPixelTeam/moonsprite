@@ -6164,3 +6164,10 @@ selection.transform仍须衔接跨批浮动保留、实际操作次序、后续�
 核对document.create实际调用链：legacy在批次中途切换workspace，newDocument捕获创建失败并只报状态，同批后续操作作用于新文档；现有createdDocuments尾部采用接口不足以保持语义。本阶段未伪装接通或开放该能力。继续完成现有脚本迁移链路的性能处理：Target::matches此前每项顺序操作重复全缓冲比较；复用原生存储identity/revision及几何，绑定完成捕获/刷新时的immutable像素快照weak_ptr令牌，未变路径常量时间检查；任一令牌、几何、存储变化回退精确比较，不把外部替换expected误认为可信。新增512×512重复检查耗时诊断及快照替换、几何、存储替换/写入回归。整体INCOMPLETE，实际验证后附。
 
 最终唯一正式Release构建成功；lua-script-invocation全套8.12s通过，512×512未变目标2000次检查466微秒（单次本机诊断，无跨版本FPS结论）。正式--script-entry-check退出0；来源806文件与diff检查通过。document.create工作区切换等迁移仍未完成；本阶段保存推送dev。
+
+
+### 2026-11-11：选区变换32组真实Lua迁移验收
+
+沿legacy lua-script-operations.ts729、workspace-commands-selection-flip.ts、tools-selection-transform-apply.ts224与workspace-selection-timeline-flip.test.ts核对完整/稀疏Cel、链接/独立帧、有/无选区、水平/垂直翻转、单/双Cel选择的32种组合。真实Lua执行翻转后移动，验证无选区移动不生效、稀疏整层翻转只镜像自身缓冲并保持偏移、链接只修改共享源一次、显式双Cel分别修改；全部检查历史、撤销重做与工程保存重开。基础8组及扩展32组均通过，最终lua-script-invocation全套7.38s通过。仅增加迁移证据与回归，生产行为未改；完整selection.transform发现仍false，非栅格组合仍需闭环，整体INCOMPLETE。来源及正式入口实际结果后附。
+
+正式--script-entry-check退出0，来源806文件与diff检查通过。未新增界面或生产行为，未进行人工图像/FPS测量。本阶段验收证据保存推送dev，整体迁移仍INCOMPLETE。
