@@ -6442,3 +6442,10 @@ PNG后台解码完成后保留像素及私有surface，每次pump最多上传262
 核对ExtensionDialogForm FormCopy、styles.css4623–4635及complete translated label overflow测试，确认旧版文案为单行ellipsis/full tooltip，未擅自改为自动换行。原生标题/文本/字段标签在build缓存适配宽度copy，局部FormButton在resize缓存，ChoiceButton两行各缓存可见文案；绘制复用PixelButton材质与原事件，完整caption和tooltip保持。避免paint重复UTF转换与长文案省略测量，窗口扩大重新计算并恢复全文。
 
 唯一正式Release构建成功，extension-form-ui/image/files/state四项通过1.39秒。实际窗口回归窄窗德文长标题/文本/按钮省略、显示测宽、完整按钮提示、扩大恢复全文，原有动作草稿/图片/菜单/嵌套链路通过；来源821文件及diff检查通过。无新长文案人工截图/悬停或FPS测量，不能宣称全部性能优化完成。下拉/复选框溢出完整核对、数值标签scrub、几何持久化、全编辑器模态与正式扩展执行器仍待完成，整体INCOMPLETE。用户editor_support.h差异保留，阶段保存推送dev。
+
+
+### 2026-11-11：扩展数字标签拖动调值
+
+依据FormField.tsx begin/update/endScrub与NumberInput.tsx adjustByPixels/normalize，数字字段标签接入左键capture拖动，物理位移转换逻辑像素，step1/Shift10、上下限、disabled/readOnly检查。复用ScriptNumberEntry value/sync/changed和共享FormState草稿，不额外发送动作。标签捕获期间pump暂缓重建，松开后处理模型更新，避免控件在拖动栈上销毁；按ID解析数字字段不保留跨重建裸指针。
+
+首轮合成鼠标事件缺display/recipient导致UI检查segfault，补齐事件上下文后专项通过；去掉临时诊断后的最终唯一Release构建成功，extension-form-ui/image/files/state四项通过1.33秒。实际鼠标回归覆盖普通步进/草稿、Shift加速/clamp上下限、拖动中推送模型控件存活、释放重建、禁用标签不capture。来源821文件及diff检查通过。无绘制几何变更/新增人工截图或FPS测量；悬停拖动指针素材及失捕获更广实机验收仍待核对，正式扩展执行器与其他迁移缺口仍未完成，整体INCOMPLETE。用户editor_support.h差异保留，阶段保存推送dev。
