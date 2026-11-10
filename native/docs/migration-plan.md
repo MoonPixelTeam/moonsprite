@@ -5997,3 +5997,12 @@ layers.update存在时，沿现有候选Timeline预检后，使用原生完整Ti
 300像素宽源覆盖脚本、变换、选中源粘贴、UndoRedo及保存重开，直接资源覆盖画布外末端像素和恢复工程；预算越界与超大int尺寸无分配失败、grid256边界检查。整体迁移仍INCOMPLETE；最终正式构建及检查后附。
 
 最终唯一正式Release构建通过；free-tile-project完整回归58.62s、Lua invocation2.87s、tilemap-project0.77s、tile-image-resize3.10s均通过，正式--script-entry-check退出0。旧256尺寸失败断言同步改为画笔/喷枪取消恢复与形状隔离预览、提交/撤销检查；大源夹具使用有效原始ZIP，覆盖editable/recovery重开。来源804文件及diff检查通过。无截图/人工视觉验收；整体迁移仍INCOMPLETE，本阶段保存推送dev。
+
+
+### 2026-11-10：原生 MSE 能力发现真实性
+
+核对 legacy mse_api.rs install/is_supported_path、原始能力测试及原生 planOperations：旧Runtime无条件给所有方法implemented=true，原生尚未接入document.create/open/save、brushes.importImage/createFromSelection/remove、selection.transform、io.export/save/open。按EX-002能力发现真实要求，构建时以有精确片段断言的适配生成原生MSE模块；保留API版本、模块/方法顺序、readOnly和全部可调用入口，仅使isSupported和implemented共同反映宿主实现，含缺口模块标partial。尚未接入的方法仍由原有结果预检拒绝，不删除迁移需求。
+
+真实Lua worker枚举所有模块和方法，覆盖十个已知缺口、已接入方法、mse前缀/空白/未知路径、函数入口保留和只读查询无事务；原版信息测试只适配document模块partial预期。不是笔刷/IO/浮动状态迁移完成；整体INCOMPLETE。最终构建与验证后附。
+
+最终18项Rust原始Lua契约测试全部通过；唯一正式Release重新链接成功；lua-script-runtime全方法发现回归0.29s、lua-script-invocation2.75s通过，正式--script-entry-check退出0，来源804文件及diff检查通过。只证明原生能力发现和已有脚本调用未回退，不能证明未接入操作完成或所有运行条件可用；整体迁移保持INCOMPLETE，无人工视觉验收。阶段保存推送dev。
