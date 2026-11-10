@@ -1,6 +1,7 @@
 {
   "allLegacyAligned": false,
   "sourceSnapshots": {
+    "legacy/src/renderer/src/components/LuaScriptResultDialog.tsx": "05fdf7f358581deba9e31dbd592878166448cb918ae43cc04eaefd9259628a09",
     "legacy/src/shared/types-scripting.ts": "19f63714fe6190ea39279c54cfb7128633e762d53f8b5e1aed70006b0a950feb",
     "legacy/src/renderer/src/components/LuaScriptDialog.tsx": "30153e58065a76df6236d3514b7781cd76bdcfd2fb82f3bf19e91d48a24fa0c7",
     "legacy/src/renderer/src/components/app/useAppScriptRuntime.tsx": "ed65c2f0a2b35685a48658572441425730931e4b3cc684289231d6c08d723f0d",
@@ -4154,7 +4155,7 @@
         "legacy/src/renderer/src/components/canvas-render-frame.ts",
         "legacy/src/renderer/src/components/app/QuickCommandBar.tsx"
       ],
-      "scope": "Native editable text tool integration and text metadata preservation Mask clipboard actual-entry smoke uses existing pasteEditorClipboard/selection placement and keyboard Enter/Escape without overwriting the user system clipboard; read-only system-image injection matches existing clipboard-service contract. Scalar/direct-write mask compositing follows tools-pixel-edit.ts (masks bypass source-over). Selection source preserves world-space off-canvas pixels; nonclipboard translation expands world storage, whole-storage move changes offset; clipboard destination clips to canvas. Actual OS clipboard acquisition remains existing backend; this smoke injects image acquisition and is not an OS integration or visual acceptance claim.",
+      "scope": "Native editable text tool integration and text metadata preservation Mask clipboard actual-entry smoke uses existing pasteEditorClipboard/selection placement and keyboard Enter/Escape without overwriting the user system clipboard; read-only system-image injection matches existing clipboard-service contract. Scalar/direct-write mask compositing follows tools-pixel-edit.ts (masks bypass source-over). Selection source preserves world-space off-canvas pixels; nonclipboard translation expands world storage, whole-storage move changes offset; clipboard destination clips to canvas. Actual OS clipboard acquisition remains existing backend; this smoke injects image acquisition and is not an OS integration or visual acceptance claim. 2026-11-10: Dedicated --script-report-check opens actual native report success/error windows, verifies scroll and fixed footer geometry, closes via actual button and captures BMPs. Uses test-only synthetic report, not a claimed formal script run.",
       "performanceAdaptation": "2026-10-15: shared detached budgeted save/recovery snapshots, one asynchronous save, stable result acceptance, saving modality blocks edits and preserves New/Open/Close continuations. Recovery cleanup waits on worker, no UI future.get. Static sheet preview uploads once. --performance-ui-check validates actual background lifecycle. Per-run isolated performance UI fixtures exercise locked payload cleanup failure, retained metadata/owner and a later explicitly requested save.",
       "brushPreviewPerformanceAdaptation": "2026-10-15: legacy useCanvasBrushOverlay + CanvasOverlayDamage port to laf retained framebuffer: invalidate old/new physical pixel footprints, preserve full viewport fallback for Shift connections/symmetry. No stroke input discarded. Cache procedural eraser boundary geometry from legacy integer row spans; contrast remains sampled from current content. Palette border/swatch repaint only on hover state transitions. --brush-preview-performance-check compares partial/full framebuffer for pointer jumps, exit, fractional zoom, rotated image brush, eraser, Shift and symmetry. Aseprite app BrushPreview studied as behavioral/performance reference only; no app code copied. Adjacent identical preview colors merge into row rectangles at integer zoom (legacy solidCompositePreviewRects; checker parity also limits translucent runs). Fractional zoom/Shift/large regions retain scalar ordering. Regression uses scalar full redraw as oracle, covering alpha 0..255 over multi-layer content.",
       "wheelPerformanceAdaptation": "2026-10-15: legacy scheduleZoomPreview/requestDrawRef adapted to retained native framebuffer: update existing zoom origin/levels synchronously, invalidate full canvas inner viewport including scrollbar strips plus status label, keep unrelated panels intact. Dedicated canvas/status paint paths retain column occlusion. Symmetry still uses existing native sample geometry/order/alpha; skip only samples outside physical clip plus thickness, avoiding offscreen loops proportional to zoomed document dimensions. --wheel-performance-check uses real Manager painting and full-redraw/unclipped oracle across scrollbar thresholds, max zoom and translucent thick symmetry axes; no content upload/history mutations.",
@@ -30356,6 +30357,16 @@
       ],
       "scope": "Lua dialog window draft values and ScriptControl action semantics: initialize/reset by dataKey (last duplicate wins, null/empty ignored), edit typed drafts, busy/hidden/disabled gating, button/check/radio click, contiguous radio peers including hidden/disabled peers, entry Enter/blur and number blur change, slider blur/pointer-up release, combobox/color commit change, close carries local drafts. No per-keystroke callbacks. Label/separator have no actions. Actual native widgets and rendering remain unimplemented.",
       "adaptation": "WinRT JSON value state on owning UI thread; action JSON preserves original wire values. Native widgets own display fallbacks and numeric bounds; this adapter does not invent clamping or callbacks. Returned dialog reset mirrors React initialValues effect; no source pixel work."
+    },
+    {
+      "file": "src/lua_script_report_dialog.h",
+      "classification": "legacy-partial",
+      "sources": [
+        "legacy/src/renderer/src/components/LuaScriptResultDialog.tsx",
+        "legacy/src/renderer/src/locales/zh-CN.ts"
+      ],
+      "scope": "Native PixelDialog success/error report UI: file name/path, changed pixels/history/elapsed summary, newline-joined output or error text, header/footer Close, outside click and Escape dismissal. Scrollable body with fixed header/footer, cached width reflow and visible-line painting for long output. Formal Client report presentation not yet wired; Chinese labels use existing native UI language scope.",
+      "adaptation": "PixelDialog and PixelScrollBar replace ModalShell/HTML pre; Fusion font and native spacing follow user UI specification. Reuses imported legacy close icon. Wrap long lines for native viewport, retains all output text; no WebView. Real formal exe smoke opens success/error windows, checks geometry/scroll/close and captures frames."
     }
   ],
   "assetTransfers": [

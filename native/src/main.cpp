@@ -3,6 +3,7 @@
 #include "native_text_clipboard.h"
 #include "native_document_launch.h"
 #include "native_document_open.h"
+#include "lua_script_report_dialog.h"
 
 using namespace moon::editor;
 using namespace moon;
@@ -417,6 +418,13 @@ int app_main(int argc,char* argv[]) {
     ui::set_use_native_cursors(true); manager.refreshCursor();
 
     const bool canvasResizeCheck=argc>1&&std::string(argv[1])=="--canvas-resize-check";
+    const bool scriptReportCheck=argc>1&&std::string(argv[1])=="--script-report-check";ui::Timer scriptReportTimer(180,editor);
+    if(scriptReportCheck){scriptReportTimer.Tick.connect([&]{scriptReportTimer.stop();try{
+      Skin icons;for(const auto suffix:{"","-disabled"})icons.assets.patches[std::string("close")+suffix]=importSkinPng(assets/"utility-icons"/(std::string("close")+suffix+".png"),32);
+      script::RunSummary summary;summary.fileName="报告🌙.lua";summary.filePath="C:/scripts/报告🌙.lua";summary.transactionCount=3;summary.changedPixelCount=42;summary.elapsedMs=1.25;for(int i=0;i<500;++i)summary.output.push_back("Line "+std::to_string(i)+": script output with Unicode 月相");
+      for(int mode=0;mode<2;++mode){ScriptReportDialog popup(font,skin,icons,mode?std::nullopt:std::optional<script::RunSummary>(summary),"Lua error\nstack trace: test.lua:4");const auto view=editor->display()->bounds();popup.setBounds({view.x+(view.w-500*uiScale)/2,view.y+(view.h-260*uiScale)/2,500*uiScale,260*uiScale});ui::Timer check(120,&popup);check.Tick.connect([&]{check.stop();popup.verifyLayout();writeSmokeFrame(popup.display()->nativeSurface().get(),assets.parent_path()/(mode?"script-error-dialog-smoke.bmp":"script-report-dialog-smoke.bmp"));popup.verifyClose();});check.start();popup.openWindowInForeground();check.stop();}
+      desktop.approved=true;desktop.closeWindow(editor);
+    }catch(const std::exception& e){std::ofstream("native-script-report-error.txt")<<e.what();std::exit(1);}});scriptReportTimer.start();}
     const bool outlineCheck=argc>1&&std::string(argv[1])=="--outline-check";ui::Timer outlineTimer(180,editor);if(outlineCheck){outlineTimer.Tick.connect([&]{outlineTimer.stop();try{editor->smokeOutline();desktop.approved=true;desktop.closeWindow(editor);}catch(const std::exception& e){std::ofstream("native-outline-error.txt")<<e.what();std::exit(1);}});outlineTimer.start();}
     const bool tileRepeatCheck=argc>1&&std::string(argv[1])=="--tile-repeat-check";ui::Timer tileRepeatTimer(180,editor);if(tileRepeatCheck){tileRepeatTimer.Tick.connect([&]{tileRepeatTimer.stop();try{editor->smokeTileRepeat();desktop.approved=true;desktop.closeWindow(editor);}catch(const std::exception& e){std::ofstream("native-tile-repeat-error.txt")<<e.what();std::exit(1);}});tileRepeatTimer.start();}
     const bool quickCommandCheck=argc>1&&std::string(argv[1])=="--quick-command-check";ui::Timer quickCommandTimer(180,editor);if(quickCommandCheck){quickCommandTimer.Tick.connect([&]{quickCommandTimer.stop();try{editor->smokeQuickCommands();desktop.approved=true;desktop.closeWindow(editor);}catch(const std::exception& e){std::ofstream("native-quick-command-error.txt")<<e.what();std::exit(1);}});quickCommandTimer.start();}

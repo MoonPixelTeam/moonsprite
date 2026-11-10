@@ -5723,3 +5723,10 @@ Release相关目标成功，lua-script-invocation通过0.44s。未更新正式ex
 Client统一持有各DialogState，为原生窗口提供edit/click/commit/title-close接口；操作走同一PendingInvocation并在运行期间拒绝重复输入。回调返回后按旧React模型reset重建全部窗口草稿，包括其他未参与本次action的窗口；移除dialog或活动目标失效时释放对应状态。对照源码保留两种关闭区别：LuaScriptDialog窗口标题关闭发送本地草稿，useAppScriptRuntime全局Escape发送最近返回模型值；前阶段含混注释已更正，不擅自改变产品语义。
 
 真实双Lua对话框验证未提交输入隔离、按钮回调收到草稿、modify返回重置、其他窗口草稿同步重置、busy拒绝、标题关闭携带草稿并移除窗口、entry提交后模型更新、Escape模型值和切工程清理。运行崩溃退出码确认0xc00000fd测试栈溢出，显式将该集成目标栈设4MiB，正式程序不变；后续断言揭示fixture onclose应放Dialog构造参数而非show，按原API修正。Release invocation/runtime专项、来源798文件和diff检查通过。原生窗口绘制、正式Editor菜单/消息泵、真实MSE快照和混合事务仍待完成，无正式exe更新/GUI/完整smoke验收，整体INCOMPLETE。阶段保存推送dev，保留用户差异、数据与缓存。
+
+
+### 2026-11-10：原生Lua结果报告窗口阶段
+
+对照LuaScriptResultDialog.tsx，新增ScriptReportDialog/ScriptReportPane，复用PixelDialog、Fusion字体、PixelScrollBar与旧版close图标。成功报告显示文件名/路径、修改像素/撤销步骤/耗时和按原换行拼接的输出；错误报告显示错误正文。正文可滚动，标题与关闭按钮固定，Escape和外部点击关闭，保持当前中文原生UI文案。内容按宽度变化缓存换行，绘制只遍历可见行，避免长输出逐帧完整排版。原生窄视口必要换行，不丢弃输出。
+
+增加唯一正式exe的--script-report-check，实际打开500行成功报告与错误报告，检查正文/页脚间距、滚动和关闭并捕获BMP；这是报告UI验收入口，不代表脚本正式菜单已接入。来源覆盖799文件。唯一正式Release构建成功，--script-report-check实际运行完成，两种窗口布局/500行滚动/关闭断言通过，BMP转PNG后人工检查无重叠；截图为滚动前帧，未声称截图证明滚动后画面。Fusion字体缺少示例emoji时显示现有缺字框，未新增字体替换。来源799与diff检查通过。Client报告展示调用、动态脚本菜单、脚本控件窗口、真实MSE快照与混合事务仍待完成，整体INCOMPLETE。保留用户差异、数据和缓存。
