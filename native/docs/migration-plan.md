@@ -6201,3 +6201,10 @@ selection.transform仍须衔接跨批浮动保留、实际操作次序、后续�
 核对lua-script-operations.ts tiles.place/selection.transform与workspace-commands-selection-flip.ts pendingPaste/paint分支，并沿用既有tilemap_project_test.cpp及用户已批准的Paint/Hybrid资源权威修复。新增四模式×双轴×整格/非整格移动×链接/独立帧32组真实Lua操作链，从独立栅格目标调用放置瓦片、设置选区、移动、翻转及属性，检查预览/提交的资源与单元格、撤销重做、失败回滚和工程重开每个解析缓存。原生命令对照验证脚本接线，不作为独立旧版等价证明；完整selection.transform发现仍false，整体INCOMPLETE。初轮修正测试夹具：保留栅格调用源；MSE place坐标为单元格而非画布像素；确保放置实际改变以验证完整事务上下文。没有更改产品限制。实际验证后附。
 
 最终32组及lua-script-invocation全套5.59s通过，正式--script-entry-check退出0（使用上阶段已构建正式Release，本阶段未改生产源码）。链接样本采用既有linkTileFrame真实linkedCelId夹具；addFrame(true)是复制独立帧，不能冒充链接帧，已修正验收样本。来源806文件及diff通过。本阶段新增脚本集成证据与回归，没有宣称新功能实现、完整瓦片模式旧版等价或FPS提升；保存推送dev，整体INCOMPLETE。
+
+
+### 2026-11-11：开放selection.transform能力发现
+
+沿legacy lua-script-service.ts buildInvocation的layer.kind限制、lua-script-operations.ts activateLayerFrame及freeTiles.place、workspace-commands-selection-flip.ts free源目标优先级，确认从栅格调用切到free层没有已选实例时像素选区变换应无操作。新增Paint/Edit×双轴×先移动/先翻转8组真实Lua，检查选框、实例元数据、资源像素、历史、保存重开及后续失败回滚，不通过缓存写入伪装源变换。既有32组栅格、32组瓦片四模式、整Cel/free及正式浮动异步路径已验收；本轮移除runtime对selection.transform的过期能力屏蔽，保留document/io六项缺口。runtime发现回归和正式Editor脚本先查询支持再执行，防止只有直接调用成功、查询仍拒绝。整体迁移INCOMPLETE；实际验证后附。
+
+唯一正式Release与runtime构建成功，lua-script-runtime及lua-script-invocation两项通过（0.25s、7.64s），正式--script-entry-check退出0，包含先查询selection支持再继续已有浮动变换。来源806文件和diff检查通过。无人工UI/FPS测量，document/io六项host缺口及非RGBA仍待完成；本阶段保存推送dev，整体INCOMPLETE。

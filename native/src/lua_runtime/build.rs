@@ -58,7 +58,7 @@ fn native_supported_path(path: &str) -> bool {
     let path = path.trim().strip_prefix("mse.").unwrap_or(path.trim());
     is_supported_path(path) && !matches!(path,
         "document.create" | "document.open" | "document.save" |
-        "selection.transform" | "io.export" | "io.save" | "io.open")
+        "io.export" | "io.save" | "io.open")
 }
 "#);
     let generated_mse = PathBuf::from(env::var("OUT_DIR").unwrap()).join("mse_api_native.rs");
