@@ -5779,3 +5779,9 @@ Client统一持有各DialogState，为原生窗口提供edit/click/commit/title-
 唯一正式Release构建成功，真实Lua两项专项通过0.86s，--script-window-host-check退出0。覆盖混合一次提交、透明重复颜色、角色色/名称/槽位、无操作、错误ID无部分写入、未锁定创建不选中、Undo/Redo及保存重开。无UI视觉修改/新增截图，无完整smoke。palette.extract与同步像素替换尚未实现且明确拒绝；Client/PendingInvocation仍使用默认选中新色，结果API参数尚待正式Editor偏好接线。全Palette域、正常UI脚本入口与其他迁移仍INCOMPLETE。保留用户差异、数据及缓存。
 
 用户本次明确确认：Hybrid选区浮动采用预览与提交一致，并保留大画布延迟优化。此为后续实现依据，本色板阶段不声称已完成该延迟路径。
+
+### 2026-11-10：MSE色板提取与异步偏好传递阶段
+
+核对lua-script-service applyResult先像素后MSE操作、lua-script-operations palette.extract及workspace-palette applyPalette。候选栅格逐批应用变化/表面替换，提取当前帧合成画面；扫描线顺序去重并忽略全透明，limit截断钳制1..4096，默认256。按分段合成控制输出临时内存且取满即停。append使用全部资源（含隐藏与重复），每次追加保留要求的颜色出现次数；匹配资源按存储顺序各复用一次，不足时创建独立ID。槽位规范化与匹配前景色的选择随像素共享批次历史，后续坏参数在首次写入前拒绝。移除workspace预检中的重复候选计算，保留实际applyRasterResult写入前预检。Client/PendingInvocation可传递创建选择偏好，正式Editor设置接线仍未完成。
+
+Release正式程序构建成功，--script-window-host-check退出0。两项Lua专项通过0.87s，覆盖混合像素取色、扫描线顺序、隐藏与重复资源append、重复append额外出现、Undo/Redo、错误操作无部分写入以及异步Client未锁定创建。初次测试错误假设重复append无操作，按旧版明确数组拼接语义纠正；构建期间源码修改的旧目标曾被复用，更新测试时间戳并完成重新编译后通过。无新增UI视觉变化/截图，无完整smoke。同步像素替换、非RGBA、正式菜单与宿主供给仍INCOMPLETE；分段合成仅控制临时输出，结果预处理仍同步，不声称大画布UI延迟问题已全部解决。保存推送dev，保留用户差异、数据和缓存。

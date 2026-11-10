@@ -7,6 +7,7 @@
 #include "lua_script_result.h"
 #include "raster_geometry.h"
 #include "palette_layout.h"
+#include "layer_compositor.h"
 #include <cmath>
 #include <charconv>
 #include <unordered_set>
@@ -101,12 +102,27 @@ SliceRect sliceRect(const JsonObject& o){return {sliceCoordinate(operationIntege
 void validateSliceMask(const JsonObject& spec){if(spec.HasKey(L"mask")&&spec.GetNamedValue(L"mask").ValueType()==JsonValueType::Array){const auto r=sliceRect(spec);if(std::uint64_t(r.width)*r.height!=spec.GetNamedArray(L"mask").Size())throw std::invalid_argument("selection mask size does not match its bounds");}}
 Pixel operationColor(const IJsonValue& value,std::optional<Pixel> fallback={}){if(value.ValueType()!=JsonValueType::Object){if(fallback)return *fallback;throw std::invalid_argument("color must be an { r, g, b, a } table");}const auto o=value.GetObject();Pixel p=0;int shift=0;for(auto key:{L"r",L"g",L"b",L"a"}){p|=Pixel(std::clamp(operationInteger(o,key,shift==24?255:0),0.,255.))<<shift;shift+=8;}return p;}
 struct OperationPlan {std::optional<SliceState> slices;std::optional<std::optional<SelectionMask>> selection;std::optional<PaletteState> palette;};
-std::vector<OperationPlan> planOperations(const Document& d,const JsonArray& batches,bool selectCreatedPaletteColor){
+std::vector<OperationPlan> planOperations(const Document& d,const JsonArray& batches,bool selectCreatedPaletteColor,SurfaceSnapshot raster){
  SliceState state{d.slices(),d.selectedSliceIds()};auto selection=d.selection();auto palette=d.palette();std::vector<OperationPlan> plans;std::size_t serial=0;
- for(const auto& item:batches){bool changed=false,selectionChanged=false,paletteChanged=false;const auto batch=item.GetObject();if(batch.HasKey(L"operations"))for(const auto& entry:batch.GetNamedArray(L"operations")){
+ bool extracts=false;for(const auto& item:batches){auto b=item.GetObject();if(b.HasKey(L"operations"))for(const auto& op:b.GetNamedArray(L"operations"))extracts|=op.GetObject().GetNamedString(L"path")==L"palette.extract";}
+ for(const auto& item:batches){bool changed=false,selectionChanged=false,paletteChanged=false;const auto batch=item.GetObject();
+  // Legacy applyResult installs a batch's raster before executing its MSE ops.
+  if(extracts){if(batch.HasKey(L"surfaceChange")&&batch.GetNamedValue(L"surfaceChange").ValueType()!=JsonValueType::Null)raster=surface(batch.GetNamedObject(L"surfaceChange").GetNamedObject(L"after"),L"rgba");else if(batch.GetNamedArray(L"changes").Size()){auto pixels=std::make_shared<std::vector<Pixel>>(*raster.pixels);for(const auto& value:batch.GetNamedArray(L"changes")){auto c=value.GetObject();(*pixels)[std::size_t(c.GetNamedNumber(L"index"))]=packed(c.GetNamedNumber(L"after"));}raster.pixels=std::move(pixels);}}
+  if(batch.HasKey(L"operations"))for(const auto& entry:batch.GetNamedArray(L"operations")){
   const auto operation=entry.GetObject();const auto path=operation.GetNamedString(L"path");
-  if(path!=L"slices.create"&&path!=L"slices.update"&&path!=L"slices.remove"&&path!=L"selection.set"&&path!=L"selection.clear"&&path!=L"selection.invert"&&path!=L"palette.create"&&path!=L"palette.update"&&path!=L"palette.remove")throw std::logic_error("Lua MSE operation adapter is incomplete: "+winrt::to_string(path));
+  if(path!=L"slices.create"&&path!=L"slices.update"&&path!=L"slices.remove"&&path!=L"selection.set"&&path!=L"selection.clear"&&path!=L"selection.invert"&&path!=L"palette.create"&&path!=L"palette.update"&&path!=L"palette.remove"&&path!=L"palette.extract")throw std::logic_error("Lua MSE operation adapter is incomplete: "+winrt::to_string(path));
   auto spec=operationSpec(operation);
+  if(path==L"palette.extract"){
+   const auto limit=std::size_t(std::clamp(operationInteger(spec,L"limit",256),1.,4096.));std::vector<Pixel> colors;std::unordered_set<Pixel> seen;
+   // Bounded strips retain scanline order without allocating a full composite.
+   const auto* slot=d.timeline().findCel(d.layer().id,d.frame().id);const auto resolved=slot?d.timeline().resolveSurface(slot->id):timeline::Resolution{};
+   const auto owner=resolved.source?resolved.source->id:std::string{};
+   for(int y=0;y<d.height()&&colors.size()<limit;){const int rows=std::min(d.height()-y,std::max(1,65536/std::max(1,d.width())));auto pixels=compositeNormalRegion(d.timeline(),d.frame().id,{0,y,d.width(),rows},d.layer().id,raster.pixels.get(),raster.width,raster.x,raster.y,false,{},owner);for(auto color:pixels)if((color>>24)&&seen.insert(color).second){colors.push_back(color);if(colors.size()==limit)break;}y+=rows;}
+   if(spec.HasKey(L"mode")&&spec.GetNamedValue(L"mode").ValueType()==JsonValueType::String&&spec.GetNamedString(L"mode")==L"append"){std::vector<Pixel> combined;for(const auto& e:palette.entries)combined.push_back(e.color);combined.insert(combined.end(),colors.begin(),colors.end());colors=std::move(combined);}
+   std::unordered_set<int> used;std::vector<int> ids;
+   for(auto color:colors){auto e=std::find_if(palette.entries.begin(),palette.entries.end(),[&](const auto& e){return e.color==color&&!used.count(e.id);});int id;if(e!=palette.entries.end())id=e->id;else{if(palette.nextId<1||palette.nextId==std::numeric_limits<int>::max())throw std::length_error("Palette color ID exceeds native integer range");id=palette.nextId++;auto n=std::to_string(id);palette.entries.push_back({id,U"颜色 "+std::u32string(n.begin(),n.end()),color});}ids.push_back(id);used.insert(id);}
+   auto slots=normalizePaletteSlots(palette.entries,ids,{},palette.columns);if(slots!=normalizePaletteSlots(palette.entries,palette.order(),palette.slots,palette.columns)){palette.slots=std::move(slots);palette.independentOrder.reset();palette.selected.clear();palette.primaryId=0;for(int id:palette.order()){auto e=std::find_if(palette.entries.begin(),palette.entries.end(),[&](const auto& e){return e.id==id;});if(e->color==palette.primary){palette.selected={id};palette.primaryId=id;break;}}paletteChanged=true;}continue;
+  }
   if(path==L"palette.create"||path==L"palette.update"||path==L"palette.remove"){
    if(path==L"palette.create"){
     const auto color=spec.HasKey(L"r")?operationColor(spec):spec.HasKey(L"color")?operationColor(spec.GetNamedValue(L"color")):palette.primary;
@@ -145,7 +161,7 @@ RasterSummary applyRasterResult(Document& d,Target& target,const std::string& js
  // The full executor will route these explicitly; no data may be dropped.
  if(result.GetNamedArray(L"createdDocuments").Size())throw std::logic_error("Lua created documents require the workspace result executor");
  for(const auto& item:result.GetNamedArray(L"createdLayers")){const auto layer=item.GetObject();(void)layer.GetNamedBoolean(L"visible");(void)layer.GetNamedBoolean(L"locked");if(d.timeline().hasLayer(winrt::to_string(layer.GetNamedString(L"id"))))throw std::invalid_argument("Lua layer id already exists");}
- const auto plans=planOperations(d,result.GetNamedArray(L"batches"),selectCreatedPaletteColor);std::size_t batchIndex=0;
+ const auto plans=planOperations(d,result.GetNamedArray(L"batches"),selectCreatedPaletteColor,target.expected);std::size_t batchIndex=0;
  RasterSummary summary;
  for(const auto& item:result.GetNamedArray(L"batches")){
   const auto wire=item.GetObject();RasterBatch batch;batch.before=target.expected;const auto& plan=plans.at(batchIndex++);batch.slices=plan.slices;batch.selection=plan.selection;batch.palette=plan.palette;
@@ -182,7 +198,6 @@ WorkspaceSummary applyWorkspaceResult(Document& d,Target& target,const std::stri
  (void)validateResult(target,json);if(d.active()||!target.matches(d))throw std::logic_error("Lua script target changed");
  auto result=JsonObject::Parse(winrt::to_hstring(json));const auto documents=result.GetNamedArray(L"createdDocuments");
  if(documents.Size()&&!addSession)throw std::logic_error("Lua created document session adopter is not connected");
- (void)planOperations(d,result.GetNamedArray(L"batches"),selectCreatedPaletteColor);
  // Build candidates before changing the source document; unsupported modes and
  // invalid native structures cannot leave earlier raster batches half-applied.
  std::vector<Document> prepared;prepared.reserve(documents.Size());std::size_t pixels=0;
