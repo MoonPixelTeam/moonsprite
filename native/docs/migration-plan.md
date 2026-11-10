@@ -5889,3 +5889,10 @@ Release正式程序构建成功，--script-window-host-check退出0。两项Lua�
 修复上一阶段pumpScripts在笔刷future未ready时整体return，导致独立脚本目录发现/报告/会话窗口也不被接收的问题。移除启动时不必要的笔刷扫描，只在运行时请求；未ready时继续Client/Host泵，仅排队执行等候笔刷元数据。runScript不覆盖未完成future，避免std::async future析构在UI线程隐式join。沿旧useAppScriptRuntime独立列表/报告生命周期，不改变脚本操作语义。
 
 扩展正式--script-entry-check：注入未完成promise，证明列表发现仍完成；排队后替换Document再完成promise，验证不执行到新文档；真实Lua抛错显示报告，Escape清除，再运行脚本成功修改像素。正式Release重建成功，入口专项/窗口专项/Editor播放专项均退出0，来源804文件及diff检查通过。未改变UI外观、未做全软件smoke或全软件性能声明。旧扩展菜单贡献、未迁移MSE域、普通播放后取色模式等缺口仍INCOMPLETE，保留用户差异/数据/缓存，阶段保存推送dev。
+
+
+### 2026-11-10：脚本活动图层刷新与延迟目标保护验收
+
+对照旧 lua-script-service.ts applyResult 最终 activeLayerId 经 workspace.selectLayer 更新界面，修复正式 Editor::pumpScripts 只检测文档身份/content/history/frame 而漏掉 layer 的问题。Document::selectLayer 不增加像素和历史版本，故仅切图层的 Lua 结果也必须按图层身份变化刷新；空闲泵仍不刷新。
+
+正式 --script-entry-check 新增同文档在笔刷延迟期间切图层/帧取消排队、只切活动图层刷新且不增加content/history版本，以及三次菜单重建保留唯一原文件夹命令。测试构造先纠正原生新建层插入前端、Lua快照按旧版底到顶排序两处目标选择错误，并移除对空白1×1 Cel的越界测试读取；均未改变产品层序语义。正式Release重建成功，最终入口专项退出0。两项Lua专项通过1.20s，来源804文件及diff检查通过。没有UI外观调整或截图验收，不代表全软件性能或迁移完成；创建文档的正式入口验收、扩展贡献菜单、其他MSE域和普通播放后取色模式缺口仍待完成。保留用户差异、用户数据及缓存，阶段保存推送dev。
