@@ -6171,3 +6171,12 @@ selection.transform仍须衔接跨批浮动保留、实际操作次序、后续�
 沿legacy lua-script-operations.ts729、workspace-commands-selection-flip.ts、tools-selection-transform-apply.ts224与workspace-selection-timeline-flip.test.ts核对完整/稀疏Cel、链接/独立帧、有/无选区、水平/垂直翻转、单/双Cel选择的32种组合。真实Lua执行翻转后移动，验证无选区移动不生效、稀疏整层翻转只镜像自身缓冲并保持偏移、链接只修改共享源一次、显式双Cel分别修改；全部检查历史、撤销重做与工程保存重开。基础8组及扩展32组均通过，最终lua-script-invocation全套7.38s通过。仅增加迁移证据与回归，生产行为未改；完整selection.transform发现仍false，非栅格组合仍需闭环，整体INCOMPLETE。来源及正式入口实际结果后附。
 
 正式--script-entry-check退出0，来源806文件与diff检查通过。未新增界面或生产行为，未进行人工图像/FPS测量。本阶段验收证据保存推送dev，整体迁移仍INCOMPLETE。
+
+
+### 2026-11-11：脚本非栅格整Cel翻转
+
+核对legacy workspace-selection-timeline-flip.ts18：网格镜像单元格位置及取样方向，自由瓦片只切换未锁实例方向而不移动实例。新增真实Lua从栅格调用目标执行资源改色/放置/翻转/无选区移动/当前层属性的四组网格自由×水平垂直回归，检查元数据、非对称资源像素、撤销重做、保存重开及后续失败回滚。1×1瓦片方向等价，改用2×2取样映射检查；自由源默认偏移不为零，样本明确设置offsetX/Y=0避免画布外放置。生产默认及语义未改，完整selection.transform能力保持false，资源选区模式仍待闭环。实际验证结果后附。
+
+自由实例翻转按原点负坐标-1取样，原点在边缘的内容会落出画布；最终样本置于(2,2)并检查相应坐标，不修改旧语义。最终lua-script-invocation全套6.41s通过，包含资源非对称像素及引用保存重开。生产源码未改，使用已构建正式Release执行入口；实际结果后附。
+
+本轮正式--script-entry-check退出1，native/native-script-entry-error.txt记录Cannot replace brush file (Windows error 5)，入口检查未通过；未重试、未删除测试目录。来源806文件与diff检查通过；专项迁移模型证据通过不代替正式入口验收。未进行人工图像/FPS测量，整体INCOMPLETE，本阶段保存推送dev。
