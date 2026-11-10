@@ -401,8 +401,10 @@ namespace {
 bool hasSelectionTransform(const JsonObject& result){for(const auto& value:result.GetNamedArray(L"batches")){auto batch=value.GetObject();if(batch.HasKey(L"operations"))for(const auto& op:batch.GetNamedArray(L"operations"))if(op.GetObject().GetNamedString(L"path")==L"selection.transform")return true;}return false;}
 void refreshScriptTarget(const Document& d,Target& target){
  const auto* slot=d.timeline().findCel(target.layerId,target.frameId);auto r=slot?d.timeline().resolveSurface(slot->id):timeline::Resolution{};
- if(r.surface)target.expected={r.surface->width,r.surface->height,r.surface->offsetX,r.surface->offsetY,std::make_shared<const std::vector<Pixel>>(r.surface->pixels.begin(),r.surface->pixels.end())};
- else{const auto g=d.displayedLayerGeometry(target.layerId);target.expected={g[0],g[1],g[2],g[3],std::make_shared<const std::vector<Pixel>>(std::size_t(g[0])*g[1])};}target.revision=d.revision();target.capturePreview(d);
+ if(r.surface){const auto& s=*r.surface;
+  if(!target.expected.pixels||target.expectedStorage!=s.pixels.identity()||target.expectedStorageRevision!=s.pixels.revision()||target.expected.width!=s.width||target.expected.height!=s.height||target.expected.x!=s.offsetX||target.expected.y!=s.offsetY)target.expected={s.width,s.height,s.offsetX,s.offsetY,std::make_shared<const std::vector<Pixel>>(s.pixels.begin(),s.pixels.end())};
+  target.expectedStorage=s.pixels.identity();target.expectedStorageRevision=s.pixels.revision();
+ }else{const auto g=d.displayedLayerGeometry(target.layerId);if(target.expectedStorage||!target.expected.pixels||g!=std::array<int,4>{target.expected.width,target.expected.height,target.expected.x,target.expected.y})target.expected={g[0],g[1],g[2],g[3],std::make_shared<const std::vector<Pixel>>(std::size_t(g[0])*g[1])};target.expectedStorage=nullptr;target.expectedStorageRevision=0;}target.revision=d.revision();target.capturePreview(d);
 }
 }
 static RasterSummary applyRasterResultImpl(Document& d,Target& target,const std::string& json,bool selectCreatedPaletteColor,const PlaybackHost& playback,const PanelHost& panels,const StyleClipboardHost& styles,const NotificationHost& notify,const BrushHost& brushes,bool operationsOnly,const std::optional<SurfaceSnapshot>& historyBefore={}){

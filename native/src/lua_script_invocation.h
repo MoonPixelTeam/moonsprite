@@ -15,6 +15,8 @@ struct Target {
  std::uint64_t identity=0,revision=0;
  std::string documentId,layerId,frameId;
  SurfaceSnapshot expected;
+ const void* expectedStorage=nullptr;
+ std::uint64_t expectedStorageRevision=0;
  bool previewGuard=false,expectedFloating=false;
  std::uint64_t overlayRevision=0,contentMutationRevision=0;
  std::optional<SelectionMask> expectedSelection;

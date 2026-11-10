@@ -47,7 +47,7 @@ InvocationCapture::InvocationCapture(const Document& d,std::string mse,std::opti
   const auto* c=d.timeline().findCel(d.layer().id,f.id);if(!c)continue;const auto r=d.timeline().resolveSurface(c->id);const auto& s=*r.surface;
   auto pixels=std::make_shared<std::vector<Pixel>>();SurfaceSnapshot snapshot{s.width,s.height,s.offsetX,s.offsetY,pixels};
   sources_.push_back({r.source->id,s.width,s.height,s.offsetX,s.offsetY,s.pixels.identity(),s.pixels.revision(),pixels});out.cels.push_back({c->id,f.id,i+1,snapshot});
-  if(f.id==d.frame().id)out.target.expected=snapshot;
+  if(f.id==d.frame().id){out.target.expected=snapshot;out.target.expectedStorage=s.pixels.identity();out.target.expectedStorageRevision=s.pixels.revision();}
  }
  if(!out.target.expected.pixels){auto pixels=std::make_shared<std::vector<Pixel>>();out.target.expected={g[0],g[1],g[2],g[3],pixels};sources_.push_back({{},g[0],g[1],g[2],g[3],nullptr,0,pixels});}
 }
