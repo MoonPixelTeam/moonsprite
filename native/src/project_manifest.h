@@ -82,6 +82,8 @@ struct ReadManifest {
   std::string manifestUtf8;
   std::shared_ptr<const Bytes> sourceArchive;
 };
+// Shared legacy normalizeLayerStyles boundary for script and project input.
+std::optional<timeline::ColorOverlayStyle> normalizeLayerStylesJson(const std::string&);
 ReadManifest readProjectManifest(std::shared_ptr<const Bytes> bytes,Limits limits={});
 // One clock read per missing/invalid timestamp, in decoder created/updated order.
 // Injection lets differential tests share the actual legacy decode clock.

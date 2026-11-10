@@ -10,6 +10,7 @@ struct RasterBatch {
  std::optional<SliceState> slices;
  std::optional<std::optional<SelectionMask>> selection;
  std::optional<PaletteState> palette;
+ std::vector<std::pair<std::string,std::optional<timeline::ColorOverlayStyle>>> styles;
  std::optional<std::vector<std::pair<std::string,int>>> durations;
  std::optional<std::vector<timeline::LoopSection>> loops;
  struct OwnerReplacement {std::string ownerId;timeline::Surface before,after;};
@@ -51,14 +52,19 @@ struct PanelRequest {
 // after the batch commit, before any created document adoption. The host must
 // not replace/destroy the document or retain its reference.
 using PanelHost=std::function<void(Document&,const PanelRequest&)>;
+struct StyleClipboardHost {
+ std::function<std::optional<timeline::ColorOverlayStyle>()> read;
+ std::function<void(const timeline::ColorOverlayStyle&)> write;
+ explicit operator bool()const{return bool(read)&&bool(write);}
+};
 struct RasterSummary {std::size_t transactionCount=0,changedPixelCount=0;};
 // Raster/layer stage of the workspace executor. Rejects unsupported workspace
 // operations/created documents before the first edit; never silently drops them.
-RasterSummary applyRasterResult(Document& activeDocument,Target&,const std::string& resultJson,bool selectCreatedPaletteColor=true,const PlaybackHost& playback={},const PanelHost& panels={});
+RasterSummary applyRasterResult(Document& activeDocument,Target&,const std::string& resultJson,bool selectCreatedPaletteColor=true,const PlaybackHost& playback={},const PanelHost& panels={},const StyleClipboardHost& styles={});
 struct WorkspaceSummary {std::size_t transactionCount=0,changedPixelCount=0;bool documentBoundary=false;};
 // The workspace callback adopts each completed document in result order. It
 // must preserve existing sessions; the last adopted document becomes active.
-WorkspaceSummary applyWorkspaceResult(Document& activeDocument,Target&,const std::string& resultJson,const std::function<void(Document&&)>& addSession,bool selectCreatedPaletteColor=true,const PlaybackHost& playback={},const PanelHost& panels={});
+WorkspaceSummary applyWorkspaceResult(Document& activeDocument,Target&,const std::string& resultJson,const std::function<void(Document&&)>& addSession,bool selectCreatedPaletteColor=true,const PlaybackHost& playback={},const PanelHost& panels={},const StyleClipboardHost& styles={});
 struct RunSummary {
  std::string fileName,filePath;std::vector<std::string> output;
  std::size_t transactionCount=0,changedPixelCount=0;double elapsedMs=0;
@@ -71,5 +77,5 @@ struct RunOutcome {RunSummary summary;std::optional<ClientSession> session;};
 RunOutcome receiveWorkspaceResult(Document&,Target&,const std::string& resultJson,
  const std::function<void(Document&&)>& addSession,
  const std::function<void(const std::string&)>& closeSession,
- const std::string& failureSessionId={},bool selectCreatedPaletteColor=true,const PlaybackHost& playback={},const PanelHost& panels={});
+ const std::string& failureSessionId={},bool selectCreatedPaletteColor=true,const PlaybackHost& playback={},const PanelHost& panels={},const StyleClipboardHost& styles={});
 }

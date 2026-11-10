@@ -691,6 +691,7 @@ void Editor::initializeScripts(const std::filesystem::path& root){
    for(const auto& [name,index]:std::initializer_list<std::pair<const wchar_t*,int>>{{L"color",1},{L"palette",0},{L"layers",2},{L"freeTileInstances",13},{L"history",8},{L"preview",3},{L"reference",9},{L"tileset",11},{L"brushes",12},{L"tabletAssist",10}}){JsonObject item;item.Insert(L"id",JsonValue::CreateStringValue(name));item.Insert(L"visible",JsonValue::CreateBooleanValue(visible[index]));const auto group=docking_.groupOf(index);auto dock=group>=0?docking_.groups[group].dock:panels::Dock::Right;if(!docking_.custom){if(index==0||index==1)dock=panels::Dock::Left;else if(index==2)dock=panels::Dock::Bottom;}const wchar_t* docks[]{L"left",L"right",L"bottom",L"floating"};item.Insert(L"dock",JsonValue::CreateStringValue(docks[int(dock)]));entries.Append(item);}
    return script::buildMseSnapshot(d,scripts_->localBrushes,entries);
   },[this](Document&& d){addProject(std::move(d));refresh();});
+  state->host->setStyleClipboardHost({[this]{return layerStyleClipboard_?copiedLayerStyle_:std::optional<timeline::ColorOverlayStyle>{};},[this](const auto& style){copiedLayerStyle_=style;layerStyleClipboard_=true;}});
   state->host->setPanelHost([this](Document& d,const script::PanelRequest& request){
    if(&d!=&document||!documentOpen_||homeOpen_)return;
    const std::map<std::string,int> columns{{"color",1},{"palette",0},{"layers",2},{"freeTileInstances",13},{"history",8},{"preview",3},{"reference",9},{"tileset",11},{"brushes",12},{"tabletAssist",10}};const auto id=columns.at(request.id);
@@ -753,6 +754,15 @@ void Editor::smokeScriptEntry(){
  runPanelCheck("mse.workspace.showPanel('freeTileInstances')");if(freeTileInstancesOpen_)throw std::runtime_error("Empty raster instance panel bypassed existing availability");
  if(document.identity()!=panelIdentity||document.historyPosition()!=panelHistory||document.pixels()[0]!=0xff112233)throw std::runtime_error("Panel script edited document");
  palettePanelOpen_=savedVisible[0];colorPickerOpen_=savedVisible[1];layersPanelOpen_=savedVisible[2];previewPanelOpen_=savedVisible[3];historyPanelOpen_=savedVisible[8];referencePanelOpen_=savedVisible[9];tabletVisibility_.visible=savedVisible[10];tilesetPanelOpen_=savedVisible[11];brushLibraryPanelOpen_=savedVisible[12];docking_=savedDocking;
+ // Styles share one document transaction and the native menu clipboard.
+ const auto savedStyleClipboard=copiedLayerStyle_;const auto savedStyleClipboardValid=layerStyleClipboard_;const auto styleHistory=document.historyPosition();
+ runPanelCheck("app.transaction(function() app.activeImage:drawPixel(1,0,0xff765432); mse.styles.apply{styles={colorOverlay={enabled=true,color={r=17,g=34,b=51,a=255}},shadow={enabled=true,offsetX=-3}}}; mse.styles.copy(); mse.styles.setEnabled{enabled=false} end)");
+ if(document.historyPosition()!=styleHistory+1||!document.layer().layerStyles||document.layer().layerStyles->enabled||document.layer().layerStyles->color!=0xff332211||!layerStyleClipboard_||!copiedLayerStyle_||!copiedLayerStyle_->enabled)throw std::runtime_error("Formal script style transaction/clipboard failed");
+ document.undo();if(document.layer().layerStyles||document.pixels()[1])throw std::runtime_error("Formal script style undo failed");document.redo();
+ runPanelCheck("mse.styles.clear()");if(document.layer().layerStyles)throw std::runtime_error("Formal style clear ignored");
+ if(!menuCommands_.invoke("pasteLayerStyles")||!document.layer().layerStyles||!document.layer().layerStyles->enabled)throw std::runtime_error("Native paste did not use script clipboard");
+ if(!menuCommands_.invoke("copyLayerStyles"))throw std::runtime_error("Native copy style refused");runPanelCheck("mse.styles.clear(); mse.styles.paste()");if(!document.layer().layerStyles||document.layer().layerStyles->shadow.offsetX!=-3)throw std::runtime_error("Script paste did not use native clipboard");
+ copiedLayerStyle_=savedStyleClipboard;layerStyleClipboard_=savedStyleClipboardValid;
  // Panel requests finish on the original tab before created documents are adopted.
  ensureProjects();const auto sourceIdentity=document.identity();const auto sourceTab=activeProject_,tabs=projects_.size();
  runPanelCheck("mse.workspace.hidePanel('palette'); local s=Sprite(2,2); s.name='Script adopted'; app.activeImage:drawPixel(0,0,0xff556677)");

@@ -5905,3 +5905,12 @@ Release正式程序构建成功，--script-window-host-check退出0。两项Lua�
 自由瓦片实例栏目沿 WorkspacePanels.tsx 自动显隐约束，集成模式或无实例时不强制展示、不改变用户布局模式。普通Lua输入仍要求可编辑栅格活动目标；此阶段不冒充已支持自由瓦片目标脚本。正式入口新增九个可用普通栏目的hide/show和四种dock实际状态检查，以及无实例栏目的可用性；补充脚本改变栏目后创建新文档时原tab/像素保留、新tab激活及新像素验收。Lua专项覆盖全部ID、参数默认/忽略、混合顺序、缺失宿主、非法后续操作无部分写入和异步Client转发。负例先纠正测试fixture透明像素含RGB时错误地与0比较。唯一正式Release构建成功；--script-entry-check（含栏目/新工程接管）、--script-window-host-check、--script-playback-check均退出0；两项Lua专项通过1.15s，来源804文件与diff检查通过。
 
 没有新绘制素材或布局重设计，未进行截图/人工视觉验收。其他MSE域、扩展贡献菜单、播放模式相关取色、非RGBA及Hybrid大画布延迟路径等仍有缺口，整体迁移INCOMPLETE。保留用户差异、数据、缓存，阶段保存推送dev。
+
+
+### 2026-11-10：MSE 样式五操作事务与共享剪贴板迁移
+
+对照 lua-script-operations.ts styles.apply/copy/paste/clear/setEnabled、workspace-commands-layer-properties.ts 和 core/layer-styles.ts，复用现有工程readColorOverlay规范化（数字转换、边界、颜色、全部效果），公开共享JSON入口供脚本调用，工程解码原路径不变。脚本规范化样式不保留未规范化的raw字段。按原生结构历史端点保存样式元数据，与同批像素、选择、色板、动画共用一次撤销；全结果预检目标/样式，未知图层及非法样式不部分写入；排除adjustment目标，启停只处理已配置效果。非活动图层按明确ID处理，元数据修改不创建缺失Cel。
+
+新增StyleClipboardHost贯通PendingInvocation/Client/ScriptWindowHost，正式Editor使用已有copiedLayerStyle_/layerStyleClipboard_，复制无样式目标不清空原剪贴板，copy不新增历史；同批复制保留操作时样式，即使后续清除/停用。真实Lua测试混合Undo/Redo、五操作及默认值、位置参数、数值转换、非法预检、缺宿主、保存重开、非活动图层、空Cel和异步剪贴板。组合检查补齐同批样式修改后的palette.extract候选合成，确保取色使用新样式；不含样式的脚本不复制样式元数据或读取剪贴板。正式入口新增脚本copy到原生菜单paste、原生copy到脚本paste及混合撤销验收。首轮构建因specFor自动替换误入palette扫描出现编译失败，已移除误插代码；取色回归断言按既有色板语义改查可见顺序中的颜色，保留隐藏资源，不能以entries总数判断提取结果。唯一正式Release重建成功；最终--script-entry-check退出0（含样式事务及原生/脚本剪贴板互通），--script-window-host-check与--script-playback-check退出0，两项Lua专项通过1.18s，来源804文件与diff检查通过。
+
+仍有其他MSE域、扩展贡献菜单、普通播放模式相关取色、非RGBA和Hybrid大画布延迟等缺口，整体INCOMPLETE。沿用宿主回调发生在批次提交后的既有约束，不承诺宿主异常回滚。没有新UI绘制/素材或截图验收。保留用户差异、数据、缓存，阶段保存推送dev。

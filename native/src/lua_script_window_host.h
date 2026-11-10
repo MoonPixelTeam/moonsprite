@@ -49,6 +49,7 @@ public:
  :client_(client),font_(font),skin_(skin),icons_(icons),display_(display),colorStorage_(std::move(storage)),snapshot_(std::move(snapshot)),adopt_(std::move(adopt)){if(!display_||!snapshot_)throw std::invalid_argument("Script host needs display and real snapshot provider");}
  ~ScriptWindowHost(){clearReport();clearWindows();}
  ScriptWindowHost(const ScriptWindowHost&)=delete;ScriptWindowHost& operator=(const ScriptWindowHost&)=delete;
+ void setStyleClipboardHost(script::StyleClipboardHost host){client_.setStyleClipboardHost(std::move(host));}
  void setPanelHost(script::PanelHost host){client_.setPanelHost(std::move(host));}
  void setPlaybackHost(script::PlaybackHost host){client_.setPlaybackHost(std::move(host));}
  bool run(const Document* active,std::string id){if(client_.busy())return false;try{return client_.run(active,std::move(id),active?snapshot_(*active):std::string{},adopt_);}catch(const std::exception& e){client_.failRequest(e.what());return true;}}

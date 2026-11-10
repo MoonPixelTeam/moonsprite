@@ -80,6 +80,9 @@ std::optional<timeline::ColorOverlayStyle> readColorOverlay(const JsonObject& ow
  return s;
 }
 }
+std::optional<timeline::ColorOverlayStyle> normalizeLayerStylesJson(const std::string& json){
+ JsonObject owner;owner.Insert(L"layerStyles",JsonValue::Parse(winrt::to_hstring(json)));ReadManifest unused;auto style=readColorOverlay(owner,unused,{});if(style)style->preservedJson.clear();return style;
+}
 ReadManifest readProjectManifest(std::shared_ptr<const Bytes> bytes,Limits limits) {return readProjectManifest(std::move(bytes),limits,nullptr);}
 static ReadManifest readManifestWithClock(std::shared_ptr<const Bytes>,Limits,TimelapseRestoreReport*,const std::function<std::string()>&);
 ReadManifest readProjectManifestWithClock(std::shared_ptr<const Bytes> bytes,Limits limits,std::function<std::string()> clock){if(!clock)throw std::invalid_argument("Missing project decode clock");return readManifestWithClock(std::move(bytes),limits,nullptr,clock);}
