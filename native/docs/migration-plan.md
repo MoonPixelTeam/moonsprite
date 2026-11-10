@@ -6191,6 +6191,13 @@ selection.transform仍须衔接跨批浮动保留、实际操作次序、后续�
 
 ### 2026-11-11：正式脚本入口保留浮动事务
 
-核对legacy useAppScriptRuntime.tsx runLuaScript及lua-script-service.ts runLuaScriptForActiveDocument：等待笔刷列表后捕获调用，不提前提交浮动选区。移除原生Editor::runScript的提前提交，保留原有cancelStroke手势清理。正式入口新增5/257画布及延迟笔刷列表回归，检查启动无内容/历史/浮动版本变化、等待保留、继续变换、一次撤销恢复原像素、重做、失败回滚及取消/错误报告清理。整体迁移INCOMPLETE；实际验证后附。用户已明确批准色板同步修改真实瓦片资源及全部引用，包括共享资源影响锁定图层，后续实现依此，不将确认当作已完成。
+核对legacy useAppScriptRuntime.tsx runLuaScript及lua-script-service.ts runLuaScriptForActiveDocument：等待笔刷列表后捕获调用，不提前提交浮动选区。移除原生Editor::runScript的提前提交，保留原有cancelStroke手势清理。正式入口新增5/257画布及延迟笔刷列表回归，检查启动无内容/历史/浮动版本变化、等待保留、继续变换、一次撤销恢复原像素、重做、失败回滚及取消/错误报告清理。整体迁移INCOMPLETE；实际验证后附。色板资源同步实际上已于2026-11-10完成，见“色板同步更新真实瓦片资源”及现有普通/真实Lua资源回归；前阶段交接误称尚未实现，现依据源码和记录更正。
 
 最终唯一正式Release构建成功，lua-script-invocation全套5.77s通过，正式--script-entry-check退出0（包含新增异步浮动入口检查）。来源806文件与diff检查通过。未进行人工图像/FPS测量，整体迁移仍INCOMPLETE；本阶段保存推送dev。
+
+
+### 2026-11-11：真实Lua瓦片四模式选区事务
+
+核对lua-script-operations.ts tiles.place/selection.transform与workspace-commands-selection-flip.ts pendingPaste/paint分支，并沿用既有tilemap_project_test.cpp及用户已批准的Paint/Hybrid资源权威修复。新增四模式×双轴×整格/非整格移动×链接/独立帧32组真实Lua操作链，从独立栅格目标调用放置瓦片、设置选区、移动、翻转及属性，检查预览/提交的资源与单元格、撤销重做、失败回滚和工程重开每个解析缓存。原生命令对照验证脚本接线，不作为独立旧版等价证明；完整selection.transform发现仍false，整体INCOMPLETE。初轮修正测试夹具：保留栅格调用源；MSE place坐标为单元格而非画布像素；确保放置实际改变以验证完整事务上下文。没有更改产品限制。实际验证后附。
+
+最终32组及lua-script-invocation全套5.59s通过，正式--script-entry-check退出0（使用上阶段已构建正式Release，本阶段未改生产源码）。链接样本采用既有linkTileFrame真实linkedCelId夹具；addFrame(true)是复制独立帧，不能冒充链接帧，已修正验收样本。来源806文件及diff通过。本阶段新增脚本集成证据与回归，没有宣称新功能实现、完整瓦片模式旧版等价或FPS提升；保存推送dev，整体INCOMPLETE。
