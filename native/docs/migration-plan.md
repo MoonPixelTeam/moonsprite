@@ -6449,3 +6449,10 @@ PNG后台解码完成后保留像素及私有surface，每次pump最多上传262
 依据FormField.tsx begin/update/endScrub与NumberInput.tsx adjustByPixels/normalize，数字字段标签接入左键capture拖动，物理位移转换逻辑像素，step1/Shift10、上下限、disabled/readOnly检查。复用ScriptNumberEntry value/sync/changed和共享FormState草稿，不额外发送动作。标签捕获期间pump暂缓重建，松开后处理模型更新，避免控件在拖动栈上销毁；按ID解析数字字段不保留跨重建裸指针。
 
 首轮合成鼠标事件缺display/recipient导致UI检查segfault，补齐事件上下文后专项通过；去掉临时诊断后的最终唯一Release构建成功，extension-form-ui/image/files/state四项通过1.33秒。实际鼠标回归覆盖普通步进/草稿、Shift加速/clamp上下限、拖动中推送模型控件存活、释放重建、禁用标签不capture。来源821文件及diff检查通过。无绘制几何变更/新增人工截图或FPS测量；悬停拖动指针素材及失捕获更广实机验收仍待核对，正式扩展执行器与其他迁移缺口仍未完成，整体INCOMPLETE。用户editor_support.h差异保留，阶段保存推送dev。
+
+
+### 2026-11-11：嵌套扩展提示窗口几何持久化
+
+依据ExtensionDialogForm dialog storageKey、ModalShell与panel-preferences load/save/remap，增加根表单configurePromptGeometry原生配置入口，按extension/node/compact键隔离嵌套窗口记录；相对显示区域的逻辑位置/尺寸/旧viewport写入JSON，复用已有panel_docking响应映射和atomic_file写入。resize仅标记，根pump合并写盘；关闭/节点移除保存，读取损坏/超1MiB回默认，写入失败保留诊断且允许关闭。正式扩展执行器未接线，不能将此配置入口称作生产扩展宿主已完成。
+
+唯一正式Release构建成功，extension-form-ui/image/files/state四项通过1.41秒；实际窗口写盘后移除/重读/重新创建恢复相同几何，另一扩展身份不复用同记录，原有嵌套/菜单/文件/输入链路通过。来源821文件及diff检查通过。未新增多显示器实机/缩放变更截图和故障注入，首开fitContent、完整屏幕变更通知与正式执行器仍有缺口，整体INCOMPLETE。用户editor_support.h差异保留，阶段保存推送dev。
