@@ -4,6 +4,7 @@
 #include "extension_storage.h"
 #include "javascript_text.h"
 #include "extension_diagnostics.h"
+#include "extension_windows.h"
 #include <optional>
 #include <cmath>
 #include <winrt/Windows.Foundation.Collections.h>
@@ -48,6 +49,7 @@ struct HostServices {
 class RequestHost {
  HostServices services_;WorkspaceServices workspace_;DiagnosticServices diagnostics_;
 
+ std::shared_ptr<WindowRouter> windows_;
  MenuState menus_;
  RuntimeExtension extension_;std::vector<std::string> permissions_;Storage& storage_;FileDropRouter& drops_;RuntimeRegistry& registry_;CommandHandlers handlers_;std::vector<RuntimeCommand> commands_;bool active_=true;std::function<FileDropRouter::Bytes(const std::string&)> readResource_;
  static std::u16string units(const winrt::hstring& s){return {reinterpret_cast<const char16_t*>(s.data()),s.size()};}
@@ -68,10 +70,11 @@ public:
   field(L"checked",next.checked);field(L"visible",next.visible);menus_.setCommand(id,next);return true;
  }
  void setWorkspaceServices(WorkspaceServices services){workspace_=std::move(services);}
+ void setWindowRouter(std::shared_ptr<WindowRouter> router){if(windows_==router)return;if(windows_)windows_->deactivate();windows_=std::move(router); }
  void setDiagnosticServices(DiagnosticServices services){diagnostics_=std::move(services);}
  void setServices(HostServices services){services_=std::move(services);}
  void setResourceReader(std::function<FileDropRouter::Bytes(const std::string&)> reader){readResource_=std::move(reader);}
- void deactivate(){if(!active_)return;active_=false;drops_.clear(extension_.id);menus_.clear();}
+ void deactivate(){if(!active_)return;active_=false;drops_.clear(extension_.id);menus_.clear();if(windows_)windows_->deactivate();}
  std::optional<winrt::Windows::Data::Json::JsonObject> handle(const winrt::Windows::Data::Json::IJsonValue& raw,bool ownsSession,const std::string& locale,std::optional<std::string> encodedValue={},std::function<void(std::wstring,std::wstring)> deferNetwork={}){
   using namespace winrt::Windows::Data::Json;
   if(!ownsSession||!active_||!extension_.enabled||!raw||raw.ValueType()!=JsonValueType::Object)return {};
@@ -124,6 +127,7 @@ public:
    else if(method=="colors.setPrimary"||method=="colors.setSecondary"){
     const auto color=colorParam(params.HasKey(L"color")?params.GetNamedValue(L"color"):JsonValue::CreateNullValue());const auto action=method=="colors.setPrimary"?workspace_.setPrimary:workspace_.setSecondary;if(!action)throw std::runtime_error("Native color selection is not connected");action(color);
    }
+   else if(method.rfind("windows.",0)==0){if(!windows_)throw std::runtime_error("Native extension windows are not connected");windows_->request(method,params);}
    else if(method=="diagnostics.log"){
     if(!diagnostics_.record||!diagnostics_.status||!diagnostics_.console)throw std::runtime_error("Native extension diagnostics are not connected");
     const auto message=params.HasKey(L"message")?params.GetNamedValue(L"message"):IJsonValue{nullptr};

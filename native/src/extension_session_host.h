@@ -46,6 +46,7 @@ public:
  std::optional<MenuState> menus(const Token& token)const{if(auto s=find(token.extensionId,token.generation))return s->requests.menus();return {};}
  bool reportCommandState(const Token& token,const winrt::Windows::Data::Json::JsonObject& params){if(auto s=find(token.extensionId,token.generation))return s->requests.reportCommandState(params,true);return false;}
  void setWorkspaceServices(const Token& token,WorkspaceServices services){if(auto s=find(token.extensionId,token.generation))s->requests.setWorkspaceServices(std::move(services));}
+ void setWindowRouter(const Token& token,std::shared_ptr<WindowRouter> router){if(auto s=find(token.extensionId,token.generation))s->requests.setWindowRouter(std::move(router));}
  void setDiagnosticServices(const Token& token,DiagnosticServices services){if(auto s=find(token.extensionId,token.generation))s->requests.setDiagnosticServices(std::move(services));}
  void setServices(const Token& token,HostServices services){if(auto s=find(token.extensionId,token.generation))s->requests.setServices(std::move(services));}
  void setResourceReader(const Token& token,std::function<FileDropRouter::Bytes(const std::string&)> reader){if(auto s=find(token.extensionId,token.generation))s->requests.setResourceReader(std::move(reader));}

@@ -6291,3 +6291,10 @@ selection.transform仍须衔接跨批浮动保留、实际操作次序、后续�
 核对ExtensionRuntimeHost.tsx464–471、stringParam及core/runtime-diagnostics。RequestHost新增diagnostics.log，SessionHost按token注入record/status/console服务；权限与存活检查先于调用，缺宿主显式失败。保留旧版先String(message)记录、严格level=error更新状态、再String(level)规范化控制台等级、最后校验message字符串及UTF16 slice2000的可观察顺序。JSON数组采用显式栈join，保留null/undefined/布尔/数值/普通对象字符串语义及toString遮蔽失败，避免深嵌套C++递归栈。recorderDiagnosticServices把宿主固定扩展身份绑定现有异步Recorder，保留记录模式、写盘和错误处理；状态和控制台由宿主服务连接。
 
 实际日志文件测试覆盖中文错误、调用顺序、非法数值/缺失/嵌套数组消息仍产生旧版前置效果、array等级严格与强制转换差异、全部等级/未知等级、补充平面字符UTF16截断、数字指数边界、对象转换失败、权限拒绝、缺服务与关闭会话。最终extension-diagnostics/session-host/request-host/network构建通过，四项CTest通过，diagnostics0.04s/network23.44s；来源810文件和diff检查通过。能力查询旧版会列举尚未接入的windows方法，因此本阶段未伪报支持，runtime.getCapabilities仍缺口。正式Editor未引用SessionHost，本阶段没有修改或重构建正式exe，扩展执行引擎与原生窗口仍待迁移。整体INCOMPLETE；阶段保存推送dev。
+
+
+### 2026-11-11：扩展窗口请求路由与会话清理
+
+核对ExtensionRuntimeHost.tsx295–331/410–442、extension-overlay-geometry.ts及platform_extension_windows.rs。WindowRouter承接open/close/setVisible/postMessage：资源白名单、overlay16上限与有限小数边界、单dialog替换/title强制转换/form标志、native ASCII ID/JS round/32..2048尺寸、复用原窗口资源和创建标志、overlay/dialog冲突及路由优先级、close-all和已关闭嵌入窗口晚到消息抑制。呈现服务携带完整类型定义区分同ID不同呈现，不允许缺服务假成功；只有服务open成功才写入状态。RequestHost先权限/认证，再路由；SessionHost token绑定，替换/禁用/析构清理全部窗口，单项close抛错仍继续其他清理，旧token不关闭新会话。
+
+新增回调级窗口测试覆盖默认值、复用、参数边界、冲突、数量、消息payload/undefined、显隐、失效消息、不存在目标、呈现失败不留状态、全部关闭及失败清理。最终五个宿主目标构建成功，extension-windows/session-host/request-host/diagnostics/network五项CTest通过，windows0.04s/network23.32s。来源812文件和diff检查通过。此阶段是窗口路由与生命周期迁移，测试呈现回调不是实际原生窗口；表单节点UI/透明命中/执行引擎/Editor生产接线仍未迁移，不宣称窗口已可从正式程序使用，runtime.getCapabilities继续明确缺口。正式exe无代码接线变化，未重构建或新增preview。整体INCOMPLETE，阶段保存推送dev。
