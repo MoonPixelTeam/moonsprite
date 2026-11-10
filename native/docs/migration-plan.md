@@ -5717,3 +5717,9 @@ Release相关目标成功，lua-script-invocation通过0.44s。未更新正式ex
 逐项对照LuaScriptDialog.tsx valuesForDialog/valuesRef/ScriptControl，新增DialogState单窗口草稿：dataKey初始化与返回模型重置、完整草稿操作载荷；entry本地修改后Enter/blur发change，number仅blur，slider在pointer-up/blur发release，color/combobox提交change，button/check/radio发click。连续radio范围按原controls列表判断，隐藏/禁用peer也参与互斥更新，separator阻断分组；busy/隐藏/禁用控件无用户操作。close含当前未提交草稿，不把每次键入发送Lua。标签/分隔线没有交互；数值边界与显示fallback仍由未来原生控件承接，不在状态适配层另造钳制。
 
 实际Lua生成多控件dialog并接收原生action，验证未提交文本由按钮回调读到，包含各类commit时机、radio分隔/隐藏peer、颜色/选项、busy/隐藏/禁用拒绝、close载荷与模型reset。首次测试进程崩溃，移出过大的main局部测试栈后通过，未改产品行为或提高产品栈。Release构建、invocation/runtime专项及来源798文件/diff检查通过。仅控件操作状态，不包含原生窗口绘制、正式Editor菜单/消息泵或真实MSE快照/混合事务，无正式exe更新/GUI/完整smoke验收，整体INCOMPLETE。本阶段保存推送dev，保留用户差异、数据与缓存。
+
+### 2026-11-10：Lua多对话框草稿接入客户端阶段
+
+Client统一持有各DialogState，为原生窗口提供edit/click/commit/title-close接口；操作走同一PendingInvocation并在运行期间拒绝重复输入。回调返回后按旧React模型reset重建全部窗口草稿，包括其他未参与本次action的窗口；移除dialog或活动目标失效时释放对应状态。对照源码保留两种关闭区别：LuaScriptDialog窗口标题关闭发送本地草稿，useAppScriptRuntime全局Escape发送最近返回模型值；前阶段含混注释已更正，不擅自改变产品语义。
+
+真实双Lua对话框验证未提交输入隔离、按钮回调收到草稿、modify返回重置、其他窗口草稿同步重置、busy拒绝、标题关闭携带草稿并移除窗口、entry提交后模型更新、Escape模型值和切工程清理。运行崩溃退出码确认0xc00000fd测试栈溢出，显式将该集成目标栈设4MiB，正式程序不变；后续断言揭示fixture onclose应放Dialog构造参数而非show，按原API修正。Release invocation/runtime专项、来源798文件和diff检查通过。原生窗口绘制、正式Editor菜单/消息泵、真实MSE快照和混合事务仍待完成，无正式exe更新/GUI/完整smoke验收，整体INCOMPLETE。阶段保存推送dev，保留用户差异、数据与缓存。

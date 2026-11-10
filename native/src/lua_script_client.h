@@ -1,5 +1,7 @@
 #pragma once
 #include "lua_script_runtime.h"
+#include "lua_script_dialog_state.h"
+#include <map>
 namespace moon::script {
 // useAppScriptRuntime.tsx lifecycle adapted to the native message pump. The
 // host supplies its current active Document and real MSE snapshot per request.
@@ -13,7 +15,13 @@ class Client {
  std::string scriptsJson_="[]";
  bool loading_=true,loadFailed_=false;
  bool dispatching_=false;
- void closeSession(){if(session_){auto id=session_->sessionId;session_.reset();try{(void)runtime_.close(std::move(id));}catch(...){}}}
+ std::map<std::string,DialogState> dialogs_;
+ void replaceDialogs(){
+  std::map<std::string,DialogState> next;
+  if(session_)for(const auto& value:winrt::Windows::Data::Json::JsonArray::Parse(winrt::to_hstring(session_->dialogsJson))){auto dialog=value.GetObject();next.emplace(winrt::to_string(dialog.GetNamedString(L"id")),winrt::to_string(dialog.Stringify()));}
+  dialogs_=std::move(next);
+ }
+ void closeSession(){dialogs_.clear();if(session_){auto id=session_->sessionId;session_.reset();try{(void)runtime_.close(std::move(id));}catch(...){}}}
  static std::string exceptionText(){try{throw;}catch(const winrt::hresult_error& e){return winrt::to_string(e.message());}catch(const std::exception& e){return e.what();}catch(...){return "Lua script failed";}}
  void fail(){error_=exceptionText();report_.reset();}
 public:
@@ -25,6 +33,19 @@ public:
  bool running()const{return pending_.busy();}
  bool busy()const{return running()||session_.has_value();}
  const std::optional<ClientSession>& session()const{return session_;}
+ const DialogState* dialog(const std::string& id)const{auto it=dialogs_.find(id);return it==dialogs_.end()?nullptr:&it->second;}
+ // Window adapters edit this single draft store. Callback results replace all
+ // windows' drafts together, matching the legacy dialog model reset effect.
+ bool editDialog(const std::string& dialogId,const std::string& controlId,const std::string& value){auto it=dialogs_.find(dialogId);return it!=dialogs_.end()&&it->second.edit(controlId,value,running());}
+ bool clickDialog(const Document* active,const std::string& dialogId,const std::string& controlId,std::string mse,std::function<void(Document&&)> adopt={}){
+  auto it=dialogs_.find(dialogId);if(it==dialogs_.end())return false;auto action=it->second.click(controlId,running());return action&&dispatch(active,std::move(*action),std::move(mse),std::move(adopt));
+ }
+ bool commitDialog(const Document* active,const std::string& dialogId,const std::string& controlId,DialogState::Commit trigger,std::string mse,std::function<void(Document&&)> adopt={}){
+  auto it=dialogs_.find(dialogId);if(it==dialogs_.end())return false;auto action=it->second.commit(controlId,trigger,running());return action&&dispatch(active,std::move(*action),std::move(mse),std::move(adopt));
+ }
+ bool closeDialog(const Document* active,const std::string& dialogId,std::string mse,std::function<void(Document&&)> adopt={}){
+  auto it=dialogs_.find(dialogId);if(it==dialogs_.end()||running())return false;auto action=it->second.close();return dispatch(active,std::move(action),std::move(mse),std::move(adopt));
+ }
  const std::optional<RunSummary>& report()const{return report_;}
  const std::string& error()const{return error_;}
  const std::string& scriptsJson()const{return scriptsJson_;}
@@ -64,14 +85,14 @@ public:
   // Cache eligibility before reception: an adopter can destroy active.
   const bool suppress=dispatching_&&!session_;
   try{auto outcome=pending_.tick(active,deadline,maxPixels);if(!outcome)return;
-   session_=std::move(outcome->session);auto& summary=outcome->summary;
+   session_=std::move(outcome->session);replaceDialogs();auto& summary=outcome->summary;
    message=session_&&summary.changedPixelCount==0?Message::DialogReady:summary.changedPixelCount>0?Message::Completed:Message::CompletedNoChanges;
    if(!summary.output.empty())report_=std::move(summary);
    dispatching_=false;
   }catch(...){closeSession();if(!suppress){fail();message=Message::Failed;}dispatching_=false;}
  }
- // Escape closes the report first, then dispatches the last dialog's current
- // values exactly like legacy closeTopDialog. Busy dialogs still consume Escape.
+ // Legacy app-level Escape uses the returned model values, while the window
+ // title close uses its local drafts via closeDialog. Preserve that distinction.
  bool closeTopDialog(const Document* active,std::string mse,std::function<void(Document&&)> adopt={}){
   if(report_||!error_.empty()){dismissReport();return true;}
   if(!session_)return false;

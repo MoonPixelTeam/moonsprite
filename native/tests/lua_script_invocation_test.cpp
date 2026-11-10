@@ -41,6 +41,21 @@ void dialogStateTests(Runtime& runtime,const std::filesystem::path& root){
   state.reset(winrt::to_string(modified.Stringify()));check(!state.click("r1")&&!state.edit("name",R"("ignored")")&&!state.commit("name",DialogState::Commit::Enter),"Hidden/disabled controls accepted action");check(state.click("r2").has_value()&&!JsonObject::Parse(winrt::to_hstring(state.valuesJson())).GetNamedBoolean(L"r1"),"Hidden radio peer not cleared");runtime.close(session).get();
  }
 }
+void clientDialogTests(Runtime& runtime,const std::filesystem::path& root){
+ 
+ std::ofstream file(root/"scripts"/"client-drafts.lua");file<<"local a; a=Dialog{title='First',onclose=function() print('close:'..a.data.name) end}; a:entry{id='name',text='first'}; a:button{id='apply',text='Apply',onclick=function() print(a.data.name); a:modify{id='name',text='reset'} end}; a:show{wait=false}; local b; b=Dialog{title='Second',onclose=function() print('close:'..b.data.name) end}; b:entry{id='name',text='second'}; b:button{id='apply',text='Apply',onclick=function() print(b.data.name) end}; b:show{wait=false}";file.close();
+ auto edited=std::make_unique<Document>(fixture(3,1,false));Client client(runtime);
+ auto pump=[&]{const auto end=deadline();while(client.running()&&std::chrono::steady_clock::now()<end){client.tick(edited.get(),deadline());std::this_thread::yield();}check(!client.running()&&client.error().empty(),"Client draft operation failed");};
+ client.run(edited.get(),"client-drafts.lua","null");pump();check(client.session().has_value(),"Draft client has no session");auto models=JsonArray::Parse(winrt::to_hstring(client.session()->dialogsJson));check(models.Size()==2,"Multiple dialog creation failed");auto first=winrt::to_string(models.GetObjectAt(0).GetNamedString(L"id")),second=winrt::to_string(models.GetObjectAt(1).GetNamedString(L"id"));
+ check(client.editDialog(first,"name",R"("local first")")&&client.editDialog(second,"name",R"("local second")"),"Client draft editing failed");check(!client.editDialog("missing","name",R"("ignored")"),"Unknown dialog edited");
+ check(client.clickDialog(edited.get(),first,"apply","null"),"Draft button did not dispatch");check(!client.editDialog(second,"name",R"("busy")")&&!client.clickDialog(edited.get(),second,"apply","null"),"Busy window accepted edits/actions");pump();check(client.report()&&client.report()->output==std::vector<std::string>{"local first"},"Button did not send local draft");check(client.dialog(first)&&JsonObject::Parse(winrt::to_hstring(client.dialog(first)->valuesJson())).GetNamedString(L"name")==L"reset","Callback modify did not replace draft");check(JsonObject::Parse(winrt::to_hstring(client.dialog(second)->valuesJson())).GetNamedString(L"name")==L"second","Callback did not reset other window draft");
+ client.dismissReport();check(client.editDialog(second,"name",R"("title draft")")&&client.closeDialog(edited.get(),second,"null"),"Window close not dispatched");pump();check(client.report()&&client.report()->output==std::vector<std::string>{"close:title draft"}&&!client.dialog(second)&&client.dialog(first),"Window close lost drafts or retained window");client.dismissReport();
+ check(client.editDialog(first,"name",R"("enter draft")")&&client.commitDialog(edited.get(),first,"name",DialogState::Commit::Enter,"null"),"Client entry commit failed");pump();
+ // App-level Escape deliberately sends the returned model, matching legacy
+ // useAppScriptRuntime, rather than the title-close local value path.
+ check(client.editDialog(first,"name",R"("escape draft")")&&client.closeTopDialog(edited.get(),"null"),"App Escape did not dispatch");pump();check(!client.session()&&!client.dialog(first)&&client.report()&&client.report()->output==std::vector<std::string>{"close:enter draft"},"Escape model-values behavior changed");
+ client.dismissReport();client.run(edited.get(),"client-drafts.lua","null");pump();models=JsonArray::Parse(winrt::to_hstring(client.session()->dialogsJson));first=winrt::to_string(models.GetObjectAt(0).GetNamedString(L"id"));client.observe(nullptr);check(!client.dialog(first)&&!client.busy(),"Workspace change retained window drafts");
+}
 int main(int argc,char** argv){try{winrt::init_apartment();check(argc==2,"Fixture path required");
  // Capture real RGBA bytes, including alpha-zero RGB and nonzero storage origin.
  auto d=std::make_unique<Document>(fixture(3,2,true));d->previewSelection(SelectionMask{-1,2,2,2,{1,0,1,1}});d->setSourceFilePath(L"C:/源/画.moonsprite");
@@ -230,5 +245,6 @@ int main(int argc,char** argv){try{winrt::init_apartment();check(argc==2,"Fixtur
  }
  {Runtime stopped(root);Client client(stopped);stopped.shutdown();client.refresh();check(!client.loading()&&client.loadFailed()&&client.scriptsJson()=="[]","Discovery enqueue failure state wrong");}
  dialogStateTests(runtime,root);
+ clientDialogTests(runtime,root);
  std::cout<<"Lua document capture, budgets, target guards and worker execution passed\n";return 0;
  }catch(const winrt::hresult_error& e){std::cerr<<winrt::to_string(e.message());return 1;}catch(const std::exception& e){std::cerr<<e.what();return 1;}}

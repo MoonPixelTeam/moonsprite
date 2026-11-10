@@ -1022,6 +1022,9 @@ if(WIN32 AND MOON_CARGO_EXECUTABLE)
   target_link_libraries(lua-script-runtime-tests PRIVATE moon-lua-runtime moon-project-reader windowsapp shell32 ws2_32 userenv bcrypt ntdll advapi32)
   add_test(NAME lua-script-runtime COMMAND lua-script-runtime-tests "${CMAKE_CURRENT_BINARY_DIR}/lua-script-runtime-test-owned")
   add_executable(lua-script-invocation-tests tests/lua_script_invocation_test.cpp)
+  # Integration fixtures and nested native capture/receive calls exceed the
+  # default 1 MiB Windows test stack (STATUS_STACK_OVERFLOW 0xc00000fd).
+  target_link_options(lua-script-invocation-tests PRIVATE /STACK:4194304)
   target_include_directories(lua-script-invocation-tests PRIVATE src "${CMAKE_CURRENT_BINARY_DIR}/generated")
   target_link_libraries(lua-script-invocation-tests PRIVATE moon-lua-invocation moon-lua-runtime moon-project-reader windowsapp shell32 ws2_32 userenv bcrypt ntdll advapi32)
   add_test(NAME lua-script-invocation COMMAND lua-script-invocation-tests "${CMAKE_CURRENT_BINARY_DIR}/lua-script-invocation-test-owned")
