@@ -400,6 +400,10 @@ void withScriptFloating(Document&,const std::function<void()>&);
 namespace {
 bool hasSelectionTransform(const JsonObject& result){for(const auto& value:result.GetNamedArray(L"batches")){auto batch=value.GetObject();if(batch.HasKey(L"operations"))for(const auto& op:batch.GetNamedArray(L"operations"))if(op.GetObject().GetNamedString(L"path")==L"selection.transform")return true;}return false;}
 void refreshScriptTarget(const Document& d,Target& target){
+ // Legacy leaves the invocation baseline unchanged when an MSE operation
+ // deletes its original layer. Remaining operations use the active layer;
+ // the next batch/callback must still reject the missing original target.
+ if(!d.timeline().hasLayer(target.layerId))return;
  const auto* slot=d.timeline().findCel(target.layerId,target.frameId);auto r=slot?d.timeline().resolveSurface(slot->id):timeline::Resolution{};
  if(r.surface){const auto& s=*r.surface;
   if(!target.expected.pixels||target.expectedStorage!=s.pixels.identity()||target.expectedStorageRevision!=s.pixels.revision()||target.expected.width!=s.width||target.expected.height!=s.height||target.expected.x!=s.offsetX||target.expected.y!=s.offsetY)target.expected={s.width,s.height,s.offsetX,s.offsetY,std::make_shared<const std::vector<Pixel>>(s.pixels.begin(),s.pixels.end())};
@@ -421,6 +425,7 @@ static RasterSummary applyRasterResultImpl(Document& d,Target& target,const std:
   // Execute the original raster-first / MSE-in-order contract. Reuse the
   // existing adapters one operation at a time under one rollback/undo boundary.
   for(const auto& value:result.GetNamedArray(L"batches")){
+   if(!d.timeline().hasLayer(target.layerId))throw std::logic_error("Lua script target changed");
    const auto wire=value.GetObject();if(d.layer().id!=target.layerId)d.selectLayer(target.layerId);if(d.frame().id!=target.frameId)d.selectFrame(target.frameId);
    auto rollback=brushBatchRollback(d);const auto beforeTarget=target;const auto history=d.historyRevision();const auto label=unicode(wire.GetNamedString(L"label",result.GetNamedString(L"fileName",L"脚本")));
    try{orderedBrushBatch(d,label,[&]{
@@ -446,6 +451,7 @@ static RasterSummary applyRasterResultImpl(Document& d,Target& target,const std:
    }catch(...){rollback();target=beforeTarget;throw;}
   }
   if(result.GetNamedArray(L"createdLayers").Size()){
+   if(!d.timeline().hasLayer(target.layerId))throw std::logic_error("Lua script target changed");
    if(d.layer().id!=target.layerId)d.selectLayer(target.layerId);if(d.frame().id!=target.frameId)d.selectFrame(target.frameId);d.commitFloatingPaste();
    auto tail=JsonObject::Parse(result.Stringify());tail.Remove(L"activeLayerId");tail.Remove(L"activeFrameNumber");tail.Insert(L"batches",JsonArray{});refreshScriptTarget(d,target);auto changed=applyRasterResult(d,target,winrt::to_string(tail.Stringify()),selectCreatedPaletteColor,playback,panels,styles,notify,brushes);summary.transactionCount+=changed.transactionCount;summary.changedPixelCount+=changed.changedPixelCount;
   }refreshScriptTarget(d,target);

@@ -6150,3 +6150,10 @@ selection.transform仍须衔接跨批浮动保留、实际操作次序、后续�
 复制历史记录保留当时的物化预览：取消浮动再撤销复制，小画布恢复复制前物化像素，大画布延迟路径恢复稳定像素；回归按旧版同步当前帧、保存结构历史的时机区分断言，不将其改为提前提交。
 
 最终唯一正式Release构建成功；lua-script-invocation全套3.86s通过，正式--script-entry-check退出0。来源806文件与diff检查通过。未进行人工图像/FPS测量；完整selection.transform能力仍false，整体INCOMPLETE。本阶段保存推送dev。
+
+
+### 2026-11-10：脚本原目标删除后的完整批次
+
+对照legacy lua-script-service.ts566、607–611：MSE删除原图层后，同批剩余操作仍作用于当前幸存图层，原捕获基线不重绑定；下一批次或回调才拒绝缺失目标。原生refreshScriptTarget此前在删除后立即读取缺失图层几何并异常，导致合法同批删除整体回滚；现保留原基线与目标身份。真实Lua覆盖小画布/延迟预览、原目标删除后的图层属性与色板、同批撤销重做、后续失败恢复与下一批次拒绝。完整迁移仍INCOMPLETE，实际验证后附。
+
+补齐明确的下一批次与createdLayers尾部缺失原目标检查，避免Document::selectLayer缺失ID静默返回后误用幸存图层。新增真实模型对话框结果接收检查：会话保留原目标身份，后续匹配拒绝；不重绑定幸存者。最终唯一正式Release构建成功，lua-script-invocation全套6.69s通过，正式--script-entry-check退出0；来源806文件和diff检查通过。未进行人工图像/FPS测量，整体INCOMPLETE；本阶段保存推送dev。
