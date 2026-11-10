@@ -6319,3 +6319,10 @@ selection.transform仍须衔接跨批浮动保留、实际操作次序、后续�
 沿ExtensionDialogForm.tsx与原组件测试，FormWindow复用FormState、PixelDialog、PixelEntry、ScriptNumberEntry、PixelDropdown、PixelCheckbox、PixelButton及滚动条，承接基础文本/数字/下拉/开关/按钮/choice/file服务入口，column/sidebar/slot/row/split布局、状态/超时/重试/关闭，图标直接使用legacy导入close素材。动作队列由pump发送，避免回执重建控件发生在控件回调中；文本/数字按键保留控件，idle pump不重复布局重绘。正式唯一exe增加--extension-form-check，创建实际窗口并检查草稿编辑→点击→busy禁用→匹配回执清草稿解锁→宿主关闭。
 
 首轮矩形offset模板参数编译错误已修正，初次失败log保留；随后唯一正式Release构建通过，extension-form-ui0.70秒及extension-form-state0.02秒通过，来源816文件及diff检查通过。实际查看build/Release/extension-form-smoke.bmp，控件/字体可见，截图捕获在busy绘制阶段，不作为解锁后画面的证明，解锁以实际状态断言为证。图片、嵌套dialog、工具提示、context指针入口、原生文件选择器/保存适配及扩展执行器/正式UI入口仍未完成；未知控件明确显示未迁移状态，不声明完整表单领域完成。正式exe已更新，无preview，整体INCOMPLETE，阶段保存推送dev。
+
+
+### 2026-11-11：扩展表单原生文件选择与原子保存
+
+对照ExtensionDialogForm file分支、platform/extension-file.ts及platform_dialogs.rs347–390，FormFiles绑定默认Windows打开/保存对话框，FormWindow默认使用该服务。取消打开返回optional空值不发送空上传；默认gif/png/webp、多选开关及accept常见MIME/后缀过滤，读取只交付name/MIME/bytes，16文件/16MiB在元数据和流读取期间双重限制，失败显示form status。导出先校验frontend名称120/12MiB，承接平台UTF8名称240、control字符及1..16 ASCII字母数字扩展名约束；每次让用户选择目的地，复用writeBinaryFileAtomic与覆盖确认，匹配回执一次保存规则不变。
+
+首轮缺cwctype编译错误已修正并保留log。最终唯一正式Release、文件/状态目标构建成功，extension-form-ui0.69s、files0.06s、state0.02s全部通过。文件测试注入chooser结果，实际读取中文文件、多选、空取消、超限/缺失拒绝、名称失败先于chooser、原子写入以及FormState匹配回执/重放不二次写盘；没有人工对话框验收。来源818文件与diff检查通过。文件读取/chooser仍同步，图片/嵌套弹窗/tooltip/context及正式扩展执行器接线未完成，不宣称表单全量完成。正式唯一exe更新，无preview，整体INCOMPLETE，阶段保存推送dev。

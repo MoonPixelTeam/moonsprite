@@ -34,6 +34,7 @@ public:
  Value effectiveValue(const std::wstring& id)const{Object all;defaults(view_.GetNamedArray(L"nodes"),all);auto value=property(values_,id.c_str());return nullish(value)?property(all,id.c_str()):value;}
  bool shown(const std::wstring& id)const{Object all;defaults(view_.GetNamedArray(L"nodes"),all);return bool(find(view_.GetNamedArray(L"nodes"),id,all));}
  void tick(std::chrono::steady_clock::time_point now){if(active_&&!loaded_&&error_.empty()&&now-started_>=std::chrono::seconds(15))error_=L"Extension form did not respond.";}
+ void fileFailed(std::wstring message){if(active_){view_.Insert(L"status",Json::CreateStringValue(message));busy_=false;}}
  void loadFailed(std::wstring error){if(active_)error_=std::move(error);}
  void retry(std::chrono::steady_clock::time_point now=std::chrono::steady_clock::now()){if(!active_)return;error_.clear();loaded_=false;busy_=false;values_=Object{};pending_.clear();++generation_;started_=now;}
  void close(){active_=false;busy_=false;pending_.clear();values_=Object{};}
