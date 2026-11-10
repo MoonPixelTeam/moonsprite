@@ -5705,3 +5705,9 @@ Release相关目标成功，lua-script-invocation通过0.44s。未更新正式ex
 对照useAppScriptRuntime.tsx refreshLuaScripts及PreferencesDialog.tsx deleteLuaScript，Runtime新增异步list/remove，在既有worker复用完整Service，保持首次seed、扩展主入口/命令元数据、扩展脚本禁止单删、安全本地路径规则。删除及随后刷新共用FIFO，目录扫描和首次写入无需放在UI线程；失败通过独立future返回，不杀死worker，shutdown承接已接受列表请求并拒绝新请求。
 
 核验上一阶段协调器发现两处缺口并修正：action/context JSON可在Rust dispatch之前失败，此时VM没有移除原session，future异常路径须主动排队关闭；adopter可能同步泵出嵌套调用，接收期间保持busy并拒绝嵌套start/tick，避免替换target。真实Lua坏action验证清理后session无法dispatch，成功/抛异常adopter验证重入拒绝及最终busy恢复。后台磁盘测试覆盖seed/扩展列表、删除与后续列表FIFO、扩展及穿越删除拒绝、失败隔离和shutdown排空。Release相关目标及invocation/runtime两项专项通过，来源覆盖796和diff检查通过。正式Editor调用方、真实MSE快照/混合事务、动态菜单与原生对话框仍未完成，无正式exe更新/GUI/完整smoke验收，整体INCOMPLETE。保存推送dev，保留用户差异、数据及缓存。
+
+### 2026-11-10：Lua客户端发现、报告与持久对话框生命周期阶段
+
+直接承接useAppScriptRuntime.tsx，新增Client围绕既有PendingInvocation/Runtime：脚本列表loading/loadFailed与异步刷新；正在运行或有持久session时run不重复启动；真实活动目标观察，切工程/层/帧后移除session并排队关闭；RunSummary输出报告、错误报告及供正式宿主本地化的状态枚举；dispatch失败关闭session，目标已失效则不显示过期错误。Escape先关闭输出/错误报告，再按最后一个dialog及controls dataKey/value构造close action，忙碌时仍消费Escape。析构关闭存活session并沿PendingInvocation清理未完成请求，Runtime必须后析构；调用方仍必须提供真实MSE快照。
+
+真实Lua专项覆盖发现列表、modeless运行与持久会话互斥、输出报告及状态、Escape先报告后dialog完整往返、再次启动、切工程后旧session无法dispatch、缺工程错误与Escape、析构后session失效、坏action错误及恢复、切工程后过期回调错误抑制、停止runtime后的发现失败。Release invocation目标成功，invocation/runtime两项通过0.77s；来源覆盖797文件与diff检查通过。客户端不包含原生窗口/控件，不宣称正式Editor脚本运行已接入；动态菜单、消息泵、报告/对话框控件、真实MSE快照和混合事务仍待完成，无正式exe更新/GUI/完整smoke验收，整体INCOMPLETE。阶段保存推送dev，用户差异、数据与缓存保留。
