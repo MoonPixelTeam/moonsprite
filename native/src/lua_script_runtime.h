@@ -96,7 +96,7 @@ public:
  bool busy()const{return receiving_||capture_.has_value()||response_.valid();}
  void start(const Document& d,std::string scriptId,std::string mseSnapshot,std::function<void(Document&&)> adopt={},std::optional<std::filesystem::path> savePath={}){
   if(busy())throw std::logic_error("Lua invocation is already pending");
-  capture_.emplace(d,std::move(mseSnapshot),std::move(savePath));scriptId_=std::move(scriptId);sessionId_.clear();action_.clear();adopt_=std::move(adopt);
+  capture_.emplace(d,std::move(mseSnapshot),std::move(savePath),true);scriptId_=std::move(scriptId);sessionId_.clear();action_.clear();adopt_=std::move(adopt);
  }
  void dispatch(const Document& d,const ClientSession& session,std::string action,std::string mseSnapshot,std::function<void(Document&&)> adopt={}){
   if(busy())throw std::logic_error("Lua invocation is already pending");

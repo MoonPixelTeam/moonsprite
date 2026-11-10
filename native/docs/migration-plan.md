@@ -6134,3 +6134,10 @@ selection.transform仍须衔接跨批浮动保留、实际操作次序、后续�
 对照legacy lua-script-operations.ts528及workspace-commands-animation-playback.ts49：只有playing=true才先提交pending，停止播放保留浮动；指定非空循环调用也先提交。修复顺序执行器对所有animation.play无条件提交的问题，沿用严格布尔参数默认与循环分支。真实Lua小画布/延迟预览覆盖停止、非布尔playing、开始、取消及整批撤销。整体INCOMPLETE，完整selection.transform能力仍false；最终验证后附。
 
 最终唯一正式Release构建成功；lua-script-invocation全套5.27s通过，正式--script-entry-check退出0（含既有原生浮动回调检查）。来源806文件及diff检查通过。无人工图像/FPS测量；整体INCOMPLETE，完整selection.transform能力仍false。本阶段保存推送dev。
+
+
+### 2026-11-10：已有浮动选区启动新脚本
+
+核对legacy lua-script-service.ts104 buildInvocation与切帧命令：旧版允许pendingPaste上启动新脚本，原生此前只放行模型对话框回调。PendingInvocation.start显式允许已有浮动，复用现有捕获/过期保护与顺序执行器，继续拒绝active(false)的笔画等其他预览。新增真实异步Client小画布物化及大画布延迟浮动的新脚本继续移动、提交/撤销重做和活动笔画拒绝。完整迁移仍INCOMPLETE，最终验证后附。
+
+最终唯一正式Release构建成功；lua-script-invocation全套5.55s通过，正式--script-entry-check退出0。来源806文件及diff检查通过，未进行人工图像/FPS测量。整体INCOMPLETE，完整selection.transform能力保持false；本阶段保存推送dev。
