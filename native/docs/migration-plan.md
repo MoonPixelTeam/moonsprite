@@ -6092,3 +6092,10 @@ selection.transform仍须衔接跨批浮动保留、实际操作次序、后续�
 依据legacy lua-script-service.ts559 applyResult按序执行和lua-script-operations的活动目标语义，修复变换后创建网格/自由瓦片层再执行后续MSE命令被栅格入口误拒的问题。顺序执行器新增内部operations-only通道，入口强制无changes/surfaceChange，保留脚本调用/public结果的栅格要求以及锁/蒙版检查；复用既有规划器生成完整结构/色板候选与Document事务，不允许外部脚本像素载荷借此写入瓦片缓存。新增真实Lua变换/创建网格/放置/属性/色板及变换/创建自由层/源/属性/色板组合，检查整批撤销重做、稳定标识、原始像素和失败回滚。完整selection.transform能力仍false；几何替换组合和更广正式宿主验收仍未完成，整体INCOMPLETE。最终验证后附。
 
 最终唯一正式Release构建成功；lua-script-invocation全套3.02s通过，正式--script-entry-check退出0（既有宿主检查，新增组合由真实Lua核心回归覆盖）。来源806文件与diff检查通过。没有人工图像/FPS验收；几何替换组合尚未完成，selection.transform完整能力仍false，整体INCOMPLETE。本阶段保存推送dev。
+
+
+### 2026-11-10：变换后跨批次整图替换基线
+
+核对legacy lua-script-service.ts255验证、475 commitSurfaceChange及559 applyResult：Lua图像序列不反映MSE变换像素，替换撤销与计数按wire before/after，而安装发生在MSE已修改的当前目标上。原生顺序适配器仅为安装校验重建当前before，另保留已验证wire before供历史与计数使用；Document复用surfaceChanges安装及撤销，异常回滚仍使用实际现场，历史预算按真实wire像素大小计算。新增真实Lua跨批水平翻转、Image替换、Cel位置、移动/取消及逐次撤销重做回归。完整selection.transform能力保持false；更广稀疏/多目标替换组合与正式验收仍未完成，整体INCOMPLETE。最终验证后附。
+
+最终唯一正式Release构建成功；lua-script-invocation全套2.57s通过，正式--script-entry-check退出0（既有宿主检查，新增替换组合由真实Lua回归覆盖）。来源806文件与diff检查通过。未进行人工图像/FPS验收；更广稀疏/多目标替换组合仍需检查，完整selection.transform能力仍false，整体INCOMPLETE。本阶段保存推送dev。

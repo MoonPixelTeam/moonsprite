@@ -17,6 +17,7 @@ struct RasterBatch {
  bool operationsOnly=false; // Internal MSE adapter; wire raster writes are rejected before planning.
  SurfaceSnapshot before;
  std::optional<SurfaceSnapshot> after;
+ std::optional<SurfaceSnapshot> historyBefore; // Legacy surface replacement records its validated wire baseline.
  std::vector<Change> changes;
  std::u32string label;
  std::optional<SliceState> slices;

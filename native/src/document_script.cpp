@@ -123,7 +123,7 @@ bool Document::commitScriptRasterBatch(const script::RasterBatch& batch){
  if(batch.operationsOnly&&!batch.changes.empty())throw std::invalid_argument("Operation-only Lua adapter cannot write raster pixels");
  const auto& expected=batch.before;
  auto validate=[](const script::SurfaceSnapshot& s){if(s.width<1||s.height<1||!s.pixels||std::uint64_t(s.width)*s.height!=s.pixels->size()||s.pixels->size()>script::InvocationCapture::maxImagePixels)throw std::invalid_argument("Invalid Lua raster snapshot");raster::coordinate(std::int64_t(s.x)+s.width);raster::coordinate(std::int64_t(s.y)+s.height);};
- validate(expected);if(batch.after)validate(*batch.after);
+ validate(expected);if(batch.after)validate(*batch.after);if(batch.historyBefore){validate(*batch.historyBefore);if(!batch.after)throw std::invalid_argument("Lua replacement history requires a surface replacement");}
  const auto* slot=timeline_.findCel(layer().id,frame().id);const auto resolved=slot?timeline_.resolveSurface(slot->id):timeline::Resolution{};
  const auto* current=resolved.surface;
  if(slot&&(!current||!resolved.source||resolved.issue!=timeline::LinkIssue::None))throw std::logic_error("Invalid Lua raster owner");
@@ -181,7 +181,7 @@ bool Document::commitScriptRasterBatch(const script::RasterBatch& batch){
  admit(changed*sizeof(Delta));
  if(changed){edit.pixels.reserve(changed);for(const auto& c:batch.changes)if(c.before!=c.after)edit.pixels.push_back({c.index,c.before,c.after});}
  auto makeSurface=[](const script::SurfaceSnapshot& s){timeline::Surface out;out.width=s.width;out.height=s.height;out.offsetX=s.x;out.offsetY=s.y;out.storageOriginX=out.storageOriginY=0;out.pixels=*s.pixels;return out;};
- if(batch.after){admit(expected.pixels->size()*sizeof(Pixel));admit(batch.after->pixels->size()*sizeof(Pixel)*2);}
+ if(batch.after){admit((batch.historyBefore?batch.historyBefore->pixels->size():expected.pixels->size())*sizeof(Pixel));admit(batch.after->pixels->size()*sizeof(Pixel)*2);}
  std::optional<timeline::Timeline> prepared;
  std::string ownerId;
  if(!slot){
@@ -193,7 +193,7 @@ bool Document::commitScriptRasterBatch(const script::RasterBatch& batch){
  }else ownerId=resolved.source->id;
  auto& targetTimeline=prepared?*prepared:timeline_;const auto owner=targetTimeline.resolveSurface(ownerId);const auto& before=*owner.surface;
  std::optional<timeline::Surface> replacement;
- if(batch.after){edit.surfaceChanges.push_back({ownerId,before,makeSurface(*batch.after)});replacement=edit.surfaceChanges.back().after;}
+ if(batch.after){edit.surfaceChanges.push_back({ownerId,batch.historyBefore?makeSurface(*batch.historyBefore):before,makeSurface(*batch.after)});replacement=edit.surfaceChanges.back().after;}
  else{edit.targetCelId=slot?slot->id:ownerId;edit.pixelAddress=PixelAddressSpace{before.width,before.height,before.storageOriginX.value_or(0),before.storageOriginY.value_or(0)};}
  std::optional<SliceState> previousSlices;if(slicesChanged)previousSlices=*batch.slices;
  auto previousPalette=paletteChanged?*batch.palette:PaletteState{};auto previousSelection=selectionChanged?*batch.selection:std::optional<SelectionMask>{};
