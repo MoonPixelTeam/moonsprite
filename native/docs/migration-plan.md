@@ -5961,3 +5961,12 @@ layers.update存在时，沿现有候选Timeline预检后，使用原生完整Ti
 新增256×256大瓦片/512×256画布、旋转翻转共享源、1像素视口、跨格/画布边界裁切、补丁复用和预览不写权威、commit等于预览、UndoRedo检查。既有Hybrid链接、多源、空引用、重复模式及采样变换专项一并通过0.34s。该阶段改善拖动区域输出，采样提交仍含dense转换，其他迁移也未完；不声称Hybrid全部大画布延迟或整体卡顿已解决，无前后耗时基准/人工视觉验收。正式构建及最终检查后附。
 
 最终唯一正式Release构建通过，tilemap-document与document-raster-history专项通过2.16s；正式--tileset-management-check --grid-transform-entry-only退出0，来源804文件和diff检查通过。整体仍INCOMPLETE，保留用户差异和数据，阶段保存推送dev。
+
+
+### 2026-11-10：Hybrid 延迟浮动按单元格提交
+
+沿旧版 core/tilemap-document.ts beforeByCell/afterByCell及Hybrid editedTiles按索引顺序更新共享源的处理，把原生applyPixelEdit已有单元格核心提取为applyCellPixelEdits，所有dense入口仍调用同一核心（排序/去重/Edit anchor保持）。Hybrid deferred的非整格采样提交仅捕获源/目标/重复包裹范围涉及的raw cell before/after，画布外像素恢复原值，直接接既有增量TilemapPixelHistory资源快照与所有引用cache patches，消除deferred→dense预览、全画布遍历以及两张全网格渲染缓冲。整格移动继续原精确引用事务，模式与锁/链接前检不放宽；失败保留浮动状态，资源ID守卫沿用，选择与UndoRedo仍在同一事务。
+
+256×256共享源测试补充提交存储revision增长上限，以防回退到逐像素权威修改。现有Hybrid mask/scale/rotation/shear/quad/repeat、foreign/null/ref-only/链接/取消/资源与历史回归继续使用。资源完整快照、grid元数据复制及共享源所有受影响cache patches仍存在，不宣称提交全零分配或整体迁移完成。无人工视觉/截图验收，最终构建与检查后附。
+
+最终正式Release构建通过（公共头变化触发较长全量编译）；tilemap-document及document-raster-history两项通过2.06s，正式--tileset-management-check --grid-transform-entry-only退出0，来源804文件和diff检查通过。整体INCOMPLETE，无截图/人工视觉验收；本阶段保存推送dev。

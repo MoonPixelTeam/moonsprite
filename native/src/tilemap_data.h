@@ -2,6 +2,7 @@
 #include <algorithm>
 #include <cstdint>
 #include <functional>
+#include <map>
 #include <optional>
 #include <stdexcept>
 #include <string>
@@ -32,18 +33,24 @@ inline std::pair<int,int> sourcePoint(int x,int y,int w,int h,const Cell& c){int
 struct Catalog {std::unordered_map<std::string,const Tileset*> sets;std::unordered_map<std::string,Index> indexes;explicit Catalog(const std::vector<Tileset>& ts){for(const auto& t:ts){sets.emplace(t.id,&t);indexes.emplace(t.id,Index(t));}}};
 inline std::vector<Pixel> cellPixels(const std::optional<Cell>& cell,int tw,int th,const Catalog& catalog){std::vector<Pixel> out(std::size_t(tw)*th);if(!cell)return out;auto st=catalog.sets.find(cell->tilesetId);if(st==catalog.sets.end())return out;const auto& t=*st->second;if(t.tileWidth!=tw||t.tileHeight!=th)return out;auto i=catalog.indexes.at(t.id).find(cell->tileId);if(!i)return out;for(int y=0;y<th;++y)for(int x=0;x<tw;++x){auto p=sourcePoint(x,y,tw,th,*cell);out[y*tw+x]=t.pixels[(*i/t.columns*th+p.second)*t.columns*tw+*i%t.columns*tw+p.first];}return out;}
 inline std::vector<Pixel> render(const CelData& c,const std::vector<Tileset>& ts){sizeCheck(c.tileWidth,c.tileHeight,c.columns,c.rows);if(c.cells.size()!=std::size_t(c.columns)*c.rows)throw std::invalid_argument("Invalid tilemap cells");Catalog cat(ts);int w=c.columns*c.tileWidth;std::vector<Pixel> out(std::size_t(w)*c.rows*c.tileHeight);for(std::size_t i=0;i<c.cells.size();++i){auto p=cellPixels(c.cells[i],c.tileWidth,c.tileHeight,cat);for(int y=0;y<c.tileHeight;++y)std::copy_n(p.begin()+y*c.tileWidth,c.tileWidth,out.begin()+(i/c.columns*c.tileHeight+y)*w+i%c.columns*c.tileWidth);}return out;}
-inline bool applyPixelEdit(CelData& cel,Tileset& t,const std::vector<Pixel>& before,const std::vector<Pixel>& after,Mode mode,const std::vector<std::size_t>& changedCellIndexes,const std::function<std::string()>& newId,std::optional<std::size_t> editCell={},std::vector<std::string>* changedTileIds=nullptr){
- const auto width=std::size_t(cel.columns)*cel.tileWidth,count=width*cel.rows*cel.tileHeight;if(before.size()!=count||after.size()!=count||cel.tileWidth!=t.tileWidth||cel.tileHeight!=t.tileHeight||mode==Mode::Paint)return false;
+using CellPixelEdits=std::map<std::size_t,std::pair<std::vector<Pixel>,std::vector<Pixel>>>;
+inline bool applyCellPixelEdits(CelData& cel,Tileset& t,Mode mode,const std::vector<std::size_t>& indexes,const std::function<std::pair<std::vector<Pixel>,std::vector<Pixel>>(std::size_t)>& read,const std::function<std::string()>& newId,std::vector<std::string>* changedTileIds=nullptr){
+ if(cel.tileWidth!=t.tileWidth||cel.tileHeight!=t.tileHeight||mode==Mode::Paint)return false;
  if(mode==Mode::Edit&&transparentPlaceholder(t))mode=Mode::Create;
- std::vector<std::size_t> indexes=changedCellIndexes;if(mode==Mode::Edit&&editCell)indexes={*editCell};std::sort(indexes.begin(),indexes.end());indexes.erase(std::unique(indexes.begin(),indexes.end()),indexes.end());
  auto markChanged=[&](const std::string& id){if(changedTileIds&&std::find(changedTileIds->begin(),changedTileIds->end(),id)==changedTileIds->end())changedTileIds->push_back(id);};
  bool changed=false;std::unordered_map<std::string,std::vector<Pixel>> edited;
- for(auto i:indexes){if(i>=cel.cells.size())continue;std::vector<Pixel> b(std::size_t(cel.tileWidth)*cel.tileHeight),a(b.size());for(int y=0;y<cel.tileHeight;++y){auto at=(i/cel.columns*cel.tileHeight+y)*width+i%cel.columns*cel.tileWidth;std::copy_n(before.begin()+at,cel.tileWidth,b.begin()+y*cel.tileWidth);std::copy_n(after.begin()+at,cel.tileWidth,a.begin()+y*cel.tileWidth);}if(a==b)continue;auto& cell=cel.cells[i];
+ for(auto i:indexes){if(i>=cel.cells.size())continue;auto values=read(i);auto& b=values.first;auto& a=values.second;if(b.size()!=std::size_t(cel.tileWidth)*cel.tileHeight||a.size()!=b.size())throw std::invalid_argument("Invalid cell pixel edit");if(a==b)continue;auto& cell=cel.cells[i];
  if(mode!=Mode::Create&&cell&&cell->tilesetId==t.id){auto source=Index(t).find(cell->tileId);if(source){auto it=edited.find(cell->tileId);if(it==edited.end())it=edited.emplace(cell->tileId,readTile(t,*source)).first;for(int y=0;y<cel.tileHeight;++y)for(int x=0;x<cel.tileWidth;++x){auto at=y*cel.tileWidth+x;if(a[at]==b[at])continue;auto p=sourcePoint(x,y,cel.tileWidth,cel.tileHeight,*cell);it->second[p.second*cel.tileWidth+p.first]=a[at];}writeTile(t,cell->tileId,it->second);markChanged(cell->tileId);changed=true;continue;}}
  if(mode==Mode::Edit)continue;auto id=matchingTile(t,a);if(!id){id=newId();appendTile(t,*id,a);markChanged(*id);}Cell replacement{t.id,*id};if(!cell||!(*cell==replacement)){cell=std::move(replacement);changed=true;}
  }
  for(const auto& p:edited)writeTile(t,p.first,p.second);return changed;
 }
+inline bool applyPixelEdit(CelData& cel,Tileset& t,const std::vector<Pixel>& before,const std::vector<Pixel>& after,Mode mode,const std::vector<std::size_t>& changedCellIndexes,const std::function<std::string()>& newId,std::optional<std::size_t> editCell={},std::vector<std::string>* changedTileIds=nullptr){
+ const auto width=std::size_t(cel.columns)*cel.tileWidth,count=width*cel.rows*cel.tileHeight;if(before.size()!=count||after.size()!=count)return false;
+ auto indexes=changedCellIndexes;if(mode==Mode::Edit&&editCell)indexes={*editCell};std::sort(indexes.begin(),indexes.end());indexes.erase(std::unique(indexes.begin(),indexes.end()),indexes.end());
+ return applyCellPixelEdits(cel,t,mode,indexes,[&](std::size_t i){std::vector<Pixel> b(std::size_t(cel.tileWidth)*cel.tileHeight),a(b.size());for(int y=0;y<cel.tileHeight;++y){auto at=(i/cel.columns*cel.tileHeight+y)*width+i%cel.columns*cel.tileWidth;std::copy_n(before.begin()+at,cel.tileWidth,b.begin()+y*cel.tileWidth);std::copy_n(after.begin()+at,cel.tileWidth,a.begin()+y*cel.tileWidth);}return std::make_pair(std::move(b),std::move(a));},newId,changedTileIds);
+}
+
 inline CelData sliceRaster(int width,int height,Tileset& t,const std::function<Pixel(int,int)>& readCanvas,const std::function<std::string()>& newId){auto c=blankCel(width,height,t.tileWidth,t.tileHeight);for(std::size_t i=0;i<c.cells.size();++i){std::vector<Pixel> p(std::size_t(c.tileWidth)*c.tileHeight);bool visible=false;for(int y=0;y<c.tileHeight;++y)for(int x=0;x<c.tileWidth;++x){int cx=int(i%c.columns)*c.tileWidth+x,cy=int(i/c.columns)*c.tileHeight+y;if(cx>=width||cy>=height)continue;auto color=readCanvas(cx,cy);if(!(color>>24))continue;p[y*c.tileWidth+x]=color;visible=true;}if(!visible)continue;auto id=matchingTile(t,p);if(!id){id=newId();appendTile(t,*id,p);}c.cells[i]=Cell{t.id,*id};}return c;}
 
 // Legacy tilemap.ts repositionTilesetTileSlots: preserve stable tile IDs.

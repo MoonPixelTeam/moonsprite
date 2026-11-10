@@ -2442,7 +2442,7 @@ template<class Floating> std::size_t floatingStorageBudget(const timeline::Timel
  floatingAddBytes(used,f.transientBytes);return used;
 }
 }
-std::vector<Pixel> Document::floatingOverlayRegion(PixelRegion region)const{
+std::vector<Pixel> Document::floatingOverlayRegion(PixelRegion region,bool rawHybrid)const{
  if(!floatingDeferred())return {};const auto& f=*floating_;const auto& target=f.targets.front();const auto r=timeline_.resolveSurface(target.celId);if(!target.celId.empty()&&(!r.surface||!r.source||(!target.ownerId.empty()&&r.source->id!=target.ownerId)))throw std::logic_error("Floating overlay owner changed");
  auto raw=[&](PixelRegion region){
  const auto& before=target.baseline?*target.baseline:*r.surface;std::vector<Pixel> result(floatingArea(region.w,region.h));const auto& original=target.originalSource?*target.originalSource:target.source;
@@ -2458,6 +2458,7 @@ std::vector<Pixel> Document::floatingOverlayRegion(PixelRegion region)const{
  if(f.tilemap&&(f.tilemapMode==tiles::Mode::Paint||f.tilemapMode==tiles::Mode::Create)&&r.surface){for(int y=0;y<region.h;++y)for(int x=0;x<region.w;++x){const auto wx=std::int64_t(region.x)+x,wy=std::int64_t(region.y)+y;if(wx<r.surface->offsetX||wy<r.surface->offsetY||wx>=std::int64_t(r.surface->offsetX)+r.surface->width||wy>=std::int64_t(r.surface->offsetY)+r.surface->height)result[std::size_t(y)*region.w+x]=0;}}
  return result;
  };
+ if(rawHybrid){checkFloatingBudget(f,std::uint64_t(floatingArea(region.w,region.h))*sizeof(Pixel)*2);return raw(region);}
  if(!f.tilemap||f.tilemapMode!=tiles::Mode::Hybrid)return raw(region);
  const auto& grid=*r.source->tilemap;const auto& state=timeline_.state();const auto set=std::find_if(state.tilesets.begin(),state.tilesets.end(),[&](const auto& t){return t.id==layer().tilemapTilesetId;});if(set==state.tilesets.end())return raw(region);
  const auto ox=r.surface->offsetX,oy=r.surface->offsetY;const auto& sel=*f.beforeSelection;const auto& tr=f.transform;
@@ -2928,6 +2929,17 @@ std::optional<bool> Document::commitHybridCellFloating(){
 bool Document::commitTilemapFloating(){
  auto& f=*floating_;if(tileSelection_.mode!=f.tilemapMode||layer().id!=f.layerId||frame().id!=f.frameId||layerEffectivelyLocked(layer())||!layerEffectivelyVisible(layer())||(!tilemapDeltaSupported()&&!linkedCreateFloatingSupported(f)&&!linkedEditFloatingSupported(f)&&!linkedHybridFloatingSupported(f))||f.targets.size()!=1)throw std::logic_error("Tilemap floating target changed");
  if(const auto cellMove=commitHybridCellFloating())return *cellMove;
+ // Deferred Hybrid commits consume raw cell changes through the same tile
+ // transaction algorithm. Avoid materializing a dense floating pixel preview.
+ if(f.deferred&&f.tilemapMode==tiles::Mode::Hybrid){
+  const auto resolved=timeline_.resolveSurface(f.targets.front().celId);const auto& grid=*resolved.source->tilemap;const auto ox=resolved.surface->offsetX,oy=resolved.surface->offsetY;std::set<std::size_t> indexes;const auto storageBytes=floatingStorageBudget(timeline_,f,selection_);
+  auto include=[&](const SelectionMask& area){const auto l=std::max<std::int64_t>(0,std::max(0,area.x)-std::int64_t(ox)),t=std::max<std::int64_t>(0,std::max(0,area.y)-std::int64_t(oy)),r=std::min<std::int64_t>(std::int64_t(grid.columns)*grid.tileWidth,std::min<std::int64_t>(width_,std::int64_t(area.x)+area.width)-ox),b=std::min<std::int64_t>(std::int64_t(grid.rows)*grid.tileHeight,std::min<std::int64_t>(height_,std::int64_t(area.y)+area.height)-oy);if(r<=l||b<=t)return;for(auto y=t/grid.tileHeight;y<(b+grid.tileHeight-1)/grid.tileHeight;++y)for(auto x=l/grid.tileWidth;x<(r+grid.tileWidth-1)/grid.tileWidth;++x){const auto i=std::size_t(y)*grid.columns+std::size_t(x);if(!indexes.count(i)){auto used=storageBytes;floatingAddBytes(used,std::uint64_t(indexes.size()+1)*64);indexes.insert(i);}}};
+  const auto bounds=checkedFloatingBounds(f.transform);include(bounds);if(floatingRepeat_!=repeat::Mode::Off&&floatingTranslation(f.transform,f.source))if(auto wrapped=repeat::wrapSelection(bounds,width_,height_,floatingRepeat_))include(*wrapped);if(!f.copy)include({f.sourceX,f.sourceY,f.source.width,f.source.height,{}});
+  checkFloatingBudget(f,std::uint64_t(indexes.size())*(std::uint64_t(grid.tileWidth)*grid.tileHeight*8+128));tiles::CellPixelEdits regional;tiles::Catalog catalog(timeline_.state().tilesets);
+  for(auto i:indexes){const PixelRegion cell{ox+int(i%grid.columns)*grid.tileWidth,oy+int(i/grid.columns)*grid.tileHeight,grid.tileWidth,grid.tileHeight};auto before=tiles::cellPixels(grid.cells[i],grid.tileWidth,grid.tileHeight,catalog),after=floatingOverlayRegion(cell,true);for(int y=0;y<cell.h;++y)for(int x=0;x<cell.w;++x)if(cell.x+x<0||cell.y+y<0||cell.x+x>=width_||cell.y+y>=height_)after[std::size_t(y)*cell.w+x]=before[std::size_t(y)*cell.w+x];if(before!=after)regional.emplace(i,std::make_pair(std::move(before),std::move(after)));}
+  const auto beforeSelection=f.beforeSelection,afterSelection=selection_;const bool selectionChanged=!selectionEqual(beforeSelection,afterSelection);Edit selectionEdit{{},state_,state_};selectionEdit.documentChanged=false;selectionEdit.pixelSelectionEdit=true;selectionEdit.beforePixelsSelection=beforeSelection;selectionEdit.afterPixelsSelection=afterSelection;reserveHistoryEntries();
+  auto pending=std::move(floating_);floating_.reset();bool changed=false;try{changed=commitTilemapPixelCanvas({},{},U"变换选区内容",{},false,&beforeSelection,&afterSelection,false,false,false,false,false,pending->linkedHybrid,false,&regional);if(!changed&&selectionChanged)pushEdit(std::move(selectionEdit),U"变换选区内容");}catch(...){floating_=std::move(pending);throw;}++floatingOverlayRevision_;change_={0,0,width_,height_};publishChange();return changed;
+ }
  const bool offsetGrid=(f.tilemapMode==tiles::Mode::Paint||f.tilemapMode==tiles::Mode::Create)&&!raster::fullCanvas(activeSurface(),width_,height_);
  std::vector<Pixel> offsetAfter;if(offsetGrid){checkFloatingBudget(f,std::uint64_t(width_)*height_*8);offsetAfter=floatingOverlayRegion({0,0,width_,height_});}
  if(f.deferred&&!offsetGrid){const auto transform=f.transform;const bool rotSprite=f.rotSprite;f.deferred=false;try{transformFloatingPaste(transform,rotSprite);}catch(...){f.deferred=true;throw;}noteFloatingOverlayChange(f,transform,transform);}

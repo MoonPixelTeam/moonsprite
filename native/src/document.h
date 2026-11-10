@@ -521,7 +521,7 @@ public:
   std::uint64_t floatingOverlayRevision()const{return floatingOverlayRevision_;}
   std::uint64_t floatingHybridPatchBuilds()const{return floatingHybridPatchBuilds_;}
   PixelRegion floatingOverlayChange()const{return floatingOverlayChange_;}
-  std::vector<Pixel> floatingOverlayRegion(PixelRegion region)const;
+  std::vector<Pixel> floatingOverlayRegion(PixelRegion region,bool rawHybrid=false)const;
   void setDeferredFloatingDisplaySupported(bool enabled){deferredFloatingDisplaySupported_=enabled;}
   void moveFloatingPaste(int x,int y);
   void transformFloatingPaste(const SelectionTransform& target,bool rotSprite=false);
@@ -678,7 +678,7 @@ private:
   std::string uniqueTileId(const std::string&);
   bool commitTilemapState(timeline::State,const TilemapSelection&,std::u32string,const std::string& active={},bool clearPixelSelection=false,bool preserveTilemapOwners=false);
   bool fillTilemapPixels(Point,Pixel,WandOptions,const PatternFillOptions*);
-  bool commitTilemapPixelCanvas(const std::vector<Pixel>& baseline,const std::vector<Pixel>& canvas,std::u32string label,std::optional<std::size_t> editCell={},bool clearPixelSelection=false,const std::optional<SelectionMask>* beforePixels=nullptr,const std::optional<SelectionMask>* afterPixels=nullptr,bool linkedCreateSelection=false,bool linkedEditSelection=false,bool linkedHybridSelection=false,bool linkedCreateFloating=false,bool linkedEditFloating=false,bool linkedHybridFloating=false,bool paintFloating=false);
+  bool commitTilemapPixelCanvas(const std::vector<Pixel>& baseline,const std::vector<Pixel>& canvas,std::u32string label,std::optional<std::size_t> editCell={},bool clearPixelSelection=false,const std::optional<SelectionMask>* beforePixels=nullptr,const std::optional<SelectionMask>* afterPixels=nullptr,bool linkedCreateSelection=false,bool linkedEditSelection=false,bool linkedHybridSelection=false,bool linkedCreateFloating=false,bool linkedEditFloating=false,bool linkedHybridFloating=false,bool paintFloating=false,const tiles::CellPixelEdits* regional=nullptr);
   bool tilemapSelectionTransformAvailable()const;bool commitTilemapFloating();std::optional<bool> commitHybridCellFloating();
   bool deleteTilemapSelectionPixels();
   bool tilemapPixelReferenceOwnersSupported(const std::string& tilesetId)const;bool linkedHybridSelectionAvailable(bool requireSelection=true)const;bool linkedEditSelectionAvailable(bool requireSelection=true)const;bool linkedCreateSelectionAvailable(bool requireSelection=true,bool paintTransform=false)const;bool tilemapDeltaSupported()const;bool tilemapCellOwnerSupported(const std::string& celId,bool allowOffset=false,bool allowLinkedCels=false)const;std::uint64_t tilemapCacheCellWrites_=0;
