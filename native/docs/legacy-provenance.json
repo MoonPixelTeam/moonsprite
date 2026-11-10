@@ -4778,6 +4778,7 @@
     },
     {
       "file": "CMakeLists.txt",
+      "mseSnapshot20261110": "buildLuaMseSnapshot native projection: expose and reuse original complete project writeColorOverlay serializer instead of duplicating styles; add Lua snapshot compilation and real engine read tests for document identity, layer order, range fallback/Cel keys, palette, frames, resource budget/transparent RGB, local/project brushes, slices, panel state and no document/history mutation. Formal Editor MSE provider and operation execution remain pending.",
       "scriptWindowHost20261110": "Link original Rust Lua runtime and existing native invocation/result library into sole formal executable for real non-modal GUI host validation. Original engine source unchanged; system libraries match verified runtime test linkage. Formal user script menu still unconnected.",
       "hybridAffineRenderer20261110": "Extend user-approved Hybrid preview=commit production Skia cached-vs-fresh render oracle to14 move/copy combinations: sampled translation, flipped scaling, RotSprite rotation/shear, quad, X/Y/Both. Verify successive/restored transforms, commit and UndoRedo including remote shared source. Register --tilemap-preview as canvas-tilemap-preview CTest so standard suite runs existing shape/gradient and Hybrid oracles. No product semantic change. Rebuilt target and new canvas-tilemap-preview CTest passed0.51s, including existing aligned/shape/gradient checks. First assertion incorrectly required every commit change pixels; corrected result expectation to raw preview difference. Provenance744/diff passed. No product rebuild/new window fixture/screenshot/FPS measurement.",
       "releaseAddressMap20261106": "Necessary native diagnostic adaptation for user-requested performance/crash investigation: MSVC sole Release executable emits linker /MAP beside normal build artifacts so Windows fault RVA can be matched to the exact linked code without relying on stale PDB. No runtime flags, optimization level, version, alternate executable or distribution changes. Generated map is not committed. Evidence in performance-20261105.md.",
@@ -7431,6 +7432,7 @@
     },
     {
       "file": "src/project_encode.cpp",
+      "mseSnapshot20261110": "buildLuaMseSnapshot native projection: expose and reuse original complete project writeColorOverlay serializer instead of duplicating styles; add Lua snapshot compilation and real engine read tests for document identity, layer order, range fallback/Cel keys, palette, frames, resource budget/transparent RGB, local/project brushes, slices, panel state and no document/history mutation. Formal Editor MSE provider and operation execution remain pending.",
       "saveClosure20261026": "2026-10-26: legacy project-format-encode.ts layer autoLinkAnimationCels conditional field is authoritative. Remove stale true from reused imported layer JSON when disabled; preserve linkedCelId and all other metadata. Editable/recovery encoding and Undo/Redo roundtrip covered in project_save_test.cpp.",
       "classification": "legacy-partial",
       "sources": [
@@ -30314,6 +30316,7 @@
     },
     {
       "file": "tests/lua_script_invocation_test.cpp",
+      "mseSnapshot20261110": "buildLuaMseSnapshot native projection: expose and reuse original complete project writeColorOverlay serializer instead of duplicating styles; add Lua snapshot compilation and real engine read tests for document identity, layer order, range fallback/Cel keys, palette, frames, resource budget/transparent RGB, local/project brushes, slices, panel state and no document/history mutation. Formal Editor MSE provider and operation execution remain pending.",
       "classification": "legacy-partial",
       "sources": [
         "legacy/src/renderer/src/store/lua-script-service.ts",
@@ -30403,6 +30406,20 @@
       ],
       "scope": "Native non-modal window owner for Client: queued actions and Escape, all-window busy state, session identity gating, each-return model draft reset including unchanged JSON, report lifecycle, target invalidation and destruction cleanup. Real Lua GUI fixture exercises two windows, draft callbacks, report dismissal, title close and global Escape distinction, restart and tab replacement. Formal Editor menu/message pump wiring and real MSE snapshot provider remain pending.",
       "adaptation": "Native UI callbacks enqueue only; host pump dispatches and receives outside widget callbacks. Client model and report revision counters avoid reflow on idle ticks while ensuring identical returned models still reset local drafts. Imported close material and existing PixelDialog windows reused. Snapshot provider is mandatory; null occurs solely in isolated raster GUI fixture, never as a production workspace substitute. Runtime and Client outlive host."
+    },
+    {
+      "file": "src/lua_mse_snapshot.h",
+      "classification": "legacy-partial",
+      "sources": ["legacy/src/renderer/src/store/lua-script-operations.ts"],
+      "scope": "Native buildLuaMseSnapshot contract; requires actual local-brush listing and persisted panel JSON from host. Snapshot serialization implemented, formal Editor provider and mixed operation execution remain pending.",
+      "adaptation": "Read-only Document projection, no filesystem/preference defaults and no invented empty production workspace. Current native RGBA model only; synchronous bounded resource JSON serialization, not a claim of chunked snapshot completion."
+    },
+    {
+      "file": "src/lua_mse_snapshot.cpp",
+      "classification": "legacy-partial",
+      "sources": ["legacy/src/renderer/src/store/lua-script-operations.ts", "legacy/src/renderer/src/core/animation.ts"],
+      "scope": "buildLuaMseSnapshot document/layers/frames/loops/range/palette/tiles/freeTiles/brushes/slices/workspace projection. Legacy layer order, byte opacity, optional metadata, layer styles, local/project brush distinction, per-brush array limits and shared tileset pixel budget preserved. Native Cel selections translated to legacy layerId:frameId. Formal Editor provider, non-RGBA modes, mixed transactions and chunked resource serialization remain pending.",
+      "adaptation": "Reuse project writeColorOverlay and freejson encoders; no archive encode/decode or raster canvas copying. Imported/preserved free-tile metadata retained. Real Rust Lua test reads native snapshot through original mse API; resource budget fixtures preserve transparent RGB and permit later small resources after skipped oversized sheet."
     }
   ],
   "assetTransfers": [

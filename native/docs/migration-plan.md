@@ -5749,3 +5749,11 @@ Client统一持有各DialogState，为原生窗口提供edit/click/commit/title-
 承接useAppScriptRuntime的dialogs/report宿主，新增ScriptWindowHost统一持有实际原生窗口：控件事件仅排队，消息泵校验session/活动目标后派发，所有窗口立即busy；返回结果按revision重建全部草稿，即使模型JSON未变化也重置其他窗口未提交值。idle不重建排版。报告支持关闭/外部点击/报告优先Escape，原生窗口系统关闭先取消并排队Lua title-close，宿主拆除有显式关闭通道；app Escape保留旧版返回模型值，标题关闭保留本地草稿。切换目标、结束会话、宿主析构均关闭实际窗口。快照provider必须显式提供，尚无正式Editor真实MSE provider，不用空模型替代生产快照。
 
 唯一正式exe首次链接既有Rust原始Lua引擎与原生调用库，新增--script-window-host-check真实Lua双窗口流程。首次fixture只Enter输入但输出绑定Apply导致断言失败，改按真实Apply按钮触发后通过退出0。覆盖按钮收到本地草稿、另一窗口相同模型仍重置、回调报告及Escape优先关闭、系统关闭不直接销毁并携带草稿、全局Escape发送返回值、重启以及新Document清理窗口。两项Lua专项通过0.82s；既有--script-report-check重跑通过。无新增宿主截图人工验收，不宣称全软件smoke通过。来源覆盖802文件，diff检查通过。正式菜单/Editor消息泵接线、真实MSE快照及混合事务、部分控件视觉/精确提交时机仍未完成，整体INCOMPLETE。保存推送dev，保留用户差异、数据和缓存。
+
+### 2026-11-10：真实原生工程MSE只读快照阶段
+
+逐字段承接lua-script-operations.ts buildLuaMseSnapshot，新增原生投影：document/activeLayer、按旧版顺序的layers、frames/loops、range、palette、tilesets、自由瓦片源/实例、项目/本地笔刷、slices和workspace panels。图层样式直接共享project_encode已有完整writeColorOverlay；自由瓦片编码沿既有freejson，不经工程压缩/重读，也不复制画布像素。原生Cel ID转为旧版layerId:frameId。沿旧版共享1048576瓦片像素预算，跳过大资源后仍可包含后续小资源；项目笔刷coverage/colors独立阈值，本地笔刷仅元数据。必须由宿主传入实际本地笔刷与面板状态，不自行扫描磁盘或伪造默认工作区。
+
+真实Rust Lua通过mse读取原生图层、色板、动画、样式、瓦片透明RGB、项目笔刷、带偏移本地笔刷、Unicode切片和隐藏面板。检查身份/旧层序、选择回退与Cel key、共享预算跳过/后续恢复、自由瓦片source/instance以及快照不改revision/history。测试fixture的瓦片尺寸和自由瓦片各帧authority先被模型拒绝，补齐合法数据后两项Lua及project-save专项全部通过1.71s。公共头直接引入WinRT导致GetObject宏冲突，已恢复轻量头，仅快照实现声明共享编码函数。来源804文件与diff检查通过。正式Editor provider/菜单接线、非RGBA颜色模式、MSE混合操作事务与资源分块捕获仍未完成；当前同步元数据/限额资源JSON不冒充大工程延迟优化完成。整体INCOMPLETE，保留用户差异、数据、缓存和失败现场。
+
+修复公共头包含冲突后唯一正式Release构建成功，--script-window-host-check实际退出0；本阶段无新增UI视觉变化，无截图验收。阶段保存推送dev。

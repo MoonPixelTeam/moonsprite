@@ -1001,7 +1001,7 @@ target_sources(moonsprite-native PRIVATE src/editor_outline.cpp)
 # Compile the original Rust Lua/MSE core without Tauri/WebView. The native
 # application will link this library when document/result/UI adapters are ready.
 if(WIN32)
-  add_library(moon-lua-invocation STATIC src/lua_script_invocation.cpp src/lua_script_result.cpp)
+  add_library(moon-lua-invocation STATIC src/lua_script_invocation.cpp src/lua_script_result.cpp src/lua_mse_snapshot.cpp)
   target_link_libraries(moon-lua-invocation PUBLIC moon-core windowsapp)
 endif()
 find_program(MOON_CARGO_EXECUTABLE cargo)
