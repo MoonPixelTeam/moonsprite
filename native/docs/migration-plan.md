@@ -5730,3 +5730,10 @@ Client统一持有各DialogState，为原生窗口提供edit/click/commit/title-
 对照LuaScriptResultDialog.tsx，新增ScriptReportDialog/ScriptReportPane，复用PixelDialog、Fusion字体、PixelScrollBar与旧版close图标。成功报告显示文件名/路径、修改像素/撤销步骤/耗时和按原换行拼接的输出；错误报告显示错误正文。正文可滚动，标题与关闭按钮固定，Escape和外部点击关闭，保持当前中文原生UI文案。内容按宽度变化缓存换行，绘制只遍历可见行，避免长输出逐帧完整排版。原生窄视口必要换行，不丢弃输出。
 
 增加唯一正式exe的--script-report-check，实际打开500行成功报告与错误报告，检查正文/页脚间距、滚动和关闭并捕获BMP；这是报告UI验收入口，不代表脚本正式菜单已接入。来源覆盖799文件。唯一正式Release构建成功，--script-report-check实际运行完成，两种窗口布局/500行滚动/关闭断言通过，BMP转PNG后人工检查无重叠；截图为滚动前帧，未声称截图证明滚动后画面。Fusion字体缺少示例emoji时显示现有缺字框，未新增字体替换。来源799与diff检查通过。Client报告展示调用、动态脚本菜单、脚本控件窗口、真实MSE快照与混合事务仍待完成，整体INCOMPLETE。保留用户差异、数据和缓存。
+
+
+### 2026-11-10：脚本原生小数输入与范围控件适配阶段
+
+核对LuaScriptDialog/NumberInput/RangeField/useSliderWheel/range-step，现有PixelSlider整数域不能保留Lua小数范围，新增ScriptNumberEntry及ScriptRangeSlider复用原生输入/滑块皮肤。数值域double与绘制归一位置分开；输入框沿既有表达式解析、剪贴板和编辑历史，普通数字实时更新草稿，表达式Enter/blur确认，仅blur触发Lua提交。滑块pointer按min/step量化，键盘/滚轮保留小数，Shift沿number步长至少5，wheel沿旧版10位小数修正；pointer-up/blur才release，键盘及wheel不提前派发。普通控件未改行为。
+
+唯一正式Release构建成功，实际Start-Process等待--script-report-check退出0；新增控件检查通过小数live草稿、表达式延迟/确认、blur计数、范围钳制、无效值保留、小数step、滑块键盘小数与终点且无提前release。报告窗口原验收继续通过，来源800文件与diff检查通过。尚未完成脚本窗口布局/所有控件接线；NumberInput完整步进按钮与浏览器range精确边界仍登记partial，不把本适配当完整窗口迁移。无新增控件截图验收；正式脚本菜单、真实MSE快照/混合事务仍未完成，整体INCOMPLETE。阶段保存推送dev，保留用户差异、数据和缓存。

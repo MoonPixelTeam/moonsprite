@@ -4,6 +4,7 @@
 #include "native_document_launch.h"
 #include "native_document_open.h"
 #include "lua_script_report_dialog.h"
+#include "lua_script_numeric_widgets.h"
 
 using namespace moon::editor;
 using namespace moon;
@@ -421,6 +422,9 @@ int app_main(int argc,char* argv[]) {
     const bool scriptReportCheck=argc>1&&std::string(argv[1])=="--script-report-check";ui::Timer scriptReportTimer(180,editor);
     if(scriptReportCheck){scriptReportTimer.Tick.connect([&]{scriptReportTimer.stop();try{
       Skin icons;for(const auto suffix:{"","-disabled"})icons.assets.patches[std::string("close")+suffix]=importSkinPng(assets/"utility-icons"/(std::string("close")+suffix+".png"),32);
+      ScriptNumberEntry number(font,skin,1.5,-2,3,.25);int changes=0,commits=0;number.changed=[&](double){++changes;};number.committed=[&]{++commits;};number.setText("2.25");number.Change();if(number.value()!=2.25||changes!=1||commits)throw std::runtime_error("Script number live draft");number.setText("1+0.5");number.Change();if(number.value()!=2.25)throw std::runtime_error("Script number expression evaluated early");number.commitExpression();number.accept();if(number.value()!=1.5||commits)throw std::runtime_error("Script number expression commit");number.blur();if(commits!=1)throw std::runtime_error("Script number blur callback");number.setText("9");number.Change();if(number.value()!=3)throw std::runtime_error("Script number bounds");
+      number.setText("invalid");number.accept();if(number.value()!=3)throw std::runtime_error("Script number invalid draft mutated value");number.setText("-1.5");number.Change();number.adjustNumber(1);if(number.value()!=-1.25)throw std::runtime_error("Script number decimal step");
+      ScriptRangeSlider range(font,skin,.5,-1,2,.25);int releases=0;range.released=[&]{++releases;};ui::KeyMessage right(ui::kKeyDownMessage,ui::kKeyRight,ui::kKeyNoneModifier,0,0);range.onProcessMessage(&right);if(range.domainValue()!=.75||releases)throw std::runtime_error("Script decimal slider keyboard");ui::KeyMessage end(ui::kKeyDownMessage,ui::kKeyEnd,ui::kKeyNoneModifier,0,0);range.onProcessMessage(&end);if(range.domainValue()!=2)throw std::runtime_error("Script slider bound");
       script::RunSummary summary;summary.fileName="报告🌙.lua";summary.filePath="C:/scripts/报告🌙.lua";summary.transactionCount=3;summary.changedPixelCount=42;summary.elapsedMs=1.25;for(int i=0;i<500;++i)summary.output.push_back("Line "+std::to_string(i)+": script output with Unicode 月相");
       for(int mode=0;mode<2;++mode){ScriptReportDialog popup(font,skin,icons,mode?std::nullopt:std::optional<script::RunSummary>(summary),"Lua error\nstack trace: test.lua:4");const auto view=editor->display()->bounds();popup.setBounds({view.x+(view.w-500*uiScale)/2,view.y+(view.h-260*uiScale)/2,500*uiScale,260*uiScale});ui::Timer check(120,&popup);check.Tick.connect([&]{check.stop();popup.verifyLayout();writeSmokeFrame(popup.display()->nativeSurface().get(),assets.parent_path()/(mode?"script-error-dialog-smoke.bmp":"script-report-dialog-smoke.bmp"));popup.verifyClose();});check.start();popup.openWindowInForeground();check.stop();}
       desktop.approved=true;desktop.closeWindow(editor);
