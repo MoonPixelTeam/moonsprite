@@ -5817,3 +5817,11 @@ Release正式程序构建成功，--script-window-host-check退出0。两项Lua�
 沿lua-script-operations resolveFrameId语义，一次建立帧ID索引，替代每项duration操作从首帧扫描，保留真实ID匹配、数字序号和未匹配字符串回退。新增真实Rust Lua 1024帧同事务时长修改及反向输入循环范围，活动帧和全部时间轴均无Cel，验证一项历史、零像素修改、无Cel创建、全部值/范围、Undo/Redo。唯一正式Release构建成功，两项Lua专项通过0.99s；本机单次结果应用42ms，不含快照和Lua执行，无前后基准对比，不据此宣称整体延迟解决。无UI变化/截图，无完整smoke；其他迁移继续INCOMPLETE。阶段验证后保存推送dev，保留原用户差异、数据和缓存。
 
 最新正式--script-window-host-check实际退出0，来源804文件和diff检查通过。
+
+### 2026-11-10：脚本非活动帧Cel图像与位置批次阶段
+
+对照lua-script-operations animation.setCelSurface和原始Rust lua_api flush_pending/reads_and_writes_non_active_frame_cels，接入Aseprite兼容cel.image/position写入生成的内部操作。候选Timeline先应用批次栅格，再按MSE顺序校验layer/frame/Cel ID及before尺寸、偏移、像素；after沿原生owner表面替换和零storage origin适配，链接帧继续共享owner。复用已接入RasterBatch owner替换事务，与活动帧画像素、帧时长及其他元数据同项提交，后续取色读取候选，活动共享owner修改后更新target基线。非RGBA/非普通栅格继续明确拒绝，不修改瓦片缓存冒充资源事务。
+
+真实Lua覆盖非活动Cel像素/位置、活动像素与duration混合一项历史、Undo/Redo、保存重开、后续坏操作拒绝无部分写入、错误Cel ID前置拒绝及链接帧owner/撤销重做。正式Release构建成功，--script-window-host-check退出0；最终专项结果另附。无UI视觉变化/截图，无全软件smoke；候选Timeline仍同步复制，普通正式Lua菜单/provider、播放与其他域仍待完成，整体INCOMPLETE。保留用户差异、数据与缓存，验证后保存推送dev。
+
+最终两项Lua专项通过1.02s，来源804文件及diff检查通过。
