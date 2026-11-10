@@ -6298,3 +6298,10 @@ selection.transform仍须衔接跨批浮动保留、实际操作次序、后续�
 核对ExtensionRuntimeHost.tsx295–331/410–442、extension-overlay-geometry.ts及platform_extension_windows.rs。WindowRouter承接open/close/setVisible/postMessage：资源白名单、overlay16上限与有限小数边界、单dialog替换/title强制转换/form标志、native ASCII ID/JS round/32..2048尺寸、复用原窗口资源和创建标志、overlay/dialog冲突及路由优先级、close-all和已关闭嵌入窗口晚到消息抑制。呈现服务携带完整类型定义区分同ID不同呈现，不允许缺服务假成功；只有服务open成功才写入状态。RequestHost先权限/认证，再路由；SessionHost token绑定，替换/禁用/析构清理全部窗口，单项close抛错仍继续其他清理，旧token不关闭新会话。
 
 新增回调级窗口测试覆盖默认值、复用、参数边界、冲突、数量、消息payload/undefined、显隐、失效消息、不存在目标、呈现失败不留状态、全部关闭及失败清理。最终五个宿主目标构建成功，extension-windows/session-host/request-host/diagnostics/network五项CTest通过，windows0.04s/network23.32s。来源812文件和diff检查通过。此阶段是窗口路由与生命周期迁移，测试呈现回调不是实际原生窗口；表单节点UI/透明命中/执行引擎/Editor生产接线仍未迁移，不宣称窗口已可从正式程序使用，runtime.getCapabilities继续明确缺口。正式exe无代码接线变化，未重构建或新增preview。整体INCOMPLETE，阶段保存推送dev。
+
+
+### 2026-11-11：扩展runtime.getCapabilities协议迁移
+
+网络、诊断和窗口路由分支接通后，核对ExtensionRuntimeHost.tsx383–387实际getter、core/extension-runtime.ts方法表、editor-events和shared版本。RequestHost实现五个字段：apiVersion1.0.0、原权限数组、events权限下23事件、windows权限下native/dialog/overlay以及权限先后顺序reduce方法表的34方法；重复权限保留permissions原数组但不重复方法。复用现有editorEventNames，查询不调用业务宿主，权限/认证/会话存活规则不变。这里承接旧版getter的协议权限语义，不表示服务一定已绑定；缺服务方法继续明确失败。
+
+新增测试直接读取legacy真实方法表和事件列表，核对单权限、runtime组合、重复权限、128组固定种子乱序子集、全权限、参数伪造、会话替换权限缩减、失效token/关闭及无storage/drop副作用。三个宿主目标构建通过，extension-capabilities/request-host/session-host三项CTest全部通过0.20秒，来源813文件及diff检查通过。正式Editor的执行引擎、原生窗口/表单实际呈现仍未接线，本阶段不改变正式exe，不把协议查询当成生产扩展迁移完成。整体INCOMPLETE，阶段保存推送dev。

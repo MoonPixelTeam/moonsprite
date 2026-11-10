@@ -5,7 +5,9 @@
 #include "javascript_text.h"
 #include "extension_diagnostics.h"
 #include "extension_windows.h"
+#include "extension_editor_events.h"
 #include <optional>
+#include <unordered_set>
 #include <cmath>
 #include <winrt/Windows.Foundation.Collections.h>
 namespace moon::extension {
@@ -88,6 +90,16 @@ public:
    auto key=[&](){if(!params.HasKey(L"key")||params.GetNamedValue(L"key").ValueType()!=JsonValueType::String)throw std::invalid_argument("扩展存储键无效。");return units(params.GetNamedString(L"key"));};
    const auto owner=units(winrt::to_hstring(extension_.id));IJsonValue result=JsonValue::CreateNullValue();
    if(method=="runtime.getLocale"){JsonObject object;object.Insert(L"locale",JsonValue::CreateStringValue(winrt::to_hstring(locale)));result=object;}
+   else if(method=="runtime.getCapabilities"){
+    JsonObject capabilities;capabilities.Insert(L"apiVersion",JsonValue::CreateStringValue(L"1.0.0"));JsonArray permissions,events,presentations,methods;std::unordered_set<std::string> seen;
+    // Legacy reduce iterates permissions first, preserving their order, then
+    // Object.entries(method permissions). Duplicate permissions retain values
+    // but cannot insert duplicate method keys.
+    for(const auto& permission:permissions_){permissions.Append(JsonValue::CreateStringValue(winrt::to_hstring(permission)));for(const auto& entry:methodPermissions)if(permission==entry.permission&&seen.insert(entry.method).second)methods.Append(JsonValue::CreateStringValue(winrt::to_hstring(entry.method)));}
+    if(std::find(permissions_.begin(),permissions_.end(),"events")!=permissions_.end())for(const auto* name:editorEventNames)events.Append(JsonValue::CreateStringValue(winrt::to_hstring(name)));
+    if(std::find(permissions_.begin(),permissions_.end(),"windows")!=permissions_.end())for(const auto* name:{L"native",L"dialog",L"overlay"})presentations.Append(JsonValue::CreateStringValue(name));
+    capabilities.Insert(L"permissions",permissions);capabilities.Insert(L"editorEvents",events);capabilities.Insert(L"windowPresentations",presentations);capabilities.Insert(L"methods",methods);result=capabilities;
+   }
    else if(method=="runtime.setFileDropTypes"){
     if(!params.HasKey(L"extensions")||params.GetNamedValue(L"extensions").ValueType()!=JsonValueType::Array)throw std::invalid_argument("Invalid extension file-drop suffixes");
     std::vector<std::string> types;for(const auto& item:params.GetNamedArray(L"extensions")){if(item.ValueType()!=JsonValueType::String)throw std::invalid_argument("Invalid extension file-drop suffixes");types.push_back(winrt::to_string(item.GetString()));}drops_.setTypes(extension_.id,std::move(types));
