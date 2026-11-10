@@ -32,6 +32,7 @@ public:
  explicit Client(Runtime& runtime):runtime_(runtime),pending_(runtime){}
  Client(const Client&)=delete;Client& operator=(const Client&)=delete;
  ~Client(){closeSession();}
+ void setPlaybackHost(PlaybackHost host){pending_.setPlaybackHost(std::move(host));}
  void setSelectCreatedPaletteColor(bool value){pending_.setSelectCreatedPaletteColor(value);}
  bool running()const{return pending_.busy();}
  bool busy()const{return running()||session_.has_value();}

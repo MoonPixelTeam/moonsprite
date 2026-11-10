@@ -81,12 +81,13 @@ class PendingInvocation {
  std::string scriptId_,sessionId_,action_;
  std::function<void(Document&&)> adopt_;
  bool receiving_=false;
- bool selectCreatedPaletteColor_=true;
+ bool selectCreatedPaletteColor_=true;PlaybackHost playback_;
 public:
  explicit PendingInvocation(Runtime& runtime):runtime_(runtime){}
  PendingInvocation(const PendingInvocation&)=delete;
  PendingInvocation& operator=(const PendingInvocation&)=delete;
  ~PendingInvocation(){try{cancel();}catch(...){}}
+ void setPlaybackHost(PlaybackHost host){if(busy())throw std::logic_error("Cannot replace playback host during invocation");playback_=std::move(host);}
  void setSelectCreatedPaletteColor(bool value){selectCreatedPaletteColor_=value;}
  bool busy()const{return receiving_||capture_.has_value()||response_.valid();}
  void start(const Document& d,std::string scriptId,std::string mseSnapshot,std::function<void(Document&&)> adopt={},std::optional<std::filesystem::path> savePath={}){
@@ -126,7 +127,7 @@ public:
    // busy until reception finishes so a nested request cannot replace target_.
    auto adopt=std::move(adopt_);auto session=std::move(sessionId_);scriptId_.clear();action_.clear();
    receiving_=true;
-   auto outcome=receiveWorkspaceResult(*active,target_,result,adopt,[this](const std::string& id){(void)runtime_.close(id);},session,selectCreatedPaletteColor_);
+   auto outcome=receiveWorkspaceResult(*active,target_,result,adopt,[this](const std::string& id){(void)runtime_.close(id);},session,selectCreatedPaletteColor_,playback_);
    receiving_=false;return outcome;
   }catch(...){receiving_=false;capture_.reset();adopt_={};scriptId_.clear();action_.clear();sessionId_.clear();throw;}
  }

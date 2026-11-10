@@ -5855,3 +5855,12 @@ Release正式程序构建成功，--script-window-host-check退出0。两项Lua�
 对照旧 lua-script-operations resolveFrameId/animation.setFrame 和 lua-script-service focusScriptTarget/applyResult，接入 MSE animation.setFrame。全结果预检解析精确帧 ID 或截断的一起始帧序号，非匹配字符串沿旧版回落第一帧，越界先拒绝；切帧不创建历史或 Cel。操作计划保留批次最终选择；每个批次开始恢复脚本原始 layer/frame，栅格仍修改原始目标，后续 palette.extract 使用该批次操作选择的帧，原始暂存像素只对原始帧或同一共享 owner 生效。最终 app.activeFrame 继续覆盖 MSE 选择，创建图层/文档仍沿既有后续顺序。原生只发布批次最终选择，避免同步批次中的无效中间重绘；播放状态接线仍待正式宿主完成。
 
 真实 Lua 验证切帧无历史、app.activeFrame=nil 保留 MSE 选择、显式最终覆盖、两批栅格写入原始目标及其 Undo/Redo、越界预检无部分写入，以及 setFrame{frame=2.9} 后取色不混入原始帧暂存像素并支持重做。两项 Lua 专项通过1.11s，唯一正式 Release 重建成功，--script-window-host-check 退出0，来源804文件及 diff检查通过。本阶段无UI外观调整，无全软件smoke；正式 Editor 菜单/provider/pump、animation.play及其他迁移仍 INCOMPLETE。保留用户差异和数据，阶段提交推送 dev。
+
+
+### 2026-11-10：脚本动画播放宿主回调通道阶段（正式 Editor 未接入）
+
+对照旧 lua-script-operations animation.play、workspace-commands-animation-playback setAnimationPlaying/playAnimationLoopSection 和 workspace-animation-loop-editing update/delete，新增 PlaybackHost，贯通 applyRasterResult/applyWorkspaceResult/receiveWorkspaceResult、PendingInvocation、Client 和 ScriptWindowHost。播放默认true，playing非boolean回落false，非空字符串ID走循环段播放，missing/全disabled循环也送宿主处理停止清理。无宿主的显式play在全结果预检前置拒绝，不能静默当成功。每批保留播放、循环变更和切帧顺序；循环播放携带操作时的段快照及首个可播放帧，避免后续update/remove使宿主读取错误版本。循环update沿旧map更新所有重复requested ID。仅实际update/remove通知宿主，由宿主判断是否影响当前播放段/tag周期。宿主必须同步、不抛异常、不替换或销毁Document；回调发生在批次内容提交后。
+
+真实Lua专项验证默认/暂停/错误类型、无历史、同批创建播放修改再播删除及missing、调用时段快照、切帧播放交错、缺失宿主无部分像素写入、后续非法操作无播放副作用、Client异步失败恢复与转发。两项Lua专项通过1.19s，正式Release重建成功，最新--script-window-host-check退出0，来源804文件及diff检查通过。窗口检查只证明已有对话宿主不回归，并非真实Editor播放验收。
+
+此阶段仅完成回调边界，正式Editor播放计时器/模式/暂停遍历/循环取消仍未接线；普通play按once/tag模式可能改变播放帧，规划时尚无宿主模式状态，故同批普通play之后extract的模式相关取色仍为迁移缺口。后续应接真实Editor状态并补齐该组合，不能把此阶段称为完整animation.play迁移。原生同步提交后执行宿主回调不提供宿主异常回滚。正式脚本菜单/provider/pump与其他域仍INCOMPLETE。保留用户差异、数据及缓存，阶段保存推送dev。

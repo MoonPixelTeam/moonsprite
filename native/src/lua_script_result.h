@@ -34,14 +34,22 @@ Document buildCreatedDocument(const CreatedDocument&);
 // Validates every batch and created structure before the caller may apply any
 // result. Returns the final raster baseline; does not execute MSE operations.
 SurfaceSnapshot validateResult(const Target&,const std::string& resultJson);
+struct PlaybackRequest {
+ enum class Kind {SetPlaying,PlayLoop,LoopChanged,SetFrame};
+ Kind kind=Kind::SetPlaying;bool playing=true;std::string loopId;
+ std::optional<timeline::LoopSection> section;std::string firstFrameId;
+};
+// Host executes after batch commit; it must not throw, retain the Document
+// reference, or replace/destroy it. SetFrame is executor-internal ordering.
+using PlaybackHost=std::function<void(Document&,const PlaybackRequest&)>;
 struct RasterSummary {std::size_t transactionCount=0,changedPixelCount=0;};
 // Raster/layer stage of the workspace executor. Rejects unsupported workspace
 // operations/created documents before the first edit; never silently drops them.
-RasterSummary applyRasterResult(Document& activeDocument,Target&,const std::string& resultJson,bool selectCreatedPaletteColor=true);
+RasterSummary applyRasterResult(Document& activeDocument,Target&,const std::string& resultJson,bool selectCreatedPaletteColor=true,const PlaybackHost& playback={});
 struct WorkspaceSummary {std::size_t transactionCount=0,changedPixelCount=0;bool documentBoundary=false;};
 // The workspace callback adopts each completed document in result order. It
 // must preserve existing sessions; the last adopted document becomes active.
-WorkspaceSummary applyWorkspaceResult(Document& activeDocument,Target&,const std::string& resultJson,const std::function<void(Document&&)>& addSession,bool selectCreatedPaletteColor=true);
+WorkspaceSummary applyWorkspaceResult(Document& activeDocument,Target&,const std::string& resultJson,const std::function<void(Document&&)>& addSession,bool selectCreatedPaletteColor=true,const PlaybackHost& playback={});
 struct RunSummary {
  std::string fileName,filePath;std::vector<std::string> output;
  std::size_t transactionCount=0,changedPixelCount=0;double elapsedMs=0;
@@ -54,5 +62,5 @@ struct RunOutcome {RunSummary summary;std::optional<ClientSession> session;};
 RunOutcome receiveWorkspaceResult(Document&,Target&,const std::string& resultJson,
  const std::function<void(Document&&)>& addSession,
  const std::function<void(const std::string&)>& closeSession,
- const std::string& failureSessionId={},bool selectCreatedPaletteColor=true);
+ const std::string& failureSessionId={},bool selectCreatedPaletteColor=true,const PlaybackHost& playback={});
 }
