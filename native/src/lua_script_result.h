@@ -7,6 +7,7 @@ struct RasterBatch {
  std::optional<SurfaceSnapshot> after;
  std::vector<Change> changes;
  std::u32string label;
+ std::optional<SliceState> slices;
 };
 struct CreatedLayer {
  std::string id;std::u32string name;

@@ -5757,3 +5757,9 @@ Client统一持有各DialogState，为原生窗口提供edit/click/commit/title-
 真实Rust Lua通过mse读取原生图层、色板、动画、样式、瓦片透明RGB、项目笔刷、带偏移本地笔刷、Unicode切片和隐藏面板。检查身份/旧层序、选择回退与Cel key、共享预算跳过/后续恢复、自由瓦片source/instance以及快照不改revision/history。测试fixture的瓦片尺寸和自由瓦片各帧authority先被模型拒绝，补齐合法数据后两项Lua及project-save专项全部通过1.71s。公共头直接引入WinRT导致GetObject宏冲突，已恢复轻量头，仅快照实现声明共享编码函数。来源804文件与diff检查通过。正式Editor provider/菜单接线、非RGBA颜色模式、MSE混合操作事务与资源分块捕获仍未完成；当前同步元数据/限额资源JSON不冒充大工程延迟优化完成。整体INCOMPLETE，保留用户差异、数据、缓存和失败现场。
 
 修复公共头包含冲突后唯一正式Release构建成功，--script-window-host-check实际退出0；本阶段无新增UI视觉变化，无截图验收。阶段保存推送dev。
+
+### 2026-11-10：MSE切片完整写入与像素混合批次阶段
+
+核对lua-script-operations specFor、selectionFromSpec、slices三操作、workspace-commands-slice与applyResult，接入slices.create/update/remove。支持直接表/位置参数、截断数字、缺失字段回退、边界钳制、名称清理、创建选中与删除选择清理、无目标无操作。预先计算所有批次切片候选并拒绝其余未接入路径，任何参数失败均在首次像素写入前发生；RasterBatch carries SliceState，沿Document现有Edit beforeSlices/afterSlices与像素/表面更改同项提交，一次撤销恢复整个batch，重做保留创建ID。纯切片不构造缺失Cel且不复制像素存储。已登记Native observer抛异常仍保留已提交历史的既有差异，不声称完全复刻React外部observer失败回退。
+
+真实Lua app.transaction混合像素及创建/更新/删除，检查一次历史、范围钳制/选中、Undo/Redo、编码后prepareEditableImport/createEditableDocument重开。失败及缺失ID no-op不改像素/切片/history；纯切片缺失Cel额外检查。初次fixture画布高度误判、空sourceArchive占位导致ZIP拒绝，按真实fixture修正而不改生产边界。正式Release构建和--script-window-host-check退出0，两项Lua专项通过；来源804与diff检查通过。本阶段无UI外观修改/新截图，无完整smoke。其他MSE写入域、正式Editor菜单/真实工作区供给、颜色模式和大工程分块仍未完成，整体INCOMPLETE。保存推送dev，保留用户差异、数据和缓存。

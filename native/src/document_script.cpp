@@ -70,7 +70,12 @@ bool Document::commitScriptRasterBatch(const script::RasterBatch& batch){
  if(batch.after&&!batch.changes.empty())throw std::invalid_argument("Lua surface replacement also contains pixel changes");
  Edit edit{{},state_,nextState_};edit.beforeActive=edit.afterActive=layer().id;edit.beforeFrame=edit.afterFrame=frame().id;
  std::size_t changed=0;
- if(!batch.after){std::unordered_set<std::size_t> seen;for(const auto& c:batch.changes){if(c.index>=expected.pixels->size()||!seen.insert(c.index).second||(*expected.pixels)[c.index]!=c.before)throw std::invalid_argument("Invalid Lua pixel change");changed+=c.before!=c.after;}if(!changed)return false;}
+ const bool slicesChanged=batch.slices.has_value();
+ if(slicesChanged){edit.beforeSlices=sliceState_;edit.afterSlices=*batch.slices;}
+ if(!batch.after){std::unordered_set<std::size_t> seen;for(const auto& c:batch.changes){if(c.index>=expected.pixels->size()||!seen.insert(c.index).second||(*expected.pixels)[c.index]!=c.before)throw std::invalid_argument("Invalid Lua pixel change");changed+=c.before!=c.after;}if(!changed&&!slicesChanged)return false;}
+ // Slice-only batches reuse the same history entry without materializing an
+ // absent raster Cel or copying the document's pixel storage.
+ if(!batch.after&&!changed){reserveHistoryEntries();auto replacement=*batch.slices;std::swap(sliceState_,replacement);const auto beforeRevision=revision_;try{pushEdit(std::move(edit),batch.label);}catch(...){if(revision_==beforeRevision)std::swap(sliceState_,replacement);throw;}change_={0,0,width_,height_};publishChange();return true;}
  // Admission before history/owner copies. Match existing surface-edit working
  // budget and deduplicate linked storage; do not copy an entire project.
  constexpr std::size_t limit=256*1024*1024;std::size_t used=0;std::set<std::string> seen;
@@ -94,10 +99,12 @@ bool Document::commitScriptRasterBatch(const script::RasterBatch& batch){
  std::optional<timeline::Surface> replacement;
  if(batch.after){edit.surfaceChanges.push_back({ownerId,before,makeSurface(*batch.after)});replacement=edit.surfaceChanges.front().after;}
  else{edit.targetCelId=slot?slot->id:ownerId;edit.pixelAddress=PixelAddressSpace{before.width,before.height,before.storageOriginX.value_or(0),before.storageOriginY.value_or(0)};}
+ std::optional<SliceState> previousSlices;if(slicesChanged)previousSlices=*batch.slices;
  // All history payloads and replacement pixels are prepared before installation.
  reserveHistoryEntries();auto* live=targetTimeline.mutableOwnedSurface(ownerId);if(!live)throw std::logic_error("Missing Lua writable owner");
  if(batch.after)std::swap(*live,*replacement);else for(const auto& p:edit.pixels)live->pixels[p.index]=p.after;
  if(prepared)std::swap(timeline_,*prepared);
+ if(previousSlices)std::swap(sliceState_,*previousSlices);
  const auto beforeRevision=revision_;
  try{pushEdit(std::move(edit),batch.label.empty()?U"脚本":batch.label);}
  catch(...){
@@ -106,6 +113,7 @@ bool Document::commitScriptRasterBatch(const script::RasterBatch& batch){
   // Observer exceptions happen after a committed history push. Keep that
   // committed history and its pixels consistent, then propagate the error.
   if(revision_!=beforeRevision){change_={0,0,width_,height_};publishChange();throw;}
+  if(previousSlices)std::swap(sliceState_,*previousSlices);
   if(prepared)std::swap(timeline_,*prepared);
   else if(batch.after)std::swap(*live,*replacement);
   else for(const auto& p:batch.changes)live->pixels[p.index]=p.before;
