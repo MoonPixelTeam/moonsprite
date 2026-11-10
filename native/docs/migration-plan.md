@@ -5683,4 +5683,13 @@ Release构建和lua-script-invocation专项通过0.38s，覆盖真实Lua app.act
 
 对照lua-script-service.ts createScriptDocument/applyResult及document-model createDocument，新增buildCreatedDocument、applyWorkspaceResult。RGBA候选保留默认旧色板、100ms帧、按最大frameNumber建帧、每层仅指定帧Cel、显示几何回退、元数据/像素、首帧/末旧版层活动、fresh identity/projectId、dirty和空历史。工作区通过显式adopter按结果顺序接纳，计文档边界/像素与事务数，跳过跨文档后的源最终选择；候选构建前核对预算，候选全建成后才写源。adopter可能移动源对象，调用后不再访问源引用。正式Editor标签接纳尚未接线；indexed/grayscale缺少原生颜色模式状态，明确拒绝，不冒充支持。
 
-审计既有project_import/project_encode证据确认旧版bottom-to-top/原生top-to-bottom，修正前两阶段Lua stackIndex与新层插入边界，并在创建工程反转层数组。首次测试使用构建中途已编译旧对象而失败，增量重建document_script后lua-script-invocation通过0.45s。覆盖原始moon-phase.lua实际执行→候选→回调接纳、保存清单8帧8层顺序、稀疏首帧/显示几何、身份/dirty/history、alpha与属性、元数据预算、缺adopter/不支持模式拒绝、多文档顺序和源引用销毁后安全。保存清单通过不等于重开验收：当前prepareEditableImport仍有全槽Cel门禁，稀疏重开明确未通过。来源覆盖796/diff检查后阶段推送dev，无正式exe/GUI/完整smoke。MSE混合事务、颜色模式、稀疏导入、正式Editor调度/菜单/对话框仍未完成，整体INCOMPLETE；保留用户差异、数据和缓存。
+审计既有project_import/project_encode证据确认旧版bottom-to-top/原生top-to-bottom，修正前两阶段Lua stackIndex与新层插入边界，并在创建工程反转层数组。首次测试使用构建中途已编译旧对象而失败，增量重建document_script后lua-script-invocation通过0.45s。覆盖原始moon-phase.lua实际执行→候选→回调接纳、保存清单8帧8层顺序、稀疏首帧/显示几何、身份/dirty/history、alpha与属性、元数据预算、缺adopter/不支持模式拒绝、多文档顺序和源引用销毁后安全。当时仅检查保存清单，未完成重开验收。后续实测更正：prepareEditableImport在全槽门禁前已有缺失槽补齐逻辑，原先推断稀疏重开被拒绝不成立。来源覆盖796/diff检查后阶段推送dev，无正式exe/GUI/完整smoke。MSE混合事务、颜色模式、正式Editor调度/菜单/对话框仍未完成，整体INCOMPLETE；保留用户差异、数据和缓存。
+
+
+### 2026-11-10：Lua结果接收、客户端会话清理与工程重开验证
+
+对照lua-script-service.ts outcomeFromResult/runLuaScriptForActiveDocument/dispatchLuaScriptDialogForActiveDocument，新增receiveWorkspaceResult：返回文件名/路径、输出、耗时及事务/像素计数；未结束结果保留session/dialog JSON及应用后的target。沿旧版先应用再判断跨工程边界：仍存活的对话框跨工程时保留已创建工程，报target changed并关闭会话。过期、非法和应用错误关闭返回session或dispatch原session；清理异常不覆盖原错误。关闭通过明确enqueue-only回调交给Runtime，不在结果接收路径等待工作线程。返回的dialog JSON仍待原生控件接入，不宣称正式脚本界面已可运行。
+
+实际原始moon-phase.lua生成工程编码后调用prepareEditableImport/createEditableDocument，8帧8层画面逐一比较通过。确认导入器原有缺失Cel补齐发生在全槽门禁之前，更正上一阶段的稀疏重开错误诊断，无需改变生产导入逻辑。真实Lua modeless初始输出、回调像素与计数、更新target、过期结果关闭且后续dispatch失效、跨工程adopter销毁源后的安全清理、完成态月相结果及坏JSON的dispatch清理均纳入专项。
+
+Release相关目标成功，lua-script-invocation通过0.44s。未更新正式exe，无GUI/完整smoke验收；MSE混合事务、原生颜色模式和正式Editor异步调度/动态菜单/对话框仍待完成，整体INCOMPLETE。保留用户原差异、数据、缓存及失败现场；本阶段保存推送dev。

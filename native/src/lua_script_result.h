@@ -35,4 +35,17 @@ struct WorkspaceSummary {std::size_t transactionCount=0,changedPixelCount=0;bool
 // The workspace callback adopts each completed document in result order. It
 // must preserve existing sessions; the last adopted document becomes active.
 WorkspaceSummary applyWorkspaceResult(Document& activeDocument,Target&,const std::string& resultJson,const std::function<void(Document&&)>& addSession);
+struct RunSummary {
+ std::string fileName,filePath;std::vector<std::string> output;
+ std::size_t transactionCount=0,changedPixelCount=0;double elapsedMs=0;
+};
+struct ClientSession {std::string sessionId,fileName,filePath,dialogsJson;Target target;};
+struct RunOutcome {RunSummary summary;std::optional<ClientSession> session;};
+// Legacy outcomeFromResult plus run/dispatch failure cleanup. closeSession is
+// an enqueue-only callback: UI callers must not wait for Runtime::close here.
+// Dispatch callers supply their existing session ID as failureSessionId.
+RunOutcome receiveWorkspaceResult(Document&,Target&,const std::string& resultJson,
+ const std::function<void(Document&&)>& addSession,
+ const std::function<void(const std::string&)>& closeSession,
+ const std::string& failureSessionId={});
 }

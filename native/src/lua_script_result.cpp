@@ -150,4 +150,31 @@ WorkspaceSummary applyWorkspaceResult(Document& d,Target& target,const std::stri
  for(auto& document:prepared){addSession(std::move(document));++summary.transactionCount;summary.documentBoundary=true;}
  summary.changedPixelCount+=pixels;return summary;
 }
+RunOutcome receiveWorkspaceResult(Document& d,Target& target,const std::string& json,
+ const std::function<void(Document&&)>& addSession,const std::function<void(const std::string&)>& closeSession,const std::string& failureSessionId){
+ std::string cleanup=failureSessionId;
+ try{
+  const auto result=JsonObject::Parse(winrt::to_hstring(json));
+  if(cleanup.empty()&&result.HasKey(L"sessionId")&&result.GetNamedValue(L"sessionId").ValueType()==JsonValueType::String)cleanup=winrt::to_string(result.GetNamedString(L"sessionId"));
+  // Decode the outcome before any application, so a malformed response cannot
+  // leave edits committed merely because its summary could not be displayed.
+  RunOutcome outcome;auto& summary=outcome.summary;
+  summary.fileName=winrt::to_string(result.GetNamedString(L"fileName"));summary.filePath=winrt::to_string(result.GetNamedString(L"filePath"));summary.elapsedMs=result.GetNamedNumber(L"elapsedMs");
+  for(const auto& line:result.GetNamedArray(L"output"))summary.output.push_back(winrt::to_string(line.GetString()));
+  const bool finished=result.GetNamedBoolean(L"finished");
+  if(!finished&&result.HasKey(L"sessionId")&&result.GetNamedValue(L"sessionId").ValueType()==JsonValueType::String){
+   const auto id=winrt::to_string(result.GetNamedString(L"sessionId"));
+   if(!id.empty())outcome.session=ClientSession{id,summary.fileName,summary.filePath,winrt::to_string(result.GetNamedArray(L"dialogs").Stringify()),target};
+  }
+  const auto applied=applyWorkspaceResult(d,target,json,addSession);
+  if(applied.documentBoundary&&!finished)throw std::logic_error("Lua script target changed");
+  summary.transactionCount=applied.transactionCount;summary.changedPixelCount=applied.changedPixelCount;
+  if(outcome.session)outcome.session->target=target;
+  return outcome;
+ }catch(...){
+  // Cleanup failures must not replace the original application error.
+  if(!cleanup.empty()&&closeSession)try{closeSession(cleanup);}catch(...){}
+  throw;
+ }
+}
 }
