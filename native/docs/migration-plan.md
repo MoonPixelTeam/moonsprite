@@ -6333,3 +6333,10 @@ selection.transform仍须衔接跨批浮动保留、实际操作次序、后续�
 对照ExtensionDialogForm image分支和styles.css4561，新增内存PNG data URL解码，显示尺寸默认48/有限数字clamp16..512，contain居中与nearest像素采样。复用已有Skia PNG codec、uploadRgbaRegion和原生SrcOver，不落磁盘或读取外部URL。缓存按source复用，节点移除后释放；失败只设置预览错误，不改变FormState busy/pending。原生显式工作预算32MiB编码及16Mi像素，在解码目标分配前检查。
 
 首轮缺WinRT集合头编译错误已修正，保留失败log。最终唯一正式Release及image测试构建通过；extension-form-ui0.69s/image0.03s/files0.06s/state0.02s四项通过，来源821文件与diff检查通过。生成2x1PNG逐像素验证opaque红/alpha128绿，默认/上下限/小数/非数字尺寸及错误URL/base64/PNG拒绝。实际查看build/Release/extension-form-smoke.bmp，图像显示、最近邻边界及半透明背景叠加可见；busy截图不证明解锁后画面。图片解码与上传仍同步，大图/多图总缓存预算及后台解码尚待完善；嵌套dialog/tooltip/context与正式扩展执行器仍未完成，不声明全量表单或扩展完成。正式唯一exe更新，无preview，整体INCOMPLETE，阶段保存推送dev。
+
+
+### 2026-11-11：扩展表单槽位右键与提示
+
+按 ExtensionDialogForm 的 slot/onContextMenu、FormCopy 与 labelHint 接入原生鼠标过滤器：仅处理当前窗口可见视口中的右键，子控件事件也能触发所属槽位，嵌套槽位优先内层；FormState 保持忙碌/禁用校验、发送旧草稿快照后清空草稿的既有语义。复用现有 MIT Aseprite ui/tooltips API，按钮、字段及绘制标签提供完整名称和 tooltip，表单重建先销毁提示管理器以取消悬挂目标/计时器，再释放旧控件。无逐鼠标移动重建。
+
+唯一正式 Release 构建通过；extension-form-ui/image/files/state 四项全部通过（0.87秒），实际窗口回归验证子按钮目标右键、草稿清空、busy拒绝以及组合提示文本。来源覆盖821文件、diff检查通过。实际查看 extension-form-smoke.bmp：控件/图片可见，截图仍捕获busy绘制阶段，解锁以状态断言为证；尚未通过真实悬停截图验收提示窗口，也未完成所有1×/2×边界布局。嵌套dialog、槽位描述排版和正式扩展执行器接入仍未完成，整体INCOMPLETE。
