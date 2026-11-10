@@ -6044,3 +6044,12 @@ Aseprite对照：本地缓存doc/tileset.h::findTileIndex/notifyTileContentChang
 MSE selection.transform仍有跨批次浮动保留、后续结构/像素操作与活动目标重定位语义未完成；未把立即提交近似行为作为已迁移入口，也未修改能力发现。整体INCOMPLETE，最终检查后附。
 
 最终唯一正式Release构建成功；document-transactions全套0.33s通过（16组及超大选区），正式--playback-floating-check退出0（含新增真实方向键与原有播放/完成选区/删除路由）。来源804文件与diff检查通过。新增测试分别保留粘贴前、粘贴后选区作为撤销/边界断言依据；未改变clipboard选区语义。无人工截图或FPS测量；整体INCOMPLETE，本阶段保存推送dev。
+
+
+### 2026-11-10：色板同步更新真实瓦片资源
+
+用户明确采用修复后的行为：色板同步改色更新实际瓦片资源与全部引用，包括共享资源的锁定图层。对照workspace-commands-color.ts127–147与applyColorReplacementTarget，保留普通栅格精确RGBA替换、隐藏层参与、锁定层过滤与owner去重顺序。原生公共适配按未锁定Cel中的grid/free引用选择资源、去重后修改瓦片，保留ID/单元格/实例/链接/缓存几何；已有cellPixels与free_tiles::render重建受影响缓存。普通入口与MSE复用该处理；撤销记录同时包含资源、缓存、普通像素和色板。没有瓦片资源的普通入口保留原压缩像素历史路径。
+
+新增实际Lua与普通Document入口回归覆盖连续改色、混合像素、锁定共享引用、隐藏层、自由瓦片、链接帧、仅锁定资源不修改、撤销重做与保存重开。整体迁移仍INCOMPLETE；最终验证后附。
+
+最终唯一正式Release构建成功，lua-script-invocation全套2.26s通过；正式--script-entry-check退出0。来源805文件检查通过。首次夹具将同一sheet同时声明grid/free来源，按现有项目格式限制改为独立合法自由源后保存重开通过；保留产品校验。无人工UI/FPS验收。整体INCOMPLETE，本阶段保存推送dev。

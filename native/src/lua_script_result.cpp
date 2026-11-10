@@ -7,6 +7,7 @@
 #include "lua_script_result.h"
 #include "raster_geometry.h"
 #include "palette_layout.h"
+#include "palette_resource_sync.h"
 #include "project_manifest.h"
 #include "layer_compositor.h"
 #include "layer_blend.h"
@@ -134,6 +135,7 @@ std::vector<OperationPlan> planOperations(const Document& d,const JsonArray& bat
  bool structures=false;for(const auto& item:batches){auto b=item.GetObject();if(b.HasKey(L"operations"))for(const auto& op:b.GetNamedArray(L"operations")){auto path=op.GetObject().GetNamedString(L"path");structures|=path==L"freeTiles.createLayer"||path==L"freeTiles.createSource"||path==L"freeTiles.place"||path==L"freeTiles.edit"||path==L"tiles.createSet"||path==L"tiles.createLayer"||path==L"tiles.place"||path==L"tiles.edit"||path==L"layers.create"||path==L"layers.duplicate"||path==L"layers.remove";}}
  auto structureUi=captureLayerStructureUi(d);
  bool layerUpdates=structures;for(const auto& item:batches){auto b=item.GetObject();if(b.HasKey(L"operations"))for(const auto& op:b.GetNamedArray(L"operations"))layerUpdates|=op.GetObject().GetNamedString(L"path")==L"layers.update";}
+ if(d.paletteColorSynchronization()&&std::any_of(d.timeline().state().layers.begin(),d.timeline().state().layers.end(),[](const auto& l){return l.kind=="tilemap"||l.kind=="free-tile";}))for(const auto& item:batches){auto b=item.GetObject();if(b.HasKey(L"operations"))for(const auto& op:b.GetNamedArray(L"operations"))layerUpdates|=op.GetObject().GetNamedString(L"path")==L"palette.update";}
  std::unordered_map<std::string,std::array<int,4>> geometry;if(layerUpdates)for(const auto& l:d.timeline().state().layers)geometry.emplace(l.id,d.displayedLayerGeometry(l.id));
  bool usesStyles=false;for(const auto& item:batches){auto batch=item.GetObject();if(batch.HasKey(L"operations"))for(const auto& entry:batch.GetNamedArray(L"operations"))usesStyles|=std::wstring_view(entry.GetObject().GetNamedString(L"path")).find(L"styles.")==0;}
  std::unordered_map<std::string,std::optional<timeline::ColorOverlayStyle>> layerStyles;if(usesStyles)for(const auto& l:d.timeline().state().layers)layerStyles.emplace(l.id,l.layerStyles);auto clipboard=usesStyles&&styleHost?styleHost.read():std::optional<timeline::ColorOverlayStyle>{};
@@ -359,9 +361,9 @@ std::vector<OperationPlan> planOperations(const Document& d,const JsonArray& bat
     if(path==L"palette.update"){
      if(found==palette.entries.end())throw std::invalid_argument("palette color does not exist");if(spec.HasKey(L"color")){const auto color=operationColor(spec.GetNamedValue(L"color"),found->color);if(color!=found->color){const auto before=found->color;
       if(synchronized&&d.paletteColorSynchronization()){
-       for(const auto& l:synchronized->state().layers)if((l.kind=="tilemap"||l.kind=="free-tile")&&!timeline::isLayerEffectivelyLocked(synchronized->state(),l))throw std::logic_error("Lua synchronized tile resource replacement adapter is incomplete");
+       auto resources=synchronized->state();if(synchronizePaletteResources(resources,before,color)){synchronized.emplace(std::move(resources));syncChanged=true;}
        const auto& state=synchronized->state();struct Visit{std::string cel;std::size_t frame,layer;};std::vector<Visit> visits;std::unordered_map<std::string,std::size_t> frames,layers;for(std::size_t i=0;i<state.frames.size();++i)frames[state.frames[i].id]=i;for(std::size_t i=0;i<state.layers.size();++i)layers[state.layers[i].id]=state.layers.size()-1-i;for(const auto& c:state.cels)visits.push_back({c.id,frames.at(c.frameId),layers.at(c.layerId)});std::sort(visits.begin(),visits.end(),[](const auto& a,const auto& b){return a.frame!=b.frame?a.frame<b.frame:a.layer<b.layer;});std::unordered_set<const void*> seen;
-       for(const auto& v:visits){auto r=synchronized->resolveSurface(v.cel);if(!r.surface||!r.source||!seen.insert(r.surface->pixels.identity()).second||timeline::isLayerEffectivelyLocked(state,state.layers[state.layers.size()-1-v.layer]))continue;bool matches=false;for(auto p:r.surface->pixels)matches|=p==before;if(!matches)continue;auto prior=*r.surface;const auto ownerId=r.source->id;auto after=prior;auto& pixels=static_cast<std::vector<Pixel>&>(after.pixels);for(auto& pixel:pixels)if(pixel==before)pixel=color;
+       for(const auto& v:visits){auto r=synchronized->resolveSurface(v.cel);if(!r.surface||!r.source||r.source->tilemap||r.source->freeTiles||!seen.insert(r.surface->pixels.identity()).second||timeline::isLayerEffectivelyLocked(state,state.layers[state.layers.size()-1-v.layer]))continue;bool matches=false;for(auto p:r.surface->pixels)matches|=p==before;if(!matches)continue;auto prior=*r.surface;const auto ownerId=r.source->id;auto after=prior;auto& pixels=static_cast<std::vector<Pixel>&>(after.pixels);for(auto& pixel:pixels)if(pixel==before)pixel=color;
         auto existing=std::find_if(synchronizedOwners.begin(),synchronizedOwners.end(),[&](const auto& o){return o.ownerId==ownerId;});if(existing==synchronizedOwners.end())synchronizedOwners.push_back({ownerId,std::move(prior),std::move(after)});else existing->after=std::move(after);syncChanged=true;
        }
        // Install completed owner buffers together. Calling setPixel for each

@@ -20,6 +20,7 @@
 #include "sprite_sheet_import.h"
 #include "palette_extraction.h"
 #include "palette_layout.h"
+#include "palette_resource_sync.h"
 #include "layer_compositor.h"
 #include <algorithm>
 #include <cmath>
@@ -1833,13 +1834,16 @@ void Document::deletePaletteColors(const std::vector<int>& ids) {
   edit.afterPalette=capturePaletteEdit(2);pushEdit(std::move(edit),removed.size()>1?U"批量移除颜色板颜色":U"从颜色板移除颜色");
 }
 void Document::updatePaletteColor(int id,Pixel color) {
-  if(paletteColorSynchronization_&&std::any_of(timeline_.state().layers.begin(),timeline_.state().layers.end(),[&](const auto& l){return (l.kind=="tilemap"||l.kind=="free-tile")&&!layerEffectivelyLocked(l);}))return;
   const auto current=paletteEntry(id);if(!current || current->color==color) return;
   if(paletteColorSynchronization_){
     // legacy workspace-commands-color: document frames x bottom-to-top layers,
     // owner dedup BEFORE lock filtering, hidden layers included, no selection clip.
     const Pixel source=current->color;Edit compound{{},state_,nextState_};compound.beforeActive=compound.afterActive=layer().id;compound.beforeFrame=compound.afterFrame=frame().id;compound.beforeSelection=compound.afterSelection=selectedFrames_;
     Edit paletteEdit{{},state_,nextState_};paletteEdit.paletteKind=3;paletteEdit.colorId=id;paletteEdit.beforePalette=capturePaletteEdit(3,id);paletteEdit.afterPalette=*paletteEdit.beforePalette;for(auto& entry:paletteEdit.afterPalette->entries)if(entry.id==id)entry.color=color;if(paletteEdit.afterPalette->primary==source)paletteEdit.afterPalette->primary=color;if(paletteEdit.afterPalette->secondary==source)paletteEdit.afterPalette->secondary=color;compound.children.push_back(std::move(paletteEdit));
+    if(!timeline_.state().tilesets.empty()){auto resourceState=timeline_.state();
+    if(synchronizePaletteResources(resourceState,source,color)){
+      Edit resources{{},state_,nextState_};resources.beforeTimeline=timeline_.state();resources.afterTimeline=std::move(resourceState);resources.beforeActive=resources.afterActive=activeLayerId_;resources.beforeFrame=resources.afterFrame=activeFrameId_;compound.children.push_back(std::move(resources));
+    }}
     // Visit only existing slots, retaining frame-first / bottom-to-top order.
     // Sparse timelines must not scan every empty layer x frame combination.
     const auto& state=timeline_.state();struct Target{const timeline::Cel* cel;std::size_t frame,layer;};std::vector<Target> targets;targets.reserve(state.cels.size());
@@ -1848,7 +1852,7 @@ void Document::updatePaletteColor(int id,Pixel color) {
       for(const auto& c:state.cels){const auto f=frameOrder.find(c.frameId),l=layerOrder.find(c.layerId);if(f!=frameOrder.end()&&l!=layerOrder.end())targets.push_back({&c,f->second,l->second});}std::sort(targets.begin(),targets.end(),[](const auto& a,const auto& b){return a.frame!=b.frame?a.frame<b.frame:a.layer<b.layer;});
     }else for(std::size_t f=0;f<state.frames.size();++f)for(std::size_t l=0;l<state.layers.size();++l)if(const auto* c=timeline_.findCel(state.layers[state.layers.size()-1-l].id,state.frames[f].id))targets.push_back({c,f,l});
     std::vector<bool> locked;locked.reserve(state.layers.size());for(auto l=state.layers.rbegin();l!=state.layers.rend();++l)locked.push_back(layerEffectivelyLocked(*l));std::unordered_set<const void*> seen;seen.reserve(targets.size());
-    for(const auto& target:targets){const auto resolved=timeline_.resolveSurface(target.cel->id);if(!resolved.source||!resolved.surface||!seen.insert(resolved.surface->pixels.identity()).second||locked[target.layer])continue;Edit child{{},state_,nextState_};child.targetCelId=resolved.source->id;child.pixelAddress=PixelAddressSpace{resolved.surface->width,resolved.surface->height,resolved.surface->storageOriginX.value_or(0),resolved.surface->storageOriginY.value_or(0)};const auto& pixels=resolved.surface->pixels;for(std::size_t i=0;i<pixels.size();++i)if(pixels[i]==source){if(!child.runs.empty()&&child.runs.back().index+child.runs.back().length==i)++child.runs.back().length;else child.runs.push_back({i,1,source,color});}if(!child.runs.empty())compound.children.push_back(std::move(child));}
+    for(const auto& target:targets){const auto resolved=timeline_.resolveSurface(target.cel->id);if(resolved.source&&(resolved.source->tilemap||resolved.source->freeTiles))continue;if(!resolved.source||!resolved.surface||!seen.insert(resolved.surface->pixels.identity()).second||locked[target.layer])continue;Edit child{{},state_,nextState_};child.targetCelId=resolved.source->id;child.pixelAddress=PixelAddressSpace{resolved.surface->width,resolved.surface->height,resolved.surface->storageOriginX.value_or(0),resolved.surface->storageOriginY.value_or(0)};const auto& pixels=resolved.surface->pixels;for(std::size_t i=0;i<pixels.size();++i)if(pixels[i]==source){if(!child.runs.empty()&&child.runs.back().index+child.runs.back().length==i)++child.runs.back().length;else child.runs.push_back({i,1,source,color});}if(!child.runs.empty())compound.children.push_back(std::move(child));}
     auto gradientPreview=std::move(gradient_);cancelStroke();gradient_=std::move(gradientPreview);reserveHistoryEntries();change_={};applyEdit(compound,true);publishChange();pushEdit(std::move(compound),U"调整颜色板颜色");return;
   }
   auto gradientPreview=std::move(gradient_);cancelStroke();gradient_=std::move(gradientPreview);Edit edit{{},state_,nextState_};edit.beforePalette=capturePaletteEdit(3,id);edit.paletteKind=3;edit.colorId=id;
