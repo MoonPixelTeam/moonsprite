@@ -9,6 +9,7 @@
 #include <system_error>
 #include <atomic>
 #include <stdexcept>
+#include <unordered_set>
 #include <winrt/Windows.Foundation.Collections.h>
 namespace moon::extension {
 using namespace winrt::Windows::Data::Json;
@@ -29,7 +30,8 @@ Storage::Storage(std::filesystem::path path):path_(std::move(path)){
  std::string json;char block[65536];
  for(;;){DWORD count=0;if(!ReadFile(handle,block,sizeof(block),&count,nullptr))throw std::system_error(int(GetLastError()),std::system_category(),"Cannot finish reading extension storage");if(!count)break;json.append(block,count);}
 
- const auto rows=JsonArray::Parse(winrt::to_hstring(json));for(const auto& value:rows){const auto row=value.GetArray();if(row.Size()!=2)throw std::runtime_error("Invalid extension storage entry");auto key=units(row.GetStringAt(0));auto bytes=winrt::to_string(row.GetStringAt(1));if(std::any_of(values_.begin(),values_.end(),[&](const auto& p){return p.first==key;}))throw std::runtime_error("Duplicate extension storage entry");values_.push_back({std::move(key),std::move(bytes)});}
+ const auto rows=JsonArray::Parse(winrt::to_hstring(json));std::unordered_set<std::u16string> seen;seen.reserve(rows.Size());values_.reserve(rows.Size());
+ for(const auto& value:rows){const auto row=value.GetArray();if(row.Size()!=2)throw std::runtime_error("Invalid extension storage entry");auto key=units(row.GetStringAt(0));auto bytes=winrt::to_string(row.GetStringAt(1));if(!seen.insert(key).second)throw std::runtime_error("Duplicate extension storage entry");values_.push_back({std::move(key),std::move(bytes)});}
 }
 void Storage::publish(std::vector<std::pair<std::u16string,std::string>> next){
  JsonArray rows;for(const auto& p:next){JsonArray row;row.Append(JsonValue::CreateStringValue(wide(p.first)));row.Append(JsonValue::CreateStringValue(winrt::to_hstring(p.second)));rows.Append(row);}
@@ -41,7 +43,7 @@ void Storage::publish(std::vector<std::pair<std::u16string,std::string>> next){
  bool published=false;
  try{
   if(ReplaceFileW(path_.c_str(),staging.c_str(),nullptr,0,nullptr,nullptr))published=true;
-  else {const auto error=GetLastError();if(error!=ERROR_FILE_NOT_FOUND)throw std::system_error(int(error),std::system_category(),"Cannot replace extension storage");
+  else {const auto error=GetLastError();if(error!=ERROR_FILE_NOT_FOUND)throw std::system_error(int(error),std::system_category(),"Cannot replace extension storage ["+path_.string()+", code="+std::to_string(error)+"]");
    if(!MoveFileExW(staging.c_str(),path_.c_str(),MOVEFILE_WRITE_THROUGH))throw std::system_error(int(GetLastError()),std::system_category(),"Cannot publish extension storage");published=true;}
  }catch(...){if(!published)DeleteFileW(staging.c_str());throw;}
  values_.swap(next);

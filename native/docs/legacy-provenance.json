@@ -29864,7 +29864,7 @@
         "legacy/src/renderer/src/core/extension-runtime.ts",
         "legacy/src/renderer/src/core/extension-runtime.test.ts"
       ],
-      "scope": "EX-004 namespaced get/set/remove/list and quotas",
+      "scope": "EX-004 namespaced get/set/remove/list and quotas；2026-11-11存储加载重复键检测由逐项扫描values改unordered_set并预留容器，保留持久顺序/UTF16身份/重复拒绝。8192实际磁盘键首尾值及末项重复拒绝回归；锁定文件set/remove失败后检查临时stage无泄漏、内存磁盘旧值一致、缺失key remove无写入，解锁后同实例发布并重开成功。首次ReplaceFile偶发失败根因仍未定位，不加入盲重试。；2026-11-11延续故障调查：ReplaceFile错误包含目标路径与原Win32码，连续发布失败记录序号/attributes/stage数并核对disk/memory。MoveFileEx替换实验在快照场景code5，已撤回，最终保留ReplaceFile快照语义；最终storage/session检查通过不代表1175根因已修复。",
       "adaptation": "Retain legacy prefix, UTF8 160 byte/control-free keys, 256KiB encoded value and 1MiB namespace quota excluding overwritten value, invalid stored JSON returns null and UTF16 sort. Reuse existing writeBinaryFileAtomic image_export.cpp, publish memory only after disk replacement. Native JSON array of key/raw-value pairs replaces browser localStorage; one event-thread store instance expected, no concurrent writer merge.",
       "snapshotReplace20261110": "Native snapshot IO adaptation: CreateFile read shares READ/WRITE/DELETE, direct missing-file handling replaces exists/open race. Common atomic writer flushes unique staging; ReplaceFileW publishes existing target while cooperating snapshot stays valid; missing target uses non-replacing MoveFileEx. No retry, memory publishes only on success, failed own staging removed. Controlled old writer failed at save17 with delete-sharing reader; new writer passes. Prior early ERROR_ACCESS_DENIED external holder not identified, not claimed fully eliminated."
     },
@@ -29875,7 +29875,7 @@
         "legacy/src/renderer/src/core/extension-runtime.ts",
         "legacy/src/renderer/src/core/extension-runtime.test.ts"
       ],
-      "scope": "Extension storage disk and failure regression",
+      "scope": "Extension storage disk and failure regression；2026-11-11存储加载重复键检测由逐项扫描values改unordered_set并预留容器，保留持久顺序/UTF16身份/重复拒绝。8192实际磁盘键首尾值及末项重复拒绝回归；锁定文件set/remove失败后检查临时stage无泄漏、内存磁盘旧值一致、缺失key remove无写入，解锁后同实例发布并重开成功。首次ReplaceFile偶发失败根因仍未定位，不加入盲重试。；2026-11-11延续故障调查：ReplaceFile错误包含目标路径与原Win32码，连续发布失败记录序号/attributes/stage数并核对disk/memory。MoveFileEx替换实验在快照场景code5，已撤回，最终保留ReplaceFile快照语义；最终storage/session检查通过不代表1175根因已修复。",
       "adaptation": "Namespaced/reopened JSON, missing/corrupt get null, UTF8 key limits/UTF16 sort, exact value and namespace limits, overwrite/remove capacity, locked target write/remove failure preserves memory and disk. Isolated build owned test artifacts retained.",
       "snapshotReplace20261110": "Keep explicit no-delete-share lock set/remove rejection and exact old memory/disk; add cooperating read handle spanning replacement with old snapshot size unchanged/new path content visible, plus32 consecutive save/reopen values with no sleep/retry. Full extension8 pass1.18s and actual legacy storage oracle pass."
     },

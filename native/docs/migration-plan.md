@@ -6651,3 +6651,13 @@ PNG后台解码完成后保留像素及私有surface，每次pump最多上传262
 对照ExtensionRuntimeHost respond固定type/requestId与ok/result/error协议，SessionHost在worker结果交付前验证type、原请求ID、布尔ok及成功result/失败字符串error。合法JSON但错配信封转换原请求的一次错误响应，不交付错误身份，不影响后续任务。仅校验信封，未扩称完整HTTP结果schema校验。
 
 两个模块目标构建成功。首次CTest实际HTTP通过22.62秒，会话测试在既有Storage ReplaceFile报Unable to remove the file to be replaced，未进入新增断言；单独复核会话测试通过0.08秒，七类畸形信封和合法失败保留回归通过。存储首次失败未复现、根因未定位，不声称已修复或忽略该事实。来源821文件/diff通过。正式编辑器执行器尚未接入，本轮未重建正式exe，整体迁移INCOMPLETE。保留editor_support.h和用户数据，阶段提交推送dev。
+
+### 2026-11-11：扩展存储故障调查（未完成，尚未提交）
+
+当前工作区将加载重复键检测改为unordered_set，补8192键/重复键拒绝和失败stage清理/解锁同实例恢复检查。直接执行完整storage测试一次通过（8192键加载35286us）；随后CTest storage失败，捕获ReplaceFileW code1175 ERROR_UNABLE_TO_REMOVE_REPLACED，会话测试通过。临时阶段诊断显示失败发生在连续保存/重开阶段，显式锁冲突恢复及stage清理断言此前已通过。未定位占用来源，未加入重试或修改发布语义，不将一次通过作为修复证据。当前阶段未完成，改动保留不提交推送，需继续定位1175并完成相关检查。用户editor_support.h和用户数据保留。
+
+### 2026-11-11：存储加载与失败恢复证据（1175仍未解决）
+
+完成上一轮未提交的独立加载优化与失败恢复检查：加载用unordered_set检测重复并预留容器，保留顺序和UTF16键语义；8192键首尾值及末项重复拒绝。锁冲突set/remove失败后检查stage无泄漏、内存/磁盘旧值一致、缺失key remove无写入，解锁后同实例保存重开成功。诊断增强含路径/Win32码，连续保存失败输出序号/文件属性/stage数并核对内存磁盘。临时MoveFileEx覆盖实验在快照读取场景code5，已完全撤回，最终仍使用原ReplaceFile发布，不改变快照/多写者语义，无重试。
+
+最终两个模块目标构建成功，storage/session两项通过1.28秒；直接storage测试8192键加载36787us。之前1175间歇性故障仍未定位，当前通过不构成已修复证据。此次提交范围为已验证的加载优化、故障恢复与诊断；原子发布可靠性继续列为未解决，不将该领域或整体迁移标完成。正式生产扩展宿主未接入，本轮未重建正式exe。保留editor_support.h和用户数据，来源/diff检查后提交推送dev。
