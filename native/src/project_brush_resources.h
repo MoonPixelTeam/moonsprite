@@ -9,7 +9,7 @@ struct ProjectBrushResource {ProjectBrushMetadata metadata;PatternBrush brush;};
 inline ProjectBrushResource decodeProjectBrushResource(ProjectBrushMetadata metadata,const std::map<std::string,std::vector<std::uint8_t>>& files){
  if(metadata.id.empty()||metadata.width<1||metadata.height<1||std::uint64_t(metadata.width)*metadata.height>16*1024*1024)throw std::invalid_argument("Invalid project brush dimensions/identity");
  const auto count=std::size_t(metadata.width)*metadata.height;auto gray=files.find(metadata.dataFile);if(gray==files.end()||gray->second.size()!=count)throw std::invalid_argument("Corrupt project brush coverage");
- PatternBrush brush;brush.width=metadata.width;brush.height=metadata.height;brush.sourceX=metadata.sourceX.value_or(0);brush.sourceY=metadata.sourceY.value_or(0);brush.coverage=gray->second;
+ PatternBrush brush;brush.selectionColorMapping=metadata.sourceX.has_value()&&metadata.sourceY.has_value();brush.width=metadata.width;brush.height=metadata.height;brush.sourceX=metadata.sourceX.value_or(0);brush.sourceY=metadata.sourceY.value_or(0);brush.coverage=gray->second;
  auto colors=files.find(metadata.colorsFile);if(!metadata.colorsFile.empty()&&colors!=files.end()&&colors->second.size()==count*4){brush.colors.resize(count);for(std::size_t i=0;i<count;++i)for(int channel=0;channel<4;++channel)brush.colors[i]|=std::uint32_t(colors->second[i*4+channel])<<(channel*8);}
  return {std::move(metadata),std::move(brush)};
 }

@@ -15,6 +15,7 @@ struct PatternBrush {
  int width=0,height=0,sourceX=0,sourceY=0;bool intrinsicSize=true;
  std::vector<std::uint8_t> coverage;
  std::vector<std::uint32_t> colors,paintColors;
+ bool selectionColorMapping=false;
 };
 struct PatternFillOptions {
  FillTexture texture=FillTexture::Solid;int textureScale=1,brushSize=1;

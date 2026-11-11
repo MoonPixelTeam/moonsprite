@@ -12,7 +12,7 @@ template<class Sample>inline std::optional<PatternBrush> createSelectionPatternB
  const int width=right-x,height=bottom-y;if(width<1||height<1)return {};
  if(width>64||height>64)throw std::invalid_argument("Image brushes must be 1..64 pixels");
  if(!selection.mask.empty()&&selection.mask.size()!=std::size_t(selection.width)*selection.height)throw std::invalid_argument("Invalid selection mask");
- PatternBrush brush;brush.width=width;brush.height=height;brush.sourceX=x;brush.sourceY=y;brush.coverage.resize(std::size_t(width)*height);brush.colors.resize(brush.coverage.size());bool any=false;
+ PatternBrush brush;brush.selectionColorMapping=true;brush.width=width;brush.height=height;brush.sourceX=x;brush.sourceY=y;brush.coverage.resize(std::size_t(width)*height);brush.colors.resize(brush.coverage.size());bool any=false;
  for(int row=0;row<height;++row)for(int column=0;column<width;++column){if(!selectionContains(selection,x+column,y+row))continue;auto color=sample(x+column,y+row);auto i=std::size_t(row)*width+column;brush.colors[i]=color;brush.coverage[i]=color>>24;any|=brush.coverage[i]>0;}
  return any?std::optional<PatternBrush>{std::move(brush)}:std::optional<PatternBrush>{};
 }

@@ -10,7 +10,7 @@
 
 namespace moon::editor {
 
-Editor::~Editor() {stopScripts();imageResizeTimer_.stop();imageResizeTask_.reset();importSheetTimer_.stop();importSheetTask_.reset();saveLayerPanelState(true);closeParameterRange();if(dynamicsPopup_){dynamicsPopup_->closeWindow(nullptr);dynamicsPopup_.reset();}workspacePresetTimer_.stop();flushWorkspacePresetSave();diagnosticTimer_.stop();if(diagnostics_){diagnostics_->record("session","native.stopped");diagnostics_->flush();diagnostics_.reset();}saveDocumentView();usageStatistics_.flush();persistUsageStatistics();advancedNoticeTimer_.stop();thumbnailQueue_.reset();thumbnailTimer_.stop();if(colorEditorPopup_){colorEditorPopup_->closeWindow(nullptr);colorEditorPopup_.reset();}flushBrushSizePreferences();if(framePngJob_)framePngJob_->cancel=true;floatingViewportSaveTimer_.stop();cancelGradientMapJob();stopAntiAlias();stopConvolution();if(propertyRangePopup_){propertyRangePopup_->closeWindow(nullptr);propertyRangePopup_.reset();}celNavigationTimer_.stop();if(toolFlyout_){toolFlyout_->closeWindow(nullptr);toolFlyout_.reset();}antsTimer_.stop();sizeTimer_.stop();if(recoveryTimer_){recoveryTimer_->stop();delete recoveryTimer_;}if(recovery_.worker.valid())recovery_.worker.wait();}
+Editor::~Editor() {flushColorRoles();colorRolesTimer_.stop();stopScripts();imageResizeTimer_.stop();imageResizeTask_.reset();importSheetTimer_.stop();importSheetTask_.reset();saveLayerPanelState(true);closeParameterRange();if(dynamicsPopup_){dynamicsPopup_->closeWindow(nullptr);dynamicsPopup_.reset();}workspacePresetTimer_.stop();flushWorkspacePresetSave();diagnosticTimer_.stop();if(diagnostics_){diagnostics_->record("session","native.stopped");diagnostics_->flush();diagnostics_.reset();}saveDocumentView();usageStatistics_.flush();persistUsageStatistics();advancedNoticeTimer_.stop();thumbnailQueue_.reset();thumbnailTimer_.stop();if(colorEditorPopup_){colorEditorPopup_->closeWindow(nullptr);colorEditorPopup_.reset();}flushBrushSizePreferences();if(framePngJob_)framePngJob_->cancel=true;floatingViewportSaveTimer_.stop();cancelGradientMapJob();stopAntiAlias();stopConvolution();if(propertyRangePopup_){propertyRangePopup_->closeWindow(nullptr);propertyRangePopup_.reset();}celNavigationTimer_.stop();if(toolFlyout_){toolFlyout_->closeWindow(nullptr);toolFlyout_.reset();}antsTimer_.stop();sizeTimer_.stop();if(recoveryTimer_){recoveryTimer_->stop();delete recoveryTimer_;}if(recovery_.worker.valid())recovery_.worker.wait();}
 
 Editor::Editor(const PixelFont& font,Skin& skin,std::filesystem::path assets,std::function<void()> refreshCursor,std::filesystem::path recoveryRoot,bool skipWorkspaceRestore)
 
@@ -304,7 +304,7 @@ Editor::Editor(const PixelFont& font,Skin& skin,std::filesystem::path assets,std
 
     pickerScheme_=button(U"",[this]{colorPicker_->finishInteraction();auto at=pickerScheme_->bounds();showColorPickerSchemeMenu(font_,skin_,toolIcons_,colorPicker_->scheme(),{at.x,at.y2()},display(),[this](ColorPickerScheme scheme){colorPicker_->setScheme(scheme);if(!smoke_&&pickerSchemeReadable_)try{saveColorPickerScheme(palettePreferencePath().parent_path()/"color-picker-scheme-v1.txt",scheme);}catch(const std::exception& e){status_=U"调色盘方案保存失败："+unicodeText(e.what());}refresh();},colorPicker_->moonField(),[this](PickerMoonField field){colorPicker_->setMoonField(field);if(!smoke_&&pickerMoonFieldReadable_)try{saveColorPickerMoonField(palettePreferencePath().parent_path()/"color-picker-moon-field-v1.txt",field);}catch(const std::exception& e){status_=unicodeText(e.what());}refresh();},colorPicker_->quantization(),[this](PickerQuantization config){colorPicker_->setQuantization(config);if(!smoke_&&pickerQuantizationReadable_)try{saveColorPickerQuantization(palettePreferencePath().parent_path()/"color-picker-quantization-v1.txt",config);}catch(const std::exception& e){status_=unicodeText(e.what());}refresh();},false);requestFocus();});pickerScheme_->iconSkin=&toolIcons_;pickerScheme_->icon="moreLines";
 
-    colorPicker_->changed=[this](Pixel color,bool secondary){document.setPaletteRole(color,secondary,paletteLocked_);refresh();};
+    colorPicker_->changed=[this](Pixel color,bool secondary){setSharedColor(color,secondary);refresh();};
 
     pickerPrimary_=button(U"",[this]{showRoleColorEditor(false);});pickerPrimary_->colorRole=true;
 
@@ -647,7 +647,7 @@ for(const auto& e:menus::catalog())if(!*e.parent){if(std::string(e.id)=="help"){
     createHistoryPanel();
     createTabletPanel();createTilesetPanel();createBrushLibraryPanel();initializeViewRotation();initializeQuickCommands();
     previewPanel_->configurePreviewSource([this]{const auto middle=canvasViewport().center();const auto at=canvasDocumentPoint(middle);return preview::Point{at.x,at.y};});
-    previewPanel_->sampled=[this](timeline::Pixel color,bool secondary){document.setPaletteRole(color,secondary,paletteLocked_);refresh();};
+    previewPanel_->sampled=[this](timeline::Pixel color,bool secondary){setSharedColor(color,secondary);refresh();};
     previewPanel_->context=[this]{showColumnContextMenu(Column::Preview);};
 
     previewPanel_->paintTabs=[this](ui::Graphics& source){
@@ -678,7 +678,7 @@ for(const auto& e:menus::catalog())if(!*e.parent){if(std::string(e.id)=="help"){
     initializeWorkspacePresets();
     initializeShortcuts();
 
-    try {recoveryPreferences_=recovery::loadPreferences(recoveryDirectory().parent_path()/"recovery-preferences.txt");recovery_.queue.setIntervalMinutes(recoveryPreferences_.minutes);recovery_.due=std::chrono::steady_clock::now()+std::chrono::milliseconds(static_cast<long long>(recoveryPreferences_.minutes*60000));}catch(const std::exception&e){status_=U"恢复设置读取失败："+unicodeText(e.what());}loadRecoveries(true);createHome();applyWorkspacePreferences();refresh();
+    try {recoveryPreferences_=recovery::loadPreferences(recoveryDirectory().parent_path()/"recovery-preferences.txt");recovery_.queue.setIntervalMinutes(recoveryPreferences_.minutes);recovery_.due=std::chrono::steady_clock::now()+std::chrono::milliseconds(static_cast<long long>(recoveryPreferences_.minutes*60000));}catch(const std::exception&e){status_=U"恢复设置读取失败："+unicodeText(e.what());}loadRecoveries(true);createHome();applyWorkspacePreferences();initializeColorRoles();refresh();
 
   }
 

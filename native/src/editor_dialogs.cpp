@@ -72,7 +72,7 @@ void Editor::updateReplaceUi(){Pixel a,b;const bool valid=parsePaletteHex(replac
 
 void Editor::previewReplace(){cancelReplacePreview();if(replaceSampling_<0){if(replaceScope_=="palette"){if(document.beginPaletteReplacement(replacePreview_?std::optional<Pixel>{replaceSource_}:std::nullopt))document.updatePaletteReplacement(replaceSource_,replaceDestination_,replacePreview_);}else if(document.beginColorReplacement(replaceTargets(),replaceScope_=="selection"))document.updateColorReplacement(replaceSource_,replaceDestination_,replacePreview_);}updateReplaceUi();saveReplacePreferences();refresh();}
 
-void Editor::changeReplaceColor(int target,Pixel color,bool sampled){cancelReplacePreview();if(target==0){document.setPaletteRole(color,false,paletteLocked_);replaceSource_=color;}else replaceDestination_=color;replaceInputs_[target]->setText(paletteHex(color));previewReplace();}
+void Editor::changeReplaceColor(int target,Pixel color,bool sampled){cancelReplacePreview();if(target==0){setSharedColor(color,false);replaceSource_=color;}else replaceDestination_=color;replaceInputs_[target]->setText(paletteHex(color));previewReplace();}
 
 void Editor::beginReplaceSampling(int target){if(replaceSampling_==target){finishReplaceSampling();return;}if(replaceSampling_<0){cancelReplacePreview();replaceReturnTools_={selectionTool_,shapeTool_,gradientTool_,fillTool_,handTool_,eraser_,eyedropperTool_,eyedropperHeld_,navigation_.zoomTool_};}replaceSampling_=target;selectionTool_=shapeTool_=gradientTool_=fillTool_=handTool_=eraser_=eyedropperHeld_=navigation_.zoomTool_=false;eyedropperTool_=true;playing_=false;updateReplaceUi();requestFocus();layoutToolOptions();refresh();}
 

@@ -7,7 +7,7 @@ void Editor::configureReferencePanel(ReferenceImagePanel& panel){
  panel.readClipboard=[this]()->std::optional<SelectionClipboard>{if(!documentOpen_||homeOpen_)return {};return pixelClipboard_.readReferenceImage();};
  panel.error=[this](std::u32string value){status_=std::move(value);refresh();};
  panel.changed=[this]{syncReferencePanels();refresh();};
- panel.sampled=[this](Pixel color,bool secondary){document.setPaletteRole(color,secondary,paletteLocked_);refresh();};
+ panel.sampled=[this](Pixel color,bool secondary){setSharedColor(color,secondary);refresh();};
  panel.windowOpened=[this](const std::string& id){openReferenceWindow(id);};
  panel.samplingCursor=[this](bool sample){if(referenceSamplingCursor_!=sample){referenceSamplingCursor_=sample;if(refreshCursor_)refreshCursor_();}};
  panel.context=[this,&panel]{if(&panel==referencePanel_)showColumnContextMenu(Column(9));};

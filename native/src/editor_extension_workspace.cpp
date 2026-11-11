@@ -44,6 +44,9 @@ extension::WorkspaceServices Editor::extensionWorkspaceServices(){
   else if(id=="fill"&&rememberGradientTool_)useGradientTool();
   else runShortcutCommand("tool."+id);
  };
+ services.colors=[this]()->std::optional<extension::RuntimeColors>{if(!documentOpen_)return {};auto unpack=[](Pixel value){return extension::RuntimeColor{int(value&255),int((value>>8)&255),int((value>>16)&255),int(value>>24)};};return extension::RuntimeColors{unpack(document.palette().primary),unpack(document.palette().secondary)};};
+ auto color=[this](extension::RuntimeColor value,bool secondary){setSharedColor(Pixel(value.r)|(Pixel(value.g)<<8)|(Pixel(value.b)<<16)|(Pixel(value.a)<<24),secondary);refresh();};
+ services.setPrimary=[color](auto value){color(value,false);};services.setSecondary=[color](auto value){color(value,true);};
  services.undo=[this]{if(documentOpen_){document.undo();refresh();}};
  services.redo=[this]{if(documentOpen_){document.redo();refresh();}};
  return services;
@@ -57,6 +60,7 @@ void Editor::smokeExtensionWorkspace(){
  document.beginStroke({0,0},0xff123456);document.commitStroke();
  const auto first=std::to_string(document.identity());const auto firstHistory=document.historyPosition();
  addProject(Document::withBuiltinPalette(7,5,U"扩展工程二"));
+ require(document.palette().primary==sharedPrimary_&&document.palette().secondary==sharedSecondary_,"New project shared color inheritance");
  document.addLayer();document.setLayerOpacity(.375);document.setLayerVisible(false);document.addFrame();document.setFrameDuration(170);const auto second=std::to_string(document.identity());
  const auto history=document.historyPosition(),revision=document.contentRevision();
  extension::Storage storage(assets_.parent_path()/("extension-workspace-unused-"+std::to_string(GetCurrentProcessId())+".json"));
@@ -79,6 +83,29 @@ void Editor::smokeExtensionWorkspace(){
  require(result("document.redo").ValueType()==JsonValueType::Null&&document.historyPosition()==firstHistory&&document.pixels()[0]==0xff123456,"Real redo pixels");
  require(!activate("missing").GetNamedBoolean(L"ok")&&std::to_string(document.identity())==first,"Invalid activation changed session");
  require(activate(second).GetNamedBoolean(L"ok")&&document.historyPosition()==history,"Other session history changed");
+ // Shared roles reach inactive documents without changing locked palettes/history.
+ paletteLocked_=true;const auto colorHistory=document.historyPosition();
+ auto setColor=[&](const char* method,Pixel value){JsonObject params;params.Insert(L"color",extension::colorSnapshot({int(value&255),int((value>>8)&255),int((value>>16)&255),int(value>>24)}));return call(method,params);};
+ require(setColor("colors.setPrimary",0x80443322).GetNamedBoolean(L"ok")&&setColor("colors.setSecondary",0x99665544).GetNamedBoolean(L"ok"),"Runtime shared color request");
+ require(document.palette().primary==0x80443322&&projectDocument(0).palette().primary==0x80443322&&projectDocument(0).palette().secondary==0x99665544&&document.historyPosition()==colorHistory,"Shared color inactive propagation/history");
+ require(result("colors.get").GetObject().GetNamedObject(L"primary").GetNamedNumber(L"a")==128,"Runtime color channel order");
+ const auto inactiveSecondary=projectDocument(0).palette().secondary;document.selectSecondaryPalette(document.palette().entries.front().id);rememberSelectedColor(true);require(projectDocument(0).palette().secondary==inactiveSecondary&&sharedSecondary_==document.palette().secondary,"Secondary swatch propagated to inactive project");setSharedColor(0x99665544,true);
+ document.selectPalette(document.palette().entries.front().id);const auto previousPrimaryId=document.palette().primaryId;
+ swapSharedColors();require(document.palette().primary==0x99665544&&projectDocument(0).palette().secondary==0x80443322&&document.palette().secondaryId==previousPrimaryId,"Shared role swap/selection identity");
+ const auto preferencePath=assets_.parent_path()/("shared-color-check-"+std::to_string(GetCurrentProcessId())+".json");colorRolesOverride_=preferencePath;flushColorRoles();require(std::filesystem::exists(preferencePath)&&!colorRolesDirty_,"Shared role disk flush");
+ sharedPrimary_=0;sharedSecondary_=0;initializeColorRoles();require(sharedPrimary_==0x99665544&&sharedSecondary_==0x80443322&&projectDocument(0).palette().primary==sharedPrimary_,"Shared role reopen");
+ {std::ofstream out(preferencePath);out<<R"({"primary":{"r":-4,"g":1.5,"b":"bad","a":999},"secondary":null})";}initializeColorRoles();require(sharedPrimary_==0xffff0200&&sharedSecondary_==0xfff8f4f1,"Shared role channel normalization/defaults");
+ {std::ofstream out(preferencePath);out<<"broken";}initializeColorRoles();require(sharedPrimary_==0xffff7929&&sharedSecondary_==0xfff8f4f1,"Shared role corrupt fallback");
+ PatternBrush brush;brush.selectionColorMapping=true;brush.width=3;brush.height=1;brush.colors={0xffffffff,0x80000000,0};brush.coverage={255,128,0};pencilImageBrush_=brush;
+ setSharedColor(0x80123456,false);require(pencilImageBrush_->paintColors==std::vector<Pixel>({0x80123456,0x80000000|Pixel(sharedSecondary_&0xffffff),0})&&pencilImageBrush_->colors==brush.colors,"Selection brush color/alpha remap");brush.selectionColorMapping=false;pencilImageBrush_=brush;setSharedColor(0xff112233,false);require(pencilImageBrush_->paintColors.empty(),"Regular image brush was recolored");pencilImageBrush_.reset();flushColorRoles();require(!colorRolesDirty_,"Shared role recovery after corrupt read");
+ colorRolesOverride_=preferencePath/"blocked.json";setSharedColor(0xff010203,false);flushColorRoles();require(colorRolesDirty_&&status_==U"共享颜色偏好保存失败","Preference failure lost pending value");colorRolesOverride_=preferencePath;flushColorRoles();require(!colorRolesDirty_,"Preference same-instance recovery");
+ colorRolesOverride_.clear();
+ // Unlocked palette synchronization must update every document independently.
+ paletteLocked_=false;syncPaletteColors_=true;applyWorkspacePreferences();
+ const auto activeLayer=document.layer().id;document.selectLayer(document.timeline().state().layers.back().id);document.selectPalette(document.palette().entries.front().id);const auto synchronizedColor=document.palette().primary;
+ auto& inactive=*projects_.front()->stored;inactive.selectPalette(inactive.palette().entries.front().id);const auto inactiveHistory=inactive.historyPosition();const auto synchronizedHistory=document.historyPosition();
+ setSharedColor(0xffabc123,false);require(document.paletteEntry(document.palette().primaryId)->color==0xffabc123&&inactive.paletteEntry(inactive.palette().primaryId)->color==0xffabc123&&document.historyPosition()==synchronizedHistory+1&&inactive.historyPosition()==inactiveHistory+1,"Shared unlocked synchronized palette transaction");
+ document.undo();inactive.undo();require(document.palette().primary==synchronizedColor,"Shared synchronized undo");document.selectLayer(activeLayer);paletteLocked_=true;syncPaletteColors_=false;applyWorkspacePreferences();
  // Exercise all public runtime tool categories through authenticated requests.
  document.selectLayer(document.timeline().state().layers.back().id);
  const auto toolHistory=document.historyPosition(),toolRevision=document.contentRevision();

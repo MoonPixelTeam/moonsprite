@@ -308,6 +308,7 @@ public:
   bool reorderPaletteColors(const std::vector<int>& ids,const std::vector<int>& targetSlots,int columns);
   void pastePaletteColors(const std::vector<Pixel>& colors,const std::vector<std::size_t>& targets={},bool selectResult=true,const std::vector<int>* viewSlots=nullptr,int viewColumns=0);
   void setPaletteRole(Pixel color,bool secondary,bool locked);
+  void swapPaletteRoles(Pixel primary,Pixel secondary){const int previousPrimaryId=palette_.primaryId;palette_.primaryId=0;setPaletteRole(primary,false,true);palette_.secondary=secondary;palette_.secondaryId=previousPrimaryId;}
   void renamePaletteColor(int id,const std::u32string& name);
   void annotatePaletteView(PaletteViewSelection before,PaletteViewSelection after);
   const std::optional<PaletteViewSelection>& paletteViewRestore()const{return paletteViewRestore_;}

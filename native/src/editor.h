@@ -3106,6 +3106,13 @@ void smokePaletteLibrary();
   void applyScriptPlayback(Document&,const script::PlaybackRequest&);
   void smokeScriptPlayback();
 public:
+  Pixel sharedPrimary_=0xffff7929,sharedSecondary_=0xfff8f4f1;
+  bool colorRolesReady_=false,colorRolesDirty_=false;
+  std::filesystem::path colorRolesOverride_;
+  ui::Timer colorRolesTimer_{100,this};
+  void initializeColorRoles();void flushColorRoles();
+  void setSharedColor(Pixel,bool secondary);void swapSharedColors();
+  void rememberSelectedColor(bool secondary);
   extension::WorkspaceServices extensionWorkspaceServices();
   void smokeExtensionWorkspace();
   void smokePlaybackFloating();

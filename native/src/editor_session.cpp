@@ -137,7 +137,7 @@ void Editor::addProject(Document next,std::filesystem::path path){
     if(temporaryBrushCapture_||temporaryBrushActive_)exitTemporaryBrushCapture();
     projects_.push_back(std::make_unique<ProjectSession>());activeProject_=projects_.size()-1;
 
-    drawingAnchor_=drawingAnchorDefaults_;drawingAnchorVisible_=drawingAnchorDefaultVisible_;drawFromCanvasCenter_=drawingAnchorDefaultEnabled_;document=std::move(next);applyDocumentPreferences(document,true);documentPath_=std::move(path);documentOpen_=true;homeOpen_=false;closingWorkspace_=false;
+    drawingAnchor_=drawingAnchorDefaults_;drawingAnchorVisible_=drawingAnchorDefaultVisible_;drawFromCanvasCenter_=drawingAnchorDefaultEnabled_;document=std::move(next);if(colorRolesReady_){document.setPaletteRole(sharedPrimary_,false,true);document.setPaletteRole(sharedSecondary_,true,true);}applyDocumentPreferences(document,true);documentPath_=std::move(path);documentOpen_=true;homeOpen_=false;closingWorkspace_=false;
 
     layerScroll_=frameScroll_=layerScrollRemainder_=frameScrollRemainder_=paletteScrollPixels_=0;
 

@@ -1303,7 +1303,7 @@ void Editor::layoutPalette(int only) {
 
           if(!mouse.left() && !mouse.right()) return;
 
-          colorPicker_->finishInteraction();document.setPaletteRole(recentColors_.values().at(index),mouse.right(),paletteLocked_);refresh();
+          colorPicker_->finishInteraction();setSharedColor(recentColors_.values().at(index),mouse.right());refresh();
 
         };recentButtons_.push_back(b);
 
@@ -1489,7 +1489,7 @@ void Editor::setupDefaultPickerGroup(){
 void Editor::createExtraPickerColumns(){
   for(int id=4;id<8;++id){auto& p=pickerColumns_[id];
     auto picker=new DialogBackground<NativeColorPicker>(font_,skin_,assets_/"color-picker");configureDialogBackground(picker);p.picker=picker;addChild(picker);picker->setVisible(false);picker->setScheme(pickerColumnScheme(id));picker->setMoonField(colorPicker_->moonField());picker->setQuantization(colorPicker_->quantization());
-    picker->changed=[this](Pixel color,bool secondary){document.setPaletteRole(color,secondary,paletteLocked_);refresh();};
+    picker->changed=[this](Pixel color,bool secondary){setSharedColor(color,secondary);refresh();};
     picker->interactionBegin=[this]{if(!gradientPending_)cancelStroke();paletteFocused_=false;};
     p.restore=button(U"",[this,id]{restorePickerSquare(id);});p.restore->iconSkin=&toolIcons_;p.restore->icon="paletteCenter";
     p.settings=button(U"",[this,id]{auto& p=pickerColumns_[id];p.picker->finishInteraction();auto at=p.settings->bounds();showColorPickerSchemeMenu(font_,skin_,toolIcons_,p.picker->scheme(),{at.x,at.y2()},display(),{},p.picker->moonField(),[this,id](PickerMoonField f){pickerColumns_[id].picker->setMoonField(f);if(!smoke_&&pickerMoonFieldReadable_)try{saveColorPickerMoonField(palettePreferencePath().parent_path()/"color-picker-moon-field-v1.txt",f);}catch(const std::exception& e){status_=unicodeText(e.what());}refresh();},p.picker->quantization(),[this,id](PickerQuantization q){for(auto& column:pickerColumns_)if(column.picker)column.picker->setQuantization(q);if(!smoke_&&pickerQuantizationReadable_)try{saveColorPickerQuantization(palettePreferencePath().parent_path()/"color-picker-quantization-v1.txt",q);}catch(const std::exception& e){status_=unicodeText(e.what());}refresh();},false);requestFocus();});p.settings->iconSkin=&toolIcons_;p.settings->icon="moreLines";
@@ -1506,7 +1506,7 @@ void Editor::layoutPickerColumn(int id){
   const int x=rc.x+box.x,y=rc.y+box.y2()+uiGap;bool inPalette=false;for(int slot:document.palette().slots)if(auto entry=document.paletteEntry(slot))inPalette|=entry->color==document.palette().primary;
   p.primary->setBounds(toDisplay({x,y,box.w-(inPalette?0:15+uiGap),20}));p.secondary->setBounds(toDisplay({x,y+22,box.w,20}));p.add->setBounds(toDisplay({x+box.w-15,y+2,15,15}));p.primary->swatch=document.displayPalette().primary;p.secondary->swatch=document.displayPalette().secondary;
   for(auto b:{p.settings,p.restore,p.primary,p.secondary,p.add}){b->setVisible(shown);b->setEnabled(pending_==Pending::None);}p.add->setVisible(shown&&!inPalette);
-  while(p.recent.size()<recentColors_.values().size()){auto index=p.recent.size();auto b=button(U"",[]{});b->paletteCell=true;b->recentColorSwatch=true;b->palettePress=[this,id,index](const ui::MouseMessage& m){if(!m.left()&&!m.right())return;pickerColumns_[id].picker->finishInteraction();document.setPaletteRole(recentColors_.values().at(index),m.right(),paletteLocked_);refresh();};p.recent.push_back(b);}
+  while(p.recent.size()<recentColors_.values().size()){auto index=p.recent.size();auto b=button(U"",[]{});b->paletteCell=true;b->recentColorSwatch=true;b->palettePress=[this,id,index](const ui::MouseMessage& m){if(!m.left()&&!m.right())return;pickerColumns_[id].picker->finishInteraction();setSharedColor(recentColors_.values().at(index),m.right());refresh();};p.recent.push_back(b);}
   for(std::size_t i=0;i<p.recent.size();++i){auto b=p.recent[i];bool exists=runtimePreferences_.flag("colorLayers.recentColorsVisible")&&i<recentColors_.values().size();if(exists)b->swatch=recentColors_.values()[i];b->setBounds(toDisplay({x+int(i)*14,y+44,12,12}));b->setVisible(shown&&exists&&int(i)<(box.w+2)/14);b->setEnabled(pending_==Pending::None);}
 }
 

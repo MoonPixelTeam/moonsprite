@@ -6691,3 +6691,13 @@ PNG后台解码完成后保留像素及私有surface，每次pump最多上传262
 唯一正式Release构建成功；extension-workspace-ui/request-host/runtime-diagnostics三项通过1.04秒。真实SessionHost/Editor检查Unicode读写、读写失败不虚假成功、通知500UTF16限制、error状态、诊断身份不可由params冒充、无权限不调用后端；实际系统剪贴板只读核对，不覆盖用户内容。测试诊断mode1保留内存证据，无需写入用户配置。来源823文件/diff通过，无UI几何变化或人工FPS验收。
 
 适配工厂已可供正式宿主使用，目前集成由正式exe检查入口调用，生产JavaScript执行入口尚未接入，不将工厂验收描述为完整扩展已可运行。共享颜色、各工程工具恢复及其他缺口仍未完成；整体INCOMPLETE。旧失败日志保留，用户editor_support.h和未跟踪数据不纳入提交；阶段保存推送dev。
+
+### 2026-11-11：共享颜色角色与持久化迁移（验证中）
+
+核对legacy color-role-preferences.ts、workspace-commands-color.ts、workspace-commands-session.ts与workspace-session.ts。当前实现将扩展colors接口和生产取色器/参考/预览/最近颜色/交换操作汇入共享角色，更新所有已打开文档，复用已有色板锁及同步资源事务。选中前景色同步其他会话；选中背景色按旧版只更新共享默认与当前会话。新建/打开工程继承共享角色，100ms合并写入原生JSON，关闭刷新；读取按通道归一化/损坏默认，失败保留pending供同实例恢复。选区笔刷标记由来源坐标存在性保存，按亮度128和alpha乘法重映射paintColors，普通图像不映射。
+
+已添加真实双工程Runtime颜色请求、锁定历史不变、共享swap、实际写盘重读、通道归一化、损坏恢复、失败pending/恢复、选区笔刷原像素/alpha及未激活文档同步色板事务回归。当前仍在正式构建，新增笔刷结构期间的旧编译单元发生成员不可见错误，需结束后统一重建，尚未完成验收/提交推送。来源824文件检查通过不代表行为等价；整体INCOMPLETE，保留用户差异和数据。
+
+阶段验收完成：统一正式Release构建成功。首次运行4项UI启动崩溃，构建日志核对发现先前编译期间头文件变化留下12个旧Editor对象单元；仅更新时间触发对应源重编译（含main），重新链接后7项全部通过12.60秒：extension-workspace-ui、multi-document、palette-mouse-startup、color-editor-popup、selection-pattern-brush、image-brush、extension-request-host。新增swapPaletteRoles严格保留各会话前景色选择ID为背景关联，并按旧版有序色板匹配新前景；实际检查含新文档继承、背景色色块不传播其他文档、普通图像不重映射。此前失败日志保留，未删用户数据。来源824文件与diff检查通过；无人工UI/FPS测量，整体迁移仍INCOMPLETE。本阶段提交推送dev。
+
+用户补充决定：文件导入保留原生当前模型校验与提前取消。完成时采用最新模型，控件隐藏/禁用/移除/改变类型时提前取消；不改回旧版选择文件时固定action/multiple。该差异已登记到现有文件导入来源项，本次没有新增导入实现改动。

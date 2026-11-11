@@ -157,9 +157,9 @@ void Editor::updatePalettePointer(gfx::Point point) {
 
     if(g.moving){if(g.beforeView.box){const auto range=paletteSlotRange(g.columns,g.beforeView.box->first,g.beforeView.box->second);const auto anchor=std::find(g.slots.begin(),g.slots.end(),g.anchor);if(anchor!=g.slots.end()){const int slot=int(anchor-g.slots.begin()),dx=std::clamp(int(g.last)%g.columns-slot%g.columns,-int(range.left),g.columns-1-int(range.right)),dy=std::max(-int(range.top),int(g.last)/g.columns-slot/g.columns),delta=dy*g.columns+dx;g.last=std::size_t(slot+delta);paletteBoxRange_=PaletteBoxRange{document.identity(),std::size_t(int(g.beforeView.box->first)+delta),std::size_t(int(g.beforeView.box->second)+delta),g.ids};}}refresh();return;} // Preview only; commit one transaction on release.
 
-    if(g.secondary){if(g.last<g.slots.size())document.selectSecondaryPalette(g.slots[g.last]);}
+    if(g.secondary){if(g.last<g.slots.size()){document.selectSecondaryPalette(g.slots[g.last]);rememberSelectedColor(true);}}
 
-    else if(g.active){document.selectPaletteBox(g.start,g.last,g.columns,&g.slots);if(paletteManual_)paletteBoxRange_=PaletteBoxRange{document.identity(),g.start,g.last,document.palette().selected};}
+    else if(g.active){document.selectPaletteBox(g.start,g.last,g.columns,&g.slots);rememberSelectedColor(false);if(paletteManual_)paletteBoxRange_=PaletteBoxRange{document.identity(),g.start,g.last,document.palette().selected};}
 
     refresh();
 
@@ -173,7 +173,7 @@ void Editor::finishPalettePointer(bool cancel) {
 
     if(!cancel && !gesture.moving && !gesture.secondary && gesture.active)paletteBoxRange_=PaletteBoxRange{document.identity(),gesture.start,gesture.last,document.palette().selected};
 
-    if(!cancel && gesture.moving){if(gesture.active){const auto history=document.revision();document.repositionPaletteColors(gesture.slots,gesture.ids,int(gesture.last),gesture.anchor,gesture.columns,true);if(paletteManual_&&document.revision()!=history)document.annotatePaletteView(gesture.beforeView,capturePaletteView());}else if(gesture.secondary)document.selectSecondaryPalette(gesture.anchor);}
+    if(!cancel && gesture.moving){if(gesture.active){const auto history=document.revision();document.repositionPaletteColors(gesture.slots,gesture.ids,int(gesture.last),gesture.anchor,gesture.columns,true);if(paletteManual_&&document.revision()!=history)document.annotatePaletteView(gesture.beforeView,capturePaletteView());}else if(gesture.secondary){document.selectSecondaryPalette(gesture.anchor);rememberSelectedColor(true);}}
 
     refresh();
 
@@ -217,7 +217,7 @@ void Editor::selectSwatch(std::size_t index,bool ctrl,bool shift,bool secondary)
 
     else if(id) document.selectPalette(id,ctrl);else document.clearPaletteSelection();
 
-    ink_=document.palette().primary;lastPaletteInk_=ink_;if(gradientPending_){gradientRequest_=true;gradientTick();}requestFocus();refresh();
+    rememberSelectedColor(secondary);ink_=document.palette().primary;lastPaletteInk_=ink_;if(gradientPending_){gradientRequest_=true;gradientTick();}requestFocus();refresh();
 
   }
 
@@ -327,7 +327,7 @@ void Editor::commitPaletteHex() {
 
     Pixel color=editingSecondary_?document.palette().secondary:document.palette().primary,next=color;
 
-    if(pickerParseRgbaHex(unicodeText(paletteInput_->text()),next,int(color>>24))){document.setPaletteRole(next,editingSecondary_,paletteLocked_);color=next;}else status_=U"无效 HEX，已恢复当前颜色";
+    if(pickerParseRgbaHex(unicodeText(paletteInput_->text()),next,int(color>>24))){setSharedColor(next,editingSecondary_);color=next;}else status_=U"无效 HEX，已恢复当前颜色";
 
     paletteInput_->setText(paletteHex(color));refresh();
 
@@ -369,7 +369,7 @@ void Editor::showRoleColorEditor(bool secondary,PixelButton* trigger){
 
     std::vector<Pixel> colors;for(const auto& entry:document.palette().entries)if(entry.id)colors.push_back(entry.color);
 
-    colorEditorPopup_->open((trigger?trigger:secondary?secondaryRole_:primaryRole_)->bounds(),bounds(),secondary?document.palette().secondary:document.palette().primary,secondary?U"背景色":U"前景色",colors,[this,secondary](Pixel color){document.setPaletteRole(color,secondary,paletteLocked_);refresh();},[this](bool sampling){setColorEditorSampling(sampling);});
+    colorEditorPopup_->open((trigger?trigger:secondary?secondaryRole_:primaryRole_)->bounds(),bounds(),secondary?document.palette().secondary:document.palette().primary,secondary?U"背景色":U"前景色",colors,[this,secondary](Pixel color){setSharedColor(color,secondary);refresh();},[this](bool sampling){setColorEditorSampling(sampling);});
 
   }
 

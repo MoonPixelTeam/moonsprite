@@ -1,0 +1,56 @@
+#include "editor.h"
+#include "editor_implementation.h"
+#include "atomic_file.h"
+#include <winrt/Windows.Data.Json.h>
+
+namespace moon::editor {
+namespace {
+void remap(std::optional<PatternBrush>& brush,Pixel primary,Pixel secondary){
+ if(!brush||!brush->intrinsicSize||!brush->selectionColorMapping||brush->colors.size()!=std::size_t(brush->width)*brush->height)return;
+ brush->paintColors.assign(brush->colors.size(),0);
+ for(std::size_t i=0;i<brush->colors.size();++i){const Pixel source=brush->colors[i];const auto alpha=source>>24;if(!alpha)continue;const auto luminance=(source&255)*2126+((source>>8)&255)*7152+((source>>16)&255)*722;const Pixel color=luminance>=1280000?primary:secondary;brush->paintColors[i]=(color&0xffffff)|Pixel(std::floor(double(color>>24)*alpha/255+.5))<<24;}
+}
+}
+
+void Editor::initializeColorRoles(){
+ using namespace winrt::Windows::Data::Json;
+ const auto path=colorRolesOverride_.empty()?palettePreferencePath().parent_path()/"color-roles-v1.json":colorRolesOverride_;
+ sharedPrimary_=0xffff7929;sharedSecondary_=0xfff8f4f1;
+ try{if(std::filesystem::exists(path)){
+  if(std::filesystem::file_size(path)>65536)throw std::runtime_error("Color preferences exceed limit");
+  std::ifstream in(path,std::ios::binary);if(!in)throw std::runtime_error("Cannot read color preferences");std::string encoded((std::istreambuf_iterator<char>(in)),{});
+  auto root=JsonObject::Parse(winrt::to_hstring(encoded));
+  auto read=[&](const wchar_t* name,Pixel fallback){if(!root.HasKey(name)||root.GetNamedValue(name).ValueType()!=JsonValueType::Object)return fallback;auto object=root.GetNamedObject(name);const wchar_t* keys[]={L"r",L"g",L"b",L"a"};Pixel result=0;for(int i=0;i<4;++i){double value=(fallback>>(i*8))&255;if(object.HasKey(keys[i])&&object.GetNamedValue(keys[i]).ValueType()==JsonValueType::Number){auto n=object.GetNamedNumber(keys[i]);if(std::isfinite(n))value=std::clamp(std::floor(n+.5),0.,255.);}result|=Pixel(value)<<(i*8);}return result;};
+  sharedPrimary_=read(L"primary",sharedPrimary_);sharedSecondary_=read(L"secondary",sharedSecondary_);
+ }}catch(...){/* Legacy readStoredJson falls back without changing documents. */}
+ if(!colorRolesReady_)colorRolesTimer_.Tick.connect([this]{colorRolesTimer_.stop();flushColorRoles();});
+ colorRolesReady_=true;colorRolesDirty_=false;
+ document.setPaletteRole(sharedPrimary_,false,true);document.setPaletteRole(sharedSecondary_,true,true);
+ for(auto& slot:projects_)if(slot->stored){slot->stored->setPaletteRole(sharedPrimary_,false,true);slot->stored->setPaletteRole(sharedSecondary_,true,true);}
+}
+void Editor::flushColorRoles(){
+ if(!colorRolesDirty_||!colorRolesReady_)return;colorRolesTimer_.stop();
+ if(smoke_&&colorRolesOverride_.empty()){colorRolesDirty_=false;return;}
+ try{using namespace winrt::Windows::Data::Json;auto encoded=[](Pixel value){JsonObject object;const wchar_t* keys[]={L"r",L"g",L"b",L"a"};for(int i=0;i<4;++i)object.Insert(keys[i],JsonValue::CreateNumberValue((value>>(i*8))&255));return object;};JsonObject root;root.Insert(L"primary",encoded(sharedPrimary_));root.Insert(L"secondary",encoded(sharedSecondary_));const auto bytes=winrt::to_string(root.Stringify());const auto path=colorRolesOverride_.empty()?palettePreferencePath().parent_path()/"color-roles-v1.json":colorRolesOverride_;std::filesystem::create_directories(path.parent_path());writeBinaryFileAtomic(path,{bytes.begin(),bytes.end()});colorRolesDirty_=false;
+ }catch(...){status_=U"共享颜色偏好保存失败";}
+}
+void Editor::setSharedColor(Pixel color,bool secondary){
+ (secondary?sharedSecondary_:sharedPrimary_)=color;colorRolesReady_=true;
+ if(documentOpen_)document.setPaletteRole(color,secondary,paletteLocked_);
+ for(auto& slot:projects_)if(slot->stored)slot->stored->setPaletteRole(color,secondary,paletteLocked_);
+ remap(pencilImageBrush_,document.palette().primary,document.palette().secondary);for(auto& slot:projects_)if(slot->stored)remap(slot->temporaryBrush,slot->stored->palette().primary,slot->stored->palette().secondary);
+ colorRolesDirty_=true;colorRolesTimer_.stop();colorRolesTimer_.start();
+}
+void Editor::rememberSelectedColor(bool secondary){
+ if(!documentOpen_)return;
+ if(secondary){sharedSecondary_=document.palette().secondary;colorRolesDirty_=true;colorRolesTimer_.stop();colorRolesTimer_.start();}
+ else if(document.palette().primaryId)setSharedColor(document.palette().primary,false);
+}
+void Editor::swapSharedColors(){
+ std::swap(sharedPrimary_,sharedSecondary_);
+ auto apply=[&](Document& value){value.swapPaletteRoles(sharedPrimary_,sharedSecondary_);};
+ if(documentOpen_)apply(document);for(auto& slot:projects_)if(slot->stored)apply(*slot->stored);
+ remap(pencilImageBrush_,document.palette().primary,document.palette().secondary);for(auto& slot:projects_)if(slot->stored)remap(slot->temporaryBrush,slot->stored->palette().primary,slot->stored->palette().secondary);
+ colorRolesDirty_=true;colorRolesTimer_.stop();colorRolesTimer_.start();
+}
+}
