@@ -6491,3 +6491,9 @@ PNG后台解码完成后保留像素及私有surface，每次pump最多上传262
 对照ExtensionDialogForm collect(defaults)/visibleWhen，把原每次effectiveValue/shown/control都收集全树默认值改为接收模型时一次收集，保持原depth8、后值覆盖、nullish草稿回退和严格条件语义。编辑/重试/回执仍读取当前草稿，接收新模型替换默认值。可见性遍历保持原实现，尚未完成可见节点索引优化。
 
 本轮可见节点map索引尝试导致正式UI不稳定访问冲突，分步日志位置不固定；Windows调试事件捕获故障，但符号不足以可靠定位，不能当作已查明根因。撤回该尝试后仅默认值缓存与现有遍历通过完整回归。最终唯一正式Release及状态目标构建成功，extension-form-ui/image/files/state四项通过1.77秒，新增200根×100子节点的20k字段默认值/编辑覆盖/重试恢复检查；来源821文件与diff检查通过。无人工截图/FPS测量，不宣称表单性能全量完成。可见节点索引仍未完成，整体迁移INCOMPLETE。保留用户editor_support.h差异与诊断日志，本阶段已验证部分保存推送dev。
+
+### 2026-11-11：表单布局复用本次可见 ID 集合
+
+对照既有 ExtensionDialogForm 可见性遍历与原生 FormState::renderedIds，FormWindow 每次 build 只收集一次可见 ID，以局部 set 供普通节点、row/split/sidebar 过滤与递归布局复用，移除每个节点重新扫描模型的 shown 调用。集合不跨模型持久化，不缓存 JSON 节点对象，嵌套窗口独立构建；保留节点数量、深度、条件与重复 ID 的既有语义。此前持久节点索引访问冲突未据此定位或宣称修复。
+
+唯一正式 Release 构建成功；extension-form-ui/image/files/state 四项通过1.85秒，新增真实1000按钮窗口检查首末控件、缩窄后末项保留、空模型替换清除旧控件。来源覆盖检查821文件已通过，diff检查通过。没有人工图像验收或CPU/FPS测量，性能结论限于移除布局中的重复可见性遍历。色板同步资源与全部引用的用户确认行为已于2026-11-10实现并在后续资源逐行替换阶段复验，本轮未重复改动。正式扩展执行器及其他迁移缺口仍INCOMPLETE，保留editor_support.h及已有日志/缓存，阶段保存推送dev。
