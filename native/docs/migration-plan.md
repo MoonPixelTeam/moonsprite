@@ -6815,3 +6815,9 @@ PNG后台解码完成后保留像素及私有surface，每次pump最多上传262
 实际核对legacy platform_brushes.rs collect_entries/safe_brush_id/delete_folder/set_brush_order：PNG扩展名不区分ASCII大小写；排序先验证输入、过滤不存在与重复项，只持久化指定资源，不固定遗漏项。原生统一listing/ID验证/目录删除顺序清理的大小写识别，reorder按旧版只写请求的存在项，非法ID在写入前失败。确认stored_brush始终intrinsic_size=true，不臆改尺寸语义。新增大小写文件列表/移动/删除、精确排序JSON、非法输入保持旧顺序、部分排序重开后遗漏项按名称排列等端到端底层检查。构建验证中，整体INCOMPLETE。
 
 阶段验收完成：唯一正式Release与底层测试构建成功；实际笔刷栏目专项等待exit0。pattern-brush-library大小写PNG、磁盘精确部分排序、非法输入保持、重开遗漏项字母序、移动删除顺序清理及并发测试通过2.05秒；extension-workspace-ui、multi-document、canvas-resize通过，合计4.19秒。来源824/diff通过，原CHECK路径C4129警告仍有，无人工FPS/截图验收。整体INCOMPLETE，用户editor_support.h及未跟踪数据保留，阶段提交推送dev。
+
+### 2026-11-11：笔刷顺序与元数据JSON契约迁移（验证中）
+
+核对legacy platform_brushes.rs serde Vec<String>/BrushMetadata：顺序整文档读取或默认；元数据intrinsicSize必须bool，坐标可空i32，失败整记录默认。替换原生手写顺序解析/坐标正则为仓库已有Windows.Data.Json路线，COM作用域及runtimeobject链接，坐标暂存全部验证后发布。补Unicode转义顺序、错误类型/尾随垃圾/残缺文本、缺必填字段与越界坐标整记录默认测试；修正此前只保留有效坐标的错误预期。重复字段/数字词法的serde精确一致性尚未证明，整体INCOMPLETE。
+
+阶段验收完成：唯一正式Release及底层测试构建成功；pattern-brush-library JSON/并发回归通过2.87秒，实际笔刷栏目专项等待exit0，后台扫描解析/资源生命周期通过。extension-workspace-ui、multi-document、canvas-resize三项通过1.99秒。来源824/diff通过。重复字段及数字词法serde一致性仍未证明，原CHECK路径C4129警告仍有；无人工FPS/截图验收，整体INCOMPLETE。用户editor_support.h及未跟踪数据保留，阶段提交推送dev。

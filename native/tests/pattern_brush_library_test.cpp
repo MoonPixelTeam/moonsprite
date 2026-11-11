@@ -17,7 +17,7 @@ int wmain(int argc,wchar_t** argv){try{using namespace moon;CHECK(argc==2);auto 
  CHECK(actual.brushes[1].folderId==nested.id);CHECK(PatternBrushLibrary(orderedRoot).list().brushes[0].id=="z.png");
  // Metadata parsing keeps partial coordinate presence and signed values.
  {std::ofstream meta(orderedRoot/L"z.meta.json");meta<<R"({"sourceX": -13, "sourceY": 2147483648})";}
- const auto metadata=ordered.list().brushes[0];CHECK(metadata.sourceX==-13&&!metadata.sourceY);
+ const auto metadata=ordered.list().brushes[0];CHECK(!metadata.sourceX&&!metadata.sourceY);
 }
 // platform_brushes.rs accepts PNG case variants, and set_brush_order
 // persists only explicitly supplied existing IDs, rejecting unsafe inputs.
@@ -31,6 +31,17 @@ int wmain(int argc,wchar_t** argv){try{using namespace moon;CHECK(argc==2);auto 
  const auto moved=compatible.move("UPPER.PNG",folder.id);CHECK(moved.folderId==folder.id);compatible.removeFolder(folder.id);reopened=compatible.list();CHECK(reopened.brushes.size()==2&&reopened.brushes[0].id=="alpha.png");
  {std::ifstream order(root/L".brush-order.json");std::string text((std::istreambuf_iterator<char>(order)),{});CHECK(text=="[]");}
  compatible.reorder({"middle.PnG"});compatible.remove("middle.PnG");CHECK(PatternBrushLibrary(root).list().brushes.size()==1);
+}
+// serde_json contract: escaped order strings work; malformed whole documents
+// and wrong metadata types default the entire record, never regex fragments.
+{const auto root=dir.parent_path()/(dir.filename().wstring()+L"-json");PatternBrushLibrary parsed(root);
+ for(const auto& name:{"a.png","z.png"}){std::ofstream out(root/name,std::ios::binary);out.write(reinterpret_cast<const char*>(bytes.data()),bytes.size());}
+ auto order=[&](const std::string& text){{std::ofstream out(root/L".brush-order.json");out<<text;}return parsed.list();};
+ CHECK(order(R"(["\u007a.png","a.png"])").brushes[0].id=="z.png");
+ for(const auto& text:{R"(["z.png",])",R"(["z.png",1])",R"(["z.png"] garbage)",R"({"items":["z.png"]})"})CHECK(order(text).brushes[0].id=="a.png");
+ auto metadata=[&](const std::string& text){{std::ofstream out(root/L"a.meta.json");out<<text;}return parsed.list().brushes[0];};
+ auto valid=metadata(R"({"intrinsicSize":true,"sourceX":-13,"sourceY":7})");CHECK(valid.sourceX==-13&&valid.sourceY==7);
+ for(const auto& text:{R"({"sourceX":1})",R"({"intrinsicSize":true,"sourceX":1,"sourceY":"7"})",R"({"intrinsicSize":true,"sourceX":1,"sourceY":2147483648})",R"({"intrinsicSize":true,"sourceX":1)"}){auto invalid=metadata(text);CHECK(!invalid.sourceX&&!invalid.sourceY);}
 }
 // A background listing may overlap repeated atomic order replacement.
 std::atomic<bool> reading{true};std::exception_ptr readerFailure;
