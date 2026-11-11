@@ -6975,3 +6975,12 @@ Aseprite 源码对照：src/app/extensions.cpp installCompressedExtension 的逐
 新真实模态用例阻塞检查到gate、等待3次UI tick后取消/析构且要求小于250ms，释放后分别正常检查/抛异常，确认无安装/状态写入；已接受安装阻塞gate，多次取消/宿主关闭仍保持窗口，释放后校验实际资源版本。保留坏包/替换禁用状态/锁状态文件回滚及滚动布局。诊断Unexpected installer failure现在包含实际显示错误。为定位旧偶发失败，修改生命周期前有界12次重复安装全部通过25.38秒，本轮未复现，不宣称修复，也不加入盲重试或更改旧事务逻辑。首批取消用例版本安装专项通过2.17秒，含已接受安装门禁的最终构建与检查待补。整体迁移及生产Runtime执行器仍INCOMPLETE。
 
 阶段验收：唯一正式Release最终构建成功；extension-install-ui、extension-preferences-ui、extension-runtime-directory、extension-workspace-ui四项全部通过5.93秒。实际模态验证gate挂起检查取消/析构小于250ms、后台成功/异常弃结果不安装、已接受事务拒绝多次取消/宿主关闭后真实落盘，以及原替换/坏包/禁用状态/锁状态回滚。对照现有MIT ui/window.cpp closeWindow→onBeforeClose门禁，未复制实现。未新增人工截图、慢盘实机或全软件FPS测量；OS已开始的检查read继续完成、正常进程退出仍drain。旧Unexpected installer failure日志保留，诊断批次未复现不视作根因修复。来源覆盖/diff待最终检查，整体INCOMPLETE；保留用户editor_support.h和未跟踪数据，阶段推送dev。
+
+
+### 2026-11-11 声明式扩展设置完整控件适配（验收中）
+
+对照legacy ExtensionSettingsDialog.tsx HostExtensionSettings及测试，复用SettingsValues即时存储/未知键合并/归一化/条件显隐/默认重置/事件/命令closeOnRun模型，提供原生PixelDialog适配器。五类控件为PixelSwitch、ScriptNumberEntry、独立UTF16长度SettingsText、PixelDropdown和PixelButton，保留suffix/placeholder/选项键/说明及tooltip，最大长度按settings定义而非FormWindow64。失败恢复已保存控件值，条件隐藏保留值。固定共享标题/重置/完成，滚动正文复用PixelScrollBar、视口裁剪与线性缓存换行。
+
+真实模态检查直接操作生产控件：旧版多条件显隐保留37、文本100字符/选项键、文件锁导致保存失败不发事件且恢复、重置保留unknown键、未启动Runtime不关闭、成功命令关闭及实际重开存储。正式构建验证中。此适配器尚未由正式菜单贡献/Runtime入口调用，不称用户已可通过菜单使用扩展设置；HTML设置页、命令danger皮肤区别和几何持久化仍缺失。存储沿用旧版同步写，不称完成慢盘性能优化。整体迁移INCOMPLETE。
+
+阶段验收：唯一正式Release最终构建成功；extension-settings-ui、extension-preferences-ui、extension-contributions、extension-storage四项全部通过4.87秒。首次设置检查遗漏Entry::setText不发布Change的Aseprite契约，已补齐测试变更事件；此前未捕获的WinRT JSON缺键异常造成进程退出，检查入口现将其转为可读错误。实际文本截断后继续发布Change，确保截断内容保存。来源覆盖830项及快照检查通过。人工查看settings.bmp窄窗截图，标题、正文视口/滚动条、固定重置/完成按钮无重叠；未验证全部语言/全部尺寸。正文换行复用宽度缓存，未作慢盘或全软件FPS验收。HTML设置、正式贡献入口、按钮danger皮肤与几何持久化仍未迁移；整体INCOMPLETE。旧错误日志、用户editor_support.h及所有未跟踪数据保留；本阶段保存推送dev。
