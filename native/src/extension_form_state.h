@@ -13,7 +13,17 @@ class FormState {
  using Object=winrt::Windows::Data::Json::JsonObject;using Value=winrt::Windows::Data::Json::IJsonValue;using Json=winrt::Windows::Data::Json::JsonValue;using Type=winrt::Windows::Data::Json::JsonValueType;using Array=winrt::Windows::Data::Json::JsonArray;
  Object view_,values_,defaults_;std::wstring pending_,error_;std::uint64_t sequence_=0,generation_=0;bool busy_=false,loaded_=false,active_=true;
  std::chrono::steady_clock::time_point started_=std::chrono::steady_clock::now();
- static Object copy(const Object& value){return Object::Parse(value.Stringify());}
+ static Object copy(const Object& value){
+  // JSON scalar values are immutable. Clone containers directly instead of
+  // formatting large byte arrays as UTF-16 and parsing them back into numbers.
+  // An explicit stack also avoids recursion on extension-provided JSON depth.
+  struct Work{Value source,target;};Object result;std::vector<Work> pending{{value,result}};
+  while(!pending.empty()){auto work=std::move(pending.back());pending.pop_back();
+   const auto clone=[&](const Value& source)->Value{if(source.ValueType()==Type::Object){Object target;pending.push_back({source,target});return target;}if(source.ValueType()==Type::Array){Array target;pending.push_back({source,target});return target;}return source;};
+   if(work.source.ValueType()==Type::Object){auto target=work.target.GetObject();for(const auto& pair:work.source.GetObject())target.Insert(pair.Key(),clone(pair.Value()));}
+   else{auto target=work.target.GetArray();for(const auto& item:work.source.GetArray())target.Append(clone(item));}
+  }return result;
+ }
  static Value property(const Object& object,const wchar_t* key){return object.HasKey(key)?object.GetNamedValue(key):Value{nullptr};}
  static bool nullish(const Value& value){return !value||value.ValueType()==Type::Null;}
  static bool truthy(const Value& value){if(nullish(value))return false;if(value.ValueType()==Type::Boolean)return value.GetBoolean();if(value.ValueType()==Type::String)return !value.GetString().empty();if(value.ValueType()==Type::Number)return value.GetNumber()!=0;return true;}

@@ -6615,3 +6615,9 @@ PNG后台解码完成后保留像素及私有surface，每次pump最多上传262
 延续已完成的真实文件导入窗口链路，补齐编码期间的生命周期验收。只读encodingImportForCheck观察正式编码阶段，实际按钮/reader/pump推进到该阶段后，分别触发真实retry按钮、模型禁用file、模型移除file和host关闭；各路径连续pump确认不发送旧文件、不遗留busy/编码对象。前三种重新加载原模型确认file按钮恢复enabled，最终关闭确认窗口注销。未直接调用状态finishImport来替代窗口行为。
 
 唯一正式Release构建成功，extension-form-ui/image/files/state四项通过2.18秒；来源821文件及diff检查通过。该阶段是补齐正式窗口集成证据，未新增业务功能，不等同人工物理鼠标/慢盘响应验收。生产扩展JavaScript执行器技术路线已重新列出待用户决定，尚未擅自引入QuickJS；整体迁移INCOMPLETE。保留editor_support.h及用户数据，本阶段提交推送dev。
+
+### 2026-11-11：扩展表单模型结构快照
+
+继续处理导出大响应复制长任务。FormState::copy此前Stringify再Parse，会为bytes数组生成完整UTF16及重新分配数字；改为显式工作栈复制JSON对象/数组容器，复用不可变标量，保留receive、send action和draft快照隔离。显式栈不递归访问扩展提供的JSON深度，不修改节点/文件协议或导出验证逻辑。
+
+唯一正式Release及状态测试构建成功，extension-form-ui/image/files/state四项通过2.81秒。新增外部嵌套模型修改不影响接收快照，262144字节结果与原Stringify/Parse克隆序列化一致；本机局部样本原201249us、结构复制30266us，约6.6倍，无性能断言阈值。来源821文件/diff通过。接收仍同步O(n)，大数组容器释放及文件导出校验/写入尚未分帧；不将局部结果扩称整体无卡顿。生产执行器方案仍待用户答复，整体迁移INCOMPLETE。保留editor_support.h及用户数据，阶段提交推送dev。
