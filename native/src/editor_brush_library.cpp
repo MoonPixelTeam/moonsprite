@@ -11,7 +11,7 @@ struct BrushScanResult {PatternBrushListing listing;std::string folder,key,error
 // threads. A promise future does not join the reader when the owner closes.
 struct BrushScanWork final:ui::Property {
  std::future<BrushScanResult> future;std::string key;bool pending=false;ui::Timer timer;
- std::optional<BrushScanResult> loaded;std::uint64_t loadedDocument=0;std::filesystem::path loadedDirectory;
+ std::optional<BrushScanResult> loaded;std::unordered_map<std::string,std::size_t> localIndex;std::unordered_map<std::string,std::vector<std::string>> folderOrder;std::uint64_t loadedDocument=0;std::filesystem::path loadedDirectory;
  BrushScanWork(ui::Widget* owner):ui::Property("moonsprite.brush-scan"),timer(16,owner){}
  void start(std::filesystem::path directory,std::string folder,std::string requestKey){
   key=requestKey;pending=true;std::promise<BrushScanResult> promise;future=promise.get_future();
@@ -60,7 +60,32 @@ void Editor::syncBrushLibraryPanel(bool reload){
  if(scan->pending&&scan->future.wait_for(std::chrono::seconds(0))==std::future_status::ready){
   auto result=scan->future.get();scan->pending=false;scan->timer.stop();
   if(visible&&result.key==key&&!brushLibraryNeedsReload_){
-   if(result.error.empty()){fillFolder_=result.folder;std::vector<BrushLibraryPanel::Resource> project;for(const auto& item:document.projectBrushes())project.push_back({"project:"+item.metadata.id,unicodeText(item.metadata.name),item.brush});std::vector<BrushLibraryPanel::Resource> visibleLocal;for(const auto& item:result.listing.brushes)if(item.folderId==fillFolder_){const auto resource=std::find_if(result.local.begin(),result.local.end(),[&](const auto& value){return value.id==item.id;});if(resource!=result.local.end())visibleLocal.push_back(*resource);}brushLibraryPanel_->setResources(result.listing,fillFolder_,visibleLocal,project);if(result.failed)status_=U"图案缩略图读取失败："+unicodeText(std::to_string(result.failed));scan->loaded=std::move(result);scan->loadedDocument=document.identity();scan->loadedDirectory=fillBrushLibraryDirectory();}
+   if(result.error.empty()){
+    fillFolder_=result.folder;
+    std::unordered_map<std::string,std::size_t> index;for(std::size_t i=0;i<result.local.size();++i)index.emplace(result.local[i].id,i);
+    std::unordered_map<std::string,std::vector<std::string>> folders;std::vector<BrushLibraryPanel::Resource> visibleLocal,project;
+    for(const auto& item:result.listing.brushes){const auto found=index.find(item.id);if(found==index.end())continue;folders[item.folderId].push_back(item.id);if(item.folderId==fillFolder_)visibleLocal.push_back(result.local[found->second]);}
+    for(const auto& item:document.projectBrushes())project.push_back({"project:"+item.metadata.id,unicodeText(item.metadata.name),item.brush});
+    // Legacy controller refresh removes unavailable members from the live set,
+    // retaining the existing pixels/order of surviving choices and active item.
+    auto selection=fillLibrarySelection_;std::vector<PatternBrush> retained;std::u32string activeName;std::optional<PatternBrush> active;
+    for(std::size_t i=0;i<fillLibrarySelection_.ids.size();++i){const auto& id=fillLibrarySelection_.ids[i];bool valid=false;
+     if(id.rfind("project:",0)==0)valid=std::any_of(project.begin(),project.end(),[&](const auto& value){return value.id==id;});else valid=index.count(id)!=0;
+     if(!valid)selection.removed(id);
+    }
+    const bool pruned=selection.ids!=fillLibrarySelection_.ids;
+    if(pruned){
+     for(const auto& id:selection.ids){const auto previous=std::find(fillLibrarySelection_.ids.begin(),fillLibrarySelection_.ids.end(),id);const auto position=std::size_t(previous-fillLibrarySelection_.ids.begin());const PatternBrush* brush=nullptr;std::u32string label;
+      if(id.rfind("project:",0)==0){const auto item=std::find_if(project.begin(),project.end(),[&](const auto& value){return value.id==id;});brush=&item->brush;label=item->name;}else{const auto& item=result.local[index.at(id)];brush=&item.brush;label=item.name;}
+      if(position<fillPattern_.brushes.size())brush=&fillPattern_.brushes[position];
+      if(id==selection.active){active=*brush;activeName=std::move(label);}retained.push_back(*brush);
+     }
+    }
+    brushLibraryPanel_->setResources(result.listing,fillFolder_,visibleLocal,project);
+    if(result.failed)status_=U"图案缩略图读取失败："+unicodeText(std::to_string(result.failed));
+    scan->loaded=std::move(result);scan->localIndex=std::move(index);scan->folderOrder=std::move(folders);scan->loadedDocument=document.identity();scan->loadedDirectory=fillBrushLibraryDirectory();
+    if(pruned){fillLibrarySelection_=std::move(selection);fillPattern_.brushes=std::move(retained);pencilImageBrushId_=fillLibrarySelection_.active;pencilImageBrush_=std::move(active);fillImageName_=std::move(activeName);saveBrushPreferences();}
+   }
    else status_=U"图案笔刷库读取失败："+unicodeText(result.error);
   }else brushLibraryNeedsReload_=true;
  }
@@ -78,7 +103,7 @@ void Editor::selectBrushLibraryItem(const std::string& id,bool ctrl,bool shift){
   // Legacy's controller retains decoded resources across refreshes and folders.
   // Clicks must never rescan the filesystem or decode the chosen image again.
   const auto& loaded=*scan->loaded;std::vector<std::string> ordered;
-  for(const auto& item:loaded.listing.brushes)if(item.folderId==fillFolder_&&std::any_of(loaded.local.begin(),loaded.local.end(),[&](const auto& value){return value.id==item.id;}))ordered.push_back(item.id);
+  const auto folder=scan->folderOrder.find(fillFolder_);if(folder!=scan->folderOrder.end())ordered=folder->second;
   if(fillFolder_.empty())for(const auto& item:document.projectBrushes())ordered.push_back("project:"+item.metadata.id);
   if(std::find(ordered.begin(),ordered.end(),id)==ordered.end())throw std::runtime_error("Brush is not loaded in current folder");
   auto selection=fillLibrarySelection_;selection.select(ordered,id,ctrl,shift);
@@ -86,7 +111,7 @@ void Editor::selectBrushLibraryItem(const std::string& id,bool ctrl,bool shift){
   for(const auto& selected:selection.ids){
    const PatternBrush* brush=nullptr;std::u32string label;
    if(selected.rfind("project:",0)==0){const auto item=std::find_if(document.projectBrushes().begin(),document.projectBrushes().end(),[&](const auto& value){return value.metadata.id==selected.substr(8);});if(item!=document.projectBrushes().end()){brush=&item->brush;label=unicodeText(item->metadata.name);}}
-   else{const auto item=std::find_if(loaded.local.begin(),loaded.local.end(),[&](const auto& value){return value.id==selected;});if(item!=loaded.local.end()){brush=&item->brush;label=item->name;}}
+   else{const auto item=scan->localIndex.find(selected);if(item!=scan->localIndex.end()){const auto& resource=loaded.local[item->second];brush=&resource.brush;label=resource.name;}}
    if(!brush)throw std::runtime_error("Selected brush is no longer loaded");
    if(selected==selection.active){active=*brush;name=std::move(label);}brushes.push_back(*brush);
   }
@@ -117,6 +142,10 @@ void Editor::smokeBrushLibraryPanel(){
  brushLibraryPanel_->smokeDrag();brushLibraryNeedsReload_=true;syncBrushLibraryPanel(true);
  selectBrushLibraryItem(first.id,false,false);require(pencilImageBrushId_==first.id&&pencilImageBrush_&&fillPattern_.brushes.size()==1,"Library selection shares pencil/fill");require(!brushLibraryNeedsReload_,"Selection unexpectedly reloaded brush thumbnails");const auto selectedBeforeFailedMove=fillLibrarySelection_.ids;brushLibraryPanel_->moveToFolder({first.id},"missing-folder");require(fillLibrarySelection_.ids==selectedBeforeFailedMove&&pencilImageBrushId_==first.id&&std::filesystem::exists(std::filesystem::u8path(first.filePath)),"Failed cross-folder drag retains source and selection");selectBrushLibraryItem(first.id,false,false);require(pencilImageBrushId_.empty()&&!pencilImageBrush_&&fillPattern_.brushes.empty(),"Library repeat click deselects");
  brushLibraryPanel_->navigate(folder.id);selectBrushLibraryItem(second.id,false,false);require(pencilImageBrushId_==second.id,"Nested library navigation");const auto before=fillLibrarySelection_.ids;selectBrushLibraryItem("missing.png",false,false);require(fillLibrarySelection_.ids==before&&pencilImageBrushId_==second.id,"Missing selection retains brush");
+ // Full refresh lifecycle: discard unavailable members, retain order and
+ // surviving in-memory pixels, then clear the last lost active choice.
+ {const auto a=library.save("refresh-a",encodePatternBrushPng(stamp)),b=library.save("refresh-b",encodePatternBrushPng(stamp));library.move(a.id,folder.id);library.move(b.id,folder.id);syncBrushLibraryPanel(true);selectBrushLibraryItem(a.id,false,false);selectBrushLibraryItem(b.id,true,false);library.remove(b.id);syncBrushLibraryPanel(true);require(fillLibrarySelection_.ids==std::vector<std::string>({a.id})&&pencilImageBrushId_==a.id&&pencilImageBrush_&&fillPattern_.brushes.size()==1,"Refresh did not prune lost active resource");
+  library.remove(a.id);syncBrushLibraryPanel(true);require(fillLibrarySelection_.ids.empty()&&pencilImageBrushId_.empty()&&!pencilImageBrush_&&fillPattern_.brushes.empty()&&fillImageName_.empty(),"Refresh did not clear final missing brush");selectBrushLibraryItem(second.id,false,false);require(pencilImageBrushId_==second.id,"Refresh lifecycle did not restore next valid selection");}
  // Real preference queue and library resource resolution, no user settings.
  {const auto oldRoot=workspacePresetTestDirectory_;workspacePresetTestDirectory_=dir/"preferences";pencilImageBrushAngle_=37.5;saveBrushPreferences();pencilImageBrushId_.clear();pencilImageBrush_.reset();pencilImageBrushAngle_=0;loadSessionToolPreferences(false);require(pencilImageBrushId_==second.id&&pencilImageBrush_&&pencilImageBrushAngle_==37.5,"Persistent image resource/angle reopen");
   temporaryBrushActive_=true;saveBrushPreferences();temporaryBrushActive_=false;loadSessionToolPreferences(false);require(pencilImageBrushId_.empty()&&!pencilImageBrush_,"Temporary selection brush was persisted");

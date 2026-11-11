@@ -6761,3 +6761,9 @@ PNG后台解码完成后保留像素及私有surface，每次pump最多上传262
 对照legacy useBrushLibrary.ts保留已解码controller资源，以及BrushLibraryPanel.tsx selectBrush按显示顺序选择并复用controller.brushes。后台加载全部文件夹资源，UI仅发布当前目录；普通栏目点击不再list目录/import解码。资源快照校验工程、目录和文件夹，刷新期间保留已显示资源；候选选择/像素全部就绪后一次提交，工程资源取当前Document。新增独占锁PNG下Ctrl选择、Shift范围顺序、刷新损坏资源拒绝及本地/工程混选回归。导入/删除等显式资源操作仍沿既有同步路径，UI发布仍有像素复制，不宣称整体卡顿已解决。构建验证中，整体INCOMPLETE。
 
 阶段验收完成：唯一正式Release成功，实际--brush-library-panel-check等待exit0；独占PNG锁下复用内存选择、Ctrl/Shift顺序、刷新损坏资源拒绝、本地/工程混选通过。extension-workspace-ui、multi-document、canvas-resize三项通过2.02秒。来源824文件及diff检查通过。本阶段对照legacy，无新增Aseprite源码核对或人工FPS测量；整体INCOMPLETE。用户editor_support.h及未跟踪数据保留，阶段提交推送dev。
+
+### 2026-11-11：笔刷资源刷新生命周期与查找索引（验证中）
+
+对照legacy BrushLibraryPanel.tsx controller.loaded/valid集合effect：成功刷新后移除失效成员，保留存活图案像素与顺序，优先原活动资源或最后存活资源，最后资源丢失则清空。原生在后台结果发布时事务更新选择/图案/活动像素/名称并保存修正引用，目录整体读取失败不清除选择。发布同时建立ID索引与目录顺序索引，消除每次点击按全库反复查找导致的二次复杂度。真实smoke删除活动资源、删除最后资源与重新选择回归。旧填充/铅笔菜单同步资源入口仍待迁移，不把本阶段当作完整后台控制器完成；整体INCOMPLETE。
+
+阶段验收完成：唯一正式Release成功，实际--brush-library-panel-check等待exit0，包含活动资源丢失、最后资源丢失、有效资源重新选择及此前锁文件/多选/刷新回归。extension-workspace-ui、multi-document、canvas-resize三项通过2.06秒。来源824文件及diff检查通过，无人工FPS测量。同步菜单入口仍有迁移缺口；整体INCOMPLETE。用户editor_support.h与未跟踪数据保留，阶段提交推送dev。
