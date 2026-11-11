@@ -22,14 +22,19 @@ public:
   using namespace winrt::Windows::Data::Json;const bool multiple=!node.HasKey(L"multiple")||node.GetNamedValue(L"multiple").ValueType()!=JsonValueType::Boolean||node.GetNamedBoolean(L"multiple");std::vector<wchar_t> buffer(32768);const auto filters=filter(node);OPENFILENAMEW dialog{};dialog.lStructSize=sizeof(dialog);dialog.hwndOwner=owner_;dialog.lpstrFile=buffer.data();dialog.nMaxFile=DWORD(buffer.size());dialog.lpstrFilter=filters.c_str();dialog.lpstrTitle=L"选择扩展文件";dialog.Flags=OFN_EXPLORER|OFN_NOCHANGEDIR|OFN_FILEMUSTEXIST|OFN_PATHMUSTEXIST|(multiple?OFN_ALLOWMULTISELECT:0);
   if(!open_(&dialog)){chooserError();return {};}
   // Parse within the allocated buffer even for injected or malformed chooser replies.
-  auto cursor=buffer.data();auto end=buffer.data()+buffer.size();auto next=[&](){auto last=std::find(cursor,end,wchar_t(0));if(last==end)throw std::runtime_error("扩展文件选择结果无效。");std::wstring part(cursor,last);cursor=last+1;return part;};const std::filesystem::path first(next());std::vector<std::filesystem::path> paths;if(cursor==end||!*cursor)paths.push_back(first);else while(cursor<end&&*cursor)paths.push_back(first/next());
-  if((!multiple&&paths.size()!=1)||paths.size()>16)throw std::length_error("最多 16 个文件，合计不超过 16 MiB。");std::vector<FormState::File> files;std::size_t total=0;
+  auto cursor=buffer.data();auto end=buffer.data()+buffer.size();auto next=[&](){auto last=std::find(cursor,end,wchar_t(0));if(last==end)throw std::runtime_error("扩展文件选择结果无效。");std::wstring part(cursor,last);cursor=last+1;return part;};const std::filesystem::path first(next());if(first.empty())throw std::runtime_error("扩展文件选择结果无效。");std::vector<std::filesystem::path> paths;
+  if(!multiple||cursor==end||!*cursor)paths.push_back(first);
+  else{while(cursor<end&&*cursor){if(paths.size()==16)throw std::length_error("最多 16 个文件，合计不超过 16 MiB。");paths.push_back(first/next());}if(cursor==end)throw std::runtime_error("扩展文件选择结果无效。");}
+  // Legacy validates the combined File.size before Promise.all arrayBuffer.
+  // Do the same before opening any stream, retaining the read-time growth cap.
+  std::uintmax_t expected=0;for(const auto& path:paths){const auto size=std::filesystem::file_size(path);if(size>16u*1024*1024-expected)throw std::length_error("最多 16 个文件，合计不超过 16 MiB。");expected+=size;}
+  std::vector<FormState::File> files;files.reserve(paths.size());std::size_t total=0;
   for(const auto& path:paths){const auto size=std::filesystem::file_size(path);if(size>16u*1024*1024-total)throw std::length_error("最多 16 个文件，合计不超过 16 MiB。");FormState::File file;file.name=path.filename().wstring();file.mime=mime(path);std::ifstream input(path,std::ios::binary);if(!input)throw std::runtime_error("无法读取扩展文件。");char chunk[65536];while(input){input.read(chunk,sizeof(chunk));const auto n=std::size_t(input.gcount());if(n>16u*1024*1024-total)throw std::length_error("最多 16 个文件，合计不超过 16 MiB。");file.bytes.insert(file.bytes.end(),chunk,chunk+n);total+=n;}if(input.bad())throw std::runtime_error("无法读取扩展文件。");files.push_back(std::move(file));}return files;
  }
  bool save(const FormState::File& file)const{
   if(file.name.empty()||file.name.size()>120||file.bytes.size()>12u*1024*1024)throw std::invalid_argument("扩展导出文件无效。");for(auto c:file.name)if(c<32||(c>=127&&c<=159)||std::wstring(L"<>:\"/\\|?*").find(c)!=std::wstring::npos)throw std::invalid_argument("扩展导出文件无效。");if(winrt::to_string(file.name).size()>240)throw std::invalid_argument("扩展导出文件名无效。");const auto ext=extension(file.name);
   std::vector<wchar_t> buffer(32768);std::copy(file.name.begin(),file.name.end(),buffer.begin());std::wstring filters=L"扩展数据";filters+=wchar_t(0);filters+=L"*."+ext;filters+=wchar_t(0);filters+=L"所有文件";filters+=wchar_t(0);filters+=L"*.*";filters+=wchar_t(0);filters+=wchar_t(0);OPENFILENAMEW dialog{};dialog.lStructSize=sizeof(dialog);dialog.hwndOwner=owner_;dialog.lpstrFile=buffer.data();dialog.nMaxFile=DWORD(buffer.size());dialog.lpstrFilter=filters.c_str();dialog.lpstrDefExt=ext.c_str();dialog.Flags=OFN_EXPLORER|OFN_NOCHANGEDIR|OFN_PATHMUSTEXIST|OFN_OVERWRITEPROMPT;
-  if(!save_(&dialog)){chooserError();return false;}writeBinaryFileAtomic(std::filesystem::path(buffer.data()),file.bytes);return true;
+  if(!save_(&dialog)){chooserError();return false;}const auto end=std::find(buffer.begin(),buffer.end(),wchar_t(0));if(end==buffer.end()||end==buffer.begin())throw std::runtime_error("扩展文件选择结果无效。");writeBinaryFileAtomic(std::filesystem::path(std::wstring(buffer.begin(),end)),file.bytes);return true;
  }
 };
 }

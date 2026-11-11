@@ -6573,3 +6573,9 @@ PNG后台解码完成后保留像素及私有surface，每次pump最多上传262
 直接核对ExtensionDialogForm文件onChange：取消不发送、读取/编码失败写status并解除busy、有效文件经action携带name/mime/bytes。原生选择器同步泵事件，原路径在返回时只检查hostClosePending，重试后可能将旧文件发送到新会话，旧读取异常也可能清除新请求busy；同时未捕获hresult异常。统一FormState::importFiles校验有效file控件，捕获调用前active/generation/sequence，选择返回与std/hresult失败仅作用原会话；普通同代模型推送继续交给现有files校验当前控件。FormWindow维持ModalCall保护与hostClosePending关闭抑制，所有取消/选中/异常路径统一sync，不改变原文件数量、体积、命名、MIME及payload规则。
 
 唯一正式Release及状态测试构建成功。新增20组导入转换/结果组合，覆盖推送、retry、retry后新请求、close、同代新请求与成功/取消/std异常/hresult异常；检查新请求仍可独立完成，并验证缺失/忙碌/关闭控件不打开选择器。extension-form-ui/image/files/state四项通过2.00秒，保留真实窗口选择器内部receive/pump/关闭后无上传的回归与实际磁盘多选读取/保存回归。来源821文件及diff检查通过，无人工物理选择器验收。磁盘读取仍同步，未宣称完成后台导入或整体扩展生产执行器；全体迁移INCOMPLETE。保留editor_support.h与用户数据，阶段提交推送dev。
+
+### 2026-11-11：扩展文件批量准入与选择结果边界
+
+直接核对ExtensionDialogForm文件入口先sum(File.size)再Promise.all(arrayBuffer)及extension-file.ts明确选择目标后原子写入。原生此前逐文件metadata/read交错，合计已超限仍会读取前面的文件；改为整批metadata检查后开流，保留读时增长16MiB上限与64KiB分块。多选最多16项内解析，空首路径/缺少列表终止符拒绝；单选使用Win32单路径协议。保存选择结果查找限定32768缓冲区内的非空终止符，避免畸形adapter结果交给无界path构造。未改变文件格式、MIME、payload或导入数量/体积规格。
+
+唯一正式Release和文件测试构建成功，extension-form-ui/image/files/state四项通过2.05秒。新增实际磁盘空文件/16空文件/17拒绝、恰16MiB双文件/批量超限；CreateFileW持有不共享读取的句柄确认合计超限先报length_error而非开流错误，证明准入顺序。注入空/无终止/缺列表终止的选择结果及空/无终止保存目标均拒绝。来源821文件及diff通过；无人工选择器验收或界面响应耗时测量。后台磁盘读取、生产扩展执行器和整体迁移仍INCOMPLETE。保留editor_support.h及用户数据，本阶段提交推送dev。
