@@ -6773,3 +6773,9 @@ PNG后台解码完成后保留像素及私有surface，每次pump最多上传262
 复用legacy useBrushLibrary.ts后台controller与BrushLibraryPanel.tsx loaded selection：将既有两菜单定义移入资源控制器所在编译单元，保留入口/参数/清除/角度/工程资源，菜单打开不再扫描目录，铅笔选择捕获已载入像素并校验工程/目录，填充选择汇入索引事务。首次加载显示禁用加载提示，后台完成后下次打开可用；栏目隐藏仍允许菜单请求发布。导入成功移除apply后再次resolve解码。新增隐藏栏目菜单扫描请求与锁PNG下填充选择检查。初始化偏好解析及显式资源写入操作仍同步，整体INCOMPLETE。
 
 阶段验收完成：唯一正式Release最终增量构建成功；实际--brush-library-panel-check等待exit0，栏目隐藏菜单请求加载、独占PNG锁下填充选择、既有部分导入/失败/持久化/生命周期通过。extension-workspace-ui、multi-document、canvas-resize三项通过2.16秒。来源824文件及diff检查通过。没有实际弹出菜单点击或截图/FPS验收；首次菜单加载提示需关闭后重开查看完成资源。初始化偏好与显式资源写入仍同步，整体INCOMPLETE。用户editor_support.h与未跟踪数据保留，阶段提交推送dev。
+
+### 2026-11-11：笔刷文件夹缓存导航与变更刷新（验证中）
+
+依据legacy useBrushLibrary.ts加载全部资源、BrushLibraryPanel.tsx按currentFolderId过滤与缺失目录回根：导航不再参与IO key，不触发重复全库扫描解码；切换以已有索引发布当前目录，保留跨目录选择。扫描期间导航结果按最新位置发布。文件夹菜单复用已载入目录，创建/重命名/移动/确认删除补齐显式刷新标记，避免依赖旧folder key偶然刷新。真实smoke独占锁图案后跨目录导航与Ctrl选择、缺失目录回退，原创建/取消/父目录快捷键回归。初始化偏好及显式资源操作仍同步，整体INCOMPLETE。
+
+阶段验收：唯一正式Release最终构建成功；首次笔刷专项在既有partial/drop dedupe断言失败，同一二进制再次运行等待exit0，新锁文件导航/跨目录多选/缺失目录回退及创建快捷键通过。首次失败可能受一秒去重时限影响，但原因未被证明，保留失败记录，不称该不稳定检查已修复。extension-workspace-ui、multi-document、canvas-resize三项通过3.29秒。来源824文件与diff通过，无人工FPS/截图验收；整体INCOMPLETE。用户editor_support.h与未跟踪数据保留，阶段提交推送dev。

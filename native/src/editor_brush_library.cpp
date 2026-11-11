@@ -36,7 +36,7 @@ void Editor::createBrushLibraryPanel(){
  brushLibraryPanel_=new BrushLibraryPanel(font_,skin_,toolIcons_);addChild(brushLibraryPanel_);brushLibraryPanel_->setVisible(false);
  if(!smoke_)try{const auto path=brushLibraryPreferencePath();if(std::filesystem::exists(path)){std::ifstream in(path);std::string version;int visible,size;if(!(in>>version>>visible>>size)||version!="brush-library-panel-v1"||(visible!=0&&visible!=1)||(size!=30&&size!=40&&size!=52))throw std::runtime_error("Invalid brush library panel preferences");brushLibraryPanelOpen_=visible!=0;brushLibraryPanel_->setSize(size);}}catch(const std::exception& e){brushLibraryPreferencesReadable_=false;status_=U"图案笔刷栏目偏好读取失败："+unicodeText(e.what());}
  brushLibraryPanel_->select=[this](const std::string& id,bool ctrl,bool shift){selectBrushLibraryItem(id,ctrl,shift);};
- brushLibraryPanel_->navigate=[this](const std::string& id){fillFolder_=id;fillLibrarySelection_.anchor.clear();brushLibraryNeedsReload_=true;refresh();};
+ brushLibraryPanel_->navigate=[this](const std::string& id){fillFolder_=id;fillLibrarySelection_.anchor.clear();refresh();};
 
  brushLibraryPanel_->reorder=[this](const std::vector<std::string>& expected,const std::vector<std::string>& next){if(pending_!=Pending::None||document.active())return;try{PatternBrushLibrary library(fillBrushLibraryDirectory());std::vector<std::string> current;for(const auto& item:library.list().brushes)current.push_back(item.id);if(current!=expected)throw std::runtime_error("Brush library changed during drag; refresh and try again");library.reorder(next);status_=U"图案顺序已保存";}catch(const std::exception& e){status_=U"图案排序失败："+unicodeText(e.what());}brushLibraryNeedsReload_=true;refresh();};
  brushLibraryPanel_->moveToFolder=[this](const std::vector<std::string>& ids,const std::string& folder){if(pending_!=Pending::None||document.active())return;try{PatternBrushLibrary library(fillBrushLibraryDirectory());library.moveGroup(ids,folder);status_=U"图案已移动到文件夹";}catch(const std::exception& e){status_=U"图案移动失败："+unicodeText(e.what());}brushLibraryNeedsReload_=true;refresh();};
@@ -56,7 +56,7 @@ void Editor::createBrushLibraryPanel(){
 }
 void Editor::syncBrushLibraryPanel(bool reload){
  if(!brushLibraryPanel_)return;
- std::string key=std::to_string(document.identity())+":"+fillFolder_+":"+fillBrushLibraryDirectory().u8string();for(const auto& r:document.projectBrushes())key+="/"+r.metadata.id+":"+r.metadata.name;
+ std::string key=std::to_string(document.identity())+":"+fillBrushLibraryDirectory().u8string();for(const auto& r:document.projectBrushes())key+="/"+r.metadata.id+":"+r.metadata.name;
  if(key!=brushLibraryResourceKey_){brushLibraryResourceKey_=key;brushLibraryNeedsReload_=true;}
  auto scan=std::dynamic_pointer_cast<BrushScanWork>(getProperty("moonsprite.brush-scan"));
  if(!scan){scan=std::make_shared<BrushScanWork>(this);scan->timer.Tick.connect([this]{syncBrushLibraryPanel();});setProperty(scan);}
@@ -67,7 +67,8 @@ void Editor::syncBrushLibraryPanel(bool reload){
   auto result=scan->future.get();scan->pending=false;scan->timer.stop();
   if(visible&&result.key==key&&!brushLibraryNeedsReload_){
    if(result.error.empty()){
-    fillFolder_=result.folder;
+    if(!fillFolder_.empty()&&std::none_of(result.listing.folders.begin(),result.listing.folders.end(),[&](const auto& folder){return folder.id==fillFolder_;}))fillFolder_.clear();
+    result.folder=fillFolder_;
     std::unordered_map<std::string,std::size_t> index;for(std::size_t i=0;i<result.local.size();++i)index.emplace(result.local[i].id,i);
     std::unordered_map<std::string,std::vector<std::string>> folders;std::vector<BrushLibraryPanel::Resource> visibleLocal,project;
     for(const auto& item:result.listing.brushes){const auto found=index.find(item.id);if(found==index.end())continue;folders[item.folderId].push_back(item.id);if(item.folderId==fillFolder_)visibleLocal.push_back(result.local[found->second]);}
@@ -96,6 +97,13 @@ void Editor::syncBrushLibraryPanel(bool reload){
   }else brushLibraryNeedsReload_=true;
  }
  if(brushLibraryNeedsReload_&&visible&&!scan->pending){scan->start(fillBrushLibraryDirectory(),fillFolder_,key);brushLibraryNeedsReload_=false;}
+ // Folder location is a view of the loaded controller, not a new IO request.
+ if(visible&&!scan->pending&&!brushLibraryNeedsReload_&&scan->loaded&&scan->loadedDocument==document.identity()&&scan->loadedDirectory==fillBrushLibraryDirectory()&&scan->loaded->folder!=fillFolder_){
+  auto& loaded=*scan->loaded;if(!fillFolder_.empty()&&std::none_of(loaded.listing.folders.begin(),loaded.listing.folders.end(),[&](const auto& folder){return folder.id==fillFolder_;}))fillFolder_.clear();
+  std::vector<BrushLibraryPanel::Resource> local,project;const auto order=scan->folderOrder.find(fillFolder_);if(order!=scan->folderOrder.end())for(const auto& id:order->second)local.push_back(loaded.local[scan->localIndex.at(id)]);
+  for(const auto& item:document.projectBrushes())project.push_back({"project:"+item.metadata.id,unicodeText(item.metadata.name),item.brush});
+  brushLibraryPanel_->setResources(loaded.listing,fillFolder_,local,project);loaded.folder=fillFolder_;
+ }
  // Existing deterministic UI fixtures explicitly wait; production only polls.
  if(smoke_&&scan->pending){scan->future.wait();syncBrushLibraryPanel();return;}
  brushLibraryPanel_->syncSelection(fillLibrarySelection_.ids,pending_==Pending::None&&!document.active());brushLibraryActions_[0]->setEnabled(pending_==Pending::None&&!document.active());brushLibraryActions_[1]->setEnabled(pending_==Pending::None&&!document.active()&&!fillLibrarySelection_.ids.empty());brushLibraryActions_[2]->setEnabled(pending_==Pending::None&&!document.active());
@@ -159,6 +167,8 @@ void Editor::showFillLibraryMenu(){
 
   }
 
+void Editor::showFillFolderMenu(){PixelMenu menu(skin_);syncBrushLibraryPanel();auto scan=requestBrushMenuScan(this);syncBrushLibraryPanel();try{if(!scan||!scan->loaded||scan->loadedDocument!=document.identity()||scan->loadedDirectory!=fillBrushLibraryDirectory())throw std::runtime_error("Brush library is loading");scan->menuRequested=false;const auto& listing=scan->loaded->listing;auto root=new PixelMenuItem(font_,skin_,U"根文件夹");root->Click.connect([this]{fillFolder_.clear();refresh();});menu.addChild(root);for(const auto& folder:listing.folders){auto row=new PixelMenuItem(font_,skin_,unicodeText(folder.id));row->checked=[this,id=folder.id]{return fillFolder_==id;};row->Click.connect([this,id=folder.id]{fillFolder_=id;refresh();});menu.addChild(row);}auto create=new PixelMenuItem(font_,skin_,U"新建子文件夹…");create->Click.connect([this]{editFillFolder(false);});menu.addChild(create);if(!fillFolder_.empty()){auto rename=new PixelMenuItem(font_,skin_,U"重命名当前文件夹…");rename->Click.connect([this]{editFillFolder(true);});menu.addChild(rename);auto remove=new PixelMenuItem(font_,skin_,U"删除当前文件夹…");remove->Click.connect([this]{confirmFillFolderDelete();});menu.addChild(remove);}if(!fillLibrarySelection_.ids.empty()){auto move=new PixelMenuItem(font_,skin_,U"移动选中图案到根文件夹");move->Click.connect([this]{moveFillBrushes({});});menu.addChild(move);for(const auto& folder:listing.folders){auto row=new PixelMenuItem(font_,skin_,U"移动选中图案到 "+unicodeText(folder.id));row->Click.connect([this,id=folder.id]{moveFillBrushes(id);});menu.addChild(row);}}}catch(const std::exception& e){status_=U"文件夹读取失败："+unicodeText(e.what());}auto at=brushLibraryPanel_&&brushLibraryPanel_->isVisible()?brushLibraryActions_[2]->bounds():fillImageButton_->bounds();menu.showPopup({at.x,at.y2()},display());requestFocus();}
+
 void Editor::showBrushLibraryActions(){PixelMenu menu(skin_);auto add=[&](std::u32string label,std::function<void()> action){auto row=new PixelMenuItem(font_,skin_,std::move(label));row->Click.connect(std::move(action));menu.addChild(row);return row;};add(U"文件夹…",[this]{showFillFolderMenu();});add(U"删除选中图案…",[this]{confirmFillLibraryDelete();})->setEnabled(!fillLibrarySelection_.ids.empty());add(U"刷新",[this]{syncBrushLibraryPanel(true);refresh();});menu.addChild(new PixelMenuSeparator(skin_));const int sizes[]{30,40,52};const char* ids[]{"brushSwatchSmall","brushSwatchMedium","brushSwatchLarge"};const char32_t* labels[]{U"小",U"中",U"大"};for(int i=0;i<3;++i){auto row=add(labels[i],[this,id=std::string(ids[i])]{menuCommands_.invoke(id);});row->checked=[this,value=sizes[i]]{return brushLibraryPanel_->swatchSize()==value;};}auto at=brushLibraryActions_[2]->bounds();menu.showPopup({at.x,at.y2()},display());requestFocus();}
 void Editor::smokeBrushLibraryPanel(){
  auto require=[](bool ok,const char* why){if(!ok)throw std::runtime_error(why);};smoke_=true;documentOpen_=true;homeOpen_=false;pending_=Pending::None;playing_=false;document=Document(4,4);document.markSaved();
@@ -188,6 +198,11 @@ void Editor::smokeBrushLibraryPanel(){
  // surviving in-memory pixels, then clear the last lost active choice.
  {const auto a=library.save("refresh-a",encodePatternBrushPng(stamp)),b=library.save("refresh-b",encodePatternBrushPng(stamp));library.move(a.id,folder.id);library.move(b.id,folder.id);syncBrushLibraryPanel(true);selectBrushLibraryItem(a.id,false,false);selectBrushLibraryItem(b.id,true,false);library.remove(b.id);syncBrushLibraryPanel(true);require(fillLibrarySelection_.ids==std::vector<std::string>({a.id})&&pencilImageBrushId_==a.id&&pencilImageBrush_&&fillPattern_.brushes.size()==1,"Refresh did not prune lost active resource");
   library.remove(a.id);syncBrushLibraryPanel(true);require(fillLibrarySelection_.ids.empty()&&pencilImageBrushId_.empty()&&!pencilImageBrush_&&fillPattern_.brushes.empty()&&fillImageName_.empty(),"Refresh did not clear final missing brush");selectBrushLibraryItem(second.id,false,false);require(pencilImageBrushId_==second.id,"Refresh lifecycle did not restore next valid selection");}
+ // Navigation is purely in-memory, including cross-folder selected patterns.
+ {auto scan=std::dynamic_pointer_cast<BrushScanWork>(getProperty("moonsprite.brush-scan"));const auto* generation=&*scan->loaded;HANDLE locked=CreateFileW(std::filesystem::u8path(first.filePath).c_str(),GENERIC_READ,0,nullptr,OPEN_EXISTING,FILE_ATTRIBUTE_NORMAL,nullptr);require(locked!=INVALID_HANDLE_VALUE,"Navigation cache file lock");
+  brushLibraryPanel_->navigate({});selectBrushLibraryItem(first.id,true,false);const bool selected=fillLibrarySelection_.ids==std::vector<std::string>({second.id,first.id})&&pencilImageBrushId_==first.id;brushLibraryPanel_->navigate(folder.id);const bool reused=!scan->pending&&!brushLibraryNeedsReload_&&generation==&*scan->loaded&&scan->loaded->folder==folder.id;CloseHandle(locked);require(selected&&reused,"Folder navigation reloaded resources or lost cross-folder selection");
+  brushLibraryPanel_->navigate("missing-folder");require(fillFolder_.empty()&&!scan->pending,"Cached missing folder did not fall back to root");brushLibraryPanel_->navigate(folder.id);selectBrushLibraryItem(second.id,false,false);
+ }
  // Real preference queue and library resource resolution, no user settings.
  {const auto oldRoot=workspacePresetTestDirectory_;workspacePresetTestDirectory_=dir/"preferences";pencilImageBrushAngle_=37.5;saveBrushPreferences();pencilImageBrushId_.clear();pencilImageBrush_.reset();pencilImageBrushAngle_=0;loadSessionToolPreferences(false);require(pencilImageBrushId_==second.id&&pencilImageBrush_&&pencilImageBrushAngle_==37.5,"Persistent image resource/angle reopen");
   temporaryBrushActive_=true;saveBrushPreferences();temporaryBrushActive_=false;loadSessionToolPreferences(false);require(pencilImageBrushId_.empty()&&!pencilImageBrush_,"Temporary selection brush was persisted");
