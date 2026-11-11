@@ -30,6 +30,7 @@ public:
  void setDeclared(std::vector<std::string> ids){declared_=std::move(ids);if(items_.empty()&&names_.empty())return;items_.clear();names_.clear();notify();}
  std::uint64_t revision()const{return revision_;}
  std::vector<DynamicMenuItem> items(const std::string& menu)const{auto it=items_.find(menu);return it==items_.end()?std::vector<DynamicMenuItem>{}:it->second;}
+ std::optional<DynamicMenuItem> item(const std::string& menu,const std::string& id)const{auto found=items_.find(menu);if(found!=items_.end())for(const auto& item:found->second)if(item.id==id)return item;return {};}
  std::optional<std::wstring> name(const std::string& menu)const{auto it=names_.find(menu);return it==names_.end()?std::optional<std::wstring>{}:it->second;}
  CommandState command(const std::string& id)const{auto it=commands_.find(id);return it==commands_.end()?CommandState{}:it->second;}
  bool checked(const std::string& id)const{return command(id).checked.value_or(false);}

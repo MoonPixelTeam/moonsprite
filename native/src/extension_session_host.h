@@ -37,6 +37,10 @@ private:
  static winrt::Windows::Data::Json::JsonObject networkFailure(const std::wstring& id,const winrt::hstring& error){using namespace winrt::Windows::Data::Json;JsonObject response;response.Insert(L"type",JsonValue::CreateStringValue(L"moonsprite-extension-response"));response.Insert(L"requestId",JsonValue::CreateStringValue(id));response.Insert(L"ok",JsonValue::CreateBooleanValue(false));response.Insert(L"error",JsonValue::CreateStringValue(error));return response;}
 public:
  struct Token {std::string extensionId;std::uint64_t generation=0;};
+ // UI command adapters use this same registry as authenticated requests and
+ // settings events. Session tokens still gate attachment and queued actions.
+ RuntimeRegistry& registry(){return registry_;}
+ Storage& storage(){return storage_;}
  SessionHost(Storage& storage,FileDropRouter& drops,RuntimeRegistry& registry,NetworkStart networkStart=startNetworkRequest):storage_(storage),drops_(drops),registry_(registry),networkStart_(std::move(networkStart)){}
  SessionHost(const SessionHost&)=delete;SessionHost& operator=(const SessionHost&)=delete;
  ~SessionHost(){auto sessions=std::move(sessions_);for(auto& p:sessions)try{p.second->stop();}catch(...){} }
@@ -56,6 +60,7 @@ public:
  void setDeclaredMenus(const Token& token,std::vector<std::string> ids){if(auto s=find(token.extensionId,token.generation))s->requests.setDeclaredMenus(std::move(ids));}
  MenuState::Stop subscribePresentation(const Token& token,std::function<void()> callback){if(auto s=find(token.extensionId,token.generation))return s->requests.subscribePresentation(std::move(callback));return []{};}
  std::optional<MenuState> menus(const Token& token)const{if(auto s=find(token.extensionId,token.generation))return s->requests.menus();return {};}
+ std::optional<std::uint64_t> presentationRevision(const Token& token)const{if(auto s=find(token.extensionId,token.generation))return s->requests.menus().revision();return {};}
  bool reportCommandState(const Token& token,const winrt::Windows::Data::Json::JsonObject& params){if(auto s=find(token.extensionId,token.generation))return s->requests.reportCommandState(params,true);return false;}
  void setWorkspaceServices(const Token& token,WorkspaceServices services){if(auto s=find(token.extensionId,token.generation))s->requests.setWorkspaceServices(std::move(services));}
  void setWindowRouter(const Token& token,std::shared_ptr<WindowRouter> router){if(auto s=find(token.extensionId,token.generation))s->requests.setWindowRouter(std::move(router));}

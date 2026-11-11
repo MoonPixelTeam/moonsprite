@@ -7013,3 +7013,12 @@ Aseprite 源码对照：src/app/extensions.cpp installCompressedExtension 的逐
 新增实际设置窗口关闭/重开与模型检查覆盖自动/手动尺寸、条件显隐、小视口、非零屏幕原点、未知键保留及失败后后续变更保存。源码/来源核对完成，正式构建、运行和图像验收待补。主按钮/危险按钮缺少现有皮肤对应素材，HTML设置与生产JS等仍INCOMPLETE，不自行绘制近似样式或缩减兼容目标。保留用户editor_support.h与全部未跟踪数据。
 
 阶段最终验收：唯一正式Release最终构建成功；extension-preferences-ui、extension-menus-ui、extension-settings-ui、extension-contributions、extension-storage五项全部通过5.63秒。实际设置窗口检查覆盖关闭前保存、240×160逻辑像素显式尺寸重开、条件显隐后保持手动高度；模型检查覆盖省略height继续内容适配、非零原点、小视口边界、未知键、锁文件失败及下一次变更恢复。新增确定性阻塞FIFO写入检查：待保存快照未写盘前立即重开仍恢复最新尺寸，期间不等待后台；最后增加未变更几何缓存，最终构建已包含该优化，避免30ms定时器反复序列化JSON。geometry-passed.txt最终更新时间23:23:55。人工查看最终settings.bmp，标题、滚动正文、固定重置/完成无重叠；未测所有语言/多显示器组合，不把单图检查当全软件性能验收。来源覆盖835项及快照/diff检查通过。旧错误日志保持原样，未将旧JSON缺键记录当作本轮失败。当前初次读取仍同步；主/危险按钮素材、HTML设置、生产JS与整体迁移继续INCOMPLETE。本阶段提交推送dev，保留用户editor_support.h及全部未跟踪数据。
+
+
+### 2026-11-11 原生会话到动态贡献菜单的完整显示链路（验收中）
+
+继续使用已经迁移的SessionHost/RequestHost/MenuState与AppMenuBar呈现规则，新增现有原生会话到实际菜单适配器的绑定入口，按extension ID/generation验证，不启动JS执行器。动态名称、选项、分隔符、同ID替换与checked覆盖、静态checked/visible接入实际菜单；未变化时仅轮询标量revision，不复制整份菜单或重建窗口，通知合并到既有菜单关闭消息后的安全重建。回调交付时重新核对当前节点与generation，阻止已移除/改变事件或已替换会话的旧点击。会话设置窗口复用会话本身Storage/Registry，不再分裂为UI与Runtime两套缓存；命令及settings-changed经过真实会话。停用、移除、重绑、会话关闭及适配器销毁解绑观察者，未变更栏目实例继续保留。
+
+新增实际UI链路检查：通过认证menus.setItems及reportCommandState更新真实菜单，运行动态命令、检查勾选false与隐藏、弹出期间更新/关闭后重开、相同状态空闲不重建、旧generation/删除节点排队命令拒绝；真实设置窗口改值、共用存储、Runtime命令及closeOnRun。正式构建/运行/图像验收待补。此阶段交付的是原生会话到UI链路；正式Editor尚无JS会话创建者，生产JS与HTML仍未迁移，之前QuickJS架构选择仍待用户答复，不称JS扩展已能运行，也不缩减原完整迁移目标。保留用户editor_support.h及全部未跟踪数据。
+
+阶段最终验收：唯一正式Release构建成功；extension-preferences-ui、extension-menus-ui、extension-settings-ui、extension-contributions、extension-session-host五项全部通过3.85秒。真实SessionHost到适配器的UI夹具覆盖认证动态菜单请求、名称/同ID替换/分隔符、checked true与false覆盖、隐藏恢复、弹出期间更新后的安全关闭重建、无变化不重建、移除节点及替换generation后的排队点击拒绝、会话关闭清理，以及真实设置弹窗共用Storage/Registry与closeOnRun。runtime-menus-passed.txt本轮23:45:21；正式--script-entry-check实际进程exit0，生产贡献Lua菜单回归marker23:45:43。人工查看runtime-menu.bmp，使用原check/right素材，确认更新项勾选可见、长标题和菜单内容无重叠；夹具额外菜单叠在编辑器上，不把它当正式布局验收。来源覆盖835项及证据快照、diff检查通过；整体仍INCOMPLETE，生产Editor尚无JS会话创建者，HTML/生产JS仍待完成。本阶段保存推送dev，保留用户editor_support.h及全部未跟踪数据。
