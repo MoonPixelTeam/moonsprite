@@ -27,9 +27,11 @@ inline winrt::Windows::Data::Json::JsonArray networkBytes(const std::vector<std:
 struct NetworkTask {
  std::shared_ptr<std::atomic<bool>> cancelled;
  std::future<std::wstring> response;
+ std::wstring requestId;
  void cancel(){*cancelled=true;}
 };
 inline NetworkTask startNetworkRequest(std::wstring requestId,std::wstring encodedParams){
+ auto identity=requestId;
  auto cancelled=std::make_shared<std::atomic<bool>>(false);
  std::packaged_task<std::wstring()> work([cancelled,requestId=std::move(requestId),encodedParams=std::move(encodedParams)]{
   winrt::init_apartment(winrt::apartment_type::multi_threaded);
@@ -78,6 +80,6 @@ inline NetworkTask startNetworkRequest(std::wstring requestId,std::wstring encod
   catch(const std::exception& e){envelope.Insert(L"ok",JsonValue::CreateBooleanValue(false));envelope.Insert(L"error",JsonValue::CreateStringValue(winrt::to_hstring(e.what())));}
   return std::wstring(envelope.Stringify());
  });
- auto future=work.get_future();std::thread(std::move(work)).detach();return {std::move(cancelled),std::move(future)};
+ auto future=work.get_future();std::thread(std::move(work)).detach();return {std::move(cancelled),std::move(future),std::move(identity)};
 }
 }
