@@ -30909,7 +30909,7 @@
       "sources": [
         "legacy/src/renderer/src/components/extensions/ExtensionRuntimeHost.tsx"
       ],
-      "scope": "ExtensionRuntimeHost network.fetch lines 472-485: HTTP(S), default GET, optional string body, omit cookies, 15 second whole-request timeout, 2 MiB response bytes, status/ok/lowercase headers/bytes envelope. Native WinRT HttpClient on detached packaged worker with cancellation; no WebView. Streaming enforces limit before accumulating unbounded response. Real loopback HTTP tests cover GET/POST/404/headers/cookies/exact and oversized limits/permission/type/protocol/timeout/disable/reload; production extension runtime still incomplete."
+      "scope": "ExtensionRuntimeHost network.fetch lines 472-485: HTTP(S), default GET, optional string body, omit cookies, 15 second whole-request timeout, 2 MiB response bytes, status/ok/lowercase headers/bytes envelope. Native WinRT HttpClient on detached packaged worker with cancellation; no WebView. Streaming enforces limit before accumulating unbounded response. Real loopback HTTP tests cover GET/POST/404/headers/cookies/exact and oversized limits/permission/type/protocol/timeout/disable/reload; production extension runtime still incomplete.；2026-11-11核对network.fetch Array.from(bytes)，响应数字编码复用最多256个不可变JSON标量，开始/每4096项/完成检查取消，含空响应；worker开始即检查取消避免已取消请求继续IO。65539精确字节、身份复用/SetAt独立性及预取消回归，实际HTTP测试保留。最终Stringify及主线程Parse仍未分批，线程数量未限制，整体生产执行器未完成。"
     },
     {
       "file": "tests/extension_network_test.cpp",
@@ -30917,7 +30917,7 @@
       "sources": [
         "legacy/src/renderer/src/components/extensions/ExtensionRuntimeHost.tsx"
       ],
-      "scope": "ExtensionRuntimeHost network.fetch lines 472-485: HTTP(S), default GET, optional string body, omit cookies, 15 second whole-request timeout, 2 MiB response bytes, status/ok/lowercase headers/bytes envelope. Native WinRT HttpClient on detached packaged worker with cancellation; no WebView. Streaming enforces limit before accumulating unbounded response. Real loopback HTTP tests cover GET/POST/404/headers/cookies/exact and oversized limits/permission/type/protocol/timeout/disable/reload; production extension runtime still incomplete."
+      "scope": "ExtensionRuntimeHost network.fetch lines 472-485: HTTP(S), default GET, optional string body, omit cookies, 15 second whole-request timeout, 2 MiB response bytes, status/ok/lowercase headers/bytes envelope. Native WinRT HttpClient on detached packaged worker with cancellation; no WebView. Streaming enforces limit before accumulating unbounded response. Real loopback HTTP tests cover GET/POST/404/headers/cookies/exact and oversized limits/permission/type/protocol/timeout/disable/reload; production extension runtime still incomplete.；2026-11-11核对network.fetch Array.from(bytes)，响应数字编码复用最多256个不可变JSON标量，开始/每4096项/完成检查取消，含空响应；worker开始即检查取消避免已取消请求继续IO。65539精确字节、身份复用/SetAt独立性及预取消回归，实际HTTP测试保留。最终Stringify及主线程Parse仍未分批，线程数量未限制，整体生产执行器未完成。"
     },
     {
       "file": "src/extension_diagnostics.h",

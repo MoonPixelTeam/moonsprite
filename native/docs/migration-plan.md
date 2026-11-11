@@ -6633,3 +6633,9 @@ PNG后台解码完成后保留像素及私有surface，每次pump最多上传262
 核对ExtensionDialogForm switch(node.type)未知类型不渲染/执行，发现原生部分file入口直接GetString导致null/非字符串可能抛异常。统一fileNode安全判定，覆盖beginImport、importFiles、files、encodeImport、分批finishImport；encode前复用continueImport完成类型/可见/禁用校验。无效模型安全拒绝并恢复所属任务busy，有效模型可再次导入。
 
 唯一正式Release及状态测试构建成功，extension-form-ui/image/files/state四项通过2.77秒。新增七种无效type×编码前/编码完成/直接完成三路径，以及入口不调用chooser，均验证恢复；测试模型独立深拷贝避免共享nodes污染。来源821文件/diff通过。另识别旧版选择时固定multiple/action与原生采用当前模型的语义差异，已向用户提交选择，未擅自更改。生产执行器方案及整体迁移仍INCOMPLETE。保留editor_support.h及用户数据，阶段提交推送dev。
+
+### 2026-11-11：扩展网络响应编码取消与对象复用
+
+对照ExtensionRuntimeHost.tsx network.fetch lines472-485的Array.from(bytes)，补齐原生worker读完后编码阶段的取消检查：worker进入、编码开始、每4096项及完成均检查token，空响应同样拒绝已取消任务。字节数字缓存最多256个不可变JsonValue，避免2MiB响应逐项新建对象；消息、权限、15秒超时、HTTP状态及流式2MiB限制保持不变。
+
+构建extension-network-tests和extension-session-host-tests成功，两项通过23.43秒（包含真实15秒超时）。新增65539字节精确结果、重复字节对象复用、数组SetAt独立性和非空/空预取消检查；实际loopback GET/POST/404/headers/cookie/limits/replace回归通过。来源821文件/diff通过。当前该宿主尚未由正式编辑器生产执行器引用，本阶段未重建正式exe，不将模块构建报告为正式应用接入。最终Stringify/主线程Parse和每请求线程仍未优化，整体迁移INCOMPLETE。保留editor_support.h及用户数据，阶段提交推送dev。

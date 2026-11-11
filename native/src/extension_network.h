@@ -12,8 +12,16 @@
 #include <chrono>
 #include <future>
 #include <thread>
+#include <array>
 
 namespace moon::extension {
+inline void checkNetworkCancelled(const std::shared_ptr<std::atomic<bool>>& cancelled){if(cancelled&&cancelled->load())throw std::runtime_error("扩展网络请求已取消。");}
+inline winrt::Windows::Data::Json::JsonArray networkBytes(const std::vector<std::uint8_t>& bytes,const std::shared_ptr<std::atomic<bool>>& cancelled){
+ using namespace winrt::Windows::Data::Json;
+ JsonArray data;std::array<IJsonValue,256> values{};std::size_t count=0;checkNetworkCancelled(cancelled);
+ for(const auto byte:bytes){if((count++&4095)==0)checkNetworkCancelled(cancelled);auto& value=values[byte];if(!value)value=JsonValue::CreateNumberValue(byte);data.Append(value);}
+ checkNetworkCancelled(cancelled);return data;
+}
 // Worker owns every WinRT object. Only UTF-16 JSON crosses the event-thread boundary.
 // A packaged-task future never joins on destruction, so disabling cannot freeze UI.
 struct NetworkTask {
@@ -29,6 +37,7 @@ inline NetworkTask startNetworkRequest(std::wstring requestId,std::wstring encod
   using namespace winrt::Windows::Data::Json;
   JsonObject envelope;envelope.Insert(L"type",JsonValue::CreateStringValue(L"moonsprite-extension-response"));envelope.Insert(L"requestId",JsonValue::CreateStringValue(requestId));
   try{
+   checkNetworkCancelled(cancelled);
    const auto params=JsonObject::Parse(encodedParams);
    if(!params.HasKey(L"url")||params.GetNamedValue(L"url").ValueType()!=JsonValueType::String)throw std::invalid_argument("参数 url 必须是字符串。");
    const winrt::Windows::Foundation::Uri uri(params.GetNamedString(L"url"));
@@ -63,7 +72,7 @@ inline NetworkTask startNetworkRequest(std::wstring requestId,std::wstring encod
    JsonObject result,headers;const auto status=unsigned(response.StatusCode());result.Insert(L"status",JsonValue::CreateNumberValue(status));result.Insert(L"ok",JsonValue::CreateBooleanValue(status>=200&&status<300));
    auto appendHeaders=[&](const auto& collection){for(const auto& pair:collection){std::wstring key(pair.Key());for(auto& ch:key)ch=std::towlower(ch);if(key!=L"set-cookie"&&key!=L"set-cookie2")headers.Insert(key,JsonValue::CreateStringValue(pair.Value()));}};
    appendHeaders(response.Headers());appendHeaders(response.Content().Headers());result.Insert(L"headers",headers);
-   JsonArray data;for(const auto byte:bytes)data.Append(JsonValue::CreateNumberValue(byte));result.Insert(L"bytes",data);
+   result.Insert(L"bytes",networkBytes(bytes,cancelled));
    envelope.Insert(L"ok",JsonValue::CreateBooleanValue(true));envelope.Insert(L"result",result);
   }catch(const winrt::hresult_error& e){envelope.Insert(L"ok",JsonValue::CreateBooleanValue(false));envelope.Insert(L"error",JsonValue::CreateStringValue(e.message()));}
   catch(const std::exception& e){envelope.Insert(L"ok",JsonValue::CreateBooleanValue(false));envelope.Insert(L"error",JsonValue::CreateStringValue(winrt::to_hstring(e.what())));}
