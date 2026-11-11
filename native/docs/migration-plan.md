@@ -7049,3 +7049,12 @@ Aseprite 源码对照：src/app/extensions.cpp installCompressedExtension 的逐
 唯一正式Release、session/request测试目标构建成功；extension-menus-ui通过1.55秒，实际认证请求打开设置、修改存储、Runtime按钮closeOnRun，Lua请求延迟/忙碌门禁、旧generation与解绑拒绝均通过。workspace/settings/session/request四项通过1.82秒，包含作用域回调两种解绑顺序与恢复构造期回调。正式脚本入口回归结果后附。无新增截图/FPS验收；正式Editor仍无JS会话创建者，本阶段为真实原生SessionHost到实际UI链路验收，不声称生产JS/HTML已可用。整体INCOMPLETE，保留用户editor_support.h及未跟踪数据。
 
 最终补充：正式--script-entry-check实际进程exit0；来源覆盖835项及证据快照、diff检查通过。本阶段提交推送dev，整体目标继续active。
+
+
+### 2026-11-12 扩展设置窗口单实例与生命周期（阶段验收通过）
+
+对照legacy useAppSettingsDialogs唯一extensionSettingsId、ExtensionSettingsDialog及Aseprite Window::openWindowInForeground/_runModalWindow，统一实际Runtime、菜单和栏目设置入口的排队管理。同一目标待处理/打开请求合并，保留现有控件；不同目标待当前模态栈退出后打开，不嵌套阻塞事件循环。用户本轮明确选择修复旧版HostExtensionSettings跨扩展复用useState可能串值的行为：新目标从自己的Storage读取。模态期间manifest使用值快照，会话/存储持有到退出；停用保留当前设置窗口，移除扩展或销毁适配器关闭窗口；构造失败清除占用后允许后续重开。最新generation、声明、readiness继续在交付时检查。
+
+新增实际窗口回归覆盖排队/窗口内重复请求、栏目入口合并、关闭后无幽灵重开、停用保留/重启用、移除关闭、跨扩展独立值、适配器析构和前一作用域回调恢复、未支持HTML入口失败后有效设置恢复。正式Release构建与测试进行中；无视觉布局变更，生产JS/HTML及整体迁移仍INCOMPLETE。保留用户editor_support.h与全部未跟踪数据。
+
+阶段最终验收：唯一正式Release构建成功；extension-menus-ui通过2.08秒，新增settings-lifecycle-passed.txt与runtime-menus-passed.txt本轮00:26:31。extension-workspace-ui、extension-settings-ui、extension-session-host、extension-request-host四项全部通过5.26秒；正式--script-entry-check实际进程exit0。来源覆盖835项及证据快照、diff检查通过。无视觉布局改动，本阶段不新增截图或全软件FPS声明；生产Editor仍无JS会话创建者，HTML设置与整体迁移继续INCOMPLETE。保存并推送dev，保留用户editor_support.h与全部未跟踪数据。
