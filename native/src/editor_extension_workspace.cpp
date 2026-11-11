@@ -18,6 +18,31 @@ extension::WorkspaceServices Editor::extensionWorkspaceServices(){
  services.activate=[this](const winrt::hstring& id){ensureProjects();for(std::size_t i=0;i<projects_.size();++i)if(workspaceText(std::to_string(projectDocument(i).identity()))==id){activateProject(i);return;}throw std::invalid_argument("工程不存在。");};
  services.layers=[this]{std::vector<extension::LayerSummary> result;if(documentOpen_)for(auto it=document.timeline().state().layers.rbegin();it!=document.timeline().state().layers.rend();++it)result.push_back({workspaceText(it->id),workspaceText(utf8Text(it->name)),workspaceText(it->blendMode),it->visible,it->opacity});return result;};
  services.frames=[this]{std::vector<extension::FrameSummary> result;if(documentOpen_)for(const auto& frame:document.timeline().state().frames)result.push_back({workspaceText(frame.id),frame.duration});return result;};
+ services.tool=[this]()->std::optional<winrt::hstring>{
+  if(!documentOpen_)return {};auto id=activeRailTool();
+  if(id.rfind("selection.",0)==0)id="selection";
+  else if(id.rfind("shape.",0)==0)id="shape";
+  else if(id.rfind("line.",0)==0)id="line";
+  else if(id.rfind("fill.",0)==0)id="fill";
+  else if(id.rfind("move.",0)==0)id="move";
+  return workspaceText(id);
+ };
+ services.setTool=[this](const winrt::hstring& value){
+  if(!documentOpen_||pending_!=Pending::None||historyGestureBusy())return;
+  const auto id=winrt::to_string(value);
+  if(!isToolAvailableForSession(id.c_str()))return;
+  if(gradientPending_)return;
+  // Runtime selects a tool category, preserving the user's shape/selection
+  // subtype. Keyboard focus and home visibility must not swallow API calls.
+  const auto current=activeRailTool();
+  if(current==id||current.rfind(id+".",0)==0)return;
+  struct Scope {bool& home;bool& palette;bool oldHome,oldPalette;~Scope(){home=oldHome;palette=oldPalette;}} scope{homeOpen_,paletteFocused_,homeOpen_,paletteFocused_};
+  homeOpen_=false;paletteFocused_=false;
+  if(id=="selection")useSelectionTool();
+  else if(id=="line")useShapeTool(shapeSpec_.kind==ShapeKind::Curve?ShapeKind::Curve:ShapeKind::Line);
+  else if(id=="fill"&&rememberGradientTool_)useGradientTool();
+  else runShortcutCommand("tool."+id);
+ };
  services.undo=[this]{if(documentOpen_){document.undo();refresh();}};
  services.redo=[this]{if(documentOpen_){document.redo();refresh();}};
  return services;
@@ -35,7 +60,7 @@ void Editor::smokeExtensionWorkspace(){
  const auto history=document.historyPosition(),revision=document.contentRevision();
  extension::Storage storage(assets_.parent_path()/("extension-workspace-unused-"+std::to_string(GetCurrentProcessId())+".json"));
  extension::FileDropRouter drops;extension::RuntimeRegistry registry;extension::SessionHost host(storage,drops,registry);
- auto token=host.open({"workspace-check",true,false},{"workspace.read","workspace.write","document.read","document.write"},"zh-CN",[](const auto&){});
+ auto token=host.open({"workspace-check",true,false},{"workspace.read","workspace.write","document.read","document.write","tools"},"zh-CN",[](const auto&){});
  host.setWorkspaceServices(token,extensionWorkspaceServices());
  auto call=[&](const char* method,JsonObject params=JsonObject{}){JsonObject request;request.Insert(L"type",JsonValue::CreateStringValue(L"moonsprite-extension-request"));request.Insert(L"requestId",JsonValue::CreateStringValue(L"workspace"));request.Insert(L"method",JsonValue::CreateStringValue(workspaceText(method)));request.Insert(L"params",params);auto reply=host.request(token,request);require(bool(reply),"Missing workspace reply");return *reply;};
  auto result=[&](const char* method){auto reply=call(method);require(reply.GetNamedBoolean(L"ok"),"Workspace query failed");return reply.GetNamedValue(L"result");};
@@ -53,13 +78,25 @@ void Editor::smokeExtensionWorkspace(){
  require(result("document.redo").ValueType()==JsonValueType::Null&&document.historyPosition()==firstHistory&&document.pixels()[0]==0xff123456,"Real redo pixels");
  require(!activate("missing").GetNamedBoolean(L"ok")&&std::to_string(document.identity())==first,"Invalid activation changed session");
  require(activate(second).GetNamedBoolean(L"ok")&&document.historyPosition()==history,"Other session history changed");
+ // Exercise all public runtime tool categories through authenticated requests.
+ document.selectLayer(document.timeline().state().layers.back().id);
+ const auto toolHistory=document.historyPosition(),toolRevision=document.contentRevision();
+ auto setTool=[&](const char* id){JsonObject params;params.Insert(L"tool",JsonValue::CreateStringValue(workspaceText(id)));return call("tools.setActive",params);};
+ for(const auto* id:extension::runtimeToolIds){require(setTool(id).GetNamedBoolean(L"ok"),"Runtime tool request failed");if(result("tools.getActive").GetString()!=workspaceText(id))throw std::runtime_error(std::string("Runtime tool did not reach editor: ")+id+" -> "+activeRailTool());}
+ setTool("pencil");document.selectLayer(document.timeline().state().layers.front().id);setTool("airbrush");require(result("tools.getActive").GetString()==L"pencil","Unavailable hidden-layer tool was selected");document.selectLayer(document.timeline().state().layers.back().id);
+ require(document.historyPosition()==toolHistory&&document.contentRevision()==toolRevision,"Tool selection changed content/history");
+ useSelectionTool(1);setTool("selection");require(activeRailTool()=="selection.ellipse","Same tool reset selection subtype");
+ setTool("pencil");document.beginStroke({0,0},0xffabcdef);setTool("eraser");require(document.strokeActive()&&result("tools.getActive").GetString()==L"pencil","Runtime tool cancelled live drawing");document.cancelStroke();
+ homeOpen_=true;paletteFocused_=true;setTool("eraser");require(homeOpen_&&paletteFocused_&&result("tools.getActive").GetString()==L"eraser","Home/focus swallowed runtime tool selection");homeOpen_=false;paletteFocused_=false;
+ require(!setTool("invalid").GetNamedBoolean(L"ok")&&result("tools.getActive").GetString()==L"eraser","Invalid runtime tool changed editor");
  homeOpen_=true;require(result("document.getSummary").GetObject().GetNamedString(L"id")==workspaceText(second),"Home lost active project");
  auto replacement=host.open({"workspace-check",true,false},{"workspace.read"},"zh-CN",[](const auto&){});
  JsonObject stale;stale.Insert(L"type",JsonValue::CreateStringValue(L"moonsprite-extension-request"));stale.Insert(L"requestId",JsonValue::CreateStringValue(L"stale"));stale.Insert(L"method",JsonValue::CreateStringValue(L"document.undo"));
  require(!host.request(token,stale)&&document.historyPosition()==history,"Stale session mutated editor");
- token=replacement;host.setWorkspaceServices(token,extensionWorkspaceServices());require(!call("document.undo").GetNamedBoolean(L"ok")&&document.historyPosition()==history,"Read-only session mutated history");
- host.close(token);token=host.open({"workspace-check",true,false},{"workspace.read","document.read","document.write"},"zh-CN",[](const auto&){});host.setWorkspaceServices(token,extensionWorkspaceServices());
+ token=replacement;host.setWorkspaceServices(token,extensionWorkspaceServices());require(!setTool("pencil").GetNamedBoolean(L"ok")&&activeRailTool()=="eraser","Missing tools permission changed editor");require(!call("document.undo").GetNamedBoolean(L"ok")&&document.historyPosition()==history,"Read-only session mutated history");
+ host.close(token);token=host.open({"workspace-check",true,false},{"workspace.read","document.read","document.write","tools"},"zh-CN",[](const auto&){});host.setWorkspaceServices(token,extensionWorkspaceServices());
  documentOpen_=false;projects_.clear();require(result("workspace.listProjects").GetArray().Size()==0&&result("workspace.getActiveProject").ValueType()==JsonValueType::Null&&!call("document.getFrames").GetNamedBoolean(L"ok")&&!call("document.undo").GetNamedBoolean(L"ok"),"Empty workspace contract");
+ require(result("tools.getActive").ValueType()==JsonValueType::Null&&setTool("pencil").GetNamedBoolean(L"ok"),"Empty workspace tool contract");
  host.close(token);document=Document();refresh();
 }
 }

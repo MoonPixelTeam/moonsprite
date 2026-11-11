@@ -31054,10 +31054,13 @@
       "file": "src/editor_extension_workspace.cpp",
       "classification": "legacy-partial",
       "sources": [
-        "legacy/src/renderer/src/components/extensions/ExtensionRuntimeHost.tsx"
+        "legacy/src/renderer/src/components/extensions/ExtensionRuntimeHost.tsx",
+        "legacy/src/renderer/src/store/workspace-commands-tool.ts",
+        "legacy/src/renderer/src/core/canvas-tool-gesture-lock.ts"
       ],
-      "scope": "EX-004 workspace/document service adapter and formal editor regression: list/get/activate projects, layer/frame query, undo/redo through SessionHost permission and generation gates. Live native sessions preserve histories and pixels; layer order reverses native top-to-bottom storage to legacy bottom-to-top. Stable process document identity replaces absent/mutable file projectId. Native is currently RGBA-only. Does not implement tools/colors callbacks or production JavaScript executor.",
-      "adaptation": "Native Editor event-thread callbacks, host must be destroyed before Editor; no UI redesign, no document copies. Existing native activateProject interaction guards remain."
+      "scope": "EX-004 workspace/document service adapter and formal editor regression: list/get/activate projects, layer/frame query, undo/redo through SessionHost permission and generation gates. Live native sessions preserve histories and pixels; layer order reverses native top-to-bottom storage to legacy bottom-to-top. Stable process document identity replaces absent/mutable file projectId. Native is currently RGBA-only. Does not implement colors callbacks or production JavaScript executor.",
+      "adaptation": "Native Editor event-thread callbacks, host must be destroyed before Editor; no UI redesign, no document copies. Existing native activateProject interaction guards remain.",
+      "tools20261111": "Live tools get/set category mapping uses existing Editor tool operations, preserves same-category subtype and selection kind, enforces native availability and active gesture/pending-gradient guards; runtime requests bypass shortcut-only palette focus/home gates with scoped restoration. Actual SessionHost/Editor regression covers all 15 runtime IDs, no content/history mutation, retained ellipse, stroke guard, hidden-layer denial, home/focus, invalid ID, denied permission, empty workspace. Native global tool/session restoration differences remain outside this adapter and not claimed fixed. JavaScript production executor remains absent."
     }
   ],
   "assetTransfers": [

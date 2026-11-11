@@ -6675,3 +6675,11 @@ PNG后台解码完成后保留像素及私有surface，每次pump最多上传262
 正式exe新增--extension-workspace-check，使用真实Editor/SessionHost请求链验证双工程、尺寸名称/属性/时长、查询无历史更改、切换保留像素与undo/redo栈、无效ID、主页活动工程、替换旧token/只读权限、空工作区。当前正在构建与验收，未提交；生产JavaScript执行器、tools/colors回调及事件接线仍未完成，不将本适配器称为完整扩展运行。
 
 阶段验收完成：首次访问声明插入错误已修正，辅助函数与Widget::text重名已修正。首次失败期间生成了访问修饰符不一致对象，按链接诊断重新编译dialogs/timeline/timelapse/canvas后唯一正式Release构建成功，未改业务实现或绕过正式产物。extension-workspace-ui、multi-document、extension-session-host、extension-request-host四项通过4.75秒，覆盖真实编辑器请求链及既有多工程行为。来源822文件检查通过；无UI布局改动、人工图像/FPS或生产JS扩展实机验收。适配器可供正式宿主接入，生产执行入口仍未完成，不将整个扩展领域或全部迁移标完成。保留editor_support.h和未跟踪用户数据，阶段提交推送dev。
+
+### 2026-11-11：扩展真实工具接口接线
+
+对照ExtensionRuntimeHost.tsx tools.getActive/setActive、workspace-commands-tool.ts setTool及canvas-tool-gesture-lock，扩展工作区服务接入当前Editor工具。查询将原生子类型映射到15个公开Runtime类别；设置复用既有工具操作，保留同类选择/形状子类型，尊重工具可用性、绘制捕获和待提交渐变门禁。Runtime调用不应被快捷键专属色板focus或主页门禁吞掉，作用域临时排除两者后恢复。未修改UI布局或图标。
+
+正式Release构建成功；extension-workspace-ui/multi-document/extension-request-host三项通过1.78秒，实际请求覆盖15类别、内容/历史不变、ellipse保持、live stroke不取消、隐藏层喷枪拒绝、home/focus、非法ID、无权限及空工作区null/no-op。首次测试因选中隐藏图层导致喷枪被正确拒绝，修正可绘制fixture并独立保留该拒绝回归；错误日志路径修正到native/build，旧失败日志保留。来源822文件及diff通过，无人工UI/FPS验收。
+
+发现旧版颜色set会同步所有会话并持久化共享角色，不能用当前文档回调替代，留为独立完整迁移。各工程独立工具状态恢复、生产JavaScript执行器仍未完成，本阶段只声明真实工具API适配通过，整体INCOMPLETE。保留用户editor_support.h及未跟踪数据，阶段提交推送dev。
