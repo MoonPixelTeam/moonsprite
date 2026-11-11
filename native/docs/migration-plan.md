@@ -6803,3 +6803,9 @@ PNG后台解码完成后保留像素及私有surface，每次pump最多上传262
 对照legacy platform_brushes.rs list_brushes：顺序表首个匹配位置优先、缺失置末，再按名称/ID；原生以一次first-emplace索引替代每次排序比较线性搜索，保留该顺序语义。sourceX/Y解析正则静态编译复用，保留有符号/溢出缺失语义。回归新增重复顺序ID、缺失ID、外部未登记PNG、跨目录排序、重开与元数据边界，保留并发原子顺序替换检查。构建验证中，无性能量化声明；整体INCOMPLETE。
 
 阶段验收：唯一正式Release与pattern-brush-library-tests构建成功，实际笔刷栏目专项等待exit0；extension-workspace-ui、multi-document、canvas-resize通过。底层首次并发读取/替换顺序测试Windows error5失败，同一二进制单独复验通过15.07秒；新增排序与元数据边界通过，首次替换失败原因未证明，不称修复。来源824/diff通过，无量化耗时或FPS声明。整体INCOMPLETE，用户editor_support.h和未跟踪数据保留，阶段提交推送dev。
+
+### 2026-11-11：笔刷库后台扫描与写入事务边界（验证中）
+
+对照legacy platform_brushes.rs保存PNG/metadata/order及失败回滚、移动/删除后controller刷新。原生后台扫描引入并发观察，原锁只覆盖list和单文件写入，会看到半完成资源。扩展既有递归锁覆盖保存/删除/排序/目录创建重命名删除/单项与组移动完整事务，避免迭代器遇到中间目录变化及顺序read-modify-write交错。新增独立fixture扫描与12轮保存坐标元数据/移动往返/删除并发，检查所有观察资源坐标完整、目录有效、最终空库；保留原100轮排序替换。没有增加重试，先前Windows error5原因仍待证明；整体INCOMPLETE。
+
+阶段验收完成：唯一正式Release及底层测试构建成功，实际笔刷栏目专项等待exit0。pattern-brush-library原100轮顺序并发和新增12轮保存/移动/删除事务通过1.23秒；extension-workspace-ui、multi-document、canvas-resize通过，合计4.02秒。来源824/diff通过。原raw路径CHECK宏C4129警告仍存在；先前Windows error5本轮未复现，不称根因已解决。全局锁仍可能使UI资源操作等待扫描，无人工延迟/FPS声明。整体INCOMPLETE，用户editor_support.h和未跟踪数据保留，阶段提交推送dev。

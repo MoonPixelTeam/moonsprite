@@ -26,6 +26,15 @@ try{for(int i=0;i<100;++i)library.reorder({three.id});}catch(...){reading=false;
 reading=false;reader.join();if(readerFailure)std::rethrow_exception(readerFailure);
 CHECK(reopened.list().brushes.front().id==three.id);
 
+// Library transactions span PNG + metadata + order. A concurrent scan must
+// never see a saved brush before its source coordinates or a half-moved pair.
+{const auto root=dir.parent_path()/(dir.filename().wstring()+L"-transactions");PatternBrushLibrary transactions(root);const auto folder=transactions.createFolder("Moves");
+ std::atomic<bool> run{true};std::atomic<unsigned> scans{0};std::exception_ptr failure;
+ std::thread scanner([&]{try{PatternBrushLibrary observer(root);while(run.load()){const auto snapshot=observer.list();for(const auto& item:snapshot.brushes){CHECK(item.sourceX==-9&&item.sourceY==17);CHECK(item.folderId.empty()||item.folderId==folder.id);}++scans;std::this_thread::yield();}}catch(...){failure=std::current_exception();run=false;}});
+ try{while(scans.load()==0&&run.load())std::this_thread::yield();for(int i=0;i<12;++i){auto saved=transactions.save("transaction",bytes,true,-9,17);transactions.move(saved.id,folder.id);transactions.move(saved.id,"");transactions.remove(saved.id);}}catch(...){run=false;scanner.join();throw;}
+ run=false;scanner.join();if(failure)std::rethrow_exception(failure);CHECK(scans>0&&transactions.list().brushes.empty());
+}
+
 CHECK(reorderedPatternBrushIds({"a","b","c","d"},{"c","a"},"d",false)==std::vector<std::string>({"b","a","c","d"}));
 CHECK(reorderedPatternBrushIds({"a","b","c","d"},{"c","a"},"b",true)==std::vector<std::string>({"b","a","c","d"}));
 CHECK(reorderedPatternBrushIds({"a","b","c","d"},{"c","a"},"",false)==std::vector<std::string>({"b","d","a","c"}));
