@@ -6809,3 +6809,9 @@ PNG后台解码完成后保留像素及私有surface，每次pump最多上传262
 对照legacy platform_brushes.rs保存PNG/metadata/order及失败回滚、移动/删除后controller刷新。原生后台扫描引入并发观察，原锁只覆盖list和单文件写入，会看到半完成资源。扩展既有递归锁覆盖保存/删除/排序/目录创建重命名删除/单项与组移动完整事务，避免迭代器遇到中间目录变化及顺序read-modify-write交错。新增独立fixture扫描与12轮保存坐标元数据/移动往返/删除并发，检查所有观察资源坐标完整、目录有效、最终空库；保留原100轮排序替换。没有增加重试，先前Windows error5原因仍待证明；整体INCOMPLETE。
 
 阶段验收完成：唯一正式Release及底层测试构建成功，实际笔刷栏目专项等待exit0。pattern-brush-library原100轮顺序并发和新增12轮保存/移动/删除事务通过1.23秒；extension-workspace-ui、multi-document、canvas-resize通过，合计4.02秒。来源824/diff通过。原raw路径CHECK宏C4129警告仍存在；先前Windows error5本轮未复现，不称根因已解决。全局锁仍可能使UI资源操作等待扫描，无人工延迟/FPS声明。整体INCOMPLETE，用户editor_support.h和未跟踪数据保留，阶段提交推送dev。
+
+### 2026-11-11：笔刷存储大小写与部分排序语义迁移（验证中）
+
+实际核对legacy platform_brushes.rs collect_entries/safe_brush_id/delete_folder/set_brush_order：PNG扩展名不区分ASCII大小写；排序先验证输入、过滤不存在与重复项，只持久化指定资源，不固定遗漏项。原生统一listing/ID验证/目录删除顺序清理的大小写识别，reorder按旧版只写请求的存在项，非法ID在写入前失败。确认stored_brush始终intrinsic_size=true，不臆改尺寸语义。新增大小写文件列表/移动/删除、精确排序JSON、非法输入保持旧顺序、部分排序重开后遗漏项按名称排列等端到端底层检查。构建验证中，整体INCOMPLETE。
+
+阶段验收完成：唯一正式Release与底层测试构建成功；实际笔刷栏目专项等待exit0。pattern-brush-library大小写PNG、磁盘精确部分排序、非法输入保持、重开遗漏项字母序、移动删除顺序清理及并发测试通过2.05秒；extension-workspace-ui、multi-document、canvas-resize通过，合计4.19秒。来源824/diff通过，原CHECK路径C4129警告仍有，无人工FPS/截图验收。整体INCOMPLETE，用户editor_support.h及未跟踪数据保留，阶段提交推送dev。

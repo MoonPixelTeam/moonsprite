@@ -19,6 +19,19 @@ int wmain(int argc,wchar_t** argv){try{using namespace moon;CHECK(argc==2);auto 
  {std::ofstream meta(orderedRoot/L"z.meta.json");meta<<R"({"sourceX": -13, "sourceY": 2147483648})";}
  const auto metadata=ordered.list().brushes[0];CHECK(metadata.sourceX==-13&&!metadata.sourceY);
 }
+// platform_brushes.rs accepts PNG case variants, and set_brush_order
+// persists only explicitly supplied existing IDs, rejecting unsafe inputs.
+{const auto root=dir.parent_path()/(dir.filename().wstring()+L"-legacy-order");PatternBrushLibrary compatible(root);const auto folder=compatible.createFolder("Upper");
+ for(const auto& name:{"UPPER.PNG","middle.PnG","alpha.png"}){std::ofstream out(root/name,std::ios::binary);out.write(reinterpret_cast<const char*>(bytes.data()),bytes.size());}
+ CHECK(PatternBrushLibrary::safeId("UPPER.PNG")&&PatternBrushLibrary::safeId("middle.PnG")&&!PatternBrushLibrary::safeId("../unsafe.PNG"));CHECK(compatible.list().brushes.size()==3);
+ compatible.reorder({"middle.PnG","UPPER.PNG","missing.PNG","middle.PnG"});
+ {std::ifstream order(root/L".brush-order.json");std::string text((std::istreambuf_iterator<char>(order)),{});CHECK(text==R"(["middle.PnG","UPPER.PNG"])");}
+ bool rejected=false;try{compatible.reorder({"UPPER.PNG","../unsafe.PNG"});}catch(const std::invalid_argument&){rejected=true;}CHECK(rejected&&compatible.list().brushes.front().id=="middle.PnG");
+ compatible.reorder({"UPPER.PNG"});auto reopened=PatternBrushLibrary(root).list();CHECK(reopened.brushes[0].id=="UPPER.PNG"&&reopened.brushes[1].id=="alpha.png"&&reopened.brushes[2].id=="middle.PnG");
+ const auto moved=compatible.move("UPPER.PNG",folder.id);CHECK(moved.folderId==folder.id);compatible.removeFolder(folder.id);reopened=compatible.list();CHECK(reopened.brushes.size()==2&&reopened.brushes[0].id=="alpha.png");
+ {std::ifstream order(root/L".brush-order.json");std::string text((std::istreambuf_iterator<char>(order)),{});CHECK(text=="[]");}
+ compatible.reorder({"middle.PnG"});compatible.remove("middle.PnG");CHECK(PatternBrushLibrary(root).list().brushes.size()==1);
+}
 // A background listing may overlap repeated atomic order replacement.
 std::atomic<bool> reading{true};std::exception_ptr readerFailure;
 std::thread reader([&]{try{while(reading.load())(void)reopened.list();}catch(...){readerFailure=std::current_exception();}});
