@@ -53,10 +53,17 @@ class RequestHost {
 
  std::shared_ptr<WindowRouter> windows_;
  MenuState menus_;
+ struct HandlerBindings {std::uint64_t next=0;std::map<std::uint64_t,CommandHandlers> entries;};
+ std::shared_ptr<HandlerBindings> handlerBindings_=std::make_shared<HandlerBindings>();
+ CommandHandlers commandHandlers()const{return handlerBindings_->entries.empty()?handlers_:handlerBindings_->entries.rbegin()->second;}
+
  RuntimeExtension extension_;std::vector<std::string> permissions_;Storage& storage_;FileDropRouter& drops_;RuntimeRegistry& registry_;CommandHandlers handlers_;std::vector<RuntimeCommand> commands_;bool active_=true;std::function<FileDropRouter::Bytes(const std::string&)> readResource_;
  static std::u16string units(const winrt::hstring& s){return {reinterpret_cast<const char16_t*>(s.data()),s.size()};}
 public:
  RequestHost(RuntimeExtension extension,std::vector<std::string> permissions,Storage& storage,FileDropRouter& drops,RuntimeRegistry& registry,CommandHandlers handlers={},std::vector<RuntimeCommand> commands={}):extension_(std::move(extension)),permissions_(std::move(permissions)),storage_(storage),drops_(drops),registry_(registry),handlers_(std::move(handlers)),commands_(std::move(commands)){}
+ // Scoped UI attachment preserves the construction-time fallback and permits
+ // independent detach in either order without reviving a removed callback.
+ std::function<void()> bindCommandHandlers(CommandHandlers handlers){if(!active_)return []{};auto state=handlerBindings_;const auto key=++state->next;state->entries.emplace(key,std::move(handlers));return [weak=std::weak_ptr<HandlerBindings>(state),key]{if(auto live=weak.lock())live->entries.erase(key);};}
  void setDeclaredMenus(std::vector<std::string> ids){menus_.setDeclared(std::move(ids));}
  MenuState::Stop subscribePresentation(std::function<void()> callback){return menus_.subscribe(std::move(callback));}
  const MenuState& menus()const{return menus_;}
@@ -77,7 +84,7 @@ public:
  void setServices(HostServices services){services_=std::move(services);}
  void setResourceReader(std::function<FileDropRouter::Bytes(const std::string&)> reader){readResource_=std::move(reader);}
  void deactivate(){
-  if(!active_)return;active_=false;auto windows=std::move(windows_);
+  if(!active_)return;active_=false;handlerBindings_->entries.clear();auto windows=std::move(windows_);
   std::exception_ptr failure;auto cleanup=[&](auto&& action){try{action();}catch(...){if(!failure)failure=std::current_exception();}};
   cleanup([&]{drops_.clear(extension_.id);});cleanup([&]{menus_.clear();});cleanup([&]{if(windows)windows->deactivate();});
   if(failure)std::rethrow_exception(failure);
@@ -115,7 +122,7 @@ public:
     if(!params.HasKey(L"message")||params.GetNamedValue(L"message").ValueType()!=JsonValueType::String)throw std::invalid_argument("参数 message 必须是字符串。");
     if(!services_.notify)throw std::runtime_error("Native extension notifications are not connected");const auto message=params.GetNamedString(L"message");services_.notify(winrt::hstring(message.data(),std::min<std::uint32_t>(message.size(),500)));
    }
-   else if(method=="ui.openSettings"){if(!extension_.hasSettings)throw std::invalid_argument("扩展未提供设置页面。");if(!handlers_.openSettings)throw std::runtime_error("Native extension settings are not connected");handlers_.openSettings(extension_.id);}
+   else if(method=="ui.openSettings"){if(!extension_.hasSettings)throw std::invalid_argument("扩展未提供设置页面。");auto handlers=commandHandlers();if(!handlers.openSettings)throw std::runtime_error("Native extension settings are not connected");handlers.openSettings(extension_.id);}
    else if(method=="clipboard.readText"){if(!services_.readClipboard)throw std::runtime_error("Native clipboard is not connected");result=JsonValue::CreateStringValue(services_.readClipboard());}
    else if(method=="clipboard.writeText"){
     if(!params.HasKey(L"text")||params.GetNamedValue(L"text").ValueType()!=JsonValueType::String)throw std::invalid_argument("参数 text 必须是字符串。");if(!services_.writeClipboard)throw std::runtime_error("Native clipboard is not connected");services_.writeClipboard(params.GetNamedString(L"text"));
@@ -165,7 +172,7 @@ public:
    else if(method=="storage.list"){JsonArray keys;for(const auto& name:storage_.list(owner))keys.Append(JsonValue::CreateStringValue(winrt::hstring(reinterpret_cast<const wchar_t*>(name.data()),std::uint32_t(name.size()))));result=keys;}
    else if(method=="commands.execute"){
     const auto commandId=params.HasKey(L"commandId")&&params.GetNamedValue(L"commandId").ValueType()==JsonValueType::String?winrt::to_string(params.GetNamedString(L"commandId")):std::string{};
-    const auto found=std::find_if(commands_.begin(),commands_.end(),[&](const auto& c){return c.id==commandId;});if(found==commands_.end())throw std::invalid_argument("扩展命令不存在。");result=JsonValue::CreateBooleanValue(executeCommand(registry_,extension_,*found,handlers_));
+    const auto found=std::find_if(commands_.begin(),commands_.end(),[&](const auto& c){return c.id==commandId;});if(found==commands_.end())throw std::invalid_argument("扩展命令不存在。");result=JsonValue::CreateBooleanValue(executeCommand(registry_,extension_,*found,commandHandlers()));
    }
    else throw std::runtime_error("Native extension method is not connected: "+method);
    response.Insert(L"ok",JsonValue::CreateBooleanValue(true));response.Insert(L"result",result);

@@ -7040,3 +7040,12 @@ Aseprite 源码对照：src/app/extensions.cpp installCompressedExtension 的逐
 新增确定性真实SessionHost/WindowRouter测试覆盖取消异常+观察者异常仍完成全部清理、任务启动期间关闭、同步剪贴板关闭后不回旧回复、deactivate重入open及取消回调重入open保留新drop规则、close取消挂起open后恢复、析构禁止复活。修复前第一项实际失败，修复后夹具漏commands权限造成错误类型预期失败，已改为检查菜单初始化响应并补权限；正式最终构建和运行待补。保留用户editor_support.h/全部未跟踪数据，整体迁移及生产JS/HTML仍INCOMPLETE。
 
 阶段最终验收：唯一正式Release构建成功；extension-workspace-ui、extension-menus-ui、extension-settings-ui、extension-session-host、extension-request-host、extension-event-lifecycle、extension-windows七项全部通过3.05秒。新增组合用例补齐commands权限后最终通过；覆盖真实SessionHost/WindowRouter重入与异常边界及原生实际窗口/菜单/工作区既有回归。没有视觉布局修改，不新增图像/FPS验收，不将测试回调当成生产JS执行器。来源覆盖835项和证据快照、diff检查通过；生产JS/HTML及整体迁移继续INCOMPLETE。阶段提交推送dev，保留用户editor_support.h及未跟踪数据。
+
+
+### 2026-11-12 扩展主动请求到原生设置与Lua入口（阶段验收）
+
+核对legacy ExtensionRuntimeHost ui.openSettings/commands.execute与useAppSettingsDialogs setExtensionSettingsId，新增有作用域的RequestHost命令回调绑定及SessionHost token转发，原生MenuAdapter绑定时接通请求到真实设置/Lua入口。绑定可任意顺序释放，恢复仍存活的前一绑定或构造期回调；停用清空，旧token无效。设置请求排入现有UI消息队列，先返回请求再打开窗口，复用会话Storage/Registry；Lua回调延迟执行时继续检查工程、忙碌、最新声明与generation。解绑/会话替换后的排队操作取消。复用现有PixelDialog布局，无新视觉设计；bound设置不再额外创建无用fallback存储。
+
+唯一正式Release、session/request测试目标构建成功；extension-menus-ui通过1.55秒，实际认证请求打开设置、修改存储、Runtime按钮closeOnRun，Lua请求延迟/忙碌门禁、旧generation与解绑拒绝均通过。workspace/settings/session/request四项通过1.82秒，包含作用域回调两种解绑顺序与恢复构造期回调。正式脚本入口回归结果后附。无新增截图/FPS验收；正式Editor仍无JS会话创建者，本阶段为真实原生SessionHost到实际UI链路验收，不声称生产JS/HTML已可用。整体INCOMPLETE，保留用户editor_support.h及未跟踪数据。
+
+最终补充：正式--script-entry-check实际进程exit0；来源覆盖835项及证据快照、diff检查通过。本阶段提交推送dev，整体目标继续active。

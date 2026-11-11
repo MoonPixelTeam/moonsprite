@@ -132,5 +132,17 @@ int main(int argc,char** argv){RoInitialize(RO_INIT_MULTITHREADED);try{
   {SessionHost dying(storage,drops,registry);live=&dying;auto token=dying.open({"dying",true,false},{},"en-US",[&](const auto& event){if(event.type=="deactivate")try{live->open({"resurrected",true,false},{},"en-US",[](const auto&){});}catch(const std::runtime_error&){rejected=true;}});dying.loaded(token,{});}
   check(rejected&&!registry.command("dying","late","late")&&!registry.command("resurrected","late","late"),"Destructing host allowed resurrection");
  }
+
+ // Scoped UI handlers can detach in either order; construction handlers resume.
+ {
+  SessionHost bound(storage,drops,registry);int base=0,first=0,second=0;
+  auto token=bound.open({"bound-ui",true,true},{"ui","commands"},"en-US",[](const auto&){},{[&](const auto&){++base;},[&](const auto&){++base;}},{{"lua","lua","",false}});
+  auto request=[&](const char* method,const char* params="{}"){auto result=bound.request(token,raw(method,params));check(result&&result->GetNamedBoolean(L"ok"),"Bound UI request failed");};
+  auto stopFirst=bound.bindCommandHandlers(token,{[&](const auto&){++first;},[&](const auto&){++first;}});
+  auto stopSecond=bound.bindCommandHandlers(token,{[&](const auto&){++second;},[&](const auto&){++second;}});
+  request("ui.openSettings");stopFirst();request("commands.execute",R"({"commandId":"lua"})");check(first==0&&second==2&&base==0,"Removed older handler replaced current attachment");stopSecond();request("ui.openSettings");check(base==1,"Handler detach did not restore construction fallback");
+  stopFirst=bound.bindCommandHandlers(token,{[&](const auto&){++first;},[&](const auto&){++first;}});stopSecond=bound.bindCommandHandlers(token,{[&](const auto&){++second;},[&](const auto&){++second;}});stopSecond();request("ui.openSettings");check(first==1,"Latest detach did not restore live previous attachment");
+  bound.close(token);stopFirst();stopSecond();auto stale=bound.bindCommandHandlers(token,{});stale();check(!bound.request(token,raw("ui.openSettings")),"Old handler attachment resurrected closed session");
+ }
  std::cout<<"Complete session registration/load/request/storage/file/replace/teardown sequence passed\n";return 0;
  }catch(const std::exception& e){std::cerr<<e.what()<<'\n';return 1;}catch(const winrt::hresult_error& e){std::cerr<<winrt::to_string(e.message())<<'\n';return 1;}}

@@ -83,6 +83,7 @@ public:
  std::optional<MenuState> menus(const Token& token)const{if(auto s=find(token.extensionId,token.generation))return s->requests.menus();return {};}
  std::optional<std::uint64_t> presentationRevision(const Token& token)const{if(auto s=find(token.extensionId,token.generation))return s->requests.menus().revision();return {};}
  bool reportCommandState(const Token& token,const winrt::Windows::Data::Json::JsonObject& params){if(auto s=find(token.extensionId,token.generation))return s->requests.reportCommandState(params,true);return false;}
+ std::function<void()> bindCommandHandlers(const Token& token,CommandHandlers handlers){if(auto s=find(token.extensionId,token.generation))return s->requests.bindCommandHandlers(std::move(handlers));return []{};}
  void setWorkspaceServices(const Token& token,WorkspaceServices services){if(auto s=find(token.extensionId,token.generation))s->requests.setWorkspaceServices(std::move(services));}
  void setWindowRouter(const Token& token,std::shared_ptr<WindowRouter> router){if(auto s=find(token.extensionId,token.generation))s->requests.setWindowRouter(std::move(router));}
  void setDiagnosticServices(const Token& token,DiagnosticServices services){if(auto s=find(token.extensionId,token.generation))s->requests.setDiagnosticServices(std::move(services));}
