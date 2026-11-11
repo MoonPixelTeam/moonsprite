@@ -5,6 +5,7 @@
 #include <chrono>
 #include "javascript_text.h"
 #include <charconv>
+#include <array>
 namespace moon::extension {
 // ExtensionDialogForm's state, scoped to one authenticated window generation.
 // Renderer/chooser adapters use these values on the event thread.
@@ -38,10 +39,12 @@ public:
  struct ImportTicket{std::wstring id;std::uint64_t generation,sequence;};
  struct ImportEncoding{
   ImportTicket ticket;std::vector<File> files;Array encoded,bytes;std::size_t file=0,offset=0;
+  std::array<Value,256> numbers{};
+  Value byteValue(std::uint8_t byte){auto& value=numbers[byte];if(!value)value=Json::CreateNumberValue(byte);return value;}
   // Every pump caps both COM allocations and time spent appending bytes.
   bool advance(std::size_t budget=4096){const auto until=std::chrono::steady_clock::now()+std::chrono::milliseconds(2);while(file<files.size()){
-   const auto& input=files[file];while(offset<input.bytes.size()){if(!budget||std::chrono::steady_clock::now()>=until)return false;bytes.Append(Json::CreateNumberValue(input.bytes[offset++]));--budget;}
-   Object entry;entry.Insert(L"name",Json::CreateStringValue(input.name));entry.Insert(L"mime",Json::CreateStringValue(input.mime));entry.Insert(L"bytes",bytes);encoded.Append(entry);bytes=Array{};++file;offset=0;
+   auto& input=files[file];while(offset<input.bytes.size()){if(!budget||std::chrono::steady_clock::now()>=until)return false;bytes.Append(byteValue(input.bytes[offset++]));--budget;}
+   Object entry;entry.Insert(L"name",Json::CreateStringValue(input.name));entry.Insert(L"mime",Json::CreateStringValue(input.mime));entry.Insert(L"bytes",bytes);encoded.Append(entry);std::vector<std::uint8_t>().swap(input.bytes);bytes=Array{};++file;offset=0;
   }return true;}
  };
  std::optional<ImportEncoding> encodeImport(const ImportTicket& ticket,std::vector<File> selected){if(!ownsImport(ticket))return {};const auto node=find(view_.GetNamedArray(L"nodes"),ticket.id,defaults_);if(!node){busy_=false;return {};}

@@ -6603,3 +6603,9 @@ PNG后台解码完成后保留像素及私有surface，每次pump最多上传262
 继续完成后台文件导入生命周期：此前cancel只设token，尚未开始任务的future必须等待worker取出；前项OS读取阻塞会让已取消任务滞留。现在队列用token定位未开始任务，锁内移除并释放路径/reader闭包，锁外reject promise；worker取走与取消按同一锁划界，已启动走read前后及原有块间协作取消。重复cancel不重复完成promise。单个共享线程及promise future不join保持不变，纯C++reader可注入确定性测试。
 
 唯一正式Release及文件测试构建成功，extension-form-ui/image/files/state四项通过2.07秒。新增worker由promise gate确认已阻塞，再排队64任务，每项重复cancel且要求零等待future ready/抛取消异常、reader回调执行数为零；worker仍阻塞时完成所有断言，释放gate后后续真实空文件读取恢复。既有正式窗口后台导入回归通过。来源821文件/diff通过；OS已开始的阻塞read仍无法即时中断，无慢盘物理操作性能测量。整体迁移及生产执行器仍INCOMPLETE。保留editor_support.h及用户数据，阶段提交推送dev。
+
+### 2026-11-11：导入字节JSON对象复用与原缓冲释放
+
+在分批编码保留旧版Array.from数字数组消息的前提下，进一步消除每字节一个独立JsonValue的分配。ImportEncoding按任务惰性缓存0..255的不可变数字对象，所有重复字节追加引用；每个文件编码完成后swap释放原始bytes分配，避免完整raw缓冲一直保留到全部文件发送。数组项替换仍独立，不改变数值、顺序、文件身份及状态生命周期。
+
+唯一正式Release及状态测试构建成功，extension-form-ui/image/files/state四项通过2.20秒。回归检查重复字节对象身份复用、不同数字不共身份、SetAt替换不改变其他项、已完成文件raw capacity归零，既有16385字节精确核对和正式65539字节窗口链路通过。本机262144值局部样本fresh=56935us，reuse=10659us，约5.3倍；单次局部测量无阈值，不扩称全软件性能。来源821文件/diff通过。数组引用槽仍随数据量增长，最终序列化/大数组释放、慢磁盘物理响应及生产执行器仍未完成，整体INCOMPLETE。保留editor_support.h及用户数据，阶段提交推送dev。
