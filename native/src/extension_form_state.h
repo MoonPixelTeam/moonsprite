@@ -36,6 +36,19 @@ public:
  struct File {std::wstring name,mime;std::vector<std::uint8_t> bytes;};
  using Save=std::function<bool(const File&)>;
  struct ImportTicket{std::wstring id;std::uint64_t generation,sequence;};
+ struct ImportEncoding{
+  ImportTicket ticket;std::vector<File> files;Array encoded,bytes;std::size_t file=0,offset=0;
+  // Every pump caps both COM allocations and time spent appending bytes.
+  bool advance(std::size_t budget=4096){const auto until=std::chrono::steady_clock::now()+std::chrono::milliseconds(2);while(file<files.size()){
+   const auto& input=files[file];while(offset<input.bytes.size()){if(!budget||std::chrono::steady_clock::now()>=until)return false;bytes.Append(Json::CreateNumberValue(input.bytes[offset++]));--budget;}
+   Object entry;entry.Insert(L"name",Json::CreateStringValue(input.name));entry.Insert(L"mime",Json::CreateStringValue(input.mime));entry.Insert(L"bytes",bytes);encoded.Append(entry);bytes=Array{};++file;offset=0;
+  }return true;}
+ };
+ std::optional<ImportEncoding> encodeImport(const ImportTicket& ticket,std::vector<File> selected){if(!ownsImport(ticket))return {};const auto node=find(view_.GetNamedArray(L"nodes"),ticket.id,defaults_);if(!node){busy_=false;return {};}
+  const bool single=node->HasKey(L"multiple")&&property(*node,L"multiple").ValueType()==Type::Boolean&&!node->GetNamedBoolean(L"multiple");
+  if(single&&selected.size()!=1){fileFailed(L"请选择一个动画文件。");return {};}std::size_t total=0;for(const auto& file:selected){if(file.bytes.size()>16u*1024*1024-total){fileFailed(L"最多 16 个文件，合计不超过 16 MiB。");return {};}total+=file.bytes.size();}if(selected.size()>16){fileFailed(L"最多 16 个文件，合计不超过 16 MiB。");return {};}return ImportEncoding{ticket,std::move(selected)};
+ }
+ std::optional<Object> finishImport(ImportEncoding& encoding){if(!ownsImport(encoding.ticket)||encoding.file!=encoding.files.size())return {};busy_=false;auto node=control(encoding.ticket.id);if(!node||property(*node,L"type").GetString()!=L"file")return {};Object extra;extra.Insert(L"files",encoding.encoded);return send(action(*node),extra);}
  std::optional<ImportTicket> beginImport(const std::wstring& id){auto node=control(id);if(!node||property(*node,L"type").GetString()!=L"file")return {};busy_=true;return ImportTicket{id,generation_,++sequence_};}
  bool ownsImport(const ImportTicket& ticket)const{return active_&&generation_==ticket.generation&&sequence_==ticket.sequence&&busy_&&pending_.empty();}
  std::optional<Object> finishImport(const ImportTicket& ticket,const std::vector<File>& selected){if(!ownsImport(ticket))return {};busy_=false;return files(ticket.id,selected);}

@@ -6585,3 +6585,9 @@ PNG后台解码完成后保留像素及私有surface，每次pump最多上传262
 依据ExtensionDialogForm的Promise.all(arrayBuffer)异步读取，拆分原生FormFiles::choosePaths与read：选择器仅返回路径，单个进程生命周期后台reader执行整批metadata准入及64KiB块读取，纯路径/字节数据跨线程，不携带UI/WinRT JSON。promise future销毁不join；任务取消在metadata/文件/块间检查。正式FormWindow默认导入使用该路径，主线程pump取得结果，经ImportTicket校验active/generation/sequence后发送；读取期间busy，重试/关闭/销毁取消。读取错误及线程/入队启动失败恢复原任务状态，后续请求不受旧错误影响。已有注入chooseFiles同步适配及模态回调延迟清理继续保留。
 
 唯一正式Release及文件/状态测试构建成功，extension-form-ui/image/files/state四项通过2.04秒。实际后台读取验证顺序、字节、命名和取消32任务后继续读取空文件；预取消read确定拒绝。状态验证busy禁用、同代推送、一次发送、旧错误不解除已发送请求、失败后新ticket身份、retry/close丢弃。既有窗口选择器内部关闭/延迟清理回归通过；没有新增真实慢磁盘+物理窗口响应测量，不把模块状态测试等同完整系统性能验收。OS阻塞read不能即时中断、取消排队项待worker取走、JSON字节数组编码仍在UI；这些和生产扩展执行器仍未完成。来源821文件/diff通过，整体迁移INCOMPLETE。保留editor_support.h及用户数据，本阶段提交推送dev。
+
+### 2026-11-11：扩展导入JSON分批编码
+
+延续ExtensionDialogForm Array.from(Uint8Array)的精确name/mime/bytes消息协议，补齐后台读完后一次构建全部JSON字节值的主线程长任务。FormState ImportEncoding保留读取ticket，按主线程pump推进，单次最多4096字节并检查2ms时间预算；所有文件编码完成前保持busy且不发布部分消息。FormWindow串联读取/编码/发送，重试关闭取消两阶段，错误只恢复原ticket；最终复查当前控件action/disabled及会话身份，完整结果发送一次。数量/体积/单文件检查沿用既有上限，空文件仍生成空bytes数组。
+
+唯一正式Release及状态测试构建成功，extension-form-ui/image/files/state四项通过1.96秒。新增16385字节逐字节精确回归，17字节首次预算和后续1024预算强制跨多次推进；部分编码不能发送、完整只发送一次、重试隔离和空文件通过。来源821文件及diff通过，无人工慢磁盘/窗口响应测量；COM单次分配、释放大JSON及宿主最终序列化未保证时间上限，不声称全链路恒定帧耗时。整体迁移和生产执行器仍INCOMPLETE。保留editor_support.h与用户数据，阶段提交推送dev。

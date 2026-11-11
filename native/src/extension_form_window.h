@@ -19,9 +19,13 @@ class FormWindow final:public PixelDialog {
  struct ImageEntry{std::shared_ptr<FormImageMemory> memory;os::SurfaceRef surface;int width=0,height=0;bool failed=false;};
  std::map<std::wstring,ImageEntry> images_;bool imageError_=false;std::optional<FormImageTask> imageTask_;std::wstring decodingImage_;
  struct ImageUpload{std::wstring source;FormImage image;os::SurfaceRef surface;int row=0;};std::optional<ImageUpload> imageUpload_;std::uint64_t imageUploadPumps_=0;
- struct FileRead{FormState::ImportTicket ticket;FormFileReadTask task;};std::optional<FileRead> fileRead_;
- void cancelFileRead(){if(fileRead_)fileRead_->task.cancel();fileRead_.reset();}
- void pumpFileRead(){if(!fileRead_)return;if(!state().ownsImport(fileRead_->ticket)){cancelFileRead();return;}if(fileRead_->task.result.wait_for(std::chrono::seconds(0))!=std::future_status::ready)return;auto read=std::move(*fileRead_);fileRead_.reset();try{queue(state().finishImport(read.ticket,read.task.result.get()));}catch(const std::exception& error){state().failImport(read.ticket,winrt::to_hstring(error.what()).c_str());sync();}catch(const winrt::hresult_error& error){state().failImport(read.ticket,error.message().c_str());sync();}}
+ struct FileRead{FormState::ImportTicket ticket;FormFileReadTask task;};std::optional<FileRead> fileRead_;std::optional<FormState::ImportEncoding> fileEncoding_;
+ void cancelFileRead(){if(fileRead_)fileRead_->task.cancel();fileRead_.reset();fileEncoding_.reset();}
+ void pumpFileRead(){
+  if(fileEncoding_&&!state().ownsImport(fileEncoding_->ticket))fileEncoding_.reset();
+  if(fileRead_){if(!state().ownsImport(fileRead_->ticket)){cancelFileRead();return;}if(fileRead_->task.result.wait_for(std::chrono::seconds(0))!=std::future_status::ready)return;auto read=std::move(*fileRead_);fileRead_.reset();try{fileEncoding_=state().encodeImport(read.ticket,read.task.result.get());sync();}catch(const std::exception& error){state().failImport(read.ticket,winrt::to_hstring(error.what()).c_str());sync();}catch(const winrt::hresult_error& error){state().failImport(read.ticket,error.message().c_str());sync();}}
+  if(fileEncoding_){const auto ticket=fileEncoding_->ticket;try{if(fileEncoding_->advance()){queue(state().finishImport(*fileEncoding_));fileEncoding_.reset();}}catch(const std::exception& error){fileEncoding_.reset();state().failImport(ticket,winrt::to_hstring(error.what()).c_str());sync();}catch(const winrt::hresult_error& error){fileEncoding_.reset();state().failImport(ticket,error.message().c_str());sync();}}
+ }
  static std::u32string fitCopy(const PixelFont& font,const std::u32string& text,int width){if(width<=0)return {};if(font.measure(text)<=width)return text;const std::u32string dots=U"…";const int budget=width-font.measure(dots);if(budget<0)return {};int used=0;std::size_t count=0;for(auto code:text){const int advance=font.measure(std::u32string(1,code));if(used+advance>budget)break;used+=advance;++count;}return text.substr(0,count)+dots;}
  // CSS pre-wrap uses eight-space tab stops relative to the start of a line.
  static int messageAdvance(const PixelFont& font,char32_t code,int x){const int tab=std::max(1,font.measure(U" ")*8);return code==U'\t'?tab-x%tab:font.measure(std::u32string(1,code));}
