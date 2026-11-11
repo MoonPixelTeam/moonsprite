@@ -6523,3 +6523,11 @@ PNG后台解码完成后保留像素及私有surface，每次pump最多上传262
 核对ExtensionDialogForm retry：清空loadError/loaded/busy/values/pending，generation递增，保留view/images，ExtensionWindow按key重建。原生保留同样模型/图片/默认值，retrySession清除上一代未dispatch动作，连续等待点击合并，restart回调延至guarded pump执行，避免button事件栈同步重建控件。回调同步receive/pump由已有重入保护约束，host关闭延后处理；std::exception/未知异常转loadFailed允许后续重试。没有将未接入的正式JS执行器称作已完成，不取消仍有效的保留图片缓存。
 
 唯一正式Release构建成功，extension-form-ui/image/files/state四项通过1.92秒；新增实际按钮连续重试只增一次generation、草稿/busy重置、旧排队动作丢弃、同步模型恢复、旧generation拒绝、异常恢复与回调请求关闭回归；既有15秒状态超时与全部表单检查保持通过。来源821文件/diff检查通过，无人工图像验收/FPS测量。生产执行器重启接线、全编辑器modal隔离及整体迁移仍INCOMPLETE。保留editor_support.h及用户日志/缓存，阶段保存推送dev。
+
+### 2026-11-11：扩展消息多行布局
+
+核对ExtensionDialogForm message与styles.css extension-form-message white-space:pre-wrap/overflow-wrap:anywhere/line-height1.6，原生message从普通20px单行省略分支独立出来。按可用宽度缓存消息行，保留显式空行、连续空格、CRLF；普通空格优先断行，无可用断点长字符串逐字折行，Fusion10px字体使用16px行距，消息高度进入原有布局/scroll/fitContent。宽度变化沿既有build重排，不在每次paint重新测量整段文字。tab暂按8空格展开，完整浏览器制表位、组合字符/Unicode断行和双向排版等价仍未验证，不把近似当作完整Unicode迁移。
+
+原计划扩大全编辑器modal隔离，核对发现旧版modal-backdrop pointer-events:none且透明，并非全屏鼠标屏障；已向用户提出完整modal新行为选择，未获答复前未擅自实现。该决定不阻塞本轮独立消息控件补齐。
+
+唯一正式Release构建成功，extension-form-ui/image/files/state四项通过1.97秒，新增真实表单空行/空格/CRLF精确行检查、200字中文窄宽折行完整文本及宽度约束，既有图片/提示/重试/关闭链路通过。来源821文件与diff检查通过。未新增人工图像验收或CPU/FPS测量，生产扩展执行器、modal取舍及其他迁移缺口仍INCOMPLETE。保留editor_support.h与用户日志/缓存，本阶段保存推送dev。
