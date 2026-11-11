@@ -6597,3 +6597,9 @@ PNG后台解码完成后保留像素及私有surface，每次pump最多上传262
 补齐此前模块状态回归与正式FormWindow默认后台入口之间的证据缺口。新增choosePaths适配注入，仅替代OS路径选择，子提示窗同步继承；原chooseFiles兼容注入继续保留。正式程序的extension-form-ui从真实按钮Click启动后台reader，读取真实65539字节文件，经正式pump分批构造JSON并通过send回调发送。读取/编码期间receive新模型、resize及dispatchMessages继续运行，至少16次pump且发送一次；逐字节核对文件name/MIME/长度/内容及action，匹配回复解除busy，再启动导入后关闭无后续发送且窗口已注销。未以直接调用finishImport代替窗口链路。
 
 唯一正式Release构建成功，extension-form-ui/image/files/state四项通过2.15秒；来源821文件及diff检查通过。测试注入路径并使用控件Click，不等同OS物理鼠标、文件选择器人工验收或慢磁盘响应耗时测量。后台阻塞read取消时延、JSON内存/宿主序列化以及生产扩展执行器仍未完成；整体迁移INCOMPLETE。保留editor_support.h与用户数据，阶段提交推送dev。
+
+### 2026-11-11：文件导入排队任务即时取消
+
+继续完成后台文件导入生命周期：此前cancel只设token，尚未开始任务的future必须等待worker取出；前项OS读取阻塞会让已取消任务滞留。现在队列用token定位未开始任务，锁内移除并释放路径/reader闭包，锁外reject promise；worker取走与取消按同一锁划界，已启动走read前后及原有块间协作取消。重复cancel不重复完成promise。单个共享线程及promise future不join保持不变，纯C++reader可注入确定性测试。
+
+唯一正式Release及文件测试构建成功，extension-form-ui/image/files/state四项通过2.07秒。新增worker由promise gate确认已阻塞，再排队64任务，每项重复cancel且要求零等待future ready/抛取消异常、reader回调执行数为零；worker仍阻塞时完成所有断言，释放gate后后续真实空文件读取恢复。既有正式窗口后台导入回归通过。来源821文件/diff通过；OS已开始的阻塞read仍无法即时中断，无慢盘物理操作性能测量。整体迁移及生产执行器仍INCOMPLETE。保留editor_support.h及用户数据，阶段提交推送dev。

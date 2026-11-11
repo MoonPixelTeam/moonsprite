@@ -15,7 +15,8 @@ namespace moon::extension {
 struct FormFileReadTask {
  std::future<std::vector<FormState::File>> result;
  std::shared_ptr<std::atomic<bool>> cancelled;
- void cancel(){cancelled->store(true);}
+ std::function<void()> removeQueued;
+ void cancel(){if(cancelled)cancelled->store(true);if(removeQueued)removeQueued();}
 };
 class FormFiles {
  HWND owner_;std::function<BOOL(OPENFILENAMEW*)> open_,save_;
@@ -55,14 +56,20 @@ public:
 };
 // One process-wide reader; queued jobs carry paths only, never UI or JSON.
 // Promise futures can be discarded on close without joining the reader.
-inline FormFileReadTask startFormFileRead(std::vector<std::filesystem::path> paths){
- struct Queue{
-  struct Job{std::vector<std::filesystem::path> paths;std::shared_ptr<std::atomic<bool>> cancelled;std::shared_ptr<std::promise<std::vector<FormState::File>>> promise;};
-  std::mutex mutex;std::condition_variable ready;std::deque<Job> jobs;
-  Queue(){std::thread([this]{for(;;){Job job;{std::unique_lock<std::mutex> lock(mutex);ready.wait(lock,[&]{return !jobs.empty();});job=std::move(jobs.front());jobs.pop_front();}try{job.promise->set_value(FormFiles::read(job.paths,job.cancelled));}catch(...){job.promise->set_exception(std::current_exception());}}}).detach();}
- };
- static auto* queue=new Queue;
+namespace detail {
+struct FormFileReadQueue{
+ struct Job{std::shared_ptr<std::atomic<bool>> cancelled;std::function<void()> run,reject;};
+ std::mutex mutex;std::condition_variable ready;std::deque<Job> jobs;
+ FormFileReadQueue(){std::thread([this]{for(;;){Job job;{std::unique_lock<std::mutex> lock(mutex);ready.wait(lock,[&]{return !jobs.empty();});job=std::move(jobs.front());jobs.pop_front();}job.run();}}).detach();}
+ void cancel(const std::shared_ptr<std::atomic<bool>>& token){std::function<void()> reject;{std::lock_guard<std::mutex> lock(mutex);const auto found=std::find_if(jobs.begin(),jobs.end(),[&](const Job& job){return job.cancelled==token;});if(found==jobs.end())return;reject=std::move(found->reject);jobs.erase(found);}reject();}
+};
+}
+inline FormFileReadTask startFormFileRead(std::vector<std::filesystem::path> paths,
+ std::function<std::vector<FormState::File>(const std::vector<std::filesystem::path>&,const std::shared_ptr<std::atomic<bool>>&)> reader=FormFiles::read){
+ static auto* queue=new detail::FormFileReadQueue;
  auto promise=std::make_shared<std::promise<std::vector<FormState::File>>>();auto cancelled=std::make_shared<std::atomic<bool>>(false);auto future=promise->get_future();
- {std::lock_guard<std::mutex> lock(queue->mutex);queue->jobs.push_back({std::move(paths),cancelled,promise});}queue->ready.notify_one();return {std::move(future),std::move(cancelled)};
+ auto reject=[promise]{try{throw std::runtime_error("File import cancelled");}catch(...){promise->set_exception(std::current_exception());}};
+ auto run=[paths=std::move(paths),reader=std::move(reader),cancelled,promise]{try{if(cancelled->load())throw std::runtime_error("File import cancelled");auto result=reader(paths,cancelled);if(cancelled->load())throw std::runtime_error("File import cancelled");promise->set_value(std::move(result));}catch(...){promise->set_exception(std::current_exception());}};
+ {std::lock_guard<std::mutex> lock(queue->mutex);queue->jobs.push_back({cancelled,std::move(run),std::move(reject)});}queue->ready.notify_one();return {std::move(future),cancelled,[cancelled]{queue->cancel(cancelled);}};
 }
 }
