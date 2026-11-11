@@ -7022,3 +7022,12 @@ Aseprite 源码对照：src/app/extensions.cpp installCompressedExtension 的逐
 新增实际UI链路检查：通过认证menus.setItems及reportCommandState更新真实菜单，运行动态命令、检查勾选false与隐藏、弹出期间更新/关闭后重开、相同状态空闲不重建、旧generation/删除节点排队命令拒绝；真实设置窗口改值、共用存储、Runtime命令及closeOnRun。正式构建/运行/图像验收待补。此阶段交付的是原生会话到UI链路；正式Editor尚无JS会话创建者，生产JS与HTML仍未迁移，之前QuickJS架构选择仍待用户答复，不称JS扩展已能运行，也不缩减原完整迁移目标。保留用户editor_support.h及全部未跟踪数据。
 
 阶段最终验收：唯一正式Release构建成功；extension-preferences-ui、extension-menus-ui、extension-settings-ui、extension-contributions、extension-session-host五项全部通过3.85秒。真实SessionHost到适配器的UI夹具覆盖认证动态菜单请求、名称/同ID替换/分隔符、checked true与false覆盖、隐藏恢复、弹出期间更新后的安全关闭重建、无变化不重建、移除节点及替换generation后的排队点击拒绝、会话关闭清理，以及真实设置弹窗共用Storage/Registry与closeOnRun。runtime-menus-passed.txt本轮23:45:21；正式--script-entry-check实际进程exit0，生产贡献Lua菜单回归marker23:45:43。人工查看runtime-menu.bmp，使用原check/right素材，确认更新项勾选可见、长标题和菜单内容无重叠；夹具额外菜单叠在编辑器上，不把它当正式布局验收。来源覆盖835项及证据快照、diff检查通过；整体仍INCOMPLETE，生产Editor尚无JS会话创建者，HTML/生产JS仍待完成。本阶段保存推送dev，保留用户editor_support.h及全部未跟踪数据。
+
+
+### 2026-11-11 扩展栏目完整命令链路与空闲失效修正（验收中）
+
+逐项对照legacy ExtensionPanelHost→App.tsx→executeExtensionCommand：栏目命令不受菜单专属checked/visible状态控制。原生共用菜单回调误将隐藏命令也拦截，现区分入口呈现与执行，继续在延迟交付时检查最新manifest、启用/readiness、Lua工程/忙碌与绑定会话generation；Runtime和设置仍共用SessionHost注册表/存储。真实菜单夹具补齐窗口→栏目打开实际栏目，验证隐藏Runtime/Lua命令可执行、排队后忙碌拒绝、设置开关存盘/Runtime按钮关闭与会话替换后旧栏目点击拒绝。
+
+同时核对现有MIT Aseprite ui/widget.cpp：setBounds即使矩形不变仍调用onResize，setBoundsQuietly也总会invalidate。栏目pump此前每次强制设置clamped矩形，导致窗口及按钮重复布局/重绘；现仅坐标变化才设置，视口重映射同样检查。新真实窗口检查在绘制完成后连续100次pump保持update region为空，保留原拖动尺寸/滚动/持久化检查。此证据修正此前“未变更pump不布局”的过宽描述；未修改第三方源码。正式构建、运行与图像验收待补；生产JS/HTML及整体迁移仍INCOMPLETE，保留用户editor_support.h和未跟踪数据。
+
+阶段最终验收：唯一正式Release构建成功；extension-preferences-ui、extension-menus-ui、extension-settings-ui、extension-contributions、extension-session-host五项全部通过4.46秒。菜单专项包含真实栏目Lua/Runtime/设置路由、菜单隐藏不影响栏目、排队后忙碌/旧generation拒绝、真实设置修改与closeOnRun，以及绘制后100次空闲pump不产生update region。runtime-menus-passed及panels/passed标记本轮23:50:31。正式--script-entry-check实际进程exit0，贡献菜单marker23:50:55。人工查看本轮panel.bmp：220×150逻辑尺寸的标题/说明换行、原properties图标、双行按钮和滚动条无重叠；未测1×、所有显示器组合及全软件FPS。来源覆盖835项/快照/diff通过。Production JS/HTML与整体迁移仍INCOMPLETE；此阶段提交推送dev，用户editor_support.h和全部未跟踪数据保持。
