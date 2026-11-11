@@ -6749,3 +6749,9 @@ PNG后台解码完成后保留像素及私有surface，每次pump最多上传262
 对照legacy useBrushLibrary.ts loaded controller/useMemo与资源变化触发refresh：选择不触发资源重载。原生移除applyFillLibrarySelection选择后缩略图重载标记，保留资源变更/导航/手动刷新；syncSelection仅ID或enabled变化才复制选择/更新控件/重绘网格。实际面板smoke100次同值无invalidations，禁用/恢复各一次；真实Editor普通选择后无reload。异步资源控制器仍待迁移，当前构建验证中，整体INCOMPLETE。
 
 阶段验收完成：唯一正式Release成功，实际--brush-library-panel-check等待exit0，100次同值同步无网格invalidations、禁用恢复/拖动与资源生命周期通过，选择后无缩略图reload。extension-workspace-ui、multi-document、canvas-resize三项通过2.40秒。来源824文件/diff通过，无人工FPS或耗时对比；异步库加载仍未完成，整体INCOMPLETE。保留用户editor_support.h及未跟踪数据，提交推送dev。
+
+### 2026-11-11：笔刷库后台扫描与解码（验证中）
+
+对照legacy useBrushLibrary.ts异步list/read/decode，原生工作线程处理目录/文件夹扫描与CPU图像解码，现有WIC decoder自行初始化COM；主线程16ms轮询，仅当前工程/文件夹/目录键且无更新请求的结果可发布。单扫描运行、后续刷新合并，隐藏栏目丢弃结果；promise future不在UI销毁时join线程，worker不捕获Editor/UI指针。真实检查走生产poll分支及延迟结果隐藏拒绝；旧smoke专用同步等待便于已有fixture稳定。选择读盘和UI资源发布仍同步，不宣称全链路性能完成。构建验证中，整体INCOMPLETE。
+
+阶段验收完成：唯一正式Release构建成功，实际--brush-library-panel-check等待exit0。生产poll真实扫描、未完成promise下100次UI轮询不等待、刷新合并后过期键丢弃并启动新代、隐藏结果拒绝均通过；现有资源/拖动/偏好回归通过。extension-workspace-ui、multi-document、canvas-resize三项通过2.12秒。来源824文件/diff通过。无慢磁盘/OS阻塞或FPS实测，单次解码不可中断，线程关闭后自行完成，选择资源仍同步读盘/UI setResources仍同步，整体INCOMPLETE。用户editor_support.h及未跟踪数据保留，提交推送dev。
