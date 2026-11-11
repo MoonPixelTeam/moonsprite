@@ -15,7 +15,7 @@
 
 namespace moon::editor {
 namespace {
-bool extensionPlaceholder(const char* id){return std::string(id)=="extensions.preferences.extensions.enable"||std::string(id)=="extensions.uninstall";}
+bool extensionPlaceholder(const char* id){return std::string(id)=="extensions.preferences.extensions.enable"||std::string(id)=="extensions.uninstall"||std::string(id)=="extensions.script.delete";}
 std::shared_ptr<ExtensionPreferencesProperty> extensionPanel(ui::Widget* editor){return std::dynamic_pointer_cast<ExtensionPreferencesProperty>(editor->getProperty("moonsprite.extension-preferences"));}
 struct QuickPreferenceHandle : ui::Property {
  QuickCommandDragHandle* handle;
@@ -735,10 +735,12 @@ void Editor::createPreferencesControls(){
 
   }
 
-bool Editor::preferenceDirectoryAction(const std::string& key){return key=="extensions.preferences.extensions.add"||key=="extensions.preferences.extensions.openFolder"||key=="files.projectBackupDirectory.choose" || key=="files.projectBackupDirectory.restore" || key=="files.saveDirectory.choose" || key=="files.saveDirectory.restore" || key=="files.exportDirectory.choose" || key=="files.exportDirectory.restore";}
+bool Editor::preferenceDirectoryAction(const std::string& key){return key=="extensions.app.menu.file.openScriptFolder"||key=="extensions.common.refresh"||key=="extensions.preferences.extensions.add"||key=="extensions.preferences.extensions.openFolder"||key=="files.projectBackupDirectory.choose" || key=="files.projectBackupDirectory.restore" || key=="files.saveDirectory.choose" || key=="files.saveDirectory.restore" || key=="files.exportDirectory.choose" || key=="files.exportDirectory.restore";}
 
 void Editor::preferenceDirectoryActionRun(const std::string& action){
-    if(action=="extensions.preferences.extensions.add"){if(auto p=extensionPanel(this);p&&p->panel->busy())return;wchar_t filename[32768]{};OPENFILENAMEW dialog{};dialog.lStructSize=sizeof(dialog);dialog.hwndOwner=GetActiveWindow();dialog.lpstrFile=filename;dialog.nMaxFile=32768;dialog.lpstrFilter=L"MoonSprite 扩展包\0*.msext\0\0";dialog.Flags=OFN_EXPLORER|OFN_NOCHANGEDIR|OFN_FILEMUSTEXIST|OFN_PATHMUSTEXIST;if(GetOpenFileNameW(&dialog)){openPath(filename);if(auto p=extensionPanel(this))p->panel->refresh();}else if(CommDlgExtendedError()){preferenceFeedback_=U"无法打开扩展包选择对话框";invalidate();}return;}
+    if(action=="extensions.common.refresh"){if(auto p=extensionPanel(this);p&&p->scripts)p->scripts->refresh();return;}
+    if(action=="extensions.app.menu.file.openScriptFolder"){try{script::Service(script::executableDirectory(),projectFolderLauncher_).openFolder();}catch(const std::exception& e){preferenceFeedback_=unicodeText(e.what());invalidate();}return;}
+    if(action=="extensions.preferences.extensions.add"){if(auto p=extensionPanel(this);p&&p->panel->busy())return;wchar_t filename[32768]{};OPENFILENAMEW dialog{};dialog.lStructSize=sizeof(dialog);dialog.hwndOwner=GetActiveWindow();dialog.lpstrFile=filename;dialog.nMaxFile=32768;dialog.lpstrFilter=L"MoonSprite 扩展包\0*.msext\0\0";dialog.Flags=OFN_EXPLORER|OFN_NOCHANGEDIR|OFN_FILEMUSTEXIST|OFN_PATHMUSTEXIST;if(GetOpenFileNameW(&dialog)){openPath(filename);if(auto p=extensionPanel(this)){p->panel->refresh();if(p->scripts)p->scripts->refresh();}}else if(CommDlgExtendedError()){preferenceFeedback_=U"无法打开扩展包选择对话框";invalidate();}return;}
     if(action=="extensions.preferences.extensions.openFolder"){try{auto directory=script::executableDirectory()/"extensions";std::filesystem::create_directories(directory);projectFolderLauncher_(directory);}catch(const std::exception& e){preferenceFeedback_=unicodeText(e.what());invalidate();}return;}
 
     const std::string key=action.find("projectBackupDirectory")!=std::string::npos?"files.projectBackupDirectory.Text":action.find("saveDirectory")!=std::string::npos?"files.saveDirectory.Text":"files.exportDirectory.Text";
@@ -787,6 +789,7 @@ void Editor::syncPreferenceScales(){
 void Editor::addPreferenceScale(){try{readPreferenceScales();runtimePreferenceDraft_.exportScales.push_back(100);syncPreferenceScales();layoutModal();invalidateRect(dialogDisplayBounds());}catch(const std::exception& e){preferenceFeedback_=unicodeText(e.what());invalidate();}}
 
 bool Editor::preferenceRowEnabled(const preferences::Item& item) const {
+    if(std::string(item.id)=="extensions.common.refresh")if(auto p=extensionPanel(const_cast<Editor*>(this));p&&p->scripts)return !p->scripts->busy();
     if(std::string(item.id)=="extensions.preferences.extensions.add")if(auto p=extensionPanel(const_cast<Editor*>(this)))return !p->panel->busy();
 
     if(std::string(item.id)=="quickCommands.restore"||(std::string(item.id).rfind("quickCommands.bar",0)==0&&std::string(item.id).find(".collapse")!=std::string::npos))return true;if(std::string(item.id)=="presets.addColor")return runtimePreferenceDraft_.layerDisplayColors.size()<12;if(std::string(item.id)=="presets.restoreColors")return true;if(std::string(item.id)=="presets.addScale")return true;if(item.binding<0 && !preferences::runtimeSetting(item.id) && !preferenceDirectoryAction(item.id))return false;
@@ -890,7 +893,8 @@ void Editor::createPreferenceCatalogControls(){
     }
 
     preferenceRowY_.resize(preferenceRows_.size());
-    auto panel=new ExtensionPreferences(font_,skin_,toolIcons_,script::executableDirectory()/"extensions",[this]{if(pending_==Pending::Preferences){layoutModal();invalidate();}},[this]{updateScriptsMenu();});addChild(panel);panel->setVisible(false);panel->setId("extension-preferences");setProperty(std::make_shared<ExtensionPreferencesProperty>(panel));
+    auto panel=new ExtensionPreferences(font_,skin_,toolIcons_,script::executableDirectory()/"extensions",[this]{if(pending_==Pending::Preferences){layoutModal();invalidate();}},[this]{updateScriptsMenu();if(auto p=extensionPanel(this);p&&p->scripts)p->scripts->refresh();});addChild(panel);panel->setVisible(false);panel->setId("extension-preferences");setProperty(std::make_shared<ExtensionPreferencesProperty>(panel));
+    auto scripts=new ExtensionPreferences(font_,skin_,toolIcons_,script::executableDirectory(),[this]{if(pending_==Pending::Preferences){layoutModal();invalidate();}},[this]{updateScriptsMenu();},true);addChild(scripts);scripts->setVisible(false);scripts->setId("script-preferences");extensionPanel(this)->scripts=scripts;
 
   }
 
@@ -927,7 +931,7 @@ int Editor::preferenceCatalogHeight(){
 
       else y+=preferenceOptionGap;
 
-      preferenceRowY_[i]=y;y+=textControlHeight;if(std::string(item.id)=="extensions.preferences.extensions.openFolder")if(auto p=extensionPanel(this)){p->top=y+preferenceOptionGap;y+=preferenceOptionGap+p->panel->contentHeight(std::max(110,preferenceViewport_.w/uiScale));}if(std::string(item.id)=="presets.addColor"){preferenceColorRowsY_=y+preferenceOptionGap;y+=int(runtimePreferenceDraft_.layerDisplayColors.size())*(textControlHeight+preferenceOptionGap);}if(std::string(item.id)=="presets.addScale"){preferenceScaleRowsY_=y+preferenceOptionGap;y+=int(runtimePreferenceDraft_.exportScales.size())*(textControlHeight+preferenceOptionGap);}
+      preferenceRowY_[i]=y;y+=textControlHeight;if(std::string(item.id)=="extensions.common.refresh")if(auto p=extensionPanel(this);p&&p->scripts){p->scriptsTop=y+preferenceOptionGap;y+=preferenceOptionGap+p->scripts->contentHeight(std::max(110,preferenceViewport_.w/uiScale));}if(std::string(item.id)=="extensions.preferences.extensions.openFolder")if(auto p=extensionPanel(this)){p->top=y+preferenceOptionGap;y+=preferenceOptionGap+p->panel->contentHeight(std::max(110,preferenceViewport_.w/uiScale));}if(std::string(item.id)=="presets.addColor"){preferenceColorRowsY_=y+preferenceOptionGap;y+=int(runtimePreferenceDraft_.layerDisplayColors.size())*(textControlHeight+preferenceOptionGap);}if(std::string(item.id)=="presets.addScale"){preferenceScaleRowsY_=y+preferenceOptionGap;y+=int(runtimePreferenceDraft_.exportScales.size())*(textControlHeight+preferenceOptionGap);}
 
     }
 
@@ -989,7 +993,7 @@ void Editor::showPreferences(){preferenceNavPixels_=preferenceContentPixels_=0;
 
     for(int i=1;i<3;++i){const auto c=i==1?checkerboardDraft_.light:checkerboardDraft_.dark;checkerboardFields_[i]->setText(paletteHex(Pixel(gfx::getr(c))|(Pixel(gfx::getg(c))<<8)|(Pixel(gfx::getb(c))<<16)|0xff000000));}
 
-    syncPreferenceCatalog();if(auto p=extensionPanel(this))p->panel->refresh();
+    syncPreferenceCatalog();if(auto p=extensionPanel(this)){p->panel->refresh();if(p->scripts)p->scripts->refresh();}
 
     playing_=false;pending_=Pending::Preferences;discard_->caption=U"确定";keep_->caption=U"取消";discard_->setVisible(true);keep_->setVisible(true);dialogClose_->setVisible(true);saveBeforeClose_->setVisible(false);menuBar_->setEnabled(false);refresh();preferenceTabs_[preferenceSection_]->requestFocus();
 
@@ -1083,6 +1087,7 @@ void Editor::layoutPreferences(gfx::Rect modal){
 
     preferenceViewport_=content;
     if(auto p=extensionPanel(this)){auto panel=p->panel;const bool visible=show&&preferenceSection_==11;panel->setVisible(visible);panel->setEnabled(visible);if(visible){panel->setBounds({content.x,content.y+p->top*uiScale-preferenceContentPixels_,content.w,panel->contentHeight(content.w/uiScale)*uiScale});panel->viewport(content);scrollViewports_[panel]=content;}else scrollViewports_.erase(panel);}
+    if(auto p=extensionPanel(this);p&&p->scripts){auto panel=p->scripts;const bool visible=show&&preferenceSection_==11;panel->setVisible(visible);panel->setEnabled(visible);if(visible){panel->setBounds({content.x,content.y+p->scriptsTop*uiScale-preferenceContentPixels_,content.w,panel->contentHeight(content.w/uiScale)*uiScale});panel->viewport(content);scrollViewports_[panel]=content;}else scrollViewports_.erase(panel);}
 
     for(auto field:preferenceFields_)field->setVisible(false);
 

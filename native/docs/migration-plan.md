@@ -6935,3 +6935,10 @@ Aseprite 源码对照：src/app/extensions.cpp installCompressedExtension 的逐
 未迁移：生产Runtime执行器、首选项Lua脚本管理等仍明确保留；扩展启停只影响现有Lua发现，未声称可执行JS。现有uninstall语义沿用旧版：删除失败尝试恢复state，但磁盘树可能已部分删除；本阶段不自行改变这项语义。总迁移仍INCOMPLETE。构建与界面验收待补。
 
 阶段验收：正式Release最终构建成功；extension-preferences-ui、preferences-catalog、extension-install-ui、extension-workspace-ui、extension-runtime-directory共5项通过7.97秒。实际控件验证持久化启停、Lua列表同步、取消删除、锁状态文件失败恢复与最终删除；首选项目录验证原有全部14页布局和扩展嵌套模态路由。图像验收使用专用真实PixelDialog宿主，确认元数据换行及启用/删除按钮可见；并非完整首选项生产页带已安装扩展的截图验收。定位修复了绘制时Rect::offset原地修改共享视口造成多次重绘后按钮消失的问题，改为复制后转换。列表不透明背景与缓存文本随内容/宽度失效，空闲无轮询。来源覆盖828项、diff通过。一次相邻安装回归报bad conversion，同一最终前版本独立重测通过、最终5项通过，根因未定位，保留日志不声称修复。整体迁移INCOMPLETE；用户editor_support.h、构建缓存和未跟踪数据未纳入提交。
+
+
+### 2026-11-11 首选项Lua脚本管理（验收中）
+
+前阶段f6865885已推送。本阶段按legacy PreferencesDialog补齐同页脚本列表、打开文件夹、刷新、删除确认。复用script::Service的列表排序、扩展脚本发现、示例初始化和本地删除边界；后台读取和删除，保留扩展所属信息，扩展脚本禁止单独删除。删除立即落盘，不随首选项取消回滚；成功刷新菜单，扩展安装/启停/删除同步刷新脚本列表，忙碌期间的外部刷新合并为后续一次。共享前阶段滚动容器、段落缓存、图标和模态确认，仅隐藏没有对象的删除脚本占位。测试扩展真实宿主覆盖取消/锁文件失败/恢复删除、保护扩展脚本、启停与显式刷新、打开文件夹目标；系统资源管理器启动另作源码接线核对。整体仍INCOMPLETE，生产Runtime执行器未接入。
+
+阶段验收：唯一正式Release构建成功；extension-preferences-ui（含本地脚本管理新增流程）、preferences-catalog、extension-runtime-directory、extension-install-ui、extension-workspace-ui五项通过9.05秒。真实宿主控件验证本地/扩展脚本、扩展脚本删除保护、取消、锁文件失败保留、解锁后删除、扩展禁用刷新为空及重新启用+新文件刷新；文件夹启动使用注入回调验证目标，未实际打开系统资源管理器。scripts.bmp核对名称、所属扩展、禁用删除图标；完整生产首选项滚动由现有目录测试核对，未新增生产页已安装样本截图。修复本管理器std::exception::what本地系统编码被直接当UTF-8导致bad conversion，先UTF-8再CP_ACP回退；不推断前阶段安装弹窗偶发bad conversion已由此修复。旧扩展发现测试改为仅统计RuntimeDirectory::listLua，避免新增本地测试脚本影响重复运行。来源828项、diff通过。忙碌刷新合并为源码核对，未注入慢worker确定性测试。总迁移INCOMPLETE，用户editor_support.h及未跟踪文件保留。
