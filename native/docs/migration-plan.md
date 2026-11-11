@@ -6942,3 +6942,12 @@ Aseprite 源码对照：src/app/extensions.cpp installCompressedExtension 的逐
 前阶段f6865885已推送。本阶段按legacy PreferencesDialog补齐同页脚本列表、打开文件夹、刷新、删除确认。复用script::Service的列表排序、扩展脚本发现、示例初始化和本地删除边界；后台读取和删除，保留扩展所属信息，扩展脚本禁止单独删除。删除立即落盘，不随首选项取消回滚；成功刷新菜单，扩展安装/启停/删除同步刷新脚本列表，忙碌期间的外部刷新合并为后续一次。共享前阶段滚动容器、段落缓存、图标和模态确认，仅隐藏没有对象的删除脚本占位。测试扩展真实宿主覆盖取消/锁文件失败/恢复删除、保护扩展脚本、启停与显式刷新、打开文件夹目标；系统资源管理器启动另作源码接线核对。整体仍INCOMPLETE，生产Runtime执行器未接入。
 
 阶段验收：唯一正式Release构建成功；extension-preferences-ui（含本地脚本管理新增流程）、preferences-catalog、extension-runtime-directory、extension-install-ui、extension-workspace-ui五项通过9.05秒。真实宿主控件验证本地/扩展脚本、扩展脚本删除保护、取消、锁文件失败保留、解锁后删除、扩展禁用刷新为空及重新启用+新文件刷新；文件夹启动使用注入回调验证目标，未实际打开系统资源管理器。scripts.bmp核对名称、所属扩展、禁用删除图标；完整生产首选项滚动由现有目录测试核对，未新增生产页已安装样本截图。修复本管理器std::exception::what本地系统编码被直接当UTF-8导致bad conversion，先UTF-8再CP_ACP回退；不推断前阶段安装弹窗偶发bad conversion已由此修复。旧扩展发现测试改为仅统计RuntimeDirectory::listLua，避免新增本地测试脚本影响重复运行。来源828项、diff通过。忙碌刷新合并为源码核对，未注入慢worker确定性测试。总迁移INCOMPLETE，用户editor_support.h及未跟踪文件保留。
+
+
+### 2026-11-11 首选项后台任务生命周期与提交边界（验收中）
+
+对照legacy PreferencesDialog toggleExtension成功后立即发布状态及extensions-changed、uninstallExtension刷新助手独立处理错误的边界，拆分磁盘提交与后续列表读取结果。提交成功而刷新失败时仍发布已知启停/删除状态并通知菜单，错误单独展示。用进程FIFO后台worker和promise future替换面板自有std::async；关闭面板仅丢弃观察，不等待磁盘任务，已接受操作继续完成，正常进程退出drain。后台只捕获CPU值，UI回调保留在面板，不跨线程或在销毁后调用。确定性测试注入提交后读取失败、挂起操作期间销毁面板及销毁后继续完成。
+
+首次五项回归中首选项及其余三项通过，安装专项再次失败bad conversion；定位安装错误显示直接把std::filesystem系统编码当UTF-8，在安装弹窗错误处理增加UTF-8优先/CP_ACP回退，沿用首选项已验证的必要Windows适配。原有锁状态文件安装失败/回滚用例继续验证，未修改安装事务语义。整体迁移仍INCOMPLETE，生产Runtime执行器未接入；最终构建和回归结果待补。
+
+阶段验收：唯一正式Release构建成功；extension-preferences-ui、preferences-catalog、extension-runtime-directory、extension-install-ui、extension-workspace-ui最终5项全部通过9.33秒。注入列表失败验证已提交启停/删除及通知保留；挂起后台操作时销毁面板耗时小于250ms，释放后操作继续完成；安装专项原有锁状态失败/回滚流程最终通过。来源覆盖828项与diff检查通过。本阶段未新增人工截图、慢磁盘实机延迟或全软件FPS测量，正常进程退出仍等待已接受磁盘任务，未声称所有卡顿解决。整体迁移INCOMPLETE，用户文件、未跟踪日志、工程及缓存保留；本阶段保存推送dev。
