@@ -6609,3 +6609,9 @@ PNG后台解码完成后保留像素及私有surface，每次pump最多上传262
 在分批编码保留旧版Array.from数字数组消息的前提下，进一步消除每字节一个独立JsonValue的分配。ImportEncoding按任务惰性缓存0..255的不可变数字对象，所有重复字节追加引用；每个文件编码完成后swap释放原始bytes分配，避免完整raw缓冲一直保留到全部文件发送。数组项替换仍独立，不改变数值、顺序、文件身份及状态生命周期。
 
 唯一正式Release及状态测试构建成功，extension-form-ui/image/files/state四项通过2.20秒。回归检查重复字节对象身份复用、不同数字不共身份、SetAt替换不改变其他项、已完成文件raw capacity归零，既有16385字节精确核对和正式65539字节窗口链路通过。本机262144值局部样本fresh=56935us，reuse=10659us，约5.3倍；单次局部测量无阈值，不扩称全软件性能。来源821文件/diff通过。数组引用槽仍随数据量增长，最终序列化/大数组释放、慢磁盘物理响应及生产执行器仍未完成，整体INCOMPLETE。保留editor_support.h及用户数据，阶段提交推送dev。
+
+### 2026-11-11：正式窗口导入编码中断与恢复矩阵
+
+延续已完成的真实文件导入窗口链路，补齐编码期间的生命周期验收。只读encodingImportForCheck观察正式编码阶段，实际按钮/reader/pump推进到该阶段后，分别触发真实retry按钮、模型禁用file、模型移除file和host关闭；各路径连续pump确认不发送旧文件、不遗留busy/编码对象。前三种重新加载原模型确认file按钮恢复enabled，最终关闭确认窗口注销。未直接调用状态finishImport来替代窗口行为。
+
+唯一正式Release构建成功，extension-form-ui/image/files/state四项通过2.18秒；来源821文件及diff检查通过。该阶段是补齐正式窗口集成证据，未新增业务功能，不等同人工物理鼠标/慢盘响应验收。生产扩展JavaScript执行器技术路线已重新列出待用户决定，尚未擅自引入QuickJS；整体迁移INCOMPLETE。保留editor_support.h及用户数据，本阶段提交推送dev。

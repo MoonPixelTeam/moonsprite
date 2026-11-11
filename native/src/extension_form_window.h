@@ -210,6 +210,7 @@ public:
  std::uint64_t imageUploadPumpsForCheck()const{return imageUploadPumps_;}
  void openSelectForCheck(const std::wstring& id){if(auto* select=dynamic_cast<FormDropdown*>(controlForCheck(id)))select->onClick();}
  bool selectMarkedForCheck(const std::wstring& id,int index){auto* select=dynamic_cast<FormDropdown*>(controlForCheck(id));return select&&select->keyMarked(index);}
+ bool encodingImportForCheck()const{return fileEncoding_.has_value();}
  PixelButton* retryForCheck()const{return retry_;}
  bool imagePendingForCheck()const{return imageTask_.has_value()||imageUpload_.has_value();}
  std::size_t imageCountForCheck()const{std::size_t count=0;for(const auto& image:images_)if(image.second.surface)++count;return count;}
