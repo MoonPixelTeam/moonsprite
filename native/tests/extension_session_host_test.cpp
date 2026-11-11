@@ -72,5 +72,65 @@ int main(int argc,char** argv){RoInitialize(RO_INIT_MULTITHREADED);try{
   for(const auto* malformed:{LR"({})",LR"({"type":"wrong","requestId":"r","ok":true,"result":null})",LR"({"type":"moonsprite-extension-response","requestId":"other","ok":true,"result":null})",LR"({"type":"moonsprite-extension-response","requestId":3,"ok":true,"result":null})",LR"({"type":"moonsprite-extension-response","requestId":"r","ok":"true","result":null})",LR"({"type":"moonsprite-extension-response","requestId":"r","ok":true})",LR"({"type":"moonsprite-extension-response","requestId":"r","ok":false,"error":null})"}){wire=malformed;check(!envelopes.request(token,raw("network.fetch","{\"url\":\"https://example.com\"}")),"envelope request deferred");auto replies=envelopes.pollResponses(token);check(replies.size()==1&&!replies.front().GetNamedBoolean(L"ok")&&replies.front().GetNamedString(L"requestId")==L"r"&&envelopes.pollResponses(token).empty(),"invalid envelope rejected once with original identity");}
   wire=LR"({"type":"moonsprite-extension-response","requestId":"r","ok":false,"error":"remote failure"})";envelopes.request(token,raw("network.fetch","{\"url\":\"https://example.com\"}"));check(envelopes.pollResponses(token).front().GetNamedString(L"error")==L"remote failure","valid failure envelope preserved");
  }
+
+ // Every teardown callback is an external boundary: one failure must not skip
+ // the remaining network, registry, menu, window and deactivation cleanup.
+ {
+  auto cancelled=std::make_shared<std::atomic<bool>>(false);std::promise<std::wstring> pending;int cancelCalls=0,closed=0,deactivated=0;
+  SessionHost cleanup(storage,drops,registry,[&](std::wstring id,std::wstring){return NetworkTask{cancelled,pending.get_future(),id,[&]{++cancelCalls;throw std::runtime_error("cancel failed");}};});
+  auto token=cleanup.open({"cleanup-all",true,false},{"network","menus","commands","windows","io"},"en-US",[&](const RuntimeEvent& event){if(event.type=="deactivate")++deactivated;});cleanup.loaded(token,{});
+  auto router=std::make_shared<WindowRouter>(L"Cleanup",std::set<std::wstring>{L"form"},WindowServices{[](const auto&){},[&](const auto&){++closed;},[](const auto&,bool){},[](const auto&,const auto&){}});cleanup.setWindowRouter(token,router);
+  check(cleanup.request(token,raw("windows.open",R"({"windowId":"dialog","resourceId":"form","options":{"presentation":"dialog"}})"))->GetNamedBoolean(L"ok"),"Cleanup window open");
+  cleanup.request(token,raw("runtime.setFileDropTypes",R"({"extensions":[".cleanup"]})"));cleanup.setDeclaredMenus(token,{"tools"});check(cleanup.request(token,raw("menus.setItems",R"({"menuId":"tools","items":[{"id":"run","name":"Run","event":"run","checked":false}]})"))->GetNamedBoolean(L"ok"),"Cleanup menu setup");
+  auto stop=cleanup.subscribePresentation(token,[]{throw std::runtime_error("observer failed");});cleanup.request(token,raw("network.fetch",R"({"url":"https://example.com"})"));
+  bool failed=false;try{cleanup.close(token);}catch(const std::exception& error){failed=std::string(error.what())=="observer failed";}
+  check(failed&&cancelled->load()&&cancelCalls==1&&closed==1&&deactivated==1&&!drops.accepts("file.cleanup")&&!registry.command("cleanup-all","late","late")&&!cleanup.request(token,raw("storage.list")),"Teardown exception skipped remaining cleanup");cleanup.close(token);check(cancelCalls==1&&closed==1&&deactivated==1,"Failed teardown repeated callbacks");stop();
+ }
+ // A native service can close its owner while starting an asynchronous task.
+ // The returned task must be cancelled instead of joining an inactive session.
+ {
+  auto cancelled=std::make_shared<std::atomic<bool>>(false);std::promise<std::wstring> pending;int removed=0;SessionHost* live=nullptr;SessionHost::Token token;
+  SessionHost startup(storage,drops,registry,[&](std::wstring id,std::wstring){live->close(token);return NetworkTask{cancelled,pending.get_future(),id,[&]{++removed;}};});live=&startup;
+  token=startup.open({"startup-close",true,false},{"network"},"en-US",[](const auto&){});startup.request(token,raw("network.fetch",R"({"url":"https://example.com"})"));
+  check(cancelled->load()&&removed==1&&startup.pollResponses(token).empty(),"Reentrant close left returned network task running");
+ }
+
+ // The most recent reentrant open wins; outer teardown must not overwrite it
+ // or clear its independently registered drop types/windows/network requests.
+ {
+  SessionHost replacement(storage,drops,registry);SessionHost::Token nested;int dispatches=0;
+  auto original=replacement.open({"nested-open",true,false},{},"en-US",[&](const auto& event){if(event.type=="deactivate"){
+   nested=replacement.open({"nested-open",true,false},{"io","commands"},"en-US",[&](const auto& event){if(event.type=="command")++dispatches;});replacement.loaded(nested,{});
+   check(replacement.request(nested,raw("runtime.setFileDropTypes",R"({"extensions":[".nested"]})"))->GetNamedBoolean(L"ok"),"Nested drop types");
+  }});replacement.loaded(original,{});
+  bool superseded=false;try{replacement.open({"nested-open",true,false},{},"en-US",[](const auto&){});}catch(const std::runtime_error& error){superseded=std::string(error.what()).find("superseded")!=std::string::npos;}
+  check(superseded&&replacement.presentationRevision(nested)&&drops.accepts("file.nested")&&registry.command("nested-open","run","run")&&dispatches==1&&!replacement.presentationRevision(original),"Outer open overwrote reentrant replacement");
+  replacement.close(nested);check(!drops.accepts("file.nested"),"Nested close leaked drop types");
+ }
+ {
+  SessionHost* live=nullptr;SessionHost::Token nested;std::promise<std::wstring> pending;
+  SessionHost cancellation(storage,drops,registry,[&](std::wstring id,std::wstring){return NetworkTask{std::make_shared<std::atomic<bool>>(false),pending.get_future(),id,[&]{nested=live->open({"cancel-open",true,false},{"io"},"en-US",[](const auto&){});check(live->request(nested,raw("runtime.setFileDropTypes",R"({"extensions":[".cancelopen"]})"))->GetNamedBoolean(L"ok"),"Cancel replacement drop types");}};});live=&cancellation;
+  auto original=cancellation.open({"cancel-open",true,false},{"network"},"en-US",[](const auto&){});cancellation.request(original,raw("network.fetch",R"({"url":"https://example.com"})"));cancellation.close(original);
+  check(cancellation.presentationRevision(nested)&&drops.accepts("file.cancelopen"),"Old cancellation cleanup erased replacement ownership");cancellation.close(nested);
+ }
+ // Closing a pending replacement cancels it even before its session exists.
+ {
+  SessionHost closing(storage,drops,registry);auto original=closing.open({"cancel-pending",true,false},{},"en-US",[&](const auto& event){if(event.type=="deactivate")closing.close("cancel-pending");});closing.loaded(original,{});
+  bool superseded=false;try{closing.open({"cancel-pending",true,false},{},"en-US",[](const auto&){});}catch(const std::runtime_error&){superseded=true;}
+  check(superseded&&!registry.command("cancel-pending","late","late"),"Close did not cancel pending open");
+  auto recovered=closing.open({"cancel-pending",true,false},{},"en-US",[](const auto&){});check(bool(closing.presentationRevision(recovered)),"Open transition marker leaked after cancellation");
+ }
+ // Synchronous services can also invalidate their original reply recipient.
+ {
+  SessionHost sync(storage,drops,registry);auto token=sync.open({"sync-close",true,false},{"clipboard"},"en-US",[](const auto&){});
+  sync.setServices(token,{{},[&]{sync.close(token);return winrt::hstring(L"stale clipboard");},{}});
+  check(!sync.request(token,raw("clipboard.readText")),"Closed session published synchronous reply");
+ }
+ // Native teardown cannot resurrect sessions in a host whose destructor began.
+ {
+  SessionHost* live=nullptr;bool rejected=false;
+  {SessionHost dying(storage,drops,registry);live=&dying;auto token=dying.open({"dying",true,false},{},"en-US",[&](const auto& event){if(event.type=="deactivate")try{live->open({"resurrected",true,false},{},"en-US",[](const auto&){});}catch(const std::runtime_error&){rejected=true;}});dying.loaded(token,{});}
+  check(rejected&&!registry.command("dying","late","late")&&!registry.command("resurrected","late","late"),"Destructing host allowed resurrection");
+ }
  std::cout<<"Complete session registration/load/request/storage/file/replace/teardown sequence passed\n";return 0;
  }catch(const std::exception& e){std::cerr<<e.what()<<'\n';return 1;}catch(const winrt::hresult_error& e){std::cerr<<winrt::to_string(e.message())<<'\n';return 1;}}

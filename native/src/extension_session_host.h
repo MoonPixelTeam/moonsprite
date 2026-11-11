@@ -19,9 +19,26 @@ class SessionHost {
   std::vector<NetworkTask> network;
   EventLifecycle events;RequestHost requests;RuntimeRegistry::Stop unregister;
   Session(std::string identity,std::uint64_t value,RuntimeExtension extension,const std::vector<std::string>& permissions,std::string language,Storage& storage,FileDropRouter& drops,RuntimeRegistry& registry,std::function<void(const RuntimeEvent&)> deliver,CommandHandlers handlers,std::vector<RuntimeCommand> commands):id(std::move(identity)),locale(std::move(language)),generation(value),editorEventsAllowed(std::find(permissions.begin(),permissions.end(),"events")!=permissions.end()),events(permissions,locale,std::move(deliver)),requests(std::move(extension),permissions,storage,drops,registry,std::move(handlers),std::move(commands)){}
-  void stop(){if(!active)return;active=false;for(auto& task:network)task.cancel();network.clear();editorSubscription.reset();projectSubscription.reset();interactions.reset();std::exception_ptr failure;auto cleanup=[&](auto&& action){try{action();}catch(...){if(!failure)failure=std::current_exception();}};cleanup([&]{unregister();});cleanup([&]{requests.deactivate();});cleanup([&]{events.deactivate();});if(failure)std::rethrow_exception(failure);}
+  void stop(){
+   if(!active)return;active=false;
+   std::exception_ptr failure;auto cleanup=[&](auto&& action){try{action();}catch(...){if(!failure)failure=std::current_exception();}};
+   // Detach before callbacks: cancellation may reenter this host, and a
+   // failed cancel must not keep registry/windows/event cleanup from running.
+   auto pending=std::move(network);network.clear();
+   editorSubscription.reset();projectSubscription.reset();interactions.reset();
+   // Remove shared ownership before external callbacks can publish a new
+   // same-ID session; old cleanup must never erase its registry/drop rules.
+   cleanup([&]{unregister();});cleanup([&]{requests.deactivate();});
+   for(auto& task:pending)cleanup([&]{task.cancel();});cleanup([&]{events.deactivate();});
+   if(failure)std::rethrow_exception(failure);
+  }
  };
  Storage& storage_;FileDropRouter& drops_;RuntimeRegistry& registry_;std::map<std::string,std::shared_ptr<Session>> sessions_;std::uint64_t next_=0;
+ bool shuttingDown_=false;std::map<std::string,std::shared_ptr<bool>> opening_;
+ void stopSession(const std::string& id){auto it=sessions_.find(id);if(it==sessions_.end())return;auto session=it->second;sessions_.erase(it);session->stop();}
+ struct Opening {SessionHost& host;std::string id;std::shared_ptr<bool> current;
+  ~Opening(){auto it=host.opening_.find(id);if(it!=host.opening_.end()&&it->second==current)host.opening_.erase(it);}
+ };
  std::shared_ptr<Session> find(const std::string& id,std::uint64_t generation)const{auto it=sessions_.find(id);return it!=sessions_.end()&&it->second->generation==generation&&it->second->active?it->second:nullptr;}
 public:
  using NetworkStart=std::function<NetworkTask(std::wstring,std::wstring)>;
@@ -43,10 +60,14 @@ public:
  Storage& storage(){return storage_;}
  SessionHost(Storage& storage,FileDropRouter& drops,RuntimeRegistry& registry,NetworkStart networkStart=startNetworkRequest):storage_(storage),drops_(drops),registry_(registry),networkStart_(std::move(networkStart)){}
  SessionHost(const SessionHost&)=delete;SessionHost& operator=(const SessionHost&)=delete;
- ~SessionHost(){auto sessions=std::move(sessions_);for(auto& p:sessions)try{p.second->stop();}catch(...){} }
+ ~SessionHost(){shuttingDown_=true;for(auto& entry:opening_)*entry.second=false;auto sessions=std::move(sessions_);for(auto& p:sessions)try{p.second->stop();}catch(...){} }
  Token open(RuntimeExtension extension,std::vector<std::string> permissions,std::string locale,std::function<void(const RuntimeEvent&)> deliver,CommandHandlers handlers={},std::vector<RuntimeCommand> commands={}){
+  if(shuttingDown_)throw std::runtime_error("Extension session host is shutting down");
   if(!extension.enabled)throw std::invalid_argument("Disabled extension session");const auto id=extension.id;
-  close(id);auto session=std::make_shared<Session>(id,++next_,std::move(extension),permissions,std::move(locale),storage_,drops_,registry_,std::move(deliver),std::move(handlers),std::move(commands));
+  if(auto it=opening_.find(id);it!=opening_.end())*it->second=false;
+  Opening opening{*this,id,std::make_shared<bool>(true)};opening_[id]=opening.current;
+  stopSession(id);if(!*opening.current)throw std::runtime_error("Extension session open was superseded");
+  auto session=std::make_shared<Session>(id,++next_,std::move(extension),permissions,std::move(locale),storage_,drops_,registry_,std::move(deliver),std::move(handlers),std::move(commands));
   session->unregister=registry_.registerRuntime(id,[weak=std::weak_ptr<Session>(session)](const auto& event){if(auto live=weak.lock();live&&live->active)live->events.event(event);});session->projectSubscription=std::make_shared<ProjectEventSubscription>([weak=std::weak_ptr<Session>(session)](const auto& event){if(auto live=weak.lock();live&&live->active)live->events.event(event);});if(session->editorEventsAllowed)session->interactions=std::make_shared<InteractionEvents>([weak=std::weak_ptr<Session>(session)](const auto& event){if(auto live=weak.lock();live&&live->active)live->events.event(event);});sessions_[id]=session;return {id,session->generation};
  }
  // The application captures the initial scalar snapshot at subscription time.
@@ -67,12 +88,12 @@ public:
  void setDiagnosticServices(const Token& token,DiagnosticServices services){if(auto s=find(token.extensionId,token.generation))s->requests.setDiagnosticServices(std::move(services));}
  void setServices(const Token& token,HostServices services){if(auto s=find(token.extensionId,token.generation))s->requests.setServices(std::move(services));}
  void setResourceReader(const Token& token,std::function<FileDropRouter::Bytes(const std::string&)> reader){if(auto s=find(token.extensionId,token.generation))s->requests.setResourceReader(std::move(reader));}
- void close(const std::string& id){auto it=sessions_.find(id);if(it==sessions_.end())return;auto session=it->second;sessions_.erase(it);session->stop();}
+ void close(const std::string& id){if(auto it=opening_.find(id);it!=opening_.end())*it->second=false;stopSession(id);}
  void close(const Token& token){if(find(token.extensionId,token.generation))close(token.extensionId);}
  void loaded(const Token& token,const RuntimeEvent& project){if(auto s=find(token.extensionId,token.generation))s->events.loaded(s->id,s->locale,project);}
  void loadFailed(const Token& token){if(auto s=find(token.extensionId,token.generation))s->events.loadFailed();}
  void localeChanged(const std::string& locale){std::vector<std::shared_ptr<Session>> snapshot;for(const auto& p:sessions_)snapshot.push_back(p.second);for(const auto& s:snapshot)if(s->active){s->locale=locale;s->events.localeChanged(locale);}}
- std::optional<winrt::Windows::Data::Json::JsonObject> request(const Token& token,const winrt::Windows::Data::Json::IJsonValue& request,std::optional<std::string> encoded={}){if(auto s=find(token.extensionId,token.generation))return s->requests.handle(request,true,s->locale,std::move(encoded),[this,s](std::wstring id,std::wstring params){auto task=networkStart_(id,std::move(params));task.requestId=std::move(id);s->network.push_back(std::move(task));});return {};}
+ std::optional<winrt::Windows::Data::Json::JsonObject> request(const Token& token,const winrt::Windows::Data::Json::IJsonValue& request,std::optional<std::string> encoded={}){if(auto s=find(token.extensionId,token.generation)){auto response=s->requests.handle(request,true,s->locale,std::move(encoded),[this,s](std::wstring id,std::wstring params){auto task=networkStart_(id,std::move(params));if(!s->active){task.cancel();return;}task.requestId=std::move(id);s->network.push_back(std::move(task));});if(s->active)return response;}return {};}
  // Call on the event thread; stale generations and disabled sessions never publish.
  std::vector<winrt::Windows::Data::Json::JsonObject> pollResponses(const Token& token){
   std::vector<winrt::Windows::Data::Json::JsonObject> responses;if(auto s=find(token.extensionId,token.generation)){

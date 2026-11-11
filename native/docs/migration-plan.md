@@ -7031,3 +7031,12 @@ Aseprite 源码对照：src/app/extensions.cpp installCompressedExtension 的逐
 同时核对现有MIT Aseprite ui/widget.cpp：setBounds即使矩形不变仍调用onResize，setBoundsQuietly也总会invalidate。栏目pump此前每次强制设置clamped矩形，导致窗口及按钮重复布局/重绘；现仅坐标变化才设置，视口重映射同样检查。新真实窗口检查在绘制完成后连续100次pump保持update region为空，保留原拖动尺寸/滚动/持久化检查。此证据修正此前“未变更pump不布局”的过宽描述；未修改第三方源码。正式构建、运行与图像验收待补；生产JS/HTML及整体迁移仍INCOMPLETE，保留用户editor_support.h和未跟踪数据。
 
 阶段最终验收：唯一正式Release构建成功；extension-preferences-ui、extension-menus-ui、extension-settings-ui、extension-contributions、extension-session-host五项全部通过4.46秒。菜单专项包含真实栏目Lua/Runtime/设置路由、菜单隐藏不影响栏目、排队后忙碌/旧generation拒绝、真实设置修改与closeOnRun，以及绘制后100次空闲pump不产生update region。runtime-menus-passed及panels/passed标记本轮23:50:31。正式--script-entry-check实际进程exit0，贡献菜单marker23:50:55。人工查看本轮panel.bmp：220×150逻辑尺寸的标题/说明换行、原properties图标、双行按钮和滚动条无重叠；未测1×、所有显示器组合及全软件FPS。来源覆盖835项/快照/diff通过。Production JS/HTML与整体迁移仍INCOMPLETE；此阶段提交推送dev，用户editor_support.h和全部未跟踪数据保持。
+
+
+### 2026-11-12 原生扩展会话异常与重入清理闭环（验收中）
+
+对照legacy ExtensionRuntimeHost卸载时clear command state、deactivate、清空pendingEvents和pendingWindowClosures，再核对原生SessionHost/RequestHost同步回调边界。原生需要技术适配：先撤销共享注册/drop/menu/window所有权，再触发取消/停用回调，清理各项独立执行并于最后重抛首个异常；任务cancel或菜单观察者抛异常也继续关闭窗口/事件。析构开始后拒绝重开会话，防止回调复活。按ID挂起open票据保证清理回调内最新open/close取代外层open，不覆盖新会话/drop规则；失效票据显式失败且RAII移除。同步服务执行及后台任务启动后复核原会话active，关闭后不发布回复，启动期间关闭则立即取消返回任务。未新增JS执行器或改变已登记权限/API。
+
+新增确定性真实SessionHost/WindowRouter测试覆盖取消异常+观察者异常仍完成全部清理、任务启动期间关闭、同步剪贴板关闭后不回旧回复、deactivate重入open及取消回调重入open保留新drop规则、close取消挂起open后恢复、析构禁止复活。修复前第一项实际失败，修复后夹具漏commands权限造成错误类型预期失败，已改为检查菜单初始化响应并补权限；正式最终构建和运行待补。保留用户editor_support.h/全部未跟踪数据，整体迁移及生产JS/HTML仍INCOMPLETE。
+
+阶段最终验收：唯一正式Release构建成功；extension-workspace-ui、extension-menus-ui、extension-settings-ui、extension-session-host、extension-request-host、extension-event-lifecycle、extension-windows七项全部通过3.05秒。新增组合用例补齐commands权限后最终通过；覆盖真实SessionHost/WindowRouter重入与异常边界及原生实际窗口/菜单/工作区既有回归。没有视觉布局修改，不新增图像/FPS验收，不将测试回调当成生产JS执行器。来源覆盖835项和证据快照、diff检查通过；生产JS/HTML及整体迁移继续INCOMPLETE。阶段提交推送dev，保留用户editor_support.h及未跟踪数据。

@@ -76,7 +76,12 @@ public:
  void setDiagnosticServices(DiagnosticServices services){diagnostics_=std::move(services);}
  void setServices(HostServices services){services_=std::move(services);}
  void setResourceReader(std::function<FileDropRouter::Bytes(const std::string&)> reader){readResource_=std::move(reader);}
- void deactivate(){if(!active_)return;active_=false;drops_.clear(extension_.id);menus_.clear();if(windows_)windows_->deactivate();}
+ void deactivate(){
+  if(!active_)return;active_=false;auto windows=std::move(windows_);
+  std::exception_ptr failure;auto cleanup=[&](auto&& action){try{action();}catch(...){if(!failure)failure=std::current_exception();}};
+  cleanup([&]{drops_.clear(extension_.id);});cleanup([&]{menus_.clear();});cleanup([&]{if(windows)windows->deactivate();});
+  if(failure)std::rethrow_exception(failure);
+ }
  std::optional<winrt::Windows::Data::Json::JsonObject> handle(const winrt::Windows::Data::Json::IJsonValue& raw,bool ownsSession,const std::string& locale,std::optional<std::string> encodedValue={},std::function<void(std::wstring,std::wstring)> deferNetwork={}){
   using namespace winrt::Windows::Data::Json;
   if(!ownsSession||!active_||!extension_.enabled||!raw||raw.ValueType()!=JsonValueType::Object)return {};
