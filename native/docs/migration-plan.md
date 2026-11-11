@@ -6701,3 +6701,9 @@ PNG后台解码完成后保留像素及私有surface，每次pump最多上传262
 阶段验收完成：统一正式Release构建成功。首次运行4项UI启动崩溃，构建日志核对发现先前编译期间头文件变化留下12个旧Editor对象单元；仅更新时间触发对应源重编译（含main），重新链接后7项全部通过12.60秒：extension-workspace-ui、multi-document、palette-mouse-startup、color-editor-popup、selection-pattern-brush、image-brush、extension-request-host。新增swapPaletteRoles严格保留各会话前景色选择ID为背景关联，并按旧版有序色板匹配新前景；实际检查含新文档继承、背景色色块不传播其他文档、普通图像不重映射。此前失败日志保留，未删用户数据。来源824文件与diff检查通过；无人工UI/FPS测量，整体迁移仍INCOMPLETE。本阶段提交推送dev。
 
 用户补充决定：文件导入保留原生当前模型校验与提前取消。完成时采用最新模型，控件隐藏/禁用/移除/改变类型时提前取消；不改回旧版选择文件时固定action/multiple。该差异已登记到现有文件导入来源项，本次没有新增导入实现改动。
+
+### 2026-11-11：各工程工具配置恢复（验证中）
+
+对照legacy workspace-session.ts DocumentSession/createSession/copyCanvasToolSettings与workspace-commands-session.ts setActive：工程切换仅切活动对象，各自保留工具与配置。原生storeActiveProject保存已迁移工具标志、选区/形状/填充/渐变参数、笔刷及墨水profiles、图像资源引用、动态/喷枪/液化/平滑/移动/取色配置；恢复移入文档后应用，按目标工程解析图像资源，临时笔刷继续沿现有路径还原。配置不包含手势/worker/UI指针，沿用settleProjectGesture。新工程恢复旧版pencil起始类别。真实Editor检查两工程子类型、容差、笔刷尺寸和平滑强度往返独立及历史不变。当前验证中，新工程完整持久化参数重新读取仍有缺口，整体INCOMPLETE。
+
+阶段验收：VS于本机更新至17.14.37906.3，原CMake实例版本失效；同一native/build更新实例配置，未删缓存/新建构建目录。链接报告C++/WinRT 2.0.250303.1/.5混用，按实际LNK2038列表更新旧对象对应源码时间触发重编译，最终唯一正式Release成功。extension-workspace-ui、color-editor-popup、multi-document、image-brush四项通过2.26秒；selection-interactions、canvas-resize（含临时笔刷捕获）两项通过3.30秒。来源824文件与diff检查通过。此次完成既有工程工具配置往返恢复，不宣称新工程全部持久化参数加载、完整工具迁移或UI性能人工验收完成。整体INCOMPLETE，用户editor_support.h及未跟踪文件保留，阶段推送dev。

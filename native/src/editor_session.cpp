@@ -14,6 +14,7 @@
 #include "timelapse_session.h"
 #include "project_restore_report.h"
 #include "runtime_diagnostics.h"
+#include <tuple>
 
 namespace moon::editor {
 namespace {
@@ -62,6 +63,19 @@ void Editor::storeActiveProject(){
 
     auto& slot=*projects_[activeProject_];slot.path=documentPath_;slot.canvas=canvas_;slot.zoom=zoom_;slot.rotation=viewRotation_;slot.tileRepeat=tileRepeatIdentity_==document.identity()?tileRepeat_:repeat::Mode::Off;saveLayerPanelState();saveDocumentView();
 
+    // Copy configuration only. Gesture jobs, capture, preview caches and UI
+    // pointers retain their existing settleProjectGesture lifecycle.
+#define MOON_SESSION_TOOLS \
+ selectionTool_,shapeTool_,eyedropperTool_,navigation_.zoomTool_,gradientTool_,fillTool_,handTool_,eraser_,moveTool_,textTool_,rotateTool_,smoothTool_,airbrushTool_,liquifyTool_,magicEraserTool_,sliceMode_, \
+ selectionMode_,selectionKind_,selectionRounded_,selectionCornerRadius_,selectionRotSprite_,selectionBrushAngle_,wandOptions_, \
+ shapeSpec_.kind,shapeRounded_,shapeRatio_,shapeRadius_,shapeRatioWidth_,shapeRatioHeight_,curveAnchorCount_, \
+ fillOptions_,fillPattern_,fillLibrarySelection_,fillImageName_,rememberGradientTool_,gradientSpec_.radial,gradientSpec_.dither,gradientOptions_,gradientStops_,gradientConfirm_,gradientFreeform_, \
+ brushFeedback_.brushProfiles_[0],brushFeedback_.brushProfiles_[1],inkProfiles_,syncInkAcrossTools_,pencilImageBrushId_,pencilImageBrushAngle_, \
+ brushDynamics_,airbrushSettings_,liquifyOptions_,smoothStrength_,smoothAngle_,moveAutoSelect_,eyedropperSource_,magicEraserContiguous_
+    auto settings=std::make_tuple(MOON_SESSION_TOOLS);
+    slot.restoreTools=[this,settings=std::move(settings)]{std::tie(MOON_SESSION_TOOLS)=settings;resolvePencilImageBrush();};
+#undef MOON_SESSION_TOOLS
+
     slot.layers=layerScroll_;slot.frames=frameScroll_;slot.layerRemainder=layerScrollRemainder_;slot.frameRemainder=frameScrollRemainder_;slot.paletteScroll=paletteScrollPixels_;
 
     slot.frameSelection=frameSelectionExplicit_;slot.guides=timelineSelectionGuidesVisible_;slot.recent=std::move(recentColors_);slot.pivot=selectionPivot_;slot.drawingAnchor=drawingAnchor_;slot.drawingAnchorVisible=drawingAnchorVisible_;slot.drawFromCanvasCenter=drawFromCanvasCenter_;
@@ -76,6 +90,7 @@ void Editor::restoreProject(std::size_t index){
 
     if(temporaryBrushCapture_||temporaryBrushActive_)exitTemporaryBrushCapture();
     activeProject_=index;auto& slot=*projects_[index];document=std::move(*slot.stored);applyDocumentPreferences(document);slot.stored.reset();documentPath_=slot.path;
+    if(slot.restoreTools)slot.restoreTools();
 
     canvas_=slot.canvas;zoom_=slot.zoom;viewRotation_=slot.rotation;tileRepeat_=slot.tileRepeat;tileRepeatIdentity_=document.identity();layerScroll_=slot.layers;frameScroll_=slot.frames;layerScrollRemainder_=slot.layerRemainder;frameScrollRemainder_=slot.frameRemainder;paletteScrollPixels_=slot.paletteScroll;
 
@@ -138,6 +153,9 @@ void Editor::addProject(Document next,std::filesystem::path path){
     projects_.push_back(std::make_unique<ProjectSession>());activeProject_=projects_.size()-1;
 
     drawingAnchor_=drawingAnchorDefaults_;drawingAnchorVisible_=drawingAnchorDefaultVisible_;drawFromCanvasCenter_=drawingAnchorDefaultEnabled_;document=std::move(next);if(colorRolesReady_){document.setPaletteRole(sharedPrimary_,false,true);document.setPaletteRole(sharedSecondary_,true,true);}applyDocumentPreferences(document,true);documentPath_=std::move(path);documentOpen_=true;homeOpen_=false;closingWorkspace_=false;
+    // createSession starts at pencil; switching an existing tab restores its
+    // own tool instead of inheriting the previously active document's flags.
+    selectionTool_=shapeTool_=eyedropperTool_=navigation_.zoomTool_=gradientTool_=fillTool_=handTool_=eraser_=moveTool_=textTool_=rotateTool_=smoothTool_=airbrushTool_=liquifyTool_=magicEraserTool_=sliceMode_=false;
 
     layerScroll_=frameScroll_=layerScrollRemainder_=frameScrollRemainder_=paletteScrollPixels_=0;
 

@@ -173,6 +173,8 @@ private:
 
   struct TemporaryBrushCapture { int kind=0,mode=0,radius=4; bool rounded=false; std::uint64_t identity=0; };
   struct ProjectSession {
+    // Legacy DocumentSession owns tool configuration independently of pixels.
+    std::function<void()> restoreTools;
 
     std::optional<Document> stored;
 

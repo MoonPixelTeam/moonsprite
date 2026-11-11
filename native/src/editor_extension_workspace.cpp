@@ -58,9 +58,12 @@ void Editor::smokeExtensionWorkspace(){
  smoke_=true;homeOpen_=false;documentOpen_=true;pending_=Pending::None;
  projects_.clear();document=Document::withBuiltinPalette(4,3,U"扩展工程一");ensureProjects();
  document.beginStroke({0,0},0xff123456);document.commitStroke();
+ useSelectionTool(1);selectionMode_=2;wandOptions_.tolerance=73;brushFeedback_.brushProfiles_[0].size=17;smoothStrength_=63;
  const auto first=std::to_string(document.identity());const auto firstHistory=document.historyPosition();
  addProject(Document::withBuiltinPalette(7,5,U"扩展工程二"));
  require(document.palette().primary==sharedPrimary_&&document.palette().secondary==sharedSecondary_,"New project shared color inheritance");
+ require(activeRailTool()=="pencil","New project did not start with pencil");
+ useShapeTool(ShapeKind::Ellipse);shapeRadius_=19;wandOptions_.tolerance=22;brushFeedback_.brushProfiles_[0].size=5;smoothStrength_=31;
  document.addLayer();document.setLayerOpacity(.375);document.setLayerVisible(false);document.addFrame();document.setFrameDuration(170);const auto second=std::to_string(document.identity());
  const auto history=document.historyPosition(),revision=document.contentRevision();
  extension::Storage storage(assets_.parent_path()/("extension-workspace-unused-"+std::to_string(GetCurrentProcessId())+".json"));
@@ -78,11 +81,13 @@ void Editor::smokeExtensionWorkspace(){
  require(document.historyPosition()==history&&document.contentRevision()==revision,"Queries mutated document");
  auto activate=[&](const std::string& id){JsonObject params;params.Insert(L"projectId",JsonValue::CreateStringValue(workspaceText(id)));return call("workspace.activateProject",params);};
  require(activate(first).GetNamedBoolean(L"ok")&&std::to_string(document.identity())==first&&document.historyPosition()==firstHistory,"Real project activation/history");
+ require(activeRailTool()=="selection.ellipse"&&selectionMode_==2&&wandOptions_.tolerance==73&&brushFeedback_.brushProfiles_[0].size==17&&smoothStrength_==63,"First project tool configuration was not restored");
  require(result("workspace.getActiveProject").GetObject().GetNamedString(L"id")==workspaceText(first),"Live active snapshot");
  require(result("document.undo").ValueType()==JsonValueType::Null&&document.historyPosition()+1==firstHistory,"Real undo");
  require(result("document.redo").ValueType()==JsonValueType::Null&&document.historyPosition()==firstHistory&&document.pixels()[0]==0xff123456,"Real redo pixels");
  require(!activate("missing").GetNamedBoolean(L"ok")&&std::to_string(document.identity())==first,"Invalid activation changed session");
  require(activate(second).GetNamedBoolean(L"ok")&&document.historyPosition()==history,"Other session history changed");
+ require(activeRailTool()=="shape.ellipse"&&shapeRadius_==19&&wandOptions_.tolerance==22&&brushFeedback_.brushProfiles_[0].size==5&&smoothStrength_==31,"Second project tool configuration was not restored");
  // Shared roles reach inactive documents without changing locked palettes/history.
  paletteLocked_=true;const auto colorHistory=document.historyPosition();
  auto setColor=[&](const char* method,Pixel value){JsonObject params;params.Insert(L"color",extension::colorSnapshot({int(value&255),int((value>>8)&255),int((value>>16)&255),int(value>>24)}));return call(method,params);};
