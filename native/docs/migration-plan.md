@@ -6833,3 +6833,10 @@ PNG后台解码完成后保留像素及私有surface，每次pump最多上传262
 对照legacy useBrushLibrary.ts customBrushes集合身份依赖，原生旧ID/名称key漏掉同身份像素替换。增加独立资源序号，验证导入后替换/成功删除/回档payload安装递增；Lua批次回滚保留非历史资源时保留该序号。栏目key以O(1)资源序号替代每次拼接全部名称，不影响文档脏标记/历史。真实Editor新增同ID/同名称只改像素，自动改变key并重载选择新像素的回归。正式构建进行中，整体INCOMPLETE。
 
 阶段验收完成：唯一正式Release完整重编译成功；新增像素选择fixture初次因双击同一项触发取消而失败，修正为清选择后单击，最终增量构建成功。实际笔刷栏目专项等待exit0，同ID/名称像素替换自动失效与新像素选择通过；project-rollback专项exit0。extension-workspace-ui、multi-document、canvas-resize通过1.99秒。来源824/diff通过。回档/Lua恢复序号路径仅源码核对加既有回档验收，未单独断言序号；无FPS声明，整体INCOMPLETE。用户editor_support.h及未跟踪数据保留，阶段提交推送dev。
+
+
+### 2026-11-11：工程笔刷发布与本地扫描分离（验证中）
+
+依据legacy useBrushLibrary.ts 42-76行：工程customBrushes的memo与本地异步刷新分开。原生本地扫描key保留工程身份/目录保护，工程资源序号改为单独发布缓存本地资源与最新工程集合，不再因工程资源变化重扫/解码全部本地PNG。共用选择清理事务，保留幸存项像素与顺序；本地扫描等待期间也允许工程更新，完成时合并最新集合。真实Editor回归锁住本地PNG，检查缓存地址/key不变、不启动扫描、同身份改像素选择、工程删除后本地幸存/最终清空，以及延迟结果合并最新工程资源。正式构建验证中，整体INCOMPLETE；未宣称FPS提升。
+
+阶段验收完成：唯一正式Release构建成功；实际笔刷栏目专项等待exit0，锁住本地PNG时工程改像素/删除不启动扫描且缓存地址/key不变，本地幸存项与最后选择清理、延迟扫描合并最新工程资源通过。extension-workspace-ui、multi-document、canvas-resize通过1.90秒；来源824/diff通过。未进行人工FPS/截图验收，整体INCOMPLETE。用户editor_support.h和未跟踪文件保留，阶段提交推送dev。
