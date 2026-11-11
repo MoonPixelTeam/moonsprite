@@ -6791,3 +6791,9 @@ PNG后台解码完成后保留像素及私有surface，每次pump最多上传262
 依据legacy workspace-commands-tool.ts createBrushFromSelection保存后激活生成像素、useBrushLibrary.ts importPaths激活最后成功资源：原生填充选区创建保存/移动成功后暂存完整选择/图案/活动像素/名称并提交，导入保留最后成功解码资源，不再apply重扫和读PNG。普通选区创建补齐返回profile记忆。沿用保存文件stem名称、原像素/alpha与来源映射，失败移动不覆盖旧选择。真实回归多PNG+末项缺失、半透明像素/coverage、目标目录/名称、移动失败保留及已有持久化重载。源解码/保存/移动仍同步，整体INCOMPLETE。
 
 阶段验收完成：唯一正式Release成功，实际--brush-library-panel-check等待exit0，多文件部分成功最后项/半透明像素coverage/目标目录名称/移动失败保留/持久化重载/选区捕获历史检查通过。selection-pattern-brush、extension-workspace-ui、multi-document、canvas-resize四项通过3.86秒。来源824文件及diff通过。源导入解码、保存、移动仍同步，后台缩略图刷新仍会读取资源；无人工FPS实测，整体INCOMPLETE。用户editor_support.h及未跟踪数据保留，阶段提交推送dev。
+
+### 2026-11-11：临时笔刷转持久资源生命周期（验证中）
+
+依据legacy workspace-commands-tool.ts setBrushImage明确brushImageTemporary=false，原生修复成功选择本地/工程资源、栏目/菜单、导入、选区创建后仍残留temporaryBrushActive导致保存排除资源的缺陷。成功提交才清标记，原返回profile保留；失败选择/导入继续保留临时状态。普通资源清除入口同时清理临时标记。真实回归覆盖缺失资源选择保持临时标记、成功选择保留size11返回profile并重载资源、导入/选区创建从临时标记转持久并重载；临时捕获本身保持原语义。构建验证中，整体INCOMPLETE。
+
+阶段验收完成：唯一正式Release成功；实际--brush-library-panel-check等待exit0，失败选择保留临时标记、成功选择保留size11返回profile并清标记/实际偏好重读、导入和选区创建从临时状态持久化通过。selection-pattern-brush、extension-workspace-ui、multi-document、selection-interactions、canvas-resize五项通过5.64秒。来源824文件与diff通过，无实际菜单点击/人工FPS验收；整体INCOMPLETE。用户editor_support.h与未跟踪数据保留，阶段提交推送dev。
