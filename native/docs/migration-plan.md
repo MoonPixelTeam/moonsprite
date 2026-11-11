@@ -6627,3 +6627,9 @@ PNG后台解码完成后保留像素及私有surface，每次pump最多上传262
 沿用既有最终control检查会拒绝隐藏/禁用/移除/非file目标的语义，将校验提前至每次读取/编码pump。FormState::continueImport先核对ticket所有权，再按当前模型可见性、type和disabled检查；失效时解除该任务busy。FormWindow取消后台任务或释放部分编码并sync，避免已无有效接收目标的文件仍读完/编码完。新任务不被旧ticket检查解锁；null/非字符串type安全拒绝。没有改变有效文件payload及最终提交范围。
 
 唯一正式Release及状态测试构建成功，extension-form-ui/image/files/state四项通过2.82秒。正式窗口矩阵扩展为retry、禁用、移除、变button、条件隐藏、关闭六路径，每路径first pump即清编码/busy，无旧发送，恢复模型按钮enabled。状态覆盖空类型、隐藏及新旧ticket隔离。来源821文件/diff通过。OS已阻塞read仍需返回后协作取消，无物理慢盘性能测量；整体迁移及待确认生产执行器INCOMPLETE。保留editor_support.h与用户数据，阶段提交推送dev。
+
+### 2026-11-11：文件导入全入口类型校验与恢复
+
+核对ExtensionDialogForm switch(node.type)未知类型不渲染/执行，发现原生部分file入口直接GetString导致null/非字符串可能抛异常。统一fileNode安全判定，覆盖beginImport、importFiles、files、encodeImport、分批finishImport；encode前复用continueImport完成类型/可见/禁用校验。无效模型安全拒绝并恢复所属任务busy，有效模型可再次导入。
+
+唯一正式Release及状态测试构建成功，extension-form-ui/image/files/state四项通过2.77秒。新增七种无效type×编码前/编码完成/直接完成三路径，以及入口不调用chooser，均验证恢复；测试模型独立深拷贝避免共享nodes污染。来源821文件/diff通过。另识别旧版选择时固定multiple/action与原生采用当前模型的语义差异，已向用户提交选择，未擅自更改。生产执行器方案及整体迁移仍INCOMPLETE。保留editor_support.h及用户数据，阶段提交推送dev。

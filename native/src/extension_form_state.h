@@ -26,6 +26,7 @@ class FormState {
  }
  static Value property(const Object& object,const wchar_t* key){return object.HasKey(key)?object.GetNamedValue(key):Value{nullptr};}
  static bool nullish(const Value& value){return !value||value.ValueType()==Type::Null;}
+ static bool fileNode(const Object& node){const auto type=property(node,L"type");return type&&type.ValueType()==Type::String&&type.GetString()==L"file";}
  static bool truthy(const Value& value){if(nullish(value))return false;if(value.ValueType()==Type::Boolean)return value.GetBoolean();if(value.ValueType()==Type::String)return !value.GetString().empty();if(value.ValueType()==Type::Number)return value.GetNumber()!=0;return true;}
  static bool equal(const Value& a,const Value& b){if(!a||!b)return !a&&!b;if(a.ValueType()!=b.ValueType())return false;switch(a.ValueType()){case Type::Null:return true;case Type::Boolean:return a.GetBoolean()==b.GetBoolean();case Type::Number:return a.GetNumber()==b.GetNumber();case Type::String:return a.GetString()==b.GetString();default:return a==b;}}
  void defaults(const Array& nodes,Object& out,int depth=0)const{if(depth>8)return;for(const auto& value:nodes){if(value.ValueType()!=Type::Object)continue;const auto node=value.GetObject();const auto id=property(node,L"id");if(id&&id.ValueType()==Type::String&&node.HasKey(L"value"))out.Insert(id.GetString(),node.GetNamedValue(L"value"));const auto children=property(node,L"children");if(children&&children.ValueType()==Type::Array)defaults(children.GetArray(),out,depth+1);}}
@@ -57,18 +58,17 @@ public:
    Object entry;entry.Insert(L"name",Json::CreateStringValue(input.name));entry.Insert(L"mime",Json::CreateStringValue(input.mime));entry.Insert(L"bytes",bytes);encoded.Append(entry);std::vector<std::uint8_t>().swap(input.bytes);bytes=Array{};++file;offset=0;
   }return true;}
  };
- std::optional<ImportEncoding> encodeImport(const ImportTicket& ticket,std::vector<File> selected){if(!ownsImport(ticket))return {};const auto node=find(view_.GetNamedArray(L"nodes"),ticket.id,defaults_);if(!node){busy_=false;return {};}
+ std::optional<ImportEncoding> encodeImport(const ImportTicket& ticket,std::vector<File> selected){if(!continueImport(ticket))return {};const auto node=find(view_.GetNamedArray(L"nodes"),ticket.id,defaults_);
   const bool single=node->HasKey(L"multiple")&&property(*node,L"multiple").ValueType()==Type::Boolean&&!node->GetNamedBoolean(L"multiple");
   if(single&&selected.size()!=1){fileFailed(L"请选择一个动画文件。");return {};}std::size_t total=0;for(const auto& file:selected){if(file.bytes.size()>16u*1024*1024-total){fileFailed(L"最多 16 个文件，合计不超过 16 MiB。");return {};}total+=file.bytes.size();}if(selected.size()>16){fileFailed(L"最多 16 个文件，合计不超过 16 MiB。");return {};}return ImportEncoding{ticket,std::move(selected)};
  }
- std::optional<Object> finishImport(ImportEncoding& encoding){if(!ownsImport(encoding.ticket)||encoding.file!=encoding.files.size())return {};busy_=false;auto node=control(encoding.ticket.id);if(!node||property(*node,L"type").GetString()!=L"file")return {};Object extra;extra.Insert(L"files",encoding.encoded);return send(action(*node),extra);}
- std::optional<ImportTicket> beginImport(const std::wstring& id){auto node=control(id);if(!node||property(*node,L"type").GetString()!=L"file")return {};busy_=true;return ImportTicket{id,generation_,++sequence_};}
+ std::optional<Object> finishImport(ImportEncoding& encoding){if(!ownsImport(encoding.ticket)||encoding.file!=encoding.files.size())return {};busy_=false;auto node=control(encoding.ticket.id);if(!node||!fileNode(*node))return {};Object extra;extra.Insert(L"files",encoding.encoded);return send(action(*node),extra);}
+ std::optional<ImportTicket> beginImport(const std::wstring& id){auto node=control(id);if(!node||!fileNode(*node))return {};busy_=true;return ImportTicket{id,generation_,++sequence_};}
  bool ownsImport(const ImportTicket& ticket)const{return active_&&generation_==ticket.generation&&sequence_==ticket.sequence&&busy_&&pending_.empty();}
  bool continueImport(const ImportTicket& ticket){
   if(!ownsImport(ticket))return false;
   const auto node=find(view_.GetNamedArray(L"nodes"),ticket.id,defaults_);
-  const auto type=node?property(*node,L"type"):Value{nullptr};
-  if(node&&type&&type.ValueType()==Type::String&&type.GetString()==L"file"&&!truthy(property(*node,L"disabled")))return true;
+  if(node&&fileNode(*node)&&!truthy(property(*node,L"disabled")))return true;
   // Final submission already rejects this target. Stop its expensive work now.
   busy_=false;return false;
  }
@@ -94,14 +94,14 @@ public:
   else if(kind!=L"button"&&kind!=L"choice"&&kind!=L"dialog")return {};return send(action(*node),extra);
  }
  std::optional<Object> context(const std::wstring& id){auto node=control(id);if(!node||!node->HasKey(L"contextAction"))return {};auto message=send(action(*node,L"contextAction"),Object{});values_=Object{};return message;}
- std::optional<Object> files(const std::wstring& id,const std::vector<File>& files){auto node=control(id);if(!node||property(*node,L"type").GetString()!=L"file")return {};const bool single=node->HasKey(L"multiple")&&node->GetNamedValue(L"multiple").ValueType()==Type::Boolean&&!node->GetNamedBoolean(L"multiple");
+ std::optional<Object> files(const std::wstring& id,const std::vector<File>& files){auto node=control(id);if(!node||!fileNode(*node))return {};const bool single=node->HasKey(L"multiple")&&node->GetNamedValue(L"multiple").ValueType()==Type::Boolean&&!node->GetNamedBoolean(L"multiple");
   auto fail=[&](const wchar_t* message)->std::optional<Object>{view_.Insert(L"status",Json::CreateStringValue(message));busy_=false;return {};};if(single&&files.size()!=1)return fail(L"请选择一个动画文件。");if(files.size()>16)return fail(L"最多 16 个文件，合计不超过 16 MiB。");std::size_t total=0;for(const auto& file:files){if(file.bytes.size()>16u*1024*1024-total)return fail(L"最多 16 个文件，合计不超过 16 MiB。");total+=file.bytes.size();}
   Array encoded;for(const auto& file:files){Object entry;entry.Insert(L"name",Json::CreateStringValue(file.name));entry.Insert(L"mime",Json::CreateStringValue(file.mime));Array bytes;for(auto byte:file.bytes)bytes.Append(Json::CreateNumberValue(byte));entry.Insert(L"bytes",bytes);encoded.Append(entry);}Object extra;extra.Insert(L"files",encoded);return send(action(*node),extra);
  }
  // Synchronous native choosers can dispatch session callbacks while open.
  // Keep chooser/read failures and selected bytes within their original session.
  std::optional<Object> importFiles(const std::wstring& id,const std::function<std::optional<std::vector<File>>()>& choose){
-  const auto node=control(id);if(!node||property(*node,L"type").GetString()!=L"file")return {};
+  const auto node=control(id);if(!node||!fileNode(*node))return {};
   const auto generation=generation_,sequence=sequence_;
   const auto current=[&]{return active_&&generation_==generation&&sequence_==sequence;};
   try{const auto selected=choose();if(selected&&current())return files(id,*selected);}
