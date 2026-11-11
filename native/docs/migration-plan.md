@@ -7004,3 +7004,12 @@ Aseprite 源码对照：src/app/extensions.cpp installCompressedExtension 的逐
 使用现有FIFO原子写入队列，捕获期间不保存几何、合并快照，失败一次报告且不自动无限重试，下一次用户变更再保存；未变更pump不重排/重建控件或读写磁盘，文本按宽度线性缓存。偏好保留未知键及停用栏目的存储值；未变更声明保留窗口、滚动和焦点。初次读取是有界1MiB同步偏好文件，不称慢盘已完全优化。新增实际UI检查覆盖菜单、命令路由和资格、滚动、显隐/尺寸、停用重启用、磁盘重开及写入失败。正式构建、检查和图像验收待补；生产JS/动态菜单/HTML设置等仍INCOMPLETE。保留用户editor_support.h及所有未跟踪文件，不清理用户数据。
 
 阶段最终验收：唯一正式Release构建成功。extension-menus-ui通过1.40秒，覆盖新栏目实际模型窗口/命令/菜单/滚动/默认显隐、隐藏重开几何、停用/重启用、磁盘重开、未知偏好保留以及锁文件写入失败后停止自动重试和下一次变更成功保存；passed.txt本轮23:12:47。其余extension-preferences-ui、extension-settings-ui、extension-contributions三项全部通过2.81秒。正式--script-entry-check实际进程exit0，确认已有生产发现/More/贡献Lua路由未回归；该旧生产场景没有新增面板声明，面板本身以新增实际适配器/窗口夹具验收，不扩大为生产插件全量验收。人工查看panel.bmp：220×150逻辑像素下标题与说明换行、properties图标、双行按钮和滚动条无重叠，未测所有语言/显示器；顶部叠加菜单为夹具。首次失败是空菜单hasSubmenu返回false的Aseprite契约，已改为检查子菜单指针，最终通过；此前错误日志保留。来源覆盖834项与快照、diff检查通过。尚未完成生产JS、动态Runtime菜单、HTML设置及整体迁移，目标继续active；本阶段提交并推送dev。
+
+
+### 2026-11-11 扩展设置窗口几何与内容自适应（验收中）
+
+对照ExtensionSettingsDialog的ModalShell storageKey、ModalShell与useFloatingPanel/panel-preferences，补齐按扩展记忆窗口几何、未手动缩放时省略height并随条件内容适配、手动缩放后保留高度、视口变化按旅行范围重映射、无效/过大数据回退。原生默认/最小几何继续遵循用户当前内容排版规格；最大720承接旧版。使用独立extension-settings-geometry.json保留未知键，不占扩展存储配额；Storage仅新增只读路径访问器。拖动期间不写盘，复用现有后台FIFO原子写入并合并，失败一次显示且不盲重试，关闭前提交最新快照，不等待磁盘。初始偏好读取仍为1MiB上限同步读取，不声称全部慢盘问题已解决。定时器在未变更时不布局/重绘；保存错误与设置值错误分开。
+
+新增实际设置窗口关闭/重开与模型检查覆盖自动/手动尺寸、条件显隐、小视口、非零屏幕原点、未知键保留及失败后后续变更保存。源码/来源核对完成，正式构建、运行和图像验收待补。主按钮/危险按钮缺少现有皮肤对应素材，HTML设置与生产JS等仍INCOMPLETE，不自行绘制近似样式或缩减兼容目标。保留用户editor_support.h与全部未跟踪数据。
+
+阶段最终验收：唯一正式Release最终构建成功；extension-preferences-ui、extension-menus-ui、extension-settings-ui、extension-contributions、extension-storage五项全部通过5.63秒。实际设置窗口检查覆盖关闭前保存、240×160逻辑像素显式尺寸重开、条件显隐后保持手动高度；模型检查覆盖省略height继续内容适配、非零原点、小视口边界、未知键、锁文件失败及下一次变更恢复。新增确定性阻塞FIFO写入检查：待保存快照未写盘前立即重开仍恢复最新尺寸，期间不等待后台；最后增加未变更几何缓存，最终构建已包含该优化，避免30ms定时器反复序列化JSON。geometry-passed.txt最终更新时间23:23:55。人工查看最终settings.bmp，标题、滚动正文、固定重置/完成无重叠；未测所有语言/多显示器组合，不把单图检查当全软件性能验收。来源覆盖835项及快照/diff检查通过。旧错误日志保持原样，未将旧JSON缺键记录当作本轮失败。当前初次读取仍同步；主/危险按钮素材、HTML设置、生产JS与整体迁移继续INCOMPLETE。本阶段提交推送dev，保留用户editor_support.h及全部未跟踪数据。

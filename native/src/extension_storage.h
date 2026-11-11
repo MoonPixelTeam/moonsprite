@@ -15,6 +15,7 @@ class Storage {
  static void validateKey(const std::u16string&);
 public:
  explicit Storage(std::filesystem::path);
+ const std::filesystem::path& path()const{return path_;}
  winrt::Windows::Data::Json::IJsonValue get(const std::u16string& extension,const std::u16string& key)const;
  void setEncoded(const std::u16string& extension,const std::u16string& key,const std::string& json);
  void remove(const std::u16string& extension,const std::u16string& key);
