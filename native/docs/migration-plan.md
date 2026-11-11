@@ -6797,3 +6797,9 @@ PNG后台解码完成后保留像素及私有surface，每次pump最多上传262
 依据legacy workspace-commands-tool.ts setBrushImage明确brushImageTemporary=false，原生修复成功选择本地/工程资源、栏目/菜单、导入、选区创建后仍残留temporaryBrushActive导致保存排除资源的缺陷。成功提交才清标记，原返回profile保留；失败选择/导入继续保留临时状态。普通资源清除入口同时清理临时标记。真实回归覆盖缺失资源选择保持临时标记、成功选择保留size11返回profile并重载资源、导入/选区创建从临时标记转持久并重载；临时捕获本身保持原语义。构建验证中，整体INCOMPLETE。
 
 阶段验收完成：唯一正式Release成功；实际--brush-library-panel-check等待exit0，失败选择保留临时标记、成功选择保留size11返回profile并清标记/实际偏好重读、导入和选区创建从临时状态持久化通过。selection-pattern-brush、extension-workspace-ui、multi-document、selection-interactions、canvas-resize五项通过5.64秒。来源824文件与diff通过，无实际菜单点击/人工FPS验收；整体INCOMPLETE。用户editor_support.h与未跟踪数据保留，阶段提交推送dev。
+
+### 2026-11-11：笔刷库排序与元数据读取成本（验证中）
+
+对照legacy platform_brushes.rs list_brushes：顺序表首个匹配位置优先、缺失置末，再按名称/ID；原生以一次first-emplace索引替代每次排序比较线性搜索，保留该顺序语义。sourceX/Y解析正则静态编译复用，保留有符号/溢出缺失语义。回归新增重复顺序ID、缺失ID、外部未登记PNG、跨目录排序、重开与元数据边界，保留并发原子顺序替换检查。构建验证中，无性能量化声明；整体INCOMPLETE。
+
+阶段验收：唯一正式Release与pattern-brush-library-tests构建成功，实际笔刷栏目专项等待exit0；extension-workspace-ui、multi-document、canvas-resize通过。底层首次并发读取/替换顺序测试Windows error5失败，同一二进制单独复验通过15.07秒；新增排序与元数据边界通过，首次替换失败原因未证明，不称修复。来源824/diff通过，无量化耗时或FPS声明。整体INCOMPLETE，用户editor_support.h和未跟踪数据保留，阶段提交推送dev。

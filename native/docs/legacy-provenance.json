@@ -8975,6 +8975,8 @@
     },
     {
       "file": "src/pattern_brush_library.cpp",
+      "brushLibraryLookupCostValidation20261111": "Official Release and pattern-brush-library-tests builds successful; waited brush-library-panel-check exit0. Initial pattern-brush-library test failed replacing order file Windows error5 during concurrent listing/reorder; single same-binary rerun passed15.07s. Initial failure cause remains unproven, not claimed fixed. extension-workspace-ui/multi-document/canvas-resize passed. New ordering/metadata fixture passed on rerun, provenance824/diff pass. No quantitative latency claim; overall incomplete.",
+      "brushLibraryLookupCost20261111": "Legacy platform_brushes.rs list_brushes order.iter().position first-match, missing MAX then name/ID preserved exactly. Native builds first-emplace ID rank once instead of linear find in every comparator, static compiled sourceX/Y regex reused across files/scans while preserving signed/overflow optional parsing. No ordering/metadata product behavior change. Validation pending.",
       "classification": "legacy-partial",
       "sources": [
         "legacy/src-tauri/src/platform_brushes.rs",
@@ -9002,6 +9004,8 @@
     },
     {
       "file": "tests/pattern_brush_library_test.cpp",
+      "brushLibraryLookupCostValidation20261111": "Official Release and pattern-brush-library-tests builds successful; waited brush-library-panel-check exit0. Initial pattern-brush-library test failed replacing order file Windows error5 during concurrent listing/reorder; single same-binary rerun passed15.07s. Initial failure cause remains unproven, not claimed fixed. extension-workspace-ui/multi-document/canvas-resize passed. New ordering/metadata fixture passed on rerun, provenance824/diff pass. No quantitative latency claim; overall incomplete.",
+      "brushLibraryLookupCost20261111": "Actual platform_brushes.rs list_brushes order-position then name/ID evidence: fixture duplicate order IDs, absent ID, external unlisted PNGs and nested folder order, reopen same first ID. Metadata signed sourceX and overflowing sourceY absence checks preserve native existing parser behavior; background atomic order test remains. Validation pending.",
       "classification": "legacy-partial",
       "sources": [
         "legacy/src-tauri/src/platform_brushes.rs",
