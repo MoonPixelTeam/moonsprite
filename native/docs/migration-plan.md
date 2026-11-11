@@ -6779,3 +6779,7 @@ PNG后台解码完成后保留像素及私有surface，每次pump最多上传262
 依据legacy useBrushLibrary.ts加载全部资源、BrushLibraryPanel.tsx按currentFolderId过滤与缺失目录回根：导航不再参与IO key，不触发重复全库扫描解码；切换以已有索引发布当前目录，保留跨目录选择。扫描期间导航结果按最新位置发布。文件夹菜单复用已载入目录，创建/重命名/移动/确认删除补齐显式刷新标记，避免依赖旧folder key偶然刷新。真实smoke独占锁图案后跨目录导航与Ctrl选择、缺失目录回退，原创建/取消/父目录快捷键回归。初始化偏好及显式资源操作仍同步，整体INCOMPLETE。
 
 阶段验收：唯一正式Release最终构建成功；首次笔刷专项在既有partial/drop dedupe断言失败，同一二进制再次运行等待exit0，新锁文件导航/跨目录多选/缺失目录回退及创建快捷键通过。首次失败可能受一秒去重时限影响，但原因未被证明，保留失败记录，不称该不稳定检查已修复。extension-workspace-ui、multi-document、canvas-resize三项通过3.29秒。来源824文件与diff通过，无人工FPS/截图验收；整体INCOMPLETE。用户editor_support.h与未跟踪数据保留，阶段提交推送dev。
+
+### 2026-11-11：隐藏栏目菜单刷新请求生命周期（验证中）
+
+对照legacy useBrushLibrary.ts refresh不因已有缓存或栏目隐藏取消：原生菜单使用旧缓存时仅在没有pending扫描时释放menuRequested，避免隐藏栏目新结果被当作无人请求丢弃。新增实际生产poll隐藏栏目刷新期间导航至另一目录，验证按最新位置发布并释放请求。前一阶段partial/drop dedupe失败加入accepted/hover/前后资源数/status诊断，尚无证据证明旧失败原因，不改去重语义。构建验证中；整体INCOMPLETE。
