@@ -6866,3 +6866,10 @@ PNG后台解码完成后保留像素及私有surface，每次pump最多上传262
 ### 2026-11-11：后台笔刷导入生产入口接入与验收
 
 完成上述未接入阶段：文件选择/拖放共用FIFO后台解码编码保存移动，UI timer非阻塞poll后发布最后成功CPU资源，部分失败保留成功结果。工程隔离新方案未获决定，因此遵守迁移规则沿用legacy useBrushLibrary.ts完成时活动工程激活；不再以可选新行为阻止原逻辑迁移。绘画/模态事务中暂缓发布，关闭等待全部存储任务完成且不回调UI。正式Release最终构建成功，笔刷栏目专项exit0覆盖生产held future100次poll、切工程、活动笔画不换刷/取消后激活，以及队列部分失败/FIFO/后续成功/PNG重开和既有导入拖放持久化。此前四项底层回归2.90秒通过。来源824/diff检查，未作FPS/人工图像验收。整体INCOMPLETE，用户editor_support.h与未跟踪数据保留，完成阶段提交推送dev。
+
+
+### 2026-11-11：后台导入与资源控制器发布衔接（验证中）
+
+对照legacy useBrushLibrary.ts先refresh后setBrushImage。原生异步导入先激活但旧缓存无新ID，遇工程资源序号变化会在新扫描完成前清理新笔刷。改为成功结果先登记已解码local/index/folder order及listing，保留工程/目录身份校验，再激活选择与后台刷新；不增加读取。真实production held scan+导入结果+工程revision发布+旧扫描拒绝+最终扫描保留选择回归，正式构建验证中，整体INCOMPLETE。
+
+阶段验收：正式Release与实际笔刷栏目专项exit0；导入登记/工程revision发布/延迟扫描/过期扫描拒绝/最终保留回归通过。multi-document、image-brush、canvas-resize通过；pattern-brush-library首次已知原子替换Windows error5失败，同一二进制隔离复验通过1.38秒，原因未证明，不称修复。来源824/diff通过，未做FPS实测，整体INCOMPLETE。保留用户editor_support.h与未跟踪文件，阶段提交推送dev。

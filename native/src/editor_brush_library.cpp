@@ -221,6 +221,16 @@ void Editor::importBrushLibraryImages(const std::vector<std::filesystem::path>& 
  auto& last=result.last;auto& loaded=result.loaded;
  try{
   if(last&&loaded){
+   // Legacy refresh resolves the new resource before activating it. Seed the
+   // decoded controller before activation so project-only publication cannot
+   // prune this new ID while the next directory scan is still pending.
+   auto scan=std::dynamic_pointer_cast<BrushScanWork>(getProperty("moonsprite.brush-scan"));
+   if(scan&&scan->loaded&&scan->loadedDocument==document.identity()&&scan->loadedDirectory==fillBrushLibraryDirectory()){
+    const auto found=scan->localIndex.find(last->id);
+    BrushLibraryPanel::Resource resource{last->id,unicodeText(last->name),*loaded};
+    if(found==scan->localIndex.end()){scan->localIndex.emplace(last->id,scan->loaded->local.size());scan->loaded->local.push_back(std::move(resource));scan->loaded->listing.brushes.push_back(*last);scan->folderOrder[last->folderId].push_back(last->id);}
+    else scan->loaded->local[found->second]=std::move(resource);
+   }
    PatternBrushSelection selection;selection.ids={last->id};selection.active=selection.anchor=last->id;
    std::vector<PatternBrush> patterns{*loaded};auto active=*loaded;auto name=unicodeText(std::filesystem::u8path(last->filePath).stem().u8string());
    if(!temporaryBrushReturnProfile_)temporaryBrushReturnProfile_=brushFeedback_.brushProfiles_[0];
@@ -364,6 +374,16 @@ void Editor::smokeBrushLibraryPanel(){
   auto work=std::make_shared<BrushImportWork>(this);setProperty(work);std::promise<BrushImportResult> held;work->future=held.get_future();work->pending=true;smoke_=false;
   const auto before=std::chrono::steady_clock::now();for(int i=0;i<100;++i)importBrushLibraryImages({},{});require(work->pending&&std::chrono::steady_clock::now()-before<std::chrono::seconds(2),"Production import waited for worker");
   document=Document(3,3);auto result=importBrushFiles(dir,{dir/"worker-input.png"},{});require(result.last&&result.loaded,"Completion fixture failed");const auto id=result.last->id;held.set_value(std::move(result));document.beginStroke({0,0},0xff123456);importBrushLibraryImages({},{});require(work->pending&&pencilImageBrushId_==oldId,"Import replaced active gesture brush");document.cancelStroke();importBrushLibraryImages({},{});require(!work->pending&&pencilImageBrushId_==id&&pencilImageBrush_&&pencilImageBrush_->colors==stamp.colors,"Production completion did not activate current session");
+  // Keep a loaded current controller but hold its replacement scan. A project
+  // revision must not treat the just-imported local resource as unavailable.
+  smoke_=true;syncBrushLibraryPanel(true);smoke_=false;
+  auto scan=std::dynamic_pointer_cast<BrushScanWork>(getProperty("moonsprite.brush-scan"));require(scan&&scan->loaded,"Import lifecycle controller unavailable");
+  std::promise<BrushScanResult> heldScan;scan->future=heldScan.get_future();scan->pending=true;
+  auto nextResult=importBrushFiles(dir,{dir/"worker-input.png"},{});const auto nextId=nextResult.last->id;
+  std::promise<BrushImportResult> nextImport;work->future=nextImport.get_future();work->pending=true;nextImport.set_value(std::move(nextResult));importBrushLibraryImages({},{});
+  require(pencilImageBrushId_==nextId&&scan->localIndex.count(nextId),"Import did not register activated resource in controller");
+  ProjectBrushResource project;project.metadata={"import-lifecycle","Import lifecycle","brushes/import.gray","brushes/import.rgba",2,1};project.brush=stamp;document.setImportedProjectBrushes({project});syncBrushLibraryPanel();require(pencilImageBrushId_==nextId&&pencilImageBrush_&&fillLibrarySelection_.ids==std::vector<std::string>({nextId}),"Project refresh pruned just-imported local brush");
+  BrushScanResult stale;stale.key="old-import-scan";heldScan.set_value(std::move(stale));syncBrushLibraryPanel();require(scan->pending&&pencilImageBrushId_==nextId,"Stale scan cleared imported selection");scan->future.wait();syncBrushLibraryPanel();require(!scan->pending&&pencilImageBrushId_==nextId,"Final scan lost imported resource");
   smoke_=true;document=std::move(previousDocument);pencilImageBrushId_=oldId;pencilImageBrush_=oldBrush;fillLibrarySelection_=oldSelection;fillPattern_.brushes=oldPatterns;brushLibraryNeedsReload_=true;syncBrushLibraryPanel(true);
  }
  // Both resource-producing entrypoints must use the same durable selection.
