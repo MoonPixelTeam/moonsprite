@@ -6966,3 +6966,12 @@ Aseprite 源码对照：src/app/extensions.cpp installCompressedExtension 的逐
 最终源码核对另发现MIT ui/menu.cpp的OpenPopup只在showPopup连接，菜单栏子菜单经kOpenMessage打开；新增局部ScriptDiscoveryMenu适配打开消息到既有扫描回调，补齐实际File→Scripts打开刷新入口，不改其他菜单。此前完整入口及四项回归13.68秒通过属最终前版本；适配后重新构建/验收。
 
 阶段最终验收：打开消息适配后的唯一正式Release构建成功，--script-entry-check完整实际进程再次exit0（本轮menu-discovery-passed.txt更新时间21:51:31），新增菜单增删/弹出布局与既有执行、对话框、工作区、保存导出、撤销重做流程通过。最终四项CTest中workspace/preferences/invocation通过，安装专项一次Unexpected installer failure，独立同版本重测通过1.58秒；根因未定位，不宣称相邻安装偶发问题已修复。此前同阶段四项曾全部通过13.68秒。来源覆盖828项/diff通过；无人工图像或FPS验收。整体INCOMPLETE，保留用户editor_support.h及全部未跟踪数据；阶段保存推送dev。
+
+
+### 2026-11-11 扩展安装检查取消与已接受事务生命周期（验收中）
+
+对照legacy useAppExtensions检查→确认→安装事务及platform_extensions.rs旧版本备份/恢复边界，保留取消不安装、确认后完成事务及回滚语义。原生检查阶段取消不再等待std::async磁盘future析构；复用已采用的进程FIFO/promise模式，丢弃观察立即关闭面板，后台成功/异常均不触达销毁UI。后台只持有路径/包快照，MTA逐任务初始化，正常进程退出drain。已接受安装仍禁止中断，补齐onBeforeClose覆盖宿主closeWindow，完成或失败后才可关闭。
+
+新真实模态用例阻塞检查到gate、等待3次UI tick后取消/析构且要求小于250ms，释放后分别正常检查/抛异常，确认无安装/状态写入；已接受安装阻塞gate，多次取消/宿主关闭仍保持窗口，释放后校验实际资源版本。保留坏包/替换禁用状态/锁状态文件回滚及滚动布局。诊断Unexpected installer failure现在包含实际显示错误。为定位旧偶发失败，修改生命周期前有界12次重复安装全部通过25.38秒，本轮未复现，不宣称修复，也不加入盲重试或更改旧事务逻辑。首批取消用例版本安装专项通过2.17秒，含已接受安装门禁的最终构建与检查待补。整体迁移及生产Runtime执行器仍INCOMPLETE。
+
+阶段验收：唯一正式Release最终构建成功；extension-install-ui、extension-preferences-ui、extension-runtime-directory、extension-workspace-ui四项全部通过5.93秒。实际模态验证gate挂起检查取消/析构小于250ms、后台成功/异常弃结果不安装、已接受事务拒绝多次取消/宿主关闭后真实落盘，以及原替换/坏包/禁用状态/锁状态回滚。对照现有MIT ui/window.cpp closeWindow→onBeforeClose门禁，未复制实现。未新增人工截图、慢盘实机或全软件FPS测量；OS已开始的检查read继续完成、正常进程退出仍drain。旧Unexpected installer failure日志保留，诊断批次未复现不视作根因修复。来源覆盖/diff待最终检查，整体INCOMPLETE；保留用户editor_support.h和未跟踪数据，阶段推送dev。
