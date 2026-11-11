@@ -7,6 +7,7 @@
 #include "filter_preset_dialog.h"
 #include "editor_implementation.h"
 #include "editor.h"
+#include "lua_script_service.h"
 #include "color_overlay_dialog.h"
 #include "timelapse_session.h"
 #include "sheet_import_preview.h"
@@ -731,9 +732,11 @@ void Editor::createPreferencesControls(){
 
   }
 
-bool Editor::preferenceDirectoryAction(const std::string& key){return key=="files.projectBackupDirectory.choose" || key=="files.projectBackupDirectory.restore" || key=="files.saveDirectory.choose" || key=="files.saveDirectory.restore" || key=="files.exportDirectory.choose" || key=="files.exportDirectory.restore";}
+bool Editor::preferenceDirectoryAction(const std::string& key){return key=="extensions.preferences.extensions.add"||key=="extensions.preferences.extensions.openFolder"||key=="files.projectBackupDirectory.choose" || key=="files.projectBackupDirectory.restore" || key=="files.saveDirectory.choose" || key=="files.saveDirectory.restore" || key=="files.exportDirectory.choose" || key=="files.exportDirectory.restore";}
 
 void Editor::preferenceDirectoryActionRun(const std::string& action){
+    if(action=="extensions.preferences.extensions.add"){wchar_t filename[32768]{};OPENFILENAMEW dialog{};dialog.lStructSize=sizeof(dialog);dialog.hwndOwner=GetActiveWindow();dialog.lpstrFile=filename;dialog.nMaxFile=32768;dialog.lpstrFilter=L"MoonSprite 扩展包\0*.msext\0\0";dialog.Flags=OFN_EXPLORER|OFN_NOCHANGEDIR|OFN_FILEMUSTEXIST|OFN_PATHMUSTEXIST;if(GetOpenFileNameW(&dialog))openPath(filename);else if(CommDlgExtendedError()){preferenceFeedback_=U"无法打开扩展包选择对话框";invalidate();}return;}
+    if(action=="extensions.preferences.extensions.openFolder"){try{auto directory=script::executableDirectory()/"extensions";std::filesystem::create_directories(directory);projectFolderLauncher_(directory);}catch(const std::exception& e){preferenceFeedback_=unicodeText(e.what());invalidate();}return;}
 
     const std::string key=action.find("projectBackupDirectory")!=std::string::npos?"files.projectBackupDirectory.Text":action.find("saveDirectory")!=std::string::npos?"files.saveDirectory.Text":"files.exportDirectory.Text";
 

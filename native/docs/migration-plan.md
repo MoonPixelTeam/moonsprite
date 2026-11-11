@@ -6917,3 +6917,12 @@ PNG后台解码完成后保留像素及私有surface，每次pump最多上传262
 对照legacy ExtensionRuntimeHost.tsx异步fetch/AbortController15秒/credentials omit。原生从每请求新建线程改为进程共享3个后台worker和FIFO队列，延用CPU字符串边界及每请求WinRT apartment。排队取消按token移除任务并即时拒绝promise，活动请求协作取消，关闭不join；队列关闭拒绝未执行任务，worker共享状态持有到退出。15秒deadline从入队时开始，不因排队重置；HTTP权限/2MiB/cookie/header/envelope不变。确定性饱和测试覆盖128任务重复取消即ready/回调零执行、最大worker3、异常后恢复及队列销毁不等活动任务。真实HTTP及会话回归构建验证中；生产JS执行器未接入，整体INCOMPLETE。
 
 阶段验收：网络/会话目标与唯一正式Release最终构建成功；extension-session-host/network两项通过21.33秒，包含确定性3worker饱和、128排队任务即时取消/零执行、失败恢复和队列关闭，以及实际HTTP15秒超时/GET/POST/404/2MiB/权限/cookie/会话替换隔离。extension-workspace-ui/form-ui两项通过3.20秒；来源824/diff通过。排队时间计入deadline为源码核对，未新增专门等待排队超时的实测；活动OS请求仍协作取消。生产JS执行器仍未接入，未宣称扩展生产功能或全软件性能完成，整体INCOMPLETE。用户editor_support.h与未跟踪文件保留，本阶段保存推送dev。
+
+
+### 2026-11-11 扩展包实际安装入口（验收中）
+
+对照 legacy useAppExtensions、extension-install-dialog 及 platform_extensions，接通 .msext 拖入／通用打开和首选项添加入口，复用现有不可变包预览与安装回滚事务。采用 PixelDialog 共用标题／按钮，正文缓存线性换行、可见行裁剪与 PixelScrollBar；长元数据只在宽度或正文变化时重新排版。检查和安装在后台 MTA 执行，界面定时轮询，检查时取消不安装；确认后的事务完成／回滚前禁止关闭。保留同 ID 替换确认、版本／作者／标识／描述、启用状态及设置，安装成功刷新 Lua 脚本发现。含 Runtime 包明确提示执行器未接入。首选项列表、启用／卸载界面及生产 JS 执行器仍未迁移，整体 INCOMPLETE。
+
+Aseprite 源码对照：src/app/extensions.cpp installCompressedExtension 的逐条解压／磁盘写入为同步调用，说明不应在界面线程直接调用本地安装事务。模块头及 EULA.txt 为 Aseprite EULA，本阶段仅核对、不复制该实现；既有 MIT UI 滚动组件继续复用。实际弹窗测试覆盖长描述、首次安装、取消、同 ID 替换、禁用状态保留、坏包和锁住状态文件导致的回滚。构建与运行结果待补。
+
+阶段验收：唯一正式 Release 构建成功；extension-install-ui、extension-runtime-directory、extension-workspace-ui、extension-form-ui 四项全部通过，共6.14秒。实际模态流程覆盖长描述滚动条显示、滚轮与2×物理滚动坐标、取消、安装、同ID替换、禁用状态保留、坏ZIP及状态文件锁定时旧版本回滚；preview/replacement截图检查了固定标题和底部按钮、正文裁剪及可见滚动条。生产拖放／通用打开／首选项选择器接线已源码核对，未自动操纵系统文件选择器或真实系统拖放；检查期间取消为源码核对，本阶段未测极慢磁盘取消时延。来源覆盖826项、diff检查通过。没有量测全软件帧率或声称整体卡顿解决；整体迁移仍INCOMPLETE。旧的native-extension-install-error.txt属于先前失败日志，按规则保留。用户editor_support.h及所有未跟踪用户日志／缓存／工程未纳入提交。

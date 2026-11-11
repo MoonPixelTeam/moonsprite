@@ -218,8 +218,6 @@ bool Editor::onProcessMessage(ui::Message* msg) {
           std::u32string failures;
           image_sequence::Host host;
           host.open=[this,&failures](const std::string& path){
-            auto ext=std::filesystem::u8path(path).extension().wstring();std::transform(ext.begin(),ext.end(),ext.begin(),[](wchar_t c){return std::towlower(c);});
-            if(ext==L".msext"){if(!failures.empty())failures+=U"\n";failures+=unicodeText(path)+U"：原生扩展包安装尚未迁移。";return false;}
             openPath(std::filesystem::u8path(path));if(pending_!=Pending::OpenError)return pending_==Pending::None;
             if(!failures.empty())failures+=U"\n";failures+=unicodeText(path)+U"："+openError_;resolve(false);return false;
           };

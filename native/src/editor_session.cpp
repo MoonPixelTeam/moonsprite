@@ -7,6 +7,8 @@
 #include "psd_export.h"
 #include "editor_implementation.h"
 #include "editor.h"
+#include "extension_install_dialog.h"
+#include "lua_script_service.h"
 #include "image_save.h"
 #include "document_save_policy.h"
 #include "image_file_signature.h"
@@ -316,6 +318,8 @@ void Editor::openPath(const std::filesystem::path& path) {
     if(scriptSaving_)return;
 
     try {
+      auto packageExtension=path.extension().wstring();std::transform(packageExtension.begin(),packageExtension.end(),packageExtension.begin(),[](wchar_t c){return ::towlower(c);});
+      if(packageExtension==L".msext"){if(installExtensionPackage(font_,skin_,toolIcons_,display(),bounds(),path,script::executableDirectory()/"extensions",[this]{updateScriptsMenu();}))status_=U"扩展已安装";requestFocus();refresh();return;}
       for(const auto& job:backgroundSaves_)if(sameProjectPath(path,job.path)){if(const auto owner=saveProjectIndex(job.identity))activateProject(*owner);return;}
 
       ensureProjects();for(std::size_t i=0;i<projects_.size();++i){const auto& saved=i==activeProject_?documentPath_:projects_[i]->path;if(sameProjectPath(path,saved) || sameProjectPath(path,projectDocument(i).sourceFilePath())){activateProject(i);recordHomeRecent(path);return;}}
