@@ -6743,3 +6743,9 @@ PNG后台解码完成后保留像素及私有surface，每次pump最多上传262
 核对legacy BrushLibraryPanel.tsx已加载controller资源→单次setBrushImage，以及workspace-commands-tool.ts提交集合。原生applyFillLibrarySelection按选择顺序暂存所有本地/工程资源，活动图案复用候选，全部成功后一次发布；失败不改绘制集合。删除栏目选择重复resolve以及失败回滚读盘，选区坐标存在性标记一并保留。新增已登记但内容损坏PNG选择回归，保留原选择/像素/图案数/名称。同步加载仍是待迁移性能差异，本阶段不宣称后台库控制器完成。构建验证中，整体INCOMPLETE。
 
 阶段验收完成：唯一正式Release构建成功；实际--brush-library-panel-check等待exit0，损坏资源选择保留完整旧绘制状态，原有导入/删除/持久化路径通过。extension-workspace-ui、multi-document、canvas-resize三项通过1.88秒。来源824文件/diff通过，未测FPS，后台资源控制器仍未迁移；整体INCOMPLETE。保留用户editor_support.h与未跟踪数据，提交推送dev。
+
+### 2026-11-11：笔刷栏目无变化刷新消除（验证中）
+
+对照legacy useBrushLibrary.ts loaded controller/useMemo与资源变化触发refresh：选择不触发资源重载。原生移除applyFillLibrarySelection选择后缩略图重载标记，保留资源变更/导航/手动刷新；syncSelection仅ID或enabled变化才复制选择/更新控件/重绘网格。实际面板smoke100次同值无invalidations，禁用/恢复各一次；真实Editor普通选择后无reload。异步资源控制器仍待迁移，当前构建验证中，整体INCOMPLETE。
+
+阶段验收完成：唯一正式Release成功，实际--brush-library-panel-check等待exit0，100次同值同步无网格invalidations、禁用恢复/拖动与资源生命周期通过，选择后无缩略图reload。extension-workspace-ui、multi-document、canvas-resize三项通过2.40秒。来源824文件/diff通过，无人工FPS或耗时对比；异步库加载仍未完成，整体INCOMPLETE。保留用户editor_support.h及未跟踪数据，提交推送dev。

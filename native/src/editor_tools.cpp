@@ -1749,7 +1749,7 @@ void Editor::applyFillLibrarySelection(){
     if(!fillLibrarySelection_.active.empty()&&!active)throw std::runtime_error("Active brush is not selected");
     // Commit only after every resource loaded; a failure preserves live pixels.
     if(active&&!temporaryBrushReturnProfile_)temporaryBrushReturnProfile_=brushFeedback_.brushProfiles_[0];
-    fillPattern_.brushes=std::move(brushes);fillImageName_=std::move(name);pencilImageBrushId_=fillLibrarySelection_.active;pencilImageBrush_=std::move(active);brushLibraryNeedsReload_=true;
+    fillPattern_.brushes=std::move(brushes);fillImageName_=std::move(name);pencilImageBrushId_=fillLibrarySelection_.active;pencilImageBrush_=std::move(active);
 }
 
 void Editor::selectFillLibraryBrush(const std::string& id,bool ctrl,bool shift){
