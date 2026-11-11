@@ -1814,27 +1814,6 @@ void Editor::importFillImage(){
     importBrushLibraryImages(paths,fillFolder_);
   }
 
-void Editor::importBrushLibraryImages(const std::vector<std::filesystem::path>& paths,const std::string& targetFolder){
- if(paths.empty())return;
- int success=0,failed=0;std::string error;std::optional<StoredPatternBrush> last;std::optional<PatternBrush> loaded;
- try{
-  PatternBrushLibrary library(fillBrushLibraryDirectory());
-  for(const auto& path:paths){try{
-   auto imported=importPatternBrush(path);auto stored=library.save(utf8Text(imported.name),encodePatternBrushPng(imported.brush));
-   if(!targetFolder.empty())stored=library.move(stored.id,targetFolder);
-   // Save/move succeeded: retain decoded CPU pixels instead of reading PNG again.
-   last=std::move(stored);loaded=std::move(imported.brush);++success;
-  }catch(const std::exception& e){if(error.empty())error=e.what();++failed;}}
-  if(last&&loaded){
-   PatternBrushSelection selection;selection.ids={last->id};selection.active=selection.anchor=last->id;
-   std::vector<PatternBrush> patterns{*loaded};auto active=*loaded;auto name=unicodeText(std::filesystem::u8path(last->filePath).stem().u8string());
-   if(!temporaryBrushReturnProfile_)temporaryBrushReturnProfile_=brushFeedback_.brushProfiles_[0];
-   temporaryBrushActive_=false;fillLibrarySelection_=std::move(selection);fillPattern_.brushes=std::move(patterns);pencilImageBrushId_=last->id;pencilImageBrush_=std::move(active);fillImageName_=std::move(name);saveBrushPreferences();
-  }
-  status_=U"已导入图案："+unicodeText(std::to_string(success));if(failed)status_+=U" · 失败 "+unicodeText(std::to_string(failed))+U"："+unicodeText(error);
- }catch(const std::exception& e){status_=U"图案导入失败："+unicodeText(e.what());}
- brushLibraryNeedsReload_=true;refresh();
-}
 
 void Editor::createFillPatternOptions(){
 

@@ -6854,3 +6854,15 @@ PNG后台解码完成后保留像素及私有surface，每次pump最多上传262
 对照legacy useBrushLibrary.ts createFolder/renameFolder/moveBrushesToFolder及BrushLibraryPanel有效集合effect：目录变更不重新激活已选像素。原生移除创建/重命名/移动后同步apply，避免文件操作成功却因PNG读取失败报错；既有apply移到资源控制器编译单元，删除存活项复用经过工程/目录校验的解码缓存，首次加载前保留显式读取fallback。新增真实Editor锁PNG删除另一资源后保留存活项、创建/重命名成功完成、允许rename但拒绝reader的移动及最终后台刷新验证。整体INCOMPLETE，正式构建验证中。
 
 阶段验收完成：唯一正式Release最终构建与笔刷栏目专项exit0；锁PNG删除存活项、创建/重命名、拒绝reader但允许rename的移动及刷新通过，既有删除取消/部分失败/成功/持久化通过。四项pattern-brush-library、extension-workspace-ui、multi-document、canvas-resize通过3.43秒。fixture修正恢复实际可见性、隐藏请求先完成扫描再建立新选择，避免旧结果清理测试ID；最初异常退出根因未独立证明，后续明确阈值失败定位为隐藏栏目。恢复构建时核对ICU相同hash并更新构建输出时间戳，绕过上游含&路径未引用复制命令，未删缓存。来源824/diff通过，无FPS/图像验收。整体INCOMPLETE，用户editor_support.h及未跟踪文件保留，阶段提交推送dev。
+
+
+### 2026-11-11：笔刷导入后台任务迁移（进行中，未接入生产入口）
+
+对照legacy platform/brush-library-service.ts顺序导入和useBrushLibrary.ts最后成功资源激活：提取路径/CPU资源工作函数，后台线程独立COM解码/编码/保存/移动，按批次FIFO保留全部请求；非阻塞poll在批次失败后继续处理后续批次。真实fixture已覆盖部分成功和PNG重开，新增held promise连续100次poll不等待、排队两批不替换、失败后继续成功批次。此前正式Release及笔刷专项exit0、四项底层回归通过2.90秒；队列增量构建验证中。生产入口仍同步调用工作函数，后台发布尚未接入；工程切换后激活规则的用户问题仍待答复，不能称后台导入已完成，也尚未阶段提交推送。整体INCOMPLETE。
+
+增量验证：正式Release构建成功，实际笔刷栏目专项等待exit0，后台partial/PNG重开与FIFO/100次非阻塞poll/失败后下一批通过；来源824/diff通过。仍待工程切换激活规则决定，未接入生产入口、未提交推送，阶段未完成。
+
+
+### 2026-11-11：后台笔刷导入生产入口接入与验收
+
+完成上述未接入阶段：文件选择/拖放共用FIFO后台解码编码保存移动，UI timer非阻塞poll后发布最后成功CPU资源，部分失败保留成功结果。工程隔离新方案未获决定，因此遵守迁移规则沿用legacy useBrushLibrary.ts完成时活动工程激活；不再以可选新行为阻止原逻辑迁移。绘画/模态事务中暂缓发布，关闭等待全部存储任务完成且不回调UI。正式Release最终构建成功，笔刷栏目专项exit0覆盖生产held future100次poll、切工程、活动笔画不换刷/取消后激活，以及队列部分失败/FIFO/后续成功/PNG重开和既有导入拖放持久化。此前四项底层回归2.90秒通过。来源824/diff检查，未作FPS/人工图像验收。整体INCOMPLETE，用户editor_support.h与未跟踪数据保留，完成阶段提交推送dev。

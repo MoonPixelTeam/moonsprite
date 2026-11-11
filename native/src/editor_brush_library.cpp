@@ -4,8 +4,49 @@
 #include "ui/property.h"
 #include <thread>
 #include <future>
+#include <deque>
 namespace moon::editor {
 namespace {
+struct BrushImportResult {
+ int success=0,failed=0;std::string error;
+ std::optional<StoredPatternBrush> last;std::optional<PatternBrush> loaded;
+};
+// Legacy brush-library-service imports paths sequentially, accumulating failures.
+// Captured paths and CPU pixels belong to the worker, never Editor/UI objects.
+BrushImportResult importBrushFiles(const std::filesystem::path& directory,const std::vector<std::filesystem::path>& paths,const std::string& folder){
+ BrushImportResult result;
+ try{PatternBrushLibrary library(directory);for(const auto& path:paths){try{
+  auto imported=importPatternBrush(path);auto stored=library.save(utf8Text(imported.name),encodePatternBrushPng(imported.brush));
+  if(!folder.empty())stored=library.move(stored.id,folder);
+  result.last=std::move(stored);result.loaded=std::move(imported.brush);++result.success;
+ }catch(const std::exception& error){if(result.error.empty())result.error=error.what();++result.failed;}}}
+ catch(const std::exception& error){result.error=error.what();result.failed=int(paths.size());}
+ return result;
+}
+struct BrushImportWork final:ui::Property {
+ struct Request {std::filesystem::path directory;std::vector<std::filesystem::path> paths;std::string folder;};
+ std::future<BrushImportResult> future;ui::Timer timer;bool pending=false;
+ std::deque<Request> queued;
+ BrushImportWork(ui::Widget* owner):ui::Property("moonsprite.brush-import"),timer(16,owner){}
+ void start(Request request){
+  if(pending){queued.push_back(std::move(request));return;}
+  std::promise<BrushImportResult> promise;future=promise.get_future();pending=true;
+  std::thread([request=std::move(request),promise=std::move(promise)]()mutable{
+   try{promise.set_value(importBrushFiles(request.directory,request.paths,request.folder));}
+   catch(...){promise.set_exception(std::current_exception());}
+  }).detach();timer.start();
+ }
+ ~BrushImportWork(){timer.stop();while(pending){future.wait();poll();}timer.stop();}
+ std::optional<BrushImportResult> poll(){
+  if(!pending||future.wait_for(std::chrono::seconds(0))!=std::future_status::ready)return {};
+  BrushImportResult result;try{result=future.get();}catch(const std::exception& error){result.error=error.what();result.failed=1;}
+  catch(...){result.error="Unknown brush import failure";result.failed=1;}
+  pending=false;
+  if(!queued.empty()){auto request=std::move(queued.front());queued.pop_front();start(std::move(request));}else timer.stop();
+  return result;
+ }
+
+};
 struct BrushScanResult {PatternBrushListing listing;std::string folder,key,error;std::vector<BrushLibraryPanel::Resource> local;int failed=0;};
 // Worker owns paths and decoded CPU pixels only; no Editor/UI/COM objects cross
 // threads. A promise future does not join the reader when the owner closes.
@@ -168,6 +209,29 @@ void Editor::showPencilImageBrushes(){if(document.active())return;PixelMenu menu
  for(const auto& item:document.projectBrushes()){auto row=new PixelMenuItem(font_,skin_,U"工程："+unicodeText(item.metadata.name));row->checked=[this,id=item.metadata.id]{return pencilImageBrushId_=="project:"+id;};row->Click.connect([this,id=item.metadata.id,identity=document.identity()]{if(identity!=document.identity())return;pencilImageBrushId_="project:"+id;resolvePencilImageBrush();saveBrushPreferences();refresh();});menu.addChild(row);}
  menu.addChild(new PixelMenuSeparator(skin_));auto angleLabel=new PixelMenuItem(font_,skin_,U"角度（度）");angleLabel->setEnabled(false);menu.addChild(angleLabel);auto angle=new PixelEntry(font_,skin_);angle->numeric=true;angle->setText(std::to_string(int(pencilImageBrushAngle_)));menu.addChild(angle);angle->Change.connect([this,angle]{try{std::size_t used=0;double value=std::stod(angle->text(),&used);if(used==angle->text().size() && std::isfinite(value)){pencilImageBrushAngle_=std::clamp(value,-180.0,180.0);saveBrushPreferences();}}catch(...){} });auto at=imageBrushButton_->bounds();menu.showPopup({at.x,at.y2()},display());requestFocus();}
 
+void Editor::importBrushLibraryImages(const std::vector<std::filesystem::path>& paths,const std::string& targetFolder){
+ auto work=std::dynamic_pointer_cast<BrushImportWork>(getProperty("moonsprite.brush-import"));
+ if(!work){work=std::make_shared<BrushImportWork>(this);work->timer.Tick.connect([this]{importBrushLibraryImages({},{});});setProperty(work);}
+ if(!paths.empty()){work->start({fillBrushLibraryDirectory(),paths,targetFolder});status_=U"正在导入图案…";}
+ // Publish only between gestures, never replace the brush of an active stroke.
+ if(!smoke_&&(document.active()||pending_!=Pending::None))return;
+ if(smoke_&&work->pending)work->future.wait();
+ auto completed=work->poll();if(!completed)return;
+ auto result=std::move(*completed);
+ auto& last=result.last;auto& loaded=result.loaded;
+ try{
+  if(last&&loaded){
+   PatternBrushSelection selection;selection.ids={last->id};selection.active=selection.anchor=last->id;
+   std::vector<PatternBrush> patterns{*loaded};auto active=*loaded;auto name=unicodeText(std::filesystem::u8path(last->filePath).stem().u8string());
+   if(!temporaryBrushReturnProfile_)temporaryBrushReturnProfile_=brushFeedback_.brushProfiles_[0];
+   temporaryBrushActive_=false;fillLibrarySelection_=std::move(selection);fillPattern_.brushes=std::move(patterns);pencilImageBrushId_=last->id;pencilImageBrush_=std::move(active);fillImageName_=std::move(name);saveBrushPreferences();
+  }
+  status_=U"已导入图案："+unicodeText(std::to_string(result.success));if(result.failed)status_+=U" · 失败 "+unicodeText(std::to_string(result.failed))+U"："+unicodeText(result.error);
+ }catch(const std::exception& e){status_=U"图案导入失败："+unicodeText(e.what());}
+ brushLibraryNeedsReload_=true;refresh();
+ if(smoke_&&work->pending)importBrushLibraryImages({},{});
+}
+
 void Editor::selectFillLibraryBrush(const std::string& id,bool ctrl,bool shift){selectBrushLibraryItem(id,ctrl,shift);}
 
 void Editor::showFillLibraryMenu(){
@@ -281,6 +345,27 @@ void Editor::smokeBrushLibraryPanel(){
  {const auto root=workspacePresetTestDirectory_;workspacePresetTestDirectory_=dir/"escape-preferences";useFillTool();pencilImageBrushId_=second.id;resolvePencilImageBrush();brushFeedback_.brushProfiles_[0].imagePaintMode=PatternPaintMode::Source;requestFocus();ui::KeyMessage esc(ui::kKeyDownMessage,ui::kKeyEsc,ui::kKeyNoneModifier,0,0);onProcessMessage(&esc);require(fillTool_&&!pencilImageBrush_&&pencilImageBrushId_.empty()&&fillPattern_.brushes.empty()&&brushFeedback_.brushProfiles_[0].imagePaintMode==PatternPaintMode::Source,"Pattern Esc lost bucket or sampling mode");loadSessionToolPreferences(false);require(pencilImageBrushId_.empty(),"Esc-cleared pattern was restored from preferences");workspacePresetTestDirectory_=root;pencilImageBrushId_=second.id;resolvePencilImageBrush();fillLibrarySelection_.ids={second.id};fillLibrarySelection_.active=second.id;applyFillLibrarySelection();}
  // A corrupt newly selected resource must not replace any live selection data.
  {const auto ids=fillLibrarySelection_.ids;const auto active=pencilImageBrushId_;const auto image=pencilImageBrush_;const auto patterns=fillPattern_.brushes;const auto name=fillImageName_;auto broken=library.save("corrupt-choice",encodePatternBrushPng(stamp));writeExportBytesAtomic(std::filesystem::u8path(broken.filePath),{1,2,3});fillFolder_.clear();selectBrushLibraryItem(broken.id,true,false);require(fillLibrarySelection_.ids==ids&&pencilImageBrushId_==active&&pencilImageBrush_&&pencilImageBrush_->colors==image->colors&&fillPattern_.brushes.size()==patterns.size()&&fillImageName_==name,"Failed choice changed live resource set");fillFolder_=folder.id;}
+ // Worker executes the complete sequential import with its own COM scope.
+ {const auto input=dir/"worker-input.png";writeExportBytesAtomic(input,encodePatternBrushPng(stamp));
+  BrushImportWork work(this);work.start({dir,{input,dir/"worker-missing.png"},folder.id});work.future.wait();auto completed=work.poll();require(completed.has_value(),"Worker result not ready");auto result=std::move(*completed);
+  require(result.success==1&&result.failed==1&&result.last&&result.loaded&&result.loaded->colors==stamp.colors&&result.last->folderId==folder.id,"Worker import lost partial success or resource pixels");
+  require(importPatternBrush(std::filesystem::u8path(result.last->filePath)).brush.colors==stamp.colors,"Worker import PNG could not reopen");
+  // An unfinished first batch must neither block polling nor lose later batches.
+  std::promise<BrushImportResult> held;work.future=held.get_future();work.pending=true;
+  work.start({dir,{dir/"queued-missing.png"},folder.id});work.start({dir,{input},folder.id});
+  const auto before=std::chrono::steady_clock::now();for(int i=0;i<100;++i)require(!work.poll(),"Unfinished import returned a result");require(std::chrono::steady_clock::now()-before<std::chrono::seconds(2)&&work.queued.size()==2,"Import poll blocked or replaced queued requests");
+  BrushImportResult firstResult;firstResult.error="held first";held.set_value(std::move(firstResult));auto firstCompleted=work.poll();require(firstCompleted&&firstCompleted->error=="held first"&&work.pending&&work.queued.size()==1,"Import queue lost first completion");
+  work.future.wait();auto failed=work.poll();require(failed&&failed->failed==1&&!failed->last&&work.pending&&work.queued.empty(),"Failed batch blocked following import");
+  work.future.wait();auto successful=work.poll();require(successful&&successful->success==1&&successful->loaded&&successful->loaded->colors==stamp.colors&&!work.pending,"Queued batch failed to finish after error");
+
+ }
+ // Production completion targets the active session, matching legacy async import.
+ {auto previousDocument=std::move(document);const auto oldId=pencilImageBrushId_;const auto oldBrush=pencilImageBrush_;const auto oldSelection=fillLibrarySelection_;const auto oldPatterns=fillPattern_.brushes;
+  auto work=std::make_shared<BrushImportWork>(this);setProperty(work);std::promise<BrushImportResult> held;work->future=held.get_future();work->pending=true;smoke_=false;
+  const auto before=std::chrono::steady_clock::now();for(int i=0;i<100;++i)importBrushLibraryImages({},{});require(work->pending&&std::chrono::steady_clock::now()-before<std::chrono::seconds(2),"Production import waited for worker");
+  document=Document(3,3);auto result=importBrushFiles(dir,{dir/"worker-input.png"},{});require(result.last&&result.loaded,"Completion fixture failed");const auto id=result.last->id;held.set_value(std::move(result));document.beginStroke({0,0},0xff123456);importBrushLibraryImages({},{});require(work->pending&&pencilImageBrushId_==oldId,"Import replaced active gesture brush");document.cancelStroke();importBrushLibraryImages({},{});require(!work->pending&&pencilImageBrushId_==id&&pencilImageBrush_&&pencilImageBrush_->colors==stamp.colors,"Production completion did not activate current session");
+  smoke_=true;document=std::move(previousDocument);pencilImageBrushId_=oldId;pencilImageBrush_=oldBrush;fillLibrarySelection_=oldSelection;fillPattern_.brushes=oldPatterns;brushLibraryNeedsReload_=true;syncBrushLibraryPanel(true);
+ }
  // Both resource-producing entrypoints must use the same durable selection.
  {const auto root=workspacePresetTestDirectory_;workspacePresetTestDirectory_=dir/"creation-preferences";
   const auto input=dir/"import-input.png";writeExportBytesAtomic(input,encodePatternBrushPng(stamp));temporaryBrushActive_=true;importBrushLibraryImages({input},{});require(!temporaryBrushActive_,"Stored import retained temporary brush flag");const auto imported=pencilImageBrushId_;require(!imported.empty()&&pencilImageBrush_,"Import failed to activate brush");pencilImageBrushId_.clear();pencilImageBrush_.reset();loadSessionToolPreferences(false);require(pencilImageBrushId_==imported&&pencilImageBrush_&&pencilImageBrush_->colors==stamp.colors,"Imported brush selection not durable");
