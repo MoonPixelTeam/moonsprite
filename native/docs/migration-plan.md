@@ -6847,3 +6847,10 @@ PNG后台解码完成后保留像素及私有surface，每次pump最多上传262
 依据legacy canvas-stroke-brush.ts createCanvasStrokeBrush直接读取session.brushImage，以及workspace-commands-tool.ts普通/临时资源激活。原生普通笔刷落笔调用resolve会同步重扫/解码，临时ID无文件还会被清掉；移除该落笔解析，保留资源选择/会话恢复的显式加载。真实Editor回归覆盖锁PNG连续绘画及撤销重做、工程资源替换后已选像素保持/重新选择最新像素/删除清理、临时捕获实际绘画和Esc取消笔画。不是单纯缓存命中检查；正式构建验证中，整体INCOMPLETE。
 
 阶段验收完成：唯一正式Release最终构建成功；实际笔刷栏目专项等待exit0，锁PNG连续真实鼠标绘画、工程已选快照保持/重新选择最新像素/删除清理、临时捕获后实际落笔、每笔Undo/Redo和Esc取消通过。新增fixture先后修正栏目隐藏未加载、ABGR预期顺序、旧返回profile不透明度污染三处测试准备/预期问题，保留诊断。selection-pattern-brush、multi-document、image-brush、canvas-resize通过1.41秒；来源824/diff通过。无FPS实测，整体INCOMPLETE。用户editor_support.h及未跟踪数据保留，阶段提交推送dev。
+
+
+### 2026-11-11：笔刷资源操作与选择恢复链路（验证中）
+
+对照legacy useBrushLibrary.ts createFolder/renameFolder/moveBrushesToFolder及BrushLibraryPanel有效集合effect：目录变更不重新激活已选像素。原生移除创建/重命名/移动后同步apply，避免文件操作成功却因PNG读取失败报错；既有apply移到资源控制器编译单元，删除存活项复用经过工程/目录校验的解码缓存，首次加载前保留显式读取fallback。新增真实Editor锁PNG删除另一资源后保留存活项、创建/重命名成功完成、允许rename但拒绝reader的移动及最终后台刷新验证。整体INCOMPLETE，正式构建验证中。
+
+阶段验收完成：唯一正式Release最终构建与笔刷栏目专项exit0；锁PNG删除存活项、创建/重命名、拒绝reader但允许rename的移动及刷新通过，既有删除取消/部分失败/成功/持久化通过。四项pattern-brush-library、extension-workspace-ui、multi-document、canvas-resize通过3.43秒。fixture修正恢复实际可见性、隐藏请求先完成扫描再建立新选择，避免旧结果清理测试ID；最初异常退出根因未独立证明，后续明确阈值失败定位为隐藏栏目。恢复构建时核对ICU相同hash并更新构建输出时间戳，绕过上游含&路径未引用复制命令，未删缓存。来源824/diff通过，无FPS/图像验收。整体INCOMPLETE，用户editor_support.h及未跟踪文件保留，阶段提交推送dev。

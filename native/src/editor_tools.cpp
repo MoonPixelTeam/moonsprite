@@ -1736,19 +1736,6 @@ void Editor::createSelectionBackgroundPreset(){document.commitFloatingPaste();if
 
 void Editor::resolvePencilImageBrush(){pencilImageBrush_.reset();if(pencilImageBrushId_.empty())return;try{if(pencilImageBrushId_.rfind("project:",0)==0){const auto id=pencilImageBrushId_.substr(8);for(const auto& item:document.projectBrushes())if(item.metadata.id==id){if(!temporaryBrushReturnProfile_)temporaryBrushReturnProfile_=brushFeedback_.brushProfiles_[0];pencilImageBrush_=item.brush;temporaryBrushActive_=false;return;}throw std::runtime_error("工程笔刷已不存在");}PatternBrushLibrary library(fillBrushLibraryDirectory());for(const auto& item:library.list().brushes)if(item.id==pencilImageBrushId_){if(!temporaryBrushReturnProfile_)temporaryBrushReturnProfile_=brushFeedback_.brushProfiles_[0];pencilImageBrush_=importPatternBrush(std::filesystem::u8path(item.filePath)).brush;pencilImageBrush_->selectionColorMapping=item.sourceX.has_value()&&item.sourceY.has_value();pencilImageBrush_->sourceX=item.sourceX.value_or(0);pencilImageBrush_->sourceY=item.sourceY.value_or(0);temporaryBrushActive_=false;return;}throw std::runtime_error("本地笔刷已不存在");}catch(const std::exception& e){pencilImageBrushId_.clear();status_=U"图像笔刷不可用："+unicodeText(e.what());}}
 
-void Editor::applyFillLibrarySelection(){
-    PatternBrushLibrary library(fillBrushLibraryDirectory());const auto listing=library.list();std::vector<PatternBrush> brushes;std::optional<PatternBrush> active;std::u32string name;
-    for(const auto& id:fillLibrarySelection_.ids){
-      PatternBrush brush;std::string label;
-      if(id.rfind("project:",0)==0){const auto resource=std::find_if(document.projectBrushes().begin(),document.projectBrushes().end(),[&](const auto& value){return value.metadata.id==id.substr(8);});if(resource==document.projectBrushes().end())throw std::runtime_error("Project brush no longer exists");brush=resource->brush;label=resource->metadata.name;}
-      else{const auto item=std::find_if(listing.brushes.begin(),listing.brushes.end(),[&](const auto& value){return value.id==id;});if(item==listing.brushes.end())throw std::runtime_error("Local brush no longer exists");brush=importPatternBrush(std::filesystem::u8path(item->filePath)).brush;brush.selectionColorMapping=item->sourceX.has_value()&&item->sourceY.has_value();brush.sourceX=item->sourceX.value_or(0);brush.sourceY=item->sourceY.value_or(0);label=item->name;}
-      if(id==fillLibrarySelection_.active){active=brush;name=unicodeText(label);}brushes.push_back(std::move(brush));
-    }
-    if(!fillLibrarySelection_.active.empty()&&!active)throw std::runtime_error("Active brush is not selected");
-    // Commit only after every resource loaded; a failure preserves live pixels.
-    if(active&&!temporaryBrushReturnProfile_)temporaryBrushReturnProfile_=brushFeedback_.brushProfiles_[0];
-    temporaryBrushActive_=false;fillPattern_.brushes=std::move(brushes);fillImageName_=std::move(name);pencilImageBrushId_=fillLibrarySelection_.active;pencilImageBrush_=std::move(active);
-}
 
 void Editor::deleteFillLibrarySelection(const std::vector<std::string>& ids){
  if(ids.empty()||pending_!=Pending::None||document.active())return;
@@ -1763,7 +1750,7 @@ void Editor::confirmFillLibraryDelete(int verify){
 
 void Editor::editFillFolder(bool rename){if(rename&&fillFolder_.empty())return;fillFolderRename_=rename;fillFolderEditing_=fillFolder_;paletteInput_->numeric=false;paletteInput_->suffix.clear();paletteInput_->setText(rename?std::filesystem::u8path(fillFolder_).filename().u8string():"");pending_=Pending::BrushFolderName;menuBar_->setEnabled(false);discard_->caption=rename?U"重命名":U"创建";keep_->caption=U"取消";discard_->setVisible(true);keep_->setVisible(true);dialogClose_->setVisible(true);paletteInput_->setVisible(true);refresh();paletteInput_->requestFocus();paletteInput_->selectAllText();}
 
-void Editor::moveFillBrushes(const std::string& folder){try{PatternBrushLibrary library(fillBrushLibraryDirectory());for(const auto& id:fillLibrarySelection_.ids)if(id.rfind("project:",0)!=0)library.move(id,folder);applyFillLibrarySelection();status_=U"已移动选中图案";}catch(const std::exception& e){status_=U"移动图案失败："+unicodeText(e.what());}brushLibraryNeedsReload_=true;refresh();}
+void Editor::moveFillBrushes(const std::string& folder){try{PatternBrushLibrary library(fillBrushLibraryDirectory());for(const auto& id:fillLibrarySelection_.ids)if(id.rfind("project:",0)!=0)library.move(id,folder);status_=U"已移动选中图案";}catch(const std::exception& e){status_=U"移动图案失败："+unicodeText(e.what());}brushLibraryNeedsReload_=true;refresh();}
 
 void Editor::confirmFillFolderDelete(){if(fillFolder_.empty())return;auto target=fillFolder_;PixelMenu menu(skin_);menu.addChild(new PixelMenuItem(font_,skin_,U"取消"));auto confirm=new PixelMenuItem(font_,skin_,U"确认删除文件夹及全部图案（无法撤销）");confirm->Click.connect([this,target]{try{PatternBrushLibrary library(fillBrushLibraryDirectory());auto before=library.list();library.removeFolder(target);for(const auto& item:before.brushes)if(item.folderId==target||item.folderId.rfind(target+"/",0)==0)fillLibrarySelection_.removed(item.id);fillFolder_.clear();applyFillLibrarySelection();saveBrushPreferences();status_=U"已删除图案文件夹";}catch(const std::exception& e){status_=U"删除文件夹失败："+unicodeText(e.what());}brushLibraryNeedsReload_=true;refresh();});menu.addChild(confirm);auto at=brushLibraryPanel_&&brushLibraryPanel_->isVisible()?brushLibraryActions_[2]->bounds():fillImageButton_->bounds();menu.showPopup({at.x,at.y2()},display());requestFocus();}
 
