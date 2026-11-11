@@ -6887,3 +6887,12 @@ PNG后台解码完成后保留像素及私有surface，每次pump最多上传262
 原生Property析构发生在Editor成员之后，旧destructor通过poll启动每个排队批次的新线程和timer，仍接触关闭中的UI。改为stop timer、等待当前future并取结果、直接按路径CPU工作函数完成余下批次，失败不阻断后续，不发布UI。沿用已接受请求保存语义，不改变正常完成激活行为。真实fixture held当前任务+成功/失败/成功排队后直接销毁，核对两份PNG重开像素、Editor笔刷/status不变；正式构建验证中，整体INCOMPLETE。
 
 阶段验收：唯一正式Release成功，实际笔刷栏目专项exit0包含持有当前任务和成功/失败/成功队列直接析构、两PNG重开像素一致、Editor选择/status不变，既有生产异步/延迟激活/FIFO/拖放通过。multi-document、image-brush、canvas-resize通过1.23秒，来源824/diff通过。没有人工关闭窗口/FPS验收，整体INCOMPLETE，保留用户editor_support.h与未跟踪文件，阶段提交推送dev。
+
+
+### 2026-11-11：首页卡片长文本重绘测量优化（验证中）
+
+对照legacy HomeWorkspace recent-file-copy及styles.css裁切，保持现有截断文本；原生逐字删除后全串measure为平方级，改为每行按全文建立累计advance，宽度变化二分截取，重复绘制复用结果。对照Aseprite src/ui/listitem.cpp onSizeHint/onSetText的测量缓存与失效方式；核对该模块MIT许可，只借鉴思路未复制代码。真实最近工程专项加入旧裁切算法对照：空串、中文/ASCII/缺字、负/零/窄/宽、换文本/槽位及8192字重复调用，保留原三密度/预览上传验收。正式构建验证中；无FPS声明，整体INCOMPLETE。
+
+阶段验收：唯一正式Release构建成功；实际recent-projects/home-sections/home-recovery三个窗口专项exit0，旧截断算法对照、8192字符缓存复用及原三密度/预览上传/管理回归通过。recent-preview/recent-projects/home-sections三项CTest通过3.17秒；来源824文件和diff检查通过。未新增人工图像验收或FPS测量，整体INCOMPLETE。用户editor_support.h及未跟踪数据保留，阶段提交推送dev。
+
+用户后续确认：后台笔刷导入采用工程隔离，继续保存资源，仅在完成时仍为发起工程时激活最后成功项，切换工程保留新工程当前笔刷。下一阶段实施并验收。

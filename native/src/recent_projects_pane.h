@@ -11,21 +11,38 @@
 namespace moon {
 class RecentOpenButton final:public PixelButton {
  recent::PreviewQueue::Value preview_;os::SurfaceRef image_;
+ struct FittedText {std::u32string source,visible;std::vector<int> advances;int width=-1;};
+ std::array<FittedText,4> textCache_;
+ const std::u32string& fitText(std::size_t slot,const std::u32string& text,int width){
+  auto& cache=textCache_[slot];
+  if(cache.advances.empty()||cache.source!=text){cache.source=text;cache.advances.clear();cache.advances.push_back(0);for(auto c:text)cache.advances.push_back(cache.advances.back()+font_.measure(std::u32string(1,c)));cache.width=-1;}
+  width=std::max(0,width);if(cache.width!=width){cache.width=width;const auto end=std::upper_bound(cache.advances.begin(),cache.advances.end(),width);cache.visible=cache.source.substr(0,std::size_t(end-cache.advances.begin()-1));}
+  return cache.visible;
+ }
+
 
 public:recent::Project project;bool concealed=false,gallery=false,folder=false,recovery=false;project::RecoveryRecord recoveryRecord;int retentionDays=7;std::string error;int density=1;std::function<void()> middle;
  RecentOpenButton(const PixelFont& f,const Skin& s,std::function<void()> open):PixelButton(f,s,U"",std::move(open)){}
  void setPreview(recent::PreviewQueue::Value value){if(value==preview_)return;preview_=std::move(value);image_.reset();if(preview_&&preview_->error.empty()&&!preview_->pixels.empty()){image_=os::instance()->makeRgbaSurface(preview_->previewWidth,preview_->previewHeight);if(image_){os::SurfaceLock lock(image_.get());for(int y=0;y<preview_->previewHeight;++y)for(int x=0;x<preview_->previewWidth;++x){auto p=preview_->pixels[std::size_t(y)*preview_->previewWidth+x];image_->putPixel(gfx::rgba(p&255,(p>>8)&255,(p>>16)&255,p>>24),x,y);}}}invalidate();}
  bool hasPreview()const{return bool(image_);}
+ void smokeTextFit(){
+  for(const auto& text:std::vector<std::u32string>{U"",U"工程 MoonSprite 路径",U"\U0010ffff test",std::u32string(256,U'长')}){
+   for(int width:{-1,0,1,10,73,240,100000}){auto expected=text;while(!expected.empty()&&font_.measure(expected)>width)expected.pop_back();if(fitText(0,text,width)!=expected||fitText(0,text,width)!=expected)throw std::runtime_error("Recent card cached text differs from original clipping");}
+  }
+  const auto expected=fitText(1,U"changed",40);if(fitText(0,U"changed",40)!=expected)throw std::runtime_error("Recent card text cache slot mismatch");
+  const std::u32string longPath(8192,U'长');const auto clipped=fitText(0,longPath,73);for(int i=0;i<100;++i)if(fitText(0,longPath,73)!=clipped)throw std::runtime_error("Recent card long text cache unstable");
+ }
+
  bool onProcessMessage(ui::Message* msg)override{if(msg->type()==ui::kMouseUpMessage){auto m=static_cast<ui::MouseMessage*>(msg);if(m->button()==ui::kButtonMiddle&&bounds().contains(m->position())&&(!paletteViewport||paletteViewport().contains(m->position()))){if(middle)middle();return true;}}return PixelButton::onProcessMessage(msg);}
  void onPaint(ui::PaintEvent& ev)override{
  PixelButton::onPaint(ev);auto& g=*ev.graphics();PhysicalViewportClip clip(g,paletteViewport?std::optional<gfx::Rect>(paletteViewport().offset(-bounds().origin())):std::nullopt);UiPaintScale scale(g);auto r=uiLogical(clientBounds());g.saveClip();g.clipRect({r.x+1,r.y+1,std::max(0,r.w-2),std::max(0,r.h-2)});
- auto trim=[&](std::u32string t,int w){while(!t.empty()&&font_.measure(t)>w)t.pop_back();return t;};const auto name=recovery?unicodeText(recoveryRecord.name)+U"（恢复）":concealed?U"已隐藏工程":unicodeText(folder?std::filesystem::u8path(project.path).filename().u8string():gallery?std::filesystem::u8path(project.path).stem().u8string():recent::baseName(project.path));const auto path=recovery?U"上次保存："+unicodeText(recovery::displayTime(recovery::displayTimestamp(recoveryRecord.updatedAt))):concealed?U"********":unicodeText(project.path);
- if(density==0){font_.draw(g,trim(name,(r.w-12)*42/100),r.x+6,r.y+(r.h-10)/2,skin_["text"]);font_.draw(g,trim(path,(r.w-12)*58/100-6),r.x+6+(r.w-12)*42/100,r.y+(r.h-10)/2,skin_["muted"]);g.restoreClip();return;}
+ const auto name=recovery?unicodeText(recoveryRecord.name)+U"（恢复）":concealed?U"已隐藏工程":unicodeText(folder?std::filesystem::u8path(project.path).filename().u8string():gallery?std::filesystem::u8path(project.path).stem().u8string():recent::baseName(project.path));const auto path=recovery?U"上次保存："+unicodeText(recovery::displayTime(recovery::displayTimestamp(recoveryRecord.updatedAt))):concealed?U"********":unicodeText(project.path);
+ if(density==0){font_.draw(g,fitText(0,name,(r.w-12)*42/100),r.x+6,r.y+(r.h-10)/2,skin_["text"]);font_.draw(g,fitText(1,path,(r.w-12)*58/100-6),r.x+6+(r.w-12)*42/100,r.y+(r.h-10)/2,skin_["muted"]);g.restoreClip();return;}
  gfx::Rect box=density==2?gfx::Rect(r.x+6,r.y+6,std::max(1,r.w-12),120):gfx::Rect(r.x+6,r.y+(r.h-62)/2,84,62);
  for(int y=box.y;y<box.y2();y+=4)for(int x=box.x;x<box.x2();x+=4)g.fillRect((((x-box.x)/4+(y-box.y)/4)&1)?skin_["checkerA"]:skin_["checkerB"],{x,y,std::min(4,box.x2()-x),std::min(4,box.y2()-y)});
  if(!concealed&&image_){const double zoom=std::max(double(box.w)/image_->width(),double(box.h)/image_->height());const int w=std::max(1,int(std::lround(image_->width()*zoom))),h=std::max(1,int(std::lround(image_->height()*zoom)));g.saveClip();g.clipRect(box);ui::Paint paint;paint.blendMode(os::BlendMode::SrcOver);g.drawSurface(image_.get(),{0,0,image_->width(),image_->height()},{box.x+(box.w-w)/2,box.y+(box.h-h)/2,w,h},os::Sampling(),&paint);g.restoreClip();}else if(iconSkin)iconSkin->draw(g,concealed?"eyeOff":"image",{box.x+(box.w-15)/2,box.y+(box.h-15)/2,15,15},true);
  const auto detail=recovery&&preview_&&!preview_->error.empty()?U"非正常关闭后自动保存 · 点击恢复":concealed?U"点击仍可打开工程":!error.empty()?U"打开失败":preview_&&!preview_->error.empty()?U"无法读取预览":preview_?unicodeText(std::to_string(preview_->width)+" x "+std::to_string(preview_->height)+" · "+preview_->colorMode):U"正在读取预览";
- const int x=density==2?r.x+6:box.x2()+6,y=density==2?box.y2()+2:r.y+(r.h-(recovery?46:34))/2,w=r.x2()-x-6;font_.draw(g,trim(name,w),x,y,skin_["text"]);font_.draw(g,trim(detail,w),x,y+12,skin_["muted"]);font_.draw(g,trim(path,w),x,y+24,skin_["muted"]);if(recovery){const auto days=recovery::remainingDays(recovery::displayTimestamp(recoveryRecord.updatedAt),retentionDays,double(recent::now()));font_.draw(g,trim(U"保留期剩余 "+unicodeText(std::to_string(static_cast<long long>(std::min(days,9e15))))+U" 天",w),x,y+36,skin_["muted"]);}g.restoreClip();
+ const int x=density==2?r.x+6:box.x2()+6,y=density==2?box.y2()+2:r.y+(r.h-(recovery?46:34))/2,w=r.x2()-x-6;font_.draw(g,fitText(0,name,w),x,y,skin_["text"]);font_.draw(g,fitText(2,detail,w),x,y+12,skin_["muted"]);font_.draw(g,fitText(1,path,w),x,y+24,skin_["muted"]);if(recovery){const auto days=recovery::remainingDays(recovery::displayTimestamp(recoveryRecord.updatedAt),retentionDays,double(recent::now()));font_.draw(g,fitText(3,U"保留期剩余 "+unicodeText(std::to_string(static_cast<long long>(std::min(days,9e15))))+U" 天",w),x,y+36,skin_["muted"]);}g.restoreClip();
  }
 
 };
@@ -72,6 +89,7 @@ public:
  void setCacheDirectory(std::filesystem::path directory){cacheDirectory_=std::move(directory);}
  void setActive(bool active){if(active_==active)return;active_=active;if(active_){requestPreviews();previewTimer_.start();}else{queue_.cancel();previewTimer_.stop();}layout();}
  void reloadPreviews(){requestPreviews(true);}
+ void smokeTextFit(){ensureRows(1);rows_[0].open->smokeTextFit();}
  bool smokePreview(std::size_t i){collect();return rows_.at(smokeSlot(i)).open->hasPreview();}
  gfx::Rect smokeCard(std::size_t i)const{return rows_.at(smokeSlot(i)).card;}
 
