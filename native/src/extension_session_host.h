@@ -27,6 +27,13 @@ public:
  using NetworkStart=std::function<NetworkTask(std::wstring,std::wstring)>;
 private:
  NetworkStart networkStart_;
+ static winrt::Windows::Data::Json::JsonObject networkResponse(const std::wstring& encoded,const std::wstring& id){
+  using namespace winrt::Windows::Data::Json;auto response=JsonObject::Parse(encoded);
+  const auto has=[&](const wchar_t* key,JsonValueType type){return response.HasKey(key)&&response.GetNamedValue(key).ValueType()==type;};
+  if(!has(L"type",JsonValueType::String)||response.GetNamedString(L"type")!=L"moonsprite-extension-response"||!has(L"requestId",JsonValueType::String)||response.GetNamedString(L"requestId")!=id||!has(L"ok",JsonValueType::Boolean))throw std::runtime_error("Invalid native extension network response envelope");
+  if(response.GetNamedBoolean(L"ok")?!response.HasKey(L"result"):!has(L"error",JsonValueType::String))throw std::runtime_error("Invalid native extension network response payload");
+  return response;
+ }
  static winrt::Windows::Data::Json::JsonObject networkFailure(const std::wstring& id,const winrt::hstring& error){using namespace winrt::Windows::Data::Json;JsonObject response;response.Insert(L"type",JsonValue::CreateStringValue(L"moonsprite-extension-response"));response.Insert(L"requestId",JsonValue::CreateStringValue(id));response.Insert(L"ok",JsonValue::CreateBooleanValue(false));response.Insert(L"error",JsonValue::CreateStringValue(error));return response;}
 public:
  struct Token {std::string extensionId;std::uint64_t generation=0;};
@@ -69,7 +76,7 @@ public:
     // not leave an invalid future in the queue and poison every later poll.
     if(it->response.valid()&&it->response.wait_for(std::chrono::seconds(0))!=std::future_status::ready){++it;continue;}
     auto task=std::move(*it);it=s->network.erase(it);
-    try{responses.push_back(winrt::Windows::Data::Json::JsonObject::Parse(task.response.get()));}
+    try{responses.push_back(networkResponse(task.response.get(),task.requestId));}
     catch(const winrt::hresult_error& error){responses.push_back(networkFailure(task.requestId,error.message()));}
     catch(const std::exception& error){responses.push_back(networkFailure(task.requestId,winrt::to_hstring(error.what())));}
     catch(...){responses.push_back(networkFailure(task.requestId,L"Native extension network worker failed."));}

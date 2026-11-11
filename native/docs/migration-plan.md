@@ -6645,3 +6645,9 @@ PNG后台解码完成后保留像素及私有surface，每次pump最多上传262
 核对ExtensionRuntimeHost请求try/catch返回失败envelope，补齐原生worker自身失败和结果解析失败的宿主恢复。NetworkTask保留requestId；SessionHost poll先移出已完成任务，再get/Parse，避免get异常后无效future滞留并令每次poll再次失败。std/hresult/未知异常、无效future及损坏JSON转原requestId错误响应；同批后续成功与新请求继续正常处理。可注入NetworkStart替代worker用于确定性故障测试，正式权限/dispatch/poll均走实际实现。
 
 宿主与网络测试目标构建成功，两项回归通过22.74秒，含五类故障+同批成功、第二次poll无重放、后续请求恢复及真实HTTP超时/限额/权限/替换。来源821文件/diff通过。该模块尚未由正式编辑器生产执行器引用，本阶段未重建正式exe；不宣称生产JS功能完成。最终序列化/主线程Parse、请求线程数量仍有未完成项，整体迁移INCOMPLETE。保留editor_support.h及用户数据，阶段提交推送dev。
+
+### 2026-11-11：网络响应信封校验
+
+对照ExtensionRuntimeHost respond固定type/requestId与ok/result/error协议，SessionHost在worker结果交付前验证type、原请求ID、布尔ok及成功result/失败字符串error。合法JSON但错配信封转换原请求的一次错误响应，不交付错误身份，不影响后续任务。仅校验信封，未扩称完整HTTP结果schema校验。
+
+两个模块目标构建成功。首次CTest实际HTTP通过22.62秒，会话测试在既有Storage ReplaceFile报Unable to remove the file to be replaced，未进入新增断言；单独复核会话测试通过0.08秒，七类畸形信封和合法失败保留回归通过。存储首次失败未复现、根因未定位，不声称已修复或忽略该事实。来源821文件/diff通过。正式编辑器执行器尚未接入，本轮未重建正式exe，整体迁移INCOMPLETE。保留editor_support.h和用户数据，阶段提交推送dev。
