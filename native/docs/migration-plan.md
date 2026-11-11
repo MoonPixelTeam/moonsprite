@@ -6713,3 +6713,9 @@ PNG后台解码完成后保留像素及私有surface，每次pump最多上传262
 对照legacy workspace-session.ts createSession/loadToolSettings与persisted brush profiles，提取原生createToolOptions/createSmoothOptions/createAirbrushOptions已有读盘逻辑为不创建控件的loadSessionToolPreferences。启动复用原读取；addProject先保存旧会话，再重置会话工具配置与临时资源，等待已有笔刷偏好队列写完后加载当前持久化参数。复用现有墨水/动态/液化加载器，测试目录隔离。补齐smoothBrush尺寸形状的工程切换保存。真实Editor新增磁盘profile/平滑/喷枪/墨水/魔棒加载及损坏文件默认回归，验证中，不宣称完整迁移完成。
 
 阶段验收完成：唯一正式Release构建成功。extension-workspace-ui、color-editor-popup、multi-document、selection-interactions、canvas-resize五项通过5.14秒。真实工作区使用独立PID目录写入brush-profiles/smooth/airbrush/ink/magic-eraser文件，通过addProject检验加载；将profile/smooth改为损坏内容后按默认初始化，原工程独立状态恢复仍通过。原生已存在的工具偏好格式与加载器完成新工程接线；尚无对应持久化的旧版资源/工具设置仍属于整体迁移缺口，不称全部工具迁移完成。来源824文件与diff检查通过；无人工性能/FPS测量。用户editor_support.h与所有未跟踪数据保留，阶段提交推送dev。
+
+### 2026-11-11：工程图像笔刷快照与颜色恢复（验证中）
+
+核对legacy DocumentSession.brushImage及workspace-session.ts remapSelectionBrushColors：会话持有已加载像素，非切换时重读资源。原生配置捕获补入pencilImageBrush，恢复后按目标当前颜色重映射选区brush paintColors；共享颜色路径复用同一纯函数，保留原像素/alpha/透明/亮度128规则，普通图像不映射。真实Editor用missing-local-resource标识证明切换保留内存资源，单测验证原像素不变及alpha乘法。旧版lineDirectionStep经file-preferences.ts确认是全局偏好，不改为会话字段。当前构建验证中，整体INCOMPLETE。
+
+阶段验收完成：唯一正式Release及selection-pattern-brush-tests构建成功。selection-pattern-brush、extension-workspace-ui、multi-document、selection-interactions、canvas-resize五项通过4.58秒。真实Editor在不存在资源路径下往返标签仍保留已载入像素和ID，选区paintColors恢复；纯函数检查原像素不变、alpha乘法与普通图像跳过。来源824文件与diff检查通过；不含人工FPS测量，整体INCOMPLETE。保留用户editor_support.h及未跟踪数据，阶段提交推送dev。

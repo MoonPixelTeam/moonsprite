@@ -4,14 +4,6 @@
 #include <winrt/Windows.Data.Json.h>
 
 namespace moon::editor {
-namespace {
-void remap(std::optional<PatternBrush>& brush,Pixel primary,Pixel secondary){
- if(!brush||!brush->intrinsicSize||!brush->selectionColorMapping||brush->colors.size()!=std::size_t(brush->width)*brush->height)return;
- brush->paintColors.assign(brush->colors.size(),0);
- for(std::size_t i=0;i<brush->colors.size();++i){const Pixel source=brush->colors[i];const auto alpha=source>>24;if(!alpha)continue;const auto luminance=(source&255)*2126+((source>>8)&255)*7152+((source>>16)&255)*722;const Pixel color=luminance>=1280000?primary:secondary;brush->paintColors[i]=(color&0xffffff)|Pixel(std::floor(double(color>>24)*alpha/255+.5))<<24;}
-}
-}
-
 void Editor::initializeColorRoles(){
  using namespace winrt::Windows::Data::Json;
  const auto path=colorRolesOverride_.empty()?palettePreferencePath().parent_path()/"color-roles-v1.json":colorRolesOverride_;
@@ -38,7 +30,7 @@ void Editor::setSharedColor(Pixel color,bool secondary){
  (secondary?sharedSecondary_:sharedPrimary_)=color;colorRolesReady_=true;
  if(documentOpen_)document.setPaletteRole(color,secondary,paletteLocked_);
  for(auto& slot:projects_)if(slot->stored)slot->stored->setPaletteRole(color,secondary,paletteLocked_);
- remap(pencilImageBrush_,document.palette().primary,document.palette().secondary);for(auto& slot:projects_)if(slot->stored)remap(slot->temporaryBrush,slot->stored->palette().primary,slot->stored->palette().secondary);
+ remapSelectionPatternBrush(pencilImageBrush_,document.palette().primary,document.palette().secondary);for(auto& slot:projects_)if(slot->stored)remapSelectionPatternBrush(slot->temporaryBrush,slot->stored->palette().primary,slot->stored->palette().secondary);
  colorRolesDirty_=true;colorRolesTimer_.stop();colorRolesTimer_.start();
 }
 void Editor::rememberSelectedColor(bool secondary){
@@ -50,7 +42,7 @@ void Editor::swapSharedColors(){
  std::swap(sharedPrimary_,sharedSecondary_);
  auto apply=[&](Document& value){value.swapPaletteRoles(sharedPrimary_,sharedSecondary_);};
  if(documentOpen_)apply(document);for(auto& slot:projects_)if(slot->stored)apply(*slot->stored);
- remap(pencilImageBrush_,document.palette().primary,document.palette().secondary);for(auto& slot:projects_)if(slot->stored)remap(slot->temporaryBrush,slot->stored->palette().primary,slot->stored->palette().secondary);
+ remapSelectionPatternBrush(pencilImageBrush_,document.palette().primary,document.palette().secondary);for(auto& slot:projects_)if(slot->stored)remapSelectionPatternBrush(slot->temporaryBrush,slot->stored->palette().primary,slot->stored->palette().secondary);
  colorRolesDirty_=true;colorRolesTimer_.stop();colorRolesTimer_.start();
 }
 }

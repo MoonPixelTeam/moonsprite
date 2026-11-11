@@ -3,6 +3,12 @@
 #include "selection_model.h"
 #include "raster_geometry.h"
 namespace moon {
+// workspace-session.ts remapSelectionBrushColors: original pixels remain immutable.
+inline void remapSelectionPatternBrush(std::optional<PatternBrush>& brush,std::uint32_t primary,std::uint32_t secondary){
+ if(!brush||!brush->intrinsicSize||!brush->selectionColorMapping||brush->width<1||brush->height<1||brush->colors.size()!=std::size_t(brush->width)*brush->height)return;
+ brush->paintColors.assign(brush->colors.size(),0);
+ for(std::size_t i=0;i<brush->colors.size();++i){const auto source=brush->colors[i],alpha=source>>24;if(!alpha)continue;const auto luminance=(source&255)*2126+((source>>8)&255)*7152+((source>>16)&255)*722;const auto color=luminance>=1280000?primary:secondary;brush->paintColors[i]=(color&0xffffff)|std::uint32_t(std::floor(double(color>>24)*alpha/255+.5))<<24;}
+}
 // Actual legacy brushes.ts createSelectionBrush: active layer only, selected
 // transparent cells retained, outside-mask cells zero, origin is clamped mask box.
 template<class Sample>inline std::optional<PatternBrush> createSelectionPatternBrushSampled(Sample sample,int canvasWidth,int canvasHeight,const SelectionMask& selection){
