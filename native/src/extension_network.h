@@ -13,6 +13,11 @@
 #include <future>
 #include <thread>
 #include <array>
+#include <mutex>
+#include <condition_variable>
+#include <deque>
+#include <functional>
+#include <algorithm>
 
 namespace moon::extension {
 inline void checkNetworkCancelled(const std::shared_ptr<std::atomic<bool>>& cancelled){if(cancelled&&cancelled->load())throw std::runtime_error("扩展网络请求已取消。");}
@@ -23,23 +28,43 @@ inline winrt::Windows::Data::Json::JsonArray networkBytes(const std::vector<std:
  checkNetworkCancelled(cancelled);return data;
 }
 // Worker owns every WinRT object. Only UTF-16 JSON crosses the event-thread boundary.
-// A packaged-task future never joins on destruction, so disabling cannot freeze UI.
+// Promise futures never join on destruction; queued cancellation removes work immediately.
 struct NetworkTask {
  std::shared_ptr<std::atomic<bool>> cancelled;
  std::future<std::wstring> response;
  std::wstring requestId;
- void cancel(){*cancelled=true;}
+ std::function<void()> removeQueued;
+ void cancel(){if(cancelled)cancelled->store(true);if(removeQueued)removeQueued();}
 };
+namespace detail {
+class NetworkQueue {
+ struct Job{std::shared_ptr<std::atomic<bool>> cancelled;std::function<void()> run,reject;};
+ struct State{std::mutex mutex;std::condition_variable ready;bool stopping=false;std::deque<Job> jobs;};
+ std::shared_ptr<State> state_=std::make_shared<State>();
+public:
+ static constexpr int workerCount=3;
+ NetworkQueue(){for(int i=0;i<workerCount;++i)std::thread([state=state_]{for(;;){Job job;{std::unique_lock<std::mutex> lock(state->mutex);state->ready.wait(lock,[&]{return state->stopping||!state->jobs.empty();});if(state->stopping)return;job=std::move(state->jobs.front());state->jobs.pop_front();}job.run();}}).detach();}
+ ~NetworkQueue(){std::deque<Job> jobs;{std::lock_guard<std::mutex> lock(state_->mutex);state_->stopping=true;jobs.swap(state_->jobs);}state_->ready.notify_all();for(auto& job:jobs)job.reject();}
+ NetworkTask submit(std::wstring identity,std::function<std::wstring(const std::shared_ptr<std::atomic<bool>>&)> work){
+  auto cancelled=std::make_shared<std::atomic<bool>>(false);auto promise=std::make_shared<std::promise<std::wstring>>();auto future=promise->get_future();
+  auto reject=[promise]{try{throw std::runtime_error("扩展网络请求已取消。");}catch(...){promise->set_exception(std::current_exception());}};
+  auto run=[cancelled,promise,work=std::move(work)]{try{checkNetworkCancelled(cancelled);auto value=work(cancelled);checkNetworkCancelled(cancelled);promise->set_value(std::move(value));}catch(...){promise->set_exception(std::current_exception());}};
+  {std::lock_guard<std::mutex> lock(state_->mutex);state_->jobs.push_back({cancelled,std::move(run),std::move(reject)});}state_->ready.notify_one();
+  auto remove=[weak=std::weak_ptr<State>(state_),cancelled]{auto state=weak.lock();if(!state)return;std::function<void()> reject;{std::lock_guard<std::mutex> lock(state->mutex);const auto found=std::find_if(state->jobs.begin(),state->jobs.end(),[&](const Job& job){return job.cancelled==cancelled;});if(found==state->jobs.end())return;reject=std::move(found->reject);state->jobs.erase(found);}reject();};
+  return {cancelled,std::move(future),std::move(identity),std::move(remove)};
+ }
+};
+}
 inline NetworkTask startNetworkRequest(std::wstring requestId,std::wstring encodedParams){
- auto identity=requestId;
- auto cancelled=std::make_shared<std::atomic<bool>>(false);
- std::packaged_task<std::wstring()> work([cancelled,requestId=std::move(requestId),encodedParams=std::move(encodedParams)]{
+ static detail::NetworkQueue queue;
+ auto identity=requestId;const auto deadline=std::chrono::steady_clock::now()+std::chrono::seconds(15);
+ return queue.submit(std::move(identity),[requestId=std::move(requestId),encodedParams=std::move(encodedParams),deadline](const std::shared_ptr<std::atomic<bool>>& cancelled){
   winrt::init_apartment(winrt::apartment_type::multi_threaded);
   struct Apartment{~Apartment(){winrt::uninit_apartment();}} apartment;
   using namespace winrt::Windows::Data::Json;
   JsonObject envelope;envelope.Insert(L"type",JsonValue::CreateStringValue(L"moonsprite-extension-response"));envelope.Insert(L"requestId",JsonValue::CreateStringValue(requestId));
   try{
-   checkNetworkCancelled(cancelled);
+   checkNetworkCancelled(cancelled);if(std::chrono::steady_clock::now()>=deadline)throw std::runtime_error("扩展网络请求超时。");
    const auto params=JsonObject::Parse(encodedParams);
    if(!params.HasKey(L"url")||params.GetNamedValue(L"url").ValueType()!=JsonValueType::String)throw std::invalid_argument("参数 url 必须是字符串。");
    const winrt::Windows::Foundation::Uri uri(params.GetNamedString(L"url"));
@@ -53,7 +78,6 @@ inline NetworkTask startNetworkRequest(std::wstring requestId,std::wstring encod
     if(method==L"GET"||method==L"HEAD")throw std::invalid_argument("GET/HEAD 请求不能包含 body。");
     request.Content(HttpStringContent(params.GetNamedString(L"body"),winrt::Windows::Storage::Streams::UnicodeEncoding::Utf8,L"text/plain"));
    }
-   const auto deadline=std::chrono::steady_clock::now()+std::chrono::seconds(15);
    auto wait=[&](const auto& operation){
     while(operation.Status()==winrt::Windows::Foundation::AsyncStatus::Started){
      if(*cancelled||std::chrono::steady_clock::now()>=deadline){operation.Cancel();throw std::runtime_error(*cancelled?"扩展网络请求已取消。":"扩展网络请求超时。");}
@@ -80,6 +104,6 @@ inline NetworkTask startNetworkRequest(std::wstring requestId,std::wstring encod
   catch(const std::exception& e){envelope.Insert(L"ok",JsonValue::CreateBooleanValue(false));envelope.Insert(L"error",JsonValue::CreateStringValue(winrt::to_hstring(e.what())));}
   return std::wstring(envelope.Stringify());
  });
- auto future=work.get_future();std::thread(std::move(work)).detach();return {std::move(cancelled),std::move(future),std::move(identity)};
+
 }
 }
