@@ -635,6 +635,7 @@ public:
   // tolerance/continuity/reference/selection, as one history edit.
   bool eraseMatchingColor(Point point,WandOptions options={},bool preview=false);
   const std::vector<ProjectBrushResource>& projectBrushes()const{return projectBrushes_;}
+  std::uint64_t projectBrushRevision()const{return projectBrushRevision_;}
   void setImportedProjectBrushes(std::vector<ProjectBrushResource> brushes);
   bool deleteProjectBrush(const std::string& id);
   const ReferenceLibrary& referenceImages()const{return referenceImages_;}
@@ -838,6 +839,7 @@ private:
   std::shared_ptr<const std::vector<std::uint8_t>> sourceArchive_;
   PaletteState palette_;
   std::vector<ProjectBrushResource> projectBrushes_;
+  std::uint64_t projectBrushRevision_=0;
   ReferenceLibrary referenceImages_;
   std::optional<SymmetryCenter> symmetryCenter_;
   std::vector<std::pair<std::string,bool>> lockGestureBefore_;

@@ -2998,8 +2998,8 @@ void Document::cancelFloatingPaste(){
 
 
 namespace moon {
-void Document::setImportedProjectBrushes(std::vector<ProjectBrushResource> brushes){std::set<std::string> ids;for(const auto& resource:brushes){const auto& b=resource.brush;if(resource.metadata.id.empty()||!ids.insert(resource.metadata.id).second||b.width<1||b.height<1||std::uint64_t(b.width)*b.height>16*1024*1024||b.coverage.size()!=std::size_t(b.width)*b.height||(!b.colors.empty()&&b.colors.size()!=b.coverage.size()))throw std::invalid_argument("Invalid imported project brush");}projectBrushes_=std::move(brushes);}
-bool Document::deleteProjectBrush(const std::string& id){auto item=std::find_if(projectBrushes_.begin(),projectBrushes_.end(),[&](const auto& brush){return brush.metadata.id==id;});if(item==projectBrushes_.end())return false;projectBrushes_.erase(item);modified_=true;state_=nextState_++;++revision_;++contentRevision_;return true;}
+void Document::setImportedProjectBrushes(std::vector<ProjectBrushResource> brushes){std::set<std::string> ids;for(const auto& resource:brushes){const auto& b=resource.brush;if(resource.metadata.id.empty()||!ids.insert(resource.metadata.id).second||b.width<1||b.height<1||std::uint64_t(b.width)*b.height>16*1024*1024||b.coverage.size()!=std::size_t(b.width)*b.height||(!b.colors.empty()&&b.colors.size()!=b.coverage.size()))throw std::invalid_argument("Invalid imported project brush");}projectBrushes_=std::move(brushes);++projectBrushRevision_;}
+bool Document::deleteProjectBrush(const std::string& id){auto item=std::find_if(projectBrushes_.begin(),projectBrushes_.end(),[&](const auto& brush){return brush.metadata.id==id;});if(item==projectBrushes_.end())return false;projectBrushes_.erase(item);++projectBrushRevision_;modified_=true;state_=nextState_++;++revision_;++contentRevision_;return true;}
 }
 
 

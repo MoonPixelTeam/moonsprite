@@ -6827,3 +6827,9 @@ PNG后台解码完成后保留像素及私有surface，每次pump最多上传262
 依据legacy BrushMetadata serde类型及本机serde_json de.rs parse_number证据：小数/指数/-0作为F64，i32字段拒绝；derive已知字段重复报错。沿用仓库palette_import.cpp已有词法适配方式，在DOM之前识别顶层解码字段重复和坐标整数写法，未知/嵌套字段仍忽略，补metadata UTF8校验。回归decimal/exponent/-0、重复布尔/坐标与转义别名、单个转义键、i32两端、空可选和未知嵌套重复。不是穷尽格式等价证明，surrogate/深度边界仍需核对；整体INCOMPLETE。
 
 阶段验收完成：唯一正式Release及底层测试构建成功，实际笔刷栏目专项等待exit0。pattern-brush-library词法/重复字段/转义别名/i32/null/未知字段和已有并发检查通过12.98秒；extension-workspace-ui、multi-document、canvas-resize通过，合计15.60秒。来源824/diff通过。没有surrogate/深度边界穷尽对照或人工FPS声明；原CHECK路径警告仍存在。整体INCOMPLETE，用户editor_support.h和未跟踪数据保留，阶段提交推送dev。
+
+### 2026-11-11：工程笔刷资源变更序号与缓存失效（验证中）
+
+对照legacy useBrushLibrary.ts customBrushes集合身份依赖，原生旧ID/名称key漏掉同身份像素替换。增加独立资源序号，验证导入后替换/成功删除/回档payload安装递增；Lua批次回滚保留非历史资源时保留该序号。栏目key以O(1)资源序号替代每次拼接全部名称，不影响文档脏标记/历史。真实Editor新增同ID/同名称只改像素，自动改变key并重载选择新像素的回归。正式构建进行中，整体INCOMPLETE。
+
+阶段验收完成：唯一正式Release完整重编译成功；新增像素选择fixture初次因双击同一项触发取消而失败，修正为清选择后单击，最终增量构建成功。实际笔刷栏目专项等待exit0，同ID/名称像素替换自动失效与新像素选择通过；project-rollback专项exit0。extension-workspace-ui、multi-document、canvas-resize通过1.99秒。来源824/diff通过。回档/Lua恢复序号路径仅源码核对加既有回档验收，未单独断言序号；无FPS声明，整体INCOMPLETE。用户editor_support.h及未跟踪数据保留，阶段提交推送dev。

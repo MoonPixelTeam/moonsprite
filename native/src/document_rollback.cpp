@@ -13,7 +13,7 @@ void Document::applyRollbackPayload(const RollbackPayload& p,bool preserveRecord
  if(viewedFrame&&restored.hasFrame(*viewedFrame))prepared.activeFrame=*viewedFrame;
  if(!preserveRecording){timelapseSettings_=std::move(prepared.timelapse);if(auto session=recordingSession())session->restoreSettings(timelapseSettings_);}
  projectInformation_=std::move(prepared.information);width_=prepared.width;height_=prepared.height;timeline_=std::move(restored);displayedLayerGeometry_=std::move(prepared.displayedLayerGeometry);
- outlineSettings_=std::move(prepared.outline);palette_=std::move(prepared.palette);projectBrushes_=std::move(prepared.brushes);referenceImages_=std::move(prepared.references);sliceState_=std::move(prepared.slices);symmetryCenter_=std::move(prepared.symmetry);
+ outlineSettings_=std::move(prepared.outline);palette_=std::move(prepared.palette);projectBrushes_=std::move(prepared.brushes);++projectBrushRevision_;referenceImages_=std::move(prepared.references);sliceState_=std::move(prepared.slices);symmetryCenter_=std::move(prepared.symmetry);
  animationLoop_=prepared.loop;showPixelGrid_=prepared.pixelGrid;showCustomGrid_=prepared.customGridVisible;customGrid_=prepared.grid;
  activeLayerId_=std::move(prepared.activeLayer);activeFrameId_=std::move(prepared.activeFrame);collapsedGroupIds_=std::move(prepared.collapsed);sourceArchive_=std::move(prepared.archive);
  selection_.reset();clearTimelineSelection();selectionPivotHistory_.pivot.reset();++selectionPivotHistory_.serial;projectActiveCelOpacities();change_={0,0,width_,height_};
