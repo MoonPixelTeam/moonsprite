@@ -468,17 +468,20 @@ int app_main(int argc,char* argv[]) {
         int pumps=0;const auto limit=std::chrono::steady_clock::now()+std::chrono::seconds(10);while(!sent&&std::chrono::steady_clock::now()<limit){host->pump();++pumps;if(pumps==2){model.Insert(L"status",JsonValue::CreateStringValue(L"pushed while reading"));host->receive(model,0);host->setBounds({0,0,460*uiScale,320*uiScale});}ui::Manager::getDefault()->dispatchMessages();std::this_thread::yield();}
         if(sent!=1||pumps<16||!host->stateForCheck().busy()||received.GetNamedString(L"type")!=L"upload")throw std::runtime_error("Import window did not yield/send once");auto files=received.GetNamedArray(L"files");auto file=files.GetObjectAt(0);auto bytes=file.GetNamedArray(L"bytes");if(files.Size()!=1||file.GetNamedString(L"name")!=L"sample.png"||file.GetNamedString(L"mime")!=L"image/png"||bytes.Size()!=expected.size())throw std::runtime_error("Import window metadata/length mismatch");for(std::uint32_t i=0;i<bytes.Size();++i)if(bytes.GetNumberAt(i)!=expected[i])throw std::runtime_error("Import window byte mismatch");
         JsonObject result;result.Insert(L"requestId",received.GetNamedValue(L"requestId"));model.Insert(L"result",result);host->receive(model,0);host->pump();if(host->stateForCheck().busy())throw std::runtime_error("Import reply did not unlock");
-        for(int transition=0;transition<4;++transition){
+        for(int transition=0;transition<6;++transition){
           model.Remove(L"result");host->receive(model,host->stateForCheck().generation());host->pump();click();
           const auto end=std::chrono::steady_clock::now()+std::chrono::seconds(5);while(!host->encodingImportForCheck()&&std::chrono::steady_clock::now()<end){host->pump();std::this_thread::yield();}
           if(!host->encodingImportForCheck()||sent!=1)throw std::runtime_error("Import encoding transition fixture missing");
           if(transition==0){host->stateForCheck().loadFailed(L"retry during encoding");host->retryForCheck()->Click();host->receive(model,host->stateForCheck().generation());}
           else if(transition==1){host->receive(JsonObject::Parse(LR"({"nodes":[{"id":"file","type":"file","disabled":true}]})"),host->stateForCheck().generation());}
           else if(transition==2){host->receive(JsonObject::Parse(LR"({"nodes":[]})"),host->stateForCheck().generation());}
+          else if(transition==3){host->receive(JsonObject::Parse(LR"({"nodes":[{"id":"file","type":"button"}]})"),host->stateForCheck().generation());}
+          else if(transition==4){host->receive(JsonObject::Parse(LR"({"nodes":[{"id":"flag","type":"select","value":"hide"},{"id":"file","type":"file","visibleWhen":{"flag":"show"}}]})"),host->stateForCheck().generation());}
           else host->closeFromHost();
+          host->pump();if(host->encodingImportForCheck()||host->stateForCheck().busy())throw std::runtime_error("Invalid import target not cancelled in first pump");
           for(int i=0;i<64;++i)host->pump();
           if(sent!=1||host->stateForCheck().busy()||host->encodingImportForCheck())throw std::runtime_error("Encoding cancel/disabled/removed control leaked send or busy");
-          if(transition<3){host->receive(model,host->stateForCheck().generation());host->pump();auto* ready=host->controlForCheck(L"file");if(!ready||!ready->isEnabled())throw std::runtime_error("Import transition did not restore enabled control");}
+          if(transition<5){host->receive(model,host->stateForCheck().generation());host->pump();auto* ready=host->controlForCheck(L"file");if(!ready||!ready->isEnabled())throw std::runtime_error("Import transition did not restore enabled control");}
         }
         if(host->stateForCheck().active()||host->parent())throw std::runtime_error("Encoding close did not unregister window");
       }

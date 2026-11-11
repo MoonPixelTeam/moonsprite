@@ -6621,3 +6621,9 @@ PNG后台解码完成后保留像素及私有surface，每次pump最多上传262
 继续处理导出大响应复制长任务。FormState::copy此前Stringify再Parse，会为bytes数组生成完整UTF16及重新分配数字；改为显式工作栈复制JSON对象/数组容器，复用不可变标量，保留receive、send action和draft快照隔离。显式栈不递归访问扩展提供的JSON深度，不修改节点/文件协议或导出验证逻辑。
 
 唯一正式Release及状态测试构建成功，extension-form-ui/image/files/state四项通过2.81秒。新增外部嵌套模型修改不影响接收快照，262144字节结果与原Stringify/Parse克隆序列化一致；本机局部样本原201249us、结构复制30266us，约6.6倍，无性能断言阈值。来源821文件/diff通过。接收仍同步O(n)，大数组容器释放及文件导出校验/写入尚未分帧；不将局部结果扩称整体无卡顿。生产执行器方案仍待用户答复，整体迁移INCOMPLETE。保留editor_support.h及用户数据，阶段提交推送dev。
+
+### 2026-11-11：导入目标失效提前终止
+
+沿用既有最终control检查会拒绝隐藏/禁用/移除/非file目标的语义，将校验提前至每次读取/编码pump。FormState::continueImport先核对ticket所有权，再按当前模型可见性、type和disabled检查；失效时解除该任务busy。FormWindow取消后台任务或释放部分编码并sync，避免已无有效接收目标的文件仍读完/编码完。新任务不被旧ticket检查解锁；null/非字符串type安全拒绝。没有改变有效文件payload及最终提交范围。
+
+唯一正式Release及状态测试构建成功，extension-form-ui/image/files/state四项通过2.82秒。正式窗口矩阵扩展为retry、禁用、移除、变button、条件隐藏、关闭六路径，每路径first pump即清编码/busy，无旧发送，恢复模型按钮enabled。状态覆盖空类型、隐藏及新旧ticket隔离。来源821文件/diff通过。OS已阻塞read仍需返回后协作取消，无物理慢盘性能测量；整体迁移及待确认生产执行器INCOMPLETE。保留editor_support.h与用户数据，阶段提交推送dev。

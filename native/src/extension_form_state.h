@@ -64,6 +64,14 @@ public:
  std::optional<Object> finishImport(ImportEncoding& encoding){if(!ownsImport(encoding.ticket)||encoding.file!=encoding.files.size())return {};busy_=false;auto node=control(encoding.ticket.id);if(!node||property(*node,L"type").GetString()!=L"file")return {};Object extra;extra.Insert(L"files",encoding.encoded);return send(action(*node),extra);}
  std::optional<ImportTicket> beginImport(const std::wstring& id){auto node=control(id);if(!node||property(*node,L"type").GetString()!=L"file")return {};busy_=true;return ImportTicket{id,generation_,++sequence_};}
  bool ownsImport(const ImportTicket& ticket)const{return active_&&generation_==ticket.generation&&sequence_==ticket.sequence&&busy_&&pending_.empty();}
+ bool continueImport(const ImportTicket& ticket){
+  if(!ownsImport(ticket))return false;
+  const auto node=find(view_.GetNamedArray(L"nodes"),ticket.id,defaults_);
+  const auto type=node?property(*node,L"type"):Value{nullptr};
+  if(node&&type&&type.ValueType()==Type::String&&type.GetString()==L"file"&&!truthy(property(*node,L"disabled")))return true;
+  // Final submission already rejects this target. Stop its expensive work now.
+  busy_=false;return false;
+ }
  std::optional<Object> finishImport(const ImportTicket& ticket,const std::vector<File>& selected){if(!ownsImport(ticket))return {};busy_=false;return files(ticket.id,selected);}
  void failImport(const ImportTicket& ticket,const std::wstring& error){if(ownsImport(ticket))fileFailed(error);}
  FormState(){view_.Insert(L"nodes",Array{});}
