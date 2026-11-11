@@ -1738,15 +1738,19 @@ void Editor::resolvePencilImageBrush(){pencilImageBrush_.reset();if(pencilImageB
 
 void Editor::showPencilImageBrushes(){if(document.active())return;PixelMenu menu(skin_);auto clear=new PixelMenuItem(font_,skin_,U"普通笔刷");clear->Click.connect([this]{pencilImageBrushId_.clear();pencilImageBrush_.reset();saveBrushPreferences();refresh();});menu.addChild(clear);try{PatternBrushLibrary library(fillBrushLibraryDirectory());for(const auto& item:library.list().brushes){auto row=new PixelMenuItem(font_,skin_,unicodeText(item.name));row->checked=[this,id=item.id]{return pencilImageBrushId_==id;};row->Click.connect([this,id=item.id]{pencilImageBrushId_=id;resolvePencilImageBrush();saveBrushPreferences();refresh();});menu.addChild(row);}for(const auto& item:document.projectBrushes()){auto row=new PixelMenuItem(font_,skin_,U"工程："+unicodeText(item.metadata.name));row->checked=[this,id=item.metadata.id]{return pencilImageBrushId_=="project:"+id;};row->Click.connect([this,id=item.metadata.id]{pencilImageBrushId_="project:"+id;resolvePencilImageBrush();saveBrushPreferences();refresh();});menu.addChild(row);}}catch(const std::exception& e){status_=U"笔刷库读取失败："+unicodeText(e.what());}menu.addChild(new PixelMenuSeparator(skin_));auto angleLabel=new PixelMenuItem(font_,skin_,U"角度（度）");angleLabel->setEnabled(false);menu.addChild(angleLabel);auto angle=new PixelEntry(font_,skin_);angle->numeric=true;angle->setText(std::to_string(int(pencilImageBrushAngle_)));menu.addChild(angle);angle->Change.connect([this,angle]{try{std::size_t used=0;double value=std::stod(angle->text(),&used);if(used==angle->text().size() && std::isfinite(value)){pencilImageBrushAngle_=std::clamp(value,-180.0,180.0);saveBrushPreferences();}}catch(...){} });auto at=imageBrushButton_->bounds();menu.showPopup({at.x,at.y2()},display());requestFocus();}
 
-void Editor::applyFillLibrarySelection(){brushLibraryNeedsReload_=true;
-
-    PatternBrushLibrary library(fillBrushLibraryDirectory());const auto listing=library.list();std::vector<PatternBrush> brushes;std::u32string name;
-
-    for(const auto& id:fillLibrarySelection_.ids){auto item=std::find_if(listing.brushes.begin(),listing.brushes.end(),[&](const auto& value){return value.id==id;});if(item==listing.brushes.end()){auto projectId=id.rfind("project:",0)==0?id.substr(8):id;auto project=std::find_if(document.projectBrushes().begin(),document.projectBrushes().end(),[&](const auto& resource){return resource.metadata.id==projectId;});if(project!=document.projectBrushes().end()){if(id==fillLibrarySelection_.active)name=unicodeText(project->metadata.name);brushes.push_back(project->brush);}continue;}auto loaded=importPatternBrush(std::filesystem::u8path(item->filePath));loaded.brush.sourceX=item->sourceX.value_or(0);loaded.brush.sourceY=item->sourceY.value_or(0);if(id==fillLibrarySelection_.active)name=unicodeText(item->name);brushes.push_back(std::move(loaded.brush));}
-
-    fillPattern_.brushes=std::move(brushes);fillImageName_=std::move(name);pencilImageBrushId_=fillLibrarySelection_.active;if(pencilImageBrushId_.empty())pencilImageBrush_.reset();else resolvePencilImageBrush();
-
-  }
+void Editor::applyFillLibrarySelection(){
+    PatternBrushLibrary library(fillBrushLibraryDirectory());const auto listing=library.list();std::vector<PatternBrush> brushes;std::optional<PatternBrush> active;std::u32string name;
+    for(const auto& id:fillLibrarySelection_.ids){
+      PatternBrush brush;std::string label;
+      if(id.rfind("project:",0)==0){const auto resource=std::find_if(document.projectBrushes().begin(),document.projectBrushes().end(),[&](const auto& value){return value.metadata.id==id.substr(8);});if(resource==document.projectBrushes().end())throw std::runtime_error("Project brush no longer exists");brush=resource->brush;label=resource->metadata.name;}
+      else{const auto item=std::find_if(listing.brushes.begin(),listing.brushes.end(),[&](const auto& value){return value.id==id;});if(item==listing.brushes.end())throw std::runtime_error("Local brush no longer exists");brush=importPatternBrush(std::filesystem::u8path(item->filePath)).brush;brush.selectionColorMapping=item->sourceX.has_value()&&item->sourceY.has_value();brush.sourceX=item->sourceX.value_or(0);brush.sourceY=item->sourceY.value_or(0);label=item->name;}
+      if(id==fillLibrarySelection_.active){active=brush;name=unicodeText(label);}brushes.push_back(std::move(brush));
+    }
+    if(!fillLibrarySelection_.active.empty()&&!active)throw std::runtime_error("Active brush is not selected");
+    // Commit only after every resource loaded; a failure preserves live pixels.
+    if(active&&!temporaryBrushReturnProfile_)temporaryBrushReturnProfile_=brushFeedback_.brushProfiles_[0];
+    fillPattern_.brushes=std::move(brushes);fillImageName_=std::move(name);pencilImageBrushId_=fillLibrarySelection_.active;pencilImageBrush_=std::move(active);brushLibraryNeedsReload_=true;
+}
 
 void Editor::selectFillLibraryBrush(const std::string& id,bool ctrl,bool shift){
 

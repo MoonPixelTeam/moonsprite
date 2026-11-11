@@ -6737,3 +6737,9 @@ PNG后台解码完成后保留像素及私有surface，每次pump最多上传262
 对照legacy workspace-commands-tool.ts createBrushFromSelection→setTemporaryBrush→setBrushImage→persistToolSettings，保存成功才激活并持久化。原生补齐importBrushLibraryImages/createBrushFromSelection/createFillBrushFromSelection成功路径偏好保存，失败不覆盖。真实隔离库检查PNG导入后重载像素、失败导入保留、空选区无操作，以及成功选区捕获重载/历史不变。多图案集合经旧版确认仅会话状态，不新增全局持久化。构建验证中，整体INCOMPLETE。
 
 阶段验收完成：唯一正式Release构建及最终增量检查成功；--brush-library-panel-check等待进程exit0，包含真实导入PNG、选区捕获、偏好重载及失败保留。extension-workspace-ui、multi-document、canvas-resize三项通过1.94秒。来源824文件与diff通过，无人工FPS测量；旧版完整工具profile与其他领域仍INCOMPLETE。保留用户editor_support.h及未跟踪数据，提交推送dev。
+
+### 2026-11-11：图案选择资源事务与重复读取消除（验证中）
+
+核对legacy BrushLibraryPanel.tsx已加载controller资源→单次setBrushImage，以及workspace-commands-tool.ts提交集合。原生applyFillLibrarySelection按选择顺序暂存所有本地/工程资源，活动图案复用候选，全部成功后一次发布；失败不改绘制集合。删除栏目选择重复resolve以及失败回滚读盘，选区坐标存在性标记一并保留。新增已登记但内容损坏PNG选择回归，保留原选择/像素/图案数/名称。同步加载仍是待迁移性能差异，本阶段不宣称后台库控制器完成。构建验证中，整体INCOMPLETE。
+
+阶段验收完成：唯一正式Release构建成功；实际--brush-library-panel-check等待exit0，损坏资源选择保留完整旧绘制状态，原有导入/删除/持久化路径通过。extension-workspace-ui、multi-document、canvas-resize三项通过1.88秒。来源824文件/diff通过，未测FPS，后台资源控制器仍未迁移；整体INCOMPLETE。保留用户editor_support.h与未跟踪数据，提交推送dev。
