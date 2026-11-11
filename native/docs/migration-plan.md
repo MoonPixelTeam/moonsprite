@@ -6683,3 +6683,11 @@ PNG后台解码完成后保留像素及私有surface，每次pump最多上传262
 正式Release构建成功；extension-workspace-ui/multi-document/extension-request-host三项通过1.78秒，实际请求覆盖15类别、内容/历史不变、ellipse保持、live stroke不取消、隐藏层喷枪拒绝、home/focus、非法ID、无权限及空工作区null/no-op。首次测试因选中隐藏图层导致喷枪被正确拒绝，修正可绘制fixture并独立保留该拒绝回归；错误日志路径修正到native/build，旧失败日志保留。来源822文件及diff通过，无人工UI/FPS验收。
 
 发现旧版颜色set会同步所有会话并持久化共享角色，不能用当前文档回调替代，留为独立完整迁移。各工程独立工具状态恢复、生产JavaScript执行器仍未完成，本阶段只声明真实工具API适配通过，整体INCOMPLETE。保留用户editor_support.h及未跟踪数据，阶段提交推送dev。
+
+### 2026-11-11：原生通知、剪贴板与诊断服务适配
+
+依据legacy ExtensionRuntimeHost.tsx notifications/ui.notify、navigator.clipboard与diagnostics.log分支，提供nativeHostServices/nativeDiagnosticServices工厂。通知交给宿主status呈现；clip库UTF8文本读写失败抛出，RequestHost生成原requestId失败响应。诊断复用recorderDiagnosticServices绑定固定扩展身份，错误更新状态，原浏览器console适配OutputDebugStringW，不新建UI。后端可注入用于确定性失败验收；所有者与状态回调须在编辑器生命周期内使用。
+
+唯一正式Release构建成功；extension-workspace-ui/request-host/runtime-diagnostics三项通过1.04秒。真实SessionHost/Editor检查Unicode读写、读写失败不虚假成功、通知500UTF16限制、error状态、诊断身份不可由params冒充、无权限不调用后端；实际系统剪贴板只读核对，不覆盖用户内容。测试诊断mode1保留内存证据，无需写入用户配置。来源823文件/diff通过，无UI几何变化或人工FPS验收。
+
+适配工厂已可供正式宿主使用，目前集成由正式exe检查入口调用，生产JavaScript执行入口尚未接入，不将工厂验收描述为完整扩展已可运行。共享颜色、各工程工具恢复及其他缺口仍未完成；整体INCOMPLETE。旧失败日志保留，用户editor_support.h和未跟踪数据不纳入提交；阶段保存推送dev。

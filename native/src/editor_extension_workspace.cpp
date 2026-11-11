@@ -1,6 +1,7 @@
 #include "editor.h"
 #include "editor_implementation.h"
 #include "extension_session_host.h"
+#include "extension_native_services.h"
 
 namespace moon::editor {
 namespace {
@@ -97,6 +98,20 @@ void Editor::smokeExtensionWorkspace(){
  host.close(token);token=host.open({"workspace-check",true,false},{"workspace.read","document.read","document.write","tools"},"zh-CN",[](const auto&){});host.setWorkspaceServices(token,extensionWorkspaceServices());
  documentOpen_=false;projects_.clear();require(result("workspace.listProjects").GetArray().Size()==0&&result("workspace.getActiveProject").ValueType()==JsonValueType::Null&&!call("document.getFrames").GetNamedBoolean(L"ok")&&!call("document.undo").GetNamedBoolean(L"ok"),"Empty workspace contract");
  require(result("tools.getActive").ValueType()==JsonValueType::Null&&setTool("pencil").GetNamedBoolean(L"ok"),"Empty workspace tool contract");
+ host.close(token);token=host.open({"native-services",true,false},{"clipboard","notifications","ui","diagnostics"},"zh-CN",[](const auto&){});
+ auto status=[this](const winrt::hstring& value){status_=unicodeText(winrt::to_string(value));invalidate();};
+ std::string clipboard="Unicode 剪贴板 😀";bool readOk=true,writeOk=true;int reads=0,writes=0;
+ auto services=extension::nativeHostServices(status,[&](std::string& value){++reads;value=clipboard;return readOk;},[&](const std::string& value){++writes;if(writeOk)clipboard=value;return writeOk;});
+ diagnostics_->mode(1);host.setServices(token,services);host.setDiagnosticServices(token,extension::nativeDiagnosticServices(diagnostics_,"native-services",status));
+ require(result("clipboard.readText").GetString()==workspaceText(clipboard),"Native clipboard UTF8 read");
+ JsonObject params;params.Insert(L"text",JsonValue::CreateStringValue(L"new 中文 😀"));require(call("clipboard.writeText",params).GetNamedBoolean(L"ok")&&clipboard=="new 中文 😀","Native clipboard UTF8 write");
+ readOk=false;writeOk=false;require(!call("clipboard.readText").GetNamedBoolean(L"ok")&&!call("clipboard.writeText",params).GetNamedBoolean(L"ok")&&clipboard=="new 中文 😀","Clipboard failure falsely succeeded");
+ params=JsonObject{};params.Insert(L"message",JsonValue::CreateStringValue(std::wstring(510,L'x')));require(call("notifications.show",params).GetNamedBoolean(L"ok")&&status_==std::u32string(500,U'x'),"Notification limit/status binding");
+ params.Insert(L"message",JsonValue::CreateStringValue(L"native extension failure"));params.Insert(L"level",JsonValue::CreateStringValue(L"error"));params.Insert(L"extensionId",JsonValue::CreateStringValue(L"spoofed"));require(call("diagnostics.log",params).GetNamedBoolean(L"ok")&&status_==U"native extension failure","Diagnostic error status binding");
+ const auto diagnosticJson=diagnostics_->snapshotJson();require(diagnosticJson.find("native-services")!=std::string::npos&&diagnosticJson.find("spoofed")==std::string::npos&&diagnosticJson.find("native extension failure")!=std::string::npos,"Diagnostic authenticated owner");
+ // Read the actual system clipboard without replacing any user data.
+ std::string actual;if(clip::get_text(actual))require(extension::nativeHostServices(status).readClipboard()==workspaceText(actual),"Actual native clipboard read");
+ host.close(token);token=host.open({"native-services",true,false},{},"zh-CN",[](const auto&){});host.setServices(token,services);const auto readCount=reads,writeCount=writes;require(!call("clipboard.readText").GetNamedBoolean(L"ok")&&!call("clipboard.writeText",params).GetNamedBoolean(L"ok")&&reads==readCount&&writes==writeCount,"Denied clipboard touched native services");
  host.close(token);document=Document();refresh();
 }
 }
