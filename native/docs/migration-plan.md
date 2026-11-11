@@ -6549,3 +6549,9 @@ PNG后台解码完成后保留像素及私有surface，每次pump最多上传262
 核对ButtonBase::onClick/Click与PixelDropdown非虚showOptions，发现旧正式回归直接调用基类showOptions绕过FormDropdown专用值勾选菜单。现回归从专用onClick入口启动，运行真正表单菜单；menuOpen防止popupStateChanged回调递归打开同菜单。保留modal计数、异常释放、焦点恢复及模型推送不在菜单栈销毁控件。共享PixelDropdown程序入口仍提供原菜单，正式表单用户鼠标/空格进入专用onClick；不将基类程序API称作已统一。
 
 唯一正式Release构建成功，extension-form-ui/image/files/state四项通过1.90秒。真实popup回调推送模型及pump确认控件存活，并再次打开验证重入拒绝；实际MenuItem被计时器定位，检查checked回调并触发Click后退出菜单，草稿idle写入，随后方向键tool与visibleWhen继续通过。该项使用实际原生菜单循环/控件及Click信号，不等同OS物理鼠标命中或人工像素验收；重复值勾选仍由既有谓词回归覆盖。来源821文件/diff通过，无性能测量。超屏菜单与完整生产扩展执行器等仍INCOMPLETE，保留editor_support.h和用户日志/缓存；阶段保存推送dev。
+
+### 2026-11-11：PNG后台解码固定工作线程
+
+继续核对Lua剩余能力屏蔽后确认document.create受非RGBA模型、io.export受生产扩展宿主完成事件限制，未擅自解除。独立补齐图片执行资源：此前startFormImage每次创建detach线程，总像素预算无法约束大量等待线程。现进程固定两个worker，FIFO任务不含UI/Surface指针，解码前检查取消；保留WinRT MTA、PNG精确RGBA、promise非join future、总内存准入及主线程分批上传。队列对象为进程生命周期，线程启动逐个计数/call_once重试，部分启动失败不释放已被线程引用的对象，也不在重试时重复生成已启动worker。队列源字符串/元数据仍未计入像素预算，不能声称所有内存均有上限。
+
+唯一正式Release及图片测试目标构建成功，extension-form-ui/image/files/state四项通过1.89秒。新增64任务在占满预算时排队、统一取消、全部future失败完成/额度归零、后续真实PNG成功，保持实际表单退出/模型替换/分批上传回归。来源821文件及diff检查通过，无人工图像或CPU/FPS测量。线程创建故障为源码失败路径核对，未注入OS创建失败；生产扩展执行器、非RGBA等整体迁移仍INCOMPLETE。保留editor_support.h及用户缓存/日志，阶段保存推送dev。

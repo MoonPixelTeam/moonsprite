@@ -9,6 +9,8 @@
 #include <thread>
 #include <mutex>
 #include <condition_variable>
+#include <deque>
+#include <functional>
 namespace moon::extension {
 // Detached workers can outlive windows and static teardown.
 namespace {struct ImageMemoryState{std::mutex mutex;std::condition_variable changed;std::size_t bytes=0;};ImageMemoryState& imageMemory(){static auto* state=new ImageMemoryState;return *state;}}
@@ -38,5 +40,18 @@ static FormImage decode(const std::wstring& source,const std::shared_ptr<std::at
  check();FormImage image;image.width=size.width();image.height=size.height();image.pixels.resize(std::size_t(image.width)*image.height);const auto info=SkImageInfo::Make(image.width,image.height,kRGBA_8888_SkColorType,kUnpremul_SkAlphaType,nullptr);if(codec->getPixels(info,image.pixels.data(),std::size_t(image.width)*4)!=SkCodec::kSuccess)throw std::invalid_argument("扩展表单 PNG 像素无效。");check();image.memory=std::move(memory);return image;
 }
 FormImage decodeFormImage(const std::wstring& source){return decode(source,{});}
-FormImageTask startFormImage(std::wstring source){auto promise=std::make_shared<std::promise<FormImage>>();FormImageTask task{promise->get_future(),std::make_shared<std::atomic<bool>>(false)};auto cancelled=task.cancelled;std::thread([source=std::move(source),promise,cancelled]{try{winrt::init_apartment(winrt::apartment_type::multi_threaded);struct Apartment{~Apartment(){winrt::uninit_apartment();}}apartment;promise->set_value(decode(source,cancelled));}catch(...){promise->set_exception(std::current_exception());}}).detach();return task;}
+namespace {
+// The process owns two workers. No worker or queued job contains UI pointers.
+// Leaked process-lifetime state avoids joining a decoder from window teardown.
+struct ImageQueue {
+ std::mutex mutex;std::condition_variable ready;std::deque<std::function<void()>> jobs;int workers=0;
+ void start(){for(;workers<2;++workers)std::thread([this]{for(;;){std::function<void()> job;{std::unique_lock<std::mutex> lock(mutex);ready.wait(lock,[this]{return !jobs.empty();});job=std::move(jobs.front());jobs.pop_front();}job();}}).detach();}
+ void push(std::function<void()> job){{std::lock_guard<std::mutex> lock(mutex);jobs.push_back(std::move(job));}ready.notify_one();}
+};
+ImageQueue& imageQueue(){static auto* queue=new ImageQueue;static std::once_flag started;std::call_once(started,[&]{queue->start();});return *queue;}
+}
+FormImageTask startFormImage(std::wstring source){
+ auto promise=std::make_shared<std::promise<FormImage>>();FormImageTask task{promise->get_future(),std::make_shared<std::atomic<bool>>(false)};auto cancelled=task.cancelled;
+ imageQueue().push([source=std::move(source),promise,cancelled]{try{if(cancelled->load())throw std::runtime_error("Image decode cancelled");winrt::init_apartment(winrt::apartment_type::multi_threaded);struct Apartment{~Apartment(){winrt::uninit_apartment();}}apartment;promise->set_value(decode(source,cancelled));}catch(...){promise->set_exception(std::current_exception());}});return task;
+}
 }
