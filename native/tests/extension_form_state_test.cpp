@@ -38,5 +38,25 @@ int main(){winrt::init_apartment();try{
   else if(transition!=3){check(exporting.view().GetNamedString(L"status")==L"current session"&&exporting.busy()==(transition!=1),"stale completion preserves new status and busy");if(transition==1)check(exporting.drafts().GetNamedString(L"name")==L"new draft","stale completion preserves new drafts");else{check(exporting.receive(view(newer),transition==4?0:1)&&!exporting.busy(),"new action completes independently");}}
   else check(!exporting.active()&&!exporting.busy()&&!exporting.receive(reply,0),"closed export remains closed");
  }
+ // Import chooser completion must not send old bytes into a restarted form.
+ for(int transition=0;transition<5;++transition)for(int outcome=0;outcome<4;++outcome){
+  FormState importing;importing.receive(view(),0);std::wstring newer;int calls=0;
+  auto message=importing.importFiles(L"file",[&]()->std::optional<std::vector<FormState::File>>{
+   ++calls;auto pushed=view();pushed.Insert(L"status",JsonValue::CreateStringValue(L"new import session"));
+   if(transition==0)importing.receive(pushed,0);
+   else if(transition==1){importing.retry();importing.receive(pushed,1);}
+   else if(transition==2){importing.retry();importing.receive(pushed,1);newer=importing.click(L"save")->GetNamedString(L"requestId");}
+   else if(transition==3)importing.close();
+   else{importing.receive(pushed,0);newer=importing.click(L"save")->GetNamedString(L"requestId");}
+   if(outcome==1)return {};
+   if(outcome==2)throw std::runtime_error("import read error");
+   if(outcome==3)throw winrt::hresult_error(winrt::hresult{-2147467259},L"import Windows error");
+   return std::vector<FormState::File>{{L"sample.png",L"image/png",{1,2}}};
+  });
+  check(calls==1,"import chooser once");
+  if(transition==0){check(bool(message)==(outcome==0)&&importing.busy()==(outcome==0),"current import result/lock");if(message)check(message->GetNamedArray(L"files").GetObjectAt(0).GetNamedString(L"name")==L"sample.png","import bytes sent");else check(importing.view().GetNamedString(L"status")==(outcome==1?L"new import session":outcome==2?L"import read error":L"import Windows error"),"cancel/error import status");}
+  else{check(!message,"stale import never dispatched");if(transition!=3){check(importing.view().GetNamedString(L"status")==L"new import session"&&importing.busy()==(transition==2||transition==4),"stale import keeps new state");if(!newer.empty())check(importing.receive(view(newer),transition==4?0:1)&&!importing.busy(),"new action after import completes");}else check(!importing.active()&&!importing.busy(),"closed import stays closed");}
+ }
+ {FormState inactive;int opened=0;check(!inactive.importFiles(L"file",[&]()->std::optional<std::vector<FormState::File>>{++opened;return {};} )&&!opened,"missing file cannot open chooser");inactive.receive(view(),0);inactive.click(L"save");check(!inactive.importFiles(L"file",[&]()->std::optional<std::vector<FormState::File>>{++opened;return {};})&&!opened,"busy file cannot open chooser");inactive.close();check(!inactive.importFiles(L"file",[&]()->std::optional<std::vector<FormState::File>>{++opened;return {};})&&!opened,"closed file cannot open chooser");}
  std::cout<<"Form initialization/drafts/dependencies/actions/uploads/export replay/retry/failure/close passed\n";return 0;
  }catch(const std::exception& e){std::cerr<<e.what()<<'\n';return 1;}catch(const winrt::hresult_error& e){std::cerr<<winrt::to_string(e.message())<<'\n';return 1;}}

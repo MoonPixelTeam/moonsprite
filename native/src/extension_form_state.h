@@ -59,6 +59,17 @@ public:
   auto fail=[&](const wchar_t* message)->std::optional<Object>{view_.Insert(L"status",Json::CreateStringValue(message));busy_=false;return {};};if(single&&files.size()!=1)return fail(L"请选择一个动画文件。");if(files.size()>16)return fail(L"最多 16 个文件，合计不超过 16 MiB。");std::size_t total=0;for(const auto& file:files){if(file.bytes.size()>16u*1024*1024-total)return fail(L"最多 16 个文件，合计不超过 16 MiB。");total+=file.bytes.size();}
   Array encoded;for(const auto& file:files){Object entry;entry.Insert(L"name",Json::CreateStringValue(file.name));entry.Insert(L"mime",Json::CreateStringValue(file.mime));Array bytes;for(auto byte:file.bytes)bytes.Append(Json::CreateNumberValue(byte));entry.Insert(L"bytes",bytes);encoded.Append(entry);}Object extra;extra.Insert(L"files",encoded);return send(action(*node),extra);
  }
+ // Synchronous native choosers can dispatch session callbacks while open.
+ // Keep chooser/read failures and selected bytes within their original session.
+ std::optional<Object> importFiles(const std::wstring& id,const std::function<std::optional<std::vector<File>>()>& choose){
+  const auto node=control(id);if(!node||property(*node,L"type").GetString()!=L"file")return {};
+  const auto generation=generation_,sequence=sequence_;
+  const auto current=[&]{return active_&&generation_==generation&&sequence_==sequence;};
+  try{const auto selected=choose();if(selected&&current())return files(id,*selected);}
+  catch(const std::exception& error){if(current())fileFailed(winrt::to_hstring(error.what()).c_str());}
+  catch(const winrt::hresult_error& error){if(current())fileFailed(error.message().c_str());}
+  return {};
+ }
  bool receive(const Value& value,std::uint64_t generation,const Save& save={}){
   if(!active_||generation!=generation_||!value||value.ValueType()!=Type::Object)return false;auto next=value.GetObject();auto nodes=property(next,L"nodes");if(!nodes||nodes.ValueType()!=Type::Array)return false;view_=copy(next);defaults_=Object{};defaults(view_.GetNamedArray(L"nodes"),defaults_);loaded_=true;error_.clear();
   auto result=property(next,L"result");if(pending_.empty()||!result||result.ValueType()!=Type::Object)return true;const auto reply=result.GetObject();const auto request=property(reply,L"requestId");if(!request||request.ValueType()!=Type::String||request.GetString()!=pending_)return true;

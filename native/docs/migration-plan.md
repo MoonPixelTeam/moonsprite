@@ -6567,3 +6567,9 @@ PNG后台解码完成后保留像素及私有surface，每次pump最多上传262
 直接核对 ExtensionDialogForm.tsx receive：匹配结果先消费 pending/清草稿，保存完成向 current view 合并 status；普通同代推送不应丢失节点，也不应重复保存。原生同步选择器会泵事件，补齐导出完成所有权 active/generation/sequence：正常同代推送沿用旧版状态合并；重试、关闭或后续请求后，旧成功、取消、std异常、hresult异常均不得写入新状态或释放新请求 busy。保存期间维持 busy；不更改已有结果消费、文件验证、保存内容及窗口模态策略。
 
 状态回归20组转换/结果组合：同代推送、retry带新草稿、retry带新请求、close、同代中断后新请求；每组保存内部重放原结果但只调用一次保存，新请求随后独立完成。首轮测试编译因E_FAIL未声明失败，改用明确winrt::hresult后测试构建通过。唯一正式Release构建成功，extension-form-ui/image/files/state四项通过2.02秒。来源821文件检查及diff检查通过；状态测试注入同步保存回调，不等同人工操作Windows选择器。整体迁移及生产扩展执行器仍INCOMPLETE，未自行落地待确认的JS执行器/完整modal选择。保留editor_support.h和用户数据；阶段提交并推送dev。
+
+### 2026-11-11：扩展文件导入选择器生命周期
+
+直接核对ExtensionDialogForm文件onChange：取消不发送、读取/编码失败写status并解除busy、有效文件经action携带name/mime/bytes。原生选择器同步泵事件，原路径在返回时只检查hostClosePending，重试后可能将旧文件发送到新会话，旧读取异常也可能清除新请求busy；同时未捕获hresult异常。统一FormState::importFiles校验有效file控件，捕获调用前active/generation/sequence，选择返回与std/hresult失败仅作用原会话；普通同代模型推送继续交给现有files校验当前控件。FormWindow维持ModalCall保护与hostClosePending关闭抑制，所有取消/选中/异常路径统一sync，不改变原文件数量、体积、命名、MIME及payload规则。
+
+唯一正式Release及状态测试构建成功。新增20组导入转换/结果组合，覆盖推送、retry、retry后新请求、close、同代新请求与成功/取消/std异常/hresult异常；检查新请求仍可独立完成，并验证缺失/忙碌/关闭控件不打开选择器。extension-form-ui/image/files/state四项通过2.00秒，保留真实窗口选择器内部receive/pump/关闭后无上传的回归与实际磁盘多选读取/保存回归。来源821文件及diff检查通过，无人工物理选择器验收。磁盘读取仍同步，未宣称完成后台导入或整体扩展生产执行器；全体迁移INCOMPLETE。保留editor_support.h与用户数据，阶段提交推送dev。
