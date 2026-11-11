@@ -13,7 +13,8 @@ class Client {
  std::string error_;
  std::future<std::string> listing_;
  std::string scriptsJson_="[]";
- bool loading_=true,loadFailed_=false;
+ bool loading_=true,loadFailed_=false,refreshPending_=false;
+ std::uint64_t listingRevision_=0;
  bool dispatching_=false;
  std::map<std::string,DialogState> dialogs_;
  std::uint64_t dialogRevision_=0;
@@ -65,11 +66,12 @@ public:
  const std::string& error()const{return error_;}
  const std::string& scriptsJson()const{return scriptsJson_;}
  bool loading()const{return loading_;}bool loadFailed()const{return loadFailed_;}
+ std::uint64_t listingRevision()const{return listingRevision_;}
  void dismissReport(){report_.reset();error_.clear();++reportRevision_;}
  void refresh(){
-  if(listing_.valid())return;
+  if(listing_.valid()){refreshPending_=true;return;}
   loading_=true;loadFailed_=false;
-  try{listing_=runtime_.list();}catch(...){scriptsJson_="[]";loading_=false;loadFailed_=true;}
+  try{listing_=runtime_.list();}catch(...){scriptsJson_="[]";loading_=false;loadFailed_=true;++listingRevision_;}
  }
  // Same no-op exclusion as legacy: an open modeless session owns the runner.
  bool run(const Document* active,std::string id,std::string mse,std::function<void(Document&&)> adopt={}){
@@ -94,7 +96,8 @@ public:
   if(listing_.valid()&&listing_.wait_for(std::chrono::seconds(0))==std::future_status::ready){
    try{auto list=winrt::Windows::Data::Json::JsonObject::Parse(winrt::to_hstring(listing_.get()));scriptsJson_=winrt::to_string(list.GetNamedArray(L"scripts").Stringify());}
    catch(...){scriptsJson_="[]";loadFailed_=true;}
-   loading_=false;
+   loading_=false;++listingRevision_;
+   if(refreshPending_){refreshPending_=false;refresh();}
   }
   observe(active);if(!running())return;
   // Cache eligibility before reception: an adopter can destroy active.

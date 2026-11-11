@@ -9,6 +9,15 @@
 #include "lua_mse_snapshot.h"
 
 namespace moon::editor {
+namespace {
+// ui::Menu::OpenPopup fires for showPopup(), while a menu-bar submenu opens
+// through kOpenMessage. Adapt only script discovery to that native lifecycle.
+class ScriptDiscoveryMenu final:public PixelMenu {
+public:
+ using PixelMenu::PixelMenu;
+ bool onProcessMessage(ui::Message* message)override{if(message->type()==ui::kOpenMessage)OpenPopup();return PixelMenu::onProcessMessage(message);}
+};
+}
 
 Editor::~Editor() {flushColorRoles();colorRolesTimer_.stop();stopScripts();imageResizeTimer_.stop();imageResizeTask_.reset();importSheetTimer_.stop();importSheetTask_.reset();saveLayerPanelState(true);closeParameterRange();if(dynamicsPopup_){dynamicsPopup_->closeWindow(nullptr);dynamicsPopup_.reset();}workspacePresetTimer_.stop();flushWorkspacePresetSave();diagnosticTimer_.stop();if(diagnostics_){diagnostics_->record("session","native.stopped");diagnostics_->flush();diagnostics_.reset();}saveDocumentView();usageStatistics_.flush();persistUsageStatistics();advancedNoticeTimer_.stop();thumbnailQueue_.reset();thumbnailTimer_.stop();if(colorEditorPopup_){colorEditorPopup_->closeWindow(nullptr);colorEditorPopup_.reset();}flushBrushSizePreferences();if(framePngJob_)framePngJob_->cancel=true;floatingViewportSaveTimer_.stop();cancelGradientMapJob();stopAntiAlias();stopConvolution();if(propertyRangePopup_){propertyRangePopup_->closeWindow(nullptr);propertyRangePopup_.reset();}celNavigationTimer_.stop();if(toolFlyout_){toolFlyout_->closeWindow(nullptr);toolFlyout_.reset();}antsTimer_.stop();sizeTimer_.stop();if(recoveryTimer_){recoveryTimer_->stop();delete recoveryTimer_;}if(recovery_.worker.valid())recovery_.worker.wait();}
 
@@ -615,7 +624,7 @@ std::function<void(PixelMenu*,const std::string&)> appendChildren=[&](PixelMenu*
 
   if(e.separatorBefore && !parent->children().empty())parent->addChild(new PixelMenuSeparator(skin_));
 
-  if(e.group){auto branch=new PixelMenu(skin_);
+  if(e.group){PixelMenu* branch=std::string(e.id)=="scripts"?new ScriptDiscoveryMenu(skin_):new PixelMenu(skin_);
 
    auto trigger=new PixelMenuItem(font_,skin_,e.title);trigger->menuMarks=&toolIcons_;trigger->setSubmenu(branch);parent->addChild(trigger);appendChildren(branch,e.id);
 
@@ -683,7 +692,7 @@ for(const auto& e:menus::catalog())if(!*e.parent){if(std::string(e.id)=="help"){
   }
 
 struct Editor::ScriptState {
- script::Runtime runtime;script::Client client;std::unique_ptr<ScriptWindowHost> host;ui::Timer timer;std::future<PatternBrushListing> brushes;std::vector<StoredPatternBrush> localBrushes;std::vector<std::u32string> notifications;std::string queued;std::uint64_t queuedIdentity=0;std::string queuedLayer,queuedFrame;bool pumping=false;
+ script::Runtime runtime;script::Client client;std::unique_ptr<ScriptWindowHost> host;ui::Timer timer;std::future<PatternBrushListing> brushes;std::vector<StoredPatternBrush> localBrushes;std::vector<std::u32string> notifications;std::string queued;std::uint64_t queuedIdentity=0;std::string queuedLayer,queuedFrame;std::uint64_t menuRevision=0;bool pumping=false,publishingMenu=false;
  ScriptState(Editor& editor,const std::filesystem::path& root):runtime(root),client(runtime),timer(30,&editor){}
 };
 void Editor::initializeScripts(const std::filesystem::path& root){
@@ -749,7 +758,7 @@ void Editor::initializeScripts(const std::filesystem::path& root){
    if(scriptSaveClose_){scriptSaveClose_=false;auto callback=new ui::CallbackMessage([this]{requestClose();});callback->setRecipient(ui::Manager::getDefault());ui::Manager::getDefault()->enqueueMessage(callback);}
   });
   state->host->setPlaybackHost([this](Document& d,const script::PlaybackRequest& request){applyScriptPlayback(d,request);});
-  state->timer.Tick.connect([this]{pumpScripts();});state->client.refresh();state->timer.start();updateScriptsMenu();
+  state->timer.Tick.connect([this]{pumpScripts();});state->timer.start();updateScriptsMenu();
  }catch(const std::exception& e){stopScripts();status_=U"脚本初始化失败："+unicodeText(e.what());invalidate();}
 }
 void Editor::stopScripts(){if(!scripts_)return;scripts_->timer.stop();scripts_->host.reset();scripts_.reset();}
@@ -763,23 +772,31 @@ void Editor::pumpScripts(){
  const auto identity=document.identity(),content=document.contentRevision(),history=document.historyRevision(),overlay=document.floatingOverlayRevision();const auto frame=document.frame().id,layer=document.layer().id;
  if(!state->queued.empty()&&!state->brushes.valid()){auto id=std::move(state->queued);state->queued.clear();if(active&&state->queuedIdentity==document.identity()&&state->queuedLayer==document.layer().id&&state->queuedFrame==document.frame().id)state->host->run(active,std::move(id));}
  state->host->pump(active,std::chrono::steady_clock::now()+std::chrono::milliseconds(3));
+ // Publish discovery only after reception; do not enqueue another scan here.
+ if(state->menuRevision!=state->client.listingRevision()){struct Publishing{bool& flag;Publishing(bool& f):flag(f){flag=true;}~Publishing(){flag=false;}} publishing(state->publishingMenu);updateScriptsMenu();}
  // Legacy setTimeout(0): deliver after result handling and any tab adoption.
  if(!state->notifications.empty()){status_=std::move(state->notifications.back());state->notifications.clear();invalidate();}
  if(identity!=document.identity()||content!=document.contentRevision()||history!=document.historyRevision()||overlay!=document.floatingOverlayRevision()||frame!=document.frame().id||layer!=document.layer().id)refresh();
 }
 void Editor::updateScriptsMenu(){
- if(!scriptsMenu_||!scripts_)return;auto& client=scripts_->client;auto folderItem=menuItems_.at("openScriptFolder");auto children=scriptsMenu_->children();for(auto child:children){scriptsMenu_->removeChild(child);if(child!=folderItem)delete child;}
+ if(!scriptsMenu_||!scripts_)return;auto& client=scripts_->client;if(!scripts_->publishingMenu)client.refresh();scripts_->menuRevision=client.listingRevision();auto folderItem=menuItems_.at("openScriptFolder");auto children=scriptsMenu_->children();for(auto child:children){scriptsMenu_->removeChild(child);if(child!=folderItem)delete child;}
  using namespace winrt::Windows::Data::Json;const auto list=JsonArray::Parse(winrt::to_hstring(client.scriptsJson()));
  if(client.loadFailed()||!list.Size()){auto empty=new PixelMenuItem(font_,skin_,client.loading()?U"正在加载脚本…":client.loadFailed()?U"脚本列表读取失败":U"没有可用脚本");empty->setEnabled(false);scriptsMenu_->addChild(empty);}
  else for(const auto& value:list){auto entry=value.GetObject();const auto id=winrt::to_string(entry.GetNamedString(L"id"));auto row=new PixelMenuItem(font_,skin_,unicodeText(winrt::to_string(entry.GetNamedString(L"name"))));row->available=[this]{return scripts_&&!scripts_->client.busy()&&scripts_->queued.empty()&&documentOpen_&&!homeOpen_&&pending_==Pending::None;};row->setId(id.c_str());row->Click.connect([this,id]{runScript(id);});scriptsMenu_->addChild(row);}
- scriptsMenu_->addChild(new PixelMenuSeparator(skin_));scriptsMenu_->addChild(folderItem);client.refresh();
+ scriptsMenu_->addChild(new PixelMenuSeparator(skin_));scriptsMenu_->addChild(folderItem);
+ // The MIT Aseprite MenuBoxWindow owns popup geometry. Reflow its current
+ // contents in place after asynchronous publication, retaining its screen anchor.
+ if(auto owner=scriptsMenu_->getOwnerMenuItem();owner&&owner->hasSubmenuOpened()){
+  auto popup=owner->getSubmenuContainer()->window();const auto previous=popup->bounds();popup->remapWindow();auto next=popup->bounds();const auto area=popup->display()->bounds();next.x=std::clamp(previous.x,area.x,std::max(area.x,area.x2()-next.w));next.y=std::clamp(previous.y,area.y,std::max(area.y,area.y2()-next.h));popup->setBounds(next);popup->invalidate();
+ }
 }
 // Keep archive decoding temporaries off the nested UI/script verification stack.
 __declspec(noinline) static std::unique_ptr<Document> readScriptBoundaryProject(const std::filesystem::path& path){
  std::ifstream file(path,std::ios::binary|std::ios::ate);if(!file)throw std::runtime_error("Boundary output missing");auto bytes=std::make_shared<project::Bytes>(std::size_t(file.tellg()));file.seekg(0);if(!file.read(reinterpret_cast<char*>(bytes->data()),std::streamsize(bytes->size())))throw std::runtime_error("Boundary output read failed");
  return std::make_unique<Document>(project::createEditableDocument(project::prepareEditableImport(project::readProjectManifest(bytes))));
 }
-void Editor::smokeScriptWorkspace(const std::filesystem::path& root){
+// Keep the large integration fixture off the enclosing entry-check stack.
+__declspec(noinline) void Editor::smokeScriptWorkspace(const std::filesystem::path& root){
  // Real workspace boundaries through the asynchronous production host.
  {
   using namespace winrt::Windows::Data::Json;
@@ -839,27 +856,27 @@ void Editor::smokeScriptWorkspace(const std::filesystem::path& root){
 }
 void Editor::smokeScriptEntry(){
  using namespace winrt::Windows::Data::Json;
- smoke_=true;homeOpen_=false;documentOpen_=true;pending_=Pending::None;playing_=false;document=Document(3,1);refresh();const auto root=script::executableDirectory()/"script-entry-test-owned";std::filesystem::create_directories(root/"scripts");std::ofstream(root/"test-owned.marker")<<"script entry fixture";std::ofstream(root/"scripts/entry.lua")<<"app.activeImage:drawPixel(1,0,0xff123456); print('entry'); local d=Dialog('Entry'); d:button{id='done',text='Done',onclick=function() app.activeImage:drawPixel(2,0,0xffabcdef); d:close() end}; d:show{wait=false}";
+ smoke_=true;homeOpen_=false;documentOpen_=true;pending_=Pending::None;playing_=false;document=std::move(*std::make_unique<Document>(3,1));refresh();const auto root=script::executableDirectory()/"script-entry-test-owned";std::filesystem::create_directories(root/"scripts");std::ofstream(root/"test-owned.marker")<<"script entry fixture";std::ofstream(root/"scripts/entry.lua")<<"app.activeImage:drawPixel(1,0,0xff123456); print('entry'); local d=Dialog('Entry'); d:button{id='done',text='Done',onclick=function() app.activeImage:drawPixel(2,0,0xffabcdef); d:close() end}; d:show{wait=false}";
  brushLibraryTestDirectory_=root/"brushes";initializeScripts(root);if(!scripts_)throw std::runtime_error("Script initialization failed");const auto end=std::chrono::steady_clock::now()+std::chrono::seconds(20);while((scripts_->client.loading()||scripts_->brushes.valid())&&std::chrono::steady_clock::now()<end){pumpScripts();std::this_thread::yield();}updateScriptsMenu();bool found=false;for(auto child:scriptsMenu_->children())if(auto row=dynamic_cast<PixelMenuItem*>(child);row&&row->id()=="entry.lua"){row->Click();found=true;break;}if(!found)throw std::runtime_error("Discovered script missing from menu");
  while((!scripts_->queued.empty()||scripts_->client.running())&&std::chrono::steady_clock::now()<end){pumpScripts();std::this_thread::yield();}if(document.pixels()[1]!=0xff123456||!scripts_->client.session()||scripts_->host->windowCount()!=1||!scripts_->host->hasReport())throw std::runtime_error("Menu run did not apply/show native dialog");runScript("entry.lua");if(!scripts_->queued.empty())throw std::runtime_error("Modeless session allowed rerun");
  if(auto manager=ui::Manager::getDefault())manager->invalidate();
  auto models=winrt::Windows::Data::Json::JsonArray::Parse(winrt::to_hstring(scripts_->client.session()->dialogsJson));auto id=winrt::to_string(models.GetObjectAt(0).GetNamedString(L"id"));scripts_->host->window(id)->clickForCheck("done");do{pumpScripts();std::this_thread::yield();}while(scripts_->client.running()&&std::chrono::steady_clock::now()<end);if(document.pixels()[2]!=0xffabcdef||scripts_->client.session())throw std::runtime_error("Native menu dialog callback failed");document.undo();if(document.pixels()[2])throw std::runtime_error("Menu script undo failed");document.redo();if(document.pixels()[2]!=0xffabcdef)throw std::runtime_error("Menu script redo failed");
  // Production dialog callbacks must repaint deferred overlays without pixel/history changes.
  for(int side:{5,257}){
-  document=Document(side,side);document.beginStroke({0,0},0xff123456);document.commitStroke();document.clearHistory();refresh();
+  document=std::move(*std::make_unique<Document>(side,side));document.beginStroke({0,0},0xff123456);document.commitStroke();document.clearHistory();refresh();
   std::ofstream(root/"scripts/transform-dialog.lua")<<"app.transaction(function() mse.selection.set{x=0,y=0,width=1,height=1}; mse.selection.transform{dx=1} end); local d=Dialog('Transform'); d:button{id='move',text='Move',onclick=function() mse.selection.transform{dx=1} end}; d:button{id='finish',text='Finish',onclick=function() d:close() end}; d:button{id='fail',text='Fail',onclick=function() app.transaction(function() mse.selection.transform{dx=1}; mse.palette.update(999,{name='bad'}) end) end}; d:show{wait=false}";
   auto pumpTransform=[&]{const auto until=std::chrono::steady_clock::now()+std::chrono::seconds(10);do{pumpScripts();std::this_thread::yield();}while((!scripts_->queued.empty()||scripts_->client.running())&&std::chrono::steady_clock::now()<until);if(scripts_->client.running()||!scripts_->client.error().empty())throw std::runtime_error("Formal transform callback failed");};
   runScript("transform-dialog.lua");pumpTransform();if(!document.floating()||!document.selection()||document.selection()->x!=1||!scripts_->client.session())throw std::runtime_error("Formal transform initial state missing");
   const auto dialog=winrt::to_string(JsonArray::Parse(winrt::to_hstring(scripts_->client.session()->dialogsJson)).GetObjectAt(0).GetNamedString(L"id"));const auto contentBefore=document.contentRevision(),historyBefore=document.historyRevision(),refreshBefore=panelFullRefreshes_;
   scripts_->host->window(dialog)->clickForCheck("move");pumpTransform();if(document.selection()->x!=2||!document.floating()||panelFullRefreshes_==refreshBefore)throw std::runtime_error("Formal transform callback did not refresh");if(side==257&&(document.contentRevision()!=contentBefore||document.historyRevision()!=historyBefore))throw std::runtime_error("Deferred transform callback changed content/history");
   scripts_->host->window(dialog)->clickForCheck("finish");pumpTransform();if(scripts_->client.session()||scripts_->host->windowCount()||!document.floating())throw std::runtime_error("Formal transform close lost pending selection");document.commitFloatingPaste();if(document.pixels()[2]!=0xff123456||document.pixels()[0])throw std::runtime_error("Formal transform commit wrong");document.undo();if(document.pixels()[0]!=0xff123456||document.pixels()[2])throw std::runtime_error("Formal transform undo wrong");document.redo();if(document.pixels()[2]!=0xff123456)throw std::runtime_error("Formal transform redo wrong");
-  document=Document(side,side);document.beginStroke({0,0},0xff123456);document.commitStroke();document.clearHistory();runScript("transform-dialog.lua");pumpTransform();const auto failedDialog=winrt::to_string(JsonArray::Parse(winrt::to_hstring(scripts_->client.session()->dialogsJson)).GetObjectAt(0).GetNamedString(L"id"));const auto failHistory=document.historyPosition();scripts_->host->window(failedDialog)->clickForCheck("fail");const auto failureUntil=std::chrono::steady_clock::now()+std::chrono::seconds(10);do{pumpScripts();std::this_thread::yield();}while(scripts_->client.running()&&std::chrono::steady_clock::now()<failureUntil);if(scripts_->client.running()||scripts_->client.error().empty()||scripts_->client.session()||scripts_->host->windowCount()||!scripts_->host->hasReport()||!document.floating()||document.selection()->x!=1||document.historyPosition()!=failHistory)throw std::runtime_error("Formal transform failure cleanup/rollback wrong");document.cancelFloatingPaste();if(document.pixels()[0]!=0xff123456)throw std::runtime_error("Formal transform failure cancel wrong");if(!escapeScript())throw std::runtime_error("Formal transform failure report Escape refused");pumpScripts();
+  document=std::move(*std::make_unique<Document>(side,side));document.beginStroke({0,0},0xff123456);document.commitStroke();document.clearHistory();runScript("transform-dialog.lua");pumpTransform();const auto failedDialog=winrt::to_string(JsonArray::Parse(winrt::to_hstring(scripts_->client.session()->dialogsJson)).GetObjectAt(0).GetNamedString(L"id"));const auto failHistory=document.historyPosition();scripts_->host->window(failedDialog)->clickForCheck("fail");const auto failureUntil=std::chrono::steady_clock::now()+std::chrono::seconds(10);do{pumpScripts();std::this_thread::yield();}while(scripts_->client.running()&&std::chrono::steady_clock::now()<failureUntil);if(scripts_->client.running()||scripts_->client.error().empty()||scripts_->client.session()||scripts_->host->windowCount()||!scripts_->host->hasReport()||!document.floating()||document.selection()->x!=1||document.historyPosition()!=failHistory)throw std::runtime_error("Formal transform failure cleanup/rollback wrong");document.cancelFloatingPaste();if(document.pixels()[0]!=0xff123456)throw std::runtime_error("Formal transform failure cancel wrong");if(!escapeScript())throw std::runtime_error("Formal transform failure report Escape refused");pumpScripts();
  }
  // Fresh invocations must retain the existing floating transaction through async discovery.
  std::ofstream(root/"scripts/continue-floating.lua")<<"assert(mse.isSupported('selection.transform')); assert(mse.capabilities.selection.status=='stable'); mse.selection.transform{dx=1}";
  std::ofstream(root/"scripts/fail-floating.lua")<<"app.transaction(function() mse.selection.transform{dx=1}; mse.palette.update(999,{name='bad'}) end)";
  for(int side:{5,257})for(bool fail:{false,true}){
-  document=Document(side,side);document.beginStroke({0,0},0xff123456);document.commitStroke();document.clearHistory();document.previewSelection(SelectionMask{0,0,1,1,{}});if(!document.nudgeSelectionContent(1,0)||!document.floating())throw std::runtime_error("Fresh script floating setup failed");refresh();
+  document=std::move(*std::make_unique<Document>(side,side));document.beginStroke({0,0},0xff123456);document.commitStroke();document.clearHistory();document.previewSelection(SelectionMask{0,0,1,1,{}});if(!document.nudgeSelectionContent(1,0)||!document.floating())throw std::runtime_error("Fresh script floating setup failed");refresh();
   const auto launchHistory=document.historyRevision(),launchContent=document.contentRevision(),launchOverlay=document.floatingOverlayRevision();const auto launchPosition=document.historyPosition();
   std::promise<PatternBrushListing> wait;scripts_->brushes=wait.get_future();runScript(fail?"fail-floating.lua":"continue-floating.lua");
   if(scripts_->queued.empty()||!document.floating()||document.selection()->x!=1||document.historyRevision()!=launchHistory||document.contentRevision()!=launchContent||document.floatingOverlayRevision()!=launchOverlay)throw std::runtime_error("Fresh script launch committed floating state");
@@ -872,13 +889,13 @@ void Editor::smokeScriptEntry(){
  // Formal save aliases must wait for the existing async save and preserve MSE order.
  {const auto picker=chooseSaveFile_;const auto savedPath=documentPath_;const auto preferences=runtimePreferences_;const auto async=asyncSaveForSmoke_;const auto decision=asepriteSaveDecisionForSmoke_;struct Restore{std::function<void()> run;~Restore(){run();}} restore{[&]{chooseSaveFile_=picker;documentPath_=savedPath;runtimePreferences_=preferences;asyncSaveForSmoke_=async;asepriteSaveDecisionForSmoke_=decision;}};asyncSaveForSmoke_=true;runtimePreferences_.set("files.saveOriginalFormat","true");asepriteSaveDecisionForSmoke_=[](bool,const auto&){return 2;};
   auto runSave=[&](const std::string& source){std::ofstream(root/"scripts/save-entry.lua")<<source;runScript("save-entry.lua");const auto until=std::chrono::steady_clock::now()+std::chrono::seconds(20);do{pumpScripts();std::this_thread::yield();}while((!scripts_->queued.empty()||scripts_->client.running())&&std::chrono::steady_clock::now()<until);if(!scripts_->queued.empty()||scripts_->client.running()||!scripts_->client.error().empty())throw std::runtime_error("Formal script save failed: "+scripts_->client.error());};
-  document=Document(3,1);documentPath_.clear();refresh();const auto path=root/"script-saved.moonsprite";chooseSaveFile_=[&](OPENFILENAMEW* chooser){auto text=path.wstring();std::copy(text.begin(),text.end(),chooser->lpstrFile);chooser->lpstrFile[text.size()]=0;chooser->nFilterIndex=1;return true;};
+  document=std::move(*std::make_unique<Document>(3,1));documentPath_.clear();refresh();const auto path=root/"script-saved.moonsprite";chooseSaveFile_=[&](OPENFILENAMEW* chooser){auto text=path.wstring();std::copy(text.begin(),text.end(),chooser->lpstrFile);chooser->lpstrFile[text.size()]=0;chooser->nFilterIndex=1;return true;};
   runSave("app.transaction(function() app.activeImage:drawPixel(0,0,0xff123456); mse.document.save(); mse.palette.create{r=3,g=4,b=5} end)");auto read=[&](const auto& path){std::ifstream file(path,std::ios::binary);auto bytes=std::make_shared<project::Bytes>();bytes->assign(std::istreambuf_iterator<char>(file),{});return bytes;};auto opened=project::createEditableDocument(project::prepareEditableImport(project::readProjectManifest(read(path))));if(opened.pixels()[0]!=0xff123456||opened.palette().entries.size()+1!=document.palette().entries.size()||!document.dirty()||pending_!=Pending::None)throw std::runtime_error("Formal save did not wait before next operation");document.undo();if(document.pixels()[0]||document.palette().entries.size()!=opened.palette().entries.size())throw std::runtime_error("Formal saved script undo wrong");document.redo();
   runSave("mse.io.save()");if(document.dirty()||project::createEditableDocument(project::prepareEditableImport(project::readProjectManifest(read(path)))).palette().entries.size()!=document.palette().entries.size())throw std::runtime_error("Formal io save alias failed");
   JsonObject options;options.Insert(L"directory",JsonValue::CreateStringValue(root.wstring()));const auto encodedDirectory=winrt::to_string(options.GetNamedValue(L"directory").Stringify());
   runSave("mse.document.save{saveAs=true,options={name='scaled.png',format='png',scalePercent=200,directory="+encodedDirectory+"}}");auto png=openRasterImage(root/"scaled.png");if(png.width()!=6||png.height()!=2||document.width()!=3||document.height()!=1)throw std::runtime_error("Formal script save options scaling wrong");
   for(bool image:{false,true}){
-   document=Document(3,1);documentPath_.clear();document.markSaved();refresh();const auto failurePath=root/(image?"saved-before-error.png":"saved-before-error.moonsprite");
+   document=std::move(*std::make_unique<Document>(3,1));documentPath_.clear();document.markSaved();refresh();const auto failurePath=root/(image?"saved-before-error.png":"saved-before-error.moonsprite");
    chooseSaveFile_=[&](OPENFILENAMEW* chooser){auto text=failurePath.wstring();std::copy(text.begin(),text.end(),chooser->lpstrFile);chooser->lpstrFile[text.size()]=0;chooser->nFilterIndex=image?4:1;return true;};
    std::ofstream(root/"scripts/save-entry.lua")<<"app.transaction(function() app.activeImage:drawPixel(2,0,0xffabcdef); mse.document.save{saveAs=true,options={format='"<<(image?"png":"moonsprite")<<"'}}; mse.palette.update(999,{name='bad'}) end)";
    runScript("save-entry.lua");const auto until=std::chrono::steady_clock::now()+std::chrono::seconds(20);do{pumpScripts();std::this_thread::yield();}while((!scripts_->queued.empty()||scripts_->client.running())&&std::chrono::steady_clock::now()<until);
@@ -934,15 +951,31 @@ void Editor::smokeScriptEntry(){
   count=document.palette().entries.size();run("mse.io.export{format='moonsprite',target='selection',directory="+encodedDirectory+"}; mse.palette.create{r=6,g=5,b=4}");if(document.palette().entries.size()!=count+1)throw std::runtime_error("Export workspace failure aborted script");
  }
  document=std::move(*std::make_unique<Document>(3,1));refresh();
+ // Production menu receives completed discovery without a second open.
+ auto menuHas=[&](const std::string& id){for(auto child:scriptsMenu_->children())if(child->id()==id)return true;return false;};
+ auto awaitMenu=[&]{const auto until=std::chrono::steady_clock::now()+std::chrono::seconds(10);while(scripts_->client.loading()&&std::chrono::steady_clock::now()<until){pumpScripts();std::this_thread::yield();}if(scripts_->client.loading())throw std::runtime_error("Menu discovery timeout");};
+ awaitMenu();std::ofstream(root/"scripts/live-menu.lua")<<"return 1";updateScriptsMenu();for(int n=0;n<20;++n)scripts_->client.refresh();awaitMenu();if(!menuHas("live-menu.lua"))throw std::runtime_error("Completed scan did not publish menu addition");
+ // Keep the real top-menu popup open while the next publication adds an item.
+ auto* menuOwner=scriptsMenu_->getOwnerMenuItem();if(!menuOwner)throw std::runtime_error("Script menu owner missing");
+ if(auto parentMenu=dynamic_cast<ui::Menu*>(menuOwner->parent());parentMenu&&parentMenu->getOwnerMenuItem()){auto top=parentMenu->getOwnerMenuItem();top->openSubmenu();ui::MessageLoop loop(ui::Manager::getDefault());const auto until=std::chrono::steady_clock::now()+std::chrono::seconds(5);while(!top->hasSubmenuOpened()&&std::chrono::steady_clock::now()<until)loop.pumpMessages();}
+ menuOwner->openSubmenu();
+ {ui::MessageLoop loop(ui::Manager::getDefault());const auto until=std::chrono::steady_clock::now()+std::chrono::seconds(5);while(!menuOwner->hasSubmenuOpened()&&std::chrono::steady_clock::now()<until)loop.pumpMessages();}
+ if(!menuOwner->hasSubmenuOpened())throw std::runtime_error("Script menu popup did not open");
+ std::ofstream(root/"scripts/live-popup.lua")<<"return 2";scriptsMenu_->OpenPopup();awaitMenu();auto* added=scriptsMenu_->findItemById("live-popup.lua");if(!added||added->bounds().isEmpty()||!scriptsMenu_->bounds().contains(added->bounds()))throw std::runtime_error("Open popup did not lay out discovered item");
+ menuOwner->getSubmenuContainer()->cancelMenuLoop();{ui::MessageLoop loop(ui::Manager::getDefault());const auto until=std::chrono::steady_clock::now()+std::chrono::seconds(5);while(menuOwner->hasSubmenuOpened()&&std::chrono::steady_clock::now()<until)loop.pumpMessages();}if(menuOwner->hasSubmenuOpened())throw std::runtime_error("Script menu popup did not close");
+ scripts_->runtime.remove("live-popup.lua").get();
+ scripts_->runtime.remove("live-menu.lua").get();updateScriptsMenu();awaitMenu();if(menuHas("live-menu.lua"))throw std::runtime_error("Completed scan did not publish menu deletion");
+ const auto stableRevision=scripts_->client.listingRevision();for(int n=0;n<20;++n)pumpScripts();if(scripts_->client.loading()||scripts_->client.listingRevision()!=stableRevision)throw std::runtime_error("Menu publication started a refresh loop");
+ std::ofstream(root/"menu-discovery-passed.txt")<<"add/remove/open-popup/coalesced-refresh/idle passed";
  smokeScriptWorkspace(root);
  // A slow brush listing must not prevent list reception or native report pumping.
  std::promise<PatternBrushListing> delayed;auto ready=delayed.get_future();scripts_->brushes=std::move(ready);scripts_->client.refresh();const auto listEnd=std::chrono::steady_clock::now()+std::chrono::seconds(5);while(scripts_->client.loading()&&std::chrono::steady_clock::now()<listEnd){pumpScripts();std::this_thread::yield();}if(scripts_->client.loading())throw std::runtime_error("Brush loading blocked script discovery");
- runScript("entry.lua");if(scripts_->queued.empty())throw std::runtime_error("Delayed run was not queued");auto oldIdentity=document.identity();document=Document(3,1);delayed.set_value(PatternBrushListing{});while(!scripts_->queued.empty()&&std::chrono::steady_clock::now()<listEnd){pumpScripts();std::this_thread::yield();}if(!scripts_->queued.empty()||scripts_->client.running()||document.identity()==oldIdentity||document.pixels()[1])throw std::runtime_error("Queued run changed new document");
+ runScript("entry.lua");if(scripts_->queued.empty())throw std::runtime_error("Delayed run was not queued");auto oldIdentity=document.identity();document=std::move(*std::make_unique<Document>(3,1));delayed.set_value(PatternBrushListing{});while(!scripts_->queued.empty()&&std::chrono::steady_clock::now()<listEnd){pumpScripts();std::this_thread::yield();}if(!scripts_->queued.empty()||scripts_->client.running()||document.identity()==oldIdentity||document.pixels()[1])throw std::runtime_error("Queued run changed new document");
  // Layer/frame changes during deferred discovery cancel the queued original target.
- auto cancelAfterSwitch=[&](bool layer){document=Document(3,1);const auto originalLayer=document.layer().id;document.addLayer();document.addFrame();const auto originalFrame=document.timeline().state().frames.front().id;std::promise<PatternBrushListing> wait;scripts_->brushes=wait.get_future();runScript("entry.lua");if(scripts_->queued.empty())throw std::runtime_error("Target-switch run was not queued");if(layer)document.selectLayer(originalLayer);else document.selectFrame(originalFrame);wait.set_value(PatternBrushListing{});pumpScripts();if(!scripts_->queued.empty()||scripts_->client.running())throw std::runtime_error("Queued run followed changed layer/frame");};
+ auto cancelAfterSwitch=[&](bool layer){document=std::move(*std::make_unique<Document>(3,1));const auto originalLayer=document.layer().id;document.addLayer();document.addFrame();const auto originalFrame=document.timeline().state().frames.front().id;std::promise<PatternBrushListing> wait;scripts_->brushes=wait.get_future();runScript("entry.lua");if(scripts_->queued.empty())throw std::runtime_error("Target-switch run was not queued");if(layer)document.selectLayer(originalLayer);else document.selectFrame(originalFrame);wait.set_value(PatternBrushListing{});pumpScripts();if(!scripts_->queued.empty()||scripts_->client.running())throw std::runtime_error("Queued run followed changed layer/frame");};
  cancelAfterSwitch(true);cancelAfterSwitch(false);
  // Selection alone does not publish a content/history revision; the Editor must still refresh.
- document=Document(3,1);document.addLayer();const auto otherLayer=document.timeline().state().layers.back().id;const auto originalHistory=document.historyRevision();const auto originalContent=document.contentRevision();const auto refreshes=panelFullRefreshes_;
+ document=std::move(*std::make_unique<Document>(3,1));document.addLayer();const auto otherLayer=document.timeline().state().layers.back().id;const auto originalHistory=document.historyRevision();const auto originalContent=document.contentRevision();const auto refreshes=panelFullRefreshes_;
  std::ofstream(root/"scripts/select-layer.lua")<<"app.activeLayer=app.activeSprite.layers[1]";runScript("select-layer.lua");const auto selectionEnd=std::chrono::steady_clock::now()+std::chrono::seconds(10);while((!scripts_->queued.empty()||scripts_->client.running())&&std::chrono::steady_clock::now()<selectionEnd){pumpScripts();std::this_thread::yield();}if(document.layer().id!=otherLayer||document.historyRevision()!=originalHistory||document.contentRevision()!=originalContent||panelFullRefreshes_==refreshes)throw std::runtime_error("Layer-only script selection did not refresh without history");
  auto folder=menuItems_.at("openScriptFolder");for(int pass=0;pass<3;++pass){updateScriptsMenu();const auto rows=scriptsMenu_->children();if(std::count(rows.begin(),rows.end(),folder)!=1||menuItems_.at("openScriptFolder")!=folder)throw std::runtime_error("Script menu lost original folder command");}
  std::ofstream(root/"scripts/broken.lua")<<"error('entry-failure')";runScript("broken.lua");const auto failureEnd=std::chrono::steady_clock::now()+std::chrono::seconds(10);while((!scripts_->queued.empty()||scripts_->client.running())&&std::chrono::steady_clock::now()<failureEnd){pumpScripts();std::this_thread::yield();}if(scripts_->client.error().empty()||!scripts_->host->hasReport())throw std::runtime_error("Menu script error not shown");if(!escapeScript())throw std::runtime_error("Script report Escape refused");pumpScripts();if(scripts_->host->hasReport())throw std::runtime_error("Script report Escape retained report");
@@ -1009,7 +1042,7 @@ void Editor::smokeScriptEntry(){
  runPanelCheck("mse.workspace.hidePanel('palette'); local s=Sprite(2,2); s.name='Script adopted'; app.activeImage:drawPixel(0,0,0xff556677)");
  if(projects_.size()!=tabs+1||document.identity()==sourceIdentity||document.width()!=2||document.height()!=2||document.name()!=U"Script adopted"||document.pixels()[0]!=0xff556677||palettePanelOpen_||projectDocument(sourceTab).identity()!=sourceIdentity||projectDocument(sourceTab).pixels()[0]!=0xff112233)throw std::runtime_error("Script panel/document adoption boundary lost original tab or pixels");
  palettePanelOpen_=savedVisible[0];
- stopScripts();document=Document();refresh();
+ stopScripts();document=std::move(*std::make_unique<Document>());refresh();
 }
 
 }

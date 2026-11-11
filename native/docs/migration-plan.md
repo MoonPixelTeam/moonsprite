@@ -6951,3 +6951,18 @@ Aseprite 源码对照：src/app/extensions.cpp installCompressedExtension 的逐
 首次五项回归中首选项及其余三项通过，安装专项再次失败bad conversion；定位安装错误显示直接把std::filesystem系统编码当UTF-8，在安装弹窗错误处理增加UTF-8优先/CP_ACP回退，沿用首选项已验证的必要Windows适配。原有锁状态文件安装失败/回滚用例继续验证，未修改安装事务语义。整体迁移仍INCOMPLETE，生产Runtime执行器未接入；最终构建和回归结果待补。
 
 阶段验收：唯一正式Release构建成功；extension-preferences-ui、preferences-catalog、extension-runtime-directory、extension-install-ui、extension-workspace-ui最终5项全部通过9.33秒。注入列表失败验证已提交启停/删除及通知保留；挂起后台操作时销毁面板耗时小于250ms，释放后操作继续完成；安装专项原有锁状态失败/回滚流程最终通过。来源覆盖828项与diff检查通过。本阶段未新增人工截图、慢磁盘实机延迟或全软件FPS测量，正常进程退出仍等待已接受磁盘任务，未声称所有卡顿解决。整体迁移INCOMPLETE，用户文件、未跟踪日志、工程及缓存保留；本阶段保存推送dev。
+
+
+### 2026-11-11 脚本发现结果到实际菜单的异步发布（验收中）
+
+对照legacy useAppScriptRuntime refreshLuaScripts完成后setLuaScripts及AppMenuBar渲染，补齐生产原生扫描结果发布：Client对完成/失败增加revision，Editor现有pump按revision重建实际菜单，发布不再发起扫描，显式打开/安装/偏好操作仍请求刷新。扫描期间刷新合并为一次后续扫描，确保旧扫描之后的磁盘变更不被丢弃。单独标记发布阶段，嵌套脚本回调中触发的实际刷新不因正在pump被误抑制。保留文件夹菜单项身份和运行可用条件。
+
+核对Aseprite src/ui/menu.h/menu.cpp的MIT许可及MenuBoxWindow/remapWindow生命周期，复用当前弹出容器重算尺寸，按原屏幕位置约束到显示器边界；未复制实现。模块回归用FIFO先扫描后删除构造确定性旧结果，64次请求只追加一次扫描，检查新结果和空闲无循环；生产smoke补齐不二次打开菜单即可接收新增/删除。构建和运行验证待补，整体迁移及生产JS执行器仍INCOMPLETE。
+
+中途验证：lua-script-invocation确定性扫描回归通过9.73秒；最终前版本extension-workspace-ui/preferences-ui/install-ui及lua-script-invocation四项通过13.93秒。完整--script-entry-check实际退出0xc00000fd，追踪停在既有脚本打开图像场景，尚未进入新菜单断言。原大smokeScriptWorkspace增加noinline以隔离嵌套测试栈，正在重新构建验证；不把旧错误日志当作本次原因，未调整正式程序栈保留量。
+
+实际入口验收：单独noinline仍复现栈溢出；将smokeScriptEntry的Document赋值临时对象改为堆上创建后原工作区打开/保存/导出链路执行完成。首次新增弹出检查遗漏File上级，报Script menu popup did not open；补齐File→Scripts实际层级后，唯一正式Release构建成功，--script-entry-check实际进程exit0，生成menu-discovery-passed.txt。覆盖已打开菜单新增项布局、关闭、删除、合并刷新、空闲不扫描及全部既有入口流程。未增大正式进程栈，未删除先前错误日志。无新增人工截图或全软件FPS测量，生产JS执行器及整体迁移INCOMPLETE；最终相关回归待补。
+
+最终源码核对另发现MIT ui/menu.cpp的OpenPopup只在showPopup连接，菜单栏子菜单经kOpenMessage打开；新增局部ScriptDiscoveryMenu适配打开消息到既有扫描回调，补齐实际File→Scripts打开刷新入口，不改其他菜单。此前完整入口及四项回归13.68秒通过属最终前版本；适配后重新构建/验收。
+
+阶段最终验收：打开消息适配后的唯一正式Release构建成功，--script-entry-check完整实际进程再次exit0（本轮menu-discovery-passed.txt更新时间21:51:31），新增菜单增删/弹出布局与既有执行、对话框、工作区、保存导出、撤销重做流程通过。最终四项CTest中workspace/preferences/invocation通过，安装专项一次Unexpected installer failure，独立同版本重测通过1.58秒；根因未定位，不宣称相邻安装偶发问题已修复。此前同阶段四项曾全部通过13.68秒。来源覆盖828项/diff通过；无人工图像或FPS验收。整体INCOMPLETE，保留用户editor_support.h及全部未跟踪数据；阶段保存推送dev。
