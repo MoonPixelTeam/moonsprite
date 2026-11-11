@@ -6497,3 +6497,11 @@ PNG后台解码完成后保留像素及私有surface，每次pump最多上传262
 对照既有 ExtensionDialogForm 可见性遍历与原生 FormState::renderedIds，FormWindow 每次 build 只收集一次可见 ID，以局部 set 供普通节点、row/split/sidebar 过滤与递归布局复用，移除每个节点重新扫描模型的 shown 调用。集合不跨模型持久化，不缓存 JSON 节点对象，嵌套窗口独立构建；保留节点数量、深度、条件与重复 ID 的既有语义。此前持久节点索引访问冲突未据此定位或宣称修复。
 
 唯一正式 Release 构建成功；extension-form-ui/image/files/state 四项通过1.85秒，新增真实1000按钮窗口检查首末控件、缩窄后末项保留、空模型替换清除旧控件。来源覆盖检查821文件已通过，diff检查通过。没有人工图像验收或CPU/FPS测量，性能结论限于移除布局中的重复可见性遍历。色板同步资源与全部引用的用户确认行为已于2026-11-10实现并在后续资源逐行替换阶段复验，本轮未重复改动。正式扩展执行器及其他迁移缺口仍INCOMPLETE，保留editor_support.h及已有日志/缓存，阶段保存推送dev。
+
+### 2026-11-11：扩展图片总工作预算与窗口注销
+
+依据ExtensionDialogForm image PNG data URL/contain语义，保留原单图32Mi编码/16Mi像素限制；补齐必要原生适配，进程共享512Mi工作预算。后台解码一次预留保守编码副本和CPU/上传像素缓冲，额度不足仅后台等待，每20ms检查取消；不持有部分额度等待另一额度。结果携带RAII预算，上传后缩到实际表面像素，缓存移除/关闭释放；关闭同时取消并释放future结果，像素先销毁再返还额度。预算是保守准入，不等同实际进程RSS，不能限制模型本身的JSON文本和任意数量等待线程；跨窗口同源仍独立缓存，完整扩展生产执行器仍未迁移。
+
+正式UI初测访问冲突；构造指针初始化/布局保护未单独解决，未当作根因。补正式Release main调试符号后调用栈定位Widget::getDrawableRegion，经Aseprite MIT ui/window.cpp setDisplay/destructor、manager关闭与widget区域计算核对：未打开表单手动注册display，但析构没有manager可负责注销，留下悬空窗口。现未挂载窗口析构显式setDisplay(nullptr,false)，已打开窗口仍交manager关闭；新增实际display窗口数加一/析构恢复/随后invalidate回归。未复制Aseprite源码，沿用公开API生命周期。此前持久JSON索引失败不能据此宣称根因相同。
+
+最终唯一正式Release构建成功，extension-form-ui/image/files/state四项通过1.92秒；新增预算竞争/等待取消/额度缩减唤醒/缓存释放/超限拒绝及实际解码lease检查，原实际图片分批上传、模型替换、嵌套提示和关闭回归保持通过。来源821文件及diff检查通过。调试符号仅本地生成工程设置，未提交生成物；诊断日志保留，源码临时追踪已清除。没有人工图像验收或CPU/FPS/RSS测量，整体迁移仍INCOMPLETE，保留editor_support.h差异；阶段保存推送dev。
