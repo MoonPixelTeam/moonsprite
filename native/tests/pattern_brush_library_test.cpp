@@ -41,6 +41,10 @@ int wmain(int argc,wchar_t** argv){try{using namespace moon;CHECK(argc==2);auto 
  for(const auto& text:{R"(["z.png",])",R"(["z.png",1])",R"(["z.png"] garbage)",R"({"items":["z.png"]})"})CHECK(order(text).brushes[0].id=="a.png");
  auto metadata=[&](const std::string& text){{std::ofstream out(root/L"a.meta.json");out<<text;}return parsed.list().brushes[0];};
  auto valid=metadata(R"({"intrinsicSize":true,"sourceX":-13,"sourceY":7})");CHECK(valid.sourceX==-13&&valid.sourceY==7);
+ for(const auto& text:{R"({"intrinsicSize":true,"sourceX":1.0,"sourceY":7})",R"({"intrinsicSize":true,"sourceX":1e0,"sourceY":7})",R"({"intrinsicSize":true,"sourceX":-0,"sourceY":7})",R"({"intrinsicSize":true,"sourceX":1,"sourceX":2,"sourceY":7})",R"({"intrinsicSize":true,"sourceX":1,"source\u0058":2,"sourceY":7})",R"({"intrinsicSize":true,"intrinsicSize":false,"sourceX":1})"}){auto invalid=metadata(text);CHECK(!invalid.sourceX&&!invalid.sourceY);}
+ auto escaped=metadata(R"({"intrinsicSize":true,"source\u0058":-2147483648,"sourceY":2147483647,"unknown":{"sourceX":1.0,"sourceX":2}})");CHECK(escaped.sourceX==(-2147483647-1)&&escaped.sourceY==2147483647);
+ auto nullable=metadata(R"({"intrinsicSize":false,"sourceX":null,"sourceY":7,"unknown":1,"unknown":2})");CHECK(!nullable.sourceX&&nullable.sourceY==7);
+
  for(const auto& text:{R"({"sourceX":1})",R"({"intrinsicSize":true,"sourceX":1,"sourceY":"7"})",R"({"intrinsicSize":true,"sourceX":1,"sourceY":2147483648})",R"({"intrinsicSize":true,"sourceX":1)"}){auto invalid=metadata(text);CHECK(!invalid.sourceX&&!invalid.sourceY);}
 }
 // A background listing may overlap repeated atomic order replacement.

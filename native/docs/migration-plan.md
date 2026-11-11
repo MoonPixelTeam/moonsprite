@@ -6821,3 +6821,9 @@ PNG后台解码完成后保留像素及私有surface，每次pump最多上传262
 核对legacy platform_brushes.rs serde Vec<String>/BrushMetadata：顺序整文档读取或默认；元数据intrinsicSize必须bool，坐标可空i32，失败整记录默认。替换原生手写顺序解析/坐标正则为仓库已有Windows.Data.Json路线，COM作用域及runtimeobject链接，坐标暂存全部验证后发布。补Unicode转义顺序、错误类型/尾随垃圾/残缺文本、缺必填字段与越界坐标整记录默认测试；修正此前只保留有效坐标的错误预期。重复字段/数字词法的serde精确一致性尚未证明，整体INCOMPLETE。
 
 阶段验收完成：唯一正式Release及底层测试构建成功；pattern-brush-library JSON/并发回归通过2.87秒，实际笔刷栏目专项等待exit0，后台扫描解析/资源生命周期通过。extension-workspace-ui、multi-document、canvas-resize三项通过1.99秒。来源824/diff通过。重复字段及数字词法serde一致性仍未证明，原CHECK路径C4129警告仍有；无人工FPS/截图验收，整体INCOMPLETE。用户editor_support.h及未跟踪数据保留，阶段提交推送dev。
+
+### 2026-11-11：笔刷元数据重复字段与数字词法迁移（验证中）
+
+依据legacy BrushMetadata serde类型及本机serde_json de.rs parse_number证据：小数/指数/-0作为F64，i32字段拒绝；derive已知字段重复报错。沿用仓库palette_import.cpp已有词法适配方式，在DOM之前识别顶层解码字段重复和坐标整数写法，未知/嵌套字段仍忽略，补metadata UTF8校验。回归decimal/exponent/-0、重复布尔/坐标与转义别名、单个转义键、i32两端、空可选和未知嵌套重复。不是穷尽格式等价证明，surrogate/深度边界仍需核对；整体INCOMPLETE。
+
+阶段验收完成：唯一正式Release及底层测试构建成功，实际笔刷栏目专项等待exit0。pattern-brush-library词法/重复字段/转义别名/i32/null/未知字段和已有并发检查通过12.98秒；extension-workspace-ui、multi-document、canvas-resize通过，合计15.60秒。来源824/diff通过。没有surrogate/深度边界穷尽对照或人工FPS声明；原CHECK路径警告仍存在。整体INCOMPLETE，用户editor_support.h和未跟踪数据保留，阶段提交推送dev。

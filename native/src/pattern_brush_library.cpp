@@ -21,9 +21,27 @@ namespace moon {namespace {
 std::recursive_mutex brushOrderMutex;
 constexpr const char* orderFile=".brush-order.json";
 struct JsonApartment{HRESULT status=RoInitialize(RO_INIT_MULTITHREADED);~JsonApartment(){if(status==S_OK)winrt::clear_factory_cache();if(SUCCEEDED(status))RoUninitialize();}};
+// Same native lexical adaptation as palette_import.cpp: the DOM normalizes
+// duplicate keys and numeric spellings that serde's typed fields reject.
+bool metadataLexicalShape(const std::string& text){
+ using namespace winrt::Windows::Data::Json;
+ if(!text.empty()&&!MultiByteToWideChar(CP_UTF8,MB_ERR_INVALID_CHARS,text.data(),int(text.size()),nullptr,0))return false;
+ int depth=0;std::wstring field;std::set<std::wstring> seen;
+ for(std::size_t i=0;i<text.size();){const char c=text[i];
+  if(c=='"'){const auto start=i++;bool ended=false;while(i<text.size()){if(text[i]=='"'){++i;ended=true;break;}if(text[i]=='\\'){if(++i==text.size())return false;}++i;}if(!ended)return false;
+   const auto end=i;while(i<text.size()&&(text[i]==' '||text[i]=='\t'||text[i]=='\r'||text[i]=='\n'))++i;
+   if(depth==1&&i<text.size()&&text[i]==':'){field=std::wstring(JsonValue::Parse(winrt::to_hstring(text.substr(start,end-start))).GetString());if(field==L"intrinsicSize"||field==L"sourceX"||field==L"sourceY")if(!seen.insert(field).second)return false;}continue;
+  }
+  if(c=='{'||c=='['){++depth;++i;continue;}if(c=='}'||c==']'){--depth;++i;continue;}
+  if(c=='-'||(c>='0'&&c<='9')){const auto start=i++;while(i<text.size()&&((text[i]>='0'&&text[i]<='9')||text[i]=='.'||text[i]=='e'||text[i]=='E'||text[i]=='+'||text[i]=='-'))++i;
+   if(depth==1&&(field==L"sourceX"||field==L"sourceY")){auto token=text.substr(start,i-start);if(token=="-0")return false;std::size_t digit=token[0]=='-'?1:0;if(digit==token.size()||token.find_first_not_of("0123456789",digit)!=std::string::npos)return false;}
+   continue;
+  }++i;
+ }return true;
+}
 void readMetadata(const std::string& text,StoredPatternBrush& item){
  using namespace winrt::Windows::Data::Json;
- try{const auto root=JsonObject::Parse(winrt::to_hstring(text));if(root.GetNamedValue(L"intrinsicSize").ValueType()!=JsonValueType::Boolean)return;
+ try{if(!metadataLexicalShape(text))return;const auto root=JsonObject::Parse(winrt::to_hstring(text));if(root.GetNamedValue(L"intrinsicSize").ValueType()!=JsonValueType::Boolean)return;
   auto coordinate=[&](const wchar_t* key)->std::optional<int>{if(!root.HasKey(key)||root.GetNamedValue(key).ValueType()==JsonValueType::Null)return {};const auto value=root.GetNamedValue(key);if(value.ValueType()!=JsonValueType::Number)throw std::runtime_error("Invalid brush coordinate");const auto n=value.GetNumber();if(!std::isfinite(n)||n<std::numeric_limits<int>::min()||n>std::numeric_limits<int>::max()||n!=std::floor(n))throw std::runtime_error("Invalid brush coordinate");return int(n);};
   const auto x=coordinate(L"sourceX"),y=coordinate(L"sourceY");item.sourceX=x;item.sourceY=y;
  }catch(...){item.sourceX.reset();item.sourceY.reset();}
