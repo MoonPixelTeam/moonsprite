@@ -54,8 +54,9 @@ IJsonValue Storage::get(const std::u16string& extension,const std::u16string& ke
 void Storage::setEncoded(const std::u16string& extension,const std::u16string& key,const std::string& json){
  validateKey(key);if(json.size()>256u*1024u)throw std::length_error("扩展存储值超过大小限制。");JsonValue::Parse(winrt::to_hstring(json));
  const auto scope=prefix(extension),name=scope+key;std::size_t total=json.size();for(const auto& p:values_)if(starts(p.first,scope)&&p.first!=name){if(p.second.size()>1024u*1024u-total)throw std::length_error("扩展存储空间超过 1 MiB 限制。");total+=p.second.size();}
- auto next=values_;auto it=std::find_if(next.begin(),next.end(),[&](const auto& p){return p.first==name;});if(it==next.end())next.push_back({name,json});else it->second=json;publish(std::move(next));
+ const auto existing=std::find_if(values_.begin(),values_.end(),[&](const auto& p){return p.first==name;});const auto index=std::size_t(existing-values_.begin());
+ auto next=values_;if(index==next.size())next.push_back({name,json});else next[index].second=json;publish(std::move(next));
 }
-void Storage::remove(const std::u16string& extension,const std::u16string& key){validateKey(key);const auto name=prefix(extension)+key;auto next=values_;next.erase(std::remove_if(next.begin(),next.end(),[&](const auto& p){return p.first==name;}),next.end());if(next.size()!=values_.size())publish(std::move(next));}
+void Storage::remove(const std::u16string& extension,const std::u16string& key){validateKey(key);const auto name=prefix(extension)+key;const auto existing=std::find_if(values_.begin(),values_.end(),[&](const auto& p){return p.first==name;});if(existing==values_.end())return;const auto index=existing-values_.begin();auto next=values_;next.erase(next.begin()+index);publish(std::move(next));}
 std::vector<std::u16string> Storage::list(const std::u16string& extension)const{const auto scope=prefix(extension);std::vector<std::u16string> keys;for(const auto& p:values_)if(starts(p.first,scope))keys.push_back(p.first.substr(scope.size()));std::sort(keys.begin(),keys.end());return keys;}
 }
