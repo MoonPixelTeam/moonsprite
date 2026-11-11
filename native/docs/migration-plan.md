@@ -6517,3 +6517,9 @@ PNG后台解码完成后保留像素及私有surface，每次pump最多上传262
 核对ExtensionDialogForm onClose及卸载生命周期，原生完成/Esc/title-close原先只关闭FormState/窗口，保留图片future、上传和缓存直至对象销毁；现与host关闭共用closeFromHost清理任务、future、上传、缓存及排队动作。userClosePending在实际关闭后发出一次用户回调，host主动关闭不发用户回调；既有busy/嵌套prompt阻挡、菜单/文件回调延后关闭保持。closing幂等拒绝重复关闭；回调复制到局部后调用，避免回调释放宿主时继续读取成员。
 
 唯一正式Release构建成功，extension-form-ui/image/files/state四项通过1.98秒。实际窗口新增pending PNG解码中Escape/title-close退出，检查回调一次、会话关闭、无父窗口、future/上传/缓存清空、重复host/title关闭不重复通知；既有菜单/chooser延后关闭与捕获清理检查通过。来源821文件及diff检查通过，无人工图像验收/FPS测量。重试中的生产执行器重建、全编辑器modal隔离与整体迁移仍INCOMPLETE。保留editor_support.h及日志/缓存，本阶段保存推送dev。
+
+### 2026-11-11：扩展表单重试代际与回调生命周期
+
+核对ExtensionDialogForm retry：清空loadError/loaded/busy/values/pending，generation递增，保留view/images，ExtensionWindow按key重建。原生保留同样模型/图片/默认值，retrySession清除上一代未dispatch动作，连续等待点击合并，restart回调延至guarded pump执行，避免button事件栈同步重建控件。回调同步receive/pump由已有重入保护约束，host关闭延后处理；std::exception/未知异常转loadFailed允许后续重试。没有将未接入的正式JS执行器称作已完成，不取消仍有效的保留图片缓存。
+
+唯一正式Release构建成功，extension-form-ui/image/files/state四项通过1.92秒；新增实际按钮连续重试只增一次generation、草稿/busy重置、旧排队动作丢弃、同步模型恢复、旧generation拒绝、异常恢复与回调请求关闭回归；既有15秒状态超时与全部表单检查保持通过。来源821文件/diff检查通过，无人工图像验收/FPS测量。生产执行器重启接线、全编辑器modal隔离及整体迁移仍INCOMPLETE。保留editor_support.h及用户日志/缓存，阶段保存推送dev。
