@@ -25,7 +25,7 @@ struct FormImage {std::shared_ptr<FormImageMemory> memory;int width=0,height=0;s
 // The display box follows ExtensionDialogForm (default48, clamp16..512).
 double formImageExtent(const winrt::Windows::Data::Json::JsonObject&,const wchar_t*);
 // Promise-backed future destruction never joins a decoder on the UI thread.
-struct FormImageTask{std::future<FormImage> result;std::shared_ptr<std::atomic<bool>> cancelled;void cancel(){if(cancelled)cancelled->store(true);} };
+struct FormImageTask{std::future<FormImage> result;std::shared_ptr<std::atomic<bool>> cancelled;void cancel(); };
 FormImageTask startFormImage(std::wstring);
 FormImage decodeFormImage(const std::wstring&);
 }

@@ -44,14 +44,16 @@ namespace {
 // The process owns two workers. No worker or queued job contains UI pointers.
 // Leaked process-lifetime state avoids joining a decoder from window teardown.
 struct ImageQueue {
- std::mutex mutex;std::condition_variable ready;std::deque<std::function<void()>> jobs;int workers=0;
- void start(){for(;workers<2;++workers)std::thread([this]{for(;;){std::function<void()> job;{std::unique_lock<std::mutex> lock(mutex);ready.wait(lock,[this]{return !jobs.empty();});job=std::move(jobs.front());jobs.pop_front();}job();}}).detach();}
- void push(std::function<void()> job){{std::lock_guard<std::mutex> lock(mutex);jobs.push_back(std::move(job));}ready.notify_one();}
+ std::mutex mutex;std::condition_variable ready;struct Job{std::shared_ptr<std::atomic<bool>> token;std::function<void()> run,reject;};std::deque<Job> jobs;int workers=0;
+ void start(){for(;workers<2;++workers)std::thread([this]{for(;;){Job job;{std::unique_lock<std::mutex> lock(mutex);ready.wait(lock,[this]{return !jobs.empty();});job=std::move(jobs.front());jobs.pop_front();}job.run();}}).detach();}
+ void push(Job job){{std::lock_guard<std::mutex> lock(mutex);jobs.push_back(std::move(job));}ready.notify_one();}
+ void cancel(const std::shared_ptr<std::atomic<bool>>& token){std::function<void()> reject;{std::lock_guard<std::mutex> lock(mutex);auto found=std::find_if(jobs.begin(),jobs.end(),[&](const Job& job){return job.token==token;});if(found!=jobs.end()){reject=std::move(found->reject);jobs.erase(found);}}if(reject)reject();}
 };
 ImageQueue& imageQueue(){static auto* queue=new ImageQueue;static std::once_flag started;std::call_once(started,[&]{queue->start();});return *queue;}
 }
+void FormImageTask::cancel(){if(!cancelled)return;cancelled->store(true);imageQueue().cancel(cancelled);imageMemory().changed.notify_all();}
 FormImageTask startFormImage(std::wstring source){
  auto promise=std::make_shared<std::promise<FormImage>>();FormImageTask task{promise->get_future(),std::make_shared<std::atomic<bool>>(false)};auto cancelled=task.cancelled;
- imageQueue().push([source=std::move(source),promise,cancelled]{try{if(cancelled->load())throw std::runtime_error("Image decode cancelled");winrt::init_apartment(winrt::apartment_type::multi_threaded);struct Apartment{~Apartment(){winrt::uninit_apartment();}}apartment;promise->set_value(decode(source,cancelled));}catch(...){promise->set_exception(std::current_exception());}});return task;
+ imageQueue().push({cancelled,[source=std::move(source),promise,cancelled]{try{if(cancelled->load())throw std::runtime_error("Image decode cancelled");winrt::init_apartment(winrt::apartment_type::multi_threaded);struct Apartment{~Apartment(){winrt::uninit_apartment();}}apartment;promise->set_value(decode(source,cancelled));}catch(...){promise->set_exception(std::current_exception());}},[promise]{try{throw std::runtime_error("Image decode cancelled");}catch(...){promise->set_exception(std::current_exception());}}});return task;
 }
 }

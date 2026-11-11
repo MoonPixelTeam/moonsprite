@@ -6555,3 +6555,9 @@ PNG后台解码完成后保留像素及私有surface，每次pump最多上传262
 继续核对Lua剩余能力屏蔽后确认document.create受非RGBA模型、io.export受生产扩展宿主完成事件限制，未擅自解除。独立补齐图片执行资源：此前startFormImage每次创建detach线程，总像素预算无法约束大量等待线程。现进程固定两个worker，FIFO任务不含UI/Surface指针，解码前检查取消；保留WinRT MTA、PNG精确RGBA、promise非join future、总内存准入及主线程分批上传。队列对象为进程生命周期，线程启动逐个计数/call_once重试，部分启动失败不释放已被线程引用的对象，也不在重试时重复生成已启动worker。队列源字符串/元数据仍未计入像素预算，不能声称所有内存均有上限。
 
 唯一正式Release及图片测试目标构建成功，extension-form-ui/image/files/state四项通过1.89秒。新增64任务在占满预算时排队、统一取消、全部future失败完成/额度归零、后续真实PNG成功，保持实际表单退出/模型替换/分批上传回归。来源821文件及diff检查通过，无人工图像或CPU/FPS测量。线程创建故障为源码失败路径核对，未注入OS创建失败；生产扩展执行器、非RGBA等整体迁移仍INCOMPLETE。保留editor_support.h及用户缓存/日志，阶段保存推送dev。
+
+### 2026-11-11：取消图片请求即时退出等待队列
+
+接续固定双worker，补齐关闭/模型替换取消的源数据生命周期。FormImageTask::cancel设置token、在共享FIFO锁内移除尚未开始的同token任务，释放捕获源字符串/run闭包；promise异常在锁外完成。与worker已取走任务的竞争由队列锁分界：已取走走原协作取消，未取走只由reject完成promise，不重复发布。取消同时通知图片预算条件变量，使运行中的预算等待立即重新检查token，原20ms周期作为后备。无UI/Surface跨线程访问，future销毁仍不join。
+
+唯一正式Release及图片测试构建成功，extension-form-ui/image/files/state四项通过1.89秒。64请求压力现在要求预算保持满额时全部取消future完成并拒绝，不再先释放预算掩盖取消停滞；随后额度归零与真实PNG恢复成功，既有窗口关闭/替换/上传检查通过。来源821文件及diff检查通过。队列未取消源数据总量仍无独立上限，不宣称解决全部内存压力；无人工图像/CPU/FPS测量。完整生产扩展执行器等整体迁移仍INCOMPLETE。保留editor_support.h及用户数据，阶段保存推送dev。
