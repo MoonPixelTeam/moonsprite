@@ -6873,3 +6873,10 @@ PNG后台解码完成后保留像素及私有surface，每次pump最多上传262
 对照legacy useBrushLibrary.ts先refresh后setBrushImage。原生异步导入先激活但旧缓存无新ID，遇工程资源序号变化会在新扫描完成前清理新笔刷。改为成功结果先登记已解码local/index/folder order及listing，保留工程/目录身份校验，再激活选择与后台刷新；不增加读取。真实production held scan+导入结果+工程revision发布+旧扫描拒绝+最终扫描保留选择回归，正式构建验证中，整体INCOMPLETE。
 
 阶段验收：正式Release与实际笔刷栏目专项exit0；导入登记/工程revision发布/延迟扫描/过期扫描拒绝/最终保留回归通过。multi-document、image-brush、canvas-resize通过；pattern-brush-library首次已知原子替换Windows error5失败，同一二进制隔离复验通过1.38秒，原因未证明，不称修复。来源824/diff通过，未做FPS实测，整体INCOMPLETE。保留用户editor_support.h与未跟踪文件，阶段提交推送dev。
+
+
+### 2026-11-11：笔刷持久化失败与恢复事务验收（验证中）
+
+实际对照legacy platform_storage.rs atomic_write_with_validation/replace_file，原生同写临时/flush/MoveFileEx不需替换算法。新增独立fixture用顺序文件deny-delete句柄确定触发提交失败，分别核对排序失败、保存PNG+metadata回滚、删除失败，逐项验证旧顺序/PNG/meta完整字节、完整文件集合、无临时泄露；解锁后重排/保存/解码/删除/重开恢复。API错误先立即捕获再转换路径，诊断增加目标属性，避免后续Windows调用覆盖错误。间歇Windows error5原因仍未证明，不靠盲目重试或改变数据语义隐藏。正式构建验证中，整体INCOMPLETE。
+
+阶段验收：正式Release与底层测试构建成功；首次CTest经过新增确定性失败恢复段后，在原并发事务顺序替换报Windows error5，目标attributes32，排除只读属性但未证明原因。同一二进制隔离复验通过2.03秒，新增rollback/解锁恢复/重开全部通过；实际笔刷栏目专项exit0，另三项multi-document/image-brush/canvas-resize通过。来源824/diff通过。无生产重试、无根因修复声明，整体INCOMPLETE，用户editor_support.h和未跟踪数据保留，阶段提交推送dev。

@@ -4,6 +4,7 @@
 #include <iostream>
 #include <thread>
 #include <atomic>
+#include <windows.h>
 #define CHECK(x) do{if(!(x))throw std::runtime_error(#x);}while(false)
 int wmain(int argc,wchar_t** argv){try{using namespace moon;CHECK(argc==2);auto dir=std::filesystem::path(argv[1])/std::to_wstring(std::chrono::high_resolution_clock::now().time_since_epoch().count());PatternBrushLibrary library(dir);auto existingTemp=dir/L".brush-order.json.tmp";{std::ofstream file(existingTemp,std::ios::binary);file<<"preserve-existing-temp";}auto b=createPatternBrushFromRgba(2,1,{1,2,3,0,4,5,6,128});auto bytes=encodePatternBrushPng(b);auto one=library.save("first",bytes,true,-2,7),two=library.save("second",bytes),three=library.save("third",bytes);CHECK(one.id!=two.id);auto list=library.list();CHECK(list.brushes.size()==3&&list.brushes[0].id==one.id&&list.brushes[0].sourceX==-2&&list.brushes[0].sourceY==7);auto decoded=importPatternBrush(std::filesystem::u8path(one.filePath));CHECK(decoded.brush.colors==b.colors);library.reorder({three.id,one.id,two.id});{std::ifstream file(existingTemp,std::ios::binary);std::string contents((std::istreambuf_iterator<char>(file)),{});CHECK(contents=="preserve-existing-temp");}PatternBrushLibrary reopened(dir);CHECK(reopened.list().brushes[0].id==three.id);PatternBrushSelection selected;std::vector<std::string> ids{three.id,one.id,two.id};selected.select(ids,one.id);selected.select(ids,two.id,true);CHECK(selected.ids==std::vector<std::string>({one.id,two.id}));selected.select(ids,three.id,false,true);CHECK(selected.ids==ids);selected.select(ids,one.id);selected.select(ids,one.id);CHECK(selected.ids.empty());library.remove(two.id);CHECK(reopened.list().brushes.size()==2);CHECK(!std::filesystem::exists(std::filesystem::u8path(two.filePath)));bool bad=false;try{library.remove("../first.png");}catch(const std::invalid_argument&){bad=true;}CHECK(bad);auto parent=library.createFolder("Actors"),child=library.createFolder("Child",parent.id);auto duplicate=library.createFolder("Actors");CHECK(duplicate.id=="Actors-2");auto moved=library.move(one.id,child.id);CHECK(moved.id==one.id&&moved.folderId==child.id&&moved.sourceX==-2);auto renamed=library.renameFolder(parent.id,"People");CHECK(renamed.id=="People");PatternBrushLibrary again(dir);CHECK(again.list().folders.size()==3);CHECK(again.list().brushes[0].id==three.id);bool rejected=false;try{library.renameFolder(renamed.id,"Actors-2");}catch(const std::runtime_error&){rejected=true;}CHECK(rejected&&std::filesystem::exists(dir/L"People"/L"Child"));rejected=false;try{library.move(one.id,"../outside");}catch(const std::invalid_argument&){rejected=true;}CHECK(rejected);library.removeFolder(renamed.id);CHECK(again.list().brushes.size()==1&&again.list().brushes[0].id==three.id);CHECK(!std::filesystem::exists(dir/L"People"));
 
@@ -46,6 +47,26 @@ int wmain(int argc,wchar_t** argv){try{using namespace moon;CHECK(argc==2);auto 
  auto nullable=metadata(R"({"intrinsicSize":false,"sourceX":null,"sourceY":7,"unknown":1,"unknown":2})");CHECK(!nullable.sourceX&&nullable.sourceY==7);
 
  for(const auto& text:{R"({"sourceX":1})",R"({"intrinsicSize":true,"sourceX":1,"sourceY":"7"})",R"({"intrinsicSize":true,"sourceX":1,"sourceY":2147483648})",R"({"intrinsicSize":true,"sourceX":1)"}){auto invalid=metadata(text);CHECK(!invalid.sourceX&&!invalid.sourceY);}
+}
+// Legacy platform_storage atomic replacement keeps the committed target intact.
+// A handle denying delete deterministically forces replacement failure, without
+// relying on antivirus timing or weakening the concurrent transaction checks.
+{const auto root=dir.parent_path()/(dir.filename().wstring()+L"-failed-commit");PatternBrushLibrary committed(root);
+ const auto a=committed.save("committed-a",bytes,true,-4,9),b=committed.save("committed-b",bytes);const auto orderPath=root/L".brush-order.json";
+ auto read=[](const std::filesystem::path& path){std::ifstream in(path,std::ios::binary);return std::string((std::istreambuf_iterator<char>(in)),{});};
+ const auto originalOrder=read(orderPath),originalPixels=read(std::filesystem::u8path(a.filePath));auto meta=std::filesystem::u8path(a.filePath);meta.replace_extension(L".meta.json");const auto originalMeta=read(meta);
+ auto files=[&]{std::vector<std::wstring> result;for(const auto& entry:std::filesystem::directory_iterator(root))result.push_back(entry.path().filename().wstring());std::sort(result.begin(),result.end());return result;};const auto originalFiles=files();
+ HANDLE held=CreateFileW(orderPath.c_str(),GENERIC_READ,FILE_SHARE_READ|FILE_SHARE_WRITE,nullptr,OPEN_EXISTING,FILE_ATTRIBUTE_NORMAL,nullptr);CHECK(held!=INVALID_HANDLE_VALUE);
+ try{
+  auto unchanged=[&]{CHECK(read(orderPath)==originalOrder);CHECK(read(std::filesystem::u8path(a.filePath))==originalPixels);CHECK(read(meta)==originalMeta);CHECK(files()==originalFiles);CHECK(PatternBrushLibrary(root).list().brushes.front().id==a.id);};
+  bool failed=false;try{committed.reorder({b.id,a.id});}catch(const std::runtime_error& error){failed=std::string(error.what()).find("Cannot replace brush file")!=std::string::npos;}CHECK(failed);unchanged();
+  failed=false;try{committed.save("must-rollback",bytes,true,3,5);}catch(const std::runtime_error&){failed=true;}CHECK(failed);unchanged();
+  failed=false;try{committed.remove(a.id);}catch(const std::runtime_error&){failed=true;}CHECK(failed);unchanged();
+ }catch(...){CloseHandle(held);throw;}CloseHandle(held);
+ committed.reorder({b.id,a.id});CHECK(PatternBrushLibrary(root).list().brushes.front().id==b.id);
+ const auto recovered=committed.save("recovered",bytes,true,-7,11);CHECK(importPatternBrush(std::filesystem::u8path(recovered.filePath)).brush.colors==createPatternBrushFromRgba(2,1,{1,2,3,0,4,5,6,128}).colors);
+ committed.remove(a.id);const auto final=PatternBrushLibrary(root).list();CHECK(final.brushes.size()==2&&final.brushes.front().id==b.id);CHECK(!std::filesystem::exists(std::filesystem::u8path(a.filePath))&&!std::filesystem::exists(meta));
+ for(const auto& entry:std::filesystem::directory_iterator(root))CHECK(entry.path().filename().wstring().find(L".tmp.")==std::wstring::npos);
 }
 // A background listing may overlap repeated atomic order replacement.
 std::atomic<bool> reading{true};std::exception_ptr readerFailure;

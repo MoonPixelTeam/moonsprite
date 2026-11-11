@@ -69,7 +69,12 @@ void atomicBytes(const std::filesystem::path& p,const std::vector<std::uint8_t>&
   if(!FlushFileBuffers(file))throw std::runtime_error("Cannot flush brush file (Windows error "+std::to_string(GetLastError())+")");
   if(!CloseHandle(file)){file=INVALID_HANDLE_VALUE;throw std::runtime_error("Cannot close brush file (Windows error "+std::to_string(GetLastError())+")");}
   file=INVALID_HANDLE_VALUE;
-  if(!MoveFileExW(t.c_str(),p.c_str(),MOVEFILE_REPLACE_EXISTING|MOVEFILE_WRITE_THROUGH))throw std::runtime_error("Cannot replace brush file "+p.u8string()+" (Windows error "+std::to_string(GetLastError())+")");
+  if(!MoveFileExW(t.c_str(),p.c_str(),MOVEFILE_REPLACE_EXISTING|MOVEFILE_WRITE_THROUGH)){
+   // Preserve the failing API error before path conversion or diagnostics call
+   // another Windows function and overwrite the thread-local last error.
+   const auto error=GetLastError();const auto attributes=GetFileAttributesW(p.c_str());
+   throw std::runtime_error("Cannot replace brush file "+p.u8string()+" (Windows error "+std::to_string(error)+", target attributes "+std::to_string(attributes)+")");
+  }
  }catch(...){if(file!=INVALID_HANDLE_VALUE)CloseHandle(file);std::error_code ignored;std::filesystem::remove(t,ignored);throw;}
 }
 // Match legacy read_to_string followed by atomic rename while allowing a
