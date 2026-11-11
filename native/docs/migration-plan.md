@@ -6667,3 +6667,11 @@ PNG后台解码完成后保留像素及私有surface，每次pump最多上传262
 核对legacy extension-runtime.ts的set/remove语义，原生缺失key remove现在先在原values查找，直接返回，不复制全部JSON字符串；存在项删除按已解析位置移除。set在原容器取得索引后复制并更新，保持发布成功才替换内存。不跳过相同值set：新增第二个Storage实例先修改磁盘、原实例再次写相同本地值的回归，确认实际发布请求值，避免改变现有多实例可观察行为。
 
 两个模块目标构建成功，extension-storage/session-host两项通过1.31秒；来源821文件覆盖及diff检查通过。没有修改生产界面，不重建正式exe，不把局部复制优化解释为全软件速度提升。ReplaceFile1175根因及生产JS执行器仍未解决，整体迁移INCOMPLETE。用户差异和未跟踪数据不纳入提交；阶段提交推送dev。
+
+### 2026-11-11：扩展真实工作区适配（验证中）
+
+对照legacy ExtensionRuntimeHost.tsx projectSnapshot及workspace/document请求分支，将原测试回调适配到正式Editor多工程会话：实时列表/活动摘要、按ID切换、层/帧查询和undo/redo。原生层顺序反向映射为旧版顺序；扩展工程ID使用进程内稳定Document identity，因为projectId在新工程时为空且保存可改变。当前原生仅RGBA，继续明确记录，不假称支持其他模式。服务所有者必须先于Editor销毁，不保存文档或像素副本。
+
+正式exe新增--extension-workspace-check，使用真实Editor/SessionHost请求链验证双工程、尺寸名称/属性/时长、查询无历史更改、切换保留像素与undo/redo栈、无效ID、主页活动工程、替换旧token/只读权限、空工作区。当前正在构建与验收，未提交；生产JavaScript执行器、tools/colors回调及事件接线仍未完成，不将本适配器称为完整扩展运行。
+
+阶段验收完成：首次访问声明插入错误已修正，辅助函数与Widget::text重名已修正。首次失败期间生成了访问修饰符不一致对象，按链接诊断重新编译dialogs/timeline/timelapse/canvas后唯一正式Release构建成功，未改业务实现或绕过正式产物。extension-workspace-ui、multi-document、extension-session-host、extension-request-host四项通过4.75秒，覆盖真实编辑器请求链及既有多工程行为。来源822文件检查通过；无UI布局改动、人工图像/FPS或生产JS扩展实机验收。适配器可供正式宿主接入，生产执行入口仍未完成，不将整个扩展领域或全部迁移标完成。保留editor_support.h和未跟踪用户数据，阶段提交推送dev。

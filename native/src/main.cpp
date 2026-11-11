@@ -426,6 +426,7 @@ int app_main(int argc,char* argv[]) {
 
     const bool scriptEntryCheck=argc>1&&std::string(argv[1])=="--script-entry-check";
     ui::Timer scriptEntryTimer(80,editor);if(scriptEntryCheck){scriptEntryTimer.Tick.connect([&]{scriptEntryTimer.stop();try{editor->smokeScriptEntry();desktop.approved=true;desktop.closeWindow(editor);}catch(const std::exception& e){std::ofstream("native-script-entry-error.txt")<<e.what();std::exit(1);}});scriptEntryTimer.start();}else if(!usageTesting)editor->initializeScripts();
+    if(argc>1&&std::string(argv[1])=="--extension-workspace-check"){try{editor->smokeExtensionWorkspace();}catch(const std::exception& e){std::ofstream("native/build/extension-workspace-error.txt")<<e.what();delete editor;desktop.editor=nullptr;return 1;}delete editor;desktop.editor=nullptr;return 0;}
     const bool extensionFormCheck=argc>1&&std::string(argv[1])=="--extension-form-check";
     std::unique_ptr<extension::FormWindow> extensionForm;Skin extensionFormIcons;ui::Timer extensionFormTimer(50,editor);
     if(extensionFormCheck){
