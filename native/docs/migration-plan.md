@@ -6537,3 +6537,9 @@ PNG后台解码完成后保留像素及私有surface，每次pump最多上传262
 接续message控件迁移，对照旧版styles.css pre-wrap且未覆盖tab-size的默认8空格制表位，去掉固定展开八空格的近似。原始消息行保留Tab，按当前行累计宽度推进至下一制表位；折行测量与实际绘制共用messageAdvance，绘制普通文本run并跳过Tab区域。英文断点搬移尾部后使用while重新判断后续字符是否超宽，避免单次判断遗漏。该适配仍使用指定Fusion字模，不宣称浏览器完整Unicode分段/双向/组合排版已等价。
 
 唯一正式Release构建成功，extension-form-ui/image/files/state四项通过1.90秒；实际窗口增加Tab原文保留、首行字后/连续Tab的度量对齐，并保持空行/空格/CRLF/长中文窄宽重排与完整表单检查通过。来源821文件及diff检查通过，无人工图像验收或性能测量。完整modal产品选择和JS执行器待确认不擅自实施，整体迁移仍INCOMPLETE；保留editor_support.h与用户缓存/日志，本阶段保存推送dev。
+
+### 2026-11-11：扩展下拉值身份、默认转换与菜单勾选
+
+直接核对ExtensionDialogForm String(value??empty)及ThemedSelect options.find/first fallback/moveSelection/value check。原生默认值匹配补齐数字/布尔等现有diagnosticString显示转换，重复值取首标签，未匹配仍显示第一标签但保持原始值，空选项列表显示原始字符串而非空白；显示回退不写草稿。表单专用键盘按实际值的首索引移动，选择重复项后仍显示首标签并发送原字符串值，disabled不更改。表单菜单复用PixelMenu/Tooltip与modal计数，实际值相等的全部重复项显示check，未匹配回退项不勾选；不修改其他业务下拉框的共享行为。
+
+首轮使用不存在的signal.disconnectAll编译失败，改走ButtonBase::onClick虚函数接入表单菜单；最终唯一正式Release构建成功。extension-form-ui/image/files/state四项通过1.94秒；新增真实窗口数字/布尔默认、首重复项、空列表、未匹配值不写草稿、重复值键盘、disabled及菜单勾选谓词检查。既有菜单运行循环与响应延后测试仍通过，但本轮重复值菜单实际像素/点击没有新增人工验收，不将谓词检查扩称完整弹出菜单验收。来源821文件及diff检查通过，无FPS测量。完整Unicode转换边界、超屏菜单、生产执行器及整体迁移仍INCOMPLETE；保留editor_support.h与用户缓存/日志，阶段保存推送dev。
