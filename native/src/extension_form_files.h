@@ -48,12 +48,27 @@ public:
   for(const auto& path:paths){check();const auto size=std::filesystem::file_size(path);if(size>16u*1024*1024-total)throw std::length_error("最多 16 个文件，合计不超过 16 MiB。");FormState::File file;file.name=path.filename().wstring();file.mime=mime(path);std::ifstream input(path,std::ios::binary);if(!input)throw std::runtime_error("无法读取扩展文件。");char chunk[65536];while(input){check();input.read(chunk,sizeof(chunk));const auto n=std::size_t(input.gcount());if(n>16u*1024*1024-total)throw std::length_error("最多 16 个文件，合计不超过 16 MiB。");file.bytes.insert(file.bytes.end(),chunk,chunk+n);total+=n;}if(input.bad())throw std::runtime_error("无法读取扩展文件。");files.push_back(std::move(file));}return files;
  }
  std::optional<std::vector<FormState::File>> choose(const winrt::Windows::Data::Json::JsonObject& node)const{auto paths=choosePaths(node);if(!paths)return {};return read(*paths);}
- bool save(const FormState::File& file)const{
+ std::optional<std::filesystem::path> chooseSavePath(const FormState::File& file)const{
   if(file.name.empty()||file.name.size()>120||file.bytes.size()>12u*1024*1024)throw std::invalid_argument("扩展导出文件无效。");for(auto c:file.name)if(c<32||(c>=127&&c<=159)||std::wstring(L"<>:\"/\\|?*").find(c)!=std::wstring::npos)throw std::invalid_argument("扩展导出文件无效。");if(winrt::to_string(file.name).size()>240)throw std::invalid_argument("扩展导出文件名无效。");const auto ext=extension(file.name);
   std::vector<wchar_t> buffer(32768);std::copy(file.name.begin(),file.name.end(),buffer.begin());std::wstring filters=L"扩展数据";filters+=wchar_t(0);filters+=L"*."+ext;filters+=wchar_t(0);filters+=L"所有文件";filters+=wchar_t(0);filters+=L"*.*";filters+=wchar_t(0);filters+=wchar_t(0);OPENFILENAMEW dialog{};dialog.lStructSize=sizeof(dialog);dialog.hwndOwner=owner_;dialog.lpstrFile=buffer.data();dialog.nMaxFile=DWORD(buffer.size());dialog.lpstrFilter=filters.c_str();dialog.lpstrDefExt=ext.c_str();dialog.Flags=OFN_EXPLORER|OFN_NOCHANGEDIR|OFN_PATHMUSTEXIST|OFN_OVERWRITEPROMPT;
-  if(!save_(&dialog)){chooserError();return false;}const auto end=std::find(buffer.begin(),buffer.end(),wchar_t(0));if(end==buffer.end()||end==buffer.begin())throw std::runtime_error("扩展文件选择结果无效。");writeBinaryFileAtomic(std::filesystem::path(std::wstring(buffer.begin(),end)),file.bytes);return true;
+  if(!save_(&dialog)){chooserError();return {};}const auto end=std::find(buffer.begin(),buffer.end(),wchar_t(0));if(end==buffer.end()||end==buffer.begin())throw std::runtime_error("扩展文件选择结果无效。");return std::filesystem::path(std::wstring(buffer.begin(),end));
  }
+ bool save(const FormState::File& file)const{auto path=chooseSavePath(file);if(!path)return false;writeBinaryFileAtomic(*path,file.bytes);return true;}
 };
+namespace detail {
+struct FormFileWriteQueue{
+ std::mutex mutex;std::condition_variable ready;std::deque<std::function<void()>> jobs;bool stopping=false;std::thread worker;
+ FormFileWriteQueue():worker([this]{for(;;){std::function<void()> job;{std::unique_lock<std::mutex> lock(mutex);ready.wait(lock,[&]{return stopping||!jobs.empty();});if(jobs.empty()&&stopping)return;job=std::move(jobs.front());jobs.pop_front();}job();}}){}
+ ~FormFileWriteQueue(){{std::lock_guard<std::mutex> lock(mutex);stopping=true;}ready.notify_one();worker.join();}
+};
+}
+inline std::future<void> startFormFileWrite(std::filesystem::path path,std::vector<std::uint8_t> bytes,
+ std::function<void(const std::filesystem::path&,const std::vector<std::uint8_t>&)> writer=writeBinaryFileAtomic){
+ static detail::FormFileWriteQueue queue;
+ auto promise=std::make_shared<std::promise<void>>();auto result=promise->get_future();
+ auto job=[path=std::move(path),bytes=std::move(bytes),writer=std::move(writer),promise]()mutable{try{writer(path,bytes);promise->set_value();}catch(...){promise->set_exception(std::current_exception());}};
+ {std::lock_guard<std::mutex> lock(queue.mutex);queue.jobs.push_back(std::move(job));}queue.ready.notify_one();return result;
+}
 // One process-wide reader; queued jobs carry paths only, never UI or JSON.
 // Promise futures can be discarded on close without joining the reader.
 namespace detail {

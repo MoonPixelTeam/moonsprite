@@ -6903,3 +6903,10 @@ PNG后台解码完成后保留像素及私有surface，每次pump最多上传262
 每批FIFO请求捕获工程identity与资源目录，完成结果先绑定当前批次上下文再启动下一批；资源继续保存，仅匹配当前工程/目录时激活最后成功项。跨工程结果保留新工程笔刷与填充选择；同工程继续走既有控制器登记/激活/持久化。用户明确批准取代legacy完成时活动工程语义。正式production held-future回归改为跨工程不激活及存盘，原同工程登记/资源revision/扫描回归保留。构建验证中，整体INCOMPLETE。
 
 阶段验收：正式Release构建成功；首次测试optional比较因PatternBrush无operator==编译失败，改为有效状态/像素检查后通过。实际brush-library-panel专项exit0，跨工程不改笔刷/填充选择且资源重开、同工程控制器登记/激活/延迟扫描以及既有FIFO/关闭存储回归通过。multi-document/image-brush/canvas-resize三项通过2.48秒；来源824/diff通过。无人工OS操作或FPS测量，整体迁移INCOMPLETE；用户editor_support.h及未跟踪数据保留，阶段提交推送dev。
+
+
+### 2026-11-11：扩展表单文件导出完整异步链路（验证中）
+
+对照ExtensionDialogForm匹配response、extension-file.ts校验/选择目标/await原子写入及platform_dialogs.rs文件名契约。生产FormWindow receive只登记导出，pump按4096字节/2ms预算校验转换；全部合法后主线程选择目标，路径与CPU字节交FIFO后台原子写入。busy保持至完成/取消/失败，generation+sequence隔离旧结果；同代push继续合并完成状态。retry/host close丢弃UI future但已接受写入继续，正常进程关闭drain，不捕获UI/JSON。同步适配入口保留。新增状态字节/畸形/预算/重放/代际回归，后台存储held队列/失败恢复/丢future及真实FormWindow成功/取消/失败/重试/关闭五路径。构建验证中，完整生产JS执行器与整体迁移仍INCOMPLETE；snapshot复制及大JSON释放仍同步，无恒定帧耗时声明。
+
+阶段验收：唯一正式Release与状态/文件测试构建成功，最终增量构建确认源码全部进入正式exe。extension-form-ui/image/files/state四项最终通过3.75秒；实际窗口65539字节跨pump校验、held writer期间100次pump、成功/取消/磁盘错误/重试/关闭、重放拒绝和关闭后实际文件大小通过。状态16385字节逐字节核对、8类非法字节/快照隔离/代际与后续操作恢复，文件FIFO阻塞/丢future/失败后继续/空文件通过。来源824文件/diff通过。测试选择器为注入路径，未做OS物理选择器或慢磁盘响应/FPS实测；同步快照复制/大JSON释放与完整生产JS执行器仍未完成，整体INCOMPLETE。保留用户editor_support.h和所有未跟踪数据，阶段保存推送dev。

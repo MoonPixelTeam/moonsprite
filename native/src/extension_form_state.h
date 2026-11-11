@@ -47,6 +47,20 @@ public:
  static double displayNumber(const Value& value){if(!value)return 1;if(value.ValueType()==Type::Null)return 0;if(value.ValueType()==Type::Boolean)return value.GetBoolean()?1:0;if(value.ValueType()==Type::Number)return std::isfinite(value.GetNumber())?value.GetNumber():1;if(value.ValueType()==Type::Object)return 1;const auto string=diagnosticString(value);std::u32string units;for(auto c:string)units+=char32_t(c);const auto trimmed=javascriptTrim(units);if(trimmed.empty())return 0;std::string ascii;for(auto c:trimmed){if(c>127)return 1;ascii+=char(c);}if(ascii.size()>2&&ascii[0]=='0'&&(ascii[1]=='x'||ascii[1]=='X'||ascii[1]=='b'||ascii[1]=='B'||ascii[1]=='o'||ascii[1]=='O')){const int base=ascii[1]=='x'||ascii[1]=='X'?16:ascii[1]=='b'||ascii[1]=='B'?2:8;double result=0;for(std::size_t i=2;i<ascii.size();++i){const char c=ascii[i];const int digit=c>='0'&&c<='9'?c-'0':c>='a'&&c<='f'?c-'a'+10:c>='A'&&c<='F'?c-'A'+10:99;if(digit>=base)return 1;result=result*base+digit;}return std::isfinite(result)?result:1;}const char* first=ascii.data();if(*first=='+')++first;if(first==ascii.data()+ascii.size())return 1;double result=0;auto parsed=std::from_chars(first,ascii.data()+ascii.size(),result,std::chars_format::general);return parsed.ec==std::errc{}&&parsed.ptr==ascii.data()+ascii.size()&&std::isfinite(result)?result:1;}
  struct File {std::wstring name,mime;std::vector<std::uint8_t> bytes;};
  using Save=std::function<bool(const File&)>;
+ struct ExportTicket{std::uint64_t generation=0,sequence=0;};
+ struct ExportDecoding{
+  ExportTicket ticket;File file;Array bytes;std::uint32_t offset=0;
+  bool advance(std::size_t budget=4096){const auto until=std::chrono::steady_clock::now()+std::chrono::milliseconds(2);while(offset<bytes.Size()){
+   if(!budget||std::chrono::steady_clock::now()>=until)return false;auto byte=bytes.GetAt(offset);if(byte.ValueType()!=Type::Number)throw std::invalid_argument("扩展导出文件无效。");const auto n=byte.GetNumber();if(!std::isfinite(n)||n<0||n>255||std::floor(n)!=n)throw std::invalid_argument("扩展导出文件无效。");file.bytes.push_back(std::uint8_t(n));++offset;--budget;
+  }return true;}
+ };
+private:
+ std::optional<ExportDecoding> export_;
+public:
+ bool ownsExport(const ExportTicket& ticket)const{return active_&&busy_&&pending_.empty()&&generation_==ticket.generation&&sequence_==ticket.sequence;}
+ std::optional<ExportDecoding> takeExport(){auto result=std::move(export_);export_.reset();return result;}
+ void completeExport(const ExportTicket& ticket,const winrt::hstring& status){if(!ownsExport(ticket))return;view_.Insert(L"status",Json::CreateStringValue(status));busy_=false;}
+
  struct ImportTicket{std::wstring id;std::uint64_t generation,sequence;};
  struct ImportEncoding{
   ImportTicket ticket;std::vector<File> files;Array encoded,bytes;std::size_t file=0,offset=0;
@@ -82,8 +96,8 @@ public:
  void tick(std::chrono::steady_clock::time_point now){if(active_&&!loaded_&&error_.empty()&&now-started_>=std::chrono::seconds(15))error_=L"Extension form did not respond.";}
  void fileFailed(std::wstring message){if(active_){view_.Insert(L"status",Json::CreateStringValue(message));busy_=false;}}
  void loadFailed(std::wstring error){if(active_)error_=std::move(error);}
- void retry(std::chrono::steady_clock::time_point now=std::chrono::steady_clock::now()){if(!active_)return;error_.clear();loaded_=false;busy_=false;values_=Object{};pending_.clear();++generation_;started_=now;}
- void close(){active_=false;busy_=false;pending_.clear();values_=Object{};}
+ void retry(std::chrono::steady_clock::time_point now=std::chrono::steady_clock::now()){if(!active_)return;export_.reset();error_.clear();loaded_=false;busy_=false;values_=Object{};pending_.clear();++generation_;started_=now;}
+ void close(){export_.reset();active_=false;busy_=false;pending_.clear();values_=Object{};}
  bool edit(const std::wstring& id,const Value& value){auto node=control(id);if(!node)return false;const auto kind=property(*node,L"type");if(!kind||kind.ValueType()!=Type::String)return false;
   if(kind.GetString()==L"input"){if(!value||value.ValueType()!=Type::String)return false;const auto text=value.GetString();values_.Insert(id,Json::CreateStringValue(winrt::hstring(text.data(),std::min<std::uint32_t>(64,text.size()))));return true;}
   if(kind.GetString()==L"number"){if(!value||value.ValueType()!=Type::Number||!std::isfinite(value.GetNumber()))return false;values_.Insert(id,value);return true;}
@@ -109,7 +123,7 @@ public:
   catch(const winrt::hresult_error& error){if(current())fileFailed(error.message().c_str());}
   return {};
  }
- bool receive(const Value& value,std::uint64_t generation,const Save& save={}){
+ bool receive(const Value& value,std::uint64_t generation,const Save& save={},bool deferredExport=false){
   if(!active_||generation!=generation_||!value||value.ValueType()!=Type::Object)return false;auto next=value.GetObject();auto nodes=property(next,L"nodes");if(!nodes||nodes.ValueType()!=Type::Array)return false;view_=copy(next);defaults_=Object{};defaults(view_.GetNamedArray(L"nodes"),defaults_);loaded_=true;error_.clear();
   auto result=property(next,L"result");if(pending_.empty()||!result||result.ValueType()!=Type::Object)return true;const auto reply=result.GetObject();const auto request=property(reply,L"requestId");if(!request||request.ValueType()!=Type::String||request.GetString()!=pending_)return true;
   pending_.clear();values_=Object{};
@@ -120,7 +134,9 @@ public:
   const auto ownsCompletion=[&]{return active_&&generation_==generation&&sequence_==completedSequence;};
   const auto status=[&](const winrt::hstring& message){if(ownsCompletion())view_.Insert(L"status",Json::CreateStringValue(message));};
   try{const auto file=property(reply,L"file");if(truthy(file)){
-    if(file.ValueType()!=Type::Object)throw std::invalid_argument("扩展导出文件无效。");const auto object=file.GetObject();const auto name=property(object,L"name"),bytes=property(object,L"bytes");if(!name||name.ValueType()!=Type::String||name.GetString().empty()||name.GetString().size()>120||!bytes||bytes.ValueType()!=Type::Array||bytes.GetArray().Size()>12u*1024*1024)throw std::invalid_argument("扩展导出文件无效。");File output;output.name=name.GetString();for(auto c:output.name)if(c<32||std::wstring(L"<>:\"/\\|?*").find(c)!=std::wstring::npos)throw std::invalid_argument("扩展导出文件无效。");for(const auto& byte:bytes.GetArray()){if(byte.ValueType()!=Type::Number||byte.GetNumber()<0||byte.GetNumber()>255||std::floor(byte.GetNumber())!=byte.GetNumber())throw std::invalid_argument("扩展导出文件无效。");output.bytes.push_back(std::uint8_t(byte.GetNumber()));}
+    if(file.ValueType()!=Type::Object)throw std::invalid_argument("扩展导出文件无效。");const auto object=file.GetObject();const auto name=property(object,L"name"),bytes=property(object,L"bytes");if(!name||name.ValueType()!=Type::String||name.GetString().empty()||name.GetString().size()>120||!bytes||bytes.ValueType()!=Type::Array||bytes.GetArray().Size()>12u*1024*1024)throw std::invalid_argument("扩展导出文件无效。");ExportDecoding decoding;decoding.ticket={generation,completedSequence};decoding.file.name=name.GetString();for(auto c:decoding.file.name)if(c<32||std::wstring(L"<>:\"/\\|?*").find(c)!=std::wstring::npos)throw std::invalid_argument("扩展导出文件无效。");decoding.bytes=view_.GetNamedObject(L"result").GetNamedObject(L"file").GetNamedArray(L"bytes");
+    if(deferredExport){export_=std::move(decoding);return true;}
+    while(!decoding.advance()){}auto& output=decoding.file;
     if(!save)throw std::runtime_error("Native extension file save is not connected");status(save(output)?L"文件已导出":L"已取消导出");
    }}catch(const std::exception& e){status(winrt::to_hstring(e.what()));}catch(const winrt::hresult_error& e){status(e.message());}if(ownsCompletion())busy_=false;return true;
  }
