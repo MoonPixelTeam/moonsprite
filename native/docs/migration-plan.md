@@ -6783,3 +6783,5 @@ PNG后台解码完成后保留像素及私有surface，每次pump最多上传262
 ### 2026-11-11：隐藏栏目菜单刷新请求生命周期（验证中）
 
 对照legacy useBrushLibrary.ts refresh不因已有缓存或栏目隐藏取消：原生菜单使用旧缓存时仅在没有pending扫描时释放menuRequested，避免隐藏栏目新结果被当作无人请求丢弃。新增实际生产poll隐藏栏目刷新期间导航至另一目录，验证按最新位置发布并释放请求。前一阶段partial/drop dedupe失败加入accepted/hover/前后资源数/status诊断，尚无证据证明旧失败原因，不改去重语义。构建验证中；整体INCOMPLETE。
+
+阶段验收完成：唯一正式Release构建成功；实际--brush-library-panel-check等待exit0，隐藏栏目pending刷新期间切目录按最新位置发布、缓存/生命周期/导入/拖放检查通过。extension-workspace-ui、multi-document、canvas-resize三项通过2.89秒。来源824文件与diff通过。既有partial/drop首次失败未复现且原因未查明，保留诊断，不称已修复；没有实际弹出菜单点击或人工FPS验收。验收记录追加脚本首次JSON候选校验失败且未写盘，现已更正并复验。整体INCOMPLETE，用户editor_support.h和未跟踪数据保留。
