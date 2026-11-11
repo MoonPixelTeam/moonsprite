@@ -6579,3 +6579,9 @@ PNG后台解码完成后保留像素及私有surface，每次pump最多上传262
 直接核对ExtensionDialogForm文件入口先sum(File.size)再Promise.all(arrayBuffer)及extension-file.ts明确选择目标后原子写入。原生此前逐文件metadata/read交错，合计已超限仍会读取前面的文件；改为整批metadata检查后开流，保留读时增长16MiB上限与64KiB分块。多选最多16项内解析，空首路径/缺少列表终止符拒绝；单选使用Win32单路径协议。保存选择结果查找限定32768缓冲区内的非空终止符，避免畸形adapter结果交给无界path构造。未改变文件格式、MIME、payload或导入数量/体积规格。
 
 唯一正式Release和文件测试构建成功，extension-form-ui/image/files/state四项通过2.05秒。新增实际磁盘空文件/16空文件/17拒绝、恰16MiB双文件/批量超限；CreateFileW持有不共享读取的句柄确认合计超限先报length_error而非开流错误，证明准入顺序。注入空/无终止/缺列表终止的选择结果及空/无终止保存目标均拒绝。来源821文件及diff通过；无人工选择器验收或界面响应耗时测量。后台磁盘读取、生产扩展执行器和整体迁移仍INCOMPLETE。保留editor_support.h及用户数据，本阶段提交推送dev。
+
+### 2026-11-11：扩展文件后台读取与主线程完成
+
+依据ExtensionDialogForm的Promise.all(arrayBuffer)异步读取，拆分原生FormFiles::choosePaths与read：选择器仅返回路径，单个进程生命周期后台reader执行整批metadata准入及64KiB块读取，纯路径/字节数据跨线程，不携带UI/WinRT JSON。promise future销毁不join；任务取消在metadata/文件/块间检查。正式FormWindow默认导入使用该路径，主线程pump取得结果，经ImportTicket校验active/generation/sequence后发送；读取期间busy，重试/关闭/销毁取消。读取错误及线程/入队启动失败恢复原任务状态，后续请求不受旧错误影响。已有注入chooseFiles同步适配及模态回调延迟清理继续保留。
+
+唯一正式Release及文件/状态测试构建成功，extension-form-ui/image/files/state四项通过2.04秒。实际后台读取验证顺序、字节、命名和取消32任务后继续读取空文件；预取消read确定拒绝。状态验证busy禁用、同代推送、一次发送、旧错误不解除已发送请求、失败后新ticket身份、retry/close丢弃。既有窗口选择器内部关闭/延迟清理回归通过；没有新增真实慢磁盘+物理窗口响应测量，不把模块状态测试等同完整系统性能验收。OS阻塞read不能即时中断、取消排队项待worker取走、JSON字节数组编码仍在UI；这些和生产扩展执行器仍未完成。来源821文件/diff通过，整体迁移INCOMPLETE。保留editor_support.h及用户数据，本阶段提交推送dev。

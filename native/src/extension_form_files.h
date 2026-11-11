@@ -5,7 +5,18 @@
 #include <commdlg.h>
 #include <fstream>
 #include <cwctype>
+#include <atomic>
+#include <future>
+#include <thread>
+#include <mutex>
+#include <condition_variable>
+#include <deque>
 namespace moon::extension {
+struct FormFileReadTask {
+ std::future<std::vector<FormState::File>> result;
+ std::shared_ptr<std::atomic<bool>> cancelled;
+ void cancel(){cancelled->store(true);}
+};
 class FormFiles {
  HWND owner_;std::function<BOOL(OPENFILENAMEW*)> open_,save_;
  static void chooserError(){if(CommDlgExtendedError())throw std::runtime_error("扩展文件对话框失败。");}
@@ -18,23 +29,40 @@ class FormFiles {
  }
 public:
  explicit FormFiles(HWND owner=nullptr,std::function<BOOL(OPENFILENAMEW*)> open=GetOpenFileNameW,std::function<BOOL(OPENFILENAMEW*)> save=GetSaveFileNameW):owner_(owner),open_(std::move(open)),save_(std::move(save)){}
- std::optional<std::vector<FormState::File>> choose(const winrt::Windows::Data::Json::JsonObject& node)const{
+ std::optional<std::vector<std::filesystem::path>> choosePaths(const winrt::Windows::Data::Json::JsonObject& node)const{
   using namespace winrt::Windows::Data::Json;const bool multiple=!node.HasKey(L"multiple")||node.GetNamedValue(L"multiple").ValueType()!=JsonValueType::Boolean||node.GetNamedBoolean(L"multiple");std::vector<wchar_t> buffer(32768);const auto filters=filter(node);OPENFILENAMEW dialog{};dialog.lStructSize=sizeof(dialog);dialog.hwndOwner=owner_;dialog.lpstrFile=buffer.data();dialog.nMaxFile=DWORD(buffer.size());dialog.lpstrFilter=filters.c_str();dialog.lpstrTitle=L"选择扩展文件";dialog.Flags=OFN_EXPLORER|OFN_NOCHANGEDIR|OFN_FILEMUSTEXIST|OFN_PATHMUSTEXIST|(multiple?OFN_ALLOWMULTISELECT:0);
   if(!open_(&dialog)){chooserError();return {};}
   // Parse within the allocated buffer even for injected or malformed chooser replies.
   auto cursor=buffer.data();auto end=buffer.data()+buffer.size();auto next=[&](){auto last=std::find(cursor,end,wchar_t(0));if(last==end)throw std::runtime_error("扩展文件选择结果无效。");std::wstring part(cursor,last);cursor=last+1;return part;};const std::filesystem::path first(next());if(first.empty())throw std::runtime_error("扩展文件选择结果无效。");std::vector<std::filesystem::path> paths;
   if(!multiple||cursor==end||!*cursor)paths.push_back(first);
   else{while(cursor<end&&*cursor){if(paths.size()==16)throw std::length_error("最多 16 个文件，合计不超过 16 MiB。");paths.push_back(first/next());}if(cursor==end)throw std::runtime_error("扩展文件选择结果无效。");}
+  return paths;
+ }
+ static std::vector<FormState::File> read(const std::vector<std::filesystem::path>& paths,const std::shared_ptr<std::atomic<bool>>& cancelled={}){
+  const auto check=[&]{if(cancelled&&cancelled->load())throw std::runtime_error("File import cancelled");};check();if(paths.empty()||paths.size()>16)throw std::length_error("最多 16 个文件，合计不超过 16 MiB。");
   // Legacy validates the combined File.size before Promise.all arrayBuffer.
   // Do the same before opening any stream, retaining the read-time growth cap.
-  std::uintmax_t expected=0;for(const auto& path:paths){const auto size=std::filesystem::file_size(path);if(size>16u*1024*1024-expected)throw std::length_error("最多 16 个文件，合计不超过 16 MiB。");expected+=size;}
+  std::uintmax_t expected=0;for(const auto& path:paths){check();const auto size=std::filesystem::file_size(path);if(size>16u*1024*1024-expected)throw std::length_error("最多 16 个文件，合计不超过 16 MiB。");expected+=size;}
   std::vector<FormState::File> files;files.reserve(paths.size());std::size_t total=0;
-  for(const auto& path:paths){const auto size=std::filesystem::file_size(path);if(size>16u*1024*1024-total)throw std::length_error("最多 16 个文件，合计不超过 16 MiB。");FormState::File file;file.name=path.filename().wstring();file.mime=mime(path);std::ifstream input(path,std::ios::binary);if(!input)throw std::runtime_error("无法读取扩展文件。");char chunk[65536];while(input){input.read(chunk,sizeof(chunk));const auto n=std::size_t(input.gcount());if(n>16u*1024*1024-total)throw std::length_error("最多 16 个文件，合计不超过 16 MiB。");file.bytes.insert(file.bytes.end(),chunk,chunk+n);total+=n;}if(input.bad())throw std::runtime_error("无法读取扩展文件。");files.push_back(std::move(file));}return files;
+  for(const auto& path:paths){check();const auto size=std::filesystem::file_size(path);if(size>16u*1024*1024-total)throw std::length_error("最多 16 个文件，合计不超过 16 MiB。");FormState::File file;file.name=path.filename().wstring();file.mime=mime(path);std::ifstream input(path,std::ios::binary);if(!input)throw std::runtime_error("无法读取扩展文件。");char chunk[65536];while(input){check();input.read(chunk,sizeof(chunk));const auto n=std::size_t(input.gcount());if(n>16u*1024*1024-total)throw std::length_error("最多 16 个文件，合计不超过 16 MiB。");file.bytes.insert(file.bytes.end(),chunk,chunk+n);total+=n;}if(input.bad())throw std::runtime_error("无法读取扩展文件。");files.push_back(std::move(file));}return files;
  }
+ std::optional<std::vector<FormState::File>> choose(const winrt::Windows::Data::Json::JsonObject& node)const{auto paths=choosePaths(node);if(!paths)return {};return read(*paths);}
  bool save(const FormState::File& file)const{
   if(file.name.empty()||file.name.size()>120||file.bytes.size()>12u*1024*1024)throw std::invalid_argument("扩展导出文件无效。");for(auto c:file.name)if(c<32||(c>=127&&c<=159)||std::wstring(L"<>:\"/\\|?*").find(c)!=std::wstring::npos)throw std::invalid_argument("扩展导出文件无效。");if(winrt::to_string(file.name).size()>240)throw std::invalid_argument("扩展导出文件名无效。");const auto ext=extension(file.name);
   std::vector<wchar_t> buffer(32768);std::copy(file.name.begin(),file.name.end(),buffer.begin());std::wstring filters=L"扩展数据";filters+=wchar_t(0);filters+=L"*."+ext;filters+=wchar_t(0);filters+=L"所有文件";filters+=wchar_t(0);filters+=L"*.*";filters+=wchar_t(0);filters+=wchar_t(0);OPENFILENAMEW dialog{};dialog.lStructSize=sizeof(dialog);dialog.hwndOwner=owner_;dialog.lpstrFile=buffer.data();dialog.nMaxFile=DWORD(buffer.size());dialog.lpstrFilter=filters.c_str();dialog.lpstrDefExt=ext.c_str();dialog.Flags=OFN_EXPLORER|OFN_NOCHANGEDIR|OFN_PATHMUSTEXIST|OFN_OVERWRITEPROMPT;
   if(!save_(&dialog)){chooserError();return false;}const auto end=std::find(buffer.begin(),buffer.end(),wchar_t(0));if(end==buffer.end()||end==buffer.begin())throw std::runtime_error("扩展文件选择结果无效。");writeBinaryFileAtomic(std::filesystem::path(std::wstring(buffer.begin(),end)),file.bytes);return true;
  }
 };
+// One process-wide reader; queued jobs carry paths only, never UI or JSON.
+// Promise futures can be discarded on close without joining the reader.
+inline FormFileReadTask startFormFileRead(std::vector<std::filesystem::path> paths){
+ struct Queue{
+  struct Job{std::vector<std::filesystem::path> paths;std::shared_ptr<std::atomic<bool>> cancelled;std::shared_ptr<std::promise<std::vector<FormState::File>>> promise;};
+  std::mutex mutex;std::condition_variable ready;std::deque<Job> jobs;
+  Queue(){std::thread([this]{for(;;){Job job;{std::unique_lock<std::mutex> lock(mutex);ready.wait(lock,[&]{return !jobs.empty();});job=std::move(jobs.front());jobs.pop_front();}try{job.promise->set_value(FormFiles::read(job.paths,job.cancelled));}catch(...){job.promise->set_exception(std::current_exception());}}}).detach();}
+ };
+ static auto* queue=new Queue;
+ auto promise=std::make_shared<std::promise<std::vector<FormState::File>>>();auto cancelled=std::make_shared<std::atomic<bool>>(false);auto future=promise->get_future();
+ {std::lock_guard<std::mutex> lock(queue->mutex);queue->jobs.push_back({std::move(paths),cancelled,promise});}queue->ready.notify_one();return {std::move(future),std::move(cancelled)};
+}
 }
