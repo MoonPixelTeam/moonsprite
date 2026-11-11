@@ -627,7 +627,7 @@ std::function<void(PixelMenu*,const std::string&)> appendChildren=[&](PixelMenu*
 
   if(e.group){PixelMenu* branch=std::string(e.id)=="scripts"?new ScriptDiscoveryMenu(skin_):new PixelMenu(skin_);
 
-   auto trigger=new PixelMenuItem(font_,skin_,e.title);trigger->menuMarks=&toolIcons_;trigger->setSubmenu(branch);parent->addChild(trigger);appendChildren(branch,e.id);
+   auto trigger=new PixelMenuItem(font_,skin_,e.title);trigger->setId(e.id);trigger->menuMarks=&toolIcons_;trigger->setSubmenu(branch);parent->addChild(trigger);appendChildren(branch,e.id);
 
   }else{
 

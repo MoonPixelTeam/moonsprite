@@ -2,6 +2,7 @@
 #include "extension_menu_adapter.h"
 #include "extension_contributions.h"
 #include "extension_settings_dialog.h"
+#include "extension_panel_host.h"
 #include <map>
 namespace moon::editor {
 struct ExtensionMenuAdapter::State:std::enable_shared_from_this<State> {
@@ -11,6 +12,7 @@ struct ExtensionMenuAdapter::State:std::enable_shared_from_this<State> {
  std::vector<PixelMenuItem*> originals,tops;std::map<std::string,PixelMenu*> builtins;std::vector<ui::Widget*> inserted;
  std::vector<extension::RuntimeCandidate> candidates;std::set<std::string> placements;std::map<std::string,extension::MenuState> states;
  std::unique_ptr<ui::TooltipManager> tips;
+ std::unique_ptr<ExtensionPanelHost> panels;
  std::string snapshot;bool dirty=false,closing=false,alive=true;
  State(const PixelFont& f,const Skin& s,const Skin& i,ui::Widget* o,ui::MenuBar* b,std::filesystem::path p):font(f),skin(s),icons(i),owner(o),bar(b),storagePath(std::move(p)){
   tips=std::make_unique<ui::TooltipManager>();owner->addChild(tips.get());auto root=bar->getMenu();
@@ -48,15 +50,18 @@ struct ExtensionMenuAdapter::State:std::enable_shared_from_this<State> {
   // Home and the legacy placeholder Pet remain at their existing boundaries.
   std::vector<std::string> ids;for(auto item:originals){if(builtins.count(item->id()))ids.push_back(item->id());if(item->parent())item->parent()->removeChild(item);}
   std::size_t originalIndex=0;while(originalIndex<originals.size()&&!builtins.count(originals[originalIndex]->id()))root->addChild(originals[originalIndex++]);for(const auto& id:extension::arrangeTopMenus(ids,topContributions)){if(auto found=byId.find(id);found!=byId.end())root->addChild(found->second);else{while(originalIndex<originals.size()){auto item=originals[originalIndex++];root->addChild(item);if(item->id()==id)break;}}}while(originalIndex<originals.size())root->addChild(originals[originalIndex++]);
+  panels->replace(candidates);
+  if(auto it=builtins.find("window");it!=builtins.end())for(auto child:it->second->children())if(auto row=dynamic_cast<PixelMenuItem*>(child);row&&row->id()=="panels"&&row->getSubmenu())panels->appendMenu(static_cast<PixelMenu*>(row->getSubmenu()),inserted);
   dirty=false;closing=false;relayout();
  }
 };
 ExtensionMenuAdapter::ExtensionMenuAdapter(const PixelFont& f,const Skin& s,const Skin& i,ui::Widget* o,ui::MenuBar* b,std::filesystem::path p,std::function<bool()> ready,std::function<bool()> project,std::function<bool()> running,std::function<void(const std::string&)> run,std::function<void()> layout,std::function<void(const std::u32string&)> error){
  restoreTopMenuEntries(b->getMenu());state_=std::make_shared<State>(f,s,i,o,b,std::move(p));state_->ready=std::move(ready);state_->project=std::move(project);state_->running=std::move(running);state_->run=std::move(run);state_->relayout=std::move(layout);state_->error=std::move(error);
+ auto weak=std::weak_ptr<State>(state_);state_->panels=std::make_unique<ExtensionPanelHost>(f,s,i,o,state_->storagePath.parent_path()/"extension-panels.json",state_->ready,state_->project,state_->running,[weak](const std::string& id,const extension::ManifestCommand& command){if(auto state=weak.lock()){extension::MenuNode node;node.key=extension::commandScriptId(id,command.runtime.id);node.command=command;state->activate(id,std::move(node));}},state_->error);
 }
 ExtensionMenuAdapter::~ExtensionMenuAdapter(){state_->alive=false;if(restoreTopMenuEntries(state_->bar->getMenu()))state_->clear();/* Open popups retain their widgets until the owner tree closes. */}
-void ExtensionMenuAdapter::request(const std::string& json){auto& s=*state_;if(s.snapshot==json)return;try{std::vector<extension::RuntimeCandidate> next;std::set<std::string> placed;using namespace winrt::Windows::Data::Json;for(auto value:JsonArray::Parse(winrt::to_hstring(json))){auto entry=value.GetObject();auto manifest=entry.GetNamedObject(L"manifest");auto candidate=extension::RuntimeDirectory::parseManifest(manifest,{},winrt::to_string(manifest.GetNamedString(L"id")));candidate.enabled=candidate.extension.enabled=entry.GetNamedBoolean(L"enabled");candidate=extension::localizedCandidate(candidate,"zh-CN");if(candidate.enabled)for(auto* groups:{&candidate.metadata.menuItems,&candidate.metadata.topMenus})for(auto& group:*groups)for(auto& id:group.commands)placed.insert(extension::commandScriptId(candidate.extension.id,id));next.push_back(std::move(candidate));}s.candidates=std::move(next);s.placements=std::move(placed);s.snapshot=json;s.dirty=true;}catch(...){s.report();}}
-void ExtensionMenuAdapter::pump(){auto& s=*state_;if(!s.dirty||!s.ready())return;if(!s.closing){s.bar->cancelMenuLoop();s.closing=true;return;}try{s.apply();}catch(...){s.dirty=false;s.report();}}
+void ExtensionMenuAdapter::request(const std::string& json){auto& s=*state_;if(s.snapshot==json)return;try{std::vector<extension::RuntimeCandidate> next;std::set<std::string> placed;using namespace winrt::Windows::Data::Json;for(auto value:JsonArray::Parse(winrt::to_hstring(json))){auto entry=value.GetObject();auto manifest=entry.GetNamedObject(L"manifest");auto candidate=extension::RuntimeDirectory::parseManifest(manifest,{},winrt::to_string(manifest.GetNamedString(L"id")));candidate.enabled=candidate.extension.enabled=entry.GetNamedBoolean(L"enabled");candidate=extension::localizedCandidate(candidate,"zh-CN");if(candidate.enabled)for(auto* groups:{&candidate.metadata.panels,&candidate.metadata.menuItems,&candidate.metadata.topMenus})for(auto& group:*groups)for(auto& id:group.commands)placed.insert(extension::commandScriptId(candidate.extension.id,id));next.push_back(std::move(candidate));}s.candidates=std::move(next);s.placements=std::move(placed);s.snapshot=json;s.dirty=true;}catch(...){s.report();}}
+void ExtensionMenuAdapter::pump(){auto& s=*state_;try{s.panels->pump();if(!s.dirty||!s.ready())return;if(!s.closing){s.bar->cancelMenuLoop();s.closing=true;return;}s.apply();}catch(...){s.dirty=false;s.report();}}
 bool ExtensionMenuAdapter::placed(const std::string& id)const{return state_->placements.count(id)!=0;}
 void checkExtensionMenus(const PixelFont& font,const Skin& skin,const Skin& icons,ui::Widget* owner,const std::filesystem::path& directory)try{
  using namespace winrt::Windows::Data::Json;std::filesystem::create_directories(directory);std::ofstream(directory/"test-owned.marker")<<"extension menu fixture";
@@ -69,10 +74,13 @@ void checkExtensionMenus(const PixelFont& font,const Skin& skin,const Skin& icon
  auto layout=[&]{++layouts;auto b=owner->bounds();bar->setBounds({b.x+12,b.y+12,b.w-24,30*uiScale});};
  ExtensionMenuAdapter adapter(font,skin,icons,owner,bar.get(),directory/"storage.json",[&]{return ready;},[&]{return project;},[&]{return running;},[&](const std::string& id){ran=id;},layout,[&](const std::u32string& text){error=text;});
  auto manifest=JsonObject::Parse(LR"({"schemaVersion":2,"id":"menu-test","name":"Menu test","version":"1","commands":[{"id":"settings","name":"Settings","opensSettings":true},{"id":"paint","name":"Paint","entry":"paint.lua"}],"settingsUi":{"storageKey":"preferences","controls":[{"id":"enabled","type":"checkbox","label":"Enabled","defaultValue":true}]},"menuItems":[{"id":"file-settings","menu":"file","position":"start","name":"Options","commands":["settings"]},{"id":"edit-paint","menu":"edit","position":"end","commands":["paint"]}],"topMenus":[{"id":"extra","name":"Extra","position":"before:help","commands":["paint","settings"]}]})");
+ auto panelTrigger=new PixelMenuItem(font,skin,U"Panels");panelTrigger->setId("panels");auto panelMenu=new PixelMenu(skin);panelTrigger->setSubmenu(panelMenu);builtins["window"]->addChild(panelTrigger);
+ auto commands=manifest.GetNamedArray(L"commands");commands.Append(JsonObject::Parse(LR"({"id":"panel-paint","name":"Panel paint","entry":"panel.lua"})"));manifest.Insert(L"panels",JsonArray::Parse(LR"([{"id":"tools","name":"Tools","defaultVisible":false,"commands":["panel-paint"]}])"));
  auto snapshot=[&](bool enabled){JsonObject item;item.Insert(L"manifest",manifest);item.Insert(L"enabled",JsonValue::CreateBooleanValue(enabled));JsonArray list;list.Append(item);return winrt::to_string(list.Stringify());};
  auto publish=[&](const std::string& json){adapter.request(json);adapter.pump();owner->manager()->dispatchMessages();adapter.pump();};
  auto find=[](ui::Widget* parent,const std::string& id)->PixelMenuItem*{for(auto child:parent->children())if(auto row=dynamic_cast<PixelMenuItem*>(child);row&&row->id()==id)return row;return nullptr;};
  publish(snapshot(true));check(layouts==1&&adapter.placed("extension:menu-test:paint"),"Contribution publish/placement");
+ check(adapter.placed("extension:menu-test:panel-paint")&&panelMenu->children().size()==2,"Panel contribution menu/placement");
  auto top=find(root,"extension-menu:menu-test:extra");check(top&&std::find(root->children().begin(),root->children().end(),top)<std::find(root->children().begin(),root->children().end(),find(root,"help")),"Top menu order");check(root->children().front()==home,"Home prefix moved");
  auto group=find(builtins["file"],"menu-test:menu-item:file-settings");check(group&&builtins["file"]->children().front()==group,"Builtin start submenu");auto settings=find(group->getSubmenu(),"menu-test:menu-item:file-settings:settings");check(settings,"Settings command missing");
  auto paint=find(builtins["edit"],"menu-test:menu-item:edit-paint:paint");check(paint,"Lua command missing");paint->validateItem();check(!paint->isEnabled(),"Lua enabled on home");project=true;paint->validateItem();check(paint->isEnabled(),"Lua unavailable with document");running=true;paint->validateItem();check(!paint->isEnabled(),"Lua rerun allowed");running=false;paint->Click();owner->manager()->dispatchMessages();check(ran=="extension:menu-test:paint","Contribution Lua routing");
@@ -84,6 +92,8 @@ void checkExtensionMenus(const PixelFont& font,const Skin& skin,const Skin& icon
  // Suppress queued commands when eligibility changes before their delivery.
  settings->Click();ready=false;owner->manager()->dispatchMessages();ready=true;check(!error.size(),"Stale command error");
  publish(snapshot(false));check(!find(root,"extension-menu:menu-test:extra")&&builtins["file"]->children().size()==1&&builtins["edit"]->children().size()==1&&!adapter.placed("extension:menu-test:paint"),"Disabled extension retained contribution");
+ check(panelMenu->children().empty()&&!adapter.placed("extension:menu-test:panel-paint"),"Disabled panel menu retained");
  publish(snapshot(true));check(find(root,"extension-menu:menu-test:extra")&&builtins["file"]->children().size()==3,"Reenabled contribution duplicate");publish("[]");check(root->children().size()==9&&builtins["file"]->children().size()==1,"Removed extension retained menu");check(error.empty(),"Contribution UI error");
+ checkExtensionPanels(font,skin,icons,owner,directory/"panels");
 }catch(const winrt::hresult_error& e){throw std::runtime_error("Extension menus fixture: "+winrt::to_string(e.message()));}
 }

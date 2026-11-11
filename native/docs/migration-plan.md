@@ -6995,3 +6995,12 @@ Aseprite 源码对照：src/app/extensions.cpp installCompressedExtension 的逐
 中途验收：首版正式构建及extension-menus-ui通过1.06秒，真实设置开关保存/停启/删除路径完成；查看menu-settings.bmp发现设置默认固定340px逻辑高度使单控件窗口大量空白，按统一规范改为正文测量决定默认高度，长内容仍滚动。新增单控件高度回归。脚本Service公开list()保持原two-key契约，内部FIFO list(true)附加菜单快照；补齐快照ID/enabled/停用与公开schema检查。生产script-entry smoke新增真实清单扫描、Scripts去重、More收纳、贡献Lua实际改像素和停用清理。最终构建中；首次构建不是最终版本验收。
 
 阶段最终验收：唯一正式Release最终增量构建通过。extension-menus-ui、extension-settings-ui、extension-preferences-ui、extension-contributions最终四项全部通过3.97秒；已重编的lua-script-directory/runtime/invocation三项全部通过10.75秒。最终--script-entry-check实际进程exit0，menu-contributions-passed.txt本轮更新时间22:42:26，覆盖现有全部脚本实际入口流程及新增生产发现/去重/More/改像素/停用清理；旧错误日志保留，不把旧文件当本次失败。人工查看最终menu-settings.bmp：单控件窗口按内容收紧，开关关闭态与固定重置/完成按钮正确、无重叠；截图顶部是测试专用菜单条叠在编辑器上的夹具，未宣称生产主菜单全量视觉验收。来源覆盖832项及快照、diff检查通过。同步设置存储仍未作慢盘延迟验收，生产JS/动态Runtime菜单/扩展栏目/HTML设置仍INCOMPLETE。保留用户editor_support.h与所有未跟踪数据；本阶段保存推送dev。
+
+
+### 2026-11-11 扩展悬浮栏目接入（验收中）
+
+逐项核对legacy ExtensionPanelHost、useAppExtensions、AppMenuBar、floating-panel及panel-preferences，接通独立于工程的悬浮命令列表，保留标题/扩展名/说明/命令tooltip、原properties图标、Lua无工程/运行中禁用、默认显隐、位置尺寸持久化、视口变化重映射与停用/移除清理。沿用用户最新原生UI规范：共享FloatingColumnChrome，无通用关闭按钮，经窗口→栏目隐藏，不增加旧版不支持的停靠。实际菜单复用原群组并赋catalog ID，面板Lua命令从Scripts去重；点击仍走既有延迟资格校验及Lua/host-settings路由。
+
+使用现有FIFO原子写入队列，捕获期间不保存几何、合并快照，失败一次报告且不自动无限重试，下一次用户变更再保存；未变更pump不重排/重建控件或读写磁盘，文本按宽度线性缓存。偏好保留未知键及停用栏目的存储值；未变更声明保留窗口、滚动和焦点。初次读取是有界1MiB同步偏好文件，不称慢盘已完全优化。新增实际UI检查覆盖菜单、命令路由和资格、滚动、显隐/尺寸、停用重启用、磁盘重开及写入失败。正式构建、检查和图像验收待补；生产JS/动态菜单/HTML设置等仍INCOMPLETE。保留用户editor_support.h及所有未跟踪文件，不清理用户数据。
+
+阶段最终验收：唯一正式Release构建成功。extension-menus-ui通过1.40秒，覆盖新栏目实际模型窗口/命令/菜单/滚动/默认显隐、隐藏重开几何、停用/重启用、磁盘重开、未知偏好保留以及锁文件写入失败后停止自动重试和下一次变更成功保存；passed.txt本轮23:12:47。其余extension-preferences-ui、extension-settings-ui、extension-contributions三项全部通过2.81秒。正式--script-entry-check实际进程exit0，确认已有生产发现/More/贡献Lua路由未回归；该旧生产场景没有新增面板声明，面板本身以新增实际适配器/窗口夹具验收，不扩大为生产插件全量验收。人工查看panel.bmp：220×150逻辑像素下标题与说明换行、properties图标、双行按钮和滚动条无重叠，未测所有语言/显示器；顶部叠加菜单为夹具。首次失败是空菜单hasSubmenu返回false的Aseprite契约，已改为检查子菜单指针，最终通过；此前错误日志保留。来源覆盖834项与快照、diff检查通过。尚未完成生产JS、动态Runtime菜单、HTML设置及整体迁移，目标继续active；本阶段提交并推送dev。
