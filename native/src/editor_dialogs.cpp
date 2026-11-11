@@ -8,12 +8,15 @@
 #include "editor_implementation.h"
 #include "editor.h"
 #include "lua_script_service.h"
+#include "extension_preferences.h"
 #include "color_overlay_dialog.h"
 #include "timelapse_session.h"
 #include "sheet_import_preview.h"
 
 namespace moon::editor {
 namespace {
+bool extensionPlaceholder(const char* id){return std::string(id)=="extensions.preferences.extensions.enable"||std::string(id)=="extensions.uninstall";}
+std::shared_ptr<ExtensionPreferencesProperty> extensionPanel(ui::Widget* editor){return std::dynamic_pointer_cast<ExtensionPreferencesProperty>(editor->getProperty("moonsprite.extension-preferences"));}
 struct QuickPreferenceHandle : ui::Property {
  QuickCommandDragHandle* handle;
  explicit QuickPreferenceHandle(QuickCommandDragHandle* h):ui::Property("moonsprite.quick-preference-handle"),handle(h){}
@@ -735,7 +738,7 @@ void Editor::createPreferencesControls(){
 bool Editor::preferenceDirectoryAction(const std::string& key){return key=="extensions.preferences.extensions.add"||key=="extensions.preferences.extensions.openFolder"||key=="files.projectBackupDirectory.choose" || key=="files.projectBackupDirectory.restore" || key=="files.saveDirectory.choose" || key=="files.saveDirectory.restore" || key=="files.exportDirectory.choose" || key=="files.exportDirectory.restore";}
 
 void Editor::preferenceDirectoryActionRun(const std::string& action){
-    if(action=="extensions.preferences.extensions.add"){wchar_t filename[32768]{};OPENFILENAMEW dialog{};dialog.lStructSize=sizeof(dialog);dialog.hwndOwner=GetActiveWindow();dialog.lpstrFile=filename;dialog.nMaxFile=32768;dialog.lpstrFilter=L"MoonSprite 扩展包\0*.msext\0\0";dialog.Flags=OFN_EXPLORER|OFN_NOCHANGEDIR|OFN_FILEMUSTEXIST|OFN_PATHMUSTEXIST;if(GetOpenFileNameW(&dialog))openPath(filename);else if(CommDlgExtendedError()){preferenceFeedback_=U"无法打开扩展包选择对话框";invalidate();}return;}
+    if(action=="extensions.preferences.extensions.add"){if(auto p=extensionPanel(this);p&&p->panel->busy())return;wchar_t filename[32768]{};OPENFILENAMEW dialog{};dialog.lStructSize=sizeof(dialog);dialog.hwndOwner=GetActiveWindow();dialog.lpstrFile=filename;dialog.nMaxFile=32768;dialog.lpstrFilter=L"MoonSprite 扩展包\0*.msext\0\0";dialog.Flags=OFN_EXPLORER|OFN_NOCHANGEDIR|OFN_FILEMUSTEXIST|OFN_PATHMUSTEXIST;if(GetOpenFileNameW(&dialog)){openPath(filename);if(auto p=extensionPanel(this))p->panel->refresh();}else if(CommDlgExtendedError()){preferenceFeedback_=U"无法打开扩展包选择对话框";invalidate();}return;}
     if(action=="extensions.preferences.extensions.openFolder"){try{auto directory=script::executableDirectory()/"extensions";std::filesystem::create_directories(directory);projectFolderLauncher_(directory);}catch(const std::exception& e){preferenceFeedback_=unicodeText(e.what());invalidate();}return;}
 
     const std::string key=action.find("projectBackupDirectory")!=std::string::npos?"files.projectBackupDirectory.Text":action.find("saveDirectory")!=std::string::npos?"files.saveDirectory.Text":"files.exportDirectory.Text";
@@ -784,6 +787,7 @@ void Editor::syncPreferenceScales(){
 void Editor::addPreferenceScale(){try{readPreferenceScales();runtimePreferenceDraft_.exportScales.push_back(100);syncPreferenceScales();layoutModal();invalidateRect(dialogDisplayBounds());}catch(const std::exception& e){preferenceFeedback_=unicodeText(e.what());invalidate();}}
 
 bool Editor::preferenceRowEnabled(const preferences::Item& item) const {
+    if(std::string(item.id)=="extensions.preferences.extensions.add")if(auto p=extensionPanel(const_cast<Editor*>(this)))return !p->panel->busy();
 
     if(std::string(item.id)=="quickCommands.restore"||(std::string(item.id).rfind("quickCommands.bar",0)==0&&std::string(item.id).find(".collapse")!=std::string::npos))return true;if(std::string(item.id)=="presets.addColor")return runtimePreferenceDraft_.layerDisplayColors.size()<12;if(std::string(item.id)=="presets.restoreColors")return true;if(std::string(item.id)=="presets.addScale")return true;if(item.binding<0 && !preferences::runtimeSetting(item.id) && !preferenceDirectoryAction(item.id))return false;
 
@@ -886,6 +890,7 @@ void Editor::createPreferenceCatalogControls(){
     }
 
     preferenceRowY_.resize(preferenceRows_.size());
+    auto panel=new ExtensionPreferences(font_,skin_,toolIcons_,script::executableDirectory()/"extensions",[this]{if(pending_==Pending::Preferences){layoutModal();invalidate();}},[this]{updateScriptsMenu();});addChild(panel);panel->setVisible(false);panel->setId("extension-preferences");setProperty(std::make_shared<ExtensionPreferencesProperty>(panel));
 
   }
 
@@ -916,13 +921,13 @@ int Editor::preferenceCatalogHeight(){
 
     std::u32string group;int y=0;
 
-    for(auto i:quickPreferenceOrder(quickBarsDraft_)){const auto& item=preferences::catalog()[i];if(item.section!=preferenceSection_||fixedExportScaleRow(item)||quickPreferenceHidden(item.id))continue;
+    for(auto i:quickPreferenceOrder(quickBarsDraft_)){const auto& item=preferences::catalog()[i];if(item.section!=preferenceSection_||fixedExportScaleRow(item)||quickPreferenceHidden(item.id)||extensionPlaceholder(item.id))continue;
 
       if(group!=item.group){if(y)y+=preferenceGroupGap;group=item.group;y+=preferenceGroupTitleHeight+preferenceOptionGap;}
 
       else y+=preferenceOptionGap;
 
-      preferenceRowY_[i]=y;y+=textControlHeight;if(std::string(item.id)=="presets.addColor"){preferenceColorRowsY_=y+preferenceOptionGap;y+=int(runtimePreferenceDraft_.layerDisplayColors.size())*(textControlHeight+preferenceOptionGap);}if(std::string(item.id)=="presets.addScale"){preferenceScaleRowsY_=y+preferenceOptionGap;y+=int(runtimePreferenceDraft_.exportScales.size())*(textControlHeight+preferenceOptionGap);}
+      preferenceRowY_[i]=y;y+=textControlHeight;if(std::string(item.id)=="extensions.preferences.extensions.openFolder")if(auto p=extensionPanel(this)){p->top=y+preferenceOptionGap;y+=preferenceOptionGap+p->panel->contentHeight(std::max(110,preferenceViewport_.w/uiScale));}if(std::string(item.id)=="presets.addColor"){preferenceColorRowsY_=y+preferenceOptionGap;y+=int(runtimePreferenceDraft_.layerDisplayColors.size())*(textControlHeight+preferenceOptionGap);}if(std::string(item.id)=="presets.addScale"){preferenceScaleRowsY_=y+preferenceOptionGap;y+=int(runtimePreferenceDraft_.exportScales.size())*(textControlHeight+preferenceOptionGap);}
 
     }
 
@@ -938,7 +943,7 @@ void Editor::paintPreferenceCatalog(ui::Graphics& g,gfx::Rect modal){
 
     const int labelWidth=std::max(50,(view.w-10)*55/100);
 
-    for(auto i:quickPreferenceOrder(quickBarsDraft_)){const auto& item=preferences::catalog()[i];if(item.section!=preferenceSection_||fixedExportScaleRow(item)||quickPreferenceHidden(item.id))continue;
+    for(auto i:quickPreferenceOrder(quickBarsDraft_)){const auto& item=preferences::catalog()[i];if(item.section!=preferenceSection_||fixedExportScaleRow(item)||quickPreferenceHidden(item.id)||extensionPlaceholder(item.id))continue;
 
       const int y=view.y+preferenceRowY_[i]-preferenceContentPixels_/uiScale;
 
@@ -984,7 +989,7 @@ void Editor::showPreferences(){preferenceNavPixels_=preferenceContentPixels_=0;
 
     for(int i=1;i<3;++i){const auto c=i==1?checkerboardDraft_.light:checkerboardDraft_.dark;checkerboardFields_[i]->setText(paletteHex(Pixel(gfx::getr(c))|(Pixel(gfx::getg(c))<<8)|(Pixel(gfx::getb(c))<<16)|0xff000000));}
 
-    syncPreferenceCatalog();
+    syncPreferenceCatalog();if(auto p=extensionPanel(this))p->panel->refresh();
 
     playing_=false;pending_=Pending::Preferences;discard_->caption=U"确定";keep_->caption=U"取消";discard_->setVisible(true);keep_->setVisible(true);dialogClose_->setVisible(true);saveBeforeClose_->setVisible(false);menuBar_->setEnabled(false);refresh();preferenceTabs_[preferenceSection_]->requestFocus();
 
@@ -1061,6 +1066,7 @@ void Editor::layoutPreferences(gfx::Rect modal){
 
     auto content=toDisplay(gfx::Rect(body.x+6,body.y+6,body.w-12,std::max(1,body.h-12)));
 
+    preferenceViewport_=content;preferenceViewport_.w-=6*uiScale;
     const int contentTotal=preferenceCatalogHeight()*uiScale;preferenceContentPixels_=std::clamp(preferenceContentPixels_,0,std::max(0,contentTotal-content.h));
 
     if(preferenceNavBar_){preferenceNavBar_->setDockBounds(PixelScrollBar::edgeBounds(nav,true));preferenceNavBar_->configure(navTotal,nav.h,preferenceNavPixels_);preferenceNavBar_->wheelStep=15*uiScale;preferenceNavBar_->setVisible(show && navOverflow);preferenceNavBar_->setEnabled(show);}
@@ -1076,6 +1082,7 @@ void Editor::layoutPreferences(gfx::Rect modal){
     for(int i=0;i<14;++i){auto tab=preferenceTabs_[i];tab->setEnabled(show);tab->active=preferenceSection_==i;tab->setBounds(gfx::Rect(nav.x,nav.y+i*15*uiScale-preferenceNavPixels_,nav.w,15*uiScale));tab->paletteViewport=[nav]{return nav;};tab->setVisible(show && nav.intersects(tab->bounds()));}
 
     preferenceViewport_=content;
+    if(auto p=extensionPanel(this)){auto panel=p->panel;const bool visible=show&&preferenceSection_==11;panel->setVisible(visible);panel->setEnabled(visible);if(visible){panel->setBounds({content.x,content.y+p->top*uiScale-preferenceContentPixels_,content.w,panel->contentHeight(content.w/uiScale)*uiScale});panel->viewport(content);scrollViewports_[panel]=content;}else scrollViewports_.erase(panel);}
 
     for(auto field:preferenceFields_)field->setVisible(false);
 
@@ -1085,7 +1092,7 @@ void Editor::layoutPreferences(gfx::Rect modal){
 
     for(std::size_t i=0;i<preferenceRows_.size();++i){auto field=preferenceRows_[i];const auto& item=preferences::catalog()[i];
 
-      if(item.section!=preferenceSection_||fixedExportScaleRow(item)||quickPreferenceHidden(item.id)){field->setVisible(false);if(auto handle=std::dynamic_pointer_cast<QuickPreferenceHandle>(field->getProperty("moonsprite.quick-preference-handle")))handle->handle->setVisible(false);continue;}
+      if(item.section!=preferenceSection_||fixedExportScaleRow(item)||quickPreferenceHidden(item.id)||extensionPlaceholder(item.id)){field->setVisible(false);if(auto handle=std::dynamic_pointer_cast<QuickPreferenceHandle>(field->getProperty("moonsprite.quick-preference-handle")))handle->handle->setVisible(false);continue;}
 
       const int x=content.x+(labelWidth+4)*uiScale,y=content.y+preferenceRowY_[i]*uiScale-preferenceContentPixels_;
 

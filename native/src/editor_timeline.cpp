@@ -1055,6 +1055,7 @@ void Editor::layoutLayers() {InteractionScope interactionScope(1,"timeline-layou
 double Editor::canvasScale() const {return zoom_*uiScale;}
 
 bool Editor::modalControl(ui::Widget* w) const {
+    for(auto current=w;current&&current!=this;current=current->parent())if(current->id()=="extension-preferences")return pending_==Pending::Preferences;
     if(dynamic_cast<QuickCommandDragHandle*>(w))return true;
 
     if(storedPaletteModalControl(w))return true;

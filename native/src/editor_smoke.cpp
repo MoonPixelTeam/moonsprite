@@ -102,6 +102,7 @@ void Editor::smokePreferenceCatalog(const std::filesystem::path& directory,const
       setBounds(gfx::Rect(size));refresh();
 
       for(int section=0;section<14;++section){preferenceTabs_[section]->Click();
+        if(section==11){bool found=false;for(auto child:children())if(child->id()=="extension-preferences"){found=true;if(!child->isVisible()||!modalControl(child))throw std::runtime_error("Extension preferences modal routing");for(auto control:child->children())if(!modalControl(control))throw std::runtime_error("Extension preferences nested modal routing");}if(!found)throw std::runtime_error("Missing extension preferences panel");}
 
         const int height=preferenceCatalogHeight();
 

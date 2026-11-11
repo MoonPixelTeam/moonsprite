@@ -6926,3 +6926,12 @@ PNG后台解码完成后保留像素及私有surface，每次pump最多上传262
 Aseprite 源码对照：src/app/extensions.cpp installCompressedExtension 的逐条解压／磁盘写入为同步调用，说明不应在界面线程直接调用本地安装事务。模块头及 EULA.txt 为 Aseprite EULA，本阶段仅核对、不复制该实现；既有 MIT UI 滚动组件继续复用。实际弹窗测试覆盖长描述、首次安装、取消、同 ID 替换、禁用状态保留、坏包和锁住状态文件导致的回滚。构建与运行结果待补。
 
 阶段验收：唯一正式 Release 构建成功；extension-install-ui、extension-runtime-directory、extension-workspace-ui、extension-form-ui 四项全部通过，共6.14秒。实际模态流程覆盖长描述滚动条显示、滚轮与2×物理滚动坐标、取消、安装、同ID替换、禁用状态保留、坏ZIP及状态文件锁定时旧版本回滚；preview/replacement截图检查了固定标题和底部按钮、正文裁剪及可见滚动条。生产拖放／通用打开／首选项选择器接线已源码核对，未自动操纵系统文件选择器或真实系统拖放；检查期间取消为源码核对，本阶段未测极慢磁盘取消时延。来源覆盖826项、diff检查通过。没有量测全软件帧率或声称整体卡顿解决；整体迁移仍INCOMPLETE。旧的native-extension-install-error.txt属于先前失败日志，按规则保留。用户editor_support.h及所有未跟踪用户日志／缓存／工程未纳入提交。
+
+
+### 2026-11-11 扩展首选项管理（验收中）
+
+前一阶段03bc99d6已推送，属于实际进展。本阶段承接legacy PreferencesDialog的扩展列表、立即启停和确认删除：名称／版本／作者／描述／状态按zh-CN精确本地化展示；删除提示显示名称与ID；扩展操作直接保存，不受首选项Apply/Cancel回滚。复用RuntimeDirectory列表、setEnabled及uninstall；异步MTA读取与修改、任务期间统一禁用扩展操作，成功更新Lua发现。原有无对象的全局启用／卸载占位隐藏，需求改由逐扩展控件承接。首选项共用滚动容器、视口裁剪及嵌套模态输入门禁补齐，不新增外部窗口入口。段落按宽度缓存线性排版，仅绘制可见文字行；空闲时停止轮询定时器。测试覆盖真实控件、持久化／Lua发现、取消删除、状态文件锁失败保留旧UI、恢复后启用及删除。
+
+未迁移：生产Runtime执行器、首选项Lua脚本管理等仍明确保留；扩展启停只影响现有Lua发现，未声称可执行JS。现有uninstall语义沿用旧版：删除失败尝试恢复state，但磁盘树可能已部分删除；本阶段不自行改变这项语义。总迁移仍INCOMPLETE。构建与界面验收待补。
+
+阶段验收：正式Release最终构建成功；extension-preferences-ui、preferences-catalog、extension-install-ui、extension-workspace-ui、extension-runtime-directory共5项通过7.97秒。实际控件验证持久化启停、Lua列表同步、取消删除、锁状态文件失败恢复与最终删除；首选项目录验证原有全部14页布局和扩展嵌套模态路由。图像验收使用专用真实PixelDialog宿主，确认元数据换行及启用/删除按钮可见；并非完整首选项生产页带已安装扩展的截图验收。定位修复了绘制时Rect::offset原地修改共享视口造成多次重绘后按钮消失的问题，改为复制后转换。列表不透明背景与缓存文本随内容/宽度失效，空闲无轮询。来源覆盖828项、diff通过。一次相邻安装回归报bad conversion，同一最终前版本独立重测通过、最终5项通过，根因未定位，保留日志不声称修复。整体迁移INCOMPLETE；用户editor_support.h、构建缓存和未跟踪数据未纳入提交。
