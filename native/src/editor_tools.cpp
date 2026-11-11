@@ -133,7 +133,7 @@ void Editor::useAirbrushTool(){if((document.active()&&!document.floating())||sel
 void Editor::saveAirbrushPreferences(){if(smoke_&&!workspacePresetTestDirectory_)return;try{const auto path=(smoke_?*workspacePresetTestDirectory_:palettePreferencePath().parent_path())/"airbrush-options.txt";std::filesystem::create_directories(path.parent_path());std::ofstream out(path);out.exceptions(std::ios::badbit|std::ios::failbit);const auto& s=airbrushSettings_;out<<s.particleRadius<<' '<<int(s.shape)<<' '<<s.angle<<' '<<s.scatterRadius<<' '<<s.density<<' '<<s.intervalMs<<'\n';}catch(...){status_=U"喷枪参数已调整，但偏好保存失败";}}
 void Editor::sprayAirbrush(){if(!airbrushDragging_||!document.strokeActive())return;std::vector<SelectionPoint> particles;generateAirbrushParticles(airbrushCenter_,airbrushSettings_,[this]{return std::generate_canonical<double,53>(airbrushRandom_);},[&](auto p){particles.push_back(p);});BrushOptions b;b.size=airbrushSettings_.particleRadius*2-1;b.shape=airbrushSettings_.shape;const auto revision=document.contentRevision();document.sprayStroke(particles,b,b.shape==BrushShape::Round?0:airbrushSettings_.angle);invalidateStrokePixels(revision);}
 void Editor::createAirbrushOptions(){
- try{std::ifstream in(palettePreferencePath().parent_path()/"airbrush-options.txt");AirbrushSettings s;int shape;if(in>>s.particleRadius>>shape>>s.angle>>s.scatterRadius>>s.density>>s.intervalMs){s.particleRadius=std::clamp(s.particleRadius,1,16);s.shape=BrushShape(std::clamp(shape,0,2));s.angle=std::clamp(s.angle,-180,180);s.scatterRadius=std::clamp(s.scatterRadius,1,64);s.density=std::clamp(s.density,1,128);s.intervalMs=std::clamp(s.intervalMs,16,1000);airbrushSettings_=s;}}catch(...){}
+
  auto shape=button(U"",[this]{PixelMenu menu(skin_);const char* icons[]={"brush-round","brush-square","brush-line"};for(int i=0;i<3;++i){auto row=new PixelMenuItem(font_,skin_,i==0?U"圆形":i==1?U"方形":U"线形");row->iconSkin=&toolIcons_;row->icon=icons[i];row->checked=[this,i]{return int(airbrushSettings_.shape)==i;};row->Click.connect([this,i]{airbrushSettings_.shape=BrushShape(i);saveAirbrushPreferences();layoutToolOptions();});menu.addChild(row);}menu.showPopup({airbrushShapeButton_->bounds().x,airbrushShapeButton_->bounds().y2()},display());requestFocus();});shape->iconSkin=&toolIcons_;airbrushShapeButton_=shape;airbrushControls_.push_back({shape,19});
  const char32_t* labels[]={U"散布",U"粒子",U"角度",U"密度",U"间隔"};const int lo[]={1,1,-180,1,16},hi[]={64,16,180,128,1000};
  for(int i=0;i<5;++i){auto label=button(labels[i],[]{});label->labelOnly=true;label->setEnabled(false);airbrushControls_.push_back({label,font_.measure(labels[i])});auto entry=new PixelEntry(font_,skin_);entry->numeric=true;entry->deferredNumeric=true;entry->numericMounted=[this,i]{return airbrushTool_&&(i!=2||airbrushSettings_.shape!=BrushShape::Round);};entry->numericMinimum=lo[i];entry->numericMaximum=hi[i];entry->numericValue=[this,i]{const auto& s=airbrushSettings_;const int values[]={s.scatterRadius,s.particleRadius,s.angle,s.density,s.intervalMs};return double(values[i]);};entry->suffix=i<2?U"px":i==2?U"°":i==4?U"ms":U"";addChild(entry);entry->setFixedContentWidth(entry->widthForValue(i==2?U"-180":i==4?U"1000":U"128"));airbrushFields_[i]=entry;airbrushControls_.push_back({entry,entry->contentWidth()});auto commit=[this,entry,i,low=lo[i],high=hi[i]]{try{std::size_t used;double value=std::stod(entry->text(),&used);if(used!=entry->text().size()||!std::isfinite(value))return;auto& s=airbrushSettings_;int* fields[]={&s.scatterRadius,&s.particleRadius,&s.angle,&s.density,&s.intervalMs};*fields[i]=int(std::floor(std::clamp(value,double(low),double(high))+.5));saveAirbrushPreferences();}catch(...){}layoutToolOptions();invalidateRect(canvasViewport());};entry->deferredCommit=commit;entry->Change.connect(commit);entry->blur=commit;entry->accept=[this,commit]{commit();closeParameterRange();requestFocus();};entry->cancel=[this]{closeParameterRange();};entry->focus=[this,entry,low=lo[i],high=hi[i]]{openParameterRange(entry,low,high);};}
@@ -758,18 +758,26 @@ void Editor::showBrushDitherPopup(){
  following=new PixelButton(font_,skin_,U"",[&]{auto& b=brushFeedback_.brushProfiles_[eraser_?1:0];b.ditherStage=std::min(brushDitherStageCount(b.ditherTemplate),b.ditherStage+1);changed();});following->icon="playback-next";following->iconSkin=&toolIcons_;popup.place(following,{151,DialogLayout::bodyTop+94,15,15});
  sync();ui::Timer timer(40,&popup);if(ditherSmokeChoice>=0){timer.Tick.connect([&]{timer.stop();choices.at(ditherSmokeChoice)->Click();popup.closeWindow(nullptr);});timer.start();}popup.openWindowInForeground();timer.stop();requestFocus();
 }
-void Editor::createToolOptions() {waitBrushWrites(this);
- createLiquifyOptions();
-    createSmoothOptions();
-    createAirbrushOptions();
-
-
-
+// Legacy createSession/loadToolSettings: load values without creating controls.
+void Editor::loadSessionToolPreferences(bool reset){
+ waitBrushWrites(this);
+ const auto directory=smoke_&&workspacePresetTestDirectory_?*workspacePresetTestDirectory_:palettePreferencePath().parent_path();
+ if(reset){
+  drawingAnchor_={.5,.5};drawingAnchorVisible_=true;drawFromCanvasCenter_=false;
+  for(auto& brush:brushFeedback_.brushProfiles_)brush={};
+  selectionMode_=selectionKind_=selectionBrushAngle_=0;selectionRounded_=selectionRotSprite_=false;selectionCornerRadius_=4;selectionPivotVisible_=true;wandOptions_={};
+  shapeSpec_={};shapeRounded_=shapeRatio_=false;shapeRadius_=4;shapeRatioWidth_=shapeRatioHeight_=1;curveAnchorCount_=2;
+  fillOptions_={};fillPattern_={};fillLibrarySelection_={};fillImageName_.clear();rememberGradientTool_=false;gradientSpec_={};gradientOptions_={};gradientStops_.clear();gradientConfirm_=gradientFreeform_=false;
+  inkProfiles_={};syncInkAcrossTools_=false;pencilImageBrush_.reset();pencilImageBrushId_.clear();pencilImageBrushAngle_=0;
+  brushDynamics_={};airbrushSettings_={};liquifyOptions_={};smoothStrength_=50;smoothAngle_=0;smoothBrush_={};moveAutoSelect_=true;eyedropperSource_=EyedropperSource::Composite;magicEraserContiguous_=false;
+ }
+ try{std::ifstream in(directory/"airbrush-options.txt");AirbrushSettings s;int shape;if(in>>s.particleRadius>>shape>>s.angle>>s.scatterRadius>>s.density>>s.intervalMs){s.particleRadius=std::clamp(s.particleRadius,1,16);s.shape=BrushShape(std::clamp(shape,0,2));s.angle=std::clamp(s.angle,-180,180);s.scatterRadius=std::clamp(s.scatterRadius,1,64);s.density=std::clamp(s.density,1,128);s.intervalMs=std::clamp(s.intervalMs,16,1000);airbrushSettings_=s;}}catch(...){}
+ try{std::ifstream in(directory/"smooth-brush-v1.txt");std::string tag;int s,a,size,shape;if(in>>tag>>s>>a>>size>>shape&&tag=="smooth-v1"){smoothStrength_=std::clamp(s,0,100);smoothAngle_=std::clamp(a,-180,180);smoothBrush_.size=std::clamp(size,1,64);smoothBrush_.shape=BrushShape(std::clamp(shape,0,2));}}catch(...){}
     try {
 
-      {std::ifstream selectionSettings(palettePreferencePath().parent_path()/"selection-options.txt");int rounded,radius,mode,pivot;if(selectionSettings>>rounded>>radius>>mode>>pivot){selectionRounded_=rounded!=0;selectionCornerRadius_=std::clamp(radius,0,256);selectionMode_=std::clamp(mode,0,3);selectionPivotVisible_=pivot!=0;}}
+      {std::ifstream selectionSettings(directory/"selection-options.txt");int rounded,radius,mode,pivot;if(selectionSettings>>rounded>>radius>>mode>>pivot){selectionRounded_=rounded!=0;selectionCornerRadius_=std::clamp(radius,0,256);selectionMode_=std::clamp(mode,0,3);selectionPivotVisible_=pivot!=0;}}
 
-      const auto path=palettePreferencePath().parent_path()/"brush-profiles.txt";
+      const auto path=directory/"brush-profiles.txt";
 
       if(std::filesystem::exists(path)) {
 
@@ -785,11 +793,30 @@ void Editor::createToolOptions() {waitBrushWrites(this);
 
     loadMagicEraserPreferences();
     loadFillPatternPreferences();
-    loadInkPreferences();
 
-    {std::ifstream in(palettePreferencePath().parent_path()/"brush-dither-options.txt");for(auto& b:brushFeedback_.brushProfiles_){int enabled,t,stage;if(!(in>>enabled>>t>>stage))break;b.dither=enabled!=0;b.ditherTemplate=BrushDitherTemplate(std::clamp(t,0,7));b.ditherStage=std::clamp(stage,1,brushDitherStageCount(b.ditherTemplate));}}
-    {std::ifstream in(palettePreferencePath().parent_path()/"pixel-stroke-options.txt");int perfect=0,step=1;if(in>>perfect>>step){for(auto& b:brushFeedback_.brushProfiles_)b.perfectPixels=perfect!=0;runtimePreferences_.set("tools.lineDirectionStep.Number",std::to_string(std::clamp(step,1,16)));}}
+    {std::ifstream in(directory/"brush-dither-options.txt");for(auto& b:brushFeedback_.brushProfiles_){int enabled,t,stage;if(!(in>>enabled>>t>>stage))break;b.dither=enabled!=0;b.ditherTemplate=BrushDitherTemplate(std::clamp(t,0,7));b.ditherStage=std::clamp(stage,1,brushDitherStageCount(b.ditherTemplate));}}
+    {std::ifstream in(directory/"pixel-stroke-options.txt");int perfect=0,step=1;if(in>>perfect>>step){for(auto& b:brushFeedback_.brushProfiles_)b.perfectPixels=perfect!=0;runtimePreferences_.set("tools.lineDirectionStep.Number",std::to_string(std::clamp(step,1,16)));}}
     wandOptions_.connectivity=fillOptions_.connectivity;wandOptions_.visibleLayers=fillOptions_.visibleLayers;
+
+
+ // Existing adapters retain their validation and file format; test roots never
+ // redirect a production user's preference files.
+ const auto oldInk=inkPreferenceOverride_,oldDynamics=dynamicsPreferenceOverride_,oldLiquify=liquifyPreferenceOverride_;
+ if(smoke_&&workspacePresetTestDirectory_){inkPreferenceOverride_=directory/"ink-modes.txt";dynamicsPreferenceOverride_=directory/"brush-dynamics-v6.txt";liquifyPreferenceOverride_=directory/"liquify-options.txt";}
+ loadInkPreferences();loadDynamicsPreferences();loadLiquifyPreferences();
+ inkPreferenceOverride_=oldInk;dynamicsPreferenceOverride_=oldDynamics;liquifyPreferenceOverride_=oldLiquify;
+ {std::ifstream in(directory/"eyedropper-source.txt");std::string value;if(in>>value)eyedropperSource_=value=="current-layer"?EyedropperSource::CurrentLayer:EyedropperSource::Composite;}
+ {std::ifstream in(directory/"move-tool-v1.txt");std::string tag;int value;if(in>>tag>>value&&tag=="move-tool-v1"&&(value==0||value==1))moveAutoSelect_=value!=0;}
+}
+
+void Editor::createToolOptions() {waitBrushWrites(this);
+ createLiquifyOptions();
+    createSmoothOptions();
+    createAirbrushOptions();
+
+
+
+    loadSessionToolPreferences(false);
 
     auto icon=[&](const char* name,const char32_t* hint,bool enabled=false) {
 
@@ -2022,7 +2049,7 @@ void Editor::createToolRail() {
 
 void Editor::saveSmoothPreferences(){if(smoke_&&!workspacePresetTestDirectory_)return;try{const auto p=(smoke_?*workspacePresetTestDirectory_:palettePreferencePath().parent_path())/"smooth-brush-v1.txt";std::filesystem::create_directories(p.parent_path());std::ofstream out(p);out.exceptions(std::ios::failbit|std::ios::badbit);out<<"smooth-v1 "<<smoothStrength_<<' '<<smoothAngle_<<' '<<smoothBrush_.size<<' '<<int(smoothBrush_.shape)<<'\n';}catch(...){status_=U"平滑参数已调整，但偏好保存失败";}}
 void Editor::createSmoothOptions(){
- try{std::ifstream in(palettePreferencePath().parent_path()/"smooth-brush-v1.txt");std::string tag;int s,a,size,shape;if(in>>tag>>s>>a>>size>>shape&&tag=="smooth-v1"){smoothStrength_=std::clamp(s,0,100);smoothAngle_=std::clamp(a,-180,180);smoothBrush_.size=std::clamp(size,1,64);smoothBrush_.shape=BrushShape(std::clamp(shape,0,2));}}catch(...){}
+
  auto label=[&](const char32_t* text){auto b=button(text,[]{});b->labelOnly=true;b->setEnabled(false);smoothControls_.push_back({b,font_.measure(text)});};
  auto number=[&](int field,const char32_t* suffix){auto e=new PixelEntry(font_,skin_);e->numeric=true;e->deferredNumeric=true;e->numericMounted=[this,field]{return smoothTool_&&(field!=1||(smoothBrush_.size>1&&smoothBrush_.shape!=BrushShape::Round));};e->numericMinimum=field==0?1:field==1?-180:0;e->numericMaximum=field==0?64:field==1?180:100;e->numericValue=[this,field]{return double(field==0?smoothBrush_.size:field==1?smoothAngle_:smoothStrength_);};e->suffix=suffix;e->setFixedContentWidth(e->widthForValue(field==1?U"-180":U"100"));addChild(e);smoothControls_.push_back({e,e->widthForValue(field==1?U"-180":U"100")});auto commit=[this,e,field]{if(smoothDragging_)return;try{std::size_t used=0;const auto v=std::stod(e->text(),&used);if(used!=e->text().size()||!std::isfinite(v))return;const int value=int(std::floor(std::clamp(v,-1000.0,1000.0)+.5));if(field==0){smoothBrush_.size=std::clamp(value,1,64);saveSmoothPreferences();}else{(field==1?smoothAngle_:smoothStrength_)=std::clamp(value,field==1?-180:0,field==1?180:100);saveSmoothPreferences();}layoutToolOptions();invalidateRect(canvasViewport());}catch(...){}};e->deferredCommit=commit;e->Change.connect(commit);e->blur=commit;e->accept=[this,commit]{commit();closeParameterRange();requestFocus();};e->cancel=[this]{closeParameterRange();};e->focus=[this,e,field]{openParameterRange(e,field==0?1:field==1?-180:0,field==0?64:field==1?180:100);};return e;};
  auto shape=button(U"",[this]{PixelMenu menu(skin_);const char32_t* names[]={U"圆形",U"方形",U"直线"};const char* icons[]={"brush-round","brush-square","brush-line"};for(int i=0;i<3;++i){auto row=new PixelMenuItem(font_,skin_,names[i]);row->iconSkin=&toolIcons_;row->icon=icons[i];row->checked=[this,i]{return int(smoothBrush_.shape)==i;};row->Click.connect([this,i]{smoothBrush_.shape=BrushShape(i);saveSmoothPreferences();layoutToolOptions();invalidateRect(canvasViewport());});menu.addChild(row);}const auto r=smoothControls_[0].first->bounds();menu.showPopup({r.x,r.y2()+uiGap*uiScale},display());requestFocus();});shape->iconSkin=&toolIcons_;smoothControls_.push_back({shape,15});

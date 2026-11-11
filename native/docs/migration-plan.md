@@ -6707,3 +6707,9 @@ PNG后台解码完成后保留像素及私有surface，每次pump最多上传262
 对照legacy workspace-session.ts DocumentSession/createSession/copyCanvasToolSettings与workspace-commands-session.ts setActive：工程切换仅切活动对象，各自保留工具与配置。原生storeActiveProject保存已迁移工具标志、选区/形状/填充/渐变参数、笔刷及墨水profiles、图像资源引用、动态/喷枪/液化/平滑/移动/取色配置；恢复移入文档后应用，按目标工程解析图像资源，临时笔刷继续沿现有路径还原。配置不包含手势/worker/UI指针，沿用settleProjectGesture。新工程恢复旧版pencil起始类别。真实Editor检查两工程子类型、容差、笔刷尺寸和平滑强度往返独立及历史不变。当前验证中，新工程完整持久化参数重新读取仍有缺口，整体INCOMPLETE。
 
 阶段验收：VS于本机更新至17.14.37906.3，原CMake实例版本失效；同一native/build更新实例配置，未删缓存/新建构建目录。链接报告C++/WinRT 2.0.250303.1/.5混用，按实际LNK2038列表更新旧对象对应源码时间触发重编译，最终唯一正式Release成功。extension-workspace-ui、color-editor-popup、multi-document、image-brush四项通过2.26秒；selection-interactions、canvas-resize（含临时笔刷捕获）两项通过3.30秒。来源824文件与diff检查通过。此次完成既有工程工具配置往返恢复，不宣称新工程全部持久化参数加载、完整工具迁移或UI性能人工验收完成。整体INCOMPLETE，用户editor_support.h及未跟踪文件保留，阶段推送dev。
+
+### 2026-11-11：新工程工具参数初始化（验证中）
+
+对照legacy workspace-session.ts createSession/loadToolSettings与persisted brush profiles，提取原生createToolOptions/createSmoothOptions/createAirbrushOptions已有读盘逻辑为不创建控件的loadSessionToolPreferences。启动复用原读取；addProject先保存旧会话，再重置会话工具配置与临时资源，等待已有笔刷偏好队列写完后加载当前持久化参数。复用现有墨水/动态/液化加载器，测试目录隔离。补齐smoothBrush尺寸形状的工程切换保存。真实Editor新增磁盘profile/平滑/喷枪/墨水/魔棒加载及损坏文件默认回归，验证中，不宣称完整迁移完成。
+
+阶段验收完成：唯一正式Release构建成功。extension-workspace-ui、color-editor-popup、multi-document、selection-interactions、canvas-resize五项通过5.14秒。真实工作区使用独立PID目录写入brush-profiles/smooth/airbrush/ink/magic-eraser文件，通过addProject检验加载；将profile/smooth改为损坏内容后按默认初始化，原工程独立状态恢复仍通过。原生已存在的工具偏好格式与加载器完成新工程接线；尚无对应持久化的旧版资源/工具设置仍属于整体迁移缺口，不称全部工具迁移完成。来源824文件与diff检查通过；无人工性能/FPS测量。用户editor_support.h与所有未跟踪数据保留，阶段提交推送dev。

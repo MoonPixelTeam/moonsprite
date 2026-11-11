@@ -60,9 +60,13 @@ void Editor::smokeExtensionWorkspace(){
  document.beginStroke({0,0},0xff123456);document.commitStroke();
  useSelectionTool(1);selectionMode_=2;wandOptions_.tolerance=73;brushFeedback_.brushProfiles_[0].size=17;smoothStrength_=63;
  const auto first=std::to_string(document.identity());const auto firstHistory=document.historyPosition();
+ const auto toolRoot=assets_.parent_path()/("session-tools-check-"+std::to_string(GetCurrentProcessId()));std::filesystem::create_directories(toolRoot);workspacePresetTestDirectory_=toolRoot;
+ {std::ofstream(toolRoot/"brush-profiles.txt")<<"9 42 1 6 75 2";std::ofstream(toolRoot/"smooth-brush-v1.txt")<<"smooth-v1 81 -27 12 1";std::ofstream(toolRoot/"airbrush-options.txt")<<"3 2 45 18 20 64";std::ofstream(toolRoot/"ink-modes.txt")<<"ink-v1 1 1 1 1 1 1 1 1 1";std::ofstream(toolRoot/"magic-eraser-options.txt")<<"1 37 1 7";}
  addProject(Document::withBuiltinPalette(7,5,U"扩展工程二"));
  require(document.palette().primary==sharedPrimary_&&document.palette().secondary==sharedSecondary_,"New project shared color inheritance");
  require(activeRailTool()=="pencil","New project did not start with pencil");
+ require(brushFeedback_.brushProfiles_[0].size==9&&brushFeedback_.brushProfiles_[0].opacity==42&&smoothStrength_==81&&smoothBrush_.size==12&&smoothAngle_==-27&&airbrushSettings_.scatterRadius==18&&syncInkAcrossTools_&&wandOptions_.tolerance==37,"New project did not load persisted tool configuration");
+ {std::ofstream(toolRoot/"brush-profiles.txt")<<"broken";std::ofstream(toolRoot/"smooth-brush-v1.txt")<<"broken";}loadSessionToolPreferences(true);require(brushFeedback_.brushProfiles_[0].size==1&&smoothStrength_==50&&smoothBrush_.size==1,"Invalid preferences inherited previous project values");workspacePresetTestDirectory_.reset();
  useShapeTool(ShapeKind::Ellipse);shapeRadius_=19;wandOptions_.tolerance=22;brushFeedback_.brushProfiles_[0].size=5;smoothStrength_=31;
  document.addLayer();document.setLayerOpacity(.375);document.setLayerVisible(false);document.addFrame();document.setFrameDuration(170);const auto second=std::to_string(document.identity());
  const auto history=document.historyPosition(),revision=document.contentRevision();

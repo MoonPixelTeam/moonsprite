@@ -71,7 +71,7 @@ void Editor::storeActiveProject(){
  shapeSpec_.kind,shapeRounded_,shapeRatio_,shapeRadius_,shapeRatioWidth_,shapeRatioHeight_,curveAnchorCount_, \
  fillOptions_,fillPattern_,fillLibrarySelection_,fillImageName_,rememberGradientTool_,gradientSpec_.radial,gradientSpec_.dither,gradientOptions_,gradientStops_,gradientConfirm_,gradientFreeform_, \
  brushFeedback_.brushProfiles_[0],brushFeedback_.brushProfiles_[1],inkProfiles_,syncInkAcrossTools_,pencilImageBrushId_,pencilImageBrushAngle_, \
- brushDynamics_,airbrushSettings_,liquifyOptions_,smoothStrength_,smoothAngle_,moveAutoSelect_,eyedropperSource_,magicEraserContiguous_
+ brushDynamics_,airbrushSettings_,liquifyOptions_,smoothStrength_,smoothAngle_,smoothBrush_,moveAutoSelect_,eyedropperSource_,magicEraserContiguous_
     auto settings=std::make_tuple(MOON_SESSION_TOOLS);
     slot.restoreTools=[this,settings=std::move(settings)]{std::tie(MOON_SESSION_TOOLS)=settings;resolvePencilImageBrush();};
 #undef MOON_SESSION_TOOLS
@@ -156,6 +156,7 @@ void Editor::addProject(Document next,std::filesystem::path path){
     // createSession starts at pencil; switching an existing tab restores its
     // own tool instead of inheriting the previously active document's flags.
     selectionTool_=shapeTool_=eyedropperTool_=navigation_.zoomTool_=gradientTool_=fillTool_=handTool_=eraser_=moveTool_=textTool_=rotateTool_=smoothTool_=airbrushTool_=liquifyTool_=magicEraserTool_=sliceMode_=false;
+    loadSessionToolPreferences(true);
 
     layerScroll_=frameScroll_=layerScrollRemainder_=frameScrollRemainder_=paletteScrollPixels_=0;
 

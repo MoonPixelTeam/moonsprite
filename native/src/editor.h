@@ -972,6 +972,7 @@ private:
 
 
   void flushBrushSizePreferences();
+  void loadSessionToolPreferences(bool reset);
 
 
 
