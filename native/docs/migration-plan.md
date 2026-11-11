@@ -6505,3 +6505,9 @@ PNG后台解码完成后保留像素及私有surface，每次pump最多上传262
 正式UI初测访问冲突；构造指针初始化/布局保护未单独解决，未当作根因。补正式Release main调试符号后调用栈定位Widget::getDrawableRegion，经Aseprite MIT ui/window.cpp setDisplay/destructor、manager关闭与widget区域计算核对：未打开表单手动注册display，但析构没有manager可负责注销，留下悬空窗口。现未挂载窗口析构显式setDisplay(nullptr,false)，已打开窗口仍交manager关闭；新增实际display窗口数加一/析构恢复/随后invalidate回归。未复制Aseprite源码，沿用公开API生命周期。此前持久JSON索引失败不能据此宣称根因相同。
 
 最终唯一正式Release构建成功，extension-form-ui/image/files/state四项通过1.92秒；新增预算竞争/等待取消/额度缩减唤醒/缓存释放/超限拒绝及实际解码lease检查，原实际图片分批上传、模型替换、嵌套提示和关闭回归保持通过。来源821文件及diff检查通过。调试符号仅本地生成工程设置，未提交生成物；诊断日志保留，源码临时追踪已清除。没有人工图像验收或CPU/FPS/RSS测量，整体迁移仍INCOMPLETE，保留editor_support.h差异；阶段保存推送dev。
+
+### 2026-11-11：扩展选项长文案与数字标签指针
+
+对照ExtensionDialogForm select/toggle全文值与FormField scrubbable状态、styles.css3054旧版ew-resize，原生表单复用既有复选框/下拉框与旧版指针素材。复选框按文字区宽度缓存省略文案，下拉显示按完整caption和宽度缓存，绘制暂时使用省略副本，原caption/选项值/描述提示不改；窗口扩大恢复全文，键盘选项切换立即刷新显示与草稿。主窗口统一指针路由优先识别FormWindow数字标签，捕获拖动离开标签仍维持ew-resize，disabled/readOnly回普通指针，不引入替代素材。未调整整体字体、布局或表单操作语义。
+
+唯一正式Release构建通过，extension-form-ui/image/files/state四项通过1.91秒，新增Unicode长选项/复选框窄宽切换、全文caption/选项描述保留、键盘变更值与显示，以及数字标签enabled/disabled指针判断；正式--cursor-apply-check实际退出0验证已有素材系统句柄转换。来源821文件与diff检查通过。无新增人工图像验收或FPS测量，菜单弹出内容的超屏幕长文案等未据此宣称全量迁移，生产扩展执行器与整体迁移仍INCOMPLETE。保留editor_support.h差异、用户日志/缓存，阶段保存推送dev。
