@@ -6896,3 +6896,10 @@ PNG后台解码完成后保留像素及私有surface，每次pump最多上传262
 阶段验收：唯一正式Release构建成功；实际recent-projects/home-sections/home-recovery三个窗口专项exit0，旧截断算法对照、8192字符缓存复用及原三密度/预览上传/管理回归通过。recent-preview/recent-projects/home-sections三项CTest通过3.17秒；来源824文件和diff检查通过。未新增人工图像验收或FPS测量，整体INCOMPLETE。用户editor_support.h及未跟踪数据保留，阶段提交推送dev。
 
 用户后续确认：后台笔刷导入采用工程隔离，继续保存资源，仅在完成时仍为发起工程时激活最后成功项，切换工程保留新工程当前笔刷。下一阶段实施并验收。
+
+
+### 2026-11-11：用户确认的后台笔刷导入工程隔离（验证中）
+
+每批FIFO请求捕获工程identity与资源目录，完成结果先绑定当前批次上下文再启动下一批；资源继续保存，仅匹配当前工程/目录时激活最后成功项。跨工程结果保留新工程笔刷与填充选择；同工程继续走既有控制器登记/激活/持久化。用户明确批准取代legacy完成时活动工程语义。正式production held-future回归改为跨工程不激活及存盘，原同工程登记/资源revision/扫描回归保留。构建验证中，整体INCOMPLETE。
+
+阶段验收：正式Release构建成功；首次测试optional比较因PatternBrush无operator==编译失败，改为有效状态/像素检查后通过。实际brush-library-panel专项exit0，跨工程不改笔刷/填充选择且资源重开、同工程控制器登记/激活/延迟扫描以及既有FIFO/关闭存储回归通过。multi-document/image-brush/canvas-resize三项通过2.48秒；来源824/diff通过。无人工OS操作或FPS测量，整体迁移INCOMPLETE；用户editor_support.h及未跟踪数据保留，阶段提交推送dev。

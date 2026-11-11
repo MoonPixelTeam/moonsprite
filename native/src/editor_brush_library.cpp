@@ -9,6 +9,7 @@ namespace moon::editor {
 namespace {
 struct BrushImportResult {
  int success=0,failed=0;std::string error;
+ std::uint64_t documentIdentity=0;std::filesystem::path directory;
  std::optional<StoredPatternBrush> last;std::optional<PatternBrush> loaded;
 };
 // Legacy brush-library-service imports paths sequentially, accumulating failures.
@@ -24,12 +25,14 @@ BrushImportResult importBrushFiles(const std::filesystem::path& directory,const 
  return result;
 }
 struct BrushImportWork final:ui::Property {
- struct Request {std::filesystem::path directory;std::vector<std::filesystem::path> paths;std::string folder;};
+ struct Request {std::filesystem::path directory;std::vector<std::filesystem::path> paths;std::string folder;std::uint64_t documentIdentity=0;};
+ std::uint64_t activeDocument=0;std::filesystem::path activeDirectory;
  std::future<BrushImportResult> future;ui::Timer timer;bool pending=false;
  std::deque<Request> queued;
  BrushImportWork(ui::Widget* owner):ui::Property("moonsprite.brush-import"),timer(16,owner){}
  void start(Request request){
   if(pending){queued.push_back(std::move(request));return;}
+  activeDocument=request.documentIdentity;activeDirectory=request.directory;
   std::promise<BrushImportResult> promise;future=promise.get_future();pending=true;
   std::thread([request=std::move(request),promise=std::move(promise)]()mutable{
    try{promise.set_value(importBrushFiles(request.directory,request.paths,request.folder));}
@@ -47,6 +50,7 @@ struct BrushImportWork final:ui::Property {
   if(!pending||future.wait_for(std::chrono::seconds(0))!=std::future_status::ready)return {};
   BrushImportResult result;try{result=future.get();}catch(const std::exception& error){result.error=error.what();result.failed=1;}
   catch(...){result.error="Unknown brush import failure";result.failed=1;}
+  result.documentIdentity=activeDocument;result.directory=activeDirectory;
   pending=false;
   if(!queued.empty()){auto request=std::move(queued.front());queued.pop_front();start(std::move(request));}else timer.stop();
   return result;
@@ -218,7 +222,7 @@ void Editor::showPencilImageBrushes(){if(document.active())return;PixelMenu menu
 void Editor::importBrushLibraryImages(const std::vector<std::filesystem::path>& paths,const std::string& targetFolder){
  auto work=std::dynamic_pointer_cast<BrushImportWork>(getProperty("moonsprite.brush-import"));
  if(!work){work=std::make_shared<BrushImportWork>(this);work->timer.Tick.connect([this]{importBrushLibraryImages({},{});});setProperty(work);}
- if(!paths.empty()){work->start({fillBrushLibraryDirectory(),paths,targetFolder});status_=U"正在导入图案…";}
+ if(!paths.empty()){work->start({fillBrushLibraryDirectory(),paths,targetFolder,document.identity()});status_=U"正在导入图案…";}
  // Publish only between gestures, never replace the brush of an active stroke.
  if(!smoke_&&(document.active()||pending_!=Pending::None))return;
  if(smoke_&&work->pending)work->future.wait();
@@ -226,7 +230,7 @@ void Editor::importBrushLibraryImages(const std::vector<std::filesystem::path>& 
  auto result=std::move(*completed);
  auto& last=result.last;auto& loaded=result.loaded;
  try{
-  if(last&&loaded){
+  if(last&&loaded&&result.documentIdentity==document.identity()&&result.directory==fillBrushLibraryDirectory()){
    // Legacy refresh resolves the new resource before activating it. Seed the
    // decoded controller before activation so project-only publication cannot
    // prune this new ID while the next directory scan is still pending.
@@ -384,18 +388,18 @@ void Editor::smokeBrushLibraryPanel(){
   for(const auto& item:saved.brushes)require(importPatternBrush(std::filesystem::u8path(item.filePath)).brush.colors==stamp.colors,"Closing import wrote unreadable resource");
   require(pencilImageBrushId_==beforeId&&bool(pencilImageBrush_)==bool(beforePixels)&&status_==beforeStatus,"Closing storage drain called Editor publication");
  }
- // Production completion targets the active session, matching legacy async import.
+ // User-approved isolation preserves the destination session after a switch.
  {auto previousDocument=std::move(document);const auto oldId=pencilImageBrushId_;const auto oldBrush=pencilImageBrush_;const auto oldSelection=fillLibrarySelection_;const auto oldPatterns=fillPattern_.brushes;
-  auto work=std::make_shared<BrushImportWork>(this);setProperty(work);std::promise<BrushImportResult> held;work->future=held.get_future();work->pending=true;smoke_=false;
+  auto work=std::make_shared<BrushImportWork>(this);setProperty(work);std::promise<BrushImportResult> held;work->future=held.get_future();work->pending=true;work->activeDocument=previousDocument.identity();work->activeDirectory=dir;smoke_=false;
   const auto before=std::chrono::steady_clock::now();for(int i=0;i<100;++i)importBrushLibraryImages({},{});require(work->pending&&std::chrono::steady_clock::now()-before<std::chrono::seconds(2),"Production import waited for worker");
-  document=Document(3,3);auto result=importBrushFiles(dir,{dir/"worker-input.png"},{});require(result.last&&result.loaded,"Completion fixture failed");const auto id=result.last->id;held.set_value(std::move(result));document.beginStroke({0,0},0xff123456);importBrushLibraryImages({},{});require(work->pending&&pencilImageBrushId_==oldId,"Import replaced active gesture brush");document.cancelStroke();importBrushLibraryImages({},{});require(!work->pending&&pencilImageBrushId_==id&&pencilImageBrush_&&pencilImageBrush_->colors==stamp.colors,"Production completion did not activate current session");
+  document=Document(3,3);auto result=importBrushFiles(dir,{dir/"worker-input.png"},{});require(result.last&&result.loaded,"Completion fixture failed");const auto savedPath=result.last->filePath;held.set_value(std::move(result));document.beginStroke({0,0},0xff123456);importBrushLibraryImages({},{});require(work->pending&&pencilImageBrushId_==oldId,"Import replaced active gesture brush");document.cancelStroke();importBrushLibraryImages({},{});require(!work->pending&&pencilImageBrushId_==oldId&&bool(pencilImageBrush_)==bool(oldBrush)&&(!oldBrush||pencilImageBrush_->colors==oldBrush->colors)&&fillLibrarySelection_.ids==oldSelection.ids&&fillPattern_.brushes.size()==oldPatterns.size(),"Foreign import changed destination session brush");require(importPatternBrush(std::filesystem::u8path(savedPath)).brush.colors==stamp.colors,"Isolated import did not persist resource");
   // Keep a loaded current controller but hold its replacement scan. A project
   // revision must not treat the just-imported local resource as unavailable.
   smoke_=true;syncBrushLibraryPanel(true);smoke_=false;
   auto scan=std::dynamic_pointer_cast<BrushScanWork>(getProperty("moonsprite.brush-scan"));require(scan&&scan->loaded,"Import lifecycle controller unavailable");
   std::promise<BrushScanResult> heldScan;scan->future=heldScan.get_future();scan->pending=true;
   auto nextResult=importBrushFiles(dir,{dir/"worker-input.png"},{});const auto nextId=nextResult.last->id;
-  std::promise<BrushImportResult> nextImport;work->future=nextImport.get_future();work->pending=true;nextImport.set_value(std::move(nextResult));importBrushLibraryImages({},{});
+  std::promise<BrushImportResult> nextImport;work->future=nextImport.get_future();work->pending=true;work->activeDocument=document.identity();work->activeDirectory=dir;nextImport.set_value(std::move(nextResult));importBrushLibraryImages({},{});
   require(pencilImageBrushId_==nextId&&scan->localIndex.count(nextId),"Import did not register activated resource in controller");
   ProjectBrushResource project;project.metadata={"import-lifecycle","Import lifecycle","brushes/import.gray","brushes/import.rgba",2,1};project.brush=stamp;document.setImportedProjectBrushes({project});syncBrushLibraryPanel();require(pencilImageBrushId_==nextId&&pencilImageBrush_&&fillLibrarySelection_.ids==std::vector<std::string>({nextId}),"Project refresh pruned just-imported local brush");
   BrushScanResult stale;stale.key="old-import-scan";heldScan.set_value(std::move(stale));syncBrushLibraryPanel();require(scan->pending&&pencilImageBrushId_==nextId,"Stale scan cleared imported selection");scan->future.wait();syncBrushLibraryPanel();require(!scan->pending&&pencilImageBrushId_==nextId,"Final scan lost imported resource");
