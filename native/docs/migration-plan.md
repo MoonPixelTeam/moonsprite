@@ -6719,3 +6719,9 @@ PNG后台解码完成后保留像素及私有surface，每次pump最多上传262
 核对legacy DocumentSession.brushImage及workspace-session.ts remapSelectionBrushColors：会话持有已加载像素，非切换时重读资源。原生配置捕获补入pencilImageBrush，恢复后按目标当前颜色重映射选区brush paintColors；共享颜色路径复用同一纯函数，保留原像素/alpha/透明/亮度128规则，普通图像不映射。真实Editor用missing-local-resource标识证明切换保留内存资源，单测验证原像素不变及alpha乘法。旧版lineDirectionStep经file-preferences.ts确认是全局偏好，不改为会话字段。当前构建验证中，整体INCOMPLETE。
 
 阶段验收完成：唯一正式Release及selection-pattern-brush-tests构建成功。selection-pattern-brush、extension-workspace-ui、multi-document、selection-interactions、canvas-resize五项通过4.58秒。真实Editor在不存在资源路径下往返标签仍保留已载入像素和ID，选区paintColors恢复；纯函数检查原像素不变、alpha乘法与普通图像跳过。来源824文件与diff检查通过；不含人工FPS测量，整体INCOMPLETE。保留用户editor_support.h及未跟踪数据，阶段提交推送dev。
+
+### 2026-11-11：图像笔刷资源选择持久化（验证中）
+
+依据legacy workspace-session.ts persistedBrushProfileFromSession/brushProfileFromPersisted/persistToolSettings及core/tool-preferences.ts归一化，普通图像资源ID和角度参与偏好，临时选区笔刷ID不参与。原生扩展现有合并异步写入批次至第七文件image-brush-selection-v1.txt，quoted字符串/有限角度验证，菜单选择/清除/角度与栏目选择接线；新会话加载后复用资源解析，缺失回退普通笔刷。实际笔刷库回归覆盖ID/37.5角度重载、临时排除、缺失回退与恢复，队列失败恢复/销毁检查覆盖第七文件。构建验证中，整体INCOMPLETE。
+
+阶段验收完成：唯一正式Release构建成功。使用Start-Process -Wait确认--brush-library-panel-check实际进程exit0，覆盖磁盘资源/角度重载、临时ID排除、缺失资源回退与恢复；extension-workspace-ui、multi-document、selection-pattern-brush三项通过1.88秒。来源824文件与diff检查通过。仅声明既有原生资源选择与角度持久化链路已接通，队列新增文件失败/销毁断言已更新但未单独调用其专项入口；旧版完整多工具profile体系仍有缺口，整体INCOMPLETE，无人工FPS验收。保留用户editor_support.h及未跟踪文件，阶段提交推送dev。
