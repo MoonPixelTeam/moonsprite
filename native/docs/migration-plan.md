@@ -6755,3 +6755,9 @@ PNG后台解码完成后保留像素及私有surface，每次pump最多上传262
 对照legacy useBrushLibrary.ts异步list/read/decode，原生工作线程处理目录/文件夹扫描与CPU图像解码，现有WIC decoder自行初始化COM；主线程16ms轮询，仅当前工程/文件夹/目录键且无更新请求的结果可发布。单扫描运行、后续刷新合并，隐藏栏目丢弃结果；promise future不在UI销毁时join线程，worker不捕获Editor/UI指针。真实检查走生产poll分支及延迟结果隐藏拒绝；旧smoke专用同步等待便于已有fixture稳定。选择读盘和UI资源发布仍同步，不宣称全链路性能完成。构建验证中，整体INCOMPLETE。
 
 阶段验收完成：唯一正式Release构建成功，实际--brush-library-panel-check等待exit0。生产poll真实扫描、未完成promise下100次UI轮询不等待、刷新合并后过期键丢弃并启动新代、隐藏结果拒绝均通过；现有资源/拖动/偏好回归通过。extension-workspace-ui、multi-document、canvas-resize三项通过2.12秒。来源824文件/diff通过。无慢磁盘/OS阻塞或FPS实测，单次解码不可中断，线程关闭后自行完成，选择资源仍同步读盘/UI setResources仍同步，整体INCOMPLETE。用户editor_support.h及未跟踪数据保留，提交推送dev。
+
+### 2026-11-11：笔刷栏目选择复用已加载资源（验证中）
+
+对照legacy useBrushLibrary.ts保留已解码controller资源，以及BrushLibraryPanel.tsx selectBrush按显示顺序选择并复用controller.brushes。后台加载全部文件夹资源，UI仅发布当前目录；普通栏目点击不再list目录/import解码。资源快照校验工程、目录和文件夹，刷新期间保留已显示资源；候选选择/像素全部就绪后一次提交，工程资源取当前Document。新增独占锁PNG下Ctrl选择、Shift范围顺序、刷新损坏资源拒绝及本地/工程混选回归。导入/删除等显式资源操作仍沿既有同步路径，UI发布仍有像素复制，不宣称整体卡顿已解决。构建验证中，整体INCOMPLETE。
+
+阶段验收完成：唯一正式Release成功，实际--brush-library-panel-check等待exit0；独占PNG锁下复用内存选择、Ctrl/Shift顺序、刷新损坏资源拒绝、本地/工程混选通过。extension-workspace-ui、multi-document、canvas-resize三项通过2.02秒。来源824文件及diff检查通过。本阶段对照legacy，无新增Aseprite源码核对或人工FPS测量；整体INCOMPLETE。用户editor_support.h及未跟踪数据保留，阶段提交推送dev。
