@@ -71,7 +71,7 @@ void Editor::storeActiveProject(){
  shapeSpec_.kind,shapeRounded_,shapeRatio_,shapeRadius_,shapeRatioWidth_,shapeRatioHeight_,curveAnchorCount_, \
  fillOptions_,fillPattern_,fillLibrarySelection_,fillImageName_,rememberGradientTool_,gradientSpec_.radial,gradientSpec_.dither,gradientOptions_,gradientStops_,gradientConfirm_,gradientFreeform_, \
  brushFeedback_.brushProfiles_[0],brushFeedback_.brushProfiles_[1],inkProfiles_,syncInkAcrossTools_,pencilImageBrushId_,pencilImageBrushAngle_,pencilImageBrush_, \
- brushDynamics_,airbrushSettings_,liquifyOptions_,smoothStrength_,smoothAngle_,smoothBrush_,moveAutoSelect_,eyedropperSource_,magicEraserContiguous_
+ brushDynamics_,airbrushSettings_,liquifyOptions_,smoothStrength_,smoothAngle_,smoothBrush_,temporaryBrushReturnProfile_,moveAutoSelect_,eyedropperSource_,magicEraserContiguous_
     auto settings=std::make_tuple(MOON_SESSION_TOOLS);
     slot.restoreTools=[this,settings=std::move(settings)]{std::tie(MOON_SESSION_TOOLS)=settings;remapSelectionPatternBrush(pencilImageBrush_,document.palette().primary,document.palette().secondary);};
 #undef MOON_SESSION_TOOLS

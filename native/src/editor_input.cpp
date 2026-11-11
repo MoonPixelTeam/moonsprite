@@ -427,7 +427,7 @@ bool Editor::onProcessMessage(ui::Message* msg) {
       if(magicEraserDragging_){if(key->scancode()==ui::kKeyEsc)cancelStroke();return true;}
       if(fillDragging_){if(key->scancode()==ui::kKeyEsc)cancelStroke();return true;}
 
-      if(key->scancode()==ui::kKeyEsc && (temporaryBrushCapture_ || temporaryBrushActive_)){if(selectionDragging_)endSelectionGesture(true);exitTemporaryBrushCapture();refresh();return true;}
+      if(key->scancode()==ui::kKeyEsc && (temporaryBrushCapture_ || temporaryBrushActive_ || pencilImageBrush_)){if(selectionDragging_)endSelectionGesture(true);exitTemporaryBrushCapture();saveBrushPreferences();refresh();return true;}
       if(selectionDragging_ || floatingDragging_){if(key->scancode()==ui::kKeyEsc || ((key->ctrlPressed() || key->cmdPressed()) && key->scancode()==ui::kKeyD))endSelectionGesture(true);else if(polygonPending_ && (key->ctrlPressed() || key->cmdPressed()) && (key->scancode()==ui::kKeyZ || key->scancode()==ui::kKeyY))polygonStep(key->scancode()==ui::kKeyY || key->shiftPressed());else if(key->scancode()==ui::kKeyEnter && polygonPending_)endSelectionGesture(false);else if(key->scancode()==ui::kKeyEnter && selectionKind_==4){wandReleased_=true;if(hasCapture())releaseMouse();if(wandPreviewReady_)endSelectionGesture(false);else wandTick();}return true;}
 
       if((ordinaryBrushTool() || (selectionTool_ && selectionKind_==5) || shapeTool_) && !paletteFocused_ && !key->altPressed() && !key->shiftPressed() && !dynamic_cast<ui::Entry*>(ui::Manager::getDefault()->getFocus())){

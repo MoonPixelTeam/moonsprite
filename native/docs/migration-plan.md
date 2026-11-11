@@ -6725,3 +6725,9 @@ PNG后台解码完成后保留像素及私有surface，每次pump最多上传262
 依据legacy workspace-session.ts persistedBrushProfileFromSession/brushProfileFromPersisted/persistToolSettings及core/tool-preferences.ts归一化，普通图像资源ID和角度参与偏好，临时选区笔刷ID不参与。原生扩展现有合并异步写入批次至第七文件image-brush-selection-v1.txt，quoted字符串/有限角度验证，菜单选择/清除/角度与栏目选择接线；新会话加载后复用资源解析，缺失回退普通笔刷。实际笔刷库回归覆盖ID/37.5角度重载、临时排除、缺失回退与恢复，队列失败恢复/销毁检查覆盖第七文件。构建验证中，整体INCOMPLETE。
 
 阶段验收完成：唯一正式Release构建成功。使用Start-Process -Wait确认--brush-library-panel-check实际进程exit0，覆盖磁盘资源/角度重载、临时ID排除、缺失资源回退与恢复；extension-workspace-ui、multi-document、selection-pattern-brush三项通过1.88秒。来源824文件与diff检查通过。仅声明既有原生资源选择与角度持久化链路已接通，队列新增文件失败/销毁断言已更新但未单独调用其专项入口；旧版完整多工具profile体系仍有缺口，整体INCOMPLETE，无人工FPS验收。保留用户editor_support.h及未跟踪文件，阶段提交推送dev。
+
+### 2026-11-11：普通图案退出与资源生命周期（验证中）
+
+依据legacy workspace-commands-tool.ts setBrushImage/exitPatternBrush：普通图案记住返回笔刷配置，Esc清除图像与填充图案、保留当前工具及图像采样模式、保存清除状态。原生补齐普通图案Esc入口和资源加载时返回配置记忆；会话保存返回配置，内部标签切换清理不写偏好。填充选择、资源/文件夹删除后保存当前资源状态。正式笔刷库实际键盘Esc检查桶工具、Source模式及偏好重读。构建验证中，整体INCOMPLETE。
+
+阶段验收完成：唯一正式Release构建成功；--brush-library-panel-check等待进程exit0，实际Esc保留桶/Source并清除资源、重读偏好不恢复。extension-workspace-ui、multi-document、selection-interactions、canvas-resize四项通过4.76秒，临时捕获路径仍通过。来源824文件与diff检查通过，无人工FPS验收。完整多工具返回profile尚需后续对照，本阶段不宣称全部工具迁移完成；整体INCOMPLETE。保留用户editor_support.h及未跟踪数据，提交推送dev。
