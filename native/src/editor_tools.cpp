@@ -1736,8 +1736,6 @@ void Editor::createSelectionBackgroundPreset(){document.commitFloatingPaste();if
 
 void Editor::resolvePencilImageBrush(){pencilImageBrush_.reset();if(pencilImageBrushId_.empty())return;try{if(pencilImageBrushId_.rfind("project:",0)==0){const auto id=pencilImageBrushId_.substr(8);for(const auto& item:document.projectBrushes())if(item.metadata.id==id){if(!temporaryBrushReturnProfile_)temporaryBrushReturnProfile_=brushFeedback_.brushProfiles_[0];pencilImageBrush_=item.brush;return;}throw std::runtime_error("工程笔刷已不存在");}PatternBrushLibrary library(fillBrushLibraryDirectory());for(const auto& item:library.list().brushes)if(item.id==pencilImageBrushId_){if(!temporaryBrushReturnProfile_)temporaryBrushReturnProfile_=brushFeedback_.brushProfiles_[0];pencilImageBrush_=importPatternBrush(std::filesystem::u8path(item.filePath)).brush;pencilImageBrush_->selectionColorMapping=item.sourceX.has_value()&&item.sourceY.has_value();pencilImageBrush_->sourceX=item.sourceX.value_or(0);pencilImageBrush_->sourceY=item.sourceY.value_or(0);return;}throw std::runtime_error("本地笔刷已不存在");}catch(const std::exception& e){pencilImageBrushId_.clear();status_=U"图像笔刷不可用："+unicodeText(e.what());}}
 
-void Editor::showPencilImageBrushes(){if(document.active())return;PixelMenu menu(skin_);auto clear=new PixelMenuItem(font_,skin_,U"普通笔刷");clear->Click.connect([this]{pencilImageBrushId_.clear();pencilImageBrush_.reset();saveBrushPreferences();refresh();});menu.addChild(clear);try{PatternBrushLibrary library(fillBrushLibraryDirectory());for(const auto& item:library.list().brushes){auto row=new PixelMenuItem(font_,skin_,unicodeText(item.name));row->checked=[this,id=item.id]{return pencilImageBrushId_==id;};row->Click.connect([this,id=item.id]{pencilImageBrushId_=id;resolvePencilImageBrush();saveBrushPreferences();refresh();});menu.addChild(row);}for(const auto& item:document.projectBrushes()){auto row=new PixelMenuItem(font_,skin_,U"工程："+unicodeText(item.metadata.name));row->checked=[this,id=item.metadata.id]{return pencilImageBrushId_=="project:"+id;};row->Click.connect([this,id=item.metadata.id]{pencilImageBrushId_="project:"+id;resolvePencilImageBrush();saveBrushPreferences();refresh();});menu.addChild(row);}}catch(const std::exception& e){status_=U"笔刷库读取失败："+unicodeText(e.what());}menu.addChild(new PixelMenuSeparator(skin_));auto angleLabel=new PixelMenuItem(font_,skin_,U"角度（度）");angleLabel->setEnabled(false);menu.addChild(angleLabel);auto angle=new PixelEntry(font_,skin_);angle->numeric=true;angle->setText(std::to_string(int(pencilImageBrushAngle_)));menu.addChild(angle);angle->Change.connect([this,angle]{try{std::size_t used=0;double value=std::stod(angle->text(),&used);if(used==angle->text().size() && std::isfinite(value)){pencilImageBrushAngle_=std::clamp(value,-180.0,180.0);saveBrushPreferences();}}catch(...){} });auto at=imageBrushButton_->bounds();menu.showPopup({at.x,at.y2()},display());requestFocus();}
-
 void Editor::applyFillLibrarySelection(){
     PatternBrushLibrary library(fillBrushLibraryDirectory());const auto listing=library.list();std::vector<PatternBrush> brushes;std::optional<PatternBrush> active;std::u32string name;
     for(const auto& id:fillLibrarySelection_.ids){
@@ -1751,12 +1749,6 @@ void Editor::applyFillLibrarySelection(){
     if(active&&!temporaryBrushReturnProfile_)temporaryBrushReturnProfile_=brushFeedback_.brushProfiles_[0];
     fillPattern_.brushes=std::move(brushes);fillImageName_=std::move(name);pencilImageBrushId_=fillLibrarySelection_.active;pencilImageBrush_=std::move(active);
 }
-
-void Editor::selectFillLibraryBrush(const std::string& id,bool ctrl,bool shift){
-
-    try{PatternBrushLibrary library(fillBrushLibraryDirectory());std::vector<std::string> ordered;for(const auto& item:library.list().brushes)if(item.folderId==fillFolder_)ordered.push_back(item.id);if(fillFolder_.empty())for(const auto& item:document.projectBrushes())ordered.push_back("project:"+item.metadata.id);auto previous=fillLibrarySelection_;fillLibrarySelection_.select(ordered,id,ctrl,shift);try{applyFillLibrarySelection();}catch(...){fillLibrarySelection_=std::move(previous);throw;}saveBrushPreferences();status_=U"已选择图案："+fillImageName_;}catch(const std::exception& e){status_=U"图案选择失败："+unicodeText(e.what());}refresh();
-
-  }
 
 void Editor::deleteFillLibrarySelection(const std::vector<std::string>& ids){
  if(ids.empty()||pending_!=Pending::None||document.active())return;
@@ -1839,28 +1831,8 @@ void Editor::importFillImage(){
 
 void Editor::importBrushLibraryImages(const std::vector<std::filesystem::path>& paths,const std::string& targetFolder){
  if(paths.empty())return;
-    int success=0,failed=0;std::string last,error;try{PatternBrushLibrary library(fillBrushLibraryDirectory());for(const auto& path:paths){try{auto imported=importPatternBrush(path);auto stored=library.save(utf8Text(imported.name),encodePatternBrushPng(imported.brush));if(!targetFolder.empty())library.move(stored.id,targetFolder);last=stored.id;++success;}catch(const std::exception& e){if(error.empty())error=e.what();++failed;}}if(!last.empty()){fillLibrarySelection_.ids={last};fillLibrarySelection_.active=fillLibrarySelection_.anchor=last;applyFillLibrarySelection();pencilImageBrushId_=last;pencilImageBrush_.reset();resolvePencilImageBrush();saveBrushPreferences();}status_=U"已导入图案："+unicodeText(std::to_string(success));if(failed)status_+=U" · 失败 "+unicodeText(std::to_string(failed))+U"："+unicodeText(error);}catch(const std::exception& e){status_=U"图案导入失败："+unicodeText(e.what());}brushLibraryNeedsReload_=true;refresh();
+    int success=0,failed=0;std::string last,error;try{PatternBrushLibrary library(fillBrushLibraryDirectory());for(const auto& path:paths){try{auto imported=importPatternBrush(path);auto stored=library.save(utf8Text(imported.name),encodePatternBrushPng(imported.brush));if(!targetFolder.empty())library.move(stored.id,targetFolder);last=stored.id;++success;}catch(const std::exception& e){if(error.empty())error=e.what();++failed;}}if(!last.empty()){fillLibrarySelection_.ids={last};fillLibrarySelection_.active=fillLibrarySelection_.anchor=last;applyFillLibrarySelection();saveBrushPreferences();}status_=U"已导入图案："+unicodeText(std::to_string(success));if(failed)status_+=U" · 失败 "+unicodeText(std::to_string(failed))+U"："+unicodeText(error);}catch(const std::exception& e){status_=U"图案导入失败："+unicodeText(e.what());}brushLibraryNeedsReload_=true;refresh();
 }
-
-void Editor::showFillLibraryMenu(){
-
-    PixelMenu menu(skin_);auto capture=new PixelMenuItem(font_,skin_,U"从选区创建笔刷");capture->Click.connect([this]{createFillBrushFromSelection();});menu.addChild(capture);auto folders=new PixelMenuItem(font_,skin_,U"文件夹…");folders->Click.connect([this]{showFillFolderMenu();});menu.addChild(folders);auto load=new PixelMenuItem(font_,skin_,U"导入图像…");load->Click.connect([this]{importFillImage();});menu.addChild(load);
-
-    try{PatternBrushLibrary library(fillBrushLibraryDirectory());for(const auto& item:library.list().brushes){if(item.folderId!=fillFolder_)continue;auto row=new PixelMenuItem(font_,skin_,unicodeText(item.name));row->checked=[this,id=item.id]{return std::find(fillLibrarySelection_.ids.begin(),fillLibrarySelection_.ids.end(),id)!=fillLibrarySelection_.ids.end();};row->Click.connect([this,id=item.id]{selectFillLibraryBrush(id,(GetKeyState(VK_CONTROL)&0x8000)!=0,(GetKeyState(VK_SHIFT)&0x8000)!=0);});menu.addChild(row);}}catch(const std::exception& e){status_=U"图案库读取失败："+unicodeText(e.what());}
-
-    if(fillFolder_.empty())for(const auto& resource:document.projectBrushes()){auto row=new PixelMenuItem(font_,skin_,U"工程 · "+unicodeText(resource.metadata.name));row->checked=[this,id="project:"+resource.metadata.id]{return std::find(fillLibrarySelection_.ids.begin(),fillLibrarySelection_.ids.end(),id)!=fillLibrarySelection_.ids.end();};row->Click.connect([this,id="project:"+resource.metadata.id]{selectFillLibraryBrush(id,(GetKeyState(VK_CONTROL)&0x8000)!=0,(GetKeyState(VK_SHIFT)&0x8000)!=0);});menu.addChild(row);}
-
-    if(!fillLibrarySelection_.ids.empty()){auto remove=new PixelMenuItem(font_,skin_,U"删除选中图案…");remove->Click.connect([this]{confirmFillLibraryDelete();});menu.addChild(remove);}if(!fillPattern_.brushes.empty()){auto clear=new PixelMenuItem(font_,skin_,U"停用图像图案");clear->Click.connect([this]{fillLibrarySelection_={};fillPattern_.brushes.clear();fillImageName_.clear();pencilImageBrushId_.clear();pencilImageBrush_.reset();saveBrushPreferences();refresh();});menu.addChild(clear);}
-
-    auto mode=new PixelMenuItem(font_,skin_,U"布局：默认 / 规则 / 随机");mode->Click.connect([this]{fillPattern_.mode=fillPattern_.mode==PatternMode::Default?PatternMode::Regular:fillPattern_.mode==PatternMode::Regular?PatternMode::Random:PatternMode::Default;saveBrushPreferences();refresh();});menu.addChild(mode);
-
-    auto sample=new PixelMenuItem(font_,skin_,U"采样：绘制 / 源坐标 / 目标坐标");sample->Click.connect([this]{fillPattern_.paintMode=PatternPaintMode((int(fillPattern_.paintMode)+1)%3);saveBrushPreferences();refresh();});menu.addChild(sample);
-
-    auto settings=new PixelMenuItem(font_,skin_,U"图案参数…");settings->setEnabled(fillPattern_.mode!=PatternMode::Default);settings->Click.connect([this]{showFillPatternSettings();});menu.addChild(settings);
-
-    auto at=fillImageButton_->bounds();menu.showPopup({at.x,at.y2()},display());requestFocus();
-
-  }
 
 void Editor::createFillPatternOptions(){
 

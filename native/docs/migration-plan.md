@@ -6767,3 +6767,9 @@ PNG后台解码完成后保留像素及私有surface，每次pump最多上传262
 对照legacy BrushLibraryPanel.tsx controller.loaded/valid集合effect：成功刷新后移除失效成员，保留存活图案像素与顺序，优先原活动资源或最后存活资源，最后资源丢失则清空。原生在后台结果发布时事务更新选择/图案/活动像素/名称并保存修正引用，目录整体读取失败不清除选择。发布同时建立ID索引与目录顺序索引，消除每次点击按全库反复查找导致的二次复杂度。真实smoke删除活动资源、删除最后资源与重新选择回归。旧填充/铅笔菜单同步资源入口仍待迁移，不把本阶段当作完整后台控制器完成；整体INCOMPLETE。
 
 阶段验收完成：唯一正式Release成功，实际--brush-library-panel-check等待exit0，包含活动资源丢失、最后资源丢失、有效资源重新选择及此前锁文件/多选/刷新回归。extension-workspace-ui、multi-document、canvas-resize三项通过2.06秒。来源824文件及diff检查通过，无人工FPS测量。同步菜单入口仍有迁移缺口；整体INCOMPLETE。用户editor_support.h与未跟踪数据保留，阶段提交推送dev。
+
+### 2026-11-11：铅笔与填充菜单后台资源接线（验证中）
+
+复用legacy useBrushLibrary.ts后台controller与BrushLibraryPanel.tsx loaded selection：将既有两菜单定义移入资源控制器所在编译单元，保留入口/参数/清除/角度/工程资源，菜单打开不再扫描目录，铅笔选择捕获已载入像素并校验工程/目录，填充选择汇入索引事务。首次加载显示禁用加载提示，后台完成后下次打开可用；栏目隐藏仍允许菜单请求发布。导入成功移除apply后再次resolve解码。新增隐藏栏目菜单扫描请求与锁PNG下填充选择检查。初始化偏好解析及显式资源写入操作仍同步，整体INCOMPLETE。
+
+阶段验收完成：唯一正式Release最终增量构建成功；实际--brush-library-panel-check等待exit0，栏目隐藏菜单请求加载、独占PNG锁下填充选择、既有部分导入/失败/持久化/生命周期通过。extension-workspace-ui、multi-document、canvas-resize三项通过2.16秒。来源824文件及diff检查通过。没有实际弹出菜单点击或截图/FPS验收；首次菜单加载提示需关闭后重开查看完成资源。初始化偏好与显式资源写入仍同步，整体INCOMPLETE。用户editor_support.h与未跟踪数据保留，阶段提交推送dev。

@@ -10,7 +10,7 @@ struct BrushScanResult {PatternBrushListing listing;std::string folder,key,error
 // Worker owns paths and decoded CPU pixels only; no Editor/UI/COM objects cross
 // threads. A promise future does not join the reader when the owner closes.
 struct BrushScanWork final:ui::Property {
- std::future<BrushScanResult> future;std::string key;bool pending=false;ui::Timer timer;
+ std::future<BrushScanResult> future;std::string key;bool pending=false,menuRequested=false;ui::Timer timer;
  std::optional<BrushScanResult> loaded;std::unordered_map<std::string,std::size_t> localIndex;std::unordered_map<std::string,std::vector<std::string>> folderOrder;std::uint64_t loadedDocument=0;std::filesystem::path loadedDirectory;
  BrushScanWork(ui::Widget* owner):ui::Property("moonsprite.brush-scan"),timer(16,owner){}
  void start(std::filesystem::path directory,std::string folder,std::string requestKey){
@@ -24,6 +24,12 @@ struct BrushScanWork final:ui::Property {
   }).detach();timer.start();
  }
 };
+}
+namespace {
+std::shared_ptr<BrushScanWork> requestBrushMenuScan(ui::Widget* owner){
+ auto scan=std::dynamic_pointer_cast<BrushScanWork>(owner->getProperty("moonsprite.brush-scan"));
+ if(scan)scan->menuRequested=true;return scan;
+}
 }
 std::filesystem::path Editor::brushLibraryPreferencePath()const{return palettePreferencePath().parent_path()/"brush-library-panel-v1.txt";}
 void Editor::createBrushLibraryPanel(){
@@ -54,7 +60,7 @@ void Editor::syncBrushLibraryPanel(bool reload){
  if(key!=brushLibraryResourceKey_){brushLibraryResourceKey_=key;brushLibraryNeedsReload_=true;}
  auto scan=std::dynamic_pointer_cast<BrushScanWork>(getProperty("moonsprite.brush-scan"));
  if(!scan){scan=std::make_shared<BrushScanWork>(this);scan->timer.Tick.connect([this]{syncBrushLibraryPanel();});setProperty(scan);}
- const bool visible=brushLibraryPanelOpen_&&documentOpen_&&!homeOpen_;
+ const bool visible=(brushLibraryPanelOpen_||scan->menuRequested)&&documentOpen_&&!homeOpen_;
  if(reload)brushLibraryNeedsReload_=true;
  // Keep at most one scan running. Changes coalesce into the next generation.
  if(scan->pending&&scan->future.wait_for(std::chrono::seconds(0))==std::future_status::ready){
@@ -83,10 +89,10 @@ void Editor::syncBrushLibraryPanel(bool reload){
     }
     brushLibraryPanel_->setResources(result.listing,fillFolder_,visibleLocal,project);
     if(result.failed)status_=U"图案缩略图读取失败："+unicodeText(std::to_string(result.failed));
-    scan->loaded=std::move(result);scan->localIndex=std::move(index);scan->folderOrder=std::move(folders);scan->loadedDocument=document.identity();scan->loadedDirectory=fillBrushLibraryDirectory();
+    scan->loaded=std::move(result);scan->localIndex=std::move(index);scan->folderOrder=std::move(folders);scan->loadedDocument=document.identity();scan->loadedDirectory=fillBrushLibraryDirectory();scan->menuRequested=false;
     if(pruned){fillLibrarySelection_=std::move(selection);fillPattern_.brushes=std::move(retained);pencilImageBrushId_=fillLibrarySelection_.active;pencilImageBrush_=std::move(active);fillImageName_=std::move(activeName);saveBrushPreferences();}
    }
-   else status_=U"图案笔刷库读取失败："+unicodeText(result.error);
+   else{scan->menuRequested=false;status_=U"图案笔刷库读取失败："+unicodeText(result.error);}
   }else brushLibraryNeedsReload_=true;
  }
  if(brushLibraryNeedsReload_&&visible&&!scan->pending){scan->start(fillBrushLibraryDirectory(),fillFolder_,key);brushLibraryNeedsReload_=false;}
@@ -121,6 +127,38 @@ void Editor::selectBrushLibraryItem(const std::string& id,bool ctrl,bool shift){
   saveBrushPreferences();status_=fillLibrarySelection_.ids.empty()?U"已停用图像笔刷":U"已选择图案："+fillImageName_;
  }catch(const std::exception& e){status_=U"图案选择失败："+unicodeText(e.what());}refresh();
 }
+void Editor::showPencilImageBrushes(){if(document.active())return;PixelMenu menu(skin_);auto clear=new PixelMenuItem(font_,skin_,U"普通笔刷");clear->Click.connect([this]{pencilImageBrushId_.clear();pencilImageBrush_.reset();saveBrushPreferences();refresh();});menu.addChild(clear);syncBrushLibraryPanel();auto scan=requestBrushMenuScan(this);syncBrushLibraryPanel();
+ const bool ready=scan&&scan->loaded&&scan->loadedDocument==document.identity()&&scan->loadedDirectory==fillBrushLibraryDirectory();
+ if(ready){scan->menuRequested=false;for(const auto& item:scan->loaded->local){auto row=new PixelMenuItem(font_,skin_,item.name);row->checked=[this,id=item.id]{return pencilImageBrushId_==id;};row->Click.connect([this,id=item.id,brush=item.brush,identity=document.identity(),directory=fillBrushLibraryDirectory()]{if(identity!=document.identity()||directory!=fillBrushLibraryDirectory())return;if(!temporaryBrushReturnProfile_)temporaryBrushReturnProfile_=brushFeedback_.brushProfiles_[0];pencilImageBrushId_=id;pencilImageBrush_=brush;saveBrushPreferences();refresh();});menu.addChild(row);}}
+ else{auto loading=new PixelMenuItem(font_,skin_,U"笔刷库加载中…");loading->setEnabled(false);menu.addChild(loading);}
+ for(const auto& item:document.projectBrushes()){auto row=new PixelMenuItem(font_,skin_,U"工程："+unicodeText(item.metadata.name));row->checked=[this,id=item.metadata.id]{return pencilImageBrushId_=="project:"+id;};row->Click.connect([this,id=item.metadata.id,identity=document.identity()]{if(identity!=document.identity())return;pencilImageBrushId_="project:"+id;resolvePencilImageBrush();saveBrushPreferences();refresh();});menu.addChild(row);}
+ menu.addChild(new PixelMenuSeparator(skin_));auto angleLabel=new PixelMenuItem(font_,skin_,U"角度（度）");angleLabel->setEnabled(false);menu.addChild(angleLabel);auto angle=new PixelEntry(font_,skin_);angle->numeric=true;angle->setText(std::to_string(int(pencilImageBrushAngle_)));menu.addChild(angle);angle->Change.connect([this,angle]{try{std::size_t used=0;double value=std::stod(angle->text(),&used);if(used==angle->text().size() && std::isfinite(value)){pencilImageBrushAngle_=std::clamp(value,-180.0,180.0);saveBrushPreferences();}}catch(...){} });auto at=imageBrushButton_->bounds();menu.showPopup({at.x,at.y2()},display());requestFocus();}
+
+void Editor::selectFillLibraryBrush(const std::string& id,bool ctrl,bool shift){selectBrushLibraryItem(id,ctrl,shift);}
+
+void Editor::showFillLibraryMenu(){
+
+    PixelMenu menu(skin_);auto capture=new PixelMenuItem(font_,skin_,U"从选区创建笔刷");capture->Click.connect([this]{createFillBrushFromSelection();});menu.addChild(capture);auto folders=new PixelMenuItem(font_,skin_,U"文件夹…");folders->Click.connect([this]{showFillFolderMenu();});menu.addChild(folders);auto load=new PixelMenuItem(font_,skin_,U"导入图像…");load->Click.connect([this]{importFillImage();});menu.addChild(load);
+
+    syncBrushLibraryPanel();auto scan=requestBrushMenuScan(this);syncBrushLibraryPanel();
+    const bool ready=scan&&scan->loaded&&scan->loadedDocument==document.identity()&&scan->loadedDirectory==fillBrushLibraryDirectory()&&scan->loaded->folder==fillFolder_;
+    if(ready){scan->menuRequested=false;const auto order=scan->folderOrder.find(fillFolder_);if(order!=scan->folderOrder.end())for(const auto& id:order->second){const auto& item=scan->loaded->local[scan->localIndex.at(id)];auto row=new PixelMenuItem(font_,skin_,item.name);row->checked=[this,id]{return std::find(fillLibrarySelection_.ids.begin(),fillLibrarySelection_.ids.end(),id)!=fillLibrarySelection_.ids.end();};row->Click.connect([this,id]{selectFillLibraryBrush(id,(GetKeyState(VK_CONTROL)&0x8000)!=0,(GetKeyState(VK_SHIFT)&0x8000)!=0);});menu.addChild(row);}}
+    else{auto loading=new PixelMenuItem(font_,skin_,U"笔刷库加载中…");loading->setEnabled(false);menu.addChild(loading);}
+
+    if(fillFolder_.empty())for(const auto& resource:document.projectBrushes()){auto row=new PixelMenuItem(font_,skin_,U"工程 · "+unicodeText(resource.metadata.name));row->checked=[this,id="project:"+resource.metadata.id]{return std::find(fillLibrarySelection_.ids.begin(),fillLibrarySelection_.ids.end(),id)!=fillLibrarySelection_.ids.end();};row->Click.connect([this,id="project:"+resource.metadata.id]{selectFillLibraryBrush(id,(GetKeyState(VK_CONTROL)&0x8000)!=0,(GetKeyState(VK_SHIFT)&0x8000)!=0);});menu.addChild(row);}
+
+    if(!fillLibrarySelection_.ids.empty()){auto remove=new PixelMenuItem(font_,skin_,U"删除选中图案…");remove->Click.connect([this]{confirmFillLibraryDelete();});menu.addChild(remove);}if(!fillPattern_.brushes.empty()){auto clear=new PixelMenuItem(font_,skin_,U"停用图像图案");clear->Click.connect([this]{fillLibrarySelection_={};fillPattern_.brushes.clear();fillImageName_.clear();pencilImageBrushId_.clear();pencilImageBrush_.reset();saveBrushPreferences();refresh();});menu.addChild(clear);}
+
+    auto mode=new PixelMenuItem(font_,skin_,U"布局：默认 / 规则 / 随机");mode->Click.connect([this]{fillPattern_.mode=fillPattern_.mode==PatternMode::Default?PatternMode::Regular:fillPattern_.mode==PatternMode::Regular?PatternMode::Random:PatternMode::Default;saveBrushPreferences();refresh();});menu.addChild(mode);
+
+    auto sample=new PixelMenuItem(font_,skin_,U"采样：绘制 / 源坐标 / 目标坐标");sample->Click.connect([this]{fillPattern_.paintMode=PatternPaintMode((int(fillPattern_.paintMode)+1)%3);saveBrushPreferences();refresh();});menu.addChild(sample);
+
+    auto settings=new PixelMenuItem(font_,skin_,U"图案参数…");settings->setEnabled(fillPattern_.mode!=PatternMode::Default);settings->Click.connect([this]{showFillPatternSettings();});menu.addChild(settings);
+
+    auto at=fillImageButton_->bounds();menu.showPopup({at.x,at.y2()},display());requestFocus();
+
+  }
+
 void Editor::showBrushLibraryActions(){PixelMenu menu(skin_);auto add=[&](std::u32string label,std::function<void()> action){auto row=new PixelMenuItem(font_,skin_,std::move(label));row->Click.connect(std::move(action));menu.addChild(row);return row;};add(U"文件夹…",[this]{showFillFolderMenu();});add(U"删除选中图案…",[this]{confirmFillLibraryDelete();})->setEnabled(!fillLibrarySelection_.ids.empty());add(U"刷新",[this]{syncBrushLibraryPanel(true);refresh();});menu.addChild(new PixelMenuSeparator(skin_));const int sizes[]{30,40,52};const char* ids[]{"brushSwatchSmall","brushSwatchMedium","brushSwatchLarge"};const char32_t* labels[]{U"小",U"中",U"大"};for(int i=0;i<3;++i){auto row=add(labels[i],[this,id=std::string(ids[i])]{menuCommands_.invoke(id);});row->checked=[this,value=sizes[i]]{return brushLibraryPanel_->swatchSize()==value;};}auto at=brushLibraryActions_[2]->bounds();menu.showPopup({at.x,at.y2()},display());requestFocus();}
 void Editor::smokeBrushLibraryPanel(){
  auto require=[](bool ok,const char* why){if(!ok)throw std::runtime_error(why);};smoke_=true;documentOpen_=true;homeOpen_=false;pending_=Pending::None;playing_=false;document=Document(4,4);document.markSaved();
@@ -130,6 +168,10 @@ void Editor::smokeBrushLibraryPanel(){
  {smoke_=false;syncBrushLibraryPanel(true);auto scan=std::dynamic_pointer_cast<BrushScanWork>(getProperty("moonsprite.brush-scan"));require(scan&&scan->pending,"Background scan did not launch");const auto deadline=std::chrono::steady_clock::now()+std::chrono::seconds(5);while(scan->pending&&std::chrono::steady_clock::now()<deadline){syncBrushLibraryPanel();Sleep(1);}require(!scan->pending,"Background scan failed to publish");
   {std::promise<BrushScanResult> held;scan->future=held.get_future();scan->pending=true;const auto beforePoll=std::chrono::steady_clock::now();for(int i=0;i<100;++i)syncBrushLibraryPanel();require(scan->pending&&std::chrono::steady_clock::now()-beforePoll<std::chrono::seconds(2),"UI polls waited for unfinished brush scan");syncBrushLibraryPanel(true);require(brushLibraryNeedsReload_,"Refresh did not queue next generation");BrushScanResult old;old.key="other-project";held.set_value(std::move(old));syncBrushLibraryPanel();require(scan->pending&&!brushLibraryNeedsReload_,"Stale generation did not launch queued refresh");scan->future.wait();syncBrushLibraryPanel();require(!scan->pending,"Queued refresh did not complete");}
   std::promise<BrushScanResult> delayed;scan->future=delayed.get_future();scan->pending=true;const auto oldKey=brushLibraryResourceKey_;brushLibraryPanelOpen_=false;BrushScanResult stale;stale.key=oldKey;delayed.set_value(std::move(stale));syncBrushLibraryPanel();require(!scan->pending&&brushLibraryNeedsReload_,"Hidden panel accepted stale scan");brushLibraryPanelOpen_=true;smoke_=true;syncBrushLibraryPanel();}
+ // Menu requests load the controller even while its dock column is hidden.
+ {auto scan=std::dynamic_pointer_cast<BrushScanWork>(getProperty("moonsprite.brush-scan"));const bool open=brushLibraryPanelOpen_;brushLibraryPanelOpen_=false;requestBrushMenuScan(this);syncBrushLibraryPanel(true);require(scan->loaded&&scan->loadedDocument==document.identity()&&!scan->pending&&!scan->menuRequested,"Hidden menu request did not finish background scan");brushLibraryPanelOpen_=open;
+  HANDLE locked=CreateFileW(std::filesystem::u8path(first.filePath).c_str(),GENERIC_READ,0,nullptr,OPEN_EXISTING,FILE_ATTRIBUTE_NORMAL,nullptr);require(locked!=INVALID_HANDLE_VALUE,"Fill menu cached resource lock");fillLibrarySelection_={};selectFillLibraryBrush(first.id,false,false);const bool reused=pencilImageBrushId_==first.id&&pencilImageBrush_&&pencilImageBrush_->colors==stamp.colors;CloseHandle(locked);require(reused,"Fill menu selection decoded cached file again");fillLibrarySelection_={};fillPattern_.brushes.clear();pencilImageBrushId_.clear();pencilImageBrush_.reset();
+ }
  // Cached choices survive unavailable files until an explicit refresh publishes.
  {const auto cached=library.save("cached-choice",encodePatternBrushPng(stamp));syncBrushLibraryPanel(true);
   HANDLE locked=CreateFileW(std::filesystem::u8path(cached.filePath).c_str(),GENERIC_READ,0,nullptr,OPEN_EXISTING,FILE_ATTRIBUTE_NORMAL,nullptr);require(locked!=INVALID_HANDLE_VALUE,"Cached selection exclusive file lock");
