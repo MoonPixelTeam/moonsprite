@@ -6785,3 +6785,9 @@ PNG后台解码完成后保留像素及私有surface，每次pump最多上传262
 对照legacy useBrushLibrary.ts refresh不因已有缓存或栏目隐藏取消：原生菜单使用旧缓存时仅在没有pending扫描时释放menuRequested，避免隐藏栏目新结果被当作无人请求丢弃。新增实际生产poll隐藏栏目刷新期间导航至另一目录，验证按最新位置发布并释放请求。前一阶段partial/drop dedupe失败加入accepted/hover/前后资源数/status诊断，尚无证据证明旧失败原因，不改去重语义。构建验证中；整体INCOMPLETE。
 
 阶段验收完成：唯一正式Release构建成功；实际--brush-library-panel-check等待exit0，隐藏栏目pending刷新期间切目录按最新位置发布、缓存/生命周期/导入/拖放检查通过。extension-workspace-ui、multi-document、canvas-resize三项通过2.89秒。来源824文件与diff通过。既有partial/drop首次失败未复现且原因未查明，保留诊断，不称已修复；没有实际弹出菜单点击或人工FPS验收。验收记录追加脚本首次JSON候选校验失败且未写盘，现已更正并复验。整体INCOMPLETE，用户editor_support.h和未跟踪数据保留。
+
+### 2026-11-11：导入与选区创建笔刷内存激活事务（验证中）
+
+依据legacy workspace-commands-tool.ts createBrushFromSelection保存后激活生成像素、useBrushLibrary.ts importPaths激活最后成功资源：原生填充选区创建保存/移动成功后暂存完整选择/图案/活动像素/名称并提交，导入保留最后成功解码资源，不再apply重扫和读PNG。普通选区创建补齐返回profile记忆。沿用保存文件stem名称、原像素/alpha与来源映射，失败移动不覆盖旧选择。真实回归多PNG+末项缺失、半透明像素/coverage、目标目录/名称、移动失败保留及已有持久化重载。源解码/保存/移动仍同步，整体INCOMPLETE。
+
+阶段验收完成：唯一正式Release成功，实际--brush-library-panel-check等待exit0，多文件部分成功最后项/半透明像素coverage/目标目录名称/移动失败保留/持久化重载/选区捕获历史检查通过。selection-pattern-brush、extension-workspace-ui、multi-document、canvas-resize四项通过3.86秒。来源824文件及diff通过。源导入解码、保存、移动仍同步，后台缩略图刷新仍会读取资源；无人工FPS实测，整体INCOMPLETE。用户editor_support.h及未跟踪数据保留，阶段提交推送dev。

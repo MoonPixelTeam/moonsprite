@@ -1804,7 +1804,7 @@ void Editor::createBrushFromSelection(){
 
     document.commitFloatingPaste();if(!document.selection()){status_=U"需要像素选区";refresh();return;}
 
-    try{auto brush=createSelectionPatternBrush(document.activeSurfaceIfPresent(),document.width(),document.height(),*document.selection());if(!brush){status_=U"选区中没有可用笔刷像素";refresh();return;}const auto directory=smoke_?fillBrushLibraryDirectory().parent_path().parent_path()/"pattern-brush-library-fixture":fillBrushLibraryDirectory();PatternBrushLibrary library(directory);auto stored=library.save("笔刷",encodePatternBrushPng(*brush),true,brush->sourceX,brush->sourceY);pencilImageBrushId_=stored.id;pencilImageBrush_=*brush;fillPattern_.brushes.clear();fillLibrarySelection_={};fillImageName_.clear();document.previewSelection({});selectionPivot_.reset();selectionPropertiesActive_=false;selectionFreeTransform_=false;selectionTool_=shapeTool_=eyedropperTool_=gradientTool_=fillTool_=handTool_=eraser_=false;saveBrushPreferences();brushLibraryNeedsReload_=true;status_=U"选区笔刷已保存到本地库";}catch(const std::exception& e){status_=U"创建选区笔刷失败："+unicodeText(e.what());}refresh();
+    try{auto brush=createSelectionPatternBrush(document.activeSurfaceIfPresent(),document.width(),document.height(),*document.selection());if(!brush){status_=U"选区中没有可用笔刷像素";refresh();return;}const auto directory=smoke_?fillBrushLibraryDirectory().parent_path().parent_path()/"pattern-brush-library-fixture":fillBrushLibraryDirectory();PatternBrushLibrary library(directory);auto stored=library.save("笔刷",encodePatternBrushPng(*brush),true,brush->sourceX,brush->sourceY);if(!temporaryBrushReturnProfile_)temporaryBrushReturnProfile_=brushFeedback_.brushProfiles_[0];pencilImageBrushId_=stored.id;pencilImageBrush_=*brush;fillPattern_.brushes.clear();fillLibrarySelection_={};fillImageName_.clear();document.previewSelection({});selectionPivot_.reset();selectionPropertiesActive_=false;selectionFreeTransform_=false;selectionTool_=shapeTool_=eyedropperTool_=gradientTool_=fillTool_=handTool_=eraser_=false;saveBrushPreferences();brushLibraryNeedsReload_=true;status_=U"选区笔刷已保存到本地库";}catch(const std::exception& e){status_=U"创建选区笔刷失败："+unicodeText(e.what());}refresh();
 
   }
 
@@ -1812,7 +1812,7 @@ void Editor::createFillBrushFromSelection(){
 
     document.commitFloatingPaste();if(!document.selection()){status_=U"需要选区";refresh();return;}
 
-    try{auto brush=createSelectionPatternBrush(document.activeSurfaceIfPresent(),document.width(),document.height(),*document.selection());if(!brush){status_=U"选区中没有可用笔刷像素";refresh();return;}PatternBrushLibrary library(fillBrushLibraryDirectory());auto stored=library.save("笔刷",encodePatternBrushPng(*brush),true,brush->sourceX,brush->sourceY);if(!fillFolder_.empty())library.move(stored.id,fillFolder_);fillLibrarySelection_.ids={stored.id};fillLibrarySelection_.active=fillLibrarySelection_.anchor=stored.id;applyFillLibrarySelection();document.previewSelection({});selectionPropertiesActive_=false;saveBrushPreferences();brushLibraryNeedsReload_=true;status_=U"选区笔刷已保存到本地库";}catch(const std::exception& e){status_=U"创建选区笔刷失败："+unicodeText(e.what());}refresh();
+    try{auto brush=createSelectionPatternBrush(document.activeSurfaceIfPresent(),document.width(),document.height(),*document.selection());if(!brush){status_=U"选区中没有可用笔刷像素";refresh();return;}PatternBrushLibrary library(fillBrushLibraryDirectory());auto stored=library.save("笔刷",encodePatternBrushPng(*brush),true,brush->sourceX,brush->sourceY);if(!fillFolder_.empty())library.move(stored.id,fillFolder_);PatternBrushSelection selection;selection.ids={stored.id};selection.active=selection.anchor=stored.id;std::vector<PatternBrush> patterns{*brush};auto active=*brush;const auto name=unicodeText(std::filesystem::u8path(stored.filePath).stem().u8string());if(!temporaryBrushReturnProfile_)temporaryBrushReturnProfile_=brushFeedback_.brushProfiles_[0];fillLibrarySelection_=std::move(selection);fillPattern_.brushes=std::move(patterns);pencilImageBrushId_=stored.id;pencilImageBrush_=std::move(active);fillImageName_=name;document.previewSelection({});selectionPropertiesActive_=false;saveBrushPreferences();brushLibraryNeedsReload_=true;status_=U"选区笔刷已保存到本地库";}catch(const std::exception& e){status_=U"创建选区笔刷失败："+unicodeText(e.what());}refresh();
 
   }
 
@@ -1829,7 +1829,24 @@ void Editor::importFillImage(){
 
 void Editor::importBrushLibraryImages(const std::vector<std::filesystem::path>& paths,const std::string& targetFolder){
  if(paths.empty())return;
-    int success=0,failed=0;std::string last,error;try{PatternBrushLibrary library(fillBrushLibraryDirectory());for(const auto& path:paths){try{auto imported=importPatternBrush(path);auto stored=library.save(utf8Text(imported.name),encodePatternBrushPng(imported.brush));if(!targetFolder.empty())library.move(stored.id,targetFolder);last=stored.id;++success;}catch(const std::exception& e){if(error.empty())error=e.what();++failed;}}if(!last.empty()){fillLibrarySelection_.ids={last};fillLibrarySelection_.active=fillLibrarySelection_.anchor=last;applyFillLibrarySelection();saveBrushPreferences();}status_=U"已导入图案："+unicodeText(std::to_string(success));if(failed)status_+=U" · 失败 "+unicodeText(std::to_string(failed))+U"："+unicodeText(error);}catch(const std::exception& e){status_=U"图案导入失败："+unicodeText(e.what());}brushLibraryNeedsReload_=true;refresh();
+ int success=0,failed=0;std::string error;std::optional<StoredPatternBrush> last;std::optional<PatternBrush> loaded;
+ try{
+  PatternBrushLibrary library(fillBrushLibraryDirectory());
+  for(const auto& path:paths){try{
+   auto imported=importPatternBrush(path);auto stored=library.save(utf8Text(imported.name),encodePatternBrushPng(imported.brush));
+   if(!targetFolder.empty())stored=library.move(stored.id,targetFolder);
+   // Save/move succeeded: retain decoded CPU pixels instead of reading PNG again.
+   last=std::move(stored);loaded=std::move(imported.brush);++success;
+  }catch(const std::exception& e){if(error.empty())error=e.what();++failed;}}
+  if(last&&loaded){
+   PatternBrushSelection selection;selection.ids={last->id};selection.active=selection.anchor=last->id;
+   std::vector<PatternBrush> patterns{*loaded};auto active=*loaded;auto name=unicodeText(std::filesystem::u8path(last->filePath).stem().u8string());
+   if(!temporaryBrushReturnProfile_)temporaryBrushReturnProfile_=brushFeedback_.brushProfiles_[0];
+   fillLibrarySelection_=std::move(selection);fillPattern_.brushes=std::move(patterns);pencilImageBrushId_=last->id;pencilImageBrush_=std::move(active);fillImageName_=std::move(name);saveBrushPreferences();
+  }
+  status_=U"已导入图案："+unicodeText(std::to_string(success));if(failed)status_+=U" · 失败 "+unicodeText(std::to_string(failed))+U"："+unicodeText(error);
+ }catch(const std::exception& e){status_=U"图案导入失败："+unicodeText(e.what());}
+ brushLibraryNeedsReload_=true;refresh();
 }
 
 void Editor::createFillPatternOptions(){
