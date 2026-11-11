@@ -6484,3 +6484,10 @@ PNG后台解码完成后保留像素及私有surface，每次pump最多上传262
 对照ExtensionDialogForm Number.isFinite(Number(value))、Boolean(value)与disabled，数字显示补齐null/bool/字符串/数组转换、空白/radix和非有限回退1；原始defaults不改写，visibleWhen仍严格类型比较。toggle按真值显示，非布尔disabled显示与FormState操作拒绝统一。转换限定显示适配，不将脚本模型默认值擅自规范化。
 
 唯一正式Release与状态目标构建成功，extension-form-ui/image/files/state四项通过1.37秒。状态表格检查undefined/null/bool/空串/科学计数/radix/非法后缀/非有限/数组/对象；实际控件验证字符串数值显示、字符串toggle真值、disabled、raw条件不误显示、编辑后显隐及提交数字草稿。来源821文件与diff检查通过。无绘制几何变化/新截图或FPS测量；完整JavaScript引擎/生产扩展入口仍未完成，不将转换辅助函数视为执行引擎替代。整体INCOMPLETE，用户editor_support.h差异保留，阶段保存推送dev。
+
+
+### 2026-11-11：表单默认值收集复用与批量字段检查
+
+对照ExtensionDialogForm collect(defaults)/visibleWhen，把原每次effectiveValue/shown/control都收集全树默认值改为接收模型时一次收集，保持原depth8、后值覆盖、nullish草稿回退和严格条件语义。编辑/重试/回执仍读取当前草稿，接收新模型替换默认值。可见性遍历保持原实现，尚未完成可见节点索引优化。
+
+本轮可见节点map索引尝试导致正式UI不稳定访问冲突，分步日志位置不固定；Windows调试事件捕获故障，但符号不足以可靠定位，不能当作已查明根因。撤回该尝试后仅默认值缓存与现有遍历通过完整回归。最终唯一正式Release及状态目标构建成功，extension-form-ui/image/files/state四项通过1.77秒，新增200根×100子节点的20k字段默认值/编辑覆盖/重试恢复检查；来源821文件与diff检查通过。无人工截图/FPS测量，不宣称表单性能全量完成。可见节点索引仍未完成，整体迁移INCOMPLETE。保留用户editor_support.h差异与诊断日志，本阶段已验证部分保存推送dev。

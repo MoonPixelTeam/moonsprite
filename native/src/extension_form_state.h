@@ -10,7 +10,7 @@ namespace moon::extension {
 // Renderer/chooser adapters use these values on the event thread.
 class FormState {
  using Object=winrt::Windows::Data::Json::JsonObject;using Value=winrt::Windows::Data::Json::IJsonValue;using Json=winrt::Windows::Data::Json::JsonValue;using Type=winrt::Windows::Data::Json::JsonValueType;using Array=winrt::Windows::Data::Json::JsonArray;
- Object view_,values_;std::wstring pending_,error_;std::uint64_t sequence_=0,generation_=0;bool busy_=false,loaded_=false,active_=true;
+ Object view_,values_,defaults_;std::wstring pending_,error_;std::uint64_t sequence_=0,generation_=0;bool busy_=false,loaded_=false,active_=true;
  std::chrono::steady_clock::time_point started_=std::chrono::steady_clock::now();
  static Object copy(const Object& value){return Object::Parse(value.Stringify());}
  static Value property(const Object& object,const wchar_t* key){return object.HasKey(key)?object.GetNamedValue(key):Value{nullptr};}
@@ -25,7 +25,7 @@ class FormState {
    if(!type||type.ValueType()!=Type::String)continue;const auto kind=type.GetString();if(kind!=L"dialog"&&kind!=L"split"&&kind!=L"sidebar"&&kind!=L"column"&&kind!=L"row"&&kind!=L"slot")continue;auto children=property(node,L"children");if(children&&children.ValueType()==Type::Array){auto subset=children.GetArray();const auto count=kind==L"split"?2u:kind==L"slot"?16u:100u;Array rendered;for(std::uint32_t j=0;j<std::min(count,subset.Size());++j)rendered.Append(subset.GetAt(j));if(auto result=find(rendered,id,defaults,depth+1))return result;}
   }return {};
  }
- std::optional<Object> control(const std::wstring& id)const{if(!active_||busy_)return {};Object values;defaults(view_.GetNamedArray(L"nodes"),values);auto node=find(view_.GetNamedArray(L"nodes"),id,values);if(!node||truthy(property(*node,L"disabled")))return {};return node;}
+ std::optional<Object> control(const std::wstring& id)const{if(!active_||busy_)return {};auto node=find(view_.GetNamedArray(L"nodes"),id,defaults_);if(!node||truthy(property(*node,L"disabled")))return {};return node;}
  Object send(const Object& action,const Object& extra){Object message=copy(action);for(const auto& pair:extra)message.Insert(pair.Key(),pair.Value());message.Insert(L"values",copy(values_));pending_=std::to_wstring(++sequence_);message.Insert(L"requestId",Json::CreateStringValue(pending_));busy_=true;return message;}
  static Object action(const Object& node,const wchar_t* key=L"action"){const auto value=property(node,key);return value&&value.ValueType()==Type::Object?value.GetObject():Object{};}
 public:
@@ -37,9 +37,9 @@ public:
  using Save=std::function<bool(const File&)>;
  FormState(){view_.Insert(L"nodes",Array{});}
  const Object& view()const{return view_;}Object drafts()const{return copy(values_);}bool busy()const{return busy_;}bool loaded()const{return loaded_;}bool active()const{return active_;}const std::wstring& loadError()const{return error_;}std::uint64_t generation()const{return generation_;}
- Value effectiveValue(const std::wstring& id)const{Object all;defaults(view_.GetNamedArray(L"nodes"),all);auto value=property(values_,id.c_str());return nullish(value)?property(all,id.c_str()):value;}
- std::vector<std::wstring> renderedIds()const{Object all;defaults(view_.GetNamedArray(L"nodes"),all);std::vector<std::wstring> ids;auto visit=[&](auto&& self,const Array& nodes,int depth,std::uint32_t limit)->void{if(depth>8)return;for(std::uint32_t i=0;i<std::min(limit,nodes.Size());++i){auto value=nodes.GetAt(i);if(value.ValueType()!=Type::Object)continue;auto node=value.GetObject();auto id=property(node,L"id"),label=property(node,L"label"),type=property(node,L"type");if(!id||id.ValueType()!=Type::String||(label&&label.ValueType()!=Type::String)||!visible(node,all))continue;ids.push_back(std::wstring(id.GetString()));if(!type||type.ValueType()!=Type::String)continue;auto kind=type.GetString();if(kind!=L"dialog"&&kind!=L"split"&&kind!=L"sidebar"&&kind!=L"column"&&kind!=L"row"&&kind!=L"slot")continue;auto children=property(node,L"children");if(children&&children.ValueType()==Type::Array)self(self,children.GetArray(),depth+1,kind==L"split"?2u:kind==L"slot"?16u:100u);}};visit(visit,view_.GetNamedArray(L"nodes"),0,200);return ids;}
- bool shown(const std::wstring& id)const{Object all;defaults(view_.GetNamedArray(L"nodes"),all);return bool(find(view_.GetNamedArray(L"nodes"),id,all));}
+ Value effectiveValue(const std::wstring& id)const{const auto& all=defaults_;auto value=property(values_,id.c_str());return nullish(value)?property(all,id.c_str()):value;}
+ std::vector<std::wstring> renderedIds()const{const auto& all=defaults_;std::vector<std::wstring> ids;auto visit=[&](auto&& self,const Array& nodes,int depth,std::uint32_t limit)->void{if(depth>8)return;for(std::uint32_t i=0;i<std::min(limit,nodes.Size());++i){auto value=nodes.GetAt(i);if(value.ValueType()!=Type::Object)continue;auto node=value.GetObject();auto id=property(node,L"id"),label=property(node,L"label"),type=property(node,L"type");if(!id||id.ValueType()!=Type::String||(label&&label.ValueType()!=Type::String)||!visible(node,all))continue;ids.push_back(std::wstring(id.GetString()));if(!type||type.ValueType()!=Type::String)continue;auto kind=type.GetString();if(kind!=L"dialog"&&kind!=L"split"&&kind!=L"sidebar"&&kind!=L"column"&&kind!=L"row"&&kind!=L"slot")continue;auto children=property(node,L"children");if(children&&children.ValueType()==Type::Array)self(self,children.GetArray(),depth+1,kind==L"split"?2u:kind==L"slot"?16u:100u);}};visit(visit,view_.GetNamedArray(L"nodes"),0,200);return ids;}
+ bool shown(const std::wstring& id)const{const auto& all=defaults_;return bool(find(view_.GetNamedArray(L"nodes"),id,all));}
  void tick(std::chrono::steady_clock::time_point now){if(active_&&!loaded_&&error_.empty()&&now-started_>=std::chrono::seconds(15))error_=L"Extension form did not respond.";}
  void fileFailed(std::wstring message){if(active_){view_.Insert(L"status",Json::CreateStringValue(message));busy_=false;}}
  void loadFailed(std::wstring error){if(active_)error_=std::move(error);}
@@ -60,7 +60,7 @@ public:
   Array encoded;for(const auto& file:files){Object entry;entry.Insert(L"name",Json::CreateStringValue(file.name));entry.Insert(L"mime",Json::CreateStringValue(file.mime));Array bytes;for(auto byte:file.bytes)bytes.Append(Json::CreateNumberValue(byte));entry.Insert(L"bytes",bytes);encoded.Append(entry);}Object extra;extra.Insert(L"files",encoded);return send(action(*node),extra);
  }
  bool receive(const Value& value,std::uint64_t generation,const Save& save={}){
-  if(!active_||generation!=generation_||!value||value.ValueType()!=Type::Object)return false;auto next=value.GetObject();auto nodes=property(next,L"nodes");if(!nodes||nodes.ValueType()!=Type::Array)return false;view_=copy(next);loaded_=true;error_.clear();
+  if(!active_||generation!=generation_||!value||value.ValueType()!=Type::Object)return false;auto next=value.GetObject();auto nodes=property(next,L"nodes");if(!nodes||nodes.ValueType()!=Type::Array)return false;view_=copy(next);defaults_=Object{};defaults(view_.GetNamedArray(L"nodes"),defaults_);loaded_=true;error_.clear();
   auto result=property(next,L"result");if(pending_.empty()||!result||result.ValueType()!=Type::Object)return true;const auto reply=result.GetObject();const auto request=property(reply,L"requestId");if(!request||request.ValueType()!=Type::String||request.GetString()!=pending_)return true;
   pending_.clear();values_=Object{};
   try{const auto file=property(reply,L"file");if(truthy(file)){
