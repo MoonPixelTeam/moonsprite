@@ -6880,3 +6880,10 @@ PNG后台解码完成后保留像素及私有surface，每次pump最多上传262
 实际对照legacy platform_storage.rs atomic_write_with_validation/replace_file，原生同写临时/flush/MoveFileEx不需替换算法。新增独立fixture用顺序文件deny-delete句柄确定触发提交失败，分别核对排序失败、保存PNG+metadata回滚、删除失败，逐项验证旧顺序/PNG/meta完整字节、完整文件集合、无临时泄露；解锁后重排/保存/解码/删除/重开恢复。API错误先立即捕获再转换路径，诊断增加目标属性，避免后续Windows调用覆盖错误。间歇Windows error5原因仍未证明，不靠盲目重试或改变数据语义隐藏。正式构建验证中，整体INCOMPLETE。
 
 阶段验收：正式Release与底层测试构建成功；首次CTest经过新增确定性失败恢复段后，在原并发事务顺序替换报Windows error5，目标attributes32，排除只读属性但未证明原因。同一二进制隔离复验通过2.03秒，新增rollback/解锁恢复/重开全部通过；实际笔刷栏目专项exit0，另三项multi-document/image-brush/canvas-resize通过。来源824/diff通过。无生产重试、无根因修复声明，整体INCOMPLETE，用户editor_support.h和未跟踪数据保留，阶段提交推送dev。
+
+
+### 2026-11-11：后台导入关闭存储生命周期（验证中）
+
+原生Property析构发生在Editor成员之后，旧destructor通过poll启动每个排队批次的新线程和timer，仍接触关闭中的UI。改为stop timer、等待当前future并取结果、直接按路径CPU工作函数完成余下批次，失败不阻断后续，不发布UI。沿用已接受请求保存语义，不改变正常完成激活行为。真实fixture held当前任务+成功/失败/成功排队后直接销毁，核对两份PNG重开像素、Editor笔刷/status不变；正式构建验证中，整体INCOMPLETE。
+
+阶段验收：唯一正式Release成功，实际笔刷栏目专项exit0包含持有当前任务和成功/失败/成功队列直接析构、两PNG重开像素一致、Editor选择/status不变，既有生产异步/延迟激活/FIFO/拖放通过。multi-document、image-brush、canvas-resize通过1.23秒，来源824/diff通过。没有人工关闭窗口/FPS验收，整体INCOMPLETE，保留用户editor_support.h与未跟踪文件，阶段提交推送dev。

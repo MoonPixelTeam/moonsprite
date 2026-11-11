@@ -36,7 +36,13 @@ struct BrushImportWork final:ui::Property {
    catch(...){promise.set_exception(std::current_exception());}
   }).detach();timer.start();
  }
- ~BrushImportWork(){timer.stop();while(pending){future.wait();poll();}timer.stop();}
+ ~BrushImportWork(){
+  // Property teardown happens after Editor members are gone. Drain storage
+  // without starting timers/workers or invoking any UI publication callbacks.
+  timer.stop();
+  if(pending&&future.valid())try{future.get();}catch(...){}
+  for(const auto& request:queued)try{(void)importBrushFiles(request.directory,request.paths,request.folder);}catch(...){}
+ }
  std::optional<BrushImportResult> poll(){
   if(!pending||future.wait_for(std::chrono::seconds(0))!=std::future_status::ready)return {};
   BrushImportResult result;try{result=future.get();}catch(const std::exception& error){result.error=error.what();result.failed=1;}
@@ -368,6 +374,15 @@ void Editor::smokeBrushLibraryPanel(){
   work.future.wait();auto failed=work.poll();require(failed&&failed->failed==1&&!failed->last&&work.pending&&work.queued.empty(),"Failed batch blocked following import");
   work.future.wait();auto successful=work.poll();require(successful&&successful->success==1&&successful->loaded&&successful->loaded->colors==stamp.colors&&!work.pending,"Queued batch failed to finish after error");
 
+ }
+ // Destroy the owner with an active batch and queued batches, including a
+ // failure. All accepted storage requests finish without a UI continuation.
+ {const auto root=dir/"close-imports";const auto input=dir/"worker-input.png";const auto beforeId=pencilImageBrushId_;const auto beforePixels=pencilImageBrush_;const auto beforeStatus=status_;
+  {BrushImportWork closing(this);std::promise<BrushImportResult> held;closing.future=held.get_future();closing.pending=true;
+   closing.start({root,{input},{}});closing.start({root,{dir/"missing-close.png"},{}});closing.start({root,{input},{}});held.set_value({});}
+  const auto saved=PatternBrushLibrary(root).list();require(saved.brushes.size()==2,"Closing import owner lost queued storage requests after failure");
+  for(const auto& item:saved.brushes)require(importPatternBrush(std::filesystem::u8path(item.filePath)).brush.colors==stamp.colors,"Closing import wrote unreadable resource");
+  require(pencilImageBrushId_==beforeId&&bool(pencilImageBrush_)==bool(beforePixels)&&status_==beforeStatus,"Closing storage drain called Editor publication");
  }
  // Production completion targets the active session, matching legacy async import.
  {auto previousDocument=std::move(document);const auto oldId=pencilImageBrushId_;const auto oldBrush=pencilImageBrush_;const auto oldSelection=fillLibrarySelection_;const auto oldPatterns=fillPattern_.brushes;
