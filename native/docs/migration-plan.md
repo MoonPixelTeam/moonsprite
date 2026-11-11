@@ -6531,3 +6531,9 @@ PNG后台解码完成后保留像素及私有surface，每次pump最多上传262
 原计划扩大全编辑器modal隔离，核对发现旧版modal-backdrop pointer-events:none且透明，并非全屏鼠标屏障；已向用户提出完整modal新行为选择，未获答复前未擅自实现。该决定不阻塞本轮独立消息控件补齐。
 
 唯一正式Release构建成功，extension-form-ui/image/files/state四项通过1.97秒，新增真实表单空行/空格/CRLF精确行检查、200字中文窄宽折行完整文本及宽度约束，既有图片/提示/重试/关闭链路通过。来源821文件与diff检查通过。未新增人工图像验收或CPU/FPS测量，生产扩展执行器、modal取舍及其他迁移缺口仍INCOMPLETE。保留editor_support.h与用户日志/缓存，本阶段保存推送dev。
+
+### 2026-11-11：消息制表位与折行宽度一致性
+
+接续message控件迁移，对照旧版styles.css pre-wrap且未覆盖tab-size的默认8空格制表位，去掉固定展开八空格的近似。原始消息行保留Tab，按当前行累计宽度推进至下一制表位；折行测量与实际绘制共用messageAdvance，绘制普通文本run并跳过Tab区域。英文断点搬移尾部后使用while重新判断后续字符是否超宽，避免单次判断遗漏。该适配仍使用指定Fusion字模，不宣称浏览器完整Unicode分段/双向/组合排版已等价。
+
+唯一正式Release构建成功，extension-form-ui/image/files/state四项通过1.90秒；实际窗口增加Tab原文保留、首行字后/连续Tab的度量对齐，并保持空行/空格/CRLF/长中文窄宽重排与完整表单检查通过。来源821文件及diff检查通过，无人工图像验收或性能测量。完整modal产品选择和JS执行器待确认不擅自实施，整体迁移仍INCOMPLETE；保留editor_support.h与用户缓存/日志，本阶段保存推送dev。
