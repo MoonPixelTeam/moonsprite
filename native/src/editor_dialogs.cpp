@@ -9,6 +9,7 @@
 #include "editor.h"
 #include "lua_script_service.h"
 #include "extension_preferences.h"
+#include "extension_menu_adapter.h"
 #include "color_overlay_dialog.h"
 #include "timelapse_session.h"
 #include "sheet_import_preview.h"
@@ -1729,11 +1730,7 @@ void Editor::layoutModal() {const auto rc=uiLogical(clientBounds());
 
   }
 
-void Editor::layoutTopMenu(gfx::Rect bar) {
-    if(workspaceMenuButton_){const int size=UiSpacing::iconSize*uiScale;const gfx::Rect target{bar.x2()-size,bar.y+(bar.h-size)/2,size,size};if(workspaceMenuButton_->bounds()!=target)workspaceMenuButton_->setBounds(target);workspaceMenuButton_->setVisible(!advancedActive());workspaceMenuButton_->setEnabled(pending_==Pending::None&&!document.active()&&!workspacePresetDialogOpen_);bar.w-=(UiSpacing::iconSize+UiSpacing::related)*uiScale;}
-
-    if(!menuBar_)return;auto menu=menuBar_->getMenu();
-
+namespace {
     struct OverflowState final:ui::Property {
       std::vector<PixelMenuItem*> entries;
       PixelMenuItem* more=nullptr;
@@ -1741,6 +1738,21 @@ void Editor::layoutTopMenu(gfx::Rect bar) {
       gfx::Rect queuedBar;
       OverflowState():ui::Property("moonsprite.top-menu-overflow"){}
     };
+}
+namespace {
+bool submenuDetached(ui::MenuItem* item){if(item->hasSubmenuOpened())return false;auto submenu=item->getSubmenu();if(!submenu)return true;if(submenu->parent())return false;for(auto child:submenu->children())if(auto row=dynamic_cast<ui::MenuItem*>(child);row&&!submenuDetached(row))return false;return true;}
+}
+bool restoreTopMenuEntries(ui::Menu* menu){
+ auto state=std::dynamic_pointer_cast<OverflowState>(menu->getProperty("moonsprite.top-menu-overflow"));if(!state){for(auto child:menu->children())if(auto item=dynamic_cast<PixelMenuItem*>(child);item&&!submenuDetached(item))return false;return true;}if(state->layoutQueued)return false;
+ for(auto item:state->entries)if(!submenuDetached(item))return false;if(state->more&&!submenuDetached(state->more))return false;
+ for(auto item:state->entries){if(item->parent())item->parent()->removeChild(item);menu->addChild(item);}
+ if(state->more){if(state->more->parent())state->more->parent()->removeChild(state->more);delete state->more;state->more=nullptr;}menu->removeProperty("moonsprite.top-menu-overflow");return true;
+}
+void Editor::layoutTopMenu(gfx::Rect bar) {
+    if(workspaceMenuButton_){const int size=UiSpacing::iconSize*uiScale;const gfx::Rect target{bar.x2()-size,bar.y+(bar.h-size)/2,size,size};if(workspaceMenuButton_->bounds()!=target)workspaceMenuButton_->setBounds(target);workspaceMenuButton_->setVisible(!advancedActive());workspaceMenuButton_->setEnabled(pending_==Pending::None&&!document.active()&&!workspacePresetDialogOpen_);bar.w-=(UiSpacing::iconSize+UiSpacing::related)*uiScale;}
+
+    if(!menuBar_)return;auto menu=menuBar_->getMenu();
+
     auto state=std::dynamic_pointer_cast<OverflowState>(menu->getProperty("moonsprite.top-menu-overflow"));
     if(!state){state=std::make_shared<OverflowState>();for(auto child:menu->children())if(auto entry=dynamic_cast<PixelMenuItem*>(child))state->entries.push_back(entry);menu->setProperty(state);}
     const auto& entries=state->entries;

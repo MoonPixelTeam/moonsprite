@@ -11,6 +11,7 @@
 #include "extension_install_dialog.h"
 #include "extension_preferences.h"
 #include "extension_settings_dialog.h"
+#include "extension_menu_adapter.h"
 
 using namespace moon::editor;
 using namespace moon;
@@ -428,6 +429,7 @@ int app_main(int argc,char* argv[]) {
     ui::set_use_native_cursors(true); manager.refreshCursor();
 
     if(argc>1&&std::string(argv[1])=="--extension-install-check"){try{Skin icons;for(const auto suffix:{"","-disabled"})icons.assets.patches[std::string("close")+suffix]=importSkinPng(assets/"utility-icons"/(std::string("close")+suffix+".png"),32);checkExtensionInstallDialog(font,skin,icons,editor->display(),editor->bounds(),assets.parent_path()/"extension-install-test-owned");}catch(const std::exception& e){std::ofstream("native-extension-install-error.txt")<<e.what();delete editor;desktop.editor=nullptr;return 1;}delete editor;desktop.editor=nullptr;return 0;}
+    if(argc>1&&std::string(argv[1])=="--extension-menus-check"){try{Skin icons;for(const auto name:{"close","close-disabled"})icons.assets.patches[name]=importSkinPng(assets/"utility-icons"/(std::string(name)+".png"),32);checkExtensionMenus(font,skin,icons,editor,assets.parent_path()/"extension-menus-test-owned");}catch(const std::exception& e){std::ofstream("native-extension-menus-error.txt")<<e.what();delete editor;desktop.editor=nullptr;return 1;}delete editor;desktop.editor=nullptr;return 0;}
     if(argc>1&&std::string(argv[1])=="--extension-settings-check"){try{Skin icons;for(const auto name:{"close","close-disabled"})icons.assets.patches[name]=importSkinPng(assets/"utility-icons"/(std::string(name)+".png"),32);checkExtensionSettings(font,skin,icons,editor->display(),editor->bounds(),assets.parent_path()/"extension-settings-test-owned");}catch(const std::exception& e){std::ofstream("native-extension-settings-error.txt")<<e.what();delete editor;desktop.editor=nullptr;return 1;}delete editor;desktop.editor=nullptr;return 0;}
     if(argc>1&&std::string(argv[1])=="--extension-preferences-check"){try{Skin icons;for(const auto name:{"close","close-disabled","delete","delete-disabled"})icons.assets.patches[name]=importSkinPng(assets/"utility-icons"/(std::string(name)+".png"),32);checkExtensionPreferences(font,skin,icons,editor->display(),editor->bounds(),assets.parent_path()/"extension-preferences-test-owned");}catch(const std::exception& e){std::ofstream("native-extension-preferences-error.txt")<<e.what();delete editor;desktop.editor=nullptr;return 1;}delete editor;desktop.editor=nullptr;return 0;}
     const bool scriptEntryCheck=argc>1&&std::string(argv[1])=="--script-entry-check";

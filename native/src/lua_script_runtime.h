@@ -48,7 +48,7 @@ public:
  void shutdown(){ {std::lock_guard lock(mutex_);stopping_=true;}ready_.notify_one();if(worker_.joinable())worker_.join();}
  // Menu/preferences source discovery and mutations share the worker queue with
  // execution, avoiding directory scans and first-run seed writes on the UI.
- std::future<std::string> list(){return enqueue([](auto*,Service& service){return winrt::to_string(service.list().Stringify());});}
+ std::future<std::string> list(){return enqueue([](auto*,Service& service){return winrt::to_string(service.list(true).Stringify());});}
  std::future<std::string> remove(std::string id){return enqueue([id=std::move(id)](auto*,Service& service){service.remove(id);return std::string("null");});}
  std::future<std::string> start(std::string id,std::string context){return enqueue([id=std::move(id),context=std::move(context)](auto* handle,Service& service){
   using namespace winrt::Windows::Data::Json;const auto source=service.load(id);auto next=request(L"start");next.Insert(L"source",JsonValue::CreateStringValue(winrt::to_hstring(source.text)));next.Insert(L"filePath",JsonValue::CreateStringValue(source.path.wstring()));next.Insert(L"fileName",JsonValue::CreateStringValue(winrt::to_hstring(source.name)));next.Insert(L"context",JsonObject::Parse(winrt::to_hstring(context)));return invoke(handle,next);

@@ -7,6 +7,7 @@
 #include "editor_implementation.h"
 #include "lua_script_window_host.h"
 #include "lua_mse_snapshot.h"
+#include "extension_menu_adapter.h"
 
 namespace moon::editor {
 namespace {
@@ -642,7 +643,7 @@ std::function<void(PixelMenu*,const std::string&)> appendChildren=[&](PixelMenu*
 
 PixelMenu* fileMenu=nullptr;
 
-for(const auto& e:menus::catalog())if(!*e.parent){if(std::string(e.id)=="help"){auto pet=new PixelMenuItem(font_,skin_,U"宠物");pet->setEnabled(false);root->addChild(pet);}auto branch=group(e.title);if(std::string(e.id)=="file")fileMenu=branch;appendChildren(branch,e.id);}
+for(const auto& e:menus::catalog())if(!*e.parent){if(std::string(e.id)=="help"){auto pet=new PixelMenuItem(font_,skin_,U"宠物");pet->setEnabled(false);root->addChild(pet);}auto branch=group(e.title);branch->getOwnerMenuItem()->setId(e.id);if(std::string(e.id)=="file")fileMenu=branch;appendChildren(branch,e.id);}
 
     item(fileMenu,"recovery",U"恢复工程",U"",[this]{chooseRecovery();});
 
@@ -692,7 +693,7 @@ for(const auto& e:menus::catalog())if(!*e.parent){if(std::string(e.id)=="help"){
   }
 
 struct Editor::ScriptState {
- script::Runtime runtime;script::Client client;std::unique_ptr<ScriptWindowHost> host;ui::Timer timer;std::future<PatternBrushListing> brushes;std::vector<StoredPatternBrush> localBrushes;std::vector<std::u32string> notifications;std::string queued;std::uint64_t queuedIdentity=0;std::string queuedLayer,queuedFrame;std::uint64_t menuRevision=0;bool pumping=false,publishingMenu=false;
+ script::Runtime runtime;script::Client client;std::unique_ptr<ExtensionMenuAdapter> menus;std::unique_ptr<ScriptWindowHost> host;ui::Timer timer;std::future<PatternBrushListing> brushes;std::vector<StoredPatternBrush> localBrushes;std::vector<std::u32string> notifications;std::string queued;std::uint64_t queuedIdentity=0;std::string queuedLayer,queuedFrame;std::uint64_t menuRevision=0;bool pumping=false,publishingMenu=false;
  ScriptState(Editor& editor,const std::filesystem::path& root):runtime(root),client(runtime),timer(30,&editor){}
 };
 void Editor::initializeScripts(const std::filesystem::path& root){
@@ -758,6 +759,7 @@ void Editor::initializeScripts(const std::filesystem::path& root){
    if(scriptSaveClose_){scriptSaveClose_=false;auto callback=new ui::CallbackMessage([this]{requestClose();});callback->setRecipient(ui::Manager::getDefault());ui::Manager::getDefault()->enqueueMessage(callback);}
   });
   state->host->setPlaybackHost([this](Document& d,const script::PlaybackRequest& request){applyScriptPlayback(d,request);});
+  state->menus=std::make_unique<ExtensionMenuAdapter>(font_,skin_,toolIcons_,this,menuBar_,palettePreferencePath().parent_path()/"extension-storage.json",[this]{return pending_==Pending::None;},[this]{return documentOpen_&&!homeOpen_;},[this]{return !scripts_||scripts_->client.busy()||!scripts_->queued.empty();},[this](const std::string& id){runScript(id);},[this]{refresh();},[this](const std::u32string& error){status_=error;invalidate();});
   state->timer.Tick.connect([this]{pumpScripts();});state->timer.start();updateScriptsMenu();
  }catch(const std::exception& e){stopScripts();status_=U"脚本初始化失败："+unicodeText(e.what());invalidate();}
 }
@@ -768,6 +770,7 @@ void Editor::pumpScripts(){
  if(!scripts_||scripts_->pumping)return;auto state=scripts_;state->pumping=true;struct Guard{bool& value;~Guard(){value=false;}} guard{state->pumping};
  if(state->brushes.valid()&&state->brushes.wait_for(std::chrono::seconds(0))==std::future_status::ready){try{state->localBrushes=state->brushes.get().brushes;}catch(const std::exception& e){state->queued.clear();state->client.failRequest(e.what());}}
  if(pending_!=Pending::None)return;
+ if(state->menus)state->menus->pump();
  auto* active=documentOpen_&&!homeOpen_?&document:nullptr;
  const auto identity=document.identity(),content=document.contentRevision(),history=document.historyRevision(),overlay=document.floatingOverlayRevision();const auto frame=document.frame().id,layer=document.layer().id;
  if(!state->queued.empty()&&!state->brushes.valid()){auto id=std::move(state->queued);state->queued.clear();if(active&&state->queuedIdentity==document.identity()&&state->queuedLayer==document.layer().id&&state->queuedFrame==document.frame().id)state->host->run(active,std::move(id));}
@@ -780,7 +783,8 @@ void Editor::pumpScripts(){
 }
 void Editor::updateScriptsMenu(){
  if(!scriptsMenu_||!scripts_)return;auto& client=scripts_->client;if(!scripts_->publishingMenu)client.refresh();scripts_->menuRevision=client.listingRevision();auto folderItem=menuItems_.at("openScriptFolder");auto children=scriptsMenu_->children();for(auto child:children){scriptsMenu_->removeChild(child);if(child!=folderItem)delete child;}
- using namespace winrt::Windows::Data::Json;const auto list=JsonArray::Parse(winrt::to_hstring(client.scriptsJson()));
+ if(scripts_->menus)scripts_->menus->request(client.extensionsJson());
+ using namespace winrt::Windows::Data::Json;JsonArray list;for(auto value:JsonArray::Parse(winrt::to_hstring(client.scriptsJson())))if(!scripts_->menus||!scripts_->menus->placed(winrt::to_string(value.GetObject().GetNamedString(L"id"))))list.Append(value);
  if(client.loadFailed()||!list.Size()){auto empty=new PixelMenuItem(font_,skin_,client.loading()?U"正在加载脚本…":client.loadFailed()?U"脚本列表读取失败":U"没有可用脚本");empty->setEnabled(false);scriptsMenu_->addChild(empty);}
  else for(const auto& value:list){auto entry=value.GetObject();const auto id=winrt::to_string(entry.GetNamedString(L"id"));auto row=new PixelMenuItem(font_,skin_,unicodeText(winrt::to_string(entry.GetNamedString(L"name"))));row->available=[this]{return scripts_&&!scripts_->client.busy()&&scripts_->queued.empty()&&documentOpen_&&!homeOpen_&&pending_==Pending::None;};row->setId(id.c_str());row->Click.connect([this,id]{runScript(id);});scriptsMenu_->addChild(row);}
  scriptsMenu_->addChild(new PixelMenuSeparator(skin_));scriptsMenu_->addChild(folderItem);
@@ -1042,6 +1046,20 @@ void Editor::smokeScriptEntry(){
  runPanelCheck("mse.workspace.hidePanel('palette'); local s=Sprite(2,2); s.name='Script adopted'; app.activeImage:drawPixel(0,0,0xff556677)");
  if(projects_.size()!=tabs+1||document.identity()==sourceIdentity||document.width()!=2||document.height()!=2||document.name()!=U"Script adopted"||document.pixels()[0]!=0xff556677||palettePanelOpen_||projectDocument(sourceTab).identity()!=sourceIdentity||projectDocument(sourceTab).pixels()[0]!=0xff112233)throw std::runtime_error("Script panel/document adoption boundary lost original tab or pixels");
  palettePanelOpen_=savedVisible[0];
+ // Verify the production discovery -> contributed menu -> Lua path, including
+ // the real shared More overflow layout rather than a separate test menu tree.
+ auto checkContributions=[&]() __declspec(noinline) {
+  const auto package=root/"extensions"/"menu-entry";std::filesystem::create_directories(package);
+  std::ofstream(package/"manifest.json")<<R"({"schemaVersion":2,"id":"menu-entry","name":"Entry menu","version":"1","commands":[{"id":"paint","name":"Paint entry","entry":"paint.lua"}],"topMenus":[{"id":"entry","name":"Entry contribution","position":"before:help","commands":["paint"]}],"menuItems":[{"id":"edit","menu":"edit","position":"end","commands":["paint"]}]})";
+  std::ofstream(package/"paint.lua")<<"app.activeImage:drawPixel(1,0,0xff765432)";extension::RuntimeDirectory::setEnabled(root/"extensions","menu-entry",true);
+  std::function<PixelMenuItem*(ui::Menu*,const std::string&)> find=[&](ui::Menu* menu,const std::string& id)->PixelMenuItem*{for(auto child:menu->children())if(auto item=dynamic_cast<PixelMenuItem*>(child)){if(item->id()==id)return item;if(auto submenu=item->getSubmenu())if(auto found=find(submenu,id))return found;}return nullptr;};
+  const std::string topId="extension-menu:menu-entry:entry";
+  auto publish=[&](bool visible){updateScriptsMenu();const auto until=std::chrono::steady_clock::now()+std::chrono::seconds(10);do{pumpScripts();manager()->dispatchMessages();std::this_thread::yield();}while((scripts_->client.loading()||bool(find(menuBar_->getMenu(),topId))!=visible)&&std::chrono::steady_clock::now()<until);if(scripts_->client.loading()||bool(find(menuBar_->getMenu(),topId))!=visible)throw std::runtime_error("Formal contribution discovery/publication timeout");};
+  publish(true);for(auto child:scriptsMenu_->children())if(child->id()=="extension:menu-entry:paint")throw std::runtime_error("Placed Lua duplicated in Scripts");
+  const auto ordinaryBar=menuBar_->bounds();layoutTopMenu({ordinaryBar.x,ordinaryBar.y,170*uiScale,ordinaryBar.h});auto top=find(menuBar_->getMenu(),topId);if(!top||top->parent()==menuBar_->getMenu())throw std::runtime_error("Contributed top menu not retained in More");
+  auto action=find(menuBar_->getMenu(),"menu-entry:menu-item:edit:paint");if(!action)throw std::runtime_error("Formal builtin contribution missing");action->Click();manager()->dispatchMessages();const auto until=std::chrono::steady_clock::now()+std::chrono::seconds(10);do{pumpScripts();std::this_thread::yield();}while((!scripts_->queued.empty()||scripts_->client.running())&&std::chrono::steady_clock::now()<until);if(document.pixels()[1]!=0xff765432)throw std::runtime_error("Formal contributed Lua did not execute");
+  extension::RuntimeDirectory::setEnabled(root/"extensions","menu-entry",false);publish(false);if(find(menuBar_->getMenu(),"menu-entry:menu-item:edit:paint"))throw std::runtime_error("Disabled formal contribution retained builtin command");refresh();std::ofstream(root/"menu-contributions-passed.txt")<<"production discovery, placement, More, Lua execution and disable passed";
+ };checkContributions();
  stopScripts();document=std::move(*std::make_unique<Document>());refresh();
 }
 

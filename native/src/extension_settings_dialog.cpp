@@ -53,7 +53,8 @@ public:
   }sync();
  }
  ~SettingsDialog(){if(!parent())setDisplay(nullptr,false);}
- gfx::Size minimumDialogSize(int)const override{return {240*uiScale,160*uiScale};}
+ gfx::Size minimumDialogSize(int)const override{return {240*uiScale,(DialogLayout::bodyTop+textControlHeight*2+12)*uiScale};}
+ gfx::Size preferredDialogSize(){measure();return {360*uiScale,std::max(minimumDialogSize(0).h,(DialogLayout::bodyTop+textControlHeight+12+total_)*uiScale)};}
  void onResize(ui::ResizeEvent& e)override{setBoundsQuietly(e.bounds());const auto r=bounds();layoutHeaderButton(close_);reset_->setBounds({r.x+6*uiScale,r.y2()-(6+textControlHeight)*uiScale,60*uiScale,textControlHeight*uiScale});done_->setBounds({r.x2()-66*uiScale,r.y2()-(6+textControlHeight)*uiScale,60*uiScale,textControlHeight*uiScale});layout();}
  void paintDialogContents(ui::PaintEvent& e)override{auto& g=*e.graphics();UiPaintScale scale(g);const auto r=uiLogical(clientBounds());drawDialogTitle(font_,g,r,unicodeText(candidate_.metadata.name));const auto b=body();gfx::Rect clip{r.x+6,r.y+DialogLayout::bodyTop,b.w/uiScale,b.h/uiScale};g.saveClip();g.clipRect(clip);for(auto& row:rows_)if(row.shown){int y=clip.y+row.top-scroll_;for(auto& line:row.label){if(y+12>clip.y&&y<clip.y2())font_.draw(g,line,clip.x,y,skin_["text"]);y+=12;}y+=(row.label.empty()?0:2)+textControlHeight+(row.hint.empty()?0:2);for(auto& line:row.hint){if(y+12>clip.y&&y<clip.y2())font_.draw(g,line,clip.x,y,skin_["muted"]);y+=12;}}int y=clip.y+total_-int(errorLines_.size())*12-scroll_;for(auto& line:errorLines_){if(y+12>clip.y&&y<clip.y2())font_.draw(g,line,clip.x,y,skin_["text"]);y+=12;}g.restoreClip();}
  bool onProcessMessage(ui::Message* message)override{if(message->type()==ui::kMouseWheelMessage){scroll_-=static_cast<ui::MouseMessage*>(message)->wheelDelta().y*36;layout();return true;}if(message->type()==ui::kKeyDownMessage&&static_cast<ui::KeyMessage*>(message)->scancode()==ui::kKeyEsc){closeWindow(nullptr);return true;}return PixelDialog::onProcessMessage(message);}
@@ -61,7 +62,7 @@ public:
  bool shown(const char* id)const{for(auto& row:rows_)if(row.control->id()==id)return row.shown;return false;}
  bool hasError()const{return !error_.empty();}void reset(){reset_->Click();}bool scrolls()const{return bar_->isVisible();}
 };
-void place(SettingsDialog& dialog,ui::Display* display,gfx::Rect area){dialog.setDisplay(display,false);const int w=std::min(360*uiScale,area.w),h=std::min(340*uiScale,area.h);auto c=area.center();dialog.setBounds({c.x-w/2,c.y-h/2,w,h});}
+void place(SettingsDialog& dialog,ui::Display* display,gfx::Rect area){dialog.setDisplay(display,false);const int w=std::min(360*uiScale,area.w);auto c=area.center();dialog.setBounds({c.x-w/2,c.y,w,std::min(340*uiScale,area.h)});const int h=std::min({dialog.preferredDialogSize().h,340*uiScale,area.h});dialog.setBounds({c.x-w/2,c.y-h/2,w,h});}
 }
 void showExtensionSettings(const PixelFont& font,const Skin& skin,const Skin& icons,ui::Display* display,gfx::Rect area,const extension::RuntimeCandidate& candidate,extension::Storage& storage,extension::RuntimeRegistry& registry){if(!candidate.settings.storageKey)throw std::runtime_error("HTML 扩展设置页尚未迁移为原生界面。");SettingsDialog dialog(font,skin,icons,candidate,storage,registry);place(dialog,display,area);dialog.openWindowInForeground();}
 void checkExtensionSettings(const PixelFont& font,const Skin& skin,const Skin& icons,ui::Display* display,gfx::Rect area,const std::filesystem::path& directory)try{

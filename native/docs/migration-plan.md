@@ -6984,3 +6984,14 @@ Aseprite 源码对照：src/app/extensions.cpp installCompressedExtension 的逐
 真实模态检查直接操作生产控件：旧版多条件显隐保留37、文本100字符/选项键、文件锁导致保存失败不发事件且恢复、重置保留unknown键、未启动Runtime不关闭、成功命令关闭及实际重开存储。正式构建验证中。此适配器尚未由正式菜单贡献/Runtime入口调用，不称用户已可通过菜单使用扩展设置；HTML设置页、命令danger皮肤区别和几何持久化仍缺失。存储沿用旧版同步写，不称完成慢盘性能优化。整体迁移INCOMPLETE。
 
 阶段验收：唯一正式Release最终构建成功；extension-settings-ui、extension-preferences-ui、extension-contributions、extension-storage四项全部通过4.87秒。首次设置检查遗漏Entry::setText不发布Change的Aseprite契约，已补齐测试变更事件；此前未捕获的WinRT JSON缺键异常造成进程退出，检查入口现将其转为可读错误。实际文本截断后继续发布Change，确保截断内容保存。来源覆盖830项及快照检查通过。人工查看settings.bmp窄窗截图，标题、正文视口/滚动条、固定重置/完成按钮无重叠；未验证全部语言/全部尺寸。正文换行复用宽度缓存，未作慢盘或全软件FPS验收。HTML设置、正式贡献入口、按钮danger皮肤与几何持久化仍未迁移；整体INCOMPLETE。旧错误日志、用户editor_support.h及所有未跟踪数据保留；本阶段保存推送dev。
+
+
+### 2026-11-11 扩展静态贡献菜单到实际设置窗口（阶段验收通过）
+
+复用legacy AppMenuBar/extension-contributions/executeExtensionCommand及现有原生数据模型，接通内置菜单start/end/具名子菜单、顶层start/before/after/end贡献和Lua/host-settings命令。已有Lua FIFO发现结果加入清单/enabled快照，Client同一revision发布，UI不扫描磁盘。正式设置使用偏好目录extension-storage.json，保留运行期间/无工程Lua禁用及完成时readiness再次校验，点击后排到菜单关闭消息之后打开窗口。More溢出重建前恢复逻辑顶层项，保留内置行对象和Home/现有Pet占位边界。菜单描述复用TooltipManager。扩展停用/重启用/删除跟随既有发现刷新。
+
+本阶段不接未经决定的生产JS执行器，动态Runtime菜单状态、贡献栏目、HTML设置页仍INCOMPLETE；仅栏目声明的Lua命令暂保留Scripts入口避免迁移期间不可达，未声称全扩展菜单迁移等价。新增真实菜单检查覆盖位置/禁用/路由、菜单打开真实设置并实际修改保存、排队后禁用、停用/启用/移除。正式构建及实际运行结果待补。
+
+中途验收：首版正式构建及extension-menus-ui通过1.06秒，真实设置开关保存/停启/删除路径完成；查看menu-settings.bmp发现设置默认固定340px逻辑高度使单控件窗口大量空白，按统一规范改为正文测量决定默认高度，长内容仍滚动。新增单控件高度回归。脚本Service公开list()保持原two-key契约，内部FIFO list(true)附加菜单快照；补齐快照ID/enabled/停用与公开schema检查。生产script-entry smoke新增真实清单扫描、Scripts去重、More收纳、贡献Lua实际改像素和停用清理。最终构建中；首次构建不是最终版本验收。
+
+阶段最终验收：唯一正式Release最终增量构建通过。extension-menus-ui、extension-settings-ui、extension-preferences-ui、extension-contributions最终四项全部通过3.97秒；已重编的lua-script-directory/runtime/invocation三项全部通过10.75秒。最终--script-entry-check实际进程exit0，menu-contributions-passed.txt本轮更新时间22:42:26，覆盖现有全部脚本实际入口流程及新增生产发现/去重/More/改像素/停用清理；旧错误日志保留，不把旧文件当本次失败。人工查看最终menu-settings.bmp：单控件窗口按内容收紧，开关关闭态与固定重置/完成按钮正确、无重叠；截图顶部是测试专用菜单条叠在编辑器上的夹具，未宣称生产主菜单全量视觉验收。来源覆盖832项及快照、diff检查通过。同步设置存储仍未作慢盘延迟验收，生产JS/动态Runtime菜单/扩展栏目/HTML设置仍INCOMPLETE。保留用户editor_support.h与所有未跟踪数据；本阶段保存推送dev。
