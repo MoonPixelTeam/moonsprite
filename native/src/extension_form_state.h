@@ -63,10 +63,16 @@ public:
   if(!active_||generation!=generation_||!value||value.ValueType()!=Type::Object)return false;auto next=value.GetObject();auto nodes=property(next,L"nodes");if(!nodes||nodes.ValueType()!=Type::Array)return false;view_=copy(next);defaults_=Object{};defaults(view_.GetNamedArray(L"nodes"),defaults_);loaded_=true;error_.clear();
   auto result=property(next,L"result");if(pending_.empty()||!result||result.ValueType()!=Type::Object)return true;const auto reply=result.GetObject();const auto request=property(reply,L"requestId");if(!request||request.ValueType()!=Type::String||request.GetString()!=pending_)return true;
   pending_.clear();values_=Object{};
+  // The native chooser pumps events. A push in this generation keeps the
+  // legacy current-view status merge, but retry/close or a newer action owns
+  // its own completion and must not be unlocked by this save returning.
+  const auto completedSequence=sequence_;
+  const auto ownsCompletion=[&]{return active_&&generation_==generation&&sequence_==completedSequence;};
+  const auto status=[&](const winrt::hstring& message){if(ownsCompletion())view_.Insert(L"status",Json::CreateStringValue(message));};
   try{const auto file=property(reply,L"file");if(truthy(file)){
     if(file.ValueType()!=Type::Object)throw std::invalid_argument("扩展导出文件无效。");const auto object=file.GetObject();const auto name=property(object,L"name"),bytes=property(object,L"bytes");if(!name||name.ValueType()!=Type::String||name.GetString().empty()||name.GetString().size()>120||!bytes||bytes.ValueType()!=Type::Array||bytes.GetArray().Size()>12u*1024*1024)throw std::invalid_argument("扩展导出文件无效。");File output;output.name=name.GetString();for(auto c:output.name)if(c<32||std::wstring(L"<>:\"/\\|?*").find(c)!=std::wstring::npos)throw std::invalid_argument("扩展导出文件无效。");for(const auto& byte:bytes.GetArray()){if(byte.ValueType()!=Type::Number||byte.GetNumber()<0||byte.GetNumber()>255||std::floor(byte.GetNumber())!=byte.GetNumber())throw std::invalid_argument("扩展导出文件无效。");output.bytes.push_back(std::uint8_t(byte.GetNumber()));}
-    if(!save)throw std::runtime_error("Native extension file save is not connected");view_.Insert(L"status",Json::CreateStringValue(save(output)?L"文件已导出":L"已取消导出"));
-   }}catch(const std::exception& e){view_.Insert(L"status",Json::CreateStringValue(winrt::to_hstring(e.what())));}catch(const winrt::hresult_error& e){view_.Insert(L"status",Json::CreateStringValue(e.message()));}busy_=false;return true;
+    if(!save)throw std::runtime_error("Native extension file save is not connected");status(save(output)?L"文件已导出":L"已取消导出");
+   }}catch(const std::exception& e){status(winrt::to_hstring(e.what()));}catch(const winrt::hresult_error& e){status(e.message());}if(ownsCompletion())busy_=false;return true;
  }
 };
 }

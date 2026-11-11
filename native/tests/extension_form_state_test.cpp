@@ -15,5 +15,28 @@ int main(){winrt::init_apartment();try{
  JsonObject multi;multi.Insert(L"nodes",JsonArray::Parse(LR"([{"id":"uploads","type":"file"}])"));form.receive(multi,2);std::vector<FormState::File> batch(17);check(!form.files(L"uploads",batch)&&!form.busy(),"upload max16");batch.resize(16);check(bool(form.files(L"uploads",batch)),"upload sixteen allowed");form.retry();form.receive(view(),3);
  form.edit(L"name",JsonValue::CreateStringValue(std::wstring(80,L'x')));check(form.effectiveValue(L"name").GetString().size()==64,"input UTF16 max64");{FormState conditions;conditions.receive(JsonObject::Parse(LR"({"nodes":[{"id":"n","type":"number","value":0},{"id":"conditional","type":"column","visibleWhen":{"n":2},"children":[{"id":"inside","type":"text"}]}]})"),0);auto before=conditions.renderedIds();check(before==std::vector<std::wstring>{L"n"},"numeric condition initial topology");conditions.edit(L"n",JsonValue::CreateNumberValue(1));check(before==conditions.renderedIds(),"ordinary draft keeps topology");conditions.edit(L"n",JsonValue::CreateNumberValue(2));check(conditions.renderedIds()==std::vector<std::wstring>{L"n",L"conditional",L"inside"},"numeric condition reveals subtree");}form.close();check(!form.click(L"save")&&!form.receive(view(),2)&&!form.active(),"closed form");
  {FormState indexed;JsonArray roots;for(int i=0;i<200;++i){JsonObject group;group.Insert(L"id",JsonValue::CreateStringValue(L"group"+std::to_wstring(i)));group.Insert(L"type",JsonValue::CreateStringValue(L"column"));JsonArray children;for(int j=0;j<100;++j){JsonObject node;node.Insert(L"id",JsonValue::CreateStringValue(L"n"+std::to_wstring(i*100+j)));node.Insert(L"type",JsonValue::CreateStringValue(L"number"));node.Insert(L"value",JsonValue::CreateNumberValue(j));children.Append(node);}group.Insert(L"children",children);roots.Append(group);}JsonObject model;model.Insert(L"nodes",roots);indexed.receive(model,0);check(indexed.renderedIds().size()==20200,"large model topology limits");for(int j=0;j<20000;++j){const auto id=L"n"+std::to_wstring(j);check(indexed.effectiveValue(id).GetNumber()==j%100,"large indexed value lookup");}indexed.edit(L"n0",JsonValue::CreateNumberValue(8));check(indexed.effectiveValue(L"n0").GetNumber()==8,"edit invalidates visibility once");indexed.retry();check(indexed.effectiveValue(L"n0").GetNumber()==0&&indexed.shown(L"n0"),"retry invalidates draft index");}
+ // Exercise native chooser reentry, including errors after the old save has
+ // lost ownership. Same-generation pushes still receive legacy status merges.
+ for(int transition=0;transition<5;++transition)for(int outcome=0;outcome<4;++outcome){
+  FormState exporting;exporting.receive(view(),0);auto request=*exporting.click(L"save");int calls=0;std::wstring newer;
+  auto reply=view(request.GetNamedString(L"requestId").c_str(),true);
+  check(exporting.receive(reply,0,[&](const FormState::File&)->bool{
+   ++calls;check(exporting.busy()&&!exporting.click(L"save"),"export stays busy in chooser");
+   check(exporting.receive(reply,0,[&](const auto&){++calls;return true;}),"replayed model accepted during chooser");
+   auto pushed=view();pushed.Insert(L"status",JsonValue::CreateStringValue(L"current session"));
+   if(transition==0){exporting.receive(pushed,0);}
+   else if(transition==1){exporting.retry();exporting.receive(pushed,1);exporting.edit(L"name",JsonValue::CreateStringValue(L"new draft"));}
+   else if(transition==2){exporting.retry();exporting.receive(pushed,1);auto action=exporting.click(L"save");check(bool(action),"new session action accepted");newer=action->GetNamedString(L"requestId");}
+   else if(transition==3)exporting.close();
+   else{exporting.fileFailed(L"chooser interrupted");exporting.receive(pushed,0);auto action=exporting.click(L"save");check(bool(action),"new action after interrupted save");newer=action->GetNamedString(L"requestId");}
+   if(outcome==2)throw std::runtime_error("old disk error");
+   if(outcome==3)throw winrt::hresult_error(winrt::hresult{-2147467259},L"old Windows error");
+   return outcome==0;
+  }),"export reply consumed");
+  check(calls==1,"chooser reentry must not replay export");
+  if(transition==0){const auto expected=outcome==0?L"文件已导出":outcome==1?L"已取消导出":outcome==2?L"old disk error":L"old Windows error";check(!exporting.busy()&&exporting.view().GetNamedString(L"status")==expected,"current view receives save status");}
+  else if(transition!=3){check(exporting.view().GetNamedString(L"status")==L"current session"&&exporting.busy()==(transition!=1),"stale completion preserves new status and busy");if(transition==1)check(exporting.drafts().GetNamedString(L"name")==L"new draft","stale completion preserves new drafts");else{check(exporting.receive(view(newer),transition==4?0:1)&&!exporting.busy(),"new action completes independently");}}
+  else check(!exporting.active()&&!exporting.busy()&&!exporting.receive(reply,0),"closed export remains closed");
+ }
  std::cout<<"Form initialization/drafts/dependencies/actions/uploads/export replay/retry/failure/close passed\n";return 0;
  }catch(const std::exception& e){std::cerr<<e.what()<<'\n';return 1;}catch(const winrt::hresult_error& e){std::cerr<<winrt::to_string(e.message())<<'\n';return 1;}}

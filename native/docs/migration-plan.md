@@ -6561,3 +6561,9 @@ PNG后台解码完成后保留像素及私有surface，每次pump最多上传262
 接续固定双worker，补齐关闭/模型替换取消的源数据生命周期。FormImageTask::cancel设置token、在共享FIFO锁内移除尚未开始的同token任务，释放捕获源字符串/run闭包；promise异常在锁外完成。与worker已取走任务的竞争由队列锁分界：已取走走原协作取消，未取走只由reject完成promise，不重复发布。取消同时通知图片预算条件变量，使运行中的预算等待立即重新检查token，原20ms周期作为后备。无UI/Surface跨线程访问，future销毁仍不join。
 
 唯一正式Release及图片测试构建成功，extension-form-ui/image/files/state四项通过1.89秒。64请求压力现在要求预算保持满额时全部取消future完成并拒绝，不再先释放预算掩盖取消停滞；随后额度归零与真实PNG恢复成功，既有窗口关闭/替换/上传检查通过。来源821文件及diff检查通过。队列未取消源数据总量仍无独立上限，不宣称解决全部内存压力；无人工图像/CPU/FPS测量。完整生产扩展执行器等整体迁移仍INCOMPLETE。保留editor_support.h及用户数据，阶段保存推送dev。
+
+### 2026-11-11：扩展导出选择器重入与完成所有权
+
+直接核对 ExtensionDialogForm.tsx receive：匹配结果先消费 pending/清草稿，保存完成向 current view 合并 status；普通同代推送不应丢失节点，也不应重复保存。原生同步选择器会泵事件，补齐导出完成所有权 active/generation/sequence：正常同代推送沿用旧版状态合并；重试、关闭或后续请求后，旧成功、取消、std异常、hresult异常均不得写入新状态或释放新请求 busy。保存期间维持 busy；不更改已有结果消费、文件验证、保存内容及窗口模态策略。
+
+状态回归20组转换/结果组合：同代推送、retry带新草稿、retry带新请求、close、同代中断后新请求；每组保存内部重放原结果但只调用一次保存，新请求随后独立完成。首轮测试编译因E_FAIL未声明失败，改用明确winrt::hresult后测试构建通过。唯一正式Release构建成功，extension-form-ui/image/files/state四项通过2.02秒。来源821文件检查及diff检查通过；状态测试注入同步保存回调，不等同人工操作Windows选择器。整体迁移及生产扩展执行器仍INCOMPLETE，未自行落地待确认的JS执行器/完整modal选择。保留editor_support.h和用户数据；阶段提交并推送dev。
