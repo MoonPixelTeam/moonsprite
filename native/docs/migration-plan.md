@@ -6591,3 +6591,9 @@ PNG后台解码完成后保留像素及私有surface，每次pump最多上传262
 延续ExtensionDialogForm Array.from(Uint8Array)的精确name/mime/bytes消息协议，补齐后台读完后一次构建全部JSON字节值的主线程长任务。FormState ImportEncoding保留读取ticket，按主线程pump推进，单次最多4096字节并检查2ms时间预算；所有文件编码完成前保持busy且不发布部分消息。FormWindow串联读取/编码/发送，重试关闭取消两阶段，错误只恢复原ticket；最终复查当前控件action/disabled及会话身份，完整结果发送一次。数量/体积/单文件检查沿用既有上限，空文件仍生成空bytes数组。
 
 唯一正式Release及状态测试构建成功，extension-form-ui/image/files/state四项通过1.96秒。新增16385字节逐字节精确回归，17字节首次预算和后续1024预算强制跨多次推进；部分编码不能发送、完整只发送一次、重试隔离和空文件通过。来源821文件及diff通过，无人工慢磁盘/窗口响应测量；COM单次分配、释放大JSON及宿主最终序列化未保证时间上限，不声称全链路恒定帧耗时。整体迁移和生产执行器仍INCOMPLETE。保留editor_support.h与用户数据，阶段提交推送dev。
+
+### 2026-11-11：正式窗口后台导入完整链路验收
+
+补齐此前模块状态回归与正式FormWindow默认后台入口之间的证据缺口。新增choosePaths适配注入，仅替代OS路径选择，子提示窗同步继承；原chooseFiles兼容注入继续保留。正式程序的extension-form-ui从真实按钮Click启动后台reader，读取真实65539字节文件，经正式pump分批构造JSON并通过send回调发送。读取/编码期间receive新模型、resize及dispatchMessages继续运行，至少16次pump且发送一次；逐字节核对文件name/MIME/长度/内容及action，匹配回复解除busy，再启动导入后关闭无后续发送且窗口已注销。未以直接调用finishImport代替窗口链路。
+
+唯一正式Release构建成功，extension-form-ui/image/files/state四项通过2.15秒；来源821文件及diff检查通过。测试注入路径并使用控件Click，不等同OS物理鼠标、文件选择器人工验收或慢磁盘响应耗时测量。后台阻塞read取消时延、JSON内存/宿主序列化以及生产扩展执行器仍未完成；整体迁移INCOMPLETE。保留editor_support.h与用户数据，阶段提交推送dev。
