@@ -6543,3 +6543,9 @@ PNG后台解码完成后保留像素及私有surface，每次pump最多上传262
 直接核对ExtensionDialogForm String(value??empty)及ThemedSelect options.find/first fallback/moveSelection/value check。原生默认值匹配补齐数字/布尔等现有diagnosticString显示转换，重复值取首标签，未匹配仍显示第一标签但保持原始值，空选项列表显示原始字符串而非空白；显示回退不写草稿。表单专用键盘按实际值的首索引移动，选择重复项后仍显示首标签并发送原字符串值，disabled不更改。表单菜单复用PixelMenu/Tooltip与modal计数，实际值相等的全部重复项显示check，未匹配回退项不勾选；不修改其他业务下拉框的共享行为。
 
 首轮使用不存在的signal.disconnectAll编译失败，改走ButtonBase::onClick虚函数接入表单菜单；最终唯一正式Release构建成功。extension-form-ui/image/files/state四项通过1.94秒；新增真实窗口数字/布尔默认、首重复项、空列表、未匹配值不写草稿、重复值键盘、disabled及菜单勾选谓词检查。既有菜单运行循环与响应延后测试仍通过，但本轮重复值菜单实际像素/点击没有新增人工验收，不将谓词检查扩称完整弹出菜单验收。来源821文件及diff检查通过，无FPS测量。完整Unicode转换边界、超屏菜单、生产执行器及整体迁移仍INCOMPLETE；保留editor_support.h与用户缓存/日志，阶段保存推送dev。
+
+### 2026-11-11：表单专用弹出菜单真实运行链路
+
+核对ButtonBase::onClick/Click与PixelDropdown非虚showOptions，发现旧正式回归直接调用基类showOptions绕过FormDropdown专用值勾选菜单。现回归从专用onClick入口启动，运行真正表单菜单；menuOpen防止popupStateChanged回调递归打开同菜单。保留modal计数、异常释放、焦点恢复及模型推送不在菜单栈销毁控件。共享PixelDropdown程序入口仍提供原菜单，正式表单用户鼠标/空格进入专用onClick；不将基类程序API称作已统一。
+
+唯一正式Release构建成功，extension-form-ui/image/files/state四项通过1.90秒。真实popup回调推送模型及pump确认控件存活，并再次打开验证重入拒绝；实际MenuItem被计时器定位，检查checked回调并触发Click后退出菜单，草稿idle写入，随后方向键tool与visibleWhen继续通过。该项使用实际原生菜单循环/控件及Click信号，不等同OS物理鼠标命中或人工像素验收；重复值勾选仍由既有谓词回归覆盖。来源821文件/diff通过，无性能测量。超屏菜单与完整生产扩展执行器等仍INCOMPLETE，保留editor_support.h和用户日志/缓存；阶段保存推送dev。
