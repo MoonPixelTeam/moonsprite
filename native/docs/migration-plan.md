@@ -6840,3 +6840,10 @@ PNG后台解码完成后保留像素及私有surface，每次pump最多上传262
 依据legacy useBrushLibrary.ts 42-76行：工程customBrushes的memo与本地异步刷新分开。原生本地扫描key保留工程身份/目录保护，工程资源序号改为单独发布缓存本地资源与最新工程集合，不再因工程资源变化重扫/解码全部本地PNG。共用选择清理事务，保留幸存项像素与顺序；本地扫描等待期间也允许工程更新，完成时合并最新集合。真实Editor回归锁住本地PNG，检查缓存地址/key不变、不启动扫描、同身份改像素选择、工程删除后本地幸存/最终清空，以及延迟结果合并最新工程资源。正式构建验证中，整体INCOMPLETE；未宣称FPS提升。
 
 阶段验收完成：唯一正式Release构建成功；实际笔刷栏目专项等待exit0，锁住本地PNG时工程改像素/删除不启动扫描且缓存地址/key不变，本地幸存项与最后选择清理、延迟扫描合并最新工程资源通过。extension-workspace-ui、multi-document、canvas-resize通过1.90秒；来源824/diff通过。未进行人工FPS/截图验收，整体INCOMPLETE。用户editor_support.h和未跟踪文件保留，阶段提交推送dev。
+
+
+### 2026-11-11：选中笔刷快照到实际绘画的完整链路（验证中）
+
+依据legacy canvas-stroke-brush.ts createCanvasStrokeBrush直接读取session.brushImage，以及workspace-commands-tool.ts普通/临时资源激活。原生普通笔刷落笔调用resolve会同步重扫/解码，临时ID无文件还会被清掉；移除该落笔解析，保留资源选择/会话恢复的显式加载。真实Editor回归覆盖锁PNG连续绘画及撤销重做、工程资源替换后已选像素保持/重新选择最新像素/删除清理、临时捕获实际绘画和Esc取消笔画。不是单纯缓存命中检查；正式构建验证中，整体INCOMPLETE。
+
+阶段验收完成：唯一正式Release最终构建成功；实际笔刷栏目专项等待exit0，锁PNG连续真实鼠标绘画、工程已选快照保持/重新选择最新像素/删除清理、临时捕获后实际落笔、每笔Undo/Redo和Esc取消通过。新增fixture先后修正栏目隐藏未加载、ABGR预期顺序、旧返回profile不透明度污染三处测试准备/预期问题，保留诊断。selection-pattern-brush、multi-document、image-brush、canvas-resize通过1.41秒；来源824/diff通过。无FPS实测，整体INCOMPLETE。用户editor_support.h及未跟踪数据保留，阶段提交推送dev。

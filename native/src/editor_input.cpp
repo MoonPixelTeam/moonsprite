@@ -894,7 +894,9 @@ bool Editor::onProcessMessage(ui::Message* msg) {
 
         recentDrag_.reset();strokeColor_=mouse->right()?document.palette().secondary:eraser_?0:ink_;
 
-        playing_=false;resolvePencilImageBrush();const auto anchor=mouse->left() && mouse->shiftPressed() && ordinaryBrushTool()?brushLineAnchor():nullptr;
+        // Legacy createCanvasStrokeBrush consumes the selected in-memory image.
+        // Resource loading belongs to selection/session restore, never mouse-down.
+        playing_=false;const auto anchor=mouse->left() && mouse->shiftPressed() && ordinaryBrushTool()?brushLineAnchor():nullptr;
 
         Point target=p;if(anchor && (mouse->ctrlPressed() || mouse->cmdPressed())){const auto end=constrainShapeLine({double(anchor->point.x),double(anchor->point.y)},{double(p.x),double(p.y)},runtimePreferences_.index("tools.lineDirectionStep.Number"));target={int(end.x),int(end.y)};}
 
