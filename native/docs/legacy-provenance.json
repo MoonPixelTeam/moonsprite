@@ -1,6 +1,8 @@
 {
   "allLegacyAligned": false,
   "sourceSnapshots": {
+    "legacy/src/renderer/src/core/isometric.ts": "cb2481013a6ab6d05bbe09d1fdbeb774a11055712621bbc008ae006728752539",
+    "legacy/src/renderer/src/core/isometric.test.ts": "acd09fcd96e392d087874443e2958599cc681485ab35d6e38dc5fcf87ed29370",
     "legacy/src/renderer/src/core/adjustment-preview-lifecycle.ts": "419482977795475fe0698ed6c6cc8c6f7920de98675f09d2306ce37c4e5882aa",
     "legacy/src/renderer/src/store/workspace-selection-pivot-alignment.test.ts": "3efe961af3c954afd14a94efe32b6f16157a89b1391aae6ae874acdc2e7e41f6",
     "legacy/src/renderer/src/core/document-export-worker-client.ts": "00b0f73026093ae500a90aabe88739e443619770b33391a30c28689d7c61f0ea",
@@ -1114,6 +1116,46 @@
     "legacy/src/renderer/src/store/workspace-selection-nudge.test.ts": "ce4c5456069dda979d0f4e2cadcbfa9099ca4965f9050283da0d4f8dc6b51758"
   },
   "files": [
+    {
+      "file": "src/isometric.h",
+      "classification": "legacy-adapted",
+      "sources": [
+        "legacy/src/renderer/src/core/isometric.ts",
+        "legacy/src/renderer/src/core/isometric.test.ts"
+      ],
+      "scope": "Complete port of legacy ISO geometry: zoom spacing, clipped guides, pixel patterns, vertex snapping, stair endpoints, sampled grid-edge tracing, continuous direction locking and metadata-preserving path updates. UI and production stroke integration remain pending.",
+      "adaptation": "TypeScript number/optional/object-spread semantics mapped to C++ double/std::optional/value types; preserve JS rounding, edge-key spelling and iteration/tie order. Existing native balanced rasterizer used for pixel alignment; no algorithm redesign."
+    },
+    {
+      "file": "scripts/make-isometric-fixtures.cjs",
+      "classification": "legacy-adapted",
+      "sources": [
+        "legacy/src/renderer/src/core/isometric.ts",
+        "legacy/src/renderer/src/core/isometric.test.ts"
+      ],
+      "scope": "Execute unchanged legacy isometric.ts in Node VM after type/export removal to generate 2019 deterministic C++ oracle checks. Covers negative/half coordinates, normalization, clipped guides, tracing, regular/grid stroke sequences, optional fields and sample metadata.",
+      "adaptation": "TypeScript number/optional/object-spread semantics mapped to C++ double/std::optional/value types; preserve JS rounding, edge-key spelling and iteration/tie order. Existing native balanced rasterizer used for pixel alignment; no algorithm redesign."
+    },
+    {
+      "file": "tests/isometric_test.cpp",
+      "classification": "legacy-adapted",
+      "sources": [
+        "legacy/src/renderer/src/core/isometric.ts",
+        "legacy/src/renderer/src/core/isometric.test.ts"
+      ],
+      "scope": "Verify all geometry APIs against 2019 actual legacy oracle outputs, plus legacy all-direction pixel-pattern invariant using native selectionLine balanced rasterization. Targeted Release isometric CTest passed. No desktop ISO behavior is claimed.",
+      "adaptation": "TypeScript number/optional/object-spread semantics mapped to C++ double/std::optional/value types; preserve JS rounding, edge-key spelling and iteration/tie order. Existing native balanced rasterizer used for pixel alignment; no algorithm redesign."
+    },
+    {
+      "file": "tests/fixtures/isometric_legacy.h",
+      "classification": "legacy-adapted",
+      "sources": [
+        "legacy/src/renderer/src/core/isometric.ts",
+        "legacy/src/renderer/src/core/isometric.test.ts"
+      ],
+      "scope": "Generated expected geometry and path results from actual legacy isometric.ts, including explicit established-turn and completed-grid-edge cases from isometric.test.ts. Split fixture functions bound compiler/test stack usage.",
+      "adaptation": "TypeScript number/optional/object-spread semantics mapped to C++ double/std::optional/value types; preserve JS rounding, edge-key spelling and iteration/tie order. Existing native balanced rasterizer used for pixel alignment; no algorithm redesign."
+    },
     {
       "timelineMetadata20261113": {
         "legacyEvidence": [
@@ -6766,6 +6808,7 @@
         "header": "Register standalone history_replay.h compilation in existing core-public-headers-tests; no application target, packaging, new executable or runtime scheduling added. Unified final build pending."
       },
       "file": "CMakeLists.txt",
+      "isometricGeometry20261114": "Register standalone isometric-tests with CTest, derived from legacy core/isometric.ts and isometric.test.ts. Test-only target; production integration pending.",
       "brushJsonContractsValidation20261111": "Official Release and pattern-brush-library-tests builds successful; pattern-brush-library JSON fixtures/concurrency pass2.87s, waited brush-library-panel-check exit0 including actual background parsing and lifecycle. extension-workspace-ui/multi-document/canvas-resize pass1.99s. Provenance824/diff pass. Duplicate fields/numeric lexical serde parity remains unproven; existing raw path CHECK C4129 warnings remain. No manual FPS/screenshot claim; overall incomplete.",
       "brushJsonContracts20261111": "Native adaptation of legacy platform_brushes.rs serde JSON persistence using repository-established Windows.Data.Json; moon-pattern-import links runtimeobject for scoped RoInitialize/RoUninitialize. No WebView or external runtime introduced. Validation pending.",
       "mseSnapshot20261110": "buildLuaMseSnapshot native projection: expose and reuse original complete project writeColorOverlay serializer instead of duplicating styles; add Lua snapshot compilation and real engine read tests for document identity, layer order, range fallback/Cel keys, palette, frames, resource budget/transparent RGB, local/project brushes, slices, panel state and no document/history mutation. Formal Editor MSE provider and operation execution remain pending.",
