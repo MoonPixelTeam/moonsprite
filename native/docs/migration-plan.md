@@ -7104,3 +7104,9 @@ Aseprite 源码对照：src/app/extensions.cpp installCompressedExtension 的逐
 对照 legacy session 端点、beginLineConnection 的 editableLayer／latestUndoEntry 校验及 inheritBrushPaintBaseline，补齐活动蒙版底色继承、自由瓦片蒙版连线入口、跨目标端点保留与底色／撤销隔离。半透明共享端点不重复叠色，普通图层与蒙版不会错误合并历史。
 
 attached-masks-tests 全部通过，含八组新增连接线检查；唯一正式 Release 构建成功，mask-shift-lines 四种平铺、五种蒙版归属／底层模式、绘制／擦除共40组与同版本切换目标真实输入全部退出0。mask-brush-preview、shift-lines、free-source-preview 三阶段退出0；brush-preview CTest通过0.91秒；旧版两文件13项通过4.44秒。来源覆盖929文件、Editor边界587源码、diff通过。无人工截图及完整桌面验收，非RGBA格式等剩余迁移继续保留。详见 [蒙版连线迁移](mask-shift-lines-migration-20261114.md)。仅功能迁移，整体INCOMPLETE；阶段保存推送dev，保留全部用户数据与日志。
+
+### 2026-11-14 颜色模式共用算法（算法阶段验收）
+
+直接迁移 legacy pixel-format.ts 与 document-model.ts 的八种通道量化、灰度、可见色板匹配、图层颜色与 packed 写入归一化，复用已有灰度和蒙版函数。保留透明覆盖、可见顺序／稳定 ID、alpha 距离权重与蒙版优先语义。新增 Node 实际旧版函数生成器和原生差异检查，524,104 条记录全部一致；Release 专项目标构建成功，两项 CTest 通过3.85秒。
+
+旧版 pixel-format／tools-pixel-edit 两文件26项通过3.70秒；来源覆盖932文件与快照、Editor边界588源码、diff检查通过。这是共用算法阶段，尚未接入工程打开／保存、实际编辑、模式转换及撤销、合成与 UI，原生仍只开放 RGBA32 工程；不得宣称索引色或灰度工程可用。没有性能优化、正式程序新能力或图像验收。详见 [颜色模式算法迁移](color-mode-algorithms-migration-20261114.md)。整体INCOMPLETE，阶段保存推送dev，保留全部用户数据与日志。
