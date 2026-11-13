@@ -831,6 +831,9 @@ private:
   };
   // Composable frame payload; shared cels, focus and selection stay on Edit.
   struct FrameHistory {
+    // Legacy frame creation clears current timeline items on Redo rather than
+    // restoring selection snapshots; Undo leaves current row/item choices alone.
+    bool clearItemSelectionOnRedo=false;
     std::optional<std::vector<timeline::LoopSection>> beforeLoops,afterLoops;
     std::optional<bool> beforeAnimationLoop,afterAnimationLoop;
     std::optional<DocumentFrame> detachedFrame;
@@ -1112,6 +1115,7 @@ private:
   void mergeRasterLayers(const std::vector<std::string>& ids,std::size_t index);
   void captureFrameOrder(Edit& edit,bool after) const;
   void normalizeFrameDeletionSelection();
+  void clearAnimationItemSelection();
   void applyFrameEdit(const Edit& edit,bool redo);
   void applyEdit(const Edit& edit,bool redo);
   // Only applyEdit or its already-validated child traversal may enter here.

@@ -21,6 +21,13 @@ struct SelectionKeyHash {
 };
 }
 // Ports workspace-commands-layer-selection's replace/toggle/range semantics.
+void Document::clearAnimationItemSelection(){
+ // workspace-animation-selection.ts::clearAnimationItemSelection deliberately
+ // keeps selected layer/group rows and the current canvas selection.
+ clearFrameSelection();timelineSelection_.cels.clear();timelineSelection_.celAnchor.clear();timelineSelection_.maskRows.clear();
+ activeMaskId_.clear();maskIsolated_=false;
+ if(animationChangeBinding_.captureSessionSelection(*this))animationChangeBinding_.restoreSessionSelection(*this,{});
+}
 Document::AnimationSelectionSnapshot Document::captureAnimationSelection()const{
  AnimationSelectionSnapshot snapshot;
  snapshot.identity=identity_;snapshot.selection=timelineSelection_;snapshot.frames=selectedFrames_;

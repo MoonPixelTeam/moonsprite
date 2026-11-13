@@ -7117,3 +7117,9 @@ attached-masks-tests 全部通过，含八组新增连接线检查；唯一正�
 承接前阶段算法，按 legacy workspace-commands-color、document-model、history、project codec 和 selection-transform 的实际写入边界，接入 Document、偏好全部工程转换、新建、保存/恢复/本地历史、快照/回滚、绘制/调整/变换及源编辑草稿。保留 packed 零透明覆盖与 direct-color 的区别、共享身份、蒙版独立规则、不新增转换 Undo、普通 deferred 平移 raw 提交和 Lua 整图 raw 替换。整层翻转只量化实际交换的像素，奇数中轴保留 raw；未写区域不强行全量归一化。
 
 唯一正式 Release 与最终增量构建成功。document-pixel-format CTest通过0.50秒，八种格式执行转换/工具/预览/取消/Undo/Redo/脚本/三个保存入口/重开/快照/回滚/关联图层/独立资源/本地历史格式检查；真实 pixel-formats 八组偏好与鼠标输入检查进程退出0。共用算法524,104条实际旧版oracle、document-snapshot、color-adjustment、document-raster-history通过。额外document-transactions第76行新建帧撤销选择断言失败，尚未修复，不声称完整事务套件通过；继续作为下一项迁移核对。初次UI夹具未切目标页导致控件未启用，修正夹具后通过。来源覆盖934文件、Editor边界589源文件、diff通过，strict继续因剩余缺口失败。无性能优化或新增人工图像验收，灰度/索引色及整体迁移仍INCOMPLETE。详见[RGBA八格式迁移](rgba-pixel-formats-migration-20261114.md)。保留全部用户数据、缓存及日志，阶段保存推送dev。
+
+### 2026-11-14 帧创建与链接帧选择历史（阶段验收）
+
+按 legacy workspace-commands-animation-frame、clearAnimationItemSelection 和 linkCelsInRightFrame 的独立历史契约迁移：空白／复制／新建链接帧首次清理项目和像素选区，撤销不复活已清理项目，重做清理当前项目并保留当前行和像素选区；退出蒙版隔离。已有右侧帧的链接补齐完整选择快照，保留原先帧拖动／复制的选择恢复。通过弱引用 session 绑定更新原工程，不触碰其它工程。
+
+document-animation-binding 与 timeline-interaction 定向通过；旧版两个实际测试文件20项通过（8.32秒）。唯一正式 Release 构建成功，frame-creation 真实快捷键命令入口20组实际进程退出0；来源覆盖934文件及快照、Editor边界589源码、diff通过，strict因既有缺口退出1。document-transactions 原第76行失败已消除，继续在第84行新建图层撤销活动图层／选择断言失败，保留原断言并继续迁移，不宣称整套通过。无新人工图像或完整桌面验收。本阶段仅功能迁移，整体仍INCOMPLETE；详见[帧创建选择迁移](frame-creation-selection-migration-20261114.md)。阶段提交推送dev，保留全部用户数据和日志。

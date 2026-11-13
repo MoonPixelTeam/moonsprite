@@ -1811,7 +1811,12 @@
         "legacy/src/renderer/src/core/history.ts",
         "legacy/src/renderer/src/core/history.test.ts",
         "legacy/src/renderer/src/store/workspace-commands-history.ts",
-        "legacy/src/renderer/src/store/workspace-animation-selection-history.ts"
+        "legacy/src/renderer/src/store/workspace-animation-selection-history.ts",
+        "legacy/src/renderer/src/store/workspace-commands-animation-frame.ts",
+        "legacy/src/renderer/src/store/workspace-animation-selection.ts",
+        "legacy/src/renderer/src/store/workspace-animation-linked-cel.ts",
+        "legacy/src/renderer/src/store/workspace-animation-drag-copy.test.ts",
+        "legacy/src/renderer/src/store/workspace-animation-loop-sections.test.ts"
       ],
       "scope": "Native history replay adaptation; independent terminal branches then ordered resources, structure, content, selection/focus, projection and source settlement. All original phase statements concatenate to original applyEdit body; nested replay suppression remains at root. Typed payload migration remains incomplete.",
       "adaptation": "Reuse original Document algorithms and legacy compound redo forward/undo reverse; keep all writes private to Document. No new history owner or public mutation service.",
@@ -1831,6 +1836,17 @@
         ],
         "nativeAdaptation": "Preserve Legacy redo forward / undo reverse and frozen cel-property members. Native typed compound preflight checks invariant owner, layer, frame and cel-property targets before any sibling/parent writes, using shared canonical surface-owner predicates. Skip initial-model preflight for topology-changing trees; existing projected leaf validation remains authoritative. Do not preflight geometry/budgets against stale intermediate state or introduce whole-document rollback. Nested missing-target failure and valid created-target/repeated-write compatibility checks added. Structural/dependent budget/allocation/gesture atomicity remain incomplete.",
         "validation": "Original-code red pixel-preservation assertion retained. Corrected full raster history, 24 undo/redo missing-target cases and created-target/nested-repeat compatibility passed. Release official app and nine service targets built; same app 17/17 GUI, 13/13 service/boundary and geometry 1/1 passed. Source restoration proof and 909 frozen inputs verified; coverage 911; strict remains exit 1 for existing migration gaps. Evidence: coupling-compound-targets-final-consistency.json. No new manual-image/performance acceptance."
+      },
+      "frameCreationSelection20261114": {
+        "legacyEvidence": [
+          "legacy/src/renderer/src/store/workspace-commands-animation-frame.ts",
+          "legacy/src/renderer/src/store/workspace-animation-selection.ts",
+          "legacy/src/renderer/src/store/workspace-animation-linked-cel.ts",
+          "legacy/src/renderer/src/store/workspace-animation-selection-history.ts",
+          "legacy/src/renderer/src/store/workspace-animation-drag-copy.test.ts",
+          "legacy/src/renderer/src/store/workspace-animation-loop-sections.test.ts"
+        ],
+        "nativeAdaptation": "add/duplicate/insert-linked-frame do not capture full selection history. Clear frame/Cel/group-cell/mask-cell/mask-row items and anchors, frame-selection flag and mask isolation on initial command; preserve layer/group rows. Undo keeps current session selection and exits mask editing. Redo clears current timeline items, preserving current rows and canvas selection. A FrameHistory replay flag replaces stale selection snapshots only for new-frame commands. Linking an existing right frame retains complete before/after selection snapshots as workspace-animation-linked-cel.ts explicitly requires. SelectionAccess updates the original weak session owner, with no new UI design or performance change. Domain tests cover three creation modes by five selection modes and four existing-right-link modes; formal command-entry coverage recorded separately in frame-creation-selection-migration-20261114.md."
       }
     },
     {
@@ -2039,7 +2055,12 @@
         "legacy/src/renderer/src/store/workspace-commands-animation-playback.ts",
         "legacy/src/renderer/src/store/workspace-commands-animation-frame.ts",
         "legacy/src/renderer/src/store/workspace-history-playback.test.ts",
-        "legacy/src/renderer/src/store/workspace-commands-history.ts"
+        "legacy/src/renderer/src/store/workspace-commands-history.ts",
+        "legacy/src/renderer/src/store/workspace-animation-selection.ts",
+        "legacy/src/renderer/src/store/workspace-animation-linked-cel.ts",
+        "legacy/src/renderer/src/store/workspace-animation-selection-history.ts",
+        "legacy/src/renderer/src/store/workspace-animation-drag-copy.test.ts",
+        "legacy/src/renderer/src/store/workspace-animation-loop-sections.test.ts"
       ],
       "classification": "legacy-partial",
       "scope": "Native live Document animation observation for C06 lifecycle decoupling; no UI, timer or Editor ownership.",
@@ -2088,6 +2109,17 @@
         ],
         "adaptation": "Legacy keeps implicit selectedLayerIds separate from layerSelectionExplicit; native represents implicit focus with activeLayerId and empty timelineSelection.layers. General normalization must preserve empty explicit rows instead of synthesizing a row that later overrides script active-layer changes. Keep explicit selection filtering, active fallback and specialized frame-deletion behavior. Regression checks new-layer empty rows, normalize, active-layer switch, style target/undo/redo and explicit-row retention. Runtime verification pending.",
         "validation": "Full document-raster-history and document-animation-binding passed, including implicit/explicit mode, style target and undo/redo regression; formal animation/script-entry passed. Logs: build/test-tmp/coupling-implicit-selection-domain-tests.log and coupling-final-gui-20261113-113127/results.json. Same-version 16-scenario GUI verification follows."
+      },
+      "frameCreationSelection20261114": {
+        "legacyEvidence": [
+          "legacy/src/renderer/src/store/workspace-commands-animation-frame.ts",
+          "legacy/src/renderer/src/store/workspace-animation-selection.ts",
+          "legacy/src/renderer/src/store/workspace-animation-linked-cel.ts",
+          "legacy/src/renderer/src/store/workspace-animation-selection-history.ts",
+          "legacy/src/renderer/src/store/workspace-animation-drag-copy.test.ts",
+          "legacy/src/renderer/src/store/workspace-animation-loop-sections.test.ts"
+        ],
+        "nativeAdaptation": "add/duplicate/insert-linked-frame do not capture full selection history. Clear frame/Cel/group-cell/mask-cell/mask-row items and anchors, frame-selection flag and mask isolation on initial command; preserve layer/group rows. Undo keeps current session selection and exits mask editing. Redo clears current timeline items, preserving current rows and canvas selection. A FrameHistory replay flag replaces stale selection snapshots only for new-frame commands. Linking an existing right frame retains complete before/after selection snapshots as workspace-animation-linked-cel.ts explicitly requires. SelectionAccess updates the original weak session owner, with no new UI design or performance change. Domain tests cover three creation modes by five selection modes and four existing-right-link modes; formal command-entry coverage recorded separately in frame-creation-selection-migration-20261114.md."
       }
     },
     {
@@ -4061,7 +4093,18 @@
         ],
         "nativeAdaptation": "Read activePaintLayer mask surface, blend raw RGBA before normalized mask write, preserve read-only brush replacement data. Isolated view shows opaque coverage gray and samples that background for adaptive outline; normal view passes a bounded transient mask patch through existing leaf/group/clipping/style/adjustment compositor, retaining original mask outside patch. Native const mask accessor only; ordinary activeSurfaceIfPresent semantics unchanged. Core checks compare actual strokes, Undo/Redo, linked/offset masks, image brushes and styled/clipped/adjustment replacement. Sole formal UI phase covers all repeat modes and isolated/composite layer/group masks. Actual verification and limits recorded in docs/mask-brush-preview-migration-20261114.md."
       },
-      "rgbaPixelFormats20261114": "Carry per-document pixel format in the model, detached worker DTOs and rollback metadata; expose legacy packed versus direct-color normalization with mask override."
+      "rgbaPixelFormats20261114": "Carry per-document pixel format in the model, detached worker DTOs and rollback metadata; expose legacy packed versus direct-color normalization with mask override.",
+      "frameCreationSelection20261114": {
+        "legacyEvidence": [
+          "legacy/src/renderer/src/store/workspace-commands-animation-frame.ts",
+          "legacy/src/renderer/src/store/workspace-animation-selection.ts",
+          "legacy/src/renderer/src/store/workspace-animation-linked-cel.ts",
+          "legacy/src/renderer/src/store/workspace-animation-selection-history.ts",
+          "legacy/src/renderer/src/store/workspace-animation-drag-copy.test.ts",
+          "legacy/src/renderer/src/store/workspace-animation-loop-sections.test.ts"
+        ],
+        "nativeAdaptation": "add/duplicate/insert-linked-frame do not capture full selection history. Clear frame/Cel/group-cell/mask-cell/mask-row items and anchors, frame-selection flag and mask isolation on initial command; preserve layer/group rows. Undo keeps current session selection and exits mask editing. Redo clears current timeline items, preserving current rows and canvas selection. A FrameHistory replay flag replaces stale selection snapshots only for new-frame commands. Linking an existing right frame retains complete before/after selection snapshots as workspace-animation-linked-cel.ts explicitly requires. SelectionAccess updates the original weak session owner, with no new UI design or performance change. Domain tests cover three creation modes by five selection modes and four existing-right-link modes; formal command-entry coverage recorded separately in frame-creation-selection-migration-20261114.md."
+      }
     },
     {
       "historyBuilders20261113": {
@@ -5048,7 +5091,18 @@
         "nativeAdaptation": "Read activePaintLayer mask surface, blend raw RGBA before normalized mask write, preserve read-only brush replacement data. Isolated view shows opaque coverage gray and samples that background for adaptive outline; normal view passes a bounded transient mask patch through existing leaf/group/clipping/style/adjustment compositor, retaining original mask outside patch. Native const mask accessor only; ordinary activeSurfaceIfPresent semantics unchanged. Core checks compare actual strokes, Undo/Redo, linked/offset masks, image brushes and styled/clipped/adjustment replacement. Sole formal UI phase covers all repeat modes and isolated/composite layer/group masks. Actual verification and limits recorded in docs/mask-brush-preview-migration-20261114.md."
       },
       "maskShiftLines20261114": "beginStroke for the active attached mask inherits the incoming paint baseline, matching inheritBrushPaintBaseline before paintLine; raw mixed mask writes still normalize after compositing. Core regression first reproduced translucent shared-anchor darkening, then passed for eight group/link/offset combinations.",
-      "rgbaPixelFormats20261114": "Propagate packed or direct-color normalization at actual write boundaries and captured worker tasks, including adjustment, AA, convolution, immediate and floating transforms. Preserve untouched raw pixels, zero-alpha packed values, odd flip axes, whole-surface raw history and legacy deferred simple translation direct-copy commit. Regional floating previews normalize only the written pixels."
+      "rgbaPixelFormats20261114": "Propagate packed or direct-color normalization at actual write boundaries and captured worker tasks, including adjustment, AA, convolution, immediate and floating transforms. Preserve untouched raw pixels, zero-alpha packed values, odd flip axes, whole-surface raw history and legacy deferred simple translation direct-copy commit. Regional floating previews normalize only the written pixels.",
+      "frameCreationSelection20261114": {
+        "legacyEvidence": [
+          "legacy/src/renderer/src/store/workspace-commands-animation-frame.ts",
+          "legacy/src/renderer/src/store/workspace-animation-selection.ts",
+          "legacy/src/renderer/src/store/workspace-animation-linked-cel.ts",
+          "legacy/src/renderer/src/store/workspace-animation-selection-history.ts",
+          "legacy/src/renderer/src/store/workspace-animation-drag-copy.test.ts",
+          "legacy/src/renderer/src/store/workspace-animation-loop-sections.test.ts"
+        ],
+        "nativeAdaptation": "add/duplicate/insert-linked-frame do not capture full selection history. Clear frame/Cel/group-cell/mask-cell/mask-row items and anchors, frame-selection flag and mask isolation on initial command; preserve layer/group rows. Undo keeps current session selection and exits mask editing. Redo clears current timeline items, preserving current rows and canvas selection. A FrameHistory replay flag replaces stale selection snapshots only for new-frame commands. Linking an existing right frame retains complete before/after selection snapshots as workspace-animation-linked-cel.ts explicitly requires. SelectionAccess updates the original weak session owner, with no new UI design or performance change. Domain tests cover three creation modes by five selection modes and four existing-right-link modes; formal command-entry coverage recorded separately in frame-creation-selection-migration-20261114.md."
+      }
     },
     {
       "file": "tests/document_test.cpp",
@@ -12372,7 +12426,10 @@
         "legacy/src/renderer/src/core/layer-panel-preferences.ts",
         "legacy/src/renderer/src/components/panels/LayersPanel.tsx",
         "legacy/src/renderer/src/store/workspace-free-tile-selection.ts",
-        "legacy/src/renderer/src/store/workspace-layer-mask-independence.test.ts"
+        "legacy/src/renderer/src/store/workspace-layer-mask-independence.test.ts",
+        "legacy/src/renderer/src/store/workspace-commands-animation-frame.ts",
+        "legacy/src/renderer/src/store/workspace-animation-linked-cel.ts",
+        "legacy/src/renderer/src/store/workspace-animation-loop-sections.test.ts"
       ],
       "scope": "Existing externally supplied timeline selection/move implementation: ordinary layers replace/toggle/range, cel rectangle selection and drag placement, layer move/copy structure transactions. Read actual implementation and legacy entry points; groups/masks and full behavior equivalence not audited. This registration establishes provenance, not full migration equivalence. 2026-10-14 timeline gesture migration for native ordinary RGBA slots: stable-ID row/cel multi selection, replace/toggle/additive cell rectangle and frame range, exposed sheet-border move hits, left range/right multi move/Alt copy, 4px threshold, final-pointer flush, captured cancellation/document-identity guard, stationary edge scrolling; direct selected cel bounds follow deriveLayerPanelVisuals single bbox (including gaps); layer/frame contiguous runs share outside edges. Document commands preserve block offsets/metadata and linked surviving siblings, reject incomplete placement, atomic move/copy undo with selection/context. C++ native adaptation of legacy React/store commands, using existing structural/delta history, no serialized project undo. Existing groups/masks/text/tilemap/free-tile models are not yet supported by native and remain migration prerequisites; no claim whole legacy equivalence. pasteCopiedFrames duplicateSelection adaptation retains legacy duplicateAt header selection and destination anchor independent of normal single-frame paste selecting active-layer Cel; copyTimelineFrames continues original drag-copy transaction. 2026-10-15 rectangle selection uses Set-style unique membership like workspace-commands-animation-selection, replacing per-item vector scans while preserving order, additive range, missing-ID filtering and anchor semantics. Indexed endpoints reuse existing Timeline topology.",
       "ordinaryGroupMetadata20261019": "Internal metadata-only create/ungroup/visibility/locking and group row selection with undo/redo. No-group selectTimelineLayer range path remains unchanged. Externally editable group IO and group UI remain gated; ordinary duplicate/delete/move and aggregate-cell routing are pending. No full group migration claim.",
@@ -12395,6 +12452,17 @@
         ],
         "adaptation": "Legacy keeps implicit selectedLayerIds separate from layerSelectionExplicit; native represents implicit focus with activeLayerId and empty timelineSelection.layers. General normalization must preserve empty explicit rows instead of synthesizing a row that later overrides script active-layer changes. Keep explicit selection filtering, active fallback and specialized frame-deletion behavior. Regression checks new-layer empty rows, normalize, active-layer switch, style target/undo/redo and explicit-row retention. Runtime verification pending.",
         "validation": "Full document-raster-history and document-animation-binding passed, including implicit/explicit mode, style target and undo/redo regression; formal animation/script-entry passed. Logs: build/test-tmp/coupling-implicit-selection-domain-tests.log and coupling-final-gui-20261113-113127/results.json. Same-version 16-scenario GUI verification follows."
+      },
+      "frameCreationSelection20261114": {
+        "legacyEvidence": [
+          "legacy/src/renderer/src/store/workspace-commands-animation-frame.ts",
+          "legacy/src/renderer/src/store/workspace-animation-selection.ts",
+          "legacy/src/renderer/src/store/workspace-animation-linked-cel.ts",
+          "legacy/src/renderer/src/store/workspace-animation-selection-history.ts",
+          "legacy/src/renderer/src/store/workspace-animation-drag-copy.test.ts",
+          "legacy/src/renderer/src/store/workspace-animation-loop-sections.test.ts"
+        ],
+        "nativeAdaptation": "add/duplicate/insert-linked-frame do not capture full selection history. Clear frame/Cel/group-cell/mask-cell/mask-row items and anchors, frame-selection flag and mask isolation on initial command; preserve layer/group rows. Undo keeps current session selection and exits mask editing. Redo clears current timeline items, preserving current rows and canvas selection. A FrameHistory replay flag replaces stale selection snapshots only for new-frame commands. Linking an existing right frame retains complete before/after selection snapshots as workspace-animation-linked-cel.ts explicitly requires. SelectionAccess updates the original weak session owner, with no new UI design or performance change. Domain tests cover three creation modes by five selection modes and four existing-right-link modes; formal command-entry coverage recorded separately in frame-creation-selection-migration-20261114.md."
       }
     },
     {
@@ -25893,7 +25961,13 @@
         "legacy/src/renderer/src/core/tools-outline.ts",
         "legacy/src/renderer/src/core/convolution-matrix.ts",
         "legacy/src/renderer/src/core/free-tile-edit.ts",
-        "legacy/LICENSE"
+        "legacy/LICENSE",
+        "legacy/src/renderer/src/store/workspace-commands-animation-frame.ts",
+        "legacy/src/renderer/src/store/workspace-animation-selection.ts",
+        "legacy/src/renderer/src/store/workspace-animation-linked-cel.ts",
+        "legacy/src/renderer/src/store/workspace-animation-selection-history.ts",
+        "legacy/src/renderer/src/store/workspace-animation-drag-copy.test.ts",
+        "legacy/src/renderer/src/store/workspace-animation-loop-sections.test.ts"
       ],
       "adaptation": "View rotation 20261020: legacy view-geometry mirror-then-clockwise transform and reverse inverse; 22.5 degree Math.round snap; legacy rotate gesture indicator pivots, native physical pointer/capture/escape, screen pan and anchored zoom, rotation-aware document hit coordinates and renderer matrix. Native ProjectSession and atomic document preference file retain zoom/pan/angle/mirrors; tablet reset addresses view angle. Indicator seven PNGs copied byte-for-byte from legacy; rotate cursor existing legacy catalog. Native integration and smoke are necessary regression adapters. Coverage does not imply equivalence.",
       "viewRotation20261020": "View rotation 20261020: legacy view-geometry mirror-then-clockwise transform and reverse inverse; 22.5 degree Math.round snap; legacy rotate gesture indicator pivots, native physical pointer/capture/escape, screen pan and anchored zoom, rotation-aware document hit coordinates and renderer matrix. Native ProjectSession and atomic document preference file retain zoom/pan/angle/mirrors; tablet reset addresses view angle. Indicator seven PNGs copied byte-for-byte from legacy; rotate cursor existing legacy catalog. Native integration and smoke are necessary regression adapters. Coverage does not imply equivalence.",
@@ -26001,7 +26075,18 @@
         "nativeAdaptation": "Read activePaintLayer mask surface, blend raw RGBA before normalized mask write, preserve read-only brush replacement data. Isolated view shows opaque coverage gray and samples that background for adaptive outline; normal view passes a bounded transient mask patch through existing leaf/group/clipping/style/adjustment compositor, retaining original mask outside patch. Native const mask accessor only; ordinary activeSurfaceIfPresent semantics unchanged. Core checks compare actual strokes, Undo/Redo, linked/offset masks, image brushes and styled/clipped/adjustment replacement. Sole formal UI phase covers all repeat modes and isolated/composite layer/group masks. Actual verification and limits recorded in docs/mask-brush-preview-migration-20261114.md."
       },
       "maskShiftLines20261114": "Formal --tile-repeat-check mask-shift-lines exercises actual pointer/Shift dispatch, pixel preview, translucent shared endpoint, eraser, undo/redo, cancellation and no changes to backing raster/cells/instances/resources. Covers Off/X/Y/Both across raster/grid/free Edit/free Paint/group masks, plus same-revision raster-to-mask target switch without cross-target baseline/history merge.",
-      "rgbaPixelFormats20261114": "Production --tile-repeat-check pixel-formats stage drives the real preferences dropdown, all open sessions, pointer preview/commit/Undo/Redo across eight formats, and workspace new-document format inheritance."
+      "rgbaPixelFormats20261114": "Production --tile-repeat-check pixel-formats stage drives the real preferences dropdown, all open sessions, pointer preview/commit/Undo/Redo across eight formats, and workspace new-document format inheritance.",
+      "frameCreationSelection20261114": {
+        "legacyEvidence": [
+          "legacy/src/renderer/src/store/workspace-commands-animation-frame.ts",
+          "legacy/src/renderer/src/store/workspace-animation-selection.ts",
+          "legacy/src/renderer/src/store/workspace-animation-linked-cel.ts",
+          "legacy/src/renderer/src/store/workspace-animation-selection-history.ts",
+          "legacy/src/renderer/src/store/workspace-animation-drag-copy.test.ts",
+          "legacy/src/renderer/src/store/workspace-animation-loop-sections.test.ts"
+        ],
+        "nativeAdaptation": "add/duplicate/insert-linked-frame do not capture full selection history. Clear frame/Cel/group-cell/mask-cell/mask-row items and anchors, frame-selection flag and mask isolation on initial command; preserve layer/group rows. Undo keeps current session selection and exits mask editing. Redo clears current timeline items, preserving current rows and canvas selection. A FrameHistory replay flag replaces stale selection snapshots only for new-frame commands. Linking an existing right frame retains complete before/after selection snapshots as workspace-animation-linked-cel.ts explicitly requires. SelectionAccess updates the original weak session owner, with no new UI design or performance change. Domain tests cover three creation modes by five selection modes and four existing-right-link modes; formal command-entry coverage recorded separately in frame-creation-selection-migration-20261114.md."
+      }
     },
     {
       "file": "tests/canvas_rotation_test.cpp",

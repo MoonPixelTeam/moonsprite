@@ -101,6 +101,61 @@ void verifyFramePasteSelectionContract(){
   check(owner->value.masks.empty()&&!owner->value.maskAnchor&&document.activeMaskId().empty()&&!document.maskIsolated(),"Frame paste history revived a cleared mask context");
  }
 }
+void verifyFrameCreationSelectionContract(){
+ for(int command=0;command<3;++command)for(int mode=0;mode<5;++mode){
+  auto owner=std::make_shared<SelectionOwner>(),other=std::make_shared<SelectionOwner>();auto& d=*owner->document;
+  d.fillSelectionOrCanvas(0xff123456);const auto layer=d.layer().id;
+  d.addLayer();check(d.createLayerGroup(),"Frame creation group fixture");const auto group=d.timeline().state().groups.front().id;
+  d.selectLayer(layer);const auto frame=d.frame().id,cel=d.cel().id;
+  check(d.createAttachedMask(layer,frame),"Frame creation mask fixture");d.exitAttachedMask();
+  d.selectTimelineLayer(layer);bindSelectionOwner(owner);bindSelectionOwner(other);
+  other->value.groups={{"other-group","other-frame"}};const auto unrelated=other->value.groups;
+  if(mode==0){d.selectFrameHeader(frame);owner->value.frameSelection=true;}
+  if(mode==1)d.selectTimelineCel(cel);
+  if(mode==2){owner->value.groups={{group,frame}};owner->value.groupAnchor=owner->value.groups.front();}
+  if(mode==3){owner->value.masks={{layer,frame}};owner->value.maskAnchor=owner->value.masks.front();d.selectAttachedMask(layer,frame,true);}
+  if(mode==4){auto rows=d.timelineSelection();rows.maskRows={layer};d.restoreTimelineSelection(rows,{});d.selectAttachedMask(layer,frame,true);}
+  d.previewSelection(SelectionMask{0,0,1,1,{}});const auto rows=d.timelineSelection().layers,groups=d.selectedGroupIds();
+  const auto history=d.historyPosition();if(command==2)d.addLinkedFrame();else d.addFrame(command==1);
+  const auto inserted=d.frame().id;
+  auto cleared=[&]{return d.selectedFrames().empty()&&d.frameSelectionAnchor().empty()&&d.timelineSelection().cels.empty()&&d.timelineSelection().celAnchor.empty()&&d.timelineSelection().maskRows.empty()&&d.activeMaskId().empty()&&!d.maskIsolated()&&owner->value.masks.empty()&&!owner->value.maskAnchor&&owner->value.groups.empty()&&!owner->value.groupAnchor&&!owner->value.frameSelection;};
+  check(d.historyPosition()==history+1&&!d.selection()&&cleared(),"Frame creation missed initial item/mask clearing");
+  check(d.timelineSelection().layers==rows&&d.selectedGroupIds()==groups,"Frame creation lost selected rows");
+  if(command==1)check(d.canvasPixels()[0]==0xff123456,"Duplicate frame lost source content");
+  if(command==2)check(d.cel().linkedCelId.has_value(),"Linked creation lost link");
+  d.undo();check(d.frame().id==frame&&!d.selection()&&cleared(),"Frame creation undo revived cleared items/mask/selection");
+  // Selection changes after Undo are current session state. Redo clears items,
+  // keeps the newly chosen rows and pixel selection, and exits mask editing.
+  d.selectTimelineRow({LayerPanelKind::Group,group,0});const auto currentRows=d.timelineSelection().layers,currentGroups=d.selectedGroupIds();
+  owner->value.groups={{group,frame}};owner->value.groupAnchor=owner->value.groups.front();
+  d.selectAttachedMask(layer,frame,true);d.previewSelection(SelectionMask{1,1,1,1,{}});
+  d.redo();check(d.frame().id==inserted&&cleared()&&d.selection()&&d.selection()->x==1,"Frame creation redo did not clear current items or kept stale pixel history");
+  check(d.timelineSelection().layers==currentRows&&d.selectedGroupIds()==currentGroups,"Frame creation redo restored stale row selection");
+  // Undo also preserves newly selected surviving frame items and row focus.
+  d.selectFrameHeader(frame,1,true);owner->value.frameSelection=true;d.undo();
+  check(d.frame().id==frame&&d.selectedFrames()==std::vector<std::string>{frame}&&owner->value.frameSelection&&d.selectedGroupIds()==currentGroups,"Frame creation undo replaced current surviving selection");
+  check(other->value.groups==unrelated&&other->restored==0,"Frame creation changed another session");
+ }
+}
+void verifyExistingRightFrameLinkSelectionContract(){
+ for(int mode=0;mode<4;++mode){
+  auto owner=std::make_shared<SelectionOwner>();auto& d=*owner->document;d.fillSelectionOrCanvas(0xff123456);
+  const auto first=d.frame().id,layer=d.layer().id;d.addFrame();const auto right=d.frame().id;d.selectFrame(first);
+  d.addLayer();check(d.createLayerGroup(),"Existing link group fixture");const auto group=d.timeline().state().groups.front().id;d.selectLayer(layer);
+  check(d.createAttachedMask(layer,first),"Existing link mask fixture");d.exitAttachedMask();bindSelectionOwner(owner);
+  if(mode==0){d.selectFrameHeader(first);owner->value.frameSelection=true;}
+  if(mode==1)d.selectTimelineCel(d.cel().id);
+  if(mode==2){owner->value.groups={{group,first}};owner->value.groupAnchor=owner->value.groups.front();}
+  if(mode==3){owner->value.masks={{layer,first}};owner->value.maskAnchor=owner->value.masks.front();d.selectAttachedMask(layer,first,true);}
+  const auto before=d.captureAnimationSelection();const auto history=d.historyPosition();d.addLinkedFrame();
+  check(d.frame().id==right&&d.timeline().state().frames.size()==2&&d.historyPosition()==history+1&&d.cel().linkedCelId.has_value(),"Existing right link inserted a frame or lost link");
+  check(owner->value.masks.empty()&&owner->value.groups.empty()&&!owner->value.frameSelection&&d.activeMaskId().empty(),"Existing right link did not clear items");
+  d.undo();const auto restored=d.captureAnimationSelection();
+  check(restored.frames==before.frames&&restored.selection.cels==before.selection.cels&&restored.selection.layers==before.selection.layers&&restored.activeFrame==before.activeFrame&&restored.activeMask==before.activeMask&&restored.maskIsolated==before.maskIsolated,"Existing right link undo lost document context");
+  check(owner->value.groups==before.sessionSelection->groups&&owner->value.groupAnchor==before.sessionSelection->groupAnchor&&owner->value.masks==before.sessionSelection->masks&&owner->value.maskAnchor==before.sessionSelection->maskAnchor&&owner->value.frameSelection==before.sessionSelection->frameSelection,"Existing right link undo lost session context");
+  d.redo();check(d.frame().id==right&&owner->value.masks.empty()&&owner->value.groups.empty()&&!owner->value.frameSelection&&d.activeMaskId().empty(),"Existing right link redo lost after selection");
+ }
+}
 void verifyNormalizedSlotOrder(){
  auto owner=std::make_shared<SelectionOwner>();auto& document=*owner->document;const auto first=document.frame().id;document.addFrame();const auto second=document.frame().id;
  document.addLayer();check(document.createLayerGroup(),"Ordered slot normalization group fixture");const auto group=document.timeline().state().groups.front().id;bindSelectionOwner(owner);
@@ -123,7 +178,7 @@ void verifyImplicitLayerSelectionNormalization(){
  document.undo();check(!document.layer().layerStyles,"Implicit style undo failed");document.redo();check(document.layer().layerStyles&&document.timelineSelection().layers.empty(),"Implicit style redo changed selection mode");
  document.selectTimelineLayer(created);document.normalizeAnimationSelection();check(document.timelineSelection().layers==std::vector<std::string>{created},"Normalization lost explicit layer selection");
 }
-int main(){try{verifyImplicitLayerSelectionNormalization();verifyCompleteSessionSelectionHistory();verifyMaskSessionSelectionHistory();verifyTrimDoesNotCreateSelectionHistory();verifyNormalizedSlotOrder();verifyFramePasteSelectionContract();verifyCelCutSelectionContract();
+int main(){try{verifyImplicitLayerSelectionNormalization();verifyCompleteSessionSelectionHistory();verifyMaskSessionSelectionHistory();verifyTrimDoesNotCreateSelectionHistory();verifyNormalizedSlotOrder();verifyFramePasteSelectionContract();verifyCelCutSelectionContract();verifyFrameCreationSelectionContract();verifyExistingRightFrameLinkSelectionContract();
   Document document(3,1);
   const auto first=document.frame().id;
   document.addFrame();const auto second=document.frame().id;

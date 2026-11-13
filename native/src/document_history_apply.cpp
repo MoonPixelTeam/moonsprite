@@ -189,6 +189,7 @@ if(!edit.children.empty() && !edit.beforeActive.empty()){selectLayer(forward?edi
 
 void Document::applyHistoryProjection(const Edit& edit,bool forward){
 for(const auto& value:forward?edit.layerHistory.afterLayerOpacityProjection:edit.layerHistory.beforeLayerOpacityProjection){auto it=std::find_if(timeline_.state_.layers.begin(),timeline_.state_.layers.end(),[&](const auto& l){return l.id==value.first;});if(it!=timeline_.state_.layers.end())it->opacity=value.second;}applyMaskHistoryContext(edit.maskHistory,forward);applyGroupUi(edit,forward);applyFreeTileSelectionHistory(edit.tileHistory,forward);
+ if(forward&&edit.frameHistory.clearItemSelectionOnRedo)clearAnimationItemSelection();
 }
 
 // finishHistorySources: definition in its history domain unit.

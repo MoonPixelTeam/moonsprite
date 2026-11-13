@@ -90,7 +90,7 @@ void Editor::smokeTileRepeat(){
  auto traceStage=[&](const char* stage,int mode=0,int sample=0){if(checkTrace.is_open()){checkTrace<<(GetTickCount64()-checkStarted)<<'\t'<<stage<<'\t'<<mode<<'\t'<<sample<<'\n';checkTrace.flush();}};
  // Run the original assertions in bounded phases without repeating the full
  // text-editor suite inside the geometry phase. No selection means all phases.
- bool checkGeometry=true,checkTextDialogs=true,checkShiftLines=false,checkFreePreview=false,checkPlacementPreview=false,checkMaskPreview=false,checkMaskShift=false,checkPixelFormats=false;int checkTextCase=-1;
+ bool checkGeometry=true,checkTextDialogs=true,checkShiftLines=false,checkFreePreview=false,checkPlacementPreview=false,checkMaskPreview=false,checkMaskShift=false,checkPixelFormats=false,checkFrameCreation=false;int checkTextCase=-1;
  if(const auto phase=_wgetenv(L"MOONSPRITE_TILE_REPEAT_CHECK_PHASE")){
   const std::wstring value(phase);bool recognized=false;
   if(value==L"geometry"){checkTextDialogs=false;recognized=true;}
@@ -100,6 +100,7 @@ void Editor::smokeTileRepeat(){
   else if(value==L"mask-brush-preview"){checkGeometry=checkTextDialogs=false;checkMaskPreview=true;recognized=true;}
   else if(value==L"mask-shift-lines"){checkGeometry=checkTextDialogs=false;checkMaskShift=true;recognized=true;}
   else if(value==L"pixel-formats"){checkGeometry=checkTextDialogs=false;checkPixelFormats=true;recognized=true;}
+  else if(value==L"frame-creation"){checkGeometry=checkTextDialogs=false;checkFrameCreation=true;recognized=true;}
   else for(int index=0;index<12;++index)if(value==L"text-"+std::to_wstring(index)){checkGeometry=false;checkTextCase=index;recognized=true;break;}
   if(!recognized)throw std::runtime_error("Invalid tile repeat check phase");
  }
@@ -114,6 +115,32 @@ void Editor::smokeTileRepeat(){
  // The default pivot at the fixture press otherwise consumes the content drag.
  currentView().selectionPivotVisible=false;
  auto send=[&](ui::MessageType type,TransformPoint at){ui::MouseMessage m(type,os::PointerType::Mouse,ui::kButtonLeft,ui::kKeyNoneModifier,canvasDocumentToDisplay(at));m.setDisplay(display());onProcessMessage(&m);};
+ if(checkFrameCreation){
+  auto require=[](bool ok,const char* why){if(!ok)throw std::runtime_error(why);};layersPanelOpen_=true;setTimelineHidden(false,false);
+  for(int command=0;command<4;++command)for(int mode=0;mode<5;++mode){
+   replaceDocumentForSmoke(std::move(*std::make_unique<Document>(2,2)));auto& d=currentDocument();d.fillSelectionOrCanvas(0xff123456);const auto layer=d.layer().id;
+   const auto first=d.frame().id;if(command==3){d.addFrame();d.selectFrame(first);}
+   d.addLayer();require(d.createLayerGroup(),"Frame UI group fixture");const auto group=d.timeline().state().groups.front().id;d.selectLayer(layer);
+   require(d.createAttachedMask(layer,first),"Frame UI mask fixture");d.exitAttachedMask();d.selectTimelineLayer(layer);refresh();
+   if(mode==0){d.selectFrameHeader(first);markFrameSelection();}
+   if(mode==1)d.selectTimelineCel(d.cel().id);
+   if(mode==2){currentView().virtualSlots={{group,first}};currentView().virtualAnchor=currentView().virtualSlots.front();}
+   if(mode==3)require(selectMaskSlot(layer,first,0,nullptr,true),"Frame UI mask slot selection");
+   if(mode==4){TimelineRows rows(d.timeline(),d.collapsedGroupIds(),true);require(selectMaskPanelRow(rows.index(TimelineRows::maskRowId(layer)),0),"Frame UI mask row selection");}
+   d.previewSelection(SelectionMask{0,0,1,1,{}});refresh();const auto rows=d.timelineSelection().layers,groups=d.selectedGroupIds();const auto before=d.captureAnimationSelection();const auto history=d.historyPosition();
+   require(before.sessionSelection.has_value(),"Frame UI live session selection access");
+   require(runShortcutCommand(command==0?"addBlankAnimationFrame":command==1?"addAnimationFrame":"addLinkedAnimationFrame"),"Frame UI command entry");
+   const auto made=d.frame().id;require(made!=first&&d.historyPosition()==history+1&&!d.selection(),"Frame UI command committed exactly once");
+   auto cleared=[&]{return d.selectedFrames().empty()&&d.timelineSelection().cels.empty()&&d.timelineSelection().maskRows.empty()&&d.activeMaskId().empty()&&!d.maskIsolated()&&currentView().maskSlots.empty()&&!currentView().maskAnchor&&currentView().virtualSlots.empty()&&!currentView().virtualAnchor&&!currentView().frameSelection;};
+   require(cleared()&&d.timelineSelection().layers==rows&&d.selectedGroupIds()==groups,"Frame UI initial clearing and row retention");
+   require(runShortcutCommand("undo"),"Frame UI Undo entry");refresh();
+   require(d.frame().id==first&&!d.selection(),"Frame UI Undo activity and canvas selection");
+   if(command==3){const auto restored=d.captureAnimationSelection();require(restored.frames==before.frames&&restored.selection.cels==before.selection.cels&&restored.selection.maskRows==before.selection.maskRows&&restored.activeMask==before.activeMask&&restored.maskIsolated==before.maskIsolated&&restored.sessionSelection->groups==before.sessionSelection->groups&&restored.sessionSelection->masks==before.sessionSelection->masks&&restored.sessionSelection->frameSelection==before.sessionSelection->frameSelection,"Frame UI existing right link restores full selection");}
+   else require(cleared(),"Frame UI creation Undo revived cleared selection");
+   require(runShortcutCommand("redo"),"Frame UI Redo entry");refresh();require(d.frame().id==made&&cleared(),"Frame UI Redo clearing");traceStage("frame-creation",command,mode);
+  }
+  replaceDocumentForSmoke(std::move(*std::make_unique<Document>()));refresh();return;
+ }
  if(checkPixelFormats){
   auto require=[](bool ok,const char* why){if(!ok)throw std::runtime_error(why);};
   replaceDocumentForSmoke(std::move(*std::make_unique<Document>(8,6)));ensureProjects();
